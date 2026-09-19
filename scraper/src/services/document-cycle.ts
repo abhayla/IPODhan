@@ -528,6 +528,12 @@ export function deriveIssueShape(row: Record<string, unknown>): IssueShape {
   return {
     isFixedPrice,
     withdrawn: status === 'WITHDRAWN' || status === 'POSTPONED',
+    // Item 24 (#795): the explicit offering-type guard's input. `isFixedPrice`
+    // above is FALSE whenever the band is NULL, so it cannot be relied on to
+    // exclude a non-IPO type from hunting a price band ad.
+    offeringType: row.offering_type === null || row.offering_type === undefined
+      ? null
+      : String(row.offering_type),
   };
 }
 
@@ -939,7 +945,17 @@ async function enrichRotatingCandidates(
 export const CANDIDATE_IPOS_SQL = `
     SELECT i.id, i.company_name, i.slug, i.symbol, i.segment, i.status, i.price_range_min,
            i.price_range_max, i.open_date, i.listing_date, i.bse_ipo_no,
-           i.company_website, i.verifier_url, i.lead_managers, i.listing_exchanges
+           i.company_website, i.verifier_url, i.lead_managers, i.listing_exchanges,
+           i.offering_type,
+           -- Item 24 (#795): the second pre-open signal. A HELD RHP only —
+           -- a row still being hunted (WANTED/NOT_YET_FILED/...) says nothing
+           -- about whether the issuer has filed, so it must not promote.
+           EXISTS(
+             SELECT 1 FROM document_fetch_state r
+              WHERE r.ipo_id = i.id
+                AND r.doc_type = 'RHP'
+                AND r.state IN ('FOUND', 'EXTRACTED', 'EXTRACT_FAILED')
+           ) AS has_rhp_on_file
       FROM ipos i
       LEFT JOIN (
         SELECT ipo_id, MAX(last_attempt_at) AS last_activity
@@ -1005,9 +1021,17 @@ export async function loadCandidateIpos(deps: {
       slug: (r.slug as string | null) ?? null,
       symbol: (r.symbol as string | null) ?? null,
       segment: (r.segment as string | null) ?? null,
+      // Item 24 (#795): promotion now rests on open_date / a held RHP /
+      // offering_type — facts this pipeline cannot suppress — and no longer on
+      // the price band, which is the OUTPUT of the document the stage gates.
       stage: deriveLifecycleStage({
+        id: String(r.id),
+        companyName: String(r.company_name ?? ''),
         status: r.status as string | null,
         priceRangeMin: (r.price_range_min as string | null) ?? null,
+        openDate: (r.open_date as Date | string | null) ?? null,
+        hasRhpOnFile: r.has_rhp_on_file === true,
+        offeringType: (r.offering_type as string | null) ?? null,
       }),
       bseIpoNo: r.bse_ipo_no === null || r.bse_ipo_no === undefined ? null : Number(r.bse_ipo_no),
       companyWebsite: (r.company_website as string | null) ?? null,

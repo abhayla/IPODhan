@@ -95,19 +95,80 @@ export function dueFieldKeysForStage(stage) {
   return keys;
 }
 
-// Derive an IPO's lifecycle stage from its status + whether RHP terms (a real
-// price band) are known. UPCOMING splits: DRHP-only (no price band) vs PRE_OPEN
-// (RHP filed -> price band present).
-export function deriveStage(row) {
+// Item 24 (#795): see deriveLifecycleStage in
+// scraper/src/scheduler/stage-reconciler.ts for the full reasoning. N = 7 days,
+// from the 17 IPOs we knew about at least two days before their band was
+// recorded (median 4, p90 5.8, max 7); the upper end is taken deliberately
+// because 29% had the band recorded 0-1 days before open.
+export const PRE_OPEN_WINDOW_DAYS = 7;
+
+// Only an IPO ever files a price band advertisement — measured 21 of 21. Every
+// other offering type stores min = max, a single fixed price.
+export const BAND_BEARING_OFFERING_TYPES = ['IPO'];
+
+export function isBandBearingOfferingType(offeringType) {
+  const t = String(offeringType ?? 'IPO').trim().toUpperCase();
+  return BAND_BEARING_OFFERING_TYPES.includes(t === '' ? 'IPO' : t);
+}
+
+// Derive an IPO's lifecycle stage from its status and the signals that say it is
+// about to open.
+//
+// Item 24 (#795) — THE RULE: a promotion condition must depend only on facts our
+// own pipeline cannot suppress, never on an output of the work it gates. The old
+// rule promoted UPCOMING -> PRE_OPEN only on a price band already being present,
+// but PRICE_BAND_AD (the document that SUPPLIES the band) is first due at
+// PRE_OPEN — so no band meant the ad was never fetched, which meant no band.
+//
+// This function is the SECOND implementation of the rule; the first is
+// `deriveLifecycleStage` in scraper/src/scheduler/stage-reconciler.ts. The two
+// are pinned together by the parity test in
+// scraper/tests/unit/scheduler/stage-gate-deadlock.test.ts. Change both or
+// neither.
+export function deriveStage(row, opts = {}) {
   const status = String(row.status || '').toUpperCase();
   if (status === 'LISTED') return 'LISTED';
   if (status === 'CLOSED') return 'CLOSED';
   if (status === 'OPEN') return 'OPEN';
-  if (status === 'UPCOMING') {
-    const min = row.price_range_min;
-    const hasBand = min !== null && min !== undefined && Number(min) > 0;
-    return hasBand ? 'PRE_OPEN' : 'UPCOMING';
+  if (status !== 'UPCOMING') return 'UPCOMING';
+
+  // An issue that can never file a price band ad is never sent hunting one.
+  if (!isBandBearingOfferingType(row.offering_type)) return 'UPCOMING';
+
+  const today = opts.today ?? new Date();
+
+  // Signal 1 — the issue opens soon (null-safe: an absent or unparseable
+  // open_date is "no signal", never 0).
+  const raw = row.open_date;
+  let days = null;
+  if (raw !== null && raw !== undefined && raw !== '') {
+    const d = raw instanceof Date ? raw : new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      days = Math.floor((d.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+    }
   }
+  if (days !== null && days <= PRE_OPEN_WINDOW_DAYS) return 'PRE_OPEN';
+
+  // Signal 2 — an RHP is already on file.
+  if (row.has_rhp_on_file === true) return 'PRE_OPEN';
+
+  // Signal 3 — the band is already present. Kept for continuity; no longer the
+  // trigger.
+  const min = row.price_range_min;
+  if (min !== null && min !== undefined && Number(min) > 0) return 'PRE_OPEN';
+
+  // A row with NO usable signal at all must be VISIBLE, not silently stalled —
+  // silent stalling is the bug this change removes. A known-far-off open_date is
+  // resolved, not unresolved.
+  if (days === null && typeof opts.onUnresolved === 'function') {
+    opts.onUnresolved({
+      id: row.id,
+      companyName: row.company_name,
+      reason:
+        'UPCOMING with no promotion signal: no open_date, no RHP on file, no price band — stage cannot advance, so no pre-open document will ever become due',
+    });
+  }
+
   return 'UPCOMING';
 }
 
