@@ -17,7 +17,7 @@ import { ScraperLogRepository } from '@/lib/repositories/scraper-log-repository'
 import { GMPRepository } from '@/lib/repositories/gmp-repository';
 import { SubscriptionRepository } from '@/lib/repositories/subscription-repository';
 import { ReviewRepository } from '@/lib/repositories/review-repository';
-import { DataConflictsRepository } from '@/lib/repositories/data-conflicts-repository';
+import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import type Redis from 'ioredis';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
