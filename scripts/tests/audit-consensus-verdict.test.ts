@@ -8,7 +8,7 @@
 // Run: npx tsx --test scripts/tests/audit-consensus-verdict.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { auditRows, expectedVerdictForRow, type FieldSourceRow } from '../audit-consensus-verdict.ts';
+import { auditRows, decideExit, expectedVerdictForRow, type FieldSourceRow } from '../audit-consensus-verdict.ts';
 import { loadFieldManifest } from '../../scraper/src/config/field-manifest-loader.ts';
 
 const manifest = loadFieldManifest();
@@ -142,4 +142,49 @@ test('WRITER_DORMANT: 0 rows total is distinguished from "verified clean" (eligi
   assert.equal(mismatches.length, 0);
   assert.equal(eligibleCount, 0);
   assert.equal(writtenCount, 0);
+});
+
+// ---------------------------------------------------------------------------
+// #794: WRITER_DORMANT must be a terminal PASS, not a FATAL.
+//
+// Before this fix the dormant branch PRINTED "WRITER_DORMANT ... ENABLE_VERDICT_WRITER
+// is off" and then fell through to the unconditional `mismatches.length > 0` FATAL, so
+// the check exited 1 with a mismatch count exactly equal to its eligible population —
+// 6715 of 6715 on staging, 2026-09-19. A gate whose only possible output is FATAL
+// carries no information: it cannot distinguish "the writer is off" (expected, and the
+// state in every environment) from "the writer is on and computing wrong verdicts",
+// which is the single case this check exists to catch.
+// ---------------------------------------------------------------------------
+
+test('#794 dormant writer: 0 written verdicts is a PASS, however many re-derivations differ', () => {
+  const rows = [
+    mainboardRow({
+      verdict: null,
+      witnesses: [
+        { source: 'DOC', value: 1_250_000_000, at: '2026-09-19T00:00:00.000Z' },
+        { source: 'NSE', value: 1_250_000_000, at: '2026-09-19T00:00:00.000Z' },
+      ],
+    }),
+  ];
+  const { mismatches, writtenCount, eligibleCount } = auditRows(rows, manifest);
+  assert.equal(writtenCount, 0, 'precondition: the writer is dormant');
+  assert.ok(mismatches.length > 0, 'precondition: re-derivation still differs from an empty column');
+
+  const decision = decideExit({ mismatches, writtenCount, eligibleCount });
+  assert.equal(decision.code, 0, 'a dormant writer must NOT exit non-zero');
+  assert.equal(decision.status, 'PASS');
+  assert.match(decision.detail, /WRITER_DORMANT/, 'the reason must name the dormant state');
+});
+
+test('#794 the FATAL path still fires when verdicts ARE written and one is wrong', () => {
+  const decision = decideExit({
+    mismatches: [
+      { ipoId: 'x', companyName: 'T', tableName: 'ipos', fieldName: 'issueSize',
+        reason: 'stored DISPUTED, re-derived CONFIRMED', expectedVerdict: 'CONFIRMED' } as never,
+    ],
+    writtenCount: 5,
+    eligibleCount: 10,
+  });
+  assert.equal(decision.code, 1, 'a real wrong verdict must still be FATAL');
+  assert.equal(decision.status, 'FAIL');
 });
