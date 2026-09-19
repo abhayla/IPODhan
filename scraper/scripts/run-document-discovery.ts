@@ -74,6 +74,7 @@ import {
 import { readback } from './readback-document-state.js';
 import { NetworkCounter } from '../src/utils/network-counter.js';
 import { deriveLifecycleStage } from '../src/scheduler/stage-reconciler.js';
+import { heldStatesSqlList } from '../src/services/document-state-machine.js';
 import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
 
 // GitHub #28: `options: '-c timezone=UTC'` on each Pool below pins the
@@ -208,6 +209,17 @@ export interface IposSelectorRow {
   status: string;
   priceRangeMin: number | string | null;
   closeDate: string | null;
+  /** Item 24 (#795): open_date, the primary pre-open promotion signal. */
+  openDate: string | null;
+  /** Item 24 (#795): true when an RHP is already HELD for this issue. */
+  hasRhpOnFile: boolean;
+  /**
+   * Item 24 (#795): `ipos.offering_type`. This selector path has NO
+   * `offering_type = 'IPO'` filter (unlike CANDIDATE_IPOS_SQL), so a non-IPO
+   * row genuinely reaches the stage rule here and the real value must be
+   * carried, never defaulted.
+   */
+  offeringType: string | null;
   bseIpoNo: number | null;
   companyWebsite: string | null;
   verifierUrl: string | null;
@@ -245,7 +257,25 @@ export async function resolveIposFromSelectors(
       companyName: row.companyName,
       symbol: row.symbol,
       segment: row.segment,
-      stage: deriveLifecycleStage({ status: row.status, priceRangeMin: row.priceRangeMin }),
+      stage: deriveLifecycleStage({
+        id: row.id,
+        companyName: row.companyName,
+        status: row.status,
+        priceRangeMin: row.priceRangeMin,
+        openDate: row.openDate,
+        hasRhpOnFile: row.hasRhpOnFile,
+        offeringType: row.offeringType,
+        // Item 24 round 2 (M1): see document-cycle.ts. This script is a manual
+        // single-IPO run, so its channel is stderr rather than the cycle log, but
+        // the clause must have a consumer HERE too - an operator running it
+        // against a stalled issue is exactly who needs to be told why.
+      }, {
+        onUnresolved: (report) =>
+          console.error(
+            '[run-document-discovery] ' + String(report.companyName ?? report.id) +
+              ': no usable promotion signal - ' + report.reason
+          ),
+      }),
       dbStatus: row.status,
       closeDate: row.closeDate ?? '',
       bseIpoNo: row.bseIpoNo,
@@ -270,10 +300,17 @@ async function makeDbIposSelectorQuery(databaseUrl: string): Promise<{
   return {
     query: async (selector: string) => {
       const found = await db.execute(
-        sql`SELECT id, company_name, symbol, segment, status, price_range_min, close_date,
-                   bse_ipo_no, company_website, verifier_url
-            FROM ipos
-            WHERE symbol = ${selector} OR company_name ILIKE ${'%' + selector + '%'}
+        sql`SELECT i.id, i.company_name, i.symbol, i.segment, i.status, i.price_range_min,
+                   i.close_date, i.open_date, i.offering_type,
+                   i.bse_ipo_no, i.company_website, i.verifier_url,
+                   EXISTS(
+                     SELECT 1 FROM document_fetch_state r
+                      WHERE r.ipo_id = i.id
+                        AND r.doc_type = 'RHP'
+                        AND r.state IN (${sql.raw(heldStatesSqlList())})
+                   ) AS has_rhp_on_file
+            FROM ipos i
+            WHERE i.symbol = ${selector} OR i.company_name ILIKE ${'%' + selector + '%'}
             LIMIT 1`
       );
       const rows = (found as unknown as { rows?: Record<string, unknown>[] }).rows ?? [];
@@ -285,6 +322,9 @@ async function makeDbIposSelectorQuery(databaseUrl: string): Promise<{
         status: String(r.status),
         priceRangeMin: (r.price_range_min as number | string | null) ?? null,
         closeDate: r.close_date ? String(r.close_date) : null,
+        openDate: r.open_date ? String(r.open_date) : null,
+        hasRhpOnFile: r.has_rhp_on_file === true,
+        offeringType: (r.offering_type as string | null) ?? null,
         bseIpoNo: (r.bse_ipo_no as number | null) ?? null,
         companyWebsite: (r.company_website as string | null) ?? null,
         verifierUrl: (r.verifier_url as string | null) ?? null,

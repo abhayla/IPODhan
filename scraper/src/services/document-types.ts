@@ -143,3 +143,32 @@ export const EXCHANGE_SERVED_TYPES: readonly DocumentType[] = DOCUMENT_TYPES.fil
 export function isExchangeServedType(docType: DocumentType): boolean {
   return EXCHANGE_SERVED_TYPES.includes(docType);
 }
+
+/**
+ * Item 24 (#795): offering types that can ever file a price band advertisement.
+ *
+ * Measured on staging 2026-09-19: only `offering_type='IPO'` has ever held a
+ * PRICE_BAND_AD, 21 of 21. Every other type stores `min = max` — a single fixed
+ * price, never a range (TENDER 16/16, RIGHTS 5/5, NCD 3/3, INVITS 3/3,
+ * BUYBACK 1/1, REITS 1/1).
+ *
+ * Lives in this module — the shared vocabulary both the state machine and the
+ * stage reconciler already depend on — so the two cannot drift, and so neither
+ * has to import the other (the reconciler already imports from the state
+ * machine; the reverse would be a cycle).
+ */
+export const BAND_BEARING_OFFERING_TYPES: readonly string[] = ['IPO'];
+
+/**
+ * True when this offering type can file a price band ad.
+ *
+ * An ABSENT/blank offering type is treated as 'IPO': every production caller
+ * loads `offering_type = 'IPO'` rows only (`CANDIDATE_IPOS_SQL`,
+ * `RECONCILER_PRESENCE_SQL`), so absence there means "the IPO filter already
+ * ran", not "unknown". The `--ipos` selector harness has no such filter, which
+ * is exactly why it must pass the real value through.
+ */
+export function isBandBearingOfferingType(offeringType?: string | null): boolean {
+  const t = String(offeringType ?? 'IPO').trim().toUpperCase();
+  return BAND_BEARING_OFFERING_TYPES.includes(t === '' ? 'IPO' : t);
+}

@@ -18,6 +18,7 @@ import {
   type ReconcilerIpoRow,
   type FetchKind,
 } from '../stage-reconciler.js';
+import { heldStatesSqlList } from '../../services/document-state-machine.js';
 import { initStepLedger } from '../../services/step-ledger.js';
 import { planLifecycleSteps, writeSteps } from '../../services/step-ledger-recorders.js';
 
@@ -87,6 +88,19 @@ export function getStaleClosedDays(env: NodeJS.ProcessEnv = process.env): number
 export const RECONCILER_PRESENCE_SQL = `
     SELECT i.id, i.company_name AS "companyName", i.status, i.price_range_min AS "priceRangeMin",
       i.close_date AS "closeDate", i.listing_date AS "listingDate",
+      -- Item 24 round 2 (C1): the stage rule reads open_date, offering_type and
+      -- an RHP-on-file signal. Round 1 threaded them into the document cycle but
+      -- not into THIS query, so this job derived every row's stage from the old
+      -- band-only evidence and wrote UPCOMING into the step ledger while the
+      -- document cycle fetched PRE_OPEN documents for the SAME IPO at the SAME
+      -- instant. A mapper cannot thread a column the query never selects.
+      i.open_date AS "openDate", i.offering_type AS "offeringType",
+      EXISTS(
+        SELECT 1 FROM document_fetch_state r
+         WHERE r.ipo_id = i.id
+           AND r.doc_type = 'RHP'
+           AND r.state IN (${heldStatesSqlList()})
+      ) AS has_rhp_on_file,
       EXISTS(SELECT 1 FROM documents d WHERE d.ipo_id=i.id)            AS "documents",
       EXISTS(SELECT 1 FROM financial_data f WHERE f.ipo_id=i.id)       AS "financials",
       EXISTS(SELECT 1 FROM peer_companies p WHERE p.ipo_id=i.id)       AS "peers",
@@ -160,12 +174,32 @@ export async function runStageReconcilerJob(opts: { dryRun?: boolean } = {}): Pr
       priceRangeMin: r.priceRangeMin,
       closeDate: r.closeDate ?? null,
       listingDate: r.listingDate ?? null,
+      // Item 24 round 2 (C1): the three facts the promotion rule rests on. Both
+      // halves are needed - the SELECT above and this mapping - or the rule reads
+      // undefined for all three and silently falls back to UPCOMING.
+      openDate: r.openDate ?? null,
+      offeringType: r.offeringType ?? null,
+      hasRhpOnFile: r.has_rhp_on_file === true,
       presence,
     };
   });
 
   const staleClosedDays = getStaleClosedDays();
-  const plans = planStageReconciliation(ipoRows, { today: new Date(), staleClosedDays });
+  // Item 24 round 2 (M1): this job WRITES the pipeline-step ledger, so it is
+  // the right consumer for a row that cannot advance - a stalled UPCOMING issue
+  // records no DUE pre-open step, and without this line nothing says why.
+  const unresolvedRows: { id?: string; companyName?: string; reason: string }[] = [];
+  const plans = planStageReconciliation(ipoRows, {
+    today: new Date(),
+    staleClosedDays,
+    onUnresolved: (report) => unresolvedRows.push(report),
+  });
+  if (unresolvedRows.length > 0) {
+    logger.warn(
+      { unresolvedCount: unresolvedRows.length, unresolvedRows },
+      '[stage-reconciler-job] UPCOMING rows with no usable promotion signal - stage cannot advance, so no pre-open step becomes due (item 24 #795)'
+    );
+  }
   const dueByKind: Record<string, number> = {};
   const byStage: Record<string, number> = {};
   let iposWithDueFetches = 0;

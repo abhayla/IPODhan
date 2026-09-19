@@ -30,6 +30,7 @@ import {
   DOCUMENT_PRECEDENCE,
   DOCUMENT_TYPES,
   SUPERSEDING_TYPES,
+  isBandBearingOfferingType,
   type DocumentType,
 } from './document-types.js';
 import type { LifecycleStage } from '../scheduler/stage-reconciler.js';
@@ -175,6 +176,11 @@ export interface IssueShape {
   /** A fixed-price issue has no price band and no anchor round. */
   isFixedPrice?: boolean;
   withdrawn?: boolean;
+  /**
+   * Item 24 (#795): `ipos.offering_type`. Absent = 'IPO'. See the offering-type
+   * guard in `notApplicableTypes`.
+   */
+  offeringType?: string | null;
 }
 
 /**
@@ -190,6 +196,17 @@ export function notApplicableTypes(issue: IssueShape): DocumentType[] {
   // BLOCKED_ALL row blocked forever and the nightly m_blocked_all_age check
   // failing every night with nothing anyone could do about it.
   if (issue.withdrawn === true) return [...DOCUMENT_TYPES];
+  // Item 24 (#795): an EXPLICIT offering-type guard, checked BEFORE
+  // `isFixedPrice`. `isFixedPrice` is derived from a price that is PRESENT
+  // (min === max), so with a NULL band it is false and 24 measured rows
+  // (19 OFS, 4 NCD, 1 RIGHTS) escape it — and once item 24 promotes on
+  // open_date rather than on the band, those rows would be sent hunting a
+  // price band ad that their offering type can never file: permanent
+  // BLOCKED_ALL and the W-40 alert churn this repo already fought.
+  // Measured: only offering_type='IPO' has ever held a PRICE_BAND_AD, 21/21.
+  if (!isBandBearingOfferingType(issue.offeringType)) {
+    return ['PRICE_BAND_AD', 'ANCHOR_ALLOCATION_REPORT'];
+  }
   if (issue.isFixedPrice !== true) return [];
   // No band to advertise, and no anchor round in a fixed-price issue.
   return ['PRICE_BAND_AD', 'ANCHOR_ALLOCATION_REPORT'];
@@ -211,8 +228,26 @@ export const SUPERSEDED_BY: Partial<Record<DocumentType, DocumentType[]>> = {
   RHP: ['DRHP'],
 };
 
-/** States that mean "we hold this document". */
-const HELD_STATES: DocumentFetchStateValue[] = ['FOUND', 'EXTRACTED', 'EXTRACT_FAILED'];
+/**
+ * States that mean "we hold this document".
+ *
+ * Item 24 round 2 (N1): EXPORTED, because the same three states were written out
+ * by hand as an inline SQL string list in two query files with no import - the
+ * `one-concept-several-definitions` class. A state added here but forgotten in a
+ * query makes that query silently narrower than the rule it claims to implement.
+ * Both queries now build their `IN (...)` from `heldStatesSqlList()` below.
+ */
+export const HELD_STATES: DocumentFetchStateValue[] = ['FOUND', 'EXTRACTED', 'EXTRACT_FAILED'];
+
+/**
+ * `HELD_STATES` as the body of a SQL `IN (...)` list: `'FOUND', 'EXTRACTED', ...`.
+ *
+ * Safe to interpolate: the values are a module-level literal array of enum
+ * members, never user input, and every one is a bare identifier-shaped token.
+ */
+export function heldStatesSqlList(): string {
+  return HELD_STATES.map((state) => `'${state}'`).join(', ');
+}
 
 /** Types made moot by a document this IPO already holds (F-3). */
 export function supersededTypes(rows: StateRow[]): DocumentType[] {
