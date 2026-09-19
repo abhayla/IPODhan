@@ -1,0 +1,10 @@
+[
+ ["<li><code>scripts/ops/deploy-config.sh --slot staging|prod --sha &lt;merged main sha&gt; --reason \"...\"</code> copies only <code>scraper/config/*.json</code> from that sha into the slot's <code>current</code> release, verifies the file hashes, and appends a log line with who, when, sha and reason.</li>",
+  "<li><code>scripts/ops/deploy-config.sh --slot staging|prod --sha &lt;merged main sha&gt; --reason \"...\"</code> copies only <code>scraper/config/field-manifest.json</code> from that sha into <code>$ROOT/shared/config/&lt;slot&gt;/</code> (never into a release: releases stay immutable, review finding 7), verifies the file hash, writes <code>CONFIG_SHA</code>, and appends a log line with who, when, sha and reason. Every release's own <code>scraper/config/field-manifest.json</code> is a symlink to that shared file.</li>"],
+ ["<li><b>D-1</b> Approve the seven slices in this order, with the Swap Test as the acceptance test.</li>",
+  "<li><b>D-1</b> Approve the twelve slices in the section 4b order (S0a, S0b, S0c, S0d, S5, S1a, S1b, S1c, S1d, S2, S3, S4, S6), with the Swap Test as the acceptance test. Approved 2026-09-17.</li>"],
+ ["<p>Seven slices, one worker at a time, Sonnet builders and Opus reviews on the four Tier A slices:",
+  "<p>Twelve slices (the seven above, with S1 split into S1a to S1d and S0c/S0d added by the review), one worker at a time, Sonnet builders and Opus reviews on the Tier A slices:"],
+ ["<p>One worker at a time. Each slice has a failing test first on the real function, a staging proof read by identity, and its review tier. No slice starts until the previous one's proof is recorded.</p>",
+  "<p>One worker at a time. Each slice has a failing test first on the real function, a staging proof read by identity, and its review tier. No slice starts until the previous one's proof is recorded. This table is the original seven; section 4b splits S1 into S1a to S1d, adds S0c (source-code reconciliation) and S0d (widen the <code>scraper_source</code> enum), and sets the final order. The status board at the top lists every slice as built.</p>"]
+]
