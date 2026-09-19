@@ -1,0 +1,168 @@
+{
+  "generatedAt": "2026-09-19T16:42:52.255Z",
+  "source": "ipodhan_staging via localhost:15432",
+  "types": [
+    {
+      "segment": "MAINBOARD",
+      "offering_type": "INVITS",
+      "issue_type": "BOOK_BUILDING",
+      "key": "MAINBOARD/INVITS/BOOK_BUILDING",
+      "total": 1,
+      "live_or_recent": 1,
+      "proven_scrapable": false
+    },
+    {
+      "segment": "MAINBOARD",
+      "offering_type": "INVITS",
+      "issue_type": "UNCLASSIFIED",
+      "key": "MAINBOARD/INVITS/UNCLASSIFIED",
+      "total": 1,
+      "live_or_recent": 1,
+      "proven_scrapable": false
+    },
+    {
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "issue_type": "BOOK_BUILDING",
+      "key": "MAINBOARD/IPO/BOOK_BUILDING",
+      "total": 89,
+      "live_or_recent": 77,
+      "proven_scrapable": true
+    },
+    {
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "issue_type": "UNCLASSIFIED",
+      "key": "MAINBOARD/IPO/UNCLASSIFIED",
+      "total": 19,
+      "live_or_recent": 4,
+      "proven_scrapable": true
+    },
+    {
+      "segment": "MAINBOARD",
+      "offering_type": "NCD",
+      "issue_type": "UNCLASSIFIED",
+      "key": "MAINBOARD/NCD/UNCLASSIFIED",
+      "total": 4,
+      "live_or_recent": 4,
+      "proven_scrapable": true
+    },
+    {
+      "segment": "MAINBOARD",
+      "offering_type": "REITS",
+      "issue_type": "UNCLASSIFIED",
+      "key": "MAINBOARD/REITS/UNCLASSIFIED",
+      "total": 1,
+      "live_or_recent": 1,
+      "proven_scrapable": false
+    },
+    {
+      "segment": "MAINBOARD",
+      "offering_type": "RIGHTS",
+      "issue_type": "UNCLASSIFIED",
+      "key": "MAINBOARD/RIGHTS/UNCLASSIFIED",
+      "total": 4,
+      "live_or_recent": 4,
+      "proven_scrapable": true
+    },
+    {
+      "segment": "MAINBOARD",
+      "offering_type": "TENDER",
+      "issue_type": "UNCLASSIFIED",
+      "key": "MAINBOARD/TENDER/UNCLASSIFIED",
+      "total": 11,
+      "live_or_recent": 11,
+      "proven_scrapable": true
+    },
+    {
+      "segment": "SME",
+      "offering_type": "IPO",
+      "issue_type": "BOOK_BUILDING",
+      "key": "SME/IPO/BOOK_BUILDING",
+      "total": 127,
+      "live_or_recent": 96,
+      "proven_scrapable": true
+    },
+    {
+      "segment": "SME",
+      "offering_type": "IPO",
+      "issue_type": "FIXED_PRICE",
+      "key": "SME/IPO/FIXED_PRICE",
+      "total": 23,
+      "live_or_recent": 18,
+      "proven_scrapable": true
+    },
+    {
+      "segment": "SME",
+      "offering_type": "IPO",
+      "issue_type": "UNCLASSIFIED",
+      "key": "SME/IPO/UNCLASSIFIED",
+      "total": 48,
+      "live_or_recent": 14,
+      "proven_scrapable": true
+    },
+    {
+      "segment": "UNCLASSIFIED",
+      "offering_type": "BUYBACK",
+      "issue_type": "UNCLASSIFIED",
+      "key": "UNCLASSIFIED/BUYBACK/UNCLASSIFIED",
+      "total": 1,
+      "live_or_recent": 1,
+      "proven_scrapable": false
+    },
+    {
+      "segment": "UNCLASSIFIED",
+      "offering_type": "INVITS",
+      "issue_type": "UNCLASSIFIED",
+      "key": "UNCLASSIFIED/INVITS/UNCLASSIFIED",
+      "total": 1,
+      "live_or_recent": 1,
+      "proven_scrapable": false
+    },
+    {
+      "segment": "UNCLASSIFIED",
+      "offering_type": "IPO",
+      "issue_type": "UNCLASSIFIED",
+      "key": "UNCLASSIFIED/IPO/UNCLASSIFIED",
+      "total": 10,
+      "live_or_recent": 10,
+      "proven_scrapable": true
+    },
+    {
+      "segment": "UNCLASSIFIED",
+      "offering_type": "NCD",
+      "issue_type": "UNCLASSIFIED",
+      "key": "UNCLASSIFIED/NCD/UNCLASSIFIED",
+      "total": 3,
+      "live_or_recent": 3,
+      "proven_scrapable": true
+    },
+    {
+      "segment": "UNCLASSIFIED",
+      "offering_type": "OFS",
+      "issue_type": "UNCLASSIFIED",
+      "key": "UNCLASSIFIED/OFS/UNCLASSIFIED",
+      "total": 19,
+      "live_or_recent": 19,
+      "proven_scrapable": true
+    },
+    {
+      "segment": "UNCLASSIFIED",
+      "offering_type": "RIGHTS",
+      "issue_type": "UNCLASSIFIED",
+      "key": "UNCLASSIFIED/RIGHTS/UNCLASSIFIED",
+      "total": 2,
+      "live_or_recent": 2,
+      "proven_scrapable": true
+    },
+    {
+      "segment": "UNCLASSIFIED",
+      "offering_type": "TENDER",
+      "issue_type": "UNCLASSIFIED",
+      "key": "UNCLASSIFIED/TENDER/UNCLASSIFIED",
+      "total": 5,
+      "live_or_recent": 5,
+      "proven_scrapable": true
+    }
+  ]
+}

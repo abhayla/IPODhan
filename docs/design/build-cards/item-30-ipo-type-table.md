@@ -1,6 +1,6 @@
-# Item 24 — the canonical IPO type table, generated with live counts
+# Item 30 — the canonical IPO type table, generated with live counts
 
-Status: NOT STARTED
+Status: DONE (PR pending)
 
 Model: Sonnet.
 
@@ -37,12 +37,28 @@ none of them can be checked while the list of types is five different implicit l
 | `docs/design/ipo-type-population.md` | NEW | the generated table — header comment says it is generated, do not hand-edit |
 | `docs/design/ipo-type-population.json` | NEW | the same data as a machine-readable aggregate, for item 34 and item 35 to read |
 | `scripts/tests/generate-ipo-type-population.test.mjs` | NEW | asserts the `--check` drift detection and the `proven-scrapable` threshold |
-| `.github/workflows/docs-gate.yml` | exists | one step running the generator with `--check` |
+| `.github/workflows/pr-gate.yml` | exists | one explicit `node --test` step running the fixture unit tests |
+
+**Class-1 correction (built 2026-09-19):** the card as written named
+`.github/workflows/docs-gate.yml` for the `--check` step. That workflow declares no `npm ci` and
+runs only `node:` builtins by design (its own header comment) — `pg` is not a builtin, and CI has no
+staging tunnel at all (only a spun-up local `ipodhan_test`, `.github/workflows/pr-gate.yml`), so the
+generator cannot run in EITHER CI workflow. The intent — CI coverage of the transform logic — is met
+instead by an explicit `node --test` step in `pr-gate.yml` running the fixture unit tests
+(`scripts/tests/generate-ipo-type-population.test.mjs`); the `--check` red/green proof against real
+staging data is the card's own "Staging proof" section below, run locally through the sanctioned
+tunnel, same as every other staging-dependent script in this repo (`docs/ops/prod-ops-recipes.md`).
 
 ## Schema
 
-No schema change. The generator reads `ipos.segment`, `ipos.offering_type`, `ipos.issue_type` and
-`ipos.status` only.
+No schema change. The generator reads `ipos.segment`, `ipos.offering_type`, `ipos.status` and
+`ipos.listing_date`.
+
+**Class-1 correction (built 2026-09-19):** the card as written claimed `ipos.issue_type`. That
+column does not exist on `ipos` — `issue_type` lives on `ipo_details` (1:1 via
+`ipo_details.ipo_id -> ipos.id`; `packages/shared/src/db/schema.ts`). The generator's intent (the
+canonical key includes issue_type) is met with a `LEFT JOIN ipo_details` so rows with no
+`ipo_details` row still surface, classified `UNCLASSIFIED`, rather than being silently dropped.
 
 ## Interfaces
 
@@ -62,8 +78,8 @@ Generated json shape, complete:
     {
       "segment": "MAINBOARD",
       "offering_type": "IPO",
-      "issue_type": "BOOK_BUILT",
-      "key": "MAINBOARD/IPO/BOOK_BUILT",
+      "issue_type": "BOOK_BUILDING",
+      "key": "MAINBOARD/IPO/BOOK_BUILDING",
       "total": 99,
       "live_or_recent": 59,
       "proven_scrapable": true
@@ -104,7 +120,7 @@ does not exist:
 ## Staging proof
 
 The generator run itself is the proof, and it is read back rather than assumed: the committed
-`docs/design/ipo-type-population.md` (NEW) names `MAINBOARD/IPO/BOOK_BUILT` with `live_or_recent` at or
+`docs/design/ipo-type-population.md` (NEW) names `MAINBOARD/IPO/BOOK_BUILDING` with `live_or_recent` at or
 above 2 and `proven_scrapable: true`, and names at least one type with `live_or_recent` below 2 and
 `proven_scrapable: false`. A table where every type is proven means the threshold is not being
 applied — INVITS and REITS were measured at 1 each on 2026-09-19.

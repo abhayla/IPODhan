@@ -131,6 +131,14 @@ jobs:
         # move. The module now NAMES never-extractable PENDING documents by type.
         run: node --test scripts/tests/not-applicable-documents.test.mjs
 
+      - name: "IPO type population generator self-tests (item 30)"
+        # Pure fixture->table transform (rowsToTypes) — canonical key, the
+        # proven_scrapable boundary, and the UNCLASSIFIED bucket for a null
+        # segment. The live-staging --check red/green proof is NOT run here:
+        # CI has no staging tunnel (see docs/design/ipo-type-population.md's
+        # generator and docs/design/build-cards/item-30-ipo-type-table.md).
+        run: node --test scripts/tests/generate-ipo-type-population.test.mjs
+
       - name: "IST-day guard and helper self-tests (#687)"
         # The #687 family (a day derived from the UTC clock reads as yesterday
         # for the first 5h30m of every IST day) was fixed in four slices, but
