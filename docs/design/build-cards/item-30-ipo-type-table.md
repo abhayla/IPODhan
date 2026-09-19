@@ -35,7 +35,7 @@ none of them can be checked while the list of types is five different implicit l
 |---|---|---|
 | `scripts/ops/generate-ipo-type-population.mjs` | NEW | reads staging through the tunnel, writes the markdown table and the json |
 | `docs/design/ipo-type-population.md` | NEW | the generated table — header comment says it is generated, do not hand-edit |
-| `docs/design/ipo-type-population.json` | NEW | the same data as a machine-readable aggregate, for item 28 and item 29 to read |
+| `docs/design/ipo-type-population.json` | NEW | the same data as a machine-readable aggregate, for item 34 and item 35 to read |
 | `scripts/tests/generate-ipo-type-population.test.mjs` | NEW | asserts the `--check` drift detection and the `proven-scrapable` threshold |
 | `.github/workflows/docs-gate.yml` | exists | one step running the generator with `--check` |
 

@@ -5,6 +5,7 @@ paths:
   - "docs/design/**"
   - "docs/reviews/**"
   - "web/app/admin/**"
+  - "web/app/api/admin/**"
   - "scripts/**"
   - ".github/**"
 ---
@@ -41,8 +42,8 @@ changes what a reader or an admin sees (OD-39, OD-61, OD-63); it adds, removes o
 or changes which source wins (OD-4, OD-5); it changes an owner-stated number (three data slots
 OD-19, seven-day retention OD-32, 0.5% agreement OD-59, 180-day same-offering window OD-35, the
 2-hour ceiling OD-55, and every other number an OD row states); it changes the schema or an enum; it
-repairs production data (§2.8); it is an item §7.2 lists as **not cleanly reversible** (items 11 and
-17); it drops or narrows a card's scope; it relaxes a Definition of Done; it adds a paid call (§7.4);
+repairs production data (§5.2; §2.8 covers plan invalidation); it is an item §7.2 lists as **not
+cleanly reversible** (items 11 and 17); it drops or narrows a card's scope; it relaxes a Definition of Done; it adds a paid call (§7.4);
 or it is the SECOND deviation on the same requirement.
 
 **OD-24 does not rescue a class-3 item.** "Record `O-nn`, mark PROVISIONAL, continue on the

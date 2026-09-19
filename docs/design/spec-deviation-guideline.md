@@ -49,6 +49,9 @@ near-enough state.
 something untrue about the code. Correcting it is bookkeeping, and pretending otherwise inflates the
 deviation count until the genuinely dangerous ones stop standing out.
 
+This supersedes contract decision 16's halt-on-card-defect for class 1 (owner decision 2026-09-19);
+decision 16's "never resolve a card/code contradiction by choosing" survives as classes 2 and 3.
+
 ### Class 2 — MINOR
 
 **Trigger, both halves required.**
@@ -89,8 +92,9 @@ class-3 trigger that outranks the configuration test.
   same-offering window (OD-35), the 2-hour hung-process ceiling (OD-55) — and every other number an
   `OD-` row states.
 - It changes the **schema** or an **enum**.
-- It **repairs production data** (§2.8 — when the plan itself is wrong the ranks are rebuilt; any
-  rewrite of stored rows is the owner's call).
+- It **repairs production data** (§5.2 — how existing rows are repaired; §2.8 covers the separate
+  case where the plan itself is wrong and the ranks are rebuilt); any rewrite of stored rows is the
+  owner's call.
 - It is an item §7.2 lists as **not cleanly reversible**: **item 11** (the crore conversion, once the
   public API has served the new shape) and **item 17** (the closed-IPO job, once website-sourced
   values on historical rows have been overwritten).
@@ -140,7 +144,7 @@ INVITS 1, REITS 1 (and not recent), MAINBOARD fixed-price 0, plus 40 rows with a
 today INVITS, REITS and MAINBOARD fixed-price cannot clear the bar at all, and NCD and RIGHTS clear
 it only just — which is a fact about the population, not a reason to lower the bar.
 
-Build item 24 (`docs/design/build-cards/item-24-ipo-type-table.md`) turns those counts into a
+Build item 30 (`docs/design/build-cards/item-30-ipo-type-table.md`) turns those counts into a
 generated table so this step is a lookup rather than a query.
 
 ### 3.3 What the report row looks like
@@ -197,11 +201,12 @@ document or an exchange** versus **what only a human can settle**.
 
 | | **Scraper owns — no admin fallback** | **Admin owns — the scraper must not attempt it** |
 |---|---|---|
-| **Which IPO types** | Every spec-mapped field for **MAINBOARD IPO, SME IPO (book-built and fixed price), FPO and RIGHTS** — the types with two or more live samples | **Any type with fewer than two live samples — REITS, INVITS, NCD, TENDER, BUYBACK.** Their pages show admin-supplied provenance until the population allows a proven path. *Reversing this is class 3.* |
+| **Which IPO types** | Every spec-mapped field for **MAINBOARD IPO, SME IPO (book-built and fixed price), FPO and RIGHTS** — the owner's list, 2026-09-19. FPO carries zero live rows today (§1.11) and is on the scraper side by the owner's word, not by sample count. | **Any type with fewer than two live samples — REITS, INVITS, NCD, TENDER, BUYBACK.** Their pages show admin-supplied provenance until the population allows a proven path. *Reversing this is class 3.* |
 | **Where the value comes from** | **Document first**; the exchange only for the E-1 timetable exception (§1.2.1, OD-2) | A value the **document does not print** for this IPO — record `NOT_PRINTED` and stop |
 | **Absences** | Every absence stored with one of **OD-62's four reason codes** — `SOURCE_UNREACHABLE`, `NOT_PUBLISHED_YET`, `EXTRACTION_FAILED`, `FAILED_VALIDATION` — **never a bare null** | A field **`EXHAUSTED`** after every source abstained or failed (§2.6) |
 | **Disagreements** | The **re-read loop to its §3.3 bounds** — 2 per (IPO, field, `sha256`), 1 per document per day, 1 per IPO per slot — before any human is asked | A disagreement **unresolved within those bounds**, which arrives on the admin surface with **both values, both sources and the receipt** (§3.4) |
 | **Identity** | Binding per **OD-34** (CIN, then the SEBI draft filing number, then the exchange symbol, then the normalised name), **OD-35** (one row is one offering; 180 days; an offering-type change is a new row) and **OD-38** (three no-such-symbol reads set DELISTED; every automatic merge logged and reversible) | **Production data repairs and identity merges** — the pipeline **proposes**, logs, and keeps it reversible; a **human confirms** |
+| **OFS** | — | **Frozen per OD-53** (18 rows as non-IPO listings), out of scope for both scraper and admin. |
 | **Never** | — | **Guessing from a peer, a ratio or a formula is forbidden.** An absence is an absence. |
 
 **Why the thin types sit on the admin side.** Not because their documents are harder, but because
@@ -242,7 +247,7 @@ happen is both standing, because then the next reader picks whichever they found
 1. The aggregate table is generated from a **fixed column list** in
    `scripts/build-detection-registry.mjs`. A key that is not in that list **validates cleanly, passes
    `--check`, and renders nowhere** — measured 2026-09-19 on a `measurements_*` key. So `spec_ref` is
-   not merely added to a JSON file; the generator has to learn it (build item 28), and after
+   not merely added to a JSON file; the generator has to learn it (build item 34), and after
    registering anything you **grep the GENERATED artefact for the new text**, not just the source
    file (Findings-registry R5b).
 2. `status` is honest: **`unguarded`** until a named detection check or gate actually covers the
@@ -276,13 +281,13 @@ and build a hard CI gate only when one slips past it.
 |---|---|---|
 | 1 | This guideline | — |
 | 2 | `.claude/rules/spec-adherence.md`, path-scoped so it loads on the directories it governs | — |
-| 3 | A required **Spec deviation** block in `.github/pull_request_template.md` — class none/1/2/3, spec section, IPO names for class 2, card corrected y/n | item 25 |
-| 4 | A **`Status:`** line on every build card, per the implementation contract's decision 1c | item 26 |
-| 5 | **`docs/design/check-dod.mjs` repointed** so it runs in any checkout instead of a hard-coded directory, and wired into `docs-gate.yml` | item 27 |
-| 6 | A **generated IPO type table** with live counts, so "two live samples" is a lookup | item 24 |
-| 7 | **`spec_ref`** on every failure class, validated against the spec's real section list | item 28 |
+| 3 | A required **Spec deviation** block in `.github/pull_request_template.md` — class none/1/2/3, spec section, IPO names for class 2, card corrected y/n | item 31 |
+| 4 | A **`Status:`** line on every build card, per the implementation contract's decision 1c | item 32 |
+| 5 | **`docs/design/check-dod.mjs` repointed** so it runs in any checkout instead of a hard-coded directory, and wired into `docs-gate.yml` | item 33 |
+| 6 | A **generated IPO type table** with live counts, so "two live samples" is a lookup | item 30 |
+| 7 | **`spec_ref`** on every failure class, validated against the spec's real section list | item 34 |
 | 8 | **§0.0.4** in the spec itself, pointing here | landed with this guideline |
-| 9 | The **admin-queue open count** in the nightly report | item 29 |
+| 9 | The **admin-queue open count** in the nightly report | item 35 |
 
 **Option C — a hard CI gate that fails a PR whose Spec-deviation block is missing, or whose class-2
 evidence does not name two IPOs per type — is built at the FIRST deviation that slips past option
