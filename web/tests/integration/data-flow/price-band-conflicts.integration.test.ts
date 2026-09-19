@@ -22,7 +22,7 @@ import { eq } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { DataConsolidationService } from '../../../../scraper/src/services/data-consolidation-service';
 import { FieldSourcesRepository } from '@/lib/repositories/field-sources-repository';
-import { DataConflictsRepository } from '@/lib/repositories/data-conflicts-repository';
+import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import { getRedisClient } from '@/lib/cache/redis-client';
 
 describe('Category 2.4: Price Band Conflicts', () => {
