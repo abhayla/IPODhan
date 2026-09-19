@@ -106,14 +106,23 @@ function formatTable({ prodTag, ref, commits }) {
   ].join('\n');
 }
 
-function formatBrief({ prodTag, commits }) {
+export function formatBrief({ prodTag, commits }) {
   const headline = headlineFor(prodTag, commits.length);
   if (!prodTag || commits.length === 0) return headline;
-  const top = commits
+  // `commits` is newest-first (git log order). The OLDEST rows are the
+  // actionable ones -- they have sat merged-but-undeployed the longest --
+  // so the brief names those, not the newest (which a session-start reader
+  // already knows about; see #825/#762).
+  const oldestFirst = [...commits].sort((a, b) => {
+    const da = a.daysSinceMerge ?? -Infinity;
+    const db = b.daysSinceMerge ?? -Infinity;
+    return db - da;
+  });
+  const top = oldestFirst
     .slice(0, 5)
     .map((c) => `${c.sha} (${c.issues.map((i) => `#${i}`).join(',') || 'no-issue'}, ${c.daysSinceMerge}d)`)
     .join('; ');
-  return `${headline} — ${top}${commits.length > 5 ? `; +${commits.length - 5} more` : ''}`;
+  return `${headline} — oldest: ${top}${commits.length > 5 ? `; +${commits.length - 5} more` : ''}`;
 }
 
 function main() {

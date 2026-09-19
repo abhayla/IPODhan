@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { collectMergedNotDeployed, latestProdTag } from '../ops/merged-not-deployed.mjs';
+import { collectMergedNotDeployed, latestProdTag, formatBrief } from '../ops/merged-not-deployed.mjs';
 
 function git(repo, args) {
   return execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim();
@@ -145,5 +145,36 @@ test('fully caught-up repo (no fix/feat commits past the tag) reports zero, not 
 
     const result = collectMergedNotDeployed(repo, { ref: 'main-ref' });
     assert.equal(result.commits.length, 0);
+  });
+});
+
+test('RED->GREEN: --brief names the OLDEST commits (the actionable ones), not the newest', () => {
+  withFixtureRepo((repo) => {
+    commit(repo, 'chore: init', '2026-09-01T00:00:00Z');
+    git(repo, ['tag', 'prod-2026-09-01']);
+
+    // Six fix/feat commits at increasing age: the oldest is the most
+    // actionable (it has sat merged-but-undeployed longest), yet a
+    // newest-first slice(0, 5) would never name it.
+    commit(repo, 'fix(scraper): oldest fix, sat merged 6 days (#600)', '2026-09-02T00:00:00Z');
+    commit(repo, 'fix(scraper): second oldest (#601)', '2026-09-03T00:00:00Z');
+    commit(repo, 'fix(scraper): third (#602)', '2026-09-04T00:00:00Z');
+    commit(repo, 'fix(scraper): fourth (#603)', '2026-09-05T00:00:00Z');
+    commit(repo, 'fix(scraper): fifth (#604)', '2026-09-06T00:00:00Z');
+    commit(repo, 'fix(scraper): newest fix, just merged (#605)', '2026-09-07T00:00:00Z');
+
+    git(repo, ['branch', 'main-ref']);
+    const result = collectMergedNotDeployed(repo, { ref: 'main-ref' });
+    assert.equal(result.commits.length, 6);
+
+    const brief = formatBrief(result);
+
+    // This is the RED assertion: the brief must name the OLDEST commit
+    // (#600) by its issue number, since that is the one that has been
+    // sitting on main the longest without reaching prod. A newest-first
+    // slice(0, 5) (the pre-fix behaviour) never includes it, because the
+    // oldest is dropped by "+1 more" -- this fails against that shape.
+    assert.ok(brief.includes('#600'), `brief must name the oldest commit (#600): ${brief}`);
+    assert.ok(!brief.includes('#605'), `newest commit (#605) must be dropped, not the oldest: ${brief}`);
   });
 });
