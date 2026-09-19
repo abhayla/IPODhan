@@ -1,5 +1,7 @@
 # Item 6 — The pull walk over the plan
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 ## Purpose
 
 After this ships, each data-job cycle (00:00 / 08:00 / 14:00 IST, §2.1) asks one field at a time for

@@ -1,4 +1,4 @@
-# Item 25 — a required Spec-deviation block in the pull request template
+# Item 31 — a required Spec-deviation block in the pull request template
 
 Status: NOT STARTED
 

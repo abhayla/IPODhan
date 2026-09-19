@@ -1,4 +1,4 @@
-# Item 27 — repoint `check-dod.mjs` so it runs in any checkout, and wire it into CI
+# Item 33 — repoint `check-dod.mjs` so it runs in any checkout, and wire it into CI
 
 Status: NOT STARTED
 

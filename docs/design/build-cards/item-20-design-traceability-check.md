@@ -1,5 +1,7 @@
 # Item 20 — the design-traceability CI check
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 Module: `verification`. Serves OD-52 and §8.5.
 
 ## Purpose

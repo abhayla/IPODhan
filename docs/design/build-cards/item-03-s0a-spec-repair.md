@@ -1,5 +1,7 @@
 # Item 3 / slice S0a — spec repair: Moneycontrol out of the authored ranks, reasons on the fields that fell to two, counts regenerated
 
+Status: DONE 2026-09-17 PRs #737 proof 2026-09-17 13:27 cycle
+
 Stage 3 ("one source table", plan v2 §4, order S0a → S0b → S0c → S5 → S1a → S1b → S1c → S1d → S2 → S3
 → S4 → S6). Ledger: `docs/design/stage-3-ledger.md`. Gate: `node scripts/check-stage3-dod.mjs --slice S0a`.
 

@@ -139,6 +139,21 @@ if (isMain) try {
     if (!/Budget:\s*\d+\s*min/i.test(md)) problems.push(`${f}: no "Budget: <N> min" line`);
     // A tier, because the review depth is decided by blast radius, not by mood.
     if (!/\bTier\s*[:A-C]/.test(md)) problems.push(`${f}: no tier stated`);
+    // A Status line (build item 32), so the spec and the board cannot disagree about what exists.
+    // Checked at its CANONICAL position — the first non-blank line after the H1 — not anywhere in
+    // the file: a card's own body (this one included) may cite example Status lines in prose, and
+    // a bare `.test(md)` over the whole file is satisfied by those examples even when the real
+    // line at the top is missing. Measured while writing this gate's own mutation test.
+    // A bolded `**Status:**` must NOT satisfy this. The Budget regex above is
+    // /Budget:\s*\d+\s*min/i and a bolded Budget line is invisible to it — the same shape that
+    // let a build card ship with a Budget the gate could not see.
+    const bodyLines = md.split(/\r?\n/);
+    const h1Idx = bodyLines.findIndex((l) => l.startsWith('# '));
+    let statusIdx = h1Idx + 1;
+    while (statusIdx < bodyLines.length && bodyLines[statusIdx].trim() === '') statusIdx++;
+    const statusLine = h1Idx === -1 ? '' : (bodyLines[statusIdx] || '');
+    if (!/^Status: (NOT STARTED|DONE \d{4}-\d{2}-\d{2} PRs #.+ proof .+|unknown — .+)$/.test(statusLine))
+      problems.push(`${f}: no "Status:" line immediately after the H1, or one that does not match the accepted shapes`);
   }
 
   console.log(`build cards: ${files.length}`);

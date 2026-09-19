@@ -1,4 +1,4 @@
-# Item 26 — a Status line on every build card, and a gate that keeps it there
+# Item 32 — a Status line on every build card, and a gate that keeps it there
 
 Status: NOT STARTED
 

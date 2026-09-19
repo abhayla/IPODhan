@@ -1,5 +1,7 @@
 # Item 3 / slice S1a — the one resolver: `resolveFieldSourcePolicy`, read by the plan generator and the walk
 
+Status: DONE 2026-09-17 PRs #745 proof 2026-09-17 22:2x cycle
+
 Stage 3 ("one source table", plan v2 §2). Ledger: `docs/design/stage-3-ledger.md`. Gate:
 `node scripts/check-stage3-dod.mjs --slice S1a`.
 

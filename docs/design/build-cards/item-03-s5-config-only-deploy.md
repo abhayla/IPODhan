@@ -1,5 +1,7 @@
 # Item 3 / slice S5 — config-only deploy path: the manifest lives in shared/config/<slot>, deployed without a build
 
+Status: DONE 2026-09-17 PRs #743 proof owed (board: merged, staging proof owed)
+
 Stage 3 ("one source table", plan v2 §3 and §4b finding 7). Ledger: `docs/design/stage-3-ledger.md`.
 Gate: `node scripts/check-stage3-dod.mjs --slice S5`.
 

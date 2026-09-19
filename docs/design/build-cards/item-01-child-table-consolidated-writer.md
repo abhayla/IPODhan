@@ -1,5 +1,7 @@
 # Item 1 — The child-table consolidated writer
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 ## Purpose
 
 After this ships, a write to any of the eight child tables (`ipo_details`, `financial_statements`,

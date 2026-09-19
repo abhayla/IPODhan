@@ -1,5 +1,7 @@
 # Item 7 — The job scheduler and the budgets
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 **Updated 2026-09-11 for OD-55 (supervisor): document job unbounded per document; see §2.1.**
 
 ## Purpose

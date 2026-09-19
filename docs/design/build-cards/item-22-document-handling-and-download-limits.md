@@ -1,5 +1,7 @@
 # Item 22 — Document handling and download limits (OD-36, OD-37)
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 > **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
 > 1. Multi-part filings: ONE `documents` row per download (the container URL / zip), never one row per part. `unique_url` and `unique_doc_per_ipo` stay. Each part's extraction record carries `partNumber` and the part's own sha256 (OD-36's "part number in provenance"); the parent row is COMPLETED only when every part extracted. No product-shape change, so no O-nn.
 > 2. No new dependency: `pdf-lib` is not in the tree and no decision names it; use the present `pdf-parse`.

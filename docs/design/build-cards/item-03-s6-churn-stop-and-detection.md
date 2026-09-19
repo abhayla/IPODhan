@@ -1,5 +1,7 @@
 # Item 3 / slice S6 — stop the no-fetcher churn; three nightly checks (PULL-POLICY, PULL-WRITE-POLICY, PULL-PLAN-RANK); no `sources:` left in the matrix
 
+Status: DONE 2026-09-17 PRs #758 proof owed (board: merged, detection half only)
+
 Stage 3 ("one source table", plan v2 §4 S6 and §4b findings 4, 10, 11). Ledger:
 `docs/design/stage-3-ledger.md`. Gate: `node scripts/check-stage3-dod.mjs --slice S6`.
 

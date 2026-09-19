@@ -1,5 +1,7 @@
 # Item 2 — field manifest and priority configuration
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 > **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
 > 1. Format is JSON, not YAML; validation uses `zod` (already a workspace dependency), not `ajv`; neither `yaml` nor `ajv` is added (no card names them).
 > 2. If `scraper/config/` (NEW) and its loader already exist on `origin/main` when this item starts (lane B's item 22 may create them first), slice 1 is SKIP-IF-EXISTS: reuse the loader, add the manifest file and its schema only. One loader for the whole config family (OD-51).

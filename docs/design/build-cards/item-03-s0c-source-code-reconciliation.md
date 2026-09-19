@@ -1,5 +1,7 @@
 # Item 3 / slice S0c — one mapping from manifest source codes to writer sources (DOC, REG, IG, API_FALLBACK)
 
+Status: DONE 2026-09-17 PRs #741 proof 2026-09-17 15:33 cycle
+
 Stage 3 ("one source table", plan v2 §4b finding 3). Ledger: `docs/design/stage-3-ledger.md`. Gate:
 `node scripts/check-stage3-dod.mjs --slice S0c`.
 

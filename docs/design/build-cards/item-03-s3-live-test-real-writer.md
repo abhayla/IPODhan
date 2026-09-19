@@ -1,5 +1,7 @@
 # Item 3 / slice S3 — the live walk test drives the real `DataConsolidationOrchestrator` against ipodhan_test (#732), in the pr-gate run list
 
+Status: DONE 2026-09-18 PRs #756 proof 2026-09-18 02:01 cycle
+
 Stage 3 ("one source table", plan v2 §4 S3 and §4b finding 9). Ledger: `docs/design/stage-3-ledger.md`.
 Gate: `node scripts/check-stage3-dod.mjs --slice S3`.
 

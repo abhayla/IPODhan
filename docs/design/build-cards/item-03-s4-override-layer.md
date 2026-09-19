@@ -1,5 +1,7 @@
 # Item 3 / slice S4 — the override layer: `field_source_overrides`, resolver layer 2, the CLI, and the PULL-OVERRIDES check
 
+Status: DONE 2026-09-18 PRs #760 proof owed (board: merged, proof owed)
+
 Stage 3 ("one source table", plan v2 §2 layer 2 and §4 S4). Ledger: `docs/design/stage-3-ledger.md`.
 Gate: `node scripts/check-stage3-dod.mjs --slice S4`.
 

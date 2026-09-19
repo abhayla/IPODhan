@@ -1,5 +1,7 @@
 # Item 3 / slice S0d — widen the `scraper_source` Postgres enum so the writer can store every ranked source (#740)
 
+Status: DONE 2026-09-17 PRs #742 proof 2026-09-17 16:18 cycle
+
 Stage 3 ("one source table", plan v2). Inserted 2026-09-17 after the S0c builder's stop-the-line. Ledger:
 `docs/design/stage-3-ledger.md`. Gate: `node scripts/check-stage3-dod.mjs --slice S0d [--test-db] [--staging]`.
 

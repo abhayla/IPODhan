@@ -1,5 +1,7 @@
 # Item 3 / slice S0b — generate the registry: manifest version 2 from the spec, CI refuses drift, resolved-plan diff as the review artifact
 
+Status: DONE 2026-09-17 PRs #738 proof 2026-09-17 22:2x cycle
+
 Stage 3 ("one source table", plan v2 §4). Ledger: `docs/design/stage-3-ledger.md`. Gate:
 `node scripts/check-stage3-dod.mjs --slice S0b`.
 

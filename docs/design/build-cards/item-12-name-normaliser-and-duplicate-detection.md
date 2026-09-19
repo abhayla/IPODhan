@@ -1,5 +1,7 @@
 # Item 12 — fold corporate-form words into the name normaliser, and run duplicate detection at discovery
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 > **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
 > 1. Identity does not live in `scraper/src/services/document-discovery-runner.ts` (it never creates an `ipos` row); the binding site is `packages/shared/src/repositories/ipo-identity.ts`. Slices target that file.
 > 2. The existing binding accepts a 0.6 fuzzy-similarity match. The design forbids fuzzy identity (CIN-first; exact normalised name only as a fallback with provenance). The fuzzy accept is removed in this item, with a failing test first, and every row it bound is listed by the audit slice, never silently re-bound.
