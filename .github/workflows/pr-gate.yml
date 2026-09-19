@@ -416,6 +416,16 @@ jobs:
           node --test scripts/tests/merge-freshness.test.mjs
           node --test scripts/tests/merge-if-current-cli.test.mjs
 
+      - name: "IPO type population generator self-tests (item 30)"
+        # Pure fixture->table transform (rowsToTypes) — canonical key, the
+        # proven_scrapable boundary, and the UNCLASSIFIED bucket for a null
+        # segment. Needs node_modules (the generator module imports `pg` at
+        # the top level even though these tests never open a connection), so
+        # this runs after npm ci, not with the pre-install gates above. The
+        # live-staging --check red/green proof is NOT run here: CI has no
+        # staging tunnel (see docs/design/build-cards/item-30-ipo-type-table.md).
+        run: node --test scripts/tests/generate-ipo-type-population.test.mjs
+
       - name: Setup Node.js 22 (SSOT-parity import needs erasable-TS stripping, 22.10+, and node_modules from the step above)
         uses: actions/setup-node@v4
         with:
