@@ -5,5 +5,6 @@
   "first_seen": "Sep 2026 (review-gap round, this PR)",
   "fix_prs": "this PR (`dropIpoCacheKeys()` DELs `ipo:slug:<slug>` / `ipo:id:<id>` after every applied write, fail-open to the printed line + WARN if Redis is unset/unreachable); the sibling web admin route fix for the same class ships in a separate PR (`filing-auto-persist-cache-invalidation.test.ts` covers that path)",
   "detection_check": "not one of the three sanctioned check types — guarded by `scraper/tests/unit/scripts/backfill-issue-size-chittorgarh-detail.test.ts`'s `dropIpoCacheKeys` unit test (fake redis asserts both keys are DELed) plus the pre-existing `filing-auto-persist-cache-invalidation.test.ts` for the sibling write path",
-  "status": "unguarded"
+  "status": "unguarded",
+  "spec_ref": []
 }

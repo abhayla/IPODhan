@@ -5,5 +5,6 @@
   "first_seen": "round-7 P3-1, issue #242",
   "fix_prs": "T-455 (this PR): removed the phantom `data.sector` read in nse-api-client.ts, narrowed the matrix `sector` sources to `['ADMIN']` (the only source that can currently deliver a value)",
   "detection_check": "`scripts/audit-ipo-coverage.mjs` CORE ipos COLUMN FILL-RATE section already reports `sector` non-null % nightly (report mode, not `--gate`-blocking — a hard threshold would misfire today since no scraper source populates it until a real one is built, tracked separately per issue #242 item 2)",
-  "status": "unguarded (dashboard-only; no `--gate` threshold exists for `sector` specifically)"
+  "status": "unguarded (dashboard-only; no `--gate` threshold exists for `sector` specifically)",
+  "spec_ref": []
 }

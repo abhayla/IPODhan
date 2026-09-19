@@ -5,5 +5,6 @@
   "first_seen": "2026-09-07 (owner RCA); same root cause as T-434 (filing/source-backed total beats a share-count-derived exchange figure)",
   "fix_prs": "T-453 (`issueSize` sources reordered to `[ADMIN, DRHP, CHITTORGARH, NSE, BSE, MONEYCONTROL]` — Chittorgarh's list-API `Total Issue Amount (Incl.Firm reservations)` field is read directly from the source, not derived from shares x price)",
   "detection_check": "`c_issue_size_consistency` lower bound (`scripts/audit-detection-floor.mjs`) — being redefined in T-452 in parallel to catch the too-small-derived-figure shape of this class; not edited by this PR",
-  "status": "guarded (redefinition pending T-452)"
+  "status": "guarded (redefinition pending T-452)",
+  "spec_ref": []
 }

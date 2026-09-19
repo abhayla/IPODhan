@@ -5,5 +5,6 @@
   "first_seen": "round-7 detection RCA (P3 batch)",
   "fix_prs": "`checkRegistrarQuality` added",
   "detection_check": "`registrar_quality` (`scripts/lib/substance-checks.mjs`)",
-  "status": "guarded"
+  "status": "guarded",
+  "spec_ref": []
 }

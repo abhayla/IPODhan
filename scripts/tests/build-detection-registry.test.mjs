@@ -18,6 +18,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
 const GENERATOR = join(REPO_ROOT, 'scripts', 'build-detection-registry.mjs');
 const AGGREGATE = join(REPO_ROOT, 'docs', 'reviews', 'detection-checks.json');
+const CLASSES_MD = join(REPO_ROOT, 'docs', 'reviews', 'failure-classes.md');
+const CLASSES_DIR = join(REPO_ROOT, 'docs', 'reviews', 'failure-classes');
 
 function runCheck() {
   try {
@@ -104,5 +106,94 @@ test('a notCoveredByThisManifest entry with no derivable text makes the build th
   } finally {
     rmSync(dupPath);
     execFileSync('node', [GENERATOR], { cwd: REPO_ROOT, encoding: 'utf8' });
+  }
+});
+
+// item 34: spec_ref column — added to a REAL failure class (never a fixture file, per R5b:
+// "reading the source JSON back is explicitly NOT the proof" — the generated markdown is).
+const REAL_CLASS = join(CLASSES_DIR, 'card-fact-false-patched-silently.json');
+
+function withClassSpecRef(specRef, fn) {
+  const original = readFileSync(REAL_CLASS, 'utf8');
+  const data = JSON.parse(original);
+  data.spec_ref = specRef;
+  writeFileSync(REAL_CLASS, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  try {
+    return fn();
+  } finally {
+    writeFileSync(REAL_CLASS, original, 'utf8');
+    execFileSync('node', [GENERATOR], { cwd: REPO_ROOT, encoding: 'utf8' });
+  }
+}
+
+test('a class carrying spec_ref ["§2.5"] renders §2.5 in the GENERATED markdown, not just the source JSON', () => {
+  withClassSpecRef(['§2.5'], () => {
+    execFileSync('node', [GENERATOR], { cwd: REPO_ROOT, encoding: 'utf8' });
+    const md = readFileSync(CLASSES_MD, 'utf8');
+    assert.match(md, /§2\.5/, 'the GENERATED table must render the spec_ref value, per R5b');
+  });
+});
+
+test('a class carrying spec_ref: [] renders an empty cell and does not throw', () => {
+  withClassSpecRef([], () => {
+    // Regenerate FIRST — an empty spec_ref changes the source, which must be reflected in the
+    // committed aggregate before --check can pass; --check alone (with no regenerate) would
+    // correctly report drift, which is a different assertion than "does not throw".
+    execFileSync('node', [GENERATOR], { cwd: REPO_ROOT, encoding: 'utf8' });
+    const result = runCheck();
+    assert.equal(result.code, 0, result.out);
+  });
+});
+
+test('a class whose spec_ref names a section the spec does not have makes the generator refuse, naming the file and the bad reference', () => {
+  const original = readFileSync(REAL_CLASS, 'utf8');
+  const data = JSON.parse(original);
+  data.spec_ref = ['§9.9'];
+  writeFileSync(REAL_CLASS, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  try {
+    let threw = null;
+    try {
+      execFileSync('node', [GENERATOR, '--check'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    } catch (e) {
+      threw = (e.stdout || '') + (e.stderr || '');
+    }
+    assert.ok(threw, 'expected the generator to refuse a spec_ref naming a non-existent section');
+    assert.match(threw, /card-fact-false-patched-silently\.json/);
+    assert.match(threw, /§9\.9/);
+  } finally {
+    writeFileSync(REAL_CLASS, original, 'utf8');
+  }
+});
+
+test('a class with NO spec_ref key at all makes the generator exit non-zero, so a backfill cannot be half-finished silently', () => {
+  const original = readFileSync(REAL_CLASS, 'utf8');
+  const data = JSON.parse(original);
+  delete data.spec_ref;
+  writeFileSync(REAL_CLASS, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  try {
+    let threw = null;
+    try {
+      execFileSync('node', [GENERATOR, '--check'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    } catch (e) {
+      threw = (e.stdout || '') + (e.stderr || '');
+    }
+    assert.ok(threw, 'expected the generator to refuse a class with no spec_ref key');
+    assert.match(threw, /missing "spec_ref"/);
+  } finally {
+    writeFileSync(REAL_CLASS, original, 'utf8');
+  }
+});
+
+test('--check exits 1 against an aggregate regenerated before the spec_ref column was added (the drift path)', () => {
+  const originalAggregate = readFileSync(CLASSES_MD, 'utf8');
+  try {
+    // Simulate a stale table by stripping the spec_ref column header — the shape --check must
+    // detect as drift, without needing a real pre-item-34 file on disk.
+    const stale = originalAggregate.replace(/ \| spec_ref \|/g, ' |').replace(/\|---\|$/m, '|');
+    writeFileSync(CLASSES_MD, stale, 'utf8');
+    const result = runCheck();
+    assert.equal(result.code, 1, 'expected --check to fail against a table missing the spec_ref column');
+  } finally {
+    writeFileSync(CLASSES_MD, originalAggregate, 'utf8');
   }
 });

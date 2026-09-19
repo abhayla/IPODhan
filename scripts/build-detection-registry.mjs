@@ -22,10 +22,15 @@ const CHECKS_DIR = join(REPO_ROOT, 'docs/reviews/detection-checks');
 const CHECKS_JSON = join(REPO_ROOT, 'docs/reviews/detection-checks.json');
 const CLASSES_DIR = join(REPO_ROOT, 'docs/reviews/failure-classes');
 const CLASSES_MD = join(REPO_ROOT, 'docs/reviews/failure-classes.md');
+const SPEC_PATH = join(REPO_ROOT, 'docs/design/data-sourcing-pull-model.md');
 
 const TABLE_START = '<!-- BEGIN GENERATED TABLE (scripts/build-detection-registry.mjs) -->';
 const TABLE_END = '<!-- END GENERATED TABLE -->';
-const COLUMNS = ['class_id', 'feature', 'symptom', 'first_seen', 'fix_prs', 'detection_check', 'status'];
+// item 34: spec_ref added. A key outside this fixed list validates cleanly, passes --check,
+// and renders nowhere (R5b) — a measurements_* key did exactly that on 2026-09-19 while this
+// item was being written, on the very file (card-fact-false-patched-silently.json) that
+// already carried a spec_ref none of this code was reading yet.
+const COLUMNS = ['class_id', 'feature', 'symptom', 'first_seen', 'fix_prs', 'detection_check', 'status', 'spec_ref'];
 // Display labels for the markdown header — must match origin/main's table
 // header text exactly; distinct from the JSON field names in COLUMNS.
 const HEADER_LABELS = {
@@ -36,7 +41,42 @@ const HEADER_LABELS = {
   fix_prs: 'fix_prs',
   detection_check: 'detection_check',
   status: 'status',
+  spec_ref: 'spec_ref',
 };
+
+// Read once: the set of section numbers the spec itself declares as headings (## through
+// ####, "0.0.4", "2.11", etc). A hand-kept list of valid sections is a second definition of
+// the spec's shape that drifts the first time a section is renumbered — read it off the
+// document instead.
+function knownSpecSections() {
+  const spec = readFileSync(SPEC_PATH, 'utf8');
+  const SECTION_RE = /^#{2,4} (\d+(?:\.\d+)*)/gm;
+  return new Set([...spec.matchAll(SECTION_RE)].map((m) => '§' + m[1]));
+}
+
+/**
+ * Every failure-class entry must carry `spec_ref` (an array; `[]` for "touches no part of the
+ * pull model" — a class with a genuinely empty list and a class where the key is simply
+ * missing must not read identically, so a missing key is refused rather than defaulted).
+ * Every named section must exist in the spec's own heading list, refreshed each run so a
+ * later renumbering is caught rather than silently going stale.
+ */
+function validateSpecRefs(entries) {
+  const known = knownSpecSections();
+  for (const { file, data } of entries) {
+    if (!('spec_ref' in data)) {
+      throw new Error(`failure-classes/${file}: missing "spec_ref" (use [] if this class touches no part of the pull model)`);
+    }
+    if (!Array.isArray(data.spec_ref)) {
+      throw new Error(`failure-classes/${file}: "spec_ref" must be an array of section strings (e.g. ["§2.5"])`);
+    }
+    for (const ref of data.spec_ref) {
+      if (!known.has(ref)) {
+        throw new Error(`failure-classes/${file}: spec_ref ${JSON.stringify(ref)} names no section of ${SPEC_PATH}`);
+      }
+    }
+  }
+}
 
 function readJsonFiles(dir) {
   return readdirSync(dir)
@@ -125,11 +165,13 @@ function buildChecksJson() {
 }
 
 function mdEscape(cell) {
+  if (Array.isArray(cell)) return cell.join(', ').replace(/\n/g, ' ');
   return String(cell).replace(/\n/g, ' ');
 }
 
 function buildFailureClassesTable() {
   const entries = readJsonFiles(CLASSES_DIR);
+  validateSpecRefs(entries);
   entries.sort((a, b) => {
     const ai = a.data.class_id || '';
     const bi = b.data.class_id || '';

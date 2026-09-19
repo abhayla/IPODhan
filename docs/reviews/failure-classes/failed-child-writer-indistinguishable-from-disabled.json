@@ -5,5 +5,6 @@
   "first_seen": "Sep 2026 (F-101, found while auditing why the row-key coverage check could never move off UNVERIFIABLE)",
   "fix_prs": "this PR (the writer files provenance under the sentinel key `unresolved:<reason>` on every fallback path, naming the cause; the child row is still written)",
   "detection_check": "`scripts/lib/row-key-coverage-checks.mjs` `classifyRowKeyCoverage` — UNCHANGED by this PR: the sentinel is a non-empty `row_key`, so the pair flips into enforcement and every derived key is then missing, which is FAIL. Wired into CI by the new `Row-key coverage classifier self-test (F-101)` step in `.github/workflows/pr-gate.yml`, which runs `scripts/tests/row-key-coverage-unresolved-marker.test.mjs` (the three-state proof: writer off -> UNVERIFIABLE, writer succeeded -> PASS, writer FAILED -> FAIL) and `scripts/tests/row-key-coverage-checks.test.mjs`, neither of which ran anywhere in CI before",
-  "status": "guarded"
+  "status": "guarded",
+  "spec_ref": []
 }

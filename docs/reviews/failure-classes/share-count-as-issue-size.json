@@ -5,5 +5,6 @@
   "first_seen": "Aug 2026 (round 6/7 detection RCA); recurred Sep 2026 on the create path (W-177)",
   "fix_prs": "round-7 RCA fix + `w177-detection-rca.md` fix (segment-floor + shares-x-band consistency rule; `SME_ISSUE_SIZE_FLOOR`)",
   "detection_check": "`issue_size_segment_floor` (`scripts/lib/substance-checks.mjs`) + `c_issue_size_consistency` / `c_issue_size_floor` (`scripts/audit-detection-floor.mjs`, `checkC()`)",
-  "status": "guarded"
+  "status": "guarded",
+  "spec_ref": []
 }

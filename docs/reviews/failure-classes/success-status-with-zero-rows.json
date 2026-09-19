@@ -5,5 +5,6 @@
   "first_seen": "Sep 2026, found while wiring item 2 slice 7 (issue_type from report 82). Never fired in production: latent behind one hand-written argument.",
   "fix_prs": "#569 (page size named REPORT82_PAGE_SIZE with the measurement in its comment, made the default, misleading comment corrected)",
   "detection_check": "scraper/tests/unit/scrapers/chittorgarh-report82-page-size.test.ts - pins the constant to 10 and asserts it is none of the four values measured to return zero rows. Mutation-checked: restoring the old default of 100 turns both tests red. NOT a runtime check - a cycle that receives zero rows already raises via the existing `error` branch in scrapeChittorgarhIPOs, so the gap this closes is the source-level one, where the value looks like a harmless tuning knob.",
-  "status": "guarded"
+  "status": "guarded",
+  "spec_ref": []
 }

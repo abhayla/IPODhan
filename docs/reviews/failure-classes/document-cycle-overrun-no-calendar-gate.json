@@ -5,5 +5,6 @@
   "first_seen": "2026-09-06 (cycle-overrun RCA; cadence decision D-13, owner 2026-09-03)",
   "fix_prs": "calendar gate (`document-cycle-calendar-gate.ts`: Sunday/Saturday/NSE-holiday wakes make only UPCOMING/PRE_OPEN/OPEN candidates eligible for network work) + one shared wake budget (`DOCUMENT_CYCLE_WAKE_BUDGET_MS`, default 20min — extraction gets what discovery left, capped; `CYCLE_LOCK_TTL_MS` in index.ts now derived from the same budget + 5min slack instead of a separately-hardcoded number)",
   "detection_check": "`m_cycle_overrun` (`scripts/lib/document-state-checks.mjs`, wired in `scripts/audit-detection-floor.mjs`)",
-  "status": "guarded"
+  "status": "guarded",
+  "spec_ref": []
 }

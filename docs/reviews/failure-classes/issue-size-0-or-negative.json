@@ -5,5 +5,6 @@
   "first_seen": "round-6/7 detection RCA (`docs/reviews/round-7-detection-rca.md` P1-3)",
   "fix_prs": "round-7 fix (`[FAIL] issue_size > 0` gate)",
   "detection_check": "`issue_size` (`scripts/lib/substance-checks.mjs`) + go-forward presence invariant (`scripts/lib/ipo-stage-completeness.mjs`)",
-  "status": "guarded"
+  "status": "guarded",
+  "spec_ref": []
 }
