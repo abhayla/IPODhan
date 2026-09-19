@@ -1,5 +1,7 @@
 # Item 3 / slice S1c — a value from a source the registry marks incapable is refused with a logged reason, never ranked last
 
+Status: DONE 2026-09-17 PRs #747 proof 2026-09-17 22:2x cycle
+
 Stage 3 ("one source table", plan v2 §2 bullet 3). Ledger: `docs/design/stage-3-ledger.md`. Gate:
 `node scripts/check-stage3-dod.mjs --slice S1c`.
 

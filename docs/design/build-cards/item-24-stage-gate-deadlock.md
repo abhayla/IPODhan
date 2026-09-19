@@ -1,5 +1,7 @@
 # Item 24 — break the stage-gate deadlock: promote to PRE_OPEN on facts the pipeline cannot suppress
 
+Status: DONE 2026-09-19 PRs #798 proof 2026-09-19 board
+
 Issue: #795 · Failure class: `stage gate requires the value the gated work would supply`
 (`docs/reviews/failure-classes/stage-gate-requires-the-value-it-would-supply.json`)
 

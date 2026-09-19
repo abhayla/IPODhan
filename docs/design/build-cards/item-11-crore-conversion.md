@@ -1,5 +1,7 @@
 # Item 11 — the crore conversion (OD-20) and `financial_data` becomes derived
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 ## Purpose
 
 Every genuinely rupee-denominated aggregate amount column converts to crore (OD-20: *"Crore should

@@ -1,5 +1,7 @@
 # Item 14 — convert BSE `Issue_Size_No_of_shares` from a share count to rupees (F-54)
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 ## The design contradicts the code — read this before building anything
 
 **F-54 and §7.1 item 14 describe this as an open defect: "BSE serves issue size as a SHARE COUNT...

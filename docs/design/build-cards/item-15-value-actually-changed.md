@@ -1,5 +1,7 @@
 # Item 15 — revive `valueActuallyChanged` so no-op suppression can be measured
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 ## Purpose
 
 After this ships, a verification pass that re-asks a field and gets back the same value is

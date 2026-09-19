@@ -1,5 +1,7 @@
 # Item 10 — The verification checks of §4
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 ## Purpose
 
 After this ships, every one of the fourteen checks §4 names is a script with an exit code, a healthy

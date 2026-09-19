@@ -1,5 +1,7 @@
 # Item 3 / slice S2 — reconcile plan rows on a manifest version bump (#731) and plan the SME rows the generator skips
 
+Status: DONE 2026-09-18 PRs #757 proof 2026-09-19 board
+
 Stage 3 ("one source table", plan v2 §4 S2 and §4b finding 13). Ledger: `docs/design/stage-3-ledger.md`.
 Gate: `node scripts/check-stage3-dod.mjs --slice S2`.
 

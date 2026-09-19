@@ -1,5 +1,7 @@
 # Item 16 — Retire Moneycontrol (OD-3)
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 ## Purpose
 
 Moneycontrol stops being fetched by any scheduled or default-path run. It keeps its rank-0

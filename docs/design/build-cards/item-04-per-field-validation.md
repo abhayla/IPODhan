@@ -1,5 +1,7 @@
 # Item 4 — per-field validation before the write (OD-21)
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 ## Purpose
 
 After this ships, every extracted field is validated on its own, against a date-scoped,

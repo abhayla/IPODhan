@@ -1,6 +1,6 @@
 # Item 30 — the canonical IPO type table, generated with live counts
 
-Status: DONE (PR pending)
+Status: DONE 2026-09-19 PRs #811, #812 proof 2026-09-19 board
 
 Model: Sonnet.
 

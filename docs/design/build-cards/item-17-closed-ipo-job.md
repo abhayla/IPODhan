@@ -1,5 +1,7 @@
 # Item 17 — The closed-IPO job (OD-22)
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 ## Purpose
 
 Every night at 22:00 IST, at most ten already-closed IPOs get walked through the same per-field

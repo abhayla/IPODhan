@@ -1,5 +1,7 @@
 # Item 21 — the read side: provenance line, cache-busting revalidate, canonical tag (OD-39, OD-40, OD-41)
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 ## Purpose
 
 Every IPO detail page shows, under each key-facts block, where that block's numbers came from and

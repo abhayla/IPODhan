@@ -1,5 +1,7 @@
 # Item 3 / slice S1b — the writer decides from the resolver: tableName threaded, untracked rule redefined, reconciliation groups as config, MAINBOARD rule on create
 
+Status: DONE 2026-09-17 PRs #746 proof 2026-09-17 22:2x cycle
+
 Stage 3 ("one source table", plan v2 §2 and §4b findings 1, 2, 5, 8, 10). Ledger:
 `docs/design/stage-3-ledger.md`. Gate: `node scripts/check-stage3-dod.mjs --slice S1b`.
 

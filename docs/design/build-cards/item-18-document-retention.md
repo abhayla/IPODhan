@@ -1,5 +1,7 @@
 # Item 18 — Document retention (OD-32)
 
+Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+
 > **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
 > 1. Tier: **A**, not B. This item adds a migration, deletes bytes and rows, and ships a `repair-*` tool (parent contract decision 6). Dry-run default, `openRepairDb`, staging-only `--apply` by the run, `assert-repair-held.mjs --cycles 2` proof, never production.
 > 2. The purge decision KEEPS the existing `withdrawn` and `no_close_date` arms in `document-store.ts` as explicit cases with tests; a rewrite that drops a live arm is a MAJOR finding.

@@ -16,6 +16,18 @@ Rules that apply to every card:
 - **Every line range refers to the current code**, read this session, not remembered.
 - **No number is typed from memory** (OD-18). Measure it, or cite where it comes from.
 - **No card invents a decision.** If the design does not say, the card says the design does not say.
+- **Every card carries a `Status:` line immediately after its H1** (build item 32,
+  `docs/design/spec-deviation-guideline.md` §8 mechanism 4), one of exactly two shapes, asserted by
+  `docs/design/check-build-cards.mjs --gate`:
+
+  ```
+  Status: NOT STARTED
+  Status: DONE 2026-09-14 PRs #745, #758 proof 2026-09-14 22:00 cycle
+  ```
+
+  A bolded `**Status:**` does NOT satisfy the gate — the same shape that once let a Budget line go
+  invisible to its own regex. The gate asserts the line's SHAPE, not the truth of a `DONE` claim; a
+  card marked DONE against PR numbers that were never merged still passes.
 
 ---
 

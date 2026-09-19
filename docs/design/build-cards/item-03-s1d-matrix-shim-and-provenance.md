@@ -1,5 +1,7 @@
 # Item 3 / slice S1d — the matrix keeps normalization and validation only; a logged shim for fields with no policy row; provenance names the configuration
 
+Status: DONE 2026-09-17 PRs #753 proof 2026-09-19 board
+
 Stage 3 ("one source table", plan v2 §2 bullets 4-5 and §4b finding 4). Ledger:
 `docs/design/stage-3-ledger.md`. Gate: `node scripts/check-stage3-dod.mjs --slice S1d`.
 

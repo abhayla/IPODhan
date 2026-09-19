@@ -1,4 +1,4 @@
-# Item 28 — `spec_ref` on every failure class, validated against the spec's real sections
+# Item 34 — `spec_ref` on every failure class, validated against the spec's real sections
 
 Status: NOT STARTED
 
