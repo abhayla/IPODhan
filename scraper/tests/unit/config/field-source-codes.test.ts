@@ -131,14 +131,22 @@ describe('field-source-codes', () => {
       'packages/shared/src/repositories/field-sources-repository.ts',
       'packages/shared/src/repositories/data-conflicts-repository.ts',
       'web/lib/repositories/field-sources-repository.ts',
-      'web/lib/repositories/data-conflicts-repository.ts',
+      // web/lib/repositories/data-conflicts-repository.ts was DELETED (#824/#830): it was an
+      // unguarded duplicate of the packages/shared copy with no production importers. The
+      // guarantee it carried here is covered by the shared copy, already first in this list.
       'web/lib/services/conflict-resolution.ts',
     ];
     const literalUnionRe =
       /'(ADMIN|DRHP|NSE|BSE|API_FALLBACK|MONEYCONTROL|CHITTORGARH)'\s*\|\s*'(ADMIN|DRHP|NSE|BSE|API_FALLBACK|MONEYCONTROL|CHITTORGARH)'/g;
 
     for (const relPath of files) {
-      const content = fs.readFileSync(path.join(repoRoot, relPath), 'utf8');
+      // A path that no longer exists must FAIL with its own name, not die on a raw ENOENT:
+      // this list is hand-maintained, so a deleted or moved file is exactly the case that
+      // needs a legible message (2026-09-20: #830 deleted one and the suite crashed instead
+      // of saying which guarantee had lost its subject).
+      const abs = path.join(repoRoot, relPath);
+      expect(fs.existsSync(abs), `${relPath} is listed here but does not exist -- delete the entry if the file was removed on purpose, or restore the file`).toBe(true);
+      const content = fs.readFileSync(abs, 'utf8');
       const matches = content.match(literalUnionRe) ?? [];
       expect(matches.length, `${relPath} still has a hand-typed literal union: ${matches.join(', ')}`).toBe(0);
     }
