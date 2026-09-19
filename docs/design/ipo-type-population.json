@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T16:42:52.255Z",
+  "generatedAt": "2026-09-19T17:00:41.106Z",
   "source": "ipodhan_staging via localhost:15432",
   "types": [
     {
@@ -9,7 +9,8 @@
       "key": "MAINBOARD/INVITS/BOOK_BUILDING",
       "total": 1,
       "live_or_recent": 1,
-      "proven_scrapable": false
+      "sample_sufficient": false,
+      "scraper_owned": false
     },
     {
       "segment": "MAINBOARD",
@@ -18,7 +19,8 @@
       "key": "MAINBOARD/INVITS/UNCLASSIFIED",
       "total": 1,
       "live_or_recent": 1,
-      "proven_scrapable": false
+      "sample_sufficient": false,
+      "scraper_owned": false
     },
     {
       "segment": "MAINBOARD",
@@ -27,7 +29,8 @@
       "key": "MAINBOARD/IPO/BOOK_BUILDING",
       "total": 89,
       "live_or_recent": 77,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": true
     },
     {
       "segment": "MAINBOARD",
@@ -36,7 +39,8 @@
       "key": "MAINBOARD/IPO/UNCLASSIFIED",
       "total": 19,
       "live_or_recent": 4,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": true
     },
     {
       "segment": "MAINBOARD",
@@ -45,7 +49,8 @@
       "key": "MAINBOARD/NCD/UNCLASSIFIED",
       "total": 4,
       "live_or_recent": 4,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": false
     },
     {
       "segment": "MAINBOARD",
@@ -54,7 +59,8 @@
       "key": "MAINBOARD/REITS/UNCLASSIFIED",
       "total": 1,
       "live_or_recent": 1,
-      "proven_scrapable": false
+      "sample_sufficient": false,
+      "scraper_owned": false
     },
     {
       "segment": "MAINBOARD",
@@ -63,7 +69,8 @@
       "key": "MAINBOARD/RIGHTS/UNCLASSIFIED",
       "total": 4,
       "live_or_recent": 4,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": true
     },
     {
       "segment": "MAINBOARD",
@@ -72,7 +79,8 @@
       "key": "MAINBOARD/TENDER/UNCLASSIFIED",
       "total": 11,
       "live_or_recent": 11,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": false
     },
     {
       "segment": "SME",
@@ -81,7 +89,8 @@
       "key": "SME/IPO/BOOK_BUILDING",
       "total": 127,
       "live_or_recent": 96,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": true
     },
     {
       "segment": "SME",
@@ -90,7 +99,8 @@
       "key": "SME/IPO/FIXED_PRICE",
       "total": 23,
       "live_or_recent": 18,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": true
     },
     {
       "segment": "SME",
@@ -99,7 +109,8 @@
       "key": "SME/IPO/UNCLASSIFIED",
       "total": 48,
       "live_or_recent": 14,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": true
     },
     {
       "segment": "UNCLASSIFIED",
@@ -108,7 +119,8 @@
       "key": "UNCLASSIFIED/BUYBACK/UNCLASSIFIED",
       "total": 1,
       "live_or_recent": 1,
-      "proven_scrapable": false
+      "sample_sufficient": false,
+      "scraper_owned": false
     },
     {
       "segment": "UNCLASSIFIED",
@@ -117,7 +129,8 @@
       "key": "UNCLASSIFIED/INVITS/UNCLASSIFIED",
       "total": 1,
       "live_or_recent": 1,
-      "proven_scrapable": false
+      "sample_sufficient": false,
+      "scraper_owned": false
     },
     {
       "segment": "UNCLASSIFIED",
@@ -126,7 +139,8 @@
       "key": "UNCLASSIFIED/IPO/UNCLASSIFIED",
       "total": 10,
       "live_or_recent": 10,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": false
     },
     {
       "segment": "UNCLASSIFIED",
@@ -135,7 +149,8 @@
       "key": "UNCLASSIFIED/NCD/UNCLASSIFIED",
       "total": 3,
       "live_or_recent": 3,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": false
     },
     {
       "segment": "UNCLASSIFIED",
@@ -144,7 +159,8 @@
       "key": "UNCLASSIFIED/OFS/UNCLASSIFIED",
       "total": 19,
       "live_or_recent": 19,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": false
     },
     {
       "segment": "UNCLASSIFIED",
@@ -153,7 +169,8 @@
       "key": "UNCLASSIFIED/RIGHTS/UNCLASSIFIED",
       "total": 2,
       "live_or_recent": 2,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": false
     },
     {
       "segment": "UNCLASSIFIED",
@@ -162,7 +179,8 @@
       "key": "UNCLASSIFIED/TENDER/UNCLASSIFIED",
       "total": 5,
       "live_or_recent": 5,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": false
     }
   ]
 }

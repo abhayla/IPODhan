@@ -21,7 +21,7 @@ test('canonical key is the three-column product, not segment alone', () => {
   ]);
 });
 
-test('proven_scrapable is false at 0 and 1 live_or_recent, true at 2 — the boundary, asserted at the value', () => {
+test('sample_sufficient is false at 0 and 1 live_or_recent, true at 2 — the boundary, asserted at the value', () => {
   const rows = [
     { segment: 'MAINBOARD', offering_type: 'NCD', issue_type: null, total: '5', live_or_recent: '0' },
     { segment: 'MAINBOARD', offering_type: 'RIGHTS', issue_type: null, total: '5', live_or_recent: '1' },
@@ -29,9 +29,34 @@ test('proven_scrapable is false at 0 and 1 live_or_recent, true at 2 — the bou
   ];
   const types = rowsToTypes(rows);
   const byKey = Object.fromEntries(types.map((t) => [t.key, t]));
-  assert.equal(byKey['MAINBOARD/NCD/UNCLASSIFIED'].proven_scrapable, false);
-  assert.equal(byKey['MAINBOARD/RIGHTS/UNCLASSIFIED'].proven_scrapable, false);
-  assert.equal(byKey['MAINBOARD/TENDER/UNCLASSIFIED'].proven_scrapable, true);
+  assert.equal(byKey['MAINBOARD/NCD/UNCLASSIFIED'].sample_sufficient, false);
+  assert.equal(byKey['MAINBOARD/RIGHTS/UNCLASSIFIED'].sample_sufficient, false);
+  assert.equal(byKey['MAINBOARD/TENDER/UNCLASSIFIED'].sample_sufficient, true);
+});
+
+test('scraper_owned is the owner boundary, independent of sample count — OFS and UNCLASSIFIED segment are never owned, MAINBOARD/IPO always is', () => {
+  const rows = [
+    // OFS: high sample count (19 live_or_recent) but frozen per OD-53 — must not be owned.
+    { segment: null, offering_type: 'OFS', issue_type: null, total: '19', live_or_recent: '19' },
+    // UNCLASSIFIED segment (no exchange-listed segment) — never owned, regardless of offering_type.
+    { segment: null, offering_type: 'IPO', issue_type: null, total: '10', live_or_recent: '10' },
+    // MAINBOARD/IPO is on the owner's list — owned even with a thin sample.
+    { segment: 'MAINBOARD', offering_type: 'IPO', issue_type: 'BOOK_BUILDING', total: '89', live_or_recent: '77' },
+    // MAINBOARD/FPO is on the owner's list "by the owner's word, not by sample count" — owned at 0 samples.
+    { segment: 'MAINBOARD', offering_type: 'FPO', issue_type: null, total: '0', live_or_recent: '0' },
+    // MAINBOARD/NCD has plenty of samples but is admin-owned per the boundary table — must not be owned.
+    { segment: 'MAINBOARD', offering_type: 'NCD', issue_type: null, total: '4', live_or_recent: '4' },
+    // SME/RIGHTS is on the owner's list.
+    { segment: 'SME', offering_type: 'RIGHTS', issue_type: null, total: '2', live_or_recent: '2' },
+  ];
+  const types = rowsToTypes(rows);
+  const byKey = Object.fromEntries(types.map((t) => [t.key, t]));
+  assert.equal(byKey['UNCLASSIFIED/OFS/UNCLASSIFIED'].scraper_owned, false);
+  assert.equal(byKey['UNCLASSIFIED/IPO/UNCLASSIFIED'].scraper_owned, false);
+  assert.equal(byKey['MAINBOARD/IPO/BOOK_BUILDING'].scraper_owned, true);
+  assert.equal(byKey['MAINBOARD/FPO/UNCLASSIFIED'].scraper_owned, true);
+  assert.equal(byKey['MAINBOARD/NCD/UNCLASSIFIED'].scraper_owned, false);
+  assert.equal(byKey['SME/RIGHTS/UNCLASSIFIED'].scraper_owned, true);
 });
 
 test('a row with a NULL segment lands in a named UNCLASSIFIED bucket, never dropped', () => {
@@ -57,10 +82,10 @@ test('a row with a NULL segment lands in a named UNCLASSIFIED bucket, never drop
 // LOGIC itself against a fixture aggregate, with the DB query mocked out by
 // operating on the committed json's shape directly.
 test('--check drift comparison: identical types pass, one changed count fails', () => {
-  const committed = { types: [{ key: 'MAINBOARD/IPO/BOOK_BUILDING', total: 89, live_or_recent: 77, proven_scrapable: true }] };
-  const fresh = { types: [{ key: 'MAINBOARD/IPO/BOOK_BUILDING', total: 89, live_or_recent: 77, proven_scrapable: true }] };
+  const committed = { types: [{ key: 'MAINBOARD/IPO/BOOK_BUILDING', total: 89, live_or_recent: 77, sample_sufficient: true, scraper_owned: true }] };
+  const fresh = { types: [{ key: 'MAINBOARD/IPO/BOOK_BUILDING', total: 89, live_or_recent: 77, sample_sufficient: true, scraper_owned: true }] };
   assert.equal(JSON.stringify(committed.types), JSON.stringify(fresh.types));
 
-  const corrupted = { types: [{ key: 'MAINBOARD/IPO/BOOK_BUILDING', total: 88, live_or_recent: 77, proven_scrapable: true }] };
+  const corrupted = { types: [{ key: 'MAINBOARD/IPO/BOOK_BUILDING', total: 88, live_or_recent: 77, sample_sufficient: true, scraper_owned: true }] };
   assert.notEqual(JSON.stringify(committed.types), JSON.stringify(corrupted.types));
 });

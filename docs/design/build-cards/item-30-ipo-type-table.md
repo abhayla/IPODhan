@@ -17,8 +17,9 @@ Class: none — mechanism, not a deviation.
 ## Purpose
 
 There is one canonical list of IPO types, generated from the data, carrying each type's live and
-recent count and a `proven-scrapable` flag, so "does this type have two live samples?" is a lookup
-instead of an ad-hoc query.
+recent count (`sample_sufficient`) and the owner's scraper/admin boundary (`scraper_owned`), so
+"does this type have two live samples?" and "does the scraper own this type?" are both lookups
+instead of ad-hoc queries or a conflated single flag.
 
 ## Serves
 
@@ -36,7 +37,7 @@ none of them can be checked while the list of types is five different implicit l
 | `scripts/ops/generate-ipo-type-population.mjs` | NEW | reads staging through the tunnel, writes the markdown table and the json |
 | `docs/design/ipo-type-population.md` | NEW | the generated table — header comment says it is generated, do not hand-edit |
 | `docs/design/ipo-type-population.json` | NEW | the same data as a machine-readable aggregate, for item 34 and item 35 to read |
-| `scripts/tests/generate-ipo-type-population.test.mjs` | NEW | asserts the `--check` drift detection and the `proven-scrapable` threshold |
+| `scripts/tests/generate-ipo-type-population.test.mjs` | NEW | asserts the `--check` drift detection, the `sample_sufficient` threshold, and that `scraper_owned` follows the owner's boundary independent of sample count |
 | `.github/workflows/pr-gate.yml` | exists | one explicit `node --test` step running the fixture unit tests |
 
 **Class-1 correction (built 2026-09-19):** the card as written named
@@ -82,14 +83,18 @@ Generated json shape, complete:
       "key": "MAINBOARD/IPO/BOOK_BUILDING",
       "total": 99,
       "live_or_recent": 59,
-      "proven_scrapable": true
+      "sample_sufficient": true,
+      "scraper_owned": true
     }
   ]
 }
 ```
 
-`proven_scrapable` is `live_or_recent >= 2` and nothing else; the threshold is a named constant in
-the generator, not a literal at its use site.
+`sample_sufficient` is `live_or_recent >= 2` and nothing else; the threshold is a named constant in
+the generator, not a literal at its use site. `scraper_owned` is computed separately from a single
+exported constant `SCRAPER_OWNED_TYPES` in the generator (segment in {MAINBOARD, SME} AND
+offering_type in {IPO, FPO, RIGHTS}; an UNCLASSIFIED segment and OFS — frozen per OD-53 — are never
+owned, regardless of sample count) — see the class-1 correction below.
 
 `live_or_recent` counts rows whose status is UPCOMING, OPEN or CLOSED, plus LISTED rows whose
 listing date is within 180 days — the same 180 days OD-35 already uses, cited rather than reinvented.
@@ -106,8 +111,10 @@ does not exist:
 
 - a fixture of rows produces exactly the expected `key` set — proves the canonical key is the
   three-column product and not `segment` alone;
-- `proven_scrapable` is false at `live_or_recent` 0 and 1, true at 2 — the boundary, asserted at the
+- `sample_sufficient` is false at `live_or_recent` 0 and 1, true at 2 — the boundary, asserted at the
   value, not at "greater than zero";
+- `scraper_owned` is true for MAINBOARD/IPO and false for OFS and for an UNCLASSIFIED segment,
+  regardless of `live_or_recent` — proves the owner's boundary is not a function of sample count;
 - `--check` exits 1 when one count in the committed markdown is altered by a single digit, and 0
   when it is not — a drift check that cannot fail is not a drift check;
 - a row with a NULL segment lands in a named `UNCLASSIFIED` bucket rather than being dropped — 40
@@ -121,9 +128,11 @@ does not exist:
 
 The generator run itself is the proof, and it is read back rather than assumed: the committed
 `docs/design/ipo-type-population.md` (NEW) names `MAINBOARD/IPO/BOOK_BUILDING` with `live_or_recent` at or
-above 2 and `proven_scrapable: true`, and names at least one type with `live_or_recent` below 2 and
-`proven_scrapable: false`. A table where every type is proven means the threshold is not being
-applied — INVITS and REITS were measured at 1 each on 2026-09-19.
+above 2 and `sample_sufficient: true`, and names at least one type with `live_or_recent` below 2 and
+`sample_sufficient: false`. A table where every type is proven means the threshold is not being
+applied — INVITS and REITS were measured at 1 each on 2026-09-19. The same run shows `MAINBOARD/NCD`
+and `MAINBOARD/TENDER` at `sample_sufficient: true` but `scraper_owned: false` — evidence that a
+healthy sample count does not, on its own, put a type on the scraper side of the boundary.
 
 No data repair, so no `assert-repair-held` run.
 
@@ -149,3 +158,15 @@ Does NOT reconcile the five places the design and the code each define a type (s
 offering_type, pricing, document type, status). It produces ONE generated list and names it
 canonical; making the other four point at it is a separate change with a class of its own, and it is
 left visible here rather than quietly folded in.
+
+**Class-1 correction (item 30 follow-up, built 2026-09-19):** the DoD as originally built named a
+single `proven_scrapable = live_or_recent >= 2` flag and described it as answering "does this type
+have two live samples?" — but the guideline's §5 scraper/admin boundary table is explicit that FPO
+is scraper-owned "by the owner's word, not by sample count" and OFS is admin-owned ("Frozen per
+OD-53") regardless of its live count. A single count-derived flag cannot represent both facts at
+once, and reading it as "the scraper may attempt this type" would have been wrong for every
+MAINBOARD/NCD or MAINBOARD/TENDER row once its count crossed 2. The card's intent — a lookup that
+answers "is this type scrapable" — is met by renaming the count flag to `sample_sufficient` (same
+`>= 2` rule) and adding a second, independent `scraper_owned` flag computed from the exported
+`SCRAPER_OWNED_TYPES` constant (§5's list) plus the explicit OFS/UNCLASSIFIED exclusions. A type is
+scrapable only when both are true (§3.2's two-per-type evidence bar AND §5's ownership boundary).

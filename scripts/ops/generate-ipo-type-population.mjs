@@ -32,9 +32,35 @@ const REPO_ROOT = join(__dirname, '..', '..');
 const OUT_MD = join(REPO_ROOT, 'docs/design/ipo-type-population.md');
 const OUT_JSON = join(REPO_ROOT, 'docs/design/ipo-type-population.json');
 
-// live_or_recent >= this many samples => proven_scrapable. Named constant per
+// live_or_recent >= this many samples => sample_sufficient. Named constant per
 // the card's Interfaces section — never a literal at the comparison site.
-const PROVEN_SCRAPABLE_THRESHOLD = 2;
+// Renamed from `proven_scrapable` (item 30 follow-up, 2026-09-19): the old
+// name read as permission to scrape once the count cleared 2, which is not
+// what the owner's boundary says. See SCRAPER_OWNED_TYPES below.
+const SAMPLE_SUFFICIENT_THRESHOLD = 2;
+
+// The owner's scraper/admin boundary (docs/design/spec-deviation-guideline.md
+// §5, owner decision 2026-09-19) — NOT a function of sample count. A type is
+// scraper-owned only when its segment/offering_type pair is in this list,
+// regardless of how many live rows it has (FPO carries zero live rows today
+// and is still scraper-owned "by the owner's word, not by sample count").
+// OFS is frozen per OD-53 and is never owned, no matter its segment. A row
+// with an UNCLASSIFIED segment (no ipos.segment value) is never owned either
+// — the boundary is drawn on the exchange-listed segment, not on an absence.
+export const SCRAPER_OWNED_TYPES = [
+  { segment: 'MAINBOARD', offering_type: 'IPO' },
+  { segment: 'MAINBOARD', offering_type: 'FPO' },
+  { segment: 'MAINBOARD', offering_type: 'RIGHTS' },
+  { segment: 'SME', offering_type: 'IPO' },
+  { segment: 'SME', offering_type: 'FPO' },
+  { segment: 'SME', offering_type: 'RIGHTS' },
+];
+
+function isScraperOwned(segment, offeringType) {
+  if (segment === 'UNCLASSIFIED' || offeringType === 'UNCLASSIFIED') return false;
+  if (offeringType === 'OFS') return false; // frozen per OD-53, regardless of segment
+  return SCRAPER_OWNED_TYPES.some((t) => t.segment === segment && t.offering_type === offeringType);
+}
 
 // Same 180-day window OD-35 already uses for same-offering comparisons; cited
 // here rather than reinvented (card's Interfaces section).
@@ -79,14 +105,17 @@ export function rowsToTypes(rows) {
     .map((r) => {
       const total = Number(r.total);
       const liveOrRecent = Number(r.live_or_recent);
+      const segment = r.segment ?? 'UNCLASSIFIED';
+      const offeringType = r.offering_type ?? 'UNCLASSIFIED';
       return {
-        segment: r.segment ?? 'UNCLASSIFIED',
-        offering_type: r.offering_type ?? 'UNCLASSIFIED',
+        segment,
+        offering_type: offeringType,
         issue_type: r.issue_type ?? 'UNCLASSIFIED',
         key: buildKey(r.segment, r.offering_type, r.issue_type),
         total,
         live_or_recent: liveOrRecent,
-        proven_scrapable: liveOrRecent >= PROVEN_SCRAPABLE_THRESHOLD,
+        sample_sufficient: liveOrRecent >= SAMPLE_SUFFICIENT_THRESHOLD,
+        scraper_owned: isScraperOwned(segment, offeringType),
       };
     })
     .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
@@ -125,17 +154,20 @@ function renderMarkdown(types, generatedAt, source) {
     `Generated: ${generatedAt}`,
     `Source: ${source}`,
     '',
-    `\`proven_scrapable\` is \`live_or_recent >= ${PROVEN_SCRAPABLE_THRESHOLD}\` and nothing else — the two-live-samples bar from`,
-    'docs/design/spec-deviation-guideline.md §3.2. `live_or_recent` counts rows whose status is',
-    `UPCOMING, OPEN or CLOSED, plus LISTED rows whose listing date is within ${RECENT_LISTING_WINDOW_DAYS} days —`,
+    '`scraper_owned` is the owner\'s boundary (guideline §5); `sample_sufficient` is the two-per-type',
+    'evidence threshold (§3). A type is scrapable only when BOTH are true.',
+    '',
+    `\`sample_sufficient\` is \`live_or_recent >= ${SAMPLE_SUFFICIENT_THRESHOLD}\` and nothing else — the two-live-samples`,
+    'bar from docs/design/spec-deviation-guideline.md §3.2. `live_or_recent` counts rows whose status',
+    `is UPCOMING, OPEN or CLOSED, plus LISTED rows whose listing date is within ${RECENT_LISTING_WINDOW_DAYS} days —`,
     'the same window OD-35 already uses.',
     '',
-    '| segment | offering_type | issue_type | total | live_or_recent | proven_scrapable |',
-    '|---|---|---|---|---|---|',
+    '| segment | offering_type | issue_type | total | live_or_recent | sample_sufficient | scraper_owned |',
+    '|---|---|---|---|---|---|---|',
   ];
   const rows = types.map(
     (t) =>
-      `| ${t.segment} | ${t.offering_type} | ${t.issue_type} | ${t.total} | ${t.live_or_recent} | ${t.proven_scrapable} |`
+      `| ${t.segment} | ${t.offering_type} | ${t.issue_type} | ${t.total} | ${t.live_or_recent} | ${t.sample_sufficient} | ${t.scraper_owned} |`
   );
   return [...header, ...rows, ''].join('\n');
 }
