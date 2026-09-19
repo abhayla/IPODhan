@@ -1046,3 +1046,80 @@ no config deploy has run yet — the release's own committed file is what is bei
 (`scripts/ops/state/deploy-config-staging-<date>.json`, laptop/box-local, gitignored) — a 5th run
 the same day is refused with reason `cap`. Prod carries no daily cap; `--i-have-the-owners-word`
 is the gate instead. `--dry-run` prints what would happen and writes nothing.
+
+### 15a. The three guards that stop a config/code mismatch killing the scraper (#793, 2026-09-19)
+
+**What went wrong first.** A commit tightened the manifest SCHEMA (`comparisonFamily` became a
+required enum) and updated the repo's manifest in the same change. The code deployed to staging;
+the shared config stayed a day old, because a code deploy deliberately never overwrites it (only
+the command in section 15 does). All 190 fields failed validation, the scraper crashed at process
+start in 4-6 seconds, every 30-minute cycle failed from 02:33Z, and the deploy reported SUCCESS
+throughout — its gate checks served sha, migrations and row counts, none of which need the scraper
+to start. Eighteen `wake-failed` lines sat unread. A human noticed 28 minutes later.
+
+The general shape, not specific to this manifest: **any config whose VALIDATOR ships on the code
+path while its VALUE ships on a different path.**
+
+**Guard 1 — the deploy refuses (automatic).** `preflight_deployed_config()` in
+`scripts/deploy-linux.sh` runs `scraper/src/scripts/validate-deployed-config.ts` against the
+release, loading all four `scraper/config/*.json` files through the scraper's OWN loaders. A
+refusal fails the deploy and prints the loader's own error. Nothing to run by hand; to check a
+release yourself:
+
+```bash
+cd /var/www/ipodhan/current-staging/scraper   # or current/ for prod
+node ../node_modules/tsx/dist/cli.mjs src/scripts/validate-deployed-config.ts \
+  --release-dir /var/www/ipodhan/current-staging
+```
+
+Exit 0 = every deployed config loads under the deployed schema. Exit 1 names the file, the
+resolved symlink target, and why it was refused. **Fix for the refusal is always section 15:**
+`scripts/ops/deploy-config.sh --slot <slot> --sha <the served sha>`.
+
+**Guard 2 — the wake log has a reader.** From the laptop:
+
+```bash
+node scripts/ops/wake-delta.mjs --slot staging          # read it
+node scripts/ops/wake-delta.mjs --slot prod --file-issues # read it and file the NEW ones
+```
+
+Read-only ssh. Prints each failure class as an identity (kind, exit code, occurrence count, first
+and last seen, jobs) and diffs NEW / GONE / SAME against `scripts/ops/state/wake-<slot>.json`.
+Exit 3 = a failure class with no issue number (signal-ownership R2); clear it with `--file-issues`
+or `--track '<kind>::exit=<N>=<issue>'`. Exit 2 = the ssh read itself failed, with its cause.
+
+**Guard 3 — lineage drift, read from OUTSIDE the scraper.**
+
+```bash
+node scripts/ops/config-lineage.mjs --slot staging          # read it
+node scripts/ops/config-lineage.mjs --slot prod --notify    # read it and page on drift
+```
+
+Exit 0 = in sync, or genuinely unknowable (it says which). Exit 3 = the config is
+from a different commit than the code, with the `deploy-config.sh` line to fix it.
+
+**Why this is a separate script and not just the scraper's own hourly check.** The
+in-cycle copy (`checkConfigLineage` in `scraper/src/services/deploy-drift-monitor.ts`)
+runs from `runStep(...)` inside `main()`, and `main()` (`scraper/src/index.ts:1651`) is
+reached only AFTER the startup config validators at 1646-1650 — the very calls that
+throw when config and schema disagree. In the full incident the process is dead in 4-6
+seconds and that check never executes. It is a detector killed by the failure it
+detects, so it is kept only as a secondary signal for the weaker case (config stale but
+still schema-valid); this script is the one that actually covers the outage.
+
+**`CONFIG_SHA` reading `release` is NOT an all-clear.** `deploy-linux.sh` writes that
+marker in exactly one branch — the first seed, when the shared file was missing — and no
+later deploy rewrites it. A slot seeded once on day 1 still reads `release` after thirty
+deploys, with day-1 config. Both this script and the in-process check report it as
+UNKNOWN rather than in-sync, because it is the most drift-prone state, not the safest.
+Guard 1 is what covers that case: it validates content on every deploy regardless of sha.
+
+To read the two shas by hand:
+
+```bash
+# The port is whatever the slot's env file says, and the monitor reads it the
+# same way - never hardcode one here.
+SLOT=staging
+ssh rfp-vps "cat /var/www/ipodhan/shared/config/$SLOT/CONFIG_SHA"
+ssh rfp-vps "PORT=\$(sed -n 's/^PORT=//p' /var/www/ipodhan/shared/env/$SLOT/web.env.local); curl -s localhost:\$PORT/api/version"
+```

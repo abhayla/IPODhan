@@ -43,6 +43,9 @@ const DRIFT_GRACE_MS = 60 * 60 * 1000;
 
 const STATE_KEY_PREFIX = 'deploy-drift:state:';
 
+/** Separate key space: a config drift and a code drift are different facts. */
+const CONFIG_STATE_KEY_PREFIX = 'deploy-drift:config-state:';
+
 /** State persisted per slot so a re-run within the same drift never re-alerts. */
 export interface DriftState {
   mainSha: string;
@@ -59,11 +62,27 @@ export interface SlotDriftResult {
   reason?: 'served-sha-unknown' | 'grace-period' | 'already-alerted';
 }
 
+/**
+ * Result of the config/code LINEAGE check (#793) — a different question from
+ * SlotDriftResult's "is this slot behind main". Here both shas come from the
+ * SAME box: what the code was built from, and what the config was deployed from.
+ */
+export interface SlotConfigDriftResult {
+  slot: DeploySlot;
+  servedSha: string | null;
+  configSha: string | null;
+  drifting: boolean;
+  alerted: boolean;
+  reason?: 'served-sha-unknown' | 'config-sha-unknown' | 'config-seeded-from-release' | 'already-alerted';
+}
+
 type NotifyFn = (severity: OwnerSeverity, title: string, opts?: { body?: string; type?: string; dedupeKey?: string }) => void;
 
 export interface DeployDriftDeps {
   getMainSha: () => Promise<string | null>;
   getServedSha: (slot: DeploySlot) => Promise<string | null>;
+  /** #793 config/code lineage. Defaults to the real CONFIG_SHA reader. */
+  getConfigSha?: (slot: DeploySlot) => Promise<string | null>;
   redis: Pick<Redis, 'get' | 'set' | 'del'>;
   now?: () => Date;
   notify?: NotifyFn;
@@ -133,6 +152,31 @@ export async function getServedShaForSlot(slot: DeploySlot): Promise<string | nu
     return null;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * Reads `$ROOT/shared/config/<slot>/CONFIG_SHA` -- the commit the slot's SHARED
+ * config was deployed from (`scripts/ops/deploy-config.sh` writes it; a code
+ * deploy only SEEDS it, with the literal string "release", when the shared file
+ * was absent).
+ *
+ * Returns null when the file is unreadable, which the caller treats as "cannot
+ * tell", never as "in sync".
+ */
+export async function getConfigShaForSlot(slot: DeploySlot): Promise<string | null> {
+  const root = process.env.DEPLOY_ROOT ?? '/var/www/ipodhan';
+  const file = `${root}/shared/config/${slot}/CONFIG_SHA`;
+  try {
+    const content = await readFile(file, 'utf-8');
+    const sha = content.trim();
+    return sha.length > 0 ? sha : null;
+  } catch (error) {
+    logger.warn(
+      { slot, file, error: error instanceof Error ? error.message : String(error) },
+      '[deploy-drift-monitor] could not read CONFIG_SHA (non-fatal)'
+    );
+    return null;
   }
 }
 
@@ -240,6 +284,176 @@ async function checkSlot(
 }
 
 /**
+ * CONFIG/CODE LINEAGE CHECK (#793).
+ *
+ * `shared/config/<slot>/field-manifest.json` is a shared, slot-scoped file that
+ * a code deploy deliberately never overwrites -- only `deploy-config.sh` does.
+ * So the code and the config it validates ship on DIFFERENT paths and can come
+ * from different commits. That divergence is the precondition for the whole
+ * failure class: on 2026-09-19 staging served `b12c9d28` while its config was
+ * still the `9c20b4d0` copy, the new schema refused all 190 fields, and the
+ * scraper died at start every 30 minutes for six hours.
+ *
+ * SECONDARY, NOT THE PRIMARY DETECTOR -- read this before relying on it.
+ * This runs from runStep() inside main(), and main() is reached only AFTER
+ * validateFieldManifestAtStartup()/validateSwitchoverAtStartup()/
+ * validateValidationRulesAtStartup() (index.ts:1646-1651) -- the very calls that
+ * throw when config and schema disagree. So in the FULL incident (config
+ * refuses, process dies in 4-6s) this code never executes. It covers only the
+ * weaker case where the config is stale but still schema-valid, which is worth
+ * having but is not the incident.
+ *
+ * The two mechanisms that actually cover the incident run outside this process:
+ * preflight_deployed_config() in deploy-linux.sh (refuses the deploy before the
+ * pointer flip) and scripts/ops/config-lineage.mjs (reads both shas over ssh, so
+ * a dead scraper cannot silence it).
+ *
+ * WHY NO GRACE PERIOD (unlike the served-sha drift above). A deploy in flight
+ * looks exactly like a stuck deploy for a few minutes, so that check waits an
+ * hour before paging. This one has no such ambiguity: a config from a different
+ * commit than the code is wrong the moment it is observed, and the cost of
+ * waiting is the scraper being dead for that hour. It pages on first sight and
+ * -- like the drift check -- exactly once per (slot, servedSha) pair, so a
+ * drift that persists does not re-page every hour.
+ *
+ * Deliberately NOT a drift when CONFIG_SHA reads "release": that is
+ * deploy-linux.sh's own seed marker, meaning the shared file came from this
+ * release's committed copy, i.e. code and config are from the same tree by
+ * construction -- the one case where they cannot disagree.
+ */
+export async function checkConfigLineage(
+  slot: DeploySlot,
+  deps: {
+    getServedSha: DeployDriftDeps['getServedSha'];
+    getConfigSha: (slot: DeploySlot) => Promise<string | null>;
+    redis: DeployDriftDeps['redis'];
+    notify: NotifyFn;
+  }
+): Promise<SlotConfigDriftResult> {
+  const servedSha = await deps.getServedSha(slot);
+  if (servedSha === null) {
+    return { slot, servedSha: null, configSha: null, drifting: false, alerted: false, reason: 'served-sha-unknown' };
+  }
+
+  const configSha = await deps.getConfigSha(slot);
+  if (configSha === null) {
+    return { slot, servedSha, configSha: null, drifting: false, alerted: false, reason: 'config-sha-unknown' };
+  }
+
+  if (configSha === 'release') {
+    // NOT an all-clear. `release` is the marker deploy-linux.sh writes when it
+    // SEEDS the shared file, and it writes it in exactly one branch -- the
+    // first-seed branch, when the shared file was missing or empty. No later
+    // code deploy ever rewrites the shared manifest or this marker. So a slot
+    // seeded once on day 1 still reads `release` after thirty deploys that each
+    // tightened the schema, while the shared manifest is still day-1 content.
+    // That is the MOST drift-prone state a slot can be in, and reading it as
+    // "same tree by construction" would exempt precisely the slots at risk.
+    //
+    // It is genuinely unknowable from the sha alone, so it is reported as
+    // unknown, never as in-sync. The deploy-time gate (preflight_deployed_config
+    // in deploy-linux.sh) is what actually covers this case: it loads the shared
+    // file through the real schema on every deploy, whatever its CONFIG_SHA says.
+    return { slot, servedSha, configSha, drifting: false, alerted: false, reason: 'config-seeded-from-release' };
+  }
+
+  // Same prefix comparison as shasMatch(): the served sha is 8 chars, a
+  // CONFIG_SHA written by deploy-config.sh is the full 40.
+  if (shasMatch(servedSha, configSha)) {
+    await clearConfigState(deps.redis, slot);
+    return { slot, servedSha, configSha, drifting: false, alerted: false };
+  }
+
+  const alreadyAlertedFor = await loadConfigState(deps.redis, slot);
+  if (alreadyAlertedFor === servedSha) {
+    return { slot, servedSha, configSha, drifting: true, alerted: false, reason: 'already-alerted' };
+  }
+
+  const severity: OwnerSeverity = slot === 'prod' ? 'P1' : 'P2';
+  deps.notify(severity, `IPODhan ${slot} config is from a different commit than the code`, {
+    body:
+      `${slot} serves code from ${servedSha.slice(0, 8)} but shared/config/${slot}/CONFIG_SHA is ${configSha.slice(0, 8)}. ` +
+      `If the newer code tightened a config schema, the scraper will refuse to start (#793). ` +
+      `Fix: scripts/ops/deploy-config.sh --slot ${slot} --sha ${servedSha}`,
+    type: 'config-lineage-drift',
+    dedupeKey: `${slot}:${servedSha}`,
+  });
+
+  await saveConfigState(deps.redis, slot, servedSha);
+  return { slot, servedSha, configSha, drifting: true, alerted: true };
+}
+
+async function loadConfigState(redis: Pick<Redis, 'get'>, slot: DeploySlot): Promise<string | null> {
+  try {
+    return await redis.get(`${CONFIG_STATE_KEY_PREFIX}${slot}`);
+  } catch {
+    return null;
+  }
+}
+
+async function saveConfigState(redis: Pick<Redis, 'set'>, slot: DeploySlot, servedSha: string): Promise<void> {
+  try {
+    await redis.set(`${CONFIG_STATE_KEY_PREFIX}${slot}`, servedSha, 'EX', 7 * 24 * 60 * 60);
+  } catch (error) {
+    logger.debug(
+      { slot, error: error instanceof Error ? error.message : String(error) },
+      '[deploy-drift-monitor] config state persist failed (non-fatal)'
+    );
+  }
+}
+
+async function clearConfigState(redis: Pick<Redis, 'del'>, slot: DeploySlot): Promise<void> {
+  try {
+    await redis.del(`${CONFIG_STATE_KEY_PREFIX}${slot}`);
+  } catch (error) {
+    logger.debug(
+      { slot, error: error instanceof Error ? error.message : String(error) },
+      '[deploy-drift-monitor] config state clear failed (non-fatal)'
+    );
+  }
+}
+
+/**
+ * One slot's lineage check, never throwing (non-fatal-side-effects.md): a
+ * config check that blows up must not take the rest of the cycle with it.
+ */
+async function runConfigLineageForSlot(
+  slot: DeploySlot,
+  deps: DeployDriftDeps,
+  getConfigSha: (slot: DeploySlot) => Promise<string | null>,
+  notify: NotifyFn
+): Promise<void> {
+  try {
+    const configResult = await checkConfigLineage(slot, {
+      getServedSha: deps.getServedSha,
+      getConfigSha,
+      redis: deps.redis,
+      notify,
+    });
+    if (configResult.drifting) {
+      logger.warn({ configResult }, '[deploy-drift-monitor] config/code lineage drift');
+    } else {
+      logger.debug({ configResult }, '[deploy-drift-monitor] config/code lineage checked');
+    }
+  } catch (error) {
+    logger.warn(
+      { slot, error: error instanceof Error ? error.message : String(error) },
+      '[deploy-drift-monitor] config lineage check failed (non-fatal)'
+    );
+  }
+}
+
+async function runConfigLineageForAllSlots(
+  deps: DeployDriftDeps,
+  getConfigSha: (slot: DeploySlot) => Promise<string | null>,
+  notify: NotifyFn
+): Promise<void> {
+  for (const slot of ['prod', 'staging'] as const) {
+    await runConfigLineageForSlot(slot, deps, getConfigSha, notify);
+  }
+}
+
+/**
  * Run one drift-check cycle across both slots. Never throws
  * (non-fatal-side-effects.md); if `mainSha` can't be resolved this cycle,
  * the cycle aborts cleanly (nothing to compare against) without touching
@@ -260,8 +474,15 @@ export async function checkDeployDrift(deps: DeployDriftDeps): Promise<SlotDrift
     mainSha = null;
   }
 
+  const getConfigSha = deps.getConfigSha ?? getConfigShaForSlot;
+
   if (!mainSha) {
-    logger.debug('[deploy-drift-monitor] main sha unresolved this cycle -- skipping');
+    // #793: the served-sha drift check needs origin and cannot run, but the
+    // config/code LINEAGE check compares two facts that both live on this box.
+    // An unreachable origin is precisely when a box-local check earns its keep,
+    // so it runs here rather than being skipped along with the sha comparison.
+    logger.debug('[deploy-drift-monitor] main sha unresolved this cycle -- sha drift skipped, config lineage still checked');
+    await runConfigLineageForAllSlots(deps, getConfigSha, notify);
     return [];
   }
 
@@ -275,6 +496,10 @@ export async function checkDeployDrift(deps: DeployDriftDeps): Promise<SlotDrift
         '[deploy-drift-monitor] slot check failed (non-fatal)'
       );
     }
+
+    // #793: a SEPARATE question, asked in its own try -- a slot whose served-sha
+    // check threw must still get its config lineage checked, and vice versa.
+    await runConfigLineageForSlot(slot, deps, getConfigSha, notify);
   }
 
   logger.info({ mainSha, results }, '[deploy-drift-monitor] cycle complete');
