@@ -79,6 +79,7 @@ import {
 } from './lib/pull-policy-checks.mjs';
 import { collectRowKeyCoverage, ROW_KEYED_CHILD_TABLES } from './lib/row-key-coverage-checks.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
+import { adminQueueSize, formatAdminQueueBlock } from './ops/admin-queue-size.mjs';
 
 // The three filing-extractor types this specific stuck-detection query cares about
 // (never the anchor report or PRICE_BAND_AD — this check is about `scripts/extract_filing.py`
@@ -1927,6 +1928,17 @@ async function main() {
   await checkS_pullPlanRank();
   await checkS_pullPlanStuckReclaim();
   await checkS_pullOverrides();
+
+  // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
+  // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
+  // output — a growth in the queue then surfaces as a NEW line rather than a number someone
+  // has to compare by hand. Read-only; never gates the audit's own PASS/FAIL/exit code.
+  try {
+    const queue = await adminQueueSize(pool);
+    console.log('\n' + formatAdminQueueBlock(queue));
+  } catch (err) {
+    console.error(`ADMIN-QUEUE: could not read (${err.message}) — not fatal to the audit`);
+  }
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');
