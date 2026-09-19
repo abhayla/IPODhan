@@ -1,0 +1,10 @@
+{
+  "id": "m_upcoming_missing_price_band_tracking",
+  "findingClass": "a live IPO walks to its open date with a blank price band because no PRICE_BAND_AD fetch-state row was ever created — an ABSENCE no existing check can see, since every other document check reads FROM document_fetch_state and can only grade rows that exist",
+  "round7Findings": [],
+  "sourceTask": "#796 (detection gap for the #795 stage-gate deadlock)",
+  "failThreshold": "any offering_type='IPO' row with status UPCOMING or OPEN, open_date within 7 days, and NO document_fetch_state row for doc_type='PRICE_BAND_AD'. Anchored on ipos with NOT EXISTS, never on document_fetch_state — the defect is the missing row. Measured on staging 2026-09-19: flagged exactly 2 of 20 IPOs opening within 7 days and passed the other 18, so a PASS carries information",
+  "severity": "P1",
+  "unverifiableWhen": "document_fetch_state table not present",
+  "section": "checks"
+}

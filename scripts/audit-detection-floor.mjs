@@ -797,6 +797,44 @@ async function checkM() {
   record('m_not_yet_filed_age', 'no document NOT_YET_FILED past its filing calendar (DRHP 14d / RHP 2d / Prospectus 3d / anchor 1d)',
     staleUnfiled.length === 0 ? 'PASS' : 'FAIL', staleUnfiled.slice(0, MAX_OFFENDERS).join('; '));
 
+  // #796: every check above reads FROM document_fetch_state, so it can only
+  // grade a row that EXISTS — it measures the AGE or STATE of a record and is
+  // structurally incapable of reporting its ABSENCE. The stage-gate deadlock
+  // (#795, failure class `stage gate requires the value the gated work would
+  // supply`) produces exactly that shape: an UPCOMING issue with no price band
+  // never reaches PRE_OPEN, so PRICE_BAND_AD is never due, so no row is ever
+  // created, so nothing above says a word — while the IPO walks to its open
+  // date with a blank price band on the page.
+  //
+  // This check is therefore anchored on the ENTITY (`ipos`) with a NOT EXISTS,
+  // not on the tracking table. Measured on staging 2026-09-19: of 20 live IPOs
+  // opening within 7 days it flagged exactly 2 (Anand Seamless 09-22, Liqvd
+  // Digital 09-23) and passed the other 18, so a PASS carries information.
+  // P1, not P2: the window closes. An IPO opening on the 22nd cannot be fixed
+  // on the 23rd.
+  const missingBandTracking = await q(`
+    SELECT i.company_name, i.open_date
+      FROM ipos i
+     WHERE i.offering_type = 'IPO'
+       AND i.status IN ('UPCOMING', 'OPEN')
+       AND i.open_date IS NOT NULL
+       AND i.open_date <= (CURRENT_DATE + INTERVAL '7 days')
+       AND NOT EXISTS (
+         SELECT 1 FROM document_fetch_state s
+          WHERE s.ipo_id = i.id AND s.doc_type = 'PRICE_BAND_AD'
+       )
+     ORDER BY i.open_date
+  `);
+  const untracked = missingBandTracking.map(
+    (r) => `${r.company_name} (opens ${String(r.open_date).slice(0, 10)}): no PRICE_BAND_AD fetch-state row`
+  );
+  for (const v of untracked) {
+    notify('m_upcoming_missing_price_band_tracking', 'P1', v, 'Live IPO has no PRICE_BAND_AD tracking row', v);
+  }
+  record('m_upcoming_missing_price_band_tracking',
+    'every IPO opening within 7 days has a PRICE_BAND_AD fetch-state row',
+    untracked.length === 0 ? 'PASS' : 'FAIL', untracked.slice(0, MAX_OFFENDERS).join('; '));
+
   // r6: an absence NOBODY OBSERVED. `m_not_yet_filed_age` above only notices
   // days later, once the filing calendar has run out; this reads the row's own
   // rung chain on the first night and fails when a NOT_YET_FILED for a type the

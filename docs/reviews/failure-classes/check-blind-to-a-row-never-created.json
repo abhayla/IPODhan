@@ -1,0 +1,9 @@
+{
+  "class_id": "check blind to a row that was never created",
+  "feature": "scripts/audit-detection-floor.mjs and any check whose population comes from a JOIN",
+  "symptom": "a detection check defines its population by JOINing the very table whose MISSING row is the defect. It can therefore only grade rows that exist — it measures the AGE or STATE of a record and is structurally incapable of reporting its ABSENCE. The check passes, or reports unrelated offenders, while the real failure is invisible. The tell: the check's FROM clause and the defect's description name the same table, one asking 'how old is this row' and the other 'there is no row'. Universal shape: population-by-JOIN can never detect a missing member of that population; only a LEFT JOIN / NOT EXISTS against the ENTITY table (ipos, documents) can.",
+  "first_seen": "2026-09-19 — `m_blocked_all_age` (audit-detection-floor.mjs:765-783, `FROM document_fetch_state s JOIN ipos i`) reported three IPOs (INJECTO POLYMERS, LCC Projects, STANBIK AGRO) and MISSED the two IPOs about to open with a blank price band (Anand Seamless, Liqvd Digital), because those two had no PRICE_BAND_AD row to age. Both were confirmed inside the check's own filter (`offering_type='IPO'`), so the exclusion was the JOIN, not the WHERE",
+  "fix_prs": "none yet. Proposed check (#796) inverts the direction: `FROM ipos i ... WHERE NOT EXISTS (SELECT 1 FROM document_fetch_state s WHERE s.ipo_id=i.id AND s.doc_type='PRICE_BAND_AD')`. Verified to discriminate on real staging data: of 20 live IPOs opening within 7 days it flags exactly 2 and passes 18, so a PASS carries information",
+  "detection_check": "self-referential — this class is about the checks themselves. Mitigation is a review question, applied when authoring or reviewing any check: 'if the row I am grading had never been created, would this check say anything?' If no, the check needs an entity-anchored NOT EXISTS companion",
+  "status": "unguarded"
+}
