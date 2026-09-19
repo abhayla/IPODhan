@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
+import { checkLedgerRowsForDoneCards } from './check-ledger-rows-for-done-cards.mjs';
 
 const root = process.argv[2] ? path.resolve(process.argv[2]) : process.cwd();
 // Running against the wrong directory is worse than not running: every item reads as
@@ -91,6 +92,30 @@ const ITEMS = [
    fs.existsSync('docs/contracts/2026-09-09-pull-model-design-delta.md'),
    'restored onto the branch byte-identical to d9ba3430 (md5 0fb00585...)'],
 ];
+
+// A DONE build card whose stage ledger row is still empty/queued reads to a resuming
+// supervisor as unfinished work — measured 2026-09-17..20: five merged, DONE stage-3 slices
+// (S1d/S2/S3/S4/S6) sat as `queued` rows for three days, one dispatch short of re-building
+// already-landed work. This item is skipped (not failed) when there is no stage-3-style
+// ledger in this checkout — check-dod.mjs runs in any checkout (item 33) and future stages
+// may not follow this exact file layout yet.
+const ledgerPath = 'docs/design/stage-3-ledger.md';
+if (fs.existsSync(ledgerPath)) {
+  const cardStatusByFile = {};
+  for (const f of cards) {
+    const m = fs.readFileSync('docs/design/build-cards/' + f, 'utf8').match(/^Status:.*$/m);
+    if (m) cardStatusByFile[f] = m[0];
+  }
+  const ledgerResult = checkLedgerRowsForDoneCards(cardStatusByFile, fs.readFileSync(ledgerPath, 'utf8'));
+  ITEMS.push([
+    'Every DONE build card has a filled ledger row (card named, PR cell non-empty) in ' + ledgerPath,
+    ledgerResult.ok,
+    ledgerResult.violations.length === 0
+      ? `${ledgerResult.doneCards} DONE cards, all have a filled ledger row`
+      : `${ledgerResult.violations.length} of ${ledgerResult.doneCards} DONE cards have an empty/missing ledger row: ` +
+        ledgerResult.violations.map((v) => `${v.card} (${v.reason})`).join('; '),
+  ]);
+}
 
 let pass = 0, fail = 0;
 for (const [name, ok, evidence] of ITEMS) {
