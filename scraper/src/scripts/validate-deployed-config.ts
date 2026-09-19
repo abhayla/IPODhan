@@ -39,9 +39,6 @@ import { realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
-import { loadValidationRules } from '../config/validation-rules-loader.js';
-import { loadDownloadAllowlist } from '../config/download-allowlist-loader.js';
-import { loadSwitchover } from '../config/switchover.js';
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -57,26 +54,36 @@ interface ConfigCheck {
   readonly describe: (loaded: never) => string;
 }
 
+/**
+ * ONLY the field manifest.
+ *
+ * Reviewed decision, not an oversight. Two independent reasons:
+ *
+ * 1. It is the only config that ships on the second path. `deploy-config.sh`
+ *    copies exactly one file (`MANIFEST_REL_PATH`, its line 24) into
+ *    shared/config/<slot>/. The other three `scraper/config/*.json` travel
+ *    inside the release like any other committed file, so code and value are
+ *    from the same commit by construction and cannot drift the way this class
+ *    requires.
+ *
+ * 2. Validating them here would make this gate STRICTER than the process it
+ *    models, which is a false-FAIL waiting to happen. At runtime each startup
+ *    validator is flag-gated and returns immediately when its flag is off
+ *    (`index.ts` validateFieldManifestAtStartup / validateSwitchoverAtStartup /
+ *    validateValidationRulesAtStartup, each `if (!enabled) return;`), and
+ *    `download-allowlist.json` has no startup validator at all. A malformed
+ *    switchover.json on a slot with ENABLE_POLICY_WRITER=false is harmless to
+ *    the running scraper; blocking a deploy on it would be this gate inventing
+ *    an outage rather than preventing one.
+ *
+ * If a second config ever becomes config-deployed, it belongs here — and its
+ * runtime flag has to be read and honoured at the same time.
+ */
 const CHECKS: readonly ConfigCheck[] = [
   {
     file: 'scraper/config/field-manifest.json',
     load: (p) => loadFieldManifest(p),
     describe: (m: never) => `${Object.keys((m as { fields: object }).fields).length} field(s)`,
-  },
-  {
-    file: 'scraper/config/validation-rules.json',
-    load: (p) => loadValidationRules(p),
-    describe: (r: never) => `${(r as unknown[]).length} rule(s)`,
-  },
-  {
-    file: 'scraper/config/download-allowlist.json',
-    load: (p) => loadDownloadAllowlist(p),
-    describe: () => 'allowlist loaded',
-  },
-  {
-    file: 'scraper/config/switchover.json',
-    load: (p) => loadSwitchover(p),
-    describe: () => 'switchover loaded',
   },
 ];
 

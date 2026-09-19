@@ -185,23 +185,71 @@ run_preflight() {
 }
 
 # ----------------------------------------------------------------- case 5
-# The gate is WIRED: deploy-linux.sh must actually call it on the real
-# (non-dry-run) restart path, before the scraper is started. A perfect function
-# nobody calls guards nothing.
+# The gate is WIRED, and wired at the RIGHT MOMENT. A perfect function nobody
+# calls guards nothing — and one called after the pointer flip guards much less
+# than it looks. Placement is the assertion, not just presence:
+#
+#   deploy-linux.sh sets SCRAPER_RESUME_TARGET="new" at the flip. If the gate
+#   fatals AFTER that, the EXIT trap (resume_scraper) starts the scraper against
+#   the very release whose config was just proved unloadable, web is already
+#   serving it, and no rollback runs — the 2026-09-19 incident state, with a red
+#   exit code as the only difference. Before the flip, the same failure is a
+#   genuine no-op: `current` still points at the last good release, the trap
+#   restores it, and the bad build is cleaned up.
 {
   if grep -q 'preflight_deployed_config "\$RELEASE_DIR"' "$DEPLOY_SCRIPT"; then
-    pass "case5: deploy-linux.sh calls preflight_deployed_config on the restart path"
+    pass "case5: deploy-linux.sh calls preflight_deployed_config"
   else
     fail "case5: deploy-linux.sh never calls preflight_deployed_config — the gate is dead code"
   fi
 
-  CALL_LINE="$(grep -n 'preflight_deployed_config "\$RELEASE_DIR"' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
-  START_LINE="$(grep -n 'pm2 start "\$RELEASE_DIR/scripts/scraper-wake.sh"' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
-  if [ -n "$CALL_LINE" ] && [ -n "$START_LINE" ] && [ "$CALL_LINE" -lt "$START_LINE" ]; then
-    pass "case5: the call precedes the scraper pm2 start (line $CALL_LINE < $START_LINE)"
+  CALL_LINE="$(grep -n '^preflight_deployed_config "\$RELEASE_DIR"' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  FLIP_LINE="$(grep -n '^atomic_flip_current "\$RELEASE_DIR"' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  RESUME_NEW_LINE="$(grep -n '^SCRAPER_RESUME_TARGET="new"' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  DEF_LINE="$(grep -n '^preflight_deployed_config() {' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+
+  if [ -n "$CALL_LINE" ] && [ -n "$FLIP_LINE" ] && [ "$CALL_LINE" -lt "$FLIP_LINE" ]; then
+    pass "case5: the gate runs BEFORE the atomic pointer flip (line $CALL_LINE < $FLIP_LINE)"
   else
-    fail "case5: call ordering wrong (call=$CALL_LINE, scraper start=$START_LINE)"
+    fail "case5: the gate does not precede the pointer flip (call=$CALL_LINE, flip=$FLIP_LINE) — a refusal would leave current flipped and the scraper resumed against a release with unloadable config"
   fi
+
+  if [ -n "$CALL_LINE" ] && [ -n "$RESUME_NEW_LINE" ] && [ "$CALL_LINE" -lt "$RESUME_NEW_LINE" ]; then
+    pass "case5: the gate runs before SCRAPER_RESUME_TARGET=\"new\" (line $CALL_LINE < $RESUME_NEW_LINE), so the EXIT trap restores the PREVIOUS release"
+  else
+    fail "case5: the gate runs after SCRAPER_RESUME_TARGET=\"new\" (call=$CALL_LINE, resume=$RESUME_NEW_LINE) — the trap would start the scraper against the condemned release"
+  fi
+
+  # A top-level call before its definition is a bash 127, not a gate.
+  if [ -n "$DEF_LINE" ] && [ -n "$CALL_LINE" ] && [ "$DEF_LINE" -lt "$CALL_LINE" ]; then
+    pass "case5: the function is defined before it is called at top level (line $DEF_LINE < $CALL_LINE)"
+  else
+    fail "case5: preflight_deployed_config is called at top level before it is defined (def=$DEF_LINE, call=$CALL_LINE) — bash would exit 127"
+  fi
+}
+
+# ----------------------------------------------------------------- case 6
+# The gate validates the file that is actually CONFIG-DEPLOYED, and only that.
+# deploy-config.sh ships exactly one file; the other scraper/config/*.json are
+# flag-gated at runtime (each startup validator is `if (!enabled) return;`) and
+# download-allowlist.json has no startup validator at all. Validating those here
+# would make the gate STRICTER than the process it models — a deploy blocked on a
+# file the scraper never reads is the gate inventing an outage.
+{
+  VALIDATOR="$REPO_ROOT/scraper/src/scripts/validate-deployed-config.ts"
+  if grep -q "field-manifest.json" "$VALIDATOR"; then
+    pass "case6: the validator checks the config-deployed field manifest"
+  else
+    fail "case6: the validator does not check field-manifest.json — the one file deploy-config.sh ships"
+  fi
+
+  for other in switchover.json validation-rules.json download-allowlist.json; do
+    if grep -q "config/$other" "$VALIDATOR"; then
+      fail "case6: the validator also loads $other, which is flag-gated (or unvalidated) at runtime — false-FAIL risk on a flag-off slot"
+    else
+      pass "case6: the validator does not load $other (flag-gated at runtime, not config-deployed)"
+    fi
+  done
 }
 
 echo "---"

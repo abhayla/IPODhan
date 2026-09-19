@@ -1088,13 +1088,31 @@ and last seen, jobs) and diffs NEW / GONE / SAME against `scripts/ops/state/wake
 Exit 3 = a failure class with no issue number (signal-ownership R2); clear it with `--file-issues`
 or `--track '<kind>::exit=<N>=<issue>'`. Exit 2 = the ssh read itself failed, with its cause.
 
-**Guard 3 — lineage drift pages by itself.** `checkConfigLineage()` in
-`scraper/src/services/deploy-drift-monitor.ts` compares each slot's served sha against
-`shared/config/<slot>/CONFIG_SHA` on the monitor's hourly cadence and pages (P1 prod / P2 staging)
-when they are from different commits — no grace period, because unlike a deploy in flight there is
-nothing ambiguous about it, and once per (slot, served sha) so a standing drift does not re-page.
-`CONFIG_SHA` reading `release` is NOT a drift: that is the deploy's own seed marker, meaning code
-and config came from the same tree.
+**Guard 3 — lineage drift, read from OUTSIDE the scraper.**
+
+```bash
+node scripts/ops/config-lineage.mjs --slot staging          # read it
+node scripts/ops/config-lineage.mjs --slot prod --notify    # read it and page on drift
+```
+
+Exit 0 = in sync, or genuinely unknowable (it says which). Exit 3 = the config is
+from a different commit than the code, with the `deploy-config.sh` line to fix it.
+
+**Why this is a separate script and not just the scraper's own hourly check.** The
+in-cycle copy (`checkConfigLineage` in `scraper/src/services/deploy-drift-monitor.ts`)
+runs from `runStep(...)` inside `main()`, and `main()` (`scraper/src/index.ts:1651`) is
+reached only AFTER the startup config validators at 1646-1650 — the very calls that
+throw when config and schema disagree. In the full incident the process is dead in 4-6
+seconds and that check never executes. It is a detector killed by the failure it
+detects, so it is kept only as a secondary signal for the weaker case (config stale but
+still schema-valid); this script is the one that actually covers the outage.
+
+**`CONFIG_SHA` reading `release` is NOT an all-clear.** `deploy-linux.sh` writes that
+marker in exactly one branch — the first seed, when the shared file was missing — and no
+later deploy rewrites it. A slot seeded once on day 1 still reads `release` after thirty
+deploys, with day-1 config. Both this script and the in-process check report it as
+UNKNOWN rather than in-sync, because it is the most drift-prone state, not the safest.
+Guard 1 is what covers that case: it validates content on every deploy regardless of sha.
 
 To read the two shas by hand:
 

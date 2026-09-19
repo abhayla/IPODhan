@@ -294,6 +294,20 @@ async function checkSlot(
  * still the `9c20b4d0` copy, the new schema refused all 190 fields, and the
  * scraper died at start every 30 minutes for six hours.
  *
+ * SECONDARY, NOT THE PRIMARY DETECTOR -- read this before relying on it.
+ * This runs from runStep() inside main(), and main() is reached only AFTER
+ * validateFieldManifestAtStartup()/validateSwitchoverAtStartup()/
+ * validateValidationRulesAtStartup() (index.ts:1646-1651) -- the very calls that
+ * throw when config and schema disagree. So in the FULL incident (config
+ * refuses, process dies in 4-6s) this code never executes. It covers only the
+ * weaker case where the config is stale but still schema-valid, which is worth
+ * having but is not the incident.
+ *
+ * The two mechanisms that actually cover the incident run outside this process:
+ * preflight_deployed_config() in deploy-linux.sh (refuses the deploy before the
+ * pointer flip) and scripts/ops/config-lineage.mjs (reads both shas over ssh, so
+ * a dead scraper cannot silence it).
+ *
  * WHY NO GRACE PERIOD (unlike the served-sha drift above). A deploy in flight
  * looks exactly like a stuck deploy for a few minutes, so that check waits an
  * hour before paging. This one has no such ambiguity: a config from a different
@@ -327,6 +341,19 @@ export async function checkConfigLineage(
   }
 
   if (configSha === 'release') {
+    // NOT an all-clear. `release` is the marker deploy-linux.sh writes when it
+    // SEEDS the shared file, and it writes it in exactly one branch -- the
+    // first-seed branch, when the shared file was missing or empty. No later
+    // code deploy ever rewrites the shared manifest or this marker. So a slot
+    // seeded once on day 1 still reads `release` after thirty deploys that each
+    // tightened the schema, while the shared manifest is still day-1 content.
+    // That is the MOST drift-prone state a slot can be in, and reading it as
+    // "same tree by construction" would exempt precisely the slots at risk.
+    //
+    // It is genuinely unknowable from the sha alone, so it is reported as
+    // unknown, never as in-sync. The deploy-time gate (preflight_deployed_config
+    // in deploy-linux.sh) is what actually covers this case: it loads the shared
+    // file through the real schema on every deploy, whatever its CONFIG_SHA says.
     return { slot, servedSha, configSha, drifting: false, alerted: false, reason: 'config-seeded-from-release' };
   }
 

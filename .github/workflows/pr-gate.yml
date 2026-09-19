@@ -923,6 +923,12 @@ jobs:
       - name: Run wake-log delta test suite (#793 M2, signal-ownership R3)
         run: node --test scripts/tests/wake-delta.test.mjs
 
+      # #793 M3: the lineage check that runs OUTSIDE the scraper. The in-cycle
+      # copy cannot fire on this incident - it lives in main(), which the config
+      # refusal kills before it is reached.
+      - name: Run config/code lineage test suite (#793 M3)
+        run: node --test scripts/tests/config-lineage.test.mjs
+
       # Item 7 slice 1: scripts/scraper-wake.sh replaced pm2's --cron-restart,
       # which was the only thing bounding a hung scraper on prod. Both of the
       # wrapper's guards fail SILENTLY - a lock-skip that stops printing its
