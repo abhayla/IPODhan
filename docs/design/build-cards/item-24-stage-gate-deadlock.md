@@ -91,6 +91,7 @@ output of the work it gates.**
 | `scraper/src/services/document-state-machine.ts` | `notApplicableTypes`: add the explicit offering-type guard — an issue whose `offering_type` cannot file a price band ad never has `PRICE_BAND_AD` / `ANCHOR_ALLOCATION_REPORT` due, independent of `isFixedPrice` |
 | `scraper/src/services/document-cycle.ts` | `deriveIssueShape` (`:522`) gains `offeringType` so the guard above has its input; thread `open_date` into the `deriveLifecycleStage` call at `:1008` |
 | `scraper/scripts/run-document-discovery.ts` | `:248` — same call, same new fields |
+| `scraper/src/scheduler/stage-reconciler.ts` (`planStageReconciliation`, `:311`) + `scraper/src/scheduler/jobs/stage-reconciler-job.ts` (`RECONCILER_PRESENCE_SQL`, `:87-101`) | **ADDED round 2 — the call site round 1 missed.** `planStageReconciliation` calls `deriveLifecycleStage(row)` with no new fields and no `opts`, and its SQL selects no `open_date`, no `offering_type` column and no RHP signal. This job WRITES pipeline-step DUE rows (`IpoPipelineStepsRepository`, `:175`), so an unthreaded call makes the ledger record UPCOMING while the document cycle fetches PRE_OPEN documents for the SAME IPO at the SAME instant. Also pass `opts.today` through — today it is accepted for the stale-CLOSED check and silently dropped for the stage call, so injected time is ignored |
 | `scripts/lib/ipo-stage-completeness.mjs` | `deriveStage` (`:101`) is a SECOND implementation of the same rule (its own comment says it mirrors). Update in the same PR or the two definitions drift — this is the `one-concept-several-definitions` class |
 
 ## The new rule, stated for implementation
@@ -98,7 +99,7 @@ output of the work it gates.**
 ```
 UPCOMING →
   if NOT bandBearing(offeringType)              → stay UPCOMING   (never hunt a band ad)
-  if openDate present AND openDate - today <= 7 → PRE_OPEN
+  if openDate present AND 0 <= (openDate - today) <= 7 → PRE_OPEN   (LOWER BOUND, round 2)
   if RHP on file                                → PRE_OPEN
   if band already present                       → PRE_OPEN        (kept: harmless, not the trigger)
   otherwise                                     → stay UPCOMING, and REPORT as unresolved
@@ -125,6 +126,8 @@ repo already fought. Hence an explicit guard, not a reliance on `isFixedPrice`.
 3. `deriveLifecycleStage` — UPCOMING, band NULL, `open_date` NULL, no RHP → **UPCOMING + reported
    unresolved** (assert the report, not just the stage).
 4. `deriveLifecycleStage` — UPCOMING, band NULL, `open_date` = today + 30 → stays UPCOMING
+4b. **(round 2)** `open_date` in the PAST (today - 90, today - 1900) → stays UPCOMING. Round 1 had no such test, and a reviewer's `days >= 0` mutation left all 14 tests green — a suite that passes with and without a lower bound is testing nothing about the window's lower half.
+4c. **(round 2)** the window boundary is evaluated on an IST CALENDAR DAY, not a raw ms delta: the same `open_date` must give the same verdict when `today` is 05:30 IST and 23:30 IST. Round 1 drifted 7 vs 8 days by hour of day (`ist-timezone.md`)
    (boundary: the window must not promote everything).
 5. `notApplicableTypes` — `offering_type='OFS'`, band NULL → `PRICE_BAND_AD` NOT applicable. Red
    today (`isFixedPrice` is false, so nothing excludes it).
@@ -160,8 +163,7 @@ Ships in this PR or immediately after; the fix is not "done" while the class is 
 ## Rollback
 
 Single-function revert. No migration, no data change. If the promotion misfires, the blast radius is
-extra `NOT_YET_FILED` fetch attempts on issues promoted early — noisy, not destructive, and bounded
-by the existing retry ladder.
+extra `NOT_YET_FILED` fetch attempts on issues promoted early. **Round 1's card claimed this was "bounded by the existing retry ladder". That was asserted, not checked, and it is FALSE:** `NOT_YET_FILED` has a 30-minute retry interval (`document-state-machine.ts:449`) and **no attempt cap** — unlike `NOT_FOUND`, which caps at 5 (`NOT_FOUND_MAX_ATTEMPTS`, `:468`) — and it never escalates to `BLOCKED_ALL` because it is explicitly not a failure. Alert noise is bounded; fetch attempts are not. This is why the window MUST carry a lower bound.
 
 ## Tier, budget
 
