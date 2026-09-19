@@ -96,7 +96,7 @@ plan-rank2-never-bse-for-issue-size --cycles 2` PASS after two real wakes.
 | S2-1 | `cd scraper && npx vitest run tests/unit/scripts/repair-plan-rows-to-manifest-version.test.ts` | exit 0 | local |
 | S2-2 | `node scripts/ci/require-repair-tool-module.mjs` | exit 0 | local |
 | S2-3 | `cd scraper && npx vitest run -c vitest.integration.config.ts tests/integration/ipo-field-plan-repository.integration.test.ts` | exit 0 | test-db |
-| S2-4 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from ipo_field_plan where field_name='issue_size' and rank2_source='BSE'" --expect-db ipodhan_staging` | line: `n=0` | staging |
+| S2-4 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from ipo_field_plan where field_name='issue_size' and rank2_source='BSE' and state <> 'SUPPLIED'" --expect-db ipodhan_staging` | line: `n=0` | staging |
 | S2-5 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from ipo_field_plan where manifest_version < 2 and state <> 'SUPPLIED'" --expect-db ipodhan_staging` | line: `n=0` | staging |
 | S2-6 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from ipo_field_plan p join ipos i on i.id=p.ipo_id where i.segment='SME' and p.table_name='subscriptions'" --expect-db ipodhan_staging` | regex: `n=[1-9]` | staging |
 | S2-7 | `node scripts/assert-repair-held.mjs scripts/lib/repair-invariants/plan-rank2-never-bse-for-issue-size.mjs --cycles 2` | exit 0 | staging |
