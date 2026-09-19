@@ -39,7 +39,7 @@ already having the value.
 Most IPOs escape only because exchange board data incidentally carries the band. That side channel
 is what makes a systematic gate look like an intermittent minority bug.
 
-## Measured, before any code (staging, 2026-09-19)
+## Serves
 
 **The gate, 16 of 16 UPCOMING IPOs — a perfect split, not a scatter:**
 
@@ -78,11 +78,6 @@ blank price band on a live IPO.
 is a LOWER bound on earliness, so the true value pushes N up, never down — safe for this fix. A
 reviewer may challenge N=7 on this evidence; it must not be inherited unexamined.
 
-## The rule this implements
-
-**A promotion condition must depend only on facts our own pipeline cannot suppress — never on an
-output of the work it gates.**
-
 ## Files
 
 | File | Change |
@@ -94,7 +89,12 @@ output of the work it gates.**
 | `scraper/src/scheduler/stage-reconciler.ts` (`planStageReconciliation`, `:311`) + `scraper/src/scheduler/jobs/stage-reconciler-job.ts` (`RECONCILER_PRESENCE_SQL`, `:87-101`) | **ADDED round 2 — the call site round 1 missed.** `planStageReconciliation` calls `deriveLifecycleStage(row)` with no new fields and no `opts`, and its SQL selects no `open_date`, no `offering_type` column and no RHP signal. This job WRITES pipeline-step DUE rows (`IpoPipelineStepsRepository`, `:175`), so an unthreaded call makes the ledger record UPCOMING while the document cycle fetches PRE_OPEN documents for the SAME IPO at the SAME instant. Also pass `opts.today` through — today it is accepted for the stale-CLOSED check and silently dropped for the stage call, so injected time is ignored |
 | `scripts/lib/ipo-stage-completeness.mjs` | `deriveStage` (`:101`) is a SECOND implementation of the same rule (its own comment says it mirrors). Update in the same PR or the two definitions drift — this is the `one-concept-several-definitions` class |
 
-## The new rule, stated for implementation
+## Schema
+
+**A promotion condition must depend only on facts our own pipeline cannot suppress — never on an
+output of the work it gates.**
+
+## Interfaces
 
 ```
 UPCOMING →
@@ -108,7 +108,7 @@ UPCOMING →
 The final clause is the point: an issue with no usable signal must be **visible**, not silently
 stalled. Silent stalling is the bug being fixed.
 
-## The offering-type guard, measured
+## Feature flag
 
 Only `offering_type='IPO'` ever holds a `PRICE_BAND_AD` — **21 of 21**. Every non-IPO type stores
 `min = max` (TENDER 16/16, RIGHTS 5/5, NCD 3/3, INVITS 3/3, BUYBACK 1/1, REITS 1/1): a single fixed
@@ -119,7 +119,7 @@ NULL band it is false, so **24 rows (19 OFS, 4 NCD, 1 RIGHTS)** escape it and wo
 hunting a document that cannot exist — permanent `BLOCKED_ALL` and alert noise, the W-40 churn this
 repo already fought. Hence an explicit guard, not a reliance on `isFixedPrice`.
 
-## Tests (failing first, on the real functions)
+## Tests
 
 1. `deriveLifecycleStage` — UPCOMING, band NULL, `open_date` = today + 3 → **PRE_OPEN**. Red today.
 2. `deriveLifecycleStage` — UPCOMING, band NULL, `open_date` NULL, RHP on file → **PRE_OPEN**.
@@ -138,7 +138,17 @@ repo already fought. Hence an explicit guard, not a reliance on `isFixedPrice`.
 Each must be shown RED before the change and GREEN after. A test that passes before the fix is
 testing nothing (`proof-must-be-able-to-fail`).
 
-## Staging proof (the real-data gate)
+## Detection
+
+`m_upcoming_missing_price_band_tracking` (#796) is the check that would have caught this: live IPO
+opening within 7 days with **no** `PRICE_BAND_AD` fetch-state row. Entity-anchored (`FROM ipos …
+NOT EXISTS`), because every existing document check JOINs `document_fetch_state` and is structurally
+blind to a row that was never created. Verified to discriminate: flags exactly the 2, passes the
+other 18 of 20 opening within 7 days.
+
+Ships in this PR or immediately after; the fix is not "done" while the class is unguarded.
+
+## Staging proof
 
 Before: `SELECT count(*) FROM document_fetch_state s JOIN ipos i ON i.id = s.ipo_id
 WHERE i.status='UPCOMING' AND i.price_range_min IS NULL AND s.doc_type='PRICE_BAND_AD'` → **0**.
@@ -150,29 +160,29 @@ any `offering_type` other than `IPO`. Expected 0 before and after.
 
 Read from the cycle log by identity, never from a count alone (`signal-ownership` R1).
 
-## Detection
-
-`m_upcoming_missing_price_band_tracking` (#796) is the check that would have caught this: live IPO
-opening within 7 days with **no** `PRICE_BAND_AD` fetch-state row. Entity-anchored (`FROM ipos …
-NOT EXISTS`), because every existing document check JOINs `document_fetch_state` and is structurally
-blind to a row that was never created. Verified to discriminate: flags exactly the 2, passes the
-other 18 of 20 opening within 7 days.
-
-Ships in this PR or immediately after; the fix is not "done" while the class is unguarded.
-
 ## Rollback
 
 Single-function revert. No migration, no data change. If the promotion misfires, the blast radius is
 extra `NOT_YET_FILED` fetch attempts on issues promoted early. **Round 1's card claimed this was "bounded by the existing retry ladder". That was asserted, not checked, and it is FALSE:** `NOT_YET_FILED` has a 30-minute retry interval (`document-state-machine.ts:449`) and **no attempt cap** — unlike `NOT_FOUND`, which caps at 5 (`NOT_FOUND_MAX_ATTEMPTS`, `:468`) — and it never escalates to `BLOCKED_ALL` because it is explicitly not a failure. Alert noise is bounded; fetch attempts are not. This is why the window MUST carry a lower bound.
 
-## Tier, budget
+## Tier, budget and cost
 
 **Tier A** — changes lifecycle staging, which drives what gets fetched for every IPO. Fresh-Opus
 adversarial review with mutation tests on every guard.
-**Budget:** 60 min wall-clock, 120 tool calls.
+Budget: 60 min wall-clock, 120 tool calls.
 **Report: evidence-table.**
 
-## Known gaps, stated not hidden
+## Rules implemented
+
+- `defect-fix-contract.md` - RCA, class, failing test first, fix at class level, real-data
+  proof, detection upgrade. The disproved first RCA is recorded so it is not re-attempted.
+- `proof-must-be-able-to-fail.md` - every test must be shown RED before the change. Round 1's
+  lower-bound gap was found exactly because a mutation left all 14 tests green.
+- `ist-timezone.md` - the window is evaluated on an IST calendar day, pinned by test 4c.
+- `one-concept-several-definitions` - the TS and MJS rules are pinned together by a parity test.
+- `signal-ownership.md` R1 - the staging proof is read by identity, never from a bare count.
+
+## Known gaps
 
 - N=7 rests on 17 IPOs and on OUR recording time, not the issuer's filing time. Underivable here
   because `documents.filing_date` is 0 of 21 populated. Populating `filing_date` would let N be
