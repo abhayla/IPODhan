@@ -42,7 +42,7 @@ So a card saying DONE is a claim. Each verdict below was checked against an arte
 | 5 | `ipo_field_plan` table + generator | **BUILT** | `ipoFieldPlan` in `schema.ts`; `field-plan-generator.ts`; `ipo-field-plan-repository.ts` |
 | 6 | The pull walk over the plan | **PARTIAL** | `field-plan-walk.ts` + 4 fetchers wired at `field-plan-walk-deps.ts:58-62`. But #705 is open claiming the walk has no fetchers - *unverified which is stale*. #762: 12,480 plan rows parked with no re-queue path (fix merged as #763, **not on prod**) |
 | 7 | Job scheduler + budgets | **PARTIAL** | Scheduler built (`scheduler/`, `due-step-cycle.ts`). OD-55 force-kill removal merged but **not on prod** (#805). Tiering (O-4) unverified |
-| 8 | Ratios / basis-for-offer-price extractor | **PARTIAL** | Reader built (`document-classifier.ts`, `retype-ratios-documents.ts`). **#716: the drainer is missing - RATIOS documents never leave PENDING** |
+| 8 | Ratios / basis-for-offer-price extractor | **BUILT** | RATIOS_BASIS_ISSUE_PRICE is deliberately excluded from `EXTRACTABLE_DOC_TYPES`/`AUTO_PERSIST_DOC_TYPES` (`filing-auto-persist.ts:137-162`) - no source parser exists for its content, and BSE has no ratios document source at all (`document-classifier.ts:177`). #716 (filed, then closed as non-bug) confirms this and finds detection already correct: `not_applicable_documents_named` (PR #677, merged 2026-09-16) reports these PENDING rows as not-applicable, not stuck. The real ratio-population signal is `issuer_ratio_yield` (#670), fed by RHP/DRHP/PROSPECTUS extraction. Row was wrong to call this a missing drainer. |
 | 9 | The re-read loop | **NOT BUILT** | Zero `reread` hits in `field-plan-walk.ts`. `detection-checks/reread_verdict.json` says it is designed, not yet built. Section 2.5.1 triggers 3-7 have no implementer; trigger 4 storage was deleted in S2 as dead code |
 | 10 | Verification checks of section 4 | **PARTIAL** | 8 `audit-*` scripts exist. **#778: 21 of 26 pull/reread detection checks are designed-not-built** |
 | 11 | Crore conversion (OD-20) | **NOT BUILT** | No `repair-*crore*` tool in the tree. Spec calls it its own release, not cleanly reversible. Card carries two unclosed MAJORs (F-95, F-77) |
@@ -86,9 +86,10 @@ because it matches inside NOT BUILT.)
 
 **Remaining work, in order:**
 
-1. **Unblocked now, can run in parallel:** item 22, item 18 (page-text writer), item 8 (drainer, #716),
+1. **Unblocked now, can run in parallel:** item 22, item 18 (page-text writer),
    item 14 (#728), item 19 (second routing, #807), item 3's S6 churn-stop (#759) plus
    the Swap Test and the S4/S5 proofs, item 35's actionable-split residual (#818).
+   Item 8 needs no build: RATIOS documents are excluded from extraction by design (#716).
 2. **Then** item 6 completion - #705 and the #762 re-queue path. *Inferred, not spec-stated:* item 9
    cannot run over parked rows.
 3. **Then** item 9 - the re-read loop, section 2.5.1 triggers 3-7. Spec-stated dep on 6.
@@ -105,7 +106,7 @@ Item 21's staleness threshold needs an **owner decision**, not a build.
 
 - **Small / Tier C:** items 32-residual, 33 CI wiring, item 35's actionable-split residual (#818), the
   S4/S5 proof runs, the Swap Test.
-- **Medium / Tier B:** item 8 drainer, item 10's 21 checks, item 18 page-text writer, the #762 re-queue
+- **Medium / Tier B:** item 10's 21 checks, item 18 page-text writer, the #762 re-queue
   path, item 21's remaining halves.
 - **Medium-large / Tier A:** item 22, item 9, item 17, item 19's second routing, S6 churn-stop, item 14's
   real fix, OD-62 reason codes.
