@@ -1,14 +1,28 @@
 /**
- * Category 2.1: Lot Size = 1 Rejection
+ * Category 2.1: Lot Size = 0 Rejection
  *
- * Objective: Verify validator rejects lot_size=1 (production bug from Phase 3)
- * Test Data: Real IPO that had lot_size=1 before migration fix
+ * Objective: Verify the matrix's plausibility-floor validator rejects an absurd
+ * lot_size (0) at the field-priority-matrix layer.
+ *
+ * NOTE (2026-09-20): this suite previously asserted lot_size=1 was rejected
+ * against a "min=10" floor. `field-priority-matrix.ts` deliberately removed
+ * that `min: 10` rule ("Stage 1 round 3") because it silently duplicated the
+ * real legal-lot check and was WRONG: SEBI sets no universal lot floor — a
+ * high-priced issue can legally have a lot under 10 shares (e.g. lot=8 at a
+ * ~1700-1785 band). The bare-number matrix validator only ever sees the lot
+ * size, never the price band, so it can only catch an ABSURD value (<=0 or
+ * > 100000); the real lot x cap-price legal check lives in
+ * `validateIPOData` (data-validation.ts, SEBI_RETAIL_WINDOW) and the nightly
+ * `d_lot_band_window` audit, which this test does not exercise. This test now
+ * asserts the matrix's actual current floor (`validation: { min: 1, max:
+ * 100000 }`) instead of a floor that was deliberately deleted as incorrect.
+ *
+ * Test Data: Synthetic IPO exercising the matrix validator directly.
  *
  * Expected Results:
- * - Validator rejects lot_size=1 as invalid (min=10 per field-priority-matrix)
- * - Conflict logged with reason='VALIDATION_FAILED'
+ * - Matrix validator rejects lot_size=0 as invalid (min=1 per field-priority-matrix)
+ * - Rejection logged with reason='VALIDATION_FAILED'
  * - Value remains unchanged in database
- * - Conflict recorded in data_conflicts table
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'vitest';
@@ -59,7 +73,7 @@ describe('Category 2.1: Lot Size = 1 Rejection', () => {
     }
   });
 
-  test('Validator rejects lot_size=1 as invalid (min=10)', async () => {
+  test('Validator rejects lot_size=0 as invalid (min=1)', async () => {
     // Get initial IPO state
     const initialIPO = await db
       .select()
@@ -69,11 +83,12 @@ describe('Category 2.1: Lot Size = 1 Rejection', () => {
 
     expect(initialIPO[0].lotSize).toBeNull(); // Initially null
 
-    // Attempt consolidation with lot_size=1 (MUST be rejected)
+    // Attempt consolidation with lot_size=0 (MUST be rejected: below the
+    // matrix's current absurd-value floor of min=1 — see file header note)
     const result = await consolidationService.consolidateIPOData({
       ipoId: testIPOId,
       tableName: 'ipos',
-      incomingData: { lot_size: 1 }, // Invalid: less than min=10 (snake_case for field-priority-matrix)
+      incomingData: { lot_size: 0 }, // Invalid: below min=1 (snake_case for field-priority-matrix)
       source: 'NSE',
       existingData: initialIPO[0],
       shadowMode: true, // Shadow mode - check decisions without DB writes
@@ -94,7 +109,7 @@ describe('Category 2.1: Lot Size = 1 Rejection', () => {
 
     const rejection = lotSizeResult!.rejectedSources![0];
     expect(rejection.reason).toBe('VALIDATION_FAILED');
-    expect(rejection.value).toBe(1);
+    expect(rejection.value).toBe(0);
 
     // Consolidated data should NOT include lot_size (rejected)
     expect(result.consolidatedData).toBeDefined();
@@ -175,8 +190,9 @@ describe('Category 2.1: Lot Size = 1 Rejection', () => {
     console.log(`   Reason: ${rejection.reason}`);
   });
 
-  test('Edge case: lot_size=10 (minimum boundary)', async () => {
-    // Test boundary value: min=10
+  test('Edge case: lot_size=1 (minimum boundary)', async () => {
+    // Test boundary value: min=1 (see file header note — the matrix's real
+    // current floor, not the deliberately-removed min=10)
     const initialIPO = await db
       .select()
       .from(ipos)
@@ -186,7 +202,7 @@ describe('Category 2.1: Lot Size = 1 Rejection', () => {
     const result = await consolidationService.consolidateIPOData({
       ipoId: testIPOId,
       tableName: 'ipos',
-      incomingData: { lot_size: 10 }, // Valid: exactly at min boundary (snake_case)
+      incomingData: { lot_size: 1 }, // Valid: exactly at min boundary (snake_case)
       source: 'BSE',
       existingData: initialIPO[0],
       shadowMode: true,
@@ -199,9 +215,9 @@ describe('Category 2.1: Lot Size = 1 Rejection', () => {
 
     // Should be in consolidatedData
     expect(result.consolidatedData).toBeDefined();
-    expect(result.consolidatedData!.lot_size).toBe(10);
+    expect(result.consolidatedData!.lot_size).toBe(1);
 
-    console.log('✅ Boundary test passed: lot_size=10 (minimum) accepted');
+    console.log('✅ Boundary test passed: lot_size=1 (minimum) accepted');
   });
 
   test('Edge case: lot_size=100000 (maximum boundary)', async () => {
