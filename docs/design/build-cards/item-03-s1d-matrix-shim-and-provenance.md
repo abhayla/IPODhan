@@ -78,11 +78,21 @@ expected: `gmp_records.*` and any class-C/I field the writer touches); `walk-pro
 | id | command | expect | env |
 |---|---|---|---|
 | S1d-1 | `cd scraper && npx vitest run tests/unit/config/field-priority-matrix-shim-and-shadow.test.ts` | exit 0 | local |
-| S1d-2 | `git grep -c -E "^  (revenue_fy2|revenue_fy3|profit_fy1|profit_fy2|profit_fy3|roe_percentage|roce_percentage|pb_ratio):" HEAD -- scraper/src/config/field-priority-matrix.ts` | exit 1 (was exit 0, count 8, on `origin/main`) | local |
-| S1d-2b | `cd scraper && npx vitest run tests/unit/config/field-priority-matrix-camelcase-siblings.test.ts` | exit 0 (the 5 keys WITH camelCase siblings must survive the deletion) | local |
-| S1d-3 | `git grep -c "policyOrigin" HEAD -- scraper/src/services/data-consolidation-service.ts` | regex: `^[1-9]` | local |
+| S1d-2 | `git grep -c -E "^  (revenue_fy2|revenue_fy3|profit_fy1|profit_fy2|profit_fy3|roe_percentage|roce_percentage|pb_ratio):" HEAD -- scraper/src/config/field-priority-matrix.ts` | exit 1 | local |
+| S1d-2b | `cd scraper && npx vitest run tests/unit/config/field-priority-matrix-camelcase-siblings.test.ts` | exit 0 | local |
+| S1d-3 | `git grep -c "policyOrigin" HEAD -- scraper/src/services/data-consolidation-service.ts` | regex: `:[1-9]` | local |
 | S1d-4 | `cd scraper && npx vitest run -c vitest.integration.config.ts tests/integration/field-sources-row-key-provenance.integration.test.ts` | exit 0 | test-db |
 | S1d-5 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from field_sources where data_lineage->>'policyOrigin' like 'registry:%' and updated_at > now() - interval '1 day'" --expect-db ipodhan_staging` | regex: `n=[1-9]` | staging |
+
+Notes on two rows, moved here from their `expect` cells so the gate can parse them
+(`scripts/check-stage3-dod.mjs` reads that column as a strict grammar; prose in it made every
+slice unprovable until #821 taught the gate to fail the ROW instead of the whole run):
+
+- **S1d-2** expects `exit 1`. Before this slice the same grep exited 0 with a count of 8 on
+  `origin/main` — the eight snake_case financial keys it names were still present. Exit 1 is grep
+  finding nothing, which is the deletion having happened.
+- **S1d-2b** expects `exit 0`. The point of the row is the opposite of S1d-2: the five keys that DO
+  have camelCase siblings must SURVIVE the deletion, and this test asserts they did.
 
 ## Rollback
 
