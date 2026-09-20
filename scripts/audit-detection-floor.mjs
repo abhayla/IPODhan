@@ -2030,6 +2030,69 @@ async function checkS_pullNoop() {
   record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'PASS', detail);
 }
 
+
+// E1-SOURCE: the ten E-1 (class T) fields are the exchange's to state -- open,
+// close, listing, allotment, refund and credit dates, status, exchanges. A
+// document may PRINT an intended date; only the exchange's own page says what
+// it IS. So no E-1 field may ever carry a document-path source.
+//
+// It asserts the OUTCOME, not the declared intent: the manifest can say DOC is
+// not capable for these fields, and that is a claim; this reads what actually
+// landed in field_sources.
+//
+// field_sources.field_name is camelCase (`openDate`, not `open_date`) -- a
+// snake_case filter here returns a silent empty result and passes for the
+// wrong reason, which is a mistake this repository has made before.
+const E1_DOCUMENT_SOURCES = ['DRHP', 'DOC'];
+
+async function checkS_e1Source() {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'scraper', 'config', 'field-manifest.json'), 'utf8'));
+  } catch (e) {
+    record('e1_source', 'no E-1 (exchange-stated) field is written by the document path', 'UNVERIFIABLE',
+      `field-manifest.json not readable: ${e.message}`);
+    return;
+  }
+  const toCamel = (c) => c.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+  const e1 = Object.entries(manifest.fields)
+    .filter(([, v]) => v.class === 'T')
+    .map(([k]) => {
+      const [table, ...rest] = k.split('.');
+      return { table, column: toCamel(rest.join('.')) };
+    });
+  if (e1.length === 0) {
+    record('e1_source', 'no E-1 (exchange-stated) field is written by the document path', 'UNVERIFIABLE',
+      'the manifest declares no class-T field — the population this check guards is empty, which is not a pass');
+    return;
+  }
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, f.table_name AS "tableName", f.field_name AS "fieldName", f.source::text AS source
+         FROM field_sources f
+         JOIN ipos i ON i.id = f.ipo_id
+        WHERE (f.table_name, f.field_name) IN (${e1.map((_, n) => `($${n * 2 + 1}, $${n * 2 + 2})`).join(', ')})
+          AND f.source::text = ANY($${e1.length * 2 + 1})
+        ORDER BY i.slug`,
+      [...e1.flatMap((f) => [f.table, f.column]), E1_DOCUMENT_SOURCES]
+    );
+  } catch (e) {
+    record('e1_source', 'no E-1 (exchange-stated) field is written by the document path', 'UNVERIFIABLE',
+      `field_sources not readable: ${e.message}`);
+    return;
+  }
+  for (const r of rows) {
+    notify('e1_source', 'P1', `${r.slug}:${r.tableName}.${r.fieldName}`,
+      'E-1 field written by the document path', `source=${r.source} — only the exchange states this field`);
+  }
+  record('e1_source', 'no E-1 (exchange-stated) field is written by the document path',
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    rows.length === 0
+      ? `0 of ${e1.length} E-1 field(s) carry a document source`
+      : `${rows.length} E-1 write(s) from a document source: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}=${r.source}`).join('; ')}`);
+}
+
 async function checkS_pullWalk() {
   let rows;
   try {
@@ -2264,6 +2327,7 @@ async function main() {
   await checkS_pullPlanOrigin();
   await checkS_pullAdmin();
   await checkS_pullNoop();
+  await checkS_e1Source();
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
