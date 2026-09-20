@@ -1007,6 +1007,19 @@ jobs:
         # workflow (#616), so an unwired check is a check that does not run.
         run: node scripts/ops/build-plan-board.mjs --check
 
+      - name: Board renderer self-test
+        run: node scripts/tests/render-board.test.mjs
+
+      - name: Rendered board not stale
+        # docs/design/board/index.html is the file that gets PUBLISHED to the
+        # owner-facing board URL. It is a build product of board-data.json,
+        # status.json, board-prose.json and the generated tracking sections.
+        # This fails the PR if someone edited the data and never re-rendered,
+        # which would publish a page whose numbers disagree with its own
+        # sources -- the exact drift measured on 2026-09-20 (the page said
+        # "12 built" while the source said 16).
+        run: node scripts/ops/render-board.mjs --check
+
       - name: Run detection-change gate
         env:
           GH_PR_NUMBER: ${{ github.event.pull_request.number }}

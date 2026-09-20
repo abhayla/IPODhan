@@ -8,7 +8,8 @@
 
 # W-164b: same class for ESM launchers with a shebang (web/scripts/run-prod-verify.mjs,
 # lint-ci-gate.mjs, scripts/*.mjs): a CRLF checkout on Windows makes vite fail to strip
-# "#!/usr/bin/env node" and every test importing the module dies with
+# "#!/usr/bin/env node
+" and every test importing the module dies with
 # "Invalid or unexpected token" while node itself and the Linux gate pass.
 *.mjs text eol=lf
 
@@ -22,7 +23,8 @@ docs/contracts/*.md text eol=lf
 # which makes it unreviewable and invites merge conflicts. Pinning it keeps the
 # stored form stable so a diff shows only the actual change.
 # NOT the reason: an earlier note in this repo claimed the churn split three
-# `tr -d '"'` commands across lines. That was wrong -- verified from raw blobs,
+# `tr -d '"
+'` commands across lines. That was wrong -- verified from raw blobs,
 # the argument is a literal two-character backslash-r that EOL conversion never
 # touches. Those commands are genuinely broken on main from some earlier edit and
 # are repaired by item 01 slice s3, independently of this rule.
@@ -50,3 +52,11 @@ scraper/config/*.json text eol=lf
 #   git checkout --theirs docs/design/board/plan-sections.generated.html
 #   node scripts/ops/build-plan-board.mjs
 docs/design/board/plan-sections.generated.html -merge
+
+# index.html is a GENERATED build product that CI byte-compares
+# (render-board.mjs --check), so its stored form should not vary by platform.
+# NOTE: four eol=lf rules were added here for #850 and then removed -- an
+# independent review proved line endings were never the cause. The gate was
+# reporting REAL staleness against the PR merge ref, where main had moved
+# plan-sections.generated.html. Only this rule is kept, on principle.
+docs/design/board/index.html text eol=lf

@@ -1,0 +1,127 @@
+{
+  "_comment": "The hand-owned half of the board. Everything here is a judgement a human makes; everything NOT here is derived by render-board.mjs from source files or scripts. Keep it small: if a value can be computed, compute it instead of typing it.",
+  "stamp": "2026-09-20 14:45 IST",
+  "stage": "Stage 3 — one source table, then prevention",
+
+  "headline": "Stage 3's 13 slices are merged and live on staging. The work now is finishing the remaining spec items on staging; production has not moved since 2026-09-07 and is not scheduled to.",
+
+  "waiting_on_owner": [
+    {
+      "id": "D-3",
+      "ask": "May a config-only production deploy (no build) run in any evening window, rather than only the weekly release?",
+      "recommend": "Yes",
+      "why": "The weekly rule exists to limit BUILDS on the 2-vCPU box that serves production. A config deploy copies one JSON file and restarts nothing, so the cost it guards against is absent.",
+      "blocks": "Nothing today. Decide before the first prod config change."
+    },
+    {
+      "id": "OD-21 staleness",
+      "ask": "How old may a field's last-confirmed date get before the page marks it stale?",
+      "recommend": "7 days for document-sourced fields, 1 day for live figures",
+      "why": "Item 21 is stuck at PARTIAL only because this number has no value. It is an owner decision, not a build.",
+      "blocks": "Build item 21 cannot reach BUILT."
+    },
+    {
+      "id": "Prod schema",
+      "ask": "Production is 16 migrations behind (4 tables, 12 columns, 14 indexes, 6 constraints missing). Rehearse the batch against a prod-shaped copy before the release?",
+      "recommend": "Yes, rehearse first",
+      "why": "The 16 have never been run as ONE batch against prod's exact schema. Individually each is cheap at current row counts; as a batch, untested.",
+      "blocks": "The next production release."
+    }
+  ],
+
+  "environments": [
+    {
+      "slot": "Production",
+      "url": "ipodhan.com",
+      "sha": "f0c66b6b",
+      "since": "2026-09-07",
+      "state": "bad",
+      "note": "Behind main. 16 migrations unapplied — <code>ipo_field_plan</code>, <code>field_extraction_failures</code>, <code>field_source_overrides</code>, <code>document_pages</code> do not exist here.",
+      "flags": "manifest OFF, verdict writer OFF"
+    },
+    {
+      "slot": "Staging",
+      "url": "staging",
+      "sha": "61808af1",
+      "since": "2026-09-20",
+      "state": "ok",
+      "note": "All 16 migrations applied; 4 minor drift findings. This is the release gate — the bar is feature-complete here, not a green build.",
+      "flags": "manifest ON, verdict writer ON"
+    },
+    {
+      "slot": "Local / test",
+      "url": "ipodhan_test",
+      "sha": "—",
+      "since": "per run",
+      "state": "ok",
+      "note": "The one sanctioned local Postgres, reached on <code>localhost:15432</code> through the tunnel. Integration and real-writer tests run here.",
+      "flags": "per-test"
+    }
+  ],
+
+  "release": {
+    "window": "One production window per day, ~21:00–23:30 IST, owner-worded only.",
+    "branch": "Prod deploys only from a frozen <code>release/prod-&lt;date&gt;</code> branch, never from main.",
+    "contents": "Not cut. The next release must carry the 16 pending migrations first, then the stage 3 slices.",
+    "rollback": "<code>gh workflow run deploy-linux.yml --ref release/prod-&lt;previous&gt; -f slot=prod</code>; config-only changes roll back with <code>deploy-config.sh</code> and the previous sha.",
+    "scheduled": false
+  },
+
+  "gates": [
+    { "name": "PR gate (lint, types, unit)", "state": "ok", "detail": "Green on main. The only workflow that runs on a PR." },
+    { "name": "Integration / E2E", "state": "warn", "detail": "<code>workflow_dispatch</code> only — does NOT run on a PR. A green PR gate is not a green CI." },
+    { "name": "Swap Test (stage acceptance)", "state": "bad", "detail": "NEVER RUN. Both config paths are unblocked in principle; neither has been executed on staging. Stage 3 is not done until it passes." },
+    { "name": "Detection floor", "state": "warn", "detail": "21 of 26 pull/re-read checks are designed-not-built (#778). 5 NEW findings in last night's delta." },
+    { "name": "Build-card gate", "state": "warn", "detail": "Accepts <code>Status: unknown</code> as valid, which is why 24 of 42 cards say nothing (#810)." }
+  ],
+
+  "reader_impact": [
+    {
+      "what": "Issue size is 41–76% too low on 6 of 6 live IPOs",
+      "plain": "A reader comparing two IPOs sees one of them far smaller than it really is. On a ₹500 crore issue the page can show roughly ₹150 crore.",
+      "issue": "#728",
+      "state": "bad",
+      "status": "Queued LAST, deliberately: the verification that would prove it stays fixed does not exist yet."
+    },
+    {
+      "what": "14,145 source disagreements sit unresolved",
+      "plain": "Where two sources disagree the reader is shown one value with no sign anything is in doubt. The oldest has been open 96 days.",
+      "issue": "OD-63",
+      "state": "warn",
+      "status": "The prevention model stops new ones. Draining the old pile is the admin queue (S9, queued)."
+    },
+    {
+      "what": "Every fix of the last 13 days is invisible to readers",
+      "plain": "197 fix and feature commits are on main and not on the live site, because production has not deployed since 2026-09-07.",
+      "issue": "—",
+      "state": "bad",
+      "status": "By design — the owner's bar is feature-complete staging before a prod window."
+    }
+  ],
+
+  "chain": [
+    { "id": "Wave 1", "what": "34, 35, 8, 19, S6 churn-stop, Swap Test", "state": "building", "note": "unblocked, parallel" },
+    { "id": "6", "what": "The pull walk", "state": "queued", "note": "#705, #762 re-queue" },
+    { "id": "9", "what": "The re-read loop", "state": "queued", "note": "needs 6" },
+    { "id": "10", "what": "Verification checks", "state": "queued", "note": "needs 6+9; 21 of 26 unbuilt" },
+    { "id": "17 · 11", "what": "Closed-IPO job · crore conversion", "state": "queued", "note": "needs 10" },
+    { "id": "14", "what": "BSE issue size (#728)", "state": "red", "note": "LAST — verification before correctness" }
+  ],
+
+  "changed_since": {
+    "date": "2026-09-19",
+    "lines": [
+      "Board rebuilt as a generated page: the shell, the vitals and the three tracking sections all come from source files now, so it cannot drift from the spec.",
+      "Items 18 and 22 were re-measured and found already BUILT — two false negatives corrected (#848).",
+      "PR #841 landed the generator for the 29 build items, 63 owner decisions and 190 sourced fields.",
+      "The prod schema gap was measured for the first time: 16 migrations, 46 drift findings.",
+      "Five NEW detection-floor findings appeared overnight; two went away."
+    ]
+  },
+
+  "now": {
+    "Landed": "Stage 3's 13 slices are all merged. Since the last board: #841 (the tracking-section generator), #844, #848 (items 18 and 22 re-measured as already built). Staging serves 61808af1.",
+    "Next": "Wave 1 runs first and in parallel — items 34 and 35 in progress, then 8, 19, the S6 churn-stop (#759) and the Swap Test (items 18 and 22 were re-measured as already BUILT in #848). Then item 6, then 9, then 10, then 17 and 11. Item 14 (#728) goes last by the owner's rule: verification before correctness.",
+    "Blocked": "OD-62 reason codes (<code>field_extraction_failures</code> holds zero rows) gate OD-63's admin queue. The Swap Test has never been run, and it is the stage's own acceptance test."
+  }
+}
