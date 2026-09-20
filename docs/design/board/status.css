@@ -15,3 +15,14 @@
 .now .k{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);display:block;margin-bottom:2px}
 .status table{min-width:760px;font-variant-numeric:tabular-nums}
 .status td.mono{font-family:"IBM Plex Mono",monospace;font-size:12.5px;white-space:nowrap}
+
+/* plan-board generated sections (scripts/ops/build-plan-board.mjs) */
+.status .mute{color:var(--mute);font-size:12px}
+.status details{border:1px solid var(--line);background:var(--panel);margin:6px 0}
+.status details>summary{cursor:pointer;padding:9px 12px;font-size:13.5px;list-style:none}
+.status details>summary::-webkit-details-marker{display:none}
+.status details>summary::before{content:"\25B8";display:inline-block;width:14px;color:var(--mute)}
+.status details[open]>summary::before{content:"\25BE"}
+.status details>summary:hover{background:var(--accent-soft)}
+.status details .wrap{margin:0;border:0;border-top:1px solid var(--line)}
+.status td.s{font-family:"IBM Plex Mono",monospace;font-size:12.5px;white-space:nowrap;color:var(--mute)}
