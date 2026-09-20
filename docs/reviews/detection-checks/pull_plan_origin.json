@@ -8,8 +8,7 @@
   "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/build-cards/item-03-s1a-resolver.md)",
   "consumer": "per-cycle failure reading (identities)",
   "consumerReason": "same 0/alarms-on-any-nonzero shape as PULL-ADMIN/PULL-WRITE/PULL-FROZEN/PULL-NOBLANK — policy_origin is the record of WHICH resolver configuration (registry version or override) produced a row's ranks; a current-version row with none means the generator or walk wrote the row without going through resolveFieldSourcePolicy, which is exactly the reused-vs-rewritten class item 3 S1a exists to prevent",
-  "status": "designed, not yet built — specified by docs/design/build-cards/item-03-s1a-resolver.md ('Detection'); build in S6's audit floor",
+  "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs",
   "sourceDesign": "docs/design/build-cards/item-03-s1a-resolver.md",
-  "section": "notCoveredByThisManifest",
-  "note": "PULL-PLAN-ORIGIN (a plan row at the current manifest version carrying no policy_origin) - specified by item-03-s1a-resolver.md's Detection section, not yet implemented in scripts/audit-detection-floor.mjs. Move back to \"section\": \"checks\" once a record('pull_plan_origin') call lands in the audit script (S6)."
+  "section": "checks"
 }

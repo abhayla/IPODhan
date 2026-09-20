@@ -462,6 +462,19 @@
       "unverifiableWhen": "field_sources is unreadable, or fewer than 20 provenance rows were written on the printed offer-term fields in the 14-day window"
     },
     {
+      "id": "pull_admin",
+      "designId": "PULL-ADMIN",
+      "findingClass": "pull-model verification check PULL-ADMIN: fields skipped for admin reasons with no live protection row",
+      "whatItAsks": "fields skipped for admin reasons with no live protection row",
+      "healthy": "0",
+      "alarmsWhen": "any non-zero — the guard on §2.7",
+      "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+      "consumer": "per-cycle failure reading (identities)",
+      "consumerReason": "same 0/alarms-on-any-nonzero shape as PULL-WRITE, PULL-FROZEN and PULL-NOBLANK — an admin-override guard evaluated against the current cycle’s field state, not an overnight trend",
+      "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs",
+      "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
+    },
+    {
       "id": "pull_excused",
       "designId": "PULL-EXCUSED",
       "findingClass": "pull-model verification check PULL-EXCUSED: NOT_PRINTED count per (IPO, document type), NEW vs yesterday by name",
@@ -500,6 +513,19 @@
       "status": "built (item 3 slice S4)",
       "sourceDesign": "docs/design/build-cards/item-03-s4-override-layer.md",
       "note": "a missing field_source_overrides table (prod, before this slice's migration ships there) is reported PASS, not UNVERIFIABLE or FAIL -- layer 2 is simply absent on that database, matching the resolver's own table-absent tolerance."
+    },
+    {
+      "id": "pull_plan_origin",
+      "designId": "PULL-PLAN-ORIGIN",
+      "findingClass": "pull-model verification check PULL-PLAN-ORIGIN: a plan row at the current manifest version with no recorded policy_origin",
+      "whatItAsks": "every non-terminal ipo_field_plan row whose manifest_version equals the manifest's current version carries a non-null policy_origin",
+      "healthy": "0",
+      "alarmsWhen": "any non-zero — a row this cycle's generator/walk should have stamped, that carries no record of which configuration produced its ranks",
+      "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/build-cards/item-03-s1a-resolver.md)",
+      "consumer": "per-cycle failure reading (identities)",
+      "consumerReason": "same 0/alarms-on-any-nonzero shape as PULL-ADMIN/PULL-WRITE/PULL-FROZEN/PULL-NOBLANK — policy_origin is the record of WHICH resolver configuration (registry version or override) produced a row's ranks; a current-version row with none means the generator or walk wrote the row without going through resolveFieldSourcePolicy, which is exactly the reused-vs-rewritten class item 3 S1a exists to prevent",
+      "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs",
+      "sourceDesign": "docs/design/build-cards/item-03-s1a-resolver.md"
     },
     {
       "id": "pull_plan_rank",
@@ -655,13 +681,11 @@
     "g_repair_held (#192, T-466) — a repair is not done until it survives a real scraper cycle: scripts/assert-repair-held.mjs <invariant> --cycles N records the violation count (must be 0), records a cycle marker (max(last_scraped_at/updated_at) over ipos + latest scraper_logs cycle id), polls until N distinct real cycles have passed, and re-runs the invariant after each. This is a PER-TASK last-mile tool invoked by a fix task at merge time, not a nightly DB-row audit — it cannot be a checks[] entry here since this manifest's own wire-or-retire test (audit-detection-floor.test.mjs) requires every declared id to be record()-ed by audit-detection-floor.mjs, and this tool never runs inside that script. auditScript for this class is scripts/assert-repair-held.mjs (self-test scripts/tests/assert-repair-held.test.mjs); the shipped worked-example invariant is scripts/lib/repair-invariants/issue-size-t451.mjs. Wired into defect-fix-contract.md item 5 and docs/ops/prod-ops-recipes.md section 8 as the mandatory last step of every data-repair fix task.",
     "T-477 / #224 (ipo_financials fill-rate, DASHBOARD row 'ipo_financials (of financial_data pop.)') — owned by audit-ipo-coverage.mjs's own checks[] array (informational threshold, not a hard gate), not duplicated here",
     "g_zero_ssr_routes (#201, T-473) — a page whose initial HTML is chrome-only ('Loading...' and no data rows) because its data is fetched client-side; HTTP-only probe inside scripts/audit-prod.mjs (ZERO_SSR_ROUTES: fetch the route with no JS and require the real-content marker, e.g. <table><tbody><tr> for /history, or a resolved (non-loading, non-disabled) control for /dashboard's sector filter), not audit-detection-floor.mjs, so it cannot be a checks[] entry here — this manifest's wire-or-retire test requires every declared id to be record()-ed by audit-detection-floor.mjs. Guarded by web/tests/e2e/history-ssr.spec.ts and web/tests/e2e/dashboard-ssr.spec.ts (both JS disabled) and extended per page as each gets the server-service pattern.",
-    "PULL-ADMIN (pull-model verification check PULL-ADMIN: fields skipped for admin reasons with no live protection row) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_admin' call lands in the audit script.",
     "PULL-FROZEN (pull-model verification check PULL-FROZEN: SUPPLIED rows whose chosen_document_id has been superseded) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_frozen' call lands in the audit script.",
     "PULL-NOBLANK (pull-model verification check PULL-NOBLANK: fields that went from a value to absent this slot) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_noblank' call lands in the audit script.",
     "PULL-NOOP (pull-model verification check PULL-NOOP: writes per cycle ÷ fields re-asked per cycle) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_noop' call lands in the audit script.",
     "the pull walk re-asks fields and REWRITES them with identical values, which is indistinguishable in every downstream reading from the walk confirming them -- a healthy-looking write rate that is entirely no-op churn, and the field_sources provenance trail it produces is noise that hides the one real change in it",
     "PULL-PLAN (pull-model verification check PULL-PLAN: plan rows per IPO = the committed manifest, and the manifest hash is unchanged) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_plan' call lands in the audit script.",
-    "PULL-PLAN-ORIGIN (a plan row at the current manifest version carrying no policy_origin) - specified by item-03-s1a-resolver.md's Detection section, not yet implemented in scripts/audit-detection-floor.mjs. Move back to \"section\": \"checks\" once a record('pull_plan_origin') call lands in the audit script (S6).",
     "PULL-WRITE (pull-model verification check PULL-WRITE: plan rows marked SUPPLIED whose write returned skipped) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_write' call lands in the audit script.",
     "Retired 2026-09-16: RATIOS_BASIS_ISSUE_PRICE has no extractor in scraper/src/services/filing-auto-persist.ts (AUTO_PERSIST_DOC_TYPES) by design, so this check measured a population that can never move and paged UNVERIFIABLE/P1 every night (cost an hour on 2026-09-15, misread as 38 stuck documents); issuer_ratio_yield reads the real ratio population (RHP/DRHP/PROSPECTUS financial_data rows), and not_applicable_documents_named now names this PENDING count honestly instead of grading it. Replaced by issuer_ratio_yield (#670); the never-extractable population is now named by not_applicable_documents_named.",
     "REREAD-LATENCY (pull-model verification check REREAD-LATENCY: oldest actionable disagreement with no re-read attempt) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('reread_latency' call lands in the audit script.",

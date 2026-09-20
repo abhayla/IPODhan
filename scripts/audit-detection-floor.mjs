@@ -1905,6 +1905,82 @@ async function checkNotApplicableDocuments() {
 
 
 
+
+async function checkS_pullPlanOrigin() {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'scraper', 'config', 'field-manifest.json'), 'utf8'));
+  } catch (e) {
+    record('pull_plan_origin', 'current-version plan rows record which policy layer chose their ranks',
+      'UNVERIFIABLE', `field-manifest.json not readable: ${e.message}`);
+    return;
+  }
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, p.table_name AS "tableName", p.field_name AS "fieldName", p.state::text AS state
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.manifest_version = $1
+          AND p.state NOT IN ('EXHAUSTED')
+          AND p.policy_origin IS NULL
+        ORDER BY i.slug, p.table_name, p.field_name`,
+      [manifest.version]
+    );
+  } catch (e) {
+    record('pull_plan_origin', 'current-version plan rows record which policy layer chose their ranks',
+      'UNVERIFIABLE', `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  for (const r of rows.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {
+    notify('pull_plan_origin', 'P2', `${r.slug}:${r.tableName}.${r.fieldName}`,
+      'plan row at the current manifest version carries no policy_origin', `state=${r.state}`);
+  }
+  record('pull_plan_origin', 'current-version plan rows record which policy layer chose their ranks',
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    rows.length === 0
+      ? `0 row(s) at manifestVersion=${manifest.version} lack policy_origin`
+      : `${rows.length} row(s) at manifestVersion=${manifest.version} lack policy_origin: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}`).join('; ')}`);
+}
+
+async function checkS_pullAdmin() {
+  // §2.7's guard: the walk may skip a field because an admin protected it. If
+  // the plan says "skipped for admin" and no live protection row exists, the
+  // field is being withheld for a reason that is no longer true -- a silent
+  // freeze rather than a recorded decision.
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, p.table_name AS "tableName", p.field_name AS "fieldName",
+              coalesce(p.reason_code, '(none)') AS "reasonCode"
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+         LEFT JOIN field_protection_metadata f
+                ON f.ipo_id = p.ipo_id
+               AND f.table_name = p.table_name
+               AND f.field_name = p.field_name
+               AND f.is_protected = true
+        WHERE p.reason_code = 'ADMIN_PROTECTED'
+          AND f.id IS NULL
+          AND i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+        ORDER BY i.slug`
+    );
+  } catch (e) {
+    record('pull_admin', 'fields skipped for admin reasons with no live protection row', 'UNVERIFIABLE',
+      `ipo_field_plan/field_protection_metadata not readable: ${e.message}`);
+    return;
+  }
+  for (const r of rows) {
+    notify('pull_admin', 'P2', `${r.slug}:${r.tableName}.${r.fieldName}`,
+      'field skipped as admin-protected but no live protection row exists', `reason=${r.reasonCode}`);
+  }
+  record('pull_admin', 'fields skipped for admin reasons with no live protection row',
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    rows.length === 0
+      ? '0 admin-skipped field(s) without a live protection row'
+      : `${rows.length}: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}`).join('; ')}`);
+}
+
 async function checkS_pullWalk() {
   let rows;
   try {
@@ -2136,6 +2212,8 @@ async function main() {
   await checkS_pullExcused();
   await checkS_pullWalk();
   await checkS_pullType();
+  await checkS_pullPlanOrigin();
+  await checkS_pullAdmin();
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
