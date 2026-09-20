@@ -111,6 +111,40 @@ ok('exactly one section open by default',
   (html.match(/<details class="sec [^"]+" id="[^"]+" open>/g) || []).length === 1,
   String((html.match(/ open>/g) || []).length) + ' open');
 
+// --- 5b. a CRLF checkout must not make --check fail -------------------------
+// git checks these files out CRLF on Windows and LF on Linux. Reading them raw
+// makes the RENDERED STRING platform-dependent, so --check passed locally and
+// failed on the Ubuntu runner (#850). Normalising only at the comparison was
+// NOT enough — board.css and board-prose.json feed the output too, which this
+// test caught. Every input is read through readText() now.
+{
+  const crlfDir = mkdtempSync(join(tmpdir(), 'board-crlf-'));
+  // INPUTS only. Converting index.html too would make both sides of the
+  // comparison CRLF, the mismatch would cancel out, and the test would pass
+  // with the fix removed -- which it did, the first time this was written.
+  const names = ['board.css', 'board-prose.json', 'board-data.json',
+    'status.json', 'plan-sections.generated.html'];
+  const saved = {};
+  for (const n of names) saved[n] = readFileSync(join(BOARD, n), 'utf8');
+  try {
+    for (const n of names) {
+      const LFCH = String.fromCharCode(10);
+      const CRLFCH = String.fromCharCode(13, 10);
+      const crlf = saved[n].split(CRLFCH).join(LFCH).split(LFCH).join(CRLFCH);
+      writeFileSync(join(BOARD, n), crlf);
+    }
+    let crlfOk = true;
+    try {
+      execFileSync('node', [RENDER, '--check'], { encoding: 'utf8', stdio: 'pipe' });
+    } catch { crlfOk = false; }
+    ok('--check tolerates a CRLF checkout', crlfOk,
+      'render output is line-ending dependent; read inputs through readText()');
+  } finally {
+    for (const n of names) writeFileSync(join(BOARD, n), saved[n]);
+  }
+  void crlfDir;
+}
+
 // --- 6. --check detects staleness -------------------------------------------
 writeFileSync(out, html.replace('One Source Table Plan', 'Tampered'));
 let checkFailed = false;

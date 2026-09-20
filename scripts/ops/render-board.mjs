@@ -66,7 +66,15 @@ const CHECK = argv.includes('--check');
 const outIdx = argv.indexOf('--out');
 const OUT = outIdx >= 0 ? argv[outIdx + 1] : OUT_DEFAULT;
 
-const readJson = (p) => JSON.parse(readFileSync(p, 'utf8'));
+const CR_LF = String.fromCharCode(13, 10);
+const NL = String.fromCharCode(10);
+// Every input is read through this: git may check files out CRLF on Windows and
+// LF on Linux, so reading raw makes the RENDERED STRING platform-dependent, not
+// just the comparison. Measured on #850: normalising only at the --check
+// compare still failed, because board.css and board-prose.json feed the output.
+const LF = (s) => s.split(CR_LF).join(NL);
+const readText = (p) => LF(readFileSync(p, 'utf8'));
+const readJson = (p) => JSON.parse(readText(p));
 
 const data = readJson(DATA);
 const prose = readJson(PROSE);
@@ -78,7 +86,7 @@ if (!existsSync(PLAN)) {
   console.error(`missing ${PLAN}\nrun: node scripts/ops/build-plan-board.mjs`);
   process.exit(1);
 }
-const planSections = readFileSync(PLAN, 'utf8').trim();
+const planSections = readText(PLAN).trim();
 if (!planSections.includes('<!-- /GENERATED -->')) {
   console.error('plan-sections.generated.html is missing its end marker — regenerate it');
   process.exit(1);
@@ -256,7 +264,7 @@ const wrapGenerated = (html) => {
 };
 const generated = wrapGenerated(planSections);
 
-const css = readFileSync(join(BOARD, 'board.css'), 'utf8');
+const css = readText(join(BOARD, 'board.css'));
 
 const page = `<title>One Source Table Plan</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -296,8 +304,13 @@ document.querySelectorAll(".controls button").forEach(function (b) {
 `;
 
 if (CHECK) {
+  // Compare with line endings normalised. git may check this file out as CRLF on
+  // Windows and LF on Linux, so a raw byte-compare is green on one platform and
+  // red on the other for a file whose CONTENT is identical — measured on #850,
+  // where the gate passed locally and failed on the Ubuntu runner.
+  const norm = (s) => s.split('\r\n').join('\n');
   const current = existsSync(OUT) ? readFileSync(OUT, 'utf8') : '';
-  if (current !== page) {
+  if (norm(current) !== norm(page)) {
     console.error('board is stale — run: node scripts/ops/render-board.mjs');
     process.exit(1);
   }

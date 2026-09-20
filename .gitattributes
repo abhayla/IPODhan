@@ -8,7 +8,8 @@
 
 # W-164b: same class for ESM launchers with a shebang (web/scripts/run-prod-verify.mjs,
 # lint-ci-gate.mjs, scripts/*.mjs): a CRLF checkout on Windows makes vite fail to strip
-# "#!/usr/bin/env node" and every test importing the module dies with
+# "#!/usr/bin/env node
+" and every test importing the module dies with
 # "Invalid or unexpected token" while node itself and the Linux gate pass.
 *.mjs text eol=lf
 
@@ -22,7 +23,8 @@ docs/contracts/*.md text eol=lf
 # which makes it unreviewable and invites merge conflicts. Pinning it keeps the
 # stored form stable so a diff shows only the actual change.
 # NOT the reason: an earlier note in this repo claimed the churn split three
-# `tr -d '"'` commands across lines. That was wrong -- verified from raw blobs,
+# `tr -d '"
+'` commands across lines. That was wrong -- verified from raw blobs,
 # the argument is a literal two-character backslash-r that EOL conversion never
 # touches. Those commands are genuinely broken on main from some earlier edit and
 # are repaired by item 01 slice s3, independently of this rule.
@@ -35,6 +37,7 @@ docs/ops/prod-ops-recipes.md text eol=crlf
 # the generator's own line-ending-normalized compare.
 scraper/config/*.json text eol=lf
 
+<<<<<<< HEAD
 # 2026-09-20: the plan board sections are GENERATED (scripts/ops/build-plan-board.mjs).
 # Two PRs that each corrected a DIFFERENT inventory row both rewrite this 90 KB file,
 # and git interleaves them line-by-line into a conflict that is meaningless to resolve
@@ -50,3 +53,13 @@ scraper/config/*.json text eol=lf
 #   git checkout --theirs docs/design/board/plan-sections.generated.html
 #   node scripts/ops/build-plan-board.mjs
 docs/design/board/plan-sections.generated.html -merge
+=======
+# The board renderer emits LF and CI byte-compares its output against the
+# committed file (render-board.mjs --check). A CRLF checkout on Windows makes
+# that comparison platform-dependent: green locally, red on the Linux runner.
+# Measured 2026-09-20 on #850. Same remedy as *.mjs above.
+docs/design/board/index.html text eol=lf
+docs/design/board/*.json text eol=lf
+docs/design/board/*.css text eol=lf
+docs/design/board/plan-sections.generated.html text eol=lf
+>>>>>>> 0e903b55 (fix(board): make the staleness gate line-ending independent)
