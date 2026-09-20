@@ -97,7 +97,10 @@ class BoardOwedGuardTest(unittest.TestCase):
         self.assertEqual(p.returncode, 2, "expected block; stdout=%s stderr=%s" % (p.stdout, p.stderr))
         self.assertIn("123", p.stderr)
         self.assertIn("Board owed", p.stderr)
-        self.assertIn("patch-plan.py", p.stderr)
+        self.assertIn("render-board.mjs", p.stderr)
+        # the message must also offer the no-stage-crossed escape, so a session
+        # facing a false-positive marker is not pushed into republishing
+        self.assertIn("do NOT republish", p.stderr)
 
     # (d)
     def test_d_artifact_publish_with_board_url_clears_marker(self):

@@ -124,6 +124,18 @@ checklist non-optional:
 - **Stop** — if the marker is still there, the turn is blocked with this checklist. A marker older
   than 12 h warns instead of blocking, so a dead marker cannot lock a session.
 
+**A merge is not automatically a stage change.** The marker asks "did a stage cross?", and the
+honest answer is often no — an ordinary merge that changed no verdict, a docs commit, a CI re-run.
+The Stop message says so and names the escape: `rm -f ~/.claude/.board-owed.ipodhan`, with the
+reason stated in the same turn. Clearing it silently disables a Tier A guard; clearing it with a
+stated reason is the intended path.
+
+**Known false positive (2026-09-20).** A marker was armed by a `cat > …board-artifact-paused….md`
+heredoc — not a merge at all. The guard's statement-splitting fix (2026-09-19) stopped a *comment*
+mentioning `gh pr merge` from arming it, but a heredoc whose BODY contains merge-ish text still
+slips through, because the body is part of the same statement. The recorded `command` field in the
+marker is what exposes it: read that field before assuming a merge happened.
+
 Fail-open everywhere. Self-tests: `python ~/.claude/hooks/tests/board-owed-guard.test.py`.
 
 **Live copy vs. versioned copy.** The hook that runs is the user-level file; `hooks/` here is the

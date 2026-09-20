@@ -290,9 +290,12 @@ def handle_artifact(data):
 STOP_MESSAGE = (
     "Board owed: merge(s) {prs} this session, board {url} not republished "
     "(owed by session {session}). "
-    "Edit docs/design/board/status.json (stamp from `date`), run "
-    "`python docs/design/board/patch-plan.py --html <saved index.html>`, "
-    "republish with `url`, then end the turn."
+    "Edit docs/design/board/board-data.json (stamp from `date`), run "
+    "`node scripts/ops/render-board.mjs`, republish "
+    "docs/design/board/index.html with `url`, then end the turn. "
+    "If no stage actually crossed (an ordinary merge that changed no verdict, "
+    "docs, or a CI re-run), do NOT republish: clear the marker with "
+    "`rm -f ~/.claude/.board-owed.ipodhan` and say why in the same turn."
 )
 
 
