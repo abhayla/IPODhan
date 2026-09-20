@@ -23,8 +23,7 @@ docs/contracts/*.md text eol=lf
 # which makes it unreviewable and invites merge conflicts. Pinning it keeps the
 # stored form stable so a diff shows only the actual change.
 # NOT the reason: an earlier note in this repo claimed the churn split three
-# `tr -d '"
-'` commands across lines. That was wrong -- verified from raw blobs,
+# `tr -d` commands across lines. That was wrong -- verified from raw blobs,
 # the argument is a literal two-character backslash-r that EOL conversion never
 # touches. Those commands are genuinely broken on main from some earlier edit and
 # are repaired by item 01 slice s3, independently of this rule.
