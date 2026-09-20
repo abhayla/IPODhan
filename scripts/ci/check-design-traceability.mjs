@@ -9,6 +9,13 @@
 // neither its owning card nor a test that names it is in the pull request
 // diff.
 //
+// detection-check: design_traceability
+// ^ This file IS the check that docs/reviews/detection-checks/design_traceability.json
+// names as its `auditScript`. The marker is what
+// scripts/tests/audit-detection-floor.test.mjs's verifyForeignAuditScript()
+// looks for: a registry entry pointing at a file that never records its own id
+// would pass the wire-or-retire test while checking nothing.
+//
 // Usage:
 //   node scripts/ci/check-design-traceability.mjs
 //     [--rules <path>] [--cards <dir>] [--unclaimed <path>]
