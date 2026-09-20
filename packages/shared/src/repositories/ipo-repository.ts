@@ -864,7 +864,26 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * Create new IPO
    */
   async create(data: IPOInsert): Promise<IPO> {
+    // #860: an IPO's segment decides which manifest ranks its fields get
+    // (`ipoTypeKey` needs it), so an IPO created without one has every ranked
+    // source chosen for a GUESSED type -- and `pull_plan_rank` cannot see
+    // that, because the policy it checks against was picked using the same
+    // guess. Measured on staging: 10 genuine IPOs in that state, one of them
+    // OPEN and being walked now with 190 guessed plan rows.
+    //
+    // Scoped to offering_type = 'IPO' deliberately. Of the 41 null-segment
+    // rows, 31 are OFS, TENDER, NCD, RIGHTS, BUYBACK or INVITS, where
+    // "MAINBOARD vs SME" does not apply and null is the honest value. A
+    // wider guard would reject 31 correct rows to fix 10 wrong ones.
+    if (data.offeringType === 'IPO' && !data.segment) {
+      throw new Error(
+        `IPORepository.create: an IPO (offeringType=IPO) may not be created without a segment — ` +
+        `"${data.companyName ?? data.slug ?? 'unknown'}" had segment=${data.segment ?? 'undefined'}. ` +
+        'The segment decides which manifest ranks its fields get; without it every rank is resolved for a guessed type. See #860.'
+      );
+    }
     try {
+
       // Single write choke point: every IPO create — regardless of which
       // scraper/consolidation path produced it — stores a sanitized display
       // name (strip trailing scrape-artifact status token, e.g. "Ltd. O"). #42
