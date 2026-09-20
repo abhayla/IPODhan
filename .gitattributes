@@ -60,3 +60,12 @@ docs/design/board/plan-sections.generated.html -merge
 # reporting REAL staleness against the PR merge ref, where main had moved
 # plan-sections.generated.html. Only this rule is kept, on principle.
 docs/design/board/index.html text eol=lf
+# plan-sections.generated.html needs it for a different reason than index.html:
+# `build-plan-board.mjs --check` byte-compares the committed file against a fresh
+# generation. Without an explicit eol, git falls back to core.autocrlf and writes
+# CRLF into a Windows worktree, so the gate fails on every Windows clone of main
+# while passing on the Linux runner. Measured 2026-09-20 on a clean clone of
+# facf3b30: identical 91582 bytes, zero CR in either, and git still reported the
+# file modified. (The `-merge` rule above is separate — that one stops line-by-line
+# conflict resolution; this one stops checkout renormalisation.)
+docs/design/board/plan-sections.generated.html text eol=lf
