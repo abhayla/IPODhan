@@ -541,6 +541,33 @@
       "sourceDesign": "docs/design/build-cards/item-03-s6-churn-stop-and-detection.md"
     },
     {
+      "id": "pull_type",
+      "designId": "PULL-TYPE",
+      "findingClass": "pull-model verification check PULL-TYPE: plan rows whose resolved ranks do not match the IPO’s current type; IPOs with a null segment",
+      "whatItAsks": "plan rows whose resolved ranks do not match the IPO’s current type; IPOs with a null segment",
+      "healthy": "0 / 0",
+      "alarmsWhen": "any non-zero",
+      "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+      "consumer": "per-cycle failure reading (identities)",
+      "consumerReason": "ranks are resolved at plan-build time each cycle (§2.3.5) — a rank/type mismatch is a fact about this cycle’s plan, read by identity (IPO, plan row)",
+      "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs",
+      "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
+      "note": "The RANK half of PULL-TYPE is covered by pull_plan_rank; this check owns the null-segment half — an IPO with no segment has every rank resolved for a guessed type."
+    },
+    {
+      "id": "pull_walk",
+      "designId": "PULL-WALK",
+      "findingClass": "pull-model verification check PULL-WALK: every phase-1 IPO walked this slot",
+      "whatItAsks": "every phase-1 IPO walked this slot",
+      "healthy": "19 of 19",
+      "alarmsWhen": "fewer than all, twice running — and separately, phase-1 count ≥ 1",
+      "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+      "consumer": "per-cycle failure reading (identities)",
+      "consumerReason": "brief-assigned: a per-slot walk count is read each cycle, by which IPO was skipped, not accumulated as a nightly trend",
+      "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs",
+      "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
+    },
+    {
       "id": "pull_write_policy",
       "designId": "PULL-WRITE-POLICY",
       "findingClass": "a field_sources row written by a source the manifest policy does not rank for that field/IPO-type",
@@ -635,8 +662,6 @@
     "the pull walk re-asks fields and REWRITES them with identical values, which is indistinguishable in every downstream reading from the walk confirming them -- a healthy-looking write rate that is entirely no-op churn, and the field_sources provenance trail it produces is noise that hides the one real change in it",
     "PULL-PLAN (pull-model verification check PULL-PLAN: plan rows per IPO = the committed manifest, and the manifest hash is unchanged) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_plan' call lands in the audit script.",
     "PULL-PLAN-ORIGIN (a plan row at the current manifest version carrying no policy_origin) - specified by item-03-s1a-resolver.md's Detection section, not yet implemented in scripts/audit-detection-floor.mjs. Move back to \"section\": \"checks\" once a record('pull_plan_origin') call lands in the audit script (S6).",
-    "PULL-TYPE (pull-model verification check PULL-TYPE: plan rows whose resolved ranks do not match the IPO’s current type; IPOs with a null segment) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_type' call lands in the audit script.",
-    "PULL-WALK (pull-model verification check PULL-WALK: every phase-1 IPO walked this slot) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_walk' call lands in the audit script.",
     "PULL-WRITE (pull-model verification check PULL-WRITE: plan rows marked SUPPLIED whose write returned skipped) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_write' call lands in the audit script.",
     "Retired 2026-09-16: RATIOS_BASIS_ISSUE_PRICE has no extractor in scraper/src/services/filing-auto-persist.ts (AUTO_PERSIST_DOC_TYPES) by design, so this check measured a population that can never move and paged UNVERIFIABLE/P1 every night (cost an hour on 2026-09-15, misread as 38 stuck documents); issuer_ratio_yield reads the real ratio population (RHP/DRHP/PROSPECTUS financial_data rows), and not_applicable_documents_named now names this PENDING count honestly instead of grading it. Replaced by issuer_ratio_yield (#670); the never-extractable population is now named by not_applicable_documents_named.",
     "REREAD-LATENCY (pull-model verification check REREAD-LATENCY: oldest actionable disagreement with no re-read attempt) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('reread_latency' call lands in the audit script.",

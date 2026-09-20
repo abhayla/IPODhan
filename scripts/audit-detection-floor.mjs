@@ -1904,6 +1904,75 @@ async function checkNotApplicableDocuments() {
 }
 
 
+
+async function checkS_pullWalk() {
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug,
+              count(*)::int AS planned,
+              count(*) FILTER (WHERE p.last_attempt_at > now() - interval '36 hours')::int AS "walkedRecently"
+         FROM ipos i
+         JOIN ipo_field_plan p ON p.ipo_id = i.id
+        WHERE i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+        GROUP BY i.slug
+        ORDER BY i.slug`
+    );
+  } catch (e) {
+    record('pull_walk', 'every live IPO was walked in the last 36 hours', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  // The design's own guard: "phase-1 count >= 1". A walk that reports 0 of 0
+  // walked is not a healthy walk, it is an empty population, and printing PASS
+  // for it is how a dead loop reads as fine.
+  if (rows.length === 0) {
+    record('pull_walk', 'every live IPO was walked in the last 36 hours', 'UNVERIFIABLE',
+      'no live IPO carries a plan row — the population is empty, which is not the same as a clean walk');
+    return;
+  }
+  const stale = rows.filter((r) => r.walkedRecently === 0);
+  for (const r of stale) {
+    notify('pull_walk', 'P2', r.slug, 'live IPO not walked in 36h', `${r.planned} planned field(s), 0 attempted recently`);
+  }
+  record('pull_walk', 'every live IPO was walked in the last 36 hours',
+    stale.length === 0 ? 'PASS' : 'FAIL',
+    stale.length === 0
+      ? `${rows.length} of ${rows.length} live IPO(s) walked within 36h`
+      : `${stale.length} of ${rows.length} live IPO(s) NOT walked in 36h: ${stale.slice(0, MAX_OFFENDERS).map((r) => r.slug).join(', ')}`);
+}
+
+async function checkS_pullType() {
+  // The rank half of this design id is already covered by pull_plan_rank. What
+  // that check cannot see is an IPO whose TYPE is unknown: `ipoTypeKey` needs a
+  // segment, so a null segment means every rank it resolved was resolved for a
+  // guessed type. That is the half this check owns.
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, i.status::text AS status, count(p.id)::int AS "planRows"
+         FROM ipos i
+         LEFT JOIN ipo_field_plan p ON p.ipo_id = i.id
+        WHERE i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+          AND i.segment IS NULL
+        GROUP BY i.slug, i.status
+        ORDER BY i.slug`
+    );
+  } catch (e) {
+    record('pull_type', 'live IPOs whose segment is null, so their plan ranks were resolved for a guessed type',
+      'UNVERIFIABLE', `ipos/ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  for (const r of rows) {
+    notify('pull_type', 'P2', r.slug, 'live IPO has a null segment', `${r.status}, ${r.planRows} plan row(s) resolved without a type`);
+  }
+  record('pull_type', 'live IPOs whose segment is null, so their plan ranks were resolved for a guessed type',
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    rows.length === 0
+      ? '0 live IPO(s) with a null segment'
+      : `${rows.length} live IPO(s) with a null segment: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}(${r.planRows} rows)`).join('; ')}`);
+}
+
 // ---------------------------------------------------------------------------
 // Item 10: PULL-YIELD / PULL-EXHAUST / PULL-EXCUSED.
 //
@@ -2065,6 +2134,8 @@ async function main() {
   await checkS_pullYield();
   await checkS_pullExhaust();
   await checkS_pullExcused();
+  await checkS_pullWalk();
+  await checkS_pullType();
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
