@@ -1,0 +1,130 @@
+# Pull-model completion state
+
+**What this is.** The live inventory of every pull-model build item, and the evidence for each verdict.
+The policy that makes this list load-bearing is `.claude/rules/staging-is-the-release-gate.md`: no
+production deploy is targeted until every item here is built and proven on staging.
+
+**How to use it.** When an item lands, change its row here in the same PR. When a verdict is disputed,
+re-measure - do not edit the verdict to match a card.
+
+**Measured 2026-09-20 against `refs/remotes/origin/main` = `485f5285`.** Always the explicit ref: a local
+branch named `origin/main` has shadowed the remote twice and made a merged PR read as unmerged.
+
+---
+
+## Why this document exists rather than the cards
+
+Every tracking artefact here has been caught wrong, so the cards cannot be the list:
+
+- **24 of 42 build cards carry a Status line reading `unknown`**, and `check-build-cards.mjs:155` accepts
+  that shape as valid. The gate passes while telling nobody anything. This is the single biggest reason
+  nobody had an accurate picture.
+- The stage-3 ledger showed five merged slices as `queued` for three days (corrected 2026-09-20).
+- Item 31's card reads `NOT STARTED` for work the board records as landed in #813.
+- `check-dod.mjs`'s D14 item has been red since 2026-09-09 because it hard-codes two open-fork rows that
+  were correctly answered that day (#829).
+
+So a card saying DONE is a claim. Each verdict below was checked against an artefact that exists.
+
+---
+
+## The items
+
+| # | Item | Verdict | Evidence / what is missing |
+|---|---|---|---|
+| 1 | Child-table consolidated writer | **BUILT** | `data-consolidation-orchestrator.ts:731` `tableName: ChildConsolidationTable`; `:775` `SINGLETON_ROW_CHILD_TABLES`. Residual: #802 - `peer_companies` unwritten since 2026-06-17 |
+| 2 | Field manifest + priority config | **BUILT** | `scraper/config/field-manifest.json`, `field-manifest-loader.ts`, `field-manifest-schema.ts`, 4 unit test files. Residual: #739 |
+| 3 | Matrix cleanup / one source table (13 slices) | **PARTIAL** | 13 slices landed. Missing: **S6 churn-stop half** (#759, needs a `field_plan_state` migration); **S4 and S5 staging proofs owed**; **Swap Test never run**; S2-4 recorded FAIL (`n=10`, a card defect corrected in #835) |
+| 4 | Per-field validation before write | **BUILT** | `field-extraction-validation.ts` (201 lines); `field_extraction_failures` in `schema.ts`. **Caveat: that table holds ZERO rows** - see OD-62 below |
+| 5 | `ipo_field_plan` table + generator | **BUILT** | `ipoFieldPlan` in `schema.ts`; `field-plan-generator.ts`; `ipo-field-plan-repository.ts` |
+| 6 | The pull walk over the plan | **PARTIAL** | `field-plan-walk.ts` + 4 fetchers wired at `field-plan-walk-deps.ts:58-62`. But #705 is open claiming the walk has no fetchers - *unverified which is stale*. #762: 12,480 plan rows parked with no re-queue path (fix merged as #763, **not on prod**) |
+| 7 | Job scheduler + budgets | **PARTIAL** | Scheduler built (`scheduler/`, `due-step-cycle.ts`). OD-55 force-kill removal merged but **not on prod** (#805). Tiering (O-4) unverified |
+| 8 | Ratios / basis-for-offer-price extractor | **PARTIAL** | Reader built (`document-classifier.ts`, `retype-ratios-documents.ts`). **#716: the drainer is missing - RATIOS documents never leave PENDING** |
+| 9 | The re-read loop | **NOT BUILT** | Zero `reread` hits in `field-plan-walk.ts`. `detection-checks/reread_verdict.json` says it is designed, not yet built. Section 2.5.1 triggers 3-7 have no implementer; trigger 4 storage was deleted in S2 as dead code |
+| 10 | Verification checks of section 4 | **PARTIAL** | 8 `audit-*` scripts exist. **#778: 21 of 26 pull/reread detection checks are designed-not-built** |
+| 11 | Crore conversion (OD-20) | **NOT BUILT** | No `repair-*crore*` tool in the tree. Spec calls it its own release, not cleanly reversible. Card carries two unclosed MAJORs (F-95, F-77) |
+| 12 | Name normaliser + duplicate detection | **BUILT** | `company-identity-fold.ts`, `company-name-normalizer.ts`, `company-name-similarity.ts`, `ipo-identity.ts`. Residual: #679 |
+| 13 | OFS + fresh-issue extraction | **BUILT** | `filing-persister.ts:364-440` - F-51 reconciliation, tolerance constant |
+| 14 | BSE share count to rupees | **PARTIAL** | `computeBSEIssueSize` at `bse-api-scraper.ts:148`. **#728: issue size is 41-76% LOW on 6 of 6 live IPOs.** The spec sizes this Tier C, verification not construction - that sizing is wrong by a tier |
+| 15 | Revive `valueActuallyChanged` | **BUILT** | 7 occurrences in `data-consolidation-service.ts`; noop-write-suppression test |
+| 16 | Retire Moneycontrol | **BUILT** | `scraper/src/index.ts:797-804`, with the freshness-SLO consequence recorded |
+| 17 | Closed-IPO job (OD-22) | **NOT BUILT** | Zero hits outside docs. **#717: 74 PROSPECTUS documents pile up PENDING per slot with no consumer** |
+| 18 | Document retention (OD-32) | **PARTIAL** | `documentPages` table exists (`schema.ts:726`). Purge re-anchoring unverified; a page-text **writer** must sit between the table and the purge and is not confirmed |
+| 19 | Merge tool on shared write path | **PARTIAL** | Singular tool routed (#432). **#807: `merge-duplicate-ipos.ts:234/243/260` still holds raw SQL against `ipos`, grandfathered in the write ratchet; merge log and `unmerge` do not exist** |
+| 20 | Design-traceability CI check | **BUILT** | `scripts/ci/check-design-traceability.mjs` + its test |
+| 21 | The read side (OD-39/40/41) | **PARTIAL** | `FieldProvenanceLine.tsx` + test exist. Missing: `chosenConfirmedAt` column; **the staleness threshold has no value - an open OWNER decision, not a build**; touched-slugs tracker does not survive a restart |
+| 22 | Document handling + download limits | **PARTIAL** | Only `ENABLE_DOWNLOAD_STREAMING_CAP` (`feature-flags.ts:445`), proof owed (#806). No `partNumber`, no `password_protected`, no OCR routing, no multi-part handling |
+| 24 | Stage-gate deadlock | **BUILT** | PR #798 merged; #795 closed |
+| 30 | Canonical IPO type table | **BUILT** | `docs/design/ipo-type-population.json` / `.md` |
+| 31 | PR Spec-deviation block | **BUILT** | Landed as #813. **Card still reads NOT STARTED - card is stale** |
+| 32 | Status line on every card + gate | **PARTIAL** | Gate built (`check-build-cards.mjs:142-156`) but **accepts the unknown shape as valid**, which is why 24 cards say nothing. #810 open |
+| 33 | Repoint `check-dod.mjs` into CI | **PARTIAL** | Root refusal built (`check-dod.mjs:13-18`); CI wiring not. #829 open |
+| 34 | `spec_ref` on every failure class | **NOT BUILT** | No `spec_ref` validation found |
+| 35 | Admin queue open count in nightly report | **NOT BUILT** | #818 (28,120 open items across 268 IPOs); #787 blocks S9 sizing |
+
+**Totals: 12 built, 12 partial, 5 not built, of 29 items.** (Counted from the table itself. An
+earlier session summary said 8/11/5 - that was wrong, and a naive `grep -c BUILT` also miscounts
+because it matches inside NOT BUILT.)
+
+### Not on the numbered list, and blocking
+
+| item | verdict | why it matters |
+|---|---|---|
+| **OD-62 reason codes** | **NOT BUILT** | `field_extraction_failures` holds **zero rows** while 12,701 plan rows hold no value. Prerequisite of OD-63/S9 (#787 says so explicitly) |
+| **OD-63 / S9 admin data-quality queue** | **NOT BUILT** | Blocked on OD-62. 881-line UI page. Note: no human has ever resolved a conflict - 31,706 resolutions, all `resolved_by = SYSTEM` |
+
+---
+
+## Dependency order
+
+**Spec-stated** (the spec's own Depends-on column): 1<-none, 2<-none, 3<-2, 4<-2, 5<-1,2,3, 6<-5,15,
+7<-(scheduler none; tiering 6), 8<-none, 9<-6, 10<-6,9, 11<-10, 12<-none, 13<-2, 14<-13, 15<-none,
+16<-none, 17<-6,7,10, 18<-none, 19<-1, 20<-2, 21<-1,6, 22<-none.
+
+**Remaining work, in order:**
+
+1. **Unblocked now, can run in parallel:** item 22, item 18 (page-text writer), item 8 (drainer, #716),
+   item 14 (#728), item 19 (second routing, #807), items 34 and 35, item 3's S6 churn-stop (#759) plus
+   the Swap Test and the S4/S5 proofs.
+2. **Then** item 6 completion - #705 and the #762 re-queue path. *Inferred, not spec-stated:* item 9
+   cannot run over parked rows.
+3. **Then** item 9 - the re-read loop, section 2.5.1 triggers 3-7. Spec-stated dep on 6.
+4. **Then** item 10 - the 21 unbuilt checks. Spec-stated dep on 6 and 9.
+5. **Then** item 17 - closed-IPO job. Spec-stated dep on 6, 7, 10.
+6. **Then** item 11 - crore conversion. Spec-stated dep on 10; its own release.
+7. *Inferred:* OD-62 reason codes must precede OD-63/S9.
+
+Item 21's staleness threshold needs an **owner decision**, not a build.
+
+---
+
+## Size and tier
+
+- **Small / Tier C:** items 34, 35, 32-residual, 33 CI wiring, the S4/S5 proof runs, the Swap Test.
+- **Medium / Tier B:** item 8 drainer, item 10's 21 checks, item 18 page-text writer, the #762 re-queue
+  path, item 21's remaining halves.
+- **Medium-large / Tier A:** item 22, item 9, item 17, item 19's second routing, S6 churn-stop, item 14's
+  real fix, OD-62 reason codes.
+- **Large / Tier A, own release:** item 11 (crore conversion), OD-63/S9 (admin queue).
+
+---
+
+## Source disagreements found while measuring
+
+Recorded because each is a finding, not noise:
+
+1. Item 31's card says `NOT STARTED`; the board says it landed as #813. **Card stale.**
+2. Item 6: four fetchers are wired in code, but #705 is open saying the walk has none. *Unverified which
+   is stale* - the file's own comment says the registry used to return an EMPTY registry.
+3. 24 of 42 cards carry an `unknown` Status, accepted by the gate **by design**.
+4. Item 19: the spec reads it as open; #807 says it is done and the spec text is stale - while a second
+   raw-SQL tool survives.
+5. The stage-3 ledger's S2 row records `S2-4 FAIL: n=10` inside a row marked `landed`.
+6. Item 14: the card says it is mostly already built and the spec sizes it Tier C, while #728 shows the
+   conversion is 41-76% wrong on every live IPO.
+7. `check-dod.mjs` D14 asserts O-14/O-15 are open forks; they were answered 2026-09-09 (#829).
+8. Items 32 and 33 read `NOT STARTED` while their primary artefacts exist on main. **Cards understate.**
+
+**Unverified:** the section 9 S1-S9 slice table referenced in some session notes is not in
+`data-sourcing-pull-model.md` on `origin/main` (zero `S9` hits). The document holding it was not located,
+so OD-56's stage-change re-open and the S5/S6 mapping in those notes are unconfirmed against a source.

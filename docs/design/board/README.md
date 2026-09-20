@@ -14,7 +14,33 @@ an update three times (2026-09-10, 09-17, 09-19). The tooling now lives here.
 | `status.json` | The data: `stamp`, the `now` three-line summary, and one row per slice. **This is the file you edit.** |
 | `status.css` | The styles the status section depends on; already inside the published page. |
 | `body-fixes.json` | Idempotent prose corrections applied on each render. |
-| `patch-plan.py` | Re-renders the status section into a saved copy of the page. |
+| `plan-sections.generated.html` | **Generated — never hand-edit.** The three tracking sections (29 build items, 63 owner decisions, 190 sourced fields), built by `scripts/ops/build-plan-board.mjs` from their sources. |
+| `patch-plan.py` | Re-renders the status section AND splices the generated tracking sections into a saved copy of the page. |
+
+## The three tracking sections (owner ask, 2026-09-20)
+
+> "Every feature from the spec should be tracked in this artifact so that we do not miss anything.
+> And I always see what is the current status. It should be user friendly and updated without
+> consuming too many tokens."
+
+`scripts/ops/build-plan-board.mjs` derives all three lists from their sources, so the page cannot
+drift from the spec:
+
+| Section | Rows | Source | Status derivation |
+|---|---|---|---|
+| Build items | 29 | `docs/design/pull-model-completion-state.md` | the verdict is IN the markdown; read, never recomputed |
+| Owner decisions | 63 | `docs/design/data-sourcing-pull-model.md` (`OD-*` rows) | **all `unverified`** — implementation status is not mechanically knowable; the spec's own acceptance condition is shown instead |
+| Sourced fields | 190 | `scraper/config/field-manifest.json` | class + ranked sources from the manifest; "being written" is **`unmeasured`** (needs a DB read this generator deliberately does not do) |
+
+Every count is asserted. A parse yielding anything other than 29 / 63 / 190 exits non-zero rather
+than emitting a short table — a tracker that silently drops rows looks authoritative and lies.
+
+**Token cost.** Updating the board does not mean reading the 52KB page. A status change is one line
+in one source file plus `node scripts/ops/build-plan-board.mjs`; none of the 282 rows passes through
+a model. `--check` fails if the committed generated file is stale.
+
+Tests: `node scripts/tests/build-plan-board.test.mjs` (13 tests — count assertions fire, malformed
+rows are caught not skipped, no unescaped `<` reaches the output).
 
 ## Landing checklist — same step as the ledger line
 
@@ -24,6 +50,8 @@ Whenever a slice lands (merged, proof read, gate PASS), in the SAME step you wri
 2. Edit `docs/design/board/status.json` — set `stamp` to that clock reading, update the changed
    slice row (`state`, `status`, `pr`, `sha`, `review`, `proof`, `gate`) and the `now` block.
 3. Save the live page: `Artifact` `read_file` with `url` = the board URL and `path` = `index.html`.
+3b. If a build item, an OD row or a manifest field changed, edit that SOURCE file and re-run
+   `node scripts/ops/build-plan-board.mjs` (commit the regenerated file).
 4. Render: `python docs/design/board/patch-plan.py --html <that saved index.html>`
    (writes `<html>.patched.html`; `--out` overrides).
 5. Republish: `Artifact` publish with `file_path` = the patched html AND `url` = the board URL.
