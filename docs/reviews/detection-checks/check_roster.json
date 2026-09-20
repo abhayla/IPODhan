@@ -8,8 +8,7 @@
   "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
   "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
   "consumerReason": "explicitly “tonight’s report” in the design text — a nightly roster-completeness meta-check over the other 16 checks’ own nightly report",
-  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs, and runs LAST so a crashed check cannot read as no-findings",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
-  "section": "notCoveredByThisManifest",
-  "note": "CHECK-ROSTER (pull-model verification check CHECK-ROSTER: every id above appears in tonight’s report) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('check_roster' call lands in the audit script."
+  "section": "checks"
 }

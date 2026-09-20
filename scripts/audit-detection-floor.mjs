@@ -2226,6 +2226,35 @@ async function main() {
     console.error(`ADMIN-QUEUE: could not read (${err.message}) — not fatal to the audit`);
   }
 
+  // CHECK-ROSTER (item 10) runs LAST, on purpose: it asks whether every check
+  // the manifest claims to run actually reported tonight. The class it closes is
+  // the nastiest one in this file -- a check that THREW leaves no line, and the
+  // delta consumer parses only PASS and FAIL, so a crashed check reads exactly
+  // like a check with no findings. Silence is not success.
+  try {
+    const rosterManifest = JSON.parse(readFileSync(join(REPO_ROOT, 'docs', 'reviews', 'detection-checks.json'), 'utf8'));
+    const declared = rosterManifest.checks
+      .filter((c) => !c.auditScript || c.auditScript === rosterManifest.auditScript)
+      .map((c) => c.id);
+    // 'check_roster' itself has not recorded yet at this point -- it is the line
+    // being built. Counting itself as missing would make this check permanently
+    // FAIL for a reason that says nothing about the roster.
+    const reported = new Set(results.map((r) => r.id)).add('check_roster');
+    const missing = declared.filter((id) => !reported.has(id));
+    for (const id of missing) {
+      notify('check_roster', 'P1', id, 'declared check produced no line tonight',
+        'it crashed, or it was never called — either way its silence is not a pass');
+    }
+    record('check_roster', 'every check this manifest declares reported tonight',
+      missing.length === 0 ? 'PASS' : 'FAIL',
+      missing.length === 0
+        ? `${declared.length} declared check(s) all reported`
+        : `${missing.length} of ${declared.length} declared check(s) produced NO line: ${missing.slice(0, MAX_OFFENDERS).join(', ')}`);
+  } catch (e) {
+    record('check_roster', 'every check this manifest declares reported tonight', 'UNVERIFIABLE',
+      `detection-checks.json not readable: ${e.message}`);
+  }
+
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');
   const summary = computeSummaryCounts(results);
