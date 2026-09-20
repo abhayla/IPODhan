@@ -1,10 +1,8 @@
 {
   "_comment": "The hand-owned half of the board. Everything here is a judgement a human makes; everything NOT here is derived by render-board.mjs from source files or scripts. Keep it small: if a value can be computed, compute it instead of typing it.",
-  "stamp": "2026-09-20 14:45 IST",
+  "stamp": "2026-09-20 15:36 IST",
   "stage": "Stage 3 — one source table, then prevention",
-
   "headline": "Stage 3's 13 slices are merged and live on staging. The work now is finishing the remaining spec items on staging; production has not moved since 2026-09-07 and is not scheduled to.",
-
   "waiting_on_owner": [
     {
       "id": "D-3",
@@ -28,7 +26,6 @@
       "blocks": "The next production release."
     }
   ],
-
   "environments": [
     {
       "slot": "Production",
@@ -58,7 +55,6 @@
       "flags": "per-test"
     }
   ],
-
   "release": {
     "window": "One production window per day, ~21:00–23:30 IST, owner-worded only.",
     "branch": "Prod deploys only from a frozen <code>release/prod-&lt;date&gt;</code> branch, never from main.",
@@ -66,15 +62,33 @@
     "rollback": "<code>gh workflow run deploy-linux.yml --ref release/prod-&lt;previous&gt; -f slot=prod</code>; config-only changes roll back with <code>deploy-config.sh</code> and the previous sha.",
     "scheduled": false
   },
-
   "gates": [
-    { "name": "PR gate (lint, types, unit)", "state": "ok", "detail": "Green on main. The only workflow that runs on a PR." },
-    { "name": "Integration / E2E", "state": "warn", "detail": "<code>workflow_dispatch</code> only — does NOT run on a PR. A green PR gate is not a green CI." },
-    { "name": "Swap Test (stage acceptance)", "state": "bad", "detail": "NEVER RUN. Both config paths are unblocked in principle; neither has been executed on staging. Stage 3 is not done until it passes." },
-    { "name": "Detection floor", "state": "warn", "detail": "21 of 26 pull/re-read checks are designed-not-built (#778). 5 NEW findings in last night's delta." },
-    { "name": "Build-card gate", "state": "warn", "detail": "Accepts <code>Status: unknown</code> as valid, which is why 24 of 42 cards say nothing (#810)." }
+    {
+      "name": "PR gate (lint, types, unit)",
+      "state": "ok",
+      "detail": "Green on main. The only workflow that runs on a PR."
+    },
+    {
+      "name": "Integration / E2E",
+      "state": "warn",
+      "detail": "<code>workflow_dispatch</code> only — does NOT run on a PR. A green PR gate is not a green CI."
+    },
+    {
+      "name": "Swap Test (stage acceptance)",
+      "state": "bad",
+      "detail": "NEVER RUN. Both config paths are unblocked in principle; neither has been executed on staging. Stage 3 is not done until it passes."
+    },
+    {
+      "name": "Detection floor",
+      "state": "warn",
+      "detail": "21 of 26 pull/re-read checks are designed-not-built (#778). 5 NEW findings in last night's delta."
+    },
+    {
+      "name": "Build-card gate",
+      "state": "warn",
+      "detail": "Accepts <code>Status: unknown</code> as valid, which is why 24 of 42 cards say nothing (#810)."
+    }
   ],
-
   "reader_impact": [
     {
       "what": "Issue size is 41–76% too low on 6 of 6 live IPOs",
@@ -98,27 +112,53 @@
       "status": "By design — the owner's bar is feature-complete staging before a prod window."
     }
   ],
-
   "chain": [
-    { "id": "Wave 1", "what": "34, 35, 8, 19, S6 churn-stop, Swap Test", "state": "building", "note": "unblocked, parallel" },
-    { "id": "6", "what": "The pull walk", "state": "queued", "note": "#705, #762 re-queue" },
-    { "id": "9", "what": "The re-read loop", "state": "queued", "note": "needs 6" },
-    { "id": "10", "what": "Verification checks", "state": "queued", "note": "needs 6+9; 21 of 26 unbuilt" },
-    { "id": "17 · 11", "what": "Closed-IPO job · crore conversion", "state": "queued", "note": "needs 10" },
-    { "id": "14", "what": "BSE issue size (#728)", "state": "red", "note": "LAST — verification before correctness" }
+    {
+      "id": "Wave 1",
+      "what": "34, 35, 8, 19, S6 churn-stop, Swap Test",
+      "state": "building",
+      "note": "unblocked, parallel"
+    },
+    {
+      "id": "6",
+      "what": "The pull walk",
+      "state": "queued",
+      "note": "#705, #762 re-queue"
+    },
+    {
+      "id": "9",
+      "what": "The re-read loop",
+      "state": "queued",
+      "note": "needs 6"
+    },
+    {
+      "id": "10",
+      "what": "Verification checks",
+      "state": "queued",
+      "note": "needs 6+9; 21 of 26 unbuilt"
+    },
+    {
+      "id": "17 · 11",
+      "what": "Closed-IPO job · crore conversion",
+      "state": "queued",
+      "note": "needs 10"
+    },
+    {
+      "id": "14",
+      "what": "BSE issue size (#728)",
+      "state": "red",
+      "note": "LAST — verification before correctness"
+    }
   ],
-
   "changed_since": {
-    "date": "2026-09-19",
+    "date": "2026-09-20",
     "lines": [
-      "Board rebuilt as a generated page: the shell, the vitals and the three tracking sections all come from source files now, so it cannot drift from the spec.",
-      "Items 18 and 22 were re-measured and found already BUILT — two false negatives corrected (#848).",
-      "PR #841 landed the generator for the 29 build items, 63 owner decisions and 190 sourced fields.",
-      "The prod schema gap was measured for the first time: 16 migrations, 46 drift findings.",
-      "Five NEW detection-floor findings appeared overnight; two went away."
+      "The board is now fully generated: the page, its vitals and all 282 tracked rows come from source files, so it cannot drift from the spec (#850).",
+      "Items 18 and 22 were re-measured and found already BUILT, and item 6 was corrected from \"4 fetchers wired\" to \"3 fetchers registered\" (#848, #851) — the published page had been showing a stale claim.",
+      "The staleness gate now SHOWS what differs (character, line, both sides) instead of printing only \"board is stale\". That one opaque line cost four CI rounds on #850.",
+      "A generated-file merge rule landed so two PRs editing different rows of the tracking table no longer conflict line-by-line (#852)."
     ]
   },
-
   "now": {
     "Landed": "Stage 3's 13 slices are all merged. Since the last board: #841 (the tracking-section generator), #844, #848 (items 18 and 22 re-measured as already built). Staging serves 61808af1.",
     "Next": "Wave 1 runs first and in parallel — items 34 and 35 in progress, then 8, 19, the S6 churn-stop (#759) and the Swap Test (items 18 and 22 were re-measured as already BUILT in #848). Then item 6, then 9, then 10, then 17 and 11. Item 14 (#728) goes last by the owner's rule: verification before correctness.",
