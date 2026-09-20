@@ -63,6 +63,43 @@ export interface FieldSourceSummary {
  * Repository for field source tracking operations
  * Provides audit trail for data flow from scrapers to database
  */
+/**
+ * The ten E-1 fields (field-manifest class `T`) are the EXCHANGE's to state:
+ * the timetable, the status, and where the shares list. A document may PRINT an
+ * intended date; only the exchange's own page says what it IS.
+ *
+ * #862 measured 79 writes that broke this on staging — 41 listingExchanges, 22
+ * timetable dates and 8 statuses, every one from DRHP. A DRAFT prospectus is
+ * filed months before the offer and does not contain final dates at all, so
+ * these were not merely wrong-source writes: they were values that could not
+ * have been correct when they were made.
+ *
+ * The rule already existed twice as metadata — as `capability` in the manifest,
+ * and as a validator on ADMIN OVERRIDES
+ * (scraper/src/config/field-source-override-validation.ts:80). Neither guards a
+ * write, which is why the writes happened. This is the choke point every caller
+ * passes through.
+ *
+ * Spelled camelCase because that is how `field_sources.field_name` is stored
+ * (`openDate`, not `open_date`) — a snake_case list here would match nothing
+ * and the guard would silently never fire.
+ */
+const E1_EXCHANGE_STATED_FIELDS: ReadonlySet<string> = new Set([
+  'openDate',
+  'closeDate',
+  'listingDate',
+  'status',
+  'listingExchanges',
+  'allotmentDate',
+  'basisOfAllotmentDate',
+  'initiationOfRefundsDate',
+  'creditOfSharesDate',
+  'bidDate',
+]);
+
+/** Sources that mean "read out of an offer document", as opposed to fetched from a source that states the fact. */
+const DOCUMENT_PATH_SOURCES: ReadonlySet<string> = new Set(['DRHP', 'DOC', 'RHP', 'PROSPECTUS']);
+
 export class FieldSourcesRepository extends BaseRepository {
   constructor(
     protected db: NodePgDatabase<typeof schema>,
@@ -175,6 +212,15 @@ export class FieldSourcesRepository extends BaseRepository {
    * Records which source provided the field value
    */
   async trackFieldUpdate(input: TrackFieldUpdateInput): Promise<FieldSourceRecord> {
+    // #862: refuse before the insert, not after. Throwing here means the
+    // caller's transaction fails loudly rather than the row landing and a
+    // nightly check finding it tomorrow.
+    if (E1_EXCHANGE_STATED_FIELDS.has(input.fieldName) && DOCUMENT_PATH_SOURCES.has(input.source)) {
+      throw new Error(
+        `E-1 field '${input.fieldName}' may not be written from the document path (source=${input.source}). ` +
+        'The exchange states the timetable, the status and the listing venue; a document only prints what was intended. See #862.'
+      );
+    }
     const rowKey = input.rowKey ?? '';
 
     // rowKey is part of the ON CONFLICT target below (item 1 slice s18), so an
