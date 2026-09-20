@@ -7,5 +7,8 @@
   "failThreshold": "any document with a D6 ledger row whose evidence carries a non-empty unreadPages array, where the document's retained PDF still exists (OD-32's seven-day window) and no later extraction at the same or higher EXTRACTOR_VERSION has produced an envelope without unreadPages for that sha256, for more than 48h",
   "severity": "P1",
   "unverifiableWhen": "the retained PDF has already been purged (past OD-32's seven-day window) — the pages can no longer be re-read from it, so the finding is a permanent data gap to report rather than a retry to schedule; the check must say WHICH of the two it found, never fold them together",
-  "section": "notCoveredByThisManifest"
+  "section": "checks",
+  "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs",
+  "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
+  "consumerReason": "brief-assigned 2026-09-20: a P1 silent-terminal-state class needs a same-day diffing consumer; signal-ownership R3"
 }

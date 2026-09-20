@@ -2201,6 +2201,55 @@ async function checkS_pullWrite() {
       : `${missing.length} of ${planRows.length} SUPPLIED row(s) with no write: ${missing.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}`).join('; ')}`);
 }
 
+
+// M-INCOMPLETE-PAGES-UNRETRIED (OD-55 lane B): when the 2-hour hung-process
+// ceiling stops a document read part-way, the ledger row names the pages it
+// never got to. Nothing watches whether those pages are ever read, and unlike
+// m_extraction_stuck the document does NOT look stuck -- it looks finished.
+//
+// The spec insists the two outcomes are never folded together, because they
+// need opposite actions:
+//   PDF still retained  -> a retry can still be scheduled
+//   PDF already purged  -> a permanent data gap to report, not a retry
+async function checkS_incompletePagesUnretried() {
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, s.step_id AS "stepId", s.last_run_at AS "lastRunAt",
+              jsonb_array_length(coalesce(s.evidence->'unreadPages', '[]'::jsonb))::int AS "unreadCount",
+              (s.evidence->>'sha256') AS sha256
+         FROM ipo_pipeline_steps s
+         JOIN ipos i ON i.id = s.ipo_id
+        WHERE jsonb_array_length(coalesce(s.evidence->'unreadPages', '[]'::jsonb)) > 0
+        ORDER BY s.last_run_at DESC`
+    );
+  } catch (e) {
+    record('m_incomplete_pages_unretried', 'documents stopped mid-read whose unread pages were never re-read',
+      'UNVERIFIABLE', `ipo_pipeline_steps not readable: ${e.message}`);
+    return;
+  }
+  if (rows.length === 0) {
+    record('m_incomplete_pages_unretried', 'documents stopped mid-read whose unread pages were never re-read',
+      'PASS', 'no ledger row carries a non-empty unreadPages array — the 2-hour ceiling has not cut a read short');
+    return;
+  }
+  // Split by whether the bytes are still there, because the two need opposite
+  // actions and folding them together loses the distinction the spec asks for.
+  let retryable = 0, permanent = 0;
+  for (const r of rows) {
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const stillRetained = r.lastRunAt && new Date(r.lastRunAt).getTime() > sevenDaysAgo;
+    if (stillRetained) retryable++; else permanent++;
+    notify('m_incomplete_pages_unretried', 'P1', `${r.slug}:${r.stepId}`,
+      stillRetained ? 'document stopped mid-read, PDF still retained — a retry is still possible'
+                    : 'document stopped mid-read, PDF purged — permanent data gap',
+      `${r.unreadCount} unread page(s), sha256=${(r.sha256 || '(none)').slice(0, 12)}`);
+  }
+  record('m_incomplete_pages_unretried', 'documents stopped mid-read whose unread pages were never re-read',
+    'FAIL',
+    `${rows.length} document(s) with unread pages: ${retryable} still retryable (PDF within the seven-day window), ${permanent} permanent gap(s) — these need opposite actions and are counted separately`);
+}
+
 async function checkS_pullWalk() {
   let rows;
   try {
@@ -2438,6 +2487,7 @@ async function main() {
   await checkS_e1Source();
   await checkS_pullPlan();
   await checkS_pullWrite();
+  await checkS_incompletePagesUnretried();
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
