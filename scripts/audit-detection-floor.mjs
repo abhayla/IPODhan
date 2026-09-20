@@ -786,6 +786,25 @@ async function checkM() {
     openDate: r.open_date, closeDate: r.close_date,
   });
 
+  // #861: `m_document_state` is declared in section "checks", so the coverage
+  // floor counts it as live — but its ONLY record() call was the
+  // table-missing branch above. On a healthy night, when the table exists,
+  // this function records under m_blocked_all_age / m_found_not_extracted /
+  // m_extraction_stuck and `m_document_state` emitted nothing at all.
+  //
+  // The wire-or-retire self-test could not see it: that test asks "does a
+  // record() call exist for this id?", which is true. `check_roster` (item 10)
+  // asks "did it report tonight?", which is the different question, and it
+  // caught this on its first run.
+  //
+  // So the id now reports on BOTH paths. It is the population line for the
+  // per-row checks below: how many rows this function examined at all.
+  record('m_document_state', 'document_fetch_state rows examined this run',
+    rows.length > 0 ? 'PASS' : 'UNVERIFIABLE',
+    rows.length > 0
+      ? `${rows.length} document_fetch_state row(s) examined for IPO-type offerings`
+      : 'document_fetch_state has no rows for IPO-type offerings — the per-row checks below have nothing to examine, which is not the same as them passing');
+
   const blocked = rows.map(norm).map((r) => checkBlockedAllAge(r, now)).filter(Boolean);
   for (const v of blocked) notify('m_blocked_all_age', 'P2', v, 'Document blocked on every source > 24h', v);
   record('m_blocked_all_age', 'no document BLOCKED_ALL for more than 24h',
