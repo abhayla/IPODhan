@@ -554,6 +554,19 @@
       "note": "a missing field_source_overrides table (prod, before this slice's migration ships there) is reported PASS, not UNVERIFIABLE or FAIL -- layer 2 is simply absent on that database, matching the resolver's own table-absent tolerance."
     },
     {
+      "id": "pull_plan",
+      "designId": "PULL-PLAN",
+      "findingClass": "pull-model verification check PULL-PLAN: plan rows per IPO = the committed manifest, and the manifest hash is unchanged",
+      "whatItAsks": "plan rows per IPO = the committed manifest, and the manifest hash is unchanged",
+      "healthy": "equal",
+      "alarmsWhen": "any mismatch, or a manifest hash that moved without a commit",
+      "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+      "consumer": "per-cycle failure reading (identities)",
+      "consumerReason": "the plan is rebuilt every pull cycle (§2.1) — a manifest drift is a per-cycle structural fact, read by identity (IPO, plan row) each slot, not a trend accumulated overnight",
+      "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs",
+      "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
+    },
+    {
       "id": "pull_plan_origin",
       "designId": "PULL-PLAN-ORIGIN",
       "findingClass": "pull-model verification check PULL-PLAN-ORIGIN: a plan row at the current manifest version with no recorded policy_origin",
@@ -629,6 +642,19 @@
       "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
       "consumer": "per-cycle failure reading (identities)",
       "consumerReason": "brief-assigned: a per-slot walk count is read each cycle, by which IPO was skipped, not accumulated as a nightly trend",
+      "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs",
+      "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
+    },
+    {
+      "id": "pull_write",
+      "designId": "PULL-WRITE",
+      "findingClass": "pull-model verification check PULL-WRITE: plan rows marked SUPPLIED whose write returned skipped",
+      "whatItAsks": "plan rows marked SUPPLIED whose write returned skipped",
+      "healthy": "0",
+      "alarmsWhen": "any non-zero",
+      "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+      "consumer": "per-cycle failure reading (identities)",
+      "consumerReason": "brief-assigned: a SUPPLIED-but-skipped write is a per-cycle plan/write mismatch, resolved to the plan row that produced it",
       "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs",
       "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
     },
@@ -721,8 +747,6 @@
     "PULL-FROZEN (pull-model verification check PULL-FROZEN: SUPPLIED rows whose chosen_document_id has been superseded) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_frozen' call lands in the audit script.",
     "PULL-NOBLANK (pull-model verification check PULL-NOBLANK: fields that went from a value to absent this slot) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_noblank' call lands in the audit script.",
     "the pull walk re-asks fields and REWRITES them with identical values, which is indistinguishable in every downstream reading from the walk confirming them -- a healthy-looking write rate that is entirely no-op churn, and the field_sources provenance trail it produces is noise that hides the one real change in it",
-    "PULL-PLAN (pull-model verification check PULL-PLAN: plan rows per IPO = the committed manifest, and the manifest hash is unchanged) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_plan' call lands in the audit script.",
-    "PULL-WRITE (pull-model verification check PULL-WRITE: plan rows marked SUPPLIED whose write returned skipped) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_write' call lands in the audit script.",
     "Retired 2026-09-16: RATIOS_BASIS_ISSUE_PRICE has no extractor in scraper/src/services/filing-auto-persist.ts (AUTO_PERSIST_DOC_TYPES) by design, so this check measured a population that can never move and paged UNVERIFIABLE/P1 every night (cost an hour on 2026-09-15, misread as 38 stuck documents); issuer_ratio_yield reads the real ratio population (RHP/DRHP/PROSPECTUS financial_data rows), and not_applicable_documents_named now names this PENDING count honestly instead of grading it. Replaced by issuer_ratio_yield (#670); the never-extractable population is now named by not_applicable_documents_named.",
     "REREAD-LATENCY (pull-model verification check REREAD-LATENCY: oldest actionable disagreement with no re-read attempt) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('reread_latency' call lands in the audit script.",
     "REREAD-RECEIPT (pull-model verification check REREAD-RECEIPT: re-reads with a receipt hashed this cycle ÷ re-reads recorded) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('reread_receipt' call lands in the audit script.",

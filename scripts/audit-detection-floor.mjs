@@ -2093,6 +2093,114 @@ async function checkS_e1Source() {
       : `${rows.length} E-1 write(s) from a document source: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}=${r.source}`).join('; ')}`);
 }
 
+
+// PULL-PLAN: does each IPO carry the plan rows the manifest says it should?
+// The class it catches is a whole IPO quietly under-planned -- fields that were
+// never scheduled to be asked at all, which no per-row check can see because
+// the row does not exist. Measured while writing this: plan rows per IPO on
+// staging range from 4 to 190 across 78 IPOs.
+//
+// The expected count is NOT a constant. The manifest's `na` array lists the
+// offering types each field does not apply to, so a RIGHTS issue legitimately
+// carries fewer rows than a MAINBOARD IPO. Comparing against a flat 190 would
+// fail every non-ordinary offering for being correct.
+async function checkS_pullPlan() {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'scraper', 'config', 'field-manifest.json'), 'utf8'));
+  } catch (e) {
+    record('pull_plan', 'each live IPO carries the plan rows its offering type calls for', 'UNVERIFIABLE',
+      `field-manifest.json not readable: ${e.message}`);
+    return;
+  }
+  const entries = Object.entries(manifest.fields);
+  const expectedFor = (offeringType) =>
+    entries.filter(([, v]) => !(v.na || []).includes(offeringType)).length;
+
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, i.offering_type::text AS "offeringType", count(p.id)::int AS "planRows"
+         FROM ipos i
+         LEFT JOIN ipo_field_plan p ON p.ipo_id = i.id
+        WHERE i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+        GROUP BY i.slug, i.offering_type
+        ORDER BY i.slug`
+    );
+  } catch (e) {
+    record('pull_plan', 'each live IPO carries the plan rows its offering type calls for', 'UNVERIFIABLE',
+      `ipos/ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  if (rows.length === 0) {
+    record('pull_plan', 'each live IPO carries the plan rows its offering type calls for', 'UNVERIFIABLE',
+      'no live IPO to measure — an empty population is not a clean plan');
+    return;
+  }
+  const short = [];
+  for (const r of rows) {
+    const expected = expectedFor(r.offeringType);
+    if (r.planRows < expected) {
+      short.push(`${r.slug}(${r.offeringType}) ${r.planRows}/${expected}`);
+      notify('pull_plan', 'P2', r.slug, 'IPO carries fewer plan rows than its offering type calls for',
+        `${r.planRows} of ${expected} expected for ${r.offeringType}`);
+    }
+  }
+  record('pull_plan', 'each live IPO carries the plan rows its offering type calls for',
+    short.length === 0 ? 'PASS' : 'FAIL',
+    short.length === 0
+      ? `${rows.length} live IPO(s) all carry a full plan for their offering type`
+      : `${short.length} of ${rows.length} live IPO(s) under-planned: ${short.slice(0, MAX_OFFENDERS).join('; ')}`);
+}
+
+
+// PULL-WRITE: a plan row marked SUPPLIED asserts that a value was written. If
+// no field_sources row exists for that (ipo, table, field), the plan is
+// claiming a success that never landed -- the worst shape in the loop, because
+// every downstream reading treats SUPPLIED as settled and stops asking.
+//
+// field_sources.field_name is camelCase while ipo_field_plan.field_name is
+// snake_case, so the join has to convert. A direct equality join returns zero
+// rows and this check would report a clean PASS over an empty comparison.
+async function checkS_pullWrite() {
+  let planRows, writeRows;
+  try {
+    planRows = await q(
+      `SELECT i.slug, p.table_name AS "tableName", p.field_name AS "fieldName", p.chosen_source::text AS "chosenSource"
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.state = 'SUPPLIED'
+          AND i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')`
+    );
+    writeRows = await q(
+      `SELECT ipo_id AS "ipoId", table_name AS "tableName", field_name AS "fieldName" FROM field_sources`
+    );
+  } catch (e) {
+    record('pull_write', 'every SUPPLIED plan row has a matching field_sources write', 'UNVERIFIABLE',
+      `ipo_field_plan/field_sources not readable: ${e.message}`);
+    return;
+  }
+  // ipo_field_plan.field_name is snake_case; field_sources.field_name is
+  // camelCase. Comparing them directly in SQL returns zero matches and this
+  // check reports a clean PASS over a comparison that never happened -- the
+  // exact shape a silent empty result takes. The conversion is done here,
+  // where it is visible, rather than buried in a regexp_replace.
+  const toCamel = (c) => c.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+  const written = new Set(writeRows.map((w) => `${w.tableName}.${w.fieldName}`));
+  const missing = planRows.filter((r) => !written.has(`${r.tableName}.${toCamel(r.fieldName)}`));
+
+  for (const r of missing.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {
+    notify('pull_write', 'P1', `${r.slug}:${r.tableName}.${r.fieldName}`,
+      'plan row says SUPPLIED but no field_sources write exists',
+      `chosenSource=${r.chosenSource || '(none)'} — the loop will never re-ask this field`);
+  }
+  record('pull_write', 'every SUPPLIED plan row has a matching field_sources write',
+    missing.length === 0 ? 'PASS' : 'FAIL',
+    missing.length === 0
+      ? `0 of ${planRows.length} SUPPLIED row(s) lack a write`
+      : `${missing.length} of ${planRows.length} SUPPLIED row(s) with no write: ${missing.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}`).join('; ')}`);
+}
+
 async function checkS_pullWalk() {
   let rows;
   try {
@@ -2328,6 +2436,8 @@ async function main() {
   await checkS_pullAdmin();
   await checkS_pullNoop();
   await checkS_e1Source();
+  await checkS_pullPlan();
+  await checkS_pullWrite();
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
