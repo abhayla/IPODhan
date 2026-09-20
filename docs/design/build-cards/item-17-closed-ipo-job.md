@@ -1,6 +1,6 @@
 # Item 17 — The closed-IPO job (OD-22)
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: NOT STARTED — confirmed 2026-09-20 by checking this card's own four named artefacts on `refs/remotes/origin/main`, not by title search: `closedIpoResourcing` in `packages/shared/src/db/schema.ts` (0 hits), `scraper/src/scheduler/closed-ipo-job.ts` (absent from the tree), `triggerClosedIpoJob` in `scraper/src/index.ts` (0 hits), and a `closed_ipo*` migration under `web/drizzle/migrations/` (0 files). All four absent, so none of the candidate PRs the earlier title search found were this item. Consumer gap is live: #717 lists 74 PENDING `PROSPECTUS` documents on staging and 74 on prod, every row a LISTED IPO, oldest 2026-06-16.
 
 ## Purpose
 
