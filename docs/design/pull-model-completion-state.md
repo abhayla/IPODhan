@@ -23,6 +23,9 @@ Every tracking artefact here has been caught wrong, so the cards cannot be the l
 - Item 31's card reads `NOT STARTED` for work the board records as landed in #813.
 - `check-dod.mjs`'s D14 item has been red since 2026-09-09 because it hard-codes two open-fork rows that
   were correctly answered that day (#829).
+- **Item 35 read `NOT BUILT` while #817 (`feat(ops): item 35 — admin queue open count in the nightly
+  report`) merged to main 2026-09-19T18:13:30Z as `fb02ec1d`** - a merged-and-wired item marked not
+  built, the same stale-verdict class as items 31/32/33/34.
 
 So a card saying DONE is a claim. Each verdict below was checked against an artefact that exists.
 
@@ -59,10 +62,10 @@ So a card saying DONE is a claim. Each verdict below was checked against an arte
 | 31 | PR Spec-deviation block | **BUILT** | Landed as #813. **Card still reads NOT STARTED - card is stale** |
 | 32 | Status line on every card + gate | **PARTIAL** | Gate built (`check-build-cards.mjs:142-156`) but **accepts the unknown shape as valid**, which is why 24 cards say nothing. #810 open |
 | 33 | Repoint `check-dod.mjs` into CI | **PARTIAL** | Root refusal built (`check-dod.mjs:13-18`); CI wiring not. #829 open |
-| 34 | `spec_ref` on every failure class | **NOT BUILT** | No `spec_ref` validation found |
-| 35 | Admin queue open count in nightly report | **NOT BUILT** | #818 (28,120 open items across 268 IPOs); #787 blocks S9 sizing |
+| 34 | `spec_ref` on every failure class | **BUILT** | `validateSpecRefs()` in `scripts/build-detection-registry.mjs` (refs `origin/main` @ 485f5285) requires the key on every entry (throws if missing), requires an array, and validates each ref against the spec's real heading list, refreshed per run; `docs/reviews/failure-classes/*.json` all 45 entries carry `spec_ref` (currently `[]`); `scripts/tests/build-detection-registry.test.mjs` has 5 cases proving the DoD (missing key refused, bad section refused, non-empty ref renders in the GENERATED table, empty ref renders cleanly, `--check` catches the drift); `node scripts/tests/build-detection-registry.test.mjs` = 10/10 pass. **Card `item-34-findings-spec-ref.md` still reads NOT STARTED - card is stale, same class as item 31** |
+| 35 | Admin queue open count in nightly report | **BUILT** | #817 (`feat(ops): item 35 — admin queue open count in the nightly report`) merged to `main` as `fb02ec1d` 2026-09-19T18:13:30Z. `scripts/ops/admin-queue-size.mjs` (`adminQueueSize`, `formatAdminQueueBlock`) is imported and called at `scripts/audit-detection-floor.mjs:82,1937-1938` (`console.log('\n' + formatAdminQueueBlock(queue))`), and `audit-detection-floor.mjs --gate` is invoked by the nightly cron `scripts/vps-data-audit-cron.sh:149` (step 3/5) - built AND wired, not merely present. **Caveat, not a build gap:** the printed block reports raw `conflicts`/`absences` counts per IPO, not the actionable-vs-abstention split (measured 2026-09-19: of 14,140 open `data_conflicts` rows, 13,850 are one-sided abstentions, 133 are identical values, 157 are true value-vs-value disagreements) - #818's 28,120 headline number is still unsplit where it is read. Tracked as a residual, not re-opening the item: **#818** |
 
-**Totals: 12 built, 12 partial, 5 not built, of 29 items.** (Counted from the table itself. An
+**Totals: 14 built, 12 partial, 3 not built, of 29 items.** (Counted from the table itself. An
 earlier session summary said 8/11/5 - that was wrong, and a naive `grep -c BUILT` also miscounts
 because it matches inside NOT BUILT.)
 
@@ -84,8 +87,8 @@ because it matches inside NOT BUILT.)
 **Remaining work, in order:**
 
 1. **Unblocked now, can run in parallel:** item 22, item 18 (page-text writer), item 8 (drainer, #716),
-   item 14 (#728), item 19 (second routing, #807), items 34 and 35, item 3's S6 churn-stop (#759) plus
-   the Swap Test and the S4/S5 proofs.
+   item 14 (#728), item 19 (second routing, #807), item 3's S6 churn-stop (#759) plus
+   the Swap Test and the S4/S5 proofs, item 35's actionable-split residual (#818).
 2. **Then** item 6 completion - #705 and the #762 re-queue path. *Inferred, not spec-stated:* item 9
    cannot run over parked rows.
 3. **Then** item 9 - the re-read loop, section 2.5.1 triggers 3-7. Spec-stated dep on 6.
@@ -100,7 +103,8 @@ Item 21's staleness threshold needs an **owner decision**, not a build.
 
 ## Size and tier
 
-- **Small / Tier C:** items 34, 35, 32-residual, 33 CI wiring, the S4/S5 proof runs, the Swap Test.
+- **Small / Tier C:** items 32-residual, 33 CI wiring, item 35's actionable-split residual (#818), the
+  S4/S5 proof runs, the Swap Test.
 - **Medium / Tier B:** item 8 drainer, item 10's 21 checks, item 18 page-text writer, the #762 re-queue
   path, item 21's remaining halves.
 - **Medium-large / Tier A:** item 22, item 9, item 17, item 19's second routing, S6 churn-stop, item 14's
@@ -124,6 +128,8 @@ Recorded because each is a finding, not noise:
    conversion is 41-76% wrong on every live IPO.
 7. `check-dod.mjs` D14 asserts O-14/O-15 are open forks; they were answered 2026-09-09 (#829).
 8. Items 32 and 33 read `NOT STARTED` while their primary artefacts exist on main. **Cards understate.**
+9. **Item 35 read `NOT BUILT` while #817 merged and wired it into the nightly cron the day before
+   (2026-09-19). Same stale-verdict class as items 31-34: this table lagged a merge by one day.**
 
 **Unverified:** the section 9 S1-S9 slice table referenced in some session notes is not in
 `data-sourcing-pull-model.md` on `origin/main` (zero `S9` hits). The document holding it was not located,
