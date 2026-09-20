@@ -123,12 +123,23 @@ export function parseDodTable(cardText, cardName) {
     const [idCell, commandCell, expectCell, envCell] = cells;
     const id = idCell.trim();
     const command = unbacktick(commandCell);
-    const expect = parseExpect(expectCell);
     const env = envCell.trim();
     if (!id || !command || !env) {
       throw new Error(`card ${cardName} DoD row malformed (empty id/command/env): ${line}`);
     }
-    rows.push({ id, command, expect, env, raw: expectCell.trim() });
+    // A row whose "expect" cell does not fit the `exit N` / `line: \`...\`` / `regex: \`...\``
+    // grammar is an UNPROVABLE row, not a reason to crash the whole tool (issue #821): every
+    // other card's every other row still needs to run. Record the parse failure ON the row
+    // (parseError) instead of throwing here; the caller decides what to do with it, scoped to
+    // whichever slice is actually being asked for.
+    let expect = null;
+    let parseError = null;
+    try {
+      expect = parseExpect(expectCell);
+    } catch (e) {
+      parseError = `card ${cardName} row ${id}: ${e.message}`;
+    }
+    rows.push({ id, command, expect, env, raw: expectCell.trim(), cardName, parseError });
   }
   if (rows.length === 0) {
     throw new Error(`card ${cardName} DoD table has a header but zero rows`);
@@ -248,13 +259,26 @@ async function main() {
     process.exit(3);
   }
 
+  // Filter candidate cards to the requested slice BEFORE parsing any of them (issue #821): a
+  // filename matching the loose `item-\d+-s.*\.md` glob (e.g. `item-24-stage-gate-deadlock.md`,
+  // which starts with "s" from "stage" and has no DoD table at all) must not crash a run for an
+  // unrelated slice. When a specific --slice is requested, a card whose filename does not mention
+  // that slice token is skipped on any STRUCTURAL parse failure (no heading / no table / zero
+  // rows) rather than treated as fatal -- it plainly isn't the card that provides the requested
+  // slice. With no --slice filter (discover-all mode), every card must still parse cleanly.
   const bySlice = new Map(); // sliceId -> [{id, command, expect, env, raw}]
+  const requestedSliceLower = args.slice ? args.slice.toLowerCase() : null;
   for (const file of cardFiles) {
     const text = fs.readFileSync(path.join(args.cardsDir, file), 'utf8');
     let rows;
     try {
       rows = parseDodTable(text, file);
     } catch (e) {
+      const fileMentionsRequestedSlice = requestedSliceLower && file.toLowerCase().includes(requestedSliceLower);
+      if (requestedSliceLower && !fileMentionsRequestedSlice) {
+        // Not the card we're looking for -- its own structural problem is out of scope for this run.
+        continue;
+      }
       console.error(`FATAL: ${e.message}`);
       process.exit(3);
     }
@@ -280,6 +304,16 @@ async function main() {
     const rows = bySlice.get(sl);
     let p = 0, f = 0, s = 0;
     for (const row of rows) {
+      // A row whose expect cell could not be parsed is an unprovable row -- that row FAILs with
+      // a legible reason (naming the card + row id), never a FATAL that kills every other row in
+      // every other slice (issue #821). Widening the grammar is deliberately NOT done here: a
+      // free-text expect cell is a defect in the CARD, not a new expect kind the tool should learn.
+      if (row.parseError) {
+        console.log(`FAIL ${row.id} exit=n/a | ${row.parseError}`);
+        f++;
+        anyFail = true;
+        continue;
+      }
       const gate = checkEnvGate(row, args);
       if (!gate.runnable) {
         console.log(`SKIP ${row.id} env=${row.env}`);

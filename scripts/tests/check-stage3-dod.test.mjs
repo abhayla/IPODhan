@@ -141,3 +141,72 @@ test('--sql refuses --expect-db ipodhan (production) before connecting', () => {
   assert.match(combined, /ipodhan.*refused|refused.*ipodhan/i);
   assert.doesNotMatch(combined, /ECONNREFUSED|ENOTFOUND|connect/i);
 });
+
+// --- issue #821: a malformed expect cell in an UNRELATED card must not block the requested slice ---
+// The real regression: item-03-s1b's own S1b-3 row ("writer: exit 1; matrix: `1`") and item-03-s1d's
+// own S1d-2 row ("exit 1 (was exit 0, count 8, on `origin/main`)") both fail parseExpect's strict
+// `^exit\s+(\d+)$` grammar. Before the fix, main() parses EVERY card up front and FATALs (exit 3) on
+// the first malformed row it hits, regardless of which --slice was asked for.
+
+test('a malformed expect cell in an UNRELATED card does not block --slice for a different, well-formed slice', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stage3-dod-test-821-'));
+  try {
+    const goodCard = [
+      '# Item 99 / slice S9 -- fixture, well-formed',
+      '',
+      '### Definition of Done',
+      '',
+      '| id | command | expect | env |',
+      '|---|---|---|---|',
+      '| S9-1 | `true` | exit 0 | local |',
+      '',
+    ].join('\n');
+    // Same shape as the real S1b-3 row: an expect cell that is not `exit N`, not `line: ...`,
+    // not `regex: ...` -- a free-text cell with an escaped pipe and backtick-quoted spans.
+    const badCard = [
+      '# Item 03 / slice S1b -- fixture, malformed expect cell (unrelated to S9)',
+      '',
+      '### Definition of Done',
+      '',
+      '| id | command | expect | env |',
+      '|---|---|---|---|',
+      '| S1b-3 | `true` | writer: exit 1\\; matrix: `1` | local |',
+      '',
+    ].join('\n');
+    fs.writeFileSync(path.join(dir, 'item-99-s9-fixture.md'), goodCard, 'utf8');
+    fs.writeFileSync(path.join(dir, 'item-03-s1b-fixture.md'), badCard, 'utf8');
+
+    const { code, stdout } = run(['--slice', 'S9', '--cards', dir]);
+    assert.equal(code, 0, `expected slice S9 to run cleanly; got code ${code}, stdout:\n${stdout}`);
+    assert.match(stdout, /PASS S9-1/);
+    assert.doesNotMatch(stdout, /FATAL/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a malformed expect cell in the REQUESTED slice fails that row legibly, naming the card and id -- no FATAL crash', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stage3-dod-test-821b-'));
+  try {
+    const badCard = [
+      '# Item 03 / slice S1d -- fixture, malformed expect cell in the requested slice',
+      '',
+      '### Definition of Done',
+      '',
+      '| id | command | expect | env |',
+      '|---|---|---|---|',
+      '| S1d-2 | `true` | exit 1 (was exit 0, count 8, on `origin/main`) | local |',
+      '',
+    ].join('\n');
+    fs.writeFileSync(path.join(dir, 'item-03-s1d-fixture.md'), badCard, 'utf8');
+
+    const { code, stdout, stderr } = run(['--slice', 'S1d', '--cards', dir]);
+    const combined = stdout + stderr;
+    // Must not be the old un-catchable process.exit(3) FATAL crash.
+    assert.notEqual(code, 3, `expected the malformed row to fail as a row, not crash the whole run; stdout:\n${stdout}\nstderr:\n${stderr}`);
+    assert.match(combined, /S1d-2/);
+    assert.match(combined, /item-03-s1d-fixture\.md/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
