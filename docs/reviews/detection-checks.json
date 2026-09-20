@@ -462,6 +462,32 @@
       "unverifiableWhen": "field_sources is unreadable, or fewer than 20 provenance rows were written on the printed offer-term fields in the 14-day window"
     },
     {
+      "id": "pull_excused",
+      "designId": "PULL-EXCUSED",
+      "findingClass": "pull-model verification check PULL-EXCUSED: NOT_PRINTED count per (IPO, document type), NEW vs yesterday by name",
+      "whatItAsks": "NOT_PRINTED count per (IPO, document type), NEW vs yesterday by name",
+      "healthy": "stable",
+      "alarmsWhen": "a document’s excused set grows at all — this is what catches a mis-resolved type",
+      "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+      "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
+      "consumerReason": "the check is explicitly a day-over-day diff (“NEW vs yesterday”), the same NEW/GONE/SAME shape the floor-delta consumer already reads",
+      "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs",
+      "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
+    },
+    {
+      "id": "pull_exhaust",
+      "designId": "PULL-EXHAUST",
+      "findingClass": "pull-model verification check PULL-EXHAUST: EXHAUSTED rows by (IPO, field, reason), NEW vs GONE vs SAME",
+      "whatItAsks": "EXHAUSTED rows by (IPO, field, reason), NEW vs GONE vs SAME",
+      "healthy": "shrinking",
+      "alarmsWhen": "any NEW one on a phase-1 IPO",
+      "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+      "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
+      "consumerReason": "explicitly NEW vs GONE vs SAME and paired in the design’s own worked proof with PULL-YIELD as “the same night”’s evidence — a nightly diff, not a per-slot count",
+      "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs",
+      "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
+    },
+    {
       "id": "pull_overrides",
       "designId": "PULL-OVERRIDES",
       "findingClass": "an active field_source_overrides row is past its expiry with no expired_at flag, or is no longer valid against the current manifest (an incapable source, or S-05 document-on-timetable-field, after a manifest drift since the row was set)",
@@ -528,6 +554,19 @@
       "sourceDesign": "docs/design/build-cards/item-03-s6-churn-stop-and-detection.md"
     },
     {
+      "id": "pull_yield",
+      "designId": "PULL-YIELD",
+      "findingClass": "pull-model verification check PULL-YIELD: of the fields the offer document should print for a mainboard/SME IPO, how many round 1 supplied",
+      "whatItAsks": "of the fields the offer document should print for a mainboard/SME IPO, how many round 1 supplied",
+      "healthy": "rising toward 100%",
+      "alarmsWhen": "falls, or the denominator moves more than 5% overnight",
+      "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+      "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
+      "consumerReason": "the design’s own worked proof reads this as an overnight trend (“PULL-YIELD rising ... on the same night”, §4) and the alarm condition is explicitly framed as an overnight denominator move",
+      "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs",
+      "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
+    },
+    {
       "id": "q_field_sources_row_key_coverage",
       "findingClass": "a child row in a multi-row table (financial_statements / promoters / ipo_intermediaries / peer_companies) carries no field_sources entry for its own row_key — provenance was written under the '' catch-all default, so a fact from FY2023 is recorded against the same key as FY2024 and the second write silently overwrites the first. Nothing in the schema stops it ('' is a legal row_key), so only an independent read can see it.",
       "round7Findings": [],
@@ -590,8 +629,6 @@
     "T-477 / #224 (ipo_financials fill-rate, DASHBOARD row 'ipo_financials (of financial_data pop.)') — owned by audit-ipo-coverage.mjs's own checks[] array (informational threshold, not a hard gate), not duplicated here",
     "g_zero_ssr_routes (#201, T-473) — a page whose initial HTML is chrome-only ('Loading...' and no data rows) because its data is fetched client-side; HTTP-only probe inside scripts/audit-prod.mjs (ZERO_SSR_ROUTES: fetch the route with no JS and require the real-content marker, e.g. <table><tbody><tr> for /history, or a resolved (non-loading, non-disabled) control for /dashboard's sector filter), not audit-detection-floor.mjs, so it cannot be a checks[] entry here — this manifest's wire-or-retire test requires every declared id to be record()-ed by audit-detection-floor.mjs. Guarded by web/tests/e2e/history-ssr.spec.ts and web/tests/e2e/dashboard-ssr.spec.ts (both JS disabled) and extended per page as each gets the server-service pattern.",
     "PULL-ADMIN (pull-model verification check PULL-ADMIN: fields skipped for admin reasons with no live protection row) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_admin' call lands in the audit script.",
-    "PULL-EXCUSED (pull-model verification check PULL-EXCUSED: NOT_PRINTED count per (IPO, document type), NEW vs yesterday by name) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_excused' call lands in the audit script.",
-    "PULL-EXHAUST (pull-model verification check PULL-EXHAUST: EXHAUSTED rows by (IPO, field, reason), NEW vs GONE vs SAME) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_exhaust' call lands in the audit script.",
     "PULL-FROZEN (pull-model verification check PULL-FROZEN: SUPPLIED rows whose chosen_document_id has been superseded) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_frozen' call lands in the audit script.",
     "PULL-NOBLANK (pull-model verification check PULL-NOBLANK: fields that went from a value to absent this slot) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_noblank' call lands in the audit script.",
     "PULL-NOOP (pull-model verification check PULL-NOOP: writes per cycle ÷ fields re-asked per cycle) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_noop' call lands in the audit script.",
@@ -601,7 +638,6 @@
     "PULL-TYPE (pull-model verification check PULL-TYPE: plan rows whose resolved ranks do not match the IPO’s current type; IPOs with a null segment) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_type' call lands in the audit script.",
     "PULL-WALK (pull-model verification check PULL-WALK: every phase-1 IPO walked this slot) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_walk' call lands in the audit script.",
     "PULL-WRITE (pull-model verification check PULL-WRITE: plan rows marked SUPPLIED whose write returned skipped) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_write' call lands in the audit script.",
-    "PULL-YIELD (pull-model verification check PULL-YIELD: of the fields the offer document should print for a mainboard/SME IPO, how many round 1 supplied) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_yield' call lands in the audit script.",
     "Retired 2026-09-16: RATIOS_BASIS_ISSUE_PRICE has no extractor in scraper/src/services/filing-auto-persist.ts (AUTO_PERSIST_DOC_TYPES) by design, so this check measured a population that can never move and paged UNVERIFIABLE/P1 every night (cost an hour on 2026-09-15, misread as 38 stuck documents); issuer_ratio_yield reads the real ratio population (RHP/DRHP/PROSPECTUS financial_data rows), and not_applicable_documents_named now names this PENDING count honestly instead of grading it. Replaced by issuer_ratio_yield (#670); the never-extractable population is now named by not_applicable_documents_named.",
     "REREAD-LATENCY (pull-model verification check REREAD-LATENCY: oldest actionable disagreement with no re-read attempt) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('reread_latency' call lands in the audit script.",
     "REREAD-RECEIPT (pull-model verification check REREAD-RECEIPT: re-reads with a receipt hashed this cycle ÷ re-reads recorded) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('reread_receipt' call lands in the audit script.",

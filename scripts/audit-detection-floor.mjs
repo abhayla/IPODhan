@@ -123,6 +123,13 @@ function writeConflictBaseline(data) {
 }
 const BASE_URL = (process.env.BASE_URL || 'https://ipodhan.com').replace(/\/$/, '');
 const MAX_OFFENDERS = 8;
+
+// Item 10: checks that compare against the PREVIOUS run need to persist
+// something other than a list of failing row keys, which is all `nextState`
+// carries. Without this bag their delta branch reads `undefined` every night,
+// never fires, and the check looks permanently healthy — a guard that cannot
+// fail. Anything put here is merged into the state file at the end of the run.
+const extraState = {};
 // Item 8 slice 3a: the day the ratio reader was actually wired into the
 // extractor. Documents extracted before it could not carry a ratio however
 // healthy the pipeline was, so they are outside this check's population
@@ -1896,6 +1903,133 @@ async function checkNotApplicableDocuments() {
   record('not_applicable_documents_named', NOT_APPLICABLE_CHECK_NAME, result.status, result.detail);
 }
 
+
+// ---------------------------------------------------------------------------
+// Item 10: PULL-YIELD / PULL-EXHAUST / PULL-EXCUSED.
+//
+// These three read `ipo_field_plan` directly and report what the walk is
+// actually achieving. They were specified in design §4 and parked in
+// `notCoveredByThisManifest` until a record() call landed; this is that call.
+//
+// Measured on staging 2026-09-20 while writing them, which is why the yield
+// check reports a ratio AND its parts: 14,082 plan rows held 102 SUPPLIED
+// (0.7%), 7,101 NOT_AVAILABLE_YET and 6,843 CHECK_FAILED. A check that printed
+// only "yield is low" would have said nothing a reader could act on.
+
+// §4 rule 1: a ratio whose denominator moved more than 5% overnight is
+// UNVERIFIABLE, never PASS. The previous denominator comes from the audit's own
+// state file, the same mechanism the other delta-aware checks use.
+const PULL_YIELD_DENOMINATOR_DRIFT = 0.05;
+
+async function checkS_pullYield() {
+  let rows;
+  try {
+    rows = await q(
+      `SELECT p.state::text AS state, count(*)::int AS n
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+        GROUP BY 1`
+    );
+  } catch (e) {
+    record('pull_yield', 'share of planned fields the walk has supplied', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  const by = Object.fromEntries(rows.map((r) => [r.state, r.n]));
+  const total = rows.reduce((a, r) => a + r.n, 0);
+  if (total === 0) {
+    // A zero denominator is not a pass. Nothing was planned, so nothing can be
+    // measured -- exactly the shape §4 rule 1 exists to stop reading as green.
+    record('pull_yield', 'share of planned fields the walk has supplied', 'UNVERIFIABLE',
+      'no plan rows for live IPOs — nothing to measure (a zero yield from an empty plan is not a failing yield)');
+    return;
+  }
+
+  const prev = readPreviousState()['pull_yield_denominator'];
+  if (typeof prev === 'number' && prev > 0) {
+    const drift = Math.abs(total - prev) / prev;
+    if (drift > PULL_YIELD_DENOMINATOR_DRIFT) {
+      record('pull_yield', 'share of planned fields the walk has supplied', 'UNVERIFIABLE',
+        `denominator moved ${(drift * 100).toFixed(1)}% overnight (${prev} -> ${total}); a ratio over a moving denominator is not evidence (§4 rule 1)`);
+      return;
+    }
+  }
+
+  extraState['pull_yield_denominator'] = total;
+  const supplied = by.SUPPLIED || 0;
+  const pct = ((supplied / total) * 100).toFixed(1);
+  const parts = ['SUPPLIED', 'NOT_AVAILABLE_YET', 'CHECK_FAILED', 'EXHAUSTED', 'PENDING', 'NOT_PRINTED']
+    .filter((k) => by[k]).map((k) => `${k}=${by[k]}`).join(' ');
+  record('pull_yield', 'share of planned fields the walk has supplied',
+    supplied > 0 ? 'PASS' : 'FAIL',
+    `${supplied}/${total} supplied (${pct}%) — ${parts}`);
+}
+
+async function checkS_pullExhaust() {
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, p.table_name AS "tableName", p.field_name AS "fieldName",
+              coalesce(p.reason_code, '(none)') AS "reasonCode"
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.state = 'EXHAUSTED'
+          AND i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+        ORDER BY i.slug, p.table_name, p.field_name`
+    );
+  } catch (e) {
+    record('pull_exhaust', 'EXHAUSTED rows on live IPOs, by identity', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  // signal-ownership R1: a count is not a reading. Every EXHAUSTED row is named.
+  for (const r of rows.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {
+    notify('pull_exhaust', 'P2', `${r.slug}:${r.tableName}.${r.fieldName}`,
+      'field retired as EXHAUSTED on a live IPO', `reason=${r.reasonCode}`);
+  }
+  const ids = rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}(${r.reasonCode})`);
+  record('pull_exhaust', 'EXHAUSTED rows on live IPOs, by identity',
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    rows.length === 0 ? '0 EXHAUSTED rows on live IPOs'
+      : `${rows.length} EXHAUSTED row(s) on live IPOs: ${ids.join('; ')}${rows.length > MAX_OFFENDERS ? ` (+${rows.length - MAX_OFFENDERS} more)` : ''}`);
+}
+
+async function checkS_pullExcused() {
+  let rows;
+  try {
+    rows = await q(
+      `SELECT coalesce(p.chosen_document_type, '(none)') AS "docType",
+              p.table_name AS "tableName", count(*)::int AS n
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.state = 'NOT_PRINTED'
+          AND i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+        GROUP BY 1, 2
+        ORDER BY n DESC`
+    );
+  } catch (e) {
+    record('pull_excused', 'NOT_PRINTED set per document type, NEW vs yesterday', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  // The design's point: a mis-resolved document type shows up as a GROWING
+  // excused set, so the reading is the delta, not the level.
+  const current = Object.fromEntries(rows.map((r) => [`${r.docType}:${r.tableName}`, r.n]));
+  const previous = readPreviousState()['pull_excused_by_type'] || {};
+  const grew = Object.entries(current)
+    .filter(([k, n]) => n > (previous[k] || 0))
+    .map(([k, n]) => `${k} ${previous[k] || 0}->${n}`);
+  for (const g of grew) notify('pull_excused', 'P2', g.split(' ')[0], 'excused (NOT_PRINTED) set grew', g);
+  extraState['pull_excused_by_type'] = current;
+  const total = rows.reduce((a, r) => a + r.n, 0);
+  record('pull_excused', 'NOT_PRINTED set per document type, NEW vs yesterday',
+    grew.length === 0 ? 'PASS' : 'FAIL',
+    grew.length === 0
+      ? `${total} NOT_PRINTED row(s) across ${rows.length} (type, table) pair(s); none grew since the previous run`
+      : `${grew.length} pair(s) grew: ${grew.slice(0, MAX_OFFENDERS).join('; ')}`);
+}
+
 async function main() {
   await assertSessionTimezoneUtc();
   console.log(`
@@ -1928,6 +2062,9 @@ async function main() {
   await checkS_pullPlanRank();
   await checkS_pullPlanStuckReclaim();
   await checkS_pullOverrides();
+  await checkS_pullYield();
+  await checkS_pullExhaust();
+  await checkS_pullExcused();
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
@@ -1954,6 +2091,7 @@ async function main() {
   // Persist tonight's failing row keys so tomorrow's digest can say what is NEW.
   const nextState = {};
   for (const [checkId, rows] of findingsByCheck) nextState[checkId] = rows.map((r) => r.rowKey);
+  Object.assign(nextState, extraState);
 
   // NOT gated on failed.length any more: an all-UNVERIFIABLE night (data_conflicts
   // gone, pm2 gone, site down) used to exit 0 with nobody paged — the T-321
