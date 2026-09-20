@@ -123,6 +123,13 @@ function writeConflictBaseline(data) {
 }
 const BASE_URL = (process.env.BASE_URL || 'https://ipodhan.com').replace(/\/$/, '');
 const MAX_OFFENDERS = 8;
+
+// Item 10: checks that compare against the PREVIOUS run need to persist
+// something other than a list of failing row keys, which is all `nextState`
+// carries. Without this bag their delta branch reads `undefined` every night,
+// never fires, and the check looks permanently healthy — a guard that cannot
+// fail. Anything put here is merged into the state file at the end of the run.
+const extraState = {};
 // Item 8 slice 3a: the day the ratio reader was actually wired into the
 // extractor. Documents extracted before it could not carry a ratio however
 // healthy the pipeline was, so they are outside this check's population
@@ -1896,6 +1903,498 @@ async function checkNotApplicableDocuments() {
   record('not_applicable_documents_named', NOT_APPLICABLE_CHECK_NAME, result.status, result.detail);
 }
 
+
+
+
+async function checkS_pullPlanOrigin() {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'scraper', 'config', 'field-manifest.json'), 'utf8'));
+  } catch (e) {
+    record('pull_plan_origin', 'current-version plan rows record which policy layer chose their ranks',
+      'UNVERIFIABLE', `field-manifest.json not readable: ${e.message}`);
+    return;
+  }
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, p.table_name AS "tableName", p.field_name AS "fieldName", p.state::text AS state
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.manifest_version = $1
+          AND p.state NOT IN ('EXHAUSTED')
+          AND p.policy_origin IS NULL
+        ORDER BY i.slug, p.table_name, p.field_name`,
+      [manifest.version]
+    );
+  } catch (e) {
+    record('pull_plan_origin', 'current-version plan rows record which policy layer chose their ranks',
+      'UNVERIFIABLE', `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  for (const r of rows.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {
+    notify('pull_plan_origin', 'P2', `${r.slug}:${r.tableName}.${r.fieldName}`,
+      'plan row at the current manifest version carries no policy_origin', `state=${r.state}`);
+  }
+  record('pull_plan_origin', 'current-version plan rows record which policy layer chose their ranks',
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    rows.length === 0
+      ? `0 row(s) at manifestVersion=${manifest.version} lack policy_origin`
+      : `${rows.length} row(s) at manifestVersion=${manifest.version} lack policy_origin: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}`).join('; ')}`);
+}
+
+async function checkS_pullAdmin() {
+  // §2.7's guard: the walk may skip a field because an admin protected it. If
+  // the plan says "skipped for admin" and no live protection row exists, the
+  // field is being withheld for a reason that is no longer true -- a silent
+  // freeze rather than a recorded decision.
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, p.table_name AS "tableName", p.field_name AS "fieldName",
+              coalesce(p.reason_code, '(none)') AS "reasonCode"
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+         LEFT JOIN field_protection_metadata f
+                ON f.ipo_id = p.ipo_id
+               AND f.table_name = p.table_name
+               AND f.field_name = p.field_name
+               AND f.is_protected = true
+        WHERE p.reason_code = 'ADMIN_PROTECTED'
+          AND f.id IS NULL
+          AND i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+        ORDER BY i.slug`
+    );
+  } catch (e) {
+    record('pull_admin', 'fields skipped for admin reasons with no live protection row', 'UNVERIFIABLE',
+      `ipo_field_plan/field_protection_metadata not readable: ${e.message}`);
+    return;
+  }
+  for (const r of rows) {
+    notify('pull_admin', 'P2', `${r.slug}:${r.tableName}.${r.fieldName}`,
+      'field skipped as admin-protected but no live protection row exists', `reason=${r.reasonCode}`);
+  }
+  record('pull_admin', 'fields skipped for admin reasons with no live protection row',
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    rows.length === 0
+      ? '0 admin-skipped field(s) without a live protection row'
+      : `${rows.length}: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}`).join('; ')}`);
+}
+
+
+// PULL-NOOP: writes per cycle over fields re-asked per cycle. The class it
+// catches is verification that REWRITES unchanged values -- a healthy-looking
+// write rate that is entirely churn, and a provenance trail that buries the one
+// real change in it (design §2.5.2).
+//
+// The threshold is stated as a RECOMMENDATION, not a measured number, per
+// OD-18. The check reports the ratio and its parts every night; the first weeks
+// of that output are what should replace 5% with something measured. A number
+// typed here today would be a guess wearing a threshold's clothes.
+const PULL_NOOP_RECOMMENDED_CEILING = 0.05;
+
+async function checkS_pullNoop() {
+  let row;
+  try {
+    [row] = await q(
+      `SELECT
+         (SELECT count(*) FROM ipo_field_plan
+           WHERE last_attempt_at > now() - interval '24 hours')::int AS "reasked",
+         (SELECT count(*) FROM field_sources
+           WHERE updated_at > now() - interval '24 hours')::int AS "written",
+         (SELECT count(*) FROM documents
+           WHERE created_at > now() - interval '24 hours')::int AS "newDocuments"`
+    );
+  } catch (e) {
+    record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'UNVERIFIABLE',
+      `ipo_field_plan/field_sources/documents not readable: ${e.message}`);
+    return;
+  }
+  if (!row || row.reasked === 0) {
+    // No re-asks means no denominator. A 0/0 ratio is not a healthy zero.
+    record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'UNVERIFIABLE',
+      'no field was re-asked in the last 24h — nothing to measure (a walk that did not run is not a quiet walk)');
+    return;
+  }
+  const ratio = row.written / row.reasked;
+  const detail = `${row.written} write(s) / ${row.reasked} re-ask(s) = ${(ratio * 100).toFixed(1)}%`
+    + `, ${row.newDocuments} new document(s) in the same window`;
+  // A high ratio is only suspicious WITHOUT a matching document arrival: new
+  // documents are exactly when legitimate rewriting happens.
+  if (ratio > PULL_NOOP_RECOMMENDED_CEILING && row.newDocuments === 0) {
+    notify('pull_noop', 'P2', 'cycle', 'write rate high with no new documents', detail);
+    record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'FAIL',
+      `${detail} — above the RECOMMENDED ${(PULL_NOOP_RECOMMENDED_CEILING * 100).toFixed(0)}% ceiling with no document arrival to explain it (threshold is a recommendation per OD-18, not a measured number)`);
+    return;
+  }
+  record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'PASS', detail);
+}
+
+
+// E1-SOURCE: the ten E-1 (class T) fields are the exchange's to state -- open,
+// close, listing, allotment, refund and credit dates, status, exchanges. A
+// document may PRINT an intended date; only the exchange's own page says what
+// it IS. So no E-1 field may ever carry a document-path source.
+//
+// It asserts the OUTCOME, not the declared intent: the manifest can say DOC is
+// not capable for these fields, and that is a claim; this reads what actually
+// landed in field_sources.
+//
+// field_sources.field_name is camelCase (`openDate`, not `open_date`) -- a
+// snake_case filter here returns a silent empty result and passes for the
+// wrong reason, which is a mistake this repository has made before.
+const E1_DOCUMENT_SOURCES = ['DRHP', 'DOC'];
+
+async function checkS_e1Source() {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'scraper', 'config', 'field-manifest.json'), 'utf8'));
+  } catch (e) {
+    record('e1_source', 'no E-1 (exchange-stated) field is written by the document path', 'UNVERIFIABLE',
+      `field-manifest.json not readable: ${e.message}`);
+    return;
+  }
+  const toCamel = (c) => c.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+  const e1 = Object.entries(manifest.fields)
+    .filter(([, v]) => v.class === 'T')
+    .map(([k]) => {
+      const [table, ...rest] = k.split('.');
+      return { table, column: toCamel(rest.join('.')) };
+    });
+  if (e1.length === 0) {
+    record('e1_source', 'no E-1 (exchange-stated) field is written by the document path', 'UNVERIFIABLE',
+      'the manifest declares no class-T field — the population this check guards is empty, which is not a pass');
+    return;
+  }
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, f.table_name AS "tableName", f.field_name AS "fieldName", f.source::text AS source
+         FROM field_sources f
+         JOIN ipos i ON i.id = f.ipo_id
+        WHERE (f.table_name, f.field_name) IN (${e1.map((_, n) => `($${n * 2 + 1}, $${n * 2 + 2})`).join(', ')})
+          AND f.source::text = ANY($${e1.length * 2 + 1})
+        ORDER BY i.slug`,
+      [...e1.flatMap((f) => [f.table, f.column]), E1_DOCUMENT_SOURCES]
+    );
+  } catch (e) {
+    record('e1_source', 'no E-1 (exchange-stated) field is written by the document path', 'UNVERIFIABLE',
+      `field_sources not readable: ${e.message}`);
+    return;
+  }
+  for (const r of rows) {
+    notify('e1_source', 'P1', `${r.slug}:${r.tableName}.${r.fieldName}`,
+      'E-1 field written by the document path', `source=${r.source} — only the exchange states this field`);
+  }
+  record('e1_source', 'no E-1 (exchange-stated) field is written by the document path',
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    rows.length === 0
+      ? `0 of ${e1.length} E-1 field(s) carry a document source`
+      : `${rows.length} E-1 write(s) from a document source: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}=${r.source}`).join('; ')}`);
+}
+
+
+// PULL-PLAN: does each IPO carry the plan rows the manifest says it should?
+// The class it catches is a whole IPO quietly under-planned -- fields that were
+// never scheduled to be asked at all, which no per-row check can see because
+// the row does not exist. Measured while writing this: plan rows per IPO on
+// staging range from 4 to 190 across 78 IPOs.
+//
+// The expected count is NOT a constant. The manifest's `na` array lists the
+// offering types each field does not apply to, so a RIGHTS issue legitimately
+// carries fewer rows than a MAINBOARD IPO. Comparing against a flat 190 would
+// fail every non-ordinary offering for being correct.
+async function checkS_pullPlan() {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'scraper', 'config', 'field-manifest.json'), 'utf8'));
+  } catch (e) {
+    record('pull_plan', 'each live IPO carries the plan rows its offering type calls for', 'UNVERIFIABLE',
+      `field-manifest.json not readable: ${e.message}`);
+    return;
+  }
+  const entries = Object.entries(manifest.fields);
+  const expectedFor = (offeringType) =>
+    entries.filter(([, v]) => !(v.na || []).includes(offeringType)).length;
+
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, i.offering_type::text AS "offeringType", count(p.id)::int AS "planRows"
+         FROM ipos i
+         LEFT JOIN ipo_field_plan p ON p.ipo_id = i.id
+        WHERE i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+        GROUP BY i.slug, i.offering_type
+        ORDER BY i.slug`
+    );
+  } catch (e) {
+    record('pull_plan', 'each live IPO carries the plan rows its offering type calls for', 'UNVERIFIABLE',
+      `ipos/ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  if (rows.length === 0) {
+    record('pull_plan', 'each live IPO carries the plan rows its offering type calls for', 'UNVERIFIABLE',
+      'no live IPO to measure — an empty population is not a clean plan');
+    return;
+  }
+  const short = [];
+  for (const r of rows) {
+    const expected = expectedFor(r.offeringType);
+    if (r.planRows < expected) {
+      short.push(`${r.slug}(${r.offeringType}) ${r.planRows}/${expected}`);
+      notify('pull_plan', 'P2', r.slug, 'IPO carries fewer plan rows than its offering type calls for',
+        `${r.planRows} of ${expected} expected for ${r.offeringType}`);
+    }
+  }
+  record('pull_plan', 'each live IPO carries the plan rows its offering type calls for',
+    short.length === 0 ? 'PASS' : 'FAIL',
+    short.length === 0
+      ? `${rows.length} live IPO(s) all carry a full plan for their offering type`
+      : `${short.length} of ${rows.length} live IPO(s) under-planned: ${short.slice(0, MAX_OFFENDERS).join('; ')}`);
+}
+
+
+// PULL-WRITE: a plan row marked SUPPLIED asserts that a value was written. If
+// no field_sources row exists for that (ipo, table, field), the plan is
+// claiming a success that never landed -- the worst shape in the loop, because
+// every downstream reading treats SUPPLIED as settled and stops asking.
+//
+// field_sources.field_name is camelCase while ipo_field_plan.field_name is
+// snake_case, so the join has to convert. A direct equality join returns zero
+// rows and this check would report a clean PASS over an empty comparison.
+async function checkS_pullWrite() {
+  let planRows, writeRows;
+  try {
+    planRows = await q(
+      `SELECT i.slug, p.table_name AS "tableName", p.field_name AS "fieldName", p.chosen_source::text AS "chosenSource"
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.state = 'SUPPLIED'
+          AND i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')`
+    );
+    writeRows = await q(
+      `SELECT ipo_id AS "ipoId", table_name AS "tableName", field_name AS "fieldName" FROM field_sources`
+    );
+  } catch (e) {
+    record('pull_write', 'every SUPPLIED plan row has a matching field_sources write', 'UNVERIFIABLE',
+      `ipo_field_plan/field_sources not readable: ${e.message}`);
+    return;
+  }
+  // ipo_field_plan.field_name is snake_case; field_sources.field_name is
+  // camelCase. Comparing them directly in SQL returns zero matches and this
+  // check reports a clean PASS over a comparison that never happened -- the
+  // exact shape a silent empty result takes. The conversion is done here,
+  // where it is visible, rather than buried in a regexp_replace.
+  const toCamel = (c) => c.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+  const written = new Set(writeRows.map((w) => `${w.tableName}.${w.fieldName}`));
+  const missing = planRows.filter((r) => !written.has(`${r.tableName}.${toCamel(r.fieldName)}`));
+
+  for (const r of missing.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {
+    notify('pull_write', 'P1', `${r.slug}:${r.tableName}.${r.fieldName}`,
+      'plan row says SUPPLIED but no field_sources write exists',
+      `chosenSource=${r.chosenSource || '(none)'} — the loop will never re-ask this field`);
+  }
+  record('pull_write', 'every SUPPLIED plan row has a matching field_sources write',
+    missing.length === 0 ? 'PASS' : 'FAIL',
+    missing.length === 0
+      ? `0 of ${planRows.length} SUPPLIED row(s) lack a write`
+      : `${missing.length} of ${planRows.length} SUPPLIED row(s) with no write: ${missing.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}`).join('; ')}`);
+}
+
+async function checkS_pullWalk() {
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug,
+              count(*)::int AS planned,
+              count(*) FILTER (WHERE p.last_attempt_at > now() - interval '36 hours')::int AS "walkedRecently"
+         FROM ipos i
+         JOIN ipo_field_plan p ON p.ipo_id = i.id
+        WHERE i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+        GROUP BY i.slug
+        ORDER BY i.slug`
+    );
+  } catch (e) {
+    record('pull_walk', 'every live IPO was walked in the last 36 hours', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  // The design's own guard: "phase-1 count >= 1". A walk that reports 0 of 0
+  // walked is not a healthy walk, it is an empty population, and printing PASS
+  // for it is how a dead loop reads as fine.
+  if (rows.length === 0) {
+    record('pull_walk', 'every live IPO was walked in the last 36 hours', 'UNVERIFIABLE',
+      'no live IPO carries a plan row — the population is empty, which is not the same as a clean walk');
+    return;
+  }
+  const stale = rows.filter((r) => r.walkedRecently === 0);
+  for (const r of stale) {
+    notify('pull_walk', 'P2', r.slug, 'live IPO not walked in 36h', `${r.planned} planned field(s), 0 attempted recently`);
+  }
+  record('pull_walk', 'every live IPO was walked in the last 36 hours',
+    stale.length === 0 ? 'PASS' : 'FAIL',
+    stale.length === 0
+      ? `${rows.length} of ${rows.length} live IPO(s) walked within 36h`
+      : `${stale.length} of ${rows.length} live IPO(s) NOT walked in 36h: ${stale.slice(0, MAX_OFFENDERS).map((r) => r.slug).join(', ')}`);
+}
+
+async function checkS_pullType() {
+  // The rank half of this design id is already covered by pull_plan_rank. What
+  // that check cannot see is an IPO whose TYPE is unknown: `ipoTypeKey` needs a
+  // segment, so a null segment means every rank it resolved was resolved for a
+  // guessed type. That is the half this check owns.
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, i.status::text AS status, count(p.id)::int AS "planRows"
+         FROM ipos i
+         LEFT JOIN ipo_field_plan p ON p.ipo_id = i.id
+        WHERE i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+          AND i.segment IS NULL
+        GROUP BY i.slug, i.status
+        ORDER BY i.slug`
+    );
+  } catch (e) {
+    record('pull_type', 'live IPOs whose segment is null, so their plan ranks were resolved for a guessed type',
+      'UNVERIFIABLE', `ipos/ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  for (const r of rows) {
+    notify('pull_type', 'P2', r.slug, 'live IPO has a null segment', `${r.status}, ${r.planRows} plan row(s) resolved without a type`);
+  }
+  record('pull_type', 'live IPOs whose segment is null, so their plan ranks were resolved for a guessed type',
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    rows.length === 0
+      ? '0 live IPO(s) with a null segment'
+      : `${rows.length} live IPO(s) with a null segment: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}(${r.planRows} rows)`).join('; ')}`);
+}
+
+// ---------------------------------------------------------------------------
+// Item 10: PULL-YIELD / PULL-EXHAUST / PULL-EXCUSED.
+//
+// These three read `ipo_field_plan` directly and report what the walk is
+// actually achieving. They were specified in design §4 and parked in
+// `notCoveredByThisManifest` until a record() call landed; this is that call.
+//
+// Measured on staging 2026-09-20 while writing them, which is why the yield
+// check reports a ratio AND its parts: 14,082 plan rows held 102 SUPPLIED
+// (0.7%), 7,101 NOT_AVAILABLE_YET and 6,843 CHECK_FAILED. A check that printed
+// only "yield is low" would have said nothing a reader could act on.
+
+// §4 rule 1: a ratio whose denominator moved more than 5% overnight is
+// UNVERIFIABLE, never PASS. The previous denominator comes from the audit's own
+// state file, the same mechanism the other delta-aware checks use.
+const PULL_YIELD_DENOMINATOR_DRIFT = 0.05;
+
+async function checkS_pullYield() {
+  let rows;
+  try {
+    rows = await q(
+      `SELECT p.state::text AS state, count(*)::int AS n
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+        GROUP BY 1`
+    );
+  } catch (e) {
+    record('pull_yield', 'share of planned fields the walk has supplied', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  const by = Object.fromEntries(rows.map((r) => [r.state, r.n]));
+  const total = rows.reduce((a, r) => a + r.n, 0);
+  if (total === 0) {
+    // A zero denominator is not a pass. Nothing was planned, so nothing can be
+    // measured -- exactly the shape §4 rule 1 exists to stop reading as green.
+    record('pull_yield', 'share of planned fields the walk has supplied', 'UNVERIFIABLE',
+      'no plan rows for live IPOs — nothing to measure (a zero yield from an empty plan is not a failing yield)');
+    return;
+  }
+
+  const prev = readPreviousState()['pull_yield_denominator'];
+  if (typeof prev === 'number' && prev > 0) {
+    const drift = Math.abs(total - prev) / prev;
+    if (drift > PULL_YIELD_DENOMINATOR_DRIFT) {
+      record('pull_yield', 'share of planned fields the walk has supplied', 'UNVERIFIABLE',
+        `denominator moved ${(drift * 100).toFixed(1)}% overnight (${prev} -> ${total}); a ratio over a moving denominator is not evidence (§4 rule 1)`);
+      return;
+    }
+  }
+
+  extraState['pull_yield_denominator'] = total;
+  const supplied = by.SUPPLIED || 0;
+  const pct = ((supplied / total) * 100).toFixed(1);
+  const parts = ['SUPPLIED', 'NOT_AVAILABLE_YET', 'CHECK_FAILED', 'EXHAUSTED', 'PENDING', 'NOT_PRINTED']
+    .filter((k) => by[k]).map((k) => `${k}=${by[k]}`).join(' ');
+  record('pull_yield', 'share of planned fields the walk has supplied',
+    supplied > 0 ? 'PASS' : 'FAIL',
+    `${supplied}/${total} supplied (${pct}%) — ${parts}`);
+}
+
+async function checkS_pullExhaust() {
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, p.table_name AS "tableName", p.field_name AS "fieldName",
+              coalesce(p.reason_code, '(none)') AS "reasonCode"
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.state = 'EXHAUSTED'
+          AND i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+        ORDER BY i.slug, p.table_name, p.field_name`
+    );
+  } catch (e) {
+    record('pull_exhaust', 'EXHAUSTED rows on live IPOs, by identity', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  // signal-ownership R1: a count is not a reading. Every EXHAUSTED row is named.
+  for (const r of rows.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {
+    notify('pull_exhaust', 'P2', `${r.slug}:${r.tableName}.${r.fieldName}`,
+      'field retired as EXHAUSTED on a live IPO', `reason=${r.reasonCode}`);
+  }
+  const ids = rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}(${r.reasonCode})`);
+  record('pull_exhaust', 'EXHAUSTED rows on live IPOs, by identity',
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    rows.length === 0 ? '0 EXHAUSTED rows on live IPOs'
+      : `${rows.length} EXHAUSTED row(s) on live IPOs: ${ids.join('; ')}${rows.length > MAX_OFFENDERS ? ` (+${rows.length - MAX_OFFENDERS} more)` : ''}`);
+}
+
+async function checkS_pullExcused() {
+  let rows;
+  try {
+    rows = await q(
+      `SELECT coalesce(p.chosen_document_type, '(none)') AS "docType",
+              p.table_name AS "tableName", count(*)::int AS n
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.state = 'NOT_PRINTED'
+          AND i.${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')
+        GROUP BY 1, 2
+        ORDER BY n DESC`
+    );
+  } catch (e) {
+    record('pull_excused', 'NOT_PRINTED set per document type, NEW vs yesterday', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  // The design's point: a mis-resolved document type shows up as a GROWING
+  // excused set, so the reading is the delta, not the level.
+  const current = Object.fromEntries(rows.map((r) => [`${r.docType}:${r.tableName}`, r.n]));
+  const previous = readPreviousState()['pull_excused_by_type'] || {};
+  const grew = Object.entries(current)
+    .filter(([k, n]) => n > (previous[k] || 0))
+    .map(([k, n]) => `${k} ${previous[k] || 0}->${n}`);
+  for (const g of grew) notify('pull_excused', 'P2', g.split(' ')[0], 'excused (NOT_PRINTED) set grew', g);
+  extraState['pull_excused_by_type'] = current;
+  const total = rows.reduce((a, r) => a + r.n, 0);
+  record('pull_excused', 'NOT_PRINTED set per document type, NEW vs yesterday',
+    grew.length === 0 ? 'PASS' : 'FAIL',
+    grew.length === 0
+      ? `${total} NOT_PRINTED row(s) across ${rows.length} (type, table) pair(s); none grew since the previous run`
+      : `${grew.length} pair(s) grew: ${grew.slice(0, MAX_OFFENDERS).join('; ')}`);
+}
+
 async function main() {
   await assertSessionTimezoneUtc();
   console.log(`
@@ -1928,6 +2427,17 @@ async function main() {
   await checkS_pullPlanRank();
   await checkS_pullPlanStuckReclaim();
   await checkS_pullOverrides();
+  await checkS_pullYield();
+  await checkS_pullExhaust();
+  await checkS_pullExcused();
+  await checkS_pullWalk();
+  await checkS_pullType();
+  await checkS_pullPlanOrigin();
+  await checkS_pullAdmin();
+  await checkS_pullNoop();
+  await checkS_e1Source();
+  await checkS_pullPlan();
+  await checkS_pullWrite();
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
@@ -1938,6 +2448,35 @@ async function main() {
     console.log('\n' + formatAdminQueueBlock(queue));
   } catch (err) {
     console.error(`ADMIN-QUEUE: could not read (${err.message}) — not fatal to the audit`);
+  }
+
+  // CHECK-ROSTER (item 10) runs LAST, on purpose: it asks whether every check
+  // the manifest claims to run actually reported tonight. The class it closes is
+  // the nastiest one in this file -- a check that THREW leaves no line, and the
+  // delta consumer parses only PASS and FAIL, so a crashed check reads exactly
+  // like a check with no findings. Silence is not success.
+  try {
+    const rosterManifest = JSON.parse(readFileSync(join(REPO_ROOT, 'docs', 'reviews', 'detection-checks.json'), 'utf8'));
+    const declared = rosterManifest.checks
+      .filter((c) => !c.auditScript || c.auditScript === rosterManifest.auditScript)
+      .map((c) => c.id);
+    // 'check_roster' itself has not recorded yet at this point -- it is the line
+    // being built. Counting itself as missing would make this check permanently
+    // FAIL for a reason that says nothing about the roster.
+    const reported = new Set(results.map((r) => r.id)).add('check_roster');
+    const missing = declared.filter((id) => !reported.has(id));
+    for (const id of missing) {
+      notify('check_roster', 'P1', id, 'declared check produced no line tonight',
+        'it crashed, or it was never called — either way its silence is not a pass');
+    }
+    record('check_roster', 'every check this manifest declares reported tonight',
+      missing.length === 0 ? 'PASS' : 'FAIL',
+      missing.length === 0
+        ? `${declared.length} declared check(s) all reported`
+        : `${missing.length} of ${declared.length} declared check(s) produced NO line: ${missing.slice(0, MAX_OFFENDERS).join(', ')}`);
+  } catch (e) {
+    record('check_roster', 'every check this manifest declares reported tonight', 'UNVERIFIABLE',
+      `detection-checks.json not readable: ${e.message}`);
   }
 
   const failed = results.filter((r) => r.status === 'FAIL');
@@ -1954,6 +2493,7 @@ async function main() {
   // Persist tonight's failing row keys so tomorrow's digest can say what is NEW.
   const nextState = {};
   for (const [checkId, rows] of findingsByCheck) nextState[checkId] = rows.map((r) => r.rowKey);
+  Object.assign(nextState, extraState);
 
   // NOT gated on failed.length any more: an all-UNVERIFIABLE night (data_conflicts
   // gone, pm2 gone, site down) used to exit 0 with nobody paged — the T-321
