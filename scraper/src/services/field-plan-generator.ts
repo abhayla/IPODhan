@@ -119,6 +119,19 @@ export function generateFieldPlan(
     if (policy.na) continue;
 
     const ranks = policy.ranks;
+    // #858: a field the manifest ranks NO source for, for THIS ipo type, must
+    // not be planned. `listing_performance.current_price_nse` has rank list []
+    // for SME_BSE -- an SME IPO listing only on BSE has no NSE quote, and that
+    // is correct. But a planned row with no source has every rank answer "not
+    // here" vacuously, and the walk reads that as EXHAUSTED: terminal,
+    // next_due_at nulled, never asked again. 36 rows sat in exactly that state
+    // on staging with rank1_source = NONE.
+    //
+    // `policy.na` above already skips a field that does not APPLY to this
+    // offering type. This is the other shape: the field applies, but no source
+    // we have can serve it for this type. Both mean "do not plan it"; only the
+    // first was handled.
+    if (ranks.length === 0) continue;
     if (ranks.length > RANK_COLUMNS) {
       throw new Error(
         `generateFieldPlan: field "${fieldKey}" ranks ${ranks.length} sources for ${typeKey} ` +
