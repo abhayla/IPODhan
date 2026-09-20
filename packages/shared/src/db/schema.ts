@@ -2400,3 +2400,67 @@ export const fieldSourceOverrides = pgTable(
 
 export type FieldSourceOverride = typeof fieldSourceOverrides.$inferSelect;
 export type NewFieldSourceOverride = typeof fieldSourceOverrides.$inferInsert;
+
+// ==================== TABLE: CLOSED_IPO_RESOURCING (item 17, OD-22) ====================
+//
+// The 22:00 IST closed-IPO job's ledger: one row per IPO it has attempted, so a
+// second pass knows what the first one already did and why it stopped.
+//
+// Why it exists (#717, measured on staging 2026-09-20): 74 PROSPECTUS documents
+// sit PENDING, every one of them on a LISTED IPO, the oldest filed 2026-06-16.
+// `PROSPECTUS` IS in EXTRACTABLE_DOC_TYPES, so the extractor knows how to read
+// them -- 10 of the same type on the same statuses are COMPLETED. What is
+// missing is a consumer: nothing walks a LISTED IPO a second time to read a
+// prospectus filed after the initial DRHP/RHP-era pass.
+//
+// `cause_class` is an enum rather than free text on purpose: "why did this IPO
+// not finish" has to be countable per class (signal-ownership R1 -- a count
+// resolved to identities), not a string someone greps.
+export const closedIpoResourcingOutcomeEnum = pgEnum('closed_ipo_resourcing_outcome', [
+  'DONE',
+  'PARTIAL',
+  'FAILED',
+]);
+
+export const closedIpoResourcingCauseClassEnum = pgEnum('closed_ipo_resourcing_cause_class', [
+  'DOCUMENT_UNOBTAINABLE',
+  'EXTRACTOR_MISSING',
+  'VALIDATION_REJECTED',
+  'SOURCE_UNREACHABLE',
+  'WRITE_SKIPPED',
+]);
+
+export const closedIpoResourcing = pgTable(
+  'closed_ipo_resourcing',
+  {
+    ipoId: uuid('ipo_id')
+      .primaryKey()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    firstAttemptAt: timestamp('first_attempt_at', { withTimezone: true }).notNull(),
+    lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }).notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    outcome: closedIpoResourcingOutcomeEnum('outcome').notNull(),
+    causeClass: closedIpoResourcingCauseClassEnum('cause_class'),
+    causeDetail: text('cause_detail'),
+    fieldsWritten: integer('fields_written').notNull().default(0),
+    fieldsLeftEmpty: integer('fields_left_empty').notNull().default(0),
+    resourcedAtVersion: varchar('resourced_at_version', { length: 50 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    outcomeIdx: index('idx_closed_ipo_resourcing_outcome').on(table.outcome),
+    causeClassIdx: index('idx_closed_ipo_resourcing_cause_class').on(table.causeClass),
+    lastAttemptIdx: index('idx_closed_ipo_resourcing_last_attempt').on(table.lastAttemptAt),
+  })
+);
+
+export const closedIpoResourcingRelations = relations(closedIpoResourcing, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [closedIpoResourcing.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export type ClosedIpoResourcing = typeof closedIpoResourcing.$inferSelect;
+export type NewClosedIpoResourcing = typeof closedIpoResourcing.$inferInsert;
