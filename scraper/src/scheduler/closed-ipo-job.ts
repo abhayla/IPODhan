@@ -216,3 +216,44 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
   );
   return summary;
 }
+
+/** IST is a fixed UTC+5:30 offset (no DST) — same convention as `due-step-cycle.ts`. */
+const IST_OFFSET_MINUTES = 5 * 60 + 30;
+
+/**
+ * Minutes since IST midnight of the job's single daily boundary: 22:00 IST.
+ *
+ * Deliberately NOT appended to `DISCOVERY_SLOTS_IST_MINUTES` in
+ * `due-step-cycle.ts`. That array is the DATA job's slot list, and adding a
+ * fifth entry would make the data job's own due-check treat 22:00 as one of
+ * its slots too — the exact overlap OD-19 forbids ("never start while the data
+ * job's cycle lock is held" only means something if the two schedules are
+ * separate checks, not a shared one).
+ */
+export const CLOSED_IPO_JOB_SLOT_IST_MINUTES = 22 * 60;
+
+/**
+ * The job is due when the most recent 22:00-IST boundary at-or-before `now` is
+ * strictly after `lastRunAt`.
+ *
+ * Catch-up-safe, for the same reason `isDiscoveryDue` is: a wake that misses
+ * the boundary (process down, a data cycle that ran long) still fires on the
+ * next wake that observes it, rather than losing the night and waiting until
+ * tomorrow. A backlog that only drains on perfectly-timed wakes is a backlog
+ * that does not drain.
+ */
+export function isClosedIpoJobDue(now: Date, lastRunAt: Date | null): boolean {
+  const istMs = now.getTime() + IST_OFFSET_MINUTES * 60_000;
+  const dayIndex = Math.floor(istMs / 86_400_000);
+  const minutesOfDay = new Date(istMs).getUTCHours() * 60 + new Date(istMs).getUTCMinutes();
+
+  // Before today's 22:00 the most recent boundary was yesterday's.
+  const boundaryEpochMinute =
+    minutesOfDay >= CLOSED_IPO_JOB_SLOT_IST_MINUTES
+      ? dayIndex * 1440 + CLOSED_IPO_JOB_SLOT_IST_MINUTES
+      : (dayIndex - 1) * 1440 + CLOSED_IPO_JOB_SLOT_IST_MINUTES;
+
+  if (lastRunAt === null) return true;
+  const lastRunIstMinute = Math.floor((lastRunAt.getTime() + IST_OFFSET_MINUTES * 60_000) / 60_000);
+  return boundaryEpochMinute > lastRunIstMinute;
+}

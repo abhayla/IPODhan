@@ -15,6 +15,7 @@ import {
   runClosedIpoJob,
   CLOSED_IPO_CANDIDATES_SQL,
   CLOSED_IPO_JOB_DEFAULT_CAP,
+  isClosedIpoJobDue,
 } from '../../../src/scheduler/closed-ipo-job.js';
 
 function makeStubDb(rows: Array<{ id: string; closeDate: string; status: string }> = []) {
@@ -137,5 +138,46 @@ describe('runClosedIpoJob — behaviour', () => {
     expect(summary.skippedCycleLockHeld).toBe(false);
     expect(summary.candidatesConsidered).toBe(0);
     expect(summary.attempted).toBe(0);
+  });
+});
+
+/**
+ * The 22:00 IST due-check (build card, "Feature flag" section).
+ *
+ * Deliberately NOT a fifth entry in `DISCOVERY_SLOTS_IST_MINUTES`: inserting
+ * 22:00 there would make the DATA job's own due-check treat 22:00 as one of
+ * its slots, which is exactly what OD-19 forbids. This is a separate single
+ * boundary, catch-up-safe the same way `isDiscoveryDue` is — a wake that
+ * misses 22:00 (process down, long cycle) still fires on the next wake that
+ * observes it, rather than waiting a whole day.
+ */
+describe('isClosedIpoJobDue', () => {
+  // 2026-09-21 22:05 IST == 16:35Z the same day.
+  const at = (iso: string) => new Date(iso);
+
+  it('is due after 22:00 IST when it has never run', () => {
+    expect(isClosedIpoJobDue(at('2026-09-21T16:35:00Z'), null)).toBe(true);
+  });
+
+  it('is NOT due before 22:00 IST on a day it already ran for the previous boundary', () => {
+    // 2026-09-21 21:00 IST == 15:30Z. Last run was yesterday's 22:00 boundary
+    // (2026-09-20 22:00 IST == 16:30Z on the 20th), so the most recent
+    // boundary at-or-before now IS that one — already served.
+    expect(isClosedIpoJobDue(at('2026-09-21T15:30:00Z'), at('2026-09-20T16:31:00Z'))).toBe(false);
+  });
+
+  it('is due again once the next 22:00 boundary passes', () => {
+    expect(isClosedIpoJobDue(at('2026-09-21T16:35:00Z'), at('2026-09-20T16:31:00Z'))).toBe(true);
+  });
+
+  it('is NOT due twice for the same boundary', () => {
+    // Ran at 22:05 IST, asked again at 23:30 IST the same evening.
+    expect(isClosedIpoJobDue(at('2026-09-21T18:00:00Z'), at('2026-09-21T16:35:00Z'))).toBe(false);
+  });
+
+  it('catches up a missed boundary rather than skipping a day', () => {
+    // Last ran two days ago; it is now 03:00 IST (21:30Z prior day) — the most
+    // recent boundary is LAST NIGHT's 22:00, which was never served.
+    expect(isClosedIpoJobDue(at('2026-09-21T21:30:00Z'), at('2026-09-19T16:35:00Z'))).toBe(true);
   });
 });
