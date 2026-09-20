@@ -993,6 +993,20 @@ jobs:
         # without re-running the generator, or hand-edited an aggregate.
         run: node scripts/build-detection-registry.mjs --check
 
+      - name: Plan board generator self-test
+        run: node --test scripts/tests/build-plan-board.test.mjs
+
+      - name: Plan board sections not stale
+        # docs/design/board/plan-sections.generated.html is a BUILD PRODUCT of
+        # three sources: the completion-state markdown, the spec's OD rows and
+        # the field manifest. The owner reads the published board to see what is
+        # left before staging is feature-complete, so a stale generated file is
+        # a status page that lies. This fails the PR if a source moved and the
+        # generator was not re-run. Wired here rather than left as a local
+        # convenience: 28 of 51 files under scripts/tests/ are not named by any
+        # workflow (#616), so an unwired check is a check that does not run.
+        run: node scripts/ops/build-plan-board.mjs --check
+
       - name: Run detection-change gate
         env:
           GH_PR_NUMBER: ${{ github.event.pull_request.number }}
