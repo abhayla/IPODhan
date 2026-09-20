@@ -484,3 +484,52 @@ describe('bse-api-scraper today derivation uses the IST day (#687 slice 2)', () 
     expect(ipo.closeDate).toBe('2026-09-16');
   });
 });
+
+/**
+ * Item 14 (#728), measured on staging 2026-09-20: every zero-valued
+ * `ipos.issue_size` in the table — 20 of 20 — is BSE-sourced. No other source
+ * has ever written a zero. That is not coincidence: `computeBSEIssueSize`
+ * returns the sentinel 0 when its inputs are missing or unparseable, and
+ * `buildScrapedIPO` passed that 0 straight through as `issueSize`, so "BSE did
+ * not tell us" was recorded as "BSE said zero".
+ *
+ * The two are not the same claim, and the difference is load-bearing: a 0
+ * satisfies `z.number().nonnegative()`, outranks nothing, and reads downstream
+ * as a known-tiny issue rather than an absent one. `issueSize` is already
+ * `.optional()` in the validator, so `undefined` is the honest value and needs
+ * no schema change.
+ *
+ * The sentinel itself stays — its own tests pin it and other callers read it —
+ * but it stops at the boundary where a scraped record is built.
+ */
+describe('item 14 (#728) — an unknown BSE issue size is absent, not zero', () => {
+  it('omits issueSize entirely when the share count is missing', () => {
+    const mapped = mapBSEDetailToScrapedIPO({ ...DETAIL_ROW, Issue_Size_No_of_shares: '' });
+    expect(mapped).not.toBeNull();
+    expect(mapped!.issueSize).toBeUndefined();
+  });
+
+  it('rejects the whole row when the price band is unparseable (not our case to fix)', () => {
+    // Worth pinning rather than assuming: an unparseable band makes the mapper
+    // return null for the ENTIRE row, so that input never reaches issueSize at
+    // all. The zero-sentinel path is reached only via a missing/zero SHARE
+    // COUNT with a valid band. Asserted so a future change that starts
+    // admitting band-less rows has to confront this case deliberately.
+    expect(mapBSEDetailToScrapedIPO({ ...DETAIL_ROW, Price_Band: '' })).toBeNull();
+  });
+
+  it('still emits a real computed size when both inputs are present', () => {
+    // The regression guard: the fix must not turn a GOOD value into undefined.
+    // 4,019,000 shares x Rs120 floor = Rs48.228 Cr, the same number the
+    // W-109 floor-price test above pins.
+    const mapped = mapBSEDetailToScrapedIPO(DETAIL_ROW);
+    expect(mapped!.issueSize).toBe(482280000);
+  });
+
+  it('omits issueSize on the list+detail path too, not only the detail-only one', () => {
+    // Both mappers go through buildScrapedIPO; asserting only one would let a
+    // future split reintroduce the zero on the other.
+    const mapped = mapBSEToScrapedIPO(LIST_ROW, { ...DETAIL_ROW, Issue_Size_No_of_shares: '0' });
+    expect(mapped.issueSize).toBeUndefined();
+  });
+});

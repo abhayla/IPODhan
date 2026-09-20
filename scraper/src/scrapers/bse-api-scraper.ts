@@ -275,7 +275,15 @@ function buildScrapedIPO(
 
   return {
     companyName,
-    issueSize: computeBSEIssueSize(shares, band.min),
+    // Item 14 (#728): the sentinel 0 stops HERE. `computeBSEIssueSize` returns
+    // 0 when its inputs are missing or unparseable, which is "BSE did not say",
+    // not "BSE said zero" — and the two are different claims downstream: a 0
+    // passes `z.number().nonnegative()`, outranks nothing, and reads as a
+    // known-tiny issue rather than an absent one. Measured on staging
+    // 2026-09-20: every zero-valued `ipos.issue_size` in the table, 20 of 20,
+    // is BSE-sourced; no other source has ever written one. `issueSize` is
+    // already `.optional()`, so undefined needs no schema change.
+    issueSize: computeBSEIssueSize(shares, band.min) || undefined,
     priceRangeMin: band.min,
     priceRangeMax: band.max,
     openDate: openDate || today,
