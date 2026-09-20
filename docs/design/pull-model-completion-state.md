@@ -59,10 +59,10 @@ So a card saying DONE is a claim. Each verdict below was checked against an arte
 | 31 | PR Spec-deviation block | **BUILT** | Landed as #813. **Card still reads NOT STARTED - card is stale** |
 | 32 | Status line on every card + gate | **PARTIAL** | Gate built (`check-build-cards.mjs:142-156`) but **accepts the unknown shape as valid**, which is why 24 cards say nothing. #810 open |
 | 33 | Repoint `check-dod.mjs` into CI | **PARTIAL** | Root refusal built (`check-dod.mjs:13-18`); CI wiring not. #829 open |
-| 34 | `spec_ref` on every failure class | **NOT BUILT** | No `spec_ref` validation found |
+| 34 | `spec_ref` on every failure class | **BUILT** | `validateSpecRefs()` at `scripts/build-detection-registry.mjs:64`, called at `:174` — it throws on a missing key, a non-array, or a section name the spec does not have. All **45** entries under `docs/reviews/failure-classes/` carry the key. Proven live 2026-09-20: a `spec_ref` of `["OD-61",...]` was REFUSED ("names no section of docs/design/data-sourcing-pull-model.md") and `["§2.5","§2.11","§3","§3.4"]` accepted. The earlier NOT BUILT verdict was wrong; so is the card, which still reads `Status: NOT STARTED` |
 | 35 | Admin queue open count in nightly report | **NOT BUILT** | #818 (28,120 open items across 268 IPOs); #787 blocks S9 sizing |
 
-**Totals: 12 built, 12 partial, 5 not built, of 29 items.** (Counted from the table itself. An
+**Totals: 13 built, 12 partial, 4 not built, of 29 items.** (Counted from the table itself. An
 earlier session summary said 8/11/5 - that was wrong, and a naive `grep -c BUILT` also miscounts
 because it matches inside NOT BUILT.)
 
