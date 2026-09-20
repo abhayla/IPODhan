@@ -261,3 +261,46 @@ describe('applyWriteResult - a dropped write must never read as SUPPLIED', () =>
     expect(before.attempts).toBe(0);
   });
 });
+
+/**
+ * #858: 36 plan rows on staging sat in EXHAUSTED with rank1_source = NONE —
+ * 26 `current_price_nse` and 10 `current_price_bse`, every one on an SME IPO.
+ *
+ * The manifest gives `listing_performance.current_price_nse` the rank list
+ * `{"SME_BSE": []}` — an empty list, because an SME IPO listing only on BSE
+ * has no NSE quote. The generator planned the row anyway (`ranks[0] ?? null`),
+ * and a field with no source has every rank answer "not here" vacuously, which
+ * the walk correctly reads as EXHAUSTED: terminal, `next_due_at` nulled, never
+ * asked again.
+ *
+ * So the bug is not in the walk. The row should never have been planned.
+ */
+describe('generateFieldPlan - fields with no ranked source are not planned (#858)', () => {
+  const manifest = loadFieldManifest();
+
+  it('does not plan current_price_nse for an SME_BSE IPO — the manifest ranks no source for it', () => {
+    const rows = generateFieldPlan(SME_BSE_IPO, manifest);
+    expect(rowFor(rows, 'listing_performance', 'current_price_nse')).toBeUndefined();
+  });
+
+  it('does not plan current_price_bse for an SME_NSE IPO', () => {
+    const rows = generateFieldPlan(SME_NSE_IPO, manifest);
+    expect(rowFor(rows, 'listing_performance', 'current_price_bse')).toBeUndefined();
+  });
+
+  it('plans NO row whose rank1Source is null, for any of the three IPO types', () => {
+    for (const ipo of [MAINBOARD_IPO, SME_BSE_IPO, SME_NSE_IPO]) {
+      const sourceless = generateFieldPlan(ipo, manifest).filter((r) => r.rank1Source === null);
+      expect(
+        sourceless.map((r) => `${r.tableName}.${r.fieldName}`),
+        `${resolveIpoTypeKey(ipo)} planned ${sourceless.length} field(s) with no source`
+      ).toEqual([]);
+    }
+  });
+
+  it('STILL plans the fields that DO have a source — the guard must not empty the plan', () => {
+    const rows = generateFieldPlan(SME_BSE_IPO, manifest);
+    expect(rowFor(rows, 'listing_performance', 'current_price_bse')).toBeDefined();
+    expect(rows.length).toBeGreaterThan(100);
+  });
+});
