@@ -514,6 +514,19 @@
       "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
     },
     {
+      "id": "pull_noop",
+      "designId": "PULL-NOOP",
+      "findingClass": "pull-model verification check PULL-NOOP: writes per cycle ÷ fields re-asked per cycle",
+      "whatItAsks": "writes per cycle ÷ fields re-asked per cycle",
+      "healthy": "near zero on a day with no filings",
+      "alarmsWhen": "rises without a matching document arrival — verification is rewriting unchanged values",
+      "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+      "consumer": "per-cycle failure reading (identities)",
+      "consumerReason": "brief-assigned: the ratio is defined per cycle (“writes per cycle ÷ fields re-asked per cycle”) and needs the cycle’s own write identities to explain a rise",
+      "status": "built 2026-09-20 (item 10): record() call lands in scripts/audit-detection-floor.mjs; the 5% ceiling is a RECOMMENDATION per OD-18, to be replaced by a measured number once the check has weeks of output",
+      "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
+    },
+    {
       "id": "pull_overrides",
       "designId": "PULL-OVERRIDES",
       "findingClass": "an active field_source_overrides row is past its expiry with no expired_at flag, or is no longer valid against the current manifest (an incapable source, or S-05 document-on-timetable-field, after a manifest drift since the row was set)",
@@ -695,7 +708,6 @@
     "g_zero_ssr_routes (#201, T-473) — a page whose initial HTML is chrome-only ('Loading...' and no data rows) because its data is fetched client-side; HTTP-only probe inside scripts/audit-prod.mjs (ZERO_SSR_ROUTES: fetch the route with no JS and require the real-content marker, e.g. <table><tbody><tr> for /history, or a resolved (non-loading, non-disabled) control for /dashboard's sector filter), not audit-detection-floor.mjs, so it cannot be a checks[] entry here — this manifest's wire-or-retire test requires every declared id to be record()-ed by audit-detection-floor.mjs. Guarded by web/tests/e2e/history-ssr.spec.ts and web/tests/e2e/dashboard-ssr.spec.ts (both JS disabled) and extended per page as each gets the server-service pattern.",
     "PULL-FROZEN (pull-model verification check PULL-FROZEN: SUPPLIED rows whose chosen_document_id has been superseded) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_frozen' call lands in the audit script.",
     "PULL-NOBLANK (pull-model verification check PULL-NOBLANK: fields that went from a value to absent this slot) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_noblank' call lands in the audit script.",
-    "PULL-NOOP (pull-model verification check PULL-NOOP: writes per cycle ÷ fields re-asked per cycle) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_noop' call lands in the audit script.",
     "the pull walk re-asks fields and REWRITES them with identical values, which is indistinguishable in every downstream reading from the walk confirming them -- a healthy-looking write rate that is entirely no-op churn, and the field_sources provenance trail it produces is noise that hides the one real change in it",
     "PULL-PLAN (pull-model verification check PULL-PLAN: plan rows per IPO = the committed manifest, and the manifest hash is unchanged) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_plan' call lands in the audit script.",
     "PULL-WRITE (pull-model verification check PULL-WRITE: plan rows marked SUPPLIED whose write returned skipped) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_write' call lands in the audit script.",

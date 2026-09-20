@@ -1981,6 +1981,55 @@ async function checkS_pullAdmin() {
       : `${rows.length}: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}`).join('; ')}`);
 }
 
+
+// PULL-NOOP: writes per cycle over fields re-asked per cycle. The class it
+// catches is verification that REWRITES unchanged values -- a healthy-looking
+// write rate that is entirely churn, and a provenance trail that buries the one
+// real change in it (design §2.5.2).
+//
+// The threshold is stated as a RECOMMENDATION, not a measured number, per
+// OD-18. The check reports the ratio and its parts every night; the first weeks
+// of that output are what should replace 5% with something measured. A number
+// typed here today would be a guess wearing a threshold's clothes.
+const PULL_NOOP_RECOMMENDED_CEILING = 0.05;
+
+async function checkS_pullNoop() {
+  let row;
+  try {
+    [row] = await q(
+      `SELECT
+         (SELECT count(*) FROM ipo_field_plan
+           WHERE last_attempt_at > now() - interval '24 hours')::int AS "reasked",
+         (SELECT count(*) FROM field_sources
+           WHERE updated_at > now() - interval '24 hours')::int AS "written",
+         (SELECT count(*) FROM documents
+           WHERE created_at > now() - interval '24 hours')::int AS "newDocuments"`
+    );
+  } catch (e) {
+    record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'UNVERIFIABLE',
+      `ipo_field_plan/field_sources/documents not readable: ${e.message}`);
+    return;
+  }
+  if (!row || row.reasked === 0) {
+    // No re-asks means no denominator. A 0/0 ratio is not a healthy zero.
+    record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'UNVERIFIABLE',
+      'no field was re-asked in the last 24h — nothing to measure (a walk that did not run is not a quiet walk)');
+    return;
+  }
+  const ratio = row.written / row.reasked;
+  const detail = `${row.written} write(s) / ${row.reasked} re-ask(s) = ${(ratio * 100).toFixed(1)}%`
+    + `, ${row.newDocuments} new document(s) in the same window`;
+  // A high ratio is only suspicious WITHOUT a matching document arrival: new
+  // documents are exactly when legitimate rewriting happens.
+  if (ratio > PULL_NOOP_RECOMMENDED_CEILING && row.newDocuments === 0) {
+    notify('pull_noop', 'P2', 'cycle', 'write rate high with no new documents', detail);
+    record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'FAIL',
+      `${detail} — above the RECOMMENDED ${(PULL_NOOP_RECOMMENDED_CEILING * 100).toFixed(0)}% ceiling with no document arrival to explain it (threshold is a recommendation per OD-18, not a measured number)`);
+    return;
+  }
+  record('pull_noop', 'writes per cycle over fields re-asked per cycle', 'PASS', detail);
+}
+
 async function checkS_pullWalk() {
   let rows;
   try {
@@ -2214,6 +2263,7 @@ async function main() {
   await checkS_pullType();
   await checkS_pullPlanOrigin();
   await checkS_pullAdmin();
+  await checkS_pullNoop();
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
