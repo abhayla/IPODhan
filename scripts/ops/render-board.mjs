@@ -304,14 +304,31 @@ document.querySelectorAll(".controls button").forEach(function (b) {
 `;
 
 if (CHECK) {
-  // Compare with line endings normalised. git may check this file out as CRLF on
-  // Windows and LF on Linux, so a raw byte-compare is green on one platform and
-  // red on the other for a file whose CONTENT is identical — measured on #850,
-  // where the gate passed locally and failed on the Ubuntu runner.
   const norm = (s) => s.split('\r\n').join('\n');
-  const current = existsSync(OUT) ? readFileSync(OUT, 'utf8') : '';
-  if (norm(current) !== norm(page)) {
-    console.error('board is stale — run: node scripts/ops/render-board.mjs');
+  const current = existsSync(OUT) ? norm(readFileSync(OUT, 'utf8')) : '';
+  const fresh = norm(page);
+  if (current !== fresh) {
+    // SHOW THE DIVERGENCE. The first version of this printed one line naming
+    // neither the offset nor the differing input, and #850 then burned FOUR fix
+    // rounds guessing at line endings while the real cause was that CI renders
+    // the PR's MERGE ref: main had moved plan-sections.generated.html, so the
+    // committed page and the merge-ref sources legitimately disagreed. A gate
+    // that says only "stale" cannot distinguish "you forgot to re-render" from
+    // "your branch is behind main", and those need opposite fixes.
+    let at = 0;
+    while (at < current.length && at < fresh.length && current[at] === fresh[at]) at += 1;
+    const line = current.slice(0, at).split('\n').length;
+    const window = (s) => JSON.stringify(s.slice(Math.max(0, at - 70), at + 40));
+    console.error('board is stale — docs/design/board/index.html does not match its sources.');
+    console.error(`  first difference at char ${at} (line ${line})`);
+    console.error(`  committed: ${window(current)}`);
+    console.error(`  rendered : ${window(fresh)}`);
+    console.error(`  lengths: committed ${current.length}, rendered ${fresh.length}`);
+    console.error('');
+    console.error('  If the text above came from the plan sections, your branch is behind main:');
+    console.error('    git rebase origin/main && node scripts/ops/build-plan-board.mjs');
+    console.error('  Otherwise a source changed and the page was not re-rendered:');
+    console.error('    node scripts/ops/render-board.mjs');
     process.exit(1);
   }
   console.log('board up to date');

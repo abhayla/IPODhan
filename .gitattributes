@@ -37,7 +37,6 @@ docs/ops/prod-ops-recipes.md text eol=crlf
 # the generator's own line-ending-normalized compare.
 scraper/config/*.json text eol=lf
 
-<<<<<<< HEAD
 # 2026-09-20: the plan board sections are GENERATED (scripts/ops/build-plan-board.mjs).
 # Two PRs that each corrected a DIFFERENT inventory row both rewrite this 90 KB file,
 # and git interleaves them line-by-line into a conflict that is meaningless to resolve
@@ -53,13 +52,11 @@ scraper/config/*.json text eol=lf
 #   git checkout --theirs docs/design/board/plan-sections.generated.html
 #   node scripts/ops/build-plan-board.mjs
 docs/design/board/plan-sections.generated.html -merge
-=======
-# The board renderer emits LF and CI byte-compares its output against the
-# committed file (render-board.mjs --check). A CRLF checkout on Windows makes
-# that comparison platform-dependent: green locally, red on the Linux runner.
-# Measured 2026-09-20 on #850. Same remedy as *.mjs above.
+
+# index.html is a GENERATED build product that CI byte-compares
+# (render-board.mjs --check), so its stored form should not vary by platform.
+# NOTE: four eol=lf rules were added here for #850 and then removed -- an
+# independent review proved line endings were never the cause. The gate was
+# reporting REAL staleness against the PR merge ref, where main had moved
+# plan-sections.generated.html. Only this rule is kept, on principle.
 docs/design/board/index.html text eol=lf
-docs/design/board/*.json text eol=lf
-docs/design/board/*.css text eol=lf
-docs/design/board/plan-sections.generated.html text eol=lf
->>>>>>> 0e903b55 (fix(board): make the staleness gate line-ending independent)
