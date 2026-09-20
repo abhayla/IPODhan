@@ -23,6 +23,40 @@ import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-confl
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { getRedisClient } from '@/lib/cache/redis-client';
 
+// Keep real writes concurrent (this test's whole point) but bounded, so a run
+// of this suite cannot exhaust the shared `db` pool (DB_POOL_MAX=15) that every
+// other integration suite in this vitest worker also depends on.
+const MAX_CONCURRENT_DB_OPS = 10;
+
+async function runBatched<T>(tasks: Array<() => Promise<T>>, batchSize: number): Promise<T[]> {
+  const results: T[] = [];
+  for (let i = 0; i < tasks.length; i += batchSize) {
+    const batch = tasks.slice(i, i + batchSize);
+    results.push(...(await Promise.all(batch.map((task) => task()))));
+  }
+  return results;
+}
+
+// Fixture slugs from a previous run of THIS suite (killed mid-run, or a prior
+// crash before afterAll's cleanup ran) collide with this run's inserts on
+// ipos_slug_unique. Deleting any leftover perf-test-ipo-*/race-condition-test
+// rows before each run makes the suite re-runnable without manual DB cleanup.
+async function deleteStalePerfFixtures(): Promise<void> {
+  const stale = await db
+    .select({ id: ipos.id })
+    .from(ipos)
+    .where(inArray(ipos.slug, [
+      ...Array.from({ length: 100 }, (_, i) => `perf-test-ipo-${i}`),
+      'race-condition-test',
+    ]));
+  if (stale.length === 0) return;
+  const staleIds = stale.map((row) => row.id);
+  await db.delete(fieldSources).where(inArray(fieldSources.ipoId, staleIds));
+  await db.delete(dataConflicts).where(inArray(dataConflicts.ipoId, staleIds));
+  await db.delete(ipos).where(inArray(ipos.id, staleIds));
+  console.log(`\n🧹 Removed ${staleIds.length} stale fixture row(s) from a previous run`);
+}
+
 describe('Category 8.1: 1000 Concurrent Updates Performance', () => {
   let consolidationService: DataConsolidationService;
   let ipoRepository: IPORepository;
@@ -37,6 +71,20 @@ describe('Category 8.1: 1000 Concurrent Updates Performance', () => {
 
     console.log('\n⚡ Testing Performance Under Load - 1000 Concurrent Updates');
     console.log('   Validates: Connection pool, race conditions, data integrity');
+
+    // #performance-load-connection-cap: this suite ran unconstrained (up to 1000
+    // simultaneous DB round-trips), and vitest.integration.config.ts runs every
+    // suite in the SAME process against the SAME shared `db` pool (default
+    // DB_POOL_MAX=15, web/lib/db/index.ts). Launching 1000 concurrent queries
+    // saturated that pool and the underlying Postgres role's connection limit
+    // while neighbouring suites (in this and other files in the same vitest
+    // worker) were also trying to connect, producing
+    // "too many connections for role \"ipodhan_app\"" failures in files that
+    // never touch this test. Batching keeps real concurrent-write behaviour
+    // (the thing this test proves: no deadlocks/race corruption under
+    // concurrent scraper writes) while staying well under the shared pool's
+    // ceiling so this suite cannot starve its neighbours.
+    await deleteStalePerfFixtures();
   });
 
   afterAll(async () => {
@@ -59,11 +107,11 @@ describe('Category 8.1: 1000 Concurrent Updates Performance', () => {
 
     // Create 100 test IPOs
     const numIPOs = 100;
-    const ipoPromises = [];
+    const ipoPromises: Array<() => Promise<Array<typeof ipos.$inferSelect>>> = [];
 
     console.log(`\n  Step 1: Creating ${numIPOs} test IPOs...`);
     for (let i = 0; i < numIPOs; i++) {
-      ipoPromises.push(
+      ipoPromises.push(() =>
         db.insert(ipos).values({
           id: uuidv4(),
           slug: `perf-test-ipo-${i}`,
@@ -81,7 +129,7 @@ describe('Category 8.1: 1000 Concurrent Updates Performance', () => {
       );
     }
 
-    const createdIPOs = await Promise.all(ipoPromises);
+    const createdIPOs = await runBatched(ipoPromises, MAX_CONCURRENT_DB_OPS);
     const ipoIds = createdIPOs.map((result) => result[0].id);
     testIPOs.push(...ipoIds);
 
@@ -89,7 +137,7 @@ describe('Category 8.1: 1000 Concurrent Updates Performance', () => {
 
     // Prepare 1000 concurrent updates (10 updates per IPO)
     // Each update touches 2-3 fields from different sources
-    const updatePromises = [];
+    const updateTasks: Array<() => Promise<{ success: boolean; ipoId: string; source: string; duration?: number; error?: string }>> = [];
     const sources = ['NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'];
     const startTime = Date.now();
 
@@ -113,8 +161,8 @@ describe('Category 8.1: 1000 Concurrent Updates Performance', () => {
           updateData.priceRangeMax = 120 + j;
         }
 
-        // Launch concurrent update
-        const updatePromise = (async () => {
+        // Queue the update as a task (executed in bounded batches below)
+        const updateTask = async () => {
           try {
             const result = await consolidationService.consolidateIPOData({
               ipoId,
@@ -145,14 +193,18 @@ describe('Category 8.1: 1000 Concurrent Updates Performance', () => {
               error: error instanceof Error ? error.message : String(error),
             };
           }
-        })();
+        };
 
-        updatePromises.push(updatePromise);
+        updateTasks.push(updateTask);
       }
     }
 
-    // Execute all 1000 updates concurrently
-    const results = await Promise.all(updatePromises);
+    // Execute all 1000 updates in bounded concurrent batches (MAX_CONCURRENT_DB_OPS
+    // in flight at a time) instead of 1000 simultaneous connections -- this still
+    // exercises real concurrent writes / consolidation races (the property this
+    // test asserts), just without exhausting the shared pool that every other
+    // suite in this vitest worker also uses.
+    const results = await runBatched(updateTasks, MAX_CONCURRENT_DB_OPS);
     const duration = Date.now() - startTime;
 
     // Analyze results
