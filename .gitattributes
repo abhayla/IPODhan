@@ -34,3 +34,19 @@ docs/ops/prod-ops-recipes.md text eol=crlf
 # Linux CI. Pinning the working-copy line ending to LF on every machine removes the class, alongside
 # the generator's own line-ending-normalized compare.
 scraper/config/*.json text eol=lf
+
+# 2026-09-20: the plan board sections are GENERATED (scripts/ops/build-plan-board.mjs).
+# Two PRs that each corrected a DIFFERENT inventory row both rewrite this 90 KB file,
+# and git interleaves them line-by-line into a conflict that is meaningless to resolve
+# by hand. It cost PR #847 two rebases in one afternoon, and each DIRTY period ran ZERO
+# CI workflows, so a real defect could have hidden there unseen.
+#
+# `-merge` makes git conflict the WHOLE file instead of its lines -- the honest signal:
+# do not merge this, regenerate it. Proven 2026-09-20: two branches each touching the
+# first <tr> conflict with 0 markers inside the file, vs interleaved hunks without it.
+#
+# Resolution is always the same two commands, and CI gates the result via
+# `build-plan-board.mjs --check` in the detection-change job:
+#   git checkout --theirs docs/design/board/plan-sections.generated.html
+#   node scripts/ops/build-plan-board.mjs
+docs/design/board/plan-sections.generated.html -merge
