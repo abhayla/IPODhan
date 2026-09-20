@@ -20,12 +20,31 @@
  * living forever. Run this script periodically (see
  * `scheduler/jobs/duplicate-sweep.ts`, gated OFF by default) as well as ad hoc.
  *
+ * ROUTED THROUGH THE SHARED WRITE PATH (issue #807 piece 1). The apply step
+ * used to hand-roll `db.execute(sql.raw(...))` UPDATE/DELETE statements
+ * against `ipos`/`subscriptions`/`gmp_records` directly — a second raw-SQL
+ * writer of `ipos`, grandfathered into the write ratchet
+ * (config/write-ratchet-baseline.json:97) only because it predates the R0
+ * rule (docs/architecture/write-path-hardening.md), same class the singular
+ * tool (`repair-merge-duplicate-ipo.ts`, PR #432/#433) was built to retire.
+ * `applyMerges` below now calls `IPORepository.mergeDuplicateInto` once per
+ * cluster pair — the SAME method the singular tool calls, which performs the
+ * identical symbol/isin backfill, subscriptions/gmp_records repoint, slug
+ * redirect and dropped-row delete entirely through the Drizzle query
+ * builder, inside one transaction per pair, behind the same prod-write guard.
+ * `forceDifferentName: true` is passed because this tool's own two-tier
+ * clustering (exact key + typo similarity, above) is a stricter duplicate
+ * test than `mergeDuplicateInto`'s simple name-fold eligibility check — a
+ * pair already accepted into one of this tool's clusters has already cleared
+ * a bar at least as strict, so re-refusing on name-fold here would be a
+ * regression, not a safety check.
+ *
  * Usage (tunnel: DATABASE_HOST=localhost DATABASE_PORT=15432):
  *   npx tsx --tsconfig tsx.tsconfig.json scripts/merge-duplicate-ipos.ts [--apply]
  */
 
-import { db } from '@ipodhan/shared/db';
-import { ipos, ipoSlugRedirects } from '@ipodhan/shared/db/schema';
+import { db, getRedisClient, IPORepository } from '@ipodhan/shared';
+import { ipos } from '@ipodhan/shared/db/schema';
 import { sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import { normalizeCompanyNameForMatching } from '../src/services/data-persister.js';
@@ -220,47 +239,44 @@ async function main() {
   }
   if (toDelete.length === 0) { console.log('Nothing to do.'); return; }
 
-  await db.transaction(async (tx) => {
-    for (const { keep, dup } of merges) {
-      // Scalar high-value fields (symbol/isin) live ONLY on the `ipos` row
-      // itself — a CASCADE delete of `dup` loses them forever, and they are
-      // NOT part of `completeness()`'s scoring, so the richer row can still
-      // lose a real exchange identifier the other row happened to carry
-      // (round-4 review finding, T-293: "Dhanwel Hybird" carried the DHANWEL
-      // symbol; the kept "Hybrid" row did not). Backfill ONLY where the
-      // keeper is NULL — never overwrite a keeper's existing value.
-      for (const col of ['symbol', 'isin'] as const) {
-        await tx.execute(sql.raw(
-          `UPDATE ipos SET ${col} = dup.${col} FROM ipos dup ` +
-          `WHERE ipos.id = '${keep}' AND dup.id = '${dup}' ` +
-          `AND ipos.${col} IS NULL AND dup.${col} IS NOT NULL`));
-      }
-      // subscriptions: only UNIQUE(id) -> plain repoint is safe.
-      await tx.execute(sql.raw(`UPDATE subscriptions SET ipo_id = '${keep}' WHERE ipo_id = '${dup}'`));
-      // gmp_records: UNIQUE(ipo_id, timestamp, source) -> drop dup rows that would
-      // collide with the survivor's same (timestamp, source), then repoint the rest.
-      await tx.execute(sql.raw(
-        `DELETE FROM gmp_records d WHERE d.ipo_id = '${dup}' AND EXISTS (` +
-        `SELECT 1 FROM gmp_records k WHERE k.ipo_id = '${keep}' ` +
-        `AND k."timestamp" = d."timestamp" AND k.source = d.source)`));
-      await tx.execute(sql.raw(`UPDATE gmp_records SET ipo_id = '${keep}' WHERE ipo_id = '${dup}'`));
-    }
-    // P2-2 (T-293): a merged-away slug is a real URL a user/search-engine may
-    // hold — deleting the row without a redirect turns it into a 404. Write
-    // one BEFORE the delete (same table+shape as the T-278 name-pollution
-    // repair's `writeRedirect`). `onConflictDoNothing` makes this idempotent
-    // if the script is ever re-run over an already-redirected slug.
-    for (const { keep, dupSlug } of merges) {
-      await tx
-        .insert(ipoSlugRedirects)
-        .values({ oldSlug: dupSlug, ipoId: keep, reason: 'DUPLICATE_MERGE' })
-        .onConflictDoNothing({ target: ipoSlugRedirects.oldSlug });
-    }
-    for (const id of toDelete) {
-      await tx.execute(sql.raw(`DELETE FROM ipos WHERE id = '${id}'`));
-    }
-  });
-  console.log(`APPLIED — repointed gmp/subscriptions to survivors, wrote ${merges.length} slug redirect(s), deleted ${toDelete.length} duplicate rows (CASCADE removed rebuildable children).`);
+  const redis = getRedisClient();
+  const repo = new IPORepository(db, redis);
+  await applyMerges(repo, merges, { allowProd: process.argv.includes('--allow-prod') });
+  console.log(`APPLIED — repointed gmp/subscriptions to survivors, wrote ${merges.length} slug redirect(s), deleted ${toDelete.length} duplicate rows (CASCADE removed rebuildable children) via IPORepository.mergeDuplicateInto.`);
+}
+
+/**
+ * Minimal shape of `IPORepository` this function needs — lets the unit test
+ * pass a fake without constructing a real DB pool/Redis client.
+ */
+export interface MergeDuplicateIntoRepo {
+  mergeDuplicateInto(
+    keepId: string,
+    dropId: string,
+    opts: { apply: boolean; forceDifferentName?: boolean; allowProd?: boolean }
+  ): Promise<unknown>;
+}
+
+/**
+ * Applies every planned {keep, dup} pair through the shared write path
+ * (`IPORepository.mergeDuplicateInto`) — one call, one transaction, per pair
+ * — instead of the single hand-rolled multi-pair transaction the raw-SQL
+ * version used. A refusal (prod guard, eligibility check) on one pair throws
+ * and stops the run rather than being swallowed; the caller sees exactly
+ * which pair and why, same as any other `mergeDuplicateInto` caller.
+ */
+export async function applyMerges(
+  repo: MergeDuplicateIntoRepo,
+  merges: { keep: string; dup: string; dupSlug: string }[],
+  opts: { allowProd: boolean }
+): Promise<void> {
+  for (const { keep, dup } of merges) {
+    await repo.mergeDuplicateInto(keep, dup, {
+      apply: true,
+      forceDifferentName: true,
+      allowProd: opts.allowProd,
+    });
+  }
 }
 
 // Guard so `pickKeeper`/`completeness` can be imported by unit tests without
