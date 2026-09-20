@@ -59,12 +59,18 @@ t('real sources parse to exactly 29 / 63 / 190', () => {
   eq(fields.length, EXPECT.fields, 'fields');
 });
 
-t('build item verdicts split 12 BUILT / 12 PARTIAL / 5 NOT BUILT', () => {
+// The split (how many BUILT vs PARTIAL vs NOT BUILT) is the thing this work is
+// actively changing, so asserting a snapshot of it makes every correct verdict
+// correction break CI. What must always hold is that the three buckets account
+// for every item and that no fourth spelling exists -- a typo like BULIT would
+// otherwise parse into nothing and silently shrink the published table.
+t('every build item carries exactly one of the three legal verdicts', () => {
   const items = parseItems(readFileSync(join(REPO_ROOT, 'docs/design/pull-model-completion-state.md'), 'utf8'));
+  const LEGAL = ['BUILT', 'PARTIAL', 'NOT BUILT'];
+  const stray = items.filter((i) => !LEGAL.includes(i.verdict));
+  eq(stray.length, 0, `unrecognised verdict(s): ${stray.map((i) => i.verdict).join(', ')}`);
   const n = (v) => items.filter((i) => i.verdict === v).length;
-  eq(n('BUILT'), 12, 'BUILT');
-  eq(n('PARTIAL'), 12, 'PARTIAL');
-  eq(n('NOT BUILT'), 5, 'NOT BUILT');
+  eq(n('BUILT') + n('PARTIAL') + n('NOT BUILT'), EXPECT.items, 'verdicts cover every item');
 });
 
 t('a SHORT parse fails loudly rather than emitting a short table', () => {
