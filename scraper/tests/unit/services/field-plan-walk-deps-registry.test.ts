@@ -18,9 +18,14 @@ vi.mock('@ipodhan/shared/repositories/listing-performance-repository', () => ({
 import { buildFieldPlanWalkFetchers, fieldPlanWalkHasFetchers } from '../../../src/services/field-plan-walk-deps.js';
 
 describe('buildFieldPlanWalkFetchers registry', () => {
-  it('registers exactly DOC, BSE and CHITTORGARH — no more, no fewer', () => {
+  // NSE joined the set in item 6 (#705/#759). Before that, 57 manifest fields
+  // ranked NSE -- including the six E-1 fields only the exchange may state --
+  // and every one of them answered NO_FETCHER_REGISTERED on every wake, 136
+  // rows measured on staging. This assertion is deliberately exact: a fetcher
+  // appearing or vanishing unnoticed is the thing it exists to catch.
+  it('registers exactly DOC, NSE, BSE and CHITTORGARH — no more, no fewer', () => {
     const fetchers = buildFieldPlanWalkFetchers({} as never);
-    expect(Object.keys(fetchers).sort()).toEqual(['BSE', 'CHITTORGARH', 'DOC']);
+    expect(Object.keys(fetchers).sort()).toEqual(['BSE', 'CHITTORGARH', 'DOC', 'NSE']);
   });
 
   it('every registered value is a callable fetcher function', () => {

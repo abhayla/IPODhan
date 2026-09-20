@@ -57,6 +57,7 @@ import type { FieldFetcher, FieldPlanWalkOrchestrator } from './field-plan-walk.
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import { buildDocFetcher, type DocFetcherDeps } from './field-plan-walk-doc-fetcher.js';
 import { buildBseFetcher, BseFieldFetcherState } from './field-plan-walk-bse-fetcher.js';
+import { buildNseFetcher, NseFieldFetcherState } from './field-plan-walk-nse-fetcher.js';
 import {
   buildChittorgarhFetcher,
   ChittorgarhFieldFetcherState,
@@ -165,7 +166,7 @@ export function buildFieldPlanWalkFetchers(
   const fieldSources = new FieldSourcesRepository(db as never, redis as never);
   const documentRepository = new DocumentRepository(db as never, redis as never);
 
-  const isCapable = (sourceKey: 'DOC' | 'BSE' | 'CHITTORGARH') => (tableName: string, fieldName: string) => {
+  const isCapable = (sourceKey: 'DOC' | 'NSE' | 'BSE' | 'CHITTORGARH') => (tableName: string, fieldName: string) => {
     const entry = manifestFieldEntry(tableName, fieldName);
     return entry?.capability?.[sourceKey]?.capable === true;
   };
@@ -181,6 +182,8 @@ export function buildFieldPlanWalkFetchers(
 
   const bseState = new BseFieldFetcherState();
   const bseFetcher = buildBseFetcher({ ipoRepository, isBseCapable: isCapable('BSE') }, bseState);
+  const nseState = new NseFieldFetcherState();
+  const nseFetcher = buildNseFetcher({ ipoRepository, isNseCapable: isCapable('NSE') }, nseState);
 
   const chittorgarhState = new ChittorgarhFieldFetcherState();
   const chittorgarhFetcher = buildChittorgarhFetcher(
@@ -189,6 +192,10 @@ export function buildFieldPlanWalkFetchers(
   );
 
   return {
+    // #705/#759: 57 manifest fields rank NSE, including the six E-1 fields
+    // only the exchange may state. Without this entry every one of them
+    // answered NO_FETCHER_REGISTERED on every wake.
+    NSE: nseFetcher,
     DOC: docFetcher,
     BSE: bseFetcher,
     CHITTORGARH: chittorgarhFetcher,
