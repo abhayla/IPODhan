@@ -1,0 +1,9 @@
+{
+  "id": "od64_venue_source_eligibility",
+  "findingClass": "status or a price band sourced from an exchange that does not list the IPO — a non-listing venue has no standing on an issue it does not carry (OD-64)",
+  "round7Findings": [],
+  "failThreshold": "any field_sources row where field_name IN ('status','priceRangeMin','priceRangeMax') AND source IN ('NSE','BSE') AND the IPO's listing_exchanges is non-empty AND does not contain that source",
+  "severity": "P2",
+  "unverifiableWhen": "ipos.listing_exchanges is null or empty for the row — the venue is genuinely unknown, the fixed matrix order applies by design, and the check reports unverifiable rather than passing",
+  "section": "notCoveredByThisManifest"
+}

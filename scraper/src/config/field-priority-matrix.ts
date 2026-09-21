@@ -973,12 +973,60 @@ function policyRanksAsWriterSources(fieldName: string, tableName: string, ipoTyp
  * while flip state still controls which groups' write decisions actually change). A field with
  * NO manifest row falls back to the matrix `sources` order through the logged shim.
  */
+/**
+ * OD-64 (owner, 2026-09-21): the fields whose authority belongs to the EXCHANGE
+ * THE IPO IS LISTED ON, not to a fixed global order.
+ *
+ * Owner's words: "For IPOs which are only for NSE ... NSE should be first
+ * source ... BSE should not be there because this is an NSE only IPO. If there
+ * is a BSE only IPO again the status should come from BSE ... but NSE should
+ * not be an option."
+ *
+ * Deliberately just these two things — status and the price band — because
+ * that is what the decision names. `issueSize` and the dates are NOT here:
+ * widening the rule to every field would be a different decision.
+ */
+const LISTING_VENUE_RANKED_FIELDS = new Set(['status', 'priceRangeMin', 'priceRangeMax']);
+
+/**
+ * OD-64: an exchange that does not list this IPO has no standing to speak
+ * about its status or its band, so it is not a lower-ranked source — it is not
+ * a source at all.
+ *
+ * `-1` is the machinery that already exists for that: `.indexOf` returns it for
+ * an unranked source, and the resolver
+ * (`data-consolidation-service.ts:2446-2452`) already refuses to let a `-1`
+ * incoming source win. This reuses that rather than inventing a second
+ * eligibility concept.
+ *
+ * An UNKNOWN venue (undefined, or an empty array) falls through to the fixed
+ * order unchanged. A brand-new IPO may not have its exchanges resolved yet, and
+ * making every exchange ineligible would freeze the field rather than protect
+ * it — the opposite of the intent.
+ */
+function venueExcludesSource(
+  fieldName: string,
+  source: ScraperSource,
+  listingExchanges?: readonly string[] | null
+): boolean {
+  if (!LISTING_VENUE_RANKED_FIELDS.has(fieldName)) return false;
+  if (source !== 'NSE' && source !== 'BSE') return false;
+  if (!listingExchanges || listingExchanges.length === 0) return false;
+  return !listingExchanges.includes(source);
+}
+
 export function getSourcePriority(
   fieldName: string,
   source: ScraperSource,
   tableName?: string,
-  ipoType: IpoTypeKey = 'MAINBOARD'
+  ipoType: IpoTypeKey = 'MAINBOARD',
+  /**
+   * OD-64: `ipos.listing_exchanges` for the row being consolidated. Omitted or
+   * empty means "venue unknown" and the fixed order applies, unchanged.
+   */
+  listingExchanges?: readonly string[] | null
 ): number {
+  if (venueExcludesSource(fieldName, source, listingExchanges)) return -1;
   if (delegatesToPolicy(fieldName, tableName)) {
     return policyRanksAsWriterSources(fieldName, tableName!, ipoType).indexOf(source);
   }

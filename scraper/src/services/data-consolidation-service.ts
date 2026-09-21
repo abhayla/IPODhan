@@ -1133,6 +1133,10 @@ export class DataConsolidationService {
             segment: smeSegment,
             smeCollapseEvidence,
             ipoType: ipoTypeForPolicy,
+            // OD-64: the row's listing venue decides which exchange may speak
+            // about `status` and the price band. Same fallback chain the
+            // ipoType resolution above already uses.
+            listingExchanges: storedExchanges ?? input.incomingData?.listingExchanges ?? null,
           });
 
           result.fieldResults.push(fieldResult);
@@ -1266,6 +1270,14 @@ export class DataConsolidationService {
      * group is not flipped or `ENABLE_POLICY_WRITER` is off.
      */
     ipoType?: string;
+    /**
+     * OD-64 (owner, 2026-09-21): `ipos.listing_exchanges` for this row. An
+     * exchange that does not list the IPO is not eligible to supply its
+     * `status` or price band at all — "BSE should not be there because this is
+     * an NSE only IPO". Null/undefined/empty means the venue is unknown and
+     * the fixed matrix order applies, unchanged.
+     */
+    listingExchanges?: readonly string[] | null;
   }): Promise<FieldConsolidationResult> {
     const {
       ipoId,
@@ -2020,6 +2032,7 @@ export class DataConsolidationService {
       heldDates: params.heldDates,
       incomingDates: params.incomingDates,
       ipoType,
+      listingExchanges: params.listingExchanges,
     });
 
     return conflict;
@@ -2208,6 +2221,14 @@ export class DataConsolidationService {
     incomingDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
     /** Item 3 slice S1b — see `consolidateField`'s `ipoType` doc comment. */
     ipoType?: string;
+    /**
+     * OD-64 (owner, 2026-09-21): `ipos.listing_exchanges` for this row. An
+     * exchange that does not list the IPO is not eligible to supply its
+     * `status` or price band at all — "BSE should not be there because this is
+     * an NSE only IPO". Null/undefined/empty means the venue is unknown and
+     * the fixed matrix order applies, unchanged.
+     */
+    listingExchanges?: readonly string[] | null;
   }): Promise<FieldConsolidationResult> {
     const {
       ipoId,
@@ -2469,8 +2490,12 @@ export class DataConsolidationService {
     // T-328: the TZ-signature tie-break above already decided chosenValue/
     // chosenSource/resolutionReason for this field — skip the normal
     // priority/time-based resolution so it can't be silently overwritten.
-    const existingPriority = getSourcePriority(fieldName, existingSource, tableName, ipoType);
-    const incomingPriority = getSourcePriority(fieldName, incomingSource, tableName, ipoType);
+    // OD-64: both sides are ranked against the SAME venue, so a non-listing
+    // exchange scores -1 and the branch below — which already refuses to let a
+    // -1 incoming source win — excludes it with no second mechanism.
+    const venue = params.listingExchanges;
+    const existingPriority = getSourcePriority(fieldName, existingSource, tableName, ipoType, venue);
+    const incomingPriority = getSourcePriority(fieldName, incomingSource, tableName, ipoType, venue);
 
     if (tiebreakResolved) {
       // tie-break already resolved this field — chosenValue/chosenSource/resolutionReason stand.
