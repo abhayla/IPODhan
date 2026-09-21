@@ -2585,8 +2585,23 @@ optimism:
 | Where the number lives | Type | Largest value it can hold | The largest thing it has to hold |
 |---|---|---|---|
 | a crore column | `numeric(12,2)` | 9,999,999,999.99 crore | Saudi Aramco at Rs 2,50,000 crore is 0.0000025% of the ceiling |
-| a rupee column | `numeric(15,2)` | 9,999,999,999,999.99 rupees (about 10 lakh crore) | Aramco's Rs 2.5 lakh crore = 2,500,000,000,000 — one quarter of the ceiling |
+| a rupee column | **`numeric(18,2)`** (MEASURED on the live schema 2026-09-21, not the `numeric(15,2)` this table stated until then — see below) | 9,999,999,999,999,999.99 rupees (Rs 1,00,00,00,000 crore) | Aramco's Rs 2.5 lakh crore = 2,500,000,000,000 — **0.025% of the ceiling**, one four-thousandth, not one quarter |
 | JavaScript, if a value is ever read as a `number` | IEEE-754 double | 9,007,199,254,740,991 exactly (about 90 lakh crore) | the rupee column's own ceiling is 900 times smaller, so no rupee value can lose a rupee in transit |
+
+> **CORRECTION, 2026-09-21 — this table said `numeric(15,2)` and the schema says `numeric(18,2)`.**
+> All five rupee columns (`ipos.issue_size`, `ipo_details.fresh_issue`, `ipo_details.ofs_issue`,
+> `ipo_valuation.mcap_at_floor`, `ipo_valuation.mcap_at_cap`) are `numeric(18,2)` on the live
+> database — verified against `information_schema.columns` and by writing the Aramco value through
+> the type. Owner of the limit: `packages/shared/src/db/schema.ts:287` (and 1203, 1204, 2085, 2086).
+> Saudi Aramco uses 0.025% of the ceiling, Hyundai India 0.0028%, our largest stored row (NSE,
+> Rs 26,579.64 cr) 0.0027%.
+>
+> **Consequence: the overflow argument for converting these five columns to crore does not hold.**
+> The owner's test was "if the current field can hold the world's largest IPO, there is no need to
+> change it" — it can, with a factor of 4,000 to spare. Storage stays in rupees; display converts at
+> the edge (`formatIssueSizeCrores`), and the two readers that compared crore thresholds against the
+> rupee column are fixed (F-95/F-77, PR #871). Registered as
+> `docs/reviews/failure-classes/spec-states-a-capacity-the-schema-does-not-have.json`.
 
 **The named test (build item 11) feeds three real scales through every amount column, every
 conversion, every API route and every page formatter**, and asserts no overflow, no rounding at the
