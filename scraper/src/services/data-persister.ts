@@ -719,7 +719,14 @@ export async function upsertIPO(
   // (docs/architecture/write-path-hardening.md §1.4). `undefined` (the
   // default) means "no pre-resolution supplied" — resolve it here, as
   // before, for callers outside the guarded path.
-  preResolvedIPO?: IPO | null
+  preResolvedIPO?: IPO | null,
+  /**
+   * OD-66: keys of `scrapedIPO` this write is NOT claiming — identity facts
+   * the caller had to supply so the slug could be computed and the row
+   * resolved, never values the source asserts. Passed straight through to
+   * `consolidateIPOData`. Omitted means "every key is a claim" (unchanged).
+   */
+  contextFields?: string[]
 ): Promise<string> {
   const startTime = Date.now();
   // T-478 round 3 (issue #225 follow-up, CRITICAL fix): the -ofs-<year> slug
@@ -1023,6 +1030,7 @@ export async function upsertIPO(
               ipoId: existingIPO.id,
               tableName: 'ipos',
               incomingData: ipoData,
+              contextFields,
               source: source,
               existingData: existingIPO as any,
               shadowMode: false, // Production mode - writes to database

@@ -1,0 +1,9 @@
+{
+  "id": "od66_context_not_claimed",
+  "findingClass": "a write path resolves a field its extractor never supplied — context passed as a claim, re-stamping provenance and auto-resolving conflicts about fields the document never read (OD-66)",
+  "round7Findings": [],
+  "failThreshold": "any field_sources row written by a document source (DRHP) for a field absent from that document's extracted field list, OR any data_conflicts row auto-resolved with resolution_reason LIKE '%CONVERGED%' where one side is DRHP and the field is one of companyName/segment/offeringType/status/listingExchange/openDate/closeDate",
+  "severity": "P2",
+  "unverifiableWhen": "no document has been extracted in the window being audited — the table is legitimately empty and the check reports unverifiable rather than passing",
+  "section": "notCoveredByThisManifest"
+}
