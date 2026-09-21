@@ -27,7 +27,10 @@ const mockIPOData = mockIPO({
   segment: 'MAINBOARD',
   offeringType: 'IPO',
   status: 'OPEN',
-  issueSize: 1500, // ₹1500 Cr
+  // F-95: `ipos.issue_size` is stored in RUPEES and that is what production
+  // passes in. The fixture said 1500 and called it Rs1500 Cr, which is the
+  // same unit confusion the code had. Rs1,500 Cr in rupees:
+  issueSize: 15_000_000_000,
   priceRangeMin: 100,
   priceRangeMax: 120,
   lotSize: 100,
@@ -402,7 +405,8 @@ describe('IPOScoringService', () => {
     it('should award full points for large issue size', () => {
       const largeIPO = {
         ...mockIPOData,
-        issueSize: 2500, // ₹2500 Cr
+        // F-95: stored in RUPEES, like every real row. Rs2,500 Cr.
+        issueSize: 25_000_000_000,
       };
 
       const data = {
@@ -423,7 +427,8 @@ describe('IPOScoringService', () => {
     it('should award partial points for medium issue size', () => {
       const mediumIPO = {
         ...mockIPOData,
-        issueSize: 300, // ₹300 Cr
+        // F-95: stored in RUPEES, like every real row. Rs300 Cr.
+        issueSize: 3_000_000_000,
       };
 
       const data = {
@@ -439,6 +444,55 @@ describe('IPOScoringService', () => {
 
       // Issue size 300 Cr (0.3) + age placeholder (0.25) = 0.55
       expect(result.score).toBeCloseTo(0.55, 2);
+    });
+  });
+
+  /**
+   * F-95 (item 11 / OD-20). The two tests above feed `issueSize: 2500` and call
+   * it "Rs2500 Cr" — but `ipos.issue_size` is stored in RUPEES, and that is what
+   * production passes in. So the thresholds (1000 / 500 / 100) are crore numbers
+   * being compared against a rupee value, and every real IPO clears the top one.
+   *
+   * Measured on staging 2026-09-21: 314 of 366 rows hold a rupee-shaped value
+   * (>= 1e7); the smallest genuine IPO in the table is Rs1.48 Cr = 14,797,000
+   * rupees, which is 14,797x the "> 1000" threshold. The component is therefore
+   * constant for every IPO on the site and contributes nothing to ranking.
+   *
+   * The tests did not catch it because they encode the same wrong unit as the
+   * code. These ones use the values the database actually holds.
+   */
+  describe('F-95: issue-size thresholds are crore, the column is rupees', () => {
+    const scoreFor = (issueSize: number) =>
+      service['calculateFundamentals']({
+        ipo: { ...mockIPOData, issueSize },
+        financial: null,
+        enhancedFinancial: null,
+        latestSubscription: null,
+        latestGMP: null,
+        listing: null,
+      }).score;
+
+    it('separates a large IPO from a small one when both are stored in rupees', () => {
+      // NSE, the largest on staging: Rs26,579.64 Cr. Full 0.5 + 0.25 age.
+      const large = scoreFor(265_796_400_000);
+      // PIYUSH, among the smallest genuine rows: Rs0.70 Cr. Bottom band 0.2 + 0.25.
+      const small = scoreFor(7_007_320);
+
+      expect(large).toBeCloseTo(0.75, 2);
+      expect(small).toBeCloseTo(0.45, 2);
+      // The point of the whole component: these must not be equal.
+      expect(large).toBeGreaterThan(small);
+    });
+
+    it('places a mid-sized IPO in the middle band, not the top', () => {
+      // Hero Motors: Rs1,000 Cr exactly = 10,000,000,000 rupees. Not "> 1000 Cr",
+      // so it takes the 500-1000 band: 0.4 + 0.25.
+      expect(scoreFor(10_000_000_000)).toBeCloseTo(0.65, 2);
+    });
+
+    it('a Rs300 Cr issue scores the third band when passed in rupees', () => {
+      // The "medium" case above, in the unit production actually uses.
+      expect(scoreFor(3_000_000_000)).toBeCloseTo(0.55, 2);
     });
   });
 

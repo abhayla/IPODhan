@@ -10,6 +10,7 @@
  */
 
 import type { IPO, FinancialData, Subscription, GMPRecord } from '@/lib/db/types';
+import { RUPEES_PER_CRORE } from '@/lib/utils';
 
 export interface RatingFactors {
   financialScore: number;      // 0-100
@@ -141,7 +142,12 @@ function calculateFinancialScore(financialData: FinancialData, ipo: IPO): number
 /**
  * Calculate market score based on sector performance and market conditions
  */
-function calculateMarketScore(ipo: IPO): number {
+/**
+ * Exported for testing (F-77): this term had no test at all, which is why the
+ * unit defect below stayed documented-but-unfixed while its twin in
+ * `ipo-scoring-realtime.ts` (F-95) was tracked.
+ */
+export function calculateMarketScore(ipo: IPO): number {
   let score = 60; // Base score
 
   // High-growth sectors get better scores
@@ -161,11 +167,22 @@ function calculateMarketScore(ipo: IPO): number {
   if (ipo.segment === 'MAINBOARD') score += 10;
   else if (ipo.segment === 'SME') score -= 5;
 
-  // Issue size consideration (larger is generally safer)
-  const issueSize = Number(ipo.issueSize);
-  if (issueSize >= 1000) score += 10;
-  else if (issueSize >= 500) score += 5;
-  else if (issueSize < 100) score -= 10;
+  // Issue size consideration (larger is generally safer).
+  //
+  // F-77 (item 11 / OD-20): these are CRORE thresholds and `ipos.issue_size`
+  // is stored in RUPEES, so this compared two different units and every real
+  // IPO cleared ">= 1000". Measured on staging 2026-09-21: 314 of 366 rows
+  // hold a rupee-shaped value, and the smallest genuine one (Rs1.48 Cr) is
+  // still 14,797x the top threshold — the term was constant and ranked
+  // nothing. Same defect, same fix, as F-95 in ipo-scoring-realtime.ts.
+  //
+  // Converted at the read via the shared `RUPEES_PER_CRORE` rather than
+  // restating the thresholds in rupees: OD-20 makes crore the stored unit, so
+  // the crore-denominated comparison is the one that survives the migration.
+  const issueSizeCrore = Number(ipo.issueSize) / RUPEES_PER_CRORE;
+  if (issueSizeCrore >= 1000) score += 10;
+  else if (issueSizeCrore >= 500) score += 5;
+  else if (issueSizeCrore < 100) score -= 10;
 
   return Math.max(0, Math.min(100, score));
 }
