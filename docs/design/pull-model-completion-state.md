@@ -49,7 +49,7 @@ So a card saying DONE is a claim. Each verdict below was checked against an arte
 | 15 | Revive `valueActuallyChanged` | **BUILT** | 7 occurrences in `data-consolidation-service.ts`; noop-write-suppression test |
 | 16 | Retire Moneycontrol | **BUILT** | `scraper/src/index.ts:797-804`, with the freshness-SLO consequence recorded |
 | 17 | Closed-IPO job (OD-22) | **NOT BUILT** | Zero hits outside docs. **#717: 74 PROSPECTUS documents pile up PENDING per slot with no consumer** |
-| 18 | Document retention (OD-32) | **PARTIAL** | `documentPages` table exists (`schema.ts:726`). Purge re-anchoring unverified; a page-text **writer** must sit between the table and the purge and is not confirmed |
+| 18 | Document retention (OD-32) | **BUILT** | `documentPages` table exists (`schema.ts:726`); the page-text writer is live in `filing-auto-persist.ts:1191` (PR #560, #628) and stores rows before COMPLETED is set. The purge (`document-cycle.ts`, `document-store.ts`) keys on per-document `extracted_at` + a `textless_count` veto so a COMPLETED document with zero stored pages is never deleted. 46 real unit tests pass (`document-page-text.test.ts`, `document-page-number-base.test.ts`, `document-pages-schema.test.ts`, `purge-requires-stored-text.test.ts`, `document-purge-policy.test.ts`), verified 2026-09-20 |
 | 19 | Merge tool on shared write path | **PARTIAL** | Singular tool routed (#432). **#807: `merge-duplicate-ipos.ts:234/243/260` still holds raw SQL against `ipos`, grandfathered in the write ratchet; merge log and `unmerge` do not exist** |
 | 20 | Design-traceability CI check | **BUILT** | `scripts/ci/check-design-traceability.mjs` + its test |
 | 21 | The read side (OD-39/40/41) | **PARTIAL** | `FieldProvenanceLine.tsx` + test exist. Missing: `chosenConfirmedAt` column; **the staleness threshold has no value - an open OWNER decision, not a build**; touched-slugs tracker does not survive a restart |
@@ -83,7 +83,7 @@ because it matches inside NOT BUILT.)
 
 **Remaining work, in order:**
 
-1. **Unblocked now, can run in parallel:** item 22, item 18 (page-text writer), item 8 (drainer, #716),
+1. **Unblocked now, can run in parallel:** item 22, item 8 (drainer, #716),
    item 14 (#728), item 19 (second routing, #807), items 34 and 35, item 3's S6 churn-stop (#759) plus
    the Swap Test and the S4/S5 proofs.
 2. **Then** item 6 completion - #705 and the #762 re-queue path. *Inferred, not spec-stated:* item 9
@@ -101,7 +101,7 @@ Item 21's staleness threshold needs an **owner decision**, not a build.
 ## Size and tier
 
 - **Small / Tier C:** items 34, 35, 32-residual, 33 CI wiring, the S4/S5 proof runs, the Swap Test.
-- **Medium / Tier B:** item 8 drainer, item 10's 21 checks, item 18 page-text writer, the #762 re-queue
+- **Medium / Tier B:** item 8 drainer, item 10's 21 checks, the #762 re-queue
   path, item 21's remaining halves.
 - **Medium-large / Tier A:** item 22, item 9, item 17, item 19's second routing, S6 churn-stop, item 14's
   real fix, OD-62 reason codes.
