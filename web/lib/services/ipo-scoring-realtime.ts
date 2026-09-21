@@ -15,6 +15,7 @@
 import { getDb } from '@/lib/db';
 import { ipos, financialData, subscriptions, gmpRecords, listingPerformance, ipoFinancials } from '@/lib/db';
 import { eq, desc } from 'drizzle-orm';
+import { RUPEES_PER_CRORE } from '@/lib/utils';
 import type { IPO, FinancialData, Subscription, GMPRecord, ListingPerformance, IpoFinancials } from '@/lib/db/types';
 
 // ==================== TYPES ====================
@@ -387,13 +388,27 @@ export class IPOScoringService {
     const breakdown: any = {};
 
     // 1. Issue size (0.5 points)
-    const issueSize = this.toNumber(ipo.issueSize);
-    if (issueSize !== null) {
-      breakdown.issueSize = this.roundToDecimal(issueSize, 2);
+    //
+    // F-95 (item 11 / OD-20): the thresholds below are CRORE figures and
+    // `ipos.issue_size` is stored in RUPEES, so this compared two different
+    // units and every real IPO cleared "> 1000". Measured on staging
+    // 2026-09-21: 314 of 366 rows hold a rupee-shaped value, and the smallest
+    // genuine one (Rs1.48 Cr) is still 14,797x the top threshold — the
+    // component was constant for every IPO on the site and ranked nothing.
+    //
+    // Converted at the READ, using the single `RUPEES_PER_CRORE` the rest of
+    // web/ already shares, rather than restating the thresholds in rupees:
+    // OD-20 makes crore the stored unit, so a crore-denominated comparison is
+    // the one that survives the migration. `breakdown.issueSize` now reports
+    // crore too, which is what its label always claimed.
+    const issueSizeRupees = this.toNumber(ipo.issueSize);
+    if (issueSizeRupees !== null) {
+      const issueSizeCrore = issueSizeRupees / RUPEES_PER_CRORE;
+      breakdown.issueSize = this.roundToDecimal(issueSizeCrore, 2);
 
-      if (issueSize > 1000) score += 0.5;
-      else if (issueSize > 500) score += 0.4;
-      else if (issueSize > 100) score += 0.3;
+      if (issueSizeCrore > 1000) score += 0.5;
+      else if (issueSizeCrore > 500) score += 0.4;
+      else if (issueSizeCrore > 100) score += 0.3;
       else score += 0.2;
     }
 
