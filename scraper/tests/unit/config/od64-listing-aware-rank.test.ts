@@ -91,6 +91,26 @@ describe('OD-64: a non-listing exchange is not eligible for status or the price 
     });
   });
 
+  it('does NOT starve the field: websites stay eligible below the listing exchange', () => {
+    // The failure mode this rule could have introduced. Measured on staging
+    // 2026-09-21: only 4 of 71 NSE-only IPOs have `status` from NSE — 65 get it
+    // from a website. If OD-64 had excluded everything but the listing venue,
+    // it would have left those 65 with no eligible source at all.
+    //
+    // It excludes the WRONG EXCHANGE, not the websites. Pinned here because
+    // "exclude the other exchange" and "only the exchange may speak" are one
+    // word apart in English and worlds apart in effect.
+    for (const field of OD64_FIELDS) {
+      for (const venue of [['NSE'], ['BSE']]) {
+        const websites = ['MONEYCONTROL', 'CHITTORGARH'] as const;
+        const anyWebsiteEligible = websites.some(
+          (w) => getSourcePriority(field, w, 'ipos', 'MAINBOARD', venue) !== -1
+        );
+        expect(anyWebsiteEligible).toBe(true);
+      }
+    }
+  });
+
   it('leaves a field OUTSIDE the OD-64 set alone (issueSize is not venue-ranked)', () => {
     // OD-64 names exactly two things: status and the price band. Widening it
     // to every field would be a different decision than the owner made.
