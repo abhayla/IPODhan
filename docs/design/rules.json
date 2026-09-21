@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-21T07:25:22.695Z",
+  "generated_at": "2026-09-21T07:34:53.378Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 169,
-    "retired": 20
+    "retired": 21
   },
-  "next_id": 190,
+  "next_id": 191,
   "rules": [
     {
       "id": "R-151",
@@ -981,12 +981,12 @@
       "retired": false
     },
     {
-      "id": "R-095",
-      "hash": "5aac85024c96",
+      "id": "R-190",
+      "hash": "cb72b7fafc14",
       "section": "4. How we would know it worked",
       "kind": "table-normative",
-      "text": "REREAD-VERDICT — share of re-reads ending verified_against_document over 7 days — below 0.95 — at or above 0.95 — a source that is never wrong is a source never actually consulted",
-      "first_seen": "2026-09-09",
+      "text": "~~REREAD-RECEIPT~~ — RETIRED 2026-09-21 by OD-65 — measured a re-read loop that is now explicitly not wanted (\"one IPO, one round of document read\"), was never built (zero reread hits in scraper/src), and whose §3.2 receipt premise contradicts OD-32's 7-day file purge (#853). No replacement: the behaviour is withdrawn, not moved — n/a — n/a",
+      "first_seen": "2026-09-21",
       "retired": false
     },
     {
@@ -1528,6 +1528,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-095",
+      "hash": "5aac85024c96",
+      "section": "4. How we would know it worked",
+      "kind": "table-normative",
+      "text": "REREAD-VERDICT — share of re-reads ending verified_against_document over 7 days — below 0.95 — at or above 0.95 — a source that is never wrong is a source never actually consulted",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-186",
