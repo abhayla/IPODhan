@@ -12,9 +12,11 @@ row with a strict pattern, and its verdict cell must contain **exactly** `**BUIL
 or `**NOT BUILT**` and nothing else. A qualifier inside the bold (`**PARTIAL - blocked on X**`)
 reads fine to a human and silently stops the row matching: the parser then sees fewer items than it
 expects and refuses to emit, failing the Detection-Change Gate on the NEXT unrelated PR. Put every
-qualifier at the FRONT OF THE EVIDENCE CELL instead, where it reads the same. After editing this
-file run `node --test scripts/tests/build-plan-board.test.mjs` - it reads this document and asserts
-the item count. (Learned the hard way in #872/#874; registered as
+qualifier at the FRONT OF THE EVIDENCE CELL instead, where it reads the same. After editing this file, or `data-sourcing-pull-model.md`, run **`npm run docs:verify`** from the
+repo root: FOUR separate generators parse these documents (plan board, rule index, design-
+consistency checker, detection registry) and one edit can stale any of them. `docs:verify` runs all
+four and ends with the consistency score; it exits non-zero on a real defect (verified). Running
+only one of the four is how #872 and #875 both broke CI on an unrelated PR. (Learned the hard way in #872/#874; registered as
 `docs/reviews/failure-classes/prose-edit-breaks-a-parser-of-that-prose.json`.)
 
 **Measured 2026-09-21 against `refs/remotes/origin/main` = `94191e64`.** Always the explicit ref: a local

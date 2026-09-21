@@ -23,6 +23,7 @@
     "audit:schema-drift": "npx tsx scripts/assert-schema-drift.ts",
     "audit:row-key-constraints": "npx tsx scripts/assert-row-key-constraints.ts",
     "audit:consensus-verdict": "npx tsx scripts/audit-consensus-verdict.ts",
+    "docs:verify": "node docs/design/generate-rule-index.mjs --apply && node scripts/build-detection-registry.mjs && node scripts/ops/build-plan-board.mjs && node scripts/ops/render-board.mjs && node docs/design/check-design-consistency.mjs",
     "audit:coverage": "node scripts/audit-ipo-coverage.mjs --gate",
     "audit:substance": "node scripts/audit-substance-plausibility.mjs --gate",
     "audit:data": "npm run audit:coverage && npm run audit:prod",
