@@ -380,3 +380,21 @@ docs/contracts/.run/*
 # CONTENTS with `/*` is what makes the negation below work at all.
 !docs/contracts/.run/*-PROGRESS.md
 docs/design/probes/fixtures/pdf/
+
+# 2026-09-21: loose scratch at the repo ROOT, left by board/probe work.
+# `git status` showed 21 untracked entries; 8 were already-ignored tool state
+# (scripts/state/, scraper/scripts/state/ — see above), and these are the rest.
+# They are session by-products, not source: board screenshots taken to compare a
+# rendered page against its generator, a `snap.json` payload dump, and `--gate`
+# (a file whose leading dashes break `cp`, `basename` and `git check-ignore`
+# unless you write `--` first — it cost one silent backup miss to find that).
+# Ignored rather than committed because the alternative is a tree that is dirty
+# after every board or probe run, which is how 21 files accumulated unnoticed.
+# Named individually, not `/*.png`: a blanket root-PNG rule would silently
+# swallow a legitimate image someone adds later.
+/b1.png
+/b2.png
+/board-top.png
+/board-sections.png
+/snap.json
+/--gate
