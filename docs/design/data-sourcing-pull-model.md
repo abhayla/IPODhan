@@ -2316,9 +2316,9 @@ So every check below obeys four rules:
 | `PULL-ADMIN` | fields skipped for admin reasons with no live protection row | **0** | any non-zero — the guard on §2.7 |
 | `PULL-TYPE` | plan rows whose resolved ranks do not match the IPO's current type; IPOs with a null segment | 0 / 0 | any non-zero |
 | `E1-SOURCE` | for the ten E-1 fields, `field_sources.source` is never `DRHP` | true | any E-1 field written by the document path — **asserts the outcome, not the declared intent** |
-| `REREAD-RECEIPT` | re-reads with a receipt hashed this cycle ÷ re-reads recorded | 1.0 | below 1.0 — the guard on §3.2 |
-| `REREAD-VERDICT` | share of re-reads ending `verified_against_document` over 7 days | below 0.95 | at or above 0.95 — a source that is never wrong is a source never actually consulted |
-| `REREAD-LATENCY` | oldest actionable disagreement with no re-read attempt | under 48 h | over 48 h, listed by IPO and field |
+| ~~`REREAD-RECEIPT`~~ | **RETIRED 2026-09-21 by OD-65** — measured a re-read loop that is now explicitly not wanted ("one IPO, one round of document read"), was never built (zero `reread` hits in `scraper/src`), and whose §3.2 receipt premise contradicts OD-32's 7-day file purge (#853). No replacement: the behaviour is withdrawn, not moved | n/a | n/a |
+| ~~`REREAD-VERDICT`~~ | **RETIRED 2026-09-21 by OD-65** — same reason as `REREAD-RECEIPT` | n/a | n/a |
+| ~~`REREAD-LATENCY`~~ | **RETIRED 2026-09-21 by OD-65** — same reason as `REREAD-RECEIPT`. Also mis-sized from the start: scoped from "578 leadManagers conflicts"; the real count after removing same-source rows, null-on-one-side rows and byte-identical values is **1 on staging, 2 on prod** | n/a | n/a |
 | `CHECK-ROSTER` | every id above appears in tonight's report | all present | any missing — **a check that crashed must not read as "no findings"** |
 
 `CHECK-ROSTER` exists because the current delta consumer parses only PASS and FAIL: a check that
