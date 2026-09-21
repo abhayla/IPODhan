@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-11T04:09:06.745Z",
+  "generated_at": "2026-09-21T07:15:06.512Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 168,
+    "live": 169,
     "retired": 20
   },
-  "next_id": 189,
+  "next_id": 190,
   "rules": [
     {
       "id": "R-151",
@@ -1194,6 +1194,15 @@
       "kind": "table-normative",
       "text": "financial_statements — total_income — PER_ROW_UNIT — financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted — nothing — read via its own unit column at derive time",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-189",
+      "hash": "16a7598e4042",
+      "section": "5.2 O-2 — money in crore",
+      "kind": "blockquote",
+      "text": "CORRECTION, 2026-09-21 — this table said numeric(15,2) and the schema says numeric(18,2). All five rupee columns (ipos.issue_size, ipo_details.fresh_issue, ipo_details.ofs_issue, ipo_valuation.mcap_at_floor, ipo_valuation.mcap_at_cap) are numeric(18,2) on the live database — verified against information_schema.columns and by writing the Aramco value through the type. Owner of the limit: packages/shared/src/db/schema.ts:287 (and 1203, 1204, 2085, 2086). Saudi Aramco uses 0.025% of the ceiling, Hyundai India 0.0028%, our largest stored row (NSE, Rs 26,579.64 cr) 0.0027%. Consequence: the overflow argument for converting these five columns to crore does not hold. The owner's test was \"if the current field can hold the world's largest IPO, there is no need to change it\" — it can, with a factor of 4,000 to spare. Storage stays in rupees; display converts at the edge (formatIssueSizeCrores), and the two readers that compared crore thresholds against the rupee column are fixed (F-95/F-77, PR #871). Registered as docs/reviews/failure-classes/spec-states-a-capacity-the-schema-does-not-have.json.",
+      "first_seen": "2026-09-21",
       "retired": false
     },
     {
