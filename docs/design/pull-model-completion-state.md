@@ -7,6 +7,16 @@ production deploy is targeted until every item here is built and proven on stagi
 **How to use it.** When an item lands, change its row here in the same PR. When a verdict is disputed,
 re-measure - do not edit the verdict to match a card.
 
+**FORMAT CONTRACT - this table is PARSED.** `scripts/ops/build-plan-board.mjs` reads every numbered
+row with a strict pattern, and its verdict cell must contain **exactly** `**BUILT**`, `**PARTIAL**`
+or `**NOT BUILT**` and nothing else. A qualifier inside the bold (`**PARTIAL - blocked on X**`)
+reads fine to a human and silently stops the row matching: the parser then sees fewer items than it
+expects and refuses to emit, failing the Detection-Change Gate on the NEXT unrelated PR. Put every
+qualifier at the FRONT OF THE EVIDENCE CELL instead, where it reads the same. After editing this
+file run `node --test scripts/tests/build-plan-board.test.mjs` - it reads this document and asserts
+the item count. (Learned the hard way in #872/#874; registered as
+`docs/reviews/failure-classes/prose-edit-breaks-a-parser-of-that-prose.json`.)
+
 **Measured 2026-09-21 against `refs/remotes/origin/main` = `94191e64`.** Always the explicit ref: a local
 branch named `origin/main` has shadowed the remote twice and made a merged PR read as unmerged.
 
