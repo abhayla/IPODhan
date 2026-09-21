@@ -50,7 +50,7 @@ console.log('build-plan-board.test.mjs');
 
 // ---------------------------------------------------- 1. counts are asserted
 
-t('real sources parse to exactly 29 / 63 / 190', () => {
+t(`real sources parse to exactly ${EXPECT.items} / ${EXPECT.decisions} / ${EXPECT.fields}`, () => {
   const items = parseItems(readFileSync(join(REPO_ROOT, 'docs/design/pull-model-completion-state.md'), 'utf8'));
   const decisions = parseDecisions(readFileSync(join(REPO_ROOT, 'docs/design/data-sourcing-pull-model.md'), 'utf8'));
   const fields = parseFields(JSON.parse(readFileSync(join(REPO_ROOT, 'scraper/config/field-manifest.json'), 'utf8')));
@@ -90,9 +90,13 @@ t('a SHORT parse fails loudly rather than emitting a short table', () => {
 t('the generator exits 0 on the real sources and its output names the counts', () => {
   const r = runGenerator(['--stdout']);
   eq(r.status, 0, `exit status (stderr: ${r.stderr})`);
-  ok(r.stdout.includes('29 items'), 'summary names 29 items');
-  ok(r.stdout.includes('63 decisions'), 'summary names 63 decisions');
-  ok(r.stdout.includes('190 fields'), 'summary names 190 fields');
+  // Derived from EXPECT, never retyped: these three counts were hard-coded
+  // here AND in the test name AND in the generator, so adding four owner
+  // decisions (OD-64..67) turned one deliberate counter bump into a red test
+  // with a stale literal. One source of truth for the numbers.
+  ok(r.stdout.includes(`${EXPECT.items} items`), `summary names ${EXPECT.items} items`);
+  ok(r.stdout.includes(`${EXPECT.decisions} decisions`), `summary names ${EXPECT.decisions} decisions`);
+  ok(r.stdout.includes(`${EXPECT.fields} fields`), `summary names ${EXPECT.fields} fields`);
 });
 
 // ------------------------------------- 2. malformed rows are caught, not skipped

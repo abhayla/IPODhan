@@ -15,6 +15,7 @@
     "R-138": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
     "R-139": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
     "R-140": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
-    "R-141": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code."
+    "R-141": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
+    "R-189": "A CORRECTION note, not a buildable rule: it records that §5.2's capacity table stated numeric(15,2) while the live schema is numeric(18,2), and that the overflow argument for the crore conversion therefore does not hold (OD-67). There is nothing to build — the decision it records is to NOT do the migration — so no build card claims it."
   }
 }
