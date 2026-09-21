@@ -134,6 +134,31 @@ export interface ConsolidateIPODataInput {
    */
   rowKey?: string;
   incomingData: Record<string, any>;
+  /**
+   * OD-66 (owner, 2026-09-21): keys of `incomingData` this write is NOT
+   * claiming — facts the caller had to supply so the write could be JUDGED,
+   * never values the source is asserting.
+   *
+   * The filing persister must send five identity fields read off the STORED
+   * row (`companyName`, `segment`, `offeringType`, `status`,
+   * `listingExchange`) plus `openDate`/`closeDate` fallbacks, because
+   * `computeIpoIdentitySlug` needs them to resolve the row at all. Without
+   * this parameter the consolidator cannot tell them from real claims: it
+   * iterates every key of `incomingData` as a claim by `source`, so a
+   * corrigendum that never mentioned `status` re-stamped its provenance as
+   * DRHP and — the real damage — reached `autoResolveConverged`, closing an
+   * open disagreement about a field that document never read. The value never
+   * moved; the audit trail did.
+   *
+   * The field-plan walk solved the same shape with `onlyFields`
+   * (`field-plan-walk.ts:225`, "fabricated provenance for fields the walk
+   * never fetched"). This is its inverse and composes with it: name what is
+   * context, keep everything else a claim.
+   *
+   * `undefined` (omitted) means "every key is a claim" — today's behaviour,
+   * unchanged for every existing caller.
+   */
+  contextFields?: string[];
   source: ScraperSource;
   existingData?: Record<string, any>;
   confidence?: number; // 0-100 confidence score for incoming data
@@ -1057,10 +1082,17 @@ export class DataConsolidationService {
         segment: heldDates.segment,
       };
 
+      // OD-66: a field the caller declared as CONTEXT is not this write's
+      // claim, so it is never resolved, never re-stamped with this source's
+      // provenance, and never allowed to auto-resolve an open conflict. It
+      // still reached the caller's identity/slug logic — it just stops here.
+      const contextFields = new Set(input.contextFields ?? []);
+
       // Process each field in incoming data
       for (const [fieldName, incomingValue] of Object.entries(
         input.incomingData
       )) {
+        if (contextFields.has(fieldName)) continue;
         if (degenerateBandFields.has(fieldName)) continue;
         if (widenBandFields.has(fieldName)) continue;
         if (implausibleIssueSize.fields.has(fieldName)) continue;

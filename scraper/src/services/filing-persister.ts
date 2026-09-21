@@ -1305,11 +1305,29 @@ export async function persistFilingExtraction(
 
   if (iposFields.length > 0) {
     if (apply) {
+      // OD-66 (owner, 2026-09-21): "you should only care about the new set of
+      // fields from the new document". `scraped` carries more than this
+      // document claimed — the five identity fields seeded from the STORED row
+      // above (companyName, segment, offeringType, status, listingExchange) and
+      // the openDate/closeDate fallbacks, all present because
+      // `computeIpoIdentitySlug` needs them to resolve the row at all.
+      //
+      // `iposFields` is already the exact list this filing SUPPLIED, so
+      // everything else in `scraped` is context by construction — derived here
+      // rather than re-listed, so a future field added to the seed cannot drift
+      // out of sync with a hand-kept list.
+      //
+      // Without this, a corrigendum that never mentioned `status` re-stamped
+      // its provenance as DRHP and reached `autoResolveConverged`, closing an
+      // open disagreement about a field the document never read.
+      const claimed = new Set(iposFields);
+      const contextFields = Object.keys(scraped).filter((k) => !claimed.has(k));
       await upsertIPO(
         deps.ipoRepository,
         scraped as never,
         source,
-        existing as never
+        existing as never,
+        contextFields
       );
     }
     bump(written, 'ipos', 1);
