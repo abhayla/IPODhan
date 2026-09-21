@@ -84,6 +84,20 @@ export const CLOSED_IPO_JOB_DEFAULT_CAP = 10;
  * work" is a fact about the evidence rather than a retry counter someone can
  * reset.
  *
+ * ORDER BY is by NEED, not recency (#873). The first version sorted
+ * `close_date DESC` alone, and measured against staging that pointed the job
+ * away from its own purpose: of 343 eligible IPOs, the 74 holding a stuck
+ * PENDING PROSPECTUS sit at ranks 156-294, because they are OLD -- which is
+ * exactly why nothing re-visited them. At ten a night the job reached zero of
+ * them on night 1, zero by night 10, the first on night 16. And it would not
+ * have been merely idle: it writes a ledger row per attempt and excludes DONE
+ * ones, so fifteen nights of slots would have gone to IPOs needing nothing,
+ * each marked DONE, while the log read `attempted=10 done=10`.
+ *
+ * The count is restricted to the four EXTRACTABLE types. Ordering by all
+ * pending documents would rank an IPO by rows whose types have no extractor
+ * at all (#869) -- work this job cannot do however many times it visits.
+ *
  * This constant is the READABLE copy, asserted by the unit tests. The executed
  * query is the bound `sql` template in `runClosedIpoJob` — the rules live here
  * in one place, and nothing interpolates this string into a query.
@@ -98,7 +112,11 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
        r.ipo_id IS NULL
        OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM $1)
      )
-   ORDER BY i.close_date DESC
+   ORDER BY (SELECT count(*) FROM documents d
+              WHERE d.ipo_id = i.id
+                AND d.extraction_status = 'PENDING'
+                AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')) DESC,
+            i.close_date DESC
    LIMIT $2
 `;
 
@@ -136,7 +154,11 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
            r.ipo_id IS NULL
            OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM ${deps.resourcedAtVersion})
          )
-       ORDER BY i.close_date DESC
+       ORDER BY (SELECT count(*) FROM documents d
+                  WHERE d.ipo_id = i.id
+                    AND d.extraction_status = 'PENDING'
+                    AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')) DESC,
+                i.close_date DESC
        LIMIT ${cap}
     `
   );

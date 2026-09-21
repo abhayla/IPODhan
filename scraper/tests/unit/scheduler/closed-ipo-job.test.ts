@@ -57,8 +57,14 @@ describe('CLOSED_IPO_CANDIDATES_SQL — the four selection rules', () => {
     expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/r\.ipo_id IS NULL/);
   });
 
-  it('(g) newest-closed first, so the freshest backlog drains before the oldest', () => {
-    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/ORDER BY i\.close_date DESC/);
+  it('(g) most-stuck first, with recency only as the tie-break (#873)', () => {
+    // The card's rule (g) said "newest-closed first, so the freshest backlog
+    // drains before the oldest". The premise was wrong and staging disproved
+    // it before the job ever ran: the backlog is not the freshest rows, it is
+    // the OLDEST ones, which is why nothing had re-visited them. Recency
+    // survives as the tie-break; need decides. See the #873 block below.
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/i\.close_date DESC/);
+    expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/ORDER BY\s+i\.close_date DESC/);
   });
 });
 
@@ -179,5 +185,49 @@ describe('isClosedIpoJobDue', () => {
     // Last ran two days ago; it is now 03:00 IST (21:30Z prior day) — the most
     // recent boundary is LAST NIGHT's 22:00, which was never served.
     expect(isClosedIpoJobDue(at('2026-09-21T21:30:00Z'), at('2026-09-19T16:35:00Z'))).toBe(true);
+  });
+});
+
+/**
+ * #873 — the ordering, which nothing pinned and which shipped wrong.
+ *
+ * The first version ordered `close_date DESC` alone: newest closures first.
+ * Measured against staging before the job had ever run, that points it away
+ * from its own purpose. The eligible population is 343 IPOs; the 74 holding a
+ * stuck PENDING PROSPECTUS sit at ranks 156-294 (mean 231), because they are
+ * OLD — which is precisely why nothing re-visited them. At ten per night the
+ * job reached ZERO of them on night 1, zero by night 10, the first on night 16
+ * and the last on night 30.
+ *
+ * Worse than idle: the job writes a `closed_ipo_resourcing` row for every IPO
+ * it attempts and then excludes DONE ones, so those first fifteen nights would
+ * CONSUME the slots on IPOs needing nothing, each marked DONE, while the log
+ * read `attempted=10 done=10` every night. A green signal over an empty set.
+ *
+ * So the order is by NEED — count of un-extracted extractable documents —
+ * with recency only as the tie-break.
+ */
+describe('#873: candidates are ordered by stuck-document count, not recency', () => {
+  it('orders by the pending extractable-document count before close_date', () => {
+    // The count subquery must come FIRST in the ORDER BY. Asserted as an
+    // ordered pair rather than two independent matches, because both clauses
+    // being present says nothing about which one decides.
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(
+      /ORDER BY[\s\S]*extraction_status = 'PENDING'[\s\S]*DESC,[\s\S]*i\.close_date DESC/
+    );
+  });
+
+  it('counts only document types an extractor can actually read', () => {
+    // Ordering by ALL pending documents would rank an IPO by the 65 rows whose
+    // types have no extractor at all (#869) — work this job cannot do. The
+    // count must be restricted to the four extractable types.
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(
+      /'PRICE_BAND_AD'\s*,\s*'RHP'\s*,\s*'DRHP'\s*,\s*'PROSPECTUS'/
+    );
+  });
+
+  it('does not order by close_date alone', () => {
+    // The exact shape that shipped: a lone recency sort.
+    expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/ORDER BY\s+i\.close_date DESC\s+LIMIT/);
   });
 });
