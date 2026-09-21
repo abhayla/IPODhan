@@ -263,6 +263,20 @@ export const FEATURE_FLAGS = {
   ENABLE_DOCUMENT_STATE_MACHINE: process.env.ENABLE_DOCUMENT_STATE_MACHINE === 'true',
 
   /**
+   * Item 17 (OD-22): the closed-IPO job — the second-pass walker that drains
+   * documents filed after an IPO's initial DRHP/RHP-era pass. Measured on
+   * staging 2026-09-20: 74 PROSPECTUS documents sit PENDING on 74 distinct
+   * LISTED IPOs, the oldest filed 2026-06-15, while 10 of the SAME type on the
+   * SAME status are COMPLETED — the extractor is not the gap, a second visit is.
+   *
+   * Gated separately from ENABLE_DOCUMENT_STATE_MACHINE because this flag
+   * decides whether a SECOND walker runs at all, not how documents are stored.
+   * Default false everywhere; prod only after a staging soak.
+   * Default: false
+   */
+  ENABLE_CLOSED_IPO_JOB: process.env.ENABLE_CLOSED_IPO_JOB === 'true',
+
+  /**
    * Item 5 slice s4: generate `ipo_field_plan` rows for each candidate IPO
    * the document cycle already selects, via `generateFieldPlan` +
    * `IpoFieldPlanRepository.upsertGeneratedRows`.
@@ -686,6 +700,9 @@ export function getFeatureStatus(): Record<string, boolean | number | string[]> 
     CHILD_TABLE_CONSOLIDATION: FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION,
     FILING_AUTO_PERSIST: FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST,
     SME_FILING_AUTO_PERSIST: FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST,
+    // Item 17: logged here so a quiet 22:00 is readable as "flag off" rather
+    // than investigated as "the job broke".
+    CLOSED_IPO_JOB: FEATURE_FLAGS.ENABLE_CLOSED_IPO_JOB,
     DEBUG_MODE: FEATURE_FLAGS.DEBUG_DATA_FLOW,
     ENABLED_SCRAPERS: FEATURE_FLAGS.ENABLED_SCRAPERS,
   };

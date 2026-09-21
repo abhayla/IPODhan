@@ -73,7 +73,13 @@ function replayJournal(): { entries: number; tables: string[]; enums: string[] }
     for (const m of sql.matchAll(/DROP TABLE(?:\s+IF EXISTS)?\s+"?([a-z0-9_]+)"?/gi)) {
       tables.delete(m[1]);
     }
-    for (const m of sql.matchAll(/CREATE TYPE\s+"?(?:public\.)?"?([a-z0-9_]+)"?\s+AS ENUM/gi)) {
+    // Two spellings in the journal, both real: migrations up to 0049 emit
+    // `CREATE TYPE "name"`, while drizzle-kit now emits the schema-qualified
+    // `CREATE TYPE "public"."name"` (0050 is the first). The old pattern
+    // expected `"public.` — one quote, dot INSIDE — so it silently matched
+    // neither the new form nor anything else, and a new enum would have been
+    // invisible to this replay rather than failing it.
+    for (const m of sql.matchAll(/CREATE TYPE\s+(?:"public"\.)?"([a-z0-9_]+)"\s+AS ENUM/gi)) {
       enums.add(m[1]);
     }
   }

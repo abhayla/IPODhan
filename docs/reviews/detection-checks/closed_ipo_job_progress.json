@@ -1,0 +1,9 @@
+{
+  "id": "closed_ipo_job_progress",
+  "findingClass": "the closed-IPO job stops making progress silently — the same (ipo_id, cause_class) pair fails night after night and reads as steady state rather than as a stuck backlog",
+  "round7Findings": [],
+  "failThreshold": "an identical (ipo_id, cause_class) pair appears in closed_ipo_resourcing with outcome != 'DONE' on 3+ consecutive nights, OR zero rows written in 24h while candidates exist",
+  "severity": "P2",
+  "unverifiableWhen": "ENABLE_CLOSED_IPO_JOB is false in the slot being audited — the table is legitimately empty and the check reports unverifiable rather than passing",
+  "section": "notCoveredByThisManifest"
+}

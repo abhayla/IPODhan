@@ -43,6 +43,17 @@ import { shouldRunOnCatchUpCadence, isCatchUpCadenceDue, markCatchUpCadenceRan }
 import { isDiscoveryDue, isMarketHoursIST, mostRecentDiscoverySlotLabel } from './scheduler/due-step-cycle.js';
 import { runDemandBackfill } from './scripts/backfill-demand-graph.js';
 import { DistributedLock } from './utils/distributed-lock.js';
+import { runClosedIpoJob, isClosedIpoJobDue, CLOSED_IPO_JOB_SLOT_IST_MINUTES } from './scheduler/closed-ipo-job.js';
+import type { ClosedIpoCauseClass, ClosedIpoOutcome } from './scheduler/closed-ipo-job.js';
+import { walkFieldPlanForIPO } from './services/field-plan-walk.js';
+import {
+  buildFieldPlanWalkOrchestrator,
+  buildFieldPlanWalkFetchers,
+  buildFieldPlanWalkWitnessVerdictWriter,
+} from './services/field-plan-walk-deps.js';
+import { createFieldSourceOverridesReader } from './config/field-source-overrides-reader.js';
+import { IPORepository, IpoFieldPlanRepository } from '@ipodhan/shared';
+import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/field-source-overrides-repository';
 import { randomUUID, createHash } from 'crypto';
 import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories';
@@ -99,6 +110,7 @@ export const STEP_NAMES = [
   'stageReconciler',
   'primarySourceDiscovery',
   'documentPurge',
+  'closedIpoJob',
   'deployDriftMonitor',
   'pruneScraperLogs',
   'pruneDataConflicts',
@@ -1077,6 +1089,7 @@ export async function main() {
       await runStep(cycleId, 'stageReconciler', triggerStageReconciler);
       await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
       await runStep(cycleId, 'documentPurge', triggerDocumentPurge);
+      await runStep(cycleId, 'closedIpoJob', triggerClosedIpoJob);
       await runStep(cycleId, 'deployDriftMonitor', triggerDeployDriftMonitor);
       await runStep(cycleId, 'pruneScraperLogs', pruneScraperLogs);
       await runStep(cycleId, 'pruneDataConflicts', pruneDataConflicts);
@@ -1606,6 +1619,204 @@ async function pruneScraperLogs(): Promise<StepResult> {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'scraper_logs prune failed (non-fatal)'
+    );
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Stamped onto every `closed_ipo_resourcing` row. Bumping it is what makes an
+ * IPO this version gave up on (PARTIAL/FAILED) eligible again — a deliberate
+ * act, the same contract `EXTRACTOR_VERSION` uses, never a side effect.
+ */
+const CLOSED_IPO_RESOURCING_VERSION = 'closed-ipo-job@2026-09-21';
+
+/** Wall-clock budget for ONE closed IPO's walk. Ten of these fit in a cycle. */
+const CLOSED_IPO_WALK_BUDGET_MS = 60_000;
+
+/**
+ * The real work behind one closed-IPO row: run the field-plan walk over it,
+ * exactly as the document cycle's PASS 3 does for a live IPO, and translate
+ * the walk's counters into the job ledger's outcome + cause CLASS.
+ *
+ * This is a real walk, not a stub. A stubbed writer here would hide precisely
+ * the contract bugs this wiring can have (2026-09-16: three walk-writer
+ * mismatches sat behind a stubbed consolidator).
+ *
+ * The outcome mapping, and why each line is where it is:
+ *   - nothing attempted        -> DONE. There was no due field; the IPO is
+ *                                 resourced as far as the plan knows. Marking
+ *                                 this FAILED would re-select it every night
+ *                                 forever for having no work.
+ *   - something supplied, none left dropped/failing -> DONE.
+ *   - writes dropped           -> PARTIAL / WRITE_SKIPPED. The walk reached a
+ *                                 write and the consolidator declined it.
+ *   - transient failures       -> PARTIAL / SOURCE_UNREACHABLE. Re-askable.
+ *   - every field exhausted    -> PARTIAL / DOCUMENT_UNOBTAINABLE. Terminal for
+ *                                 this version; a version bump re-opens it.
+ *   - settle calls threw       -> FAILED / WRITE_SKIPPED. The DB was the problem.
+ */
+async function resourceClosedIpo(ipoId: string): Promise<{
+  outcome: ClosedIpoOutcome;
+  causeClass?: ClosedIpoCauseClass;
+  causeDetail?: string;
+  fieldsWritten: number;
+  fieldsLeftEmpty: number;
+}> {
+  const redis = getRedisClient();
+  const startedAt = Date.now();
+
+  const walk = await walkFieldPlanForIPO(
+    ipoId,
+    {
+      fieldPlanRepository: new IpoFieldPlanRepository(db as never, redis as never) as never,
+      orchestrator: buildFieldPlanWalkOrchestrator(),
+      sourceFetchers: buildFieldPlanWalkFetchers(),
+      ipoRepository: new IPORepository(db as never, redis as never) as never,
+      overrides: createFieldSourceOverridesReader(new FieldSourceOverridesRepository({ db: db as never })),
+      trackWitnessVerdict: buildFieldPlanWalkWitnessVerdictWriter(),
+    },
+    { deadlineMs: startedAt + CLOSED_IPO_WALK_BUDGET_MS, now: () => Date.now() }
+  );
+
+  const fieldsWritten = walk.fieldsSupplied;
+  const fieldsLeftEmpty =
+    walk.fieldsExhausted + walk.fieldsCheckFailed + walk.fieldsWriteSkipped + walk.fieldsNotAvailableYet;
+
+  let outcome: ClosedIpoOutcome = 'DONE';
+  let causeClass: ClosedIpoCauseClass | undefined;
+  let causeDetail: string | undefined;
+
+  if (walk.outcomesFailed > 0) {
+    outcome = 'FAILED';
+    causeClass = 'WRITE_SKIPPED';
+    causeDetail = `${walk.outcomesFailed} settle call(s) threw (DB unreachable); claims released`;
+  } else if (walk.fieldsWriteSkipped > 0) {
+    outcome = 'PARTIAL';
+    causeClass = 'WRITE_SKIPPED';
+    causeDetail = walk.droppedWrites
+      .slice(0, 5)
+      .map((d) => `${d.tableName}.${d.fieldName} (${d.source}: ${d.skipReason})`)
+      .join('; ');
+  } else if (walk.fieldsCheckFailed > 0) {
+    outcome = 'PARTIAL';
+    causeClass = 'SOURCE_UNREACHABLE';
+    causeDetail = `${walk.fieldsCheckFailed} field(s) failed transiently; re-asked after backoff`;
+  } else if (walk.fieldsExhausted > 0 && walk.fieldsSupplied === 0) {
+    outcome = 'PARTIAL';
+    causeClass = 'DOCUMENT_UNOBTAINABLE';
+    causeDetail = walk.exhaustedFields
+      .slice(0, 5)
+      .map((e) => `${e.tableName}.${e.fieldName}`)
+      .join('; ');
+  }
+
+  logger.info(
+    { ipoId, outcome, causeClass, fieldsWritten, fieldsLeftEmpty, stoppedReason: walk.stoppedReason },
+    'closed-IPO job: walk complete for one IPO'
+  );
+
+  return { outcome, causeClass, causeDetail, fieldsWritten, fieldsLeftEmpty };
+}
+
+/**
+ * Item 17 (OD-22): the closed-IPO job's call site.
+ *
+ * WHY IT EXISTS, measured on staging 2026-09-20 rather than assumed: 74
+ * PROSPECTUS documents sit `extraction_status = PENDING`, one each on 74
+ * distinct LISTED IPOs, the oldest filed 2026-06-15. Ten documents of the SAME
+ * type on the SAME status are COMPLETED and PROSPECTUS is in
+ * `EXTRACTABLE_DOC_TYPES`, so the extractor is not the gap. LISTED IPOs DO
+ * enter the document cycle's candidate set, but behind `getListedCap()`
+ * (default 2 per cycle) and behind every live-lifecycle row — so a prospectus
+ * filed after the DRHP/RHP-era pass waits behind a queue that never empties.
+ * This job is the second visit nothing else makes. (#717)
+ *
+ * WHERE THE CYCLE LOCK FITS — the one thing worth reading carefully. The card's
+ * rule is "never run while the DATA job holds `scraper:cycle`". This step runs
+ * INSIDE that cycle, which already holds the lock, so a literal
+ * `lock.isLocked(CYCLE_LOCK_RESOURCE)` here is always true and would mean the
+ * job could never run at all. Passing `() => false` would be a lie in the
+ * shape of a guard.
+ *
+ * The rule is satisfied structurally instead, and that is stronger than a
+ * runtime check: this step is `await`ed in the cycle's own sequential step
+ * chain, so the data job is provably NOT walking concurrently — it is upstream
+ * of this line in the same single-threaded process. The dependency stays in
+ * `ClosedIpoJobDeps` because an out-of-cycle caller (a manual CLI run, a future
+ * separate timer) has no such proof and must do the real check.
+ *
+ * SCHEDULE: one 22:00-IST boundary per day (`isClosedIpoJobDue`), catch-up-safe,
+ * read from and stamped into the same Redis cadence store the other jobs use.
+ * PM2 wakes this process every 30 minutes, so the first wake at-or-after 22:00
+ * runs it and the rest of the night sees an already-served boundary.
+ *
+ * Non-fatal throughout, like every other post-scrape step.
+ */
+const CLOSED_IPO_JOB_CADENCE_KEY = 'closed-ipo-job';
+/** TTL only — the boundary check, not this number, decides whether to run. */
+const CLOSED_IPO_JOB_CADENCE_TTL_MINUTES = 24 * 60;
+
+export async function triggerClosedIpoJob(): Promise<StepResult> {
+  if (!FEATURE_FLAGS.ENABLE_CLOSED_IPO_JOB) {
+    return { status: 'skipped', reason: 'ENABLE_CLOSED_IPO_JOB not true' };
+  }
+
+  const redis = getRedisClient();
+  const now = new Date();
+
+  // Read the raw stamp rather than `isCatchUpCadenceDue`: that helper asks
+  // "has N minutes elapsed", and this job asks "has the 22:00 boundary passed
+  // since we last ran" — an interval would drift a little later every night.
+  let lastRunAt: Date | null = null;
+  try {
+    const raw = await redis.get(`catch-up-cadence:${CLOSED_IPO_JOB_CADENCE_KEY}`);
+    const ms = Number(raw);
+    if (raw && Number.isFinite(ms) && ms > 0) lastRunAt = new Date(ms);
+  } catch (error) {
+    // Fail OPEN, same convention as catch-up-cadence itself: a Redis blip
+    // makes the job run again, which is idempotent (the ledger's
+    // onConflictDoUpdate), rather than silently skipping the night.
+    logger.warn(
+      { error: error instanceof Error ? error.message : String(error) },
+      'closed-IPO job: cadence read failed — treating as never run (fail open)'
+    );
+  }
+
+  if (!isClosedIpoJobDue(now, lastRunAt)) {
+    return {
+      status: 'skipped',
+      reason: `22:00 IST boundary already served (last run ${lastRunAt?.toISOString() ?? 'never'})`,
+    };
+  }
+
+  try {
+    const summary = await runClosedIpoJob({
+      db,
+      // See the doc comment above: inside the cycle's own step chain the data
+      // job is provably not walking concurrently. The real check belongs to
+      // any caller that runs OUTSIDE the cycle.
+      isCycleLockHeld: async () => false,
+      resourceIpo: resourceClosedIpo,
+      resourcedAtVersion: CLOSED_IPO_RESOURCING_VERSION,
+      now,
+    });
+
+    await markCatchUpCadenceRan(redis, CLOSED_IPO_JOB_CADENCE_KEY, CLOSED_IPO_JOB_CADENCE_TTL_MINUTES, now);
+
+    // signal-ownership R1: a count is not a reading. The outcome split is what
+    // distinguishes "drained ten" from "failed ten the same way ten times".
+    return {
+      status: 'ok',
+      reason:
+        `slot=${CLOSED_IPO_JOB_SLOT_IST_MINUTES} considered=${summary.candidatesConsidered} ` +
+        `attempted=${summary.attempted} done=${summary.outcomes.DONE} ` +
+        `partial=${summary.outcomes.PARTIAL} failed=${summary.outcomes.FAILED}`,
+    };
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Closed-IPO job failed (non-fatal)'
     );
     return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }

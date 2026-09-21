@@ -351,6 +351,13 @@
       "when": 1789765918969,
       "tag": "20260918211158_little_wrecking_crew",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789927047425,
+      "tag": "0050_bright_power_man",
+      "breakpoints": true
     }
   ]
 }
