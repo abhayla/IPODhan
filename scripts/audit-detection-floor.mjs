@@ -78,6 +78,8 @@ import {
   lookupManifestRanks, ipoTypeKey, checkOverrideRow, validateOverrideRankSet,
 } from './lib/pull-policy-checks.mjs';
 import { collectRowKeyCoverage, ROW_KEYED_CHILD_TABLES } from './lib/row-key-coverage-checks.mjs';
+import { extractShape, compareShape, partitionFixtures, loadHtmlFixtureEntries, summarizeCorpusShape, toPosixPath } from './lib/corpus-shape-checks.mjs';
+import { findFixtureFiles } from './lib/fixture-provenance-checks.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
 import { adminQueueSize, formatAdminQueueBlock } from './ops/admin-queue-size.mjs';
 
@@ -2230,6 +2232,81 @@ async function checkS_pullWrite() {
 // need opposite actions:
 //   PDF still retained  -> a retry can still be scheduled
 //   PDF already purged  -> a permanent data gap to report, not a retry
+// CORPUS-SHAPE (item 10, docs/design/data-sourcing-pull-model.md §4.5): per
+// source, does the live page behind each HTML fixture still carry the LABELS
+// its extractor keys on? Values are excluded on purpose — they are supposed to
+// change; a label that disappears is a field about to stop extracting.
+//
+// Measured 2026-09-22 on origin/main: the corpus holds 11 HTML fixtures and
+// ZERO of them carry a .meta.json, so none has a fetchable sourceUrl (all 11
+// are grandfathered in config/fixture-provenance-baseline.json). This check
+// therefore records UNVERIFIABLE today, NOT pass — it has measured nothing,
+// and saying "every live page still matches" would be a claim it cannot make.
+// It goes green on its own the moment a fixture is attributed through
+// scripts/create-fixture-from-capture.mjs --source-url.
+//
+// Network: opt-in. The nightly floor runs it (CORPUS_SHAPE_FETCH unset =>
+// fetch), CI does not (CORPUS_SHAPE_FETCH=0), so the PR gate never depends on
+// a third-party site being up.
+const CORPUS_SHAPE_FETCH = process.env.CORPUS_SHAPE_FETCH !== '0';
+const CORPUS_SHAPE_TIMEOUT_MS = Number(process.env.CORPUS_SHAPE_TIMEOUT_MS ?? 20000);
+// Same courtesy pacing as the ipowatch oracle above: one page at a time, with
+// a gap, against sites that owe us nothing.
+const CORPUS_SHAPE_DELAY_MS = Number(process.env.CORPUS_SHAPE_DELAY_MS ?? 400);
+const CORPUS_SHAPE_HEADERS = {
+  'User-Agent': 'IPODhan-detection-floor-audit/1.0 (+https://ipodhan.com; fixture shape check, see scripts/lib/corpus-shape-checks.mjs)',
+  Accept: 'text/html',
+};
+
+async function checkS_corpusShape() {
+  const CHECK_NAME = 'live page behind each fixture still carries the labels its extractor keys on';
+  let entries;
+  try {
+    entries = loadHtmlFixtureEntries(findFixtureFiles(REPO_ROOT));
+  } catch (e) {
+    record('corpus_shape', CHECK_NAME, 'UNVERIFIABLE', `fixture corpus not readable: ${e.message}`);
+    return;
+  }
+
+  const { checkable, unattributable } = partitionFixtures(entries);
+  const results_ = [];
+
+  if (checkable.length > 0 && CORPUS_SHAPE_FETCH) {
+    for (const entry of checkable) {
+      const rel = toPosixPath(relative(REPO_ROOT, entry.file));
+      const sourceUrl = entry.meta.sourceUrl;
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), CORPUS_SHAPE_TIMEOUT_MS);
+        const res = await fetch(sourceUrl, { signal: ctrl.signal, headers: CORPUS_SHAPE_HEADERS })
+          .finally(() => clearTimeout(t));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const liveHtml = await res.text();
+        const diff = compareShape(
+          extractShape(readFileSync(entry.file, 'utf8')),
+          extractShape(liveHtml)
+        );
+        results_.push({ file: rel, sourceUrl, same: diff.same, movedLabels: diff.movedLabels });
+        if (!diff.same) {
+          notify('corpus_shape', 'P1', rel,
+            'a label this fixture depends on is gone from its live page',
+            `${sourceUrl}: label(s) moved: ${diff.movedLabels.join(', ')} — the extractor that keys on them will stop finding its value`);
+        }
+      } catch (e) {
+        results_.push({ file: rel, sourceUrl, error: e.message });
+      }
+      await sleep(CORPUS_SHAPE_DELAY_MS);
+    }
+  } else if (checkable.length > 0) {
+    record('corpus_shape', CHECK_NAME, 'UNVERIFIABLE',
+      `${checkable.length} fixture(s) are checkable but CORPUS_SHAPE_FETCH=0 — no live page was fetched`);
+    return;
+  }
+
+  const summary = summarizeCorpusShape({ checkable, unattributable, results: results_ });
+  record('corpus_shape', CHECK_NAME, summary.status, summary.detail);
+}
+
 async function checkS_incompletePagesUnretried() {
   let rows;
   try {
@@ -2507,6 +2584,7 @@ async function main() {
   await checkS_pullPlan();
   await checkS_pullWrite();
   await checkS_incompletePagesUnretried();
+  await checkS_corpusShape();
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
