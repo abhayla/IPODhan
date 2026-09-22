@@ -124,6 +124,7 @@ jobs:
           node --test scripts/tests/audit-detection-floor.test.mjs
           node --test scripts/tests/detection-floor-issue-size-select.test.mjs
           node --test scripts/tests/check-design-consistency-exit.test.mjs
+          node --test scripts/tests/corpus-shape-checks.test.mjs
 
       - name: "NOT_APPLICABLE documents check self-test (lane B, #677)"
         # ratios_extraction_yield was retired on 2026-09-16 (#677): its population,

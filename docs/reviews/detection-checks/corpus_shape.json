@@ -8,8 +8,8 @@
   "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
   "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
   "consumerReason": "the design specifies a weekly scheduled job (§4.5); the floor-delta consumer is the only one of the two named consumers that already runs on a schedule independent of the pull cycle, so the weekly run rides that same NEW/GONE/SAME diffing consumer",
-  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "status": "built — wired at scripts/audit-detection-floor.mjs (checkS_corpusShape); predicates in scripts/lib/corpus-shape-checks.mjs, self-tested by scripts/tests/corpus-shape-checks.test.mjs",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4.5 (\"How we would know it worked\")",
-  "section": "notCoveredByThisManifest",
-  "note": "CORPUS-SHAPE (pull-model verification check CORPUS-SHAPE: per source, does the live page behind each fixture still match the fixture’s SHAPE (labels + structure the extractor depends on, never the values)) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('corpus_shape' call lands in the audit script."
+  "section": "checks",
+  "note": "CORPUS-SHAPE: per source, does the live page behind each HTML fixture still carry the labels its extractor keys on (never the values). Measured 2026-09-22: the corpus holds 11 HTML fixtures and 0 carry a fetchable sourceUrl (all 11 grandfathered in config/fixture-provenance-baseline.json), so this check records UNVERIFIABLE until a fixture is attributed via scripts/create-fixture-from-capture.mjs --source-url — never PASS, because it has measured nothing. Network is opt-in: the nightly floor fetches, CI sets CORPUS_SHAPE_FETCH=0 so the PR gate never depends on a third-party site."
 }
