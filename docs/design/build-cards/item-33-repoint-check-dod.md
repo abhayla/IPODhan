@@ -1,6 +1,6 @@
 # Item 33 — repoint `check-dod.mjs` so it runs in any checkout, and wire it into CI
 
-Status: NOT STARTED
+Status: DONE 2026-09-22 PRs #883 proof docs-gate.yml:85 runs the walker on every docs PR; scripts/tests/check-dod-d14-mechanism.test.mjs 8 pass 0 fail, and DOD_E2E=1 6 pass 0 fail with the fork item MET
 
 Model: Sonnet.
 
@@ -120,3 +120,19 @@ Does NOT re-derive the Definition of Done itself. Several of the script's items 
 the state of the tree on 2026-09-09 and assert counts that have since moved for legitimate reasons;
 this item makes those assertions read the live artefact, but it does not revisit whether each DoD
 item is still the right question to ask. That review is the owner's and is left named here.
+
+**Update 2026-09-22 (#829, PR #883).** One of those items has since been re-derived: "New owner
+forks recorded, D14 green" asserted that `| O-14 |` and `| O-15 |` were present in the open-fork
+table, and both forks were correctly ANSWERED on 2026-09-09 and promoted to OD-53/OD-54 — whose own
+acceptance conditions require their absence. It had been red ever since. It now delegates to
+`check-design-consistency.mjs`, which owns D14 and enforces the mechanism the spec states ("D14
+fails if a marker loses its row"), and a new self-test
+(`scripts/tests/check-dod-d14-mechanism.test.mjs`, wired into docs-gate) guards the CLASS: no DoD
+item may assert a specific `O-nn` fork id is present. The broader review named above — whether each
+remaining DoD item is still the right question — is still the owner's and still open.
+
+**Also measured then, and NOT fixed here:** `scripts/tests/check-dod-root-resolution.test.mjs`, the
+test listed under "Tests" above, runs in NO workflow. It is not wired in because three of its four
+cases drive a full `check-dod` run, which spawns the mutation harness; one case had not finished
+after 15 minutes, and two of those runs mutate the same tracked files concurrently. The reason is
+recorded in `docs-gate.yml` beside the step rather than left silent.
