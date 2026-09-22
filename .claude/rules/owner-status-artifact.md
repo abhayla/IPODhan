@@ -55,8 +55,18 @@ Update for: a verdict change, a deploy that changes what an environment serves, 
 or newly waiting, a gate changing state, a change in what a reader of the site sees.
 
 Do NOT update for: an ordinary merge that changes no verdict, docs commits, CI re-runs, a review
-that found nothing. The `board-owed-guard` hook arms on a merge; that is a prompt to ASK whether a
-stage crossed, not an instruction to republish.
+that found nothing.
+
+The `board-owed-guard` hook (`.claude/hooks/board-owed-guard.sh`, wired as a `Stop` hook in
+`.claude/settings.json`) fires on main when a merge has landed since the board was last rendered
+AND regenerating it changes something beyond a date stamp. It regenerates and tells the session to
+publish; it never publishes, because publishing is an outward action that belongs to the session.
+
+**This hook did not exist until 2026-09-23**, and this rule named it as though it did — so for the
+rule's whole life the only thing keeping the published artifact fresh was a session remembering.
+The owner noticed the page going stale and asked why. That is the class this repository keeps
+finding: a rule asserting a guard nobody built, so nothing detects the gap. If a future rule names
+a mechanism, `grep` for it before trusting it.
 
 ## R5 — The stamp is read from the clock
 
