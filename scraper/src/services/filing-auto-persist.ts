@@ -182,6 +182,48 @@ export function isExtractableDocType(type: string): boolean {
 export const NOT_APPLICABLE_EXTRACTION_REASON = 'no_extractor_for_doc_type';
 
 /**
+ * #869 — the terminal status for a document whose type has no extractor.
+ *
+ * `extraction_status = 'PENDING'` meant two opposite things and nothing told
+ * them apart: "queued, will be processed" for a type in
+ * `AUTO_PERSIST_DOC_TYPES`, and "can never be processed" for every other type.
+ * The consumer dispatches on type and silently skips what it does not
+ * recognise, so such a row was admitted, stamped PENDING, skipped on every
+ * pass, and stayed PENDING forever.
+ *
+ * Measured on ipodhan_staging 2026-09-23: 71 documents across 8 types, 100%
+ * PENDING, ZERO ever COMPLETED. A type that is sometimes processed shows a
+ * mix; 100% is the signature of "no handler exists". RATIOS_BASIS_ISSUE_PRICE
+ * grew 43 -> 49 in three days with a row written that same day, so this is an
+ * open tap, not a historical backlog.
+ *
+ * Owner decision 2026-09-23 (option A of #869): stamp the honest status at
+ * admission rather than build eight extractors whose value nobody has
+ * measured. Reversible — if an extractor is ever written for one of these
+ * types, the stamp comes off and the rows re-enter the queue.
+ */
+export const NOT_EXTRACTABLE_STATUS = 'NOT_EXTRACTABLE';
+
+/**
+ * The status a newly discovered document is admitted with.
+ *
+ * Decided by SET MEMBERSHIP against `isExtractableDocType` — the same
+ * predicate `selectPendingFilings` dispatches on and the nightly
+ * `not_applicable_documents_named` check reads — so the admission stamp and
+ * the consumer cannot drift apart. That matters more than the eight types
+ * themselves: a NINTH type with no extractor gets the honest status on the day
+ * it first appears, with no code change. Fixing the eight and leaving the
+ * class intact is what #869 explicitly warns against.
+ *
+ * An empty, null or unknown type resolves to NOT_EXTRACTABLE, never PENDING:
+ * defaulting an unrecognised shape to "queued" would re-create the bug for the
+ * one case least likely to have an extractor.
+ */
+export function resolveAdmissionExtractionStatus(type: string): string {
+  return isExtractableDocType(type) ? 'PENDING' : NOT_EXTRACTABLE_STATUS;
+}
+
+/**
  * OD-55 (owner, 2026-09-11): there is NO per-document extraction budget.
  * `EXTRACT_TIMEOUT_MS` (10 minutes) was removed, not raised — the owner
  * rejected the timed cap outright, not its size: *"Let the scraper take

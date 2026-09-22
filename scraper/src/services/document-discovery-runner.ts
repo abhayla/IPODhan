@@ -92,6 +92,7 @@ import type {
 import { NetworkCounter, hostOf } from '../utils/network-counter.js';
 import logger from '../utils/logger.js';
 import { notifyOwner } from './owner-notify.js';
+import { resolveAdmissionExtractionStatus } from './filing-auto-persist.js';
 
 // ---------------------------------------------------------------------------
 // Wire-level configuration
@@ -1408,7 +1409,12 @@ export class DocumentDiscoveryRunner {
       url: candidate.url,
       exchange: candidate.source,
       mediaType: 'PDF',
-      extractionStatus: 'PENDING',
+      // #869: NOT unconditionally 'PENDING'. A type with no extractor admitted as
+      // PENDING is a row that will be skipped on every pass and stay PENDING forever —
+      // 71 such documents across 8 types on staging, 100% PENDING, zero ever COMPLETED.
+      // The status is decided by the SAME predicate the consumer dispatches on, so the
+      // two cannot drift, and a ninth type gets the honest status the day it appears.
+      extractionStatus: resolveAdmissionExtractionStatus(storedType),
       isActive: true,
       fileSize: verdict.bytes,
       sha256: verdict.sha256,
