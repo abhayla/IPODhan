@@ -47,11 +47,15 @@
  *   tsx scraper/scripts/repair-not-extractable-documents.ts --apply
  *   tsx scraper/scripts/repair-not-extractable-documents.ts --undo --type CORRIGENDUM --apply
  *
- * Dry run is the DEFAULT: it prints the per-type counts it would change and
- * writes nothing. Exit 0 clean · 1 a write failed · 2 refused.
+ * Dry run is the DEFAULT: it prints the per-type counts it would change and writes
+ * nothing. The production guard is the SHARED one (openRepairDb, T-490): an --apply
+ * against `ipodhan` is refused unless --allow-prod is given.
+ *
+ * Exit 0 clean · 1 a write failed.
  */
-import { Pool } from 'pg';
-import { configureUtcTimestampParsing } from '@ipodhan/shared/db/timezone-config';
+import { db } from '@ipodhan/shared';
+import { sql } from 'drizzle-orm';
+import { openRepairDb } from './lib/repair-tool.js';
 import {
   isExtractableDocType,
   NOT_EXTRACTABLE_STATUS,
@@ -77,43 +81,38 @@ function parseArgs(argv: string[]): Args {
 
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    console.error('refused: set DATABASE_URL first.');
-    return 2;
-  }
 
-  configureUtcTimestampParsing();
-  const pool = new Pool({ connectionString: url, options: '-c timezone=UTC', max: 3 });
+  // T-490: the SHARED guard, not a hand-rolled one. It asks the same connection
+  // (never an env var) which database it is in, prints `current_database(): <name>`,
+  // and refuses a production --apply without --allow-prod. Three repair tools each
+  // re-typed this pattern on 2026-09-07 and each got a different part wrong, which is
+  // why re-implementing it is a CI failure rather than a style note — and why my first
+  // version of this file, which did exactly that, was correctly refused.
+  const { dbName } = await openRepairDb(db, {
+    apply: args.apply,
+    allowProd: args.allowProd,
+    toolName: 'repair-not-extractable-documents',
+  });
+  console.log(`mode: ${args.apply ? 'APPLY' : 'DRY RUN'}${args.undo ? ' (undo)' : ''}
+`);
 
   try {
-    const dbName = (await pool.query('SELECT current_database() AS d')).rows[0].d as string;
-    // Same guard shape as every other repair tool here: production needs a
-    // deliberate flag, never a default.
-    if (dbName === 'ipodhan' && args.apply && !args.allowProd) {
-      console.error(
-        `refused: "${dbName}" is production and --apply was given without --allow-prod.`
-      );
-      return 2;
-    }
-    console.log(`database: ${dbName}   mode: ${args.apply ? 'APPLY' : 'DRY RUN'}${args.undo ? ' (undo)' : ''}\n`);
-
-    // Read candidates by STATUS only, then filter by the shared predicate in
-    // JS. Doing the type test in SQL would mean a second, hand-maintained copy
-    // of the extractable set — exactly the drift this fix exists to prevent.
+    // Read candidates by STATUS only, then filter by the shared predicate in JS.
+    // Doing the type test in SQL would mean a second, hand-maintained copy of the
+    // extractable set — exactly the drift this fix exists to prevent.
     const fromStatus = args.undo ? NOT_EXTRACTABLE_STATUS : 'PENDING';
     const toStatus = args.undo ? 'PENDING' : NOT_EXTRACTABLE_STATUS;
 
-    const { rows } = await pool.query(
-      `SELECT id, type::text AS type FROM documents WHERE extraction_status = $1`,
-      [fromStatus]
+    const read = await db.execute(
+      sql`SELECT id, type::text AS type FROM documents WHERE extraction_status = ${fromStatus}`
     );
+    const rows = (read as unknown as { rows: { id: string; type: string }[] }).rows ?? [];
 
-    const candidates = rows.filter((r: { type: string }) => {
+    const candidates = rows.filter((r) => {
       if (args.type && r.type.toUpperCase() !== args.type.toUpperCase()) return false;
       // Going TO not-extractable: only types with no extractor.
-      // Coming BACK: only types that now HAVE one (that is what makes an undo
-      // meaningful — a row whose type still has no extractor stays put).
+      // Coming BACK: only types that now HAVE one — that is what makes an undo
+      // meaningful; a row whose type still has no extractor stays put.
       return args.undo ? isExtractableDocType(r.type) : !isExtractableDocType(r.type);
     });
 
@@ -130,33 +129,39 @@ async function main(): Promise<number> {
     }
 
     if (!args.apply) {
-      console.log(`\nDRY RUN — nothing written. Re-run with --apply to set these to ${toStatus}.`);
+      console.log(`
+DRY RUN — nothing written. Re-run with --apply to set these to ${toStatus}.`);
       return 0;
     }
 
-    // One statement, filtered by the id list the predicate produced, so the
-    // write can never be wider than what was just reported.
-    const ids = candidates.map((r: { id: string }) => r.id);
-    const res = await pool.query(
-      `UPDATE documents SET extraction_status = $1, updated_at = now() WHERE id = ANY($2::uuid[])`,
-      [toStatus, ids]
+    // Filtered by the id list the predicate produced, so the write can never be
+    // wider than what was just reported.
+    const ids = candidates.map((r) => r.id);
+    // NOTE: drizzle's sql`` expands a JS array into a parameter LIST — `${ids}` becomes
+    // ($2, $3, ...) — so `ANY(${ids}::uuid[])` produces `ANY(($2,$3)::uuid[])`, which
+    // Postgres rejects. Caught by re-running the apply proof after this file was
+    // rewritten onto the shared repair-tool module: the DRY RUN still passed and only
+    // the write failed. Bind the array as ONE parameter via sql.param().
+    const updated = await db.execute(
+      sql`UPDATE documents SET extraction_status = ${toStatus}, updated_at = now()
+          WHERE id = ANY(${sql.param(ids)}::uuid[])`
     );
-    console.log(`\nAPPLIED — ${res.rowCount} row(s) set to ${toStatus}.`);
+    const changed = (updated as unknown as { rowCount?: number }).rowCount ?? 0;
+    console.log(`
+APPLIED — ${changed} row(s) set to ${toStatus} on ${dbName}.`);
 
-    // Read back rather than trust rowCount: the count says the statement ran,
-    // not that the rows hold what was intended.
-    const check = await pool.query(
-      `SELECT count(*)::int AS n FROM documents WHERE id = ANY($1::uuid[]) AND extraction_status = $2`,
-      [ids, toStatus]
+    // Read back rather than trust rowCount: the count says the statement ran, not
+    // that the rows hold what was intended.
+    const verify = await db.execute(
+      sql`SELECT count(*)::int AS n FROM documents
+          WHERE id = ANY(${sql.param(ids)}::uuid[]) AND extraction_status = ${toStatus}`
     );
-    const held = check.rows[0].n as number;
+    const held = ((verify as unknown as { rows: { n: number }[] }).rows ?? [{ n: 0 }])[0].n;
     console.log(`read-back: ${held} of ${ids.length} row(s) hold ${toStatus}.`);
     return held === ids.length ? 0 : 1;
   } catch (err) {
     console.error('FAILED:', err instanceof Error ? err.message : String(err));
     return 1;
-  } finally {
-    await pool.end();
   }
 }
 
