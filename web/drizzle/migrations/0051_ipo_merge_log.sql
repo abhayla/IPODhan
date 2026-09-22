@@ -9,6 +9,18 @@
 -- migration sidesteps it rather than fixing it, and carries the sequence-style name so it
 -- sorts after 0050 rather than deepening the split.
 --
+-- `meta/0051_snapshot.json` accompanies this file because the migration-journal lint
+-- (scripts/ci/check-migration-journal.mjs) requires every journalled entry to carry a
+-- snapshot — without one, the next `db:generate` diffs against a world that has no
+-- `ipo_merge_log` and re-emits it. The snapshot was produced by drizzle and then
+-- re-parented by hand so its `prevId` is 0050's id rather than 0050's PARENT's id.
+--
+-- MEASURED, so nobody reads more into that than is there: re-parenting does NOT cure
+-- #886. Running `db:generate` again afterwards still re-emits `closed_ipo_resourcing`,
+-- because drizzle picks the head snapshot by SORTING FILENAMES, and `0050_`/`0051_`
+-- both sort before every `2026…_` snapshot. The fix records correct lineage; it does
+-- not change which file drizzle reads. #886 stays open.
+--
 -- Non-destructive: creates one table and three indexes. Touches no existing table, no
 -- existing column and no existing row. Rollback is `DROP TABLE ipo_merge_log`.
 
