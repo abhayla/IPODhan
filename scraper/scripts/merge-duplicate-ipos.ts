@@ -275,6 +275,9 @@ export async function applyMerges(
       apply: true,
       forceDifferentName: true,
       allowProd: opts.allowProd,
+      // Item 19 / #807: named here, never inferred inside the repository — the log has to
+      // say which tool consumed the row, and only the caller knows that.
+      mergedBy: 'merge-duplicate-ipos.ts',
     });
   }
 }
