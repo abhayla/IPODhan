@@ -57,16 +57,19 @@ or newly waiting, a gate changing state, a change in what a reader of the site s
 Do NOT update for: an ordinary merge that changes no verdict, docs commits, CI re-runs, a review
 that found nothing.
 
-The `board-owed-guard` hook (`.claude/hooks/board-owed-guard.sh`, wired as a `Stop` hook in
-`.claude/settings.json`) fires on main when a merge has landed since the board was last rendered
-AND regenerating it changes something beyond a date stamp. It regenerates and tells the session to
-publish; it never publishes, because publishing is an outward action that belongs to the session.
+The `board-owed-guard` hook is **user-level**, not in this repo:
+`~/.claude/hooks/board-owed-guard.py`, wired in `~/.claude/settings.json` across three events. It
+watches for a real merge command (PostToolUse/Bash), clears itself when the board is republished
+(PostToolUse/Artifact), and BLOCKS the turn on Stop (exit 2) while a merge is owed — regenerating
+the board for you so the only step left is the publish. When no stage actually crossed, the marker
+is cleared deliberately with a stated reason, which is R4 in practice.
 
-**This hook did not exist until 2026-09-23**, and this rule named it as though it did — so for the
-rule's whole life the only thing keeping the published artifact fresh was a session remembering.
-The owner noticed the page going stale and asked why. That is the class this repository keeps
-finding: a rule asserting a guard nobody built, so nothing detects the gap. If a future rule names
-a mechanism, `grep` for it before trusting it.
+**Where it lives matters, because it is not where you would look.** On 2026-09-23 a session read
+this rule, grepped `.claude/` inside the repo, found nothing, concluded the hook had never been
+built, and built a second, weaker one — which printed a line instead of blocking. Both then fired
+on the same merge. The duplicate was retired the same night. The lesson is not "grep before
+trusting a rule" (that session did grep); it is **grep BOTH scopes** — `.claude/` in the repo and
+`~/.claude/` — because a hook that governs this repo may be installed at either.
 
 ## R5 — The stamp is read from the clock
 

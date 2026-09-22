@@ -99,16 +99,6 @@
             "timeout": 60
           }
         ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/board-owed-guard.sh\"",
-            "timeout": 120
-          }
-        ]
       }
     ],
     "PreToolUse": [
