@@ -2514,7 +2514,15 @@ export const ipoMergeLog = pgTable(
     dropIpoId: uuid('drop_ipo_id').notNull(),
     dropSlug: varchar('drop_slug', { length: 255 }).notNull(),
 
-    // The whole consumed `ipos` row as it stood immediately before deletion. This is
+    // The consumed `ipos` row as it stood immediately before deletion, re-read under a
+    // row lock inside the merge transaction. "Whole" means every column schema.ts
+    // DECLARES — NOT necessarily every column the live table has. Measured 2026-09-22:
+    // ipodhan_staging carries six columns this file does not declare (price_band_low,
+    // price_band_high, exchange, gmp, gmp_percentage, gmp_updated_at), all 0/379
+    // non-null, so nothing real is lost there today — but a schema-drift repair, or a
+    // scraper that starts populating one of them, turns that into permanent loss behind
+    // a log that reads complete. A log built on the ORM snapshots what the ORM knows.
+    // This is
     // the column `unmerge` restores from; everything else here is context.
     dropRow: jsonb('drop_row').notNull(),
 

@@ -1240,21 +1240,43 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // rolls back, and one written after can miss a merge that crashed halfway. Same
       // transaction, or it is not a log of what actually happened.
       //
-      // `drop` is the full row read at the top of this method, so the snapshot is the row as it
-      // stood going into the merge — including columns the survivor did NOT carry, which is the
-      // gap `field_sources` cannot close (it records what the survivor TOOK).
+      // The snapshot is the row as it stands at DELETE time, re-read under a row lock just
+      // below — including columns the survivor did NOT carry, which is the gap `field_sources`
+      // cannot close (it records what the survivor TOOK). It covers every column
+      // `packages/shared/src/db/schema.ts` DECLARES, which is not necessarily every column the
+      // live table has: a log built on the ORM snapshots what the ORM knows.
       //
       // Child ROWS are not captured, only their counts: they are the scraper-derived data this
       // method calls rebuildable, and snapshotting them would mean copying an unbounded set of
       // rows across ~40 tables inside this transaction. Whether an unmerge re-scrapes them or
       // restores them is a design question this log does not prejudge — it records the numbers
       // so the question can be asked with numbers.
+      // Re-read the dropped row INSIDE the transaction, FOR UPDATE, rather than snapshotting
+      // the copy read at the top of this method. Found by the PR #888 review: that first read
+      // happens on `this.db` outside any transaction, and several awaited round-trips follow it
+      // (FK discovery, a per-child-table count loop, two field_sources reads) before the
+      // transaction opens. Nothing sets an isolation level anywhere in this codebase, so this
+      // runs at READ COMMITTED — a concurrent writer to `ipos` in that window (there are
+      // several, e.g. registrar-reresolve.ts and field-protection-checker.ts) would have its
+      // write DELETED below and ABSENT from the snapshot, producing a log that reads complete
+      // and is not. FOR UPDATE also blocks such a writer for the rest of the transaction.
+      //
+      // Falls back to the earlier read only if the row has vanished between the two, which
+      // cannot normally happen — the delete below is the only thing that removes it — but a
+      // snapshot from a stale read beats no snapshot at all if it ever does.
+      const lockedRows = await tx
+        .select()
+        .from(ipos)
+        .where(eq(ipos.id, dropId))
+        .for('update');
+      const dropAtDeleteTime = lockedRows[0] ?? drop;
+
       await tx.insert(ipoMergeLog).values({
         keepIpoId: keepId,
         keepSlug: keep.slug,
         dropIpoId: dropId,
         dropSlug: drop.slug,
-        dropRow: drop as unknown as Record<string, unknown>,
+        dropRow: dropAtDeleteTime as unknown as Record<string, unknown>,
         survivorPatch: patch as unknown as Record<string, unknown>,
         deletedChildCounts: plan.toDelete as unknown as Record<string, unknown>,
         repointedChildCounts: plan.toRepoint as unknown as Record<string, unknown>,

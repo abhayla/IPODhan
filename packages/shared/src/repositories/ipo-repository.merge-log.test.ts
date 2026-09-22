@@ -35,7 +35,8 @@ type Op =
   | { kind: 'delete-drop-ipos-row' }
   | { kind: 'insert-merge-log'; values: Record<string, unknown> }
   | { kind: 'insert-slug-redirect' }
-  | { kind: 'update-survivor' };
+  | { kind: 'update-survivor' }
+  | { kind: 'locked-reread'; mode: string };
 
 function buildFakeDb() {
   const ops: Op[] = [];
@@ -60,11 +61,32 @@ function buildFakeDb() {
     { table: 'subscriptions', col: 'ipo_id' }, // not in REPOINT_TABLES
   ];
 
+  // What a FOR UPDATE re-read inside the transaction returns. Defaults to the same row the
+  // pre-transaction read saw; a test overrides it to model a concurrent writer that changed
+  // the row after that first read — the class the lock exists to close.
+  let lockedDropRow: Record<string, unknown> | null = null;
+
   function makeTx(recordOps: boolean) {
     const record = (op: Op) => {
       if (recordOps) ops.push(op);
     };
     return {
+      // The transaction-scoped locked re-read of the dropped row.
+      select: () => ({
+        from: () => ({
+          where: () => {
+            const rows = [lockedDropRow ?? dropRow];
+            // Drizzle's builder is awaitable directly AND chainable via .for('update');
+            // model both so the test cannot pass against a shape the real code never uses.
+            return Object.assign(Promise.resolve(rows), {
+              for: (mode: string) => {
+                record({ kind: 'locked-reread', mode });
+                return Promise.resolve(rows);
+              },
+            });
+          },
+        }),
+      }),
       update: (_t: unknown) => ({
         set: () => ({
           where: async () => {
@@ -147,11 +169,12 @@ function buildFakeDb() {
     }),
   });
 
-  return { db, ops, keepRow, dropRow };
+  return { db, ops, keepRow, dropRow, setLockedDropRow: (r) => { lockedDropRow = r; } };
 }
 
-async function runMerge() {
-  const { db, ops, dropRow } = buildFakeDb();
+async function runMerge(lockedRow?: Record<string, unknown>) {
+  const { db, ops, dropRow, setLockedDropRow } = buildFakeDb();
+  if (lockedRow) setLockedDropRow(lockedRow);
   const repo = new IPORepository(
     db as never,
     { get: async () => null, set: async () => undefined, del: async () => 0, keys: async () => [] } as never
@@ -244,5 +267,50 @@ describe('mergeDuplicateInto writes a merge log', () => {
     );
     await repo.mergeDuplicateInto(KEEP_ID, DROP_ID, { apply: false } as never);
     expect(ops.filter((o) => o.kind === 'insert-merge-log')).toHaveLength(0);
+  });
+});
+
+describe('the snapshot is taken at DELETE time, under a lock', () => {
+  it('re-reads the dropped row INSIDE the transaction with FOR UPDATE', async () => {
+    // Found by the PR #888 review. The first read of `drop` happens on `this.db` OUTSIDE
+    // any transaction, with several awaited round-trips before the transaction opens, at
+    // READ COMMITTED (nothing in this codebase sets an isolation level). Without a locked
+    // re-read, a concurrent writer in that window has its write deleted AND missing from
+    // the snapshot — a log that reads complete and is not.
+    const { ops } = await runMerge();
+    const reread = ops.find((o) => o.kind === 'locked-reread') as
+      | { kind: 'locked-reread'; mode: string }
+      | undefined;
+    expect(reread, 'the dropped row must be re-read inside the transaction').toBeTruthy();
+    expect(reread?.mode).toBe('update');
+  });
+
+  it('re-reads BEFORE writing the log, and the log BEFORE the delete', async () => {
+    const { ops } = await runMerge();
+    const rereadAt = ops.findIndex((o) => o.kind === 'locked-reread');
+    const logAt = ops.findIndex((o) => o.kind === 'insert-merge-log');
+    const delAt = ops.findIndex((o) => o.kind === 'delete-drop-ipos-row');
+    expect(rereadAt).toBeGreaterThanOrEqual(0);
+    expect(rereadAt).toBeLessThan(logAt);
+    expect(logAt).toBeLessThan(delAt);
+  });
+
+  it('snapshots the CONCURRENTLY-CHANGED value, not the stale pre-transaction read', async () => {
+    // The class itself: another writer set symbol between the first read and the
+    // transaction. The log must record what is about to be deleted, not what was read
+    // earlier. Without the FOR UPDATE re-read this assertion fails with the stale value.
+    const { ops } = await runMerge({
+      id: DROP_ID,
+      companyName: 'Real Merge Co. Ltd',
+      slug: 'real-merge-co-ltd-o',
+      openDate: '2026-09-09',
+      symbol: 'CHANGED-BY-CONCURRENT-WRITER',
+      faceValue: '10.00',
+    });
+    const log = ops.find((o) => o.kind === 'insert-merge-log') as
+      | { kind: 'insert-merge-log'; values: Record<string, unknown> }
+      | undefined;
+    const snap = log?.values.dropRow as Record<string, unknown>;
+    expect(snap.symbol).toBe('CHANGED-BY-CONCURRENT-WRITER');
   });
 });

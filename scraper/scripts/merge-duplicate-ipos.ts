@@ -253,7 +253,13 @@ export interface MergeDuplicateIntoRepo {
   mergeDuplicateInto(
     keepId: string,
     dropId: string,
-    opts: { apply: boolean; forceDifferentName?: boolean; allowProd?: boolean }
+    // `mergedBy` (item 19 / #807) must be declared here, not only passed at the call
+    // site. This file is in `scraper/tsconfig.scripts.json`'s `exclude` list, so the
+    // mismatch compiled silently — the review of PR #888 caught it by compiling the file
+    // in isolation (TS2353 at the call site). An interface that omits a property the
+    // caller passes is a contract that lies: a fake typed against it proves nothing
+    // about the author field.
+    opts: { apply: boolean; forceDifferentName?: boolean; allowProd?: boolean; mergedBy?: string }
   ): Promise<unknown>;
 }
 
