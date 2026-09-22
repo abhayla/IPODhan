@@ -355,6 +355,9 @@ async function main(): Promise<number> {
       forceDifferentName: FORCE_NAME,
       setIssueSize: SET_ISSUE_SIZE ?? undefined,
       issueSizeNote: ISSUE_SIZE_NOTE ?? undefined,
+      // Item 19 / #807. Only the apply site needs this — the dry run above writes no log,
+      // because a plan is not a merge.
+      mergedBy: 'repair-merge-duplicate-ipo.ts',
     });
   } catch (err) {
     if (err instanceof DatabaseError || err instanceof ProdWriteRefusedError) {

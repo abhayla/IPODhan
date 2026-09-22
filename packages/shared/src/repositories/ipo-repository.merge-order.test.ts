@@ -112,6 +112,19 @@ function buildFakeDb(carriedColumn: string) {
       if (recordOps) ops.push(op);
     };
     return {
+      // The transaction-scoped locked re-read of the dropped row, added with the merge
+      // log (item 19 / #807): `mergeDuplicateInto` now re-reads that row FOR UPDATE
+      // inside the transaction so the snapshot is taken at DELETE time rather than from
+      // the read made before the transaction opened. This fake must offer it, or the
+      // real method throws before reaching the ordering this test is about.
+      select: () => ({
+        from: () => ({
+          where: () => {
+            const rows = [dropRow];
+            return Object.assign(Promise.resolve(rows), { for: () => Promise.resolve(rows) });
+          },
+        }),
+      }),
       update: (_table: unknown) => ({
         set: (values: Record<string, unknown>) => ({
           where: async () => {

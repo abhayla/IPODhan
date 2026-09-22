@@ -358,6 +358,13 @@
       "when": 1789927047425,
       "tag": "0050_bright_power_man",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1790081447551,
+      "tag": "0051_ipo_merge_log",
+      "breakpoints": true
     }
   ]
 }

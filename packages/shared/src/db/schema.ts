@@ -2464,3 +2464,104 @@ export const closedIpoResourcingRelations = relations(closedIpoResourcing, ({ on
 
 export type ClosedIpoResourcing = typeof closedIpoResourcing.$inferSelect;
 export type NewClosedIpoResourcing = typeof closedIpoResourcing.$inferInsert;
+
+// ==================== TABLE 25: IPO_MERGE_LOG (item 19, #807) ====================
+// What a duplicate merge CONSUMED, so the merge can be reasoned about — and, later,
+// undone (§2.3.3.3 `unmerge`, which cannot exist without this table).
+//
+// Why it is needed, precisely. `IPORepository.mergeDuplicateInto` deletes the dropped
+// `ipos` row (ipo-repository.ts, inside the merge transaction) after repointing or
+// deleting its children. Three things already survive a merge, and none of them is
+// enough to reverse one:
+//   * `ipo_slug_redirects` keeps the dropped SLUG and names the survivor — so the fact
+//     of a merge is recoverable, but nothing about what was consumed.
+//   * `field_sources` rows for CARRIED columns carry `previousValue`/`previousSource`
+//     and `dataLineage.mergedFrom` — so a value the survivor TOOK can be traced. A
+//     column the dropped row held and the survivor did not take appears nowhere.
+//   * `audit_logs` exists but the merge path writes nothing to it, and its shape is
+//     one-field-per-row, not one-event-per-merge.
+// So the dropped row's own columns are lost at the moment of deletion. This table is
+// the snapshot taken before that.
+//
+// Written INSIDE the merge transaction, before the delete. A log written after the
+// commit can miss a merge that crashed halfway; one written in a separate transaction
+// before it can record a merge that never happened. Same transaction, or it is not a
+// log of what actually occurred.
+//
+// What it deliberately does NOT capture: the CHILD ROWS deleted by the merge. Only
+// their counts, per table, in `deletedChildCounts`. Those rows are scraper-derived and
+// re-derivable (the merge code calls them "rebuildable children"), and capturing them
+// would mean snapshotting an unbounded set of rows across ~40 tables inside the merge
+// transaction. Whether `unmerge` re-scrapes them or restores them is a design question
+// this table does not prejudge — it records the counts so that question can be asked
+// with numbers. `repointedChildCounts` records the other half: person-created rows
+// (watchlists, reviews) that were MOVED to the survivor rather than deleted, and which
+// an unmerge would have to move back.
+export const ipoMergeLog = pgTable(
+  'ipo_merge_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    // The survivor. ON DELETE SET NULL rather than CASCADE: if the survivor is itself
+    // later merged away or deleted, the record of THIS merge must not vanish with it —
+    // that is exactly the history the table exists to keep.
+    keepIpoId: uuid('keep_ipo_id').references(() => ipos.id, { onDelete: 'set null' }),
+    keepSlug: varchar('keep_slug', { length: 255 }).notNull(),
+
+    // The consumed row. No FK: the row it names is deleted in the same transaction, so
+    // a foreign key here could never be satisfied. The id is kept as a plain uuid so a
+    // later `unmerge` can restore the row under its original id.
+    dropIpoId: uuid('drop_ipo_id').notNull(),
+    dropSlug: varchar('drop_slug', { length: 255 }).notNull(),
+
+    // The consumed `ipos` row as it stood immediately before deletion, re-read under a
+    // row lock inside the merge transaction. This is the column `unmerge` restores
+    // from; everything else here is context.
+    //
+    // "Whole" means every column schema.ts DECLARES — NOT necessarily every column the
+    // live table has. Measured 2026-09-22: ipodhan_staging carries SIX columns this
+    // file does not declare (two retired price-band columns, plus an exchange column
+    // and three grey-market-premium ones), all 0/379 non-null, so nothing real is lost
+    // there today. But a schema-drift repair, or a scraper that starts populating one
+    // of them, turns that into permanent loss behind a log that reads complete. A log
+    // built on the ORM snapshots what the ORM knows.
+    //
+    // The six are named exactly, with their counts, in
+    // `scripts/assert-merge-log-restores.mjs` (UNDECLARED_IN_SCHEMA), which FAILS if any
+    // of them starts holding a value. They are described rather than spelled here
+    // because `scraper/tests/unit/config/price-band-single-scheme.test.ts` greps every
+    // source file for the retired price-band identifiers (T-276, one naming scheme) and
+    // has no comment exemption — naming them here turns that guard red, which is the
+    // guard working correctly.
+    dropRow: jsonb('drop_row').notNull(),
+
+    // The mutation applied to the SURVIVOR by this merge: the carried columns and any
+    // ADMIN override (opts.setIssueSize). An unmerge has to undo this too, or say that
+    // it does not — the survivor can end up holding a value neither original row had.
+    survivorPatch: jsonb('survivor_patch'),
+
+    // Per-table counts of the dropped row's children, split by what happened to them.
+    // Shape: [{ table, column, count }]. See the note above on why counts, not rows.
+    deletedChildCounts: jsonb('deleted_child_counts'),
+    repointedChildCounts: jsonb('repointed_child_counts'),
+
+    // Who and when. `mergedBy` is the tool or operator name the caller passes
+    // (e.g. 'merge-duplicate-ipos.ts', an admin user) — never inferred here.
+    mergedBy: varchar('merged_by', { length: 255 }).notNull(),
+    mergedAt: timestamp('merged_at').defaultNow().notNull(),
+
+    // Set when an unmerge reverses this entry, so a merge cannot be undone twice.
+    // Null means "still in force".
+    unmergedAt: timestamp('unmerged_at'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    keepIdx: index('idx_ipo_merge_log_keep').on(table.keepIpoId),
+    dropIdx: index('idx_ipo_merge_log_drop').on(table.dropIpoId),
+    mergedAtIdx: index('idx_ipo_merge_log_merged_at').on(table.mergedAt),
+  })
+);
+
+export type IpoMergeLog = typeof ipoMergeLog.$inferSelect;
+export type NewIpoMergeLog = typeof ipoMergeLog.$inferInsert;
