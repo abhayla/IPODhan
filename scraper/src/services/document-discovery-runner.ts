@@ -92,7 +92,7 @@ import type {
 import { NetworkCounter, hostOf } from '../utils/network-counter.js';
 import logger from '../utils/logger.js';
 import { notifyOwner } from './owner-notify.js';
-import { resolveAdmissionExtractionStatus } from './filing-auto-persist.js';
+import { resolveAdmissionExtractionStatus } from '../config/document-admission-status.js';
 
 // ---------------------------------------------------------------------------
 // Wire-level configuration

@@ -134,6 +134,13 @@ import { SIDECAR_TIMEOUT_MS } from '../scrapers/anchor-investors-scraper.js';
 export const EXTRACTOR_VERSION = 'extract_filing.py@2026-09-03';
 
 /** Doc types `scripts/extract_filing.py` understands. Anything else is skipped. */
+import {
+  AUTO_PERSIST_DOC_TYPES,
+  isExtractableDocType,
+  NOT_EXTRACTABLE_STATUS,
+  resolveAdmissionExtractionStatus,
+} from '../config/document-admission-status.js';
+
 export const EXTRACTABLE_DOC_TYPES: readonly FilingDocType[] = [
   'PRICE_BAND_AD',
   'RHP',
@@ -158,10 +165,15 @@ export const ANCHOR_DOC_TYPE = 'ANCHOR_ALLOCATION_REPORT';
  * selection gate; the branch inside `processPendingFilings` decides which
  * extractor each one goes to.
  */
-export const AUTO_PERSIST_DOC_TYPES: readonly string[] = [
-  ...EXTRACTABLE_DOC_TYPES,
-  ANCHOR_DOC_TYPE,
-];
+// Imported AND re-exported from ../config/document-admission-status.js, which OWNS this
+// list so the DISCOVERY layer can read it too (§7.6: discovery is the bottom layer and may
+// not import this module). One list, so the admission stamp and this module's dispatch can
+// never disagree about which types have an extractor — the mechanism of #869's fix.
+//
+// `export ... from` alone would NOT work: it re-exports without binding the name in this
+// module's scope, and this file calls isExtractableDocType internally. Caught by the type
+// checker ("Cannot find name 'isExtractableDocType'") and by 74 red tests.
+export { AUTO_PERSIST_DOC_TYPES, isExtractableDocType, NOT_EXTRACTABLE_STATUS, resolveAdmissionExtractionStatus };
 
 /**
  * NOT_APPLICABLE reporting (lane B item, 2026-09-16). Whether a document type
@@ -170,9 +182,7 @@ export const AUTO_PERSIST_DOC_TYPES: readonly string[] = [
  * reporter (`scripts/lib/not-applicable-documents.mjs`) mirrors so a document
  * type outside this list is never read as "stuck", only as "not applicable".
  */
-export function isExtractableDocType(type: string): boolean {
-  return AUTO_PERSIST_DOC_TYPES.includes(String(type ?? '').toUpperCase());
-}
+// (isExtractableDocType is re-exported above, from the config module that owns the list.)
 
 /**
  * The skip/registry reason for a PENDING document whose type has no
@@ -182,46 +192,18 @@ export function isExtractableDocType(type: string): boolean {
 export const NOT_APPLICABLE_EXTRACTION_REASON = 'no_extractor_for_doc_type';
 
 /**
- * #869 — the terminal status for a document whose type has no extractor.
+ * #869 — re-exported from `../config/document-admission-status.js`, which is where
+ * these live so the DISCOVERY layer can read them too. Discovery is the bottom of
+ * the §7.6 layer order and may not import this module (consolidation); defining
+ * them here made `document-discovery-runner -> filing-auto-persist` an upward edge
+ * that `scripts/ci/check-module-boundaries.mjs` correctly refused.
  *
- * `extraction_status = 'PENDING'` meant two opposite things and nothing told
- * them apart: "queued, will be processed" for a type in
- * `AUTO_PERSIST_DOC_TYPES`, and "can never be processed" for every other type.
- * The consumer dispatches on type and silently skips what it does not
- * recognise, so such a row was admitted, stamped PENDING, skipped on every
- * pass, and stayed PENDING forever.
- *
- * Measured on ipodhan_staging 2026-09-23: 71 documents across 8 types, 100%
- * PENDING, ZERO ever COMPLETED. A type that is sometimes processed shows a
- * mix; 100% is the signature of "no handler exists". RATIOS_BASIS_ISSUE_PRICE
- * grew 43 -> 49 in three days with a row written that same day, so this is an
- * open tap, not a historical backlog.
- *
- * Owner decision 2026-09-23 (option A of #869): stamp the honest status at
- * admission rather than build eight extractors whose value nobody has
- * measured. Reversible — if an extractor is ever written for one of these
- * types, the stamp comes off and the rows re-enter the queue.
+ * Re-exported rather than moved outright so existing importers of this module keep
+ * working, and `resolveAdmissionExtractionStatus` is wrapped to supply this module's
+ * own `isExtractableDocType` — the predicate the consumer dispatches on — so the
+ * admission stamp cannot drift from what actually gets processed.
  */
-export const NOT_EXTRACTABLE_STATUS = 'NOT_EXTRACTABLE';
 
-/**
- * The status a newly discovered document is admitted with.
- *
- * Decided by SET MEMBERSHIP against `isExtractableDocType` — the same
- * predicate `selectPendingFilings` dispatches on and the nightly
- * `not_applicable_documents_named` check reads — so the admission stamp and
- * the consumer cannot drift apart. That matters more than the eight types
- * themselves: a NINTH type with no extractor gets the honest status on the day
- * it first appears, with no code change. Fixing the eight and leaving the
- * class intact is what #869 explicitly warns against.
- *
- * An empty, null or unknown type resolves to NOT_EXTRACTABLE, never PENDING:
- * defaulting an unrecognised shape to "queued" would re-create the bug for the
- * one case least likely to have an extractor.
- */
-export function resolveAdmissionExtractionStatus(type: string): string {
-  return isExtractableDocType(type) ? 'PENDING' : NOT_EXTRACTABLE_STATUS;
-}
 
 /**
  * OD-55 (owner, 2026-09-11): there is NO per-document extraction budget.
