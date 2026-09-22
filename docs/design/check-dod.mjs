@@ -43,6 +43,13 @@ for (const f of cards) {
 }
 const orphans = liveRules.filter((r) => !claimed.has(r.id) && !(r.id in unclaimed.unclaimed));
 
+// The fork-recording item below delegates to check-design-consistency.mjs's D14 (see its
+// comment). Run that gate ONCE and keep its D14 line: calling it separately for the verdict
+// and for the reason would run a multi-second gate twice, and worse, could report a reason
+// from a different run than the verdict it prints.
+const designConsistencyD14Line =
+  (sh('node docs/design/check-design-consistency.mjs').split('\n').find((l) => / D14 /.test(l)) || '').trim();
+
 const ITEMS = [
   ['0.0.1 OD rows match the design\'s own OD-N register, OD-23 superseded, O-12/O-13 moved',
    odRows === odRegisterRows && design.includes('SUPERSEDED by OD-32') && !/^\| O-12 \|/m.test(design) && !/^\| O-13 \|/m.test(design),
@@ -79,9 +86,20 @@ const ITEMS = [
    fs.existsSync('docs/contracts/2026-09-DRAFT-child-table-consolidated-writer.md') &&
    sh('grep -ilE "\\bTBD\\b|\\bTODO\\b|decide later" docs/contracts/2026-09-DRAFT-*.md') === '',
    'both present; zero TBD/TODO/decide-later'],
-  ['New owner forks recorded, D14 green',
-   design.includes('| O-14 |') && design.includes('| O-15 |'),
-   'O-14 and O-15 in the open-fork table'],
+  // This item asserted `design.includes('| O-14 |') && design.includes('| O-15 |')` until
+  // 2026-09-22 (#829). Both forks were ANSWERED on 2026-09-09 and promoted to OD-53 and OD-54,
+  // whose own acceptance conditions require that no section still marks them provisional — so
+  // the item demanded the exact state the spec was required to leave behind, and had been red
+  // since the day the process it describes worked correctly. Same class as the OD-18 fix at the
+  // top of this file: a literal frozen at authoring time, restated as the mechanism.
+  //
+  // The mechanism is stated by the spec itself — "D14 fails if a marker loses its row" — and is
+  // already enforced by check-design-consistency.mjs's D14, which CI runs as a HARD gate. The
+  // item asserts that gate reported and passed, rather than re-implementing a weaker copy that
+  // can drift from it.
+  ['New owner forks recorded, D14 green (asserted via check-design-consistency.mjs, which owns D14)',
+   /^\[PASS\] D14 /m.test(designConsistencyD14Line),
+   designConsistencyD14Line || 'D14 reported no line at all — the gate did not run, which is not a pass'],
   ['Ledger line, tracker, report, PR, lock released',
    fs.readFileSync('docs/walks/2026-09-02-deepa-pipeline-walk.md', 'utf8').includes('pull-model design delta') &&
    fs.readFileSync('docs/ops/work-tracker.md', 'utf8').includes('Pull-model design delta') &&
