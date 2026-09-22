@@ -54,8 +54,23 @@ function makeStubDb() {
   });
   const txInsert = vi.fn().mockReturnValue({ values: insertValues });
 
+  // The transaction-scoped locked re-read of the dropped row, added with the
+  // merge log (item 19 / #807): mergeDuplicateInto now re-reads that row
+  // FOR UPDATE inside the transaction so the snapshot is taken at DELETE time
+  // rather than from the read made before the transaction opened. The real
+  // builder is awaitable directly AND chainable via .for('update'); model both.
+  const txSelect = vi.fn().mockReturnValue({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockImplementation(() => {
+        const rows = [{ id: DROP_ID, slug: 'drop-slug' }];
+        return Object.assign(Promise.resolve(rows), { for: () => Promise.resolve(rows) });
+      }),
+    }),
+  });
+
   const tx = {
     insert: txInsert,
+    select: txSelect,
     update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
     delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
     execute: vi.fn().mockResolvedValue({ rows: [] }),
