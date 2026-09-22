@@ -84,3 +84,22 @@ jobs:
         # nobody can see is exactly how this script went unnoticed for nine days.
         run: node docs/design/check-dod.mjs
         continue-on-error: true
+
+      - name: check-dod.mjs D14-mechanism self-test (item 33, #829)
+        # The DoD item "New owner forks recorded" hard-coded two fork ids (O-14, O-15) and
+        # went red the moment those forks were correctly ANSWERED on 2026-09-09. It now
+        # delegates to check-design-consistency.mjs, which owns D14 and enforces the real
+        # mechanism. This test guards that delegation and, more importantly, the CLASS: no
+        # DoD item may assert a specific fork id is present. It ran in NO workflow before
+        # this step existed - the regression guard was itself unguarded.
+        #
+        # NOT continue-on-error: unlike the DoD walk above, these assert properties of the
+        # SCRIPT that must hold on every PR, not the state of a 2026-09-09 delta.
+        run: |
+          # check-dod-root-resolution.test.mjs is NOT run here: three of its four cases
+          # drive a FULL check-dod run, and one full run takes many minutes because it
+          # spawns check-mutations.test.mjs (which mutates and restores real files).
+          # Measured 2026-09-22: a single case had not finished after 15 minutes. It also
+          # runs two of those DoD walks concurrently in one checkout, so they mutate the
+          # same files at once. Run it by hand when touching root resolution.
+          node --test scripts/tests/check-dod-d14-mechanism.test.mjs
