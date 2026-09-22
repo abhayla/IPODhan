@@ -117,19 +117,30 @@ async function main() {
   const keepSlug = `merge-log-proof-keep-${stamp}`;
   const dropSlug = `merge-log-proof-drop-${stamp}`;
 
+  const repo = new IPORepository(db, noRedis);
+
   try {
-    // Two rows a merge would legitimately fold together. `face_value` and `symbol` are
-    // set on the DROPPED row only, so they exist nowhere but the snapshot after the merge.
-    await pool.query(
-      `INSERT INTO ipos (id, company_name, slug, status, segment, face_value, symbol)
-       VALUES ($1,$2,$3,'UPCOMING','MAINBOARD',NULL,NULL), ($4,$5,$6,'UPCOMING','MAINBOARD',$7,$8)`,
-      [KEEP, 'Merge Log Proof Ltd', keepSlug, DROP, 'Merge Log Proof Limited', dropSlug, 10, `MLP${stamp % 100000}`]
-    );
+    // Two rows a merge would legitimately fold together. `face_value` and `symbol` are set
+    // on the DROPPED row only, so they exist nowhere but the snapshot after the merge.
+    //
+    // Planted through `IPORepository.create`, NOT raw SQL. The write ratchet (T-316) refuses
+    // a new file that writes `ipos` directly, and it is right to: this script is the one
+    // place that would otherwise prove the log works while bypassing the write path the log
+    // is supposed to sit inside. Going through the repository also means the planted rows
+    // are shaped the way real rows are.
+    await repo.create({
+      id: KEEP, companyName: 'Merge Log Proof Ltd', slug: keepSlug,
+      status: 'UPCOMING', segment: 'MAINBOARD',
+    });
+    await repo.create({
+      id: DROP, companyName: 'Merge Log Proof Limited', slug: dropSlug,
+      status: 'UPCOMING', segment: 'MAINBOARD',
+      faceValue: 10, symbol: `MLP${stamp % 100000}`,
+    });
     const before = (await pool.query('SELECT * FROM ipos WHERE id = $1', [DROP])).rows[0];
     console.log(`planted: keep=${keepSlug} drop=${dropSlug}`);
     console.log(`dropped row before merge: face_value=${before.face_value} symbol=${before.symbol}\n`);
 
-    const repo = new IPORepository(db, noRedis);
     const result = await repo.mergeDuplicateInto(KEEP, DROP, {
       apply: true,
       forceDifferentName: true,
@@ -205,7 +216,9 @@ async function main() {
     // Remove only what this script created.
     await pool.query('DELETE FROM ipo_merge_log WHERE drop_ipo_id = $1', [DROP]).catch(() => {});
     await pool.query('DELETE FROM ipo_slug_redirects WHERE old_slug = $1', [dropSlug]).catch(() => {});
-    await pool.query('DELETE FROM ipos WHERE id IN ($1,$2)', [KEEP, DROP]).catch(() => {});
+    // Cleanup through the repository as well — same reason as the plant.
+    await repo.delete(KEEP).catch(() => {});
+    await repo.delete(DROP).catch(() => {});
     await pool.end();
   }
   return failed ? 1 : 0;
