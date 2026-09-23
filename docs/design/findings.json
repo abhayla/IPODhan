@@ -1383,6 +1383,15 @@
       "phase1": true,
       "title": "NSE's IPO lists on BSE only; our row says BSE and NSE",
       "detail": "Price band ad: \"(To be listed on the main board of BSE)\", \"BSE LIMITED SHALL BE THE DESIGNATED STOCK EXCHANGE\"; RHP p.3 \"proposed to be listed on BSE\"; Chittorgarh \"Listing at: BSE\". Staging listing_exchanges [\"BSE\",\"NSE\"]. NSE ran bidding (symbol NSE, series EQ). Issue #938. Bears on OD-64. Measured 2026-09-23."
+    },
+    {
+      "id": "F-136",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "The equity ISIN exists BEFORE the IPO (from the company's demat set-up), but no source we read gives it before listing",
+      "detail": "Measured 2026-09-23 on the NSE IPO's own RHP (local copy RHP-4e566b15.pdf): p.476 and p.525 state \"tripartite agreements with NSDL and CDSL dated October 11, 2007 and November 25, 2016 respectively, for dematerialisation of the Equity Shares\"; p.536 states the company \"may request the Depositories to suspend/ freeze the ISIN in depository system from or around the date of this Red Herring Prospectus till the listing\" (per NSDL/CIR/II/28/2023 and CDSL/OPS/RTA/POLCY/2023/161, both dated August 8, 2023). An ISIN that can be frozen already exists, so NSE's equity ISIN (INE721I01024, shown by Chittorgarh on 2026-09-23) predates the DRHP by years. This corrects the earlier working assumption (this session) that the ISIN only exists at listing. It remains true that the DRHP and RHP do not print the ISIN (0 'INE' matches in either) and neither exchange API returned it during the IPO (F-126). Web research (secondary sources; sebi.gov.in and nsdl.co.in fetches reset) says ICDR Reg 7 requires promoter shares in demat and depository agreements before filing, and that a fresh issue of the same fully-paid class uses the same ISIN (a partly-paid issue gets a separate IN9 ISIN) - UNCONFIRMED from the regulation text. A pre-listing lookup was tried: nsdl.co.in/isin_search.php and master_search_res.php returned no connection (HTTP 000) from the laptop. If a free pre-listing ISIN source is proven, the ISIN is the only identifier common to NSE, BSE and the depositories for the same shares. Related: F-124, F-126. Open for owner decision."
     }
   ],
   "false_assertions": [

@@ -1697,6 +1697,7 @@ in the binding order or the matching rules.
 - **F-135** (area "data", not identity) — NSE IPO itself lists on BSE only per its own documents,
   while our row's `listing_exchanges` says both BSE and NSE because NSE ran the bidding; bears on
   OD-64 (issue #938).
+- **F-136** — the equity ISIN exists before the IPO (NSE: NSDL/CDSL tripartite agreements 2007/2016; RHP p.536 lets the company freeze the ISIN from the RHP date to listing), but the DRHP/RHP do not print it and no exchange API returned it during the IPO; a free pre-listing lookup is unproven (NSDL unreachable from the laptop). This corrects the working assumption that the ISIN only exists at listing.
 
 #### 2.3.3.3 Delisting, and undoing a merge that was wrong (OD-38)
 
