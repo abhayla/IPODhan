@@ -1,6 +1,6 @@
 # Item 1 — The child-table consolidated writer
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: DONE 2026-09-16 PRs #584, #726, #730 proof data-consolidation-orchestrator.ts:731,775 (tableName: ChildConsolidationTable, SINGLETON_ROW_CHILD_TABLES) on refs/remotes/origin/main; residual #802 (peer_companies unwritten) tracked separately, not blocking this item's own scope
 
 ## Purpose
 

@@ -1,6 +1,6 @@
 # Item 16 — Retire Moneycontrol (OD-3)
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: DONE 2026-09-10 PRs #528 proof scraper/src/index.ts:475-476,809,816 (moneycontrol removed from scheduled/default source arrays) on refs/remotes/origin/main, with freshness-SLO consequence recorded
 
 ## Purpose
 

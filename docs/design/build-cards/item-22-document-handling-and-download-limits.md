@@ -1,6 +1,6 @@
 # Item 22 — Document handling and download limits (OD-36, OD-37)
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 22: OD-37's four limits (resolveHostVerdict DNS-rebind fix, registrar allow-list, cause-carrying refusal logging, streaming cap) are code-complete with tests on refs/remotes/origin/main, only the streaming cap's real-network staging proof is owed (#806, an ops step); OD-36 (multi-part filings, password-protected PDFs, OCR-page-loses-a-disagreement) is confirmed unbuilt by repo-wide grep — no fixture exists for either
 
 > **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
 > 1. Multi-part filings: ONE `documents` row per download (the container URL / zip), never one row per part. `unique_url` and `unique_doc_per_ipo` stay. Each part's extraction record carries `partNumber` and the part's own sha256 (OD-36's "part number in provenance"); the parent row is COMPLETED only when every part extracted. No product-shape change, so no O-nn.

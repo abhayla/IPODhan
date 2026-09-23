@@ -1,6 +1,6 @@
 # Item 15 — revive `valueActuallyChanged` so no-op suppression can be measured
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: DONE 2026-09-10 PRs #585 proof 7 occurrences of valueActuallyChanged in data-consolidation-service.ts on refs/remotes/origin/main; noop-write-suppression test exists
 
 ## Purpose
 

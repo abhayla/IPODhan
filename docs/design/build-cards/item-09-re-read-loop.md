@@ -1,6 +1,6 @@
 # Item 9 — The re-read loop
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 9: OD-65/OD-66 superseded the spec's re-read-the-bytes loop (owner: one IPO, one round of document read); the OD-66 adjudication fix merged (#876), but the still-open piece (fetch+read a genuinely new corrigendum/filing) belongs to item 22, not this item, and is unbuilt
 
 ## Purpose
 

@@ -1,6 +1,6 @@
 # Item 21 — the read side: provenance line, cache-busting revalidate, canonical tag (OD-39, OD-40, OD-41)
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 21: FieldProvenanceLine.tsx + test exist on refs/remotes/origin/main, but the chosenConfirmedAt column is missing, the staleness threshold has no value (open owner decision, not a build), and the touched-slugs tracker does not survive a restart
 
 ## Purpose
 

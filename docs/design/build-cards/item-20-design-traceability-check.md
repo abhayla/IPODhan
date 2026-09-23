@@ -1,6 +1,6 @@
 # Item 20 — the design-traceability CI check
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: DONE 2026-09-10 PRs #460, #465, #470 proof scripts/ci/check-design-traceability.mjs on refs/remotes/origin/main, wired into pr-gate
 
 Module: `verification`. Serves OD-52 and §8.5.
 

@@ -1,6 +1,6 @@
 # Item 10 — The verification checks of §4
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 10: 14 of 21 paper checks accounted for (12 merged in #859, more in #863), 4 found live defects now fixed at class level; 6 of the remaining 8 are BLOCKED on mechanisms that do not exist (pull_frozen supersession, item-9-dependent reread_* checks, pull_noblank, pull_noop_suppression); real deliverable is 13-15 checks not 21
 
 ## Purpose
 

@@ -1,6 +1,6 @@
 # Item 4 — per-field validation before the write (OD-21)
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: DONE 2026-09-10 PRs #591 proof scraper/src/services/field-extraction-validation.ts (201 lines) on refs/remotes/origin/main; field_extraction_failures table exists but holds zero rows (OD-62 caveat, tracked separately, not a build gap)
 
 ## Purpose
 
