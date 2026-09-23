@@ -1463,4 +1463,134 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     });
   });
 
+  // ------------------------------------------ #884: config gap is not an attempt ---
+  //
+  // RCA (#884): recordOutcome charged `attempts + 1` for EVERY outcome, including a
+  // CHECK_FAILED whose only cause was configuration (the manifest ranks a source with
+  // no field mapping / no documentType / no registered fetcher). The claim query stops
+  // re-asking CHECK_FAILED at FIELD_PLAN_RECLAIM_MAX_ATTEMPTS, so 6,220 staging rows were
+  // retired by a config fact, and a manifest bump (S2 reconciliation) never reopened them.
+  describe('#884 -- a configuration gap is not an attempt', () => {
+    const now = new Date('2026-09-15T03:30:00.000Z'); // 09:00 IST
+    const earlierSlot = new Date('2026-09-15T01:30:00.000Z'); // 07:00 IST, previous slot
+    const CHITTORGARH_GAP =
+      'rank2:CHITTORGARH:CHECK_FAILED:CHITTORGARH has no mapped field for ipo_details.faceValue yet (coverage gap, not a manifest no)';
+    const NO_FETCHER = 'rank1:INVESTORGAIN_GMP:NO_FETCHER_REGISTERED';
+    const NO_DOCTYPE = 'rank1:DOC:CHECK_FAILED:no documentType in manifest for this field';
+    const GENUINE = 'rank1:DOC:CHECK_FAILED:no document provenance for faceValue on RHP (extractor gap or field absent) — not retired';
+
+    async function claimAndRecord(id: string, reasonCode: string, cause: string) {
+      const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now });
+      expect(claimed?.id).toBe(id);
+      const result = await repo.recordOutcome({
+        planRowId: id,
+        claimToken: claimed!.claimToken!,
+        writeHappened: true,
+        state: 'CHECK_FAILED',
+        reasonCode,
+        cause,
+        now,
+      });
+      expect(result.written).toBe(true);
+      return readRow(id);
+    }
+
+    it.each([
+      ['COVERAGE_GAP', CHITTORGARH_GAP],
+      ['SOURCE_UNREACHABLE', NO_FETCHER],
+      ['COVERAGE_GAP', NO_DOCTYPE],
+    ])('a CHECK_FAILED caused by configuration (%s: %s) does NOT gain an attempt, and records its cause', async (code, cause) => {
+      const id = await seedRow({ state: 'CHECK_FAILED', attempts: 2, lastAttemptAt: earlierSlot });
+      const after = await claimAndRecord(id, code, cause);
+      expect(after.attempts).toBe(2);
+      expect(after.state).toBe('CHECK_FAILED');
+      expect(after.reasonCode).toBe(code);
+      expect(after.cause).toBe(cause);
+      expect(after.lastAttemptAt).not.toBeNull();
+      expect(after.claimToken).toBeNull();
+    });
+
+    it.each([
+      ['COVERAGE_GAP', GENUINE],
+      ['FAILED_VALIDATION', 'no field result returned'],
+      ['SOURCE_UNREACHABLE', 'rank1:NSE:THROWN:socket hang up'],
+    ])('a CHECK_FAILED for a real data/network reason (%s: %s) still counts', async (code, cause) => {
+      const id = await seedRow({ state: 'CHECK_FAILED', attempts: 2, lastAttemptAt: earlierSlot });
+      const after = await claimAndRecord(id, code, cause);
+      expect(after.attempts).toBe(3);
+    });
+
+    it('a genuine failure still stops at the cap (4 -> 5, then never reclaimed)', async () => {
+      const id = await seedRow({
+        state: 'CHECK_FAILED',
+        attempts: FIELD_PLAN_RECLAIM_MAX_ATTEMPTS - 1,
+        lastAttemptAt: earlierSlot,
+      });
+      const after = await claimAndRecord(id, 'FAILED_VALIDATION', 'no field result returned');
+      expect(after.attempts).toBe(FIELD_PLAN_RECLAIM_MAX_ATTEMPTS);
+      const later = new Date(now.getTime() + 24 * 3_600_000);
+      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: later })).toBeNull();
+    });
+
+    it('a genuine CHECK_FAILED is re-asked BEFORE a config-gap CHECK_FAILED, even when the gap row is older', async () => {
+      const gapId = await seedRow({
+        state: 'CHECK_FAILED',
+        attempts: 0,
+        lastAttemptAt: new Date(earlierSlot.getTime() - 3_600_000),
+        reasonCode: 'COVERAGE_GAP',
+        cause: CHITTORGARH_GAP,
+      });
+      const genuineId = await seedRow({
+        state: 'CHECK_FAILED',
+        attempts: 1,
+        lastAttemptAt: earlierSlot,
+        fieldName: 'isin',
+        reasonCode: 'FAILED_VALIDATION',
+        cause: 'no field result returned',
+      });
+      const first = await repo.claimNextDueField({ ipoId: IPO_ID, now });
+      expect(first?.id).toBe(genuineId);
+      const second = await repo.claimNextDueField({ ipoId: IPO_ID, now, excludeIds: [genuineId] });
+      expect(second?.id).toBe(gapId);
+    });
+
+    it('manifest reconciliation (S2 version bump) reopens a row stranded at the cap by a config gap, and ONLY that row', async () => {
+      const stranded = await seedRow({
+        state: 'CHECK_FAILED',
+        attempts: FIELD_PLAN_RECLAIM_MAX_ATTEMPTS,
+        lastAttemptAt: earlierSlot,
+        manifestVersion: 1,
+        reasonCode: 'COVERAGE_GAP',
+        cause: CHITTORGARH_GAP,
+      });
+      const genuine = await seedRow({
+        state: 'CHECK_FAILED',
+        attempts: FIELD_PLAN_RECLAIM_MAX_ATTEMPTS,
+        lastAttemptAt: earlierSlot,
+        manifestVersion: 1,
+        fieldName: 'isin',
+        reasonCode: 'FAILED_VALIDATION',
+        cause: 'no field result returned',
+      });
+      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now })).toBeNull();
+
+      const { updated } = await repo.updateRanksForVersion(
+        [stranded, genuine].map((id) => ({
+          id,
+          rank1Source: 'DOC',
+          rank2Source: 'CHITTORGARH',
+          rank3Source: null,
+          manifestVersion: 2,
+          policyOrigin: 'registry:2',
+        }))
+      );
+      expect(updated).toBe(2);
+
+      expect((await readRow(stranded)).attempts).toBe(0);
+      expect((await readRow(genuine)).attempts).toBe(FIELD_PLAN_RECLAIM_MAX_ATTEMPTS);
+      const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now });
+      expect(claimed?.id).toBe(stranded);
+    });
+  });
+
 });

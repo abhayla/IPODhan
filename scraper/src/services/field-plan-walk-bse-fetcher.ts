@@ -43,7 +43,7 @@ import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { logger } from '../utils/logger.js';
 
 /** `${tableName}.${fieldName}` -> true when BSE's mapped ScrapedIPO actually carries it. */
-const BSE_SERVEABLE_FIELDS: ReadonlySet<string> = new Set(['ipos.issueSize']);
+export const BSE_SERVEABLE_FIELDS: ReadonlySet<string> = new Set(['ipos.issueSize']);
 
 export interface BseFetcherDeps {
   ipoRepository: IPORepository;

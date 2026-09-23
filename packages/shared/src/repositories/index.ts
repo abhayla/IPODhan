@@ -30,6 +30,7 @@ export { DocumentFetchStateRepository } from './document-fetch-state-repository'
 export {
   IpoFieldPlanRepository,
   FIELD_PLAN_CLAIM_STALE_MINUTES,
+  FIELD_PLAN_RECLAIM_MAX_ATTEMPTS,
   fieldPlanBackoffMinutes,
 } from './ipo-field-plan-repository';
 export type {

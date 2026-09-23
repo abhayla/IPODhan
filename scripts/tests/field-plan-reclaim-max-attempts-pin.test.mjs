@@ -14,7 +14,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS } from '../lib/field-plan-slot.mjs';
+import {
+  PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS,
+  FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS,
+  isConfigGapAtCapRow,
+} from '../lib/field-plan-slot.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const REPOSITORY_TS_PATH = join(
@@ -78,4 +82,41 @@ test('(constant pin, MAJOR-1) the guard genuinely fails on a mutated scratch cop
     5,
     'a mutated schema.ts (attempts < 9) must parse to a DIFFERENT value than the real FIELD_PLAN_RECLAIM_MAX_ATTEMPTS (5) — proves the guard can actually fail'
   );
+});
+
+// #884: the nightly config-gap check and the repository must agree on what a
+// configuration gap IS, or the check flags rows the claim query treats as real
+// failures (or misses rows it has stopped charging).
+const CONFIG_GAP_TS_PATH = join(REPO_ROOT, 'packages', 'shared', 'src', 'utils', 'field-plan-config-gap.ts');
+
+function parseTsMarkers(source) {
+  const block = source.match(/FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS[^=]*=\s*\[([\s\S]*?)\];/);
+  assert.ok(block, 'FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS not found in the real TS source');
+  return [...block[1].matchAll(/'([^']*)'/g)].map((m) => m[1]);
+}
+
+test('(#884 pin) FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS (TS) equals the detection floor mirror', () => {
+  const tsMarkers = parseTsMarkers(readFileSync(CONFIG_GAP_TS_PATH, 'utf8'));
+  assert.ok(tsMarkers.length >= 4, `expected the real marker list, parsed ${tsMarkers.length}`);
+  assert.deepEqual([...FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS], tsMarkers);
+});
+
+test('(#884 pin) the marker guard fails on a mutated copy (a dropped marker is caught)', () => {
+  const source = readFileSync(CONFIG_GAP_TS_PATH, 'utf8');
+  const mutated = source.replace(/^\s*':NO_FETCHER_REGISTERED',\r?\n/m, '');
+  assert.notEqual(mutated, source, 'mutation did not apply');
+  assert.notDeepEqual([...FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS], parseTsMarkers(mutated));
+});
+
+test('(#884) isConfigGapAtCapRow flags a capped config gap and nothing else', () => {
+  const gap = 'rank2:CHITTORGARH:CHECK_FAILED:CHITTORGARH has no mapped field for ipos.isin yet (coverage gap, not a manifest no)';
+  assert.equal(isConfigGapAtCapRow({ state: 'CHECK_FAILED', attempts: 5, cause: gap }), true);
+  assert.equal(isConfigGapAtCapRow({ state: 'CHECK_FAILED', attempts: 13, cause: 'rank1:NSE:NO_FETCHER_REGISTERED' }), true);
+  assert.equal(isConfigGapAtCapRow({ state: 'CHECK_FAILED', attempts: 4, cause: gap }), false);
+  assert.equal(isConfigGapAtCapRow({ state: 'NOT_AVAILABLE_YET', attempts: 12, cause: gap }), false);
+  assert.equal(
+    isConfigGapAtCapRow({ state: 'CHECK_FAILED', attempts: 5, cause: 'rank1:DOC:CHECK_FAILED:no document provenance for isin on RHP (extractor gap or field absent) — not retired' }),
+    false
+  );
+  assert.equal(isConfigGapAtCapRow({ state: 'CHECK_FAILED', attempts: 5, cause: null }), false);
 });

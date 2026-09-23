@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   walkFieldPlanForIPO,
   classifyFailure,
+  classifyWalkFailures,
   type FieldFetcher,
   type FieldPlanWalkDeps,
 } from '../../../src/services/field-plan-walk.js';
@@ -1940,5 +1941,38 @@ describe('classifyFailure (#785 reason-code remap)', () => {
       'rank2:BSE:CHECK_FAILED:no document provenance',
     ]);
     expect(result?.reasonCode).toBe('COVERAGE_GAP');
+  });
+});
+
+// #884: which cause a CHECK_FAILED row records decides whether it is charged an
+// attempt (the repository skips the increment only for a config-gap cause). So a
+// config-gap cause may be recorded ONLY when every rank's failure was a config gap;
+// one real failure on any rank must be the recorded cause, and must count.
+describe('classifyWalkFailures (#884: a config gap never masks a real failure)', () => {
+  const GAP_CG = 'rank2:CHITTORGARH:CHECK_FAILED:CHITTORGARH has no mapped field for ipos.isin yet (coverage gap, not a manifest no)';
+  const GAP_FETCHER = 'rank3:INVESTORGAIN_GMP:NO_FETCHER_REGISTERED';
+  const REAL_THROWN = 'rank1:NSE:THROWN:socket hang up';
+  const REAL_DOC = 'rank1:DOC:CHECK_FAILED:no document provenance for isin on RHP (extractor gap or field absent) — not retired';
+
+  it('every rank a config gap: records the last config gap (not charged)', () => {
+    const r = classifyWalkFailures([GAP_CG, GAP_FETCHER]);
+    expect(r?.cause).toBe(GAP_FETCHER);
+    expect(r?.reasonCode).toBe('SOURCE_UNREACHABLE');
+  });
+
+  it('a real throw on rank 1 and a config gap on rank 2: records the THROW (charged), not the later gap', () => {
+    const r = classifyWalkFailures([REAL_THROWN, GAP_CG]);
+    expect(r?.cause).toBe(REAL_THROWN);
+    expect(r?.reasonCode).toBe('SOURCE_UNREACHABLE');
+  });
+
+  it('a genuine DOC failure followed by two gaps: records the DOC failure', () => {
+    const r = classifyWalkFailures([REAL_DOC, GAP_CG, GAP_FETCHER]);
+    expect(r?.cause).toBe(REAL_DOC);
+    expect(r?.reasonCode).toBe('COVERAGE_GAP');
+  });
+
+  it('no failures: null, exactly like classifyFailure', () => {
+    expect(classifyWalkFailures([])).toBeNull();
   });
 });

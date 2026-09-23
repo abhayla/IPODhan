@@ -58,6 +58,28 @@ export { FIELD_PLAN_SLOT_IST_MINUTES };
 export const PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS = 5;
 
 /**
+ * #884: mirror of FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS in
+ * packages/shared/src/utils/field-plan-config-gap.ts — the recorded causes
+ * that are facts about CONFIGURATION (a source ranked with no field mapping,
+ * DOC with no documentType, no registered fetcher). Kept equal by hand and
+ * pinned by scripts/tests/field-plan-reclaim-max-attempts-pin.test.mjs.
+ */
+export const FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS = Object.freeze([
+  ':NO_FETCHER_REGISTERED',
+  ' has no mapped field for ',
+  'no documentType in manifest for this field',
+  'DOC column read not implemented for ',
+]);
+
+/** #884: a CHECK_FAILED plan row retired at the cap by a CONFIGURATION cause (should be 0 after the repair). */
+export function isConfigGapAtCapRow(row) {
+  if (row.state !== 'CHECK_FAILED') return false;
+  if (!(row.attempts >= PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS)) return false;
+  const cause = row.cause ?? '';
+  return FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS.some((m) => cause.includes(m));
+}
+
+/**
  * The pure "is this plan row stuck" predicate checkS_pullPlanStuckReclaim
  * (audit-detection-floor.mjs) filters for, extracted so it is unit-testable
  * without a database (review round 1 F6: the check shipped with NO test —

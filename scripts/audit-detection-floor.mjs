@@ -36,7 +36,7 @@ import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { istDayIso } from './lib/ist-day.mjs';
-import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS } from './lib/field-plan-slot.mjs';
+import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isConfigGapAtCapRow } from './lib/field-plan-slot.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
@@ -1957,6 +1957,43 @@ async function checkS_pullPlanRank() {
 // imported from that same module, which is the one place its value (kept
 // equal to FIELD_PLAN_RECLAIM_MAX_ATTEMPTS in
 // ipo-field-plan-repository.ts by hand, pinned by test) lives.
+// #884: a plan row retired at the attempts cap by a CONFIGURATION cause — the
+// manifest ranks a source whose adapter has no mapping for the field, a DOC rank
+// with no documentType, or a source with no fetcher. recordOutcome no longer
+// charges those (#884) and the repair tool gave the old ones back, so the healthy
+// value is 0; a non-zero count means a new write path is charging config gaps
+// again, or the repair was never applied to this slot. Named by IPO and field
+// (signal-ownership R1). The cause predicate is the pinned mirror of the
+// repository's own list (isConfigGapAtCapRow, field-plan-slot.mjs).
+async function checkPullPlanConfigGapAtCap() {
+  let rows;
+  try {
+    rows = await q(
+      `SELECT p.id, i.slug, p.table_name AS "tableName", p.field_name AS "fieldName",
+              p.state::text AS state, p.attempts, p.cause
+         FROM ipo_field_plan p
+         LEFT JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.state = 'CHECK_FAILED' AND p.attempts >= $1`,
+      [PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS]
+    );
+  } catch (e) {
+    record('pull_plan_config_gap_at_cap', 'no plan row is retired at the attempts cap by a configuration gap', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  const offenders = rows.filter(isConfigGapAtCapRow);
+  for (const row of offenders) {
+    notify('pull_plan_config_gap_at_cap', 'P2', `${row.slug ?? row.id}:${row.tableName}.${row.fieldName}`,
+      'plan row retired at the attempts cap by a CONFIGURATION gap, not a real failure',
+      `attempts=${row.attempts} cause=${row.cause}`);
+  }
+  const ipos = new Set(offenders.map((r) => r.slug ?? r.id));
+  record('pull_plan_config_gap_at_cap', `${offenders.length} plan row(s) retired at the attempts cap by a configuration gap`,
+    offenders.length === 0 ? 'PASS' : 'FAIL',
+    `0 expected; found ${offenders.length} across ${ipos.size} IPO(s)` +
+      (offenders.length ? ` (sample: ${offenders.slice(0, MAX_OFFENDERS).map((r) => `${r.slug ?? r.id}:${r.tableName}.${r.fieldName}`).join('; ')})` : ''));
+}
+
 async function checkS_pullPlanStuckReclaim() {
   const twoSlotsAgo = mostRecentFieldPlanSlotBoundary(
     mostRecentFieldPlanSlotBoundary(new Date())
@@ -2706,6 +2743,7 @@ async function main() {
   await checkS_pullWritePolicy();
   await checkS_pullPlanRank();
   await checkS_pullPlanStuckReclaim();
+  await checkPullPlanConfigGapAtCap();
   await checkS_pullOverrides();
   await checkS_pullYield();
   await checkS_pullExhaust();

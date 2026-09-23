@@ -64,6 +64,7 @@ import {
 import { resolveIpoTypeKey, type PlanIpo } from './field-plan-generator.js';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { isFieldPlanConfigGapCause } from '@ipodhan/shared/utils/field-plan-config-gap';
 import { computeVerdict, type Witness, type Verdict } from './witness-verdict.js';
 
 /**
@@ -963,7 +964,7 @@ async function attemptOneField(
       { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures },
       'PASS 3: every rank failed for this field, at least one TRANSIENTLY — CHECK_FAILED, re-asked after backoff (NOT retired)'
     );
-    const classified = classifyFailure(failures);
+    const classified = classifyWalkFailures(failures);
     return recordAndClassify(deps, result, {
       planRowId: plan.id,
       claimToken: plan.claimToken,
@@ -1473,6 +1474,24 @@ export function classifyFailure(failures: readonly string[]): { reasonCode: Fiel
   // invisible forever; UNCLASSIFIED keeps the raw cause and makes the gap
   // countable (#785 defect 2's "visible gap" fix).
   return { reasonCode: 'UNCLASSIFIED', cause };
+}
+
+/**
+ * #884: the cause a transient CHECK_FAILED row records. The repository charges
+ * an attempt for every CHECK_FAILED EXCEPT one whose recorded cause is a
+ * configuration gap (`isFieldPlanConfigGapCause`), so that cause may only be
+ * recorded when EVERY rank's failure was a config gap. `classifyFailure` alone
+ * keeps the LAST failure, which let a trailing config gap (rank 3: no fetcher)
+ * mask a real failure on rank 1 — the row would then never be charged for the
+ * real one and a genuinely broken field could churn. So: classify the most
+ * recent GENUINE failure when there is one, and fall back to the config gaps
+ * only when nothing else failed.
+ */
+export function classifyWalkFailures(
+  failures: readonly string[]
+): { reasonCode: FieldPlanReasonCode; cause: string } | null {
+  const genuine = failures.filter((f) => !isFieldPlanConfigGapCause(f));
+  return classifyFailure(genuine.length > 0 ? genuine : failures);
 }
 
 /**
