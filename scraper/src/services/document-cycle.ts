@@ -88,7 +88,7 @@ import {
 } from './document-cycle-calendar-gate.js';
 
 /** MAJOR-1: key + TTL for the cycle-level extraction lock (document-cycle.ts). */
-const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
+export const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
 /**
  * W-168 round 2: moved to `filing-auto-persist.ts` (re-exported here
  * unchanged for existing importers) so `anchorMaxSpawnsPerCycle()` can clamp

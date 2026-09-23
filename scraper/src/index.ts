@@ -17,7 +17,14 @@ import {
   runIssueTypeFillJob,
   makeIssueTypeJobDeps,
 } from './services/chittorgarh-issue-type-job.js';
-import { HUNG_PROCESS_CEILING_MS } from './services/filing-auto-persist.js';
+import {
+  HUNG_PROCESS_CEILING_MS,
+  buildAutoPersistDeps,
+  DEFAULT_MAX_SPAWNS_PER_CYCLE,
+  anchorMaxSpawnsPerCycle,
+  FILING_EXTRACTION_LOCK_TTL_MS,
+  type AutoPersistDeps,
+} from './services/filing-auto-persist.js';
 import { makeIpoDetailsWriter } from './services/filing-persist-deps.js';
 import { FieldSourcesRepository, filterProtectedFields } from '@ipodhan/shared';
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
@@ -37,14 +44,31 @@ import {
   formatCycleReason,
   releaseHeldLocks,
   getWakeBudgetMs,
+  FILING_EXTRACTION_LOCK_KEY,
+  DEFAULT_EXTRACTION_BUDGET_MS,
+  registerHeldLock,
+  unregisterHeldLock,
 } from './services/document-cycle.js';
 import { raceWithTimeout, DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS } from './utils/race-with-timeout.js';
 import { shouldRunOnCatchUpCadence, isCatchUpCadenceDue, markCatchUpCadenceRan } from './scheduler/catch-up-cadence.js';
 import { isDiscoveryDue, isMarketHoursIST, mostRecentDiscoverySlotLabel } from './scheduler/due-step-cycle.js';
 import { runDemandBackfill } from './scripts/backfill-demand-graph.js';
 import { DistributedLock } from './utils/distributed-lock.js';
-import { runClosedIpoJob, isClosedIpoJobDue, CLOSED_IPO_JOB_SLOT_IST_MINUTES } from './scheduler/closed-ipo-job.js';
-import type { ClosedIpoCauseClass, ClosedIpoOutcome } from './scheduler/closed-ipo-job.js';
+import {
+  runClosedIpoJob,
+  isClosedIpoJobDue,
+  CLOSED_IPO_JOB_SLOT_IST_MINUTES,
+  extractClosedIpoDocuments,
+  classifyExtractionPass,
+  combineClosedIpoOutcomes,
+} from './scheduler/closed-ipo-job.js';
+import type {
+  ClosedIpoCandidate,
+  ClosedIpoCauseClass,
+  ClosedIpoExtractionPass,
+  ClosedIpoOutcome,
+} from './scheduler/closed-ipo-job.js';
+
 import { walkFieldPlanForIPO } from './services/field-plan-walk.js';
 import {
   buildFieldPlanWalkOrchestrator,
@@ -1629,7 +1653,7 @@ async function pruneScraperLogs(): Promise<StepResult> {
  * IPO this version gave up on (PARTIAL/FAILED) eligible again — a deliberate
  * act, the same contract `EXTRACTOR_VERSION` uses, never a side effect.
  */
-const CLOSED_IPO_RESOURCING_VERSION = 'closed-ipo-job@2026-09-21';
+const CLOSED_IPO_RESOURCING_VERSION = 'closed-ipo-job@2026-09-23';
 
 /** Wall-clock budget for ONE closed IPO's walk. Ten of these fit in a cycle. */
 const CLOSED_IPO_WALK_BUDGET_MS = 60_000;
@@ -1656,7 +1680,11 @@ const CLOSED_IPO_WALK_BUDGET_MS = 60_000;
  *                                 this version; a version bump re-opens it.
  *   - settle calls threw       -> FAILED / WRITE_SKIPPED. The DB was the problem.
  */
-async function resourceClosedIpo(ipoId: string): Promise<{
+async function resourceClosedIpo(
+  ipoId: string,
+  candidate: ClosedIpoCandidate,
+  extraction: { deps: AutoPersistDeps } | { skip: Extract<ClosedIpoExtractionPass, { attempted: false }> }
+): Promise<{
   outcome: ClosedIpoOutcome;
   causeClass?: ClosedIpoCauseClass;
   causeDetail?: string;
@@ -1664,6 +1692,22 @@ async function resourceClosedIpo(ipoId: string): Promise<{
   fieldsLeftEmpty: number;
 }> {
   const redis = getRedisClient();
+
+  // #717: FIRST the work the IPO was selected for -- read its PENDING
+  // extractable documents through the document cycle's own entry point. Only
+  // then the plan walk (which, for a closed IPO, usually has no rows at all:
+  // that is how ten IPOs were recorded DONE having done nothing).
+  const pass: ClosedIpoExtractionPass =
+    'deps' in extraction ? await extractClosedIpoDocuments(candidate, extraction.deps) : extraction.skip;
+  const extractionOutcome = classifyExtractionPass(pass);
+  if (pass.attempted) {
+    const done = (pass as Extract<ClosedIpoExtractionPass, { attempted: true }>).result;
+    logger.info(
+      { ipoId, ...done, skipped: done.skipped.slice(0, 5) },
+      'closed-IPO job: document extraction pass for one IPO'
+    );
+  }
+
   const startedAt = Date.now();
 
   const walk = await walkFieldPlanForIPO(
@@ -1716,7 +1760,10 @@ async function resourceClosedIpo(ipoId: string): Promise<{
     'closed-IPO job: walk complete for one IPO'
   );
 
-  return { outcome, causeClass, causeDetail, fieldsWritten, fieldsLeftEmpty };
+  // Worst of the two passes. The job itself still re-reads the pending
+  // documents afterwards and refuses DONE while any remains PENDING.
+  const combined = combineClosedIpoOutcomes(extractionOutcome, { outcome, causeClass, causeDetail });
+  return { ...combined, fieldsWritten, fieldsLeftEmpty };
 }
 
 /**
@@ -1790,6 +1837,31 @@ export async function triggerClosedIpoJob(): Promise<StepResult> {
     };
   }
 
+  // #717: extraction runs under the SAME Redis lock and the same per-run
+  // spawn/time budgets as the document cycle's own extraction pass, so the two
+  // can never extract the same document concurrently. Without the flag or the
+  // lock, extraction is not attempted and every IPO is recorded PARTIAL with
+  // that reason -- never DONE.
+  const extractionLock = new DistributedLock(redis as never);
+  let extractionLockToken: string | undefined;
+  let extraction: Parameters<typeof resourceClosedIpo>[2];
+  if (!FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST) {
+    extraction = { skip: { attempted: false, causeClass: 'EXTRACTOR_MISSING', reason: 'ENABLE_FILING_AUTO_PERSIST is off' } };
+  } else {
+    const lock = await extractionLock.acquire(FILING_EXTRACTION_LOCK_KEY, { ttl: FILING_EXTRACTION_LOCK_TTL_MS });
+    if (lock.acquired && lock.token) {
+      extractionLockToken = lock.token;
+      registerHeldLock(FILING_EXTRACTION_LOCK_KEY, lock.token);
+      const deps = buildAutoPersistDeps(redis);
+      deps.spawnBudget = { remaining: DEFAULT_MAX_SPAWNS_PER_CYCLE };
+      deps.anchorSpawnBudget = { remaining: anchorMaxSpawnsPerCycle() };
+      deps.deadlineMs = Date.now() + DEFAULT_EXTRACTION_BUDGET_MS;
+      extraction = { deps };
+    } else {
+      extraction = { skip: { attempted: false, causeClass: 'SOURCE_UNREACHABLE', reason: 'filing extraction lock held by another cycle' } };
+    }
+  }
+
   try {
     const summary = await runClosedIpoJob({
       db,
@@ -1797,7 +1869,7 @@ export async function triggerClosedIpoJob(): Promise<StepResult> {
       // job is provably not walking concurrently. The real check belongs to
       // any caller that runs OUTSIDE the cycle.
       isCycleLockHeld: async () => false,
-      resourceIpo: resourceClosedIpo,
+      resourceIpo: (ipoId, candidate) => resourceClosedIpo(ipoId, candidate, extraction),
       resourcedAtVersion: CLOSED_IPO_RESOURCING_VERSION,
       now,
     });
@@ -1819,6 +1891,18 @@ export async function triggerClosedIpoJob(): Promise<StepResult> {
       'Closed-IPO job failed (non-fatal)'
     );
     return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
+  } finally {
+    if (extractionLockToken) {
+      unregisterHeldLock(FILING_EXTRACTION_LOCK_KEY, extractionLockToken);
+      try {
+        await extractionLock.release(FILING_EXTRACTION_LOCK_KEY, extractionLockToken);
+      } catch (error) {
+        logger.warn(
+          { error: error instanceof Error ? error.message : String(error) },
+          'closed-IPO job: failed to release the extraction lock (non-fatal, expires via TTL)'
+        );
+      }
+    }
   }
 }
 

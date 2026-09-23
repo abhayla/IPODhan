@@ -1121,3 +1121,22 @@ export function findCompanyTwoLiveRows(rows = []) {
   }
   return groups;
 }
+
+/**
+ * #717 (closed_ipo_false_done): a closed-IPO ledger row recorded DONE whose
+ * worker wrote nothing while the reason the IPO was selected -- a PENDING
+ * extractable document -- is still there. The job never re-picks DONE, so each
+ * such row is an IPO dropped from the backlog with its document unread.
+ * Staging 2026-09-23: 10 of 10 rows in this shape after the first real run.
+ *
+ * Rows: { ipoId, companyName, outcome, fieldsWritten, pendingExtractable }.
+ * Numbers may arrive as strings from pg; they are coerced.
+ */
+export function findClosedIpoFalseDone(rows) {
+  return (rows ?? []).filter(
+    (r) =>
+      String(r.outcome).toUpperCase() === 'DONE' &&
+      Number(r.fieldsWritten) === 0 &&
+      Number(r.pendingExtractable) > 0
+  );
+}

@@ -62,6 +62,19 @@
       "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
     },
     {
+      "id": "closed_ipo_false_done",
+      "findingClass": "the closed-IPO job records an IPO DONE although its worker wrote nothing and the PENDING extractable document it was selected for is still PENDING -- the IPO is then dropped from the backlog for good (#717)",
+      "round7Findings": [],
+      "failThreshold": "any closed_ipo_resourcing row with outcome = 'DONE' and fields_written = 0 whose IPO holds a documents row of type PRICE_BAND_AD/RHP/DRHP/PROSPECTUS with extraction_status = 'PENDING'; reported by IPO name",
+      "severity": "P2",
+      "unverifiableWhen": "closed_ipo_resourcing does not exist on the slot (migration 0050 not applied)",
+      "spec_ref": [
+        "OD-19",
+        "OD-22"
+      ],
+      "note": "Measured on ipodhan_staging 2026-09-23 (read-only): 10 of 10 DONE rows in this shape after the job's first real run (Advit Jewels, Anubhav Plast, Avience Biomedicals, Clay Craft India, Diksha Polymers, Liotech Industries, Riyaasat Lifestyle, Shreedhar Spinners, Turtlemint Fintech Solutions, Waterways Leisure Tourism). Repaired by scraper/scripts/repair-closed-ipo-false-done.ts."
+    },
+    {
       "id": "corpus_shape",
       "designId": "CORPUS-SHAPE",
       "findingClass": "pull-model verification check CORPUS-SHAPE: per source, does the live page behind each fixture still match the fixture’s SHAPE (labels + structure the extractor depends on, never the values)",

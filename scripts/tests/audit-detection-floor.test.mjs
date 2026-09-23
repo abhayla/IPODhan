@@ -35,6 +35,7 @@ import {
   checkIpoTitleInName,
   findCompanyTwoLiveRows,
   findNameBoundLiveRows,
+  findClosedIpoFalseDone,
   findLiveCrossSourceDisagreements,
   valuesDisagree,
   fieldValuesDisagree,
@@ -1522,4 +1523,32 @@ test('(i) MUTATION: dropping the slug rule from checkIpoTitleInName misses a cle
     return violations.length ? 'flagged' : null;
   };
   assert.equal(mutatedNoSlugRule(rowSlugOnly), null, 'mutation (slug rules dropped) misses this clean-name/dirty-slug fixture');
+});
+
+
+// ---- #717: closed-IPO job recorded DONE without doing the work ------------------
+// Real staging shape, 2026-09-23: Advit Jewels Ltd. DONE, fields_written 0, one
+// PROSPECTUS still PENDING (one of the ten the job wrote that night).
+test('(#717) findClosedIpoFalseDone FLAGS a DONE row with 0 fields whose IPO still holds a PENDING extractable document', () => {
+  const out = findClosedIpoFalseDone([
+    { ipoId: '437ed611', companyName: 'Advit Jewels Ltd.', outcome: 'DONE', fieldsWritten: 0, pendingExtractable: 1 },
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].companyName, 'Advit Jewels Ltd.');
+});
+
+test('(#717) findClosedIpoFalseDone PASSES a true DONE, a PARTIAL, and a DONE that wrote fields', () => {
+  const out = findClosedIpoFalseDone([
+    { ipoId: 'a', companyName: 'Drained Ltd.', outcome: 'DONE', fieldsWritten: 0, pendingExtractable: 0 },
+    { ipoId: 'b', companyName: 'Reopened Ltd.', outcome: 'PARTIAL', fieldsWritten: 0, pendingExtractable: 1 },
+    { ipoId: 'c', companyName: 'Walked Ltd.', outcome: 'DONE', fieldsWritten: 3, pendingExtractable: 1 },
+  ]);
+  assert.deepEqual(out, []);
+});
+
+test('(#717) findClosedIpoFalseDone reads numbers that arrive as strings from pg', () => {
+  const out = findClosedIpoFalseDone([
+    { ipoId: 'd', companyName: 'String Ltd.', outcome: 'DONE', fieldsWritten: '0', pendingExtractable: '2' },
+  ]);
+  assert.equal(out.length, 1);
 });

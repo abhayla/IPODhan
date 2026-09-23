@@ -70,6 +70,7 @@ import {
   STEP_LEDGER_WINDOW_HOURS,
   crossCheckNseStatuses,
   findSameIpoTwoRows, checkIpoTitleInName, findCompanyTwoLiveRows, findNameBoundLiveRows,
+  findClosedIpoFalseDone,
 } from './lib/detection-floor-checks.mjs';
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
@@ -1366,6 +1367,38 @@ async function checkL() {
       : 'every in-scope MAINBOARD/NSE row agrees with NSE');
 }
 
+// ---- #717: the closed-IPO job recorded DONE without doing the work -----------
+// A DONE row with fields_written 0 whose IPO still holds a PENDING extractable
+// document is an IPO the job dropped from its backlog unread (the job never
+// re-picks DONE). Reported by IPO name. The table arrives with migration 0050;
+// a slot without it is UNVERIFIABLE, never a crash.
+async function checkClosedIpoFalseDone() {
+  const name = 'no closed-IPO ledger row is DONE with 0 fields while its IPO still holds a PENDING extractable document (#717)';
+  const [{ present }] = await q(`SELECT to_regclass('public.closed_ipo_resourcing') IS NOT NULL AS present`);
+  if (!present) {
+    record('closed_ipo_false_done', name, 'UNVERIFIABLE', 'closed_ipo_resourcing does not exist on this slot (migration 0050 not applied)');
+    return;
+  }
+  const rows = await q(
+    `SELECT r.ipo_id AS "ipoId", i.company_name AS "companyName", r.outcome::text AS outcome,
+            r.fields_written AS "fieldsWritten",
+            (SELECT count(*)::int FROM documents d
+              WHERE d.ipo_id = r.ipo_id AND d.extraction_status = 'PENDING'
+                AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')) AS "pendingExtractable"
+       FROM closed_ipo_resourcing r JOIN ipos i ON i.id = r.ipo_id
+      WHERE r.outcome = 'DONE'`
+  );
+  const bad = findClosedIpoFalseDone(rows);
+  for (const r of bad) {
+    notify('closed_ipo_false_done', 'P2', r.ipoId, 'closed-IPO job recorded DONE without reading the document',
+      `${r.companyName}: DONE, fields_written 0, ${r.pendingExtractable} extractable document(s) still PENDING`);
+  }
+  record('closed_ipo_false_done', name, bad.length === 0 ? 'PASS' : 'FAIL',
+    bad.length
+      ? bad.slice(0, MAX_OFFENDERS).map((r) => `${r.companyName} (pending=${r.pendingExtractable})`).join('; ')
+      : `0 of ${rows.length} DONE row(s)`);
+}
+
 // ---- (i): identity — one IPO stored twice, or two offerings folded into ------
 // one company. Step 1 of #903 (S1/S2/S3/S4/S7); implements
 // docs/design/data-sourcing-pull-model.md §2.3.3.1's standing sweep (F-103)
@@ -2617,6 +2650,7 @@ async function main() {
   await checkH();
   checkI();
   await checkIdentity();
+  await checkClosedIpoFalseDone();
   await checkK();
   await checkCycleOverrunAudit();
   await checkL();

@@ -231,3 +231,96 @@ describe('#873: candidates are ordered by stuck-document count, not recency', ()
     expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/ORDER BY\s+i\.close_date DESC\s+LIMIT/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// #717: the job marked IPOs DONE without extracting the document it selected
+// them for (staging 2026-09-23: 10 of 10 DONE, fields_written 0, 74 PROSPECTUS
+// PENDING before and after).
+// ---------------------------------------------------------------------------
+import {
+  applyPendingDocumentGuard,
+  classifyExtractionPass,
+  combineClosedIpoOutcomes,
+  CLOSED_IPO_EXTRACTABLE_TYPES,
+} from '../../../src/scheduler/closed-ipo-job.js';
+import { EXTRACTABLE_DOC_TYPES } from '../../../src/services/filing-auto-persist.js';
+
+const emptyPass = {
+  ipoId: 'x', considered: 1, extracted: 0, persisted: 0, failed: 0, skipped: [] as string[], spawned: 0,
+  skippedBudget: 0, anchorsConsidered: 0, anchorsSpawned: 0, anchorsPersisted: 0, anchorsManualReview: 0,
+  anchorsFailed: 0,
+};
+
+describe('#717: DONE requires the selection signal to be resolved', () => {
+  it('a DONE pass with an extractable document still PENDING is PARTIAL with a cause (the staging shape)', async () => {
+    const stub = makeStubDb([{ id: 'ipo-1', closeDate: '2026-06-12', status: 'LISTED' }]);
+    await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: async () => ({ outcome: 'DONE', fieldsWritten: 0, fieldsLeftEmpty: 0 }),
+      countPendingExtractableDocuments: async () => 1,
+      resourcedAtVersion: 'v',
+    });
+    const written = stub.values.mock.calls[0][0];
+    expect(written.outcome).toBe('PARTIAL');
+    expect(written.causeClass).toBe('DOCUMENT_UNOBTAINABLE');
+    expect(written.causeDetail).toMatch(/1 extractable document\(s\) still PENDING/);
+  });
+
+  it('DONE stays DONE only when nothing extractable is left PENDING', async () => {
+    const stub = makeStubDb([{ id: 'ipo-1', closeDate: '2026-06-12', status: 'LISTED' }]);
+    await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: async () => ({ outcome: 'DONE', fieldsWritten: 0, fieldsLeftEmpty: 0 }),
+      countPendingExtractableDocuments: async () => 0,
+      resourcedAtVersion: 'v',
+    });
+    expect(stub.values.mock.calls[0][0].outcome).toBe('DONE');
+  });
+
+  it('the guard keeps a worker cause and never upgrades a PARTIAL/FAILED', () => {
+    expect(applyPendingDocumentGuard({ outcome: 'DONE', causeClass: 'SOURCE_UNREACHABLE', fieldsWritten: 0, fieldsLeftEmpty: 0 }, 2).causeClass)
+      .toBe('SOURCE_UNREACHABLE');
+    expect(applyPendingDocumentGuard({ outcome: 'FAILED', fieldsWritten: 0, fieldsLeftEmpty: 0 }, 0).outcome).toBe('FAILED');
+  });
+
+  it('the worker receives the candidate row (it needs the company and segment to extract)', async () => {
+    const stub = makeStubDb([{ id: 'ipo-1', closeDate: '2026-06-12', status: 'LISTED' }]);
+    const resourceIpo = vi.fn().mockResolvedValue(okResult);
+    await runClosedIpoJob({ db: stub.db, isCycleLockHeld: async () => false, resourceIpo, countPendingExtractableDocuments: async () => 0, resourcedAtVersion: 'v' });
+    expect(resourceIpo.mock.calls[0][1]).toMatchObject({ id: 'ipo-1', status: 'LISTED' });
+  });
+
+  it('a transient PARTIAL (SOURCE_UNREACHABLE) is re-picked at the same version; others wait for a version change', () => {
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/OR r\.cause_class = 'SOURCE_UNREACHABLE'/);
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/r\.outcome IN \('PARTIAL', 'FAILED'\)/);
+  });
+
+  it('the guard counts the same four types the extractor handles', () => {
+    expect([...CLOSED_IPO_EXTRACTABLE_TYPES].sort()).toEqual([...EXTRACTABLE_DOC_TYPES].map(String).sort());
+  });
+});
+
+describe('#717: classifyExtractionPass', () => {
+  it('extraction not run is PARTIAL with the caller-given cause', () => {
+    const r = classifyExtractionPass({ attempted: false, causeClass: 'EXTRACTOR_MISSING', reason: 'flag off' });
+    expect(r).toMatchObject({ outcome: 'PARTIAL', causeClass: 'EXTRACTOR_MISSING' });
+  });
+  it('a failed document is FAILED / VALIDATION_REJECTED', () => {
+    expect(classifyExtractionPass({ attempted: true, result: { ...emptyPass, failed: 1 } }))
+      .toMatchObject({ outcome: 'FAILED', causeClass: 'VALIDATION_REJECTED' });
+  });
+  it('documents left for the spawn budget are transient PARTIAL', () => {
+    expect(classifyExtractionPass({ attempted: true, result: { ...emptyPass, skippedBudget: 1 } }))
+      .toMatchObject({ outcome: 'PARTIAL', causeClass: 'SOURCE_UNREACHABLE' });
+  });
+  it('a clean pass is DONE (still subject to the pending-document guard)', () => {
+    expect(classifyExtractionPass({ attempted: true, result: { ...emptyPass, persisted: 1 } }).outcome).toBe('DONE');
+  });
+  it('combine keeps the worse outcome and its cause', () => {
+    expect(combineClosedIpoOutcomes({ outcome: 'DONE' }, { outcome: 'PARTIAL', causeClass: 'WRITE_SKIPPED' }))
+      .toMatchObject({ outcome: 'PARTIAL', causeClass: 'WRITE_SKIPPED' });
+    expect(combineClosedIpoOutcomes({ outcome: 'FAILED', causeClass: 'VALIDATION_REJECTED' }, { outcome: 'PARTIAL' }).outcome).toBe('FAILED');
+  });
+});
