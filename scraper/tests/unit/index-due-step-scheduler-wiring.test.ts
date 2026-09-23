@@ -290,6 +290,7 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
     });
 
     it('aggregators: cadence due but zero UPCOMING/OPEN IPOs -> skipped (zero network calls)', async () => {
+      isDiscoveryDueMock.mockReturnValue(true); // item 7 S2b: a data-job slot wake
       isCatchUpCadenceDueMock.mockResolvedValue(true);
       dbCountRowsMock.mockResolvedValue([{ c: 0 }]);
       const { main } = await import('../../src/index.js');
@@ -299,6 +300,7 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
     });
 
     it('aggregators: cadence due + UPCOMING/OPEN IPOs present -> Chittorgarh runs restricted, Moneycontrol NEVER', async () => {
+      isDiscoveryDueMock.mockReturnValue(true); // item 7 S2b: a data-job slot wake
       isCatchUpCadenceDueMock.mockResolvedValue(true);
       dbCountRowsMock.mockResolvedValue([{ c: 5 }]);
       const { main } = await import('../../src/index.js');
@@ -317,6 +319,7 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
      * source never ran at all. It now runs inside the cycle on a 24h cadence.
      */
     it('C3: API fallback runs inside the cycle when its cadence is due, and stamps the key AFTER success', async () => {
+      isDiscoveryDueMock.mockReturnValue(true); // item 7 S2b: a data-job slot wake
       isCatchUpCadenceDueMock.mockImplementation(async (_redis: unknown, jobName: string) => jobName === 'due-step-api-fallback');
       const { main } = await import('../../src/index.js');
       await main();
@@ -335,6 +338,7 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
     });
 
     it('C3/M2: a FAILING API fallback does not stamp the cadence key (it retries next cycle)', async () => {
+      isDiscoveryDueMock.mockReturnValue(true); // item 7 S2b: a data-job slot wake
       isCatchUpCadenceDueMock.mockImplementation(async (_redis: unknown, jobName: string) => jobName === 'due-step-api-fallback');
       runIPOAlertsFallbackMock.mockRejectedValueOnce(new Error('rate limited'));
       const { main } = await import('../../src/index.js');
@@ -490,6 +494,109 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
       expect(runBSEScraperMock).not.toHaveBeenCalled();
       expect(exitSpy).toHaveBeenCalledWith(1);
       setIntervalSpy.mockRestore();
+    });
+
+    /**
+     * Item 7 S2b (F-142, spec §2.1, OD-19): #935 gated discovery (NSE+BSE) and
+     * the document cycle to the data-job slots, but Chittorgarh and the API
+     * fallback kept their own 24h catch-up cadence, which fires on ANY wake —
+     * staging's 22:15 IST wake of 2026-09-23 fetched the Chittorgarh list and
+     * created 8 IPOs. These run the REAL slot rule (isDataJobDue) against a
+     * Redis stand-in, so the gate is proven on the dispatch, not on a mock verdict.
+     */
+    describe('item 7 S2b — website list scrapers run only in a data-job slot (OD-19)', () => {
+      let store: Map<string, string>;
+      const istToUtc = (isoIst: string) => new Date(`${isoIst}+05:30`);
+
+      beforeEach(async () => {
+        const { isDataJobDue } = await vi.importActual<typeof import('@ipodhan/shared/scheduler/data-job-slots')>(
+          '@ipodhan/shared/scheduler/data-job-slots'
+        );
+        isDiscoveryDueMock.mockImplementation((now: Date, last: Date | null) => isDataJobDue(now, last));
+        store = new Map();
+        redisGetMock.mockImplementation(async (k: string) => store.get(k) ?? null);
+        redisSetMock.mockImplementation(async (k: string, v: string) => { store.set(k, v); return 'OK'; });
+        // Both 24h cadences due, IPOs UPCOMING/OPEN present: only the slot gate can stop them.
+        isCatchUpCadenceDueMock.mockResolvedValue(true);
+        dbCountRowsMock.mockResolvedValue([{ c: 5 }]);
+        vi.useFakeTimers({ toFake: ['Date'] });
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      const expectNoListScraper = () => {
+        expect(runNSEScraperMock).not.toHaveBeenCalled();
+        expect(runBSEScraperMock).not.toHaveBeenCalled();
+        expect(runChittorgarhScraperMock).not.toHaveBeenCalled();
+        expect(runIPOAlertsFallbackMock).not.toHaveBeenCalled();
+      };
+
+      it('F-142: a 22:15 IST wake after the 14:00 slot finished calls NO website list scraper', async () => {
+        store.set('due-step:last-discovery', istToUtc('2026-09-23T14:05:00').toISOString());
+        vi.setSystemTime(istToUtc('2026-09-23T22:15:00'));
+        const { main } = await import('../../src/index.js');
+        await main();
+
+        expectNoListScraper();
+        expect(markCatchUpCadenceRanMock).not.toHaveBeenCalled();
+      });
+
+      it('the date-based status update still runs on a non-slot wake', async () => {
+        store.set('due-step:last-discovery', istToUtc('2026-09-23T14:05:00').toISOString());
+        vi.setSystemTime(istToUtc('2026-09-23T22:15:00'));
+        const { main } = await import('../../src/index.js');
+        await main();
+
+        const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+        expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/api/admin/status/update'))).toBe(true);
+        expect(exitSpy).toHaveBeenCalledWith(0);
+      });
+
+      it('a slot wake (08:15 IST) runs discovery, Chittorgarh and the API fallback', async () => {
+        store.set('due-step:last-discovery', istToUtc('2026-09-23T00:05:00').toISOString());
+        vi.setSystemTime(istToUtc('2026-09-23T08:15:00'));
+        const { main } = await import('../../src/index.js');
+        await main();
+
+        expect(runNSEScraperMock).toHaveBeenCalledTimes(1);
+        expect(runBSEScraperMock).toHaveBeenCalledTimes(1);
+        expect(runChittorgarhScraperMock).toHaveBeenCalledWith({ allowedStatuses: ['UPCOMING', 'OPEN'] });
+        expect(runIPOAlertsFallbackMock).toHaveBeenCalledWith('scheduled');
+      });
+
+      it('a missed slot is caught up once on the next wake, and the wake after it does nothing', async () => {
+        // Last run 14:05 yesterday: the 00:00 and 08:00 slots were both missed.
+        store.set('due-step:last-discovery', istToUtc('2026-09-22T14:05:00').toISOString());
+        vi.setSystemTime(istToUtc('2026-09-23T10:30:00'));
+        const first = await import('../../src/index.js');
+        await first.main();
+        expect(runNSEScraperMock).toHaveBeenCalledTimes(1);
+        expect(runChittorgarhScraperMock).toHaveBeenCalledTimes(1);
+
+        vi.clearAllMocks();
+        vi.resetModules();
+        isCatchUpCadenceDueMock.mockResolvedValue(true);
+        vi.setSystemTime(istToUtc('2026-09-23T11:00:00'));
+        const second = await import('../../src/index.js');
+        await second.main();
+        expectNoListScraper();
+      });
+
+      it('24h cadence keys are stamped at the SLOT boundary, so the same slot tomorrow is due and cannot slip a slot', async () => {
+        store.set('due-step:last-discovery', istToUtc('2026-09-23T00:05:00').toISOString());
+        vi.setSystemTime(istToUtc('2026-09-23T08:15:42'));
+        const { main } = await import('../../src/index.js');
+        await main();
+
+        const slot = istToUtc('2026-09-23T08:00:00').getTime();
+        for (const key of ['due-step-aggregators', 'due-step-api-fallback']) {
+          const call = markCatchUpCadenceRanMock.mock.calls.find((c) => c[1] === key);
+          expect(call, key).toBeDefined();
+          expect((call![3] as Date).getTime(), key).toBe(slot);
+        }
+      });
     });
 
     it('never calls the legacy unconditional per-source blocks (NSE/BSE/MC/CG/GMP/fallback) directly on "all"', async () => {
