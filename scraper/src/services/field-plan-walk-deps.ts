@@ -56,6 +56,11 @@ import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator
 import type { FieldFetcher, FieldPlanWalkOrchestrator } from './field-plan-walk.js';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import { createHash } from 'node:crypto';
+import {
+  buildFieldPlanIpoGapKeys,
+  type FieldPlanGapKeySource,
+  type GapKeyDocument,
+} from './field-plan-gap-keys.js';
 import { buildDocFetcher, DOC_READABLE_TABLES, type DocFetcherDeps } from './field-plan-walk-doc-fetcher.js';
 import { buildBseFetcher, BseFieldFetcherState, BSE_SERVEABLE_FIELDS } from './field-plan-walk-bse-fetcher.js';
 import { buildNseFetcher, NseFieldFetcherState, NSE_SERVEABLE_FIELDS } from './field-plan-walk-nse-fetcher.js';
@@ -216,32 +221,47 @@ export function fieldPlanWalkHasFetchers(
 }
 
 /**
- * #884 review round 1 (MAJOR-1/2): the key a gap row is recorded under and
- * re-offered only when it changes. Three parts, each the thing whose change
- * can turn a gap into an answer:
- *   - `m<manifest version>` — a documentType, rank or capability edit
- *     (§2.3: `manifest_version` exists "so the plan is reconciled when the
- *     manifest changes");
- *   - `f<fingerprint>` — fetcher coverage: which sources have a fetcher,
- *     which fields each exchange/aggregator adapter maps, which tables DOC
- *     can read (a new mapping is a code change with no manifest bump);
- *   - `x<extractor version>` — a NO_DOCUMENT_PROVENANCE row is an extractor
- *     gap; `EXTRACTOR_VERSION` is the repo's one re-extraction trigger.
- * Passed in rather than imported so this module does not load the extractor.
+ * #884: the fetcher-coverage part of the gap key — which sources have a
+ * fetcher, which fields each exchange/aggregator adapter maps, which tables
+ * DOC can read. A new mapping is a code change with no manifest edit, and it
+ * must reopen the NO_MAPPING / NO_FETCHER / COLUMN_READ_NOT_IMPLEMENTED rows
+ * it fixes.
  */
-export function buildFieldPlanGapKey(params: {
-  fetchers: Record<string, FieldFetcher>;
-  extractorVersion: string;
-  manifestVersion?: number;
-}): string {
+export function fieldPlanCoverageFingerprint(fetchers: Record<string, FieldFetcher>): string {
   const coverage = [
-    `fetchers=${Object.keys(params.fetchers).sort().join(',')}`,
+    `fetchers=${Object.keys(fetchers).sort().join(',')}`,
     `BSE=${[...BSE_SERVEABLE_FIELDS].sort().join(',')}`,
     `NSE=${[...NSE_SERVEABLE_FIELDS.keys()].sort().join(',')}`,
     `CHITTORGARH=${[...CHITTORGARH_SERVEABLE_FIELDS].sort().join(',')}`,
     `DOC=${[...DOC_READABLE_TABLES].sort().join(',')}`,
   ].join('|');
-  const fingerprint = createHash('sha256').update(coverage).digest('hex').slice(0, 12);
-  const manifestVersion = params.manifestVersion ?? loadFieldManifest().version;
-  return `m${manifestVersion}|f${fingerprint}|x${params.extractorVersion}`;
+  return createHash('sha256').update(coverage).digest('hex').slice(0, 12);
+}
+
+/**
+ * #884 review round 2: the live gap-key source, built once per cycle. Per IPO
+ * it reads that IPO's documents (the same `DocumentRepository.findByIPO` the
+ * DOC fetcher reads) and derives per-field keys from the field's own manifest
+ * entry (`buildFieldPlanIpoGapKeys`). Extractor version passed in so this
+ * module does not load the extractor.
+ */
+export function buildFieldPlanGapKeySource(params: {
+  fetchers: Record<string, FieldFetcher>;
+  extractorVersion: string;
+  redis?: ReturnType<typeof getRedisClient>;
+}): FieldPlanGapKeySource {
+  const coverageFingerprint = fieldPlanCoverageFingerprint(params.fetchers);
+  const manifestFields = loadFieldManifest().fields;
+  const documentRepository = new DocumentRepository(db as never, (params.redis ?? getRedisClient()) as never);
+  return {
+    async forIpo(ipoId: string) {
+      const documents = (await documentRepository.findByIPO(ipoId)) as unknown as GapKeyDocument[];
+      return buildFieldPlanIpoGapKeys({
+        manifestFields: manifestFields as never,
+        coverageFingerprint,
+        extractorVersion: params.extractorVersion,
+        documents,
+      });
+    },
+  };
 }

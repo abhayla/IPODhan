@@ -15,6 +15,11 @@ import {
 import { resolveFieldSourcePolicy, policyOriginString } from '../../src/config/field-source-policy';
 import { resolveIpoTypeKey } from '../../src/services/field-plan-generator';
 import { loadFieldManifest } from '../../src/config/field-manifest-loader';
+import {
+  buildFieldPlanIpoGapKeys,
+  fieldPlanClaimGapKeys,
+  fieldPlanGapKeyFor,
+} from '../../src/services/field-plan-gap-keys';
 
 /**
  * Item 5 slice s3 -- the repository that claims a due plan row and writes an
@@ -1484,6 +1489,18 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     const PROVENANCE_CAUSE =
       'rank1:DOC:CHECK_FAILED:no document provenance for faceValue on RHP (extractor gap or field absent) — not retired [gap:NO_DOCUMENT_PROVENANCE]';
 
+    // Review round 2: the claim takes the CURRENT keys per field (`table.field`).
+    const allKeys = (k: string) => ({ 'ipo_details.faceValue': [k], 'ipo_details.isin': [k] });
+    const COV = '0123456789ab';
+    const XV = 'extract_filing.py@2026-09-03';
+    const entry = (documentType?: string) => ({
+      rank: { MAINBOARD: ['DOC', 'NSE'] },
+      capability: { DOC: { capable: true }, NSE: { capable: true } },
+      ...(documentType ? { documentType } : {}),
+    });
+    const buildKeys = (manifestFields: Record<string, unknown>, documents: unknown[] = []) =>
+      buildFieldPlanIpoGapKeys({ manifestFields: manifestFields as never, coverageFingerprint: COV, extractorVersion: XV, documents: documents as never });
+
     async function claimAndRecord(
       id: string,
       opts: { reasonCode: string; cause: string; gapKey?: string; at?: Date }
@@ -1529,16 +1546,16 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
       const id = await seedRow({ state: 'CHECK_FAILED', attempts: 1, lastAttemptAt: earlierSlot });
       await claimAndRecord(id, { reasonCode: 'COVERAGE_GAP', cause: GAP_CAUSE, gapKey: KEY });
 
-      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKey: KEY } as never)).toBeNull();
+      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: allKeys(KEY) } as never)).toBeNull();
       expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay })).toBeNull();
 
       for (const changed of [KEY_MANIFEST, KEY_COVERAGE, KEY_EXTRACTOR]) {
-        const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKey: changed } as never);
+        const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: allKeys(changed) } as never);
         expect(claimed?.id).toBe(id);
         await repo.releaseClaimUnrecorded({ planRowId: id, claimToken: claimed!.claimToken! });
       }
 
-      const reclaimed = await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKey: KEY_MANIFEST } as never);
+      const reclaimed = await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: allKeys(KEY_MANIFEST) } as never);
       expect(reclaimed?.id).toBe(id);
       await repo.recordOutcome({
         planRowId: id,
@@ -1554,7 +1571,53 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
       expect(after.attempts).toBe(1);
       expect(after.cause).toBe(`[gap-key:${KEY_MANIFEST}] ${GAP_CAUSE}`);
       const twoDays = new Date(nextDay.getTime() + 24 * 3_600_000);
-      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: twoDays, gapKey: KEY_MANIFEST } as never)).toBeNull();
+      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: twoDays, gapKeys: allKeys(KEY_MANIFEST) } as never)).toBeNull();
+    });
+
+    it('CORE NEW-1: a manifest CONTENT edit adding a documentType (no version bump) reopens THAT field; an edit to another field does not', async () => {
+      const m0 = { 'ipo_details.faceValue': entry(), 'ipo_details.isin': entry() };
+      const k0 = buildKeys(m0);
+      const id = await seedRow({ state: 'CHECK_FAILED', attempts: 1, lastAttemptAt: earlierSlot });
+      await claimAndRecord(id, {
+        reasonCode: 'COVERAGE_GAP',
+        cause: GAP_CAUSE,
+        gapKey: fieldPlanGapKeyFor(k0, 'ipo_details', 'faceValue', ['NO_DOCUMENT_TYPE'])!,
+      });
+      const claim = (keys: ReturnType<typeof buildKeys>) =>
+        repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: fieldPlanClaimGapKeys(keys) } as never);
+      expect(await claim(k0)).toBeNull();
+      expect(await claim(buildKeys({ ...m0, 'ipo_details.isin': entry('RHP') }))).toBeNull();
+      const claimed = await claim(buildKeys({ ...m0, 'ipo_details.faceValue': entry('RHP') }));
+      expect(claimed?.id).toBe(id);
+      expect((await readRow(id)).attempts).toBe(1);
+    });
+
+    it('CORE NEW-2: a NO_DOCUMENT_PROVENANCE row stamped after the DRHP reopens when the RHP completes (same extractor); a mapping gap on the same IPO does not', async () => {
+      const m = { 'ipo_details.faceValue': entry('RHP'), 'ipo_details.isin': entry('RHP') };
+      const drhp = { id: '00000000-0000-4000-8000-00000000d001', type: 'DRHP', extractionStatus: 'COMPLETED', isActive: true };
+      const rhp = { id: '00000000-0000-4000-8000-00000000d002', type: 'RHP', extractionStatus: 'COMPLETED', isActive: true };
+      const k0 = buildKeys(m, [drhp]);
+      const provenanceId = await seedRow({ state: 'CHECK_FAILED', attempts: 1, lastAttemptAt: earlierSlot });
+      await claimAndRecord(provenanceId, {
+        reasonCode: 'COVERAGE_GAP',
+        cause: PROVENANCE_CAUSE,
+        gapKey: fieldPlanGapKeyFor(k0, 'ipo_details', 'faceValue', ['NO_DOCUMENT_PROVENANCE'])!,
+      });
+      const mappingId = await seedRow({ state: 'CHECK_FAILED', attempts: 1, lastAttemptAt: earlierSlot, fieldName: 'isin' });
+      await claimAndRecord(mappingId, {
+        reasonCode: 'COVERAGE_GAP',
+        cause: GAP_CAUSE,
+        gapKey: fieldPlanGapKeyFor(k0, 'ipo_details', 'isin', ['NO_MAPPING'])!,
+      });
+      const claim = (keys: ReturnType<typeof buildKeys>, excludeIds: string[] = []) =>
+        repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: fieldPlanClaimGapKeys(keys), excludeIds } as never);
+      expect(await claim(k0)).toBeNull();
+      expect(await claim(buildKeys(m, [drhp, { ...rhp, extractionStatus: 'PENDING' }]))).toBeNull();
+      const k1 = buildKeys(m, [drhp, rhp]);
+      const claimed = await claim(k1);
+      expect(claimed?.id).toBe(provenanceId);
+      expect(await claim(k1, [provenanceId])).toBeNull();
+      expect((await readRow(provenanceId)).attempts).toBe(1);
     });
 
     it('MINOR-6: a stamped gap row with NULL last_attempt_at is offered only under a different key', async () => {
@@ -1565,8 +1628,8 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
         reasonCode: 'COVERAGE_GAP',
         cause: `[gap-key:${KEY}] ${GAP_CAUSE}`,
       });
-      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now, gapKey: KEY } as never)).toBeNull();
-      const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now, gapKey: KEY_EXTRACTOR } as never);
+      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now, gapKeys: allKeys(KEY) } as never)).toBeNull();
+      const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now, gapKeys: allKeys(KEY_EXTRACTOR) } as never);
       expect(claimed?.id).toBe(id);
     });
 
@@ -1578,7 +1641,7 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
       });
       const after = await claimAndRecord(id, { reasonCode: 'FAILED_VALIDATION', cause: 'no field result returned' });
       expect(after.attempts).toBe(FIELD_PLAN_RECLAIM_MAX_ATTEMPTS);
-      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKey: KEY_MANIFEST } as never)).toBeNull();
+      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: allKeys(KEY_MANIFEST) } as never)).toBeNull();
     });
 
     it('a genuine CHECK_FAILED is re-asked BEFORE a gap row whose key changed, even when the gap row is older', async () => {
@@ -1597,12 +1660,12 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
         reasonCode: 'FAILED_VALIDATION',
         cause: 'no field result returned',
       });
-      const first = await repo.claimNextDueField({ ipoId: IPO_ID, now, gapKey: KEY_MANIFEST } as never);
+      const first = await repo.claimNextDueField({ ipoId: IPO_ID, now, gapKeys: allKeys(KEY_MANIFEST) } as never);
       expect(first?.id).toBe(genuineId);
       const second = await repo.claimNextDueField({
         ipoId: IPO_ID,
         now,
-        gapKey: KEY_MANIFEST,
+        gapKeys: allKeys(KEY_MANIFEST),
         excludeIds: [genuineId],
       } as never);
       expect(second?.id).toBe(gapId);

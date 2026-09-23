@@ -1990,25 +1990,43 @@ describe('classifyWalkFailures (#884: classified on the structured gap token, a 
   });
 });
 
-describe('walk records a gap under the cycle gap key (#884 review round 1)', () => {
-  const KEY = 'm1|f0123456789ab|xextract_filing.py@2026-09-03';
+describe('walk records a gap under its FIELD gap key (#884 review rounds 1-2)', () => {
+  const PLAIN = 'eaaaaaaaaaaaa|f0123456789ab|xextract_filing.py@2026-09-03';
+  const WITH_DOCS = `${PLAIN}|dbbbbbbbbbbbb`;
+  const source = () => {
+    const forIpo = vi.fn(async () => ({ byField: { 'ipos.issue_size': { plain: PLAIN, withDocuments: WITH_DOCS } } }));
+    return { forIpo };
+  };
   const gapFetcher = (gap: string) => (async () => ({ outcome: 'CHECK_FAILED', reason: 'no mapping', transient: true, gap })) as any;
   const thrower = (async () => {
     throw new Error('socket hang up');
   }) as any;
 
-  it('passes the gap key to the claim, and records it when EVERY rank failed with a gap', async () => {
+  it('resolves keys ONCE per walk, claims with the per-field map, records the plain key for a non-provenance gap', async () => {
     const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: 'GHOST' })]);
+    const gapKeys = source();
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { NSE: gapFetcher('NO_MAPPING'), BSE: gapFetcher('NO_DOCUMENT_TYPE') } as any,
+      gapKeys,
+    } as any);
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+    expect(gapKeys.forIpo).toHaveBeenCalledTimes(1);
+    expect(repo.claimNextDueField.mock.calls[0][0]).toMatchObject({ gapKeys: { 'ipos.issue_size': [PLAIN, WITH_DOCS] } });
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+    expect(repo.recorded[0].gapKey).toBe(PLAIN);
+    expect(repo.recorded[0].cause).toContain('[gap:NO_FETCHER]');
+  });
+
+  it('NEW-2: a NO_DOCUMENT_PROVENANCE rank records the documents variant', async () => {
+    const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: null })]);
     const d = deps({
       fieldPlanRepository: repo as any,
       sourceFetchers: { NSE: gapFetcher('NO_MAPPING'), BSE: gapFetcher('NO_DOCUMENT_PROVENANCE') } as any,
-      gapKey: KEY,
-    });
+      gapKeys: source(),
+    } as any);
     await walkFieldPlanForIPO(IPO_ID, d, openBudget());
-    expect(repo.claimNextDueField.mock.calls[0][0]).toMatchObject({ gapKey: KEY });
-    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
-    expect(repo.recorded[0].gapKey).toBe(KEY);
-    expect(repo.recorded[0].cause).toContain('[gap:NO_FETCHER]');
+    expect(repo.recorded[0].gapKey).toBe(WITH_DOCS);
   });
 
   it('a genuine failure on any rank: no gap key recorded (the attempt is charged)', async () => {
@@ -2016,18 +2034,22 @@ describe('walk records a gap under the cycle gap key (#884 review round 1)', () 
     const d = deps({
       fieldPlanRepository: repo as any,
       sourceFetchers: { NSE: thrower, BSE: gapFetcher('NO_MAPPING') } as any,
-      gapKey: KEY,
-    });
+      gapKeys: source(),
+    } as any);
     await walkFieldPlanForIPO(IPO_ID, d, openBudget());
     expect(repo.recorded[0].state).toBe('CHECK_FAILED');
     expect(repo.recorded[0].gapKey).toBeUndefined();
     expect(repo.recorded[0].cause).toContain('THROWN');
   });
 
-  it('no gap key on the deps: an all-gap row is charged as before (bounded), never left unkeyed', async () => {
-    const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: null, rank3Source: null })]);
-    const d = deps({ fieldPlanRepository: repo as any, sourceFetchers: { NSE: gapFetcher('NO_MAPPING') } as any });
-    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
-    expect(repo.recorded[0].gapKey).toBeUndefined();
+  it('no gap-key source, or one that throws: an all-gap row is charged (bounded), never left unkeyed', async () => {
+    for (const gapKeys of [undefined, { forIpo: vi.fn(async () => { throw new Error('db down'); }) }]) {
+      const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: null, rank3Source: null })]);
+      const d = deps({ fieldPlanRepository: repo as any, sourceFetchers: { NSE: gapFetcher('NO_MAPPING') } as any, gapKeys } as any);
+      await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+      expect(repo.recorded[0].gapKey).toBeUndefined();
+      expect(repo.claimNextDueField.mock.calls[0][0].gapKeys).toBeUndefined();
+    }
   });
 });
+

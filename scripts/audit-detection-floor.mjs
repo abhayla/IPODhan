@@ -36,7 +36,7 @@ import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { istDayIso } from './lib/ist-day.mjs';
-import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isConfigGapAtCapRow } from './lib/field-plan-slot.mjs';
+import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
@@ -1994,6 +1994,47 @@ async function checkPullPlanConfigGapAtCap() {
       (offenders.length ? ` (sample: ${offenders.slice(0, MAX_OFFENDERS).map((r) => `${r.slug ?? r.id}:${r.tableName}.${r.fieldName}`).join('; ')})` : ''));
 }
 
+// #884 review round 2 (MINOR): a gap-stamped plan row is re-asked only when its
+// field's gap key changes, so a gap nobody fixes sits unchanged indefinitely and
+// no other check sees it (it is neither capped nor stuck by the slot rule).
+// Named by table.field with the IPO slugs it holds (signal-ownership R1), one
+// notify per FIELD so thousands of rows on one unmapped field are one line.
+// WARN, not FAIL: the known gaps are listed by the shrink-only baseline in
+// manifest-rank-coverage-gaps.test.ts; this says which of them have been waiting.
+async function checkPullPlanGapStalled() {
+  const title = `no gap-stamped plan row has waited more than ${FIELD_PLAN_GAP_STALLED_DAYS} days for its gap key to change`;
+  let rows;
+  try {
+    rows = await q(
+      `SELECT p.id, i.slug, p.table_name AS "tableName", p.field_name AS "fieldName",
+              p.state::text AS state, p.cause, p.last_attempt_at AS "lastAttemptAt"
+         FROM ipo_field_plan p
+         LEFT JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.state = 'CHECK_FAILED' AND left(p.cause, 9) = '[gap-key:'`
+    );
+  } catch (e) {
+    record('pull_plan_gap_stalled', title, 'UNVERIFIABLE', `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  const now = new Date();
+  const stalled = rows.filter((r) => isStalledGapRow(r, now));
+  const byField = new Map();
+  for (const r of stalled) {
+    const key = `${r.tableName}.${r.fieldName}`;
+    if (!byField.has(key)) byField.set(key, []);
+    byField.get(key).push(r.slug ?? r.id);
+  }
+  const fields = [...byField.entries()].sort((a, b) => b[1].length - a[1].length);
+  for (const [field, ipos] of fields) {
+    notify('pull_plan_gap_stalled', 'P3', field, `gap-stamped plan rows waiting > ${FIELD_PLAN_GAP_STALLED_DAYS} days for a manifest/adapter/extractor/document change`,
+      `${ipos.length} IPO(s): ${ipos.slice(0, MAX_OFFENDERS).join(', ')}${ipos.length > MAX_OFFENDERS ? ', ...' : ''}`);
+  }
+  record('pull_plan_gap_stalled', `${stalled.length} gap row(s) on ${fields.length} field(s) waiting > ${FIELD_PLAN_GAP_STALLED_DAYS} days`,
+    stalled.length === 0 ? 'PASS' : 'WARN',
+    `of ${rows.length} gap-stamped row(s)` +
+      (fields.length ? ` (by field: ${fields.slice(0, MAX_OFFENDERS).map(([f, ipos]) => `${f}=${ipos.length} [${ipos.slice(0, 3).join(', ')}]`).join('; ')})` : ''));
+}
+
 async function checkS_pullPlanStuckReclaim() {
   const twoSlotsAgo = mostRecentFieldPlanSlotBoundary(
     mostRecentFieldPlanSlotBoundary(new Date())
@@ -2744,6 +2785,7 @@ async function main() {
   await checkS_pullPlanRank();
   await checkS_pullPlanStuckReclaim();
   await checkPullPlanConfigGapAtCap();
+  await checkPullPlanGapStalled();
   await checkS_pullOverrides();
   await checkS_pullYield();
   await checkS_pullExhaust();

@@ -245,12 +245,14 @@ export interface ClaimNextDueFieldParams {
   /** Override the staleness window (minutes). Defaults to the constant. */
   staleMinutes?: number;
   /**
-   * #884 review round 1: the CURRENT gap key (`buildFieldPlanGapKey` in the
-   * scraper: manifest version + fetcher coverage + extractor version). A gap
-   * row stamped with a different key is offered; one stamped with this key is
-   * not. Omitted, no gap row is ever offered.
+   * #884 review round 2: the CURRENT gap keys PER FIELD, keyed `table.field`
+   * (the scraper's `fieldPlanClaimGapKeys`: the field's own manifest-entry
+   * content + fetcher coverage + extractor version, and a variant that adds
+   * the IPO's COMPLETED documents in the field's family). A gap row whose
+   * stamped key is none of its field's current keys is offered — including a
+   * row whose field left the manifest. Omitted, no gap row is ever offered.
    */
-  gapKey?: string;
+  gapKeys?: Record<string, readonly string[]>;
   /**
    * #762 (S8) review round 2 CRITICAL fix: row ids this WALK has already
    * settled this pass (`field-plan-walk.ts`'s `settledThisWalk`), excluded
@@ -696,10 +698,8 @@ export class IpoFieldPlanRepository extends BaseRepository {
     const token = randomUUID();
     const ipoId = params.ipoId ?? null;
     const excludeIds = params.excludeIds ?? [];
-    // #884 review round 1: the CURRENT gap key; a gap row stamped with it is not due.
-    const gapKey = params.gapKey ?? null;
-    const gapStampPrefix = gapKey === null ? '' : `${FIELD_PLAN_GAP_KEY_PREFIX}${gapKey}]`;
-    const gapStampPrefixLen = gapStampPrefix.length;
+    // #884 review round 2: the CURRENT gap keys per field; a gap row stamped with one of its field's is not due.
+    const gapKeysJson = params.gapKeys === undefined ? null : JSON.stringify(params.gapKeys);
     // Drizzle's `sql` tagged template SPREADS a plain JS array interpolated
     // into it as a comma-separated parameter list (`$1, $2, ...`), never as
     // a single array-typed bind — `${excludeIds}::uuid[]` therefore compiled
@@ -866,9 +866,11 @@ export class IpoFieldPlanRepository extends BaseRepository {
         // re-asking it under the SAME key gives the same answer every slot —
         // 6,220 staging rows re-asked forever, because claims are per-IPO and
         // a lower priority only orders rows WITHIN one IPO's walk. It is
-        // claimable again ONLY when the current gap key (manifest version +
-        // fetcher coverage + extractor version) differs from the one it was
-        // recorded under — §2.3 "reconciled when the manifest changes", OD-78
+        // claimable again ONLY when its field's current gap keys (review
+        // round 2: the field's own manifest-entry content + fetcher coverage
+        // + extractor version, and for a NO_DOCUMENT_PROVENANCE row the IPO's
+        // COMPLETED documents in the field's family) no longer include the
+        // one it was recorded under — §2.3 "reconciled when the manifest changes", OD-78
         // "same cause, same outcome, no retry". No slot condition: the key
         // change IS the event. No key supplied → gap rows are never offered.
         // `last_attempt_at` NULL or not (MINOR-6): the key alone decides.
@@ -876,8 +878,11 @@ export class IpoFieldPlanRepository extends BaseRepository {
               SELECT id, last_attempt_at FROM ipo_field_plan
                WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
                  AND ${gapStampedSql()}
-                 AND ${gapKey}::text IS NOT NULL
-                 AND left(cause, ${gapStampPrefixLen}) <> ${gapStampPrefix}${legFilter()}
+                 AND ${gapKeysJson}::jsonb IS NOT NULL
+                 AND left(cause, strpos(cause, ']')) NOT IN (
+                       SELECT ${FIELD_PLAN_GAP_KEY_PREFIX}::text || k || ']'
+                         FROM jsonb_array_elements_text((${gapKeysJson}::jsonb) -> (table_name || '.' || field_name)) AS k
+                     )${legFilter()}
                ORDER BY last_attempt_at ASC NULLS FIRST LIMIT 1 FOR UPDATE SKIP LOCKED
             ) cf_gap_key_changed`,
         // verify_due_leg REMOVED in S2 — verify_state/verify_due_at no longer exist on

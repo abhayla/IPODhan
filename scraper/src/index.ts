@@ -49,7 +49,7 @@ import { walkFieldPlanForIPO } from './services/field-plan-walk.js';
 import {
   buildFieldPlanWalkOrchestrator,
   buildFieldPlanWalkFetchers,
-  buildFieldPlanGapKey,
+  buildFieldPlanGapKeySource,
   buildFieldPlanWalkWitnessVerdictWriter,
 } from './services/field-plan-walk-deps.js';
 import { createFieldSourceOverridesReader } from './config/field-source-overrides-reader.js';
@@ -1675,7 +1675,7 @@ async function resourceClosedIpo(ipoId: string): Promise<{
       orchestrator: buildFieldPlanWalkOrchestrator(),
       sourceFetchers,
       // #884 / OD-78: a gap row is not re-asked under the same key (same cause, same outcome).
-      gapKey: buildFieldPlanGapKey({ fetchers: sourceFetchers, extractorVersion: EXTRACTOR_VERSION }),
+      gapKeys: buildFieldPlanGapKeySource({ fetchers: sourceFetchers, extractorVersion: EXTRACTOR_VERSION }),
       ipoRepository: new IPORepository(db as never, redis as never) as never,
       overrides: createFieldSourceOverridesReader(new FieldSourceOverridesRepository({ db: db as never })),
       trackWitnessVerdict: buildFieldPlanWalkWitnessVerdictWriter(),

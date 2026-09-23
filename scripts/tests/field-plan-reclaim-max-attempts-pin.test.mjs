@@ -19,6 +19,8 @@ import {
   FIELD_PLAN_GAP_KEY_PREFIX,
   FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS,
   isConfigGapAtCapRow,
+  isStalledGapRow,
+  FIELD_PLAN_GAP_STALLED_DAYS,
 } from '../lib/field-plan-slot.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -129,4 +131,17 @@ test('(#884 pin) FIELD_PLAN_GAP_KEY_PREFIX (TS) equals the detection floor mirro
   const m = readFileSync(CONFIG_GAP_TS_PATH, 'utf8').match(/export const FIELD_PLAN_GAP_KEY_PREFIX = '([^']*)';/);
   assert.ok(m, 'FIELD_PLAN_GAP_KEY_PREFIX not found in the real TS source');
   assert.equal(FIELD_PLAN_GAP_KEY_PREFIX, m[1]);
+});
+
+test('(#884 review round 2 MINOR) isStalledGapRow: a gap-stamped row untouched for more than N days, nothing else', () => {
+  assert.equal(FIELD_PLAN_GAP_STALLED_DAYS, 14);
+  const now = new Date('2026-09-23T00:00:00.000Z');
+  const old = new Date(now.getTime() - 15 * 86_400_000);
+  const recent = new Date(now.getTime() - 13 * 86_400_000);
+  const stamped = '[gap-key:eabc|fdef|xv1] rank1:DOC:CHECK_FAILED:x [gap:NO_MAPPING]';
+  assert.equal(isStalledGapRow({ state: 'CHECK_FAILED', cause: stamped, lastAttemptAt: old }, now), true);
+  assert.equal(isStalledGapRow({ state: 'CHECK_FAILED', cause: stamped, lastAttemptAt: recent }, now), false);
+  assert.equal(isStalledGapRow({ state: 'CHECK_FAILED', cause: 'rank1:NSE:THROWN:ETIMEDOUT', lastAttemptAt: old }, now), false);
+  assert.equal(isStalledGapRow({ state: 'SUPPLIED', cause: stamped, lastAttemptAt: old }, now), false);
+  assert.equal(isStalledGapRow({ state: 'CHECK_FAILED', cause: stamped, lastAttemptAt: null }, now), true);
 });

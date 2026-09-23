@@ -86,6 +86,24 @@ export function isConfigGapAtCapRow(row) {
 }
 
 /**
+ * #884 review round 2 (MINOR): a gap row is re-asked only when its field's gap
+ * key changes (manifest entry content, fetcher coverage, extractor version,
+ * or — for NO_DOCUMENT_PROVENANCE — a new COMPLETED document). A row whose key
+ * has not changed for this long has no fix in flight for it; the floor names
+ * those rows by IPO and field. 14 days: two weekly cycles with no manifest
+ * edit, adapter change, extractor bump or new document touching the field.
+ */
+export const FIELD_PLAN_GAP_STALLED_DAYS = 14;
+
+export function isStalledGapRow(row, now = new Date()) {
+  if (row.state !== 'CHECK_FAILED') return false;
+  if (!(row.cause ?? '').startsWith(FIELD_PLAN_GAP_KEY_PREFIX)) return false;
+  if (row.lastAttemptAt == null) return true;
+  const at = row.lastAttemptAt instanceof Date ? row.lastAttemptAt : new Date(row.lastAttemptAt);
+  return now.getTime() - at.getTime() > FIELD_PLAN_GAP_STALLED_DAYS * 86_400_000;
+}
+
+/**
  * The pure "is this plan row stuck" predicate checkS_pullPlanStuckReclaim
  * (audit-detection-floor.mjs) filters for, extracted so it is unit-testable
  * without a database (review round 1 F6: the check shipped with NO test —

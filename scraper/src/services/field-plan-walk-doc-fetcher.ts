@@ -44,12 +44,22 @@ import type { DocumentRepository } from '@ipodhan/shared';
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 
 /** Which document-type family answers a manifest field's DOC rank. */
-const DOC_TYPE_FAMILY: Record<string, ReadonlyArray<string>> = {
+export const DOC_TYPE_FAMILY: Record<string, ReadonlyArray<string>> = {
   PRICE_BAND_AD: ['PRICE_BAND_AD'],
   RHP: ['RHP', 'DRHP', 'PROSPECTUS'],
   DRHP: ['DRHP'],
   PROSPECTUS: ['PROSPECTUS', 'RHP'],
 };
+
+/**
+ * The document types whose COMPLETED extraction can answer a field whose
+ * manifest `documentType` is `documentType`. Shared with the #884 gap key
+ * (`field-plan-gap-keys.ts`): a new COMPLETED document in this family is the
+ * event that reopens a NO_DOCUMENT_PROVENANCE row.
+ */
+export function docTypeFamily(documentType: string): ReadonlyArray<string> {
+  return DOC_TYPE_FAMILY[documentType] ?? [documentType];
+}
 
 /**
  * `field_sources.table_name` uses the schema's snake_case table name
@@ -123,7 +133,7 @@ function hasCompletedDocument(
  */
 /**
  * #884: the tables `readColumnValue` can read. Part of the fetcher-coverage
- * fingerprint in `buildFieldPlanGapKey` — adding a table here changes the gap
+ * fingerprint in `fieldPlanCoverageFingerprint` — adding a table here changes the gap
  * key, which re-offers every COLUMN_READ_NOT_IMPLEMENTED row.
  */
 export const DOC_READABLE_TABLES: readonly string[] = ['ipos', 'ipo_details'];
@@ -182,7 +192,7 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
       };
     }
 
-    const family = DOC_TYPE_FAMILY[manifestDocType] ?? [manifestDocType];
+    const family = docTypeFamily(manifestDocType);
 
     let docs: MinimalDocument[];
     try {
