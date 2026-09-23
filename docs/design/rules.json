@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-22T19:23:04.336Z",
+  "generated_at": "2026-09-23T03:17:14.723Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 169,
+    "live": 176,
     "retired": 21
   },
-  "next_id": 191,
+  "next_id": 198,
   "rules": [
     {
       "id": "R-151",
@@ -537,6 +537,69 @@
       "kind": "prose",
       "text": "So the threshold is configuration with a dated reason, never a constant in code (OD-51), and the rule is written to fail safely: a draft past the period is frozen only when no RHP has arrived, so a relaxation nobody noticed costs a stale notice, never a deleted row.",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-191",
+      "hash": "efdbe0ae0feb",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "table",
+      "text": "S1: a page-status suffix lands in the slug — rays-of-belief-ltd (NSE, Rs 74.99 cr) and rays-of-belief-ltd-o (NSE+BSE, Rs 125 cr) both live on 2026-09-23; G.V. Electricals, H.R. Hygiene, Shree Balaji (Mala) Textiles were 5 rows each until 2026-08-22 — strip -o/-p/-lt/-ct before matching (OD-68)",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-192",
+      "hash": "c8661eacf41c",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "table",
+      "text": "S2: two sources spell the name differently — ic-electricals-co-ltd / -company-ltd, dhanwel-hybird / -hybrid, atharva-poly-plast / -polyplast, ARCIL co / company — bind by OD-34's identifiers; a name match needs the same open date AND price band; otherwise hold for review (OD-68)",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-193",
+      "hash": "a5f767b66090",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "table",
+      "text": "S3: a page title stored as the name — purple-style-labs-ltd-pernia-s-pop-up-studio-ipo, national-stock-exchange-of-india-ltd-nse-ipo — strip title text on write; rename with a slug redirect (OD-68)",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-194",
+      "hash": "500046ceb06a",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "table",
+      "text": "S4: the same company files again — Polymatech (DRHP Oct 2023, withdrawn 2024, refiling for 2026); boAt / Imagine Marketing (DRHP 2022, abandoned, refiled 2025) — OD-35 unchanged: withdrawn or lapsed = new row; returned-then-refiled = same row (OD-71)",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-195",
+      "hash": "1e65d593484c",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "table",
+      "text": "S5: a listed company's later event — OFS, TENDER, RIGHTS, BUYBACK rows; SME-to-mainboard migrations — own row of its own type; a migration creates no row (OD-70)",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-196",
+      "hash": "e3a49de886e3",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "table",
+      "text": "S6: different companies, similar names — Himalayan Solar / Himalaya Nutravedics; Technocraft Ventures / Technocrats Plasma — never joined on name; the merge tool refuses differing identifiers or open dates (OD-69)",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-197",
+      "hash": "f98de3ccd3a9",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "table",
+      "text": "S7: one IPO on both exchanges — 100 of 307 IPOs dual-listed; 99 correctly one row, 1 split (Rays of Belief) — each exchange writes into the one bound row (OD-68)",
+      "first_seen": "2026-09-23",
       "retired": false
     },
     {
