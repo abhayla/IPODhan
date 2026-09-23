@@ -404,6 +404,10 @@ export async function recordSourceKeys(
     );
   }
   const existing = await findSourceKeysForIpo(tx, ipoId);
+  // A record one of whose keys is already on this row was bound BY that key (the read rule tries
+  // keys first), so its other keys arrive via KEY, not via the fallback step the caller inferred.
+  const boundViaForNew: SourceKeyBoundVia =
+    opts.boundVia !== 'CREATE' && hits.some((h) => h.ipoId === ipoId) ? 'KEY' : opts.boundVia;
 
   for (const ref of norm) {
     const same = hits.find((h) => h.ipoId === ipoId && h.source === ref.source && h.keyType === ref.keyType && h.keyValue === ref.keyValue);
@@ -440,7 +444,7 @@ export async function recordSourceKeys(
         state: 'ACTIVE',
         attrs: ref.attrs ?? null,
         recordOpenDate: toDay(ref.recordOpenDate),
-        boundVia: opts.boundVia,
+        boundVia: boundViaForNew,
         boundBy: opts.boundBy.slice(0, 64),
       })
       .returning({ id: ipoSourceKeys.id });

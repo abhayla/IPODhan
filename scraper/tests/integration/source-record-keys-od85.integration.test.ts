@@ -48,7 +48,7 @@ const NAMES = [
   'Dhanwel Hybrid Seeds Ltd', 'Dhanwel Hybird Seeds Ltd', 'IC Electricals Company Ltd', 'Hero Motors Ltd',
   'Rays of Belief Ltd', 'Himalayan Solar Ltd', 'Himalaya Nutravedics India Ltd', 'OD85 Coalx Ltd',
   'OD85 Newco Ltd', 'OD85 Reuse Ltd', 'OD85 Merge Probe Ltd', 'OD85 Race Probe Ltd', 'OD85 Race Probe Limited',
-  'OD85 Alphabind Tools Ltd', 'OD85 Zetaworks Pumps Ltd', 'OD85 Plain Symbol Ltd',
+  'OD85 Alphabind Tools Ltd', 'OD85 Zetaworks Pumps Ltd', 'OD85 Plain Symbol Ltd', 'OD85 Sibling Key Ltd',
 ];
 
 let pool: Pool | null = null;
@@ -422,5 +422,13 @@ describe.skipIf(!DATABASE_URL)('OD-85 source record keys on the real resolver + 
     const settled = await Promise.allSettled([ingest(rec), ingest(rec)]);
     expect(settled.some((s) => s.status === 'fulfilled' && s.value === 'bound')).toBe(true);
     expect((await keysOf(row.id)).map((k) => [k.keyValue, k.state])).toEqual([['8878', 'ACTIVE']]);
+  });
+
+  it('bound_via: a key recorded with the row is CREATE; a sibling key of a record bound by its own key is KEY', async () => {
+    const rec = (keys: SourceKeyRef[]): Rec => ({ companyName: 'OD85 Sibling Key Ltd', openDate: '2026-11-10', priceRangeMin: 44, segment: 'SME', keys });
+    expect(await ingest(rec([{ source: 'CHITTORGARH', keyType: 'CG_PAGE_ID', keyValue: '9001' }]))).toBe('created');
+    expect(await ingest(rec([{ source: 'CHITTORGARH', keyType: 'CG_PAGE_ID', keyValue: '9001' }, { source: 'BSE', keyType: 'BSE_IPO_NO', keyValue: '9002' }]))).toBe('bound');
+    const [row] = await rowsNamed('OD85 Sibling Key Ltd');
+    expect(Object.fromEntries((await keysOf(row.id)).map((k) => [k.keyValue, k.boundVia]))).toEqual({ '9001': 'CREATE', '9002': 'KEY' });
   });
 });
