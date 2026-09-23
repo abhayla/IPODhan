@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-23T03:17:14.723Z",
+  "generated_at": "2026-09-23T03:47:01.914Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 176,
-    "retired": 21
+    "live": 177,
+    "retired": 22
   },
-  "next_id": 198,
+  "next_id": 200,
   "rules": [
     {
       "id": "R-151",
@@ -891,6 +891,15 @@
       "retired": false
     },
     {
+      "id": "R-198",
+      "hash": "8a0bd0ce1b15",
+      "section": "2.6 When all three sources fail",
+      "kind": "prose",
+      "text": "Owner decision, 2026-09-08: confirmed, with a staleness marker on the page. Superseded 2026-09-23 by OD-72: the time-threshold marker is retired, because after OD-65 a settled value is never re-confirmed by design, so age says nothing about correctness; the page states the source and read date instead. A value we could not reconfirm keeps serving, but once the gap passes the threshold the page shows last confirmed on <date> rather than presenting it as current. That gives the honesty of blanking without the destruction — nothing vanishes, and nothing pretends to be fresher than it is.",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
       "id": "R-079",
       "hash": "52fab110146e",
       "section": "2.8 When the plan itself is wrong",
@@ -936,12 +945,12 @@
       "retired": false
     },
     {
-      "id": "R-165",
-      "hash": "a7effbf6b26e",
+      "id": "R-199",
+      "hash": "ba8c3ee25482",
       "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
       "kind": "prose",
-      "text": "- Where the words come from: chosen_source, chosen_document_type and the confirmation date on the plan row (§2.3), read through FieldSourcesRepository.getIPOSourceMap(ipoId) (web/lib/repositories/field-sources-repository.ts:143) — one query per page, not one per field. - A stale value says so, in grey: \"last confirmed 28 August 2026, being rechecked\". That is the §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never blanked. - A conflict stays admin-only. An unresolved disagreement (§3.4) is not shown to the public. A reader cannot act on \"two sources disagree\"; showing it converts our internal uncertainty into their doubt about every other number on the page. - The cache key it lives under, and the one it must NOT use: the detail page's real key is getIPOBySlugKey — that is what IPORepository.findBySlug caches under (web/lib/repositories/ipo-repository.ts:389). getIPODetailKey exists in web/lib/cache/cache-keys.ts:47 and looks like the obvious choice, but its only caller is an admin edit route (web/app/api/admin/ipos/ — the per-id route handler, line 298) invalidating a key nothing populates. A revalidate that drops the wrong key is a correction that never reaches the page, so the design names the key rather than the function that sounds right. TTL is CacheTTL.IPO_DETAIL = 900 seconds (web/lib/cache/cache-keys.ts:16); the provenance line is part of the page payload, not a second fetch.",
-      "first_seen": "2026-09-09",
+      "text": "- Where the words come from: chosen_source, chosen_document_type and the confirmation date on the plan row (§2.3), read through FieldSourcesRepository.getIPOSourceMap(ipoId) (web/lib/repositories/field-sources-repository.ts:143) — one query per page, not one per field. - RETIRED by OD-72 (2026-09-23) — kept here as history: ~~A stale value says so, in grey:~~ \"last confirmed 28 August 2026, being rechecked\". That is the §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never blanked. - A conflict stays admin-only. An unresolved disagreement (§3.4) is not shown to the public. A reader cannot act on \"two sources disagree\"; showing it converts our internal uncertainty into their doubt about every other number on the page. - The cache key it lives under, and the one it must NOT use: the detail page's real key is getIPOBySlugKey — that is what IPORepository.findBySlug caches under (web/lib/repositories/ipo-repository.ts:389). getIPODetailKey exists in web/lib/cache/cache-keys.ts:47 and looks like the obvious choice, but its only caller is an admin edit route (web/app/api/admin/ipos/ — the per-id route handler, line 298) invalidating a key nothing populates. A revalidate that drops the wrong key is a correction that never reaches the page, so the design names the key rather than the function that sounds right. TTL is CacheTTL.IPO_DETAIL = 900 seconds (web/lib/cache/cache-keys.ts:16); the provenance line is part of the page payload, not a second fetch.",
+      "first_seen": "2026-09-23",
       "retired": false
     },
     {
@@ -1591,6 +1600,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-165",
+      "hash": "a7effbf6b26e",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "prose",
+      "text": "- Where the words come from: chosen_source, chosen_document_type and the confirmation date on the plan row (§2.3), read through FieldSourcesRepository.getIPOSourceMap(ipoId) (web/lib/repositories/field-sources-repository.ts:143) — one query per page, not one per field. - A stale value says so, in grey: \"last confirmed 28 August 2026, being rechecked\". That is the §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never blanked. - A conflict stays admin-only. An unresolved disagreement (§3.4) is not shown to the public. A reader cannot act on \"two sources disagree\"; showing it converts our internal uncertainty into their doubt about every other number on the page. - The cache key it lives under, and the one it must NOT use: the detail page's real key is getIPOBySlugKey — that is what IPORepository.findBySlug caches under (web/lib/repositories/ipo-repository.ts:389). getIPODetailKey exists in web/lib/cache/cache-keys.ts:47 and looks like the obvious choice, but its only caller is an admin edit route (web/app/api/admin/ipos/ — the per-id route handler, line 298) invalidating a key nothing populates. A revalidate that drops the wrong key is a correction that never reaches the page, so the design names the key rather than the function that sounds right. TTL is CacheTTL.IPO_DETAIL = 900 seconds (web/lib/cache/cache-keys.ts:16); the provenance line is part of the page payload, not a second fetch.",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-095",
