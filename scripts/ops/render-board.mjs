@@ -252,12 +252,19 @@ for (const k of ['headline', 'release', 'gates', 'reader_impact', 'chain', 'chan
 // source markdown returned 31 verdicts for 29 items for exactly this reason.
 const completion = planSections.match(/<section class="status" id="completion">[\s\S]*?<\/section>/);
 need(completion, 'generated file has no completion section');
-const itemRows = (completion[0].match(/<tr>[\s\S]*?<\/tr>/g) || []).filter((r) => r.includes('<td class="s">'));
+const itemRows = (completion[0].match(/<tr[\s\S]*?<\/tr>/g) || []).filter((r) => r.includes('<td class="s">'));
 const verdicts = { BUILT: 0, PARTIAL: 0, 'NOT BUILT': 0 };
+// Proven-on-staging is a SEPARATE count from the verdict: an item can be
+// BUILT with no staging proof recorded yet. Read per row from the
+// `data-staged="1"` marker build-plan-board.mjs writes when that item's own
+// evidence cell contains the literal text `Staging proof:` — never inferred
+// from the verdict, never typed here.
+let stagingProven = 0;
 for (const r of itemRows) {
   const v = r.match(/<span class="pill \w+">(BUILT|PARTIAL|NOT BUILT)<\/span>/);
   need(v, `build-item row carries no verdict: ${r.slice(0, 90)}`);
   verdicts[v[1]] += 1;
+  if (r.includes('data-staged="1"')) stagingProven += 1;
 }
 const built = verdicts.BUILT;
 const partial = verdicts.PARTIAL;
@@ -265,6 +272,9 @@ const notBuilt = verdicts['NOT BUILT'];
 const itemsTotal = itemRows.length;
 need(itemsTotal === 29, `parsed ${itemsTotal} build items, expected 29`);
 need(built + partial + notBuilt === itemsTotal, 'verdict counts do not sum to the row count');
+const stagingProvenText = stagingProven === 0
+  ? 'unmeasured &mdash; no item yet records a <code>Staging proof:</code> line in its evidence (docs/design/pull-model-completion-state.md)'
+  : `${stagingProven} of ${itemsTotal} items`;
 
 // Owner-decision (OD) count and machine-verified count are parsed the same
 // way, per row, from the generated decisions section — never typed. The
@@ -315,7 +325,7 @@ const meter = [
 const vitals = `
 <div class="vitals">
  <div class="bad"><span class="k">Production</span><span class="v">${prodAgeDays === null ? 'unmeasured' : `${prodAgeDays} days old`}</span><span class="sub">Serving <b>${shown('prod.sha')}</b> since ${shown('prod.since', istStamp)}. ${migrationLine('prod')} ${esc(prodEnv.note)}</span></div>
- <div class="warn"><span class="k">Staging &mdash; the release gate</span><span class="v">${built} / ${itemsTotal} built</span><span class="sub">${built} built &middot; ${partial} partial &middot; ${notBuilt} not built. The bar for a production window is <b>feature-complete here</b>, not a green build.</span>
+ <div class="warn"><span class="k">Staging &mdash; the release gate</span><span class="v">${built} / ${itemsTotal} built on main</span><span class="sub">${built} built &middot; ${partial} partial &middot; ${notBuilt} not built (code on <b>main</b>). Proven on staging: <b>${stagingProvenText}</b>. The bar for a production window is <b>feature-complete AND proven on staging</b>, not a green build on main.</span>
   <div class="meter" aria-hidden="true">${meter}</div></div>
  <div class="ok"><span class="k">Stage 3 slices</span><span class="v">${landedSlices} landed</span><span class="sub">${landedSlices} of ${slices.length} rows landed. ${esc(data.now.Blocked ? 'See blocked, below.' : '')}</span></div>
  <div class="acc"><span class="k">Next up</span><span class="v">${data.chain[0].id}</span><span class="sub">${esc(data.chain[0].what)} <span class="mute">(${esc(data.chain[0].note)})</span></span></div>

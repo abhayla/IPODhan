@@ -216,10 +216,20 @@ function renderSummary(items, decisions, fields, stamp) {
 </section>`;
 }
 
+// A per-item "proven on staging" marker, read from the item's OWN evidence
+// text — never typed elsewhere and never inferred from the verdict. An item
+// records it by putting the literal text `Staging proof:` in its evidence
+// cell in pull-model-completion-state.md, followed by the citation (a run,
+// a PR, a script + result). No item recording one yet is not an error — the
+// count is simply 0, and render-board.mjs shows that as `unmeasured` rather
+// than inventing a number.
+const STAGING_PROOF = /Staging proof:/;
+
 function renderItems(items) {
   const trs = items.map((i) => {
     const cls = VERDICT_PILL[i.verdict];
-    return `<tr><td class="s">${i.id}</td><td>${mdToHtml(i.what)}</td><td>${pill(cls, i.verdict)}</td><td>${mdToHtml(i.evidence)}</td></tr>`;
+    const staged = STAGING_PROOF.test(i.evidence) ? ' data-staged="1"' : '';
+    return `<tr${staged}><td class="s">${i.id}</td><td>${mdToHtml(i.what)}</td><td>${pill(cls, i.verdict)}</td><td>${mdToHtml(i.evidence)}</td></tr>`;
   }).join('');
   return `
 <section class="status" id="completion">
