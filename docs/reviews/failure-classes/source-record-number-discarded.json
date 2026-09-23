@@ -1,0 +1,10 @@
+{
+  "class_id": "source record number discarded",
+  "feature": "scraper/src/scrapers/bse-api-scraper.ts (fetchBSEDetail) and any scraper fetching by a source's own stable record number",
+  "symptom": "a scraper fetches a source record BY that source's own stable identifier (its record number / IPO_NO / internal id), but discards the identifier instead of persisting it, so on every subsequent cycle the same record is re-matched by NAME instead of by its stable id — which is slower, fragile to spelling drift, and loses the one field that would make a relaunch or a postponement recognisable as the same source record.",
+  "first_seen": "2026-09-23: BSE's IPO_NO is the param the scraper's own fetch call uses (`bse-api-scraper.ts:449 fetchBSEDetail`) but `bse_scrip_code` is empty on 0 of 326 rows measured — 296/326 rows have `symbol` filled (196 CHITTORGARH, 43 BSE, 43 NSE, 10 MONEYCONTROL, 2 ADMIN) and none carry BSE's own IPO_NO or ScripCode.",
+  "fix_prs": "none yet",
+  "detection_check": "none",
+  "status": "unguarded",
+  "spec_ref": []
+}

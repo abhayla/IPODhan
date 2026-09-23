@@ -1,0 +1,10 @@
+{
+  "class_id": "stale dates after relaunch",
+  "feature": "data-consolidation (ipos.open_date / close_date write path) for a postponed-then-relaunched issue",
+  "symptom": "an IPO that was postponed and later relaunched with new dates keeps the FIRST attempt's open/close dates stored, because the relaunch arrives under a changed source record number (see `source-record-number-discarded`) and is not recognised as an update to the existing row, so the new dates never overwrite the stale ones.",
+  "first_seen": "2026-09-23: dhanwel-hybird-seeds-ltd close date stored as 2026-06-29 on staging (the postponed June attempt), while the live relaunch ran 19-21 Aug 2026 per BSE IPO_NO 7900 and Chittorgarh page 2846.",
+  "fix_prs": "none yet",
+  "detection_check": "none",
+  "status": "unguarded",
+  "spec_ref": ["§2.3.3.2"]
+}
