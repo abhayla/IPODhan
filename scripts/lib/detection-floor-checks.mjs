@@ -1357,3 +1357,45 @@ export function findClosedIpoDoneWithoutWalk(rows) {
       (Number(r.planRows) === 0 || Number(r.unsettledRows) > 0)
   );
 }
+
+// i_source_key_conflict (OD-85, §2.3.3.2 "Source record keys"). `keys`: rows of ipo_source_keys in
+// state ACTIVE or DISPUTED, joined to their ipo slug: [{ slug, ipoId, source, keyType, value, state,
+// reason?, changedAt }]. Two shapes are a wrong or unresolved bind a human must read: one IPO holding
+// two ACTIVE keys of the same source+type (a supersede that never happened, or a merge that brought
+// two relaunch numbers together), and a key DISPUTED by the CIN/ISIN re-check inside `disputedDays`.
+// (One key on two rows cannot exist: the plain UNIQUE(source,key_type,binding_value) forbids it.)
+// A missing table or an unreadable one is UNVERIFIABLE, never PASS: an absent check is not a clean one.
+export function evaluateSourceKeyConflicts({ keys = [], tableMissing = false, readError = null, now = new Date(), disputedDays = 30 } = {}) {
+  if (tableMissing) {
+    return { status: 'UNVERIFIABLE', detail: 'ipo_source_keys table does not exist on this database - migration 0053 not applied here; nothing checked', doubleActive: [], disputed: [] };
+  }
+  if (readError) {
+    return { status: 'UNVERIFIABLE', detail: `ipo_source_keys not readable: ${readError}`, doubleActive: [], disputed: [] };
+  }
+  const groups = new Map();
+  for (const k of keys) {
+    if (k.state !== 'ACTIVE') continue;
+    const id = `${k.ipoId ?? k.slug}\u0000${k.source}\u0000${k.keyType}`;
+    if (!groups.has(id)) groups.set(id, { slug: k.slug, source: k.source, keyType: k.keyType, values: [] });
+    groups.get(id).values.push(String(k.value));
+  }
+  const doubleActive = [...groups.values()]
+    .filter((g) => g.values.length > 1)
+    .map((g) => ({ ...g, values: g.values.sort().join(',') }))
+    .sort((a, b) => String(a.slug).localeCompare(String(b.slug)));
+  const cutoff = now.getTime() - disputedDays * 86_400_000;
+  const disputed = keys
+    .filter((k) => k.state === 'DISPUTED' && new Date(k.changedAt).getTime() > cutoff)
+    .map((k) => ({ slug: k.slug, source: k.source, keyType: k.keyType, value: String(k.value), reason: k.reason ?? null }))
+    .sort((a, b) => String(a.slug).localeCompare(String(b.slug)));
+  const offenders = [
+    ...doubleActive.map((r) => `${r.slug} two ACTIVE ${r.source} ${r.keyType} (${r.values})`),
+    ...disputed.map((r) => `${r.slug} DISPUTED ${r.source} ${r.keyType} ${r.value}`),
+  ];
+  return {
+    status: offenders.length === 0 ? 'PASS' : 'FAIL',
+    detail: offenders.length === 0 ? `0 double-ACTIVE, 0 DISPUTED in ${disputedDays} days` : offenders.join('; '),
+    doubleActive,
+    disputed,
+  };
+}

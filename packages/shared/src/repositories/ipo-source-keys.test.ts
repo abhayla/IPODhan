@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   normalizeSourceKeyValue,
   nseIssueKeyValue,
@@ -7,7 +7,13 @@ import {
   od83Supersedes,
   normalizeSourceKeyRefs,
   supersedeOlderKeysOnRelaunchMerge,
+  recordSourceKeys,
+  SourceKeyHeldError,
+  SOURCE_KEY_NO_WRITE_ERROR_NAMES,
+  type SourceKeyRef,
 } from './ipo-source-keys';
+import { resolveIpoRow } from './ipo-identity';
+import type { IPORepository } from './ipo-repository';
 import { withSourceKeyLineage, noteSourceKeyBind, sourceKeyLineageFor } from './source-key-lineage';
 import { FieldSourcesRepository } from './field-sources-repository';
 import { REPOINT_TABLES, checkMergeEligibility, assessRelaunch, relaunchException } from '../utils/duplicate-ipo-merge';
@@ -85,6 +91,14 @@ describe('merge tool (OD-85 repoint, OD-86 relaunch exception)', () => {
     const relaunch = assessRelaunch(keep, drop, [{ attrs }], [{ attrs }]);
     expect(checkMergeEligibility({ ...base, relaunch }).eligible).toBe(false);
   });
+  it('the exception is bounded by OD-35: 180 days apart merges, 181 days apart is refused', () => {
+    const relaunch = assessRelaunch(keep, drop, [{ attrs }], [{ attrs: { ...attrs, postponed: true } }]);
+    // 2026-06-23 + 180 days = 2026-12-20; + 181 = 2026-12-21
+    expect(checkMergeEligibility({ ...base, keepOpenDate: '2026-12-20', relaunch })).toEqual({ eligible: true });
+    const r = checkMergeEligibility({ ...base, keepOpenDate: '2026-12-21', relaunch });
+    expect(r.eligible).toBe(false);
+    expect((r as { reason: string }).reason).toMatch(/181 day\(s\) apart.*180-day window/);
+  });
   it('a differing ISIN is still refused under the exception', () => {
     const relaunch = assessRelaunch(keep, drop, [{ attrs }], [{ attrs: { ...attrs, postponed: true } }]);
     const r = checkMergeEligibility({ ...base, relaunch, identifiers: [...base.identifiers, { column: 'isin', keepValue: 'INE1B7I01014', dropValue: 'INE1OTR01013' }] });
@@ -161,5 +175,77 @@ describe('OD-85 write rule wired into FieldSourcesRepository.trackFieldUpdate', 
     });
     await repo.trackFieldUpdate({ ipoId: 'ipo-1', tableName: 'ipos', fieldName: 'closeDate', source: 'BSE' as never });
     expect(inserted.map((v) => v.dataLineage)).toEqual([{ policyOrigin: 'm', sourceKeyIds: ['key-7900'] }, null, null]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Round 2 (Tier A review MAJOR-2 + LOW): a DISPUTED key must not be re-bound to the same wrong row
+// by the fallback order, and a held key write fails loudly. The DB is a fake that returns the
+// row's keys for every select; the real-Postgres proof is the Himalaya two-cycle integration case.
+// ---------------------------------------------------------------------------------------------
+function fakeKeyDb(keyRows: Record<string, unknown>[]) {
+  const inserted: unknown[] = [];
+  const db = {
+    select: () => ({ from: () => ({ where: async () => keyRows }) }),
+    insert: () => ({ values: (v: unknown) => { inserted.push(v); return { returning: async () => [{ id: 'new-key' }] }; } }),
+    update: () => ({ set: () => ({ where: () => Object.assign(Promise.resolve([]), { returning: async () => [] }) }) }),
+    execute: async () => ({ rows: [] }),
+  };
+  return { db, inserted };
+}
+const SOLAR = { id: 'solar', slug: 'himalayan-solar-ltd', companyName: 'Himalayan Solar Ltd', segment: 'SME', offeringType: 'IPO',
+  openDate: '2026-09-25', priceRangeMin: 98, symbol: 'HIMALAYAN', isin: 'INE1B7I01014', status: 'UPCOMING' };
+const DISPUTED_2716 = { id: 'k1', ipoId: 'solar', source: 'CHITTORGARH', keyType: 'CG_PAGE_ID', keyValue: '2716', bindingValue: null,
+  state: 'DISPUTED', stateReason: 'key_contradiction: ISIN differs (INE1OTR01013 vs INE1B7I01014)', attrs: null, recordOpenDate: null };
+const KEY_2716: SourceKeyRef[] = [{ source: 'CHITTORGARH', keyType: 'CG_PAGE_ID', keyValue: '2716' }];
+
+function stubRepo(db: unknown, row: unknown) {
+  return {
+    sourceKeyDb: () => db,
+    findByCin: vi.fn().mockResolvedValue([]),
+    findByIsin: vi.fn().mockResolvedValue(null),
+    findBySymbol: vi.fn().mockResolvedValue(row),
+    findByNormalizedName: vi.fn().mockResolvedValue(null),
+    findByNormalizedNamePrefix: vi.fn().mockResolvedValue([]),
+    findBySlug: vi.fn().mockResolvedValue(null),
+    findByFuzzyName: vi.fn().mockResolvedValue(null),
+    findLiveByOpenDate: vi.fn().mockResolvedValue([]),
+    findByIdUncached: vi.fn().mockResolvedValue(row),
+  } as unknown as IPORepository;
+}
+const nutravedics = (isin: string | null) => ({
+  companyName: 'Himalaya Nutravedics India Ltd', normalizedName: 'himalaya nutravedics india', slug: 'himalaya-nutravedics-india-ltd',
+  symbol: 'HIMALAYAN', isin, openDate: '2026-09-22', priceRangeMin: null, segment: 'SME', sourceKeys: KEY_2716,
+});
+
+describe('MAJOR-2: a DISPUTED key is never re-bound to the same wrong row by the fallback order', () => {
+  it('fallback binds the row the key is DISPUTED on (no ISIN this read) -> held, key_disputed_rebind_refused', async () => {
+    const { db } = fakeKeyDb([DISPUTED_2716]);
+    await expect(resolveIpoRow(stubRepo(db, SOLAR), nutravedics(null) as never)).rejects.toThrow(/key_disputed_rebind_refused/);
+  });
+  it('the same fallback bind with no DISPUTED key on the row binds as before', async () => {
+    const { db } = fakeKeyDb([]);
+    await expect(resolveIpoRow(stubRepo(db, SOLAR), nutravedics(null) as never)).resolves.toMatchObject({ id: 'solar' });
+  });
+  it('OD-69: a fallback bind whose KNOWN ISIN differs from the row is held (Himalaya INE1OTR01013 vs INE1B7I01014)', async () => {
+    const { db } = fakeKeyDb([]);
+    await expect(resolveIpoRow(stubRepo(db, SOLAR), nutravedics('INE1OTR01013') as never)).rejects.toThrow(/ISIN differs \(INE1OTR01013 vs INE1B7I01014\)/);
+  });
+  it('write rule: recordSourceKeys refuses a key DISPUTED on this row, throws, inserts nothing', async () => {
+    const { db, inserted } = fakeKeyDb([DISPUTED_2716]);
+    await expect(recordSourceKeys(db as never, 'solar', KEY_2716, { boundVia: 'SYMBOL', boundBy: 't' })).rejects.toBeInstanceOf(SourceKeyHeldError);
+    expect(inserted).toEqual([]);
+    expect(SOURCE_KEY_NO_WRITE_ERROR_NAMES.has('SourceKeyHeldError')).toBe(true);
+  });
+});
+
+describe('LOW-7: a held key write fails loudly (throws inside the transaction) instead of returning quietly', () => {
+  it('a second BSE key failing OD-83 against the row\'s ACTIVE key throws SourceKeyHeldError and inserts nothing', async () => {
+    const active = { id: 'k0', ipoId: 'row', source: 'BSE', keyType: 'BSE_IPO_NO', keyValue: '7000', bindingValue: '7000', state: 'ACTIVE',
+      attrs: { shares: 1000, priceMin: 10, priceMax: 11 }, recordOpenDate: '2026-06-01' };
+    const { db, inserted } = fakeKeyDb([active]);
+    await expect(recordSourceKeys(db as never, 'row', [{ source: 'BSE', keyType: 'BSE_IPO_NO', keyValue: '7001', attrs: { shares: 2000, priceMin: 10, priceMax: 11 } }],
+      { boundVia: 'NAME', boundBy: 't' })).rejects.toThrow(/held \(OD-83\)/);
+    expect(inserted).toEqual([]);
   });
 });

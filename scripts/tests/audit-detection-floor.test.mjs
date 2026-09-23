@@ -55,6 +55,7 @@ import {
   EXIT_UNVERIFIABLE,
   DIGEST_MAX_ROWS,
   computeSummaryCounts,
+  evaluateSourceKeyConflicts,
 } from '../lib/detection-floor-checks.mjs';
 
 // ---- (a)/(b) live IPO vs unresolved conflict --------------------------------
@@ -1713,3 +1714,39 @@ test('(OD-76) the audit query counts walked rows by last_attempt_at and reads on
   assert.match(body, /WHERE r\.outcome = 'DONE'/);
   assert.match(body, /record\('closed_ipo_done_without_walk'/);
 });
+
+// ---- i_source_key_conflict (OD-85, PR #945 Tier A review MEDIUM-1 + LOW) ----------------------
+{
+  const NOW = new Date('2026-09-24T00:00:00Z');
+  const key = (o) => ({ slug: 'dhanwel-hybrid-seeds-ltd', ipoId: 'ipo-1', source: 'BSE', keyType: 'BSE_IPO_NO', state: 'ACTIVE', changedAt: '2026-09-20T00:00:00Z', ...o });
+
+  test('(i_source_key_conflict) FAILS on a planted two-ACTIVE-keys-of-one-source row (Dhanwel 7794 + 7900 after a merge with no supersede)', () => {
+    const r = evaluateSourceKeyConflicts({ keys: [key({ value: '7794' }), key({ value: '7900' })], now: NOW });
+    assert.equal(r.status, 'FAIL');
+    assert.equal(r.doubleActive.length, 1);
+    assert.match(r.detail, /dhanwel-hybrid-seeds-ltd two ACTIVE BSE BSE_IPO_NO \(7794,7900\)/);
+  });
+
+  test('(i_source_key_conflict) FAILS on a key DISPUTED by the ISIN re-check inside 30 days (Himalaya values)', () => {
+    const r = evaluateSourceKeyConflicts({ now: NOW, keys: [key({ slug: 'himalayan-solar-ltd', ipoId: 'ipo-2', source: 'CHITTORGARH', keyType: 'CG_PAGE_ID',
+      value: '2716', state: 'DISPUTED', reason: 'key_contradiction: ISIN differs (INE1OTR01013 vs INE1B7I01014)', changedAt: '2026-09-23T10:00:00Z' })] });
+    assert.equal(r.status, 'FAIL');
+    assert.match(r.detail, /himalayan-solar-ltd DISPUTED CHITTORGARH CG_PAGE_ID 2716/);
+  });
+
+  test('(i_source_key_conflict) PASSES clean data: one ACTIVE key per source per row, keys of different sources/rows, an old dispute', () => {
+    const r = evaluateSourceKeyConflicts({ now: NOW, keys: [
+      key({ value: '7900' }),
+      key({ source: 'CHITTORGARH', keyType: 'CG_PAGE_ID', value: '2790' }),
+      key({ ipoId: 'ipo-3', slug: 'other-ltd', value: '7901' }),
+      key({ ipoId: 'ipo-4', slug: 'old-dispute-ltd', value: '7000', state: 'DISPUTED', changedAt: '2026-08-01T00:00:00Z' }),
+    ] });
+    assert.equal(r.status, 'PASS');
+    assert.equal(r.detail, '0 double-ACTIVE, 0 DISPUTED in 30 days');
+  });
+
+  test('(i_source_key_conflict) a missing table is UNVERIFIABLE, never PASS; an unreadable one too', () => {
+    assert.equal(evaluateSourceKeyConflicts({ tableMissing: true }).status, 'UNVERIFIABLE');
+    assert.equal(evaluateSourceKeyConflicts({ readError: 'permission denied for table ipo_source_keys' }).status, 'UNVERIFIABLE');
+  });
+}

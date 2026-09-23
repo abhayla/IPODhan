@@ -123,11 +123,25 @@ export class SourceKeySupersededError extends RepositoryError {
   }
 }
 
+/**
+ * The write rule refused a key on a row (a second key of one source that fails OD-83, or a key
+ * already DISPUTED on that row). Thrown INSIDE the caller's transaction so the bind and the row
+ * write both roll back: a held record writes nothing, loudly, never a silent partial write.
+ */
+export class SourceKeyHeldError extends RepositoryError {
+  constructor(message: string, public readonly ipoId: string, public readonly reasons: string[]) {
+    super(message);
+    this.name = 'SourceKeyHeldError';
+    Object.setPrototypeOf(this, SourceKeyHeldError.prototype);
+  }
+}
+
 /** Every error name that means "this record writes nothing this cycle, by decision" — never retried. */
 export const SOURCE_KEY_NO_WRITE_ERROR_NAMES: ReadonlySet<string> = new Set([
   'IdentityHeldForReviewError',
   'SourceKeyDuplicateError',
   'SourceKeySupersededError',
+  'SourceKeyHeldError',
 ]);
 
 function toDay(value: unknown): string | null {
@@ -261,6 +275,25 @@ export async function findSourceKeysForIpo(db: DbOrTx, ipoId: string): Promise<S
   return db.select().from(ipoSourceKeys).where(eq(ipoSourceKeys.ipoId, ipoId));
 }
 
+/**
+ * DISPUTED keys of THIS record (same source, type and value) already on `ipoId`. A DISPUTED key has
+ * no binding value, so the read rule misses it and the fallback order runs; without this check the
+ * fallback can bind the same wrong row again and the write rule would re-insert the key ACTIVE —
+ * the wrong row written every other cycle. Until an admin resolves the dispute, that row is refused.
+ */
+export async function findDisputedKeysOnRow(
+  db: DbOrTx,
+  ipoId: string,
+  refs: readonly SourceKeyRef[]
+): Promise<SourceKeyRow[]> {
+  const norm = normalizeSourceKeyRefs(refs);
+  if (norm.length === 0) return [];
+  const onRow = await findSourceKeysForIpo(db, ipoId);
+  return onRow.filter(
+    (k) => k.state === 'DISPUTED' && norm.some((r) => r.source === k.source && r.keyType === k.keyType && r.keyValue === k.keyValue)
+  );
+}
+
 export async function setSourceKeyState(
   db: DbOrTx,
   keyIds: readonly string[],
@@ -389,8 +422,8 @@ export async function recordSourceKeys(
   ipoId: string,
   refs: readonly SourceKeyRef[],
   opts: { boundVia: SourceKeyBoundVia; boundBy: string }
-): Promise<{ insertedIds: string[]; keptIds: string[]; supersededIds: string[]; heldReasons: string[] }> {
-  const out = { insertedIds: [] as string[], keptIds: [] as string[], supersededIds: [] as string[], heldReasons: [] as string[] };
+): Promise<{ insertedIds: string[]; keptIds: string[]; supersededIds: string[] }> {
+  const out = { insertedIds: [] as string[], keptIds: [] as string[], supersededIds: [] as string[] };
   const norm = normalizeSourceKeyRefs(refs);
   if (norm.length === 0) return out;
 
@@ -404,6 +437,14 @@ export async function recordSourceKeys(
     );
   }
   const existing = await findSourceKeysForIpo(tx, ipoId);
+  const disputed = existing.filter(
+    (k) => k.state === 'DISPUTED' && norm.some((r) => r.source === k.source && r.keyType === k.keyType && r.keyValue === k.keyValue)
+  );
+  if (disputed.length > 0) {
+    const reasons = disputed.map((k) => `${k.source} ${k.keyType} ${k.keyValue} is DISPUTED on this row (${k.stateReason ?? 'no reason'})`);
+    logger.warn({ ipoId, reasons }, '[OD-85] key_disputed_rebind_refused: record writes nothing until an admin resolves the dispute');
+    throw new SourceKeyHeldError(`recordSourceKeys: ${reasons.join('; ')} - not re-bound (OD-85)`, ipoId, reasons);
+  }
   // A record one of whose keys is already on this row was bound BY that key (the read rule tries
   // keys first), so its other keys arrive via KEY, not via the fallback step the caller inferred.
   const boundViaForNew: SourceKeyBoundVia =
@@ -429,9 +470,10 @@ export async function recordSourceKeys(
       .filter((x) => !x.test.ok);
     if (failing.length > 0) {
       const reason = `${ref.source} ${ref.keyType} ${ref.keyValue} vs ACTIVE ${failing.map((f) => f.old.keyValue).join(',')}: ${failing.map((f) => f.test.reason).join('; ')}`;
-      out.heldReasons.push(reason);
-      logger.warn({ ipoId, reason }, '[OD-85] key_contradiction: second key of one source failed OD-83 - key not written, held');
-      continue;
+      // Reached only when the row changed between the caller's planSourceKeyWrite and this
+      // transaction (a concurrent bind): fail loudly so the bind and the row write roll back.
+      logger.warn({ ipoId, reason }, '[OD-85] key_contradiction: second key of one source failed OD-83 - nothing written, held');
+      throw new SourceKeyHeldError(`recordSourceKeys: ${reason} - held (OD-83)`, ipoId, [reason]);
     }
     const [inserted] = await tx
       .insert(ipoSourceKeys)

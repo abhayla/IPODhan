@@ -70,6 +70,7 @@ import {
   STEP_LEDGER_WINDOW_HOURS,
   crossCheckNseStatuses,
   findSameIpoTwoRows, checkIpoTitleInName, findCompanyTwoLiveRows, findNameBoundLiveRows, findUndecidedIdentityHolds,
+  evaluateSourceKeyConflicts,
   findSettledFieldRewrites, SETTLED_FIELD_COLUMNS, policyWriterOnFromEnv, settledCurrentValueSql,
   findClosedIpoDoneWithoutWalk,
 } from './lib/detection-floor-checks.mjs';
@@ -1540,36 +1541,25 @@ async function checkIdentity() {
 // exist in the table (plain unique index); a record whose keys hit two rows is refused at read time.
 async function checkSourceKeyConflicts() {
   const DESC = 'no IPO holds two ACTIVE source keys of one source/type, and no key was DISPUTED in the last 30 days (OD-85)';
-  let doubleActive;
-  let disputed;
+  let keys = [];
+  let tableMissing = false;
+  let readError = null;
   try {
-    doubleActive = await q(
-      `SELECT i.slug, k.source, k.key_type::text AS "keyType", string_agg(k.key_value, ',' ORDER BY k.key_value) AS "values"
+    keys = await q(
+      `SELECT i.slug, k.ipo_id AS "ipoId", k.source, k.key_type::text AS "keyType", k.key_value AS "value",
+              k.state::text AS state, k.state_reason AS reason, k.state_changed_at AS "changedAt"
          FROM ipo_source_keys k JOIN ipos i ON i.id = k.ipo_id
-        WHERE k.state = 'ACTIVE'
-        GROUP BY i.slug, k.source, k.key_type HAVING count(*) > 1`
-    );
-    disputed = await q(
-      `SELECT i.slug, k.source, k.key_type::text AS "keyType", k.key_value AS "value", k.state_reason AS reason
-         FROM ipo_source_keys k JOIN ipos i ON i.id = k.ipo_id
-        WHERE k.state = 'DISPUTED' AND k.state_changed_at > now() - interval '30 days'`
+        WHERE k.state = 'ACTIVE' OR (k.state = 'DISPUTED' AND k.state_changed_at > now() - interval '30 days')`
     );
   } catch (e) {
-    if (e.code === '42P01') {
-      record('i_source_key_conflict', DESC, 'PASS', 'ipo_source_keys table does not exist on this database - migration 0053 not applied here yet.');
-      return;
-    }
-    record('i_source_key_conflict', DESC, 'UNVERIFIABLE', `ipo_source_keys not readable: ${e.message}`);
-    return;
+    if (e.code === '42P01') tableMissing = true;
+    else readError = e.message;
   }
-  for (const r of doubleActive) notify('i_source_key_conflict', 'P2', r.slug, 'Two ACTIVE source keys of one source (OD-85)', `${r.slug}: ${r.source} ${r.keyType} ${r.values}`);
-  for (const r of disputed) notify('i_source_key_conflict', 'P2', r.slug, 'Source key DISPUTED by the CIN/ISIN re-check (OD-85)', `${r.slug}: ${r.source} ${r.keyType} ${r.value} - ${r.reason}`);
-  const offenders = [
-    ...doubleActive.map((r) => `${r.slug} two ACTIVE ${r.source} ${r.keyType} (${r.values})`),
-    ...disputed.map((r) => `${r.slug} DISPUTED ${r.source} ${r.keyType} ${r.value}`),
-  ];
-  record('i_source_key_conflict', DESC, offenders.length === 0 ? 'PASS' : 'FAIL',
-    offenders.length ? offenders.slice(0, MAX_OFFENDERS).join('; ') : '0 double-ACTIVE, 0 DISPUTED in 30 days');
+  const res = evaluateSourceKeyConflicts({ keys, tableMissing, readError });
+  for (const r of res.doubleActive) notify('i_source_key_conflict', 'P2', r.slug, 'Two ACTIVE source keys of one source (OD-85)', `${r.slug}: ${r.source} ${r.keyType} ${r.values}`);
+  for (const r of res.disputed) notify('i_source_key_conflict', 'P2', r.slug, 'Source key DISPUTED by the CIN/ISIN re-check (OD-85)', `${r.slug}: ${r.source} ${r.keyType} ${r.value} - ${r.reason}`);
+  const detail = res.status === 'FAIL' ? res.detail.split('; ').slice(0, MAX_OFFENDERS).join('; ') : res.detail;
+  record('i_source_key_conflict', DESC, res.status, detail);
 }
 
 // ---- (j): assorted P3 gates ----------------------------------------------------

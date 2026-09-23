@@ -403,6 +403,9 @@ function numericOrAbsent(value: unknown): number | null {
   return n;
 }
 
+/** OD-35: open dates more than this many days apart are two offerings — also the bound on OD-86's relaunch exception. */
+export const RELAUNCH_MAX_OPEN_DATE_GAP_DAYS = 180;
+
 export type EligibilityResult = { eligible: true } | { eligible: false; reason: string };
 
 /**
@@ -433,6 +436,16 @@ export function checkMergeEligibility(input: EligibilityInput): EligibilityResul
     // (2026-09-22). OPEN_DATE_TOLERANCE_DAYS still sizes the detection sweep's CLUSTERING (a
     // candidate a human reads), never a merge.
     const spread = daysBetween(keepDay, dropDay);
+    // OD-86's exception is bounded by OD-35's same-offering window: a relaunch more than 180 days
+    // after the postponed record is a new offering, refused like any other date difference.
+    if (spread > RELAUNCH_MAX_OPEN_DATE_GAP_DAYS) {
+      return {
+        eligible: false,
+        reason:
+          `the two rows' open date differs (${keepDay} vs ${dropDay}, ${spread} day(s) apart) — beyond ` +
+          `OD-35's ${RELAUNCH_MAX_OPEN_DATE_GAP_DAYS}-day window, so not one offering even as an OD-86 relaunch`,
+      };
+    }
     if (spread > 0 && !relaunchException(input.relaunch)) {
       return {
         eligible: false,

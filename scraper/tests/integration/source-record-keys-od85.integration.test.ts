@@ -9,6 +9,7 @@ import {
   IdentityHeldForReviewError,
   SourceKeyDuplicateError,
   SourceKeySupersededError,
+  SourceKeyHeldError,
   inferBoundVia,
   nseIssueKeyValue,
   releaseEndedSourceKeys,
@@ -47,7 +48,7 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const NAMES = [
   'Dhanwel Hybrid Seeds Ltd', 'Dhanwel Hybird Seeds Ltd', 'IC Electricals Company Ltd', 'Hero Motors Ltd',
   'Rays of Belief Ltd', 'Himalayan Solar Ltd', 'Himalaya Nutravedics India Ltd', 'OD85 Coalx Ltd',
-  'OD85 Newco Ltd', 'OD85 Reuse Ltd', 'OD85 Merge Probe Ltd', 'OD85 Race Probe Ltd', 'OD85 Race Probe Limited',
+  'OD85 Newco Ltd', 'OD85 Reuse Ltd', 'OD85 Merge Probe Ltd', 'OD85 Race Probe Ltd', 'OD85 Race Probe Limited', 'OD85 Race Probe Industries Ltd',
   'OD85 Alphabind Tools Ltd', 'OD85 Zetaworks Pumps Ltd', 'OD85 Plain Symbol Ltd', 'OD85 Sibling Key Ltd',
 ];
 
@@ -117,6 +118,7 @@ async function ingest(rec: Rec): Promise<Outcome> {
     if (e instanceof SourceKeySupersededError) return 'superseded';
     if (e instanceof SourceKeyDuplicateError) return 'duplicate';
     if (e instanceof IdentityHeldForReviewError) return 'held';
+    if (e instanceof SourceKeyHeldError) return 'held';
     throw e;
   }
   await repo!.create({
@@ -148,7 +150,7 @@ const today = '2026-09-23';
 const DHANWEL_7794 = bseSourceKeys(
   { IPO_NO: '7794', ScripCode: '', ScripName: 'Dhanwel Hybrid Seeds Ltd', Symbol: 'DHANWEL', Issue_Period: '23 Jun 2026 to 23 Jun 2026',
     Issue_Size_No_of_shares: '2700000', Price_Band: '95.00-99.00', Face_Value: '10.00', Market_Lot: '1200',
-    Notes: 'The issue of Dhanwel Hybrid Seeds Ltd has been postponed' },
+    Notes: 'As informed by company mentioned issue of Dhanwel Hybrid Seeds Limited has been postponed' },
   2_700_000, { min: 95, max: 99 }, '2026-06-23', '2026-06-23', today);
 const DHANWEL_7900 = bseSourceKeys(
   { IPO_NO: '7900', ScripCode: '', ScripName: 'Dhanwel Hybrid Seeds Ltd', Symbol: 'DHANWEL', Issue_Period: '19 Aug 2026 to 21 Aug 2026',
@@ -262,6 +264,25 @@ describe.skipIf(!DATABASE_URL)('OD-85 source record keys on the real resolver + 
     expect(await rowsNamed('Himalaya Nutravedics India Ltd')).toEqual([]);
   });
 
+  it('MAJOR-2: a DISPUTED key is never re-bound to the same wrong row by the fallback order - two cycles, zero writes (Himalaya values)', async () => {
+    await ingest({ companyName: 'Himalayan Solar Ltd', openDate: '2026-09-25', priceRangeMin: 98, segment: 'SME', symbol: 'HIMALAYAN',
+      isin: 'INE1B7I01014', keys: [{ source: 'CHITTORGARH', keyType: 'CG_PAGE_ID', keyValue: '2716' }] });
+    const [solar] = await rowsNamed('Himalayan Solar Ltd');
+    const nutravedics = (isin: string | null): Rec => ({ companyName: 'Himalaya Nutravedics India Ltd', openDate: '2026-09-22', priceRangeMin: null,
+      segment: 'SME', symbol: 'HIMALAYAN', isin, keys: [{ source: 'CHITTORGARH', keyType: 'CG_PAGE_ID', keyValue: '2716' }] });
+    // cycle 1: the key hits Solar, the ISIN re-check fails -> DISPUTED, held
+    expect(await ingest(nutravedics('INE1OTR01013'))).toBe('held');
+    // cycle 2: the DISPUTED key has no binding value, so the key read misses and the fallback
+    // (symbol HIMALAYAN) picks Solar again - refused with the ISIN, and refused without it
+    expect(await ingest(nutravedics('INE1OTR01013'))).toBe('held');
+    expect(await ingest(nutravedics(null))).toBe('held');
+    const after = (await rowsNamed('Himalayan Solar Ltd'))[0];
+    expect(after.updatedAt).toEqual(solar.updatedAt);
+    expect(String(after.openDate).slice(0, 10)).toBe('2026-09-25');
+    expect((await keysOf(solar.id)).map((k) => [k.keyValue, k.state, k.bindingValue])).toEqual([['2716', 'DISPUTED', null]]);
+    expect(await rowsNamed('Himalaya Nutravedics India Ltd')).toEqual([]);
+  });
+
   it('a later NSE OFS under the IPO row\'s symbol gets its own row (series in the key + type re-check)', async () => {
     await ingest({ companyName: 'OD85 Coalx Ltd', openDate: '2026-03-02', priceRangeMin: 50, segment: 'MAINBOARD', symbol: 'COALX', status: 'LISTED',
       keys: [{ source: 'NSE', keyType: 'NSE_ISSUE', keyValue: 'COALX|EQ' }] });
@@ -333,14 +354,17 @@ describe.skipIf(!DATABASE_URL)('OD-85 source record keys on the real resolver + 
       keys: [{ source: 'BSE', keyType: 'BSE_IPO_NO', keyValue: '7794' }] })).toBe('superseded');
   });
 
-  it('two concurrent creates of one record (same key, two spellings) leave ONE row', async () => {
+  it('two concurrent creates of one record (same key, two names with DIFFERENT slugs) leave ONE row - only the key guard can stop the second', async () => {
     const key: SourceKeyRef[] = [{ source: 'CHITTORGARH', keyType: 'CG_PAGE_ID', keyValue: '8899' }];
     const rec = (companyName: string): Rec => ({ companyName, openDate: '2026-11-02', priceRangeMin: 70, segment: 'SME', keys: key });
-    const settled = await Promise.allSettled([ingest(rec('OD85 Race Probe Ltd')), ingest(rec('OD85 Race Probe Limited'))]);
-    for (const s of settled) if (s.status === 'rejected') expect(String((s.reason as Error)?.message)).toMatch(/Failed to create IPO|duplicate/);
+    // Different slugs, so the ipos slug unique constraint cannot be what rejects the loser.
+    expect(generateIPOSlug('OD85 Race Probe Ltd')).not.toBe(generateIPOSlug('OD85 Race Probe Industries Ltd'));
+    const settled = await Promise.allSettled([ingest(rec('OD85 Race Probe Ltd')), ingest(rec('OD85 Race Probe Industries Ltd'))]);
+    for (const s of settled) if (s.status === 'rejected') expect(String((s.reason as Error)?.message)).toMatch(/Failed to create IPO|duplicate|already bound/);
+    expect((await rowsNamed('OD85 Race Probe Ltd', 'OD85 Race Probe Industries Ltd')).length).toBe(1);
     // the loser re-reads on its next cycle and binds by the key
-    expect(await ingest(rec('OD85 Race Probe Limited'))).toBe('bound');
-    expect((await rowsNamed('OD85 Race Probe Ltd', 'OD85 Race Probe Limited')).length).toBe(1);
+    expect(await ingest(rec('OD85 Race Probe Industries Ltd'))).toBe('bound');
+    expect((await rowsNamed('OD85 Race Probe Ltd', 'OD85 Race Probe Industries Ltd')).length).toBe(1);
   });
 
   it('ipos.symbol is written unchanged on a row with no ACTIVE NSE_ISSUE key', async () => {

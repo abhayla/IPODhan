@@ -59,6 +59,8 @@ import { IdentityHeldForReviewError } from '../errors/repository-errors';
 import {
   resolveBySourceKeys,
   planSourceKeyWrite,
+  findDisputedKeysOnRow,
+  normalizeSourceKeyValue,
   normalizeSourceKeyRefs,
   SourceKeyDuplicateError,
   SourceKeySupersededError,
@@ -544,6 +546,24 @@ export async function resolveIpoRow(
 
   const row = await resolveIpoRowByOrder(ipoRepository, rawIdentity);
   if (row) {
+    // A key this record carries is DISPUTED on the row the fallback picked: that row was already
+    // proved wrong for this key (CIN/ISIN contradiction). Refuse it until an admin resolves it.
+    const disputed = await findDisputedKeysOnRow(db, row.id, keys);
+    if (disputed.length > 0) {
+      const reason = `key_disputed_rebind_refused: ${disputed.map((k) => `${k.source} ${k.keyType} ${k.keyValue}`).join(', ')} is DISPUTED on this row`;
+      logger.warn({ companyName: rawIdentity.companyName, ipoId: row.id, slug: row.slug, disputed: disputed.map((k) => k.id) },
+        '[OD-85] key_disputed_rebind_refused: the fallback order picked a row this record key is DISPUTED on - held');
+      throw heldError(rawIdentity, row, reason);
+    }
+    // OD-69 / the key re-check: a KNOWN ISIN that differs is another company, whichever tier bound it.
+    const inIsin = normalizeSourceKeyValue(rawIdentity.isin);
+    const rowIsin = normalizeSourceKeyValue((row as { isin?: unknown }).isin);
+    if (inIsin && rowIsin && inIsin !== rowIsin) {
+      const reason = `ISIN differs (${inIsin} vs ${rowIsin})`;
+      logger.warn({ companyName: rawIdentity.companyName, ipoId: row.id, slug: row.slug, reason },
+        '[OD-69] isin_contradiction on a fallback bind - held');
+      throw heldError(rawIdentity, row, reason);
+    }
     const plan = await planSourceKeyWrite(db, row.id, keys);
     if (!plan.ok) {
       logger.warn({ companyName: rawIdentity.companyName, ipoId: row.id, reason: plan.reason }, '[OD-85] key_contradiction on a fallback bind - held');
