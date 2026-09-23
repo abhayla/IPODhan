@@ -259,7 +259,7 @@ export const CYCLE_LOCK_CEILING_MS = HUNG_PROCESS_CEILING_MS;
 export const CYCLE_LOCK_TTL_MS = CYCLE_LOCK_CEILING_MS + 5 * 60 * 1000;
 const CYCLE_LOCK_EXTEND_INTERVAL_MS = 5 * 60 * 1000;
 
-/** Redis key tracking the last discovery (NSE+BSE) run, for the 4-slot/day catch-up cadence. */
+/** Redis key tracking the last discovery (NSE+BSE) run, for the data job's 3-slot/day catch-up cadence (OD-19). */
 const DISCOVERY_LAST_RUN_KEY = 'due-step:last-discovery';
 
 /** Aggregator refresh (Chittorgarh) cadence: at most once per day. */
@@ -576,7 +576,7 @@ async function runDueStepCycle(
     }
   };
 
-  // (a) discovery — 4 IST slots/day, catch-up safe.
+  // (a) discovery — the data job's 3 IST slots/day (OD-19), catch-up safe.
   let lastDiscoveryRun: Date | null = null;
   try {
     const raw = await redis.get(DISCOVERY_LAST_RUN_KEY);
@@ -592,7 +592,7 @@ async function runDueStepCycle(
   if (isDiscoveryDue(now, lastDiscoveryRun)) {
     logger.info({ slot: mostRecentDiscoverySlotLabel(now) }, 'Due-step cycle: discovery is due — running NSE + BSE');
     // T-478 (issue #225): the OFS category lives ONLY on this unrestricted,
-    // 4x/day discovery step (never the OPEN-only "live" step below) — OFS
+    // 3x/day (OD-19) discovery step (never the OPEN-only "live" step below) — OFS
     // rows can be UPCOMING/CLOSED/LISTED, not just OPEN, and discovery is
     // where new offering_type rows are meant to first appear. One extra NSE
     // API call per discovery run, inside the existing wake budget.
@@ -624,7 +624,7 @@ async function runDueStepCycle(
   } else {
     logger.info(
       { slot: mostRecentDiscoverySlotLabel(now) },
-      'Due-step cycle: discovery not due at this slot — skipped'
+      'Due-step cycle: data job not due at this wake — discovery skipped (OD-19 slots 00:00/08:00/14:00 IST)'
     );
   }
 
@@ -1636,7 +1636,30 @@ export async function triggerStageReconciler(): Promise<StepResult> {
  */
 const PRIMARY_SOURCE_DISCOVERY_INTERVAL_MINUTES = 24 * 60;
 
-export async function triggerPrimarySourceDiscovery(): Promise<StepResult> {
+/**
+ * Item 7 S2 (spec §2.1, OD-19): the Redis key stamped when a data-job slot's
+ * document cycle (download + extraction + the pull walk, PASS 3) has
+ * FINISHED. Stamped only when the cycle returned without exhausting its wake
+ * budget, so an unfinished slot keeps going on the following wakes
+ * (catch-up), and a finished slot does nothing until the next slot.
+ */
+export const DOCUMENT_CYCLE_LAST_RUN_KEY = 'due-step:last-document-cycle';
+
+interface DataJobRedis {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<unknown>;
+}
+
+export interface PrimarySourceDiscoveryOptions {
+  /** Test seam; production reads the clock. */
+  now?: Date;
+  /** Test seam; production reads FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER. */
+  dueStepScheduler?: boolean;
+  /** Test seam; production uses the shared client. */
+  redis?: DataJobRedis;
+}
+
+export async function triggerPrimarySourceDiscovery(options: PrimarySourceDiscoveryOptions = {}): Promise<StepResult> {
   if (process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY !== 'true') {
     return { status: 'skipped', reason: 'ENABLE_PRIMARY_SOURCE_DISCOVERY not true (§GATE)' };
   }
@@ -1649,13 +1672,54 @@ export async function triggerPrimarySourceDiscovery(): Promise<StepResult> {
   // fix is shared by both paths (see ENABLE_DOCUMENT_STATE_MACHINE's note), and
   // migration 0035 must be applied before the flag is turned on.
   if (process.env.ENABLE_DOCUMENT_STATE_MACHINE === 'true') {
-    // PER-CYCLE, not daily. The daily cadence below exists only because the old
-    // pass re-fetched NSE for every candidate IPO unconditionally; the state
-    // machine makes a no-change cycle cost zero requests, so there is no reason
-    // to wait a day to notice that a Prospectus has been filed.
+    // Item 7 S2 (spec §2.1, OD-19): under the due-step scheduler this is part
+    // of the DATA JOB, which runs at 00:00, 08:00 and 14:00 IST only — not on
+    // every wake ("never re-read a document because time passed"). The flag-off
+    // legacy path keeps its old per-wake behaviour, as the rollback path.
+    const gated = options.dueStepScheduler ?? FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER;
+    const now = options.now ?? new Date();
+    const redis: DataJobRedis | null = gated ? (options.redis ?? (getRedisClient() as unknown as DataJobRedis)) : null;
+    if (redis) {
+      let lastRun: Date | null = null;
+      try {
+        const raw = await redis.get(DOCUMENT_CYCLE_LAST_RUN_KEY);
+        lastRun = raw ? new Date(raw) : null;
+        if (lastRun !== null && Number.isNaN(lastRun.getTime())) lastRun = null;
+      } catch (error) {
+        logger.warn(
+          { error: error instanceof Error ? error.message : String(error) },
+          'Data job: document-cycle last-run lookup failed — treating the slot as due (fail open)'
+        );
+      }
+      if (!isDiscoveryDue(now, lastRun)) {
+        const slot = mostRecentDiscoverySlotLabel(now);
+        logger.info(
+          { slot, lastRun: lastRun?.toISOString() ?? null },
+          'Data job not due at this wake — document cycle skipped (OD-19 slots 00:00/08:00/14:00 IST)'
+        );
+        return { status: 'skipped', reason: `data job not due: slot ${slot} already finished` };
+      }
+    }
     try {
       const summary = await runDocumentCycle();
       logger.info(summary, 'Document discovery cycle (state machine) complete');
+      if (redis) {
+        if (summary.budgetExhausted) {
+          logger.info(
+            { slot: mostRecentDiscoverySlotLabel(now) },
+            'Data job: document cycle used its whole wake budget — slot left open, the next wake continues it'
+          );
+        } else {
+          try {
+            await redis.set(DOCUMENT_CYCLE_LAST_RUN_KEY, now.toISOString());
+          } catch (error) {
+            logger.warn(
+              { error: error instanceof Error ? error.message : String(error) },
+              'Data job: document-cycle last-run stamp failed — the next wake will run it again'
+            );
+          }
+        }
+      }
       return { status: 'ok', reason: formatCycleReason(summary) };
     } catch (error) {
       logger.error(

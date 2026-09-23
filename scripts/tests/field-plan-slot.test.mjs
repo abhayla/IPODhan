@@ -1,74 +1,55 @@
-// #762 (S8) review round 1: F6 + MAJOR-3.
+// #762 (S8) review round 1: F6 + MAJOR-3, and item 7 S2 (OD-19 slots).
 //
 // F6: checkS_pullPlanStuckReclaim (audit-detection-floor.mjs) shipped with
-// NO test. Nothing would have caught the flat `interval '7 hours'` error
-// (the real max gap between two consecutive discovery slots is 18.5h, not
-// ~7h) — this file pins the pure isStuckReclaimRow predicate RED on a
+// NO test; this file pins the pure isStuckReclaimRow predicate RED on a
 // planted stuck row and GREEN on a clean one.
 //
-// MAJOR-3: the repository's doc comment claimed "a test in this package
-// pins these values equal to the scraper module's, so the two can never
-// drift silently" — FALSE. The slot list was typed a THIRD time in
-// packages/shared's own test, which compared copy-2 against copy-3, both
-// inside packages/shared; changing scraper/src/scheduler/due-step-cycle.ts
-// broke nothing. packages/shared cannot import scraper/src (the dependency
-// runs the other way — see either file's own header), so the guard here
-// reads and PARSES the real due-step-cycle.ts SOURCE TEXT and compares its
-// DISCOVERY_SLOTS_IST_MINUTES literal against this module's own constant —
-// a genuine cross-file guard, not two copies compared against each other.
+// Item 7 S2: the slot list lives ONCE, in
+// packages/shared/src/scheduler/data-job-slots.ts (OD-19: 00:00, 08:00,
+// 14:00 IST). field-plan-slot.mjs no longer keeps a typed copy — it parses
+// that file at load. The guards below prove (a) the parsed value is the real
+// file's value, (b) a mutated file parses to something different, and (c) a
+// file the parser cannot read throws instead of guessing.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import {
   mostRecentFieldPlanSlotBoundary,
   FIELD_PLAN_SLOT_IST_MINUTES,
   PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS,
   isStuckReclaimRow,
+  parseDataJobSlotsFromSource,
+  DATA_JOB_SLOTS_SOURCE_PATH,
 } from '../lib/field-plan-slot.mjs';
-
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const DUE_STEP_CYCLE_PATH = join(REPO_ROOT, 'scraper', 'src', 'scheduler', 'due-step-cycle.ts');
 
 function istToUtc(dateIso, hh, mm) {
   const utcMs = Date.parse(`${dateIso}T00:00:00.000Z`) + (hh * 60 + mm - 5 * 60 - 30) * 60_000;
   return new Date(utcMs);
 }
 
-// ---- MAJOR-3: a REAL cross-file drift guard --------------------------------
+// ---- the one definition, read not retyped ---------------------------------
 
-test('(drift guard, MAJOR-3) DISCOVERY_SLOTS_IST_MINUTES parsed from the REAL scraper source equals field-plan-slot.mjs', () => {
-  const source = readFileSync(DUE_STEP_CYCLE_PATH, 'utf8');
-  const match = source.match(/export const DISCOVERY_SLOTS_IST_MINUTES\s*=\s*\[([^\]]+)\]/);
-  assert.ok(match, 'DISCOVERY_SLOTS_IST_MINUTES not found in due-step-cycle.ts — the drift guard cannot verify anything');
-  // eslint-disable-next-line no-eval -- reading a small numeric-literal array from our own repo's source, not user input
-  const parsed = eval(`[${match[1]}]`);
-  assert.deepEqual(
-    parsed,
-    FIELD_PLAN_SLOT_IST_MINUTES,
-    'field-plan-slot.mjs (used by both the claim query duplicate in ' +
-      'ipo-field-plan-repository.ts and the detection check here) has drifted from ' +
-      'the real scraper/src/scheduler/due-step-cycle.ts source — update field-plan-slot.mjs, ' +
-      'and the TS duplicate in packages/shared, to match'
-  );
+test('(S2) the slots field-plan-slot.mjs uses are the ones parsed from data-job-slots.ts, and they are OD-19\'s', () => {
+  assert.match(DATA_JOB_SLOTS_SOURCE_PATH.split('\\').join('/'), /packages\/shared\/src\/scheduler\/data-job-slots\.ts$/);
+  const parsed = parseDataJobSlotsFromSource(readFileSync(DATA_JOB_SLOTS_SOURCE_PATH, 'utf8'));
+  assert.deepEqual(parsed, [0, 480, 840]);
+  assert.deepEqual([...FIELD_PLAN_SLOT_IST_MINUTES], parsed);
 });
 
-test('(drift guard, MAJOR-3) mutating due-step-cycle.ts in a scratch copy is caught by re-parsing it', () => {
-  const source = readFileSync(DUE_STEP_CYCLE_PATH, 'utf8');
+test('(S2 mutation) a changed slot literal parses to a different list — the reader cannot pass a drifted file', () => {
+  const source = readFileSync(DATA_JOB_SLOTS_SOURCE_PATH, 'utf8');
   const mutated = source.replace(
-    /export const DISCOVERY_SLOTS_IST_MINUTES = \[8 \* 60 \+ 30, 11 \* 60, 14 \* 60, 17 \* 60 \+ 30\] as const;/,
-    'export const DISCOVERY_SLOTS_IST_MINUTES = [9 * 60, 12 * 60, 15 * 60, 18 * 60] as const;'
+    'export const DATA_JOB_SLOTS_IST_MINUTES = [0, 480, 840] as const;',
+    'export const DATA_JOB_SLOTS_IST_MINUTES = [0, 480, 900] as const;'
   );
-  assert.notEqual(mutated, source, 'the mutation target text was not found — the real file has changed shape; update this test');
-  const match = mutated.match(/export const DISCOVERY_SLOTS_IST_MINUTES\s*=\s*\[([^\]]+)\]/);
-  // eslint-disable-next-line no-eval
-  const parsedMutated = eval(`[${match[1]}]`);
-  assert.notDeepEqual(
-    parsedMutated,
-    FIELD_PLAN_SLOT_IST_MINUTES,
-    'a mutated due-step-cycle.ts must produce a DIFFERENT parsed value than field-plan-slot.mjs — proves the guard can actually fail'
-  );
+  assert.notEqual(mutated, source, 'the mutation target text was not found — the real file changed shape; update this test');
+  assert.notDeepEqual(parseDataJobSlotsFromSource(mutated), [...FIELD_PLAN_SLOT_IST_MINUTES]);
+});
+
+test('(S2) a slot literal that is not plain integers throws rather than being guessed at', () => {
+  assert.throws(() => parseDataJobSlotsFromSource('export const DATA_JOB_SLOTS_IST_MINUTES = [8 * 60 + 30] as const;'));
+  assert.throws(() => parseDataJobSlotsFromSource('export const DATA_JOB_SLOTS_IST_MINUTES = [0, 1500] as const;'));
+  assert.throws(() => parseDataJobSlotsFromSource('no slots here'));
 });
 
 // ---- mostRecentFieldPlanSlotBoundary sanity (mirrors the TS unit tests) ----
@@ -82,29 +63,20 @@ test('mostRecentFieldPlanSlotBoundary: at each slot minute, returns that same in
   }
 });
 
-test('mostRecentFieldPlanSlotBoundary: the real max span of two ADJACENT gaps is 18.5h (900+210 min), never ~7h', () => {
-  // Gaps between consecutive slot boundaries, walking the cycle:
-  // 08:30->11:00 (150), 11:00->14:00 (180), 14:00->17:30 (210), 17:30->next 08:30 (900, overnight).
+test('mostRecentFieldPlanSlotBoundary: slot gaps are [480, 360, 600] minutes; two adjacent gaps span at most 18h', () => {
+  // 00:00->08:00 (480), 08:00->14:00 (360), 14:00->next 00:00 (600).
   const gaps = [];
   for (let i = 1; i < FIELD_PLAN_SLOT_IST_MINUTES.length; i++) {
     gaps.push(FIELD_PLAN_SLOT_IST_MINUTES[i] - FIELD_PLAN_SLOT_IST_MINUTES[i - 1]);
   }
-  const overnightGap =
-    24 * 60 - FIELD_PLAN_SLOT_IST_MINUTES[FIELD_PLAN_SLOT_IST_MINUTES.length - 1] + FIELD_PLAN_SLOT_IST_MINUTES[0];
-  gaps.push(overnightGap);
-  assert.deepEqual(gaps, [150, 180, 210, 900], 'the four gap minutes must match the coordinator\'s measured [150, 180, 210, 900]');
-  // Two ADJACENT gaps (the span a row can sit un-reclaimed across, from just
-  // after one slot to just before the slot-after-next): the worst case is
-  // the 210-minute gap immediately followed by the 900-minute overnight gap
-  // (a row attempted just after 14:00, checked again just before the NEXT
-  // day's 08:30) = 1110 minutes = 18.5h -- the exact figure CRITICAL-1 cited.
+  gaps.push(24 * 60 - FIELD_PLAN_SLOT_IST_MINUTES[FIELD_PLAN_SLOT_IST_MINUTES.length - 1] + FIELD_PLAN_SLOT_IST_MINUTES[0]);
+  assert.deepEqual(gaps, [480, 360, 600]);
   let maxAdjacentSpan = 0;
   for (let i = 0; i < gaps.length; i++) {
-    const next = gaps[(i + 1) % gaps.length];
-    maxAdjacentSpan = Math.max(maxAdjacentSpan, gaps[i] + next);
+    maxAdjacentSpan = Math.max(maxAdjacentSpan, gaps[i] + gaps[(i + 1) % gaps.length]);
   }
-  assert.equal(maxAdjacentSpan, 1110, `two adjacent slot gaps must be able to span exactly 1110 minutes (18.5h); got ${maxAdjacentSpan} minutes`);
-  assert.ok(maxAdjacentSpan > 7 * 60, 'the old flat 7-hour threshold is smaller than the real worst case, hence the nightly false-positive');
+  assert.equal(maxAdjacentSpan, 1080, `two adjacent slot gaps must span exactly 1080 minutes (18h); got ${maxAdjacentSpan}`);
+  assert.ok(maxAdjacentSpan > 7 * 60, 'a flat 7-hour threshold is still smaller than the real worst case');
 });
 
 // ---- F6: isStuckReclaimRow RED on a planted stuck row, GREEN on clean -----
@@ -180,13 +152,13 @@ test('(F6) isStuckReclaimRow: GREEN — SUPPLIED/PENDING/EXHAUSTED states are ne
 
 // ---- overnight false-positive regression (the exact bug this round fixed) -
 
-test('(regression, CRITICAL-1) a row attempted at 17:35 IST is NOT stuck at 02:00 IST the same night (the flat-7h bug would have flagged it)', () => {
-  const lastAttemptAt = istToUtc('2026-09-15', 17, 35).toISOString(); // just after the 17:30 slot
-  const now = istToUtc('2026-09-16', 2, 0); // 02:00 IST the next night -- 8h25m later, > the old flat 7h threshold
+test('(regression, CRITICAL-1) a row attempted at 14:05 IST is NOT stuck at 23:30 IST the same night (a flat 7h threshold would have flagged it)', () => {
+  const lastAttemptAt = istToUtc('2026-09-15', 14, 5).toISOString(); // just after the 14:00 slot
+  const now = istToUtc('2026-09-15', 23, 30); // 9h25m later, before the 00:00 slot
   const row = { state: 'NOT_AVAILABLE_YET', attempts: 0, claimedAt: null, lastAttemptAt };
   assert.equal(
     isStuckReclaimRow(row, now),
     false,
-    'a row attempted just after the last slot of the day, checked overnight before the next slot fires, must NOT be flagged — this is exactly the false-positive the flat interval produced every night'
+    'a row attempted just after the last slot of the day, checked before the next slot fires, must NOT be flagged'
   );
 });

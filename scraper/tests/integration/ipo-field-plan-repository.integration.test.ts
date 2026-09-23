@@ -274,12 +274,12 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
   // shipped as ONE branch (state='PENDING' only). NOT_AVAILABLE_YET and
   // CHECK_FAILED rows -- 12,480 of them on staging -- were never reclaimed.
   // These tests pin each restored branch, keyed on SLOT boundaries
-  // (due-step-cycle.ts's DISCOVERY_SLOTS_IST_MINUTES), never on an elapsed
+  // (the data job's OD-19 slots, packages/shared/src/scheduler/data-job-slots.ts), never on an elapsed
   // interval (OD-33/D12 forbid a timer).
 
   it('#762: a NOT_AVAILABLE_YET row whose last attempt was in a PREVIOUS slot IS claimed', async () => {
-    // 2026-09-15 07:00 IST is before the 08:30 slot; "now" below is set to
-    // 09:00 IST, i.e. one slot boundary (08:30) has passed since the attempt.
+    // 2026-09-15 07:00 IST is before the 08:00 slot; "now" below is set to
+    // 09:00 IST, i.e. one slot boundary (08:00) has passed since the attempt.
     const lastAttemptAt = new Date('2026-09-15T01:30:00.000Z'); // 07:00 IST
     const now = new Date('2026-09-15T03:30:00.000Z'); // 09:00 IST
     const id = await seedRow({
@@ -295,7 +295,7 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
   });
 
   it('#762: the SAME NOT_AVAILABLE_YET row is NOT claimed again within the SAME slot', async () => {
-    const lastAttemptAt = new Date('2026-09-15T03:00:00.000Z'); // 08:30 IST -- the slot boundary itself
+    const lastAttemptAt = new Date('2026-09-15T03:00:00.000Z'); // 08:30 IST -- after the 08:00 slot boundary
     const now = new Date('2026-09-15T03:45:00.000Z'); // 09:15 IST -- same slot as the attempt
     await seedRow({
       state: 'NOT_AVAILABLE_YET',
@@ -487,8 +487,8 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
   // luck, nothing to do with the query itself).
 
   it('#762 round 2 (MAJOR-2): claim result is IDENTICAL under SET TIME ZONE UTC vs Asia/Kolkata', async () => {
-    const now = new Date('2026-09-15T09:00:00.000Z'); // 14:30 IST -- past the 08:30/11:00/14:00 slots
-    const lastAttemptAt = new Date('2026-09-15T01:30:00.000Z'); // 07:00 IST -- before the 08:30 slot boundary
+    const now = new Date('2026-09-15T09:00:00.000Z'); // 14:30 IST -- past the 08:00 and 14:00 slots
+    const lastAttemptAt = new Date('2026-09-15T01:30:00.000Z'); // 07:00 IST -- before the 08:00 slot boundary
     const id = await seedRow({
       state: 'NOT_AVAILABLE_YET',
       lastAttemptAt,
@@ -526,7 +526,7 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
   });
 
   it('#762 round 2 (MAJOR-2): a row just past a slot boundary is reclaimed identically under both session timezones (the exact skew the round-1 bug would have hit)', async () => {
-    const now = new Date('2026-09-15T03:31:00.000Z'); // 09:01 IST -- one minute past the 08:30 slot boundary
+    const now = new Date('2026-09-15T03:31:00.000Z'); // 09:01 IST -- an hour past the 08:00 slot boundary
     const lastAttemptAt = new Date('2026-09-15T03:29:00.000Z'); // 08:59 IST -- in the CURRENT slot, not yet due by the slot rule
     const id = await seedRow({
       state: 'CHECK_FAILED',

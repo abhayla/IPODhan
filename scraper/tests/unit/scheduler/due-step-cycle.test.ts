@@ -13,38 +13,41 @@ function istDate(year: number, month: number, day: number, hour: number, minute:
   return new Date(utcMillis);
 }
 
-describe('isDiscoveryDue — 4 daily IST slots (08:30, 11:00, 14:00, 17:30) with catch-up', () => {
+describe('isDiscoveryDue — the data job 3 IST slots (00:00, 08:00, 14:00; OD-19) with catch-up', () => {
+  it('the slot list is OD-19, read from the one shared definition', async () => {
+    const shared = await import('@ipodhan/shared/scheduler/data-job-slots');
+    expect([...DISCOVERY_SLOTS_IST_MINUTES]).toEqual([0, 480, 840]);
+    expect(DISCOVERY_SLOTS_IST_MINUTES).toBe(shared.DATA_JOB_SLOTS_IST_MINUTES);
+  });
+
   it('is due on first-ever run (lastRunAt null)', () => {
     expect(isDiscoveryDue(istDate(2026, 9, 3, 9, 0), null)).toBe(true);
   });
 
-  it('is due right at a slot boundary if never run since', () => {
-    expect(isDiscoveryDue(istDate(2026, 9, 3, 8, 30), null)).toBe(true);
+  it('is due at 00:00, 08:00 and 14:00 once the slot before has run', () => {
+    expect(isDiscoveryDue(istDate(2026, 9, 3, 0, 0), istDate(2026, 9, 2, 14, 5))).toBe(true);
+    expect(isDiscoveryDue(istDate(2026, 9, 3, 8, 0), istDate(2026, 9, 3, 0, 5))).toBe(true);
+    expect(isDiscoveryDue(istDate(2026, 9, 3, 14, 0), istDate(2026, 9, 3, 8, 5))).toBe(true);
+  });
+
+  it('is NOT due at the retired D-13 slots 08:30, 11:00, 17:30 once the slot before has run', () => {
+    expect(isDiscoveryDue(istDate(2026, 9, 3, 8, 30), istDate(2026, 9, 3, 8, 0))).toBe(false);
+    expect(isDiscoveryDue(istDate(2026, 9, 3, 11, 0), istDate(2026, 9, 3, 8, 0))).toBe(false);
+    expect(isDiscoveryDue(istDate(2026, 9, 3, 17, 30), istDate(2026, 9, 3, 14, 0))).toBe(false);
   });
 
   it('is NOT due again within the same slot window after a fresh run', () => {
-    const lastRun = istDate(2026, 9, 3, 8, 35); // ran shortly after the 08:30 slot
-    expect(isDiscoveryDue(istDate(2026, 9, 3, 9, 0), lastRun)).toBe(false);
-    expect(isDiscoveryDue(istDate(2026, 9, 3, 10, 59), lastRun)).toBe(false);
+    const lastRun = istDate(2026, 9, 3, 8, 5);
+    expect(isDiscoveryDue(istDate(2026, 9, 3, 10, 30), lastRun)).toBe(false);
+    expect(isDiscoveryDue(istDate(2026, 9, 3, 13, 59), lastRun)).toBe(false);
   });
 
-  it('becomes due again once the next slot boundary passes', () => {
-    const lastRun = istDate(2026, 9, 3, 8, 35);
-    expect(isDiscoveryDue(istDate(2026, 9, 3, 11, 0), lastRun)).toBe(true);
-    expect(isDiscoveryDue(istDate(2026, 9, 3, 11, 5), lastRun)).toBe(true);
+  it('catch-up: a missed slot (process down through 08:00) still fires on the next cycle that observes it', () => {
+    expect(isDiscoveryDue(istDate(2026, 9, 3, 9, 30), istDate(2026, 9, 3, 0, 5))).toBe(true);
   });
 
-  it('catch-up: a missed slot (process down through 11:00-14:00) still fires on the next cycle that observes it', () => {
-    const lastRun = istDate(2026, 9, 3, 8, 35); // last successful run was for the 08:30 slot
-    // Process was down 09:00-15:00; next cycle lands at 15:00, well past the missed 11:00 and 14:00 slots.
-    expect(isDiscoveryDue(istDate(2026, 9, 3, 15, 0), lastRun)).toBe(true);
-  });
-
-  it('runs exactly 4 times across a full day when cycles land every 30 minutes (no drift, no double-fire)', () => {
-    // Seed with yesterday's 17:30 slot already run, so today starts "warm"
-    // (a cold start with lastRunAt=null would also catch up yesterday's
-    // missed slot at the very first cycle of the day -- see the catch-up test).
-    let lastRun: Date | null = istDate(2026, 9, 2, 17, 35);
+  it('runs exactly 3 times across a full day when cycles land every 30 minutes (no drift, no double-fire)', () => {
+    let lastRun: Date | null = istDate(2026, 9, 2, 14, 5);
     let runCount = 0;
     for (let i = 0; i < 48; i++) {
       const totalMinutes = i * 30;
@@ -54,20 +57,15 @@ describe('isDiscoveryDue — 4 daily IST slots (08:30, 11:00, 14:00, 17:30) with
         lastRun = now;
       }
     }
-    expect(runCount).toBe(DISCOVERY_SLOTS_IST_MINUTES.length);
-  });
-
-  it('before the first slot of the day, the due boundary is yesterday\'s last slot (17:30) — a run just after that still counts', () => {
-    const lastRun = istDate(2026, 9, 2, 17, 35); // ran just after yesterday's 17:30 slot
-    expect(isDiscoveryDue(istDate(2026, 9, 3, 5, 0), lastRun)).toBe(false); // before 08:30 today, nothing new due
-    expect(isDiscoveryDue(istDate(2026, 9, 3, 8, 30), lastRun)).toBe(true); // today's 08:30 slot arrives
+    expect(runCount).toBe(3);
   });
 
   it('is timezone-safe: uses explicit IST offset arithmetic, not the machine timezone', () => {
-    // A UTC instant that is 08:30 IST is 03:00 UTC the same day.
-    const utcInstant = new Date(Date.UTC(2026, 8, 3, 3, 0)); // 2026-09-03T03:00:00Z == 08:30 IST
+    // A UTC instant that is 08:00 IST is 02:30 UTC the same day.
+    const utcInstant = new Date(Date.UTC(2026, 8, 3, 2, 30));
     expect(isDiscoveryDue(utcInstant, null)).toBe(true);
-    expect(mostRecentDiscoverySlotLabel(utcInstant)).toBe('08:30 IST');
+    expect(mostRecentDiscoverySlotLabel(utcInstant)).toBe('08:00 IST');
+    expect(mostRecentDiscoverySlotLabel(new Date(Date.UTC(2026, 8, 2, 18, 31)))).toBe('00:00 IST');
   });
 });
 

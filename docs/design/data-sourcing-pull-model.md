@@ -1200,16 +1200,24 @@ most-read number on an IPO page outside market hours.
 
 This is a change to D-13's *implementation*, not to D-13. Finding **F-41**, approved.
 
-#### 2.1.2 An open question: nothing runs between 17:30 and 08:30
+#### 2.1.2 The overnight hole under D-13, and why F-42's evening slot is not built
 
-Discovery has a **15-hour hole overnight**. Price band advertisements are commonly filed in the
-evening for an issue that opens the next morning; if that is the real pattern, the site shows no
-price band for the whole evening before an issue opens — the window in which people actually
-research it.
+Under D-13's four slots, discovery had a **15-hour hole overnight** (17:30 to 08:30). Price band
+advertisements are commonly filed in the evening for an issue that opens the next morning; if that is
+the real pattern, the site showed no price band for the whole evening before an issue opened — the
+window in which people actually research it.
 
-**This is a hypothesis, not a measured fact, and it cannot be measured from our own data**: discovery
-only runs at those four slots, so our record of when a document "appeared" is a record of when we
-looked. A fifth slot around 21:00 IST would close it cheaply. **APPROVED by the owner, 2026-09-08: add the evening slot.** Finding **F-42**.
+**This was a hypothesis, not a measured fact, and it cannot be measured from our own data**:
+discovery only ran at those four slots, so our record of when a document "appeared" is a record of
+when we looked. A fifth slot around 21:00 IST was proposed to close it, and **APPROVED by the owner on
+2026-09-08** (finding **F-42**).
+
+**Superseded the next day by OD-19 (owner, 2026-09-09)**, which replaced D-13's slots outright with
+three data-job runs at **00:00, 08:00 and 14:00 IST** (the job table above). OD-19 names three runs and
+no evening data run, so the F-42 slot is not built. The hole it targeted is now 14:00 to 00:00 (10
+hours) rather than 17:30 to 08:30 (15 hours), and the 00:00 run reads an evening filing before the
+08:00 run on the day an issue opens. This paragraph records that supersession; it is a wording fix to
+match OD-19, not a new decision.
 
 #### 2.1.3 A contradiction with an existing approved spec, surfaced rather than buried
 

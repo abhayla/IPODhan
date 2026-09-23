@@ -10,11 +10,21 @@
  */
 
 import { istDayIso } from '@ipodhan/shared/utils/ist-day';
+import {
+  DATA_JOB_SLOTS_IST_MINUTES,
+  isDataJobDue,
+  mostRecentDataJobSlotEpochMinute,
+} from '@ipodhan/shared/scheduler/data-job-slots';
 
 const IST_OFFSET_MINUTES = 5 * 60 + 30;
 
-/** Minutes-since-midnight-IST for each daily discovery slot: 08:30, 11:00, 14:00, 17:30. */
-export const DISCOVERY_SLOTS_IST_MINUTES = [8 * 60 + 30, 11 * 60, 14 * 60, 17 * 60 + 30] as const;
+/**
+ * The data job's slots (spec §2.1, OD-19: 00:00, 08:00, 14:00 IST), which
+ * supersede D-13's four. Defined ONCE in
+ * packages/shared/src/scheduler/data-job-slots.ts; this is that same array,
+ * re-exported under the name the scraper's callers already use.
+ */
+export const DISCOVERY_SLOTS_IST_MINUTES = DATA_JOB_SLOTS_IST_MINUTES;
 
 interface IstClock {
   /** Days since the Unix epoch, in IST. */
@@ -34,19 +44,9 @@ function toIstClock(now: Date): IstClock {
   return { dayIndex, minutesOfDay, weekday };
 }
 
-/** Absolute minute (since epoch, IST-aligned) of the most recent discovery slot at-or-before `now`. */
-export function mostRecentDiscoverySlotEpochMinute(now: Date): number | null {
-  const { dayIndex, minutesOfDay } = toIstClock(now);
-  let dueSlot: number | null = null;
-  for (const slot of DISCOVERY_SLOTS_IST_MINUTES) {
-    if (minutesOfDay >= slot) dueSlot = slot;
-  }
-  if (dueSlot === null) {
-    // Before today's first slot -> the most recent slot was yesterday's last one.
-    const lastSlotYesterday = DISCOVERY_SLOTS_IST_MINUTES[DISCOVERY_SLOTS_IST_MINUTES.length - 1];
-    return (dayIndex - 1) * 1440 + lastSlotYesterday;
-  }
-  return dayIndex * 1440 + dueSlot;
+/** Absolute minute (since epoch, IST-aligned) of the most recent data-job slot at-or-before `now`. */
+export function mostRecentDiscoverySlotEpochMinute(now: Date): number {
+  return mostRecentDataJobSlotEpochMinute(now);
 }
 
 /** Human-readable "HH:MM IST" label for a discovery slot, for logging. */
@@ -57,24 +57,20 @@ export function formatIstSlot(slotMinutesOfDay: number): string {
 }
 
 /**
- * Discovery is due when the most recent slot boundary at-or-before `now` is
- * strictly after `lastRunAt` (or `lastRunAt` is null — never run before).
- * This is catch-up-safe: a missed slot (process down, slow prior cycle)
- * still fires on the next cycle that observes it, instead of waiting for the
- * same slot tomorrow.
+ * The data job (discovery, document download + extraction, the pull walk) is
+ * due when the most recent slot at-or-before `now` is strictly after
+ * `lastRunAt` (or it never ran). Catch-up-safe: a missed slot (process down,
+ * a run that did not finish) fires on the next wake that observes it instead
+ * of waiting for the same slot tomorrow. Outside that, a wake does no
+ * data-job work (spec §2.1: "never re-read a document because time passed").
  */
 export function isDiscoveryDue(now: Date, lastRunAt: Date | null): boolean {
-  const dueSlotEpochMinute = mostRecentDiscoverySlotEpochMinute(now);
-  if (dueSlotEpochMinute === null) return true;
-  if (lastRunAt === null) return true;
-  const lastRunIstMinute = Math.floor((lastRunAt.getTime() + IST_OFFSET_MINUTES * 60_000) / 60_000);
-  return dueSlotEpochMinute > lastRunIstMinute;
+  return isDataJobDue(now, lastRunAt);
 }
 
 /** For logging: the slot-of-day label the most recent due boundary corresponds to. */
 export function mostRecentDiscoverySlotLabel(now: Date): string {
   const epochMinute = mostRecentDiscoverySlotEpochMinute(now);
-  if (epochMinute === null) return 'unknown';
   const slotOfDay = ((epochMinute % 1440) + 1440) % 1440;
   return formatIstSlot(slotOfDay);
 }

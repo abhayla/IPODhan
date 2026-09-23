@@ -19,6 +19,7 @@
  */
 import type { ScraperSource } from '../services/types.js';
 import { FEATURE_FLAGS } from './feature-flags.js';
+import { dataJobFreshnessMaxAgeMinutes } from '@ipodhan/shared/scheduler/data-job-slots';
 
 export type FreshnessDataClass =
   | 'open-ipo-gmp-subscription'
@@ -114,15 +115,17 @@ export const FRESHNESS_SLOS: FreshnessSLO[] = [
 /**
  * Round-3 C4 (Tier-A review of round 1): the table above is calibrated for the
  * FLAT 30-minute cron. Under `ENABLE_DUE_STEP_SCHEDULER` the sources are
- * deliberately scheduled far apart — discovery (NSE/BSE) at four IST slots a
- * day, aggregators (Chittorgarh/Moneycontrol) and the API fallback once a day,
+ * deliberately scheduled far apart — discovery (NSE/BSE) at the data job's
+ * three IST slots a day (OD-19), aggregators (Chittorgarh/Moneycontrol) and the API fallback once a day,
  * GMP only inside market hours — so the flat-cadence thresholds would page the
  * owner P1 every hour, all night and all weekend, on a system that is behaving
  * exactly as designed. These are the cadence-driven thresholds:
  *
- *  - NSE / BSE: 16h. Last discovery slot is 17:30 IST, next is 08:30 the
- *    following morning = a designed 15h gap; 16h is that plus one hour of
- *    margin for a slow or skipped cycle.
+ *  - NSE / BSE: 11h, DERIVED from the data job's slot list (item 7 S2,
+ *    OD-19: 00:00, 08:00, 14:00 IST): the longest designed gap is 14:00 ->
+ *    00:00 = 10h, plus one hour of margin for a slow or skipped cycle. Computed
+ *    by `dataJobFreshnessMaxAgeMinutes()` from the one slot definition, so a
+ *    slot change moves this threshold with it.
  *  - CHITTORGARH / MONEYCONTROL / API_FALLBACK: 26h. Cadence is once per 24h;
  *    26h allows one late cycle without paging but still catches a dead source
  *    inside a day and a half.
@@ -131,7 +134,7 @@ export const FRESHNESS_SLOS: FreshnessSLO[] = [
  *    02:00 on a Saturday the source is not scheduled; "stale" is correct, not
  *    an incident.
  */
-const DUE_STEP_DISCOVERY_MAX_STALENESS_MS = 16 * HOUR;
+export const DUE_STEP_DISCOVERY_MAX_STALENESS_MS = dataJobFreshnessMaxAgeMinutes() * MIN;
 const DUE_STEP_DAILY_MAX_STALENESS_MS = 26 * HOUR;
 
 export const DUE_STEP_FRESHNESS_SLOS: FreshnessSLO[] = [
@@ -153,13 +156,13 @@ export const DUE_STEP_FRESHNESS_SLOS: FreshnessSLO[] = [
     source: 'NSE',
     dataClass: 'open-ipo-price-band-dates',
     maxStalenessMs: DUE_STEP_DISCOVERY_MAX_STALENESS_MS,
-    justification: 'Due-step scheduler: discovery slots 08:30/11:00/14:00/17:30 IST — designed overnight gap 15h, +1h margin (round-3 C4).',
+    justification: 'Due-step scheduler: data-job slots 00:00/08:00/14:00 IST (OD-19) — longest designed gap 10h (14:00->00:00), +1h margin, derived from the slot list.',
   },
   {
     source: 'BSE',
     dataClass: 'open-ipo-price-band-dates',
     maxStalenessMs: DUE_STEP_DISCOVERY_MAX_STALENESS_MS,
-    justification: 'Due-step scheduler: same discovery slots as NSE (round-3 C4).',
+    justification: 'Due-step scheduler: same data-job slots as NSE (OD-19).',
   },
   {
     source: 'API_FALLBACK',
