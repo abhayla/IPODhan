@@ -102,40 +102,82 @@
   ],
   "chain": [
     {
-      "id": "Wave 1",
-      "what": "19 (unmerge), S6 churn-stop, Swap Test, #884 stranded plan rows",
+      "id": "12",
+      "what": "Name matching: OD-68/69, hold-for-review, CIN binding (#910)",
       "state": "building",
-      "note": "34, 35, 8 built"
+      "note": "deps: none · fix round after failed review"
+    },
+    {
+      "id": "19",
+      "what": "Merge tool: #900 watcher deletion, fuller merge log",
+      "state": "queued",
+      "note": "deps: 1 (built) · after 12, same code"
     },
     {
       "id": "6",
-      "what": "The pull walk",
+      "what": "Pull walk: enforce OD-65 no re-fetch (#908), GMP adapter, 12,480 parked rows (#762)",
       "state": "queued",
-      "note": "#705, #762 re-queue"
+      "note": "deps: 5, 15 (built) · the core"
     },
     {
-      "id": "9",
-      "what": "The re-read loop",
+      "id": "3",
+      "what": "One source table: 6,220 capped rows (#884), churn-stop (#759), Swap Test cause (#893)",
       "state": "queued",
-      "note": "needs 6"
+      "note": "deps: 2 (built)"
     },
     {
-      "id": "10",
-      "what": "Verification checks",
+      "id": "22",
+      "what": "Documents: multi-part and password PDFs from real exchange samples",
       "state": "queued",
-      "note": "needs 6+9; 21 of 26 unbuilt"
+      "note": "deps: none"
     },
     {
-      "id": "17 · 11",
-      "what": "Closed-IPO job · crore conversion",
+      "id": "7",
+      "what": "Scheduler built; verify tiering (O-4)",
       "state": "queued",
-      "note": "needs 10"
+      "note": "deps: none; tiering needs 6"
     },
     {
       "id": "14",
-      "what": "BSE issue size (#728)",
+      "what": "BSE issue size: owner decides per case (tender offers at 0 vs real IPOs)",
       "state": "red",
-      "note": "LAST — verification before correctness"
+      "note": "deps: 13 (built) · question to owner"
+    },
+    {
+      "id": "9",
+      "what": "Re-read: fetch a genuinely new corrigendum (OD-65/66)",
+      "state": "queued",
+      "note": "deps: 6"
+    },
+    {
+      "id": "21",
+      "what": "Read side: source-and-date line (OD-72), confirmed-at column, missed-refresh admin alert",
+      "state": "queued",
+      "note": "deps: 1 (built), 6"
+    },
+    {
+      "id": "10",
+      "what": "Remaining buildable checks (blank-value, no-op counters)",
+      "state": "queued",
+      "note": "deps: 6, 9"
+    },
+    {
+      "id": "11",
+      "what": "Crore: unit tags on 5 rupee columns, yes or no",
+      "state": "red",
+      "note": "deps: 10 · question to owner"
+    },
+    {
+      "id": "17",
+      "what": "Closed-IPO job: defect fix running now (#717); flag stays OFF",
+      "state": "building",
+      "note": "deps: 6, 7, 10 · enabled only after they land"
+    },
+    {
+      "id": "32",
+      "what": "Card gate: 10 cards close as their items close",
+      "state": "queued",
+      "note": "follows the others"
     }
   ],
   "changed_since": {

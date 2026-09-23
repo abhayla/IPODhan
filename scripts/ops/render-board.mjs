@@ -341,7 +341,7 @@ const gates = `
 
 const chain = `
 <section class="status" id="chain">
- <div class="hd"><h2>The order the remaining work runs in</h2><span class="stamp">dependency order, read from the spec</span></div>
+ <div class="hd"><h2>The order the remaining work runs in</h2><span class="stamp">every partial item in run order; dependencies read from spec §7.1</span></div>
  <ol class="chain">${data.chain.map((c) => `<li class="c-${toneClass[c.state]}"><span class="cid">${esc(c.id)}</span><span class="cwhat">${esc(c.what)}</span><span class="cnote">${esc(c.note)}</span></li>`).join('')}</ol>
  <p class="rule">One short branch per item, never stacked. An item does not start until the one it depends on has landed with its proof read.</p>
 </section>`;
