@@ -266,21 +266,31 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     expect(await reopenFalseDoneRows(db as never, [IPO_ID])).toBe(0);
   });
 
-  it('(§6.2, MAJOR-1) a PARTIAL/FAILED IPO is not re-picked at the running version, IS re-picked once the MANIFEST changes; DONE never is', async () => {
+  it('(OD-78, NEW-1) a PARTIAL/FAILED IPO is NOT re-picked after a non-rank manifest edit, IS re-picked after a rank or capable change; DONE never is', async () => {
     await seedListedIpoWithPendingRhp();
     const { loadFieldManifest } = await import('../../src/config/field-manifest-loader.js');
     const { EXTRACTOR_VERSION } = await import('../../src/services/filing-auto-persist.js');
-    const m = loadFieldManifest();
-    const version = (fields: unknown) =>
-      mod.closedIpoResourcingVersion({
-        manifestVersion: m.version,
-        manifestFieldsHash: mod.manifestFieldsHash(fields),
-        extractorVersion: EXTRACTOR_VERSION,
-      });
-    const vNow = version(m.fields);
-    const firstKey = Object.keys(m.fields)[0];
-    const vNext = version({ ...m.fields, [firstKey]: { ...(m.fields as Record<string, object>)[firstKey], _rankEdit: 1 } });
-    expect(vNext).not.toBe(vNow);
+    type F = Record<string, { rank: Record<string, string[]>; capability: Record<string, { capable: boolean; reason: string }> }>;
+    const fresh = () => structuredClone(loadFieldManifest().fields) as unknown as F;
+    const version = (fields: F) =>
+      mod.closedIpoResourcingVersion({ ranksHash: mod.manifestRanksHash(fields), extractorVersion: EXTRACTOR_VERSION });
+    const vNow = version(fresh());
+    const reasonEdited = fresh();
+    const k0 = Object.keys(reasonEdited)[0];
+    const s0 = Object.keys(reasonEdited[k0].capability)[0];
+    reasonEdited[k0].capability[s0].reason = 'reworded in review; same meaning';
+    const vReason = version(reasonEdited);
+    const capFlipped = fresh();
+    capFlipped[k0].capability[s0].capable = !capFlipped[k0].capability[s0].capable;
+    const vCap = version(capFlipped);
+    const rankEdited = fresh();
+    const kR = Object.keys(rankEdited).find((k) => Object.values(rankEdited[k].rank).some((l) => l.length >= 2))!;
+    const tR = Object.keys(rankEdited[kR].rank).find((t) => rankEdited[kR].rank[t].length >= 2)!;
+    rankEdited[kR].rank[tR] = [...rankEdited[kR].rank[tR]].reverse();
+    const vRank = version(rankEdited);
+    expect(vReason).toBe(vNow);
+    expect(vCap).not.toBe(vNow);
+    expect(vRank).not.toBe(vNow);
 
     const picked = async (v: string) =>
       (await mod.selectClosedIpoCandidates(db as never, v, 100000)).some((c) => c.id === IPO_ID);
@@ -288,7 +298,7 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
       db.execute(sql`
         INSERT INTO closed_ipo_resourcing (ipo_id, first_attempt_at, last_attempt_at, attempts, outcome, cause_class, fields_written, fields_left_empty, resourced_at_version)
         VALUES (${IPO_ID}::uuid, now(), now(), 1, ${outcome}::closed_ipo_resourcing_outcome,
-                CASE WHEN ${outcome} = 'DONE' THEN NULL ELSE 'DOCUMENT_UNOBTAINABLE'::closed_ipo_resourcing_cause_class END, 0, 0, ${vNow})
+                CASE WHEN ${outcome} = 'DONE' THEN NULL ELSE 'SOURCE_UNREACHABLE'::closed_ipo_resourcing_cause_class END, 0, 0, ${vNow})
         ON CONFLICT (ipo_id) DO UPDATE SET outcome = EXCLUDED.outcome, cause_class = EXCLUDED.cause_class,
           resourced_at_version = EXCLUDED.resourced_at_version`);
 
@@ -296,20 +306,73 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     const seen: string[] = [];
     for (const outcome of ['PARTIAL', 'FAILED']) {
       await setRow(outcome);
-      const same = await picked(vNow);
-      const next = await picked(vNext);
-      seen.push(`${outcome}: same-version ${same}, new-manifest ${next}`);
-      expect(same).toBe(false);
-      expect(next).toBe(true);
+      const r = { same: await picked(vNow), reason: await picked(vReason), cap: await picked(vCap), rank: await picked(vRank) };
+      seen.push(`${outcome}: same ${r.same}, reason-edit ${r.reason}, capable-flip ${r.cap}, rank-edit ${r.rank}`);
+      expect(r).toEqual({ same: false, reason: false, cap: true, rank: true });
     }
     await setRow('DONE');
-    const doneSame = await picked(vNow);
-    const doneNext = await picked(vNext);
-    seen.push(`DONE: same-version ${doneSame}, new-manifest ${doneNext}`);
-    expect(doneSame).toBe(false);
-    expect(doneNext).toBe(false);
+    const done = { same: await picked(vNow), cap: await picked(vCap), rank: await picked(vRank) };
+    seen.push(`DONE: same ${done.same}, capable-flip ${done.cap}, rank-edit ${done.rank}`);
+    expect(done).toEqual({ same: false, cap: false, rank: false });
     // eslint-disable-next-line no-console
-    console.log(`MAJOR-1 PROOF: vNow=${vNow} vNext=${vNext}; ${seen.join('; ')}`);
+    console.log(`OD-78 (a,c) PROOF: vNow=${vNow} vReason=${vReason} vCap=${vCap} vRank=${vRank}; ${seen.join('; ')}`);
+  });
+
+  it('(OD-78, b) 12 never-walked + 5 PARTIAL: a night of 10 picks never-walked only; PARTIAL come after, and only once the ranks change', async () => {
+    const ids = (n: number, base: number) =>
+      Array.from({ length: n }, (_, i) => `00000000-0000-4000-8000-0000000${String(base + i).padStart(5, '0')}`);
+    const neverWalked = ids(12, 78100);
+    const partial = ids(5, 78200);
+    const all = [...neverWalked, ...partial];
+    const cleanup = async () => {
+      await db.delete(schema.closedIpoResourcing).where(inArray(schema.closedIpoResourcing.ipoId, all));
+      await db.delete(schema.ipos).where(inArray(schema.ipos.id, all));
+    };
+    await cleanup();
+    try {
+      // PARTIAL rows closed MORE recently than the never-walked ones: close_date DESC alone would put them first.
+      for (const [i, id] of neverWalked.entries()) {
+        await db.execute(sql`INSERT INTO ipos (id, company_name, slug, category, segment, listing_exchanges, status, open_date, close_date)
+          VALUES (${id}::uuid, ${`OD-78 never-walked ${i}`}, ${`od78-never-walked-${i}`}, 'SME', 'SME', '["BSE"]'::jsonb, 'LISTED',
+                  CURRENT_DATE - 9, CURRENT_DATE - 2)`);
+      }
+      for (const [i, id] of partial.entries()) {
+        await db.execute(sql`INSERT INTO ipos (id, company_name, slug, category, segment, listing_exchanges, status, open_date, close_date)
+          VALUES (${id}::uuid, ${`OD-78 partial ${i}`}, ${`od78-partial-${i}`}, 'SME', 'SME', '["BSE"]'::jsonb, 'LISTED',
+                  CURRENT_DATE - 8, CURRENT_DATE - 1)`);
+        await db.execute(sql`INSERT INTO closed_ipo_resourcing (ipo_id, first_attempt_at, last_attempt_at, attempts, outcome, cause_class, fields_written, fields_left_empty, resourced_at_version)
+          VALUES (${id}::uuid, now(), now(), 1, 'PARTIAL', 'SOURCE_UNREACHABLE', 0, 4, 'od78-ranks-A')`);
+      }
+      const foreign = (await db.execute(sql`SELECT count(*)::int AS n FROM ipos i LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
+            WHERE upper(i.status::text) IN ('LISTED','CLOSED') AND i.close_date >= CURRENT_DATE - 2 AND i.close_date < CURRENT_DATE
+              AND r.ipo_id IS NULL AND NOT (i.id = ANY(${sql.param(neverWalked)}::uuid[]))`)) as unknown as { rows: Array<{ n: number }> };
+      const foreignNever = Number(foreign.rows[0].n);
+      const report: string[] = [];
+      for (const v of ['od78-ranks-A', 'od78-ranks-B']) {
+        const night = await mod.selectClosedIpoCandidates(db as never, v, 10);
+        const nightIds = night.map((c) => c.id);
+        const partialPicked = nightIds.filter((id) => partial.includes(id)).length;
+        const oursNever = nightIds.filter((id) => neverWalked.includes(id)).length;
+        report.push(`version ${v}: night of ${night.length} -> ${oursNever} of our never-walked, ${partialPicked} PARTIAL`);
+        expect(night.length).toBe(10);
+        expect(partialPicked).toBe(0);
+        if (foreignNever === 0) expect(oursNever).toBe(10);
+      }
+      // (c) same ranks: PARTIAL never selected at all; ranks changed: every PARTIAL selected, after every never-walked.
+      const wide = async (v: string) => (await mod.selectClosedIpoCandidates(db as never, v, 100000)).map((c) => c.id);
+      const sameRanks = await wide('od78-ranks-A');
+      const newRanks = await wide('od78-ranks-B');
+      expect(partial.filter((id) => sameRanks.includes(id))).toEqual([]);
+      expect(partial.every((id) => newRanks.includes(id))).toBe(true);
+      const firstPartialIdx = Math.min(...partial.map((id) => newRanks.indexOf(id)));
+      const neverIdx = newRanks.map((id, i) => [id, i] as const).filter(([id]) => neverWalked.includes(id)).map(([, i]) => i);
+      expect(Math.max(...neverIdx)).toBeLessThan(firstPartialIdx);
+      report.push(`same ranks: ${partial.filter((id) => sameRanks.includes(id)).length}/5 PARTIAL eligible; new ranks: 5/5 eligible, first at #${firstPartialIdx + 1} after all ${neverIdx.length} never-walked`);
+      // eslint-disable-next-line no-console
+      console.log(`OD-78 (b,c) PROOF: foreign never-walked in window=${foreignNever}; ${report.join('; ')}`);
+    } finally {
+      await cleanup();
+    }
   });
 
   it('(OD-73, MAJOR-1) the walk asked nothing: DONE when every plan row is settled, PARTIAL when a row is still open', async () => {
@@ -334,19 +397,47 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     expect(open.causeDetail).toMatch(/asked nothing, but 1 plan row\(s\) are not settled/);
   });
 
-  it('(F-31, MAJOR-3) the field_sources snapshot for the selected IPOs is written and reads back', async () => {
+  it('(F-31, MAJOR-3 + round 2) the snapshot names its database and slot, carries child-table current values, and refuses the wrong target', async () => {
     await seedListedIpoWithPendingRhp();
     await db.execute(sql`INSERT INTO field_sources (ipo_id, table_name, row_key, field_name, source, previous_value, previous_source)
                           VALUES (${IPO_ID}::uuid, 'ipos', '', 'issueSize', 'CHITTORGARH', '19.2', 'BSE')`);
+    await db.execute(sql`INSERT INTO ipo_details (ipo_id, data_source) VALUES (${IPO_ID}::uuid, 'NSE')`);
+    await db.execute(sql`INSERT INTO field_sources (ipo_id, table_name, row_key, field_name, source, previous_value, previous_source)
+                          VALUES (${IPO_ID}::uuid, 'ipo_details', '', 'issueType', 'NSE', NULL, NULL)`);
     const snap = await import('../../src/scheduler/closed-ipo-snapshot.js');
     const dir = mkdtempSync(path.join(os.tmpdir(), 'f31-'));
-    const written = await snap.writeFieldSourcesSnapshot(db as never, [IPO_ID], { dir });
-    const back = snap.readFieldSourcesSnapshot(written.path);
+    const prevSlot = process.env.DEPLOY_SLOT;
+    process.env.DEPLOY_SLOT = 'test';
+    let written: { path: string; rows: number };
+    try {
+      written = await snap.writeFieldSourcesSnapshot(db as never, [IPO_ID], { dir });
+    } finally {
+      if (prevSlot === undefined) delete process.env.DEPLOY_SLOT;
+      else process.env.DEPLOY_SLOT = prevSlot;
+    }
+    const back = snap.readFieldSourcesSnapshot(written.path, { database: 'ipodhan_test', deploySlot: 'test' });
+    let refused = '';
+    try {
+      snap.readFieldSourcesSnapshot(written.path, { database: 'ipodhan', deploySlot: 'prod' });
+    } catch (e) {
+      refused = e instanceof Error ? e.message : String(e);
+    }
     // eslint-disable-next-line no-console
-    console.log(`F-31 PROOF: ${written.path} rows=${written.rows} readBack=${back.fieldSources.length} ipos=${back.ipos.length}`);
-    expect(written.rows).toBe(1);
+    console.log(
+      `F-31 PROOF: ${path.basename(written.path)} db=${back.database} slot=${back.deploySlot} rows=${written.rows} ` +
+        `childTables=${Object.keys(back.childRows).join(',')} ipo_details=${back.childRows.ipo_details?.length}; wrong target -> "${refused}"`
+    );
+    expect(path.basename(written.path)).toMatch(/^field-sources-test-ipodhan_test-/);
+    expect(back.database).toBe('ipodhan_test');
+    expect(back.deploySlot).toBe('test');
+    expect(written.rows).toBe(2);
     expect(back.ipoIds).toEqual([IPO_ID]);
-    expect(back.fieldSources[0]).toMatchObject({ field_name: 'issueSize', previous_value: '19.2', previous_source: 'BSE' });
+    expect(back.fieldSources.find((r) => r.field_name === 'issueSize')).toMatchObject({ previous_value: '19.2', previous_source: 'BSE' });
     expect(back.ipos[0]).toMatchObject({ id: IPO_ID });
+    expect(back.childRows.ipo_details).toHaveLength(1);
+    expect(back.childRows.ipo_details[0]).toMatchObject({ ipo_id: IPO_ID });
+    expect(back.childRows.ipos).toBeUndefined();
+    expect(refused).toMatch(/refus/i);
+    expect(refused).toMatch(/ipodhan_test/);
   });
 });

@@ -48,7 +48,7 @@ import {
   isClosedIpoJobDue,
   resourceClosedIpo,
   closedIpoResourcingVersion,
-  manifestFieldsHash,
+  manifestRanksHash,
   CLOSED_IPO_JOB_SLOT_IST_MINUTES,
 } from './scheduler/closed-ipo-job.js';
 import { writeFieldSourcesSnapshot } from './scheduler/closed-ipo-snapshot.js';
@@ -1635,17 +1635,16 @@ async function pruneScraperLogs(): Promise<StepResult> {
 }
 
 /**
- * Stamped onto every `closed_ipo_resourcing` row (§6.2): the MANIFEST +
- * EXTRACTOR version the IPO was resourced under, derived at run time -- a
- * manifest rank change or an EXTRACTOR_VERSION bump re-opens every
- * PARTIAL/FAILED IPO, with nobody having to remember to bump a job constant
- * (review round 1 MAJOR-1).
+ * Stamped onto every `closed_ipo_resourcing` row (§6.2, OD-78): the source-
+ * RANKINGS fingerprint (rank lists + capable flags only) + EXTRACTOR version the
+ * IPO was resourced under, derived at run time -- a ranking change or an
+ * EXTRACTOR_VERSION bump re-opens every PARTIAL/FAILED IPO; any other manifest
+ * edit re-opens none (review round 2 NEW-1).
  */
 function currentClosedIpoResourcingVersion(): string {
   const manifest = loadFieldManifest();
   return closedIpoResourcingVersion({
-    manifestVersion: manifest.version,
-    manifestFieldsHash: manifestFieldsHash(manifest.fields),
+    ranksHash: manifestRanksHash(manifest.fields),
     extractorVersion: EXTRACTOR_VERSION,
   });
 }

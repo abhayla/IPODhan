@@ -17,7 +17,7 @@ import {
   CLOSED_IPO_JOB_DEFAULT_CAP,
   CLOSED_IPO_VERSION_MAX_LENGTH,
   closedIpoResourcingVersion,
-  manifestFieldsHash,
+  manifestRanksHash,
   isClosedIpoJobDue,
 } from '../../../src/scheduler/closed-ipo-job.js';
 import { loadFieldManifest } from '../../../src/config/field-manifest-loader.js';
@@ -61,8 +61,10 @@ describe('CLOSED_IPO_CANDIDATES_SQL — the four selection rules', () => {
     expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/r\.ipo_id IS NULL/);
   });
 
-  it('(g) newest closed first -- ORDER BY close_date DESC leads, per spec §6.1 rule 3 (MINOR-5)', () => {
-    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/ORDER BY\s+i\.close_date DESC/);
+  it('(g) never-walked first (OD-78), then newest closed first -- close_date DESC, per spec §6.1 rules 2-3', () => {
+    // `false` sorts before `true`: rows with no closed_ipo_resourcing row lead,
+    // so a re-pickable PARTIAL/FAILED never takes a slot a never-walked IPO wants.
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/ORDER BY\s+\(r\.ipo_id IS NOT NULL\),\s+i\.close_date DESC,\s+i\.id/);
     // #873's pending-document ranking is gone: OD-76's walk never reads a
     // document, so that count ranked IPOs by work this job cannot do.
     expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/extraction_status = 'PENDING'/);
@@ -198,19 +200,13 @@ describe('isClosedIpoJobDue', () => {
  * version, derived -- never a hand-bumped job constant.
  */
 describe('closedIpoResourcingVersion', () => {
-  const base = { manifestVersion: 2, manifestFieldsHash: 'a'.repeat(64), extractorVersion: 'extract_filing.py@2026-09-03' };
+  const base = { ranksHash: 'a'.repeat(64), extractorVersion: 'extract_filing.py@2026-09-03' };
 
-  it('changes when the manifest field ranks change (same schema version)', () => {
-    expect(closedIpoResourcingVersion({ ...base, manifestFieldsHash: 'b'.repeat(64) })).not.toBe(
-      closedIpoResourcingVersion(base)
-    );
+  it('changes when the source-rankings fingerprint changes', () => {
+    expect(closedIpoResourcingVersion({ ...base, ranksHash: 'b'.repeat(64) })).not.toBe(closedIpoResourcingVersion(base));
   });
 
-  it('changes when the manifest schema version changes', () => {
-    expect(closedIpoResourcingVersion({ ...base, manifestVersion: 1 })).not.toBe(closedIpoResourcingVersion(base));
-  });
-
-  it('changes when the extractor version changes', () => {
+  it('changes when the extractor version changes (§6.2 "extractor/manifest version")', () => {
     expect(closedIpoResourcingVersion({ ...base, extractorVersion: 'extract_filing.py@2026-10-01' })).not.toBe(
       closedIpoResourcingVersion(base)
     );
@@ -223,14 +219,55 @@ describe('closedIpoResourcingVersion', () => {
       closedIpoResourcingVersion({ ...base, extractorVersion: 'x'.repeat(80) }).length
     ).toBeLessThanOrEqual(CLOSED_IPO_VERSION_MAX_LENGTH);
   });
+});
 
-  it('the REAL manifest hashes deterministically and a one-rank edit changes the hash', () => {
-    const m = loadFieldManifest();
-    const h1 = manifestFieldsHash(m.fields);
-    expect(manifestFieldsHash(loadFieldManifest().fields)).toBe(h1);
-    const firstKey = Object.keys(m.fields)[0];
-    const edited = { ...m.fields, [firstKey]: { ...(m.fields as Record<string, object>)[firstKey], _probe: 1 } };
-    expect(manifestFieldsHash(edited)).not.toBe(h1);
+/**
+ * OD-78 (review round 2 NEW-1): the version that re-opens PARTIAL/FAILED rows is
+ * the ranks-and-capability fingerprint -- the rank lists and capable flags, NOT
+ * any manifest edit. Driven on the REAL manifest.
+ */
+describe('manifestRanksHash (OD-78)', () => {
+  type F = Record<string, { rank: Record<string, string[]>; capability: Record<string, { capable: boolean; reason: string }> } & Record<string, unknown>>;
+  const real = () => structuredClone(loadFieldManifest().fields) as unknown as F;
+  const firstKey = (f: F) => Object.keys(f)[0];
+  const firstSource = (f: F) => Object.keys(f[firstKey(f)].capability)[0];
+
+  it('is deterministic on the real manifest', () => {
+    expect(manifestRanksHash(real())).toBe(manifestRanksHash(real()));
+  });
+
+  it('does NOT change when only a capability reason text changes', () => {
+    const f = real();
+    const h = manifestRanksHash(f);
+    f[firstKey(f)].capability[firstSource(f)].reason = 'reworded, same meaning';
+    expect(manifestRanksHash(f)).toBe(h);
+  });
+
+  it('does NOT change for other non-rank edits (unit, class, notes, an added key) or key order', () => {
+    const f = real();
+    const h = manifestRanksHash(f);
+    const k = firstKey(f);
+    (f[k] as Record<string, unknown>).unit = 'keep';
+    (f[k] as Record<string, unknown>)._note = 'annotation';
+    const reordered = Object.fromEntries(Object.entries(f).reverse()) as F;
+    expect(manifestRanksHash(reordered)).toBe(h);
+  });
+
+  it('DOES change when a rank list changes order', () => {
+    const f = real();
+    const k = Object.keys(f).find((key) => Object.values(f[key].rank).some((l) => l.length >= 2))!;
+    const t = Object.keys(f[k].rank).find((type) => f[k].rank[type].length >= 2)!;
+    const h = manifestRanksHash(f);
+    f[k].rank[t] = [...f[k].rank[t]].reverse();
+    expect(manifestRanksHash(f)).not.toBe(h);
+  });
+
+  it('DOES change when a capable flag flips', () => {
+    const f = real();
+    const h = manifestRanksHash(f);
+    const cap = f[firstKey(f)].capability[firstSource(f)];
+    cap.capable = !cap.capable;
+    expect(manifestRanksHash(f)).not.toBe(h);
   });
 });
 

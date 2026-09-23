@@ -97,17 +97,25 @@ export const CLOSED_IPO_JOB_DEFAULT_CAP = 10;
  * work" is a fact about the evidence rather than a retry counter someone can
  * reset.
  *
- * ORDER BY is `close_date DESC` -- newest closed first -- per spec §6.1 rule 3
+ * ORDER BY leads with `(r.ipo_id IS NOT NULL)` -- never-walked IPOs (no
+ * closed_ipo_resourcing row; `false` sorts first) take the nightly slots before
+ * any re-pickable PARTIAL/FAILED one (OD-78, §6.1 rule 2). Measured on staging
+ * 2026-09-23: 238 of 274 LISTED IPOs never walked, and every walked IPO ends
+ * PARTIAL while the #884 config gap lasts -- without this key a ranks change
+ * would hand the same newest PARTIAL IPOs every slot ahead of the backlog.
+ *
+ * Within each group it is `close_date DESC` -- newest closed first -- per spec §6.1 rule 3
  * (the owner's sequence, OD-22). #873 had re-ordered by the count of PENDING
  * extractable documents; OD-76 (2026-09-23) removed the premise: the walk this
  * job runs never reads a document (reading a PENDING one stays the document
  * cycle's job, OD-33), so a PENDING-document count ranks IPOs by work this job
  * cannot do. `i.id` is only a deterministic tie-break.
  *
- * `resourced_at_version` is the EXTRACTOR/MANIFEST version (§6.2), built by
- * `closedIpoResourcingVersion` -- not a hand-bumped job constant. A manifest
- * rank change or an extractor bump is what can change a PARTIAL/FAILED IPO's
- * cause, so it is what makes that IPO eligible again.
+ * `resourced_at_version` is built by `closedIpoResourcingVersion` from the
+ * source-RANKINGS fingerprint (OD-78: rank lists + capable flags, not any
+ * manifest edit) and the extractor version (§6.2) -- not a hand-bumped job
+ * constant. Same ranks, same extractor = same cause = same outcome, so a
+ * PARTIAL/FAILED IPO is eligible again only when one of those changes.
  *
  * This constant is the READABLE copy, asserted by the unit tests. The executed
  * query is the bound `sql` template in `runClosedIpoJob` — the rules live here
@@ -123,7 +131,7 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
        r.ipo_id IS NULL
        OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM $1)
      )
-   ORDER BY i.close_date DESC, i.id
+   ORDER BY (r.ipo_id IS NOT NULL), i.close_date DESC, i.id
    LIMIT $2
 `;
 
@@ -151,7 +159,7 @@ export async function selectClosedIpoCandidates(
            r.ipo_id IS NULL
            OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM ${resourcedAtVersion})
          )
-       ORDER BY i.close_date DESC, i.id
+       ORDER BY (r.ipo_id IS NOT NULL), i.close_date DESC, i.id
        LIMIT ${cap}
     `
   );
@@ -337,9 +345,8 @@ export interface ClosedIpoResourceResult {
  *   - generation produced 0 rows        -> FAILED / EXTRACTOR_MISSING (the manifest ranks
  *                                          no field for this IPO's type: nothing CAN be asked)
  *   - the walk asked nothing            -> DONE only if every plan row is settled (OD-73);
- *                                          else PARTIAL / SOURCE_UNREACHABLE when a row is
- *                                          CHECK_FAILED, PARTIAL / DOCUMENT_UNOBTAINABLE when
- *                                          rows are only waiting on a source (nearest class)
+ *                                          else PARTIAL / SOURCE_UNREACHABLE (rows CHECK_FAILED
+ *                                          or waiting on a source; per-state counts in the detail)
  *   - the walk stopped before finishing -> PARTIAL / SOURCE_UNREACHABLE (budget or superseded
  *                                          claim: the unwalked rest must not be sealed DONE)
  * Past those, the walk's own counters decide, exactly as before OD-76:
@@ -392,14 +399,16 @@ export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDe
     }
     const breakdown = `PENDING ${open.PENDING ?? 0}, NOT_AVAILABLE_YET ${open.NOT_AVAILABLE_YET ?? 0}, CHECK_FAILED ${checkFailed}`;
     // Cause classes are the EXISTING five (a new enum value is a schema change).
-    // CHECK_FAILED rows are a source check that failed and is backing off:
-    // SOURCE_UNREACHABLE is literally true. Otherwise every open row is waiting
-    // on a ranked source that has not supplied it -- for a closed IPO, almost
-    // always the offer document not yet extracted -- and DOCUMENT_UNOBTAINABLE
-    // is the nearest existing class; the detail says which it is.
+    // Every open row here is held by a ranked SOURCE the walk could not get a
+    // value from tonight: CHECK_FAILED = its check failed and is backing off;
+    // PENDING / NOT_AVAILABLE_YET = not due yet, or the source answered "not
+    // yet". SOURCE_UNREACHABLE is the accurate existing class for both -- the
+    // same class the job already uses for "the rest were not asked" below.
+    // DOCUMENT_UNOBTAINABLE (review round 2 MINOR) was inaccurate: nothing
+    // sought a document. The per-state counts stay in cause_detail.
     return {
       outcome: 'PARTIAL',
-      causeClass: checkFailed > 0 ? 'SOURCE_UNREACHABLE' : 'DOCUMENT_UNOBTAINABLE',
+      causeClass: 'SOURCE_UNREACHABLE',
       causeDetail:
         `the walk asked nothing, but ${checkFailed + waiting} plan row(s) are not settled (${breakdown}); ` +
         `plan rows before this run: ${existing}`,
@@ -462,35 +471,58 @@ export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDe
 }
 
 /**
- * `closed_ipo_resourcing.resourced_at_version` (§6.2): "the extractor/manifest
- * version it was done under, so a later version can legitimately re-do it".
+ * `closed_ipo_resourcing.resourced_at_version` (§6.2, OD-78): the version that
+ * re-opens a PARTIAL/FAILED IPO.
  *
- * Built from the three things that can change a PARTIAL/FAILED IPO's cause:
- * the manifest's schema version, a hash of its field ranks (a rank change
- * without a schema-version bump is the common case -- `version` is 1 or 2),
- * and the filing extractor's version. NOT a hand-edited job constant: that was
- * review round 1 MAJOR-1, where a re-pick depended on someone remembering to
- * bump a string.
+ * Built from the two things that can change such an IPO's cause:
+ *   - the source-RANKINGS fingerprint (`manifestRanksHash`): the rank lists and
+ *     the capable flags, and nothing else. OD-78: "the rank lists and capable
+ *     flags -- not any manifest edit". Review round 2 NEW-1: hashing the whole
+ *     `fields` object meant a reworded `reason` re-opened every PARTIAL row.
+ *     The manifest's schema `version` is deliberately NOT an input either: it
+ *     is a manifest edit, not a ranking.
+ *   - the filing extractor's version (§6.2 "the extractor/manifest version"):
+ *     a new extractor can read a field the old one could not.
+ * NOT a hand-edited job constant: that was review round 1 MAJOR-1.
  *
  * Kept <= 39 characters so the repair tool's `repair-717:` prefix still fits
  * varchar(50); an input that would overflow collapses to a hash of itself.
  */
 export const CLOSED_IPO_VERSION_MAX_LENGTH = 39;
 
-export function closedIpoResourcingVersion(input: {
-  manifestVersion: number;
-  manifestFieldsHash: string;
-  extractorVersion: string;
-}): string {
+export function closedIpoResourcingVersion(input: { ranksHash: string; extractorVersion: string }): string {
   const extractor = input.extractorVersion.replace(/^extract_filing\.py@/, 'x');
-  const readable = `m${input.manifestVersion}.${input.manifestFieldsHash.slice(0, 8)}+${extractor}`;
+  const readable = `r${input.ranksHash.slice(0, 12)}+${extractor}`;
   if (readable.length <= CLOSED_IPO_VERSION_MAX_LENGTH) return readable;
   return `h-${createHash('sha256').update(readable).digest('hex').slice(0, 32)}`;
 }
 
-/** Hash of a manifest's field ranks -- the input `closedIpoResourcingVersion` keys on. */
-export function manifestFieldsHash(fields: unknown): string {
-  return createHash('sha256').update(JSON.stringify(fields)).digest('hex');
+type RankedFieldEntry = {
+  rank?: Record<string, readonly string[]>;
+  capability?: Record<string, { capable?: boolean }>;
+};
+
+/**
+ * OD-78's ranks-and-capability fingerprint of a manifest's `fields`: per field,
+ * the rank list for each IPO type (ORDER KEPT -- rank order is the ranking) and
+ * the `capable` flag per source. Everything else in an entry (reason text,
+ * unit, class, notes, key order) is excluded, so editing it re-opens nothing.
+ */
+export function manifestRanksHash(fields: Record<string, RankedFieldEntry> | unknown): string {
+  const entries = (fields ?? {}) as Record<string, RankedFieldEntry>;
+  const canonical = Object.keys(entries)
+    .sort()
+    .map((fieldKey) => {
+      const e = entries[fieldKey] ?? {};
+      const rank = Object.keys(e.rank ?? {})
+        .sort()
+        .map((ipoType) => [ipoType, [...(e.rank?.[ipoType] ?? [])]]);
+      const capable = Object.keys(e.capability ?? {})
+        .sort()
+        .map((source) => [source, e.capability?.[source]?.capable === true]);
+      return [fieldKey, rank, capable];
+    });
+  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
 
 /** IST is a fixed UTC+5:30 offset (no DST) — same convention as `due-step-cycle.ts`. */

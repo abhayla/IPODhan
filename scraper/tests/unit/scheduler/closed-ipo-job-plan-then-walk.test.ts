@@ -134,7 +134,7 @@ describe('resourceClosedIpo — OD-76 plan, then walk', () => {
     expect(r.causeClass).toBeUndefined();
   });
 
-  it('a walk that asked nothing while rows only WAIT on a source is PARTIAL, labelled as waiting -- never SOURCE_UNREACHABLE', async () => {
+  it('a walk that asked nothing while rows only WAIT on a source is PARTIAL / SOURCE_UNREACHABLE, per-state counts in the detail -- never DOCUMENT_UNOBTAINABLE (no document was sought)', async () => {
     const d = deps({
       countPlanRows: vi.fn().mockResolvedValue(40),
       walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 0, stoppedReason: 'NO_DUE_FIELDS' })),
@@ -142,8 +142,9 @@ describe('resourceClosedIpo — OD-76 plan, then walk', () => {
     });
     const r = await resourceClosedIpo('ipo-1', d);
     expect(r.outcome).toBe('PARTIAL');
-    expect(r.causeClass).toBe('DOCUMENT_UNOBTAINABLE');
+    expect(r.causeClass).toBe('SOURCE_UNREACHABLE');
     expect(r.causeDetail).toMatch(/4 plan row\(s\) are not settled/);
+    expect(r.causeDetail).toMatch(/PENDING 1, NOT_AVAILABLE_YET 3, CHECK_FAILED 0/);
     expect(r.fieldsLeftEmpty).toBe(4);
   });
 
