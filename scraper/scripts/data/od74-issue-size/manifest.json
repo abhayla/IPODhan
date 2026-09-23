@@ -1,0 +1,192 @@
+{
+  "tool": "repair-issue-size-chittorgarh-once-od74",
+  "od": "OD-74",
+  "pages": {
+    "https://www.chittorgarh.com/ipo/cms-info-systems-ipo/1203/": {
+      "file": "pages/cms-info-systems-ipo-1203.html.gz",
+      "sha256": "10178f3f9630d5353c803ac152d801a7c0705222f9e29b964cd0f8bb9e3698e8",
+      "bytes": 299926,
+      "readAt": "2026-09-23T05:30:04.919Z"
+    },
+    "https://www.chittorgarh.com/ipo/complete-sports-and-management-ipo/3182/": {
+      "file": "pages/complete-sports-and-management-ipo-3182.html.gz",
+      "sha256": "6602e606616fcb533e4017dbb9719fc7740aa249004059553899c7cf731b3c26",
+      "bytes": 327490,
+      "readAt": "2026-09-23T05:30:07.529Z"
+    },
+    "https://www.chittorgarh.com/ipo/dhanwel-hybrid-seeds-ipo/2846/": {
+      "file": "pages/dhanwel-hybrid-seeds-ipo-2846.html.gz",
+      "sha256": "11ad958fab45aa478212dfe53fdacd50126f19bd60ed21223ab8302945846516",
+      "bytes": 341163,
+      "readAt": "2026-09-23T05:30:10.134Z"
+    },
+    "https://www.chittorgarh.com/ipo/horizon-reclaim-india-ipo/2937/": {
+      "file": "pages/horizon-reclaim-india-ipo-2937.html.gz",
+      "sha256": "267cf13dbbed22c1c366e0bda8630e450e565bd4dbc5b871aaf91fc6dbb57979",
+      "bytes": 345639,
+      "readAt": "2026-09-23T05:30:01.737Z"
+    },
+    "https://www.chittorgarh.com/ipo/kwick-forensic-solutions-ipo/2757/": {
+      "file": "pages/kwick-forensic-solutions-ipo-2757.html.gz",
+      "sha256": "62934d1a70b2b82ca9145b8b1edcf2cd8a9d53a264472dbff9f6efca3d094c77",
+      "bytes": 399111,
+      "readAt": "2026-09-23T05:30:01.701Z"
+    },
+    "https://www.chittorgarh.com/ipo/mopshop-distribution-ipo/2769/": {
+      "file": "pages/mopshop-distribution-ipo-2769.html.gz",
+      "sha256": "80a50e7ca9477d308a3281d07db54badab864a54159cc5173563c6c52965a887",
+      "bytes": 318867,
+      "readAt": "2026-09-23T05:30:12.700Z"
+    },
+    "https://www.chittorgarh.com/ipo/paluck-technologies-ipo/2702/": {
+      "file": "pages/paluck-technologies-ipo-2702.html.gz",
+      "sha256": "d6a13e41e1e92f2a2aea49f4c30dfec28dfbd5d3986a6caa4c67fad72e4b4ab5",
+      "bytes": 372173,
+      "readAt": "2026-09-23T05:30:01.667Z"
+    },
+    "https://www.chittorgarh.com/ipo/rays-of-belief-ipo/2787/": {
+      "file": "pages/rays-of-belief-ipo-2787.html.gz",
+      "sha256": "e87d2a1e3436da1fe0f12578e7ae2d72c8d6a2731413ec7acc9c2bbdefd8cb5a",
+      "bytes": 342430,
+      "readAt": "2026-09-23T05:30:15.351Z"
+    },
+    "https://www.chittorgarh.com/ipo/windlas-biotech-ipo/1135/": {
+      "file": "pages/windlas-biotech-ipo-1135.html.gz",
+      "sha256": "62ca5657b3b61b6814ef38b3986586c79f6757985da55c69e7c8df14479abc0e",
+      "bytes": 317345,
+      "readAt": "2026-09-23T05:30:18.123Z"
+    },
+    "https://www.chittorgarh.com/ipo/aaa-technologies-ipo/1068/": {
+      "file": "pages/aaa-technologies-ipo-1068.html.gz",
+      "sha256": "7ab39a2ddc37484f3d7f0be35db49301f896a2e64d981bd053a8f8fe37bcf1f0",
+      "bytes": 273236,
+      "readAt": "2026-09-23T08:13:19.437Z"
+    }
+  },
+  "lookups": {
+    "aaa-technologies-ltd": {
+      "file": "lookups/aaa-technologies-ltd.json.gz",
+      "sha256": "9b09aaf8bbabe36c5fce7cec4d92f35438288131abb7670407ba0d0bd48d75e9",
+      "bytes": 28548,
+      "readAt": "2026-09-23T08:13:16.935Z",
+      "url": "https://webnodejs.chittorgarh.com/cloud/report/data-read/118/1/10/2020/2020-21/0/all/0?search=aaa%20technologies&v=15-11",
+      "match": "https://www.chittorgarh.com/ipo/aaa-technologies-ipo/1068/",
+      "candidates": 43
+    },
+    "banganga-paper-industries-ltd": {
+      "file": "lookups/banganga-paper-industries-ltd.json.gz",
+      "sha256": "13dbe0ffa2093096dc79b3054ffc0f98b63b7c577f750fcd91c85f4209d0a357",
+      "bytes": 176377,
+      "readAt": "2026-09-23T08:13:21.937Z",
+      "url": "https://webnodejs.chittorgarh.com/cloud/report/data-read/118/1/10/2026/2026-27/0/all/0?search=banganga%20paper&v=15-11",
+      "match": null,
+      "candidates": 266
+    },
+    "induss-food-products-and-equipments-ltd": {
+      "file": "lookups/induss-food-products-and-equipments-ltd.json.gz",
+      "sha256": "122916d5bfccc38e2b569bcb3695cf10baadd2c2b9bb85d34dd1a09d2d429d37",
+      "bytes": 176371,
+      "readAt": "2026-09-23T08:13:24.436Z",
+      "url": "https://webnodejs.chittorgarh.com/cloud/report/data-read/118/1/10/2026/2026-27/0/all/0?search=induss%20food&v=15-11",
+      "match": null,
+      "candidates": 266
+    },
+    "kwality-walls-india-ltd": {
+      "file": "lookups/kwality-walls-india-ltd.json.gz",
+      "sha256": "0bb0dc815ee3de2f1aa3a4f2af232d04b03783e29f7ed38a0beebfc835bf69ec",
+      "bytes": 176375,
+      "readAt": "2026-09-23T08:13:26.952Z",
+      "url": "https://webnodejs.chittorgarh.com/cloud/report/data-read/118/1/10/2026/2026-27/0/all/0?search=kwality%20walls&v=15-11",
+      "match": null,
+      "candidates": 266
+    },
+    "morganite-crucible-india-ltd": {
+      "file": "lookups/morganite-crucible-india-ltd.json.gz",
+      "sha256": "fb921c54fea2cb8b4a3dbf7021aefe2b5390602d2d4d8d01b7c9a499a6549448",
+      "bytes": 247031,
+      "readAt": "2026-09-23T08:13:29.467Z",
+      "url": "https://webnodejs.chittorgarh.com/cloud/report/data-read/118/1/10/2025/2025-26/0/all/0?search=morganite%20crucible&v=15-11",
+      "match": null,
+      "candidates": 371
+    },
+    "nirbhay-colours-india-ltd": {
+      "file": "lookups/nirbhay-colours-india-ltd.json.gz",
+      "sha256": "5e8a07f5e46c219485febaf1298eba69bbb8324943d55cf56f51fa315e24442b",
+      "bytes": 247025,
+      "readAt": "2026-09-23T08:13:31.979Z",
+      "url": "https://webnodejs.chittorgarh.com/cloud/report/data-read/118/1/10/2025/2025-26/0/all/0?search=nirbhay%20colours&v=15-11",
+      "match": null,
+      "candidates": 371
+    },
+    "piyush-ltd": {
+      "file": "lookups/piyush-ltd.json.gz",
+      "sha256": "2c7764b45f961ed1d9a45999a4ffd286a59eb1ef66b866b6b66c69e4487f76ba",
+      "bytes": 176361,
+      "readAt": "2026-09-23T08:13:34.492Z",
+      "url": "https://webnodejs.chittorgarh.com/cloud/report/data-read/118/1/10/2026/2026-27/0/all/0?search=piyush&v=15-11",
+      "match": null,
+      "candidates": 266
+    },
+    "sanmitra-commercial-ltd": {
+      "file": "lookups/sanmitra-commercial-ltd.json.gz",
+      "sha256": "fb6df7f1177574aaa083f9922219947d4ccf6377b1de2cc348eedad9dfd2947f",
+      "bytes": 247033,
+      "readAt": "2026-09-23T08:13:37.004Z",
+      "url": "https://webnodejs.chittorgarh.com/cloud/report/data-read/118/1/10/2025/2025-26/0/all/0?search=sanmitra%20commercial&v=15-11",
+      "match": null,
+      "candidates": 371
+    }
+  },
+  "expected": {
+    "aaa-technologies-ltd": {
+      "url": "https://www.chittorgarh.com/ipo/aaa-technologies-ipo/1068/",
+      "printedRupees": 102300000,
+      "status": "WRITE"
+    },
+    "cms-info-systems-ltd": {
+      "url": "https://www.chittorgarh.com/ipo/cms-info-systems-ipo/1203/",
+      "printedRupees": 11000000000,
+      "status": "WRITE"
+    },
+    "complete-sports-and-management-india-ltd-complete-sports-and-management-ipo": {
+      "url": "https://www.chittorgarh.com/ipo/complete-sports-and-management-ipo/3182/",
+      "printedRupees": 749300000,
+      "status": "NOOP_WITHIN_ROUNDING"
+    },
+    "dhanwel-hybrid-seeds-ltd": {
+      "url": "https://www.chittorgarh.com/ipo/dhanwel-hybrid-seeds-ipo/2846/",
+      "printedRupees": 267300000,
+      "status": "NOOP_IDENTICAL"
+    },
+    "horizon-reclaim-india-ltd": {
+      "url": "https://www.chittorgarh.com/ipo/horizon-reclaim-india-ipo/2937/",
+      "printedRupees": 542700000,
+      "status": "NOOP_IDENTICAL"
+    },
+    "kwick-forensic-solutions-ltd": {
+      "url": "https://www.chittorgarh.com/ipo/kwick-forensic-solutions-ipo/2757/",
+      "printedRupees": 507700000,
+      "status": "NOOP_WITHIN_ROUNDING"
+    },
+    "mopshop-distribution-ltd": {
+      "url": "https://www.chittorgarh.com/ipo/mopshop-distribution-ipo/2769/",
+      "printedRupees": 272600000,
+      "status": "NOOP_IDENTICAL"
+    },
+    "paluck-technologies-ltd": {
+      "url": "https://www.chittorgarh.com/ipo/paluck-technologies-ipo/2702/",
+      "printedRupees": 330000000,
+      "status": "NOOP_WITHIN_ROUNDING"
+    },
+    "rays-of-belief-ltd-o": {
+      "url": "https://www.chittorgarh.com/ipo/rays-of-belief-ipo/2787/",
+      "printedRupees": 1250000000,
+      "status": "NOOP_IDENTICAL"
+    },
+    "windlas-biotech-ltd": {
+      "url": "https://www.chittorgarh.com/ipo/windlas-biotech-ipo/1135/",
+      "printedRupees": 4015400000,
+      "status": "WRITE"
+    }
+  }
+}

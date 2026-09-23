@@ -1413,6 +1413,9 @@ export const FIELD_PLAN_REASON_CODES = [
   'LOST_TO_HIGHER_PRIORITY',
   'COVERAGE_GAP',
   'UNCLASSIFIED',
+  // OD-77 (OD-62's fifth code): no source we read supplies this field for this offering.
+  // Written by the one-time repair (scripts/lib/od77-issue-size-zeros.ts), never by the walk.
+  'NOT_SOURCED',
 ] as const;
 export type FieldPlanReasonCode = (typeof FIELD_PLAN_REASON_CODES)[number];
 
