@@ -1,6 +1,6 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-23T09:32:27.823Z",
+  "generated_at": "2026-09-23T09:47:31.994Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 185,
