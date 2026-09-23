@@ -1,0 +1,14 @@
+{
+  "id": "pull_plan_gap_stalled",
+  "designId": "PULL-PLAN-GAP-STALLED",
+  "findingClass": "an ipo_field_plan GAP row (cause stamped [gap-key:...]) is re-asked only when its field's gap key changes, so a gap nobody fixes waits indefinitely and is neither capped nor slot-stuck — invisible to pull_plan_config_gap_at_cap and pull_plan_stuck_reclaim (#884 review round 2 MINOR)",
+  "whatItAsks": "no CHECK_FAILED gap-stamped plan row has last_attempt_at older than FIELD_PLAN_GAP_STALLED_DAYS (14) days (isStalledGapRow, scripts/lib/field-plan-slot.mjs)",
+  "healthy": "0 (WARN, not FAIL: the known gaps are the shrink-only baseline in manifest-rank-coverage-gaps.test.ts)",
+  "alarmsWhen": "any non-zero, grouped by table.field with the IPO slugs each field holds (one notify per field)",
+  "scope": "every IPO, every status and segment, prod + staging slots; state = CHECK_FAILED, cause gap-stamped",
+  "consumer": "nightly floor-delta",
+  "consumerReason": "names the fields whose gap has had no manifest edit, adapter change, extractor bump or new document for two weekly cycles — the fix queue for coverage gaps",
+  "status": "built (#884 review round 2)",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §2.3 (manifest_version reconciliation), OD-62 COVERAGE_GAP, OD-78",
+  "section": "checks"
+}

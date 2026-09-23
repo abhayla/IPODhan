@@ -85,6 +85,7 @@ describe('DOC fetcher — document COMPLETED, no provenance (review round 2, RCA
       outcome: 'CHECK_FAILED',
       reason: 'no document provenance for issueSize on PRICE_BAND_AD (extractor gap or field absent) — not retired',
       transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
     });
   });
 
@@ -105,6 +106,7 @@ describe('DOC fetcher — document COMPLETED, no provenance (review round 2, RCA
       outcome: 'CHECK_FAILED',
       reason: 'no document provenance for issueSize on PRICE_BAND_AD (extractor gap or field absent) — not retired',
       transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
     });
   });
 
@@ -199,6 +201,7 @@ describe('DOC fetcher — SUPPLIED', () => {
       outcome: 'CHECK_FAILED',
       reason: 'no document provenance for revenue on RHP (extractor gap or field absent) — not retired',
       transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
     });
   });
 });
@@ -218,6 +221,7 @@ describe('DOC fetcher — no manifest documentType declared', () => {
       outcome: 'CHECK_FAILED',
       reason: 'no documentType in manifest for this field',
       transient: true,
+      gap: 'NO_DOCUMENT_TYPE',
     });
   });
 });
@@ -299,6 +303,7 @@ describe('DOC fetcher — ipo_details column reads (review round 1, m1)', () => 
       outcome: 'CHECK_FAILED',
       reason: 'DOC column read not implemented for financial_statements',
       transient: true,
+      gap: 'COLUMN_READ_NOT_IMPLEMENTED',
     });
   });
 });

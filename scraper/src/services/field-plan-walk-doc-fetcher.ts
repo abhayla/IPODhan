@@ -44,12 +44,22 @@ import type { DocumentRepository } from '@ipodhan/shared';
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 
 /** Which document-type family answers a manifest field's DOC rank. */
-const DOC_TYPE_FAMILY: Record<string, ReadonlyArray<string>> = {
+export const DOC_TYPE_FAMILY: Record<string, ReadonlyArray<string>> = {
   PRICE_BAND_AD: ['PRICE_BAND_AD'],
   RHP: ['RHP', 'DRHP', 'PROSPECTUS'],
   DRHP: ['DRHP'],
   PROSPECTUS: ['PROSPECTUS', 'RHP'],
 };
+
+/**
+ * The document types whose COMPLETED extraction can answer a field whose
+ * manifest `documentType` is `documentType`. Shared with the #884 gap key
+ * (`field-plan-gap-keys.ts`): a new COMPLETED document in this family is the
+ * event that reopens a NO_DOCUMENT_PROVENANCE row.
+ */
+export function docTypeFamily(documentType: string): ReadonlyArray<string> {
+  return DOC_TYPE_FAMILY[documentType] ?? [documentType];
+}
 
 /**
  * `field_sources.table_name` uses the schema's snake_case table name
@@ -121,12 +131,20 @@ function hasCompletedDocument(
  * value" apart from "this fetcher cannot read this table yet" — the first is
  * NOT_PRINTED (definitive), the second must never look definitive.
  */
+/**
+ * #884: the tables `readColumnValue` can read. Part of the fetcher-coverage
+ * fingerprint in `fieldPlanCoverageFingerprint` — adding a table here changes the gap
+ * key, which re-offers every COLUMN_READ_NOT_IMPLEMENTED row.
+ */
+export const DOC_READABLE_TABLES: readonly string[] = ['ipos', 'ipo_details'];
+
 async function readColumnValue(
   deps: DocFetcherDeps,
   ipoId: string,
   tableName: string,
   camelFieldName: string
 ): Promise<{ status: 'ok'; value: unknown } | { status: 'not_implemented' }> {
+  if (!DOC_READABLE_TABLES.includes(tableName)) return { status: 'not_implemented' };
   if (tableName === 'ipos') {
     const ipo = await deps.ipoRepository.findById(ipoId);
     return { status: 'ok', value: ipo ? (ipo as unknown as Record<string, unknown>)[camelFieldName] ?? null : null };
@@ -166,10 +184,15 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
       // change fixes, the exact class F1 already fixed for a missing source
       // adapter. NOT_PRINTED is also wrong here: that implies a document WAS
       // checked, and none was.
-      return { outcome: 'CHECK_FAILED', reason: 'no documentType in manifest for this field', transient: true };
+      return {
+        outcome: 'CHECK_FAILED',
+        reason: 'no documentType in manifest for this field',
+        transient: true,
+        gap: 'NO_DOCUMENT_TYPE',
+      };
     }
 
-    const family = DOC_TYPE_FAMILY[manifestDocType] ?? [manifestDocType];
+    const family = docTypeFamily(manifestDocType);
 
     let docs: MinimalDocument[];
     try {
@@ -226,6 +249,7 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
         outcome: 'CHECK_FAILED',
         reason: `no document provenance for ${camelFieldName} on ${manifestDocType} (extractor gap or field absent) — not retired`,
         transient: true,
+        gap: 'NO_DOCUMENT_PROVENANCE',
       };
     }
 
@@ -245,6 +269,7 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
         outcome: 'CHECK_FAILED',
         reason: `no document provenance for ${camelFieldName} on ${manifestDocType} (extractor gap or field absent) — not retired`,
         transient: true,
+        gap: 'NO_DOCUMENT_PROVENANCE',
       };
     }
 
@@ -257,6 +282,7 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
         outcome: 'CHECK_FAILED',
         reason: `DOC column read not implemented for ${tableName}`,
         transient: true,
+        gap: 'COLUMN_READ_NOT_IMPLEMENTED',
       };
     }
     if (read.value === undefined || read.value === null) {

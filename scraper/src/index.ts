@@ -17,7 +17,7 @@ import {
   runIssueTypeFillJob,
   makeIssueTypeJobDeps,
 } from './services/chittorgarh-issue-type-job.js';
-import { HUNG_PROCESS_CEILING_MS } from './services/filing-auto-persist.js';
+import { HUNG_PROCESS_CEILING_MS, EXTRACTOR_VERSION } from './services/filing-auto-persist.js';
 import { makeIpoDetailsWriter } from './services/filing-persist-deps.js';
 import { FieldSourcesRepository, filterProtectedFields } from '@ipodhan/shared';
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
@@ -49,6 +49,7 @@ import { walkFieldPlanForIPO } from './services/field-plan-walk.js';
 import {
   buildFieldPlanWalkOrchestrator,
   buildFieldPlanWalkFetchers,
+  buildFieldPlanGapKeySource,
   buildFieldPlanWalkWitnessVerdictWriter,
 } from './services/field-plan-walk-deps.js';
 import { createFieldSourceOverridesReader } from './config/field-source-overrides-reader.js';
@@ -1666,12 +1667,15 @@ async function resourceClosedIpo(ipoId: string): Promise<{
   const redis = getRedisClient();
   const startedAt = Date.now();
 
+  const sourceFetchers = buildFieldPlanWalkFetchers();
   const walk = await walkFieldPlanForIPO(
     ipoId,
     {
       fieldPlanRepository: new IpoFieldPlanRepository(db as never, redis as never) as never,
       orchestrator: buildFieldPlanWalkOrchestrator(),
-      sourceFetchers: buildFieldPlanWalkFetchers(),
+      sourceFetchers,
+      // #884 / OD-78: a gap row is not re-asked under the same key (same cause, same outcome).
+      gapKeys: buildFieldPlanGapKeySource({ fetchers: sourceFetchers, extractorVersion: EXTRACTOR_VERSION }),
       ipoRepository: new IPORepository(db as never, redis as never) as never,
       overrides: createFieldSourceOverridesReader(new FieldSourceOverridesRepository({ db: db as never })),
       trackWitnessVerdict: buildFieldPlanWalkWitnessVerdictWriter(),

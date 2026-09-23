@@ -65,6 +65,7 @@ import { randomUUID } from 'crypto';
 import { BaseRepository } from './base-repository';
 import type * as schema from '../db/schema';
 import { DatabaseError } from '../errors/repository-errors';
+import { FIELD_PLAN_GAP_KEY_PREFIX, stampFieldPlanGapCause } from '../utils/field-plan-config-gap';
 
 /**
  * Bind a JS `Date` to a NAIVE `timestamp` column as the instant it actually is.
@@ -116,6 +117,30 @@ export const FIELD_PLAN_BACKOFF_MAX_MINUTES = 6 * 60;
  * per the S8 brief) — it just stops churning through every slot forever.
  */
 export const FIELD_PLAN_RECLAIM_MAX_ATTEMPTS = 5;
+
+// #884: the gap vocabulary lives in a dependency-free module so the scraper
+// walk (which classifies) and this repository (which stamps and claims) read
+// ONE definition. Re-exported so existing `@ipodhan/shared` importers see it.
+export {
+  FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS,
+  FIELD_PLAN_GAP_CODES,
+  FIELD_PLAN_GAP_KEY_PREFIX,
+  fieldPlanGapKeyOf,
+  isFieldPlanConfigGapCause,
+  stampFieldPlanGapCause,
+  type FieldPlanGapCode,
+} from '../utils/field-plan-config-gap';
+
+/**
+ * #884 review round 1: is the row's cause gap-stamped (`[gap-key:<k>] ...`)?
+ * A FUNCTION returning a FRESH fragment per call — the claim query's own
+ * comments record that reusing one drizzle `SQL` object across interpolation
+ * points returned rows violating their WHERE clause (drizzle-orm 0.44.7).
+ * `left()` compares the fixed prefix exactly; no LIKE wildcards involved.
+ */
+function gapStampedSql() {
+  return sql`(cause IS NOT NULL AND left(cause, ${FIELD_PLAN_GAP_KEY_PREFIX.length}) = ${FIELD_PLAN_GAP_KEY_PREFIX})`;
+}
 
 /**
  * #762 (S8): the daily discovery-slot boundaries the field-plan re-ask keys
@@ -220,6 +245,15 @@ export interface ClaimNextDueFieldParams {
   /** Override the staleness window (minutes). Defaults to the constant. */
   staleMinutes?: number;
   /**
+   * #884 review round 2: the CURRENT gap keys PER FIELD, keyed `table.field`
+   * (the scraper's `fieldPlanClaimGapKeys`: the field's own manifest-entry
+   * content + fetcher coverage + extractor version, and a variant that adds
+   * the IPO's COMPLETED documents in the field's family). A gap row whose
+   * stamped key is none of its field's current keys is offered — including a
+   * row whose field left the manifest. Omitted, no gap row is ever offered.
+   */
+  gapKeys?: Record<string, readonly string[]>;
+  /**
    * #762 (S8) review round 2 CRITICAL fix: row ids this WALK has already
    * settled this pass (`field-plan-walk.ts`'s `settledThisWalk`), excluded
    * from every leg so an un-handleable row (a dropped write left PENDING,
@@ -283,6 +317,13 @@ export interface RecordOutcomeParams {
   reasonCode?: string | null;
   /** S4 (#779): the raw cause string the classification above was derived from. */
   cause?: string | null;
+  /**
+   * #884 review round 1: set ONLY by the walk, and only when EVERY rank failed
+   * with a structured gap code. Marks this CHECK_FAILED as not an attempt and
+   * stamps `cause` with the key, so the row is re-offered only when the key
+   * changes. Ignored for any other state.
+   */
+  gapKey?: string | null;
   now?: Date;
 }
 
@@ -657,6 +698,8 @@ export class IpoFieldPlanRepository extends BaseRepository {
     const token = randomUUID();
     const ipoId = params.ipoId ?? null;
     const excludeIds = params.excludeIds ?? [];
+    // #884 review round 2: the CURRENT gap keys per field; a gap row stamped with one of its field's is not due.
+    const gapKeysJson = params.gapKeys === undefined ? null : JSON.stringify(params.gapKeys);
     // Drizzle's `sql` tagged template SPREADS a plain JS array interpolated
     // into it as a comma-separated parameter list (`$1, $2, ...`), never as
     // a single array-typed bind — `${excludeIds}::uuid[]` therefore compiled
@@ -807,15 +850,41 @@ export class IpoFieldPlanRepository extends BaseRepository {
         sql`SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
               SELECT id, last_attempt_at FROM ipo_field_plan
                WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
+                 AND NOT ${gapStampedSql()}
                  AND last_attempt_at IS NULL${legFilter()}
                ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
             ) cf_null`,
         sql`SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
               SELECT id, last_attempt_at FROM ipo_field_plan
                WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
+                 AND NOT ${gapStampedSql()}
                  AND last_attempt_at < ${utc(slotBoundary)}::timestamp${legFilter()}
                ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
             ) cf_due`,
+        // #884 review round 1 (MAJOR-1): a gap row (cause stamped
+        // `[gap-key:<k>]` by recordOutcome) asked nothing that could fail, so
+        // re-asking it under the SAME key gives the same answer every slot —
+        // 6,220 staging rows re-asked forever, because claims are per-IPO and
+        // a lower priority only orders rows WITHIN one IPO's walk. It is
+        // claimable again ONLY when its field's current gap keys (review
+        // round 2: the field's own manifest-entry content + fetcher coverage
+        // + extractor version, and for a NO_DOCUMENT_PROVENANCE row the IPO's
+        // COMPLETED documents in the field's family) no longer include the
+        // one it was recorded under — §2.3 "reconciled when the manifest changes", OD-78
+        // "same cause, same outcome, no retry". No slot condition: the key
+        // change IS the event. No key supplied → gap rows are never offered.
+        // `last_attempt_at` NULL or not (MINOR-6): the key alone decides.
+        sql`SELECT id, 2 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
+                 AND ${gapStampedSql()}
+                 AND ${gapKeysJson}::jsonb IS NOT NULL
+                 AND left(cause, strpos(cause, ']')) NOT IN (
+                       SELECT ${FIELD_PLAN_GAP_KEY_PREFIX}::text || k || ']'
+                         FROM jsonb_array_elements_text((${gapKeysJson}::jsonb) -> (table_name || '.' || field_name)) AS k
+                     )${legFilter()}
+               ORDER BY last_attempt_at ASC NULLS FIRST LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) cf_gap_key_changed`,
         // verify_due_leg REMOVED in S2 — verify_state/verify_due_at no longer exist on
         // ipo_field_plan (see the method doc comment above).
       ];
@@ -957,6 +1026,17 @@ export class IpoFieldPlanRepository extends BaseRepository {
       // (SUPPLIED writes neither), provided (even null) replaces it.
       const hasReasonCode = params.reasonCode !== undefined;
       const hasCause = params.cause !== undefined;
+      // #884: a CHECK_FAILED the walk DECLARED a gap (`gapKey` set: every
+      // rank failed with a structured gap code — no mapping, no documentType,
+      // no fetcher, no column read, no document provenance) asked nothing
+      // that could fail, so it is not charged against
+      // FIELD_PLAN_RECLAIM_MAX_ATTEMPTS. Its cause is stamped with the key it
+      // was asked under; claimNextDueField offers it again only under a
+      // different key. `last_attempt_at` is still stamped.
+      const isGap = state === 'CHECK_FAILED' && typeof params.gapKey === 'string' && params.gapKey.length > 0;
+      const countsAsAttempt = !isGap;
+      const recordedCause = isGap ? stampFieldPlanGapCause(params.gapKey as string, params.cause ?? null) : params.cause ?? null;
+      const writeCause = hasCause || isGap;
 
       // A real attempt: count it, stamp it, and schedule the next one unless
       // the state is terminal. `attempts + 1` is computed in SQL from the
@@ -964,7 +1044,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
         SET state = ${state}::field_plan_state,
-            attempts = attempts + 1,
+            attempts = attempts + ${countsAsAttempt ? 1 : 0},
             last_attempt_at = ${utc(now)}::timestamptz,
             next_due_at = CASE
               WHEN ${terminal} THEN NULL
@@ -977,7 +1057,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
             END,
             policy_origin = CASE WHEN ${hasPolicyOrigin} THEN ${params.policyOrigin ?? null} ELSE policy_origin END,
             reason_code = CASE WHEN ${hasReasonCode} THEN ${params.reasonCode ?? null} ELSE reason_code END,
-            cause = CASE WHEN ${hasCause} THEN ${params.cause ?? null} ELSE cause END,
+            cause = CASE WHEN ${writeCause} THEN ${recordedCause} ELSE cause END,
             chosen_source = CASE WHEN ${hasChosen} THEN ${chosen.source ?? null} ELSE chosen_source END,
             chosen_rank = CASE WHEN ${hasChosen} THEN ${chosen.rank ?? null} ELSE chosen_rank END,
             chosen_document_id = CASE WHEN ${hasChosen} THEN ${chosen.documentId ?? null}::uuid ELSE chosen_document_id END,

@@ -26,7 +26,7 @@ import type { ChittorgarhIPO } from '../utils/validators.js';
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { logger } from '../utils/logger.js';
 
-const CHITTORGARH_SERVEABLE_FIELDS: ReadonlySet<string> = new Set(['ipos.issueSize']);
+export const CHITTORGARH_SERVEABLE_FIELDS: ReadonlySet<string> = new Set(['ipos.issueSize']);
 
 export interface ChittorgarhFetcherDeps {
   ipoRepository: IPORepository;
@@ -106,6 +106,7 @@ export function buildChittorgarhFetcher(
       return {
         outcome: 'CHECK_FAILED',
         reason: `CHITTORGARH has no mapped field for ${key} yet (coverage gap, not a manifest no)`,
+        gap: 'NO_MAPPING',
         transient: true,
       };
     }
@@ -145,6 +146,7 @@ export function buildChittorgarhFetcher(
     return {
       outcome: 'CHECK_FAILED',
       reason: `CHITTORGARH has no mapped field for ${key} yet (coverage gap, not a manifest no)`,
+      gap: 'NO_MAPPING',
       transient: true,
     };
   };

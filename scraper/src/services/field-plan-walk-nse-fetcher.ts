@@ -45,7 +45,7 @@ type NseBoardRow = Awaited<ReturnType<typeof scrapeNSEIPOs>>['ipos'][number];
  * manifest says NSE is capable of: the manifest states policy, this states
  * what the adapter can serve today.
  */
-const NSE_SERVEABLE_FIELDS: ReadonlyMap<string, keyof NseBoardRow> = new Map<string, keyof NseBoardRow>([
+export const NSE_SERVEABLE_FIELDS: ReadonlyMap<string, keyof NseBoardRow> = new Map<string, keyof NseBoardRow>([
   ['ipos.symbol', 'symbol'],
   ['ipos.companyName', 'companyName'],
   ['ipos.openDate', 'openDate'],
@@ -147,6 +147,7 @@ export function buildNseFetcher(deps: NseFetcherDeps, state: NseFieldFetcherStat
       return {
         outcome: 'CHECK_FAILED',
         reason: `NSE has no mapped field for ${key} yet (coverage gap, not a manifest no)`,
+        gap: 'NO_MAPPING',
         transient: true,
       };
     }

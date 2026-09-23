@@ -15,6 +15,11 @@ import {
 import { resolveFieldSourcePolicy, policyOriginString } from '../../src/config/field-source-policy';
 import { resolveIpoTypeKey } from '../../src/services/field-plan-generator';
 import { loadFieldManifest } from '../../src/config/field-manifest-loader';
+import {
+  buildFieldPlanIpoGapKeys,
+  fieldPlanClaimGapKeys,
+  fieldPlanGapKeyFor,
+} from '../../src/services/field-plan-gap-keys';
 
 /**
  * Item 5 slice s3 -- the repository that claims a due plan row and writes an
@@ -1460,6 +1465,226 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
       expect(after.chosenRank).toBe(2);
       
       expect(after.chosenDocumentId).toBe(DOCUMENT_ID);
+    });
+  });
+
+  // ------------------------------------------ #884: a gap is not an attempt ---
+  //
+  // RCA (#884): recordOutcome charged `attempts + 1` for EVERY CHECK_FAILED, including
+  // one whose only cause was a gap in our own configuration or code (no mapping, no
+  // documentType, no fetcher, no column read, no document provenance on a COMPLETED
+  // document). Review round 1: a lower claim priority is per-IPO only (claims filter by
+  // ipo_id), so an uncharged gap row was re-asked every slot forever. Now a gap row is
+  // recorded under the current GAP KEY (manifest version + fetcher coverage + extractor
+  // version, stamped in `cause`) and offered again only when that key changes.
+  describe('#884 -- a gap is not an attempt, and is re-asked only when the gap key changes', () => {
+    const now = new Date('2026-09-15T03:30:00.000Z'); // 09:00 IST
+    const earlierSlot = new Date('2026-09-15T01:30:00.000Z'); // 07:00 IST, previous slot
+    const nextDay = new Date(now.getTime() + 24 * 3_600_000);
+    const KEY = 'm1|f0123456789ab|xextract_filing.py@2026-09-03';
+    const KEY_MANIFEST = 'm2|f0123456789ab|xextract_filing.py@2026-09-03';
+    const KEY_COVERAGE = 'm1|fba9876543210|xextract_filing.py@2026-09-03';
+    const KEY_EXTRACTOR = 'm1|f0123456789ab|xextract_filing.py@2026-10-01';
+    const GAP_CAUSE = 'rank1:DOC:CHECK_FAILED:no documentType in manifest for this field [gap:NO_DOCUMENT_TYPE]';
+    const PROVENANCE_CAUSE =
+      'rank1:DOC:CHECK_FAILED:no document provenance for faceValue on RHP (extractor gap or field absent) — not retired [gap:NO_DOCUMENT_PROVENANCE]';
+
+    // Review round 2: the claim takes the CURRENT keys per field (`table.field`).
+    const allKeys = (k: string) => ({ 'ipo_details.faceValue': [k], 'ipo_details.isin': [k] });
+    const COV = '0123456789ab';
+    const XV = 'extract_filing.py@2026-09-03';
+    const entry = (documentType?: string) => ({
+      rank: { MAINBOARD: ['DOC', 'NSE'] },
+      capability: { DOC: { capable: true }, NSE: { capable: true } },
+      ...(documentType ? { documentType } : {}),
+    });
+    const buildKeys = (manifestFields: Record<string, unknown>, documents: unknown[] = []) =>
+      buildFieldPlanIpoGapKeys({ manifestFields: manifestFields as never, coverageFingerprint: COV, extractorVersion: XV, documents: documents as never });
+
+    async function claimAndRecord(
+      id: string,
+      opts: { reasonCode: string; cause: string; gapKey?: string; at?: Date }
+    ) {
+      const at = opts.at ?? now;
+      const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now: at });
+      expect(claimed?.id).toBe(id);
+      const result = await repo.recordOutcome({
+        planRowId: id,
+        claimToken: claimed!.claimToken!,
+        writeHappened: true,
+        state: 'CHECK_FAILED',
+        reasonCode: opts.reasonCode,
+        cause: opts.cause,
+        ...(opts.gapKey ? { gapKey: opts.gapKey } : {}),
+        now: at,
+      } as never);
+      expect(result.written).toBe(true);
+      return readRow(id);
+    }
+
+    it.each([
+      ['COVERAGE_GAP', GAP_CAUSE],
+      ['COVERAGE_GAP', PROVENANCE_CAUSE],
+    ])('a gap CHECK_FAILED (%s) does NOT gain an attempt and its cause is stamped with the key', async (code, cause) => {
+      const id = await seedRow({ state: 'CHECK_FAILED', attempts: 2, lastAttemptAt: earlierSlot });
+      const after = await claimAndRecord(id, { reasonCode: code, cause, gapKey: KEY });
+      expect(after.attempts).toBe(2);
+      expect(after.state).toBe('CHECK_FAILED');
+      expect(after.cause).toBe(`[gap-key:${KEY}] ${cause}`);
+      expect(after.lastAttemptAt).not.toBeNull();
+      expect(after.claimToken).toBeNull();
+    });
+
+    it('classification is structured: gap-looking TEXT without a gapKey is still charged', async () => {
+      const id = await seedRow({ state: 'CHECK_FAILED', attempts: 2, lastAttemptAt: earlierSlot });
+      const after = await claimAndRecord(id, { reasonCode: 'COVERAGE_GAP', cause: GAP_CAUSE });
+      expect(after.attempts).toBe(3);
+      expect(after.cause).toBe(GAP_CAUSE);
+    });
+
+    it('CORE: a gap row is NOT claimable next cycle under the same key, IS claimable after any key part changes, never gains an attempt', async () => {
+      const id = await seedRow({ state: 'CHECK_FAILED', attempts: 1, lastAttemptAt: earlierSlot });
+      await claimAndRecord(id, { reasonCode: 'COVERAGE_GAP', cause: GAP_CAUSE, gapKey: KEY });
+
+      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: allKeys(KEY) } as never)).toBeNull();
+      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay })).toBeNull();
+
+      for (const changed of [KEY_MANIFEST, KEY_COVERAGE, KEY_EXTRACTOR]) {
+        const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: allKeys(changed) } as never);
+        expect(claimed?.id).toBe(id);
+        await repo.releaseClaimUnrecorded({ planRowId: id, claimToken: claimed!.claimToken! });
+      }
+
+      const reclaimed = await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: allKeys(KEY_MANIFEST) } as never);
+      expect(reclaimed?.id).toBe(id);
+      await repo.recordOutcome({
+        planRowId: id,
+        claimToken: reclaimed!.claimToken!,
+        writeHappened: true,
+        state: 'CHECK_FAILED',
+        reasonCode: 'COVERAGE_GAP',
+        cause: GAP_CAUSE,
+        gapKey: KEY_MANIFEST,
+        now: nextDay,
+      } as never);
+      const after = await readRow(id);
+      expect(after.attempts).toBe(1);
+      expect(after.cause).toBe(`[gap-key:${KEY_MANIFEST}] ${GAP_CAUSE}`);
+      const twoDays = new Date(nextDay.getTime() + 24 * 3_600_000);
+      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: twoDays, gapKeys: allKeys(KEY_MANIFEST) } as never)).toBeNull();
+    });
+
+    it('CORE NEW-1: a manifest CONTENT edit adding a documentType (no version bump) reopens THAT field; an edit to another field does not', async () => {
+      const m0 = { 'ipo_details.faceValue': entry(), 'ipo_details.isin': entry() };
+      const k0 = buildKeys(m0);
+      const id = await seedRow({ state: 'CHECK_FAILED', attempts: 1, lastAttemptAt: earlierSlot });
+      await claimAndRecord(id, {
+        reasonCode: 'COVERAGE_GAP',
+        cause: GAP_CAUSE,
+        gapKey: fieldPlanGapKeyFor(k0, 'ipo_details', 'faceValue', ['NO_DOCUMENT_TYPE'])!,
+      });
+      const claim = (keys: ReturnType<typeof buildKeys>) =>
+        repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: fieldPlanClaimGapKeys(keys) } as never);
+      expect(await claim(k0)).toBeNull();
+      expect(await claim(buildKeys({ ...m0, 'ipo_details.isin': entry('RHP') }))).toBeNull();
+      const claimed = await claim(buildKeys({ ...m0, 'ipo_details.faceValue': entry('RHP') }));
+      expect(claimed?.id).toBe(id);
+      expect((await readRow(id)).attempts).toBe(1);
+    });
+
+    it('CORE NEW-2: a NO_DOCUMENT_PROVENANCE row stamped after the DRHP reopens when the RHP completes (same extractor); a mapping gap on the same IPO does not', async () => {
+      const m = { 'ipo_details.faceValue': entry('RHP'), 'ipo_details.isin': entry('RHP') };
+      const drhp = { id: '00000000-0000-4000-8000-00000000d001', type: 'DRHP', extractionStatus: 'COMPLETED', isActive: true };
+      const rhp = { id: '00000000-0000-4000-8000-00000000d002', type: 'RHP', extractionStatus: 'COMPLETED', isActive: true };
+      const k0 = buildKeys(m, [drhp]);
+      const provenanceId = await seedRow({ state: 'CHECK_FAILED', attempts: 1, lastAttemptAt: earlierSlot });
+      await claimAndRecord(provenanceId, {
+        reasonCode: 'COVERAGE_GAP',
+        cause: PROVENANCE_CAUSE,
+        gapKey: fieldPlanGapKeyFor(k0, 'ipo_details', 'faceValue', ['NO_DOCUMENT_PROVENANCE'])!,
+      });
+      const mappingId = await seedRow({ state: 'CHECK_FAILED', attempts: 1, lastAttemptAt: earlierSlot, fieldName: 'isin' });
+      await claimAndRecord(mappingId, {
+        reasonCode: 'COVERAGE_GAP',
+        cause: GAP_CAUSE,
+        gapKey: fieldPlanGapKeyFor(k0, 'ipo_details', 'isin', ['NO_MAPPING'])!,
+      });
+      const claim = (keys: ReturnType<typeof buildKeys>, excludeIds: string[] = []) =>
+        repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: fieldPlanClaimGapKeys(keys), excludeIds } as never);
+      expect(await claim(k0)).toBeNull();
+      expect(await claim(buildKeys(m, [drhp, { ...rhp, extractionStatus: 'PENDING' }]))).toBeNull();
+      const k1 = buildKeys(m, [drhp, rhp]);
+      const claimed = await claim(k1);
+      expect(claimed?.id).toBe(provenanceId);
+      expect(await claim(k1, [provenanceId])).toBeNull();
+      expect((await readRow(provenanceId)).attempts).toBe(1);
+    });
+
+    it('MINOR-6: a stamped gap row with NULL last_attempt_at is offered only under a different key', async () => {
+      const id = await seedRow({
+        state: 'CHECK_FAILED',
+        attempts: 0,
+        lastAttemptAt: null,
+        reasonCode: 'COVERAGE_GAP',
+        cause: `[gap-key:${KEY}] ${GAP_CAUSE}`,
+      });
+      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now, gapKeys: allKeys(KEY) } as never)).toBeNull();
+      const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now, gapKeys: allKeys(KEY_EXTRACTOR) } as never);
+      expect(claimed?.id).toBe(id);
+    });
+
+    it('a real failure still counts, and stops at the cap even when the gap key changes', async () => {
+      const id = await seedRow({
+        state: 'CHECK_FAILED',
+        attempts: FIELD_PLAN_RECLAIM_MAX_ATTEMPTS - 1,
+        lastAttemptAt: earlierSlot,
+      });
+      const after = await claimAndRecord(id, { reasonCode: 'FAILED_VALIDATION', cause: 'no field result returned' });
+      expect(after.attempts).toBe(FIELD_PLAN_RECLAIM_MAX_ATTEMPTS);
+      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: allKeys(KEY_MANIFEST) } as never)).toBeNull();
+    });
+
+    it('a genuine CHECK_FAILED is re-asked BEFORE a gap row whose key changed, even when the gap row is older', async () => {
+      const gapId = await seedRow({
+        state: 'CHECK_FAILED',
+        attempts: 0,
+        lastAttemptAt: new Date(earlierSlot.getTime() - 3_600_000),
+        reasonCode: 'COVERAGE_GAP',
+        cause: `[gap-key:${KEY}] ${GAP_CAUSE}`,
+      });
+      const genuineId = await seedRow({
+        state: 'CHECK_FAILED',
+        attempts: 1,
+        lastAttemptAt: earlierSlot,
+        fieldName: 'isin',
+        reasonCode: 'FAILED_VALIDATION',
+        cause: 'no field result returned',
+      });
+      const first = await repo.claimNextDueField({ ipoId: IPO_ID, now, gapKeys: allKeys(KEY_MANIFEST) } as never);
+      expect(first?.id).toBe(genuineId);
+      const second = await repo.claimNextDueField({
+        ipoId: IPO_ID,
+        now,
+        gapKeys: allKeys(KEY_MANIFEST),
+        excludeIds: [genuineId],
+      } as never);
+      expect(second?.id).toBe(gapId);
+    });
+
+    it('manifest reconciliation (S2 version bump) does not rewrite attempts: a genuine count survives', async () => {
+      const genuine = await seedRow({
+        state: 'CHECK_FAILED',
+        attempts: FIELD_PLAN_RECLAIM_MAX_ATTEMPTS,
+        lastAttemptAt: earlierSlot,
+        manifestVersion: 1,
+        fieldName: 'isin',
+        reasonCode: 'FAILED_VALIDATION',
+        cause: 'no field result returned',
+      });
+      await repo.updateRanksForVersion([
+        { id: genuine, rank1Source: 'DOC', rank2Source: 'CHITTORGARH', rank3Source: null, manifestVersion: 2, policyOrigin: 'registry:2' },
+      ]);
+      expect((await readRow(genuine)).attempts).toBe(FIELD_PLAN_RECLAIM_MAX_ATTEMPTS);
     });
   });
 
