@@ -334,7 +334,7 @@ describe('item 7 S1 - the live-figures job runs under its own scraper:live lock'
 
   it('an unknown --job value is refused with exit 1 and runs nothing', async () => {
     upcomingCount = 1;
-    await runWith(['--source=all', '--job=closed'], THURSDAY_1400_IST);
+    await runWith(['--source=all', '--job=bogus'], THURSDAY_1400_IST);
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(lockAcquireMock).not.toHaveBeenCalled();

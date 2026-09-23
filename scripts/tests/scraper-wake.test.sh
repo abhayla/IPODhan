@@ -325,7 +325,7 @@ else
   fail "case 6: a data wake reads '$DATA_LOCK6', not scraper:cycle; it would gate on a lock the command it runs does not take"
 fi
 if [ "$CLOSED_LOCK6" = "lock:resource:scraper:cycle" ]; then
-  pass "case 6: a closed wake reads scraper:cycle (it runs the data cycle, which takes that lock)"
+  pass "case 6: a closed wake reads scraper:cycle (--job=closed takes the SAME heavy lock as --job=data, item 7 S3)"
 else
   fail "case 6: a closed wake reads '$CLOSED_LOCK6', not scraper:cycle"
 fi
@@ -1203,10 +1203,10 @@ if [ "$ARGV19N" = "--job=data" ]; then
 else
   fail "case 19: a wake with no job argument started the job with '$ARGV19N'"
 fi
-if [ -z "$ARGV19C" ]; then
-  pass "case 19: a closed wake passes no --job flag (the scraper has no closed job of its own and would refuse one)"
+if [ "$ARGV19C" = "--job=closed" ]; then
+  pass "case 19: a closed wake starts the scraper with --job=closed (item 7 S3: its own process)"
 else
-  fail "case 19: a closed wake passed '$ARGV19C' - the scraper refuses an unknown --job with exit 1"
+  fail "case 19: a closed wake started the job with '$ARGV19C', expected --job=closed"
 fi
 
 if [ "$FAILED" -ne 0 ]; then

@@ -146,16 +146,18 @@ SCRAPER_CEILING_SECONDS="${SCRAPER_CEILING_SECONDS:-7200}"
 # release_scraper_cycle_locks() uses, so the two cannot drift apart. Read
 # only; never taken or released here - the cycle owns its own lock's lifetime.
 #
-# THE JOB PICKS THE LOCK (item 7 S1, spec section 2.1 "The two locks", OD-27).
+# THE JOB PICKS THE LOCK (item 7 S1/S3, spec section 2.1 "The two locks", OD-27).
 # Each job names the command it runs and the lock that command takes, in ONE
 # place (the case below), so the two cannot drift apart:
 #   data   -> --job=data, reads lock:resource:scraper:cycle (the heavy lock)
 #   live   -> --job=live, reads lock:resource:scraper:live  (its own lock; the
 #             live-figures job never reads or takes scraper:cycle, so a data job
 #             holding the heavy lock for hours never skips a live wake)
-#   closed -> no --job flag (scraper/src has no closed job of its own yet; the
-#             closed-IPO work runs inside the data cycle), reads scraper:cycle,
-#             which is what that command takes
+#   closed -> --job=closed (item 7 S3: its own process, no longer a data-cycle
+#             post-step), reads lock:resource:scraper:cycle -- the SAME heavy
+#             lock the data job takes, because spec section 2.1's rule is that
+#             the two never run concurrently, not that closed gets its own
+#             lock the way live does.
 # An explicit SCRAPER_LOCK_KEY in the environment still wins, for the suite.
 # --check: run ONLY the resolution checks below and exit - never start a cycle.
 # This is what the deploy calls, so the deploy's verdict and the wrapper's
@@ -183,7 +185,7 @@ case "$SCRAPER_JOB" in
     SCRAPER_JOB_LOCK_KEY="lock:resource:scraper:live"
     ;;
   closed)
-    SCRAPER_JOB_ARG=""
+    SCRAPER_JOB_ARG="--job=closed"
     SCRAPER_JOB_LOCK_KEY="lock:resource:scraper:cycle"
     ;;
   *)
