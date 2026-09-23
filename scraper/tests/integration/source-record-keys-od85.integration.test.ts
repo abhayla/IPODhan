@@ -12,6 +12,8 @@ import {
   inferBoundVia,
   nseIssueKeyValue,
   releaseEndedSourceKeys,
+  withSourceKeyLineage,
+  FieldSourcesRepository,
   type SourceKeyRef,
 } from '@ipodhan/shared';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
@@ -46,6 +48,7 @@ const NAMES = [
   'Dhanwel Hybrid Seeds Ltd', 'Dhanwel Hybird Seeds Ltd', 'IC Electricals Company Ltd', 'Hero Motors Ltd',
   'Rays of Belief Ltd', 'Himalayan Solar Ltd', 'Himalaya Nutravedics India Ltd', 'OD85 Coalx Ltd',
   'OD85 Newco Ltd', 'OD85 Reuse Ltd', 'OD85 Merge Probe Ltd', 'OD85 Race Probe Ltd', 'OD85 Race Probe Limited',
+  'OD85 Alphabind Tools Ltd', 'OD85 Zetaworks Pumps Ltd', 'OD85 Plain Symbol Ltd',
 ];
 
 let pool: Pool | null = null;
@@ -202,10 +205,14 @@ describe.skipIf(!DATABASE_URL)('OD-85 source record keys on the real resolver + 
     const [row] = await rowsNamed('IC Electricals Company Ltd');
     const keys = Object.fromEntries((await keysOf(row.id)).map((k) => [k.keyValue, k.state]));
     expect(keys).toEqual({ 'ICEL|SME': 'SUPERSEDED', 'ICELCO|SME': 'ACTIVE', '2790': 'ACTIVE' });
+    // F-145 class: ipos.symbol follows the ACTIVE NSE_ISSUE key, whichever record was read last.
+    await repo!.update(row.id, { symbol: 'ICEL' } as never);
+    expect((await rowsNamed('IC Electricals Company Ltd'))[0].symbol).toBe('ICELCO');
     expect(await ingest({ ...base, openDate: '2026-07-22', priceRangeMin: 94, keys: [
       { source: 'CHITTORGARH', keyType: 'CG_PAGE_ID', keyValue: '2999', attrs: { shares: 4_839_600, priceMin: 100, priceMax: 105 }, recordOpenDate: '2026-07-22' },
     ] })).toBe('held');
-    expect((await keysOf(row.id)).map((k) => k.keyValue).sort()).toEqual(['2790', 'ICEL|SME', 'ICELCO|SME']);
+    // A row's keys are a set (§2.3.3.2 names no order); compare sorted on both sides — '|' sorts after 'C'.
+    expect((await keysOf(row.id)).map((k) => k.keyValue).sort()).toEqual(['2790', 'ICEL|SME', 'ICELCO|SME'].sort());
   });
 
   it('Hero Motors shape: a WITHDRAWN row\'s key does not bind the new attempt — it is RELEASED and the new record gets its own row', async () => {
@@ -315,6 +322,15 @@ describe.skipIf(!DATABASE_URL)('OD-85 source record keys on the real resolver + 
     await repo!.mergeDuplicateInto(newer.id, older.id, { apply: true, mergedBy: 'od85.test' } as never);
     expect((await rowsNamed('Dhanwel Hybird Seeds Ltd')).map((r) => r.id)).toEqual([newer.id]);
     expect((await keysOf(newer.id)).map((k) => k.keyValue).sort()).toEqual(['7794', '7900']);
+    // OD-86 + OD-83 at merge time: the survivor never holds two ACTIVE keys of one source - the
+    // older (postponed) record's key is SUPERSEDED by the newer one inside the merge.
+    const merged = Object.fromEntries((await keysOf(newer.id)).map((k) => [k.keyValue, k]));
+    expect(merged['7900'].state).toBe('ACTIVE');
+    expect(merged['7794'].state).toBe('SUPERSEDED');
+    expect(merged['7794'].supersededBy).toBe(merged['7900'].id);
+    // and re-reading 7794 after the merge writes nothing
+    expect(await ingest({ companyName: 'Dhanwel Hybird Seeds Ltd', openDate: '2026-06-23', priceRangeMin: 95, segment: 'SME', symbol: 'DHANWEL',
+      keys: [{ source: 'BSE', keyType: 'BSE_IPO_NO', keyValue: '7794' }] })).toBe('superseded');
   });
 
   it('two concurrent creates of one record (same key, two spellings) leave ONE row', async () => {
@@ -325,5 +341,86 @@ describe.skipIf(!DATABASE_URL)('OD-85 source record keys on the real resolver + 
     // the loser re-reads on its next cycle and binds by the key
     expect(await ingest(rec('OD85 Race Probe Limited'))).toBe('bound');
     expect((await rowsNamed('OD85 Race Probe Ltd', 'OD85 Race Probe Limited')).length).toBe(1);
+  });
+
+  it('ipos.symbol is written unchanged on a row with no ACTIVE NSE_ISSUE key', async () => {
+    await ingest({ companyName: 'OD85 Plain Symbol Ltd', openDate: '2026-11-20', priceRangeMin: 30, segment: 'SME', symbol: 'PLAINA',
+      keys: [{ source: 'BSE', keyType: 'BSE_IPO_NO', keyValue: '8870' }] });
+    const [row] = await rowsNamed('OD85 Plain Symbol Ltd');
+    await repo!.update(row.id, { symbol: 'PLAINB' } as never);
+    expect((await rowsNamed('OD85 Plain Symbol Ltd'))[0].symbol).toBe('PLAINB');
+  });
+
+  it('write rule: a field_sources row written for a record that came through a key bind carries that key id in data_lineage', async () => {
+    const fs = new FieldSourcesRepository(db as never, noRedis);
+    const base = { companyName: 'Dhanwel Hybrid Seeds Ltd', priceRangeMin: 95, priceRangeMax: 99, segment: 'SME' as const, symbol: 'DHANWEL' };
+    const lineageOf = async (ipoId: string, field: string) => {
+      const r = (await db!.execute(sql`select data_lineage from field_sources where ipo_id = ${ipoId} and table_name = 'ipos' and field_name = ${field}`)) as unknown as { rows: { data_lineage: Record<string, unknown> | null }[] };
+      return r.rows[0]?.data_lineage ?? null;
+    };
+    // create path: the key written with the row is the binding key
+    await withSourceKeyLineage(async () => {
+      expect(await ingest({ ...base, openDate: '2026-06-23', closeDate: '2026-06-23', keys: DHANWEL_7794 })).toBe('created');
+      const [created] = await rowsNamed('Dhanwel Hybrid Seeds Ltd');
+      await fs.trackFieldUpdate({ ipoId: created.id, tableName: 'ipos', fieldName: 'openDate', source: 'BSE' as never, dataLineage: { policyOrigin: 'test' } });
+    });
+    const [row] = await rowsNamed('Dhanwel Hybrid Seeds Ltd');
+    const k7794 = (await keysOf(row.id)).find((k) => k.keyValue === '7794')!;
+    expect(await lineageOf(row.id, 'openDate')).toEqual({ policyOrigin: 'test', sourceKeyIds: [k7794.id] });
+    // fallback bind path (7900 binds by symbol, then records its key): the new key id is recorded
+    await withSourceKeyLineage(async () => {
+      expect(await ingest({ ...base, openDate: '2026-08-19', closeDate: '2026-08-21', keys: DHANWEL_7900 })).toBe('bound');
+      await fs.trackFieldUpdate({ ipoId: row.id, tableName: 'ipos', fieldName: 'closeDate', source: 'BSE' as never });
+    });
+    const k7900 = (await keysOf(row.id)).find((k) => k.keyValue === '7900')!;
+    expect(await lineageOf(row.id, 'closeDate')).toEqual({ sourceKeyIds: [k7900.id] });
+    // key-hit path: 7900 read again binds by its own key; that id is recorded
+    await withSourceKeyLineage(async () => {
+      expect(await ingest({ ...base, openDate: '2026-08-19', closeDate: '2026-08-21', keys: DHANWEL_7900 })).toBe('bound');
+      await fs.trackFieldUpdate({ ipoId: row.id, tableName: 'ipos', fieldName: 'priceRangeMin', source: 'BSE' as never });
+    });
+    expect(await lineageOf(row.id, 'priceRangeMin')).toEqual({ sourceKeyIds: [k7900.id] });
+    // a write outside any key-bind scope carries no key id (document path, admin tools)
+    await fs.trackFieldUpdate({ ipoId: row.id, tableName: 'ipos', fieldName: 'lotSize', source: 'BSE' as never });
+    expect(await lineageOf(row.id, 'lotSize')).toBeNull();
+  });
+
+  it('write rule, existing row: two concurrent runs binding one key to two rows leave it on ONE row, and the loser writes nothing', async () => {
+    // Why the key commits in its own transaction just before the row write, and why that is safe
+    // (§2.3.3.2 "never after it"): the plain UNIQUE(source, key_type, binding_value) serialises the
+    // two binds, the loser's bindSourceKeys throws (SourceKeyDuplicateError or 23505) BEFORE its row
+    // write, and a key can never outlive its row (FK ON DELETE CASCADE). No duplicate, no orphan.
+    const mk = async (companyName: string, slug: string) => (await db!.insert(schema.ipos).values({ companyName, slug, offeringType: 'IPO',
+      segment: 'SME', status: 'UPCOMING', openDate: '2026-12-01', priceRangeMin: 55 } as never).returning())[0];
+    const a = await mk('OD85 Alphabind Tools Ltd', 'od85-alphabind-tools-ltd');
+    const b = await mk('OD85 Zetaworks Pumps Ltd', 'od85-zetaworks-pumps-ltd');
+    const key: SourceKeyRef[] = [{ source: 'CHITTORGARH', keyType: 'CG_PAGE_ID', keyValue: '8877' }];
+    const rec = (companyName: string): Rec => ({ companyName, openDate: '2026-12-03', closeDate: '2026-12-05', priceRangeMin: 55, segment: 'SME', keys: key });
+    const settled = await Promise.allSettled([ingest(rec('OD85 Alphabind Tools Ltd')), ingest(rec('OD85 Zetaworks Pumps Ltd'))]);
+    const outcomes = settled.map((s) => (s.status === 'fulfilled' ? s.value : `rejected:${String((s.reason as Error)?.message).slice(0, 80)}`));
+    // the second run either loses the insert (duplicate / 23505, writes nothing) or, if the first
+    // already committed, binds the WINNER by the key — never the other row
+    expect(outcomes.filter((o) => o === 'bound').length, JSON.stringify(outcomes)).toBeGreaterThanOrEqual(1);
+    expect(outcomes.some((o) => o === 'created'), JSON.stringify(outcomes)).toBe(false);
+    const holders = [...(await keysOf(a.id)), ...(await keysOf(b.id))].filter((k) => k.keyValue === '8877');
+    expect(holders.length).toBe(1);
+    const winner = holders[0].ipoId;
+    const loser = winner === a.id ? b.id : a.id;
+    const rows = Object.fromEntries((await rowsNamed('OD85 Alphabind Tools Ltd', 'OD85 Zetaworks Pumps Ltd')).map((r) => [r.id, r]));
+    expect(String(rows[winner].openDate).slice(0, 10)).toBe('2026-12-03');
+    expect(String(rows[loser].openDate).slice(0, 10)).toBe('2026-12-01');
+    // the loser's record read again (same key, loser's name) is reported as a duplicate, never written
+    expect(await ingest(rec(winner === a.id ? 'OD85 Zetaworks Pumps Ltd' : 'OD85 Alphabind Tools Ltd'))).not.toBe('created');
+    expect((await keysOf(loser)).length).toBe(0);
+  });
+
+  it('write rule, existing row: two concurrent runs binding one key to the SAME row record it once', async () => {
+    const [row] = await db!.insert(schema.ipos).values({ companyName: 'OD85 Alphabind Tools Ltd', slug: 'od85-alphabind-tools-ltd', offeringType: 'IPO',
+      segment: 'SME', status: 'UPCOMING', openDate: '2026-12-01', priceRangeMin: 55 } as never).returning();
+    const key: SourceKeyRef[] = [{ source: 'CHITTORGARH', keyType: 'CG_PAGE_ID', keyValue: '8878' }];
+    const rec: Rec = { companyName: 'OD85 Alphabind Tools Ltd', openDate: '2026-12-03', priceRangeMin: 55, segment: 'SME', keys: key };
+    const settled = await Promise.allSettled([ingest(rec), ingest(rec)]);
+    expect(settled.some((s) => s.status === 'fulfilled' && s.value === 'bound')).toBe(true);
+    expect((await keysOf(row.id)).map((k) => [k.keyValue, k.state])).toEqual([['8878', 'ACTIVE']]);
   });
 });

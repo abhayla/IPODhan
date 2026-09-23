@@ -184,13 +184,17 @@ export function classifyWithdrawalText(text: string | null | undefined): 'WITHDR
   if (!text) return null;
   const t = text.replace(/\s+/g, ' ');
   const subject = '(?:public\\s+)?(?:issue|ipo|offer|offering)';
+  // BSE names the company between the noun and the verb ("The issue of Dhanwel Hybird Seeds
+  // Limited has been postponed", F-127 / OD-83). Only an "of <...> Ltd|Limited" phrase may sit
+  // there, so "the issue of refunds has been postponed" still does not fire.
+  const ofCompany = '(?:\\s+of\\s+[^.;|]{1,120}?\\b(?:ltd|limited)\\.?)?';
   const withdrawn = new RegExp(
-    `(?:${subject}\\s+(?:has\\s+been\\s+|is\\s+|stands\\s+)?withdrawn)` +
+    `(?:${subject}${ofCompany}\\s+(?:has\\s+been\\s+|is\\s+|stands\\s+)?withdrawn)` +
       `|(?:withdrawal\\s+of\\s+(?:the\\s+)?${subject})`,
     'i',
   );
   const postponed = new RegExp(
-    `(?:${subject}\\s+(?:has\\s+been\\s+|is\\s+|stands\\s+)?(?:postponed|deferred|rescheduled))` +
+    `(?:${subject}${ofCompany}\\s+(?:has\\s+been\\s+|is\\s+|stands\\s+)?(?:postponed|deferred|rescheduled))` +
       `|(?:(?:postponement|deferment)\\s+of\\s+(?:the\\s+)?${subject})`,
     'i',
   );

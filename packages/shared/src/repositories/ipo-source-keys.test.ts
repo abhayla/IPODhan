@@ -6,7 +6,10 @@ import {
   recheckKeyBind,
   od83Supersedes,
   normalizeSourceKeyRefs,
+  supersedeOlderKeysOnRelaunchMerge,
 } from './ipo-source-keys';
+import { withSourceKeyLineage, noteSourceKeyBind, sourceKeyLineageFor } from './source-key-lineage';
+import { FieldSourcesRepository } from './field-sources-repository';
 import { REPOINT_TABLES, checkMergeEligibility, assessRelaunch, relaunchException } from '../utils/duplicate-ipo-merge';
 
 // OD-85 / OD-86 pure rules (docs/design/data-sourcing-pull-model.md §2.3.3.2, §2.3.3.3).
@@ -86,5 +89,77 @@ describe('merge tool (OD-85 repoint, OD-86 relaunch exception)', () => {
     const relaunch = assessRelaunch(keep, drop, [{ attrs }], [{ attrs: { ...attrs, postponed: true } }]);
     const r = checkMergeEligibility({ ...base, relaunch, identifiers: [...base.identifiers, { column: 'isin', keepValue: 'INE1B7I01014', dropValue: 'INE1OTR01013' }] });
     expect(r.eligible).toBe(false);
+  });
+});
+
+describe('OD-85 write rule: binding key ids reach field_sources.data_lineage (scope semantics)', () => {
+  it('a key noted inside a record scope is returned for that ipo only, never outside the scope', async () => {
+    expect(sourceKeyLineageFor('ipo-1')).toBeNull();
+    await withSourceKeyLineage(async () => {
+      noteSourceKeyBind('ipo-1', ['k1']);
+      noteSourceKeyBind('ipo-1', ['k1', 'k2']);
+      expect(sourceKeyLineageFor('ipo-1')).toEqual({ sourceKeyIds: ['k1', 'k2'] });
+      expect(sourceKeyLineageFor('ipo-2')).toBeNull();
+      // a nested scope is the same record: it sees and extends the outer note
+      await withSourceKeyLineage(async () => {
+        expect(sourceKeyLineageFor('ipo-1')).toEqual({ sourceKeyIds: ['k1', 'k2'] });
+      });
+    });
+    expect(sourceKeyLineageFor('ipo-1')).toBeNull();
+  });
+  it('two records processed concurrently never see each other\'s keys', async () => {
+    const seen: unknown[] = [];
+    await Promise.all(['a', 'b'].map((id) => withSourceKeyLineage(async () => {
+      noteSourceKeyBind(`ipo-${id}`, [`k-${id}`]);
+      await new Promise((r) => setTimeout(r, 5));
+      seen.push([sourceKeyLineageFor('ipo-a'), sourceKeyLineageFor('ipo-b')]);
+    })));
+    expect(seen).toContainEqual([{ sourceKeyIds: ['k-a'] }, null]);
+    expect(seen).toContainEqual([null, { sourceKeyIds: ['k-b'] }]);
+  });
+});
+
+describe('OD-86 + OD-83 at merge time: supersedeOlderKeysOnRelaunchMerge', () => {
+  const key = (id: string, ipoId: string, source: string, keyType: string, keyValue: string, state = 'ACTIVE') =>
+    ({ id, ipoId, source, keyType, keyValue, state }) as never;
+  it('the older record\'s key of a source the newer also carries is SUPERSEDED by the newer key; others are untouched', async () => {
+    const updates: { set: Record<string, unknown> }[] = [];
+    const tx = { update: () => ({ set: (set: Record<string, unknown>) => ({ where: async () => { updates.push({ set }); } }) }) } as never;
+    const ids = await supersedeOlderKeysOnRelaunchMerge(
+      tx,
+      [key('o-bse', 'old', 'BSE', 'BSE_IPO_NO', '7794'), key('o-cg', 'old', 'CHITTORGARH', 'CG_PAGE_ID', '2846')],
+      [key('n-bse', 'new', 'BSE', 'BSE_IPO_NO', '7900')],
+      'test'
+    );
+    expect(ids).toEqual(['o-bse']);
+    expect(updates.length).toBe(1);
+    expect(updates[0].set.state).toBe('SUPERSEDED');
+    expect(updates[0].set.supersededBy).toBe('n-bse');
+  });
+});
+
+describe('OD-85 write rule wired into FieldSourcesRepository.trackFieldUpdate', () => {
+  const captureRepo = () => {
+    const inserted: Record<string, unknown>[] = [];
+    const db = {
+      insert: () => ({
+        values: (v: Record<string, unknown>) => {
+          inserted.push(v);
+          return { onConflictDoUpdate: () => ({ returning: async () => [v] }) };
+        },
+      }),
+    } as never;
+    const redis = { del: async () => 0, keys: async () => [], scan: async () => ['0', []], get: async () => null } as never;
+    return { repo: new FieldSourcesRepository(db, redis), inserted };
+  };
+  it('a write inside a key-bind scope for that ipo carries sourceKeyIds merged into its lineage; outside it, lineage is unchanged', async () => {
+    const { repo, inserted } = captureRepo();
+    await withSourceKeyLineage(async () => {
+      noteSourceKeyBind('ipo-1', ['key-7900']);
+      await repo.trackFieldUpdate({ ipoId: 'ipo-1', tableName: 'ipos', fieldName: 'openDate', source: 'BSE' as never, dataLineage: { policyOrigin: 'm' } });
+      await repo.trackFieldUpdate({ ipoId: 'ipo-other', tableName: 'ipos', fieldName: 'openDate', source: 'BSE' as never });
+    });
+    await repo.trackFieldUpdate({ ipoId: 'ipo-1', tableName: 'ipos', fieldName: 'closeDate', source: 'BSE' as never });
+    expect(inserted.map((v) => v.dataLineage)).toEqual([{ policyOrigin: 'm', sourceKeyIds: ['key-7900'] }, null, null]);
   });
 });

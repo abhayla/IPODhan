@@ -22,6 +22,7 @@ import {
   classifyWithdrawalText,
   deriveBSEStatus,
   mapBSEToScrapedIPO,
+  bseSourceKeys,
   type BSEListRow,
   type BSEDetailRow,
 } from '../../../src/scrapers/bse-api-scraper.js';
@@ -36,6 +37,7 @@ describe('classifyWithdrawalText (BSE Notes/Remarks/Public_Notices)', () => {
     'The Issue has been withdrawn by the Company.',
     'Public Notice: withdrawal of the public issue',
     'The IPO stands withdrawn.',
+    'The issue of Example Industries Limited has been withdrawn.',
   ];
   it.each(withdrawals)('maps %j -> WITHDRAWN', (text) => {
     expect(classifyWithdrawalText(text)).toBe('WITHDRAWN');
@@ -46,6 +48,9 @@ describe('classifyWithdrawalText (BSE Notes/Remarks/Public_Notices)', () => {
     'Postponement of the public issue',
     'The offer is deferred.',
     'The issue is rescheduled.',
+    // OD-83 / F-127: BSE puts the company name between the noun and the verb (Dhanwel IPO_NO 7794).
+    'The issue of Dhanwel Hybrid Seeds Ltd has been postponed',
+    'The Issue of Dhanwel Hybird Seeds Limited has been postponed.',
   ];
   it.each(postponements)('maps %j -> POSTPONED', (text) => {
     expect(classifyWithdrawalText(text)).toBe('POSTPONED');
@@ -57,6 +62,9 @@ describe('classifyWithdrawalText (BSE Notes/Remarks/Public_Notices)', () => {
     'Withdrawal of bids by Retail Individual Investors is permitted until the closing date.',
     'Investors may revise or withdraw their bids.',
     'Payment postponed to T+2 settlement.',
+    // the "of <company> Ltd" allowance must not turn a non-company object into an issue postponement
+    'The issue of refund orders has been postponed.',
+    'The issue of allotment advice is rescheduled.',
     '',
     null,
     undefined,
@@ -69,6 +77,20 @@ describe('classifyWithdrawalText (BSE Notes/Remarks/Public_Notices)', () => {
     expect(
       classifyWithdrawalText('The issue was postponed on 01 Sep and the issue has been withdrawn on 03 Sep.'),
     ).toBe('WITHDRAWN');
+  });
+});
+
+describe('bseSourceKeys carries the exchange postponed flag (OD-83 / OD-86 read it)', () => {
+  it('Dhanwel IPO_NO 7794 ("issue of <company> Ltd has been postponed") -> attrs.postponed true; 7900 -> false', () => {
+    const row = (ipoNo: string, period: string, notes?: string) => ({
+      IPO_NO: ipoNo, ScripCode: '', ScripName: 'Dhanwel Hybrid Seeds Ltd', Symbol: 'DHANWEL', Issue_Period: period,
+      Issue_Size_No_of_shares: '2700000', Price_Band: '95.00-99.00', Face_Value: '10.00', Market_Lot: '1200', Notes: notes,
+    }) as unknown as BSEDetailRow;
+    const k7794 = bseSourceKeys(row('7794', '23 Jun 2026 to 23 Jun 2026', 'The issue of Dhanwel Hybrid Seeds Ltd has been postponed'),
+      2_700_000, { min: 95, max: 99 }, '2026-06-23', '2026-06-23', '2026-09-23');
+    const k7900 = bseSourceKeys(row('7900', '19 Aug 2026 to 21 Aug 2026'), 2_700_000, { min: 95, max: 99 }, '2026-08-19', '2026-08-21', '2026-09-23');
+    expect(k7794[0].attrs!.postponed).toBe(true);
+    expect(k7900[0].attrs!.postponed).toBe(false);
   });
 });
 

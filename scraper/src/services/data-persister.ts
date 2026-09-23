@@ -20,7 +20,7 @@ import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 // Phase 2: Shadow Mode - Data Consolidation Service
 import { DataConsolidationService, collectImplausibleIssueSizeFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
-import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo } from '@ipodhan/shared/repositories';
+import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo, withSourceKeyLineage, sourceKeyLineageFor } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { ipoDemandGraph, ipoDetails, ipos as iposTable, fieldSources as fieldSourcesTable } from '@ipodhan/shared/db/schema';
@@ -736,6 +736,18 @@ export async function upsertIPO(
    * `consolidateIPOData`. Omitted means "every key is a claim" (unchanged).
    */
   contextFields?: string[]
+): Promise<string> {
+  // OD-85: one record = one source-key lineage scope, so its field_sources rows carry the key ids
+  // that bound it (reuses the caller's scope when BaseScraperOrchestrator already opened one).
+  return withSourceKeyLineage(() => upsertIPOInScope(ipoRepository, scrapedIPO, source, preResolvedIPO, contextFields));
+}
+
+async function upsertIPOInScope(
+  ipoRepository: IPORepository,
+  scrapedIPO: ScrapedIPO,
+  source: ScraperSource,
+  preResolvedIPO: IPO | null | undefined,
+  contextFields: string[] | undefined
 ): Promise<string> {
   const startTime = Date.now();
   // T-478 round 3 (issue #225 follow-up, CRITICAL fix): the -ofs-<year> slug
@@ -2440,7 +2452,8 @@ export async function recordDiscoveredLeadManagers(
       confidence: 100,
       previousValue: null,
       previousSource: (previous[0]?.source ?? null) as never,
-      dataLineage: null as never,
+      // OD-85: the binding key ids when this record came through a key bind, else null as before.
+      dataLineage: (sourceKeyLineageFor(ipoId) ?? null) as never,
       updatedAt: new Date(),
       updatedBy: 'SYSTEM',
     };

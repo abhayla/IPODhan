@@ -40,6 +40,9 @@ import {
   SOURCE_KEY_NO_WRITE_ERROR_NAMES,
   type FieldProtectionService
 } from '@ipodhan/shared';
+// Own subpath on purpose: a record scope is plumbing, not a collaborator, so unit tests that
+// vi.mock('@ipodhan/shared') still run each record inside a real (empty) lineage scope.
+import { withSourceKeyLineage } from '@ipodhan/shared/repositories';
 import logger from '../utils/logger.js';
 import { upsertIPO, createSubscriptionSnapshot, normalizeCompanyNameForMatching, computeIpoIdentitySlug } from '../services/data-persister.js';
 import { recordDocumentSourceHints } from '../services/data-persister.js';
@@ -257,11 +260,12 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       // Step 2: Process each IPO with protection checks
       for (const scrapedIPO of scrapedData.ipos) {
         try {
-          const processResult = await this.processIPO(
+          // OD-85: one record = one source-key lineage scope (field_sources.data_lineage.sourceKeyIds).
+          const processResult = await withSourceKeyLineage(() => this.processIPO(
             scrapedIPO,
             scrapedData.subscriptions,
             result
-          );
+          ));
 
           if (processResult.slug) {
             updatedIPOSlugs.push(processResult.slug);

@@ -510,3 +510,47 @@ export async function releaseEndedSourceKeys(
   const count = (r: unknown) => ((r as { rows?: unknown[] }).rows ?? []).length;
   return { endedReleased: count(ended), nseReleased: count(nse) };
 }
+
+/**
+ * F-145 class (the IC Electricals ICEL/ICELCO flip): `ipos.symbol` follows the row's ACTIVE
+ * NSE_ISSUE key, never the record read last. Returns that key's symbol (the part before "|"), or
+ * null when the row has no ACTIVE NSE key — then the incoming symbol is written unchanged.
+ */
+export async function activeNseIssueSymbol(db: DbOrTx, ipoId: string): Promise<string | null> {
+  const rows = await db
+    .select({ keyValue: ipoSourceKeys.keyValue })
+    .from(ipoSourceKeys)
+    .where(and(eq(ipoSourceKeys.ipoId, ipoId), eq(ipoSourceKeys.keyType, 'NSE_ISSUE'), eq(ipoSourceKeys.state, 'ACTIVE')));
+  if (rows.length !== 1) return null; // none, or (never expected) two ACTIVE: do not guess
+  const symbol = rows[0].keyValue.split('|')[0];
+  return symbol || null;
+}
+
+/**
+ * OD-86 + OD-83 at merge time: after a relaunch merge the survivor holds the keys of BOTH records,
+ * so one source can have two ACTIVE keys (Dhanwel BSE 7794 and 7900). The older row's key of each
+ * (source, key_type) that the newer row also carries is SUPERSEDED by the newer one — the older
+ * record is the postponed one by OD-86's own condition. Runs inside the merge transaction.
+ */
+export async function supersedeOlderKeysOnRelaunchMerge(
+  tx: DbOrTx,
+  olderKeys: readonly SourceKeyRow[],
+  newerKeys: readonly SourceKeyRow[],
+  reason: string
+): Promise<string[]> {
+  const superseded: string[] = [];
+  for (const old of olderKeys) {
+    if (old.state !== 'ACTIVE') continue;
+    const newer = newerKeys.find(
+      (k) => k.state === 'ACTIVE' && k.source === old.source && k.keyType === old.keyType && k.keyValue !== old.keyValue
+    );
+    if (!newer) continue;
+    await tx
+      .update(ipoSourceKeys)
+      .set({ state: 'SUPERSEDED', supersededBy: newer.id, stateChangedAt: new Date(), stateReason: `OD-86 relaunch merge: superseded by ${newer.keyValue} (${reason})` })
+      .where(and(eq(ipoSourceKeys.id, old.id), eq(ipoSourceKeys.state, 'ACTIVE')));
+    superseded.push(old.id);
+    logger.info({ older: old.keyValue, newer: newer.keyValue }, '[OD-86] relaunch merge - older source key SUPERSEDED');
+  }
+  return superseded;
+}

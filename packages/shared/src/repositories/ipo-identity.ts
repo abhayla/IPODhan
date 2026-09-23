@@ -64,6 +64,7 @@ import {
   SourceKeySupersededError,
   type SourceKeyRef,
 } from './ipo-source-keys';
+import { noteSourceKeyBind } from './source-key-lineage';
 
 /**
  * LIGHT normalization for boundary-kind classification only (T-403 item 2)
@@ -518,6 +519,7 @@ export async function resolveIpoRow(
       const row = await ipoRepository.findByIdUncached(byKey.ipoId);
       if (row) {
         logger.info({ companyName: rawIdentity.companyName, ipoId: row.id, slug: row.slug }, '[OD-85] bound by source key');
+        noteSourceKeyBind(row.id, byKey.keyIds);
         return row;
       }
       break;
