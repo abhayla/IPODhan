@@ -223,6 +223,34 @@ ok('--check exits non-zero on a stale file', checkFailed);
     ok('fact tokens in prose are filled', r.code === 0 && !r.html.includes('{{'));
   }
 
+  // (d.1) a stale fact cited as a {{token}} in running text (the headline "lede")
+  // must carry the SAME stale marker the table cells get — not the bare value.
+  // Isolated to the <p class="lede"> paragraph so a table cell showing the same
+  // sha (test (b)) cannot make this pass by coincidence.
+  const lede = (html) => (html.match(/class="lede">([\s\S]*?)<\/p>/) || [, ''])[1];
+  {
+    const staleFacts = { ...baseFacts, 'staging.sha': { value: 'bbbb2222', measured_at: at(25), command: 'fixture' } };
+    const r = render(factsFile(staleFacts));
+    const l = r.code === 0 ? lede(r.html) : '';
+    ok('stale token in headline lede carries the stale marker',
+      /bbbb2222 <small class="stale">stale &mdash; measured 2026-09-22<\/small>/.test(l), l || r.stderr);
+  }
+  // (d.2) a fresh fact cited as a {{token}} in prose renders unlabelled.
+  {
+    const r = render(factsFile(baseFacts));
+    const l = r.code === 0 ? lede(r.html) : '';
+    ok('fresh token in headline lede carries no stale/unmeasured label',
+      l.includes('bbbb2222') && !/class="(stale|unmeasured)"/.test(l), l || r.stderr);
+  }
+  // (d.3) a null (unmeasured) fact cited as a {{token}} in prose renders
+  // "unmeasured", same as the table.
+  {
+    const r = render(factsFile({ ...baseFacts, 'staging.sha': { value: null, measured_at: at(0), command: 'fixture', error: 'ssh timeout' } }));
+    const l = r.code === 0 ? lede(r.html) : '';
+    ok('unmeasured token in headline lede renders "unmeasured"',
+      l.includes('Staging serves unmeasured;'), l || r.stderr);
+  }
+
   // (e) --check is deterministic: it re-renders with the page's recorded render
   // time, so a page rendered long ago still checks clean with the same inputs.
   {

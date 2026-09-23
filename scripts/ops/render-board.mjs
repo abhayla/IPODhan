@@ -162,23 +162,46 @@ const measuredTimes = Object.values(rawFacts).map((f) => f && f.measured_at).fil
 const oldestMeasured = measuredTimes[0] || null;
 
 // Tokens prose may cite, all from facts; an absent fact renders "unmeasured".
+// Each token carries the SAME fresh/stale/unmeasured state its source fact(s)
+// have, so a stale value in running text gets the same marker a table cell
+// gets — not a bare value that reads as current. A derived token (age_days,
+// migrations_behind) is stale/unmeasured if any fact it derives from is.
+const worstState = (...states) => (states.includes('unmeasured') ? 'unmeasured' : states.includes('stale') ? 'stale' : 'fresh');
 const slotTokens = (slot) => {
-  const applied = valueOf(`${slot}.migrations_applied`);
-  const onMain = valueOf('main.migrations');
-  const since = valueOf(`${slot}.since`);
+  const appliedF = fact(`${slot}.migrations_applied`);
+  const onMainF = fact('main.migrations');
+  const sinceF = fact(`${slot}.since`);
+  const shaF = fact(`${slot}.sha`);
+  const since = sinceF.state === 'unmeasured' ? null : sinceF.value;
+  const applied = appliedF.state === 'unmeasured' ? null : appliedF.value;
+  const onMain = onMainF.state === 'unmeasured' ? null : onMainF.value;
   return {
-    [`${slot}.sha`]: valueOf(`${slot}.sha`),
-    [`${slot}.since_date`]: since ? istDate(since) : null,
-    [`${slot}.age_days`]: since ? Math.floor((renderAt.getTime() - Date.parse(since)) / 86400000) : null,
-    [`${slot}.migrations_applied`]: applied,
-    [`${slot}.migrations_behind`]: applied !== null && onMain !== null ? onMain - applied : null,
+    [`${slot}.sha`]: { state: shaF.state, value: shaF.value ?? null, measured_at: shaF.measured_at },
+    [`${slot}.since_date`]: { state: sinceF.state, value: since ? istDate(since) : null, measured_at: sinceF.measured_at },
+    [`${slot}.age_days`]: { state: sinceF.state, value: since ? Math.floor((renderAt.getTime() - Date.parse(since)) / 86400000) : null, measured_at: sinceF.measured_at },
+    [`${slot}.migrations_applied`]: { state: appliedF.state, value: applied, measured_at: appliedF.measured_at },
+    [`${slot}.migrations_behind`]: {
+      state: worstState(appliedF.state, onMainF.state),
+      value: applied !== null && onMain !== null ? onMain - applied : null,
+      measured_at: [appliedF.measured_at, onMainF.measured_at].filter(Boolean).sort().pop(),
+    },
   };
 };
-const TOKENS = { ...slotTokens('prod'), ...slotTokens('staging'), 'main.migrations': valueOf('main.migrations') };
+const mainMigrationsF = fact('main.migrations');
+const TOKENS = {
+  ...slotTokens('prod'), ...slotTokens('staging'),
+  'main.migrations': { state: mainMigrationsF.state, value: mainMigrationsF.state === 'unmeasured' ? null : mainMigrationsF.value, measured_at: mainMigrationsF.measured_at },
+};
+const tokenPresented = (k) => {
+  const t = TOKENS[k];
+  if (t.state === 'unmeasured') return 'unmeasured';
+  const v = String(t.value);
+  return t.state === 'stale' ? `${v} <small class="stale">stale &mdash; measured ${istDate(t.measured_at)}</small>` : v;
+};
 const fillTokens = (v) => {
   if (typeof v === 'string') return v.replace(/\{\{([\w.]+)\}\}/g, (_, k) => {
     if (!(k in TOKENS)) { console.error(`render-board: unknown fact token {{${k}}} in board-data.json`); process.exit(1); }
-    return TOKENS[k] === null ? 'unmeasured' : String(TOKENS[k]);
+    return tokenPresented(k);
   });
   if (Array.isArray(v)) return v.map(fillTokens);
   if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fillTokens(x)]));
@@ -249,7 +272,7 @@ const toneClass = { ok: 'ok', warn: 'warn', bad: 'bad', info: 'info', building: 
 // Production age is derived from its deploy date, so the tile cannot say "13
 // days" a week later. Every other tile shows a quantity; this one must too.
 // Measured from the served release's switch time to this render.
-const prodAgeDays = TOKENS['prod.age_days'];
+const prodAgeDays = TOKENS['prod.age_days'].value;
 const prodEnv = data.environments.find((e) => e.facts === 'prod') || data.environments[0];
 
 const meter = [
