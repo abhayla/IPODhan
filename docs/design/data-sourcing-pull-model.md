@@ -1697,7 +1697,12 @@ in the binding order or the matching rules.
 - **F-135** (area "data", not identity) — NSE IPO itself lists on BSE only per its own documents,
   while our row's `listing_exchanges` says both BSE and NSE because NSE ran the bidding; bears on
   OD-64 (issue #938).
-- **F-136** — the equity ISIN exists before the IPO (NSE: NSDL/CDSL tripartite agreements 2007/2016; RHP p.536 lets the company freeze the ISIN from the RHP date to listing), but the DRHP/RHP do not print it and no exchange API returned it during the IPO; a free pre-listing lookup is unproven (NSDL unreachable from the laptop). This corrects the working assumption that the ISIN only exists at listing.
+- **F-136** — the equity ISIN exists before the IPO (NSE: NSDL/CDSL tripartite agreements 2007/2016; RHP p.536 lets the company freeze the ISIN from the RHP date to listing), but the DRHP/RHP do not print it and no exchange API returned it during the IPO; a free pre-listing lookup is unproven (NSDL unreachable from the laptop). This corrects the working assumption that the ISIN only exists at listing. Update F-137: a free pre-listing lookup is now proven (NSDL public JSON).
+- **F-137** — a free pre-listing ISIN source exists: NSDL's public JSON search (nsdl.com/web/api/v1/participant/search), HTTP 200, no login, no captcha; returned ISINs for two not-yet-listed SME IPOs (Himalayan Solar INE1B7I01014, Himalaya Nutravedics India INE1OTR01013), each also corroborated by the NSE in-principle filing XML and the SME RHP text. Chittorgarh's ISIN column stays blank until listing.
+- **F-138** — MCA master data (name -> CIN) is not usable by a scraper: both the search and detail endpoints require a captcha-bound encrypted payload; data.gov.in's company master is a stale (FY2021) dataset needing an API key. The CIN, including its old->new change, is only reliably available from the offer document.
+- **F-139** — SEBI's processing-status data (free, weekly + yearly archive PDFs) is PDF-only, lags a new filing by weeks, and is prone to a `pdftotext -layout` row-misalignment trap; NSE's `/api/corporates/offerdocs` (SME and equities) gives ISIN, PAN, DRHP/RHP/prospectus dates and status directly for NSE-filed issues, with no equivalent found yet for BSE-only SME in-principle filings.
+- **F-140** (area "tooling") — curl is blocked by the BSE and MCA CDNs (403) where the scraper's Node fetch client succeeds (200); a curl-based laptop probe is not evidence the scraper itself is blocked.
+- **F-141** — PAN is available early (at DRHP stage) from NSE's offer-documents API for NSE-filed issues; whether BSE-only issues expose a PAN early is not measured.
 
 #### 2.3.3.3 Delisting, and undoing a merge that was wrong (OD-38)
 

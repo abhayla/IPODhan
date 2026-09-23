@@ -1392,6 +1392,51 @@
       "phase1": true,
       "title": "The equity ISIN exists BEFORE the IPO (from the company's demat set-up), but no source we read gives it before listing",
       "detail": "Measured 2026-09-23 on the NSE IPO's own RHP (local copy RHP-4e566b15.pdf): p.476 and p.525 state \"tripartite agreements with NSDL and CDSL dated October 11, 2007 and November 25, 2016 respectively, for dematerialisation of the Equity Shares\"; p.536 states the company \"may request the Depositories to suspend/ freeze the ISIN in depository system from or around the date of this Red Herring Prospectus till the listing\" (per NSDL/CIR/II/28/2023 and CDSL/OPS/RTA/POLCY/2023/161, both dated August 8, 2023). An ISIN that can be frozen already exists, so NSE's equity ISIN (INE721I01024, shown by Chittorgarh on 2026-09-23) predates the DRHP by years. This corrects the earlier working assumption (this session) that the ISIN only exists at listing. It remains true that the DRHP and RHP do not print the ISIN (0 'INE' matches in either) and neither exchange API returned it during the IPO (F-126). Web research (secondary sources; sebi.gov.in and nsdl.co.in fetches reset) says ICDR Reg 7 requires promoter shares in demat and depository agreements before filing, and that a fresh issue of the same fully-paid class uses the same ISIN (a partly-paid issue gets a separate IN9 ISIN) - UNCONFIRMED from the regulation text. A pre-listing lookup was tried: nsdl.co.in/isin_search.php and master_search_res.php returned no connection (HTTP 000) from the laptop. If a free pre-listing ISIN source is proven, the ISIN is the only identifier common to NSE, BSE and the depositories for the same shares. Related: F-124, F-126. Open for owner decision."
+    },
+    {
+      "id": "F-137",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "A free pre-listing ISIN source exists: NSDL's public JSON search",
+      "detail": "Endpoint: https://nsdl.com/web/api/v1/participant/search?search_type=DetailedSearch&name=<company name> (HTTP 200, no login, no captcha); detail: search_type=DetailedPage&isin=<ISIN> adds face value, registrar, address, former name; it has NO date field and NO CIN. The old nsdl.co.in/isin_search.php now redirects to nsdl.com. Values (all ACTIVE): NSE INE721I01024 (\"EQ NEW FV RE.1/-\"); Hero Motors INE012G01022 (\"EQ NEW FV RS.10/-\", its older INE012G01014 shows \"BLOCKED DUE TO ACA\"); Himalayan Solar INE1B7I01014 (NOT yet listed; opens 2026-09-25; former name \"Himalayan Solar Private Limited\"); Himalaya Nutravedics India INE1OTR01013 (NOT yet listed); Rays of Belief INE1FCO01014. Verified by the supervisor with Node fetch on 2026-09-23 (HTTP 200, the two unlisted ISINs returned). Also: the NSE in-principle filing XML for Himalayan Solar, dated 2025-10-03, carries ISIN=INE1B7I01014 (about 12 months before it opens); SME RHPs print it (\"Our Company's ISIN is INE1B7I01014\"; Himalaya Nutravedics' BSE RHP zip mentions INE1OTR01013 4 times). Chittorgarh's ISIN column is blank until listing (231 of 270 rows this FY have one). CDSL's ISIN page returned 404. Whether NSE's pre-IPO ISIN differs from an older one: NSDL returned nothing for INE721I01016 - unverified. Related: F-136, F-126."
+    },
+    {
+      "id": "F-138",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "MCA master data (name -> CIN) is not usable by a scraper",
+      "detail": "mca.gov.in loads (Node 200) but both the search call (/bin/mca/mds/commonSearch) and the detail call (/bin/MDSMasterDataServlet) carry an encrypted payload including a captcha answer (/bin/mca/HmacCaptchaValidationServlet). Not worked around (access control). data.gov.in company master: 339 state datasets, newest \"upto 31st March 2021\", and reading needs an API key (\"Authorization field missing\"). The usable CIN source, including the old->new change, is the offer document: Himalayan Solar's RHP/GID contain U40300HR2015PTC056609 and U40100HR2015PLC056609; Himalaya Nutravedics' contain ...PTC163732 and ...PLC163732. Related: F-124."
+    },
+    {
+      "id": "F-139",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "SEBI's processing-status data is free but PDF-only and lags; NSE's offer-documents API is better for NSE issues",
+      "detail": "SEBI weekly PDF \"Processing Status of Draft Offer Documents, as on September 18, 2026\" (listing smid=8; sections I-VI; columns name, lead manager, type, date received, last date of communication) shows only pending drafts plus that week's observations/withdrawals/returns. Yearly archive PDFs FY2012-13 to FY2025-26 carry receipt date, status and observation/return/withdrawal date. Extraction trap: pdftotext -layout moves dates onto wrong rows (Hero read as 02-08-2024 / Observation 18-10-2024); -raw or a table parser gives the true 28-08-2024 / Issue Withdrawn 05-10-2024. Real rows: Hero Motors FY24-25 received 28-08-2024, Issue Withdrawn 05-10-2024; FY25-26 received 30-06-2025, Observation Issued 12-09-2025. Rays of Belief FY25-26 pre-filing received 25-08-2025, Observation Issued 31-12-2025. NSE FY16-17 IPO (OFS) received 28 December 2016, \"Issuer needs to file fresh draft offer document\". NSE's 2026 filing: no processing row found yet (not in the Sep-18 weekly; FY26-27 archive not published). NSE /api/corporates/offerdocs?index=sme|equities: 1,350 SME and 1,207 equity rows, each with ISIN, PAN, DRHP date, status (Approved/Withdrawn), RHP and prospectus dates, in-principle filing link. Himalayan Solar: DRHP 27-Sep-2025, PAN AADCH6953K, in-principle filing 03-10-2025. Hero Motors: 23-Aug-2024 DRHP Withdrawn; 30-Jun-2025 DRHP Approved, prospectus 22-Sep-2026. Rays of Belief: DRHP 11-Feb-2026. BSE SME in-principle list: endpoint not found (not done). Related: F-125, F-130, F-131."
+    },
+    {
+      "id": "F-140",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "tooling",
+      "phase1": true,
+      "title": "curl is blocked where the scraper is not",
+      "detail": "api.bseindia.com and mca.gov.in return \"403 Access Denied\" to curl but HTTP 200 to Node's fetch (the scraper's client); the CDN rejects curl's connection signature. Supervisor-verified 2026-09-23: GetMkt_ISSUE_BBS_IPO?IPO_NO=7983 -> curl 403, Node fetch 200 (\"Himalaya Nutravedics India Limited\"). Consequence: a curl 403 from a laptop test is NOT evidence that the scraper is blocked. This corrects a same-day statement (\"BSE now blocks us\") that was based on curl."
+    },
+    {
+      "id": "F-141",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "PAN is available early from NSE's offer-documents API (company-level)",
+      "detail": "Himalayan Solar PAN AADCH6953K from NSE offerdocs (DRHP stage). Whether BSE-only issues expose a PAN early: not measured. Related: F-124."
     }
   ],
   "false_assertions": [
