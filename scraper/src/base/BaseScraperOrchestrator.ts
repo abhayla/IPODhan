@@ -36,6 +36,7 @@ import {
   createFieldProtectionService,
   resolveIpoRow,
   inferBoundVia,
+  releaseEndedSourceKeys,
   SOURCE_KEY_NO_WRITE_ERROR_NAMES,
   type FieldProtectionService
 } from '@ipodhan/shared';
@@ -239,6 +240,19 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
         totalIPOs: scrapedData.ipos.length,
         totalSubscriptions: scrapedData.subscriptions.length
       }, `Scraped data received from ${scraperName}`);
+
+      // OD-85 RELEASE, before any record is matched: keys of ended offerings (WITHDRAWN / DELISTED /
+      // LAPSED) and NSE_ISSUE keys N days after listing (NSE_SOURCE_KEY_RELEASE_DAYS, default 30)
+      // stop binding. Idempotent; a failure never blocks the run (the read rule also releases a hit
+      // on an ended row by itself).
+      try {
+        const released = await releaseEndedSourceKeys(this.ipoRepository.sourceKeyDb() as never);
+        if (released.endedReleased + released.nseReleased > 0) {
+          logger.info({ scraperName, ...released }, '[OD-85] source keys released');
+        }
+      } catch (error) {
+        logger.warn({ scraperName, error: (error as Error).message }, '[OD-85] source key release failed (non-fatal)');
+      }
 
       // Step 2: Process each IPO with protection checks
       for (const scrapedIPO of scrapedData.ipos) {
