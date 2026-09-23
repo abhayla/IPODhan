@@ -175,16 +175,35 @@ describe('checkMergeEligibility', () => {
     expect(checkMergeEligibility(base)).toEqual({ eligible: true });
   });
 
-  it('is eligible when open dates are exactly 3 days apart (the invariant tolerance)', () => {
-    const result = checkMergeEligibility({ ...base, keepOpenDate: '2026-07-26', dropOpenDate: '2026-07-29' });
-    expect(result).toEqual({ eligible: true });
+  it('OD-69: refuses when open dates differ by one day, whatever the names fold to', () => {
+    const result = checkMergeEligibility({ ...base, keepOpenDate: '2026-07-26', dropOpenDate: '2026-07-27' });
+    expect(result.eligible).toBe(false);
+    expect((result as { reason: string }).reason).toMatch(/OD-69/);
+    expect((result as { reason: string }).reason).toMatch(/1 day\(s\) apart/);
   });
 
-  it('refuses when open dates are 4 days apart, naming the spread and the tolerance', () => {
-    const result = checkMergeEligibility({ ...base, keepOpenDate: '2026-07-26', dropOpenDate: '2026-07-30' });
+  it('OD-69: refuses the real look-alike spread (Himalayan Solar 2026-09-25 vs Himalaya Nutravedics 2026-09-22), even forced', () => {
+    const result = checkMergeEligibility({ ...base, keepOpenDate: '2026-09-25', dropOpenDate: '2026-09-22', forceDifferentName: true });
     expect(result.eligible).toBe(false);
-    expect((result as { reason: string }).reason).toMatch(/4 day\(s\) apart/);
-    expect((result as { reason: string }).reason).toMatch(/3-day tolerance/);
+    expect((result as { reason: string }).reason).toMatch(/3 day\(s\) apart/);
+  });
+
+  it('OD-69: refuses differing CIN even when forceDifferentName is set and names fold alike', () => {
+    const result = checkMergeEligibility({
+      ...base,
+      forceDifferentName: true,
+      identifiers: [{ column: 'cin', keepValue: 'U11111DL2017PLC000001', dropValue: 'U22222DL2017PLC000002' }],
+    });
+    expect(result.eligible).toBe(false);
+    expect((result as { reason: string }).reason).toMatch(/cin disagrees/);
+  });
+
+  it('OD-69: an identifier that differs only in case/whitespace is the same identifier (no false refusal)', () => {
+    const result = checkMergeEligibility({
+      ...base,
+      identifiers: [{ column: 'symbol', keepValue: 'momsbelief ', dropValue: 'MOMSBELIEF' }],
+    });
+    expect(result.eligible).toBe(true);
   });
 
   it('refuses when only one side has a readable open_date', () => {

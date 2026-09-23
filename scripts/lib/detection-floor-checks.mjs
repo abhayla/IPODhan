@@ -973,15 +973,29 @@ export function evaluateCronExecutable(paths, gitLsFiles) {
 // ' - '/'- ' separator, because S3's title-in-name pollution
 // ("... - Pernia's Pop-Up Studio IPO") and S1's page-status suffix both live
 // past a legal-suffix-only fold.
+// PLAIN-JS TWIN of packages/shared/src/utils/identity-decoration.ts (OD-68) --
+// the matching code in resolveIpoRow / IPORepository.create uses the TS copy, this
+// nightly check uses this one, and scripts/tests/identity-decoration-parity.test.mjs
+// imports BOTH and fails on any divergence. Change them together.
 const IDENTITY_STOPWORDS = new Set([
   'limited', 'ltd', 'company', 'co', 'private', 'pvt', 'india', 'the', 'ipo',
 ]);
+const IDENTITY_STATUS_TOKEN = /\s+(o|p|lt|ct)$/i;
+
+export function stripIdentityNameDecoration(name) {
+  if (!name) return '';
+  let s = String(name).trim();
+  s = s.replace(IDENTITY_STATUS_TOKEN, '').trim();
+  s = s.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  s = s.split(/\s+-\s+|-\s+(?=[A-Za-z])/)[0].trim();
+  s = s.replace(IDENTITY_STATUS_TOKEN, '').trim();
+  s = s.replace(/\s+(IPO|FPO)$/i, '').trim();
+  return s;
+}
 
 export function normalizeIdentityCompanyName(name) {
   if (!name) return '';
-  let s = String(name)
-    .replace(/\([^)]*\)/g, ' ') // drop bracketed text
-    .split(/\s+-\s+|-\s+(?=[A-Za-z])/)[0]; // drop everything after ' - ' / '- '
+  const s = stripIdentityNameDecoration(name).replace(/\([^)]*\)/g, ' ');
   return s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
@@ -999,8 +1013,8 @@ export function stripIdentitySlugSuffix(slug) {
 }
 
 // The identifiers the §2.3.3.1 "standing sweep" groups by: "every row by each
-// identifier it holds" — CIN, ISIN, exchange symbol and BSE scrip code (the
-// four identifier columns that actually exist on `ipos`; see schema.ts —
+// identifier it holds" -- CIN, ISIN, exchange symbol and BSE scrip code (the
+// four identifier columns that actually exist on `ipos`; see schema.ts --
 // there is no separate BSE-code table, `bseScripCode` IS it). The suffix-
 // stripped-slug and normalised-name+open-date keys are additional groupings
 // this check keeps from the original brief (S1's page-status suffix and

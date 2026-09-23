@@ -462,7 +462,9 @@ jobs:
         # treated as the same company by the duplicate-row repair, which
         # DELETES a row. Drift between the two implementations means the
         # report and the repair disagree about what they are about to delete.
-        run: node --test scripts/tests/company-identity-fold-parity.test.mjs
+        run: |
+          node --test scripts/tests/company-identity-fold-parity.test.mjs
+          node --test scripts/tests/identity-decoration-parity.test.mjs
 
       - name: Duplicate-IPO-rows invariant unit tests (item 12 slice F)
         # scripts/lib/repair-invariants/duplicate-ipo-rows.mjs is the check that

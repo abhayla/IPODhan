@@ -34,7 +34,8 @@ import {
   getIPOSearchKey,
   getHistoricalIPOsKey,
 } from '../cache/cache-keys';
-import { EntityNotFoundError, DatabaseError, ProdWriteRefusedError } from '../errors/repository-errors';
+import { EntityNotFoundError, DatabaseError, ProdWriteRefusedError, IdentityHeldForReviewError } from '../errors/repository-errors';
+import { normalizeIdentityCompanyName } from '../utils/identity-decoration';
 import { logger } from '../logger';
 import {
   normalizedCompanyNameSql,
@@ -864,6 +865,73 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   /**
    * Create new IPO
    */
+  /**
+   * OD-68 hold-for-review, at the ONE door every IPO create goes through.
+   *
+   * A create is only reached when `resolveIpoRow` bound nothing. If a live row
+   * of the same offering type already carries this company's identity fold
+   * (decoration stripped: "Rays of Belief Ltd. O" and "Rays of Belief Limited-
+   * For Profit Social Enterprise" are one fold) and its open date is unknown or
+   * within OD-35's 180-day window, the record matched on the name WITHOUT the
+   * same open date and price band — so it is held: logged with both
+   * identities, no row created. A WITHDRAWN row, a different offering type
+   * (OD-70), or an open date more than 180 days away (a new offering, OD-35 /
+   * OD-71) does not hold.
+   *
+   * Placed in the repository, not in each scraper, because the 2026-09-01
+   * duplicate came from a caller path; a guard at the insert covers every path
+   * that exists and every one added later.
+   */
+  private async holdIfIdentityUnbound(data: IPOInsert): Promise<void> {
+    const fold = normalizeIdentityCompanyName(data.companyName ?? '');
+    if (!fold) return;
+    const offeringType = data.offeringType ?? 'IPO';
+    const rows = await this.db
+      .select({
+        id: ipos.id,
+        slug: ipos.slug,
+        companyName: ipos.companyName,
+        openDate: ipos.openDate,
+        priceRangeMin: ipos.priceRangeMin,
+        status: ipos.status,
+      })
+      .from(ipos)
+      .where(sql`${ipos.offeringType} = ${offeringType} AND ${ipos.status} <> 'WITHDRAWN'`);
+    const toDay = (v: unknown): string | null =>
+      v == null || v === '' ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
+    const incomingDay = toDay(data.openDate);
+    const WINDOW_DAYS = 180;
+    const candidates = rows.filter((row) => {
+      if (normalizeIdentityCompanyName(row.companyName) !== fold) return false;
+      const rowDay = toDay(row.openDate);
+      if (!incomingDay || !rowDay) return true;
+      const days = Math.abs(Date.parse(incomingDay) - Date.parse(rowDay)) / 86_400_000;
+      return days <= WINDOW_DAYS;
+    });
+    if (candidates.length === 0) return;
+    const incoming = {
+      companyName: data.companyName ?? '',
+      slug: data.slug ?? '',
+      openDate: incomingDay,
+      priceRangeMin: data.priceRangeMin ?? null,
+    };
+    logger.warn(
+      {
+        incoming,
+        identityFold: fold,
+        candidates: candidates.map((c) => ({ id: c.id, slug: c.slug, companyName: c.companyName, openDate: c.openDate, priceRangeMin: c.priceRangeMin, status: c.status })),
+      },
+      'identity_held_for_review: no identifier bound this record and its name matches an existing offering without the same open date and price band - NOT created (OD-68)'
+    );
+    throw new IdentityHeldForReviewError(
+      `IPORepository.create: "${incoming.companyName}" held for review (OD-68) - its identity fold "${fold}" matches ` +
+        candidates.map((c) => `${c.slug} (open ${String(c.openDate ?? 'unknown')})`).join(', ') +
+        ' but no identifier, open date and price band bound it; no row created',
+      incoming,
+      candidates.map((c) => ({ ...c }))
+    );
+  }
+
   async create(data: IPOInsert): Promise<IPO> {
     // #860: an IPO's segment decides which manifest ranks its fields get
     // (`ipoTypeKey` needs it), so an IPO created without one has every ranked
@@ -883,6 +951,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         'The segment decides which manifest ranks its fields get; without it every rank is resolved for a guessed type. See #860.'
       );
     }
+    await this.holdIfIdentityUnbound(data);
     try {
 
       // Single write choke point: every IPO create — regardless of which

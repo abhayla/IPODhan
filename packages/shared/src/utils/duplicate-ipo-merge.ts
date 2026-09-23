@@ -391,13 +391,18 @@ export function checkMergeEligibility(input: EligibilityInput): EligibilityResul
         `(keep=${String(input.keepOpenDate)}, drop=${String(input.dropOpenDate)})`,
     };
   } else {
+    // OD-69 (2026-09-23): the merge tool refuses a pair whose open date differs, whatever the
+    // names fold to. Before OD-69 a 3-day tolerance applied here — exactly the gap between the
+    // real look-alike pair Himalayan Solar Ltd. (2026-09-25) and Himalaya Nutravedics India Ltd.
+    // (2026-09-22). OPEN_DATE_TOLERANCE_DAYS still sizes the detection sweep's CLUSTERING (a
+    // candidate a human reads), never a merge.
     const spread = daysBetween(keepDay, dropDay);
-    if (spread > OPEN_DATE_TOLERANCE_DAYS) {
+    if (spread > 0) {
       return {
         eligible: false,
         reason:
-          `the two rows open ${spread} day(s) apart (${keepDay} vs ${dropDay}), more than the ` +
-          `${OPEN_DATE_TOLERANCE_DAYS}-day tolerance, so they are two offers`,
+          `the two rows' open date differs (${keepDay} vs ${dropDay}, ${spread} day(s) apart) — ` +
+          `OD-69: a merge needs the same open date, so they are two offers`,
       };
     }
   }
@@ -410,7 +415,7 @@ export function checkMergeEligibility(input: EligibilityInput): EligibilityResul
     };
   }
   for (const { column, keepValue, dropValue } of input.identifiers) {
-    if (keepValue && dropValue && String(keepValue) !== String(dropValue)) {
+    if (keepValue && dropValue && String(keepValue).trim().toUpperCase() !== String(dropValue).trim().toUpperCase()) {
       return {
         eligible: false,
         reason: `${column} disagrees (${String(keepValue)} vs ${String(dropValue)}) — two offers, not one row twice`,

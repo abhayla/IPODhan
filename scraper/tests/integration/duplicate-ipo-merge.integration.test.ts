@@ -176,9 +176,10 @@ describe.skipIf(!DATABASE_URL)(`IPORepository.mergeDuplicateInto against real Po
     }
   });
 
-  it('is eligible on the date check (does NOT refuse for open_date reasons) when the two rows open 2 days apart', async () => {
-    // Positive control for the item 12 slice G widening: 2 days apart is WITHIN the 3-day
-    // tolerance, so the DATE check must not be the reason for any refusal. This test asserts
+  it('OD-69: REFUSES on the date check when the two rows open 2 days apart (was within the old 3-day tolerance)', async () => {
+    // OD-69 (2026-09-23) reversed the item 12 slice G widening: the merge tool refuses a pair whose
+    // open date differs at all. Himalayan Solar / Himalaya Nutravedics — two different companies —
+    // opened 3 days apart, inside the old tolerance. Kept as the pinned inverse of the old control. This test asserts
     // ONLY that outcome (per the coordinator's instruction) — it may still be refused by some
     // OTHER check (name fold, a disagreeing identifier, issue_size), which is a different,
     // unrelated concern this test does not pin either way.
@@ -203,7 +204,7 @@ describe.skipIf(!DATABASE_URL)(`IPORepository.mergeDuplicateInto against real Po
       } catch (err) {
         if (err instanceof Error && /day\(s\) apart/.test(err.message)) dateRefused = true;
       }
-      expect(dateRefused).toBe(false);
+      expect(dateRefused).toBe(true);
     } finally {
       await db.delete(schema.ipos).where(inArray(schema.ipos.id, [A, B]));
     }
