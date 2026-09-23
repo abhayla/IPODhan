@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-23T04:32:03.967Z",
+  "generated_at": "2026-09-23T05:18:07.305Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 182,
+    "live": 183,
     "retired": 24
   },
-  "next_id": 207,
+  "next_id": 208,
   "rules": [
     {
       "id": "R-151",
@@ -1040,6 +1040,15 @@
       "section": "3.2 What happens on a disagreement",
       "kind": "table",
       "text": "a different value from an equal or lower-ranked source — ignored for the page; recorded in the admin conflicts list — none that week",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-207",
+      "hash": "82608f25be5e",
+      "section": "3.2 What happens on a disagreement",
+      "kind": "table",
+      "text": "the SAME source changing its own earlier value — ignored for the page; admin conflicts list under its own named reason, never an alert (OD-75) — none in 30 days",
       "first_seen": "2026-09-23",
       "retired": false
     },
