@@ -111,6 +111,11 @@ const HEARTBEAT_INTERVAL_MINUTES = 30;
  * both derive from — never hand-typed a second time (docs/reviews/
  * detection-checks.json's `i_wire_or_retire` class is exactly what a
  * hand-typed duplicate list risks: a step added here and forgotten there).
+ *
+ * Item 7 S3: `closedIpoJob` is REMOVED from this list. It is no longer a
+ * post-step of the data cycle — it now runs as its own `--job=closed`
+ * process under the `scraper:cycle` lock (`runClosedIpoWake`, above), so a
+ * data wake at 22:00 does not also run it (item 2 of the S3 build).
  */
 export const STEP_NAMES = [
   'statusUpdate',
@@ -121,7 +126,6 @@ export const STEP_NAMES = [
   'stageReconciler',
   'primarySourceDiscovery',
   'documentPurge',
-  'closedIpoJob',
   'deployDriftMonitor',
   'pruneScraperLogs',
   'pruneDataConflicts',
@@ -351,8 +355,13 @@ export const LIVE_LOCK_TTL_MS = 4 * 60 * 1000;
 /** 3.5 minutes: inside the 4-minute TTL, leaving 30 s to release and exit. */
 export const LIVE_JOB_DEADLINE_MS = 3.5 * 60 * 1000;
 
-/** Item 7 S1: the two jobs `--job=` selects. `data` is the default so a cron line without the flag behaves as before. */
-export const SCRAPER_JOBS = ['data', 'live'] as const;
+/**
+ * Item 7 S1/S3: the jobs `--job=` selects. `data` is the default so a cron
+ * line without the flag behaves as before. `closed` (S3) is its own process
+ * with its own wake under the heavy `scraper:cycle` lock (spec §2.1 job
+ * table, §6.1) — it no longer runs as a post-step inside the data cycle.
+ */
+export const SCRAPER_JOBS = ['data', 'live', 'closed'] as const;
 export type ScraperJob = (typeof SCRAPER_JOBS)[number];
 
 /**
@@ -512,6 +521,178 @@ async function runLiveFiguresJob(): Promise<number> {
   return 0;
 }
 
+/**
+ * Item 7 S3 (spec §2.1 job table row "Closed-IPO job", §6.1, OD-19/OD-22):
+ * `--job=closed` is now its own process, no longer a post-step inside the
+ * data cycle. It takes the SAME heavy lock the data job takes
+ * (`CYCLE_LOCK_RESOURCE = 'scraper:cycle'`) — the two jobs are mutually
+ * exclusive by design (§2.1 "never start while the heavy lock is held"): a
+ * second walker on the rows the data job is mid-cycle on is how two writers
+ * race.
+ *
+ * §2.1's rule is "no job ever kills a running cycle" — this function only
+ * ever ATTEMPTS the lock (`acquire`, which fails closed if already held) and
+ * never calls `forceRelease` or signals another process. A held lock is
+ * logged and this wake exits 0 having done nothing, exactly like a data wake
+ * that finds `scraper:cycle` held (see scripts/scraper-wake.sh's own
+ * lock-skip, which is the OUTER guard; this is the INNER one for the case
+ * where a --job=closed process starts anyway, e.g. a manual run).
+ *
+ * The lock stores only a token (see distributed-lock.ts — `SET key token PX
+ * ttl NX`), never a start timestamp, so "the holder's start time" cannot be
+ * read directly. `getLockTTL` gives the remaining TTL, from which the
+ * elapsed time since acquisition is `CYCLE_LOCK_TTL_MS - remainingTtlMs`,
+ * logged as an approximate start (ISO timestamp, derived from `now`). A
+ * negative or unreadable TTL (Redis unavailable, or `-1` "no expiry") means
+ * the elapsed time cannot be derived either — logged as 'unknown' rather
+ * than a fabricated number.
+ *
+ * Once the lock is acquired, `runClosedIpoJob`'s own `isCycleLockHeld` guard
+ * is trivially satisfied — this function IS the process holding the lock, so
+ * asking Redis again would just confirm what is already true. It is passed
+ * `async () => false` for the same reason the old in-cycle post-step
+ * (`triggerClosedIpoJob`, removed in this change) did: a literal re-check
+ * here would either always read true (this process's own lock) or, worse,
+ * be a lie in the shape of a guard. The exclusion is structural: this
+ * function will not even start the work below unless `lock.acquire` just
+ * succeeded.
+ */
+async function runClosedIpoWake(): Promise<number> {
+  // Round 1, Tier A finding 4: check the flag BEFORE taking the heavy lock.
+  // Taking `scraper:cycle` and then discovering the job is disabled still
+  // costs the lock for however long that check + release takes — on the
+  // shared 2-vCPU box that is exactly the W-178 shape this whole slice exists
+  // to avoid, except self-inflicted by a disabled job instead of a real one.
+  // A disabled closed wake must never make a data wake skip.
+  if (!FEATURE_FLAGS.ENABLE_CLOSED_IPO_JOB) {
+    logger.info('closed-IPO job disabled (ENABLE_CLOSED_IPO_JOB=false)');
+    return 0;
+  }
+
+  const redis = getRedisClient();
+  const lock = new DistributedLock(redis);
+  const lockResult = await lock.acquire(CYCLE_LOCK_RESOURCE, { ttl: CYCLE_LOCK_TTL_MS });
+
+  if (!lockResult.acquired) {
+    let holderStartedAt = 'unknown';
+    try {
+      const remainingTtlMs = await lock.getLockTTL(CYCLE_LOCK_RESOURCE);
+      if (remainingTtlMs > 0) {
+        const elapsedMs = CYCLE_LOCK_TTL_MS - remainingTtlMs;
+        holderStartedAt = new Date(Date.now() - elapsedMs).toISOString();
+      }
+    } catch (error) {
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Closed-IPO job: could not read scraper:cycle TTL to estimate the holder start time'
+      );
+    }
+    logger.warn(
+      { lockResource: CYCLE_LOCK_RESOURCE, holderStartedAt },
+      `closed-IPO job skipped: heavy lock held since ${holderStartedAt}`
+    );
+    return 0;
+  }
+
+  const token = lockResult.token;
+  let released = false;
+  const releaseCycleLockForClosedJob = async (): Promise<void> => {
+    if (released) return;
+    released = true;
+    try {
+      await lock.release(CYCLE_LOCK_RESOURCE, token);
+    } catch (error) {
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Closed-IPO job: lock release failed (non-fatal — the TTL will expire it)'
+      );
+    }
+  };
+
+  const onSignal = (signal: NodeJS.Signals) => {
+    logger.warn({ signal }, 'Closed-IPO job: signal received — releasing scraper:cycle before exit');
+    const releaseTimeoutMs = Number(process.env.SIGNAL_LOCK_RELEASE_TIMEOUT_MS) || DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS;
+    void raceWithTimeout(() => releaseCycleLockForClosedJob(), { timeoutMs: releaseTimeoutMs, label: 'closed-IPO cycle lock release' })
+      .finally(() => process.exit(130));
+  };
+  process.once('SIGTERM', onSignal);
+  process.once('SIGINT', onSignal);
+
+  let exitCode = 0;
+  try {
+    const now = new Date();
+    let lastRunAt: Date | null = null;
+    try {
+      const raw = await redis.get(`catch-up-cadence:${CLOSED_IPO_JOB_CADENCE_KEY}`);
+      const ms = Number(raw);
+      if (raw && Number.isFinite(ms) && ms > 0) lastRunAt = new Date(ms);
+    } catch (error) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        'closed-IPO job: cadence read failed — treating as never run (fail open)'
+      );
+    }
+
+    if (!isClosedIpoJobDue(now, lastRunAt)) {
+      // Round 1 fix (Tier A finding 1): the closed cron now fires twice a
+      // night (22:xx + a 23:xx retry, see install_scraper_cron in
+      // deploy-linux.sh) so the ONE night the first wake loses the
+      // scraper:cycle race still gets its run. Every OTHER wake that finds
+      // the boundary already served — including the routine retry, and any
+      // repeat if the box wakes it more than twice — logs this exact phrase
+      // and exits 0 without touching the lock, so the log stays greppable
+      // proof that "once per night" held.
+      logger.info(
+        { lastRunAt: lastRunAt?.toISOString() ?? 'never' },
+        'closed-IPO job already ran tonight — 22:00 IST boundary already served'
+      );
+      return 0;
+    }
+
+    try {
+      const summary = await runClosedIpoJob({
+        db,
+        // This function is the process holding scraper:cycle (see the
+        // acquire above); a second Redis read here would only confirm what
+        // acquiring the lock already proved. See the doc comment above.
+        isCycleLockHeld: async () => false,
+        resourceIpo: resourceClosedIpoLive,
+        resourcedAtVersion: currentClosedIpoResourcingVersion(),
+        snapshotFieldSources: (ipoIds) => writeFieldSourcesSnapshot(db as never, ipoIds, { now }),
+        now,
+      });
+
+      await markCatchUpCadenceRan(redis, CLOSED_IPO_JOB_CADENCE_KEY, CLOSED_IPO_JOB_CADENCE_TTL_MINUTES, now);
+
+      // signal-ownership R1: a count is not a reading.
+      logger.info(
+        {
+          slot: CLOSED_IPO_JOB_SLOT_IST_MINUTES,
+          considered: summary.candidatesConsidered,
+          attempted: summary.attempted,
+          done: summary.outcomes.DONE,
+          partial: summary.outcomes.PARTIAL,
+          failed: summary.outcomes.FAILED,
+          snapshot: summary.snapshot ? `${summary.snapshot.path} (${summary.snapshot.rows} rows)` : 'none',
+        },
+        'closed-IPO job: run complete'
+      );
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Closed-IPO job failed (non-fatal)'
+      );
+      exitCode = 1;
+    }
+  } finally {
+    process.removeListener('SIGTERM', onSignal);
+    process.removeListener('SIGINT', onSignal);
+    const releaseTimeoutMs = Number(process.env.SIGNAL_LOCK_RELEASE_TIMEOUT_MS) || DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS;
+    await raceWithTimeout(() => releaseCycleLockForClosedJob(), { timeoutMs: releaseTimeoutMs, label: 'closed-IPO cycle lock release' });
+  }
+
+  return exitCode;
+}
 
 /**
  * S-02 §5: the due-step cycle. Replaces the flat "every source, every
@@ -1022,6 +1203,18 @@ export async function main() {
       return;
     }
 
+    // Item 7 S3: the closed-IPO job is its own process, under the SAME heavy
+    // lock the data job takes (scraper:cycle) — §2.1's rule is that the two
+    // never run concurrently, not that they have separate locks like the
+    // live job does. It returns here and never reaches the data cycle's
+    // steps or post-steps (the closedIpoJob post-step below is gone, item 2).
+    if (job === 'closed') {
+      const closedExitCode = await runClosedIpoWake();
+      await flushOwnerNotify();
+      process.exit(closedExitCode);
+      return;
+    }
+
     // S-02 §5 (`ENABLE_DUE_STEP_SCHEDULER`): whole-cycle Redis lock so PM2's
     // force-restarting `cron_restart */30 * * * *` never overlaps two
     // due-step cycles (see CYCLE_LOCK_RESOURCE's doc comment above). Held for
@@ -1291,7 +1484,8 @@ export async function main() {
       await runStep(cycleId, 'stageReconciler', triggerStageReconciler);
       await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
       await runStep(cycleId, 'documentPurge', triggerDocumentPurge);
-      await runStep(cycleId, 'closedIpoJob', triggerClosedIpoJob);
+      // Item 7 S3: closedIpoJob is no longer a post-step here — it runs as
+      // its own `--job=closed` process (see runClosedIpoWake / main()).
       await runStep(cycleId, 'deployDriftMonitor', triggerDeployDriftMonitor);
       await runStep(cycleId, 'pruneScraperLogs', pruneScraperLogs);
       await runStep(cycleId, 'pruneDataConflicts', pruneDataConflicts);
@@ -1993,9 +2187,9 @@ async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceRe
 }
 
 /**
- * Item 17 (OD-22): the closed-IPO job's call site.
+ * Item 17 (OD-22) / item 7 S3: the closed-IPO job's cadence key.
  *
- * WHY IT EXISTS, measured on staging 2026-09-20 rather than assumed: 74
+ * WHY THE JOB EXISTS, measured on staging 2026-09-20 rather than assumed: 74
  * PROSPECTUS documents sit `extraction_status = PENDING`, one each on 74
  * distinct LISTED IPOs, the oldest filed 2026-06-15. Ten documents of the SAME
  * type on the SAME status are COMPLETED and PROSPECTUS is in
@@ -2005,97 +2199,19 @@ async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceRe
  * filed after the DRHP/RHP-era pass waits behind a queue that never empties.
  * This job is the second visit nothing else makes. (#717)
  *
- * WHERE THE CYCLE LOCK FITS — the one thing worth reading carefully. The card's
- * rule is "never run while the DATA job holds `scraper:cycle`". This step runs
- * INSIDE that cycle, which already holds the lock, so a literal
- * `lock.isLocked(CYCLE_LOCK_RESOURCE)` here is always true and would mean the
- * job could never run at all. Passing `() => false` would be a lie in the
- * shape of a guard.
+ * S3 moved the call site OUT of the data cycle's post-steps and into its own
+ * process (`runClosedIpoWake`, above, called from `main()` on `--job=closed`)
+ * — see that function's doc comment for where the cycle-lock exclusion now
+ * lives. These two constants stay module-level because both the old in-cycle
+ * caller and the new standalone one read/stamp the SAME Redis cadence key —
+ * two closed-IPO runs on the same 22:00 boundary would double-attempt the
+ * cap.
  *
- * The rule is satisfied structurally instead, and that is stronger than a
- * runtime check: this step is `await`ed in the cycle's own sequential step
- * chain, so the data job is provably NOT walking concurrently — it is upstream
- * of this line in the same single-threaded process. The dependency stays in
- * `ClosedIpoJobDeps` because an out-of-cycle caller (a manual CLI run, a future
- * separate timer) has no such proof and must do the real check.
- *
- * SCHEDULE: one 22:00-IST boundary per day (`isClosedIpoJobDue`), catch-up-safe,
- * read from and stamped into the same Redis cadence store the other jobs use.
- * PM2 wakes this process every 30 minutes, so the first wake at-or-after 22:00
- * runs it and the rest of the night sees an already-served boundary.
- *
- * Non-fatal throughout, like every other post-scrape step.
+ * SCHEDULE: one 22:00-IST boundary per day (`isClosedIpoJobDue`), catch-up-safe.
  */
 const CLOSED_IPO_JOB_CADENCE_KEY = 'closed-ipo-job';
 /** TTL only — the boundary check, not this number, decides whether to run. */
 const CLOSED_IPO_JOB_CADENCE_TTL_MINUTES = 24 * 60;
-
-export async function triggerClosedIpoJob(): Promise<StepResult> {
-  if (!FEATURE_FLAGS.ENABLE_CLOSED_IPO_JOB) {
-    return { status: 'skipped', reason: 'ENABLE_CLOSED_IPO_JOB not true' };
-  }
-
-  const redis = getRedisClient();
-  const now = new Date();
-
-  // Read the raw stamp rather than `isCatchUpCadenceDue`: that helper asks
-  // "has N minutes elapsed", and this job asks "has the 22:00 boundary passed
-  // since we last ran" — an interval would drift a little later every night.
-  let lastRunAt: Date | null = null;
-  try {
-    const raw = await redis.get(`catch-up-cadence:${CLOSED_IPO_JOB_CADENCE_KEY}`);
-    const ms = Number(raw);
-    if (raw && Number.isFinite(ms) && ms > 0) lastRunAt = new Date(ms);
-  } catch (error) {
-    // Fail OPEN, same convention as catch-up-cadence itself: a Redis blip
-    // makes the job run again, which is idempotent (the ledger's
-    // onConflictDoUpdate), rather than silently skipping the night.
-    logger.warn(
-      { error: error instanceof Error ? error.message : String(error) },
-      'closed-IPO job: cadence read failed — treating as never run (fail open)'
-    );
-  }
-
-  if (!isClosedIpoJobDue(now, lastRunAt)) {
-    return {
-      status: 'skipped',
-      reason: `22:00 IST boundary already served (last run ${lastRunAt?.toISOString() ?? 'never'})`,
-    };
-  }
-
-  try {
-    const summary = await runClosedIpoJob({
-      db,
-      // See the doc comment above: inside the cycle's own step chain the data
-      // job is provably not walking concurrently. The real check belongs to
-      // any caller that runs OUTSIDE the cycle.
-      isCycleLockHeld: async () => false,
-      resourceIpo: resourceClosedIpoLive,
-      resourcedAtVersion: currentClosedIpoResourcingVersion(),
-      snapshotFieldSources: (ipoIds) => writeFieldSourcesSnapshot(db as never, ipoIds, { now }),
-      now,
-    });
-
-    await markCatchUpCadenceRan(redis, CLOSED_IPO_JOB_CADENCE_KEY, CLOSED_IPO_JOB_CADENCE_TTL_MINUTES, now);
-
-    // signal-ownership R1: a count is not a reading. The outcome split is what
-    // distinguishes "drained ten" from "failed ten the same way ten times".
-    return {
-      status: 'ok',
-      reason:
-        `slot=${CLOSED_IPO_JOB_SLOT_IST_MINUTES} considered=${summary.candidatesConsidered} ` +
-        `attempted=${summary.attempted} done=${summary.outcomes.DONE} ` +
-        `partial=${summary.outcomes.PARTIAL} failed=${summary.outcomes.FAILED} ` +
-        `snapshot=${summary.snapshot ? `${summary.snapshot.path} (${summary.snapshot.rows} rows)` : 'none'}`,
-    };
-  } catch (error) {
-    logger.error(
-      { error: error instanceof Error ? error.message : String(error) },
-      'Closed-IPO job failed (non-fatal)'
-    );
-    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
-  }
-}
 
 /**
  * Prune RESOLVED data_conflicts rows past the retention window (T-286, P2-3:
