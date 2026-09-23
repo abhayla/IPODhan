@@ -1,8 +1,8 @@
 {
   "_comment": "The hand-owned half of the board. Everything here is a judgement a human makes; everything NOT here is derived by render-board.mjs from source files or scripts. Keep it small: if a value can be computed, compute it instead of typing it.",
-  "stamp": "2026-09-20 15:36 IST",
+  "stamp": "2026-09-23 07:32 IST",
   "stage": "Stage 3 — one source table, then prevention",
-  "headline": "Stage 3's 13 slices are merged and live on staging. The work now is finishing the remaining spec items on staging; production has not moved since 2026-09-07 and is not scheduled to.",
+  "headline": "Stage 3's slices are merged and staging is the release gate. Production has not moved since 2026-09-07 (18 migrations behind) and is not scheduled to. Staging serves 55b585cb; the 13:30 IST window brings the merge log and NOT_EXTRACTABLE admission.",
   "waiting_on_owner": [
     {
       "id": "D-3",
@@ -20,10 +20,17 @@
     },
     {
       "id": "Prod schema",
-      "ask": "Production is 16 migrations behind (4 tables, 12 columns, 14 indexes, 6 constraints missing). Rehearse the batch against a prod-shaped copy before the release?",
+      "ask": "Production is 18 migrations behind (34 of 52 applied, measured 2026-09-23). Rehearse the batch against a prod-shaped copy before the release?",
       "recommend": "Yes, rehearse first",
-      "why": "The 16 have never been run as ONE batch against prod's exact schema. Individually each is cheap at current row counts; as a batch, untested.",
+      "why": "The 18 have never been run as ONE batch against prod's exact schema. Individually each is cheap at current row counts; as a batch, untested.",
       "blocks": "The next production release."
+    },
+    {
+      "id": "Unmerge scope (#807)",
+      "ask": "When a merge is undone, may the IPO's scraper-derived child rows (documents, subscriptions, GMP) be rebuilt by the next scrape rather than restored from the log?",
+      "recommend": "Yes, rebuild; but restore person-created rows and provenance exactly",
+      "why": "The spec says restore both rows whole. Copying every derived row across ~40 tables inside each merge is heavy; watchlists, reviews and field provenance are small and cannot be re-scraped. An independent review found the current merge already DELETES every watcher of the dropped row when one user watched both, which is fixed first either way.",
+      "blocks": "Item 19 step 3 (unmerge). The merge-correctness fix proceeds meanwhile."
     }
   ],
   "environments": [
@@ -33,17 +40,17 @@
       "sha": "f0c66b6b",
       "since": "2026-09-07",
       "state": "bad",
-      "note": "Behind main. 16 migrations unapplied — <code>ipo_field_plan</code>, <code>field_extraction_failures</code>, <code>field_source_overrides</code>, <code>document_pages</code> do not exist here.",
+      "note": "Behind main. 18 migrations unapplied (34 of 52, measured 2026-09-23) — <code>ipo_field_plan</code>, <code>field_extraction_failures</code>, <code>field_source_overrides</code>, <code>document_pages</code>, <code>ipo_merge_log</code> do not exist here.",
       "flags": "manifest OFF, verdict writer OFF"
     },
     {
       "slot": "Staging",
       "url": "staging",
-      "sha": "61808af1",
-      "since": "2026-09-20",
+      "sha": "55b585cb",
+      "since": "2026-09-22 21:30 IST",
       "state": "ok",
-      "note": "All 16 migrations applied; 4 minor drift findings. This is the release gate — the bar is feature-complete here, not a green build.",
-      "flags": "manifest ON, verdict writer ON"
+      "note": "51 of 52 migrations applied; 0051 (merge log) arrives in the 13:30 IST window. Field-plan generator and walk flags ON (staging/scraper.env). This is the release gate — the bar is feature-complete here, not a green build.",
+      "flags": "manifest ON, field plan + walk ON"
     },
     {
       "slot": "Local / test",
@@ -76,12 +83,12 @@
     {
       "name": "Swap Test (stage acceptance)",
       "state": "bad",
-      "detail": "NEVER RUN. Both config paths are unblocked in principle; neither has been executed on staging. Stage 3 is not done until it passes."
+      "detail": "Path 2 run on staging 2026-09-22: override set, no re-rank seen, cause unknown (#893 — its 'flags missing' premise was wrong, both flags are ON). Stage 3 is not done until it passes."
     },
     {
       "name": "Detection floor",
       "state": "warn",
-      "detail": "21 of 26 pull/re-read checks are designed-not-built (#778). 5 NEW findings in last night's delta."
+      "detail": "2026-09-23: 4 NEW entities, all resolved (#896). Two checks were themselves wrong: NSE status check false-flagged every SME IPO (#895, fixed #898); verdict-leak check red 4 nights on the public IPO rating (#897, open)."
     },
     {
       "name": "Build-card gate",
@@ -91,22 +98,22 @@
   ],
   "reader_impact": [
     {
-      "what": "Issue size is 41–76% too low on 6 of 6 live IPOs",
-      "plain": "A reader comparing two IPOs sees one of them far smaller than it really is. On a ₹500 crore issue the page can show roughly ₹150 crore.",
+      "what": "Some live IPOs show a smaller issue size than the real one",
+      "plain": "Example today on ipodhan.com: Himalayan Solar shows ₹64.73 cr; the real figure is ₹68.03 cr (priced at the lower band instead of the upper). Staging already shows ₹68.03 cr.",
       "issue": "#728",
       "state": "bad",
-      "status": "Queued LAST, deliberately: the verification that would prove it stays fixed does not exist yet."
+      "status": "Fixed on main for new writes (BSE no longer writes issue size); readers see it only after a production release."
     },
     {
       "what": "14,145 source disagreements sit unresolved",
       "plain": "Where two sources disagree the reader is shown one value with no sign anything is in doubt. The oldest has been open 96 days.",
       "issue": "OD-63",
       "state": "warn",
-      "status": "The prevention model stops new ones. Draining the old pile is the admin queue (S9, queued)."
+      "status": "Figure measured 2026-09-20, not re-measured since. The prevention model stops new ones; draining the old pile is the admin queue (S9, queued)."
     },
     {
-      "what": "Every fix of the last 13 days is invisible to readers",
-      "plain": "197 fix and feature commits are on main and not on the live site, because production has not deployed since 2026-09-07.",
+      "what": "Every fix of the last 16 days is invisible to readers",
+      "plain": "217 fix and feature commits are on main and not on the live site (counted 2026-09-23), because production has not deployed since 2026-09-07.",
       "issue": "—",
       "state": "bad",
       "status": "By design — the owner's bar is feature-complete staging before a prod window."
@@ -115,9 +122,9 @@
   "chain": [
     {
       "id": "Wave 1",
-      "what": "34, 35, 8, 19, S6 churn-stop, Swap Test",
+      "what": "19 (unmerge), S6 churn-stop, Swap Test, #884 stranded plan rows",
       "state": "building",
-      "note": "unblocked, parallel"
+      "note": "34, 35, 8 built"
     },
     {
       "id": "6",
@@ -153,15 +160,16 @@
   "changed_since": {
     "date": "2026-09-20",
     "lines": [
-      "The board is now fully generated: the page, its vitals and all 282 tracked rows come from source files, so it cannot drift from the spec (#850).",
-      "Items 18 and 22 were re-measured and found already BUILT, and item 6 was corrected from \"4 fetchers wired\" to \"3 fetchers registered\" (#848, #851) — the published page had been showing a stale claim.",
-      "The staleness gate now SHOWS what differs (character, line, both sides) instead of printing only \"board is stale\". That one opaque line cost four CI rounds on #850.",
-      "A generated-file merge rule landed so two PRs editing different rows of the tracking table no longer conflict line-by-line (#852)."
+      "The merge log landed (#888): every merge now records the dropped row, so a wrong merge can later be undone. The undo tool itself is not built yet.",
+      "Documents nothing can read are stamped NOT_EXTRACTABLE when found (#891), so PENDING again means 'waiting to be read'. The old rows are repaired on staging next.",
+      "Two detection checks were fixing themselves into noise: the NSE status check (#898, fixed) and the verdict-leak check (#897, open).",
+      "#884 is about 43 times bigger than first filed: about 6,220 staging plan rows stuck at the retry cap because a source has no code for that field, not 144.",
+      "This board's hand-typed facts had not been updated since 2026-09-20 although the page was republished seven times; that failure is being fixed so facts are measured, not typed."
     ]
   },
   "now": {
-    "Landed": "Stage 3's 13 slices are all merged. Since the last board: #841 (the tracking-section generator), #844, #848 (items 18 and 22 re-measured as already built). Staging serves 61808af1.",
-    "Next": "Wave 1 runs first and in parallel — items 34 and 35 in progress, then 8, 19, the S6 churn-stop (#759) and the Swap Test (items 18 and 22 were re-measured as already BUILT in #848). Then item 6, then 9, then 10, then 17 and 11. Item 14 (#728) goes last by the owner's rule: verification before correctness.",
-    "Blocked": "OD-62 reason codes (<code>field_extraction_failures</code> holds zero rows) gate OD-63's admin queue. The Swap Test has never been run, and it is the stage's own acceptance test."
+    "Landed": "Since 2026-09-20: #859/#863 checks, #867 NSE fetcher, #870, #871, #876, #883, #888 merge log, #891 NOT_EXTRACTABLE, #898. Staging serves 55b585cb.",
+    "Next": "Run the NOT_EXTRACTABLE repair on staging, then the closed-IPO job on staging (#717), then item 19 unmerge and #884.",
+    "Blocked": "Unmerge scope needs your word (see Waiting on you). The Swap Test cause is unknown (#893)."
   }
 }
