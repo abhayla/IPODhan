@@ -847,6 +847,7 @@ jobs:
           tests/integration/db-timezone.integration.test.ts
           tests/integration/field-sources-witnesses.integration.test.ts
           tests/integration/duplicate-ipo-merge.integration.test.ts
+          tests/integration/merge-repoint-conflict.integration.test.ts
           tests/integration/nse-scraper.integration.test.ts
           tests/integration/identity-matching-od68.integration.test.ts
           tests/integration/oracle-parity.test.ts

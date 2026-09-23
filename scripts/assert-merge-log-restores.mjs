@@ -17,7 +17,10 @@
 // plants two rows, merges them through the REAL repository, and reconstructs the deleted
 // row from the log alone, column by column.
 //
-// WHAT IT DOES NOT PROVE. The snapshot covers every column `schema.ts` DECLARES, not
+// SINCE #900 the snapshot is `to_jsonb(ipos.*)`, every LIVE column, so the "missing"
+// list below is expected to be empty; the list is kept for logs written before #900.
+//
+// HISTORY (pre-#900). The snapshot covered every column `schema.ts` DECLARES, not
 // every column the live table has. Measured 2026-09-22: ipodhan_staging carries six
 // undeclared columns (price_band_low, price_band_high, exchange, gmp, gmp_percentage,
 // gmp_updated_at), all 0/379 non-null; ipodhan_test carries `category`. Those are listed

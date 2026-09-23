@@ -115,7 +115,15 @@ function buildFakeDb() {
             // object: it is the only insert carrying a snapshot of the
             // dropped row.
             if (values && 'dropRow' in values) {
-              record({ kind: 'insert-merge-log', values });
+              // The snapshots are written as `sql\`${text}::jsonb\`` so Postgres parses the exact
+              // JSON text; decode that bound text back to an object for the assertions.
+              const decoded: Record<string, unknown> = {};
+              for (const [k, v] of Object.entries(values)) {
+                const chunks = (v as { queryChunks?: unknown[] })?.queryChunks;
+                const bound = Array.isArray(chunks) ? chunks.find((c) => typeof c === 'string') : undefined;
+                decoded[k] = typeof bound === 'string' ? JSON.parse(bound) : v;
+              }
+              record({ kind: 'insert-merge-log', values: decoded });
             } else if (values && 'oldSlug' in values) {
               record({ kind: 'insert-slug-redirect' });
             }
@@ -139,14 +147,26 @@ function buildFakeDb() {
           .map((c) => (Array.isArray(c?.value) ? c.value.join('') : String(c?.value ?? '')))
           .join(' ');
         if (/savepoint/i.test(text)) return { rows: [] };
+        // #900: the in-transaction lock + whole-row snapshot of BOTH ipos rows, one statement.
+        if (/to_jsonb\(i\.\*\)/i.test(text)) {
+          if (/for update/i.test(text)) record({ kind: 'locked-reread', mode: 'update' });
+          return {
+            rows: [keepRow, lockedDropRow ?? dropRow].map((r) => ({ id: String(r.id), row: JSON.stringify(r) })),
+          };
+        }
         if (/information_schema/i.test(text)) {
           return { rows: directTables.map((t) => ({ child: t.table, col: t.col, parent: 'ipos' })) };
         }
         if (/count\(\*\) filter/i.test(text)) return { rows: [{ keep: 0, drop: 1 }] };
         if (/current_database/i.test(text)) return { rows: [{ current_database: 'ipodhan_test' }] };
+        // #900: unique-key introspection for the conflict predicate — no unique key here.
+        if (/pg_index/i.test(text)) return { rows: [] };
         for (const t of directTables) {
           if (text.includes(t.table)) {
             record({ kind: 'child-repoint-or-delete', table: t.table });
+            // What the real statements RETURN, which is what the log now records.
+            if (/returning to_jsonb\(d\.\*\) ->> 'id'/i.test(text)) return { rows: [{ id: `${t.table}-row-1` }] };
+            if (/with d as/i.test(text)) return { rows: [{ n: 1 }] };
             return { rows: [] };
           }
         }
