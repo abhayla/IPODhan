@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-23T16:58:11.117Z",
+  "generated_at": "2026-09-23T17:07:20.953Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 187,
-    "retired": 30
+    "live": 188,
+    "retired": 31
   },
-  "next_id": 218,
+  "next_id": 220,
   "rules": [
     {
       "id": "R-151",
@@ -459,12 +459,12 @@
       "retired": false
     },
     {
-      "id": "R-178",
-      "hash": "958cdb13da4a",
+      "id": "R-218",
+      "hash": "8ea41e56be1f",
       "section": "2.3.3.1 One row per IPO — identity is late-binding, so the rule cannot be enforced at insert",
       "kind": "prose",
-      "text": "On arrival is not enough, and a walkthrough proved it (F-103). Two LISTED rows on production share CIN U85110DL2017PLC322623 right now, with issue sizes 67% apart. Both identifiers arrived long ago, so an arrival-triggered check can never fire for them: the rule as first written would leave a live duplicate in place for ever and report nothing. So the rule has two halves — the arrival check above, and a standing sweep in the nightly audit that groups every row by each identifier it holds and reports any group of more than one, by name. The sweep is what catches the ones already in the data; the arrival check is what stops new ones forming. 3. Converging identifiers mean a merge, not an alert. Two rows sharing one symbol, one CIN or one ISIN are the same IPO by definition. The merge is automatic, keeps the union of populated fields, and preserves the provenance of both — a warning nobody reads is what produced the current state. 4. Use CIN earlier than we do. It is on 8 of 13 upcoming IPOs and, unlike a symbol or an ISIN, it exists from incorporation — long before any exchange assigns anything, and we already extract it from the filing (§E7). It is not sufficient alone, because one company can return with a rights issue or an FPO, but CIN plus open date is a strong pair available early.",
-      "first_seen": "2026-09-09",
+      "text": "On arrival is not enough, and a walkthrough proved it (F-103). Two LISTED rows on production share CIN U85110DL2017PLC322623 right now, with issue sizes 67% apart. Both identifiers arrived long ago, so an arrival-triggered check can never fire for them: the rule as first written would leave a live duplicate in place for ever and report nothing. So the rule has two halves — the arrival check above, and a standing sweep in the nightly audit that groups every row by each identifier it holds and reports any group of more than one, by name. The sweep is what catches the ones already in the data; the arrival check is what stops new ones forming. 3. Converging identifiers mean a merge, not an alert. Two rows sharing one symbol, one CIN or one ISIN are the same IPO by definition. The merge is automatic, keeps the union of populated fields, and preserves the provenance of both — a warning nobody reads is what produced the current state. Qualified by OD-71 and OD-83 (2026-09-23): a shared CIN or ISIN proves the same COMPANY or share class, not the same offering — a withdrawn or lapsed draft and its later refiling share both (NSE: SEBI filing 33921 of 30 Dec 2016 and DRHP 102189 of 18 Jun 2026; Hero Motors: DRHP withdrawn 05-10-2024 and DRHP of 30 Jun 2025, F-130), so rows sharing them merge only when they are the same attempt; an attempt is defined by filing status before open dates exist (OD-84). 4. Use CIN earlier than we do. It is on 8 of 13 upcoming IPOs and, unlike a symbol or an ISIN, it exists from incorporation — long before any exchange assigns anything, and we already extract it from the filing (§E7). It is not sufficient alone, because one company can return with a rights issue or an FPO, but CIN plus open date is a strong pair available early.",
+      "first_seen": "2026-09-23",
       "retired": false
     },
     {
@@ -608,6 +608,15 @@
       "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
       "kind": "table",
       "text": "S7: one IPO on both exchanges — 100 of 307 IPOs dual-listed; 99 correctly one row, 1 split (Rays of Belief) — each exchange writes into the one bound row (OD-68)",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-219",
+      "hash": "458ef8eb561d",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "prose",
+      "text": "An exchange postponement is the same IPO, not a new one (OD-83). OD-68 already updates the same row when an exchange moves an IPO's dates; OD-83 makes explicit that this includes a postponement the exchange itself labels \"issue postponed\" followed by a relaunch under a new record number, once the company, shares and price band match. \"Withdrawn\" in OD-71 — the trigger for starting a new row — means only a SEBI withdrawal of the draft offer document or a lapse under OD-35's twelve-month rule; it never means an exchange-side postponement. Dhanwel Hybrid Seeds (BSE IPO_NO 7794 postponed in June 2026, then IPO_NO 7900 in August, same 2,700,000 shares and 95–99 band, one unchanged Chittorgarh id) and IC Electricals (NSE symbol ICEL postponed in June, relaunched as ICELCO in July, same 48,39,600 shares, 94–99 band and CIN) are both one row, updated, not two.",
       "first_seen": "2026-09-23",
       "retired": false
     },
@@ -1690,6 +1699,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-178",
+      "hash": "958cdb13da4a",
+      "section": "2.3.3.1 One row per IPO — identity is late-binding, so the rule cannot be enforced at insert",
+      "kind": "prose",
+      "text": "On arrival is not enough, and a walkthrough proved it (F-103). Two LISTED rows on production share CIN U85110DL2017PLC322623 right now, with issue sizes 67% apart. Both identifiers arrived long ago, so an arrival-triggered check can never fire for them: the rule as first written would leave a live duplicate in place for ever and report nothing. So the rule has two halves — the arrival check above, and a standing sweep in the nightly audit that groups every row by each identifier it holds and reports any group of more than one, by name. The sweep is what catches the ones already in the data; the arrival check is what stops new ones forming. 3. Converging identifiers mean a merge, not an alert. Two rows sharing one symbol, one CIN or one ISIN are the same IPO by definition. The merge is automatic, keeps the union of populated fields, and preserves the provenance of both — a warning nobody reads is what produced the current state. 4. Use CIN earlier than we do. It is on 8 of 13 upcoming IPOs and, unlike a symbol or an ISIN, it exists from incorporation — long before any exchange assigns anything, and we already extract it from the filing (§E7). It is not sufficient alone, because one company can return with a rights issue or an FPO, but CIN plus open date is a strong pair available early.",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-216",

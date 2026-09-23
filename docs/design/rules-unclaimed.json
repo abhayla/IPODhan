@@ -18,6 +18,7 @@
     "R-141": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
     "R-189": "A CORRECTION note, not a buildable rule: it records that §5.2's capacity table stated numeric(15,2) while the live schema is numeric(18,2), and that the overflow argument for the crore conversion therefore does not hold (OD-67). There is nothing to build — the decision it records is to NOT do the migration — so no build card claims it.",
     "R-214": "2.3.3.2 identity-research subsection, 2026-09-23. Research evidence (a value table built from findings F-1 to F-3) recorded for an owner decision, not a rule to build — no OD row changes the binding order or matching rules by itself; see docs/design/findings.json F-124..F-135.",
-    "R-217": "2.3.3.2 identity-research subsection, 2026-09-23. A per-finding citation list (F-124..F-141) pointing at docs/design/findings.json; none of these findings change OD-34/OD-35/OD-68/OD-69/OD-71 by themselves — each candidate rule change needs its own owner decision, so nothing here is a buildable rule."
+    "R-217": "2.3.3.2 identity-research subsection, 2026-09-23. A per-finding citation list (F-124..F-141) pointing at docs/design/findings.json; none of these findings change OD-34/OD-35/OD-68/OD-69/OD-71 by themselves — each candidate rule change needs its own owner decision, so nothing here is a buildable rule.",
+    "R-219": "2.3.3.2, 2026-09-23. The OD-83/OD-84 explanatory paragraph (exchange postponement is the same IPO; an attempt is defined by filing status before open dates exist) — a decision record and its rationale, not a new mechanism for item 12 to build beyond what R-177/R-218 already cover."
   }
 }
