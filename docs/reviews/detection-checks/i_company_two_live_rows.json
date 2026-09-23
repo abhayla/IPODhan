@@ -1,0 +1,11 @@
+{
+  "id": "i_company_two_live_rows",
+  "findingClass": "the same normalised company holds two or more rows simultaneously live (UPCOMING/OPEN/CLOSED), any offering_type — listed for review, never auto-merged",
+  "round7Findings": [],
+  "failThreshold": "any group of 2+ rows, any offering_type, in status UPCOMING/OPEN/CLOSED, sharing a normalised company name",
+  "severity": "P2",
+  "unverifiableWhen": "never — always runs against the ipos table",
+  "section": "checks",
+  "spec_ref": ["2.3.3.1", "2.3.3.2"],
+  "note": "Owner #903 S4. LISTED excluded deliberately — a LISTED row plus a fresh filing is the legitimate new-offering-after-withdrawal shape (OD-35 lapsed-draft rule), not a duplicate."
+}

@@ -1,0 +1,11 @@
+{
+  "id": "i_ipo_title_in_name",
+  "findingClass": "page title or page-status text stored in company_name or slug instead of the company's real name",
+  "round7Findings": [],
+  "failThreshold": "any offering_type=IPO row whose company_name contains \"(...IPO)\" or ends in the word IPO, or whose slug matches -ipo(-|$) or still carries a page-status suffix (-o/-p/-lt/-ct)",
+  "severity": "P2",
+  "unverifiableWhen": "never — always runs against the ipos table",
+  "section": "checks",
+  "spec_ref": ["2.3.3.1"],
+  "note": "Owner #903 S3."
+}

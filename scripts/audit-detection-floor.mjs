@@ -69,6 +69,7 @@ import {
   parseStepNames, checkStepSilence, checkStepConsecutiveFailures,
   STEP_LEDGER_WINDOW_HOURS,
   crossCheckNseStatuses,
+  findSameIpoTwoRows, checkIpoTitleInName, findCompanyTwoLiveRows, findNameBoundLiveRows,
 } from './lib/detection-floor-checks.mjs';
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
@@ -1365,6 +1366,65 @@ async function checkL() {
       : 'every in-scope MAINBOARD/NSE row agrees with NSE');
 }
 
+// ---- (i): identity — one IPO stored twice, or two offerings folded into ------
+// one company. Step 1 of #903 (S1/S2/S3/S4/S7); implements
+// docs/design/data-sourcing-pull-model.md §2.3.3.1's standing sweep (F-103)
+// and §2.3.3.2's OD-34 name-bound reporting. Detection only — no
+// matching/write-path change.
+async function checkIdentity() {
+  const identityRows = await q(
+    `SELECT id, slug, company_name AS "companyName", cin, isin, symbol,
+            bse_scrip_code AS "bseScripCode", offering_type AS "offeringType",
+            status, open_date::text AS "openDate"
+       FROM ipos`
+  );
+
+  // i_same_ipo_two_rows (F-103 standing sweep + S1/S2/S7)
+  const dupGroups = findSameIpoTwoRows(identityRows);
+  for (const g of dupGroups) {
+    const names = g.rows.map((r) => `${r.slug} ("${r.companyName}")`).join(' + ');
+    notify('i_same_ipo_two_rows', 'P1', g.key, `IPO rows share ${g.keyType}`, `grouped by ${g.keyType}: ${names}`);
+  }
+  record('i_same_ipo_two_rows',
+    'no IPO row shares an identifier (CIN/ISIN/symbol/BSE code), suffix-stripped slug, or name+open-date with another (§2.3.3.1 standing sweep)',
+    dupGroups.length === 0 ? 'PASS' : 'FAIL',
+    dupGroups.length
+      ? dupGroups.slice(0, MAX_OFFENDERS).map((g) => `[${g.keyType}] ${g.rows.map((r) => r.slug).join('+')}`).join('; ')
+      : `0 groups across ${identityRows.length} IPO row(s)`);
+
+  // i_ipo_title_in_name (S3)
+  const titleOffenders = identityRows.filter((r) => r.offeringType === 'IPO').map((r) => checkIpoTitleInName(r)).filter(Boolean);
+  for (const r of identityRows) {
+    const v = checkIpoTitleInName(r);
+    if (v) notify('i_ipo_title_in_name', 'P2', r.id, 'Page title/status text stored in company_name or slug', v);
+  }
+  record('i_ipo_title_in_name', 'no IPO row carries page-title or page-status text in company_name/slug',
+    titleOffenders.length === 0 ? 'PASS' : 'FAIL',
+    titleOffenders.length ? titleOffenders.slice(0, MAX_OFFENDERS).join('; ') : `0 offenders across ${identityRows.length} IPO row(s)`);
+
+  // i_company_two_live_rows (S4) — any offering_type, UPCOMING/OPEN/CLOSED
+  const liveGroups = findCompanyTwoLiveRows(identityRows);
+  for (const g of liveGroups) {
+    const names = g.rows.map((r) => `${r.slug} [${r.offeringType}/${r.status}]`).join(' + ');
+    notify('i_company_two_live_rows', 'P2', g.key, 'Same company has two live rows', names);
+  }
+  record('i_company_two_live_rows', 'no normalised company holds two or more live (UPCOMING/OPEN/CLOSED) rows — listed for review, never auto-merged',
+    liveGroups.length === 0 ? 'PASS' : 'FAIL',
+    liveGroups.length
+      ? liveGroups.slice(0, MAX_OFFENDERS).map((g) => g.rows.map((r) => r.slug).join('+')).join('; ')
+      : `0 groups across ${identityRows.length} row(s)`);
+
+  // i_name_bound_live (OD-34): live IPO rows bound on nothing stronger than
+  // the name — reported by name, per OD-34's own text, never as a count.
+  const nameBound = findNameBoundLiveRows(identityRows);
+  for (const r of nameBound) {
+    notify('i_name_bound_live', 'P3', r.id, 'Live IPO row is name-bound (no CIN/symbol/ISIN)', `${r.slug} ("${r.companyName}") [${r.status}]`);
+  }
+  record('i_name_bound_live', 'every live (UPCOMING/OPEN) IPO row with no CIN/symbol/ISIN is reported by name (OD-34 name-bound flag)',
+    nameBound.length === 0 ? 'PASS' : 'FAIL',
+    nameBound.length ? nameBound.map((r) => r.slug).join(', ') : `0 name-bound live rows`);
+}
+
 // ---- (j): assorted P3 gates ----------------------------------------------------
 async function checkJ() {
   // sector population
@@ -2556,6 +2616,7 @@ async function main() {
   await checkG();
   await checkH();
   checkI();
+  await checkIdentity();
   await checkK();
   await checkCycleOverrunAudit();
   await checkL();

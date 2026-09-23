@@ -1,0 +1,11 @@
+{
+  "id": "i_name_bound_live",
+  "findingClass": "a live IPO row bound on nothing stronger than its normalised name (no CIN, no exchange symbol, no ISIN) — the OD-34 name-bound flag",
+  "round7Findings": [],
+  "failThreshold": "any offering_type=IPO row in status UPCOMING/OPEN with no cin, no symbol, and no isin",
+  "severity": "P3",
+  "unverifiableWhen": "never — always runs against the ipos table",
+  "section": "checks",
+  "spec_ref": ["2.3.3.2"],
+  "note": "Implements OD-34: 'the nightly audit reports the name-bound rows by name — never as a count.' A name-bound row may not be auto-merged with another name-bound row."
+}
