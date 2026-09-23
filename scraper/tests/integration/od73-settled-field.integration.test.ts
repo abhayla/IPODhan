@@ -19,6 +19,11 @@ import { FieldSourcesRepository } from '../../../packages/shared/src/repositorie
 import { DataConflictsRepository } from '../../../packages/shared/src/repositories/data-conflicts-repository';
 import { DataConsolidationService } from '../../src/services/data-consolidation-service';
 import { FEATURE_FLAGS } from '../../src/config/feature-flags';
+import { isAdminOnlyConflict } from '../../../packages/shared/src/utils/conflict-reasons';
+// @ts-expect-error -- untyped .mjs script module; the SQL it exports is exactly what the nightly floor runs
+import { UNRESOLVED_CONFLICT_COUNT_SQL, CONFLICTS_INSERTED_24H_SQL } from '../../../scripts/lib/conflict-reasons.mjs';
+// @ts-expect-error -- untyped .mjs script module
+import { adminQueueSize } from '../../../scripts/ops/admin-queue-size.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const IPO_ID = '00000000-0000-4000-8000-0000000d0073';
@@ -216,5 +221,40 @@ describe.skipIf(!DATABASE_URL)('OD-73 settled fields on the real write path (ipo
     const self = await repo.upsertConflict({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'registrar', source1: 'CHITTORGARH', value1: 'b', source2: 'CHITTORGARH', value2: 'c', resolutionReason: 'SOURCE_CHANGED_OWN_VALUE', severity: 'INFO' });
     expect(self).toEqual({ skipped: true, reason: 'same_source' });
     expect(await conflictsFor('registrar')).toEqual([{ source1: 'DRHP', source2: 'CHITTORGARH', resolved: null }]);
+  });
+
+  // Review round 2 (PR #914): an OD-75 row is on the admin list and NOWHERE else. Each reader below is
+  // run for real against ipodhan_test; the cross-source row added at the end proves each one CAN count.
+  it('OD-75 round 2: an admin-only row shows on the admin list but never holds a transition or enters a count', async () => {
+    await seed('OPEN', [['closeDate', 'CHITTORGARH', '2026-09-26']]);
+    const repo = new DataConflictsRepository(drizzle(pool!, { schema }) as never, noRedis);
+    const count = async (sql: string, key: string) => (await pool!.query(sql)).rows[0][key] as number;
+    const backlog0 = await count(UNRESOLVED_CONFLICT_COUNT_SQL, 'total');
+    const inserted0 = await count(CONFLICTS_INSERTED_24H_SQL, 'inserted');
+
+    await repo.upsertConflict({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'closeDate', source1: 'CHITTORGARH', value1: '2026-09-26', source2: 'CHITTORGARH', value2: '2026-09-27', resolvedSource: 'CHITTORGARH', resolutionReason: 'SOURCE_CHANGED_OWN_VALUE', severity: 'INFO' });
+
+    // Admin list (conflict-resolution.ts getConflictsForIPO / getConflicts) still shows it.
+    const open = await repo.findUnresolvedForIPO(IPO_ID);
+    expect(open.map((r) => r.resolutionReason)).toEqual(['SOURCE_CHANGED_OWN_VALUE']);
+    expect((await repo.findUnresolved()).some((r) => r.ipoId === IPO_ID)).toBe(true);
+
+    // Status transition: the rows isTransitionHeld sees after its admin-only filter hold nothing on closeDate.
+    expect(open.filter((r) => r.fieldName === 'closeDate' && !isAdminOnlyConflict(r))).toEqual([]);
+
+    // Counts: getConflictStats, admin-queue-size, the backlog ratchet and the inert-detector count.
+    expect(await repo.getConflictStats(IPO_ID)).toMatchObject({ total: 0, unresolved: 0 });
+    const queue = await adminQueueSize(pool!);
+    expect(queue.byIpo.find((e: { slug: string }) => e.slug === 'od73-settled-fixture-ltd')).toBeUndefined();
+    expect(await count(UNRESOLVED_CONFLICT_COUNT_SQL, 'total')).toBe(backlog0);
+    expect(await count(CONFLICTS_INSERTED_24H_SQL, 'inserted')).toBe(inserted0);
+
+    // Positive control: a real cross-source dispute IS counted by every one of the same readers.
+    await repo.upsertConflict({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'registrar', source1: 'DRHP', value1: 'a', source2: 'CHITTORGARH', value2: 'b', resolutionReason: 'SOURCE_PRIORITY' });
+    expect(await repo.getConflictStats(IPO_ID)).toMatchObject({ total: 1, unresolved: 1 });
+    const queue2 = await adminQueueSize(pool!);
+    expect(queue2.byIpo.find((e: { slug: string }) => e.slug === 'od73-settled-fixture-ltd')).toMatchObject({ conflicts: 1 });
+    expect(await count(UNRESOLVED_CONFLICT_COUNT_SQL, 'total')).toBe(backlog0 + 1);
+    expect(await count(CONFLICTS_INSERTED_24H_SQL, 'inserted')).toBe(inserted0 + 1);
   });
 });

@@ -106,4 +106,22 @@ describe('isTransitionHeld', () => {
     const drivingField = getTransitionDrivingField('OPEN', 'CLOSED');
     expect(isTransitionHeld(drivingField, [])).toBe(false);
   });
+
+  // OD-75 round 2 (PR #914): a website moving its OWN close date writes an admin-only
+  // SOURCE_CHANGED_OWN_VALUE row. It is not a dispute, so it must never freeze OPEN->CLOSED.
+  // MUTATION: drop the isAdminOnlyConflict filter in isTransitionHeld -> this goes RED.
+  it('does NOT hold on an admin-only SOURCE_CHANGED_OWN_VALUE row for the driving field (OD-75)', () => {
+    const drivingField = getTransitionDrivingField('OPEN', 'CLOSED');
+    const unresolved = [{ fieldName: 'closeDate', resolutionReason: 'SOURCE_CHANGED_OWN_VALUE' }];
+    expect(isTransitionHeld(drivingField, unresolved)).toBe(false);
+  });
+
+  it('still holds when a real dispute sits next to an OD-75 row on the driving field', () => {
+    const drivingField = getTransitionDrivingField('OPEN', 'CLOSED');
+    const unresolved = [
+      { fieldName: 'closeDate', resolutionReason: 'SOURCE_CHANGED_OWN_VALUE' },
+      { fieldName: 'closeDate', resolutionReason: 'HELD_DISPUTED_HIGH_VALUE_LIVE' },
+    ];
+    expect(isTransitionHeld(drivingField, unresolved)).toBe(true);
+  });
 });

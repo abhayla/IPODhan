@@ -56,7 +56,7 @@ import {
   type SmeCollapseEvidence,
 } from './listing-exchange-resolution.js';
 import logger from '../utils/logger.js';
-import { SOURCE_CHANGED_OWN_VALUE } from '@ipodhan/shared/utils/conflict-reasons';
+import { SOURCE_CHANGED_OWN_VALUE, isAdminOnlyConflict } from '@ipodhan/shared/utils/conflict-reasons';
 import { toUtcEpochDay, toUtcEpochMs } from '../utils/date-string-parsing.js';
 import { validateFieldValue, type ValidationRule } from './field-extraction-validation.js';
 import { loadValidationRules } from '../config/validation-rules-loader.js';
@@ -2086,7 +2086,10 @@ export class DataConsolidationService {
     {
       const otherExchange = incomingSource === 'NSE' ? 'BSE' : 'NSE';
       try {
-        const openConflicts = (await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? [];
+        // OD-75 round 2: admin-only rows (a source changing its own value) are never a dispute.
+        const openConflicts = ((await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? []).filter(
+          (row: { resolutionReason?: string | null }) => !isAdminOnlyConflict(row)
+        );
         const normalizedIncoming = normalize(fieldName, incomingValue, rules);
         const now = Date.now();
         const priorAgreement = openConflicts.find(
@@ -2379,7 +2382,11 @@ export class DataConsolidationService {
         // escape permanently inert: Kanohar accumulated zero conflict rows
         // across weeks of holds. Shadow mode is still respected — a preview
         // consolidation run must never write.
-        if (!this.currentShadowMode) {
+        // OD-75 review round 2 (PR #914): a SELF-change (the same source moving its own value) is
+        // not the escape's audit trail — the escape only ever matches the OTHER exchange — so it
+        // obeys ENABLE_CONFLICT_DETECTION like every other non-HOLD conflict row.
+        const holdIsSelfChange = existingSource === incomingSource;
+        if (!this.currentShadowMode && (!holdIsSelfChange || FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION)) {
           try {
             const conflictResult = await this.dataConflictsRepository.upsertConflict({
               ipoId,
@@ -2398,8 +2405,8 @@ export class DataConsolidationService {
               resolvedSource: existingSource,
               // OD-75: one source contradicting itself is not a cross-source dispute — its own
               // named reason, INFO, never the CRITICAL HOLD alert (T-286 flood protection).
-              resolutionReason: existingSource === incomingSource ? SOURCE_CHANGED_OWN_VALUE : 'HELD_DISPUTED_HIGH_VALUE_LIVE',
-              severity: existingSource === incomingSource ? 'INFO' : 'CRITICAL',
+              resolutionReason: holdIsSelfChange ? SOURCE_CHANGED_OWN_VALUE : 'HELD_DISPUTED_HIGH_VALUE_LIVE',
+              severity: holdIsSelfChange ? 'INFO' : 'CRITICAL',
             });
 
             // W-161b: `upsertConflict` returns `{ skipped: true, reason }`

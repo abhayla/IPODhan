@@ -17,6 +17,8 @@
 import pg from 'pg';
 import { pathToFileURL } from 'node:url';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from '../lib/pg-utc.mjs';
+// OD-75 round 2: admin-only rows (a source changing its own value) are not queue work.
+import { behaviourConflictPredicate } from '../lib/conflict-reasons.mjs';
 
 // Absence states per OD-62 (packages/shared/src/db/schema.ts, fieldPlanStateEnum): a field the
 // pipeline has given up asking for. PENDING/SUPPLIED are not absences.
@@ -80,6 +82,7 @@ export async function adminQueueSize(pool) {
     FROM data_conflicts dc
     JOIN ipos i ON i.id = dc.ipo_id
     WHERE dc.resolved_at IS NULL
+      AND ${behaviourConflictPredicate('dc')}
     GROUP BY i.slug, i.status, i.open_date
   `);
 

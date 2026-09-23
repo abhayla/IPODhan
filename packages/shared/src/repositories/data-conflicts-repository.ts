@@ -5,7 +5,7 @@
  */
 
 import { eq, and, isNull, isNotNull, lt, desc, sql } from 'drizzle-orm';
-import { SOURCE_CHANGED_OWN_VALUE } from '../utils/conflict-reasons';
+import { SOURCE_CHANGED_OWN_VALUE, isAdminOnlyConflict } from '../utils/conflict-reasons';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '../db/schema';
@@ -550,10 +550,14 @@ export class DataConflictsRepository extends BaseRepository {
       async () => {
         const conditions = ipoId ? [eq(dataConflicts.ipoId, ipoId)] : [];
 
-        const allConflicts = await this.db
-          .select()
-          .from(dataConflicts)
-          .where(conditions.length > 0 ? and(...conditions) : undefined);
+        // OD-75 review round 2 (PR #914): admin-only rows (a source changing its own value) are
+        // shown on the admin list but are not disputes, so they never enter a conflict count.
+        const allConflicts = (
+          await this.db
+            .select()
+            .from(dataConflicts)
+            .where(conditions.length > 0 ? and(...conditions) : undefined)
+        ).filter((c) => !isAdminOnlyConflict(c));
 
         const total = allConflicts.length;
         const unresolved = allConflicts.filter((c) => !c.resolvedAt).length;

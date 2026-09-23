@@ -107,12 +107,17 @@ jobs:
         #   went red locally when a predicate started reading face_value before
         #   the column was added, and CI could not have caught that.
         #
-        # All three are Node builtins only - no database, no deps.
+        # conflict-reasons-parity (PR #914, OD-75 round 2): keeps the .mjs admin-only
+        #   conflict-reason list equal to the TS one and pins every .mjs reader of
+        #   data_conflicts that counts (floor f, g, a/b; admin-queue) to it.
+        #
+        # All four are Node builtins only - no database, no deps.
         run: |
           node --test \
             scripts/tests/degenerate-band-check.test.mjs \
             scripts/tests/issue-size-floor-message.test.mjs \
-            scripts/tests/audit-substance-plausibility.test.mjs
+            scripts/tests/audit-substance-plausibility.test.mjs \
+            scripts/tests/conflict-reasons-parity.test.mjs
       - name: Detection-floor checks self-test (T-335)
         # Mutation-proof: scripts/tests/audit-detection-floor.test.mjs imports
         # the actual predicates from scripts/lib/detection-floor-checks.mjs

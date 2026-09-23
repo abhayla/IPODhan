@@ -338,6 +338,32 @@ describe('OD-73: a settled field is not rewritten (#908)', () => {
     expect(calls).toEqual([expect.objectContaining({ resolutionReason: 'SOURCE_CHANGED_OWN_VALUE', severity: 'INFO' })]);
   });
 
+  // Review round 2 (PR #914) finding 1: the OD-75 row on the live-IPO HOLD path must obey the same
+  // rollout flag as every other conflict row. MUTATION: drop the ENABLE_CONFLICT_DETECTION gate on the
+  // self-change branch of the HOLD write -> this goes RED.
+  it('OD-75 (flag off): a website changing its own date on a LIVE IPO writes NO row while ENABLE_CONFLICT_DETECTION is off', async () => {
+    const { FEATURE_FLAGS } = await import('../../../src/config/feature-flags.js');
+    const flags = FEATURE_FLAGS as unknown as { ENABLE_CONFLICT_DETECTION: boolean };
+    flags.ENABLE_CONFLICT_DETECTION = false;
+    try {
+      vi.mocked(fieldSources.findByIPOId).mockResolvedValue([stored('openDate', 'CHITTORGARH', '2026-09-24')] as never);
+      const result = await service.consolidateIPOData({
+        ipoId: 'ipo-od73',
+        tableName: 'ipos',
+        incomingData: { openDate: '2026-09-29' },
+        source: 'CHITTORGARH',
+        confidence: 60,
+        existingData: { status: 'UPCOMING', openDate: '2026-09-24' },
+        scrapedAt: new Date('2026-09-23T03:15:00Z'),
+      });
+      expect(result.consolidatedData.openDate).toBe('2026-09-24');
+      expect(conflicts.upsertConflict).not.toHaveBeenCalled();
+      expect(conflicts.logConflict).not.toHaveBeenCalled();
+    } finally {
+      flags.ENABLE_CONFLICT_DETECTION = true;
+    }
+  });
+
   it('OD-75 (negative): an exchange postponement writes NO same-source conflict row', async () => {
     vi.mocked(fieldSources.findByIPOId).mockResolvedValue([
       stored('openDate', 'NSE', '2026-09-24'),

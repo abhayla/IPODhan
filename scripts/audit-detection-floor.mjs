@@ -84,6 +84,7 @@ import { extractShape, compareShape, partitionFixtures, loadHtmlFixtureEntries, 
 import { findFixtureFiles } from './lib/fixture-provenance-checks.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
 import { adminQueueSize, formatAdminQueueBlock } from './ops/admin-queue-size.mjs';
+import { behaviourConflictPredicate, UNRESOLVED_CONFLICT_COUNT_SQL, UNRESOLVED_CONFLICT_NOISE_SQL, CONFLICTS_INSERTED_24H_SQL } from './lib/conflict-reasons.mjs';
 
 // The three filing-extractor types this specific stuck-detection query cares about
 // (never the anchor report or PRICE_BAND_AD — this check is about `scripts/extract_filing.py`
@@ -390,6 +391,7 @@ async function checkA_B() {
          FROM data_conflicts c
          JOIN ipos i ON i.id = c.ipo_id AND i.${REAL_IPO}
         WHERE c.resolved_at IS NULL
+          AND ${behaviourConflictPredicate('c')}
           AND c.field_name IN (${fieldList})
           AND i.status IN ('${LIVE_STATUSES.join("','")}')`
     );
@@ -666,8 +668,9 @@ async function checkF() {
     return;
   }
   const [{ dbName }] = await q(`SELECT current_database() AS "dbName"`);
-  const [{ total }] = await q(`SELECT count(*)::int total FROM data_conflicts WHERE resolved_at IS NULL`);
-  const [{ noise }] = await q(`SELECT count(*)::int noise FROM data_conflicts WHERE resolved_at IS NULL AND (value2 IS NULL OR value2 = '' OR value1 = value2)`);
+  // OD-75 round 2 (PR #914): admin-only SOURCE_CHANGED_OWN_VALUE rows never count toward the backlog.
+  const [{ total }] = await q(UNRESOLVED_CONFLICT_COUNT_SQL);
+  const [{ noise }] = await q(UNRESOLVED_CONFLICT_NOISE_SQL);
   const cls = classifyConflictNoiseRatio(total, noise);
   if (cls.fail) notify('f_conflict_noise_ratio', 'P2', 'aggregate', 'data_conflicts noise ratio too high', `${noise}/${total} (${(cls.ratio * 100).toFixed(1)}%) unresolved conflicts are noise (empty value2 or value1==value2)`);
 
@@ -750,7 +753,8 @@ async function checkG3_inertDetector() {
   const priceRows = await q(`SELECT price_range_min, price_range_max FROM ipos WHERE ${REAL_IPO} AND updated_at > now() - interval '24 hours'`);
   const population = priceRows.length;
   const violations = priceRows.filter((r) => checkPriceBand(r) !== null).length;
-  const [{ inserted }] = await q(`SELECT count(*)::int inserted FROM data_conflicts WHERE detected_at > now() - interval '24 hours'`);
+  // OD-75 round 2: an admin-only self-change row is not evidence the detector is alive.
+  const [{ inserted }] = await q(CONFLICTS_INSERTED_24H_SQL);
   const cls = classifyInertDetector(population, violations, inserted);
   if (cls.status === 'FAIL') notify('g_inert_detector', 'P1', 'aggregate', 'conflict detector appears inert', `${cls.violations} of ${cls.population} IPO row(s) written in the last 24h fail checkPriceBand (real corruption exists) but 0 data_conflicts rows were inserted in that SAME window — the detector is inert, not the data clean`);
   record('g_inert_detector', 'windowed price-band violations without any windowed conflicts inserted -> detector inert', cls.status, `${cls.violations} violation(s) among ${cls.population} row(s) written/24h, ${cls.inserted} conflict(s) inserted/24h`);
