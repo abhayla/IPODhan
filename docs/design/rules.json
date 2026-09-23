@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-23T17:07:20.953Z",
+  "generated_at": "2026-09-23T17:42:21.042Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 188,
+    "live": 191,
     "retired": 31
   },
-  "next_id": 220,
+  "next_id": 223,
   "rules": [
     {
       "id": "R-151",
@@ -617,6 +617,33 @@
       "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
       "kind": "prose",
       "text": "An exchange postponement is the same IPO, not a new one (OD-83). OD-68 already updates the same row when an exchange moves an IPO's dates; OD-83 makes explicit that this includes a postponement the exchange itself labels \"issue postponed\" followed by a relaunch under a new record number, once the company, shares and price band match. \"Withdrawn\" in OD-71 — the trigger for starting a new row — means only a SEBI withdrawal of the draft offer document or a lapse under OD-35's twelve-month rule; it never means an exchange-side postponement. Dhanwel Hybrid Seeds (BSE IPO_NO 7794 postponed in June 2026, then IPO_NO 7900 in August, same 2,700,000 shares and 95–99 band, one unchanged Chittorgarh id) and IC Electricals (NSE symbol ICEL postponed in June, relaunched as ICELCO in July, same 48,39,600 shares, 94–99 band and CIN) are both one row, updated, not two.",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-220",
+      "hash": "2a83ff63cdd5",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "prose",
+      "text": "ACTIVE is the current, correct key for a live offering. SUPERSEDED is an older number left behind by an OD-83 relaunch — it still matches so a stray write is not silently orphaned, but it never writes. RELEASED means the offering itself has ended (WITHDRAWN, lapsed, DELISTED, or an NSE key some days after listing) and its value is free to be reused. DISPUTED is a bind later found wrong by the CIN/ISIN re-check.",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-221",
+      "hash": "0169c6ccedbc",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "prose",
+      "text": "The write rule. A key is written in the same transaction as the bind or the row create, never after it, and its id is recorded into field_sources.data_lineage. A second key of the same source and key type supersedes the older one ONLY when OD-83's test holds — same number of shares, same price band, and the older record postponed or strictly earlier; otherwise the write is held rather than guessed.",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-222",
+      "hash": "190a655ca672",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "table-normative",
+      "text": "6 — Look-alikes — Himalayan Solar (HIMALAYAN, CG 2716, INE1B7I01014) vs Himalaya Nutravedics (BSE 7983/HNIL, INE1OTR01013) — never joined; a wrong bind is caught by the CIN/ISIN re-check → DISPUTED — PASS",
       "first_seen": "2026-09-23",
       "retired": false
     },

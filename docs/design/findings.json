@@ -1455,6 +1455,60 @@
       "phase1": true,
       "title": "gmp_records has no write-time column; timestamp is the source's own as-of time",
       "detail": "Columns: gmp_percentage, ipo_id, timestamp (timestamp without time zone), gmp, expected_listing_price, subject_rate, kostak_rate, id, source, sauda_details. Newest rows show timestamp '2026-09-23 22:02:00' (Investorgain's update time) although they were written by the 22:20 IST live wake. The wake logged \"GMP record created successfully\" 23 times; rows with a 22:xx timestamp number 17. Rows written in a given wake therefore cannot be counted by time, and the 6-row gap is unexplained (possibly rows carrying an earlier source time). Any check or proof that needs \"GMP rows written since T\" cannot be expressed today."
+    },
+    {
+      "id": "F-144",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "BSE keeps serving a postponed issue's old record beside its relaunch",
+      "detail": "Node fetch 2026-09-23 of GetMkt_ISSUE_BBS_IPO?IPO_NO=7794 -> 200, \"Issue_Period\":\"23 Jun 2026 to 23 Jun 2026\", Notes \"... has been postponed\"; IPO_NO 7900 serves 19-21 Aug 2026 for the same issue (Dhanwel Hybrid Seeds). A retired number therefore keeps sending stale dates. Related: F-127, OD-83."
+    },
+    {
+      "id": "F-145",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "data",
+      "phase1": true,
+      "title": "ipos.bse_ipo_no is last-write-wins, and the code says it is immutable",
+      "detail": "scraper/src/services/data-persister.ts ~2262-2290: comment \"the IPO_NO is immutable, so a later write ...\"; patch.bseIpoNo = metadata.bseIpoNo with no guard. Dhanwel 7794 -> 7900 disproves the premise; the stored value flips with whichever record was read last. Related: F-144."
+    },
+    {
+      "id": "F-146",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "The symbol match has no status or date limit and can pick a random row",
+      "detail": "packages/shared/src/repositories/ipo-repository.ts ~545: findBySymbol returns query.limit(1); per the verification its unfiltered branch has no ORDER BY, so with two rows holding one symbol (Rays of Belief pair) the pick is arbitrary; and no status/date limit, so a symbol reused after a delisting would bind a new company's record to the old row. Related: F-126."
+    },
+    {
+      "id": "F-147",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "merge",
+      "phase1": true,
+      "title": "The merge tool deletes child rows of any table not on its repoint list and refuses tables with a partial or expression unique index",
+      "detail": "ipo-repository.ts ~1392 (toDelete = counts.filter(... !REPOINT_TABLES.has(x.table))) and ~1717 (\"has unique index ... with an expression or predicate\"); REPOINT_TABLES in duplicate-ipo-merge.ts ~48. Any new per-IPO table must be added to the list with a plain unique index, or a merge silently drops its rows or refuses every merge."
+    },
+    {
+      "id": "F-148",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "Chittorgarh's page id alone addresses the page",
+      "detail": "/ipo/x/2225/ returns 200 with the Hero Motors page; the slug is decoration, the numeric id is the key."
+    },
+    {
+      "id": "F-149",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "Verification of the source-key table on 18 real scenarios (2026-09-23)",
+      "detail": "As first stated (two states, never re-matched by name) it failed 8 (Dhanwel, IC Electricals, Hero Motors, Rays of Belief, look-alikes, later OFS, symbol reuse, concurrency and others); with four fixes (four states; re-check every bind; supersede only on OD-83's test; offering-level keys only with NSE series) 15 pass, 2 are outside any key table, 1 needed an owner decision (OD-86). The scenario table is in section 2.3.3.2 \"Source record keys\". Related: F-126, F-127, F-134."
     }
   ],
   "false_assertions": [
