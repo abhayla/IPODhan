@@ -48,10 +48,10 @@ describe('round-3 C4: SLO thresholds follow the schedule that is actually runnin
     expect(getFreshnessSLO('INVESTORGAIN_GMP')!.marketHoursOnly).toBeUndefined();
   });
 
-  it('flag ON: NSE/BSE 16h, aggregators + API fallback 26h, GMP market-hours-only', () => {
+  it('flag ON: NSE/BSE 11h (derived from the OD-19 slots), aggregators + API fallback 26h, GMP market-hours-only', () => {
     flags.ENABLE_DUE_STEP_SCHEDULER = true;
-    expect(getFreshnessSLO('NSE')!.maxStalenessMs).toBe(16 * HOUR);
-    expect(getFreshnessSLO('BSE')!.maxStalenessMs).toBe(16 * HOUR);
+    expect(getFreshnessSLO('NSE')!.maxStalenessMs).toBe(11 * HOUR);
+    expect(getFreshnessSLO('BSE')!.maxStalenessMs).toBe(11 * HOUR);
     expect(getFreshnessSLO('CHITTORGARH')!.maxStalenessMs).toBe(26 * HOUR);
     expect(getFreshnessSLO('API_FALLBACK')!.maxStalenessMs).toBe(26 * HOUR);
     // Item 16 slice 2: MONEYCONTROL was asserted here at 26h. Its scraper was
@@ -61,6 +61,20 @@ describe('round-3 C4: SLO thresholds follow the schedule that is actually runnin
     // rather than deleted, so that putting the entry back turns this red.
     expect(getFreshnessSLO('MONEYCONTROL')).toBeUndefined();
     expect(getFreshnessSLO('INVESTORGAIN_GMP')!.marketHoursOnly).toBe(true);
+  });
+
+  it('flag ON (item 7 S2): the NSE/BSE threshold is the longest slot gap + 1h, computed from the one slot list', async () => {
+    const slots = await import('@ipodhan/shared/scheduler/data-job-slots');
+    expect(slots.longestDataJobSlotGapMinutes()).toBe(600);
+    flags.ENABLE_DUE_STEP_SCHEDULER = true;
+    expect(getFreshnessSLO('NSE')!.maxStalenessMs).toBe(slots.dataJobFreshnessMaxAgeMinutes() * MIN);
+  });
+
+  it('flag ON (item 7 S2): a 12h NSE gap DOES breach — more than one missed slot (the old 16h would have hidden it)', async () => {
+    flags.ENABLE_DUE_STEP_SCHEDULER = true;
+    const now = new Date('2026-09-04T20:30:00.000Z');
+    const evaluations = await evaluateFreshness(repoWithGap(12 * HOUR, now), now);
+    expect(evaluations.find((e) => e.source === 'NSE')!.breached).toBe(true);
   });
 
   it('flag ON: an 8h overnight NSE gap does NOT breach (it would page hourly under the legacy 6h)', async () => {

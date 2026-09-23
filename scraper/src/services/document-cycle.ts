@@ -345,6 +345,26 @@ export interface DocumentCycleSummary {
   calendarSkipped: number;
   /** Why the gate fired this cycle, or null when it did not. */
   calendarGateReason: CalendarGateReason | null;
+  /**
+   * Item 7 S2 (spec §2.1, OD-19/OD-33/OD-55): true only when EVERY pass of
+   * this cycle ran to completion on its own budget slice — discovery
+   * (PASS 1), extraction, field-plan generation (PASS 2.5) and the
+   * field-plan walk (PASS 3) — and no LISTED work was deferred past the
+   * per-cycle cap. `false` means at least one pass stopped early or work
+   * was deferred; the caller (index.ts's data-job slot) MUST NOT stamp the
+   * slot finished when this is false, or a partial wake reads as a
+   * complete data-job slot (independent-review HIGH finding: the caller
+   * previously keyed the stamp on `budgetExhausted` — PASS 1 only — so a
+   * later pass stopping silently still closed the slot).
+   */
+  slotComplete: boolean;
+  /**
+   * Item 7 S2: which pass(es) stopped this cycle short of `slotComplete`,
+   * for the one-line-per-incomplete-wake log the staging proof counts
+   * (signal-ownership R1/R3 — a count with no identity is not detection).
+   * Empty when `slotComplete` is true.
+   */
+  incompletePasses: string[];
 }
 
 /**
@@ -484,8 +504,30 @@ export function summarize(
     reserved?: number;
     processedAfterBudget?: number;
     reservedSkippedByDeadline?: number;
+  } = {},
+  /**
+   * Item 7 S2 (spec §2.1, OD-19/OD-33/OD-55): per-pass early-stop flags.
+   * Every field defaults false/0 so existing callers (and tests) that never
+   * pass this argument get `slotComplete: true` exactly when `budgetExhausted`
+   * is false and `listedDeferred` is 0 — the ORIGINAL (pre-fix) definition —
+   * which keeps this an additive change to `summarize`'s public signature.
+   */
+  slotInfo: {
+    extractionExhausted?: boolean;
+    fieldPlanGenSkippedNoBudget?: boolean;
+    fieldPlanGenExhausted?: boolean;
+    fieldPlanWalkSkippedNoBudget?: boolean;
+    fieldPlanWalkExhausted?: boolean;
   } = {}
 ): DocumentCycleSummary {
+  const incompletePasses: string[] = [];
+  if (budgetExhausted) incompletePasses.push('discovery');
+  if (slotInfo.extractionExhausted) incompletePasses.push('extraction');
+  if (slotInfo.fieldPlanGenSkippedNoBudget) incompletePasses.push('field_plan_generation_no_budget');
+  if (slotInfo.fieldPlanGenExhausted) incompletePasses.push('field_plan_generation_exhausted');
+  if (slotInfo.fieldPlanWalkSkippedNoBudget) incompletePasses.push('field_plan_walk_no_budget');
+  if (slotInfo.fieldPlanWalkExhausted) incompletePasses.push('field_plan_walk_exhausted');
+  if ((listedInfo.deferred ?? 0) > 0) incompletePasses.push('listed_deferred');
   return {
     ipos: results.length,
     skipped: results.filter((r) => r.skipped).length,
@@ -510,6 +552,8 @@ export function summarize(
     upcomingReservedSkippedByDeadline: upcomingInfo.reservedSkippedByDeadline ?? 0,
     calendarSkipped: calendarInfo.skipped,
     calendarGateReason: calendarInfo.reason,
+    slotComplete: incompletePasses.length === 0,
+    incompletePasses,
   };
 }
 
@@ -1323,6 +1367,18 @@ export async function runDocumentCycle(
 
     const results: IpoRunResult[] = [];
     let budgetExhausted = false;
+    // Item 7 S2 (spec §2.1, OD-19, OD-33, OD-55): every pass below can stop
+    // early on its own wake-budget slice — extraction (PASS 2), field-plan
+    // generation (PASS 2.5, skipped OR exhausted), and the field-plan walk
+    // (PASS 3, zero budget OR exhausted). Any one of these true means the
+    // data-job slot did NOT finish this wake, even when `budgetExhausted`
+    // (PASS 1's own flag) is false — the independent-review HIGH finding:
+    // the caller previously stamped the slot on PASS 1 alone.
+    let extractionExhausted = false;
+    let fieldPlanGenSkippedNoBudget = false;
+    let fieldPlanGenExhausted = false;
+    let fieldPlanWalkSkippedNoBudget = false;
+    let fieldPlanWalkExhausted = false;
     // Item 7 / F4: tallied AFTER pass 2 (below), across every candidate — see
     // the loop right before `summarize()`.
     let extractionBlocked = 0;
@@ -1637,6 +1693,7 @@ export async function runDocumentCycle(
         const anchorCycleTotals = { considered: 0, spawned: 0, persisted: 0, manualReview: 0, failed: 0 };
         for (const ipo of candidates) {
           if (now() - extractionStartedAt >= extractionBudgetMs) {
+            extractionExhausted = true;
             logger.warn(
               { extractionBudgetMs },
               'Document extraction budget exhausted — remaining candidates resume next cycle (spawn budget/state persisted)'
@@ -1722,6 +1779,7 @@ export async function runDocumentCycle(
       Math.max(0, wakeBudgetMs - (now() - startedAt) - PURGE_RESERVE_MS);
     if (FEATURE_FLAGS.ENABLE_FIELD_PLAN) {
       if (fieldPlanGenBudgetMs <= 0) {
+        fieldPlanGenSkippedNoBudget = true;
         logger.warn(
           { fieldPlanGenBudgetMs },
           'Field-plan generation skipped — no wake budget remains after discovery/extraction (item 5 slice s4)'
@@ -1731,6 +1789,7 @@ export async function runDocumentCycle(
         const fieldPlanTotals = { ipos: 0, rowsInserted: 0, rowsReranked: 0, failed: 0 };
         for (const ipo of candidates) {
           if (now() - fieldPlanStartedAt >= fieldPlanGenBudgetMs) {
+            fieldPlanGenExhausted = true;
             logger.warn(
               {
                 fieldPlanGenBudgetMs,
@@ -1794,6 +1853,7 @@ export async function runDocumentCycle(
     const fieldPlanBudgetMs = Math.max(0, wakeBudgetMs - (now() - startedAt) - PURGE_RESERVE_MS);
     if (FEATURE_FLAGS.ENABLE_FIELD_PLAN_WALK) {
       if (fieldPlanBudgetMs <= 0) {
+        fieldPlanWalkSkippedNoBudget = true;
         logger.warn(
           { wakeBudgetMs, elapsedMs: now() - startedAt, purgeReserveMs: PURGE_RESERVE_MS },
           'PASS 3 (field-plan walk) got NO budget this cycle — PASS 1+2 consumed the wake. The plan table is unchanged because the walk never ran, not because there was nothing to do.'
@@ -1869,6 +1929,7 @@ export async function runDocumentCycle(
         const fieldPlanWitnessVerdictWriter = buildFieldPlanWalkWitnessVerdictWriter();
         for (const ipo of candidates) {
           if (now() >= fieldPlanDeadlineMs) {
+            fieldPlanWalkExhausted = true;
             logger.warn(
               { fieldPlanBudgetMs, ...walkTotals },
               'PASS 3 field-plan budget exhausted — remaining IPOs resume next cycle (every settled field is already committed)'
@@ -2016,6 +2077,13 @@ export async function runDocumentCycle(
         reserved: upcomingReserved,
         processedAfterBudget: upcomingProcessedAfterBudget,
         reservedSkippedByDeadline: upcomingReservedSkippedByDeadline,
+      },
+      {
+        extractionExhausted,
+        fieldPlanGenSkippedNoBudget,
+        fieldPlanGenExhausted,
+        fieldPlanWalkSkippedNoBudget,
+        fieldPlanWalkExhausted,
       }
     );
 

@@ -1,31 +1,52 @@
-// scripts/lib/field-plan-slot.mjs — #762 (S8): the same discovery-slot
-// boundary the claim query keys its reclaim on, for plain-Node checks that
-// cannot import TypeScript.
+// scripts/lib/field-plan-slot.mjs — #762 (S8): the same slot boundary the
+// claim query keys its reclaim on, for plain-Node checks that cannot import
+// TypeScript.
 //
-// SOURCE OF TRUTH: packages/shared/src/repositories/ipo-field-plan-repository.ts
-// (mostRecentFieldPlanSlotBoundary), which itself deliberately duplicates
-// scraper/src/scheduler/due-step-cycle.ts's DISCOVERY_SLOTS_IST_MINUTES
-// (packages/shared cannot import scraper/src; scraper depends on
-// @ipodhan/shared, never the reverse). This file is the SECOND deliberate
-// duplicate of the same four slot times, for the same reason
-// scripts/lib/ist-day.mjs duplicates packages/shared/src/utils/ist-day.ts —
-// plain-Node scripts/*.mjs cannot import TypeScript either. Change the
-// TypeScript source first, then mirror it here AND in due-step-cycle.ts.
-// scripts/tests/field-plan-slot.test.mjs pins this file's output against a
-// parse of the real due-step-cycle.ts source text, so a change to one
-// without the other fails CI instead of silently drifting (round-1 review
-// MAJOR-3: the previous "drift guard" compared two copies inside the same
-// package and could never have caught that).
+// Item 7 S2: the slots are the data job's OD-19 slots (00:00, 08:00, 14:00 IST),
+// defined ONCE in packages/shared/src/scheduler/data-job-slots.ts. This file
+// keeps NO copy: it READS that file's text at load and parses the literal with
+// the same plain-integer rule as `parseDataJobSlotsFromSource` there. A shape
+// it cannot parse throws at import, so the nightly floor fails loudly instead
+// of reasoning about the wrong slots. The release directory carries
+// packages/shared/src (deploy-linux.sh compiles it in place), so the path
+// resolves on the box as it does in CI.
 //
-// review round 1 CRITICAL-1: this module exists so
-// checkS_pullPlanStuckReclaim (audit-detection-floor.mjs) can ask "has a new
-// slot begun since X" instead of a flat interval — the flat `interval '7
-// hours'` the first cut used was wrong (the real max gap between two
-// consecutive slots is 18.5h, 17:30 IST to 08:30 IST the next day), so the
-// check alarmed every night between ~00:30 and ~08:30 IST regardless of
-// whether anything was actually stuck.
+// review round 1 CRITICAL-1 (history): this module exists so
+// checkS_pullPlanStuckReclaim (audit-detection-floor.mjs) asks "has a new slot
+// begun since X" instead of a flat interval; a flat threshold alarmed every
+// night because the real gap between slots is longer than it assumed.
 
-const FIELD_PLAN_SLOT_IST_MINUTES = [8 * 60 + 30, 11 * 60, 14 * 60, 17 * 60 + 30];
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+export const DATA_JOB_SLOTS_SOURCE_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'packages',
+  'shared',
+  'src',
+  'scheduler',
+  'data-job-slots.ts'
+);
+
+const SLOTS_PATTERN = /export const DATA_JOB_SLOTS_IST_MINUTES\s*=\s*\[([\d\s,]+)\]\s*as const;/;
+
+/** Same rule as parseDataJobSlotsFromSource in data-job-slots.ts: plain integers 0..1439 or throw. */
+export function parseDataJobSlotsFromSource(source) {
+  const match = source.match(SLOTS_PATTERN);
+  if (!match) throw new Error('DATA_JOB_SLOTS_IST_MINUTES not found as a plain-integer literal');
+  const slots = match[1].split(',').map((s) => s.trim()).filter((s) => s.length > 0).map(Number);
+  if (slots.length === 0 || slots.some((n) => !Number.isInteger(n) || n < 0 || n >= 1440)) {
+    throw new Error(`DATA_JOB_SLOTS_IST_MINUTES is not a list of minutes-of-day: [${match[1]}]`);
+  }
+  return slots;
+}
+
+const FIELD_PLAN_SLOT_IST_MINUTES = Object.freeze(
+  parseDataJobSlotsFromSource(readFileSync(DATA_JOB_SLOTS_SOURCE_PATH, 'utf8'))
+);
 const IST_OFFSET_MINUTES = 5 * 60 + 30;
 
 /** The most recent slot boundary at-or-before `now`, as a Date. Pure, clock-injectable. */

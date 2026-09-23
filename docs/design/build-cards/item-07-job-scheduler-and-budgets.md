@@ -4,6 +4,12 @@ Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.
 
 **Updated 2026-09-11 for OD-55 (supervisor): document job unbounded per document; see §2.1.**
 
+**Updated 2026-09-23 for slice S2 (OD-19, OD-55):** the data-job slots 00:00/08:00/14:00 IST are defined once in
+`packages/shared/src/scheduler/data-job-slots.ts`; discovery, document download + extraction and the pull walk run
+only when a slot is due (a non-slot wake logs "data job not due"). The 30-minute and 50-minute wake-budget numbers
+below were superseded by OD-55 (no per-document timeout, 2-hour hung-process ceiling) and are kept only as the
+history of the first draft; where a line below disagrees with OD-55 or OD-19, the spec governs.
+
 ## Purpose
 
 After this ships, the scraper runs as three named jobs on the owner's cadence (data 00:00/08:00/14:00
@@ -46,12 +52,12 @@ hours stale" over a weekend under the old gate) if it was not intended.
 |---|---|---|
 | `scraper/src/services/filing-auto-persist.ts` | exists | **OD-55 (owner, 2026-09-11): `EXTRACT_TIMEOUT_MS` (line 166) is REMOVED, not raised to 30 min** — there is no typed per-document extraction budget. The document job runs under its own lock, derived from the 2-hour hung-process ceiling (a crash guard, not a budget) plus slack, never from spawn-count × timeout. `FILING_EXTRACTION_LOCK_TTL_MS` (line 530) becomes the 2-hour ceiling + `LOCK_SLACK_MS`. `maxAnchorSpawnsWithinLockTtl` (line 540-547) re-derived against the ceiling, not against a wake budget — see Interfaces. The per-document deadline check inside `processPendingFilings` (lines 1571, 1639, and the anchor pass at 1565-1576) enforces only the hung-process ceiling and writes a per-page skip record (page number + reason) on trip — never a bare unread-page count. OCR invocation runs single-threaded at low process priority. |
 | `scraper/src/services/document-cycle.ts` | exists | **OD-55: no wake-budget cap on document extraction** — `DEFAULT_WAKE_BUDGET_MS` (line 158) is not raised to 50 min for the purpose of bounding extraction; the document job stays outside market hours by default and is not throughput-capped by a wake window for reading a filing. `extractionBudgetMs` computation (line 1232-1234) and `deadlineMs = extractionStartedAt + extractionBudgetMs` (line 1263) are re-derived against the 2-hour hung-process ceiling instead of a wake-budget-minus-elapsed expression — see Interfaces. `DEFAULT_EXTRACTION_BUDGET_MS` (cited, not yet read this session) must be re-read against this rule before implementing, not assumed to still exist as a wake-scaled budget. |
-| `scraper/src/index.ts` | exists | `CYCLE_LOCK_TTL_MS` (line 179, `getWakeBudgetMs() + 5 * 60 * 1000`) is *unchanged code* — it derives to 55 min automatically once `getWakeBudgetMs()` returns 50 min. The market-hours gate at line 343 (`isMarketHoursIST(now)`) and the aggregator-cadence block (lines 371-395) are subsumed by the new live-figures job (§2.1) — this item replaces the single `main()` due-step cycle's internal slot logic with dispatch on an explicit `--job=data\|live\|closed` argument (see Interfaces; **the design does not name this flag or any replacement CLI shape** — recommended here as the smallest change that reuses the existing one-shot-process-per-invocation model in lines 463-560, rather than inventing a long-running daemon). |
+| `scraper/src/index.ts` | exists | **As built (S1, OD-55):** `CYCLE_LOCK_TTL_MS` is the 2-hour hung-process ceiling plus 5 min of slack, not a wake-budget sum. **S2 (OD-19):** `triggerPrimarySourceDiscovery` runs the document cycle only when the data job is due, stamping `due-step:last-document-cycle` when a slot's cycle finishes within its wake budget. The market-hours gate at line 343 (`isMarketHoursIST(now)`) and the aggregator-cadence block (lines 371-395) are subsumed by the new live-figures job (§2.1) — this item replaces the single `main()` due-step cycle's internal slot logic with dispatch on an explicit `--job=data\|live\|closed` argument (see Interfaces; **the design does not name this flag or any replacement CLI shape** — recommended here as the smallest change that reuses the existing one-shot-process-per-invocation model in lines 463-560, rather than inventing a long-running daemon). |
 | `scraper/src/scheduler/due-step-cycle.ts` | exists | `DISCOVERY_SLOTS_IST_MINUTES` (line 15, `[08:30, 11:00, 14:00, 17:30]`) is D-13's cadence, explicitly superseded by OD-19 (§2.1: "This supersedes D-13's timing for everything below"). Becomes the **data job's** three slots `[00:00, 08:00, 14:00]` (minutes `[0, 480, 840]`). The live-figures window (currently `isMarketHoursIST`, weekday 10:00-17:00) extends to 10:00-18:30 and drops the OPEN-IPO gate from "zero network calls if zero OPEN" (already present, lines 353-359) — that check is *kept*, not removed; only the window widens. |
 | `scripts/deploy-linux.sh` | exists | Lines 231-239 (`SCRAPER_CRON` computed per `$SLOT`) and line 681-683 / 1376 (`pm2 start ... --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}"`) — the whole `--cron-restart` mechanism is removed (see PM2 change below). |
 | `scripts/scraper-wake.sh` (NEW) | **NEW** | The lock-skip wrapper the owner's "never kill" rule requires — see PM2 ecosystem change below. |
 | `scraper/tests/unit/services/filing-auto-persist.test.ts` | exists | Line 1412's existing static test (`'DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS + anchor sidecar + 60s < FILING_EXTRACTION_LOCK_TTL_MS'`) currently asserts the OLD, now-broken derivation (`3 × 30 min = 90 min`, which is **not** `< 60 min`) and must be rewritten against the new expression — see Tests. |
-| `scraper/tests/unit/services/document-cycle-wake-budget.test.ts` | exists | New assertions for `DEFAULT_WAKE_BUDGET_MS = 50 * 60 * 1000` and the env-override ceiling. |
+| `scraper/tests/unit/services/document-cycle-wake-budget.test.ts` | exists | Superseded by OD-55: the wake budget is NOT raised to 50 min to bound extraction; the extraction bound is the 2-hour hung-process ceiling. |
 | `docs/ops/prod-ops-recipes.md` | exists | New "reading the three jobs" recipe entry (per `defect-fix-contract.md`'s "record ops recipes the same turn"). |
 
 ## Schema
@@ -77,7 +83,9 @@ Every call site that today reads `deps.deadlineMs !== undefined && (deps.now ?? 
 strictly *more* conservative than today's check — it can now skip a spawn earlier than the raw deadline,
 never later — so no existing caller that relies on "runs until the deadline" regresses into overrun.
 
-**2. The re-derived spawn/lock arithmetic.**
+**2. The re-derived spawn/lock arithmetic.** *(First draft, superseded by OD-55 on 2026-09-11: there is no
+`EXTRACT_TIMEOUT_MS` and no 50-minute wake budget for extraction; the lock TTL derives from the 2-hour
+hung-process ceiling. Kept as history.)*
 
 ```ts
 // filing-auto-persist.ts
@@ -163,6 +171,20 @@ neither is visible in the code read this session) invokes a new wrapper, `script
 0 22 * * *       scripts/scraper-wake.sh closed
 ```
 
+**As built (S1 + S2), in place of the table above** — the crontab is IST (`scripts/deploy-linux.sh`,
+`install_scraper_cron`):
+
+```
+*/30 * * * *   scraper-wake.sh data   # prod: every :00/:30 IST; the scraper's due gate runs the data job only at 00:00/08:00/14:00 IST
+15,45 * * * *  scraper-wake.sh data   # staging: W-178 +15 min, so its data job runs 00:15/08:15/14:15 IST
+5,35 * * * *   scraper-wake.sh live   # prod live-figures wake, offset from every data wake
+20,50 * * * *  scraper-wake.sh live   # staging live-figures wake
+```
+
+The data wake stays every 30 minutes because the same wake also carries the 22:00 IST closed-IPO job,
+the status transitions, and the continuation of a slot whose document cycle ran out of its wake budget;
+outside a slot it logs "data job not due" and does no data-job work.
+
 `scraper-wake.sh` does not decide anything about IST slot arithmetic itself (that logic already lives
 in `due-step-cycle.ts` and stays there) — it exists only to avoid spawning a redundant node process when
 one is still running, as a cheap pre-filter (`pm2 jlist` status check for `ipodhan-scraper`; if `online`,
@@ -195,11 +217,13 @@ individually flaggable — they are compile-time constants, consistent with how 
   90 min, which is **not** `< FILING_EXTRACTION_LOCK_TTL_MS` at either 45 or 60 min — this test must fail
   the moment `EXTRACT_TIMEOUT_MS` is bumped and before `maxAnchorSpawnsWithinLockTtl` is re-derived,
   proving the old formula really does break.
-- **Unit:** `document-cycle-wake-budget.test.ts` — `getWakeBudgetMs()` returns `50 * 60 * 1000` with no
-  env override, and the `DOCUMENT_CYCLE_WAKE_BUDGET_MS` override still works at the new default.
+- **Unit:** ~~`document-cycle-wake-budget.test.ts` at 50 min~~ — superseded by OD-55 (no wake-budget cap on
+  extraction; the bound is the 2-hour hung-process ceiling).
 - **Unit:** `due-step-cycle.ts`'s slot predicates (`mostRecentDiscoverySlotEpochMinute`, `isDiscoveryDue`)
   re-tested against `DISCOVERY_SLOTS_IST_MINUTES = [0, 480, 840]` (00:00/08:00/14:00) instead of the
-  current four D-13 slots — tier: unit, per `.claude/rules/scraper-test-layout.md`.
+  current four D-13 slots — tier: unit, per `.claude/rules/scraper-test-layout.md`. **Built in S2**:
+  `due-step-cycle.test.ts`, `packages/shared/src/scheduler/data-job-slots.test.ts`, and the document-cycle
+  slot gate in `index-document-state-machine-wiring.test.ts` (a 10:30 wake runs no document cycle).
 - **Unit:** the widened live-figures window (10:00-18:30 vs today's 10:00-17:00) and the retained
   zero-OPEN-IPO short-circuit (`countIposByStatus(['OPEN'])`, `index.ts:355-359`) — a test asserting zero
   network calls when `openCount === 0` even inside the widened window.
@@ -229,10 +253,10 @@ The exact log line: a staging cycle log showing `'Due-step cycle: previous cycle
 `index.ts:541`) appearing from a *second* job's wake while a *first* job's cycle is still in flight —
 proving the skip-not-kill behavior end to end, not just in a unit test. Healthy value: that log line
 present, and **no** PM2 restart/kill log entry (`pm2 logs` showing an `exit code` from a `SIGKILL`) for
-the scraper app during an overlapping window. Second proof line: a staging filing-extraction cycle whose
-`Document extraction budget exhausted` log (`document-cycle.ts:1247-1250`) never fires before at least
-one 30-minute extraction has had the chance to complete, evidencing the wake budget actually reaches 50
-minutes end to end. Which cycle carries it: the first data-job cycle after this item's deploy to
+the scraper app during an overlapping window. Second proof line (S2, replaces the superseded 50-minute
+wake-budget line): a staging wake at a non-slot minute logs `data job not due` and no document-cycle
+summary, while the 08:15 and 14:15 IST staging wakes log a `Document discovery cycle (state machine)
+complete` summary. Which cycle carries it: the first data-job cycle after this item's deploy to
 staging, per `docs/ops/prod-ops-recipes.md` §2 (staging cycle read recipe).
 
 ## Rollback

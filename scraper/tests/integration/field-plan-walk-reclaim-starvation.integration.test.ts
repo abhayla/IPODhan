@@ -277,7 +277,7 @@ describe.skipIf(!DATABASE_URL)(`#762 round 2 CRITICAL: walk-loop x claim-query s
       lastAttemptAt: new Date('2026-09-15T01:00:00.000Z'),
       nextDueAt: new Date('2026-09-16T00:00:00.000Z'),
     });
-    const now = new Date('2026-09-15T03:30:00.000Z'); // 09:00 IST -- past the 08:30 slot
+    const now = new Date('2026-09-15T03:30:00.000Z'); // 09:00 IST -- past the 08:00 slot
 
     // First claim: takes the PENDING row.
     const first = await repo.claimNextDueField({ ipoId: IPO_ID, now });

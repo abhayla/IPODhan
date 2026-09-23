@@ -113,6 +113,20 @@ vi.mock('../../src/scheduler/jobs/stage-reconciler-job.js', () => ({
 }));
 vi.mock('../../src/scripts/backfill-primary-source-documents.js', () => ({
   runPrimaryDocBackfill: runPrimaryDocBackfillMock,
+  // Item 7 S2 (LOW finding): the real implementation, not a stub — races the
+  // real promise against a real timeout so the read-timeout test below can
+  // prove a hang degrades to fail-open within its bound instead of hanging.
+  withTimeout: async <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    });
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      clearTimeout(timer!);
+    }
+  },
 }));
 vi.mock('../../src/scheduler/catch-up-cadence.js', () => ({
   shouldRunOnCatchUpCadence: shouldRunOnCatchUpCadenceMock,
@@ -160,6 +174,9 @@ vi.mock('drizzle-orm', () => ({
 const runDocumentCycleMock = vi.fn().mockResolvedValue({
   ipos: 4, skipped: 2, found: 3, notYetFiled: 1, blocked: 0, networkCalls: 5, extractionBlocked: 0, extractionFailed: 0,
   durationMs: 1234, budgetExhausted: false,
+  // Item 7 S2: a "healthy" mocked cycle finished every pass — every test
+  // below that wants a stopped-early cycle overrides these explicitly.
+  slotComplete: true, incompletePasses: [] as string[],
 });
 const runDocumentPurgeMock = vi.fn().mockResolvedValue({
   candidates: 2, purged: 1, filesDeleted: 3, bytesFreed: 4096,
@@ -262,4 +279,171 @@ describe('T-403 — document state machine wiring in the one-shot cycle', () => 
     const i = STEP_NAMES.indexOf('primarySourceDiscovery');
     expect(STEP_NAMES[i + 1]).toBe('documentPurge');
   });
+});
+
+/**
+ * Item 7 S2 (spec §2.1, OD-19): under the due-step scheduler, document
+ * download + extraction + the pull walk (runDocumentCycle) are the DATA JOB
+ * and run only in the 00:00 / 08:00 / 14:00 IST slots — not on every wake.
+ * The real triggerPrimarySourceDiscovery and the real slot function run here;
+ * only the cycle body and Redis are stand-ins.
+ */
+describe('item 7 S2 — the document cycle runs only when the data job is due', () => {
+  const OLD_ENV = { ...process.env };
+  const ist = (d: string, hh: number, mm: number) =>
+    new Date(Date.parse(`${d}T00:00:00.000Z`) + (hh * 60 + mm - 330) * 60_000);
+
+  function fakeRedis(initial: Record<string, string> = {}) {
+    const store = new Map(Object.entries(initial));
+    return {
+      store,
+      get: vi.fn(async (k: string) => store.get(k) ?? null),
+      set: vi.fn(async (k: string, v: string) => {
+        store.set(k, v);
+        return 'OK';
+      }),
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY = 'true';
+    process.env.ENABLE_DOCUMENT_STATE_MACHINE = 'true';
+  });
+  afterEach(() => {
+    process.env = { ...OLD_ENV };
+  });
+
+  it('a 10:30 wake after the 08:00 slot finished runs NO document cycle', async () => {
+    const { triggerPrimarySourceDiscovery, DOCUMENT_CYCLE_LAST_RUN_KEY } = await import('../../src/index.js');
+    const redis = fakeRedis({ [DOCUMENT_CYCLE_LAST_RUN_KEY]: ist('2026-09-23', 8, 0).toISOString() });
+
+    const result = await triggerPrimarySourceDiscovery({ now: ist('2026-09-23', 10, 30), dueStepScheduler: true, redis });
+
+    expect(runDocumentCycleMock).not.toHaveBeenCalled();
+    expect(result.status).toBe('skipped');
+    expect(result.reason).toContain('data job not due');
+    expect(redis.set).not.toHaveBeenCalled();
+  });
+
+  it('the 08:00 wake runs the document cycle and stamps the slot finished', async () => {
+    const { triggerPrimarySourceDiscovery, DOCUMENT_CYCLE_LAST_RUN_KEY } = await import('../../src/index.js');
+    const redis = fakeRedis({ [DOCUMENT_CYCLE_LAST_RUN_KEY]: ist('2026-09-23', 0, 0).toISOString() });
+    const now = ist('2026-09-23', 8, 0);
+
+    const result = await triggerPrimarySourceDiscovery({ now, dueStepScheduler: true, redis });
+
+    expect(runDocumentCycleMock).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe('ok');
+    expect(redis.store.get(DOCUMENT_CYCLE_LAST_RUN_KEY)).toBe(now.toISOString());
+  });
+
+  it('a slot whose cycle ran out of wake budget stays open, and the next wake continues it', async () => {
+    const { triggerPrimarySourceDiscovery, DOCUMENT_CYCLE_LAST_RUN_KEY } = await import('../../src/index.js');
+    const redis = fakeRedis({ [DOCUMENT_CYCLE_LAST_RUN_KEY]: ist('2026-09-23', 0, 0).toISOString() });
+    runDocumentCycleMock.mockResolvedValueOnce({
+      ipos: 9, skipped: 0, found: 0, notYetFiled: 0, blocked: 0, networkCalls: 9, extractionBlocked: 0, extractionFailed: 0,
+      durationMs: 1, budgetExhausted: true,
+      slotComplete: false, incompletePasses: ['discovery'],
+    });
+
+    await triggerPrimarySourceDiscovery({ now: ist('2026-09-23', 8, 0), dueStepScheduler: true, redis });
+    expect(redis.set).not.toHaveBeenCalled();
+
+    await triggerPrimarySourceDiscovery({ now: ist('2026-09-23', 8, 30), dueStepScheduler: true, redis });
+    expect(runDocumentCycleMock).toHaveBeenCalledTimes(2);
+    expect(redis.store.get(DOCUMENT_CYCLE_LAST_RUN_KEY)).toBe(ist('2026-09-23', 8, 30).toISOString());
+
+    await triggerPrimarySourceDiscovery({ now: ist('2026-09-23', 9, 0), dueStepScheduler: true, redis });
+    expect(runDocumentCycleMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('a thrown cycle leaves the slot open (never stamped)', async () => {
+    const { triggerPrimarySourceDiscovery } = await import('../../src/index.js');
+    const redis = fakeRedis();
+    runDocumentCycleMock.mockRejectedValueOnce(new Error('db gone'));
+
+    const result = await triggerPrimarySourceDiscovery({ now: ist('2026-09-23', 14, 0), dueStepScheduler: true, redis });
+
+    expect(result.status).toBe('failed');
+    expect(redis.set).not.toHaveBeenCalled();
+  });
+
+  it('with the due-step scheduler OFF (the rollback path) the cycle still runs on every wake', async () => {
+    const { triggerPrimarySourceDiscovery, DOCUMENT_CYCLE_LAST_RUN_KEY } = await import('../../src/index.js');
+    const redis = fakeRedis({ [DOCUMENT_CYCLE_LAST_RUN_KEY]: ist('2026-09-23', 8, 0).toISOString() });
+
+    await triggerPrimarySourceDiscovery({ now: ist('2026-09-23', 10, 30), dueStepScheduler: false, redis });
+
+    expect(runDocumentCycleMock).toHaveBeenCalledTimes(1);
+    expect(redis.get).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Independent-review HIGH finding: PASS 1 (discovery) finishing inside its
+   * own budget (`budgetExhausted: false`) must NOT be read as "the whole
+   * cycle finished" when a LATER pass (extraction, field-plan generation,
+   * the field-plan walk) stopped early, or LISTED work was deferred past the
+   * cap. Each case below is a class member of "a pass stopped short of the
+   * end of the wake budget"; `slotComplete: false` is what `document-cycle.ts`
+   * itself computes for each (proven independently by
+   * `document-cycle-slot-complete.test.ts`) — this file proves the CALLER
+   * (`triggerPrimarySourceDiscovery`) honors that flag rather than
+   * `budgetExhausted` alone.
+   */
+  it.each([
+    ['extraction stopped early', ['extraction']],
+    ['field-plan generation had no budget', ['field_plan_generation_no_budget']],
+    ['field-plan generation exhausted mid-loop', ['field_plan_generation_exhausted']],
+    ['the field-plan walk had no budget', ['field_plan_walk_no_budget']],
+    ['the field-plan walk exhausted mid-loop', ['field_plan_walk_exhausted']],
+    ['LISTED work was deferred past the cap', ['listed_deferred']],
+  ])('a slot is NOT stamped finished when %s, even though discovery itself did not exhaust its budget', async (_label, incompletePasses) => {
+    const { triggerPrimarySourceDiscovery, DOCUMENT_CYCLE_LAST_RUN_KEY } = await import('../../src/index.js');
+    const redis = fakeRedis({ [DOCUMENT_CYCLE_LAST_RUN_KEY]: ist('2026-09-23', 0, 0).toISOString() });
+    runDocumentCycleMock.mockResolvedValueOnce({
+      ipos: 4, skipped: 0, found: 2, notYetFiled: 0, blocked: 0, networkCalls: 4, extractionBlocked: 0, extractionFailed: 0,
+      durationMs: 1, budgetExhausted: false,
+      slotComplete: false, incompletePasses,
+    });
+
+    const result = await triggerPrimarySourceDiscovery({ now: ist('2026-09-23', 8, 0), dueStepScheduler: true, redis });
+
+    expect(result.status).toBe('ok');
+    expect(redis.set).not.toHaveBeenCalled();
+    expect(redis.store.get(DOCUMENT_CYCLE_LAST_RUN_KEY)).toBe(ist('2026-09-23', 0, 0).toISOString());
+  });
+
+  it('a slot IS stamped finished only when every pass completed (slotComplete true, incompletePasses empty)', async () => {
+    const { triggerPrimarySourceDiscovery, DOCUMENT_CYCLE_LAST_RUN_KEY } = await import('../../src/index.js');
+    const redis = fakeRedis({ [DOCUMENT_CYCLE_LAST_RUN_KEY]: ist('2026-09-23', 0, 0).toISOString() });
+    const now = ist('2026-09-23', 8, 0);
+    runDocumentCycleMock.mockResolvedValueOnce({
+      ipos: 4, skipped: 0, found: 2, notYetFiled: 0, blocked: 0, networkCalls: 4, extractionBlocked: 0, extractionFailed: 0,
+      durationMs: 1, budgetExhausted: false,
+      slotComplete: true, incompletePasses: [],
+    });
+
+    await triggerPrimarySourceDiscovery({ now, dueStepScheduler: true, redis });
+
+    expect(redis.store.get(DOCUMENT_CYCLE_LAST_RUN_KEY)).toBe(now.toISOString());
+  });
+
+  it('LOW finding: a hung Redis last-run read does not block the wake — it fails open within the read timeout', async () => {
+    const { triggerPrimarySourceDiscovery } = await import('../../src/index.js');
+    const redis = {
+      get: vi.fn(() => new Promise<string | null>(() => {})), // never resolves
+      set: vi.fn(async (_k: string, _v: string) => 'OK'),
+    };
+
+    const result = await triggerPrimarySourceDiscovery({
+      now: ist('2026-09-23', 8, 0),
+      dueStepScheduler: true,
+      redis,
+    });
+
+    // Fail-open: treated as due, the cycle ran despite the hung read.
+    expect(runDocumentCycleMock).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe('ok');
+  }, 10_000);
 });

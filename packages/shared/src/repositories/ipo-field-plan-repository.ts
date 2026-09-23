@@ -66,6 +66,7 @@ import { BaseRepository } from './base-repository';
 import type * as schema from '../db/schema';
 import { DatabaseError } from '../errors/repository-errors';
 import { FIELD_PLAN_GAP_KEY_PREFIX, stampFieldPlanGapCause } from '../utils/field-plan-config-gap';
+import { mostRecentDataJobSlotBoundary } from '../scheduler/data-job-slots';
 
 /**
  * Bind a JS `Date` to a NAIVE `timestamp` column as the instant it actually is.
@@ -143,52 +144,15 @@ function gapStampedSql() {
 }
 
 /**
- * #762 (S8): the daily discovery-slot boundaries the field-plan re-ask keys
- * its reclaim on, IN MINUTES SINCE IST MIDNIGHT. Deliberately the SAME
- * values as `DISCOVERY_SLOTS_IST_MINUTES` in
- * `scraper/src/scheduler/due-step-cycle.ts` — that module cannot be
- * imported here (scraper depends on @ipodhan/shared, never the reverse;
- * see `packages/shared/package.json` / `scraper/package.json`), so this is
- * a deliberate duplicate of the CONSTANT and its pure arithmetic, the same
- * pattern `scripts/lib/ist-day.mjs` already uses for
- * `packages/shared/src/utils/ist-day.ts` (plain Node cannot import
- * TypeScript there; here it is a one-way package dependency instead). A
- * test in this package pins these values equal to the scraper module's, so
- * the two can never drift silently.
- *
- * NOT a timer: this only ever answers "has a NEW slot begun since X", never
- * "has N minutes elapsed since X" — the OD-33 / design-doc D12 rule ("no
- * code path schedules a document fetch by elapsed time") governs this claim
- * query exactly as it governs the document-fetch scheduler that named it.
- */
-const FIELD_PLAN_SLOT_IST_MINUTES = [8 * 60 + 30, 11 * 60, 14 * 60, 17 * 60 + 30] as const;
-const IST_OFFSET_MINUTES = 5 * 60 + 30;
-
-/**
- * The most recent slot boundary at-or-before `now`, as an absolute instant
- * (a `Date`). Pure and clock-injectable — mirrors
- * `mostRecentDiscoverySlotEpochMinute` in `due-step-cycle.ts` exactly (same
- * "day index in IST, minutes-of-day in IST, walk the slots" shape), kept
- * here as its own tiny function so the SQL below can bind ONE timestamp
- * parameter rather than re-deriving the slot inside the query.
+ * #762 (S8): the claim query's reclaim keys on the data job's slot boundary
+ * ("has a NEW slot begun since X"), never on elapsed time — the OD-33 /
+ * design-doc D12 rule governs this claim query exactly as it governs the
+ * document-fetch scheduler. Item 7 S2: the slots are OD-19's 00:00, 08:00,
+ * 14:00 IST, defined ONCE in `../scheduler/data-job-slots` (the scraper's
+ * due-step gate imports the same constant), so this file keeps no copy.
  */
 export function mostRecentFieldPlanSlotBoundary(now: Date): Date {
-  const istMs = now.getTime() + IST_OFFSET_MINUTES * 60_000;
-  const dayIndex = Math.floor(istMs / 86_400_000);
-  const istDate = new Date(istMs);
-  const minutesOfDay = istDate.getUTCHours() * 60 + istDate.getUTCMinutes();
-
-  let dueSlotOfDay: number | null = null;
-  for (const slot of FIELD_PLAN_SLOT_IST_MINUTES) {
-    if (minutesOfDay >= slot) dueSlotOfDay = slot;
-  }
-
-  const epochMinute =
-    dueSlotOfDay === null
-      ? (dayIndex - 1) * 1440 + FIELD_PLAN_SLOT_IST_MINUTES[FIELD_PLAN_SLOT_IST_MINUTES.length - 1]
-      : dayIndex * 1440 + dueSlotOfDay;
-
-  return new Date(epochMinute * 60_000 - IST_OFFSET_MINUTES * 60_000);
+  return mostRecentDataJobSlotBoundary(now);
 }
 
 export type FieldPlanState =
@@ -638,9 +602,8 @@ export class IpoFieldPlanRepository extends BaseRepository {
    *   the row due — a crashed walk's claim is released the same way either way.
    *
    * Triggers 2 and 3 key on `last_attempt_at` crossing a SLOT boundary
-   * (`mostRecentFieldPlanSlotBoundary`, mirroring
-   * `scraper/src/scheduler/due-step-cycle.ts`'s
-   * `DISCOVERY_SLOTS_IST_MINUTES`), NEVER on `next_due_at` or an elapsed
+   * (`mostRecentFieldPlanSlotBoundary`, the data job's OD-19 slots from
+   * `packages/shared/src/scheduler/data-job-slots.ts`), NEVER on `next_due_at` or an elapsed
    * interval — `next_due_at` is written by `recordOutcome` using
    * `fieldPlanBackoffMinutes`, a TIMED doubling backoff the design doc
    * explicitly marks for deletion (`docs/design/data-sourcing-pull-model.md:971`,

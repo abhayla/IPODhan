@@ -247,9 +247,22 @@ fi
 # with two python processes at ~100% CPU each nginx/Next got starved long
 # enough for Cloudflare to return 522s. Staging's cron is offset to :15/:45
 # so at most one slot's extractor is ever running at a time.
+#
+# Item 7 S2 (spec section 2.1, OD-19): the 30-minute data wake STAYS. The data
+# job itself (discovery, document download + extraction, the pull walk) runs
+# only at 00:00, 08:00 and 14:00 IST - the due gate in the scraper decides that
+# (packages/shared/src/scheduler/data-job-slots.ts), and a wake outside a slot
+# logs "data job not due" and does none of it. The wake is kept because it
+# also carries work that is not the data job: the 22:00 IST closed-IPO job, the
+# status transitions, and the continuation of a slot whose document cycle ran
+# out of its wake budget. Slot-aligned lines would silently drop all three.
+# So prod's first wake at-or-after each slot is 00:00/08:00/14:00 IST and
+# staging's (W-178 +15 min) is 00:15/08:15/14:15 IST.
 if [ "$SLOT" = "prod" ]; then
+  # IST crontab: every :00 and :30, any hour, any day.
   SCRAPER_CRON="${SCRAPER_CRON_OVERRIDE:-*/30 * * * *}"
 else
+  # IST crontab: every :15 and :45, any hour, any day (W-178 offset).
   SCRAPER_CRON="${SCRAPER_CRON_OVERRIDE:-15,45 * * * *}"
 fi
 PROBE_PORT="${DEPLOY_PROBE_PORT:-3999}"
