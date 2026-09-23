@@ -125,6 +125,7 @@ it by assuming.
 | OD-70 | *"Separate event"* (S5, chosen with real rows: OFS 19, TENDER 16, RIGHTS 8, BUYBACK 1 on production). **A listed company's later event (rights, buyback, tender or open offer, OFS) is its own row of its own type and is never matched to the company's IPO row; an SME-to-mainboard migration (e.g. Mangalam Worldwide, effective 2025-09-18) creates NO row, because it moves listed shares and is not an offering** | 2026-09-23 | §2.3.3.2 | the separate-event rule and the no-row-for-migration rule are stated |
 | OD-71 | *"Polymatech filed for an IPO last year but their IPO was rejected. If they file for that IPO again... we should create a new row because everything is different"*, then, shown OD-35's text: *"Keep OD-35 (same row)"* for a draft SEBI RETURNS and the company refiles. **Confirms OD-35 unchanged: a withdrawn draft, or one lapsed twelve months after SEBI's observations with no RHP, starts a NEW row (Polymatech, boAt / Imagine Marketing are the named cases); a draft SEBI returned and the company refiled without withdrawing updates the SAME row** | 2026-09-23 | §2.3.3.2 | OD-35's lapsed-draft rule stands and the returned-then-refiled case is stated as same-row |
 | OD-72 | *"Why the scraper will scrape the same IPO multiple times?... just because the field data is old, that doesn't mean that the data is stale... It can be correct also"* — shown that the 2026-09-08 time-threshold marker conflicts with OD-65, the owner chose *"Facts, no marker"*. **The time-based stale marker is retired.** A field shows only true facts: its source and when it was read (*"From the offer document, read 21 Sep 2026"*); a live bidding figure shows the time of the figure (*"Subscription as at 10:30 PM, 22 Sep"*). A scheduled live refresh that misses its OD-19 slot raises an ADMIN alert naming the IPO and the slot, never a label on the public page. **Kept, because it states a fact rather than an age:** the corrigendum marker of §2.5 (a correction notice has been filed for this field). Supersedes the 2026-09-08 staleness decision in §2.6 and §2.11 | 2026-09-23 | §2.5, §2.6, §2.11 | no section marks a field stale by age; §2.11's line states source and read date; the missed-slot admin alert is stated |
+| OD-73 | *"Rank decides"* — chosen 2026-09-23 when shown that OD-65 says a settled field is never reopened but never says WHEN a field is settled, with seven days of staging data: 17 IPOs' price bands and dates rewritten in 24 h with IDENTICAL values (Adroit Industries 126 -> 126), and one real change (Vivekanand Cotspin issue size BSE Rs 19.2 cr -> CHITTORGARH Rs 22.2 cr). **A field is settled once the best-ranked source seen so far (§1.11 ranking; the offer document, or the exchange for exchange-only fields) has set it. After that only a HIGHER-ranked source may change it; an equal- or lower-ranked website that later differs is ignored for the page (OD-65) and recorded in the admin conflicts list (OD-61, OD-63). An identical incoming value is never written and never re-stamps provenance. Live figures — status, subscription, listing-day prices — are never settled and follow OD-19's refresh slots. An exchange postponement updates the same row (OD-35), because the exchange outranks websites for dates.** | 2026-09-23 | §3.2 | the settled rule, the higher-rank exception, the identical-value no-op and the live-figure exclusion are stated, with the Adroit and Vivekanand cases |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -2265,6 +2266,19 @@ field on a phase-1 IPO is checked against its rank-2 source at least weekly, and
 standing conflict counts — `leadManagers`, `faceValue`, `registrar` — every slot.
 
 ### 3.2 What happens on a disagreement
+
+**When a field is settled (OD-73, 2026-09-23).** OD-65 closes a settled field to later website
+changes; this is what "settled" means. A field is settled once the best-ranked source seen so far has
+set it. After that:
+
+| Incoming | Rule | Real case (staging, week to 2026-09-23) |
+|---|---|---|
+| the same value again | no write, no provenance re-stamp | Adroit Industries price band 126 -> 126; 17 IPOs rewritten in 24 h, none changed |
+| a different value from a HIGHER-ranked source | replaces it | Vivekanand Cotspin issue size BSE Rs 19.2 cr -> CHITTORGARH Rs 22.2 cr (the only real change that week) |
+| a different value from an equal or lower-ranked source | ignored for the page; recorded in the admin conflicts list | none that week |
+| a new date from the exchange (postponement) | updates the same row (OD-35) | none that week |
+| status, subscription, listing-day prices | never settled; OD-19 refresh slots | refreshed every slot |
+
 
 ```
 1. re-fetch the winning document's bytes and re-hash them

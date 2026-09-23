@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-23T03:47:01.914Z",
+  "generated_at": "2026-09-23T04:17:01.774Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 177,
+    "live": 182,
     "retired": 22
   },
-  "next_id": 200,
+  "next_id": 205,
   "rules": [
     {
       "id": "R-151",
@@ -1014,6 +1014,51 @@
       "kind": "prose",
       "text": "But a conflict row is only written when a second source arrives and disagrees. Under §2.4 a supplied field is not re-asked, so no second value is produced, so no conflict is written — the first draft's re-read loop could never have fired on exactly the fields it was meant to protect.",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-200",
+      "hash": "cf18d6cf7f5a",
+      "section": "3.2 What happens on a disagreement",
+      "kind": "table",
+      "text": "the same value again — no write, no provenance re-stamp — Adroit Industries price band 126 -> 126; 17 IPOs rewritten in 24 h, none changed",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-201",
+      "hash": "cfc17276d079",
+      "section": "3.2 What happens on a disagreement",
+      "kind": "table",
+      "text": "a different value from a HIGHER-ranked source — replaces it — Vivekanand Cotspin issue size BSE Rs 19.2 cr -> CHITTORGARH Rs 22.2 cr (the only real change that week)",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-202",
+      "hash": "87c2c96780e3",
+      "section": "3.2 What happens on a disagreement",
+      "kind": "table",
+      "text": "a different value from an equal or lower-ranked source — ignored for the page; recorded in the admin conflicts list — none that week",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-203",
+      "hash": "257fef5b7b43",
+      "section": "3.2 What happens on a disagreement",
+      "kind": "table",
+      "text": "a new date from the exchange (postponement) — updates the same row (OD-35) — none that week",
+      "first_seen": "2026-09-23",
+      "retired": false
+    },
+    {
+      "id": "R-204",
+      "hash": "409665a8160f",
+      "section": "3.2 What happens on a disagreement",
+      "kind": "table",
+      "text": "status, subscription, listing-day prices — never settled; OD-19 refresh slots — refreshed every slot",
+      "first_seen": "2026-09-23",
       "retired": false
     },
     {
