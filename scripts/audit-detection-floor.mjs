@@ -1533,6 +1533,45 @@ async function checkIdentity() {
       : `0 undecided holds (${heldRows.length} hold/override row(s) in 30 days)`);
 }
 
+// i_source_key_conflict (OD-85, docs/design/data-sourcing-pull-model.md §2.3.3.2 "Source record keys"):
+// one IPO holding two ACTIVE keys of the same source and type (a supersede that never happened, or a
+// merge that brought two relaunch numbers together), and keys DISPUTED by the CIN/ISIN re-check in the
+// last 30 days — each is a wrong or unresolved bind a human has to read. Keys hitting two rows cannot
+// exist in the table (plain unique index); a record whose keys hit two rows is refused at read time.
+async function checkSourceKeyConflicts() {
+  const DESC = 'no IPO holds two ACTIVE source keys of one source/type, and no key was DISPUTED in the last 30 days (OD-85)';
+  let doubleActive;
+  let disputed;
+  try {
+    doubleActive = await q(
+      `SELECT i.slug, k.source, k.key_type::text AS "keyType", string_agg(k.key_value, ',' ORDER BY k.key_value) AS "values"
+         FROM ipo_source_keys k JOIN ipos i ON i.id = k.ipo_id
+        WHERE k.state = 'ACTIVE'
+        GROUP BY i.slug, k.source, k.key_type HAVING count(*) > 1`
+    );
+    disputed = await q(
+      `SELECT i.slug, k.source, k.key_type::text AS "keyType", k.key_value AS "value", k.state_reason AS reason
+         FROM ipo_source_keys k JOIN ipos i ON i.id = k.ipo_id
+        WHERE k.state = 'DISPUTED' AND k.state_changed_at > now() - interval '30 days'`
+    );
+  } catch (e) {
+    if (e.code === '42P01') {
+      record('i_source_key_conflict', DESC, 'PASS', 'ipo_source_keys table does not exist on this database - migration 0053 not applied here yet.');
+      return;
+    }
+    record('i_source_key_conflict', DESC, 'UNVERIFIABLE', `ipo_source_keys not readable: ${e.message}`);
+    return;
+  }
+  for (const r of doubleActive) notify('i_source_key_conflict', 'P2', r.slug, 'Two ACTIVE source keys of one source (OD-85)', `${r.slug}: ${r.source} ${r.keyType} ${r.values}`);
+  for (const r of disputed) notify('i_source_key_conflict', 'P2', r.slug, 'Source key DISPUTED by the CIN/ISIN re-check (OD-85)', `${r.slug}: ${r.source} ${r.keyType} ${r.value} - ${r.reason}`);
+  const offenders = [
+    ...doubleActive.map((r) => `${r.slug} two ACTIVE ${r.source} ${r.keyType} (${r.values})`),
+    ...disputed.map((r) => `${r.slug} DISPUTED ${r.source} ${r.keyType} ${r.value}`),
+  ];
+  record('i_source_key_conflict', DESC, offenders.length === 0 ? 'PASS' : 'FAIL',
+    offenders.length ? offenders.slice(0, MAX_OFFENDERS).join('; ') : '0 double-ACTIVE, 0 DISPUTED in 30 days');
+}
+
 // ---- (j): assorted P3 gates ----------------------------------------------------
 async function checkJ() {
   // sector population
@@ -2803,6 +2842,7 @@ async function main() {
   await checkH();
   checkI();
   await checkIdentity();
+  await checkSourceKeyConflicts();
   await checkSettledFieldRewrites();
   await checkClosedIpoDoneWithoutWalk();
   await checkK();
