@@ -64,6 +64,7 @@ import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/fie
 import { createFieldSourceOverridesReader } from '../config/field-source-overrides-reader.js';
 import {
   buildFieldPlanWalkFetchers,
+  buildFieldPlanGapKey,
   buildFieldPlanWalkOrchestrator,
   buildFieldPlanWalkWitnessVerdictWriter,
   fieldPlanWalkHasFetchers,
@@ -78,6 +79,7 @@ import {
   type AutoPersistDeps,
   type SpawnBudget,
   FILING_EXTRACTION_LOCK_TTL_MS,
+  EXTRACTOR_VERSION,
 } from './filing-auto-persist.js';
 import { DistributedLock } from '../utils/distributed-lock.js';
 import {
@@ -1876,6 +1878,8 @@ export async function runDocumentCycle(
         // IPO's walk.
         const fieldPlanOrchestrator = buildFieldPlanWalkOrchestrator();
         const fieldPlanFetchers = buildFieldPlanWalkFetchers();
+        // #884: one gap key per cycle — a gap row is re-offered only when it changes.
+        const fieldPlanGapKey = buildFieldPlanGapKey({ fetchers: fieldPlanFetchers, extractorVersion: EXTRACTOR_VERSION });
         // S3b-2: hoisted once per cycle, same convention as the two builders above — a no-op
         // unless FEATURE_FLAGS.ENABLE_VERDICT_WRITER is true (field-plan-walk.ts's own guard).
         const fieldPlanWitnessVerdictWriter = buildFieldPlanWalkWitnessVerdictWriter();
@@ -1894,6 +1898,7 @@ export async function runDocumentCycle(
                 fieldPlanRepository: walkRepository as never,
                 orchestrator: fieldPlanOrchestrator,
                 sourceFetchers: fieldPlanFetchers,
+                gapKey: fieldPlanGapKey,
                 // Review round 2, RCA1: the walk's write path needs the
                 // existing row's identity to write through `preResolvedIPO`
                 // rather than falling into consolidatedUpsertIPO's CREATE

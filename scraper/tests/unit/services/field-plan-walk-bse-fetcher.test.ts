@@ -85,6 +85,7 @@ describe('BSE fetcher — capability + serveable-field gating', () => {
       outcome: 'CHECK_FAILED',
       reason: 'BSE has no mapped field for ipo_details.freshIssue yet (coverage gap, not a manifest no)',
       transient: true,
+      gap: 'NO_MAPPING',
     });
     // Never fetched the board for a field it structurally cannot serve.
     expect(fetchBSEBoardMock).not.toHaveBeenCalled();

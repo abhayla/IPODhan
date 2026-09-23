@@ -22,6 +22,7 @@ import { buildFieldPlanWalkFetchers } from '../../../src/services/field-plan-wal
 import { BSE_SERVEABLE_FIELDS } from '../../../src/services/field-plan-walk-bse-fetcher.js';
 import { NSE_SERVEABLE_FIELDS } from '../../../src/services/field-plan-walk-nse-fetcher.js';
 import { CHITTORGARH_SERVEABLE_FIELDS } from '../../../src/services/field-plan-walk-chittorgarh-fetcher.js';
+import { DOC_READABLE_TABLES } from '../../../src/services/field-plan-walk-doc-fetcher.js';
 import { listManifestRankCoverageGaps } from '../../../src/config/manifest-rank-coverage-gaps.js';
 
 const SCRAPER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -33,7 +34,7 @@ function currentGaps(manifest = MANIFEST, registered = Object.keys(buildFieldPla
     BSE: BSE_SERVEABLE_FIELDS,
     NSE: new Set(NSE_SERVEABLE_FIELDS.keys()),
     CHITTORGARH: CHITTORGARH_SERVEABLE_FIELDS,
-  });
+  }, DOC_READABLE_TABLES);
 }
 
 describe('manifest rank coverage gaps (#884, shrink-only baseline)', () => {
@@ -53,7 +54,7 @@ describe('manifest rank coverage gaps (#884, shrink-only baseline)', () => {
     expect(stale, 'remove these fixed gaps from manifest-rank-coverage-gaps.baseline.json').toEqual([]);
   });
 
-  it('detects each gap kind (mutation: a synthetic manifest must produce all three)', () => {
+  it('detects each gap kind (mutation: a synthetic manifest must produce all four)', () => {
     const synthetic = {
       fields: {
         'ipos.isin': {
@@ -66,9 +67,15 @@ describe('manifest rank coverage gaps (#884, shrink-only baseline)', () => {
           rank: { MAINBOARD: ['DOC', 'CHITTORGARH', 'BSE'] },
           capability: { DOC: { capable: true }, CHITTORGARH: { capable: true }, BSE: { capable: false } },
         },
+        'financial_statements.revenue': {
+          documentType: 'RHP',
+          rank: { MAINBOARD: ['DOC'] },
+          capability: { DOC: { capable: true } },
+        },
       },
     };
     expect(currentGaps(synthetic as never, ['DOC', 'CHITTORGARH', 'BSE', 'NSE'])).toEqual([
+      'financial_statements.revenue DOC NO_COLUMN_READ',
       'ipos.isin CHITTORGARH NO_MAPPING',
       'ipos.isin DOC NO_DOCTYPE',
       'ipos.isin INVESTORGAIN_GMP NO_FETCHER',

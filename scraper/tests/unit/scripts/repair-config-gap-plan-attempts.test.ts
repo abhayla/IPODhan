@@ -34,12 +34,13 @@ describe('repair-config-gap-plan-attempts decideReset (#884)', () => {
     ['DOC no documentType', 'rank1:DOC:CHECK_FAILED:no documentType in manifest for this field'],
     ['no fetcher', 'rank1:NSE:NO_FETCHER_REGISTERED'],
     ['DOC column read', 'rank1:DOC:CHECK_FAILED:DOC column read not implemented for ipo_financials'],
+    // review round 1 MAJOR-2: no provenance on a COMPLETED document is an extractor gap
+    ['document provenance (extractor gap)', 'rank1:DOC:CHECK_FAILED:no document provenance for isin on RHP (extractor gap or field absent) — not retired'],
   ])('RESETS a capped row whose cause is a config gap (%s)', (_label, cause) => {
     expect(decideReset(row({ cause })).reset).toBe(true);
   });
 
   it.each([
-    ['document provenance (field may be absent)', 'rank1:DOC:CHECK_FAILED:no document provenance for isin on RHP (extractor gap or field absent) — not retired'],
     ['consolidator returned nothing', 'no field result returned'],
     ['network', 'rank1:NSE:THROWN:socket hang up'],
     ['null cause', null],

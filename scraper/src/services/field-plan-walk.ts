@@ -64,7 +64,11 @@ import {
 import { resolveIpoTypeKey, type PlanIpo } from './field-plan-generator.js';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
-import { isFieldPlanConfigGapCause } from '@ipodhan/shared/utils/field-plan-config-gap';
+import {
+  fieldPlanGapCodeOf,
+  fieldPlanGapToken,
+  type FieldPlanGapCode,
+} from '@ipodhan/shared/utils/field-plan-config-gap';
 import { computeVerdict, type Witness, type Verdict } from './witness-verdict.js';
 
 /**
@@ -154,6 +158,12 @@ export type FieldFetcherAnswer =
        * thought about it gets the recoverable error.
        */
       transient?: boolean;
+      /**
+       * #884 review round 1 (MINOR-3): set when this failure is a GAP in our
+       * own configuration or code (closed list, `FIELD_PLAN_GAP_CODES`), never
+       * a fact about the field. The walk classifies on THIS, never on `reason`.
+       */
+      gap?: FieldPlanGapCode;
     };
 
 export type FieldFetcher = (
@@ -199,11 +209,13 @@ export interface RecordOutcomeCallParams {
   reasonCode?: string | null;
   /** S4 (#779): the raw cause the classification was derived from. */
   cause?: string | null;
+  /** #884: set only when every rank failed with a structured gap code (see RecordOutcomeParams.gapKey). */
+  gapKey?: string | null;
 }
 
 /** The slice of item 5's repository the walk uses. */
 export interface FieldPlanWalkRepository {
-  claimNextDueField(params: { ipoId?: string; excludeIds?: string[] }): Promise<any | null>;
+  claimNextDueField(params: { ipoId?: string; excludeIds?: string[]; gapKey?: string }): Promise<any | null>;
   recordOutcome(
     params: RecordOutcomeCallParams
   ): Promise<{ written: boolean; reason?: string; skipped?: boolean }>;
@@ -256,6 +268,14 @@ export interface FieldPlanWalkDeps {
   orchestrator: FieldPlanWalkOrchestrator;
   /** One fetcher per rank-eligible source name, keyed as the manifest names it. */
   sourceFetchers: Record<string, FieldFetcher>;
+  /**
+   * #884 review round 1: `buildFieldPlanGapKey()` for THIS cycle (manifest
+   * version + fetcher coverage + extractor version). A row whose every rank
+   * failed with a gap code is recorded under it and not re-offered until it
+   * changes. Omitted, gap failures are charged as ordinary attempts (the
+   * bounded pre-#884 behaviour) — never an unbounded re-ask.
+   */
+  gapKey?: string;
   protectionFilter?: ProtectionFilter;
   /**
    * Review round 2, RCA1: the walk's own write path needs the SAME existing
@@ -514,6 +534,7 @@ export async function walkFieldPlanForIPO(
     const plan = await deps.fieldPlanRepository.claimNextDueField({
       ipoId,
       excludeIds: Array.from(settledThisWalk),
+      ...(deps.gapKey ? { gapKey: deps.gapKey } : {}),
     });
     if (!plan) {
       result.stoppedReason = 'NO_DUE_FIELDS';
@@ -707,7 +728,7 @@ async function attemptOneField(
       // source answering "this field is not here". Registering the adapter
       // must be enough to make the field askable again -- retiring it
       // terminally would mean a config gap silently outlived its own fix.
-      failures.push(`rank${rank}:${source}:NO_FETCHER_REGISTERED`);
+      failures.push(`rank${rank}:${source}:NO_FETCHER_REGISTERED ${fieldPlanGapToken('NO_FETCHER')}`);
       sawTransientFailure = true;
       continue;
     }
@@ -740,7 +761,11 @@ async function attemptOneField(
       // Tagged `:CHECK_FAILED:` (definitive suffix unchanged) so a transient
       // instance is unambiguously distinguishable from a thrown error above
       // (#785) — both otherwise share the same `rank<N>:<source>:...` shape.
-      failures.push(`rank${rank}:${source}:CHECK_FAILED:${answer.reason}${isTransient ? '' : ' (definitive)'}`);
+      failures.push(
+        `rank${rank}:${source}:CHECK_FAILED:${answer.reason}${isTransient ? '' : ' (definitive)'}${
+          answer.gap ? ` ${fieldPlanGapToken(answer.gap)}` : ''
+        }`
+      );
       if (isTransient) sawTransientFailure = true;
       continue;
     }
@@ -973,6 +998,7 @@ async function attemptOneField(
       state: 'CHECK_FAILED',
       reasonCode: classified?.reasonCode ?? null,
       cause: classified?.cause ?? null,
+      ...(classified?.allGaps && deps.gapKey ? { gapKey: deps.gapKey } : {}),
     });
   }
 
@@ -1477,21 +1503,21 @@ export function classifyFailure(failures: readonly string[]): { reasonCode: Fiel
 }
 
 /**
- * #884: the cause a transient CHECK_FAILED row records. The repository charges
- * an attempt for every CHECK_FAILED EXCEPT one whose recorded cause is a
- * configuration gap (`isFieldPlanConfigGapCause`), so that cause may only be
- * recorded when EVERY rank's failure was a config gap. `classifyFailure` alone
- * keeps the LAST failure, which let a trailing config gap (rank 3: no fetcher)
- * mask a real failure on rank 1 — the row would then never be charged for the
- * real one and a genuinely broken field could churn. So: classify the most
- * recent GENUINE failure when there is one, and fall back to the config gaps
- * only when nothing else failed.
+ * #884: the cause a transient CHECK_FAILED row records, and whether it was a
+ * GAP. `allGaps` is true only when EVERY rank's failure carries a structured
+ * gap token (`[gap:<code>]`, written by the walk from the fetcher's `gap`
+ * field or its own no-fetcher branch) — so a genuine failure on any rank is
+ * still charged. `classifyFailure` alone keeps the LAST failure, which let a
+ * trailing gap (rank 3: no fetcher) mask a real failure on rank 1; so the
+ * most recent GENUINE failure is classified when there is one.
  */
 export function classifyWalkFailures(
   failures: readonly string[]
-): { reasonCode: FieldPlanReasonCode; cause: string } | null {
-  const genuine = failures.filter((f) => !isFieldPlanConfigGapCause(f));
-  return classifyFailure(genuine.length > 0 ? genuine : failures);
+): { reasonCode: FieldPlanReasonCode; cause: string; allGaps: boolean } | null {
+  const genuine = failures.filter((f) => fieldPlanGapCodeOf(f) === null);
+  const classified = classifyFailure(genuine.length > 0 ? genuine : failures);
+  if (!classified) return null;
+  return { ...classified, allGaps: genuine.length === 0 };
 }
 
 /**

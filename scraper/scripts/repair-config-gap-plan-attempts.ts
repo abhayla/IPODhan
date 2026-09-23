@@ -9,15 +9,23 @@
  * (6,220 rows across 72 IPOs on staging, 2026-09-23). The code fix stops new
  * rows accruing; this tool repairs the rows already stranded.
  *
- * Selection (one definition, the shared `isFieldPlanConfigGapCause`):
+ * Selection (one definition, the shared LEGACY classifier
+ * `isFieldPlanConfigGapCause` — pre-stamp rows only carry free text, so text
+ * is all there is to classify them by; the live path uses structured codes):
  *   state = 'CHECK_FAILED' AND attempts >= FIELD_PLAN_RECLAIM_MAX_ATTEMPTS
- *   AND the recorded cause is a configuration gap.
- * A row whose cause is a real failure (e.g. `no document provenance …`,
- * `no field result returned`, a THROWN socket error) is HELD and listed.
+ *   AND the recorded cause is a configuration gap OR an extractor gap
+ *   (`no document provenance … (extractor gap or field absent)` on a COMPLETED
+ *   document — review round 1, MAJOR-2: field-plan-walk-doc-fetcher.ts says
+ *   that absence is "NEVER evidence the document does not print").
+ * A row whose cause is a real failure (`no field result returned`, a THROWN
+ * socket error, a definitive extraction failure) is HELD and listed.
  *
  * Writes only `attempts = 0` (and `updated_at`), guarded on the row still
- * holding the exact state/attempts/cause it was read with. The ledger carries
- * the before-image; `--undo <ledger.json>` restores it for rows still at 0.
+ * holding the exact state/attempts/cause it was read with. An applied ledger
+ * is written AFTER the writes and lists exactly the rows the UPDATE changed
+ * (review round 1, MINOR-4); `--undo <ledger.json>` restores only those, and
+ * only while each still holds the post-image (CHECK_FAILED, attempts 0, the
+ * same cause) — a row re-asked since the repair is left as it is.
  *
  * Usage (from scraper/):
  *   npx tsx scripts/repair-config-gap-plan-attempts.ts --expect-db ipodhan_test            # dry run
@@ -65,9 +73,9 @@ export function decideReset(row: CappedPlanRow, maxAttempts: number = FIELD_PLAN
     return { row, reset: false, reason: `attempts ${row.attempts} is below the cap ${maxAttempts} — still reclaimable` };
   }
   if (!isFieldPlanConfigGapCause(row.cause)) {
-    return { row, reset: false, reason: `cause is not a configuration gap (${row.cause ?? 'null'}) — a real failure keeps its count` };
+    return { row, reset: false, reason: `cause is not a configuration or extractor gap (${row.cause ?? 'null'}) — a real failure keeps its count` };
   }
-  return { row, reset: true, reason: 'CHECK_FAILED at the cap, cause is a configuration gap' };
+  return { row, reset: true, reason: 'CHECK_FAILED at the cap, cause is a configuration or extractor gap' };
 }
 
 /** The cause with its field key stripped, so a breakdown groups by KIND of gap, not by field. */
@@ -149,7 +157,7 @@ async function runUndo(cli: Cli, actual: string, ledgerPath: string): Promise<vo
     tool: string;
     database: string;
     apply: boolean;
-    reset: Array<{ planRowId: string; before: { attempts: number } }>;
+    reset: Array<{ planRowId: string; before: { attempts: number; cause: string | null } }>;
   };
   if (ledger.tool !== TOOL) throw new Error(`--undo ledger was written by "${ledger.tool}", not ${TOOL}`);
   if (ledger.database !== actual) throw new Error(`--undo ledger is for "${ledger.database}", this pool is "${actual}"`);
@@ -163,7 +171,10 @@ async function runUndo(cli: Cli, actual: string, ledgerPath: string): Promise<vo
   for (const r of ledger.reset) {
     const res = await (db as any).execute(sql`
       UPDATE ipo_field_plan SET attempts = ${r.before.attempts}, updated_at = now()
-       WHERE id = ${r.planRowId}::uuid AND attempts = 0
+       WHERE id = ${r.planRowId}::uuid
+         AND state = 'CHECK_FAILED'
+         AND attempts = 0
+         AND cause IS NOT DISTINCT FROM ${r.before.cause}
       RETURNING id
     `);
     restored += rowsOf(res).length;
@@ -201,34 +212,39 @@ async function main(): Promise<void> {
     console.log(`  ${g.reset ? 'RESET' : 'HOLD '} | ${g.reasonCode} | ${g.kind} | ${g.rows} | ${g.ipos}`);
   }
 
-  const ledgerPath = writeLedgerFile(
-    path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${cli.apply ? 'applied' : 'dryrun'}-${Date.now()}.json`),
-    {
-      tool: TOOL,
-      database: actual,
-      apply: cli.apply,
-      at: new Date().toISOString(),
-      maxAttempts: FIELD_PLAN_RECLAIM_MAX_ATTEMPTS,
-      breakdown: groups,
-      reset: reset.map((d) => ({
-        planRowId: d.row.id,
-        ipoId: d.row.ipoId,
-        ipoSlug: d.row.ipoSlug,
-        tableName: d.row.tableName,
-        rowKey: d.row.rowKey,
-        fieldName: d.row.fieldName,
-        before: { state: d.row.state, attempts: d.row.attempts, reasonCode: d.row.reasonCode, cause: d.row.cause },
-      })),
-      held: held.map((d) => ({ planRowId: d.row.id, ipoSlug: d.row.ipoSlug, fieldName: d.row.fieldName, reason: d.reason })),
-    }
-  );
-  console.log(`${TOOL}: ledger (before-image) written to ${ledgerPath}`);
+  const ledgerFor = (applied: boolean, rows: readonly ResetDecision[]) =>
+    writeLedgerFile(
+      path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${applied ? 'applied' : 'dryrun'}-${Date.now()}.json`),
+      {
+        tool: TOOL,
+        database: actual,
+        apply: applied,
+        at: new Date().toISOString(),
+        maxAttempts: FIELD_PLAN_RECLAIM_MAX_ATTEMPTS,
+        breakdown: groups,
+        planned: reset.length,
+        // Dry run: the rows that WOULD be reset. Applied: EXACTLY the rows the
+        // guarded UPDATE changed — the only rows --undo may touch (MINOR-4).
+        reset: rows.map((d) => ({
+          planRowId: d.row.id,
+          ipoId: d.row.ipoId,
+          ipoSlug: d.row.ipoSlug,
+          tableName: d.row.tableName,
+          rowKey: d.row.rowKey,
+          fieldName: d.row.fieldName,
+          before: { state: d.row.state, attempts: d.row.attempts, reasonCode: d.row.reasonCode, cause: d.row.cause },
+        })),
+        held: held.map((d) => ({ planRowId: d.row.id, ipoSlug: d.row.ipoSlug, fieldName: d.row.fieldName, reason: d.reason })),
+      }
+    );
 
   if (!cli.apply) {
+    const ledgerPath = ledgerFor(false, reset);
+    console.log(`${TOOL}: ledger (dry run) written to ${ledgerPath}`);
     console.log(`${TOOL}: DRY RUN — nothing was written. Re-run with --apply to reset the ${reset.length} listed above.`);
     return;
   }
-  let written = 0;
+  const changed: ResetDecision[] = [];
   for (const d of reset) {
     const res = await (db as any).execute(sql`
       UPDATE ipo_field_plan SET attempts = 0, updated_at = now()
@@ -238,9 +254,11 @@ async function main(): Promise<void> {
          AND cause IS NOT DISTINCT FROM ${d.row.cause}
       RETURNING id
     `);
-    written += rowsOf(res).length;
+    if (rowsOf(res).length > 0) changed.push(d);
   }
-  console.log(`${TOOL}: reset attempts to 0 on ${written} of ${reset.length} rows (a row that changed since the read is skipped). Undo: --undo ${ledgerPath} --apply`);
+  const ledgerPath = ledgerFor(true, changed);
+  console.log(`${TOOL}: reset attempts to 0 on ${changed.length} of ${reset.length} rows (a row that changed since the read is skipped).`);
+  console.log(`${TOOL}: ledger (before-image of exactly the ${changed.length} changed rows) written to ${ledgerPath}. Undo: --undo ${ledgerPath} --apply`);
 }
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;

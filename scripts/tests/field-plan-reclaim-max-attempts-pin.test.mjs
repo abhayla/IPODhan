@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
   PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS,
+  FIELD_PLAN_GAP_KEY_PREFIX,
   FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS,
   isConfigGapAtCapRow,
 } from '../lib/field-plan-slot.mjs';
@@ -115,8 +116,17 @@ test('(#884) isConfigGapAtCapRow flags a capped config gap and nothing else', ()
   assert.equal(isConfigGapAtCapRow({ state: 'CHECK_FAILED', attempts: 4, cause: gap }), false);
   assert.equal(isConfigGapAtCapRow({ state: 'NOT_AVAILABLE_YET', attempts: 12, cause: gap }), false);
   assert.equal(
+    // review round 1 MAJOR-2: an extractor gap is a gap, not a real failure.
     isConfigGapAtCapRow({ state: 'CHECK_FAILED', attempts: 5, cause: 'rank1:DOC:CHECK_FAILED:no document provenance for isin on RHP (extractor gap or field absent) — not retired' }),
-    false
+    true
   );
+  assert.equal(isConfigGapAtCapRow({ state: 'CHECK_FAILED', attempts: 5, cause: '[gap-key:m7|fabc|xv1] rank1:DOC:CHECK_FAILED:x [gap:NO_MAPPING]' }), true);
+  assert.equal(isConfigGapAtCapRow({ state: 'CHECK_FAILED', attempts: 5, cause: 'rank1:NSE:THROWN:ETIMEDOUT' }), false);
   assert.equal(isConfigGapAtCapRow({ state: 'CHECK_FAILED', attempts: 5, cause: null }), false);
+});
+
+test('(#884 pin) FIELD_PLAN_GAP_KEY_PREFIX (TS) equals the detection floor mirror', () => {
+  const m = readFileSync(CONFIG_GAP_TS_PATH, 'utf8').match(/export const FIELD_PLAN_GAP_KEY_PREFIX = '([^']*)';/);
+  assert.ok(m, 'FIELD_PLAN_GAP_KEY_PREFIX not found in the real TS source');
+  assert.equal(FIELD_PLAN_GAP_KEY_PREFIX, m[1]);
 });

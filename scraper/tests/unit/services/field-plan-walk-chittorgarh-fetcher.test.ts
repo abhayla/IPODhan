@@ -56,6 +56,7 @@ describe('CHITTORGARH fetcher — capability + serveable-field gating', () => {
       outcome: 'CHECK_FAILED',
       reason: 'CHITTORGARH has no mapped field for financial_statements.revenue yet (coverage gap, not a manifest no)',
       transient: true,
+      gap: 'NO_MAPPING',
     });
     // Never fetched the list for a field it structurally cannot serve.
     expect(scrapeChittorgarhIPOsMock).not.toHaveBeenCalled();

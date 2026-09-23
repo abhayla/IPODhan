@@ -106,6 +106,7 @@ export function buildChittorgarhFetcher(
       return {
         outcome: 'CHECK_FAILED',
         reason: `CHITTORGARH has no mapped field for ${key} yet (coverage gap, not a manifest no)`,
+        gap: 'NO_MAPPING',
         transient: true,
       };
     }
@@ -145,6 +146,7 @@ export function buildChittorgarhFetcher(
     return {
       outcome: 'CHECK_FAILED',
       reason: `CHITTORGARH has no mapped field for ${key} yet (coverage gap, not a manifest no)`,
+        gap: 'NO_MAPPING',
       transient: true,
     };
   };

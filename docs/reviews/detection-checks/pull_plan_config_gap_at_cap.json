@@ -1,8 +1,8 @@
 {
   "id": "pull_plan_config_gap_at_cap",
   "designId": "PULL-PLAN-CONFIG-GAP-AT-CAP",
-  "findingClass": "an ipo_field_plan row retired at the attempts cap (FIELD_PLAN_RECLAIM_MAX_ATTEMPTS) by a CONFIGURATION cause — a manifest rank naming a source with no field mapping, a DOC rank with no documentType, or a source with no registered fetcher — rather than by a real failure (#884: 6,220 staging rows across 72 IPOs on 2026-09-23)",
-  "whatItAsks": "no CHECK_FAILED plan row at attempts >= the cap has a recorded cause that is a configuration gap (isConfigGapAtCapRow, the pinned mirror of the repository's FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS)",
+  "findingClass": "an ipo_field_plan row retired at the attempts cap (FIELD_PLAN_RECLAIM_MAX_ATTEMPTS) by a GAP — configuration (a manifest rank naming a source with no field mapping, a DOC rank with no documentType, a source with no registered fetcher, a DOC column read not implemented) or extractor (no document provenance on a COMPLETED document) — rather than by a real failure (#884: 6,220 staging rows across 72 IPOs on 2026-09-23)",
+  "whatItAsks": "no CHECK_FAILED plan row at attempts >= the cap has a gap cause: a gap-key-stamped cause ([gap-key:...]) or a legacy free-text gap marker (isConfigGapAtCapRow, the pinned mirror of FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS / FIELD_PLAN_GAP_KEY_PREFIX)",
   "healthy": "0",
   "alarmsWhen": "any non-zero, named by IPO slug and table.field",
   "scope": "every IPO, every status and segment, prod + staging slots; state = CHECK_FAILED, attempts >= cap",
@@ -11,5 +11,5 @@
   "status": "built (#884)",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §2.3 (manifest_version reconciliation), OD-62 COVERAGE_GAP",
   "section": "checks",
-  "note": "Companion CI half: scraper/tests/unit/config/manifest-rank-coverage-gaps.test.ts lists every manifest rank the walk cannot ask (215 on 2026-09-23: 100 CHITTORGARH, 52 BSE and 49 NSE no-mapping, 7 DOC no-documentType, 6 REG and 1 INVESTORGAIN_GMP no-fetcher) against a shrink-only baseline, so a NEW gap fails CI. Expected first-run value on staging before the repair is applied: 4,811 rows (repair dry run 2026-09-23)."
+  "note": "Companion CI half: scraper/tests/unit/config/manifest-rank-coverage-gaps.test.ts lists every manifest rank the walk cannot ask, read through resolveFieldSourcePolicy per IPO type (311 on 2026-09-23: 201 no-mapping, 96 DOC column read not implemented, 7 DOC no-documentType, 7 no-fetcher) against a shrink-only baseline, so a NEW gap fails CI. Review round 1 widened the class to extractor gaps (MAJOR-2)."
 }

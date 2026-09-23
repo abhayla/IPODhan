@@ -147,6 +147,7 @@ export function buildNseFetcher(deps: NseFetcherDeps, state: NseFieldFetcherStat
       return {
         outcome: 'CHECK_FAILED',
         reason: `NSE has no mapped field for ${key} yet (coverage gap, not a manifest no)`,
+        gap: 'NO_MAPPING',
         transient: true,
       };
     }

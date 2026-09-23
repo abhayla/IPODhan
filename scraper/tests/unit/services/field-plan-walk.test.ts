@@ -1948,31 +1948,86 @@ describe('classifyFailure (#785 reason-code remap)', () => {
 // attempt (the repository skips the increment only for a config-gap cause). So a
 // config-gap cause may be recorded ONLY when every rank's failure was a config gap;
 // one real failure on any rank must be the recorded cause, and must count.
-describe('classifyWalkFailures (#884: a config gap never masks a real failure)', () => {
-  const GAP_CG = 'rank2:CHITTORGARH:CHECK_FAILED:CHITTORGARH has no mapped field for ipos.isin yet (coverage gap, not a manifest no)';
-  const GAP_FETCHER = 'rank3:INVESTORGAIN_GMP:NO_FETCHER_REGISTERED';
+describe('classifyWalkFailures (#884: classified on the structured gap token, a gap never masks a real failure)', () => {
+  const GAP_CG = 'rank2:CHITTORGARH:CHECK_FAILED:CHITTORGARH has no mapped field for ipos.isin yet (coverage gap, not a manifest no) [gap:NO_MAPPING]';
+  const GAP_FETCHER = 'rank3:INVESTORGAIN_GMP:NO_FETCHER_REGISTERED [gap:NO_FETCHER]';
+  const GAP_PROVENANCE = 'rank1:DOC:CHECK_FAILED:no document provenance for isin on RHP (extractor gap or field absent) — not retired [gap:NO_DOCUMENT_PROVENANCE]';
   const REAL_THROWN = 'rank1:NSE:THROWN:socket hang up';
-  const REAL_DOC = 'rank1:DOC:CHECK_FAILED:no document provenance for isin on RHP (extractor gap or field absent) — not retired';
+  const REAL_DEFINITIVE = 'rank1:DOC:CHECK_FAILED:the page parsed and the field is not in it (definitive)';
 
-  it('every rank a config gap: records the last config gap (not charged)', () => {
+  it('every rank a gap: records the last gap, allGaps true (not charged)', () => {
     const r = classifyWalkFailures([GAP_CG, GAP_FETCHER]);
     expect(r?.cause).toBe(GAP_FETCHER);
     expect(r?.reasonCode).toBe('SOURCE_UNREACHABLE');
+    expect(r?.allGaps).toBe(true);
   });
 
-  it('a real throw on rank 1 and a config gap on rank 2: records the THROW (charged), not the later gap', () => {
+  it('review round 1 MAJOR-2: an extractor gap (no provenance) counts as a gap', () => {
+    expect(classifyWalkFailures([GAP_PROVENANCE])?.allGaps).toBe(true);
+  });
+
+  it('review round 1 MINOR-3: gap-looking free text WITHOUT the structured token is genuine', () => {
+    const r = classifyWalkFailures(['rank1:DOC:CHECK_FAILED:no documentType in manifest for this field']);
+    expect(r?.allGaps).toBe(false);
+  });
+
+  it('a real throw on rank 1 and a gap on rank 2: records the THROW (charged), not the later gap', () => {
     const r = classifyWalkFailures([REAL_THROWN, GAP_CG]);
     expect(r?.cause).toBe(REAL_THROWN);
     expect(r?.reasonCode).toBe('SOURCE_UNREACHABLE');
+    expect(r?.allGaps).toBe(false);
   });
 
-  it('a genuine DOC failure followed by two gaps: records the DOC failure', () => {
-    const r = classifyWalkFailures([REAL_DOC, GAP_CG, GAP_FETCHER]);
-    expect(r?.cause).toBe(REAL_DOC);
-    expect(r?.reasonCode).toBe('COVERAGE_GAP');
+  it('a genuine failure followed by two gaps: records the genuine failure', () => {
+    const r = classifyWalkFailures([REAL_DEFINITIVE, GAP_CG, GAP_FETCHER]);
+    expect(r?.cause).toBe(REAL_DEFINITIVE);
+    expect(r?.reasonCode).toBe('EXTRACTION_FAILED');
+    expect(r?.allGaps).toBe(false);
   });
 
   it('no failures: null, exactly like classifyFailure', () => {
     expect(classifyWalkFailures([])).toBeNull();
+  });
+});
+
+describe('walk records a gap under the cycle gap key (#884 review round 1)', () => {
+  const KEY = 'm1|f0123456789ab|xextract_filing.py@2026-09-03';
+  const gapFetcher = (gap: string) => (async () => ({ outcome: 'CHECK_FAILED', reason: 'no mapping', transient: true, gap })) as any;
+  const thrower = (async () => {
+    throw new Error('socket hang up');
+  }) as any;
+
+  it('passes the gap key to the claim, and records it when EVERY rank failed with a gap', async () => {
+    const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: 'GHOST' })]);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { NSE: gapFetcher('NO_MAPPING'), BSE: gapFetcher('NO_DOCUMENT_PROVENANCE') } as any,
+      gapKey: KEY,
+    });
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+    expect(repo.claimNextDueField.mock.calls[0][0]).toMatchObject({ gapKey: KEY });
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+    expect(repo.recorded[0].gapKey).toBe(KEY);
+    expect(repo.recorded[0].cause).toContain('[gap:NO_FETCHER]');
+  });
+
+  it('a genuine failure on any rank: no gap key recorded (the attempt is charged)', async () => {
+    const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: null })]);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { NSE: thrower, BSE: gapFetcher('NO_MAPPING') } as any,
+      gapKey: KEY,
+    });
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+    expect(repo.recorded[0].gapKey).toBeUndefined();
+    expect(repo.recorded[0].cause).toContain('THROWN');
+  });
+
+  it('no gap key on the deps: an all-gap row is charged as before (bounded), never left unkeyed', async () => {
+    const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: null, rank3Source: null })]);
+    const d = deps({ fieldPlanRepository: repo as any, sourceFetchers: { NSE: gapFetcher('NO_MAPPING') } as any });
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+    expect(repo.recorded[0].gapKey).toBeUndefined();
   });
 });

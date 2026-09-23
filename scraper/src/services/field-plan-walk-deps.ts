@@ -55,12 +55,14 @@ import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listi
 import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator.js';
 import type { FieldFetcher, FieldPlanWalkOrchestrator } from './field-plan-walk.js';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
-import { buildDocFetcher, type DocFetcherDeps } from './field-plan-walk-doc-fetcher.js';
-import { buildBseFetcher, BseFieldFetcherState } from './field-plan-walk-bse-fetcher.js';
-import { buildNseFetcher, NseFieldFetcherState } from './field-plan-walk-nse-fetcher.js';
+import { createHash } from 'node:crypto';
+import { buildDocFetcher, DOC_READABLE_TABLES, type DocFetcherDeps } from './field-plan-walk-doc-fetcher.js';
+import { buildBseFetcher, BseFieldFetcherState, BSE_SERVEABLE_FIELDS } from './field-plan-walk-bse-fetcher.js';
+import { buildNseFetcher, NseFieldFetcherState, NSE_SERVEABLE_FIELDS } from './field-plan-walk-nse-fetcher.js';
 import {
   buildChittorgarhFetcher,
   ChittorgarhFieldFetcherState,
+  CHITTORGARH_SERVEABLE_FIELDS,
 } from './field-plan-walk-chittorgarh-fetcher.js';
 
 /**
@@ -211,4 +213,35 @@ export function fieldPlanWalkHasFetchers(
   fetchers: Record<string, FieldFetcher> = buildFieldPlanWalkFetchers()
 ): boolean {
   return Object.keys(fetchers).length > 0;
+}
+
+/**
+ * #884 review round 1 (MAJOR-1/2): the key a gap row is recorded under and
+ * re-offered only when it changes. Three parts, each the thing whose change
+ * can turn a gap into an answer:
+ *   - `m<manifest version>` — a documentType, rank or capability edit
+ *     (§2.3: `manifest_version` exists "so the plan is reconciled when the
+ *     manifest changes");
+ *   - `f<fingerprint>` — fetcher coverage: which sources have a fetcher,
+ *     which fields each exchange/aggregator adapter maps, which tables DOC
+ *     can read (a new mapping is a code change with no manifest bump);
+ *   - `x<extractor version>` — a NO_DOCUMENT_PROVENANCE row is an extractor
+ *     gap; `EXTRACTOR_VERSION` is the repo's one re-extraction trigger.
+ * Passed in rather than imported so this module does not load the extractor.
+ */
+export function buildFieldPlanGapKey(params: {
+  fetchers: Record<string, FieldFetcher>;
+  extractorVersion: string;
+  manifestVersion?: number;
+}): string {
+  const coverage = [
+    `fetchers=${Object.keys(params.fetchers).sort().join(',')}`,
+    `BSE=${[...BSE_SERVEABLE_FIELDS].sort().join(',')}`,
+    `NSE=${[...NSE_SERVEABLE_FIELDS.keys()].sort().join(',')}`,
+    `CHITTORGARH=${[...CHITTORGARH_SERVEABLE_FIELDS].sort().join(',')}`,
+    `DOC=${[...DOC_READABLE_TABLES].sort().join(',')}`,
+  ].join('|');
+  const fingerprint = createHash('sha256').update(coverage).digest('hex').slice(0, 12);
+  const manifestVersion = params.manifestVersion ?? loadFieldManifest().version;
+  return `m${manifestVersion}|f${fingerprint}|x${params.extractorVersion}`;
 }

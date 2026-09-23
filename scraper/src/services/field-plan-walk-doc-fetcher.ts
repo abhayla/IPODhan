@@ -121,12 +121,20 @@ function hasCompletedDocument(
  * value" apart from "this fetcher cannot read this table yet" — the first is
  * NOT_PRINTED (definitive), the second must never look definitive.
  */
+/**
+ * #884: the tables `readColumnValue` can read. Part of the fetcher-coverage
+ * fingerprint in `buildFieldPlanGapKey` — adding a table here changes the gap
+ * key, which re-offers every COLUMN_READ_NOT_IMPLEMENTED row.
+ */
+export const DOC_READABLE_TABLES: readonly string[] = ['ipos', 'ipo_details'];
+
 async function readColumnValue(
   deps: DocFetcherDeps,
   ipoId: string,
   tableName: string,
   camelFieldName: string
 ): Promise<{ status: 'ok'; value: unknown } | { status: 'not_implemented' }> {
+  if (!DOC_READABLE_TABLES.includes(tableName)) return { status: 'not_implemented' };
   if (tableName === 'ipos') {
     const ipo = await deps.ipoRepository.findById(ipoId);
     return { status: 'ok', value: ipo ? (ipo as unknown as Record<string, unknown>)[camelFieldName] ?? null : null };
@@ -166,7 +174,12 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
       // change fixes, the exact class F1 already fixed for a missing source
       // adapter. NOT_PRINTED is also wrong here: that implies a document WAS
       // checked, and none was.
-      return { outcome: 'CHECK_FAILED', reason: 'no documentType in manifest for this field', transient: true };
+      return {
+        outcome: 'CHECK_FAILED',
+        reason: 'no documentType in manifest for this field',
+        transient: true,
+        gap: 'NO_DOCUMENT_TYPE',
+      };
     }
 
     const family = DOC_TYPE_FAMILY[manifestDocType] ?? [manifestDocType];
@@ -226,6 +239,7 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
         outcome: 'CHECK_FAILED',
         reason: `no document provenance for ${camelFieldName} on ${manifestDocType} (extractor gap or field absent) — not retired`,
         transient: true,
+        gap: 'NO_DOCUMENT_PROVENANCE',
       };
     }
 
@@ -245,6 +259,7 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
         outcome: 'CHECK_FAILED',
         reason: `no document provenance for ${camelFieldName} on ${manifestDocType} (extractor gap or field absent) — not retired`,
         transient: true,
+        gap: 'NO_DOCUMENT_PROVENANCE',
       };
     }
 
@@ -257,6 +272,7 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
         outcome: 'CHECK_FAILED',
         reason: `DOC column read not implemented for ${tableName}`,
         transient: true,
+        gap: 'COLUMN_READ_NOT_IMPLEMENTED',
       };
     }
     if (read.value === undefined || read.value === null) {

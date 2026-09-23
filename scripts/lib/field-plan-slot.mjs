@@ -61,7 +61,8 @@ export const PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS = 5;
  * #884: mirror of FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS in
  * packages/shared/src/utils/field-plan-config-gap.ts — the recorded causes
  * that are facts about CONFIGURATION (a source ranked with no field mapping,
- * DOC with no documentType, no registered fetcher). Kept equal by hand and
+ * DOC with no documentType, no registered fetcher) or the EXTRACTOR (no
+ * document provenance on a COMPLETED document). Legacy free-text shapes. Kept equal by hand and
  * pinned by scripts/tests/field-plan-reclaim-max-attempts-pin.test.mjs.
  */
 export const FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS = Object.freeze([
@@ -69,13 +70,18 @@ export const FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS = Object.freeze([
   ' has no mapped field for ',
   'no documentType in manifest for this field',
   'DOC column read not implemented for ',
+  '(extractor gap or field absent)',
 ]);
 
-/** #884: a CHECK_FAILED plan row retired at the cap by a CONFIGURATION cause (should be 0 after the repair). */
+/** #884 review round 1: the prefix recordOutcome stamps on a gap row's cause (FIELD_PLAN_GAP_KEY_PREFIX). */
+export const FIELD_PLAN_GAP_KEY_PREFIX = '[gap-key:';
+
+/** #884: a CHECK_FAILED plan row retired at the cap by a configuration or extractor GAP (should be 0 after the repair; a gap is never charged). */
 export function isConfigGapAtCapRow(row) {
   if (row.state !== 'CHECK_FAILED') return false;
   if (!(row.attempts >= PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS)) return false;
   const cause = row.cause ?? '';
+  if (cause.startsWith(FIELD_PLAN_GAP_KEY_PREFIX)) return true;
   return FIELD_PLAN_CONFIG_GAP_CAUSE_MARKERS.some((m) => cause.includes(m));
 }
 
