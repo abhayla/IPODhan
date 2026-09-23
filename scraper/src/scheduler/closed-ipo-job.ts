@@ -37,7 +37,10 @@ export type ClosedIpoCauseClass =
   | 'EXTRACTOR_MISSING'
   | 'VALIDATION_REJECTED'
   | 'SOURCE_UNREACHABLE'
-  | 'WRITE_SKIPPED';
+  | 'WRITE_SKIPPED'
+  // OD-80: fields remain not due yet or waiting to retry -- nothing was down,
+  // missing, rejected or skipped; the IPO is simply not finished.
+  | 'FIELDS_PENDING';
 
 export interface ClosedIpoCandidate {
   id: string;
@@ -344,17 +347,17 @@ export interface ClosedIpoResourceResult {
  *   - generation threw                  -> FAILED / WRITE_SKIPPED (the DB was the problem)
  *   - generation produced 0 rows        -> FAILED / EXTRACTOR_MISSING (the manifest ranks
  *                                          no field for this IPO's type: nothing CAN be asked)
- *   - the walk asked nothing            -> DONE only if every plan row is settled (OD-73);
- *                                          else PARTIAL / SOURCE_UNREACHABLE (rows CHECK_FAILED
- *                                          or waiting on a source; per-state counts in the detail)
- *   - the walk stopped before finishing -> PARTIAL / SOURCE_UNREACHABLE (budget or superseded
+ *   - the walk stopped before finishing -> PARTIAL / FIELDS_PENDING (budget or superseded
  *                                          claim: the unwalked rest must not be sealed DONE)
- * Past those, the walk's own counters decide, exactly as before OD-76:
  *   - settle calls threw   -> FAILED / WRITE_SKIPPED
  *   - writes dropped       -> PARTIAL / WRITE_SKIPPED
- *   - transient failures   -> PARTIAL / SOURCE_UNREACHABLE
+ *   - a check failed in THIS walk  -> PARTIAL / SOURCE_UNREACHABLE (a source did not respond)
  *   - all exhausted, none supplied -> PARTIAL / DOCUMENT_UNOBTAINABLE
- *   - otherwise            -> DONE (every due field was asked and settled).
+ * And last, OD-79: DONE only when EVERY plan row of the IPO is settled (OD-73), whatever
+ * the walk asked. The unsettled count is read after the walk on every path that could
+ * otherwise end DONE; any open row -> PARTIAL / FIELDS_PENDING (OD-80), per-state counts
+ * in cause_detail. (Review round 3: an IPO walked 5 fields, 3 answered, was sealed DONE
+ * with 37 rows still open -- and DONE is never re-picked.)
  */
 export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDeps): Promise<ClosedIpoResourceResult> {
   const existing = await deps.countPlanRows(ipoId);
@@ -387,35 +390,6 @@ export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDe
   const fieldsLeftEmpty =
     walk.fieldsExhausted + walk.fieldsCheckFailed + walk.fieldsWriteSkipped + walk.fieldsNotAvailableYet;
 
-  if (walk.fieldsAttempted === 0 && walk.stoppedReason === 'NO_DUE_FIELDS') {
-    // OD-76 as corrected (§6.1): a walk that asked nothing is DONE only when
-    // every plan row is already settled (OD-73) -- then there is genuinely
-    // nothing left to ask. Rows still open mean the IPO is not finished.
-    const open = await deps.countUnsettledPlanRows(ipoId);
-    const checkFailed = open.CHECK_FAILED ?? 0;
-    const waiting = (open.PENDING ?? 0) + (open.NOT_AVAILABLE_YET ?? 0);
-    if (checkFailed + waiting === 0) {
-      return { outcome: 'DONE', fieldsWritten: 0, fieldsLeftEmpty: 0 };
-    }
-    const breakdown = `PENDING ${open.PENDING ?? 0}, NOT_AVAILABLE_YET ${open.NOT_AVAILABLE_YET ?? 0}, CHECK_FAILED ${checkFailed}`;
-    // Cause classes are the EXISTING five (a new enum value is a schema change).
-    // Every open row here is held by a ranked SOURCE the walk could not get a
-    // value from tonight: CHECK_FAILED = its check failed and is backing off;
-    // PENDING / NOT_AVAILABLE_YET = not due yet, or the source answered "not
-    // yet". SOURCE_UNREACHABLE is the accurate existing class for both -- the
-    // same class the job already uses for "the rest were not asked" below.
-    // DOCUMENT_UNOBTAINABLE (review round 2 MINOR) was inaccurate: nothing
-    // sought a document. The per-state counts stay in cause_detail.
-    return {
-      outcome: 'PARTIAL',
-      causeClass: 'SOURCE_UNREACHABLE',
-      causeDetail:
-        `the walk asked nothing, but ${checkFailed + waiting} plan row(s) are not settled (${breakdown}); ` +
-        `plan rows before this run: ${existing}`,
-      fieldsWritten,
-      fieldsLeftEmpty: checkFailed + waiting,
-    };
-  }
   if (walk.outcomesFailed > 0) {
     return {
       outcome: 'FAILED',
@@ -426,9 +400,11 @@ export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDe
     };
   }
   if (walk.stoppedReason !== 'NO_DUE_FIELDS') {
+    // Budget or superseded claim: fields remain unasked. Nothing failed to
+    // respond, so SOURCE_UNREACHABLE would report "site down" falsely (OD-80).
     return {
       outcome: 'PARTIAL',
-      causeClass: 'SOURCE_UNREACHABLE',
+      causeClass: 'FIELDS_PENDING',
       causeDetail: `the walk stopped ${walk.stoppedReason} after ${walk.fieldsAttempted} field(s); the rest were not asked`,
       fieldsWritten,
       fieldsLeftEmpty,
@@ -467,7 +443,27 @@ export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDe
       fieldsLeftEmpty,
     };
   }
-  return { outcome: 'DONE', fieldsWritten, fieldsLeftEmpty };
+
+  // OD-79: the only road to DONE. Read AFTER the walk, so rows it just settled count as settled.
+  const open = await deps.countUnsettledPlanRows(ipoId);
+  const pending = open.PENDING ?? 0;
+  const notYet = open.NOT_AVAILABLE_YET ?? 0;
+  const checkFailed = open.CHECK_FAILED ?? 0;
+  const unsettled = pending + notYet + checkFailed;
+  if (unsettled === 0) {
+    return { outcome: 'DONE', fieldsWritten, fieldsLeftEmpty };
+  }
+  const asked = walk.fieldsAttempted === 0 ? 'the walk asked nothing' : `the walk asked ${walk.fieldsAttempted} field(s)`;
+  return {
+    outcome: 'PARTIAL',
+    causeClass: 'FIELDS_PENDING',
+    causeDetail:
+      `${asked}, but ${unsettled} plan row(s) are not settled ` +
+      `(PENDING ${pending}, NOT_AVAILABLE_YET ${notYet}, CHECK_FAILED ${checkFailed}); ` +
+      `plan rows before this run: ${existing}`,
+    fieldsWritten,
+    fieldsLeftEmpty: unsettled,
+  };
 }
 
 /**

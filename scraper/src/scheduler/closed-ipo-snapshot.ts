@@ -27,6 +27,15 @@
  * WHERE: `CLOSED_IPO_SNAPSHOT_DIR`, else `~/.ipodhan/closed-ipo-snapshots` --
  * deliberately outside the deploy's release directory, which the release
  * retention prunes.
+ *
+ * RETENTION (review round 3 minor): because that directory is outside every
+ * release, nothing else prunes it -- one file per closed-IPO night would grow
+ * forever on the VPS. After each write, snapshot files older than
+ * CLOSED_IPO_SNAPSHOT_RETENTION_DAYS (30) are deleted. 30 days is the bound
+ * because a rollback of a night's overwrites is decided within the staging
+ * soak and the one-deploy-a-day prod window that follows it -- days, not
+ * weeks -- and 30 nightly files stay small. Override with
+ * CLOSED_IPO_SNAPSHOT_RETENTION_DAYS in the environment.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -57,6 +66,46 @@ export function currentDeploySlot(env: NodeJS.ProcessEnv = process.env): string 
 /** File-name safe: a slot or database name never adds a path separator. */
 function fileToken(v: string): string {
   return v.replace(/[^A-Za-z0-9_-]/g, '_');
+}
+
+/** Snapshot files older than this many days are deleted after each write. */
+export const CLOSED_IPO_SNAPSHOT_RETENTION_DAYS = 30;
+
+function retentionDays(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env.CLOSED_IPO_SNAPSHOT_RETENTION_DAYS);
+  return Number.isFinite(n) && n >= 1 ? n : CLOSED_IPO_SNAPSHOT_RETENTION_DAYS;
+}
+
+const SNAPSHOT_FILE = /^field-sources-.*\.json(\.tmp)?$/;
+
+/**
+ * Delete this module's snapshot files (`field-sources-*.json`, and a `.tmp` a
+ * crash left behind) whose mtime is older than the retention bound. Anything
+ * else in the directory is left alone. Returns the paths removed.
+ */
+export function pruneOldFieldSourcesSnapshots(
+  dir: string,
+  opts: { now?: Date; retentionDays?: number } = {}
+): string[] {
+  const now = (opts.now ?? new Date()).getTime();
+  const cutoff = now - (opts.retentionDays ?? retentionDays()) * 24 * 60 * 60 * 1000;
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const removed: string[] = [];
+  for (const name of names) {
+    if (!SNAPSHOT_FILE.test(name)) continue;
+    const p = path.join(dir, name);
+    const st = fs.statSync(p);
+    if (st.isFile() && st.mtimeMs < cutoff) {
+      fs.unlinkSync(p);
+      removed.push(p);
+    }
+  }
+  return removed;
 }
 
 export function defaultClosedIpoSnapshotDir(): string {
@@ -126,6 +175,12 @@ export async function writeFieldSourcesSnapshot(
   const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(payload));
   fs.renameSync(tmp, file);
+  // Housekeeping never fails the run: the snapshot that matters is already on disk.
+  try {
+    pruneOldFieldSourcesSnapshots(dir, { now });
+  } catch {
+    // an unreadable old file is left for the next night
+  }
   return { path: file, rows: fieldSources.length };
 }
 
@@ -133,18 +188,22 @@ export async function writeFieldSourcesSnapshot(
  * Read a snapshot back (the rollback's input, and the proof that one exists).
  * `expected` is the target the caller is about to apply it to: a snapshot taken
  * on another database or slot is refused, so a staging snapshot can never be
- * applied to prod. A snapshot with no database/slot recorded is refused when a
- * target is given -- it cannot prove where it came from.
+ * applied to prod. A snapshot with no database/slot recorded is refused -- it
+ * cannot prove where it came from. The target is REQUIRED (review round 3
+ * minor): an optional one let a caller skip the refusal by not passing it.
  */
 export function readFieldSourcesSnapshot(
   file: string,
-  expected?: { database: string; deploySlot: string }
+  expected: { database: string; deploySlot: string }
 ): FieldSourcesSnapshot {
+  if (!expected || !expected.database || !expected.deploySlot) {
+    throw new Error(`refusing snapshot ${path.basename(file)}: no target database/slot given to check it against`);
+  }
   const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as FieldSourcesSnapshot;
   if (parsed.kind !== 'closed-ipo-field-sources-snapshot') {
     throw new Error(`${file} is not a closed-IPO field_sources snapshot`);
   }
-  if (expected && (parsed.database !== expected.database || parsed.deploySlot !== expected.deploySlot)) {
+  if ((parsed.database !== expected.database || parsed.deploySlot !== expected.deploySlot)) {
     throw new Error(
       `refusing snapshot ${path.basename(file)}: taken on database '${parsed.database}' slot '${parsed.deploySlot}', ` +
         `not the target database '${expected.database}' slot '${expected.deploySlot}'`

@@ -1341,6 +1341,12 @@ function pick(r) {
  * left to ask. So the flag is: DONE with 0 plan rows, or DONE with no row ever
  * asked while at least one row is unsettled.
  *
+ * OD-79 widening (review round 3): DONE means EVERY plan row is settled,
+ * whatever the walk asked. A walked IPO (5 fields asked, 3 answered) was
+ * recorded DONE with 37 rows still open; the never-asked-only predicate passed
+ * it. So the flag is now: DONE with 0 plan rows, or DONE with ANY unsettled
+ * plan row -- walked or not. walkedRows stays in the row for the report only.
+ *
  * Rows: { ipoId, companyName, outcome, planRows, walkedRows, unsettledRows }.
  * Numbers may arrive as strings from pg; they are coerced.
  */
@@ -1348,7 +1354,6 @@ export function findClosedIpoDoneWithoutWalk(rows) {
   return (rows ?? []).filter(
     (r) =>
       String(r.outcome).toUpperCase() === 'DONE' &&
-      Number(r.walkedRows) === 0 &&
       (Number(r.planRows) === 0 || Number(r.unsettledRows) > 0)
   );
 }

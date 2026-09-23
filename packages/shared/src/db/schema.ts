@@ -2428,6 +2428,9 @@ export const closedIpoResourcingCauseClassEnum = pgEnum('closed_ipo_resourcing_c
   'VALIDATION_REJECTED',
   'SOURCE_UNREACHABLE',
   'WRITE_SKIPPED',
+  // OD-80: fields remain not due yet or waiting to retry. Nothing was down,
+  // missing, rejected or skipped -- the IPO is simply not finished yet.
+  'FIELDS_PENDING',
 ]);
 
 export const closedIpoResourcing = pgTable(

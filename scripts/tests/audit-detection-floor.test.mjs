@@ -1679,9 +1679,18 @@ test('(OD-73) findClosedIpoDoneWithoutWalk PASSES a never-asked DONE whose EVERY
   assert.equal(out.length, 0);
 });
 
+// OD-79 (review round 3 probe): walked 5 fields, 3 answered, 37 rows still open, recorded DONE.
+test('(OD-79) findClosedIpoDoneWithoutWalk FLAGS a WALKED DONE row that still has an unsettled plan row', () => {
+  const out = findClosedIpoDoneWithoutWalk([
+    { ipoId: 'p', companyName: 'Probe Walked Ltd.', outcome: 'DONE', planRows: 40, walkedRows: 5, unsettledRows: 37 },
+    { ipoId: 'q', companyName: 'String Probe Ltd.', outcome: 'DONE', planRows: '40', walkedRows: '5', unsettledRows: '1' },
+  ]);
+  assert.deepEqual(out.map((r) => r.ipoId), ['p', 'q']);
+});
+
 test('(OD-76) findClosedIpoDoneWithoutWalk PASSES a genuinely walked DONE, and any PARTIAL/FAILED', () => {
   const out = findClosedIpoDoneWithoutWalk([
-    { ipoId: 'a', companyName: 'Walked Ltd.', outcome: 'DONE', planRows: 189, walkedRows: 189 },
+    { ipoId: 'a', companyName: 'Walked Ltd.', outcome: 'DONE', planRows: 189, walkedRows: 189, unsettledRows: 0 },
     { ipoId: 'b', companyName: 'Reopened Ltd.', outcome: 'PARTIAL', planRows: 0, walkedRows: 0 },
     { ipoId: 'c', companyName: 'No Plan Ltd.', outcome: 'FAILED', planRows: 0, walkedRows: 0 },
   ]);
@@ -1691,7 +1700,7 @@ test('(OD-76) findClosedIpoDoneWithoutWalk PASSES a genuinely walked DONE, and a
 test('(OD-76) findClosedIpoDoneWithoutWalk reads numbers that arrive as strings from pg', () => {
   const out = findClosedIpoDoneWithoutWalk([
     { ipoId: 'd', companyName: 'String Ltd.', outcome: 'DONE', planRows: '0', walkedRows: '0' },
-    { ipoId: 'e', companyName: 'String Walked Ltd.', outcome: 'DONE', planRows: '4', walkedRows: '4' },
+    { ipoId: 'e', companyName: 'String Walked Ltd.', outcome: 'DONE', planRows: '4', walkedRows: '4', unsettledRows: '0' },
   ]);
   assert.deepEqual(out.map((r) => r.ipoId), ['d']);
 });
@@ -1700,6 +1709,7 @@ test('(OD-76) the audit query counts walked rows by last_attempt_at and reads on
   const src = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
   const body = src.slice(src.indexOf('async function checkClosedIpoDoneWithoutWalk'), src.indexOf('// ---- (i): identity'));
   assert.match(body, /last_attempt_at IS NOT NULL/);
+  assert.match(body, /NOT IN \('SUPPLIED', 'NOT_PRINTED', 'EXHAUSTED'\)/);
   assert.match(body, /WHERE r\.outcome = 'DONE'/);
   assert.match(body, /record\('closed_ipo_done_without_walk'/);
 });

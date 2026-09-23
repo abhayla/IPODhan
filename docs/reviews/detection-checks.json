@@ -63,16 +63,18 @@
     },
     {
       "id": "closed_ipo_done_without_walk",
-      "findingClass": "the closed-IPO job records an IPO DONE although the field-plan walk never asked any of its fields (no plan rows, or plan rows none of which carries last_attempt_at) -- DONE is never re-picked, so the IPO leaves the backlog with nothing done (#717, OD-76)",
+      "findingClass": "the closed-IPO job records an IPO DONE while it has no plan rows or ANY plan row is still unsettled (PENDING / NOT_AVAILABLE_YET / CHECK_FAILED), walked or not -- DONE is never re-picked, so the IPO leaves the backlog unfinished (#717, OD-76, OD-79)",
       "round7Findings": [],
-      "failThreshold": "any closed_ipo_resourcing row with outcome = 'DONE' whose IPO has zero ipo_field_plan rows with last_attempt_at IS NOT NULL (this includes an IPO with no plan rows at all); reported by IPO name with its plan and walked row counts",
+      "failThreshold": "any closed_ipo_resourcing row with outcome = 'DONE' whose IPO has zero ipo_field_plan rows, or at least one ipo_field_plan row whose state is not SUPPLIED / NOT_PRINTED / EXHAUSTED (OD-79: whatever the walk asked); reported by IPO name with its plan, unsettled and walked row counts",
       "severity": "P2",
       "unverifiableWhen": "closed_ipo_resourcing does not exist on the slot (migration 0050 not applied)",
       "spec_ref": [
         "OD-22",
-        "OD-19"
+        "OD-19",
+        "OD-76",
+        "OD-79"
       ],
-      "note": "Measured read-only on ipodhan_staging 2026-09-23 (repair-closed-ipo-false-done.ts dry run): 10 of 10 DONE rows in this shape after the job's first real run, each plan_rows=0 walked_rows=0 (Advit Jewels, Anubhav Plast, Avience Biomedicals, Clay Craft India, Diksha Polymers, Liotech Industries, Riyaasat Lifestyle, Shreedhar Spinners, Turtlemint Fintech Solutions, Waterways Leisure Tourism). Discriminates: a DONE row whose IPO was walked (ipodhan_test proof: 189 plan rows, 189 with last_attempt_at) passes. Repaired by scraper/scripts/repair-closed-ipo-false-done.ts. Spec: section 6.1 as rewritten by OD-76 (PR #918, not yet on main -- add OD-76 to spec_ref once it lands)."
+      "note": "Measured read-only on ipodhan_staging 2026-09-23 (repair-closed-ipo-false-done.ts dry run): 10 of 10 DONE rows in this shape after the job's first real run, each plan_rows=0 walked_rows=0 (Advit Jewels, Anubhav Plast, Avience Biomedicals, Clay Craft India, Diksha Polymers, Liotech Industries, Riyaasat Lifestyle, Shreedhar Spinners, Turtlemint Fintech Solutions, Waterways Leisure Tourism). Discriminates: a DONE row whose IPO was walked (ipodhan_test proof: 189 plan rows, 189 with last_attempt_at) passes. Repaired by scraper/scripts/repair-closed-ipo-false-done.ts. Spec: section 6.1 as rewritten by OD-76 (PR #918, not yet on main -- add OD-76 to spec_ref once it lands). Widened by OD-79 (review round 3, 2026-09-23): a walked IPO (5 asked, 3 answered) recorded DONE with 37 rows open passed the never-asked-only predicate; the check and the repair tool now flag DONE with any unsettled row. Discriminates on ipodhan_test: walked + rows open -> flagged/reopened; walked + every row settled -> passes."
     },
     {
       "id": "corpus_shape",

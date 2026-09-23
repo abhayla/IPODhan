@@ -1,6 +1,6 @@
 /**
  * repair-closed-ipo-false-done.ts — #717 / OD-76: re-open closed-IPO ledger rows
- * that were recorded DONE although the IPO was never walked.
+ * that were recorded DONE with no plan, or with plan rows still unsettled (OD-76, OD-79).
  *
  * WHY THIS EXISTS. Before OD-76 the closed-IPO job's worker ran only the
  * field-plan walk. 238 of 274 LISTED IPOs on staging have no plan rows, so for
@@ -8,19 +8,19 @@
  * re-picked (§6.2), so each such IPO left the backlog with nothing done.
  * Measured on staging 2026-09-23: all 10 DONE rows have 0 plan rows.
  *
- * THE CLASS IT REPAIRS, as a data filter -- the corrected DONE rule (OD-76,
- * §6.1) applied backwards: every closed_ipo_resourcing row, on any slot, with
- * outcome = 'DONE' AND EITHER the IPO has 0 ipo_field_plan rows (never DONE
- * with no plan) OR none of its plan rows was ever asked (last_attempt_at IS
- * NULL on every row) while at least one is NOT settled (state not in SUPPLIED,
- * NOT_PRINTED, EXHAUSTED -- never DONE with fields still due, OD-73).
- * Documents do NOT enter the filter (review round 1 MINOR-4): an IPO whose
- * documents are all read but whose plan was never planted or walked is the
- * same false DONE. A DONE row whose IPO was walked is left alone, and so is a
- * never-asked DONE row whose every plan row is already settled.
+ * THE CLASS IT REPAIRS, as a data filter -- the DONE rule (OD-76, §6.1, as
+ * widened by OD-79) applied backwards: every closed_ipo_resourcing row, on any
+ * slot, with outcome = 'DONE' AND EITHER the IPO has 0 ipo_field_plan rows
+ * (never DONE with no plan) OR at least one plan row is NOT settled (state not
+ * in SUPPLIED, NOT_PRINTED, EXHAUSTED) -- whether or not the walk asked it.
+ * OD-79 (review round 3): a walked IPO -- 5 fields asked, 3 answered -- was
+ * sealed DONE with 37 rows open; the never-asked-only filter left it alone.
+ * Documents do NOT enter the filter (review round 1 MINOR-4). A DONE row whose
+ * every plan row is settled is left alone, walked or not.
  *
  * WHAT --apply DOES. Sets such a row to outcome PARTIAL, cause_class
- * EXTRACTOR_MISSING (no walk ever asked a field of it), a cause_detail that
+ * FIELDS_PENDING (OD-80: rows remain unsettled) or EXTRACTOR_MISSING when the
+ * IPO has no plan rows at all (nothing was ever askable), a cause_detail that
  * starts with the marker `repair-717:`, and prefixes resourced_at_version with
  * the same marker. The version prefix is what makes the row RE-PICKABLE (PR #912
  * review round 2 MINOR-3): EXTRACTOR_MISSING is a permanent class, re-selected
@@ -30,8 +30,9 @@
  * its upsert then stamps the real version back (attempts restart at 1).
  * The rows as they were (outcome, cause_class, cause_detail, attempts, version)
  * are written to scripts/state/ before the update, and the UPDATE re-checks the
- * unread AND not-walked conditions itself, so an IPO walked or a document read
- * between the dry run and --apply leaves its DONE row untouched.
+ * no-plan / unsettled condition itself, so an IPO whose rows settled between the
+ * dry run and --apply leaves its DONE row untouched. FIELDS_PENDING needs
+ * migration 0052 on the slot.
  *
  * --undo puts every row carrying the marker back to DONE with no cause and
  * strips the marker from its version.
@@ -67,15 +68,15 @@ export async function reopenFalseDoneRows(dbx: ExecDb, ids: string[]): Promise<n
   const res = await dbx.execute(sql`
     UPDATE closed_ipo_resourcing
        SET outcome = 'PARTIAL',
-           cause_class = 'EXTRACTOR_MISSING',
-           cause_detail = ${REPAIR_MARKER} || ' recorded DONE without a field-plan walk (no plan rows, or none asked while rows were unsettled)',
+           cause_class = CASE
+             WHEN EXISTS (SELECT 1 FROM ipo_field_plan p WHERE p.ipo_id = closed_ipo_resourcing.ipo_id)
+               THEN 'FIELDS_PENDING'::closed_ipo_resourcing_cause_class
+             ELSE 'EXTRACTOR_MISSING'::closed_ipo_resourcing_cause_class END,
+           cause_detail = ${REPAIR_MARKER} || ' recorded DONE with no plan rows, or with plan rows still unsettled (OD-76, OD-79)',
            resourced_at_version = ${REPAIR_MARKER} || COALESCE(resourced_at_version, ''),
            updated_at = now()
      WHERE ipo_id = ANY(${sql.param(ids)}::uuid[])
        AND outcome = 'DONE'
-       AND NOT EXISTS (SELECT 1 FROM ipo_field_plan p
-                        WHERE p.ipo_id = closed_ipo_resourcing.ipo_id
-                          AND p.last_attempt_at IS NOT NULL)
        AND (
          NOT EXISTS (SELECT 1 FROM ipo_field_plan p WHERE p.ipo_id = closed_ipo_resourcing.ipo_id)
          OR EXISTS (SELECT 1 FROM ipo_field_plan p
@@ -85,14 +86,14 @@ export async function reopenFalseDoneRows(dbx: ExecDb, ids: string[]): Promise<n
   return (res as { rowCount?: number }).rowCount ?? 0;
 }
 
-/** The class filter, applied to the dry-run read: DONE, never walked, and no plan or a plan row still unsettled. */
+/** The class filter, applied to the dry-run read: DONE, and no plan or a plan row still unsettled (OD-79: walked or not). */
 export function isFalseDoneWithoutWalk(r: {
   outcome: string;
   plan_rows: number | string;
   walked_rows: number | string;
   unsettled_rows: number | string;
 }): boolean {
-  if (String(r.outcome).toUpperCase() !== 'DONE' || Number(r.walked_rows) !== 0) return false;
+  if (String(r.outcome).toUpperCase() !== 'DONE') return false;
   return Number(r.plan_rows) === 0 || Number(r.unsettled_rows) > 0;
 }
 
@@ -176,7 +177,7 @@ async function main(): Promise<number> {
   const all = ((read as unknown as { rows: FalseDoneRow[] }).rows ?? []);
   const rows = all.filter(isFalseDoneWithoutWalk);
 
-  console.log(`${all.length} DONE row(s); ${rows.length} were never walked and have no plan or an unsettled plan row:`);
+  console.log(`${all.length} DONE row(s); ${rows.length} have no plan or an unsettled plan row:`);
   for (const r of rows) {
     console.log(
       `  ${r.company_name} (${r.ipo_id}) unread=${r.pending} plan_rows=${r.plan_rows} walked_rows=${r.walked_rows} unsettled=${r.unsettled_rows} fields_written=${r.fields_written} version=${r.resourced_at_version} last=${r.last_attempt_at}`
@@ -204,7 +205,7 @@ async function main(): Promise<number> {
   const changed = await reopenFalseDoneRows(db as unknown as ExecDb, ids);
   console.log(`reopened ${changed} row(s) as PARTIAL on ${dbName}`);
   if (changed !== rows.length) {
-    console.log(`${rows.length - changed} row(s) no longer matched at write time (walked or settled since the read above) and were left as they were`);
+    console.log(`${rows.length - changed} row(s) no longer matched at write time (settled since the read above) and were left as they were`);
   }
   return 0;
 }

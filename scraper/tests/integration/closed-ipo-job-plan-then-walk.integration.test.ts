@@ -236,9 +236,17 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     expect(reopened.outcome).toBe('PARTIAL');
     expect(reopened.resourcedAtVersion.startsWith(REPAIR_MARKER)).toBe(true);
 
-    // (2) The same IPO once genuinely walked (plan planted, rows asked) -> a DONE row is TRUE; left alone.
+    // (2) OD-79: the same IPO walked (plan planted, every row asked) but its rows are
+    // still open (NOT_AVAILABLE_YET / CHECK_FAILED) -> a DONE row is STILL false; reopened.
     const planRepo = new IpoFieldPlanRepository(db as never, redis as never);
     await mod.resourceClosedIpo(IPO_ID, liveDeps(planRepo));
+    await seedDone();
+    expect(await reopenFalseDoneRows(db as never, [IPO_ID])).toBe(1);
+    const [walkedOpen] = await db.select().from(schema.closedIpoResourcing).where(eq(schema.closedIpoResourcing.ipoId, IPO_ID));
+    expect(walkedOpen.causeClass).toBe('FIELDS_PENDING');
+
+    // (2b) walked AND every row settled -> a TRUE DONE; left alone.
+    await db.execute(sql`UPDATE ipo_field_plan SET state = 'NOT_PRINTED' WHERE ipo_id = ${IPO_ID}::uuid`);
     await seedDone();
     expect(await reopenFalseDoneRows(db as never, [IPO_ID])).toBe(0);
   });
@@ -395,6 +403,100 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     expect(settled.outcome).toBe('DONE');
     expect(open.outcome).toBe('PARTIAL');
     expect(open.causeDetail).toMatch(/asked nothing, but 1 plan row\(s\) are not settled/);
+  });
+
+  it('(OD-79, OD-80) the review-round-3 probe: 5 asked (3 answered, 2 not yet), 30 not due, 5 CHECK_FAILED in backoff -> PARTIAL / FIELDS_PENDING, accepted by the DB; all settled -> DONE', async () => {
+    await seedListedIpoWithPendingRhp();
+    const planRepo = new IpoFieldPlanRepository(db as never, redis as never);
+    const base = liveDeps(planRepo);
+    await base.plantPlan(IPO_ID);
+    // Every row settled, then 40 rows re-opened in the probe's exact shape.
+    await db.execute(sql`UPDATE ipo_field_plan SET state = 'NOT_PRINTED', attempts = 1, last_attempt_at = now(), next_due_at = NULL
+                          WHERE ipo_id = ${IPO_ID}::uuid`);
+    // The 5 asked rows are singleton `ipos` text fields, so an "answer" is a plain write
+    // through the orchestrator; the other 35 are any other rows.
+    const askedRows = (
+      await db.execute(sql`SELECT id, field_name FROM ipo_field_plan
+                            WHERE ipo_id = ${IPO_ID}::uuid AND table_name = 'ipos'
+                              AND field_name IN ('registrar', 'sector', 'company_description', 'company_website', 'objectives',
+                                                 'cin', 'isin', 'symbol')
+                            ORDER BY field_name LIMIT 5`)
+    ).rows as Array<{ id: string; field_name: string }>;
+    const rest = (
+      await db.execute(sql`SELECT id, field_name FROM ipo_field_plan
+                            WHERE ipo_id = ${IPO_ID}::uuid AND NOT (id = ANY(${sql.param(askedRows.map((r) => r.id))}::uuid[]))
+                            ORDER BY table_name, field_name, row_key LIMIT 35`)
+    ).rows as Array<{ id: string; field_name: string }>;
+    const ids = [...askedRows, ...rest];
+    expect(askedRows.map((r) => r.field_name)).toHaveLength(5);
+    expect(ids.length).toBe(40);
+    const asked = ids.slice(0, 5);
+    const setState = (rows: typeof ids, state: string, due: 'now' | 'later') =>
+      // CHECK_FAILED backs off by SLOT (re-claimed only once last_attempt_at is before the
+      // current slot boundary), so "in backoff" = asked in this slot: last_attempt_at = now().
+      db.execute(sql`UPDATE ipo_field_plan SET state = ${state}::field_plan_state,
+                            last_attempt_at = ${state === 'CHECK_FAILED' ? sql`now()` : null},
+                            next_due_at = ${due === 'now' ? null : sql`now() + interval '1 day'`}
+                      WHERE id = ANY(${sql.param(rows.map((r) => r.id))}::uuid[])`);
+    await setState(asked, 'PENDING', 'now');
+    await setState(ids.slice(5, 35), 'PENDING', 'later');
+    await setState(ids.slice(35, 40), 'CHECK_FAILED', 'later');
+    // "Answered": the first 3 asked fields are SUPPLIED by every source and the write is
+    // accepted; the other 2 come back NOT_AVAILABLE_YET.
+    const answered = new Set(asked.slice(0, 3).map((r) => r.field_name));
+    const byField: FieldFetcher = async (_i, _t, _k, field) =>
+      answered.has(field) ? { outcome: 'SUPPLIED', value: `od79 ${field}` } : { outcome: 'NOT_AVAILABLE_YET' };
+    const acceptingOrchestrator: FieldPlanWalkOrchestrator = {
+      consolidatedUpsertIPO: async (scraped: Record<string, unknown>, source: unknown, _c?: number, _p?: unknown, onlyFields?: string[]) => ({
+        ipoId: IPO_ID,
+        isNew: false,
+        locked: true,
+        skipped: false,
+        consolidation: {
+          fieldResults: (onlyFields ?? []).map((f) => ({ fieldName: f, finalValue: scraped[f], chosenSource: source, hadConflict: false })),
+        },
+      }),
+      consolidatedUpsertChildRows: refusingOrchestrator.consolidatedUpsertChildRows,
+    };
+    const d = {
+      ...base,
+      walk: (id: string) =>
+        walkMod.walkFieldPlanForIPO(
+          id,
+          {
+            fieldPlanRepository: planRepo as never,
+            orchestrator: acceptingOrchestrator,
+            sourceFetchers: { DOC: byField, NSE: byField, BSE: byField, CHITTORGARH: byField },
+            ipoRepository: new IPORepository(db as never, redis as never) as never,
+          },
+          { deadlineMs: Number.MAX_SAFE_INTEGER, now: () => 0 }
+        ),
+    };
+
+    const r = await mod.resourceClosedIpo(IPO_ID, d);
+    const open = await base.countUnsettledPlanRows(IPO_ID);
+    // The job's own writer path: the ledger row must be ACCEPTED with the new enum value.
+    await db.execute(sql`
+      INSERT INTO closed_ipo_resourcing (ipo_id, first_attempt_at, last_attempt_at, attempts, outcome, cause_class, cause_detail,
+                                         fields_written, fields_left_empty, resourced_at_version)
+      VALUES (${IPO_ID}::uuid, now(), now(), 1, ${r.outcome}::closed_ipo_resourcing_outcome,
+              ${r.causeClass ?? null}::closed_ipo_resourcing_cause_class, ${r.causeDetail ?? null},
+              ${r.fieldsWritten}, ${r.fieldsLeftEmpty}, 'od79-probe')`);
+    const [row] = await db.select().from(schema.closedIpoResourcing).where(eq(schema.closedIpoResourcing.ipoId, IPO_ID));
+    // eslint-disable-next-line no-console
+    console.log(`OD-79 PROOF: open after walk ${JSON.stringify(open)}; outcome ${r.outcome}/${r.causeClass} (${r.causeDetail}); stored ${row.outcome}/${row.causeClass}`);
+    expect(open).toEqual({ PENDING: 30, NOT_AVAILABLE_YET: 2, CHECK_FAILED: 5 });
+    expect(r.fieldsWritten).toBe(3);
+    expect(r.outcome).toBe('PARTIAL');
+    expect(r.causeClass).toBe('FIELDS_PENDING');
+    expect(r.causeDetail).toMatch(/the walk asked 5 field\(s\), but 37 plan row\(s\) are not settled \(PENDING 30, NOT_AVAILABLE_YET 2, CHECK_FAILED 5\)/);
+    expect(row.outcome).toBe('PARTIAL');
+    expect(row.causeClass).toBe('FIELDS_PENDING');
+
+    // (b) every plan row settled -> DONE, whether or not anything was asked.
+    await db.execute(sql`UPDATE ipo_field_plan SET state = 'NOT_PRINTED', next_due_at = NULL WHERE ipo_id = ${IPO_ID}::uuid`);
+    const done = await mod.resourceClosedIpo(IPO_ID, d);
+    expect(done.outcome).toBe('DONE');
   });
 
   it('(F-31, MAJOR-3 + round 2) the snapshot names its database and slot, carries child-table current values, and refuses the wrong target', async () => {

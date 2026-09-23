@@ -1374,11 +1374,12 @@ async function checkL() {
 
 // ---- #717 / OD-76: the closed-IPO job recorded DONE without a walk ----------
 // §6.1 (OD-76): an IPO whose plan could not be generated, or whose walk asked
-// nothing, is never DONE unless every plan row is settled (OD-73). "Walked" = at
+// nothing, is never DONE unless every plan row is settled (OD-73); OD-79 widens it to a walked
+// IPO too: DONE with ANY unsettled plan row is flagged. "Walked" = at
 // least one ipo_field_plan row with last_attempt_at set. The table arrives with migration 0050; a slot without
 // it is UNVERIFIABLE. Reported by IPO name.
 async function checkClosedIpoDoneWithoutWalk() {
-  const name = 'no closed-IPO ledger row is DONE for an IPO the field-plan walk never asked (OD-76, #717)';
+  const name = 'no closed-IPO ledger row is DONE while its IPO has no plan or an unsettled plan row (OD-76, OD-79, #717)';
   const [{ present }] = await q(`SELECT to_regclass('public.closed_ipo_resourcing') IS NOT NULL AS present`);
   if (!present) {
     record('closed_ipo_done_without_walk', name, 'UNVERIFIABLE', 'closed_ipo_resourcing does not exist on this slot (migration 0050 not applied)');
@@ -1397,11 +1398,11 @@ async function checkClosedIpoDoneWithoutWalk() {
   const bad = findClosedIpoDoneWithoutWalk(rows);
   for (const r of bad) {
     notify('closed_ipo_done_without_walk', 'P2', r.ipoId, 'closed-IPO job recorded DONE without walking the IPO',
-      `${r.companyName}: DONE with ${r.planRows} plan row(s), ${r.walkedRows} ever asked`);
+      `${r.companyName}: DONE with ${r.planRows} plan row(s), ${r.unsettledRows} unsettled, ${r.walkedRows} ever asked`);
   }
   record('closed_ipo_done_without_walk', name, bad.length === 0 ? 'PASS' : 'FAIL',
     bad.length
-      ? bad.slice(0, MAX_OFFENDERS).map((r) => `${r.companyName} (plan=${r.planRows} walked=${r.walkedRows})`).join('; ')
+      ? bad.slice(0, MAX_OFFENDERS).map((r) => `${r.companyName} (plan=${r.planRows} unsettled=${r.unsettledRows} walked=${r.walkedRows})`).join('; ')
       : `0 of ${rows.length} DONE row(s)`);
 }
 
