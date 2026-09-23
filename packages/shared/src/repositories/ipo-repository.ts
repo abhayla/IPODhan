@@ -1164,6 +1164,25 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Repair-tool entry point (OD-74 item 14 / OD-77): write ONLY `issueSize`. A fresh repair write
+   * stamps `updatedAt` now (through `update()`); the tool's `--undo` passes `restoreUpdatedAt` to put
+   * the row back to its exact before-image. Same write-ratchet rationale as `applyOfferTerms`: the
+   * write lives in this already-baselined file, never re-typed as a direct `db.update(ipos)` in a
+   * new script (`scripts/check-write-ratchet.mjs`, T-316).
+   */
+  async applyIssueSizeRepair(id: string, issueSize: string | null, restoreUpdatedAt?: string): Promise<IPO> {
+    if (restoreUpdatedAt === undefined) return this.update(id, { issueSize });
+    const [ipo] = await this.db
+      .update(ipos)
+      .set({ issueSize, updatedAt: sql`${restoreUpdatedAt}::timestamp` })
+      .where(eq(ipos.id, id))
+      .returning();
+    if (!ipo) throw new EntityNotFoundError('IPO', id);
+    await this.invalidateCache([getIPOByIdKey(id), getIPOBySlugKey(ipo.slug)], ['ipo:list:*', 'ipo:search:*']);
+    return ipo;
+  }
+
+  /**
    * Delete IPO by ID
    */
   async delete(id: string): Promise<void> {

@@ -1,11 +1,16 @@
-// Class invariant for scripts/assert-repair-held.mjs (OD-74, item 14, part of #728):
-// every ipos row that scraper/scripts/repair-issue-size-chittorgarh-once-od74.ts
-// repaired must STILL hold the printed total it wrote. Violations: (a) a row still
-// stamped by the tool whose value drifted from the lineage's printedRupees; (b) any
-// issueSize provenance row where BSE/NSE/MONEYCONTROL replaced CHITTORGARH (OD-73
-// ranks CHITTORGARH above all three, so this must never happen for ANY IPO).
+// Class invariant for scripts/assert-repair-held.mjs (OD-74 item 14, part of #728; OD-77).
+// Violations:
+//  (a) a row still stamped by the tool whose value drifted from the lineage's printedRupees;
+//  (b) an IPO the tracked page store (scraper/scripts/data/od74-issue-size/manifest.json
+//      `expected`, status WRITE) says must hold the CHITTORGARH printed total, whose issue_size
+//      differs from it or whose provenance is no longer CHITTORGARH. Read from the committed
+//      manifest, never from the row's lineage: a first lower-ranked write replaces the lineage and
+//      a second one replaces previous_source too, so a lineage-based check clears itself (review
+//      round 1, MINOR);
+//  (c) any ipos row storing issue_size = 0 (OD-77: TENDER/BUYBACK derive NOT_APPLICABLE, the
+//      others carry NOT_SOURCED; a stored 0 is never a real issue size).
 //
-// Module form: export default async function(pool) -> { count, details }.
+// Module form: default export (pool) -> { count, details }.
 // CLI form: prints the violation count as the LAST stdout line.
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -15,23 +20,31 @@ import { createUtcPool, installUtcTimestampParsing } from '../pg-utc.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TOOL = 'repair-issue-size-chittorgarh-once-od74';
 
-export default async function issueSizeOd74Invariant(pool) {
+export function loadExpected(manifestPath = join(__dirname, '..', '..', '..', 'scraper', 'scripts', 'data', 'od74-issue-size', 'manifest.json')) {
+  if (!existsSync(manifestPath)) return [];
+  const m = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  return Object.entries(m.expected ?? {})
+    .filter(([, e]) => e.status === 'WRITE' && e.printedRupees !== null)
+    .map(([slug, e]) => ({ slug, printedRupees: String(e.printedRupees) }));
+}
+
+export default async function issueSizeOd74Invariant(pool, expected = loadExpected()) {
   const { rows } = await pool.query(
-    `SELECT i.slug, i.issue_size::text AS "issueSize", fs.source, fs.updated_by AS "updatedBy",
-            fs.data_lineage->>'printedRupees' AS "printedRupees"
-       FROM field_sources fs
-       JOIN ipos i ON i.id = fs.ipo_id
+    `WITH exp AS (SELECT * FROM jsonb_to_recordset($2::jsonb) AS x(slug text, "printedRupees" text))
+     SELECT i.slug, i.issue_size::text AS "issueSize", fs.source::text AS source, fs.updated_by AS "updatedBy", 'a:drifted-from-own-write' AS why
+       FROM field_sources fs JOIN ipos i ON i.id = fs.ipo_id
       WHERE fs.table_name = 'ipos' AND fs.field_name = 'issueSize' AND fs.row_key = ''
-        AND (
-              -- (a) a row this tool wrote no longer holds the printed total
-              (fs.updated_by = $1 AND i.issue_size IS DISTINCT FROM (fs.data_lineage->>'printedRupees')::numeric)
-              -- (b) a lower-ranked source overwrote a CHITTORGARH value (a write-back
-              --     replaces the lineage, so (a) alone would go blind; the carried
-              --     previous_source is what survives)
-           OR (fs.source IN ('BSE','NSE','MONEYCONTROL') AND fs.previous_source = 'CHITTORGARH')
-        )
-      ORDER BY i.slug`,
-    [TOOL]
+        AND fs.updated_by = $1 AND i.issue_size IS DISTINCT FROM (fs.data_lineage->>'printedRupees')::numeric
+     UNION ALL
+     SELECT i.slug, i.issue_size::text, fs.source::text, fs.updated_by, 'b:not-the-printed-total'
+       FROM exp JOIN ipos i ON i.slug = exp.slug
+       LEFT JOIN field_sources fs ON fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.field_name = 'issueSize' AND fs.row_key = ''
+      WHERE i.issue_size IS DISTINCT FROM exp."printedRupees"::numeric OR fs.source IS DISTINCT FROM 'CHITTORGARH'
+     UNION ALL
+     SELECT i.slug, i.issue_size::text, NULL::text, NULL::text, 'c:stored-zero'
+       FROM ipos i WHERE i.issue_size = 0
+     ORDER BY 1`,
+    [TOOL, JSON.stringify(expected)]
   );
   return { count: rows.length, details: rows };
 }
