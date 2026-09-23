@@ -517,7 +517,11 @@ export function computeIpoIdentitySlug(scrapedIPO: {
   closeDate?: string | Date | null;
   offeringTypeExplicit?: boolean;
 }): string {
-  const baseSlug = generateSlug(scrapedIPO.companyName);
+  // OD-68 S1/S3: the slug is computed from the name with its page-status suffix
+  // and page-title text stripped — "Rays of Belief Ltd. O" minted
+  // `rays-of-belief-ltd-o` on 2026-09-01 because the slug was taken from the raw
+  // name while the stored display name was sanitised.
+  const baseSlug = stripIdentitySlugSuffix(generateSlug(stripIdentityNameDecoration(scrapedIPO.companyName) || scrapedIPO.companyName));
   const isExplicitOfs = scrapedIPO.offeringType === 'OFS' && scrapedIPO.offeringTypeExplicit === true;
   if (!isExplicitOfs) {
     return baseSlug;
@@ -535,6 +539,9 @@ export function computeIpoIdentitySlug(scrapedIPO: {
 }
 
 function shouldSkipRetry(error: any): boolean {
+  // OD-68: a held record is a decision, not a transient failure — retrying it
+  // only repeats the same hold.
+  if (error?.name === 'IdentityHeldForReviewError') return true;
   const pgCode = error?.code;
   return [
     PG_ERROR_CODES.UNIQUE_VIOLATION,
@@ -692,6 +699,7 @@ export function buildNonDestructiveUpdate(
 // in lock-step (A3 / #6 #8 #16). Imported for local use in upsertIPO AND
 // re-exported for existing callers (e.g. the GMP orchestrator).
 import { normalizeCompanyNameForMatching, rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
+import { stripIdentityNameDecoration, stripIdentitySlugSuffix } from '@ipodhan/shared/utils/identity-decoration';
 import {
   toListingExchangesForSource,
   violatesSmeSingleExchange,

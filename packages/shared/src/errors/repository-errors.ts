@@ -117,3 +117,23 @@ export class ProdWriteRefusedError extends RepositoryError {
     Object.setPrototypeOf(this, ProdWriteRefusedError.prototype);
   }
 }
+
+/**
+ * OD-68 (docs/design/data-sourcing-pull-model.md §2.3.3.2): a record that
+ * binds to no identifier, and whose name matches an existing offering without
+ * the same open date and price band, is HELD FOR REVIEW — never created as a
+ * new row. `IPORepository.create` throws this instead of inserting; the
+ * candidates it collided with are carried (and logged) so a human can decide
+ * without running a second query.
+ */
+export class IdentityHeldForReviewError extends RepositoryError {
+  constructor(
+    message: string,
+    public readonly incoming: { companyName: string; slug: string; openDate: unknown; priceRangeMin: unknown },
+    public readonly candidates: { id: string; slug: string; companyName: string; openDate: unknown; priceRangeMin: unknown; status: unknown }[]
+  ) {
+    super(message);
+    this.name = 'IdentityHeldForReviewError';
+    Object.setPrototypeOf(this, IdentityHeldForReviewError.prototype);
+  }
+}

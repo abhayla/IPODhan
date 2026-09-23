@@ -42,9 +42,18 @@
  */
 import { logger } from '../logger';
 import { foldCompanyIdentity } from '../utils/company-identity-fold.js';
+import {
+  stripIdentityNameDecoration,
+  stripIdentitySlugSuffix,
+  strictIdentityCompanyName,
+} from '../utils/identity-decoration';
+import { normalizeCompanyNameForMatching } from '../utils/company-name-normalizer';
+import { generateIPOSlug } from '../utils/slug';
 import { classifyPrefixBoundary } from './ipo-repository';
 import type { IPORepository } from './ipo-repository';
 import type { IPO, IPOWithRelations } from './types';
+
+export { IdentityHeldForReviewError } from '../errors/repository-errors';
 
 /**
  * LIGHT normalization for boundary-kind classification only (T-403 item 2)
@@ -265,10 +274,107 @@ async function logDuplicateCandidates(
   }
 }
 
+
+/**
+ * OD-68 corroboration: a positive price (0 is how several aggregators say
+ * "not known yet" — the Rays of Belief chittorgarh shape carried 0/0), else null.
+ */
+function knownPrice(value: unknown): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** OD-35: open dates within this many days are one offering (a postponement), beyond it a new one. */
+export const SAME_OFFERING_WINDOW_DAYS = 180;
+
+function daysApart(a: string, b: string): number {
+  return Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
+}
+
+/**
+ * OD-68 + OD-35 + OD-71 (PR #910 review round 1, MAJOR-1; round 2 fix): may a NAME match bind?
+ *
+ * The rule, in order — a candidate is REFUSED when:
+ *   0. the candidate's status is WITHDRAWN (OD-71: a withdrawn draft means the refiling is a
+ *      new offering, never an update to the withdrawn row — `holdIfIdentityUnbound`
+ *      (ipo-repository.ts) already excludes WITHDRAWN from the hold query, but every BIND path
+ *      (findByNormalizedName, findBySlug, the fuzzy and fold tiers) fed this function a candidate
+ *      with no status check at all, so a refiled record silently bound to and overwrote the
+ *      withdrawn row instead of creating a new one);
+ *   1. the segments are both known and differ (an SME and a mainboard issue are two offerings);
+ *   2. the price bands are both known (> 0) and differ;
+ *   3. the open dates are both known and more than 180 days apart (OD-35: a new offering);
+ *   4. the open dates are both known and differ AT ALL, and the match came from a LOOSE tier
+ *      (3b prefix-with-corroboration or 5 fuzzy/typo) — a guess about the NAME may not also
+ *      absorb a guess about the DATE, which is the OD-69 look-alike case (Himalayan Solar /
+ *      Himalaya Nutravedics opened 3 days apart).
+ * Otherwise it binds. So an EXACT name / slug match whose open date moved by up to 180 days,
+ * with no band or segment contradiction, is the SAME offering postponed or corrected, and the
+ * incoming record UPDATES that row — before this round the date difference alone declined the
+ * bind and the create was then held, so a postponed keyless issue kept its stale date forever.
+ * A value unknown on either side neither proves nor refutes.
+ */
+function nameMatchContradiction(
+  identity: Pick<IpoIdentity, 'openDate' | 'priceRangeMin' | 'segment'>,
+  candidate: { openDate?: unknown; priceRangeMin?: unknown; segment?: unknown; status?: unknown },
+  opts: { looseTier: boolean }
+): string | null {
+  if (candidate.status === 'WITHDRAWN') {
+    return 'candidate is WITHDRAWN (OD-71: a refiling is a new offering, never a bind to the withdrawn row)';
+  }
+  if (segmentsConflict(identity.segment, (candidate.segment as string | null | undefined) ?? null)) {
+    return `segment differs (${String(identity.segment)} vs ${String(candidate.segment)})`;
+  }
+  const incomingPrice = knownPrice(identity.priceRangeMin);
+  const candidatePrice = knownPrice(candidate.priceRangeMin);
+  if (incomingPrice != null && candidatePrice != null && incomingPrice !== candidatePrice) {
+    return `price band differs (${incomingPrice} vs ${candidatePrice})`;
+  }
+  const incomingDay = toCalendarDateString(identity.openDate ?? null);
+  const candidateDay = toCalendarDateString((candidate.openDate as string | Date | null | undefined) ?? null);
+  if (incomingDay && candidateDay && incomingDay !== candidateDay) {
+    const gap = daysApart(incomingDay, candidateDay);
+    if (gap > SAME_OFFERING_WINDOW_DAYS) {
+      return `open date ${Math.round(gap)} days away (${incomingDay} vs ${candidateDay}) - beyond OD-35's ${SAME_OFFERING_WINDOW_DAYS}-day window, a new offering`;
+    }
+    if (opts.looseTier) {
+      return `open date differs (${incomingDay} vs ${candidateDay}) on a prefix/fuzzy name match`;
+    }
+  }
+  return null;
+}
+
+/**
+ * OD-68 S1/S3: strip page-status suffixes and page-title text from the
+ * incoming name and slug BEFORE any tier runs. The caller's `normalizedName`
+ * and `slug` were computed from the raw name, so both are recomputed from the
+ * stripped name when it differs. An OFS slug (`-ofs-<year>`) is kept as the
+ * caller built it — its suffix is identity, not decoration.
+ */
+function stripIncomingDecoration(identity: IpoIdentity): IpoIdentity {
+  const cleanedName = stripIdentityNameDecoration(identity.companyName);
+  const isOfsSlug = /-ofs-(\d{4}|unknown)$/.test(identity.slug ?? '');
+  if (!cleanedName || cleanedName === identity.companyName.trim()) {
+    const slug = isOfsSlug ? identity.slug : stripIdentitySlugSuffix(identity.slug);
+    return slug === identity.slug ? identity : { ...identity, slug };
+  }
+  logger.info(
+    { companyName: identity.companyName, strippedCompanyName: cleanedName, slug: identity.slug },
+    '[OD-68] incoming name carried a page-status suffix or page-title text - stripped before matching'
+  );
+  return {
+    ...identity,
+    normalizedName: normalizeCompanyNameForMatching(cleanedName),
+    slug: isOfsSlug ? identity.slug : stripIdentitySlugSuffix(generateIPOSlug(cleanedName)),
+  };
+}
+
 export async function resolveIpoRow(
   ipoRepository: IPORepository,
-  identity: IpoIdentity
+  rawIdentity: IpoIdentity
 ): Promise<IPO | IPOWithRelations | null> {
+  const identity = stripIncomingDecoration(rawIdentity);
   const { companyName, normalizedName, slug, isin, symbol, openDate, priceRangeMin, segment, offeringType } = identity;
 
   // Item 12 slice D: OBSERVE duplicate candidates. Deliberately placed HERE,
@@ -286,6 +392,9 @@ export async function resolveIpoRow(
   // match over a tier 3b guess (it still prefers tier 3's exact-name match,
   // as before — only tier 3b is downgraded).
   let nameMatchIsTier3b = false;
+  // PR #910 review round 1 (MAJOR-1): the fuzzy tier is a guess about the name,
+  // so it may not also tolerate a moved open date (see nameMatchContradiction).
+  let nameMatchIsFuzzy = false;
 
   // Tier 1: ISIN (exact, normalized). Highest-confidence natural key — a
   // 12-character code unique to the security. NULL-safe: findByIsin returns
@@ -525,6 +634,7 @@ export async function resolveIpoRow(
           newSlug: slug,
         }, '[T-293] Found existing IPO via fuzzy (typo) name matching - preventing duplicate!');
         nameMatch = fuzzyMatch;
+        nameMatchIsFuzzy = true;
       }
     } catch (fuzzyError) {
       logger.warn({
@@ -532,6 +642,88 @@ export async function resolveIpoRow(
         normalizedName,
         error: fuzzyError instanceof Error ? fuzzyError.message : String(fuzzyError),
       }, '[T-293] Fuzzy duplicate check failed (non-fatal) - continuing without it');
+    }
+  }
+
+  // OD-68 gate: whichever name tier (3, 3b, 4 slug, 5 fuzzy) produced the
+  // match, a KNOWN open date or price band that differs means it is not this
+  // row. Declined here; if nothing else binds, the caller's create is held by
+  // `IPORepository.create` (never a second row, never written into this one).
+  if (nameMatch) {
+    const contradiction = nameMatchContradiction(identity, nameMatch, { looseTier: nameMatchIsTier3b || nameMatchIsFuzzy });
+    if (contradiction) {
+      logger.warn({
+        companyName,
+        normalizedName,
+        openDate: toCalendarDateString(openDate ?? null),
+        priceRangeMin: priceRangeMin ?? null,
+        candidateId: nameMatch.id,
+        candidateSlug: nameMatch.slug,
+        candidateCompanyName: nameMatch.companyName,
+        reason: contradiction,
+      }, '[OD-68] name match declined - ' + contradiction + ' - not bound on the name');
+      nameMatch = null;
+      nameMatchIsTier3b = false;
+      nameMatchIsFuzzy = false;
+    } else {
+      const incomingDay = toCalendarDateString(openDate ?? null);
+      const candidateDay = toCalendarDateString((nameMatch.openDate as string | Date | null | undefined) ?? null);
+      if (incomingDay && candidateDay && incomingDay !== candidateDay) {
+        logger.info({
+          companyName,
+          candidateId: nameMatch.id,
+          candidateSlug: nameMatch.slug,
+          from: candidateDay,
+          to: incomingDay,
+        }, '[OD-68/OD-35] same offering, open date moved within 180 days - bound; the write updates the date');
+      }
+    }
+  }
+
+  // Tier 6 (OD-68 S3): the identity fold + the SAME open date. Catches a
+  // stored name that carries page-title text in a shape the prefix tier cannot
+  // see ("Rays of Belief Limited- For Profit Social Enterprise" vs an incoming
+  // "Rays of Belief Limited" whose band disagrees with nothing but is not a
+  // punctuation-boundary prefix). Bounded by the open-date query; binds only a
+  // single, uncontradicted candidate of a compatible segment/offering type.
+  if (!nameMatch && !keyMatch && openDate) {
+    try {
+      const finder = (ipoRepository as { findLiveByOpenDate?: (d: string | Date) => Promise<IPO[]> })
+        .findLiveByOpenDate;
+      // The STRICT fold: a bind has consequences, so "Laxmi India Finance" may
+      // not meet "Laxmi Finance" here (PR #910 review round 1, MAJOR-3).
+      const fold = strictIdentityCompanyName(companyName);
+      if (fold && typeof finder === 'function') {
+        const sameDay = (await finder.call(ipoRepository, openDate)) ?? [];
+        const folded = sameDay.filter(
+          (row) =>
+            strictIdentityCompanyName(row.companyName) === fold &&
+            !segmentsConflict(segment, row.segment) &&
+            !ofsIdentityConflict(offeringType, row.offeringType) &&
+            nameMatchContradiction(identity, row, { looseTier: true }) === null
+        );
+        if (folded.length === 1) {
+          nameMatch = folded[0];
+          logger.info({
+            companyName,
+            identityFold: fold,
+            existingSlug: folded[0].slug,
+            existingCompanyName: folded[0].companyName,
+          }, '[OD-68] bound via the identity fold + same open date');
+        } else if (folded.length > 1) {
+          logger.warn({
+            companyName,
+            identityFold: fold,
+            candidateIds: folded.map((r) => r.id),
+            candidateSlugs: folded.map((r) => r.slug),
+          }, '[OD-68] several rows share this identity fold and open date - declining to bind (ambiguous)');
+        }
+      }
+    } catch (foldError) {
+      logger.warn({
+        companyName,
+        error: foldError instanceof Error ? foldError.message : String(foldError),
+      }, '[OD-68] identity-fold tier failed (non-fatal) - continuing without it');
     }
   }
 

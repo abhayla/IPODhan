@@ -973,15 +973,29 @@ export function evaluateCronExecutable(paths, gitLsFiles) {
 // ' - '/'- ' separator, because S3's title-in-name pollution
 // ("... - Pernia's Pop-Up Studio IPO") and S1's page-status suffix both live
 // past a legal-suffix-only fold.
+// PLAIN-JS TWIN of packages/shared/src/utils/identity-decoration.ts (OD-68) --
+// the matching code in resolveIpoRow / IPORepository.create uses the TS copy, this
+// nightly check uses this one, and scripts/tests/identity-decoration-parity.test.mjs
+// imports BOTH and fails on any divergence. Change them together.
 const IDENTITY_STOPWORDS = new Set([
   'limited', 'ltd', 'company', 'co', 'private', 'pvt', 'india', 'the', 'ipo',
 ]);
+const IDENTITY_STATUS_TOKEN = /(\b(?:ltd|limited)\.?(?:\s*\([^)]*\))?)\s+(?:o|p|lt|ct)$/i;
+
+export function stripIdentityNameDecoration(name) {
+  if (!name) return '';
+  let s = String(name).trim();
+  s = s.replace(IDENTITY_STATUS_TOKEN, '$1').trim();
+  s = s.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  s = s.split(/\s+-\s+|-\s+(?=[A-Za-z])/)[0].trim();
+  s = s.replace(IDENTITY_STATUS_TOKEN, '$1').trim();
+  s = s.replace(/\s+(IPO|FPO)$/i, '').trim();
+  return s;
+}
 
 export function normalizeIdentityCompanyName(name) {
   if (!name) return '';
-  let s = String(name)
-    .replace(/\([^)]*\)/g, ' ') // drop bracketed text
-    .split(/\s+-\s+|-\s+(?=[A-Za-z])/)[0]; // drop everything after ' - ' / '- '
+  const s = stripIdentityNameDecoration(name).replace(/\([^)]*\)/g, ' ');
   return s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
@@ -995,12 +1009,12 @@ export function normalizeIdentityCompanyName(name) {
 // slug. Stripped BEFORE matching, per the owner's decision text verbatim.
 export function stripIdentitySlugSuffix(slug) {
   if (!slug) return '';
-  return String(slug).replace(/-(o|p|lt|ct)$/i, '');
+  return String(slug).replace(/-(ltd|limited)-(?:o|p|lt|ct)$/i, '-$1');
 }
 
 // The identifiers the §2.3.3.1 "standing sweep" groups by: "every row by each
-// identifier it holds" — CIN, ISIN, exchange symbol and BSE scrip code (the
-// four identifier columns that actually exist on `ipos`; see schema.ts —
+// identifier it holds" -- CIN, ISIN, exchange symbol and BSE scrip code (the
+// four identifier columns that actually exist on `ipos`; see schema.ts --
 // there is no separate BSE-code table, `bseScripCode` IS it). The suffix-
 // stripped-slug and normalised-name+open-date keys are additional groupings
 // this check keeps from the original brief (S1's page-status suffix and
@@ -1078,6 +1092,33 @@ export function findNameBoundLiveRows(rows = []) {
   ).map((r) => ({ id: r.id, slug: r.slug, companyName: r.companyName, status: r.status }));
 }
 
+// OD-68 hold-for-review (PR #910 review round 1, MAJOR-2): IPORepository.create
+// writes one audit_logs row (action_type IDENTITY_HELD_FOR_REVIEW) per held
+// record per candidate per day. A hold recorded inside `recentDays` whose
+// incoming slug has NO later IDENTITY_HOLD_OVERRIDDEN row is still happening
+// (the record keeps arriving and keeps being refused) and nobody has decided
+// it — reported by name, never as a count (signal-ownership.md R1).
+// `holds`/`overrides`: [{ slug, companyName?, candidates?, at }] with `at` an
+// ISO timestamp; `now` injectable for tests.
+export function findUndecidedIdentityHolds(holds = [], overrides = [], now = new Date(), recentDays = 2) {
+  const cutoff = now.getTime() - recentDays * 86_400_000;
+  const lastOverride = new Map();
+  for (const o of overrides) {
+    const t = Date.parse(o.at);
+    if (!lastOverride.has(o.slug) || t > lastOverride.get(o.slug)) lastOverride.set(o.slug, t);
+  }
+  const bySlug = new Map();
+  for (const h of holds) {
+    const t = Date.parse(h.at);
+    if (!(t >= cutoff)) continue;
+    const ov = lastOverride.get(h.slug);
+    if (ov != null && ov >= t) continue;
+    const prev = bySlug.get(h.slug);
+    if (!prev || t > Date.parse(prev.at)) bySlug.set(h.slug, h);
+  }
+  return [...bySlug.values()].sort((a, b) => String(a.slug).localeCompare(String(b.slug)));
+}
+
 // S3: page title / brand text landed in the stored company name or slug —
 // "... (... IPO)", a trailing " IPO" word, a slug matching -ipo(-|$), or a
 // slug still carrying the page-status suffix shape (-o/-p/-lt/-ct).
@@ -1088,7 +1129,8 @@ export function checkIpoTitleInName(row) {
   if (/\(\s*[^)]*\bipo\b[^)]*\)/i.test(name)) violations.push('company_name has "(...IPO)"');
   if (/\bipo\b\s*$/i.test(name.trim())) violations.push('company_name ends in the word IPO');
   if (/-ipo(-|$)/i.test(slug)) violations.push('slug matches -ipo(-|$)');
-  if (/-(o|p|lt|ct)$/i.test(slug)) violations.push('slug carries a page-status suffix (-o/-p/-lt/-ct)');
+  // Anchored to a legal suffix, same as the matcher (PR #910 MINOR-4): "om-metallogic-p" is a name.
+  if (stripIdentitySlugSuffix(slug) !== slug) violations.push('slug carries a page-status suffix (-o/-p/-lt/-ct)');
   if (violations.length === 0) return null;
   return `"${row.companyName}" [${slug}]: ${violations.join('; ')}`;
 }

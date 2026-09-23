@@ -276,6 +276,18 @@
       "note": "Owner #903 S4. LISTED excluded deliberately — a LISTED row plus a fresh filing is the legitimate new-offering-after-withdrawal shape (OD-35 lapsed-draft rule), not a duplicate."
     },
     {
+      "id": "i_identity_held",
+      "findingClass": "an incoming IPO record held for review by the OD-68 create-time hold (a same-name, same-segment live row with a differing KNOWN open date or price band) that no human has decided — invisible anywhere else, so the offering it describes never gets a row or a correction",
+      "round7Findings": [],
+      "failThreshold": "any audit_logs IDENTITY_HELD_FOR_REVIEW row in the last 2 days whose incoming slug has no later IDENTITY_HOLD_OVERRIDDEN row",
+      "severity": "P2",
+      "unverifiableWhen": "never — always runs against the audit_logs table",
+      "spec_ref": [
+        "2.3.3.2"
+      ],
+      "note": "PR #910 review round 1, MAJOR-2: a warn log alone is not detection (signal-ownership.md R3). IPORepository.create writes one audit_logs row per held record per candidate per day; this check lists every undecided one by name. A human decides by correcting the existing row, or by creating the record through /admin (the web admin route is not held) or IPORepository.create(..., { identityHoldOverride })."
+    },
+    {
       "id": "i_ipo_title_in_name",
       "findingClass": "page title or page-status text stored in company_name or slug instead of the company's real name",
       "round7Findings": [],

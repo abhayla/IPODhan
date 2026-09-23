@@ -20,7 +20,11 @@ function makeStubDb() {
   const returning = vi.fn().mockResolvedValue([{ id: 'ipo-1', companyName: 'Test Ltd' }]);
   const values = vi.fn().mockReturnValue({ returning });
   const insert = vi.fn().mockReturnValue({ values });
-  const db = { insert, select: vi.fn(), update: vi.fn(), delete: vi.fn(), execute: vi.fn() } as unknown as never;
+  // OD-68: create first reads the live rows of the same offering type for its hold-for-review
+  // check; an empty table means nothing to hold against.
+  const where = vi.fn().mockResolvedValue([]);
+  const select = vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where }) });
+  const db = { insert, select, update: vi.fn(), delete: vi.fn(), execute: vi.fn() } as unknown as never;
   return { db, insert };
 }
 

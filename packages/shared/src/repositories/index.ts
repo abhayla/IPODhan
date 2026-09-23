@@ -90,7 +90,7 @@ export type { IpoRiskFactorRow, IpoRiskFactorInsert } from './ipo-risk-factors-r
 export { BaseRepository } from './base-repository';
 
 // IPO identity resolution (T-307 — SSOT for the guard/write three-tier lookup)
-export { resolveIpoRow } from './ipo-identity';
+export { resolveIpoRow, IdentityHeldForReviewError } from './ipo-identity';
 export type { IpoIdentity } from './ipo-identity';
 
 // Types and Interfaces

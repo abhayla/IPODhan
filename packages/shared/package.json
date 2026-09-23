@@ -21,6 +21,7 @@
     "./utils/ist-day": "./src/utils/ist-day.ts",
     "./utils/registrar-display": "./src/utils/registrar-display.ts",
     "./utils/company-name-normalizer": "./src/utils/company-name-normalizer.ts",
+    "./utils/identity-decoration": "./src/utils/identity-decoration.ts",
     "./utils/risk-factor-heading-key": "./src/utils/risk-factor-heading-key.ts",
     "./utils/company-name-similarity": "./src/utils/company-name-similarity.ts",
     "./utils/registrar-matcher": "./src/utils/registrar-matcher.ts",

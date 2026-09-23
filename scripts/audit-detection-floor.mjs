@@ -69,7 +69,7 @@ import {
   parseStepNames, checkStepSilence, checkStepConsecutiveFailures,
   STEP_LEDGER_WINDOW_HOURS,
   crossCheckNseStatuses,
-  findSameIpoTwoRows, checkIpoTitleInName, findCompanyTwoLiveRows, findNameBoundLiveRows,
+  findSameIpoTwoRows, checkIpoTitleInName, findCompanyTwoLiveRows, findNameBoundLiveRows, findUndecidedIdentityHolds,
 } from './lib/detection-floor-checks.mjs';
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
@@ -1423,6 +1423,30 @@ async function checkIdentity() {
   record('i_name_bound_live', 'every live (UPCOMING/OPEN) IPO row with no CIN/symbol/ISIN is reported by name (OD-34 name-bound flag)',
     nameBound.length === 0 ? 'PASS' : 'FAIL',
     nameBound.length ? nameBound.map((r) => r.slug).join(', ') : `0 name-bound live rows`);
+
+  // i_identity_held (OD-68, PR #910 MAJOR-2): a record held for review is not
+  // written anywhere else a human reads, so this is its consumer.
+  const heldRows = await q(
+    `SELECT action_type AS "actionType", new_value AS slug,
+            details->'incoming'->>'companyName' AS "companyName",
+            old_value AS candidates, "timestamp"::text AS at
+       FROM audit_logs
+      WHERE action_type IN ('IDENTITY_HELD_FOR_REVIEW', 'IDENTITY_HOLD_OVERRIDDEN')
+        AND "timestamp" > now() - interval '30 days'`
+  );
+  const toIso = (r) => ({ ...r, at: `${String(r.at).replace(' ', 'T').slice(0, 19)}Z` });
+  const undecided = findUndecidedIdentityHolds(
+    heldRows.filter((r) => r.actionType === 'IDENTITY_HELD_FOR_REVIEW').map(toIso),
+    heldRows.filter((r) => r.actionType === 'IDENTITY_HOLD_OVERRIDDEN').map(toIso),
+  );
+  for (const h of undecided) {
+    notify('i_identity_held', 'P2', h.slug, 'Incoming IPO record held for review (OD-68)', `"${h.companyName}" [${h.slug}] vs ${h.candidates} - a same-name live row has a differing known open date or price band; decide: fix the row, or create via /admin (override)`);
+  }
+  record('i_identity_held', 'no incoming IPO record has been held for review (OD-68) in the last 2 days without a human decision',
+    undecided.length === 0 ? 'PASS' : 'FAIL',
+    undecided.length
+      ? undecided.slice(0, MAX_OFFENDERS).map((h) => `"${h.companyName}" [${h.slug}] vs ${h.candidates}`).join('; ')
+      : `0 undecided holds (${heldRows.length} hold/override row(s) in 30 days)`);
 }
 
 // ---- (j): assorted P3 gates ----------------------------------------------------

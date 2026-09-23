@@ -21,6 +21,7 @@ import {
   fieldSources,
   ipoSlugRedirects,
   ipoMergeLog,
+  auditLogs,
   type ipoStatusEnum,
   type segmentEnum,
   type offeringTypeEnum,
@@ -34,8 +35,12 @@ import {
   getIPOSearchKey,
   getHistoricalIPOsKey,
 } from '../cache/cache-keys';
-import { EntityNotFoundError, DatabaseError, ProdWriteRefusedError } from '../errors/repository-errors';
+import { EntityNotFoundError, DatabaseError, ProdWriteRefusedError, IdentityHeldForReviewError } from '../errors/repository-errors';
+import { strictIdentityCompanyName } from '../utils/identity-decoration';
 import { logger } from '../logger';
+
+/** audit_logs.action_type of an OD-68 hold; read by the nightly `i_identity_held` check. */
+export const IDENTITY_HELD_ACTION = 'IDENTITY_HELD_FOR_REVIEW';
 import {
   normalizedCompanyNameSql,
   compactNormalizedCompanyNameSql,
@@ -862,9 +867,137 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
-   * Create new IPO
+   * OD-68 hold-for-review, at the shared repository's create door (every
+   * scraper and script create; the admin route uses web's own repository and
+   * is NOT held - it is the human path).
+   *
+   * A create is only reached when `resolveIpoRow` bound nothing. The record is
+   * HELD (no row created) only when a live row is plausibly the same offering
+   * AND carries a KNOWN fact that contradicts the incoming record
+   * (PR #910 review round 1, MAJOR-3):
+   *   - same STRICT identity fold (decoration stripped, only corporate-form
+   *     words dropped: "Laxmi India Finance" is not "Laxmi Finance"),
+   *   - same segment and same offering type (an SME and a mainboard issue, or
+   *     an IPO and an OFS, are two offerings - OD-70),
+   *   - not WITHDRAWN, and open dates not more than 180 days apart when both
+   *     are known (beyond that it is a new offering - OD-35 / OD-71),
+   *   - and its open date or price band is KNOWN on both sides and DIFFERS.
+   * Nothing known that differs: the record is created normally (OD-68 as
+   * corrected); a same-fold pair with nothing contradicting is left to the
+   * nightly `i_same_ipo_two_rows` sweep.
+   *
+   * A hold is DURABLE and READ BY A HUMAN (MAJOR-2, signal-ownership.md R3):
+   * one audit_logs row per held record per candidate per day (action_type
+   * IDENTITY_HELD_FOR_REVIEW, on /admin/audit), and the nightly check
+   * `i_identity_held` lists every held record no row has since absorbed.
    */
-  async create(data: IPOInsert): Promise<IPO> {
+  private async holdIfIdentityUnbound(data: IPOInsert): Promise<void> {
+    const fold = strictIdentityCompanyName(data.companyName ?? '');
+    if (!fold || !data.segment) return;
+    const offeringType = data.offeringType ?? 'IPO';
+    const rows = await this.db
+      .select({
+        id: ipos.id,
+        slug: ipos.slug,
+        companyName: ipos.companyName,
+        openDate: ipos.openDate,
+        priceRangeMin: ipos.priceRangeMin,
+        status: ipos.status,
+      })
+      .from(ipos)
+      .where(sql`${ipos.offeringType} = ${offeringType} AND ${ipos.segment} = ${data.segment} AND ${ipos.status} <> 'WITHDRAWN'`);
+    const toDay = (v: unknown): string | null =>
+      v == null || v === '' ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
+    const toPrice = (v: unknown): number | null => {
+      if (v == null || v === '') return null;
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const incomingDay = toDay(data.openDate);
+    const incomingPrice = toPrice(data.priceRangeMin);
+    const WINDOW_DAYS = 180;
+    const candidates = rows.filter((row) => {
+      if (strictIdentityCompanyName(row.companyName) !== fold) return false;
+      const rowDay = toDay(row.openDate);
+      if (incomingDay && rowDay && Math.abs(Date.parse(incomingDay) - Date.parse(rowDay)) / 86_400_000 > WINDOW_DAYS) {
+        return false;
+      }
+      const dateDiffers = incomingDay != null && rowDay != null && incomingDay !== rowDay;
+      const rowPrice = toPrice(row.priceRangeMin);
+      const bandDiffers = incomingPrice != null && rowPrice != null && incomingPrice !== rowPrice;
+      return dateDiffers || bandDiffers;
+    });
+    if (candidates.length === 0) return;
+    const incoming = {
+      companyName: data.companyName ?? '',
+      slug: data.slug ?? '',
+      openDate: incomingDay,
+      priceRangeMin: data.priceRangeMin ?? null,
+    };
+    const candidateView = candidates.map((c) => ({
+      id: c.id, slug: c.slug, companyName: c.companyName, openDate: c.openDate, priceRangeMin: c.priceRangeMin, status: c.status,
+    }));
+    logger.warn(
+      { incoming, identityFold: fold, candidates: candidateView },
+      'identity_held_for_review: no identifier bound this record and a same-name live row has a differing known open date or price band - NOT created (OD-68)'
+    );
+    await this.recordIdentityHold(incoming, fold, candidateView);
+    throw new IdentityHeldForReviewError(
+      `IPORepository.create: "${incoming.companyName}" held for review (OD-68) - its identity fold "${fold}" matches ` +
+        candidates.map((c) => `${c.slug} (open ${String(c.openDate ?? 'unknown')}, band ${String(c.priceRangeMin ?? 'unknown')})`).join(', ') +
+        ' whose known open date or price band differs; no row created',
+      incoming,
+      candidateView.map((c) => ({ ...c }))
+    );
+  }
+
+  /**
+   * The durable half of a hold: one audit_logs row per (incoming slug, first
+   * candidate) per day, so a record re-scraped every cycle does not flood the
+   * log. A failure here never turns a hold into a create - the caller throws
+   * regardless - and is logged at error level.
+   */
+  private async recordIdentityHold(
+    incoming: { companyName: string; slug: string; openDate: string | null; priceRangeMin: unknown },
+    fold: string,
+    candidates: { id: string; slug: string; companyName: string; openDate: unknown; priceRangeMin: unknown; status: unknown }[]
+  ): Promise<void> {
+    try {
+      const existing = await this.db
+        .select({ id: auditLogs.id })
+        .from(auditLogs)
+        .where(sql`${auditLogs.actionType} = ${IDENTITY_HELD_ACTION} AND ${auditLogs.newValue} = ${incoming.slug} AND ${auditLogs.ipoId} = ${candidates[0].id} AND ${auditLogs.timestamp} > now() - interval '1 day'`)
+        .limit(1);
+      if (existing.length > 0) return;
+      await this.db.insert(auditLogs).values({
+        adminUser: 'SYSTEM',
+        actionType: IDENTITY_HELD_ACTION,
+        ipoId: candidates[0].id,
+        tableName: 'ipos',
+        fieldName: 'identity',
+        oldValue: candidates.map((c) => c.slug).join(','),
+        newValue: incoming.slug,
+        details: { rule: 'OD-68', identityFold: fold, incoming, candidates },
+        success: false,
+        errorMessage: `held for review: "${incoming.companyName}" matches ${candidates.map((c) => c.slug).join(', ')} with a differing known open date or price band`,
+      });
+    } catch (error) {
+      logger.error(
+        { incoming, error: error instanceof Error ? error.message : String(error) },
+        'identity_held_for_review: could not write the audit_logs record - the hold stands but the nightly i_identity_held check will not see it'
+      );
+    }
+  }
+
+  /**
+   * Create new IPO.
+   *
+   * `options.identityHoldOverride` (MAJOR-2): a human read the hold and decided
+   * the record IS a separate offering. It skips the OD-68 hold and records the
+   * decision (who, why) in audit_logs as IDENTITY_HOLD_OVERRIDDEN. A scraper
+   * never passes it.
+   */
+  async create(data: IPOInsert, options?: { identityHoldOverride?: { by: string; reason: string } }): Promise<IPO> {
     // #860: an IPO's segment decides which manifest ranks its fields get
     // (`ipoTypeKey` needs it), so an IPO created without one has every ranked
     // source chosen for a GUESSED type -- and `pull_plan_rank` cannot see
@@ -882,6 +1015,23 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         `"${data.companyName ?? data.slug ?? 'unknown'}" had segment=${data.segment ?? 'undefined'}. ` +
         'The segment decides which manifest ranks its fields get; without it every rank is resolved for a guessed type. See #860.'
       );
+    }
+    if (options?.identityHoldOverride) {
+      const { by, reason } = options.identityHoldOverride;
+      if (!by?.trim() || !reason?.trim()) {
+        throw new Error('IPORepository.create: identityHoldOverride needs a non-empty `by` and `reason` (OD-68)');
+      }
+      logger.warn({ companyName: data.companyName, slug: data.slug, by, reason }, 'identity hold OVERRIDDEN by a human - creating the row (OD-68)');
+      await this.db.insert(auditLogs).values({
+        adminUser: by,
+        actionType: 'IDENTITY_HOLD_OVERRIDDEN',
+        tableName: 'ipos',
+        fieldName: 'identity',
+        newValue: data.slug ?? null,
+        details: { rule: 'OD-68', companyName: data.companyName, reason },
+      });
+    } else {
+      await this.holdIfIdentityUnbound(data);
     }
     try {
 
