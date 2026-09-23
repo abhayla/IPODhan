@@ -401,12 +401,21 @@ export function checkStepConsecutiveFailures(stepName, statusesNewestFirst) {
 // nothing independent checked it. NSE's own current-issue + upcoming feeds are
 // the primary oracle for "is this issue actually open right now".
 //
-// SCOPE IS DELIBERATELY NARROW: MAINBOARD rows that name NSE among their
-// listing exchanges. NSE SME (Emerge) issues and BSE-only issues legitimately
-// never appear on these endpoints, so FAILing on them would be pure noise — and
-// a noisy channel gets muted, which is how a mechanism dies (the lesson already
-// recorded in audit-detection-floor.mjs's digest design). Rows with unknown
-// listing exchanges are skipped rather than guessed at.
+// DIRECTION 1 (what we publish, checked against NSE) is deliberately scoped to
+// MAINBOARD rows that name NSE among their listing exchanges — SME status
+// disagreements are not checked by direction 1 (tracked separately, #895
+// item 3). BSE-only issues legitimately never appear on these endpoints, so
+// FAILing direction 1 on them would be pure noise — and a noisy channel gets
+// muted, which is how a mechanism dies (the lesson already recorded in
+// audit-detection-floor.mjs's digest design). Rows with unknown listing
+// exchanges are skipped rather than guessed at.
+//
+// DIRECTION 2 (what NSE publishes, checked against us) matches against EVERY
+// row we publish, not the MAINBOARD-scoped set. Measured 2026-09-23 on the
+// prod floor run (#895): NSE's current/upcoming feeds DO carry SME issues
+// (Himalayan Solar, Pooja Logistics, Coreintegra all seen), so scoping
+// direction 2 to MAINBOARD reported every one of them as "we have no row for
+// it at all" — a false FAIL on every nightly run for every SME IPO NSE lists.
 
 /** Normalized lookup keys for an NSE feed: exact symbol plus normalized name. */
 export function buildNseKeySet(feedRows) {
@@ -461,9 +470,10 @@ export function crossCheckNseStatuses({ ourRows = [], nseCurrent = [], nseUpcomi
 
   // Direction 2: what NSE publishes, checked against us. A live issue we never
   // show at all is the worse defect of the two and is invisible to direction 1.
+  // Built from ALL our rows (not `scoped`) — NSE's feeds carry SME issues too.
   const openByKey = new Set();
   const knownByKey = new Set();
-  for (const row of scoped) {
+  for (const row of ourRows) {
     for (const k of ourKeys(row)) {
       knownByKey.add(k);
       if (row.status === 'OPEN') openByKey.add(k);

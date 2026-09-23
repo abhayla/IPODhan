@@ -958,6 +958,73 @@ test('(l) does not double-report the same company from both feeds', () => {
   assert.equal(m.length, 1);
 });
 
+// --- #895: direction 2 must match NSE feed rows against EVERY row we
+// publish, not just the MAINBOARD-scoped set direction 1 uses. An SME row on
+// NSE's upcoming/current feed is real (measured 2026-09-23: Himalayan Solar,
+// Pooja Logistics, Coreintegra, all SME, all exist) and must not be reported
+// as "we have no row for it at all".
+
+test('(l) #895 an SME UPCOMING row matching NSE upcoming feed is not a mismatch', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({
+      companyName: 'Himalayan Solar Limited', symbol: 'HIMALAYAN',
+      status: 'UPCOMING', segment: 'SME', listingExchanges: ['NSE'],
+    })],
+    nseCurrent: [],
+    nseUpcoming: [nse('HIMALAYAN', 'Himalayan Solar Limited')],
+  });
+  assert.deepEqual(m, []);
+});
+
+test('(l) #895 an SME OPEN row matching NSE current-issue feed is not a mismatch', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({
+      companyName: 'Pooja Logistics Limited', symbol: 'POOJALOG',
+      status: 'OPEN', segment: 'SME', listingExchanges: ['NSE'],
+    })],
+    nseCurrent: [nse('POOJALOG', 'Pooja Logistics Limited')],
+    nseUpcoming: [],
+  });
+  assert.deepEqual(m, []);
+});
+
+test('(l) #895 a genuinely missing company on NSE upcoming still FAILS (discriminates)', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({
+      companyName: 'Himalayan Solar Limited', symbol: 'HIMALAYAN',
+      status: 'UPCOMING', segment: 'SME', listingExchanges: ['NSE'],
+    })],
+    nseCurrent: [],
+    nseUpcoming: [
+      nse('HIMALAYAN', 'Himalayan Solar Limited'),
+      nse('MONEYVIEW', 'Moneyview Limited'),
+    ],
+  });
+  assert.equal(m.length, 1);
+  assert.match(m[0].message, /Moneyview Limited/);
+});
+
+test('(l) #895 direction 1 stays MAINBOARD-scoped: an SME UPCOMING row on NSE current produces no direction-1 message', () => {
+  // Pins current behaviour: widening direction 1 to SME is a separate
+  // decision (issue #895 item 3), not part of this fix. An SME row whose
+  // company appears on NSE's CURRENT feed while we still say UPCOMING is a
+  // real status disagreement — direction 2 correctly flags it once SME rows
+  // are in scope for direction 2 — but it must NOT ALSO produce direction 1's
+  // "NSE lists it as CURRENT (open) issue while we still publish it as
+  // UPCOMING" message, because direction 1's scan (`scoped`) stays
+  // MAINBOARD-only by design.
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({
+      companyName: 'Coreintegra Consulting Services Limited', symbol: 'COREINTEGRA',
+      status: 'UPCOMING', segment: 'SME', listingExchanges: ['NSE'],
+    })],
+    nseCurrent: [nse('COREINTEGRA', 'Coreintegra Consulting Services Limited')],
+    nseUpcoming: [],
+  });
+  const joined = m.map((x) => x.message).join(' | ');
+  assert.doesNotMatch(joined, /NSE lists .* as a CURRENT \(open\) issue while we still publish/);
+});
+
 // --- fix-round W-136-r2: incomplete_row_count only counts DUE rows ---------
 // (a row in a deliberate future next_retry_at backoff must not be flagged as
 // a rotation stall), and the lead-manager count query must not use
