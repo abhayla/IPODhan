@@ -39,11 +39,13 @@ const html = readFileSync(out, 'utf8');
 // --- 1. counts are derived, and match the generated source ------------------
 const gen = readFileSync(join(BOARD, 'plan-sections.generated.html'), 'utf8');
 const completion = gen.match(/<section class="status" id="completion">[\s\S]*?<\/section>/)[0];
-const rows = (completion.match(/<tr>[\s\S]*?<\/tr>/g) || []).filter((r) => r.includes('<td class="s">'));
+const rows = (completion.match(/<tr[\s\S]*?<\/tr>/g) || []).filter((r) => r.includes('<td class="s">'));
 const truth = { BUILT: 0, PARTIAL: 0, 'NOT BUILT': 0 };
+let truthStaged = 0;
 for (const r of rows) {
   const v = r.match(/<span class="pill \w+">(BUILT|PARTIAL|NOT BUILT)<\/span>/);
   if (v) truth[v[1]] += 1;
+  if (r.includes('data-staged="1"')) truthStaged += 1;
 }
 ok('29 build items parsed', rows.length === 29, `got ${rows.length}`);
 ok('verdicts sum to row count', truth.BUILT + truth.PARTIAL + truth['NOT BUILT'] === 29);
@@ -53,6 +55,26 @@ ok('page states the derived breakdown',
   html.includes(`${truth.BUILT} built &middot; ${truth.PARTIAL} partial &middot; ${truth['NOT BUILT']} not built`));
 ok('stdout reports the same numbers',
   stdout.includes(`(${truth.BUILT}/${truth.PARTIAL}/${truth['NOT BUILT']})`), stdout.trim());
+
+// --- 1b. the staging tile says what it measures ------------------------------
+// R2 (owner-status-artifact.md): a board figure must not claim more than its
+// source measures. The vitals tile's "built" count comes from
+// pull-model-completion-state.md, which describes code present on MAIN, not
+// on staging — the tile label must say so, and the separate "proven on
+// staging" figure must be DERIVED (a count of data-staged rows) or the literal
+// word "unmeasured", never a typed number.
+ok('tile label says "on main", not just "built"',
+  html.includes(`${truth.BUILT} / 29 built on main`), `expected "${truth.BUILT} / 29 built on main"`);
+ok('tile sub-line names the source is code on main',
+  html.includes('(code on <b>main</b>)'));
+ok('proven-on-staging figure is derived from data-staged rows',
+  truthStaged === 0
+    ? html.includes('Proven on staging: <b>unmeasured')
+    : html.includes(`Proven on staging: <b>${truthStaged} of 29 items`),
+  `truthStaged=${truthStaged}`);
+ok('unmeasured proven-on-staging names the command/marker that would measure it',
+  truthStaged > 0 || html.includes('Staging proof:'),
+  'zero staged rows must still name the marker that would record one');
 
 // --- 2. per-row counting, not document-wide ---------------------------------
 // A row whose EVIDENCE names a verdict must not inflate the count. Item 31's
