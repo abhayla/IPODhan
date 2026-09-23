@@ -2604,7 +2604,8 @@ export const ipoSourceKeys = pgTable(
     // conflict predicate refuses those, #900).
     bindingValue: varchar('binding_value', { length: 64 }),
     recordOpenDate: date('record_open_date'),
-    // CIN | ISIN | SYMBOL | NAME | HOLD_RESOLUTION | BACKFILL (spec) + KEY | CREATE (see PR body)
+    // CIN | ISIN | SYMBOL | NAME | HOLD_RESOLUTION | BACKFILL (spec) + KEY | CREATE
+    // (docs/design/data-sourcing-pull-model.md §2.3.3.2 "Source record keys")
     boundVia: varchar('bound_via', { length: 32 }).notNull(),
     boundBy: varchar('bound_by', { length: 64 }).notNull(),
     boundAt: timestamp('bound_at').defaultNow().notNull(),

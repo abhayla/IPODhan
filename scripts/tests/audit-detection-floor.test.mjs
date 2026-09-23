@@ -1749,4 +1749,26 @@ test('(OD-76) the audit query counts walked rows by last_attempt_at and reads on
     assert.equal(evaluateSourceKeyConflicts({ tableMissing: true }).status, 'UNVERIFIABLE');
     assert.equal(evaluateSourceKeyConflicts({ readError: 'permission denied for table ipo_source_keys' }).status, 'UNVERIFIABLE');
   });
+
+  // PR #945 Tier A round-3: a DB that has simply never run migration 0053 is not "blind" -- it is
+  // "this class cannot exist here yet". Only a table missing AFTER 0053 is confirmed applied is a
+  // genuine detection gap.
+  test('(i_source_key_conflict) missing table + migration 0053 confirmed NOT applied -> PASS, not-applicable (never a nightly BLIND)', () => {
+    const r = evaluateSourceKeyConflicts({ tableMissing: true, migration0053Applied: false });
+    assert.equal(r.status, 'PASS');
+    assert.match(r.detail, /not applicable.*migration 0053/);
+  });
+
+  test('(i_source_key_conflict) missing table + migration 0053 confirmed applied -> UNVERIFIABLE (a real detection gap)', () => {
+    const r = evaluateSourceKeyConflicts({ tableMissing: true, migration0053Applied: true });
+    assert.equal(r.status, 'UNVERIFIABLE');
+  });
+
+  test('(i_source_key_conflict) missing table + migration state unknown (read error) -> UNVERIFIABLE, never guessed as not-applicable', () => {
+    const r = evaluateSourceKeyConflicts({ tableMissing: true, migration0053Applied: null });
+    assert.equal(r.status, 'UNVERIFIABLE');
+  });
+
+  // Mutation guard: a version of the fix that ignores migration0053Applied and always reports
+  // UNVERIFIABLE on a missing table must fail case (a) above (red on the not-applicable PASS).
 }
