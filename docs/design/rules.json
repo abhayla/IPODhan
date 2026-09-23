@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-23T08:58:04.846Z",
+  "generated_at": "2026-09-23T09:47:31.994Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 185,
-    "retired": 27
+    "retired": 28
   },
-  "next_id": 213,
+  "next_id": 214,
   "rules": [
     {
       "id": "R-151",
@@ -1431,11 +1431,11 @@
       "retired": false
     },
     {
-      "id": "R-211",
-      "hash": "582f58737a4f",
+      "id": "R-213",
+      "hash": "c78b6cfc583a",
       "section": "6.1 What the job does",
       "kind": "prose",
-      "text": "1. status is LISTED or CLOSED, and close_date is before today. 2. Not already marked done, and not marked failed or partial with the same cause class as last time, unless the source rankings changed since (OD-78). Never-walked IPOs come first. 3. Ordered by close_date descending — newest closed first, which is the owner's sequence. 4. At most ten.",
+      "text": "1. status is LISTED or CLOSED, and close_date is before today. 2. Not already marked done, and not marked failed or partial with the same cause class as last time, unless the source rankings changed since (OD-78). A PARTIAL IPO whose cause is FIELDS_PENDING (OD-80) is picked again only on an event since its last attempt — its stage changed, a new document for it was first seen, or the source rankings changed (OD-81) — never on a timer. Never-walked IPOs come first. 3. Ordered by close_date descending — newest closed first, which is the owner's sequence. 4. At most ten.",
       "first_seen": "2026-09-23",
       "retired": false
     },
@@ -1672,6 +1672,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-211",
+      "hash": "582f58737a4f",
+      "section": "6.1 What the job does",
+      "kind": "prose",
+      "text": "1. status is LISTED or CLOSED, and close_date is before today. 2. Not already marked done, and not marked failed or partial with the same cause class as last time, unless the source rankings changed since (OD-78). Never-walked IPOs come first. 3. Ordered by close_date descending — newest closed first, which is the owner's sequence. 4. At most ten.",
+      "first_seen": "2026-09-23",
+      "retired": true
     },
     {
       "id": "R-210",
