@@ -71,6 +71,7 @@ import {
   crossCheckNseStatuses,
   findSameIpoTwoRows, checkIpoTitleInName, findCompanyTwoLiveRows, findNameBoundLiveRows, findUndecidedIdentityHolds,
   findSettledFieldRewrites, SETTLED_FIELD_COLUMNS, policyWriterOnFromEnv, settledCurrentValueSql,
+  findClosedIpoDoneWithoutWalk,
 } from './lib/detection-floor-checks.mjs';
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
@@ -1369,6 +1370,37 @@ async function checkL() {
     mismatches.length
       ? mismatches.slice(0, MAX_OFFENDERS).map((m) => m.message).join(' | ')
       : 'every in-scope MAINBOARD/NSE row agrees with NSE');
+}
+
+// ---- #717 / OD-76: the closed-IPO job recorded DONE without a walk ----------
+// §6.1 (OD-76): an IPO whose plan could not be generated, or whose walk asked
+// nothing, is never DONE. "Walked" = at least one ipo_field_plan row with
+// last_attempt_at set. The table arrives with migration 0050; a slot without
+// it is UNVERIFIABLE. Reported by IPO name.
+async function checkClosedIpoDoneWithoutWalk() {
+  const name = 'no closed-IPO ledger row is DONE for an IPO the field-plan walk never asked (OD-76, #717)';
+  const [{ present }] = await q(`SELECT to_regclass('public.closed_ipo_resourcing') IS NOT NULL AS present`);
+  if (!present) {
+    record('closed_ipo_done_without_walk', name, 'UNVERIFIABLE', 'closed_ipo_resourcing does not exist on this slot (migration 0050 not applied)');
+    return;
+  }
+  const rows = await q(
+    `SELECT r.ipo_id AS "ipoId", i.company_name AS "companyName", r.outcome::text AS outcome,
+            (SELECT count(*)::int FROM ipo_field_plan p WHERE p.ipo_id = r.ipo_id) AS "planRows",
+            (SELECT count(*)::int FROM ipo_field_plan p
+              WHERE p.ipo_id = r.ipo_id AND p.last_attempt_at IS NOT NULL) AS "walkedRows"
+       FROM closed_ipo_resourcing r JOIN ipos i ON i.id = r.ipo_id
+      WHERE r.outcome = 'DONE'`
+  );
+  const bad = findClosedIpoDoneWithoutWalk(rows);
+  for (const r of bad) {
+    notify('closed_ipo_done_without_walk', 'P2', r.ipoId, 'closed-IPO job recorded DONE without walking the IPO',
+      `${r.companyName}: DONE with ${r.planRows} plan row(s), ${r.walkedRows} ever asked`);
+  }
+  record('closed_ipo_done_without_walk', name, bad.length === 0 ? 'PASS' : 'FAIL',
+    bad.length
+      ? bad.slice(0, MAX_OFFENDERS).map((r) => `${r.companyName} (plan=${r.planRows} walked=${r.walkedRows})`).join('; ')
+      : `0 of ${rows.length} DONE row(s)`);
 }
 
 // ---- (i): identity — one IPO stored twice, or two offerings folded into ------
@@ -2769,6 +2801,7 @@ async function main() {
   checkI();
   await checkIdentity();
   await checkSettledFieldRewrites();
+  await checkClosedIpoDoneWithoutWalk();
   await checkK();
   await checkCycleOverrunAudit();
   await checkL();

@@ -35,6 +35,7 @@ import {
   checkIpoTitleInName,
   findCompanyTwoLiveRows,
   findNameBoundLiveRows,
+  findClosedIpoDoneWithoutWalk,
   findUndecidedIdentityHolds,
   findLiveCrossSourceDisagreements,
   valuesDisagree,
@@ -1650,4 +1651,47 @@ test('s_settled_field_rewritten: the SQL reads a stored column for every field t
   assert.deepEqual(Object.keys(SETTLED_FIELD_COLUMNS).sort(), [...WRITER_RANKING.fields].sort());
   const sql = settledCurrentValueSql();
   for (const f of WRITER_RANKING.fields) assert.match(sql, new RegExp(`WHEN '${f}' THEN i\\.[a-z_]+::text`));
+});
+
+// ---- #717 / OD-76: closed-IPO job recorded DONE without a walk ----------------
+// Real staging shape, read-only 2026-09-23: Advit Jewels Ltd. DONE, 0 plan rows,
+// 0 rows walked (one of the ten the job wrote DONE that night).
+test('(OD-76) findClosedIpoDoneWithoutWalk FLAGS a DONE row whose IPO has 0 plan rows', () => {
+  const out = findClosedIpoDoneWithoutWalk([
+    { ipoId: '437ed611', companyName: 'Advit Jewels Ltd.', outcome: 'DONE', planRows: 0, walkedRows: 0 },
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].companyName, 'Advit Jewels Ltd.');
+});
+
+test('(OD-76) findClosedIpoDoneWithoutWalk FLAGS a DONE row whose plan exists but no row was ever asked', () => {
+  const out = findClosedIpoDoneWithoutWalk([
+    { ipoId: 'x', companyName: 'Planned Never Walked Ltd.', outcome: 'DONE', planRows: 189, walkedRows: 0 },
+  ]);
+  assert.equal(out.length, 1);
+});
+
+test('(OD-76) findClosedIpoDoneWithoutWalk PASSES a genuinely walked DONE, and any PARTIAL/FAILED', () => {
+  const out = findClosedIpoDoneWithoutWalk([
+    { ipoId: 'a', companyName: 'Walked Ltd.', outcome: 'DONE', planRows: 189, walkedRows: 189 },
+    { ipoId: 'b', companyName: 'Reopened Ltd.', outcome: 'PARTIAL', planRows: 0, walkedRows: 0 },
+    { ipoId: 'c', companyName: 'No Plan Ltd.', outcome: 'FAILED', planRows: 0, walkedRows: 0 },
+  ]);
+  assert.deepEqual(out, []);
+});
+
+test('(OD-76) findClosedIpoDoneWithoutWalk reads numbers that arrive as strings from pg', () => {
+  const out = findClosedIpoDoneWithoutWalk([
+    { ipoId: 'd', companyName: 'String Ltd.', outcome: 'DONE', planRows: '0', walkedRows: '0' },
+    { ipoId: 'e', companyName: 'String Walked Ltd.', outcome: 'DONE', planRows: '4', walkedRows: '4' },
+  ]);
+  assert.deepEqual(out.map((r) => r.ipoId), ['d']);
+});
+
+test('(OD-76) the audit query counts walked rows by last_attempt_at and reads only DONE rows', () => {
+  const src = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  const body = src.slice(src.indexOf('async function checkClosedIpoDoneWithoutWalk'), src.indexOf('// ---- (i): identity'));
+  assert.match(body, /last_attempt_at IS NOT NULL/);
+  assert.match(body, /WHERE r\.outcome = 'DONE'/);
+  assert.match(body, /record\('closed_ipo_done_without_walk'/);
 });

@@ -239,6 +239,165 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
   return summary;
 }
 
+/**
+ * The walk counters `resourceClosedIpo` reads -- the slice of
+ * `FieldPlanWalkResult` (services/field-plan-walk.ts) it needs, restated so
+ * this module does not import the walk.
+ */
+export interface ClosedIpoWalkCounters {
+  fieldsAttempted: number;
+  fieldsSupplied: number;
+  fieldsExhausted: number;
+  fieldsCheckFailed: number;
+  fieldsWriteSkipped: number;
+  fieldsNotAvailableYet: number;
+  outcomesFailed: number;
+  stoppedReason: 'NO_DUE_FIELDS' | 'BUDGET_EXHAUSTED' | 'CLAIM_SUPERSEDED';
+  droppedWrites: Array<{ tableName: string; fieldName: string; source: string; skipReason: string }>;
+  exhaustedFields: Array<{ tableName: string; fieldName: string }>;
+}
+
+export interface ResourceClosedIpoDeps {
+  /** How many `ipo_field_plan` rows this IPO already has. */
+  countPlanRows: (ipoId: string) => Promise<number>;
+  /** The EXISTING plan generator + upsert (`plantFieldPlanForIpo`), exactly as for a live IPO. */
+  plantPlan: (ipoId: string) => Promise<{ rowsGenerated: number; inserted: number; updated: number }>;
+  /** The EXISTING §2.4 walk (`walkFieldPlanForIPO`) over this IPO's plan. */
+  walk: (ipoId: string) => Promise<ClosedIpoWalkCounters>;
+}
+
+export interface ClosedIpoResourceResult {
+  outcome: ClosedIpoOutcome;
+  causeClass?: ClosedIpoCauseClass;
+  causeDetail?: string;
+  fieldsWritten: number;
+  fieldsLeftEmpty: number;
+}
+
+/**
+ * OD-76 "plan, then walk" -- the real work behind one closed-IPO row.
+ *
+ * WHY: on 2026-09-23 the job's first staging run picked 10 LISTED IPOs, every
+ * one with 0 `ipo_field_plan` rows (238 of 274 LISTED IPOs on staging have no
+ * plan: plans exist only for IPOs live after the generator was switched on).
+ * The walk found nothing due and each was recorded DONE -- and DONE is never
+ * re-picked (§6.2), so all ten left the backlog having had nothing done.
+ *
+ * WHAT (spec §6.1 as rewritten by OD-76): if the IPO has no plan, run the
+ * EXISTING generator for it first; then the SAME §2.4 walk a live IPO gets.
+ * One code path -- no separate document-reading path (#912 was closed for
+ * adding one).
+ *
+ * NEVER DONE WITHOUT A WALK. Each line below is a way to reach the end with
+ * nothing walked, and each maps to PARTIAL/FAILED with a cause:
+ *   - generation threw                  -> FAILED / WRITE_SKIPPED (the DB was the problem)
+ *   - generation produced 0 rows        -> FAILED / EXTRACTOR_MISSING (the manifest ranks
+ *                                          no field for this IPO's type: nothing CAN be asked)
+ *   - the walk asked nothing            -> PARTIAL / SOURCE_UNREACHABLE (plan rows exist but
+ *                                          none was due -- backing off or claimed elsewhere)
+ *   - the walk stopped before finishing -> PARTIAL / SOURCE_UNREACHABLE (budget or superseded
+ *                                          claim: the unwalked rest must not be sealed DONE)
+ * Past those, the walk's own counters decide, exactly as before OD-76:
+ *   - settle calls threw   -> FAILED / WRITE_SKIPPED
+ *   - writes dropped       -> PARTIAL / WRITE_SKIPPED
+ *   - transient failures   -> PARTIAL / SOURCE_UNREACHABLE
+ *   - all exhausted, none supplied -> PARTIAL / DOCUMENT_UNOBTAINABLE
+ *   - otherwise            -> DONE (every due field was asked and settled).
+ */
+export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDeps): Promise<ClosedIpoResourceResult> {
+  const existing = await deps.countPlanRows(ipoId);
+  if (existing === 0) {
+    let planted: { rowsGenerated: number; inserted: number };
+    try {
+      planted = await deps.plantPlan(ipoId);
+    } catch (error) {
+      return {
+        outcome: 'FAILED',
+        causeClass: 'WRITE_SKIPPED',
+        causeDetail: `plan generation threw: ${error instanceof Error ? error.message : String(error)}`,
+        fieldsWritten: 0,
+        fieldsLeftEmpty: 0,
+      };
+    }
+    if (planted.rowsGenerated === 0) {
+      return {
+        outcome: 'FAILED',
+        causeClass: 'EXTRACTOR_MISSING',
+        causeDetail: 'plan generation produced 0 rows for this IPO: the manifest ranks no field for its type, so the walk has nothing to ask',
+        fieldsWritten: 0,
+        fieldsLeftEmpty: 0,
+      };
+    }
+  }
+
+  const walk = await deps.walk(ipoId);
+  const fieldsWritten = walk.fieldsSupplied;
+  const fieldsLeftEmpty =
+    walk.fieldsExhausted + walk.fieldsCheckFailed + walk.fieldsWriteSkipped + walk.fieldsNotAvailableYet;
+
+  if (walk.fieldsAttempted === 0) {
+    return {
+      outcome: 'PARTIAL',
+      causeClass: 'SOURCE_UNREACHABLE',
+      causeDetail: `the walk asked nothing (stopped ${walk.stoppedReason}); plan rows before this run: ${existing}`,
+      fieldsWritten,
+      fieldsLeftEmpty,
+    };
+  }
+  if (walk.outcomesFailed > 0) {
+    return {
+      outcome: 'FAILED',
+      causeClass: 'WRITE_SKIPPED',
+      causeDetail: `${walk.outcomesFailed} settle call(s) threw (DB unreachable); claims released`,
+      fieldsWritten,
+      fieldsLeftEmpty,
+    };
+  }
+  if (walk.stoppedReason !== 'NO_DUE_FIELDS') {
+    return {
+      outcome: 'PARTIAL',
+      causeClass: 'SOURCE_UNREACHABLE',
+      causeDetail: `the walk stopped ${walk.stoppedReason} after ${walk.fieldsAttempted} field(s); the rest were not asked`,
+      fieldsWritten,
+      fieldsLeftEmpty,
+    };
+  }
+  if (walk.fieldsWriteSkipped > 0) {
+    return {
+      outcome: 'PARTIAL',
+      causeClass: 'WRITE_SKIPPED',
+      causeDetail: walk.droppedWrites
+        .slice(0, 5)
+        .map((d) => `${d.tableName}.${d.fieldName} (${d.source}: ${d.skipReason})`)
+        .join('; '),
+      fieldsWritten,
+      fieldsLeftEmpty,
+    };
+  }
+  if (walk.fieldsCheckFailed > 0) {
+    return {
+      outcome: 'PARTIAL',
+      causeClass: 'SOURCE_UNREACHABLE',
+      causeDetail: `${walk.fieldsCheckFailed} field(s) failed transiently; re-asked after backoff`,
+      fieldsWritten,
+      fieldsLeftEmpty,
+    };
+  }
+  if (walk.fieldsExhausted > 0 && walk.fieldsSupplied === 0) {
+    return {
+      outcome: 'PARTIAL',
+      causeClass: 'DOCUMENT_UNOBTAINABLE',
+      causeDetail: walk.exhaustedFields
+        .slice(0, 5)
+        .map((e) => `${e.tableName}.${e.fieldName}`)
+        .join('; '),
+      fieldsWritten,
+      fieldsLeftEmpty,
+    };
+  }
+  return { outcome: 'DONE', fieldsWritten, fieldsLeftEmpty };
+}
+
 /** IST is a fixed UTC+5:30 offset (no DST) — same convention as `due-step-cycle.ts`. */
 const IST_OFFSET_MINUTES = 5 * 60 + 30;
 

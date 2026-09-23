@@ -1323,3 +1323,24 @@ function pick(r) {
     updatedAt: r.updatedAt,
   };
 }
+
+/**
+ * #717 / OD-76 (closed_ipo_done_without_walk): the closed-IPO job must never
+ * record DONE for an IPO it did not walk -- spec §6.1 as rewritten by OD-76:
+ * "An IPO whose plan could not be generated, or whose walk asked nothing, is
+ * never recorded DONE." DONE is never re-picked (§6.2), so each such row is an
+ * IPO dropped from the backlog with nothing done.
+ *
+ * "Walked" is read from the plan itself, not from the ledger's own counters: a
+ * row the walk asked carries last_attempt_at. 0 plan rows, or plan rows none of
+ * which was ever asked, both mean no walk. Staging 2026-09-23: 10 of 10 DONE
+ * rows had 0 plan rows.
+ *
+ * Rows: { ipoId, companyName, outcome, planRows, walkedRows }. Numbers may
+ * arrive as strings from pg; they are coerced.
+ */
+export function findClosedIpoDoneWithoutWalk(rows) {
+  return (rows ?? []).filter(
+    (r) => String(r.outcome).toUpperCase() === 'DONE' && Number(r.walkedRows) === 0
+  );
+}
