@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-23T07:02:55.100Z",
+  "generated_at": "2026-09-23T07:48:45.935Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 183,
+    "live": 184,
     "retired": 25
   },
-  "next_id": 209,
+  "next_id": 210,
   "rules": [
     {
       "id": "R-151",
@@ -51,6 +51,15 @@
       "kind": "prose",
       "text": "An earlier draft wrote it as lot_multiple × lot × floor ≥ ₹1,00,000, which with lot_multiple = 2 reduces to lot × floor ≥ ₹50,000 — the weaker form this very paragraph identifies as F-66, re-adopted by accident. A review caught it. Applying the mainboard check instead is what produced the Qualiance false alarm. Commonly FIXED_PRICE, so the cap ≤ 1.2 × floor check is skipped and floor = cap is expected. Designated exchange is always BSE. |",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-209",
+      "hash": "a2b6b9e2462c",
+      "section": "1.11 Exceptions by IPO type, gathered",
+      "kind": "table-normative",
+      "text": "BUYBACK / TENDER — 17 — Corporate actions, not offerings. Issue size is NOT_APPLICABLE for them, derived from offering_type and never stored (§2.7); a stored 0 is removed (OD-77). They should arguably not be on an IPO site at all (the Mopshop / Sarda class). Field 24 offering_type is the guard; §4.6 gives it a check.",
+      "first_seen": "2026-09-23",
       "retired": false
     },
     {
