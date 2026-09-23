@@ -70,6 +70,7 @@ import {
   STEP_LEDGER_WINDOW_HOURS,
   crossCheckNseStatuses,
   findSameIpoTwoRows, checkIpoTitleInName, findCompanyTwoLiveRows, findNameBoundLiveRows, findUndecidedIdentityHolds,
+  findSettledFieldRewrites, SETTLED_FIELD_COLUMNS, policyWriterOnFromEnv, settledCurrentValueSql,
 } from './lib/detection-floor-checks.mjs';
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
@@ -83,6 +84,7 @@ import { extractShape, compareShape, partitionFixtures, loadHtmlFixtureEntries, 
 import { findFixtureFiles } from './lib/fixture-provenance-checks.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
 import { adminQueueSize, formatAdminQueueBlock } from './ops/admin-queue-size.mjs';
+import { behaviourConflictPredicate, UNRESOLVED_CONFLICT_COUNT_SQL, UNRESOLVED_CONFLICT_NOISE_SQL, CONFLICTS_INSERTED_24H_SQL } from './lib/conflict-reasons.mjs';
 
 // The three filing-extractor types this specific stuck-detection query cares about
 // (never the anchor report or PRICE_BAND_AD — this check is about `scripts/extract_filing.py`
@@ -389,6 +391,7 @@ async function checkA_B() {
          FROM data_conflicts c
          JOIN ipos i ON i.id = c.ipo_id AND i.${REAL_IPO}
         WHERE c.resolved_at IS NULL
+          AND ${behaviourConflictPredicate('c')}
           AND c.field_name IN (${fieldList})
           AND i.status IN ('${LIVE_STATUSES.join("','")}')`
     );
@@ -665,8 +668,9 @@ async function checkF() {
     return;
   }
   const [{ dbName }] = await q(`SELECT current_database() AS "dbName"`);
-  const [{ total }] = await q(`SELECT count(*)::int total FROM data_conflicts WHERE resolved_at IS NULL`);
-  const [{ noise }] = await q(`SELECT count(*)::int noise FROM data_conflicts WHERE resolved_at IS NULL AND (value2 IS NULL OR value2 = '' OR value1 = value2)`);
+  // OD-75 round 2 (PR #914): admin-only SOURCE_CHANGED_OWN_VALUE rows never count toward the backlog.
+  const [{ total }] = await q(UNRESOLVED_CONFLICT_COUNT_SQL);
+  const [{ noise }] = await q(UNRESOLVED_CONFLICT_NOISE_SQL);
   const cls = classifyConflictNoiseRatio(total, noise);
   if (cls.fail) notify('f_conflict_noise_ratio', 'P2', 'aggregate', 'data_conflicts noise ratio too high', `${noise}/${total} (${(cls.ratio * 100).toFixed(1)}%) unresolved conflicts are noise (empty value2 or value1==value2)`);
 
@@ -749,7 +753,8 @@ async function checkG3_inertDetector() {
   const priceRows = await q(`SELECT price_range_min, price_range_max FROM ipos WHERE ${REAL_IPO} AND updated_at > now() - interval '24 hours'`);
   const population = priceRows.length;
   const violations = priceRows.filter((r) => checkPriceBand(r) !== null).length;
-  const [{ inserted }] = await q(`SELECT count(*)::int inserted FROM data_conflicts WHERE detected_at > now() - interval '24 hours'`);
+  // OD-75 round 2: an admin-only self-change row is not evidence the detector is alive.
+  const [{ inserted }] = await q(CONFLICTS_INSERTED_24H_SQL);
   const cls = classifyInertDetector(population, violations, inserted);
   if (cls.status === 'FAIL') notify('g_inert_detector', 'P1', 'aggregate', 'conflict detector appears inert', `${cls.violations} of ${cls.population} IPO row(s) written in the last 24h fail checkPriceBand (real corruption exists) but 0 data_conflicts rows were inserted in that SAME window — the detector is inert, not the data clean`);
   record('g_inert_detector', 'windowed price-band violations without any windowed conflicts inserted -> detector inert', cls.status, `${cls.violations} violation(s) among ${cls.population} row(s) written/24h, ${cls.inserted} conflict(s) inserted/24h`);
@@ -1371,6 +1376,50 @@ async function checkL() {
 // docs/design/data-sourcing-pull-model.md §2.3.3.1's standing sweep (F-103)
 // and §2.3.3.2's OD-34 name-bound reporting. Detection only — no
 // matching/write-path change.
+// ---- (s): OD-73 settled fields (#908) -------------------------------------------------
+// docs/design/data-sourcing-pull-model.md §3.2 (OD-73, OD-65, OD-75): a settled `ipos` field is
+// never re-stamped by an identical value and never rewritten by a source the WRITER would not let
+// win. The rank is the writer's own (scraper/config/writer-source-ranking.json, generated from
+// getSourcePriority/allowsSameSourceRefresh, under this slot's ENABLE_POLICY_WRITER) — never a
+// second hand-kept order. Names every offending IPO and field.
+const SETTLED_WINDOW_HOURS = 24;
+async function checkSettledFieldRewrites() {
+  const snapshot = JSON.parse(
+    readFileSync(new URL('../scraper/config/writer-source-ranking.json', import.meta.url), 'utf8')
+  );
+  const policyWriterOn = policyWriterOnFromEnv(process.env);
+  const rows = await q(
+    `SELECT i.slug, i.segment::text AS segment, i.listing_exchanges AS "listingExchanges",
+            fs.field_name AS "fieldName", fs.source::text AS source,
+            fs.previous_source::text AS "previousSource", fs.previous_value AS "previousValue",
+            fs.updated_at::text AS "updatedAt",
+            ${settledCurrentValueSql()} AS "currentValue"
+       FROM field_sources fs JOIN ipos i ON i.id = fs.ipo_id
+      WHERE fs.table_name = 'ipos' AND fs.row_key = ''
+        AND fs.field_name = ANY($1)
+        AND fs.updated_at > (now() AT TIME ZONE 'UTC') - make_interval(hours => $2)`,
+    [snapshot.fields, SETTLED_WINDOW_HOURS]
+  );
+  const findings = findSettledFieldRewrites(rows, snapshot, policyWriterOn);
+  const byIpo = new Map();
+  for (const f of findings) {
+    if (!byIpo.has(f.slug)) byIpo.set(f.slug, []);
+    byIpo.get(f.slug).push(f);
+  }
+  for (const [slug, fs] of byIpo) {
+    notify('s_settled_field_rewritten', 'P2', slug, 'settled field re-stamped or rewritten (OD-73)',
+      fs.map((f) => `${f.fieldName} ${f.kind} ${f.previousSource}->${f.source} (${f.previousValue} -> ${f.currentValue})`).join('; '));
+  }
+  const flagNote = `writer ranking with ENABLE_POLICY_WRITER=${policyWriterOn ? 'on' : 'off'}`;
+  record('s_settled_field_rewritten',
+    `no settled ipos field (${snapshot.fields.join('/')}) re-stamped with an identical value or rewritten by a source the writer ranks equal/lower in ${SETTLED_WINDOW_HOURS}h (§3.2 OD-73/OD-75)`,
+    findings.length === 0 ? 'PASS' : 'FAIL',
+    (findings.length
+      ? `${byIpo.size} IPO(s): ` + [...byIpo.entries()].slice(0, MAX_OFFENDERS)
+        .map(([slug, fs]) => `${slug} [${fs.map((f) => `${f.fieldName}:${f.kind}`).join(',')}]`).join('; ')
+      : `0 of ${rows.length} settled-field provenance write(s) in ${SETTLED_WINDOW_HOURS}h break OD-73`) + ` (${flagNote})`);
+}
+
 async function checkIdentity() {
   const identityRows = await q(
     `SELECT id, slug, company_name AS "companyName", cin, isin, symbol,
@@ -2641,6 +2690,7 @@ async function main() {
   await checkH();
   checkI();
   await checkIdentity();
+  await checkSettledFieldRewrites();
   await checkK();
   await checkCycleOverrunAudit();
   await checkL();

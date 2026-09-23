@@ -5,6 +5,7 @@
  */
 
 import { eq, and, isNull, isNotNull, lt, desc, sql } from 'drizzle-orm';
+import { SOURCE_CHANGED_OWN_VALUE, isAdminOnlyConflict } from '../utils/conflict-reasons';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '../db/schema';
@@ -70,6 +71,20 @@ export interface ResolveConflictInput {
  * error would land in those catch blocks and log as an unexpected failure,
  * which a deliberate, expected refusal is not.
  */
+/**
+ * OD-75 (owner, 2026-09-23): the ONE same-source row the table accepts — a source changing a value
+ * it set earlier, where it has no right to refresh it. The page keeps the old value (OD-73); the
+ * admin sees the change under this named reason; it is never alerted (the cross-source
+ * disagreement monitor reads only `source1 <> source2` rows). One unresolved row per field
+ * (upsert), and it never overwrites an open cross-source dispute for the same field.
+ */
+export { SOURCE_CHANGED_OWN_VALUE };
+
+/** Is this a same-source row the W-79 invariant must refuse? (Everything but OD-75's named reason.) */
+function isRefusedSameSource(input: LogConflictInput): boolean {
+  return input.source1 === input.source2 && input.resolutionReason !== SOURCE_CHANGED_OWN_VALUE;
+}
+
 export interface SameSourceSkipResult {
   skipped: true;
   reason: 'same_source';
@@ -101,7 +116,7 @@ export class DataConflictsRepository extends BaseRepository {
   async logConflict(
     input: LogConflictInput
   ): Promise<DataConflictRecord | SameSourceSkipResult> {
-    if (input.source1 === input.source2) {
+    if (isRefusedSameSource(input)) {
       logger.warn(
         { ipoId: input.ipoId, fieldName: input.fieldName, source: input.source1 },
         'data_conflicts: refused same-source row (W-79)'
@@ -155,7 +170,7 @@ export class DataConflictsRepository extends BaseRepository {
   async upsertConflict(
     input: LogConflictInput
   ): Promise<DataConflictRecord | SameSourceSkipResult> {
-    if (input.source1 === input.source2) {
+    if (isRefusedSameSource(input)) {
       logger.warn(
         { ipoId: input.ipoId, fieldName: input.fieldName, source: input.source1 },
         'data_conflicts: refused same-source row (W-79)'
@@ -166,7 +181,7 @@ export class DataConflictsRepository extends BaseRepository {
     const upsertRowKey = input.rowKey ?? '';
 
     const existing = await this.db
-      .select({ id: dataConflicts.id })
+      .select({ id: dataConflicts.id, source1: dataConflicts.source1, source2: dataConflicts.source2 })
       .from(dataConflicts)
       .where(
         and(
@@ -181,6 +196,12 @@ export class DataConflictsRepository extends BaseRepository {
 
     if (existing.length === 0) {
       return this.logConflict(input);
+    }
+
+    // OD-75: a self-change never overwrites an open CROSS-source dispute on the same field — that
+    // dispute is the more important record and must keep feeding the disagreement monitor.
+    if (input.source1 === input.source2 && existing[0].source1 !== existing[0].source2) {
+      return { skipped: true, reason: 'same_source' };
     }
 
     const result = await this.executeQuery(
@@ -529,10 +550,14 @@ export class DataConflictsRepository extends BaseRepository {
       async () => {
         const conditions = ipoId ? [eq(dataConflicts.ipoId, ipoId)] : [];
 
-        const allConflicts = await this.db
-          .select()
-          .from(dataConflicts)
-          .where(conditions.length > 0 ? and(...conditions) : undefined);
+        // OD-75 review round 2 (PR #914): admin-only rows (a source changing its own value) are
+        // shown on the admin list but are not disputes, so they never enter a conflict count.
+        const allConflicts = (
+          await this.db
+            .select()
+            .from(dataConflicts)
+            .where(conditions.length > 0 ? and(...conditions) : undefined)
+        ).filter((c) => !isAdminOnlyConflict(c));
 
         const total = allConflicts.length;
         const unresolved = allConflicts.filter((c) => !c.resolvedAt).length;

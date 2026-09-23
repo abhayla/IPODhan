@@ -1163,3 +1163,163 @@ export function findCompanyTwoLiveRows(rows = []) {
   }
   return groups;
 }
+
+// ---- s_settled_field_rewritten: OD-73 / OD-65 / OD-75 (#908) ------------------------
+// OD-73 (owner, 2026-09-23): a field is settled once the best-ranked source seen so far has set
+// it. After that only a HIGHER-ranked source may change it; an identical incoming value is never
+// written and never re-stamps provenance; an exchange may move a date it stated (OD-35); a
+// website changing its own earlier value is ignored for the page (OD-75).
+//
+// ONE ranking (review round 1, MAJOR-2 on PR #914): the rank is the WRITER's — the answers of
+// getSourcePriority / allowsSameSourceRefresh themselves, snapshotted per field, source, IPO type,
+// venue and ENABLE_POLICY_WRITER state into scraper/config/writer-source-ranking.json by
+// scraper/scripts/build-writer-ranking-snapshot.ts (a scraper unit test fails on a stale file).
+// Nothing here keeps a second source order; it only looks the writer's answers up.
+
+/** `ipos` column for each settled field_sources.field_name (the field list itself is the snapshot's). */
+export const SETTLED_FIELD_COLUMNS = Object.freeze({
+  priceRangeMin: 'price_range_min', priceRangeMax: 'price_range_max', lotSize: 'lot_size',
+  issueSize: 'issue_size', faceValue: 'face_value', openDate: 'open_date', closeDate: 'close_date',
+  listingDate: 'listing_date', allotmentDate: 'allotment_date', registrar: 'registrar',
+  leadManagers: 'lead_managers',
+});
+
+/** The SQL CASE that reads each settled field's stored value off `ipos i`. */
+export function settledCurrentValueSql(columns = SETTLED_FIELD_COLUMNS) {
+  return 'CASE fs.field_name ' +
+    Object.entries(columns).map(([f, c]) => `WHEN '${f}' THEN i.${c}::text`).join(' ') + ' END';
+}
+
+/** MAINBOARD / SME_BSE / SME_NSE — the writer's ipoType keys. */
+export function manifestIpoType(segment, listingExchanges) {
+  if (String(segment ?? '').toUpperCase() !== 'SME') return 'MAINBOARD';
+  const ex = Array.isArray(listingExchanges) ? listingExchanges : [];
+  return ex.includes('NSE') && !ex.includes('BSE') ? 'SME_NSE' : 'SME_BSE';
+}
+
+/** The snapshot's venue key for `ipos.listing_exchanges` (OD-64: unknown / NSE / BSE / both / none). */
+export function venueKey(listingExchanges) {
+  if (!Array.isArray(listingExchanges) || listingExchanges.length === 0) return 'unknown';
+  const ex = [...new Set(listingExchanges.filter((e) => e === 'NSE' || e === 'BSE'))].sort();
+  return ex.length === 0 ? 'none' : ex.join(',');
+}
+
+/**
+ * ENABLE_POLICY_WRITER as the writer's slotAwareFlagDefault computes it
+ * (scraper/src/config/feature-flags.ts): unset -> on only when DEPLOY_SLOT=staging; set -> the
+ * truthy set; empty or unrecognised -> off (fail-closed). Parity-tested against the TS function.
+ */
+export function policyWriterOnFromEnv(env = process.env) {
+  const explicit = env.ENABLE_POLICY_WRITER;
+  if (explicit === undefined) return env.DEPLOY_SLOT === 'staging';
+  return new Set(['true', '1', 'yes', 'on']).has(String(explicit).trim().toLowerCase());
+}
+
+/** Writer priority index (lower = higher; -1 = the writer does not rank this source here). */
+export function writerPriority(snapshot, policyWriterOn, fieldName, ipoType, venue, source) {
+  const table = snapshot?.rank?.[policyWriterOn ? 'policyWriterOn' : 'policyWriterOff'];
+  const bySource = table?.[ipoType]?.[venue]?.[fieldName];
+  if (!bySource) throw new Error(`writer-source-ranking.json has no entry for ${fieldName}/${ipoType}/${venue}`);
+  return Object.prototype.hasOwnProperty.call(bySource, source) ? bySource[source] : -1;
+}
+
+function writerAllowsSameSourceRefresh(snapshot, policyWriterOn, fieldName, ipoType, source) {
+  const list = snapshot.sameSourceRefresh[policyWriterOn ? 'policyWriterOn' : 'policyWriterOff']?.[ipoType]?.[fieldName];
+  return Array.isArray(list) && list.includes(source);
+}
+
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
+const PLAIN_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const IST_OFFSET_MS = 330 * 60 * 1000;
+
+/** The IST calendar day of an instant — an IPO date is an Indian market date (ist-timezone.md). */
+function istDay(ms) {
+  return new Date(ms + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+export function comparable(value) {
+  if (value === null || value === undefined) return null;
+  let v = value;
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (t.startsWith('[')) {
+      try { v = JSON.parse(t); } catch { /* keep the string */ }
+    } else if (/^-?\d+(\.\d+)?$/.test(t)) {
+      return String(Number(t));
+    } else if (PLAIN_DATE.test(t)) {
+      return t;
+    } else if (ISO_INSTANT.test(t)) {
+      // MINOR-5: an instant is compared by its IST day, never by its first 10 UTC characters
+      // (2026-09-19T18:30:00Z is 2026-09-20 in India). Staging on 2026-09-23 stored every date
+      // previous_value as a plain YYYY-MM-DD (224 of 224 rows), so this is the defensive branch.
+      const ms = Date.parse(t);
+      return Number.isNaN(ms) ? t.toLowerCase() : istDay(ms);
+    } else {
+      return t.toLowerCase();
+    }
+  }
+  if (Array.isArray(v)) return JSON.stringify(v.map((x) => String(x).trim().toLowerCase()).sort());
+  if (typeof v === 'number') return String(v);
+  if (v instanceof Date) return istDay(v.getTime());
+  return String(v).trim().toLowerCase();
+}
+
+/**
+ * Pure predicate. `rows` are `field_sources` rows for `ipos` settled fields written in the
+ * window, each joined with the IPO's current stored value (`currentValue`), `slug`, `segment`
+ * and `listingExchanges`. `snapshot` is scraper/config/writer-source-ranking.json;
+ * `policyWriterOn` is the slot's ENABLE_POLICY_WRITER. One finding per row the writer's own
+ * ranking would not have written:
+ *   IDENTICAL_RESTAMP    — re-stamped although previous_value equals the stored value
+ *   LOWER_RANK_REWRITE   — replaced by a source the writer ranks below (or does not rank)
+ *   EQUAL_RANK_REWRITE   — replaced by a different source the writer ranks equal
+ *   SELF_CHANGE_REWRITE  — a source changed its own value where the writer allows no refresh (OD-75)
+ * A row with no previous_source is a first write and is never a finding.
+ */
+export function findSettledFieldRewrites(rows, snapshot, policyWriterOn = false) {
+  const fields = new Set(snapshot?.fields ?? []);
+  const timeBased = new Set(snapshot?.timeBased ?? []);
+  const findings = [];
+  for (const r of rows ?? []) {
+    if (!fields.has(r.fieldName)) continue;
+    if (!r.previousSource || !r.source) continue;
+    if (r.source === 'ADMIN') continue;
+    const prev = comparable(r.previousValue);
+    const cur = comparable(r.currentValue);
+    if (prev === null) continue;
+    if (prev === cur) {
+      findings.push({ ...pick(r), kind: 'IDENTICAL_RESTAMP' });
+      continue;
+    }
+    const ipoType = manifestIpoType(r.segment, r.listingExchanges);
+    const venue = venueKey(r.listingExchanges);
+    const oldP = writerPriority(snapshot, policyWriterOn, r.fieldName, ipoType, venue, r.previousSource);
+    const newP = writerPriority(snapshot, policyWriterOn, r.fieldName, ipoType, venue, r.source);
+    if (oldP !== newP) {
+      if (newP !== -1 && (oldP === -1 || newP < oldP)) continue; // the writer's SOURCE_PRIORITY win
+      findings.push({ ...pick(r), kind: 'LOWER_RANK_REWRITE' });
+      continue;
+    }
+    if (timeBased.has(r.fieldName)) continue; // the writer's newest-wins on an equal rank
+    if (r.source === r.previousSource) {
+      // OD-35 postponement / a later offer document: the writer's own same-source refresh list.
+      if (writerAllowsSameSourceRefresh(snapshot, policyWriterOn, r.fieldName, ipoType, r.source)) continue;
+      findings.push({ ...pick(r), kind: 'SELF_CHANGE_REWRITE' });
+      continue;
+    }
+    findings.push({ ...pick(r), kind: 'EQUAL_RANK_REWRITE' });
+  }
+  return findings;
+}
+
+function pick(r) {
+  return {
+    slug: r.slug,
+    fieldName: r.fieldName,
+    source: r.source,
+    previousSource: r.previousSource,
+    previousValue: r.previousValue,
+    currentValue: r.currentValue,
+    updatedAt: r.updatedAt,
+  };
+}

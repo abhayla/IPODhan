@@ -1,0 +1,2668 @@
+{
+  "_generated": "by scraper/scripts/build-writer-ranking-snapshot.ts from getSourcePriority/allowsSameSourceRefresh — do not edit by hand",
+  "fields": [
+    "priceRangeMin",
+    "priceRangeMax",
+    "lotSize",
+    "issueSize",
+    "faceValue",
+    "openDate",
+    "closeDate",
+    "listingDate",
+    "allotmentDate",
+    "registrar",
+    "leadManagers"
+  ],
+  "timeBased": [],
+  "rank": {
+    "policyWriterOff": {
+      "MAINBOARD": {
+        "unknown": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "NSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "BSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "BSE,NSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "none": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        }
+      },
+      "SME_BSE": {
+        "unknown": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "NSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "BSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "BSE,NSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "none": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        }
+      },
+      "SME_NSE": {
+        "unknown": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "NSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "BSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "BSE,NSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "none": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "MONEYCONTROL": 4
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "MONEYCONTROL": 4
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2,
+            "MONEYCONTROL": 4
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 4,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        }
+      }
+    },
+    "policyWriterOn": {
+      "MAINBOARD": {
+        "unknown": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "NSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "BSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "BSE,NSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "none": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 3,
+            "BSE": 2
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        }
+      },
+      "SME_BSE": {
+        "unknown": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 2,
+            "CHITTORGARH": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 2,
+            "CHITTORGARH": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 2,
+            "CHITTORGARH": 3
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "NSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 2,
+            "CHITTORGARH": 3
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "BSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 2,
+            "CHITTORGARH": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 2,
+            "CHITTORGARH": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 2,
+            "CHITTORGARH": 3
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "BSE,NSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 2,
+            "CHITTORGARH": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 2,
+            "CHITTORGARH": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 2,
+            "CHITTORGARH": 3
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "none": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "BSE": 2,
+            "CHITTORGARH": 3
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        }
+      },
+      "SME_NSE": {
+        "unknown": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "CHITTORGARH": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "CHITTORGARH": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "CHITTORGARH": 3
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "NSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "CHITTORGARH": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "CHITTORGARH": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "CHITTORGARH": 3
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "BSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "CHITTORGARH": 3
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "BSE,NSE": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "CHITTORGARH": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "CHITTORGARH": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "CHITTORGARH": 3
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        },
+        "none": {
+          "priceRangeMin": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 3
+          },
+          "priceRangeMax": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 3
+          },
+          "lotSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "CHITTORGARH": 3
+          },
+          "issueSize": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "CHITTORGARH": 2
+          },
+          "faceValue": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 5,
+            "CHITTORGARH": 4
+          },
+          "openDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "closeDate": {
+            "ADMIN": 0,
+            "DRHP": 3,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 4,
+            "CHITTORGARH": 5
+          },
+          "listingDate": {
+            "ADMIN": 0,
+            "DRHP": 5,
+            "NSE": 1,
+            "BSE": 2,
+            "MONEYCONTROL": 3,
+            "CHITTORGARH": 4
+          },
+          "allotmentDate": {
+            "ADMIN": 0,
+            "DRHP": 4,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 1
+          },
+          "registrar": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          },
+          "leadManagers": {
+            "ADMIN": 0,
+            "DRHP": 1,
+            "NSE": 2,
+            "BSE": 3,
+            "MONEYCONTROL": 4
+          }
+        }
+      }
+    }
+  },
+  "sameSourceRefresh": {
+    "policyWriterOff": {
+      "MAINBOARD": {
+        "priceRangeMin": [
+          "DRHP",
+          "NSE",
+          "BSE"
+        ],
+        "priceRangeMax": [
+          "DRHP",
+          "NSE",
+          "BSE"
+        ],
+        "lotSize": [
+          "DRHP"
+        ],
+        "issueSize": [],
+        "faceValue": [],
+        "openDate": [
+          "NSE",
+          "BSE"
+        ],
+        "closeDate": [
+          "NSE",
+          "BSE"
+        ],
+        "listingDate": [
+          "NSE",
+          "BSE"
+        ],
+        "allotmentDate": [
+          "NSE",
+          "BSE"
+        ],
+        "registrar": [
+          "DRHP"
+        ],
+        "leadManagers": []
+      },
+      "SME_BSE": {
+        "priceRangeMin": [
+          "DRHP",
+          "NSE",
+          "BSE"
+        ],
+        "priceRangeMax": [
+          "DRHP",
+          "NSE",
+          "BSE"
+        ],
+        "lotSize": [
+          "DRHP"
+        ],
+        "issueSize": [],
+        "faceValue": [],
+        "openDate": [
+          "NSE",
+          "BSE"
+        ],
+        "closeDate": [
+          "NSE",
+          "BSE"
+        ],
+        "listingDate": [
+          "NSE",
+          "BSE"
+        ],
+        "allotmentDate": [
+          "NSE",
+          "BSE"
+        ],
+        "registrar": [
+          "DRHP"
+        ],
+        "leadManagers": []
+      },
+      "SME_NSE": {
+        "priceRangeMin": [
+          "DRHP",
+          "NSE",
+          "BSE"
+        ],
+        "priceRangeMax": [
+          "DRHP",
+          "NSE",
+          "BSE"
+        ],
+        "lotSize": [
+          "DRHP"
+        ],
+        "issueSize": [],
+        "faceValue": [],
+        "openDate": [
+          "NSE",
+          "BSE"
+        ],
+        "closeDate": [
+          "NSE",
+          "BSE"
+        ],
+        "listingDate": [
+          "NSE",
+          "BSE"
+        ],
+        "allotmentDate": [
+          "NSE",
+          "BSE"
+        ],
+        "registrar": [
+          "DRHP"
+        ],
+        "leadManagers": []
+      }
+    },
+    "policyWriterOn": {
+      "MAINBOARD": {
+        "priceRangeMin": [
+          "ADMIN",
+          "DRHP",
+          "NSE",
+          "BSE"
+        ],
+        "priceRangeMax": [
+          "ADMIN",
+          "DRHP",
+          "NSE",
+          "BSE"
+        ],
+        "lotSize": [
+          "ADMIN",
+          "DRHP",
+          "NSE",
+          "BSE"
+        ],
+        "issueSize": [],
+        "faceValue": [],
+        "openDate": [
+          "NSE",
+          "BSE"
+        ],
+        "closeDate": [
+          "NSE",
+          "BSE"
+        ],
+        "listingDate": [
+          "NSE",
+          "BSE"
+        ],
+        "allotmentDate": [
+          "NSE",
+          "BSE"
+        ],
+        "registrar": [
+          "DRHP"
+        ],
+        "leadManagers": []
+      },
+      "SME_BSE": {
+        "priceRangeMin": [
+          "ADMIN",
+          "DRHP",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "priceRangeMax": [
+          "ADMIN",
+          "DRHP",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "lotSize": [
+          "ADMIN",
+          "DRHP",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "issueSize": [],
+        "faceValue": [],
+        "openDate": [
+          "NSE",
+          "BSE"
+        ],
+        "closeDate": [
+          "NSE",
+          "BSE"
+        ],
+        "listingDate": [
+          "NSE",
+          "BSE"
+        ],
+        "allotmentDate": [
+          "NSE",
+          "BSE"
+        ],
+        "registrar": [
+          "DRHP"
+        ],
+        "leadManagers": []
+      },
+      "SME_NSE": {
+        "priceRangeMin": [
+          "ADMIN",
+          "DRHP",
+          "NSE",
+          "CHITTORGARH"
+        ],
+        "priceRangeMax": [
+          "ADMIN",
+          "DRHP",
+          "NSE",
+          "CHITTORGARH"
+        ],
+        "lotSize": [
+          "ADMIN",
+          "DRHP",
+          "NSE",
+          "CHITTORGARH"
+        ],
+        "issueSize": [],
+        "faceValue": [],
+        "openDate": [
+          "NSE",
+          "BSE"
+        ],
+        "closeDate": [
+          "NSE",
+          "BSE"
+        ],
+        "listingDate": [
+          "NSE",
+          "BSE"
+        ],
+        "allotmentDate": [
+          "NSE",
+          "BSE"
+        ],
+        "registrar": [
+          "DRHP"
+        ],
+        "leadManagers": []
+      }
+    }
+  }
+}

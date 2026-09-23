@@ -417,6 +417,14 @@ jobs:
           node --test scripts/tests/merge-freshness.test.mjs
           node --test scripts/tests/merge-if-current-cli.test.mjs
 
+      - name: "Conflict-reason parity (PR #914, OD-75)"
+        # Keeps the .mjs admin-only conflict-reason list equal to the TS one and
+        # pins every .mjs reader of data_conflicts that counts (floor f, g, a/b;
+        # admin-queue) to it. Needs node_modules: it imports admin-queue-size.mjs,
+        # which imports pg at the top level, so it runs after npm ci. Its first
+        # placement, with the pre-install gates, failed CI with ERR_MODULE_NOT_FOUND.
+        run: node --test scripts/tests/conflict-reasons-parity.test.mjs
+
       - name: "IPO type population generator self-tests (item 30)"
         # Pure fixture->table transform (rowsToTypes) — canonical key, the
         # proven_scrapable boundary, and the UNCLASSIFIED bucket for a null
@@ -844,6 +852,7 @@ jobs:
           tests/integration/derived-key-recompute-guard.integration.test.ts
           tests/integration/alternative-sources.integration.test.ts
           tests/integration/data-conflicts-repository-hold.integration.test.ts
+          tests/integration/od73-settled-field.integration.test.ts
           tests/integration/db-timezone.integration.test.ts
           tests/integration/field-sources-witnesses.integration.test.ts
           tests/integration/duplicate-ipo-merge.integration.test.ts

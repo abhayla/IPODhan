@@ -476,6 +476,11 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO open date - critical field',
+    // OD-73 / OD-35 (owner, 2026-09-23): the exchange that stated the timetable may move it
+    // (a postponement updates the same row). A website may not move a date it set — equal rank
+    // is ignored — so only the exchanges refresh their own value.
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['NSE', 'BSE'],
   },
 
   // W-49: camelCase sibling of `open_date`. `data-persister.ts` builds
@@ -489,6 +494,11 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO open date - critical field',
+    // OD-73 / OD-35 (owner, 2026-09-23): the exchange that stated the timetable may move it
+    // (a postponement updates the same row). A website may not move a date it set — equal rank
+    // is ignored — so only the exchanges refresh their own value.
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['NSE', 'BSE'],
   },
 
   close_date: {
@@ -496,6 +506,11 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO close date - critical field',
+    // OD-73 / OD-35 (owner, 2026-09-23): the exchange that stated the timetable may move it
+    // (a postponement updates the same row). A website may not move a date it set — equal rank
+    // is ignored — so only the exchanges refresh their own value.
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['NSE', 'BSE'],
   },
 
   // W-49: camelCase sibling of `close_date` - see `openDate` comment above.
@@ -504,6 +519,11 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO close date - critical field',
+    // OD-73 / OD-35 (owner, 2026-09-23): the exchange that stated the timetable may move it
+    // (a postponement updates the same row). A website may not move a date it set — equal rank
+    // is ignored — so only the exchanges refresh their own value.
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['NSE', 'BSE'],
   },
 
   // W-55: canonical entry for listing_date/listingDate (was two diverging
@@ -517,6 +537,11 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'Listing date (camelCase consolidation key) - CHITTORGARH for #70 backfill',
+    // OD-73 / OD-35 (owner, 2026-09-23): the exchange that stated the timetable may move it
+    // (a postponement updates the same row). A website may not move a date it set — equal rank
+    // is ignored — so only the exchanges refresh their own value.
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['NSE', 'BSE'],
   },
 
   // W-55: canonical entry for allotment_date/allotmentDate (was two diverging
@@ -532,6 +557,11 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     normalization: 'date',
     confidenceThreshold: 90,
     description: 'Basis-of-allotment date (camelCase)',
+    // OD-73 review round 1 (MINOR-4): allotment is an exchange timetable date that moves when the
+    // window moves (§1.11 row 19 `allotment_date`, "Named exception E-1"; OD-57(a) dates -> the
+    // exchange), so the exchange that stated it may postpone it, like open/close/listing.
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['NSE', 'BSE'],
   },
 
   // ==================== EXCHANGE IDENTIFIERS (NSE authoritative) ====================

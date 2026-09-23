@@ -15,6 +15,7 @@ import { eq } from 'drizzle-orm';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { getIPOBySlugKey, getIPOByIdKey } from '@/lib/cache/cache-keys';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
+import { isAdminOnlyConflict } from '@ipodhan/shared/utils/conflict-reasons';
 import { revalidateForSlugs } from './page-revalidation-service';
 import { istDateIso } from '@/lib/utils/ist-date';
 
@@ -66,10 +67,12 @@ export function getTransitionDrivingField(from: IPOStatus, to: IPOStatus): strin
  */
 export function isTransitionHeld(
   drivingField: string | undefined,
-  unresolvedConflicts: { fieldName: string }[]
+  unresolvedConflicts: { fieldName: string; resolutionReason?: string | null }[]
 ): boolean {
   if (!drivingField) return false;
-  return unresolvedConflicts.some((c) => c.fieldName === drivingField);
+  // OD-75 review round 2 (PR #914): an admin-only row (a source moving its OWN value) is a record,
+  // not a dispute — holding on it would freeze OPEN->CLOSED for as long as the row stays open.
+  return unresolvedConflicts.some((c) => c.fieldName === drivingField && !isAdminOnlyConflict(c));
 }
 
 export interface StatusUpdateResult {

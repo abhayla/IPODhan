@@ -226,6 +226,37 @@ describe('W-160 round 2 — exchange consensus / date-invariant HOLD escapes (Ka
     );
   });
 
+  // OD-75 review round 2 (PR #914): an admin-only SOURCE_CHANGED_OWN_VALUE row (NSE moving its own
+  // value) is a record for the admin list, never a prior dispute. MUTATION: drop the
+  // isAdminOnlyConflict filter on the escape's findUnresolvedForIPO read -> this goes RED.
+  it('OD-75: an admin-only NSE self-change row is NOT exchange consensus for a BSE proposal', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow('openDate', 'CHITTORGARH', '2026-12-09'),
+    ] as any);
+    vi.mocked(mockConflictsRepo.findUnresolvedForIPO).mockResolvedValue([
+      {
+        id: 'od75-row', ipoId: 'od75-escape-ipo', tableName: 'ipos', rowKey: '', fieldName: 'openDate',
+        source1: 'NSE', value1: '2026-12-09', source2: 'NSE', value2: '2026-09-08',
+        resolvedSource: 'NSE', resolutionReason: 'SOURCE_CHANGED_OWN_VALUE', severity: 'INFO',
+        adminNote: null, resolvedAt: null, resolvedBy: null, detectedAt: new Date(), createdAt: new Date(),
+      },
+    ] as any);
+
+    const bseResult = await service.consolidateIPOData({
+      ipoId: 'od75-escape-ipo',
+      tableName: 'ipos',
+      incomingData: { openDate: '2026-09-08' },
+      source: 'BSE',
+      confidence: 95,
+      existingData: { status: 'UPCOMING', openDate: '2026-12-09', closeDate: '2026-12-12', listingDate: '2026-09-16', segment: 'MAINBOARD' },
+      scrapedAt: new Date('2026-09-05T00:05:00Z'),
+    });
+
+    const bseField = bseResult.fieldResults.find((f) => f.fieldName === 'openDate');
+    expect(bseField!.conflictReason).not.toBe('EXCHANGE_CONSENSUS_OVERRIDE_HELD_VALUE');
+    expect(mockConflictsRepo.resolveConflict).not.toHaveBeenCalledWith('od75-row', expect.anything());
+  });
+
   it('MAJOR-3 / mutation gap: the SAME source repeating its own proposal is NOT consensus (NSE proposes X twice)', async () => {
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
       fieldSourceRow('openDate', 'CHITTORGARH', '2026-12-09'),

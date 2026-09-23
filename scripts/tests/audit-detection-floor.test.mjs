@@ -1553,3 +1553,101 @@ test('(i) MUTATION: dropping the slug rule from checkIpoTitleInName misses a cle
   };
   assert.equal(mutatedNoSlugRule(rowSlugOnly), null, 'mutation (slug rules dropped) misses this clean-name/dirty-slug fixture');
 });
+
+// ---- s_settled_field_rewritten (OD-73 / OD-65 / OD-75, #908) -----------------------------
+import {
+  findSettledFieldRewrites, writerPriority, policyWriterOnFromEnv, comparable,
+  SETTLED_FIELD_COLUMNS, settledCurrentValueSql,
+} from '../lib/detection-floor-checks.mjs';
+
+// The WRITER's ranking (review round 1, MAJOR-2): generated from getSourcePriority itself.
+const WRITER_RANKING = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scraper', 'config', 'writer-source-ranking.json'), 'utf8')
+);
+const settledRow = (o) => ({ slug: 'x', segment: 'MAINBOARD', listingExchanges: ['NSE', 'BSE'], updatedAt: '2026-09-23 03:15:19', ...o });
+const kinds = (f) => f.map((x) => `${x.slug}:${x.kind}`);
+
+test('s_settled_field_rewritten: flags the staging Adroit re-stamp (CHITTORGARH->CHITTORGARH, 126 -> 126) as IDENTICAL_RESTAMP', () => {
+  const f = findSettledFieldRewrites([
+    settledRow({ slug: 'adroit-industries-india-ltd', segment: 'SME', listingExchanges: ['NSE'], fieldName: 'priceRangeMin', source: 'CHITTORGARH', previousSource: 'CHITTORGARH', previousValue: '126', currentValue: '126' }),
+    settledRow({ slug: 'adroit-industries-india-ltd', segment: 'SME', listingExchanges: ['NSE'], fieldName: 'openDate', source: 'CHITTORGARH', previousSource: 'CHITTORGARH', previousValue: '2026-09-23', currentValue: '2026-09-23' }),
+  ], WRITER_RANKING, false);
+  assert.deepEqual(f.map((x) => `${x.slug}:${x.fieldName}:${x.kind}`), [
+    'adroit-industries-india-ltd:priceRangeMin:IDENTICAL_RESTAMP',
+    'adroit-industries-india-ltd:openDate:IDENTICAL_RESTAMP',
+  ]);
+});
+
+test('s_settled_field_rewritten: passes the Vivekanand higher-rank replacement (issue size BSE Rs 19.2 cr -> CHITTORGARH Rs 22.2 cr) under both flag states', () => {
+  for (const on of [false, true]) {
+    const f = findSettledFieldRewrites([
+      settledRow({ slug: 'vivekanand-cotspin-ltd', segment: 'SME', listingExchanges: ['BSE'], fieldName: 'issueSize', source: 'CHITTORGARH', previousSource: 'BSE', previousValue: '192000000.00', currentValue: '222000000.00' }),
+    ], WRITER_RANKING, on);
+    assert.deepEqual(f, [], `ENABLE_POLICY_WRITER=${on}`);
+  }
+});
+
+// Review round 1 MAJOR-2: the three false positives the manifest-ranked check raised, each a
+// write the writer itself makes. Ranked by the writer, all three PASS.
+test('s_settled_field_rewritten: PASSES the three reviewer false positives (writer ranking, flag off)', () => {
+  const f = findSettledFieldRewrites([
+    settledRow({ slug: 'doc-date-over-cg', fieldName: 'openDate', source: 'DRHP', previousSource: 'CHITTORGARH', previousValue: '2026-09-20', currentValue: '2026-09-22' }),
+    settledRow({ slug: 'mc-date-over-cg', fieldName: 'openDate', source: 'MONEYCONTROL', previousSource: 'CHITTORGARH', previousValue: '2026-09-20', currentValue: '2026-09-22' }),
+    settledRow({ slug: 'nse-size-over-bse', fieldName: 'issueSize', source: 'NSE', previousSource: 'BSE', previousValue: '100', currentValue: '120' }),
+  ], WRITER_RANKING, false);
+  assert.deepEqual(f, []);
+});
+
+test('s_settled_field_rewritten: the SAME row is judged by the slot flag — NSE over BSE issue size is a finding only with ENABLE_POLICY_WRITER on (NSE and BSE both unranked there)', () => {
+  const row = settledRow({ slug: 'nse-size-over-bse', fieldName: 'issueSize', source: 'NSE', previousSource: 'BSE', previousValue: '100', currentValue: '120' });
+  assert.equal(writerPriority(WRITER_RANKING, true, 'issueSize', 'MAINBOARD', 'BSE,NSE', 'NSE'), -1);
+  assert.deepEqual(kinds(findSettledFieldRewrites([row], WRITER_RANKING, true)), ['nse-size-over-bse:EQUAL_RANK_REWRITE']);
+  assert.deepEqual(findSettledFieldRewrites([row], WRITER_RANKING, false), []);
+});
+
+test('s_settled_field_rewritten: passes exchange postponements (incl. allotment) and a first write; flags identical re-stamps, a website moving its own date, lower/equal rank rewrites', () => {
+  const f = findSettledFieldRewrites([
+    settledRow({ slug: 'postponed', fieldName: 'openDate', source: 'NSE', previousSource: 'NSE', previousValue: '2026-09-24', currentValue: '2026-09-29' }),
+    settledRow({ slug: 'allotment-postponed', fieldName: 'allotmentDate', source: 'BSE', previousSource: 'BSE', previousValue: '2026-09-26', currentValue: '2026-09-30' }),
+    settledRow({ slug: 'first', fieldName: 'lotSize', source: 'BSE', previousSource: null, previousValue: null, currentValue: '120' }),
+    settledRow({ slug: 'identical', fieldName: 'closeDate', source: 'NSE', previousSource: 'NSE', previousValue: '2026-09-25', currentValue: '2026-09-25' }),
+    settledRow({ slug: 'site-moved-date', fieldName: 'closeDate', source: 'CHITTORGARH', previousSource: 'CHITTORGARH', previousValue: '2026-09-20', currentValue: '2026-09-22' }),
+    settledRow({ slug: 'lower-lot', fieldName: 'lotSize', source: 'NSE', previousSource: 'BSE', previousValue: '100', currentValue: '120' }),
+    settledRow({ slug: 'higher-lot', fieldName: 'lotSize', source: 'BSE', previousSource: 'NSE', previousValue: '100', currentValue: '120' }),
+    settledRow({ slug: 'unranked-both', fieldName: 'priceRangeMin', source: 'CHITTORGARH', previousSource: 'INVESTORGAIN_GMP', previousValue: '100', currentValue: '101' }),
+    settledRow({ slug: 'live-figure', fieldName: 'status', source: 'NSE', previousSource: 'NSE', previousValue: 'OPEN', currentValue: 'CLOSED' }),
+  ], WRITER_RANKING, false);
+  assert.deepEqual(kinds(f), [
+    'identical:IDENTICAL_RESTAMP',
+    'site-moved-date:SELF_CHANGE_REWRITE',
+    'lower-lot:LOWER_RANK_REWRITE',
+    'unranked-both:EQUAL_RANK_REWRITE',
+  ]);
+});
+
+test('s_settled_field_rewritten: MINOR-5 — a stored plain date (real staging shape) and an ISO instant compare by IST day', () => {
+  // Real staging previous_value, 2026-09-23: every date row is plain YYYY-MM-DD (224 of 224).
+  assert.equal(comparable('2026-09-25'), '2026-09-25');
+  // 18:30Z on the 19th is 00:00 IST on the 20th — slicing the first 10 chars would say the 19th.
+  assert.equal(comparable('2026-09-19T18:30:00.000Z'), '2026-09-20');
+  assert.equal(comparable('2026-09-20T05:00:00+05:30'), '2026-09-20');
+  const f = findSettledFieldRewrites([
+    settledRow({ slug: 'utc-instant-same-ist-day', fieldName: 'openDate', source: 'BSE', previousSource: 'NSE', previousValue: '2026-09-19T18:30:00.000Z', currentValue: '2026-09-20' }),
+  ], WRITER_RANKING, false);
+  assert.deepEqual(kinds(f), ['utc-instant-same-ist-day:IDENTICAL_RESTAMP']);
+});
+
+test('s_settled_field_rewritten: policyWriterOnFromEnv mirrors slotAwareFlagDefault (unset -> DEPLOY_SLOT, explicit truthy, fail-closed)', () => {
+  assert.equal(policyWriterOnFromEnv({}), false);
+  assert.equal(policyWriterOnFromEnv({ DEPLOY_SLOT: 'staging' }), true);
+  assert.equal(policyWriterOnFromEnv({ DEPLOY_SLOT: 'staging', ENABLE_POLICY_WRITER: 'false' }), false);
+  assert.equal(policyWriterOnFromEnv({ ENABLE_POLICY_WRITER: 'ON' }), true);
+  assert.equal(policyWriterOnFromEnv({ DEPLOY_SLOT: 'staging', ENABLE_POLICY_WRITER: '' }), false);
+  assert.equal(policyWriterOnFromEnv({ ENABLE_POLICY_WRITER: 'maybe' }), false);
+});
+
+test('s_settled_field_rewritten: the SQL reads a stored column for every field the writer snapshot settles', () => {
+  assert.deepEqual(Object.keys(SETTLED_FIELD_COLUMNS).sort(), [...WRITER_RANKING.fields].sort());
+  const sql = settledCurrentValueSql();
+  for (const f of WRITER_RANKING.fields) assert.match(sql, new RegExp(`WHEN '${f}' THEN i\\.[a-z_]+::text`));
+});

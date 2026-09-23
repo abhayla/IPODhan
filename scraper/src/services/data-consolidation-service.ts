@@ -56,6 +56,7 @@ import {
   type SmeCollapseEvidence,
 } from './listing-exchange-resolution.js';
 import logger from '../utils/logger.js';
+import { SOURCE_CHANGED_OWN_VALUE, isAdminOnlyConflict } from '@ipodhan/shared/utils/conflict-reasons';
 import { toUtcEpochDay, toUtcEpochMs } from '../utils/date-string-parsing.js';
 import { validateFieldValue, type ValidationRule } from './field-extraction-validation.js';
 import { loadValidationRules } from '../config/validation-rules-loader.js';
@@ -231,6 +232,23 @@ const HIGH_VALUE_LIVE_FIELDS = new Set<string>([
   'openDate',
   'closeDate',
 ]);
+
+/**
+ * OD-73 / OD-35 (owner, 2026-09-23): the dates an exchange states — open, close, listing. When
+ * the exchange that set one sends a different value, that is a postponement and it updates the
+ * same row; a website that set a date cannot move it on its own (equal rank is ignored).
+ */
+// allotmentDate (review round 1, MINOR-4): §1.11 row 19 names it "Named exception E-1 — it moves
+// whenever the window moves", and OD-57(a) gives dates to the exchange.
+const EXCHANGE_TIMETABLE_FIELDS = new Set<string>(['openDate', 'closeDate', 'listingDate', 'allotmentDate']);
+
+function isExchangePostponement(fieldName: string, existingSource: ScraperSource, incomingSource: ScraperSource): boolean {
+  return (
+    EXCHANGE_TIMETABLE_FIELDS.has(fieldName) &&
+    EXCHANGE_SOURCES.has(incomingSource) &&
+    existingSource === incomingSource
+  );
+}
 
 /** IPO lifecycle states in which a HIGH_VALUE field dispute must HOLD rather than assert one-sided. */
 const LIVE_STATUSES = new Set<string>(['UPCOMING', 'OPEN']);
@@ -1965,33 +1983,13 @@ export class DataConsolidationService {
         }
       }
 
-      // F6 (W-37): the VALUE doesn't change, but a SECOND source independently
-      // reporting it is real evidence — it raises the stored confidence by one
-      // confirmation step (NSE 90 -> 95). Only a DIFFERENT source counts; the
-      // same source repeating itself confirms nothing and must not touch the
-      // provenance row at all (that is the W-24 losing-write class).
-      if (
-        FEATURE_FLAGS.ENABLE_SOURCE_TRACKING &&
-        !this.currentShadowMode &&
-        existingSource !== undefined &&
-        existingSource !== incomingSource
-      ) {
-        await this.trackFieldSource({
-          ipoId,
-          tableName,
-          // Generic path — real key arrives with the child writer (s5b/s7a/s7b).
-          rowKey,
-          fieldName,
-          value: existingValue,
-          source: existingSource,
-          confirmations: 1,
-          // W-24: previous_value/previous_source are what the row held BEFORE
-          // this write — the same value from the same source. Passing them
-          // keeps the confirmation from nulling real history.
-          previousValue: existingValue,
-          previousSource: existingSource,
-        });
-      }
+      // OD-73 (owner, 2026-09-23): "An identical incoming value is never written and never
+      // re-stamps provenance." This branch used to re-write the `field_sources` row as an F6
+      // "confirmation" whenever a DIFFERENT source repeated the stored value — on every cycle,
+      // so 17 live IPOs' price bands and dates were re-stamped each run with nothing changed
+      // (#908: source CHITTORGARH, previous_source CHITTORGARH, previous_value = stored value,
+      // confidence 65 = base 60 + one confirmation). Agreement changes nothing, so nothing is
+      // written; the converged-conflict cleanup above is the only side effect it keeps.
 
       // W-83 (Deepa walk, 2026-09-02): this used to return `normalizedExisting`.
       // Normalization is a COMPARISON form, not a storable value — for a
@@ -2088,7 +2086,10 @@ export class DataConsolidationService {
     {
       const otherExchange = incomingSource === 'NSE' ? 'BSE' : 'NSE';
       try {
-        const openConflicts = (await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? [];
+        // OD-75 round 2: admin-only rows (a source changing its own value) are never a dispute.
+        const openConflicts = ((await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? []).filter(
+          (row: { resolutionReason?: string | null }) => !isAdminOnlyConflict(row)
+        );
         const normalizedIncoming = normalize(fieldName, incomingValue, rules);
         const now = Date.now();
         const priorAgreement = openConflicts.find(
@@ -2260,8 +2261,28 @@ export class DataConsolidationService {
     // reaching a locked field before this point). Checked BEFORE source
     // priority, same precedence tier as ADMIN-always-wins below, because an
     // unresolved dispute must win over "NSE happens to rank higher".
+    // OD-73 / OD-35: an exchange revising a date IT stated is a postponement, not a cross-source
+    // dispute — it updates the same row through the same-source refresh below. Review round 1
+    // (MINOR-3): only while the resulting timetable is still in order (open <= close <= listing,
+    // the same W-160 `datesSatisfyOrderInvariant`); a "postponement" that would put the close
+    // before the open is not trusted on the exchange's word and falls to the HOLD below.
+    const postponementDates = params.incomingDates ?? {
+      openDate: fieldName === 'openDate' ? incomingValue : undefined,
+      closeDate: fieldName === 'closeDate' ? incomingValue : undefined,
+      listingDate: fieldName === 'listingDate' ? incomingValue : undefined,
+      segment: undefined,
+    };
+    const trustedPostponement =
+      isExchangePostponement(fieldName, existingSource, incomingSource) &&
+      datesSatisfyOrderInvariant(
+        postponementDates.openDate,
+        postponementDates.closeDate,
+        postponementDates.listingDate,
+        postponementDates.segment
+      );
     if (
       HIGH_VALUE_LIVE_FIELDS.has(fieldName) &&
+      !trustedPostponement &&
       ipoStatus !== undefined &&
       LIVE_STATUSES.has(ipoStatus) &&
       existingSource !== 'ADMIN' &&
@@ -2361,7 +2382,11 @@ export class DataConsolidationService {
         // escape permanently inert: Kanohar accumulated zero conflict rows
         // across weeks of holds. Shadow mode is still respected — a preview
         // consolidation run must never write.
-        if (!this.currentShadowMode) {
+        // OD-75 review round 2 (PR #914): a SELF-change (the same source moving its own value) is
+        // not the escape's audit trail — the escape only ever matches the OTHER exchange — so it
+        // obeys ENABLE_CONFLICT_DETECTION like every other non-HOLD conflict row.
+        const holdIsSelfChange = existingSource === incomingSource;
+        if (!this.currentShadowMode && (!holdIsSelfChange || FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION)) {
           try {
             const conflictResult = await this.dataConflictsRepository.upsertConflict({
               ipoId,
@@ -2378,8 +2403,10 @@ export class DataConsolidationService {
               source2: incomingSource,
               value2: incomingValue === null || incomingValue === undefined ? null : serializeFieldValue(incomingValue),
               resolvedSource: existingSource,
-              resolutionReason: 'HELD_DISPUTED_HIGH_VALUE_LIVE',
-              severity: 'CRITICAL',
+              // OD-75: one source contradicting itself is not a cross-source dispute — its own
+              // named reason, INFO, never the CRITICAL HOLD alert (T-286 flood protection).
+              resolutionReason: holdIsSelfChange ? SOURCE_CHANGED_OWN_VALUE : 'HELD_DISPUTED_HIGH_VALUE_LIVE',
+              severity: holdIsSelfChange ? 'INFO' : 'CRITICAL',
             });
 
             // W-161b: `upsertConflict` returns `{ skipped: true, reason }`
@@ -2576,6 +2603,13 @@ export class DataConsolidationService {
         chosenValue = incomingValue;
         resolutionReason = 'SAME_SOURCE_REFRESH';
       }
+    } else if (existingSource === incomingSource) {
+      // OD-75 (owner, 2026-09-23): a source changing a value IT set earlier, where the field
+      // grants that source no refresh (a website moving its own date). The page keeps the old
+      // value (OD-73); the change is recorded for the admin under its own reason, never alerted.
+      chosenSource = existingSource;
+      chosenValue = existingValue;
+      resolutionReason = SOURCE_CHANGED_OWN_VALUE;
     } else {
       // Same source priority, not time-based - keep existing
       chosenSource = existingSource;
@@ -2599,10 +2633,14 @@ export class DataConsolidationService {
     // `data_conflicts` row (that write path was the root cause of 9921/11493
     // rows having source1 === source2, which in turn destroyed the alert
     // channel with self-comparisons).
+    // OD-75: the one same-source row that IS recorded — a source changing its own value where it
+    // has no refresh right — under its own reason and INFO severity. Every other same-source
+    // resolution (a granted refresh, a time-based update) stays out of the table (T-286).
+    const selfChange = resolutionReason === SOURCE_CHANGED_OWN_VALUE;
     if (
       FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION &&
       !this.currentShadowMode &&
-      existingSource !== incomingSource
+      (existingSource !== incomingSource || selfChange)
     ) {
       await this.logConflict({
         ipoId,
@@ -2615,7 +2653,7 @@ export class DataConsolidationService {
         incomingSource,
         normalizedExisting: params.existingValueNormalized,
         normalizedIncoming: params.incomingValueNormalized,
-        severity,
+        severity: selfChange ? 'INFO' : severity,
         reason: resolutionReason,
         // W-48: pass the source actually kept by the resolution above —
         // never re-derive it from `resolutionReason` in logConflict.

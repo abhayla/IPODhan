@@ -118,7 +118,10 @@ describe('F6: field_sources.confidence reflects source tier, conflicts and confi
     expect(trackCallFor('faceValue')).toHaveLength(0);
   });
 
-  it('raises a stored NSE value to 95 when BSE confirms it', async () => {
+  // OD-73 (owner, 2026-09-23) supersedes the F6 confirmation re-write: "An identical incoming
+  // value is never written and never re-stamps provenance." Before this, every cycle a second
+  // source repeated a stored value re-stamped the row (#908: 17 live IPOs, every run).
+  it('does not re-stamp a stored NSE value when BSE reports the identical value (OD-73)', async () => {
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
       fieldSourceRow('faceValue', 'NSE', 10),
     ]);
@@ -132,13 +135,7 @@ describe('F6: field_sources.confidence reflects source tier, conflicts and confi
       confidence: 100,
     });
 
-    const calls = trackCallFor('faceValue');
-    expect(calls).toHaveLength(1);
-    expect(calls[0].source).toBe('NSE');
-    expect(calls[0].confidence).toBe(95);
-    // W-24: a confirmation must never null the provenance history
-    expect(calls[0].previousValue).toBe('10');
-    expect(calls[0].previousSource).toBe('NSE');
+    expect(trackCallFor('faceValue')).toHaveLength(0);
   });
 
   it('does not re-confirm (or re-write) when the SAME source repeats its value', async () => {
