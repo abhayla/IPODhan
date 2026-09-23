@@ -48,6 +48,7 @@ import {
   strictIdentityCompanyName,
 } from '../utils/identity-decoration';
 import { normalizeCompanyNameForMatching } from '../utils/company-name-normalizer';
+import { normalizeCin } from '../utils/cin';
 import { generateIPOSlug } from '../utils/slug';
 import { classifyPrefixBoundary } from './ipo-repository';
 import type { IPORepository } from './ipo-repository';
@@ -162,6 +163,44 @@ export interface IpoIdentity {
    * excludes a candidate — same posture as `segment`.
    */
   offeringType?: string | null;
+  /**
+   * Incoming Corporate Identification Number (MCA, 21 characters), when the
+   * caller has one. OD-34 step 1 (§2.3.3.2): the strongest identifier, tried
+   * before every other step. Normalised here (whitespace removed, upper-cased);
+   * anything that is not 21 alphanumerics after that is treated as absent.
+   */
+  cin?: string | null;
+}
+
+/**
+ * OD-69: a candidate whose stored CIN is known and differs from the incoming
+ * one is a different company, whatever its name, slug or symbol says. An
+ * absent CIN on either side neither proves nor refutes.
+ */
+function cinContradiction(incomingCin: string | null, candidateCin: unknown): string | null {
+  if (!incomingCin) return null;
+  const stored = normalizeCin(typeof candidateCin === 'string' ? candidateCin : null);
+  return stored && stored !== incomingCin ? `CIN differs (${incomingCin} vs ${stored})` : null;
+}
+
+/**
+ * OD-35: two KNOWN offering types that differ are two offerings of one
+ * company (a rights issue, a buyback, an OFS is never written into the IPO
+ * row) — this includes IPO <-> FPO: OD-35's own text is explicit ("Same
+ * identifier, offering type changes (IPO -> FPO, IPO -> rights) | new row"),
+ * so this CIN-step guard does not exempt that pair. This function is used
+ * ONLY by `resolveByCin` (the CIN step) — the unrelated write-path
+ * reclassification helper `guardSmeOfferingTypeAgainstFpo` is untouched by
+ * this change and keeps its own IPO<->FPO handling.
+ */
+function separateOffering(
+  identityOfferingType: string | null | undefined,
+  candidateOfferingType: string | null | undefined
+): boolean {
+  if (!identityOfferingType || !candidateOfferingType) {
+    return false;
+  }
+  return identityOfferingType !== candidateOfferingType;
 }
 
 /**
@@ -197,7 +236,7 @@ function segmentsConflict(
 /**
  * Resolve the existing `ipos` row (if any) that an incoming write or guard
  * check should treat as "this company" — priority order:
- * isin (exact, normalized) -> nse/bse symbol (exact, normalized) ->
+ * cin (OD-34 step 1, §2.3.3.2) -> isin (exact, normalized) -> nse/bse symbol (exact, normalized) ->
  * normalized-name -> prefix-name with corroboration (W-108) -> slug ->
  * fuzzy (typo) name.
  *
@@ -316,10 +355,14 @@ function daysApart(a: string, b: string): number {
  * A value unknown on either side neither proves nor refutes.
  */
 function nameMatchContradiction(
-  identity: Pick<IpoIdentity, 'openDate' | 'priceRangeMin' | 'segment'>,
-  candidate: { openDate?: unknown; priceRangeMin?: unknown; segment?: unknown; status?: unknown },
+  identity: Pick<IpoIdentity, 'openDate' | 'priceRangeMin' | 'segment' | 'cin'>,
+  candidate: { openDate?: unknown; priceRangeMin?: unknown; segment?: unknown; status?: unknown; cin?: unknown },
   opts: { looseTier: boolean }
 ): string | null {
+  const cinConflict = cinContradiction(normalizeCin(identity.cin), candidate.cin);
+  if (cinConflict) {
+    return `${cinConflict} (OD-69: a differing identifier never joins, whatever the names fold to)`;
+  }
   if (candidate.status === 'WITHDRAWN') {
     return 'candidate is WITHDRAWN (OD-71: a refiling is a new offering, never a bind to the withdrawn row)';
   }
@@ -370,6 +413,56 @@ function stripIncomingDecoration(identity: IpoIdentity): IpoIdentity {
   };
 }
 
+/**
+ * OD-34 step 1. Every row carrying this CIN is read; the ones that cannot be
+ * the incoming OFFERING are dropped (WITHDRAWN, a different segment, a
+ * different offering type, an open date beyond OD-35's 180 days). Exactly one
+ * left binds. None left falls through to the later steps unchanged. Two or
+ * more left is ambiguous — the company is stored twice (the live Rays of
+ * Belief pair shares one CIN) — so the CIN does not pick one; the later steps
+ * decide and the pair is left to the nightly duplicate check.
+ *
+ * A repository without `findByCin` (an older test double) is treated as "no
+ * row carries this CIN", never as a failure: identity resolution runs on
+ * every scraped record.
+ */
+async function resolveByCin(
+  ipoRepository: IPORepository,
+  identity: IpoIdentity,
+  cin: string
+): Promise<IPO | null> {
+  const finder = (ipoRepository as { findByCin?: (c: string) => Promise<IPO[]> }).findByCin;
+  if (typeof finder !== 'function') return null;
+  const rows = (await finder.call(ipoRepository, cin)) ?? [];
+  if (rows.length === 0) return null;
+
+  const incomingDay = toCalendarDateString(identity.openDate ?? null);
+  const eligible = rows.filter((row) => {
+    if (row.status === 'WITHDRAWN') return false;
+    if (segmentsConflict(identity.segment, row.segment)) return false;
+    if (separateOffering(identity.offeringType, row.offeringType)) return false;
+    const rowDay = toCalendarDateString((row.openDate as string | Date | null | undefined) ?? null);
+    if (incomingDay && rowDay && daysApart(incomingDay, rowDay) > SAME_OFFERING_WINDOW_DAYS) return false;
+    return true;
+  });
+
+  if (eligible.length === 1) {
+    logger.info({
+      companyName: identity.companyName, cin, boundId: eligible[0].id, boundSlug: eligible[0].slug,
+    }, '[OD-34] bound on CIN');
+    return eligible[0];
+  }
+  logger.warn({
+    companyName: identity.companyName,
+    cin,
+    rows: rows.map((r) => ({ id: r.id, slug: r.slug, status: r.status, offeringType: r.offeringType })),
+    eligibleSlugs: eligible.map((r) => r.slug),
+  }, eligible.length === 0
+    ? '[OD-34] rows carry this CIN but none can be this offering (withdrawn, other type/segment, or beyond 180 days) - not bound on CIN'
+    : '[OD-34] several rows carry this CIN and could be this offering - ambiguous, not bound on CIN; later steps decide');
+  return null;
+}
+
 export async function resolveIpoRow(
   ipoRepository: IPORepository,
   rawIdentity: IpoIdentity
@@ -385,6 +478,16 @@ export async function resolveIpoRow(
   // `return` statements, and the first thing to go wrong there is a return that
   // skips it.
   await logDuplicateCandidates(ipoRepository, identity);
+
+  // OD-34 step 1 (§2.3.3.2): the CIN, before every other identifier. First
+  // match wins and a later identifier never re-opens it, so a CIN bind returns
+  // here. A CIN names the COMPANY, not the offering, so only a row that can be
+  // the same offering is eligible (OD-35 window, OD-70 type, OD-71 withdrawn).
+  const cin = normalizeCin(identity.cin);
+  if (cin) {
+    const cinBound = await resolveByCin(ipoRepository, identity, cin);
+    if (cinBound) return cinBound;
+  }
 
   // T-403 Tier-A review (item 4): tracks whether the accepted `nameMatch`
   // came from the WEAK tier 3b prefix-with-corroboration path, so the
@@ -447,6 +550,18 @@ export async function resolveIpoRow(
         }, '[T-478] Tier 2 symbol match declined - OFS/IPO identity conflict');
       }
       keyMatch = retried;
+    }
+  }
+
+  // OD-69: a symbol is reused across time and an ISIN can be mis-keyed; a key
+  // row whose stored CIN differs from the incoming one is another company.
+  if (keyMatch) {
+    const conflict = cinContradiction(cin, (keyMatch as { cin?: unknown }).cin);
+    if (conflict) {
+      logger.warn({
+        companyName, isin, symbol, candidateId: keyMatch.id, candidateSlug: keyMatch.slug, reason: conflict,
+      }, '[OD-69] ISIN/symbol match declined - ' + conflict + ' - not bound');
+      keyMatch = null;
     }
   }
 
