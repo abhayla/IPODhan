@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-23T08:15:07.284Z",
+  "generated_at": "2026-09-23T08:58:04.846Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 185,
-    "retired": 26
+    "retired": 27
   },
-  "next_id": 212,
+  "next_id": 213,
   "rules": [
     {
       "id": "R-151",
@@ -1440,11 +1440,11 @@
       "retired": false
     },
     {
-      "id": "R-210",
-      "hash": "359d353de3ed",
+      "id": "R-212",
+      "hash": "0e9ca01e0064",
       "section": "6.1 What the job does",
       "kind": "prose",
-      "text": "What it does to each one (OD-76): if the IPO has no field plan yet, it first runs the existing plan generator for that IPO; then exactly the pull walk of §2.4 over that IPO's field plan. An IPO whose plan could not be generated (or has no rows) is never recorded DONE; one whose walk asked nothing is DONE only when every plan row is already settled (OD-73). Otherwise:, with the same ranks, the same validation and the same provenance. There is no separate \"migration\" code path — a closed IPO is walked by the same walk as a live one, which is the only way the walk stays worth trusting. The one difference is priority: the closed-IPO job may never take a resource a live IPO wants, so it runs at 22:00 when the data jobs do not, and it yields the cycle lock rather than competing for it.",
+      "text": "What it does to each one (OD-76): if the IPO has no field plan yet, it first runs the existing plan generator for that IPO; then exactly the pull walk of §2.4 over that IPO's field plan. An IPO whose plan could not be generated (or has no rows) is never recorded DONE; an IPO is DONE only when every one of its plan rows is settled (OD-73), whatever the walk asked (OD-79); otherwise PARTIAL. Otherwise:, with the same ranks, the same validation and the same provenance. There is no separate \"migration\" code path — a closed IPO is walked by the same walk as a live one, which is the only way the walk stays worth trusting. The one difference is priority: the closed-IPO job may never take a resource a live IPO wants, so it runs at 22:00 when the data jobs do not, and it yields the cycle lock rather than competing for it.",
       "first_seen": "2026-09-23",
       "retired": false
     },
@@ -1672,6 +1672,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-210",
+      "hash": "359d353de3ed",
+      "section": "6.1 What the job does",
+      "kind": "prose",
+      "text": "What it does to each one (OD-76): if the IPO has no field plan yet, it first runs the existing plan generator for that IPO; then exactly the pull walk of §2.4 over that IPO's field plan. An IPO whose plan could not be generated (or has no rows) is never recorded DONE; one whose walk asked nothing is DONE only when every plan row is already settled (OD-73). Otherwise:, with the same ranks, the same validation and the same provenance. There is no separate \"migration\" code path — a closed IPO is walked by the same walk as a live one, which is the only way the walk stays worth trusting. The one difference is priority: the closed-IPO job may never take a resource a live IPO wants, so it runs at 22:00 when the data jobs do not, and it yields the cycle lock rather than competing for it.",
+      "first_seen": "2026-09-23",
+      "retired": true
     },
     {
       "id": "R-208",
