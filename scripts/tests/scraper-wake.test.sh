@@ -285,25 +285,38 @@ fi
 #
 # Static, and deliberately so: the pairing is a property of the source, and a
 # runtime test with a fake job cannot observe which lock the REAL scraper takes.
-WAKE_LOCK_DEFAULT="$(grep -E '^SCRAPER_LOCK_KEY=' "$WAKE" | head -1)"
-if printf '%s' "$WAKE_LOCK_DEFAULT" | grep -qF 'lock:resource:scraper:cycle'; then
-  pass "case 6: the wrapper reads scraper:cycle - the lock its own --source=all command takes"
+# Item 7 S1: the lock is now picked per job, in ONE case statement that also
+# picks the --job= flag. Read the lock each job actually resolves at RUNTIME
+# (the skip line names it) rather than grepping one assignment line.
+lock_key_for_job() {
+  SCRAPER_WAKE_FAKE_LOCK_TTL=100 SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" SCRAPER_CEILING_SECONDS=30 \
+    sh "$WAKE" "$1" 2>&1 | sed -n 's/.*lock_key=\([^ ]*\).*/\1/p' | head -1
+}
+DATA_LOCK6="$(lock_key_for_job data)"
+LIVE_LOCK6="$(lock_key_for_job live)"
+CLOSED_LOCK6="$(lock_key_for_job closed)"
+if [ "$DATA_LOCK6" = "lock:resource:scraper:cycle" ]; then
+  pass "case 6: a data wake reads scraper:cycle - the lock its --job=data command takes"
 else
-  fail "case 6: the wrapper's default lock is not scraper:cycle; it would gate on a lock the command it runs does not take"
-  printf '%s
-' "$WAKE_LOCK_DEFAULT"
+  fail "case 6: a data wake reads '$DATA_LOCK6', not scraper:cycle; it would gate on a lock the command it runs does not take"
 fi
-if printf '%s' "$WAKE_LOCK_DEFAULT" | grep -qF 'filing-auto-persist'; then
-  fail "case 6: the wrapper still defaults to the INNER document lock - false-negative machine, see the comment above"
+if [ "$CLOSED_LOCK6" = "lock:resource:scraper:cycle" ]; then
+  pass "case 6: a closed wake reads scraper:cycle (it runs the data cycle, which takes that lock)"
+else
+  fail "case 6: a closed wake reads '$CLOSED_LOCK6', not scraper:cycle"
+fi
+# OD-27: the live wake must read its OWN lock. Reading scraper:cycle would let
+# a data job holding the heavy lock for hours skip every live wake - the exact
+# thing the owner's rule forbids.
+if [ "$LIVE_LOCK6" = "lock:resource:scraper:live" ]; then
+  pass "case 6: a live wake reads scraper:live, never the heavy scraper:cycle (OD-27)"
+else
+  fail "case 6: a live wake reads '$LIVE_LOCK6', not scraper:live - a data job would block the live figures"
+fi
+if grep -vE '^[[:space:]]*#' "$WAKE" | grep -qF 'filing-auto-persist'; then
+  fail "case 6: the wrapper still references the INNER document lock - false-negative machine, see the comment above"
 else
   pass "case 6: the wrapper does not gate an outer-lock command on the inner document lock"
-fi
-# And it must not pass a --job flag nothing parses: scraper/src parses no
-# `--job=` today, so forwarding one reads like a feature while doing nothing.
-if grep -vE '^[[:space:]]*#' "$WAKE" | grep -qF -- '--job='; then
-  fail "case 6: the wrapper forwards --job=, which nothing in scraper/src parses - remove it or wire it"
-else
-  pass "case 6: the wrapper does not forward an unparsed --job flag"
 fi
 
 # --- Case 7: cwd-independence --------------------------------------------
@@ -454,6 +467,30 @@ if [ -f "$DEPLOY_SCRIPT" ]; then
     fail "case 9: a staging deploy did not emit the offset 15,45 schedule line"
     printf '%s\n' "$STAGCRON"
   fi
+  # Item 7 S1 (OD-27/OD-28): a SECOND line wakes the live-figures job every 30
+  # minutes, any hour, any day, with its own marker.
+  if printf '%s
+' "$PRODCRON" | grep -F 'scraper-wake.sh live' | grep -F '*/30 * * * *' | grep -qF 'ipodhan-scraper-live:prod'; then
+    pass "case 9: a prod deploy also schedules the live wake (scraper-wake.sh live) at */30 with its own marker"
+  else
+    fail "case 9: a prod deploy emitted no */30 live-wake line - the live figures would never be fetched"
+    printf '%s
+' "$PRODCRON"
+  fi
+  if printf '%s
+' "$STAGCRON" | grep -F 'scraper-wake.sh live' | grep -F '15,45 * * * *' | grep -qF 'ipodhan-scraper-live:staging'; then
+    pass "case 9: a staging deploy schedules the live wake at the slot offset 15,45 (W-178)"
+  else
+    fail "case 9: a staging deploy emitted no 15,45 live-wake line"
+    printf '%s
+' "$STAGCRON"
+  fi
+  if printf '%s
+' "$PRODCRON" | grep -F 'ipodhan-scraper-wake:prod' | grep -qF 'scraper-wake.sh data'; then
+    pass "case 9: the data line still runs 'scraper-wake.sh data' (cadence unchanged in this slice)"
+  else
+    fail "case 9: the data line no longer runs 'scraper-wake.sh data'"
+  fi
   # Slot-scoped marker: a prod deploy must not clobber staging's line.
   if printf '%s\n' "$PRODCRON" | grep -qF 'ipodhan-scraper-wake:prod' && printf '%s\n' "$STAGCRON" | grep -qF 'ipodhan-scraper-wake:staging'; then
     pass "case 9: each slot's cron line carries its own marker (a deploy rewrites only its own slot)"
@@ -534,6 +571,14 @@ FAKECRON
     pass "case 10: two installs leave exactly one wake line (idempotent)"
   else
     fail "case 10: two installs left ${WAKE_LINES10:-0} wake lines - a deploy would keep appending duplicates"
+    echo "$STORED"
+  fi
+
+  LIVE_LINES10="$(echo "$STORED" | grep -cF 'ipodhan-scraper-live:prod' || true)"
+  if [ "${LIVE_LINES10:-0}" -eq 1 ] && echo "$STORED" | grep -F 'ipodhan-scraper-live:prod' | grep -qF 'scraper-wake.sh live'; then
+    pass "case 10: the live wake line REALLY reaches the crontab, exactly once after two installs"
+  else
+    fail "case 10: expected exactly one stored live-wake line, found ${LIVE_LINES10:-0}"
     echo "$STORED"
   fi
 
@@ -1059,6 +1104,40 @@ if [ "$ST18D" -ne 0 ] && printf '%s' "$OUT18D" | grep -qF 'REFUSING'; then
 else
   fail "case 18d: expected a non-zero exit + REFUSING line for an unrecognised deploy path, got exit=$ST18D"
   printf '%s\n' "$OUT18D"
+fi
+
+# --- Case 19: the job flag reaches the job (item 7 S1) ---------------------
+# The job and its lock are chosen together; this proves the other half - the
+# flag the job is started with - by reading back the argv a fake job receives.
+printf '%s\n' '#!/bin/sh' 'echo "JOB_ARGV=$*"' 'exit 0' > "$FIXDIR/job-argv.sh"
+chmod +x "$FIXDIR/job-argv.sh"
+argv_for_job() {
+  SCRAPER_WAKE_FAKE_LOCK_TTL=free SCRAPER_WAKE_CMD="$FIXDIR/job-argv.sh" SCRAPER_CEILING_SECONDS=30 \
+    sh "$WAKE" "$@" 2>&1 | sed -n 's/^JOB_ARGV=//p' | head -1
+}
+ARGV19L="$(argv_for_job live)"
+ARGV19D="$(argv_for_job data --extra)"
+ARGV19C="$(argv_for_job closed)"
+ARGV19N="$(argv_for_job)"
+if [ "$ARGV19L" = "--job=live" ]; then
+  pass "case 19: a live wake starts the scraper with --job=live"
+else
+  fail "case 19: a live wake started the job with '$ARGV19L', expected --job=live"
+fi
+if [ "$ARGV19D" = "--job=data --extra" ]; then
+  pass "case 19: a data wake passes --job=data first, then the operator's extra args"
+else
+  fail "case 19: a data wake started the job with '$ARGV19D', expected '--job=data --extra'"
+fi
+if [ "$ARGV19N" = "--job=data" ]; then
+  pass "case 19: a wake with no job argument is a data wake (--job=data)"
+else
+  fail "case 19: a wake with no job argument started the job with '$ARGV19N'"
+fi
+if [ -z "$ARGV19C" ]; then
+  pass "case 19: a closed wake passes no --job flag (the scraper has no closed job of its own and would refuse one)"
+else
+  fail "case 19: a closed wake passed '$ARGV19C' - the scraper refuses an unknown --job with exit 1"
 fi
 
 if [ "$FAILED" -ne 0 ]; then

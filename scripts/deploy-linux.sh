@@ -2015,7 +2015,28 @@ preflight_scraper_wake() {
 # (# ipodhan-scraper-wake:<SLOT>), and installing rewrites only lines bearing
 # THIS slot's marker. A prod deploy never disturbs staging's line, and two
 # deploys in a row leave exactly one line, not two.
+#
+# THE LIVE-FIGURES WAKE (item 7 S1, spec section 2.1 job table, OD-27/OD-28):
+# a SECOND line, `scraper-wake.sh live`, every 30 minutes. It runs the
+# live-figures job (subscription + demand graph in bidding hours, the
+# grey-market premium whenever any IPO is UPCOMING or OPEN) under its own
+# `scraper:live` lock, so a data job holding `scraper:cycle` never stands it
+# still. The live job decides for itself whether anything is due; the cron line
+# only has to wake it on every half hour, any day - GMP runs evenings, weekends
+# and holidays too (OD-28, F-41), so the line carries no hour or weekday filter.
+# Same per-slot minutes as the data line ($SCRAPER_LIVE_CRON defaults to the
+# slot's value: */30 prod, 15,45 staging, W-178) so the two slots never fetch
+# in the same minute. The data line's cadence is unchanged in this slice.
+# TIMEZONE: the box's crontab runs in IST (see install_staging_window_cron
+# below); an every-30-minutes line fires at the same instants in any zone, so
+# this line needs no TZ prefix and no IST translation.
+# Own marker (# ipodhan-scraper-live:<SLOT>) so an install rewrites exactly this
+# slot's two lines and nothing else. Same log file as the data wake: the
+# wake-starting and wake-skipped lines carry job=live or job=data, and
+# scripts/ops/wake-delta.mjs reads this one file.
 SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
+SCRAPER_LIVE_CRON_MARKER="# ipodhan-scraper-live:$SLOT"
+SCRAPER_LIVE_CRON="$SCRAPER_CRON" # every 30 min, any hour, any day (IST crontab)
 SCRAPER_WAKE_LOG="${DEPLOY_SCRAPER_WAKE_LOG:-/var/log/ipodhan-scraper-wake-$SLOT.log}"
 install_scraper_cron() {
   # MAJOR (Tier A review): the scheduled line pins $CURRENT_LINK, never a
@@ -2032,27 +2053,33 @@ install_scraper_cron() {
   # local mail nobody reads - and the skip/ceiling lines ARE the proof artifact
   # this slice exists to produce, so they must land somewhere greppable.
   local cron_line="$SCRAPER_CRON $wake_script data >> $SCRAPER_WAKE_LOG 2>&1 $SCRAPER_CRON_MARKER"
+  # Defaults here too (not only at the top level) so this function stays
+  # self-contained when the suite extracts and evals it on its own.
+  local live_marker="${SCRAPER_LIVE_CRON_MARKER:-# ipodhan-scraper-live:$SLOT}"
+  local live_cron="${SCRAPER_LIVE_CRON:-$SCRAPER_CRON}"
+  local live_line="$live_cron $wake_script live >> $SCRAPER_WAKE_LOG 2>&1 $live_marker"
 
   if (( DRY_RUN )); then
     log "[dry-run] would install crontab line: $cron_line"
+    log "[dry-run] would install crontab line: $live_line"
     return 0
   fi
 
   if ! command -v crontab >/dev/null 2>&1; then
-    warn "install_scraper_cron: crontab not found on PATH - THE SCRAPER WILL NOT BE WOKEN. pm2 no longer carries --cron-restart, so without this line nothing schedules a cycle. Install cron or add the line by hand: $cron_line"
+    warn "install_scraper_cron: crontab not found on PATH - THE SCRAPER WILL NOT BE WOKEN. pm2 no longer carries --cron-restart, so without this line nothing schedules a cycle. Install cron or add the lines by hand: $cron_line AND $live_line"
     return 0
   fi
 
   local existing
   existing="$(crontab -l 2>/dev/null || true)"
-  # Drop only this slot's previous line, keep every other crontab entry.
+  # Drop only this slot's previous data and live lines, keep every other entry.
   local kept
-  kept="$(printf '%s\n' "$existing" | grep -vF "$SCRAPER_CRON_MARKER" || true)"
+  kept="$(printf '%s\n' "$existing" | grep -vF "$SCRAPER_CRON_MARKER" | grep -vF "$live_marker" || true)"
 
-  if printf '%s\n%s\n' "$kept" "$cron_line" | grep -v '^$' | crontab -; then
-    log "install_scraper_cron: scheduled the scraper wake for slot '$SLOT' at '$SCRAPER_CRON' -> $wake_script"
+  if printf '%s\n%s\n%s\n' "$kept" "$cron_line" "$live_line" | grep -v '^$' | crontab -; then
+    log "install_scraper_cron: scheduled the scraper wake for slot '$SLOT' at '$SCRAPER_CRON' (data) and '$live_cron' (live) -> $wake_script"
   else
-    warn "install_scraper_cron: crontab write FAILED - THE SCRAPER WILL NOT BE WOKEN on this box. Add by hand: $cron_line"
+    warn "install_scraper_cron: crontab write FAILED - THE SCRAPER WILL NOT BE WOKEN on this box. Add by hand: $cron_line AND $live_line"
   fi
 }
 

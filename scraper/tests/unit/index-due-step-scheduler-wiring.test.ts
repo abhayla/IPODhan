@@ -267,32 +267,18 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
       expect(runBSEScraperMock).not.toHaveBeenCalled();
     });
 
-    it('live: outside market hours -> zero network calls (GMP/demand-graph never invoked)', async () => {
-      isMarketHoursISTMock.mockReturnValue(false);
-      const { main } = await import('../../src/index.js');
-      await main();
-      expect(runInvestorgainGMPScraperMock).not.toHaveBeenCalled();
-      expect(runDemandBackfillMock).not.toHaveBeenCalled();
-    });
-
-    it('live: market hours but zero OPEN IPOs -> zero network calls', async () => {
-      isMarketHoursISTMock.mockReturnValue(true);
-      dbCountRowsMock.mockResolvedValue([{ c: 0 }]);
-      const { main } = await import('../../src/index.js');
-      await main();
-      expect(runInvestorgainGMPScraperMock).not.toHaveBeenCalled();
-      expect(runDemandBackfillMock).not.toHaveBeenCalled();
-    });
-
-    it('live: market hours + OPEN IPOs present -> GMP + demand graph + OPEN-restricted NSE/BSE run', async () => {
+    // Item 7 S1 (OD-27/OD-28): the live figures moved to `--job=live` under its
+    // own lock (tests/unit/index-live-job-wiring.test.ts). The data cycle must
+    // not fetch them too - not even in market hours with IPOs OPEN.
+    it('live figures are NOT fetched by the data cycle, even in market hours with OPEN IPOs', async () => {
       isMarketHoursISTMock.mockReturnValue(true);
       dbCountRowsMock.mockResolvedValue([{ c: 3 }]);
       const { main } = await import('../../src/index.js');
       await main();
-      expect(runInvestorgainGMPScraperMock).toHaveBeenCalledTimes(1);
-      expect(runDemandBackfillMock).toHaveBeenCalledWith({ execute: true });
-      expect(runNSEScraperMock).toHaveBeenCalledWith({ allowedStatuses: ['OPEN'] });
-      expect(runBSEScraperMock).toHaveBeenCalledWith({ allowedStatuses: ['OPEN'] });
+      expect(runInvestorgainGMPScraperMock).not.toHaveBeenCalled();
+      expect(runDemandBackfillMock).not.toHaveBeenCalled();
+      expect(runNSEScraperMock).not.toHaveBeenCalledWith({ allowedStatuses: ['OPEN'] });
+      expect(runBSEScraperMock).not.toHaveBeenCalledWith({ allowedStatuses: ['OPEN'] });
     });
 
     it('aggregators: cadence not due -> Moneycontrol/Chittorgarh never called', async () => {
