@@ -43,9 +43,19 @@ import { shouldRunOnCatchUpCadence, isCatchUpCadenceDue, markCatchUpCadenceRan }
 import { isDiscoveryDue, isMarketHoursIST, mostRecentDiscoverySlotLabel } from './scheduler/due-step-cycle.js';
 import { runDemandBackfill } from './scripts/backfill-demand-graph.js';
 import { DistributedLock } from './utils/distributed-lock.js';
-import { runClosedIpoJob, isClosedIpoJobDue, CLOSED_IPO_JOB_SLOT_IST_MINUTES } from './scheduler/closed-ipo-job.js';
-import type { ClosedIpoCauseClass, ClosedIpoOutcome } from './scheduler/closed-ipo-job.js';
+import {
+  runClosedIpoJob,
+  isClosedIpoJobDue,
+  resourceClosedIpo,
+  closedIpoResourcingVersion,
+  CLOSED_IPO_JOB_SLOT_IST_MINUTES,
+} from './scheduler/closed-ipo-job.js';
+import { writeFieldSourcesSnapshot } from './scheduler/closed-ipo-snapshot.js';
+import type { ClosedIpoResourceResult } from './scheduler/closed-ipo-job.js';
+import { readPlanSettlement } from './scheduler/closed-ipo-plan-settlement.js';
+import { plantFieldPlanForIpo } from './services/field-plan-planting.js';
 import { walkFieldPlanForIPO } from './services/field-plan-walk.js';
+import { fieldManifestFingerprint } from '@ipodhan/shared/utils/field-manifest-fingerprint';
 import {
   buildFieldPlanWalkOrchestrator,
   buildFieldPlanWalkFetchers,
@@ -58,8 +68,8 @@ import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/fie
 import { randomUUID, createHash } from 'crypto';
 import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories';
-import { scraperLogs, scraperSteps, ipos } from '@ipodhan/shared/db/schema';
-import { lt, inArray, count } from 'drizzle-orm';
+import { scraperLogs, scraperSteps, ipos, ipoFieldPlan } from '@ipodhan/shared/db/schema';
+import { lt, inArray, count, eq } from 'drizzle-orm';
 import logger from './utils/logger.js';
 import { heartbeat, flushOwnerNotify } from './services/owner-notify.js';
 import { evaluateFreshness } from './services/freshness-monitor.js';
@@ -1626,101 +1636,81 @@ async function pruneScraperLogs(): Promise<StepResult> {
 }
 
 /**
- * Stamped onto every `closed_ipo_resourcing` row. Bumping it is what makes an
- * IPO this version gave up on (PARTIAL/FAILED) eligible again — a deliberate
- * act, the same contract `EXTRACTOR_VERSION` uses, never a side effect.
+ * Stamped onto every `closed_ipo_resourcing` row (§6.2, OD-78): the source-
+ * RANKINGS fingerprint (rank lists + capable flags only) + EXTRACTOR version the
+ * IPO was resourced under, derived at run time -- a ranking change or an
+ * EXTRACTOR_VERSION bump re-opens every PARTIAL/FAILED IPO; any other manifest
+ * edit re-opens none (review round 2 NEW-1).
  */
-const CLOSED_IPO_RESOURCING_VERSION = 'closed-ipo-job@2026-09-21';
+function currentClosedIpoResourcingVersion(): string {
+  const manifest = loadFieldManifest();
+  return closedIpoResourcingVersion({
+    ranksHash: fieldManifestFingerprint(manifest.fields), // OD-82: the one shared fingerprint (ranks, capable, documentType)
+    extractorVersion: EXTRACTOR_VERSION,
+  });
+}
 
 /** Wall-clock budget for ONE closed IPO's walk. Ten of these fit in a cycle. */
 const CLOSED_IPO_WALK_BUDGET_MS = 60_000;
 
 /**
- * The real work behind one closed-IPO row: run the field-plan walk over it,
- * exactly as the document cycle's PASS 3 does for a live IPO, and translate
- * the walk's counters into the job ledger's outcome + cause CLASS.
- *
- * This is a real walk, not a stub. A stubbed writer here would hide precisely
- * the contract bugs this wiring can have (2026-09-16: three walk-writer
- * mismatches sat behind a stubbed consolidator).
- *
- * The outcome mapping, and why each line is where it is:
- *   - nothing attempted        -> DONE. There was no due field; the IPO is
- *                                 resourced as far as the plan knows. Marking
- *                                 this FAILED would re-select it every night
- *                                 forever for having no work.
- *   - something supplied, none left dropped/failing -> DONE.
- *   - writes dropped           -> PARTIAL / WRITE_SKIPPED. The walk reached a
- *                                 write and the consolidator declined it.
- *   - transient failures       -> PARTIAL / SOURCE_UNREACHABLE. Re-askable.
- *   - every field exhausted    -> PARTIAL / DOCUMENT_UNOBTAINABLE. Terminal for
- *                                 this version; a version bump re-opens it.
- *   - settle calls threw       -> FAILED / WRITE_SKIPPED. The DB was the problem.
+ * The real work behind one closed-IPO row -- OD-76 "plan, then walk". The
+ * decision logic (plant if unplanned, then walk, never DONE without a walk)
+ * lives in `resourceClosedIpo` (scheduler/closed-ipo-job.ts) where it is unit-
+ * tested; this binds it to the REAL generator, repository and walk -- the same
+ * three the document cycle uses for a live IPO. Not a stub: a stubbed writer
+ * here would hide exactly the contract bugs this wiring can have (2026-09-16).
  */
-async function resourceClosedIpo(ipoId: string): Promise<{
-  outcome: ClosedIpoOutcome;
-  causeClass?: ClosedIpoCauseClass;
-  causeDetail?: string;
-  fieldsWritten: number;
-  fieldsLeftEmpty: number;
-}> {
+async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceResult> {
   const redis = getRedisClient();
-  const startedAt = Date.now();
+  const fieldPlanRepository = new IpoFieldPlanRepository(db as never, redis as never);
+  const overrides = createFieldSourceOverridesReader(new FieldSourceOverridesRepository({ db: db as never }));
 
-  const sourceFetchers = buildFieldPlanWalkFetchers();
-  const walk = await walkFieldPlanForIPO(
-    ipoId,
-    {
-      fieldPlanRepository: new IpoFieldPlanRepository(db as never, redis as never) as never,
-      orchestrator: buildFieldPlanWalkOrchestrator(),
-      sourceFetchers,
-      // #884 / OD-78: a gap row is not re-asked under the same key (same cause, same outcome).
-      gapKeys: buildFieldPlanGapKeySource({ fetchers: sourceFetchers, extractorVersion: EXTRACTOR_VERSION }),
-      ipoRepository: new IPORepository(db as never, redis as never) as never,
-      overrides: createFieldSourceOverridesReader(new FieldSourceOverridesRepository({ db: db as never })),
-      trackWitnessVerdict: buildFieldPlanWalkWitnessVerdictWriter(),
+  const result = await resourceClosedIpo(ipoId, {
+    countPlanRows: async (id) => {
+      const [row] = await db.select({ n: count() }).from(ipoFieldPlan).where(eq(ipoFieldPlan.ipoId, id));
+      return Number(row?.n ?? 0);
     },
-    { deadlineMs: startedAt + CLOSED_IPO_WALK_BUDGET_MS, now: () => Date.now() }
-  );
+    plantPlan: async (id) => {
+      const [ipo] = await db
+        .select({ id: ipos.id, segment: ipos.segment, listingExchanges: ipos.listingExchanges })
+        .from(ipos)
+        .where(eq(ipos.id, id));
+      if (!ipo) throw new Error(`IPO ${id} not found`);
+      return plantFieldPlanForIpo(
+        {
+          id: ipo.id,
+          segment: (ipo.segment as 'MAINBOARD' | 'SME' | null) ?? null,
+          listingExchanges: (ipo.listingExchanges as ('NSE' | 'BSE')[] | null) ?? null,
+        },
+        { overrides, fieldPlanRepository: fieldPlanRepository as never }
+      );
+    },
+    // Round 4 M-2: the ONE settlement query (stored + unsettled, state NOT IN the
+    // exported terminal list), shared with the integration test and the repair tool.
+    readPlanSettlement: (id) => readPlanSettlement(db as never, id),
+    walk: async (id) => {
+      const startedAt = Date.now();
+      const sourceFetchers = buildFieldPlanWalkFetchers();
+      return walkFieldPlanForIPO(
+        id,
+        {
+          fieldPlanRepository: fieldPlanRepository as never,
+          orchestrator: buildFieldPlanWalkOrchestrator(),
+          sourceFetchers,
+          // #884 / OD-78: a gap row is not re-asked under the same key (same cause, same outcome).
+          gapKeys: buildFieldPlanGapKeySource({ fetchers: sourceFetchers, extractorVersion: EXTRACTOR_VERSION }),
+          ipoRepository: new IPORepository(db as never, redis as never) as never,
+          overrides,
+          trackWitnessVerdict: buildFieldPlanWalkWitnessVerdictWriter(),
+        },
+        { deadlineMs: startedAt + CLOSED_IPO_WALK_BUDGET_MS, now: () => Date.now() }
+      );
+    },
+  });
 
-  const fieldsWritten = walk.fieldsSupplied;
-  const fieldsLeftEmpty =
-    walk.fieldsExhausted + walk.fieldsCheckFailed + walk.fieldsWriteSkipped + walk.fieldsNotAvailableYet;
-
-  let outcome: ClosedIpoOutcome = 'DONE';
-  let causeClass: ClosedIpoCauseClass | undefined;
-  let causeDetail: string | undefined;
-
-  if (walk.outcomesFailed > 0) {
-    outcome = 'FAILED';
-    causeClass = 'WRITE_SKIPPED';
-    causeDetail = `${walk.outcomesFailed} settle call(s) threw (DB unreachable); claims released`;
-  } else if (walk.fieldsWriteSkipped > 0) {
-    outcome = 'PARTIAL';
-    causeClass = 'WRITE_SKIPPED';
-    causeDetail = walk.droppedWrites
-      .slice(0, 5)
-      .map((d) => `${d.tableName}.${d.fieldName} (${d.source}: ${d.skipReason})`)
-      .join('; ');
-  } else if (walk.fieldsCheckFailed > 0) {
-    outcome = 'PARTIAL';
-    causeClass = 'SOURCE_UNREACHABLE';
-    causeDetail = `${walk.fieldsCheckFailed} field(s) failed transiently; re-asked after backoff`;
-  } else if (walk.fieldsExhausted > 0 && walk.fieldsSupplied === 0) {
-    outcome = 'PARTIAL';
-    causeClass = 'DOCUMENT_UNOBTAINABLE';
-    causeDetail = walk.exhaustedFields
-      .slice(0, 5)
-      .map((e) => `${e.tableName}.${e.fieldName}`)
-      .join('; ');
-  }
-
-  logger.info(
-    { ipoId, outcome, causeClass, fieldsWritten, fieldsLeftEmpty, stoppedReason: walk.stoppedReason },
-    'closed-IPO job: walk complete for one IPO'
-  );
-
-  return { outcome, causeClass, causeDetail, fieldsWritten, fieldsLeftEmpty };
+  logger.info({ ipoId, ...result }, 'closed-IPO job: plan-then-walk complete for one IPO');
+  return result;
 }
 
 /**
@@ -1801,8 +1791,9 @@ export async function triggerClosedIpoJob(): Promise<StepResult> {
       // job is provably not walking concurrently. The real check belongs to
       // any caller that runs OUTSIDE the cycle.
       isCycleLockHeld: async () => false,
-      resourceIpo: resourceClosedIpo,
-      resourcedAtVersion: CLOSED_IPO_RESOURCING_VERSION,
+      resourceIpo: resourceClosedIpoLive,
+      resourcedAtVersion: currentClosedIpoResourcingVersion(),
+      snapshotFieldSources: (ipoIds) => writeFieldSourcesSnapshot(db as never, ipoIds, { now }),
       now,
     });
 
@@ -1815,7 +1806,8 @@ export async function triggerClosedIpoJob(): Promise<StepResult> {
       reason:
         `slot=${CLOSED_IPO_JOB_SLOT_IST_MINUTES} considered=${summary.candidatesConsidered} ` +
         `attempted=${summary.attempted} done=${summary.outcomes.DONE} ` +
-        `partial=${summary.outcomes.PARTIAL} failed=${summary.outcomes.FAILED}`,
+        `partial=${summary.outcomes.PARTIAL} failed=${summary.outcomes.FAILED} ` +
+        `snapshot=${summary.snapshot ? `${summary.snapshot.path} (${summary.snapshot.rows} rows)` : 'none'}`,
     };
   } catch (error) {
     logger.error(

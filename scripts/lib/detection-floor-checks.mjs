@@ -1323,3 +1323,37 @@ function pick(r) {
     updatedAt: r.updatedAt,
   };
 }
+
+/**
+ * #717 / OD-76 (closed_ipo_done_without_walk): the closed-IPO job must never
+ * record DONE for an IPO it did not walk -- spec §6.1 as rewritten by OD-76:
+ * "An IPO whose plan could not be generated, or whose walk asked nothing, is
+ * never recorded DONE." DONE is never re-picked (§6.2), so each such row is an
+ * IPO dropped from the backlog with nothing done.
+ *
+ * "Walked" is read from the plan itself, not from the ledger's own counters: a
+ * row the walk asked carries last_attempt_at. 0 plan rows, or plan rows none of
+ * which was ever asked, both mean no walk. Staging 2026-09-23: 10 of 10 DONE
+ * rows had 0 plan rows.
+ *
+ * OD-73 correction (PR #918): a never-asked DONE is legitimate when EVERY plan
+ * row is already settled (SUPPLIED / NOT_PRINTED / EXHAUSTED) -- nothing was
+ * left to ask. So the flag is: DONE with 0 plan rows, or DONE with no row ever
+ * asked while at least one row is unsettled.
+ *
+ * OD-79 widening (review round 3): DONE means EVERY plan row is settled,
+ * whatever the walk asked. A walked IPO (5 fields asked, 3 answered) was
+ * recorded DONE with 37 rows still open; the never-asked-only predicate passed
+ * it. So the flag is now: DONE with 0 plan rows, or DONE with ANY unsettled
+ * plan row -- walked or not. walkedRows stays in the row for the report only.
+ *
+ * Rows: { ipoId, companyName, outcome, planRows, walkedRows, unsettledRows }.
+ * Numbers may arrive as strings from pg; they are coerced.
+ */
+export function findClosedIpoDoneWithoutWalk(rows) {
+  return (rows ?? []).filter(
+    (r) =>
+      String(r.outcome).toUpperCase() === 'DONE' &&
+      (Number(r.planRows) === 0 || Number(r.unsettledRows) > 0)
+  );
+}

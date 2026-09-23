@@ -23,7 +23,7 @@
 import { sql } from 'drizzle-orm';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { DocumentRepository, DocumentFetchStateRepository, IPORepository, IpoPipelineStepsRepository, IpoFieldPlanRepository } from '@ipodhan/shared';
-import { generateFieldPlan, generateFieldPlanAsync } from './field-plan-generator.js';
+import { plantFieldPlanForIpo } from './field-plan-planting.js';
 import { recordBseDiscoveryMetadata, recordDocumentSourceHints, recordDiscoveredLeadManagers } from './data-persister.js';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import logger from '../utils/logger.js';
@@ -1745,36 +1745,20 @@ export async function runDocumentCycle(
             // CRITICAL-1 fix (S4 review round 2): override-aware entry point -- an active
             // field_source_overrides row now changes the ranks a NEWLY GENERATED plan row is
             // planted with, not just what the walk asks at read time.
-            const rows = await generateFieldPlanAsync(
+            // OD-76: the SAME planting function the closed-IPO job uses -- one
+            // code path for "create this IPO's plan rows".
+            const planted = await plantFieldPlanForIpo(
               {
                 id: ipo.id,
                 segment: (ipo.segment as 'MAINBOARD' | 'SME' | null) ?? null,
                 listingExchanges: ipo.listingExchanges ?? null,
               },
-              { overrides: fieldSourceOverridesReader }
+              { overrides: fieldSourceOverridesReader, fieldPlanRepository }
             );
-            if (rows.length === 0) continue;
-            const { inserted, updated } = await fieldPlanRepository.upsertGeneratedRows(
-              rows.map((r) => ({
-                ipoId: r.ipoId,
-                tableName: r.tableName,
-                rowKey: '',
-                fieldName: r.fieldName,
-                rank1Source: r.rank1Source,
-                rank2Source: r.rank2Source,
-                rank3Source: r.rank3Source,
-                manifestVersion: r.manifestVersion,
-                policyOrigin: r.policyOrigin,
-              }))
-            );
+            if (planted.rowsGenerated === 0) continue;
             fieldPlanTotals.ipos++;
-            fieldPlanTotals.rowsInserted += inserted;
-            // `?? 0` guards a caller/mock still returning the pre-S7 shape
-            // `{ inserted }` with no `updated` -- without it this becomes
-            // `0 + undefined = NaN`, which pino serializes as `null` in the
-            // operator-facing summary (signal-ownership R1: a number an
-            // operator reads must not be able to silently break).
-            fieldPlanTotals.rowsReranked += updated ?? 0;
+            fieldPlanTotals.rowsInserted += planted.inserted;
+            fieldPlanTotals.rowsReranked += planted.updated;
           } catch (error) {
             fieldPlanTotals.failed++;
             logger.error(
