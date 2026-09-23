@@ -124,6 +124,7 @@ it by assuming.
 | OD-69 | *"Not two IPOs of different companies can have the same solution... we need to handle those reasons so that those kind of issues do not happen again"* (S6). **A name alone never joins two records, and the merge tool refuses a pair whose CIN, symbol, ISIN or open date differ, whatever the names fold to.** The real look-alike pairs Himalayan Solar Limited / Himalaya Nutravedics India Limited (open 3 days apart) and Technocraft Ventures Ltd. / Technocrats Plasma Systems Ltd. are pinned as DIFFERENT by a test | 2026-09-23 | §2.3.3.2, §2.3.3.3 | the refusal rule and the two named look-alike pairs are stated |
 | OD-70 | *"Separate event"* (S5, chosen with real rows: OFS 19, TENDER 16, RIGHTS 8, BUYBACK 1 on production). **A listed company's later event (rights, buyback, tender or open offer, OFS) is its own row of its own type and is never matched to the company's IPO row; an SME-to-mainboard migration (e.g. Mangalam Worldwide, effective 2025-09-18) creates NO row, because it moves listed shares and is not an offering** | 2026-09-23 | §2.3.3.2 | the separate-event rule and the no-row-for-migration rule are stated |
 | OD-71 | *"Polymatech filed for an IPO last year but their IPO was rejected. If they file for that IPO again... we should create a new row because everything is different"*, then, shown OD-35's text: *"Keep OD-35 (same row)"* for a draft SEBI RETURNS and the company refiles. **Confirms OD-35 unchanged: a withdrawn draft, or one lapsed twelve months after SEBI's observations with no RHP, starts a NEW row (Polymatech, boAt / Imagine Marketing are the named cases); a draft SEBI returned and the company refiled without withdrawing updates the SAME row** | 2026-09-23 | §2.3.3.2 | OD-35's lapsed-draft rule stands and the returned-then-refiled case is stated as same-row |
+| OD-72 | *"Why the scraper will scrape the same IPO multiple times?... just because the field data is old, that doesn't mean that the data is stale... It can be correct also"* — shown that the 2026-09-08 time-threshold marker conflicts with OD-65, the owner chose *"Facts, no marker"*. **The time-based stale marker is retired.** A field shows only true facts: its source and when it was read (*"From the offer document, read 21 Sep 2026"*); a live bidding figure shows the time of the figure (*"Subscription as at 10:30 PM, 22 Sep"*). A scheduled live refresh that misses its OD-19 slot raises an ADMIN alert naming the IPO and the slot, never a label on the public page. **Kept, because it states a fact rather than an age:** the corrigendum marker of §2.5 (a correction notice has been filed for this field). Supersedes the 2026-09-08 staleness decision in §2.6 and §2.11 | 2026-09-23 | §2.5, §2.6, §2.11 | no section marks a field stale by age; §2.11's line states source and read date; the missed-slot admin alert is stated |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -1796,8 +1797,8 @@ story.
 **This is why §2.6 matters.** Triggers 3–7 all reach a field that already holds a good value. Under
 the deleted "blank it" rule, a live IPO's price band would disappear because Chittorgarh happened to
 be down during a Tuesday-afternoon verification pass. The field keeps its value; only the plan row
-records that we could not reconfirm it, and the page marks it *last confirmed on <date>* once that
-gap passes the staleness threshold (owner decision, 2026-09-08).
+records that we could not reconfirm it, and the page states its source and the date it was read (OD-72, which retired
+the 2026-09-08 time-threshold marker).
 
 #### 2.5.2 A re-ask must not rewrite an unchanged value
 
@@ -2058,7 +2059,7 @@ before December 2023.
 > A field that currently holds a value which passed its check is never blanked. `EXHAUSTED` marks
 > the plan row, not the data. A field that has never held a value stays absent.
 
-**Owner decision, 2026-09-08:** confirmed, **with a staleness marker on the page**. A value we could
+**Owner decision, 2026-09-08:** confirmed, **with a staleness marker on the page**. **Superseded 2026-09-23 by OD-72:** the time-threshold marker is retired, because after OD-65 a settled value is never re-confirmed by design, so age says nothing about correctness; the page states the source and read date instead. A value we could
 not reconfirm keeps serving, but once the gap passes the threshold the page shows *last confirmed on
 <date>* rather than presenting it as current. That gives the honesty of blanking without the
 destruction — nothing vanishes, and nothing pretends to be fresher than it is.
@@ -2183,7 +2184,7 @@ One shared component, rendered under each key-facts block on the IPO detail page
 - **Where the words come from:** `chosen_source`, `chosen_document_type` and the confirmation date on
   the plan row (§2.3), read through `FieldSourcesRepository.getIPOSourceMap(ipoId)`
   (`web/lib/repositories/field-sources-repository.ts:143`) — one query per page, not one per field.
-- **A stale value says so, in grey:** *"last confirmed 28 August 2026, being rechecked"*. That is the
+- **RETIRED by OD-72 (2026-09-23) — kept here as history:** ~~A stale value says so, in grey:~~ *"last confirmed 28 August 2026, being rechecked"*. That is the
   §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never
   blanked.
 - **A conflict stays admin-only.** An unresolved disagreement (§3.4) is not shown to the public. A

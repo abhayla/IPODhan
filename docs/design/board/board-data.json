@@ -11,25 +11,11 @@
       "blocks": "Nothing today. Decide before the first prod config change."
     },
     {
-      "id": "OD-21 staleness",
-      "ask": "How old may a field's last-confirmed date get before the page marks it stale?",
-      "recommend": "7 days for document-sourced fields, 1 day for live figures",
-      "why": "Item 21 is stuck at PARTIAL only because this number has no value. It is an owner decision, not a build.",
-      "blocks": "Build item 21 cannot reach BUILT."
-    },
-    {
       "id": "Prod schema",
       "ask": "Production is {{prod.migrations_behind}} migrations behind main. Rehearse the batch against a prod-shaped copy before the release?",
       "recommend": "Yes, rehearse first",
       "why": "These have never been run as ONE batch against prod's exact schema. Individually each is cheap at current row counts; as a batch, untested.",
       "blocks": "The next production release."
-    },
-    {
-      "id": "Unmerge scope (#807)",
-      "ask": "When a merge is undone, may the IPO's scraper-derived child rows (documents, subscriptions, GMP) be rebuilt by the next scrape rather than restored from the log?",
-      "recommend": "Yes, rebuild; but restore person-created rows and provenance exactly",
-      "why": "The spec says restore both rows whole. Copying every derived row across ~40 tables inside each merge is heavy; watchlists, reviews and field provenance are small and cannot be re-scraped. An independent review found the current merge already DELETES every watcher of the dropped row when one user watched both, which is fixed first either way.",
-      "blocks": "Item 19 step 3 (unmerge). The merge-correctness fix proceeds meanwhile."
     }
   ],
   "environments": [
