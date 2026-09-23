@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-23T07:55:44.371Z",
+  "generated_at": "2026-09-23T08:15:07.284Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 184,
+    "live": 185,
     "retired": 26
   },
-  "next_id": 211,
+  "next_id": 212,
   "rules": [
     {
       "id": "R-151",
@@ -1428,6 +1428,15 @@
       "kind": "prose",
       "text": "At 22:00 IST, once a day. It starts only if the data job's cycle lock is free; if the 14:00 job is somehow still running, the 22:00 job skips its turn and says so. It never kills anything.",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-211",
+      "hash": "582f58737a4f",
+      "section": "6.1 What the job does",
+      "kind": "prose",
+      "text": "1. status is LISTED or CLOSED, and close_date is before today. 2. Not already marked done, and not marked failed or partial with the same cause class as last time, unless the source rankings changed since (OD-78). Never-walked IPOs come first. 3. Ordered by close_date descending — newest closed first, which is the owner's sequence. 4. At most ten.",
+      "first_seen": "2026-09-23",
       "retired": false
     },
     {
