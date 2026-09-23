@@ -985,6 +985,8 @@ D-13's *principle* survives — work runs on named occasions, not on a drumbeat.
 | **Post-listing price** | **every 15 minutes during exchange market hours, for 90 days after listing**, then it stops (OD-29) | `live` | `ipos.current_price` and its as-of stamp, from the free NSE and BSE public quote endpoints | never a broker feed, and never touches a document or a static field |
 | **Closed-IPO job** | **22:00** | `heavy` | at most **10** IPOs a night, status LISTED or CLOSED, close date before today, ordered by close date **descending**, each marked done so it is never picked twice | never start while the heavy lock is held |
 
+**Measured 2026-09-23 on staging (open for owner decision):** **F-142** — after item 7 slice S2 (#935) the 22:15 IST non-slot data wake skipped discovery and the document cycle, but the website list scrapers (`--source=all`) still ran: "Chittorgarh listing report fetched" 12 times and 8 new IPOs created. This row's "three runs a day" is therefore not yet what staging does; slice S2b fixes it. **F-143** — `gmp_records` has no write-time column (its `timestamp` is the source's own as-of time), so the grey-market row's writes cannot be counted by when they happened.
+
 Six pieces of scheduled work, and one rule that binds all of them: **no job ever kills a running
 cycle.**
 
@@ -1697,7 +1699,12 @@ in the binding order or the matching rules.
 - **F-135** (area "data", not identity) — NSE IPO itself lists on BSE only per its own documents,
   while our row's `listing_exchanges` says both BSE and NSE because NSE ran the bidding; bears on
   OD-64 (issue #938).
-- **F-136** — the equity ISIN exists before the IPO (NSE: NSDL/CDSL tripartite agreements 2007/2016; RHP p.536 lets the company freeze the ISIN from the RHP date to listing), but the DRHP/RHP do not print it and no exchange API returned it during the IPO; a free pre-listing lookup is unproven (NSDL unreachable from the laptop). This corrects the working assumption that the ISIN only exists at listing.
+- **F-136** — the equity ISIN exists before the IPO (NSE: NSDL/CDSL tripartite agreements 2007/2016; RHP p.536 lets the company freeze the ISIN from the RHP date to listing), but the DRHP/RHP do not print it and no exchange API returned it during the IPO; a free pre-listing lookup is unproven (NSDL unreachable from the laptop). This corrects the working assumption that the ISIN only exists at listing. Update F-137: a free pre-listing lookup is now proven (NSDL public JSON).
+- **F-137** — a free pre-listing ISIN source exists: NSDL's public JSON search (nsdl.com/web/api/v1/participant/search), HTTP 200, no login, no captcha; returned ISINs for two not-yet-listed SME IPOs (Himalayan Solar INE1B7I01014, Himalaya Nutravedics India INE1OTR01013), each also corroborated by the NSE in-principle filing XML and the SME RHP text. Chittorgarh's ISIN column stays blank until listing.
+- **F-138** — MCA master data (name -> CIN) is not usable by a scraper: both the search and detail endpoints require a captcha-bound encrypted payload; data.gov.in's company master is a stale (FY2021) dataset needing an API key. The CIN, including its old->new change, is only reliably available from the offer document.
+- **F-139** — SEBI's processing-status data (free, weekly + yearly archive PDFs) is PDF-only, lags a new filing by weeks, and is prone to a `pdftotext -layout` row-misalignment trap; NSE's `/api/corporates/offerdocs` (SME and equities) gives ISIN, PAN, DRHP/RHP/prospectus dates and status directly for NSE-filed issues, with no equivalent found yet for BSE-only SME in-principle filings.
+- **F-140** (area "tooling") — curl is blocked by the BSE and MCA CDNs (403) where the scraper's Node fetch client succeeds (200); a curl-based laptop probe is not evidence the scraper itself is blocked.
+- **F-141** — PAN is available early (at DRHP stage) from NSE's offer-documents API for NSE-filed issues; whether BSE-only issues expose a PAN early is not measured.
 
 #### 2.3.3.3 Delisting, and undoing a merge that was wrong (OD-38)
 
