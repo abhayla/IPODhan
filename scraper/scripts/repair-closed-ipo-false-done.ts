@@ -11,16 +11,22 @@
  * DONE, PROSPECTUS PENDING 74 before and 74 after.
  *
  * THE CLASS IT REPAIRS, as a data filter: every closed_ipo_resourcing row, on
- * any slot, with outcome = 'DONE' AND fields_written = 0 whose IPO still holds a
- * document of an extractable type (PRICE_BAND_AD, RHP, DRHP, PROSPECTUS) with
- * extraction_status = 'PENDING'. A DONE row whose IPO has no pending
- * extractable document is left alone: that DONE is true.
+ * any slot, with outcome = 'DONE' whose IPO still holds a document of an
+ * extractable type (PRICE_BAND_AD, RHP, DRHP, PROSPECTUS) that is UNREAD --
+ * extraction_status NOT IN (COMPLETED, MANUAL_REVIEW, NOT_EXTRACTABLE), NULL
+ * counting as unread. fields_written is NOT part of the filter (PR #912 review
+ * round 1 MAJOR-3): a walk that wrote some fields does not make the document
+ * read. A DONE row whose IPO has no unread extractable document is left
+ * alone: that DONE is true.
  *
  * WHAT --apply DOES. Sets such a row to outcome PARTIAL, cause_class
  * EXTRACTOR_MISSING (the extraction never ran on it), and a cause_detail that
  * starts with the marker `repair-717:`. PARTIAL at an older resourced_at_version
  * is re-picked by the job's selection, so the next run extracts the document.
- * The rows as they were are written to scripts/state/ before the update.
+ * The rows as they were (outcome, cause_class, cause_detail, attempts, version)
+ * are written to scripts/state/ before the update, and the UPDATE re-checks the
+ * unread condition itself, so a document read between the dry run and --apply
+ * leaves its DONE row untouched.
  *
  * --undo puts every row carrying the marker back to DONE with no cause.
  *
@@ -61,6 +67,9 @@ interface FalseDoneRow {
   company_name: string;
   outcome: string;
   fields_written: number;
+  cause_class: string | null;
+  cause_detail: string | null;
+  attempts: number;
   resourced_at_version: string;
   last_attempt_at: string;
   pending: number;
@@ -94,21 +103,24 @@ async function main(): Promise<number> {
 
   const read = await db.execute(sql`
     SELECT r.ipo_id, i.company_name, r.outcome::text AS outcome, r.fields_written,
+           r.cause_class::text AS cause_class, r.cause_detail, r.attempts,
            r.resourced_at_version, r.last_attempt_at::text AS last_attempt_at,
            (SELECT count(*)::int FROM documents d
              WHERE d.ipo_id = r.ipo_id
-               AND d.extraction_status = 'PENDING'
+               AND COALESCE(d.extraction_status, 'PENDING') NOT IN ('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE')
                AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')) AS pending
       FROM closed_ipo_resourcing r
       JOIN ipos i ON i.id = r.ipo_id
-     WHERE r.outcome = 'DONE' AND r.fields_written = 0
+     WHERE r.outcome = 'DONE'
      ORDER BY i.company_name`);
   const all = ((read as unknown as { rows: FalseDoneRow[] }).rows ?? []);
   const rows = all.filter((r) => Number(r.pending) > 0);
 
-  console.log(`${all.length} DONE row(s) with fields_written 0; ${rows.length} still hold a PENDING extractable document:`);
+  console.log(`${all.length} DONE row(s); ${rows.length} still hold an unread extractable document:`);
   for (const r of rows) {
-    console.log(`  ${r.company_name} (${r.ipo_id}) pending=${r.pending} version=${r.resourced_at_version} last=${r.last_attempt_at}`);
+    console.log(
+      `  ${r.company_name} (${r.ipo_id}) unread=${r.pending} fields_written=${r.fields_written} version=${r.resourced_at_version} last=${r.last_attempt_at}`
+    );
   }
   if (rows.length === 0) {
     console.log('  (none — nothing to do)');
@@ -135,13 +147,20 @@ async function main(): Promise<number> {
     UPDATE closed_ipo_resourcing
        SET outcome = 'PARTIAL',
            cause_class = 'EXTRACTOR_MISSING',
-           cause_detail = ${REPAIR_MARKER} || ' recorded DONE with 0 fields while an extractable document was PENDING; the extraction never ran',
+           cause_detail = ${REPAIR_MARKER} || ' recorded DONE while an extractable document was still unread; the extraction never finished',
            updated_at = now()
      WHERE ipo_id = ANY(${sql.param(ids)}::uuid[])
-       AND outcome = 'DONE' AND fields_written = 0`);
+       AND outcome = 'DONE'
+       AND EXISTS (SELECT 1 FROM documents d
+                    WHERE d.ipo_id = closed_ipo_resourcing.ipo_id
+                      AND COALESCE(d.extraction_status, 'PENDING') NOT IN ('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE')
+                      AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS'))`);
   const changed = (res as unknown as { rowCount?: number }).rowCount ?? 0;
   console.log(`reopened ${changed} row(s) as PARTIAL on ${dbName}`);
-  return changed === rows.length ? 0 : 1;
+  if (changed !== rows.length) {
+    console.log(`${rows.length - changed} row(s) no longer matched at write time (a document was read since the read above) and were left as they were`);
+  }
+  return 0;
 }
 
 main()

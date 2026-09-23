@@ -1368,12 +1368,14 @@ async function checkL() {
 }
 
 // ---- #717: the closed-IPO job recorded DONE without doing the work -----------
-// A DONE row with fields_written 0 whose IPO still holds a PENDING extractable
-// document is an IPO the job dropped from its backlog unread (the job never
-// re-picks DONE). Reported by IPO name. The table arrives with migration 0050;
-// a slot without it is UNVERIFIABLE, never a crash.
+// A DONE row whose IPO still holds an UNREAD extractable document (any status
+// but COMPLETED / MANUAL_REVIEW / NOT_EXTRACTABLE) is an IPO the job dropped
+// from its backlog unread (the job never re-picks DONE). fields_written is not
+// part of the condition (PR #912 review round 1 MAJOR-3): a walk that wrote
+// some fields does not make the unread document read. Reported by IPO name.
+// The table arrives with migration 0050; a slot without it is UNVERIFIABLE.
 async function checkClosedIpoFalseDone() {
-  const name = 'no closed-IPO ledger row is DONE with 0 fields while its IPO still holds a PENDING extractable document (#717)';
+  const name = 'no closed-IPO ledger row is DONE while its IPO still holds an unread extractable document (#717)';
   const [{ present }] = await q(`SELECT to_regclass('public.closed_ipo_resourcing') IS NOT NULL AS present`);
   if (!present) {
     record('closed_ipo_false_done', name, 'UNVERIFIABLE', 'closed_ipo_resourcing does not exist on this slot (migration 0050 not applied)');
@@ -1383,7 +1385,8 @@ async function checkClosedIpoFalseDone() {
     `SELECT r.ipo_id AS "ipoId", i.company_name AS "companyName", r.outcome::text AS outcome,
             r.fields_written AS "fieldsWritten",
             (SELECT count(*)::int FROM documents d
-              WHERE d.ipo_id = r.ipo_id AND d.extraction_status = 'PENDING'
+              WHERE d.ipo_id = r.ipo_id
+                AND COALESCE(d.extraction_status, 'PENDING') NOT IN ('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE')
                 AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')) AS "pendingExtractable"
        FROM closed_ipo_resourcing r JOIN ipos i ON i.id = r.ipo_id
       WHERE r.outcome = 'DONE'`
@@ -1391,11 +1394,11 @@ async function checkClosedIpoFalseDone() {
   const bad = findClosedIpoFalseDone(rows);
   for (const r of bad) {
     notify('closed_ipo_false_done', 'P2', r.ipoId, 'closed-IPO job recorded DONE without reading the document',
-      `${r.companyName}: DONE, fields_written 0, ${r.pendingExtractable} extractable document(s) still PENDING`);
+      `${r.companyName}: DONE (fields_written ${r.fieldsWritten}), ${r.pendingExtractable} extractable document(s) still unread`);
   }
   record('closed_ipo_false_done', name, bad.length === 0 ? 'PASS' : 'FAIL',
     bad.length
-      ? bad.slice(0, MAX_OFFENDERS).map((r) => `${r.companyName} (pending=${r.pendingExtractable})`).join('; ')
+      ? bad.slice(0, MAX_OFFENDERS).map((r) => `${r.companyName} (unread=${r.pendingExtractable})`).join('; ')
       : `0 of ${rows.length} DONE row(s)`);
 }
 

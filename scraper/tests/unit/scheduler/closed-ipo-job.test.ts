@@ -63,8 +63,8 @@ describe('CLOSED_IPO_CANDIDATES_SQL — the four selection rules', () => {
     // it before the job ever ran: the backlog is not the freshest rows, it is
     // the OLDEST ones, which is why nothing had re-visited them. Recency
     // survives as the tie-break; need decides. See the #873 block below.
-    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/i\.close_date DESC/);
-    expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/ORDER BY\s+i\.close_date DESC/);
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/ORDER BY e\.need DESC, e\."closeDate" DESC/);
+    expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/ORDER BY\s+(i\.close_date|e\."closeDate") DESC/);
   });
 });
 
@@ -212,9 +212,11 @@ describe('#873: candidates are ordered by stuck-document count, not recency', ()
     // The count subquery must come FIRST in the ORDER BY. Asserted as an
     // ordered pair rather than two independent matches, because both clauses
     // being present says nothing about which one decides.
-    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(
-      /ORDER BY[\s\S]*extraction_status = 'PENDING'[\s\S]*DESC,[\s\S]*i\.close_date DESC/
-    );
+    // Review round 1: the need-count is the UNREAD population (anything not
+    // COMPLETED / MANUAL_REVIEW / NOT_EXTRACTABLE), computed as `need` and
+    // ordered on first within each of the fresh / carried-over groups.
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/NOT IN \('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE'\)[\s\S]*AS need/);
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/ORDER BY e\.need DESC, e\."closeDate" DESC/);
   });
 
   it('counts only document types an extractor can actually read', () => {
@@ -258,7 +260,7 @@ describe('#717: DONE requires the selection signal to be resolved', () => {
       db: stub.db,
       isCycleLockHeld: async () => false,
       resourceIpo: async () => ({ outcome: 'DONE', fieldsWritten: 0, fieldsLeftEmpty: 0 }),
-      countPendingExtractableDocuments: async () => 1,
+      countUnreadExtractableDocuments: async () => ({ pending: 1, retrying: 0 }),
       resourcedAtVersion: 'v',
     });
     const written = stub.values.mock.calls[0][0];
@@ -273,27 +275,27 @@ describe('#717: DONE requires the selection signal to be resolved', () => {
       db: stub.db,
       isCycleLockHeld: async () => false,
       resourceIpo: async () => ({ outcome: 'DONE', fieldsWritten: 0, fieldsLeftEmpty: 0 }),
-      countPendingExtractableDocuments: async () => 0,
+      countUnreadExtractableDocuments: async () => ({ pending: 0, retrying: 0 }),
       resourcedAtVersion: 'v',
     });
     expect(stub.values.mock.calls[0][0].outcome).toBe('DONE');
   });
 
   it('the guard keeps a worker cause and never upgrades a PARTIAL/FAILED', () => {
-    expect(applyPendingDocumentGuard({ outcome: 'DONE', causeClass: 'SOURCE_UNREACHABLE', fieldsWritten: 0, fieldsLeftEmpty: 0 }, 2).causeClass)
-      .toBe('SOURCE_UNREACHABLE');
-    expect(applyPendingDocumentGuard({ outcome: 'FAILED', fieldsWritten: 0, fieldsLeftEmpty: 0 }, 0).outcome).toBe('FAILED');
+    expect(applyPendingDocumentGuard({ outcome: 'DONE', causeClass: 'EXTRACTOR_MISSING', fieldsWritten: 0, fieldsLeftEmpty: 0 }, { pending: 2, retrying: 0 }).causeClass)
+      .toBe('EXTRACTOR_MISSING');
+    expect(applyPendingDocumentGuard({ outcome: 'FAILED', fieldsWritten: 0, fieldsLeftEmpty: 0 }, { pending: 0, retrying: 0 }).outcome).toBe('FAILED');
   });
 
   it('the worker receives the candidate row (it needs the company and segment to extract)', async () => {
     const stub = makeStubDb([{ id: 'ipo-1', closeDate: '2026-06-12', status: 'LISTED' }]);
     const resourceIpo = vi.fn().mockResolvedValue(okResult);
-    await runClosedIpoJob({ db: stub.db, isCycleLockHeld: async () => false, resourceIpo, countPendingExtractableDocuments: async () => 0, resourcedAtVersion: 'v' });
+    await runClosedIpoJob({ db: stub.db, isCycleLockHeld: async () => false, resourceIpo, countUnreadExtractableDocuments: async () => ({ pending: 0, retrying: 0 }), resourcedAtVersion: 'v' });
     expect(resourceIpo.mock.calls[0][1]).toMatchObject({ id: 'ipo-1', status: 'LISTED' });
   });
 
   it('a transient PARTIAL (SOURCE_UNREACHABLE) is re-picked at the same version; others wait for a version change', () => {
-    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/OR r\.cause_class = 'SOURCE_UNREACHABLE'/);
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/OR \(r\.cause_class = 'SOURCE_UNREACHABLE' AND r\.attempts < \$3\)/);
     expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/r\.outcome IN \('PARTIAL', 'FAILED'\)/);
   });
 
@@ -307,9 +309,11 @@ describe('#717: classifyExtractionPass', () => {
     const r = classifyExtractionPass({ attempted: false, causeClass: 'EXTRACTOR_MISSING', reason: 'flag off' });
     expect(r).toMatchObject({ outcome: 'PARTIAL', causeClass: 'EXTRACTOR_MISSING' });
   });
-  it('a failed document is FAILED / VALIDATION_REJECTED', () => {
+  it('a failed document is FAILED but TRANSIENT (review round 1 MAJOR-2), PARTIAL when another persisted', () => {
     expect(classifyExtractionPass({ attempted: true, result: { ...emptyPass, failed: 1 } }))
-      .toMatchObject({ outcome: 'FAILED', causeClass: 'VALIDATION_REJECTED' });
+      .toMatchObject({ outcome: 'FAILED', causeClass: 'SOURCE_UNREACHABLE' });
+    expect(classifyExtractionPass({ attempted: true, result: { ...emptyPass, failed: 1, persisted: 1 } }).outcome)
+      .toBe('PARTIAL');
   });
   it('documents left for the spawn budget are transient PARTIAL', () => {
     expect(classifyExtractionPass({ attempted: true, result: { ...emptyPass, skippedBudget: 1 } }))
@@ -322,5 +326,153 @@ describe('#717: classifyExtractionPass', () => {
     expect(combineClosedIpoOutcomes({ outcome: 'DONE' }, { outcome: 'PARTIAL', causeClass: 'WRITE_SKIPPED' }))
       .toMatchObject({ outcome: 'PARTIAL', causeClass: 'WRITE_SKIPPED' });
     expect(combineClosedIpoOutcomes({ outcome: 'FAILED', causeClass: 'VALIDATION_REJECTED' }, { outcome: 'PARTIAL' }).outcome).toBe('FAILED');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review round 1 (PR #912): four MAJOR findings of one class -- the job
+// recording progress (DONE, or a permanent verdict) that did not happen.
+// ---------------------------------------------------------------------------
+import { PgDialect } from 'drizzle-orm/pg-core';
+import * as closedIpoJob from '../../../src/scheduler/closed-ipo-job.js';
+
+const dialect = new PgDialect();
+function renderedSql(stub: ReturnType<typeof makeStubDb>, call = 0): string {
+  return dialect.sqlToQuery(stub.execute.mock.calls[call][0]).sql;
+}
+
+describe('review round 1 MAJOR-1: every UNREAD extractable document keeps the IPO open, not only PENDING', () => {
+  it('a document FAILED-awaiting-retry (or IN_PROGRESS from a crash) makes a DONE pass PARTIAL and re-pickable', async () => {
+    const stub = makeStubDb([{ id: 'ipo-1', closeDate: '2026-06-12', status: 'LISTED' }]);
+    await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: async () => ({ outcome: 'DONE', fieldsWritten: 0, fieldsLeftEmpty: 0 }),
+      countUnreadExtractableDocuments: async () => ({ pending: 0, retrying: 1 }),
+      resourcedAtVersion: 'v',
+    } as never);
+    const written = stub.values.mock.calls[0][0];
+    expect(written.outcome).toBe('PARTIAL');
+    expect(written.causeClass).toBe('SOURCE_UNREACHABLE');
+    expect(written.causeDetail).toMatch(/^transient: 1 extractable document\(s\) awaiting retry/);
+  });
+
+  it('the recount query counts every status except COMPLETED, MANUAL_REVIEW and NOT_EXTRACTABLE', async () => {
+    const stub = makeStubDb([{ pending: 2, retrying: 1 } as never]);
+    const n = await (closedIpoJob as unknown as {
+      countUnreadExtractableDocuments: (db: unknown, id: string) => Promise<{ pending: number; retrying: number }>;
+    }).countUnreadExtractableDocuments(stub.db, 'ipo-1');
+    expect(n).toEqual({ pending: 2, retrying: 1 });
+    const q = renderedSql(stub);
+    expect(q).toMatch(/NOT IN \('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE'\)/);
+    expect(q).not.toMatch(/extraction_status = 'PENDING'/);
+    // FAILED and IN_PROGRESS are split out as `retrying`: they make the pass transient, not permanent.
+    expect(q).toMatch(/FILTER \(WHERE d\.extraction_status IN \('FAILED', 'IN_PROGRESS'\)\)::int AS retrying/);
+  });
+
+  it('the selection need-count uses the same unread population', () => {
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(
+      /COALESCE\(d\.extraction_status, 'PENDING'\) NOT IN \('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE'\)/
+    );
+  });
+});
+
+describe('review round 1 MAJOR-2: an extractor failure or early return is transient and bounded, never permanent', () => {
+  it('a failed document (timeout, crash) is SOURCE_UNREACHABLE (re-pickable), not VALIDATION_REJECTED', () => {
+    const r = classifyExtractionPass({ attempted: true, result: { ...emptyPass, failed: 1, skipped: ['PROSPECTUS: timed out'] } });
+    expect(r.causeClass).toBe('SOURCE_UNREACHABLE');
+    expect(r.causeDetail).toMatch(/^transient: 1 document\(s\) failed/);
+  });
+
+  it('the spawn budget already spent before this IPO is reported as not attempted and transient', async () => {
+    const pass = await closedIpoJob.extractClosedIpoDocuments(
+      { id: 'ipo-1', closeDate: null, status: 'LISTED' },
+      {
+        spawnBudget: { remaining: 0 },
+        anchorSpawnBudget: { remaining: 0 },
+        loadDocuments: async () => { throw new Error('must not be reached'); },
+        loadStates: async () => [],
+      } as never
+    );
+    expect(pass.attempted).toBe(false);
+    expect(classifyExtractionPass(pass)).toMatchObject({ outcome: 'PARTIAL', causeClass: 'SOURCE_UNREACHABLE' });
+  });
+
+  it('a throw while loading the documents is reported as not attempted and transient, not as a clean pass', async () => {
+    const pass = await closedIpoJob.extractClosedIpoDocuments(
+      { id: 'ipo-1', closeDate: null, status: 'LISTED', companyName: 'X Ltd.' },
+      {
+        loadDocuments: async () => { throw new Error('connection reset'); },
+        loadStates: async () => [],
+      } as never
+    );
+    expect(pass.attempted).toBe(false);
+    const c = classifyExtractionPass(pass);
+    expect(c.causeClass).toBe('SOURCE_UNREACHABLE');
+    expect(c.causeDetail).toMatch(/connection reset/);
+  });
+
+  it('a transient row is re-picked at the same version only while attempts < the bound (the document cap)', async () => {
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/r\.cause_class = 'SOURCE_UNREACHABLE' AND r\.attempts < \$3/);
+    const mod = closedIpoJob as unknown as { CLOSED_IPO_MAX_TRANSIENT_ATTEMPTS: number };
+    const { MAX_EXTRACTION_ATTEMPTS } = await import('../../../src/services/filing-auto-persist.js');
+    expect(mod.CLOSED_IPO_MAX_TRANSIENT_ATTEMPTS).toBe(MAX_EXTRACTION_ATTEMPTS);
+    const stub = makeStubDb([]);
+    await runClosedIpoJob({ db: stub.db, isCycleLockHeld: async () => false, resourceIpo: async () => okResult, resourcedAtVersion: 'v', maxTransientAttempts: 7 } as never);
+    const q = dialect.sqlToQuery(stub.execute.mock.calls[0][0]);
+    expect(q.sql).toMatch(/r\.attempts < \$\d+/);
+    expect(q.params).toContain(7);
+  });
+
+  it('attempts is counted per version, so a version bump restarts the bound', async () => {
+    const stub = makeStubDb([{ id: 'ipo-1', closeDate: '2026-09-01', status: 'LISTED' }]);
+    await runClosedIpoJob({ db: stub.db, isCycleLockHeld: async () => false, resourceIpo: async () => okResult, countUnreadExtractableDocuments: async () => ({ pending: 0, retrying: 0 }), resourcedAtVersion: 'v9' } as never);
+    const attempts = stub.onConflictDoUpdate.mock.calls[0][0].set.attempts;
+    const rendered = dialect.sqlToQuery(attempts);
+    expect(rendered.sql).toMatch(/CASE WHEN [\s\S]* = \$\d+\s+THEN [\s\S]* \+ 1 ELSE 1 END/);
+    expect(rendered.params).toContain('v9');
+  });
+
+  it('a transient extraction half keeps the combined row re-pickable even when the walk half is worse', () => {
+    const c = combineClosedIpoOutcomes(
+      { outcome: 'PARTIAL', causeClass: 'SOURCE_UNREACHABLE', causeDetail: 'transient: x' },
+      { outcome: 'FAILED', causeClass: 'WRITE_SKIPPED', causeDetail: 'db' }
+    );
+    expect(c).toMatchObject({ outcome: 'FAILED', causeClass: 'SOURCE_UNREACHABLE' });
+  });
+});
+
+describe('review round 1 MAJOR-4: carried-over IPOs cannot starve newly closed ones', () => {
+  const fresh = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `new-${i}`, closeDate: null, status: 'LISTED', isRepick: false }));
+  const carried = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `old-${i}`, closeDate: null, status: 'LISTED', isRepick: true }));
+  const allocate = () => (closedIpoJob as unknown as {
+    allocateClosedIpoSlots: (rows: unknown[], cap: number, repick?: number) => Array<{ id: string }>;
+  }).allocateClosedIpoSlots;
+
+  it('with both backlogs full, carry-overs take at most 3 of 10 and new IPOs come first', () => {
+    const out = allocate()([...carried(10), ...fresh(10)], 10);
+    expect(out.map((r) => r.id)).toEqual([...fresh(7).map((r) => r.id), ...carried(3).map((r) => r.id)]);
+    expect((closedIpoJob as unknown as { CLOSED_IPO_JOB_REPICK_SLOTS: number }).CLOSED_IPO_JOB_REPICK_SLOTS).toBe(3);
+  });
+
+  it('slots the new IPOs leave unused go back to carry-overs', () => {
+    const out = allocate()([...carried(10), ...fresh(2)], 10);
+    expect(out.length).toBe(10);
+    expect(out.slice(0, 2).map((r) => r.id)).toEqual(['new-0', 'new-1']);
+  });
+
+  it('runClosedIpoJob attempts new IPOs before carry-overs, within the cap', async () => {
+    const stub = makeStubDb([...carried(10), ...fresh(10)] as never);
+    const order: string[] = [];
+    await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: async (id: string) => { order.push(id); return okResult; },
+      countUnreadExtractableDocuments: async () => ({ pending: 0, retrying: 0 }),
+      resourcedAtVersion: 'v',
+    } as never);
+    expect(order.length).toBe(10);
+    expect(order.filter((id) => id.startsWith('old-')).length).toBe(3);
+    expect(order[0]).toBe('new-0');
   });
 });

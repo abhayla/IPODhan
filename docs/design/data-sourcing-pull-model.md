@@ -2885,6 +2885,38 @@ has changed** — a new extractor exists, the document became obtainable, the ru
 corrected. Same cause, same outcome, no retry. That is what stops the job spending all ten of its
 nightly slots on the same ten impossible IPOs forever.
 
+### 6.2.1 Retry rules the code states (not owner decisions)
+
+These four rules are what the code does to keep §6.2 honest. None of them is an OD row: each is the
+smallest rule that stops the job recording progress it did not make, chosen when the first run on
+staging (2026-09-23) wrote ten IPOs `DONE` with their documents unread (#717) and the review of that
+fix (PR #912, round 1) found four more ways to the same false progress. The owner may replace any of
+them with a decision.
+
+1. **`DONE` means nothing extractable is left unread.** An extractable document (price band
+   advertisement, RHP, DRHP, prospectus) is *unread* in every status except `COMPLETED`,
+   `MANUAL_REVIEW` and `NOT_EXTRACTABLE` — a `PENDING` document, a `FAILED` one waiting for its own
+   retry, and one left `IN_PROGRESS` by a run that died are all unread. After the worker returns,
+   the job re-counts them; any left turns a `DONE` into `PARTIAL`.
+2. **A failure of this run is transient, not a verdict.** An extractor failure (a timeout, a
+   crash, a refused persist), a document still waiting out its own retry backoff, this run's
+   extraction budget already spent, and a failed read of the document list are recorded with cause
+   class `SOURCE_UNREACHABLE` and a `cause_detail` starting `transient:`. That is the one class the
+   selection picks again at the **same** version. Only a document the pass cannot get at all (no
+   stored file, no checksum, a segment gate) is permanent (`DOCUMENT_UNOBTAINABLE`) until the
+   version changes.
+3. **Transient retries are bounded by the document's own cap.** A transient row is picked again
+   only while its `attempts` is below `MAX_EXTRACTION_ATTEMPTS` (10) — the same cap after which a
+   document itself becomes `MANUAL_REVIEW` (OD-32: re-read while previous reads were not
+   successful, not forever). `attempts` counts attempts at the current `resourced_at_version`; a
+   version change starts it again at 1.
+4. **Carried-over IPOs take at most 3 of the 10 nightly slots.** An IPO that already has a
+   `closed_ipo_resourcing` row (a transient re-pick, or a version re-do) is a carry-over. New closed
+   IPOs are taken first, in need order, and are also the first to reach the run's extraction
+   budget; carry-overs get at most three slots, plus any slot the new ones leave empty. Without
+   this, a handful of IPOs that fail every night would hold every slot and every extraction while a
+   newly closed IPO waited behind them indefinitely.
+
 ### 6.3 The one thing nobody knows yet: are the old documents still there
 
 This was the largest unknown in the whole design, and OD-23 as amended by OD-32 has now removed

@@ -30,6 +30,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { logger } from '../utils/logger.js';
 import {
   processPendingFilings,
+  MAX_EXTRACTION_ATTEMPTS,
   type AutoPersistDeps,
   type AutoPersistResult,
 } from '../services/filing-auto-persist.js';
@@ -50,6 +51,8 @@ export interface ClosedIpoCandidate {
   companyName?: string | null;
   slug?: string | null;
   segment?: string | null;
+  /** True when the IPO already has a `closed_ipo_resourcing` row (a carried-over re-pick). */
+  isRepick?: boolean | null;
 }
 
 export interface ClosedIpoResourceResult {
@@ -72,12 +75,14 @@ export interface ClosedIpoJobDeps {
    */
   resourceIpo: (ipoId: string, candidate: ClosedIpoCandidate) => Promise<ClosedIpoResourceResult>;
   /**
-   * How many EXTRACTABLE documents of this IPO are still PENDING. Read AFTER
-   * the worker returns, because that count is the reason the IPO was selected:
-   * a DONE with it still non-zero is the #717 false-DONE, and is downgraded.
-   * Defaults to the real query against `db`.
+   * How many EXTRACTABLE documents of this IPO are still UNREAD -- any status
+   * other than COMPLETED, MANUAL_REVIEW or NOT_EXTRACTABLE -- split into those
+   * awaiting a retry on their own backoff (FAILED, IN_PROGRESS) and the rest
+   * (PENDING). Read AFTER the worker returns, because that count is the reason
+   * the IPO was selected: a DONE with it still non-zero is the #717 false-DONE,
+   * and is downgraded. Defaults to the real query against `db`.
    */
-  countPendingExtractableDocuments?: (ipoId: string) => Promise<number>;
+  countUnreadExtractableDocuments?: (ipoId: string) => Promise<UnreadDocumentCount>;
   /**
    * Restrict selection to these IPO ids. For an operator run on named IPOs
    * (and the integration proof); the selection rules still all apply.
@@ -87,6 +92,10 @@ export interface ClosedIpoJobDeps {
   resourcedAtVersion: string;
   now?: Date;
   cap?: number;
+  /** Override of `CLOSED_IPO_JOB_REPICK_SLOTS` (tests). */
+  repickSlots?: number;
+  /** Override of `CLOSED_IPO_MAX_TRANSIENT_ATTEMPTS` (tests). */
+  maxTransientAttempts?: number;
 }
 
 export interface ClosedIpoJobSummary {
@@ -97,6 +106,41 @@ export interface ClosedIpoJobSummary {
 }
 
 export const CLOSED_IPO_JOB_DEFAULT_CAP = 10;
+
+/**
+ * Of the nightly slots, at most this many go to CARRIED-OVER IPOs (ones that
+ * already hold a `closed_ipo_resourcing` row and are re-picked as transient or
+ * at a new version). Newly-eligible IPOs are taken first and get every other
+ * slot; a slot they leave unused is back-filled by carry-overs. Without this a
+ * carry-over, re-picked every night, could hold every slot and every one of
+ * the run's extraction spawns while a newly closed IPO never got its turn
+ * (spec section 6.2.1, review round 1 MAJOR-4).
+ */
+export const CLOSED_IPO_JOB_REPICK_SLOTS = 3;
+
+/**
+ * A transient outcome (cause class SOURCE_UNREACHABLE) is re-picked at the
+ * SAME version only while the row's `attempts` at that version is below this.
+ * Equal to the per-document cap (`MAX_EXTRACTION_ATTEMPTS`; OD-32: re-read if
+ * previous reads were not successful): the job re-visits an IPO at most as
+ * often as its documents may themselves be retried. A version bump resets the
+ * count (spec section 6.2.1).
+ */
+export const CLOSED_IPO_MAX_TRANSIENT_ATTEMPTS = MAX_EXTRACTION_ATTEMPTS;
+
+/**
+ * Document statuses after which there is nothing left for this job to read.
+ * Everything else -- PENDING, FAILED awaiting retry, IN_PROGRESS left by a
+ * crashed run, a NULL status -- is UNREAD (review round 1 MAJOR-1).
+ */
+export const CLOSED_IPO_TERMINAL_DOC_STATUSES = ['COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE'] as const;
+
+export interface UnreadDocumentCount {
+  /** PENDING (or NULL-status) extractable documents. */
+  pending: number;
+  /** FAILED or IN_PROGRESS extractable documents: retried on their own backoff. */
+  retrying: number;
+}
 
 /**
  * The selection query, per the build card's four ordered rules.
@@ -130,24 +174,52 @@ export const CLOSED_IPO_JOB_DEFAULT_CAP = 10;
  * in one place, and nothing interpolates this string into a query.
  */
 export const CLOSED_IPO_CANDIDATES_SQL = `
-  SELECT i.id, i.close_date AS "closeDate", i.status::text AS status,
-         i.company_name AS "companyName", i.slug, i.segment::text AS segment
-    FROM ipos i
-    LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
-   WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
-     AND i.close_date < CURRENT_DATE
-     AND (
-       r.ipo_id IS NULL
-       OR (r.outcome IN ('PARTIAL', 'FAILED')
-           AND (r.resourced_at_version IS DISTINCT FROM $1 OR r.cause_class = 'SOURCE_UNREACHABLE'))
-     )
-   ORDER BY (SELECT count(*) FROM documents d
-              WHERE d.ipo_id = i.id
-                AND d.extraction_status = 'PENDING'
-                AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')) DESC,
-            i.close_date DESC
-   LIMIT $2
+  WITH eligible AS (
+    SELECT i.id, i.close_date AS "closeDate", i.status::text AS status,
+           i.company_name AS "companyName", i.slug, i.segment::text AS segment,
+           (r.ipo_id IS NOT NULL) AS "isRepick",
+           (SELECT count(*) FROM documents d
+             WHERE d.ipo_id = i.id
+               AND COALESCE(d.extraction_status, 'PENDING') NOT IN ('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE')
+               AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')) AS need
+      FROM ipos i
+      LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
+     WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
+       AND i.close_date < CURRENT_DATE
+       AND (
+         r.ipo_id IS NULL
+         OR (r.outcome IN ('PARTIAL', 'FAILED')
+             AND (r.resourced_at_version IS DISTINCT FROM $1
+                  OR (r.cause_class = 'SOURCE_UNREACHABLE' AND r.attempts < $3)))
+       )
+  ), ranked AS (
+    SELECT e.*, row_number() OVER (PARTITION BY e."isRepick"
+                                   ORDER BY e.need DESC, e."closeDate" DESC) AS rn
+      FROM eligible e
+  )
+  SELECT * FROM ranked WHERE rn <= $2 ORDER BY "isRepick", rn
 `;
+
+/**
+ * Split the nightly slots between newly-eligible IPOs and carry-overs
+ * (spec section 6.2.1). Carry-overs are guaranteed at most `repickSlots`;
+ * fresh IPOs take every other slot, and a slot they leave unused goes back to
+ * the carry-overs. Fresh ones are returned FIRST so they also reach the run's
+ * extraction spawn budget first.
+ */
+export function allocateClosedIpoSlots(
+  rows: ClosedIpoCandidate[],
+  cap: number,
+  repickSlots: number = CLOSED_IPO_JOB_REPICK_SLOTS
+): ClosedIpoCandidate[] {
+  const isRepick = (r: ClosedIpoCandidate) => r.isRepick === true || String(r.isRepick) === 'true';
+  const fresh = rows.filter((r) => !isRepick(r));
+  const repicks = rows.filter(isRepick);
+  const reservedForRepicks = Math.min(Math.max(0, repickSlots), repicks.length, cap);
+  const freshTaken = fresh.slice(0, Math.max(0, cap - reservedForRepicks));
+  const repicksTaken = repicks.slice(0, Math.max(0, cap - freshTaken.length));
+  return [...freshTaken, ...repicksTaken];
+}
 
 export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpoJobSummary> {
   const summary: ClosedIpoJobSummary = {
@@ -169,36 +241,47 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
   const cap = deps.cap ?? CLOSED_IPO_JOB_DEFAULT_CAP;
   const now = deps.now ?? new Date();
   const restrictIds = deps.restrictToIpoIds ? sql.param(deps.restrictToIpoIds) : null;
-  const countPending =
-    deps.countPendingExtractableDocuments ?? ((ipoId: string) => countPendingExtractableDocuments(deps.db, ipoId));
+  const maxTransient = deps.maxTransientAttempts ?? CLOSED_IPO_MAX_TRANSIENT_ATTEMPTS;
+  const countUnread =
+    deps.countUnreadExtractableDocuments ?? ((ipoId: string) => countUnreadExtractableDocuments(deps.db, ipoId));
 
   // Parameters are BOUND, never interpolated. `resourcedAtVersion` is an
   // internal string today, but a query built by string-replacement is the
   // wrong shape regardless of who supplies the value.
   const result = await deps.db.execute(
     sql`
-      SELECT i.id, i.close_date AS "closeDate", i.status::text AS status,
-             i.company_name AS "companyName", i.slug, i.segment::text AS segment
-        FROM ipos i
-        LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
-       WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
-         AND i.close_date < CURRENT_DATE
-         AND (
-           r.ipo_id IS NULL
-           OR (r.outcome IN ('PARTIAL', 'FAILED')
-               AND (r.resourced_at_version IS DISTINCT FROM ${deps.resourcedAtVersion}
-                    OR r.cause_class = 'SOURCE_UNREACHABLE'))
-         )
-         AND (${restrictIds}::uuid[] IS NULL OR i.id = ANY(${restrictIds}::uuid[]))
-       ORDER BY (SELECT count(*) FROM documents d
-                  WHERE d.ipo_id = i.id
-                    AND d.extraction_status = 'PENDING'
-                    AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')) DESC,
-                i.close_date DESC
-       LIMIT ${cap}
+      WITH eligible AS (
+        SELECT i.id, i.close_date AS "closeDate", i.status::text AS status,
+               i.company_name AS "companyName", i.slug, i.segment::text AS segment,
+               (r.ipo_id IS NOT NULL) AS "isRepick",
+               (SELECT count(*) FROM documents d
+                 WHERE d.ipo_id = i.id
+                   AND COALESCE(d.extraction_status, 'PENDING') NOT IN ('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE')
+                   AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')) AS need
+          FROM ipos i
+          LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
+         WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
+           AND i.close_date < CURRENT_DATE
+           AND (
+             r.ipo_id IS NULL
+             OR (r.outcome IN ('PARTIAL', 'FAILED')
+                 AND (r.resourced_at_version IS DISTINCT FROM ${deps.resourcedAtVersion}
+                      OR (r.cause_class = 'SOURCE_UNREACHABLE' AND r.attempts < ${maxTransient})))
+           )
+           AND (${restrictIds}::uuid[] IS NULL OR i.id = ANY(${restrictIds}::uuid[]))
+      ), ranked AS (
+        SELECT e.*, row_number() OVER (PARTITION BY e."isRepick"
+                                       ORDER BY e.need DESC, e."closeDate" DESC) AS rn
+          FROM eligible e
+      )
+      SELECT * FROM ranked WHERE rn <= ${cap} ORDER BY "isRepick", rn
     `
   );
-  const candidates = (result.rows ?? result) as unknown as ClosedIpoCandidate[];
+  const candidates = allocateClosedIpoSlots(
+    ((result as { rows?: unknown[] }).rows ?? result) as unknown as ClosedIpoCandidate[],
+    cap,
+    deps.repickSlots ?? CLOSED_IPO_JOB_REPICK_SLOTS
+  );
   summary.candidatesConsidered = candidates.length;
 
   for (const candidate of candidates) {
@@ -210,7 +293,7 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
 
     try {
       const r = await deps.resourceIpo(candidate.id, candidate);
-      const guarded = applyPendingDocumentGuard(r, await countPending(candidate.id));
+      const guarded = applyPendingDocumentGuard(r, await countUnread(candidate.id));
       outcome = guarded.outcome;
       causeClass = guarded.causeClass;
       causeDetail = guarded.causeDetail;
@@ -246,7 +329,11 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
         target: schema.closedIpoResourcing.ipoId,
         set: {
           lastAttemptAt: now,
-          attempts: sql`${schema.closedIpoResourcing.attempts} + 1`,
+          // `attempts` counts attempts AT THIS VERSION (spec section 6.2.1):
+          // the transient re-pick bound reads it, and a version bump re-opens
+          // the IPO with a fresh budget rather than one it already spent.
+          attempts: sql`CASE WHEN ${schema.closedIpoResourcing.resourcedAtVersion} = ${deps.resourcedAtVersion}
+                             THEN ${schema.closedIpoResourcing.attempts} + 1 ELSE 1 END`,
           outcome,
           causeClass: causeClass ?? null,
           causeDetail: causeDetail ?? null,
@@ -283,40 +370,77 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
  */
 export const CLOSED_IPO_EXTRACTABLE_TYPES = ['PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS'] as const;
 
-/** The selection signal, re-read after the worker: PENDING extractable documents of one IPO. */
-export async function countPendingExtractableDocuments(
+/**
+ * The selection signal, re-read after the worker: UNREAD extractable documents
+ * of one IPO (review round 1 MAJOR-1). A FAILED document awaiting its own
+ * retry, or one left IN_PROGRESS by a crashed run, is exactly as unread as a
+ * PENDING one -- `selectPendingFilings` skips it while it backs off, so a pass
+ * over it looks clean, and counting PENDING alone wrote such IPOs DONE.
+ */
+export async function countUnreadExtractableDocuments(
   db: NodePgDatabase<typeof schema>,
   ipoId: string
-): Promise<number> {
+): Promise<UnreadDocumentCount> {
   const res = await db.execute(
-    sql`SELECT count(*)::int AS pending FROM documents d
+    sql`SELECT count(*) FILTER (WHERE COALESCE(d.extraction_status, 'PENDING') NOT IN ('FAILED', 'IN_PROGRESS'))::int AS pending,
+               count(*) FILTER (WHERE d.extraction_status IN ('FAILED', 'IN_PROGRESS'))::int AS retrying
+          FROM documents d
          WHERE d.ipo_id = ${ipoId}
-           AND d.extraction_status = 'PENDING'
+           AND COALESCE(d.extraction_status, 'PENDING') NOT IN ('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE')
            AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')`
   );
-  const rows = ((res as { rows?: unknown[] }).rows ?? (res as unknown as unknown[])) as Array<{ pending?: unknown }>;
-  const n = Number(rows[0]?.pending ?? 0);
-  return Number.isFinite(n) ? n : 0;
+  const rows = ((res as { rows?: unknown[] }).rows ?? (res as unknown as unknown[])) as Array<{
+    pending?: unknown;
+    retrying?: unknown;
+  }>;
+  const num = (v: unknown) => {
+    const n = Number(v ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  };
+  return { pending: num(rows[0]?.pending), retrying: num(rows[0]?.retrying) };
 }
+
+/** Marker at the start of every transient cause_detail, so a reader can tell it from the source-down case. */
+export const TRANSIENT_DETAIL_PREFIX = 'transient:';
 
 /**
  * #717: DONE requires the reason the IPO was selected to be resolved.
  *
- * The job selects an IPO because it holds a PENDING extractable document. A
- * worker that returns DONE while that document is still PENDING did not do
+ * The job selects an IPO because it holds an unread extractable document. A
+ * worker that returns DONE while such a document is still unread did not do
  * the job's work (on staging 2026-09-23 the walk returned NO_DUE_FIELDS for
  * ten IPOs with zero plan rows and all ten were written DONE, then never
- * re-picked). Such a pass is PARTIAL, keeping the worker's cause when it gave
- * one and DOCUMENT_UNOBTAINABLE otherwise (the pass could not get at the
- * document: no stored file, no sha, an SME gate), so the ledger says why.
+ * re-picked). Such a pass is PARTIAL:
+ *
+ *  - a document still awaiting its own retry (FAILED / IN_PROGRESS) makes it
+ *    TRANSIENT: cause SOURCE_UNREACHABLE, the one class the selection re-picks
+ *    at the same version (bounded by CLOSED_IPO_MAX_TRANSIENT_ATTEMPTS). The
+ *    document's own retry cap then decides when it stops: at
+ *    MAX_EXTRACTION_ATTEMPTS it becomes MANUAL_REVIEW, which is terminal here.
+ *  - only PENDING documents left (no stored file, no sha, an SME gate): the
+ *    pass could not get at the document, so the worker's cause is kept, or
+ *    DOCUMENT_UNOBTAINABLE -- permanent until the version changes.
+ *
  * A worker that already reported PARTIAL/FAILED is left as it reported.
  */
 export function applyPendingDocumentGuard(
   r: ClosedIpoResourceResult,
-  pendingAfter: number
+  unread: UnreadDocumentCount
 ): ClosedIpoResourceResult {
-  if (r.outcome !== 'DONE' || pendingAfter <= 0) return r;
-  const note = `${pendingAfter} extractable document(s) still PENDING after this pass`;
+  const total = unread.pending + unread.retrying;
+  if (r.outcome !== 'DONE' || total <= 0) return r;
+  if (unread.retrying > 0) {
+    const note =
+      `${TRANSIENT_DETAIL_PREFIX} ${unread.retrying} extractable document(s) awaiting retry on their own backoff` +
+      (unread.pending > 0 ? `, ${unread.pending} still PENDING` : '');
+    return {
+      ...r,
+      outcome: 'PARTIAL',
+      causeClass: 'SOURCE_UNREACHABLE',
+      causeDetail: r.causeDetail ? `${note}; ${r.causeDetail}` : note,
+    };
+  }
+  const note = `${unread.pending} extractable document(s) still PENDING after this pass`;
   return {
     ...r,
     outcome: 'PARTIAL',
@@ -335,8 +459,12 @@ const OUTCOME_RANK: Record<ClosedIpoOutcome, number> = { DONE: 0, PARTIAL: 1, FA
 /**
  * Map one extraction pass to a ledger outcome.
  *
- *   not attempted (flag off, lock held)  -> PARTIAL with the caller's cause.
- *   a document failed extraction/persist  -> FAILED / VALIDATION_REJECTED.
+ *   not attempted (flag off, lock held,   -> PARTIAL with the caller's cause
+ *     budget spent, document load threw)     (transient ones: SOURCE_UNREACHABLE).
+ *   a document failed extraction/persist  -> FAILED (PARTIAL if another
+ *                                            persisted) / SOURCE_UNREACHABLE:
+ *                                            transient, the document retries
+ *                                            on its own backoff and cap.
  *   documents left for the spawn budget   -> PARTIAL / SOURCE_UNREACHABLE
  *                                            (transient: re-picked next run).
  *   otherwise                             -> DONE, which the pending-document
@@ -356,28 +484,55 @@ export function classifyExtractionPass(pass: ClosedIpoExtractionPass): {
   const r = (pass as Extract<ClosedIpoExtractionPass, { attempted: true }>).result;
   const skipped = r.skipped.slice(0, 5).join('; ');
   if (r.failed > 0) {
+    // Review round 1 MAJOR-2: an extractor failure (a timeout, a crash, a
+    // persist throw, a W-45 refusal) is NOT a verdict on the IPO. The document
+    // is FAILED with its own retry count and backoff, and is retried until
+    // MAX_EXTRACTION_ATTEMPTS makes it MANUAL_REVIEW. So the IPO is recorded
+    // transient (SOURCE_UNREACHABLE: the only re-pickable class the enum has)
+    // and the detail says what really happened.
     return {
-      outcome: 'FAILED',
-      causeClass: 'VALIDATION_REJECTED',
-      causeDetail: `${r.failed} document(s) failed extraction or persist${skipped ? `; ${skipped}` : ''}`,
+      outcome: r.persisted > 0 ? 'PARTIAL' : 'FAILED',
+      causeClass: 'SOURCE_UNREACHABLE',
+      causeDetail: `${TRANSIENT_DETAIL_PREFIX} ${r.failed} document(s) failed extraction or persist; each retries on its own backoff up to ${MAX_EXTRACTION_ATTEMPTS} attempts${skipped ? `; ${skipped}` : ''}`,
     };
   }
   if (r.skippedBudget > 0) {
     return {
       outcome: 'PARTIAL',
       causeClass: 'SOURCE_UNREACHABLE',
-      causeDetail: `${r.skippedBudget} document(s) left for the next run: spawn budget spent`,
+      causeDetail: `${TRANSIENT_DETAIL_PREFIX} ${r.skippedBudget} document(s) left for the next run: spawn budget spent`,
     };
   }
   return { outcome: 'DONE' };
 }
 
-/** Worst of two outcomes; the cause travels with the worse one. */
+/**
+ * Worst of two outcomes; the cause travels with the worse one -- except that a
+ * TRANSIENT half (SOURCE_UNREACHABLE) keeps the combined row re-pickable:
+ * otherwise a permanent walk cause would bury a document that is only
+ * waiting for its retry, and the IPO would never be picked for it again.
+ */
 export function combineClosedIpoOutcomes(
   a: { outcome: ClosedIpoOutcome; causeClass?: ClosedIpoCauseClass; causeDetail?: string },
   b: { outcome: ClosedIpoOutcome; causeClass?: ClosedIpoCauseClass; causeDetail?: string }
 ): { outcome: ClosedIpoOutcome; causeClass?: ClosedIpoCauseClass; causeDetail?: string } {
-  return OUTCOME_RANK[b.outcome] > OUTCOME_RANK[a.outcome] ? b : a;
+  const worse = OUTCOME_RANK[b.outcome] > OUTCOME_RANK[a.outcome] ? b : a;
+  const other = worse === a ? b : a;
+  if (
+    worse.outcome !== 'DONE' &&
+    other.outcome !== 'DONE' &&
+    other.causeClass === 'SOURCE_UNREACHABLE' &&
+    worse.causeClass !== 'SOURCE_UNREACHABLE'
+  ) {
+    return {
+      outcome: worse.outcome,
+      causeClass: 'SOURCE_UNREACHABLE',
+      causeDetail: [other.causeDetail, worse.causeClass ? `also ${worse.causeClass}: ${worse.causeDetail ?? ''}` : worse.causeDetail]
+        .filter(Boolean)
+        .join('; '),
+    };
+  }
+  return worse;
 }
 
 /**
@@ -391,6 +546,31 @@ export async function extractClosedIpoDocuments(
   candidate: ClosedIpoCandidate,
   deps: AutoPersistDeps
 ): Promise<ClosedIpoExtractionPass> {
+  // Review round 1 MAJOR-2: `processPendingFilings` has two early returns that
+  // hand back an all-zero result indistinguishable from "nothing to do": every
+  // spawn budget already spent, and a throw while loading the documents. Both
+  // are TRANSIENT facts about this run, so they are detected here and reported
+  // as not attempted with SOURCE_UNREACHABLE -- never left to read as clean.
+  const filingBudgetExhausted = deps.spawnBudget !== undefined && deps.spawnBudget.remaining <= 0;
+  const anchorBudgetAvailable = deps.anchorSpawnBudget === undefined || deps.anchorSpawnBudget.remaining > 0;
+  if (filingBudgetExhausted && !anchorBudgetAvailable) {
+    return {
+      attempted: false,
+      causeClass: 'SOURCE_UNREACHABLE',
+      reason: `${TRANSIENT_DETAIL_PREFIX} this run's extraction spawn budget was spent before this IPO`,
+    };
+  }
+  let loadError: string | undefined;
+  const capture =
+    <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
+    async (...args: A): Promise<R> => {
+      try {
+        return await fn(...args);
+      } catch (error) {
+        loadError = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    };
   const result = await processPendingFilings(
     {
       id: candidate.id,
@@ -398,8 +578,16 @@ export async function extractClosedIpoDocuments(
       slug: candidate.slug ?? null,
       segment: candidate.segment ?? null,
     },
-    deps
+    // Same object identity for the budgets: they are shared across the run.
+    { ...deps, loadDocuments: capture(deps.loadDocuments), loadStates: capture(deps.loadStates) }
   );
+  if (loadError !== undefined) {
+    return {
+      attempted: false,
+      causeClass: 'SOURCE_UNREACHABLE',
+      reason: `${TRANSIENT_DETAIL_PREFIX} could not load the IPO's documents: ${loadError}`,
+    };
+  }
   return { attempted: true, result };
 }
 

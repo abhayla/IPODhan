@@ -1537,13 +1537,33 @@ test('(#717) findClosedIpoFalseDone FLAGS a DONE row with 0 fields whose IPO sti
   assert.equal(out[0].companyName, 'Advit Jewels Ltd.');
 });
 
-test('(#717) findClosedIpoFalseDone PASSES a true DONE, a PARTIAL, and a DONE that wrote fields', () => {
+test('(#717) findClosedIpoFalseDone PASSES a true DONE and a PARTIAL', () => {
   const out = findClosedIpoFalseDone([
     { ipoId: 'a', companyName: 'Drained Ltd.', outcome: 'DONE', fieldsWritten: 0, pendingExtractable: 0 },
     { ipoId: 'b', companyName: 'Reopened Ltd.', outcome: 'PARTIAL', fieldsWritten: 0, pendingExtractable: 1 },
-    { ipoId: 'c', companyName: 'Walked Ltd.', outcome: 'DONE', fieldsWritten: 3, pendingExtractable: 1 },
+    { ipoId: 'e', companyName: 'Walked And Read Ltd.', outcome: 'DONE', fieldsWritten: 3, pendingExtractable: 0 },
   ]);
   assert.deepEqual(out, []);
+});
+
+// Review round 1 MAJOR-3: the first predicate required fields_written = 0, so a
+// DONE row whose WALK wrote some fields while a document stayed unread passed.
+// The condition is only: DONE, and the IPO still holds an unread extractable
+// document (any status but COMPLETED / MANUAL_REVIEW / NOT_EXTRACTABLE).
+test('(#717 r1 MAJOR-3) findClosedIpoFalseDone FLAGS a DONE row that wrote fields while a document stayed unread', () => {
+  const out = findClosedIpoFalseDone([
+    { ipoId: 'c', companyName: 'Walked Ltd.', outcome: 'DONE', fieldsWritten: 3, pendingExtractable: 1 },
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].companyName, 'Walked Ltd.');
+});
+
+test('(#717 r1 MAJOR-3) the audit query counts every unread status, not only PENDING, and drops the fields_written filter', () => {
+  const src = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  const body = src.slice(src.indexOf('async function checkClosedIpoFalseDone'), src.indexOf('// ---- (i): identity'));
+  assert.match(body, /NOT IN \('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE'\)/);
+  assert.doesNotMatch(body, /extraction_status = 'PENDING'/);
+  assert.doesNotMatch(body, /fields_written = 0/);
 });
 
 test('(#717) findClosedIpoFalseDone reads numbers that arrive as strings from pg', () => {

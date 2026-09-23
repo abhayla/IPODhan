@@ -100,6 +100,20 @@ describe.skipIf(!DATABASE_URL)(`closed-IPO job extracts the documents it selecte
       sha256: sha,
       extractionStatus: 'PENDING',
     } as never);
+    await invalidateDocs(id);
+  }
+
+  /**
+   * The real extraction path reads documents through DocumentRepository.findByIPO,
+   * which is Redis cache-aside (1 h). A raw UPDATE below bypasses it, so the
+   * cached listing is cleared after every one -- otherwise the worker reads the
+   * state an EARLIER test left (measured: a stale IN_PROGRESS listing made a
+   * PENDING document look like it was backing off).
+   */
+  async function invalidateDocs(id: string): Promise<void> {
+    const shared = await import('@ipodhan/shared');
+    const repo = new shared.DocumentRepository(shared.db as never, shared.getRedisClient() as never);
+    await repo.invalidateForIpo(id);
   }
 
   async function docStatus(id: string): Promise<string> {
@@ -198,6 +212,7 @@ describe.skipIf(!DATABASE_URL)(`closed-IPO job extracts the documents it selecte
   it('a worker that does nothing while the document is still PENDING is PARTIAL, never DONE (the staging shape)', async () => {
     await db.execute(sql`DELETE FROM closed_ipo_resourcing WHERE ipo_id = ${IPO_FAIL}::uuid`);
     await db.execute(sql`UPDATE documents SET extraction_status = 'PENDING' WHERE ipo_id = ${IPO_FAIL}::uuid`);
+    await invalidateDocs(IPO_FAIL);
     await runClosedIpoJob({
       db: db as never,
       isCycleLockHeld: async () => false,
@@ -209,5 +224,66 @@ describe.skipIf(!DATABASE_URL)(`closed-IPO job extracts the documents it selecte
     const row = await ledger(IPO_FAIL);
     expect(row?.outcome).toBe('PARTIAL');
     expect(String(row?.cause_detail)).toMatch(/still PENDING/);
+  }, 180_000);
+
+  // ---- Review round 1 (PR #912) -------------------------------------------
+  // MAJOR-1: a document FAILED-awaiting-retry, or IN_PROGRESS left by a crashed
+  // run, is skipped by the extractor's own backoff gate, so the pass looks
+  // clean. Counting PENDING only wrote such IPOs DONE, never to be re-picked.
+  for (const stuck of ['FAILED', 'IN_PROGRESS'] as const) {
+    it(`an IPO whose only document is ${stuck} within its backoff does NOT end DONE; it ends transient`, async () => {
+      await db.execute(sql`DELETE FROM closed_ipo_resourcing WHERE ipo_id = ${IPO_FAIL}::uuid`);
+      await db.execute(sql`UPDATE documents SET extraction_status = ${stuck}, retry_count = 1, updated_at = now()
+                            WHERE ipo_id = ${IPO_FAIL}::uuid`);
+      await invalidateDocs(IPO_FAIL);
+      const summary = await runClosedIpoJob({
+        db: db as never,
+        isCycleLockHeld: async () => false,
+        resourceIpo: resourcer('real-text'),
+        resourcedAtVersion: VERSION,
+        restrictToIpoIds: [IPO_FAIL],
+      });
+      const row = await ledger(IPO_FAIL);
+      const status = await docStatus(IPO_FAIL);
+      // eslint-disable-next-line no-console
+      console.log(`[717-r1-proof] ${stuck} doc=${status} ledger=${JSON.stringify(row)}`);
+      expect(summary.attempted).toBe(1);
+      expect(status).toBe(stuck); // the backoff gate held: nothing was read
+      expect(row?.outcome).toBe('PARTIAL');
+      expect(row?.cause_class).toBe('SOURCE_UNREACHABLE');
+      expect(String(row?.cause_detail)).toMatch(/^transient: 1 extractable document\(s\) awaiting retry/);
+    }, 180_000);
+  }
+
+  // MAJOR-2: an extractor failure (a timeout) is transient: re-picked at the
+  // SAME version, but only while attempts stays under the bound.
+  it('an extractor failure is re-picked at the same version, and stops at the attempt bound', async () => {
+    await db.execute(sql`DELETE FROM closed_ipo_resourcing WHERE ipo_id = ${IPO_FAIL}::uuid`);
+    const reset = sql`UPDATE documents SET extraction_status = 'PENDING', retry_count = 0, extraction_error = NULL
+                       WHERE ipo_id = ${IPO_FAIL}::uuid`;
+    const run = () =>
+      runClosedIpoJob({
+        db: db as never,
+        isCycleLockHeld: async () => false,
+        resourceIpo: resourcer('extractor-fails'),
+        resourcedAtVersion: VERSION,
+        restrictToIpoIds: [IPO_FAIL],
+        maxTransientAttempts: 2,
+      });
+    await db.execute(reset);
+    await invalidateDocs(IPO_FAIL);
+    const first = await run();
+    const afterFirst = await ledger(IPO_FAIL);
+    await db.execute(reset); // the document's own backoff is not what this asserts
+    await invalidateDocs(IPO_FAIL);
+    const second = await run();
+    const third = await run();
+    const attempts = await pool.query('SELECT attempts FROM closed_ipo_resourcing WHERE ipo_id = $1', [IPO_FAIL]);
+    // eslint-disable-next-line no-console
+    console.log(`[717-r1-proof] timeout first=${JSON.stringify(afterFirst)} picks=${first.attempted},${second.attempted},${third.attempted} attempts=${attempts.rows[0]?.attempts}`);
+    expect(afterFirst?.cause_class).toBe('SOURCE_UNREACHABLE');
+    expect(String(afterFirst?.cause_detail)).toMatch(/^transient: 1 document\(s\) failed/);
+    expect([first.attempted, second.attempted, third.attempted]).toEqual([1, 1, 0]);
+    expect(attempts.rows[0]?.attempts).toBe(2);
   }, 180_000);
 });
