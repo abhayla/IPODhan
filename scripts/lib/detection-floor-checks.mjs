@@ -956,3 +956,168 @@ export function evaluateCronExecutable(paths, gitLsFiles) {
     detail: offenders.length ? offenders.map((o) => o.violation).join('; ') : 'all executable',
   };
 }
+
+// ---- (i): identity — one IPO stored as two rows, or two offerings folded ----
+// into one company. Step 1 of #903 (owner decisions S1/S2/S3/S4/S7,
+// 2026-09-23) — detection only, no change to matching/write code. Spec
+// deviation: none — implements docs/design/data-sourcing-pull-model.md
+// §2.3.3.1's "standing sweep" (F-103) and §2.3.3.2's OD-34 name-bound
+// reporting; §2.3.3.2's OD-35 same-offering/lapsed-draft rules are the
+// MATCHING step (#903 order-of-work item 2), out of scope here.
+//
+// Deliberately its OWN name-fold, not a reuse of normalizeCompanyKey() above:
+// that key is tuned for oracle cross-matching (drop legal suffixes only) and
+// is exactly the fold that MISSED Rays of Belief (the owner's correction on
+// record in #903 — "the second name carries '- For Profit Social Enterprise'").
+// This fold additionally drops bracketed text and everything after a
+// ' - '/'- ' separator, because S3's title-in-name pollution
+// ("... - Pernia's Pop-Up Studio IPO") and S1's page-status suffix both live
+// past a legal-suffix-only fold.
+const IDENTITY_STOPWORDS = new Set([
+  'limited', 'ltd', 'company', 'co', 'private', 'pvt', 'india', 'the', 'ipo',
+]);
+
+export function normalizeIdentityCompanyName(name) {
+  if (!name) return '';
+  let s = String(name)
+    .replace(/\([^)]*\)/g, ' ') // drop bracketed text
+    .split(/\s+-\s+|-\s+(?=[A-Za-z])/)[0]; // drop everything after ' - ' / '- '
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((t) => t && !IDENTITY_STOPWORDS.has(t))
+    .join(' ');
+}
+
+// S1: a page-status suffix (-o/-p/-lt/-ct) appended to an otherwise identical
+// slug. Stripped BEFORE matching, per the owner's decision text verbatim.
+export function stripIdentitySlugSuffix(slug) {
+  if (!slug) return '';
+  return String(slug).replace(/-(o|p|lt|ct)$/i, '');
+}
+
+// The identifiers the §2.3.3.1 "standing sweep" groups by: "every row by each
+// identifier it holds" — CIN, ISIN, exchange symbol and BSE scrip code (the
+// four identifier columns that actually exist on `ipos`; see schema.ts —
+// there is no separate BSE-code table, `bseScripCode` IS it). The suffix-
+// stripped-slug and normalised-name+open-date keys are additional groupings
+// this check keeps from the original brief (S1's page-status suffix and
+// S2's spelling-variant class are not literal identifier columns, so F-103's
+// sweep does not name them, but leaving them out would un-detect the Rays of
+// Belief pair itself, which carries no shared identifier at all).
+function identityMatchKeys(row) {
+  const keys = [];
+  if (row.cin) keys.push(`cin:${String(row.cin).trim().toUpperCase()}`);
+  if (row.isin) keys.push(`isin:${String(row.isin).trim().toUpperCase()}`);
+  if (row.symbol) keys.push(`sym:${String(row.symbol).trim().toUpperCase()}`);
+  if (row.bseScripCode) keys.push(`bse:${String(row.bseScripCode).trim().toUpperCase()}`);
+  const strippedSlug = stripIdentitySlugSuffix(row.slug);
+  if (strippedSlug) keys.push(`slug:${strippedSlug.toLowerCase()}`);
+  const nameKey = normalizeIdentityCompanyName(row.companyName);
+  if (nameKey && row.openDate) keys.push(`name+open:${nameKey}|${row.openDate}`);
+  return keys;
+}
+
+/**
+ * i_same_ipo_two_rows — implements the §2.3.3.1 "standing sweep" (F-103):
+ * groups every IPO row (offering_type='IPO') by EACH identifier it holds
+ * (CIN, ISIN, exchange symbol, BSE scrip code — the identifier columns OD-34
+ * ranks) plus the suffix-stripped slug and normalised-name+open-date keys
+ * (S1/S2/S7), and reports any group of more than one, BY NAME (never a bare
+ * count — signal-ownership R1). Deliberately NOT matched by name alone (S6:
+ * two different companies with similar names must never pair) — every
+ * name-based key here also requires the same open_date.
+ *
+ * rows: [{ id, slug, companyName, cin, isin, symbol, bseScripCode, openDate, offeringType }]
+ * returns: [{ keyType, key, rows: [{id, slug}, ...] }] — one group per
+ * matched key, each naming the identifier that grouped them and every row in it.
+ */
+export function findSameIpoTwoRows(rows = []) {
+  const ipoRows = rows.filter((r) => r.offeringType === 'IPO');
+  const byKey = new Map();
+  for (const row of ipoRows) {
+    for (const key of identityMatchKeys(row)) {
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(row);
+    }
+  }
+  const groups = [];
+  const seenRowSets = new Set();
+  for (const [key, group] of byKey) {
+    if (group.length < 2) continue;
+    const ids = [...new Set(group.map((r) => r.id))];
+    if (ids.length < 2) continue; // same row matched itself twice on two keys
+    const dedupeSig = ids.slice().sort().join(',');
+    if (seenRowSets.has(dedupeSig)) continue;
+    seenRowSets.add(dedupeSig);
+    const [keyType] = key.split(':');
+    groups.push({
+      keyType,
+      key,
+      rows: [...new Map(group.map((r) => [r.id, { id: r.id, slug: r.slug, companyName: r.companyName }])).values()],
+    });
+  }
+  return groups;
+}
+
+// OD-34: a row bound on nothing stronger than the name carries the flag
+// `name-bound` until an identifier arrives, and "the nightly audit reports
+// the name-bound rows by name — never as a count". This predicate finds
+// them: an IPO row with no CIN, no symbol and no ISIN, that is currently
+// live (UPCOMING/OPEN — the identifiers arrive "days before listing" per
+// OD-34's own table, so a CLOSED/LISTED row with none of them is the
+// F-103 duplicate shape, not an ordinary name-bound row; that shape is
+// caught by findSameIpoTwoRows/findCompanyTwoLiveRows instead).
+export function findNameBoundLiveRows(rows = []) {
+  return rows.filter((r) =>
+    r.offeringType === 'IPO'
+    && LIVE_STATUSES.includes(r.status)
+    && !r.cin && !r.symbol && !r.isin
+  ).map((r) => ({ id: r.id, slug: r.slug, companyName: r.companyName, status: r.status }));
+}
+
+// S3: page title / brand text landed in the stored company name or slug —
+// "... (... IPO)", a trailing " IPO" word, a slug matching -ipo(-|$), or a
+// slug still carrying the page-status suffix shape (-o/-p/-lt/-ct).
+export function checkIpoTitleInName(row) {
+  const name = row.companyName || '';
+  const slug = row.slug || '';
+  const violations = [];
+  if (/\(\s*[^)]*\bipo\b[^)]*\)/i.test(name)) violations.push('company_name has "(...IPO)"');
+  if (/\bipo\b\s*$/i.test(name.trim())) violations.push('company_name ends in the word IPO');
+  if (/-ipo(-|$)/i.test(slug)) violations.push('slug matches -ipo(-|$)');
+  if (/-(o|p|lt|ct)$/i.test(slug)) violations.push('slug carries a page-status suffix (-o/-p/-lt/-ct)');
+  if (violations.length === 0) return null;
+  return `"${row.companyName}" [${slug}]: ${violations.join('; ')}`;
+}
+
+// S4: the same normalized company holding two or more rows simultaneously
+// "live" (UPCOMING/OPEN/CLOSED — LISTED excluded per the owner's decision:
+// a LISTED row plus a fresh filing is exactly S4's "new filing after
+// withdrawal" shape and is legitimate until reviewed). Any offering_type —
+// the owner's decision is about the COMPANY holding two live rows, not just
+// two IPO rows.
+const IDENTITY_LIVE_STATUSES = new Set(['UPCOMING', 'OPEN', 'CLOSED']);
+
+export function findCompanyTwoLiveRows(rows = []) {
+  const live = rows.filter((r) => IDENTITY_LIVE_STATUSES.has(r.status));
+  const byName = new Map();
+  for (const row of live) {
+    const key = normalizeIdentityCompanyName(row.companyName);
+    if (!key) continue;
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key).push(row);
+  }
+  const groups = [];
+  for (const [key, group] of byName) {
+    const ids = [...new Set(group.map((r) => r.id))];
+    if (ids.length < 2) continue;
+    groups.push({
+      key,
+      rows: [...new Map(group.map((r) => [r.id, { id: r.id, slug: r.slug, companyName: r.companyName, status: r.status, offeringType: r.offeringType }])).values()],
+    });
+  }
+  return groups;
+}

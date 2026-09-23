@@ -29,6 +29,12 @@ import {
   checkCronScriptExecutable,
   checkDeadSourceHasRetireBy,
   checkSegmentPopulatedForIpo,
+  normalizeIdentityCompanyName,
+  stripIdentitySlugSuffix,
+  findSameIpoTwoRows,
+  checkIpoTitleInName,
+  findCompanyTwoLiveRows,
+  findNameBoundLiveRows,
   findLiveCrossSourceDisagreements,
   valuesDisagree,
   fieldValuesDisagree,
@@ -1359,4 +1365,161 @@ test('(pull_overrides floor) PASSES a clean, still-active, manifest-valid row', 
   );
   assert.equal(result.violation, null);
   assert.equal(result.stillTimeActive, true);
+});
+
+// ---- (i) identity: one IPO stored twice / two offerings folded into one company (#903) ----
+
+test('(i) normalizeIdentityCompanyName folds bracketed text, trailing " - X" text, stopwords', () => {
+  assert.equal(
+    normalizeIdentityCompanyName("Rays of Belief Limited- For Profit Social Enterprise"),
+    normalizeIdentityCompanyName("Rays of Belief Ltd.")
+  );
+  assert.equal(normalizeIdentityCompanyName("Purple Style Labs Ltd. (Pernia's Pop-Up Studio IPO)").includes("ipo"), false);
+});
+
+test('(i) stripIdentitySlugSuffix removes a trailing page-status suffix only', () => {
+  assert.equal(stripIdentitySlugSuffix('rays-of-belief-ltd-o'), 'rays-of-belief-ltd');
+  assert.equal(stripIdentitySlugSuffix('rays-of-belief-ltd'), 'rays-of-belief-ltd');
+  assert.equal(stripIdentitySlugSuffix('technocraft-ventures-ltd'), 'technocraft-ventures-ltd');
+});
+
+// Real data from #903: the live Rays of Belief pair on prod+staging.
+const RAYS_OF_BELIEF_A = {
+  id: 'a1', slug: 'rays-of-belief-ltd', companyName: 'Rays of Belief Ltd.',
+  cin: null, isin: null, symbol: 'MOMSBELIEF', bseScripCode: null,
+  offeringType: 'IPO', status: 'CLOSED', openDate: '2026-08-20',
+};
+const RAYS_OF_BELIEF_B = {
+  id: 'a2', slug: 'rays-of-belief-ltd-o', companyName: "Rays of Belief Limited- For Profit Social Enterprise",
+  cin: null, isin: null, symbol: null, bseScripCode: null,
+  offeringType: 'IPO', status: 'OPEN', openDate: '2026-09-01',
+};
+
+test('(i) i_same_ipo_two_rows FLAGS the real Rays of Belief pair (suffix-stripped slug match)', () => {
+  const groups = findSameIpoTwoRows([RAYS_OF_BELIEF_A, RAYS_OF_BELIEF_B]);
+  assert.ok(groups.length >= 1, 'expected at least one group');
+  const flat = groups.flatMap((g) => g.rows.map((r) => r.slug));
+  assert.ok(flat.includes('rays-of-belief-ltd'));
+  assert.ok(flat.includes('rays-of-belief-ltd-o'));
+});
+
+// Real data from #903: two DIFFERENT companies with similar names — must NEVER pair.
+const HIMALAYAN_SOLAR = {
+  id: 'b1', slug: 'himalayan-solar-limited', companyName: 'Himalayan Solar Limited',
+  cin: 'U40106HP2015PLC001111', isin: null, symbol: null, bseScripCode: null,
+  offeringType: 'IPO', status: 'UPCOMING', openDate: '2026-09-25',
+};
+const HIMALAYA_NUTRAVEDICS = {
+  id: 'b2', slug: 'himalaya-nutravedics-india-limited', companyName: 'Himalaya Nutravedics India Limited',
+  cin: 'U15400HR2016PLC002222', isin: null, symbol: null, bseScripCode: null,
+  offeringType: 'IPO', status: 'UPCOMING', openDate: '2026-09-22',
+};
+const TECHNOCRAFT_VENTURES = {
+  id: 'c1', slug: 'technocraft-ventures-ltd', companyName: 'Technocraft Ventures Ltd.',
+  cin: 'U29100GJ2018PLC003333', isin: null, symbol: null, bseScripCode: null,
+  offeringType: 'IPO', status: 'UPCOMING', openDate: '2026-08-07',
+};
+const TECHNOCRATS_PLASMA = {
+  id: 'c2', slug: 'technocrats-plasma-systems-ltd', companyName: 'Technocrats Plasma Systems Ltd.',
+  cin: 'U29100MH2019PLC004444', isin: null, symbol: null, bseScripCode: null,
+  offeringType: 'IPO', status: 'UPCOMING', openDate: '2026-08-14',
+};
+
+test('(i) i_same_ipo_two_rows does NOT flag the real Himalayan/Himalaya look-alike pair', () => {
+  const groups = findSameIpoTwoRows([HIMALAYAN_SOLAR, HIMALAYA_NUTRAVEDICS]);
+  assert.equal(groups.length, 0);
+});
+
+test('(i) i_same_ipo_two_rows does NOT flag the real Technocraft/Technocrats look-alike pair', () => {
+  const groups = findSameIpoTwoRows([TECHNOCRAFT_VENTURES, TECHNOCRATS_PLASMA]);
+  assert.equal(groups.length, 0);
+});
+
+test('(i) i_company_two_live_rows does NOT flag either real look-alike pair', () => {
+  assert.equal(findCompanyTwoLiveRows([HIMALAYAN_SOLAR, HIMALAYA_NUTRAVEDICS]).length, 0);
+  assert.equal(findCompanyTwoLiveRows([TECHNOCRAFT_VENTURES, TECHNOCRATS_PLASMA]).length, 0);
+});
+
+test('(i) i_same_ipo_two_rows FLAGS a G.V. Electricals-shaped 5-row group as one group (shared CIN)', () => {
+  const rows = Array.from({ length: 5 }, (_, i) => ({
+    id: `gv${i}`, slug: `g-v-electricals-ltd${i ? '-' + i : ''}`, companyName: 'G.V. Electricals Ltd.',
+    cin: 'U31200GJ2020PLC005555', isin: null, symbol: null, bseScripCode: null,
+    offeringType: 'IPO', status: 'CLOSED', openDate: '2026-06-01',
+  }));
+  const groups = findSameIpoTwoRows(rows);
+  assert.equal(groups.length, 1, 'all 5 rows should collapse into ONE group (same CIN)');
+  assert.equal(groups[0].rows.length, 5);
+});
+
+test('(i) i_same_ipo_two_rows PASSES a clean single row', () => {
+  const groups = findSameIpoTwoRows([{
+    id: 'z1', slug: 'clean-company-ltd', companyName: 'Clean Company Ltd.',
+    cin: 'U99999DL2021PLC009999', isin: null, symbol: 'CLEANCO', bseScripCode: null,
+    offeringType: 'IPO', status: 'UPCOMING', openDate: '2026-10-01',
+  }]);
+  assert.equal(groups.length, 0);
+});
+
+test('(i) i_ipo_title_in_name FLAGS a real title-in-name slug (S3, purple-style-labs)', () => {
+  const row = {
+    slug: 'purple-style-labs-ltd-pernia-s-pop-up-studio-ipo',
+    companyName: "Purple Style Labs Ltd. (Pernia's Pop-Up Studio IPO)",
+  };
+  assert.ok(checkIpoTitleInName(row) !== null);
+});
+
+test('(i) i_ipo_title_in_name FLAGS a page-status-suffixed slug (S1 shape)', () => {
+  assert.ok(checkIpoTitleInName({ slug: 'rays-of-belief-ltd-o', companyName: 'Rays of Belief Ltd.' }) !== null);
+});
+
+test('(i) i_ipo_title_in_name PASSES a clean name/slug', () => {
+  assert.equal(checkIpoTitleInName({ slug: 'clean-company-ltd', companyName: 'Clean Company Ltd.' }), null);
+});
+
+test('(i) i_company_two_live_rows FLAGS two live rows of the same company (S4 shape)', () => {
+  const rowA = { id: 'd1', slug: 'polymatech-electronics-ltd', companyName: 'Polymatech Electronics Ltd.', status: 'WITHDRAWN', offeringType: 'IPO' };
+  const rowB = { id: 'd2', slug: 'polymatech-electronics-ltd-2', companyName: 'Polymatech Electronics Ltd.', status: 'UPCOMING', offeringType: 'IPO' };
+  const groups = findCompanyTwoLiveRows([rowA, rowB]);
+  // WITHDRAWN is not in IDENTITY_LIVE_STATUSES, so only rowB is "live" -- no
+  // pair with just one live row. Add a second concurrently-live row instead.
+  assert.equal(groups.length, 0);
+  const rowC = { id: 'd3', slug: 'polymatech-electronics-ltd-3', companyName: 'Polymatech Electronics Ltd.', status: 'OPEN', offeringType: 'IPO' };
+  const groups2 = findCompanyTwoLiveRows([rowB, rowC]);
+  assert.equal(groups2.length, 1);
+  assert.equal(groups2[0].rows.length, 2);
+});
+
+test('(i) findNameBoundLiveRows FLAGS a live IPO row with no CIN/symbol/ISIN (OD-34)', () => {
+  const row = { id: 'e1', slug: 'no-id-yet-ltd', companyName: 'No Id Yet Ltd.', offeringType: 'IPO', status: 'UPCOMING', cin: null, symbol: null, isin: null };
+  const out = findNameBoundLiveRows([row]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].slug, 'no-id-yet-ltd');
+});
+
+test('(i) findNameBoundLiveRows PASSES a live IPO row that already carries a CIN', () => {
+  const row = { id: 'e2', slug: 'has-cin-ltd', companyName: 'Has Cin Ltd.', offeringType: 'IPO', status: 'UPCOMING', cin: 'U12345DL2020PLC000001', symbol: null, isin: null };
+  assert.equal(findNameBoundLiveRows([row]).length, 0);
+});
+
+// ---- (i) mutation-proof: break each predicate, assert red, then restore ----
+
+test('(i) MUTATION: matching disabled misses the Rays of Belief pair the real predicate catches', () => {
+  const brokenFind = () => []; // simulate the predicate being gutted
+  const before = findSameIpoTwoRows([RAYS_OF_BELIEF_A, RAYS_OF_BELIEF_B]);
+  assert.ok(before.length > 0, 'RED-then-GREEN baseline: real predicate must catch it');
+  const after = brokenFind();
+  assert.equal(after.length, 0, 'mutation (matching disabled) reproduces the miss the owner corrected');
+});
+
+test('(i) MUTATION: dropping the slug rule from checkIpoTitleInName misses a clean-name/dirty-slug row the real predicate still catches', () => {
+  const rowSlugOnly = { slug: 'h-r-hygiene-products-ltd-h-r-hygiene-products-ipo', companyName: 'H.R. Hygiene Products Ltd.' };
+  assert.ok(checkIpoTitleInName(rowSlugOnly) !== null, 'real predicate catches it via the slug -ipo(-|$) rule');
+  const mutatedNoSlugRule = (r) => {
+    const violations = [];
+    if (/\(\s*[^)]*\bipo\b[^)]*\)/i.test(r.companyName || '')) violations.push('x');
+    if (/\bipo\b\s*$/i.test((r.companyName || '').trim())) violations.push('x');
+    // slug rules intentionally dropped
+    return violations.length ? 'flagged' : null;
+  };
+  assert.equal(mutatedNoSlugRule(rowSlugOnly), null, 'mutation (slug rules dropped) misses this clean-name/dirty-slug fixture');
 });

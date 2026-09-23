@@ -1,0 +1,11 @@
+{
+  "id": "i_same_ipo_two_rows",
+  "findingClass": "one IPO stored as two rows — the same offering sharing an identifier (CIN/ISIN/symbol/BSE scrip code), a suffix-stripped slug, or a normalised name + open date",
+  "round7Findings": [],
+  "failThreshold": "any group of 2+ offering_type=IPO rows sharing CIN, ISIN, symbol, BSE scrip code, a status-suffix-stripped slug, or normalised company name + same open_date",
+  "severity": "P1",
+  "unverifiableWhen": "never — always runs against the ipos table",
+  "section": "checks",
+  "spec_ref": ["2.3.3.1"],
+  "note": "Implements the §2.3.3.1 F-103 standing sweep (owner #903, S1/S2/S7); flags the live Rays of Belief pair on prod/staging."
+}

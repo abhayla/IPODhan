@@ -263,6 +263,55 @@
       "unverifiableWhen": "pm2 not reachable on the host running the audit"
     },
     {
+      "id": "i_company_two_live_rows",
+      "findingClass": "the same normalised company holds two or more rows simultaneously live (UPCOMING/OPEN/CLOSED), any offering_type — listed for review, never auto-merged",
+      "round7Findings": [],
+      "failThreshold": "any group of 2+ rows, any offering_type, in status UPCOMING/OPEN/CLOSED, sharing a normalised company name",
+      "severity": "P2",
+      "unverifiableWhen": "never — always runs against the ipos table",
+      "spec_ref": [
+        "2.3.3.1",
+        "2.3.3.2"
+      ],
+      "note": "Owner #903 S4. LISTED excluded deliberately — a LISTED row plus a fresh filing is the legitimate new-offering-after-withdrawal shape (OD-35 lapsed-draft rule), not a duplicate."
+    },
+    {
+      "id": "i_ipo_title_in_name",
+      "findingClass": "page title or page-status text stored in company_name or slug instead of the company's real name",
+      "round7Findings": [],
+      "failThreshold": "any offering_type=IPO row whose company_name contains \"(...IPO)\" or ends in the word IPO, or whose slug matches -ipo(-|$) or still carries a page-status suffix (-o/-p/-lt/-ct)",
+      "severity": "P2",
+      "unverifiableWhen": "never — always runs against the ipos table",
+      "spec_ref": [
+        "2.3.3.1"
+      ],
+      "note": "Owner #903 S3."
+    },
+    {
+      "id": "i_name_bound_live",
+      "findingClass": "a live IPO row bound on nothing stronger than its normalised name (no CIN, no exchange symbol, no ISIN) — the OD-34 name-bound flag",
+      "round7Findings": [],
+      "failThreshold": "any offering_type=IPO row in status UPCOMING/OPEN with no cin, no symbol, and no isin",
+      "severity": "P3",
+      "unverifiableWhen": "never — always runs against the ipos table",
+      "spec_ref": [
+        "2.3.3.2"
+      ],
+      "note": "Implements OD-34: 'the nightly audit reports the name-bound rows by name — never as a count.' A name-bound row may not be auto-merged with another name-bound row."
+    },
+    {
+      "id": "i_same_ipo_two_rows",
+      "findingClass": "one IPO stored as two rows — the same offering sharing an identifier (CIN/ISIN/symbol/BSE scrip code), a suffix-stripped slug, or a normalised name + open date",
+      "round7Findings": [],
+      "failThreshold": "any group of 2+ offering_type=IPO rows sharing CIN, ISIN, symbol, BSE scrip code, a status-suffix-stripped slug, or normalised company name + same open_date",
+      "severity": "P1",
+      "unverifiableWhen": "never — always runs against the ipos table",
+      "spec_ref": [
+        "2.3.3.1"
+      ],
+      "note": "Implements the §2.3.3.1 F-103 standing sweep (owner #903, S1/S2/S7); flags the live Rays of Belief pair on prod/staging."
+    },
+    {
       "id": "i_wire_or_retire",
       "findingClass": "a scheduler/cron/job definition exists in the repo but is never imported by the prod entrypoint",
       "round7Findings": [
