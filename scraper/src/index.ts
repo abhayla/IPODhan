@@ -41,6 +41,7 @@ import {
 import { raceWithTimeout, DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS } from './utils/race-with-timeout.js';
 import { shouldRunOnCatchUpCadence, isCatchUpCadenceDue, markCatchUpCadenceRan } from './scheduler/catch-up-cadence.js';
 import { isDiscoveryDue, isBiddingHoursIST, mostRecentDiscoverySlotLabel } from './scheduler/due-step-cycle.js';
+import { mostRecentDataJobSlotBoundary } from '@ipodhan/shared/scheduler/data-job-slots';
 import { runDemandBackfill } from './scripts/backfill-demand-graph.js';
 import { DistributedLock } from './utils/distributed-lock.js';
 import {
@@ -705,7 +706,9 @@ async function runClosedIpoWake(): Promise<number> {
  *   (c) live data — no longer here: `--job=live` owns it (item 7 S1,
  *       runLiveFiguresJob, OD-27/OD-28)
  *   (d) aggregator refresh (Chittorgarh) only for
- *       UPCOMING/OPEN IPOs, at most once/day
+ *       UPCOMING/OPEN IPOs, at most once/day — and, like (e) the API fallback,
+ *       only on a wake inside an open data-job slot (item 7 S2b, OD-19): a
+ *       wake outside the slots returns before any IPO-data fetch
  * Only called when `source === 'all' && FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER`.
  * The caller (`main()`) owns the whole-cycle lock (`CYCLE_LOCK_RESOURCE`) and
  * still runs the post-steps (statusUpdate, stageReconciler, etc.) exactly as
@@ -770,42 +773,63 @@ async function runDueStepCycle(
     );
   }
 
-  if (isDiscoveryDue(now, lastDiscoveryRun)) {
-    logger.info({ slot: mostRecentDiscoverySlotLabel(now) }, 'Due-step cycle: discovery is due — running NSE + BSE');
-    // T-478 (issue #225): the OFS category lives ONLY on this unrestricted,
-    // 3x/day (OD-19) discovery step (never the OPEN-only "live" step below) — OFS
-    // rows can be UPCOMING/CLOSED/LISTED, not just OPEN, and discovery is
-    // where new offering_type rows are meant to first appear. One extra NSE
-    // API call per discovery run, inside the existing wake budget.
-    // Round 2 (MAJOR): the live OFS payload shape is unverified — gated
-    // behind ENABLE_NSE_OFS (default false; prod stays off until a real OFS
-    // book is observed on staging and its fixture captured).
-    const nseOk = await runCycleStep('discovery:NSE', () => runNSEScraper({ includeOFS: FEATURE_FLAGS.ENABLE_NSE_OFS }));
-    const bseOk = await runCycleStep('discovery:BSE', () => runBSEScraper());
-    // Round-4 MEDIUM: only stamp the cadence key when BOTH steps actually
-    // succeeded — matching the aggregator block's pattern below. Stamping
-    // unconditionally meant a thrown NSE at the 17:30 slot still marked
-    // discovery "done", so the next `isDiscoveryDue` check stayed silent
-    // until 08:30 even though NSE never ran.
-    if (nseOk && bseOk) {
-      try {
-        await redis.set(DISCOVERY_LAST_RUN_KEY, now.toISOString());
-      } catch (error) {
-        logger.debug(
-          { error: error instanceof Error ? error.message : String(error) },
-          'Due-step cycle: discovery last-run persist failed (non-fatal)'
-        );
-      }
-    } else {
-      logger.warn(
-        { nseOk, bseOk, slot: mostRecentDiscoverySlotLabel(now) },
-        'Due-step cycle: discovery step(s) failed — leaving the cadence key unstamped so the next cycle retries'
+  // Item 7 S2b (F-142, spec §2.1, OD-19): ONE slot decision per wake, and it
+  // gates EVERY IPO-data fetch in this function — discovery (NSE+BSE), the
+  // Chittorgarh list and its issue-type fill, and the API fallback. #935 gated
+  // discovery only; Chittorgarh and the fallback kept a bare 24h catch-up
+  // cadence, which is due on ANY wake, so staging's 22:15 IST wake fetched the
+  // Chittorgarh list and created 8 IPOs. The decision reads the discovery
+  // stamp, which is set only when NSE+BSE both succeeded, so a failed or
+  // missed slot stays open and the next wake catches it up.
+  //
+  // Two stamps, not one: the document cycle (triggerPrimarySourceDiscovery)
+  // keeps its own DOCUMENT_CYCLE_LAST_RUN_KEY because one document slot may
+  // legitimately span several wakes (OD-55), and the list scrapers must not
+  // re-fetch on each of them. Both stamps are keyed to the SAME slot boundary
+  // (isDataJobDue), each set only when its own part completed, so neither part
+  // can run for a slot outside the 00:00/08:00/14:00 IST boundaries.
+  const dataSlotOpen = isDiscoveryDue(now, lastDiscoveryRun);
+  if (!dataSlotOpen) {
+    logger.info(
+      { slot: mostRecentDiscoverySlotLabel(now) },
+      'Due-step cycle: data job not due at this wake — discovery skipped, website scrapers skipped (OD-19 slots 00:00/08:00/14:00 IST)'
+    );
+    return cycleResult;
+  }
+  // The 24h cadences below are stamped at the slot BOUNDARY, not at `now`:
+  // stamped at 08:00:42 today, tomorrow's 08:00:05 wake would be 37s short of
+  // 24h and the source would slip to the 14:00 slot, then drift further.
+  const slotStartedAt = mostRecentDataJobSlotBoundary(now);
+
+  logger.info({ slot: mostRecentDiscoverySlotLabel(now) }, 'Due-step cycle: discovery is due — running NSE + BSE');
+  // T-478 (issue #225): the OFS category lives ONLY on this unrestricted,
+  // 3x/day (OD-19) discovery step (never the OPEN-only "live" step below) — OFS
+  // rows can be UPCOMING/CLOSED/LISTED, not just OPEN, and discovery is
+  // where new offering_type rows are meant to first appear. One extra NSE
+  // API call per discovery run, inside the existing wake budget.
+  // Round 2 (MAJOR): the live OFS payload shape is unverified — gated
+  // behind ENABLE_NSE_OFS (default false; prod stays off until a real OFS
+  // book is observed on staging and its fixture captured).
+  const nseOk = await runCycleStep('discovery:NSE', () => runNSEScraper({ includeOFS: FEATURE_FLAGS.ENABLE_NSE_OFS }));
+  const bseOk = await runCycleStep('discovery:BSE', () => runBSEScraper());
+  // Round-4 MEDIUM: only stamp the cadence key when BOTH steps actually
+  // succeeded — matching the aggregator block's pattern below. Stamping
+  // unconditionally meant a thrown NSE at the 17:30 slot still marked
+  // discovery "done", so the next `isDiscoveryDue` check stayed silent
+  // until 08:30 even though NSE never ran.
+  if (nseOk && bseOk) {
+    try {
+      await redis.set(DISCOVERY_LAST_RUN_KEY, now.toISOString());
+    } catch (error) {
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Due-step cycle: discovery last-run persist failed (non-fatal)'
       );
     }
   } else {
-    logger.info(
-      { slot: mostRecentDiscoverySlotLabel(now) },
-      'Due-step cycle: data job not due at this wake — discovery skipped (OD-19 slots 00:00/08:00/14:00 IST)'
+    logger.warn(
+      { nseOk, bseOk, slot: mostRecentDiscoverySlotLabel(now) },
+      'Due-step cycle: discovery step(s) failed — leaving the cadence key unstamped so the next cycle retries'
     );
   }
 
@@ -905,10 +929,10 @@ async function runDueStepCycle(
       // suppress its own retry (the original bug), and must not un-stamp the
       // scrape either (the retry storm that fix created).
       if (fillDue && fillOk) {
-        await markCatchUpCadenceRan(redis, ISSUE_TYPE_FILL_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
+        await markCatchUpCadenceRan(redis, ISSUE_TYPE_FILL_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, slotStartedAt);
       }
       if (cgOk) {
-        await markCatchUpCadenceRan(redis, AGGREGATOR_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
+        await markCatchUpCadenceRan(redis, AGGREGATOR_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, slotStartedAt);
       } else {
         logger.warn('Due-step cycle: aggregator refresh did not fully succeed — cadence key NOT stamped, it will retry next cycle');
       }
@@ -925,7 +949,7 @@ async function runDueStepCycle(
     logger.info('Due-step cycle: IPO Alerts API fallback cadence due — running');
     const fallbackOk = await runCycleStep('apiFallback', () => runIPOAlertsFallback('scheduled'));
     if (fallbackOk) {
-      await markCatchUpCadenceRan(redis, API_FALLBACK_CADENCE_KEY, API_FALLBACK_INTERVAL_MINUTES, now);
+      await markCatchUpCadenceRan(redis, API_FALLBACK_CADENCE_KEY, API_FALLBACK_INTERVAL_MINUTES, slotStartedAt);
     } else {
       logger.warn('Due-step cycle: API fallback did not succeed — cadence key NOT stamped, it will retry next cycle');
     }
