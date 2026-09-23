@@ -142,6 +142,127 @@ try {
 } catch { checkFailed = true; }
 ok('--check exits non-zero on a stale file', checkFailed);
 
+// --- 7. measured facts: typed copies refused, stale/unmeasured labelled -------
+// 2026-09-23: the environments rows (sha, since, migration counts) were typed
+// on 2026-09-20 and republished seven times unchanged while staging moved from
+// 61808af1 to 55b585cb. Every case below renders with fixture facts and a fixed
+// --now so it cannot depend on when or where it runs.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'board-facts-'));
+  const NOW = '2026-09-23T02:00:00Z';
+  const at = (hoursBefore) => new Date(Date.parse(NOW) - hoursBefore * 3600000).toISOString();
+  const factsFile = (facts) => {
+    const p = join(dir, `facts-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(p, JSON.stringify({ collected_at: NOW, facts }));
+    return p;
+  };
+  const fresh = (value) => ({ value, measured_at: at(1), command: 'fixture' });
+  const baseFacts = {
+    'prod.sha': fresh('aaaa1111'), 'prod.since': fresh('2026-09-07T17:05:54.000Z'),
+    'prod.migrations_applied': fresh(34),
+    'staging.sha': fresh('bbbb2222'), 'staging.since': fresh('2026-09-22T16:06:17.000Z'),
+    'staging.migrations_applied': fresh(51), 'main.migrations': fresh(52),
+  };
+  const render = (factsPath, dataPath) => {
+    const o = join(dir, `out-${Math.random().toString(36).slice(2)}.html`);
+    const args = [RENDER, '--out', o, '--facts', factsPath, '--now', NOW];
+    if (dataPath) args.push('--data', dataPath);
+    try {
+      execFileSync('node', args, { encoding: 'utf8', stdio: 'pipe' });
+      return { code: 0, html: readFileSync(o, 'utf8') };
+    } catch (e) {
+      return { code: e.status ?? 1, stderr: String(e.stderr || '') };
+    }
+  };
+  const envRows = (html) => (html.match(/id="environments">[\s\S]*?<\/tbody>/) || [''])[0];
+
+  // (a) a typed sha / since in board-data.json is refused, with a message
+  const realData = JSON.parse(readFileSync(join(BOARD, 'board-data.json'), 'utf8'));
+  for (const key of ['sha', 'since']) {
+    const typed = JSON.parse(JSON.stringify(realData));
+    typed.environments[0][key] = key === 'sha' ? 'deadbeef' : '2026-09-01';
+    const p = join(dir, `typed-${key}.json`);
+    writeFileSync(p, JSON.stringify(typed));
+    const r = render(factsFile(baseFacts), p);
+    ok(`typed environment "${key}" is refused (non-zero exit)`, r.code !== 0, `exit ${r.code}`);
+    ok(`typed environment "${key}" refusal names the key and the collector`,
+      r.code !== 0 && r.stderr.includes(`types "${key}"`) && r.stderr.includes('collect-board-facts'), r.stderr || '(exit 0)');
+  }
+  {
+    const typed = { ...realData, stamp: '2026-09-20 15:36 IST' };
+    const p = join(dir, 'typed-stamp.json');
+    writeFileSync(p, JSON.stringify(typed));
+    ok('typed "stamp" is refused', render(factsFile(baseFacts), p).code !== 0);
+  }
+
+  // (b) a 25h-old fact renders "stale — measured <IST date>"
+  {
+    const r = render(factsFile({ ...baseFacts, 'staging.sha': { value: 'bbbb2222', measured_at: at(25), command: 'fixture' } }));
+    const env = r.code === 0 ? envRows(r.html) : '';
+    ok('25h-old fact renders stale with its IST date',
+      env.includes('bbbb2222 <small class="stale">stale &mdash; measured 2026-09-22</small>'), env.slice(0, 200) || r.stderr);
+  }
+
+  // (c) a null fact renders "unmeasured — <error>"
+  {
+    const r = render(factsFile({ ...baseFacts, 'prod.sha': { value: null, measured_at: at(0), command: 'fixture', error: 'ssh: connect timed out' } }));
+    const env = r.code === 0 ? envRows(r.html) : '';
+    ok('null fact renders unmeasured with its error',
+      env.includes('unmeasured &mdash; ssh: connect timed out'), env.slice(0, 200) || r.stderr);
+    ok('null fact never falls back to a typed value', !env.includes('f0c66b6b'));
+  }
+
+  // (d) a fresh fact renders its value, unlabelled, and derived counts follow it
+  {
+    const r = render(factsFile(baseFacts));
+    const env = r.code === 0 ? envRows(r.html) : '';
+    ok('fresh fact renders its value', env.includes('<td class="mono">aaaa1111</td>'), env.slice(0, 200) || r.stderr);
+    ok('fresh facts carry no stale / unmeasured label', r.code === 0 && !/class="(stale|unmeasured)"/.test(env));
+    ok('migration line is derived from facts', env.includes('34 of 52</b> on main applied (18 behind)'));
+    ok('stamp is the render time in IST', r.code === 0 && r.html.includes('rendered 2026-09-23 07:30 IST'));
+    ok('fact tokens in prose are filled', r.code === 0 && !r.html.includes('{{'));
+  }
+
+  // (d.1) a stale fact cited as a {{token}} in running text (the headline "lede")
+  // must carry the SAME stale marker the table cells get — not the bare value.
+  // Isolated to the <p class="lede"> paragraph so a table cell showing the same
+  // sha (test (b)) cannot make this pass by coincidence.
+  const lede = (html) => (html.match(/class="lede">([\s\S]*?)<\/p>/) || [, ''])[1];
+  {
+    const staleFacts = { ...baseFacts, 'staging.sha': { value: 'bbbb2222', measured_at: at(25), command: 'fixture' } };
+    const r = render(factsFile(staleFacts));
+    const l = r.code === 0 ? lede(r.html) : '';
+    ok('stale token in headline lede carries the stale marker',
+      /bbbb2222 <small class="stale">stale &mdash; measured 2026-09-22<\/small>/.test(l), l || r.stderr);
+  }
+  // (d.2) a fresh fact cited as a {{token}} in prose renders unlabelled.
+  {
+    const r = render(factsFile(baseFacts));
+    const l = r.code === 0 ? lede(r.html) : '';
+    ok('fresh token in headline lede carries no stale/unmeasured label',
+      l.includes('bbbb2222') && !/class="(stale|unmeasured)"/.test(l), l || r.stderr);
+  }
+  // (d.3) a null (unmeasured) fact cited as a {{token}} in prose renders
+  // "unmeasured", same as the table.
+  {
+    const r = render(factsFile({ ...baseFacts, 'staging.sha': { value: null, measured_at: at(0), command: 'fixture', error: 'ssh timeout' } }));
+    const l = r.code === 0 ? lede(r.html) : '';
+    ok('unmeasured token in headline lede renders "unmeasured"',
+      l.includes('Staging serves unmeasured;'), l || r.stderr);
+  }
+
+  // (e) --check is deterministic: it re-renders with the page's recorded render
+  // time, so a page rendered long ago still checks clean with the same inputs.
+  {
+    const o = join(dir, 'check.html');
+    const f = factsFile(baseFacts);
+    execFileSync('node', [RENDER, '--out', o, '--facts', f, '--now', NOW], { stdio: 'pipe' });
+    let code = 0;
+    try { execFileSync('node', [RENDER, '--out', o, '--facts', f, '--check'], { stdio: 'pipe' }); } catch (e) { code = e.status ?? 1; }
+    ok('--check passes on an unchanged render regardless of wall clock', code === 0, `exit ${code}`);
+  }
+}
+
 // --- report -----------------------------------------------------------------
 console.log(`render-board: ${pass} passed, ${fails.length} failed`);
 if (fails.length) {
