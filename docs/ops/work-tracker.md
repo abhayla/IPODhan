@@ -24,7 +24,7 @@ Raised by Abhay 2026-09-08 ~12:30 IST. Nothing here is started. Each is discusse
 **What I found before we discuss (facts, not argument).**
 
 - The scraper PROCESS still wakes every 30 minutes on production (`*/30 * * * *`) and at :15/:45 on staging. That part is unchanged, and it is what you are seeing.
-- The agreed change WAS partly implemented and IS switched on in both environments: `ENABLE_DUE_STEP_SCHEDULER=true`. Under it, source DISCOVERY runs only at four fixed times a day — 08:30, 11:00, 14:00 and 17:30 IST (`scraper/src/scheduler/due-step-cycle.ts`), not on every wake.
+- The agreed change WAS partly implemented and IS switched on in both environments: `ENABLE_DUE_STEP_SCHEDULER=true`. Under it, the data job (discovery, document download + extraction, the pull walk) runs only at fixed times a day — since OD-19 (spec §2.1) these are **00:00, 08:00 and 14:00 IST**, which supersede the four D-13 slots this line originally named (`scraper/src/scheduler/due-step-cycle.ts` / `packages/shared/src/scheduler/data-job-slots.ts`), not on every wake.
 - What still happens on every wake is document PROCESSING. Each wake walks the document queue; an individual document is protected by an exponential backoff (15 minutes doubling per attempt, capped at 6 hours) and by per-cycle budgets. So a given PDF is not re-downloaded every 30 minutes, but the queue is walked every 30 minutes.
 - **Honest gap:** the wake interval itself was never changed, and nothing records what the agreed target interval was. Your read is fair — the visible behaviour is exactly what you asked to change.
 

@@ -28,7 +28,7 @@ import { shouldRunRegistrarHealthCheck } from './scheduler/registrar-health-chec
 import { reresolveRegistrarIds } from './services/registrar-reresolve.js';
 import { runDuplicateSweepJob } from './scheduler/jobs/duplicate-sweep-job.js';
 import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js';
-import { runPrimaryDocBackfill } from './scripts/backfill-primary-source-documents.js';
+import { runPrimaryDocBackfill, withTimeout } from './scripts/backfill-primary-source-documents.js';
 import { triggerPageRevalidation } from './services/page-revalidation-trigger.js';
 import { CLI_SOURCE_ARGS } from './config/runnable-sources.js';
 import {
@@ -1645,6 +1645,15 @@ const PRIMARY_SOURCE_DISCOVERY_INTERVAL_MINUTES = 24 * 60;
  */
 export const DOCUMENT_CYCLE_LAST_RUN_KEY = 'due-step:last-document-cycle';
 
+/**
+ * Item 7 S2 review finding (LOW): the slot-stamp read already fails open
+ * (slot treated as due) on a Redis ERROR, but a Redis that hangs instead of
+ * erroring would block this wake indefinitely with no such warning. Bounds
+ * the read so a hung Redis degrades to "treat as due" within one wake, same
+ * as an explicit failure.
+ */
+const DOCUMENT_CYCLE_LAST_RUN_READ_TIMEOUT_MS = 2000;
+
 interface DataJobRedis {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<unknown>;
@@ -1682,7 +1691,11 @@ export async function triggerPrimarySourceDiscovery(options: PrimarySourceDiscov
     if (redis) {
       let lastRun: Date | null = null;
       try {
-        const raw = await redis.get(DOCUMENT_CYCLE_LAST_RUN_KEY);
+        const raw = await withTimeout(
+          redis.get(DOCUMENT_CYCLE_LAST_RUN_KEY),
+          DOCUMENT_CYCLE_LAST_RUN_READ_TIMEOUT_MS,
+          'document-cycle last-run lookup'
+        );
         lastRun = raw ? new Date(raw) : null;
         if (lastRun !== null && Number.isNaN(lastRun.getTime())) lastRun = null;
       } catch (error) {
@@ -1704,14 +1717,25 @@ export async function triggerPrimarySourceDiscovery(options: PrimarySourceDiscov
       const summary = await runDocumentCycle();
       logger.info(summary, 'Document discovery cycle (state machine) complete');
       if (redis) {
-        if (summary.budgetExhausted) {
+        // Item 7 S2 (spec §2.1, OD-19/OD-33/OD-55, independent-review HIGH
+        // finding): the slot is stamped finished ONLY when EVERY pass of this
+        // cycle completed — `summary.slotComplete` — never on
+        // `summary.budgetExhausted` alone, which reflects PASS 1 (discovery)
+        // only. Extraction, field-plan generation and the field-plan walk can
+        // each stop early on their own budget slice while `budgetExhausted`
+        // stays false; stamping on that alone closed the slot on a wake that
+        // had not actually finished the document cycle.
+        if (!summary.slotComplete) {
+          const slot = mostRecentDiscoverySlotLabel(now);
           logger.info(
-            { slot: mostRecentDiscoverySlotLabel(now) },
-            'Data job: document cycle used its whole wake budget — slot left open, the next wake continues it'
+            { slot, incompletePasses: summary.incompletePasses },
+            `data job slot ${slot} incomplete: pass=${summary.incompletePasses.join(',') || 'unknown'} — continuing next wake`
           );
         } else {
+          const slot = mostRecentDiscoverySlotLabel(now);
           try {
             await redis.set(DOCUMENT_CYCLE_LAST_RUN_KEY, now.toISOString());
+            logger.info({ slot }, `data job slot ${slot} complete`);
           } catch (error) {
             logger.warn(
               { error: error instanceof Error ? error.message : String(error) },
