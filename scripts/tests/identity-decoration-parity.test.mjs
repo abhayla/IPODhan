@@ -43,9 +43,15 @@ const NAMES = [
   'Shree Balaji (Mala) Textiles Ltd. LT',
   'H.R. Hygiene Ltd. CT',
   'Some Company Ltd. P',
+  // PR #910 review round 1, MINOR-4: a bare trailing letter NOT after a legal suffix is part of the name.
+  'Om Metallogic P',
+  'Studio LSD Ltd.',
+  'Purple Style Labs Ltd. (Pernia IPO) O',
+  'Laxmi India Finance Ltd',
+  'Laxmi Finance Ltd',
   '',
 ];
-const SLUGS = ['rays-of-belief-ltd-o', 'rays-of-belief-ltd', 'x-ltd-lt', 'x-ltd-ct', 'x-ltd-p', 'acme-ofs-2026', 'acme-ofs-unknown', 'co', ''];
+const SLUGS = ['om-metallogic-p', 'studio-lsd-o', 'x-limited-lt', 'rays-of-belief-ltd-o', 'rays-of-belief-ltd', 'x-ltd-lt', 'x-ltd-ct', 'x-ltd-p', 'acme-ofs-2026', 'acme-ofs-unknown', 'co', ''];
 
 test('the TS SSOT loads via type-stripping (fails loud, never skips)', () => {
   assert.equal(loadError, null, `could not import ${ssotPath}: ${loadError?.message}`);
@@ -71,4 +77,22 @@ test('the S1 and S6 verdicts hold in both copies', () => {
     assert.notEqual(impl.normalizeIdentityCompanyName('Himalayan Solar Ltd.'), impl.normalizeIdentityCompanyName('Himalaya Nutravedics India Ltd.'));
     assert.notEqual(impl.normalizeIdentityCompanyName('Technocraft Ventures Ltd.'), impl.normalizeIdentityCompanyName('Technocrats Plasma Systems Ltd.'));
   }
+});
+
+test('MINOR-4: the status-token strip is anchored to a legal suffix, in both copies', () => {
+  for (const impl of [twin, ssot]) {
+    assert.equal(impl.stripIdentityNameDecoration('Om Metallogic P'), 'Om Metallogic P');
+    assert.equal(impl.stripIdentityNameDecoration('Some Company Ltd. P'), 'Some Company Ltd.');
+    assert.equal(impl.stripIdentityNameDecoration('Purple Style Labs Ltd. (Pernia IPO) O'), 'Purple Style Labs Ltd.');
+    assert.equal(impl.stripIdentitySlugSuffix('om-metallogic-p'), 'om-metallogic-p');
+    assert.equal(impl.stripIdentitySlugSuffix('studio-lsd-o'), 'studio-lsd-o');
+    assert.equal(impl.stripIdentitySlugSuffix('x-limited-lt'), 'x-limited');
+    assert.equal(impl.stripIdentitySlugSuffix('rays-of-belief-ltd-o'), 'rays-of-belief-ltd');
+  }
+});
+
+test('MAJOR-3: the strict fold (used by the hold and the fold bind) keeps "india"; the loose fold does not', () => {
+  assert.notEqual(ssot.strictIdentityCompanyName('Laxmi India Finance Ltd'), ssot.strictIdentityCompanyName('Laxmi Finance Ltd'));
+  assert.equal(ssot.strictIdentityCompanyName('Rays of Belief Ltd. O'), ssot.strictIdentityCompanyName('Rays of Belief Limited- For Profit Social Enterprise'));
+  assert.equal(ssot.strictIdentityCompanyName('Asset Reconstruction Co.(India) Ltd.'), ssot.strictIdentityCompanyName('ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED'));
 });

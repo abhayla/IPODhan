@@ -35,6 +35,7 @@ import {
   checkIpoTitleInName,
   findCompanyTwoLiveRows,
   findNameBoundLiveRows,
+  findUndecidedIdentityHolds,
   findLiveCrossSourceDisagreements,
   valuesDisagree,
   fieldValuesDisagree,
@@ -1499,6 +1500,35 @@ test('(i) findNameBoundLiveRows FLAGS a live IPO row with no CIN/symbol/ISIN (OD
 test('(i) findNameBoundLiveRows PASSES a live IPO row that already carries a CIN', () => {
   const row = { id: 'e2', slug: 'has-cin-ltd', companyName: 'Has Cin Ltd.', offeringType: 'IPO', status: 'UPCOMING', cin: 'U12345DL2020PLC000001', symbol: null, isin: null };
   assert.equal(findNameBoundLiveRows([row]).length, 0);
+});
+
+test('(i) findUndecidedIdentityHolds FLAGS a recent OD-68 hold nobody has decided, by name', () => {
+  const now = new Date('2026-09-23T10:00:00Z');
+  const holds = [
+    { slug: 'rays-of-belief-ltd', companyName: 'Rays of Belief Ltd.', candidates: 'rays-of-belief-ltd', at: '2026-09-23T04:00:00Z' },
+    { slug: 'rays-of-belief-ltd', companyName: 'Rays of Belief Ltd.', candidates: 'rays-of-belief-ltd', at: '2026-09-22T04:00:00Z' },
+  ];
+  const out = findUndecidedIdentityHolds(holds, [], now);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].slug, 'rays-of-belief-ltd');
+  assert.equal(out[0].at, '2026-09-23T04:00:00Z');
+});
+
+test('(i) findUndecidedIdentityHolds PASSES a hold a human overrode afterwards, and a hold older than 2 days', () => {
+  const now = new Date('2026-09-23T10:00:00Z');
+  const holds = [
+    { slug: 'a-ltd', companyName: 'A Ltd', at: '2026-09-23T04:00:00Z' },
+    { slug: 'b-ltd', companyName: 'B Ltd', at: '2026-09-18T04:00:00Z' },
+  ];
+  const overrides = [{ slug: 'a-ltd', at: '2026-09-23T05:00:00Z' }];
+  assert.equal(findUndecidedIdentityHolds(holds, overrides, now).length, 0);
+  // An override BEFORE a newer hold does not clear the newer one.
+  assert.equal(findUndecidedIdentityHolds([{ slug: 'a-ltd', at: '2026-09-23T06:00:00Z' }], overrides, now).length, 1);
+});
+
+test('(i) checkIpoTitleInName: the page-status slug suffix is anchored to a legal suffix (PR #910 MINOR-4)', () => {
+  assert.equal(checkIpoTitleInName({ companyName: 'Om Metallogic P', slug: 'om-metallogic-p' }), null);
+  assert.match(checkIpoTitleInName({ companyName: 'Rays of Belief Ltd.', slug: 'rays-of-belief-ltd-o' }), /page-status suffix/);
 });
 
 // ---- (i) mutation-proof: break each predicate, assert red, then restore ----

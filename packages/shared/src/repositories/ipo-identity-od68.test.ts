@@ -80,7 +80,7 @@ describe('resolveIpoRow — OD-68 matching', () => {
     expect(findBySlug).toHaveBeenCalledWith('rays-of-belief-ltd');
   });
 
-  it('S2: a name match whose KNOWN open date differs is declined (never written into that row)', async () => {
+  it('MAJOR-1 postponement: an EXACT name match whose open date moved within 180 days binds (same offering, OD-35)', async () => {
     const r = repo({ findByNormalizedName: vi.fn().mockResolvedValue(RAYS), findBySlug: vi.fn().mockResolvedValue(RAYS) });
     const got = await resolveIpoRow(r, {
       companyName: 'Rays of Belief Ltd.',
@@ -89,6 +89,30 @@ describe('resolveIpoRow — OD-68 matching', () => {
       openDate: '2026-09-15',
       priceRangeMin: 227,
       segment: 'MAINBOARD',
+    });
+    expect(got?.id).toBe('rays');
+  });
+
+  it('MAJOR-1: an open date more than 180 days away is a NEW offering - not bound (OD-35)', async () => {
+    const got = await resolveIpoRow(repo({ findByNormalizedName: vi.fn().mockResolvedValue(RAYS) }), {
+      companyName: 'Rays of Belief Ltd.',
+      normalizedName: 'rays of belief',
+      slug: 'rays-of-belief-ltd',
+      openDate: '2027-04-01',
+      priceRangeMin: null,
+      segment: 'MAINBOARD',
+    });
+    expect(got).toBeNull();
+  });
+
+  it('MAJOR-1: a FUZZY (typo) name match may not also absorb a moved open date (OD-69 look-alikes)', async () => {
+    const solar = { ...RAYS, id: 'solar', companyName: 'Himalayan Solar Ltd.', slug: 'himalayan-solar-ltd', segment: 'SME', openDate: '2026-09-25', priceRangeMin: null };
+    const got = await resolveIpoRow(repo({ findByFuzzyName: vi.fn().mockResolvedValue(solar) }), {
+      companyName: 'Himalaya Solar Ltd.',
+      normalizedName: 'himalaya solar',
+      slug: 'himalaya-solar-ltd',
+      openDate: '2026-09-22',
+      segment: 'SME',
     });
     expect(got).toBeNull();
   });
@@ -137,6 +161,18 @@ describe('resolveIpoRow — OD-68 matching', () => {
       slug: 'himalaya-nutravedics-india-limited',
       openDate: '2026-09-22',
       segment: 'SME',
+    });
+    expect(got).toBeNull();
+  });
+
+  it('MAJOR-3: the fold tier uses the STRICT fold - "Laxmi India Finance" never binds "Laxmi Finance" on the same day', async () => {
+    const laxmi = { ...RAYS, id: 'laxmi', companyName: 'Laxmi India Finance Ltd', slug: 'laxmi-india-finance-ltd', openDate: '2026-09-01', priceRangeMin: null };
+    const got = await resolveIpoRow(repo({ findLiveByOpenDate: vi.fn().mockResolvedValue([laxmi]) }), {
+      companyName: 'Laxmi Finance Ltd',
+      normalizedName: 'laxmi finance',
+      slug: 'laxmi-finance-ltd',
+      openDate: '2026-09-01',
+      segment: 'MAINBOARD',
     });
     expect(got).toBeNull();
   });
