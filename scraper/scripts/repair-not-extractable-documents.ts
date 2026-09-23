@@ -59,7 +59,7 @@ import { openRepairDb } from './lib/repair-tool.js';
 import {
   isExtractableDocType,
   NOT_EXTRACTABLE_STATUS,
-} from '../src/services/filing-auto-persist.js';
+} from '../src/config/document-admission-status.js';
 
 interface Args {
   apply: boolean;
