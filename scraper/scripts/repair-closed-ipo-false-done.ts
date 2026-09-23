@@ -8,14 +8,16 @@
  * re-picked (§6.2), so each such IPO left the backlog with nothing done.
  * Measured on staging 2026-09-23: all 10 DONE rows have 0 plan rows.
  *
- * THE CLASS IT REPAIRS, as a data filter: every closed_ipo_resourcing row, on
- * any slot, with outcome = 'DONE' AND the IPO was not walked -- it has 0
- * ipo_field_plan rows, OR none of its plan rows was ever asked
- * (last_attempt_at IS NULL on every row) -- AND the IPO still holds an UNREAD
- * extractable document (PRICE_BAND_AD, RHP, DRHP, PROSPECTUS with
- * extraction_status NOT IN (COMPLETED, MANUAL_REVIEW, NOT_EXTRACTABLE), NULL
- * counting as unread). A DONE row whose IPO was walked is left alone, and so is
- * a DONE row with nothing left unread.
+ * THE CLASS IT REPAIRS, as a data filter -- the corrected DONE rule (OD-76,
+ * §6.1) applied backwards: every closed_ipo_resourcing row, on any slot, with
+ * outcome = 'DONE' AND EITHER the IPO has 0 ipo_field_plan rows (never DONE
+ * with no plan) OR none of its plan rows was ever asked (last_attempt_at IS
+ * NULL on every row) while at least one is NOT settled (state not in SUPPLIED,
+ * NOT_PRINTED, EXHAUSTED -- never DONE with fields still due, OD-73).
+ * Documents do NOT enter the filter (review round 1 MINOR-4): an IPO whose
+ * documents are all read but whose plan was never planted or walked is the
+ * same false DONE. A DONE row whose IPO was walked is left alone, and so is a
+ * never-asked DONE row whose every plan row is already settled.
  *
  * WHAT --apply DOES. Sets such a row to outcome PARTIAL, cause_class
  * EXTRACTOR_MISSING (no walk ever asked a field of it), a cause_detail that
@@ -66,7 +68,7 @@ export async function reopenFalseDoneRows(dbx: ExecDb, ids: string[]): Promise<n
     UPDATE closed_ipo_resourcing
        SET outcome = 'PARTIAL',
            cause_class = 'EXTRACTOR_MISSING',
-           cause_detail = ${REPAIR_MARKER} || ' recorded DONE without a field-plan walk (no plan rows, or none asked) while an extractable document was still unread',
+           cause_detail = ${REPAIR_MARKER} || ' recorded DONE without a field-plan walk (no plan rows, or none asked while rows were unsettled)',
            resourced_at_version = ${REPAIR_MARKER} || COALESCE(resourced_at_version, ''),
            updated_at = now()
      WHERE ipo_id = ANY(${sql.param(ids)}::uuid[])
@@ -74,16 +76,24 @@ export async function reopenFalseDoneRows(dbx: ExecDb, ids: string[]): Promise<n
        AND NOT EXISTS (SELECT 1 FROM ipo_field_plan p
                         WHERE p.ipo_id = closed_ipo_resourcing.ipo_id
                           AND p.last_attempt_at IS NOT NULL)
-       AND EXISTS (SELECT 1 FROM documents d
-                    WHERE d.ipo_id = closed_ipo_resourcing.ipo_id
-                      AND COALESCE(d.extraction_status, 'PENDING') NOT IN ('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE')
-                      AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS'))`);
+       AND (
+         NOT EXISTS (SELECT 1 FROM ipo_field_plan p WHERE p.ipo_id = closed_ipo_resourcing.ipo_id)
+         OR EXISTS (SELECT 1 FROM ipo_field_plan p
+                     WHERE p.ipo_id = closed_ipo_resourcing.ipo_id
+                       AND p.state::text NOT IN ('SUPPLIED', 'NOT_PRINTED', 'EXHAUSTED'))
+       )`);
   return (res as { rowCount?: number }).rowCount ?? 0;
 }
 
-/** The class filter, applied to the dry-run read: DONE, never walked, and something still unread. */
-export function isFalseDoneWithoutWalk(r: { outcome: string; pending: number | string; walked_rows: number | string }): boolean {
-  return String(r.outcome).toUpperCase() === 'DONE' && Number(r.walked_rows) === 0 && Number(r.pending) > 0;
+/** The class filter, applied to the dry-run read: DONE, never walked, and no plan or a plan row still unsettled. */
+export function isFalseDoneWithoutWalk(r: {
+  outcome: string;
+  plan_rows: number | string;
+  walked_rows: number | string;
+  unsettled_rows: number | string;
+}): boolean {
+  if (String(r.outcome).toUpperCase() !== 'DONE' || Number(r.walked_rows) !== 0) return false;
+  return Number(r.plan_rows) === 0 || Number(r.unsettled_rows) > 0;
 }
 
 interface Args {
@@ -113,6 +123,7 @@ interface FalseDoneRow {
   pending: number;
   plan_rows: number;
   walked_rows: number;
+  unsettled_rows: number;
 }
 
 async function main(): Promise<number> {
@@ -155,7 +166,9 @@ async function main(): Promise<number> {
                AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')) AS pending,
            (SELECT count(*)::int FROM ipo_field_plan p WHERE p.ipo_id = r.ipo_id) AS plan_rows,
            (SELECT count(*)::int FROM ipo_field_plan p
-             WHERE p.ipo_id = r.ipo_id AND p.last_attempt_at IS NOT NULL) AS walked_rows
+             WHERE p.ipo_id = r.ipo_id AND p.last_attempt_at IS NOT NULL) AS walked_rows,
+           (SELECT count(*)::int FROM ipo_field_plan p
+             WHERE p.ipo_id = r.ipo_id AND p.state::text NOT IN ('SUPPLIED', 'NOT_PRINTED', 'EXHAUSTED')) AS unsettled_rows
       FROM closed_ipo_resourcing r
       JOIN ipos i ON i.id = r.ipo_id
      WHERE r.outcome = 'DONE'
@@ -163,10 +176,10 @@ async function main(): Promise<number> {
   const all = ((read as unknown as { rows: FalseDoneRow[] }).rows ?? []);
   const rows = all.filter(isFalseDoneWithoutWalk);
 
-  console.log(`${all.length} DONE row(s); ${rows.length} were never walked and still hold an unread extractable document:`);
+  console.log(`${all.length} DONE row(s); ${rows.length} were never walked and have no plan or an unsettled plan row:`);
   for (const r of rows) {
     console.log(
-      `  ${r.company_name} (${r.ipo_id}) unread=${r.pending} plan_rows=${r.plan_rows} walked_rows=${r.walked_rows} fields_written=${r.fields_written} version=${r.resourced_at_version} last=${r.last_attempt_at}`
+      `  ${r.company_name} (${r.ipo_id}) unread=${r.pending} plan_rows=${r.plan_rows} walked_rows=${r.walked_rows} unsettled=${r.unsettled_rows} fields_written=${r.fields_written} version=${r.resourced_at_version} last=${r.last_attempt_at}`
     );
   }
   if (rows.length === 0) {
@@ -191,7 +204,7 @@ async function main(): Promise<number> {
   const changed = await reopenFalseDoneRows(db as unknown as ExecDb, ids);
   console.log(`reopened ${changed} row(s) as PARTIAL on ${dbName}`);
   if (changed !== rows.length) {
-    console.log(`${rows.length - changed} row(s) no longer matched at write time (a document was read since the read above) and were left as they were`);
+    console.log(`${rows.length - changed} row(s) no longer matched at write time (walked or settled since the read above) and were left as they were`);
   }
   return 0;
 }

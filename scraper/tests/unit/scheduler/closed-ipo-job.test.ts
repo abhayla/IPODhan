@@ -15,8 +15,12 @@ import {
   runClosedIpoJob,
   CLOSED_IPO_CANDIDATES_SQL,
   CLOSED_IPO_JOB_DEFAULT_CAP,
+  CLOSED_IPO_VERSION_MAX_LENGTH,
+  closedIpoResourcingVersion,
+  manifestFieldsHash,
   isClosedIpoJobDue,
 } from '../../../src/scheduler/closed-ipo-job.js';
+import { loadFieldManifest } from '../../../src/config/field-manifest-loader.js';
 
 function makeStubDb(rows: Array<{ id: string; closeDate: string; status: string }> = []) {
   const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
@@ -57,14 +61,11 @@ describe('CLOSED_IPO_CANDIDATES_SQL — the four selection rules', () => {
     expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/r\.ipo_id IS NULL/);
   });
 
-  it('(g) most-stuck first, with recency only as the tie-break (#873)', () => {
-    // The card's rule (g) said "newest-closed first, so the freshest backlog
-    // drains before the oldest". The premise was wrong and staging disproved
-    // it before the job ever ran: the backlog is not the freshest rows, it is
-    // the OLDEST ones, which is why nothing had re-visited them. Recency
-    // survives as the tie-break; need decides. See the #873 block below.
-    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/i\.close_date DESC/);
-    expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/ORDER BY\s+i\.close_date DESC/);
+  it('(g) newest closed first -- ORDER BY close_date DESC leads, per spec §6.1 rule 3 (MINOR-5)', () => {
+    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(/ORDER BY\s+i\.close_date DESC/);
+    // #873's pending-document ranking is gone: OD-76's walk never reads a
+    // document, so that count ranked IPOs by work this job cannot do.
+    expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/extraction_status = 'PENDING'/);
   });
 });
 
@@ -77,6 +78,7 @@ describe('runClosedIpoJob — behaviour', () => {
       isCycleLockHeld: async () => true,
       resourceIpo,
       resourcedAtVersion: 'v1',
+      snapshotFieldSources: async () => ({ path: 'snap.json', rows: 0 }),
     });
     expect(summary.skippedCycleLockHeld).toBe(true);
     expect(summary.attempted).toBe(0);
@@ -105,6 +107,7 @@ describe('runClosedIpoJob — behaviour', () => {
       isCycleLockHeld: async () => false,
       resourceIpo,
       resourcedAtVersion: 'v1',
+      snapshotFieldSources: async () => ({ path: 'snap.json', rows: 0 }),
     });
 
     expect(summary.attempted).toBe(2);
@@ -126,6 +129,7 @@ describe('runClosedIpoJob — behaviour', () => {
       isCycleLockHeld: async () => false,
       resourceIpo: async () => okResult,
       resourcedAtVersion: 'v2',
+      snapshotFieldSources: async () => ({ path: 'snap.json', rows: 0 }),
     });
     expect(stub.onConflictDoUpdate).toHaveBeenCalledTimes(1);
     const conflict = stub.onConflictDoUpdate.mock.calls[0][0];
@@ -139,6 +143,7 @@ describe('runClosedIpoJob — behaviour', () => {
       isCycleLockHeld: async () => false,
       resourceIpo: async () => okResult,
       resourcedAtVersion: 'v1',
+      snapshotFieldSources: async () => ({ path: 'snap.json', rows: 0 }),
     });
     // Both look like "did nothing" in a log line; they need different answers.
     expect(summary.skippedCycleLockHeld).toBe(false);
@@ -189,45 +194,104 @@ describe('isClosedIpoJobDue', () => {
 });
 
 /**
- * #873 — the ordering, which nothing pinned and which shipped wrong.
- *
- * The first version ordered `close_date DESC` alone: newest closures first.
- * Measured against staging before the job had ever run, that points it away
- * from its own purpose. The eligible population is 343 IPOs; the 74 holding a
- * stuck PENDING PROSPECTUS sit at ranks 156-294 (mean 231), because they are
- * OLD — which is precisely why nothing re-visited them. At ten per night the
- * job reached ZERO of them on night 1, zero by night 10, the first on night 16
- * and the last on night 30.
- *
- * Worse than idle: the job writes a `closed_ipo_resourcing` row for every IPO
- * it attempts and then excludes DONE ones, so those first fifteen nights would
- * CONSUME the slots on IPOs needing nothing, each marked DONE, while the log
- * read `attempted=10 done=10` every night. A green signal over an empty set.
- *
- * So the order is by NEED — count of un-extracted extractable documents —
- * with recency only as the tie-break.
+ * §6.2 (review round 1 MAJOR-1): resourced_at_version is the extractor/manifest
+ * version, derived -- never a hand-bumped job constant.
  */
-describe('#873: candidates are ordered by stuck-document count, not recency', () => {
-  it('orders by the pending extractable-document count before close_date', () => {
-    // The count subquery must come FIRST in the ORDER BY. Asserted as an
-    // ordered pair rather than two independent matches, because both clauses
-    // being present says nothing about which one decides.
-    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(
-      /ORDER BY[\s\S]*extraction_status = 'PENDING'[\s\S]*DESC,[\s\S]*i\.close_date DESC/
+describe('closedIpoResourcingVersion', () => {
+  const base = { manifestVersion: 2, manifestFieldsHash: 'a'.repeat(64), extractorVersion: 'extract_filing.py@2026-09-03' };
+
+  it('changes when the manifest field ranks change (same schema version)', () => {
+    expect(closedIpoResourcingVersion({ ...base, manifestFieldsHash: 'b'.repeat(64) })).not.toBe(
+      closedIpoResourcingVersion(base)
     );
   });
 
-  it('counts only document types an extractor can actually read', () => {
-    // Ordering by ALL pending documents would rank an IPO by the 65 rows whose
-    // types have no extractor at all (#869) — work this job cannot do. The
-    // count must be restricted to the four extractable types.
-    expect(CLOSED_IPO_CANDIDATES_SQL).toMatch(
-      /'PRICE_BAND_AD'\s*,\s*'RHP'\s*,\s*'DRHP'\s*,\s*'PROSPECTUS'/
+  it('changes when the manifest schema version changes', () => {
+    expect(closedIpoResourcingVersion({ ...base, manifestVersion: 1 })).not.toBe(closedIpoResourcingVersion(base));
+  });
+
+  it('changes when the extractor version changes', () => {
+    expect(closedIpoResourcingVersion({ ...base, extractorVersion: 'extract_filing.py@2026-10-01' })).not.toBe(
+      closedIpoResourcingVersion(base)
     );
   });
 
-  it('does not order by close_date alone', () => {
-    // The exact shape that shipped: a lone recency sort.
-    expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/ORDER BY\s+i\.close_date DESC\s+LIMIT/);
+  it('is stable for the same inputs, and fits the repair marker inside varchar(50)', () => {
+    expect(closedIpoResourcingVersion(base)).toBe(closedIpoResourcingVersion({ ...base }));
+    expect(closedIpoResourcingVersion(base).length).toBeLessThanOrEqual(CLOSED_IPO_VERSION_MAX_LENGTH);
+    expect(
+      closedIpoResourcingVersion({ ...base, extractorVersion: 'x'.repeat(80) }).length
+    ).toBeLessThanOrEqual(CLOSED_IPO_VERSION_MAX_LENGTH);
+  });
+
+  it('the REAL manifest hashes deterministically and a one-rank edit changes the hash', () => {
+    const m = loadFieldManifest();
+    const h1 = manifestFieldsHash(m.fields);
+    expect(manifestFieldsHash(loadFieldManifest().fields)).toBe(h1);
+    const firstKey = Object.keys(m.fields)[0];
+    const edited = { ...m.fields, [firstKey]: { ...(m.fields as Record<string, object>)[firstKey], _probe: 1 } };
+    expect(manifestFieldsHash(edited)).not.toBe(h1);
+  });
+});
+
+/**
+ * F-31 (§6.4, review round 1 MAJOR-3): the field_sources snapshot is taken
+ * BEFORE the first closed IPO is walked, and a failed snapshot walks nothing.
+ */
+describe('runClosedIpoJob — F-31 snapshot', () => {
+  const rows = [
+    { id: 'ipo-a', closeDate: '2026-09-20', status: 'LISTED' },
+    { id: 'ipo-b', closeDate: '2026-09-10', status: 'LISTED' },
+  ];
+
+  it('snapshots the selected IPOs before the first resourceIpo call', async () => {
+    const stub = makeStubDb(rows);
+    const order: string[] = [];
+    const summary = await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: async (id) => {
+        order.push(`walk:${id}`);
+        return okResult;
+      },
+      resourcedAtVersion: 'v1',
+      snapshotFieldSources: async (ids) => {
+        order.push(`snapshot:${ids.join(',')}`);
+        return { path: '/tmp/snap.json', rows: 7 };
+      },
+    });
+    expect(order).toEqual(['snapshot:ipo-a,ipo-b', 'walk:ipo-a', 'walk:ipo-b']);
+    expect(summary.snapshot).toEqual({ path: '/tmp/snap.json', rows: 7 });
+  });
+
+  it('a failed snapshot walks NO IPO and writes no ledger row', async () => {
+    const stub = makeStubDb(rows);
+    const resourceIpo = vi.fn(async () => okResult);
+    await expect(
+      runClosedIpoJob({
+        db: stub.db,
+        isCycleLockHeld: async () => false,
+        resourceIpo,
+        resourcedAtVersion: 'v1',
+        snapshotFieldSources: async () => {
+          throw new Error('EACCES');
+        },
+      })
+    ).rejects.toThrow(/F-31.*no IPO walked.*EACCES/);
+    expect(resourceIpo).not.toHaveBeenCalled();
+    expect(stub.insert).not.toHaveBeenCalled();
+  });
+
+  it('takes no snapshot when nothing was selected', async () => {
+    const stub = makeStubDb([]);
+    const snapshotFieldSources = vi.fn();
+    await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: async () => okResult,
+      resourcedAtVersion: 'v1',
+      snapshotFieldSources,
+    });
+    expect(snapshotFieldSources).not.toHaveBeenCalled();
   });
 });

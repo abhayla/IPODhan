@@ -1666,9 +1666,17 @@ test('(OD-76) findClosedIpoDoneWithoutWalk FLAGS a DONE row whose IPO has 0 plan
 
 test('(OD-76) findClosedIpoDoneWithoutWalk FLAGS a DONE row whose plan exists but no row was ever asked', () => {
   const out = findClosedIpoDoneWithoutWalk([
-    { ipoId: 'x', companyName: 'Planned Never Walked Ltd.', outcome: 'DONE', planRows: 189, walkedRows: 0 },
+    { ipoId: 'x', companyName: 'Planned Never Walked Ltd.', outcome: 'DONE', planRows: 189, walkedRows: 0, unsettledRows: 189 },
   ]);
   assert.equal(out.length, 1);
+});
+
+test('(OD-73) findClosedIpoDoneWithoutWalk PASSES a never-asked DONE whose EVERY plan row is settled', () => {
+  const out = findClosedIpoDoneWithoutWalk([
+    { ipoId: 's', companyName: 'All Settled Ltd.', outcome: 'DONE', planRows: 40, walkedRows: 0, unsettledRows: 0 },
+    { ipoId: 't', companyName: 'String Settled Ltd.', outcome: 'DONE', planRows: '40', walkedRows: '0', unsettledRows: '0' },
+  ]);
+  assert.equal(out.length, 0);
 });
 
 test('(OD-76) findClosedIpoDoneWithoutWalk PASSES a genuinely walked DONE, and any PARTIAL/FAILED', () => {

@@ -34,6 +34,7 @@ function deps(over: Partial<ResourceClosedIpoDeps> = {}): ResourceClosedIpoDeps 
     countPlanRows: vi.fn().mockResolvedValue(0),
     plantPlan: vi.fn().mockResolvedValue({ rowsGenerated: 12, inserted: 12, updated: 0 }),
     walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 12, fieldsSupplied: 4, fieldsNotAvailableYet: 8 })),
+    countUnsettledPlanRows: vi.fn().mockResolvedValue({ NOT_AVAILABLE_YET: 40 }),
     ...over,
   };
 }
@@ -119,5 +120,41 @@ describe('resourceClosedIpo — OD-76 plan, then walk', () => {
     const r = await resourceClosedIpo('ipo-1', d);
     expect(r.outcome).toBe('PARTIAL');
     expect(r.causeClass).toBe('WRITE_SKIPPED');
+  });
+
+  // OD-76 as corrected (OD-73): "asked nothing" is DONE only when every plan row is settled.
+  it('a walk that asked nothing over a plan whose EVERY row is settled is DONE -- nothing is left to ask', async () => {
+    const d = deps({
+      countPlanRows: vi.fn().mockResolvedValue(40),
+      walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 0, stoppedReason: 'NO_DUE_FIELDS' })),
+      countUnsettledPlanRows: vi.fn().mockResolvedValue({}),
+    });
+    const r = await resourceClosedIpo('ipo-1', d);
+    expect(r.outcome).toBe('DONE');
+    expect(r.causeClass).toBeUndefined();
+  });
+
+  it('a walk that asked nothing while rows only WAIT on a source is PARTIAL, labelled as waiting -- never SOURCE_UNREACHABLE', async () => {
+    const d = deps({
+      countPlanRows: vi.fn().mockResolvedValue(40),
+      walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 0, stoppedReason: 'NO_DUE_FIELDS' })),
+      countUnsettledPlanRows: vi.fn().mockResolvedValue({ NOT_AVAILABLE_YET: 3, PENDING: 1 }),
+    });
+    const r = await resourceClosedIpo('ipo-1', d);
+    expect(r.outcome).toBe('PARTIAL');
+    expect(r.causeClass).toBe('DOCUMENT_UNOBTAINABLE');
+    expect(r.causeDetail).toMatch(/4 plan row\(s\) are not settled/);
+    expect(r.fieldsLeftEmpty).toBe(4);
+  });
+
+  it('a walk that asked nothing while a row is CHECK_FAILED (backing off) is PARTIAL / SOURCE_UNREACHABLE', async () => {
+    const d = deps({
+      countPlanRows: vi.fn().mockResolvedValue(40),
+      walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 0, stoppedReason: 'NO_DUE_FIELDS' })),
+      countUnsettledPlanRows: vi.fn().mockResolvedValue({ CHECK_FAILED: 4, NOT_AVAILABLE_YET: 2 }),
+    });
+    const r = await resourceClosedIpo('ipo-1', d);
+    expect(r.outcome).toBe('PARTIAL');
+    expect(r.causeClass).toBe('SOURCE_UNREACHABLE');
   });
 });

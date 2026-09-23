@@ -2,9 +2,10 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { eq, count, isNotNull, and, sql } from 'drizzle-orm';
+import { eq, count, isNotNull, and, sql, inArray } from 'drizzle-orm';
 import { Redis } from 'ioredis';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 // Relative imports, NOT the `@ipodhan/shared` alias -- a worktree's
@@ -105,6 +106,19 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
           { id: ipo.id, segment: ipo.segment as 'MAINBOARD' | 'SME', listingExchanges: ipo.listingExchanges },
           { fieldPlanRepository: planRepo as never, manifest }
         );
+      },
+      countUnsettledPlanRows: async (id: string) => {
+        const rows = await db
+          .select({ state: schema.ipoFieldPlan.state, n: count() })
+          .from(schema.ipoFieldPlan)
+          .where(
+            and(
+              eq(schema.ipoFieldPlan.ipoId, id),
+              inArray(schema.ipoFieldPlan.state, ['PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED'])
+            )
+          )
+          .groupBy(schema.ipoFieldPlan.state);
+        return Object.fromEntries(rows.map((r) => [r.state, Number(r.n)]));
       },
       walk: (id: string) =>
         walkMod.walkFieldPlanForIPO(
@@ -227,5 +241,112 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     await mod.resourceClosedIpo(IPO_ID, liveDeps(planRepo));
     await seedDone();
     expect(await reopenFalseDoneRows(db as never, [IPO_ID])).toBe(0);
+  });
+
+  it('repair tool (MINOR-4): reopens a never-walked DONE even when every document is read; leaves a never-asked DONE whose plan is all settled', async () => {
+    await seedListedIpoWithPendingRhp();
+    await db.execute(sql`UPDATE documents SET extraction_status = 'COMPLETED' WHERE id = ${DOC_ID}::uuid`);
+    const { reopenFalseDoneRows } = await import('../../scripts/repair-closed-ipo-false-done.js');
+    const seedDone = () =>
+      db.execute(sql`
+        INSERT INTO closed_ipo_resourcing (ipo_id, first_attempt_at, last_attempt_at, attempts, outcome, fields_written, fields_left_empty, resourced_at_version)
+        VALUES (${IPO_ID}::uuid, now(), now(), 1, 'DONE', 0, 0, 'closed-ipo-job@2026-09-21')
+        ON CONFLICT (ipo_id) DO UPDATE SET outcome = 'DONE', cause_class = NULL, cause_detail = NULL,
+          resourced_at_version = 'closed-ipo-job@2026-09-21'`);
+
+    // (3) 0 plan rows, nothing unread: still a false DONE (never DONE with no plan).
+    await seedDone();
+    expect(await reopenFalseDoneRows(db as never, [IPO_ID])).toBe(1);
+
+    // (4) a plan exists, never asked, but EVERY row is settled: a TRUE DONE (OD-73); left alone.
+    const planRepo = new IpoFieldPlanRepository(db as never, redis as never);
+    await liveDeps(planRepo).plantPlan(IPO_ID);
+    await db.execute(sql`UPDATE ipo_field_plan SET state = 'NOT_PRINTED' WHERE ipo_id = ${IPO_ID}::uuid`);
+    await seedDone();
+    expect(await reopenFalseDoneRows(db as never, [IPO_ID])).toBe(0);
+  });
+
+  it('(§6.2, MAJOR-1) a PARTIAL/FAILED IPO is not re-picked at the running version, IS re-picked once the MANIFEST changes; DONE never is', async () => {
+    await seedListedIpoWithPendingRhp();
+    const { loadFieldManifest } = await import('../../src/config/field-manifest-loader.js');
+    const { EXTRACTOR_VERSION } = await import('../../src/services/filing-auto-persist.js');
+    const m = loadFieldManifest();
+    const version = (fields: unknown) =>
+      mod.closedIpoResourcingVersion({
+        manifestVersion: m.version,
+        manifestFieldsHash: mod.manifestFieldsHash(fields),
+        extractorVersion: EXTRACTOR_VERSION,
+      });
+    const vNow = version(m.fields);
+    const firstKey = Object.keys(m.fields)[0];
+    const vNext = version({ ...m.fields, [firstKey]: { ...(m.fields as Record<string, object>)[firstKey], _rankEdit: 1 } });
+    expect(vNext).not.toBe(vNow);
+
+    const picked = async (v: string) =>
+      (await mod.selectClosedIpoCandidates(db as never, v, 100000)).some((c) => c.id === IPO_ID);
+    const setRow = (outcome: string) =>
+      db.execute(sql`
+        INSERT INTO closed_ipo_resourcing (ipo_id, first_attempt_at, last_attempt_at, attempts, outcome, cause_class, fields_written, fields_left_empty, resourced_at_version)
+        VALUES (${IPO_ID}::uuid, now(), now(), 1, ${outcome}::closed_ipo_resourcing_outcome,
+                CASE WHEN ${outcome} = 'DONE' THEN NULL ELSE 'DOCUMENT_UNOBTAINABLE'::closed_ipo_resourcing_cause_class END, 0, 0, ${vNow})
+        ON CONFLICT (ipo_id) DO UPDATE SET outcome = EXCLUDED.outcome, cause_class = EXCLUDED.cause_class,
+          resourced_at_version = EXCLUDED.resourced_at_version`);
+
+    expect(await picked(vNow)).toBe(true); // never attempted: eligible
+    const seen: string[] = [];
+    for (const outcome of ['PARTIAL', 'FAILED']) {
+      await setRow(outcome);
+      const same = await picked(vNow);
+      const next = await picked(vNext);
+      seen.push(`${outcome}: same-version ${same}, new-manifest ${next}`);
+      expect(same).toBe(false);
+      expect(next).toBe(true);
+    }
+    await setRow('DONE');
+    const doneSame = await picked(vNow);
+    const doneNext = await picked(vNext);
+    seen.push(`DONE: same-version ${doneSame}, new-manifest ${doneNext}`);
+    expect(doneSame).toBe(false);
+    expect(doneNext).toBe(false);
+    // eslint-disable-next-line no-console
+    console.log(`MAJOR-1 PROOF: vNow=${vNow} vNext=${vNext}; ${seen.join('; ')}`);
+  });
+
+  it('(OD-73, MAJOR-1) the walk asked nothing: DONE when every plan row is settled, PARTIAL when a row is still open', async () => {
+    await seedListedIpoWithPendingRhp();
+    const planRepo = new IpoFieldPlanRepository(db as never, redis as never);
+    const d = liveDeps(planRepo);
+    await d.plantPlan(IPO_ID);
+    await db.execute(sql`UPDATE ipo_field_plan SET state = 'NOT_PRINTED', attempts = 1, last_attempt_at = now(), next_due_at = NULL
+                          WHERE ipo_id = ${IPO_ID}::uuid`);
+
+    const settled = await mod.resourceClosedIpo(IPO_ID, d);
+
+    await db.execute(sql`UPDATE ipo_field_plan SET state = 'NOT_AVAILABLE_YET', next_due_at = now() + interval '1 day'
+                          WHERE id = (SELECT id FROM ipo_field_plan WHERE ipo_id = ${IPO_ID}::uuid ORDER BY table_name, field_name LIMIT 1)`);
+    const open = await mod.resourceClosedIpo(IPO_ID, d);
+    // eslint-disable-next-line no-console
+    console.log(
+      `OD-73 PROOF: all settled -> ${settled.outcome}; one row open -> ${open.outcome}/${open.causeClass} (${open.causeDetail})`
+    );
+    expect(settled.outcome).toBe('DONE');
+    expect(open.outcome).toBe('PARTIAL');
+    expect(open.causeDetail).toMatch(/asked nothing, but 1 plan row\(s\) are not settled/);
+  });
+
+  it('(F-31, MAJOR-3) the field_sources snapshot for the selected IPOs is written and reads back', async () => {
+    await seedListedIpoWithPendingRhp();
+    await db.execute(sql`INSERT INTO field_sources (ipo_id, table_name, row_key, field_name, source, previous_value, previous_source)
+                          VALUES (${IPO_ID}::uuid, 'ipos', '', 'issueSize', 'CHITTORGARH', '19.2', 'BSE')`);
+    const snap = await import('../../src/scheduler/closed-ipo-snapshot.js');
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'f31-'));
+    const written = await snap.writeFieldSourcesSnapshot(db as never, [IPO_ID], { dir });
+    const back = snap.readFieldSourcesSnapshot(written.path);
+    // eslint-disable-next-line no-console
+    console.log(`F-31 PROOF: ${written.path} rows=${written.rows} readBack=${back.fieldSources.length} ipos=${back.ipos.length}`);
+    expect(written.rows).toBe(1);
+    expect(back.ipoIds).toEqual([IPO_ID]);
+    expect(back.fieldSources[0]).toMatchObject({ field_name: 'issueSize', previous_value: '19.2', previous_source: 'BSE' });
+    expect(back.ipos[0]).toMatchObject({ id: IPO_ID });
   });
 });

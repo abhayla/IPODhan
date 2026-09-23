@@ -43,7 +43,15 @@ import { shouldRunOnCatchUpCadence, isCatchUpCadenceDue, markCatchUpCadenceRan }
 import { isDiscoveryDue, isMarketHoursIST, mostRecentDiscoverySlotLabel } from './scheduler/due-step-cycle.js';
 import { runDemandBackfill } from './scripts/backfill-demand-graph.js';
 import { DistributedLock } from './utils/distributed-lock.js';
-import { runClosedIpoJob, isClosedIpoJobDue, resourceClosedIpo, CLOSED_IPO_JOB_SLOT_IST_MINUTES } from './scheduler/closed-ipo-job.js';
+import {
+  runClosedIpoJob,
+  isClosedIpoJobDue,
+  resourceClosedIpo,
+  closedIpoResourcingVersion,
+  manifestFieldsHash,
+  CLOSED_IPO_JOB_SLOT_IST_MINUTES,
+} from './scheduler/closed-ipo-job.js';
+import { writeFieldSourcesSnapshot } from './scheduler/closed-ipo-snapshot.js';
 import type { ClosedIpoResourceResult } from './scheduler/closed-ipo-job.js';
 import { plantFieldPlanForIpo } from './services/field-plan-planting.js';
 import { walkFieldPlanForIPO } from './services/field-plan-walk.js';
@@ -60,7 +68,7 @@ import { randomUUID, createHash } from 'crypto';
 import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories';
 import { scraperLogs, scraperSteps, ipos, ipoFieldPlan } from '@ipodhan/shared/db/schema';
-import { lt, inArray, count, eq } from 'drizzle-orm';
+import { lt, inArray, count, eq, and } from 'drizzle-orm';
 import logger from './utils/logger.js';
 import { heartbeat, flushOwnerNotify } from './services/owner-notify.js';
 import { evaluateFreshness } from './services/freshness-monitor.js';
@@ -1627,11 +1635,20 @@ async function pruneScraperLogs(): Promise<StepResult> {
 }
 
 /**
- * Stamped onto every `closed_ipo_resourcing` row. Bumping it is what makes an
- * IPO this version gave up on (PARTIAL/FAILED) eligible again — a deliberate
- * act, the same contract `EXTRACTOR_VERSION` uses, never a side effect.
+ * Stamped onto every `closed_ipo_resourcing` row (§6.2): the MANIFEST +
+ * EXTRACTOR version the IPO was resourced under, derived at run time -- a
+ * manifest rank change or an EXTRACTOR_VERSION bump re-opens every
+ * PARTIAL/FAILED IPO, with nobody having to remember to bump a job constant
+ * (review round 1 MAJOR-1).
  */
-const CLOSED_IPO_RESOURCING_VERSION = 'closed-ipo-job@2026-09-23'; // OD-76 plan-then-walk; <= 39 chars so the repair marker still fits varchar(50)
+function currentClosedIpoResourcingVersion(): string {
+  const manifest = loadFieldManifest();
+  return closedIpoResourcingVersion({
+    manifestVersion: manifest.version,
+    manifestFieldsHash: manifestFieldsHash(manifest.fields),
+    extractorVersion: EXTRACTOR_VERSION,
+  });
+}
 
 /** Wall-clock budget for ONE closed IPO's walk. Ten of these fit in a cycle. */
 const CLOSED_IPO_WALK_BUDGET_MS = 60_000;
@@ -1668,6 +1685,14 @@ async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceRe
         },
         { overrides, fieldPlanRepository: fieldPlanRepository as never }
       );
+    },
+    countUnsettledPlanRows: async (id) => {
+      const rows = await db
+        .select({ state: ipoFieldPlan.state, n: count() })
+        .from(ipoFieldPlan)
+        .where(and(eq(ipoFieldPlan.ipoId, id), inArray(ipoFieldPlan.state, ['PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED'])))
+        .groupBy(ipoFieldPlan.state);
+      return Object.fromEntries(rows.map((r) => [r.state, Number(r.n)]));
     },
     walk: async (id) => {
       const startedAt = Date.now();
@@ -1772,7 +1797,8 @@ export async function triggerClosedIpoJob(): Promise<StepResult> {
       // any caller that runs OUTSIDE the cycle.
       isCycleLockHeld: async () => false,
       resourceIpo: resourceClosedIpoLive,
-      resourcedAtVersion: CLOSED_IPO_RESOURCING_VERSION,
+      resourcedAtVersion: currentClosedIpoResourcingVersion(),
+      snapshotFieldSources: (ipoIds) => writeFieldSourcesSnapshot(db as never, ipoIds, { now }),
       now,
     });
 
@@ -1785,7 +1811,8 @@ export async function triggerClosedIpoJob(): Promise<StepResult> {
       reason:
         `slot=${CLOSED_IPO_JOB_SLOT_IST_MINUTES} considered=${summary.candidatesConsidered} ` +
         `attempted=${summary.attempted} done=${summary.outcomes.DONE} ` +
-        `partial=${summary.outcomes.PARTIAL} failed=${summary.outcomes.FAILED}`,
+        `partial=${summary.outcomes.PARTIAL} failed=${summary.outcomes.FAILED} ` +
+        `snapshot=${summary.snapshot ? `${summary.snapshot.path} (${summary.snapshot.rows} rows)` : 'none'}`,
     };
   } catch (error) {
     logger.error(

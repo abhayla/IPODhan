@@ -1374,8 +1374,8 @@ async function checkL() {
 
 // ---- #717 / OD-76: the closed-IPO job recorded DONE without a walk ----------
 // §6.1 (OD-76): an IPO whose plan could not be generated, or whose walk asked
-// nothing, is never DONE. "Walked" = at least one ipo_field_plan row with
-// last_attempt_at set. The table arrives with migration 0050; a slot without
+// nothing, is never DONE unless every plan row is settled (OD-73). "Walked" = at
+// least one ipo_field_plan row with last_attempt_at set. The table arrives with migration 0050; a slot without
 // it is UNVERIFIABLE. Reported by IPO name.
 async function checkClosedIpoDoneWithoutWalk() {
   const name = 'no closed-IPO ledger row is DONE for an IPO the field-plan walk never asked (OD-76, #717)';
@@ -1388,7 +1388,9 @@ async function checkClosedIpoDoneWithoutWalk() {
     `SELECT r.ipo_id AS "ipoId", i.company_name AS "companyName", r.outcome::text AS outcome,
             (SELECT count(*)::int FROM ipo_field_plan p WHERE p.ipo_id = r.ipo_id) AS "planRows",
             (SELECT count(*)::int FROM ipo_field_plan p
-              WHERE p.ipo_id = r.ipo_id AND p.last_attempt_at IS NOT NULL) AS "walkedRows"
+              WHERE p.ipo_id = r.ipo_id AND p.last_attempt_at IS NOT NULL) AS "walkedRows",
+            (SELECT count(*)::int FROM ipo_field_plan p
+              WHERE p.ipo_id = r.ipo_id AND p.state::text NOT IN ('SUPPLIED', 'NOT_PRINTED', 'EXHAUSTED')) AS "unsettledRows"
        FROM closed_ipo_resourcing r JOIN ipos i ON i.id = r.ipo_id
       WHERE r.outcome = 'DONE'`
   );

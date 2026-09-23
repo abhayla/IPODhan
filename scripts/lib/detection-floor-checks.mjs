@@ -1336,11 +1336,19 @@ function pick(r) {
  * which was ever asked, both mean no walk. Staging 2026-09-23: 10 of 10 DONE
  * rows had 0 plan rows.
  *
- * Rows: { ipoId, companyName, outcome, planRows, walkedRows }. Numbers may
- * arrive as strings from pg; they are coerced.
+ * OD-73 correction (PR #918): a never-asked DONE is legitimate when EVERY plan
+ * row is already settled (SUPPLIED / NOT_PRINTED / EXHAUSTED) -- nothing was
+ * left to ask. So the flag is: DONE with 0 plan rows, or DONE with no row ever
+ * asked while at least one row is unsettled.
+ *
+ * Rows: { ipoId, companyName, outcome, planRows, walkedRows, unsettledRows }.
+ * Numbers may arrive as strings from pg; they are coerced.
  */
 export function findClosedIpoDoneWithoutWalk(rows) {
   return (rows ?? []).filter(
-    (r) => String(r.outcome).toUpperCase() === 'DONE' && Number(r.walkedRows) === 0
+    (r) =>
+      String(r.outcome).toUpperCase() === 'DONE' &&
+      Number(r.walkedRows) === 0 &&
+      (Number(r.planRows) === 0 || Number(r.unsettledRows) > 0)
   );
 }

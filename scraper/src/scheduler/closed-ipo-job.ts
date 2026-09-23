@@ -26,6 +26,7 @@
 
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 import * as schema from '@ipodhan/shared/db/schema';
 import { logger } from '../utils/logger.js';
 
@@ -56,8 +57,18 @@ export interface ClosedIpoJobDeps {
     fieldsWritten: number;
     fieldsLeftEmpty: number;
   }>;
-  /** Stamped onto every row so a later version can re-select an IPO this version gave up on. */
+  /**
+   * Stamped onto every row so a later version can re-select an IPO this version gave up on.
+   * Production passes `closedIpoResourcingVersion(...)` -- the manifest + extractor version (§6.2).
+   */
   resourcedAtVersion: string;
+  /**
+   * F-31 (§6.4): take the `field_sources` snapshot for the IPOs about to be walked,
+   * BEFORE the first of them is walked. It is the only thing that makes "roll back
+   * per field" true past the first overwrite (§7.2). A throw aborts the run with no
+   * IPO walked -- a walk without its snapshot is exactly what F-31 forbids.
+   */
+  snapshotFieldSources: (ipoIds: string[]) => Promise<{ path: string; rows: number }>;
   now?: Date;
   cap?: number;
 }
@@ -67,6 +78,8 @@ export interface ClosedIpoJobSummary {
   attempted: number;
   outcomes: Record<ClosedIpoOutcome, number>;
   skippedCycleLockHeld: boolean;
+  /** Where the F-31 snapshot for this run was written; null when nothing was selected. */
+  snapshot: { path: string; rows: number } | null;
 }
 
 export const CLOSED_IPO_JOB_DEFAULT_CAP = 10;
@@ -84,19 +97,17 @@ export const CLOSED_IPO_JOB_DEFAULT_CAP = 10;
  * work" is a fact about the evidence rather than a retry counter someone can
  * reset.
  *
- * ORDER BY is by NEED, not recency (#873). The first version sorted
- * `close_date DESC` alone, and measured against staging that pointed the job
- * away from its own purpose: of 343 eligible IPOs, the 74 holding a stuck
- * PENDING PROSPECTUS sit at ranks 156-294, because they are OLD -- which is
- * exactly why nothing re-visited them. At ten a night the job reached zero of
- * them on night 1, zero by night 10, the first on night 16. And it would not
- * have been merely idle: it writes a ledger row per attempt and excludes DONE
- * ones, so fifteen nights of slots would have gone to IPOs needing nothing,
- * each marked DONE, while the log read `attempted=10 done=10`.
+ * ORDER BY is `close_date DESC` -- newest closed first -- per spec §6.1 rule 3
+ * (the owner's sequence, OD-22). #873 had re-ordered by the count of PENDING
+ * extractable documents; OD-76 (2026-09-23) removed the premise: the walk this
+ * job runs never reads a document (reading a PENDING one stays the document
+ * cycle's job, OD-33), so a PENDING-document count ranks IPOs by work this job
+ * cannot do. `i.id` is only a deterministic tie-break.
  *
- * The count is restricted to the four EXTRACTABLE types. Ordering by all
- * pending documents would rank an IPO by rows whose types have no extractor
- * at all (#869) -- work this job cannot do however many times it visits.
+ * `resourced_at_version` is the EXTRACTOR/MANIFEST version (§6.2), built by
+ * `closedIpoResourcingVersion` -- not a hand-bumped job constant. A manifest
+ * rank change or an extractor bump is what can change a PARTIAL/FAILED IPO's
+ * cause, so it is what makes that IPO eligible again.
  *
  * This constant is the READABLE copy, asserted by the unit tests. The executed
  * query is the bound `sql` template in `runClosedIpoJob` — the rules live here
@@ -112,13 +123,40 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
        r.ipo_id IS NULL
        OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM $1)
      )
-   ORDER BY (SELECT count(*) FROM documents d
-              WHERE d.ipo_id = i.id
-                AND d.extraction_status = 'PENDING'
-                AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')) DESC,
-            i.close_date DESC
+   ORDER BY i.close_date DESC, i.id
    LIMIT $2
 `;
+
+/**
+ * The executed selection (§6.1 rules 1-4 + §6.2 retry), bound parameters only.
+ * Exported so the integration test runs THIS query against ipodhan_test rather
+ * than a copy of it.
+ */
+export async function selectClosedIpoCandidates(
+  db: Pick<NodePgDatabase<typeof schema>, 'execute'>,
+  resourcedAtVersion: string,
+  cap: number
+): Promise<ClosedIpoCandidate[]> {
+  // Parameters are BOUND, never interpolated. `resourcedAtVersion` is an
+  // internal string today, but a query built by string-replacement is the
+  // wrong shape regardless of who supplies the value.
+  const result = await db.execute(
+    sql`
+      SELECT i.id, i.close_date AS "closeDate", i.status::text AS status
+        FROM ipos i
+        LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
+       WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
+         AND i.close_date < CURRENT_DATE
+         AND (
+           r.ipo_id IS NULL
+           OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM ${resourcedAtVersion})
+         )
+       ORDER BY i.close_date DESC, i.id
+       LIMIT ${cap}
+    `
+  );
+  return (result.rows ?? result) as unknown as ClosedIpoCandidate[];
+}
 
 export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpoJobSummary> {
   const summary: ClosedIpoJobSummary = {
@@ -126,6 +164,7 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
     attempted: 0,
     outcomes: { DONE: 0, PARTIAL: 0, FAILED: 0 },
     skippedCycleLockHeld: false,
+    snapshot: null,
   };
 
   if (await deps.isCycleLockHeld()) {
@@ -140,30 +179,24 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
   const cap = deps.cap ?? CLOSED_IPO_JOB_DEFAULT_CAP;
   const now = deps.now ?? new Date();
 
-  // Parameters are BOUND, never interpolated. `resourcedAtVersion` is an
-  // internal string today, but a query built by string-replacement is the
-  // wrong shape regardless of who supplies the value.
-  const result = await deps.db.execute(
-    sql`
-      SELECT i.id, i.close_date AS "closeDate", i.status::text AS status
-        FROM ipos i
-        LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
-       WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
-         AND i.close_date < CURRENT_DATE
-         AND (
-           r.ipo_id IS NULL
-           OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM ${deps.resourcedAtVersion})
-         )
-       ORDER BY (SELECT count(*) FROM documents d
-                  WHERE d.ipo_id = i.id
-                    AND d.extraction_status = 'PENDING'
-                    AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS')) DESC,
-                i.close_date DESC
-       LIMIT ${cap}
-    `
-  );
-  const candidates = (result.rows ?? result) as unknown as ClosedIpoCandidate[];
+  const candidates = await selectClosedIpoCandidates(deps.db, deps.resourcedAtVersion, cap);
   summary.candidatesConsidered = candidates.length;
+
+  if (candidates.length > 0) {
+    // F-31: before the FIRST IPO is walked, never after. A failure here throws
+    // out of the job (the caller records the step as failed and does not stamp
+    // the cadence, so the next wake retries) with no IPO touched.
+    try {
+      summary.snapshot = await deps.snapshotFieldSources(candidates.map((c) => c.id));
+    } catch (error) {
+      const cause = error instanceof Error ? error.message : String(error);
+      throw new Error(`closed-IPO job: F-31 field_sources snapshot failed, no IPO walked: ${cause}`);
+    }
+    logger.info(
+      { path: summary.snapshot.path, rows: summary.snapshot.rows, ipos: candidates.length },
+      'closed-IPO job: F-31 field_sources snapshot written before the first walk'
+    );
+  }
 
   for (const candidate of candidates) {
     let outcome: ClosedIpoOutcome;
@@ -264,7 +297,17 @@ export interface ResourceClosedIpoDeps {
   plantPlan: (ipoId: string) => Promise<{ rowsGenerated: number; inserted: number; updated: number }>;
   /** The EXISTING §2.4 walk (`walkFieldPlanForIPO`) over this IPO's plan. */
   walk: (ipoId: string) => Promise<ClosedIpoWalkCounters>;
+  /**
+   * This IPO's plan rows NOT yet settled, counted per state. Settled = a terminal
+   * state (SUPPLIED, NOT_PRINTED, EXHAUSTED: `TERMINAL_STATES` in
+   * ipo-field-plan-repository.ts -- "no further attempt is ever scheduled"),
+   * which is where OD-73's rank rule leaves a field. Read AFTER the walk.
+   */
+  countUnsettledPlanRows: (ipoId: string) => Promise<Partial<Record<UnsettledPlanState, number>>>;
 }
+
+/** The three non-terminal `field_plan_state` values. */
+export type UnsettledPlanState = 'PENDING' | 'NOT_AVAILABLE_YET' | 'CHECK_FAILED';
 
 export interface ClosedIpoResourceResult {
   outcome: ClosedIpoOutcome;
@@ -293,8 +336,10 @@ export interface ClosedIpoResourceResult {
  *   - generation threw                  -> FAILED / WRITE_SKIPPED (the DB was the problem)
  *   - generation produced 0 rows        -> FAILED / EXTRACTOR_MISSING (the manifest ranks
  *                                          no field for this IPO's type: nothing CAN be asked)
- *   - the walk asked nothing            -> PARTIAL / SOURCE_UNREACHABLE (plan rows exist but
- *                                          none was due -- backing off or claimed elsewhere)
+ *   - the walk asked nothing            -> DONE only if every plan row is settled (OD-73);
+ *                                          else PARTIAL / SOURCE_UNREACHABLE when a row is
+ *                                          CHECK_FAILED, PARTIAL / DOCUMENT_UNOBTAINABLE when
+ *                                          rows are only waiting on a source (nearest class)
  *   - the walk stopped before finishing -> PARTIAL / SOURCE_UNREACHABLE (budget or superseded
  *                                          claim: the unwalked rest must not be sealed DONE)
  * Past those, the walk's own counters decide, exactly as before OD-76:
@@ -335,13 +380,31 @@ export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDe
   const fieldsLeftEmpty =
     walk.fieldsExhausted + walk.fieldsCheckFailed + walk.fieldsWriteSkipped + walk.fieldsNotAvailableYet;
 
-  if (walk.fieldsAttempted === 0) {
+  if (walk.fieldsAttempted === 0 && walk.stoppedReason === 'NO_DUE_FIELDS') {
+    // OD-76 as corrected (§6.1): a walk that asked nothing is DONE only when
+    // every plan row is already settled (OD-73) -- then there is genuinely
+    // nothing left to ask. Rows still open mean the IPO is not finished.
+    const open = await deps.countUnsettledPlanRows(ipoId);
+    const checkFailed = open.CHECK_FAILED ?? 0;
+    const waiting = (open.PENDING ?? 0) + (open.NOT_AVAILABLE_YET ?? 0);
+    if (checkFailed + waiting === 0) {
+      return { outcome: 'DONE', fieldsWritten: 0, fieldsLeftEmpty: 0 };
+    }
+    const breakdown = `PENDING ${open.PENDING ?? 0}, NOT_AVAILABLE_YET ${open.NOT_AVAILABLE_YET ?? 0}, CHECK_FAILED ${checkFailed}`;
+    // Cause classes are the EXISTING five (a new enum value is a schema change).
+    // CHECK_FAILED rows are a source check that failed and is backing off:
+    // SOURCE_UNREACHABLE is literally true. Otherwise every open row is waiting
+    // on a ranked source that has not supplied it -- for a closed IPO, almost
+    // always the offer document not yet extracted -- and DOCUMENT_UNOBTAINABLE
+    // is the nearest existing class; the detail says which it is.
     return {
       outcome: 'PARTIAL',
-      causeClass: 'SOURCE_UNREACHABLE',
-      causeDetail: `the walk asked nothing (stopped ${walk.stoppedReason}); plan rows before this run: ${existing}`,
+      causeClass: checkFailed > 0 ? 'SOURCE_UNREACHABLE' : 'DOCUMENT_UNOBTAINABLE',
+      causeDetail:
+        `the walk asked nothing, but ${checkFailed + waiting} plan row(s) are not settled (${breakdown}); ` +
+        `plan rows before this run: ${existing}`,
       fieldsWritten,
-      fieldsLeftEmpty,
+      fieldsLeftEmpty: checkFailed + waiting,
     };
   }
   if (walk.outcomesFailed > 0) {
@@ -396,6 +459,38 @@ export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDe
     };
   }
   return { outcome: 'DONE', fieldsWritten, fieldsLeftEmpty };
+}
+
+/**
+ * `closed_ipo_resourcing.resourced_at_version` (§6.2): "the extractor/manifest
+ * version it was done under, so a later version can legitimately re-do it".
+ *
+ * Built from the three things that can change a PARTIAL/FAILED IPO's cause:
+ * the manifest's schema version, a hash of its field ranks (a rank change
+ * without a schema-version bump is the common case -- `version` is 1 or 2),
+ * and the filing extractor's version. NOT a hand-edited job constant: that was
+ * review round 1 MAJOR-1, where a re-pick depended on someone remembering to
+ * bump a string.
+ *
+ * Kept <= 39 characters so the repair tool's `repair-717:` prefix still fits
+ * varchar(50); an input that would overflow collapses to a hash of itself.
+ */
+export const CLOSED_IPO_VERSION_MAX_LENGTH = 39;
+
+export function closedIpoResourcingVersion(input: {
+  manifestVersion: number;
+  manifestFieldsHash: string;
+  extractorVersion: string;
+}): string {
+  const extractor = input.extractorVersion.replace(/^extract_filing\.py@/, 'x');
+  const readable = `m${input.manifestVersion}.${input.manifestFieldsHash.slice(0, 8)}+${extractor}`;
+  if (readable.length <= CLOSED_IPO_VERSION_MAX_LENGTH) return readable;
+  return `h-${createHash('sha256').update(readable).digest('hex').slice(0, 32)}`;
+}
+
+/** Hash of a manifest's field ranks -- the input `closedIpoResourcingVersion` keys on. */
+export function manifestFieldsHash(fields: unknown): string {
+  return createHash('sha256').update(JSON.stringify(fields)).digest('hex');
 }
 
 /** IST is a fixed UTC+5:30 offset (no DST) — same convention as `due-step-cycle.ts`. */
