@@ -176,7 +176,7 @@ exercised end-to-end before the pull walk exists to have supplied the values thi
 | Design section | Rule ids |
 |---|---|
 | §3.1 | R-090 |
-| §3.2 | R-091 |
+| §3.2 | R-091, R-200, R-201, R-202, R-203, R-204 |
 
 ## Known gaps
 
