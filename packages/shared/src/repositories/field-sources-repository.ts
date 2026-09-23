@@ -4,6 +4,7 @@
  * Tracks which scraper source provided each field value
  */
 
+import { sourceKeyLineageFor } from './source-key-lineage';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
@@ -222,6 +223,9 @@ export class FieldSourcesRepository extends BaseRepository {
       );
     }
     const rowKey = input.rowKey ?? '';
+    // OD-85 write rule: a write that came through a source-key bind records the binding key ids.
+    const keyLineage = sourceKeyLineageFor(input.ipoId);
+    if (keyLineage) input = { ...input, dataLineage: { ...(input.dataLineage ?? {}), ...keyLineage } };
 
     // rowKey is part of the ON CONFLICT target below (item 1 slice s18), so an
     // upsert can never move an existing row from one rowKey to another: a

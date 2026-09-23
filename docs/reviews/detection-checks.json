@@ -339,6 +339,18 @@
       "note": "Implements the §2.3.3.1 F-103 standing sweep (owner #903, S1/S2/S7); flags the live Rays of Belief pair on prod/staging."
     },
     {
+      "id": "i_source_key_conflict",
+      "findingClass": "a source record bound to the wrong IPO row or left un-superseded (OD-85): one IPO holding two ACTIVE record numbers of the same source (a relaunch whose OD-83 supersede never happened, or a merge that joined two relaunch numbers), or a key the CIN/ISIN re-check marked DISPUTED - a wrong bind whose written values need recomputing",
+      "round7Findings": [],
+      "failThreshold": "any ipos row with more than one ACTIVE ipo_source_keys row of the same (source, key_type), or any ipo_source_keys row whose state became DISPUTED in the last 30 days",
+      "severity": "P2",
+      "unverifiableWhen": "ipo_source_keys unreadable for a reason other than the table not existing yet (42P01 before migration 0053 = PASS)",
+      "spec_ref": [
+        "2.3.3.2"
+      ],
+      "note": "OD-85 / OD-86, F-144..F-149. Keys hitting two different rows cannot be stored (plain UNIQUE(source, key_type, binding_value)); a record whose keys hit two rows is refused at read time and logged as source_key_duplicate. This check reads what the table CAN hold wrongly."
+    },
+    {
       "id": "i_wire_or_retire",
       "findingClass": "a scheduler/cron/job definition exists in the repo but is never imported by the prod entrypoint",
       "round7Findings": [

@@ -94,6 +94,8 @@ export { BaseRepository } from './base-repository';
 // IPO identity resolution (T-307 — SSOT for the guard/write three-tier lookup)
 export { resolveIpoRow, IdentityHeldForReviewError } from './ipo-identity';
 export type { IpoIdentity } from './ipo-identity';
+export * from './ipo-source-keys';
+export * from './source-key-lineage';
 
 // Types and Interfaces
 export type * from './types';

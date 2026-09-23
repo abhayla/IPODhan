@@ -22,6 +22,7 @@ import {
   ipoSlugRedirects,
   ipoMergeLog,
   auditLogs,
+  ipoSourceKeys,
   type ipoStatusEnum,
   type segmentEnum,
   type offeringTypeEnum,
@@ -39,6 +40,15 @@ import { EntityNotFoundError, DatabaseError, ProdWriteRefusedError, IdentityHeld
 import { strictIdentityCompanyName } from '../utils/identity-decoration';
 import { normalizeCin } from '../utils/cin';
 import { logger } from '../logger';
+import {
+  normalizeSourceKeyRefs,
+  recordSourceKeys,
+  activeNseIssueSymbol,
+  supersedeOlderKeysOnRelaunchMerge,
+  type SourceKeyRef,
+  type SourceKeyBoundVia,
+} from './ipo-source-keys';
+import { noteSourceKeyBind } from './source-key-lineage';
 
 /** audit_logs.action_type of an OD-68 hold; read by the nightly `i_identity_held` check. */
 export const IDENTITY_HELD_ACTION = 'IDENTITY_HELD_FOR_REVIEW';
@@ -51,6 +61,8 @@ import {
 import { findMostSimilarName } from '../utils/company-name-similarity';
 import {
   checkMergeEligibility,
+  assessRelaunch,
+  relaunchException,
   buildCarryFieldInputs,
   columnToCamelCase,
   planCarryFields,
@@ -599,6 +611,27 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * incoming offering. NULL-safe like `findByIsin`: an absent input returns []
    * without querying, so NULL never matches NULL.
    */
+  /**
+   * OD-85 write rule for a record that BOUND to an existing row: its keys are written in one
+   * transaction (a key already on another row, or a concurrent writer, rolls the whole set back).
+   */
+  async bindSourceKeys(
+    ipoId: string,
+    refs: SourceKeyRef[] | null | undefined,
+    opts: { boundVia: SourceKeyBoundVia; boundBy: string }
+  ): Promise<Awaited<ReturnType<typeof recordSourceKeys>> | null> {
+    const keys = normalizeSourceKeyRefs(refs ?? []);
+    if (keys.length === 0) return null;
+    const res = await this.db.transaction((tx) => recordSourceKeys(tx, ipoId, keys, opts));
+    noteSourceKeyBind(ipoId, [...res.insertedIds, ...res.keptIds]);
+    return res;
+  }
+
+  /** OD-85: the handle `resolveIpoRow` reads `ipo_source_keys` through. */
+  sourceKeyDb(): NodePgDatabase<typeof schema> {
+    return this.db;
+  }
+
   async findByCin(cin: string | null | undefined): Promise<IPO[]> {
     const normalized = normalizeCin(cin);
     if (!normalized) {
@@ -1043,7 +1076,10 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * decision (who, why) in audit_logs as IDENTITY_HOLD_OVERRIDDEN. A scraper
    * never passes it.
    */
-  async create(data: IPOInsert, options?: { identityHoldOverride?: { by: string; reason: string } }): Promise<IPO> {
+  async create(
+    data: IPOInsert,
+    options?: { identityHoldOverride?: { by: string; reason: string }; sourceKeys?: SourceKeyRef[] | null; boundBy?: string }
+  ): Promise<IPO> {
     // #860: an IPO's segment decides which manifest ranks its fields get
     // (`ipoTypeKey` needs it), so an IPO created without one has every ranked
     // source chosen for a GUESSED type -- and `pull_plan_rank` cannot see
@@ -1088,10 +1124,18 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         data = { ...data, companyName: sanitizeDisplayCompanyName(data.companyName) };
       }
 
-      const [ipo] = await this.db
-        .insert(ipos)
-        .values(data)
-        .returning();
+      // OD-85 write rule: the record's source keys are written in the SAME transaction as the row
+      // create. A concurrent create of the same record loses on the keys' unique index, and its row
+      // insert rolls back with it — so two concurrent creates leave one row.
+      const keys = normalizeSourceKeyRefs(options?.sourceKeys ?? []);
+      const ipo = keys.length === 0
+        ? (await this.db.insert(ipos).values(data).returning())[0]
+        : await this.db.transaction(async (tx) => {
+            const [created] = await tx.insert(ipos).values(data).returning();
+            const rec = await recordSourceKeys(tx, created.id, keys, { boundVia: 'CREATE', boundBy: options?.boundBy ?? 'unknown' });
+            noteSourceKeyBind(created.id, rec.insertedIds);
+            return created;
+          });
 
       // Invalidate list cache
       await this.deleteCachePattern('ipo:list:*');
@@ -1127,6 +1171,15 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // edit), persist the sanitized form so a raw token can never re-pollute. #42
       if (data.companyName) {
         data = { ...data, companyName: sanitizeDisplayCompanyName(data.companyName) };
+      }
+      // F-145 class (OD-85): with an ACTIVE NSE_ISSUE key, `symbol` is that key's symbol — never
+      // the value of whichever record was read last (IC Electricals ICEL/ICELCO flip).
+      if (data.symbol !== undefined) {
+        const keySymbol = await activeNseIssueSymbol(this.db, id);
+        if (keySymbol && keySymbol !== data.symbol) {
+          logger.info({ ipoId: id, incoming: data.symbol, active: keySymbol }, '[OD-85] ipos.symbol follows the ACTIVE NSE_ISSUE key');
+          data = { ...data, symbol: keySymbol };
+        }
       }
 
       const [ipo] = await this.db
@@ -1317,7 +1370,16 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     const keep = rows.find((r) => r.id === keepId)!;
     const drop = rows.find((r) => r.id === dropId)!;
 
+    // OD-86: the relaunch exception reads both rows' source keys (shares, band, postponed flag).
+    const pairKeys = await this.db.select().from(ipoSourceKeys).where(inArray(ipoSourceKeys.ipoId, [keepId, dropId]));
+    const relaunch = assessRelaunch(
+      keep,
+      drop,
+      pairKeys.filter((k) => k.ipoId === keepId),
+      pairKeys.filter((k) => k.ipoId === dropId)
+    );
     const eligibility = checkMergeEligibility({
+      relaunch,
       keepOpenDate: keep.openDate,
       dropOpenDate: drop.openDate,
       keepCompanyName: keep.companyName,
@@ -1606,6 +1668,24 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // (icelectricals, 2026-09-16: symbol='ICELCO' observed on both rows mid-transaction).
       // Deleting the dropped row first means the carried value only ever exists on the survivor.
       await tx.delete(ipos).where(eq(ipos.id, dropId));
+
+      // OD-86 + OD-83: a relaunch merge leaves the survivor with both records' keys; the older
+      // row's key of each source the newer row also carries is SUPERSEDED here, in the same
+      // transaction, so one source never holds two ACTIVE keys on one row.
+      if (relaunchException(relaunch)) {
+        const keepDay = String(keep.openDate ?? '').slice(0, 10);
+        const dropDay = String(drop.openDate ?? '').slice(0, 10);
+        const olderId = keepDay && dropDay ? (keepDay < dropDay ? keepId : dropDay < keepDay ? dropId : null) : null;
+        if (olderId) {
+          const newerId = olderId === keepId ? dropId : keepId;
+          await supersedeOlderKeysOnRelaunchMerge(
+            tx,
+            pairKeys.filter((k) => k.ipoId === olderId),
+            pairKeys.filter((k) => k.ipoId === newerId),
+            `merge of ${drop.slug} into ${keep.slug}`
+          );
+        }
+      }
 
       for (const p of patch) {
         const jsKey = columnToCamelCase(p.column);

@@ -11,6 +11,8 @@
  * Headers MUST include Origin/Referer https://www.bseindia.com or BSE 403s.
  */
 
+import { normalizeSourceKeyValue } from '@ipodhan/shared/repositories';
+import { foldCompanyIdentity } from '@ipodhan/shared/utils/company-identity-fold';
 import logger from '../utils/logger.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { parseBseParties } from '../services/bse-party-parser.js';
@@ -179,23 +181,43 @@ const loggedUnknownBSEStatusCodes = new Set<string>();
  * permitted until…"), which would wrongly kill a live IPO.
  * Returns null when nothing clearly says the issue was pulled.
  */
-export function classifyWithdrawalText(text: string | null | undefined): 'WITHDRAWN' | 'POSTPONED' | null {
+export function classifyWithdrawalText(
+  text: string | null | undefined,
+  recordNames: readonly (string | null | undefined)[] = [],
+): 'WITHDRAWN' | 'POSTPONED' | null {
   if (!text) return null;
   const t = text.replace(/\s+/g, ' ');
-  const subject = '(?:public\\s+)?(?:issue|ipo|offer|offering)';
+  const subject = String.raw`(?:public\s+)?(?:issue|ipo|offer|offering)`;
+  // BSE names the company between the noun and the verb (IPO_NO 7794, verbatim: "As informed by
+  // company mentioned issue of Dhanwel Hybrid Seeds Limited has been postponed", F-127 / OD-83).
+  // The "of <...> Ltd|Limited" phrase is CAPTURED and must fold to THIS record's own company name
+  // (foldCompanyIdentity: Ltd/Limited/punctuation ignored). "The issue of bonus shares by XYZ
+  // Limited has been postponed" names a different object, so it does not fire.
+  const ofCompany = String.raw`(?:\s+of\s+([^.;|,]{1,120}?\b(?:ltd|limited)\.?))?`;
+  // "The issue of X Limited, which was postponed, has been withdrawn" -> WITHDRAWN.
+  const priorClause = String.raw`(?:\s*,\s*which\s+(?:was|had\s+been)\s+(?:postponed|deferred|rescheduled)\s*,)?`;
   const withdrawn = new RegExp(
-    `(?:${subject}\\s+(?:has\\s+been\\s+|is\\s+|stands\\s+)?withdrawn)` +
-      `|(?:withdrawal\\s+of\\s+(?:the\\s+)?${subject})`,
-    'i',
+    String.raw`(?:${subject}${ofCompany}${priorClause}\s+(?:has\s+been\s+|is\s+|stands\s+)?withdrawn)` +
+      String.raw`|(?:withdrawal\s+of\s+(?:the\s+)?${subject})`,
+    'gi',
   );
   const postponed = new RegExp(
-    `(?:${subject}\\s+(?:has\\s+been\\s+|is\\s+|stands\\s+)?(?:postponed|deferred|rescheduled))` +
-      `|(?:(?:postponement|deferment)\\s+of\\s+(?:the\\s+)?${subject})`,
-    'i',
+    String.raw`(?:${subject}${ofCompany}\s+(?:has\s+been\s+|is\s+|stands\s+)?(?:postponed|deferred|rescheduled))` +
+      String.raw`|(?:(?:postponement|deferment)\s+of\s+(?:the\s+)?${subject})`,
+    'gi',
   );
+  const own = new Set(recordNames.map((n) => foldCompanyIdentity(n)).filter((f) => f.length > 0));
+  const fires = (re: RegExp): boolean => {
+    for (const m of t.matchAll(re)) {
+      const named = m[1];
+      if (named === undefined) return true;
+      if (own.has(foldCompanyIdentity(named))) return true;
+    }
+    return false;
+  };
   // Withdrawn wins: an issue that is both postponed and later withdrawn is dead.
-  if (withdrawn.test(t)) return 'WITHDRAWN';
-  if (postponed.test(t)) return 'POSTPONED';
+  if (fires(withdrawn)) return 'WITHDRAWN';
+  if (fires(postponed)) return 'POSTPONED';
   return null;
 }
 
@@ -210,11 +232,16 @@ export function deriveBSEStatus(
   open: string | null,
   close: string | null,
   today: string,
-  signal?: { statusCode?: string | null; notes?: (string | null | undefined)[] },
+  signal?: {
+    statusCode?: string | null;
+    notes?: (string | null | undefined)[];
+    /** This record's own company name(s); a note naming "the issue of <company>" fires only for these. */
+    companyNames?: (string | null | undefined)[];
+  },
 ): BSEDerivedStatus {
   if (signal) {
     for (const note of signal.notes ?? []) {
-      const terminal = classifyWithdrawalText(note);
+      const terminal = classifyWithdrawalText(note, signal.companyNames ?? []);
       if (terminal) return terminal;
     }
     const code = (signal.statusCode || '').trim().toUpperCase();
@@ -292,6 +319,7 @@ function buildScrapedIPO(
     status: deriveBSEStatus(openDate, closeDate, today, {
       statusCode: listStatusCode ?? null,
       notes: [detail.Notes, detail.Remarks, detail.Public_Notices],
+      companyNames: [companyName, detail.ScripName],
     }),
     // BSE's JSON API exposes no segment field (the old HTML scraper read a
     // `platform` column that no longer exists). The IR_flag=IPO board carries
@@ -305,7 +333,46 @@ function buildScrapedIPO(
     registrar,
     leadManagers: leads.length ? leads : null,
     symbol: detail.Symbol?.trim() || null,
+    sourceKeys: bseSourceKeys(detail, shares, band, openDate, closeDate, today, listStatusCode, companyName),
   };
+}
+
+/**
+ * OD-85: BSE's own record number for this offering (IPO_NO), with what the record said — the
+ * share count, band and BSE's own "postponed" note are what OD-83's supersede test and OD-86's
+ * merge exception read later. ScripCode rides in attrs (it is an issue-stage code, F-133, not a key).
+ */
+export function bseSourceKeys(
+  detail: BSEDetailRow,
+  shares: number,
+  band: { min?: number; max?: number },
+  openDate: string | null,
+  closeDate: string | null,
+  today: string,
+  listStatusCode?: string | null,
+  companyName?: string | null,
+): NonNullable<ScrapedIPO['sourceKeys']> {
+  const ipoNo = normalizeSourceKeyValue(detail.IPO_NO);
+  if (!ipoNo || !/^\d+$/.test(ipoNo)) return [];
+  const status = deriveBSEStatus(openDate, closeDate, today, {
+    statusCode: listStatusCode ?? null,
+    notes: [detail.Notes, detail.Remarks, detail.Public_Notices],
+    companyNames: [companyName, detail.ScripName],
+  });
+  return [{
+    source: 'BSE',
+    keyType: 'BSE_IPO_NO',
+    keyValue: ipoNo,
+    attrs: {
+      shares: Number.isFinite(shares) && shares > 0 ? shares : null,
+      priceMin: band.min ?? null,
+      priceMax: band.max ?? null,
+      postponed: status === 'POSTPONED',
+      scripCode: normalizeSourceKeyValue(detail.ScripCode),
+      issuePeriod: detail.Issue_Period ?? null,
+    },
+    recordOpenDate: openDate,
+  }];
 }
 
 /** Map a BSE list row + its detail row into a ScrapedIPO (current-board path). */

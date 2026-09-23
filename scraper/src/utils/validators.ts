@@ -85,7 +85,17 @@ export const ScrapedIPOSchema = z.object({
   // W-82 round 2: filing persister sent `cin` in the upsertIPO payload but this
   // schema had no field for it, so it was silently dropped before ipoData was
   // ever built. CIN format: 21 chars, uppercase letters + digits only.
-  cin: z.string().regex(/^[A-Z0-9]{21}$/, 'CIN must be 21 uppercase alphanumeric characters').optional()
+  cin: z.string().regex(/^[A-Z0-9]{21}$/, 'CIN must be 21 uppercase alphanumeric characters').optional(),
+  // OD-85 (§2.3.3.2 "Source record keys"): the source's own OFFERING-level record number(s) for
+  // this record. Declared here because z.object strips unknown keys — without it the keys would be
+  // dropped before resolveIpoRow ever saw them.
+  sourceKeys: z.array(z.object({
+    source: z.string().min(1).max(40),
+    keyType: z.enum(['BSE_IPO_NO', 'CG_PAGE_ID', 'NSE_ISSUE']),
+    keyValue: z.string().min(1).max(64),
+    attrs: z.record(z.string(), z.unknown()).optional(),
+    recordOpenDate: z.string().nullable().optional(),
+  })).optional()
 }).refine(
   (data) => new Date(data.closeDate) >= new Date(data.openDate),
   {

@@ -52,6 +52,11 @@ export const REPOINT_TABLES: ReadonlySet<string> = new Set([
   'audit_logs',
   'brlm_track_record',
   'ipo_slug_redirects',
+  // OD-85: a merge MOVES the dropped row's source keys to the survivor and logs their ids, so the
+  // records they identify keep binding (to the survivor) instead of being deleted with the row.
+  // Its unique index is plain (source, key_type, binding_value) — no ipo_id in it, so a repoint
+  // never conflicts; a partial/expression unique index would make the repoint predicate refuse (#900).
+  'ipo_source_keys',
 ]);
 
 /**
@@ -338,6 +343,37 @@ export interface EligibilityInput {
    * stated size (applied elsewhere, after eligibility), so the refusal below does not apply.
    */
   issueSizeCorrectionAcknowledged?: boolean;
+  /**
+   * OD-86 (§2.3.3.3): evidence that the pair is ONE offering relaunched by the exchange (OD-83).
+   * When `relaunchException(relaunch)` holds, a differing open date and a differing exchange record
+   * number (bse_ipo_no, bse_scrip_code; symbol too when the CIN is the same) are NOT refusals.
+   * Every other OD-69 refusal stands (names, CIN, ISIN, issue size).
+   */
+  relaunch?: RelaunchEvidence;
+}
+
+/** OD-86's four conditions, measured by the caller from both rows and their source keys. */
+export interface RelaunchEvidence {
+  /** Both rows' source records carry a share count, and they are equal. */
+  sameShares: boolean;
+  /** Both rows' source records carry a price band, and they are equal. */
+  sameBand: boolean;
+  /** ipos.symbol equal (both known) — OR — ipos.cin equal (both known). */
+  sameSymbol: boolean;
+  sameCin: boolean;
+  /** The OLDER row's source record is marked postponed by the exchange (attrs.postponed). */
+  olderPostponed: boolean;
+}
+
+/** OD-86: all four conditions, or no exception. */
+export function relaunchException(e: RelaunchEvidence | undefined): boolean {
+  return !!e && e.sameShares && e.sameBand && (e.sameSymbol || e.sameCin) && e.olderPostponed;
+}
+
+/** Record-number columns a relaunch legitimately changes (F-127); symbol only when the CIN is shared. */
+function relaunchTolerated(column: string, e: RelaunchEvidence): boolean {
+  if (column === 'bse_ipo_no' || column === 'bse_scrip_code') return true;
+  return column === 'symbol' && e.sameCin;
 }
 
 /**
@@ -366,6 +402,9 @@ function numericOrAbsent(value: unknown): number | null {
   if (!Number.isFinite(n) || n === 0) return null;
   return n;
 }
+
+/** OD-35: open dates more than this many days apart are two offerings — also the bound on OD-86's relaunch exception. */
+export const RELAUNCH_MAX_OPEN_DATE_GAP_DAYS = 180;
 
 export type EligibilityResult = { eligible: true } | { eligible: false; reason: string };
 
@@ -397,7 +436,17 @@ export function checkMergeEligibility(input: EligibilityInput): EligibilityResul
     // (2026-09-22). OPEN_DATE_TOLERANCE_DAYS still sizes the detection sweep's CLUSTERING (a
     // candidate a human reads), never a merge.
     const spread = daysBetween(keepDay, dropDay);
-    if (spread > 0) {
+    // OD-86's exception is bounded by OD-35's same-offering window: a relaunch more than 180 days
+    // after the postponed record is a new offering, refused like any other date difference.
+    if (spread > RELAUNCH_MAX_OPEN_DATE_GAP_DAYS) {
+      return {
+        eligible: false,
+        reason:
+          `the two rows' open date differs (${keepDay} vs ${dropDay}, ${spread} day(s) apart) — beyond ` +
+          `OD-35's ${RELAUNCH_MAX_OPEN_DATE_GAP_DAYS}-day window, so not one offering even as an OD-86 relaunch`,
+      };
+    }
+    if (spread > 0 && !relaunchException(input.relaunch)) {
       return {
         eligible: false,
         reason:
@@ -415,6 +464,7 @@ export function checkMergeEligibility(input: EligibilityInput): EligibilityResul
     };
   }
   for (const { column, keepValue, dropValue } of input.identifiers) {
+    if (relaunchException(input.relaunch) && relaunchTolerated(column, input.relaunch!)) continue;
     if (keepValue && dropValue && String(keepValue).trim().toUpperCase() !== String(dropValue).trim().toUpperCase()) {
       return {
         eligible: false,
@@ -440,4 +490,42 @@ export function checkMergeEligibility(input: EligibilityInput): EligibilityResul
     }
   }
   return { eligible: true };
+}
+
+/**
+ * OD-86: build the relaunch evidence from both rows and their `ipo_source_keys` rows. Shares and band
+ * come from the keys' `attrs` (what each exchange record said); "postponed" is the exchange's own flag
+ * stored in `attrs.postponed` on the OLDER row's key (the older row = the earlier open date).
+ */
+export function assessRelaunch(
+  keep: { openDate?: unknown; symbol?: unknown; cin?: unknown },
+  drop: { openDate?: unknown; symbol?: unknown; cin?: unknown },
+  keepKeys: { attrs?: unknown }[],
+  dropKeys: { attrs?: unknown }[]
+): RelaunchEvidence {
+  const num = (v: unknown): number | null => {
+    const n = Number(v);
+    return v != null && v !== '' && Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const firstAttr = (keys: { attrs?: unknown }[], k: string): number | null => {
+    for (const key of keys) {
+      const v = num(((key.attrs ?? {}) as Record<string, unknown>)[k]);
+      if (v != null) return v;
+    }
+    return null;
+  };
+  const eq = (a: number | null, b: number | null) => a != null && b != null && a === b;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().toUpperCase() : null);
+  const kDay = isoDay(keep.openDate as never);
+  const dDay = isoDay(drop.openDate as never);
+  const olderKeys = kDay && dDay ? (kDay < dDay ? keepKeys : dDay < kDay ? dropKeys : []) : [];
+  return {
+    sameShares: eq(firstAttr(keepKeys, 'shares'), firstAttr(dropKeys, 'shares')),
+    sameBand:
+      eq(firstAttr(keepKeys, 'priceMin'), firstAttr(dropKeys, 'priceMin')) &&
+      eq(firstAttr(keepKeys, 'priceMax'), firstAttr(dropKeys, 'priceMax')),
+    sameSymbol: str(keep.symbol) != null && str(keep.symbol) === str(drop.symbol),
+    sameCin: str(keep.cin) != null && str(keep.cin) === str(drop.cin),
+    olderPostponed: olderKeys.some((k) => ((k.attrs ?? {}) as Record<string, unknown>).postponed === true),
+  };
 }

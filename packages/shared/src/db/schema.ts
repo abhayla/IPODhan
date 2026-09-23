@@ -15,6 +15,7 @@ import {
   pgEnum,
   unique,
   check,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations, isNull, sql } from 'drizzle-orm';
 
@@ -2565,3 +2566,63 @@ export const ipoMergeLog = pgTable(
 
 export type IpoMergeLog = typeof ipoMergeLog.$inferSelect;
 export type NewIpoMergeLog = typeof ipoMergeLog.$inferInsert;
+
+// ==================== SOURCE RECORD KEYS (OD-85, OD-86) ====================
+//
+// docs/design/data-sourcing-pull-model.md §2.3.3.2 "Source record keys". Each source numbers the
+// SAME offering with its own record number (BSE IPO_NO, the Chittorgarh page id, the NSE issue
+// symbol + series), and that number can change under a relaunch (F-127: Dhanwel BSE 7794 -> 7900;
+// IC Electricals NSE ICEL -> ICELCO). Before this table nothing on `ipos` recorded which source
+// record a row came from, so every cycle re-matched every record by name.
+//
+// OFFERING-level numbers only. CIN, ISIN, PAN, BSE's listing scrip code and BSE's `Symbol` field stay
+// on `ipos`; SEBI / exchange document ids stay on `documents`.
+export const ipoSourceKeyTypeEnum = pgEnum('ipo_source_key_type', ['BSE_IPO_NO', 'CG_PAGE_ID', 'NSE_ISSUE']);
+
+// ACTIVE binds + writes; SUPERSEDED binds, never writes (an older number after an OD-83 relaunch);
+// RELEASED binds nothing, value reusable (WITHDRAWN / lapsed / DELISTED / NSE key N days after
+// listing); DISPUTED binds nothing (a bind the CIN/ISIN re-check proved wrong).
+export const ipoSourceKeyStateEnum = pgEnum('ipo_source_key_state', ['ACTIVE', 'SUPERSEDED', 'RELEASED', 'DISPUTED']);
+
+export const ipoSourceKeys = pgTable(
+  'ipo_source_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    source: varchar('source', { length: 40 }).notNull(),
+    keyType: ipoSourceKeyTypeEnum('key_type').notNull(),
+    // trimmed, upper-cased (BSE sends "MOMSBELIEF " with a trailing space, F-133)
+    keyValue: varchar('key_value', { length: 64 }).notNull(),
+    // what the source record said when the key was bound: shares, band, postponed flag, scrip code,
+    // issue period. The OD-83 supersede test and the OD-86 merge exception read it.
+    attrs: jsonb('attrs'),
+    state: ipoSourceKeyStateEnum('state').notNull().default('ACTIVE'),
+    // = key_value while ACTIVE/SUPERSEDED, NULL otherwise, so a RELEASED/DISPUTED value is reusable
+    // under the PLAIN unique index below (no partial or expression index: the merge tool's repoint
+    // conflict predicate refuses those, #900).
+    bindingValue: varchar('binding_value', { length: 64 }),
+    recordOpenDate: date('record_open_date'),
+    // CIN | ISIN | SYMBOL | NAME | HOLD_RESOLUTION | BACKFILL (spec) + KEY | CREATE
+    // (docs/design/data-sourcing-pull-model.md §2.3.3.2 "Source record keys")
+    boundVia: varchar('bound_via', { length: 32 }).notNull(),
+    boundBy: varchar('bound_by', { length: 64 }).notNull(),
+    boundAt: timestamp('bound_at').defaultNow().notNull(),
+    stateChangedAt: timestamp('state_changed_at').defaultNow().notNull(),
+    stateReason: text('state_reason'),
+    supersededBy: uuid('superseded_by').references((): AnyPgColumn => ipoSourceKeys.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    bindingUnique: unique('uq_ipo_source_keys_binding').on(table.source, table.keyType, table.bindingValue),
+    ipoIdx: index('idx_ipo_source_keys_ipo').on(table.ipoId),
+    bindingConsistent: check(
+      'ck_ipo_source_keys_binding_state',
+      sql`(${table.state} IN ('ACTIVE', 'SUPERSEDED') AND ${table.bindingValue} IS NOT NULL AND ${table.bindingValue} = ${table.keyValue}) OR (${table.state} IN ('RELEASED', 'DISPUTED') AND ${table.bindingValue} IS NULL)`
+    ),
+  })
+);
+
+export type IpoSourceKey = typeof ipoSourceKeys.$inferSelect;
+export type NewIpoSourceKey = typeof ipoSourceKeys.$inferInsert;

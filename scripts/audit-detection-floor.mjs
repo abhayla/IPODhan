@@ -70,6 +70,7 @@ import {
   STEP_LEDGER_WINDOW_HOURS,
   crossCheckNseStatuses,
   findSameIpoTwoRows, checkIpoTitleInName, findCompanyTwoLiveRows, findNameBoundLiveRows, findUndecidedIdentityHolds,
+  evaluateSourceKeyConflicts,
   findSettledFieldRewrites, SETTLED_FIELD_COLUMNS, policyWriterOnFromEnv, settledCurrentValueSql,
   findClosedIpoDoneWithoutWalk,
 } from './lib/detection-floor-checks.mjs';
@@ -1533,6 +1534,63 @@ async function checkIdentity() {
       : `0 undecided holds (${heldRows.length} hold/override row(s) in 30 days)`);
 }
 
+// Mirrors assert-migrations-applied.sh's exact decision (which is drizzle-kit migrate()'s own
+// decision, node_modules/drizzle-kit/api.js): a migration counts as applied when
+// MAX(created_at) in drizzle.__drizzle_migrations is >= that migration's journaled `when`. Reads
+// meta/_journal.json for the 0053 entry's `when` rather than hand-copying the literal, so a
+// re-numbered journal can't silently desync this from the migration it actually names.
+// Returns true/false, or null when the journal entry or the DB read failed (state unknown —
+// the caller must NOT treat null as "not applied", only as "cannot tell").
+async function isMigration0053Applied() {
+  let when0053;
+  try {
+    const journalPath = join(REPO_ROOT, 'web/drizzle/migrations/meta/_journal.json');
+    const journal = JSON.parse(readFileSync(journalPath, 'utf8'));
+    const entry = journal.entries.find((e) => e.tag === '0053_ipo_source_keys');
+    if (!entry) return null;
+    when0053 = entry.when;
+  } catch {
+    return null;
+  }
+  try {
+    const [{ maxCreatedAt }] = await q(
+      `SELECT COALESCE(MAX(created_at), 0)::bigint AS "maxCreatedAt" FROM drizzle.__drizzle_migrations`
+    );
+    return Number(maxCreatedAt) >= Number(when0053);
+  } catch {
+    return null;
+  }
+}
+
+// i_source_key_conflict (OD-85, docs/design/data-sourcing-pull-model.md §2.3.3.2 "Source record keys"):
+// one IPO holding two ACTIVE keys of the same source and type (a supersede that never happened, or a
+// merge that brought two relaunch numbers together), and keys DISPUTED by the CIN/ISIN re-check in the
+// last 30 days — each is a wrong or unresolved bind a human has to read. Keys hitting two rows cannot
+// exist in the table (plain unique index); a record whose keys hit two rows is refused at read time.
+async function checkSourceKeyConflicts() {
+  const DESC = 'no IPO holds two ACTIVE source keys of one source/type, and no key was DISPUTED in the last 30 days (OD-85)';
+  let keys = [];
+  let tableMissing = false;
+  let readError = null;
+  try {
+    keys = await q(
+      `SELECT i.slug, k.ipo_id AS "ipoId", k.source, k.key_type::text AS "keyType", k.key_value AS "value",
+              k.state::text AS state, k.state_reason AS reason, k.state_changed_at AS "changedAt"
+         FROM ipo_source_keys k JOIN ipos i ON i.id = k.ipo_id
+        WHERE k.state = 'ACTIVE' OR (k.state = 'DISPUTED' AND k.state_changed_at > now() - interval '30 days')`
+    );
+  } catch (e) {
+    if (e.code === '42P01') tableMissing = true;
+    else readError = e.message;
+  }
+  const migration0053Applied = tableMissing ? await isMigration0053Applied() : null;
+  const res = evaluateSourceKeyConflicts({ keys, tableMissing, readError, migration0053Applied });
+  for (const r of res.doubleActive) notify('i_source_key_conflict', 'P2', r.slug, 'Two ACTIVE source keys of one source (OD-85)', `${r.slug}: ${r.source} ${r.keyType} ${r.values}`);
+  for (const r of res.disputed) notify('i_source_key_conflict', 'P2', r.slug, 'Source key DISPUTED by the CIN/ISIN re-check (OD-85)', `${r.slug}: ${r.source} ${r.keyType} ${r.value} - ${r.reason}`);
+  const detail = res.status === 'FAIL' ? res.detail.split('; ').slice(0, MAX_OFFENDERS).join('; ') : res.detail;
+  record('i_source_key_conflict', DESC, res.status, detail);
+}
+
 // ---- (j): assorted P3 gates ----------------------------------------------------
 async function checkJ() {
   // sector population
@@ -2803,6 +2861,7 @@ async function main() {
   await checkH();
   checkI();
   await checkIdentity();
+  await checkSourceKeyConflicts();
   await checkSettledFieldRewrites();
   await checkClosedIpoDoneWithoutWalk();
   await checkK();

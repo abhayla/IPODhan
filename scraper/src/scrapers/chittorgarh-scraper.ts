@@ -12,6 +12,24 @@ import logger from '../utils/logger.js';
 import { isVerifierUrl } from '../services/company-host-source.js';
 import { sanitizeText, retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import type { ChittorgarhIPO } from '../utils/validators.js';
+import { chittorgarhPageId } from '@ipodhan/shared/repositories';
+
+/** OD-85: the CG_PAGE_ID key from the row's page URL, or none when the URL carries no numeric id. */
+export function chittorgarhSourceKeys(
+  pageUrl: string | undefined,
+  price: { min: number; max: number },
+  openDate: string | undefined | null
+): NonNullable<ChittorgarhIPO['sourceKeys']> {
+  const id = chittorgarhPageId(pageUrl);
+  if (!id) return [];
+  return [{
+    source: 'CHITTORGARH',
+    keyType: 'CG_PAGE_ID',
+    keyValue: id,
+    attrs: { priceMin: price.min > 0 ? price.min : null, priceMax: price.max > 0 ? price.max : null },
+    recordOpenDate: openDate ?? null,
+  }];
+}
 import { offeringTypeFromBusinessTrustName } from '../utils/data-validation.js';
 
 const CHITTORGARH_API_BASE = 'https://webnodejs.chittorgarh.com/cloud/report/data-read';
@@ -490,6 +508,9 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
           closeDate: effectiveCloseDate,
           listingDate,
           verifierUrl,
+          // OD-85: Chittorgarh's page id is its record number for this offering; the slug in the
+          // same URL is decoration (F-148) and is ignored.
+          sourceKeys: chittorgarhSourceKeys(verifierUrl, price, openDate),
           listingExchange: listingInfo.exchange,
           // T-287F2: null (not MAINBOARD) for a detected business trust.
           segment: trustOfferingType ? null : listingInfo.segment,

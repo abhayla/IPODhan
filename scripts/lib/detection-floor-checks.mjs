@@ -1357,3 +1357,62 @@ export function findClosedIpoDoneWithoutWalk(rows) {
       (Number(r.planRows) === 0 || Number(r.unsettledRows) > 0)
   );
 }
+
+// i_source_key_conflict (OD-85, §2.3.3.2 "Source record keys"). `keys`: rows of ipo_source_keys in
+// state ACTIVE or DISPUTED, joined to their ipo slug: [{ slug, ipoId, source, keyType, value, state,
+// reason?, changedAt }]. Two shapes are a wrong or unresolved bind a human must read: one IPO holding
+// two ACTIVE keys of the same source+type (a supersede that never happened, or a merge that brought
+// two relaunch numbers together), and a key DISPUTED by the CIN/ISIN re-check inside `disputedDays`.
+// (One key on two rows cannot exist: the plain UNIQUE(source,key_type,binding_value) forbids it.)
+//
+// `tableMissing` alone is NOT enough to decide UNVERIFIABLE-vs-not-applicable: this check's table
+// (ipo_source_keys) arrived in migration 0053, and a DB that has simply never run 0053 yet (any DB
+// audited by main between a merge and the next release cut -- production every night, by the
+// release-branch model) is not "blind", it is "this class cannot exist here yet". Conflating the two
+// makes every un-migrated DB read as a nightly audit failure (GATE BLIND, exit 3, an auto-filed
+// needs-decision issue) for a check that was never expected to run there. So the caller passes
+// `migration0053Applied` (true / false / null-for-"could not tell"), decided from the SAME signal
+// drizzle-kit's own migrate() uses (MAX(created_at) in drizzle.__drizzle_migrations vs the journal's
+// `when` for 0053 -- see assert-migrations-applied.sh), never a hand re-derivation:
+//   - table missing, migration confirmed NOT applied  -> PASS, not-applicable (this DB predates 0053)
+//   - table missing, migration confirmed applied        -> UNVERIFIABLE (the table should be there and
+//                                                            is not -- an absent check is not a clean one)
+//   - table missing, migration state unknown (read error)-> UNVERIFIABLE (cannot tell the two apart)
+//   - table present, unreadable                          -> UNVERIFIABLE
+export function evaluateSourceKeyConflicts({ keys = [], tableMissing = false, readError = null, migration0053Applied = null, now = new Date(), disputedDays = 30 } = {}) {
+  if (tableMissing) {
+    if (migration0053Applied === false) {
+      return { status: 'PASS', detail: 'not applicable - migration 0053 (ipo_source_keys) not applied on this DB', doubleActive: [], disputed: [] };
+    }
+    return { status: 'UNVERIFIABLE', detail: 'ipo_source_keys table does not exist on this database - migration 0053 not applied here; nothing checked', doubleActive: [], disputed: [] };
+  }
+  if (readError) {
+    return { status: 'UNVERIFIABLE', detail: `ipo_source_keys not readable: ${readError}`, doubleActive: [], disputed: [] };
+  }
+  const groups = new Map();
+  for (const k of keys) {
+    if (k.state !== 'ACTIVE') continue;
+    const id = `${k.ipoId ?? k.slug}\u0000${k.source}\u0000${k.keyType}`;
+    if (!groups.has(id)) groups.set(id, { slug: k.slug, source: k.source, keyType: k.keyType, values: [] });
+    groups.get(id).values.push(String(k.value));
+  }
+  const doubleActive = [...groups.values()]
+    .filter((g) => g.values.length > 1)
+    .map((g) => ({ ...g, values: g.values.sort().join(',') }))
+    .sort((a, b) => String(a.slug).localeCompare(String(b.slug)));
+  const cutoff = now.getTime() - disputedDays * 86_400_000;
+  const disputed = keys
+    .filter((k) => k.state === 'DISPUTED' && new Date(k.changedAt).getTime() > cutoff)
+    .map((k) => ({ slug: k.slug, source: k.source, keyType: k.keyType, value: String(k.value), reason: k.reason ?? null }))
+    .sort((a, b) => String(a.slug).localeCompare(String(b.slug)));
+  const offenders = [
+    ...doubleActive.map((r) => `${r.slug} two ACTIVE ${r.source} ${r.keyType} (${r.values})`),
+    ...disputed.map((r) => `${r.slug} DISPUTED ${r.source} ${r.keyType} ${r.value}`),
+  ];
+  return {
+    status: offenders.length === 0 ? 'PASS' : 'FAIL',
+    detail: offenders.length === 0 ? `0 double-ACTIVE, 0 DISPUTED in ${disputedDays} days` : offenders.join('; '),
+    doubleActive,
+    disputed,
+  };
+}

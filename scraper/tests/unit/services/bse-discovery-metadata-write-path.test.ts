@@ -14,8 +14,10 @@ import { execFileSync } from 'node:child_process';
 
 const repoRoot = join(__dirname, '../../../..');
 
-function fakeRepo() {
-  return { update: vi.fn().mockResolvedValue({}) };
+/** OD-85 / F-145: bse_ipo_no is written only from the row's ACTIVE BSE_IPO_NO key. */
+function fakeRepo(keys: { keyType: string; state: string; keyValue: string }[] = [{ keyType: 'BSE_IPO_NO', state: 'ACTIVE', keyValue: '7903' }]) {
+  const keyDb = { select: () => ({ from: () => ({ where: async () => keys }) }) };
+  return { update: vi.fn().mockResolvedValue({}), sourceKeyDb: () => keyDb };
 }
 
 describe('B1 — BSE discovery metadata goes through the shared write path', () => {
@@ -31,6 +33,21 @@ describe('B1 — BSE discovery metadata goes through the shared write path', () 
     expect(id).toBe('ipo-1');
     expect(patch).toMatchObject({ bseIpoNo: 7903, bsePayloadLeadManagerCount: 3 });
     expect(patch.updatedAt).toBeInstanceOf(Date);
+  });
+
+  it('F-145: the ACTIVE key wins over the record read last (Dhanwel 7794 re-read after the 7900 relaunch)', async () => {
+    const repo = fakeRepo([
+      { keyType: 'BSE_IPO_NO', state: 'ACTIVE', keyValue: '7900' },
+      { keyType: 'BSE_IPO_NO', state: 'SUPERSEDED', keyValue: '7794' },
+    ]);
+    await recordBseDiscoveryMetadata(repo as never, 'ipo-1', { bseIpoNo: 7794 });
+    expect(repo.update.mock.calls[0][1]).toMatchObject({ bseIpoNo: 7900 });
+  });
+
+  it('with no ACTIVE key, bse_ipo_no is not written at all', async () => {
+    const repo = fakeRepo([]);
+    await recordBseDiscoveryMetadata(repo as never, 'ipo-1', { bseIpoNo: 7794, bsePayloadLeadManagerCount: 2 });
+    expect(repo.update.mock.calls[0][1]).not.toHaveProperty('bseIpoNo');
   });
 
   it('omits absent values rather than nulling a column it was not given', async () => {

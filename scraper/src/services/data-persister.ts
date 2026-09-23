@@ -20,7 +20,7 @@ import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 // Phase 2: Shadow Mode - Data Consolidation Service
 import { DataConsolidationService, collectImplausibleIssueSizeFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
-import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow } from '@ipodhan/shared/repositories';
+import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo, withSourceKeyLineage, sourceKeyLineageFor } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { ipoDemandGraph, ipoDetails, ipos as iposTable, fieldSources as fieldSourcesTable } from '@ipodhan/shared/db/schema';
@@ -541,7 +541,8 @@ export function computeIpoIdentitySlug(scrapedIPO: {
 function shouldSkipRetry(error: any): boolean {
   // OD-68: a held record is a decision, not a transient failure — retrying it
   // only repeats the same hold.
-  if (error?.name === 'IdentityHeldForReviewError') return true;
+  // OD-85: a duplicate-key report or a SUPERSEDED key is the same kind of decision.
+  if (SOURCE_KEY_NO_WRITE_ERROR_NAMES.has(error?.name)) return true;
   const pgCode = error?.code;
   return [
     PG_ERROR_CODES.UNIQUE_VIOLATION,
@@ -736,6 +737,18 @@ export async function upsertIPO(
    */
   contextFields?: string[]
 ): Promise<string> {
+  // OD-85: one record = one source-key lineage scope, so its field_sources rows carry the key ids
+  // that bound it (reuses the caller's scope when BaseScraperOrchestrator already opened one).
+  return withSourceKeyLineage(() => upsertIPOInScope(ipoRepository, scrapedIPO, source, preResolvedIPO, contextFields));
+}
+
+async function upsertIPOInScope(
+  ipoRepository: IPORepository,
+  scrapedIPO: ScrapedIPO,
+  source: ScraperSource,
+  preResolvedIPO: IPO | null | undefined,
+  contextFields: string[] | undefined
+): Promise<string> {
   const startTime = Date.now();
   // T-478 round 3 (issue #225 follow-up, CRITICAL fix): the -ofs-<year> slug
   // (and the identity guard below) apply ONLY to an EXPLICITLY classified
@@ -802,6 +815,8 @@ export async function upsertIPO(
             // T-478 round 3: explicit-only, same rationale as
             // BaseScraperOrchestrator.ts.
             offeringType: offeringTypeExplicit ? scrapedIPO.offeringType : undefined,
+            // OD-85: the record's own source numbers, tried before every other step.
+            sourceKeys: (scrapedIPO as any).sourceKeys ?? null,
           }) as IPO | null;
 
       if (existingIPO && normalizeCompanyNameForMatching(existingIPO.companyName) === normalizedName) {
@@ -1414,7 +1429,7 @@ export async function upsertIPO(
         const newIPO = await ipoRepository.create({
           ...ipoData,
           createdAt: new Date()
-        } as IPOInsert);
+        } as IPOInsert, { sourceKeys: (scrapedIPO as any).sourceKeys ?? null, boundBy: `scraper:${source}` });
 
         // P3-11 (T-292): lineage was previously written only on the UPDATE path
         // (inside consolidation, above) — a brand-new row had ZERO field_sources
@@ -2266,9 +2281,13 @@ export async function updateIPOObjectives(
  *    remembered because `IPO_HomePageDetail` lists only LIVE and FORTHCOMING
  *    issues — verified 2026-08-28, Skyways (IPO_NO 7903) had already left the
  *    board the day after it closed, which is exactly when its final Prospectus
- *    becomes due. Written whenever a value arrives; there is no write-once
- *    guard here, and none is needed — the IPO_NO is immutable, so a later write
- *    can only ever set the same number.
+ *    becomes due. The IPO_NO is NOT immutable (F-145): BSE relaunches a
+ *    postponed issue under a new number and keeps serving the old one beside
+ *    it (Dhanwel 7794 -> 7900, F-144), so last-write-wins made the column flip
+ *    with whichever record was read last. OD-85: the column is written ONLY
+ *    from the row's ACTIVE BSE_IPO_NO source key; an incoming number that is
+ *    not that key is ignored (and logged), and with no ACTIVE key nothing is
+ *    written.
  *  - `bsePayloadLeadManagerCount`: how many lead managers the BSE payload
  *    ACTUALLY listed, so the nightly audit can FAIL when fewer were stored.
  *    Refreshed every time, because the payload can gain a co-BRLM.
@@ -2278,6 +2297,16 @@ export async function updateIPOObjectives(
  * shared write path. The first cut of T-403 issued `UPDATE ipos SET ...` as raw
  * SQL from `document-cycle.ts` and `check-write-ratchet.mjs` correctly failed it.
  */
+/** OD-85 / F-145: the row's ACTIVE BSE_IPO_NO key as a number, or null (no key, or a repository without a key table). */
+export async function activeBseIpoNo(ipoRepository: IPORepository, ipoId: string): Promise<number | null> {
+  const getter = (ipoRepository as { sourceKeyDb?: () => unknown }).sourceKeyDb;
+  if (typeof getter !== 'function') return null;
+  const keys = await findSourceKeysForIpo(getter.call(ipoRepository) as never, ipoId);
+  const active = keys.find((k) => k.keyType === 'BSE_IPO_NO' && k.state === 'ACTIVE');
+  const n = active ? Number(active.keyValue) : NaN;
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 export async function recordBseDiscoveryMetadata(
   ipoRepository: IPORepository,
   ipoId: string,
@@ -2285,7 +2314,13 @@ export async function recordBseDiscoveryMetadata(
 ): Promise<void> {
   const patch: Record<string, unknown> = {};
   if (metadata.bseIpoNo !== undefined && metadata.bseIpoNo !== null) {
-    patch.bseIpoNo = metadata.bseIpoNo;
+    const active = await activeBseIpoNo(ipoRepository, ipoId);
+    if (active != null) {
+      patch.bseIpoNo = active;
+      if (active !== metadata.bseIpoNo) {
+        logger.info({ ipoId, incoming: metadata.bseIpoNo, active }, '[OD-85] bse_ipo_no follows the ACTIVE source key, not the record read last');
+      }
+    }
   }
   if (
     metadata.bsePayloadLeadManagerCount !== undefined &&
@@ -2417,7 +2452,8 @@ export async function recordDiscoveredLeadManagers(
       confidence: 100,
       previousValue: null,
       previousSource: (previous[0]?.source ?? null) as never,
-      dataLineage: null as never,
+      // OD-85: the binding key ids when this record came through a key bind, else null as before.
+      dataLineage: (sourceKeyLineageFor(ipoId) ?? null) as never,
       updatedAt: new Date(),
       updatedBy: 'SYSTEM',
     };
