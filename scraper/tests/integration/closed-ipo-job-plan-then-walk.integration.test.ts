@@ -65,6 +65,7 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
   let mod: typeof import('../../src/scheduler/closed-ipo-job.js');
   let plant: typeof import('../../src/services/field-plan-planting.js');
   let walkMod: typeof import('../../src/services/field-plan-walk.js');
+  let settle: typeof import('../../src/scheduler/closed-ipo-plan-settlement.js');
   let docFetcher: FieldFetcher;
 
   async function clean() {
@@ -107,19 +108,8 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
           { fieldPlanRepository: planRepo as never, manifest }
         );
       },
-      countUnsettledPlanRows: async (id: string) => {
-        const rows = await db
-          .select({ state: schema.ipoFieldPlan.state, n: count() })
-          .from(schema.ipoFieldPlan)
-          .where(
-            and(
-              eq(schema.ipoFieldPlan.ipoId, id),
-              inArray(schema.ipoFieldPlan.state, ['PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED'])
-            )
-          )
-          .groupBy(schema.ipoFieldPlan.state);
-        return Object.fromEntries(rows.map((r) => [r.state, Number(r.n)]));
-      },
+      // Round 4 M-2: the SAME settlement read production wires (closed-ipo-plan-settlement.ts), not a copy.
+      readPlanSettlement: (id: string) => settle.readPlanSettlement(db as never, id),
       walk: (id: string) =>
         walkMod.walkFieldPlanForIPO(
           id,
@@ -147,6 +137,7 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     mod = await import('../../src/scheduler/closed-ipo-job.js');
     plant = await import('../../src/services/field-plan-planting.js');
     walkMod = await import('../../src/services/field-plan-walk.js');
+    settle = await import('../../src/scheduler/closed-ipo-plan-settlement.js');
     const { buildFieldPlanWalkFetchers } = await import('../../src/services/field-plan-walk-deps.js');
     docFetcher = buildFieldPlanWalkFetchers(redis as never).DOC;
     await clean();
@@ -474,7 +465,7 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     };
 
     const r = await mod.resourceClosedIpo(IPO_ID, d);
-    const open = await base.countUnsettledPlanRows(IPO_ID);
+    const open = await base.readPlanSettlement(IPO_ID);
     // The job's own writer path: the ledger row must be ACCEPTED with the new enum value.
     await db.execute(sql`
       INSERT INTO closed_ipo_resourcing (ipo_id, first_attempt_at, last_attempt_at, attempts, outcome, cause_class, cause_detail,
@@ -485,7 +476,9 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     const [row] = await db.select().from(schema.closedIpoResourcing).where(eq(schema.closedIpoResourcing.ipoId, IPO_ID));
     // eslint-disable-next-line no-console
     console.log(`OD-79 PROOF: open after walk ${JSON.stringify(open)}; outcome ${r.outcome}/${r.causeClass} (${r.causeDetail}); stored ${row.outcome}/${row.causeClass}`);
-    expect(open).toEqual({ PENDING: 30, NOT_AVAILABLE_YET: 2, CHECK_FAILED: 5 });
+    expect(open.unsettledByState).toEqual({ PENDING: 30, NOT_AVAILABLE_YET: 2, CHECK_FAILED: 5 });
+    expect(open.unsettled).toBe(37);
+    expect(open.stored).toBeGreaterThan(37);
     expect(r.fieldsWritten).toBe(3);
     expect(r.outcome).toBe('PARTIAL');
     expect(r.causeClass).toBe('FIELDS_PENDING');
@@ -497,6 +490,110 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     await db.execute(sql`UPDATE ipo_field_plan SET state = 'NOT_PRINTED', next_due_at = NULL WHERE ipo_id = ${IPO_ID}::uuid`);
     const done = await mod.resourceClosedIpo(IPO_ID, d);
     expect(done.outcome).toBe('DONE');
+  });
+
+  it('(round 4 M-1) the generator REPORTS rows but none are stored: never DONE -- the DB, not the report, decides', async () => {
+    await seedListedIpoWithPendingRhp();
+    const planRepo = new IpoFieldPlanRepository(db as never, redis as never);
+    const d = {
+      ...liveDeps(planRepo),
+      // The reviewer's probe: a repository that reports 12 rows and stores none.
+      plantPlan: async () => ({ rowsGenerated: 12, inserted: 12, updated: 0 }),
+    };
+    const r = await mod.resourceClosedIpo(IPO_ID, d);
+    const stored = await settle.readPlanSettlement(db as never, IPO_ID);
+    // eslint-disable-next-line no-console
+    console.log(`M-1 PROOF: stored ${stored.stored}; outcome ${r.outcome}/${r.causeClass} (${r.causeDetail})`);
+    expect(stored.stored).toBe(0);
+    expect(r.outcome).not.toBe('DONE');
+    expect(r.outcome).toBe('FAILED');
+    expect(r.causeClass).toBe('WRITE_SKIPPED');
+  });
+
+  it('(round 4 M-2) the shared settlement read: stored + unsettled by NOT IN the terminal list, on the real schema', async () => {
+    await seedListedIpoWithPendingRhp();
+    const planRepo = new IpoFieldPlanRepository(db as never, redis as never);
+    await liveDeps(planRepo).plantPlan(IPO_ID);
+    await db.execute(sql`UPDATE ipo_field_plan SET state = 'SUPPLIED' WHERE ipo_id = ${IPO_ID}::uuid`);
+    const all = await settle.readPlanSettlement(db as never, IPO_ID);
+    await db.execute(sql`UPDATE ipo_field_plan SET state = 'CHECK_FAILED'
+                          WHERE id = (SELECT id FROM ipo_field_plan WHERE ipo_id = ${IPO_ID}::uuid ORDER BY id LIMIT 1)`);
+    const one = await settle.readPlanSettlement(db as never, IPO_ID);
+    // eslint-disable-next-line no-console
+    console.log(`M-2 PROOF: all SUPPLIED -> ${JSON.stringify(all)}; one CHECK_FAILED -> ${JSON.stringify(one)}`);
+    expect(all.stored).toBeGreaterThan(0);
+    expect(all.unsettled).toBe(0);
+    expect(one).toEqual({ stored: all.stored, unsettled: 1, unsettledByState: { CHECK_FAILED: 1 } });
+  });
+
+  it('(OD-81) a PARTIAL / FIELDS_PENDING IPO is re-picked only on an event: stage change, a new document, or a ranks change; never-walked first', async () => {
+    const id = (n: number) => `00000000-0000-4000-8000-0000000${String(81000 + n).padStart(5, '0')}`;
+    const IDS = {
+      neverWalked: id(1),
+      noEvent: id(2), // LISTED well before the last attempt, no new document
+      listedAfter: id(3), // event (1): listing_date on the IST day of the last attempt
+      closedStill: id(4), // CLOSED with a listing_date ahead: not a stage change yet
+      newDoc: id(5), // event (2): a document first seen after the last attempt
+      oldDoc: id(6), // a document first seen BEFORE the last attempt: not an event
+      otherCause: id(7), // PARTIAL / SOURCE_UNREACHABLE with a stage change: OD-78 only
+    };
+    const all = Object.values(IDS);
+    const cleanup = async () => {
+      await db.delete(schema.documentFetchState).where(inArray(schema.documentFetchState.ipoId, all));
+      await db.delete(schema.closedIpoResourcing).where(inArray(schema.closedIpoResourcing.ipoId, all));
+      await db.delete(schema.ipos).where(inArray(schema.ipos.id, all));
+    };
+    await cleanup();
+    try {
+      const seed = async (ipoId: string, status: string, listing: ReturnType<typeof sql>) => {
+        await db.execute(sql`INSERT INTO ipos (id, company_name, slug, category, segment, listing_exchanges, status, open_date, close_date, listing_date)
+          VALUES (${ipoId}::uuid, ${`OD-81 ${ipoId}`}, ${`od81-${ipoId}`}, 'SME', 'SME', '["BSE"]'::jsonb, ${status}::ipo_status,
+                  CURRENT_DATE - 12, CURRENT_DATE - 10, ${listing})`);
+      };
+      // L = the IST date of the last attempt (one day ago).
+      const L = sql`((now() - interval '1 day') AT TIME ZONE 'Asia/Kolkata')::date`;
+      await seed(IDS.neverWalked, 'LISTED', sql`CURRENT_DATE - 30`);
+      await seed(IDS.noEvent, 'LISTED', sql`${L} - 2`);
+      await seed(IDS.listedAfter, 'LISTED', L);
+      await seed(IDS.closedStill, 'CLOSED', sql`${L} + 5`);
+      await seed(IDS.newDoc, 'LISTED', sql`${L} - 2`);
+      await seed(IDS.oldDoc, 'LISTED', sql`${L} - 2`);
+      await seed(IDS.otherCause, 'LISTED', L);
+
+      const { loadFieldManifest } = await import('../../src/config/field-manifest-loader.js');
+      const { EXTRACTOR_VERSION } = await import('../../src/services/filing-auto-persist.js');
+      const vNow = mod.closedIpoResourcingVersion({
+        ranksHash: mod.manifestRanksHash(loadFieldManifest().fields),
+        extractorVersion: EXTRACTOR_VERSION,
+      });
+      for (const ipoId of [IDS.noEvent, IDS.listedAfter, IDS.closedStill, IDS.newDoc, IDS.oldDoc, IDS.otherCause]) {
+        const cause = ipoId === IDS.otherCause ? 'SOURCE_UNREACHABLE' : 'FIELDS_PENDING';
+        await db.execute(sql`INSERT INTO closed_ipo_resourcing (ipo_id, first_attempt_at, last_attempt_at, attempts, outcome, cause_class,
+                                             fields_written, fields_left_empty, resourced_at_version)
+          VALUES (${ipoId}::uuid, now() - interval '1 day', now() - interval '1 day', 1, 'PARTIAL',
+                  ${cause}::closed_ipo_resourcing_cause_class, 0, 5, ${vNow})`);
+      }
+      // first_seen_at is a naive UTC column: write the UTC wall-clock explicitly.
+      await db.execute(sql`INSERT INTO document_fetch_state (ipo_id, doc_type, first_seen_at)
+        VALUES (${IDS.newDoc}::uuid, 'PROSPECTUS', (now() AT TIME ZONE 'UTC')),
+               (${IDS.oldDoc}::uuid, 'PROSPECTUS', ((now() - interval '3 days') AT TIME ZONE 'UTC'))`);
+
+      const picked = async (v: string, cap = 100000) =>
+        (await mod.selectClosedIpoCandidates(db as never, v, cap)).map((c) => c.id).filter((x) => all.includes(x));
+      const sameRanks = await picked(vNow);
+      const ranksChanged = await picked('od81-other-ranks');
+      const nameOf = (x: string) => Object.entries(IDS).find(([, v]) => v === x)?.[0];
+      // eslint-disable-next-line no-console
+      console.log(
+        `OD-81 PROOF: same ranks -> [${sameRanks.map(nameOf).join(', ')}]; ranks changed -> [${ranksChanged.map(nameOf).join(', ')}]`
+      );
+      expect(new Set(sameRanks)).toEqual(new Set([IDS.neverWalked, IDS.listedAfter, IDS.newDoc]));
+      // Never-walked leads, even though it closed on the same day as the others.
+      expect(sameRanks[0]).toBe(IDS.neverWalked);
+      expect(new Set(ranksChanged)).toEqual(new Set(all));
+    } finally {
+      await cleanup();
+    }
   });
 
   it('(F-31, MAJOR-3 + round 2) the snapshot names its database and slot, carries child-table current values, and refuses the wrong target', async () => {

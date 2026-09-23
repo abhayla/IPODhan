@@ -199,12 +199,14 @@ export type FieldPlanState =
   | 'CHECK_FAILED'
   | 'EXHAUSTED';
 
-/** States that end the ask — no further attempt is ever scheduled. */
-const TERMINAL_STATES: ReadonlySet<FieldPlanState> = new Set([
-  'SUPPLIED',
-  'NOT_PRINTED',
-  'EXHAUSTED',
-]);
+/**
+ * States that end the ask — no further attempt is ever scheduled. Exported as the
+ * ONE list every "is this plan row settled?" reader uses (closed-IPO job DONE rule,
+ * its repair tool, the detection floor's parity test): any state NOT in it, a new
+ * enum value included, counts as unsettled.
+ */
+export const FIELD_PLAN_TERMINAL_STATES: readonly FieldPlanState[] = ['SUPPLIED', 'NOT_PRINTED', 'EXHAUSTED'];
+const TERMINAL_STATES: ReadonlySet<FieldPlanState> = new Set(FIELD_PLAN_TERMINAL_STATES);
 
 export interface IpoFieldPlanRow {
   id: string;

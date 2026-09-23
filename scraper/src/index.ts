@@ -53,6 +53,7 @@ import {
 } from './scheduler/closed-ipo-job.js';
 import { writeFieldSourcesSnapshot } from './scheduler/closed-ipo-snapshot.js';
 import type { ClosedIpoResourceResult } from './scheduler/closed-ipo-job.js';
+import { readPlanSettlement } from './scheduler/closed-ipo-plan-settlement.js';
 import { plantFieldPlanForIpo } from './services/field-plan-planting.js';
 import { walkFieldPlanForIPO } from './services/field-plan-walk.js';
 import {
@@ -68,7 +69,7 @@ import { randomUUID, createHash } from 'crypto';
 import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories';
 import { scraperLogs, scraperSteps, ipos, ipoFieldPlan } from '@ipodhan/shared/db/schema';
-import { lt, inArray, count, eq, and } from 'drizzle-orm';
+import { lt, inArray, count, eq } from 'drizzle-orm';
 import logger from './utils/logger.js';
 import { heartbeat, flushOwnerNotify } from './services/owner-notify.js';
 import { evaluateFreshness } from './services/freshness-monitor.js';
@@ -1685,14 +1686,9 @@ async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceRe
         { overrides, fieldPlanRepository: fieldPlanRepository as never }
       );
     },
-    countUnsettledPlanRows: async (id) => {
-      const rows = await db
-        .select({ state: ipoFieldPlan.state, n: count() })
-        .from(ipoFieldPlan)
-        .where(and(eq(ipoFieldPlan.ipoId, id), inArray(ipoFieldPlan.state, ['PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED'])))
-        .groupBy(ipoFieldPlan.state);
-      return Object.fromEntries(rows.map((r) => [r.state, Number(r.n)]));
-    },
+    // Round 4 M-2: the ONE settlement query (stored + unsettled, state NOT IN the
+    // exported terminal list), shared with the integration test and the repair tool.
+    readPlanSettlement: (id) => readPlanSettlement(db as never, id),
     walk: async (id) => {
       const startedAt = Date.now();
       const sourceFetchers = buildFieldPlanWalkFetchers();

@@ -14,6 +14,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   runClosedIpoJob,
   CLOSED_IPO_CANDIDATES_SQL,
+  closedIpoCandidatesQuery,
   CLOSED_IPO_JOB_DEFAULT_CAP,
   CLOSED_IPO_VERSION_MAX_LENGTH,
   closedIpoResourcingVersion,
@@ -21,6 +22,13 @@ import {
   isClosedIpoJobDue,
 } from '../../../src/scheduler/closed-ipo-job.js';
 import { loadFieldManifest } from '../../../src/config/field-manifest-loader.js';
+import { PgDialect } from 'drizzle-orm/pg-core';
+
+/** The EXECUTED selection, rendered to text the way node-postgres receives it. */
+function renderedSelection() {
+  return new PgDialect().sqlToQuery(closedIpoCandidatesQuery('v-now', 10));
+}
+const norm = (t: string) => t.replace(/\s+/g, ' ').trim();
 
 function makeStubDb(rows: Array<{ id: string; closeDate: string; status: string }> = []) {
   const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
@@ -68,6 +76,41 @@ describe('CLOSED_IPO_CANDIDATES_SQL — the four selection rules', () => {
     // #873's pending-document ranking is gone: OD-76's walk never reads a
     // document, so that count ranked IPOs by work this job cannot do.
     expect(CLOSED_IPO_CANDIDATES_SQL).not.toMatch(/extraction_status = 'PENDING'/);
+  });
+});
+
+// OD-81 (owner 2026-09-23): a FIELDS_PENDING IPO is re-picked only on an event.
+// Asserted on the EXECUTED template (rendered), so removing a clause from the
+// query that runs turns these red; the integration test proves each on ipodhan_test.
+describe('closedIpoCandidatesQuery — OD-81 FIELDS_PENDING events', () => {
+  it('the executed query IS the readable constant (only the placeholders differ), and binds version + cap', () => {
+    const q = renderedSelection();
+    expect(norm(q.sql)).toBe(norm(CLOSED_IPO_CANDIDATES_SQL));
+    expect(q.params).toEqual(['v-now', 10]);
+  });
+
+  it('event (1) stage change: LISTED now, and listing_date on/after the IST date of the last attempt', () => {
+    expect(norm(renderedSelection().sql)).toContain(
+      norm(`(upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)`)
+    );
+  });
+
+  it('event (2) new document: a document_fetch_state row first seen after the last attempt (naive UTC column read AT TIME ZONE UTC)', () => {
+    expect(norm(renderedSelection().sql)).toContain(
+      norm(`EXISTS ( SELECT 1 FROM document_fetch_state d WHERE d.ipo_id = i.id AND (d.first_seen_at AT TIME ZONE 'UTC') > r.last_attempt_at )`)
+    );
+  });
+
+  it('event (3) rankings change keeps OD-78: every PARTIAL/FAILED row re-opens on a new version', () => {
+    expect(norm(renderedSelection().sql)).toContain(
+      norm(`OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM $1)`)
+    );
+  });
+
+  it('events (1)/(2) apply ONLY to PARTIAL / FIELDS_PENDING -- no other cause, no timer', () => {
+    const t = norm(renderedSelection().sql);
+    expect(t).toContain(norm(`OR ( r.outcome = 'PARTIAL' AND r.cause_class = 'FIELDS_PENDING' AND (`));
+    expect(t).not.toMatch(/now\(\)|interval/i);
   });
 });
 

@@ -31,6 +31,7 @@ export {
   IpoFieldPlanRepository,
   FIELD_PLAN_CLAIM_STALE_MINUTES,
   FIELD_PLAN_RECLAIM_MAX_ATTEMPTS,
+  FIELD_PLAN_TERMINAL_STATES,
   fieldPlanBackoffMinutes,
 } from './ipo-field-plan-repository';
 export type {

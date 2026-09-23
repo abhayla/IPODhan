@@ -52,6 +52,8 @@ import { fileURLToPath } from 'node:url';
 import { db } from '@ipodhan/shared';
 import { sql } from 'drizzle-orm';
 import { openRepairDb, writeLedgerFile } from './lib/repair-tool.js';
+// Round 4 M-2: the ONE "unsettled" predicate (state NOT IN the exported terminal list).
+import { unsettledPlanStatePredicate } from '../src/scheduler/closed-ipo-plan-settlement.js';
 
 export const REPAIR_MARKER = 'repair-717:';
 
@@ -81,7 +83,7 @@ export async function reopenFalseDoneRows(dbx: ExecDb, ids: string[]): Promise<n
          NOT EXISTS (SELECT 1 FROM ipo_field_plan p WHERE p.ipo_id = closed_ipo_resourcing.ipo_id)
          OR EXISTS (SELECT 1 FROM ipo_field_plan p
                      WHERE p.ipo_id = closed_ipo_resourcing.ipo_id
-                       AND p.state::text NOT IN ('SUPPLIED', 'NOT_PRINTED', 'EXHAUSTED'))
+                       AND ${unsettledPlanStatePredicate(sql.raw('p.state'))})
        )`);
   return (res as { rowCount?: number }).rowCount ?? 0;
 }
@@ -169,7 +171,7 @@ async function main(): Promise<number> {
            (SELECT count(*)::int FROM ipo_field_plan p
              WHERE p.ipo_id = r.ipo_id AND p.last_attempt_at IS NOT NULL) AS walked_rows,
            (SELECT count(*)::int FROM ipo_field_plan p
-             WHERE p.ipo_id = r.ipo_id AND p.state::text NOT IN ('SUPPLIED', 'NOT_PRINTED', 'EXHAUSTED')) AS unsettled_rows
+             WHERE p.ipo_id = r.ipo_id AND ${unsettledPlanStatePredicate(sql.raw('p.state'))}) AS unsettled_rows
       FROM closed_ipo_resourcing r
       JOIN ipos i ON i.id = r.ipo_id
      WHERE r.outcome = 'DONE'

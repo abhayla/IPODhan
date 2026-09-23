@@ -120,9 +120,29 @@ export const CLOSED_IPO_JOB_DEFAULT_CAP = 10;
  * constant. Same ranks, same extractor = same cause = same outcome, so a
  * PARTIAL/FAILED IPO is eligible again only when one of those changes.
  *
- * This constant is the READABLE copy, asserted by the unit tests. The executed
- * query is the bound `sql` template in `runClosedIpoJob` — the rules live here
- * in one place, and nothing interpolates this string into a query.
+ * OD-81 (owner, 2026-09-23): a PARTIAL IPO whose cause is FIELDS_PENDING is
+ * picked again only on an EVENT -- no timer, never nightly without one:
+ *   (1) its stage changed since the last attempt (CLOSED -> LISTED). There is no
+ *       status-change timestamp on `ipos` (no migration this round), so it is
+ *       derived from `listing_date`: the IPO is LISTED now AND its listing_date
+ *       is on or after the IST date of `last_attempt_at` -- i.e. the last attempt
+ *       was made no later than listing day. `>=`, not `>`: an attempt on the
+ *       evening of listing day may have seen the IPO still CLOSED; the cost is at
+ *       most ONE extra pick (the next attempt's date is past listing_date), where
+ *       `>` would lose that IPO's LISTED event for good. Known gap: a status that
+ *       flips to LISTED days after its listing_date passed is not seen as an event.
+ *   (2) a new document for it was first seen after the last attempt
+ *       (`document_fetch_state.first_seen_at`, a naive UTC column, read AT TIME
+ *       ZONE 'UTC' so the comparison does not depend on the session zone).
+ *   (3) the source rankings changed (OD-78): the `resourced_at_version` clause
+ *       above, which already covers every PARTIAL/FAILED cause.
+ * Other PARTIAL/FAILED causes keep OD-78 unchanged. Never-walked IPOs still take
+ * the slots first (ORDER BY), at most `cap` (ten) a night.
+ *
+ * This constant is the READABLE copy. The executed query is the bound `sql`
+ * template in `selectClosedIpoCandidates`; a unit test renders that template and
+ * asserts it equals this text (placeholders aside), so the two cannot drift, and
+ * nothing interpolates this string into a query.
  */
 export const CLOSED_IPO_CANDIDATES_SQL = `
   SELECT i.id, i.close_date AS "closeDate", i.status::text AS status
@@ -133,39 +153,61 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
      AND (
        r.ipo_id IS NULL
        OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM $1)
+       OR (
+         r.outcome = 'PARTIAL' AND r.cause_class = 'FIELDS_PENDING'
+         AND (
+           (upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)
+           OR EXISTS (
+             SELECT 1 FROM document_fetch_state d
+              WHERE d.ipo_id = i.id AND (d.first_seen_at AT TIME ZONE 'UTC') > r.last_attempt_at
+           )
+         )
+       )
      )
    ORDER BY (r.ipo_id IS NOT NULL), i.close_date DESC, i.id
    LIMIT $2
 `;
 
 /**
- * The executed selection (§6.1 rules 1-4 + §6.2 retry), bound parameters only.
- * Exported so the integration test runs THIS query against ipodhan_test rather
- * than a copy of it.
+ * The executed selection (§6.1 rules 1-4 + §6.2 retry + OD-81 events), bound
+ * parameters only. Exported (with the builder) so the integration test runs THIS
+ * query against ipodhan_test and the unit test renders THIS template.
  */
+export function closedIpoCandidatesQuery(resourcedAtVersion: string, cap: number) {
+  // Parameters are BOUND, never interpolated. `resourcedAtVersion` is an
+  // internal string today, but a query built by string-replacement is the
+  // wrong shape regardless of who supplies the value.
+  return sql`
+  SELECT i.id, i.close_date AS "closeDate", i.status::text AS status
+    FROM ipos i
+    LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
+   WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
+     AND i.close_date < CURRENT_DATE
+     AND (
+       r.ipo_id IS NULL
+       OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM ${resourcedAtVersion})
+       OR (
+         r.outcome = 'PARTIAL' AND r.cause_class = 'FIELDS_PENDING'
+         AND (
+           (upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)
+           OR EXISTS (
+             SELECT 1 FROM document_fetch_state d
+              WHERE d.ipo_id = i.id AND (d.first_seen_at AT TIME ZONE 'UTC') > r.last_attempt_at
+           )
+         )
+       )
+     )
+   ORDER BY (r.ipo_id IS NOT NULL), i.close_date DESC, i.id
+   LIMIT ${cap}
+`;
+}
+
 export async function selectClosedIpoCandidates(
   db: Pick<NodePgDatabase<typeof schema>, 'execute'>,
   resourcedAtVersion: string,
   cap: number
 ): Promise<ClosedIpoCandidate[]> {
-  // Parameters are BOUND, never interpolated. `resourcedAtVersion` is an
-  // internal string today, but a query built by string-replacement is the
-  // wrong shape regardless of who supplies the value.
-  const result = await db.execute(
-    sql`
-      SELECT i.id, i.close_date AS "closeDate", i.status::text AS status
-        FROM ipos i
-        LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
-       WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
-         AND i.close_date < CURRENT_DATE
-         AND (
-           r.ipo_id IS NULL
-           OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM ${resourcedAtVersion})
-         )
-       ORDER BY (r.ipo_id IS NOT NULL), i.close_date DESC, i.id
-       LIMIT ${cap}
-    `
-  );
+  const result = await db.execute(closedIpoCandidatesQuery(resourcedAtVersion, cap));
   return (result.rows ?? result) as unknown as ClosedIpoCandidate[];
 }
 
@@ -309,16 +351,17 @@ export interface ResourceClosedIpoDeps {
   /** The EXISTING §2.4 walk (`walkFieldPlanForIPO`) over this IPO's plan. */
   walk: (ipoId: string) => Promise<ClosedIpoWalkCounters>;
   /**
-   * This IPO's plan rows NOT yet settled, counted per state. Settled = a terminal
-   * state (SUPPLIED, NOT_PRINTED, EXHAUSTED: `TERMINAL_STATES` in
-   * ipo-field-plan-repository.ts -- "no further attempt is ever scheduled"),
-   * which is where OD-73's rank rule leaves a field. Read AFTER the walk.
+   * What the DB now HOLDS for this IPO's plan, read AFTER the walk: the stored row
+   * count and the rows not settled (state NOT IN the terminal list), per state.
+   * Production and the integration test both pass `readPlanSettlement`
+   * (closed-ipo-plan-settlement.ts) -- one query, one terminal list (round 4 M-2).
    */
-  countUnsettledPlanRows: (ipoId: string) => Promise<Partial<Record<UnsettledPlanState, number>>>;
+  readPlanSettlement: (ipoId: string) => Promise<{
+    stored: number;
+    unsettled: number;
+    unsettledByState: Record<string, number>;
+  }>;
 }
-
-/** The three non-terminal `field_plan_state` values. */
-export type UnsettledPlanState = 'PENDING' | 'NOT_AVAILABLE_YET' | 'CHECK_FAILED';
 
 export interface ClosedIpoResourceResult {
   outcome: ClosedIpoOutcome;
@@ -358,11 +401,13 @@ export interface ClosedIpoResourceResult {
  * otherwise end DONE; any open row -> PARTIAL / FIELDS_PENDING (OD-80), per-state counts
  * in cause_detail. (Review round 3: an IPO walked 5 fields, 3 answered, was sealed DONE
  * with 37 rows still open -- and DONE is never re-picked.)
+ * Round 4 (M-1): DONE also needs STORED plan rows > 0, read from the DB after the walk
+ * -- 0 stored -> FAILED / WRITE_SKIPPED, whatever the generator reported.
  */
 export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDeps): Promise<ClosedIpoResourceResult> {
   const existing = await deps.countPlanRows(ipoId);
+  let planted: { rowsGenerated: number; inserted: number } | null = null;
   if (existing === 0) {
-    let planted: { rowsGenerated: number; inserted: number };
     try {
       planted = await deps.plantPlan(ipoId);
     } catch (error) {
@@ -399,17 +444,8 @@ export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDe
       fieldsLeftEmpty,
     };
   }
-  if (walk.stoppedReason !== 'NO_DUE_FIELDS') {
-    // Budget or superseded claim: fields remain unasked. Nothing failed to
-    // respond, so SOURCE_UNREACHABLE would report "site down" falsely (OD-80).
-    return {
-      outcome: 'PARTIAL',
-      causeClass: 'FIELDS_PENDING',
-      causeDetail: `the walk stopped ${walk.stoppedReason} after ${walk.fieldsAttempted} field(s); the rest were not asked`,
-      fieldsWritten,
-      fieldsLeftEmpty,
-    };
-  }
+  // A dropped write outranks a budget stop (review round 4 MINOR): a walk that
+  // lost a write AND ran out of time has a defect to report, not just unasked fields.
   if (walk.fieldsWriteSkipped > 0) {
     return {
       outcome: 'PARTIAL',
@@ -418,6 +454,17 @@ export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDe
         .slice(0, 5)
         .map((d) => `${d.tableName}.${d.fieldName} (${d.source}: ${d.skipReason})`)
         .join('; '),
+      fieldsWritten,
+      fieldsLeftEmpty,
+    };
+  }
+  if (walk.stoppedReason !== 'NO_DUE_FIELDS') {
+    // Budget or superseded claim: fields remain unasked. Nothing failed to
+    // respond, so SOURCE_UNREACHABLE would report "site down" falsely (OD-80).
+    return {
+      outcome: 'PARTIAL',
+      causeClass: 'FIELDS_PENDING',
+      causeDetail: `the walk stopped ${walk.stoppedReason} after ${walk.fieldsAttempted} field(s); the rest were not asked`,
       fieldsWritten,
       fieldsLeftEmpty,
     };
@@ -444,25 +491,44 @@ export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDe
     };
   }
 
-  // OD-79: the only road to DONE. Read AFTER the walk, so rows it just settled count as settled.
-  const open = await deps.countUnsettledPlanRows(ipoId);
-  const pending = open.PENDING ?? 0;
-  const notYet = open.NOT_AVAILABLE_YET ?? 0;
-  const checkFailed = open.CHECK_FAILED ?? 0;
-  const unsettled = pending + notYet + checkFailed;
-  if (unsettled === 0) {
+  // OD-79: the only road to DONE. Both facts are read from the DB AFTER the walk,
+  // so rows it just settled count as settled -- and nothing the generator or the
+  // walk merely REPORTED is trusted (round 4 M-1: a repository that reported 12
+  // rows and stored none was sealed DONE with an empty plan).
+  const settlement = await deps.readPlanSettlement(ipoId);
+  if (settlement.stored === 0) {
+    return {
+      outcome: 'FAILED',
+      causeClass: 'WRITE_SKIPPED',
+      causeDetail:
+        `0 plan rows stored for this IPO after the walk (plan rows before this run: ${existing}` +
+        `${planted ? `; the generator reported ${planted.rowsGenerated}, inserted ${planted.inserted}` : ''}): ` +
+        `nothing was walked, so it cannot be DONE`,
+      fieldsWritten,
+      fieldsLeftEmpty,
+    };
+  }
+  if (settlement.unsettled === 0) {
     return { outcome: 'DONE', fieldsWritten, fieldsLeftEmpty };
   }
+  const byState = settlement.unsettledByState;
+  const known = ['PENDING', 'NOT_AVAILABLE_YET', 'CHECK_FAILED'];
+  const perState = [
+    ...known.map((st) => `${st} ${byState[st] ?? 0}`),
+    ...Object.keys(byState)
+      .filter((st) => !known.includes(st))
+      .sort()
+      .map((st) => `${st} ${byState[st]}`),
+  ].join(', ');
   const asked = walk.fieldsAttempted === 0 ? 'the walk asked nothing' : `the walk asked ${walk.fieldsAttempted} field(s)`;
   return {
     outcome: 'PARTIAL',
     causeClass: 'FIELDS_PENDING',
     causeDetail:
-      `${asked}, but ${unsettled} plan row(s) are not settled ` +
-      `(PENDING ${pending}, NOT_AVAILABLE_YET ${notYet}, CHECK_FAILED ${checkFailed}); ` +
-      `plan rows before this run: ${existing}`,
+      `${asked}, but ${settlement.unsettled} plan row(s) are not settled ` +
+      `(${perState}); plan rows stored ${settlement.stored}, before this run ${existing}`,
     fieldsWritten,
-    fieldsLeftEmpty: unsettled,
+    fieldsLeftEmpty: settlement.unsettled,
   };
 }
 

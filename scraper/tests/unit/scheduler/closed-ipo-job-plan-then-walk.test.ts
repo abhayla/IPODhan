@@ -29,13 +29,22 @@ function walkResult(over: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * What the DB holds for the IPO AFTER the walk (M-1): `stored` plan rows and the
+ * unsettled ones per state. Default 40 stored -- a real plan.
+ */
+function settlement(unsettledByState: Record<string, number>, stored = 40) {
+  const unsettled = Object.values(unsettledByState).reduce((a, b) => a + b, 0);
+  return vi.fn().mockResolvedValue({ stored, unsettled, unsettledByState });
+}
+
 function deps(over: Partial<ResourceClosedIpoDeps> = {}): ResourceClosedIpoDeps {
   return {
     countPlanRows: vi.fn().mockResolvedValue(0),
     plantPlan: vi.fn().mockResolvedValue({ rowsGenerated: 12, inserted: 12, updated: 0 }),
     walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 12, fieldsSupplied: 4, fieldsNotAvailableYet: 8 })),
     // Default: every plan row settled after the walk (OD-73), so DONE is reachable.
-    countUnsettledPlanRows: vi.fn().mockResolvedValue({}),
+    readPlanSettlement: settlement({}),
     ...over,
   };
 }
@@ -89,7 +98,7 @@ describe('resourceClosedIpo — OD-76 plan, then walk', () => {
     const d = deps({
       countPlanRows: vi.fn().mockResolvedValue(40),
       walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 0, stoppedReason: 'NO_DUE_FIELDS' })),
-      countUnsettledPlanRows: vi.fn().mockResolvedValue({ NOT_AVAILABLE_YET: 40 }),
+      readPlanSettlement: settlement({ NOT_AVAILABLE_YET: 40 }),
     });
     const r = await resourceClosedIpo('ipo-1', d);
     expect(r.outcome).not.toBe('DONE');
@@ -130,7 +139,7 @@ describe('resourceClosedIpo — OD-76 plan, then walk', () => {
     const d = deps({
       countPlanRows: vi.fn().mockResolvedValue(40),
       walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 0, stoppedReason: 'NO_DUE_FIELDS' })),
-      countUnsettledPlanRows: vi.fn().mockResolvedValue({}),
+      readPlanSettlement: settlement({}),
     });
     const r = await resourceClosedIpo('ipo-1', d);
     expect(r.outcome).toBe('DONE');
@@ -141,7 +150,7 @@ describe('resourceClosedIpo — OD-76 plan, then walk', () => {
     const d = deps({
       countPlanRows: vi.fn().mockResolvedValue(40),
       walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 0, stoppedReason: 'NO_DUE_FIELDS' })),
-      countUnsettledPlanRows: vi.fn().mockResolvedValue({ NOT_AVAILABLE_YET: 3, PENDING: 1 }),
+      readPlanSettlement: settlement({ NOT_AVAILABLE_YET: 3, PENDING: 1 }),
     });
     const r = await resourceClosedIpo('ipo-1', d);
     expect(r.outcome).toBe('PARTIAL');
@@ -155,7 +164,7 @@ describe('resourceClosedIpo — OD-76 plan, then walk', () => {
     const d = deps({
       countPlanRows: vi.fn().mockResolvedValue(40),
       walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 0, stoppedReason: 'NO_DUE_FIELDS' })),
-      countUnsettledPlanRows: vi.fn().mockResolvedValue({ CHECK_FAILED: 4, NOT_AVAILABLE_YET: 2 }),
+      readPlanSettlement: settlement({ CHECK_FAILED: 4, NOT_AVAILABLE_YET: 2 }),
     });
     const r = await resourceClosedIpo('ipo-1', d);
     expect(r.outcome).toBe('PARTIAL');
@@ -171,7 +180,7 @@ describe('resourceClosedIpo — OD-79 DONE means every plan row settled', () => 
       walk: vi.fn().mockResolvedValue(
         walkResult({ fieldsAttempted: 5, fieldsSupplied: 3, fieldsNotAvailableYet: 2, stoppedReason: 'NO_DUE_FIELDS' })
       ),
-      countUnsettledPlanRows: vi.fn().mockResolvedValue({ PENDING: 30, NOT_AVAILABLE_YET: 2, CHECK_FAILED: 5 }),
+      readPlanSettlement: settlement({ PENDING: 30, NOT_AVAILABLE_YET: 2, CHECK_FAILED: 5 }),
     });
     const r = await resourceClosedIpo('ipo-1', d);
     expect(r.outcome).toBe('PARTIAL');
@@ -186,20 +195,75 @@ describe('resourceClosedIpo — OD-79 DONE means every plan row settled', () => 
     const d = deps({
       countPlanRows: vi.fn().mockResolvedValue(40),
       walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 5, fieldsSupplied: 5 })),
-      countUnsettledPlanRows: vi.fn().mockResolvedValue({ PENDING: 0 }),
+      readPlanSettlement: settlement({ PENDING: 0 }),
     });
     const r = await resourceClosedIpo('ipo-1', d);
     expect(r.outcome).toBe('DONE');
-    expect(d.countUnsettledPlanRows).toHaveBeenCalledWith('ipo-1');
+    expect(d.readPlanSettlement).toHaveBeenCalledWith('ipo-1');
   });
 
   it('a check that failed in THIS walk keeps SOURCE_UNREACHABLE -- a source actually failed to respond', async () => {
     const d = deps({
       walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 4, fieldsSupplied: 2, fieldsCheckFailed: 2 })),
-      countUnsettledPlanRows: vi.fn().mockResolvedValue({ CHECK_FAILED: 2 }),
+      readPlanSettlement: settlement({ CHECK_FAILED: 2 }),
     });
     const r = await resourceClosedIpo('ipo-1', d);
     expect(r.outcome).toBe('PARTIAL');
     expect(r.causeClass).toBe('SOURCE_UNREACHABLE');
+  });
+});
+
+// Review round 4.
+describe('resourceClosedIpo — round 4 (M-1 stored rows, MINOR write-skip order)', () => {
+  it('M-1 probe: the generator REPORTS rows but the DB stores none -> never DONE (FAILED / WRITE_SKIPPED)', async () => {
+    const d = deps({
+      countPlanRows: vi.fn().mockResolvedValue(0),
+      plantPlan: vi.fn().mockResolvedValue({ rowsGenerated: 12, inserted: 12, updated: 0 }),
+      walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 0, stoppedReason: 'NO_DUE_FIELDS' })),
+      readPlanSettlement: settlement({}, 0),
+    });
+    const r = await resourceClosedIpo('ipo-1', d);
+    expect(r.outcome).not.toBe('DONE');
+    expect(r.outcome).toBe('FAILED');
+    expect(r.causeClass).toBe('WRITE_SKIPPED');
+    expect(r.causeDetail).toMatch(/0 plan rows stored/);
+    expect(d.readPlanSettlement).toHaveBeenCalledWith('ipo-1');
+  });
+
+  it('M-1: an IPO that HAD plan rows but has 0 stored after the walk is never DONE either', async () => {
+    const d = deps({
+      countPlanRows: vi.fn().mockResolvedValue(40),
+      walk: vi.fn().mockResolvedValue(walkResult({ fieldsAttempted: 5, fieldsSupplied: 5 })),
+      readPlanSettlement: settlement({}, 0),
+    });
+    const r = await resourceClosedIpo('ipo-1', d);
+    expect(r.outcome).toBe('FAILED');
+  });
+
+  it('an unsettled state the job does not know by name still blocks DONE and is named in the detail', async () => {
+    const d = deps({
+      countPlanRows: vi.fn().mockResolvedValue(40),
+      readPlanSettlement: settlement({ SOME_NEW_STATE: 2 }),
+    });
+    const r = await resourceClosedIpo('ipo-1', d);
+    expect(r.outcome).toBe('PARTIAL');
+    expect(r.causeClass).toBe('FIELDS_PENDING');
+    expect(r.causeDetail).toMatch(/SOME_NEW_STATE 2/);
+  });
+
+  it('MINOR: a walk stopped by its budget AFTER dropping a write reports WRITE_SKIPPED, not FIELDS_PENDING', async () => {
+    const d = deps({
+      walk: vi.fn().mockResolvedValue(
+        walkResult({
+          fieldsAttempted: 3,
+          fieldsWriteSkipped: 1,
+          stoppedReason: 'BUDGET_EXHAUSTED',
+          droppedWrites: [{ tableName: 'ipos', rowKey: '', fieldName: 'issue_size', source: 'NSE', skipReason: 'LOCK_NOT_ACQUIRED' }],
+        })
+      ),
+    });
+    const r = await resourceClosedIpo('ipo-1', d);
+    expect(r.outcome).toBe('PARTIAL');
+    expect(r.causeClass).toBe('WRITE_SKIPPED');
   });
 });
