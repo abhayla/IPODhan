@@ -2055,17 +2055,37 @@ preflight_scraper_wake() {
 # below); an every-30-minutes line fires at the same instants in any zone, so
 # this line needs no TZ prefix and no IST translation.
 # THE CLOSED-IPO WAKE (item 7 S3, spec section 2.1 job table row "Closed-IPO
-# job", section 6.1, OD-19/OD-22): a THIRD line, `scraper-wake.sh closed`, once
-# a day at 22:00 IST -- prod `0 22 * * *`; staging `15 22 * * *`, keeping the
-# SAME W-178 +15-minute offset the data line already uses (prod data */30 =
-# :00/:30, staging data 15,45), so a closed wake never lands in the same
-# crontab minute as either slot's data wake on the shared 2-vCPU box. The box's
-# crontab runs in IST (see the TIMEZONE note on install_staging_window_cron
-# below), so this line carries no TZ prefix or translation, same as the data
-# and live lines. `scripts/scraper-wake.sh closed` itself passes `--job=closed`
-# (item 7 S3) and reads the SAME `scraper:cycle` heavy lock the data job takes
-# -- never `scraper:live` -- because spec section 2.1's rule is that the two
-# never run concurrently, not that closed gets its own lock.
+# job", section 6.1, OD-19/OD-22): a THIRD line, `scraper-wake.sh closed`,
+# around 22:00 IST with a same-night retry -- prod `10,40 22,23 * * *`;
+# staging `25,55 22,23 * * *`.
+# ROUND 1 FIX (Tier A finding 1): the ORIGINAL lines here were `0 22 * * *`
+# (prod) and `15 22 * * *` (staging) -- exactly the prod DATA wake's :00
+# minute and the staging DATA wake's :15 minute (SCRAPER_CRON = `*/30` / `15,45`
+# above). A data wake and the closed wake starting in the SAME crontab minute
+# race for `scraper:cycle`; whichever process loses `lock.acquire` skips its
+# turn with no retry, so the night's closed-IPO run was silently lost every
+# time the two collided -- exactly the class this rule exists to close, self
+# -inflicted by the cron table rather than a real overrun.
+# The new minutes sit clear of EVERY existing wake on the box: prod data is
+# :00/:30, prod live (item 7 S1) is :05/:35 -- closed uses :10/:40. Staging
+# data is :15/:45, staging live is :20/:50 -- closed uses :25/:55.
+# SAME-NIGHT RETRY: the line now fires at both 22:xx and 23:xx. This is safe
+# because `isClosedIpoJobDue` (scheduler/closed-ipo-job.ts) is a boundary
+# check, not a per-wake trigger -- once `markCatchUpCadenceRan` stamps the
+# 22:00-IST boundary as served, every later wake that same night (including
+# the 23:xx retry) logs "22:00 IST boundary already served" and exits 0
+# without touching `scraper:cycle`; see
+# scraper/tests/unit/index-closed-job-wiring.test.ts and
+# scripts/tests/scraper-wake.test.sh for the once-per-night proof. The retry
+# only ever helps the ONE night the first wake lost a lock race or found the
+# box unreachable -- it never runs the job twice.
+# The box's crontab runs in IST (see the TIMEZONE note on
+# install_staging_window_cron below), so these lines carry no TZ prefix or
+# translation, same as the data and live lines. `scripts/scraper-wake.sh
+# closed` itself passes `--job=closed` (item 7 S3) and reads the SAME
+# `scraper:cycle` heavy lock the data job takes -- never `scraper:live` --
+# because spec section 2.1's rule is that the two never run concurrently, not
+# that closed gets its own lock.
 # DISABLE / ROLLBACK: DEPLOY_SCRAPER_CLOSED_JOB=0 makes the install write only
 # the data (and live) lines and REMOVE this slot's closed line -- the mirror of
 # DEPLOY_SCRAPER_LIVE_JOB=0 below. A rollback past this change to a release
@@ -2111,11 +2131,14 @@ install_scraper_cron() {
   [ "${DEPLOY_SCRAPER_LIVE_JOB:-1}" = "0" ] && live_enabled=0
 
   local closed_marker="${SCRAPER_CLOSED_CRON_MARKER:-# ipodhan-scraper-closed:$SLOT}"
-  # Closed-IPO minutes: once a day at 22:00 IST, +15 offset for staging
-  # (W-178, same convention the data line already uses for the two slots).
+  # Closed-IPO minutes (round 1 fix, Tier A finding 1): 22:xx + a 23:xx
+  # same-night retry, offset clear of every data/live minute on this slot
+  # (prod data :00/:30, live :05/:35 -> closed :10/:40; staging data :15/:45,
+  # live :20/:50 -> closed :25/:55). See the section comment above for why the
+  # retry never double-runs the job.
   local closed_cron="${SCRAPER_CLOSED_CRON:-}"
   if [ -z "$closed_cron" ]; then
-    if [ "$SLOT" = "prod" ]; then closed_cron='0 22 * * *'; else closed_cron='15 22 * * *'; fi
+    if [ "$SLOT" = "prod" ]; then closed_cron='10,40 22,23 * * *'; else closed_cron='25,55 22,23 * * *'; fi
   fi
   local closed_line="$closed_cron $wake_script closed >> $SCRAPER_WAKE_LOG 2>&1 $closed_marker"
   local closed_enabled=1

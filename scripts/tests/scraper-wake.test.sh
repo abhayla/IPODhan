@@ -631,6 +631,33 @@ FAKECRON
     echo "$STORED"
   fi
 
+  # Round 1 fix (Tier A finding 2): the closed-IPO wake line REALLY reaches
+  # the crontab, exactly once after two installs.
+  CLOSED_LINES10="$(echo "$STORED" | grep -cF 'ipodhan-scraper-closed:prod' || true)"
+  if [ "${CLOSED_LINES10:-0}" -eq 1 ] && echo "$STORED" | grep -F 'ipodhan-scraper-closed:prod' | grep -qF 'scraper-wake.sh closed'; then
+    pass "case 10: the closed-IPO wake line REALLY reaches the crontab, exactly once after two installs"
+  else
+    fail "case 10: expected exactly one stored closed-IPO line, found ${CLOSED_LINES10:-0}"
+    echo "$STORED"
+  fi
+
+  # Round 1 fix (Tier A finding 1): the closed line's minutes never equal a
+  # data or live minute on either slot -- the exact collision class this round
+  # fixes. Extract the closed cron's minute field and confirm it shares no
+  # value with the data (*/30 -> 0,30) or live (5,35) minute sets on prod.
+  CLOSED_CRON_LINE10="$(echo "$STORED" | grep -F 'ipodhan-scraper-closed:prod' | grep -oE '^[^ ]+ [^ ]+')"
+  CLOSED_MIN10="$(echo "$CLOSED_CRON_LINE10" | awk '{print $1}')"
+  COLLIDES10=0
+  for m in $(echo "$CLOSED_MIN10" | tr ',' ' '); do
+    case ",0,30," in *",$m,"*) COLLIDES10=1 ;; esac
+    case ",5,35," in *",$m,"*) COLLIDES10=1 ;; esac
+  done
+  if [ "$COLLIDES10" -eq 0 ] && [ -n "$CLOSED_MIN10" ]; then
+    pass "case 10: prod closed-wake minutes ($CLOSED_MIN10) never equal a data (0,30) or live (5,35) minute"
+  else
+    fail "case 10: prod closed-wake minutes ($CLOSED_MIN10) collide with a data/live minute - the night's run can be silently lost"
+  fi
+
   # Round 1 (rollback): DEPLOY_SCRAPER_LIVE_JOB=0 must REMOVE this slot's live
   # line (idempotently) and keep the data line and every unrelated entry.
   (
@@ -656,6 +683,65 @@ FAKECRON
   else
     fail "case 10: disabling the live job did not remove its line cleanly"
     echo "$STORED_OFF"; cat "$C10/disable.log"
+  fi
+
+  # Round 1 fix (Tier A finding 2): DEPLOY_SCRAPER_CLOSED_JOB=0 must REMOVE
+  # this slot's closed-IPO line (idempotently) and keep the data/live lines
+  # and every unrelated entry.
+  (
+    PATH="$C10/bin:$PATH"; export PATH
+    DRY_RUN=0
+    SLOT=prod
+    SCRAPER_CRON='*/30 * * * *'
+    CURRENT_LINK="$C10/current"
+    SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
+    SCRAPER_WAKE_LOG="$C10/wake.log"
+    DEPLOY_SCRAPER_CLOSED_JOB=0
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    eval "$CRON_FN"
+    install_scraper_cron
+    install_scraper_cron
+  ) > "$C10/disable-closed.log" 2>&1
+  STORED_CLOSED_OFF="$(cat "$FAKE_CRONTAB_FILE" 2>/dev/null || true)"
+  if ! echo "$STORED_CLOSED_OFF" | grep -qF 'ipodhan-scraper-closed:prod' \
+     && echo "$STORED_CLOSED_OFF" | grep -qF 'ipodhan-scraper-live:prod' \
+     && [ "$(echo "$STORED_CLOSED_OFF" | grep -cF 'ipodhan-scraper-wake:prod')" -eq 1 ] \
+     && echo "$STORED_CLOSED_OFF" | grep -qF 'some-other-job.sh'; then
+    pass "case 10: DEPLOY_SCRAPER_CLOSED_JOB=0 removes the closed-IPO line, keeps the data/live lines and the unrelated entry"
+  else
+    fail "case 10: disabling the closed-IPO job did not remove its line cleanly"
+    echo "$STORED_CLOSED_OFF"; cat "$C10/disable-closed.log"
+  fi
+
+  # Round 1 fix (Tier A finding 1, staging slot): the closed line's minutes
+  # never equal a data or live minute on staging either (data 15,45; live
+  # 20,50).
+  (
+    PATH="$C10/bin:$PATH"; export PATH
+    DRY_RUN=0
+    SLOT=staging
+    SCRAPER_CRON='15,45 * * * *'
+    CURRENT_LINK="$C10/current"
+    SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
+    SCRAPER_WAKE_LOG="$C10/wake-staging.log"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    eval "$CRON_FN"
+    install_scraper_cron
+  ) > "$C10/install-staging.log" 2>&1
+  STORED_STAGING10="$(cat "$FAKE_CRONTAB_FILE" 2>/dev/null || true)"
+  CLOSED_CRON_LINE10S="$(echo "$STORED_STAGING10" | grep -F 'ipodhan-scraper-closed:staging' | grep -oE '^[^ ]+ [^ ]+')"
+  CLOSED_MIN10S="$(echo "$CLOSED_CRON_LINE10S" | awk '{print $1}')"
+  COLLIDES10S=0
+  for m in $(echo "$CLOSED_MIN10S" | tr ',' ' '); do
+    case ",15,45," in *",$m,"*) COLLIDES10S=1 ;; esac
+    case ",20,50," in *",$m,"*) COLLIDES10S=1 ;; esac
+  done
+  if [ "$COLLIDES10S" -eq 0 ] && [ -n "$CLOSED_MIN10S" ]; then
+    pass "case 10: staging closed-wake minutes ($CLOSED_MIN10S) never equal a data (15,45) or live (20,50) minute"
+  else
+    fail "case 10: staging closed-wake minutes ($CLOSED_MIN10S) collide with a data/live minute - the night's run can be silently lost"
   fi
 
   # A crontab write that FAILS must warn loudly, never pass silently.

@@ -240,13 +240,14 @@ describe('item 7 S3 - the closed-IPO job runs as its own --job=closed wake under
     await expect(deps.isCycleLockHeld()).resolves.toBe(false);
   });
 
-  it('ENABLE_CLOSED_IPO_JOB=false: the wake still takes and releases the lock, logs "disabled", and never calls runClosedIpoJob', async () => {
+  it('ENABLE_CLOSED_IPO_JOB=false: the wake never takes the lock, logs "disabled", and never calls runClosedIpoJob (round 1, Tier A finding 4 — a disabled closed wake must never make a data wake skip)', async () => {
     process.env.ENABLE_CLOSED_IPO_JOB = 'false';
     lockAcquireMock.mockResolvedValue({ acquired: true, token: 'closed-tok' });
     await runWith(['--source=all', '--job=closed'], THURSDAY_2200_IST);
 
+    expect(lockAcquireMock).not.toHaveBeenCalled();
     expect(runClosedIpoJobMock).not.toHaveBeenCalled();
-    expect(lockReleaseMock).toHaveBeenCalledWith('scraper:cycle', 'closed-tok');
+    expect(lockReleaseMock).not.toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
@@ -293,5 +294,40 @@ describe('item 7 S3 - the closed-IPO job runs as its own --job=closed wake under
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(lockReleaseMock).toHaveBeenCalledWith('scraper:cycle', 'closed-tok');
+  });
+
+  it('round 1, Tier A finding 1: a second closed wake the same night (the 23:xx retry) does nothing once markCatchUpCadenceRan stamped the run — it takes and immediately releases the lock, but never runs the job again', async () => {
+    lockAcquireMock.mockResolvedValue({ acquired: true, token: 'closed-tok' });
+    // First wake, 22:10 IST: nothing stamped yet, so it runs and "stamps" the
+    // boundary by returning that stamp on the next redis.get read below.
+    await runWith(['--source=all', '--job=closed'], istDate(2026, 9, 3, 22, 10));
+    expect(runClosedIpoJobMock).toHaveBeenCalledTimes(1);
+    expect(markCatchUpCadenceRanMock).toHaveBeenCalledTimes(1);
+
+    // Second wake, 23:10 IST (the retry minute): redis now reports the stamp
+    // the first run left, so isClosedIpoJobDue is false. It still takes and
+    // releases scraper:cycle (the flag/lock guard runs before the cadence
+    // check), but the job itself never runs a second time — that is what
+    // makes the retry safe to add without double-running the night's work.
+    lockAcquireMock.mockClear();
+    lockReleaseMock.mockClear();
+    runClosedIpoJobMock.mockClear();
+    redisGetMock.mockResolvedValueOnce(String(istDate(2026, 9, 3, 22, 10).getTime()));
+    await runWith(['--source=all', '--job=closed'], istDate(2026, 9, 3, 23, 10));
+
+    expect(lockAcquireMock).toHaveBeenCalledTimes(1);
+    expect(lockReleaseMock).toHaveBeenCalledWith('scraper:cycle', 'closed-tok');
+    expect(runClosedIpoJobMock).not.toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('round 1, Tier A finding 3: runClosedIpoJob throwing releases scraper:cycle (finally) and exits 1', async () => {
+    lockAcquireMock.mockResolvedValue({ acquired: true, token: 'closed-tok' });
+    runClosedIpoJobMock.mockRejectedValueOnce(new Error('closed-IPO job blew up'));
+    await runWith(['--source=all', '--job=closed'], THURSDAY_2200_IST);
+
+    expect(runClosedIpoJobMock).toHaveBeenCalledTimes(1);
+    expect(lockReleaseMock).toHaveBeenCalledWith('scraper:cycle', 'closed-tok');
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });

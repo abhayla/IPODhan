@@ -558,6 +558,17 @@ async function runLiveFiguresJob(): Promise<number> {
  * succeeded.
  */
 async function runClosedIpoWake(): Promise<number> {
+  // Round 1, Tier A finding 4: check the flag BEFORE taking the heavy lock.
+  // Taking `scraper:cycle` and then discovering the job is disabled still
+  // costs the lock for however long that check + release takes — on the
+  // shared 2-vCPU box that is exactly the W-178 shape this whole slice exists
+  // to avoid, except self-inflicted by a disabled job instead of a real one.
+  // A disabled closed wake must never make a data wake skip.
+  if (!FEATURE_FLAGS.ENABLE_CLOSED_IPO_JOB) {
+    logger.info('closed-IPO job disabled (ENABLE_CLOSED_IPO_JOB=false)');
+    return 0;
+  }
+
   const redis = getRedisClient();
   const lock = new DistributedLock(redis);
   const lockResult = await lock.acquire(CYCLE_LOCK_RESOURCE, { ttl: CYCLE_LOCK_TTL_MS });
@@ -609,11 +620,6 @@ async function runClosedIpoWake(): Promise<number> {
 
   let exitCode = 0;
   try {
-    if (!FEATURE_FLAGS.ENABLE_CLOSED_IPO_JOB) {
-      logger.info('closed-IPO job disabled (ENABLE_CLOSED_IPO_JOB=false)');
-      return 0;
-    }
-
     const now = new Date();
     let lastRunAt: Date | null = null;
     try {
@@ -628,9 +634,17 @@ async function runClosedIpoWake(): Promise<number> {
     }
 
     if (!isClosedIpoJobDue(now, lastRunAt)) {
+      // Round 1 fix (Tier A finding 1): the closed cron now fires twice a
+      // night (22:xx + a 23:xx retry, see install_scraper_cron in
+      // deploy-linux.sh) so the ONE night the first wake loses the
+      // scraper:cycle race still gets its run. Every OTHER wake that finds
+      // the boundary already served — including the routine retry, and any
+      // repeat if the box wakes it more than twice — logs this exact phrase
+      // and exits 0 without touching the lock, so the log stays greppable
+      // proof that "once per night" held.
       logger.info(
         { lastRunAt: lastRunAt?.toISOString() ?? 'never' },
-        'closed-IPO job: 22:00 IST boundary already served'
+        'closed-IPO job already ran tonight — 22:00 IST boundary already served'
       );
       return 0;
     }
