@@ -134,6 +134,13 @@ import { SIDECAR_TIMEOUT_MS } from '../scrapers/anchor-investors-scraper.js';
 export const EXTRACTOR_VERSION = 'extract_filing.py@2026-09-03';
 
 /** Doc types `scripts/extract_filing.py` understands. Anything else is skipped. */
+import {
+  AUTO_PERSIST_DOC_TYPES,
+  isExtractableDocType,
+  NOT_EXTRACTABLE_STATUS,
+  resolveAdmissionExtractionStatus,
+} from '../config/document-admission-status.js';
+
 export const EXTRACTABLE_DOC_TYPES: readonly FilingDocType[] = [
   'PRICE_BAND_AD',
   'RHP',
@@ -158,10 +165,15 @@ export const ANCHOR_DOC_TYPE = 'ANCHOR_ALLOCATION_REPORT';
  * selection gate; the branch inside `processPendingFilings` decides which
  * extractor each one goes to.
  */
-export const AUTO_PERSIST_DOC_TYPES: readonly string[] = [
-  ...EXTRACTABLE_DOC_TYPES,
-  ANCHOR_DOC_TYPE,
-];
+// Imported AND re-exported from ../config/document-admission-status.js, which OWNS this
+// list so the DISCOVERY layer can read it too (§7.6: discovery is the bottom layer and may
+// not import this module). One list, so the admission stamp and this module's dispatch can
+// never disagree about which types have an extractor — the mechanism of #869's fix.
+//
+// `export ... from` alone would NOT work: it re-exports without binding the name in this
+// module's scope, and this file calls isExtractableDocType internally. Caught by the type
+// checker ("Cannot find name 'isExtractableDocType'") and by 74 red tests.
+export { AUTO_PERSIST_DOC_TYPES, isExtractableDocType, NOT_EXTRACTABLE_STATUS, resolveAdmissionExtractionStatus };
 
 /**
  * NOT_APPLICABLE reporting (lane B item, 2026-09-16). Whether a document type
@@ -170,9 +182,7 @@ export const AUTO_PERSIST_DOC_TYPES: readonly string[] = [
  * reporter (`scripts/lib/not-applicable-documents.mjs`) mirrors so a document
  * type outside this list is never read as "stuck", only as "not applicable".
  */
-export function isExtractableDocType(type: string): boolean {
-  return AUTO_PERSIST_DOC_TYPES.includes(String(type ?? '').toUpperCase());
-}
+// (isExtractableDocType is re-exported above, from the config module that owns the list.)
 
 /**
  * The skip/registry reason for a PENDING document whose type has no
@@ -180,6 +190,20 @@ export function isExtractableDocType(type: string): boolean {
  * extraction failure — this document was never a candidate to extract.
  */
 export const NOT_APPLICABLE_EXTRACTION_REASON = 'no_extractor_for_doc_type';
+
+/**
+ * #869 — re-exported from `../config/document-admission-status.js`, which is where
+ * these live so the DISCOVERY layer can read them too. Discovery is the bottom of
+ * the §7.6 layer order and may not import this module (consolidation); defining
+ * them here made `document-discovery-runner -> filing-auto-persist` an upward edge
+ * that `scripts/ci/check-module-boundaries.mjs` correctly refused.
+ *
+ * Re-exported rather than moved outright so existing importers of this module keep
+ * working, and `resolveAdmissionExtractionStatus` is wrapped to supply this module's
+ * own `isExtractableDocType` — the predicate the consumer dispatches on — so the
+ * admission stamp cannot drift from what actually gets processed.
+ */
+
 
 /**
  * OD-55 (owner, 2026-09-11): there is NO per-document extraction budget.
