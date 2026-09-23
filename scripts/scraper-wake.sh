@@ -103,6 +103,10 @@ fi
 # 7200 seconds. Overridable ONLY for the test harness; production never sets
 # it. This is a crash guard, not a budget: nothing about a slow-but-
 # progressing OCR pass should ever reach it.
+# Per job (item 7 S1 round 1, Tier A finding): this is the data/closed default;
+# a live wake is lowered to 300 s AFTER the job is parsed below, unless the
+# suite set SCRAPER_CEILING_SECONDS explicitly (that still wins for every job).
+SCRAPER_CEILING_OVERRIDE="${SCRAPER_CEILING_SECONDS:-}"
 SCRAPER_CEILING_SECONDS="${SCRAPER_CEILING_SECONDS:-7200}"
 
 # --- Which lock this wake must read -----------------------------------------
@@ -188,6 +192,16 @@ case "$SCRAPER_JOB" in
     ;;
 esac
 SCRAPER_LOCK_KEY="${SCRAPER_LOCK_KEY:-$SCRAPER_JOB_LOCK_KEY}"
+
+# THE LIVE JOB'S OWN CEILING (round 1, Tier A finding). The live-figures job is a
+# few HTTP reads under a 4-minute lock (spec section 2.1 "The two locks") and
+# carries its own in-process deadline at 3.5 minutes. The 2-hour data ceiling
+# would let a live process that ignores that deadline live for 2 hours, so a
+# live wake is bounded at 300 s: 60 s past the lock's TTL, and still far inside
+# the 30-minute live cadence.
+if [ -z "$SCRAPER_CEILING_OVERRIDE" ] && [ "$SCRAPER_JOB" = "live" ]; then
+  SCRAPER_CEILING_SECONDS=300
+fi
 
 SCRAPER_SOURCE="${SCRAPER_SOURCE:-all}"
 
@@ -458,7 +472,7 @@ ELAPSED=$(( $(date -u '+%s') - STARTED_AT ))
 if [ "$STATUS" -eq 124 ]; then
   # THE CEILING LINE. Distinguishable from both a clean finish and a crash, by
   # its own greppable token and by exit code 124.
-  log "ceiling-tripped: the 2-hour hung-process ceiling fired and the cycle was terminated. elapsed=${ELAPSED}s ceiling=${SCRAPER_CEILING_SECONDS}s lock_key=$SCRAPER_LOCK_KEY exit=124"
+  log "ceiling-tripped: the ${SCRAPER_CEILING_SECONDS}s hung-process ceiling (job=$SCRAPER_JOB) fired and the cycle was terminated. elapsed=${ELAPSED}s ceiling=${SCRAPER_CEILING_SECONDS}s lock_key=$SCRAPER_LOCK_KEY exit=124"
   exit 124
 fi
 

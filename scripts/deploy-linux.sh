@@ -2024,9 +2024,20 @@ preflight_scraper_wake() {
 # still. The live job decides for itself whether anything is due; the cron line
 # only has to wake it on every half hour, any day - GMP runs evenings, weekends
 # and holidays too (OD-28, F-41), so the line carries no hour or weekday filter.
-# Same per-slot minutes as the data line ($SCRAPER_LIVE_CRON defaults to the
-# slot's value: */30 prod, 15,45 staging, W-178) so the two slots never fetch
-# in the same minute. The data line's cadence is unchanged in this slice.
+# OFFSET MINUTES (round 1, Tier A finding): prod live at 5,35 and staging live
+# at 20,50 - never the same minute as ANY data wake (prod data */30 = :00/:30,
+# staging data 15,45). Two node processes starting in one minute on the
+# 2-vCPU box is the W-178 starvation shape, and the live job's own 300 s wake
+# ceiling means a live run started at :05 is gone before :10, well clear of the
+# next data wake. The minutes live in install_scraper_cron (one place, so the
+# suite that evals that function alone sees the same values). The data line's
+# cadence is unchanged in this slice.
+# DISABLE / ROLLBACK: DEPLOY_SCRAPER_LIVE_JOB=0 makes the install write only the
+# data line and REMOVE this slot's live line. Rolling back to a release built
+# before this change does NOT remove it (that installer knows no live marker),
+# and the old wrapper would run `scraper-wake.sh live` as a SECOND data wake, so
+# a rollback past this change must also run, on the box, as the deploy user:
+#   crontab -l | grep -vF '# ipodhan-scraper-live:<slot>' | crontab -
 # TIMEZONE: the box's crontab runs in IST (see install_staging_window_cron
 # below); an every-30-minutes line fires at the same instants in any zone, so
 # this line needs no TZ prefix and no IST translation.
@@ -2036,7 +2047,6 @@ preflight_scraper_wake() {
 # scripts/ops/wake-delta.mjs reads this one file.
 SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
 SCRAPER_LIVE_CRON_MARKER="# ipodhan-scraper-live:$SLOT"
-SCRAPER_LIVE_CRON="$SCRAPER_CRON" # every 30 min, any hour, any day (IST crontab)
 SCRAPER_WAKE_LOG="${DEPLOY_SCRAPER_WAKE_LOG:-/var/log/ipodhan-scraper-wake-$SLOT.log}"
 install_scraper_cron() {
   # MAJOR (Tier A review): the scheduled line pins $CURRENT_LINK, never a
@@ -2056,17 +2066,35 @@ install_scraper_cron() {
   # Defaults here too (not only at the top level) so this function stays
   # self-contained when the suite extracts and evals it on its own.
   local live_marker="${SCRAPER_LIVE_CRON_MARKER:-# ipodhan-scraper-live:$SLOT}"
-  local live_cron="${SCRAPER_LIVE_CRON:-$SCRAPER_CRON}"
+  # Live minutes, offset from every data wake (see the section comment above):
+  # prod 5,35 / staging 20,50. Every 30 min, any hour, any day (IST crontab).
+  local live_cron="${SCRAPER_LIVE_CRON:-}"
+  if [ -z "$live_cron" ]; then
+    if [ "$SLOT" = "prod" ]; then live_cron='5,35 * * * *'; else live_cron='20,50 * * * *'; fi
+  fi
   local live_line="$live_cron $wake_script live >> $SCRAPER_WAKE_LOG 2>&1 $live_marker"
+  local live_enabled=1
+  [ "${DEPLOY_SCRAPER_LIVE_JOB:-1}" = "0" ] && live_enabled=0
+  # With the live job disabled the live line is not written, and the marker
+  # filter below still removes any previous one - so disabling is idempotent.
+  local new_lines="$cron_line"
+  if (( live_enabled )); then
+    new_lines="$cron_line
+$live_line"
+  fi
 
   if (( DRY_RUN )); then
     log "[dry-run] would install crontab line: $cron_line"
-    log "[dry-run] would install crontab line: $live_line"
+    if (( live_enabled )); then
+      log "[dry-run] would install crontab line: $live_line"
+    else
+      log "[dry-run] DEPLOY_SCRAPER_LIVE_JOB=0: would REMOVE any '$live_marker' line"
+    fi
     return 0
   fi
 
   if ! command -v crontab >/dev/null 2>&1; then
-    warn "install_scraper_cron: crontab not found on PATH - THE SCRAPER WILL NOT BE WOKEN. pm2 no longer carries --cron-restart, so without this line nothing schedules a cycle. Install cron or add the lines by hand: $cron_line AND $live_line"
+    warn "install_scraper_cron: crontab not found on PATH - THE SCRAPER WILL NOT BE WOKEN. pm2 no longer carries --cron-restart, so without this line nothing schedules a cycle. Install cron or add the lines by hand: $new_lines"
     return 0
   fi
 
@@ -2076,10 +2104,14 @@ install_scraper_cron() {
   local kept
   kept="$(printf '%s\n' "$existing" | grep -vF "$SCRAPER_CRON_MARKER" | grep -vF "$live_marker" || true)"
 
-  if printf '%s\n%s\n%s\n' "$kept" "$cron_line" "$live_line" | grep -v '^$' | crontab -; then
-    log "install_scraper_cron: scheduled the scraper wake for slot '$SLOT' at '$SCRAPER_CRON' (data) and '$live_cron' (live) -> $wake_script"
+  if printf '%s\n%s\n' "$kept" "$new_lines" | grep -v '^$' | crontab -; then
+    if (( live_enabled )); then
+      log "install_scraper_cron: scheduled the scraper wake for slot '$SLOT' at '$SCRAPER_CRON' (data) and '$live_cron' (live) -> $wake_script"
+    else
+      log "install_scraper_cron: scheduled the data wake for slot '$SLOT' at '$SCRAPER_CRON' -> $wake_script; DEPLOY_SCRAPER_LIVE_JOB=0, so this slot's live line was removed"
+    fi
   else
-    warn "install_scraper_cron: crontab write FAILED - THE SCRAPER WILL NOT BE WOKEN on this box. Add by hand: $cron_line AND $live_line"
+    warn "install_scraper_cron: crontab write FAILED - THE SCRAPER WILL NOT BE WOKEN on this box. Add by hand: $new_lines"
   fi
 }
 

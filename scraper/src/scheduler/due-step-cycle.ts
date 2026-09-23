@@ -90,20 +90,21 @@ export function isMarketHoursIST(now: Date): boolean {
 /**
  * Item 7 S1: the live-figures job's bidding window (spec
  * docs/design/data-sourcing-pull-model.md §2.1 job table, OD-28) — subscription
- * and the demand graph run "every 30 minutes, 10:00–18:30". 18:30 is the spec's
- * number, not isMarketHoursIST's 17:00: the exchanges keep publishing the day's
- * final bid figures after the 17:00 close of bidding, and the old window cut
- * that last reading off. Mon–Fri only: inferred, not spec-stated — the spec
- * gates on "a day when at least one IPO is OPEN", and bidding does not run on
- * a non-trading day even while an IPO's status stays OPEN over a weekend.
- * Exchange holidays are not excluded here (no calendar read in a pure
- * predicate); on a holiday the fetch returns an unchanged figure.
+ * and the demand graph run "every 30 minutes, 10:00–18:30, only on a day when
+ * at least one IPO is OPEN". Both ends are inclusive, so the 18:30 wake reads
+ * the day's final figure. 18:30 is the spec's number, not isMarketHoursIST's
+ * 17:00: the exchanges keep publishing the day's final bid figures after the
+ * 17:00 close of bidding.
+ *
+ * No weekday filter (round 1, Tier A finding): the spec's day gate is "a day
+ * when at least one IPO is OPEN", and the caller already checks that an IPO is
+ * OPEN. An IPO stays OPEN across a weekend, so a Mon–Fri filter was a rule the
+ * spec does not state. On a non-bidding day the fetch returns an unchanged
+ * figure and the snapshot writer's own guards keep it from regressing.
  */
 export function isBiddingHoursIST(now: Date): boolean {
-  const { weekday, minutesOfDay } = toIstClock(now);
-  const isWeekday = weekday >= 1 && weekday <= 5;
-  const inWindow = minutesOfDay >= 10 * 60 && minutesOfDay < 18 * 60 + 30;
-  return isWeekday && inWindow;
+  const { minutesOfDay } = toIstClock(now);
+  return minutesOfDay >= 10 * 60 && minutesOfDay <= 18 * 60 + 30;
 }
 
 /**

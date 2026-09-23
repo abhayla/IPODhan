@@ -333,17 +333,23 @@ async function countIposByStatus(statuses: readonly ('UPCOMING' | 'OPEN' | 'CLOS
  *
  * TTL 4 minutes: the spec's number for the `live` lock (§2.1 table). A live run
  * is a handful of HTTP reads, so 4 minutes is well past a healthy run and far
- * inside the 30-minute cadence. A slower-but-alive run keeps the lock by
- * extending it every minute (the same keep-alive shape as the cycle lock); a
- * dead process stops extending, so its lock is gone within 4 minutes and the
- * next wake runs. A HUNG process keeps extending — which is correct: the next
- * wake then skips and its skip line is what reports the stuck run (§2.1: "a held
- * lock means the previous one is stuck and that is what the skip line
- * reports"). The wake wrapper's 2-hour ceiling (OD-55) still bounds it.
+ * inside the 30-minute cadence.
+ *
+ * NO renewal (item 7 S1 round 1, Tier A finding): renewing every minute kept
+ * `scraper:live` held for as long as a HUNG process lived — up to the wake
+ * wrapper's ceiling — so every live wake in between skipped and the figure on a
+ * closing day stood still, the exact failure OD-27 exists to prevent. Instead
+ * the job carries a hard in-process deadline INSIDE the 4-minute TTL: at
+ * LIVE_JOB_DEADLINE_MS it starts no new fetch, abandons whatever is in flight,
+ * releases the lock and exits 1. The lock therefore can never outlive the §2.1
+ * bound: either the run finishes, or the deadline releases it, or (process
+ * killed outright) the TTL expires it 4 minutes after it was taken. The wake
+ * wrapper gives live wakes their own short ceiling as a backstop.
  */
 export const LIVE_LOCK_RESOURCE = 'scraper:live';
 export const LIVE_LOCK_TTL_MS = 4 * 60 * 1000;
-const LIVE_LOCK_EXTEND_INTERVAL_MS = 60 * 1000;
+/** 3.5 minutes: inside the 4-minute TTL, leaving 30 s to release and exit. */
+export const LIVE_JOB_DEADLINE_MS = 3.5 * 60 * 1000;
 
 /** Item 7 S1: the two jobs `--job=` selects. `data` is the default so a cron line without the flag behaves as before. */
 export const SCRAPER_JOBS = ['data', 'live'] as const;
@@ -355,7 +361,7 @@ export type ScraperJob = (typeof SCRAPER_JOBS)[number];
  * job so they run on their own schedule under their own lock.
  *
  *   - subscription (the OPEN-restricted NSE + BSE reads) and the demand graph:
- *     only in bidding hours (weekday 10:00–18:30 IST) AND only when at least one
+ *     only in bidding hours (10:00–18:30 IST, any day) AND only when at least one
  *     IPO is OPEN;
  *   - the grey-market premium: whenever any IPO is UPCOMING or OPEN — any hour,
  *     any day, evenings, weekends and holidays included (OD-28, F-41).
@@ -387,31 +393,12 @@ async function runLiveFiguresJob(): Promise<number> {
   );
 
   const token = lockResult.token;
-  let lockLost = false;
-  let keepAlive: ReturnType<typeof setInterval> | null = null;
-  if (token) {
-    keepAlive = setInterval(() => {
-      lock.extendLock(LIVE_LOCK_RESOURCE, token, LIVE_LOCK_TTL_MS)
-        .then((extended) => {
-          if (extended === false) {
-            lockLost = true;
-            logger.error({ lockResource: LIVE_LOCK_RESOURCE }, 'Live-figures job: lock extend returned false — stopping before the next step');
-          }
-        })
-        .catch((error: unknown) => {
-          logger.debug(
-            { error: error instanceof Error ? error.message : String(error) },
-            'Live-figures job: lock extend failed (non-fatal — TTL still covers the next interval)'
-          );
-        });
-    }, LIVE_LOCK_EXTEND_INTERVAL_MS);
-    keepAlive.unref?.();
-  }
+  // Set when the deadline fires: no further step starts (runLiveStep checks it).
+  let deadlineHit = false;
+  let released = false;
   const releaseLiveLock = async (): Promise<void> => {
-    if (keepAlive) {
-      clearInterval(keepAlive);
-      keepAlive = null;
-    }
+    if (released) return;
+    released = true;
     try {
       await lock.release(LIVE_LOCK_RESOURCE, token);
     } catch (error) {
@@ -434,8 +421,8 @@ async function runLiveFiguresJob(): Promise<number> {
   process.once('SIGINT', onSignal);
 
   const runLiveStep = async (label: string, fn: () => Promise<{ success?: boolean; errors?: string[] } | void>): Promise<void> => {
-    if (lockLost) {
-      errors.push(`${label}: skipped — live lock lost`);
+    if (deadlineHit) {
+      errors.push(`${label}: skipped — live job deadline (${LIVE_JOB_DEADLINE_MS} ms) reached`);
       return;
     }
     try {
@@ -466,20 +453,20 @@ async function runLiveFiguresJob(): Promise<number> {
     }
   };
 
-  try {
+  const work = async (): Promise<void> => {
     const now = new Date();
 
     // Subscription + demand graph: bidding hours only, OPEN IPOs only (OD-28).
     if (!isBiddingHoursIST(now)) {
-      logger.info('Live-figures job: outside bidding hours (weekday 10:00-18:30 IST) — subscription and demand graph make ZERO network calls');
+      logger.info('Live-figures job: outside bidding hours (10:00-18:30 IST) — subscription and demand graph make ZERO network calls');
     } else {
       const openCount = await countOrFailOpen(['OPEN']);
       if (openCount === 0) {
         logger.info('Live-figures job: bidding hours, but zero OPEN IPOs — subscription and demand graph make ZERO network calls');
       } else {
         logger.info({ openCount }, 'Live-figures job: bidding hours + OPEN IPOs — running subscription (NSE/BSE, OPEN only) and the demand graph');
-        await runLiveStep('live:NSE', () => runNSEScraper({ allowedStatuses: ['OPEN'] }));
-        await runLiveStep('live:BSE', () => runBSEScraper({ allowedStatuses: ['OPEN'] }));
+        await runLiveStep('live:NSE', () => runNSEScraper({ allowedStatuses: ['OPEN'], liveFiguresOnly: true }));
+        await runLiveStep('live:BSE', () => runBSEScraper({ allowedStatuses: ['OPEN'], liveFiguresOnly: true }));
         await runLiveStep('live:demandGraph', () => runDemandBackfill({ execute: true }));
       }
     }
@@ -493,8 +480,28 @@ async function runLiveFiguresJob(): Promise<number> {
       logger.info({ gmpCandidates }, 'Live-figures job: UPCOMING/OPEN IPOs present — running the grey-market premium fetch');
       await runLiveStep('live:GMP', () => runInvestorgainGMPScraper());
     }
+  };
+
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<'deadline'>((resolve) => {
+    deadlineTimer = setTimeout(() => resolve('deadline'), LIVE_JOB_DEADLINE_MS);
+  });
+  try {
+    const outcome = await Promise.race([work().then(() => 'done' as const), deadline]);
+    if (outcome === 'deadline') {
+      deadlineHit = true;
+      errors.push(`live job: deadline ${LIVE_JOB_DEADLINE_MS} ms reached — in-flight fetch abandoned`);
+      logger.error(
+        { lockResource: LIVE_LOCK_RESOURCE, deadlineMs: LIVE_JOB_DEADLINE_MS, ttlMs: LIVE_LOCK_TTL_MS },
+        'Live-figures job: hard deadline reached (spec §2.1 live lock bound) — starting nothing new, releasing scraper:live and exiting 1'
+      );
+    }
   } finally {
-    await releaseLiveLock();
+    if (deadlineTimer) clearTimeout(deadlineTimer);
+    process.removeListener('SIGTERM', onSignal);
+    process.removeListener('SIGINT', onSignal);
+    const releaseTimeoutMs = Number(process.env.SIGNAL_LOCK_RELEASE_TIMEOUT_MS) || DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS;
+    await raceWithTimeout(() => releaseLiveLock(), { timeoutMs: releaseTimeoutMs, label: 'live lock release' });
   }
 
   if (errors.length > 0) {

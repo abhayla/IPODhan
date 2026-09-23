@@ -162,6 +162,30 @@ else
   pass "case 2: a wake that ran the job printed no skip line"
 fi
 
+# --- Case 2b: the live job gets its OWN short ceiling (item 7 S1 round 1) ---
+# The live-figures job holds a 4-minute lock (spec section 2.1); under the
+# 2-hour data ceiling a live process that ignored its in-process deadline could
+# live for 2 hours. With no SCRAPER_CEILING_SECONDS override, a live wake must
+# run under 300 s and a data wake under 7200 s.
+OUT2B_LIVE="$(SCRAPER_WAKE_FAKE_LOCK_TTL="free" \
+        SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+        sh "$WAKE" live 2>&1)"
+if printf '%s' "$OUT2B_LIVE" | grep -F 'wake-starting' | grep -qF 'under a 300s hung-process ceiling'; then
+  pass "case 2b: a live wake runs under its own 300s ceiling, not the 2-hour data ceiling"
+else
+  fail "case 2b: a live wake did not run under the 300s ceiling"
+  printf '%s\n' "$OUT2B_LIVE"
+fi
+OUT2B_DATA="$(SCRAPER_WAKE_FAKE_LOCK_TTL="free" \
+        SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+        sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT2B_DATA" | grep -F 'wake-starting' | grep -qF 'under a 7200s hung-process ceiling'; then
+  pass "case 2b: a data wake keeps the 7200s ceiling (OD-55 unchanged)"
+else
+  fail "case 2b: a data wake no longer runs under the 7200s ceiling"
+  printf '%s\n' "$OUT2B_DATA"
+fi
+
 # --- Case 3: job EXCEEDS the ceiling -> terminated, ceiling line, exit 124 --
 # This is the case the whole slice exists for. The ceiling is set to 2s and the
 # job sleeps 60s, so a ceiling that does not fire makes this case HANG rather
@@ -468,22 +492,40 @@ if [ -f "$DEPLOY_SCRIPT" ]; then
     printf '%s\n' "$STAGCRON"
   fi
   # Item 7 S1 (OD-27/OD-28): a SECOND line wakes the live-figures job every 30
-  # minutes, any hour, any day, with its own marker.
+  # minutes, any hour, any day, with its own marker - at minutes that never
+  # coincide with ANY data wake (round 1: prod 5,35, staging 20,50; data is
+  # */30 prod and 15,45 staging).
   if printf '%s
-' "$PRODCRON" | grep -F 'scraper-wake.sh live' | grep -F '*/30 * * * *' | grep -qF 'ipodhan-scraper-live:prod'; then
-    pass "case 9: a prod deploy also schedules the live wake (scraper-wake.sh live) at */30 with its own marker"
+' "$PRODCRON" | grep -F 'scraper-wake.sh live' | grep -F '5,35 * * * *' | grep -qF 'ipodhan-scraper-live:prod'; then
+    pass "case 9: a prod deploy also schedules the live wake (scraper-wake.sh live) at 5,35 with its own marker"
   else
-    fail "case 9: a prod deploy emitted no */30 live-wake line - the live figures would never be fetched"
+    fail "case 9: a prod deploy emitted no 5,35 live-wake line - the live figures would never be fetched"
     printf '%s
 ' "$PRODCRON"
   fi
   if printf '%s
-' "$STAGCRON" | grep -F 'scraper-wake.sh live' | grep -F '15,45 * * * *' | grep -qF 'ipodhan-scraper-live:staging'; then
-    pass "case 9: a staging deploy schedules the live wake at the slot offset 15,45 (W-178)"
+' "$STAGCRON" | grep -F 'scraper-wake.sh live' | grep -F '20,50 * * * *' | grep -qF 'ipodhan-scraper-live:staging'; then
+    pass "case 9: a staging deploy schedules the live wake at 20,50"
   else
-    fail "case 9: a staging deploy emitted no 15,45 live-wake line"
+    fail "case 9: a staging deploy emitted no 20,50 live-wake line"
     printf '%s
 ' "$STAGCRON"
+  fi
+  # No live minute may equal any data minute of EITHER slot (W-178 shape).
+  LIVE_MIN9="$(printf '%s
+%s
+' "$PRODCRON" "$STAGCRON" | grep -F 'scraper-wake.sh live' | sed 's/.*crontab line: //' | awk '{print $1}' | tr ',' '\n')"
+  DATA_MIN9="$(printf '%s
+%s
+' "$PRODCRON" "$STAGCRON" | grep -F 'scraper-wake.sh data' | sed 's/.*crontab line: //' | awk '{print $1}' | sed 's#^\*/30$#0,30#' | tr ',' '\n')"
+  CLASH9=""
+  for _m in $LIVE_MIN9; do
+    if printf '%s\n' "$DATA_MIN9" | grep -qx "$_m"; then CLASH9="$CLASH9 $_m"; fi
+  done
+  if [ -n "$LIVE_MIN9" ] && [ -n "$DATA_MIN9" ] && [ -z "$CLASH9" ]; then
+    pass "case 9: no live-wake minute coincides with any data-wake minute of either slot (live: $(echo $LIVE_MIN9); data: $(echo $DATA_MIN9))"
+  else
+    fail "case 9: live and data wakes share a minute:${CLASH9:- (could not read minutes)}"
   fi
   if printf '%s
 ' "$PRODCRON" | grep -F 'ipodhan-scraper-wake:prod' | grep -qF 'scraper-wake.sh data'; then
@@ -587,6 +629,33 @@ FAKECRON
   else
     fail "case 10: the install DESTROYED an unrelated crontab entry"
     echo "$STORED"
+  fi
+
+  # Round 1 (rollback): DEPLOY_SCRAPER_LIVE_JOB=0 must REMOVE this slot's live
+  # line (idempotently) and keep the data line and every unrelated entry.
+  (
+    PATH="$C10/bin:$PATH"; export PATH
+    DRY_RUN=0
+    SLOT=prod
+    SCRAPER_CRON='*/30 * * * *'
+    CURRENT_LINK="$C10/current"
+    SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
+    SCRAPER_WAKE_LOG="$C10/wake.log"
+    DEPLOY_SCRAPER_LIVE_JOB=0
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    eval "$CRON_FN"
+    install_scraper_cron
+    install_scraper_cron
+  ) > "$C10/disable.log" 2>&1
+  STORED_OFF="$(cat "$FAKE_CRONTAB_FILE" 2>/dev/null || true)"
+  if ! echo "$STORED_OFF" | grep -qF 'ipodhan-scraper-live:prod' \
+     && [ "$(echo "$STORED_OFF" | grep -cF 'ipodhan-scraper-wake:prod')" -eq 1 ] \
+     && echo "$STORED_OFF" | grep -qF 'some-other-job.sh'; then
+    pass "case 10: DEPLOY_SCRAPER_LIVE_JOB=0 removes the live line, keeps exactly one data line and the unrelated entry"
+  else
+    fail "case 10: disabling the live job did not remove its line cleanly"
+    echo "$STORED_OFF"; cat "$C10/disable.log"
   fi
 
   # A crontab write that FAILS must warn loudly, never pass silently.

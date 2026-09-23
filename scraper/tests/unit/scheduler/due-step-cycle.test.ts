@@ -101,21 +101,22 @@ describe('isMarketHoursIST — weekday 10:00-17:00 IST', () => {
  * spec's number (the exchanges keep publishing the day's final bid figures after
  * 17:00), which the older 17:00 market-hours window cut off.
  */
-describe('isBiddingHoursIST — weekday 10:00-18:30 IST (spec 2.1 live-figures row)', () => {
-  it('is true from 10:00 up to 18:29 on a weekday', () => {
+describe('isBiddingHoursIST — 10:00-18:30 IST inclusive, any day (spec 2.1 live-figures row)', () => {
+  it('is true from 10:00 up to and including 18:30', () => {
     expect(isBiddingHoursIST(istDate(2026, 9, 3, 10, 0))).toBe(true); // Thursday
     expect(isBiddingHoursIST(istDate(2026, 9, 3, 17, 30))).toBe(true);
-    expect(isBiddingHoursIST(istDate(2026, 9, 3, 18, 29))).toBe(true);
+    expect(isBiddingHoursIST(istDate(2026, 9, 3, 18, 30))).toBe(true); // spec "10:00–18:30": the 18:30 wake reads the final figure
   });
 
-  it('is false before 10:00 and from 18:30 on', () => {
+  it('is false before 10:00 and after 18:30', () => {
     expect(isBiddingHoursIST(istDate(2026, 9, 3, 9, 59))).toBe(false);
-    expect(isBiddingHoursIST(istDate(2026, 9, 3, 18, 30))).toBe(false);
+    expect(isBiddingHoursIST(istDate(2026, 9, 3, 18, 31))).toBe(false);
     expect(isBiddingHoursIST(istDate(2026, 9, 3, 22, 0))).toBe(false);
   });
 
-  it('is false on a Saturday and a Sunday (no bidding on a non-trading day)', () => {
-    expect(isBiddingHoursIST(istDate(2026, 9, 5, 12, 0))).toBe(false);
-    expect(isBiddingHoursIST(istDate(2026, 9, 6, 12, 0))).toBe(false);
+  it('is true on a Saturday and a Sunday: the spec gates on "a day when at least one IPO is OPEN", not on the weekday', () => {
+    expect(isBiddingHoursIST(istDate(2026, 9, 5, 12, 0))).toBe(true);
+    expect(isBiddingHoursIST(istDate(2026, 9, 6, 18, 30))).toBe(true);
+    expect(isBiddingHoursIST(istDate(2026, 9, 6, 9, 59))).toBe(false);
   });
 });

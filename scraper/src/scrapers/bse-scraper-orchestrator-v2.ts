@@ -246,9 +246,11 @@ export class BSEScraperOrchestratorV2 extends BaseScraperOrchestrator<ScrapedIPO
  * @returns Promise<BSEScraperResult> - Scraper execution summary with SME counts
  */
 export async function runBSEScraper(
-  opts: { allowedStatuses?: readonly string[] } = {}
+  opts: { allowedStatuses?: readonly string[]; liveFiguresOnly?: boolean } = {}
 ): Promise<BSEScraperResult> {
   const orchestrator = new BSEScraperOrchestratorV2();
   if (opts.allowedStatuses) orchestrator.restrictToStatuses(opts.allowedStatuses);
+  // Item 7 S1 round 1: the live-figures job writes subscription snapshots only (spec §2.1).
+  if (opts.liveFiguresOnly) orchestrator.liveFiguresOnlyMode();
   return await orchestrator.run();
 }

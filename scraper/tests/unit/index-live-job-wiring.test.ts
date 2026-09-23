@@ -152,6 +152,7 @@ const THURSDAY_1400_IST = istDate(2026, 9, 3, 14, 0);
 const THURSDAY_1800_IST = istDate(2026, 9, 3, 18, 0);
 const THURSDAY_2100_IST = istDate(2026, 9, 3, 21, 0);
 const SATURDAY_2200_IST = istDate(2026, 9, 5, 22, 0);
+const SATURDAY_1830_IST = istDate(2026, 9, 5, 18, 30);
 
 describe('item 7 S1 - the live-figures job runs under its own scraper:live lock', () => {
   const originalArgv = process.argv;
@@ -242,9 +243,44 @@ describe('item 7 S1 - the live-figures job runs under its own scraper:live lock'
     openCount = 1;
     await runWith(['--source=all', '--job=live'], THURSDAY_1800_IST);
 
-    expect(runNSEScraperMock).toHaveBeenCalledWith({ allowedStatuses: ['OPEN'] });
-    expect(runBSEScraperMock).toHaveBeenCalledWith({ allowedStatuses: ['OPEN'] });
+    // Round 1: subscription-only mode — the live job never reaches the ipos write door.
+    expect(runNSEScraperMock).toHaveBeenCalledWith({ allowedStatuses: ['OPEN'], liveFiguresOnly: true });
+    expect(runBSEScraperMock).toHaveBeenCalledWith({ allowedStatuses: ['OPEN'], liveFiguresOnly: true });
     expect(runDemandBackfillMock).toHaveBeenCalledWith({ execute: true });
+  });
+
+  it('spec 2.1: an IPO OPEN over a weekend still gets subscription at 18:30 IST on a Saturday (no weekday filter)', async () => {
+    openCount = 1;
+    await runWith(['--source=all', '--job=live'], SATURDAY_1830_IST);
+
+    expect(runNSEScraperMock).toHaveBeenCalledWith({ allowedStatuses: ['OPEN'], liveFiguresOnly: true });
+    expect(runBSEScraperMock).toHaveBeenCalledWith({ allowedStatuses: ['OPEN'], liveFiguresOnly: true });
+  });
+
+  it('round 1: a HUNG live fetch cannot hold scraper:live past the 4-minute bound — the deadline releases the lock and exits 1', async () => {
+    lockAcquireMock.mockResolvedValue({ acquired: true, token: 'live-tok' });
+    openCount = 1;
+    runNSEScraperMock.mockImplementationOnce(() => new Promise(() => {})); // never settles
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(THURSDAY_1400_IST);
+    process.argv = [...originalArgv.slice(0, 2), '--source=all', '--job=live'];
+    const mod = await import('../../src/index.js');
+    const running = mod.main();
+
+    await vi.advanceTimersByTimeAsync(mod.LIVE_JOB_DEADLINE_MS - 1000);
+    expect(lockReleaseMock).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2000);
+    await running;
+
+    expect(mod.LIVE_JOB_DEADLINE_MS).toBeLessThan(mod.LIVE_LOCK_TTL_MS);
+    expect(lockReleaseMock).toHaveBeenCalledWith('scraper:live', 'live-tok');
+    // The lock is never renewed, so a hung process cannot keep it past its TTL.
+    expect(lockExtendMock).not.toHaveBeenCalled();
+    // Nothing new started after the deadline (BSE, demand graph, GMP).
+    expect(runBSEScraperMock).not.toHaveBeenCalled();
+    expect(runDemandBackfillMock).not.toHaveBeenCalled();
+    expect(runInvestorgainGMPScraperMock).not.toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('a live wake whose own lock is held (the previous live run is stuck) skips and exits 0', async () => {
@@ -279,8 +315,12 @@ describe('item 7 S1 - the live-figures job runs under its own scraper:live lock'
     expect(lockAcquireMock).not.toHaveBeenCalledWith('scraper:live', expect.anything());
     expect(runInvestorgainGMPScraperMock).not.toHaveBeenCalled();
     expect(runDemandBackfillMock).not.toHaveBeenCalled();
-    expect(runNSEScraperMock).not.toHaveBeenCalledWith({ allowedStatuses: ['OPEN'] });
-    expect(runBSEScraperMock).not.toHaveBeenCalledWith({ allowedStatuses: ['OPEN'] });
+    for (const mock of [runNSEScraperMock, runBSEScraperMock]) {
+      for (const call of mock.mock.calls) {
+        expect((call[0] as { liveFiguresOnly?: boolean } | undefined)?.liveFiguresOnly).not.toBe(true);
+        expect(call[0]).not.toEqual({ allowedStatuses: ['OPEN'] });
+      }
+    }
   });
 
   it("no --job flag means the data job (today's cron line keeps working)", async () => {
@@ -313,7 +353,16 @@ describe('item 7 S1 - the live-figures job runs under its own scraper:live lock'
 
   it('SIGTERM during a live run releases scraper:live with its own token', async () => {
     lockAcquireMock.mockResolvedValue({ acquired: true, token: 'live-tok' });
-    await runWith(['--source=all', '--job=live'], THURSDAY_1400_IST);
+    openCount = 1;
+    let nseStarted!: () => void;
+    const started = new Promise<void>((resolve) => { nseStarted = resolve; });
+    runNSEScraperMock.mockImplementationOnce(() => { nseStarted(); return new Promise(() => {}); }); // in flight
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(THURSDAY_1400_IST);
+    process.argv = [...originalArgv.slice(0, 2), '--source=all', '--job=live'];
+    const mod = await import('../../src/index.js');
+    void mod.main();
+    await started;
     lockReleaseMock.mockClear();
 
     process.emit('SIGTERM' as NodeJS.Signals);

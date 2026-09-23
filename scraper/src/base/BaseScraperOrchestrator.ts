@@ -106,6 +106,9 @@ export interface ScrapedData<TIPO, TSubscription = any> {
  * const result = await orchestrator.run();
  * ```
  */
+/** Item 7 S1 round 1: how many unmatched live-figure record names one summary line carries. */
+const LIVE_UNMATCHED_LOG_CAP = 20;
+
 export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
 
   // Repositories and services (initialized in run())
@@ -141,6 +144,25 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
   /** Sets the status restriction described on `allowedStatuses` above. Chainable. */
   public restrictToStatuses(statuses: readonly string[]): this {
     this.allowedStatuses = new Set(statuses);
+    return this;
+  }
+
+  /**
+   * Item 7 S1 round 1 (spec docs/design/data-sourcing-pull-model.md §2.1 job
+   * table, "Live-figures job": it must "never touch a document, a field plan
+   * row, or any static field"). When set, each scraped record is used ONLY to
+   * write the live figures (the subscription snapshot) onto an EXISTING row
+   * whose stored status is OPEN. It never calls the `ipos` write door
+   * (consolidatedUpsertIPO / upsertIPO), never records document-source hints,
+   * and never creates a row: a record with no existing match is skipped and
+   * named in the run's summary line (the data job owns discovery). `false`
+   * (the default) leaves the data job's path exactly as it was.
+   */
+  protected liveFiguresOnly = false;
+
+  /** Enables the subscription-only mode described on `liveFiguresOnly` above. Chainable. */
+  public liveFiguresOnlyMode(): this {
+    this.liveFiguresOnly = true;
     return this;
   }
 
@@ -203,6 +225,10 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       // T-484 round 2 (#354): the proof number for #351 — how many brand-new
       // rows the in-scope-new-row path actually created this run.
       let createdUnderRestriction = 0;
+      // Item 7 S1 round 1: records the live-figures job could not attach to an
+      // existing OPEN row — named (capped), not only counted (signal-ownership R1).
+      const liveUnmatched: string[] = [];
+      let liveUnmatchedCount = 0;
 
       // Step 1: Scrape data (subclass-specific)
       const scrapedData = await this.scrapeData();
@@ -230,6 +256,10 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
           result.iposSkipped += processResult.skipped ? 1 : 0;
           statusRestrictedSkips += processResult.statusRestricted ? 1 : 0;
           createdUnderRestriction += processResult.createdUnderRestriction ? 1 : 0;
+          if (processResult.liveUnmatched) {
+            liveUnmatchedCount++;
+            if (liveUnmatched.length < LIVE_UNMATCHED_LOG_CAP) liveUnmatched.push(processResult.liveUnmatched);
+          }
           result.iposInserted += processResult.inserted ? 1 : 0;
           result.iposUpdated += processResult.updated ? 1 : 0;
           result.iposFailed += processResult.failed ? 1 : 0;
@@ -259,6 +289,21 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
             scrapedRows: scrapedData.ipos.length,
           },
           'Status restriction active (due-step scheduler) — rows outside the allowed statuses were skipped before the write door'
+        );
+      }
+
+      if (this.liveFiguresOnly) {
+        logger.info(
+          {
+            scraperName,
+            liveFiguresOnly: true,
+            scrapedRows: scrapedData.ipos.length,
+            subscriptionsCreated: result.subscriptionsCreated,
+            unmatchedCount: liveUnmatchedCount,
+            unmatched: liveUnmatched,
+            unmatchedTruncated: liveUnmatchedCount > liveUnmatched.length,
+          },
+          'Live-figures-only run — no ipos write, no document hint, no new row; records with no existing OPEN row were skipped (the data job owns discovery)'
         );
       }
 
@@ -385,6 +430,8 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     statusRestricted: boolean;
     /** T-484 round 2 (#354): a brand-new row created by the in-scope-new-row path (counted per run — proof number for #351). */
     createdUnderRestriction: boolean;
+    /** Item 7 S1 round 1: company name of a record the live-figures-only run could not attach to an existing OPEN row. */
+    liveUnmatched: string | null;
     inserted: boolean;
     updated: boolean;
     failed: boolean;
@@ -399,6 +446,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       skipped: false,
       statusRestricted: false,
       createdUnderRestriction: false,
+      liveUnmatched: null as string | null,
       inserted: false,
       updated: false,
       failed: false,
@@ -475,6 +523,34 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       offeringType: (validatedIPO as any).offeringTypeExplicit ? validatedIPO.offeringType : undefined,
     }) as IPO | null;
     const ipoId = existingIPO?.id;
+
+    // Item 7 S1 round 1: the live-figures job writes the subscription snapshot
+    // and nothing else — it returns here, before the status gate that may
+    // create a row and before every `ipos` write and document hint below.
+    if (this.liveFiguresOnly) {
+      if (!existingIPO) {
+        processResult.skipped = true;
+        processResult.liveUnmatched = String(validatedIPO.companyName);
+        return processResult;
+      }
+      if (existingIPO.status !== 'OPEN' || (this.allowedStatuses && !this.allowedStatuses.has(existingIPO.status))) {
+        processResult.skipped = true;
+        processResult.statusRestricted = true;
+        return processResult;
+      }
+      if (await this.fieldProtectionService.isIPOLocked(existingIPO.id)) {
+        logger.warn(
+          { scraperName, companyName: validatedIPO.companyName, ipoId: existingIPO.id },
+          'IPO is locked - skipping live figures'
+        );
+        processResult.skipped = true;
+        return processResult;
+      }
+      processResult.slug = existingIPO.slug ?? slug;
+      processResult.processed = true;
+      await this.writeSubscriptionSnapshot(existingIPO.id, existingIPO.id, 'OPEN', validatedIPO, subscriptions, processResult);
+      return processResult;
+    }
 
     // S-02 §5 (T-484, #351 — see docs/reviews/failure-classes.md row
     // "status-restricted aggregator run drops a name discovery hasn't
@@ -655,11 +731,32 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     processResult.processed = true;
 
     // Step 6: Process subscription data for OPEN (live) and CLOSED (final) IPOs.
+    await this.writeSubscriptionSnapshot(upsertedIPOId, ipoId, validatedIPO.status, validatedIPO, subscriptions, processResult);
+
+    return processResult;
+  }
+
+  /**
+   * Step 6 of processIPO, shared with the live-figures-only path (item 7 S1
+   * round 1): the subscription snapshot for an OPEN (live) or CLOSED (final)
+   * IPO. `snapshotIpoId` is the row the snapshot attaches to; `protectionIpoId`
+   * is the pre-existing row whose subscription protection is checked (absent
+   * for a row created this run); `status` gates the write.
+   */
+  private async writeSubscriptionSnapshot(
+    snapshotIpoId: string,
+    protectionIpoId: string | undefined,
+    status: string | null | undefined,
+    validatedIPO: any,
+    subscriptions: TSubscription[],
+    processResult: { subscriptionCreated: boolean; subscriptionSkipped: boolean }
+  ): Promise<void> {
+    const scraperName = this.getScraperName();
     // NSE/BSE only supply subscriptions for OPEN IPOs, so they are unaffected;
     // this lets name-addressable sources (Moneycontrol) persist final subscription
     // multiples for CLOSED IPOs too (#8 — "subscribed X times" on closed IPOs).
     if (
-      (validatedIPO.status === 'OPEN' || validatedIPO.status === 'CLOSED') &&
+      (status === 'OPEN' || status === 'CLOSED') &&
       this.validateSubscription
     ) {
       // Match by normalized company name (keystone) so source name-variants
@@ -673,11 +770,11 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
 
       if (relatedSubscription) {
         // Check if subscription data is protected
-        const subscriptionProtected = ipoId && await this.isSubscriptionProtected(ipoId);
+        const subscriptionProtected = protectionIpoId && await this.isSubscriptionProtected(protectionIpoId);
 
         if (subscriptionProtected) {
           logger.info(
-            { scraperName, companyName: validatedIPO.companyName, ipoId },
+            { scraperName, companyName: validatedIPO.companyName, ipoId: protectionIpoId },
             'Subscription data is protected - skipping subscription update'
           );
           processResult.subscriptionSkipped = true;
@@ -687,7 +784,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
           if (subscriptionValidation.success) {
             const snapshotId = await createSubscriptionSnapshot(
               this.subscriptionRepository,
-              upsertedIPOId,
+              snapshotIpoId,
               subscriptionValidation.data!,
               { source: scraperName, redis: this.redis }
             );
@@ -707,8 +804,6 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
         }
       }
     }
-
-    return processResult;
   }
 
   /**
