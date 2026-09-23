@@ -49,9 +49,9 @@
 #   *   anything else is the job's own exit status - a crash, propagated
 #
 # Usage: scripts/scraper-wake.sh [data|live|closed] [<extra scraper args>]
-#   The job name is accepted and logged as operator intent. It does NOT change
-#   the lock (see the lock section below) and is NOT forwarded to the scraper,
-#   because nothing in scraper/src parses a job flag today.
+#   The job name picks BOTH the lock this wake reads and the --job= flag the
+#   scraper is started with (item 7 S1, spec section 2.1, OD-27) - together,
+#   never apart. See the job section below.
 
 set -u
 
@@ -103,6 +103,10 @@ fi
 # 7200 seconds. Overridable ONLY for the test harness; production never sets
 # it. This is a crash guard, not a budget: nothing about a slow-but-
 # progressing OCR pass should ever reach it.
+# Per job (item 7 S1 round 1, Tier A finding): this is the data/closed default;
+# a live wake is lowered to 300 s AFTER the job is parsed below, unless the
+# suite set SCRAPER_CEILING_SECONDS explicitly (that still wins for every job).
+SCRAPER_CEILING_OVERRIDE="${SCRAPER_CEILING_SECONDS:-}"
 SCRAPER_CEILING_SECONDS="${SCRAPER_CEILING_SECONDS:-7200}"
 
 # --- Which lock this wake must read -----------------------------------------
@@ -142,12 +146,17 @@ SCRAPER_CEILING_SECONDS="${SCRAPER_CEILING_SECONDS:-7200}"
 # release_scraper_cycle_locks() uses, so the two cannot drift apart. Read
 # only; never taken or released here - the cycle owns its own lock's lifetime.
 #
-# A job argument (data|live|closed) is ACCEPTED and logged for operator
-# intent, but it deliberately does NOT change the lock and is NOT forwarded to
-# the scraper: nothing in scraper/src parses `--job=` today (verified by grep),
-# so passing it would be a fiction that reads like a feature. When the job
-# split of design section 2.1 lands, this is where each job names both the
-# command it runs and the lock that command takes - together, never apart.
+# THE JOB PICKS THE LOCK (item 7 S1, spec section 2.1 "The two locks", OD-27).
+# Each job names the command it runs and the lock that command takes, in ONE
+# place (the case below), so the two cannot drift apart:
+#   data   -> --job=data, reads lock:resource:scraper:cycle (the heavy lock)
+#   live   -> --job=live, reads lock:resource:scraper:live  (its own lock; the
+#             live-figures job never reads or takes scraper:cycle, so a data job
+#             holding the heavy lock for hours never skips a live wake)
+#   closed -> no --job flag (scraper/src has no closed job of its own yet; the
+#             closed-IPO work runs inside the data cycle), reads scraper:cycle,
+#             which is what that command takes
+# An explicit SCRAPER_LOCK_KEY in the environment still wins, for the suite.
 # --check: run ONLY the resolution checks below and exit - never start a cycle.
 # This is what the deploy calls, so the deploy's verdict and the wrapper's
 # runtime refusal come from the SAME code and cannot drift apart.
@@ -168,7 +177,31 @@ if [ -n "${UNKNOWN_JOB:-}" ]; then
   log "WARN unknown-job: '$UNKNOWN_JOB' is not one of data|live|closed - proceeding with the default cycle"
 fi
 
-SCRAPER_LOCK_KEY="${SCRAPER_LOCK_KEY:-lock:resource:scraper:cycle}"
+case "$SCRAPER_JOB" in
+  live)
+    SCRAPER_JOB_ARG="--job=live"
+    SCRAPER_JOB_LOCK_KEY="lock:resource:scraper:live"
+    ;;
+  closed)
+    SCRAPER_JOB_ARG=""
+    SCRAPER_JOB_LOCK_KEY="lock:resource:scraper:cycle"
+    ;;
+  *)
+    SCRAPER_JOB_ARG="--job=data"
+    SCRAPER_JOB_LOCK_KEY="lock:resource:scraper:cycle"
+    ;;
+esac
+SCRAPER_LOCK_KEY="${SCRAPER_LOCK_KEY:-$SCRAPER_JOB_LOCK_KEY}"
+
+# THE LIVE JOB'S OWN CEILING (round 1, Tier A finding). The live-figures job is a
+# few HTTP reads under a 4-minute lock (spec section 2.1 "The two locks") and
+# carries its own in-process deadline at 3.5 minutes. The 2-hour data ceiling
+# would let a live process that ignores that deadline live for 2 hours, so a
+# live wake is bounded at 300 s: 60 s past the lock's TTL, and still far inside
+# the 30-minute live cadence.
+if [ -z "$SCRAPER_CEILING_OVERRIDE" ] && [ "$SCRAPER_JOB" = "live" ]; then
+  SCRAPER_CEILING_SECONDS=300
+fi
 
 SCRAPER_SOURCE="${SCRAPER_SOURCE:-all}"
 
@@ -378,6 +411,13 @@ log "wake-starting: job=$SCRAPER_JOB, lock $SCRAPER_LOCK_KEY is free; starting a
 #   --kill-after=60 is the backstop for a process too wedged to honour TERM.
 STARTED_AT="$(date -u '+%s')"
 
+# The job flag goes FIRST in the job's own arguments, ahead of any extra
+# operator args, so the substituted command in the suite sees exactly what the
+# real scraper would.
+if [ -n "$SCRAPER_JOB_ARG" ]; then
+  set -- "$SCRAPER_JOB_ARG" "$@"
+fi
+
 if [ -z "${SCRAPER_WAKE_CMD:-}" ]; then
   # Production shape: the same tsx entrypoint pm2 used to start directly.
   set -- "$NODE_BIN" "$TSX_BIN" src/index.ts --source="$SCRAPER_SOURCE" "$@"
@@ -432,7 +472,7 @@ ELAPSED=$(( $(date -u '+%s') - STARTED_AT ))
 if [ "$STATUS" -eq 124 ]; then
   # THE CEILING LINE. Distinguishable from both a clean finish and a crash, by
   # its own greppable token and by exit code 124.
-  log "ceiling-tripped: the 2-hour hung-process ceiling fired and the cycle was terminated. elapsed=${ELAPSED}s ceiling=${SCRAPER_CEILING_SECONDS}s lock_key=$SCRAPER_LOCK_KEY exit=124"
+  log "ceiling-tripped: the ${SCRAPER_CEILING_SECONDS}s hung-process ceiling (job=$SCRAPER_JOB) fired and the cycle was terminated. elapsed=${ELAPSED}s ceiling=${SCRAPER_CEILING_SECONDS}s lock_key=$SCRAPER_LOCK_KEY exit=124"
   exit 124
 fi
 

@@ -40,7 +40,7 @@ import {
 } from './services/document-cycle.js';
 import { raceWithTimeout, DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS } from './utils/race-with-timeout.js';
 import { shouldRunOnCatchUpCadence, isCatchUpCadenceDue, markCatchUpCadenceRan } from './scheduler/catch-up-cadence.js';
-import { isDiscoveryDue, isMarketHoursIST, mostRecentDiscoverySlotLabel } from './scheduler/due-step-cycle.js';
+import { isDiscoveryDue, isBiddingHoursIST, mostRecentDiscoverySlotLabel } from './scheduler/due-step-cycle.js';
 import { runDemandBackfill } from './scripts/backfill-demand-graph.js';
 import { DistributedLock } from './utils/distributed-lock.js';
 import {
@@ -323,6 +323,197 @@ async function countIposByStatus(statuses: readonly ('UPCOMING' | 'OPEN' | 'CLOS
 }
 
 /**
+ * Item 7 S1 (spec docs/design/data-sourcing-pull-model.md §2.1 "The two locks",
+ * OD-27): the live-figures job's OWN lock. The owner's rule: "The live figures
+ * job should have its own lock ... The data job must never block the live
+ * figures." A data job may legitimately hold `scraper:cycle` for up to the
+ * 2-hour hung-process ceiling (OD-55) reading one large document; under one
+ * lock the subscription figure on a closing day would stand still for all of
+ * it. The live job therefore never reads, takes or waits on `scraper:cycle`.
+ *
+ * TTL 4 minutes: the spec's number for the `live` lock (§2.1 table). A live run
+ * is a handful of HTTP reads, so 4 minutes is well past a healthy run and far
+ * inside the 30-minute cadence.
+ *
+ * NO renewal (item 7 S1 round 1, Tier A finding): renewing every minute kept
+ * `scraper:live` held for as long as a HUNG process lived — up to the wake
+ * wrapper's ceiling — so every live wake in between skipped and the figure on a
+ * closing day stood still, the exact failure OD-27 exists to prevent. Instead
+ * the job carries a hard in-process deadline INSIDE the 4-minute TTL: at
+ * LIVE_JOB_DEADLINE_MS it starts no new fetch, abandons whatever is in flight,
+ * releases the lock and exits 1. The lock therefore can never outlive the §2.1
+ * bound: either the run finishes, or the deadline releases it, or (process
+ * killed outright) the TTL expires it 4 minutes after it was taken. The wake
+ * wrapper gives live wakes their own short ceiling as a backstop.
+ */
+export const LIVE_LOCK_RESOURCE = 'scraper:live';
+export const LIVE_LOCK_TTL_MS = 4 * 60 * 1000;
+/** 3.5 minutes: inside the 4-minute TTL, leaving 30 s to release and exit. */
+export const LIVE_JOB_DEADLINE_MS = 3.5 * 60 * 1000;
+
+/** Item 7 S1: the two jobs `--job=` selects. `data` is the default so a cron line without the flag behaves as before. */
+export const SCRAPER_JOBS = ['data', 'live'] as const;
+export type ScraperJob = (typeof SCRAPER_JOBS)[number];
+
+/**
+ * Item 7 S1 (spec §2.1 job table rows "Live-figures job" and "Grey-market
+ * premium", OD-28): the live figures, moved OUT of the data cycle into their own
+ * job so they run on their own schedule under their own lock.
+ *
+ *   - subscription (the OPEN-restricted NSE + BSE reads) and the demand graph:
+ *     only in bidding hours (10:00–18:30 IST, any day) AND only when at least one
+ *     IPO is OPEN;
+ *   - the grey-market premium: whenever any IPO is UPCOMING or OPEN — any hour,
+ *     any day, evenings, weekends and holidays included (OD-28, F-41).
+ *
+ * It never touches a document, a field plan row, the closed-IPO job or any of
+ * the data cycle's post-steps. Returns the process exit code.
+ */
+async function runLiveFiguresJob(): Promise<number> {
+  if (!FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER) {
+    // Rollback path: with the scheduler flag off, the legacy `--source=all`
+    // cycle still fetches every source (GMP included) on every wake. A second
+    // job doing the same would double every live fetch, so this one stands down.
+    logger.info('Live-figures job: ENABLE_DUE_STEP_SCHEDULER is off — the legacy data cycle owns every source; nothing to do');
+    return 0;
+  }
+
+  const lock = new DistributedLock(getRedisClient());
+  const lockResult = await lock.acquire(LIVE_LOCK_RESOURCE, { ttl: LIVE_LOCK_TTL_MS });
+  if (!lockResult.acquired) {
+    logger.warn(
+      { lockResource: LIVE_LOCK_RESOURCE },
+      'Live-figures job: previous live run still holds scraper:live (a live run is a few HTTP reads, so it is stuck) — skipping this occurrence, exit 0'
+    );
+    return 0;
+  }
+  logger.info(
+    { lockResource: LIVE_LOCK_RESOURCE, ttlMs: LIVE_LOCK_TTL_MS },
+    'Live-figures job: took scraper:live (independent of scraper:cycle, OD-27)'
+  );
+
+  const token = lockResult.token;
+  // Set when the deadline fires: no further step starts (runLiveStep checks it).
+  let deadlineHit = false;
+  let released = false;
+  const releaseLiveLock = async (): Promise<void> => {
+    if (released) return;
+    released = true;
+    try {
+      await lock.release(LIVE_LOCK_RESOURCE, token);
+    } catch (error) {
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Live-figures job: lock release failed (non-fatal — the 4-minute TTL will expire it)'
+      );
+    }
+  };
+
+  const errors: string[] = [];
+  const onSignal = (signal: NodeJS.Signals) => {
+    logger.warn({ signal }, 'Live-figures job: signal received — releasing scraper:live before exit');
+    const exitCode = errors.length > 0 ? 1 : 130;
+    const releaseTimeoutMs = Number(process.env.SIGNAL_LOCK_RELEASE_TIMEOUT_MS) || DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS;
+    void raceWithTimeout(() => releaseLiveLock(), { timeoutMs: releaseTimeoutMs, label: 'live lock release' })
+      .finally(() => process.exit(exitCode));
+  };
+  process.once('SIGTERM', onSignal);
+  process.once('SIGINT', onSignal);
+
+  const runLiveStep = async (label: string, fn: () => Promise<{ success?: boolean; errors?: string[] } | void>): Promise<void> => {
+    if (deadlineHit) {
+      errors.push(`${label}: skipped — live job deadline (${LIVE_JOB_DEADLINE_MS} ms) reached`);
+      return;
+    }
+    try {
+      const stepResult = await fn();
+      if (stepResult && stepResult.success === false) {
+        const stepErrors = stepResult.errors ?? [];
+        errors.push(...(stepErrors.length > 0 ? stepErrors.map((e) => `${label}: ${e}`) : [`${label}: completed with errors`]));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${label}: ${message}`);
+      logger.error({ step: label, error: message }, 'Live-figures job: step failed (job continues, exit code will be non-zero)');
+    }
+  };
+
+  // A count that cannot be read is treated as non-zero: a missed live figure is
+  // the costlier mistake than one extra read (same fail-open rule the data
+  // cycle's counts use).
+  const countOrFailOpen = async (statuses: readonly ('UPCOMING' | 'OPEN')[]): Promise<number> => {
+    try {
+      return await countIposByStatus(statuses);
+    } catch (error) {
+      logger.warn(
+        { statuses, error: error instanceof Error ? error.message : String(error) },
+        'Live-figures job: IPO count query failed — treating as non-zero to fail open on freshness'
+      );
+      return 1;
+    }
+  };
+
+  const work = async (): Promise<void> => {
+    const now = new Date();
+
+    // Subscription + demand graph: bidding hours only, OPEN IPOs only (OD-28).
+    if (!isBiddingHoursIST(now)) {
+      logger.info('Live-figures job: outside bidding hours (10:00-18:30 IST) — subscription and demand graph make ZERO network calls');
+    } else {
+      const openCount = await countOrFailOpen(['OPEN']);
+      if (openCount === 0) {
+        logger.info('Live-figures job: bidding hours, but zero OPEN IPOs — subscription and demand graph make ZERO network calls');
+      } else {
+        logger.info({ openCount }, 'Live-figures job: bidding hours + OPEN IPOs — running subscription (NSE/BSE, OPEN only) and the demand graph');
+        await runLiveStep('live:NSE', () => runNSEScraper({ allowedStatuses: ['OPEN'], liveFiguresOnly: true }));
+        await runLiveStep('live:BSE', () => runBSEScraper({ allowedStatuses: ['OPEN'], liveFiguresOnly: true }));
+        await runLiveStep('live:demandGraph', () => runDemandBackfill({ execute: true }));
+      }
+    }
+
+    // Grey-market premium: whenever any IPO is UPCOMING or OPEN — never gated
+    // on bidding hours (OD-28, F-41).
+    const gmpCandidates = await countOrFailOpen(['UPCOMING', 'OPEN']);
+    if (gmpCandidates === 0) {
+      logger.info('Live-figures job: no UPCOMING or OPEN IPO — grey-market premium makes ZERO network calls');
+    } else {
+      logger.info({ gmpCandidates }, 'Live-figures job: UPCOMING/OPEN IPOs present — running the grey-market premium fetch');
+      await runLiveStep('live:GMP', () => runInvestorgainGMPScraper());
+    }
+  };
+
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<'deadline'>((resolve) => {
+    deadlineTimer = setTimeout(() => resolve('deadline'), LIVE_JOB_DEADLINE_MS);
+  });
+  try {
+    const outcome = await Promise.race([work().then(() => 'done' as const), deadline]);
+    if (outcome === 'deadline') {
+      deadlineHit = true;
+      errors.push(`live job: deadline ${LIVE_JOB_DEADLINE_MS} ms reached — in-flight fetch abandoned`);
+      logger.error(
+        { lockResource: LIVE_LOCK_RESOURCE, deadlineMs: LIVE_JOB_DEADLINE_MS, ttlMs: LIVE_LOCK_TTL_MS },
+        'Live-figures job: hard deadline reached (spec §2.1 live lock bound) — starting nothing new, releasing scraper:live and exiting 1'
+      );
+    }
+  } finally {
+    if (deadlineTimer) clearTimeout(deadlineTimer);
+    process.removeListener('SIGTERM', onSignal);
+    process.removeListener('SIGINT', onSignal);
+    const releaseTimeoutMs = Number(process.env.SIGNAL_LOCK_RELEASE_TIMEOUT_MS) || DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS;
+    await raceWithTimeout(() => releaseLiveLock(), { timeoutMs: releaseTimeoutMs, label: 'live lock release' });
+  }
+
+  if (errors.length > 0) {
+    logger.error({ errors }, 'Live-figures job completed with errors');
+    return 1;
+  }
+  logger.info('Live-figures job completed successfully');
+  return 0;
+}
+
+
+/**
  * S-02 §5: the due-step cycle. Replaces the flat "every source, every
  * 30-minute cycle, regardless of IPO status or time of day" shape with a
  * schedule-aware one:
@@ -330,8 +521,8 @@ async function countIposByStatus(statuses: readonly ('UPCOMING' | 'OPEN' | 'CLOS
  *   (b) reconcile every cycle -- already covered by the existing
  *       `stageReconciler` post-step below (runs unconditionally on 'all'),
  *       so it is NOT duplicated here
- *   (c) live data (subscription refresh + GMP + demand graph) only during
- *       market hours, and only for OPEN IPOs
+ *   (c) live data — no longer here: `--job=live` owns it (item 7 S1,
+ *       runLiveFiguresJob, OD-27/OD-28)
  *   (d) aggregator refresh (Chittorgarh) only for
  *       UPCOMING/OPEN IPOs, at most once/day
  * Only called when `source === 'all' && FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER`.
@@ -437,30 +628,11 @@ async function runDueStepCycle(
     );
   }
 
-  // (c) live data — market hours only, OPEN IPOs only.
-  if (isMarketHoursIST(now)) {
-    let openCount = 0;
-    try {
-      openCount = await countIposByStatus(['OPEN']);
-    } catch (error) {
-      logger.warn(
-        { error: error instanceof Error ? error.message : String(error) },
-        'Due-step cycle: OPEN-IPO count query failed — treating as non-zero to fail open on freshness'
-      );
-      openCount = 1;
-    }
-    if (openCount === 0) {
-      logger.info('Due-step cycle: market hours, but zero OPEN IPOs — live step makes ZERO network calls');
-    } else {
-      logger.info({ openCount }, 'Due-step cycle: market hours + OPEN IPOs present — running live data (subscription/GMP/demand graph)');
-      await runCycleStep('live:NSE', () => runNSEScraper({ allowedStatuses: ['OPEN'] }));
-      await runCycleStep('live:BSE', () => runBSEScraper({ allowedStatuses: ['OPEN'] }));
-      await runCycleStep('live:GMP', () => runInvestorgainGMPScraper());
-      await runCycleStep('live:demandGraph', () => runDemandBackfill({ execute: true }));
-    }
-  } else {
-    logger.info('Due-step cycle: outside market hours (weekday 10:00-17:00 IST) — live step makes ZERO network calls');
-  }
+  // (c) live data — MOVED OUT (item 7 S1, spec §2.1, OD-27/OD-28). Subscription,
+  // the demand graph and the grey-market premium now run in their own
+  // `--job=live` wake under their own `scraper:live` lock (runLiveFiguresJob),
+  // so a data job holding `scraper:cycle` for hours can never stand them still.
+  // The data job must not fetch them as well, or every live figure is read twice.
 
   // (d) aggregators — UPCOMING/OPEN only, at most once/day.
   // Round-3 M2: read-only due check here, explicit stamp AFTER the work
@@ -777,8 +949,18 @@ export async function main() {
     }
 
     const source = args.find(arg => arg.startsWith('--source='))?.split('=')[1] || 'nse';
+    // Item 7 S1: which scheduled job this wake is (spec §2.1). Default `data`,
+    // so a cron line or a manual run without the flag behaves exactly as before.
+    const jobArg = args.find(arg => arg.startsWith('--job='))?.split('=')[1] ?? 'data';
 
-    logger.info({ source }, 'IPO Scraper CLI started');
+    logger.info({ source, job: jobArg }, 'IPO Scraper CLI started');
+
+    if (!(SCRAPER_JOBS as readonly string[]).includes(jobArg)) {
+      logger.error({ job: jobArg }, `Invalid --job. Must be: ${SCRAPER_JOBS.join(', ')}`);
+      process.exit(1);
+      return;
+    }
+    const job = jobArg as ScraperJob;
 
     // T-340: refuse to start a --source=all cycle without the env the
     // post-scrape steps need — see assertRequiredEnvForCycle's doc comment.
@@ -829,6 +1011,15 @@ export async function main() {
     if (!CLI_SOURCE_ARGS.includes(source)) {
       logger.error({ source }, `Invalid source. Must be: ${CLI_SOURCE_ARGS.join(', ')}`);
       process.exit(1);
+    }
+
+    // Item 7 S1: the live-figures job is its own process with its own lock. It
+    // returns here and never reaches the data cycle's lock, steps or post-steps.
+    if (job === 'live') {
+      const liveExitCode = await runLiveFiguresJob();
+      await flushOwnerNotify();
+      process.exit(liveExitCode);
+      return;
     }
 
     // S-02 §5 (`ENABLE_DUE_STEP_SCHEDULER`): whole-cycle Redis lock so PM2's
