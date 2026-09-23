@@ -11,6 +11,7 @@
  * Headers MUST include Origin/Referer https://www.bseindia.com or BSE 403s.
  */
 
+import { normalizeSourceKeyValue } from '@ipodhan/shared/repositories';
 import logger from '../utils/logger.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { parseBseParties } from '../services/bse-party-parser.js';
@@ -305,7 +306,44 @@ function buildScrapedIPO(
     registrar,
     leadManagers: leads.length ? leads : null,
     symbol: detail.Symbol?.trim() || null,
+    sourceKeys: bseSourceKeys(detail, shares, band, openDate, closeDate, today, listStatusCode),
   };
+}
+
+/**
+ * OD-85: BSE's own record number for this offering (IPO_NO), with what the record said — the
+ * share count, band and BSE's own "postponed" note are what OD-83's supersede test and OD-86's
+ * merge exception read later. ScripCode rides in attrs (it is an issue-stage code, F-133, not a key).
+ */
+export function bseSourceKeys(
+  detail: BSEDetailRow,
+  shares: number,
+  band: { min?: number; max?: number },
+  openDate: string | null,
+  closeDate: string | null,
+  today: string,
+  listStatusCode?: string | null,
+): NonNullable<ScrapedIPO['sourceKeys']> {
+  const ipoNo = normalizeSourceKeyValue(detail.IPO_NO);
+  if (!ipoNo || !/^\d+$/.test(ipoNo)) return [];
+  const status = deriveBSEStatus(openDate, closeDate, today, {
+    statusCode: listStatusCode ?? null,
+    notes: [detail.Notes, detail.Remarks, detail.Public_Notices],
+  });
+  return [{
+    source: 'BSE',
+    keyType: 'BSE_IPO_NO',
+    keyValue: ipoNo,
+    attrs: {
+      shares: Number.isFinite(shares) && shares > 0 ? shares : null,
+      priceMin: band.min ?? null,
+      priceMax: band.max ?? null,
+      postponed: status === 'POSTPONED',
+      scripCode: normalizeSourceKeyValue(detail.ScripCode),
+      issuePeriod: detail.Issue_Period ?? null,
+    },
+    recordOpenDate: openDate,
+  }];
 }
 
 /** Map a BSE list row + its detail row into a ScrapedIPO (current-board path). */

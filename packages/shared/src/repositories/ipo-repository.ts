@@ -22,6 +22,7 @@ import {
   ipoSlugRedirects,
   ipoMergeLog,
   auditLogs,
+  ipoSourceKeys,
   type ipoStatusEnum,
   type segmentEnum,
   type offeringTypeEnum,
@@ -39,6 +40,7 @@ import { EntityNotFoundError, DatabaseError, ProdWriteRefusedError, IdentityHeld
 import { strictIdentityCompanyName } from '../utils/identity-decoration';
 import { normalizeCin } from '../utils/cin';
 import { logger } from '../logger';
+import { normalizeSourceKeyRefs, recordSourceKeys, type SourceKeyRef, type SourceKeyBoundVia } from './ipo-source-keys';
 
 /** audit_logs.action_type of an OD-68 hold; read by the nightly `i_identity_held` check. */
 export const IDENTITY_HELD_ACTION = 'IDENTITY_HELD_FOR_REVIEW';
@@ -51,6 +53,7 @@ import {
 import { findMostSimilarName } from '../utils/company-name-similarity';
 import {
   checkMergeEligibility,
+  assessRelaunch,
   buildCarryFieldInputs,
   columnToCamelCase,
   planCarryFields,
@@ -599,6 +602,25 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * incoming offering. NULL-safe like `findByIsin`: an absent input returns []
    * without querying, so NULL never matches NULL.
    */
+  /**
+   * OD-85 write rule for a record that BOUND to an existing row: its keys are written in one
+   * transaction (a key already on another row, or a concurrent writer, rolls the whole set back).
+   */
+  async bindSourceKeys(
+    ipoId: string,
+    refs: SourceKeyRef[] | null | undefined,
+    opts: { boundVia: SourceKeyBoundVia; boundBy: string }
+  ): Promise<Awaited<ReturnType<typeof recordSourceKeys>> | null> {
+    const keys = normalizeSourceKeyRefs(refs ?? []);
+    if (keys.length === 0) return null;
+    return this.db.transaction((tx) => recordSourceKeys(tx, ipoId, keys, opts));
+  }
+
+  /** OD-85: the handle `resolveIpoRow` reads `ipo_source_keys` through. */
+  sourceKeyDb(): NodePgDatabase<typeof schema> {
+    return this.db;
+  }
+
   async findByCin(cin: string | null | undefined): Promise<IPO[]> {
     const normalized = normalizeCin(cin);
     if (!normalized) {
@@ -1043,7 +1065,10 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * decision (who, why) in audit_logs as IDENTITY_HOLD_OVERRIDDEN. A scraper
    * never passes it.
    */
-  async create(data: IPOInsert, options?: { identityHoldOverride?: { by: string; reason: string } }): Promise<IPO> {
+  async create(
+    data: IPOInsert,
+    options?: { identityHoldOverride?: { by: string; reason: string }; sourceKeys?: SourceKeyRef[] | null; boundBy?: string }
+  ): Promise<IPO> {
     // #860: an IPO's segment decides which manifest ranks its fields get
     // (`ipoTypeKey` needs it), so an IPO created without one has every ranked
     // source chosen for a GUESSED type -- and `pull_plan_rank` cannot see
@@ -1088,10 +1113,17 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         data = { ...data, companyName: sanitizeDisplayCompanyName(data.companyName) };
       }
 
-      const [ipo] = await this.db
-        .insert(ipos)
-        .values(data)
-        .returning();
+      // OD-85 write rule: the record's source keys are written in the SAME transaction as the row
+      // create. A concurrent create of the same record loses on the keys' unique index, and its row
+      // insert rolls back with it — so two concurrent creates leave one row.
+      const keys = normalizeSourceKeyRefs(options?.sourceKeys ?? []);
+      const ipo = keys.length === 0
+        ? (await this.db.insert(ipos).values(data).returning())[0]
+        : await this.db.transaction(async (tx) => {
+            const [created] = await tx.insert(ipos).values(data).returning();
+            await recordSourceKeys(tx, created.id, keys, { boundVia: 'CREATE', boundBy: options?.boundBy ?? 'unknown' });
+            return created;
+          });
 
       // Invalidate list cache
       await this.deleteCachePattern('ipo:list:*');
@@ -1317,7 +1349,16 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     const keep = rows.find((r) => r.id === keepId)!;
     const drop = rows.find((r) => r.id === dropId)!;
 
+    // OD-86: the relaunch exception reads both rows' source keys (shares, band, postponed flag).
+    const pairKeys = await this.db.select().from(ipoSourceKeys).where(inArray(ipoSourceKeys.ipoId, [keepId, dropId]));
+    const relaunch = assessRelaunch(
+      keep,
+      drop,
+      pairKeys.filter((k) => k.ipoId === keepId),
+      pairKeys.filter((k) => k.ipoId === dropId)
+    );
     const eligibility = checkMergeEligibility({
+      relaunch,
       keepOpenDate: keep.openDate,
       dropOpenDate: drop.openDate,
       keepCompanyName: keep.companyName,

@@ -259,6 +259,8 @@ export class DataConsolidationOrchestrator {
             // guards identity — see BaseScraperOrchestrator.ts for the
             // full rationale.
             offeringType: (scrapedIPO as any).offeringTypeExplicit ? scrapedIPO.offeringType : undefined,
+            // OD-85: the record's own source numbers, tried before every other step.
+            sourceKeys: (scrapedIPO as any).sourceKeys ?? null,
           }) as IPO | null;
       const isNew = !existingIPO;
 
@@ -390,7 +392,7 @@ export class DataConsolidationOrchestrator {
           slug,
           createdAt: new Date(),
           updatedAt: new Date(),
-        } as IPOInsert);
+        } as IPOInsert, { sourceKeys: (scrapedIPO as any).sourceKeys ?? null, boundBy: `scraper:${source}` });
 
         ipoId = newIPO.id;
 

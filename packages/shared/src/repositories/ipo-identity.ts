@@ -55,6 +55,15 @@ import type { IPORepository } from './ipo-repository';
 import type { IPO, IPOWithRelations } from './types';
 
 export { IdentityHeldForReviewError } from '../errors/repository-errors';
+import { IdentityHeldForReviewError } from '../errors/repository-errors';
+import {
+  resolveBySourceKeys,
+  planSourceKeyWrite,
+  normalizeSourceKeyRefs,
+  SourceKeyDuplicateError,
+  SourceKeySupersededError,
+  type SourceKeyRef,
+} from './ipo-source-keys';
 
 /**
  * LIGHT normalization for boundary-kind classification only (T-403 item 2)
@@ -170,6 +179,12 @@ export interface IpoIdentity {
    * anything that is not 21 alphanumerics after that is treated as absent.
    */
   cin?: string | null;
+  /**
+   * OD-85 (§2.3.3.2 "Source record keys"): the source's own OFFERING-level record numbers this
+   * record carries (BSE IPO_NO, Chittorgarh page id, NSE SYMBOL|SERIES). Tried BEFORE every other
+   * step; a hit is re-checked against the row. Absent/empty = the pre-OD-85 order, unchanged.
+   */
+  sourceKeys?: SourceKeyRef[] | null;
 }
 
 /**
@@ -463,7 +478,80 @@ async function resolveByCin(
   return null;
 }
 
+/** The repository's database handle for the key table, or null for a test double without one. */
+function sourceKeyDb(ipoRepository: IPORepository): Parameters<typeof resolveBySourceKeys>[0] | null {
+  const getter = (ipoRepository as { sourceKeyDb?: () => unknown }).sourceKeyDb;
+  return typeof getter === 'function' ? (getter.call(ipoRepository) as Parameters<typeof resolveBySourceKeys>[0]) : null;
+}
+
+function heldError(identity: IpoIdentity, candidate: { id: string; slug?: string | null }, reason: string): IdentityHeldForReviewError {
+  return new IdentityHeldForReviewError(
+    `resolveIpoRow: "${identity.companyName}" held (OD-85 key_contradiction) - ${reason}; nothing written`,
+    { companyName: identity.companyName, slug: identity.slug, openDate: identity.openDate ?? null, priceRangeMin: identity.priceRangeMin ?? null },
+    [{ id: candidate.id, slug: candidate.slug ?? '', companyName: '', openDate: null, priceRangeMin: null, status: null }]
+  );
+}
+
+/**
+ * OD-85 read rule in front of the existing order (§2.3.3.2):
+ *   key hit + re-check passes      -> that row (ACTIVE) / write nothing (SUPERSEDED, throws)
+ *   key hit + re-check fails       -> held, nothing written (CIN/ISIN contradiction: key DISPUTED)
+ *   keys hit two rows              -> duplicate reported, nothing written (throws)
+ *   no hit                         -> the existing order (CIN, ISIN, symbol, name, OD-68 hold),
+ *                                     and a row it binds is accepted only if the record's keys
+ *                                     would be (a different ACTIVE key of the same source must
+ *                                     pass OD-83, else held).
+ * A repository without `sourceKeyDb` (a test double) or a record with no keys runs the existing
+ * order exactly as before.
+ */
 export async function resolveIpoRow(
+  ipoRepository: IPORepository,
+  rawIdentity: IpoIdentity
+): Promise<IPO | IPOWithRelations | null> {
+  const keys = normalizeSourceKeyRefs(rawIdentity.sourceKeys ?? []);
+  const db = keys.length > 0 ? sourceKeyDb(ipoRepository) : null;
+  if (!db) return resolveIpoRowByOrder(ipoRepository, rawIdentity);
+
+  const byKey = await resolveBySourceKeys(db, rawIdentity, keys);
+  switch (byKey.kind) {
+    case 'bound': {
+      const row = await ipoRepository.findByIdUncached(byKey.ipoId);
+      if (row) {
+        logger.info({ companyName: rawIdentity.companyName, ipoId: row.id, slug: row.slug }, '[OD-85] bound by source key');
+        return row;
+      }
+      break;
+    }
+    case 'superseded':
+      throw new SourceKeySupersededError(
+        `resolveIpoRow: "${rawIdentity.companyName}" carries a SUPERSEDED source key (OD-83 relaunch) - binds ${byKey.ipoId}, writes nothing`,
+        byKey.ipoId,
+        byKey.keyIds
+      );
+    case 'held':
+      throw heldError(rawIdentity, { id: byKey.ipoId }, byKey.reason);
+    case 'duplicate':
+      throw new SourceKeyDuplicateError(
+        `resolveIpoRow: "${rawIdentity.companyName}" source keys hit ${byKey.ipoIds.length} different rows (${byKey.ipoIds.join(', ')}) - duplicate reported, nothing written (OD-85)`,
+        byKey.ipoIds,
+        keys
+      );
+    case 'miss':
+      break;
+  }
+
+  const row = await resolveIpoRowByOrder(ipoRepository, rawIdentity);
+  if (row) {
+    const plan = await planSourceKeyWrite(db, row.id, keys);
+    if (!plan.ok) {
+      logger.warn({ companyName: rawIdentity.companyName, ipoId: row.id, reason: plan.reason }, '[OD-85] key_contradiction on a fallback bind - held');
+      throw heldError(rawIdentity, row, plan.reason);
+    }
+  }
+  return row;
+}
+
+async function resolveIpoRowByOrder(
   ipoRepository: IPORepository,
   rawIdentity: IpoIdentity
 ): Promise<IPO | IPOWithRelations | null> {

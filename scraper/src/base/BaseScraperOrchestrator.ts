@@ -35,6 +35,8 @@ import {
   DataConflictsRepository as DataConflictsRepositoryClass,
   createFieldProtectionService,
   resolveIpoRow,
+  inferBoundVia,
+  SOURCE_KEY_NO_WRITE_ERROR_NAMES,
   type FieldProtectionService
 } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
@@ -503,7 +505,10 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     // MUST thread isin/symbol so the key-first tiers actually fire here, not
     // only in the secondary backfill scripts.
     const normalizedName = normalizeCompanyNameForMatching(validatedIPO.companyName);
-    const existingIPO = await resolveIpoRow(this.ipoRepository, {
+    const sourceKeys = (validatedIPO as any).sourceKeys ?? null;
+    let existingIPO: IPO | null;
+    try {
+    existingIPO = await resolveIpoRow(this.ipoRepository, {
       companyName: validatedIPO.companyName,
       normalizedName,
       slug,
@@ -521,7 +526,30 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       // (legacy behavior), instead of declining every tier and colliding on
       // create.
       offeringType: (validatedIPO as any).offeringTypeExplicit ? validatedIPO.offeringType : undefined,
+      // OD-85 (§2.3.3.2): the record's own source numbers, tried before every other step.
+      sourceKeys,
     }) as IPO | null;
+    // OD-85 write rule: a record that bound to an existing row records its keys now, in one
+    // transaction, BEFORE the row is written — the bind is what the key records.
+    if (existingIPO && sourceKeys && sourceKeys.length > 0) {
+      await this.ipoRepository.bindSourceKeys(existingIPO.id, sourceKeys, {
+        boundVia: inferBoundVia(validatedIPO as any, existingIPO as any),
+        boundBy: `scraper:${scraperName}`,
+      });
+    }
+    } catch (error) {
+      // OD-85 / OD-68: a held record, a duplicate-key report and a SUPERSEDED key all mean
+      // "write nothing for this record this cycle" — a decision, not a failure.
+      if (SOURCE_KEY_NO_WRITE_ERROR_NAMES.has((error as { name?: string })?.name ?? '')) {
+        logger.warn(
+          { scraperName, companyName: validatedIPO.companyName, reason: (error as Error).name, detail: (error as Error).message },
+          '[OD-85] record writes nothing this cycle'
+        );
+        processResult.skipped = true;
+        return processResult;
+      }
+      throw error;
+    }
     const ipoId = existingIPO?.id;
 
     // Item 7 S1 round 1: the live-figures job writes the subscription snapshot

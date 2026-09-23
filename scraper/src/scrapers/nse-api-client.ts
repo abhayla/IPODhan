@@ -18,6 +18,7 @@
  * Last Tested: Oct 2025
  */
 
+import { nseIssueKeyValue } from '@ipodhan/shared/repositories';
 import logger from '../utils/logger.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { scrapeSecurityTypeFromWebsite, batchScrapeSecurityTypes } from './nse-security-type-scraper.js';
@@ -591,6 +592,9 @@ export function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | '
     faceValue: parseFloat(data.faceValue) || undefined,
     symbol: data.symbol,
     isin: data.isin || undefined, // Extract ISIN from NSE API
+    // OD-85: NSE's record number for this OFFERING is the symbol WITH its series — the series is
+    // what keeps a later OFS or an SME/debt issue under the same symbol apart (scenarios 9, 15).
+    sourceKeys: nseSourceKeys(data, priceRange, openDate),
     ...additionalFields // Spread the additional NSE fields
   };
 }
@@ -1586,3 +1590,25 @@ export async function fetchPastIPOsByType(securityType: string = 'Equity'): Prom
  *
  * ═══════════════════════════════════════════════════════════════════════════
  */
+/** OD-85: the NSE_ISSUE key (SYMBOL|SERIES) with the share count and band NSE sent. No series, no key. */
+export function nseSourceKeys(
+  data: { symbol?: unknown; series?: unknown; noOfSharesOffered?: unknown; issueSize?: unknown },
+  priceRange: { min?: number; max?: number },
+  openDate: string | null | undefined
+): { source: string; keyType: 'NSE_ISSUE'; keyValue: string; attrs: Record<string, unknown>; recordOpenDate: string | null }[] {
+  const value = nseIssueKeyValue(data.symbol, data.series);
+  if (!value) return [];
+  const shares = Number(String(data.noOfSharesOffered ?? data.issueSize ?? '').replace(/[,\s]/g, ''));
+  return [{
+    source: 'NSE',
+    keyType: 'NSE_ISSUE',
+    keyValue: value,
+    attrs: {
+      shares: Number.isFinite(shares) && shares > 0 ? Math.round(shares) : null,
+      priceMin: priceRange.min && priceRange.min > 0 ? priceRange.min : null,
+      priceMax: priceRange.max && priceRange.max > 0 ? priceRange.max : null,
+      series: String(data.series).trim().toUpperCase(),
+    },
+    recordOpenDate: openDate ?? null,
+  }];
+}

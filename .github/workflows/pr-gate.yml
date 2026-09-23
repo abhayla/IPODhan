@@ -870,6 +870,7 @@ jobs:
           tests/integration/merge-repoint-conflict.integration.test.ts
           tests/integration/nse-scraper.integration.test.ts
           tests/integration/identity-matching-od68.integration.test.ts
+          tests/integration/source-record-keys-od85.integration.test.ts
           tests/integration/repair-issue-size-od74.integration.test.ts
           tests/integration/oracle-parity.test.ts
 
