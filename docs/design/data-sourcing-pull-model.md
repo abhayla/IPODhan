@@ -1714,6 +1714,9 @@ segment, open date within 180 days, known price band, and CIN/ISIN where both ex
 check writes nothing and holds the record, and a CIN/ISIN contradiction marks the key DISPUTED; (4)
 if the record's keys hit two different rows, nothing is written and the duplicate is reported; if
 no key hits at all, fall back to the existing order — CIN, ISIN, symbol, name, with the OD-68 hold.
+(2026-09-24, build clarification; applies OD-85/OD-86, no new decision) A key value that is
+DISPUTED on a row is never bound to that row again by any path — key or fallback order — until an
+admin resolves the dispute; the record is held and logged `key_disputed_rebind_refused`.
 
 **The write rule.** A key is written in the same transaction as the bind or the row create, never
 after it, and its id is recorded into `field_sources.data_lineage`. A second key of the same source
@@ -1734,7 +1737,7 @@ ipo_source_keys
   state
   binding_value     = key_value when ACTIVE/SUPERSEDED, else NULL
   record_open_date
-  bound_via         CIN | ISIN | SYMBOL | NAME | HOLD_RESOLUTION | BACKFILL
+  bound_via         CIN | ISIN | SYMBOL | NAME | KEY | CREATE | HOLD_RESOLUTION | BACKFILL
   bound_by
   bound_at
   state_changed_at
@@ -1745,6 +1748,10 @@ ipo_source_keys
   CHECK (binding_value consistent with state)
   INDEX(ipo_id)
 ```
+
+(2026-09-24, build clarification; applies OD-85/OD-86, no new decision) `bound_via` addition:
+KEY = the record bound because another of its own keys already pointed at the row; CREATE = the
+key was written together with a newly created row.
 
 **Verified on 18 real scenarios, 2026-09-23 (F-149).**
 
@@ -1859,8 +1866,9 @@ automatic merge that cannot be undone is a one-way door on a guess:
 | **The tool writes through the shared write path** | it does not hold its own SQL. This is build item 19, and it is also what makes PR #432's gate green — see §8.3 |
 
 OD-86 narrows this: a merge of two rows with differing open dates is allowed only for the relaunch
-exception — same shares, same price band, same symbol or CIN, and the older record marked postponed
-by the exchange; every other refusal above still stands.
+exception — same shares, same price band, same symbol or CIN, the older record marked postponed by
+the exchange, and the two rows' open dates within 180 days (OD-35's window); every other refusal
+above still stands. (2026-09-24, build clarification; applies OD-85/OD-86, no new decision)
 
 #### 2.3.4 A correct page still contains other companies' numbers
 
