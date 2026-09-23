@@ -1,8 +1,7 @@
 {
-  "_comment": "The hand-owned half of the board. Everything here is a judgement a human makes; everything NOT here is derived by render-board.mjs from source files or scripts. Keep it small: if a value can be computed, compute it instead of typing it.",
-  "stamp": "2026-09-23 07:32 IST",
+  "_comment": "The hand-owned half of the board. Everything here is a judgement a human makes; everything NOT here is derived by render-board.mjs from source files or scripts. Keep it small: if a value can be computed, compute it instead of typing it. Measured facts (served sha, since, migration counts, the stamp) are REFUSED here: they live in measured-facts.json, written by collect-board-facts.mjs; prose cites them as {{prod.sha}}-style tokens.",
   "stage": "Stage 3 — one source table, then prevention",
-  "headline": "Stage 3's slices are merged and staging is the release gate. Production has not moved since 2026-09-07 (18 migrations behind) and is not scheduled to. Staging serves 55b585cb; the 13:30 IST window brings the merge log and NOT_EXTRACTABLE admission.",
+  "headline": "Stage 3's slices are merged and staging is the release gate. Production has not moved since {{prod.since_date}} ({{prod.migrations_behind}} migrations behind) and is not scheduled to. Staging serves {{staging.sha}}; the 13:30 IST window brings the merge log and NOT_EXTRACTABLE admission.",
   "waiting_on_owner": [
     {
       "id": "D-3",
@@ -20,9 +19,9 @@
     },
     {
       "id": "Prod schema",
-      "ask": "Production is 18 migrations behind (34 of 52 applied, measured 2026-09-23). Rehearse the batch against a prod-shaped copy before the release?",
+      "ask": "Production is {{prod.migrations_behind}} migrations behind main. Rehearse the batch against a prod-shaped copy before the release?",
       "recommend": "Yes, rehearse first",
-      "why": "The 18 have never been run as ONE batch against prod's exact schema. Individually each is cheap at current row counts; as a batch, untested.",
+      "why": "These have never been run as ONE batch against prod's exact schema. Individually each is cheap at current row counts; as a batch, untested.",
       "blocks": "The next production release."
     },
     {
@@ -37,26 +36,22 @@
     {
       "slot": "Production",
       "url": "ipodhan.com",
-      "sha": "f0c66b6b",
-      "since": "2026-09-07",
       "state": "bad",
-      "note": "Behind main. 18 migrations unapplied (34 of 52, measured 2026-09-23) — <code>ipo_field_plan</code>, <code>field_extraction_failures</code>, <code>field_source_overrides</code>, <code>document_pages</code>, <code>ipo_merge_log</code> do not exist here.",
-      "flags": "manifest OFF, verdict writer OFF"
+      "note": "Behind main — <code>ipo_field_plan</code>, <code>field_extraction_failures</code>, <code>field_source_overrides</code>, <code>document_pages</code>, <code>ipo_merge_log</code> do not exist here.",
+      "flags": "manifest OFF, verdict writer OFF",
+      "facts": "prod"
     },
     {
       "slot": "Staging",
       "url": "staging",
-      "sha": "55b585cb",
-      "since": "2026-09-22 21:30 IST",
       "state": "ok",
-      "note": "51 of 52 migrations applied; 0051 (merge log) arrives in the 13:30 IST window. Field-plan generator and walk flags ON (staging/scraper.env). This is the release gate — the bar is feature-complete here, not a green build.",
-      "flags": "manifest ON, field plan + walk ON"
+      "note": "0051 (merge log) arrives in the 13:30 IST window. Field-plan generator and walk flags ON (staging/scraper.env). This is the release gate — the bar is feature-complete here, not a green build.",
+      "flags": "manifest ON, field plan + walk ON",
+      "facts": "staging"
     },
     {
       "slot": "Local / test",
       "url": "ipodhan_test",
-      "sha": "—",
-      "since": "per run",
       "state": "ok",
       "note": "The one sanctioned local Postgres, reached on <code>localhost:15432</code> through the tunnel. Integration and real-writer tests run here.",
       "flags": "per-test"
@@ -112,8 +107,8 @@
       "status": "Figure measured 2026-09-20, not re-measured since. The prevention model stops new ones; draining the old pile is the admin queue (S9, queued)."
     },
     {
-      "what": "Every fix of the last 16 days is invisible to readers",
-      "plain": "217 fix and feature commits are on main and not on the live site (counted 2026-09-23), because production has not deployed since 2026-09-07.",
+      "what": "Every fix of the last {{prod.age_days}} days is invisible to readers",
+      "plain": "Fix and feature commits on main are not on the live site (217 counted on 2026-09-23), because production has not deployed since {{prod.since_date}}.",
       "issue": "—",
       "state": "bad",
       "status": "By design — the owner's bar is feature-complete staging before a prod window."
@@ -168,7 +163,7 @@
     ]
   },
   "now": {
-    "Landed": "Since 2026-09-20: #859/#863 checks, #867 NSE fetcher, #870, #871, #876, #883, #888 merge log, #891 NOT_EXTRACTABLE, #898. Staging serves 55b585cb.",
+    "Landed": "Since 2026-09-20: #859/#863 checks, #867 NSE fetcher, #870, #871, #876, #883, #888 merge log, #891 NOT_EXTRACTABLE, #898. Staging serves {{staging.sha}}.",
     "Next": "Run the NOT_EXTRACTABLE repair on staging, then the closed-IPO job on staging (#717), then item 19 unmerge and #884.",
     "Blocked": "Unmerge scope needs your word (see Waiting on you). The Swap Test cause is unknown (#893)."
   }

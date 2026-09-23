@@ -8,6 +8,7 @@ the output. That is the whole update procedure.
 
 ```bash
 node scripts/ops/build-plan-board.mjs   # ONLY if a spec source changed (see below)
+node scripts/ops/collect-board-facts.mjs  # after a deploy or a day's gap — measures sha/since/migrations
 node scripts/ops/render-board.mjs       # always — writes docs/design/board/index.html
 # then: Artifact publish, file_path=docs/design/board/index.html, url=<the board URL>
 ```
@@ -33,7 +34,8 @@ items for exactly that reason.
 
 | File | What it is | Who edits it |
 |---|---|---|
-| `board-data.json` | The hand-owned judgements: stamp, decisions waiting on the owner, environments, release + rollback, gates, reader impact, dependency chain, changed-since. | **You.** This is the file you edit. |
+| `measured-facts.json` | **Measured.** Served sha + serving-since per slot, migrations applied per DB, migrations on main, each with `measured_at` and the command. A failed probe is `{value: null, error}`. | Never by hand — `collect-board-facts.mjs`. |
+| `board-data.json` | The hand-owned judgements: decisions waiting on the owner, environment flags + notes, release + rollback, gates, reader impact, dependency chain, changed-since. Typed `sha`/`since`/`stamp` are refused; cite facts as `{{prod.sha}}`-style tokens. | **You.** This is the file you edit. |
 | `status.json` | The 16 stage-3 slice rows. | You, when a slice lands. |
 | `board-prose.json` | The 10 explanatory sections (architecture, guardrails, the review, …). | Rarely — only when the plan itself changes. |
 | `plan-sections.generated.html` | **Generated.** 29 build items + 63 owner decisions + 190 sourced fields. | Never by hand — `build-plan-board.mjs`. |
@@ -96,11 +98,13 @@ status change.
 When a stage crosses, in the same step you write the ledger row:
 
 1. Read the clock: `date` (IST). Never type a stamp from memory.
-2. Edit `board-data.json` (and `status.json` if a slice moved). Set `stamp` to that clock reading.
+2. `node scripts/ops/collect-board-facts.mjs` — re-measures the environment facts (needs `rfp-vps` ssh
+   and the tunnel on 15432). Edit `board-data.json` (and `status.json` if a slice moved); the stamp is
+   taken from the clock by the renderer.
 3. If a build item, an OD or a manifest field changed, edit that **source** file and run
    `node scripts/ops/build-plan-board.mjs`.
 4. `node scripts/ops/render-board.mjs`
-5. `node scripts/tests/render-board.test.mjs` — 36 tests, under a second.
+5. `node scripts/tests/render-board.test.mjs` — 52 tests, a few seconds.
 6. Publish `docs/design/board/index.html` with `url` = the board URL. **Without `url` you create a
    second artifact and the owner's link goes stale.**
 

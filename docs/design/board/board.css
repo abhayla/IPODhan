@@ -142,3 +142,5 @@ ul.changed li{margin-bottom:7px}
  dl.rel{grid-template-columns:1fr}
  dl.rel dd{margin-bottom:6px}
 }
+.stale{color:var(--warn);font-weight:600}
+.unmeasured{color:var(--bad);font-weight:600}

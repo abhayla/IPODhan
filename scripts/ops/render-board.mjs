@@ -9,9 +9,15 @@
 //   is exactly what happened on 2026-09-20. A renderer must read DATA, never
 //   the artifact it produces.
 //
-// FOUR SOURCES, all on disk, none read from the published page:
+// FIVE SOURCES, all on disk, none read from the published page:
+//   0. docs/design/board/measured-facts.json    -> MEASURED facts (served sha,
+//      serving-since, migrations applied per DB vs main's journal), each with
+//      its own measured_at. Written only by collect-board-facts.mjs; run that
+//      first. These keys are REFUSED in board-data.json (see TYPED_FACT_KEYS).
 //   1. docs/design/board/board-data.json        -> the hand-owned judgements
-//      (stamp, environments, decisions waiting, gates, reader impact, chain)
+//      (environment flags/notes, decisions waiting, gates, reader impact, chain).
+//      Prose may cite a measured fact as {{prod.sha}}, {{prod.since_date}},
+//      {{prod.migrations_behind}} ... so a typed copy of it cannot go stale.
 //   2. docs/design/board/board-prose.json       -> the 10 explanatory sections
 //   3. docs/design/board/status.json            -> the 16 stage-3 slice rows
 //   4. docs/design/board/plan-sections.generated.html
@@ -43,6 +49,9 @@
 //   node scripts/ops/render-board.mjs                 # write index.html
 //   node scripts/ops/render-board.mjs --out <path>    # elsewhere
 //   node scripts/ops/render-board.mjs --check         # exit 1 if stale
+//   --data <path> / --facts <path> / --now <iso>        # test seams
+//   Before rendering after a deploy or a day's gap:
+//   node scripts/ops/collect-board-facts.mjs
 //
 // OUTPUT
 //   docs/design/board/index.html — publish this file with the board URL.
@@ -63,8 +72,10 @@ const OUT_DEFAULT = join(BOARD, 'index.html');
 
 const argv = process.argv.slice(2);
 const CHECK = argv.includes('--check');
-const outIdx = argv.indexOf('--out');
-const OUT = outIdx >= 0 ? argv[outIdx + 1] : OUT_DEFAULT;
+const opt = (name, dflt) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : dflt; };
+const OUT = opt('--out', OUT_DEFAULT);
+const DATA_PATH = opt('--data', DATA);
+const FACTS_PATH = opt('--facts', join(BOARD, 'measured-facts.json'));
 
 const CR_LF = String.fromCharCode(13, 10);
 const NL = String.fromCharCode(10);
@@ -76,9 +87,113 @@ const LF = (s) => s.split(CR_LF).join(NL);
 const readText = (p) => LF(readFileSync(p, 'utf8'));
 const readJson = (p) => JSON.parse(readText(p));
 
-const data = readJson(DATA);
+const data = readJson(DATA_PATH);
 const prose = readJson(PROSE);
 const status = readJson(STATUS);
+
+const esc = (s) => String(s).replace(/&(?![a-zA-Z#][a-zA-Z0-9]*;)/g, '&amp;');
+
+// ---- measured facts ----------------------------------------------------------
+// A measurable fact typed into board-data.json is the drift this section stops:
+// the board carried "staging 61808af1 since 2026-09-20" for three days and seven
+// republishes after staging had moved. Refuse the typed copy outright.
+const TYPED_FACT_KEYS = ['sha', 'since', 'migrations', 'migrations_applied'];
+for (const e of data.environments || []) {
+  for (const k of TYPED_FACT_KEYS) {
+    if (e[k] !== undefined) {
+      console.error(`render-board: board-data.json environment "${e.slot}" types "${k}" — that fact is MEASURED. ` +
+        'Delete the key and run: node scripts/ops/collect-board-facts.mjs');
+      process.exit(1);
+    }
+  }
+}
+if (data.stamp !== undefined) {
+  console.error('render-board: board-data.json types "stamp" — the stamp is read from the clock at render time. Delete the key.');
+  process.exit(1);
+}
+
+// RENDER TIME AND DETERMINISM.
+// Staleness means "fact measured more than 24h before this page was rendered",
+// so the render time is an input. Write mode takes it from the clock (or
+// --now); the page records it as data-rendered-at. --check re-renders with the
+// COMMITTED page's recorded render time, not the wall clock, because CI cannot
+// re-measure (no VPS, no tunnel): with a wall-clock "now", every PR opened a day
+// after the last render would fail --check for a reason that PR did not cause.
+// "now = the facts' newest measured_at" was rejected: the collector writes every
+// fact in one run, so nothing could ever be stale relative to it — which is the
+// exact failure (an old snapshot republished as current) this exists to show.
+// --check reads the committed index.html only to recover that one timestamp;
+// the write path never reads its own output.
+const STALE_MS = 24 * 3600 * 1000;
+const RENDERED_AT_RE = /data-rendered-at="([^"]+)"/;
+let renderAt;
+if (opt('--now')) renderAt = new Date(opt('--now'));
+else if (CHECK && existsSync(OUT)) {
+  const m = readFileSync(OUT, 'utf8').match(RENDERED_AT_RE);
+  renderAt = m ? new Date(m[1]) : new Date(0);
+} else renderAt = new Date();
+if (Number.isNaN(renderAt.getTime())) { console.error('render-board: --now is not a date'); process.exit(1); }
+const renderAtIso = renderAt.toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+const IST_MS = 330 * 60 * 1000;
+const istDate = (iso) => new Date(Date.parse(iso) + IST_MS).toISOString().slice(0, 10);
+const istStamp = (iso) => new Date(Date.parse(iso) + IST_MS).toISOString().slice(0, 16).replace('T', ' ') + ' IST';
+
+const factsDoc = existsSync(FACTS_PATH) ? readJson(FACTS_PATH) : null;
+const rawFacts = factsDoc?.facts || {};
+// Every fact the page shows resolves to fresh / stale / unmeasured. A missing
+// file or key is "unmeasured", never a default.
+const fact = (key) => {
+  const f = rawFacts[key];
+  if (!f) return { state: 'unmeasured', why: factsDoc ? `no "${key}" in measured-facts.json` : 'measured-facts.json missing — run collect-board-facts.mjs' };
+  if (f.value === null || f.value === undefined) return { state: 'unmeasured', why: f.error || 'no value recorded' };
+  const age = renderAt.getTime() - Date.parse(f.measured_at);
+  if (!Number.isFinite(age)) return { state: 'unmeasured', why: `bad measured_at "${f.measured_at}"` };
+  return { state: age > STALE_MS ? 'stale' : 'fresh', value: f.value, measured_at: f.measured_at };
+};
+const shown = (key, fmt = (v) => String(v)) => {
+  const f = fact(key);
+  if (f.state === 'unmeasured') return `<span class="unmeasured">unmeasured &mdash; ${esc(f.why)}</span>`;
+  const v = esc(fmt(f.value));
+  return f.state === 'stale' ? `${v} <small class="stale">stale &mdash; measured ${istDate(f.measured_at)}</small>` : v;
+};
+const valueOf = (key) => { const f = fact(key); return f.state === 'unmeasured' ? null : f.value; };
+const measuredTimes = Object.values(rawFacts).map((f) => f && f.measured_at).filter(Boolean).sort();
+const oldestMeasured = measuredTimes[0] || null;
+
+// Tokens prose may cite, all from facts; an absent fact renders "unmeasured".
+const slotTokens = (slot) => {
+  const applied = valueOf(`${slot}.migrations_applied`);
+  const onMain = valueOf('main.migrations');
+  const since = valueOf(`${slot}.since`);
+  return {
+    [`${slot}.sha`]: valueOf(`${slot}.sha`),
+    [`${slot}.since_date`]: since ? istDate(since) : null,
+    [`${slot}.age_days`]: since ? Math.floor((renderAt.getTime() - Date.parse(since)) / 86400000) : null,
+    [`${slot}.migrations_applied`]: applied,
+    [`${slot}.migrations_behind`]: applied !== null && onMain !== null ? onMain - applied : null,
+  };
+};
+const TOKENS = { ...slotTokens('prod'), ...slotTokens('staging'), 'main.migrations': valueOf('main.migrations') };
+const fillTokens = (v) => {
+  if (typeof v === 'string') return v.replace(/\{\{([\w.]+)\}\}/g, (_, k) => {
+    if (!(k in TOKENS)) { console.error(`render-board: unknown fact token {{${k}}} in board-data.json`); process.exit(1); }
+    return TOKENS[k] === null ? 'unmeasured' : String(TOKENS[k]);
+  });
+  if (Array.isArray(v)) return v.map(fillTokens);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fillTokens(x)]));
+  return v;
+};
+Object.assign(data, fillTokens(data));
+
+// Migrations applied on a slot's DB vs entries in main's journal, from facts.
+function migrationLine(slot) {
+  const a = fact(`${slot}.migrations_applied`);
+  const m = fact('main.migrations');
+  if (a.state === 'unmeasured' || m.state === 'unmeasured') return `Migrations: ${shown(`${slot}.migrations_applied`)}.`;
+  const behind = m.value - a.value;
+  return `Migrations: <b>${shown(`${slot}.migrations_applied`)} of ${shown('main.migrations')}</b> on main applied${behind > 0 ? ` (${behind} behind)` : ''}.`;
+}
 
 // The generated tracking sections are required, not optional: a board that
 // silently drops the 282 tracked rows looks complete and lies.
@@ -98,7 +213,7 @@ need(Array.isArray(status.slices) && status.slices.length >= 10, 'status.json ha
 need(prose.length === 10, `expected 10 prose sections, got ${prose.length}`);
 need(data.environments.length >= 2, 'need at least prod and staging environments');
 need(data.waiting_on_owner.length >= 1, 'waiting_on_owner is empty — if nothing is waiting, say so explicitly');
-for (const k of ['stamp', 'headline', 'release', 'gates', 'reader_impact', 'chain', 'changed_since', 'now'])
+for (const k of ['headline', 'release', 'gates', 'reader_impact', 'chain', 'changed_since', 'now'])
   need(data[k] !== undefined, `board-data.json missing "${k}"`);
 
 // ---- derived counts: never typed by hand -----------------------------------
@@ -128,16 +243,14 @@ need(built + partial + notBuilt === itemsTotal, 'verdict counts do not sum to th
 const slices = status.slices;
 const landedSlices = slices.filter((s) => s.state === 'landed').length;
 
-const esc = (s) => String(s).replace(/&(?![a-zA-Z#][a-zA-Z0-9]*;)/g, '&amp;');
 const toneClass = { ok: 'ok', warn: 'warn', bad: 'bad', info: 'info', building: 'building', queued: 'queued', red: 'bad', landed: 'ok', merged: 'warn' };
 
 // ---- the page --------------------------------------------------------------
 // Production age is derived from its deploy date, so the tile cannot say "13
 // days" a week later. Every other tile shows a quantity; this one must too.
-const prodAgeDays = Math.round(
-  (Date.parse(data.stamp.slice(0, 10)) - Date.parse(data.environments[0].since)) / 86400000);
-need(Number.isFinite(prodAgeDays) && prodAgeDays >= 0,
-  `cannot derive production age from stamp "${data.stamp}" and since "${data.environments[0].since}"`);
+// Measured from the served release's switch time to this render.
+const prodAgeDays = TOKENS['prod.age_days'];
+const prodEnv = data.environments.find((e) => e.facts === 'prod') || data.environments[0];
 
 const meter = [
   ...Array(built).fill('on-ok'),
@@ -147,7 +260,7 @@ const meter = [
 
 const vitals = `
 <div class="vitals">
- <div class="bad"><span class="k">Production</span><span class="v">${prodAgeDays} days behind</span><span class="sub">Serving <b>${data.environments[0].sha}</b> since ${esc(data.environments[0].since)}. ${esc(data.environments[0].note)}</span></div>
+ <div class="bad"><span class="k">Production</span><span class="v">${prodAgeDays === null ? 'unmeasured' : `${prodAgeDays} days old`}</span><span class="sub">Serving <b>${shown('prod.sha')}</b> since ${shown('prod.since', istStamp)}. ${migrationLine('prod')} ${esc(prodEnv.note)}</span></div>
  <div class="warn"><span class="k">Staging &mdash; the release gate</span><span class="v">${built} / ${itemsTotal} built</span><span class="sub">${built} built &middot; ${partial} partial &middot; ${notBuilt} not built. The bar for a production window is <b>feature-complete here</b>, not a green build.</span>
   <div class="meter" aria-hidden="true">${meter}</div></div>
  <div class="ok"><span class="k">Stage 3 slices</span><span class="v">${landedSlices} landed</span><span class="sub">${landedSlices} of ${slices.length} rows landed. ${esc(data.now.Blocked ? 'See blocked, below.' : '')}</span></div>
@@ -182,7 +295,7 @@ const envs = `
  <div class="hd"><h2>Environments</h2><span class="stamp">what is running where</span></div>
  <div class="wrap"><table>
  <thead><tr><th>Slot</th><th>Serving</th><th>Since</th><th>Feature flags</th><th>State</th></tr></thead>
- <tbody>${data.environments.map((e) => `<tr><td class="s"><b>${esc(e.slot)}</b><br><small>${esc(e.url)}</small></td><td class="mono">${esc(e.sha)}</td><td class="mono">${esc(e.since)}</td><td>${esc(e.flags)}</td><td><span class="dot ${toneClass[e.state]}"></span>${esc(e.note)}</td></tr>`).join('')}</tbody></table></div>
+ <tbody>${data.environments.map((e) => `<tr><td class="s"><b>${esc(e.slot)}</b><br><small>${esc(e.url)}</small></td><td class="mono">${e.facts ? shown(`${e.facts}.sha`) : 'not a deployed slot'}</td><td class="mono">${e.facts ? shown(`${e.facts}.since`, istStamp) : 'per run'}</td><td>${esc(e.flags)}</td><td><span class="dot ${toneClass[e.state]}"></span>${e.facts ? migrationLine(e.facts) + ' ' : ''}${esc(e.note)}</td></tr>`).join('')}</tbody></table></div>
  <div class="relbox">
   <h3>Release and rollback</h3>
   <dl class="rel">
@@ -273,7 +386,7 @@ ${css}</style>
 <main>
 <h1>One Source Table Plan</h1>
 <p class="lede">${esc(data.headline)}</p>
-<p class="stamp">${esc(data.stage)} &middot; updated ${esc(data.stamp)} &middot; generated by <code>scripts/ops/render-board.mjs</code></p>
+<p class="stamp" data-rendered-at="${renderAtIso}">${esc(data.stage)} &middot; rendered ${istStamp(renderAtIso)} &middot; environment facts measured ${oldestMeasured ? istStamp(oldestMeasured) : '<span class="unmeasured">never &mdash; run collect-board-facts.mjs</span>'}${oldestMeasured && renderAt.getTime() - Date.parse(oldestMeasured) > STALE_MS ? ' <small class="stale">stale</small>' : ''} &middot; generated by <code>scripts/ops/render-board.mjs</code></p>
 ${waiting}
 ${vitals}
 <div class="legend"><span><i style="background:var(--ok)"></i>built / landed</span><span><i style="background:var(--warn)"></i>partial, or proof owed</span><span><i style="background:var(--bad)"></i>not built</span><span><i style="background:var(--accent)"></i>context, no status</span></div>
@@ -291,7 +404,7 @@ ${slicesSection}
 ${nowSection}
 ${generated}
 ${proseSections}
-<p class="foot">This page is generated from four files in <code>docs/design/board/</code> &mdash; nothing on it is typed into the published HTML, so it cannot drift from the spec it reports. Written 2026-09-17 by the stage 3 supervisor session; restructured 2026-09-20 into per-section status for the nine roles that read it. Sources: docs/design/data-sourcing-pull-model.md, docs/design/pull-model-completion-state.md, scraper/config/field-manifest.json.</p>
+<p class="foot">This page is generated from five files in <code>docs/design/board/</code> &mdash; nothing on it is typed into the published HTML, so it cannot drift from the spec it reports. Written 2026-09-17 by the stage 3 supervisor session; restructured 2026-09-20 into per-section status for the nine roles that read it. Sources: docs/design/data-sourcing-pull-model.md, docs/design/pull-model-completion-state.md, scraper/config/field-manifest.json.</p>
 </main>
 <script>
 document.querySelectorAll(".controls button").forEach(function (b) {
