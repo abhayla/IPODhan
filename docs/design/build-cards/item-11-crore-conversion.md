@@ -1,6 +1,6 @@
 # Item 11 — the crore conversion (OD-20) and `financial_data` becomes derived
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 11: the data conversion itself is WITHDRAWN (measured 2026-09-21, all 5 rupee columns are numeric(18,2), largest stored row uses 0.0027% of ceiling); PR #871 landed the two crore-threshold display readers, but the OD-48 exception-column unit tags remain open, so the card's own scope is not fully closed
 
 ## Purpose
 

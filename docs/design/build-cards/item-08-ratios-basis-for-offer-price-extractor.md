@@ -1,6 +1,6 @@
 # Item 8 — the ratios / basis-for-offer-price extractor
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: DONE 2026-09-15 PRs #677 proof filing-auto-persist.ts:137-162 deliberately excludes RATIOS_BASIS_ISSUE_PRICE from AUTO_PERSIST_DOC_TYPES on refs/remotes/origin/main; #716 filed and closed as non-bug, confirms detection already correct via not_applicable_documents_named
 
 ## Purpose
 

@@ -1,6 +1,6 @@
 # Item 18 — Document retention (OD-32)
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: DONE 2026-09-11 PRs #560, #628, #848 proof documentPages table (schema.ts:726) + purge veto in document-cycle.ts/document-store.ts on refs/remotes/origin/main; 46 unit tests pass, verified 2026-09-20
 
 > **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
 > 1. Tier: **A**, not B. This item adds a migration, deletes bytes and rows, and ships a `repair-*` tool (parent contract decision 6). Dry-run default, `openRepairDb`, staging-only `--apply` by the run, `assert-repair-held.mjs --cycles 2` proof, never production.

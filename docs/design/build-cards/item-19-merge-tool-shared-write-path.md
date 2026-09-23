@@ -1,6 +1,6 @@
 # Item 19 — the merge tool on the shared write path (OD-49)
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 19: singular tool routed (#432), plural clustering tool routed with a merge log (piece 2, #888, proven by scripts/assert-merge-log-restores.mjs on refs/remotes/origin/main), but #807's remaining piece — the unmerge command itself — is not built
 
 ## Purpose
 

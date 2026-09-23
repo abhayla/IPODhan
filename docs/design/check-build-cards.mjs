@@ -31,6 +31,27 @@ const HEADINGS = ['## Purpose', '## Serves', '## Files', '## Schema', '## Interf
   '## Feature flag', '## Tests', '## Detection', '## Staging proof', '## Rollback',
   '## Tier, budget and cost', '## Rules implemented', '## Known gaps'];
 
+// Item 32 follow-up (2026-09-23): `unknown` was accepted for ANY card, and 24 of 42 read it —
+// a shape check-build-cards.mjs accepted as valid while telling nobody anything
+// (staging-is-the-release-gate.md R5). Resolving each card against refs/remotes/origin/main
+// found ten whose item is itself genuinely PARTIAL (measured in
+// docs/design/pull-model-completion-state.md, not guessed) — those ten keep `unknown`, but ONLY
+// these ten. This list is SHRINK-ONLY: a card comes off it by becoming DONE or NOT STARTED, and
+// nothing may be added back without re-doing the same origin/main + PR-merge verification this
+// list was built from. A NEW card reading `unknown` that is not on this list fails the gate.
+const UNKNOWN_ALLOWED = new Set([
+  'item-06-pull-walk.md',
+  'item-07-job-scheduler-and-budgets.md',
+  'item-09-re-read-loop.md',
+  'item-10-verification-checks.md',
+  'item-11-crore-conversion.md',
+  'item-12-name-normaliser-and-duplicate-detection.md',
+  'item-14-bse-share-count-conversion.md',
+  'item-19-merge-tool-shared-write-path.md',
+  'item-21-read-side.md',
+  'item-22-document-handling-and-download-limits.md',
+]);
+
 /** Does the repository deliberately ignore this path? Asked of git, never guessed from a pattern. */
 const ignoreCache = new Map();
 function isIgnored(p) {
@@ -154,6 +175,8 @@ if (isMain) try {
     const statusLine = h1Idx === -1 ? '' : (bodyLines[statusIdx] || '');
     if (!/^Status: (NOT STARTED|DONE \d{4}-\d{2}-\d{2} PRs #.+ proof .+|unknown — .+)$/.test(statusLine))
       problems.push(`${f}: no "Status:" line immediately after the H1, or one that does not match the accepted shapes`);
+    else if (/^Status: unknown — /.test(statusLine) && !UNKNOWN_ALLOWED.has(f))
+      problems.push(`${f}: "Status: unknown" is only accepted for the ten cards named in UNKNOWN_ALLOWED (item 32 follow-up) — resolve this card against refs/remotes/origin/main instead of adding it to that list`);
   }
 
   console.log(`build cards: ${files.length}`);

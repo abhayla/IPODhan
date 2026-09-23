@@ -1,6 +1,6 @@
 # Item 12 — fold corporate-form words into the name normaliser, and run duplicate detection at discovery
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 12: company-identity-fold.ts, company-name-normalizer.ts, company-name-similarity.ts, ipo-identity.ts exist on refs/remotes/origin/main, but reopened 2026-09-23 by OD-68 to OD-71 — a live duplicate exists on production and staging (rays-of-belief-ltd), so matching still lets one IPO become two rows; status-suffix stripping, hold-for-review, merge-tool refusal, and the nightly sweep (#903, in progress) are missing
 
 > **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
 > 1. Identity does not live in `scraper/src/services/document-discovery-runner.ts` (it never creates an `ipos` row); the binding site is `packages/shared/src/repositories/ipo-identity.ts`. Slices target that file.

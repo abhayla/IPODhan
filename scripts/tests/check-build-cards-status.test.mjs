@@ -153,3 +153,26 @@ test('the real gate is red on the current tree with one real card\'s Status line
   const greenResult = runGate();
   assert.equal(greenResult.code, 0, greenResult.out);
 });
+
+test('a card reading Status: unknown that is NOT on the item-32 allow-list fails the gate', () => {
+  cleanupFixtures();
+  writeFixture('notallowed', MINIMAL_CARD('Status: unknown — a brand new reason nobody has reviewed yet'));
+  const result = runGate();
+  assert.equal(result.code, 1);
+  assert.match(result.out, /item-999999-status-fixture-notallowed\.md: "Status: unknown" is only accepted for the ten cards named in UNKNOWN_ALLOWED/);
+  cleanupFixtures();
+});
+
+test('the ten real cards on the item-32 UNKNOWN_ALLOWED list still pass with their unknown Status', () => {
+  const result = runGate();
+  const allowed = [
+    'item-06-pull-walk.md', 'item-07-job-scheduler-and-budgets.md', 'item-09-re-read-loop.md',
+    'item-10-verification-checks.md', 'item-11-crore-conversion.md',
+    'item-12-name-normaliser-and-duplicate-detection.md', 'item-14-bse-share-count-conversion.md',
+    'item-19-merge-tool-shared-write-path.md', 'item-21-read-side.md',
+    'item-22-document-handling-and-download-limits.md',
+  ];
+  for (const f of allowed) {
+    assert.doesNotMatch(result.out, new RegExp(`${f}: "Status: unknown" is only accepted`));
+  }
+});

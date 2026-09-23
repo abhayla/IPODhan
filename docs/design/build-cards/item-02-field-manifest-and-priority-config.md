@@ -1,6 +1,6 @@
 # Item 2 — field manifest and priority configuration
 
-Status: unknown — multiple candidate merged PRs found by title search, not individually confirmed within this card's 15 min/30-call budget (see PR #814 body for the search results)
+Status: DONE 2026-09-17 PRs #483, #525, #738 proof scraper/config/field-manifest.json + scraper/src/config/field-manifest-loader.ts present on refs/remotes/origin/main, 4 unit test files; residual #739 tracked separately
 
 > **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
 > 1. Format is JSON, not YAML; validation uses `zod` (already a workspace dependency), not `ajv`; neither `yaml` nor `ajv` is added (no card names them).
