@@ -2518,30 +2518,27 @@ export const ipoMergeLog = pgTable(
     // row lock inside the merge transaction. This is the column `unmerge` restores
     // from; everything else here is context.
     //
-    // "Whole" means every column schema.ts DECLARES — NOT necessarily every column the
-    // live table has. Measured 2026-09-22: ipodhan_staging carries SIX columns this
-    // file does not declare (two retired price-band columns, plus an exchange column
-    // and three grey-market-premium ones), all 0/379 non-null, so nothing real is lost
-    // there today. But a schema-drift repair, or a scraper that starts populating one
-    // of them, turns that into permanent loss behind a log that reads complete. A log
-    // built on the ORM snapshots what the ORM knows.
-    //
-    // The six are named exactly, with their counts, in
-    // `scripts/assert-merge-log-restores.mjs` (UNDECLARED_IN_SCHEMA), which FAILS if any
-    // of them starts holding a value. They are described rather than spelled here
-    // because `scraper/tests/unit/config/price-band-single-scheme.test.ts` greps every
-    // source file for the retired price-band identifiers (T-276, one naming scheme) and
-    // has no comment exemption — naming them here turns that guard red, which is the
-    // guard working correctly.
+    // "Whole" means every column the LIVE table has (#900): written as `to_jsonb(i.*)`
+    // under FOR UPDATE, as JSON text Postgres parses, so an undeclared column and a
+    // numeric's scale both survive. Keys are the SQL column names (snake_case); restore
+    // with `jsonb_populate_record(null::ipos, drop_row)`. Logs written before #900 hold
+    // the ORM's camelCase object of DECLARED columns only.
     dropRow: jsonb('drop_row').notNull(),
 
     // The mutation applied to the SURVIVOR by this merge: the carried columns and any
     // ADMIN override (opts.setIssueSize). An unmerge has to undo this too, or say that
     // it does not — the survivor can end up holding a value neither original row had.
+    // Since #900 (format 2): { format: 2, patch, keepRowBefore, fieldSourcesBefore:
+    // { keep, drop } } — the survivor's whole pre-merge row (locked) and BOTH IPOs'
+    // field_sources rows whole, per spec §2.3.3.3 "every provenance row".
     survivorPatch: jsonb('survivor_patch'),
 
-    // Per-table counts of the dropped row's children, split by what happened to them.
-    // Shape: [{ table, column, count }]. See the note above on why counts, not rows.
+    // What happened to the dropped row's children, from the rows the statements
+    // RETURNED inside the transaction (never a pre-transaction count).
+    // deleted:   [{ table, col, count }]  scraper-derived rows (count only).
+    // repointed: [{ table, col, count, repointedIds, deletedOnConflictCount,
+    //              deletedOnConflictRows }]  person-created rows; a row is deleted only
+    //              when the survivor already holds its twin under a unique key.
     deletedChildCounts: jsonb('deleted_child_counts'),
     repointedChildCounts: jsonb('repointed_child_counts'),
 

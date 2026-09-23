@@ -160,6 +160,10 @@ function buildFakeDb(carriedColumn: string) {
         if (/^\s*savepoint/i.test(text) || /^\s*release savepoint/i.test(text) || /^\s*rollback to savepoint/i.test(text)) {
           return { rows: [] };
         }
+        // #900: the in-transaction FOR UPDATE lock + whole-row snapshot of BOTH ipos rows.
+        if (/to_jsonb\(i\.\*\)/i.test(text)) {
+          return { rows: [keepRow, dropRow].map((r) => ({ id: r.id, row: JSON.stringify(r) })) };
+        }
         // information_schema FK discovery
         if (/information_schema/i.test(text)) {
           return {

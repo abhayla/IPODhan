@@ -151,6 +151,23 @@ export interface MergeDuplicateResult extends MergeDuplicatePlan {
   keepSlug: string;
   droppedSlug: string;
   provenanceWritten: { fieldName: string; source: string; previousSource: string | null }[];
+  /** What the apply transaction actually did per child table, from RETURNING (empty on a dry run). */
+  childOutcome: MergeChildOutcome[];
+}
+
+/** One child table's outcome inside a merge, taken from the rows the statements RETURNED. */
+export interface MergeChildOutcome {
+  table: string;
+  col: string;
+  kind: 'repoint' | 'delete';
+  /** Ids of person-created rows moved onto the survivor. */
+  repointedIds: string[];
+  /** Person-created rows removed because the survivor already held their twin under a unique key. */
+  deletedOnConflictCount: number;
+  /** Those rows whole, as to_jsonb text. */
+  deletedOnConflictRows: string[];
+  /** Scraper-derived rows deleted (count only). */
+  deletedCount: number;
 }
 
 export class IPORepository extends BaseRepository implements IIPORepository {
@@ -1338,7 +1355,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     };
 
     if (!opts.apply) {
-      return { ...plan, applied: false, keepSlug: keep.slug, droppedSlug: drop.slug, provenanceWritten: [] };
+      return { ...plan, applied: false, keepSlug: keep.slug, droppedSlug: drop.slug, provenanceWritten: [], childOutcome: [] };
     }
 
     // --- apply, all or nothing -----------------------------------------------------------------
@@ -1355,7 +1372,61 @@ export class IPORepository extends BaseRepository implements IIPORepository {
 
     const provenanceWritten: { fieldName: string; source: string; previousSource: string | null }[] = [];
 
+    const childOutcome: MergeChildOutcome[] = [];
+
     await this.db.transaction(async (tx) => {
+      // --- #900 / #807 findings 4-5: lock BOTH rows first and snapshot them whole ----------------
+      // One statement, ordered by id, so two merges touching the same pair lock in the same order
+      // and cannot deadlock. `to_jsonb(i.*)` carries every column the LIVE table has — not the
+      // list schema.ts declares, which ipodhan_staging already exceeds by six columns — and is
+      // read as TEXT so numerics keep their exact scale (JSON.parse would turn 10.00 into 10).
+      // The text is written back into jsonb server-side below, never through a JS object.
+      const lockedResult = await tx.execute(sql`
+        select i.id::text as id, to_jsonb(i.*)::text as row
+        from ipos i
+        where i.id in (${keepId}, ${dropId})
+        order by i.id
+        for update
+      `);
+      const locked = (lockedResult as unknown as { rows: { id: string; row: string }[] }).rows ?? [];
+      const keepRowText = locked.find((r) => r.id === keepId)?.row;
+      const dropRowText = locked.find((r) => r.id === dropId)?.row;
+      if (!keepRowText || !dropRowText) {
+        // Something deleted one of the pair between planning and now. Merging against a row that
+        // is no longer there would log a snapshot of nothing; abort and let the operator re-plan.
+        throw new DatabaseError(
+          `mergeDuplicateInto: ${!keepRowText ? 'keep' : 'drop'} row vanished before the merge transaction locked it — re-run the plan`,
+          undefined
+        );
+      }
+
+      // The patch was planned from an UNLOCKED read of the survivor. A carry-if-absent value is
+      // only correct while the survivor's column is still absent; if a concurrent writer filled it
+      // in the meantime, applying the stale patch would overwrite that write. Refuse instead.
+      const keepLocked = JSON.parse(keepRowText) as Record<string, unknown>;
+      const raced = patch.filter(
+        (p) => p.source !== 'ADMIN' && keepLocked[p.column] !== null && keepLocked[p.column] !== undefined
+      );
+      if (raced.length > 0) {
+        throw new DatabaseError(
+          `mergeDuplicateInto: the survivor's ${raced.map((p) => p.column).join(', ')} was written after the plan was made — re-run the plan`,
+          undefined
+        );
+      }
+
+      // Both IPOs' provenance, whole, BEFORE the child loop below deletes the dropped side's
+      // field_sources rows (field_sources is a scraper-derived child, not a REPOINT table). Spec
+      // §2.3.3.3: the log holds "every field value and every provenance row".
+      const fsResult = await tx.execute(sql`
+        select fs.ipo_id::text as ipo_id, to_jsonb(fs.*)::text as row
+        from field_sources fs
+        where fs.ipo_id in (${keepId}, ${dropId})
+        order by fs.ipo_id, fs.table_name, fs.field_name, fs.id
+      `);
+      const fsRows = (fsResult as unknown as { rows: { ipo_id: string; row: string }[] }).rows ?? [];
+      const keepFieldSources = fsRows.filter((r) => r.ipo_id === keepId).map((r) => r.row);
+      const dropFieldSources = fsRows.filter((r) => r.ipo_id === dropId).map((r) => r.row);
+
       // --- child tables FIRST: repoint person-created data, delete scraper-derived data --------
       // Must run before the `ipos` row for dropId is deleted below: most FKs into `ipos` are
       // ON DELETE CASCADE (schema.ts), so deleting the dropped `ipos` row before this loop would
@@ -1364,72 +1435,115 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       for (const table of direct) {
         const { col } = reach.get(table)!;
         if (REPOINT_TABLES.has(table)) {
-          // A unique violation means the survivor already holds the equivalent row, so the
-          // dropped row's copy is redundant rather than lost.
-          await tx.execute(sql`savepoint repoint`);
-          try {
-            await tx.execute(sql`
-              update ${sql.identifier(table)} set ${sql.identifier(col)} = ${keepId}
-              where ${sql.identifier(col)} = ${dropId}
+          // #900: never table-wide. The old code ran one table-wide UPDATE and, on ANY unique
+          // violation, deleted EVERY dropped-side row of the table — so one user watching both
+          // IPOs cost every other watcher their watch. Now a dropped row is deleted only when the
+          // survivor already holds its twin under a unique key that includes the IPO column;
+          // every other row is repointed. Both steps RETURN the rows they touched, and those rows
+          // — not a pre-transaction count — are what the log records.
+          const conflict = await this.buildRepointConflictPredicate(tx, table, col, keepId);
+          let deletedOnConflict: string[] = [];
+          if (conflict) {
+            const delResult = await tx.execute(sql`
+              delete from ${sql.identifier(table)} d
+              where d.${sql.identifier(col)} = ${dropId} and (${conflict})
+              returning to_jsonb(d.*)::text as row
             `);
-            await tx.execute(sql`release savepoint repoint`);
-          } catch (e) {
-            const pgError = e as { code?: string };
-            if (pgError.code !== '23505') throw e;
-            await tx.execute(sql`rollback to savepoint repoint`);
-            await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId}`);
+            deletedOnConflict = ((delResult as unknown as { rows: { row: string }[] }).rows ?? []).map((r) => r.row);
+          }
+          // No savepoint and no 23505 fallback: if a unique violation still happens here, the
+          // predicate above missed a key, and the only safe answer is to abort the whole merge.
+          const updResult = await tx.execute(sql`
+            update ${sql.identifier(table)} d set ${sql.identifier(col)} = ${keepId}
+            where d.${sql.identifier(col)} = ${dropId}
+            returning to_jsonb(d.*) ->> 'id' as id
+          `);
+          const repointedIds = ((updResult as unknown as { rows: { id: string | null }[] }).rows ?? []).map(
+            (r) => r.id
+          );
+          if (repointedIds.some((id) => id === null || id === undefined)) {
+            throw new DatabaseError(
+              `mergeDuplicateInto: ${table} has no id column, so its repointed rows cannot be logged — refusing`,
+              undefined
+            );
+          }
+          if (repointedIds.length > 0 || deletedOnConflict.length > 0) {
+            childOutcome.push({
+              table,
+              col,
+              kind: 'repoint',
+              repointedIds: repointedIds as string[],
+              deletedOnConflictCount: deletedOnConflict.length,
+              deletedOnConflictRows: deletedOnConflict,
+              deletedCount: 0,
+            });
           }
         } else {
-          await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId}`);
+          const delResult = await tx.execute(sql`
+            with d as (
+              delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId} returning 1
+            )
+            select count(*)::int as n from d
+          `);
+          const n = Number((delResult as unknown as { rows: { n: number }[] }).rows?.[0]?.n ?? 0);
+          if (n > 0) {
+            childOutcome.push({
+              table,
+              col,
+              kind: 'delete',
+              repointedIds: [],
+              deletedOnConflictCount: 0,
+              deletedOnConflictRows: [],
+              deletedCount: n,
+            });
+          }
         }
       }
 
       // Item 19 / #807: the merge log, written INSIDE this transaction and BEFORE the delete
-      // below. Both halves of that placement matter. After the delete there is nothing left to
-      // snapshot; outside the transaction, a log written before it can record a merge that then
-      // rolls back, and one written after can miss a merge that crashed halfway. Same
-      // transaction, or it is not a log of what actually happened.
+      // below. After the delete there is nothing left to snapshot; outside the transaction, a
+      // log written before it can record a merge that then rolls back, and one written after
+      // can miss a merge that crashed halfway.
       //
-      // The snapshot is the row as it stands at DELETE time, re-read under a row lock just
-      // below — including columns the survivor did NOT carry, which is the gap `field_sources`
-      // cannot close (it records what the survivor TOOK). It covers every column
-      // `packages/shared/src/db/schema.ts` DECLARES, which is not necessarily every column the
-      // live table has: a log built on the ORM snapshots what the ORM knows.
-      //
-      // Child ROWS are not captured, only their counts: they are the scraper-derived data this
-      // method calls rebuildable, and snapshotting them would mean copying an unbounded set of
-      // rows across ~40 tables inside this transaction. Whether an unmerge re-scrapes them or
-      // restores them is a design question this log does not prejudge — it records the numbers
-      // so the question can be asked with numbers.
-      // Re-read the dropped row INSIDE the transaction, FOR UPDATE, rather than snapshotting
-      // the copy read at the top of this method. Found by the PR #888 review: that first read
-      // happens on `this.db` outside any transaction, and several awaited round-trips follow it
-      // (FK discovery, a per-child-table count loop, two field_sources reads) before the
-      // transaction opens. Nothing sets an isolation level anywhere in this codebase, so this
-      // runs at READ COMMITTED — a concurrent writer to `ipos` in that window (there are
-      // several, e.g. registrar-reresolve.ts and field-protection-checker.ts) would have its
-      // write DELETED below and ABSENT from the snapshot, producing a log that reads complete
-      // and is not. FOR UPDATE also blocks such a writer for the rest of the transaction.
-      //
-      // Falls back to the earlier read only if the row has vanished between the two, which
-      // cannot normally happen — the delete below is the only thing that removes it — but a
-      // snapshot from a stale read beats no snapshot at all if it ever does.
-      const lockedRows = await tx
-        .select()
-        .from(ipos)
-        .where(eq(ipos.id, dropId))
-        .for('update');
-      const dropAtDeleteTime = lockedRows[0] ?? drop;
+      // Layout (no migration — the 0051 jsonb columns carry it):
+      //   drop_row               the dropped ipos row, to_jsonb, every live column (snake_case);
+      //                          restorable with jsonb_populate_record(null::ipos, drop_row)
+      //   survivor_patch         { format: 2, patch, keepRowBefore, fieldSourcesBefore: { keep, drop } }
+      //   repointed_child_counts [{ table, col, count, repointedIds, deletedOnConflictCount,
+      //                             deletedOnConflictRows }]   person-created rows
+      //   deleted_child_counts   [{ table, col, count }]      scraper-derived rows, count only
+      // Row snapshots are spliced in as JSON TEXT and parsed by Postgres, so a numeric's scale
+      // and a timestamp's text survive exactly.
+      const rawArray = (texts: string[]) => `[${texts.join(',')}]`;
+      const survivorPatchJson =
+        `{"format":2,"patch":${JSON.stringify(patch)},"keepRowBefore":${keepRowText},` +
+        `"fieldSourcesBefore":{"keep":${rawArray(keepFieldSources)},"drop":${rawArray(dropFieldSources)}}}`;
+      const repointedJson = rawArray(
+        childOutcome
+          .filter((c) => c.kind === 'repoint')
+          .map(
+            (c) =>
+              `{"table":${JSON.stringify(c.table)},"col":${JSON.stringify(c.col)},` +
+              `"count":${c.repointedIds.length},"repointedIds":${JSON.stringify(c.repointedIds)},` +
+              `"deletedOnConflictCount":${c.deletedOnConflictCount},` +
+              `"deletedOnConflictRows":${rawArray(c.deletedOnConflictRows)}}`
+          )
+      );
+      const deletedJson = JSON.stringify(
+        childOutcome
+          .filter((c) => c.kind === 'delete')
+          .map((c) => ({ table: c.table, col: c.col, count: c.deletedCount }))
+      );
 
       await tx.insert(ipoMergeLog).values({
         keepIpoId: keepId,
         keepSlug: keep.slug,
         dropIpoId: dropId,
         dropSlug: drop.slug,
-        dropRow: dropAtDeleteTime as unknown as Record<string, unknown>,
-        survivorPatch: patch as unknown as Record<string, unknown>,
-        deletedChildCounts: plan.toDelete as unknown as Record<string, unknown>,
-        repointedChildCounts: plan.toRepoint as unknown as Record<string, unknown>,
+        dropRow: sql`${dropRowText}::jsonb` as unknown as Record<string, unknown>,
+        survivorPatch: sql`${survivorPatchJson}::jsonb` as unknown as Record<string, unknown>,
+        deletedChildCounts: sql`${deletedJson}::jsonb` as unknown as Record<string, unknown>,
+        repointedChildCounts: sql`${repointedJson}::jsonb` as unknown as Record<string, unknown>,
         mergedBy: opts.mergedBy || 'unknown',
       });
 
@@ -1504,7 +1618,72 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       ['ipo:list:*', 'ipo:search:*']
     );
 
-    return { ...plan, applied: true, keepSlug: keep.slug, droppedSlug: drop.slug, provenanceWritten };
+    return { ...plan, applied: true, keepSlug: keep.slug, droppedSlug: drop.slug, provenanceWritten, childOutcome };
+  }
+
+  /**
+   * #900: the SQL condition, over a dropped-side row aliased `d`, that is true exactly when moving
+   * `d` onto the survivor would violate a unique key — i.e. the survivor already holds a row with
+   * the same values in every OTHER column of a unique key that includes the IPO column.
+   *
+   * Read from the live catalog (pg_index), never hand-listed: `user_watchlist`'s
+   * UNIQUE (user_id, ipo_id) exists on production but not in schema.ts, which is precisely how a
+   * hand-kept list would miss it. Mirrors Postgres's own NULL rule: under the default NULLS
+   * DISTINCT, a NULL never conflicts, so plain `=` is exact; under NULLS NOT DISTINCT it uses
+   * IS NOT DISTINCT FROM. Returns null when no such key exists (nothing can conflict).
+   *
+   * A unique index with an expression or a WHERE clause on a REPOINT table is refused rather than
+   * approximated: guessing its conflict rule wrong either deletes a row that should have moved or
+   * aborts every merge, and neither should happen silently.
+   */
+  private async buildRepointConflictPredicate(
+    tx: { execute: (q: ReturnType<typeof sql>) => Promise<unknown> },
+    table: string,
+    col: string,
+    keepId: string
+  ): Promise<ReturnType<typeof sql> | null> {
+    const idxResult = await tx.execute(sql`
+      select i.indexrelid::regclass::text as name,
+             (i.indexprs is not null or i.indpred is not null) as complex,
+             coalesce(i.indnullsnotdistinct, false) as nulls_not_distinct,
+             array(
+               select a.attname::text
+               from unnest(i.indkey) with ordinality as k(attnum, ord)
+               join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
+               order by k.ord
+             ) as cols
+      from pg_index i
+      where i.indrelid = to_regclass(${`public.${table}`}) and i.indisunique
+    `);
+    const indexes =
+      (
+        idxResult as unknown as {
+          rows: { name: string; complex: boolean; nulls_not_distinct: boolean; cols: string[] | string }[];
+        }
+      ).rows ?? [];
+
+    const clauses: ReturnType<typeof sql>[] = [];
+    for (const idx of indexes) {
+      // node-postgres returns name[] as a JS array; a text[] literal is tolerated defensively.
+      const cols = Array.isArray(idx.cols) ? idx.cols : String(idx.cols).replace(/^{|}$/g, '').split(',').filter(Boolean);
+      if (idx.complex) {
+        throw new DatabaseError(
+          `mergeDuplicateInto: ${table} has unique index ${idx.name} with an expression or predicate — ` +
+            `the merge cannot tell which rows would conflict, refusing`,
+          undefined
+        );
+      }
+      if (!cols.includes(col)) continue;
+      const others = cols.filter((c) => c !== col);
+      const match = others.map((c) =>
+        idx.nulls_not_distinct
+          ? sql`s.${sql.identifier(c)} is not distinct from d.${sql.identifier(c)}`
+          : sql`s.${sql.identifier(c)} = d.${sql.identifier(c)}`
+      );
+      const where = [sql`s.${sql.identifier(col)} = ${keepId}`, ...match];
+      clauses.push(sql`exists (select 1 from ${sql.identifier(table)} s where ${sql.join(where, sql` and `)})`);
+    }
+    return clauses.length === 0 ? null : sql.join(clauses, sql` or `);
   }
 
   /**

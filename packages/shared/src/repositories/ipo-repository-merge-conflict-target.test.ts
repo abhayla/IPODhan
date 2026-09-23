@@ -73,7 +73,18 @@ function makeStubDb() {
     select: txSelect,
     update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
     delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
-    execute: vi.fn().mockResolvedValue({ rows: [] }),
+    // #900: the merge now locks and snapshots BOTH ipos rows inside the transaction via
+    // `to_jsonb(i.*)`; answer that one query, everything else tolerates an empty result.
+    execute: vi.fn(async (query: unknown) =>
+      JSON.stringify(query ?? '').includes('to_jsonb(i.*)')
+        ? {
+            rows: [ipoRow(KEEP_ID, 'merge-keep'), ipoRow(DROP_ID, 'merge-drop')].map((r) => ({
+              id: (r as { id: string }).id,
+              row: JSON.stringify(r),
+            })),
+          }
+        : { rows: [] }
+    ),
   };
 
   const execute = vi.fn(async (query: unknown) => {
