@@ -77,8 +77,8 @@ const roleBlocks = {
   'Delivery (changed since)': 'id="changed"',
   'Stage 3 slices': 'id="slices"',
   'Build items': 'id="completion"',
-  'Owner decisions (63)': 'id="decisions"',
-  'Sourced fields (190)': 'id="fields"',
+  'Owner decisions': 'id="decisions"',
+  'Sourced fields': 'id="fields"',
 };
 for (const [role, needle] of Object.entries(roleBlocks)) {
   ok(`block present: ${role}`, html.includes(needle), `missing ${needle}`);
@@ -86,6 +86,39 @@ for (const [role, needle] of Object.entries(roleBlocks)) {
 ok('every waiting decision carries a recommendation',
   (html.match(/class="rk">Recommended/g) || []).length ===
   JSON.parse(readFileSync(join(BOARD, 'board-data.json'), 'utf8')).waiting_on_owner.length);
+
+// --- 3b. decisions count and waiting-on-you count are DERIVED, not typed ----
+// #929: the decisions tile said "All 63 recorded decisions" and "63 recorded
+// &middot; 0 machine-verified" as literal strings while the spec had grown to
+// 82 rows, and the waiting block said "These three need a word from you" as a
+// literal string regardless of how many decision cards actually rendered.
+// This mutation-tests both: re-typing either literal must turn this red.
+const decSection = gen.match(/<section class="status" id="decisions">[\s\S]*?<\/section>/)[0];
+const decRows = (decSection.match(/<tr>[\s\S]*?<\/tr>/g) || []).filter((r) => r.includes('<td class="s">OD-'));
+let decVerified = 0;
+for (const r of decRows) {
+  const v = r.match(/<span class="pill \w+">([^<]*)<\/span>/);
+  if (v && v[1].trim().toLowerCase() !== 'unverified') decVerified += 1;
+}
+ok('parsed at least one OD row', decRows.length > 0, `got ${decRows.length}`);
+ok('heading count == number of OD rows rendered',
+  html.includes(`All ${decRows.length} recorded decisions with the acceptance check the spec states for each.`),
+  `expected ${decRows.length} recorded decisions in the heading`);
+ok('decisions chip states the derived total and verified count',
+  html.includes(`${decRows.length} recorded &middot; ${decVerified} machine-verified`));
+ok('decisions count is NOT the stale hardcoded 63 unless it genuinely is 63',
+  decRows.length !== 63 ? !html.includes('All 63 recorded decisions') : true,
+  `source has ${decRows.length} OD rows but the page still says "All 63 recorded decisions"`);
+
+const waitingCount = JSON.parse(readFileSync(join(BOARD, 'board-data.json'), 'utf8')).waiting_on_owner.length;
+const cardCount = (html.match(/<div class="dcard">/g) || []).length;
+ok('waiting-block N == number of cards rendered', cardCount === waitingCount, `${cardCount} cards vs ${waitingCount} in board-data.json`);
+const waitingWord = waitingCount === 1 ? 'This one needs' : `These ${waitingCount} need`;
+ok('waiting-block sentence names the derived count, not a hardcoded word',
+  html.includes(`${waitingWord} a word from you`), `expected "${waitingWord} a word from you"`);
+ok('waiting-block text is NOT the stale hardcoded "These three" unless it genuinely is 3',
+  waitingCount !== 3 ? !html.includes('These three need a word from you') : true,
+  `board-data.json has ${waitingCount} waiting but the page still says "These three need a word from you"`);
 
 // --- 4. theming -------------------------------------------------------------
 ok('light palette on bare :root', /(^|\n):root\{--bg:/.test(html));
