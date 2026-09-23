@@ -21,9 +21,12 @@
 //   2. docs/design/board/board-prose.json       -> the 10 explanatory sections
 //   3. docs/design/board/status.json            -> the 16 stage-3 slice rows
 //   4. docs/design/board/plan-sections.generated.html
-//      -> 29 build items + 63 owner decisions + 190 sourced fields, produced by
-//         build-plan-board.mjs from the spec. Regenerate that first if a
-//         build item, an OD or a manifest field changed.
+//      -> 29 build items + every OD owner decision + every sourced field in
+//         the manifest, produced by build-plan-board.mjs from the spec.
+//         Regenerate that first if a build item, an OD or a manifest field
+//         changed. Counts are parsed from this file at render time (below),
+//         never typed here — the OD count alone drifted from 63 to 82
+//         between this comment being written and #929 fixing it.
 //
 // TOKEN COST — a first-class requirement (owner, 2026-09-20: "minimum tokens").
 //   Updating the board does NOT mean reading the 150KB page into context, and
@@ -263,6 +266,34 @@ const itemsTotal = itemRows.length;
 need(itemsTotal === 29, `parsed ${itemsTotal} build items, expected 29`);
 need(built + partial + notBuilt === itemsTotal, 'verdict counts do not sum to the row count');
 
+// Owner-decision (OD) count and machine-verified count are parsed the same
+// way, per row, from the generated decisions section — never typed. The
+// header comment above said "63 owner decisions" while the spec had grown to
+// 82; the tile text repeated the stale 63 and always printed a hardcoded
+// "0 machine-verified" regardless of row content (#929).
+const decisionsSection = planSections.match(/<section class="status" id="decisions">[\s\S]*?<\/section>/);
+need(decisionsSection, 'generated file has no decisions section');
+const decisionRows = (decisionsSection[0].match(/<tr>[\s\S]*?<\/tr>/g) || []).filter((r) => r.includes('<td class="s">OD-'));
+let decisionsVerified = 0;
+for (const r of decisionRows) {
+  const v = r.match(/<span class="pill \w+">([^<]*)<\/span>/);
+  need(v, `owner-decision row carries no status: ${r.slice(0, 90)}`);
+  if (v[1].trim().toLowerCase() !== 'unverified') decisionsVerified += 1;
+}
+const decisionsTotal = decisionRows.length;
+need(decisionsTotal > 0, 'parsed 0 owner decisions out of the decisions section');
+
+// Sourced-field count: parsed from the generated section's own stamp span
+// rather than re-counting every <tr> here, since build-plan-board.mjs already
+// derives and asserts this count (EXPECT.fields) when it writes that stamp —
+// re-deriving it a second, independent way would just be a second place for
+// the two derivations to quietly disagree.
+const fieldsSection = planSections.match(/<section class="status" id="fields">[\s\S]*?<\/section>/);
+need(fieldsSection, 'generated file has no fields section');
+const fieldsStamp = fieldsSection[0].match(/<span class="stamp">(\d+) fields<\/span>/);
+need(fieldsStamp, 'fields section carries no "N fields" stamp');
+const fieldsTotal = Number(fieldsStamp[1]);
+
 const slices = status.slices;
 const landedSlices = slices.filter((s) => s.state === 'landed').length;
 
@@ -302,7 +333,7 @@ const waiting = `
    <p class="drec"><span class="rk">Recommended</span> <b>${esc(d.recommend)}</b> &mdash; ${esc(d.why)}</p>
    <p class="dblk"><span class="rk">Blocks</span> ${esc(d.blocks)}</p>
   </div>`).join('')}</div>
- <p class="rule">Everything else on this page is information. These three need a word from you; each carries the recommendation so a one-word answer is enough.</p>
+ <p class="rule">Everything else on this page is information. ${data.waiting_on_owner.length === 1 ? 'This one needs' : `These ${data.waiting_on_owner.length} need`} a word from you; each carries the recommendation so a one-word answer is enough.</p>
 </section>`;
 
 const readerImpact = `
@@ -384,8 +415,8 @@ const proseSections = prose.map((p) => sec(p.id, p.tone, p.title, p.gloss, p.chi
 const wrapGenerated = (html) => {
   const meta = {
     completion: ['warn', 'Build items &mdash; what exists in the code', `All ${itemsTotal} items of the spec, each with the evidence for its verdict or the named thing that is missing.`, 'merged', `${built} built &middot; ${partial} partial &middot; ${notBuilt} not built`],
-    decisions: ['info', 'Owner decisions &mdash; every OD in the spec', 'All 63 recorded decisions with the acceptance check the spec states for each.', 'queued', '63 recorded &middot; 0 machine-verified'],
-    fields: ['info', 'Sourced fields &mdash; every field in the manifest', 'All 190 fields across 18 tables, collapsed per table.', 'queued', '190 fields &middot; coverage unmeasured'],
+    decisions: ['info', 'Owner decisions &mdash; every OD in the spec', `All ${decisionsTotal} recorded decisions with the acceptance check the spec states for each.`, 'queued', `${decisionsTotal} recorded &middot; ${decisionsVerified} machine-verified`],
+    fields: ['info', 'Sourced fields &mdash; every field in the manifest', `All ${fieldsTotal} fields across 18 tables, collapsed per table.`, 'queued', `${fieldsTotal} fields &middot; coverage unmeasured`],
   };
   let out = '';
   for (const [id, [tone, title, gloss, cc, chip]] of Object.entries(meta)) {
