@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import * as schema from '../../../packages/shared/src/db/schema';
 import { IpoFieldPlanRepository } from '../../../packages/shared/src/repositories/ipo-field-plan-repository';
 import { IPORepository } from '../../../packages/shared/src/repositories/ipo-repository';
+import { fieldManifestFingerprint } from '../../../packages/shared/src/utils/field-manifest-fingerprint';
 import type { FieldFetcher, FieldPlanWalkOrchestrator } from '../../src/services/field-plan-walk.js';
 
 /**
@@ -272,7 +273,7 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     type F = Record<string, { rank: Record<string, string[]>; capability: Record<string, { capable: boolean; reason: string }> }>;
     const fresh = () => structuredClone(loadFieldManifest().fields) as unknown as F;
     const version = (fields: F) =>
-      mod.closedIpoResourcingVersion({ ranksHash: mod.manifestRanksHash(fields), extractorVersion: EXTRACTOR_VERSION });
+      mod.closedIpoResourcingVersion({ ranksHash: fieldManifestFingerprint(fields), extractorVersion: EXTRACTOR_VERSION });
     const vNow = version(fresh());
     const reasonEdited = fresh();
     const k0 = Object.keys(reasonEdited)[0];
@@ -563,7 +564,7 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
       const { loadFieldManifest } = await import('../../src/config/field-manifest-loader.js');
       const { EXTRACTOR_VERSION } = await import('../../src/services/filing-auto-persist.js');
       const vNow = mod.closedIpoResourcingVersion({
-        ranksHash: mod.manifestRanksHash(loadFieldManifest().fields),
+        ranksHash: fieldManifestFingerprint(loadFieldManifest().fields),
         extractorVersion: EXTRACTOR_VERSION,
       });
       for (const ipoId of [IDS.noEvent, IDS.listedAfter, IDS.closedStill, IDS.newDoc, IDS.oldDoc, IDS.otherCause]) {

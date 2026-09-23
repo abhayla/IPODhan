@@ -18,10 +18,10 @@ import {
   CLOSED_IPO_JOB_DEFAULT_CAP,
   CLOSED_IPO_VERSION_MAX_LENGTH,
   closedIpoResourcingVersion,
-  manifestRanksHash,
   isClosedIpoJobDue,
 } from '../../../src/scheduler/closed-ipo-job.js';
 import { loadFieldManifest } from '../../../src/config/field-manifest-loader.js';
+import { fieldManifestFingerprint } from '@ipodhan/shared/utils/field-manifest-fingerprint';
 import { PgDialect } from 'drizzle-orm/pg-core';
 
 /** The EXECUTED selection, rendered to text the way node-postgres receives it. */
@@ -269,48 +269,59 @@ describe('closedIpoResourcingVersion', () => {
  * the ranks-and-capability fingerprint -- the rank lists and capable flags, NOT
  * any manifest edit. Driven on the REAL manifest.
  */
-describe('manifestRanksHash (OD-78)', () => {
+describe('resourcing fingerprint = fieldManifestFingerprint (OD-78, OD-82)', () => {
   type F = Record<string, { rank: Record<string, string[]>; capability: Record<string, { capable: boolean; reason: string }> } & Record<string, unknown>>;
   const real = () => structuredClone(loadFieldManifest().fields) as unknown as F;
   const firstKey = (f: F) => Object.keys(f)[0];
   const firstSource = (f: F) => Object.keys(f[firstKey(f)].capability)[0];
 
   it('is deterministic on the real manifest', () => {
-    expect(manifestRanksHash(real())).toBe(manifestRanksHash(real()));
+    expect(fieldManifestFingerprint(real())).toBe(fieldManifestFingerprint(real()));
   });
 
   it('does NOT change when only a capability reason text changes', () => {
     const f = real();
-    const h = manifestRanksHash(f);
+    const h = fieldManifestFingerprint(f);
     f[firstKey(f)].capability[firstSource(f)].reason = 'reworded, same meaning';
-    expect(manifestRanksHash(f)).toBe(h);
+    expect(fieldManifestFingerprint(f)).toBe(h);
   });
 
   it('does NOT change for other non-rank edits (unit, class, notes, an added key) or key order', () => {
     const f = real();
-    const h = manifestRanksHash(f);
+    const h = fieldManifestFingerprint(f);
     const k = firstKey(f);
     (f[k] as Record<string, unknown>).unit = 'keep';
     (f[k] as Record<string, unknown>)._note = 'annotation';
     const reordered = Object.fromEntries(Object.entries(f).reverse()) as F;
-    expect(manifestRanksHash(reordered)).toBe(h);
+    expect(fieldManifestFingerprint(reordered)).toBe(h);
   });
 
   it('DOES change when a rank list changes order', () => {
     const f = real();
     const k = Object.keys(f).find((key) => Object.values(f[key].rank).some((l) => l.length >= 2))!;
     const t = Object.keys(f[k].rank).find((type) => f[k].rank[type].length >= 2)!;
-    const h = manifestRanksHash(f);
+    const h = fieldManifestFingerprint(f);
     f[k].rank[t] = [...f[k].rank[t]].reverse();
-    expect(manifestRanksHash(f)).not.toBe(h);
+    expect(fieldManifestFingerprint(f)).not.toBe(h);
   });
 
   it('DOES change when a capable flag flips', () => {
     const f = real();
-    const h = manifestRanksHash(f);
+    const h = fieldManifestFingerprint(f);
     const cap = f[firstKey(f)].capability[firstSource(f)];
     cap.capable = !cap.capable;
-    expect(manifestRanksHash(f)).not.toBe(h);
+    expect(fieldManifestFingerprint(f)).not.toBe(h);
+  });
+
+  it("OD-82: DOES change the resourcing version when ONLY a DOC field's documentType changes", () => {
+    const f = real() as unknown as Record<string, F[string] & { documentType?: string }>;
+    const k = Object.keys(f).find((key) => typeof f[key].documentType === 'string');
+    expect(k).toBeTruthy();
+    const version = () =>
+      closedIpoResourcingVersion({ ranksHash: fieldManifestFingerprint(f), extractorVersion: 'extract_filing.py@test' });
+    const before = version();
+    f[k!].documentType = f[k!].documentType === 'PROSPECTUS' ? 'RHP' : 'PROSPECTUS';
+    expect(version()).not.toBe(before);
   });
 });
 

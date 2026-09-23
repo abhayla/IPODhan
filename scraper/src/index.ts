@@ -48,7 +48,6 @@ import {
   isClosedIpoJobDue,
   resourceClosedIpo,
   closedIpoResourcingVersion,
-  manifestRanksHash,
   CLOSED_IPO_JOB_SLOT_IST_MINUTES,
 } from './scheduler/closed-ipo-job.js';
 import { writeFieldSourcesSnapshot } from './scheduler/closed-ipo-snapshot.js';
@@ -56,6 +55,7 @@ import type { ClosedIpoResourceResult } from './scheduler/closed-ipo-job.js';
 import { readPlanSettlement } from './scheduler/closed-ipo-plan-settlement.js';
 import { plantFieldPlanForIpo } from './services/field-plan-planting.js';
 import { walkFieldPlanForIPO } from './services/field-plan-walk.js';
+import { fieldManifestFingerprint } from '@ipodhan/shared/utils/field-manifest-fingerprint';
 import {
   buildFieldPlanWalkOrchestrator,
   buildFieldPlanWalkFetchers,
@@ -1645,7 +1645,7 @@ async function pruneScraperLogs(): Promise<StepResult> {
 function currentClosedIpoResourcingVersion(): string {
   const manifest = loadFieldManifest();
   return closedIpoResourcingVersion({
-    ranksHash: manifestRanksHash(manifest.fields),
+    ranksHash: fieldManifestFingerprint(manifest.fields), // OD-82: the one shared fingerprint (ranks, capable, documentType)
     extractorVersion: EXTRACTOR_VERSION,
   });
 }

@@ -537,12 +537,14 @@ export async function resourceClosedIpo(ipoId: string, deps: ResourceClosedIpoDe
  * re-opens a PARTIAL/FAILED IPO.
  *
  * Built from the two things that can change such an IPO's cause:
- *   - the source-RANKINGS fingerprint (`manifestRanksHash`): the rank lists and
- *     the capable flags, and nothing else. OD-78: "the rank lists and capable
- *     flags -- not any manifest edit". Review round 2 NEW-1: hashing the whole
- *     `fields` object meant a reworded `reason` re-opened every PARTIAL row.
- *     The manifest's schema `version` is deliberately NOT an input either: it
- *     is a manifest edit, not a ranking.
+ *   - the source-RANKINGS fingerprint: `fieldManifestFingerprint`
+ *     (@ipodhan/shared/utils/field-manifest-fingerprint), the ONE definition
+ *     the field-plan gap key also uses (#914 class: never two). It covers the
+ *     rank lists, the capable flags and -- OD-82 -- each DOC field's
+ *     `documentType`, because which document a DOC rank reads is part of the
+ *     ranking. Nothing else: OD-78 "not any manifest edit"; review round 2
+ *     NEW-1 (a reworded `reason` must not re-open every PARTIAL row). The
+ *     manifest's schema `version` is deliberately NOT an input either.
  *   - the filing extractor's version (§6.2 "the extractor/manifest version"):
  *     a new extractor can read a field the old one could not.
  * NOT a hand-edited job constant: that was review round 1 MAJOR-1.
@@ -557,34 +559,6 @@ export function closedIpoResourcingVersion(input: { ranksHash: string; extractor
   const readable = `r${input.ranksHash.slice(0, 12)}+${extractor}`;
   if (readable.length <= CLOSED_IPO_VERSION_MAX_LENGTH) return readable;
   return `h-${createHash('sha256').update(readable).digest('hex').slice(0, 32)}`;
-}
-
-type RankedFieldEntry = {
-  rank?: Record<string, readonly string[]>;
-  capability?: Record<string, { capable?: boolean }>;
-};
-
-/**
- * OD-78's ranks-and-capability fingerprint of a manifest's `fields`: per field,
- * the rank list for each IPO type (ORDER KEPT -- rank order is the ranking) and
- * the `capable` flag per source. Everything else in an entry (reason text,
- * unit, class, notes, key order) is excluded, so editing it re-opens nothing.
- */
-export function manifestRanksHash(fields: Record<string, RankedFieldEntry> | unknown): string {
-  const entries = (fields ?? {}) as Record<string, RankedFieldEntry>;
-  const canonical = Object.keys(entries)
-    .sort()
-    .map((fieldKey) => {
-      const e = entries[fieldKey] ?? {};
-      const rank = Object.keys(e.rank ?? {})
-        .sort()
-        .map((ipoType) => [ipoType, [...(e.rank?.[ipoType] ?? [])]]);
-      const capable = Object.keys(e.capability ?? {})
-        .sort()
-        .map((source) => [source, e.capability?.[source]?.capable === true]);
-      return [fieldKey, rank, capable];
-    });
-  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
 
 /** IST is a fixed UTC+5:30 offset (no DST) — same convention as `due-step-cycle.ts`. */
