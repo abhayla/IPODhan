@@ -296,4 +296,118 @@ describe('OD-73: a settled field is not rewritten (#908)', () => {
     expect(result.consolidatedData.status).toBe('OPEN');
     expect(result.fieldsUpdated).toBe(1);
   });
+
+  // ---- review round 1 (PR #914) ------------------------------------------------------------
+  it('OD-75: a WEBSITE changing its own date on a CLOSED IPO keeps the page value and records a SOURCE_CHANGED_OWN_VALUE row, INFO', async () => {
+    vi.mocked(fieldSources.findByIPOId).mockResolvedValue([stored('closeDate', 'CHITTORGARH', '2026-09-18')] as never);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-od73',
+      tableName: 'ipos',
+      incomingData: { closeDate: '2026-09-19' },
+      source: 'CHITTORGARH',
+      confidence: 60,
+      existingData: { status: 'CLOSED', closeDate: '2026-09-18' },
+      scrapedAt: new Date('2026-09-23T03:15:00Z'),
+    });
+
+    expect(result.consolidatedData.closeDate).toBe('2026-09-18');
+    expect(trackedFields()).toEqual([]);
+    expect(conflicts.upsertConflict).toHaveBeenCalledTimes(1);
+    expect(conflicts.upsertConflict).toHaveBeenCalledWith(expect.objectContaining({
+      fieldName: 'closeDate', source1: 'CHITTORGARH', source2: 'CHITTORGARH',
+      resolvedSource: 'CHITTORGARH', resolutionReason: 'SOURCE_CHANGED_OWN_VALUE', severity: 'INFO',
+    }));
+  });
+
+  it('OD-75: a WEBSITE changing its own date on a LIVE IPO is recorded under its own reason, INFO — never the CRITICAL HOLD reason', async () => {
+    vi.mocked(fieldSources.findByIPOId).mockResolvedValue([stored('openDate', 'CHITTORGARH', '2026-09-24')] as never);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-od73',
+      tableName: 'ipos',
+      incomingData: { openDate: '2026-09-29' },
+      source: 'CHITTORGARH',
+      confidence: 60,
+      existingData: { status: 'UPCOMING', openDate: '2026-09-24' },
+      scrapedAt: new Date('2026-09-23T03:15:00Z'),
+    });
+
+    expect(result.consolidatedData.openDate).toBe('2026-09-24');
+    const calls = vi.mocked(conflicts.upsertConflict).mock.calls.map((c) => c[0] as { resolutionReason: string; severity: string });
+    expect(calls).toEqual([expect.objectContaining({ resolutionReason: 'SOURCE_CHANGED_OWN_VALUE', severity: 'INFO' })]);
+  });
+
+  it('OD-75 (negative): an exchange postponement writes NO same-source conflict row', async () => {
+    vi.mocked(fieldSources.findByIPOId).mockResolvedValue([
+      stored('openDate', 'NSE', '2026-09-24'),
+      stored('closeDate', 'NSE', '2026-09-26'),
+    ] as never);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-od73',
+      tableName: 'ipos',
+      incomingData: { openDate: '2026-09-29', closeDate: '2026-10-01' },
+      source: 'NSE',
+      confidence: 90,
+      existingData: { status: 'UPCOMING', openDate: '2026-09-24', closeDate: '2026-09-26' },
+      scrapedAt: new Date('2026-09-23T03:15:00Z'),
+    });
+
+    expect(result.consolidatedData.openDate).toBe('2026-09-29');
+    expect(conflicts.upsertConflict).not.toHaveBeenCalled();
+  });
+
+  it('MINOR-3: an exchange "postponement" that would put the open after the close is NOT taken on a live IPO — the HOLD keeps the page value', async () => {
+    vi.mocked(fieldSources.findByIPOId).mockResolvedValue([
+      stored('openDate', 'NSE', '2026-09-24'),
+      stored('closeDate', 'NSE', '2026-09-26'),
+    ] as never);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-od73',
+      tableName: 'ipos',
+      incomingData: { openDate: '2026-09-29' },
+      source: 'NSE',
+      confidence: 90,
+      existingData: { status: 'UPCOMING', openDate: '2026-09-24', closeDate: '2026-09-26' },
+      scrapedAt: new Date('2026-09-23T03:15:00Z'),
+    });
+
+    expect(result.consolidatedData.openDate).toBe('2026-09-24');
+    expect(result.fieldsUpdated).toBe(0);
+  });
+
+  it('MINOR-4: the exchange that stated the allotment date may postpone it (§1.11 row 19, E-1; OD-57(a))', async () => {
+    vi.mocked(fieldSources.findByIPOId).mockResolvedValue([stored('allotmentDate', 'BSE', '2026-09-26')] as never);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-od73',
+      tableName: 'ipos',
+      incomingData: { allotmentDate: '2026-09-30' },
+      source: 'BSE',
+      confidence: 90,
+      existingData: { status: 'CLOSED', allotmentDate: '2026-09-26' },
+      scrapedAt: new Date('2026-09-23T03:15:00Z'),
+    });
+
+    expect(result.consolidatedData.allotmentDate).toBe('2026-09-30');
+    expect(result.fieldsUpdated).toBe(1);
+  });
+
+  it('MINOR-4 (negative): a WEBSITE cannot move an allotment date it set', async () => {
+    vi.mocked(fieldSources.findByIPOId).mockResolvedValue([stored('allotmentDate', 'MONEYCONTROL', '2026-09-26')] as never);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-od73',
+      tableName: 'ipos',
+      incomingData: { allotmentDate: '2026-09-30' },
+      source: 'MONEYCONTROL',
+      confidence: 60,
+      existingData: { status: 'CLOSED', allotmentDate: '2026-09-26' },
+      scrapedAt: new Date('2026-09-23T03:15:00Z'),
+    });
+
+    expect(result.consolidatedData.allotmentDate).toBe('2026-09-26');
+  });
 });

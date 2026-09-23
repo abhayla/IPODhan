@@ -56,6 +56,7 @@ import {
   type SmeCollapseEvidence,
 } from './listing-exchange-resolution.js';
 import logger from '../utils/logger.js';
+import { SOURCE_CHANGED_OWN_VALUE } from '@ipodhan/shared/utils/conflict-reasons';
 import { toUtcEpochDay, toUtcEpochMs } from '../utils/date-string-parsing.js';
 import { validateFieldValue, type ValidationRule } from './field-extraction-validation.js';
 import { loadValidationRules } from '../config/validation-rules-loader.js';
@@ -237,7 +238,9 @@ const HIGH_VALUE_LIVE_FIELDS = new Set<string>([
  * the exchange that set one sends a different value, that is a postponement and it updates the
  * same row; a website that set a date cannot move it on its own (equal rank is ignored).
  */
-const EXCHANGE_TIMETABLE_FIELDS = new Set<string>(['openDate', 'closeDate', 'listingDate']);
+// allotmentDate (review round 1, MINOR-4): §1.11 row 19 names it "Named exception E-1 — it moves
+// whenever the window moves", and OD-57(a) gives dates to the exchange.
+const EXCHANGE_TIMETABLE_FIELDS = new Set<string>(['openDate', 'closeDate', 'listingDate', 'allotmentDate']);
 
 function isExchangePostponement(fieldName: string, existingSource: ScraperSource, incomingSource: ScraperSource): boolean {
   return (
@@ -2255,11 +2258,28 @@ export class DataConsolidationService {
     // reaching a locked field before this point). Checked BEFORE source
     // priority, same precedence tier as ADMIN-always-wins below, because an
     // unresolved dispute must win over "NSE happens to rank higher".
+    // OD-73 / OD-35: an exchange revising a date IT stated is a postponement, not a cross-source
+    // dispute — it updates the same row through the same-source refresh below. Review round 1
+    // (MINOR-3): only while the resulting timetable is still in order (open <= close <= listing,
+    // the same W-160 `datesSatisfyOrderInvariant`); a "postponement" that would put the close
+    // before the open is not trusted on the exchange's word and falls to the HOLD below.
+    const postponementDates = params.incomingDates ?? {
+      openDate: fieldName === 'openDate' ? incomingValue : undefined,
+      closeDate: fieldName === 'closeDate' ? incomingValue : undefined,
+      listingDate: fieldName === 'listingDate' ? incomingValue : undefined,
+      segment: undefined,
+    };
+    const trustedPostponement =
+      isExchangePostponement(fieldName, existingSource, incomingSource) &&
+      datesSatisfyOrderInvariant(
+        postponementDates.openDate,
+        postponementDates.closeDate,
+        postponementDates.listingDate,
+        postponementDates.segment
+      );
     if (
       HIGH_VALUE_LIVE_FIELDS.has(fieldName) &&
-      // OD-73 / OD-35: an exchange revising a date IT stated is a postponement, not a
-      // cross-source dispute — it updates the same row through the same-source refresh below.
-      !isExchangePostponement(fieldName, existingSource, incomingSource) &&
+      !trustedPostponement &&
       ipoStatus !== undefined &&
       LIVE_STATUSES.has(ipoStatus) &&
       existingSource !== 'ADMIN' &&
@@ -2376,8 +2396,10 @@ export class DataConsolidationService {
               source2: incomingSource,
               value2: incomingValue === null || incomingValue === undefined ? null : serializeFieldValue(incomingValue),
               resolvedSource: existingSource,
-              resolutionReason: 'HELD_DISPUTED_HIGH_VALUE_LIVE',
-              severity: 'CRITICAL',
+              // OD-75: one source contradicting itself is not a cross-source dispute — its own
+              // named reason, INFO, never the CRITICAL HOLD alert (T-286 flood protection).
+              resolutionReason: existingSource === incomingSource ? SOURCE_CHANGED_OWN_VALUE : 'HELD_DISPUTED_HIGH_VALUE_LIVE',
+              severity: existingSource === incomingSource ? 'INFO' : 'CRITICAL',
             });
 
             // W-161b: `upsertConflict` returns `{ skipped: true, reason }`
@@ -2574,6 +2596,13 @@ export class DataConsolidationService {
         chosenValue = incomingValue;
         resolutionReason = 'SAME_SOURCE_REFRESH';
       }
+    } else if (existingSource === incomingSource) {
+      // OD-75 (owner, 2026-09-23): a source changing a value IT set earlier, where the field
+      // grants that source no refresh (a website moving its own date). The page keeps the old
+      // value (OD-73); the change is recorded for the admin under its own reason, never alerted.
+      chosenSource = existingSource;
+      chosenValue = existingValue;
+      resolutionReason = SOURCE_CHANGED_OWN_VALUE;
     } else {
       // Same source priority, not time-based - keep existing
       chosenSource = existingSource;
@@ -2597,10 +2626,14 @@ export class DataConsolidationService {
     // `data_conflicts` row (that write path was the root cause of 9921/11493
     // rows having source1 === source2, which in turn destroyed the alert
     // channel with self-comparisons).
+    // OD-75: the one same-source row that IS recorded — a source changing its own value where it
+    // has no refresh right — under its own reason and INFO severity. Every other same-source
+    // resolution (a granted refresh, a time-based update) stays out of the table (T-286).
+    const selfChange = resolutionReason === SOURCE_CHANGED_OWN_VALUE;
     if (
       FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION &&
       !this.currentShadowMode &&
-      existingSource !== incomingSource
+      (existingSource !== incomingSource || selfChange)
     ) {
       await this.logConflict({
         ipoId,
@@ -2613,7 +2646,7 @@ export class DataConsolidationService {
         incomingSource,
         normalizedExisting: params.existingValueNormalized,
         normalizedIncoming: params.incomingValueNormalized,
-        severity,
+        severity: selfChange ? 'INFO' : severity,
         reason: resolutionReason,
         // W-48: pass the source actually kept by the resolution above —
         // never re-derive it from `resolutionReason` in logConflict.

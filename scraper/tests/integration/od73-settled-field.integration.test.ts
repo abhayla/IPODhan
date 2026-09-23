@@ -177,4 +177,44 @@ describe.skipIf(!DATABASE_URL)('OD-73 settled fields on the real write path (ipo
     expect(result.consolidatedData.status).toBe('OPEN');
     expect(result.fieldsUpdated).toBe(1);
   });
+
+  it('OD-75: a website changing its own date keeps the old value and writes ONE SOURCE_CHANGED_OWN_VALUE row (INFO) through the real repository', async () => {
+    await seed('CLOSED', [['closeDate', 'CHITTORGARH', '2026-09-26']]);
+    const result = await service!.consolidateIPOData({
+      ipoId: IPO_ID, tableName: 'ipos', source: 'CHITTORGARH', confidence: 60,
+      incomingData: { closeDate: '2026-09-27' },
+      existingData: { status: 'CLOSED', segment: 'MAINBOARD', closeDate: '2026-09-26' },
+      scrapedAt: new Date('2026-09-23T03:15:00Z'),
+    });
+    expect(result.consolidatedData.closeDate).toBe('2026-09-26');
+    expect(result.fieldsUpdated).toBe(0);
+    expect(await stampOf('closeDate')).toEqual({ updatedAt: STAMP, source: 'CHITTORGARH' });
+    const rows = await pool!.query(
+      `SELECT source1::text AS s1, source2::text AS s2, value1, value2, resolution_reason AS reason, severity::text AS severity
+         FROM data_conflicts WHERE ipo_id = $1 AND field_name = 'closeDate'`,
+      [IPO_ID]
+    );
+    expect(rows.rows).toEqual([{ s1: 'CHITTORGARH', s2: 'CHITTORGARH', value1: '2026-09-26', value2: '2026-09-27', reason: 'SOURCE_CHANGED_OWN_VALUE', severity: 'INFO' }]);
+
+    // A second cycle repeating the change refreshes the same row — never a second one (T-286).
+    await service!.consolidateIPOData({
+      ipoId: IPO_ID, tableName: 'ipos', source: 'CHITTORGARH', confidence: 60,
+      incomingData: { closeDate: '2026-09-27' },
+      existingData: { status: 'CLOSED', segment: 'MAINBOARD', closeDate: '2026-09-26' },
+      scrapedAt: new Date('2026-09-23T09:15:00Z'),
+    });
+    const again = await pool!.query(`SELECT count(*)::int AS n FROM data_conflicts WHERE ipo_id = $1 AND field_name = 'closeDate'`, [IPO_ID]);
+    expect(again.rows[0].n).toBe(1);
+  });
+
+  it('OD-75: the repository still refuses an UNNAMED same-source row (W-79), and a self-change never overwrites an open cross-source dispute', async () => {
+    await seed('CLOSED', []);
+    const repo = new DataConflictsRepository(drizzle(pool!, { schema }) as never, noRedis);
+    const unnamed = await repo.upsertConflict({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'registrar', source1: 'CHITTORGARH', value1: 'a', source2: 'CHITTORGARH', value2: 'b', resolutionReason: 'DEFAULT_KEEP_EXISTING' });
+    expect(unnamed).toEqual({ skipped: true, reason: 'same_source' });
+    await repo.upsertConflict({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'registrar', source1: 'DRHP', value1: 'a', source2: 'CHITTORGARH', value2: 'b', resolutionReason: 'SOURCE_PRIORITY' });
+    const self = await repo.upsertConflict({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'registrar', source1: 'CHITTORGARH', value1: 'b', source2: 'CHITTORGARH', value2: 'c', resolutionReason: 'SOURCE_CHANGED_OWN_VALUE', severity: 'INFO' });
+    expect(self).toEqual({ skipped: true, reason: 'same_source' });
+    expect(await conflictsFor('registrar')).toEqual([{ source1: 'DRHP', source2: 'CHITTORGARH', resolved: null }]);
+  });
 });

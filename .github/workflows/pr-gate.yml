@@ -844,6 +844,7 @@ jobs:
           tests/integration/derived-key-recompute-guard.integration.test.ts
           tests/integration/alternative-sources.integration.test.ts
           tests/integration/data-conflicts-repository-hold.integration.test.ts
+          tests/integration/od73-settled-field.integration.test.ts
           tests/integration/db-timezone.integration.test.ts
           tests/integration/field-sources-witnesses.integration.test.ts
           tests/integration/duplicate-ipo-merge.integration.test.ts
