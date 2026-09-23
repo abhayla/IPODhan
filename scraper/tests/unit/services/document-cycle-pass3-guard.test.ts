@@ -172,6 +172,10 @@ vi.mock('../../../src/services/filing-auto-persist.js', () => ({
   DEFAULT_MAX_SPAWNS_PER_CYCLE: 3,
   anchorMaxSpawnsPerCycle: () => 1,
   FILING_EXTRACTION_LOCK_TTL_MS: 45 * 60 * 1000,
+  // `document-cycle.ts` imports EXTRACTOR_VERSION from this module (passed to
+  // `buildFieldPlanGapKeySource`) — same "supply every real export" failure
+  // class as the field-plan-walk-deps mock above.
+  EXTRACTOR_VERSION: 'extract_filing.py@2026-09-03',
 }));
 
 vi.mock('../../../src/utils/distributed-lock.js', () => ({
@@ -197,10 +201,19 @@ const buildFieldPlanWalkOrchestratorMock = vi.fn().mockImplementation(() => ({
 // full-replacement vi.mock needs every export the real module has, or a caller destructuring
 // one this mock omits gets `undefined` and throws when it's invoked as a function.
 const buildFieldPlanWalkWitnessVerdictWriterMock = vi.fn().mockImplementation(() => vi.fn());
+// Round 3: `buildFieldPlanGapKeySource` is a real export of the mocked module
+// (#884 round 2 added it) — a full-replacement `vi.mock` must supply every
+// export the real module has, or a caller destructuring one this mock omits
+// gets `undefined` and throws when it's invoked as a function (same failure
+// class the S3b-2 comment above already documents for the witness writer).
+const buildFieldPlanGapKeySourceMock = vi.fn().mockImplementation(() => ({
+  forIpo: vi.fn().mockResolvedValue({ byField: {} }),
+}));
 vi.mock('../../../src/services/field-plan-walk-deps.js', () => ({
   buildFieldPlanWalkFetchers: (...args: unknown[]) => buildFieldPlanWalkFetchersMock(...args),
   buildFieldPlanWalkOrchestrator: (...args: unknown[]) => buildFieldPlanWalkOrchestratorMock(...args),
   buildFieldPlanWalkWitnessVerdictWriter: (...args: unknown[]) => buildFieldPlanWalkWitnessVerdictWriterMock(...args),
+  buildFieldPlanGapKeySource: (...args: unknown[]) => buildFieldPlanGapKeySourceMock(...args),
   fieldPlanWalkHasFetchers: (fetchers?: Record<string, unknown>) =>
     Object.keys(fetchers ?? buildFieldPlanWalkFetchersMock()).length > 0,
 }));

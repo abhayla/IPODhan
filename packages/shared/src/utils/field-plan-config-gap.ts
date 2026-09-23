@@ -34,7 +34,12 @@ export function fieldPlanGapToken(code: FieldPlanGapCode): string {
   return `[gap:${code}]`;
 }
 
-const GAP_TOKEN_RE = /\[gap:([A-Z_]+)\]/;
+// Anchored at the end ($): the token is ALWAYS the failure string's own
+// suffix (`fieldPlanGapToken` appends it, nothing appends after it) — an
+// unanchored match lets a remote error message that happens to CONTAIN
+// `[gap:SOMETHING]` earlier in the string fake a structured gap code that
+// the walk never declared (round 3, independent-review finding MINOR).
+const GAP_TOKEN_RE = /\[gap:([A-Z_]+)\]$/;
 
 /** The structured gap code on one rank's failure string, or null when the failure was genuine. */
 export function fieldPlanGapCodeOf(failure: string): FieldPlanGapCode | null {

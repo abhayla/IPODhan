@@ -67,4 +67,100 @@ describe('buildFieldPlanIpoGapKeys (#884 review round 2)', () => {
     expect(m['ipos.face_value']).toHaveLength(2);
     for (const list of Object.values(m)) for (const key of list) expect(key).not.toContain(']');
   });
+
+  // Round 3 (independent-review finding MAJOR-A/B): a config-gap key must
+  // also reopen when the field's OWN field_sources provenance changes, or
+  // when an admin field_source_overrides row for it becomes active/changes —
+  // both are things that decide WHERE/HOW the field is asked, same standing
+  // as the manifest entry, fetcher coverage and extractor version above.
+  describe('round 3: provenance and override are key parts (MAJOR-A/B)', () => {
+    it('MAJOR-A: a field with no provenance row vs one with a provenance row key differently', () => {
+      const withNone = buildFieldPlanIpoGapKeys({
+        manifestFields: manifest() as never,
+        coverageFingerprint: COV,
+        extractorVersion: XV,
+        documents: [drhp],
+      });
+      const withProvenance = buildFieldPlanIpoGapKeys({
+        manifestFields: manifest() as never,
+        coverageFingerprint: COV,
+        extractorVersion: XV,
+        documents: [drhp],
+        provenanceByField: { 'ipos.face_value': { source: 'DRHP', documentId: 'd1' } },
+      });
+      expect(withProvenance.byField['ipos.face_value'].plain).not.toBe(withNone.byField['ipos.face_value'].plain);
+      // A different field's key is untouched by another field's provenance.
+      expect(withProvenance.byField['ipos.isin']).toEqual(withNone.byField['ipos.isin']);
+    });
+
+    it('MAJOR-A: a NEW provenance row (extractor finally wrote one) changes the key — the exact regression this closes', () => {
+      // Before: NO_DOCUMENT_PROVENANCE gap parked with no provenance row yet.
+      const before = buildFieldPlanIpoGapKeys({
+        manifestFields: manifest() as never,
+        coverageFingerprint: COV,
+        extractorVersion: XV,
+        documents: [drhp],
+        provenanceByField: { 'ipos.face_value': null },
+      });
+      // After: the item-13 backfill (or a later real walk) writes the
+      // provenance row — the SAME manifest, coverage and extractor version.
+      const after = buildFieldPlanIpoGapKeys({
+        manifestFields: manifest() as never,
+        coverageFingerprint: COV,
+        extractorVersion: XV,
+        documents: [drhp],
+        provenanceByField: { 'ipos.face_value': { source: 'DRHP', documentId: 'd1' } },
+      });
+      expect(after.byField['ipos.face_value'].plain).not.toBe(before.byField['ipos.face_value'].plain);
+      expect(after.byField['ipos.face_value'].withDocuments).not.toBe(before.byField['ipos.face_value'].withDocuments);
+    });
+
+    it('MAJOR-B: an active admin override for the field changes the key; a different field is untouched', () => {
+      const withNone = keys();
+      const withOverride = buildFieldPlanIpoGapKeys({
+        manifestFields: manifest() as never,
+        coverageFingerprint: COV,
+        extractorVersion: XV,
+        documents: [drhp],
+        overrideByField: { 'ipos.face_value': { id: 'override-1' } },
+      });
+      expect(withOverride.byField['ipos.face_value'].plain).not.toBe(withNone.byField['ipos.face_value'].plain);
+      expect(withOverride.byField['ipos.isin']).toEqual(withNone.byField['ipos.isin']);
+    });
+
+    it('MAJOR-B: a DIFFERENT active override (superseded) reopens the row again — the id, not just presence, is the key part', () => {
+      const overrideA = buildFieldPlanIpoGapKeys({
+        manifestFields: manifest() as never,
+        coverageFingerprint: COV,
+        extractorVersion: XV,
+        documents: [drhp],
+        overrideByField: { 'ipos.face_value': { id: 'override-1' } },
+      });
+      const overrideB = buildFieldPlanIpoGapKeys({
+        manifestFields: manifest() as never,
+        coverageFingerprint: COV,
+        extractorVersion: XV,
+        documents: [drhp],
+        overrideByField: { 'ipos.face_value': { id: 'override-2' } },
+      });
+      expect(overrideA.byField['ipos.face_value'].plain).not.toBe(overrideB.byField['ipos.face_value'].plain);
+    });
+
+    it('no provenance/override params (production default omission) is byte-identical to the pre-round-3 key shape for that input', () => {
+      // Guards against a regression where adding the new params silently
+      // changed the key for callers that pass neither — every field's key
+      // when both maps are absent must equal the key when both are
+      // explicitly null for every field.
+      const omitted = keys();
+      const explicitNull = buildFieldPlanIpoGapKeys({
+        manifestFields: manifest() as never,
+        coverageFingerprint: COV,
+        extractorVersion: XV,
+        documents: [drhp],
+        provenanceByField: { 'ipos.face_value': null, 'ipos.isin': null },
+        overrideByField: { 'ipos.face_value': null, 'ipos.isin': null },
+      });
+      expect(omitted).toEqual(explicitNull);
+    });
+  });
 });

@@ -400,6 +400,16 @@ jobs:
         # finding during item 20 slice 4 (design-traceability CI wiring).
         run: node docs/design/check-design-consistency.mjs --gate
 
+      - name: Field-plan reclaim max-attempts pin (#762 S8 review round 2 MAJOR-1; wired #923 round 3 finding MAJOR-C)
+        # The comment at packages/shared/src/db/schema.ts claims "A test in
+        # the repository pins them equal so a change to one without the other
+        # fails CI instead of silently degrading the plan back to a Seq Scan"
+        # — the test existed in the repo but was never run by any workflow,
+        # so that claim was false. Parses the three real source files (Node
+        # builtins only, no pg import), so it runs here with the other cheap
+        # pre-install gates, not after npm ci.
+        run: node --test scripts/tests/field-plan-reclaim-max-attempts-pin.test.mjs
+
       - name: Install dependencies
         run: npm ci
 

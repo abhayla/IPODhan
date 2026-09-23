@@ -47,6 +47,8 @@ import {
   DataConflictsRepository,
   DocumentRepository,
 } from '@ipodhan/shared';
+import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/field-source-overrides-repository';
+import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { eq } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 // Deep import, matching `filing-persist-deps.ts`: the barrel exports only the
@@ -60,6 +62,8 @@ import {
   buildFieldPlanIpoGapKeys,
   type FieldPlanGapKeySource,
   type GapKeyDocument,
+  type GapKeyProvenance,
+  type GapKeyOverride,
 } from './field-plan-gap-keys.js';
 import { buildDocFetcher, DOC_READABLE_TABLES, type DocFetcherDeps } from './field-plan-walk-doc-fetcher.js';
 import { buildBseFetcher, BseFieldFetcherState, BSE_SERVEABLE_FIELDS } from './field-plan-walk-bse-fetcher.js';
@@ -239,11 +243,32 @@ export function fieldPlanCoverageFingerprint(fetchers: Record<string, FieldFetch
 }
 
 /**
+ * `table.field` (the manifest's own key shape) -> camelCase field name
+ * `field_sources.field_name` actually stores — same conversion the DOC
+ * fetcher's provenance read uses (its own doc comment: "field_sources.field_name
+ * is camelCase ... not the snake_case column name").
+ */
+function splitFieldKey(fieldKey: string): { tableName: string; fieldName: string } {
+  const dot = fieldKey.indexOf('.');
+  return { tableName: fieldKey.slice(0, dot), fieldName: fieldKey.slice(dot + 1) };
+}
+
+/**
  * #884 review round 2: the live gap-key source, built once per cycle. Per IPO
  * it reads that IPO's documents (the same `DocumentRepository.findByIPO` the
  * DOC fetcher reads) and derives per-field keys from the field's own manifest
  * entry (`buildFieldPlanIpoGapKeys`). Extractor version passed in so this
  * module does not load the extractor.
+ *
+ * Round 3: also reads, per field, this IPO's `field_sources` provenance row
+ * (`FieldSourcesRepository.findByField` — the SAME read the DOC fetcher
+ * already does, cached, never a second write or a re-scrape, OD-33/OD-6) and
+ * this field's active `field_source_overrides` row
+ * (`FieldSourceOverridesRepository.listActiveFor` — the SAME table layer 2
+ * of the resolver reads; ipo-scoped beats global, matching the resolver's own
+ * precedence in `field-source-policy.ts`). Both are folded into the gap key
+ * so a config-gap row reopens when either changes, not only when the
+ * manifest, fetcher coverage or extractor version does.
  */
 export function buildFieldPlanGapKeySource(params: {
   fetchers: Record<string, FieldFetcher>;
@@ -252,15 +277,48 @@ export function buildFieldPlanGapKeySource(params: {
 }): FieldPlanGapKeySource {
   const coverageFingerprint = fieldPlanCoverageFingerprint(params.fetchers);
   const manifestFields = loadFieldManifest().fields;
-  const documentRepository = new DocumentRepository(db as never, (params.redis ?? getRedisClient()) as never);
+  const fieldKeys = Object.keys(manifestFields);
+  const redis = (params.redis ?? getRedisClient()) as never;
+  const documentRepository = new DocumentRepository(db as never, redis);
+  const fieldSourcesRepository = new FieldSourcesRepository(db as never, redis);
+  const overridesRepository = new FieldSourceOverridesRepository({ db: db as never });
   return {
     async forIpo(ipoId: string) {
       const documents = (await documentRepository.findByIPO(ipoId)) as unknown as GapKeyDocument[];
+
+      const provenanceByField: Record<string, GapKeyProvenance | null> = {};
+      const overrideByField: Record<string, GapKeyOverride | null> = {};
+      await Promise.all(
+        fieldKeys.map(async (fieldKey) => {
+          const { tableName, fieldName } = splitFieldKey(fieldKey);
+          const camelFieldName = columnToCamelCase(fieldName);
+
+          const [provenance, activeOverrides] = await Promise.all([
+            fieldSourcesRepository.findByField(ipoId, tableName, camelFieldName, ''),
+            overridesRepository.listActiveFor(tableName, fieldName),
+          ]);
+
+          provenanceByField[fieldKey] = provenance
+            ? { source: provenance.source, documentId: (provenance.dataLineage as { documentId?: string } | null)?.documentId ?? null }
+            : null;
+
+          // Same precedence as the resolver (`field-source-policy.ts`
+          // `resolveFieldSourcePolicyAsync`): an ipo-scoped row beats a
+          // global one; newest `setAt` (the repository's own DESC order)
+          // breaks ties among rows of the same scope.
+          const matching = activeOverrides.filter((row) => row.ipoId === null || row.ipoId === ipoId);
+          const winner = matching.find((row) => row.ipoId !== null) ?? matching[0];
+          overrideByField[fieldKey] = winner ? { id: winner.id } : null;
+        })
+      );
+
       return buildFieldPlanIpoGapKeys({
         manifestFields: manifestFields as never,
         coverageFingerprint,
         extractorVersion: params.extractorVersion,
         documents,
+        provenanceByField,
+        overrideByField,
       });
     },
   };

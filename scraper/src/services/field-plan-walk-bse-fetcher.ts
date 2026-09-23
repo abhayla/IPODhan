@@ -219,7 +219,7 @@ export function buildBseFetcher(deps: BseFetcherDeps, state: BseFieldFetcherStat
     return {
       outcome: 'CHECK_FAILED',
       reason: `BSE has no mapped field for ${key} yet (coverage gap, not a manifest no)`,
-        gap: 'NO_MAPPING',
+      gap: 'NO_MAPPING',
       transient: true,
     };
   };

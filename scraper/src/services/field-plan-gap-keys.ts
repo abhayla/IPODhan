@@ -15,8 +15,22 @@
  *    reopen when the RHP completes, with no extractor version change. That
  *    row is stamped with the `withDocuments` variant; every other gap with
  *    `plain`, so a new document does not reopen a mapping gap it cannot fix.
+ *
+ * Round 3 (independent-review finding, this PR): a CONFIG gap (no attempt
+ * charged) is parked under a key that ignored TWO other things that decide
+ * where/how a field is asked — the field's OWN provenance row
+ * (`field_sources` — a fresh SUPPLIED/NOT_PRINTED answer changes what the
+ * walk would find next time) and any ACTIVE admin override for that
+ * (table, field[, ipo]) (`field_source_overrides` — an override changes the
+ * ranks the walk asks, in every capable/incapable respect a gap can be about,
+ * not only NO_DOCUMENT_PROVENANCE). Both are now folded into `plain` itself
+ * (so every gap code reopens on either changing), not just `withDocuments`.
+ * `provenancePart`/`overridePart` are short hashes of "none" or the relevant
+ * identity; a field with neither yields the identical string this file
+ * produced before round 3 (no drift for fields nobody has touched).
  * Kept free of DB imports so it is unit-testable; the live source that reads
- * the IPO's documents is `buildFieldPlanGapKeySource` in field-plan-walk-deps.ts.
+ * the IPO's documents/provenance/overrides is `buildFieldPlanGapKeySource` in
+ * field-plan-walk-deps.ts.
  */
 import { createHash } from 'node:crypto';
 import {
@@ -50,6 +64,18 @@ export interface GapKeyDocument {
   isActive: boolean | null;
 }
 
+/** The field's own provenance row (`field_sources`), as far as the key needs to know. */
+export interface GapKeyProvenance {
+  source: string;
+  /** `data_lineage.document_id`, when the provenance row carries one. */
+  documentId?: string | null;
+}
+
+/** One active admin override (`field_source_overrides`) for this field. */
+export interface GapKeyOverride {
+  id: string;
+}
+
 const short = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12);
 
 function documentsPart(documents: readonly GapKeyDocument[], documentType: string | undefined): string {
@@ -62,15 +88,32 @@ function documentsPart(documents: readonly GapKeyDocument[], documentType: strin
   return completed.length === 0 ? 'd0' : `d${short(completed.join(','))}`;
 }
 
+/** `none`, or a short hash of the provenance row's source + lineage document id. */
+function provenancePart(provenance: GapKeyProvenance | null | undefined): string {
+  if (!provenance) return 'p:none';
+  return `p${short(`${provenance.source}:${provenance.documentId ?? ''}`)}`;
+}
+
+/** `none`, or the active override's own id (a new/changed/expired override is a new id). */
+function overridePart(override: GapKeyOverride | null | undefined): string {
+  return override ? `o${short(override.id)}` : 'o:none';
+}
+
 export function buildFieldPlanIpoGapKeys(params: {
   manifestFields: Record<string, FingerprintableManifestEntry>;
   coverageFingerprint: string;
   extractorVersion: string;
   documents: readonly GapKeyDocument[];
+  /** Per-field provenance row, keyed `table.field` — same key shape as `manifestFields`. */
+  provenanceByField?: Readonly<Record<string, GapKeyProvenance | null | undefined>>;
+  /** Per-field active override, keyed `table.field`. */
+  overrideByField?: Readonly<Record<string, GapKeyOverride | null | undefined>>;
 }): FieldPlanIpoGapKeys {
   const byField: Record<string, FieldPlanFieldGapKeys> = {};
   for (const [fieldKey, entry] of Object.entries(params.manifestFields)) {
-    const plain = `e${fieldManifestEntryFingerprint(entry).slice(0, 12)}|f${params.coverageFingerprint}|x${params.extractorVersion}`;
+    const provenance = provenancePart(params.provenanceByField?.[fieldKey]);
+    const override = overridePart(params.overrideByField?.[fieldKey]);
+    const plain = `e${fieldManifestEntryFingerprint(entry).slice(0, 12)}|f${params.coverageFingerprint}|x${params.extractorVersion}|${provenance}|${override}`;
     byField[fieldKey] = { plain, withDocuments: `${plain}|${documentsPart(params.documents, entry?.documentType)}` };
   }
   return { byField };
