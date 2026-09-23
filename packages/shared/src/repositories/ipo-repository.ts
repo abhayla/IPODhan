@@ -37,6 +37,7 @@ import {
 } from '../cache/cache-keys';
 import { EntityNotFoundError, DatabaseError, ProdWriteRefusedError, IdentityHeldForReviewError } from '../errors/repository-errors';
 import { strictIdentityCompanyName } from '../utils/identity-decoration';
+import { normalizeCin } from '../utils/cin';
 import { logger } from '../logger';
 
 /** audit_logs.action_type of an OD-68 hold; read by the nightly `i_identity_held` check. */
@@ -592,6 +593,29 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Every row carrying this CIN (OD-34 step 1, §2.3.3.2). A list, not one row:
+   * a CIN names the COMPANY, so its IPO, a later OFS or rights issue, and a
+   * refiled offering all share it — `resolveIpoRow` decides which one is the
+   * incoming offering. NULL-safe like `findByIsin`: an absent input returns []
+   * without querying, so NULL never matches NULL.
+   */
+  async findByCin(cin: string | null | undefined): Promise<IPO[]> {
+    const normalized = normalizeCin(cin);
+    if (!normalized) {
+      return [];
+    }
+    try {
+      return await this.db
+        .select()
+        .from(ipos)
+        .where(sql`upper(trim(${ipos.cin})) = ${normalized}`)
+        .orderBy(ipos.id);
+    } catch (error) {
+      throw new DatabaseError(`Failed to fetch IPOs by CIN: ${cin}`, undefined, error as Error);
+    }
+  }
+
+  /**
    * Find an existing IPO whose normalized company name is a close SPELLING
    * variant of `normalizedName` (P2-2a, T-293) — a typo like "Hybird" vs
    * "Hybrid" that `findByNormalizedName`'s exact + compact-whitespace tiers
@@ -920,6 +944,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         openDate: ipos.openDate,
         priceRangeMin: ipos.priceRangeMin,
         status: ipos.status,
+        cin: ipos.cin,
       })
       .from(ipos)
       .where(sql`${ipos.offeringType} = ${offeringType} AND ${ipos.segment} = ${data.segment} AND ${ipos.status} <> 'WITHDRAWN'`);
@@ -933,8 +958,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     const incomingDay = toDay(data.openDate);
     const incomingPrice = toPrice(data.priceRangeMin);
     const WINDOW_DAYS = 180;
+    const incomingCin = normalizeCin(data.cin ?? null);
     const candidates = rows.filter((row) => {
       if (strictIdentityCompanyName(row.companyName) !== fold) return false;
+      // OD-69: a known CIN that differs proves another company - nothing to hold for.
+      const rowCin = normalizeCin(row.cin ?? null);
+      if (incomingCin && rowCin && incomingCin !== rowCin) return false;
       const rowDay = toDay(row.openDate);
       if (incomingDay && rowDay && Math.abs(Date.parse(incomingDay) - Date.parse(rowDay)) / 86_400_000 > WINDOW_DAYS) {
         return false;

@@ -792,6 +792,8 @@ export async function upsertIPO(
             companyName: scrapedIPO.companyName,
             normalizedName,
             slug,
+            // OD-34 step 1 (§2.3.3.2): the CIN binds before every other identifier.
+            cin: scrapedIPO.cin ?? null,
             isin: scrapedIPO.isin,
             symbol: scrapedIPO.symbol,
             openDate: scrapedIPO.openDate ?? null,
