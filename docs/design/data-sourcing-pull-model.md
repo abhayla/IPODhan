@@ -121,11 +121,13 @@ it by assuming.
 | OD-66 | *"If a new document is coming then that should happen, and you should read the new document... if there are 10 fields, 5 provided by the previous document and 5 by the new document... you should only care about the new set of fields from the new document, ignore the mismatch of fields from the previous document"* — **a new document is adjudicated on ITS OWN fields only.** When a corrigendum or later filing arrives, only the fields that document actually supplies enter resolution. Fields the new document does not mention are left untouched: no comparison, no conflict raised, no provenance re-stamped, and no existing conflict closed on their behalf. Measured at the time of the decision: the consolidator iterates `Object.keys(incomingData)` (`data-consolidation-service.ts:1068-1073`) over a FIXED-shape object built at `data-persister.ts:894-943`, so all ~25 `ipos` fields enter the loop on every document write; an unsupplied field arrives `undefined` and is correctly skipped by the guard at `data-consolidation-service.ts:1427-1444` (`NO_INCOMING_VALUE`, no conflict row) — **but `filing-persister.ts:1228-1242` re-asserts five identity fields read off the STORED row** (`companyName`, `segment`, `offeringType`, `status`, `listingExchange`) plus `openDate`/`closeDate` fallbacks at `1289-1303`. Those are not undefined, so they pass the guard, enter full resolution as claims by source `DRHP`, and on an equal value trigger `autoResolveConverged` (`1903-1912`) — **closing open conflict rows for fields the new document never read**. The value never changes; the provenance and the conflict state do | 2026-09-21 | §2.4, §3 | the document write path resolves only the fields the document supplied, passes the identity fields as CONTEXT rather than as claims, and never auto-resolves a conflict for a field absent from the incoming document |
 | OD-67 | *"Will the current field's length be able to hold the world's largest IPO? If yes, then there is no need to change it to crores"* — **the five rupee columns stay in rupees; the crore data conversion is WITHDRAWN.** Measured on the live schema: all five are `numeric(18,2)` (ceiling Rs 1,00,00,00,000 crore), not the `numeric(15,2)` §5.2's capacity table claimed. Saudi Aramco at Rs 2,50,000 crore uses **0.025%** of the ceiling — one four-thousandth, not the "one quarter" the table argued — Hyundai India 0.0028%, and our largest stored row (NSE, Rs 26,579.64 cr) 0.0027%. Verified against `information_schema.columns` and by writing the Aramco value through the type. The overflow argument that justified the migration was false, so there is no migration, no source-backed repair tool, and the OD-32 source-availability blocker (only 46 of 307 rows still hold a re-readable document) is moot rather than pending. Storage stays rupees; display converts at the edge (`formatIssueSizeCrores`); the two readers that compared crore thresholds against the rupee column are fixed (F-95/F-77, PR #871) | 2026-09-21 | §5.2 | §5.2 states the measured precision, and no section schedules a unit conversion of `ipos.issue_size`, `ipo_details.fresh_issue`/`ofs_issue` or `ipo_valuation.mcap_at_floor`/`mcap_at_cap` |
 | OD-68 | *"Two IPOs data merge... that should never happen. That is the root cause and must be fixed"* — decided per scenario with real data (S1, S2, S3, S7). **Before any identity match, page-status suffixes (`-o`, `-p`, `-lt`, `-ct`) and page-title text (`(... IPO)`, `-<name>-ipo`) are stripped from the incoming name and slug; every exchange and aggregator writes into the ONE row its OD-34 identifier binds to; a record that does not bind on an identifier, but whose cleaned name matches an EXISTING live row whose known open date or price band differs, is held for review instead of creating a second row; a record with no existing row of that name is created normally (corrected 2026-09-23: the first wording would have held every brand-new IPO). **Narrowed 2026-09-23 (PR #910 review): an exact-name match whose open date moved by up to 180 days, with the same segment and no differing known price band, is the same offering postponed or corrected (OD-35) and UPDATES that row; only a differing known price band, a different segment, or a date more than 180 days away stops a name bind, and a prefix or fuzzy (typo) name match may not also absorb a moved date. The hold compares names with a fold that drops only corporate-form words (`Laxmi India Finance` is not `Laxmi Finance`), requires the same segment and offering type, and every hold is written to `audit_logs` and reported by the nightly check `i_identity_held`.** Existing title-shaped rows are renamed with slug redirects; the live duplicate pair `rays-of-belief-ltd` / `rays-of-belief-ltd-o` is merged on staging now and on production only with the release | 2026-09-23 | §2.3.3, §2.3.3.2 | the suffix and title stripping, the hold-for-review rule and the Rays of Belief / G.V. Electricals fixtures are stated |
-| OD-69 | *"Not two IPOs of different companies can have the same solution... we need to handle those reasons so that those kind of issues do not happen again"* (S6). **A name alone never joins two records, and the merge tool refuses a pair whose CIN, symbol, ISIN or open date differ, whatever the names fold to.** The real look-alike pairs Himalayan Solar Limited / Himalaya Nutravedics India Limited (open 3 days apart) and Technocraft Ventures Ltd. / Technocrats Plasma Systems Ltd. are pinned as DIFFERENT by a test | 2026-09-23 | §2.3.3.2, §2.3.3.3 | the refusal rule and the two named look-alike pairs are stated |
+| OD-69 | *"Not two IPOs of different companies can have the same solution... we need to handle those reasons so that those kind of issues do not happen again"* (S6). **A name alone never joins two records, and the merge tool refuses a pair whose CIN, symbol, ISIN or open date differ, whatever the names fold to.** The real look-alike pairs Himalayan Solar Limited / Himalaya Nutravedics India Limited (open 3 days apart) and Technocraft Ventures Ltd. / Technocrats Plasma Systems Ltd. are pinned as DIFFERENT by a test Narrow relaunch exception: OD-86. | 2026-09-23 | §2.3.3.2, §2.3.3.3 | the refusal rule and the two named look-alike pairs are stated |
 | OD-70 | *"Separate event"* (S5, chosen with real rows: OFS 19, TENDER 16, RIGHTS 8, BUYBACK 1 on production). **A listed company's later event (rights, buyback, tender or open offer, OFS) is its own row of its own type and is never matched to the company's IPO row; an SME-to-mainboard migration (e.g. Mangalam Worldwide, effective 2025-09-18) creates NO row, because it moves listed shares and is not an offering** | 2026-09-23 | §2.3.3.2 | the separate-event rule and the no-row-for-migration rule are stated |
 | OD-71 | *"Polymatech filed for an IPO last year but their IPO was rejected. If they file for that IPO again... we should create a new row because everything is different"*, then, shown OD-35's text: *"Keep OD-35 (same row)"* for a draft SEBI RETURNS and the company refiles. **Confirms OD-35 unchanged: a withdrawn draft, or one lapsed twelve months after SEBI's observations with no RHP, starts a NEW row (Polymatech, boAt / Imagine Marketing are the named cases); a draft SEBI returned and the company refiled without withdrawing updates the SAME row.** Scope clarified by OD-83: withdrawal means a SEBI withdrawal or draft lapse, never an exchange postponement. | 2026-09-23 | §2.3.3.2 | OD-35's lapsed-draft rule stands and the returned-then-refiled case is stated as same-row |
 | OD-83 | *"Same IPO, one row (Recommended)"* — 2026-09-23, spec-verified first (Spec basis: OD-35, OD-68, OD-71, §2.3.3.2, F-131). **An exchange postponement or relaunch of the same issue — same company, same shares and price band, new exchange dates — is the SAME IPO and updates the same row (as OD-68 already says). "Withdrawn" in OD-71 (which starts a new row) means only a SEBI withdrawal or a lapse of the DRAFT offer document, never an exchange postponement. When an exchange assigns a new record number to the relaunch, the old record is retired once the new one binds to the row.** Measured: Dhanwel Hybrid Seeds — BSE IPO_NO 7794 (23 Jun 2026, 2,700,000 shares, band 95–99, note "issue ... has been postponed") then IPO_NO 7900 (19–21 Aug 2026, same shares and band), Chittorgarh id 2846 unchanged, listed 26 Aug 2026; IC Electricals — NSE symbol ICEL (25–30 Jun 2026, "-Issue postponed") then ICELCO (3–7 Jul 2026), same 48,39,600 shares, band 94–99, same CIN U31909DL2005PLC139412. | 2026-09-23 | §2.3.3.2 | §2.3.3.2 states that an exchange postponement or relaunch updates the same row and that OD-71's withdrawal means a SEBI withdrawal or draft lapse only |
 | OD-84 | *"By filing status (Recommended)"* — 2026-09-23, spec-verified first (Spec basis: OD-35, OD-71, OD-83, §2.3.3.1 part 3, F-130, F-139). **Before an IPO has open dates, one ATTEMPT is one filed draft offer document (DRHP) together with everything that follows it — updated draft (UDRHP), RHP, prospectus, addenda and corrigenda. A NEW full draft starts a new attempt only when the previous attempt is withdrawn, returned, or lapsed (twelve months after SEBI's observations, OD-35); the status is read from NSE's offer-documents feed (Approved/Withdrawn) and SEBI's processing-status reports (F-139). Once open dates exist, OD-35's 180-day rule applies as before. Rows sharing a CIN or ISIN merge only when they are the same attempt (§2.3.3.1 part 3).** Measured: Hero Motors — DRHP received 28-08-2024, SEBI "Issue Withdrawn" 05-10-2024; DRHP received 30-06-2025, observation issued 12-09-2025; prospectus 22-09-2026, IPO 16–18 Sep 2026 → two attempts, the IPO belongs to the 2025 one. NSE — SEBI filing 33921 of 30 Dec 2016 ("Issuer needs to file fresh draft offer document") and DRHP 102189 of 18 Jun 2026 → two attempts. Imagine Marketing (boAt) — DRHP 55666 of 28 Jan 2022, UDRHP-I 97510 of 29 Oct 2025 → the 2022 draft lapsed, so a new attempt. | 2026-09-23 | §2.3.3.1, §2.3.3.2 | §2.3.3.2 defines an attempt by filing status before open dates exist and names the status sources |
+| OD-85 | *"Go with your recommendation but verify all scenarios first and ensure it correctly handles all cases"* — 2026-09-23. Chosen option: a new table of each source's own record number, many per IPO (option 1 of 3; option 2 "one column per source" fails a relaunch, option 3 "store nothing" leaves name re-matching every cycle). Verified before recording on 18 real scenarios (F-149): as first stated it failed 8; with the four fixes below 15 pass, 2 are outside any key table (first match of a name-only record — OD-68 hold; ISIN is share-class level), 1 needed OD-86. **The table `ipo_source_keys` holds only OFFERING-level source numbers — BSE `IPO_NO` (key type BSE_IPO_NO), the Chittorgarh page id (CG_PAGE_ID; the slug is ignored, F-148) and the NSE issue symbol with its series (NSE_ISSUE = SYMBOL\|SERIES). Company- or share-level numbers (CIN, ISIN, PAN, BSE listing scrip code, BSE's `Symbol` field) stay on `ipos`; SEBI and exchange document ids stay on `documents`. Each key has a state: ACTIVE (binds and writes), SUPERSEDED (binds, never writes — an older number after an OD-83 relaunch), RELEASED (offering ended: WITHDRAWN, lapsed, DELISTED, or an NSE key some days after listing — binds nothing, value reusable), DISPUTED (a wrong bind — binds nothing). Every key bind is re-checked against the row (offering type, segment, open date within 180 days, known price band, CIN/ISIN where both exist); a failed check writes nothing and holds the record, a CIN/ISIN contradiction marks the key DISPUTED. A record whose keys hit two rows writes nothing and reports the duplicate. No key hit → the existing order (CIN, ISIN, symbol, name with OD-68 hold). A key is written in the same transaction as the bind or row create, and its id goes into `field_sources.data_lineage`. A second key of the same source and type supersedes the older one only when OD-83's test holds (same shares, same price band, older record postponed or strictly earlier); otherwise hold. The table is on the merge tool's repoint list with a plain unique index (no partial or expression index), so merges move keys and log them.** | 2026-09-23 | §2.3.3.2 | §2.3.3.2 states the table's scope, the four states, the re-check on every bind, the same-transaction write and the repoint rule, with the verified scenario table |
+| OD-86 | *"Allow a narrow exception (Recommended)"* — 2026-09-23, spec-verified first (Spec basis: OD-83, OD-69, OD-38/OD-49, F-127, F-131). **The merge tool may merge two rows whose open dates differ ONLY for an OD-83 relaunch: same number of shares, same price band, same symbol or same CIN, and the older record marked postponed by the exchange. Every other refusal in OD-69 stands. Such a merge is logged and reversible (OD-38).** Measured: BSE still serves Dhanwel's postponed record IPO_NO 7794 ("23 Jun 2026 to 23 Jun 2026", note "has been postponed") beside 7900 (19–21 Aug 2026), both 2,700,000 shares, band 95–99, symbol DHANWEL (F-144). | 2026-09-23 | §2.3.3.2, §2.3.3.3 | §2.3.3.3 states the relaunch exception with its four conditions |
 | OD-72 | *"Why the scraper will scrape the same IPO multiple times?... just because the field data is old, that doesn't mean that the data is stale... It can be correct also"* — shown that the 2026-09-08 time-threshold marker conflicts with OD-65, the owner chose *"Facts, no marker"*. **The time-based stale marker is retired.** A field shows only true facts: its source and when it was read (*"From the offer document, read 21 Sep 2026"*); a live bidding figure shows the time of the figure (*"Subscription as at 10:30 PM, 22 Sep"*). A scheduled live refresh that misses its OD-19 slot raises an ADMIN alert naming the IPO and the slot, never a label on the public page. **Kept, because it states a fact rather than an age:** the corrigendum marker of §2.5 (a correction notice has been filed for this field). Supersedes the 2026-09-08 staleness decision in §2.6 and §2.11 | 2026-09-23 | §2.5, §2.6, §2.11 | no section marks a field stale by age; §2.11's line states source and read date; the missed-slot admin alert is stated |
 | OD-73 | *"Rank decides"* — chosen 2026-09-23 when shown that OD-65 says a settled field is never reopened but never says WHEN a field is settled, with seven days of staging data: 17 IPOs' price bands and dates rewritten in 24 h with IDENTICAL values (Adroit Industries 126 -> 126), and one real change (Vivekanand Cotspin issue size BSE Rs 19.2 cr -> CHITTORGARH Rs 22.2 cr). **A field is settled once the best-ranked source seen so far (§1.11 ranking; the offer document, or the exchange for exchange-only fields) has set it. After that only a HIGHER-ranked source may change it; an equal- or lower-ranked website that later differs is ignored for the page (OD-65) and recorded in the admin conflicts list (OD-61, OD-63). An identical incoming value is never written and never re-stamps provenance. Live figures — status, subscription, listing-day prices — are never settled and follow OD-19's refresh slots. An exchange postponement updates the same row (OD-35), because the exchange outranks websites for dates.** | 2026-09-23 | §3.2 | the settled rule, the higher-rank exception, the identical-value no-op and the live-figure exclusion are stated, with the Adroit and Vivekanand cases |
 | OD-74 | *"One-time repair"* — chosen 2026-09-23 for item 14, shown that #728's earlier choice (let CHITTORGARH overwrite) cannot happen: CHITTORGARH re-reads only LIVE IPOs and OD-65 forbids going back. **The 17 real IPO rows whose issue size was computed from BSE's share count (staging: kwality-walls-india-ltd Rs 1,303.0 cr, morganite-crucible-india-ltd Rs 218.0 cr, cms-info-systems-ltd Rs 167.9 cr ... piyush-ltd Rs 0.7 cr; only 1 of 17 has a read offer document) are repaired ONCE by a productized, re-runnable, dry-run-first tool that reads each IPO's CHITTORGARH detail page a single time and writes the printed total with its provenance; the tool never reads the same IPO again.** Staging first; production only with the release, on the owner's word. The zeros are settled by OD-77 (measured 49 on staging, not 19: 17 TENDER/BUYBACK derived NOT_APPLICABLE, 32 OFS/RIGHTS/NCD/IPO marked NOT_SOURCED) | 2026-09-23 | §5.2 | the one-time repair, its single read per IPO and the dry-run-first rule are stated with the 17 named rows |
@@ -1682,6 +1684,101 @@ IPO) and NSE itself (a 2016 SEBI filing requiring a fresh draft, then a DRHP fil
 two attempts under this rule; Imagine Marketing/boAt's 2022 DRHP lapsing into a 2025 UDRHP is one
 attempt continuing, not two.
 
+#### Source record keys (OD-85, OD-86)
+
+**Scope.** `ipo_source_keys` holds only OFFERING-level source numbers: BSE's `IPO_NO`, the
+Chittorgarh page id (its slug is ignored, F-148), and the NSE issue symbol carried together with
+its series. It does NOT hold company- or share-level numbers — CIN, ISIN, PAN, BSE's listing scrip
+code, or BSE's `Symbol` field stay on `ipos` as before, and SEBI or exchange document ids stay on
+`documents`. The table exists because each source assigns its own record number to the SAME
+offering and that number can change under a relaunch (F-127) while nothing on `ipos` records it.
+
+**States.**
+
+| State | Binds | Writes | Holds the unique value |
+|---|---|---|---|
+| ACTIVE | yes | yes | yes |
+| SUPERSEDED | yes | no | yes |
+| RELEASED | no | no | no — value is reusable |
+| DISPUTED | no | no | no |
+
+ACTIVE is the current, correct key for a live offering. SUPERSEDED is an older number left behind
+by an OD-83 relaunch — it still matches so a stray write is not silently orphaned, but it never
+writes. RELEASED means the offering itself has ended (WITHDRAWN, lapsed, DELISTED, or an NSE key
+some days after listing) and its value is free to be reused. DISPUTED is a bind later found wrong
+by the CIN/ISIN re-check.
+
+**The read rule.** On each incoming record: (1) try each key type the record carries against
+`ipo_source_keys` for a match; (2) re-check any match against the target row — offering type,
+segment, open date within 180 days, known price band, and CIN/ISIN where both exist; (3) a failed
+check writes nothing and holds the record, and a CIN/ISIN contradiction marks the key DISPUTED; (4)
+if the record's keys hit two different rows, nothing is written and the duplicate is reported; if
+no key hits at all, fall back to the existing order — CIN, ISIN, symbol, name, with the OD-68 hold.
+
+**The write rule.** A key is written in the same transaction as the bind or the row create, never
+after it, and its id is recorded into `field_sources.data_lineage`. A second key of the same source
+and key type supersedes the older one ONLY when OD-83's test holds — same number of shares, same
+price band, and the older record postponed or strictly earlier; otherwise the write is held rather
+than guessed.
+
+**Schema.**
+
+```
+ipo_source_keys
+  id
+  ipo_id            FK -> ipos.id ON DELETE CASCADE
+  source
+  key_type
+  key_value         trimmed, upper-cased
+  attrs             jsonb
+  state
+  binding_value     = key_value when ACTIVE/SUPERSEDED, else NULL
+  record_open_date
+  bound_via         CIN | ISIN | SYMBOL | NAME | HOLD_RESOLUTION | BACKFILL
+  bound_by
+  bound_at
+  state_changed_at
+  state_reason
+  superseded_by
+
+  UNIQUE(source, key_type, binding_value)   -- plain unique index
+  CHECK (binding_value consistent with state)
+  INDEX(ipo_id)
+```
+
+**Verified on 18 real scenarios, 2026-09-23 (F-149).**
+
+| # | scenario | real values | result with the OD-85 design |
+|---|---|---|---|
+| 1 | NSE IPO | BSE 7977, CG 3151, NSE:NSE\|EQ; ISIN INE721I01024 on ipos; SEBI 102189/104428/104637 on documents | one row, three keys — PASS |
+| 2 | Dhanwel relaunch | BSE 7794 (23 Jun, postponed, still served) → 7900 (19–21 Aug), same 2,700,000 shares, band 95–99, DHANWEL; CG 2846 | 7900 binds, OD-83 test passes, 7794 SUPERSEDED and writes nothing — PASS |
+| 3 | IC Electricals | NSE ICEL → ICELCO, same 48,39,600 shares, band 94–99, CIN U31909DL2005PLC139412 | first match may need the OD-68 hold; then ICEL SUPERSEDED — PASS |
+| 4 | Hero Motors two attempts | DRHP withdrawn 05-10-2024; DRHP 30-06-2025 → IPO 16–18 Sep 2026; BSE 7971; CG 2225 | a withdrawn row's keys are RELEASED, so the 2026 records match fresh under OD-84 — PASS (whether CG 2225 dates from the 2024 draft: inferred, not verified) |
+| 5 | Rays of Belief pair | rays-of-belief-ltd (MOMSBELIEF) and -o; BSE 7920 "MOMSBELIEF " (trailing space); CG 2787 | trimmed symbol binds; keys split across two rows → duplicate reported, nothing written; a merge moves keys — PASS |
+| 6 | Look-alikes | Himalayan Solar (HIMALAYAN, CG 2716, INE1B7I01014) vs Himalaya Nutravedics (BSE 7983/HNIL, INE1OTR01013) | never joined; a wrong bind is caught by the CIN/ISIN re-check → DISPUTED — PASS |
+| 7 | Vinod Texworld | NSE SME VINOD, CG 2718 | one row, two keys — PASS |
+| 8 | boAt / Polymatech | SEBI 55666, 97510; 77644 | document ids, not in this table — PASS |
+| 9 | Later OFS by the same company | OFS uses the company symbol (Coal India, IRFC on prod) | series in the key + type re-check + RELEASED after listing → own row (OD-70) — PASS |
+| 10 | Symbol reused after delisting | no real case measured | RELEASED value is reusable — PASS for the table; the existing symbol tier is unfixed (F-146) |
+| 11 | Source changes its own id, no relaunch | no real case measured | supersede only if every check is equal, else hold — PASS |
+| 12 | Bad first match found later | as #6 | DISPUTED; values traced by key id in data_lineage and recomputed from the remaining witnesses — PARTIAL (previous_value keeps one step only) |
+| 13 | Merge / unmerge | REPOINT_TABLES; merge log repointedIds | keys move on merge and are logged — PASS (unmerge not built yet) |
+| 14 | Withdrawn / lapsed then refiled | Hero Motors, Polymatech | as #4 — PASS |
+| 15 | SME migration; REIT/InvIT/NCD | NSE series SME, DEBT/NCD | series keeps them apart — PASS (not verified live) |
+| 16 | Shared namespaces | BSE Symbol "NSE" = NSE symbol "NSE" | one key per (source, type, value); BSE Symbol not a key — PASS |
+| 17 | Document ids | SEBI / exchange | on documents — PASS |
+| 18 | Concurrent binds | — | unique constraint + same transaction → one row — PASS |
+| 19 | Backfill from existing rows | ipos.bse_ipo_no; CG id from verifier_url | two rows claiming one key → neither inserted, pair reported — PASS |
+| 20 | Resolving an OD-68 hold | ICEL-type | "bind to row X" writes an ADMIN key — PASS |
+
+**What it does not solve.** The first match of a name-only record still falls to the OD-68 hold;
+existing duplicates are surfaced, not merged, by this table alone; the existing symbol tier
+(F-146) still has no status or date limit of its own; ISIN is share-class level, so an FPO can
+still hit the IPO row by ISIN; and attempt detection before open dates (OD-84) and the missing
+observation date (F-125) are unchanged by this table.
+
+**Default, reversible, in configuration:** an NSE key is RELEASED 30 days after listing.
+
 #### Identity research on real IPOs, 2026-09-23 (measured; open for owner decision)
 
 Twelve findings from a research pass across NSE, BSE, Chittorgarh and SEBI documents for real,
@@ -1760,6 +1857,10 @@ automatic merge that cannot be undone is a one-way door on a guess:
 | **An `unmerge` command** | `scripts/merge-duplicate-ipo.mjs` gains `unmerge <merge-id>`: it restores both rows from the log and **re-points the slug redirect** so the page that was redirected goes back to its own row |
 | **A live merge is announced** | a merge touching an IPO that is OPEN or UPCOMING posts to the Notifier immediately (`GLOBAL.md` §2), because that is the case where a wrong merge is visible to readers within the hour |
 | **The tool writes through the shared write path** | it does not hold its own SQL. This is build item 19, and it is also what makes PR #432's gate green — see §8.3 |
+
+OD-86 narrows this: a merge of two rows with differing open dates is allowed only for the relaunch
+exception — same shares, same price band, same symbol or CIN, and the older record marked postponed
+by the exchange; every other refusal above still stands.
 
 #### 2.3.4 A correct page still contains other companies' numbers
 
