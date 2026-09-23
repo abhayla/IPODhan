@@ -476,3 +476,126 @@ describe('review round 1 MAJOR-4: carried-over IPOs cannot starve newly closed o
     expect(order[0]).toBe('new-0');
   });
 });
+
+// ---- Review round 2 (PR #912) ---------------------------------------------
+// CLASS rule: an IPO's final outcome is permanent ONLY if every unread
+// extractable document is itself permanently unobtainable. Any unread document
+// that can still be retried makes the outcome re-pickable, whatever the walk said.
+describe('review round 2 MAJOR: a permanent walk cause never masks a document waiting to retry', () => {
+  it('reviewer probe (regression): clean extraction + walk DOCUMENT_UNOBTAINABLE + 1 retrying doc -> re-pickable', () => {
+    const ext = classifyExtractionPass({
+      attempted: true,
+      result: { failed: 0, persisted: 0, skippedBudget: 0, skipped: ['doc backing off'] } as never,
+    });
+    const walk = { outcome: 'PARTIAL' as const, causeClass: 'DOCUMENT_UNOBTAINABLE' as const, causeDetail: 'x' };
+    const c = combineClosedIpoOutcomes(ext, walk);
+    const g = applyPendingDocumentGuard({ ...c, fieldsWritten: 0, fieldsLeftEmpty: 3 }, { pending: 0, retrying: 1 });
+    expect(g.outcome).toBe('PARTIAL');
+    expect(g.causeClass).toBe('SOURCE_UNREACHABLE');
+    expect(g.causeDetail).toMatch(/^transient: 1 extractable document\(s\) awaiting retry/);
+    expect(g.causeDetail).toMatch(/DOCUMENT_UNOBTAINABLE/); // the walk's cause is kept, not dropped
+  });
+
+  for (const permanent of ['DOCUMENT_UNOBTAINABLE', 'VALIDATION_REJECTED', 'WRITE_SKIPPED'] as const) {
+    for (const outcome of ['PARTIAL', 'FAILED'] as const) {
+      it(`${outcome}/${permanent} with a retrying document keeps its outcome but becomes re-pickable`, () => {
+        const g = applyPendingDocumentGuard(
+          { outcome, causeClass: permanent, causeDetail: 'walk said so', fieldsWritten: 0, fieldsLeftEmpty: 0 },
+          { pending: 0, retrying: 2 }
+        );
+        expect(g.outcome).toBe(outcome);
+        expect(g.causeClass).toBe('SOURCE_UNREACHABLE');
+      });
+    }
+  }
+
+  it('EXTRACTOR_MISSING (extraction switched off) stands: no document is retriable by this job', () => {
+    const r = { outcome: 'PARTIAL' as const, causeClass: 'EXTRACTOR_MISSING' as const, fieldsWritten: 0, fieldsLeftEmpty: 0 };
+    expect(applyPendingDocumentGuard(r, { pending: 0, retrying: 1 })).toEqual(r);
+  });
+
+  it('a permanent cause stands when every unread document is itself unobtainable (PENDING only, nothing retrying)', () => {
+    const r = { outcome: 'PARTIAL' as const, causeClass: 'DOCUMENT_UNOBTAINABLE' as const, fieldsWritten: 0, fieldsLeftEmpty: 0 };
+    expect(applyPendingDocumentGuard(r, { pending: 2, retrying: 0 })).toEqual(r);
+  });
+
+  it('runClosedIpoJob writes the re-pickable class for the probe shape', async () => {
+    const stub = makeStubDb([{ id: 'ipo-1', closeDate: '2026-06-12', status: 'LISTED' }]);
+    await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: async () => ({ outcome: 'FAILED', causeClass: 'WRITE_SKIPPED', causeDetail: 'db', fieldsWritten: 0, fieldsLeftEmpty: 0 }),
+      countUnreadExtractableDocuments: async () => ({ pending: 0, retrying: 1 }),
+      resourcedAtVersion: 'v',
+    });
+    expect(stub.values.mock.calls[0][0]).toMatchObject({ outcome: 'FAILED', causeClass: 'SOURCE_UNREACHABLE' });
+  });
+});
+
+describe('review round 2 MINOR-1: attempts advance only when a document read was attempted', () => {
+  const run = async (documentReadAttempted: boolean | undefined, unread = { pending: 0, retrying: 1 }) => {
+    const stub = makeStubDb([{ id: 'ipo-1', closeDate: '2026-06-12', status: 'LISTED' }]);
+    await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: async () => ({ outcome: 'DONE', fieldsWritten: 0, fieldsLeftEmpty: 0, documentReadAttempted }),
+      countUnreadExtractableDocuments: async () => unread,
+      resourcedAtVersion: 'v',
+    } as never);
+    return {
+      inserted: stub.values.mock.calls[0][0].attempts,
+      onConflict: dialect.sqlToQuery(stub.onConflictDoUpdate.mock.calls[0][0].set.attempts).sql,
+    };
+  };
+
+  it('a night the document only backed off (no read attempted) does not spend an attempt', async () => {
+    const r = await run(false);
+    expect(r.inserted).toBe(0);
+    expect(r.onConflict).not.toMatch(/\+ 1/);
+  });
+
+  it('a night a document read WAS attempted spends one', async () => {
+    const r = await run(true);
+    expect(r.inserted).toBe(1);
+    expect(r.onConflict).toMatch(/\+ 1/);
+  });
+
+  it('with nothing unread to wait for, the attempt always counts (a pure source failure stays bounded)', async () => {
+    const r = await run(false, { pending: 0, retrying: 0 });
+    expect(r.inserted).toBe(1);
+  });
+
+  it('classifyExtractionPass reports whether a document read was attempted', () => {
+    const base = { failed: 0, persisted: 0, skippedBudget: 0, skipped: [], spawned: 0, extracted: 0, anchorsSpawned: 0 };
+    expect(classifyExtractionPass({ attempted: true, result: { ...base, skipped: ['backing off'] } as never }).documentReadAttempted).toBe(false);
+    expect(classifyExtractionPass({ attempted: true, result: { ...base, spawned: 1, extracted: 1 } as never }).documentReadAttempted).toBe(true);
+    expect(classifyExtractionPass({ attempted: true, result: { ...base, failed: 1 } as never }).documentReadAttempted).toBe(true);
+    expect(classifyExtractionPass({ attempted: false, causeClass: 'SOURCE_UNREACHABLE', reason: 'lock' }).documentReadAttempted).toBe(false);
+  });
+});
+
+describe('review round 2 MINOR-2: the run report separates a transient document retry from a source that is down', () => {
+  it('labels SOURCE_UNREACHABLE by its transient: detail', () => {
+    expect(closedIpoJob.closedIpoCauseLabel('SOURCE_UNREACHABLE', 'transient: 1 document(s) failed')).toBe('SOURCE_UNREACHABLE/transient');
+    expect(closedIpoJob.closedIpoCauseLabel('SOURCE_UNREACHABLE', 'ECONNRESET')).toBe('SOURCE_UNREACHABLE');
+    expect(closedIpoJob.closedIpoCauseLabel(undefined, undefined)).toBe('none');
+  });
+
+  it('the run summary counts outcomes per cause label', async () => {
+    const stub = makeStubDb([
+      { id: 'a', closeDate: '2026-06-12', status: 'LISTED' },
+      { id: 'b', closeDate: '2026-06-12', status: 'LISTED' },
+    ]);
+    const summary = await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: async (id: string) => {
+        if (id === 'b') throw new Error('ECONNRESET');
+        return { outcome: 'DONE' as const, fieldsWritten: 0, fieldsLeftEmpty: 0 };
+      },
+      countUnreadExtractableDocuments: async () => ({ pending: 0, retrying: 1 }),
+      resourcedAtVersion: 'v',
+    });
+    expect(summary.causes).toEqual({ 'SOURCE_UNREACHABLE/transient': 1, SOURCE_UNREACHABLE: 1 });
+  });
+});

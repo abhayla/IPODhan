@@ -20,15 +20,21 @@
  * alone: that DONE is true.
  *
  * WHAT --apply DOES. Sets such a row to outcome PARTIAL, cause_class
- * EXTRACTOR_MISSING (the extraction never ran on it), and a cause_detail that
- * starts with the marker `repair-717:`. PARTIAL at an older resourced_at_version
- * is re-picked by the job's selection, so the next run extracts the document.
+ * EXTRACTOR_MISSING (the extraction never ran on it), a cause_detail that
+ * starts with the marker `repair-717:`, and prefixes resourced_at_version with
+ * the same marker. The version prefix is what makes the row RE-PICKABLE (PR #912
+ * review round 2 MINOR-3): EXTRACTOR_MISSING is a permanent class, re-selected
+ * only when `resourced_at_version IS DISTINCT FROM` the running version, and a
+ * row DONE at the CURRENT version would otherwise never be picked again. No
+ * real version starts with the marker, so the next run always re-picks it, and
+ * its upsert then stamps the real version back (attempts restart at 1).
  * The rows as they were (outcome, cause_class, cause_detail, attempts, version)
  * are written to scripts/state/ before the update, and the UPDATE re-checks the
  * unread condition itself, so a document read between the dry run and --apply
  * leaves its DONE row untouched.
  *
- * --undo puts every row carrying the marker back to DONE with no cause.
+ * --undo puts every row carrying the marker back to DONE with no cause and
+ * strips the marker from its version.
  *
  * Usage:
  *   tsx scraper/scripts/repair-closed-ipo-false-done.ts            # dry run
@@ -47,6 +53,32 @@ import { sql } from 'drizzle-orm';
 import { openRepairDb, writeLedgerFile } from './lib/repair-tool.js';
 
 export const REPAIR_MARKER = 'repair-717:';
+
+type ExecDb = { execute: (q: ReturnType<typeof sql>) => Promise<unknown> };
+
+/**
+ * Reopen the given DONE rows so the job's selection re-picks them at ANY
+ * version, including the one that wrote them DONE. The UPDATE re-checks the
+ * unread condition itself. Returns the number of rows changed.
+ */
+export async function reopenFalseDoneRows(dbx: ExecDb, ids: string[]): Promise<number> {
+  // One bound array parameter (see repair-not-extractable-documents.ts for why
+  // `${ids}` alone expands into a broken parameter list).
+  const res = await dbx.execute(sql`
+    UPDATE closed_ipo_resourcing
+       SET outcome = 'PARTIAL',
+           cause_class = 'EXTRACTOR_MISSING',
+           cause_detail = ${REPAIR_MARKER} || ' recorded DONE while an extractable document was still unread; the extraction never finished',
+           resourced_at_version = ${REPAIR_MARKER} || COALESCE(resourced_at_version, ''),
+           updated_at = now()
+     WHERE ipo_id = ANY(${sql.param(ids)}::uuid[])
+       AND outcome = 'DONE'
+       AND EXISTS (SELECT 1 FROM documents d
+                    WHERE d.ipo_id = closed_ipo_resourcing.ipo_id
+                      AND COALESCE(d.extraction_status, 'PENDING') NOT IN ('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE')
+                      AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS'))`);
+  return (res as { rowCount?: number }).rowCount ?? 0;
+}
 
 interface Args {
   apply: boolean;
@@ -94,7 +126,11 @@ async function main(): Promise<number> {
     for (const r of rows) console.log(`  ${r.company_name} (${r.ipo_id})`);
     if (!args.apply || rows.length === 0) return 0;
     const res = await db.execute(
-      sql`UPDATE closed_ipo_resourcing SET outcome = 'DONE', cause_class = NULL, cause_detail = NULL, updated_at = now()
+      sql`UPDATE closed_ipo_resourcing SET outcome = 'DONE', cause_class = NULL, cause_detail = NULL,
+                  resourced_at_version = CASE WHEN resourced_at_version LIKE ${REPAIR_MARKER + '%'}
+                                              THEN substr(resourced_at_version, ${REPAIR_MARKER.length + 1})
+                                              ELSE resourced_at_version END,
+                  updated_at = now()
            WHERE cause_detail LIKE ${REPAIR_MARKER + '%'}`
     );
     console.log(`\nrestored ${(res as unknown as { rowCount?: number }).rowCount ?? 0} row(s) to DONE on ${dbName}`);
@@ -141,21 +177,7 @@ async function main(): Promise<number> {
   console.log(`\nbefore-image written: ${ledger}`);
 
   const ids = rows.map((r) => r.ipo_id);
-  // One bound array parameter (see repair-not-extractable-documents.ts for why
-  // `${ids}` alone expands into a broken parameter list).
-  const res = await db.execute(sql`
-    UPDATE closed_ipo_resourcing
-       SET outcome = 'PARTIAL',
-           cause_class = 'EXTRACTOR_MISSING',
-           cause_detail = ${REPAIR_MARKER} || ' recorded DONE while an extractable document was still unread; the extraction never finished',
-           updated_at = now()
-     WHERE ipo_id = ANY(${sql.param(ids)}::uuid[])
-       AND outcome = 'DONE'
-       AND EXISTS (SELECT 1 FROM documents d
-                    WHERE d.ipo_id = closed_ipo_resourcing.ipo_id
-                      AND COALESCE(d.extraction_status, 'PENDING') NOT IN ('COMPLETED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE')
-                      AND d.type::text IN ('PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS'))`);
-  const changed = (res as unknown as { rowCount?: number }).rowCount ?? 0;
+  const changed = await reopenFalseDoneRows(db as unknown as ExecDb, ids);
   console.log(`reopened ${changed} row(s) as PARTIAL on ${dbName}`);
   if (changed !== rows.length) {
     console.log(`${rows.length - changed} row(s) no longer matched at write time (a document was read since the read above) and were left as they were`);
@@ -163,9 +185,13 @@ async function main(): Promise<number> {
   return 0;
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((error) => {
-    console.error(error instanceof Error ? error.stack ?? error.message : String(error));
-    process.exit(1);
-  });
+// Run only when invoked as a script, so a test can import reopenFalseDoneRows.
+const invokedDirectly = process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedDirectly) {
+  main()
+    .then((code) => process.exit(code))
+    .catch((error) => {
+      console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+      process.exit(1);
+    });
+}

@@ -61,6 +61,15 @@ export interface ClosedIpoResourceResult {
   causeDetail?: string;
   fieldsWritten: number;
   fieldsLeftEmpty: number;
+  /**
+   * False when this pass never actually tried to read a document (every unread
+   * one was inside its own retry backoff, or the extraction lock was held).
+   * Such a night does not spend one of the IPO's transient attempts (review
+   * round 2 MINOR-1): the document's own cap is what bounds it, and spending
+   * the IPO's budget on nights nothing was retried strands the IPO below that
+   * cap. Undefined (a worker that does not say) counts as attempted.
+   */
+  documentReadAttempted?: boolean;
 }
 
 export interface ClosedIpoJobDeps {
@@ -102,6 +111,11 @@ export interface ClosedIpoJobSummary {
   candidatesConsidered: number;
   attempted: number;
   outcomes: Record<ClosedIpoOutcome, number>;
+  /**
+   * Non-DONE outcomes per cause LABEL (`closedIpoCauseLabel`), so the run line
+   * tells a document waiting on its retry apart from a source that is down.
+   */
+  causes: Record<string, number>;
   skippedCycleLockHeld: boolean;
 }
 
@@ -226,6 +240,7 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
     candidatesConsidered: 0,
     attempted: 0,
     outcomes: { DONE: 0, PARTIAL: 0, FAILED: 0 },
+    causes: {},
     skippedCycleLockHeld: false,
   };
 
@@ -290,10 +305,16 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
     let causeDetail: string | undefined;
     let fieldsWritten = 0;
     let fieldsLeftEmpty = 0;
+    // Review round 2 MINOR-1: an attempt is spent only when a document read was
+    // actually attempted, or when there is no unread document to wait for (a
+    // pure source failure must stay bounded by the attempt cap).
+    let countsAsAttempt = true;
 
     try {
       const r = await deps.resourceIpo(candidate.id, candidate);
-      const guarded = applyPendingDocumentGuard(r, await countUnread(candidate.id));
+      const unread = await countUnread(candidate.id);
+      countsAsAttempt = r.documentReadAttempted !== false || unread.pending + unread.retrying === 0;
+      const guarded = applyPendingDocumentGuard(r, unread);
       outcome = guarded.outcome;
       causeClass = guarded.causeClass;
       causeDetail = guarded.causeDetail;
@@ -310,6 +331,10 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
 
     summary.attempted += 1;
     summary.outcomes[outcome] += 1;
+    if (outcome !== 'DONE') {
+      const label = closedIpoCauseLabel(causeClass, causeDetail);
+      summary.causes[label] = (summary.causes[label] ?? 0) + 1;
+    }
 
     await deps.db
       .insert(schema.closedIpoResourcing)
@@ -317,7 +342,7 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
         ipoId: candidate.id,
         firstAttemptAt: now,
         lastAttemptAt: now,
-        attempts: 1,
+        attempts: countsAsAttempt ? 1 : 0,
         outcome,
         causeClass: causeClass ?? null,
         causeDetail: causeDetail ?? null,
@@ -332,8 +357,11 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
           // `attempts` counts attempts AT THIS VERSION (spec section 6.2.1):
           // the transient re-pick bound reads it, and a version bump re-opens
           // the IPO with a fresh budget rather than one it already spent.
-          attempts: sql`CASE WHEN ${schema.closedIpoResourcing.resourcedAtVersion} = ${deps.resourcedAtVersion}
-                             THEN ${schema.closedIpoResourcing.attempts} + 1 ELSE 1 END`,
+          attempts: countsAsAttempt
+            ? sql`CASE WHEN ${schema.closedIpoResourcing.resourcedAtVersion} = ${deps.resourcedAtVersion}
+                       THEN ${schema.closedIpoResourcing.attempts} + 1 ELSE 1 END`
+            : sql`CASE WHEN ${schema.closedIpoResourcing.resourcedAtVersion} = ${deps.resourcedAtVersion}
+                       THEN ${schema.closedIpoResourcing.attempts} ELSE 0 END`,
           outcome,
           causeClass: causeClass ?? null,
           causeDetail: causeDetail ?? null,
@@ -345,7 +373,16 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
       });
 
     logger.info(
-      { ipoId: candidate.id, outcome, causeClass, fieldsWritten, fieldsLeftEmpty },
+      {
+        ipoId: candidate.id,
+        outcome,
+        causeClass,
+        cause: outcome === 'DONE' ? undefined : closedIpoCauseLabel(causeClass, causeDetail),
+        causeDetail,
+        attemptCounted: countsAsAttempt,
+        fieldsWritten,
+        fieldsLeftEmpty,
+      },
       'closed-IPO job: IPO resourced'
     );
   }
@@ -357,6 +394,7 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
       done: summary.outcomes.DONE,
       partial: summary.outcomes.PARTIAL,
       failed: summary.outcomes.FAILED,
+      causes: summary.causes,
     },
     'closed-IPO job: run complete'
   );
@@ -404,42 +442,68 @@ export async function countUnreadExtractableDocuments(
 export const TRANSIENT_DETAIL_PREFIX = 'transient:';
 
 /**
- * #717: DONE requires the reason the IPO was selected to be resolved.
+ * Review round 2 MINOR-2: `cause_class` is a Postgres enum with no value for
+ * "a document is waiting on its own retry" or "the extractor crashed", so both
+ * are recorded as SOURCE_UNREACHABLE (the one re-pickable class) with a
+ * `transient:` detail. The run report groups by THIS label, never by the bare
+ * class, so a SOURCE_UNREACHABLE count never reads as "the source is down" when
+ * it is a document backing off or an extractor crash (signal-ownership R6).
+ */
+export function closedIpoCauseLabel(causeClass?: ClosedIpoCauseClass | null, causeDetail?: string | null): string {
+  if (!causeClass) return 'none';
+  if (causeClass === 'SOURCE_UNREACHABLE' && (causeDetail ?? '').startsWith(TRANSIENT_DETAIL_PREFIX)) {
+    return 'SOURCE_UNREACHABLE/transient';
+  }
+  return causeClass;
+}
+
+/**
+ * #717: DONE requires the reason the IPO was selected to be resolved, and
+ * (review round 2 MAJOR) a PERMANENT outcome requires every unread document to
+ * be permanently out of reach.
  *
- * The job selects an IPO because it holds an unread extractable document. A
- * worker that returns DONE while such a document is still unread did not do
- * the job's work (on staging 2026-09-23 the walk returned NO_DUE_FIELDS for
- * ten IPOs with zero plan rows and all ten were written DONE, then never
- * re-picked). Such a pass is PARTIAL:
+ * The job selects an IPO because it holds an unread extractable document. The
+ * class rule, applied to every outcome the worker can return:
  *
- *  - a document still awaiting its own retry (FAILED / IN_PROGRESS) makes it
- *    TRANSIENT: cause SOURCE_UNREACHABLE, the one class the selection re-picks
- *    at the same version (bounded by CLOSED_IPO_MAX_TRANSIENT_ATTEMPTS). The
- *    document's own retry cap then decides when it stops: at
+ *  - ANY unread document still awaiting its own retry (FAILED / IN_PROGRESS)
+ *    makes the row RE-PICKABLE: cause SOURCE_UNREACHABLE with a `transient:`
+ *    detail, whatever the worker said. DONE becomes PARTIAL; PARTIAL/FAILED
+ *    keep their outcome; a permanent worker cause (DOCUMENT_UNOBTAINABLE,
+ *    WRITE_SKIPPED, ...) is kept in the detail, never allowed to bury the
+ *    document. Round 1 did this for DONE only, so a walk returning
+ *    PARTIAL/DOCUMENT_UNOBTAINABLE stranded a document that was only backing
+ *    off. The document's own cap then decides when it stops: at
  *    MAX_EXTRACTION_ATTEMPTS it becomes MANUAL_REVIEW, which is terminal here.
- *  - only PENDING documents left (no stored file, no sha, an SME gate): the
- *    pass could not get at the document, so the worker's cause is kept, or
- *    DOCUMENT_UNOBTAINABLE -- permanent until the version changes.
- *
- * A worker that already reported PARTIAL/FAILED is left as it reported.
+ *  - only PENDING documents left and the worker said DONE: the pass could not
+ *    get at them (no stored file, no sha, an SME gate), so the worker's cause
+ *    is kept, or DOCUMENT_UNOBTAINABLE -- permanent until the version changes.
+ *  - a worker PARTIAL/FAILED with nothing retrying is left as it reported.
  */
 export function applyPendingDocumentGuard(
   r: ClosedIpoResourceResult,
   unread: UnreadDocumentCount
 ): ClosedIpoResourceResult {
   const total = unread.pending + unread.retrying;
-  if (r.outcome !== 'DONE' || total <= 0) return r;
+  if (total <= 0) return r;
   if (unread.retrying > 0) {
+    if (r.outcome !== 'DONE' && closedIpoCauseLabel(r.causeClass, r.causeDetail) === 'SOURCE_UNREACHABLE/transient') {
+      return r;
+    }
+    // With no extractor (ENABLE_FILING_AUTO_PERSIST off) no document is
+    // retriable by this job, so the permanent cause is the true one.
+    if (r.outcome !== 'DONE' && r.causeClass === 'EXTRACTOR_MISSING') return r;
     const note =
       `${TRANSIENT_DETAIL_PREFIX} ${unread.retrying} extractable document(s) awaiting retry on their own backoff` +
       (unread.pending > 0 ? `, ${unread.pending} still PENDING` : '');
+    const kept = r.causeClass ? `also ${r.causeClass}${r.causeDetail ? `: ${r.causeDetail}` : ''}` : r.causeDetail;
     return {
       ...r,
-      outcome: 'PARTIAL',
+      outcome: r.outcome === 'DONE' ? 'PARTIAL' : r.outcome,
       causeClass: 'SOURCE_UNREACHABLE',
-      causeDetail: r.causeDetail ? `${note}; ${r.causeDetail}` : note,
+      causeDetail: kept ? `${note}; ${kept}` : note,
     };
   }
+  if (r.outcome !== 'DONE') return r;
   const note = `${unread.pending} extractable document(s) still PENDING after this pass`;
   return {
     ...r,
@@ -474,14 +538,25 @@ export function classifyExtractionPass(pass: ClosedIpoExtractionPass): {
   outcome: ClosedIpoOutcome;
   causeClass?: ClosedIpoCauseClass;
   causeDetail?: string;
+  documentReadAttempted: boolean;
 } {
   // Explicit casts: scraper/ compiles with strict off, where a boolean-literal
   // discriminant does not narrow the union.
   if (!pass.attempted) {
     const skip = pass as Extract<ClosedIpoExtractionPass, { attempted: false }>;
-    return { outcome: 'PARTIAL', causeClass: skip.causeClass, causeDetail: `extraction not run: ${skip.reason}` };
+    return {
+      outcome: 'PARTIAL',
+      causeClass: skip.causeClass,
+      causeDetail: `extraction not run: ${skip.reason}`,
+      documentReadAttempted: false,
+    };
   }
   const r = (pass as Extract<ClosedIpoExtractionPass, { attempted: true }>).result;
+  // A document read was attempted when anything was spawned, extracted,
+  // persisted or failed. A pass whose only effect was skipping documents inside
+  // their backoff read nothing (review round 2 MINOR-1).
+  const documentReadAttempted =
+    (r.spawned ?? 0) + (r.anchorsSpawned ?? 0) + (r.extracted ?? 0) + (r.persisted ?? 0) + (r.failed ?? 0) > 0;
   const skipped = r.skipped.slice(0, 5).join('; ');
   if (r.failed > 0) {
     // Review round 1 MAJOR-2: an extractor failure (a timeout, a crash, a
@@ -494,6 +569,7 @@ export function classifyExtractionPass(pass: ClosedIpoExtractionPass): {
       outcome: r.persisted > 0 ? 'PARTIAL' : 'FAILED',
       causeClass: 'SOURCE_UNREACHABLE',
       causeDetail: `${TRANSIENT_DETAIL_PREFIX} ${r.failed} document(s) failed extraction or persist; each retries on its own backoff up to ${MAX_EXTRACTION_ATTEMPTS} attempts${skipped ? `; ${skipped}` : ''}`,
+      documentReadAttempted,
     };
   }
   if (r.skippedBudget > 0) {
@@ -501,9 +577,10 @@ export function classifyExtractionPass(pass: ClosedIpoExtractionPass): {
       outcome: 'PARTIAL',
       causeClass: 'SOURCE_UNREACHABLE',
       causeDetail: `${TRANSIENT_DETAIL_PREFIX} ${r.skippedBudget} document(s) left for the next run: spawn budget spent`,
+      documentReadAttempted,
     };
   }
-  return { outcome: 'DONE' };
+  return { outcome: 'DONE', documentReadAttempted };
 }
 
 /**

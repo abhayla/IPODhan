@@ -1690,6 +1690,7 @@ async function resourceClosedIpo(
   causeDetail?: string;
   fieldsWritten: number;
   fieldsLeftEmpty: number;
+  documentReadAttempted?: boolean;
 }> {
   const redis = getRedisClient();
 
@@ -1763,7 +1764,13 @@ async function resourceClosedIpo(
   // Worst of the two passes. The job itself still re-reads the pending
   // documents afterwards and refuses DONE while any remains PENDING.
   const combined = combineClosedIpoOutcomes(extractionOutcome, { outcome, causeClass, causeDetail });
-  return { ...combined, fieldsWritten, fieldsLeftEmpty };
+  // Review round 2 MINOR-1: tells the job whether this night spent an attempt.
+  return {
+    ...combined,
+    fieldsWritten,
+    fieldsLeftEmpty,
+    documentReadAttempted: extractionOutcome.documentReadAttempted,
+  };
 }
 
 /**

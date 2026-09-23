@@ -286,4 +286,76 @@ describe.skipIf(!DATABASE_URL)(`closed-IPO job extracts the documents it selecte
     expect([first.attempted, second.attempted, third.attempted]).toEqual([1, 1, 0]);
     expect(attempts.rows[0]?.attempts).toBe(2);
   }, 180_000);
+
+  // ---- Review round 2 (PR #912) -------------------------------------------
+  // MAJOR + MINOR-1, the Core proof: the only extractable document is FAILED
+  // inside its retry backoff, and the WALK returns a permanent cause. The row
+  // must stay re-pickable, and a night the document was not retried must not
+  // spend the IPO's attempt budget.
+  for (const walkCause of ['DOCUMENT_UNOBTAINABLE', 'WRITE_SKIPPED'] as const) {
+    it(`a document in backoff + a walk ${walkCause} ends re-pickable, and attempts do not advance`, async () => {
+      const { combineClosedIpoOutcomes } = await import('../../src/scheduler/closed-ipo-job.js');
+      await db.execute(sql`DELETE FROM closed_ipo_resourcing WHERE ipo_id = ${IPO_FAIL}::uuid`);
+      await db.execute(sql`UPDATE documents SET extraction_status = 'FAILED', retry_count = 1, extraction_error = NULL, updated_at = now()
+                            WHERE ipo_id = ${IPO_FAIL}::uuid`);
+      await invalidateDocs(IPO_FAIL);
+      const worker = async (id: string, candidate: Parameters<ExtractDocs>[0]) => {
+        const extractionHalf = await resourcer('real-text')(id, candidate);
+        const combined = combineClosedIpoOutcomes(extractionHalf, {
+          outcome: walkCause === 'WRITE_SKIPPED' ? 'FAILED' : 'PARTIAL',
+          causeClass: walkCause,
+          causeDetail: 'integration-717-r2 walk',
+        });
+        return { ...combined, fieldsWritten: 0, fieldsLeftEmpty: 3, documentReadAttempted: extractionHalf.documentReadAttempted };
+      };
+      const run = () =>
+        runClosedIpoJob({
+          db: db as never,
+          isCycleLockHeld: async () => false,
+          resourceIpo: worker,
+          resourcedAtVersion: VERSION,
+          restrictToIpoIds: [IPO_FAIL],
+          maxTransientAttempts: 2,
+        });
+      const first = await run();
+      const second = await run();
+      const third = await run();
+      const row = await ledger(IPO_FAIL);
+      const attempts = await pool.query('SELECT attempts FROM closed_ipo_resourcing WHERE ipo_id = $1', [IPO_FAIL]);
+      // eslint-disable-next-line no-console
+      console.log(`[717-r2-proof] walk=${walkCause} doc=${await docStatus(IPO_FAIL)} picks=${first.attempted},${second.attempted},${third.attempted} attempts=${attempts.rows[0]?.attempts} ledger=${JSON.stringify(row)}`);
+      expect(await docStatus(IPO_FAIL)).toBe('FAILED'); // the backoff held: nothing was read
+      expect(row?.cause_class).toBe('SOURCE_UNREACHABLE');
+      expect(String(row?.cause_detail)).toMatch(/^transient: 1 extractable document\(s\) awaiting retry/);
+      expect(String(row?.cause_detail)).toContain(walkCause);
+      // Re-picked every night at the same version while the document backs off...
+      expect([first.attempted, second.attempted, third.attempted]).toEqual([1, 1, 1]);
+      // ...without spending the budget that bounds real retries.
+      expect(attempts.rows[0]?.attempts).toBe(0);
+    }, 180_000);
+  }
+
+  // MINOR-3: a row the repair tool reopened is re-picked even at the version
+  // that wrote it DONE.
+  it('a false-DONE row reopened by the repair tool is re-picked at the SAME version', async () => {
+    const { reopenFalseDoneRows } = await import('../../scripts/repair-closed-ipo-false-done.js');
+    await db.execute(sql`DELETE FROM closed_ipo_resourcing WHERE ipo_id = ${IPO_FAIL}::uuid`);
+    await db.execute(sql`UPDATE documents SET extraction_status = 'PENDING', retry_count = 0, extraction_error = NULL
+                          WHERE ipo_id = ${IPO_FAIL}::uuid`);
+    await invalidateDocs(IPO_FAIL);
+    await db.execute(sql`INSERT INTO closed_ipo_resourcing (ipo_id, first_attempt_at, last_attempt_at, attempts, outcome, fields_written, fields_left_empty, resourced_at_version)
+                         VALUES (${IPO_FAIL}::uuid, now(), now(), 1, 'DONE', 0, 0, ${VERSION})`);
+    const noop = async () => ({ outcome: 'DONE' as const, fieldsWritten: 0, fieldsLeftEmpty: 0 });
+    const before = await runClosedIpoJob({ db: db as never, isCycleLockHeld: async () => false, resourceIpo: noop, resourcedAtVersion: VERSION, restrictToIpoIds: [IPO_FAIL] });
+    const changed = await reopenFalseDoneRows(db as never, [IPO_FAIL]);
+    const reopened = await pool.query('SELECT outcome::text, cause_class::text, resourced_at_version FROM closed_ipo_resourcing WHERE ipo_id = $1', [IPO_FAIL]);
+    const after = await runClosedIpoJob({ db: db as never, isCycleLockHeld: async () => false, resourceIpo: resourcer('real-text'), resourcedAtVersion: VERSION, restrictToIpoIds: [IPO_FAIL] });
+    const row = await pool.query('SELECT outcome::text, resourced_at_version FROM closed_ipo_resourcing WHERE ipo_id = $1', [IPO_FAIL]);
+    // eslint-disable-next-line no-console
+    console.log(`[717-r2-proof] repair before=${before.attempted} changed=${changed} reopened=${JSON.stringify(reopened.rows[0])} after=${after.attempted} doc=${await docStatus(IPO_FAIL)} row=${JSON.stringify(row.rows[0])}`);
+    expect(before.attempted).toBe(0); // DONE at this version: not picked
+    expect(changed).toBe(1);
+    expect(after.attempted).toBe(1); // reopened: picked at the SAME version
+    expect(row.rows[0]?.resourced_at_version).toBe(VERSION);
+  }, 180_000);
 });
