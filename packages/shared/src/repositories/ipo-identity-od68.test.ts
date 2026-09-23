@@ -177,6 +177,22 @@ describe('resolveIpoRow — OD-68 matching', () => {
     expect(got).toBeNull();
   });
 
+  it('OD-71: a WITHDRAWN row never binds a refiling by name - it is a new offering', async () => {
+    const withdrawn = { ...RAYS, id: 'rays-withdrawn', status: 'WITHDRAWN' };
+    const got = await resolveIpoRow(
+      repo({ findByNormalizedName: vi.fn().mockResolvedValue(withdrawn), findBySlug: vi.fn().mockResolvedValue(withdrawn) }),
+      {
+        companyName: 'Rays of Belief Ltd.',
+        normalizedName: 'rays of belief',
+        slug: 'rays-of-belief-ltd',
+        openDate: null,
+        priceRangeMin: null,
+        segment: 'MAINBOARD',
+      }
+    );
+    expect(got).toBeNull();
+  });
+
   it('the fold tier declines when two rows share the fold and the day (ambiguous)', async () => {
     const twin = { ...RAYS, id: 'rays-2', slug: 'rays-of-belief-ltd-o' };
     const got = await resolveIpoRow(repo({ findLiveByOpenDate: vi.fn().mockResolvedValue([RAYS, twin]) }), {

@@ -293,9 +293,15 @@ function daysApart(a: string, b: string): number {
 }
 
 /**
- * OD-68 + OD-35 (PR #910 review round 1, MAJOR-1): may a NAME match bind?
+ * OD-68 + OD-35 + OD-71 (PR #910 review round 1, MAJOR-1; round 2 fix): may a NAME match bind?
  *
  * The rule, in order — a candidate is REFUSED when:
+ *   0. the candidate's status is WITHDRAWN (OD-71: a withdrawn draft means the refiling is a
+ *      new offering, never an update to the withdrawn row — `holdIfIdentityUnbound`
+ *      (ipo-repository.ts) already excludes WITHDRAWN from the hold query, but every BIND path
+ *      (findByNormalizedName, findBySlug, the fuzzy and fold tiers) fed this function a candidate
+ *      with no status check at all, so a refiled record silently bound to and overwrote the
+ *      withdrawn row instead of creating a new one);
  *   1. the segments are both known and differ (an SME and a mainboard issue are two offerings);
  *   2. the price bands are both known (> 0) and differ;
  *   3. the open dates are both known and more than 180 days apart (OD-35: a new offering);
@@ -311,9 +317,12 @@ function daysApart(a: string, b: string): number {
  */
 function nameMatchContradiction(
   identity: Pick<IpoIdentity, 'openDate' | 'priceRangeMin' | 'segment'>,
-  candidate: { openDate?: unknown; priceRangeMin?: unknown; segment?: unknown },
+  candidate: { openDate?: unknown; priceRangeMin?: unknown; segment?: unknown; status?: unknown },
   opts: { looseTier: boolean }
 ): string | null {
+  if (candidate.status === 'WITHDRAWN') {
+    return 'candidate is WITHDRAWN (OD-71: a refiling is a new offering, never a bind to the withdrawn row)';
+  }
   if (segmentsConflict(identity.segment, (candidate.segment as string | null | undefined) ?? null)) {
     return `segment differs (${String(identity.segment)} vs ${String(candidate.segment)})`;
   }

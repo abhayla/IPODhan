@@ -35,9 +35,10 @@ const ID = {
   postpone: '00000000-0000-4000-9068-000000000007',
   laxmiIndia: '00000000-0000-4000-9068-000000000008',
   sunriseSme: '00000000-0000-4000-9068-000000000009',
+  withdrawn: '00000000-0000-4000-9068-000000000010',
 };
 const SEEDED = Object.values(ID);
-const FOLDS = ['rays of belief', 'himalayan solar', 'himalaya nutravedics', 'technocraft ventures', 'technocrats plasma systems', 'g v electricals', 'od68 merge probe', 'od68 postpone probe', 'laxmi finance', 'sunrise agro'];
+const FOLDS = ['rays of belief', 'himalayan solar', 'himalaya nutravedics', 'technocraft ventures', 'technocrats plasma systems', 'g v electricals', 'od68 merge probe', 'od68 postpone probe', 'laxmi finance', 'sunrise agro', 'od71 withdrawn refile'];
 
 let pool: Pool | null = null;
 let db: ReturnType<typeof drizzle> | null = null;
@@ -122,7 +123,8 @@ beforeEach(async () => {
       (${ID.gv}::uuid, 'G.V.Electricals Ltd.', 'g-v-electricals-ltd', 'IPO', 'SME', 'LISTED', '2026-07-31', 130, 130, 'GVELECTRIC', NULL),
       (${ID.postpone}::uuid, 'OD68 Postpone Probe Ltd.', 'od68-postpone-probe-ltd', 'IPO', 'SME', 'UPCOMING', '2026-10-05', 100, 105, NULL, NULL),
       (${ID.laxmiIndia}::uuid, 'Laxmi India Finance Ltd', 'laxmi-india-finance-ltd', 'IPO', 'MAINBOARD', 'UPCOMING', '2026-10-01', 150, 158, NULL, NULL),
-      (${ID.sunriseSme}::uuid, 'Sunrise Agro Ltd', 'sunrise-agro-sme-ltd', 'IPO', 'SME', 'UPCOMING', '2026-10-01', 50, 52, NULL, NULL)
+      (${ID.sunriseSme}::uuid, 'Sunrise Agro Ltd', 'sunrise-agro-sme-ltd', 'IPO', 'SME', 'UPCOMING', '2026-10-01', 50, 52, NULL, NULL),
+      (${ID.withdrawn}::uuid, 'OD71 Withdrawn Refile Ltd', 'od71-withdrawn-refile-ltd-draft1', 'IPO', 'MAINBOARD', 'WITHDRAWN', NULL, NULL, NULL, NULL, NULL)
   `);
 });
 
@@ -217,6 +219,20 @@ describe.skipIf(!DATABASE_URL)('OD-68 matching on the real resolver + create pat
     expect(outcome).toBe('created');
     expect((await rowsFolding('technocraft ventures')).length).toBe(1);
     expect((await rowsFolding('technocrats plasma systems')).length).toBe(1);
+  });
+
+  it('OD-71: a WITHDRAWN row never binds a refiling by name - the refiled draft is a new offering, two rows', async () => {
+    // The withdrawn seed row is given a distinct slug (od71-withdrawn-refile-ltd-draft1) so the
+    // NAME-based tiers (findByNormalizedName / findBySlug) are the only path that could bind the
+    // incoming record to it (no slug collision to mask the check). Before the fix,
+    // findByNormalizedName returned the WITHDRAWN row and nameMatchContradiction let it bind.
+    const outcome = await ingest({ companyName: 'OD71 Withdrawn Refile Ltd', openDate: null, priceRangeMin: null, segment: 'MAINBOARD' });
+    expect(outcome).toBe('created');
+    const rows = await rowsFolding('od71 withdrawn refile');
+    expect(rows.length).toBe(2);
+    // The withdrawn row itself is untouched (still WITHDRAWN, still its own slug).
+    const withdrawn = await db!.execute(sql`SELECT status, slug FROM ipos WHERE id = ${ID.withdrawn}::uuid`);
+    expect(withdrawn.rows).toEqual([{ status: 'WITHDRAWN', slug: 'od71-withdrawn-refile-ltd-draft1' }]);
   });
 });
 
