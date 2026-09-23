@@ -122,11 +122,23 @@ describe('OD-35 / OD-70 / OD-71: a CIN names the company, not the offering', () 
     expect(result).toBeNull();
   });
 
+  it('an FPO of the same company never binds to the IPO row by CIN either (OD-35: IPO -> FPO is a new row, no reclassification exception on the CIN step)', async () => {
+    const r = repo({ findByCin: vi.fn().mockResolvedValue([ADROIT]) });
+    const result = await resolveIpoRow(r, { ...renamed, offeringType: 'FPO' });
+    expect(result).toBeNull();
+  });
+
   it('among the company rows, the one of the incoming offering type is chosen (IPO + OFS share a CIN)', async () => {
     const ofs = { ...ADROIT, id: 'adroit-ofs', offeringType: 'OFS', slug: 'adroit-ofs-2026' } as unknown as IPO;
     const r = repo({ findByCin: vi.fn().mockResolvedValue([ADROIT, ofs]) });
     expect((await resolveIpoRow(r, { ...renamed, offeringType: 'OFS' }))?.id).toBe('adroit-ofs');
     expect((await resolveIpoRow(r, { ...renamed, offeringType: 'IPO' }))?.id).toBe('adroit');
+  });
+
+  it('a CIN row of a different segment (SME vs MAINBOARD) is not bound by CIN (an SME and a mainboard offering of the same company are two offerings)', async () => {
+    const r = repo({ findByCin: vi.fn().mockResolvedValue([{ ...ADROIT, segment: 'SME' }]) });
+    const result = await resolveIpoRow(r, { ...renamed, segment: 'MAINBOARD' });
+    expect(result).toBeNull();
   });
 
   it('two eligible rows on one CIN (the real Rays of Belief pair) is ambiguous: no CIN bind, later steps decide', async () => {

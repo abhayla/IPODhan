@@ -184,20 +184,23 @@ function cinContradiction(incomingCin: string | null, candidateCin: unknown): st
 }
 
 /**
- * OD-35 / OD-70: two KNOWN offering types that differ are two offerings of one
+ * OD-35: two KNOWN offering types that differ are two offerings of one
  * company (a rights issue, a buyback, an OFS is never written into the IPO
- * row). IPO <-> FPO is left to the existing reclassification path
- * (`guardSmeOfferingTypeAgainstFpo`), the same posture as `ofsIdentityConflict`.
+ * row) — this includes IPO <-> FPO: OD-35's own text is explicit ("Same
+ * identifier, offering type changes (IPO -> FPO, IPO -> rights) | new row"),
+ * so this CIN-step guard does not exempt that pair. This function is used
+ * ONLY by `resolveByCin` (the CIN step) — the unrelated write-path
+ * reclassification helper `guardSmeOfferingTypeAgainstFpo` is untouched by
+ * this change and keeps its own IPO<->FPO handling.
  */
 function separateOffering(
   identityOfferingType: string | null | undefined,
   candidateOfferingType: string | null | undefined
 ): boolean {
-  if (!identityOfferingType || !candidateOfferingType || identityOfferingType === candidateOfferingType) {
+  if (!identityOfferingType || !candidateOfferingType) {
     return false;
   }
-  const reclassifiable = new Set(['IPO', 'FPO']);
-  return !(reclassifiable.has(identityOfferingType) && reclassifiable.has(candidateOfferingType));
+  return identityOfferingType !== candidateOfferingType;
 }
 
 /**
