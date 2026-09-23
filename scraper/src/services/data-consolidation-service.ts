@@ -232,6 +232,21 @@ const HIGH_VALUE_LIVE_FIELDS = new Set<string>([
   'closeDate',
 ]);
 
+/**
+ * OD-73 / OD-35 (owner, 2026-09-23): the dates an exchange states — open, close, listing. When
+ * the exchange that set one sends a different value, that is a postponement and it updates the
+ * same row; a website that set a date cannot move it on its own (equal rank is ignored).
+ */
+const EXCHANGE_TIMETABLE_FIELDS = new Set<string>(['openDate', 'closeDate', 'listingDate']);
+
+function isExchangePostponement(fieldName: string, existingSource: ScraperSource, incomingSource: ScraperSource): boolean {
+  return (
+    EXCHANGE_TIMETABLE_FIELDS.has(fieldName) &&
+    EXCHANGE_SOURCES.has(incomingSource) &&
+    existingSource === incomingSource
+  );
+}
+
 /** IPO lifecycle states in which a HIGH_VALUE field dispute must HOLD rather than assert one-sided. */
 const LIVE_STATUSES = new Set<string>(['UPCOMING', 'OPEN']);
 
@@ -1965,33 +1980,13 @@ export class DataConsolidationService {
         }
       }
 
-      // F6 (W-37): the VALUE doesn't change, but a SECOND source independently
-      // reporting it is real evidence — it raises the stored confidence by one
-      // confirmation step (NSE 90 -> 95). Only a DIFFERENT source counts; the
-      // same source repeating itself confirms nothing and must not touch the
-      // provenance row at all (that is the W-24 losing-write class).
-      if (
-        FEATURE_FLAGS.ENABLE_SOURCE_TRACKING &&
-        !this.currentShadowMode &&
-        existingSource !== undefined &&
-        existingSource !== incomingSource
-      ) {
-        await this.trackFieldSource({
-          ipoId,
-          tableName,
-          // Generic path — real key arrives with the child writer (s5b/s7a/s7b).
-          rowKey,
-          fieldName,
-          value: existingValue,
-          source: existingSource,
-          confirmations: 1,
-          // W-24: previous_value/previous_source are what the row held BEFORE
-          // this write — the same value from the same source. Passing them
-          // keeps the confirmation from nulling real history.
-          previousValue: existingValue,
-          previousSource: existingSource,
-        });
-      }
+      // OD-73 (owner, 2026-09-23): "An identical incoming value is never written and never
+      // re-stamps provenance." This branch used to re-write the `field_sources` row as an F6
+      // "confirmation" whenever a DIFFERENT source repeated the stored value — on every cycle,
+      // so 17 live IPOs' price bands and dates were re-stamped each run with nothing changed
+      // (#908: source CHITTORGARH, previous_source CHITTORGARH, previous_value = stored value,
+      // confidence 65 = base 60 + one confirmation). Agreement changes nothing, so nothing is
+      // written; the converged-conflict cleanup above is the only side effect it keeps.
 
       // W-83 (Deepa walk, 2026-09-02): this used to return `normalizedExisting`.
       // Normalization is a COMPARISON form, not a storable value — for a
@@ -2262,6 +2257,9 @@ export class DataConsolidationService {
     // unresolved dispute must win over "NSE happens to rank higher".
     if (
       HIGH_VALUE_LIVE_FIELDS.has(fieldName) &&
+      // OD-73 / OD-35: an exchange revising a date IT stated is a postponement, not a
+      // cross-source dispute — it updates the same row through the same-source refresh below.
+      !isExchangePostponement(fieldName, existingSource, incomingSource) &&
       ipoStatus !== undefined &&
       LIVE_STATUSES.has(ipoStatus) &&
       existingSource !== 'ADMIN' &&

@@ -70,6 +70,7 @@ import {
   STEP_LEDGER_WINDOW_HOURS,
   crossCheckNseStatuses,
   findSameIpoTwoRows, checkIpoTitleInName, findCompanyTwoLiveRows, findNameBoundLiveRows, findUndecidedIdentityHolds,
+  findSettledFieldRewrites, SETTLED_IPO_FIELDS,
 } from './lib/detection-floor-checks.mjs';
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
@@ -1371,6 +1372,58 @@ async function checkL() {
 // docs/design/data-sourcing-pull-model.md §2.3.3.1's standing sweep (F-103)
 // and §2.3.3.2's OD-34 name-bound reporting. Detection only — no
 // matching/write-path change.
+// ---- (s): OD-73 settled fields (#908) -------------------------------------------------
+// docs/design/data-sourcing-pull-model.md §3.2 (OD-73, OD-65): a settled `ipos` field is never
+// re-stamped by an identical value and never rewritten by an equal- or lower-ranked source. The
+// rank is the field manifest's (scraper/config/field-manifest.json) — the same file the writer's
+// resolver reads, never a second hand-kept order. Names every offending IPO and field.
+const SETTLED_WINDOW_HOURS = 24;
+async function checkSettledFieldRewrites() {
+  const manifest = JSON.parse(
+    readFileSync(new URL('../scraper/config/field-manifest.json', import.meta.url), 'utf8')
+  );
+  const rows = await q(
+    `SELECT i.slug, i.segment::text AS segment, i.listing_exchanges AS "listingExchanges",
+            fs.field_name AS "fieldName", fs.source::text AS source,
+            fs.previous_source::text AS "previousSource", fs.previous_value AS "previousValue",
+            fs.updated_at::text AS "updatedAt",
+            CASE fs.field_name
+              WHEN 'priceRangeMin' THEN i.price_range_min::text
+              WHEN 'priceRangeMax' THEN i.price_range_max::text
+              WHEN 'lotSize' THEN i.lot_size::text
+              WHEN 'issueSize' THEN i.issue_size::text
+              WHEN 'faceValue' THEN i.face_value::text
+              WHEN 'openDate' THEN i.open_date::text
+              WHEN 'closeDate' THEN i.close_date::text
+              WHEN 'listingDate' THEN i.listing_date::text
+              WHEN 'registrar' THEN i.registrar
+              WHEN 'leadManagers' THEN i.lead_managers::text
+            END AS "currentValue"
+       FROM field_sources fs JOIN ipos i ON i.id = fs.ipo_id
+      WHERE fs.table_name = 'ipos' AND fs.row_key = ''
+        AND fs.field_name = ANY($1)
+        AND fs.updated_at > (now() AT TIME ZONE 'UTC') - make_interval(hours => $2)`,
+    [SETTLED_IPO_FIELDS, SETTLED_WINDOW_HOURS]
+  );
+  const findings = findSettledFieldRewrites(rows, manifest);
+  const byIpo = new Map();
+  for (const f of findings) {
+    if (!byIpo.has(f.slug)) byIpo.set(f.slug, []);
+    byIpo.get(f.slug).push(f);
+  }
+  for (const [slug, fs] of byIpo) {
+    notify('s_settled_field_rewritten', 'P2', slug, 'settled field re-stamped or rewritten (OD-73)',
+      fs.map((f) => `${f.fieldName} ${f.kind} ${f.previousSource}->${f.source} (${f.previousValue} -> ${f.currentValue})`).join('; '));
+  }
+  record('s_settled_field_rewritten',
+    `no settled ipos field (${SETTLED_IPO_FIELDS.join('/')}) re-stamped with an identical value or rewritten by an equal/lower-ranked source in ${SETTLED_WINDOW_HOURS}h (§3.2 OD-73)`,
+    findings.length === 0 ? 'PASS' : 'FAIL',
+    findings.length
+      ? `${byIpo.size} IPO(s): ` + [...byIpo.entries()].slice(0, MAX_OFFENDERS)
+        .map(([slug, fs]) => `${slug} [${fs.map((f) => `${f.fieldName}:${f.kind}`).join(',')}]`).join('; ')
+      : `0 of ${rows.length} settled-field provenance write(s) in ${SETTLED_WINDOW_HOURS}h break OD-73`);
+}
+
 async function checkIdentity() {
   const identityRows = await q(
     `SELECT id, slug, company_name AS "companyName", cin, isin, symbol,
@@ -2641,6 +2694,7 @@ async function main() {
   await checkH();
   checkI();
   await checkIdentity();
+  await checkSettledFieldRewrites();
   await checkK();
   await checkCycleOverrunAudit();
   await checkL();

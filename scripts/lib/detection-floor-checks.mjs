@@ -1163,3 +1163,119 @@ export function findCompanyTwoLiveRows(rows = []) {
   }
   return groups;
 }
+
+// ---- s_settled_field_rewritten: OD-73 / OD-65 (#908) ---------------------------------
+// OD-73 (owner, 2026-09-23): a field is settled once the best-ranked source seen so far has set
+// it. After that only a HIGHER-ranked source may change it; an identical incoming value is never
+// written and never re-stamps provenance; an exchange may move a date it stated (OD-35).
+// Live figures (status, subscription, listing-day prices) are never settled and are not listed.
+
+/** `ipos` fields OD-73 settles, camelCase as `field_sources.field_name` stores them. */
+export const SETTLED_IPO_FIELDS = Object.freeze([
+  'priceRangeMin', 'priceRangeMax', 'lotSize', 'issueSize', 'faceValue',
+  'openDate', 'closeDate', 'listingDate', 'registrar', 'leadManagers',
+]);
+
+const EXCHANGE_DATE_FIELDS = new Set(['openDate', 'closeDate', 'listingDate']);
+const EXCHANGES = new Set(['NSE', 'BSE']);
+
+/** field_sources writer code -> field-manifest.json rank code. The writer stores DRHP for every filing document. */
+function manifestCode(source) {
+  return source === 'DRHP' ? 'DOC' : source;
+}
+
+/** camelCase field_sources name -> `ipos.<snake>` manifest key. */
+function manifestKey(fieldName) {
+  return `ipos.${fieldName.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)}`;
+}
+
+/** MAINBOARD / SME_BSE / SME_NSE — the manifest's rank keys. */
+export function manifestIpoType(segment, listingExchanges) {
+  if (String(segment ?? '').toUpperCase() !== 'SME') return 'MAINBOARD';
+  const ex = Array.isArray(listingExchanges) ? listingExchanges : [];
+  return ex.includes('NSE') && !ex.includes('BSE') ? 'SME_NSE' : 'SME_BSE';
+}
+
+/**
+ * Rank index of `source` for `fieldName` from the field manifest (0 = best). A source the
+ * manifest does not rank for this field/ipoType is Infinity (lowest). ADMIN is -1 (always wins).
+ */
+export function manifestRank(manifest, fieldName, ipoType, source) {
+  if (source === 'ADMIN') return -1;
+  const ranks = manifest?.fields?.[manifestKey(fieldName)]?.rank?.[ipoType];
+  if (!Array.isArray(ranks)) return Infinity;
+  const i = ranks.indexOf(manifestCode(source));
+  return i === -1 ? Infinity : i;
+}
+
+function comparable(value) {
+  if (value === null || value === undefined) return null;
+  let v = value;
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (t.startsWith('[')) {
+      try { v = JSON.parse(t); } catch { /* keep the string */ }
+    } else if (/^-?\d+(\.\d+)?$/.test(t)) {
+      return String(Number(t));
+    } else if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
+      return t.slice(0, 10);
+    } else {
+      return t.toLowerCase();
+    }
+  }
+  if (Array.isArray(v)) return JSON.stringify(v.map((x) => String(x).trim().toLowerCase()).sort());
+  if (typeof v === 'number') return String(v);
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return String(v).trim().toLowerCase();
+}
+
+/**
+ * Pure predicate. `rows` are `field_sources` rows for `ipos` settled fields written in the
+ * window, each joined with the IPO's current stored value (`currentValue`), `slug`, `segment`
+ * and `listingExchanges`. Returns one finding per row that breaks OD-73:
+ *   IDENTICAL_RESTAMP   — the row was re-stamped although previous_value equals the stored value
+ *   EQUAL_RANK_REWRITE  — a different value written by the same or an equally-ranked source
+ *                         (an exchange moving a date it stated, and a document refresh, are allowed)
+ *   LOWER_RANK_REWRITE  — a different value written by a source ranked below the one it replaced
+ * A row with no previous_source is a first write (or an untracked value earning provenance) and is
+ * never a finding.
+ */
+export function findSettledFieldRewrites(rows, manifest) {
+  const findings = [];
+  for (const r of rows ?? []) {
+    if (!SETTLED_IPO_FIELDS.includes(r.fieldName)) continue;
+    if (!r.previousSource || !r.source) continue;
+    if (r.source === 'ADMIN') continue;
+    const prev = comparable(r.previousValue);
+    const cur = comparable(r.currentValue);
+    if (prev === null) continue;
+    if (prev === cur) {
+      findings.push({ ...pick(r), kind: 'IDENTICAL_RESTAMP' });
+      continue;
+    }
+    if (r.source === r.previousSource) {
+      if (EXCHANGE_DATE_FIELDS.has(r.fieldName) && EXCHANGES.has(r.source)) continue; // OD-35 postponement
+      if (r.source === 'DRHP') continue; // a later document of the same filing outranks the earlier one
+      findings.push({ ...pick(r), kind: 'EQUAL_RANK_REWRITE' });
+      continue;
+    }
+    const ipoType = manifestIpoType(r.segment, r.listingExchanges);
+    const newRank = manifestRank(manifest, r.fieldName, ipoType, r.source);
+    const oldRank = manifestRank(manifest, r.fieldName, ipoType, r.previousSource);
+    if (newRank < oldRank) continue; // a higher-ranked source replaced it (OD-73)
+    findings.push({ ...pick(r), kind: newRank === oldRank ? 'EQUAL_RANK_REWRITE' : 'LOWER_RANK_REWRITE' });
+  }
+  return findings;
+}
+
+function pick(r) {
+  return {
+    slug: r.slug,
+    fieldName: r.fieldName,
+    source: r.source,
+    previousSource: r.previousSource,
+    previousValue: r.previousValue,
+    currentValue: r.currentValue,
+    updatedAt: r.updatedAt,
+  };
+}

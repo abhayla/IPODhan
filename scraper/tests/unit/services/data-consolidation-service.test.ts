@@ -471,7 +471,9 @@ describe('DataConsolidationService', () => {
       // value is evidence, and it raises the stored confidence by one
       // confirmation step. The same source repeating itself still writes nothing
       // (covered in consolidation-field-confidence.test.ts).
-      it('should record a confirmation (not a value change) when another source reports the identical value', async () => {
+      // OD-73 (owner, 2026-09-23): an identical incoming value is never written and never
+      // re-stamps provenance — this used to record an F6 "confirmation" every cycle (#908).
+      it('writes nothing and re-stamps no provenance when another source reports the identical value', async () => {
         const existingFieldSources = [{
           ipoId: 'test-ipo',
           tableName: 'ipos',
@@ -497,16 +499,7 @@ describe('DataConsolidationService', () => {
         });
 
         expect(result.fieldsUpdated).toBe(0);
-        expect(mockFieldSourcesRepo.trackFieldUpdate).toHaveBeenCalledWith(
-          expect.objectContaining({
-            fieldName: 'lot_size',
-            source: 'NSE', // owning source unchanged
-            value: '100',
-            confidence: 95, // NSE 90 + 5 (one confirmation)
-            previousValue: '100',
-            previousSource: 'NSE',
-          })
-        );
+        expect(mockFieldSourcesRepo.trackFieldUpdate).not.toHaveBeenCalled();
       });
     });
 

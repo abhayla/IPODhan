@@ -1553,3 +1553,42 @@ test('(i) MUTATION: dropping the slug rule from checkIpoTitleInName misses a cle
   };
   assert.equal(mutatedNoSlugRule(rowSlugOnly), null, 'mutation (slug rules dropped) misses this clean-name/dirty-slug fixture');
 });
+
+// ---- s_settled_field_rewritten (OD-73 / OD-65, #908) ------------------------------------
+import { findSettledFieldRewrites, manifestRank } from '../lib/detection-floor-checks.mjs';
+
+const SETTLED_MANIFEST = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scraper', 'config', 'field-manifest.json'), 'utf8')
+);
+const settledRow = (o) => ({ slug: 'x', segment: 'MAINBOARD', listingExchanges: ['NSE', 'BSE'], updatedAt: '2026-09-23 03:15:19', ...o });
+
+test('s_settled_field_rewritten: flags the staging Adroit re-stamp (CHITTORGARH->CHITTORGARH, 126 -> 126) as IDENTICAL_RESTAMP', () => {
+  const f = findSettledFieldRewrites([
+    settledRow({ slug: 'adroit-industries-india-ltd', segment: 'SME', listingExchanges: ['NSE'], fieldName: 'priceRangeMin', source: 'CHITTORGARH', previousSource: 'CHITTORGARH', previousValue: '126', currentValue: '126' }),
+    settledRow({ slug: 'adroit-industries-india-ltd', segment: 'SME', listingExchanges: ['NSE'], fieldName: 'openDate', source: 'CHITTORGARH', previousSource: 'CHITTORGARH', previousValue: '2026-09-23', currentValue: '2026-09-23' }),
+  ], SETTLED_MANIFEST);
+  assert.deepEqual(f.map((x) => `${x.slug}:${x.fieldName}:${x.kind}`), [
+    'adroit-industries-india-ltd:priceRangeMin:IDENTICAL_RESTAMP',
+    'adroit-industries-india-ltd:openDate:IDENTICAL_RESTAMP',
+  ]);
+});
+
+test('s_settled_field_rewritten: passes the Vivekanand higher-rank replacement (issue size BSE Rs 19.2 cr -> CHITTORGARH Rs 22.2 cr)', () => {
+  assert.ok(manifestRank(SETTLED_MANIFEST, 'issueSize', 'SME_BSE', 'CHITTORGARH') < manifestRank(SETTLED_MANIFEST, 'issueSize', 'SME_BSE', 'BSE'));
+  const f = findSettledFieldRewrites([
+    settledRow({ slug: 'vivekanand-cotspin-ltd', segment: 'SME', listingExchanges: ['BSE'], fieldName: 'issueSize', source: 'CHITTORGARH', previousSource: 'BSE', previousValue: '192000000.00', currentValue: '222000000.00' }),
+  ], SETTLED_MANIFEST);
+  assert.deepEqual(f, []);
+});
+
+test('s_settled_field_rewritten: passes an exchange postponement and a first write; flags equal- and lower-rank rewrites', () => {
+  const f = findSettledFieldRewrites([
+    settledRow({ slug: 'postponed', fieldName: 'openDate', source: 'NSE', previousSource: 'NSE', previousValue: '2026-09-24', currentValue: '2026-09-29' }),
+    settledRow({ slug: 'first', fieldName: 'lotSize', source: 'BSE', previousSource: null, previousValue: null, currentValue: '120' }),
+    settledRow({ slug: 'site-moved-band', fieldName: 'priceRangeMin', source: 'CHITTORGARH', previousSource: 'CHITTORGARH', previousValue: '126', currentValue: '130' }),
+    settledRow({ slug: 'lower-lot', fieldName: 'lotSize', source: 'NSE', previousSource: 'BSE', previousValue: '100', currentValue: '120' }),
+    settledRow({ slug: 'higher-lot', fieldName: 'lotSize', source: 'BSE', previousSource: 'NSE', previousValue: '100', currentValue: '120' }),
+    settledRow({ slug: 'live-figure', fieldName: 'status', source: 'NSE', previousSource: 'NSE', previousValue: 'OPEN', currentValue: 'OPEN' }),
+  ], SETTLED_MANIFEST);
+  assert.deepEqual(f.map((x) => `${x.slug}:${x.kind}`), ['site-moved-band:EQUAL_RANK_REWRITE', 'lower-lot:LOWER_RANK_REWRITE']);
+});

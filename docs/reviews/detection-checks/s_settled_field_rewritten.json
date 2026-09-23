@@ -1,0 +1,11 @@
+{
+  "id": "s_settled_field_rewritten",
+  "findingClass": "a settled ipos field (price band, lot, issue size, face value, open/close/listing date, registrar, lead managers) re-stamped by an identical value, or rewritten by an equal- or lower-ranked source, after the best-ranked source has set it (OD-73 / OD-65)",
+  "round7Findings": [],
+  "failThreshold": "any field_sources row for a settled ipos field written in the last 24 h whose previous_value equals the stored value (IDENTICAL_RESTAMP), or whose new value came from the same website or an equal/lower field-manifest rank than the previous source (EQUAL_RANK_REWRITE / LOWER_RANK_REWRITE); an exchange moving a date it stated (OD-35) and a later document of the same filing are allowed",
+  "severity": "P2",
+  "unverifiableWhen": "never — always runs against field_sources joined to ipos",
+  "section": "checks",
+  "spec_ref": ["3.2"],
+  "note": "#908. Rank read from scraper/config/field-manifest.json, the writer resolver's own file. First staging run 2026-09-23 (before the fix deploys): 103 IDENTICAL_RESTAMP rows across 24 IPOs in 24 h (Adroit Industries 126 -> 126 among them), 40 settled-field writes passed."
+}
