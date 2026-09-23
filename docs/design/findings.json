@@ -8,8 +8,8 @@
       "engineering (independent)",
       "verification model (independent)"
     ],
-    "raw_findings": 55,
-    "consolidated": 40,
+    "raw_findings": 67,
+    "consolidated": 52,
     "note": "55 raw findings across four passes deduplicate to 40 tracked items. Status is the point of this file: a finding with no status is a finding nobody closes."
   },
   "status_vocabulary": {
@@ -1275,6 +1275,114 @@
       "title": "D12's negation list was a universal excuse for putting a document read back on a clock",
       "detail": "The list exempting a line from D12's on-a-clock rule included 'was', 'goes', 'until' and 'without' — ordinary words that appear in perfectly affirmative sentences. The mutation 'Each offer document is re-read every 30 minutes until the extraction goes clean' schedules exactly the behaviour the owner has now twice said no to, and the gate waved it through on the word 'until'. Same shape as the (LOCAL) marker that became a universal excuse in the card gate.",
       "fixed_in": "D12's NEGATION now lists only words that actually deny the behaviour or place it in the past (never, not, no longer, nothing, used to, is/was removed, stops being/doing). Proven by the case 'D12 documents on a clock - re-read every 30 minutes, in a sentence containing \"until\"'."
+    },
+    {
+      "id": "F-124",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "Websites never carry the CIN",
+      "detail": "NSE API (public-past-issues, ipo-detail?symbol=NSE), BSE API (GetMkt_ISSUE_BBS_IPO) and Chittorgarh have no CIN field. Only offer documents print it (cover pp. 1 and 3). Staging: cin filled on 56 of 326 IPO/FPO rows, all 56 from DRHP (field_sources source=DRHP). NSE IPO: CIN U67120MH1992PLC069769 on DRHP pp.1,3 (12 hits), RHP pp.1,3, price band ad p.1. Price band ad and RHP print the CIN but it is only taken from the DRHP today. Bears on OD-34 step 1. Measured 2026-09-23."
+    },
+    {
+      "id": "F-125",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "SEBI has no single \"draft filing number\"; it numbers each document",
+      "detail": "NSE: DRHP 102189 (18 Jun 2026), RHP 104428 (11 Sep 2026), Prospectus 104637 (22 Sep 2026). Hero Motors: 86112 DRHP (26 Aug 2024), 95172 second DRHP (10 Jul 2025), 103180 corrigendum, 104121 addendum, 104330 corrigendum to addendum, 104589 Prospectus (21 Sep 2026). Nothing links a draft's number to its RHP's. The only per-offering SEBI number printed is the OBSERVATION LETTER number, and only in the RHP/Prospectus: measured on the 40 staging documents with page text: filled in 10 of 12 RHP/Prospectus, \"[●]\" in 6 of 7 DRHPs. NSE: DRHP p.547 \"SEBI observation letter bearing number [●] dated [●]\"; RHP p.600 \"HO/49/11/11(323)2026-CFD-RAC-DIL4 dated September 4, 2026\". So OD-34 step 2 (\"the SEBI draft filing number\", \"available from the day the draft is filed\", §2.3.3.2 row 2) names an identifier that does not exist in that form. Also: the observation date needed by OD-35's lapsed-draft rule is printed only in an RHP, i.e. never for a draft that lapses — so it cannot come from our documents for the case it exists for. Measured 2026-09-23."
+    },
+    {
+      "id": "F-126",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "Each source has its own record number, and we store almost none of them",
+      "detail": "NSE IPO: NSE symbol NSE (NSE and BSE APIs, series EQ); BSE IPO_NO 7977 and ScripCode 4827 (issue-stage code; the same 4827 is the ipo= param of BSE's bid forms); BSE listing code 544937 (only on Chittorgarh pre-listing); Chittorgarh page id 3151 (/ipo/nse-ipo/3151/); SEBI ids above; ISIN INE721I01024 (only Chittorgarh, a day before listing). Our row: symbol only; bse_scrip_code empty on 0 of 326 rows; symbol filled 296/326, of which 196 were written by CHITTORGARH, 43 BSE, 43 NSE, 10 MONEYCONTROL, 2 ADMIN. The BSE scraper fetches by IPO_NO (bse-api-scraper.ts:449 fetchBSEDetail) and discards it. Measured 2026-09-23."
+    },
+    {
+      "id": "F-127",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "Source record numbers change when an issue is postponed and relaunched",
+      "detail": "Dhanwel Hybrid Seeds: BSE IPO_NO 7794 / ScripCode 4650 (\"Dhanwel Hybird Seeds Limited\", 23 Jun 2026, notes \"issue ... has been postponed\") then IPO_NO 7900 / ScripCode 4755 (\"Dhanwel Hybrid Seeds Limited\", 19–21 Aug 2026), same symbol DHANWEL, same 2,700,000 shares and band 95–99. IC Electricals: NSE symbol ICEL (\"...Company Limited-Issue postponed\", 25–30 Jun 2026) then ICELCO (3–7 Jul 2026), same 48,39,600 shares, band 94–99, same CIN U31909DL2005PLC139412. Chittorgarh kept one id (Dhanwel 2846). Measured 2026-09-23."
+    },
+    {
+      "id": "F-128",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "The CIN itself changes before an IPO (PTC -> PLC), sometimes with its industry code",
+      "detail": "Himalayan Solar: U40300HR2015PTC056609 then U40100HR2015PLC056609 (RHP dated 19 Sep 2026). Also PTC->PLC in Himalaya Nutravedics (U24110TG2022PLC163732) and Vinod Texworld (U17200GJ2012PLC071210). The stable part is the state + year + registration number (e.g. HR 2015 056609). The U->L change on listing was not measured. Measured 2026-09-23."
+    },
+    {
+      "id": "F-129",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "Offer documents print other companies' CINs",
+      "detail": "NSE DRHP: 23 distinct CINs (NSE's own 12 times; the rest are subsidiaries/group companies, DRHP pp. 232–247). Rays of Belief document zip also contains the lead manager's CIN L74899DL1985PLC019749. Only the cover-page CIN is the issuer's. Current extraction took the right one for NSE (field_sources cin=DRHP value U67120MH1992PLC069769). Measured 2026-09-23."
+    },
+    {
+      "id": "F-130",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "A draft has no open date, so OD-35's 180-day window cannot be computed before an IPO opens",
+      "detail": "Hero Motors: DRHP 86112 (2024) and DRHP 95172 (2025), same CIN U29299PB1998PLC039602. Imagine Marketing (boAt): DRHP 55666 (28 Jan 2022) and UDRHP-I 97510 (29 Oct 2025), same CIN U52300MH2013PLC249758. NSE: older SEBI filing 33921 dated 30 Dec 2016 plus DRHP 102189 of 18 Jun 2026, same CIN. Polymatech: DRHP 77644 (4 Oct 2023), CIN U32107TN2007PLC063706; a 2026 refiling was NOT found on SEBI (search returned 1 row). Measured 2026-09-23."
+    },
+    {
+      "id": "F-131",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "OD-71 and OD-35 conflict on an exchange postponement + relaunch",
+      "detail": "Dhanwel: if the June attempt is WITHDRAWN, OD-71 refuses the August record (new row); OD-35 (same CIN, open dates 57 days apart) says same offering. Chittorgarh's page 2846 says \"stood withdrawn and it not re-launched afresh\" (verbatim; likely a typo for \"now\") while listing the August dates. Needs an owner decision. Measured 2026-09-23."
+    },
+    {
+      "id": "F-132",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "Name spellings of one IPO vary widely; some sources add status text",
+      "detail": "NSE IPO, verbatim: \"National Stock Exchange of India Limited\" (NSE past-issues), \"NSE\" (NSE ipo-detail companyName), \"NATIONAL STOCK EXCHANGE OF INDIA LIMITED\" (BSE, document covers), \"National Stock Exchange of India Ltd. (NSE IPO)\" (Chittorgarh), \"National Stock Exchange of India Ltd - Prospectus\" (SEBI), our row \"National Stock Exchange of India Ltd.\". Status text inside names: Chittorgarh \"Hero Motors Ltd. LT\", \"Himalaya Nutravedics India Ltd. O\"; NSE \"...-Issue postponed\"; \"Rays of Belief Limited- For Profit Social Enterprise (FPSE)\". Dhanwel \"Hybird\" vs \"Hybrid\". Measured 2026-09-23."
+    },
+    {
+      "id": "F-133",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "BSE field quirks (trailing space, issue-stage code, anchor-excluded share count, null pre-listing)",
+      "detail": "BSE Symbol has a trailing space: \"MOMSBELIEF \" (IPO_NO 7920). BSE ScripCode is an issue-stage code, not the listing code: Hero Motors ScripCode 4823 vs listing code 544936; NSE 4827 vs 544937. BSE Issue_Size_No_of_shares excludes the anchor portion: Rays of Belief 3,137,810 = 5,230,000 − 2,092,190. Pre-listing, BSE's header API returns null for the listing code (544937). Measured 2026-09-23."
+    },
+    {
+      "id": "F-134",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "identity",
+      "phase1": true,
+      "title": "Test of the three-part identity logic on real IPOs: 2 pass, 4 fail",
+      "detail": "Logic tested: company = CIN; offering = CIN + type + open-date window (OD-35), withdrawn never binds (OD-71); each source's own number re-binds its record. PASS: Himalayan Solar vs Himalaya Nutravedics (two IPOs), Vinod Texworld (one). FAIL: Dhanwel (relaunch changes BSE number; OD-71 vs OD-35), Hero Motors (drafts have no open date), Rays of Belief (no merge when two rows gain the same CIN later), boAt (lapse rule needs an observation date nobody collects). Candidate rule changes (NOT decided; open for owner decision): postponement is not withdrawal; flag rows sharing a CIN for merge; match ISIN then trimmed symbol across sources before names; draft-stage rule (new full DRHP = new offering; updates/RHP/prospectus attach to the latest open draft); key the company on the stable part of the CIN, from the cover only; strip status text from names. Measured 2026-09-23."
+    },
+    {
+      "id": "F-135",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "data",
+      "phase1": true,
+      "title": "NSE's IPO lists on BSE only; our row says BSE and NSE",
+      "detail": "Price band ad: \"(To be listed on the main board of BSE)\", \"BSE LIMITED SHALL BE THE DESIGNATED STOCK EXCHANGE\"; RHP p.3 \"proposed to be listed on BSE\"; Chittorgarh \"Listing at: BSE\". Staging listing_exchanges [\"BSE\",\"NSE\"]. NSE ran bidding (symbol NSE, series EQ). Issue #938. Bears on OD-64. Measured 2026-09-23."
     }
   ],
   "false_assertions": [

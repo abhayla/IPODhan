@@ -1,0 +1,10 @@
+{
+  "class_id": "duplicate survives when shared identifier arrives late",
+  "feature": "scraper identity matching / merge (OD-34, OD-68)",
+  "symptom": "two rows created for one real offering stay two rows even after both later gain the SAME strong identifier (e.g. CIN), because identity matching only runs when a new record arrives and is matched against existing rows — it does not re-scan already-stored rows when one of them is retroactively enriched with an identifier the other already has. A matched identifier that arrives AFTER row creation never triggers a merge on its own.",
+  "first_seen": "2026-09-23: rays-of-belief-ltd and rays-of-belief-ltd-o, both CIN U85110DL2017PLC322623, both open 2026-09-01, still two separate rows.",
+  "fix_prs": "none yet",
+  "detection_check": "the nightly check `i_same_ipo_two_rows` groups by CIN (#906) and DETECTS the pair, but nothing automatically resolves it — detection exists, resolution does not.",
+  "status": "unguarded",
+  "spec_ref": ["§2.3.3.2"]
+}

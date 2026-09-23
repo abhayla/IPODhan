@@ -2,7 +2,10 @@
 
 # Every question and recommendation to the owner is verified against the spec first
 
-version: "1.1.0" (1.1.0, owner 2026-09-23 evening: "whenever I provide you input, that additional
+version: "1.2.0" (1.2.0, owner 2026-09-23: "these findings will be helpful in creating the logic of
+the system ... whenever there is a new finding, it should automatically get updated in this system";
+portable copy `~/.claude/rules/spec-first.md` R6)
+(1.1.0, owner 2026-09-23 evening: "whenever I provide you input, that additional
 clarification should go back to the spec document"; portable copy `~/.claude/rules/spec-first.md`)
 (1.0.0 owner directive 2026-09-23: "Make sure you provide your recommendation after
 verifying existing spec for requirements and your recommendation should be inline with spec
@@ -56,6 +59,12 @@ The common cause: "the owning section" was read as ONE section. A subject usuall
    contradict the spec is the supervisor's defect, not the builder's.
 8. **"Check the spec" from the owner is a miss.** Record it, re-read per rule 1, and come back with
    the new recommendation and what changed.
+9. **Research findings are recorded, same turn.** Every finding proven on real data (which
+   identifier a source carries, where a rule breaks on a real case, a value a source gets wrong)
+   goes into `docs/design/findings.json` as an F-id with real values, sources and date, is cited in
+   the spec section it bears on, and, if it is a defect class, into `docs/reviews/failure-classes/`.
+   A finding marked open for owner decision never changes a decision by itself. Chat, an issue, a PR
+   body or memory is not the record. Portable copy: `~/.claude/rules/spec-first.md` R6.
 
 ## CRITICAL RULES
 
@@ -66,3 +75,5 @@ The common cause: "the owning section" was read as ONE section. A subject usuall
 - MUST show real rows per option, inside the question itself.
 - MUST record every owner decision AND clarification as an OD row in the spec before or with the code.
 - MUST cite the implemented spec section in every builder brief.
+- MUST record every proven research finding as an F-id in `docs/design/findings.json`, cited in the
+  spec, and (if a defect class) in `docs/reviews/failure-classes/`, same turn it is proven.
