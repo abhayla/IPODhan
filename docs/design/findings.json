@@ -1437,6 +1437,24 @@
       "phase1": true,
       "title": "PAN is available early from NSE's offer-documents API (company-level)",
       "detail": "Himalayan Solar PAN AADCH6953K from NSE offerdocs (DRHP stage). Whether BSE-only issues expose a PAN early: not measured. Related: F-124."
+    },
+    {
+      "id": "F-142",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "schedule",
+      "phase1": true,
+      "title": "The website list scrapers still run on every 30-minute wake, outside the OD-19 slots",
+      "detail": "After item 7 S2 (#935), the staging 22:15 IST data wake (pid 1756359, log /var/log/ipodhan-scraper-wake-staging.log) correctly logged \"Due-step cycle: data job not due at this wake — discovery skipped (OD-19 slots 00:00/08:00/14:00 IST)\" and \"Data job not due at this wake — document cycle skipped\", yet in the same wake logged \"Chittorgarh listing report fetched (paginated)\" 12 times, \"[DataConsolidation] Updated IPO with consolidated data\" 29 times, \"[DataConsolidation] Created new IPO with consolidated data\" 8 times and \"created new live IPO under a status-restricted run\" 8 times. The 8 IPOs created 16:45–16:50 UTC: acme-universal-safezone-9-ltd, black-opal-consultants-ltd, everestims-technologies-ltd, omara-ventures-india-ltd, shah-investor-s-home-ltd, shivchem-agro-ltd, shree-tnb-polymers-ltd, srit-india-ltd (all UPCOMING). S2 gated the document cycle and the due-step discovery step, not the per-source list scrapers run by --source=all. OD-19: \"Subscription-related work can run every hour or even thirty minutes, but not the scraper that is fetching the IPO data. Three runs a day.\" Fix is spec-decided (item 7, slice S2b)."
+    },
+    {
+      "id": "F-143",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "detection",
+      "phase1": true,
+      "title": "gmp_records has no write-time column; timestamp is the source's own as-of time",
+      "detail": "Columns: gmp_percentage, ipo_id, timestamp (timestamp without time zone), gmp, expected_listing_price, subject_rate, kostak_rate, id, source, sauda_details. Newest rows show timestamp '2026-09-23 22:02:00' (Investorgain's update time) although they were written by the 22:20 IST live wake. The wake logged \"GMP record created successfully\" 23 times; rows with a 22:xx timestamp number 17. Rows written in a given wake therefore cannot be counted by time, and the 6-row gap is unexplained (possibly rows carrying an earlier source time). Any check or proof that needs \"GMP rows written since T\" cannot be expressed today."
     }
   ],
   "false_assertions": [

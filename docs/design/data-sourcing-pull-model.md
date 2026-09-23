@@ -979,9 +979,11 @@ D-13's *principle* survives — work runs on named occasions, not on a drumbeat.
 | Job | When (IST) | Lock it takes | What it touches | What it must never do |
 |---|---|---|---|---|
 | **Data job** | **00:00, 08:00, 14:00** | `heavy` | discovery; document download and extraction (unbounded per document except the 2-hour hung-process ceiling, OD-55); the per-field pull walk; verification reads | never re-read a document because time passed; never cap a document read by wall-clock time short of the hung-process ceiling |
+<!-- F-142: the per-source list scrapers (--source=all) still ran on the staging 22:15 IST non-slot wake outside these three slots; only discovery and the document cycle were gated. -->
 | **Opening-day check** | about **09:45**, only on a day an IPO is due to open (OD-31) | `heavy`, skipped if held | the two exchange lists only: register a new or changed IPO so the live jobs can see it | never fetch, download or extract a filing; it writes identity and status, nothing else |
 | **Live-figures job** | **every 30 minutes, 10:00–18:30**, only on a day when at least one IPO is OPEN | `live` | subscription and the demand graph (OD-28) | never touch a document, a field plan row, or any static field |
 | **Grey-market premium** | **every 30 minutes** on the same wake, whenever any IPO is UPCOMING or OPEN — evenings, weekends and holidays included (OD-28, F-41) | `live` | `gmp_records` only | never gated on bidding hours, and never touches a document or a static field |
+<!-- F-143: gmp_records has no write-time column; `timestamp` is the source's own as-of time, so "rows written since T" cannot be expressed today. -->
 | **Post-listing price** | **every 15 minutes during exchange market hours, for 90 days after listing**, then it stops (OD-29) | `live` | `ipos.current_price` and its as-of stamp, from the free NSE and BSE public quote endpoints | never a broker feed, and never touches a document or a static field |
 | **Closed-IPO job** | **22:00** | `heavy` | at most **10** IPOs a night, status LISTED or CLOSED, close date before today, ordered by close date **descending**, each marked done so it is never picked twice | never start while the heavy lock is held |
 
