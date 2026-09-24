@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-24T19:48:24.122Z",
+  "generated_at": "2026-09-24T20:35:12.113Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 195,
-    "retired": 39
+    "retired": 40
   },
-  "next_id": 235,
+  "next_id": 236,
   "rules": [
     {
       "id": "R-151",
@@ -297,12 +297,12 @@
       "retired": false
     },
     {
-      "id": "R-159",
-      "hash": "3b10a68e55ab",
+      "id": "R-235",
+      "hash": "cf5e3ac61ca7",
       "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
       "kind": "table",
-      "text": "Image-only pages go to OCR, marked — already built. scraper/scripts/ocr_pages.py exists and extract_filing.py's run() already takes an ocr_confidence map keyed by page (scraper/scripts/extract_filing.py:2590). What this design ADDS is one rule on top of it: a field whose only source is an OCR page never wins a disagreement against a text page — the OCR path is exercised today; the fixture is captured by probes/extract-real-pdf.mjs on a real filing",
-      "first_seen": "2026-09-09",
+      "text": "Image-only pages go to OCR, marked — already built. scraper/scripts/ocr_pages.py exists and extract_filing.py's run() already takes an ocr_confidence map keyed by page (scraper/scripts/extract_filing.py:2590). What this design ADDS is one rule on top of it: a field whose only source is an OCR page never wins a disagreement against a text page. Built (OD-97, F-167): each value carries its mark (TEXT / OCR / MIXED) in document_field_receipts.source_text and in provenance; an OCR-only value is not written over a stored value that a text-page read of a same-or-better-ranked document of the same IPO produced; values from before the mark are unknown and the rule leaves them alone — the OCR path is exercised today; the fixture is captured by probes/extract-real-pdf.mjs on a real filing",
+      "first_seen": "2026-09-24",
       "retired": false
     },
     {
@@ -1762,6 +1762,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-159",
+      "hash": "3b10a68e55ab",
+      "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
+      "kind": "table",
+      "text": "Image-only pages go to OCR, marked — already built. scraper/scripts/ocr_pages.py exists and extract_filing.py's run() already takes an ocr_confidence map keyed by page (scraper/scripts/extract_filing.py:2590). What this design ADDS is one rule on top of it: a field whose only source is an OCR page never wins a disagreement against a text page — the OCR path is exercised today; the fixture is captured by probes/extract-real-pdf.mjs on a real filing",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-199",
