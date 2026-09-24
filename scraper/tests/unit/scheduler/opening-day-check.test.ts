@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
-import { anyIpoOpensToday, iposOpeningToday } from '../../../src/scheduler/opening-day-check.js';
+import { anyIpoOpensToday, iposOpeningToday, opensTodayFromFetch } from '../../../src/scheduler/opening-day-check.js';
 
 function makeStubDb(rows: Array<{ id: string; companyName: string; status: string; openDate: string | null }>) {
   const limit = vi.fn().mockResolvedValue(rows.map(({ id }) => ({ id })));
@@ -67,5 +67,60 @@ describe('iposOpeningToday', () => {
     ];
     const { db } = makeStubDbForList(rows);
     await expect(iposOpeningToday(db, new Date('2026-09-24T04:15:00Z'))).resolves.toEqual(rows);
+  });
+});
+
+/**
+ * Review finding 3 (MAJOR, class coverage): the three cases a DB-only gate
+ * (the pre-fix `anyIpoOpensToday`-as-the-whole-gate) would have missed —
+ * no stored row at all, a stored row with a NULL open_date, and a stored
+ * row whose open_date is stale/postponed — each proven against
+ * `opensTodayFromFetch`, the pure decision `runOpeningDayCheckWake` (via the
+ * post-fetch `anyIpoOpensToday` re-read) is equivalent to once a fetch has
+ * happened. `at` uses a UTC instant whose calendar date DIFFERS from its IST
+ * calendar date (2026-09-23T19:00:00Z = 2026-09-24 00:30 IST), per finding
+ * 3's instruction, so a UTC-date mutation is provably red (see the
+ * mutation-proof script run separately against `istDayIso`/`anyIpoOpensToday`).
+ */
+describe('opensTodayFromFetch — review finding 1 + 3 class coverage', () => {
+  const AT_2026_09_24_0030_IST = new Date('2026-09-23T19:00:00Z');
+
+  it('class case 1: NO stored row at all — a brand-new IPO the FETCHED list reports opening today', () => {
+    const fetched = [{ openDate: '2026-09-24' }];
+    const stored: Array<{ openDate?: string | null }> = [];
+    expect(opensTodayFromFetch(fetched, stored, AT_2026_09_24_0030_IST)).toBe(true);
+  });
+
+  it('class case 2: a stored row with a NULL open_date — only the FETCHED row carries the real date', () => {
+    const fetched = [{ openDate: '2026-09-24' }];
+    const stored = [{ openDate: null }];
+    expect(opensTodayFromFetch(fetched, stored, AT_2026_09_24_0030_IST)).toBe(true);
+  });
+
+  it('class case 3: a stored row with an OLD (postponed) open_date — the FETCHED list shows today, the stale stored row must not hide it', () => {
+    const fetched = [{ openDate: '2026-09-24' }];
+    const stored = [{ openDate: '2026-09-10' }]; // stale/postponed stored value
+    expect(opensTodayFromFetch(fetched, stored, AT_2026_09_24_0030_IST)).toBe(true);
+  });
+
+  it('is false when neither the fetched rows nor the stored rows open today', () => {
+    const fetched = [{ openDate: '2026-09-25' }];
+    const stored = [{ openDate: null }, { openDate: '2026-09-10' }];
+    expect(opensTodayFromFetch(fetched, stored, AT_2026_09_24_0030_IST)).toBe(false);
+  });
+
+  it('is true from a STORED row alone when the fetch found nothing new (e.g. a source outage)', () => {
+    const fetched: Array<{ openDate?: string | null }> = [];
+    const stored = [{ openDate: '2026-09-24' }];
+    expect(opensTodayFromFetch(fetched, stored, AT_2026_09_24_0030_IST)).toBe(true);
+  });
+
+  it('IST vs UTC instant: at 2026-09-23T19:00:00Z (2026-09-24 00:30 IST) a fetched row dated 2026-09-24 matches; the UTC calendar date (2026-09-23) would NOT have matched', () => {
+    const fetched = [{ openDate: '2026-09-24' }];
+    expect(opensTodayFromFetch(fetched, [], AT_2026_09_24_0030_IST)).toBe(true);
+    // Proves the instant genuinely straddles the UTC/IST day boundary: the
+    // UTC calendar date for this instant is 2026-09-23, one day behind the
+    // IST date the gate actually used above.
+    expect(AT_2026_09_24_0030_IST.toISOString().slice(0, 10)).toBe('2026-09-23');
   });
 });

@@ -2152,12 +2152,14 @@ install_scraper_cron() {
   # itself -- clear of prod's data (:00/:30), live (:05/:35) and closed
   # (:10/:40) minutes. Staging cannot share 09:45 with its OWN data wake
   # (data 08:15/etc -> :15/:45 every hour, so 09:45 collides with staging's
-  # data minute) -- staging is offset to 09:47, the nearest free minute
-  # clear of every existing staging wake (data :15/:45, live :20/:50, closed
-  # :25/:55), carrying the same IST intent as prod's 09:45.
+  # data minute) -- staging is offset to 09:40 (review finding 4: 09:47 was
+  # never actually free either -- staging's own hourly minutes are :15/:45
+  # data, :20/:50 live, :25/:55 closed (closed only in hours 22-23), so :40
+  # is the nearest minute clear of ALL of them), carrying the same IST
+  # intent as prod's 09:45.
   local opening_cron="${SCRAPER_OPENING_CRON:-}"
   if [ -z "$opening_cron" ]; then
-    if [ "$SLOT" = "prod" ]; then opening_cron='45 9 * * *'; else opening_cron='47 9 * * *'; fi
+    if [ "$SLOT" = "prod" ]; then opening_cron='45 9 * * *'; else opening_cron='40 9 * * *'; fi
   fi
   local opening_line="$opening_cron $wake_script opening >> $SCRAPER_WAKE_LOG 2>&1 $opening_marker"
   local opening_enabled=1

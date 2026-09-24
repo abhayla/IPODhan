@@ -197,14 +197,16 @@ describe('item 7 S4 - the opening-day check runs as its own --job=opening wake u
     vi.resetModules();
   });
 
-  it('§2.1: with an IPO opening today, the check acquires scraper:cycle, runs NSE+BSE discovery, releases the lock, and never calls the document/extraction path', async () => {
+  it('§2.1: with an IPO opening today, the check acquires scraper:cycle, runs NSE+BSE discovery-only, releases the lock, and never calls the document/extraction path', async () => {
     dbLimitMock.mockResolvedValue([{ id: 'ipo-open-today' }]);
     lockAcquireMock.mockResolvedValue({ acquired: true, token: 'opening-tok' });
     await runWith(['--source=all', '--job=opening'], THURSDAY_0945_IST);
 
     expect(lockAcquireMock).toHaveBeenCalledWith('scraper:cycle', expect.anything());
     expect(runNSEScraperMock).toHaveBeenCalledTimes(1);
+    expect(runNSEScraperMock).toHaveBeenCalledWith({ discoveryOnly: true });
     expect(runBSEScraperMock).toHaveBeenCalledTimes(1);
+    expect(runBSEScraperMock).toHaveBeenCalledWith({ discoveryOnly: true });
     // Discovery-only (§2.1): no document/extraction call from this job.
     expect(runDocumentCycleMock).not.toHaveBeenCalled();
     expect(runDocumentPurgeMock).not.toHaveBeenCalled();
@@ -218,13 +220,20 @@ describe('item 7 S4 - the opening-day check runs as its own --job=opening wake u
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
-  it('§2.1: with NO IPO opening today, the check makes zero NSE/BSE calls and never takes the lock', async () => {
+  it('review finding 1 (CRITICAL, class coverage): the DB has ZERO rows for the day (no prior row at all) — the check still takes the lock and fetches both lists, exactly the case a DB-only gate would have skipped', async () => {
+    // dbLimitMock backs BOTH anyIpoOpensToday calls (pre-fetch would have
+    // been wrong; this suite's fix reads it only AFTER the fetch). Empty on
+    // the way in is exactly "no stored row yet" — the fetch must still run.
     dbLimitMock.mockResolvedValue([]);
+    lockAcquireMock.mockResolvedValue({ acquired: true, token: 'opening-tok' });
     await runWith(['--source=all', '--job=opening'], THURSDAY_0945_IST);
 
-    expect(runNSEScraperMock).not.toHaveBeenCalled();
-    expect(runBSEScraperMock).not.toHaveBeenCalled();
-    expect(lockAcquireMock).not.toHaveBeenCalled();
+    expect(lockAcquireMock).toHaveBeenCalledWith('scraper:cycle', expect.anything());
+    expect(runNSEScraperMock).toHaveBeenCalledTimes(1);
+    expect(runNSEScraperMock).toHaveBeenCalledWith({ discoveryOnly: true });
+    expect(runBSEScraperMock).toHaveBeenCalledTimes(1);
+    expect(runBSEScraperMock).toHaveBeenCalledWith({ discoveryOnly: true });
+    expect(lockReleaseMock).toHaveBeenCalledWith('scraper:cycle', 'opening-tok');
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 

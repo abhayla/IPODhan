@@ -51,7 +51,8 @@ export const OPENING_DAY_CHECK_TIME_IST_MINUTES = 9 * 60 + 45;
  */
 
 /**
- * True when at least one IPO's `open_date` equals `now`'s IST calendar date.
+ * True when the STORED `ipos` table already has a row whose `open_date`
+ * equals `now`'s IST calendar date.
  *
  * §2.1: "only on a day an IPO is due to open (OD-31)". `open_date` is a
  * plain SQL `date` column (packages/shared/src/db/schema.ts:293) — a
@@ -59,6 +60,19 @@ export const OPENING_DAY_CHECK_TIME_IST_MINUTES = 9 * 60 + 45;
  * comparison is a same-day string/date match against the IST calendar date,
  * never a UTC-instant comparison (`.claude/rules/ist-timezone.md`: "Every
  * date the platform publishes is the Indian market date").
+ *
+ * Review finding 1 (CRITICAL): this predicate alone MUST NOT be used to
+ * decide whether to fetch — a DB row can only equal today if a PRIOR job
+ * already stored it, so an IPO with NO row yet, a NULL `open_date`, or a
+ * stale/postponed `open_date` would never trip this and the check would
+ * silently never run for exactly the IPOs it exists to catch (§2.1's own
+ * example: "an IPO that opens at 10:00 could be invisible on the site").
+ * The caller (`runOpeningDayCheckWake`, scraper/src/index.ts) fetches BOTH
+ * exchange lists UNCONDITIONALLY at the scheduled time and only uses this
+ * predicate AFTER that fetch+write, to decide what to log — never to decide
+ * whether to fetch. `opensTodayFromFetch` below is the equivalent pure,
+ * clock-injectable decision over fetched + stored rows, kept for callers
+ * that have the raw rows in hand rather than a freshly-written DB to re-read.
  */
 export async function anyIpoOpensToday(
   db: NodePgDatabase<typeof schema>,
@@ -71,6 +85,36 @@ export async function anyIpoOpensToday(
     .where(eq(schema.ipos.openDate, todayIso))
     .limit(1);
   return row !== undefined;
+}
+
+/**
+ * Row shape common to both exchanges' list-fetch results, narrowed to the
+ * one field this gate reads (`openDate`, an ISO `YYYY-MM-DD` string or
+ * undefined/null when the source did not report one).
+ */
+export interface FetchedListRow {
+  openDate?: string | null;
+}
+
+/**
+ * Pure decision: does at least one row — from the freshly FETCHED exchange
+ * lists, OR already stored in the DB — open today (IST)? This is the actual
+ * opening-day gate (review finding 1): it does not require a pre-existing DB
+ * row, because the fetched rows are exactly the signal the DB does not have
+ * yet for a brand-new IPO, a NULL `open_date` row, or a stale/postponed
+ * `open_date` row the exchange has since corrected.
+ *
+ * Pure and clock-injectable (no I/O) so the mutation-proof test (review
+ * finding 3) can assert against a fixed `now` without a live DB or network.
+ */
+export function opensTodayFromFetch(
+  fetchedRows: readonly FetchedListRow[],
+  storedRows: readonly FetchedListRow[],
+  now: Date = new Date()
+): boolean {
+  const todayIso = istDayIso(now);
+  const opensToday = (row: FetchedListRow): boolean => row.openDate === todayIso;
+  return fetchedRows.some(opensToday) || storedRows.some(opensToday);
 }
 
 /**

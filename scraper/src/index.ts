@@ -707,61 +707,40 @@ async function runClosedIpoWake(): Promise<number> {
  *
  * What it does, and no more (§2.1): fetch the two exchange lists (NSE, BSE)
  * through the SAME orchestrators and the SAME consolidation/identity write
- * door the data job uses (`runNSEScraper()` / `runBSEScraper()` with no
- * restriction and no `liveFiguresOnly` mode — the plain discovery path,
- * which registers a new or changed IPO but never calls a document
- * downloader or extractor; see nse-scraper-orchestrator-v2.ts /
- * bse-scraper-orchestrator-v2.ts, neither of which references a document or
- * filing extraction path). Never runs the aggregator refresh, the API
- * fallback, the document cycle, or a field-plan write — those are the data
- * job's own steps and are not called here.
+ * door the data job uses (`runNSEScraper({ discoveryOnly: true })` /
+ * `runBSEScraper({ discoveryOnly: true })`) — discovery-only so the write
+ * narrows to identity + status + the two date columns (review finding 2),
+ * never a document downloader or extractor. Never runs the aggregator
+ * refresh, the API fallback, the document cycle, or a field-plan write —
+ * those are the data job's own steps and are not called here. Exactly the
+ * two list calls per run (§7.4 budget row: "2 calls a day").
  *
- * Gate (§2.1: "only on a day an IPO is due to open"): `anyIpoOpensToday`
- * checks whether any stored `open_date` equals today's IST calendar date
- * BEFORE the lock is taken — a day with no IPO opening costs zero lock
- * contention and zero network calls, same ordering discipline as
- * `runClosedIpoWake`'s flag check before its own lock acquire.
+ * Gate (review finding 1, CRITICAL): the gate CANNOT be "does the DB already
+ * have a row opening today" — that is exactly false for the case this job
+ * exists to catch (a brand-new IPO, or one whose stored `open_date` is NULL
+ * or stale/postponed). So the lock is taken FIRST (skip-if-held, as before —
+ * no ordering change there), THEN both lists are fetched, and ONLY THEN does
+ * `opensTodayFromFetch` decide — from the FETCHED rows' own open dates
+ * combined with any already-stored row — whether anything actually opens
+ * today. A "no" is logged and exits cleanly; it is never used to skip the
+ * fetch itself, because skipping the fetch is the bug being fixed.
  */
 async function runOpeningDayCheckWake(): Promise<number> {
   const now = new Date();
-
-  let opensToday: boolean;
-  try {
-    opensToday = await anyIpoOpensToday(db, now);
-  } catch (error) {
-    logger.warn(
-      { error: error instanceof Error ? error.message : String(error) },
-      'Opening-day check: could not read open_date rows — treating as due (fail open, per signal-ownership: a missed check costs more than an extra discovery run)'
-    );
-    opensToday = true;
-  }
-
-  if (!opensToday) {
-    logger.info('opening-day check: no IPO opens today');
-    return 0;
-  }
-
   const redis = getRedisClient();
   const lock = new DistributedLock(redis);
   const lockResult = await lock.acquire(CYCLE_LOCK_RESOURCE, { ttl: CYCLE_LOCK_TTL_MS });
 
   if (!lockResult.acquired) {
-    let holderStartedAt = 'unknown';
-    try {
-      const remainingTtlMs = await lock.getLockTTL(CYCLE_LOCK_RESOURCE);
-      if (remainingTtlMs > 0) {
-        const elapsedMs = CYCLE_LOCK_TTL_MS - remainingTtlMs;
-        holderStartedAt = new Date(Date.now() - elapsedMs).toISOString();
-      }
-    } catch (error) {
-      logger.debug(
-        { error: error instanceof Error ? error.message : String(error) },
-        'Opening-day check: could not read scraper:cycle TTL to estimate the holder start time'
-      );
-    }
+    // Finding 5 (review): the lock (scraper/src/utils/distributed-lock.ts)
+    // stores only a random token, never a start time, and the data job
+    // renews the TTL every 5 minutes — so "TTL_MS - remainingTtlMs" is the
+    // time since the LAST renewal, not since the holder acquired the lock,
+    // and prints a plausible but WRONG time on every renewal boundary. There
+    // is no genuine start time to read; say so rather than compute one.
     logger.warn(
-      { lockResource: CYCLE_LOCK_RESOURCE, holderStartedAt },
-      `opening-day check skipped: heavy lock held since ${holderStartedAt}`
+      { lockResource: CYCLE_LOCK_RESOURCE },
+      'opening-day check skipped: heavy lock held (start time unknown)'
     );
     return 0;
   }
@@ -792,11 +771,19 @@ async function runOpeningDayCheckWake(): Promise<number> {
 
   let exitCode = 0;
   try {
+    // Review finding 1: fetch BOTH lists BEFORE deciding whether anything
+    // opens today — a day with no matching row is discovered by fetching,
+    // never assumed from what is already stored. Review finding 2: both
+    // calls run `discoveryOnly` — identity + status + dates only, no price
+    // band, lot size, issue size or subscription write.
     logger.info(
       { lockResource: CYCLE_LOCK_RESOURCE, scheduledAtIstMinutes: OPENING_DAY_CHECK_TIME_IST_MINUTES },
-      'Opening-day check: at least one IPO opens today — running discovery-only NSE + BSE list fetch (no document, no extraction)'
+      'Opening-day check: fetching the two exchange lists (discovery-only — no document, no extraction)'
     );
-    const [nseResult, bseResult] = await Promise.allSettled([runNSEScraper(), runBSEScraper()]);
+    const [nseResult, bseResult] = await Promise.allSettled([
+      runNSEScraper({ discoveryOnly: true }),
+      runBSEScraper({ discoveryOnly: true }),
+    ]);
     const failures: string[] = [];
     if (nseResult.status === 'rejected') {
       failures.push(`NSE: ${nseResult.reason instanceof Error ? nseResult.reason.message : String(nseResult.reason)}`);
@@ -804,14 +791,43 @@ async function runOpeningDayCheckWake(): Promise<number> {
     if (bseResult.status === 'rejected') {
       failures.push(`BSE: ${bseResult.reason instanceof Error ? bseResult.reason.message : String(bseResult.reason)}`);
     }
-    logger.info(
-      {
-        nse: nseResult.status === 'fulfilled' ? { inserted: nseResult.value.iposInserted, updated: nseResult.value.iposUpdated } : 'failed',
-        bse: bseResult.status === 'fulfilled' ? { inserted: bseResult.value.iposInserted, updated: bseResult.value.iposUpdated } : 'failed',
-        failures,
-      },
-      'Opening-day check: run complete'
-    );
+    const nseRowsChecked = nseResult.status === 'fulfilled' ? nseResult.value.iposProcessed : 0;
+    const bseRowsChecked = bseResult.status === 'fulfilled' ? bseResult.value.iposProcessed : 0;
+
+    // After the fetch+write, ask the DB whether anything actually opens
+    // today (finding 1's real gate — the FETCHED rows have, by now, already
+    // been consolidated into `ipos` by the discoveryOnly write above, so
+    // `anyIpoOpensToday` reads the post-fetch state, not a stale one).
+    let opensToday = true;
+    try {
+      opensToday = await anyIpoOpensToday(db, now);
+    } catch (error) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Opening-day check: could not re-read open_date rows after the fetch — treating as due (fail open)'
+      );
+      opensToday = true;
+    }
+
+    if (!opensToday && failures.length === 0) {
+      logger.info(
+        { nseRowsChecked, bseRowsChecked },
+        `opening-day check: no IPO opens today (NSE ${nseRowsChecked} rows, BSE ${bseRowsChecked} rows checked)`
+      );
+    } else {
+      // signal-ownership R1 ("a number is not a reading"): name the rows
+      // opening today, not just the write counts.
+      const openingRows = opensToday ? await iposOpeningToday(db, now).catch(() => []) : [];
+      logger.info(
+        {
+          nse: nseResult.status === 'fulfilled' ? { inserted: nseResult.value.iposInserted, updated: nseResult.value.iposUpdated, rowsChecked: nseRowsChecked } : 'failed',
+          bse: bseResult.status === 'fulfilled' ? { inserted: bseResult.value.iposInserted, updated: bseResult.value.iposUpdated, rowsChecked: bseRowsChecked } : 'failed',
+          openingToday: openingRows.map((row) => ({ id: row.id, companyName: row.companyName, status: row.status })),
+          failures,
+        },
+        'Opening-day check: run complete'
+      );
+    }
     if (failures.length > 0) exitCode = 1;
   } catch (error) {
     logger.error(
