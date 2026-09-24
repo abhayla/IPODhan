@@ -237,6 +237,33 @@ export interface ZipPdfMember {
   position?: number;
 }
 
+/** Code page 437, bytes 0x80-0xFF: the zip spec's default name encoding (APPNOTE 4.4.4). */
+const CP437_HIGH =
+  'ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■\u00a0';
+
+/**
+ * A zip member's file name as text (item 22, F-154).
+ *
+ * General-purpose flag bit 11 says the name is UTF-8. Without it the spec says
+ * cp437 — but real archivers write UTF-8 WITHOUT setting the bit: NSE's
+ * RHP_HTEL.zip (captured 2026-09-24) carries a Devanagari newspaper page whose
+ * name bytes are valid UTF-8 with flag 0. Decoding those bytes as latin1 (the
+ * old behaviour) or cp437 gives a garbled title. So: flag set, or the bytes are
+ * valid UTF-8 containing a multi-byte sequence -> UTF-8; otherwise cp437. Plain
+ * ASCII decodes identically either way.
+ */
+export function decodeZipMemberName(bytes: Buffer, flags: number): string {
+  if ((flags & 0x0800) !== 0) return bytes.toString('utf8');
+  if (bytes.every((b) => b < 0x80)) return bytes.toString('latin1');
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    let out = '';
+    for (const b of bytes) out += b < 0x80 ? String.fromCharCode(b) : CP437_HIGH[b - 0x80];
+    return out;
+  }
+}
+
 /**
  * EVERY `%PDF` member inside a zip, in central-directory order, with names.
  *
@@ -274,7 +301,8 @@ export function extractPdfMembersFromZip(buf: Buffer): ZipPdfMember[] {
       const extraLen = buf.readUInt16LE(cdOffset + 30);
       const commentLen = buf.readUInt16LE(cdOffset + 32);
       const localHeaderOffset = buf.readUInt32LE(cdOffset + 42);
-      const name = buf.subarray(cdOffset + 46, cdOffset + 46 + nameLen).toString('latin1');
+      const cdFlags = buf.readUInt16LE(cdOffset + 8);
+      const name = decodeZipMemberName(buf.subarray(cdOffset + 46, cdOffset + 46 + nameLen), cdFlags);
       const content = inflateZipMember(buf, localHeaderOffset, method, compSize);
       if (content && looksLikePdf(content)) members.push({ name, content, position: members.length + 1 });
       cdOffset += 46 + nameLen + extraLen + commentLen;
@@ -293,7 +321,7 @@ export function extractPdfMembersFromZip(buf: Buffer): ZipPdfMember[] {
     const dataStart = offset + ZIP_LOCAL_HEADER_SIZE + nameLen + extraLen;
     if ((flags & 0x08) !== 0 && compSize === 0) break; // data descriptor
     if (dataStart + compSize > buf.length) break;
-    const name = buf.subarray(offset + ZIP_LOCAL_HEADER_SIZE, offset + ZIP_LOCAL_HEADER_SIZE + nameLen).toString('latin1');
+    const name = decodeZipMemberName(buf.subarray(offset + ZIP_LOCAL_HEADER_SIZE, offset + ZIP_LOCAL_HEADER_SIZE + nameLen), flags);
     const content = inflateZipMember(buf, offset, method, compSize);
     if (content && looksLikePdf(content)) members.push({ name, content, position: members.length + 1 });
     offset = dataStart + compSize;

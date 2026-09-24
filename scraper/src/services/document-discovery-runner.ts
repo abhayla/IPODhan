@@ -94,6 +94,7 @@ import { NetworkCounter, hostOf } from '../utils/network-counter.js';
 import logger from '../utils/logger.js';
 import { notifyOwner } from './owner-notify.js';
 import { resolveAdmissionExtractionStatus } from '../config/document-admission-status.js';
+import { storeZipMemberDocuments, markTypeFoundFromZip } from './zip-member-documents.js';
 
 // ---------------------------------------------------------------------------
 // Wire-level configuration
@@ -139,6 +140,16 @@ const NSE_HEADERS = {
   Referer: 'https://www.nseindia.com/market-data/all-upcoming-issues-ipo',
   Accept: 'application/json',
 };
+
+/**
+ * The headers a document DOWNLOAD from this source is made with (MIN-5: an
+ * exchange Referer only on that exchange's host). Exported so the item 22
+ * repair tool re-fetches a stored zip exactly as the runner fetched it.
+ */
+export function downloadHeadersFor(source: string): Record<string, string> {
+  const headers = source === 'BSE' ? BSE_HEADERS : source === 'NSE' ? NSE_HEADERS : BROWSER_PAGE_HEADERS;
+  return { ...headers, Accept: '*/*' };
+}
 
 /**
  * NSE retry ladder. The matrix measured stalls clearing within a minute
@@ -446,14 +457,7 @@ export function refusalOutcomeOr(status: number, existing: string): string {
   return status === STATUS_REFUSED_RESOLVED_PRIVATE ? 'refused:resolved_private_address' : existing;
 }
 
-/**
- * The `documents.url` of one member of a zip (item 22, F-154): the zip's own URL
- * plus a `#part=<n>` fragment. A fragment never reaches the server, so fetching
- * this URL still returns the zip; it only names which member the row is.
- */
-export function zipMemberUrl(zipUrl: string, position: number): string {
-  return `${zipUrl.split('#')[0]}#part=${position}`;
-}
+export { zipMemberUrl } from './zip-member-documents.js';
 
 export function hostnameOf(url: string): string | null {
   try {
@@ -508,6 +512,12 @@ export interface DocumentSinkInput {
 
 export interface DocumentSink {
   upsertDocument(doc: DocumentSinkInput): Promise<{ id: string }>;
+  /**
+   * Item 22 (OD-33): the document of THIS IPO already holding these bytes, in
+   * any earlier run. `DocumentRepository` implements it; a zip member whose
+   * bytes are already stored is not stored again.
+   */
+  findBySha256ForIpo?(ipoId: string, sha256: string): Promise<{ id: string; type: string } | null>;
 }
 
 export interface DiscoveryIpo {
@@ -862,6 +872,13 @@ export class DocumentDiscoveryRunner {
   private readonly boardAttempts: FetchAttempt[] = [];
   /** Issuer website learned from a filing cover, so rung 4 costs no extra fetch. */
   private readonly companyUrlByIpo = new Map<string, string>();
+  /**
+   * Item 22 (Tier A round 1, MAJOR 2): document types a zip member supplied for
+   * an IPO during its current `runIpo`, with the row that holds them. The
+   * per-type loop reads it so a type the zip already supplied is FOUND without
+   * running its fallback chain; cleared at the start and end of each IPO.
+   */
+  private readonly zipSuppliedByIpo = new Map<string, Map<DocumentType, { documentId: string; zipUrl: string }>>();
   /**
    * OD-37 gate. A GETTER, not a field initializer: class fields are evaluated
    * before the constructor assigns `this.deps`, so reading `this.deps` here as
@@ -1273,10 +1290,8 @@ export class DocumentDiscoveryRunner {
     // MIN-5: an exchange Referer belongs only on that exchange's own host.
     // Sending `Referer: nseindia.com` to SEBI or to an issuer's website is both
     // wrong and needlessly identifying; those hosts get neutral browser headers.
-    const headers =
-      doc.source === 'BSE' ? BSE_HEADERS : doc.source === 'NSE' ? NSE_HEADERS : BROWSER_PAGE_HEADERS;
     const started = Date.now();
-    const res = await this.request(url, { ...headers, Accept: '*/*' }, ipo.id, DOWNLOAD_TIMEOUT_MS);
+    const res = await this.request(url, downloadHeadersFor(doc.source), ipo.id, DOWNLOAD_TIMEOUT_MS);
     // Two passes, deliberately. The cover check needs the UNWRAPPED pdf, which
     // only the first pass can produce (the download may be a zip). Pass 1 does
     // every byte-level rule; if it succeeds we extract page 1 and re-run the
@@ -1472,19 +1487,11 @@ export class DocumentDiscoveryRunner {
    * dropped members were a corrigendum or a price-band notice, and 4 of those
    * IPOs have no corrigendum document at all, so OD-30 could never apply.
    *
-   * Rules, per member:
-   *  - `typed` as a type other than the main document's: stored as its own
-   *    document row with `part_number` = its zip position. Its URL is the zip's
-   *    URL with a `#part=<n>` fragment: `documents.url` is globally unique, so
-   *    the bare zip URL is already taken by the main document, and a fragment
-   *    names a part of the SAME resource (RFC 3986 §3.5) without changing what
-   *    a fetch of it returns. The stable URL is also what makes a re-run
-   *    idempotent: `upsertDocument` finds the row by URL and inserts nothing.
-   *  - same sha256 as a document already stored this run (OD-33): not stored twice.
-   *  - `typed` as the SAME type as the main document: a volume split. Not
-   *    stored (0 of 41 measured zips are volume splits); logged by name.
-   *  - `gid`, `unclassified`, `too_small`, `too_large`: not stored; logged by
-   *    name with size, so nothing is dropped silently and nothing is mis-typed.
+   * The per-member rules (GID, unclassified, size, volume split, cross-run
+   * sha256 dedupe, the stable `#member=` key) live in ONE place,
+   * `storeZipMemberDocuments` (zip-member-documents.ts), shared with the repair
+   * tool for zips stored before this change. A type a member supplied is
+   * recorded in `zipSuppliedByIpo` and marked FOUND by `runIpo`.
    *
    * No cover-page company check on a member: the archive itself was verified
    * as this IPO's (the main member passed that check), and a newspaper page
@@ -1498,53 +1505,31 @@ export class DocumentDiscoveryRunner {
     attempts: FetchAttempt[],
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
   ): Promise<void> {
-    for (const m of verdict.otherZipMembers ?? []) {
-      const where = `member:${m.name}; part:${m.position}; bytes:${m.bytes}`;
-      const skip = (why: string) => {
-        attempts.push({ source: candidate.source, http: 200, ms: 0, outcome: `zip_member_skipped:${why} (${where})`, url: candidate.url, sha256: m.sha256 });
-        logger.info({ ipoId: ipo.id, zipUrl: candidate.url, member: m.name, part: m.position, bytes: m.bytes, reason: why }, 'Zip member not stored');
-      };
-      if (m.disposition !== 'typed' || !m.type) {
-        skip(m.type ? `${m.disposition}:${m.type}` : m.disposition);
-        continue;
+    const members = verdict.otherZipMembers ?? [];
+    if (members.length === 0) return;
+    const outcomes = await storeZipMemberDocuments(
+      { documents: this.deps.documents, storeDir: this.deps.storeDir },
+      { ipoId: ipo.id, zipUrl: candidate.url, zipTitle: candidate.title, exchange: candidate.source, mainType, members },
+      seenBySha
+    );
+    for (const o of outcomes) {
+      const where = `member:${o.member}; part:${o.position}; bytes:${o.bytes}`;
+      const outcome =
+        o.action === 'stored'
+          ? `zip_member_stored_as:${o.type} (${where}; typed_by:${o.typedBy ?? 'name'})`
+          : o.action === 'duplicate'
+            ? `zip_member_deduped_by_sha256_to:${o.reason.replace('sha256_already_stored_as:', '')} (${where})`
+            : `zip_member_skipped:${o.reason} (${where})`;
+      attempts.push({ source: candidate.source, http: 200, ms: 0, outcome, url: o.url ?? candidate.url, sha256: o.sha256 });
+      logger.info(
+        { ipoId: ipo.id, zipUrl: candidate.url, member: o.member, part: o.position, bytes: o.bytes, action: o.action, reason: o.reason },
+        'Zip member handled'
+      );
+      if (o.suppliesType && o.documentId) {
+        let supplied = this.zipSuppliedByIpo.get(ipo.id);
+        if (!supplied) this.zipSuppliedByIpo.set(ipo.id, (supplied = new Map()));
+        if (!supplied.has(o.suppliesType)) supplied.set(o.suppliesType, { documentId: o.documentId, zipUrl: candidate.url });
       }
-      if (m.type === mainType) {
-        skip(`same_type_as_main:${m.type}`);
-        continue;
-      }
-      const alias = seenBySha.get(m.sha256);
-      if (alias) {
-        attempts.push({ source: candidate.source, http: 200, ms: 0, outcome: `zip_member_deduped_by_sha256_to:${alias.docType} (${where})`, url: candidate.url, sha256: m.sha256 });
-        continue;
-      }
-      const stored = await storeDocument({
-        ipoId: ipo.id,
-        docType: m.type,
-        pdf: m.content,
-        sha256: m.sha256,
-        storeDir: this.deps.storeDir ?? getStoreDir(),
-      });
-      if (!stored.stored) {
-        attempts.push({ source: candidate.source, http: 200, ms: 0, outcome: `store_full (${where})`, url: candidate.url, sha256: m.sha256 });
-        continue;
-      }
-      const memberUrl = zipMemberUrl(candidate.url, m.position);
-      const row = await this.deps.documents.upsertDocument({
-        ipoId: ipo.id,
-        type: m.type,
-        title: `${candidate.title} | ${m.name.split('/').pop() ?? m.name}`,
-        url: memberUrl,
-        exchange: candidate.source,
-        mediaType: 'PDF',
-        extractionStatus: resolveAdmissionExtractionStatus(m.type),
-        isActive: true,
-        fileSize: m.bytes,
-        sha256: m.sha256,
-        partNumber: m.position,
-      });
-      seenBySha.set(m.sha256, { documentId: row.id, docType: m.type });
-      attempts.push({ source: candidate.source, http: 200, ms: 0, outcome: `zip_member_stored_as:${m.type} (${where}; typed_by:${m.typedBy ?? 'name'})`, url: memberUrl, sha256: m.sha256 });
-      logger.info({ ipoId: ipo.id, zipUrl: candidate.url, member: m.name, part: m.position, storedType: m.type, typedBy: m.typedBy }, 'Zip member stored as its own document');
     }
   }
 
@@ -2086,6 +2071,7 @@ export class DocumentDiscoveryRunner {
 
   async runIpo(ipo: DiscoveryIpo, existingRows: StateRow[]): Promise<IpoRunResult> {
     const now = this.now();
+    this.zipSuppliedByIpo.delete(ipo.id);
     const callsBefore = this.deps.counter.count(ipo.id);
     const attempts: FetchAttempt[] = [];
 
@@ -2293,6 +2279,7 @@ export class DocumentDiscoveryRunner {
     const nseOk = consulted.some((a) => a.source === 'NSE' && a.outcome === 'ok');
     const exchangeCoverageComplete = (!bseApplicable || bseOk) && (!nseApplicable || nseOk);
 
+    const foundInLoop = new Set<DocumentType>();
     for (const docType of plan.due) {
       const stateRow = await this.deps.store.ensureRow(ipo.id, docType);
       const prior: StateRow =
@@ -2316,8 +2303,17 @@ export class DocumentDiscoveryRunner {
       // entry, so silence is not an acceptable substitute for "we skipped it".
       const rungs: string[] = [];
       const triedUrls = new Set<string>();
+      // Item 22: a zip member fetched earlier in this IPO's run already supplied
+      // this type. It is FOUND; asking every source again would only record
+      // NOT_FOUND for a document we hold (Tier A round 1, MAJOR 2).
+      const fromZip = this.zipSuppliedByIpo.get(ipo.id)?.get(docType);
 
-      if (candidates.length === 0) {
+      if (fromZip) {
+        rungs.push('EXCHANGES:found_in_zip');
+        exchanges = 'found';
+        documentId = fromZip.documentId;
+        foundInLoop.add(docType);
+      } else if (candidates.length === 0) {
         // Two very different facts, recorded distinctly: the exchanges ANSWERED
         // and had no link (the filing does not exist yet), versus the exchanges
         // could not be reached at all. Collapsing them into one label is the
@@ -2519,8 +2515,10 @@ export class DocumentDiscoveryRunner {
       if (documentId) patch.documentId = documentId;
       await this.deps.store.update(stateRow.id, patch);
 
-      if (transition.state === 'FOUND') result.found.push(docType);
-      else if (transition.state === 'NOT_YET_FILED') result.notYetFiled.push(docType);
+      if (transition.state === 'FOUND') {
+        result.found.push(docType);
+        foundInLoop.add(docType);
+      } else if (transition.state === 'NOT_YET_FILED') result.notYetFiled.push(docType);
       else if (transition.state === 'NOT_FOUND') result.notFound.push(docType);
       else if (transition.state === 'NOT_APPLICABLE') result.notApplicable.push(docType);
       else if (transition.state === 'BLOCKED_ALL') result.blocked.push(docType);
@@ -2543,6 +2541,21 @@ export class DocumentDiscoveryRunner {
         logger.info({ ipoId: ipo.id, docType, bytes }, 'Document FOUND and stored');
       }
     }
+
+    // Item 22: a type a zip member supplied AFTER its own turn in the loop, or
+    // one not due this cycle, is marked FOUND here through the same `found`
+    // transition, so the next cycle does not run its chain either.
+    for (const [docType, supplied] of this.zipSuppliedByIpo.get(ipo.id) ?? []) {
+      if (foundInLoop.has(docType)) continue;
+      if (await markTypeFoundFromZip(this.deps.store, ipo.id, docType, supplied.documentId, supplied.zipUrl, now)) {
+        result.found.push(docType);
+        for (const list of [result.notYetFiled, result.notFound, result.notApplicable, result.blocked]) {
+          const at = list.indexOf(docType);
+          if (at >= 0) list.splice(at, 1);
+        }
+      }
+    }
+    this.zipSuppliedByIpo.delete(ipo.id);
 
     const learned = this.companyUrlByIpo.get(ipo.id);
     if (learned && !ipo.companyWebsite) result.learnedCompanyWebsite = learned;

@@ -140,6 +140,26 @@ export class DocumentRepository
   }
 
   /**
+   * Item 22 (OD-33): the document of this IPO already holding these bytes, if
+   * any. A zip member whose sha256 matches is not stored a second time, even
+   * when the earlier copy came from another source or another day.
+   */
+  async findBySha256ForIpo(ipoId: string, sha256: string): Promise<{ id: string; type: string } | null> {
+    try {
+      const { and } = await import('drizzle-orm');
+      const rows = await this.db
+        .select({ id: documents.id, type: documents.type })
+        .from(documents)
+        .where(and(eq(documents.ipoId, ipoId), eq(documents.sha256, sha256)))
+        .orderBy(documents.createdAt)
+        .limit(1);
+      return rows.length > 0 ? { id: rows[0].id, type: String(rows[0].type) } : null;
+    } catch (error) {
+      throw new DatabaseError(`Failed to look up document by sha256 for IPO: ${ipoId}`, undefined, error);
+    }
+  }
+
+  /**
    * Upsert a single document
    * - If URL exists: Update timestamp and set isActive=true
    * - If new document of existing type: Get next sequence number

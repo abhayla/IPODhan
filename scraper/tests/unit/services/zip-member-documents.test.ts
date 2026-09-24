@@ -20,6 +20,9 @@ import {
   verifyDownload,
   MIN_DOCUMENT_BYTES,
 } from '../../../src/services/document-download-verifier.js';
+import { extractPdfMembersFromZip } from '../../../src/services/primary-source-discovery.js';
+import { markTypeFoundFromZip, memberNameFromUrl } from '../../../src/services/zip-member-documents.js';
+import { planRetype } from '../../../src/scripts/retype-misclassified-documents.js';
 
 /**
  * Item 22 (OD-36, F-154; failure class container-unwrapped-to-one-member).
@@ -47,16 +50,21 @@ const json = (text: string): HttpResponse => ({
 const pdf = (marker: string, size = 80_000) =>
   Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.from(marker.repeat(size))]);
 
-/** A STORED zip with several named members, central-directory order = input order. */
-function makeMultiZip(entries: { name: string; content: Buffer }[]): Buffer {
+/**
+ * A STORED zip with several named members, central-directory order = input order.
+ * A string name is written as UTF-8 bytes WITHOUT the UTF-8 flag (bit 11), the
+ * way the exchange's archiver writes RHP_HTEL.zip; `flags` sets it explicitly.
+ */
+function makeMultiZip(entries: { name: string | Buffer; content: Buffer; flags?: number }[]): Buffer {
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];
   let offset = 0;
-  for (const { name, content } of entries) {
-    const nameBuf = Buffer.from(name, 'latin1');
+  for (const { name, content, flags = 0 } of entries) {
+    const nameBuf = Buffer.isBuffer(name) ? name : Buffer.from(name, 'utf8');
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(flags, 6);
     local.writeUInt32LE(content.length, 18);
     local.writeUInt32LE(content.length, 22);
     local.writeUInt16LE(nameBuf.length, 26);
@@ -64,6 +72,7 @@ function makeMultiZip(entries: { name: string; content: Buffer }[]): Buffer {
     const central = Buffer.alloc(46);
     central.writeUInt32LE(0x02014b50, 0);
     central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(flags, 8);
     central.writeUInt32LE(content.length, 20);
     central.writeUInt32LE(content.length, 24);
     central.writeUInt16LE(nameBuf.length, 28);
@@ -117,22 +126,44 @@ const EXISTING = ['DRHP', 'PRICE_BAND_AD', 'CORRIGENDUM', 'RATIOS_BASIS_ISSUE_PR
   })
 );
 
-/** Mirrors DocumentRepository.upsertDocument's contract: one row per URL. */
-function urlKeyedSink() {
-  const byUrl = new Map<string, DocumentSinkInput & { id: string }>();
+/**
+ * Mirrors DocumentRepository: one row per URL; a URL hit refreshes sha256 and
+ * part_number (upsertDocument), and findBySha256ForIpo answers from every row
+ * ever stored for the IPO (the DB, not a per-run map).
+ */
+function urlKeyedSink(preloaded: (DocumentSinkInput & { id: string })[] = []) {
+  const byUrl = new Map<string, DocumentSinkInput & { id: string }>(preloaded.map((r) => [r.url, { ...r }]));
   let inserts = 0;
   return {
     byUrl,
     inserts: () => inserts,
     async upsertDocument(doc: DocumentSinkInput) {
       const hit = byUrl.get(doc.url);
-      if (hit) return { id: hit.id };
+      if (hit) {
+        if (doc.sha256) hit.sha256 = doc.sha256;
+        if (doc.partNumber != null) hit.partNumber = doc.partNumber;
+        return { id: hit.id };
+      }
       inserts += 1;
       const row = { ...doc, id: `doc-${inserts}` };
       byUrl.set(doc.url, row);
       return { id: row.id };
     },
+    async findBySha256ForIpo(ipoId: string, sha256: string) {
+      const hit = [...byUrl.values()].find((r) => r.ipoId === ipoId && r.sha256 === sha256);
+      return hit ? { id: hit.id, type: hit.type as string } : null;
+    },
   };
+}
+
+/** A fetch-state store holding the given rows (the persisted twin of `existingRows`). */
+async function seededStore(rows: { docType: string; state: string }[], ipoId = 'ipo-skyways') {
+  const store = new InMemoryDocumentFetchStateStore();
+  for (const r of rows) {
+    const row = await store.ensureRow(ipoId, r.docType);
+    await store.update(row.id, { state: r.state as never });
+  }
+  return store;
 }
 
 let storeDir: string;
@@ -143,7 +174,11 @@ afterEach(async () => {
   await fsp.rm(storeDir, { recursive: true, force: true });
 });
 
-function makeRunner(zip: Buffer, documents: ReturnType<typeof urlKeyedSink>) {
+function makeRunner(
+  zip: Buffer,
+  documents: ReturnType<typeof urlKeyedSink>,
+  store: InMemoryDocumentFetchStateStore = new InMemoryDocumentFetchStateStore()
+) {
   const fetcher: HttpFetcher = async (url) => {
     if (url.includes('listing.bseindia.com')) {
       return { status: 200, contentType: 'text/html', body: Buffer.from('<html><h1>Object Moved</h1></html>'), url };
@@ -155,7 +190,7 @@ function makeRunner(zip: Buffer, documents: ReturnType<typeof urlKeyedSink>) {
   };
   return new DocumentDiscoveryRunner({
     fetcher,
-    store: new InMemoryDocumentFetchStateStore(),
+    store,
     documents,
     counter: new NetworkCounter(),
     now: () => new Date('2026-08-28T06:00:00Z'),
@@ -175,7 +210,14 @@ describe('zip member names (real, F-154)', () => {
     ]) {
       expect(isGidMemberName(n)).toBe(true);
     }
-    for (const n of ['RHP_AUGMONT/Augmont Enterprises Ltd_RHP.pdf', 'SteamhouseRHP.pdf', 'RHP_HTEL/Corrigendum/BS Mumbai 20-08-2026-8.pdf']) {
+    // A FOLDER named like a GID never makes its members GIDs: only the base name counts.
+    for (const n of [
+      'RHP_AUGMONT/Augmont Enterprises Ltd_RHP.pdf',
+      'SteamhouseRHP.pdf',
+      'RHP_HTEL/Corrigendum/BS Mumbai 20-08-2026-8.pdf',
+      'Prospectus_GID/x.pdf',
+      'RHP_X/GID/X_Corrigendum.pdf',
+    ]) {
       expect(isGidMemberName(n)).toBe(false);
     }
   });
@@ -210,7 +252,7 @@ describe('zip member names (real, F-154)', () => {
 describe('the runner stores each non-GID zip member as its own typed document (item 22)', () => {
   it('writes exactly the RHP (part 4) and two CORRIGENDUM rows (parts 1, 2); the GID and the unnamed member write nothing', async () => {
     const sink = urlKeyedSink();
-    const result = await makeRunner(makeMultiZip(MEMBERS), sink).runIpo(SKYWAYS, EXISTING as never);
+    const result = await makeRunner(makeMultiZip(MEMBERS), sink, await seededStore(EXISTING)).runIpo(SKYWAYS, EXISTING as never);
 
     expect(result.found).toEqual(['RHP']);
     const rows = [...sink.byUrl.values()]
@@ -219,8 +261,8 @@ describe('the runner stores each non-GID zip member as its own typed document (i
       .sort((a, b) => a.partNumber! - b.partNumber!);
 
     expect(rows).toEqual([
-      { type: 'CORRIGENDUM', url: zipMemberUrl(ZIP_URL, 1), partNumber: 1, exchange: 'NSE' },
-      { type: 'CORRIGENDUM', url: zipMemberUrl(ZIP_URL, 2), partNumber: 2, exchange: 'NSE' },
+      { type: 'CORRIGENDUM', url: zipMemberUrl(ZIP_URL, MEMBERS[0].name), partNumber: 1, exchange: 'NSE' },
+      { type: 'CORRIGENDUM', url: zipMemberUrl(ZIP_URL, MEMBERS[1].name), partNumber: 2, exchange: 'NSE' },
       { type: 'RHP', url: ZIP_URL, partNumber: 4, exchange: 'NSE' },
     ]);
     // No row for the GID (part 3) or the unclassified member (part 5).
@@ -234,10 +276,10 @@ describe('the runner stores each non-GID zip member as its own typed document (i
 
   it('is idempotent: a second run over the same zip inserts 0 new rows', async () => {
     const sink = urlKeyedSink();
-    await makeRunner(makeMultiZip(MEMBERS), sink).runIpo(SKYWAYS, EXISTING as never);
+    await makeRunner(makeMultiZip(MEMBERS), sink, await seededStore(EXISTING)).runIpo(SKYWAYS, EXISTING as never);
     const afterFirst = sink.inserts();
     expect(afterFirst).toBe(3);
-    await makeRunner(makeMultiZip(MEMBERS), sink).runIpo(SKYWAYS, EXISTING as never);
+    await makeRunner(makeMultiZip(MEMBERS), sink, await seededStore(EXISTING)).runIpo(SKYWAYS, EXISTING as never);
     expect(sink.inserts() - afterFirst).toBe(0);
   }, 60_000);
 
@@ -249,7 +291,7 @@ describe('the runner stores each non-GID zip member as its own typed document (i
       { name: 'RHP_X/Corrigendum/page.pdf', content: same },
       { name: 'RHP_X/X_RHP.pdf', content: pdf('R', 200_000) },
     ]);
-    const result = await makeRunner(zip, sink).runIpo(SKYWAYS, EXISTING as never);
+    const result = await makeRunner(zip, sink, await seededStore(EXISTING)).runIpo(SKYWAYS, EXISTING as never);
     expect([...sink.byUrl.values()].filter((r) => r.type === 'CORRIGENDUM')).toHaveLength(1);
     expect(result.attempts.some((a) => String(a.outcome).startsWith('zip_member_deduped_by_sha256_to:CORRIGENDUM'))).toBe(true);
   }, 60_000);
@@ -257,7 +299,7 @@ describe('the runner stores each non-GID zip member as its own typed document (i
   it('regression: a one-member zip writes one row, with part_number unset, exactly as before', async () => {
     const sink = urlKeyedSink();
     const zip = makeMultiZip([{ name: 'RHP_SKYWAYS/RHP Skyways.pdf', content: pdf('N') }]);
-    const result = await makeRunner(zip, sink).runIpo(SKYWAYS, EXISTING as never);
+    const result = await makeRunner(zip, sink, await seededStore(EXISTING)).runIpo(SKYWAYS, EXISTING as never);
     expect(result.found).toEqual(['RHP']);
     const rows = [...sink.byUrl.values()];
     expect(rows).toHaveLength(1);
@@ -266,4 +308,132 @@ describe('the runner stores each non-GID zip member as its own typed document (i
     expect(rows[0].partNumber).toBeUndefined();
     expect(result.attempts.some((a) => String(a.outcome).startsWith('zip_member_'))).toBe(false);
   }, 60_000);
+});
+
+describe('Tier A round 1 fixes (item 22)', () => {
+  const C1 = 'RHP_X/X_Corrigendum.pdf';
+  const C2 = 'RHP_X/Corrigendum/BS Mumbai 20-08-2026-8.pdf';
+
+  it('MAJOR 3: a re-fetch whose members are REORDERED never writes one member\'s bytes onto another member\'s row', async () => {
+    const a = pdf('a');
+    const b = pdf('b');
+    const bRepublished = pdf('B');
+    const sink = urlKeyedSink();
+    await makeRunner(
+      makeMultiZip([
+        { name: C1, content: a },
+        { name: C2, content: b },
+        { name: 'RHP_X/X_RHP.pdf', content: pdf('R', 200_000) },
+      ]),
+      sink,
+      await seededStore(EXISTING)
+    ).runIpo(SKYWAYS, EXISTING as never);
+    // The exchange re-publishes: C2 changed and now comes FIRST.
+    await makeRunner(
+      makeMultiZip([
+        { name: C2, content: bRepublished },
+        { name: C1, content: a },
+        { name: 'RHP_X/X_RHP.pdf', content: pdf('R', 200_000) },
+      ]),
+      sink,
+      await seededStore(EXISTING)
+    ).runIpo(SKYWAYS, EXISTING as never);
+
+    const sha = (buf: Buffer) => require('node:crypto').createHash('sha256').update(buf).digest('hex');
+    // Found by TITLE (what a reader sees), not by the key under test.
+    const rows = [...sink.byUrl.values()].filter((r) => r.type === 'CORRIGENDUM');
+    expect(rows).toHaveLength(2);
+    const c1Row = rows.find((r) => r.title.endsWith('| X_Corrigendum.pdf'))!;
+    const c2Row = rows.find((r) => r.title.endsWith('| BS Mumbai 20-08-2026-8.pdf'))!;
+    expect(c1Row.sha256).toBe(sha(a));
+    expect(c2Row.sha256).toBe(sha(bRepublished));
+    expect(memberNameFromUrl(c2Row.url)).toBe(C2);
+  }, 60_000);
+
+  it('MAJOR 2a: bytes already stored for the IPO in an EARLIER run (a company-site copy) are not stored again', async () => {
+    const corr = pdf('K');
+    const shaCorr = require('node:crypto').createHash('sha256').update(corr).digest('hex');
+    const sink = urlKeyedSink([
+      {
+        id: 'doc-company',
+        ipoId: 'ipo-skyways',
+        type: 'CORRIGENDUM',
+        title: 'Corrigendum (company site)',
+        url: 'https://www.skyways.example/investors/corrigendum.pdf',
+        exchange: 'COMPANY',
+        mediaType: 'PDF',
+        extractionStatus: 'PENDING',
+        isActive: true,
+        sha256: shaCorr,
+      },
+    ]);
+    const result = await makeRunner(
+      makeMultiZip([
+        { name: C1, content: corr },
+        { name: 'RHP_X/X_RHP.pdf', content: pdf('R', 200_000) },
+      ]),
+      sink,
+      await seededStore(EXISTING)
+    ).runIpo(SKYWAYS, EXISTING as never);
+
+    expect([...sink.byUrl.values()].filter((r) => r.type === 'CORRIGENDUM').map((r) => r.id)).toEqual(['doc-company']);
+    expect(sink.byUrl.has(zipMemberUrl(ZIP_URL, C1))).toBe(false);
+    expect(result.attempts.some((a) => String(a.outcome).startsWith('zip_member_deduped_by_sha256_to:CORRIGENDUM'))).toBe(true);
+  }, 60_000);
+
+  it('MAJOR 2b: a type the zip supplied is FOUND (with the member row id) and its fallback chain is not run', async () => {
+    const sink = urlKeyedSink();
+    // CORRIGENDUM is still wanted: no FOUND row for it.
+    const existing = EXISTING.filter((r) => r.docType !== 'CORRIGENDUM');
+    const store = await seededStore(existing);
+    const result = await makeRunner(makeMultiZip(MEMBERS), sink, store).runIpo(SKYWAYS, existing as never);
+
+    const memberRow = sink.byUrl.get(zipMemberUrl(ZIP_URL, MEMBERS[0].name))!;
+    const corrState = (await store.listForIpo('ipo-skyways')).find((r) => r.docType === 'CORRIGENDUM')!;
+    expect(corrState.state).toBe('FOUND');
+    expect([memberRow.id, sink.byUrl.get(zipMemberUrl(ZIP_URL, MEMBERS[1].name))!.id]).toContain(corrState.documentId);
+    expect(result.found).toContain('CORRIGENDUM');
+    expect(result.notFound).not.toContain('CORRIGENDUM');
+    expect(result.blocked).not.toContain('CORRIGENDUM');
+    expect(result.attempts.some((a) => String(a.outcome).startsWith('rungs[CORRIGENDUM]: EXCHANGES:found_in_zip'))).toBe(true);
+    // No SEBI / company / verifier rung ran for it.
+    expect(result.attempts.some((a) => String(a.outcome).startsWith('rungs[CORRIGENDUM]') && /SEBI:(?!skipped)/.test(String(a.outcome)))).toBe(false);
+  }, 60_000);
+
+  it('markTypeFoundFromZip moves only an open row, never a FOUND or SUPERSEDED one', async () => {
+    const store = await seededStore([
+      { docType: 'CORRIGENDUM', state: 'WANTED' },
+      { docType: 'ADDENDUM', state: 'FOUND' },
+      { docType: 'PRICE_BAND_AD', state: 'SUPERSEDED' },
+    ]);
+    expect(await markTypeFoundFromZip(store, 'ipo-skyways', 'CORRIGENDUM', 'doc-9', ZIP_URL)).toBe(true);
+    expect(await markTypeFoundFromZip(store, 'ipo-skyways', 'ADDENDUM', 'doc-9', ZIP_URL)).toBe(false);
+    expect(await markTypeFoundFromZip(store, 'ipo-skyways', 'PRICE_BAND_AD', 'doc-9', ZIP_URL)).toBe(false);
+    const rows = await store.listForIpo('ipo-skyways');
+    expect(rows.find((r) => r.docType === 'CORRIGENDUM')).toMatchObject({ state: 'FOUND', documentId: 'doc-9' });
+    expect(rows.find((r) => r.docType === 'ADDENDUM')!.documentId).toBeNull();
+  });
+});
+
+describe('zip member names are decoded as their bytes say (item 22 MINOR)', () => {
+  // The real name from NSE's RHP_HTEL.zip (captured 2026-09-24): UTF-8 bytes, UTF-8 flag NOT set.
+  const DEVANAGARI = 'RHP_HTEL/Corrigendum/बिज़नेस_स्टैंडर्ड_●_मुंबई_●_20‹08‹2026_-11.pdf';
+
+  it('reads valid UTF-8 as UTF-8 even without the flag, and cp437 otherwise', () => {
+    const zip = makeMultiZip([
+      { name: DEVANAGARI, content: pdf('D') },
+      { name: Buffer.from([0x52, 0x2f, 0x81, 0x2e, 0x70, 0x64, 0x66]), content: pdf('E') }, // 'R/' + cp437 0x81 'ü' + '.pdf'
+      { name: 'RHP_HTEL/Ünicode.pdf', content: pdf('F'), flags: 0x0800 },
+    ]);
+    expect(extractPdfMembersFromZip(zip).map((m) => m.name)).toEqual([DEVANAGARI, 'R/ü.pdf', 'RHP_HTEL/Ünicode.pdf']);
+  });
+});
+
+describe('retype-misclassified-documents reads a member row by its member name (item 22 MINOR)', () => {
+  it('a CORRIGENDUM member of an RHP zip is not flagged for review', () => {
+    const url = zipMemberUrl(ZIP_URL, 'RHP_HTEL/Corrigendum/BS Mumbai 20-08-2026-8.pdf');
+    expect(planRetype({ id: 'd1', url, title: 'RHP | BS Mumbai 20-08-2026-8.pdf', type: 'CORRIGENDUM' })).toBeNull();
+    // The bare zip still classifies by its own name.
+    expect(planRetype({ id: 'd2', url: 'https://x/RHP_HTEL.zip', title: 'RHP', type: 'CORRIGENDUM' })?.suggestedType).toBe('RHP');
+  });
 });

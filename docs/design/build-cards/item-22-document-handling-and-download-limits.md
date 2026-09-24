@@ -403,14 +403,29 @@ What was built:
   ('BS Mumbai 20-08-2026-8.pdf', a Devanagari name, '2008-FPP-NS-07_compressed.pdf'); the uploader's
   `Corrigendum/` folder is the only statement of what they are. A folder can never type a member as
   the offer document, so an unnamed member is never mis-typed as the RHP.
-- `DocumentDiscoveryRunner.storeOtherZipMembers`: a `typed` member whose type differs from the main
-  document's is stored (same store, same OD-33 sha256 dedup) as its own row: url = the zip url plus
-  `#part=<n>` (`documents.url` is globally unique, so the bare zip url is already the main row's; a
-  fragment names a part of the same resource and does not change what a fetch returns), `part_number`
-  = its position. A second member of the main document's own type (a volume split, 0 of 41 measured)
-  is logged, not stored. Every skipped member is logged by name, position and size
-  (`zip_member_skipped:<why>`). No cover-page company check on a member: the archive was verified by
-  its main member, and a newspaper corrigendum page prints many companies' notices.
+- `storeZipMemberDocuments` (`zip-member-documents.ts`, called by `DocumentDiscoveryRunner.storeOtherZipMembers`
+  and by the repair tool): a `typed` member whose type differs from the main document's is stored as its
+  own row keyed by a STABLE member identity: url = the zip url plus `#member=<url-encoded member path>`
+  (`documents.url` is globally unique, so the bare zip url is already the main row's; a fragment names a
+  part of the same resource and does not change what a fetch returns). Never keyed by position: the
+  exchange inserts members ahead of the offer document (RHP_HTEL's RHP is part 5), so a position key
+  would let a re-fetch write one member's bytes onto another member's row (Tier A round 1, MAJOR 3).
+  `part_number` = its position at fetch time. Before inserting, the IPO's documents are looked up by
+  sha256 in the DB (`DocumentRepository.findBySha256ForIpo`), not only in the run's memory: identical
+  bytes stored in any earlier run or from any source write no second row (OD-33). A second member of the
+  main document's own type (a volume split, 0 of 41 measured) is logged, not stored. Every skipped member
+  is logged by name, position and size (`zip_member_skipped:<why>`). No cover-page company check on a
+  member: the archive was verified by its main member, and a newspaper corrigendum page prints many
+  companies' notices.
+- `markTypeFoundFromZip`: each type a member supplied (stored, or already stored under the same type) is
+  moved to FOUND in `document_fetch_state` through the state machine's `found` transition, with the member
+  row's id; the per-type loop skips the fallback chain for it (`EXCHANGES:found_in_zip`), so the chain no
+  longer records NOT_FOUND for a document already held (Tier A round 1, MAJOR 2).
+- Member names: bit 11 of the zip flags means UTF-8; without it, valid UTF-8 bytes are read as UTF-8 (the
+  Devanagari RHP_HTEL page has flag 0), else cp437.
+- Existing rows: `scraper/scripts/repair-zip-member-documents.ts` re-fetches every stored `.zip` without
+  `#member=` siblings through the same verifier, requires the chosen member's sha256 to equal the stored
+  one, and stores the members through the same `storeZipMemberDocuments` (dry run by default).
 - `DocumentRepository.upsertDocument` fills `part_number` on an existing row when a caller supplies it.
 
 Precedence trace (OD-30): `DOCUMENT_TYPE_RANK` in `field-priority-matrix.ts` already ranks CORRIGENDUM
