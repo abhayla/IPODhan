@@ -101,7 +101,7 @@ export interface FieldPlanWalkResult {
   fieldsSupplied: number;
   /** Retired: every rank gave a DEFINITIVE no. Terminal. */
   fieldsExhausted: number;
-  /** Not retired: at least one rank failed transiently. Re-asked after backoff. */
+  /** Not retired: at least one rank failed transiently (re-asked next data slot) or every rank hit a structural gap (re-asked when its gap key changes, F-152). */
   fieldsCheckFailed: number;
   fieldsSkippedProtected: number;
   /** Fields whose write was DROPPED — left PENDING, attempts untouched. */
@@ -159,7 +159,7 @@ export type FieldFetcherAnswer =
        *
        * DEFAULT (omitted) is `true` -- transient -- because the two mistakes
        * are not symmetric. Treating a definitive failure as transient costs a
-       * re-ask on a doubling backoff. Treating a transient failure as
+       * re-ask next data slot. Treating a transient failure as
        * definitive retires the field forever. An adapter author who has not
        * thought about it gets the recoverable error.
        */
@@ -585,7 +585,7 @@ export async function walkFieldPlanForIPO(
 
     // §2.7 — an admin-protected field is SKIPPED and stores NO state. The
     // claim is released without an attempt being charged, so the field's
-    // backoff budget is not spent on work that was never done.
+    // attempt budget is not spent on work that was never done.
     if (deps.protectionFilter) {
       let isProtected = false;
       try {
@@ -667,7 +667,7 @@ async function attemptOneField(
     result.fieldsCheckFailed += 1;
     logger.warn(
       { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName },
-      'PASS 3: ipo row not found for policy resolution — CHECK_FAILED, re-asked after backoff (no ranks guessed)'
+      'PASS 3: ipo row not found for policy resolution — CHECK_FAILED, re-asked next data slot (no ranks guessed)'
     );
     return recordAndClassify(deps, result, {
       planRowId: plan.id,
@@ -716,10 +716,11 @@ async function attemptOneField(
    * source is retired on a slower clock rather than not at all, and the row
    * that gets retired is the one whose source is WORST, not the one whose
    * answer is settled. Classification makes EXHAUSTED mean what it says --
-   * every source gave a definitive answer. `attempts` still bounds the
-   * transient path via the repository's own doubling backoff (15m -> 6h cap),
-   * so a permanently-broken adapter degrades to one re-ask every six hours
-   * rather than a hot loop.
+   * every source gave a definitive answer. The transient path is re-asked
+   * once per OD-19 data slot (F-152 removed the 15m -> 6h elapsed-time
+   * backoff) and bounded by FIELD_PLAN_RECLAIM_MAX_ATTEMPTS at claim time, so
+   * a permanently-broken adapter degrades to at most one re-ask per slot,
+   * never a hot loop.
    */
   let sawTransientFailure = false;
 
@@ -934,7 +935,7 @@ async function attemptOneField(
           rank,
           reason: verdict.reason,
         },
-        'PASS 3: the write reached the consolidator but LOST to a higher-priority source — CHECK_FAILED, re-asked after backoff, NOT recorded as SUPPLIED'
+        'PASS 3: the write reached the consolidator but LOST to a higher-priority source — CHECK_FAILED, re-asked next data slot, NOT recorded as SUPPLIED'
       );
       const rejection = classifyValidationRejection(verdict.reason);
       return recordAndClassify(deps, result, {
@@ -1009,21 +1010,37 @@ async function attemptOneField(
   // §2.6 holds either way: the field's existing value in `ipos`/the child
   // table is untouched, because the walk never called a writer on this path.
   if (sawTransientFailure) {
-    // At least one rank failed for a reason that may not fail again, so this
-    // is NOT a settled answer. CHECK_FAILED is deliberately NOT in the
-    // repository's TERMINAL_STATES: `next_due_at` is set to the doubling
-    // backoff and the field is re-asked. Three timeouts in one pass cost a
-    // delay, not the field.
+    // CHECK_FAILED is deliberately NOT in the repository's TERMINAL_STATES,
+    // so the field is never retired here. What re-asks it depends on WHY
+    // every rank failed (F-152):
+    //  - every failure a STRUCTURAL gap (no mapping, no document provenance,
+    //    no fetcher, no documentType, no column read -- FIELD_PLAN_GAP_CODES,
+    //    declared by the fetcher, never parsed from text): a settled fact
+    //    under the field's gap key. Recorded as definitive: no next-due time,
+    //    re-asked only when the key changes (OD-78, §2.3). Staging 2026-09-24
+    //    logged 320 such fields as "TRANSIENT".
+    //  - at least one genuine failure (throw, timeout, 5xx, an unflagged
+    //    CHECK_FAILED): re-asked in the next OD-19 data slot, never on an
+    //    elapsed-time backoff (OD-21, §2.5 "never on a backoff timer").
     result.fieldsCheckFailed += 1;
-    logger.warn(
-      { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures },
-      'PASS 3: every rank failed for this field, at least one TRANSIENTLY — CHECK_FAILED, re-asked after backoff (NOT retired)'
-    );
     const classified = classifyWalkFailures(failures);
+    const structural = classified?.allGaps === true;
     const gapKey =
       classified?.allGaps && ipoGapKeys
         ? fieldPlanGapKeyFor(ipoGapKeys, plan.tableName, plan.fieldName, classified.gapCodes)
         : null;
+    // Round 2 MINOR: the log says what the write below actually does. A
+    // structural failure with no gap key (no ipoGapKeys for this IPO) is NOT
+    // recorded under a key; it takes the charged next-slot path like a
+    // transient one, so it must not be logged as "re-asked only when the key changes".
+    logger.warn(
+      { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures, gapKey },
+      structural && gapKey
+        ? 'PASS 3: every rank failed with a STRUCTURAL gap — CHECK_FAILED recorded as definitive under its gap key, re-asked only when the key changes (NOT transient, NOT retired)'
+        : structural
+          ? 'PASS 3: every rank failed with a STRUCTURAL gap but no gap key could be computed — CHECK_FAILED, re-asked next data slot (NOT retired)'
+          : 'PASS 3: every rank failed for this field, at least one TRANSIENTLY — CHECK_FAILED, re-asked next data slot (NOT retired)'
+    );
     return recordAndClassify(deps, result, {
       planRowId: plan.id,
       claimToken: plan.claimToken,

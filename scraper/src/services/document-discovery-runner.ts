@@ -2370,7 +2370,7 @@ export class DocumentDiscoveryRunner {
       const transition = applyOutcome(prior, outcome, now, { stage: ipo.stage });
       // W-28: NOT_FOUND has no `document_fetch_status` enum member yet (the enum
       // change is reported, not made, by this work package), so it persists as
-      // WANTED — open, on its backoff, and no longer claiming the issuer has not
+      // WANTED — open, retried next data slot, and no longer claiming the issuer has not
       // filed. `state_intent` below carries the decided state until the enum lands.
       const persistedState = toPersistedState(transition.state);
       let stateIntentAttempt: FetchAttempt | null = null;
@@ -2389,6 +2389,11 @@ export class DocumentDiscoveryRunner {
         blockedSinceAt: transition.blockedSinceAt,
         attempts: (stateRow.attempts ?? 0) + 1,
         lastAttemptAt: now,
+        // Round 2 (OD-56): record the stage this attempt was made at, so a
+        // LISTED IPO's row is attempted once after entering LISTED and not
+        // every slot. A chain that concluded nothing (`chain_incomplete`)
+        // learned nothing, so it does not count as the stage's attempt.
+        ...(outcome !== 'chain_incomplete' ? { attemptedAtStage: ipo.stage } : {}),
         // Only the attempts that concern THIS document type, plus the shared
         // exchange calls (N8 — storing the whole cycle's log on every row grew
         // with the number of due types and buried the relevant lines).
@@ -2477,5 +2482,6 @@ export function toStateRow(row: DocumentFetchStateRow): StateRow {
     filingDate: row.filingDate,
     extractorVersion: row.extractorVersion,
     lastAttemptAt: row.lastAttemptAt,
+    attemptedAtStage: row.attemptedAtStage ?? null,
   };
 }

@@ -56,6 +56,8 @@ export interface DocumentFetchStateRow {
   documentId: string | null;
   attempts: number;
   lastAttemptAt: Date | null;
+  /** Lifecycle stage at the last concluded attempt (OD-56, F-151 round 2). */
+  attemptedAtStage: string | null;
   nextRetryAt: Date | null;
   lastAttempt: FetchAttempt[] | null;
   firstSeenAt: Date;
@@ -73,6 +75,7 @@ export interface DocumentFetchStatePatch {
   documentId?: string | null;
   attempts?: number;
   lastAttemptAt?: Date | null;
+  attemptedAtStage?: string | null;
   nextRetryAt?: Date | null;
   lastAttempt?: FetchAttempt[] | null;
   blockedSinceAt?: Date | null;

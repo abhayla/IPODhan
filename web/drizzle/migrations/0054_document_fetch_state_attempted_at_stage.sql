@@ -1,0 +1,11 @@
+-- #943 round 2 (spec OD-56 "once per STAGE CHANGE, never more", §2.5.1 "never on a backoff
+-- timer", OD-81): the lifecycle stage an open document row was last attempted at by a chain
+-- that concluded. A LISTED IPO's open row is attempted ONCE after the IPO entered LISTED; this
+-- column is how "already attempted at LISTED" is known without inferring the stage change from
+-- listing_date (#932). Additive and nullable: NULL reads as "not yet attempted at this stage",
+-- so every existing LISTED row is attempted once more and then settles.
+--
+-- HAND-WRITTEN for the same reason as 0051-0053 (#886: `db:generate` picks the wrong parent
+-- snapshot by filename sort). meta/0054_snapshot.json is 0053's snapshot plus this column,
+-- parented on 0053's id.
+ALTER TABLE "document_fetch_state" ADD COLUMN IF NOT EXISTS "attempted_at_stage" varchar(16);

@@ -776,6 +776,15 @@ export const documentFetchState = pgTable(
 
     attempts: integer('attempts').default(0).notNull(),
     lastAttemptAt: timestamp('last_attempt_at'),
+    /**
+     * The lifecycle stage the IPO was at when this row was last attempted by a
+     * chain that concluded (never written by `chain_incomplete` or the rotation
+     * stamp). OD-56 / §2.5.1: a LISTED IPO's open row is attempted ONCE after the
+     * IPO entered LISTED; this is how "already attempted at LISTED" is known
+     * without inferring the stage change from `listing_date` (#932). NULL = never
+     * attempted since this column existed, which reads as "not yet at this stage".
+     */
+    attemptedAtStage: varchar('attempted_at_stage', { length: 16 }),
     nextRetryAt: timestamp('next_retry_at'),
     /** Every source tried in the last run, in order (see the example above). */
     lastAttempt: jsonb('last_attempt'),

@@ -12,6 +12,7 @@ import {
   FIELD_PLAN_CLAIM_STALE_MINUTES,
   FIELD_PLAN_RECLAIM_MAX_ATTEMPTS,
 } from '../../../packages/shared/src/repositories/ipo-field-plan-repository';
+import { nextDataJobSlotBoundary } from '../../../packages/shared/src/scheduler/data-job-slots';
 import { resolveFieldSourcePolicy, policyOriginString } from '../../src/config/field-source-policy';
 import { resolveIpoTypeKey } from '../../src/services/field-plan-generator';
 import { loadFieldManifest } from '../../src/config/field-manifest-loader';
@@ -717,23 +718,70 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     expect(persisted.policyOrigin).toBe('registry:1');
   });
 
-  it('a FAILED attempt stays PENDING, bumps attempts and schedules a backoff', async () => {
+  it('a FAILED attempt stays PENDING, bumps attempts and is next due at the next data slot (F-152: no elapsed-time backoff)', async () => {
     const id = await seedRow();
     const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
 
-    const before = Date.now();
+    const now = new Date();
     const result = await repo.recordOutcome({
       planRowId: id,
       claimToken: claimed!.claimToken!,
       writeHappened: true,
       state: 'PENDING',
+      now,
     });
     expect(result.written).toBe(true);
 
     const persisted = await readRow(id);
     expect(persisted.state).toBe('PENDING');
     expect(persisted.attempts).toBe(1);
-    expect(persisted.nextDueAt!.getTime()).toBeGreaterThan(before);
+    expect(persisted.nextDueAt!.toISOString()).toBe(nextDataJobSlotBoundary(now).toISOString());
+  });
+
+  it('F-152: a transient CHECK_FAILED is next due at the start of the next data slot, whatever its attempt count', async () => {
+    const id = await seedRow({ attempts: 3 });
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
+    const now = new Date();
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claimed!.claimToken!,
+      writeHappened: true,
+      state: 'CHECK_FAILED',
+      reasonCode: 'SOURCE_UNREACHABLE',
+      cause: 'rank1:NSE:THROWN:ETIMEDOUT',
+      now,
+    });
+    const persisted = await readRow(id);
+    expect(persisted.state).toBe('CHECK_FAILED');
+    expect(persisted.attempts).toBe(4);
+    // Was now + 60 min (15 * 2^3 capped); now a slot boundary.
+    expect(persisted.nextDueAt!.toISOString()).toBe(nextDataJobSlotBoundary(now).toISOString());
+  });
+
+  it('F-152: a structural gap (gapKey) is written definitive — exact columns, no next-due time, no attempt charged', async () => {
+    const id = await seedRow({ attempts: 2 });
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
+    const now = new Date();
+    const cause = 'rank1:NSE:CHECK_FAILED:no mapping [gap:NO_MAPPING]';
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claimed!.claimToken!,
+      writeHappened: true,
+      state: 'CHECK_FAILED',
+      reasonCode: 'COVERAGE_GAP',
+      cause,
+      gapKey: 'k-structural',
+      now,
+    });
+    const persisted = await readRow(id);
+    expect(persisted.state).toBe('CHECK_FAILED');
+    expect(persisted.nextDueAt).toBeNull();
+    expect(persisted.attempts).toBe(2);
+    expect(persisted.reasonCode).toBe('COVERAGE_GAP');
+    expect(persisted.cause).toBe(`[gap-key:k-structural] ${cause}`);
+    expect(persisted.lastAttemptAt).not.toBeNull();
+    expect(persisted.claimToken).toBeNull();
+    expect(persisted.claimedAt).toBeNull();
   });
 
   it('THE CLASS: a SKIPPED write leaves the row PENDING with attempts UNTOUCHED', async () => {

@@ -34,6 +34,7 @@ import {
   type DocumentType,
 } from './document-types.js';
 import type { LifecycleStage } from '../scheduler/stage-reconciler.js';
+import { isDataJobSlotBoundary, nextDataJobSlotBoundary } from '@ipodhan/shared/scheduler/data-job-slots';
 
 export type DocumentFetchStateValue =
   | 'WANTED'
@@ -71,6 +72,11 @@ export interface StateRow {
   filingDate: string | null;
   extractorVersion: string | null;
   lastAttemptAt: Date | null;
+  /**
+   * Stage at the last CONCLUDED attempt (`document_fetch_state.attempted_at_stage`).
+   * Optional so callers/tests that predate it read as "not attempted at this stage".
+   */
+  attemptedAtStage?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -282,6 +288,13 @@ export interface CycleOptions {
   /** Bumping this re-queues EXTRACTED rows built by an older extractor (R5). */
   extractorVersion?: string;
   now?: Date;
+  /**
+   * OD-81 event 2 / §2.5.1 trigger 3: the newest time a document for this IPO was
+   * first seen (`documents.uploaded_at`, any writer). A LISTED row already
+   * attempted at LISTED becomes due again only when a document for the IPO was
+   * first seen AFTER that row's last attempt. Absent = no such event known.
+   */
+  newestDocumentSeenAt?: Date | null;
 }
 
 /** The states from which a document may still be fetched. */
@@ -360,7 +373,7 @@ export interface CyclePlan {
  *
  * Returns `skipIpo: true` — and an empty `due` — whenever nothing is
  * outstanding, whether that is because everything is accounted for or because
- * every open row's `next_retry_at` is still in the future. The runner MUST make
+ * every open row was already attempted in the current data slot (F-151). The runner MUST make
  * no request at all in that case; that is what makes run 2 of the acceptance
  * run cost zero calls.
  */
@@ -436,9 +449,19 @@ export function planIpoCycle(params: {
 
     if (closed.has(row.state) && !needsReExtraction(row, options)) continue;
 
-    // Still open — but is it due YET? The retry ladder (§7.3) lives in
-    // next_retry_at, so an unexpired backoff means "not this cycle".
-    if (row.nextRetryAt && row.nextRetryAt.getTime() > now.getTime()) continue;
+    // Still open — but was it already attempted in THIS data slot? (F-151,
+    // spec §2.1 "The timed backoff retry is removed", OD-21, OD-33.)
+    if (attemptedThisSlot(row, now)) continue;
+
+    // Round 2 (OD-56 "once per STAGE CHANGE, never more", §2.5.1 "never on a
+    // backoff timer", OD-81): a LISTED IPO's open row is attempted ONCE after
+    // the IPO entered LISTED. After that it is not due, so it neither holds the
+    // data slot open nor spends a LISTED cap slot, until a NEW document for the
+    // IPO is first seen after the row's last attempt (OD-81 event 2). A missing
+    // row (a doc type first seen) is handled above: it is always due.
+    if (params.stage === 'LISTED' && !listedRowDue(row, options.newestDocumentSeenAt ?? null)) {
+      continue;
+    }
 
     due.push(docType);
   }
@@ -452,7 +475,7 @@ export function planIpoCycle(params: {
     toMarkSuperseded: superseded,
     skipIpo,
     reason: skipIpo
-      ? 'nothing due — every document is found or not yet retryable (zero network calls)'
+      ? 'nothing due — every document is found or already attempted this data slot (zero network calls)'
       : `${due.length} document type(s) due at stage ${params.stage}`,
   };
 }
@@ -461,61 +484,69 @@ export function planIpoCycle(params: {
 // Transitions
 // ---------------------------------------------------------------------------
 
-/** Retry cadences, in minutes (§7.3). Named, not magic. */
-export const RETRY_MINUTES = {
-  /** A filing can appear any time and the call is one cheap API hit. */
-  NOT_YET_FILED: 30,
-  /**
-   * A discovery miss (W-28). Slower than NOT_YET_FILED on purpose: nothing about
-   * the issue changed, only our search failed, so hammering the same four rungs
-   * every 30 minutes buys nothing and costs a full chain per cycle.
-   */
-  NOT_FOUND: 60,
-  /** Every cycle for the first 24 h — NSE stalls clear within minutes. */
-  BLOCKED_FRESH: 30,
-  /** After a day of total failure it is an outage or a wrong link, not a blip. */
-  BLOCKED_AGED: 6 * 60,
-} as const;
-
 /**
- * How many consecutive NOT_FOUND cycles before the row is escalated to
- * BLOCKED_ALL and the owner is alerted (W-28). Five hours of "every rung
- * answered and nobody has it" is no longer a transient miss — either the
+ * How many consecutive NOT_FOUND attempts before the row is escalated to
+ * BLOCKED_ALL and the owner is alerted (W-28). Since F-151 an open row is
+ * attempted at most once per OD-19 data slot, so this counts SLOTS, not
+ * 60-minute ticks: five slots (under two days at three slots a day) of "every
+ * rung answered and nobody has it" is no longer a transient miss — either the
  * document is somewhere we do not look, or a source's shape changed.
  */
 export const NOT_FOUND_MAX_ATTEMPTS = 5;
 
-/** How long BLOCKED_ALL stays on the fast ladder before backing off. */
-export const BLOCKED_FAST_LADDER_HOURS = 24;
-
 /**
- * When should this row be tried again? Returns null for states that are not
- * retried at all, so a closed row can never be scheduled by accident.
+ * When may this row be attempted again? The start of the NEXT OD-19 data slot
+ * (00:00, 08:00, 14:00 IST) for an open state; null for a closed state, so a
+ * closed row can never be scheduled by accident.
+ *
+ * F-151: this replaced a per-state elapsed-time ladder (30 min / 60 min /
+ * 6 h). With wakes every 30 minutes that ladder made the same open documents
+ * due on every continuation wake, so the discovery pass never finished and
+ * the data slot never logged `complete`. The value written here is a slot
+ * boundary, never `now + N minutes` (spec §2.1, OD-21, OD-33, §2.5.1: "never
+ * on a backoff timer").
  */
-export function computeNextRetryAt(
-  state: DocumentFetchStateValue,
-  now: Date,
-  blockedSinceAt: Date | null = null
-): Date | null {
-  const plus = (minutes: number) => new Date(now.getTime() + minutes * 60_000);
+export function nextAttemptSlotStart(state: DocumentFetchStateValue, now: Date): Date | null {
   switch (state) {
     case 'WANTED':
     case 'NOT_YET_FILED':
-      return plus(RETRY_MINUTES.NOT_YET_FILED);
     case 'NOT_FOUND':
-      return plus(RETRY_MINUTES.NOT_FOUND);
-    case 'BLOCKED_ALL': {
-      const since = blockedSinceAt ?? now;
-      const blockedHours = (now.getTime() - since.getTime()) / 3_600_000;
-      return plus(
-        blockedHours >= BLOCKED_FAST_LADDER_HOURS
-          ? RETRY_MINUTES.BLOCKED_AGED
-          : RETRY_MINUTES.BLOCKED_FRESH
-      );
-    }
+    case 'BLOCKED_ALL':
+      return nextDataJobSlotBoundary(now);
     default:
       return null;
   }
+}
+
+/**
+ * True when an open row was already attempted in the data slot `now` falls in.
+ *
+ * `next_retry_at` may hold ONLY a slot start (`nextAttemptSlotStart`). A value
+ * that is not a slot boundary was written by the removed elapsed-time ladder
+ * (rows on staging/prod before F-151); it is not honoured, so such a row is
+ * due on its first wake after deploy and gets a slot value from then on.
+ */
+export function attemptedThisSlot(row: Pick<StateRow, 'nextRetryAt'>, now: Date): boolean {
+  const next = row.nextRetryAt;
+  if (!next) return false;
+  if (!isDataJobSlotBoundary(next)) return false;
+  return next.getTime() > now.getTime();
+}
+
+/**
+ * Is an OPEN row of a LISTED IPO due (round 2 of #943)? Due when it has not had
+ * a concluded attempt since the IPO entered LISTED (`attemptedAtStage` is not
+ * LISTED), or when a document for the IPO was first seen after its last attempt.
+ * Never due merely because time passed: that is the timer F-151 removed.
+ */
+export function listedRowDue(
+  row: Pick<StateRow, 'attemptedAtStage' | 'lastAttemptAt'>,
+  newestDocumentSeenAt: Date | null
+): boolean {
+  if (row.attemptedAtStage !== 'LISTED') return true;
+  if (!newestDocumentSeenAt) return false;
+  if (!row.lastAttemptAt) return true;
+  return newestDocumentSeenAt.getTime() > row.lastAttemptAt.getTime();
 }
 
 export interface Transition {
@@ -532,7 +563,7 @@ export interface Transition {
  *
  * NOT_YET_FILED is emphatically NOT a failure: `attempts` still counts the try
  * (it is a record of work done) but nothing is alerted and the row goes back on
- * the 30-minute ladder. Treating "the company has not filed it yet" as an error
+ * the once-per-data-slot schedule (F-151). Treating "the company has not filed it yet" as an error
  * is what would fill the audit with noise and hide the real BLOCKED_ALL rows.
  */
 export interface OutcomeContext {
@@ -568,9 +599,9 @@ export function applyOutcome(
     case 'chain_incomplete':
       return {
         state: 'WANTED',
-        nextRetryAt: computeNextRetryAt('WANTED', now),
+        nextRetryAt: nextAttemptSlotStart('WANTED', now),
         // r6 (4): PRESERVED, not cleared. `blockedSinceAt` is the outage clock —
-        // the BLOCKED_ALL ladder backs off by it and the nightly
+        // the owner's alert and the nightly
         // `m_blocked_all_age` check ages rows by it. A chain that concluded
         // nothing has learned nothing about the outage either, so resetting the
         // clock here would make a document that has been unreachable for a week
@@ -606,7 +637,7 @@ export function applyOutcome(
       if (notYetFiled) {
         return {
           state: 'NOT_YET_FILED',
-          nextRetryAt: computeNextRetryAt('NOT_YET_FILED', now),
+          nextRetryAt: nextAttemptSlotStart('NOT_YET_FILED', now),
           blockedSinceAt: null,
           alert: false,
           reason: stage
@@ -615,7 +646,7 @@ export function applyOutcome(
         };
       }
 
-      // Due at this stage and still not found: a miss, with a backoff ladder and
+      // Due at this stage and still not found: a miss, tried once per data slot, with
       // an escalation to BLOCKED_ALL so the owner eventually hears about it
       // rather than the row sitting in a permanently reassuring state.
       const attempts = (row.attempts ?? 0) + 1;
@@ -623,7 +654,7 @@ export function applyOutcome(
         const blockedSinceAt = row.blockedSinceAt ?? now;
         return {
           state: 'BLOCKED_ALL',
-          nextRetryAt: computeNextRetryAt('BLOCKED_ALL', now, blockedSinceAt),
+          nextRetryAt: nextAttemptSlotStart('BLOCKED_ALL', now),
           blockedSinceAt,
           alert: row.state !== 'BLOCKED_ALL',
           reason: `${row.docType} is due at stage ${stage} and was not found in ${attempts} attempts — escalated (W-28)`,
@@ -631,7 +662,7 @@ export function applyOutcome(
       }
       return {
         state: 'NOT_FOUND',
-        nextRetryAt: computeNextRetryAt('NOT_FOUND', now),
+        nextRetryAt: nextAttemptSlotStart('NOT_FOUND', now),
         // The outage clock is not ours to reset: every rung ANSWERED here, so we
         // learned nothing about any prior outage this row was carrying.
         blockedSinceAt: row.blockedSinceAt ?? null,
@@ -641,7 +672,7 @@ export function applyOutcome(
     }
 
     case 'all_sources_failed': {
-      // Keep the ORIGINAL blockedSinceAt so the 24 h ladder measures the outage,
+      // Keep the ORIGINAL blockedSinceAt so the outage age is measured from the outage,
       // not the time since the most recent attempt. r7: read it regardless of
       // the row's PRIOR state, not only when that state was already
       // BLOCKED_ALL — a row that passed through `chain_incomplete` (WANTED)
@@ -651,7 +682,7 @@ export function applyOutcome(
       const blockedSinceAt = row.blockedSinceAt ?? now;
       return {
         state: 'BLOCKED_ALL',
-        nextRetryAt: computeNextRetryAt('BLOCKED_ALL', now, blockedSinceAt),
+        nextRetryAt: nextAttemptSlotStart('BLOCKED_ALL', now),
         blockedSinceAt,
         alert: row.state !== 'BLOCKED_ALL', // P2 once on entry, not every cycle
         reason: 'every source failed',

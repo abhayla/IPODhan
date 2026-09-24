@@ -330,7 +330,7 @@ export function deriveLifecycleStage(
   // `days <= PRE_OPEN_WINDOW_DAYS`, which a NEGATIVE `days` also satisfies - so
   // any row stuck at status='UPCOMING' with an open_date already in the past
   // promoted forever (verified: past 90d and past 1900d both promoted). That is
-  // not self-limiting: NOT_YET_FILED retries every 30 minutes and has NO attempt
+  // not self-limiting: NOT_YET_FILED retries once per data slot (F-151) and has NO attempt
   // cap - unlike NOT_FOUND, capped at NOT_FOUND_MAX_ATTEMPTS = 5 - and never
   // escalates to BLOCKED_ALL, because it is explicitly not a failure. Unbounded
   // fetch attempts against a stale row is the cost of omitting this `days >= 0`.

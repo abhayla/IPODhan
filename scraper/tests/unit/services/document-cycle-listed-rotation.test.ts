@@ -19,6 +19,7 @@
  * shared repositories directly, so those are the seams to fake).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { nextDataJobSlotBoundary } from '@ipodhan/shared/scheduler/data-job-slots';
 
 const dbExecuteMock = vi.fn();
 const dbInsertMock = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
@@ -372,16 +373,17 @@ describe('W-144 — LISTED rotation is bounded and fair within the enrichment wi
 
     // Cycle 1: failing-ipo sorts first (both never-touched, tie-break by
     // listing_date desc -> 'failing-ipo' id 0 is most recent), consumes the
-    // single cap slot, "fails" and its store row is put into backoff
-    // (nextRetryAt in the far future) instead of being retried immediately.
+    // single cap slot, "fails" and its store row waits for the next data
+    // slot (nextRetryAt = next slot start) instead of being retried immediately.
     dbExecuteMock.mockResolvedValueOnce({ rows: ids.map((id) => candidateRow(id)) });
     await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
     expect(runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id)).toEqual(['failing-ipo']);
 
     const rows = store.get('failing-ipo')!;
-    for (const row of rows) row.nextRetryAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // backed off a full day
+    // F-151: an attempted row waits for the next data slot (a slot boundary), never now + N minutes.
+    for (const row of rows) row.nextRetryAt = nextDataJobSlotBoundary(new Date());
 
-    // Cycle 2: failing-ipo is now in backoff (skipIpo=true -> alreadyComplete)
+    // Cycle 2: failing-ipo was attempted this slot (skipIpo=true -> alreadyComplete)
     // so it costs zero cap slots; the healthy IPO gets the cap slot instead of
     // being starved behind a permanently-retrying neighbour.
     runIpoMock.mockClear();

@@ -8,8 +8,9 @@
  *
  * The bug this closes: the caller previously stamped the data-job slot
  * finished whenever `budgetExhausted` (PASS 1/discovery only) was false,
- * even when extraction, field-plan generation, the field-plan walk, or the
- * LISTED cap deferral stopped a LATER pass early. `slotComplete` must be
+ * even when extraction, field-plan generation or the field-plan walk stopped
+ * a LATER pass early, or DUE LISTED work was deferred past the cap (round 2
+ * of #943: a LISTED row is due once after entering LISTED). `slotComplete` must be
  * false for every one of those cases, independently of `budgetExhausted`.
  */
 import { describe, it, expect } from 'vitest';
@@ -68,10 +69,15 @@ describe('summarize() — slotComplete (item 7 S2)', () => {
     expect(s.incompletePasses).toEqual(['field_plan_walk_exhausted']);
   });
 
-  it('is false when LISTED candidates were deferred past the per-cycle cap', () => {
+  it('round 2 of #943: is false when DUE LISTED candidates were deferred past the per-cycle cap', () => {
+    // listedDeferred counts only LISTED IPOs with a due row (not yet attempted
+    // since entering LISTED, or a new document since: OD-56, OD-81). No other
+    // job fetches LISTED documents (§6.1: the closed-IPO job never reads one),
+    // so due LISTED work IS a completion condition of the data slot.
     const s = summarize([], 100, false, { blocked: 0, failed: 0 }, { cap: 2, deferred: 3 });
     expect(s.slotComplete).toBe(false);
     expect(s.incompletePasses).toEqual(['listed_deferred']);
+    expect(s.listedDeferred).toBe(3);
   });
 
   it('names every incomplete pass together, not just the first', () => {

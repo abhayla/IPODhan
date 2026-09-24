@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   planIpoCycle,
   applyOutcome,
-  computeNextRetryAt,
+  nextAttemptSlotStart,
   decideSupersession,
   dueDocTypesForStage,
   notApplicableTypes,
@@ -12,8 +12,6 @@ import {
   isStrictlyNewer,
   isInLiveWindow,
   STAGE_DOCUMENT_TYPES,
-  RETRY_MINUTES,
-  BLOCKED_FAST_LADDER_HOURS,
   IN_PROGRESS_STALE_MINUTES,
   CYCLE_BUDGET,
   LIVE_WINDOW_DAYS_AFTER_LISTING,
@@ -21,9 +19,12 @@ import {
   type DocumentFetchStateValue,
 } from '../../../src/services/document-state-machine.js';
 import type { DocumentType } from '../../../src/services/document-types.js';
+import { mostRecentDataJobSlotBoundary, nextDataJobSlotBoundary } from '@ipodhan/shared/scheduler/data-job-slots';
 
 const NOW = new Date('2026-08-28T06:00:00Z');
 const minutes = (n: number) => n * 60_000;
+// F-151: every open-state retry is the next OD-19 data slot (14:00 IST here), never now + N minutes.
+const NEXT_SLOT = nextDataJobSlotBoundary(NOW);
 
 function row(
   docType: DocumentType,
@@ -90,13 +91,15 @@ describe('T47 an IPO with nothing due costs ZERO network calls (§7.2)', () => {
     expect(plan.due.length).toBeGreaterThan(0);
   });
 
-  it('skips when every open row is backing off, and resumes when the backoff expires', () => {
-    const rows = dueDocTypesForStage('OPEN').map((t) =>
-      row(t, 'NOT_YET_FILED', { nextRetryAt: new Date(NOW.getTime() + minutes(10)) })
-    );
+  it('skips when every open row was attempted this data slot, and resumes when the next slot begins (F-151)', () => {
+    const rows = dueDocTypesForStage('OPEN').map((t) => row(t, 'NOT_YET_FILED', { nextRetryAt: NEXT_SLOT }));
     expect(planIpoCycle({ stage: 'OPEN', rows, options: { now: NOW } }).skipIpo).toBe(true);
+    // 31 minutes later is still the same slot: still skipped (the old 30-minute timer re-armed here).
+    expect(
+      planIpoCycle({ stage: 'OPEN', rows, options: { now: new Date(NOW.getTime() + minutes(31)) } }).skipIpo
+    ).toBe(true);
 
-    const later = new Date(NOW.getTime() + minutes(31));
+    const later = NEXT_SLOT;
     const resumed = planIpoCycle({ stage: 'OPEN', rows, options: { now: later } });
     expect(resumed.skipIpo).toBe(false);
     expect(resumed.due.length).toBe(rows.length);
@@ -111,12 +114,12 @@ describe('T47 an IPO with nothing due costs ZERO network calls (§7.2)', () => {
 });
 
 describe('T48 NOT_YET_FILED is not a failure', () => {
-  it('goes back on the 30-minute ladder, raises no alert, and clears any block', () => {
+  it('is retried next data slot, raises no alert, and clears any block', () => {
     const t = applyOutcome(row('ANCHOR_ALLOCATION_REPORT', 'WANTED'), 'no_link', NOW);
     expect(t.state).toBe('NOT_YET_FILED');
     expect(t.alert).toBe(false);
     expect(t.blockedSinceAt).toBeNull();
-    expect(t.nextRetryAt!.getTime() - NOW.getTime()).toBe(minutes(RETRY_MINUTES.NOT_YET_FILED));
+    expect(t.nextRetryAt!.getTime()).toBe(NEXT_SLOT.getTime());
     expect(t.reason).toContain('not a failure');
   });
 
@@ -192,17 +195,17 @@ describe('T49 BLOCKED_ALL retry ladder', () => {
     expect(again.alert).toBe(false);
   });
 
-  it('retries every 30 min for the first 24 h, then every 6 h', () => {
-    const fresh = computeNextRetryAt('BLOCKED_ALL', NOW, NOW);
-    expect(fresh!.getTime() - NOW.getTime()).toBe(minutes(RETRY_MINUTES.BLOCKED_FRESH));
+  it('retries once per data slot, fresh or aged (F-151 replaced the 30 min / 6 h ladder)', () => {
+    const fresh = nextAttemptSlotStart('BLOCKED_ALL', NOW);
+    expect(fresh!.getTime()).toBe(NEXT_SLOT.getTime());
 
-    const aged = new Date(NOW.getTime() + BLOCKED_FAST_LADDER_HOURS * 3_600_000);
-    const slow = computeNextRetryAt('BLOCKED_ALL', aged, NOW);
-    expect(slow!.getTime() - aged.getTime()).toBe(minutes(RETRY_MINUTES.BLOCKED_AGED));
+    const aged = new Date(NOW.getTime() + 24 * 3_600_000);
+    const slow = nextAttemptSlotStart('BLOCKED_ALL', aged);
+    expect(slow!.getTime()).toBe(nextDataJobSlotBoundary(aged).getTime());
   });
 
   it('measures the outage from the ORIGINAL block, not from the last attempt', () => {
-    // Otherwise a row failing every 30 min would never reach the 24 h mark.
+    // The outage age (alert + nightly m_blocked_all_age) must not reset on every attempt.
     const blockedSince = new Date(NOW.getTime() - 25 * 3_600_000);
     const t = applyOutcome(
       row('RHP', 'BLOCKED_ALL', { blockedSinceAt: blockedSince }),
@@ -210,7 +213,7 @@ describe('T49 BLOCKED_ALL retry ladder', () => {
       NOW
     );
     expect(t.blockedSinceAt).toEqual(blockedSince);
-    expect(t.nextRetryAt!.getTime() - NOW.getTime()).toBe(minutes(RETRY_MINUTES.BLOCKED_AGED));
+    expect(t.nextRetryAt!.getTime()).toBe(NEXT_SLOT.getTime());
   });
 
   it('keeps a blockedSinceAt inherited from a prior chain_incomplete cycle, even though the row is not currently BLOCKED_ALL (r7)', () => {
@@ -224,12 +227,12 @@ describe('T49 BLOCKED_ALL retry ladder', () => {
     const t = applyOutcome(row('RHP', 'WANTED', { blockedSinceAt: blockedSince }), 'all_sources_failed', NOW);
     expect(t.state).toBe('BLOCKED_ALL');
     expect(t.blockedSinceAt).toEqual(blockedSince);
-    expect(t.nextRetryAt!.getTime() - NOW.getTime()).toBe(minutes(RETRY_MINUTES.BLOCKED_AGED));
+    expect(t.nextRetryAt!.getTime()).toBe(NEXT_SLOT.getTime());
   });
 
   it('never schedules a retry for a closed state', () => {
     for (const s of ['FOUND', 'EXTRACTED', 'SUPERSEDED', 'NOT_APPLICABLE', 'EXTRACT_FAILED'] as const) {
-      expect(computeNextRetryAt(s, NOW)).toBeNull();
+      expect(nextAttemptSlotStart(s, NOW)).toBeNull();
     }
   });
 
@@ -451,7 +454,7 @@ describe('decision-matrix §7.6 — R1 to R13', () => {
     const rows = [
       row('RHP', 'FOUND'),
       row('PRICE_BAND_AD', 'FOUND'),
-      row('ANCHOR_ALLOCATION_REPORT', 'NOT_YET_FILED', { nextRetryAt: new Date(NOW.getTime() - minutes(1)) }),
+      row('ANCHOR_ALLOCATION_REPORT', 'NOT_YET_FILED', { nextRetryAt: mostRecentDataJobSlotBoundary(NOW) }),
       row('CORRIGENDUM', 'FOUND'),
       row('RATIOS_BASIS_ISSUE_PRICE', 'FOUND'),
       row('DRHP', 'FOUND'),

@@ -4,9 +4,9 @@ import {
   planIpoCycle,
   toPersistedState,
   NOT_FOUND_MAX_ATTEMPTS,
-  RETRY_MINUTES,
   type StateRow,
 } from '../../../src/services/document-state-machine.js';
+import { mostRecentDataJobSlotBoundary, nextDataJobSlotBoundary } from '@ipodhan/shared/scheduler/data-job-slots';
 
 /**
  * W-28 — what a MISS means depends on the stage.
@@ -32,15 +32,15 @@ const row = (over: Partial<StateRow> = {}): StateRow => ({
   ...over,
 });
 
-const minutesFrom = (d: Date | null) =>
-  d === null ? null : Math.round((d.getTime() - NOW.getTime()) / 60_000);
+// F-151: a retry is the next OD-19 data slot, never now + N minutes.
+const NEXT_SLOT_ISO = nextDataJobSlotBoundary(NOW).toISOString();
 
 describe('W-28 — a due filing that no source carried is NOT_FOUND, not NOT_YET_FILED', () => {
-  it('UPCOMING + DRHP miss -> NOT_FOUND with a backoff, never NOT_YET_FILED', () => {
+  it('UPCOMING + DRHP miss -> NOT_FOUND, retried next data slot, never NOT_YET_FILED', () => {
     const t = applyOutcome(row(), 'no_link', NOW, { stage: 'UPCOMING' });
     expect(t.state).toBe('NOT_FOUND');
     expect(t.state).not.toBe('NOT_YET_FILED');
-    expect(minutesFrom(t.nextRetryAt)).toBe(RETRY_MINUTES.NOT_FOUND);
+    expect(t.nextRetryAt?.toISOString()).toBe(NEXT_SLOT_ISO);
     expect(t.alert).toBe(false);
     expect(t.reason).toMatch(/discovery miss/i);
   });
@@ -48,7 +48,7 @@ describe('W-28 — a due filing that no source carried is NOT_FOUND, not NOT_YET
   it('PRE_OPEN + CORRIGENDUM miss -> NOT_YET_FILED (an optional filing may never exist)', () => {
     const t = applyOutcome(row({ docType: 'CORRIGENDUM' }), 'no_link', NOW, { stage: 'PRE_OPEN' });
     expect(t.state).toBe('NOT_YET_FILED');
-    expect(minutesFrom(t.nextRetryAt)).toBe(RETRY_MINUTES.NOT_YET_FILED);
+    expect(t.nextRetryAt?.toISOString()).toBe(NEXT_SLOT_ISO);
   });
 
   it('LISTED + CORRIGENDUM miss -> NOT_APPLICABLE, terminal, never retried (A6/W-40)', () => {
@@ -95,10 +95,10 @@ describe('W-28 — a due filing that no source carried is NOT_FOUND, not NOT_YET
     expect(toPersistedState('BLOCKED_ALL')).toBe('BLOCKED_ALL');
   });
 
-  it('a NOT_FOUND row is still re-planned once its backoff expires', () => {
+  it('a NOT_FOUND row is re-planned once its next data slot has begun (F-151)', () => {
     const plan = planIpoCycle({
       stage: 'UPCOMING',
-      rows: [row({ state: 'WANTED', nextRetryAt: new Date(NOW.getTime() - 60_000) })],
+      rows: [row({ state: 'WANTED', nextRetryAt: mostRecentDataJobSlotBoundary(NOW) })],
       options: { now: NOW },
     });
     expect(plan.due).toContain('DRHP');
