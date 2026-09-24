@@ -1028,7 +1028,7 @@ async function attemptOneField(
       });
     }
 
-    if (verdict.accepted === false && reopenedUnder) {
+    if (verdict.accepted === false && reopenedUnder && verdict.reason !== NO_FIELD_RESULT_REASON) {
       // #968 fix round 1, finding 2: an override-reopened settled row whose higher
       // source answered but LOST to the field-priority matrix. For THIS override
       // that is a definitive no: re-asking every slot changes nothing. The page
@@ -1363,6 +1363,10 @@ export { mapManifestSourceToScraperSource } from '../config/field-source-codes.j
  * `fieldResults`) is its own explicit "cannot verify" answer, never treated
  * as agreement.
  */
+/** The consolidator returned no result for the field: the write could not be verified. A failed
+ *  write (transient CHECK_FAILED), never a priority-matrix loss (#968 final review, MINOR). */
+const NO_FIELD_RESULT_REASON = 'no field result returned';
+
 function checkConsolidatorAgreed(
   fieldResults: Array<{ fieldName: string; finalValue: unknown; chosenSource: string }> | undefined,
   camelFieldName: string,
@@ -1371,7 +1375,7 @@ function checkConsolidatorAgreed(
 ): { accepted: true } | { accepted: false; reason: string } {
   const result = fieldResults?.find((f) => f.fieldName === camelFieldName);
   if (!result) {
-    return { accepted: false, reason: 'no field result returned' };
+    return { accepted: false, reason: NO_FIELD_RESULT_REASON };
   }
   const wantedSource = mapManifestSourceToScraperSource(source);
   // Review round 6, item 2 (MAJOR): a raw `!==` compares a JS value

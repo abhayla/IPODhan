@@ -13,6 +13,7 @@ import {
 } from '../../../packages/shared/src/repositories/ipo-field-plan-repository';
 import { walkFieldPlanForIPO, type FieldFetcher, type FieldPlanWalkDeps } from '../../src/services/field-plan-walk';
 import { findSupersessorForReopenedRow } from '../../src/services/plan-supersession';
+import { DataConflictsRepository } from '../../../packages/shared/src/repositories/data-conflicts-repository';
 import { fieldResult, consolidatedUpsertResultFixture } from '../helpers/consolidation-result-fixture';
 
 /**
@@ -382,6 +383,51 @@ describe.skipIf(!DATABASE_URL)(`#968 settled rows under an override (${RUN_LABEL
     } finally {
       await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
       await db.execute(sql`DELETE FROM documents WHERE ipo_id = ${IPO_ID}::uuid`);
+    }
+  });
+
+  it('final review MAJOR: a matrix loss never overwrites an open HELD_DISPUTED_HIGH_VALUE_LIVE hold on the field', async () => {
+    await db.execute(sql`DELETE FROM data_conflicts WHERE ipo_id = ${IPO_ID}::uuid`);
+    const [hold] = (
+      await db.execute(sql`
+        INSERT INTO data_conflicts (ipo_id, table_name, row_key, field_name, source1, value1, source2, value2,
+                                    resolved_source, resolution_reason, severity, detected_at)
+        VALUES (${IPO_ID}::uuid, 'ipos', '', 'issueSize', 'NSE', '5000000000', 'DRHP', '4500000000',
+                'DRHP', 'HELD_DISPUTED_HIGH_VALUE_LIVE', 'CRITICAL', now())
+        RETURNING *
+      `)
+    ).rows as Array<Record<string, unknown>>;
+    const id = await seedSupplied('issue_size', 'DOC', ['DOC', 'BSE', null], 'registry:2');
+    await repo.reconcileSettledToOverrides([incoming('issue_size', ['CHITTORGARH', 'DOC', null], 'override:swap-968')]);
+    const conflicts = new DataConflictsRepository(db as never, { del: async () => 0, keys: async () => [] } as never);
+    const deps = realWalkDeps({
+      ranks: ['CHITTORGARH', 'DOC'],
+      origin: 'override:swap-968',
+      fetchers: { CHITTORGARH: async () => ({ outcome: 'SUPPLIED', value: 5100000000 }) as never },
+    });
+    // The consolidator keeps the document value: a priority-matrix loss.
+    (deps.orchestrator as any).consolidatedUpsertIPO = async (
+      _s: any,
+      _src: any,
+      _c?: any,
+      _p?: any,
+      only?: string[]
+    ) =>
+      consolidatedUpsertResultFixture({
+        ipoId: IPO_ID,
+        fieldResults: [fieldResult(only![0], 4500000000, 'DRHP' as never)],
+      });
+    deps.logAdminConflict = (input) => conflicts.upsertConflict(input as never);
+    try {
+      await walkFieldPlanForIPO(IPO_ID, deps, walkBudget());
+      const rows = (
+        await db.execute(sql`SELECT * FROM data_conflicts WHERE ipo_id = ${IPO_ID}::uuid ORDER BY detected_at`)
+      ).rows as Array<Record<string, unknown>>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toEqual(hold);
+      expect((await readRow(id)).state).toBe('SUPPLIED');
+    } finally {
+      await db.execute(sql`DELETE FROM data_conflicts WHERE ipo_id = ${IPO_ID}::uuid`);
     }
   });
 });

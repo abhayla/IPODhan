@@ -498,3 +498,23 @@ describe('#968 round 1, finding 3 (MAJOR): a better document that landed during 
     expect(repoRef.restored[0].cause).toMatch(/^superseded by RHP doc-rhp-1/);
   });
 });
+
+describe('#968 final review, MINOR: no field result is a failed write, not a matrix loss', () => {
+  it('the consolidator returns no result for the field -> CHECK_FAILED, no restore, no admin conflict', async () => {
+    const { d, orchestrator } = walkDeps(
+      reopenedRow(),
+      { CHITTORGARH: answers(333) },
+      ['CHITTORGARH', 'DOC'],
+      'override:swap'
+    );
+    orchestrator.consolidatedUpsertIPO.mockImplementation(async () =>
+      consolidatedUpsertResultFixture({ ipoId: IPO_ID, fieldResults: [] })
+    );
+    const logAdminConflict = vi.fn(async () => undefined);
+    (d as any).logAdminConflict = logAdminConflict;
+    await walkFieldPlanForIPO(IPO_ID, d, budget());
+    expect(repoRef.recorded[0].state).toBe('CHECK_FAILED');
+    expect(repoRef.restored).toHaveLength(0);
+    expect(logAdminConflict).not.toHaveBeenCalled();
+  });
+});
