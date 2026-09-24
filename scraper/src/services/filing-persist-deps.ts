@@ -31,7 +31,6 @@ import {
   getRedisClient,
 } from '@ipodhan/shared';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { normalizeReceiptValue } from '../../config/plan-supersession-rule.mjs';
 import * as schema from '@ipodhan/shared/db/schema';
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
@@ -172,25 +171,44 @@ export function buildFilingPersistDeps(
 }
 
 /**
- * OD-97: the two reads the OCR-loses rule needs. A text read is a receipt this
- * IPO's own documents wrote with source_text 'TEXT'; receipts from before the
- * mark existed (NULL) are unknown and never count.
+ * OD-97: the reads the OCR-loses rule needs. A text read is a receipt one of this IPO's active
+ * documents wrote with source_text 'TEXT'; it comes back WITH its document (type, filing_date,
+ * sha256) so the persister ranks it against the OCR value's own document through the one
+ * supersession rule. Receipts from before the mark existed (NULL) are unknown and never count.
  */
 export function makeOcrPrecedenceReader(): NonNullable<import('./filing-persister.js').FilingPersisterDeps['ocrPrecedence']> {
+  const rowsOf = (res: unknown) => ((res as { rows?: unknown[] }).rows ?? (res as unknown[])) as Array<Record<string, unknown>>;
   return {
-    async textReceiptValues(ipoId: string, tableName: string, fieldName: string): Promise<string[]> {
+    async textReceipts(ipoId: string, tableName: string, fieldName: string) {
       const res = await db.execute(sql`
-        SELECT DISTINCT r.value
+        SELECT r.value, d.id::text AS id, d.type::text AS doc_type, d.filing_date::text AS filing_date, d.sha256
           FROM document_field_receipts r
           JOIN documents d ON d.id = r.document_id
          WHERE d.ipo_id = ${ipoId}::uuid
+           AND d.is_active IS NOT FALSE
            AND r.table_name = ${tableName}
            AND r.row_key = ''
            AND r.field_name = ${fieldName}
            AND r.source_text = 'TEXT'
            AND r.value IS NOT NULL`);
-      const rows = ((res as { rows?: unknown[] }).rows ?? (res as unknown as unknown[])) as Array<{ value: string }>;
-      return rows.map((r) => normalizeReceiptValue(r.value)).filter((v): v is string => v !== null);
+      return rowsOf(res).map((r) => ({
+        value: String(r.value),
+        document: {
+          id: String(r.id),
+          docType: String(r.doc_type),
+          filingDate: (r.filing_date as string | null) ?? null,
+          sha256: (r.sha256 as string | null) ?? null,
+        },
+      }));
+    },
+    async documentRef(documentId: string) {
+      const res = await db.execute(sql`
+        SELECT d.id::text AS id, d.type::text AS doc_type, d.filing_date::text AS filing_date, d.sha256
+          FROM documents d WHERE d.id = ${documentId}::uuid`);
+      const [r] = rowsOf(res);
+      return r
+        ? { id: String(r.id), docType: String(r.doc_type), filingDate: (r.filing_date as string | null) ?? null, sha256: (r.sha256 as string | null) ?? null }
+        : null;
     },
     async storedDetails(ipoId: string): Promise<Record<string, unknown> | null> {
       const [row] = await db.select().from(schema.ipoDetails).where(eq(schema.ipoDetails.ipoId, ipoId)).limit(1);

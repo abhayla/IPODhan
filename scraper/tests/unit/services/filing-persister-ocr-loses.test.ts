@@ -51,9 +51,14 @@ interface Harness {
 function makeDeps(opts: {
   stored?: Record<string, unknown>;
   storedDetails?: Record<string, unknown> | null;
-  textReceipts?: Record<string, string[]>;
+  /** `${table}.${field}` -> text receipts; a bare string is a same-type, same-day text read. */
+  textReceipts?: Record<string, Array<string | { value: string; docType: string; filingDate?: string | null }>>;
+  /** The OCR value's own document as the documents table holds it. */
+  ocrDocument?: { docType: string; filingDate: string | null } | null;
   withRule?: boolean;
 }): Harness {
+  const ownType = opts.ocrDocument?.docType ?? 'PRICE_BAND_AD';
+  const ownDate = opts.ocrDocument === undefined ? '2026-09-05' : (opts.ocrDocument?.filingDate ?? null);
   const detailsUpsert = vi.fn(async () => undefined);
   const trackFieldUpdate = vi.fn(async () => ({}));
   const deps = {
@@ -82,8 +87,17 @@ function makeDeps(opts: {
       ? {}
       : {
           ocrPrecedence: {
-            textReceiptValues: vi.fn(
-              async (_id: string, table: string, field: string) => opts.textReceipts?.[`${table}.${field}`] ?? []
+            textReceipts: vi.fn(async (_id: string, table: string, field: string) =>
+              (opts.textReceipts?.[`${table}.${field}`] ?? []).map((r, i) => {
+                const t = typeof r === 'string' ? { value: r, docType: ownType, filingDate: ownDate } : r;
+                return {
+                  value: t.value,
+                  document: { id: `text-doc-${i}`, docType: t.docType, filingDate: t.filingDate ?? null, sha256: null },
+                };
+              })
+            ),
+            documentRef: vi.fn(async (id: string) =>
+              opts.ocrDocument === null ? null : { id, docType: ownType, filingDate: ownDate, sha256: null }
             ),
             storedDetails: vi.fn(async () => opts.storedDetails ?? null),
           },
@@ -92,8 +106,8 @@ function makeDeps(opts: {
   return { deps, detailsUpsert, trackFieldUpdate };
 }
 
-const run = (e: FilingExtraction, h: Harness) =>
-  persistFilingExtraction(IPO_ID, e, { docType: 'PRICE_BAND_AD', apply: true }, h.deps);
+const run = (e: FilingExtraction, h: Harness, docType: 'PRICE_BAND_AD' | 'RHP' | 'DRHP' | 'PROSPECTUS' = 'PRICE_BAND_AD') =>
+  persistFilingExtraction(IPO_ID, e, { docType, documentId: 'ocr-doc', apply: true }, h.deps);
 
 describe('OD-97 — an OCR-only value never wins a disagreement against a text page', () => {
   beforeEach(() => upsertIPOMock.mockClear());
@@ -178,6 +192,101 @@ describe('OD-97 — an OCR-only value never wins a disagreement against a text p
     const summary = await run(realOcrEnvelope(), h);
     expect(h.detailsUpsert).not.toHaveBeenCalled();
     expect(summary.skipped_lower_priority_source.join('\n')).toContain('ipo_details.creditOfSharesDate (OCR-only value; stored row unreadable');
+  });
+});
+
+describe('OD-97 — only a text read of a same-or-better document outvotes an OCR value (OD-30, §1 DOC)', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+  const scrapedOf = () => upsertIPOMock.mock.calls[0][1] as Record<string, unknown>;
+
+  it('a DRHP text read never beats an RHP OCR value: the RHP value is written', async () => {
+    const h = makeDeps({
+      ocrDocument: { docType: 'RHP', filingDate: '2026-09-01' },
+      stored: { priceRangeMax: '83.00' },
+      storedDetails: { creditOfSharesDate: '2026-09-17' },
+      textReceipts: {
+        'ipos.priceRangeMax': [{ value: '83', docType: 'DRHP', filingDate: '2026-05-01' }],
+        'ipo_details.creditOfSharesDate': [{ value: '2026-09-17', docType: 'DRHP', filingDate: '2026-05-01' }],
+      },
+    });
+    const summary = await run(realOcrEnvelope(), h, 'RHP');
+    expect(scrapedOf().priceRangeMax).toBe(81);
+    expect((h.detailsUpsert.mock.calls[0]?.[1] as Record<string, unknown>).creditOfSharesDate).toBe('2026-09-16');
+    expect(summary.skipped_lower_priority_source.join('\n')).not.toContain('OD-97');
+  });
+
+  it('the reverse: an RHP text read beats a DRHP OCR value', async () => {
+    const h = makeDeps({
+      ocrDocument: { docType: 'DRHP', filingDate: '2026-05-01' },
+      stored: { priceRangeMax: '83.00' },
+      storedDetails: { creditOfSharesDate: '2026-09-17' },
+      textReceipts: {
+        'ipos.priceRangeMax': [{ value: '83', docType: 'RHP', filingDate: '2026-09-01' }],
+        'ipo_details.creditOfSharesDate': [{ value: '2026-09-17', docType: 'RHP', filingDate: '2026-09-01' }],
+      },
+    });
+    await run(realOcrEnvelope(), h, 'DRHP');
+    expect(scrapedOf().priceRangeMax).toBeUndefined();
+    expect((h.detailsUpsert.mock.calls[0]?.[1] as Record<string, unknown> | undefined)?.creditOfSharesDate).toBeUndefined();
+  });
+
+  it('same type: an earlier filing text read loses to a later OCR filing; a prospectus text read wins', async () => {
+    const earlier = makeDeps({
+      stored: { priceRangeMax: '83.00' },
+      textReceipts: { 'ipos.priceRangeMax': [{ value: '83', docType: 'PRICE_BAND_AD', filingDate: '2026-09-01' }] },
+    });
+    await run(realOcrEnvelope(), earlier);
+    expect(scrapedOf().priceRangeMax).toBe(81);
+    upsertIPOMock.mockClear();
+    const prospectus = makeDeps({
+      stored: { priceRangeMax: '83.00' },
+      textReceipts: { 'ipos.priceRangeMax': [{ value: '83', docType: 'PROSPECTUS', filingDate: '2026-09-12' }] },
+    });
+    await run(realOcrEnvelope(), prospectus);
+    expect(scrapedOf().priceRangeMax).toBeUndefined();
+  });
+
+  it('a text-receipt read failure on the ipos path withholds the OCR value (fail closed)', async () => {
+    const h = makeDeps({ stored: { priceRangeMax: '83.00' } });
+    (h.deps.ocrPrecedence as { textReceipts: () => Promise<unknown> }).textReceipts = async () => {
+      throw new Error('db down');
+    };
+    const summary = await run(realOcrEnvelope(), h);
+    expect(scrapedOf().priceRangeMax).toBeUndefined();
+    expect(summary.skipped_lower_priority_source.join('\n')).toContain(
+      'ipos.priceRangeMax (OCR-only value; text reads unreadable, kept the stored value, OD-97)'
+    );
+  });
+
+  it('an own-document read failure withholds the OCR value too', async () => {
+    const h = makeDeps({ stored: { priceRangeMax: '83.00' }, textReceipts: { 'ipos.priceRangeMax': ['83'] } });
+    (h.deps.ocrPrecedence as { documentRef: () => Promise<unknown> }).documentRef = async () => {
+      throw new Error('db down');
+    };
+    await run(realOcrEnvelope(), h);
+    expect(scrapedOf().priceRangeMax).toBeUndefined();
+  });
+
+  it('an OCR date that lost is not written back through the row-date fallback', async () => {
+    const h = makeDeps({
+      stored: { openDate: '2026-09-10' },
+      textReceipts: { 'ipos.openDate': ['2026-09-10'] },
+    });
+    const summary = await run(realOcrEnvelope(), h);
+    expect(summary.skipped_lower_priority_source.join('\n')).toContain("ipos.openDate (OCR-only value '2026-09-09'");
+    expect(scrapedOf().openDate).not.toBe('2026-09-09');
+  });
+
+  it('provenance confidence carries the OCR page confidence; a text read stays 100', async () => {
+    const conf = (h: Harness, field: string) =>
+      (h.trackFieldUpdate.mock.calls.map((c) => c[0] as { fieldName: string; confidence: number }).find((c) => c.fieldName === field))
+        ?.confidence;
+    const ocr = makeDeps({});
+    await run(realOcrEnvelope(), ocr);
+    expect(conf(ocr, 'creditOfSharesDate')).toBe(76);
+    const text = makeDeps({});
+    await run(asTextRead(realOcrEnvelope()), text);
+    expect(conf(text, 'creditOfSharesDate')).toBe(100);
   });
 });
 

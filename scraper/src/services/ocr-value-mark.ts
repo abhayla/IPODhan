@@ -15,6 +15,8 @@
  * unknown (OD-97 (b)).
  */
 
+import { decidePlanRowSupersession, normalizeReceiptValue, type RuleDocumentRef } from '../../config/plan-supersession-rule.mjs';
+
 export type OcrSourceText = 'TEXT' | 'OCR' | 'MIXED';
 
 export interface OcrMark {
@@ -139,4 +141,35 @@ export function ocrValueLoses(args: {
   if (args.storedNormalized === null || args.incomingNormalized === null) return false;
   if (args.storedNormalized === args.incomingNormalized) return false;
   return args.textValues.includes(args.storedNormalized);
+}
+
+/** One text-layer receipt for a field, with the document that wrote it. */
+export interface TextReceipt {
+  value: string;
+  document: RuleDocumentRef;
+}
+
+/**
+ * OD-97: the text-layer values that may outvote an OCR-only value — only those read from a
+ * document of the SAME OR BETTER rank for the field than the OCR value's own document. A text
+ * read of an older or lower-ranked document (a DRHP when the RHP is the OCR source; an earlier
+ * filing of the same type) never beats the better document (OD-30, §1 `DOC` "best available
+ * type"). Rank is the ONE plan-row supersession rule (`decidePlanRowSupersession`, the same
+ * comparator the DOC fetcher and the PULL-FROZEN audit use): a text document counts unless the
+ * OCR document supersedes it. An unordered pair (same type, a missing filing_date) is not a
+ * supersession, so the text read counts and the stored value is kept (the rule's own "keeping a
+ * value beats guessing").
+ */
+export function textValuesAtOrAboveRank(
+  receipts: readonly TextReceipt[],
+  ocrDocument: RuleDocumentRef,
+  opts: { family: readonly string[]; fixedPrice: boolean }
+): string[] {
+  const out: string[] = [];
+  for (const r of receipts) {
+    if (decidePlanRowSupersession(r.document, ocrDocument, opts).supersede) continue;
+    const v = normalizeReceiptValue(r.value);
+    if (v !== null && !out.includes(v)) out.push(v);
+  }
+  return out;
 }

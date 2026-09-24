@@ -17,7 +17,16 @@ function toManifestColumn(column: string): string {
   return column.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 }
 
-export function documentMayWriteField(tableName: string, column: string, docType: string): boolean {
+/**
+ * The document family of one column as seen from a document of type `docType`: the manifest
+ * documentType's family, or `[docType]` when the field has none. OD-97 ranks an OCR value's
+ * document against text reads with this same family.
+ */
+export function fieldDocumentFamily(tableName: string, column: string, docType: string): readonly string[] {
   const entry = loadFieldManifest().fields[`${tableName}.${toManifestColumn(column)}`];
-  return (familyForField(entry?.documentType, docType) as ReadonlyArray<string>).includes(docType);
+  return familyForField(entry?.documentType, docType);
+}
+
+export function documentMayWriteField(tableName: string, column: string, docType: string): boolean {
+  return (fieldDocumentFamily(tableName, column, docType) as ReadonlyArray<string>).includes(docType);
 }

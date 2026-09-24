@@ -326,7 +326,7 @@ find a gap in on the first pass).
 
 | Design section | Rule ids |
 |---|---|
-| §2.2.1 | R-021, R-023, R-025, R-160, R-229, R-234 |
+| §2.2.1 | R-021, R-023, R-025, R-160, R-229, R-235 |
 
 ## Known gaps
 

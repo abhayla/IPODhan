@@ -23,8 +23,15 @@
  */
 
 import type { IPORepository } from '@ipodhan/shared';
-import { normalizeReceiptValue } from '../../config/plan-supersession-rule.mjs';
-import { columnMark, documentMark, ocrValueLoses, type OcrMark } from './ocr-value-mark.js';
+import { isFixedPriceIssue, normalizeReceiptValue, type RuleDocumentRef } from '../../config/plan-supersession-rule.mjs';
+import {
+  columnMark,
+  documentMark,
+  ocrValueLoses,
+  textValuesAtOrAboveRank,
+  type OcrMark,
+  type TextReceipt,
+} from './ocr-value-mark.js';
 import type {
   FinancialStatementsRepository,
   IpoValuationRepository,
@@ -53,7 +60,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { financialStatementsRowKey, ipoDetailsRowKey, ipoValuationRowKey } from './child-row-keys.js';
 import { createChildRowNoter } from './child-row-unresolved-noter.js';
-import { documentMayWriteField } from './document-family-gate.js';
+import { documentMayWriteField, fieldDocumentFamily } from './document-family-gate.js';
 import type { ConsolidatedChildRowsResult, ChildRowInput, ChildConsolidationTable } from './data-consolidation-orchestrator.js';
 
 // ---------------------------------------------------------------- extraction
@@ -208,8 +215,14 @@ export interface FilingPersisterDeps {
    * text page" needs. Absent = the rule cannot see a text read, so it never fires.
    */
   ocrPrecedence?: {
-    /** Receipt-normalised values this IPO's documents read from a text layer for one field. */
-    textReceiptValues(ipoId: string, tableName: string, fieldName: string): Promise<string[]>;
+    /**
+     * The text-layer receipts this IPO's active documents wrote for one field, each with its
+     * document (type, filing_date, sha256) so the persister can rank it against the OCR value's
+     * own document (OD-97: only a same-or-better document's text read counts).
+     */
+    textReceipts(ipoId: string, tableName: string, fieldName: string): Promise<TextReceipt[]>;
+    /** The OCR value's own document (type, filing_date, sha256), or null when it has no row. */
+    documentRef(documentId: string): Promise<RuleDocumentRef | null>;
     /** The stored ipo_details row (camelCase keys), or null. */
     storedDetails(ipoId: string): Promise<Record<string, unknown> | null>;
   };
@@ -1120,9 +1133,34 @@ export async function persistFilingExtraction(
   };
 
   // OD-97: an OCR-only value loses a disagreement with a stored value that a
-  // text-page read of this IPO supports. Runs after the receipt is taken (the
-  // receipt says what the document printed) and before every other gate.
-  let ocrReadFailed = false;
+  // text-page read of this IPO supports — a text read from a document of the
+  // SAME OR BETTER rank for the field than this (OCR) document; an older or
+  // lower-ranked document's text never beats it (OD-30, §1 DOC). Runs after the
+  // receipt is taken (the receipt says what the document printed) and before
+  // every other gate.
+  let storedDetailsRead: Promise<{ ok: boolean; row: Record<string, unknown> | null }> | null = null;
+  const loadStoredDetails = () => {
+    const reader = deps.ocrPrecedence;
+    if (!reader) return Promise.resolve({ ok: true, row: null });
+    storedDetailsRead ??= reader.storedDetails(ipoId).then(
+      (row) => ({ ok: true, row }),
+      () => ({ ok: false, row: null })
+    );
+    return storedDetailsRead;
+  };
+  let ocrDocumentRead: Promise<RuleDocumentRef> | null = null;
+  const loadOcrDocument = (): Promise<RuleDocumentRef> => {
+    const own: RuleDocumentRef = {
+      id: options.documentId ?? '',
+      docType: options.docType,
+      filingDate: null,
+      sha256: options.sourceSha ?? null,
+    };
+    const reader = deps.ocrPrecedence;
+    if (!reader || !options.documentId) return Promise.resolve(own);
+    ocrDocumentRead ??= reader.documentRef(options.documentId).then((d) => d ?? own);
+    return ocrDocumentRead;
+  };
   const dropOcrOutranked = async (
     tableName: string,
     candidate: Record<string, unknown>,
@@ -1137,7 +1175,20 @@ export async function persistFilingExtraction(
       if (storedNormalized === null || storedNormalized === incomingNormalized) continue;
       let textValues: string[];
       try {
-        textValues = await deps.ocrPrecedence.textReceiptValues(ipoId, tableName, col);
+        const [receipts, ocrDocument, details] = await Promise.all([
+          deps.ocrPrecedence.textReceipts(ipoId, tableName, col),
+          loadOcrDocument(),
+          loadStoredDetails(),
+        ]);
+        const fixedPrice = isFixedPriceIssue(
+          (details.row?.issueType as string | null | undefined) ?? null,
+          existing.priceRangeMin == null ? null : Number(existing.priceRangeMin),
+          existing.priceRangeMax == null ? null : Number(existing.priceRangeMax)
+        );
+        textValues = textValuesAtOrAboveRank(receipts, ocrDocument, {
+          family: fieldDocumentFamily(tableName, col, options.docType),
+          fixedPrice,
+        });
       } catch {
         delete candidate[col];
         skippedLowerPriority.push(`${tableName}.${col} (OCR-only value; text reads unreadable, kept the stored value, OD-97)`);
@@ -1175,19 +1226,19 @@ export async function persistFilingExtraction(
     } catch {
       // provenance is best-effort; a read failure must not lose the write
     }
+    const ocrMark = columnMark(extraction, tableName, fieldName) ?? documentMark(extraction);
     await deps.fieldSources.trackFieldUpdate({
       ipoId,
       tableName,
       fieldName,
       source,
-      confidence: 100, // tier 1a: read off the filing itself, arithmetic-checked
+      // Tier 1a: read off the filing itself, arithmetic-checked. OD-97: an OCR-only value
+      // carries its OCR page confidence (0-1 -> the column's 0-100) instead of a flat 100.
+      confidence: ocrMark?.sourceText === 'OCR' && ocrMark.confidence !== null ? Math.round(ocrMark.confidence * 100) : 100,
       previousValue,
       previousSource,
-      dataLineage: ((): Record<string, unknown> => {
-        // OD-97 (a): the per-value mark rides in provenance; unknown is omitted.
-        const m = columnMark(extraction, tableName, fieldName) ?? documentMark(extraction);
-        return m ? { ...lineage, ocr: m } : lineage;
-      })(),
+      // OD-97 (a): the per-value mark rides in provenance; unknown is omitted.
+      dataLineage: ocrMark ? { ...lineage, ocr: ocrMark } : lineage,
       updatedBy: 'FILING_PERSISTER',
     });
   };
@@ -1341,10 +1392,6 @@ export async function persistFilingExtraction(
     scraped.listingExchange = exchanges[0];
   }
 
-  // The row's own dates are a legitimate fallback (they stop a filing that did
-  // not carry a date from nulling one that is already there); TODAY is not.
-  const openForWrite = openDate ?? toIsoOrUndefined(existing.openDate);
-  const closeForWrite = closeDate ?? toIsoOrUndefined(existing.closeDate);
   // Every `ipos` column this filing wants to write, gathered BEFORE the write so
   // the admin-protection gate can drop individual columns. Round 7 sent these
   // straight into `scraped`: upsertIPO applies the field-priority matrix but NOT
@@ -1374,6 +1421,13 @@ export async function persistFilingExtraction(
     'lotSize',
     'faceValue',
   ]);
+
+  // The row's own dates are a legitimate fallback (they stop a filing that did
+  // not carry a date from nulling one that is already there); TODAY is not.
+  // Read AFTER the OD-97 drop: an OCR-only date that lost to a text read must
+  // not come back through this fallback (nor feed the date checks downstream).
+  const openForWrite = (iposCandidate.openDate as string | undefined) ?? toIsoOrUndefined(existing.openDate);
+  const closeForWrite = (iposCandidate.closeDate as string | undefined) ?? toIsoOrUndefined(existing.closeDate);
 
   const iposWritable =
     Object.keys(iposCandidate).length > 0 ? await filterFields('ipos', iposCandidate) : {};
@@ -1585,14 +1639,8 @@ export async function persistFilingExtraction(
   // W-147: the ipo_details half of the headline, same rule as `ipos` above.
   for (const [col, v] of Object.entries(details)) receiptFields.push(receipt('ipo_details', col, v));
   if (Object.keys(details).length > 0 && deps.ocrPrecedence) {
-    let storedDetails: Record<string, unknown> | null = null;
-    try {
-      storedDetails = await deps.ocrPrecedence.storedDetails(ipoId);
-    } catch {
-      storedDetails = null;
-      ocrReadFailed = true;
-    }
-    if (ocrReadFailed) {
+    const { ok: storedDetailsOk, row: storedDetails } = await loadStoredDetails();
+    if (!storedDetailsOk) {
       // Fail closed, as W-147 does: an OCR-only value is withheld when the
       // stored side cannot be read, never written blind over a text value.
       for (const col of Object.keys(details)) {
