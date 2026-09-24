@@ -1536,6 +1536,15 @@
       "phase1": true,
       "title": "Structural field-lookup failures default to TRANSIENT and get a timed backoff retry",
       "detail": "Measured 2026-09-24 from the staging wake log (00:45 IST wake, release 084928e0) and code: 340 'PASS 3: every rank failed for this field, at least one TRANSIENT' lines for 320 distinct (IPO, field) pairs, whose 622 failure reasons are all structural (NO_MAPPING 320, NO_DOCUMENT_PROVENANCE 265, 37 other). A fetcher that does not set transient=false is treated as transient (field-plan-walk.ts ~788, answer.transient !== false), and recordOutcome then writes a doubling backoff 15 min to 6 h (ipo-field-plan-repository.ts:106-107). That is a timed retry, which OD-21 ('no timed retry') and §2.5 ('never on a backoff timer') forbid; a structural gap should be recorded as definitive. Not proven: that the same pairs are re-asked on every wake (one wake's log only). Related: F-151, #943."
+    },
+    {
+      "id": "F-153",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "documents",
+      "phase1": true,
+      "title": "Real exchange filings are encrypted with an owner password only; a blank-password open succeeds",
+      "detail": "Measured 2026-09-24 on the laptop (read-only, no network): of 45 locally saved offer-related PDFs (pdf-parser-test/drhps, IPODhan-backups), 3 carry /Encrypt, and all 3 are copies of one real BSE anchor allocation report (ANCHOR_ALLOCATION_REPORT-4e5a4f9d.pdf, sha256 4e5a4f9de9ef11f3..., dated August 27, 2026, 4 pages). Its security handler is /Filter /Standard, /V 4, /R 4, /P 2820, /EncryptMetadata true: an owner (permissions) password with an EMPTY user password. pdfplumber opens it with no password argument (4 pages, text reads) and pypdfium2 opens it with password=\"\" (4 pages). So the blank attempt of section 2.2.1 already happens implicitly for this real case, and no JS dependency (pdf-lib) is needed: the extractor is Python and both of its libraries handle it. Not measured: a real filing with a non-empty USER password (the case where the blank attempt fails and the document must be marked unreadable with its cause); none exists in the local sample. Related: OD-36, item 22 slice 22-5."
     }
   ],
   "false_assertions": [
