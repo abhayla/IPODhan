@@ -417,6 +417,16 @@ jobs:
         # pre-install gates, not after npm ci.
         run: node --test scripts/tests/field-plan-reclaim-max-attempts-pin.test.mjs
 
+      - name: Shared .js-suffixed imports resolve under webpack too (staging break, run 36024250816, #989 chain)
+        # `next build` never runs in this gate (too slow to run per-PR), so the
+        # class that broke the 2026-09-24 21:30 IST staging deploy — a shared
+        # `.js`-suffixed relative import that only resolves via tsc/tsx's
+        # NodeNext .js->.ts remap, not webpack's default resolver — was
+        # invisible to CI. This is the cheap stand-in: it fails the instant a
+        # new such import appears without web/next.config.mjs's matching
+        # resolve.extensionAlias guard. Pure fs check, no install needed.
+        run: node scripts/ci/check-shared-js-imports-resolve.mjs
+
       - name: Install dependencies
         run: npm ci
 

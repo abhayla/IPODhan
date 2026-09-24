@@ -373,7 +373,7 @@ export async function resolveBySourceKeys(
       { companyName: identity.companyName, ipoId: row.id, slug: row.slug, reason: check.reason, disputed },
       '[OD-85] key_contradiction: key hit failed the re-check - nothing written, record held'
     );
-    return { kind: 'held', ipoId: row.id, reason: check.reason, disputedKeyIds: disputed };
+    return { kind: 'held', ipoId: row.id, reason: check.reason ?? 'key re-check failed (no reason recorded)', disputedKeyIds: disputed };
   }
 
   if (liveHits.some((h) => h.state === 'SUPERSEDED')) {
