@@ -96,6 +96,21 @@ test('ensureDocumentIdProbe caches after one call and reflects the probed column
   _setDocumentIdProbeForTests(undefined);
 });
 
+test('ensureDocumentIdProbe accepts a query that resolves to the row array directly (audit-detection-floor\'s `q` shape: pool.query(...).then(r => r.rows))', async () => {
+  _setDocumentIdProbeForTests(undefined);
+  let calls = 0;
+  const arrayQueryColumnAbsent = async () => { calls += 1; return []; };
+  const first = await ensureDocumentIdProbe(arrayQueryColumnAbsent);
+  assert.equal(first, false, 'array-shaped query (no rows) must not throw and must read as absent');
+  assert.equal(calls, 1);
+  _setDocumentIdProbeForTests(undefined);
+
+  const arrayQueryColumnPresent = async () => { calls += 1; return [{ '?column?': 1 }]; };
+  const second = await ensureDocumentIdProbe(arrayQueryColumnPresent);
+  assert.equal(second, true, 'array-shaped query (row present) must read as present');
+  _setDocumentIdProbeForTests(undefined);
+});
+
 test('every count query used by the nightly floor carries the predicate', () => {
   _setDocumentIdProbeForTests(undefined);
   for (const sql of [unresolvedConflictCountSql(), unresolvedConflictNoiseSql(), conflictsInserted24hSql()]) {

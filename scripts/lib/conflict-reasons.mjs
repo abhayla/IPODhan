@@ -30,10 +30,14 @@ let _hasDocumentIdColumn;
  */
 export async function ensureDocumentIdProbe(query) {
   if (_hasDocumentIdColumn !== undefined) return _hasDocumentIdColumn;
-  const { rows } = await query(
+  const res = await query(
     `SELECT 1 FROM information_schema.columns
      WHERE table_schema = 'public' AND table_name = 'data_conflicts' AND column_name = 'document_id'`
   );
+  // Callers pass either a raw pg-shaped query ({rows: any[]}) or a pre-unwrapped
+  // one that already resolves to the row array itself (e.g. audit-detection-floor's
+  // `q = (sql,p) => pool.query(sql,p).then(r => r.rows)`). Accept both shapes.
+  const rows = Array.isArray(res) ? res : (res?.rows ?? []);
   _hasDocumentIdColumn = rows.length > 0;
   return _hasDocumentIdColumn;
 }
