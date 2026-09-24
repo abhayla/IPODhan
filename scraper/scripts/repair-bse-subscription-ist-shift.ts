@@ -6,23 +6,32 @@
  * value 5h30m late.
  *
  * IDENTIFICATION RULE (why it cannot hit a correct row): the corrupted rows
- * are `subscriptions` rows with `scope = 'BSE_ONLY'` whose stored
- * `"timestamp"` time-of-day is EXACTLY 17:00:00.000000. BSE's own platform
- * only ever stamps the day-end category-demand snapshot `Maxdt` as
- * "<M>/<D>/<YYYY> 5:00:00 PM" (verified live 2026-09-24 against
- * Pubissues_GetBkbldgCatdem_ng, IPO_NO 7992/7989/7991/7988/7987/7984 — every
- * live IPO's Maxdt was exactly that day-end figure); a correctly-parsed IST
- * 5:00:00 PM instant is 11:30:00 UTC, never 17:00:00 UTC. A genuine UTC
- * instant of 17:00:00 would itself be 22:30 IST — a time BSE's exchange
- * session has been closed for hours and never publishes a fresh subscription
- * read at — so no legitimate row can ever land on this exact time-of-day.
- * (An intraday, non-day-end Maxdt shifted the same way would almost never
- * land on a round 17:00:00 either, but those rows were mostly REJECTED by
- * W-38's 5-minute-future guard before they could be written at all, so they
- * are lost, not repairable — see the PR body for the count of skips this
- * caused; only the day-end row survives to be repaired because the write
- * that persists it typically happens late enough in the next cycle that the
- * shifted value is no longer >5 minutes ahead of "now".)
+ * are `subscriptions` rows with `scope = 'BSE_ONLY'` whose STORED
+ * `"timestamp"` time-of-day is EXACTLY 17:00:00.000000 UTC. This does NOT
+ * depend on Maxdt always being "5:00:00 PM" — it isn't: BSE's Maxdt varies
+ * intraday too (e.g. staging log: Unitec Fibres Maxdt "13:36:42 IST" on
+ * 2026-09-23, which the old bug would have stored as 13:36:42 UTC, not
+ * 17:00:00). The rule instead rests on what a genuine UTC instant of
+ * 17:00:00 WOULD mean: 22:30 IST — hours after BSE's exchange session has
+ * closed, a time BSE never publishes a fresh subscription read at. So
+ * `scope='BSE_ONLY' AND time-of-day=17:00:00` can only be the specific
+ * corrupted case where the source's IST 5:00:00 PM day-end figure (verified
+ * live 2026-09-24 against Pubissues_GetBkbldgCatdem_ng, IPO_NO
+ * 7992/7989/7991/7988/7987/7984 — every open IPO's Maxdt was exactly that
+ * day-end figure at fetch time) got parsed as UTC instead of IST; a
+ * correctly-parsed 5:00:00 PM IST instant is 11:30:00 UTC, never 17:00:00
+ * UTC. Other, intraday Maxdt values shifted the same way land at OTHER
+ * UTC time-of-day values (e.g. 13:36:42 IST -> mis-parsed 13:36:42 UTC,
+ * not 17:00:00) and are not caught by this rule — see the PR body for the
+ * measured count of stored BSE_ONLY rows at UTC time-of-day values other
+ * than 17:00:00 that are NOT this class (they cluster on the scraper's own
+ * 30-minute cron boundaries, which is the correct `new Date()`
+ * scrape-time fallback, not a shifted source timestamp). Most such intraday
+ * reads were REJECTED outright by W-38's 5-minute-future guard before they
+ * could be written at all, so they are lost, not repairable; only the
+ * day-end row reliably survives to be repaired, because the write that
+ * persists it typically happens late enough in the next cycle that the
+ * shifted value is no longer >5 minutes ahead of "now".
  *
  * FIX: shift the identified rows -5h30m (UTC-3300 becomes UTC-0, the true
  * observation instant), then de-duplicate: if the shifted timestamp now
