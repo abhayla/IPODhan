@@ -813,6 +813,12 @@ export type ExtractorFailure = {
    * the caller reverts the IN_PROGRESS stamp and retries next cycle
    * unchanged. Mutually exclusive with `hardFailure`. */
   busy?: boolean;
+  /** OD-36 (item 22 slice 22-5): true when the python extractor's envelope
+   * carried `extraction_status: "PDF_PASSWORD_PROTECTED"` — the one blank-
+   * password attempt failed. TERMINAL, never `hardFailure`: no clock-driven
+   * backoff will ever open this document, so the caller writes MANUAL_REVIEW
+   * immediately instead of counting it toward the 10-attempt floor. */
+  passwordProtected?: boolean;
 };
 export type ExtractorSuccess = { ok: true; extraction: FilingExtraction };
 export type ExtractorResult = ExtractorSuccess | ExtractorFailure;
@@ -1043,6 +1049,18 @@ export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme,
   }
   if ((parsed as unknown as { error?: string }).error) {
     return { ok: false, error: String((parsed as unknown as { error: string }).error) };
+  }
+  // OD-36: the extractor's own terminal outcome for a password-protected
+  // PDF. Checked before the generic success return so a document that could
+  // not be opened never reads as a clean (empty) extraction.
+  const status = (parsed as unknown as { extraction_status?: string }).extraction_status;
+  if (status === 'PDF_PASSWORD_PROTECTED') {
+    const cause = (parsed as unknown as { extraction_status_cause?: string }).extraction_status_cause;
+    return {
+      ok: false,
+      error: `PDF_PASSWORD_PROTECTED${cause ? `: ${cause}` : ''}`,
+      passwordProtected: true,
+    };
   }
   return { ok: true, extraction: parsed };
 };
@@ -1875,27 +1893,44 @@ export async function processPendingFilings(
         break;
       }
       result.failed++;
-      // W-137: a killed/memory-ceiling extractor is a HARD failure — embed
-      // the (incrementing) hard-failure marker so the NEXT cycle's
-      // `documentExtractionBlocked` widens the backoff to >= 24h once this
-      // has happened twice on the SAME document, instead of retrying hourly.
-      const rawError = run.hardFailure
-        ? markHardFailure(doc.extractionError, `extractor: ${run.error}`)
-        : `extractor: ${run.error}`;
-      // Transition 3 / 5: retryCount is NOT re-incremented here — it was
-      // already counted at the IN_PROGRESS stamp above. Once that count has
-      // reached MAX_EXTRACTION_ATTEMPTS, classifyFailure writes MANUAL_REVIEW
-      // (with EXTRACTOR_VERSION embedded in the error) instead of FAILED, so
-      // the row self-documents WHY the next cycle will not retry it.
-      const classified = classifyFailure(newRetryCount, version, rawError);
+      // OD-36 (item 22 slice 22-5): a password-protected PDF is TERMINAL on
+      // the FIRST occurrence — straight to MANUAL_REVIEW, never through
+      // classifyFailure's 10-attempt floor (that floor exists for failures a
+      // retry COULD fix; a retry never supplies the password). #959 (the
+      // extraction-failure backoff timer) is explicitly out of scope here —
+      // this document simply never re-enters that timer.
+      const classified = run.passwordProtected
+        ? { status: 'MANUAL_REVIEW' as const, error: withBlockedVersion(`extractor: ${run.error}`, version) }
+        : classifyFailure(
+            newRetryCount,
+            version,
+            run.hardFailure
+              ? // W-137: a killed/memory-ceiling extractor is a HARD failure —
+                // embed the (incrementing) hard-failure marker so the NEXT
+                // cycle's `documentExtractionBlocked` widens the backoff to
+                // >= 24h once this has happened twice on the SAME document,
+                // instead of retrying hourly.
+                markHardFailure(doc.extractionError, `extractor: ${run.error}`)
+              : `extractor: ${run.error}`
+          );
       const blocked = classified.status === 'MANUAL_REVIEW';
       logger.error(
-        { ipoId: ipo.id, docType, error: run.error, retryCount: newRetryCount, blocked, hardFailure: run.hardFailure === true },
-        blocked
-          ? 'Filing extraction failed for the 10th time — blocked until EXTRACTOR_VERSION changes'
-          : run.hardFailure
-            ? 'Filing extractor was killed (OOM/memory ceiling) — recorded as FAILED with a hard backoff (>=24h after the 2nd such failure)'
-            : 'Filing extraction failed (non-fatal) — recorded as FAILED with a backoff'
+        {
+          ipoId: ipo.id,
+          docType,
+          error: run.error,
+          retryCount: newRetryCount,
+          blocked,
+          hardFailure: run.hardFailure === true,
+          passwordProtected: run.passwordProtected === true,
+        },
+        run.passwordProtected
+          ? 'Filing PDF is password-protected — the blank attempt failed, recorded MANUAL_REVIEW (OD-36), never retried on a clock'
+          : blocked
+            ? 'Filing extraction failed for the 10th time — blocked until EXTRACTOR_VERSION changes'
+            : run.hardFailure
+              ? 'Filing extractor was killed (OOM/memory ceiling) — recorded as FAILED with a hard backoff (>=24h after the 2nd such failure)'
+              : 'Filing extraction failed (non-fatal) — recorded as FAILED with a backoff'
       );
       await writeSteps(
         ipo.id,
