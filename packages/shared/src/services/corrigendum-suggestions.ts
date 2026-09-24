@@ -15,6 +15,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '../db/schema';
 import { dataConflicts, fieldSources, ipoDetails, ipos } from '../db/schema';
 import { createFieldProtectionService } from '../admin/field-protection-checker';
+import { IPORepository } from '../repositories/ipo-repository';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -335,10 +336,10 @@ export async function acceptCorrigendumSuggestion(
           await t.insert(ipoDetails).values({ ipoId: row.ipoId, designatedExchange: value, dataSource: 'MANUAL' } as never);
         }
       } else {
-        await t
-          .update(ipos)
-          .set({ [row.fieldName]: value, lastManualEditAt: new Date() } as never)
-          .where(eq(ipos.id, row.ipoId));
+        // Sanctioned write path (T-316 ratchet): routes through IPORepository so this file never
+        // becomes a direct `ipos` writer. Static call + the caller's own `tx` keeps the claim,
+        // this write and the field_sources insert below in the ONE transaction.
+        await IPORepository.applyAdminCorrigendumValue(t, row.ipoId, row.fieldName, value);
       }
       await t
         .insert(fieldSources)

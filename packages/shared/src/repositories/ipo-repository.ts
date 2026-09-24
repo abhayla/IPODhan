@@ -1307,6 +1307,30 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Item 9 corrigendum accept (OD-90): write ONE `ipos` column from inside the caller's OWN
+   * transaction. `acceptCorrigendumSuggestion`
+   * (packages/shared/src/services/corrigendum-suggestions.ts) claims the `data_conflicts` row,
+   * writes this value, and records `field_sources` provenance all in one transaction — the claim
+   * and the write must never be split across two commits. Static, and taking the transaction
+   * handle directly, because the caller already holds a `tx`; wrapping it in an IPORepository
+   * instance bound to `this.db` would either write outside that transaction or force a nested
+   * transaction. Same write-ratchet rationale as `applyOfferTerms`/`renameSlugWithRedirect`: the
+   * write lives here, in this already-baselined file, never re-typed as a direct
+   * `db.update(ipos)` in a new call site (`scripts/check-write-ratchet.mjs`, T-316).
+   */
+  static async applyAdminCorrigendumValue(
+    tx: NodePgDatabase<typeof schema>,
+    id: string,
+    fieldName: string,
+    value: string
+  ): Promise<void> {
+    await tx
+      .update(ipos)
+      .set({ [fieldName]: value, lastManualEditAt: new Date() } as never)
+      .where(eq(ipos.id, id));
+  }
+
+  /**
    * Delete IPO by ID
    */
   async delete(id: string): Promise<void> {
