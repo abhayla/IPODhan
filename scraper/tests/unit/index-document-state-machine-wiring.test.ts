@@ -383,8 +383,8 @@ describe('item 7 S2 — the document cycle runs only when the data job is due', 
    * Independent-review HIGH finding: PASS 1 (discovery) finishing inside its
    * own budget (`budgetExhausted: false`) must NOT be read as "the whole
    * cycle finished" when a LATER pass (extraction, field-plan generation,
-   * the field-plan walk) stopped early, or LISTED work was deferred past the
-   * cap. Each case below is a class member of "a pass stopped short of the
+   * the field-plan walk) stopped early. (F-151: LISTED deferral is no longer
+   * a completion condition, so it is not a case here.) Each case below is a class member of "a pass stopped short of the
    * end of the wake budget"; `slotComplete: false` is what `document-cycle.ts`
    * itself computes for each (proven independently by
    * `document-cycle-slot-complete.test.ts`) — this file proves the CALLER
@@ -397,7 +397,6 @@ describe('item 7 S2 — the document cycle runs only when the data job is due', 
     ['field-plan generation exhausted mid-loop', ['field_plan_generation_exhausted']],
     ['the field-plan walk had no budget', ['field_plan_walk_no_budget']],
     ['the field-plan walk exhausted mid-loop', ['field_plan_walk_exhausted']],
-    ['LISTED work was deferred past the cap', ['listed_deferred']],
   ])('a slot is NOT stamped finished when %s, even though discovery itself did not exhaust its budget', async (_label, incompletePasses) => {
     const { triggerPrimarySourceDiscovery, DOCUMENT_CYCLE_LAST_RUN_KEY } = await import('../../src/index.js');
     const redis = fakeRedis({ [DOCUMENT_CYCLE_LAST_RUN_KEY]: ist('2026-09-23', 0, 0).toISOString() });

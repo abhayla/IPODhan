@@ -53,6 +53,25 @@ export function mostRecentDataJobSlotBoundary(now: Date, slots: SlotList = DATA_
 }
 
 /**
+ * The start of the FIRST slot strictly after `now`, as an instant (F-151).
+ * "Try this again next slot" is written as this boundary, never as
+ * `now + N minutes`: the value names a slot, not an elapsed interval.
+ */
+export function nextDataJobSlotBoundary(now: Date, slots: SlotList = DATA_JOB_SLOTS_IST_MINUTES): Date {
+  const current = mostRecentDataJobSlotEpochMinute(now, slots);
+  const dayStart = Math.floor(current / 1440) * 1440;
+  const minuteOfDay = current - dayStart;
+  const later = slots.find((s) => s > minuteOfDay);
+  const nextEpochMinute = later !== undefined ? dayStart + later : dayStart + 1440 + slots[0];
+  return new Date(nextEpochMinute * 60_000 - IST_OFFSET_MINUTES * 60_000);
+}
+
+/** True when `at` is exactly a slot start: the only value a "next slot" column may hold (F-151). */
+export function isDataJobSlotBoundary(at: Date, slots: SlotList = DATA_JOB_SLOTS_IST_MINUTES): boolean {
+  return mostRecentDataJobSlotBoundary(at, slots).getTime() === at.getTime();
+}
+
+/**
  * Due when the most recent slot at-or-before `now` is strictly after
  * `lastRunAt` (or it never ran). Catch-up safe: a slot missed because the
  * process was down, or whose run did not finish, fires on the next wake.

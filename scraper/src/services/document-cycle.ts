@@ -274,7 +274,7 @@ export interface DocumentCycleSummary {
   listedDeferred: number;
   /**
    * W-124 round 2 (MAJOR-1): LISTED candidates whose documents are already
-   * FOUND/NOT_APPLICABLE/SUPERSEDED (or every open row still in backoff) this
+   * FOUND/NOT_APPLICABLE/SUPERSEDED (or every open row already attempted this data slot) this
    * cycle — `alreadyComplete === true`. These never enter `candidates` at all
    * (they need no work), so PASS 1/2 and the F4 tally never see them and they
    * never spend a cap slot.
@@ -349,9 +349,9 @@ export interface DocumentCycleSummary {
    * Item 7 S2 (spec §2.1, OD-19/OD-33/OD-55): true only when EVERY pass of
    * this cycle ran to completion on its own budget slice — discovery
    * (PASS 1), extraction, field-plan generation (PASS 2.5) and the
-   * field-plan walk (PASS 3) — and no LISTED work was deferred past the
-   * per-cycle cap. `false` means at least one pass stopped early or work
-   * was deferred; the caller (index.ts's data-job slot) MUST NOT stamp the
+   * field-plan walk (PASS 3). LISTED work deferred past the per-cycle cap
+   * does NOT make it false (F-151, spec §6.1). `false` means at least one pass stopped
+   * early; the caller (index.ts's data-job slot) MUST NOT stamp the
    * slot finished when this is false, or a partial wake reads as a
    * complete data-job slot (independent-review HIGH finding: the caller
    * previously keyed the stamp on `budgetExhausted` — PASS 1 only — so a
@@ -509,8 +509,8 @@ export function summarize(
    * Item 7 S2 (spec §2.1, OD-19/OD-33/OD-55): per-pass early-stop flags.
    * Every field defaults false/0 so existing callers (and tests) that never
    * pass this argument get `slotComplete: true` exactly when `budgetExhausted`
-   * is false and `listedDeferred` is 0 — the ORIGINAL (pre-fix) definition —
-   * which keeps this an additive change to `summarize`'s public signature.
+   * is false (F-151: `listedDeferred` no longer counts), which keeps this an
+   * additive change to `summarize`'s public signature.
    */
   slotInfo: {
     extractionExhausted?: boolean;
@@ -527,7 +527,11 @@ export function summarize(
   if (slotInfo.fieldPlanGenExhausted) incompletePasses.push('field_plan_generation_exhausted');
   if (slotInfo.fieldPlanWalkSkippedNoBudget) incompletePasses.push('field_plan_walk_no_budget');
   if (slotInfo.fieldPlanWalkExhausted) incompletePasses.push('field_plan_walk_exhausted');
-  if ((listedInfo.deferred ?? 0) > 0) incompletePasses.push('listed_deferred');
+  // F-151: LISTED cap deferral is NOT a completion condition of the data slot.
+  // Spec §6.1 gives old (LISTED/CLOSED) IPOs to the 22:00 closed-IPO job, and
+  // a LISTED IPO only counted complete once nothing was due, which the removed
+  // document retry timer kept re-arming, so the slot never closed. The count
+  // stays on the summary (`listedDeferred`) so the backlog is still visible.
   return {
     ipos: results.length,
     skipped: results.filter((r) => r.skipped).length,
@@ -743,7 +747,7 @@ function compareByActivity(aVal: unknown, bVal: unknown): number {
  *      that are NOT already complete (`alreadyComplete !== true` — i.e.
  *      `planIpoCycle(...).skipIpo` is false, so `runIpo` would actually make
  *      network calls for it). A LISTED row whose documents are already
- *      FOUND/NOT_APPLICABLE/SUPERSEDED (or still in retry backoff) costs zero
+ *      FOUND/NOT_APPLICABLE/SUPERSEDED (or already attempted this data slot) costs zero
  *      network calls either way, so it is never charged against the cap —
  *      and (W-124 round 2, MAJOR-1) it never enters `candidates` at all; it
  *      is counted in the returned `listedComplete` instead, so PASS 1/2 and
@@ -821,7 +825,7 @@ export function orderAndCapCandidates(
     } else if (lifecycleRank(c) === 2) {
       // MAJOR-1 (#468 round 2): mirror the LISTED alreadyComplete drop above
       // — a rank-2 row with nothing left to do (FOUND/NOT_APPLICABLE/
-      // SUPERSEDED, or every open row still in retry backoff) costs zero
+      // SUPERSEDED, or every open row already attempted this data slot) costs zero
       // network calls, so letting it hold the single reserved slot forever
       // purely because it opens soonest would defeat the rotation fix above.
       // Unlike LISTED there is NO cap here (rule 4: the cap never removes
@@ -1867,7 +1871,7 @@ export async function runDocumentCycle(
         // unguarded run would record the non-terminal CHECK_FAILED and the
         // fields would stay askable. The refusal is still right, for a
         // smaller and now-accurate reason: every field would be claimed,
-        // charged an attempt, and pushed onto a doubling backoff for work no
+        // charged an attempt, and re-asked every data slot for work no
         // source was ever asked to do -- pointless churn that also delays the
         // first real pass once the adapters land. It is no longer a
         // data-destroying bug, so the guard is cheap insurance rather than
@@ -1886,7 +1890,7 @@ export async function runDocumentCycle(
         // healthy at all:
         //   fieldsCheckFailed -- the number that distinguishes "the walk is
         //     working" from "every field is failing transiently and being
-        //     re-asked forever on a 6h backoff". Without it the F1 fix is
+        //     re-asked every data slot forever". Without it the F1 fix is
         //     invisible: the plan looks busy and nothing is ever supplied.
         //   outcomesFailed -- the DB-unreachable signal F4 exists to surface.
         //     If this is non-zero the walk is releasing claims it could not

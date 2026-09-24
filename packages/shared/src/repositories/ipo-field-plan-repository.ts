@@ -66,7 +66,7 @@ import { BaseRepository } from './base-repository';
 import type * as schema from '../db/schema';
 import { DatabaseError } from '../errors/repository-errors';
 import { FIELD_PLAN_GAP_KEY_PREFIX, stampFieldPlanGapCause } from '../utils/field-plan-config-gap';
-import { mostRecentDataJobSlotBoundary } from '../scheduler/data-job-slots';
+import { mostRecentDataJobSlotBoundary, nextDataJobSlotBoundary } from '../scheduler/data-job-slots';
 
 /**
  * Bind a JS `Date` to a NAIVE `timestamp` column as the instant it actually is.
@@ -101,10 +101,6 @@ function utc(value: Date): string {
  * two staleness rules in their head.
  */
 export const FIELD_PLAN_CLAIM_STALE_MINUTES = 30;
-
-/** Per-field backoff between attempts, doubling, capped. */
-export const FIELD_PLAN_BACKOFF_BASE_MINUTES = 15;
-export const FIELD_PLAN_BACKOFF_MAX_MINUTES = 6 * 60;
 
 /**
  * #762 (S8): how many times a NOT_AVAILABLE_YET / CHECK_FAILED row is
@@ -303,11 +299,16 @@ export interface RecordOutcomeResult {
   row?: IpoFieldPlanRow;
 }
 
-/** attempts 0 -> 15m, 1 -> 30m, 2 -> 60m … capped at 6h. */
-export function fieldPlanBackoffMinutes(attemptsAfterThisOne: number): number {
-  const exponent = Math.max(0, attemptsAfterThisOne - 1);
-  const minutes = FIELD_PLAN_BACKOFF_BASE_MINUTES * 2 ** exponent;
-  return Math.min(minutes, FIELD_PLAN_BACKOFF_MAX_MINUTES);
+/**
+ * F-152: when a non-terminal plan row is next due. The start of the NEXT OD-19
+ * data slot, never `now + N minutes` (the 15 min -> 6 h doubling backoff that
+ * lived here was a timed retry, forbidden by OD-21 and §2.5 "never on a
+ * backoff timer"). A structural gap row (gapKey) and a terminal row get NULL:
+ * nothing re-asks them on time at all.
+ */
+export function fieldPlanNextDueAt(params: { terminal: boolean; isGap: boolean; now: Date }): Date | null {
+  if (params.terminal || params.isGap) return null;
+  return nextDataJobSlotBoundary(params.now);
 }
 
 /**
@@ -604,14 +605,10 @@ export class IpoFieldPlanRepository extends BaseRepository {
    * Triggers 2 and 3 key on `last_attempt_at` crossing a SLOT boundary
    * (`mostRecentFieldPlanSlotBoundary`, the data job's OD-19 slots from
    * `packages/shared/src/scheduler/data-job-slots.ts`), NEVER on `next_due_at` or an elapsed
-   * interval — `next_due_at` is written by `recordOutcome` using
-   * `fieldPlanBackoffMinutes`, a TIMED doubling backoff the design doc
-   * explicitly marks for deletion (`docs/design/data-sourcing-pull-model.md:971`,
-   * OD-21/OD-33/D12: "no code path schedules a document fetch by elapsed
-   * time"). This fix does not touch `recordOutcome` or that column (out of
-   * the S8 brief's scope) — it simply never reads `next_due_at` for triggers
-   * 2/3, so a slot-based reclaim is not blocked by (or dependent on) a
-   * still-running timer the design says should not exist.
+   * interval. (F-152: `recordOutcome` now writes `next_due_at` as the next
+   * slot's start, or NULL for terminal and gap rows — the doubling backoff it
+   * used to write is gone. Rows written before F-152 may still carry an
+   * elapsed-time value; triggers 2/3 never read it, so it blocks nothing.)
    *
    * Churn guard (S8, no design-mandated shape existed): trigger 3
    * (CHECK_FAILED) is bounded by `attempts < FIELD_PLAN_RECLAIM_MAX_ATTEMPTS`
@@ -1003,23 +1000,17 @@ export class IpoFieldPlanRepository extends BaseRepository {
       const recordedCause = isGap ? stampFieldPlanGapCause(params.gapKey as string, params.cause ?? null) : params.cause ?? null;
       const writeCause = hasCause || isGap;
 
-      // A real attempt: count it, stamp it, and schedule the next one unless
-      // the state is terminal. `attempts + 1` is computed in SQL from the
-      // row's own value, so a concurrent reader never reads a stale count.
+      // A real attempt: count it, stamp it, and name the slot it is next due
+      // in (F-152: never an elapsed-time backoff; NULL for terminal and gap
+      // rows). `attempts + 1` is computed in SQL from the row's own value, so
+      // a concurrent reader never reads a stale count.
+      const nextDueAt = fieldPlanNextDueAt({ terminal, isGap, now });
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
         SET state = ${state}::field_plan_state,
             attempts = attempts + ${countsAsAttempt ? 1 : 0},
             last_attempt_at = ${utc(now)}::timestamptz,
-            next_due_at = CASE
-              WHEN ${terminal} THEN NULL
-              ELSE ${utc(now)}::timestamptz + make_interval(mins =>
-                LEAST(
-                  ${FIELD_PLAN_BACKOFF_MAX_MINUTES},
-                  ${FIELD_PLAN_BACKOFF_BASE_MINUTES} * POWER(2, GREATEST(0, attempts))::int
-                )::int
-              )
-            END,
+            next_due_at = ${nextDueAt === null ? null : utc(nextDueAt)}::timestamptz,
             policy_origin = CASE WHEN ${hasPolicyOrigin} THEN ${params.policyOrigin ?? null} ELSE policy_origin END,
             reason_code = CASE WHEN ${hasReasonCode} THEN ${params.reasonCode ?? null} ELSE reason_code END,
             cause = CASE WHEN ${writeCause} THEN ${recordedCause} ELSE cause END,

@@ -4,6 +4,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   DATA_JOB_SLOTS_IST_MINUTES,
+  nextDataJobSlotBoundary,
+  isDataJobSlotBoundary,
   mostRecentDataJobSlotBoundary,
   isDataJobDue,
   longestDataJobSlotGapMinutes,
@@ -95,5 +97,21 @@ describe('freshness max age is derived from the slot list, not typed', () => {
   it('moves when the slot list moves (the derivation is real)', () => {
     expect(longestDataJobSlotGapMinutes([510, 660, 840, 1050])).toBe(900);
     expect(dataJobFreshnessMaxAgeMinutes([510, 660, 840, 1050])).toBe(960);
+  });
+});
+
+describe('next slot boundary (F-151: "retry next slot", never now + N minutes)', () => {
+  it('returns the next slot start within the day and across midnight', () => {
+    expect(nextDataJobSlotBoundary(ist('2026-09-24', 0, 15)).getTime()).toBe(ist('2026-09-24', 8, 0).getTime());
+    expect(nextDataJobSlotBoundary(ist('2026-09-24', 8, 0)).getTime()).toBe(ist('2026-09-24', 14, 0).getTime());
+    expect(nextDataJobSlotBoundary(ist('2026-09-24', 13, 59)).getTime()).toBe(ist('2026-09-24', 14, 0).getTime());
+    expect(nextDataJobSlotBoundary(ist('2026-09-24', 21, 45)).getTime()).toBe(ist('2026-09-25', 0, 0).getTime());
+  });
+
+  it('only exact slot starts are boundaries', () => {
+    expect(isDataJobSlotBoundary(ist('2026-09-24', 14, 0))).toBe(true);
+    expect(isDataJobSlotBoundary(ist('2026-09-25', 0, 0))).toBe(true);
+    expect(isDataJobSlotBoundary(ist('2026-09-24', 14, 30))).toBe(false);
+    expect(isDataJobSlotBoundary(new Date(ist('2026-09-24', 8, 0).getTime() + 1))).toBe(false);
   });
 });

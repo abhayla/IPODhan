@@ -2370,7 +2370,7 @@ export class DocumentDiscoveryRunner {
       const transition = applyOutcome(prior, outcome, now, { stage: ipo.stage });
       // W-28: NOT_FOUND has no `document_fetch_status` enum member yet (the enum
       // change is reported, not made, by this work package), so it persists as
-      // WANTED — open, on its backoff, and no longer claiming the issuer has not
+      // WANTED — open, retried next data slot, and no longer claiming the issuer has not
       // filed. `state_intent` below carries the decided state until the enum lands.
       const persistedState = toPersistedState(transition.state);
       let stateIntentAttempt: FetchAttempt | null = null;

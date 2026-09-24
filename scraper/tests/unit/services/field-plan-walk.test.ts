@@ -2042,6 +2042,53 @@ describe('walk records a gap under its FIELD gap key (#884 review rounds 1-2)', 
     expect(repo.recorded[0].cause).toContain('THROWN');
   });
 
+  // F-152: 340 staging lines said "at least one TRANSIENT" for failures whose
+  // reasons were all structural (NO_MAPPING, NO_DOCUMENT_PROVENANCE). A
+  // structural gap is a settled fact under its key, not this minute's fact.
+  const warnMessages = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls.map((c) => String(c[1] ?? c[0]));
+
+  it('F-152: an all-structural failure (NO_MAPPING + NO_DOCUMENT_PROVENANCE) is recorded as a definitive gap, never as TRANSIENT', async () => {
+    const warn = vi.spyOn(logger, 'warn');
+    try {
+      const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: null })]);
+      const d = deps({
+        fieldPlanRepository: repo as any,
+        sourceFetchers: { NSE: gapFetcher('NO_MAPPING'), BSE: gapFetcher('NO_DOCUMENT_PROVENANCE') } as any,
+        gapKeys: source(),
+      } as any);
+      const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+      expect(repo.recorded).toHaveLength(1);
+      expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+      expect(repo.recorded[0].gapKey).toBe(WITH_DOCS);
+      expect(result.fieldsExhausted).toBe(0);
+      const msgs = warnMessages(warn);
+      expect(msgs.filter((m) => /STRUCTURAL gap/.test(m))).toHaveLength(1);
+      expect(msgs.filter((m) => /at least one TRANSIENT/.test(m))).toHaveLength(0);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('F-152: a mixed network + structural failure stays on the transient path (no gap key, charged)', async () => {
+    const warn = vi.spyOn(logger, 'warn');
+    try {
+      const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: null })]);
+      const d = deps({
+        fieldPlanRepository: repo as any,
+        sourceFetchers: { NSE: thrower, BSE: gapFetcher('NO_MAPPING') } as any,
+        gapKeys: source(),
+      } as any);
+      await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+      expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+      expect(repo.recorded[0].gapKey).toBeUndefined();
+      const msgs = warnMessages(warn);
+      expect(msgs.filter((m) => /at least one TRANSIENT/.test(m))).toHaveLength(1);
+      expect(msgs.filter((m) => /STRUCTURAL gap/.test(m))).toHaveLength(0);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('no gap-key source, or one that throws: an all-gap row is charged (bounded), never left unkeyed', async () => {
     for (const gapKeys of [undefined, { forIpo: vi.fn(async () => { throw new Error('db down'); }) }]) {
       const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: null, rank3Source: null })]);

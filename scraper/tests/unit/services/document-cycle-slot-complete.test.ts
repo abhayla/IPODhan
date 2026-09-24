@@ -8,8 +8,9 @@
  *
  * The bug this closes: the caller previously stamped the data-job slot
  * finished whenever `budgetExhausted` (PASS 1/discovery only) was false,
- * even when extraction, field-plan generation, the field-plan walk, or the
- * LISTED cap deferral stopped a LATER pass early. `slotComplete` must be
+ * even when extraction, field-plan generation or the field-plan walk stopped
+ * a LATER pass early. (F-151: LISTED cap deferral is NOT a completion
+ * condition; spec §6.1 gives the LISTED backlog to the closed-IPO job.) `slotComplete` must be
  * false for every one of those cases, independently of `budgetExhausted`.
  */
 import { describe, it, expect } from 'vitest';
@@ -68,10 +69,14 @@ describe('summarize() — slotComplete (item 7 S2)', () => {
     expect(s.incompletePasses).toEqual(['field_plan_walk_exhausted']);
   });
 
-  it('is false when LISTED candidates were deferred past the per-cycle cap', () => {
+  it('F-151: is TRUE when every candidate was attempted once, even with LISTED rows still deferred', () => {
+    // The LISTED backlog is not a data-slot completion condition: per spec
+    // §6.1 old (LISTED/CLOSED) IPOs belong to the 22:00 closed-IPO job. The
+    // deferral count stays on the summary line so it is still visible.
     const s = summarize([], 100, false, { blocked: 0, failed: 0 }, { cap: 2, deferred: 3 });
-    expect(s.slotComplete).toBe(false);
-    expect(s.incompletePasses).toEqual(['listed_deferred']);
+    expect(s.slotComplete).toBe(true);
+    expect(s.incompletePasses).toEqual([]);
+    expect(s.listedDeferred).toBe(3);
   });
 
   it('names every incomplete pass together, not just the first', () => {
@@ -80,7 +85,8 @@ describe('summarize() — slotComplete (item 7 S2)', () => {
       fieldPlanWalkExhausted: true,
     });
     expect(s.slotComplete).toBe(false);
-    expect(s.incompletePasses).toEqual(['discovery', 'extraction', 'field_plan_walk_exhausted', 'listed_deferred']);
+    // F-151: listed deferral is no longer a pass of the data slot.
+    expect(s.incompletePasses).toEqual(['discovery', 'extraction', 'field_plan_walk_exhausted']);
   });
 
   it('formatCycleReason is unaffected by slotComplete (ledger line shape unchanged)', () => {
