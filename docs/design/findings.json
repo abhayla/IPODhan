@@ -1581,6 +1581,15 @@
       "phase1": true,
       "title": "BLOCKED_ALL mostly records sources that ANSWERED without the document, not an outage; the retry timer spent 26,534 attempts on them",
       "detail": "Measured 2026-09-24 ~10:5x IST on ipodhan_staging (read-only): 448 document_fetch_state rows in BLOCKED_ALL carry 26,534 attempts in total (LISTED alone: 202 rows across 52 IPOs, attempts up to 77 each, blocked since 2026-09-04; by type BASIS_OF_ALLOTMENT_AD 52, PROSPECTUS 42, PRICE_BAND_AD 35, RATIOS_BASIS_ISSUE_PRICE 21, ANCHOR_ALLOCATION_REPORT 20, DRHP 16, RHP 16). Their last_attempt logs are mostly source ANSWERS: listing_rows POST/GET 200 (3,211 entries), untried_exchange_links/links:0 with HTTP 200 (629), no_symbol (148), not_on_board (125), HTTP 404 (106), and rung summaries such as EXCHANGES:no_link -> SEBI/COMPANY skipped. So the state name reads as \"every source failed\" while the sources mostly replied that they hold no such link; a true transport outage (timeout, 5xx, a 403 block) is the minority. Consequences: (1) the one post-listing attempt of PR #957 is correct for this population; (2) OD-62 already separates SOURCE_UNREACHABLE (no answer) from an answer, so an attempt where no source answered at all should not use up that one attempt. Related: F-151, F-152, OD-62, #957."
+    },
+    {
+      "id": "F-158",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "documents",
+      "phase1": true,
+      "title": "A corrigendum is ranked above the RHP but no extractor reads it, so OD-30 can never apply",
+      "detail": "Measured 2026-09-24. scraper/src/config/document-admission-status.ts AUTO_PERSIST_DOC_TYPES (the single list both the admission stamp and the extractor dispatch read) is PRICE_BAND_AD, RHP, DRHP, PROSPECTUS, ANCHOR_ALLOCATION_REPORT; CORRIGENDUM and ADDENDUM are absent, so a stored corrigendum is admitted NOT_EXTRACTABLE and nothing reads its fields. The field-priority matrix already ranks CORRIGENDUM above RHP (field-priority-matrix.ts ~840-846, CORRIGENDUM: 0) and section 2.5.5 / OD-30 says a corrigendum overrides the RHP for the fields it names and freezes them, so the rule has an input type no code can ever produce. On ipodhan_staging: skyways-air-services-ltd CORRIGENDUM (Corrigendum-of-RHP-Skyways.pdf) is NOT_EXTRACTABLE; staging holds 2 CORRIGENDUM and 1 ADDENDUM documents in total. PR #969 (item 22) now stores the corrigenda bundled inside NSE zips (F-154: HTEL, ABH, MADHURKNIT, MOMSBELIEF, SKYWAYS), which raises the count of stored-but-unread corrigenda. Related: F-154, OD-30, item 22, item 9 (\"a genuinely new corrigendum must still be fetched and read\")."
     }
   ],
   "false_assertions": [
