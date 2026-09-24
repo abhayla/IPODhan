@@ -172,7 +172,7 @@ tune the IPO work … it has been consuming a lot of our time and effort and tok
     - A document is attempted once per OD-19 slot, and again only on a stage change or a new
       document (§2.5, OD-56).
     - "Slot complete" means every candidate was attempted once in the slot.
-    - LISTED backlog leaves the slot's completion condition; it belongs to the closed-IPO job (§6.1).
+    - **Corrected 2026-09-24 (Tier A review of #957):** the closed-IPO job never reads a document (§6.1, `closed-ipo-job.ts`), so the LISTED document backlog stays with the data-slot document cycle. Per OD-56 / §2.5.1 a LISTED row is attempted once after the IPO enters LISTED and again only when a new document appears; rows already attempted are not candidates, so they do not hold the slot open.
     - F-152 in the same PR or a sibling PR: structural field-walk failures (NO_MAPPING,
       NO_DOCUMENT_PROVENANCE) are definitive, not transient. That means no backoff
       (`ipo-field-plan-repository.ts:106-107`).
