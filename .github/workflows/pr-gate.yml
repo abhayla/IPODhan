@@ -710,6 +710,19 @@ jobs:
           EXTRACTOR_MEMORY_CEILING: 'off'
         run: python -m pytest scraper/scripts -q -rs -p no:cacheprovider
 
+      - name: Board-owed-guard hook self-tests (project-level, 2026-09-25)
+        # .claude/hooks/board-owed-guard.py moved from user level to project
+        # level; this stdlib-only unittest suite (46 cases, ~8s) is its only
+        # gate. Configures git identity because setUpClass does `git init` +
+        # `git remote add` in temp dirs on this fresh runner. No extra pip
+        # install (stdlib only, same Python 3.12 already set up above).
+        env:
+          BOARD_OWED_NO_REGEN: '1'
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
+          python .claude/hooks/tests/board-owed-guard.test.py
+
   # M-c: this job used to live in test.yml, which is workflow_dispatch-only —
   # so the gate that replays the journal from empty ran only when a human
   # remembered to click it. The two defects it exists to catch (0035's enum/table

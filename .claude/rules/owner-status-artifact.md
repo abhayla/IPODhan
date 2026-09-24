@@ -67,19 +67,36 @@ or newly waiting, a gate changing state, a change in what a reader of the site s
 Do NOT update for: an ordinary merge that changes no verdict, docs commits, CI re-runs, a review
 that found nothing.
 
-The `board-owed-guard` hook is **user-level**, not in this repo:
-`~/.claude/hooks/board-owed-guard.py`, wired in `~/.claude/settings.json` across three events. It
-watches for a real merge command (PostToolUse/Bash), clears itself when the board is republished
-(PostToolUse/Artifact), and BLOCKS the turn on Stop (exit 2) while a merge is owed — regenerating
-the board for you so the only step left is the publish. When no stage actually crossed, the marker
-is cleared deliberately with a stated reason, which is R4 in practice.
+The `board-owed-guard` hook is **project-level** (moved from user level 2026-09-25, owner decision):
+`.claude/hooks/board-owed-guard.py` in this repo, wired in this repo's `.claude/settings.json` across
+three events (PostToolUse/Bash, PostToolUse/Artifact, Stop). Its self-tests live at
+`.claude/hooks/tests/board-owed-guard.test.py` (46 cases, stdlib-only unittest) and run in CI
+(`pr-gate.yml`, the `python-tests` job). It watches for a real merge command (PostToolUse/Bash),
+clears itself when the board is republished (PostToolUse/Artifact), and BLOCKS the turn on Stop
+(exit 2) while a merge is owed — regenerating the board for you so the only step left is the
+publish. When no stage actually crossed, the marker is cleared deliberately with a stated reason,
+which is R4 in practice.
 
-**Where it lives matters, because it is not where you would look.** On 2026-09-23 a session read
-this rule, grepped `.claude/` inside the repo, found nothing, concluded the hook had never been
-built, and built a second, weaker one — which printed a line instead of blocking. Both then fired
-on the same merge. The duplicate was retired the same night. The lesson is not "grep before
-trusting a rule" (that session did grep); it is **grep BOTH scopes** — `.claude/` in the repo and
-`~/.claude/` — because a hook that governs this repo may be installed at either.
+**The Stop block is session-scoped.** The marker records the merging session's `session_id`; Stop
+blocks only the session that owns an unpublished merge. Another session on the machine is blocked
+only as a safety net — when the board's last publish is already more than
+`BOARD_FACTS_MAX_AGE_HOURS` (default 24h) old, meaning the owning session never republished. A
+session that neither merged nor is past that staleness window is never blocked by someone else's debt.
+
+**Marker path unchanged.** The marker still lives at the fixed, global path
+`~/.claude/.board-owed.ipodhan` (not moved into the repo) — it has to be readable across every
+worktree and every session on the machine, which a per-repo path cannot give it.
+
+**History — why this moved, and the "grep both scopes" lesson it replaces.** Before 2026-09-25 this
+hook was user-level (`~/.claude/hooks/board-owed-guard.py`, wired in `~/.claude/settings.json`). On
+2026-09-23 a session read this rule, grepped `.claude/` inside the repo only, found nothing,
+concluded the hook had never been built, and built a second, weaker one — which printed a line
+instead of blocking. Both then fired on the same merge; the duplicate was retired the same night.
+Moving the hook into the repo removes the scope-ambiguity that caused that miss: there is now one
+copy, checked into the repo every session already reads, and CI-gated so a future edit cannot drift
+from its tests unnoticed. (The lesson still generalizes to any OTHER hook you have not confirmed the
+location of: grep both `.claude/` in the repo and `~/.claude/`, because a hook governing a repo may
+still be installed at either scope.)
 
 ## R5 — The stamp is read from the clock
 

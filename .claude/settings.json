@@ -99,6 +99,16 @@
             "timeout": 60
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -I -S \"$(git rev-parse --show-toplevel)/.claude/hooks/board-owed-guard.py\" --event Stop",
+            "timeout": 120
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -129,6 +139,28 @@
             "type": "command",
             "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/wave-dispatch-gate.sh\"",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -I -S \"$(git rev-parse --show-toplevel)/.claude/hooks/board-owed-guard.py\" --event PostToolUseBash 2>/dev/null || exit 0",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Artifact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -I -S \"$(git rev-parse --show-toplevel)/.claude/hooks/board-owed-guard.py\" --event PostToolUseArtifact 2>/dev/null || exit 0",
+            "timeout": 15
           }
         ]
       }
