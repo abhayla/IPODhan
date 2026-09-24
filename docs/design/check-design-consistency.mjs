@@ -612,6 +612,33 @@ try {
   if (d17bad.length) fail('D17', d17bad.length + ' decision signature(s) of 2026-09-09 no longer hold: ' + d17bad.join(' | '));
   else ok('D17', D17.length + ' signatures of the 2026-09-09 decisions all hold.');
 
+  // --- D17b: §7.4's cost table and conclusion sentence match probes/job-cost.out.json EXACTLY ---
+  // Round 3 review (Tier A): the spec said 109.6 MB / 3.22 GB a month and per-job rows 22.9 / 25.1
+  // MB while the probe measured 109.02 MB / 3.19 GB and 22.57 / 24.79 MB — a drift nothing caught
+  // because D17's OD-45 signature only checked that SOME number was present, never that it was
+  // the probe's number. This is a real numeric compare, not a regex-exists check.
+  const JOB_COST_OUT = path.join(HERE, 'probes', 'job-cost.out.json');
+  const jobCost = JSON.parse(fs.readFileSync(JOB_COST_OUT, 'utf8'));
+  const section74 = md.slice(md.indexOf('### 7.4'), md.indexOf('### 7.5'));
+  const d17bBad = [];
+  const fmt2 = (n) => (Math.round(n * 100) / 100).toString();
+  for (const job of jobCost.jobs) {
+    const mb = fmt2(job.mb_per_day);
+    const gb = fmt2(job.gb_per_month);
+    if (!section74.includes(`${mb} MB`)) d17bBad.push(`${job.job}: ${mb} MB/day not found in §7.4's table`);
+    if (!section74.includes(gb)) d17bBad.push(`${job.job}: ${gb} GB/month not found in §7.4's table`);
+  }
+  const totalMb = fmt2(jobCost.totals.mb_per_day);
+  const totalGb = fmt2(jobCost.totals.gb_per_month);
+  if (!section74.includes(`**${totalMb} MB**`)) d17bBad.push(`total ${totalMb} MB not found (bolded) in §7.4's table`);
+  if (!section74.includes(`**${totalGb}**`)) d17bBad.push(`total ${totalGb} GB/month not found (bolded) in §7.4's table`);
+  const pct = (Math.round(jobCost.against_plan.percent_of_plan * 100) / 100).toFixed(2);
+  if (!section74.includes(`**${totalGb} GB a month is ${pct}% of the plan's bandwidth.**`)) {
+    d17bBad.push(`conclusion sentence does not read "**${totalGb} GB a month is ${pct}% of the plan's bandwidth.**"`);
+  }
+  if (d17bBad.length) fail('D17b', d17bBad.length + ' §7.4 figure(s) disagree with probes/job-cost.out.json: ' + d17bBad.join(' | '));
+  else ok('D17b', "§7.4's cost table and conclusion sentence match probes/job-cost.out.json exactly.");
+
   // --- D20: the document is UTF-8 and stays UTF-8 ---
   // WHY. Found 2026-09-09: 69 em dashes across 37 lines of section 5.2 read as "â€”" because a
   // probe's console output was pasted into the document on Windows, where the console encodes in

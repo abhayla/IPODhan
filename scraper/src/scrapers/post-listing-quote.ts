@@ -5,7 +5,7 @@
  * Two free public exchange endpoints, both measured before this was written:
  *   - NSE `GetQuoteApi?functionName=getSymbolData` (F-150). It answers only for the
  *     stock's real trading series: EQ for mainboard, SM or ST for SME depending on the
- *     stock. A wrong series is a 404 (measured), so a 404 is NOT delisting evidence
+ *     stock. A wrong series is a 404 (measured), so a 404 is NOT a real "no such symbol" answer
  *     by itself: only "no series answers" is a no-such-symbol read.
  *   - BSE `getScripHeaderData` by scrip code (F-150), the scrip code taken from the BSE
  *     active-scrip list by ISIN (F-155: `ipos.bse_scrip_code` is NULL on every row).
@@ -15,12 +15,12 @@
  *   price     — a positive last traded price with the exchange's own as-of time
  *   no-symbol — the exchange says there is no such symbol (every series tried answered
  *               a 404 with NSE's JSON error body or an explicit empty quote list; or BSE's
- *               well-formed answer names no scrip / a scrip whose category is Delisted)
+ *               well-formed answer names no scrip / a scrip whose category is Delisted on BSE)
  *   refused   — UNKNOWN: Access Denied, a 404 without NSE's JSON error body (a renamed or
  *               retired route), a BSE scrip that is suspended or of any category other than
  *               Listed/Delisted, a non-JSON or empty 200, an empty `{}`, a network
  *               error or timeout, a 5xx, a listed scrip with no trade yet. Never counted
- *               toward delisting, always logged with its cause (round 2, Tier A MAJOR 1).
+ *              , always logged with its cause (round 2, Tier A MAJOR 1).
  */
 import { fetchNseSymbolQuoteRaw } from './nse-api-client.js';
 
@@ -109,7 +109,7 @@ export function isNseNoSuchSeriesBody(body: string): boolean {
  * What one NSE series answer means (round 2, Tier A MAJOR 1). Only an HTTP 404 or a
  * well-formed JSON body that EXPLICITLY carries no quote (`equityResponse: []`) says
  * "no such symbol in this series". Everything else that is not a quote is UNKNOWN: an
- * outage page must never count toward delisting (§2.3.3.3: three no-such-symbol answers,
+ * outage page must never be read as a real "no such symbol" answer (a caller deciding
  * and an outage is not an answer).
  */
 export function classifyNseSeriesAnswer(res: { status: number; body: string }):
@@ -201,19 +201,19 @@ export function parseBseScripHeader(body: string):
   // Round 3 (review MINOR 1): the categories this reader recognises. "Delisted" is the only one
   // that says the scrip no longer trades. "Listed" (or blank, with a named scrip) goes on to the
   // price. Anything else — "Suspended", "Permitted", a word BSE adds later — is UNKNOWN: a
-  // suspended scrip still exists and may resume, so it is never evidence of delisting.
+  // suspended scrip still exists and may resume, so it is never a real "no such symbol" answer.
   if (/^delisted$/i.test(category)) return { kind: 'no-symbol', detail: `scrip category ${category}` };
   if (category && !/^listed$/i.test(category)) return { kind: 'refused', detail: `scrip category ${category} (not Listed, not Delisted: unknown)` };
   // Measured 2026-09-24: a suspended scrip (500102) answers Category "Listed" with DisplayText
   // "Suspended due to Procedural reasons" and its last pre-suspension LTP (0.89, as of 22 Jun 23).
-  // That LTP is not today's price and the suspension is not delisting: UNKNOWN.
+  // That LTP is not today's price and the suspension is not a price: UNKNOWN.
   const notice = [header.DisplayText, header.IDB_DisplayText].map((s) => String(s ?? '').trim()).find((s) => /suspend/i.test(s));
   if (notice) return { kind: 'refused', detail: `scrip suspended: ${notice}` };
   const price = Number(String(header.LTP ?? parsed?.CurrRate?.LTP ?? '').replace(/,/g, ''));
   const asOfText = String(header.Ason ?? '');
   const asOf = parseBseAsOn(asOfText);
   // A listed scrip with no trade yet (LTP "-", F-150: NSE IPO 544937) is neither a price
-  // nor a no-symbol answer, so it never counts toward delisting.
+  // nor a no-symbol answer, so it is UNKNOWN.
   if (!Number.isFinite(price) || price <= 0 || !asOf) {
     return { kind: 'refused', detail: `no traded price yet (LTP "${header.LTP}", Ason "${asOfText}")` };
   }

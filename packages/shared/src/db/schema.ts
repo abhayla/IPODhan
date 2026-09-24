@@ -54,11 +54,6 @@ export const ipoStatusEnum = pgEnum('ipo_status', [
   // physical in Postgres, so migration 0046 only ADDs VALUEs.
   'WITHDRAWN',
   'POSTPONED',
-  // Item 7 S5 (spec §2.3.3.3, OD-38): set by the post-listing price job on the third
-  // consecutive no-such-symbol answer from both exchanges; terminal like WITHDRAWN
-  // (the date ladder never takes it back), cleared only by a later price. Appended by
-  // migration 0055 (ADD VALUE).
-  'DELISTED',
 ]);
 
 export const documentTypeEnum = pgEnum('document_type', [
@@ -338,11 +333,8 @@ export const ipos = pgTable(
     currentGainPercentage: numeric('current_gain_percentage', { precision: 5, scale: 2 }), // Current gain %
     currentGainAmount: numeric('current_gain_amount', { precision: 10, scale: 2 }), // Current gain amount
     currentPriceUpdatedAt: timestamp('current_price_updated_at'), // Last current price update
-    // Item 7 S5 (spec §2.3.3.3, OD-38): consecutive no-such-symbol answers from the post-listing
-    // price job, the IST date of the third one (status DELISTED from then), and the stock's
-    // working NSE trading series (EQ/BE/SM/ST), asked first so a run costs one call per stock.
-    priceNoSymbolReads: integer('price_no_symbol_reads').notNull().default(0),
-    delistedOn: date('delisted_on'),
+    // Item 7 S5 (spec §2.1 "Post-listing price"): the stock's working NSE trading series
+    // (EQ/BE/SM/ST), asked first so a run costs one call per stock.
     priceNseSeries: varchar('price_nse_series', { length: 4 }),
 
     // Metadata

@@ -9,12 +9,11 @@ import { writePostListingPrice, writePostListingState } from '../../src/services
 import { selectPriceCandidates } from '../../src/scheduler/post-listing-price';
 
 /**
- * Item 7 S5 (spec §2.1 "Post-listing price", OD-29; §2.3.3.3 delisting, OD-38) on Postgres
- * (ipodhan_test). The narrow write sets exactly `current_price` and
- * `current_price_updated_at` (plus the repository's own `updated_at`), one `field_sources`
- * row per column, and the as-of instant round-trips through the naive `timestamp` column
- * with drift 0 (ist-timezone.md). An identical price writes 0 rows. The delisting count and
- * date persist, and a delisted row leaves the job's selection.
+ * Item 7 S5 (spec §2.1 "Post-listing price", OD-29) on Postgres (ipodhan_test). The narrow
+ * write sets exactly `current_price` and `current_price_updated_at` (plus the repository's
+ * own `updated_at`), one `field_sources` row per column, and the as-of instant round-trips
+ * through the naive `timestamp` column with drift 0 (ist-timezone.md). An identical price
+ * writes 0 rows. The cached NSE series persists across runs.
  *
  * To run (from scraper/):
  *   DATABASE_URL=postgresql://ipodhan_app:<pw>@localhost:15432/ipodhan_test \
@@ -147,36 +146,21 @@ describe.skipIf(!DATABASE_URL)('post-listing price: the narrow write on Postgres
     expect(t.rows[0]).toEqual({ p: '117.31', t: '2026-09-24 07:02:31' });
   });
 
-  it('the count, DELISTED status, delisting date and cached series persist; a later price clears DELISTED (round 2)', async () => {
+  it('the cached NSE series persists and is the only state column the job writes', async () => {
     const id = await seed();
     const repo = new IPORepository(db as any, noRedis);
-    const fieldSources = new FieldSourcesRepository(db as any, noRedis);
-    let selected = (await selectPriceCandidates(db as any, NOW)).filter((c) => c.id === id);
+    const selected = (await selectPriceCandidates(db as any, NOW)).filter((c) => c.id === id);
     expect(selected).toHaveLength(1);
-    expect(selected[0]).toMatchObject({ priceNoSymbolReads: 0, listingDate: '2026-09-17', status: 'LISTED', delistedOn: null, nseSeries: null });
+    expect(selected[0]).toMatchObject({ listingDate: '2026-09-17', status: 'LISTED', nseSeries: null });
 
     const before = await rowAsText(id);
-    await writePostListingState({ ipoRepository: repo as any, ipoId: id, patch: { reads: 2, nseSeries: 'EQ' } });
-    const mid = await rowAsText(id);
-    expect(Object.keys(mid).filter((k) => mid[k] !== before[k]).sort()).toEqual(['price_no_symbol_reads', 'price_nse_series', 'updated_at']);
+    await writePostListingState({ ipoRepository: repo as any, ipoId: id, patch: { nseSeries: 'EQ' } });
+    const after = await rowAsText(id);
+    expect(Object.keys(after).filter((k) => after[k] !== before[k]).sort()).toEqual(['price_nse_series', 'updated_at']);
 
-    await writePostListingState({
-      ipoRepository: repo as any, fieldSources: fieldSources as any, sourceTrackingEnabled: true, ipoId: id, previousStatus: 'LISTED',
-      patch: { reads: 3, delistedOn: '2026-09-24', status: 'DELISTED' },
-    });
-    let t = await pool!.query(`SELECT price_no_symbol_reads, delisted_on::text AS d, status::text AS s, price_nse_series AS series FROM ipos WHERE id = $1`, [id]);
-    expect(t.rows[0]).toEqual({ price_no_symbol_reads: 3, d: '2026-09-24', s: 'DELISTED', series: 'EQ' });
-    const fs = await db!.select().from(schema.fieldSources).where(eq(schema.fieldSources.ipoId, id));
-    expect(fs.map((r) => `${r.fieldName}:${r.source}`)).toEqual(['status:NSE']);
-    // Out of the ordinary selection; back in on the close read.
-    expect((await selectPriceCandidates(db as any, NOW)).some((c) => c.id === id)).toBe(false);
-    selected = (await selectPriceCandidates(db as any, NOW, { includeDelisted: true })).filter((c) => c.id === id);
-    expect(selected[0]).toMatchObject({ status: 'DELISTED', delistedOn: '2026-09-24' });
-
-    await writePostListingState({ ipoRepository: repo as any, ipoId: id, patch: { reads: 0, delistedOn: null, status: 'LISTED' } });
-    t = await pool!.query(`SELECT price_no_symbol_reads, delisted_on::text AS d, status::text AS s FROM ipos WHERE id = $1`, [id]);
-    expect(t.rows[0]).toEqual({ price_no_symbol_reads: 0, d: null, s: 'LISTED' });
-    expect((await selectPriceCandidates(db as any, NOW)).some((c) => c.id === id)).toBe(true);
+    const t = await pool!.query(`SELECT price_nse_series AS series FROM ipos WHERE id = $1`, [id]);
+    expect(t.rows[0]).toEqual({ series: 'EQ' });
+    expect((await selectPriceCandidates(db as any, NOW)).find((c) => c.id === id)).toMatchObject({ nseSeries: 'EQ' });
   });
 
   it('the window is 90 IST dates from the listing day: listed 90 days ago is out, 89 days ago is in', async () => {

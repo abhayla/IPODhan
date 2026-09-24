@@ -88,7 +88,7 @@ export async function runPostListingPriceWake(now: Date = new Date()): Promise<n
   const startedAt = Date.now();
   try {
     const closeRead = isCloseReadIST(now);
-    const candidates = await selectPriceCandidates(db as any, now, { includeDelisted: closeRead });
+    const candidates = await selectPriceCandidates(db as any, now);
     const ipoRepository = new IPORepository(db as any, redis as any);
     const fieldSources = new FieldSourcesRepository(db as any, redis as any);
     const pace = createPacer(EXCHANGE_CALL_GAP_MS);
@@ -136,18 +136,9 @@ export async function runPostListingPriceWake(now: Date = new Date()): Promise<n
       writeState: async (c, patch) => {
         await writePostListingState({
           ipoRepository: ipoRepository as any,
-          fieldSources: fieldSources as any,
-          sourceTrackingEnabled: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
           ipoId: c.id,
-          previousStatus: c.status,
           patch,
         });
-        if (patch.reads !== undefined && patch.reads > 0) {
-          await recordLiveStep(c.id, 'H5', {
-            status: 'FAILED',
-            error: `no-such-symbol read ${patch.reads} of 3 on NSE and BSE${patch.status === 'DELISTED' ? `; DELISTED on ${patch.delistedOn}` : ''}`,
-          });
-        }
       },
       log: (line, fields) => logger.info(fields, line),
     });
@@ -159,13 +150,9 @@ export async function runPostListingPriceWake(now: Date = new Date()): Promise<n
         confirmed: summary.confirmed.length,
         unchanged: summary.unchanged.length,
         stale: summary.stale,
-        noSymbol: summary.noSymbol,
-        delisted: summary.delisted,
-        undelisted: summary.undelisted,
+        noPrice: summary.noPrice,
         refused: summary.refused,
-        notJudged: summary.notJudged.length,
         notReached: summary.notReached,
-        nseEndpointSuspect: summary.nseEndpointSuspect,
         calls: summary.calls,
         elapsedMs: Date.now() - startedAt,
       },

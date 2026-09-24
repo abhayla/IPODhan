@@ -5971,19 +5971,6 @@
           "notNull": true,
           "default": "now()"
         },
-        "price_no_symbol_reads": {
-          "name": "price_no_symbol_reads",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "delisted_on": {
-          "name": "delisted_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
         "price_nse_series": {
           "name": "price_nse_series",
           "type": "varchar(4)",
@@ -7555,8 +7542,7 @@
         "CLOSED",
         "LISTED",
         "WITHDRAWN",
-        "POSTPONED",
-        "DELISTED"
+        "POSTPONED"
       ]
     },
     "public.ipo_step_status": {

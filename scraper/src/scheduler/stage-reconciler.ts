@@ -290,10 +290,7 @@ export function deriveLifecycleStage(
   opts: DeriveLifecycleStageOptions = {}
 ): LifecycleStage {
   const status = String(row.status || '').toUpperCase();
-  // PR #972 round 3: DELISTED (§2.3.3.3, OD-38) passed listing, so it sits at the last stage;
-  // UPCOMING would send the document cycle hunting pre-open documents for a stock that no longer
-  // trades. Mirrored by `deriveStage` in scripts/lib/ipo-stage-completeness.mjs.
-  if (status === 'LISTED' || status === 'DELISTED') return 'LISTED';
+  if (status === 'LISTED') return 'LISTED';
   if (status === 'CLOSED') return 'CLOSED';
   if (status === 'OPEN') return 'OPEN';
   if (status !== 'UPCOMING') return 'UPCOMING';

@@ -622,9 +622,8 @@ export function mergeListingExchangesForSource(
 /**
  * Round 3 of PR #972 (review MINOR 3): the legacy fallback door (it runs when consolidation
  * throws) must honour the same terminal-status rule as the consolidation path
- * (`TERMINAL_IPO_STATUSES`): a stored WITHDRAWN, POSTPONED or DELISTED is never overwritten by
- * an ordinary scrape's status. DELISTED is set and cleared only by the post-listing price job
- * (`writePostListingState`). Returns the update without `status` when the stored one is
+ * (`TERMINAL_IPO_STATUSES`): a stored WITHDRAWN or POSTPONED is never overwritten by an
+ * ordinary scrape's status. Returns the update without `status` when the stored one is
  * terminal and the incoming one differs; otherwise the update unchanged.
  */
 export function keepTerminalIpoStatus<T extends Record<string, any>>(existingStatus: unknown, update: T): T {
@@ -838,38 +837,23 @@ export async function writePostListingPrice(params: {
   return { outcome: samePrice ? 'confirmed' : 'updated', written: Object.keys(set), fieldSources: tracked };
 }
 
-/** The `ipos` columns the post-listing state write may SET (count, delisting, cached NSE series). */
-export const POST_LISTING_STATE_COLUMNS = ['priceNoSymbolReads', 'delistedOn', 'status', 'priceNseSeries'] as const;
+/** The `ipos` column the post-listing state write may SET (the cached working NSE series). */
+export const POST_LISTING_STATE_COLUMNS = ['priceNseSeries'] as const;
 
 /**
- * Item 7 S5 (spec §2.3.3.3, OD-38; round 2): the job's row state. SETs only the keys given:
- * `priceNoSymbolReads` (the consecutive count, kept on the row between 15-minute runs),
- * `delistedOn` + `status` (DELISTED on the third counted read; back to LISTED with a NULL date
- * when a later read finds a price), and `priceNseSeries` (the stock's working NSE series, asked
- * first next time). A status change gets its provenance row (source = the exchange that decided
- * it, NSE), like every other status write.
+ * Item 7 S5 (spec §2.1 job row "Post-listing price"): the job's row state. SETs only
+ * `priceNseSeries` (the stock's working NSE series, asked first next time).
  */
 export async function writePostListingState(params: {
   ipoRepository: PostListingPriceWriteRepo;
-  fieldSources?: OpeningDayFieldSourcesWriter;
-  sourceTrackingEnabled?: boolean;
   ipoId: string;
-  previousStatus?: string | null;
-  patch: { reads?: number; delistedOn?: string | null; status?: 'LISTED' | 'DELISTED'; nseSeries?: string };
+  patch: { nseSeries?: string };
 }): Promise<string[]> {
   const { patch } = params;
   const set: Record<string, unknown> = {};
-  if (patch.reads !== undefined) set.priceNoSymbolReads = patch.reads;
-  if (patch.delistedOn !== undefined) set.delistedOn = patch.delistedOn;
-  if (patch.status !== undefined) set.status = patch.status;
   if (patch.nseSeries !== undefined) set.priceNseSeries = patch.nseSeries;
   if (Object.keys(set).length === 0) return [];
   await params.ipoRepository.update(params.ipoId, set);
-  if (patch.status !== undefined && params.sourceTrackingEnabled && params.fieldSources && patch.status !== params.previousStatus) {
-    await params.fieldSources.trackFieldUpdate({
-      ipoId: params.ipoId, tableName: 'ipos', fieldName: 'status', source: 'NSE', confidence: 1, previousValue: params.previousStatus ?? null,
-    });
-  }
   return Object.keys(set);
 }
 

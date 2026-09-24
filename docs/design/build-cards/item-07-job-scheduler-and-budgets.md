@@ -368,11 +368,12 @@ cannot land until this item's scheduler and budgets exist.
 | §2.1 | R-228, R-003, R-004, R-005, R-006, R-007, R-010, R-011, R-012, R-013, R-014, R-015, R-016, R-181, R-182, R-183, R-184, R-185, R-187, R-188 |
 | §2.1.3 | R-019, R-020 |
 | §5.1 | R-102, R-103, R-104 |
-| §7.4 | R-230, R-147, R-148 |
+| §7.4 | R-231, R-147, R-148 |
 
 ## Known gaps
 
 - **F-35 (MAJOR) — A nightly backlog drain adds a third extractor to a 2-vCPU box that already took a 522 outage from two.** Carried here rather than closed: a third extractor on a 2-vCPU box is a scheduling decision, and item 7 owns the lock, the budgets and the skip-rather-than-kill rule that bound it. Not fixed in the design (OD-47); it is this item's to close.
+- Delisting detection (§2.3.x) is split out of S5 by owner decision 2026-09-24 after three Tier A reds on the "exchange failure counted as delisting" class; it is a separate item (#983).
 
 None recorded yet. A finding this item owns but does not close is written here, with its
 id and the reason — that is what stops "zero open findings" being reached by dropping one.

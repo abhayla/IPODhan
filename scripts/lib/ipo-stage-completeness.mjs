@@ -157,8 +157,7 @@ function daysUntilIst(openDate, today) {
 
 export function deriveStage(row, opts = {}) {
   const status = String(row.status || '').toUpperCase();
-  // PR #972 round 3: DELISTED passed listing (mirrors deriveLifecycleStage).
-  if (status === 'LISTED' || status === 'DELISTED') return 'LISTED';
+  if (status === 'LISTED') return 'LISTED';
   if (status === 'CLOSED') return 'CLOSED';
   if (status === 'OPEN') return 'OPEN';
   if (status !== 'UPCOMING') return 'UPCOMING';

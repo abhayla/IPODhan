@@ -368,7 +368,7 @@ function isDetectedAtStillFresh(detectedAt: unknown, now: number): boolean {
  * from web) to keep the scraper package dependency-free of web.
  */
 // DELISTED (item 7 S5, OD-38): only the post-listing price job sets or clears it.
-export const TERMINAL_IPO_STATUSES: ReadonlySet<string> = new Set<string>(['WITHDRAWN', 'POSTPONED', 'DELISTED']);
+export const TERMINAL_IPO_STATUSES: ReadonlySet<string> = new Set<string>(['WITHDRAWN', 'POSTPONED']);
 
 const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
 

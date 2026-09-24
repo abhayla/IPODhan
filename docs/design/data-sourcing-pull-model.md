@@ -3431,18 +3431,18 @@ about 3 new filings a day.
 
 | Job | Calls/day | Bytes/day | GB/month |
 |---|---:|---:|---:|
-| Data job (00:00, 08:00, 14:00) | 123 | 22.9 MB | 0.67 |
+| Data job (00:00, 08:00, 14:00) | 123 | 22.57 MB | 0.66 |
 | Opening-day check (~09:45) | 2 | 0.01 MB | 0.00 |
 | Live figures (every 30 min, 10:00–18:30) | 342 | 0.12 MB | 0.00 |
-| Grey-market premium (every 30 min, all day) | 48 | 1.6 MB | 0.05 |
-| Post-listing price (every 15 min, market hours) | 3,175 | 59.9 MB | 1.76 |
-| Closed-IPO job (22:00, ten a night) | 20 | 25.1 MB | 0.74 |
-| **Total** | **3,710** | **109.6 MB** | **3.22** |
+| Grey-market premium (every 30 min, all day) | 48 | 1.61 MB | 0.05 |
+| Post-listing price (every 15 min, market hours) | 3,175 | 59.91 MB | 1.76 |
+| Closed-IPO job (22:00, ten a night) | 20 | 24.79 MB | 0.73 |
+| **Total** | **3,710** | **109.02 MB** | **3.19** |
 
-**3.22 GB a month is 0.04% of the plan's bandwidth.** The honest conclusion is that **bandwidth is
+**3.19 GB a month is 0.04% of the plan's bandwidth.** The honest conclusion is that **bandwidth is
 not a constraint on this design and never will be** — and saying so is the point of measuring. The
 post-listing price job carries 55% of the bytes (small quotes, but 3,175 of them a day) and the two
-jobs that download documents carry 44%; everything else is rounding error.
+jobs that download documents carry 43%; everything else is rounding error.
 
 #### The constraints that ARE real
 

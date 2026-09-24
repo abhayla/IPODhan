@@ -1,6 +1,6 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-24T10:54:52.725Z",
+  "generated_at": "2026-09-24T10:54:53.560Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 194,
@@ -1648,10 +1648,10 @@
     },
     {
       "id": "R-230",
-      "hash": "a8b9ce309edf",
+      "hash": "08a87df459ac",
       "section": "7.4 What this costs to run (OD-45)",
       "kind": "prose",
-      "text": "3.22 GB a month is 0.04% of the plan's bandwidth. The honest conclusion is that bandwidth is not a constraint on this design and never will be — and saying so is the point of measuring. The post-listing price job carries 55% of the bytes (small quotes, but 3,175 of them a day) and the two jobs that download documents carry 44%; everything else is rounding error.",
+      "text": "3.19 GB a month is 0.04% of the plan's bandwidth. The honest conclusion is that bandwidth is not a constraint on this design and never will be — and saying so is the point of measuring. The post-listing price job carries 55% of the bytes (small quotes, but 3,175 of them a day) and the two jobs that download documents carry 43%; everything else is rounding error.",
       "first_seen": "2026-09-24",
       "retired": false
     },

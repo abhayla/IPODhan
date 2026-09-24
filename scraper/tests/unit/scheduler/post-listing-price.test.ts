@@ -1,9 +1,9 @@
 /**
- * Item 7 S5 (spec §2.1 "Post-listing price", OD-29, OD-54; delisting §2.3.3.3, OD-38).
- * The job's decisions and its exact call counts per run (T-568), plus the narrow writes
- * `writePostListingPrice` (exact columns, OD-73 no-op, forward-only as-of) and
- * `writePostListingState`. Round 2 (Tier A REVISE): outages never count, BSE-unknown never
- * counts, a later quote clears DELISTED, the as-of never moves backwards, the lock is `live`.
+ * Item 7 S5 (spec §2.1 "Post-listing price", OD-29, OD-54). The job's decisions and its exact
+ * call counts per run (T-568), plus the narrow writes `writePostListingPrice` (exact columns,
+ * OD-73 no-op, forward-only as-of) and `writePostListingState` (the cached NSE series).
+ * Delisting detection is split out of this PR (owner decision 2026-09-24; #983) — a run with
+ * no price simply writes nothing and is logged with its cause.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -35,9 +35,7 @@ const cand = (over: Partial<PriceCandidate>): PriceCandidate => ({
   listingDate: '2026-09-17',
   currentPrice: null,
   currentPriceUpdatedAt: null,
-  priceNoSymbolReads: 0,
   status: 'LISTED',
-  delistedOn: null,
   nseSeries: null,
   ...over,
 });
@@ -64,21 +62,6 @@ function harness(candidates: PriceCandidate[], nse: Record<string, QuoteOutcome>
     log: () => {},
   };
   return { deps, calls, prices, states };
-}
-
-/** Run the job three times, feeding each run's written count back into the row. */
-async function threeRuns(c0: PriceCandidate, nse: Record<string, QuoteOutcome>, scrips: Record<string, string>, bse: Record<string, QuoteOutcome> = {}) {
-  let c = c0;
-  const perRun: Array<PriceStatePatch[]> = [];
-  let last;
-  for (let run = 1; run <= 3; run++) {
-    const h = harness([c], nse, bse, scrips);
-    last = await runPostListingPriceJob(h.deps);
-    perRun.push(h.states.map(({ id: _id, ...p }) => p));
-    const patch = h.states[0] ?? {};
-    c = { ...c, priceNoSymbolReads: patch.reads ?? c.priceNoSymbolReads, status: patch.status ?? c.status, delistedOn: patch.delistedOn === undefined ? c.delistedOn : patch.delistedOn };
-  }
-  return { perRun, last: last!, row: c };
 }
 
 describe('runPostListingPriceJob', () => {
@@ -109,43 +92,14 @@ describe('runPostListingPriceJob', () => {
     expect(s.calls).toEqual({ nse: 8, bse: 2, bseList: 1, total: 11 });
   });
 
-  it('three consecutive runs where NSE says no-such-symbol AND BSE does not list the ISIN -> DELISTED on the third, IST date', async () => {
-    const { perRun, last, row } = await threeRuns(cand({ companyName: 'Gone', symbol: 'GONE', isin: 'INE000000009' }), { GONE: none('NSE', 4) }, {});
-    expect(perRun).toEqual([[{ reads: 1 }], [{ reads: 2 }], [{ reads: 3, delistedOn: '2026-09-24', status: 'DELISTED' }]]);
-    expect(last.delisted).toEqual(['Gone']);
-    expect(row.status).toBe('DELISTED');
-  });
-
-  it('BSE scrip answers not-listed (a JSON no-scrip answer) also counts as BSE no-such-symbol', async () => {
-    const { perRun } = await threeRuns(cand({ companyName: 'Gone2', symbol: 'GONE2', isin: 'INE000000010' }), { GONE2: none('NSE', 4) }, { INE000000010: '500010' }, { '500010': none('BSE', 1) });
-    expect(perRun[2]).toEqual([{ reads: 3, delistedOn: '2026-09-24', status: 'DELISTED' }]);
-  });
-
-  it('a later quote clears DELISTED: status LISTED, delisted_on NULL, count 0', async () => {
-    const c = cand({ companyName: 'Back', symbol: 'BACK', isin: 'INE000000011', status: 'DELISTED', delistedOn: '2026-09-20', priceNoSymbolReads: 3, nseSeries: 'EQ' });
-    const h = harness([c], { BACK: price('NSE', 42, 1, 'EQ') }, {});
-    const s = await runPostListingPriceJob(h.deps);
-    expect(h.states).toEqual([{ id: c.id, reads: 0, delistedOn: null, status: 'LISTED' }]);
-    expect(s.undelisted).toEqual(['Back']);
-  });
-
-  it('a DELISTED row that still has no symbol is not counted again (no state write)', async () => {
-    const c = cand({ companyName: 'Still', symbol: 'STILL', isin: 'INE000000012', status: 'DELISTED', delistedOn: '2026-09-20', priceNoSymbolReads: 3 });
-    const h = harness([c], { STILL: none('NSE', 4) }, {});
-    const s = await runPostListingPriceJob(h.deps);
+  it('a no-such-symbol answer from both exchanges writes nothing and is logged as no price, never counted', async () => {
+    const c = cand({ companyName: 'Gone', symbol: 'GONE', isin: 'INE000000009' });
+    const h = harness([c], { GONE: none('NSE', 4) }, {});
+    const logs: string[] = [];
+    const s = await runPostListingPriceJob({ ...h.deps, log: (line) => logs.push(line) });
     expect(h.states).toEqual([]);
-    expect(s.notJudged).toEqual(['Still']);
-  });
-
-  it('a no-such-symbol run once, then a price: count goes 1 then back to 0 — never delisted', async () => {
-    const c = cand({ companyName: 'Blip', symbol: 'BLIP', isin: 'INE000000008' });
-    const h1 = harness([c], { BLIP: none('NSE', 4) }, {});
-    await runPostListingPriceJob(h1.deps);
-    expect(h1.states).toEqual([{ id: c.id, reads: 1 }]);
-    const h2 = harness([{ ...c, priceNoSymbolReads: 1 }], { BLIP: price('NSE', 50, 1, 'EQ') }, {});
-    const s2 = await runPostListingPriceJob(h2.deps);
-    expect(h2.states).toEqual([{ id: c.id, reads: 0, nseSeries: 'EQ' }]);
-    expect(s2.delisted).toEqual([]);
+    expect(s.noPrice).toEqual(['Gone']);
+    expect(logs.join(' | ')).toMatch(/no price this run/);
   });
 
   for (const [label, outcome] of [
@@ -155,44 +109,45 @@ describe('runPostListingPriceJob', () => {
     ['a 5xx', refused('NSE', 'series EQ: HTTP 503: Service Unavailable')],
     ['a timeout', refused('NSE', 'network: The operation was aborted due to timeout')],
   ] as const) {
-    it(`an NSE outage (${label}) three runs running never counts and never resets (row at 2 stays at 2)`, async () => {
-      const c = cand({ companyName: 'Outage', symbol: 'OUT', isin: 'INE000000007', priceNoSymbolReads: 2 });
-      const { perRun, last } = await threeRuns(c, { OUT: outcome }, {});
-      expect(perRun).toEqual([[], [], []]);
-      expect(last.refused).toEqual(['Outage']);
-      expect(last.delisted).toEqual([]);
+    it(`an NSE outage (${label}) writes nothing and is reported as refused (an outage), not as no-price`, async () => {
+      const c = cand({ companyName: 'Outage', symbol: 'OUT', isin: 'INE000000007' });
+      const h = harness([c], { OUT: outcome }, {});
+      const s = await runPostListingPriceJob(h.deps);
+      expect(h.states).toEqual([]);
+      expect(s.refused).toEqual(['Outage']);
     });
   }
 
-  it('a BSE outage (NSE no-symbol, BSE refused) is UNKNOWN: never counted', async () => {
-    const c = cand({ companyName: 'BseDown', symbol: 'BD', isin: 'INE000000013', priceNoSymbolReads: 2 });
+  it('a BSE outage (NSE no-symbol, BSE refused) is reported as refused, never as no-price', async () => {
+    const c = cand({ companyName: 'BseDown', symbol: 'BD', isin: 'INE000000013' });
     const h = harness([c], { BD: none('NSE', 4) }, { '500013': refused('BSE', 'non-JSON body (14000 bytes)') }, { INE000000013: '500013' });
     const s = await runPostListingPriceJob(h.deps);
     expect(s.refused).toEqual(['BseDown']);
     expect(h.states).toEqual([]);
   });
 
-  it('no ISIN: BSE cannot be asked (UNKNOWN), so NSE no-such-symbol x3 is NOT counted', async () => {
-    const { perRun, last } = await threeRuns(cand({ companyName: 'BseOnly', symbol: 'BSEONLY', segment: 'SME', isin: null }), { BSEONLY: none('NSE', 4) }, {});
-    expect(perRun).toEqual([[], [], []]);
-    expect(last.notJudged).toEqual(['BseOnly']);
-    expect(last.calls.bseList).toBe(0);
+  it('no ISIN: BSE cannot be asked, so NSE no-such-symbol writes nothing and is logged as no-price', async () => {
+    const c = cand({ companyName: 'BseOnly', symbol: 'BSEONLY', segment: 'SME', isin: null });
+    const h = harness([c], { BSEONLY: none('NSE', 4) }, {});
+    const s = await runPostListingPriceJob(h.deps);
+    expect(s.noPrice).toEqual(['BseOnly']);
+    expect(s.calls.bseList).toBe(0);
   });
 
-  it('no NSE symbol: NSE never said no-such-symbol, so a BSE no-scrip answer alone is NOT counted', async () => {
+  it('no NSE symbol: neither exchange has an answer, logged as no-price', async () => {
     const c = cand({ companyName: 'NoSym', symbol: null, isin: 'INE000000014' });
     const h = harness([c], {}, {}, {});
     const s = await runPostListingPriceJob(h.deps);
-    expect(s.notJudged).toEqual(['NoSym']);
+    expect(s.noPrice).toEqual(['NoSym']);
     expect(h.states).toEqual([]);
   });
 
-  it('on the listing date itself a no-symbol answer is not counted', async () => {
-    const c = cand({ companyName: 'Today', symbol: 'TODAY', isin: 'INE000000006', listingDate: '2026-09-24' });
-    const h = harness([c], { TODAY: none('NSE', 4) }, {});
-    const s = await runPostListingPriceJob(h.deps);
-    expect(s.notJudged).toEqual(['Today']);
+  it('a STALE price on a mid-window row writes no state', async () => {
+    const c = cand({ companyName: 'Mid', symbol: 'MID', nseSeries: 'EQ' });
+    const h = harness([c], { MID: price('NSE', 9, 1, 'EQ') }, {});
+    const s = await runPostListingPriceJob({ ...h.deps, writePrice: async () => 'stale' });
     expect(h.states).toEqual([]);
+    expect(s.stale).toEqual(['Mid']);
   });
 
   it('past the run deadline no new IPO is started; the rest are named as not reached', async () => {
@@ -202,59 +157,6 @@ describe('runPostListingPriceJob', () => {
     const s = await runPostListingPriceJob({ ...h.deps, deadlineAt: 100, clock: () => (t += 60) });
     expect(h.calls.nse.map(([sym]) => sym)).toEqual(['F1']);
     expect(s.notReached).toEqual(['Second']);
-  });
-});
-
-describe('round 3 (built on the round-2 independent review)', () => {
-  it('canary: when NSE gives NO price to any of the IPOs asked (at least 2), the run is an endpoint failure and no count moves', async () => {
-    const cs = [
-      cand({ companyName: 'A', symbol: 'A', isin: 'INE0000000A1', priceNoSymbolReads: 2 }),
-      cand({ companyName: 'B', symbol: 'B', isin: 'INE0000000B1' }),
-      cand({ companyName: 'C', symbol: 'C', isin: 'INE0000000C1' }),
-    ];
-    const h = harness(cs, { A: none('NSE', 4), B: none('NSE', 4), C: none('NSE', 4) }, {}, {});
-    const logs: string[] = [];
-    const s = await runPostListingPriceJob({ ...h.deps, log: (line) => logs.push(line) });
-    expect(h.states).toEqual([]);
-    expect(s.delisted).toEqual([]);
-    expect(s.noSymbol).toEqual([]);
-    expect(s.refused).toEqual(['A', 'B', 'C']);
-    expect(s.nseEndpointSuspect).toBe(true);
-    expect(logs.join(' | ')).toMatch(/NSE endpoint suspect/);
-  });
-
-  it('canary: the same run with one NSE price counts the others normally', async () => {
-    const cs = [
-      cand({ companyName: 'A', symbol: 'A', isin: 'INE0000000A1', priceNoSymbolReads: 2 }),
-      cand({ companyName: 'B', symbol: 'B', isin: 'INE0000000B1' }),
-    ];
-    const h = harness(cs, { A: none('NSE', 4), B: price('NSE', 10, 1, 'EQ') }, {}, {});
-    const s = await runPostListingPriceJob(h.deps);
-    expect(s.delisted).toEqual(['A']);
-    expect(s.nseEndpointSuspect).toBe(false);
-  });
-
-  it('canary: a single IPO in the run cannot be told from an outage by the canary, so it counts (the 404 body rule guards it)', async () => {
-    const h = harness([cand({ companyName: 'Solo', symbol: 'SOLO', isin: 'INE0000000S1' })], { SOLO: none('NSE', 4) }, {}, {});
-    const s = await runPostListingPriceJob(h.deps);
-    expect(s.noSymbol).toEqual(['Solo']);
-    expect(s.nseEndpointSuspect).toBe(false);
-  });
-
-  it('a STALE price (as-of older than stored) does not clear DELISTED and does not reset the count', async () => {
-    const c = cand({ companyName: 'Old', symbol: 'OLD', status: 'DELISTED', delistedOn: '2026-09-22', priceNoSymbolReads: 3, nseSeries: 'EQ' });
-    const h = harness([c], { OLD: price('NSE', 9, 1, 'EQ') }, {});
-    const s = await runPostListingPriceJob({ ...h.deps, writePrice: async () => 'stale' });
-    expect(h.states).toEqual([]);
-    expect(s.undelisted).toEqual([]);
-    expect(s.stale).toEqual(['Old']);
-  });
-
-  it('a STALE price on a LISTED row mid-count does not reset the count', async () => {
-    const c = cand({ companyName: 'Mid', symbol: 'MID', priceNoSymbolReads: 2, nseSeries: 'EQ' });
-    const h = harness([c], { MID: price('NSE', 9, 1, 'EQ') }, {});
-    await runPostListingPriceJob({ ...h.deps, writePrice: async () => 'stale' });
-    expect(h.states).toEqual([]);
   });
 });
 
@@ -350,15 +252,19 @@ describe('writePostListingPrice (the narrow write)', () => {
   });
 });
 
-describe('writePostListingState', () => {
-  it('SETs only the given state keys; a status change gets one provenance row', async () => {
+describe('writePostListingState (the cached NSE series)', () => {
+  it('SETs only price_nse_series; nothing else', async () => {
     const updates: Array<Record<string, unknown>> = [];
-    const tracked: string[] = [];
     const repo = { update: async (_id: string, data: Record<string, unknown>) => { updates.push(data); } };
-    const fs = { trackFieldUpdate: async (i: { fieldName: string; source: string; previousValue?: string | null }) => { tracked.push(`${i.fieldName}:${i.source}:${i.previousValue}`); } };
-    await writePostListingState({ ipoRepository: repo, fieldSources: fs as any, sourceTrackingEnabled: true, ipoId: 'i', previousStatus: 'LISTED', patch: { reads: 3, delistedOn: '2026-09-24', status: 'DELISTED' } });
     await writePostListingState({ ipoRepository: repo, ipoId: 'i', patch: { nseSeries: 'ST' } });
-    expect(updates).toEqual([{ priceNoSymbolReads: 3, delistedOn: '2026-09-24', status: 'DELISTED' }, { priceNseSeries: 'ST' }]);
-    expect(tracked).toEqual(['status:NSE:LISTED']);
+    expect(updates).toEqual([{ priceNseSeries: 'ST' }]);
+  });
+
+  it('an empty patch writes nothing', async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const repo = { update: async (_id: string, data: Record<string, unknown>) => { updates.push(data); } };
+    const written = await writePostListingState({ ipoRepository: repo, ipoId: 'i', patch: {} });
+    expect(updates).toEqual([]);
+    expect(written).toEqual([]);
   });
 });

@@ -398,7 +398,7 @@
       "idx": 56,
       "version": "7",
       "when": 1790232575953,
-      "tag": "0056_ipos_price_no_symbol_reads",
+      "tag": "0056_ipos_price_nse_series",
       "breakpoints": true
     }
   ]

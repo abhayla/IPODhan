@@ -94,10 +94,6 @@ describe('isTerminalStatus', () => {
     expect(isTerminalStatus(s)).toBe(true);
   });
 
-  it('DELISTED is terminal: the date ladder never walks a delisted IPO back to LISTED (item 7 S5, OD-38)', () => {
-    expect(isTerminalStatus('DELISTED')).toBe(true);
-  });
-
   it.each(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED', '', null, undefined])(
     '%j is not terminal',
     (s) => {
