@@ -707,6 +707,96 @@ import {
 } from './listing-exchange-resolution.js';
 export { normalizeCompanyNameForMatching };
 
+/** Minimal repository surface `writeOpeningDayIpoFields` needs. */
+export interface OpeningDayWriteRepo {
+  update: (ipoId: string, data: Record<string, unknown>) => Promise<unknown>;
+  create: (values: any, opts: { sourceKeys: any[] | null; boundBy: string }) => Promise<{ id: string }>;
+}
+
+/** Minimal `FieldSourcesRepository` surface `writeOpeningDayIpoFields` needs. */
+export interface OpeningDayFieldSourcesWriter {
+  trackFieldUpdate: (input: {
+    ipoId: string;
+    tableName: string;
+    fieldName: string;
+    source: string;
+    confidence?: number;
+    previousValue?: string | null;
+  }) => Promise<unknown>;
+}
+
+/**
+ * The opening-day check's (item 7 S4, OD-87/OD-88) ONLY door to `ipos` — the
+ * narrow write kept OUT of `upsertIPO` (round 4, #951: the whole-row
+ * consolidated save overwrote listingExchanges). SETs exactly the given
+ * `set` (companyName/status/openDate/closeDate, per OD-87) on an existing
+ * row, or CREATEs a new row (NSE-list only, OD-88) with `set` plus
+ * `segment`/`offeringType`/`slug`. Every column it writes gets its own
+ * `field_sources` row, except one the field-priority decision call already
+ * recorded (`alreadyTracked`) — never duplicated, never left unrecorded.
+ *
+ * Caller (`createOpeningDayWriter`, scraper/src/scheduler/opening-day-discovery.ts)
+ * owns identity resolution, the per-IPO lock check and field protection, and
+ * the field-priority decision itself; this function only performs the write
+ * those steps decided on, so the write-ratchet's `repository` pattern
+ * (`ipoRepository.(create|update)(`) has one owning file for every job, not
+ * a second one per job (write-ratchet-baseline.json stays shrink-only).
+ */
+export async function writeOpeningDayIpoFields(params: {
+  ipoRepository: OpeningDayWriteRepo;
+  fieldSources: OpeningDayFieldSourcesWriter;
+  sourceTrackingEnabled: boolean;
+  source: string;
+  existing: Record<string, any> | null | undefined;
+  set: Record<string, unknown>;
+  slug: string;
+  segment: unknown;
+  sourceKeys: any[] | null;
+  boundBy: string;
+  confidence: number;
+  /** `ipos` field names the field-priority decision call already tracked provenance for. */
+  alreadyTracked: string[];
+}): Promise<{ outcome: 'inserted' | 'updated' | 'unchanged' | 'skipped'; ipoId: string | null; written: Record<string, unknown>; fieldSources: string[] }> {
+  const { ipoRepository, fieldSources, sourceTrackingEnabled, source, existing, set, slug, segment, sourceKeys, boundBy, confidence, alreadyTracked } = params;
+
+  let ipoId: string;
+  let written: Record<string, unknown>;
+  if (existing) {
+    if (Object.keys(set).length === 0) return { outcome: 'unchanged', ipoId: existing.id, written: {}, fieldSources: [] };
+    await ipoRepository.update(existing.id, set);
+    ipoId = existing.id;
+    written = set;
+  } else {
+    if (!set.companyName || !set.status) return { outcome: 'skipped', ipoId: null, written: {}, fieldSources: [] };
+    written = { ...set, segment, offeringType: 'IPO' };
+    const row = await ipoRepository.create({ ...written, slug }, { sourceKeys, boundBy });
+    ipoId = row.id;
+  }
+
+  // Every provenance row this write produced: the decision call's own (which may
+  // include a column whose value did not change but whose owning source did) plus
+  // this write's. The step ledger's F6 count is this list's length.
+  const trackedFieldSources: string[] = alreadyTracked.filter((f) => !(f in written));
+  if (sourceTrackingEnabled) {
+    for (const fieldName of Object.keys(written)) {
+      if (!alreadyTracked.includes(fieldName)) {
+        const prior = existing?.[fieldName];
+        await fieldSources.trackFieldUpdate({
+          ipoId,
+          tableName: 'ipos',
+          fieldName,
+          source,
+          confidence,
+          previousValue: prior === undefined || prior === null ? null : prior instanceof Date ? prior.toISOString() : String(prior),
+        });
+      }
+      trackedFieldSources.push(fieldName);
+    }
+  }
+
+  return { outcome: existing ? 'updated' : 'inserted', ipoId, written, fieldSources: trackedFieldSources };
+}
+
 /**
  * Upsert IPO data to database with retry logic
  * Handles merge logic for dual-listed IPOs (both NSE and BSE)

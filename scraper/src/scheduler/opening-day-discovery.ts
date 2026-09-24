@@ -24,6 +24,7 @@ import type { ScrapedIPO } from '../utils/validators.js';
 import { validateIPOData } from '../utils/validators.js';
 import type { BSEListRow } from '../scrapers/bse-api-scraper.js';
 import { bseSourceKeys, deriveBSEStatus, parseBSEDate } from '../scrapers/bse-api-scraper.js';
+import { writeOpeningDayIpoFields } from '../services/data-persister.js';
 
 /** The only fields this job claims (OD-87). Keys are the consolidation input's camelCase names. */
 export const OPENING_DAY_FIELDS = ['companyName', 'status', 'openDate', 'closeDate'] as const;
@@ -390,42 +391,27 @@ export function createOpeningDayWriter(c: OpeningDayWriterCollaborators) {
         set[r.fieldName] = r.finalValue;
       }
 
-      let ipoId: string;
-      let written: Record<string, unknown>;
-      let alreadyTracked: string[] = [];
-      if (existing) {
-        alreadyTracked = c.decisionProvenance?.take(existing.id) ?? [];
-        if (Object.keys(set).length === 0) return 'unchanged';
-        await c.ipoRepository.update(existing.id, set);
-        ipoId = existing.id;
-        written = set;
-      } else {
-        if (!set.companyName || !set.status) return 'skipped';
-        written = { ...set, segment: payload.segment, offeringType: 'IPO' };
-        const row = await c.ipoRepository.create({ ...written, slug }, { sourceKeys: keys, boundBy: `scraper:${source}` });
-        ipoId = row.id;
-      }
-
-      // Every provenance row this write produced: the decision call's own (which may
-      // include a column whose value did not change but whose owning source did) plus
-      // the writer's. The step ledger's F6 count is this list's length.
-      const fieldSources: string[] = alreadyTracked.filter((f) => !(f in written));
-      if (c.sourceTrackingEnabled) {
-        for (const fieldName of Object.keys(written)) {
-          if (!alreadyTracked.includes(fieldName)) {
-            const prior = existing?.[fieldName];
-            await c.fieldSources.trackFieldUpdate({
-              ipoId,
-              tableName: 'ipos',
-              fieldName,
-              source,
-              confidence: existing ? CONFIDENCE[source] : 100,
-              previousValue: prior === undefined || prior === null ? null : prior instanceof Date ? prior.toISOString() : String(prior),
-            });
-          }
-          fieldSources.push(fieldName);
-        }
-      }
+      const alreadyTracked: string[] = existing ? (c.decisionProvenance?.take(existing.id) ?? []) : [];
+      // OD-87's only door to `ipos` (write-ratchet: one write-path file for
+      // every job, `writeOpeningDayIpoFields` in data-persister.ts).
+      const result = await writeOpeningDayIpoFields({
+        ipoRepository: c.ipoRepository,
+        fieldSources: c.fieldSources,
+        sourceTrackingEnabled: c.sourceTrackingEnabled,
+        source,
+        existing,
+        set,
+        slug,
+        segment: payload.segment,
+        sourceKeys: keys,
+        boundBy: `scraper:${source}`,
+        confidence: existing ? CONFIDENCE[source] : 100,
+        alreadyTracked,
+      });
+      if (result.outcome === 'unchanged' || result.outcome === 'skipped') return result.outcome;
+      const ipoId = result.ipoId!;
+      const written = result.written;
+      const fieldSources = result.fieldSources;
 
       if (c.afterWrite) {
         try {
@@ -434,7 +420,7 @@ export function createOpeningDayWriter(c: OpeningDayWriterCollaborators) {
           // best-effort, like every post-write side effect (non-fatal-side-effects.md)
         }
       }
-      return existing ? 'updated' : 'inserted';
+      return result.outcome;
     });
   };
 }

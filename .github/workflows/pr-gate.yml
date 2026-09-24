@@ -873,6 +873,7 @@ jobs:
           tests/integration/source-record-keys-od85.integration.test.ts
           tests/integration/repair-issue-size-od74.integration.test.ts
           tests/integration/oracle-parity.test.ts
+          tests/integration/opening-day-create.integration.test.ts
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under
