@@ -2443,6 +2443,12 @@ pixel of that reaches the page**.
 So the read side is not a new capability. It is a **wire that was never connected**, and OD-39 is
 the instruction to connect it.
 
+Measured 2026-09-24 (F-166, issue #999): the time shown with a live BSE figure is wrong at the
+source today. BSE's `Maxdt` is an IST clock time read as UTC, so intraday BSE-only figures are
+dropped as "future" (465 skips on prod) and the 17:00 day-end figure is stored as 22:30 IST. The
+OD-72 line "Subscription as at ..." is only as true as that parse, so the fix lands before the
+line is trusted for BSE-only IPOs.
+
 #### The component (OD-39)
 
 One shared component, rendered under each key-facts block on the IPO detail page:
