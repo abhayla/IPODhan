@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "postgresql://localhost:15432/ipodhan_staging (read-only session: default_transaction_read_only=on)",
+  "capturedAt": "2026-09-24",
+  "ipoId": "axiom-gas-engineering-ltd",
+  "company": "Axiom Gas Engineering Limited (SME)",
+  "note": "Real rows read from staging, not typed: documents (id/type/extraction_status/is_active/sha256), field_sources for ipos.issueSize and ipo_details.faceValue, the two current column values, and the two ipo_field_plan rows as they stood before the item 6 fix (both rank1:DOC:NOT_AVAILABLE_YET although the RHP extraction COMPLETED 2026-09-17). Trimmed to the fields the DOC fetcher reads. The RHP itself prints 'AGGREGATING UP TO Rs [.] LAKHS' (document_pages page 2), so it genuinely carries no rupee issue size; it does carry face value Rs 5 (provenance row above). F-161."
+}

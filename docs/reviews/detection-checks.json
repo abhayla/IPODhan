@@ -639,6 +639,19 @@
       "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
     },
     {
+      "id": "pull_doc_nay_with_offer_doc",
+      "designId": "PULL-DOC-NAY-WITH-OFFER-DOC",
+      "findingClass": "a DOC-ranked ipo_field_plan row answers rank1:DOC:NOT_AVAILABLE_YET ('no document yet') although its IPO already holds a COMPLETED offer document — the DOC fetcher's documentType family was narrower than spec §1's 'best available type' (PRICE_BAND_AD family = PRICE_BAND_AD only), so every IPO without a price-band ad (all SME) waited forever. F-161: 984 staging rows on 23 IPOs, 2026-09-24",
+      "whatItAsks": "no plan row with rank1_source = DOC has a cause starting rank1:DOC:NOT_AVAILABLE_YET whose last_attempt_at is later than the extracted_at of a COMPLETED, active RHP / DRHP / PROSPECTUS / PRICE_BAND_AD of the same IPO",
+      "healthy": "0",
+      "alarmsWhen": "any non-zero; one notify per IPO (top 8) naming the fields",
+      "scope": "every IPO, every status and segment, prod + staging slots; keyed on the recorded rank-1 cause, not the state, so a row a lower rank supplied provisionally still counts",
+      "consumer": "nightly floor-delta",
+      "consumerReason": "a structural fact about the DOC fetcher's document matching, read by IPO identity each run; it goes GONE only after the fixed fetcher re-walks the rows",
+      "status": "built (item 6, F-161)",
+      "sourceDesign": "docs/design/data-sourcing-pull-model.md §1 (DOC = best available type; document type order), §2.4"
+    },
+    {
       "id": "pull_excused",
       "designId": "PULL-EXCUSED",
       "findingClass": "pull-model verification check PULL-EXCUSED: NOT_PRINTED count per (IPO, document type), NEW vs yesterday by name",

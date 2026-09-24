@@ -292,7 +292,23 @@ clock, and retires the row whose SOURCE is worst rather than the row whose ANSWE
 **2. `releaseClaimUnrecorded` is a third repository method**, as this card's own "gap this pseudocode
 surfaces" section proposed. Now implemented, with integration coverage on its token check.
 
+## Built: DOC rank reads the best available offer document (F-161, 2026-09-24)
+
+`DOC_TYPE_FAMILY` in `field-plan-walk-doc-fetcher.ts` now follows spec §1 ("`DOC` = the IPO's own
+offer document, best available type"): PRICE_BAND_AD -> PRICE_BAND_AD, RHP, PROSPECTUS, DRHP;
+PROSPECTUS -> PROSPECTUS, PRICE_BAND_AD, RHP, DRHP; DRHP -> DRHP, RHP, PROSPECTUS; RHP unchanged.
+Before, the PRICE_BAND_AD family was PRICE_BAND_AD alone, so every IPO without a price-band ad (all
+SME) answered NOT_AVAILABLE_YET on its 52 PRICE_BAND_AD-typed manifest fields forever. Unit tests on
+a real staging fixture (`tests/fixtures/field-plan-walk/axiom-rhp-doc-fetcher-staging.json`), a class
+guard that every family holds every full offer document, and the nightly floor check
+`pull_doc_nay_with_offer_doc`. Re-runnable read-only proof: `scraper/scripts/probe-doc-fetcher.ts --class`.
+
 ## Known gaps
 
-None recorded yet. A finding this item owns but does not close is written here, with its
-id and the reason — that is what stops "zero open findings" being reached by dropping one.
+- **F-161 remainder (extraction coverage, item 13):** after the family fix, 873 of the 984 rows
+  answer `NO_DOCUMENT_PROVENANCE` because the filing persister never wrote a DOC provenance row for
+  those fields (e.g. `ipo_details.upi_cutoff_time`, `bid_windows`, `allocation_pct`, and
+  `ipos.issue_size` where the RHP prints the amount as "[.]"), and 12 answer
+  `COLUMN_READ_NOT_IMPLEMENTED`. Not closed by this item.
+- **Staging proof owed:** the rows keep their old cause until the walk re-asks them; the item stays
+  PARTIAL until `pull_doc_nay_with_offer_doc` reads GONE on staging.

@@ -1,0 +1,69 @@
+{
+  "slug": "axiom-gas-engineering-ltd",
+  "documents": [
+    {
+      "id": "7328a5e2-8397-4a74-8627-3963fa2c7238",
+      "type": "RHP",
+      "extractionStatus": "COMPLETED",
+      "isActive": true,
+      "sha256": "c3a425f80ee877050ee4044095e25baa0690bd8f3b6341505248b8f403375987"
+    },
+    {
+      "id": "6cc0c079-0689-492a-9d33-f828b5a5050a",
+      "type": "RATIOS_BASIS_ISSUE_PRICE",
+      "extractionStatus": "NOT_EXTRACTABLE",
+      "isActive": true,
+      "sha256": "077cac204f5e9bf20456a6c725ff320a757789de08e60790c82329d36a8bf79b"
+    },
+    {
+      "id": "45c1f239-0a6a-4b50-b7e5-df80363196d0",
+      "type": "ANCHOR_ALLOCATION_REPORT",
+      "extractionStatus": "MANUAL_REVIEW",
+      "isActive": true,
+      "sha256": "957350960458dc86a53ccac548fc7b4d2d88f097cbb69ed3d8c6a1a5543c6b0c"
+    }
+  ],
+  "fieldSources": [
+    {
+      "tableName": "ipos",
+      "fieldName": "issueSize",
+      "rowKey": "",
+      "source": "CHITTORGARH",
+      "dataLineage": null
+    },
+    {
+      "tableName": "ipo_details",
+      "fieldName": "faceValue",
+      "rowKey": "",
+      "source": "DRHP",
+      "dataLineage": {
+        "method": "FILING_EXTRACTION",
+        "docType": "RHP",
+        "sourceDoc": "RHP-c3a425f8.pdf",
+        "sourceSha": "c3a425f80ee877050ee4044095e25baa0690bd8f3b6341505248b8f403375987",
+        "documentId": "7328a5e2-8397-4a74-8627-3963fa2c7238",
+        "extractorVersion": "extract_filing.py@2026-09-03"
+      }
+    }
+  ],
+  "ipoDetails": {
+    "faceValue": "5.00"
+  },
+  "ipos": {
+    "issueSize": "498100000.00"
+  },
+  "planRowsBeforeFix": [
+    {
+      "tableName": "ipos",
+      "fieldName": "issue_size",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET"
+    },
+    {
+      "tableName": "ipo_details",
+      "fieldName": "face_value",
+      "state": "NOT_AVAILABLE_YET",
+      "cause": "rank1:DOC:NOT_AVAILABLE_YET"
+    }
+  ]
+}
