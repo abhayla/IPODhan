@@ -1029,6 +1029,8 @@ again. Only a new document for an existing IPO is scraped."* Written as four rul
 | The one allowed re-extraction is an extractor-version change, and only for the fields that failed | a bumped `extractorVersion` re-runs only rows whose field set is incomplete | `extractorVersion` exists (`document-state-machine.ts:295`); the field-level condition is build item 8 |
 | The timed backoff retry is removed | no code path schedules a document fetch by elapsed time | **not true today** — the 15-minute backoff doubling to 6 hours over 10 attempts still exists and is deleted by OD-21 and this rule |
 
+Measured 2026-09-24 (F-157): what that timer cost. 448 staging document rows in BLOCKED_ALL had been attempted 26,534 times, and their logs are mostly sources that ANSWERED without the document (no link, not on board, no symbol, 404), not outages.
+
 Every later re-read (a website disagreement, a fixed extractor) works from the **stored text**, never
 from a fresh download — which is what makes OD-32's seven-day PDF window safe.
 
