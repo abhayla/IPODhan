@@ -326,7 +326,7 @@ find a gap in on the first pass).
 
 | Design section | Rule ids |
 |---|---|
-| §2.2.1 | R-021, R-023, R-025, R-159, R-160 |
+| §2.2.1 | R-021, R-023, R-025, R-159, R-160, R-229 |
 
 ## Known gaps
 
@@ -381,3 +381,81 @@ and `resetRegistrarDocumentHostsCache` already exist and work, and `isTrustedDoc
 takes the set — but both real call sites pass ONE argument, so the set is always the empty default
 and a document served by a legitimate registrar is still refused. No dependency, no fixture, no
 migration. It is tracked as the single entry in `config/security-boundary-wiring-baseline.json`.
+
+### As-built: every zip member becomes its own typed document (OD-36 multi-part rule, F-154, 2026-09-24)
+
+Measured first (core proof, the real `extractPdfMembersFromZip` + `classifyByTitle` + `verifyDownload`
+over six real NSE zips on the laptop): RHP_HTEL.zip holds 5 PDFs (3 newspaper corrigendum pages under
+`Corrigendum/`, `GID.pdf`, the RHP); RHP_VARMORA, RHP_DEEPA, RHP_AUGMONT, RHP_20260923190957 and
+RHPandGID_20260907153412 hold RHP + GID. None is a Volume I/II split, matching F-154's 41 of 41.
+
+What was built:
+
+- `extractPdfMembersFromZip` records each PDF member's 1-based `position` (central-directory order).
+- `verifyDownload` still selects the wanted member with `selectZipMemberForType`, and now also
+  returns `zipPosition` (only for a zip with two or more members; a one-member zip is the whole
+  document, so `part_number` stays NULL) and `otherZipMembers`, each classified as `gid`, `typed`,
+  `unclassified`, `too_small` or `too_large` (the 50 KB floor and the cap re-applied per member).
+- `isGidMemberName` reads the BASE name only. The archive's own folder (`RHP_AUGMONT/`) classifies as
+  RHP, which is why every GID's full path typed as RHP in the core proof.
+- `classifyZipMemberName`: the member's own name first; failing that, its immediate sub-folder, and
+  only for CORRIGENDUM, ADDENDUM or PRICE_BAND_AD. RHP_HTEL's pages are named by paper and date
+  ('BS Mumbai 20-08-2026-8.pdf', a Devanagari name, '2008-FPP-NS-07_compressed.pdf'); the uploader's
+  `Corrigendum/` folder is the only statement of what they are. A folder can never type a member as
+  the offer document, so an unnamed member is never mis-typed as the RHP.
+- `storeZipMemberDocuments` (`zip-member-documents.ts`, called by `DocumentDiscoveryRunner.storeOtherZipMembers`
+  and by the repair tool): a `typed` member whose type differs from the main document's is stored as its
+  own row keyed by a STABLE member identity: url = the zip url plus `#member=<url-encoded member path>`
+  (`documents.url` is globally unique, so the bare zip url is already the main row's; a fragment names a
+  part of the same resource and does not change what a fetch returns). Never keyed by position: the
+  exchange inserts members ahead of the offer document (RHP_HTEL's RHP is part 5), so a position key
+  would let a re-fetch write one member's bytes onto another member's row (Tier A round 1, MAJOR 3).
+  `part_number` = its position at fetch time. Before inserting, the IPO's documents are looked up by
+  sha256 in the DB (`DocumentRepository.findBySha256ForIpo`), not only in the run's memory: identical
+  bytes stored in any earlier run or from any source write no second row (OD-33). A second member of the
+  main document's own type (a volume split, 0 of 41 measured) is logged, not stored. Every skipped member
+  is logged by name, position and size (`zip_member_skipped:<why>`). No cover-page company check on a
+  member: the archive was verified by its main member, and a newspaper corrigendum page prints many
+  companies' notices.
+- `markTypeFoundFromZip`: each type a member supplied (stored, or already stored under the same type) is
+  moved to FOUND in `document_fetch_state` through the state machine's `found` transition, with the member
+  row's id, and the per-type loop skips the fallback chain for it (`EXCHANGES:found_in_zip`) (Tier A round
+  1, MAJOR 2). Round 3 (round 2 review, MAJOR 1): ONLY when the exchanges list no link of their own for
+  that type and every consulted exchange answered. A corrigendum in the RHP zip is the one issued with the
+  RHP; the exchange's own corrigendum link can be a later one (OD-33, OD-66), so a listed link is always
+  fetched, identical bytes are absorbed by the sha256 dedupe, and a listed link that fails leaves the type
+  open for the next slot rather than closing it on the older zip copy.
+- Round 3: `runIpo` also reads the IPO's stored member rows (`DocumentRepository.findZipMemberDocuments`),
+  so a type supplied by a zip examined in an earlier run is closed by the same rule.
+- Member names: bit 11 of the zip flags means UTF-8; without it, valid UTF-8 bytes are read as UTF-8 (the
+  Devanagari RHP_HTEL page has flag 0), else cp437.
+- Existing rows (round 3): `DocumentDiscoveryRunner.expandStoredZip` is the one implementation. It
+  fetches through the runner's `request()` (OD-37 refusal, network counter, NSE ladder) and the same
+  verifier with the cover-page company check. Identity: a stored sha256 must equal the chosen member's;
+  a row with NO sha256 (33 of 168 stored zips on staging, 6 of them RHP zips) is expanded only when the
+  cover check passed, and the sha256 is backfilled. Members go through `storeZipMemberDocuments`.
+- The durable marker `documents.zip_members_checked_at` (migration 0055): written by the runner after a
+  zip's members are handled, and by `expandStoredZip` for every definite verdict (refusals included, a
+  transient HTTP failure excluded). Not `part_number`: a one-member zip keeps it NULL and must still leave
+  the selection. `DocumentRepository.listZipsWithUncheckedMembers` (marker NULL) is the one selection.
+- In the pipeline: PASS 1.5 of the data-slot document cycle (`stored-zip-expansion-pass.ts`) expands up
+  to 3 selected zips per wake, starting no download after 3 minutes, skipped on a calendar-gated wake.
+  Staging proves it through the normal deploy; prod gets it with the release; no manual run on a host.
+  `scraper/scripts/repair-zip-member-documents.ts` calls the same function (dry run by default).
+- `DocumentRepository.upsertDocument` fills `part_number` on an existing row when a caller supplies it.
+
+Precedence trace (OD-30): `DOCUMENT_TYPE_RANK` in `field-priority-matrix.ts` already ranks CORRIGENDUM
+and PRICE_BAND_AD at 0, above RHP. But `AUTO_PERSIST_DOC_TYPES` (`document-admission-status.ts`) and
+`EXTRACTABLE_DOC_TYPES` (`filing-auto-persist.ts`) do not include CORRIGENDUM, so a stored
+CORRIGENDUM row is admitted `NOT_EXTRACTABLE` and nothing reads it. A PRICE_BAND_AD member IS
+extracted. So this change makes the corrigendum a document on file; OD-30 acting on its fields still
+needs a CORRIGENDUM extractor, which is not built here.
+
+BSE: the unwrap is shared, so a multi-member BSE zip now also stores its other typed members. BSE's
+addendum/corrigendum fields are fetched by their own links as before; nothing else changes for BSE.
+
+Not done here: the data-level audit check `zip_member_rows` is registered as `notCoveredByThisManifest`;
+a zip whose archive changed since it was stored is marked examined and logged, not re-read (a newer
+version of the main filing is a separate class); no CORRIGENDUM extractor (F-158). Staging proof owed:
+the PASS 1.5 log line `Stored-zip member expansion pass (item 22)` with `membersStored > 0` on a data
+slot after the deploy, and the stored-zip backlog (`zip_members_checked_at IS NULL`) falling wake by wake.

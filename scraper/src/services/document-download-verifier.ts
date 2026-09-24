@@ -148,7 +148,47 @@ export type VerifySuccess = {
    * The sha256 dedup already links the two when the bytes match.
    */
   memberTypeMismatch?: string;
+  /**
+   * Item 22 (OD-36, F-154): the chosen member's 1-based position among the
+   * zip's PDF members. Written to `documents.part_number`. Absent for a bare
+   * PDF and for a one-member zip (the whole document, so NULL).
+   */
+  zipPosition?: number;
+  /**
+   * Item 22 (OD-36, F-154): EVERY other PDF member of the zip, each already
+   * classified and size-checked. The one-member unwrap used to discard these
+   * silently; 41 of 41 NSE offer-document zips on staging hold two or more, and
+   * 5 of them carry a corrigendum or price-band notice. The runner decides what
+   * to store from `disposition`; the verifier stays pure.
+   */
+  otherZipMembers?: ZipMemberReport[];
 };
+
+/**
+ * What one non-chosen zip member is, decided from its name and size alone.
+ *
+ *  - `gid`: the exchange's General Information Document, a generic leaflet
+ *    shipped beside every offer document. Never stored, logged by name.
+ *  - `typed`: its name (or its sub-folder, see `classifyZipMemberName`) names a
+ *    tracked document type. `typedBy` records which.
+ *  - `unclassified`: names nothing we track. Never stored under a guessed type.
+ *  - `too_small` / `too_large`: the download-level floor and cap, re-applied
+ *    per member (a member is stored as its own document, so it must pass the
+ *    same size rules a bare download does).
+ */
+export type ZipMemberDisposition = 'gid' | 'typed' | 'unclassified' | 'too_small' | 'too_large';
+
+export interface ZipMemberReport {
+  name: string;
+  position: number;
+  bytes: number;
+  sha256: string;
+  content: Buffer;
+  disposition: ZipMemberDisposition;
+  /** Set for `typed` (and for a size-refused member whose name was typed). */
+  type?: DocumentType;
+  typedBy?: 'name' | 'folder';
+}
 
 export type VerifyFailure = { ok: false; reason: VerifyFailureReason; detail: string };
 
@@ -275,6 +315,88 @@ export function selectZipMemberForType(
   return members.reduce((a, b) => (b.content.length > a.content.length ? b : a));
 }
 
+/**
+ * True when a zip member's own file name marks it as the exchange's General
+ * Information Document. Real names (F-154 sample, 2026-09-24): 'GID.pdf',
+ * 'German Green Steel_GID.pdf', 'Deepa Jewellers_GID.pdf',
+ * 'VARMORA GRANITO LIMITED - GID- 16-09-2026.pdf', 'GID_Skyways.pdf'.
+ *
+ * Checked on the BASE name only: the archive's own folder is named after the
+ * archive ('RHP_AUGMONT/...'), which is why the full path of every GID above
+ * classifies as RHP (measured in the item 22 core proof).
+ */
+export function isGidMemberName(name: string): boolean {
+  const base = baseName(name).toLowerCase();
+  return /(^|[^a-z0-9])gid([^a-z0-9]|$)/.test(base) || base.includes('general information document');
+}
+
+/**
+ * Types a member may take from its SUB-FOLDER when its own name says nothing.
+ *
+ * Why a folder is trusted at all: NSE's RHP_HTEL.zip (captured 2026-09-24)
+ * holds three newspaper pages named only by paper and date
+ * ('Corrigendum/BS Mumbai 20-08-2026-8.pdf', a Devanagari file name, and
+ * '2008-FPP-NS-07_compressed.pdf'). The uploader filed them under
+ * 'Corrigendum/', and that folder is the only statement of what they are.
+ *
+ * Why only these three: every member's path also starts with the archive's own
+ * folder ('RHP_HTEL/'), which classifies as RHP, so an unrestricted folder
+ * fallback would type the GID and every unnamed member as the RHP — the exact
+ * mis-typing this change must never introduce. A folder can only ADD a
+ * supplementary document, never claim to be the offer document.
+ */
+const FOLDER_TYPABLE: ReadonlySet<DocumentType> = new Set<DocumentType>([
+  'CORRIGENDUM',
+  'ADDENDUM',
+  'PRICE_BAND_AD',
+]);
+
+/** Classify one zip member by name, then by its immediate sub-folder (see above). */
+export function classifyZipMemberName(
+  name: string
+): { type: DocumentType; typedBy: 'name' | 'folder' } | null {
+  // An ABRIDGED prospectus (the summary NSE ships in FORMS_<SYM>.zip with the
+  // application forms, e.g. FORMS_CLAYCRAFT/Abridged Prospectus.pdf, staging
+  // 2026-09-24) is never the offer document itself, the same rule the SEBI
+  // rung applies (sebi-source.ts). Typed by its words it reads as PROSPECTUS,
+  // and a stored member would close the PROSPECTUS type on a summary.
+  if (/abridged/i.test(baseName(name))) return null;
+  const own = classifyByTitle(baseName(name));
+  if (own) return { type: own, typedBy: 'name' };
+  const parts = name.split(/[\/]/).filter(Boolean);
+  if (parts.length >= 2) {
+    const folderType = classifyByTitle(parts[parts.length - 2]);
+    if (folderType && FOLDER_TYPABLE.has(folderType)) return { type: folderType, typedBy: 'folder' };
+  }
+  return null;
+}
+
+/** Report every member other than the chosen one (item 22, F-154). */
+function reportOtherMembers(
+  members: ZipPdfMember[],
+  chosen: ZipPdfMember,
+  maxBytes: number
+): ZipMemberReport[] {
+  return members
+    .filter((m) => m !== chosen)
+    .map((m, i) => {
+      const base = {
+        name: m.name,
+        position: m.position ?? i + 1,
+        bytes: m.content.length,
+        sha256: sha256Hex(m.content),
+        content: m.content,
+      };
+      if (isGidMemberName(m.name)) return { ...base, disposition: 'gid' as const };
+      const typed = classifyZipMemberName(m.name);
+      const typing = typed ? { type: typed.type, typedBy: typed.typedBy } : {};
+      if (m.content.length < MIN_DOCUMENT_BYTES) return { ...base, ...typing, disposition: 'too_small' as const };
+      if (m.content.length > maxBytes) return { ...base, ...typing, disposition: 'too_large' as const };
+      if (!typed) return { ...base, disposition: 'unclassified' as const };
+      return { ...base, ...typing, disposition: 'typed' as const };
+    });
+}
+
 /** The file name inside a zip path ('RHP_SKYWAYS/RHP Skyways.pdf' -> 'RHP Skyways.pdf'). */
 function baseName(name: string): string {
   return name.split(/[\/]/).pop() ?? name;
@@ -324,10 +446,15 @@ export function verifyDownload(
     return fail('too_small', `${body.length} bytes is under the ${MIN_DOCUMENT_BYTES}-byte floor`);
   }
 
-  // 3. Unwrap a zip to its first PDF member (NSE/BSE serve zip wrappers).
+  // 3. Unwrap a zip (NSE/BSE serve zip wrappers). The member matching the
+  //    wanted type is the document verified below; every OTHER member is
+  //    reported with its classification (item 22, F-154) so none is dropped
+  //    without a trace.
   let pdf = body;
   let wasZip = false;
   let zipMember: string | undefined;
+  let zipPosition: number | undefined;
+  let otherZipMembers: ZipMemberReport[] | undefined;
   let memberTypeMismatch: string | undefined;
   const isZip = body.length > 4 && body.readUInt32LE(0) === 0x04034b50;
   if (isZip) {
@@ -337,6 +464,10 @@ export function verifyDownload(
     if (!chosen) return fail('zip_without_pdf', `zip at ${meta.url} contains no PDF member`);
     pdf = chosen.content;
     zipMember = chosen.name;
+    // A one-member zip is the whole document: part_number stays NULL, which
+    // is what the column means (schema.ts, documents.partNumber).
+    zipPosition = members.length > 1 ? chosen.position : undefined;
+    otherZipMembers = reportOtherMembers(members, chosen, maxBytes);
     const memberType = classifyByTitle(baseName(chosen.name));
     // W-90: NSE's own RATIOS_<SYM>.zip archive name is an exchange-controlled
     // signal stronger than an arbitrary member name inside it — a member named
@@ -395,5 +526,6 @@ export function verifyDownload(
     zipMember,
     memberTypeMismatch,
     coverCheck,
+    ...(wasZip ? { zipPosition, otherZipMembers } : {}),
   };
 }

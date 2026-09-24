@@ -20,6 +20,21 @@ import type {
   IDocumentRepository,
 } from './types';
 
+/** A stored zip document row, as the stored-zip expansion reads it. */
+export interface StoredZipRow {
+  documentId: string;
+  ipoId: string;
+  slug: string | null;
+  companyName: string;
+  type: string;
+  url: string;
+  title: string;
+  exchange: string;
+  sha256: string | null;
+  /** Item 22 round 4: distinct-slot failed re-fetch attempts so far. */
+  zipExpandAttempts: number;
+}
+
 export class DocumentRepository
   extends BaseRepository
   implements IDocumentRepository
@@ -140,6 +155,153 @@ export class DocumentRepository
   }
 
   /**
+   * Item 22 (OD-33): the document of this IPO already holding these bytes, if
+   * any. A zip member whose sha256 matches is not stored a second time, even
+   * when the earlier copy came from another source or another day.
+   */
+  async findBySha256ForIpo(ipoId: string, sha256: string): Promise<{ id: string; type: string } | null> {
+    try {
+      const { and } = await import('drizzle-orm');
+      const rows = await this.db
+        .select({ id: documents.id, type: documents.type })
+        .from(documents)
+        .where(and(eq(documents.ipoId, ipoId), eq(documents.sha256, sha256)))
+        .orderBy(documents.createdAt)
+        .limit(1);
+      return rows.length > 0 ? { id: rows[0].id, type: String(rows[0].type) } : null;
+    } catch (error) {
+      throw new DatabaseError(`Failed to look up document by sha256 for IPO: ${ipoId}`, undefined, error);
+    }
+  }
+
+  /**
+   * Item 22 round 3 (OD-36, F-154); reordered round 4 (Tier A MAJOR): stored
+   * zip documents whose other members were never examined
+   * (`zip_members_checked_at IS NULL`). The selection of the data-slot
+   * stored-zip expansion pass and of `scripts/repair-zip-member-documents.ts`
+   * - ONE query for both.
+   *
+   * Ordered by LAST ATTEMPT (never-attempted first: `zip_last_attempt_slot`
+   * NULLS FIRST), never `uploaded_at`. Ordering by `uploaded_at` let one old,
+   * permanently-dead zip sort first on EVERY wake forever (it never leaves
+   * the selection because it never gets marked checked), starving every zip
+   * behind it — the round-4 Tier A MAJOR. Ordering by last-attempt means a
+   * zip that just failed rotates to the back, so the bounded per-wake pass
+   * (3 zips) reaches every other zip in the backlog before it comes up again.
+   * `companyName` is the IPO's, for the cover-page identity check.
+   */
+  async listZipsWithUncheckedMembers(options: { limit?: number; slug?: string | null } = {}): Promise<StoredZipRow[]> {
+    try {
+      const { sql } = await import('drizzle-orm');
+      const limit = options.limit ?? null;
+      const slug = options.slug ?? null;
+      const result = await this.db.execute(sql`
+        SELECT d.id, d.ipo_id, i.slug, i.company_name, d.type::text AS type, d.url, d.title, d.exchange, d.sha256,
+               d.zip_expand_attempts
+          FROM documents d
+          JOIN ipos i ON i.id = d.ipo_id
+         WHERE lower(d.url) LIKE '%.zip'
+           AND strpos(d.url, '#') = 0
+           AND d.zip_members_checked_at IS NULL
+           AND (${slug}::text IS NULL OR i.slug = ${slug})
+         ORDER BY d.zip_last_attempt_slot ASC NULLS FIRST, d.id
+         LIMIT ${limit}
+      `);
+      const rows = ((result as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<string, unknown>[];
+      return rows.map((r) => ({
+        documentId: String(r.id),
+        ipoId: String(r.ipo_id),
+        slug: (r.slug as string | null) ?? null,
+        companyName: String(r.company_name ?? ''),
+        type: String(r.type),
+        url: String(r.url),
+        title: String(r.title ?? ''),
+        exchange: String(r.exchange ?? 'NSE'),
+        sha256: r.sha256 ? String(r.sha256).trim() : null,
+        zipExpandAttempts: Number(r.zip_expand_attempts ?? 0),
+      }));
+    } catch (error) {
+      throw new DatabaseError('Failed to list stored zips with unexamined members', undefined, error);
+    }
+  }
+
+  /**
+   * Item 22 round 4 (Tier A MAJOR, failure class container-unwrapped-to-one-member):
+   * record a failed re-fetch attempt on a stored zip, durably and once per
+   * DISTINCT data slot — a wake that repeats the same transient failure
+   * inside one slot (there are ~16 wakes/slot) must not burn the 3-attempt
+   * budget by itself. Returns the attempts count AFTER this call, so the
+   * caller can decide whether the 3rd distinct-slot failure closes the zip.
+   */
+  async markZipExpandAttemptFailed(documentId: string, slotEpochMinute: number, at: Date = new Date()): Promise<number> {
+    try {
+      const { sql } = await import('drizzle-orm');
+      const result = await this.db.execute(sql`
+        UPDATE documents
+           SET zip_expand_attempts = CASE
+                 WHEN zip_last_attempt_slot IS DISTINCT FROM ${slotEpochMinute} THEN zip_expand_attempts + 1
+                 ELSE zip_expand_attempts
+               END,
+               zip_last_attempt_slot = ${slotEpochMinute},
+               updated_at = ${at}
+         WHERE id = ${documentId}
+         RETURNING zip_expand_attempts
+      `);
+      const rows = ((result as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<string, unknown>[];
+      return rows.length > 0 ? Number(rows[0].zip_expand_attempts ?? 0) : 0;
+    } catch (error) {
+      throw new DatabaseError(`Failed to record zip expand attempt for document: ${documentId}`, undefined, error);
+    }
+  }
+
+  /**
+   * Item 22 round 3: this IPO's zip-member rows (url `<zip>#member=<name>`),
+   * oldest first, so the runner knows which types a stored zip supplied.
+   */
+  async findZipMemberDocuments(ipoId: string): Promise<{ id: string; type: string; url: string }[]> {
+    try {
+      const { and, sql } = await import('drizzle-orm');
+      const rows = await this.db
+        .select({ id: documents.id, type: documents.type, url: documents.url })
+        .from(documents)
+        .where(and(eq(documents.ipoId, ipoId), sql`strpos(${documents.url}, '#member=') > 0`))
+        .orderBy(documents.createdAt);
+      return rows.map((r) => ({ id: r.id, type: String(r.type), url: r.url }));
+    } catch (error) {
+      throw new DatabaseError(`Failed to list zip-member documents for IPO: ${ipoId}`, undefined, error);
+    }
+  }
+
+  /**
+   * Item 22 round 3: record that a stored zip's other members were examined,
+   * and backfill what the examination proved - the sha256 of a row stored
+   * before sha256 was written (W-1; only when the row has none), and the main
+   * member's zip position. Never overwrites a known hash.
+   */
+  async markZipMembersChecked(
+    documentId: string,
+    patch: { sha256?: string | null; partNumber?: number | null; at?: Date; unresolvedReason?: string | null } = {}
+  ): Promise<void> {
+    try {
+      const { sql } = await import('drizzle-orm');
+      const [row] = await this.db
+        .update(documents)
+        .set({
+          zipMembersCheckedAt: patch.at ?? new Date(),
+          updatedAt: new Date(),
+          zipUnresolvedReason: patch.unresolvedReason ?? null,
+          ...(patch.sha256 ? { sha256: sql`COALESCE(${documents.sha256}, ${patch.sha256})` as never } : {}),
+          ...(patch.partNumber != null ? { partNumber: patch.partNumber } : {}),
+        })
+        .where(eq(documents.id, documentId))
+        .returning({ ipoId: documents.ipoId });
+      if (row) await this.deleteCache(getDocumentsKey(row.ipoId));
+    } catch (error) {
+      throw new DatabaseError(`Failed to mark zip members checked for document: ${documentId}`, undefined, error);
+    }
+  }
+
+  /**
    * Upsert a single document
    * - If URL exists: Update timestamp and set isActive=true
    * - If new document of existing type: Get next sequence number
@@ -181,6 +343,10 @@ export class DocumentRepository
             // re-published under the same file name is a real occurrence).
             // Never overwrite a known hash with nothing.
             ...(data.sha256 ? { sha256: data.sha256 } : {}),
+            // Item 22 (OD-36, F-154): fill the zip position on a row stored
+            // before part_number was written. Never cleared by a caller that
+            // does not know it.
+            ...(data.partNumber != null ? { partNumber: data.partNumber } : {}),
           })
           .where(eq(documents.url, data.url))
           .returning();

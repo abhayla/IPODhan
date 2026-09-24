@@ -26,6 +26,9 @@ export type DocumentFetchStateValue =
   | 'WANTED'
   | 'NOT_YET_FILED'
   | 'FOUND'
+  // W-46 (migration 0044) added NOT_FOUND to the `document_fetch_status` enum
+  // and the runner persists it as itself; this type lagged the enum.
+  | 'NOT_FOUND'
   | 'EXTRACTED'
   | 'EXTRACT_FAILED'
   | 'BLOCKED_ALL'

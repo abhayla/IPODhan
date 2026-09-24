@@ -29,6 +29,8 @@ import { db } from '@ipodhan/shared';
 import { isMoreSpecificDocumentType } from '@ipodhan/shared/db/document-type-refinement';
 import logger from '../utils/logger.js';
 import { classifyByTitle, fileNameFromUrl } from '../services/document-classifier.js';
+import { classifyZipMemberName } from '../services/document-download-verifier.js';
+import { memberNameFromUrl } from '../services/zip-member-documents.js';
 
 export interface RetypeCandidate {
   id: string;
@@ -52,6 +54,23 @@ export function planRetype(row: {
   title: string;
   type: string;
 }): RetypeCandidate | null {
+  // Item 22: a zip member row (`<zip url>#member=<path>`) is named by its MEMBER,
+  // not by the zip. The zip's name ('RHP_HTEL.zip') and our title (the zip's
+  // title + member) both say RHP, which flagged every member row for review.
+  // It is classified by the same rule that typed it at store time.
+  const member = memberNameFromUrl(row.url);
+  if (member !== null) {
+    const typed = classifyZipMemberName(member)?.type ?? null;
+    if (!typed || typed === row.type) return null;
+    return {
+      id: row.id,
+      url: row.url,
+      title: row.title,
+      currentType: row.type,
+      suggestedType: typed,
+      action: isMoreSpecificDocumentType(row.type, typed) ? 'retype' : 'review',
+    };
+  }
   const fromName = classifyByTitle(fileNameFromUrl(row.url));
   const fromTitle = classifyByTitle(row.title);
   const suggested = fromName ?? fromTitle;
