@@ -405,3 +405,96 @@ describe('#968 the walk honours the stored narrowing', () => {
     expect(repoRef.restored).toHaveLength(0);
   });
 });
+
+// ------------------------------------------------------- fix round 1 (Tier A review of #1005) ---
+
+describe('#968 round 1, finding 1 (CRITICAL): a restore records the order it was tried under', () => {
+  it('the rule: a row restored WITH the tried override stamp is not reopened by the same override again', () => {
+    const swap = { rank1Source: 'CHITTORGARH', rank2Source: 'DOC', rank3Source: 'BSE', policyOrigin: 'override:swap' };
+    const restoredOldStamp = supplied('DOC', ['DOC', 'BSE', null], 'registry:2');
+    const restoredTriedStamp = supplied('DOC', ['CHITTORGARH', 'DOC', 'BSE'], 'override:swap');
+    // Without the stamp (the reviewer's probe): the same override reopens it again, every pass.
+    expect(decideSettledOverride(restoredOldStamp, swap).action).toBe('REOPEN');
+    for (let pass = 0; pass < 3; pass++)
+      expect(decideSettledOverride(restoredTriedStamp, swap)).toEqual({ action: 'NONE' });
+    // A DIFFERENT override that ranks a new source above DOC may reopen it once more.
+    const other = { rank1Source: 'NSE', rank2Source: 'DOC', rank3Source: null, policyOrigin: 'override:other' };
+    expect(decideSettledOverride(restoredTriedStamp, other).action).toBe('REOPEN');
+  });
+
+  it('the walk hands the FULL tried order (not the narrowed prefix) to the restore', async () => {
+    const { d } = walkDeps(reopenedRow(), { CHITTORGARH: notPrinted }, ['CHITTORGARH', 'DOC', 'BSE'], 'override:swap');
+    await walkFieldPlanForIPO(IPO_ID, d, budget());
+    expect(repoRef.restored[0].tried).toEqual({
+      policyOrigin: 'override:swap',
+      rank1Source: 'CHITTORGARH',
+      rank2Source: 'DOC',
+      rank3Source: 'BSE',
+    });
+    expect(repoRef.restored[0].supersededBy ?? null).toBeNull();
+  });
+});
+
+describe('#968 round 1, finding 2 (MAJOR): a matrix loss ends the reopen instead of looping', () => {
+  it('higher source answers, the matrix keeps DOC -> admin conflict under OVERRIDE_SOURCE_LOST_TO_PRIORITY, row restored, no CHECK_FAILED', async () => {
+    const { d, orchestrator } = walkDeps(
+      reopenedRow(),
+      { CHITTORGARH: answers(333) },
+      ['CHITTORGARH', 'DOC'],
+      'override:swap'
+    );
+    // The consolidator's own result: DOC's value kept (matrix priority).
+    orchestrator.consolidatedUpsertIPO.mockImplementation(
+      async (_s: any, _src: any, _c?: any, _p?: any, only?: string[]) =>
+        consolidatedUpsertResultFixture({ ipoId: IPO_ID, fieldResults: [fieldResult(only![0], 111, 'DRHP' as any)] })
+    );
+    const logAdminConflict = vi.fn(async () => undefined);
+    (d as any).logAdminConflict = logAdminConflict;
+    await walkFieldPlanForIPO(IPO_ID, d, budget());
+    expect(logAdminConflict).toHaveBeenCalledTimes(1);
+    expect((logAdminConflict.mock.calls[0] as any[])[0]).toMatchObject({
+      ipoId: IPO_ID,
+      tableName: 'ipos',
+      fieldName: 'issueSize',
+      value1: '333',
+      resolutionReason: 'OVERRIDE_SOURCE_LOST_TO_PRIORITY',
+    });
+    expect(repoRef.recorded).toHaveLength(0);
+    expect(repoRef.restored).toHaveLength(1);
+    expect(repoRef.restored[0].cause).toMatch(
+      /^OVERRIDE_SOURCE_LOST_TO_PRIORITY: CHITTORGARH answered under override:swap/
+    );
+    expect(repoRef.restored[0].tried.policyOrigin).toBe('override:swap');
+  });
+
+  it('a matrix loss on a row that is NOT override-reopened keeps the existing CHECK_FAILED behaviour', async () => {
+    const { d, orchestrator } = walkDeps(
+      reopenedRow({ reopenedUnderPolicy: null, chosenSource: null }),
+      { DOC: answers(1) },
+      ['DOC'],
+      'registry:2'
+    );
+    orchestrator.consolidatedUpsertIPO.mockImplementation(
+      async (_s: any, _src: any, _c?: any, _p?: any, only?: string[]) =>
+        consolidatedUpsertResultFixture({ ipoId: IPO_ID, fieldResults: [fieldResult(only![0], 99, 'BSE' as any)] })
+    );
+    await walkFieldPlanForIPO(IPO_ID, d, budget());
+    expect(repoRef.recorded[0].state).toBe('CHECK_FAILED');
+    expect(repoRef.restored).toHaveLength(0);
+  });
+});
+
+describe('#968 round 1, finding 3 (MAJOR): a better document that landed during the reopen is not lost', () => {
+  it('the restore hands the row to supersession when the OD-91 rule finds a supersessor', async () => {
+    const { d } = walkDeps(reopenedRow(), { CHITTORGARH: notPrinted }, ['CHITTORGARH', 'DOC'], 'override:swap');
+    const supersessionForReopened = vi.fn(async () => ({
+      supersededBy: 'doc-rhp-1',
+      cause: 'superseded by RHP doc-rhp-1 while override-reopened',
+    }));
+    (d as any).supersessionForReopened = supersessionForReopened;
+    await walkFieldPlanForIPO(IPO_ID, d, budget());
+    expect(supersessionForReopened).toHaveBeenCalledWith(IPO_ID, 'plan-968');
+    expect(repoRef.restored[0].supersededBy).toBe('doc-rhp-1');
+    expect(repoRef.restored[0].cause).toMatch(/^superseded by RHP doc-rhp-1/);
+  });
+});

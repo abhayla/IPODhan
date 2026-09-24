@@ -16,7 +16,9 @@
 // never a value frozen at import time.
 
 export const SOURCE_CHANGED_OWN_VALUE = 'SOURCE_CHANGED_OWN_VALUE';
-export const ADMIN_ONLY_CONFLICT_REASONS = Object.freeze([SOURCE_CHANGED_OWN_VALUE]);
+// #968 (OD-95): an override's higher source answered and the priority matrix kept the settled value.
+export const OVERRIDE_SOURCE_LOST_TO_PRIORITY = 'OVERRIDE_SOURCE_LOST_TO_PRIORITY';
+export const ADMIN_ONLY_CONFLICT_REASONS = Object.freeze([SOURCE_CHANGED_OWN_VALUE, OVERRIDE_SOURCE_LOST_TO_PRIORITY]);
 
 // Cached probe result for this process: undefined = not yet probed (treated as "present" —
 // the pre-probe/legacy-safe default, matching behaviour before this fix), true/false once probed.

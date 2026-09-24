@@ -1021,19 +1021,20 @@ export class IpoFieldPlanRepository extends BaseRepository {
    *   REOPEN   SUPPLIED -> PENDING, `reopened_under_policy` = the override, due now;
    *   RETARGET the override that reopened it changed and the new one still
    *            outranks the settling source: only `reopened_under_policy` moves;
-   *   RESTORE  the override that reopened it is gone and the row was not
-   *            re-supplied: back to SUPPLIED with its evidence untouched (the
-   *            chosen_* columns are never cleared by a reopen), nothing due.
-   * A plain re-plan (registry order, or the same origin) decides NONE for every
-   * row and writes 0 rows. Every write is guarded on the row still being in the
-   * state the decision read (the reopenSuperseded pattern), so a row the walk
-   * changed in between, or holds a claim on, is left alone.
+   *   RESTORE  the override that reopened it is gone. The row is made due NOW and
+   *            keeps its marker; the walk does the restore (`restoreSettledAfterReopen`),
+   *            because only the walk can run the OD-91 supersession check first and
+   *            stamp the tried order (fix round 1, findings 1 and 3). A row already
+   *            due is not written again, so repeated passes write nothing.
+   * A plain re-plan (registry order, or the same origin as the row's) decides NONE
+   * for every row and writes 0 rows. Every write is guarded on the row still being
+   * in the state the decision read (the reopenSuperseded pattern).
    */
   async reconcileSettledToOverrides(
     incoming: ReadonlyArray<SettledOverrideIncomingRow>,
     now: Date = new Date()
-  ): Promise<{ reopened: number; retargeted: number; restored: number }> {
-    const out = { reopened: 0, retargeted: 0, restored: 0 };
+  ): Promise<{ reopened: number; retargeted: number; restoreDue: number }> {
+    const out = { reopened: 0, retargeted: 0, restoreDue: 0 };
     if (incoming.length === 0) return out;
     const ipoIds = [...new Set(incoming.map((r) => r.ipoId))];
     try {
@@ -1092,18 +1093,19 @@ export class IpoFieldPlanRepository extends BaseRepository {
         } else {
           res = await this.db.execute(sql`
             UPDATE ipo_field_plan
-               SET state = 'SUPPLIED', reopened_under_policy = NULL, next_due_at = NULL, reason_code = NULL,
-                   cause = ${`OVERRIDE_RESTORED: ${String(priorReopen)} ended before a higher source answered; settled value kept (OD-95)`},
+               SET state = 'PENDING', next_due_at = ${utc(now)}::timestamptz,
+                   cause = ${`OVERRIDE_ENDED: ${String(priorReopen)} is no longer the effective order; the walk restores the settled value (OD-95)`},
                    updated_at = ${utc(now)}::timestamptz
              WHERE id = ${rowId}::uuid AND state <> 'SUPPLIED' AND reopened_under_policy = ${priorReopen}
                AND claim_token IS NULL
+               AND NOT (state = 'PENDING' AND next_due_at IS NOT NULL AND next_due_at <= ${utc(now)}::timestamptz)
             RETURNING id
           `);
         }
         if (((res as { rows?: unknown[] }).rows ?? []).length === 0) continue;
         if (decision.action === 'REOPEN') out.reopened += 1;
         else if (decision.action === 'RETARGET') out.retargeted += 1;
-        else out.restored += 1;
+        else out.restoreDue += 1;
       }
       return out;
     } catch (error) {
@@ -1116,23 +1118,42 @@ export class IpoFieldPlanRepository extends BaseRepository {
   }
 
   /**
-   * #968 (OD-95): the walk found no source above the settling one that answers
-   * (every narrowed rank gave a definitive no, none is left in the current
-   * order, or the override that reopened it ended). Put the reopened row back
-   * to SUPPLIED with its evidence untouched and release the claim. Guarded on
-   * the claim token, like recordOutcome.
+   * #968 (OD-95): end an override reopen, from the walk, under its claim.
+   *
+   * Fix round 1, finding 1 (CRITICAL): the row records the order it was TRIED
+   * under -- `policy_origin` and the three rank columns are set to `tried` -- so
+   * the next plan pass under the same override sees the same origin and decides
+   * NONE. A row is reopened at most once per distinct override. Without this the
+   * old `registry:*` origin stayed and the row reopened every slot.
+   *
+   * Finding 3: when `supersededBy` is given (a better document with this field
+   * completed while the row was reopened; OD-91's rule, run by the caller), the
+   * row is handed to supersession -- PENDING with `superseded_by`, due now, the
+   * override marker cleared -- instead of restoring the outranked evidence.
+   * Otherwise it goes back to SUPPLIED with its chosen_* evidence untouched.
+   * Guarded on the claim token and the marker.
    */
   async restoreSettledAfterReopen(params: {
     planRowId: string;
     claimToken: string;
     cause: string;
+    tried: { policyOrigin: string; rank1Source: string | null; rank2Source: string | null; rank3Source: string | null };
+    supersededBy?: string | null;
     now?: Date;
-  }): Promise<{ restored: boolean }> {
+  }): Promise<{ restored: boolean; handedToSupersession: boolean }> {
     const now = params.now ?? new Date();
+    const toSupersession = typeof params.supersededBy === 'string' && params.supersededBy.length > 0;
     try {
       const res = await this.db.execute(sql`
         UPDATE ipo_field_plan
-           SET state = 'SUPPLIED', reopened_under_policy = NULL, next_due_at = NULL, reason_code = NULL,
+           SET state = ${toSupersession ? 'PENDING' : 'SUPPLIED'}::field_plan_state,
+               superseded_by = CASE WHEN ${toSupersession} THEN ${toSupersession ? params.supersededBy : null}::uuid ELSE superseded_by END,
+               next_due_at = CASE WHEN ${toSupersession} THEN ${utc(now)}::timestamptz ELSE NULL END,
+               reopened_under_policy = NULL, reason_code = NULL,
+               policy_origin = ${params.tried.policyOrigin},
+               rank1_source = ${params.tried.rank1Source},
+               rank2_source = ${params.tried.rank2Source},
+               rank3_source = ${params.tried.rank3Source},
                cause = ${params.cause}, last_attempt_at = ${utc(now)}::timestamptz,
                claimed_at = NULL, claim_token = NULL, updated_at = ${utc(now)}::timestamptz
          WHERE id = ${params.planRowId}::uuid
@@ -1140,7 +1161,8 @@ export class IpoFieldPlanRepository extends BaseRepository {
            AND reopened_under_policy IS NOT NULL
         RETURNING id
       `);
-      return { restored: ((res as unknown as { rows?: unknown[] }).rows ?? []).length > 0 };
+      const ok = ((res as unknown as { rows?: unknown[] }).rows ?? []).length > 0;
+      return { restored: ok && !toSupersession, handedToSupersession: ok && toSupersession };
     } catch (error) {
       throw new DatabaseError(
         `Failed to restore reopened field plan row ${params.planRowId}`,

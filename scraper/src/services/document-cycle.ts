@@ -69,6 +69,7 @@ import {
   buildFieldPlanGapKeySource,
   buildFieldPlanWalkOrchestrator,
   buildFieldPlanWalkWitnessVerdictWriter,
+  buildFieldPlanWalkReopenDeps,
   fieldPlanWalkHasFetchers,
 } from './field-plan-walk-deps.js';
 import { initStepLedger } from './step-ledger.js';
@@ -1854,7 +1855,7 @@ export async function runDocumentCycle(
           rowsReranked: 0,
           settledReopened: 0,
           settledRetargeted: 0,
-          settledRestored: 0,
+          settledRestoreDue: 0,
           failed: 0,
         };
         for (const ipo of candidates) {
@@ -1891,7 +1892,7 @@ export async function runDocumentCycle(
             // #968 (OD-95): settled rows an override reopened, moved or restored this pass.
             fieldPlanTotals.settledReopened += planted.settledReopened ?? 0;
             fieldPlanTotals.settledRetargeted += planted.settledRetargeted ?? 0;
-            fieldPlanTotals.settledRestored += planted.settledRestored ?? 0;
+            fieldPlanTotals.settledRestoreDue += planted.settledRestoreDue ?? 0;
           } catch (error) {
             fieldPlanTotals.failed++;
             logger.error(
@@ -2001,6 +2002,8 @@ export async function runDocumentCycle(
         // S3b-2: hoisted once per cycle, same convention as the two builders above — a no-op
         // unless FEATURE_FLAGS.ENABLE_VERDICT_WRITER is true (field-plan-walk.ts's own guard).
         const fieldPlanWitnessVerdictWriter = buildFieldPlanWalkWitnessVerdictWriter();
+        // #968 fix round 1: supersession check + admin conflicts writer for override-reopened rows.
+        const fieldPlanReopenDeps = buildFieldPlanWalkReopenDeps();
         for (const ipo of candidates) {
           if (now() >= fieldPlanDeadlineMs) {
             fieldPlanWalkExhausted = true;
@@ -2029,6 +2032,7 @@ export async function runDocumentCycle(
                 // default resolver was already override-aware and safe when the table is absent.
                 overrides: fieldSourceOverridesReader,
                 trackWitnessVerdict: fieldPlanWitnessVerdictWriter,
+                ...fieldPlanReopenDeps,
               },
               { deadlineMs: fieldPlanDeadlineMs, now }
             );

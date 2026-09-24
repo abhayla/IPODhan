@@ -40,7 +40,7 @@ export interface FieldPlanPlantingDeps {
      *  Optional so a caller or mock without it plants exactly as before. */
     reconcileSettledToOverrides?(
       rows: GeneratedPlanRowInput[]
-    ): Promise<{ reopened: number; retargeted: number; restored: number }>;
+    ): Promise<{ reopened: number; retargeted: number; restoreDue: number }>;
   };
   /** Test seam only: production always plants from the loaded manifest (the generator's default). */
   manifest?: FieldManifest;
@@ -51,10 +51,10 @@ export interface FieldPlanPlantingResult {
   rowsGenerated: number;
   inserted: number;
   updated: number;
-  /** #968 (OD-95): settled rows an override reopened / moved to a new override / restored. */
+  /** #968 (OD-95): settled rows an override reopened / moved to a new override / made due for the walk to restore (override ended). */
   settledReopened: number;
   settledRetargeted: number;
-  settledRestored: number;
+  settledRestoreDue: number;
 }
 
 export async function plantFieldPlanForIpo(
@@ -71,7 +71,7 @@ export async function plantFieldPlanForIpo(
       updated: 0,
       settledReopened: 0,
       settledRetargeted: 0,
-      settledRestored: 0,
+      settledRestoreDue: 0,
     };
   }
   const planned: GeneratedPlanRowInput[] = rows.map((r) => ({
@@ -90,7 +90,7 @@ export async function plantFieldPlanForIpo(
   // rows are reconciled against the same generated order. A plain re-plan changes nothing here.
   const settled = deps.fieldPlanRepository.reconcileSettledToOverrides
     ? await deps.fieldPlanRepository.reconcileSettledToOverrides(planned)
-    : { reopened: 0, retargeted: 0, restored: 0 };
+    : { reopened: 0, retargeted: 0, restoreDue: 0 };
   // `?? 0`: a caller/mock still returning the pre-S7 shape `{ inserted }`
   // must not turn the operator summary into NaN (signal-ownership R1).
   return {
@@ -99,6 +99,6 @@ export async function plantFieldPlanForIpo(
     updated: updated ?? 0,
     settledReopened: settled.reopened,
     settledRetargeted: settled.retargeted,
-    settledRestored: settled.restored,
+    settledRestoreDue: settled.restoreDue,
   };
 }

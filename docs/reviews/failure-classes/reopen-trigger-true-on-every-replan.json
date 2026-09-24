@@ -1,10 +1,13 @@
 {
   "class_id": "reopen trigger true on every re-plan",
   "feature": "override layer on settled plan rows (spec §2.3.5, OD-73, OD-95, #968)",
-  "symptom": "any reopen condition computed from a row's STANDING state (for example 'chosen source is rank 2 or 3 of the incoming order') instead of from a CHANGE between the recorded and the incoming order is true on every plan pass for every row in that standing state, so the row reopens, is re-settled and reopens again each data slot; and a narrowing held only in memory for one pass lets a lower-ranked source overwrite the settled value on the next pass.",
+  "symptom": "any reopen condition computed from a row's STANDING state (for example 'chosen source is rank 2 or 3 of the incoming order') instead of from a CHANGE between the recorded and the incoming order is true on every plan pass for every row in that standing state, so the row reopens, is re-settled and reopens again each data slot; and a narrowing held only in memory for one pass lets a lower-ranked source overwrite the settled value on the next pass. The same shape recurs at the END of a reopen: a restore that leaves the row's recorded order unchanged makes the same override reopen it again on the next pass (Tier A review of #1005 reproduced reopened=1 on cycles 1, 2 and 3).",
   "first_seen": "2026-09-24 (#967 second Tier A review, #968): with no override active, the chosenDemoted condition selected 24 of 236 SUPPLIED ipo_field_plan rows on ipodhan_staging (issue_size settled by CHITTORGARH 17, symbol/company_name settled by NSE 7); the same read-only query under OD-95's rule selects 0, and the Swap Test override (ipos.issue_size CHITTORGARH over DOC) selects exactly 2 (lcc-projects-ltd, rentomojo-ltd).",
-  "fix_prs": "#968 (OD-95): reopen only when the incoming order is an override, its policy_origin differs from the row's, and it ranks a new source above the settling one; the narrowing is stored as ipo_field_plan.reopened_under_policy; expiry before re-supply restores the settled row",
+  "fix_prs": "#968 (OD-95): reopen only when the incoming order is an override, its policy_origin differs from the row's, and it ranks a new source above the settling one; the narrowing is stored as ipo_field_plan.reopened_under_policy; expiry before re-supply restores the settled row; round 1: a restore stamps the tried order (one reopen per distinct override), a priority-matrix loss restores and logs OVERRIDE_SOURCE_LOST_TO_PRIORITY, and a better document completed during the reopen takes the row through OD-91 supersession",
   "detection_check": "scraper/tests/unit/services/settled-field-override-reopen.test.ts and scraper/tests/integration/settled-field-override-reopen.integration.test.ts (no-override-reopens-nothing on the staging-shaped rows, narrowing-survives-two-passes, lower-rank-never-overwrites, override-expiry-no-flip-flop; each guard mutation-tested). Gap: no nightly floor check counts rows reopened per pass, so a future reopen path with the same shape is caught only by its own tests.",
   "status": "unguarded",
-  "spec_ref": ["§2.3.5", "§3.2"]
+  "spec_ref": [
+    "§2.3.5",
+    "§3.2"
+  ]
 }

@@ -80,9 +80,12 @@ function dateText(v: unknown): string | null {
  */
 export async function loadSupersessionInputs(
   exec: ExecuteLike,
-  ipoId?: string
+  ipoId?: string,
+  opts: { planRowId?: string } = {}
 ): Promise<SupersessionInputs> {
   const ipoFilter = ipoId ? sql`AND p.ipo_id = ${ipoId}::uuid` : sql``;
+  // #968 fix round 1: one named row whatever its state (an override-reopened row is PENDING).
+  const rowFilter = opts.planRowId ? sql`p.id = ${opts.planRowId}::uuid` : sql`p.state = 'SUPPLIED'`;
   const planRes = await exec.execute(sql`
     SELECT p.id, p.ipo_id, i.slug, p.table_name, p.row_key, p.field_name,
            d.id AS doc_id, d.type::text AS doc_type, d.filing_date::text AS filing_date, d.sha256,
@@ -91,7 +94,7 @@ export async function loadSupersessionInputs(
       JOIN documents d ON d.id = p.chosen_document_id
       JOIN ipos i ON i.id = p.ipo_id
       LEFT JOIN ipo_details det ON det.ipo_id = p.ipo_id
-     WHERE p.state = 'SUPPLIED' ${ipoFilter}
+     WHERE ${rowFilter} ${ipoFilter}
      ORDER BY i.slug, p.table_name, p.field_name, p.row_key
   `);
   const rows: SuppliedPlanRow[] = rowsOf(planRes).map((r) => ({
@@ -240,4 +243,31 @@ export async function reopenPlanRowsForCompletedDocument(
       (unordered.length > 0 ? `; ${unordered.length} same-type row(s) kept unordered (missing filing_date)` : '')
   );
   return { reopenedIds, unordered };
+}
+
+/**
+ * #968 fix round 1, finding 3 (OD-91 + OD-95): supersession fires once, at a
+ * document's COMPLETED write, and only on SUPPLIED rows -- so a better document
+ * that completes while a row is override-reopened (PENDING) skips it. Before
+ * the walk restores such a row, it asks this: the SAME rule (the shared
+ * plan-supersession-rule module via `evaluateSupersession`) run for that one
+ * row against every COMPLETED document of the IPO whose receipt has the field.
+ * Documents completed before the reopen already had their chance while the
+ * row was SUPPLIED, so this finds exactly the ones that landed during it (and
+ * none of the pre-OD-91 documents, which have no receipt). Returns the
+ * supersessor, or null to restore.
+ */
+export async function findSupersessorForReopenedRow(
+  exec: ExecuteLike,
+  ipoId: string,
+  planRowId: string,
+  docTypeOf = manifestDocumentTypeOf
+): Promise<{ supersededBy: string; cause: string } | null> {
+  const inputs = await loadSupersessionInputs(exec, ipoId, { planRowId });
+  const verdict = evaluateSupersession(inputs, docTypeOf).reopen[0];
+  if (!verdict) return null;
+  return {
+    supersededBy: verdict.supersededBy.id,
+    cause: `superseded by ${verdict.supersededBy.docType} ${verdict.supersededBy.id} while override-reopened: ${verdict.reason} (OD-91, OD-95)`,
+  };
 }

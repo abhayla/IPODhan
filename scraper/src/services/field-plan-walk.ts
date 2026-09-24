@@ -63,6 +63,7 @@ import {
 } from '../config/field-source-policy.js';
 import { resolveIpoTypeKey, type PlanIpo } from './field-plan-generator.js';
 import { narrowRanksForReopen } from '@ipodhan/shared/utils/settled-field-override-reopen';
+import { OVERRIDE_SOURCE_LOST_TO_PRIORITY } from '@ipodhan/shared/utils/conflict-reasons';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import {
@@ -234,12 +235,15 @@ export interface FieldPlanWalkRepository {
     planRowId: string;
     claimToken: string;
   }): Promise<{ released: boolean; reason?: string }>;
-  /** #968 (OD-95): put a reopened settled row back to SUPPLIED, evidence untouched. */
+  /** #968 (OD-95): end an override reopen -- back to SUPPLIED (evidence untouched) stamped with the
+   *  order it was tried under, or handed to supersession when `supersededBy` is given. */
   restoreSettledAfterReopen?(params: {
     planRowId: string;
     claimToken: string;
     cause: string;
-  }): Promise<{ restored: boolean }>;
+    tried: { policyOrigin: string; rank1Source: string | null; rank2Source: string | null; rank3Source: string | null };
+    supersededBy?: string | null;
+  }): Promise<{ restored: boolean; handedToSupersession?: boolean }>;
 }
 
 /** The slice of item 1's orchestrator the walk uses. */
@@ -345,6 +349,30 @@ export interface FieldPlanWalkDeps {
     source: string;
     witnesses: Witness[];
     verdict: Verdict;
+  }) => Promise<unknown>;
+  /**
+   * #968 fix round 1, finding 3 (OD-91): before a reopened settled row is restored, the OD-91
+   * supersession rule is run for it (`findSupersessorForReopenedRow`, plan-supersession.ts), so a
+   * better document that completed while the row was reopened is not lost. Optional: absent, the
+   * row is restored as before.
+   */
+  supersessionForReopened?: (ipoId: string, planRowId: string) => Promise<{ supersededBy: string; cause: string } | null>;
+  /**
+   * #968 fix round 1, finding 2 (OD-61, OD-75 shape): the admin conflicts list writer
+   * (`DataConflictsRepository.upsertConflict`). Used when an override's higher source answered and
+   * the priority matrix kept the settled value (reason OVERRIDE_SOURCE_LOST_TO_PRIORITY).
+   */
+  logAdminConflict?: (input: {
+    ipoId: string;
+    tableName: string;
+    rowKey?: string;
+    fieldName: string;
+    source1: any;
+    value1: string | null;
+    source2: any;
+    value2: string | null;
+    resolutionReason: string;
+    severity?: 'INFO' | 'WARNING' | 'CRITICAL';
   }) => Promise<unknown>;
 }
 
@@ -652,28 +680,47 @@ export async function walkFieldPlanForIPO(
 }
 
 /**
- * #968 (OD-95): put a reopened settled row back to SUPPLIED (evidence untouched)
- * and release the claim. A repository without the method (an old mock) releases
- * the claim unrecorded instead: the row stays reopened and narrowed, never
- * overwritten by a lower source.
+ * #968 (OD-95): end an override reopen and release the claim.
+ *
+ * `triedOrigin` / `triedRanks` are the FULL effective order the row was just
+ * tried under (before narrowing). They are stamped on the row so the next plan
+ * pass under the same override decides NONE: one reopen per distinct override
+ * (fix round 1, finding 1). Before restoring, the OD-91 supersession rule is run
+ * for the row (finding 3); a better document that completed during the reopen
+ * takes the row instead of the outranked evidence coming back.
+ *
+ * A repository without the method (an old mock) releases the claim unrecorded
+ * instead: the row stays reopened and narrowed, never overwritten by a lower source.
  */
 async function restoreReopened(
   ipoId: string,
   plan: any,
   deps: FieldPlanWalkDeps,
-  cause: string
+  cause: string,
+  triedOrigin: string,
+  triedRanks: ReadonlyArray<string | null>
 ): Promise<'SETTLED' | 'SUPERSEDED'> {
-  logger.info(
-    { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, cause },
-    'PASS 3: override-reopened settled row restored to SUPPLIED (OD-95)'
-  );
   if (deps.fieldPlanRepository.restoreSettledAfterReopen) {
-    const { restored } = await deps.fieldPlanRepository.restoreSettledAfterReopen({
+    const supersession = deps.supersessionForReopened ? await deps.supersessionForReopened(ipoId, plan.id) : null;
+    logger.info(
+      { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, cause, triedOrigin, supersession },
+      supersession
+        ? 'PASS 3: override-reopened row handed to supersession, a better document completed during the reopen (OD-91, OD-95)'
+        : 'PASS 3: override-reopened settled row restored to SUPPLIED, stamped with the order it was tried under (OD-95)'
+    );
+    const { restored, handedToSupersession } = await deps.fieldPlanRepository.restoreSettledAfterReopen({
       planRowId: plan.id,
       claimToken: plan.claimToken,
-      cause,
+      cause: supersession ? supersession.cause : cause,
+      tried: {
+        policyOrigin: triedOrigin,
+        rank1Source: triedRanks[0] ?? null,
+        rank2Source: triedRanks[1] ?? null,
+        rank3Source: triedRanks[2] ?? null,
+      },
+      supersededBy: supersession?.supersededBy ?? null,
     });
-    return restored ? 'SETTLED' : 'SUPERSEDED';
+    return restored || handedToSupersession ? 'SETTLED' : 'SUPERSEDED';
   }
   const { released } = await deps.fieldPlanRepository.releaseClaimUnrecorded({
     planRowId: plan.id,
@@ -716,6 +763,8 @@ async function attemptOneField(
   }
   let policy = policyResolution.policy;
   const policyOrigin = policyOriginString(policy.origin);
+  // The full effective order, before any #968 narrowing: what a restore records as tried.
+  const fullRanks: ReadonlyArray<string | null> = [...policy.ranks];
 
   // #968 (spec §2.3.5, OD-73, OD-95): a SETTLED row an override reopened. Only the
   // sources ranked ABOVE the settling source in the current effective order are
@@ -734,7 +783,9 @@ async function attemptOneField(
         deps,
         policyOrigin !== reopenedUnder
           ? `OVERRIDE_RESTORED: ${reopenedUnder} is no longer the effective order (now ${policyOrigin}); settled value kept (OD-95)`
-          : `OVERRIDE_RESTORED: no source ranks above ${plan.chosenSource} under ${reopenedUnder}; settled value kept (OD-95)`
+          : `OVERRIDE_RESTORED: no source ranks above ${plan.chosenSource} under ${reopenedUnder}; settled value kept (OD-95)`,
+        policyOrigin,
+        fullRanks
       );
     }
     policy = { ...policy, ranks: narrowed as typeof policy.ranks };
@@ -977,6 +1028,41 @@ async function attemptOneField(
       });
     }
 
+    if (verdict.accepted === false && reopenedUnder) {
+      // #968 fix round 1, finding 2: an override-reopened settled row whose higher
+      // source answered but LOST to the field-priority matrix. For THIS override
+      // that is a definitive no: re-asking every slot changes nothing. The page
+      // keeps the settled value, the refused value goes to the admin conflicts
+      // list under its own named reason (OD-61, OD-75 shape; admin-only, no
+      // alert), and the row is restored, tried once under this override.
+      logger.warn(
+        { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, source, rank, reason: verdict.reason },
+        'PASS 3: override source answered but the priority matrix kept the settled value; admin conflict logged, row restored (OD-95)'
+      );
+      if (deps.logAdminConflict && plan.chosenSource) {
+        await deps.logAdminConflict({
+          ipoId,
+          tableName: plan.tableName,
+          rowKey: plan.rowKey ?? '',
+          fieldName: columnToCamelCase(plan.fieldName),
+          source1: mapManifestSourceToScraperSource(source),
+          value1: answer.value === undefined || answer.value === null ? null : String(answer.value),
+          source2: mapManifestSourceToScraperSource(plan.chosenSource),
+          value2: null,
+          resolutionReason: OVERRIDE_SOURCE_LOST_TO_PRIORITY,
+          severity: 'INFO',
+        });
+      }
+      return restoreReopened(
+        ipoId,
+        plan,
+        deps,
+        `OVERRIDE_SOURCE_LOST_TO_PRIORITY: ${source} answered under ${reopenedUnder} but the priority matrix kept ${plan.chosenSource} [${verdict.reason}] (OD-95)`,
+        policyOrigin,
+        fullRanks
+      );
+    }
+
     if (verdict.accepted === false) {
       // Review round 5, item A: the write REACHED the consolidator, but the
       // consolidator's OWN result says a DIFFERENT source's value won
@@ -1074,7 +1160,9 @@ async function attemptOneField(
       ipoId,
       plan,
       deps,
-      `OVERRIDE_RESTORED: no source above ${plan.chosenSource} under ${reopenedUnder} has this field [${failures.join('; ')}]; settled value kept (OD-95)`
+      `OVERRIDE_RESTORED: no source above ${plan.chosenSource} under ${reopenedUnder} has this field [${failures.join('; ')}]; settled value kept (OD-95)`,
+      policyOrigin,
+      fullRanks
     );
   }
 
