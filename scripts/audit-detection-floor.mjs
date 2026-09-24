@@ -36,7 +36,7 @@ import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { istDayIso } from './lib/ist-day.mjs';
-import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
+import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isStrandedPendingRow, LIVE_IPO_STATUSES, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
 import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
 import { collectPullFrozen } from './lib/pull-frozen-checks.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
@@ -2275,6 +2275,43 @@ async function checkS_pullPlanStuckReclaim() {
     `0 stuck rows expected; found ${rows.length}` + (rows.length ? ` (sample: ${rows.slice(0, MAX_OFFENDERS).map(r => `${r.tableName}.${r.fieldName}`).join('; ')})` : ''));
 }
 
+// ---- PULL-PLAN-PENDING-STRANDED: a due PENDING row on a live IPO whose last attempt never advances.
+// The walk takes it first on every wake and puts it back unrecorded (a dropped write), so
+// nothing else reports it: pull_plan_stuck_reclaim reads only NOT_AVAILABLE_YET and
+// CHECK_FAILED. Predicate: isStrandedPendingRow (scripts/lib/field-plan-slot.mjs).
+async function checkS_pullPlanPendingStranded() {
+  const title = 'due PENDING plan rows on live IPOs are being recorded (last attempt advances)';
+  const now = new Date();
+  let rows;
+  try {
+    const candidates = await q(
+      `SELECT p.id, p.ipo_id AS "ipoId", i.slug, i.status AS "ipoStatus",
+              p.table_name AS "tableName", p.row_key AS "rowKey", p.field_name AS "fieldName",
+              p.state, p.attempts, p.claimed_at AS "claimedAt", p.created_at AS "createdAt",
+              p.next_due_at AS "nextDueAt", p.last_attempt_at AS "lastAttemptAt", p.reason_code AS "reasonCode"
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.state = 'PENDING' AND p.claimed_at IS NULL AND i.status::text = ANY($1::text[])`,
+      [LIVE_IPO_STATUSES]
+    );
+    rows = candidates.filter((row) => isStrandedPendingRow(row, now));
+  } catch (e) {
+    record('pull_plan_pending_stranded', title, 'UNVERIFIABLE', `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  for (const row of rows) {
+    notify('pull_plan_pending_stranded', 'P2', `${row.slug}:${row.tableName}.${row.fieldName}:${row.id}`,
+      'due PENDING plan row on a live IPO whose last attempt has not advanced for 2+ slots: the walk takes it and records nothing (dropped write) or never reaches it',
+      `ipoStatus=${row.ipoStatus} rowKey='${row.rowKey ?? ''}' reason=${row.reasonCode ?? 'null'} attempts=${row.attempts} lastAttemptAt=${row.lastAttemptAt ?? 'null'}`);
+  }
+  const byField = {};
+  for (const row of rows) (byField[`${row.tableName}.${row.fieldName}`] ??= []).push(row.slug);
+  record('pull_plan_pending_stranded', `${rows.length} stranded PENDING plan row(s) on live IPOs`,
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    `0 expected; found ${rows.length}` +
+      (rows.length ? ` (by field: ${Object.entries(byField).slice(0, MAX_OFFENDERS).map(([f, s]) => `${f}=${s.length} [${s.slice(0, 3).join(', ')}]`).join('; ')})` : ''));
+}
+
 // ---- item 6 / F-161: PULL-DOC-NAY-WITH-OFFER-DOC -- a DOC-ranked plan row whose rank-1 answer was
 // NOT_AVAILABLE_YET ("no document yet") although the IPO already held a COMPLETED offer document
 // (RHP / DRHP / PROSPECTUS / PRICE_BAND_AD) extracted BEFORE that attempt. The DOC fetcher's
@@ -3108,6 +3145,7 @@ async function main() {
   await checkS_pullWritePolicy();
   await checkS_pullPlanRank();
   await checkS_pullPlanStuckReclaim();
+  await checkS_pullPlanPendingStranded();
   await checkPullDocNayWithOfferDoc();
   await checkPullFrozen();
   await checkPullPlanConfigGapAtCap();

@@ -147,3 +147,33 @@ export function isStuckReclaimRow(row, now = new Date()) {
   if (row.lastAttemptAt == null) return true;
   return new Date(row.lastAttemptAt).getTime() < twoSlotsAgo.getTime();
 }
+
+/**
+ * PULL-PLAN-PENDING-STRANDED: a due PENDING plan row on a live IPO whose last
+ * attempt has not advanced for two slot boundaries.
+ *
+ * A due PENDING row outranks every reclaim leg in claimNextDueField (pri 0),
+ * so every walk that reaches its IPO takes it first. If its last attempt is
+ * still two slots old, the walk is taking it and putting it back without
+ * recording anything (the dropped-write branch of field-plan-walk.ts leaves
+ * state, attempts and last_attempt_at untouched), or never reaching it.
+ * Measured on ipodhan_staging 2026-09-25 02:35 IST: 26 gmp_records.gmp rows
+ * (15 OPEN, 7 CLOSED, 3 UPCOMING, 1 LISTED), claimed on every 30-min wake,
+ * INVESTORGAIN_GMP answering, the write dropped as MISSING_ROW_KEY (row_key ''
+ * on a multi-row child table).
+ *
+ * pull_plan_stuck_reclaim covers NOT_AVAILABLE_YET and CHECK_FAILED only. A
+ * row created within the last two slots is new work, never stranded.
+ */
+export const LIVE_IPO_STATUSES = ['UPCOMING', 'OPEN', 'CLOSED'];
+
+export function isStrandedPendingRow(row, now = new Date()) {
+  if (row.state !== 'PENDING') return false;
+  if (row.claimedAt != null) return false;
+  if (!LIVE_IPO_STATUSES.includes(row.ipoStatus)) return false;
+  const twoSlotsAgo = mostRecentFieldPlanSlotBoundary(mostRecentFieldPlanSlotBoundary(now));
+  if (row.nextDueAt != null && new Date(row.nextDueAt).getTime() > now.getTime()) return false;
+  if (row.createdAt != null && new Date(row.createdAt).getTime() >= twoSlotsAgo.getTime()) return false;
+  if (row.lastAttemptAt == null) return true;
+  return new Date(row.lastAttemptAt).getTime() < twoSlotsAgo.getTime();
+}

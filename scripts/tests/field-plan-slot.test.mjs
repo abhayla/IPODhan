@@ -18,6 +18,7 @@ import {
   FIELD_PLAN_SLOT_IST_MINUTES,
   PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS,
   isStuckReclaimRow,
+  isStrandedPendingRow,
   parseDataJobSlotsFromSource,
   DATA_JOB_SLOTS_SOURCE_PATH,
 } from '../lib/field-plan-slot.mjs';
@@ -161,4 +162,59 @@ test('(regression, CRITICAL-1) a row attempted at 14:05 IST is NOT stuck at 23:3
     false,
     'a row attempted just after the last slot of the day, checked before the next slot fires, must NOT be flagged'
   );
+});
+
+// ---- PULL-PLAN-PENDING-STRANDED: isStrandedPendingRow -------------------
+// Real shape, ipodhan_staging 2026-09-25 02:35 IST: 26 gmp_records.gmp rows
+// (e.g. veegaland-developers-ltd, CLOSED, plan row 90f555a1) PENDING, next_due_at
+// 2026-09-23 19:09 UTC, last_attempt_at 2026-09-23 18:54 UTC, attempts 0. The
+// walk claims each one every wake, INVESTORGAIN_GMP answers, the write is
+// DROPPED (MISSING_ROW_KEY) and the row goes back to PENDING with nothing
+// advanced. pull_plan_stuck_reclaim never reads PENDING, so nothing reported it.
+
+const NOW_0235_IST = new Date('2026-09-24T21:05:00.000Z');
+const veegaland = {
+  state: 'PENDING', ipoStatus: 'CLOSED', attempts: 0, claimedAt: null,
+  createdAt: '2026-09-23T13:00:00.000Z',
+  nextDueAt: '2026-09-23T19:09:19.442Z',
+  lastAttemptAt: '2026-09-23T18:54:19.442Z',
+};
+
+test('(stranded) RED — the real veegaland gmp row: due PENDING on a live IPO, last attempt 2+ slots old', () => {
+  assert.equal(isStrandedPendingRow(veegaland, NOW_0235_IST), true);
+});
+
+test('(stranded) RED — due PENDING, never attempted, created 2+ slots ago', () => {
+  assert.equal(isStrandedPendingRow({ ...veegaland, nextDueAt: null, lastAttemptAt: null }, NOW_0235_IST), true);
+});
+
+test('(stranded) GREEN — a PENDING row created within the last two slots is new work', () => {
+  assert.equal(isStrandedPendingRow({ ...veegaland, createdAt: '2026-09-24T20:00:00.000Z', lastAttemptAt: null }, NOW_0235_IST), false);
+});
+
+test('(stranded) GREEN — a PENDING row not yet due is waiting', () => {
+  assert.equal(isStrandedPendingRow({ ...veegaland, nextDueAt: '2026-09-25T02:30:00.000Z' }, NOW_0235_IST), false);
+});
+
+test('(stranded) GREEN — last attempt within the last slot is normal cadence', () => {
+  assert.equal(isStrandedPendingRow({ ...veegaland, lastAttemptAt: '2026-09-24T18:40:00.000Z' }, NOW_0235_IST), false);
+});
+
+test('(stranded) GREEN — a LISTED or WITHDRAWN IPO is not in scope; a claimed row is owned by a walker; other states are not PENDING', () => {
+  assert.equal(isStrandedPendingRow({ ...veegaland, ipoStatus: 'LISTED' }, NOW_0235_IST), false);
+  assert.equal(isStrandedPendingRow({ ...veegaland, ipoStatus: 'WITHDRAWN' }, NOW_0235_IST), false);
+  assert.equal(isStrandedPendingRow({ ...veegaland, claimedAt: '2026-09-24T21:00:00.000Z' }, NOW_0235_IST), false);
+  for (const state of ['SUPPLIED', 'NOT_AVAILABLE_YET', 'CHECK_FAILED', 'EXHAUSTED']) {
+    assert.equal(isStrandedPendingRow({ ...veegaland, state }, NOW_0235_IST), false, state);
+  }
+});
+
+test('(stranded) the floor check filters through isStrandedPendingRow (one definition) and records pull_plan_pending_stranded', () => {
+  const src = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  const start = src.indexOf('async function checkS_pullPlanPendingStranded');
+  assert.ok(start > 0, 'check function exists');
+  const body = src.slice(start, src.indexOf('\n}\n', start));
+  assert.match(body, /isStrandedPendingRow\(/);
+  assert.match(body, /record\('pull_plan_pending_stranded'/);
+  assert.match(src, /await checkS_pullPlanPendingStranded\(\)/, 'the check is invoked by the floor run');
 });
