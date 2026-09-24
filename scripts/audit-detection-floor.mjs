@@ -37,6 +37,7 @@ import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { istDayIso } from './lib/ist-day.mjs';
 import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
+import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
@@ -2617,6 +2618,58 @@ async function checkS_pullWrite() {
 }
 
 
+// PULL-NOBLANK (item 10, OD-42, design §2.6/§4): "fields that went from a value to absent
+// this slot" -- the guard on §2.6 ("A value we could not re-source is kept and marked stale,
+// never blanked"). Population: field_sources rows updated in the window whose previous_value
+// was non-blank -- i.e. a re-ask that HAD something to compare against -- scoped to
+// row_key='' (the singleton parent tables: ipos, ipo_details, financial_data,
+// anchor_investors). A row-keyed child table's blanking needs a per-row-key match this check
+// does not attempt, and a blanking done with no field_sources row at all (bypassing the
+// writer entirely) is likewise outside this reading -- both stated in the detail line, never
+// silently folded into a clean PASS.
+//
+// Column resolution reads information_schema per table (GENERIC OVER COLUMNS, same shape as
+// #654's provenance-parent-not-null fix): a field_sources.field_name with no matching column
+// (as-is or snake_cased) is UNRESOLVABLE, counted and named, never silently dropped.
+const PULL_NOBLANK_WINDOW_HOURS = 24;
+
+async function checkS_pullNoblank() {
+  const title = 'fields that went from a value to absent this slot';
+  let fsRows;
+  try {
+    fsRows = await q(
+      `SELECT fs.ipo_id AS "ipoId", i.slug, fs.table_name AS "tableName",
+              fs.field_name AS "fieldName", fs.previous_value AS "previousValue"
+         FROM field_sources fs
+         JOIN ipos i ON i.id = fs.ipo_id
+        WHERE fs.updated_at > now() - interval '${PULL_NOBLANK_WINDOW_HOURS} hours'
+          AND fs.row_key = ''`
+    );
+  } catch (e) {
+    record('pull_noblank', title, 'UNVERIFIABLE', `field_sources not readable: ${e.message}`);
+    return;
+  }
+  const scopeNote = "row_key='' scope; a blanking with no field_sources row at all is outside this reading";
+  const { checked, offenders, unresolvable } = await evaluatePullNoblank(fsRows, q);
+  if (checked.length === 0) {
+    record('pull_noblank', title, 'PASS',
+      `0 field_sources row(s) in the last ${PULL_NOBLANK_WINDOW_HOURS}h carried a non-empty previous_value to check (${scopeNote})`);
+    return;
+  }
+
+  for (const o of offenders.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {
+    notify('pull_noblank', 'P1', `${o.slug}:${o.table}.${o.field}`,
+      'field went from a value to absent this slot -- the §2.6 guard', `previousValue=${o.previousValue}`);
+  }
+  const unresolvedNote = unresolvable.length
+    ? `; ${unresolvable.length} unresolvable: ${[...new Set(unresolvable)].slice(0, MAX_OFFENDERS).join('; ')}`
+    : '';
+  const detail = `0 expected; found ${offenders.length} of ${checked.length} checked row(s)${unresolvedNote} (${scopeNote})`;
+  record('pull_noblank', title, offenders.length === 0 ? 'PASS' : 'FAIL',
+    (offenders.length ? `${offenders.slice(0, MAX_OFFENDERS).map((o) => `${o.slug}:${o.table}.${o.field}`).join('; ')} — ` : '') + detail);
+}
+
+
 // M-INCOMPLETE-PAGES-UNRETRIED (OD-55 lane B): when the 2-hour hung-process
 // ceiling stops a document read part-way, the ledger row names the pages it
 // never got to. Nothing watches whether those pages are ever read, and unlike
@@ -2985,6 +3038,7 @@ async function main() {
   await checkS_e1Source();
   await checkS_pullPlan();
   await checkS_pullWrite();
+  await checkS_pullNoblank();
   await checkS_incompletePagesUnretried();
   await checkS_corpusShape();
 

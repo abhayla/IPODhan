@@ -678,6 +678,19 @@
       "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
     },
     {
+      "id": "pull_noblank",
+      "designId": "PULL-NOBLANK",
+      "findingClass": "pull-model verification check PULL-NOBLANK: fields that went from a value to absent this slot",
+      "whatItAsks": "fields that went from a value to absent this slot",
+      "healthy": "0",
+      "alarmsWhen": "any non-zero — this is the guard on §2.6",
+      "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1); reads field_sources rows with row_key='' (singleton parent tables) whose previous_value was non-blank in the last 24h",
+      "consumer": "per-cycle failure reading (identities)",
+      "consumerReason": "brief-assigned: “this slot” is a per-cycle fact and the guard exists to catch a single cycle’s bad write before the next one compounds it",
+      "status": "built (item 10, OD-42): record('pull_noblank', ...) lands in scripts/audit-detection-floor.mjs (checkS_pullNoblank), invoked from main(); column resolution via scripts/lib/pull-noblank-checks.mjs, unit-tested in scripts/tests/audit-detection-floor.test.mjs",
+      "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")"
+    },
+    {
       "id": "pull_noop",
       "designId": "PULL-NOOP",
       "findingClass": "pull-model verification check PULL-NOOP: writes per cycle ÷ fields re-asked per cycle",
@@ -935,8 +948,7 @@
     "status or a price band sourced from an exchange that does not list the IPO — a non-listing venue has no standing on an issue it does not carry (OD-64)",
     "a write path resolves a field its extractor never supplied — context passed as a claim, re-stamping provenance and auto-resolving conflicts about fields the document never read (OD-66)",
     "PULL-FROZEN (pull-model verification check PULL-FROZEN: SUPPLIED rows whose chosen_document_id has been superseded) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_frozen' call lands in the audit script.",
-    "PULL-NOBLANK (pull-model verification check PULL-NOBLANK: fields that went from a value to absent this slot) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_noblank' call lands in the audit script.",
-    "the pull walk re-asks fields and REWRITES them with identical values, which is indistinguishable in every downstream reading from the walk confirming them -- a healthy-looking write rate that is entirely no-op churn, and the field_sources provenance trail it produces is noise that hides the one real change in it",
+    "Retired 2026-09-24 (item 10 review round): the design's own §4 table lists one check for this ratio, PULL-NOOP. This entry duplicated it under a second id with a weaker gate; removed rather than kept alongside pull_noop.",
     "Retired 2026-09-16: RATIOS_BASIS_ISSUE_PRICE has no extractor in scraper/src/services/filing-auto-persist.ts (AUTO_PERSIST_DOC_TYPES) by design, so this check measured a population that can never move and paged UNVERIFIABLE/P1 every night (cost an hour on 2026-09-15, misread as 38 stuck documents); issuer_ratio_yield reads the real ratio population (RHP/DRHP/PROSPECTUS financial_data rows), and not_applicable_documents_named now names this PENDING count honestly instead of grading it. Replaced by issuer_ratio_yield (#670); the never-extractable population is now named by not_applicable_documents_named.",
     "Retired 2026-09-21: OD-65 (owner, 2026-09-21) withdrew the re-read loop this check measures: \"everything should be done on day one itself, and it should not be repeated for the same IPO... one IPO, one round of document read.\" The loop was never built (zero `reread` hits in scraper/src), and it is now explicitly not wanted, so this check measures a population that can never become non-empty — the same shape ratios_extraction_yield was retired for on 2026-09-16. It was also mis-sized from the start: the loop was scoped from \"578 leadManagers conflicts\" and the real count, after removing same-source rows, null-on-one-side rows and byte-identical values, is 1 on staging and 2 on prod. Its §3.2 premise additionally contradicts OD-32, which deletes the PDF bytes the check's receipt requires (#853).",
     "Retired 2026-09-21: OD-65 (owner, 2026-09-21) withdrew the re-read loop this check measures: \"everything should be done on day one itself, and it should not be repeated for the same IPO... one IPO, one round of document read.\" The loop was never built (zero `reread` hits in scraper/src), and it is now explicitly not wanted, so this check measures a population that can never become non-empty — the same shape ratios_extraction_yield was retired for on 2026-09-16. It was also mis-sized from the start: the loop was scoped from \"578 leadManagers conflicts\" and the real count, after removing same-source rows, null-on-one-side rows and byte-identical values, is 1 on staging and 2 on prod. Its §3.2 premise additionally contradicts OD-32, which deletes the PDF bytes the check's receipt requires (#853).",
