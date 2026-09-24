@@ -50,7 +50,9 @@ function makeStubDb() {
   const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
   const insertValues = vi.fn().mockReturnValue({
     onConflictDoUpdate,
-    onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
+    // OD-92: the redirect and merge-log inserts RETURN the new row's id.
+    onConflictDoNothing: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'redirect-1' }]) }),
+    returning: vi.fn().mockResolvedValue([{ id: 'log-1' }]),
   });
   const txInsert = vi.fn().mockReturnValue({ values: insertValues });
 

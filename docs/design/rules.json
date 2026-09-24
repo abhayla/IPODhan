@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-24T11:02:58.181Z",
+  "generated_at": "2026-09-24T14:08:30.573Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 194,
-    "retired": 36
+    "retired": 37
   },
-  "next_id": 231,
+  "next_id": 232,
   "rules": [
     {
       "id": "R-151",
@@ -702,12 +702,12 @@
       "retired": false
     },
     {
-      "id": "R-050",
-      "hash": "d258f6a30c3e",
+      "id": "R-231",
+      "hash": "6da3036ded5d",
       "section": "2.3.3.3 Delisting, and undoing a merge that was wrong (OD-38)",
       "kind": "table",
-      "text": "An unmerge command — scripts/merge-duplicate-ipo.mjs gains unmerge <merge-id>: it restores both rows from the log and re-points the slug redirect so the page that was redirected goes back to its own row",
-      "first_seen": "2026-09-09",
+      "text": "An unmerge command — scraper/scripts/repair-merge-duplicate-ipo.ts gains --unmerge <merge-id>: it restores both rows from the log and re-points the slug redirect so the page that was redirected goes back to its own row (path corrected by OD-92)",
+      "first_seen": "2026-09-24",
       "retired": false
     },
     {
@@ -1753,6 +1753,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-050",
+      "hash": "d258f6a30c3e",
+      "section": "2.3.3.3 Delisting, and undoing a merge that was wrong (OD-38)",
+      "kind": "table",
+      "text": "An unmerge command — scripts/merge-duplicate-ipo.mjs gains unmerge <merge-id>: it restores both rows from the log and re-points the slug redirect so the page that was redirected goes back to its own row",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-146",

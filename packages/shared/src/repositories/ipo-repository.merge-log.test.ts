@@ -128,9 +128,12 @@ function buildFakeDb() {
               record({ kind: 'insert-slug-redirect' });
             }
             void tableName;
+            // OD-92: the log insert and the redirect insert both RETURN the new row's id.
+            const returning = async () => [{ id: 'inserted-1' }];
             return {
-              onConflictDoNothing: async () => undefined,
+              onConflictDoNothing: () => ({ returning, then: (res: (v: unknown) => unknown) => Promise.resolve(undefined).then(res) }),
               onConflictDoUpdate: async () => undefined,
+              returning,
               then: (res: (v: unknown) => unknown) => Promise.resolve(undefined).then(res),
             };
           },
@@ -158,6 +161,8 @@ function buildFakeDb() {
           return { rows: directTables.map((t) => ({ child: t.table, col: t.col, parent: 'ipos' })) };
         }
         if (/count\(\*\) filter/i.test(text)) return { rows: [{ keep: 0, drop: 1 }] };
+        // OD-92: the capture reads (FK edges, whole-row captures, source keys) find nothing in this fake.
+        if (/pg_constraint|to_jsonb\(t\.\*\)::text as row|ipo_source_keys/i.test(text)) return { rows: [] };
         if (/current_database/i.test(text)) return { rows: [{ current_database: 'ipodhan_test' }] };
         // #900: unique-key introspection for the conflict predicate — no unique key here.
         if (/pg_index/i.test(text)) return { rows: [] };
