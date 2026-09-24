@@ -214,6 +214,10 @@ export class DataConflictsRepository extends BaseRepository {
 
     // OD-75: a self-change never overwrites an open CROSS-source dispute on the same field — that
     // dispute is the more important record and must keep feeding the disagreement monitor.
+    if (input.source1 === input.source2 && existing[0].source1 !== existing[0].source2) {
+      return { skipped: true, reason: 'same_source' };
+    }
+
     // #968 final review (MAJOR): an admin-only record (OD-75 shape, e.g. OVERRIDE_SOURCE_LOST_TO_PRIORITY)
     // never refreshes an open BEHAVIOUR conflict on the same field -- that would turn a live dispute or a
     // HELD_DISPUTED_HIGH_VALUE_LIVE hold into an INFO admin record nothing can release. The admin-only
@@ -224,10 +228,6 @@ export class DataConflictsRepository extends BaseRepository {
         'data_conflicts: admin-only record skipped, a behaviour conflict is open on this field'
       );
       return { skipped: true, reason: 'behaviour_conflict_open' };
-    }
-
-    if (input.source1 === input.source2 && existing[0].source1 !== existing[0].source2) {
-      return { skipped: true, reason: 'same_source' };
     }
 
     const result = await this.executeQuery(
