@@ -54,6 +54,8 @@ import {
   checkAbsenceWithoutEvidence,
   checkCycleOverrun,
   checkExtractionStuck,
+  checkStrandedNotExtractable,
+  AUTO_PERSIST_DOC_TYPES_MIRROR,
 } from './lib/document-state-checks.mjs';
 import {
   summariseIssueSizeConsistency,
@@ -613,6 +615,41 @@ async function checkD_iposDocLineageDocumentId() {
   record('d_ipos_doc_lineage_document_id', 'every DRHP-source ipos provenance row written in the last 24h names its document',
     rows.length === 0 ? 'PASS' : 'FAIL',
     `${rows.length} row(s)` + (rows.length ? `: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}.${r.fieldName}`).join('; ')}` : ''));
+}
+
+// ---- (d, stranded readmit): F-158/OD-90 follow-up — a documents row
+// stamped NOT_EXTRACTABLE whose type is NOW on the extractable list is
+// stranded (pre-#989 admission, never revisited by the document cycle once
+// its IPO leaves the live window). Population is enumerated from the SAME
+// mirror the pure predicate reads (AUTO_PERSIST_DOC_TYPES_MIRROR), never a
+// hand-typed 'CORRIGENDUM' — a type added to the list tomorrow is caught by
+// this same check with no code change. Repair: scraper/scripts/
+// repair-readmit-stranded-documents.ts.
+async function checkD_strandedReadmit() {
+  const placeholders = AUTO_PERSIST_DOC_TYPES_MIRROR.map((_, i) => `$${i + 1}`).join(', ');
+  const rows = await q(
+    `SELECT d.id, i.company_name AS "companyName", i.slug, d.type::text AS type,
+            d.extraction_status AS "extractionStatus", d.updated_at AS "updatedAt"
+       FROM documents d
+       JOIN ipos i ON i.id = d.ipo_id
+      WHERE d.extraction_status = 'NOT_EXTRACTABLE'
+        AND d.type::text IN (${placeholders})`,
+    AUTO_PERSIST_DOC_TYPES_MIRROR
+  );
+  const offenders = [];
+  for (const r of rows) {
+    const v = checkStrandedNotExtractable(r);
+    if (v) {
+      offenders.push(v);
+      notify('d_stranded_readmit', 'P2', r.id, `documents row stranded NOT_EXTRACTABLE though its type is extractable: ${r.companyName}`, v);
+    }
+  }
+  record(
+    'd_stranded_readmit',
+    'no documents row is NOT_EXTRACTABLE while its type is on the current extractable list (F-158/OD-90)',
+    offenders.length === 0 ? 'PASS' : 'FAIL',
+    `${offenders.length} of ${rows.length} candidate row(s) stranded` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : '')
+  );
 }
 
 async function checkD_segmentProvenance() {
@@ -3117,6 +3154,7 @@ async function main() {
   await checkC();
   await checkC_issueSizeSourceCapability();
   await checkD();
+  await checkD_strandedReadmit();
   await checkD_segmentProvenance();
   await checkE();
   await checkE_unknownSlug404();

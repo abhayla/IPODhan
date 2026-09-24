@@ -31,6 +31,8 @@ import {
   EXTRACTION_STUCK_MAX_HOURS,
   MAX_EXTRACTION_ATTEMPTS,
   NEVER_ESCALATES_MIN_RETRIES,
+  checkStrandedNotExtractable,
+  AUTO_PERSIST_DOC_TYPES_MIRROR,
 } from '../lib/document-state-checks.mjs';
 
 const NOW = '2026-08-28T06:00:00Z';
@@ -828,4 +830,43 @@ test('396 PASSes when the marker IS present (already caught by the HARD_FAILURE 
   assert.notEqual(v, null);
   assert.match(v, /HARD_FAILURE/);
   assert.doesNotMatch(v, /never-escalates/);
+});
+
+// --- stranded readmit (F-158/OD-90): NOT_EXTRACTABLE + type now extractable -
+
+test('stranded FAILs a NOT_EXTRACTABLE CORRIGENDUM (the Skyways case)', () => {
+  const v = checkStrandedNotExtractable({
+    companyName: 'Skyways Air Services Ltd',
+    type: 'CORRIGENDUM',
+    extractionStatus: 'NOT_EXTRACTABLE',
+  });
+  assert.notEqual(v, null);
+  assert.match(v, /Skyways Air Services Ltd/);
+  assert.match(v, /CORRIGENDUM/);
+});
+
+test('stranded PASSes ADDENDUM — still non-extractable, must never be flagged as stranded', () => {
+  assert.equal(
+    checkStrandedNotExtractable({ companyName: 'X', type: 'ADDENDUM', extractionStatus: 'NOT_EXTRACTABLE' }),
+    null
+  );
+});
+
+test('stranded PASSes a COMPLETED corrigendum (the post-fix veegaland case)', () => {
+  assert.equal(
+    checkStrandedNotExtractable({ companyName: 'Veegaland', type: 'CORRIGENDUM', extractionStatus: 'COMPLETED' }),
+    null
+  );
+});
+
+test('stranded PASSes a PENDING row of an extractable type — that is a live queue, not stranded', () => {
+  assert.equal(
+    checkStrandedNotExtractable({ companyName: 'Y', type: 'RHP', extractionStatus: 'PENDING' }),
+    null
+  );
+});
+
+test('stranded mirror includes CORRIGENDUM post-#989', () => {
+  assert.ok(AUTO_PERSIST_DOC_TYPES_MIRROR.includes('CORRIGENDUM'));
+  assert.ok(!AUTO_PERSIST_DOC_TYPES_MIRROR.includes('ADDENDUM'));
 });

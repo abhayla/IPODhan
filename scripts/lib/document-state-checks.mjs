@@ -580,3 +580,39 @@ export function checkExtractionStuck(row) {
   const label = row.companyName ?? row.slug ?? row.ipoId ?? 'unknown IPO';
   return `${label}: ${docType} stuck ${shape} for ${hours.toFixed(1)}h (> ${EXTRACTION_STUCK_MAX_HOURS}h) — needs-decision`;
 }
+
+/**
+ * F-158/OD-90 follow-up (item: readmit stranded corrigenda). Mirror of
+ * `AUTO_PERSIST_DOC_TYPES` (`scraper/src/config/document-admission-status.ts`) —
+ * mirrored, not imported, same convention as `not-applicable-documents.mjs`'s
+ * EXTRACTABLE_DOC_TYPES_MIRROR (this file runs as plain Node with no TypeScript
+ * toolchain). Keep in sync by hand; a drift here under- or over-reports which
+ * NOT_EXTRACTABLE rows are actually stranded.
+ */
+export const AUTO_PERSIST_DOC_TYPES_MIRROR = [
+  'PRICE_BAND_AD',
+  'RHP',
+  'DRHP',
+  'PROSPECTUS',
+  'ANCHOR_ALLOCATION_REPORT',
+  'CORRIGENDUM',
+];
+
+/**
+ * FAIL — a document row is stamped NOT_EXTRACTABLE while its TYPE is now on
+ * the extractable list. Before #989, a document type outside
+ * AUTO_PERSIST_DOC_TYPES was admitted NOT_EXTRACTABLE forever; #989 widened
+ * the list (added CORRIGENDUM) but nothing re-admits a row that was already
+ * stamped before the fix, and the document cycle only revisits an IPO within
+ * its live window — a closed/long-listed IPO's row is never looked at again
+ * to notice its status is stale. Repair: `scraper/scripts/
+ * repair-readmit-stranded-documents.ts`. ADDENDUM (and any type still off the
+ * list) is explicitly NOT flagged — it has no extractor and NOT_EXTRACTABLE is
+ * the correct, current status for it.
+ */
+export function checkStrandedNotExtractable(row) {
+  if (row.extractionStatus !== 'NOT_EXTRACTABLE') return null;
+  const type = String(row.type ?? '').toUpperCase();
+  if (!AUTO_PERSIST_DOC_TYPES_MIRROR.includes(type)) return null;
+  return `"${entityOf(row)}": ${type} is NOT_EXTRACTABLE but its type is on the extractable list (stranded pre-#989; repair via scraper/scripts/repair-readmit-stranded-documents.ts)`;
+}
