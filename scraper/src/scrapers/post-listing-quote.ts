@@ -31,10 +31,22 @@ export type QuoteOutcome =
 
 /** IST is UTC+05:30 with no daylight saving; both exchanges publish IST wall-clock times. */
 const IST_OFFSET = '+05:30';
+const IST_OFFSET_MS = 330 * 60_000;
 const MONTHS: Record<string, string> = {
   jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
   jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
 };
+
+/**
+ * Round 5 (Tier A MAJOR 1): `new Date(...)` silently rolls an out-of-range day forward
+ * (31-Feb becomes 3-Mar) instead of rejecting it, so a garbled exchange date would parse
+ * to a plausible-looking wrong instant. Reject unless the parsed instant, read back as an
+ * IST wall-clock day/month/year, is EXACTLY the digits the text carried.
+ */
+function roundTripsAsIstDate(d: Date, year: number, month: number, day: number): boolean {
+  const ist = new Date(d.getTime() + IST_OFFSET_MS);
+  return ist.getUTCFullYear() === year && ist.getUTCMonth() + 1 === month && ist.getUTCDate() === day;
+}
 
 /** NSE `lastUpdateTime` "24-Sep-2026 12:13:42" (IST wall clock) -> the UTC instant. */
 export function parseNseIstTimestamp(text: string): Date | null {
@@ -42,8 +54,11 @@ export function parseNseIstTimestamp(text: string): Date | null {
   if (!m) return null;
   const mon = MONTHS[m[2].toLowerCase()];
   if (!mon) return null;
+  const day = Number(m[1]);
+  const year = Number(m[3]);
   const d = new Date(`${m[3]}-${mon}-${m[1].padStart(2, '0')}T${m[4]}:${m[5]}:${m[6]}${IST_OFFSET}`);
-  return Number.isNaN(d.getTime()) ? null : d;
+  if (Number.isNaN(d.getTime())) return null;
+  return roundTripsAsIstDate(d, year, Number(mon), day) ? d : null;
 }
 
 /** BSE `Header.Ason` "24 Sep 26 | 12:13" (IST wall clock, two-digit year) -> the UTC instant. */
@@ -52,8 +67,23 @@ export function parseBseAsOn(text: string): Date | null {
   if (!m) return null;
   const mon = MONTHS[m[2].toLowerCase()];
   if (!mon) return null;
+  const day = Number(m[1]);
+  const year = 2000 + Number(m[3]);
   const d = new Date(`20${m[3]}-${mon}-${m[1].padStart(2, '0')}T${m[4]}:${m[5]}:00${IST_OFFSET}`);
-  return Number.isNaN(d.getTime()) ? null : d;
+  if (Number.isNaN(d.getTime())) return null;
+  return roundTripsAsIstDate(d, year, Number(mon), day) ? d : null;
+}
+
+/**
+ * Round 5 (Tier A MAJOR 1): the as-of time is never validated against the clock, so a
+ * garbled or future exchange timestamp would still be treated as a real read. 5 minutes
+ * covers exchange-side clock skew and the pace/timeout budget of one run.
+ */
+export const MAX_ASOF_FUTURE_SKEW_MS = 5 * 60_000;
+
+/** True when `asOf` is more than 5 minutes ahead of `now` — never a real "as of" read. */
+export function isAsOfTooFarInFuture(asOf: Date, now: Date): boolean {
+  return asOf.getTime() > now.getTime() + MAX_ASOF_FUTURE_SKEW_MS;
 }
 
 /** Parse one NSE getSymbolData body. null = no usable quote in it (empty body, no equityResponse). */
@@ -73,6 +103,18 @@ export function parseNseSymbolData(body: string): { price: number; asOf: Date; a
   const isinCode = row?.metaData?.isinCode;
   const isin = typeof isinCode === 'string' && /^IN[A-Z0-9]{10}$/.test(isinCode) ? isinCode : null;
   return { price, asOf, asOfText, series: String(row?.metaData?.series ?? ''), isin };
+}
+
+/**
+ * Round 5 (Tier A MINOR 3): the captured fixture (`secInfo.isSuspended`, e.g. HEROMOTORS/CSM/
+ * VINOD all "Active") is the only trading-status field NSE's getSymbolData actually carries.
+ * A value present and not "Active" means the row is a suspension notice, not a live price —
+ * BSE's own suspension case (round 3) is treated the same way: no price this run.
+ */
+export function nseSuspensionNotice(row: any): string | null {
+  const status = row?.secInfo?.isSuspended;
+  if (typeof status !== 'string' || status.trim() === '') return null;
+  return /^active$/i.test(status.trim()) ? null : status.trim();
 }
 
 /** The series to try, likeliest first, per segment (F-150: SME trades as SM or ST). */
@@ -134,6 +176,9 @@ export function classifyNseSeriesAnswer(res: { status: number; body: string }):
     return { kind: 'refused', detail: `HTTP 200 JSON with no equityResponse (${res.body.slice(0, 80)})` };
   }
   if (parsed.equityResponse.length === 0) return { kind: 'no-symbol' };
+  const row = parsed.equityResponse[0];
+  const suspended = nseSuspensionNotice(row);
+  if (suspended) return { kind: 'refused', detail: `scrip suspended: isSuspended=${suspended}` };
   const quote = parseNseSymbolData(res.body);
   if (quote) return { kind: 'price', quote };
   return { kind: 'refused', detail: 'HTTP 200 quote row with no usable price or as-of time' };

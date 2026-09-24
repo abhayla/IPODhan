@@ -13,6 +13,8 @@ import {
   parseNseIstTimestamp,
   parseBseAsOn,
   nseSeriesOrder,
+  isAsOfTooFarInFuture,
+  parseNseSymbolData,
 } from '../../../src/scrapers/post-listing-quote';
 import { resetNseSessionForTests } from '../../../src/scrapers/nse-api-client';
 import { parseBseScripPayload, indexBseScrips } from '../../../src/scrapers/bse-scrip-master';
@@ -156,6 +158,102 @@ describe('exchange timestamps are IST wall clock', () => {
   it('BSE Ason converts with +05:30', () => {
     expect(parseBseAsOn('24 Sep 26 | 12:13')?.toISOString()).toBe('2026-09-24T06:43:00.000Z');
     expect(parseBseAsOn('')).toBeNull();
+  });
+});
+
+/**
+ * Round 5 (Tier A MAJOR 1): `new Date(...)` silently rolls 31-Feb forward into 3-Mar instead
+ * of rejecting it. A date string that does not round-trip back to the same day/month/year is
+ * refused, never read as a real as-of time.
+ */
+describe('exchange timestamps that do not round-trip are refused (round 5, Tier A MAJOR 1)', () => {
+  it('NSE: 31-Feb rolls forward in Date() but is refused here, not silently read as 3-Mar', () => {
+    expect(parseNseIstTimestamp('31-Feb-2026 10:00:00')).toBeNull();
+  });
+  it('NSE: a real leap-day date round-trips fine', () => {
+    // 2028 is a leap year; Feb 29 exists.
+    expect(parseNseIstTimestamp('29-Feb-2028 10:00:00')?.toISOString()).toBe('2028-02-29T04:30:00.000Z');
+  });
+  it('NSE: 31-Feb in a non-leap year is still refused', () => {
+    expect(parseNseIstTimestamp('29-Feb-2026 10:00:00')).toBeNull();
+  });
+  it('BSE: 31-Feb is refused, never rolled to 3-Mar', () => {
+    expect(parseBseAsOn('31 Feb 26 | 10:00')).toBeNull();
+  });
+});
+
+/**
+ * Round 5 (Tier A MINOR 6): a zero or negative price is refused by the PARSER itself, not
+ * only by the writer's throw (`writePostListingPrice`) three layers downstream.
+ */
+describe('a zero or negative NSE price is refused by the parser (round 5, Tier A MINOR 6)', () => {
+  const body = (lastPrice: number) => JSON.stringify({
+    equityResponse: [{
+      tradeInfo: { lastPrice },
+      lastUpdateTime: '24-Sep-2026 12:13:42',
+      metaData: { isinCode: 'INE012G01022', series: 'EQ' },
+      secInfo: { isSuspended: 'Active' },
+    }],
+  });
+  it('price 0 parses to null, not a quote', () => {
+    expect(parseNseSymbolData(body(0))).toBeNull();
+  });
+  it('a negative price parses to null, not a quote', () => {
+    expect(parseNseSymbolData(body(-5))).toBeNull();
+  });
+  it('a positive price parses fine', () => {
+    expect(parseNseSymbolData(body(117.31))?.price).toBe(117.31);
+  });
+});
+
+describe('as-of far in the future is refused (round 5, Tier A MAJOR 1)', () => {
+  it('more than 5 minutes ahead of now is too far in the future', () => {
+    const now = new Date('2026-09-24T06:45:00Z');
+    expect(isAsOfTooFarInFuture(new Date('2026-09-24T06:55:00Z'), now)).toBe(true);
+  });
+  it('exactly 5 minutes ahead is NOT too far (boundary)', () => {
+    const now = new Date('2026-09-24T06:45:00Z');
+    expect(isAsOfTooFarInFuture(new Date('2026-09-24T06:50:00Z'), now)).toBe(false);
+  });
+  it('in the past is never too far in the future', () => {
+    const now = new Date('2026-09-24T06:45:00Z');
+    expect(isAsOfTooFarInFuture(new Date('2026-09-24T00:00:00Z'), now)).toBe(false);
+  });
+});
+
+/**
+ * Round 5 (Tier A MINOR 3): the real captured fixture (secInfo.isSuspended) is the only
+ * NSE trading-status field this response carries. A value other than "Active" means no
+ * price this run, the same as BSE's own suspension case (round 3).
+ */
+describe('NSE suspension (round 5, Tier A MINOR 3, real fixture field secInfo.isSuspended)', () => {
+  it('the real HEROMOTORS/CSM/VINOD fixtures all carry isSuspended "Active" and are priced', async () => {
+    const urls = serve(nseQuote);
+    const q = await readNsePrice('HEROMOTORS', 'MAINBOARD');
+    expect(q.kind).toBe('price');
+    expect(urls.length).toBeGreaterThan(0);
+  });
+
+  it('a suspended row (isSuspended not "Active") is refused, never priced off a stale LTP', async () => {
+    const suspendedBody = JSON.stringify({
+      equityResponse: [
+        {
+          tradeInfo: { lastPrice: 0.89 },
+          lastUpdateTime: '22-Jun-2023 15:59:00',
+          metaData: { isinCode: 'INE0ABC01234', series: 'EQ' },
+          secInfo: { isSuspended: 'Suspended' },
+        },
+      ],
+    });
+    const urls = serve((url) => {
+      if (!url.includes('/GetQuoteApi')) return null;
+      return { status: 200, body: suspendedBody };
+    });
+    const q = await readNsePrice('SUSP', 'MAINBOARD');
+    expect(q.kind).toBe('refused');
+    if (q.kind !== 'refused') return;
+    expect(q.detail).toMatch(/scrip suspended: isSuspended=Suspended/);
+    expect(urls.length).toBeGreaterThan(0);
   });
 });
 

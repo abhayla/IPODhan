@@ -16,5 +16,5 @@
  * factory and spread it alongside the file's own partial mock fields.
  */
 export const ipoStatusEnumMock = {
-  enumValues: ['UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED', 'DELISTED'] as const,
+  enumValues: ['UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED'] as const,
 };

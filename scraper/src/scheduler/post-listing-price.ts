@@ -31,7 +31,7 @@ import { and, asc, eq, gt, lte, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
 import { istDayIso } from '@ipodhan/shared/utils/ist-day';
-import type { QuoteOutcome } from '../scrapers/post-listing-quote.js';
+import { isAsOfTooFarInFuture, type QuoteOutcome } from '../scrapers/post-listing-quote.js';
 
 export const POST_LISTING_WINDOW_DAYS = 90;
 export const PRICE_JOB_OPEN_IST_MINUTES = 9 * 60 + 15;
@@ -149,6 +149,35 @@ export interface PriceJobSummary {
 
 type Verdict = 'price' | 'no-symbol' | 'refused' | 'unknown';
 
+/**
+ * Round 5 (Tier A MAJOR 1 + MAJOR 2): a price answer is never written on trust alone.
+ * Refused (no write) when the as-of is more than 5 minutes ahead of now, or when the
+ * exchange's own ISIN disagrees with the stored one. A null stored ISIN is never compared
+ * (F-160: 121 of 129 in-window IPOs have none) but is still logged so the gap is visible.
+ */
+function guardPriceRead(
+  c: PriceCandidate,
+  q: Extract<QuoteOutcome, { kind: 'price' }>,
+  now: Date,
+): { ok: true; isinNote: string | null } | { ok: false; reason: string } {
+  if (isAsOfTooFarInFuture(q.asOf, now)) {
+    return {
+      ok: false,
+      reason: `as-of ${q.asOfText} (${q.asOf.toISOString()}) is more than 5 minutes ahead of now (${now.toISOString()})`,
+    };
+  }
+  if (q.isin) {
+    if (c.isin) {
+      if (c.isin !== q.isin) {
+        return { ok: false, reason: `ISIN mismatch: stored ${c.isin}, ${q.exchange} answered ${q.isin}` };
+      }
+      return { ok: true, isinNote: null };
+    }
+    return { ok: true, isinNote: `stored ISIN is null; ${q.exchange} answered ${q.isin} (not compared, F-160)` };
+  }
+  return { ok: true, isinNote: null };
+}
+
 export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJobSummary> {
   const summary: PriceJobSummary = {
     candidates: deps.candidates.length,
@@ -179,63 +208,94 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
       continue;
     }
 
-    // NSE first (§1 rank 1), the cached working series asked first.
-    let nseVerdict: Verdict = 'unknown';
-    let nseDetail = 'no NSE symbol stored, NSE not asked';
-    let nse: QuoteOutcome | null = null;
-    if (c.symbol) {
-      nse = await deps.readNse(c.symbol, c.segment, c.nseSeries);
-      summary.calls.nse += nse.calls;
-      nseVerdict = nse.kind;
-      nseDetail = nse.kind === 'price' ? `series ${nse.series}` : nse.detail;
-    }
-    let winner: Extract<QuoteOutcome, { kind: 'price' }> | null = nse?.kind === 'price' ? nse : null;
-
-    // BSE only when NSE has no price. No ISIN -> no scrip code -> BSE is UNKNOWN for this run.
-    let bseVerdict: Verdict = 'unknown';
-    let bseDetail = 'no ISIN stored, so no BSE scrip code: BSE unknown';
-    if (!winner && c.isin) {
-      const scrip = await scripFor(c.isin);
-      if (scrip.failed) {
-        bseVerdict = 'refused';
-        bseDetail = `BSE active list failed: ${scrip.failed}`;
-      } else if (!scrip.code) {
-        bseVerdict = 'no-symbol';
-        bseDetail = `ISIN ${c.isin} is not in BSE's active list (not listed on BSE)`;
-      } else {
-        const bse = await deps.readBse(scrip.code);
-        summary.calls.bse += bse.calls;
-        bseVerdict = bse.kind;
-        bseDetail = bse.kind === 'price' ? `scrip ${scrip.code}` : `scrip ${scrip.code}: ${bse.detail}`;
-        if (bse.kind === 'price') winner = bse;
+    // Round 5 (Tier A MINOR 6): one candidate's own bug (a throwing dependency, an
+    // unexpected shape) must never abort the rest of the run — it is refused, logged by
+    // name and cause, and the loop moves on to the next candidate.
+    try {
+      // NSE first (§1 rank 1), the cached working series asked first.
+      let nseVerdict: Verdict = 'unknown';
+      let nseDetail = 'no NSE symbol stored, NSE not asked';
+      let nse: QuoteOutcome | null = null;
+      if (c.symbol) {
+        nse = await deps.readNse(c.symbol, c.segment, c.nseSeries);
+        summary.calls.nse += nse.calls;
+        nseVerdict = nse.kind;
+        nseDetail = nse.kind === 'price' ? `series ${nse.series}` : nse.detail;
       }
-    }
-
-    if (winner) {
-      const outcome = await deps.writePrice(c, winner);
-      summary[outcome].push(name);
-      if (winner.exchange === 'NSE' && winner.series && winner.series !== c.nseSeries) {
-        await deps.writeState(c, { nseSeries: winner.series });
+      let winner: Extract<QuoteOutcome, { kind: 'price' }> | null = null;
+      let isinNote: string | null = null;
+      if (nse?.kind === 'price') {
+        const guard = guardPriceRead(c, nse, deps.now);
+        if (guard.ok) {
+          winner = nse;
+          isinNote = guard.isinNote;
+        } else {
+          nseVerdict = 'refused';
+          nseDetail = guard.reason;
+          deps.log(`post-listing price: ${name} NSE read refused — ${guard.reason}`, { ipoId: c.id, exchange: 'NSE', reason: guard.reason });
+        }
       }
+
+      // BSE only when NSE has no price. No ISIN -> no scrip code -> BSE is UNKNOWN for this run.
+      let bseVerdict: Verdict = 'unknown';
+      let bseDetail = 'no ISIN stored, so no BSE scrip code: BSE unknown';
+      if (!winner && c.isin) {
+        const scrip = await scripFor(c.isin);
+        if (scrip.failed) {
+          bseVerdict = 'refused';
+          bseDetail = `BSE active list failed: ${scrip.failed}`;
+        } else if (!scrip.code) {
+          bseVerdict = 'no-symbol';
+          bseDetail = `ISIN ${c.isin} is not in BSE's active list (not listed on BSE)`;
+        } else {
+          const bse = await deps.readBse(scrip.code);
+          summary.calls.bse += bse.calls;
+          bseVerdict = bse.kind;
+          bseDetail = bse.kind === 'price' ? `scrip ${scrip.code}` : `scrip ${scrip.code}: ${bse.detail}`;
+          if (bse.kind === 'price') {
+            const guard = guardPriceRead(c, bse, deps.now);
+            if (guard.ok) {
+              winner = bse;
+              isinNote = guard.isinNote;
+            } else {
+              bseVerdict = 'refused';
+              bseDetail = guard.reason;
+              deps.log(`post-listing price: ${name} BSE read refused — ${guard.reason}`, { ipoId: c.id, exchange: 'BSE', reason: guard.reason });
+            }
+          }
+        }
+      }
+
+      if (winner) {
+        const outcome = await deps.writePrice(c, winner);
+        summary[outcome].push(name);
+        if (winner.exchange === 'NSE' && winner.series && winner.series !== c.nseSeries) {
+          await deps.writeState(c, { nseSeries: winner.series });
+        }
+        deps.log(
+          `post-listing price: ${name} ${outcome} ${winner.exchange} ${winner.price} as of ${winner.asOfText}${isinNote ? ` (${isinNote})` : ''}`,
+          { ipoId: c.id, exchange: winner.exchange, price: winner.price, asOf: winner.asOf.toISOString(), outcome, series: winner.series ?? null, isinNote },
+        );
+        continue;
+      }
+
+      if (nseVerdict === 'refused' || bseVerdict === 'refused') {
+        summary.refused.push(name);
+        deps.log(`post-listing price: ${name} no price (outage) — NSE ${nseVerdict}: ${nseDetail}; BSE ${bseVerdict}: ${bseDetail}`, {
+          ipoId: c.id, reason: 'refused', nse: nseDetail, bse: bseDetail,
+        });
+        continue;
+      }
+      summary.noPrice.push(name);
       deps.log(
-        `post-listing price: ${name} ${outcome} ${winner.exchange} ${winner.price} as of ${winner.asOfText}`,
-        { ipoId: c.id, exchange: winner.exchange, price: winner.price, asOf: winner.asOf.toISOString(), outcome, series: winner.series ?? null },
+        `post-listing price: ${name} no price this run — NSE ${nseVerdict}: ${nseDetail}; BSE ${bseVerdict}: ${bseDetail}`,
+        { ipoId: c.id, reason: 'no-price', nse: nseVerdict, bse: bseVerdict },
       );
-      continue;
-    }
-
-    if (nseVerdict === 'refused' || bseVerdict === 'refused') {
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
       summary.refused.push(name);
-      deps.log(`post-listing price: ${name} no price (outage) — NSE ${nseVerdict}: ${nseDetail}; BSE ${bseVerdict}: ${bseDetail}`, {
-        ipoId: c.id, reason: 'refused', nse: nseDetail, bse: bseDetail,
-      });
-      continue;
+      deps.log(`post-listing price: ${name} refused — unexpected error, run continues: ${detail}`, { ipoId: c.id, reason: 'unexpected-error', error: detail });
     }
-    summary.noPrice.push(name);
-    deps.log(
-      `post-listing price: ${name} no price this run — NSE ${nseVerdict}: ${nseDetail}; BSE ${bseVerdict}: ${bseDetail}`,
-      { ipoId: c.id, reason: 'no-price', nse: nseVerdict, bse: bseVerdict },
-    );
   }
   summary.calls.total = summary.calls.nse + summary.calls.bse + summary.calls.bseList;
   return summary;

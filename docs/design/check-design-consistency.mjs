@@ -616,28 +616,65 @@ try {
   // Round 3 review (Tier A): the spec said 109.6 MB / 3.22 GB a month and per-job rows 22.9 / 25.1
   // MB while the probe measured 109.02 MB / 3.19 GB and 22.57 / 24.79 MB — a drift nothing caught
   // because D17's OD-45 signature only checked that SOME number was present, never that it was
-  // the probe's number. This is a real numeric compare, not a regex-exists check.
+  // the probe's number, and never which ROW it belonged to.
+  // Round 5 (Tier A MINOR 4): a substring check ("does 22.57 MB appear anywhere in §7.4") passes
+  // even when a row's Calls/day is wrong, or when a number has drifted onto the WRONG row — two
+  // rows can trade figures and the check still reports clean. This compares PER JOB ROW, in table
+  // order: Calls/day AND Bytes/day (as its rendered "NN.NN MB") AND GB/month, each against the
+  // same-index entry in probes/job-cost.out.json, plus the Total row. A row is added or removed
+  // in probes/job-cost.mjs's own order, so index alignment is the same contract D17 already
+  // depends on for its signature list.
   const JOB_COST_OUT = path.join(HERE, 'probes', 'job-cost.out.json');
   const jobCost = JSON.parse(fs.readFileSync(JOB_COST_OUT, 'utf8'));
   const section74 = md.slice(md.indexOf('### 7.4'), md.indexOf('### 7.5'));
   const d17bBad = [];
-  const fmt2 = (n) => (Math.round(n * 100) / 100).toString();
-  for (const job of jobCost.jobs) {
+  const fmt2 = (n) => (Math.round(n * 100) / 100).toFixed(2);
+  const fmtInt = (n) => n.toLocaleString('en-US');
+
+  const costTableStart = section74.indexOf('| Job | Calls/day | Bytes/day | GB/month |');
+  const costTableRows = [];
+  if (costTableStart < 0) {
+    d17bBad.push("§7.4's cost table header ('| Job | Calls/day | Bytes/day | GB/month |') was not found");
+  } else {
+    const lines = section74.slice(costTableStart).split('\n');
+    for (const line of lines.slice(2)) {
+      if (!line.trim().startsWith('|')) break;
+      const cells = line.split('|').map((c) => c.trim().replace(/\*\*/g, '')).filter((c) => c.length > 0);
+      if (cells.length === 4) costTableRows.push(cells);
+    }
+  }
+
+  jobCost.jobs.forEach((job, i) => {
+    const row = costTableRows[i];
+    if (!row) { d17bBad.push(`row ${i + 1} (${job.job}) missing from §7.4's table (only ${costTableRows.length} data row(s) found)`); return; }
+    const [name, callsCell, bytesCell, gbCell] = row;
+    const calls = fmtInt(job.calls_per_day);
     const mb = fmt2(job.mb_per_day);
     const gb = fmt2(job.gb_per_month);
-    if (!section74.includes(`${mb} MB`)) d17bBad.push(`${job.job}: ${mb} MB/day not found in §7.4's table`);
-    if (!section74.includes(gb)) d17bBad.push(`${job.job}: ${gb} GB/month not found in §7.4's table`);
-  }
+    if (callsCell !== calls) d17bBad.push(`row ${i + 1} (${name}): Calls/day is "${callsCell}", probe says ${calls}`);
+    if (bytesCell !== `${mb} MB`) d17bBad.push(`row ${i + 1} (${name}): Bytes/day is "${bytesCell}", probe says ${mb} MB`);
+    if (gbCell !== gb) d17bBad.push(`row ${i + 1} (${name}): GB/month is "${gbCell}", probe says ${gb}`);
+  });
+
+  const totalRow = costTableRows[jobCost.jobs.length];
+  const totalCalls = fmtInt(jobCost.totals.calls_per_day);
   const totalMb = fmt2(jobCost.totals.mb_per_day);
   const totalGb = fmt2(jobCost.totals.gb_per_month);
-  if (!section74.includes(`**${totalMb} MB**`)) d17bBad.push(`total ${totalMb} MB not found (bolded) in §7.4's table`);
-  if (!section74.includes(`**${totalGb}**`)) d17bBad.push(`total ${totalGb} GB/month not found (bolded) in §7.4's table`);
+  if (!totalRow) {
+    d17bBad.push('the Total row is missing from §7.4\'s table');
+  } else {
+    if (totalRow[0] !== 'Total') d17bBad.push(`row ${jobCost.jobs.length + 1} name is "${totalRow[0]}", expected "Total"`);
+    if (totalRow[1] !== totalCalls) d17bBad.push(`Total row: Calls/day is "${totalRow[1]}", probe says ${totalCalls}`);
+    if (totalRow[2] !== `${totalMb} MB`) d17bBad.push(`Total row: Bytes/day is "${totalRow[2]}", probe says ${totalMb} MB`);
+    if (totalRow[3] !== totalGb) d17bBad.push(`Total row: GB/month is "${totalRow[3]}", probe says ${totalGb}`);
+  }
+
   const pct = (Math.round(jobCost.against_plan.percent_of_plan * 100) / 100).toFixed(2);
   if (!section74.includes(`**${totalGb} GB a month is ${pct}% of the plan's bandwidth.**`)) {
     d17bBad.push(`conclusion sentence does not read "**${totalGb} GB a month is ${pct}% of the plan's bandwidth.**"`);
   }
-  if (d17bBad.length) fail('D17b', d17bBad.length + ' §7.4 figure(s) disagree with probes/job-cost.out.json: ' + d17bBad.join(' | '));
-  else ok('D17b', "§7.4's cost table and conclusion sentence match probes/job-cost.out.json exactly.");
+  if (d17bBad.length) fail('D17b', d17bBad.length + ' §7.4 figure(s) disagree with probes/job-cost.out.json (checked per row: Calls/day, Bytes/day, GB/month): ' + d17bBad.join(' | '));
+  else ok('D17b', "§7.4's cost table (every row's Calls/day, Bytes/day and GB/month, plus the Total row) and its conclusion sentence match probes/job-cost.out.json exactly.");
 
   // --- D20: the document is UTF-8 and stays UTF-8 ---
   // WHY. Found 2026-09-09: 69 em dashes across 37 lines of section 5.2 read as "â€”" because a

@@ -2176,8 +2176,8 @@ install_scraper_cron() {
   # minutes. Staging reads at :12/:27/:42/:57 (to 15:12) plus 15:30, clear of
   # its live (:20/:50), data (:15/:45), closed (:25/:55) and opening (09:40).
   # 25 reads a trading day on each slot. The 15:30 read is the session's last
-  # trade and the once-a-day re-check of DELISTED rows (both lines carry the
-  # same marker, so the filter below replaces or removes them together).
+  # trade (both lines carry the same marker, so the filter below replaces or
+  # removes them together).
   local price_cron="${SCRAPER_PRICE_CRON:-}"
   local price_close_cron="${SCRAPER_PRICE_CLOSE_CRON:-}"
   if [ -z "$price_cron" ]; then

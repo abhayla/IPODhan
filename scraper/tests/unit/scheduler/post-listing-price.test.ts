@@ -268,3 +268,81 @@ describe('writePostListingState (the cached NSE series)', () => {
     expect(written).toEqual([]);
   });
 });
+
+describe('round 5 (Tier A MAJOR 1 + MAJOR 2): a price answer is validated before it is written', () => {
+  const futurePrice = (exchange: 'NSE' | 'BSE', isin?: string | null): QuoteOutcome => ({
+    kind: 'price', exchange, price: 100, calls: 1,
+    // NOW is 2026-09-24T06:45:00Z; 10 minutes ahead, past the 5-minute skew budget.
+    asOf: new Date('2026-09-24T06:55:00Z'), asOfText: '24-Sep-2026 12:25:00',
+    ...(isin !== undefined ? { isin } : {}),
+  });
+
+  it('an as-of more than 5 minutes ahead of now is refused: no write, no state write, logged by name and cause', async () => {
+    const c = cand({ companyName: 'Future', symbol: 'FUT', isin: 'INE000000010' });
+    const h = harness([c], { FUT: futurePrice('NSE') }, {});
+    const logs: string[] = [];
+    const s = await runPostListingPriceJob({ ...h.deps, log: (line) => logs.push(line) });
+    expect(h.prices).toEqual([]);
+    expect(h.states).toEqual([]);
+    expect(s.refused).toEqual(['Future']);
+    expect(logs.join(' | ')).toMatch(/Future NSE read refused — as-of .* more than 5 minutes ahead of now/);
+  });
+
+  it('an as-of exactly 5 minutes ahead of now is accepted (boundary, not refused)', async () => {
+    const c = cand({ companyName: 'Boundary', symbol: 'BND' });
+    const boundary: QuoteOutcome = {
+      kind: 'price', exchange: 'NSE', price: 50, calls: 1, series: 'EQ',
+      asOf: new Date('2026-09-24T06:50:00Z'), asOfText: '24-Sep-2026 12:20:00',
+    };
+    const h = harness([c], { BND: boundary }, {});
+    const s = await runPostListingPriceJob(h.deps);
+    expect(h.prices).toEqual([{ id: 'id-Boundary', exchange: 'NSE', price: 50 }]);
+    expect(s.updated).toEqual(['Boundary']);
+  });
+
+  it('the exchange ISIN disagreeing with the stored ISIN is refused: no write, logged by symbol and both ISINs', async () => {
+    const c = cand({ companyName: 'Mismatch', symbol: 'MIS', isin: 'INE000000011' });
+    const h = harness([c], { MIS: price('NSE', 100, 1, 'EQ') }, {});
+    (h.deps.readNse as any) = async () => ({ ...price('NSE', 100, 1, 'EQ'), isin: 'INE000000099' });
+    const logs: string[] = [];
+    const s = await runPostListingPriceJob({ ...h.deps, log: (line) => logs.push(line) });
+    expect(h.prices).toEqual([]);
+    expect(s.refused).toEqual(['Mismatch']);
+    expect(logs.join(' | ')).toMatch(/Mismatch NSE read refused — ISIN mismatch: stored INE000000011, NSE answered INE000000099/);
+  });
+
+  it('a matching exchange ISIN is accepted with no note', async () => {
+    const c = cand({ companyName: 'Match', symbol: 'MTC', isin: 'INE012G01022' });
+    const h = harness([c], { MTC: { ...price('NSE', 100, 1, 'EQ'), isin: 'INE012G01022' } }, {});
+    const logs: string[] = [];
+    const s = await runPostListingPriceJob({ ...h.deps, log: (line) => logs.push(line) });
+    expect(s.updated).toEqual(['Match']);
+    expect(logs.join(' | ')).not.toMatch(/not compared/);
+  });
+
+  it('a null stored ISIN is never compared (F-160) but the gap is logged, and the price is still written', async () => {
+    const c = cand({ companyName: 'NoIsin', symbol: 'NOI', isin: null });
+    const h = harness([c], { NOI: { ...price('NSE', 100, 1, 'EQ'), isin: 'INE012G01022' } }, {});
+    const logs: string[] = [];
+    const s = await runPostListingPriceJob({ ...h.deps, log: (line) => logs.push(line) });
+    expect(h.prices).toEqual([{ id: 'id-NoIsin', exchange: 'NSE', price: 100 }]);
+    expect(s.updated).toEqual(['NoIsin']);
+    expect(logs.join(' | ')).toMatch(/stored ISIN is null; NSE answered INE012G01022 \(not compared, F-160\)/);
+  });
+
+  it('one candidate throwing an unexpected error is refused and logged, but never stops the rest of the run', async () => {
+    const good = cand({ companyName: 'Good', symbol: 'GOOD' });
+    const bad = cand({ companyName: 'Bad', symbol: 'BAD' });
+    const h = harness([bad, good], { GOOD: price('NSE', 42, 1, 'EQ') } as any, {});
+    (h.deps.readNse as any) = async (s: string) => {
+      if (s === 'BAD') throw new Error('boom: unexpected shape');
+      return price('NSE', 42, 1, 'EQ');
+    };
+    const logs: string[] = [];
+    const s = await runPostListingPriceJob({ ...h.deps, log: (line) => logs.push(line) });
+    expect(s.refused).toEqual(['Bad']);
+    expect(s.updated).toEqual(['Good']);
+    expect(h.prices).toEqual([{ id: 'id-Good', exchange: 'NSE', price: 42 }]);
+    expect(logs.join(' | ')).toMatch(/Bad refused — unexpected error, run continues: boom: unexpected shape/);
+  });
+});
