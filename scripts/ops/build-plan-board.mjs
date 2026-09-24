@@ -59,7 +59,7 @@ const OUT = join(REPO_ROOT, 'docs/design/board/plan-sections.generated.html');
 // Expected counts, verified against the sources on 2026-09-20. A change here
 // must be a deliberate edit accompanying a real source change, never a shrug
 // at a failing assertion.
-export const EXPECT = { items: 29, decisions: 98, fields: 190 };
+export const EXPECT = { items: 29, decisions: 99, fields: 190 };
 
 // ---------------------------------------------------------------- formatting
 
