@@ -1981,6 +1981,8 @@ So the honest promise is: *changing the order is configuration; changing what we
 
 ### 2.4 What the loop does, per field
 
+Measured 2026-09-24 (F-161): on staging the walk has supplied 236 of 17,491 plan rows (1.3%); 984 rows ask the offer document and get not-available-yet although that IPO RHP or DRHP is extracted.
+
 ```
 for each IPO in phase 1, at each of the four slots:
   for each field in the plan, in dependency order:
