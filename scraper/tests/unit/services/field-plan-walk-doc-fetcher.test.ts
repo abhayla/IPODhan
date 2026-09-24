@@ -307,3 +307,82 @@ describe('DOC fetcher — ipo_details column reads (review round 1, m1)', () => 
     });
   });
 });
+
+// Item 6 / F-161 (staging 2026-09-24): 984 plan rows across 23 IPOs answered
+// rank1:DOC:NOT_AVAILABLE_YET although the IPO's offer document was
+// extracted. 980 of them are fields whose manifest documentType is
+// PRICE_BAND_AD, and the PRICE_BAND_AD family held only PRICE_BAND_AD — so an
+// IPO with a COMPLETED RHP / PROSPECTUS / DRHP and no price-band ad (every SME
+// IPO: spec §1 "SME IPOs have zero PRICE_BAND_AD documents") could never be
+// answered from its own offer document. Spec §1: DOC = "the IPO's own offer
+// document, best available type"; §1 order for price-dependent fields
+// PRICE_BAND_AD > RHP > PROSPECTUS > DRHP, for final post-issue facts
+// PROSPECTUS > PRICE_BAND_AD > RHP > DRHP. The rows below are REAL staging rows
+// (fixture + .meta.json), not shapes typed from memory.
+import axiomFixture from '../../fixtures/field-plan-walk/axiom-rhp-doc-fetcher-staging.json';
+import { docTypeFamily } from '../../../src/services/field-plan-walk-doc-fetcher.js';
+
+function axiomDeps(): DocFetcherDeps {
+  const bySource = (table: string, field: string) =>
+    axiomFixture.fieldSources.find((r) => r.tableName === table && r.fieldName === field) ?? null;
+  return makeDeps({
+    documentRepository: { findByIPO: vi.fn().mockResolvedValue(axiomFixture.documents) } as any,
+    fieldSources: {
+      findByField: vi.fn(async (_ipo: string, table: string, field: string) => bySource(table, field)),
+    } as any,
+    ipoRepository: { findById: vi.fn().mockResolvedValue(axiomFixture.ipos) } as any,
+    ipoDetailsReader: { findByIpoId: vi.fn().mockResolvedValue(axiomFixture.ipoDetails) } as any,
+    manifestDocumentType: () => 'PRICE_BAND_AD',
+  });
+}
+
+describe('DOC fetcher — best available offer document (item 6, F-161)', () => {
+  it('a PRICE_BAND_AD field is SUPPLIED from the COMPLETED RHP that printed it (axiom face_value, real staging rows)', async () => {
+    const fetcher = buildDocFetcher(axiomDeps());
+    const answer = await fetcher(IPO_ID, 'ipo_details', '', 'face_value');
+    expect(answer).toEqual({
+      outcome: 'SUPPLIED',
+      value: '5.00',
+      documentId: '7328a5e2-8397-4a74-8627-3963fa2c7238',
+      documentType: 'RHP',
+      sha256: 'c3a425f80ee877050ee4044095e25baa0690bd8f3b6341505248b8f403375987',
+    });
+  });
+
+  it('a PRICE_BAND_AD field the RHP did not print is NOT "not available yet": the document was read (axiom issue_size, RHP prints "[.] Lakhs")', async () => {
+    const fetcher = buildDocFetcher(axiomDeps());
+    const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
+    expect(answer).toEqual({
+      outcome: 'CHECK_FAILED',
+      reason: 'no document provenance for issueSize on PRICE_BAND_AD (extractor gap or field absent) — not retired',
+      transient: true,
+      gap: 'NO_DOCUMENT_PROVENANCE',
+    });
+  });
+
+  it('every manifest documentType family contains every full offer document the extractor reads (class guard)', () => {
+    // RHP, PROSPECTUS and DRHP are the offer document itself at three stages;
+    // each can answer any documentType. A price-band ad prints only the
+    // price-dependent terms, so it joins only the PRICE_BAND_AD and
+    // PROSPECTUS (final-terms) families.
+    for (const t of ['PRICE_BAND_AD', 'RHP', 'PROSPECTUS', 'DRHP']) {
+      for (const offerDoc of ['RHP', 'PROSPECTUS', 'DRHP']) {
+        expect(docTypeFamily(t), `${t} family lacks ${offerDoc}`).toContain(offerDoc);
+      }
+    }
+  });
+
+  it('family order follows spec §1: price-dependent PBA > RHP > PROSPECTUS > DRHP; final facts PROSPECTUS > PBA > RHP > DRHP', () => {
+    expect(docTypeFamily('PRICE_BAND_AD')).toEqual(['PRICE_BAND_AD', 'RHP', 'PROSPECTUS', 'DRHP']);
+    expect(docTypeFamily('PROSPECTUS')).toEqual(['PROSPECTUS', 'PRICE_BAND_AD', 'RHP', 'DRHP']);
+  });
+
+  it('still NOT_AVAILABLE_YET when the IPO has no COMPLETED offer document at all (only non-offer documents)', async () => {
+    const deps = axiomDeps();
+    (deps.documentRepository as any).findByIPO = vi.fn().mockResolvedValue(
+      axiomFixture.documents.filter((d) => d.type !== 'RHP'),
+    );
+    const answer = await buildDocFetcher(deps)(IPO_ID, 'ipo_details', '', 'face_value');
+    expect(answer).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
+  });
+});

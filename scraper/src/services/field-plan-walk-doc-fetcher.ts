@@ -11,8 +11,9 @@
  *
  * THE THREE ANSWERS, IN THE ORDER THEY ARE DECIDED:
  *
- *  1. No COMPLETED document of the manifest's `documentType` (or its
- *     DRHP/RHP fallback family) exists yet for this IPO -> NOT_AVAILABLE_YET.
+ *  1. No COMPLETED document of the manifest's `documentType` family (the
+ *     preferred type plus every offer document that can stand in for it,
+ *     `DOC_TYPE_FAMILY`) exists yet for this IPO -> NOT_AVAILABLE_YET.
  *     The filing has not been filed/extracted, so the walk keeps re-asking.
  *
  *  2. A COMPLETED document of that family exists, but `field_sources` has no
@@ -43,12 +44,29 @@ import type { DocumentRepository } from '@ipodhan/shared';
 // camelCase (listingDate, bseIpoNo), not the snake_case column name").
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 
-/** Which document-type family answers a manifest field's DOC rank. */
+/**
+ * Which document-type family answers a manifest field's DOC rank, in
+ * preference order. Spec §1: `DOC` = "the IPO's own offer document, best
+ * available type" — the manifest's `documentType` names the PREFERRED type,
+ * never the only one. Order per §1: price-dependent fields
+ * PRICE_BAND_AD > RHP > PROSPECTUS > DRHP; final post-issue facts
+ * PROSPECTUS > PRICE_BAND_AD > RHP > DRHP. (CORRIGENDUM sits in both §1 lists
+ * but is not a type the extractor reads, so it cannot complete here.)
+ *
+ * Item 6 / F-161: PRICE_BAND_AD used to be `['PRICE_BAND_AD']` alone. SME
+ * IPOs have no price-band ad at all (§1, measured: zero on production), so
+ * 980 staging plan rows on 23 IPOs with a COMPLETED RHP/PROSPECTUS/DRHP
+ * answered NOT_AVAILABLE_YET forever — e.g. axiom-gas-engineering-ltd
+ * ipo_details.face_value, whose RHP provenance row already existed. The
+ * unit test "every manifest documentType family contains every full offer
+ * document" guards the class. A price-band ad joins only the families whose
+ * fields it can print (price-dependent and final terms).
+ */
 export const DOC_TYPE_FAMILY: Record<string, ReadonlyArray<string>> = {
-  PRICE_BAND_AD: ['PRICE_BAND_AD'],
+  PRICE_BAND_AD: ['PRICE_BAND_AD', 'RHP', 'PROSPECTUS', 'DRHP'],
   RHP: ['RHP', 'DRHP', 'PROSPECTUS'],
-  DRHP: ['DRHP'],
-  PROSPECTUS: ['PROSPECTUS', 'RHP'],
+  DRHP: ['DRHP', 'RHP', 'PROSPECTUS'],
+  PROSPECTUS: ['PROSPECTUS', 'PRICE_BAND_AD', 'RHP', 'DRHP'],
 };
 
 /**

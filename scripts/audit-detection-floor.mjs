@@ -2210,6 +2210,47 @@ async function checkS_pullPlanStuckReclaim() {
     `0 stuck rows expected; found ${rows.length}` + (rows.length ? ` (sample: ${rows.slice(0, MAX_OFFENDERS).map(r => `${r.tableName}.${r.fieldName}`).join('; ')})` : ''));
 }
 
+// ---- item 6 / F-161: PULL-DOC-NAY-WITH-OFFER-DOC -- a DOC-ranked plan row whose rank-1 answer was
+// NOT_AVAILABLE_YET ("no document yet") although the IPO already held a COMPLETED offer document
+// (RHP / DRHP / PROSPECTUS / PRICE_BAND_AD) extracted BEFORE that attempt. The DOC fetcher's
+// documentType family held only PRICE_BAND_AD for price-band fields, so every SME IPO (no price-band
+// ad at all) answered "not yet" forever: 984 staging rows on 23 IPOs, hidden for weeks because the
+// state looks like an honest wait. Keyed on the recorded cause, not the state, so a row that a
+// lower rank later SUPPLIED provisionally still counts (rank 1 is meant to reclaim it).
+async function checkPullDocNayWithOfferDoc() {
+  const title = 'no DOC-ranked plan row says "no document yet" while its IPO holds an extracted offer document';
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, p.table_name AS "tableName", p.field_name AS "fieldName", p.state::text AS state
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.rank1_source = 'DOC'
+          AND left(p.cause, 27) = 'rank1:DOC:NOT_AVAILABLE_YET'
+          AND EXISTS (SELECT 1 FROM documents d
+                       WHERE d.ipo_id = p.ipo_id
+                         AND d.extraction_status = 'COMPLETED'
+                         AND d.is_active IS NOT FALSE
+                         AND d.type IN ('RHP', 'DRHP', 'PROSPECTUS', 'PRICE_BAND_AD')
+                         AND d.extracted_at IS NOT NULL
+                         AND p.last_attempt_at > d.extracted_at)`
+    );
+  } catch (e) {
+    record('pull_doc_nay_with_offer_doc', title, 'UNVERIFIABLE', `ipo_field_plan/documents not readable: ${e.message}`);
+    return;
+  }
+  const byIpo = new Map();
+  for (const r of rows) byIpo.set(r.slug, (byIpo.get(r.slug) ?? 0) + 1);
+  const ipos = [...byIpo.entries()].sort((a, b) => b[1] - a[1]);
+  for (const [slug, n] of ipos.slice(0, MAX_OFFENDERS)) {
+    notify('pull_doc_nay_with_offer_doc', 'P2', slug, 'DOC rank answered "no document yet" after the offer document was extracted',
+      `${n} plan row(s), e.g. ${rows.filter((r) => r.slug === slug).slice(0, 3).map((r) => `${r.tableName}.${r.fieldName}`).join(', ')}`);
+  }
+  record('pull_doc_nay_with_offer_doc', title, rows.length === 0 ? 'PASS' : 'FAIL',
+    `0 expected; found ${rows.length} row(s) on ${ipos.length} IPO(s)` +
+      (ipos.length ? ` (${ipos.slice(0, MAX_OFFENDERS).map(([s, n]) => `${s}=${n}`).join('; ')})` : ''));
+}
+
 // ---- (S) item 3 slice S4: PULL-OVERRIDES -- every active field_source_overrides row still holds
 async function checkS_pullOverrides() {
   let manifest;
@@ -2929,6 +2970,7 @@ async function main() {
   await checkS_pullWritePolicy();
   await checkS_pullPlanRank();
   await checkS_pullPlanStuckReclaim();
+  await checkPullDocNayWithOfferDoc();
   await checkPullPlanConfigGapAtCap();
   await checkPullPlanGapStalled();
   await checkS_pullOverrides();
