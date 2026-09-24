@@ -5,7 +5,7 @@
  */
 
 import { eq, and, isNull, isNotNull, lt, desc, sql } from 'drizzle-orm';
-import { SOURCE_CHANGED_OWN_VALUE, isBehaviourConflict } from '../utils/conflict-reasons';
+import { SOURCE_CHANGED_OWN_VALUE, isAdminOnlyConflict, isBehaviourConflict } from '../utils/conflict-reasons';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '../db/schema';
@@ -92,7 +92,7 @@ function isRefusedSameSource(input: LogConflictInput): boolean {
 
 export interface SameSourceSkipResult {
   skipped: true;
-  reason: 'same_source';
+  reason: 'same_source' | 'behaviour_conflict_open';
 }
 
 export interface ConflictStats {
@@ -186,7 +186,13 @@ export class DataConflictsRepository extends BaseRepository {
     const upsertRowKey = input.rowKey ?? '';
 
     const existing = await this.db
-      .select({ id: dataConflicts.id, source1: dataConflicts.source1, source2: dataConflicts.source2 })
+      .select({
+        id: dataConflicts.id,
+        source1: dataConflicts.source1,
+        source2: dataConflicts.source2,
+        resolutionReason: dataConflicts.resolutionReason,
+        documentId: dataConflicts.documentId,
+      })
       .from(dataConflicts)
       .where(
         and(
@@ -210,6 +216,18 @@ export class DataConflictsRepository extends BaseRepository {
     // dispute is the more important record and must keep feeding the disagreement monitor.
     if (input.source1 === input.source2 && existing[0].source1 !== existing[0].source2) {
       return { skipped: true, reason: 'same_source' };
+    }
+
+    // #968 final review (MAJOR): an admin-only record (OD-75 shape, e.g. OVERRIDE_SOURCE_LOST_TO_PRIORITY)
+    // never refreshes an open BEHAVIOUR conflict on the same field -- that would turn a live dispute or a
+    // HELD_DISPUTED_HIGH_VALUE_LIVE hold into an INFO admin record nothing can release. The admin-only
+    // record is skipped (logged); the open dispute already shows the field is contested.
+    if (isAdminOnlyConflict({ resolutionReason: input.resolutionReason ?? null }) && isBehaviourConflict(existing[0])) {
+      logger.warn(
+        { ipoId: input.ipoId, fieldName: input.fieldName, reason: input.resolutionReason, openConflictId: existing[0].id },
+        'data_conflicts: admin-only record skipped, a behaviour conflict is open on this field'
+      );
+      return { skipped: true, reason: 'behaviour_conflict_open' };
     }
 
     const result = await this.executeQuery(

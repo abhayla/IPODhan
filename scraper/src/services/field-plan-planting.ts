@@ -36,6 +36,11 @@ export interface FieldPlanPlantingDeps {
   overrides?: OverridesReader;
   fieldPlanRepository: {
     upsertGeneratedRows(rows: GeneratedPlanRowInput[]): Promise<{ inserted: number; updated?: number }>;
+    /** #968 (OD-95): reopen / restore SETTLED rows when an override changes the effective order.
+     *  Optional so a caller or mock without it plants exactly as before. */
+    reconcileSettledToOverrides?(
+      rows: GeneratedPlanRowInput[]
+    ): Promise<{ reopened: number; retargeted: number; restoreDue: number }>;
   };
   /** Test seam only: production always plants from the loaded manifest (the generator's default). */
   manifest?: FieldManifest;
@@ -46,6 +51,10 @@ export interface FieldPlanPlantingResult {
   rowsGenerated: number;
   inserted: number;
   updated: number;
+  /** #968 (OD-95): settled rows an override reopened / moved to a new override / made due for the walk to restore (override ended). */
+  settledReopened: number;
+  settledRetargeted: number;
+  settledRestoreDue: number;
 }
 
 export async function plantFieldPlanForIpo(
@@ -55,21 +64,41 @@ export async function plantFieldPlanForIpo(
   const rows = deps.manifest
     ? await generateFieldPlanAsync(ipo, { overrides: deps.overrides }, deps.manifest)
     : await generateFieldPlanAsync(ipo, { overrides: deps.overrides });
-  if (rows.length === 0) return { rowsGenerated: 0, inserted: 0, updated: 0 };
-  const { inserted, updated } = await deps.fieldPlanRepository.upsertGeneratedRows(
-    rows.map((r) => ({
-      ipoId: r.ipoId,
-      tableName: r.tableName,
-      rowKey: '',
-      fieldName: r.fieldName,
-      rank1Source: r.rank1Source,
-      rank2Source: r.rank2Source,
-      rank3Source: r.rank3Source,
-      manifestVersion: r.manifestVersion,
-      policyOrigin: r.policyOrigin,
-    }))
-  );
+  if (rows.length === 0) {
+    return {
+      rowsGenerated: 0,
+      inserted: 0,
+      updated: 0,
+      settledReopened: 0,
+      settledRetargeted: 0,
+      settledRestoreDue: 0,
+    };
+  }
+  const planned: GeneratedPlanRowInput[] = rows.map((r) => ({
+    ipoId: r.ipoId,
+    tableName: r.tableName,
+    rowKey: '',
+    fieldName: r.fieldName,
+    rank1Source: r.rank1Source,
+    rank2Source: r.rank2Source,
+    rank3Source: r.rank3Source,
+    manifestVersion: r.manifestVersion,
+    policyOrigin: r.policyOrigin,
+  }));
+  const { inserted, updated } = await deps.fieldPlanRepository.upsertGeneratedRows(planned);
+  // #968 (OD-95): AFTER the upsert, which never touches a SUPPLIED or reopened row, the settled
+  // rows are reconciled against the same generated order. A plain re-plan changes nothing here.
+  const settled = deps.fieldPlanRepository.reconcileSettledToOverrides
+    ? await deps.fieldPlanRepository.reconcileSettledToOverrides(planned)
+    : { reopened: 0, retargeted: 0, restoreDue: 0 };
   // `?? 0`: a caller/mock still returning the pre-S7 shape `{ inserted }`
   // must not turn the operator summary into NaN (signal-ownership R1).
-  return { rowsGenerated: rows.length, inserted, updated: updated ?? 0 };
+  return {
+    rowsGenerated: rows.length,
+    inserted,
+    updated: updated ?? 0,
+    settledReopened: settled.reopened,
+    settledRetargeted: settled.retargeted,
+    settledRestoreDue: settled.restoreDue,
+  };
 }

@@ -1858,6 +1858,15 @@ export const ipoFieldPlan = pgTable(
     // SUPPLIED -> PENDING. NULL on every row no supersession has touched.
     supersededBy: uuid('superseded_by').references(() => documents.id, { onDelete: 'set null' }),
 
+    // ---- #968 (spec §2.3.5, OD-73, OD-95): the override that reopened this SETTLED row ----
+    // 'override:<id>' when an active override put a source above the one that settled the
+    // field and moved the row SUPPLIED -> PENDING. While set, the walk asks only the sources
+    // ranked above chosen_source (the narrowing), and the plan upsert leaves the row's ranks
+    // and policy_origin alone. Cleared when the row is SUPPLIED again: re-supplied by a higher
+    // source, or restored to its previous value because no higher source answered or the
+    // override ended. NULL on every row no override has reopened.
+    reopenedUnderPolicy: varchar('reopened_under_policy', { length: 64 }),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

@@ -55,7 +55,8 @@ import * as schema from '@ipodhan/shared/db/schema';
 // INTERFACE (`IListingPerformanceRepository`), not the class.
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
 import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator.js';
-import type { FieldFetcher, FieldPlanWalkOrchestrator } from './field-plan-walk.js';
+import type { FieldFetcher, FieldPlanWalkDeps, FieldPlanWalkOrchestrator } from './field-plan-walk.js';
+import { findSupersessorForReopenedRow } from './plan-supersession.js';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import { createHash } from 'node:crypto';
 import {
@@ -365,5 +366,21 @@ export function buildFieldPlanGapKeySource(params: {
         overrideByField,
       });
     },
+  };
+}
+
+/**
+ * #968 fix round 1 (OD-91, OD-95): the two deps the walk needs to END an override
+ * reopen correctly -- the OD-91 supersession check for the one reopened row (the
+ * shared rule via plan-supersession.ts, never a copy), and the admin conflicts
+ * list writer (the SAME DataConflictsRepository.upsertConflict every writer uses).
+ */
+export function buildFieldPlanWalkReopenDeps(
+  redis: ReturnType<typeof getRedisClient> = getRedisClient()
+): Pick<FieldPlanWalkDeps, 'supersessionForReopened' | 'logAdminConflict'> {
+  const conflicts = new DataConflictsRepository(db as never, redis as never);
+  return {
+    supersessionForReopened: (ipoId, planRowId) => findSupersessorForReopenedRow(db as never, ipoId, planRowId),
+    logAdminConflict: (input) => conflicts.upsertConflict(input as never),
   };
 }

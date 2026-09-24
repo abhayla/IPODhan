@@ -213,6 +213,7 @@ vi.mock('../../../src/services/field-plan-walk-deps.js', () => ({
   buildFieldPlanWalkFetchers: (...args: unknown[]) => buildFieldPlanWalkFetchersMock(...args),
   buildFieldPlanWalkOrchestrator: (...args: unknown[]) => buildFieldPlanWalkOrchestratorMock(...args),
   buildFieldPlanWalkWitnessVerdictWriter: (...args: unknown[]) => buildFieldPlanWalkWitnessVerdictWriterMock(...args),
+  buildFieldPlanWalkReopenDeps: () => ({}),
   buildFieldPlanGapKeySource: (...args: unknown[]) => buildFieldPlanGapKeySourceMock(...args),
   fieldPlanWalkHasFetchers: (fetchers?: Record<string, unknown>) =>
     Object.keys(fetchers ?? buildFieldPlanWalkFetchersMock()).length > 0,

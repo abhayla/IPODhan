@@ -9,6 +9,14 @@
 export const SOURCE_CHANGED_OWN_VALUE = 'SOURCE_CHANGED_OWN_VALUE';
 
 /**
+ * #968 fix round 1 (OD-95, OD-61/OD-75 shape): an override ranked a source above the one that
+ * settled a field, that source answered, and the field-priority matrix kept the settled value.
+ * The page keeps the settled value, the row is restored (tried once under that override), and the
+ * admin conflicts list shows the refused value under this reason. Admin-only, never an alert.
+ */
+export const OVERRIDE_SOURCE_LOST_TO_PRIORITY = 'OVERRIDE_SOURCE_LOST_TO_PRIORITY';
+
+/**
  * OD-75 round 2 (PR #914 review): the reasons whose rows exist ONLY for the admin conflicts list.
  * Such a row is a record that one source changed its own value; it is not a dispute. Every reader
  * of `data_conflicts` that decides behaviour or reports a count (the status-transition hold, the
@@ -17,7 +25,10 @@ export const SOURCE_CHANGED_OWN_VALUE = 'SOURCE_CHANGED_OWN_VALUE';
  * The SQL twin for the `.mjs` scripts is `scripts/lib/conflict-reasons.mjs`, kept equal to this
  * list by `scripts/tests/conflict-reasons-parity.test.mjs`.
  */
-export const ADMIN_ONLY_CONFLICT_REASONS: readonly string[] = [SOURCE_CHANGED_OWN_VALUE];
+export const ADMIN_ONLY_CONFLICT_REASONS: readonly string[] = [
+  SOURCE_CHANGED_OWN_VALUE,
+  OVERRIDE_SOURCE_LOST_TO_PRIORITY,
+];
 
 /** True for a row that exists only for the admin list and must not affect behaviour or counts. */
 export function isAdminOnlyConflict(row: { resolutionReason?: string | null }): boolean {

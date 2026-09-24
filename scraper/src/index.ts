@@ -82,6 +82,7 @@ import {
   buildFieldPlanWalkFetchers,
   buildFieldPlanGapKeySource,
   buildFieldPlanWalkWitnessVerdictWriter,
+  buildFieldPlanWalkReopenDeps,
 } from './services/field-plan-walk-deps.js';
 import { createFieldSourceOverridesReader } from './config/field-source-overrides-reader.js';
 import { IPORepository, IpoFieldPlanRepository } from '@ipodhan/shared';
@@ -2431,6 +2432,7 @@ async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceRe
           ipoRepository: new IPORepository(db as never, redis as never) as never,
           overrides,
           trackWitnessVerdict: buildFieldPlanWalkWitnessVerdictWriter(),
+          ...buildFieldPlanWalkReopenDeps(),
         },
         { deadlineMs: startedAt + CLOSED_IPO_WALK_BUDGET_MS, now: () => Date.now() }
       );

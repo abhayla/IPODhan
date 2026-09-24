@@ -36,8 +36,8 @@ test('the .mjs admin-only reason list equals the TS list (parity)', () => {
   const list = /ADMIN_ONLY_CONFLICT_REASONS: readonly string\[\] = \[([^\]]*)\]/.exec(ts);
   assert.ok(list, 'ADMIN_ONLY_CONFLICT_REASONS not found in the TS source');
   const names = list[1].split(',').map((s) => s.trim()).filter(Boolean);
-  assert.deepEqual(names, ['SOURCE_CHANGED_OWN_VALUE']);
-  assert.deepEqual([...ADMIN_ONLY_CONFLICT_REASONS], ['SOURCE_CHANGED_OWN_VALUE']);
+  assert.deepEqual(names, ['SOURCE_CHANGED_OWN_VALUE', 'OVERRIDE_SOURCE_LOST_TO_PRIORITY']);
+  assert.deepEqual([...ADMIN_ONLY_CONFLICT_REASONS], ['SOURCE_CHANGED_OWN_VALUE', 'OVERRIDE_SOURCE_LOST_TO_PRIORITY']);
 });
 
 test('the predicate excludes every admin-only reason and keeps NULL reasons', () => {
