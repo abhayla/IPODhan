@@ -60,6 +60,27 @@ import {
   readFieldSource,
   upsertFieldSource,
 } from './lib/repair-tool.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { checkIssueSizeSourceCapability } from '../../scripts/lib/detection-floor-checks.mjs';
+
+/**
+ * Item 14 Round 2: reads `field-manifest.json` for `ipos.issue_size`'s
+ * capability map — the SAME source and predicate the nightly
+ * `c_issue_size_noncapable_source` audit check uses
+ * (scripts/audit-detection-floor.mjs) — so this tool and that check can
+ * never disagree about which sources count as capable. Never hard-coded.
+ */
+function loadIssueSizeManifestCapability(): Record<string, { capable?: boolean; reason?: string }> | null {
+  try {
+    const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+    const manifest = JSON.parse(readFileSync(repoRoot + 'scraper/config/field-manifest.json', 'utf8'));
+    return manifest?.fields?.['ipos.issue_size']?.capability ?? null;
+  } catch (err) {
+    logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'field-manifest.json not readable — currentSourceCapable will be treated as unknown for every row');
+    return null;
+  }
+}
 
 // T-490: the prod guard and the provenance upsert now live in
 // scripts/lib/repair-tool.ts — one reviewed implementation shared by every
@@ -142,6 +163,33 @@ interface Candidate {
 interface DiscoveryEntry { slug: string; id: string; }
 
 /**
+ * Pure candidate-selection predicate (item 14, #728 class widening,
+ * 2026-09-24). Extracted for unit testing (no DB) — see
+ * `scraper/tests/unit/scripts/backfill-issue-size-chittorgarh-detail.test.ts`.
+ *
+ * Below-floor mode is UNCHANGED: a known segment (and therefore a computable
+ * floor) is required to decide "below the floor" at all. In
+ * `--recheck-above-floor` mode the comparison is stored-vs-sourced, which
+ * does not need a floor — a NULL-segment row is ALWAYS considered there
+ * (banganga-paper-industries-ltd, light-of-life-trust,
+ * nirbhay-colours-india-ltd on staging: all NULL segment, one also NULL
+ * price_range_max). A known-segment row must still already clear its floor
+ * in recheck mode, same gate as before this change.
+ */
+export function isIssueSizeCandidate(
+  r: { segment: 'MAINBOARD' | 'SME' | null; issueSize: string | null },
+  recheckAboveFloor: boolean
+): boolean {
+  const floor = r.segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : r.segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
+  if (floor === null && !recheckAboveFloor) return false;
+  if (r.issueSize === null) return recheckAboveFloor ? false : true; // NULL — below-floor's "no usable value" class; nothing to recheck above the floor
+  const val = Number(r.issueSize);
+  if (!Number.isFinite(val) || val <= 0) return recheckAboveFloor ? false : true; // 0 — same defect class, below-floor only
+  if (!recheckAboveFloor) return val < floor;
+  return floor === null ? true : val >= floor;
+}
+
+/**
  * Pure decision: given the row's current stored value and a source-extracted
  * candidate, decide whether to write. Extracted for unit testing (no DB/network).
  * The extractor already applies the floor + shares-x-cap cross-check gate on
@@ -155,6 +203,19 @@ export function decideIssueSizeRepair(input: {
   sourced: number | null; // already floor + cross-check gated by the extractor, or null
   mode?: 'below-floor' | 'above-floor'; // default 'below-floor' (original behaviour, unchanged)
   overwriteAboveFloor?: boolean; // --overwrite-above-floor: required to WRITE a divergent above-floor row
+  /**
+   * Item 14 Round 2 (Tier B review finding, MAJOR): whether the row's CURRENT
+   * `field_sources` provenance for issueSize is a source `field-manifest.json`
+   * ranks capable for `ipos.issue_size` (via `checkIssueSizeSourceCapability`,
+   * scripts/lib/detection-floor-checks.mjs — never hard-coded here). `false` =
+   * confirmed non-capable (e.g. BSE); `true` = confirmed capable; `undefined`/
+   * `null` = unknown (no manifest data, current source is ADMIN, or no
+   * provenance row at all) — treated exactly like the pre-Round-2 behaviour
+   * (an above-floor row within the divergence band stays untouched). Only
+   * consulted in 'above-floor' mode: a below-floor row's value is already
+   * being repaired regardless of its current source.
+   */
+  currentSourceCapable?: boolean | null;
 }): { write: boolean; reason: string; status: 'OK' | 'FLAG' | 'WRITE' | 'SKIP' } {
   const mode = input.mode ?? 'below-floor';
   const floor =
@@ -194,7 +255,16 @@ export function decideIssueSizeRepair(input: {
   // validateOverwriteAboveFloorRequiresSlug(), which refuses a whole-table
   // overwrite.
   if (input.sourced === null) {
-    return { write: false, status: 'SKIP', reason: 'no plausible source figure (absent, ambiguous, or cross-check failed)' };
+    // Item 14 Round 2: a row whose CURRENT provenance the manifest already
+    // marks non-capable, but with no Chittorgarh-sourced figure to repair it
+    // with, is not a plain "nothing to do" SKIP — it is a known-bad
+    // provenance the tool could NOT resolve this run (the 7 old CLOSED
+    // null-segment rows on staging). Named distinctly so it is never
+    // confused with the ordinary "no source found" case for a row whose
+    // provenance was already fine.
+    return input.currentSourceCapable === false
+      ? { write: false, status: 'SKIP', reason: 'no capable source — unresolved (current provenance is manifest non-capable, but no Chittorgarh-sourced figure was found to repair it with)' }
+      : { write: false, status: 'SKIP', reason: 'no plausible source figure (absent, ambiguous, or cross-check failed)' };
   }
   const implausible = collectImplausibleIssueSizeFields(
     { issueSize: input.sourced, segment: input.segment },
@@ -210,6 +280,26 @@ export function decideIssueSizeRepair(input: {
   }
   const divergence = Math.abs(input.sourced / input.current - 1);
   if (divergence <= ABOVE_FLOOR_DIVERGENCE_THRESHOLD) {
+    // Item 14 Round 2 (Tier B review finding, MAJOR): a value within the
+    // divergence band is NOT "OK" when the CURRENT provenance is a source
+    // field-manifest.json ranks non-capable for this field (spec OD-73: a
+    // non-capable source is not in the ranks at all, so it can never be the
+    // row's settled provenance regardless of how close its value looks).
+    // Repair it the same way the >40% WRITE branch below does — same
+    // --apply + --overwrite-above-floor gate, same upsertFieldSource path —
+    // never silently left "OK" with bad provenance. `currentSourceCapable`
+    // undefined/null (no manifest data available) preserves the pre-Round-2
+    // OK behaviour, so a manifest read failure never turns into a forced write.
+    if (input.currentSourceCapable === false) {
+      const identical = input.current === input.sourced;
+      const reason = identical
+        ? `source value is identical to the stored value (${input.sourced}), but current provenance is manifest non-capable — provenance-only repair to the capable source`
+        : `within ${(ABOVE_FLOOR_DIVERGENCE_THRESHOLD * 100).toFixed(0)}% of stored value (source=${input.sourced}, stored=${input.current}, divergence=${(divergence * 100).toFixed(1)}%), but current provenance is manifest non-capable — repaired to the capable source's value + provenance`;
+      if (!input.overwriteAboveFloor) {
+        return { write: false, status: 'FLAG', reason: `${reason} — pass --overwrite-above-floor to write` };
+      }
+      return { write: true, status: 'WRITE', reason: `${reason} (--overwrite-above-floor given)` };
+    }
     return {
       write: false,
       status: 'OK',
@@ -494,18 +584,29 @@ async function main() {
   );
   console.log(`discovery map: ${discovery.size} IPOs (+${report82Added} from report 82 fallback)`);
 
-  // 2. Selection: IPO offering type, price_range_max present, a LIVE status
-  //    (WITHDRAWN/POSTPONED excluded — see the STATUSES comment above),
-  //    and issue_size that is either NULL, 0, or a positive value below the
-  //    segment floor (round 4: NULL/0 is the SAME "no usable value" defect
-  //    class as a below-floor share count — all three get the same source
-  //    repair). Import the SAME floor constants the write-time guard uses —
-  //    never re-typed.
+  // 2. Selection: IPO offering type, a LIVE status (WITHDRAWN/POSTPONED
+  //    excluded — see the STATUSES comment above), and issue_size that is
+  //    either NULL, 0, or a positive value below the segment floor (round 4:
+  //    NULL/0 is the SAME "no usable value" defect class as a below-floor
+  //    share count — all three get the same source repair). Import the SAME
+  //    floor constants the write-time guard uses — never re-typed.
+  //
+  //    price_range_max present is required in BELOW-FLOOR mode only (the
+  //    write-time guard needs a cap to compute the floor's cross-check).
+  //    Item 14 (#728 class widening, 2026-09-24): --recheck-above-floor
+  //    compares the STORED value against the SOURCED value directly and does
+  //    not need a floor or a cap to do that — a NULL price_range_max row
+  //    (banganga-paper-industries-ltd, light-of-life-trust,
+  //    nirbhay-colours-india-ltd on staging) is CONSIDERED in recheck mode;
+  //    the shares-x-cap cross-check inside extractIssueSizeFromDetailHtml
+  //    already no-ops on a falsy priceRangeMax (chittorgarh-detail-fields.ts
+  //    `if (sharesOnPage !== null && opts.priceRangeMax)`), so passing null
+  //    through is safe, not a silent skip of a check that would otherwise run.
   const whereClauses = [
     eq(schema.ipos.offeringType, 'IPO'),
-    isNotNull(schema.ipos.priceRangeMax),
     inArray(schema.ipos.status, STATUSES as unknown as string[]),
   ];
+  if (!RECHECK_ABOVE_FLOOR) whereClauses.push(isNotNull(schema.ipos.priceRangeMax));
   if (SLUGS) whereClauses.push(inArray(schema.ipos.slug, SLUGS));
 
   const rows = await db
@@ -523,17 +624,10 @@ async function main() {
 
   const candidates: Candidate[] = rows
     .map((r) => ({ ...r, issueSize: r.issueSize == null ? null : String(r.issueSize) }))
-    .filter((r) => {
-      const floor = r.segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : r.segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
-      if (floor === null) return false;
-      if (r.issueSize === null) return RECHECK_ABOVE_FLOOR ? false : true; // NULL — below-floor's "no usable value" class; nothing to recheck above the floor
-      const val = Number(r.issueSize);
-      if (!Number.isFinite(val) || val <= 0) return RECHECK_ABOVE_FLOOR ? false : true; // 0 — same defect class, below-floor only
-      return RECHECK_ABOVE_FLOOR ? val >= floor : val < floor;
-    }) as Candidate[];
+    .filter((r) => isIssueSizeCandidate(r, RECHECK_ABOVE_FLOOR)) as Candidate[];
   console.log(
     RECHECK_ABOVE_FLOOR
-      ? `considered (offering_type=IPO, has price cap, live status, issue_size >= segment floor — recheck mode): ${candidates.length}`
+      ? `considered (offering_type=IPO, live status, issue_size >= segment floor OR segment unknown — recheck mode): ${candidates.length}`
       : `considered (offering_type=IPO, has price cap, live status, issue_size NULL/0/below segment floor): ${candidates.length}`
   );
 
@@ -548,10 +642,29 @@ async function main() {
   const skipReasons: Record<string, number> = {};
   let fetched = 0;
 
+  // Item 14 Round 2: capability map read once, current provenance read per
+  // candidate — only needed in --recheck-above-floor mode (the below-floor
+  // path repairs regardless of current source, per its own gate above).
+  const issueSizeManifestCapability = RECHECK_ABOVE_FLOOR ? loadIssueSizeManifestCapability() : null;
+
   for (const c of matched) {
     if (fetched >= LIMIT) break;
     fetched++;
     const current = c.issueSize === null ? null : Number(c.issueSize);
+    let currentSourceCapable: boolean | null = null;
+    if (RECHECK_ABOVE_FLOOR) {
+      const currentSource = await readFieldSource(db, { ipoId: c.id, tableName: 'ipos', fieldName: 'issueSize' });
+      const capabilityMessage = checkIssueSizeSourceCapability(
+        { source: currentSource, issueSize: c.issueSize },
+        issueSizeManifestCapability
+      );
+      // checkIssueSizeSourceCapability returns null for "capable" AND for
+      // "cannot say" (no provenance row, ADMIN, or unreadable manifest) —
+      // decideIssueSizeRepair's undefined/null branch already treats both
+      // the same as legacy behaviour, so collapsing to boolean-or-null here
+      // (rather than re-deriving the distinction) is deliberate, not a loss.
+      currentSourceCapable = currentSource === null || issueSizeManifestCapability === null ? null : capabilityMessage === null;
+    }
     const html = await fetchDetailHtml(c.disc.slug, c.disc.id);
     await new Promise((r) => setTimeout(r, 700 + Math.random() * 600)); // rate limit
     if (!html) {
@@ -580,9 +693,13 @@ async function main() {
       sourced: value,
       mode: RECHECK_ABOVE_FLOOR ? 'above-floor' : 'below-floor',
       overwriteAboveFloor: OVERWRITE_ABOVE_FLOOR,
+      currentSourceCapable,
     });
+    const capNote = c.priceRangeMax == null
+      ? ' (no price cap on this row — shares-x-cap cross-check skipped)'
+      : '';
     console.log(
-      `  ${c.slug}: old=${current ?? "NULL"} source=${value ?? 'none'} cap=${c.priceRangeMax} -> ${decision.status} (${decision.reason})`
+      `  ${c.slug}: old=${current ?? "NULL"} source=${value ?? 'none'} cap=${c.priceRangeMax ?? 'NULL'}${capNote} segment=${c.segment ?? 'NULL'} -> ${decision.status} (${decision.reason})`
     );
 
     if (decision.status === 'OK') {

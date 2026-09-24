@@ -9,6 +9,7 @@ import {
   upsertIssueSizeProvenance,
   stampExactMatchProvenance,
   BACKFILL_UPDATED_BY,
+  isIssueSizeCandidate,
 } from '../../../scripts/backfill-issue-size-chittorgarh-detail.js';
 
 /** Builds a mocked db/tx exposing the exact chain the provenance helpers call. */
@@ -192,6 +193,117 @@ describe('decideIssueSizeRepair — above-floor recheck mode (round-N: Windlas/A
     const d = decideIssueSizeRepair({ current: 17_647_058, segment: 'MAINBOARD', sourced: 7_570_600_000 });
     expect(d.status).toBe('WRITE');
     expect(d.write).toBe(true);
+  });
+});
+
+describe('decideIssueSizeRepair — non-capable current provenance (item 14 Round 2, #728 class residue: the OK branch never wrote)', () => {
+  it('WRITE: within 40% band BUT current provenance is manifest non-capable, --overwrite-above-floor given', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: 470_000_000, // 17.5% divergence — would be OK if provenance were capable
+      mode: 'above-floor',
+      overwriteAboveFloor: true,
+      currentSourceCapable: false,
+    });
+    expect(d.status).toBe('WRITE');
+    expect(d.write).toBe(true);
+    expect(d.reason).toMatch(/non-capable/);
+  });
+
+  it('FLAG: within 40% band, non-capable provenance, but --overwrite-above-floor NOT given — never silently written', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: 470_000_000,
+      mode: 'above-floor',
+      currentSourceCapable: false,
+    });
+    expect(d.status).toBe('FLAG');
+    expect(d.write).toBe(false);
+    expect(d.reason).toMatch(/non-capable/);
+  });
+
+  it('WRITE: identical source and stored value, non-capable provenance — provenance-only repair, still uses the WRITE path', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: 400_000_000,
+      mode: 'above-floor',
+      overwriteAboveFloor: true,
+      currentSourceCapable: false,
+    });
+    expect(d.status).toBe('WRITE');
+    expect(d.write).toBe(true);
+    expect(d.reason).toMatch(/identical/);
+  });
+
+  it('OK: within 40% band AND current provenance is already capable — untouched, exactly as today', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: 470_000_000,
+      mode: 'above-floor',
+      overwriteAboveFloor: true,
+      currentSourceCapable: true,
+    });
+    expect(d.status).toBe('OK');
+    expect(d.write).toBe(false);
+  });
+
+  it('OK: within 40% band, capability unknown (no manifest data) — unchanged legacy behaviour', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: 470_000_000,
+      mode: 'above-floor',
+    });
+    expect(d.status).toBe('OK');
+    expect(d.write).toBe(false);
+  });
+
+  it('SKIP (no capable-source match): non-capable provenance but no sourced figure at all — never written', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: null,
+      mode: 'above-floor',
+      currentSourceCapable: false,
+    });
+    expect(d.status).toBe('SKIP');
+    expect(d.write).toBe(false);
+    expect(d.reason).toMatch(/no capable source — unresolved/);
+  });
+});
+
+describe('isIssueSizeCandidate (item 14, #728 class widening: NULL-segment rows in recheck mode)', () => {
+  it('below-floor mode: EXCLUDES a NULL-segment row (unchanged — no floor to compute)', () => {
+    expect(isIssueSizeCandidate({ segment: null, issueSize: '14797000' }, false)).toBe(false);
+  });
+
+  it('below-floor mode: still INCLUDES a known-segment below-floor row (no regression)', () => {
+    expect(isIssueSizeCandidate({ segment: 'MAINBOARD', issueSize: '17683000' }, false)).toBe(true);
+  });
+
+  it('below-floor mode: still EXCLUDES a known-segment above-floor row (no regression)', () => {
+    expect(isIssueSizeCandidate({ segment: 'MAINBOARD', issueSize: String(175_00_00_000) }, false)).toBe(false);
+  });
+
+  it('recheck mode: INCLUDES a NULL-segment row with a usable positive issue_size (banganga/nirbhay/piyush class)', () => {
+    expect(isIssueSizeCandidate({ segment: null, issueSize: '14797000' }, true)).toBe(true);
+  });
+
+  it('recheck mode: EXCLUDES a NULL-segment row with NULL issue_size (nothing to compare)', () => {
+    expect(isIssueSizeCandidate({ segment: null, issueSize: null }, true)).toBe(false);
+  });
+
+  it('recheck mode: EXCLUDES a NULL-segment row with a zero issue_size (same defect class, no usable current value)', () => {
+    expect(isIssueSizeCandidate({ segment: null, issueSize: '0' }, true)).toBe(false);
+  });
+
+  it('recheck mode: still requires a known-segment row to clear its floor (no regression)', () => {
+    expect(isIssueSizeCandidate({ segment: 'MAINBOARD', issueSize: '17683000' }, true)).toBe(false); // below floor
+    expect(isIssueSizeCandidate({ segment: 'MAINBOARD', issueSize: String(175_00_00_000) }, true)).toBe(true); // above floor
   });
 });
 

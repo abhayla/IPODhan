@@ -161,6 +161,42 @@ export function checkIssueSizeSharesConsistency(row) {
   return null;
 }
 
+// ---- (c, source capability): current provenance must be a source the -------
+// manifest actually ranks as CAPABLE for ipos.issue_size. Item 14 measured
+// (2026-09-24, staging): 8 LISTED + 7 CLOSED IPO rows currently source their
+// issueSize from BSE, which the manifest (`scraper/config/field-manifest.json`,
+// #728) marks `capable: false` — BSE measured 41-76% below the printed total
+// offer on 6/6 live mainboard IPOs. This predicate is what would have caught
+// that BEFORE it aged into 15 rows: any write whose source the manifest does
+// not list as capable for this field is a defect regardless of segment,
+// status, or whether a price cap exists to cross-check against.
+//
+// `field_sources.source` (the Postgres `scraper_source` enum) has no `DOC`
+// member — every filing document type collapses to the writer value `DRHP`
+// (scraper/src/config/field-source-codes.ts, mirrored here in plain JS since
+// this audit runs with no TS toolchain, same convention as HIGH_VALUE_FIELDS
+// above). `ADMIN` is a manual override that always wins and is never listed
+// in the manifest's capability map for any field — it is never flagged here.
+export function manifestCodeForWriterSource(writerSource) {
+  return writerSource === 'DRHP' ? 'DOC' : writerSource;
+}
+
+/**
+ * @param {{ source: string|null, companyName?: string, slug?: string, issueSize?: number|string|null }} row
+ * @param {Record<string, { capable?: boolean, reason?: string }>|null|undefined} capability
+ *   `field-manifest.json`'s `fields['ipos.issue_size'].capability` map.
+ */
+export function checkIssueSizeSourceCapability(row, capability) {
+  if (!row.source) return null; // no provenance row at all — a different check's job (d_segment_provenance's sibling)
+  if (row.source === 'ADMIN') return null; // manual override always wins, never ranked
+  if (!capability) return null; // manifest unreadable — caller reports UNVERIFIABLE, not a false PASS
+  const manifestCode = manifestCodeForWriterSource(row.source);
+  const cap = capability[manifestCode];
+  if (cap && cap.capable === true) return null;
+  const value = row.issueSize === null || row.issueSize === undefined ? 'NULL' : row.issueSize;
+  return `issue_size=${value} is currently sourced from ${row.source} (manifest code ${manifestCode}), which field-manifest.json does${cap ? '' : ' (no entry at all)'} NOT rank as capable for ipos.issue_size`;
+}
+
 /**
  * Item 14 slice 4: `checkIssueSizeSharesConsistency` returns null BOTH for a row
  * it examined and found clean AND for a row it could not examine at all. That

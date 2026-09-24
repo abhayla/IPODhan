@@ -49,6 +49,15 @@
       "unverifiableWhen": "never — always runs against the ipos table"
     },
     {
+      "id": "c_issue_size_noncapable_source",
+      "findingClass": "ipos.issue_size current provenance (field_sources, field_name issueSize) is a source field-manifest.json does NOT rank as capable for this field, on any status/segment including NULL segment or no price cap (item 14, #728 class)",
+      "round7Findings": [],
+      "failThreshold": "any offering_type=IPO row whose current issueSize provenance source is not capability:true in field-manifest.json's fields['ipos.issue_size'].capability map (ADMIN exempt as a manual override; rows with no provenance row at all are a different check's job)",
+      "severity": "P1",
+      "unverifiableWhen": "scraper/config/field-manifest.json is missing or has no fields['ipos.issue_size'].capability entry",
+      "note": "Item 14 (2026-09-24, staging measurement): 8 LISTED + 7 CLOSED IPO rows currently source issueSize from BSE, which the manifest marks capable:false (BSE measured 41-76% below the printed total offer on 6/6 live mainboard IPOs, review round 5 item C). Reads the capable-source set from field-manifest.json rather than hard-coding BSE, so the check tracks the manifest, not one incident."
+    },
+    {
       "id": "check_roster",
       "designId": "CHECK-ROSTER",
       "findingClass": "pull-model verification check CHECK-ROSTER: every id above appears in tonight’s report",

@@ -15,6 +15,8 @@ import {
   checkNoUnresolvedConflictOnLiveIpo,
   checkIssueSizeSegmentFloor,
   checkIssueSizeSharesConsistency,
+  checkIssueSizeSourceCapability,
+  manifestCodeForWriterSource,
   checkLotBandSebiWindow,
   checkCorporateActionShape,
   checkSegmentHasProvenance,
@@ -113,6 +115,57 @@ test('(c) T-slice-3c PASSES a genuine SME issue_size above the SME floor', () =>
 test('(c) FAILS on Annu-shaped shares x price inconsistency (issue_size == sharesOffered)', () => {
   const row = { issueSize: 17683000, sharesOffered: 17683000, priceRangeMax: 99 };
   assert.ok(checkIssueSizeSharesConsistency(row) !== null);
+});
+
+// ---- (c, source capability) issueSize provenance vs manifest capability ----
+
+const ISSUE_SIZE_CAPABILITY = {
+  DOC: { capable: true },
+  CHITTORGARH: { capable: true },
+  BSE: { capable: false, reason: 'measured 41-76% below the printed total offer on 6/6 live mainboard IPOs' },
+  NSE: { capable: false },
+  MONEYCONTROL: { capable: false },
+};
+
+test('(c, capability) manifestCodeForWriterSource collapses DRHP to DOC and is identity otherwise', () => {
+  assert.equal(manifestCodeForWriterSource('DRHP'), 'DOC');
+  assert.equal(manifestCodeForWriterSource('BSE'), 'BSE');
+  assert.equal(manifestCodeForWriterSource('CHITTORGARH'), 'CHITTORGARH');
+});
+
+test('(c, capability) FAILS (#728 class) when current issueSize provenance is BSE, non-capable', () => {
+  const row = { source: 'BSE', companyName: 'Banganga Paper Industries Ltd', issueSize: 14797000 };
+  assert.ok(checkIssueSizeSourceCapability(row, ISSUE_SIZE_CAPABILITY) !== null);
+});
+
+test('(c, capability) FAILS on a NULL-segment CLOSED row sourced from BSE (segment/status must not exempt it)', () => {
+  const row = { source: 'BSE', segment: null, status: 'CLOSED', companyName: 'Induss Food Products and Equipments Ltd', issueSize: 7007320 };
+  assert.ok(checkIssueSizeSourceCapability(row, ISSUE_SIZE_CAPABILITY) !== null);
+});
+
+test('(c, capability) PASSES when current issueSize provenance is CHITTORGARH, capable', () => {
+  const row = { source: 'CHITTORGARH', issueSize: 1500000000 };
+  assert.equal(checkIssueSizeSourceCapability(row, ISSUE_SIZE_CAPABILITY), null);
+});
+
+test('(c, capability) PASSES when current issueSize provenance is DRHP (manifest DOC), capable', () => {
+  const row = { source: 'DRHP', issueSize: 1500000000 };
+  assert.equal(checkIssueSizeSourceCapability(row, ISSUE_SIZE_CAPABILITY), null);
+});
+
+test('(c, capability) PASSES ADMIN manual override regardless of manifest capability', () => {
+  const row = { source: 'ADMIN', issueSize: 123 };
+  assert.equal(checkIssueSizeSourceCapability(row, ISSUE_SIZE_CAPABILITY), null);
+});
+
+test('(c, capability) PASSES (no provenance row is a different check\'s job) when source is absent', () => {
+  const row = { source: null, issueSize: null };
+  assert.equal(checkIssueSizeSourceCapability(row, ISSUE_SIZE_CAPABILITY), null);
+});
+
+test('(c, capability) FAILS on a source with no capability entry at all (e.g. INVESTORGAIN_GMP never intended for this field)', () => {
+  const row = { source: 'INVESTORGAIN_GMP', issueSize: 100 };
+  assert.ok(checkIssueSizeSourceCapability(row, ISSUE_SIZE_CAPABILITY) !== null);
 });
 
 test('(c) PASSES when issue_size agrees with sharesOffered x priceRangeMax within tolerance', () => {
