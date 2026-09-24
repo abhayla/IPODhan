@@ -2884,6 +2884,8 @@ optimism:
 > rupee column are fixed (F-95/F-77, PR #871). Registered as
 > `docs/reviews/failure-classes/spec-states-a-capacity-the-schema-does-not-have.json`.
 
+Measured 2026-09-24 (F-156): the unit tags do not yet follow this. `field-manifest.json` tags these five rupee-stored columns `crore`, and the admin issue-size label and validation also assume crore; item 11 makes the tags follow the unit stored today.
+
 **The named test (build item 11) feeds three real scales through every amount column, every
 conversion, every API route and every page formatter**, and asserts no overflow, no rounding at the
 last rupee, and a correct display string at each:
