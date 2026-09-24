@@ -1,0 +1,10 @@
+{
+  "class_id": "a source's zone-less local clock time is parsed with new Date() in a UTC process",
+  "feature": "any scraper parser that turns a source-supplied date-time string without an offset (an exchange's 'as on' time, a publish time) into a Date, in a process whose TZ is UTC",
+  "symptom": "the IST wall-clock value is read as UTC and becomes 5h30m later than the real instant. Two symptoms follow: a guard that rejects future timestamps silently drops the value whenever it arrives during the day (the shifted time is ahead of now), and a value that does get stored carries a time 5h30m late, so a day-end 17:00 IST figure reads as 22:30 IST. The generic test: grep parsers for new Date(<source string>) where the string has no Z or offset, and count rows per source whose stored time is later than when they were written, or which cluster at one exact hour.",
+  "first_seen": "2026-09-24, BSE subscription Maxdt (F-166, issue #999): pm2 logs show the W-38 future-skip line 465 times on prod and 11 on staging (e.g. Unitec Fibres, source 13:36:42 IST skipped at 13:37 IST); ipodhan_staging holds BSE_ONLY subscription rows at exactly 17:00:00 on 09-21 (3), 09-22 (4) and 09-23 (6). Scraper processes run TZ=UTC (pm2 jlist).",
+  "fix_prs": "none yet; issue #999 (parse Maxdt as Asia/Kolkata, repair tool for stored +5h30m rows, dedupe same-timestamp rows).",
+  "detection_check": "none yet. Proposed: a floor check that flags subscription rows per source whose timestamp is later than the row's write time or clusters on one exact hour, and a count of W-38 future-skips per day from the scraper log line.",
+  "status": "unguarded",
+  "spec_ref": []
+}

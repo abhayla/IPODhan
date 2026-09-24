@@ -1653,6 +1653,15 @@
       "phase1": true,
       "title": "Live subscription figures miss whole OD-19 slots for bidding SME IPOs, silently: on 2026-09-24, 9 of 19 bidding IPOs had no figure dated inside the 14:00 IST slot, and nothing told the admin",
       "detail": "Measured 2026-09-24 ~19:3x IST, read-only on ipodhan_staging (laptop, sanctioned tunnel). Slot = one of the 17 half-hour live slots 10:00-18:30 IST (section 2.1, OD-19, OD-28); covered = a subscriptions row whose source-observation timestamp (W-38) falls inside the slot. For the 14:00-14:30 IST slot of 2026-09-24, of 19 IPOs with status OPEN/CLOSED whose open_date..close_date spans the day, 10 were covered (every MAINBOARD with a figure, plus coreintegra-consulting-services-ltd, green-asia-impex-ltd, pooja-logistics-ltd) and 9 were not: anand-seamless-ltd, himalaya-nutravedics-india-ltd, liqvd-digital-india-ltd, peshwa-wheat-ltd, roopa-screen-ltd, s-k-offset-ltd, unitec-fibres-ltd (SME) and advenzymes, sis (status OPEN rows whose dates span the day). Across the whole day to 18:00 IST, anand-seamless-ltd had 0 of 17 slots covered, himalaya-nutravedics-india-ltd 2, s-k-offset-ltd 5, while the MAINBOARD IPOs had 17 of 17. OD-72 requires an admin alert for such a miss; before item 21 none existed. FIXED by item 21 (OD-93): scraper/src/services/live-slot-miss-monitor.ts, run on every live wake, sends one admin alert per IPO per IST day at its first missed slot plus one end-of-day summary (fix round 1 of #997: one alert per slot would have sent 17 a weekday). The CAUSE of the misses (source not listing SME IPOs, regression guard, stale source time) is not measured here and is open work for the live-figures job."
+    },
+    {
+      "id": "F-166",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "live-subscription",
+      "phase1": true,
+      "title": "BSE subscription time is an IST clock string read as UTC: intraday BSE-only figures are skipped as future (prod 465, staging 11) and the 17:00 day-end figure is stored as 22:30 IST",
+      "detail": "Measured 2026-09-24 ~20:1x IST, read-only. mapBSESubscription (scraper/src/scrapers/bse-api-scraper.ts:462) parses BSE Maxdt with new Date(maxdt); Maxdt has no zone and is IST; both scraper processes run TZ=UTC (pm2 jlist). resolveSubscriptionSnapshotTimestamp (data-persister.ts:1673, W-38) then skips any snapshot more than 5 minutes in the future: pm2 logs count the skip line 465 times on prod and 11 on staging; example 2026-09-23 08:07:10Z Unitec Fibres Limited sourceTimestamp 2026-09-23T13:36:42.000Z (really 13:36:42 IST). ipodhan_staging subscriptions, last 7 days: rows at exactly 17:00:00 = 3 (09-21), 4 (09-22), 6 (09-23), all scope BSE_ONLY (liqvd-digital-india-ltd, unitec-fibres-ltd, s-k-offset-ltd, himalaya-nutravedics-india-ltd), some duplicated at one timestamp. Consequence: BSE-only IPOs lose intraday live figures, which is at least part of the live-slot misses F-165 measured (PR #997). Issue #999. Related: F-165, OD-19, OD-72, ist-timezone rule."
     }
   ],
   "false_assertions": [
