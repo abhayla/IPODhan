@@ -15,7 +15,7 @@ import { eq } from 'drizzle-orm';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { getIPOBySlugKey, getIPOByIdKey } from '@/lib/cache/cache-keys';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
-import { isAdminOnlyConflict } from '@ipodhan/shared/utils/conflict-reasons';
+import { isBehaviourConflict } from '@ipodhan/shared/utils/conflict-reasons';
 import { revalidateForSlugs } from './page-revalidation-service';
 import { istDateIso } from '@/lib/utils/ist-date';
 
@@ -67,12 +67,13 @@ export function getTransitionDrivingField(from: IPOStatus, to: IPOStatus): strin
  */
 export function isTransitionHeld(
   drivingField: string | undefined,
-  unresolvedConflicts: { fieldName: string; resolutionReason?: string | null }[]
+  unresolvedConflicts: { fieldName: string; resolutionReason?: string | null; documentId?: string | null }[]
 ): boolean {
   if (!drivingField) return false;
   // OD-75 review round 2 (PR #914): an admin-only row (a source moving its OWN value) is a record,
   // not a dispute — holding on it would freeze OPEN->CLOSED for as long as the row stays open.
-  return unresolvedConflicts.some((c) => c.fieldName === drivingField && !isAdminOnlyConflict(c));
+  // OD-90: a corrigendum suggestion waits for an admin; it is not a dispute either.
+  return unresolvedConflicts.some((c) => c.fieldName === drivingField && isBehaviourConflict(c));
 }
 
 export interface StatusUpdateResult {
@@ -203,7 +204,7 @@ export async function updateIPOStatuses(
     if (drivingField) {
       const unresolved = await conflictsRepo.findUnresolvedForIPO(r.id);
       if (isTransitionHeld(drivingField, unresolved)) {
-        const disputed = unresolved.find((c) => c.fieldName === drivingField)!;
+        const disputed = unresolved.find((c) => c.fieldName === drivingField && isBehaviourConflict(c))!;
         console.warn(
           `[Status Updater] hold_status_transition: ${r.companyName} (${r.id}) ${r.status} -> ${target} held — ${drivingField} disputed (${disputed.source1}="${disputed.value1}" vs ${disputed.source2}="${disputed.value2}")`
         );

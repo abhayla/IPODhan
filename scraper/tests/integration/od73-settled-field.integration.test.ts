@@ -21,7 +21,7 @@ import { DataConsolidationService } from '../../src/services/data-consolidation-
 import { FEATURE_FLAGS } from '../../src/config/feature-flags';
 import { isAdminOnlyConflict } from '../../../packages/shared/src/utils/conflict-reasons';
 // @ts-expect-error -- untyped .mjs script module; the SQL it exports is exactly what the nightly floor runs
-import { UNRESOLVED_CONFLICT_COUNT_SQL, CONFLICTS_INSERTED_24H_SQL } from '../../../scripts/lib/conflict-reasons.mjs';
+import { unresolvedConflictCountSql, conflictsInserted24hSql } from '../../../scripts/lib/conflict-reasons.mjs';
 // @ts-expect-error -- untyped .mjs script module
 import { adminQueueSize } from '../../../scripts/ops/admin-queue-size.mjs';
 
@@ -229,8 +229,8 @@ describe.skipIf(!DATABASE_URL)('OD-73 settled fields on the real write path (ipo
     await seed('OPEN', [['closeDate', 'CHITTORGARH', '2026-09-26']]);
     const repo = new DataConflictsRepository(drizzle(pool!, { schema }) as never, noRedis);
     const count = async (sql: string, key: string) => (await pool!.query(sql)).rows[0][key] as number;
-    const backlog0 = await count(UNRESOLVED_CONFLICT_COUNT_SQL, 'total');
-    const inserted0 = await count(CONFLICTS_INSERTED_24H_SQL, 'inserted');
+    const backlog0 = await count(unresolvedConflictCountSql(), 'total');
+    const inserted0 = await count(conflictsInserted24hSql(), 'inserted');
 
     await repo.upsertConflict({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'closeDate', source1: 'CHITTORGARH', value1: '2026-09-26', source2: 'CHITTORGARH', value2: '2026-09-27', resolvedSource: 'CHITTORGARH', resolutionReason: 'SOURCE_CHANGED_OWN_VALUE', severity: 'INFO' });
 
@@ -246,15 +246,15 @@ describe.skipIf(!DATABASE_URL)('OD-73 settled fields on the real write path (ipo
     expect(await repo.getConflictStats(IPO_ID)).toMatchObject({ total: 0, unresolved: 0 });
     const queue = await adminQueueSize(pool!);
     expect(queue.byIpo.find((e: { slug: string }) => e.slug === 'od73-settled-fixture-ltd')).toBeUndefined();
-    expect(await count(UNRESOLVED_CONFLICT_COUNT_SQL, 'total')).toBe(backlog0);
-    expect(await count(CONFLICTS_INSERTED_24H_SQL, 'inserted')).toBe(inserted0);
+    expect(await count(unresolvedConflictCountSql(), 'total')).toBe(backlog0);
+    expect(await count(conflictsInserted24hSql(), 'inserted')).toBe(inserted0);
 
     // Positive control: a real cross-source dispute IS counted by every one of the same readers.
     await repo.upsertConflict({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'registrar', source1: 'DRHP', value1: 'a', source2: 'CHITTORGARH', value2: 'b', resolutionReason: 'SOURCE_PRIORITY' });
     expect(await repo.getConflictStats(IPO_ID)).toMatchObject({ total: 1, unresolved: 1 });
     const queue2 = await adminQueueSize(pool!);
     expect(queue2.byIpo.find((e: { slug: string }) => e.slug === 'od73-settled-fixture-ltd')).toMatchObject({ conflicts: 1 });
-    expect(await count(UNRESOLVED_CONFLICT_COUNT_SQL, 'total')).toBe(backlog0 + 1);
-    expect(await count(CONFLICTS_INSERTED_24H_SQL, 'inserted')).toBe(inserted0 + 1);
+    expect(await count(unresolvedConflictCountSql(), 'total')).toBe(backlog0 + 1);
+    expect(await count(conflictsInserted24hSql(), 'inserted')).toBe(inserted0 + 1);
   });
 });

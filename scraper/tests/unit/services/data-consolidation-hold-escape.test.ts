@@ -141,6 +141,46 @@ describe('W-160 round 2 — exchange consensus / date-invariant HOLD escapes (Ka
     expect(closeField!.conflictReason).toBe('DATE_INVARIANT_OVERRIDE_HELD_VALUE');
   });
 
+  // OD-90 (item 9, PR #989 review round 1): an open corrigendum SUGGESTION on the same field
+  // (document_id set) is the admin's to accept or dismiss. The date-invariant escape must resolve
+  // only a real HOLD row, never the suggestion. MUTATION: drop the isCorrigendumSuggestion skip
+  // on the invariant path's findUnresolvedForIPO read -> this goes RED.
+  it('OD-90: the date-invariant escape never resolves an open corrigendum suggestion on the same field', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(kanoharExisting() as any);
+    vi.mocked(mockConflictsRepo.findUnresolvedForIPO).mockResolvedValue([
+      {
+        id: 'suggestion-close-1',
+        ipoId: 'kanohar-ipo',
+        tableName: 'ipos',
+        rowKey: '',
+        fieldName: 'closeDate',
+        source1: 'CHITTORGARH',
+        value1: '2026-12-12',
+        source2: 'DRHP',
+        value2: '2026-09-11',
+        resolutionReason: null,
+        documentId: 'doc-corrigendum-1',
+        severity: 'WARNING',
+        resolvedAt: null,
+        detectedAt: new Date(),
+      },
+    ] as any);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'kanohar-ipo',
+      tableName: 'ipos',
+      incomingData: { openDate: '2026-09-08', closeDate: '2026-09-10' },
+      source: 'NSE',
+      confidence: 95,
+      existingData: kanoharExistingData,
+      scrapedAt: new Date('2026-09-05T00:01:00Z'),
+    });
+
+    const closeField = result.fieldResults.find((f) => f.fieldName === 'closeDate');
+    expect(closeField!.conflictReason).toBe('DATE_INVARIANT_OVERRIDE_HELD_VALUE');
+    expect(mockConflictsRepo.resolveConflict).not.toHaveBeenCalledWith('suggestion-close-1', expect.anything());
+  });
+
   it('CRITICAL-1 negative control: reporting ONLY openDate (closeDate absent this cycle) does NOT flip — the stale held close still fails the invariant', async () => {
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(kanoharExisting() as any);
 

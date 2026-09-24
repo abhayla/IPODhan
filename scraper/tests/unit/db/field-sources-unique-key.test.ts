@@ -49,10 +49,13 @@ describe('field_sources unique key is scoped to the row, not just the field', ()
   });
 });
 
-describe('data_conflicts is deliberately left alone', () => {
-  it('has no unique constraint, so nothing there needs widening', () => {
-    // Verified independently against ipodhan_staging and ipodhan_test
-    // (pg_constraint: only the pkey, the FKs and a severity CHECK).
-    expect(getTableConfig(dataConflicts).uniqueConstraints).toEqual([]);
+describe('data_conflicts is deliberately left alone on the (ipo, table, rowKey, field) key', () => {
+  it('has exactly one unique constraint, on suggestion_key only (OD-90, migration 0057)', () => {
+    // Migration 0057 added `unique_data_conflicts_suggestion_key` on `suggestion_key` for
+    // corrigendum-suggestion dedup (item 9). Nothing about the (ipo, table, rowKey, field)
+    // key widens: this table still has no constraint on that shape.
+    const unique = getTableConfig(dataConflicts).uniqueConstraints;
+    expect(unique.map((u) => u.name)).toEqual(['unique_data_conflicts_suggestion_key']);
+    expect(unique[0].columns.map((c) => c.name)).toEqual(['suggestion_key']);
   });
 });

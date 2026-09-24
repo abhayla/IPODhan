@@ -5,7 +5,7 @@
  */
 
 import { eq, and, isNull, isNotNull, lt, desc, sql } from 'drizzle-orm';
-import { SOURCE_CHANGED_OWN_VALUE, isAdminOnlyConflict } from '../utils/conflict-reasons';
+import { SOURCE_CHANGED_OWN_VALUE, isBehaviourConflict } from '../utils/conflict-reasons';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '../db/schema';
@@ -32,6 +32,11 @@ export interface DataConflictRecord {
   resolvedBy: string | null;
   detectedAt: Date;
   createdAt: Date;
+  /** OD-90: set only on a corrigendum suggestion row (the document it was read from). */
+  documentId?: string | null;
+  /** OD-90: {origin, quote, page, ocr, ocrConfidence, exchangeOwned, exchangeValue, storedSource}. */
+  evidence?: unknown;
+  suggestionKey?: string | null;
 }
 
 export interface LogConflictInput {
@@ -189,7 +194,10 @@ export class DataConflictsRepository extends BaseRepository {
           eq(dataConflicts.tableName, input.tableName),
           eq(dataConflicts.rowKey, upsertRowKey),
           eq(dataConflicts.fieldName, input.fieldName),
-          isNull(dataConflicts.resolvedAt)
+          isNull(dataConflicts.resolvedAt),
+          // OD-90: a corrigendum suggestion shares this table but is never a source-vs-source
+          // conflict — refreshing it would overwrite the admin's proposed value and quote.
+          isNull(dataConflicts.documentId)
         )
       )
       .limit(1);
@@ -282,7 +290,9 @@ export class DataConflictsRepository extends BaseRepository {
               eq(dataConflicts.tableName, tableName),
               eq(dataConflicts.rowKey, rowKey),
               eq(dataConflicts.fieldName, fieldName),
-              isNull(dataConflicts.resolvedAt)
+              isNull(dataConflicts.resolvedAt),
+              // OD-90: only the admin closes a corrigendum suggestion (accept or dismiss).
+              isNull(dataConflicts.documentId)
             )
           )
           .returning({ id: dataConflicts.id });
@@ -524,7 +534,9 @@ export class DataConflictsRepository extends BaseRepository {
           .where(
             and(
               eq(dataConflicts.ipoId, ipoId),
-              isNull(dataConflicts.resolvedAt)
+              isNull(dataConflicts.resolvedAt),
+              // OD-90: only the admin closes a corrigendum suggestion (accept or dismiss).
+              isNull(dataConflicts.documentId)
             )
           )
           .returning();
@@ -557,7 +569,7 @@ export class DataConflictsRepository extends BaseRepository {
             .select()
             .from(dataConflicts)
             .where(conditions.length > 0 ? and(...conditions) : undefined)
-        ).filter((c) => !isAdminOnlyConflict(c));
+        ).filter((c) => isBehaviourConflict(c)); // OD-90: suggestions are not disputes either
 
         const total = allConflicts.length;
         const unresolved = allConflicts.filter((c) => !c.resolvedAt).length;

@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "https://nsearchives.nseindia.com/content/ipo/RHP_MOMSBELIEF.zip",
+  "capturedAt": "2026-09-24",
+  "ipoId": "rays-of-belief-ltd",
+  "company": "Rays of Belief Limited",
+  "note": "Real output of scraper/scripts/read_corrigendum_pages.py on the zip member 'Rays of Belief Limited _Corrigendum_NSE Intimation Letter.pdf' (text layer, 3 pages, no OCR). Trimmed to page 1, cut after 'You are requested to kindly take the above information on record.' (drops the merchant-banker contact names, phone numbers and emails and the signature/annexure pages); nothing else edited. The PDF and zip are not committed (size; NSE's to publish). F-163: the one real corrigendum that changes a document-writable field (designated exchange BSE -> NSE)."
+}

@@ -1,6 +1,6 @@
 # Item 9 — The re-read loop
 
-Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 9: OD-65/OD-66 superseded the spec's re-read-the-bytes loop (owner: one IPO, one round of document read); the OD-66 adjudication fix merged (#876), but the still-open piece (fetch+read a genuinely new corrigendum/filing) belongs to item 22, not this item, and is unbuilt
+Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 9: OD-65/OD-66 superseded the spec's re-read-the-bytes loop (#876 merged). The corrigendum reader is built on feat/item9-corrigendum-reader (OD-90): a stored CORRIGENDUM is read once into admin-reviewed suggestions (data_conflicts, migration 0057), accepted as an ADMIN value or dismissed; core-proven on ipodhan_test with the real Rays of Belief letter; staging proof owed
 
 ## Purpose
 
@@ -180,5 +180,14 @@ exercised end-to-end before the pull walk exists to have supplied the values thi
 
 ## Known gaps
 
-None recorded yet. A finding this item owns but does not close is written here, with its
-id and the reason — that is what stops "zero open findings" being reached by dropping one.
+- **F-163 (open parts).** The rule set maps two phrasings (Rays "should be read as X instead of Y" for
+  the designated exchange; Skyways "updated from <date> to <date>" for close/open date). Hy-Tech's
+  Maximum Bid correction maps to no stored field and reaches the admin as `field = unknown`. A new
+  phrasing is a new rule, added with a real fixture, never generalised from two samples.
+- **Skyways close date (E-1).** The suggestion carries the OCR mark and the exchange value; section 2.2.1
+  still says an OCR-only value never wins, so the admin decides it by hand. No auto-write exists.
+- **F-158 class.** ADDENDUM is ranked (75) and still NOT_EXTRACTABLE; the class check (every ranked type
+  is read or a named exception) is not built — failure class
+  `precedence-rule-for-a-type-nothing-reads` stays `unguarded`.
+- **Staging proof owed:** a stored staging corrigendum (skyways-air-services-ltd) producing its
+  suggestion row after the next document cycle.

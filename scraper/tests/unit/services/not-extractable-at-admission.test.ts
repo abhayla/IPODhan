@@ -51,14 +51,15 @@ describe('resolveAdmissionExtractionStatus', () => {
   });
 
   it('admits a type with NO extractor as NOT_EXTRACTABLE, not PENDING', () => {
-    // Every type measured at 100% PENDING on staging.
+    // Every type measured at 100% PENDING on staging, EXCEPT CORRIGENDUM: item 9
+    // (OD-90) gave it an extractor (its own reader, corrigendum-reader.ts) and added
+    // it to AUTO_PERSIST_DOC_TYPES, so it is no longer an example of "no extractor".
     for (const t of [
       'RATIOS_BASIS_ISSUE_PRICE',
       'SAMPLE_APPLICATION_FORMS',
       'SECURITY_PARAMS_PRE_ANCHOR',
       'SECURITY_PARAMS_POST_ANCHOR',
       'BIDDING_CENTERS',
-      'CORRIGENDUM',
       'BASIS_OF_ALLOTMENT_AD',
       'ADDENDUM',
     ]) {

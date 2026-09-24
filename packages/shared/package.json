@@ -17,6 +17,7 @@
     "./cache/redis-client": "./src/cache/redis-client.ts",
     "./types": "./src/types/index.ts",
     "./admin/field-protection-checker": "./src/admin/field-protection-checker.ts",
+    "./services/corrigendum-suggestions": "./src/services/corrigendum-suggestions.ts",
     "./utils/slug": "./src/utils/slug.ts",
     "./utils/ist-day": "./src/utils/ist-day.ts",
     "./utils/registrar-display": "./src/utils/registrar-display.ts",
