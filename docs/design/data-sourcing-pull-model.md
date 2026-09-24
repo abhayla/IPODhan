@@ -1295,6 +1295,8 @@ documents were unwritten until now, and each is a rule with one real fixture beh
 | **Content is sniffed before it is stored** | **already built, and better than this design first claimed.** `verifyDownload` (`scraper/src/services/document-download-verifier.ts:274`) refuses an HTML body, refuses an unacceptable content-type, unwraps a zip to its PDF member, and requires the `%PDF` magic bytes (`document-download-verifier.ts:331`) — with a size floor re-applied after unzipping, because a 60 KB zip can unpack to a 2 KB stub. Nothing is added here | the first draft of this section said "nothing asserts the body actually is a PDF". That was false, and the build card for item 22 caught it |
 | **The exchange's own document id is stored beside the URL** | NSE and BSE both carry a stable identifier for a filing; storing it means a moved or re-hosted link is still recognisably the same document | `documents` gains the column; the discovery runner already knows the id at parse time |
 
+*Fixture status for the blank-password rule (F-153, 2026-09-24): the one real encrypted filing found locally, a BSE anchor allocation report, carries an owner password only and opens on the blank attempt in both pdfplumber and pypdfium2, so the extractor needs no new dependency; a real filing whose blank attempt FAILS has not been captured yet.*
+
 **Download limits (OD-37).** These bound a request whose URL came off a page we do not control.
 More of this is already built than the first draft of this section believed — the build card for
 item 22 read the code and corrected four claims here. What survives is stated as what is MISSING,
