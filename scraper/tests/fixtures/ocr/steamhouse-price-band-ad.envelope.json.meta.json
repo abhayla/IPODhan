@@ -3,6 +3,7 @@
   "sha256": "9dcfc5f07f89563839092e55b0c327396266ae752db5a564844e2071a7a9f8ef",
   "capturedAt": "2026-09-25",
   "ipo": "steamhouse-india-ltd",
+  "company": "SteamHouse India Limited",
   "docType": "PRICE_BAND_AD",
   "note": "Real extractor output: PYTHONIOENCODING=utf-8 python scraper/scripts/extract_filing.py <pdf> --doc-type PRICE_BAND_AD on this branch (RapidOCR route). The newspaper ad has no usable text layer, so all 4 pages were OCR'd (ocr_pages [0,1,2,3], PARTIAL_OCR); page_texts removed for size, fields verbatim. On ipodhan_staging this document's D6 step is DONE / PARTIAL_OCR (F-167)."
 }
