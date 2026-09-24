@@ -1981,7 +1981,7 @@ So the honest promise is: *changing the order is configuration; changing what we
 
 ### 2.4 What the loop does, per field
 
-Measured 2026-09-24 (F-161): on staging the walk has supplied 236 of 17,491 plan rows (1.3%); 984 rows ask the offer document and get not-available-yet although that IPO RHP or DRHP is extracted.
+Measured 2026-09-24 (F-161): on staging the walk has supplied 236 of 17,491 plan rows (1.3%); 984 rows ask the offer document and get not-available-yet although that IPO RHP or DRHP is extracted. Cause (item 6 fix): the DOC fetcher matched only the manifest's named `documentType` (`PRICE_BAND_AD` for 980 of the 984), not the best available offer document §1 defines; after the fix none answer not-available-yet (99 supplied, 873 wait on extraction coverage, 12 on a column reader).
 
 ```
 for each IPO in phase 1, at each of the four slots:
