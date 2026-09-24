@@ -476,4 +476,73 @@ describe('verifyMergeReadback (MAJOR-2, PR #433 review)', () => {
     const check = checks.find((c) => c.name === 'carried field allotment_date');
     expect(check?.pass).toBe(false);
   });
+
+  // #976, OD-59: agreement is judged on the MEANING of a value, never its
+  // text — "10", "10.00" and "₹10" are one value. Real pair from the
+  // 2026-09-24 staging Rays of Belief merge: numeric(18,2) issue_size reads
+  // back with its column scale ("1250000000.00"), which is not a text match
+  // against the carried "1250000000" even though it is the same number.
+  it('#976: a numeric field carried as "1250000000" PASSES against a scale-formatted readback "1250000000.00"', () => {
+    const numericPatch: CarryFieldPatch[] = [
+      { column: 'issue_size', value: '1250000000', source: 'CHITTORGARH', confidence: 70, note: 'carried' },
+    ];
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: { issue_size: '1250000000.00' },
+      patch: numericPatch,
+      redirectExists: true,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    const check = checks.find((c) => c.name === 'carried field issue_size');
+    expect(check?.pass).toBe(true);
+  });
+
+  it('#976: a numeric field carried as "1250000000" still FAILS against a genuinely different readback "1250000001.00"', () => {
+    const numericPatch: CarryFieldPatch[] = [
+      { column: 'issue_size', value: '1250000000', source: 'CHITTORGARH', confidence: 70, note: 'carried' },
+    ];
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: { issue_size: '1250000001.00' },
+      patch: numericPatch,
+      redirectExists: true,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    const check = checks.find((c) => c.name === 'carried field issue_size');
+    expect(check?.pass).toBe(false);
+  });
+
+  it('#976: a date field carried as an ISO calendar day PASSES against a Date-object readback of the same UTC instant', () => {
+    const datePatch: CarryFieldPatch[] = [
+      { column: 'listing_date', value: '2026-09-04', source: 'CHITTORGARH', confidence: 70, note: 'carried' },
+    ];
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: { listing_date: new Date('2026-09-04T00:00:00Z') },
+      patch: datePatch,
+      redirectExists: true,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    const check = checks.find((c) => c.name === 'carried field listing_date');
+    expect(check?.pass).toBe(true);
+  });
+
+  it('#976: a real string mismatch still fails (not everything becomes equal)', () => {
+    const stringPatch: CarryFieldPatch[] = [
+      { column: 'cin', value: 'U11111MH2020PLC123456', source: 'ADMIN', confidence: 100, note: 'carried' },
+    ];
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: { cin: 'U99999MH2020PLC999999' },
+      patch: stringPatch,
+      redirectExists: true,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    const check = checks.find((c) => c.name === 'carried field cin');
+    expect(check?.pass).toBe(false);
+  });
 });
