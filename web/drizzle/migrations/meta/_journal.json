@@ -414,6 +414,13 @@
       "when": 1790250033623,
       "tag": "0058_ipo_merge_log_restore_data",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1790260592758,
+      "tag": "0059_ipo_field_plan_chosen_confirmed_at",
+      "breakpoints": true
     }
   ]
 }

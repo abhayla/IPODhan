@@ -15,11 +15,14 @@
  * information. §2.5.2's "a re-ask must not rewrite an unchanged value" is the
  * same rule one layer down; this reuses its signal rather than redefining it.
  *
- * Scope, stated so nobody mistakes it for durability: this is an in-process Set.
- * A scraper that crashes after writing but before the revalidate step loses that
- * cycle's list, and those pages simply wait out their timed revalidate — which
- * is exactly today's behaviour, so the failure mode is the status quo, not a
- * regression.
+ * Durability (item 21, OD-40): the in-process Set is mirrored into one Redis set
+ * (TOUCHED_SLUGS_REDIS_KEY) when a store is configured -- index.ts configures
+ * the shared Redis client at start-up. A scraper that crashes after writing but
+ * before the end-of-cycle revalidate therefore leaves its slugs in Redis, and
+ * the NEXT cycle's drainTouchedDurable() sends them with its own: still one call
+ * per cycle. With no store configured (unit tests, a Redis outage) it behaves
+ * exactly as the in-process Set did, and a failed Redis write is logged with its
+ * cause, never thrown into the write path that recorded the slug.
  */
 
 import { logger } from '../utils/logger.js';
@@ -35,6 +38,34 @@ export const TOUCHED_SLUG_CAP = 5000;
 
 const touched = new Set<string>();
 let capWarned = false;
+
+/** The one Redis set that carries touched slugs across a restart. */
+export const TOUCHED_SLUGS_REDIS_KEY = 'scraper:touched-slugs';
+
+/** The three Redis calls the durable half uses; injected so tests need no Redis. */
+export interface TouchedSlugStore {
+  sadd(key: string, member: string): Promise<unknown>;
+  smembers(key: string): Promise<string[]>;
+  del(key: string): Promise<unknown>;
+  rename(key: string, newKey: string): Promise<unknown>;
+}
+
+let store: TouchedSlugStore | null = null;
+
+/** index.ts passes the shared Redis client; null turns the durable half off. */
+export function configureTouchedSlugStore(next: TouchedSlugStore | null): void {
+  store = next;
+}
+
+function persist(slug: string): void {
+  if (!store) return;
+  store.sadd(TOUCHED_SLUGS_REDIS_KEY, slug).catch((error: unknown) => {
+    logger.warn(
+      { slug, error: error instanceof Error ? error.message : String(error) },
+      '[TouchedIPOs] could not persist a touched slug to Redis - it still revalidates this cycle, but would not survive a restart'
+    );
+  });
+}
 
 /** The subset of ConsolidatedUpsertResult this decision actually reads. */
 export interface TouchedDecisionInput {
@@ -58,6 +89,7 @@ export function recordTouched(slug: string): void {
     return;
   }
   touched.add(slug);
+  persist(slug);
 }
 
 /**
@@ -76,7 +108,43 @@ export function recordTouchedIfChanged(slug: string, result: TouchedDecisionInpu
   recordTouched(slug);
 }
 
-/** Empties the set and returns what it held. Always an array, never null. */
+/**
+ * The end-of-cycle drain (OD-40): this process's slugs PLUS any a crashed
+ * earlier process left in Redis, then both emptied. Drained first and
+ * unconditionally, same rule as drainTouched: a failed post never makes the
+ * list grow cycle over cycle. A Redis read failure is logged with its cause and
+ * the in-process slugs are still returned.
+ */
+export async function drainTouchedDurable(): Promise<string[]> {
+  const local = drainTouched();
+  if (!store) return local;
+  let persisted: string[] = [];
+  // ATOMIC read-and-clear: RENAME moves the whole set to a private key in one
+  // step, so a slug another process SADDs between our read and our clear lands
+  // in a fresh set for the next cycle instead of being deleted unseen (the
+  // SMEMBERS-then-DEL of the first version had that window).
+  const drainKey = `${TOUCHED_SLUGS_REDIS_KEY}:draining:${process.pid}:${Date.now()}`;
+  try {
+    await store.rename(TOUCHED_SLUGS_REDIS_KEY, drainKey);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such key/i.test(message)) return local;
+    logger.warn({ error: message }, '[TouchedIPOs] could not move the persisted touched slugs aside - sending only the slugs this process recorded');
+    return local;
+  }
+  try {
+    persisted = await store.smembers(drainKey);
+    await store.del(drainKey);
+  } catch (error) {
+    logger.warn(
+      { error: error instanceof Error ? error.message : String(error) },
+      '[TouchedIPOs] could not read or clear the persisted touched slugs - sending only the slugs this process recorded'
+    );
+  }
+  return Array.from(new Set([...local, ...persisted]));
+}
+
+/** Empties the in-process set and returns what it held. Always an array, never null. */
 export function drainTouched(): string[] {
   const slugs = Array.from(touched);
   touched.clear();

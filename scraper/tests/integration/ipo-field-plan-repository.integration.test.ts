@@ -1,6 +1,8 @@
 // implements: item 5 slice s3 -- ipo_field_plan repository (claim + outcome)
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Pool } from 'pg';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql, inArray, eq, and } from 'drizzle-orm';
 // Relative imports, NOT the `@ipodhan/shared` alias -- a worktree's
@@ -1057,6 +1059,112 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     expect(persisted.chosenSource).toBe('DOC_RHP');
     expect(persisted.chosenDocumentId).toBe(DOCUMENT_ID);
     expect(persisted.chosenPage).toBe(5);
+  });
+
+  // ------------------------------------------- chosen_confirmed_at (item 21) ---
+  //
+  // OD-39 + OD-72: the page states the source and the date it was READ. That
+  // date is stamped only when a row is recorded SUPPLIED with its evidence;
+  // updated_at moves on any write and must not stand in for it.
+
+  it('item 21: a SUPPLIED outcome with evidence stamps chosen_confirmed_at with the read instant (UTC, drift 0)', async () => {
+    const id = await seedRow();
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
+    const readAt = new Date('2026-09-21T05:00:00.000Z'); // 10:30 IST
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claimed!.claimToken!,
+      writeHappened: true,
+      state: 'SUPPLIED',
+      chosen: { source: 'DOC', rank: 1, documentType: 'RHP' },
+      now: readAt,
+    });
+    const raw = await db.execute(sql`SELECT chosen_confirmed_at::text AS t FROM ipo_field_plan WHERE id = ${id}::uuid`);
+    // Round-trip the stored TEXT, not a parsed Date (ist-timezone rule): a 5h30m shift would show here.
+    expect((raw as unknown as { rows: { t: string }[] }).rows[0].t).toBe('2026-09-21 05:00:00');
+    const persisted = await readRow(id);
+    expect(persisted.chosenConfirmedAt!.toISOString()).toBe(readAt.toISOString());
+  });
+
+  it('item 21: a later non-SUPPLIED write leaves chosen_confirmed_at exactly as it was (updated_at moves, the read date does not)', async () => {
+    const id = await seedRow();
+    const claim1 = await repo.claimNextDueField({ ipoId: IPO_ID });
+    const readAt = new Date('2026-09-21T05:00:00.000Z');
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claim1!.claimToken!,
+      writeHappened: true,
+      state: 'SUPPLIED',
+      chosen: { source: 'DOC', rank: 1, documentType: 'RHP' },
+      now: readAt,
+    });
+    await db.execute(sql`UPDATE ipo_field_plan SET state = 'PENDING' WHERE id = ${id}::uuid`);
+    await forceDue(id);
+    const claim2 = await repo.claimNextDueField({ ipoId: IPO_ID });
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claim2!.claimToken!,
+      writeHappened: true,
+      state: 'CHECK_FAILED',
+      now: new Date('2026-09-23T05:00:00.000Z'),
+    });
+    const persisted = await readRow(id);
+    expect(persisted.chosenConfirmedAt!.toISOString()).toBe(readAt.toISOString());
+    expect(persisted.updatedAt.getTime()).toBeGreaterThan(readAt.getTime());
+  });
+
+  it('item 21: a SUPPLIED outcome that names NO chosen source gets NO read date', async () => {
+    const id = await seedRow();
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claimed!.claimToken!,
+      writeHappened: true,
+      state: 'SUPPLIED',
+      chosen: { rank: 1 },
+      now: new Date('2026-09-21T05:00:00.000Z'),
+    });
+    const persisted = await readRow(id);
+    expect(persisted.chosenSource).toBeNull();
+    expect(persisted.chosenConfirmedAt).toBeNull();
+  });
+
+  it('item 21: migration 0059 backfills the read date from last_attempt_at for SUPPLIED rows that name a source, and only those', async () => {
+    const withSource = await seedRow({ state: 'SUPPLIED', chosenSource: 'DOC', fieldName: 'faceValue' });
+    const noSource = await seedRow({ state: 'SUPPLIED', chosenSource: null, fieldName: 'issueSize' });
+    const notSupplied = await seedRow({ state: 'CHECK_FAILED', chosenSource: 'DOC', fieldName: 'lotSize' });
+    const already = await seedRow({ state: 'SUPPLIED', chosenSource: 'BSE', fieldName: 'upiCutoffTime' });
+    await db.execute(sql`UPDATE ipo_field_plan SET last_attempt_at = '2026-09-19 03:17:55', chosen_confirmed_at = NULL WHERE id IN (${withSource}::uuid, ${noSource}::uuid, ${notSupplied}::uuid)`);
+    await db.execute(sql`UPDATE ipo_field_plan SET last_attempt_at = '2026-09-19 03:17:55', chosen_confirmed_at = '2026-09-01 00:00:00' WHERE id = ${already}::uuid`);
+    const file = readFileSync(
+      fileURLToPath(new URL('../../../web/drizzle/migrations/0059_ipo_field_plan_chosen_confirmed_at.sql', import.meta.url)),
+      'utf8'
+    );
+    const update = file.split('--> statement-breakpoint').map((x) => x.trim()).find((x) => x.startsWith('UPDATE'));
+    expect(update).toBeTruthy();
+    await db.execute(sql.raw(update!));
+    const read = async (id: string) =>
+      ((await db.execute(sql`SELECT chosen_confirmed_at::text AS t FROM ipo_field_plan WHERE id = ${id}::uuid`)) as unknown as {
+        rows: { t: string | null }[];
+      }).rows[0].t;
+    expect(await read(withSource)).toBe('2026-09-19 03:17:55');
+    expect(await read(noSource)).toBeNull();
+    expect(await read(notSupplied)).toBeNull();
+    expect(await read(already)).toBe('2026-09-01 00:00:00');
+  });
+
+  it('item 21: a row never recorded SUPPLIED has NO read date (null, never a fabricated one)', async () => {
+    const id = await seedRow();
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claimed!.claimToken!,
+      writeHappened: true,
+      state: 'CHECK_FAILED',
+      chosen: { source: 'DOC', rank: 1 },
+    });
+    const persisted = await readRow(id);
+    expect(persisted.chosenConfirmedAt).toBeNull();
   });
 
   // ------------------------------------------- releaseClaimUnrecorded ---

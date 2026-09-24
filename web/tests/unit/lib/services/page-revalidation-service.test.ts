@@ -41,6 +41,14 @@ describe('revalidateForSlugs', () => {
     expect(d.deleted.filter((k) => k === 'ipo:slug:acme-ltd')).toHaveLength(1);
   });
 
+  it('item 21: drops the provenance key the "From ..., read ..." lines are cached under', async () => {
+    // The literal string, not only the helper: the page's repository and this
+    // service must name the SAME key, and a renamed helper must fail here.
+    const d = deps();
+    await revalidateForSlugs(['acme-ltd'], d);
+    expect(d.deleted).toContain('ipo:fieldplan:provenance:acme-ltd');
+  });
+
   it('revalidates the IPO page itself', async () => {
     const d = deps();
     await revalidateForSlugs(['acme-ltd'], d);

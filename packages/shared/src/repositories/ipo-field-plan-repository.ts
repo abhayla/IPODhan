@@ -195,6 +195,12 @@ export interface IpoFieldPlanRow {
   reasonCode: string | null;
   /** S4 (#779): the raw cause the classification was derived from. NULL on pre-S4 rows. */
   cause: string | null;
+  /**
+   * Item 21 (OD-39, OD-72): when the chosen source was read -- stamped only when
+   * the row is recorded SUPPLIED with its evidence. NULL on rows supplied before
+   * the column existed; the page then shows the source with no date.
+   */
+  chosenConfirmedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1031,6 +1037,13 @@ export class IpoFieldPlanRepository extends BaseRepository {
       // rows). `attempts + 1` is computed in SQL from the row's own value, so
       // a concurrent reader never reads a stale count.
       const nextDueAt = fieldPlanNextDueAt({ terminal, isGap, now });
+      // Item 21 (OD-72): the read date the page shows. Stamped only when this
+      // write records a SUPPLIED answer WITH its evidence -- that is the moment
+      // the winning source was read. Every other write (a failure, a gap, a
+      // SUPPLIED with no new evidence, a SUPPLIED naming no source) leaves it
+      // as it was, so the date never drifts forward on churn the way
+      // updated_at does, and a row that names no source carries no date.
+      const stampRead = state === 'SUPPLIED' && hasChosen && typeof chosen.source === 'string' && chosen.source.length > 0;
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
         SET state = ${state}::field_plan_state,
@@ -1046,6 +1059,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
             chosen_document_type = CASE WHEN ${hasChosen} THEN ${chosen.documentType ?? null} ELSE chosen_document_type END,
             chosen_sha256 = CASE WHEN ${hasChosen} THEN ${chosen.sha256 ?? null} ELSE chosen_sha256 END,
             chosen_page = CASE WHEN ${hasChosen} THEN ${chosen.page ?? null} ELSE chosen_page END,
+            chosen_confirmed_at = CASE WHEN ${stampRead} THEN ${utc(now)}::timestamptz ELSE chosen_confirmed_at END,
             claimed_at = NULL,
             claim_token = NULL,
             updated_at = ${utc(now)}::timestamptz
@@ -1124,6 +1138,7 @@ function mapRow(raw: Record<string, unknown>): IpoFieldPlanRow {
     policyOrigin: (raw.policy_origin as string) ?? null,
     reasonCode: (raw.reason_code as string) ?? null,
     cause: (raw.cause as string) ?? null,
+    chosenConfirmedAt: date(raw.chosen_confirmed_at),
     createdAt: date(raw.created_at) as Date,
     updatedAt: date(raw.updated_at) as Date,
   };

@@ -30,6 +30,9 @@ import { runDuplicateSweepJob } from './scheduler/jobs/duplicate-sweep-job.js';
 import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js';
 import { runPrimaryDocBackfill, withTimeout } from './scripts/backfill-primary-source-documents.js';
 import { triggerPageRevalidation } from './services/page-revalidation-trigger.js';
+import { configureTouchedSlugStore } from './services/touched-ipos-tracker.js';
+import { checkLiveSlotMisses, dbCoverageLoader, redisClaims } from './services/live-slot-miss-monitor.js';
+import { sendOwnerAlert } from './services/owner-notify.js';
 import { CLI_SOURCE_ARGS } from './config/runnable-sources.js';
 import {
   runDocumentCycle,
@@ -511,6 +514,7 @@ async function runLiveFiguresJob(): Promise<number> {
       logger.info({ gmpCandidates }, 'Live-figures job: UPCOMING/OPEN IPOs present — running the grey-market premium fetch');
       await runLiveStep('live:GMP', () => runInvestorgainGMPScraper());
     }
+
   };
 
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
@@ -525,6 +529,28 @@ async function runLiveFiguresJob(): Promise<number> {
       logger.error(
         { lockResource: LIVE_LOCK_RESOURCE, deadlineMs: LIVE_JOB_DEADLINE_MS, ttlMs: LIVE_LOCK_TTL_MS },
         'Live-figures job: hard deadline reached (spec §2.1 live lock bound) — starting nothing new, releasing scraper:live and exiting 1'
+      );
+    }
+
+    // OD-72: did every ended live slot of today refresh every bidding IPO?
+    // Runs on EVERY live wake, after the fetches and EVEN when the deadline
+    // fired (a deadline is exactly when slots get missed). Judges every ended
+    // slot of the IST day, so skipped wakes are still judged. Admin alert only,
+    // no public page. A monitor, not a fetch: its failure is logged with the
+    // cause and does not fail the live job.
+    try {
+      const claims = redisClaims(getRedisClient() as unknown as Parameters<typeof redisClaims>[0]);
+      const r = await checkLiveSlotMisses({
+        loadDayCoverage: dbCoverageLoader(db as unknown as Parameters<typeof dbCoverageLoader>[0]),
+        isClaimed: claims.isClaimed,
+        claim: claims.claim,
+        send: sendOwnerAlert,
+      });
+      logger.info(r, 'Live-figures job: live-slot miss check');
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error), cause: error instanceof Error && error.cause ? String(error.cause) : undefined },
+        'Live-figures job: live-slot miss check failed (non-fatal) - no missed-slot alert could be evaluated this wake'
       );
     }
   } finally {
@@ -1350,6 +1376,10 @@ export async function main() {
     // T-340: refuse to start a --source=all cycle without the env the
     // post-scrape steps need — see assertRequiredEnvForCycle's doc comment.
     assertRequiredEnvForCycle(source);
+
+    // Item 21 (OD-40): touched slugs survive a crash between the write and the
+    // end-of-cycle revalidate - mirrored into Redis, drained by the next cycle.
+    configureTouchedSlugStore(getRedisClient());
 
     // T-327 P2-7: make the process TZ observable at every run — this is what
     // let NSE dates land a day early for months (local-TZ new Date() parsing

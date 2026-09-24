@@ -57,6 +57,40 @@ function send(path: '/notify' | '/heartbeat', payload: Record<string, unknown>):
   void p.finally(() => inFlight.delete(p));
 }
 
+export interface OwnerAlertResult {
+  sent: boolean;
+  /** Why it was not sent: not configured, an HTTP status, or the fetch error. */
+  reason?: string;
+}
+
+/**
+ * AWAITED owner alert, for a caller that must know whether the alert left
+ * (item 21: a missed-slot alert is claimed as sent only after it was). Never
+ * throws; the outcome says what happened, including "not configured".
+ */
+export async function sendOwnerAlert(
+  severity: OwnerSeverity,
+  title: string,
+  opts: { body?: string; type?: string; dedupeKey?: string } = {}
+): Promise<OwnerAlertResult> {
+  const url = process.env.NOTIFIER_URL;
+  const key = process.env.NOTIFIER_KEY;
+  if (!url || !key) return { sent: false, reason: 'Notifier not configured (NOTIFIER_URL/NOTIFIER_KEY unset)' };
+  const project = process.env.NOTIFIER_PROJECT ?? 'ipodhan';
+  try {
+    const res = await fetch(`${url.replace(/\/$/, '')}/notify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': key },
+      body: JSON.stringify({ project, severity, title, ...opts }),
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) return { sent: false, reason: `Notifier returned HTTP ${res.status}` };
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /**
  * Fire-and-forget owner alert -> Notifier's /notify. Notifier routes it to
  * Telegram/WhatsApp/email per its own config.yaml; the same dedupeKey within

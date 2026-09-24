@@ -1844,6 +1844,14 @@ export const ipoFieldPlan = pgTable(
     reasonCode: varchar('reason_code', { length: 32 }),
     cause: text('cause'),
 
+    // ---- when the chosen source was read (item 21, OD-39 + OD-72) ----
+    // Set only when a row is recorded SUPPLIED with its evidence: the moment the
+    // winning source was read. `updated_at` is NOT this date -- any write to the
+    // row (a skipped claim release, a rank reconcile) moves it. NULLABLE on
+    // purpose: rows supplied before this column existed have no recorded read
+    // date, and the page then names the source with no date rather than a guess.
+    chosenConfirmedAt: timestamp('chosen_confirmed_at'),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

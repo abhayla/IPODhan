@@ -858,6 +858,7 @@ jobs:
           tests/integration/field-sources-row-key-unique.integration.test.ts
           tests/integration/ipo-field-plan-row-key-unique.integration.test.ts
           tests/integration/ipo-field-plan-repository.integration.test.ts
+          tests/integration/live-slot-miss-monitor.integration.test.ts
           tests/integration/field-source-overrides-repository.integration.test.ts
           tests/integration/field-plan-walk-resume.integration.test.ts
           tests/integration/field-plan-walk-reclaim-starvation.integration.test.ts
