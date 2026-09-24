@@ -1,0 +1,10 @@
+{
+  "id": "d_stranded_readmit",
+  "findingClass": "documents.extraction_status = NOT_EXTRACTABLE while its type is now on AUTO_PERSIST_DOC_TYPES (F-158/OD-90: a row admitted NOT_EXTRACTABLE before #989 widened the extractable list, never re-admitted, and never revisited by the document cycle once its IPO leaves the live window)",
+  "round7Findings": [],
+  "failThreshold": "any documents row with extraction_status = 'NOT_EXTRACTABLE' whose type is in the AUTO_PERSIST_DOC_TYPES_MIRROR list (scripts/lib/document-state-checks.mjs, mirroring scraper/src/config/document-admission-status.ts)",
+  "severity": "P2",
+  "unverifiableWhen": "never — always runs against the documents and ipos tables",
+  "note": "Discriminates by TYPE, not by a hard-coded 'CORRIGENDUM': ADDENDUM (still non-extractable) is never flagged even while NOT_EXTRACTABLE, and a document of an extractable type that is genuinely PENDING or COMPLETED is not flagged either. Measured on ipodhan_staging 2026-09-25: flags skyways-air-services-ltd (CORRIGENDUM, NOT_EXTRACTABLE, updated 2026-09-22, id 3b77bc3b-e44a-4d3d-9622-edb71763e9e8); passes veegaland's corrigendum (COMPLETED) and does not touch any ADDENDUM row. Repair: scraper/scripts/repair-readmit-stranded-documents.ts. A type added to AUTO_PERSIST_DOC_TYPES later is caught by the same check once its mirror is updated — see the mirror's own header comment for the hand-sync convention this codebase already uses for the sibling not-applicable-documents.mjs mirror.",
+  "section": "checks"
+}

@@ -85,6 +85,7 @@ import {
   EXTRACTOR_VERSION,
 } from './filing-auto-persist.js';
 import { DistributedLock } from '../utils/distributed-lock.js';
+import { isExtractableDocType } from '../config/document-admission-status.js';
 import {
   computeCalendarGate,
   CALENDAR_GATE_ELIGIBLE_STAGES,
@@ -1217,6 +1218,149 @@ export async function loadCandidateIpos(deps: {
   return { candidates: ordered, listedCap, listedDeferred, listedComplete, listedEnriched, listedSkippedUnenriched };
 }
 
+/** The minimal shape PASS 2 (extraction) needs for one candidate IPO. */
+export interface ExtractionOnlyCandidate {
+  id: string;
+  companyName: string;
+  slug: string | null;
+  segment: string | null;
+  /**
+   * The OLDEST eligible document's `uploaded_at` for this IPO — the ordering
+   * key `capExtractionOnlyCandidates` sorts by (oldest first). Only set for
+   * rows produced by `selectExtractionOnlyCandidates`/`loadExtractionOnlyCandidateIpos`;
+   * a plain live-window `DiscoveryIpo` carries none, which is fine — it is
+   * never passed through the cap (PASS 2's live-window candidates are
+   * uncapped, only the additive extraction-only set is).
+   */
+  oldestEligibleDocumentAt?: Date;
+}
+
+/** The one documents-row shape `selectExtractionOnlyCandidates` reads. */
+export interface StoredDocumentForExtractionCandidacy {
+  ipoId: string;
+  type: string;
+  extractionStatus: string | null;
+  purgedUnread: boolean;
+  /** When this document was fetched — the age `capExtractionOnlyCandidates` orders by. */
+  uploadedAt?: Date;
+}
+
+/**
+ * F-158/OD-90 follow-up, owner delegation 2026-09-24 (see docs/design/
+ * data-sourcing-pull-model.md OD-98): the EXTRACTION pass (PASS 2) must pick
+ * up a stored, never-read document — extraction_status PENDING, type
+ * extractable, purged_unread=false — even when its IPO is OUTSIDE the live
+ * window `loadCandidateIpos` gates discovery/fetching on. Discovery and
+ * fetching stay live-window only (OD-56: a LISTED document is attempted once,
+ * and again only for a new document; OD-65: no re-read of an already-read
+ * document) — this only widens which IPOs PASS 2 (extraction) considers, so a
+ * document already sitting on disk with nothing left to fetch is not
+ * stranded once its IPO leaves the live window (the Skyways class, F-158).
+ *
+ * Pure, so "a PENDING extractable document makes its IPO a candidate, an
+ * ADDENDUM (non-extractable) PENDING row does not, and an IPO with no such
+ * document is not a candidate" is testable without a database.
+ * `alreadyCandidateIds` excludes an IPO PASS 1 already selected — PASS 2
+ * already iterates `candidates` first, so this set is additive, never a
+ * second dispatch of the same IPO.
+ */
+export function selectExtractionOnlyCandidates(
+  ipos: ExtractionOnlyCandidate[],
+  documentsByIpoId: ReadonlyMap<string, StoredDocumentForExtractionCandidacy[]>,
+  alreadyCandidateIds: ReadonlySet<string>
+): ExtractionOnlyCandidate[] {
+  const result: ExtractionOnlyCandidate[] = [];
+  for (const ipo of ipos) {
+    if (alreadyCandidateIds.has(ipo.id)) continue;
+    const docs = documentsByIpoId.get(ipo.id) ?? [];
+    const eligible = docs.filter(
+      (d) => d.extractionStatus === 'PENDING' && !d.purgedUnread && isExtractableDocType(d.type)
+    );
+    if (eligible.length === 0) continue;
+    const oldestEligibleDocumentAt = eligible.reduce<Date | undefined>((oldest, d) => {
+      if (!d.uploadedAt) return oldest;
+      return !oldest || d.uploadedAt.getTime() < oldest.getTime() ? d.uploadedAt : oldest;
+    }, undefined);
+    result.push({ ...ipo, ...(oldestEligibleDocumentAt ? { oldestEligibleDocumentAt } : {}) });
+  }
+  return result;
+}
+
+/**
+ * Owner-facing cap (supervisor review round 3 of the F-158/OD-98 fix, before
+ * merge): measured on staging, 95 PENDING/not-purged documents already sit
+ * outside the live window (PROSPECTUS on LISTED 74, RHP/LISTED 13, ANCHOR 6,
+ * DRHP 1, PBA 1). Uncapped, the first wake after deploy would add all 95 to
+ * PASS 2 in one cycle — risking the 2-hour wake-budget ceiling and starving
+ * the live data slots on the box that serves production. Same shape as the
+ * zip-member expansion pass's per-wake bound (`stored-zip-expansion-pass.ts`):
+ * a named constant, deterministic order (oldest eligible document first, so a
+ * backlog drains in FIFO order across cycles rather than starving on
+ * insertion order), and the selected/deferred counts logged on the same
+ * summary line as the rest of PASS 2 (see the call site in `runDocumentCycle`).
+ *
+ * Pure — sorts a copy, never mutates its input — so "5 eligible IPOs, cap 3 ->
+ * exactly the 3 oldest selected, 2 deferred, the next cycle takes the rest"
+ * is one deterministic assertion with no database or clock.
+ */
+export const EXTRACTION_ONLY_PER_CYCLE = 3;
+
+export function capExtractionOnlyCandidates(
+  candidates: ExtractionOnlyCandidate[],
+  cap: number = EXTRACTION_ONLY_PER_CYCLE
+): { selected: ExtractionOnlyCandidate[]; deferred: number } {
+  const sorted = [...candidates].sort((a, b) => {
+    const at = a.oldestEligibleDocumentAt?.getTime() ?? Number.POSITIVE_INFINITY;
+    const bt = b.oldestEligibleDocumentAt?.getTime() ?? Number.POSITIVE_INFINITY;
+    if (at !== bt) return at - bt;
+    return a.id.localeCompare(b.id); // stable tie-break — never an arbitrary re-order between cycles
+  });
+  return { selected: sorted.slice(0, Math.max(0, cap)), deferred: Math.max(0, sorted.length - Math.max(0, cap)) };
+}
+
+/**
+ * DB-reading wrapper: every IPO (any status, any live-window position) that
+ * holds AT LEAST ONE documents row in PENDING with purged_unread=false,
+ * narrowed to extractable types by the pure predicate above (never a
+ * hand-typed type list — the same SSOT `isExtractableDocType` reads
+ * everywhere else). One query, not one-per-IPO: `document-admission-
+ * status.ts`'s list is short and this runs once per cycle, same cost class
+ * as `loadCandidateIpos`'s own single query.
+ */
+export async function loadExtractionOnlyCandidateIpos(): Promise<ExtractionOnlyCandidate[]> {
+  // ONE query — every PENDING/purged_unread=false document row plus its IPO's
+  // identity and the document's uploaded_at (the cap's ordering key). The type
+  // filter runs in JS against the SSOT predicate (never a hand-copied SQL type
+  // list, same convention as not-applicable-documents.mjs).
+  const result = await db.execute(sql`
+    SELECT i.id, i.company_name AS "companyName", i.slug, i.segment, d.type::text AS type, d.uploaded_at AS "uploadedAt"
+      FROM documents d
+      JOIN ipos i ON i.id = d.ipo_id
+     WHERE d.extraction_status = 'PENDING'
+       AND d.purged_unread = false
+  `);
+  const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<string, unknown>[];
+  const byId = new Map<string, ExtractionOnlyCandidate>();
+  for (const r of rows) {
+    if (!isExtractableDocType(String(r.type ?? ''))) continue;
+    const id = String(r.id);
+    const uploadedAt = r.uploadedAt ? new Date(r.uploadedAt as string | Date) : undefined;
+    const existing = byId.get(id);
+    if (!existing) {
+      byId.set(id, {
+        id,
+        companyName: String(r.companyName ?? ''),
+        slug: (r.slug as string | null) ?? null,
+        segment: (r.segment as string | null) ?? null,
+        ...(uploadedAt ? { oldestEligibleDocumentAt: uploadedAt } : {}),
+      });
+    } else if (uploadedAt && (!existing.oldestEligibleDocumentAt || uploadedAt.getTime() < existing.oldestEligibleDocumentAt.getTime())) {
+      existing.oldestEligibleDocumentAt = uploadedAt;
+    }
+  }
+  return [...byId.values()];
+}
+
 /**
  * Demote any FOUND row whose file is no longer on disk back to WANTED (M7).
  *
@@ -1743,13 +1887,56 @@ export async function runDocumentCycle(
         // Logged once above when the lock failed.
       } else {
         const extractionStartedAt = now();
+        // Owner delegation 2026-09-24 (F-158/OD-90 follow-up): PASS 2 (this
+        // loop, and ONLY this loop — discovery/PASS 1 above already ran over
+        // `candidates` alone, and PASS 2.5/PASS 3 below stay on `candidates`
+        // too) additionally considers every IPO holding a stored, never-read,
+        // extractable document (PENDING, purged_unread=false) even when it is
+        // outside the live window `candidates` is built from. Additive only —
+        // `alreadyCandidateIds` excludes anything `candidates` already names,
+        // so no IPO is ever dispatched twice.
+        let extractionOnlyCandidates: ExtractionOnlyCandidate[] = [];
+        try {
+          const alreadyCandidateIds = new Set(candidates.map((c) => c.id));
+          const eligible = (await loadExtractionOnlyCandidateIpos()).filter(
+            (ipo) => !alreadyCandidateIds.has(ipo.id)
+          );
+          // Owner-facing cap (OD-98 review round 3): measured on staging, 95
+          // PENDING/not-purged documents already sit outside the live window —
+          // uncapped, the first wake after deploy would add all 95 to this
+          // loop in one cycle, risking the wake-budget ceiling and starving
+          // the live data slots. Oldest eligible document first, so a backlog
+          // drains FIFO across cycles; the deferred count is logged below.
+          const { selected, deferred } = capExtractionOnlyCandidates(eligible);
+          extractionOnlyCandidates = selected;
+          if (selected.length > 0 || deferred > 0) {
+            logger.info(
+              {
+                selected: selected.length,
+                deferred,
+                cap: EXTRACTION_ONLY_PER_CYCLE,
+                ipoIds: selected.map((c) => c.id),
+              },
+              'Extraction-only candidates outside the live window (F-158/OD-98 stranded-readmit follow-up)'
+            );
+          }
+        } catch (error) {
+          logger.warn(
+            { cause: error instanceof Error ? error.message : String(error) },
+            'Loading extraction-only candidates failed (non-fatal) — this cycle extracts live-window candidates only'
+          );
+        }
+        const extractionCandidates: ExtractionOnlyCandidate[] = [
+          ...candidates.map((c) => ({ id: c.id, companyName: c.companyName, slug: c.slug ?? null, segment: c.segment ?? null })),
+          ...extractionOnlyCandidates,
+        ];
         // W-168: one summary line per cycle — accumulated across every
         // candidate IPO's `processPendingFilings` call, logged once after
         // this loop (not per IPO, which would bury the cycle-wide picture
         // the live evidence needed: three failing anchors in a row was only
         // visible by reading every per-IPO log line by hand).
         const anchorCycleTotals = { considered: 0, spawned: 0, persisted: 0, manualReview: 0, failed: 0 };
-        for (const ipo of candidates) {
+        for (const ipo of extractionCandidates) {
           if (now() - extractionStartedAt >= extractionBudgetMs) {
             extractionExhausted = true;
             logger.warn(
