@@ -7,6 +7,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   selectExtractionOnlyCandidates,
+  capExtractionOnlyCandidates,
+  EXTRACTION_ONLY_PER_CYCLE,
   type ExtractionOnlyCandidate,
   type StoredDocumentForExtractionCandidacy,
 } from '../../../src/services/document-cycle.js';
@@ -83,5 +85,50 @@ describe('selectExtractionOnlyCandidates', () => {
       ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'PENDING', purgedUnread: false }]],
     ]);
     expect(selectExtractionOnlyCandidates([SKYWAYS], docs, new Set())).toEqual([SKYWAYS]);
+  });
+});
+
+// Supervisor review round 3: measured on staging, 95 PENDING/not-purged
+// documents already sit outside the live window. Uncapped, the first wake
+// after deploy would add all 95 to PASS 2 in one cycle -- the per-cycle cap
+// (zip-member-pass pattern) bounds it, oldest eligible document first.
+describe('capExtractionOnlyCandidates', () => {
+  const candidate = (id: string, daysOld: number): ExtractionOnlyCandidate => ({
+    id,
+    companyName: id,
+    slug: id,
+    segment: 'MAINBOARD',
+    oldestEligibleDocumentAt: new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000),
+  });
+
+  it('5 eligible IPOs with cap 3 -> exactly 3 selected, the 3 oldest; 2 deferred', () => {
+    const five = [candidate('a', 1), candidate('b', 5), candidate('c', 3), candidate('d', 10), candidate('e', 2)];
+    const { selected, deferred } = capExtractionOnlyCandidates(five, 3);
+    expect(selected.map((c) => c.id)).toEqual(['d', 'b', 'c']); // oldest (10d) -> 5d -> 3d
+    expect(deferred).toBe(2);
+  });
+
+  it('the next cycle takes the rest — capping the deferred set alone yields the remaining 2, oldest first', () => {
+    const five = [candidate('a', 1), candidate('b', 5), candidate('c', 3), candidate('d', 10), candidate('e', 2)];
+    const first = capExtractionOnlyCandidates(five, 3);
+    const remaining = five.filter((c) => !first.selected.some((s) => s.id === c.id));
+    const second = capExtractionOnlyCandidates(remaining, 3);
+    expect(second.selected.map((c) => c.id)).toEqual(['e', 'a']); // e (2d old) is older than a (1d old)
+    expect(second.deferred).toBe(0);
+  });
+
+  it('defaults to EXTRACTION_ONLY_PER_CYCLE (3) when no cap is passed', () => {
+    expect(EXTRACTION_ONLY_PER_CYCLE).toBe(3);
+    const five = [candidate('a', 1), candidate('b', 2), candidate('c', 3), candidate('d', 4), candidate('e', 5)];
+    const { selected, deferred } = capExtractionOnlyCandidates(five);
+    expect(selected).toHaveLength(3);
+    expect(deferred).toBe(2);
+  });
+
+  it('fewer eligible than the cap selects all of them, defers 0', () => {
+    const two = [candidate('a', 1), candidate('b', 2)];
+    const { selected, deferred } = capExtractionOnlyCandidates(two, 3);
+    expect(selected).toHaveLength(2);
+    expect(deferred).toBe(0);
   });
 });

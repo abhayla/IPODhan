@@ -1224,6 +1224,15 @@ export interface ExtractionOnlyCandidate {
   companyName: string;
   slug: string | null;
   segment: string | null;
+  /**
+   * The OLDEST eligible document's `uploaded_at` for this IPO — the ordering
+   * key `capExtractionOnlyCandidates` sorts by (oldest first). Only set for
+   * rows produced by `selectExtractionOnlyCandidates`/`loadExtractionOnlyCandidateIpos`;
+   * a plain live-window `DiscoveryIpo` carries none, which is fine — it is
+   * never passed through the cap (PASS 2's live-window candidates are
+   * uncapped, only the additive extraction-only set is).
+   */
+  oldestEligibleDocumentAt?: Date;
 }
 
 /** The one documents-row shape `selectExtractionOnlyCandidates` reads. */
@@ -1232,11 +1241,13 @@ export interface StoredDocumentForExtractionCandidacy {
   type: string;
   extractionStatus: string | null;
   purgedUnread: boolean;
+  /** When this document was fetched — the age `capExtractionOnlyCandidates` orders by. */
+  uploadedAt?: Date;
 }
 
 /**
  * F-158/OD-90 follow-up, owner delegation 2026-09-24 (see docs/design/
- * data-sourcing-pull-model.md OD-xx): the EXTRACTION pass (PASS 2) must pick
+ * data-sourcing-pull-model.md OD-98): the EXTRACTION pass (PASS 2) must pick
  * up a stored, never-read document — extraction_status PENDING, type
  * extractable, purged_unread=false — even when its IPO is OUTSIDE the live
  * window `loadCandidateIpos` gates discovery/fetching on. Discovery and
@@ -1258,16 +1269,53 @@ export function selectExtractionOnlyCandidates(
   documentsByIpoId: ReadonlyMap<string, StoredDocumentForExtractionCandidacy[]>,
   alreadyCandidateIds: ReadonlySet<string>
 ): ExtractionOnlyCandidate[] {
-  return ipos.filter((ipo) => {
-    if (alreadyCandidateIds.has(ipo.id)) return false;
+  const result: ExtractionOnlyCandidate[] = [];
+  for (const ipo of ipos) {
+    if (alreadyCandidateIds.has(ipo.id)) continue;
     const docs = documentsByIpoId.get(ipo.id) ?? [];
-    return docs.some(
-      (d) =>
-        d.extractionStatus === 'PENDING' &&
-        !d.purgedUnread &&
-        isExtractableDocType(d.type)
+    const eligible = docs.filter(
+      (d) => d.extractionStatus === 'PENDING' && !d.purgedUnread && isExtractableDocType(d.type)
     );
+    if (eligible.length === 0) continue;
+    const oldestEligibleDocumentAt = eligible.reduce<Date | undefined>((oldest, d) => {
+      if (!d.uploadedAt) return oldest;
+      return !oldest || d.uploadedAt.getTime() < oldest.getTime() ? d.uploadedAt : oldest;
+    }, undefined);
+    result.push({ ...ipo, ...(oldestEligibleDocumentAt ? { oldestEligibleDocumentAt } : {}) });
+  }
+  return result;
+}
+
+/**
+ * Owner-facing cap (supervisor review round 3 of the F-158/OD-98 fix, before
+ * merge): measured on staging, 95 PENDING/not-purged documents already sit
+ * outside the live window (PROSPECTUS on LISTED 74, RHP/LISTED 13, ANCHOR 6,
+ * DRHP 1, PBA 1). Uncapped, the first wake after deploy would add all 95 to
+ * PASS 2 in one cycle — risking the 2-hour wake-budget ceiling and starving
+ * the live data slots on the box that serves production. Same shape as the
+ * zip-member expansion pass's per-wake bound (`stored-zip-expansion-pass.ts`):
+ * a named constant, deterministic order (oldest eligible document first, so a
+ * backlog drains in FIFO order across cycles rather than starving on
+ * insertion order), and the selected/deferred counts logged on the same
+ * summary line as the rest of PASS 2 (see the call site in `runDocumentCycle`).
+ *
+ * Pure — sorts a copy, never mutates its input — so "5 eligible IPOs, cap 3 ->
+ * exactly the 3 oldest selected, 2 deferred, the next cycle takes the rest"
+ * is one deterministic assertion with no database or clock.
+ */
+export const EXTRACTION_ONLY_PER_CYCLE = 3;
+
+export function capExtractionOnlyCandidates(
+  candidates: ExtractionOnlyCandidate[],
+  cap: number = EXTRACTION_ONLY_PER_CYCLE
+): { selected: ExtractionOnlyCandidate[]; deferred: number } {
+  const sorted = [...candidates].sort((a, b) => {
+    const at = a.oldestEligibleDocumentAt?.getTime() ?? Number.POSITIVE_INFINITY;
+    const bt = b.oldestEligibleDocumentAt?.getTime() ?? Number.POSITIVE_INFINITY;
+    if (at !== bt) return at - bt;
+    return a.id.localeCompare(b.id); // stable tie-break — never an arbitrary re-order between cycles
   });
+  return { selected: sorted.slice(0, Math.max(0, cap)), deferred: Math.max(0, sorted.length - Math.max(0, cap)) };
 }
 
 /**
@@ -1281,10 +1329,11 @@ export function selectExtractionOnlyCandidates(
  */
 export async function loadExtractionOnlyCandidateIpos(): Promise<ExtractionOnlyCandidate[]> {
   // ONE query — every PENDING/purged_unread=false document row plus its IPO's
-  // identity. The type filter runs in JS against the SSOT predicate (never a
-  // hand-copied SQL type list, same convention as not-applicable-documents.mjs).
+  // identity and the document's uploaded_at (the cap's ordering key). The type
+  // filter runs in JS against the SSOT predicate (never a hand-copied SQL type
+  // list, same convention as not-applicable-documents.mjs).
   const result = await db.execute(sql`
-    SELECT i.id, i.company_name AS "companyName", i.slug, i.segment, d.type::text AS type
+    SELECT i.id, i.company_name AS "companyName", i.slug, i.segment, d.type::text AS type, d.uploaded_at AS "uploadedAt"
       FROM documents d
       JOIN ipos i ON i.id = d.ipo_id
      WHERE d.extraction_status = 'PENDING'
@@ -1295,13 +1344,18 @@ export async function loadExtractionOnlyCandidateIpos(): Promise<ExtractionOnlyC
   for (const r of rows) {
     if (!isExtractableDocType(String(r.type ?? ''))) continue;
     const id = String(r.id);
-    if (!byId.has(id)) {
+    const uploadedAt = r.uploadedAt ? new Date(r.uploadedAt as string | Date) : undefined;
+    const existing = byId.get(id);
+    if (!existing) {
       byId.set(id, {
         id,
         companyName: String(r.companyName ?? ''),
         slug: (r.slug as string | null) ?? null,
         segment: (r.segment as string | null) ?? null,
+        ...(uploadedAt ? { oldestEligibleDocumentAt: uploadedAt } : {}),
       });
+    } else if (uploadedAt && (!existing.oldestEligibleDocumentAt || uploadedAt.getTime() < existing.oldestEligibleDocumentAt.getTime())) {
+      existing.oldestEligibleDocumentAt = uploadedAt;
     }
   }
   return [...byId.values()];
@@ -1844,13 +1898,26 @@ export async function runDocumentCycle(
         let extractionOnlyCandidates: ExtractionOnlyCandidate[] = [];
         try {
           const alreadyCandidateIds = new Set(candidates.map((c) => c.id));
-          extractionOnlyCandidates = await loadExtractionOnlyCandidateIpos().then((ipos) =>
-            ipos.filter((ipo) => !alreadyCandidateIds.has(ipo.id))
+          const eligible = (await loadExtractionOnlyCandidateIpos()).filter(
+            (ipo) => !alreadyCandidateIds.has(ipo.id)
           );
-          if (extractionOnlyCandidates.length > 0) {
+          // Owner-facing cap (OD-98 review round 3): measured on staging, 95
+          // PENDING/not-purged documents already sit outside the live window —
+          // uncapped, the first wake after deploy would add all 95 to this
+          // loop in one cycle, risking the wake-budget ceiling and starving
+          // the live data slots. Oldest eligible document first, so a backlog
+          // drains FIFO across cycles; the deferred count is logged below.
+          const { selected, deferred } = capExtractionOnlyCandidates(eligible);
+          extractionOnlyCandidates = selected;
+          if (selected.length > 0 || deferred > 0) {
             logger.info(
-              { count: extractionOnlyCandidates.length, ipoIds: extractionOnlyCandidates.map((c) => c.id) },
-              'Extraction-only candidates outside the live window (F-158/OD-90 stranded-readmit follow-up)'
+              {
+                selected: selected.length,
+                deferred,
+                cap: EXTRACTION_ONLY_PER_CYCLE,
+                ipoIds: selected.map((c) => c.id),
+              },
+              'Extraction-only candidates outside the live window (F-158/OD-98 stranded-readmit follow-up)'
             );
           }
         } catch (error) {
