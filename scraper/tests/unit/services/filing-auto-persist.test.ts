@@ -477,6 +477,36 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
     expect(failedCall[0].error).toContain('boom');
   });
 
+  it('OD-36 (item 22 slice 22-5): a password-protected PDF is recorded MANUAL_REVIEW on the FIRST attempt — TERMINAL, never the ordinary FAILED/backoff path', async () => {
+    const d = deps({
+      runExtractor: vi.fn(() => ({
+        ok: false as const,
+        error: 'PDF_PASSWORD_PROTECTED: PDFPasswordIncorrect()',
+        passwordProtected: true,
+      })),
+    });
+
+    const result = await processPendingFilings(IPO, d);
+
+    expect(result.failed).toBe(1);
+    expect(d.persistFiling).not.toHaveBeenCalled();
+
+    // TERMINAL: MANUAL_REVIEW on attempt 1, not FAILED-with-backoff — the
+    // #959 backoff timer never applies to this document, because no retry
+    // could ever supply the missing password.
+    const manualReviewCall = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'MANUAL_REVIEW'
+    );
+    expect(manualReviewCall).toBeDefined();
+    expect(manualReviewCall[0]).toMatchObject({ documentId: 'doc-1', status: 'MANUAL_REVIEW' });
+    expect(manualReviewCall[0].error).toContain('PDF_PASSWORD_PROTECTED');
+    // Never written as plain FAILED for this cause.
+    const failedCall = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(failedCall).toBeUndefined();
+  });
+
   it('(e) a persist throw is FAILED (never PENDING), retryCount unchanged, and does not throw out of the service', async () => {
     const d = deps({
       persistFiling: vi.fn(async () => {

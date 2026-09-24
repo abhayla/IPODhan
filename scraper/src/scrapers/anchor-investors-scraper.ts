@@ -120,6 +120,17 @@ export const ANCHOR_SIDECAR_MEMORY_CEILING_EXIT = 3;
 export const ANCHOR_EMPTY_PAGES_REASON = 'no text and OCR heuristic did not fire';
 
 /**
+ * OD-36, item 22 slice 22-5 round 2: the exact reason recorded when the
+ * report's `pdfplumber.open()` fails with a genuine (non-blank) password.
+ * F-153 — the only REAL encrypted filing measured — IS an anchor allocation
+ * report, so this sidecar needed the same one-blank-password-attempt guard
+ * `extract_filing.py` already has (OD-36 for prospectus documents), not a
+ * separate design. No retry can ever supply the missing password, so this is
+ * terminal (MANUAL_REVIEW), same treatment as `ANCHOR_EMPTY_PAGES_REASON`.
+ */
+export const ANCHOR_PASSWORD_PROTECTED_REASON = 'PDF is password-protected (OD-36)';
+
+/**
  * W-142: WHY the scrape now reports a REASON, not just `null`.
  *
  * The automatic door (`filing-auto-persist.ts`) has to stamp
@@ -143,7 +154,10 @@ export type AnchorScrapeFailureKind =
   /** W-178c: the box lock timed out — another extractor (prod or staging)
    * holds it. NOT a failure of this document: no retry-count bump, no
    * deterministic-repeat key touched, no backoff. */
-  | 'busy';
+  | 'busy'
+  /** OD-36 round 2: the report's `pdfplumber.open()` failed with a genuine
+   * password. Terminal — never retried on a clock (`ANCHOR_PASSWORD_PROTECTED_REASON`). */
+  | 'password_protected';
 
 /**
  * MAJOR-1 (round 2). The automatic door has ALREADY selected one document row
@@ -169,7 +183,7 @@ export interface AnchorScrapeOutcome {
 /** The sidecar's own outcome, before any anchor-table parsing. */
 export type SidecarFailure = {
   ok: false;
-  kind: 'hard_failure' | 'empty_pages' | 'sidecar_error' | 'busy';
+  kind: 'hard_failure' | 'empty_pages' | 'sidecar_error' | 'busy' | 'password_protected';
   reason: string;
 };
 export type SidecarResult = { ok: true; pages: string[] } | SidecarFailure;
@@ -469,12 +483,21 @@ export function extractPageTexts(pdfPath: string): SidecarResult {
     logger.error(`[Anchor Investors] ${reason}`);
     return { ok: false, kind: 'sidecar_error', reason };
   }
-  let parsed: { error?: string; pages?: unknown };
+  let parsed: { error?: string; password_protected?: boolean; cause?: string; pages?: unknown };
   try {
     parsed = JSON.parse(res.stdout.trim().split('\n').pop() || '{}');
   } catch {
     logger.error('[Anchor Investors] Text sidecar output was not JSON');
     return { ok: false, kind: 'sidecar_error', reason: 'text sidecar output was not JSON' };
+  }
+  // OD-36 round 2: checked BEFORE the generic `parsed.error` branch below —
+  // `anchor_report_text.py` emits both fields on this cause (see its `main()`),
+  // and this one must never fall into `sidecar_error`'s retryable path (no
+  // retry can ever supply the missing password).
+  if (parsed.password_protected) {
+    const reason = `${ANCHOR_PASSWORD_PROTECTED_REASON}: ${parsed.cause || 'unknown cause'}`;
+    logger.error(`[Anchor Investors] Text sidecar: ${reason}`);
+    return { ok: false, kind: 'password_protected', reason };
   }
   if (parsed.error) {
     logger.error(`[Anchor Investors] Text sidecar failed: ${parsed.error}`);

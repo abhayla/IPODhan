@@ -376,6 +376,80 @@ the first one is larger than the wording suggests:
 Until both are settled, the honest state of 22-5 is BLOCKED_ON_FIXTURE — not "next up". It was
 listed as ready on the lane B board earlier today; that was wrong and is corrected.
 
+### Slice 22-5 — AS BUILT (F-153 dissolved both blockers; built at the Python extractor, not with pdf-lib)
+
+Both blockers above dissolve without the `pdf-lib` route:
+
+1. **No new dependency.** The PDF is opened by the Python extractor
+   (`scraper/scripts/extract_filing.py`, `pdfplumber.open()` at the top of `extract()`), not by a
+   new TypeScript library at the download-verify stage. `pdfplumber` (and its `pdfminer` dependency)
+   are already in `scraper/scripts/requirements*.txt`. `pdf-lib` was never added.
+2. **A real fixture exists.** F-153 (`docs/design/findings.json`) is the real encrypted filing —
+   `ANCHOR_ALLOCATION_REPORT-4e5a4f9d.pdf` under the local prospectus store — proven owner-password-
+   only (blank-password attempt opens it; `pypdf.PdfReader.decrypt("")` returns code 1 = user
+   password). A genuine 1-page extract of that SAME real file, re-encrypted with a non-empty USER
+   password, is committed at `scraper/scripts/fixtures/item22-user-password.pdf` (the owner-password
+   variant, which the blank attempt DOES open, is the paired fixture
+   `item22-owner-password.pdf`, proving the fix does not misclassify F-153's own 3-of-45 class).
+
+**Mechanism.** `pdfplumber.open(pdf_path)` on a genuinely password-protected PDF raises
+`pdfplumber.utils.exceptions.PdfminerException` whose `str()` is empty — the real signal is
+`exc.args[0]`, an instance of `pdfminer.pdfdocument.PDFPasswordIncorrect` (measured against both
+fixtures this session). The shared `pdf_password_errors.is_pdf_password_error()` matches that shape
+(plus `pypdfium2.PdfiumError` with "password" in its message — that second branch exists for a PDF
+library that raises through pypdfium2 directly, not for `extract_filing.py`'s own OCR route: OCR in
+`extract_filing.py` runs only AFTER `pdfplumber.open()` has already succeeded (`extract()`, the
+`with pdf_ctx as pdf:` block, ~l.2900, feeding the OCR branch at ~l.2912), so a user-password PDF
+becomes the terminal `PDF_PASSWORD_PROTECTED` envelope before OCR is ever reached there — that path
+is correctly unreachable for this cause, not "covered"). On a match at `extract_filing.py`'s own
+`pdfplumber.open()` call, `extract()` returns a terminal envelope —
+`extraction_status: "PDF_PASSWORD_PROTECTED"`, `extraction_status_cause` holding the library's
+message, `page_texts: []`, `fields: {}` — instead of raising into `main()`'s catch-all (which would
+otherwise crash the whole extractor process and lose the document's identity from the failure, per
+`signal-ownership.md` R1/R2).
+
+**Round 2 (Tier B review): the anchor extractor (`anchor_report_text.py`) needed the SAME guard and
+did not have it.** It opens PDFs itself — its own `pdfplumber.open(path)` call in `extract()`
+(~l.1244) — with no password check, so a user-password anchor allocation report (F-153's own class:
+the only REAL encrypted filing measured, 3 of 45 local filings, is an anchor allocation report) would
+raise straight into `main()`'s generic `except Exception` (~l.1331), which prints an opaque
+`{"error": "PdfminerException: "}` (empty message) and returns exit 1 — indistinguishable from any
+other parse failure, and the caller (`anchor-investors-scraper.ts`'s `extractPageTexts`) would file it
+as ordinary retryable `sidecar_error`, retried hourly forever with no chance of ever succeeding. Fixed
+the same way: `extract()` now catches the `pdfplumber.open()` failure, checks it with the same shared
+`is_pdf_password_error()`, and on a match `main()` emits `{"password_protected": true, "cause": ...}`
+instead of the generic `{"error": ...}` shape. `anchor-investors-scraper.ts`'s `extractPageTexts`
+checks `parsed.password_protected` before the generic `parsed.error` branch and returns a new
+`SidecarFailure` kind, `'password_protected'`; `anchor-auto-persist.ts`'s
+`classifyAnchorAutoOutcome` routes that kind straight to `manual_review` (the same terminal,
+never-retried treatment `empty_pages`/W-139 already gets) — never through the ordinary FAILED/backoff
+path, since no retry can ever supply the missing password (mirrors OD-36's rule for
+`extract_filing.py`; #959's extraction-failure backoff timer stays explicitly out of scope). Its own
+`ocr_pages.ocr_pdf_page_boxes` call (~l.1272/1298) is reachable only for pages already read by a
+SUCCESSFUL `pdfplumber.open()` — a password-protected PDF never reaches page reconstruction at all —
+so, same as `extract_filing.py`, that OCR call site needed no separate guard; the fix at the single
+`pdfplumber.open()` call covers the whole file.
+
+On the node side, `filing-auto-persist.ts`'s `defaultExtractorRunner` reads
+`extraction_status === 'PDF_PASSWORD_PROTECTED'` and returns `{ ok: false, passwordProtected: true,
+error }`; `processPendingFilings` writes this straight to `documents.extraction_status =
+'MANUAL_REVIEW'` (via `withBlockedVersion`, the existing MANUAL_REVIEW mechanism) on the FIRST
+attempt — never through `classifyFailure`'s ordinary 10-attempt/backoff path, since no retry can ever
+supply the missing password. The extraction-failure backoff timer (#959) is explicitly out of scope
+and does not apply to this cause.
+
+**`ENABLE_DOCUMENT_PASSWORD_CHECK` is retired, not needed.** The flag was designed to gate a new
+dependency (`pdf-lib`) being added to production. Since no new dependency was added — the blank-
+password attempt is the extractor's EXISTING `pdfplumber.open()` call, just no longer left to crash
+on an encrypted PDF — there is nothing to gate behind a flag. The flag does not appear anywhere in
+the codebase (verified: `grep -r ENABLE_DOCUMENT_PASSWORD_CHECK` before this slice landed returns no
+hits), so nothing needs to be removed; the flag section above stays as the historical record of the
+path that was NOT taken.
+
+Tests: `scraper/scripts/test_extract_filing_password_protected.py` (Python, red-then-green,
+mutation-tested) and `scraper/tests/unit/services/filing-auto-persist.test.ts` ("OD-36" case, TS,
+asserts the MANUAL_REVIEW terminal write and that no FAILED row is ever written for this cause).
+
 **What is genuinely ready instead is slice 22-7**: the registrar host set. `loadRegistrarDocumentHosts`
 and `resetRegistrarDocumentHostsCache` already exist and work, and `isTrustedDocumentHost` already
 takes the set — but both real call sites pass ONE argument, so the set is always the empty default

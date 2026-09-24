@@ -107,6 +107,36 @@ STATUS_PARTIAL_OCR = "PARTIAL_OCR"
 # Coverage outranks confidence when both apply: the missing pages are the
 # actionable half, so they must not be hidden behind a confidence caveat.
 STATUS_INCOMPLETE_PAGES = "INCOMPLETE_PAGES"
+# OD-36 (item 22 slice 22-5, F-153): a password-protected PDF gets exactly one
+# blank-password attempt. On failure this is the terminal outcome — never a
+# crash, never retried on a clock. F-153 measured 3 of 45 local filings as
+# owner-password-only (blank opens them; not this path) versus a genuine
+# user-password PDF, which the blank attempt cannot open.
+STATUS_PDF_PASSWORD_PROTECTED = "PDF_PASSWORD_PROTECTED"
+
+
+# Shared with `anchor_report_text.py` (item 22 slice 22-5, round 2): the
+# anchor extractor opens PDFs the same way (pdfplumber, one blank-password
+# attempt) and needs the identical detection — see `pdf_password_errors.py`'s
+# module comment for why this lives in one place instead of two.
+from pdf_password_errors import is_pdf_password_error as _is_pdf_password_error
+
+
+def _password_protected_envelope(pdf_path, doc_type, cause):
+    """The terminal envelope for a PDF the blank-password attempt could not
+    open. Same shape as a normal `run()` result (page_texts empty, status
+    names the cause) so the node caller's existing envelope parsing needs no
+    new branch — only `extraction_status` is new."""
+    return {
+        "doc_type": doc_type,
+        "source_file": os.path.basename(pdf_path),
+        "page_texts": [],
+        "extraction_status": STATUS_PDF_PASSWORD_PROTECTED,
+        "extraction_status_cause": str(cause) or type(cause).__name__,
+        "unit": None,
+        "fiscal_years": [],
+        "fields": {},
+    }
 
 # `[●]` (and the `[•]`/`[.]` variants pdfplumber emits) marks a cell that cannot be
 # filled until the issue is priced — E3: null with reason, never a guess.
@@ -2830,7 +2860,19 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
     fall back to the OCR route (D6/W-57) instead of stopping at NEEDS_OCR."""
     import pdfplumber
     page_texts = []
-    with pdfplumber.open(pdf_path) as pdf:
+    try:
+        pdf_ctx = pdfplumber.open(pdf_path)
+    except Exception as exc:  # noqa: BLE001
+        # OD-36: one blank-password attempt (pdfplumber.open with no
+        # `password=` kwarg tries "" per pdfplumber's own default). On
+        # failure this is TERMINAL — return the envelope with the cause
+        # recorded rather than raising into main()'s memory-ceiling handler,
+        # which would otherwise crash the whole process and lose the
+        # document's identity from the failure.
+        if _is_pdf_password_error(exc):
+            return _password_protected_envelope(pdf_path, doc_type, exc)
+        raise
+    with pdf_ctx as pdf:
         # W-137: pdfplumber caches every page's chars/objects for the life of
         # `pdf.pages` — for a 400-page prospectus that pins gigabytes. Extract
         # one page's text, keep only the string, then release that page's

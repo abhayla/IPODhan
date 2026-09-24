@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import memory_guard  # noqa: E402
 import box_lock  # noqa: E402 — light, safe to import first (W-178c round 2)
 from json_safe import strip_nul_bytes  # noqa: E402
+from pdf_password_errors import is_pdf_password_error  # noqa: E402
 
 import pdfplumber  # noqa: E402
 
@@ -1239,9 +1240,30 @@ def rebuilt_rows_missing_a_share_cell(rows):
     return any((cell or "").strip() == "" for cell in shares_column)
 
 
+class PasswordProtectedError(Exception):
+    """Raised by `extract()` when the report's `pdfplumber.open()` fails with a
+    password error (OD-36, item 22 slice 22-5, round 2). F-153 — the only REAL
+    encrypted filing measured — IS an anchor allocation report, so this
+    extractor needs the same one-blank-password-attempt guard
+    `extract_filing.py` has, not a re-implementation of it (see
+    `pdf_password_errors.py`)."""
+
+
 def extract(path, ocr=True):
     pages_words = []
-    with pdfplumber.open(path) as pdf:
+    try:
+        pdf_ctx = pdfplumber.open(path)
+    except Exception as exc:  # noqa: BLE001
+        # OD-36: one blank-password attempt (pdfplumber.open with no
+        # `password=` kwarg tries "" per pdfplumber's own default). On
+        # failure this is TERMINAL — raise a named error `main()` catches
+        # BEFORE its generic `except Exception`, so the caller gets a
+        # distinguishable cause instead of an opaque `{"error": ""}` filed as
+        # an ordinary retryable sidecar failure forever.
+        if is_pdf_password_error(exc):
+            raise PasswordProtectedError(str(exc) or type(exc).__name__) from exc
+        raise
+    with pdf_ctx as pdf:
         # W-137 sibling: release each page's pdfplumber cache as we go rather
         # than holding the whole document's char/object cache alive at once
         # (same shape as extract_filing.py's prospectus OOM).
@@ -1328,6 +1350,13 @@ def main():
 
     try:
         pages = extract(argv[0], ocr="--no-ocr" not in sys.argv[1:])
+    except PasswordProtectedError as exc:
+        # OD-36 round 2: named and terminal, never the generic `{"error": ...}`
+        # shape the TS side would otherwise file as an ordinary retryable
+        # sidecar failure. `anchor-investors-scraper.ts`'s `extractPageTexts`
+        # checks `parsed.password_protected` before `parsed.error`.
+        print(json.dumps({"password_protected": True, "cause": str(exc)}))
+        return 1
     except Exception as exc:  # noqa: BLE001 - the caller only needs the reason
         # MAJOR-4 (W-137 round 2): this sidecar is spawned by
         # anchor-investors-scraper.ts with NO RLIMIT_AS guard at all until
