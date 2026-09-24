@@ -17,6 +17,7 @@
 
 import type { InferSelectModel } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
+import { RUPEES_PER_CRORE } from '@/lib/utils';
 
 // Type aliases for better readability
 type IPO = InferSelectModel<typeof schema.ipos>;
@@ -171,7 +172,10 @@ export const customValidationRules: Record<
     },
 
     /**
-     * Issue Size: Must be positive (in crores)
+     * Issue Size (camelCase key): dead on the live dynamic admin page — see the F-156 round-2
+     * comment on `issue_size` below. Kept only because dynamic-validation-rules.test.ts still
+     * exercises it in isolation; must NOT be reached from DynamicFormGenerator (it reads
+     * column.name, which is snake_case). Values here are in CRORES.
      */
     issueSize: (value: number | null) => {
       if (value === null || value === undefined) {
@@ -197,6 +201,49 @@ export const customValidationRules: Record<
         return {
           valid: true,
           warning: 'Issue size exceeds ₹1 lakh crores. Please verify.',
+        };
+      }
+
+      return { valid: true };
+    },
+
+    /**
+     * Issue Size (F-156 round 2, the LIVE key): DynamicFormGenerator passes `column.name` — the
+     * real DB column name — as `fieldName` (schema-introspector.ts extractColumnMetadata reads
+     * `columnAny.name`, which Drizzle sets to the string given to the column builder, e.g.
+     * `numeric('issue_size', ...)`), so this is the validator that actually runs on the admin
+     * page. `ipos.issue_size` is stored in exact RUPEES (OD-67); thresholds here are the same
+     * ₹10 crore / ₹1 lakh crore bounds as the camelCase entry above, converted to rupees via the
+     * shared RUPEES_PER_CRORE constant rather than retyped.
+     */
+    issue_size: (value: number | string | null) => {
+      if (value === null || value === undefined || value === '') {
+        return { valid: true }; // Nullable field
+      }
+
+      const rupees = typeof value === 'string' ? Number(value) : value;
+      if (!Number.isFinite(rupees)) {
+        return { valid: true }; // schema-level validation handles type errors
+      }
+
+      if (rupees <= 0) {
+        return {
+          valid: false,
+          error: 'Issue size must be greater than ₹0',
+        };
+      }
+
+      if (rupees < 10 * RUPEES_PER_CRORE) {
+        return {
+          valid: true,
+          warning: 'Issue size below ₹10 crore is unusually small for IPOs.',
+        };
+      }
+
+      if (rupees > 100000 * RUPEES_PER_CRORE) {
+        return {
+          valid: true,
+          warning: 'Issue size exceeds ₹1 lakh crore. Please verify.',
         };
       }
 

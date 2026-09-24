@@ -187,12 +187,26 @@ function currentUnitForKey(key) {
 // did not measure a current_unit for (i.e. every CRORE/RUPEES_KEPT column that already matches
 // its class — current_unit === undefined there means "measurement agreed with the class default,
 // no override was recorded").
-function unitForField(f) {
-  const key = `${f.t}.${f.c}`;
-  const currentUnit = currentUnitForKey(key);
+// F-156 round 2 (Tier A review MINOR): the manifest unit for a MEASURED current_unit — pulled
+// out of unitForField() so it can be unit-tested directly without needing to fake the probe file
+// on disk. An unrecognised value (a typo, a new probe value nobody wired here) throws rather than
+// silently falling through to the column's amount-class default — that silent fallback is exactly
+// how a wrong unit tag would reach the manifest unnoticed.
+export function manifestUnitFromCurrentUnit(currentUnit, key) {
   if (currentUnit === 'RUPEES') return 'rupee';
   if (currentUnit === 'CRORE') return 'crore';
   if (currentUnit === 'PER_ROW_UNIT') return 'per_row';
+  throw new Error(
+    `unitForField: unrecognised current_unit "${currentUnit}" for ${key} — add it to manifestUnitFromCurrentUnit() or fix the probe`
+  );
+}
+
+export function unitForField(f) {
+  const key = `${f.t}.${f.c}`;
+  const currentUnit = currentUnitForKey(key);
+  if (currentUnit !== undefined && currentUnit !== null) {
+    return manifestUnitFromCurrentUnit(currentUnit, key);
+  }
   const cls = amountClassForKey(key);
   if (cls === 'CRORE') return 'crore';
   if (cls === 'RUPEES_KEPT') return 'rupee';

@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { unitForField, manifestUnitFromCurrentUnit } from '../generate-field-manifest.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MANIFEST_PATH = join(ROOT, 'scraper', 'config', 'field-manifest.json');
@@ -68,4 +69,32 @@ test('mutation: a wrong manifest unit on a real overridden field is caught (prov
 
   const expected = currentUnitToManifestUnit(target.current_unit);
   assert.notEqual(mutated.fields[key].unit, expected, 'the mutation must actually disagree with the expected unit');
+});
+
+// Tier A review MINOR (2026-09-24): unitForField() used to fall through an unrecognised
+// current_unit straight to the column's amount-class default, silently hiding a typo (e.g. a
+// probe value "RUPEE" instead of "RUPEES"). It must throw instead.
+test('unitForField throws on an unrecognised current_unit instead of silently falling back to the class default', () => {
+  const key = 'ipos.issue_size';
+  const knownColumn = { t: 'ipos', c: 'issue_size' };
+
+  // Sanity: the real probe measures a recognised current_unit for this column, so the happy
+  // path still resolves without throwing.
+  assert.doesNotThrow(() => unitForField(knownColumn));
+
+  // A column the probe does not cover at all falls back to 'keep' (no current_unit measured) —
+  // that path must still work; it is the recognised-but-wrong VALUE that must throw.
+  assert.doesNotThrow(() => unitForField({ t: 'not_a_real_table', c: 'not_a_real_column' }));
+});
+
+test('manifestUnitFromCurrentUnit throws on an unrecognised/typo current_unit instead of a silent default', () => {
+  assert.throws(() => manifestUnitFromCurrentUnit('RUPEE', 'ipos.issue_size'), /unrecognised current_unit/);
+  assert.throws(() => manifestUnitFromCurrentUnit('crore', 'ipos.issue_size'), /unrecognised current_unit/); // case-sensitive typo
+  assert.throws(() => manifestUnitFromCurrentUnit('', 'ipos.issue_size'), /unrecognised current_unit/);
+});
+
+test('manifestUnitFromCurrentUnit resolves every recognised value (proves the throw test above is meaningful)', () => {
+  assert.equal(manifestUnitFromCurrentUnit('RUPEES', 'k'), 'rupee');
+  assert.equal(manifestUnitFromCurrentUnit('CRORE', 'k'), 'crore');
+  assert.equal(manifestUnitFromCurrentUnit('PER_ROW_UNIT', 'k'), 'per_row');
 });

@@ -25,7 +25,6 @@ import ExtractionResultsViewer from '@/components/admin/ExtractionResultsViewer'
 import { IPOContextBanner } from '@/components/admin/IPOContextBanner';
 import { Breadcrumb } from '@/components/admin/Breadcrumb';
 import { RelatedDataLinks } from '@/components/admin/RelatedDataLinks';
-import { applyCroreEdgeForDisplay, applyCroreEdgeForSave } from '@/lib/admin/amount-unit-edge';
 
 export default function DynamicAdminPage() {
   const params = useParams();
@@ -90,8 +89,11 @@ export default function DynamicAdminPage() {
         const response = await adminGet(`/api/admin/dynamic/${tableName}/${recordId}`);
 
         if (response.success && response.data) {
-          // F-156: convert the OD-67 rupee columns to the crore values the admin UI shows.
-          setRecordData(applyCroreEdgeForDisplay(tableName, response.data));
+          // F-156 round 2: no unit conversion here. The OD-67 columns (ipos.issue_size etc.) are
+          // shown and saved in the same RAW RUPEES the DB stores and the admin has always used —
+          // see web/lib/admin/field-labels.ts and dynamic-validation-rules.ts for the rupee-scale
+          // label/validation on issue_size.
+          setRecordData(response.data);
         } else {
           throw new Error(response.error || 'Failed to load record');
         }
@@ -140,9 +142,8 @@ export default function DynamicAdminPage() {
   const handleSubmit = async (data: Record<string, any>) => {
     try {
       let response;
-      // F-156: the form holds the admin-facing crore value for the OD-67 rupee columns;
-      // convert back to exact rupees before it reaches the DB.
-      const toSave = applyCroreEdgeForSave(tableName, data);
+      // F-156 round 2: saved as-is, in the same raw rupees the form displayed (no conversion).
+      const toSave = data;
 
       if (isCreateMode) {
         // Create new record
