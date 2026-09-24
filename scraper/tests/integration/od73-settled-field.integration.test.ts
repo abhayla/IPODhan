@@ -228,7 +228,12 @@ describe.skipIf(!DATABASE_URL)('OD-73 settled fields on the real write path (ipo
   it('OD-75 round 2: an admin-only row shows on the admin list but never holds a transition or enters a count', async () => {
     await seed('OPEN', [['closeDate', 'CHITTORGARH', '2026-09-26']]);
     const repo = new DataConflictsRepository(drizzle(pool!, { schema }) as never, noRedis);
-    const count = async (sql: string, key: string) => (await pool!.query(sql)).rows[0][key] as number;
+    // Scoped to this test's own IPO (#995): the shared count SQL runs UNCHANGED against a CTE that
+    // shadows data_conflicts with this IPO's rows only, so the helper stays the single definition and
+    // another integration file writing data_conflicts in parallel cannot move the number.
+    const count = async (sql: string, key: string) =>
+      (await pool!.query(`WITH data_conflicts AS (SELECT * FROM public.data_conflicts WHERE ipo_id = $1) ${sql}`, [IPO_ID]))
+        .rows[0][key] as number;
     const backlog0 = await count(unresolvedConflictCountSql(), 'total');
     const inserted0 = await count(conflictsInserted24hSql(), 'inserted');
 
