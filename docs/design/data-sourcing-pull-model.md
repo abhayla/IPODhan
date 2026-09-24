@@ -1072,6 +1072,9 @@ endpoints, with the 90-day windows."*
   with the same session, but only for the stock's real trading series — `EQ` for mainboard, and `SM` or
   `ST` for SME depending on the stock (IC Electricals `SM` 134.5, VINOD `ST` 72.85); a wrong series is a
   404, which is therefore not by itself evidence of delisting.
+  **Measured 2026-09-24 (F-155):** no `ipos` row stores a BSE scrip code (0 of 387 on staging), so the BSE
+  call needs one first: BSE `ListofScripData` (one call, 5,047 active equity scrips) maps `ISIN_NUMBER` to
+  `SCRIP_CD` (CSM Technologies INE0ZK601013 -> 544806, 103.62). Both BSE calls refuse a bare User-Agent.
 - **Window:** every 15 minutes during exchange market hours, for 90 days after the listing date;
   after that the job stops for that IPO and the page keeps the last value it had.
 - **Label:** the page shows the price **with the timestamp it was read at, marked "delayed"**. A
