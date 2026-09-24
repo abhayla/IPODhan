@@ -582,7 +582,9 @@ try {
     ['OD-41 canonical', /A canonical tag on every IPO page/, true],
     ['OD-43 corpus rules', /One directory per source/, true],
     ['OD-44 two staging cycles', /Two consecutive staging cycles/, true],
-    ['OD-45 cost table', /\*\*1\.46\*\*|1\.46 GB a month/, true],
+    // The conclusion's number moves with the cost table (1.46 GB before item 7 S5's price job, 3.22 GB with it);
+    // the signature pins that the conclusion exists, not a number that is re-derived when a job is added.
+    ['OD-45 cost table', /\*\*[\d.]+ GB a month is [\d.]+% of the plan's bandwidth\.\*\*/, true],
     ['OD-45 zero paid calls', /phase 1 makes no paid call/, true],
     ['OD-48 rupee precision', /numeric\(15,2\)/, true],
     ['OD-48 Aramco test', /Aramco scale/, true],

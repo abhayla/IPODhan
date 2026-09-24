@@ -14,9 +14,11 @@
  * Every read returns one of three outcomes, never a thrown error for an exchange answer:
  *   price     — a positive last traded price with the exchange's own as-of time
  *   no-symbol — the exchange says there is no such symbol (every series tried answered
- *               404 or an explicit empty quote list; or BSE's well-formed answer names no
- *               scrip / a scrip that is not Listed)
- *   refused   — UNKNOWN: Access Denied, a non-JSON or empty 200, an empty `{}`, a network
+ *               a 404 with NSE's JSON error body or an explicit empty quote list; or BSE's
+ *               well-formed answer names no scrip / a scrip whose category is Delisted)
+ *   refused   — UNKNOWN: Access Denied, a 404 without NSE's JSON error body (a renamed or
+ *               retired route), a BSE scrip that is suspended or of any category other than
+ *               Listed/Delisted, a non-JSON or empty 200, an empty `{}`, a network
  *               error or timeout, a 5xx, a listed scrip with no trade yet. Never counted
  *               toward delisting, always logged with its cause (round 2, Tier A MAJOR 1).
  */
@@ -86,6 +88,24 @@ export type NseRawFetch = (symbol: string, series: string) => Promise<{ status: 
 export const EXCHANGE_REQUEST_TIMEOUT_MS = 15_000;
 
 /**
+ * Round 3 (independent review of round 2, MAJOR): the body NSE's GetQuoteApi sends with a
+ * 404 when the symbol has no quote in that series, measured on 2026-09-24 for a wrong series
+ * (VINOD/SM) and a symbol that does not exist (ZZNOSUCHSYM, all four series): exactly
+ * `{"error":"Unexpected end of JSON input"}`. A 404 whose body is anything else (the HTML page
+ * a renamed or retired route answers with, an empty body, some other JSON) says nothing about
+ * the symbol and is UNKNOWN.
+ */
+export function isNseNoSuchSeriesBody(body: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return false;
+  }
+  return Boolean(parsed) && typeof parsed === 'object' && !Array.isArray(parsed) && typeof (parsed as { error?: unknown }).error === 'string';
+}
+
+/**
  * What one NSE series answer means (round 2, Tier A MAJOR 1). Only an HTTP 404 or a
  * well-formed JSON body that EXPLICITLY carries no quote (`equityResponse: []`) says
  * "no such symbol in this series". Everything else that is not a quote is UNKNOWN: an
@@ -96,7 +116,11 @@ export function classifyNseSeriesAnswer(res: { status: number; body: string }):
   | { kind: 'price'; quote: NonNullable<ReturnType<typeof parseNseSymbolData>> }
   | { kind: 'no-symbol' }
   | { kind: 'refused'; detail: string } {
-  if (res.status === 404) return { kind: 'no-symbol' };
+  if (res.status === 404) {
+    return isNseNoSuchSeriesBody(res.body)
+      ? { kind: 'no-symbol' }
+      : { kind: 'refused', detail: `HTTP 404 without NSE's JSON error body (route renamed, retired or down?): ${res.body.slice(0, 80)}` };
+  }
   if (res.status !== 200) return { kind: 'refused', detail: `HTTP ${res.status}: ${res.body.slice(0, 120)}` };
   if (res.body.trim() === '') return { kind: 'refused', detail: 'HTTP 200 with an empty body' };
   if (/Access Denied/i.test(res.body)) return { kind: 'refused', detail: `Access Denied page (${res.body.length} bytes)` };
@@ -174,7 +198,17 @@ export function parseBseScripHeader(body: string):
   }
   const category = String(header?.Category ?? cmp?.Category ?? '').trim();
   if (!cmp.FullN) return { kind: 'no-symbol', detail: 'no scrip in the answer' };
-  if (category && !/^listed$/i.test(category)) return { kind: 'no-symbol', detail: `scrip category ${category}` };
+  // Round 3 (review MINOR 1): the categories this reader recognises. "Delisted" is the only one
+  // that says the scrip no longer trades. "Listed" (or blank, with a named scrip) goes on to the
+  // price. Anything else — "Suspended", "Permitted", a word BSE adds later — is UNKNOWN: a
+  // suspended scrip still exists and may resume, so it is never evidence of delisting.
+  if (/^delisted$/i.test(category)) return { kind: 'no-symbol', detail: `scrip category ${category}` };
+  if (category && !/^listed$/i.test(category)) return { kind: 'refused', detail: `scrip category ${category} (not Listed, not Delisted: unknown)` };
+  // Measured 2026-09-24: a suspended scrip (500102) answers Category "Listed" with DisplayText
+  // "Suspended due to Procedural reasons" and its last pre-suspension LTP (0.89, as of 22 Jun 23).
+  // That LTP is not today's price and the suspension is not delisting: UNKNOWN.
+  const notice = [header.DisplayText, header.IDB_DisplayText].map((s) => String(s ?? '').trim()).find((s) => /suspend/i.test(s));
+  if (notice) return { kind: 'refused', detail: `scrip suspended: ${notice}` };
   const price = Number(String(header.LTP ?? parsed?.CurrRate?.LTP ?? '').replace(/,/g, ''));
   const asOfText = String(header.Ason ?? '');
   const asOf = parseBseAsOn(asOfText);

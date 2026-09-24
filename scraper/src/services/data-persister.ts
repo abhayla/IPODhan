@@ -19,7 +19,7 @@ import type { ScrapedFinancialData } from '../scrapers/financial-data-scraper.js
 import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 // Phase 2: Shadow Mode - Data Consolidation Service
-import { DataConsolidationService, collectImplausibleIssueSizeFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
+import { DataConsolidationService, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo, withSourceKeyLineage, sourceKeyLineageFor } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
@@ -617,6 +617,23 @@ export function mergeListingExchangesForSource(
     return existing;
   }
   return merged;
+}
+
+/**
+ * Round 3 of PR #972 (review MINOR 3): the legacy fallback door (it runs when consolidation
+ * throws) must honour the same terminal-status rule as the consolidation path
+ * (`TERMINAL_IPO_STATUSES`): a stored WITHDRAWN, POSTPONED or DELISTED is never overwritten by
+ * an ordinary scrape's status. DELISTED is set and cleared only by the post-listing price job
+ * (`writePostListingState`). Returns the update without `status` when the stored one is
+ * terminal and the incoming one differs; otherwise the update unchanged.
+ */
+export function keepTerminalIpoStatus<T extends Record<string, any>>(existingStatus: unknown, update: T): T {
+  if (!('status' in update)) return update;
+  const stored = existingStatus == null ? null : String(existingStatus);
+  if (stored === null || !TERMINAL_IPO_STATUSES.has(stored) || String(update.status) === stored) return update;
+  const { status: _dropped, ...rest } = update;
+  logger.warn({ storedStatus: stored, incomingStatus: update.status }, '[LEGACY PATH] terminal ipo status kept; incoming status dropped');
+  return rest as T;
 }
 
 /**
@@ -1555,7 +1572,8 @@ async function upsertIPOInScope(
             offeringTypeSource
           );
         }
-        await ipoRepository.update(existingIPO.id, fallbackData);
+        const guardedFallback = keepTerminalIpoStatus((existingIPO as any).status, fallbackData);
+        await ipoRepository.update(existingIPO.id, guardedFallback);
 
         // S-02: the fallback door wrote the row but ran no consolidation, so F4
         // and F5 are deliberately NOT claimed here — nothing compared sources
@@ -1564,7 +1582,7 @@ async function upsertIPOInScope(
         ledgerFacts = {
           source,
           created: false,
-          fields: Object.keys(fallbackData),
+          fields: Object.keys(guardedFallback),
           offeringType: fallbackData.offeringType ?? null,
           consolidated: false,
           fieldSourcesWritten: false,

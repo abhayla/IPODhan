@@ -43,6 +43,19 @@ export const PRICE_JOB_OPEN_IST_MINUTES = 9 * 60 + 15;
 export const PRICE_JOB_CLOSE_IST_MINUTES = 15 * 60 + 30;
 export const DELISTING_CONSECUTIVE_READS = 3;
 
+/**
+ * Round 3 (built on the round-2 independent review, MAJOR): the NSE endpoint canary. When NSE
+ * was asked for at least this many IPOs in one run and gave a price to NONE of them (every answer
+ * no-such-symbol or unknown), the run is read as an NSE endpoint failure, not a mass delisting:
+ * every NSE no-such-symbol answer in it becomes UNKNOWN (logged with this cause, not counted).
+ * Why 2 and "none": the window holds every stock listed in the last 90 days (129 on staging,
+ * 2026-09-24), all trading; several of them all delisting in the same 15 minutes, with not one
+ * other stock answering, is implausible, while a renamed or failing route produces exactly that
+ * shape. One IPO alone cannot be told apart by this check; the 404-body rule
+ * (`isNseNoSuchSeriesBody`) and the three-consecutive-runs rule still guard it.
+ */
+export const NSE_CANARY_MIN_ASKED = 2;
+
 const IST_OFFSET_MS = 330 * 60_000;
 
 /**
@@ -167,6 +180,8 @@ export interface PriceJobSummary {
   refused: string[];
   notJudged: string[];
   notReached: string[];
+  /** Round 3: true when the NSE canary tripped (no NSE price for any of >= NSE_CANARY_MIN_ASKED IPOs). */
+  nseEndpointSuspect: boolean;
   calls: { nse: number; bse: number; bseList: number; total: number };
 }
 
@@ -176,7 +191,7 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
   const summary: PriceJobSummary = {
     candidates: deps.candidates.length,
     updated: [], confirmed: [], unchanged: [], stale: [], noSymbol: [], delisted: [], undelisted: [],
-    refused: [], notJudged: [], notReached: [],
+    refused: [], notJudged: [], notReached: [], nseEndpointSuspect: false,
     calls: { nse: 0, bse: 0, bseList: 0, total: 0 },
   };
   const clock = deps.clock ?? (() => Date.now());
@@ -196,6 +211,12 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
     return { code: bseScrips!.get(isin) ?? null, failed: null };
   };
 
+  // Counted no-such-symbol runs are held until every IPO has been asked, so the canary can
+  // void them all if NSE turns out to have answered nobody (round 3).
+  const pendingCounts: Array<{ c: PriceCandidate; patch: PriceStatePatch; nseDetail: string; bseDetail: string }> = [];
+  let nseAsked = 0;
+  let nsePrices = 0;
+
   for (const c of deps.candidates) {
     const name = c.companyName;
     if (deps.deadlineAt !== undefined && clock() >= deps.deadlineAt) {
@@ -211,6 +232,8 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
     if (c.symbol) {
       nse = await deps.readNse(c.symbol, c.segment, c.nseSeries);
       summary.calls.nse += nse.calls;
+      nseAsked++;
+      if (nse.kind === 'price') nsePrices++;
       nseVerdict = nse.kind;
       nseDetail = nse.kind === 'price' ? `series ${nse.series}` : nse.detail;
     }
@@ -240,8 +263,12 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
       const outcome = await deps.writePrice(c, winner);
       summary[outcome].push(name);
       const patch: PriceStatePatch = {};
-      if (c.priceNoSymbolReads !== 0) patch.reads = 0;
-      if (wasDelisted) {
+      // Round 3 (review MINOR 2): a STALE quote (the exchange's as-of is older than the one
+      // stored) is not evidence the stock trades now, so it neither resets the count nor
+      // clears DELISTED.
+      const fresh = outcome !== 'stale';
+      if (fresh && c.priceNoSymbolReads !== 0) patch.reads = 0;
+      if (fresh && wasDelisted) {
         patch.delistedOn = null;
         patch.status = 'LISTED';
         summary.undelisted.push(name);
@@ -249,7 +276,7 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
       if (winner.exchange === 'NSE' && winner.series && winner.series !== c.nseSeries) patch.nseSeries = winner.series;
       if (Object.keys(patch).length > 0) await deps.writeState(c, patch);
       deps.log(
-        `post-listing price: ${name} ${outcome} ${winner.exchange} ${winner.price} as of ${winner.asOfText}${wasDelisted ? ' — trading again, DELISTED cleared' : ''}`,
+        `post-listing price: ${name} ${outcome} ${winner.exchange} ${winner.price} as of ${winner.asOfText}${wasDelisted ? (fresh ? ' — trading again, DELISTED cleared' : ' — stale quote, DELISTED kept') : ''}`,
         { ipoId: c.id, exchange: winner.exchange, price: winner.price, asOf: winner.asOf.toISOString(), outcome, series: winner.series ?? null },
       );
       continue;
@@ -277,12 +304,25 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
       patch.delistedOn = today;
       patch.status = 'DELISTED';
     }
-    await deps.writeState(c, patch);
-    (patch.status ? summary.delisted : summary.noSymbol).push(name);
+    pendingCounts.push({ c, patch, nseDetail, bseDetail });
+  }
+
+  if (nseAsked >= NSE_CANARY_MIN_ASKED && nsePrices === 0) {
+    summary.nseEndpointSuspect = true;
     deps.log(
-      `post-listing price: ${name} no-such-symbol read ${reads} of ${DELISTING_CONSECUTIVE_READS} (NSE: ${nseDetail}; BSE: ${bseDetail})${patch.status ? ` — DELISTED on ${today}` : ''}`,
-      { ipoId: c.id, reads, delistedOn: patch.delistedOn ?? null },
+      `post-listing price: NSE endpoint suspect — no NSE price for any of ${nseAsked} IPOs asked; ${pendingCounts.length} no-such-symbol answer(s) treated as UNKNOWN, not counted`,
+      { reason: 'nse-canary', nseAsked, voided: pendingCounts.map((p) => p.c.id) },
     );
+    for (const { c } of pendingCounts) summary.refused.push(c.companyName);
+  } else {
+    for (const { c, patch, nseDetail, bseDetail } of pendingCounts) {
+      await deps.writeState(c, patch);
+      (patch.status ? summary.delisted : summary.noSymbol).push(c.companyName);
+      deps.log(
+        `post-listing price: ${c.companyName} no-such-symbol read ${patch.reads} of ${DELISTING_CONSECUTIVE_READS} (NSE: ${nseDetail}; BSE: ${bseDetail})${patch.status ? ` — DELISTED on ${today}` : ''}`,
+        { ipoId: c.id, reads: patch.reads, delistedOn: patch.delistedOn ?? null },
+      );
+    }
   }
   summary.calls.total = summary.calls.nse + summary.calls.bse + summary.calls.bseList;
   return summary;

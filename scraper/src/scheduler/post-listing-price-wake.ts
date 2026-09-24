@@ -165,6 +165,7 @@ export async function runPostListingPriceWake(now: Date = new Date()): Promise<n
         refused: summary.refused,
         notJudged: summary.notJudged.length,
         notReached: summary.notReached,
+        nseEndpointSuspect: summary.nseEndpointSuspect,
         calls: summary.calls,
         elapsedMs: Date.now() - startedAt,
       },

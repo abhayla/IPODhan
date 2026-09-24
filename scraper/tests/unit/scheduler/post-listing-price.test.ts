@@ -205,6 +205,59 @@ describe('runPostListingPriceJob', () => {
   });
 });
 
+describe('round 3 (built on the round-2 independent review)', () => {
+  it('canary: when NSE gives NO price to any of the IPOs asked (at least 2), the run is an endpoint failure and no count moves', async () => {
+    const cs = [
+      cand({ companyName: 'A', symbol: 'A', isin: 'INE0000000A1', priceNoSymbolReads: 2 }),
+      cand({ companyName: 'B', symbol: 'B', isin: 'INE0000000B1' }),
+      cand({ companyName: 'C', symbol: 'C', isin: 'INE0000000C1' }),
+    ];
+    const h = harness(cs, { A: none('NSE', 4), B: none('NSE', 4), C: none('NSE', 4) }, {}, {});
+    const logs: string[] = [];
+    const s = await runPostListingPriceJob({ ...h.deps, log: (line) => logs.push(line) });
+    expect(h.states).toEqual([]);
+    expect(s.delisted).toEqual([]);
+    expect(s.noSymbol).toEqual([]);
+    expect(s.refused).toEqual(['A', 'B', 'C']);
+    expect(s.nseEndpointSuspect).toBe(true);
+    expect(logs.join(' | ')).toMatch(/NSE endpoint suspect/);
+  });
+
+  it('canary: the same run with one NSE price counts the others normally', async () => {
+    const cs = [
+      cand({ companyName: 'A', symbol: 'A', isin: 'INE0000000A1', priceNoSymbolReads: 2 }),
+      cand({ companyName: 'B', symbol: 'B', isin: 'INE0000000B1' }),
+    ];
+    const h = harness(cs, { A: none('NSE', 4), B: price('NSE', 10, 1, 'EQ') }, {}, {});
+    const s = await runPostListingPriceJob(h.deps);
+    expect(s.delisted).toEqual(['A']);
+    expect(s.nseEndpointSuspect).toBe(false);
+  });
+
+  it('canary: a single IPO in the run cannot be told from an outage by the canary, so it counts (the 404 body rule guards it)', async () => {
+    const h = harness([cand({ companyName: 'Solo', symbol: 'SOLO', isin: 'INE0000000S1' })], { SOLO: none('NSE', 4) }, {}, {});
+    const s = await runPostListingPriceJob(h.deps);
+    expect(s.noSymbol).toEqual(['Solo']);
+    expect(s.nseEndpointSuspect).toBe(false);
+  });
+
+  it('a STALE price (as-of older than stored) does not clear DELISTED and does not reset the count', async () => {
+    const c = cand({ companyName: 'Old', symbol: 'OLD', status: 'DELISTED', delistedOn: '2026-09-22', priceNoSymbolReads: 3, nseSeries: 'EQ' });
+    const h = harness([c], { OLD: price('NSE', 9, 1, 'EQ') }, {});
+    const s = await runPostListingPriceJob({ ...h.deps, writePrice: async () => 'stale' });
+    expect(h.states).toEqual([]);
+    expect(s.undelisted).toEqual([]);
+    expect(s.stale).toEqual(['Old']);
+  });
+
+  it('a STALE price on a LISTED row mid-count does not reset the count', async () => {
+    const c = cand({ companyName: 'Mid', symbol: 'MID', priceNoSymbolReads: 2, nseSeries: 'EQ' });
+    const h = harness([c], { MID: price('NSE', 9, 1, 'EQ') }, {});
+    await runPostListingPriceJob({ ...h.deps, writePrice: async () => 'stale' });
+    expect(h.states).toEqual([]);
+  });
+});
+
 describe('the lock and bounds (round 2, Tier A MAJOR 2)', () => {
   it('takes the §2.1 live lock: scraper:live, 4-minute TTL, a run deadline inside it', () => {
     expect(PRICE_LOCK_RESOURCE).toBe('scraper:live');

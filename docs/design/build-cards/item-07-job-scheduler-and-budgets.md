@@ -16,8 +16,14 @@ only when NSE has no price, the scrip code from `ListofScripData` by ISIN (at mo
 `current_price` + `current_price_updated_at` via `IPORepository.update`; the as-of only moves forward (an older
 exchange as-of is refused, `stale`); an unchanged price with a newer as-of moves only the as-of (`confirmed`; §2.1
 "Label": the time it was read); one `field_sources` row per written column. Outages: a series answer is
-no-such-symbol only on HTTP 404 or an explicit empty quote list; an HTML/empty/`{}` 200, a 403, a 5xx or a timeout is
-UNKNOWN, logged with its cause, never counted. Delisting (§2.3.3.3, "three consecutive no-such-symbol answers", with
+no-such-symbol only on an HTTP 404 carrying NSE's JSON error body (`{"error": ...}`, measured) or an explicit empty quote
+list; an HTML 404 (a renamed or retired route, captured 2026-09-24), an HTML/empty/`{}` 200, a 403, a 5xx or a timeout is
+UNKNOWN, logged with its cause, never counted. Round 3 canary (`NSE_CANARY_MIN_ASKED` = 2): when NSE gives a price to
+none of the >= 2 IPOs asked in a run, every NSE no-such-symbol answer in it is UNKNOWN (`nseEndpointSuspect` in the run
+line). BSE: only Category `Delisted` is no-such-symbol; a suspended scrip (500102 answers Category `Listed` with
+DisplayText `Suspended due to Procedural reasons`) or any other category is UNKNOWN. A `stale` quote neither clears
+DELISTED nor resets the count. DELISTED is terminal on the persister's fallback door too (`keepTerminalIpoStatus`)
+and derives lifecycle stage LISTED (stage-reconciler + scripts mirror), never UPCOMING. Delisting (§2.3.3.3, "three consecutive no-such-symbol answers", with
 unknown != no-such-symbol): a run counts only when NSE says no-such-symbol AND BSE says no-such-symbol or does not
 list the ISIN in its active list; no ISIN (so no scrip code) is UNKNOWN for BSE and the run does not count. The third
 counted run sets status DELISTED (`ipo_status` value added in migration 0056) and `delisted_on`; a later price
@@ -362,7 +368,7 @@ cannot land until this item's scheduler and budgets exist.
 | §2.1 | R-228, R-003, R-004, R-005, R-006, R-007, R-010, R-011, R-012, R-013, R-014, R-015, R-016, R-181, R-182, R-183, R-184, R-185, R-187, R-188 |
 | §2.1.3 | R-019, R-020 |
 | §5.1 | R-102, R-103, R-104 |
-| §7.4 | R-146, R-147, R-148 |
+| §7.4 | R-230, R-147, R-148 |
 
 ## Known gaps
 

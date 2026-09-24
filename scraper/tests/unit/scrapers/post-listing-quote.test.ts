@@ -19,6 +19,7 @@ import { parseBseScripPayload, indexBseScrips } from '../../../src/scrapers/bse-
 
 const ROOT = join(__dirname, '..', '..', '..', '..');
 const LIVE = JSON.parse(readFileSync(join(__dirname, '..', '..', 'fixtures', 'post-listing-price', 'live-quotes-2026-09-24.json'), 'utf8')).responses as Record<string, string>;
+const FAIL = JSON.parse(readFileSync(join(__dirname, '..', '..', 'fixtures', 'post-listing-price', 'endpoint-failure-shapes-2026-09-24.json'), 'utf8')).responses as Record<string, string>;
 const BSE_LIST = readFileSync(join(ROOT, 'docs', 'design', 'probes', 'fixtures', 'bse', 'ListofScripData.sample.json'), 'utf8');
 
 type Route = (url: string) => { status: number; body: string; setCookie?: string } | null;
@@ -214,7 +215,7 @@ describe('NSE outage shapes are refused, never no-symbol (round 2)', () => {
     const seen: string[] = [];
     const fetchRaw = async (_s: string, series: string) => {
       seen.push(series);
-      return series === 'ST' ? { status: 200, body: LIVE['nse-VINOD-ST-200'] } : { status: 404, body: '' };
+      return series === 'ST' ? { status: 200, body: LIVE['nse-VINOD-ST-200'] } : { status: 404, body: LIVE['nse-VINOD-SM-404'] };
     };
     const first = await readNsePrice('VINOD', 'SME', { fetchRaw });
     expect(first.calls).toBe(2);
@@ -237,5 +238,86 @@ describe('BSE outage shapes are refused (round 2)', () => {
     expect(empty.kind).toBe('refused');
     const none = await readBsePrice('999999', { fetchRaw: async () => ({ status: 200, body: LIVE['bse-999999-200'] }) });
     expect(none.kind).toBe('no-symbol');
+  });
+});
+
+/**
+ * Round 3 (built on the round-2 independent review, MAJOR): a 404 is "no such symbol" ONLY
+ * when its body is NSE's measured JSON error shape. A renamed or retired GetQuoteApi route
+ * also answers 404, as an HTML page (captured live 2026-09-24): that is an endpoint failure,
+ * UNKNOWN, never counted toward delisting.
+ */
+describe('NSE 404 shapes (round 3)', () => {
+  it('the real no-such-series 404 body is JSON {"error": ...}', () => {
+    expect(JSON.parse(LIVE['nse-ZZNOSUCHSYM-EQ-404'])).toEqual({ error: 'Unexpected end of JSON input' });
+    expect(FAIL['nse-GetQuoteApiRetired-EQ-404'].startsWith('<!DOCTYPE html>')).toBe(true);
+  });
+
+  const cases: Array<[string, string]> = [
+    ['an HTML 404 page (a renamed/retired route, real capture)', FAIL['nse-GetQuoteApiRetired-EQ-404']],
+    ['a 404 with an empty body', ''],
+    ['a 404 with a JSON body that is not the error shape', '{"message":"Not Found"}'],
+    ['a 404 with a JSON error that is not a string', '{"error":{}}'],
+  ];
+  for (const [label, body] of cases) {
+    it(`${label}: refused (unknown) on the first series, 1 call, with its cause`, async () => {
+      const seen: string[] = [];
+      const q = await readNsePrice('CSM', 'MAINBOARD', { fetchRaw: async (_s, series) => { seen.push(series); return { status: 404, body }; } });
+      expect(q.kind).toBe('refused');
+      if (q.kind === 'refused') expect(q.detail).toMatch(/HTTP 404/);
+      expect(seen).toEqual(['EQ']);
+    });
+  }
+
+  it('the real JSON 404 on every series is still a no-symbol answer (4 calls)', async () => {
+    const q = await readNsePrice('ZZNOSUCHSYM', 'MAINBOARD', { fetchRaw: async (_s, series) => ({ status: 404, body: LIVE[`nse-ZZNOSUCHSYM-${series}-404`] }) });
+    expect(q.kind).toBe('no-symbol');
+    expect(q.calls).toBe(4);
+  });
+});
+
+/**
+ * Round 3 (review MINOR 1): only a BSE answer that says DELISTED is a no-such-symbol answer.
+ * Measured 2026-09-24: a suspended scrip (500102, Ballarpur, in BSE's status=Suspended list)
+ * answers Category "Listed", DisplayText "Suspended due to Procedural reasons" and a 2023 LTP.
+ * Recognised categories: "Listed" (read the price, unless the display text says suspended) and
+ * "Delisted" (no-symbol). Anything else (Suspended, Permitted, blank with a named scrip, a new
+ * word) is UNKNOWN: it is not evidence the scrip does not exist.
+ */
+describe('BSE categories and suspension (round 3)', () => {
+  const withCategory = (category: string) => {
+    const j = JSON.parse(FAIL['bse-500102-suspended-200']);
+    j.Header.Category = category;
+    j.Cmpname.Category = category;
+    j.Header.DisplayText = '';
+    j.Header.IDB_DisplayText = '';
+    return JSON.stringify(j);
+  };
+
+  it('a suspended scrip (real body: Category Listed, DisplayText Suspended) is refused, never a price and never no-symbol', async () => {
+    const q = await readBsePrice('500102', { fetchRaw: async () => ({ status: 200, body: FAIL['bse-500102-suspended-200'] }) });
+    expect(q.kind).toBe('refused');
+    if (q.kind === 'refused') expect(q.detail).toMatch(/Suspended due to Procedural reasons/);
+  });
+
+  it('Category Suspended is refused (unknown), not no-symbol', async () => {
+    const q = await readBsePrice('500102', { fetchRaw: async () => ({ status: 200, body: withCategory('Suspended') }) });
+    expect(q.kind).toBe('refused');
+    if (q.kind === 'refused') expect(q.detail).toMatch(/category Suspended/);
+  });
+
+  it('an unrecognised category is refused (unknown)', async () => {
+    const q = await readBsePrice('500102', { fetchRaw: async () => ({ status: 200, body: withCategory('Permitted') }) });
+    expect(q.kind).toBe('refused');
+  });
+
+  it('Category Delisted is the one no-such-symbol category', async () => {
+    const q = await readBsePrice('500102', { fetchRaw: async () => ({ status: 200, body: withCategory('Delisted') }) });
+    expect(q.kind).toBe('no-symbol');
+  });
+
+  it('Category Listed with no suspension text still reads the price', async () => {
+    const q = await readBsePrice('500102', { fetchRaw: async () => ({ status: 200, body: withCategory('Listed') }) });
+    expect(q.kind).toBe('price');
   });
 });
