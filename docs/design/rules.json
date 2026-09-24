@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-24T20:35:12.113Z",
+  "generated_at": "2026-09-24T20:53:25.338Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 195,
-    "retired": 40
+    "live": 196,
+    "retired": 41
   },
-  "next_id": 236,
+  "next_id": 238,
   "rules": [
     {
       "id": "R-151",
@@ -297,7 +297,7 @@
       "retired": false
     },
     {
-      "id": "R-235",
+      "id": "R-236",
       "hash": "cf5e3ac61ca7",
       "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
       "kind": "table",
@@ -897,6 +897,15 @@
       "kind": "prose",
       "text": "What this says about the design. The check specified here would have caught all six on day one; it is not built. And §2.6's rule earns itself again: under the deleted blanking rule, six live IPOs would have had their issue size destroyed by a check that was correctly failing on a component that was never extracted.",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-237",
+      "hash": "94310fa344f0",
+      "section": "2.5.5 Two documents of the same type, and what a corrigendum does (OD-30)",
+      "kind": "prose",
+      "text": "Follow-up (OD-98, 2026-09-25): #989 put CORRIGENDUM on the extractable list, but a corrigendum stranded NOT_EXTRACTABLE before that fix is never re-admitted by anything, and the document cycle's discovery/extraction candidate set is live-window only — a LISTED IPO past LIVE_WINDOW_DAYS_AFTER_LISTING (10 days) is never revisited, so re-admitting the row to PENDING alone would leave it PENDING forever (measured: skyways-air-services-ltd, listed 2026-09-01, 24 days before this decision). OD-98 widens PASS 2 (extraction) only — never discovery — to also consider any IPO holding a stored, never-read, extractable document (PENDING, purged_unread=false), regardless of live window.",
+      "first_seen": "2026-09-24",
       "retired": false
     },
     {
@@ -1770,6 +1779,15 @@
       "kind": "table",
       "text": "Image-only pages go to OCR, marked — already built. scraper/scripts/ocr_pages.py exists and extract_filing.py's run() already takes an ocr_confidence map keyed by page (scraper/scripts/extract_filing.py:2590). What this design ADDS is one rule on top of it: a field whose only source is an OCR page never wins a disagreement against a text page — the OCR path is exercised today; the fixture is captured by probes/extract-real-pdf.mjs on a real filing",
       "first_seen": "2026-09-09",
+      "retired": true
+    },
+    {
+      "id": "R-235",
+      "hash": "7a27fe04bd2f",
+      "section": "2.5.5 Two documents of the same type, and what a corrigendum does (OD-30)",
+      "kind": "prose",
+      "text": "Follow-up (OD-97, 2026-09-25): #989 put CORRIGENDUM on the extractable list, but a corrigendum stranded NOT_EXTRACTABLE before that fix is never re-admitted by anything, and the document cycle's discovery/extraction candidate set is live-window only — a LISTED IPO past LIVE_WINDOW_DAYS_AFTER_LISTING (10 days) is never revisited, so re-admitting the row to PENDING alone would leave it PENDING forever (measured: skyways-air-services-ltd, listed 2026-09-01, 24 days before this decision). OD-97 widens PASS 2 (extraction) only — never discovery — to also consider any IPO holding a stored, never-read, extractable document (PENDING, purged_unread=false), regardless of live window.",
+      "first_seen": "2026-09-24",
       "retired": true
     },
     {
