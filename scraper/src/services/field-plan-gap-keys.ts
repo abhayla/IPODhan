@@ -45,6 +45,13 @@ export interface FieldPlanFieldGapKeys {
   plain: string;
   /** `plain` + the COMPLETED documents of the field's document family. */
   withDocuments: string;
+  /**
+   * OD-99: `plain` + the consolidated writer's capability for the field's
+   * table. A WRITER_CANNOT_ACCEPT row is stamped with this one, so a writer
+   * change (flag, keyable table set, writer version) reopens it, and nothing
+   * else about the writer reopens any other gap.
+   */
+  withWriter: string;
 }
 
 /** Keyed `table.field`, the manifest's own key shape. */
@@ -108,13 +115,21 @@ export function buildFieldPlanIpoGapKeys(params: {
   provenanceByField?: Readonly<Record<string, GapKeyProvenance | null | undefined>>;
   /** Per-field active override, keyed `table.field`. */
   overrideByField?: Readonly<Record<string, GapKeyOverride | null | undefined>>;
+  /** OD-99: the writer's capability for a table (`fieldPlanWriterCapability`). Omitted: `w:unknown`. */
+  writerCapability?: (tableName: string) => string;
 }): FieldPlanIpoGapKeys {
   const byField: Record<string, FieldPlanFieldGapKeys> = {};
   for (const [fieldKey, entry] of Object.entries(params.manifestFields)) {
     const provenance = provenancePart(params.provenanceByField?.[fieldKey]);
     const override = overridePart(params.overrideByField?.[fieldKey]);
     const plain = `e${fieldManifestEntryFingerprint(entry).slice(0, 12)}|f${params.coverageFingerprint}|x${params.extractorVersion}|${provenance}|${override}`;
-    byField[fieldKey] = { plain, withDocuments: `${plain}|${documentsPart(params.documents, entry?.documentType)}` };
+    const tableName = fieldKey.slice(0, fieldKey.indexOf('.'));
+    const writer = params.writerCapability ? `w${short(params.writerCapability(tableName))}` : 'w:unknown';
+    byField[fieldKey] = {
+      plain,
+      withDocuments: `${plain}|${documentsPart(params.documents, entry?.documentType)}`,
+      withWriter: `${plain}|${writer}`,
+    };
   }
   return { byField };
 }
@@ -128,12 +143,13 @@ export function fieldPlanGapKeyFor(
 ): string | null {
   const k = keys.byField[`${tableName}.${fieldName}`];
   if (!k) return null;
+  if (gapCodes.includes('WRITER_CANNOT_ACCEPT')) return k.withWriter;
   return gapCodes.includes('NO_DOCUMENT_PROVENANCE') ? k.withDocuments : k.plain;
 }
 
 /** The claim query's map: a stamped row whose key is NEITHER current variant is offered. */
 export function fieldPlanClaimGapKeys(keys: FieldPlanIpoGapKeys): Record<string, string[]> {
   const out: Record<string, string[]> = {};
-  for (const [fieldKey, k] of Object.entries(keys.byField)) out[fieldKey] = [k.plain, k.withDocuments];
+  for (const [fieldKey, k] of Object.entries(keys.byField)) out[fieldKey] = [k.plain, k.withDocuments, k.withWriter];
   return out;
 }

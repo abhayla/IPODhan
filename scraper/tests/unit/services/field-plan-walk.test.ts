@@ -4,6 +4,8 @@ import {
   walkFieldPlanForIPO,
   classifyFailure,
   classifyWalkFailures,
+  fieldPlanWriterCapability,
+  writerOnlyGapKey,
   type FieldFetcher,
   type FieldPlanWalkDeps,
 } from '../../../src/services/field-plan-walk.js';
@@ -324,7 +326,7 @@ describe('field-plan walk -- the dropped-write branch (the false-clean-state gua
     ]);
   });
 
-  it('treats a skipped CHILD-ROW write the same way (both row shapes, one rule)', async () => {
+  it('OD-99: a STRUCTURAL child-row refusal (MISSING_ROW_KEY) is recorded CHECK_FAILED, never re-queued PENDING', async () => {
     const repo = makeRepo([
       planRow({ tableName: 'financial_statements', rowKey: 'FY2025', fieldName: 'revenue' }),
     ]);
@@ -349,8 +351,33 @@ describe('field-plan walk -- the dropped-write branch (the false-clean-state gua
 
     const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
 
+    // No gap keys wired in this suite's deps: parked under the writer-only key, never charged (#923).
+    expect(repo.recorded[0].writeHappened).toBe(true);
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+    expect(repo.recorded[0].reasonCode).toBe('COVERAGE_GAP');
+    expect(repo.recorded[0].cause).toBe('rank1:NSE:WRITE_REFUSED:MISSING_ROW_KEY [gap:WRITER_CANNOT_ACCEPT]');
+    expect(repo.recorded[0].gapKey).toBe(writerOnlyGapKey('financial_statements'));
+    expect(result.fieldsWriteSkipped).toBe(0);
+    expect(result.fieldsCheckFailed).toBe(1);
+    expect(result.droppedWrites).toEqual([]);
+  });
+
+  it('OD-99: a TRANSIENT child-row drop (the write throws) keeps the PENDING re-queue', async () => {
+    const repo = makeRepo([
+      planRow({ tableName: 'financial_statements', rowKey: 'FY2025', fieldName: 'revenue' }),
+    ]);
+    const orch = {
+      consolidatedUpsertIPO: vi.fn(),
+      consolidatedUpsertChildRows: vi.fn(async () => {
+        throw new Error('lock lost mid-flight');
+      }),
+    };
+    const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
     expect(repo.recorded[0].writeHappened).toBe(false);
-    expect(repo.recorded[0].skipReason).toBe('MISSING_ROW_KEY');
+    expect(repo.recorded[0].skipReason).toBe('lock lost mid-flight');
     expect(result.fieldsWriteSkipped).toBe(1);
   });
 });
@@ -1993,8 +2020,11 @@ describe('classifyWalkFailures (#884: classified on the structured gap token, a 
 describe('walk records a gap under its FIELD gap key (#884 review rounds 1-2)', () => {
   const PLAIN = 'eaaaaaaaaaaaa|f0123456789ab|xextract_filing.py@2026-09-03';
   const WITH_DOCS = `${PLAIN}|dbbbbbbbbbbbb`;
+  const WITH_WRITER = `${PLAIN}|wcccccccccccc`;
   const source = () => {
-    const forIpo = vi.fn(async () => ({ byField: { 'ipos.issue_size': { plain: PLAIN, withDocuments: WITH_DOCS } } }));
+    const forIpo = vi.fn(async () => ({
+      byField: { 'ipos.issue_size': { plain: PLAIN, withDocuments: WITH_DOCS, withWriter: WITH_WRITER } },
+    }));
     return { forIpo };
   };
   const gapFetcher = (gap: string) => (async () => ({ outcome: 'CHECK_FAILED', reason: 'no mapping', transient: true, gap })) as any;
@@ -2012,7 +2042,7 @@ describe('walk records a gap under its FIELD gap key (#884 review rounds 1-2)', 
     } as any);
     await walkFieldPlanForIPO(IPO_ID, d, openBudget());
     expect(gapKeys.forIpo).toHaveBeenCalledTimes(1);
-    expect(repo.claimNextDueField.mock.calls[0][0]).toMatchObject({ gapKeys: { 'ipos.issue_size': [PLAIN, WITH_DOCS] } });
+    expect(repo.claimNextDueField.mock.calls[0][0]).toMatchObject({ gapKeys: { 'ipos.issue_size': [PLAIN, WITH_DOCS, WITH_WRITER] } });
     expect(repo.recorded[0].state).toBe('CHECK_FAILED');
     expect(repo.recorded[0].gapKey).toBe(PLAIN);
     expect(repo.recorded[0].cause).toContain('[gap:NO_FETCHER]');
@@ -2119,3 +2149,11 @@ describe('walk records a gap under its FIELD gap key (#884 review rounds 1-2)', 
   });
 });
 
+
+describe('OD-99: the writer capability for the path the walk takes', () => {
+  it('ipos rides the ipo upsert; a multi-row child table and a singleton child table differ', () => {
+    expect(fieldPlanWriterCapability('ipos')).toMatch(/\|ipo\|c[01]$/);
+    expect(fieldPlanWriterCapability('gmp_records')).toMatch(/\|child\|cc[01]\|s0$/);
+    expect(fieldPlanWriterCapability('ipo_details')).toMatch(/\|child\|cc[01]\|s1$/);
+  });
+});

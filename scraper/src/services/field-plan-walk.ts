@@ -66,6 +66,7 @@ import { narrowRanksForReopen } from '@ipodhan/shared/utils/settled-field-overri
 import { OVERRIDE_SOURCE_LOST_TO_PRIORITY } from '@ipodhan/shared/utils/conflict-reasons';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { STRUCTURAL_WRITE_SKIP_REASONS, consolidatedWriterCapability } from './consolidated-writer-capability.js';
 import {
   fieldPlanGapCodeOf,
   fieldPlanGapToken,
@@ -96,6 +97,20 @@ import { computeVerdict, type Witness, type Verdict } from './witness-verdict.js
 
 /** Which write path a plan row's table takes. */
 const SINGLETON_IPO_TABLES: ReadonlySet<string> = new Set(['ipos', 'ipo']);
+
+/**
+ * OD-99: the consolidated writer's capability for the path THIS walk takes for
+ * `tableName` (`runWrite`: the ipos upsert, or the child-row upsert). Folded
+ * into a WRITER_CANNOT_ACCEPT row's gap key (field-plan-gap-keys.ts).
+ */
+export function fieldPlanWriterCapability(tableName: string): string {
+  return consolidatedWriterCapability(SINGLETON_IPO_TABLES.has(tableName) ? 'ipo' : 'child', tableName);
+}
+
+/** OD-99: the fallback gap key when no per-field key exists -- the writer capability alone. */
+export function writerOnlyGapKey(tableName: string): string {
+  return `writer-only|${fieldPlanWriterCapability(tableName)}`;
+}
 
 export interface FieldPlanWalkResult {
   ipoId: string;
@@ -993,7 +1008,45 @@ async function attemptOneField(
     }
 
     const { rank, source, answer } = winner;
+
     const verdict = await runWrite(ipoId, plan, source, answer, deps);
+
+    if (verdict.happened === false && STRUCTURAL_WRITE_SKIP_REASONS.has(verdict.skipReason)) {
+      // OD-99: the writer refused for a STRUCTURAL reason -- it will refuse
+      // the same way on every wake (OD-78: same cause, same outcome, no
+      // retry). Re-queuing it PENDING (the branch below) looped 26 staging
+      // gmp_records.gmp rows forever, claimed first on every wake with no
+      // state naming the cause. Recorded instead: CHECK_FAILED, the skip
+      // reason in `cause`, under a gap key that carries the writer's
+      // capability for the table, so the row is asked again only when that
+      // key changes. Like every configuration gap it is NOT charged as an
+      // attempt (#923): a charged row would reach the attempts cap and never
+      // be reopened, even after the writer is fixed.
+      result.fieldsCheckFailed += 1;
+      const gap: FieldPlanGapCode = 'WRITER_CANNOT_ACCEPT';
+      const cause = `rank${rank}:${source}:WRITE_REFUSED:${verdict.skipReason} ${fieldPlanGapToken(gap)}`;
+      // No per-field key (no keys this cycle, or the field left the manifest):
+      // park it under the writer's capability alone. The next cycle that has
+      // keys reads that as a changed key, asks once, and re-parks it under the
+      // full key -- never an every-slot re-ask.
+      const gapKey =
+        (ipoGapKeys ? fieldPlanGapKeyFor(ipoGapKeys, plan.tableName, plan.fieldName, [gap]) : null) ??
+        writerOnlyGapKey(plan.tableName);
+      logger.warn(
+        { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, source, rank, skipReason: verdict.skipReason, gapKey },
+        'PASS 3: the writer REFUSED this write structurally — CHECK_FAILED under its writer gap key, not charged, re-asked when the key changes (OD-99)'
+      );
+      return recordAndClassify(deps, result, {
+        planRowId: plan.id,
+        claimToken: plan.claimToken,
+        policyOrigin,
+        writeHappened: true,
+        state: 'CHECK_FAILED',
+        reasonCode: 'COVERAGE_GAP',
+        cause,
+        gapKey,
+      });
+    }
 
     if (verdict.happened === false) {
       // THE FALSE-CLEAN-STATE GUARD. The write was dropped, so NOTHING about
