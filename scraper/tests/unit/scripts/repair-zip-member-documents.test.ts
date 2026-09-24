@@ -438,3 +438,31 @@ describe('round 4 Tier A MAJOR: a permanently dead zip does not retry forever an
     expect(documents.rows.get(zipRow(1).url)!.zipExpandAttempts).toBe(1);
   });
 });
+
+describe('final Tier A check (owner item 4): unresolved zips are recorded with their reason AND counted by the pass', () => {
+  const DAYS = ['2026-09-01T01:00:00Z', '2026-09-02T01:00:00Z', '2026-09-03T01:00:00Z'];
+
+  it('a no-text-layer zip is closed with its cover-check reason and counted as unresolved, not expanded', async () => {
+    const documents = sink([{ ...zipRow(1), sha256: null }]);
+    const runner = runnerFor(zipFetcher(ZIP), documents, '');
+    const s = await runStoredZipExpansionPass({ selection: documents, expander: runner });
+    expect(s).toMatchObject({ selected: 1, expanded: 0, unresolved: 1 });
+    expect(documents.marked).toHaveLength(1);
+    expect(documents.marked[0].unresolvedReason).toMatch(/cover_check_skipped_no_text_layer/);
+    expect(documents.rows.size).toBe(1);
+  });
+
+  it('a dead zip closed after 3 distinct slots is counted as unresolved by the pass, with reason zip_unreachable', async () => {
+    const documents = sink([zipRow(1)]);
+    let day = 0;
+    const runner = runnerFor(zipFetcher(Buffer.from('not found'), [], 404), documents, undefined, undefined, () => new Date(DAYS[day]));
+    const w1 = await runStoredZipExpansionPass({ selection: documents, expander: runner });
+    day = 1;
+    const w2 = await runStoredZipExpansionPass({ selection: documents, expander: runner });
+    day = 2;
+    const w3 = await runStoredZipExpansionPass({ selection: documents, expander: runner });
+    expect([w1.unresolved, w2.unresolved, w3.unresolved]).toEqual([0, 0, 1]);
+    expect(w3.expanded).toBe(0);
+    expect(documents.marked).toEqual([{ id: 'zip-1', unresolvedReason: 'zip_unreachable', sha256: undefined, partNumber: undefined }]);
+  });
+});
