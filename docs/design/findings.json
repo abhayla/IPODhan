@@ -1545,6 +1545,15 @@
       "phase1": true,
       "title": "Real exchange filings are encrypted with an owner password only; a blank-password open succeeds",
       "detail": "Measured 2026-09-24 on the laptop (read-only, no network): of 45 locally saved offer-related PDFs (pdf-parser-test/drhps, IPODhan-backups), 3 carry /Encrypt, and all 3 are copies of one real BSE anchor allocation report (ANCHOR_ALLOCATION_REPORT-4e5a4f9d.pdf, sha256 4e5a4f9de9ef11f3..., dated August 27, 2026, 4 pages). Its security handler is /Filter /Standard, /V 4, /R 4, /P 2820, /EncryptMetadata true: an owner (permissions) password with an EMPTY user password. pdfplumber opens it with no password argument (4 pages, text reads) and pypdfium2 opens it with password=\"\" (4 pages). So the blank attempt of section 2.2.1 already happens implicitly for this real case, and no JS dependency (pdf-lib) is needed: the extractor is Python and both of its libraries handle it. Not measured: a real filing with a non-empty USER password (the case where the blank attempt fails and the document must be marked unreadable with its cause); none exists in the local sample. Related: OD-36, item 22 slice 22-5."
+    },
+    {
+      "id": "F-154",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "documents",
+      "phase1": true,
+      "title": "An NSE offer-document zip holds several distinct documents, and all but one are thrown away",
+      "detail": "Measured 2026-09-24 by reading the zip index (HTTP Range request on the central directory, no full download) of all 41 distinct RHP/DRHP/PROSPECTUS zip URLs in ipodhan_staging.documents: 41 of 41 hold two or more PDFs (36 hold 2, 1 holds 3, 1 holds 4, 3 hold 5). 40 carry a General Information Document (GID) beside the offer document; 5 also carry a corrigendum or a newspaper price-band / corrigendum notice: RHP_HTEL (3 corrigendum newspaper pages), RHP_ABH (3 newspaper pages), RHP_MADHURKNIT (2 corrigenda + a price-band ad), RHP_MOMSBELIEF (2 Rays of Belief corrigenda), RHP_SKYWAYS (1 corrigendum). None of the 41 is a Volume I / Volume II split, so the section 2.2.1 multi-part case in practice is distinct documents in one zip, not volumes of one. selectZipMemberForType (document-download-verifier.ts:260) keeps ONE member (the name-matched RHP, else the largest) and drops the rest. Effect on staging: of the 5 IPOs, 4 (hy-tech-engineers-ltd, abh-healthcare-ltd, madhur-knit-crafts-ltd, rays-of-belief-ltd) have NO CORRIGENDUM or PRICE_BAND_AD document at all; only skyways-air-services-ltd has one, fetched separately from the company website. So OD-30 (a corrigendum overrides the RHP for the fields it names) can never apply to a corrigendum that arrives only inside the exchange zip. Staging-wide there are 2 CORRIGENDUM documents out of 347."
     }
   ],
   "false_assertions": [
