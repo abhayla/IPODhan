@@ -8,9 +8,9 @@
  * status and the open and close dates, nothing else (OD-87). No per-IPO
  * detail call, no subscription call or snapshot, no verifier hint, no
  * document. The write goes through the same identity resolution
- * (`resolveIpoRow` + OD-85 source keys) and the same consolidated upsert the
- * scrapers use, with `onlyFields` narrowing this write's claim to the four
- * fields, so the field-priority matrix still decides every value.
+ * (`resolveIpoRow` + OD-85 source keys) and the same field-priority matrix
+ * call the consolidated upsert makes, then SETs only the four fields (round 4:
+ * the whole-row consolidated save overwrote listingExchanges, #951).
  *
  * Why not the orchestrators (review of rounds 1-2): they make per-IPO detail
  * and subscription calls by design and write every listed row; a flag that
