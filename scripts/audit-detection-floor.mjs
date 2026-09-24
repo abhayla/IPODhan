@@ -105,6 +105,10 @@ import {
   classifyRepeatedMessages, classifyConflictBacklogRatchet, nextRatchetBaseline, classifyInertDetector,
   REPEATED_MESSAGE_MAX_OCCURRENCES_24H,
 } from './lib/signal-health-checks.mjs';
+import {
+  fetchZipCentralDirectory, pdfMembers, selectMainMember, classifyOtherMembers, compareZipToRows,
+  memberNameFromUrl as zipMemberNameFromUrl, formatMissing as formatZipMissing,
+} from './lib/zip-member-rows.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
@@ -3143,6 +3147,93 @@ async function checkS_pullExcused() {
       : `${grew.length} pair(s) grew: ${grew.slice(0, MAX_OFFENDERS).join('; ')}`);
 }
 
+// zip_member_rows (item 10; OD-36, F-154, failure class container-unwrapped-to-one-member).
+// Re-reads each stored exchange zip's central directory by HTTP Range (never the
+// archive), classifies its members the runner's way (scripts/lib/zip-member-rows.mjs
+// mirrors the runner) and FAILs per member that should have a row and has none.
+// Only zips the runner examined after item 22 (zip_members_checked_at set) are in
+// the population; the rest are UNVERIFIABLE by the manifest's own rule and counted.
+const ZIP_MEMBER_ROWS_TIMEOUT_MS = Number(process.env.ZIP_MEMBER_ROWS_TIMEOUT_MS) || 15000;
+const ZIP_MEMBER_ROWS_BUDGET_MS = Number(process.env.ZIP_MEMBER_ROWS_BUDGET_MS) || 120000;
+const ZIP_MEMBER_ROWS_MAX_ZIPS = Number(process.env.ZIP_MEMBER_ROWS_MAX_ZIPS) || 80;
+async function checkZipMemberRows() {
+  const id = 'zip_member_rows';
+  const name = 'every typed member of a stored exchange zip has its own document row (central directory read by Range)';
+  let zips, memberRows, sizes, logged, unchecked;
+  try {
+    zips = await q(`
+      SELECT d.id, d.ipo_id, d.url, d.type, d.part_number, i.slug
+        FROM documents d JOIN ipos i ON i.id = d.ipo_id
+       WHERE d.url NOT LIKE '%#member=%' AND d.url ILIKE '%.zip'
+         AND d.is_active = true AND d.zip_members_checked_at IS NOT NULL
+       ORDER BY d.zip_members_checked_at DESC
+       LIMIT $1`, [ZIP_MEMBER_ROWS_MAX_ZIPS]);
+    [{ n: unchecked }] = await q(`
+      SELECT count(*)::int AS n FROM documents d
+       WHERE d.url NOT LIKE '%#member=%' AND d.url ILIKE '%.zip'
+         AND d.is_active = true AND d.zip_members_checked_at IS NULL`);
+    const ipoIds = [...new Set(zips.map((z) => z.ipo_id))];
+    memberRows = ipoIds.length ? await q(`SELECT ipo_id, url FROM documents WHERE ipo_id = ANY($1) AND url LIKE '%#member=%'`, [ipoIds]) : [];
+    sizes = ipoIds.length ? await q(`SELECT ipo_id, url, type, file_size FROM documents WHERE ipo_id = ANY($1) AND file_size IS NOT NULL`, [ipoIds]) : [];
+    logged = ipoIds.length ? await q(`
+      SELECT s.ipo_id, e->>'outcome' AS outcome
+        FROM document_fetch_state s,
+             jsonb_array_elements(CASE WHEN jsonb_typeof(s.last_attempt) = 'array' THEN s.last_attempt ELSE '[]'::jsonb END) e
+       WHERE s.ipo_id = ANY($1) AND e->>'outcome' ~ '^zip_member_(skipped|deduped)'`, [ipoIds]) : [];
+  } catch (e) {
+    record('zip_member_rows', name, 'UNVERIFIABLE', `query failed: ${e.message}`);
+    return;
+  }
+  if (zips.length === 0) {
+    record('zip_member_rows', name, 'UNVERIFIABLE', `no zip row examined since item 22 (zip_members_checked_at set); ${unchecked} zip row(s) never re-examined`);
+    return;
+  }
+  const deadline = Date.now() + ZIP_MEMBER_ROWS_BUDGET_MS;
+  const missingLines = [];
+  const unreadable = [];
+  let checked = 0, expectedTotal = 0, presentTotal = 0, dedupedTotal = 0;
+  for (const z of zips) {
+    if (Date.now() > deadline) { unreadable.push(`${z.slug} ${z.url.split('/').pop()}: overall budget ${ZIP_MEMBER_ROWS_BUDGET_MS}ms spent`); continue; }
+    let entries;
+    try {
+      ({ entries } = await fetchZipCentralDirectory(z.url, { timeoutMs: ZIP_MEMBER_ROWS_TIMEOUT_MS }));
+    } catch (e) {
+      unreadable.push(`${z.slug} ${z.url.split('/').pop()}: ${e.message}`);
+      continue;
+    }
+    checked++;
+    const members = pdfMembers(entries);
+    const main = selectMainMember(members, z.type, z.part_number);
+    const others = classifyOtherMembers(members, main, { mainType: z.type });
+    const prefix = `${z.url}#member=`;
+    const memberRowNames = new Set(
+      memberRows.filter((r) => r.ipo_id === z.ipo_id && r.url.startsWith(prefix)).map((r) => zipMemberNameFromUrl(r.url))
+    );
+    const otherDocSizes = new Map(
+      sizes.filter((s) => s.ipo_id === z.ipo_id && s.url !== z.url && !s.url.startsWith(prefix)).map((s) => [Number(s.file_size), s.type])
+    );
+    const loggedMembers = new Set(
+      logged.filter((l) => l.ipo_id === z.ipo_id).map((l) => /\(member:(.*?); part:/.exec(l.outcome)?.[1]).filter(Boolean)
+    );
+    const r = compareZipToRows({ others, memberRowNames, otherDocSizes, loggedMembers });
+    expectedTotal += r.expected.length; presentTotal += r.present.length; dedupedTotal += r.deduped.length + r.logged.length;
+    for (const m of r.missing) {
+      const line = formatZipMissing(z.slug, z.url, m);
+      missingLines.push(line);
+      notify(id, 'P2', `${z.slug}|${z.url}|${m.name}`, 'zip member has no document row', line);
+    }
+  }
+  const tail = `${checked} zip(s) read of ${zips.length} examined since item 22 (${expectedTotal} member row(s) expected, ${presentTotal} present, ${dedupedTotal} deduped/logged); ${unchecked} zip row(s) not yet re-examined (UNVERIFIABLE by rule)`
+    + (unreadable.length ? `; ${unreadable.length} unreadable: ${unreadable.slice(0, MAX_OFFENDERS).join('; ')}` : '');
+  if (missingLines.length) {
+    record('zip_member_rows', name, 'FAIL', `${missingLines.length} member(s) with no row: ${missingLines.slice(0, MAX_OFFENDERS).join('; ')} | ${tail}`);
+  } else if (checked === 0) {
+    record('zip_member_rows', name, 'UNVERIFIABLE', `no zip answered a Range request | ${tail}`);
+  } else {
+    record('zip_member_rows', name, 'PASS', tail);
+  }
+}
+
 async function main() {
   await assertSessionTimezoneUtc();
   // Item 9: probe data_conflicts.document_id ONCE, before any check builds a predicate that
@@ -3205,6 +3296,7 @@ async function main() {
   await checkS_corpusShape();
   await checkT_bseSubscriptionIstShift();
   await checkD_iposDocLineageDocumentId();
+  await checkZipMemberRows();
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this

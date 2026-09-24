@@ -1983,3 +1983,7 @@ test('(pull_noblank) mutation guard: an inverted isBlankCurrentValue would make 
   const brokenIsBlank = (v) => !(v === null || v === undefined || v === '');
   assert.equal(brokenIsBlank(null), false, 'inverted predicate would wrongly call null "not blank", masking the offender');
 });
+
+// Item 10 zip_member_rows: its tests live in their own file; imported here so
+// they run in the pr-gate detection-floor step, which names only this file.
+import './zip-member-rows.test.mjs';
