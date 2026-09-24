@@ -43,7 +43,6 @@ const UNKNOWN_ALLOWED = new Set([
   'item-06-pull-walk.md',
   'item-07-job-scheduler-and-budgets.md',
   'item-09-re-read-loop.md',
-  'item-10-verification-checks.md',
   'item-19-merge-tool-shared-write-path.md',
   'item-21-read-side.md',
   'item-22-document-handling-and-download-limits.md',
