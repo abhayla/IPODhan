@@ -7,6 +7,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
   parseDdMmmYyyy,
   parseDdMmmYy,
+  parseIstMdyToUtcIso,
   toUtcEpochDay,
   toUtcEpochMs,
 } from '../../../src/utils/date-string-parsing.js';
@@ -137,5 +138,44 @@ describe('toUtcEpochDay / toUtcEpochMs (W-160b, T-327 ratchet closure)', () => {
 
   it('normalizes a known non-ISO scraped format (DD-MMM-YYYY) to the same UTC day as its ISO equivalent', () => {
     expect(toUtcEpochDay('27-Aug-2026')).toBe(toUtcEpochDay('2026-08-27'));
+  });
+});
+
+describe('parseIstMdyToUtcIso — BSE Maxdt zone-less IST wall-clock -> UTC ISO', () => {
+  it('parses the real live-verified 12-hour format (fetched 2026-09-24 from Pubissues_GetBkbldgCatdem_ng, IPO_NO 7992)', () => {
+    expect(parseIstMdyToUtcIso('9/24/2026 5:00:00 PM')).toBe('2026-09-24T11:30:00.000Z');
+  });
+
+  it('parses the core-proof case: 13:36:42 IST -> 08:06:42Z', () => {
+    expect(parseIstMdyToUtcIso('9/24/2026 1:36:42 PM')).toBe('2026-09-24T08:06:42.000Z');
+  });
+
+  it('parses AM correctly, including 12:xx:xx AM as midnight', () => {
+    expect(parseIstMdyToUtcIso('1/5/2026 12:15:00 AM')).toBe('2026-01-04T18:45:00.000Z');
+    expect(parseIstMdyToUtcIso('1/5/2026 9:05:06 AM')).toBe('2026-01-05T03:35:06.000Z');
+  });
+
+  it('parses noon (12:xx:xx PM) correctly', () => {
+    expect(parseIstMdyToUtcIso('1/5/2026 12:00:00 PM')).toBe('2026-01-05T06:30:00.000Z');
+  });
+
+  it('parses the 24-hour no-AM/PM fixture shape (scraper/tests fixture: "6/15/2026 16:59:06")', () => {
+    expect(parseIstMdyToUtcIso('6/15/2026 16:59:06')).toBe('2026-06-15T11:29:06.000Z');
+  });
+
+  it('is TZ-invariant (process TZ never affects the result — the class this fix closes)', () => {
+    for (const tz of ['UTC', 'Asia/Kolkata', 'America/Los_Angeles']) {
+      withTZ(tz, () => {
+        expect(parseIstMdyToUtcIso('9/24/2026 5:00:00 PM')).toBe('2026-09-24T11:30:00.000Z');
+      });
+    }
+  });
+
+  it('returns null for garbage / non-matching shapes, never falling back to new Date(str)', () => {
+    expect(parseIstMdyToUtcIso('not-a-date')).toBeNull();
+    expect(parseIstMdyToUtcIso('')).toBeNull();
+    expect(parseIstMdyToUtcIso('2026-09-24T17:00:00Z')).toBeNull();
+    expect(parseIstMdyToUtcIso('13/1/2026 5:00:00 PM')).toBeNull();
+    expect(parseIstMdyToUtcIso('9/24/2026 13:00:00 PM')).toBeNull();
   });
 });

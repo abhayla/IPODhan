@@ -18,6 +18,7 @@ import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { parseBseParties } from '../services/bse-party-parser.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { istDateIso } from '../scheduler/due-step-cycle.js';
+import { parseIstMdyToUtcIso } from '../utils/date-string-parsing.js';
 
 const BSE_API_BASE = 'https://api.bseindia.com/BseIndiaAPI/api/';
 const BSE_HEADERS = {
@@ -459,8 +460,7 @@ export function mapBSESubscription(rows: BSESubscriptionRow[], companyName: stri
   }
   if (!sawData) return null;
 
-  const parsed = maxdt ? new Date(maxdt) : new Date();
-  const timestamp = Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+  const timestamp = (maxdt && parseIstMdyToUtcIso(maxdt)) || new Date().toISOString();
 
   return {
     ipoCompanyName: companyName,

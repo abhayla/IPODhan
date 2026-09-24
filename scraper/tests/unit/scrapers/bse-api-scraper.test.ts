@@ -266,6 +266,28 @@ describe('mapBSESubscription — category demand rows → ScrapedSubscription', 
     expect(validateSubscriptionData(sub!).success).toBe(true);
   });
 
+  it('parses BSE Maxdt as IST, not as UTC wall-clock (T-999 class fix — verified live 2026-09-24 against IPO_NO 7992, ARMEE INFOTECH: Maxdt "9/24/2026 5:00:00 PM")', () => {
+    const liveShape: BSESubscriptionRow[] = [
+      { SRNo: '1', col2: 'Qualified Institutional Buyers (QIBs)', col5: '0.0022', Maxdt: '9/24/2026 5:00:00 PM' },
+      { SRNo: '', col2: 'Total', col5: '0.0022', Maxdt: '9/24/2026 5:00:00 PM' },
+    ];
+    const sub = mapBSESubscription(liveShape, 'ARMEE INFOTECH LIMITED');
+    // 5:00:00 PM IST (UTC+5:30) == 11:30:00 UTC the same day. The prior
+    // `new Date(maxdt)` behavior (parsed as UTC in a TZ=UTC process) stored
+    // this as 2026-09-24T17:00:00.000Z — 5h30m late — which is exactly what
+    // this assertion would catch if the fix regressed.
+    expect(sub!.timestamp).toBe('2026-09-24T11:30:00.000Z');
+  });
+
+  it('parses the 13:36:42 IST fixture format to 08:06:42Z (core proof: real string -> correct UTC)', () => {
+    const rows: BSESubscriptionRow[] = [
+      { SRNo: '1', col2: 'Qualified Institutional Buyers (QIBs)', col5: '1.5', Maxdt: '9/24/2026 1:36:42 PM' },
+      { SRNo: '', col2: 'Total', col5: '1.5', Maxdt: '9/24/2026 1:36:42 PM' },
+    ];
+    const sub = mapBSESubscription(rows, 'X Ltd');
+    expect(sub!.timestamp).toBe('2026-09-24T08:06:42.000Z');
+  });
+
   it('returns null when there are no category data rows (header only)', () => {
     expect(mapBSESubscription([ROWS[0]], 'X Ltd')).toBeNull();
     expect(mapBSESubscription([], 'X Ltd')).toBeNull();

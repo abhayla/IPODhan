@@ -126,3 +126,57 @@ export function toUtcEpochDay(value: unknown): number | null {
   const ms = toUtcEpochMs(value);
   return ms === null ? null : Math.floor(ms / 86400000);
 }
+
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+
+/**
+ * Parse BSE's `Maxdt` subscription-observation timestamp — a zone-less IST
+ * wall-clock string, e.g. `"9/24/2026 5:00:00 PM"` (12-hour, AM/PM suffix;
+ * verified live against `Pubissues_GetBkbldgCatdem_ng` 2026-09-24) or
+ * `"6/15/2026 16:59:06"` (24-hour, no suffix; scraper/tests fixture) —
+ * to a UTC ISO string. Same class and construction as
+ * `parseNseObservedTimestampIST` in `scrapers/nse-api-client.ts`: subtract
+ * the IST offset from `Date.UTC(...)` of the wall-clock fields, inlined so
+ * this never becomes a `new Date(<bareIdentifier>).toISOString()` chain
+ * (the T-327 ratchet's anti-pattern — see date-tz-parse-ratchet.test.ts).
+ *
+ * `new Date(maxdt)` (the prior behavior) parses this same string as UTC
+ * wall-clock in a TZ=UTC process, shifting every value +5h30m — the
+ * source-local-time-parsed-in-utc-process class (see
+ * docs/reviews/failure-classes/source-local-time-parsed-in-utc-process.json).
+ * Returns null (never falls back to `new Date(str)`) when the string
+ * doesn't match either shape, so callers can fall back to `now()` safely.
+ */
+export function parseIstMdyToUtcIso(raw: string): string | null {
+  const trimmed = raw.trim();
+  const match = trimmed.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})(?:\s*(AM|PM))?$/i
+  );
+  if (!match) return null;
+
+  const [, monthRaw, dayRaw, yearRaw, hourRaw, minRaw, secRaw, ampmRaw] = match;
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  const year = Number(yearRaw);
+  let hour = Number(hourRaw);
+  const minute = Number(minRaw);
+  const second = Number(secRaw);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  if (ampmRaw) {
+    const ampm = ampmRaw.toUpperCase();
+    if (hour < 1 || hour > 12) return null;
+    if (ampm === 'AM') hour = hour === 12 ? 0 : hour;
+    else hour = hour === 12 ? 12 : hour + 12;
+  } else if (hour > 23) {
+    return null;
+  }
+
+  if (Number.isNaN(year) || Number.isNaN(day)) return null;
+
+  // Inlined directly into `new Date(...)` (never bound to an intermediate
+  // identifier first) so this is the TZ-invariant-by-construction form the
+  // T-327 ratchet recognizes as safe (date-tz-parse-ratchet.test.ts) — the
+  // same shape as `parseNseObservedTimestampIST` in scrapers/nse-api-client.ts.
+  return new Date(Date.UTC(year, month - 1, day, hour, minute, second) - IST_OFFSET_MS).toISOString();
+}

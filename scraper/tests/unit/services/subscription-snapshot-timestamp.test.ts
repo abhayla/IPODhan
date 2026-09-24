@@ -13,6 +13,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolveSubscriptionSnapshotTimestamp } from '../../../src/services/data-persister.js';
+import { mapBSESubscription, type BSESubscriptionRow } from '../../../src/scrapers/bse-api-scraper.js';
+import { parseIstMdyToUtcIso } from '../../../src/utils/date-string-parsing.js';
 
 describe('resolveSubscriptionSnapshotTimestamp (W-38)', () => {
   const ctx = { ipoId: 'ipo-1', companyName: 'Deepa Jewellers' };
@@ -84,5 +86,38 @@ describe('resolveSubscriptionSnapshotTimestamp (W-38)', () => {
     const result = resolveSubscriptionSnapshotTimestamp(nearFuture, ctx);
 
     expect('skip' in result).toBe(false);
+  });
+
+  it('W-38 x BSE Maxdt (T-999): a same-minute BSE Maxdt figure round-trips through mapBSESubscription and is NOT skipped as "more than 5 minutes in the future" (prior bug: new Date(maxdt) parsed the zone-less IST string as UTC, storing it +5h30m ahead, which W-38 then rejected — losing the snapshot)', () => {
+    const nowUtcMs = Date.now();
+    const istMs = nowUtcMs + (5 * 60 + 30) * 60 * 1000;
+    const ist = new Date(istMs);
+    const month = ist.getUTCMonth() + 1;
+    const day = ist.getUTCDate();
+    const year = ist.getUTCFullYear();
+    let hour24 = ist.getUTCHours();
+    const minute = String(ist.getUTCMinutes()).padStart(2, '0');
+    const second = String(ist.getUTCSeconds()).padStart(2, '0');
+    const ampm = hour24 >= 12 ? 'PM' : 'AM';
+    let hour12 = hour24 % 12;
+    if (hour12 === 0) hour12 = 12;
+    const maxdt = `${month}/${day}/${year} ${hour12}:${minute}:${second} ${ampm}`;
+
+    const rows: BSESubscriptionRow[] = [
+      { SRNo: '1', col2: 'Qualified Institutional Buyers (QIBs)', col5: '1.0', Maxdt: maxdt },
+      { SRNo: '', col2: 'Total', col5: '1.0', Maxdt: maxdt },
+    ];
+    const sub = mapBSESubscription(rows, 'X Ltd');
+    expect(sub).not.toBeNull();
+
+    // Sanity: the parser itself agrees with the direct hand-built expectation.
+    expect(parseIstMdyToUtcIso(maxdt)).toBe(sub!.timestamp);
+
+    const result = resolveSubscriptionSnapshotTimestamp(sub!.timestamp, ctx);
+    expect('skip' in result).toBe(false);
+    if ('skip' in result) throw new Error(`unreachable — got skip: ${result.reason}`);
+    // Within a few seconds of real "now" (test itself takes negligible time),
+    // never ~5h30m ahead (the regression this test exists to catch).
+    expect(Math.abs(result.timestamp.getTime() - nowUtcMs)).toBeLessThan(5000);
   });
 });
