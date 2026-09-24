@@ -1590,6 +1590,15 @@
       "phase1": true,
       "title": "A corrigendum is ranked above the RHP but no extractor reads it, so OD-30 can never apply",
       "detail": "Measured 2026-09-24. scraper/src/config/document-admission-status.ts AUTO_PERSIST_DOC_TYPES (the single list both the admission stamp and the extractor dispatch read) is PRICE_BAND_AD, RHP, DRHP, PROSPECTUS, ANCHOR_ALLOCATION_REPORT; CORRIGENDUM and ADDENDUM are absent, so a stored corrigendum is admitted NOT_EXTRACTABLE and nothing reads its fields. The field-priority matrix already ranks CORRIGENDUM above RHP (field-priority-matrix.ts ~840-846, CORRIGENDUM: 0) and section 2.5.5 / OD-30 says a corrigendum overrides the RHP for the fields it names and freezes them, so the rule has an input type no code can ever produce. On ipodhan_staging: skyways-air-services-ltd CORRIGENDUM (Corrigendum-of-RHP-Skyways.pdf) is NOT_EXTRACTABLE; staging holds 2 CORRIGENDUM and 1 ADDENDUM documents in total. PR #969 (item 22) now stores the corrigenda bundled inside NSE zips (F-154: HTEL, ABH, MADHURKNIT, MOMSBELIEF, SKYWAYS), which raises the count of stored-but-unread corrigenda. Related: F-154, OD-30, item 22, item 9 (\"a genuinely new corrigendum must still be fetched and read\")."
+    },
+    {
+      "id": "F-160",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "pull-walk",
+      "phase1": true,
+      "title": "121 of 129 recently listed IPOs have no ISIN; the pull walk mostly never asks for it, and its NSE fetcher answers not-available for stocks already trading",
+      "detail": "Measured 2026-09-24 on ipodhan_staging (read-only): 121 of 129 LISTED IPOs with a listing date in the last 90 days have ipos.isin NULL. The manifest ranks ipos.isin DOC -> NSE -> BSE (scraper/config/field-manifest.json), so NSE is an allowed ISIN source. For those IPOs only 34 isin plan rows exist (so most were never planned for isin), and of those: 17 NOT_AVAILABLE_YET with cause rank2:NSE:NOT_AVAILABLE_YET, 10 rank1:DOC:NOT_AVAILABLE_YET, 5 CHECK_FAILED, 1 COVERAGE_GAP (Chittorgarh has no mapping). A stock that is already trading has an ISIN, so the NSE fetcher is reading an endpoint that does not carry it after listing, while NSE GetQuoteApi getSymbolData (F-150) returns the ISIN for a listed stock. Effect: item 7 S5 (post-listing price) cannot resolve BSE scrip codes (F-155 needs the ISIN) or count delisting safely for 121 of 129 IPOs. The right fix is in the pull walk (item 6), under the normal ranks, not a side-write from the price job. Related: F-150, F-155, OD-85, item 6, item 7 S5."
     }
   ],
   "false_assertions": [
