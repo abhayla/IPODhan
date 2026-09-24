@@ -2615,6 +2615,15 @@ export const ipoMergeLog = pgTable(
     // Set when an unmerge reverses this entry, so a merge cannot be undone twice.
     // Null means "still in force".
     unmergedAt: timestamp('unmerged_at'),
+    unmergedBy: varchar('unmerged_by', { length: 255 }),
+
+    // OD-92 (§2.3.3.3, migration 0058): what an EXACT unmerge needs beyond the columns above.
+    // { format: 3, deletedRows: [{ table, depth, rows }], nulledRefs: [{ table, col, id, value }],
+    //   sourceKeysBefore, supersededKeyIds, keepRowAfter, redirectId } — every row the merge
+    // deletes (direct children AND the rows their FK cascades remove) whole as to_jsonb, every
+    // reference a SET NULL cascade clears, both IPOs' source keys before the merge, and the
+    // survivor after it. NULL on entries logged before 0058: those are partly reversible.
+    restoreData: jsonb('restore_data'),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },

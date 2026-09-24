@@ -138,9 +138,11 @@ function buildFakeDb(carriedColumn: string) {
         }),
       }),
       insert: (_table: unknown) => ({
+        // OD-92: the log insert and the redirect insert both RETURN the new row's id.
         values: () => ({
-          onConflictDoNothing: async () => undefined,
+          onConflictDoNothing: () => ({ returning: async () => [{ id: 'inserted-1' }], then: (res: (v: unknown) => unknown) => Promise.resolve(undefined).then(res) }),
           onConflictDoUpdate: async () => undefined,
+          returning: async () => [{ id: 'inserted-1' }],
         }),
       }),
       delete: (_table: unknown) => ({
@@ -175,6 +177,8 @@ function buildFakeDb(carriedColumn: string) {
           return { rows: [{ keep: 0, drop: 1 }] };
         }
         // current_database() prod guard — not exercised (apply against non-prod)
+        // OD-92: the capture reads (FK edges, whole-row captures, source keys) find nothing in this fake.
+        if (/pg_constraint|to_jsonb\(t\.\*\)::text as row|ipo_source_keys/i.test(text)) return { rows: [] };
         if (/current_database/i.test(text)) {
           return { rows: [{ current_database: 'ipodhan_test' }] };
         }

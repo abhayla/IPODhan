@@ -49,6 +49,7 @@ import {
   type SourceKeyBoundVia,
 } from './ipo-source-keys';
 import { noteSourceKeyBind } from './source-key-lineage';
+import { captureMergeDeletions, type MergeCapture } from './ipo-merge-restore';
 
 /** audit_logs.action_type of an OD-68 hold; read by the nightly `i_identity_held` check. */
 export const IDENTITY_HELD_ACTION = 'IDENTITY_HELD_FOR_REVIEW';
@@ -1603,6 +1604,23 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       const keepFieldSources = fsRows.filter((r) => r.ipo_id === keepId).map((r) => r.row);
       const dropFieldSources = fsRows.filter((r) => r.ipo_id === dropId).map((r) => r.row);
 
+      // OD-92 (§2.3.3.3 "the rows themselves"): before the first delete, every row this merge
+      // will remove (the direct scraper-derived children and everything their FK cascades take
+      // with them) whole, every reference a SET NULL cascade will clear, and both IPOs' source
+      // keys as they stand now (an OD-86 relaunch merge supersedes some of them below).
+      const capture: MergeCapture = await captureMergeDeletions(
+        tx,
+        dropId,
+        direct.filter((t) => !REPOINT_TABLES.has(t)).map((t) => ({ table: t, col: reach.get(t)!.col }))
+      );
+      const keysBefore = (
+        (await tx.execute(sql`
+          select to_jsonb(k.*)::text as row from ipo_source_keys k
+          where k.ipo_id in (${keepId}, ${dropId}) order by k.id
+        `)) as unknown as { rows: { row: string }[] }
+      ).rows.map((r) => r.row);
+      let supersededKeyIds: string[] = [];
+
       // --- child tables FIRST: repoint person-created data, delete scraper-derived data --------
       // Must run before the `ipos` row for dropId is deleted below: most FKs into `ipos` are
       // ON DELETE CASCADE (schema.ts), so deleting the dropped `ipos` row before this loop would
@@ -1711,7 +1729,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           .map((c) => ({ table: c.table, col: c.col, count: c.deletedCount }))
       );
 
-      await tx.insert(ipoMergeLog).values({
+      const [logRow] = await tx.insert(ipoMergeLog).values({
         keepIpoId: keepId,
         keepSlug: keep.slug,
         dropIpoId: dropId,
@@ -1721,7 +1739,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         deletedChildCounts: sql`${deletedJson}::jsonb` as unknown as Record<string, unknown>,
         repointedChildCounts: sql`${repointedJson}::jsonb` as unknown as Record<string, unknown>,
         mergedBy: opts.mergedBy || 'unknown',
-      });
+      }).returning({ id: ipoMergeLog.id });
 
       // DEFECT 2 (2026-09-16 staging dedupe): the dropped `ipos` row is deleted here — after
       // child-table repoint/delete above, but BEFORE any carried-column UPDATE on the survivor
@@ -1744,7 +1762,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         const olderId = keepDay && dropDay ? (keepDay < dropDay ? keepId : dropDay < keepDay ? dropId : null) : null;
         if (olderId) {
           const newerId = olderId === keepId ? dropId : keepId;
-          await supersedeOlderKeysOnRelaunchMerge(
+          supersededKeyIds = await supersedeOlderKeysOnRelaunchMerge(
             tx,
             pairKeys.filter((k) => k.ipoId === olderId),
             pairKeys.filter((k) => k.ipoId === newerId),
@@ -1798,10 +1816,31 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       }
 
       // The old URL must keep resolving; a merge that 404s a live IPO page is a regression.
-      await tx
+      const redirectRows = await tx
         .insert(ipoSlugRedirects)
         .values({ oldSlug: drop.slug, ipoId: keepId, reason: 'DUPLICATE_MERGE' })
-        .onConflictDoNothing({ target: ipoSlugRedirects.oldSlug });
+        .onConflictDoNothing({ target: ipoSlugRedirects.oldSlug })
+        .returning({ id: ipoSlugRedirects.id });
+
+      // OD-92: the rest of what an exact unmerge needs, written last so it can include the
+      // survivor as the merge left it (the drift check compares against this) and the ids of
+      // the redirect and superseded keys this transaction created or changed.
+      const keepAfterText = (
+        (await tx.execute(sql`select to_jsonb(i.*)::text as row from ipos i where i.id = ${keepId}`)) as unknown as {
+          rows: { row: string }[];
+        }
+      ).rows[0]?.row;
+      const restoreJson =
+        `{"format":3,"deletedRows":[${capture.deletedRows
+          .map((t) => `{"table":${JSON.stringify(t.table)},"rows":${rawArray(t.rows)}}`)
+          .join(',')}],` +
+        `"nulledRefs":${JSON.stringify(capture.nulledRefs)},` +
+        `"sourceKeysBefore":${rawArray(keysBefore)},"supersededKeyIds":${JSON.stringify(supersededKeyIds)},` +
+        `"keepRowAfter":${keepAfterText ?? 'null'},"redirectId":${JSON.stringify(redirectRows[0]?.id ?? null)}}`;
+      await tx
+        .update(ipoMergeLog)
+        .set({ restoreData: sql`${restoreJson}::jsonb` as unknown as Record<string, unknown> })
+        .where(eq(ipoMergeLog.id, logRow!.id));
       // Child-table repoint/delete and the dropped `ipos` row delete both already ran above
       // (DEFECT 2 fix) — before this patch loop, so a unique-constrained carried value never has
       // to coexist on both rows.

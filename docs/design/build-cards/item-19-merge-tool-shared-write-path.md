@@ -230,7 +230,7 @@ roll back together, not just that both succeed on the happy path.
 
 | Design section | Rule ids |
 |---|---|
-| §2.3.3.3 | R-049, R-050, R-051, R-052 |
+| §2.3.3.3 | R-049, R-231, R-051, R-052 |
 
 ## Known gaps
 
