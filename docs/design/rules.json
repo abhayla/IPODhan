@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-23T19:00:26.410Z",
+  "generated_at": "2026-09-24T02:11:23.633Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 192,
-    "retired": 31
+    "retired": 32
   },
-  "next_id": 224,
+  "next_id": 225,
   "rules": [
     {
       "id": "R-151",
@@ -90,12 +90,12 @@
       "retired": false
     },
     {
-      "id": "R-002",
-      "hash": "5c2d0e7affbe",
+      "id": "R-224",
+      "hash": "1e43b11d7601",
       "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
       "kind": "table-normative",
-      "text": "Opening-day check — about 09:45, only on a day an IPO is due to open (OD-31) — heavy, skipped if held — the two exchange lists only: register a new or changed IPO so the live jobs can see it — never fetch, download or extract a filing; it writes identity and status, nothing else",
-      "first_seen": "2026-09-09",
+      "text": "Opening-day check — about 09:45, only on a day an IPO is due to open (OD-31) — heavy, skipped if held — the two exchange lists only: register a new or changed IPO so the live jobs can see it — never fetch, download or extract a filing; it writes identity, status and the open and close dates, nothing else (OD-87); \"a day an IPO is due to open\" is read from the two fetched lists or the stored rows, so an IPO not yet stored is still caught",
+      "first_seen": "2026-09-24",
       "retired": false
     },
     {
@@ -1735,6 +1735,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-002",
+      "hash": "5c2d0e7affbe",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table-normative",
+      "text": "Opening-day check — about 09:45, only on a day an IPO is due to open (OD-31) — heavy, skipped if held — the two exchange lists only: register a new or changed IPO so the live jobs can see it — never fetch, download or extract a filing; it writes identity and status, nothing else",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-178",
