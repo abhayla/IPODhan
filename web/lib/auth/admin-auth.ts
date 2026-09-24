@@ -137,8 +137,11 @@ export async function requireAdminAuth(): Promise<NextResponse | null> {
     // Parse Bearer token
     const parts = authorization.split(' ');
     if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      // A bare token with no space has parts[0] === the token itself — never log it.
+      const hasScheme = authorization.includes(' ') && /^[A-Za-z]{1,16}$/.test(parts[0] || '');
+      const loggedScheme = hasScheme ? parts[0] : '(none)';
       console.warn(
-        `[Admin Auth] Malformed Authorization header (scheme="${parts[0] || ''}", length=${authorization.length})`
+        `[Admin Auth] Malformed Authorization header (scheme="${loggedScheme}", length=${authorization.length})`
       );
       return NextResponse.json(
         {
