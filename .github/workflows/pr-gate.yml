@@ -233,6 +233,13 @@ jobs:
           node --test scripts/tests/check-field-manifest-current.test.mjs
           node scripts/ci/check-field-manifest-current.mjs --base "${{ github.event.pull_request.base.sha }}"
 
+      - name: Manifest unit follows stored unit (F-156, item 11 — detection check for threshold-in-one-unit-column-in-another)
+        # 2nd occurrence of the class: the manifest's `unit` and the admin validators trusted a
+        # wrong tag on 12 real columns for weeks. This proves the manifest's unit matches the
+        # amount-columns probe's MEASURED current_unit, not just that the generator reproduces its
+        # own prior output (the drift gate above only proves that).
+        run: node --test scripts/tests/manifest-unit-matches-current-unit.test.mjs
+
       - name: Repair-tool module lint self-test (T-490)
         # Mutation-proof: scripts/ci/tests/require-repair-tool-module.test.mjs
         # imports the real predicates from the lint, so weakening the import

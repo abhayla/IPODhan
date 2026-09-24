@@ -51,7 +51,9 @@ describe('loadFieldManifest', () => {
     // mainboard IPOs; computeBSEIssueSize never implemented the anchor
     // add-back the earlier 2026-09-09 note proposed.
     expect(manifest.fields['ipos.issue_size'].rank.MAINBOARD).toEqual(['DOC', 'CHITTORGARH']);
-    expect(manifest.fields['ipo_details.fresh_issue'].unit).toBe('crore');
+    // F-156/OD-67: fresh_issue is stored in RUPEES (current_unit override in the amount-columns
+    // probe), so the generated unit is 'rupee', not the CRORE amount-class default.
+    expect(manifest.fields['ipo_details.fresh_issue'].unit).toBe('rupee');
     // S0a retired Moneycontrol from every authored rank in the spec (MC_SERVES is empty); S0b's
     // generator reproduces that correction rather than the stale 3-source row item 2 hand-wrote —
     // see scripts/generate-field-manifest.mjs's header note and the S0b PR's 10-row diff.

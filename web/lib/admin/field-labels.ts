@@ -96,6 +96,10 @@ export const fieldLabels: Record<string, Record<string, FieldLabelConfig>> = {
       description: 'Total size of the public offering',
       category: 'Pricing & Size',
       tooltip: 'Total amount to be raised through the IPO',
+      // The column stores exact RUPEES (OD-67); this label and dynamic-validation-rules.ts's
+      // issueSize validator are crore-scale for a human editor. web/lib/admin/amount-unit-edge.ts
+      // is the edge that converts on load/save (F-156) — do not remove this unit without also
+      // removing that conversion.
       unit: '₹ Crores',
       placeholder: 'e.g., 5000',
     },

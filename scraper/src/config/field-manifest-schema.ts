@@ -59,7 +59,10 @@ export const fieldManifestEntrySchema = z
       { message: 'capability keys must be valid SourceCode values' }
     ),
     na: z.array(z.string()).optional(),
-    unit: z.enum(['rupee', 'crore', 'keep']),
+    // 'per_row' (F-156): the amount-columns probe's PER_ROW_UNIT class — a column (the
+    // financial_statements.* series) whose unit varies per row, carried in that row's own
+    // unit column, rather than being fixed crore/rupee for the whole table.
+    unit: z.enum(['rupee', 'crore', 'keep', 'per_row']),
     // S3b step 1 (issue #775): how the OD-59 comparator reads two witnesses' values before
     // deciding CONFIRMED/DISPUTED. Derived from structure (scripts/generate-field-manifest.mjs),
     // never hand-assigned. ABSTAIN is a real family, not an omission: it marks fields (free
