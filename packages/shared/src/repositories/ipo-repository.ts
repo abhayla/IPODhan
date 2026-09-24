@@ -5,7 +5,7 @@
  * Implements cache-aside pattern with Redis for optimized performance.
  */
 
-import { eq, and, gte, lte, sql, desc, asc, inArray, like } from 'drizzle-orm';
+import { eq, and, gte, lte, sql, desc, asc, inArray, like, getTableColumns } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { BaseRepository } from './base-repository';
@@ -49,7 +49,7 @@ import {
   type SourceKeyBoundVia,
 } from './ipo-source-keys';
 import { noteSourceKeyBind } from './source-key-lineage';
-import { captureMergeDeletions, type MergeCapture } from './ipo-merge-restore';
+import { captureMergeDeletions, missingForUnmerge, type MergeCapture, type NulledRef } from './ipo-merge-restore';
 
 /** audit_logs.action_type of an OD-68 hold; read by the nightly `i_identity_held` check. */
 export const IDENTITY_HELD_ACTION = 'IDENTITY_HELD_FOR_REVIEW';
@@ -182,6 +182,26 @@ export interface MergeChildOutcome {
   deletedOnConflictRows: string[];
   /** Scraper-derived rows deleted (count only). */
   deletedCount: number;
+}
+
+/** What `unmergeDuplicate` did (or, on a dry run, would do). */
+export interface UnmergeResult {
+  mergeId: string;
+  keepId: string;
+  dropId: string;
+  keepSlug: string;
+  dropSlug: string;
+  keepStatus: string;
+  dropStatus: string;
+  /** True for a pre-OD-92 entry restored with --partial. */
+  partial: boolean;
+  /** What the log cannot restore (empty for an OD-92 entry). */
+  missing: string[];
+  /** Survivor columns changed after the merge (non-empty only when every one was forced). */
+  drift: string[];
+  restoredRows: { table: string; count: number }[];
+  repointedBack: { table: string; count: number; logged: number }[];
+  applied: boolean;
 }
 
 export class IPORepository extends BaseRepository implements IIPORepository {
@@ -1852,6 +1872,271 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     );
 
     return { ...plan, applied: true, keepSlug: keep.slug, droppedSlug: drop.slug, provenanceWritten, childOutcome };
+  }
+
+  /**
+   * Item 19 / OD-92: undo one logged merge (spec §2.3.3.3 "`unmerge <merge-id>`: it restores both
+   * rows from the log and re-points the slug redirect so the page that was redirected goes back to
+   * its own row"). One transaction, parent before child: the removed `ipos` row, every row the
+   * merge deleted (direct and cascaded) whole, every reference a SET NULL cascade cleared, the
+   * person-created rows moved back by logged id, source keys an OD-86 relaunch superseded put back
+   * whole, the survivor's provenance for the fields the merge carried, the survivor itself from
+   * its pre-merge snapshot, the merge's redirect removed, and the log row marked unmerged.
+   *
+   * Refusals, all before any write:
+   *   - the entry is already unmerged;
+   *   - the removed row's id is live again;
+   *   - the entry predates OD-92 and `partial` is not set (the message lists what is missing);
+   *   - the survivor changed after the merge (drift) in a column `forceFields` does not name.
+   *     Inferred, not spec-stated (recorded under OD-92): the spec says "restore", and silently
+   *     overwriting a real post-merge change is worse than asking.
+   * `apply: false` validates and reports without writing. Same production guard as the merge.
+   */
+  async unmergeDuplicate(
+    mergeId: string,
+    opts: { apply: boolean; allowProd?: boolean; partial?: boolean; forceFields?: string[]; unmergedBy?: string }
+  ): Promise<UnmergeResult> {
+    if (opts.apply) {
+      const r = await this.db.execute(sql`select current_database()`);
+      const name = String((r as unknown as { rows: { current_database: string }[] }).rows?.[0]?.current_database ?? '');
+      if (name.toLowerCase() === 'ipodhan' && opts.allowProd !== true) {
+        throw new ProdWriteRefusedError(
+          `unmergeDuplicate: refusing to APPLY writes against the production database "ipodhan" — pass opts.allowProd: true to override.`,
+          name
+        );
+      }
+    }
+
+    const declaredIpoColumns = getTableColumns(ipos);
+    const result = await this.db.transaction(async (tx) => {
+      const rows = <T>(r: unknown) => ((r as { rows?: T[] }).rows ?? []) as T[];
+      const [log] = await tx.select().from(ipoMergeLog).where(eq(ipoMergeLog.id, mergeId)).for('update');
+      if (!log) throw new DatabaseError(`unmergeDuplicate: no merge log entry ${mergeId}`, undefined);
+      if (log.unmergedAt) {
+        throw new DatabaseError(
+          `unmergeDuplicate: merge ${mergeId} was already unmerged at ${log.unmergedAt.toISOString()} by ${log.unmergedBy ?? 'unknown'}`,
+          undefined
+        );
+      }
+      if (!log.keepIpoId) throw new DatabaseError(`unmergeDuplicate: the survivor of merge ${mergeId} no longer exists`, undefined);
+      const keepId = log.keepIpoId;
+      const dropId = log.dropIpoId;
+      const missing = missingForUnmerge(log);
+      if (missing.some((m) => m.startsWith('drop_row predates'))) {
+        throw new DatabaseError(`unmergeDuplicate: not reversible: ${missing.join('; ')}`, undefined);
+      }
+      if (missing.length && !opts.partial) {
+        throw new DatabaseError(
+          `unmergeDuplicate: partly reversible: ${missing.join('; ')} — pass --partial to restore what the log holds`,
+          undefined
+        );
+      }
+      const live = rows<{ n: number }>(await tx.execute(sql`select count(*)::int as n from ipos where id = ${dropId}`))[0];
+      if (live && live.n > 0) throw new DatabaseError(`unmergeDuplicate: ipos row ${dropId} exists again — refusing`, undefined);
+
+      const sp = (log.survivorPatch ?? {}) as {
+        patch?: CarryFieldPatch[];
+        keepRowBefore?: Record<string, unknown>;
+        fieldSourcesBefore?: { keep?: Record<string, unknown>[]; drop?: Record<string, unknown>[] };
+      };
+      const keepBefore = sp.keepRowBefore;
+      if (!keepBefore) {
+        throw new DatabaseError(`unmergeDuplicate: merge ${mergeId} has no survivor snapshot (pre-#900 log)`, undefined);
+      }
+      const rd = (log.restoreData ?? null) as null | {
+        deletedRows: { table: string; rows: Record<string, unknown>[] }[];
+        nulledRefs: NulledRef[];
+        sourceKeysBefore: Record<string, unknown>[];
+        supersededKeyIds: string[];
+        keepRowAfter: Record<string, unknown> | null;
+        redirectId: string | null;
+      };
+      const patchFields = (sp.patch ?? []).map((p) => p.column);
+      const fieldNames = patchFields.map(columnToCamelCase);
+
+      // --- drift: did anything write the survivor after the merge? ------------------------------
+      const cur = rows<{ row: Record<string, unknown> }>(
+        await tx.execute(sql`select to_jsonb(i.*) as row from ipos i where i.id = ${keepId} for update`)
+      )[0]?.row;
+      if (!cur) throw new DatabaseError(`unmergeDuplicate: survivor ${keepId} not found`, undefined);
+      const expected = rd?.keepRowAfter ?? keepBefore;
+      const skip = new Set(['updated_at', ...(rd?.keepRowAfter ? [] : patchFields)]);
+      const drift = Object.keys(expected)
+        .filter((c) => !skip.has(c))
+        .filter((c) => JSON.stringify(cur[c] ?? null) !== JSON.stringify(expected[c] ?? null));
+      const fsDrift = fieldNames.length
+        ? rows<{ field_name: string }>(
+            await tx.execute(sql`
+              select field_name from field_sources
+              where ipo_id = ${keepId} and table_name = 'ipos' and row_key = ''
+                and field_name = any(array(select jsonb_array_elements_text(${JSON.stringify(fieldNames)}::jsonb)))
+                and updated_by is distinct from 'merge-duplicate-ipo'
+            `)
+          ).map((r) => `field_sources.${r.field_name}`)
+        : [];
+      const allDrift = [...drift, ...fsDrift];
+      const unforced = allDrift.filter((d) => !(opts.forceFields ?? []).includes(d));
+      if (unforced.length) {
+        throw new DatabaseError(
+          `unmergeDuplicate: the survivor changed after the merge in ${unforced.join(', ')} — restoring would overwrite ` +
+            `that; name them in --force-fields to overwrite, or leave the merge in place`,
+          undefined
+        );
+      }
+
+      const out: UnmergeResult = {
+        mergeId,
+        keepId,
+        dropId,
+        keepSlug: String(keepBefore.slug ?? log.keepSlug),
+        dropSlug: log.dropSlug,
+        keepStatus: String(keepBefore.status ?? ''),
+        dropStatus: String((log.dropRow as Record<string, unknown>).status ?? ''),
+        partial: missing.length > 0,
+        missing,
+        drift: allDrift,
+        restoredRows: (rd?.deletedRows ?? []).map((t) => ({ table: t.table, count: t.rows.length })),
+        repointedBack: [],
+        applied: false,
+      };
+      if (!opts.apply) return out;
+
+      const js = (v: unknown) => JSON.stringify(v);
+      // `ipos` is written only through the query builder (write ratchet, OD-49): each declared column
+      // is read out of the logged row server-side, so numerics and timestamps keep their exact text.
+      const fromLogged = (json: string, skipId: boolean) =>
+        Object.fromEntries(
+          Object.entries(declaredIpoColumns)
+            .filter(([, c]) => !(skipId && c.name === 'id'))
+            .map(([k, c]) => [k, sql`(jsonb_populate_record(null::ipos, ${json}::jsonb)).${sql.identifier(c.name)}`])
+        );
+      // 1. the removed ipos row, under its original id
+      await tx.insert(ipos).values(fromLogged(js(log.dropRow), false) as never);
+      // Read it back whole: a live column schema.ts does not declare is not written by the builder,
+      // so if the logged value there differs from what the insert left, the restore is not exact
+      // and the whole transaction rolls back naming the columns.
+      const exactOrThrow = async (id: string, want: Record<string, unknown>, what: string) => {
+        const got = rows<{ row: Record<string, unknown> }>(
+          await tx.execute(sql`select to_jsonb(i.*) as row from ipos i where i.id = ${id}`)
+        )[0]?.row ?? {};
+        const off = Object.keys(want).filter((k) => JSON.stringify(got[k] ?? null) !== JSON.stringify(want[k] ?? null));
+        if (off.length) {
+          throw new DatabaseError(`unmergeDuplicate: ${what} did not restore exactly in ${off.join(', ')} — rolled back`, undefined);
+        }
+      };
+      await exactOrThrow(dropId, log.dropRow as Record<string, unknown>, 'the removed ipos row');
+      // 2. every deleted row, parent tables first (the order the log was written in)
+      for (const t of rd?.deletedRows ?? []) {
+        await tx.execute(sql`
+          insert into ${sql.identifier(t.table)}
+          select * from jsonb_populate_recordset(null::${sql.identifier(t.table)}, ${js(t.rows)}::jsonb)
+        `);
+      }
+      // A pre-OD-92 entry (--partial): the dropped side's provenance is the one child set logged whole.
+      if (!rd && sp.fieldSourcesBefore?.drop?.length) {
+        await tx.execute(sql`
+          insert into field_sources
+          select * from jsonb_populate_recordset(null::field_sources, ${js(sp.fieldSourcesBefore.drop)}::jsonb)
+        `);
+      }
+      // 3. references a SET NULL cascade cleared
+      for (const n of rd?.nulledRefs ?? []) {
+        await tx.execute(sql`
+          update ${sql.identifier(n.table)} t set ${sql.identifier(n.col)} = ${n.value}
+          where (to_jsonb(t.*) ->> 'id') = ${n.id} and t.${sql.identifier(n.col)} is null
+        `);
+      }
+      // 4. person-created rows back to the dropped IPO; conflict-deleted twins re-inserted
+      const repointed = (Array.isArray(log.repointedChildCounts) ? log.repointedChildCounts : []) as {
+        table: string;
+        col: string;
+        repointedIds: string[];
+        deletedOnConflictRows?: Record<string, unknown>[];
+      }[];
+      for (const r of repointed) {
+        const moved = rows<{ id: string }>(
+          await tx.execute(sql`
+            update ${sql.identifier(r.table)} t set ${sql.identifier(r.col)} = ${dropId}
+            where (to_jsonb(t.*) ->> 'id') = any(array(select jsonb_array_elements_text(${JSON.stringify(r.repointedIds)}::jsonb))) and t.${sql.identifier(r.col)} = ${keepId}
+            returning to_jsonb(t.*) ->> 'id' as id
+          `)
+        );
+        if (r.deletedOnConflictRows?.length) {
+          await tx.execute(sql`
+            insert into ${sql.identifier(r.table)}
+            select * from jsonb_populate_recordset(null::${sql.identifier(r.table)}, ${js(r.deletedOnConflictRows)}::jsonb)
+          `);
+        }
+        out.repointedBack.push({ table: r.table, count: moved.length, logged: r.repointedIds.length });
+      }
+      // 5. source keys an OD-86 relaunch merge superseded, put back whole
+      const superseded = (rd?.sourceKeysBefore ?? []).filter((k) => (rd?.supersededKeyIds ?? []).includes(String(k.id)));
+      if (superseded.length) {
+        const keyCols = rows<{ c: string }>(
+          await tx.execute(sql`
+            select column_name::text as c from information_schema.columns
+            where table_schema = 'public' and table_name = 'ipo_source_keys' and column_name <> 'id'
+            order by ordinal_position
+          `)
+        ).map((r) => r.c);
+        for (const k of superseded) {
+          await tx.execute(sql`
+            update ipo_source_keys set (${sql.join(keyCols.map((c) => sql.identifier(c)), sql`, `)}) =
+              (select ${sql.join(keyCols.map((c) => sql`r.${sql.identifier(c)}`), sql`, `)}
+               from jsonb_populate_record(null::ipo_source_keys, ${js(k)}::jsonb) r)
+            where id = ${String(k.id)}
+          `);
+        }
+      }
+      // 6. the survivor's provenance for the carried fields, as it stood before the merge
+      if (fieldNames.length) {
+        await tx.execute(sql`
+          delete from field_sources where ipo_id = ${keepId} and table_name = 'ipos' and row_key = ''
+            and field_name = any(array(select jsonb_array_elements_text(${JSON.stringify(fieldNames)}::jsonb)))
+        `);
+        const before = (sp.fieldSourcesBefore?.keep ?? []).filter(
+          (f) => f.table_name === 'ipos' && (f.row_key ?? '') === '' && fieldNames.includes(String(f.field_name))
+        );
+        if (before.length) {
+          await tx.execute(sql`
+            insert into field_sources select * from jsonb_populate_recordset(null::field_sources, ${js(before)}::jsonb)
+          `);
+        }
+      }
+      // 7. the survivor, whole, from its pre-merge snapshot. The merge writes only declared columns
+      // (the carried ones and updated_at), so the declared set is the whole of what it changed.
+      await tx.update(ipos).set(fromLogged(js(keepBefore), true) as never).where(eq(ipos.id, keepId));
+      await exactOrThrow(keepId, keepBefore, 'the survivor');
+      // 8. the merge's redirect goes, so the dropped slug serves its own row again
+      if (rd?.redirectId) {
+        await tx.delete(ipoSlugRedirects).where(eq(ipoSlugRedirects.id, rd.redirectId));
+      } else if (!rd) {
+        await tx
+          .delete(ipoSlugRedirects)
+          .where(
+            and(
+              eq(ipoSlugRedirects.oldSlug, log.dropSlug),
+              eq(ipoSlugRedirects.ipoId, keepId),
+              eq(ipoSlugRedirects.reason, 'DUPLICATE_MERGE')
+            )
+          );
+      }
+      // 9. mark the entry so it cannot be unmerged twice
+      await tx
+        .update(ipoMergeLog)
+        .set({ unmergedAt: sql`now()` as unknown as Date, unmergedBy: opts.unmergedBy || 'unknown' })
+        .where(eq(ipoMergeLog.id, mergeId));
+      out.applied = true;
+      return out;
+    });
+
+    if (result.applied) {
+      await this.invalidateCache(
+        [getIPOByIdKey(result.keepId), getIPOBySlugKey(result.keepSlug), getIPOByIdKey(result.dropId), getIPOBySlugKey(result.dropSlug)],
+        ['ipo:list:*', 'ipo:search:*', `ipo:detail:${result.keepSlug}`, `ipo:detail:${result.dropSlug}`]
+      );
+    }
+    return result;
   }
 
   /**

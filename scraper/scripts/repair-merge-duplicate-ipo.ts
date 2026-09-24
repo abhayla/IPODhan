@@ -30,6 +30,8 @@
  *   ... --set-issue-size <rupees>        correct the survivor's issue size (source-backed only)
  *   ... --issue-size-note "<evidence>"   what proves that number; stored in the provenance row
  *   ... --force-different-name           proceed when the two names do not fold together
+ *   ... --unmerge <merge-log-id> --expect-db <name> [--apply] [--partial] [--force-fields a,b]
+ *                                        undo one logged merge (OD-92, spec §2.3.3.3; dry run by default)
  *
  * Target database: the tunnel env (DATABASE_HOST/DATABASE_PORT/... or
  * DATABASE_URL) that `@ipodhan/shared`'s `db` pool is built from — see
@@ -40,7 +42,7 @@
  * including the prod guard and every eligibility check) · 2 the script broke,
  * OR the write committed but a post-apply `VERIFY:` readback check failed.
  */
-import { db, getRedisClient, IPORepository, type MergeDuplicateResult } from '@ipodhan/shared';
+import { db, getRedisClient, IPORepository, type MergeDuplicateResult, type UnmergeResult } from '@ipodhan/shared';
 import { DatabaseError, ProdWriteRefusedError } from '@ipodhan/shared/errors/repository-errors';
 import {
   buildCarryFieldInputs,
@@ -56,6 +58,7 @@ import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 import { openRepairDb, writeLedgerFile } from './lib/repair-tool.js';
+import { notifyOwner, flushOwnerNotify } from '../src/services/owner-notify.js';
 
 const args = process.argv.slice(2);
 const arg = (n: string): string | null => {
@@ -71,6 +74,85 @@ const SET_ISSUE_SIZE = arg('--set-issue-size');
 const ISSUE_SIZE_NOTE = arg('--issue-size-note');
 const REVERIFY_LEDGER = arg('--reverify');
 const REVERIFY_BACKUP = arg('--reverify-from-backup');
+const UNMERGE = arg('--unmerge');
+const EXPECT_DB = arg('--expect-db');
+const PARTIAL = args.includes('--partial');
+const FORCE_FIELDS = (arg('--force-fields') ?? '').split(',').map((f) => f.trim()).filter(Boolean);
+
+/**
+ * §2.3.3.3 "a live merge is announced": the same holds for undoing one. Returns the Notifier
+ * payload when either IPO was OPEN or UPCOMING, else null (nothing to announce).
+ */
+export function unmergeNotice(r: UnmergeResult): { title: string; body: string } | null {
+  const live = new Set(['OPEN', 'UPCOMING']);
+  if (!live.has(r.keepStatus) && !live.has(r.dropStatus)) return null;
+  return {
+    title: `IPO unmerge: /${r.dropSlug} restored from /${r.keepSlug}`,
+    body:
+      `merge ${r.mergeId} undone${r.partial ? ' (PARTIAL: ' + r.missing.join('; ') + ')' : ''}. ` +
+      `statuses: ${r.keepSlug}=${r.keepStatus}, ${r.dropSlug}=${r.dropStatus}. ` +
+      `rows restored: ${r.restoredRows.map((t) => `${t.table} ${t.count}`).join(', ') || 'none'}.`,
+  };
+}
+
+/**
+ * `--unmerge <merge-id>` (item 19, OD-92, spec §2.3.3.3): dry run by default; `--apply` writes;
+ * `--expect-db <name>` must match the connected database; production needs `--allow-prod`.
+ * `--partial` accepts a pre-OD-92 entry that the log can only partly restore; `--force-fields
+ * a,b` overwrites survivor columns that changed after the merge (inferred rule, OD-92).
+ */
+export async function runUnmerge(mergeId: string): Promise<number> {
+  if (!EXPECT_DB) {
+    console.error('refused: --unmerge needs --expect-db <name> on every run (dry or applied)');
+    return 1;
+  }
+  let refused = false;
+  const { dbName } = await openRepairDb(db, {
+    apply: APPLY,
+    allowProd: ALLOW_PROD,
+    toolName: 'repair-merge-duplicate-ipo --unmerge',
+    onRefuse: () => {
+      refused = true;
+    },
+  });
+  if (refused) return 1;
+  if (dbName !== EXPECT_DB) {
+    console.error(`refused: --expect-db said "${EXPECT_DB}" but this connection is on "${dbName}"`);
+    return 1;
+  }
+  const repo = new IPORepository(db, getRedisClient());
+  let r: UnmergeResult;
+  try {
+    r = await repo.unmergeDuplicate(mergeId, {
+      apply: APPLY,
+      allowProd: ALLOW_PROD,
+      partial: PARTIAL,
+      forceFields: FORCE_FIELDS,
+      unmergedBy: 'repair-merge-duplicate-ipo.ts --unmerge',
+    });
+  } catch (err) {
+    if (err instanceof DatabaseError || err instanceof ProdWriteRefusedError) {
+      console.error(`refused: ${err.message}`);
+      return 1;
+    }
+    throw err;
+  }
+  console.log(`${r.applied ? 'UNMERGED' : 'DRY RUN (pass --apply to write)'}: merge ${r.mergeId}`);
+  console.log(`  restores /${r.dropSlug} (${r.dropId}) out of /${r.keepSlug} (${r.keepId})`);
+  if (r.partial) console.log(`  PARTLY REVERSIBLE — not in the log: ${r.missing.join('; ')}`);
+  if (r.drift.length) console.log(`  survivor columns overwritten (forced): ${r.drift.join(', ')}`);
+  r.restoredRows.forEach((t) => console.log(`  re-insert ${t.table}: ${t.count}`));
+  r.repointedBack.forEach((t) => console.log(`  moved back ${t.table}: ${t.count} of ${t.logged} logged`));
+  if (r.applied) {
+    const notice = unmergeNotice(r);
+    if (notice) {
+      notifyOwner('P1', notice.title, { body: notice.body });
+      await flushOwnerNotify();
+    }
+  }
+  return 0;
+}
+
 
 /**
  * Re-runs `verifyMergeReadback` against a FRESH read of the database, from a
@@ -274,11 +356,15 @@ async function main(): Promise<number> {
   if (REVERIFY_BACKUP) {
     return reverifyFromBackup(REVERIFY_BACKUP);
   }
+  if (UNMERGE) {
+    return runUnmerge(UNMERGE);
+  }
   if (!KEEP || !DROP) {
     console.error(
       'usage: --keep <uuid> --drop <uuid> [--apply --allow-prod] [--set-issue-size <rupees>]\n' +
         '   or: --reverify <scripts/state/merge-applied-*.json>          (re-checks an already-applied merge from its ledger, writes nothing)\n' +
-        '   or: --reverify-from-backup <scripts/state/merge-backup-*.json>  (re-derives the patch from the pre-write backup, writes nothing)'
+        '   or: --reverify-from-backup <scripts/state/merge-backup-*.json>  (re-derives the patch from the pre-write backup, writes nothing)\n' +
+        '   or: --unmerge <merge-log-id> --expect-db <name> [--apply [--allow-prod]] [--partial] [--force-fields a,b]  (OD-92)'
     );
     return 1;
   }
