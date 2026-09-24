@@ -88,7 +88,7 @@ import { extractShape, compareShape, partitionFixtures, loadHtmlFixtureEntries, 
 import { findFixtureFiles } from './lib/fixture-provenance-checks.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
 import { adminQueueSize, formatAdminQueueBlock } from './ops/admin-queue-size.mjs';
-import { behaviourConflictPredicate, UNRESOLVED_CONFLICT_COUNT_SQL, UNRESOLVED_CONFLICT_NOISE_SQL, CONFLICTS_INSERTED_24H_SQL } from './lib/conflict-reasons.mjs';
+import { behaviourConflictPredicate, unresolvedConflictCountSql, unresolvedConflictNoiseSql, conflictsInserted24hSql, ensureDocumentIdProbe } from './lib/conflict-reasons.mjs';
 
 // The three filing-extractor types this specific stuck-detection query cares about
 // (never the anchor report or PRICE_BAND_AD — this check is about `scripts/extract_filing.py`
@@ -721,8 +721,10 @@ async function checkF() {
   }
   const [{ dbName }] = await q(`SELECT current_database() AS "dbName"`);
   // OD-75 round 2 (PR #914): admin-only SOURCE_CHANGED_OWN_VALUE rows never count toward the backlog.
-  const [{ total }] = await q(UNRESOLVED_CONFLICT_COUNT_SQL);
-  const [{ noise }] = await q(UNRESOLVED_CONFLICT_NOISE_SQL);
+  // Item 9: probe once before building any document_id-dependent SQL — the audited DB may lag main's migrations.
+  await ensureDocumentIdProbe(q);
+  const [{ total }] = await q(unresolvedConflictCountSql());
+  const [{ noise }] = await q(unresolvedConflictNoiseSql());
   const cls = classifyConflictNoiseRatio(total, noise);
   if (cls.fail) notify('f_conflict_noise_ratio', 'P2', 'aggregate', 'data_conflicts noise ratio too high', `${noise}/${total} (${(cls.ratio * 100).toFixed(1)}%) unresolved conflicts are noise (empty value2 or value1==value2)`);
 
@@ -806,7 +808,8 @@ async function checkG3_inertDetector() {
   const population = priceRows.length;
   const violations = priceRows.filter((r) => checkPriceBand(r) !== null).length;
   // OD-75 round 2: an admin-only self-change row is not evidence the detector is alive.
-  const [{ inserted }] = await q(CONFLICTS_INSERTED_24H_SQL);
+  await ensureDocumentIdProbe(q);
+  const [{ inserted }] = await q(conflictsInserted24hSql());
   const cls = classifyInertDetector(population, violations, inserted);
   if (cls.status === 'FAIL') notify('g_inert_detector', 'P1', 'aggregate', 'conflict detector appears inert', `${cls.violations} of ${cls.population} IPO row(s) written in the last 24h fail checkPriceBand (real corruption exists) but 0 data_conflicts rows were inserted in that SAME window — the detector is inert, not the data clean`);
   record('g_inert_detector', 'windowed price-band violations without any windowed conflicts inserted -> detector inert', cls.status, `${cls.violations} violation(s) among ${cls.population} row(s) written/24h, ${cls.inserted} conflict(s) inserted/24h`);
@@ -2989,6 +2992,9 @@ async function checkS_pullExcused() {
 
 async function main() {
   await assertSessionTimezoneUtc();
+  // Item 9: probe data_conflicts.document_id ONCE, before any check builds a predicate that
+  // depends on it — the audited DB (prod) can lag main's migrations.
+  await ensureDocumentIdProbe(q);
   console.log(`
 === DETECTION-FLOOR AUDIT (T-335) — ${new Date().toISOString()} ===`);
   await checkA_B();

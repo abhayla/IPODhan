@@ -33,9 +33,11 @@ import { behaviourConflictPredicate } from '../../../scripts/lib/conflict-reason
 const DATABASE_URL = process.env.DATABASE_URL;
 const IPO_A = '00000000-0000-4000-8000-00000000c9a1';
 const IPO_B = '00000000-0000-4000-8000-00000000c9b1';
+const IPO_D = '00000000-0000-4000-8000-00000000c9d1';
 const DOC_A = '00000000-0000-4000-8000-00000000c9a2';
 const DOC_B = '00000000-0000-4000-8000-00000000c9b2';
 const DOC_C = '00000000-0000-4000-8000-00000000c9c2';
+const DOC_D = '00000000-0000-4000-8000-00000000c9d2';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PAGES: CorrigendumPage[] = JSON.parse(
@@ -47,7 +49,7 @@ let db: ReturnType<typeof drizzle<typeof schema>>;
 const noRedis = { get: async () => null, set: async () => 'OK', del: async () => 0, keys: async () => [] } as never;
 
 async function cleanup() {
-  const ids = [IPO_A, IPO_B];
+  const ids = [IPO_A, IPO_B, IPO_D];
   await db.delete(schema.dataConflicts).where(inArray(schema.dataConflicts.ipoId, ids));
   await db.delete(schema.fieldSources).where(inArray(schema.fieldSources.ipoId, ids));
   await db.delete(schema.fieldProtectionMetadata).where(inArray(schema.fieldProtectionMetadata.ipoId, ids));
@@ -197,5 +199,56 @@ describe.skipIf(!DATABASE_URL)('item 9 (OD-90) — corrigendum suggestions in th
     const [closed] = (await suggestionsFor(IPO_B)).filter((x) => x.documentId === DOC_C);
     expect(closed.resolvedBy).toBe(a.ok ? 'item9-admin-a' : 'item9-admin-b');
     expect(await provenance(IPO_B)).toMatchObject({ source: 'ADMIN', previousSource: 'DRHP' });
+  });
+
+  // PR #989 review finding 2: a closeDate suggestion (DATE_CHANGE rule, via parseLongDate) must
+  // ACCEPT the same way the designatedExchange suggestion does — writing ipos.close_date as TEXT
+  // (YYYY-MM-DD), the field_sources row with the previous value, protection, and lastManualEditAt.
+  it('ACCEPT of a closeDate suggestion writes ipos.close_date, provenance, protection and lastManualEditAt', async () => {
+    await db.execute(sql`
+      INSERT INTO ipos (id, company_name, slug, category, status, open_date, close_date)
+      VALUES (${IPO_D}::uuid, 'Item 9 CloseDate Test Ltd', 'item9-closedate-d', 'SME', 'UPCOMING', '2026-08-24', '2026-08-26')
+    `);
+    await db.insert(schema.ipoDetails).values({ ipoId: IPO_D, designatedExchange: 'BSE', dataSource: 'MANUAL' } as never);
+    await db.insert(schema.fieldSources).values({
+      ipoId: IPO_D, tableName: 'ipos', rowKey: '', fieldName: 'closeDate', source: 'DRHP', confidence: 90,
+    } as never);
+    await db.insert(schema.documents).values({
+      id: DOC_D, ipoId: IPO_D, type: 'CORRIGENDUM', title: 'Corrigendum (close date change)', url: `https://example.invalid/${DOC_D}.pdf`,
+      sha256: 'a'.repeat(64),
+    } as never);
+
+    const pages: CorrigendumPage[] = [{
+      page: 1, ocr: false,
+      text: 'Issue Closing Date has been updated from Wednesday, August 26, 2026 to Thursday, August 27, 2026.',
+    }];
+    const r = await recordCorrigendumSuggestions(db as never, { ipoId: IPO_D, documentId: DOC_D, pages });
+    expect(r).toMatchObject({ parsed: 1, inserted: 1 });
+
+    const [row] = await db.select().from(schema.dataConflicts)
+      .where(and(eq(schema.dataConflicts.ipoId, IPO_D), eq(schema.dataConflicts.documentId, DOC_D)));
+    expect(row).toMatchObject({ fieldName: 'closeDate', tableName: 'ipos', value1: '2026-08-26', value2: '2026-08-27' });
+
+    const before = new Date();
+    const out = await acceptCorrigendumSuggestion(db as never, row.id, 'item9-test-admin');
+    expect(out).toMatchObject({ ok: true, fieldName: 'closeDate', appliedValue: '2026-08-27' });
+
+    const [ipoRow] = await db.select({ v: schema.ipos.closeDate, editedAt: schema.ipos.lastManualEditAt })
+      .from(schema.ipos).where(eq(schema.ipos.id, IPO_D));
+    expect(String(ipoRow.v)).toBe('2026-08-27');
+    expect(ipoRow.editedAt).not.toBeNull();
+    const driftMs = Math.abs(new Date(ipoRow.editedAt as unknown as string).getTime() - before.getTime());
+    expect(driftMs).toBeLessThan(5000);
+
+    const [src] = await db.select().from(schema.fieldSources)
+      .where(and(eq(schema.fieldSources.ipoId, IPO_D), eq(schema.fieldSources.tableName, 'ipos'), eq(schema.fieldSources.fieldName, 'closeDate')));
+    expect(src).toMatchObject({ source: 'ADMIN', confidence: 100, previousValue: '2026-08-26' });
+
+    const [prot] = await db.select().from(schema.fieldProtectionMetadata)
+      .where(and(eq(schema.fieldProtectionMetadata.ipoId, IPO_D), eq(schema.fieldProtectionMetadata.tableName, 'ipos'), eq(schema.fieldProtectionMetadata.fieldName, 'closeDate')));
+    expect(prot).toMatchObject({ isProtected: true, manuallyEditedBy: 'item9-test-admin' });
+
+    const [closed] = await db.select().from(schema.dataConflicts).where(eq(schema.dataConflicts.id, row.id));
+    expect(closed).toMatchObject({ resolvedSource: 'ADMIN', resolutionReason: CORRIGENDUM_ACCEPTED, resolvedBy: 'item9-test-admin' });
   });
 });

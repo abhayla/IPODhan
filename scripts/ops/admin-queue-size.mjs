@@ -18,7 +18,7 @@ import pg from 'pg';
 import { pathToFileURL } from 'node:url';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from '../lib/pg-utc.mjs';
 // OD-75 round 2: admin-only rows (a source changing its own value) are not queue work.
-import { behaviourConflictPredicate } from '../lib/conflict-reasons.mjs';
+import { behaviourConflictPredicate, ensureDocumentIdProbe } from '../lib/conflict-reasons.mjs';
 
 // Absence states per OD-62 (packages/shared/src/db/schema.ts, fieldPlanStateEnum): a field the
 // pipeline has given up asking for. PENDING/SUPPLIED are not absences.
@@ -77,6 +77,9 @@ export function groupAndOrder(conflictRows, absenceRows) {
 }
 
 export async function adminQueueSize(pool) {
+  // Item 9: probe data_conflicts.document_id before building the predicate — this queue can also
+  // run against a DB that lags main's migrations.
+  await ensureDocumentIdProbe(pool.query.bind(pool));
   const { rows: conflictRows } = await pool.query(`
     SELECT i.slug, i.status, i.open_date, COUNT(*)::int AS conflicts
     FROM data_conflicts dc
