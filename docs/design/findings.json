@@ -1518,6 +1518,15 @@
       "phase1": true,
       "title": "The free exchange quote endpoints return a post-listing price, but NSE needs the newer API and the exact trading series",
       "detail": "Measured 2026-09-24 00:5x-07:2x IST with Node fetch from the laptop. BSE getScripHeaderData (api.bseindia.com/BseIndiaAPI/api/getScripHeaderData/w?scripcode=N) returns 200 without cookies: Hero Motors 544936 LTP 98.51 (IssueChgVal +14.51); NSE IPO 544937 returns 200 with LTP \"-\" (not trading yet). NSE /api/quote-equity returns 403 Access Denied even after the session warm-up that makes /api/all-upcoming-issues return 200, so the old endpoint is unusable. NSE /api/NextApi/apiClient/GetQuoteApi?functionName=getSymbolData&marketType=N&series=S&symbol=X returns 200 with that same session: HEROMOTORS series EQ lastPrice 98.4, listingDate 23-Sep-2026, boardStatus Main; ICELCO series SM lastPrice 134.5, listing 10-Jul-2026, SME; VINOD series ST lastPrice 72.85, listing 17-Sep-2026, SME, lastUpdateTime 23-Sep-2026 16:00:00. A wrong series gives 404 (VINOD EQ, VINOD SZ, ICELCO EQ) or an empty body (ICELCO ST). So SME trading series differ between stocks (SM vs ST), and the post-listing price job must use the stock's real trading series (or try EQ, BE, SM, ST and keep the one that answers) and must treat 404 as \"wrong series or no such symbol\", not as delisting evidence by itself (section 2.3.3.x delisting counts three consecutive no-such-symbol answers). The NSE response carries its own lastUpdateTime, which is the as-of time the page label needs. Related: OD-29, OD-54."
+    },
+    {
+      "id": "F-151",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "schedule",
+      "phase1": true,
+      "title": "A data-job slot never closes while its document pass keeps running out of budget on blocked documents",
+      "detail": "Measured 2026-09-24 08:4x IST by a read-only read of /var/log/ipodhan-scraper-wake-staging.log on staging release 084928e0 (contains #935, not #941). The 00:00 IST data-job slot started at 00:15 and logged 'data job slot 00:00 IST incomplete: pass=discovery,listed_deferred - continuing next wake' on all 16 wakes 00:15-07:45 and never 'complete'; the 08:15 wake opened the 08:00 slot with the same two passes incomplete. 'discovery' there is the document cycle's own finding pass (document-cycle.ts:524 budgetExhausted): true on all 16 wakes while found was 0-2 and blocked 5-74 per wake (29-127 network calls per wake; 46 'Document BLOCKED_ALL - every source failed' lines), so the budget is spent re-trying documents every source refuses and the pass cannot finish. listedDeferred went 6,4,2,4,2 with listedCap 2 - not converging. Effect: the document job ran every 30 minutes all night (about 1,000 network calls) instead of once per OD-19 slot. The non-slot skip works (22:15-23:45 wakes skipped the document cycle; the 14:00 slot closed at 21:45). Same class as #943 (due-step discovery stamp), second mechanism. Related: F-142, OD-19, OD-55."
     }
   ],
   "false_assertions": [
