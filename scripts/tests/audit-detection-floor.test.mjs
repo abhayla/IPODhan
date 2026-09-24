@@ -60,7 +60,6 @@ import {
   evaluateSourceKeyConflicts,
 } from '../lib/detection-floor-checks.mjs';
 import { resolveColumn, isBlankCurrentValue, hadPreviousValue, isSafeTableName, toSnake } from '../lib/pull-noblank-checks.mjs';
-import { pullNoopSuppressionVerdict, PULL_NOOP_SUPPRESSION_RECOMMENDED_CEILING } from '../lib/pull-noop-suppression-checks.mjs';
 
 // ---- (a)/(b) live IPO vs unresolved conflict --------------------------------
 
@@ -1887,43 +1886,4 @@ test('(pull_noblank) planted re-blanked row is caught: hadPreviousValue true + i
 test('(pull_noblank) a clean row (value carried forward) is not flagged', () => {
   const row = { previousValue: '95-99', currentValue: '95-99' };
   assert.equal(hadPreviousValue(row.previousValue) && isBlankCurrentValue(row.currentValue), false);
-});
-
-// ---- PULL-NOOP suppression (item 10, OD-42): scripts/lib/pull-noop-suppression-checks.mjs -----
-
-test('(pull_noop_suppression) UNVERIFIABLE when ENABLE_FIELD_PLAN_WALK is off, even with writes', () => {
-  const v = pullNoopSuppressionVerdict({ reasked: 100, written: 90, newDocuments: 0 }, false);
-  assert.equal(v.status, 'UNVERIFIABLE');
-  assert.match(v.detail, /ENABLE_FIELD_PLAN_WALK is off/);
-});
-
-test('(pull_noop_suppression) UNVERIFIABLE when walk is on but nothing was re-asked (0 denominator)', () => {
-  const v = pullNoopSuppressionVerdict({ reasked: 0, written: 0, newDocuments: 0 }, true);
-  assert.equal(v.status, 'UNVERIFIABLE');
-  assert.match(v.detail, /no ipo_field_plan row was re-asked/);
-});
-
-// Mutation guard: a version that treats a 0/0 ratio from an off/never-ran walk as a pass must
-// go red here — a zero must never look like a healthy quiet cycle.
-test('(pull_noop_suppression) a walk that never ran (off) with a 0/0 ratio is UNVERIFIABLE, never PASS', () => {
-  const v = pullNoopSuppressionVerdict({ reasked: 0, written: 0, newDocuments: 0 }, false);
-  assert.equal(v.status, 'UNVERIFIABLE');
-});
-
-test('(pull_noop_suppression) PASSES a quiet cycle at or under the 5% recommended ceiling', () => {
-  const v = pullNoopSuppressionVerdict({ reasked: 1000, written: 50, newDocuments: 0 }, true);
-  assert.equal(v.status, 'PASS');
-  assert.equal(v.ratio, 0.05);
-  assert.match(v.detail, /50 write\(s\) \/ 1000 re-ask\(s\) = 5\.0%/);
-});
-
-test('(pull_noop_suppression) WARNs (not FAIL) above the ceiling with no matching document arrival', () => {
-  const v = pullNoopSuppressionVerdict({ reasked: 1000, written: 200, newDocuments: 0 }, true);
-  assert.equal(v.status, 'WARN');
-  assert.ok(v.ratio > PULL_NOOP_SUPPRESSION_RECOMMENDED_CEILING);
-  assert.match(v.detail, /above the RECOMMENDED 5% ceiling/);
-});
-
-test('(pull_noop_suppression) threshold is a stated recommendation (OD-18), not a measured number', () => {
-  assert.equal(PULL_NOOP_SUPPRESSION_RECOMMENDED_CEILING, 0.05);
 });

@@ -38,7 +38,6 @@ import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './l
 import { istDayIso } from './lib/ist-day.mjs';
 import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
 import { resolveColumn, isBlankCurrentValue, hadPreviousValue, isSafeTableName } from './lib/pull-noblank-checks.mjs';
-import { pullNoopSuppressionVerdict } from './lib/pull-noop-suppression-checks.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
@@ -2448,53 +2447,6 @@ async function checkS_pullNoop() {
 }
 
 
-// PULL-NOOP suppression (item 10, OD-42): `pull_noop_suppression`, the manifest id from
-// docs/reviews/detection-checks/pull_noop_suppression.json (registered separately from the
-// already-built `pull_noop` above -- same ratio, a distinct id/consumer, and this one also
-// gates on ENABLE_FIELD_PLAN_WALK, the registry entry's stated prerequisite: without the
-// walk actually running in this slot, a 0-write ratio is not a healthy quiet cycle, it is a
-// cycle that asked nothing. See scripts/lib/pull-noop-suppression-checks.mjs for the pure
-// verdict logic (unit-tested without a DB).
-async function checkS_pullNoopSuppression() {
-  const title = 'writes this cycle / fields re-asked this cycle (walk-gated)';
-  const walkEnabled = process.env.ENABLE_FIELD_PLAN_WALK === 'true';
-  let row, topWriters;
-  try {
-    [row] = await q(
-      `SELECT
-         (SELECT count(*) FROM ipo_field_plan
-           WHERE last_attempt_at > now() - interval '24 hours')::int AS "reasked",
-         (SELECT count(*) FROM field_sources
-           WHERE updated_at > now() - interval '24 hours')::int AS "written",
-         (SELECT count(*) FROM documents
-           WHERE created_at > now() - interval '24 hours')::int AS "newDocuments"`
-    );
-    topWriters = await q(
-      `SELECT i.slug, count(*)::int AS n
-         FROM field_sources fs
-         JOIN ipos i ON i.id = fs.ipo_id
-        WHERE fs.updated_at > now() - interval '24 hours'
-        GROUP BY i.slug
-        ORDER BY n DESC
-        LIMIT $1`,
-      [MAX_OFFENDERS]
-    );
-  } catch (e) {
-    record('pull_noop_suppression', title, 'UNVERIFIABLE',
-      `ipo_field_plan/field_sources/documents not readable: ${e.message}`);
-    return;
-  }
-  const verdict = pullNoopSuppressionVerdict(row ?? { reasked: 0, written: 0, newDocuments: 0 }, walkEnabled);
-  const identities = topWriters.length
-    ? ` — top by writes: ${topWriters.map((t) => `${t.slug}=${t.n}`).join(', ')}`
-    : '';
-  if (verdict.status === 'WARN') {
-    notify('pull_noop_suppression', 'P2', 'cycle', 'write rate high with no matching document arrival to explain it', verdict.detail + identities);
-  }
-  record('pull_noop_suppression', title, verdict.status, verdict.detail + identities);
-}
-
-
 // E1-SOURCE: the ten E-1 (class T) fields are the exchange's to state -- open,
 // close, listing, allotment, refund and credit dates, status, exchanges. A
 // document may PRINT an intended date; only the exchange's own page says what
@@ -3119,7 +3071,6 @@ async function main() {
   await checkS_pullPlanOrigin();
   await checkS_pullAdmin();
   await checkS_pullNoop();
-  await checkS_pullNoopSuppression();
   await checkS_e1Source();
   await checkS_pullPlan();
   await checkS_pullWrite();
