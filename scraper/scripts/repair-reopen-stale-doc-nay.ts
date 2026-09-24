@@ -37,10 +37,37 @@
  * lists exactly the rows the UPDATE changed; `--undo` restores only those,
  * and only while each still holds the post-image.
  *
+ * --settled-by-lower-rank (#1025, item 6 follow-up): the SUPPLIED half of the
+ * SAME floor-check population (`pull_doc_nay_with_offer_doc` has no `state`
+ * filter — it matches this class by `rank1_source`/`cause`/document-EXISTS
+ * alone). Before #982 the DOC fetcher falsely answered rank 1
+ * NOT_AVAILABLE_YET; the walk fell to rank 2 (usually CHITTORGARH) and
+ * SUPPLIED the row there. SUPPLIED is terminal (OD-4, OD-73: "only a
+ * HIGHER-ranked source may change it"), so the DOC rank — which outranks
+ * CHITTORGARH — is never asked again even after the offer document exists.
+ * Selection is the identical query with `state = 'SUPPLIED'` in place of
+ * `state = 'NOT_AVAILABLE_YET'`; naturally idempotent the same way (once
+ * reopened to PENDING the row no longer holds `state = 'SUPPLIED'`, so a
+ * re-run does not match it again, found red-then-green in this tool's
+ * integration test).
+ *
+ * The write is the SAME reopen the base flag performs (state -> PENDING,
+ * next_due_at = now, claim cleared, reason_code cleared, cause preserved) —
+ * it does NOT touch any `chosen_*` column. Neither of the repository's own
+ * SUPPLIED-reopen paths (`reopenSuperseded`, `reconcileSettledToOverrides`'s
+ * REOPEN action) touch `chosen_*` either: the stored VALUE is left exactly as
+ * CHITTORGARH supplied it, and the walk's own rank comparison (OD-73) is what
+ * decides, on DOC's next real answer, whether to replace it. So this repair
+ * cannot itself lose or corrupt data — worst case DOC answers no differently
+ * than CHITTORGARH already did, or fails, and the row falls back to rank 2
+ * exactly as the walk would have chosen it the first time.
+ *
  * Usage (from scraper/):
  *   npx tsx scripts/repair-reopen-stale-doc-nay.ts --expect-db ipodhan_test            # dry run
  *   npx tsx scripts/repair-reopen-stale-doc-nay.ts --expect-db ipodhan_test --apply
  *   npx tsx scripts/repair-reopen-stale-doc-nay.ts --expect-db ipodhan_test --undo evidence/<ledger>.json --apply
+ *   npx tsx scripts/repair-reopen-stale-doc-nay.ts --expect-db ipodhan_test --settled-by-lower-rank            # dry run, SUPPLIED class
+ *   npx tsx scripts/repair-reopen-stale-doc-nay.ts --expect-db ipodhan_test --settled-by-lower-rank --apply
  * Prod is refused without --allow-prod (openRepairDb).
  *
  * No detection change: pull_doc_nay_with_offer_doc already detects this class by IPO identity.
@@ -76,6 +103,21 @@ function rowsOf(result: unknown): Record<string, unknown>[] {
   return ((result as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<string, unknown>[];
 }
 
+function mapStaleRows(result: unknown): StaleDocNayRow[] {
+  return rowsOf(result).map((r) => ({
+    id: String(r.id),
+    ipoId: String(r.ipo_id),
+    ipoSlug: (r.slug as string) ?? null,
+    tableName: String(r.table_name),
+    rowKey: String(r.row_key ?? ''),
+    fieldName: String(r.field_name),
+    state: String(r.state),
+    reasonCode: (r.reason_code as string) ?? null,
+    cause: (r.cause as string) ?? null,
+    lastAttemptAt: (r.last_attempt_at as string) ?? null,
+  }));
+}
+
 /**
  * Same SQL as `checkPullDocNayWithOfferDoc` in scripts/audit-detection-floor.mjs
  * (item 6 / F-161) — one population definition, read here rather than retyped.
@@ -98,18 +140,34 @@ async function readStaleRows(): Promise<StaleDocNayRow[]> {
                       AND p.last_attempt_at > d.extracted_at)
      ORDER BY i.slug, p.table_name, p.field_name, p.row_key
   `);
-  return rowsOf(result).map((r) => ({
-    id: String(r.id),
-    ipoId: String(r.ipo_id),
-    ipoSlug: (r.slug as string) ?? null,
-    tableName: String(r.table_name),
-    rowKey: String(r.row_key ?? ''),
-    fieldName: String(r.field_name),
-    state: String(r.state),
-    reasonCode: (r.reason_code as string) ?? null,
-    cause: (r.cause as string) ?? null,
-    lastAttemptAt: (r.last_attempt_at as string) ?? null,
-  }));
+  return mapStaleRows(result);
+}
+
+/**
+ * --settled-by-lower-rank (#1025): the SUPPLIED half of the identical
+ * `pull_doc_nay_with_offer_doc` population — see the file header. Same SQL as
+ * `readStaleRows` with `state = 'SUPPLIED'` in place of `state =
+ * 'NOT_AVAILABLE_YET'`.
+ */
+async function readSettledByLowerRankRows(): Promise<StaleDocNayRow[]> {
+  const result = await (db as any).execute(sql`
+    SELECT p.id, p.ipo_id, i.slug, p.table_name, p.row_key, p.field_name, p.state::text AS state,
+           p.reason_code, p.cause, p.last_attempt_at::text AS last_attempt_at
+      FROM ipo_field_plan p
+      JOIN ipos i ON i.id = p.ipo_id
+     WHERE p.rank1_source = 'DOC'
+       AND p.state = 'SUPPLIED'
+       AND left(p.cause, 27) = 'rank1:DOC:NOT_AVAILABLE_YET'
+       AND EXISTS (SELECT 1 FROM documents d
+                    WHERE d.ipo_id = p.ipo_id
+                      AND d.extraction_status = 'COMPLETED'
+                      AND d.is_active IS NOT FALSE
+                      AND d.type IN ('RHP', 'DRHP', 'PROSPECTUS', 'PRICE_BAND_AD')
+                      AND d.extracted_at IS NOT NULL
+                      AND p.last_attempt_at > d.extracted_at)
+     ORDER BY i.slug, p.table_name, p.field_name, p.row_key
+  `);
+  return mapStaleRows(result);
 }
 
 export function breakdownBySlug(rows: readonly StaleDocNayRow[]): Array<{ slug: string; rows: number }> {
@@ -123,6 +181,7 @@ interface Cli {
   allowProd: boolean;
   expectDb: string | null;
   undo: string | null;
+  settledByLowerRank: boolean;
 }
 
 function valueAfter(argv: readonly string[], flag: string): string | null {
@@ -136,6 +195,7 @@ export function parseArgs(argv: readonly string[]): Cli {
     allowProd: argv.includes('--allow-prod'),
     expectDb: valueAfter(argv, '--expect-db'),
     undo: valueAfter(argv, '--undo'),
+    settledByLowerRank: argv.includes('--settled-by-lower-rank'),
   };
 }
 
@@ -188,10 +248,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  const rows = await readStaleRows();
+  const rows = cli.settledByLowerRank ? await readSettledByLowerRankRows() : await readStaleRows();
+  const label = cli.settledByLowerRank ? 'settled-by-lower-rank SUPPLIED' : 'stale DOC NOT_AVAILABLE_YET';
   const breakdown = breakdownBySlug(rows);
 
-  console.log(`\n${TOOL}: ${rows.length} stale DOC NOT_AVAILABLE_YET row(s) on ${breakdown.length} IPO(s) in "${actual}".`);
+  console.log(`\n${TOOL}: ${rows.length} ${label} row(s) on ${breakdown.length} IPO(s) in "${actual}".`);
   console.log('breakdown (slug | rows):');
   for (const b of breakdown.slice(0, 30)) {
     console.log(`  ${b.slug} | ${b.rows}`);
@@ -225,7 +286,7 @@ async function main(): Promise<void> {
   if (!cli.apply) {
     const ledgerPath = ledgerFor(false, rows);
     console.log(`${TOOL}: ledger (dry run) written to ${ledgerPath}`);
-    console.log(`${TOOL}: DRY RUN — nothing was written. Re-run with --apply to reopen the ${rows.length} listed above.`);
+    console.log(`${TOOL}: DRY RUN (${label}) — nothing was written. Re-run with --apply to reopen the ${rows.length} listed above.`);
     return;
   }
   const changed: StaleDocNayRow[] = [];
