@@ -60,6 +60,27 @@ import {
   readFieldSource,
   upsertFieldSource,
 } from './lib/repair-tool.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { checkIssueSizeSourceCapability } from '../../scripts/lib/detection-floor-checks.mjs';
+
+/**
+ * Item 14 Round 2: reads `field-manifest.json` for `ipos.issue_size`'s
+ * capability map — the SAME source and predicate the nightly
+ * `c_issue_size_noncapable_source` audit check uses
+ * (scripts/audit-detection-floor.mjs) — so this tool and that check can
+ * never disagree about which sources count as capable. Never hard-coded.
+ */
+function loadIssueSizeManifestCapability(): Record<string, { capable?: boolean; reason?: string }> | null {
+  try {
+    const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+    const manifest = JSON.parse(readFileSync(repoRoot + 'scraper/config/field-manifest.json', 'utf8'));
+    return manifest?.fields?.['ipos.issue_size']?.capability ?? null;
+  } catch (err) {
+    logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'field-manifest.json not readable — currentSourceCapable will be treated as unknown for every row');
+    return null;
+  }
+}
 
 // T-490: the prod guard and the provenance upsert now live in
 // scripts/lib/repair-tool.ts — one reviewed implementation shared by every
@@ -182,6 +203,19 @@ export function decideIssueSizeRepair(input: {
   sourced: number | null; // already floor + cross-check gated by the extractor, or null
   mode?: 'below-floor' | 'above-floor'; // default 'below-floor' (original behaviour, unchanged)
   overwriteAboveFloor?: boolean; // --overwrite-above-floor: required to WRITE a divergent above-floor row
+  /**
+   * Item 14 Round 2 (Tier B review finding, MAJOR): whether the row's CURRENT
+   * `field_sources` provenance for issueSize is a source `field-manifest.json`
+   * ranks capable for `ipos.issue_size` (via `checkIssueSizeSourceCapability`,
+   * scripts/lib/detection-floor-checks.mjs — never hard-coded here). `false` =
+   * confirmed non-capable (e.g. BSE); `true` = confirmed capable; `undefined`/
+   * `null` = unknown (no manifest data, current source is ADMIN, or no
+   * provenance row at all) — treated exactly like the pre-Round-2 behaviour
+   * (an above-floor row within the divergence band stays untouched). Only
+   * consulted in 'above-floor' mode: a below-floor row's value is already
+   * being repaired regardless of its current source.
+   */
+  currentSourceCapable?: boolean | null;
 }): { write: boolean; reason: string; status: 'OK' | 'FLAG' | 'WRITE' | 'SKIP' } {
   const mode = input.mode ?? 'below-floor';
   const floor =
@@ -221,7 +255,16 @@ export function decideIssueSizeRepair(input: {
   // validateOverwriteAboveFloorRequiresSlug(), which refuses a whole-table
   // overwrite.
   if (input.sourced === null) {
-    return { write: false, status: 'SKIP', reason: 'no plausible source figure (absent, ambiguous, or cross-check failed)' };
+    // Item 14 Round 2: a row whose CURRENT provenance the manifest already
+    // marks non-capable, but with no Chittorgarh-sourced figure to repair it
+    // with, is not a plain "nothing to do" SKIP — it is a known-bad
+    // provenance the tool could NOT resolve this run (the 7 old CLOSED
+    // null-segment rows on staging). Named distinctly so it is never
+    // confused with the ordinary "no source found" case for a row whose
+    // provenance was already fine.
+    return input.currentSourceCapable === false
+      ? { write: false, status: 'SKIP', reason: 'no capable source — unresolved (current provenance is manifest non-capable, but no Chittorgarh-sourced figure was found to repair it with)' }
+      : { write: false, status: 'SKIP', reason: 'no plausible source figure (absent, ambiguous, or cross-check failed)' };
   }
   const implausible = collectImplausibleIssueSizeFields(
     { issueSize: input.sourced, segment: input.segment },
@@ -237,6 +280,26 @@ export function decideIssueSizeRepair(input: {
   }
   const divergence = Math.abs(input.sourced / input.current - 1);
   if (divergence <= ABOVE_FLOOR_DIVERGENCE_THRESHOLD) {
+    // Item 14 Round 2 (Tier B review finding, MAJOR): a value within the
+    // divergence band is NOT "OK" when the CURRENT provenance is a source
+    // field-manifest.json ranks non-capable for this field (spec OD-73: a
+    // non-capable source is not in the ranks at all, so it can never be the
+    // row's settled provenance regardless of how close its value looks).
+    // Repair it the same way the >40% WRITE branch below does — same
+    // --apply + --overwrite-above-floor gate, same upsertFieldSource path —
+    // never silently left "OK" with bad provenance. `currentSourceCapable`
+    // undefined/null (no manifest data available) preserves the pre-Round-2
+    // OK behaviour, so a manifest read failure never turns into a forced write.
+    if (input.currentSourceCapable === false) {
+      const identical = input.current === input.sourced;
+      const reason = identical
+        ? `source value is identical to the stored value (${input.sourced}), but current provenance is manifest non-capable — provenance-only repair to the capable source`
+        : `within ${(ABOVE_FLOOR_DIVERGENCE_THRESHOLD * 100).toFixed(0)}% of stored value (source=${input.sourced}, stored=${input.current}, divergence=${(divergence * 100).toFixed(1)}%), but current provenance is manifest non-capable — repaired to the capable source's value + provenance`;
+      if (!input.overwriteAboveFloor) {
+        return { write: false, status: 'FLAG', reason: `${reason} — pass --overwrite-above-floor to write` };
+      }
+      return { write: true, status: 'WRITE', reason: `${reason} (--overwrite-above-floor given)` };
+    }
     return {
       write: false,
       status: 'OK',
@@ -579,10 +642,29 @@ async function main() {
   const skipReasons: Record<string, number> = {};
   let fetched = 0;
 
+  // Item 14 Round 2: capability map read once, current provenance read per
+  // candidate — only needed in --recheck-above-floor mode (the below-floor
+  // path repairs regardless of current source, per its own gate above).
+  const issueSizeManifestCapability = RECHECK_ABOVE_FLOOR ? loadIssueSizeManifestCapability() : null;
+
   for (const c of matched) {
     if (fetched >= LIMIT) break;
     fetched++;
     const current = c.issueSize === null ? null : Number(c.issueSize);
+    let currentSourceCapable: boolean | null = null;
+    if (RECHECK_ABOVE_FLOOR) {
+      const currentSource = await readFieldSource(db, { ipoId: c.id, tableName: 'ipos', fieldName: 'issueSize' });
+      const capabilityMessage = checkIssueSizeSourceCapability(
+        { source: currentSource, issueSize: c.issueSize },
+        issueSizeManifestCapability
+      );
+      // checkIssueSizeSourceCapability returns null for "capable" AND for
+      // "cannot say" (no provenance row, ADMIN, or unreadable manifest) —
+      // decideIssueSizeRepair's undefined/null branch already treats both
+      // the same as legacy behaviour, so collapsing to boolean-or-null here
+      // (rather than re-deriving the distinction) is deliberate, not a loss.
+      currentSourceCapable = currentSource === null || issueSizeManifestCapability === null ? null : capabilityMessage === null;
+    }
     const html = await fetchDetailHtml(c.disc.slug, c.disc.id);
     await new Promise((r) => setTimeout(r, 700 + Math.random() * 600)); // rate limit
     if (!html) {
@@ -611,6 +693,7 @@ async function main() {
       sourced: value,
       mode: RECHECK_ABOVE_FLOOR ? 'above-floor' : 'below-floor',
       overwriteAboveFloor: OVERWRITE_ABOVE_FLOOR,
+      currentSourceCapable,
     });
     const capNote = c.priceRangeMax == null
       ? ' (no price cap on this row — shares-x-cap cross-check skipped)'

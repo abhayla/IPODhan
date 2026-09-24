@@ -196,6 +196,86 @@ describe('decideIssueSizeRepair — above-floor recheck mode (round-N: Windlas/A
   });
 });
 
+describe('decideIssueSizeRepair — non-capable current provenance (item 14 Round 2, #728 class residue: the OK branch never wrote)', () => {
+  it('WRITE: within 40% band BUT current provenance is manifest non-capable, --overwrite-above-floor given', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: 470_000_000, // 17.5% divergence — would be OK if provenance were capable
+      mode: 'above-floor',
+      overwriteAboveFloor: true,
+      currentSourceCapable: false,
+    });
+    expect(d.status).toBe('WRITE');
+    expect(d.write).toBe(true);
+    expect(d.reason).toMatch(/non-capable/);
+  });
+
+  it('FLAG: within 40% band, non-capable provenance, but --overwrite-above-floor NOT given — never silently written', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: 470_000_000,
+      mode: 'above-floor',
+      currentSourceCapable: false,
+    });
+    expect(d.status).toBe('FLAG');
+    expect(d.write).toBe(false);
+    expect(d.reason).toMatch(/non-capable/);
+  });
+
+  it('WRITE: identical source and stored value, non-capable provenance — provenance-only repair, still uses the WRITE path', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: 400_000_000,
+      mode: 'above-floor',
+      overwriteAboveFloor: true,
+      currentSourceCapable: false,
+    });
+    expect(d.status).toBe('WRITE');
+    expect(d.write).toBe(true);
+    expect(d.reason).toMatch(/identical/);
+  });
+
+  it('OK: within 40% band AND current provenance is already capable — untouched, exactly as today', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: 470_000_000,
+      mode: 'above-floor',
+      overwriteAboveFloor: true,
+      currentSourceCapable: true,
+    });
+    expect(d.status).toBe('OK');
+    expect(d.write).toBe(false);
+  });
+
+  it('OK: within 40% band, capability unknown (no manifest data) — unchanged legacy behaviour', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: 470_000_000,
+      mode: 'above-floor',
+    });
+    expect(d.status).toBe('OK');
+    expect(d.write).toBe(false);
+  });
+
+  it('SKIP (no capable-source match): non-capable provenance but no sourced figure at all — never written', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: null,
+      mode: 'above-floor',
+      currentSourceCapable: false,
+    });
+    expect(d.status).toBe('SKIP');
+    expect(d.write).toBe(false);
+    expect(d.reason).toMatch(/no capable source — unresolved/);
+  });
+});
+
 describe('isIssueSizeCandidate (item 14, #728 class widening: NULL-segment rows in recheck mode)', () => {
   it('below-floor mode: EXCLUDES a NULL-segment row (unchanged — no floor to compute)', () => {
     expect(isIssueSizeCandidate({ segment: null, issueSize: '14797000' }, false)).toBe(false);
