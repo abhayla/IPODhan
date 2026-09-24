@@ -115,36 +115,11 @@ STATUS_INCOMPLETE_PAGES = "INCOMPLETE_PAGES"
 STATUS_PDF_PASSWORD_PROTECTED = "PDF_PASSWORD_PROTECTED"
 
 
-def _is_pdf_password_error(exc):
-    """True only for "this PDF needs a password we don't have" — never a
-    generic pdfminer parse failure, which must keep failing loudly.
-
-    Measured (this slice): pdfplumber.open() on an encrypted PDF wraps the
-    real cause in `pdfplumber.utils.exceptions.PdfminerException`, whose
-    `str()` is empty — the informative object is `exc.args[0]`, an instance
-    of `pdfminer.pdfdocument.PDFPasswordIncorrect`. `ocr_pages.py`'s
-    pypdfium2 route raises its own `PdfiumError` with a readable message
-    instead, so that one is matched on text.
-    """
-    try:
-        from pdfminer.pdfdocument import PDFPasswordIncorrect
-    except ImportError:
-        PDFPasswordIncorrect = ()  # pragma: no cover - pdfminer always ships with pdfplumber
-    try:
-        from pdfplumber.utils.exceptions import PdfminerException
-    except ImportError:
-        PdfminerException = ()  # pragma: no cover
-    if PdfminerException and isinstance(exc, PdfminerException):
-        inner = exc.args[0] if exc.args else None
-        if PDFPasswordIncorrect and isinstance(inner, PDFPasswordIncorrect):
-            return True
-    try:
-        from pypdfium2 import PdfiumError
-    except ImportError:
-        PdfiumError = ()  # pragma: no cover
-    if PdfiumError and isinstance(exc, PdfiumError) and "password" in str(exc).lower():
-        return True
-    return False
+# Shared with `anchor_report_text.py` (item 22 slice 22-5, round 2): the
+# anchor extractor opens PDFs the same way (pdfplumber, one blank-password
+# attempt) and needs the identical detection — see `pdf_password_errors.py`'s
+# module comment for why this lives in one place instead of two.
+from pdf_password_errors import is_pdf_password_error as _is_pdf_password_error
 
 
 def _password_protected_envelope(pdf_path, doc_type, cause):

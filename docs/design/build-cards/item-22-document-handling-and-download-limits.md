@@ -395,12 +395,40 @@ Both blockers above dissolve without the `pdf-lib` route:
 **Mechanism.** `pdfplumber.open(pdf_path)` on a genuinely password-protected PDF raises
 `pdfplumber.utils.exceptions.PdfminerException` whose `str()` is empty — the real signal is
 `exc.args[0]`, an instance of `pdfminer.pdfdocument.PDFPasswordIncorrect` (measured against both
-fixtures this session). `extract_filing.py`'s new `_is_pdf_password_error()` matches that shape (plus
-`pypdfium2.PdfiumError` with "password" in its message, for `ocr_pages.py`'s render path). On a
-match, `extract()` returns a terminal envelope — `extraction_status: "PDF_PASSWORD_PROTECTED"`,
-`extraction_status_cause` holding the library's message, `page_texts: []`, `fields: {}` — instead of
-raising into `main()`'s catch-all (which would otherwise crash the whole extractor process and lose
-the document's identity from the failure, per `signal-ownership.md` R1/R2).
+fixtures this session). The shared `pdf_password_errors.is_pdf_password_error()` matches that shape
+(plus `pypdfium2.PdfiumError` with "password" in its message — that second branch exists for a PDF
+library that raises through pypdfium2 directly, not for `extract_filing.py`'s own OCR route: OCR in
+`extract_filing.py` runs only AFTER `pdfplumber.open()` has already succeeded (`extract()`, the
+`with pdf_ctx as pdf:` block, ~l.2900, feeding the OCR branch at ~l.2912), so a user-password PDF
+becomes the terminal `PDF_PASSWORD_PROTECTED` envelope before OCR is ever reached there — that path
+is correctly unreachable for this cause, not "covered"). On a match at `extract_filing.py`'s own
+`pdfplumber.open()` call, `extract()` returns a terminal envelope —
+`extraction_status: "PDF_PASSWORD_PROTECTED"`, `extraction_status_cause` holding the library's
+message, `page_texts: []`, `fields: {}` — instead of raising into `main()`'s catch-all (which would
+otherwise crash the whole extractor process and lose the document's identity from the failure, per
+`signal-ownership.md` R1/R2).
+
+**Round 2 (Tier B review): the anchor extractor (`anchor_report_text.py`) needed the SAME guard and
+did not have it.** It opens PDFs itself — its own `pdfplumber.open(path)` call in `extract()`
+(~l.1244) — with no password check, so a user-password anchor allocation report (F-153's own class:
+the only REAL encrypted filing measured, 3 of 45 local filings, is an anchor allocation report) would
+raise straight into `main()`'s generic `except Exception` (~l.1331), which prints an opaque
+`{"error": "PdfminerException: "}` (empty message) and returns exit 1 — indistinguishable from any
+other parse failure, and the caller (`anchor-investors-scraper.ts`'s `extractPageTexts`) would file it
+as ordinary retryable `sidecar_error`, retried hourly forever with no chance of ever succeeding. Fixed
+the same way: `extract()` now catches the `pdfplumber.open()` failure, checks it with the same shared
+`is_pdf_password_error()`, and on a match `main()` emits `{"password_protected": true, "cause": ...}`
+instead of the generic `{"error": ...}` shape. `anchor-investors-scraper.ts`'s `extractPageTexts`
+checks `parsed.password_protected` before the generic `parsed.error` branch and returns a new
+`SidecarFailure` kind, `'password_protected'`; `anchor-auto-persist.ts`'s
+`classifyAnchorAutoOutcome` routes that kind straight to `manual_review` (the same terminal,
+never-retried treatment `empty_pages`/W-139 already gets) — never through the ordinary FAILED/backoff
+path, since no retry can ever supply the missing password (mirrors OD-36's rule for
+`extract_filing.py`; #959's extraction-failure backoff timer stays explicitly out of scope). Its own
+`ocr_pages.ocr_pdf_page_boxes` call (~l.1272/1298) is reachable only for pages already read by a
+SUCCESSFUL `pdfplumber.open()` — a password-protected PDF never reaches page reconstruction at all —
+so, same as `extract_filing.py`, that OCR call site needed no separate guard; the fix at the single
+`pdfplumber.open()` call covers the whole file.
 
 On the node side, `filing-auto-persist.ts`'s `defaultExtractorRunner` reads
 `extraction_status === 'PDF_PASSWORD_PROTECTED'` and returns `{ ok: false, passwordProtected: true,

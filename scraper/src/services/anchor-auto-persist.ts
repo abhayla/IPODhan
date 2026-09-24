@@ -27,6 +27,7 @@ import {
 import {
   scrapeAnchorInvestorsDetailed,
   ANCHOR_EMPTY_PAGES_REASON,
+  ANCHOR_PASSWORD_PROTECTED_REASON,
   type AnchorScrapeFailureKind,
   type PinnedAnchorDocument,
 } from '../scrapers/anchor-investors-scraper.js';
@@ -117,6 +118,12 @@ export function classifyAnchorAutoOutcome(input: {
       // OCR heuristic did not fire. Retrying is guaranteed to do exactly this
       // again, so it goes to a human rather than round the backoff loop.
       return { kind: 'manual_review', reason: `anchor: ${ANCHOR_EMPTY_PAGES_REASON}`, summary };
+    }
+    if (failure.kind === 'password_protected') {
+      // OD-36 round 2: same terminal treatment as `empty_pages` above — no
+      // retry can ever supply the missing password, so this must never round
+      // the ordinary FAILED/backoff loop (#959 stays out of scope).
+      return { kind: 'manual_review', reason: `anchor: ${ANCHOR_PASSWORD_PROTECTED_REASON}`, summary };
     }
     // W-168: `parse_failed` is the anchor-report-parser's own structural
     // refusal (no bid price derivable / no amount consistent with the
