@@ -7,16 +7,17 @@
  * withAdminAuth (lib/middleware/admin-auth) or requireAdminAuth
  * (lib/auth/admin-auth). A new route that forgets both fails here.
  *
- * Per exported method:
- *   - `export const METHOD = withAdminAuth(` is guarded;
- *   - `export async function METHOD(...)` must call `requireAdminAuth()`
- *     inside that function's own body.
+ * The detector parses each file with the TypeScript compiler (see
+ * ./admin-route-guard-detector.ts) rather than matching text, so a guard
+ * mentioned only in a comment or a string, a discarded auth-check result, or
+ * a check that runs after other logic already ran, is NOT accepted as a
+ * guard.
  */
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { unguardedMethods } from './admin-route-guard-detector';
 
-const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 const ADMIN_ROOT = path.resolve(__dirname, '../../../../app/api/admin');
 
 function listRouteFiles(dir: string): string[] {
@@ -27,36 +28,6 @@ function listRouteFiles(dir: string): string[] {
     else if (entry.name === 'route.ts' || entry.name === 'route.js') out.push(full);
   }
   return out;
-}
-
-/** Body text of `export async function METHOD(...) { ... }`, by brace matching. */
-function functionBody(src: string, start: number): string {
-  const open = src.indexOf('{', src.indexOf(')', start));
-  let depth = 0;
-  for (let i = open; i < src.length; i++) {
-    if (src[i] === '{') depth++;
-    else if (src[i] === '}' && --depth === 0) return src.slice(open, i + 1);
-  }
-  return src.slice(open);
-}
-
-function unguardedMethods(src: string): string[] {
-  const missing: string[] = [];
-  for (const m of HTTP_METHODS) {
-    const wrapped = new RegExp(`export\\s+const\\s+${m}\\s*=\\s*withAdminAuth\\s*\\(`).test(src);
-    const constExport = new RegExp(`export\\s+const\\s+${m}\\s*=`).exec(src);
-    const fnExport = new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\s*\\(`).exec(src);
-    const reExport = new RegExp(`export\\s*\\{[^}]*\\b${m}\\b[^}]*\\}`).test(src);
-    if (wrapped) continue;
-    if (fnExport) {
-      const body = functionBody(src, fnExport.index);
-      if (/\bawait\s+requireAdminAuth\s*\(/.test(body)) continue;
-      missing.push(m);
-    } else if (constExport || reExport) {
-      missing.push(m);
-    }
-  }
-  return missing;
 }
 
 describe('every admin API route requires admin auth', () => {
@@ -74,15 +45,95 @@ describe('every admin API route requires admin auth', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('flags an unguarded handler (self-test of the detector)', () => {
-    expect(unguardedMethods('export async function GET(req) { return ok(); }')).toEqual(['GET']);
-    expect(unguardedMethods('export const POST = async (req) => ok();')).toEqual(['POST']);
-    expect(
-      unguardedMethods(
-        'export async function GET(r) { const e = await requireAdminAuth(); if (e) return e; }\n' +
-          'export async function DELETE(r) { return ok(); }',
-      ),
-    ).toEqual(['DELETE']);
-    expect(unguardedMethods('export const PATCH = withAdminAuth(async (r, a) => ok());')).toEqual([]);
+  describe('detector self-test', () => {
+    it('flags a handler with no guard at all', () => {
+      expect(unguardedMethods('export async function GET(req) { return ok(); }')).toEqual(['GET']);
+      expect(unguardedMethods('export const POST = async (req) => ok();')).toEqual(['POST']);
+    });
+
+    it('flags a guard mentioned only in a comment', () => {
+      const src = `
+        // this route calls requireAdminAuth() before returning data
+        export async function GET(req) {
+          return ok();
+        }
+      `;
+      expect(unguardedMethods(src)).toEqual(['GET']);
+    });
+
+    it('flags requireAdminAuth() called but its result ignored', () => {
+      const src = `
+        export async function GET(req) {
+          await requireAdminAuth();
+          return ok();
+        }
+      `;
+      expect(unguardedMethods(src)).toEqual(['GET']);
+    });
+
+    it('flags requireAdminAuth() called after a DB call / body parse', () => {
+      const src = `
+        export async function POST(req) {
+          const body = await req.json();
+          const rows = await db.select().from(ipos);
+          const authError = await requireAdminAuth();
+          if (authError) return authError;
+          return ok(rows, body);
+        }
+      `;
+      expect(unguardedMethods(src)).toEqual(['POST']);
+    });
+
+    it('flags only the unguarded handler when one of two is guarded', () => {
+      const src = `
+        export async function GET(r) {
+          const authError = await requireAdminAuth();
+          if (authError) return authError;
+          return ok();
+        }
+        export async function DELETE(r) { return ok(); }
+      `;
+      expect(unguardedMethods(src)).toEqual(['DELETE']);
+    });
+
+    it('passes the real top-level guard shape', () => {
+      const src = `
+        export async function GET(request) {
+          // MUST check admin auth first
+          const authError = await requireAdminAuth();
+          if (authError) return authError;
+          return ok();
+        }
+      `;
+      expect(unguardedMethods(src)).toEqual([]);
+    });
+
+    it('passes the real try-wrapped guard shape', () => {
+      const src = `
+        export async function POST(request, { params }) {
+          try {
+            const authError = await requireAdminAuth();
+            if (authError) return authError;
+            const { table } = await params;
+            return ok(table);
+          } catch (e) {
+            return fail(e);
+          }
+        }
+      `;
+      expect(unguardedMethods(src)).toEqual([]);
+    });
+
+    it('passes withAdminAuth(...)', () => {
+      expect(unguardedMethods('export const PATCH = withAdminAuth(async (r, a) => ok());')).toEqual([]);
+    });
+
+    it('does not accept withAdminAuth mentioned only in a string or comment', () => {
+      const src = `
+        // wrapped with withAdminAuth(...) below
+        export const GET = async (r) => ok('withAdminAuth(fake)');
+      `;
+      expect(unguardedMethods(src)).toEqual(['GET']);
+    });
   });
 });

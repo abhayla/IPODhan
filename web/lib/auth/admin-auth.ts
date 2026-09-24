@@ -137,7 +137,9 @@ export async function requireAdminAuth(): Promise<NextResponse | null> {
     // Parse Bearer token
     const parts = authorization.split(' ');
     if (parts.length !== 2 || parts[0] !== 'Bearer') {
-      console.warn('[Admin Auth] Invalid Authorization header format:', authorization);
+      console.warn(
+        `[Admin Auth] Malformed Authorization header (scheme="${parts[0] || ''}", length=${authorization.length})`
+      );
       return NextResponse.json(
         {
           error: 'Unauthorized',
