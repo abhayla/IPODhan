@@ -2848,8 +2848,6 @@ discovered afterwards. Recorded as F-95.
 
 #### The five rupee columns, and the scale they must survive (OD-48, decided)
 
-*Unit tags as measured 2026-09-24 (F-156): `field-manifest.json` tags the five OD-67 rupee-stored columns (`issue_size`, `fresh_issue`, `ofs_issue`, `mcap_at_floor`, `mcap_at_cap`) as `crore`, and the admin issue-size label and validation also assume crore; the tags must follow the unit stored today (item 11).*
-
 **DECIDED by the owner, 2026-09-09** (this was O-12; it is now **OD-48** in §0.0.1).
 
 Five columns are rupee amounts by any honest reading, and converting them would make the site worse:
@@ -2885,6 +2883,8 @@ optimism:
 > the edge (`formatIssueSizeCrores`), and the two readers that compared crore thresholds against the
 > rupee column are fixed (F-95/F-77, PR #871). Registered as
 > `docs/reviews/failure-classes/spec-states-a-capacity-the-schema-does-not-have.json`.
+
+Measured 2026-09-24 (F-156): the unit tags do not yet follow this. `field-manifest.json` tags these five rupee-stored columns `crore`, and the admin issue-size label and validation also assume crore; item 11 makes the tags follow the unit stored today.
 
 **The named test (build item 11) feeds three real scales through every amount column, every
 conversion, every API route and every page formatter**, and asserts no overflow, no rounding at the
