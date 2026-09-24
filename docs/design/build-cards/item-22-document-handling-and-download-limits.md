@@ -381,3 +381,49 @@ and `resetRegistrarDocumentHostsCache` already exist and work, and `isTrustedDoc
 takes the set — but both real call sites pass ONE argument, so the set is always the empty default
 and a document served by a legitimate registrar is still refused. No dependency, no fixture, no
 migration. It is tracked as the single entry in `config/security-boundary-wiring-baseline.json`.
+
+### As-built: every zip member becomes its own typed document (OD-36 multi-part rule, F-154, 2026-09-24)
+
+Measured first (core proof, the real `extractPdfMembersFromZip` + `classifyByTitle` + `verifyDownload`
+over six real NSE zips on the laptop): RHP_HTEL.zip holds 5 PDFs (3 newspaper corrigendum pages under
+`Corrigendum/`, `GID.pdf`, the RHP); RHP_VARMORA, RHP_DEEPA, RHP_AUGMONT, RHP_20260923190957 and
+RHPandGID_20260907153412 hold RHP + GID. None is a Volume I/II split, matching F-154's 41 of 41.
+
+What was built:
+
+- `extractPdfMembersFromZip` records each PDF member's 1-based `position` (central-directory order).
+- `verifyDownload` still selects the wanted member with `selectZipMemberForType`, and now also
+  returns `zipPosition` (only for a zip with two or more members; a one-member zip is the whole
+  document, so `part_number` stays NULL) and `otherZipMembers`, each classified as `gid`, `typed`,
+  `unclassified`, `too_small` or `too_large` (the 50 KB floor and the cap re-applied per member).
+- `isGidMemberName` reads the BASE name only. The archive's own folder (`RHP_AUGMONT/`) classifies as
+  RHP, which is why every GID's full path typed as RHP in the core proof.
+- `classifyZipMemberName`: the member's own name first; failing that, its immediate sub-folder, and
+  only for CORRIGENDUM, ADDENDUM or PRICE_BAND_AD. RHP_HTEL's pages are named by paper and date
+  ('BS Mumbai 20-08-2026-8.pdf', a Devanagari name, '2008-FPP-NS-07_compressed.pdf'); the uploader's
+  `Corrigendum/` folder is the only statement of what they are. A folder can never type a member as
+  the offer document, so an unnamed member is never mis-typed as the RHP.
+- `DocumentDiscoveryRunner.storeOtherZipMembers`: a `typed` member whose type differs from the main
+  document's is stored (same store, same OD-33 sha256 dedup) as its own row: url = the zip url plus
+  `#part=<n>` (`documents.url` is globally unique, so the bare zip url is already the main row's; a
+  fragment names a part of the same resource and does not change what a fetch returns), `part_number`
+  = its position. A second member of the main document's own type (a volume split, 0 of 41 measured)
+  is logged, not stored. Every skipped member is logged by name, position and size
+  (`zip_member_skipped:<why>`). No cover-page company check on a member: the archive was verified by
+  its main member, and a newspaper corrigendum page prints many companies' notices.
+- `DocumentRepository.upsertDocument` fills `part_number` on an existing row when a caller supplies it.
+
+Precedence trace (OD-30): `DOCUMENT_TYPE_RANK` in `field-priority-matrix.ts` already ranks CORRIGENDUM
+and PRICE_BAND_AD at 0, above RHP. But `AUTO_PERSIST_DOC_TYPES` (`document-admission-status.ts`) and
+`EXTRACTABLE_DOC_TYPES` (`filing-auto-persist.ts`) do not include CORRIGENDUM, so a stored
+CORRIGENDUM row is admitted `NOT_EXTRACTABLE` and nothing reads it. A PRICE_BAND_AD member IS
+extracted. So this change makes the corrigendum a document on file; OD-30 acting on its fields still
+needs a CORRIGENDUM extractor, which is not built here.
+
+BSE: the unwrap is shared, so a multi-member BSE zip now also stores its other typed members. BSE's
+addendum/corrigendum fields are fetched by their own links as before; nothing else changes for BSE.
+
+Not done here: rows written before this change stay missing until each zip is re-fetched (the RHP
+state is FOUND, so the runner does not re-fetch it on its own); the fetch state of a type stored as a
+zip member is not moved to FOUND; the data-level audit check `zip_member_rows` is registered as
+`notCoveredByThisManifest`. Staging proof owed.

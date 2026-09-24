@@ -44,6 +44,7 @@ import {
   isVerifyFailure,
   getMaxDocumentBytes,
   type VerifyResult,
+  type VerifySuccess,
 } from './document-download-verifier.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { storeDocument, getStoreDir } from './document-store.js';
@@ -445,6 +446,15 @@ export function refusalOutcomeOr(status: number, existing: string): string {
   return status === STATUS_REFUSED_RESOLVED_PRIVATE ? 'refused:resolved_private_address' : existing;
 }
 
+/**
+ * The `documents.url` of one member of a zip (item 22, F-154): the zip's own URL
+ * plus a `#part=<n>` fragment. A fragment never reaches the server, so fetching
+ * this URL still returns the zip; it only names which member the row is.
+ */
+export function zipMemberUrl(zipUrl: string, position: number): string {
+  return `${zipUrl.split('#')[0]}#part=${position}`;
+}
+
 export function hostnameOf(url: string): string | null {
   try {
     return new URL(url).hostname;
@@ -489,6 +499,11 @@ export interface DocumentSinkInput {
   fileSize?: number;
   /** sha256 of the stored bytes (W-1) — the persisted form of the E7/R2 rule. */
   sha256?: string;
+  /**
+   * Item 22 (OD-36, F-154): the 1-based position of this PDF among the PDF
+   * members of the zip it came from. Absent for a bare-PDF download.
+   */
+  partNumber?: number;
 }
 
 export interface DocumentSink {
@@ -1353,6 +1368,7 @@ export class DocumentDiscoveryRunner {
         url: candidate.url,
         sha256: verdict.sha256,
       });
+      await this.storeOtherZipMembers(candidate, ipo, verdict, alias.docType, attempts, seenBySha);
       return { documentId: alias.documentId, bytes: verdict.bytes, storedType: alias.docType };
     }
 
@@ -1418,6 +1434,7 @@ export class DocumentDiscoveryRunner {
       isActive: true,
       fileSize: verdict.bytes,
       sha256: verdict.sha256,
+      ...(verdict.zipPosition ? { partNumber: verdict.zipPosition } : {}),
     });
     seenBySha.set(verdict.sha256, { documentId: doc.id, docType: storedType });
 
@@ -1442,7 +1459,93 @@ export class DocumentDiscoveryRunner {
       { ipoId: ipo.id, fetchKind: docType, storedType, bytes: verdict.bytes, hasTextLayer },
       'Document FOUND and stored'
     );
+    await this.storeOtherZipMembers(candidate, ipo, verdict, storedType, attempts, seenBySha);
     return { documentId: doc.id, bytes: verdict.bytes, storedType };
+  }
+
+  /**
+   * Item 22 (OD-36, F-154): every PDF member of the zip other than the one
+   * stored as the wanted document.
+   *
+   * THE DEFECT. The unwrap kept one member and dropped the rest without a trace.
+   * 41 of 41 NSE offer-document zips on staging hold two or more PDFs; in 5 the
+   * dropped members were a corrigendum or a price-band notice, and 4 of those
+   * IPOs have no corrigendum document at all, so OD-30 could never apply.
+   *
+   * Rules, per member:
+   *  - `typed` as a type other than the main document's: stored as its own
+   *    document row with `part_number` = its zip position. Its URL is the zip's
+   *    URL with a `#part=<n>` fragment: `documents.url` is globally unique, so
+   *    the bare zip URL is already taken by the main document, and a fragment
+   *    names a part of the SAME resource (RFC 3986 §3.5) without changing what
+   *    a fetch of it returns. The stable URL is also what makes a re-run
+   *    idempotent: `upsertDocument` finds the row by URL and inserts nothing.
+   *  - same sha256 as a document already stored this run (OD-33): not stored twice.
+   *  - `typed` as the SAME type as the main document: a volume split. Not
+   *    stored (0 of 41 measured zips are volume splits); logged by name.
+   *  - `gid`, `unclassified`, `too_small`, `too_large`: not stored; logged by
+   *    name with size, so nothing is dropped silently and nothing is mis-typed.
+   *
+   * No cover-page company check on a member: the archive itself was verified
+   * as this IPO's (the main member passed that check), and a newspaper page
+   * carrying a corrigendum prints many companies' notices.
+   */
+  private async storeOtherZipMembers(
+    candidate: DiscoveredDocument,
+    ipo: DiscoveryIpo,
+    verdict: VerifySuccess,
+    mainType: DocumentType,
+    attempts: FetchAttempt[],
+    seenBySha: Map<string, { documentId: string; docType: DocumentType }>
+  ): Promise<void> {
+    for (const m of verdict.otherZipMembers ?? []) {
+      const where = `member:${m.name}; part:${m.position}; bytes:${m.bytes}`;
+      const skip = (why: string) => {
+        attempts.push({ source: candidate.source, http: 200, ms: 0, outcome: `zip_member_skipped:${why} (${where})`, url: candidate.url, sha256: m.sha256 });
+        logger.info({ ipoId: ipo.id, zipUrl: candidate.url, member: m.name, part: m.position, bytes: m.bytes, reason: why }, 'Zip member not stored');
+      };
+      if (m.disposition !== 'typed' || !m.type) {
+        skip(m.type ? `${m.disposition}:${m.type}` : m.disposition);
+        continue;
+      }
+      if (m.type === mainType) {
+        skip(`same_type_as_main:${m.type}`);
+        continue;
+      }
+      const alias = seenBySha.get(m.sha256);
+      if (alias) {
+        attempts.push({ source: candidate.source, http: 200, ms: 0, outcome: `zip_member_deduped_by_sha256_to:${alias.docType} (${where})`, url: candidate.url, sha256: m.sha256 });
+        continue;
+      }
+      const stored = await storeDocument({
+        ipoId: ipo.id,
+        docType: m.type,
+        pdf: m.content,
+        sha256: m.sha256,
+        storeDir: this.deps.storeDir ?? getStoreDir(),
+      });
+      if (!stored.stored) {
+        attempts.push({ source: candidate.source, http: 200, ms: 0, outcome: `store_full (${where})`, url: candidate.url, sha256: m.sha256 });
+        continue;
+      }
+      const memberUrl = zipMemberUrl(candidate.url, m.position);
+      const row = await this.deps.documents.upsertDocument({
+        ipoId: ipo.id,
+        type: m.type,
+        title: `${candidate.title} | ${m.name.split('/').pop() ?? m.name}`,
+        url: memberUrl,
+        exchange: candidate.source,
+        mediaType: 'PDF',
+        extractionStatus: resolveAdmissionExtractionStatus(m.type),
+        isActive: true,
+        fileSize: m.bytes,
+        sha256: m.sha256,
+        partNumber: m.position,
+      });
+      seenBySha.set(m.sha256, { documentId: row.id, docType: m.type });
+      attempts.push({ source: candidate.source, http: 200, ms: 0, outcome: `zip_member_stored_as:${m.type} (${where}; typed_by:${m.typedBy ?? 'name'})`, url: memberUrl, sha256: m.sha256 });
+      logger.info({ ipoId: ipo.id, zipUrl: candidate.url, member: m.name, part: m.position, storedType: m.type, typedBy: m.typedBy }, 'Zip member stored as its own document');
+    }
   }
 
   /**

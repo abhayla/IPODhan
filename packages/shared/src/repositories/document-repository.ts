@@ -181,6 +181,10 @@ export class DocumentRepository
             // re-published under the same file name is a real occurrence).
             // Never overwrite a known hash with nothing.
             ...(data.sha256 ? { sha256: data.sha256 } : {}),
+            // Item 22 (OD-36, F-154): fill the zip position on a row stored
+            // before part_number was written. Never cleared by a caller that
+            // does not know it.
+            ...(data.partNumber != null ? { partNumber: data.partNumber } : {}),
           })
           .where(eq(documents.url, data.url))
           .returning();

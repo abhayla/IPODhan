@@ -229,6 +229,12 @@ function inflateZipMember(buf: Buffer, localHeaderOffset: number, method: number
 export interface ZipPdfMember {
   name: string;
   content: Buffer;
+  /**
+   * 1-based position among the zip's PDF members, in central-directory order
+   * (item 22, OD-36, F-154). Written to `documents.part_number` so a field's
+   * citation can name which member of the archive it came from.
+   */
+  position?: number;
 }
 
 /**
@@ -270,7 +276,7 @@ export function extractPdfMembersFromZip(buf: Buffer): ZipPdfMember[] {
       const localHeaderOffset = buf.readUInt32LE(cdOffset + 42);
       const name = buf.subarray(cdOffset + 46, cdOffset + 46 + nameLen).toString('latin1');
       const content = inflateZipMember(buf, localHeaderOffset, method, compSize);
-      if (content && looksLikePdf(content)) members.push({ name, content });
+      if (content && looksLikePdf(content)) members.push({ name, content, position: members.length + 1 });
       cdOffset += 46 + nameLen + extraLen + commentLen;
     }
     return members;
@@ -289,7 +295,7 @@ export function extractPdfMembersFromZip(buf: Buffer): ZipPdfMember[] {
     if (dataStart + compSize > buf.length) break;
     const name = buf.subarray(offset + ZIP_LOCAL_HEADER_SIZE, offset + ZIP_LOCAL_HEADER_SIZE + nameLen).toString('latin1');
     const content = inflateZipMember(buf, offset, method, compSize);
-    if (content && looksLikePdf(content)) members.push({ name, content });
+    if (content && looksLikePdf(content)) members.push({ name, content, position: members.length + 1 });
     offset = dataStart + compSize;
   }
   return members;
