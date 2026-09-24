@@ -91,6 +91,19 @@ const KNOWN_CORRECTIONS = {
   'ipo_details.ofs_issue': { dropSource: 'BSE', dropFromCapability: false, types: ['SME_NSE'] },
 };
 
+// F-156 / OD-67 (item 11, 2026-09-24): the manifest's `unit` now follows the amount-columns
+// probe's MEASURED `current_unit` rather than defaulting to the column's amount class. Three of
+// the 10 v1 hand-written rows are RUPEES columns the v1 manifest mislabelled `crore`; this is the
+// manifest catching up to what the column has always actually stored, not a generator defect.
+// `financial_statements.revenue` (already corrected above for MONEYCONTROL) also picks up
+// `per_row` here, since its 7-column family carries a per-row unit rather than a fixed one.
+const KNOWN_UNIT_CORRECTIONS = {
+  'ipos.issue_size': 'rupee',
+  'ipo_details.fresh_issue': 'rupee',
+  'ipo_details.ofs_issue': 'rupee',
+  'financial_statements.revenue': 'per_row',
+};
+
 test('case 3: the generator reproduces all 10 v1 rows exactly (rank/capability/unit/na)', async () => {
   const { generateManifest } = await import(pathToFileURL(GENERATOR).href);
   const spec = await import(pathToFileURL(SPEC_PATH).href);
@@ -105,8 +118,9 @@ test('case 3: the generator reproduces all 10 v1 rows exactly (rank/capability/u
     }
     const correction = KNOWN_CORRECTIONS[key];
 
-    if (JSON.stringify(gen.unit) !== JSON.stringify(original.unit)) {
-      mismatches.push(`${key}: unit ${JSON.stringify(gen.unit)} != ${JSON.stringify(original.unit)}`);
+    const expectedUnit = KNOWN_UNIT_CORRECTIONS[key] ?? original.unit;
+    if (JSON.stringify(gen.unit) !== JSON.stringify(expectedUnit)) {
+      mismatches.push(`${key}: unit ${JSON.stringify(gen.unit)} != ${JSON.stringify(expectedUnit)}`);
     }
     if (JSON.stringify(gen.na ?? []) !== JSON.stringify(original.na ?? [])) {
       mismatches.push(`${key}: na ${JSON.stringify(gen.na)} != ${JSON.stringify(original.na)}`);

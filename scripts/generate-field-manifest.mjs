@@ -164,16 +164,49 @@ const HAND_AUTHORED_SECTION = {
 // a hand-typed guess, so it cannot silently diverge from the test's own source of truth.
 const AMOUNT_COLUMNS_PATH = path.join(REPO_ROOT, 'docs', 'design', 'probes', 'amount-columns.out.json');
 let AMOUNT_CLASS_BY_KEY = null;
+let AMOUNT_CURRENT_UNIT_BY_KEY = null;
+function loadAmountProbe() {
+  if (AMOUNT_CLASS_BY_KEY) return;
+  const probe = JSON.parse(fs.readFileSync(AMOUNT_COLUMNS_PATH, 'utf8'));
+  AMOUNT_CLASS_BY_KEY = new Map(probe.columns.map((c) => [`${c.table}.${c.col}`, c.cls]));
+  AMOUNT_CURRENT_UNIT_BY_KEY = new Map(probe.columns.map((c) => [`${c.table}.${c.col}`, c.current_unit]));
+}
 function amountClassForKey(key) {
-  if (!AMOUNT_CLASS_BY_KEY) {
-    const probe = JSON.parse(fs.readFileSync(AMOUNT_COLUMNS_PATH, 'utf8'));
-    AMOUNT_CLASS_BY_KEY = new Map(probe.columns.map((c) => [`${c.table}.${c.col}`, c.cls]));
-  }
+  loadAmountProbe();
   return AMOUNT_CLASS_BY_KEY.get(key);
 }
+function currentUnitForKey(key) {
+  loadAmountProbe();
+  return AMOUNT_CURRENT_UNIT_BY_KEY.get(key);
+}
 
-function unitForField(f) {
+// F-156 / OD-67: the manifest's `unit` is what a column ACTUALLY HOLDS today, not what its
+// amount CLASS (what it means) would suggest by default. The probe's `current_unit` (measured
+// against normalizeCurrency call sites and the schema.ts column comments, OD-20/OD-67) is
+// authoritative when present; the class is only a fallback for columns the probe classified but
+// did not measure a current_unit for (i.e. every CRORE/RUPEES_KEPT column that already matches
+// its class — current_unit === undefined there means "measurement agreed with the class default,
+// no override was recorded").
+// F-156 round 2 (Tier A review MINOR): the manifest unit for a MEASURED current_unit — pulled
+// out of unitForField() so it can be unit-tested directly without needing to fake the probe file
+// on disk. An unrecognised value (a typo, a new probe value nobody wired here) throws rather than
+// silently falling through to the column's amount-class default — that silent fallback is exactly
+// how a wrong unit tag would reach the manifest unnoticed.
+export function manifestUnitFromCurrentUnit(currentUnit, key) {
+  if (currentUnit === 'RUPEES') return 'rupee';
+  if (currentUnit === 'CRORE') return 'crore';
+  if (currentUnit === 'PER_ROW_UNIT') return 'per_row';
+  throw new Error(
+    `unitForField: unrecognised current_unit "${currentUnit}" for ${key} — add it to manifestUnitFromCurrentUnit() or fix the probe`
+  );
+}
+
+export function unitForField(f) {
   const key = `${f.t}.${f.c}`;
+  const currentUnit = currentUnitForKey(key);
+  if (currentUnit !== undefined && currentUnit !== null) {
+    return manifestUnitFromCurrentUnit(currentUnit, key);
+  }
   const cls = amountClassForKey(key);
   if (cls === 'CRORE') return 'crore';
   if (cls === 'RUPEES_KEPT') return 'rupee';

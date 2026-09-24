@@ -91,6 +91,14 @@ export const fieldLabels: Record<string, Record<string, FieldLabelConfig>> = {
     },
 
     // Pricing & Size
+    //
+    // F-156 round 2 (Tier A review, 2026-09-24): the dynamic admin form looks up this map by
+    // `column.name` — the Drizzle column's real DB name (schema-introspector.ts), which for
+    // every column is the snake_case name, e.g. `issue_size`, not the camelCase JS property. The
+    // GET /api/admin/dynamic/ipos/[id] response is also snake_case (route.ts). So `issueSize`
+    // below has never matched anything DynamicFormGenerator actually renders — it is kept only
+    // because an unrelated pre-existing suite (dynamic-validation-rules.test.ts) still exercises
+    // it in isolation. `issue_size` is the live key.
     issueSize: {
       label: 'Issue Size',
       description: 'Total size of the public offering',
@@ -98,6 +106,20 @@ export const fieldLabels: Record<string, Record<string, FieldLabelConfig>> = {
       tooltip: 'Total amount to be raised through the IPO',
       unit: '₹ Crores',
       placeholder: 'e.g., 5000',
+    },
+    // The real, live key: OD-67 stores this column in exact RUPEES, and — after F-156 round 2 —
+    // the admin page shows and saves it in rupees too (no edge conversion). The manifest tags
+    // this column's unit `rupee` (scraper/config/field-manifest.json, verified against the
+    // measured `current_unit` by scripts/tests/manifest-unit-matches-current-unit.test.mjs); this
+    // label is kept in sync with that by hand rather than importing the manifest JSON into the
+    // web bundle for one string.
+    issue_size: {
+      label: 'Issue Size',
+      description: 'Total size of the public offering',
+      category: 'Pricing & Size',
+      tooltip: 'Total amount to be raised through the IPO, in exact rupees (not crores).',
+      unit: '₹ (rupees)',
+      placeholder: 'e.g., 50000000000',
     },
     priceRangeMin: {
       label: 'Price Band - Lower',

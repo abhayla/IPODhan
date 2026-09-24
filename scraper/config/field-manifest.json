@@ -126,7 +126,7 @@
         }
       },
       "na": [],
-      "unit": "crore",
+      "unit": "rupee",
       "comparisonFamily": "MONEY"
     },
     "ipos.lot_size": {
@@ -1000,7 +1000,7 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore",
+      "unit": "rupee",
       "comparisonFamily": "MONEY"
     },
     "ipo_details.ofs_issue": {
@@ -1049,7 +1049,7 @@
         "RIGHTS",
         "NCD"
       ],
-      "unit": "crore",
+      "unit": "rupee",
       "comparisonFamily": "MONEY"
     },
     "ipo_details.face_value": {
@@ -3457,7 +3457,7 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore",
+      "unit": "per_row",
       "comparisonFamily": "MONEY"
     },
     "financial_statements.total_income": {
@@ -3493,7 +3493,7 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore",
+      "unit": "per_row",
       "comparisonFamily": "MONEY"
     },
     "financial_statements.ebitda": {
@@ -3529,7 +3529,7 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore",
+      "unit": "per_row",
       "comparisonFamily": "MONEY"
     },
     "financial_statements.pat": {
@@ -3565,7 +3565,7 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore",
+      "unit": "per_row",
       "comparisonFamily": "MONEY"
     },
     "financial_statements.net_worth": {
@@ -3601,7 +3601,7 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore",
+      "unit": "per_row",
       "comparisonFamily": "MONEY"
     },
     "financial_statements.basis": {
@@ -3760,7 +3760,7 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore",
+      "unit": "per_row",
       "comparisonFamily": "MONEY"
     },
     "financial_statements.dscr": {
@@ -3818,7 +3818,7 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore",
+      "unit": "per_row",
       "comparisonFamily": "MONEY"
     },
     "ipo_valuation.price_floor": {
@@ -3957,7 +3957,7 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore",
+      "unit": "rupee",
       "comparisonFamily": "MONEY"
     },
     "ipo_valuation.pe_at_cap": {
@@ -4028,7 +4028,7 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore",
+      "unit": "rupee",
       "comparisonFamily": "MONEY"
     },
     "ipo_valuation.pe_at_floor": {

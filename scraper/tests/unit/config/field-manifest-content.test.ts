@@ -23,7 +23,13 @@ const AMOUNT_COLUMNS_PATH = path.join(
 // column (OD-20); the manifest's `unit` field is the DIRECT consequence of that
 // class (§5.2 of data-sourcing-pull-model.md): CRORE -> crore, RUPEES_KEPT ->
 // rupee, everything else (PER_SHARE/PERCENT/RATIO/MULTIPLE) -> keep (unchanged).
-function expectedUnitForClass(cls: string): string {
+// F-156/OD-67: a column's measured `current_unit` (what it ACTUALLY holds) overrides the class
+// default when the probe recorded one — the five OD-67 columns are RUPEES though classed CRORE,
+// and financial_statements' 7 columns are PER_ROW_UNIT though classed CRORE.
+function expectedUnitForClass(cls: string, currentUnit?: string | null): string {
+  if (currentUnit === 'RUPEES') return 'rupee';
+  if (currentUnit === 'CRORE') return 'crore';
+  if (currentUnit === 'PER_ROW_UNIT') return 'per_row';
   if (cls === 'CRORE') return 'crore';
   if (cls === 'RUPEES_KEPT') return 'rupee';
   return 'keep';
@@ -120,6 +126,9 @@ describe('field-manifest.json content — Group-C fields (item 2 slice 5; 13 of 
     const columnClassByKey = new Map<string, string>(
       amountColumns.columns.map((c: any) => [`${c.table}.${c.col}`, c.cls])
     );
+    const columnCurrentUnitByKey = new Map<string, string | null>(
+      amountColumns.columns.map((c: any) => [`${c.table}.${c.col}`, c.current_unit ?? null])
+    );
 
     const mismatches: string[] = [];
     for (const realField of Object.values(GROUP_C_TO_REAL_FIELD)) {
@@ -137,7 +146,7 @@ describe('field-manifest.json content — Group-C fields (item 2 slice 5; 13 of 
 
       const cls = columnClassByKey.get(realField);
       if (cls) {
-        const expectedUnit = expectedUnitForClass(cls);
+        const expectedUnit = expectedUnitForClass(cls, columnCurrentUnitByKey.get(realField));
         if (manifestEntry.unit !== expectedUnit) {
           mismatches.push(
             `${realField}: amount-columns probe class=${cls} expects unit=${expectedUnit} manifest unit=${manifestEntry.unit}`

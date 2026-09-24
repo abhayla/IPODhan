@@ -89,6 +89,10 @@ export default function DynamicAdminPage() {
         const response = await adminGet(`/api/admin/dynamic/${tableName}/${recordId}`);
 
         if (response.success && response.data) {
+          // F-156 round 2: no unit conversion here. The OD-67 columns (ipos.issue_size etc.) are
+          // shown and saved in the same RAW RUPEES the DB stores and the admin has always used —
+          // see web/lib/admin/field-labels.ts and dynamic-validation-rules.ts for the rupee-scale
+          // label/validation on issue_size.
           setRecordData(response.data);
         } else {
           throw new Error(response.error || 'Failed to load record');
@@ -138,13 +142,15 @@ export default function DynamicAdminPage() {
   const handleSubmit = async (data: Record<string, any>) => {
     try {
       let response;
+      // F-156 round 2: saved as-is, in the same raw rupees the form displayed (no conversion).
+      const toSave = data;
 
       if (isCreateMode) {
         // Create new record
-        response = await adminPost(`/api/admin/dynamic/${tableName}`, data);
+        response = await adminPost(`/api/admin/dynamic/${tableName}`, toSave);
       } else {
         // Update existing record
-        response = await adminPatch(`/api/admin/dynamic/${tableName}/${recordId}`, data);
+        response = await adminPatch(`/api/admin/dynamic/${tableName}/${recordId}`, toSave);
       }
 
       if (response.success) {
