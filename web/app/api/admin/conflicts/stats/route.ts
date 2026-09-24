@@ -9,8 +9,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ConflictResolutionService } from '@/lib/services/conflict-resolution';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
+import { withAdminAuth } from '@/lib/middleware/admin-auth';
 
-export async function GET(request: NextRequest) {
+export const GET = withAdminAuth(async (request: NextRequest, _adminContext) => {
   try {
     const searchParams = request.nextUrl.searchParams;
     const ipoId = searchParams.get('ipoId');
@@ -30,4 +31,4 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return apiErrorResponse(error, '/api/admin/conflicts/stats');
   }
-}
+});

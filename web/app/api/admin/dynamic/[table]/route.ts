@@ -138,6 +138,9 @@ export async function POST(
  * provide clear error messaging to admins.
  */
 export async function DELETE(request: NextRequest) {
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
+
   return NextResponse.json(
     {
       success: false,

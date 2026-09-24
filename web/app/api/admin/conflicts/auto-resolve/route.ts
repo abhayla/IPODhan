@@ -24,7 +24,7 @@
  *   }>
  * }
  *
- * Authentication: Admin-only (add authentication middleware as needed)
+ * Authentication: Admin-only (withAdminAuth)
  *
  * Safety:
  * - Only auto-resolves conflicts where one source is ADMIN
@@ -35,12 +35,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ConflictResolutionService } from '@/lib/services/conflict-resolution';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
+import { withAdminAuth } from '@/lib/middleware/admin-auth';
 
 /**
  * POST /api/admin/conflicts/auto-resolve
  * Auto-resolve obvious conflicts
  */
-export async function POST(request: NextRequest) {
+export const POST = withAdminAuth(async (request: NextRequest, _adminContext) => {
   try {
     const body = await request.json().catch(() => ({}));
 
@@ -79,4 +80,4 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return apiErrorResponse(error, '/api/admin/conflicts/auto-resolve');
   }
-}
+});

@@ -11,18 +11,19 @@
  * - limit: Max number of conflicts to return
  * - ipoId: Filter by specific IPO
  *
- * Authentication: Admin-only (add authentication middleware as needed)
+ * Authentication: Admin-only (withAdminAuth)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ConflictResolutionService } from '@/lib/services/conflict-resolution';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
+import { withAdminAuth } from '@/lib/middleware/admin-auth';
 
 /**
  * GET /api/admin/conflicts
  * Fetch unresolved conflicts with optional filters
  */
-export async function GET(request: NextRequest) {
+export const GET = withAdminAuth(async (request: NextRequest, _adminContext) => {
   try {
     const searchParams = request.nextUrl.searchParams;
     const severity = searchParams.get('severity') as 'INFO' | 'WARNING' | 'CRITICAL' | null;
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return apiErrorResponse(error, '/api/admin/conflicts');
   }
-}
+});
 
 /**
  * POST /api/admin/conflicts
@@ -63,21 +64,20 @@ export async function GET(request: NextRequest) {
  *   conflictId: string,
  *   resolvedSource: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | etc.,
  *   resolutionReason: string,
- *   resolvedBy: string,
  *   adminNote?: string,
  *   applyToDatabase: boolean,
  *   protectField?: boolean
  * }
  */
-export async function POST(request: NextRequest) {
+export const POST = withAdminAuth(async (request: NextRequest, adminContext) => {
   try {
     const body = await request.json();
 
     // Validate required fields
-    if (!body.conflictId || !body.resolvedSource || !body.resolutionReason || !body.resolvedBy) {
+    if (!body.conflictId || !body.resolvedSource || !body.resolutionReason) {
       return NextResponse.json({
         success: false,
-        error: 'Missing required fields: conflictId, resolvedSource, resolutionReason, resolvedBy',
+        error: 'Missing required fields: conflictId, resolvedSource, resolutionReason',
       }, { status: 400 });
     }
 
@@ -86,7 +86,8 @@ export async function POST(request: NextRequest) {
     const result = await service.resolveConflict(body.conflictId, {
       resolvedSource: body.resolvedSource,
       resolutionReason: body.resolutionReason,
-      resolvedBy: body.resolvedBy,
+      // The actor is the authenticated admin, never a client-supplied name.
+      resolvedBy: adminContext.adminName,
       adminNote: body.adminNote,
       applyToDatabase: body.applyToDatabase ?? true,
       protectField: body.protectField ?? false,
@@ -107,4 +108,4 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return apiErrorResponse(error, '/api/admin/conflicts');
   }
-}
+});
