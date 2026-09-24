@@ -275,6 +275,60 @@ export interface MergeReadbackCheck {
   detail: string;
 }
 
+/**
+ * #976, OD-59: agreement is judged on the MEANING of a value, never its
+ * text — "10", "10.00" and "₹10" are one value. A `numeric(18,2)` column
+ * reads back with its scale ("1250000000.00"), which is not a text match
+ * against the carried value ("1250000000") even though it is the same
+ * number, and a `timestamp`/`date` column can read back as a `Date` object
+ * rather than the ISO string the patch carried.
+ *
+ * `scraper/src/services/data-persister.ts`'s `valuesEqualForWrite` is the
+ * existing "equal by meaning" comparator for this exact shape (pg NUMERIC
+ * string vs JS number, Date vs ISO string), but it lives in `scraper/` and
+ * importing it here would create a circular dependency (`scraper` already
+ * depends on `@ipodhan/shared`). This is the same rule, kept local to
+ * `packages/shared` so it has no dependency in either direction: parse both
+ * sides as finite numbers and compare numerically first (exact, no epsilon
+ * — a real 1-rupee difference must still fail); otherwise parse both as
+ * dates and compare the underlying instant; otherwise fall back to a
+ * trimmed string comparison.
+ */
+function valuesAgreeByMeaning(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+
+  const aNum = toFiniteNumber(a);
+  const bNum = toFiniteNumber(b);
+  if (aNum !== null && bNum !== null) return aNum === bNum;
+
+  const aTime = toTimeMs(a);
+  const bTime = toTimeMs(b);
+  if (aTime !== null && bTime !== null) return aTime === bTime;
+
+  return String(a).trim() === String(b).trim();
+}
+
+/** Finite-number parse only — rejects `''`, `null`, `NaN`, and non-numeric strings like dates. */
+function toFiniteNumber(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/** Parses a `Date`, an ISO string, or a bare `YYYY-MM-DD` day into epoch ms; null if not a valid instant. */
+function toTimeMs(v: unknown): number | null {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.getTime();
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v.trim())) {
+    const s = v.trim();
+    const parsed = new Date(s.length === 10 ? `${s}T00:00:00Z` : s);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+  }
+  return null;
+}
+
 /** Runs every readback check and returns them in report order. Exit-2 gating is `checks.every(c => c.pass)`. */
 export function verifyMergeReadback(input: MergeReadbackInput): MergeReadbackCheck[] {
   const checks: MergeReadbackCheck[] = [];
@@ -299,7 +353,8 @@ export function verifyMergeReadback(input: MergeReadbackInput): MergeReadbackChe
     // committed (2026-09-16 staging dedupe: gulflloyds, hrhygieneproducts). Read by the column
     // name exactly as `p.column` names it — that is what the row actually has.
     const actual = input.survivor ? input.survivor[p.column] : undefined;
-    const pass = input.survivor != null && actual !== null && actual !== undefined && String(actual) === String(p.value);
+    const pass =
+      input.survivor != null && actual !== null && actual !== undefined && valuesAgreeByMeaning(actual, p.value);
     checks.push({
       name: `carried field ${p.column}`,
       pass,
