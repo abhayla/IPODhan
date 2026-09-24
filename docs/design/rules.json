@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-24T03:19:32.015Z",
+  "generated_at": "2026-09-24T03:29:18.698Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 193,
-    "retired": 33
+    "retired": 34
   },
-  "next_id": 227,
+  "next_id": 228,
   "rules": [
     {
       "id": "R-151",
@@ -135,11 +135,11 @@
       "retired": false
     },
     {
-      "id": "R-226",
-      "hash": "c521f9fe8c7e",
+      "id": "R-227",
+      "hash": "d62b475f1d12",
       "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
       "kind": "prose",
-      "text": "Measured 2026-09-23 on staging (open for owner decision): F-142 — after item 7 slice S2 (#935) the 22:15 IST non-slot data wake skipped discovery and the document cycle, but the website list scrapers (--source=all) still ran: \"Chittorgarh listing report fetched\" 12 times and 8 new IPOs created. This row's \"three runs a day\" is therefore not yet what staging does; slice S2b fixes it. F-143 — gmp_records has no write-time column (its timestamp is the source's own as-of time), so the grey-market row's writes cannot be counted by when they happened. F-151 (2026-09-24, staging): the 00:00 slot stayed \"incomplete\" for 16 wakes and never closed, because the document pass reported its budget exhausted on every wake (found 0-2 per wake; the cause is not yet identified); the data job therefore ran every 30 minutes all night instead of once per slot (#943).",
+      "text": "Measured 2026-09-23 on staging (open for owner decision): F-142 — after item 7 slice S2 (#935) the 22:15 IST non-slot data wake skipped discovery and the document cycle, but the website list scrapers (--source=all) still ran: \"Chittorgarh listing report fetched\" 12 times and 8 new IPOs created. This row's \"three runs a day\" is therefore not yet what staging does; slice S2b fixes it. F-143 — gmp_records has no write-time column (its timestamp is the source's own as-of time), so the grey-market row's writes cannot be counted by when they happened. F-151 (2026-09-24, staging): the 00:00 slot stayed \"incomplete\" for 16 wakes and never closed, because the document retry timer (30/60 minutes, document-state-machine.ts:465-477) makes the same open documents due on every wake and the 60-second discovery budget runs out each time — the timed retry this section already removes; F-152 records the same breach in the field walk; the data job therefore ran every 30 minutes all night instead of once per slot (#943).",
       "first_seen": "2026-09-24",
       "retired": false
     },
@@ -1744,6 +1744,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-226",
+      "hash": "c521f9fe8c7e",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "prose",
+      "text": "Measured 2026-09-23 on staging (open for owner decision): F-142 — after item 7 slice S2 (#935) the 22:15 IST non-slot data wake skipped discovery and the document cycle, but the website list scrapers (--source=all) still ran: \"Chittorgarh listing report fetched\" 12 times and 8 new IPOs created. This row's \"three runs a day\" is therefore not yet what staging does; slice S2b fixes it. F-143 — gmp_records has no write-time column (its timestamp is the source's own as-of time), so the grey-market row's writes cannot be counted by when they happened. F-151 (2026-09-24, staging): the 00:00 slot stayed \"incomplete\" for 16 wakes and never closed, because the document pass reported its budget exhausted on every wake (found 0-2 per wake; the cause is not yet identified); the data job therefore ran every 30 minutes all night instead of once per slot (#943).",
+      "first_seen": "2026-09-24",
+      "retired": true
     },
     {
       "id": "R-225",
