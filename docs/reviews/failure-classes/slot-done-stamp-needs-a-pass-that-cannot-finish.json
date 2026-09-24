@@ -1,8 +1,8 @@
 {
   "class_id": "slot done-stamp needs a pass that cannot finish",
   "feature": "scraper scheduler (item 7) / data-job slots",
-  "symptom": "a slot-gated job whose 'slot complete' stamp requires every pass to finish stays open when one pass can never finish (a source that keeps failing, or a budget spent re-trying documents every source refuses); every later wake then re-runs the job, undoing the slot cadence",
-  "first_seen": "staging 2026-09-24 00:15-08:21 IST, release 084928e0: 00:00 slot 'incomplete: pass=discovery,listed_deferred' on 16 wakes, never complete; budgetExhausted true every wake, found 0-2, blocked 5-74, 29-127 network calls per wake (F-151); due-step discovery-stamp instance found in review of #941 (#943)",
+  "symptom": "a slot-gated job whose 'slot complete' stamp requires every pass to finish stays open when one pass never finishes (a source that keeps failing, or a pass that reports its budget exhausted on every wake); every later wake then re-runs the job, undoing the slot cadence",
+  "first_seen": "staging 2026-09-24 00:15-08:21 IST, release 084928e0: 00:00 slot 'incomplete: pass=discovery,listed_deferred' on 16 wakes, never complete; budgetExhausted true every wake, found 0-2, 29-127 network calls per wake; what exhausts the budget is unmeasured (only 47 BLOCKED_ALL lines, each a distinct document seen once) (F-151); due-step discovery-stamp instance found in review of #941 (#943)",
   "fix_prs": "none yet (#943)",
   "detection_check": "none - the wake log shows it but no audit reads 'incomplete' streaks",
   "status": "unguarded",
