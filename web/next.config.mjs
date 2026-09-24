@@ -86,9 +86,21 @@ const nextConfig = {
   // Performance: Webpack optimizations
   // NOTE: Removed custom splitChunks configuration as it caused module loading errors
   webpack: (config, { isServer }) => {
+    // packages/shared/src uses NodeNext-style `.js`-suffixed relative imports
+    // (tsc/tsx resolve .js -> .ts at compile time). Webpack does not do that
+    // remapping on its own, so any web import that pulls shared SOURCE files
+    // (not the compiled dist/ package) fails with "Module not found: Can't
+    // resolve './foo.js'" the moment such an import is reachable from web —
+    // first hit: 2026-09-24, staging run 36024250816, PR #989 chain
+    // (duplicate-ipo-merge.ts -> company-identity-fold.js).
+    config.resolve = config.resolve || {};
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      '.js': ['.ts', '.tsx', '.js'],
+    };
+
     if (!isServer) {
       // Exclude Node.js built-ins from browser bundle (fixes pg module issues)
-      config.resolve = config.resolve || {};
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
