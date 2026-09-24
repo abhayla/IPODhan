@@ -48,6 +48,8 @@ export function getDisplayStatus(ipo: StatusInput): StatusMeta {
   const stored = (ipo.status || '').toUpperCase();
   if (stored === 'WITHDRAWN') return { status: 'withdrawn', label: 'Withdrawn' };
   if (stored === 'POSTPONED') return { status: 'postponed', label: 'Postponed' };
+  // Item 7 S5 (OD-38). The OD-8 page freeze for a delisted IPO is a separate web change.
+  if (stored === 'DELISTED') return { status: 'listed', label: 'Delisted' };
 
   if (ipo.openDate && ipo.closeDate) {
     const open = startOfDay(new Date(ipo.openDate));

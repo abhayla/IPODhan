@@ -753,19 +753,33 @@ export interface PostListingPriceWriteRepo {
 /** The exact `ipos` columns the post-listing price write may SET (OD-29: the price and its as-of stamp). */
 export const POST_LISTING_PRICE_COLUMNS = ['currentPrice', 'currentPriceUpdatedAt'] as const;
 
+/** A stored `current_price_updated_at` (Date from the ORM, or the naive column's UTC text) as an instant. */
+export function storedAsOfInstant(value: unknown): Date | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const text = String(value).trim();
+  if (text === '') return null;
+  const iso = /[zZ]|[+-]\d{2}:?\d{2}$/.test(text) ? text.replace(' ', 'T') : `${text.replace(' ', 'T')}Z`;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 /**
  * Item 7 S5 (spec §2.1 job row "Post-listing price", OD-29, OD-54): the price job's ONLY
- * door to the price columns. SETs exactly `currentPrice` and `currentPriceUpdatedAt`
- * (the repository adds its own `updated_at` housekeeping stamp) through
- * `IPORepository.update` (cache invalidated), never `upsertIPO` (#951: the whole-row
- * save writes unclaimed columns). `asOf` is the EXCHANGE's own as-of instant (NSE
- * `lastUpdateTime` / BSE `Ason`, IST converted to UTC), not the fetch time, because the
- * page labels the price with the time it was true (§2.1 "Label"). Drizzle's timestamp
- * mapper binds `asOf.toISOString()` (ist-timezone.md: the ORM path binds the ISO string;
- * the integration test round-trips it with drift 0).
+ * door to the price columns. SETs at most `currentPrice` and `currentPriceUpdatedAt` (the
+ * repository adds its own `updated_at` housekeeping stamp) through `IPORepository.update`
+ * (cache invalidated), never `upsertIPO` (#951: the whole-row save writes unclaimed columns).
+ * `asOf` is the EXCHANGE's own as-of instant (NSE `lastUpdateTime` / BSE `Ason`, IST converted
+ * to UTC). Drizzle's timestamp mapper binds `asOf.toISOString()` (ist-timezone.md; the
+ * integration test round-trips it with drift 0).
  *
- * An identical price is a no-op (OD-73): no write, no provenance row, even when the as-of
- * time moved. Every write gets one `field_sources` row per column, source NSE or BSE.
+ *   stale     — the as-of is OLDER than the stored one (round 2, Tier A MAJOR 2: the as-of only
+ *               moves forward, so a slow run or a lagging exchange mirror can never overwrite a
+ *               newer price with an older one). Nothing is written.
+ *   unchanged — same price, same or no newer as-of. Nothing is written (OD-73).
+ *   confirmed — same price, newer as-of: only `currentPriceUpdatedAt` moves, because §2.1
+ *               "Label" shows the price "with the timestamp it was read at"; one provenance row.
+ *   updated   — a new price: both columns, one provenance row each.
  */
 export async function writePostListingPrice(params: {
   ipoRepository: PostListingPriceWriteRepo;
@@ -776,48 +790,70 @@ export async function writePostListingPrice(params: {
   price: number;
   asOf: Date;
   source: 'NSE' | 'BSE';
-}): Promise<{ outcome: 'updated' | 'unchanged'; written: string[]; fieldSources: string[] }> {
+}): Promise<{ outcome: 'updated' | 'confirmed' | 'unchanged' | 'stale'; written: string[]; fieldSources: string[] }> {
   const { ipoRepository, fieldSources, sourceTrackingEnabled, ipoId, existing, price, asOf, source } = params;
   if (!(Number.isFinite(price) && price > 0) || Number.isNaN(asOf.getTime())) {
     throw new Error(`writePostListingPrice: refused price ${price} / as-of ${String(asOf)} for ${ipoId}`);
   }
+  const storedAsOf = storedAsOfInstant(existing.currentPriceUpdatedAt);
+  if (storedAsOf && asOf.getTime() < storedAsOf.getTime()) {
+    return { outcome: 'stale', written: [], fieldSources: [] };
+  }
   const rounded = price.toFixed(2);
   const prior = existing.currentPrice === null || existing.currentPrice === undefined ? null : Number(existing.currentPrice);
-  if (prior !== null && prior.toFixed(2) === rounded) {
+  const samePrice = prior !== null && prior.toFixed(2) === rounded;
+  if (samePrice && storedAsOf && asOf.getTime() === storedAsOf.getTime()) {
     return { outcome: 'unchanged', written: [], fieldSources: [] };
   }
-  const set = { currentPrice: rounded, currentPriceUpdatedAt: asOf };
+  const set: Record<string, unknown> = samePrice ? { currentPriceUpdatedAt: asOf } : { currentPrice: rounded, currentPriceUpdatedAt: asOf };
   await ipoRepository.update(ipoId, set);
   const tracked: string[] = [];
   if (sourceTrackingEnabled) {
     const previous: Record<string, string | null> = {
       currentPrice: prior === null ? null : prior.toFixed(2),
-      currentPriceUpdatedAt: existing.currentPriceUpdatedAt instanceof Date ? existing.currentPriceUpdatedAt.toISOString() : existing.currentPriceUpdatedAt == null ? null : String(existing.currentPriceUpdatedAt),
+      currentPriceUpdatedAt: storedAsOf ? storedAsOf.toISOString() : null,
     };
     for (const fieldName of Object.keys(set)) {
       await fieldSources.trackFieldUpdate({ ipoId, tableName: 'ipos', fieldName, source, confidence: 1, previousValue: previous[fieldName] });
       tracked.push(fieldName);
     }
   }
-  return { outcome: 'updated', written: Object.keys(set), fieldSources: tracked };
+  return { outcome: samePrice ? 'confirmed' : 'updated', written: Object.keys(set), fieldSources: tracked };
 }
 
+/** The `ipos` columns the post-listing state write may SET (count, delisting, cached NSE series). */
+export const POST_LISTING_STATE_COLUMNS = ['priceNoSymbolReads', 'delistedOn', 'status', 'priceNseSeries'] as const;
+
 /**
- * Item 7 S5 (spec §2.3.3.3, OD-38): the consecutive no-such-symbol count, kept on the row
- * so it survives between 15-minute runs. SETs only `priceNoSymbolReads` and, on the third
- * consecutive read, `delistedOn` (the IST date of that read). The `ipo_status` enum has no
- * DELISTED value yet, so the status flip OD-38 names is a follow-up; `delistedOn` is what
- * stops the job for the row. Called only when the count actually changes.
+ * Item 7 S5 (spec §2.3.3.3, OD-38; round 2): the job's row state. SETs only the keys given:
+ * `priceNoSymbolReads` (the consecutive count, kept on the row between 15-minute runs),
+ * `delistedOn` + `status` (DELISTED on the third counted read; back to LISTED with a NULL date
+ * when a later read finds a price), and `priceNseSeries` (the stock's working NSE series, asked
+ * first next time). A status change gets its provenance row (source = the exchange that decided
+ * it, NSE), like every other status write.
  */
-export async function writePostListingSymbolReads(params: {
+export async function writePostListingState(params: {
   ipoRepository: PostListingPriceWriteRepo;
+  fieldSources?: OpeningDayFieldSourcesWriter;
+  sourceTrackingEnabled?: boolean;
   ipoId: string;
-  reads: number;
-  delistedOn: string | null;
-}): Promise<void> {
-  const set: Record<string, unknown> = { priceNoSymbolReads: params.reads };
-  if (params.delistedOn) set.delistedOn = params.delistedOn;
+  previousStatus?: string | null;
+  patch: { reads?: number; delistedOn?: string | null; status?: 'LISTED' | 'DELISTED'; nseSeries?: string };
+}): Promise<string[]> {
+  const { patch } = params;
+  const set: Record<string, unknown> = {};
+  if (patch.reads !== undefined) set.priceNoSymbolReads = patch.reads;
+  if (patch.delistedOn !== undefined) set.delistedOn = patch.delistedOn;
+  if (patch.status !== undefined) set.status = patch.status;
+  if (patch.nseSeries !== undefined) set.priceNseSeries = patch.nseSeries;
+  if (Object.keys(set).length === 0) return [];
   await params.ipoRepository.update(params.ipoId, set);
+  if (patch.status !== undefined && params.sourceTrackingEnabled && params.fieldSources && patch.status !== params.previousStatus) {
+    await params.fieldSources.trackFieldUpdate({
+      ipoId: params.ipoId, tableName: 'ipos', fieldName: 'status', source: 'NSE', confidence: 1, previousValue: params.previousStatus ?? null,
+    });
+  }
+  return Object.keys(set);
 }
 
 /**

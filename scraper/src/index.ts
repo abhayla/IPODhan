@@ -380,8 +380,8 @@ export const LIVE_JOB_DEADLINE_MS = 3.5 * 60 * 1000;
  * table, §6.1) — it no longer runs as a post-step inside the data cycle.
  * `opening` (S4, OD-31) is the discovery-only opening-day check — same heavy
  * lock, skip-if-held, never fetches or extracts a document (§2.1).
- * `price` (S5, OD-29) is the post-listing price job — its own `scraper:price`
- * lock in the live class, every 15 minutes in market hours (§2.1).
+ * `price` (S5, OD-29) is the post-listing price job — the §2.1 `live` lock
+ * (`scraper:live`, shared with the live-figures job), every 15 minutes in market hours.
  */
 export const SCRAPER_JOBS = ['data', 'live', 'closed', 'opening', 'price'] as const;
 export type ScraperJob = (typeof SCRAPER_JOBS)[number];
@@ -1430,9 +1430,9 @@ export async function main() {
       return;
     }
 
-    // Item 7 S5 (OD-29): the post-listing price job is its own process under its
-    // own live-class lock (scraper:price) — never scraper:cycle. It writes only
-    // ipos.current_price and its as-of stamp, and returns here.
+    // Item 7 S5 (OD-29): the post-listing price job is its own process under the
+    // §2.1 live lock (scraper:live) — never scraper:cycle. It writes only the
+    // price columns and its own row state, and returns here.
     if (job === 'price') {
       const priceExitCode = await runPostListingPriceWake();
       await flushOwnerNotify();

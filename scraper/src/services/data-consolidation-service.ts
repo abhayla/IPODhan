@@ -367,7 +367,8 @@ function isDetectedAtStillFresh(detectedAt: unknown, now: number): boolean {
  * status write via plain source priority. Defined locally (not imported
  * from web) to keep the scraper package dependency-free of web.
  */
-const TERMINAL_IPO_STATUSES = new Set<string>(['WITHDRAWN', 'POSTPONED']);
+// DELISTED (item 7 S5, OD-38): only the post-listing price job sets or clears it.
+const TERMINAL_IPO_STATUSES = new Set<string>(['WITHDRAWN', 'POSTPONED', 'DELISTED']);
 
 const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
 

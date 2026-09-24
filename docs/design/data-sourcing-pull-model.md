@@ -1080,11 +1080,12 @@ endpoints, with the 90-day windows."*
   **Measured 2026-09-24 (F-155):** no `ipos` row stores a BSE scrip code (0 of 387 on staging), so the BSE
   call needs one first: BSE `ListofScripData` (one call, 5,047 active equity scrips) maps `ISIN_NUMBER` to
   `SCRIP_CD` (CSM Technologies INE0ZK601013 -> 544806, 103.62). Both BSE calls refuse a bare User-Agent.
-  **Measured 2026-09-24 (F-159, open for owner decision):** only 8 of the 129 LISTED rows inside the
-  90-day window store an ISIN, so BSE can price or judge delisting for few of them; NSE `getSymbolData`
-  itself returns the ISIN; BSE's `segment=Equity` list includes the SME groups M and MT. Item 7 S5 counts a
-  no-such-symbol read toward delisting only when the ISIN is known (BSE side judged), and records the third
-  read as `ipos.delisted_on` because `ipo_status` has no DELISTED value yet.
+  **Measured 2026-09-24 (F-162):** 8 of the 129 LISTED rows inside the 90-day window store an ISIN, so
+  BSE can be asked for few of them (the ISIN gap belongs to the pull walk, item 6: F-160); NSE
+  `getSymbolData` itself returns the ISIN; BSE's `segment=Equity` list includes the SME groups M and MT; a
+  refusal can arrive as an HTTP 200 HTML page. Under §2.3.3.3's "three consecutive no-such-symbol
+  answers", an unknown answer is not a no-such-symbol answer: a run where BSE cannot be asked (no ISIN) or
+  either exchange gave an outage page does not count.
 - **Window:** every 15 minutes during exchange market hours, for 90 days after the listing date;
   after that the job stops for that IPO and the page keeps the last value it had.
 - **Label:** the page shows the price **with the timestamp it was read at, marked "delayed"**. A
@@ -3434,9 +3435,9 @@ about 3 new filings a day.
 | Opening-day check (~09:45) | 2 | 0.01 MB | 0.00 |
 | Live figures (every 30 min, 10:00–18:30) | 342 | 0.12 MB | 0.00 |
 | Grey-market premium (every 30 min, all day) | 48 | 1.6 MB | 0.05 |
-| Post-listing price (every 15 min, market hours) | 300 | 0.11 MB | 0.00 |
+| Post-listing price (every 15 min, market hours) | 3,175 | 59.9 MB | 1.76 |
 | Closed-IPO job (22:00, ten a night) | 20 | 25.1 MB | 0.74 |
-| **Total** | **835** | **49.8 MB** | **1.46** |
+| **Total** | **3,710** | **109.6 MB** | **3.22** |
 
 **1.46 GB a month is 0.018% of the plan's bandwidth.** The honest conclusion is that **bandwidth is
 not a constraint on this design and never will be** — and saying so is the point of measuring. The

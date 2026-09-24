@@ -163,8 +163,9 @@ SCRAPER_CEILING_SECONDS="${SCRAPER_CEILING_SECONDS:-7200}"
 #             data/closed, per spec section 2.1's lock table ("heavy: the data
 #             job, the opening-day check, the closed-IPO job").
 #   price   -> --job=price (item 7 S5, OD-29: the post-listing price job),
-#             reads lock:resource:scraper:price -- its own live-class lock,
-#             never the heavy scraper:cycle (spec section 2.1 job table).
+#             reads lock:resource:scraper:live -- spec section 2.1's lock table
+#             puts "the post-listing price fetch" in the live class with the
+#             live-figures job (TTL 4 min), never the heavy scraper:cycle.
 # An explicit SCRAPER_LOCK_KEY in the environment still wins, for the suite.
 # --check: run ONLY the resolution checks below and exit - never start a cycle.
 # This is what the deploy calls, so the deploy's verdict and the wrapper's
@@ -201,7 +202,7 @@ case "$SCRAPER_JOB" in
     ;;
   price)
     SCRAPER_JOB_ARG="--job=price"
-    SCRAPER_JOB_LOCK_KEY="lock:resource:scraper:price"
+    SCRAPER_JOB_LOCK_KEY="lock:resource:scraper:live"
     ;;
   *)
     SCRAPER_JOB_ARG="--job=data"
@@ -215,8 +216,10 @@ SCRAPER_LOCK_KEY="${SCRAPER_LOCK_KEY:-$SCRAPER_JOB_LOCK_KEY}"
 # carries its own in-process deadline at 3.5 minutes. The 2-hour data ceiling
 # would let a live process that ignores that deadline live for 2 hours, so a
 # live wake is bounded at 300 s: 60 s past the lock's TTL, and still far inside
-# the 30-minute live cadence.
-if [ -z "$SCRAPER_CEILING_OVERRIDE" ] && [ "$SCRAPER_JOB" = "live" ]; then
+# the 30-minute live cadence. The post-listing price job (item 7 S5) shares the
+# live lock class, carries a 3-minute in-process deadline, and gets the same
+# 300 s ceiling, inside its 15-minute cadence.
+if [ -z "$SCRAPER_CEILING_OVERRIDE" ] && { [ "$SCRAPER_JOB" = "live" ] || [ "$SCRAPER_JOB" = "price" ]; }; then
   SCRAPER_CEILING_SECONDS=300
 fi
 

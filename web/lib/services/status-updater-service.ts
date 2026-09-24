@@ -19,7 +19,7 @@ import { isAdminOnlyConflict } from '@ipodhan/shared/utils/conflict-reasons';
 import { revalidateForSlugs } from './page-revalidation-service';
 import { istDateIso } from '@/lib/utils/ist-date';
 
-export type IPOStatus = 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' | 'WITHDRAWN' | 'POSTPONED';
+export type IPOStatus = 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' | 'WITHDRAWN' | 'POSTPONED' | 'DELISTED';
 
 /**
  * I4 / W-41 — TERMINAL statuses. These are set by an exchange signal (a BSE
@@ -30,7 +30,9 @@ export type IPOStatus = 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' | 'WITHDRAWN' 
  * republish a dead issue as a listed company. Only a source that can observe
  * the issue coming back (or a manual admin edit) may clear these.
  */
-export const TERMINAL_STATUSES = ['WITHDRAWN', 'POSTPONED'] as const;
+// DELISTED (item 7 S5, OD-38): set by the post-listing price job; the date ladder would
+// otherwise walk it straight back to LISTED on the next run.
+export const TERMINAL_STATUSES = ['WITHDRAWN', 'POSTPONED', 'DELISTED'] as const;
 
 /** Pure guard: is this stored status one the date ladder must not overwrite? */
 export function isTerminalStatus(status: string | null | undefined): boolean {

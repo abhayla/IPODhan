@@ -5,7 +5,7 @@
  * Two free public exchange endpoints, both measured before this was written:
  *   - NSE `GetQuoteApi?functionName=getSymbolData` (F-150). It answers only for the
  *     stock's real trading series: EQ for mainboard, SM or ST for SME depending on the
- *     stock. A wrong series is a 404 or an empty body, so a 404 is NOT delisting evidence
+ *     stock. A wrong series is a 404 (measured), so a 404 is NOT delisting evidence
  *     by itself: only "no series answers" is a no-such-symbol read.
  *   - BSE `getScripHeaderData` by scrip code (F-150), the scrip code taken from the BSE
  *     active-scrip list by ISIN (F-155: `ipos.bse_scrip_code` is NULL on every row).
@@ -14,9 +14,11 @@
  * Every read returns one of three outcomes, never a thrown error for an exchange answer:
  *   price     — a positive last traded price with the exchange's own as-of time
  *   no-symbol — the exchange says there is no such symbol (every series tried answered
- *               404/empty; or BSE has no such scrip / the scrip is not Listed)
- *   refused   — Access Denied, a non-JSON page, a network error, a 5xx, a listed scrip
- *               with no trade yet: NOT a no-symbol read, never counted toward delisting.
+ *               404 or an explicit empty quote list; or BSE's well-formed answer names no
+ *               scrip / a scrip that is not Listed)
+ *   refused   — UNKNOWN: Access Denied, a non-JSON or empty 200, an empty `{}`, a network
+ *               error or timeout, a 5xx, a listed scrip with no trade yet. Never counted
+ *               toward delisting, always logged with its cause (round 2, Tier A MAJOR 1).
  */
 import { fetchNseSymbolQuoteRaw } from './nse-api-client.js';
 
@@ -80,11 +82,44 @@ export function nseSeriesOrder(segment: string | null | undefined, cached?: stri
 
 export type NseRawFetch = (symbol: string, series: string) => Promise<{ status: number; body: string }>;
 
+/** Per-request timeout for every exchange quote call: one hung request must never eat the run. */
+export const EXCHANGE_REQUEST_TIMEOUT_MS = 15_000;
+
 /**
- * Read one NSE price: try each series until one answers with a quote. A 404 or an empty
- * body means "not this series"; only when EVERY series says so is it a no-symbol read.
- * Anything else (401/403 after the client's one session refresh, 5xx, a network error,
- * an Access Denied page) is `refused` and stops the loop for this symbol.
+ * What one NSE series answer means (round 2, Tier A MAJOR 1). Only an HTTP 404 or a
+ * well-formed JSON body that EXPLICITLY carries no quote (`equityResponse: []`) says
+ * "no such symbol in this series". Everything else that is not a quote is UNKNOWN: an
+ * outage page must never count toward delisting (§2.3.3.3: three no-such-symbol answers,
+ * and an outage is not an answer).
+ */
+export function classifyNseSeriesAnswer(res: { status: number; body: string }):
+  | { kind: 'price'; quote: NonNullable<ReturnType<typeof parseNseSymbolData>> }
+  | { kind: 'no-symbol' }
+  | { kind: 'refused'; detail: string } {
+  if (res.status === 404) return { kind: 'no-symbol' };
+  if (res.status !== 200) return { kind: 'refused', detail: `HTTP ${res.status}: ${res.body.slice(0, 120)}` };
+  if (res.body.trim() === '') return { kind: 'refused', detail: 'HTTP 200 with an empty body' };
+  if (/Access Denied/i.test(res.body)) return { kind: 'refused', detail: `Access Denied page (${res.body.length} bytes)` };
+  let parsed: any;
+  try {
+    parsed = JSON.parse(res.body);
+  } catch {
+    return { kind: 'refused', detail: `HTTP 200 with a non-JSON body (${res.body.length} bytes)` };
+  }
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.equityResponse)) {
+    return { kind: 'refused', detail: `HTTP 200 JSON with no equityResponse (${res.body.slice(0, 80)})` };
+  }
+  if (parsed.equityResponse.length === 0) return { kind: 'no-symbol' };
+  const quote = parseNseSymbolData(res.body);
+  if (quote) return { kind: 'price', quote };
+  return { kind: 'refused', detail: 'HTTP 200 quote row with no usable price or as-of time' };
+}
+
+/**
+ * Read one NSE price: try each series (the cached working series first) until one
+ * answers with a quote. Only when EVERY series answers "no such symbol" (404, or an
+ * explicit empty quote list) is it a no-symbol read. The first unknown answer (403,
+ * 5xx, timeout, an HTML or empty 200) stops the loop: `refused`, with its cause.
  */
 export async function readNsePrice(
   symbol: string,
@@ -101,18 +136,11 @@ export async function readNsePrice(
     } catch (error) {
       return { kind: 'refused', exchange: 'NSE', detail: `network: ${error instanceof Error ? error.message : String(error)}`, calls };
     }
-    if (res.status === 404) continue;
-    if (res.status !== 200) {
-      return { kind: 'refused', exchange: 'NSE', detail: `HTTP ${res.status}: ${res.body.slice(0, 120)}`, calls };
-    }
-    if (/Access Denied/i.test(res.body)) {
-      return { kind: 'refused', exchange: 'NSE', detail: `Access Denied page (${res.body.length} bytes)`, calls };
-    }
-    const quote = parseNseSymbolData(res.body);
-    if (quote) return { kind: 'price', exchange: 'NSE', ...quote, series, calls };
-    // A 200 with an empty or quote-less body: not this series (F-150, ICELCO ST).
+    const answer = classifyNseSeriesAnswer(res);
+    if (answer.kind === 'price') return { kind: 'price', exchange: 'NSE', ...answer.quote, series, calls };
+    if (answer.kind === 'refused') return { kind: 'refused', exchange: 'NSE', detail: `series ${series}: ${answer.detail}`, calls };
   }
-  return { kind: 'no-symbol', exchange: 'NSE', detail: `no series answered for ${symbol}`, calls };
+  return { kind: 'no-symbol', exchange: 'NSE', detail: `every series answered no-such-symbol for ${symbol}`, calls };
 }
 
 export const BSE_BROWSER_HEADERS = {
@@ -138,8 +166,14 @@ export function parseBseScripHeader(body: string):
     return { kind: 'refused', detail: `non-JSON body (${body.length} bytes)` };
   }
   const header = parsed?.Header;
-  const category = String(header?.Category ?? parsed?.Cmpname?.Category ?? '').trim();
-  if (!header || !parsed?.Cmpname?.FullN) return { kind: 'no-symbol', detail: 'no scrip in the answer' };
+  const cmp = parsed?.Cmpname;
+  // Round 2: "no such scrip" only when BSE's answer has its usual shape and says so
+  // (Cmpname present, FullN null: scrip 999999). An empty `{}` or any other shape is unknown.
+  if (!header || typeof header !== 'object' || !cmp || typeof cmp !== 'object') {
+    return { kind: 'refused', detail: `JSON without Header/Cmpname (${body.slice(0, 80)})` };
+  }
+  const category = String(header?.Category ?? cmp?.Category ?? '').trim();
+  if (!cmp.FullN) return { kind: 'no-symbol', detail: 'no scrip in the answer' };
   if (category && !/^listed$/i.test(category)) return { kind: 'no-symbol', detail: `scrip category ${category}` };
   const price = Number(String(header.LTP ?? parsed?.CurrRate?.LTP ?? '').replace(/,/g, ''));
   const asOfText = String(header.Ason ?? '');
@@ -155,7 +189,7 @@ export function parseBseScripHeader(body: string):
 export type BseRawFetch = (url: string) => Promise<{ status: number; body: string }>;
 
 export const defaultBseRawFetch: BseRawFetch = async (url) => {
-  const res = await fetch(url, { headers: BSE_BROWSER_HEADERS, signal: AbortSignal.timeout(20_000) });
+  const res = await fetch(url, { headers: BSE_BROWSER_HEADERS, signal: AbortSignal.timeout(EXCHANGE_REQUEST_TIMEOUT_MS) });
   return { status: res.status, body: await res.text() };
 };
 
@@ -173,4 +207,31 @@ export async function readBsePrice(scripCode: string, opts: { fetchRaw?: BseRawF
     return { kind: 'price', exchange: 'BSE', price: parsed.price, asOf: parsed.asOf, asOfText: parsed.asOfText, calls: 1 };
   }
   return { kind: parsed.kind, exchange: 'BSE', detail: parsed.detail, calls: 1 };
+}
+
+/**
+ * Round 2 (Tier A MAJOR 3): the pause between exchange calls, so a run is a steady trickle and
+ * not a burst. 400 ms: 129 in-window IPOs (staging, 2026-09-24) at about one call each is ~52 s
+ * of spacing plus ~0.3 s of latency a call (measured on the core-proof reads), ~90 s a run —
+ * comfortably inside the 3-minute run deadline and the 4-minute `live` lock — and at most 2.5
+ * requests a second, well under the page-plus-assets burst a browser opening one NSE quote page
+ * makes. Neither exchange publishes a rate limit for these endpoints (§7.4 "Politeness").
+ */
+export const EXCHANGE_CALL_GAP_MS = 400;
+
+/** Returns `wait()`: resolves once at least `gapMs` has passed since the previous `wait()` resolved. */
+export function createPacer(
+  gapMs: number,
+  deps: { now?: () => number; sleep?: (ms: number) => Promise<void> } = {},
+): () => Promise<void> {
+  const now = deps.now ?? (() => Date.now());
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  let last: number | null = null;
+  return async () => {
+    if (last !== null) {
+      const due = last + gapMs - now();
+      if (due > 0) await sleep(due);
+    }
+    last = now();
+  };
 }

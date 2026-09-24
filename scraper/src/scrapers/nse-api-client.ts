@@ -1646,13 +1646,32 @@ export function nseSourceKeys(
  * error and retry a 404-free auth refusal three times, which the call budget
  * (§7.4) cannot absorb every 15 minutes. One 401/403 triggers ONE session refresh
  * and ONE retry, no more.
+ *
+ * Round 2 (Tier A MAJOR 2): every request carries a per-request timeout
+ * (`timeoutMs`, default 15 s) and the session warm-up is bounded too, so one hung
+ * request cannot hold the shared `live` lock past its 4-minute TTL. A timeout
+ * throws, and the caller reads a throw as REFUSED, never as no-such-symbol.
  */
 export async function fetchNseSymbolQuoteRaw(
   symbol: string,
   series: string,
+  timeoutMs = 15_000,
 ): Promise<{ status: number; body: string }> {
+  const warmUp = async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        initNSESession(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`NSE session warm-up timed out after ${2 * timeoutMs} ms`)), 2 * timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
   if (nseSessionCookies.length === 0) {
-    await initNSESession();
+    await warmUp();
   }
   const url = new URL(BASE_URL + '/api/NextApi/apiClient/GetQuoteApi');
   url.searchParams.set('functionName', 'getSymbolData');
@@ -1667,13 +1686,14 @@ export async function fetchNseSymbolQuoteRaw(
         Referer: `${BASE_URL}/get-quotes/equity?symbol=${encodeURIComponent(symbol)}`,
         ...(nseSessionCookies.length > 0 && { Cookie: nseSessionCookies.join('; ') }),
       },
+      signal: AbortSignal.timeout(timeoutMs),
     });
     return { status: response.status, body: await response.text() };
   };
   let result = await once();
   if (result.status === 401 || result.status === 403) {
     nseSessionCookies = [];
-    await initNSESession();
+    await warmUp();
     result = await once();
   }
   return result;

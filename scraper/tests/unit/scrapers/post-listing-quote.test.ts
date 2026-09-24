@@ -157,3 +157,85 @@ describe('exchange timestamps are IST wall clock', () => {
     expect(parseBseAsOn('')).toBeNull();
   });
 });
+
+/**
+ * Round 2 (Tier A MAJOR 1): an exchange OUTAGE is never read as "no such symbol".
+ * Only an HTTP 404 or a well-formed JSON body that explicitly carries no quote
+ * (`equityResponse: []`) is a no-such-symbol answer for a series; an HTML 200, an
+ * empty `{}`, an empty body, a 403, a 5xx or a timeout is REFUSED (unknown), with its
+ * cause, and stops the read.
+ */
+describe('NSE outage shapes are refused, never no-symbol (round 2)', () => {
+  const always = (res: { status: number; body: string } | Error) => {
+    const seen: string[] = [];
+    const fetchRaw = async (_symbol: string, series: string) => {
+      seen.push(series);
+      if (res instanceof Error) throw res;
+      return res;
+    };
+    return { seen, fetchRaw };
+  };
+  const cases: Array<[string, { status: number; body: string } | Error, RegExp]> = [
+    ['an HTML 200 page', { status: 200, body: LIVE['bse-bare-ua'] }, /non-JSON/],
+    ['an empty JSON object {}', { status: 200, body: '{}' }, /no equityResponse/],
+    ['an empty body', { status: 200, body: '' }, /empty body/],
+    ['a 403 Access Denied', { status: 403, body: 'Access Denied' }, /HTTP 403/],
+    ['a 503', { status: 503, body: 'Service Unavailable' }, /HTTP 503/],
+    ['a timeout', Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }), /network: .*timeout/],
+  ];
+  for (const [label, res, cause] of cases) {
+    it(`${label}: refused on the first series, with its cause, 1 call`, async () => {
+      const h = always(res);
+      const q = await readNsePrice('HEROMOTORS', 'MAINBOARD', { fetchRaw: h.fetchRaw });
+      expect(q.kind).toBe('refused');
+      if (q.kind !== 'refused') return;
+      expect(q.detail).toMatch(cause);
+      expect(q.calls).toBe(1);
+      expect(h.seen).toEqual(['EQ']);
+    });
+  }
+
+  it('a 404 on EQ then an outage on BE: refused (unknown), never no-symbol', async () => {
+    const fetchRaw = async (_s: string, series: string) =>
+      series === 'EQ' ? { status: 404, body: '{"error":"Unexpected end of JSON input"}' } : { status: 200, body: '{}' };
+    const q = await readNsePrice('X', 'MAINBOARD', { fetchRaw });
+    expect(q.kind).toBe('refused');
+    expect(q.calls).toBe(2);
+  });
+
+  it('an explicit empty quote list (equityResponse: []) on every series is a no-symbol answer', async () => {
+    const fetchRaw = async () => ({ status: 200, body: '{"equityResponse":[]}' });
+    const q = await readNsePrice('X', 'MAINBOARD', { fetchRaw });
+    expect(q.kind).toBe('no-symbol');
+    expect(q.calls).toBe(4);
+  });
+
+  it('the cached series is asked first: an SME cached as ST costs 1 call, not 2', async () => {
+    const seen: string[] = [];
+    const fetchRaw = async (_s: string, series: string) => {
+      seen.push(series);
+      return series === 'ST' ? { status: 200, body: LIVE['nse-VINOD-ST-200'] } : { status: 404, body: '' };
+    };
+    const first = await readNsePrice('VINOD', 'SME', { fetchRaw });
+    expect(first.calls).toBe(2);
+    const second = await readNsePrice('VINOD', 'SME', { fetchRaw, cachedSeries: first.kind === 'price' ? first.series : null });
+    expect(second.kind).toBe('price');
+    expect(second.calls).toBe(1);
+    expect(seen).toEqual(['SM', 'ST', 'ST']);
+  });
+});
+
+describe('BSE outage shapes are refused (round 2)', () => {
+  it('an HTML 200, a 5xx and a timeout are refused; only a JSON body with no scrip is no-symbol', async () => {
+    const html = await readBsePrice('544936', { fetchRaw: async () => ({ status: 200, body: LIVE['bse-bare-ua'] }) });
+    expect(html.kind).toBe('refused');
+    const five = await readBsePrice('544936', { fetchRaw: async () => ({ status: 502, body: 'Bad Gateway' }) });
+    expect(five.kind).toBe('refused');
+    const slow = await readBsePrice('544936', { fetchRaw: async () => { throw new Error('The operation was aborted due to timeout'); } });
+    expect(slow.kind).toBe('refused');
+    const empty = await readBsePrice('544936', { fetchRaw: async () => ({ status: 200, body: '{}' }) });
+    expect(empty.kind).toBe('refused');
+    const none = await readBsePrice('999999', { fetchRaw: async () => ({ status: 200, body: LIVE['bse-999999-200'] }) });
+    expect(none.kind).toBe('no-symbol');
+  });
+});

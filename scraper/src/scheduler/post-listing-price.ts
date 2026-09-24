@@ -1,33 +1,38 @@
 /**
  * Item 7 S5 — the post-listing price job (spec docs/design/data-sourcing-pull-model.md §2.1
  * job row "Post-listing price" and "Post-listing prices: 15 minutes, 90 days, and no broker
- * feed (OD-29)"; OD-29, OD-54; delisting §2.3.3.3, OD-38; findings F-150, F-155).
+ * feed (OD-29)"; OD-29, OD-54; delisting §2.3.3.3, OD-38; findings F-150, F-155, F-162).
  *
  * Every 15 minutes in exchange market hours (09:15-15:30 IST, Mon-Fri, not an NSE holiday),
- * for each IPO with status LISTED whose listing date is within the last 90 days (IST date):
+ * for each IPO with status LISTED whose listing date is inside the 90-day window (IST dates):
  * read the last traded price and write ONLY `ipos.current_price` and its as-of stamp.
  *
  *   Which exchange wins: NSE, then BSE — the rank the spec gives `current_price` (§1 field
- *   table row 171: NSE rank 1, BSE rank 2; the manifest ranks
- *   `listing_performance.current_price` the same way, and an SME scrip trades on one exchange
- *   only). BSE is read only when NSE has no price, so a mainboard stock costs one call.
+ *   table row 171: NSE rank 1, BSE rank 2). BSE is read only when NSE has no price, so a
+ *   mainboard stock costs one call.
  *
  *   The as-of stamp is the exchange's own time (NSE `lastUpdateTime`, BSE `Ason`), because the
- *   page labels the price with the time it was true (§2.1 "Label").
+ *   page labels the price with the time it was read (§2.1 "Label"). The stamp only moves forward
+ *   (the writer refuses an older as-of), and an unchanged price read later still moves it.
  *
- *   The 90-day window is a window on `listing_date`, exactly as OD-29 states it. Stage
- *   inference from `listing_date` (#932) is a different question and out of scope: this job
- *   never changes a status.
+ *   The 90-day window is a window on `listing_date`, exactly as OD-29 states it: the listing day
+ *   is day 1, the 90th day is the last. This job never infers a stage (#932).
  *
- *   Delisting (§2.3.3.3): a run counts as a no-such-symbol read only when EVERY exchange the
- *   stock could trade on answered "no such symbol" (NSE: no series answers; BSE: the ISIN is
- *   absent from BSE's active list, or the scrip answers not-listed), no exchange refused, and
- *   the IST date is after the listing date. A row with no ISIN cannot be judged on BSE, so it
- *   is never counted (a BSE-only SME with no ISIN would otherwise be "delisted" in 45 minutes).
- *   The third consecutive read stops the job for the row (`delisted_on`); a price resets the
- *   count to 0.
+ *   Delisting (§2.3.3.3: "three consecutive" no-such-symbol answers; an UNKNOWN answer is not a
+ *   no-such-symbol answer). A run counts only when NSE answers no-such-symbol (every series 404 or
+ *   an explicit empty quote list) AND BSE answers no-such-symbol or does not list the stock per its
+ *   own active list, and the IST date is after the listing date. A run where BSE cannot be asked (no
+ *   ISIN, so no scrip code), or where either exchange's answer was an outage (non-JSON or empty 200,
+ *   403, 5xx, timeout), is UNKNOWN: it neither counts nor resets. The third counted run sets status
+ *   DELISTED and `delisted_on` (OD-38); a later price clears both and resets the count to 0 — the
+ *   close read (15:30 IST) re-asks the DELISTED rows still inside the window once a day, so a wrong
+ *   DELISTED is undone by the exchange's own answer (round 2, Tier A MAJOR 1 and 4).
+ *
+ *   Calls (§7.4, round 2 MAJOR 3): each stock's working NSE series is cached on the row
+ *   (`price_nse_series`) and asked first, so an SME trading in ST costs 1 call after its first
+ *   success, not 2-4. The wake paces the calls and the run line counts them.
  */
-import { and, eq, gte, isNull, lte } from 'drizzle-orm';
+import { and, asc, eq, gt, isNull, lte, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
 import { istDayIso } from '@ipodhan/shared/utils/ist-day';
@@ -42,13 +47,24 @@ const IST_OFFSET_MS = 330 * 60_000;
 
 /**
  * Exchange market hours, IST, Mon-Fri: 09:15 up to and including 15:30, so the 15:30 wake
- * reads the closing price. Holidays are checked by the caller (a DB read).
+ * reads the session's last trade. Holidays are checked by the caller (a DB read).
  */
 export function isPriceJobWindowIST(now: Date): boolean {
   const ist = new Date(now.getTime() + IST_OFFSET_MS);
   const weekday = ist.getUTCDay();
   const minutes = ist.getUTCHours() * 60 + ist.getUTCMinutes();
   return weekday >= 1 && weekday <= 5 && minutes >= PRICE_JOB_OPEN_IST_MINUTES && minutes <= PRICE_JOB_CLOSE_IST_MINUTES;
+}
+
+/**
+ * The close read: the 15:30 IST wake. The continuous session ends at 15:30, so this read's last
+ * traded price is the session's last trade (NSE's official closing price is a volume-weighted
+ * average published after 15:30 and is not read: the spec's window is market hours). It is also
+ * the once-a-day re-check of the DELISTED rows still inside the window.
+ */
+export function isCloseReadIST(now: Date): boolean {
+  const ist = new Date(now.getTime() + IST_OFFSET_MS);
+  return ist.getUTCHours() * 60 + ist.getUTCMinutes() >= PRICE_JOB_CLOSE_IST_MINUTES;
 }
 
 /** The IST calendar date `days` before `now`'s IST date, as YYYY-MM-DD. */
@@ -66,13 +82,28 @@ export interface PriceCandidate {
   currentPrice: unknown;
   currentPriceUpdatedAt: unknown;
   priceNoSymbolReads: number;
+  status: string;
+  delistedOn: string | null;
+  nseSeries: string | null;
 }
 
-/** LISTED, listed within the last 90 days (IST dates, both ends inclusive), not judged delisted. */
-export async function selectPriceCandidates(db: NodePgDatabase<typeof schema>, now: Date): Promise<PriceCandidate[]> {
+/**
+ * LISTED rows whose listing date is one of the 90 IST dates that start at the listing date
+ * (listing day = day 1, so the floor is EXCLUSIVE: `listing_date > today - 90`), not judged
+ * delisted. With `includeDelisted` (the close read) the DELISTED rows inside the same window are
+ * re-asked too. Stalest price first, so a run cut short by its deadline starts, next time, where
+ * this one stopped.
+ */
+export async function selectPriceCandidates(
+  db: NodePgDatabase<typeof schema>,
+  now: Date,
+  opts: { includeDelisted?: boolean } = {},
+): Promise<PriceCandidate[]> {
   const t = schema.ipos;
   const today = istDayIso(now);
   const from = istDateDaysBefore(now, POST_LISTING_WINDOW_DAYS);
+  const listedNotDelisted = and(eq(t.status, 'LISTED'), isNull(t.delistedOn));
+  const statusFilter = opts.includeDelisted ? or(listedNotDelisted, eq(t.status, 'DELISTED')) : listedNotDelisted;
   const rows = await db
     .select({
       id: t.id,
@@ -84,41 +115,71 @@ export async function selectPriceCandidates(db: NodePgDatabase<typeof schema>, n
       currentPrice: t.currentPrice,
       currentPriceUpdatedAt: t.currentPriceUpdatedAt,
       priceNoSymbolReads: t.priceNoSymbolReads,
+      status: t.status,
+      delistedOn: t.delistedOn,
+      nseSeries: t.priceNseSeries,
     })
     .from(t)
-    .where(and(eq(t.status, 'LISTED'), gte(t.listingDate, from), lte(t.listingDate, today), isNull(t.delistedOn)));
-  return rows.map((r) => ({ ...r, listingDate: r.listingDate == null ? null : String(r.listingDate) })) as PriceCandidate[];
+    .where(and(statusFilter, gt(t.listingDate, from), lte(t.listingDate, today)))
+    .orderBy(sql`${t.currentPriceUpdatedAt} asc nulls first`, asc(t.id));
+  return rows.map((r) => ({
+    ...r,
+    listingDate: r.listingDate == null ? null : String(r.listingDate),
+    delistedOn: r.delistedOn == null ? null : String(r.delistedOn),
+    status: String(r.status),
+  })) as PriceCandidate[];
 }
+
+/** The row-state columns the job keeps (count, delisting, cached series). Only changed keys are sent. */
+export interface PriceStatePatch {
+  reads?: number;
+  delistedOn?: string | null;
+  status?: 'LISTED' | 'DELISTED';
+  nseSeries?: string;
+}
+
+export type PriceWriteOutcome = 'updated' | 'confirmed' | 'unchanged' | 'stale';
 
 export interface PriceJobDeps {
   now: Date;
   candidates: PriceCandidate[];
-  readNse: (symbol: string, segment: string | null) => Promise<QuoteOutcome>;
+  readNse: (symbol: string, segment: string | null, cachedSeries: string | null) => Promise<QuoteOutcome>;
   readBse: (scripCode: string) => Promise<QuoteOutcome>;
   /** ISIN -> BSE scrip code, from BSE's active-scrip list. Called at most once per run, only when needed. */
   loadBseScrips: () => Promise<Map<string, string>>;
-  writePrice: (c: PriceCandidate, q: Extract<QuoteOutcome, { kind: 'price' }>) => Promise<'updated' | 'unchanged'>;
-  writeReads: (c: PriceCandidate, reads: number, delistedOn: string | null) => Promise<void>;
+  writePrice: (c: PriceCandidate, q: Extract<QuoteOutcome, { kind: 'price' }>) => Promise<PriceWriteOutcome>;
+  writeState: (c: PriceCandidate, patch: PriceStatePatch) => Promise<void>;
   log: (line: string, fields: Record<string, unknown>) => void;
+  /** Epoch ms after which no new IPO is started (keeps the run inside the shared `live` lock's TTL). */
+  deadlineAt?: number;
+  clock?: () => number;
 }
 
 export interface PriceJobSummary {
   candidates: number;
   updated: string[];
+  confirmed: string[];
   unchanged: string[];
+  stale: string[];
   noSymbol: string[];
   delisted: string[];
+  undelisted: string[];
   refused: string[];
   notJudged: string[];
-  calls: { nse: number; bse: number; bseList: number };
+  notReached: string[];
+  calls: { nse: number; bse: number; bseList: number; total: number };
 }
+
+type Verdict = 'price' | 'no-symbol' | 'refused' | 'unknown';
 
 export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJobSummary> {
   const summary: PriceJobSummary = {
     candidates: deps.candidates.length,
-    updated: [], unchanged: [], noSymbol: [], delisted: [], refused: [], notJudged: [],
-    calls: { nse: 0, bse: 0, bseList: 0 },
+    updated: [], confirmed: [], unchanged: [], stale: [], noSymbol: [], delisted: [], undelisted: [],
+    refused: [], notJudged: [], notReached: [],
+    calls: { nse: 0, bse: 0, bseList: 0, total: 0 },
   };
+  const clock = deps.clock ?? (() => Date.now());
   const today = istDayIso(deps.now);
   let bseScrips: Map<string, string> | null = null;
   let bseListFailed: string | null = null;
@@ -137,24 +198,35 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
 
   for (const c of deps.candidates) {
     const name = c.companyName;
+    if (deps.deadlineAt !== undefined && clock() >= deps.deadlineAt) {
+      summary.notReached.push(name);
+      continue;
+    }
+    const wasDelisted = c.status === 'DELISTED' || c.delistedOn !== null;
+
+    // NSE first (§1 rank 1), the cached working series asked first.
     let nse: QuoteOutcome | null = null;
+    let nseVerdict: Verdict = 'unknown';
+    let nseDetail = 'no NSE symbol stored, NSE not asked';
     if (c.symbol) {
-      nse = await deps.readNse(c.symbol, c.segment);
+      nse = await deps.readNse(c.symbol, c.segment, c.nseSeries);
       summary.calls.nse += nse.calls;
+      nseVerdict = nse.kind;
+      nseDetail = nse.kind === 'price' ? `series ${nse.series}` : nse.detail;
     }
     let winner: Extract<QuoteOutcome, { kind: 'price' }> | null = nse?.kind === 'price' ? nse : null;
 
-    // BSE only when NSE has no price. `bseVerdict`: price | no-symbol | refused | unknown (no ISIN).
-    let bseVerdict: 'price' | 'no-symbol' | 'refused' | 'unknown' = 'unknown';
-    let bseDetail = 'no ISIN stored, BSE not read';
+    // BSE only when NSE has no price. No ISIN -> no scrip code -> BSE is UNKNOWN for this run.
+    let bseVerdict: Verdict = 'unknown';
+    let bseDetail = 'no ISIN stored, so no BSE scrip code: BSE unknown';
     if (!winner && c.isin) {
       const scrip = await scripFor(c.isin);
       if (scrip.failed) {
         bseVerdict = 'refused';
-        bseDetail = `BSE list failed: ${scrip.failed}`;
+        bseDetail = `BSE active list failed: ${scrip.failed}`;
       } else if (!scrip.code) {
         bseVerdict = 'no-symbol';
-        bseDetail = `ISIN ${c.isin} not in BSE's active list`;
+        bseDetail = `ISIN ${c.isin} is not in BSE's active list (not listed on BSE)`;
       } else {
         const bse = await deps.readBse(scrip.code);
         summary.calls.bse += bse.calls;
@@ -166,35 +238,52 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
 
     if (winner) {
       const outcome = await deps.writePrice(c, winner);
-      (outcome === 'updated' ? summary.updated : summary.unchanged).push(name);
-      if (c.priceNoSymbolReads > 0) await deps.writeReads(c, 0, null);
-      deps.log(`post-listing price: ${name} ${outcome} ${winner.exchange} ${winner.price} as of ${winner.asOfText}`, {
-        ipoId: c.id, exchange: winner.exchange, price: winner.price, asOf: winner.asOf.toISOString(), outcome,
-      });
+      summary[outcome].push(name);
+      const patch: PriceStatePatch = {};
+      if (c.priceNoSymbolReads !== 0) patch.reads = 0;
+      if (wasDelisted) {
+        patch.delistedOn = null;
+        patch.status = 'LISTED';
+        summary.undelisted.push(name);
+      }
+      if (winner.exchange === 'NSE' && winner.series && winner.series !== c.nseSeries) patch.nseSeries = winner.series;
+      if (Object.keys(patch).length > 0) await deps.writeState(c, patch);
+      deps.log(
+        `post-listing price: ${name} ${outcome} ${winner.exchange} ${winner.price} as of ${winner.asOfText}${wasDelisted ? ' — trading again, DELISTED cleared' : ''}`,
+        { ipoId: c.id, exchange: winner.exchange, price: winner.price, asOf: winner.asOf.toISOString(), outcome, series: winner.series ?? null },
+      );
       continue;
     }
 
-    const nseSaysNone = !c.symbol || nse?.kind === 'no-symbol';
-    const anyRefused = nse?.kind === 'refused' || bseVerdict === 'refused';
-    const consulted = Boolean(c.symbol) || bseVerdict !== 'unknown';
-    if (anyRefused) {
+    if (nseVerdict === 'refused' || bseVerdict === 'refused') {
       summary.refused.push(name);
-      deps.log(`post-listing price: ${name} refused — NSE ${nse ? (nse.kind === 'price' ? 'price' : `${nse.kind}: ${nse.detail}`) : 'no symbol'}; BSE ${bseDetail}`, { ipoId: c.id, reason: 'refused' });
+      deps.log(`post-listing price: ${name} UNKNOWN (outage, not counted) — NSE ${nseVerdict}: ${nseDetail}; BSE ${bseVerdict}: ${bseDetail}`, {
+        ipoId: c.id, reason: 'refused', nse: nseDetail, bse: bseDetail,
+      });
       continue;
     }
-    if (!consulted || bseVerdict === 'unknown' || !nseSaysNone || !(c.listingDate && today > c.listingDate)) {
+    const counts = nseVerdict === 'no-symbol' && bseVerdict === 'no-symbol' && Boolean(c.listingDate && today > c.listingDate);
+    if (!counts || wasDelisted) {
       summary.notJudged.push(name);
-      deps.log(`post-listing price: ${name} no price, delisting not judged — NSE ${nse ? nse.kind : 'no symbol'}; BSE ${bseDetail}; listed ${c.listingDate ?? 'unknown'}`, { ipoId: c.id, reason: 'not-judged' });
+      deps.log(
+        `post-listing price: ${name} no price, ${wasDelisted ? 'still delisted' : 'not counted toward delisting'} — NSE ${nseVerdict}: ${nseDetail}; BSE ${bseVerdict}: ${bseDetail}; listed ${c.listingDate ?? 'unknown'}`,
+        { ipoId: c.id, reason: wasDelisted ? 'still-delisted' : 'not-judged', nse: nseVerdict, bse: bseVerdict },
+      );
       continue;
     }
     const reads = c.priceNoSymbolReads + 1;
-    const delistedOn = reads >= DELISTING_CONSECUTIVE_READS ? today : null;
-    await deps.writeReads(c, reads, delistedOn);
-    (delistedOn ? summary.delisted : summary.noSymbol).push(name);
+    const patch: PriceStatePatch = { reads };
+    if (reads >= DELISTING_CONSECUTIVE_READS) {
+      patch.delistedOn = today;
+      patch.status = 'DELISTED';
+    }
+    await deps.writeState(c, patch);
+    (patch.status ? summary.delisted : summary.noSymbol).push(name);
     deps.log(
-      `post-listing price: ${name} no-such-symbol read ${reads} of ${DELISTING_CONSECUTIVE_READS}${delistedOn ? ` — delisted on ${delistedOn}, the job stops for this IPO` : ''}`,
-      { ipoId: c.id, reads, delistedOn },
+      `post-listing price: ${name} no-such-symbol read ${reads} of ${DELISTING_CONSECUTIVE_READS} (NSE: ${nseDetail}; BSE: ${bseDetail})${patch.status ? ` — DELISTED on ${today}` : ''}`,
+      { ipoId: c.id, reads, delistedOn: patch.delistedOn ?? null },
     );
   }
+  summary.calls.total = summary.calls.nse + summary.calls.bse + summary.calls.bseList;
   return summary;
 }
