@@ -189,6 +189,21 @@ export interface ConsolidateIPODataInput {
   offeringType?: string;
   incomingDocumentId?: string | null;
   incomingDocumentSha256?: string | null;
+  /**
+   * #993: `field_sources.data_lineage` for the values THIS caller supplies (the filing persister's
+   * `{method, docType, documentId, sourceSha, ...}`). Merged into a provenance row only when the
+   * row is written with `source` equal to this input's `source` — the incoming value (or the
+   * incoming source's confirmation of it) is what the row then records. A row written for another
+   * source (a set merge or SME collapse kept under the stored owner) never receives it: stamping
+   * this document on a value another source owns would name the wrong evidence.
+   */
+  incomingLineage?: Record<string, unknown> | null;
+}
+
+/** #993: the incoming caller's lineage, tagged with the source it speaks for. */
+interface IncomingLineage {
+  source: ScraperSource;
+  lineage: Record<string, unknown>;
 }
 
 /**
@@ -426,6 +441,24 @@ function resolveTzSignatureTiebreak(
  */
 function serializeFieldValue(value: any): string {
   return typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value);
+}
+
+/**
+ * #993: the `data_lineage` one provenance row is written with. The incoming caller's lineage (the
+ * filing persister's `{method, docType, documentId, sourceSha, ...}`) is included ONLY when the row
+ * is written for the incoming source itself; a row written for the stored owner (set merge, SME
+ * collapse) gets none of it, because that document is not the evidence for that row. The policy
+ * origin, when present, is always recorded. `undefined` when there is nothing to record, so the
+ * repository's merge leaves any stored lineage as it is (unchanged from before #993).
+ */
+export function provenanceLineage(
+  incoming: { source: string; lineage: Record<string, unknown> } | undefined,
+  rowSource: string,
+  policyOrigin: string | undefined
+): Record<string, unknown> | undefined {
+  const fromIncoming = incoming && incoming.source === rowSource ? incoming.lineage : undefined;
+  if (!fromIncoming && !policyOrigin) return undefined;
+  return { ...(fromIncoming ?? {}), ...(policyOrigin ? { policyOrigin } : {}) };
 }
 
 /**
@@ -826,6 +859,11 @@ export class DataConsolidationService {
       documentId: input.incomingDocumentId ?? null,
       documentSha256: input.incomingDocumentSha256 ?? null,
     };
+    // #993: passed down explicitly (never an instance field) — the service is a shared singleton,
+    // and a lineage left on `this` by one IPO's consolidation must never reach another IPO's row.
+    const incoming: IncomingLineage | undefined = input.incomingLineage
+      ? { source: input.source, lineage: input.incomingLineage }
+      : undefined;
 
     // Check if consolidation is enabled
     if (
@@ -943,6 +981,7 @@ export class DataConsolidationService {
         result.fieldsProcessed++;
         const existingField = existingSourceMap.get(fieldName);
         await this.trackFieldSource({
+          incoming,
           ipoId: input.ipoId,
           tableName: input.tableName,
           // Price band lives on the singleton `ipos` row — '' forever.
@@ -1122,6 +1161,7 @@ export class DataConsolidationService {
 
         try {
           const fieldResult = await this.consolidateField({
+            incoming,
             ipoId: input.ipoId,
             tableName: input.tableName,
             rowKey: input.rowKey ?? '',
@@ -1261,6 +1301,8 @@ export class DataConsolidationService {
    * Core conflict detection and resolution logic
    */
   private async consolidateField(params: {
+    /** #993: the incoming caller's lineage (see `ConsolidateIPODataInput.incomingLineage`). */
+    incoming?: IncomingLineage;
     ipoId: string;
     tableName: string;
     /** Natural key of the child row; `''` (default) for singleton tables. */
@@ -1660,6 +1702,7 @@ export class DataConsolidationService {
         // the M-1 keep-rule above can never unfreeze on its own. No previous
         // value/source: nothing changed and the prior origin is unknown.
         await this.trackFieldSource({
+          incoming: params.incoming,
           ipoId,
           tableName,
           // Generic path (any table, any field): a child row supplies its own key
@@ -1700,6 +1743,7 @@ export class DataConsolidationService {
       }
 
       await this.trackFieldSource({
+        incoming: params.incoming,
         ipoId,
         tableName,
         // Generic path — real key arrives with the child writer (s5b/s7a/s7b).
@@ -1758,6 +1802,7 @@ export class DataConsolidationService {
             );
 
             await this.trackFieldSource({
+              incoming: params.incoming,
               ipoId,
               tableName,
               // `listingExchanges` is an `ipos` column — singleton, '' forever.
@@ -1859,6 +1904,7 @@ export class DataConsolidationService {
           // exactly as scalars did before W-25.
           if (existingSource === undefined) {
             await this.trackFieldSource({
+              incoming: params.incoming,
               ipoId,
               tableName,
               // Set-valued fields are `ipos` columns — singleton, '' forever.
@@ -1922,6 +1968,7 @@ export class DataConsolidationService {
         }
 
         await this.trackFieldSource({
+          incoming: params.incoming,
           ipoId,
           tableName,
           // Set-valued fields are `ipos` columns — singleton, '' forever.
@@ -1948,6 +1995,7 @@ export class DataConsolidationService {
     // Case 1: No existing value - accept incoming
     if (normalizedStored === null || normalizedStored === undefined) {
       await this.trackFieldSource({
+        incoming: params.incoming,
         ipoId,
         tableName,
         // Generic path — real key arrives with the child writer (s5b/s7a/s7b).
@@ -2015,6 +2063,7 @@ export class DataConsolidationService {
 
     // Case 3: Conflict detected - resolve based on priority
     const conflict = await this.resolveConflict({
+      incoming: params.incoming,
       ipoId,
       tableName,
       rowKey,
@@ -2207,6 +2256,8 @@ export class DataConsolidationService {
    * Uses priority matrix and time-based rules
    */
   private async resolveConflict(params: {
+    /** #993: the incoming caller's lineage (see `ConsolidateIPODataInput.incomingLineage`). */
+    incoming?: IncomingLineage;
     ipoId: string;
     tableName: string;
     /** Natural key of the conflicting row; `''` for singleton tables. */
@@ -2681,6 +2732,7 @@ export class DataConsolidationService {
     // Track chosen source
     if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && !this.currentShadowMode && !provenanceUnchanged) {
       await this.trackFieldSource({
+        incoming: params.incoming,
         ipoId,
         tableName,
         // Generic path — real key arrives with the child writer (s5b/s7a/s7b).
@@ -2717,6 +2769,8 @@ export class DataConsolidationService {
    * Track field source for audit trail
    */
   private async trackFieldSource(params: {
+    /** #993: merged into `data_lineage` only when `source` is the incoming caller's source. */
+    incoming?: IncomingLineage;
     ipoId: string;
     tableName: string;
     /** Natural key of the row this fact belongs to; `''` (default) for singleton tables. */
@@ -2777,7 +2831,7 @@ export class DataConsolidationService {
         // Item 3 slice S1d: name the configuration that decided this write. Only set when the
         // field has a manifest row at all (`hasManifestRow`) — a row-less field's write is
         // decided purely by the legacy matrix (the shim), so it carries no policy origin.
-        dataLineage: policyOrigin ? { policyOrigin } : undefined,
+        dataLineage: provenanceLineage(params.incoming, params.source, policyOrigin),
       });
     } catch (error) {
       console.error('[DataConsolidation] Failed to track field source:', error);

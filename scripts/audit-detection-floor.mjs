@@ -582,6 +582,39 @@ async function checkT_bseSubscriptionIstShift() {
     rows.length === 0 ? 'PASS' : 'FAIL', `${rows.length} row(s) at exactly 17:00:00`);
 }
 
+// ---- (#993, provenance-write-drops-the-document-id): the filing path wrote `ipos`
+// provenance through upsertIPO WITHOUT the document lineage it passes to every
+// child table, so every DRHP-source `ipos` field_sources row named no document
+// (staging 2026-09-25: 331 of 331) and the item 6 DOC fetcher credited whichever
+// COMPLETED document it found first. The fix threads the lineage; this check
+// catches the NEXT write path that drops it: any DRHP-source `ipos` row WRITTEN in
+// the last 24h with no documentId. Scoped to 24h because rows written before the
+// fix are the repair tool's population (scraper/scripts/repair-ipos-lineage-document-id.ts),
+// not a new occurrence. See docs/reviews/failure-classes/provenance-write-drops-the-document-id.json.
+async function checkD_iposDocLineageDocumentId() {
+  const rows = await q(
+    `SELECT fs.id, fs.ipo_id AS "ipoId", i.slug, i.company_name AS "companyName", fs.field_name AS "fieldName",
+            to_char(fs.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS "updatedAt"
+       FROM field_sources fs
+       JOIN ipos i ON i.id = fs.ipo_id
+      WHERE fs.table_name = 'ipos'
+        AND fs.source = 'DRHP'
+        AND (fs.data_lineage->>'documentId') IS NULL
+        AND fs.updated_at >= now() - interval '24 hours'
+      ORDER BY i.slug, fs.field_name`
+  );
+  for (const r of rows) {
+    notify(
+      'd_ipos_doc_lineage_document_id', 'P2', r.id,
+      `ipos provenance written from a document names no document: ${r.companyName} ipos.${r.fieldName}`,
+      `slug=${r.slug} ipoId=${r.ipoId} written=${r.updatedAt} UTC — the write path dropped data_lineage.documentId (#993 class)`
+    );
+  }
+  record('d_ipos_doc_lineage_document_id', 'every DRHP-source ipos provenance row written in the last 24h names its document',
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    `${rows.length} row(s)` + (rows.length ? `: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}.${r.fieldName}`).join('; ')}` : ''));
+}
+
 async function checkD_segmentProvenance() {
   const rows = await q(
     `SELECT i.id, i.company_name AS "companyName", i.offering_type AS "offeringType", i.segment,
@@ -3095,6 +3128,7 @@ async function main() {
   await checkS_incompletePagesUnretried();
   await checkS_corpusShape();
   await checkT_bseSubscriptionIstShift();
+  await checkD_iposDocLineageDocumentId();
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this

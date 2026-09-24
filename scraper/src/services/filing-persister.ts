@@ -1331,12 +1331,17 @@ export async function persistFilingExtraction(
       // open disagreement about a field the document never read.
       const claimed = new Set(iposFields);
       const contextFields = Object.keys(scraped).filter((k) => !claimed.has(k));
+      // #993: the SAME lineage every child-table and ipo_details provenance row
+      // carries (documentId, sourceSha, docType, ...). Without it the `ipos`
+      // field_sources rows this filing writes named no document, and the item 6
+      // DOC fetcher credited whichever COMPLETED document it found first.
       await upsertIPO(
         deps.ipoRepository,
         scraped as never,
         source,
         existing as never,
-        contextFields
+        contextFields,
+        lineage
       );
     }
     bump(written, 'ipos', 1);
