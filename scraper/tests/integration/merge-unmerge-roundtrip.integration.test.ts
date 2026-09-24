@@ -87,8 +87,8 @@ async function snapshot(ids: string[]): Promise<Record<string, string[]>> {
 async function plantPair() {
   await pool!.query(
     `INSERT INTO ipos (id, company_name, slug, offering_type, segment, status, open_date, close_date, issue_size, face_value, cin)
-     VALUES ($1, 'Unmerge Proof Company (India) Limited', $3, 'IPO', 'MAINBOARD', 'CLOSED', '2026-08-03', '2026-08-05', 4500000000.00, NULL, NULL),
-            ($2, 'Unmerge Proof Co. (India) Ltd',          $4, 'IPO', 'MAINBOARD', 'CLOSED', '2026-08-03', '2026-08-05', 4500000000.00, 10.00, 'U65999MH2002PLC138246')`,
+     VALUES ($1, 'Unmerge Proof Company (India) Limited', $3, 'IPO', 'MAINBOARD', 'WITHDRAWN', '2026-08-03', '2026-08-05', 4500000000.00, NULL, NULL),
+            ($2, 'Unmerge Proof Co. (India) Ltd',          $4, 'IPO', 'MAINBOARD', 'WITHDRAWN', '2026-08-03', '2026-08-05', 4500000000.00, 10.00, 'U65999MH2002PLC138246')`,
     [K, D, `${SLUG_PREFIX}keep`, `${SLUG_PREFIX}drop`]
   );
   // scraper-derived history on the row the merge removes
@@ -99,7 +99,11 @@ async function plantPair() {
       gmp,
     ]);
   }
-  await pool!.query(`INSERT INTO subscriptions (ipo_id, timestamp) VALUES ($1, '2026-08-05T17:00:00Z')`, [D]);
+  // a bigint above 2^53 and a scaled numeric: exact only if the restore never passes through a JS number
+  await pool!.query(
+    `INSERT INTO subscriptions (ipo_id, timestamp, total_shares_bid) VALUES ($1, '2026-08-05T17:00:00Z', 9007199254740993)`,
+    [D]
+  );
   await pool!.query(
     `INSERT INTO documents (id, ipo_id, title, type, url) VALUES ($1, $2, 'Red Herring Prospectus', 'RHP', 'https://example.invalid/unmerge-proof-rhp.pdf')`,
     [DOC, D]
@@ -185,15 +189,61 @@ describe.skipIf(!DATABASE_URL)('OD-92 merge then unmerge restores every row exac
     await expect(repo!.unmergeDuplicate(id, { apply: true })).rejects.toThrow(/already unmerged/);
   });
 
-  it('refuses when the survivor changed after the merge, unless the column is forced', async () => {
+  it('a bigint above 2^53 in a deleted child row comes back exactly', async () => {
+    await plantPair();
+    await repo!.mergeDuplicateInto(K, D, { apply: true, mergedBy: 'unmerge.test' });
+    await repo!.unmergeDuplicate(await mergeLogId(D), { apply: true });
+    const r = await pool!.query(`SELECT total_shares_bid::text AS v FROM subscriptions WHERE ipo_id = $1`, [D]);
+    expect(r.rows.map((x) => x.v)).toEqual(['9007199254740993']);
+  });
+
+  it('(a) a scraper write to a NON-carried survivor column after the merge is kept; the carried columns go back', async () => {
     await plantPair();
     await repo!.mergeDuplicateInto(K, D, { apply: true, mergedBy: 'unmerge.test' });
     const id = await mergeLogId(D);
-    await pool!.query(`UPDATE ipos SET lot_size = 150 WHERE id = $1`, [K]);
-    await expect(repo!.unmergeDuplicate(id, { apply: true })).rejects.toThrow(/changed after the merge in lot_size/);
+    await pool!.query(`UPDATE ipos SET subscription_total = 42.50, updated_at = now() WHERE id = $1`, [K]);
+    const res = await repo!.unmergeDuplicate(id, { apply: true });
+    expect(res.drift).toEqual([]);
+    const k = await pool!.query(`SELECT subscription_total::text AS s, face_value, cin FROM ipos WHERE id = $1`, [K]);
+    expect(k.rows[0]).toEqual({ s: '42.50', face_value: null, cin: null });
+  });
+
+  it('a CARRIED column changed after the merge is refused unless forced; a non-carried column cannot be forced', async () => {
+    await plantPair();
+    await repo!.mergeDuplicateInto(K, D, { apply: true, mergedBy: 'unmerge.test' });
+    const id = await mergeLogId(D);
+    await pool!.query(`UPDATE ipos SET face_value = 5.00 WHERE id = $1`, [K]);
+    await expect(repo!.unmergeDuplicate(id, { apply: true })).rejects.toThrow(/carried column\(s\) changed after the merge: face_value/);
+    await expect(repo!.unmergeDuplicate(id, { apply: true, forceFields: ['lot_size'] })).rejects.toThrow(/did not carry/);
     expect((await pool!.query(`SELECT count(*)::int n FROM ipos WHERE id = $1`, [D])).rows[0].n).toBe(0);
-    const res = await repo!.unmergeDuplicate(id, { apply: true, forceFields: ['lot_size'] });
-    expect(res.drift).toEqual(['lot_size']);
+    const res = await repo!.unmergeDuplicate(id, { apply: true, forceFields: ['face_value'] });
+    expect(res.drift).toEqual(['face_value']);
+    expect((await pool!.query(`SELECT face_value FROM ipos WHERE id = $1`, [K])).rows[0].face_value).toBeNull();
+  });
+
+  it('(b) a survivor that gained a colliding documents row: refused, the row named, nothing written', async () => {
+    await plantPair();
+    await repo!.mergeDuplicateInto(K, D, { apply: true, mergedBy: 'unmerge.test' });
+    const id = await mergeLogId(D);
+    const clash = await pool!.query(
+      `INSERT INTO documents (ipo_id, title, type, url) VALUES ($1, 'RHP again', 'RHP', 'https://example.invalid/unmerge-proof-rhp.pdf') RETURNING id::text`,
+      [K]
+    );
+    const err = await repo!.unmergeDuplicate(id, { apply: true }).catch((e: Error) => e);
+    expect(String((err as Error).message)).toContain(`refused: documents unique_url collides with survivor row ${clash.rows[0].id}`);
+    expect(String((err as Error).message)).toMatch(/Resolve or remove the named rows, then re-run/);
+    expect((await pool!.query(`SELECT count(*)::int n FROM ipos WHERE id = $1`, [D])).rows[0].n).toBe(0);
+    expect((await pool!.query(`SELECT unmerged_at FROM ipo_merge_log WHERE id = $1`, [id])).rows[0].unmerged_at).toBeNull();
+  });
+
+  it('the read-back refuses an inexact restore (a logged value the insert could not write) and rolls back', async () => {
+    await plantPair();
+    await repo!.mergeDuplicateInto(K, D, { apply: true, mergedBy: 'unmerge.test' });
+    const id = await mergeLogId(D);
+    // a logged key no live column carries: the builder insert cannot write it, so only the read-back sees it
+    await pool!.query(`UPDATE ipo_merge_log SET drop_row = drop_row || '{"readback_probe": 7}'::jsonb WHERE id = $1`, [id]);
+    await expect(repo!.unmergeDuplicate(id, { apply: true })).rejects.toThrow(/did not restore exactly in readback_probe/);
+    expect((await pool!.query(`SELECT count(*)::int n FROM ipos WHERE id = $1`, [D])).rows[0].n).toBe(0);
   });
 
   it('an entry logged before OD-92 is refused as partly reversible without --partial, and restores the rows with it', async () => {
