@@ -321,6 +321,90 @@ describe('checkMergeEligibility', () => {
       expect(result).toEqual({ eligible: true });
     });
   });
+
+  // #679 (OD-94): offering_type, close_date and listing_date were never compared. The staging pair
+  // cube-highways-trust (IPO, 2026-07-19/07-26/07-29) vs cube-highways-trust-cube-highways-trust-invit
+  // (INVITS, 2026-07-22/07-24/08-03) was accepted in both directions.
+  describe('offering type and close/listing dates (#679, OD-94)', () => {
+    const dhanwelRelaunch = { sameShares: true, sameBand: true, sameSymbol: true, sameCin: false, olderPostponed: true };
+    const reasonOf = (r: ReturnType<typeof checkMergeEligibility>) => (r as { reason?: string }).reason ?? '';
+
+    it('refuses the real Cube Highways pair in both directions, naming offering_type and both values', () => {
+      const cubeIpo = { openDate: '2026-07-19', closeDate: '2026-07-26', listingDate: '2026-07-29', offeringType: 'IPO' };
+      const cubeInvit = { openDate: '2026-07-22', closeDate: '2026-07-24', listingDate: '2026-08-03', offeringType: 'INVITS' };
+      for (const [k, d] of [[cubeIpo, cubeInvit], [cubeInvit, cubeIpo]] as const) {
+        const result = checkMergeEligibility({
+          ...base,
+          forceDifferentName: true,
+          keepOpenDate: k.openDate, dropOpenDate: d.openDate,
+          keepCloseDate: k.closeDate, dropCloseDate: d.closeDate,
+          keepListingDate: k.listingDate, dropListingDate: d.listingDate,
+          keepOfferingType: k.offeringType, dropOfferingType: d.offeringType,
+        });
+        expect(result.eligible).toBe(false);
+        expect(reasonOf(result)).toMatch(/^offering_type disagrees \((IPO vs INVITS|INVITS vs IPO)\)/);
+      }
+    });
+
+    it('refuses a differing offering_type on the same open date, even as an OD-86 relaunch', () => {
+      const result = checkMergeEligibility({
+        ...base,
+        keepOfferingType: 'IPO', dropOfferingType: 'OFS',
+        relaunch: dhanwelRelaunch,
+      });
+      expect(reasonOf(result)).toMatch(/^offering_type disagrees \(IPO vs OFS\)/);
+    });
+
+    it('refuses a differing close_date on the same open date, naming both values', () => {
+      const result = checkMergeEligibility({ ...base, keepCloseDate: '2026-09-11', dropCloseDate: '2026-09-12' });
+      expect(result.eligible).toBe(false);
+      expect(reasonOf(result)).toMatch(/^close_date disagrees \(2026-09-11 vs 2026-09-12\)/);
+    });
+
+    it('refuses a differing listing_date on the same open date, naming both values', () => {
+      const result = checkMergeEligibility({ ...base, keepListingDate: '2026-09-16', dropListingDate: '2026-09-17' });
+      expect(result.eligible).toBe(false);
+      expect(reasonOf(result)).toMatch(/^listing_date disagrees \(2026-09-16 vs 2026-09-17\)/);
+    });
+
+    it('accepts when one side is empty (absent is not a disagreement) and when the values agree', () => {
+      expect(checkMergeEligibility({
+        ...base,
+        keepOfferingType: 'IPO', dropOfferingType: null,
+        keepCloseDate: '2026-09-11', dropCloseDate: null,
+        keepListingDate: null, dropListingDate: '2026-09-16',
+      })).toEqual({ eligible: true });
+      // Rays of Belief shape: same offering, same dates, one row just the -o suffixed page.
+      expect(checkMergeEligibility({
+        ...base,
+        keepOfferingType: 'IPO', dropOfferingType: 'ipo',
+        keepCloseDate: '2026-09-11', dropCloseDate: new Date('2026-09-11T00:00:00Z'),
+        keepListingDate: '2026-09-16', dropListingDate: '2026-09-16',
+      })).toEqual({ eligible: true });
+    });
+
+    it('OD-86: a Dhanwel-shaped relaunch with moved close and listing dates is still accepted', () => {
+      const result = checkMergeEligibility({
+        ...base,
+        keepCompanyName: 'Dhanwel Hybrid Seeds Limited', dropCompanyName: 'Dhanwel Hybrid Seeds Ltd',
+        keepOpenDate: '2026-08-19', dropOpenDate: '2026-06-23',
+        keepCloseDate: '2026-08-21', dropCloseDate: '2026-06-23',
+        keepListingDate: '2026-08-26', dropListingDate: '2026-06-26',
+        keepOfferingType: 'IPO', dropOfferingType: 'IPO',
+        relaunch: dhanwelRelaunch,
+      });
+      expect(result).toEqual({ eligible: true });
+    });
+
+    it('without the relaunch evidence the same moved close date is refused', () => {
+      const result = checkMergeEligibility({
+        ...base,
+        keepCloseDate: '2026-08-21', dropCloseDate: '2026-06-23',
+        relaunch: { ...dhanwelRelaunch, olderPostponed: false },
+      });
+      expect(reasonOf(result)).toMatch(/^close_date disagrees/);
+    });
+  });
 });
 
 describe('buildProvenanceMap (MAJOR-1, PR #433 review)', () => {
