@@ -1,6 +1,8 @@
 // implements: stage 2 item 6 -- buildFieldPlanWalkFetchers() registers
 // exactly the sources this slice built adapters for (DOC, BSE, CHITTORGARH),
 // and fieldPlanWalkHasFetchers() reads true once they are registered.
+// INVESTORGAIN_GMP joined the set in this task's slice (gmp_records.gmp had
+// no adapter; 87 staging rows fell through to CHITTORGARH's NO_MAPPING).
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('@ipodhan/shared', () => ({
@@ -23,9 +25,9 @@ describe('buildFieldPlanWalkFetchers registry', () => {
   // and every one of them answered NO_FETCHER_REGISTERED on every wake, 136
   // rows measured on staging. This assertion is deliberately exact: a fetcher
   // appearing or vanishing unnoticed is the thing it exists to catch.
-  it('registers exactly DOC, NSE, BSE and CHITTORGARH — no more, no fewer', () => {
+  it('registers exactly DOC, NSE, BSE, CHITTORGARH and INVESTORGAIN_GMP — no more, no fewer', () => {
     const fetchers = buildFieldPlanWalkFetchers({} as never);
-    expect(Object.keys(fetchers).sort()).toEqual(['BSE', 'CHITTORGARH', 'DOC', 'NSE']);
+    expect(Object.keys(fetchers).sort()).toEqual(['BSE', 'CHITTORGARH', 'DOC', 'INVESTORGAIN_GMP', 'NSE']);
   });
 
   it('every registered value is a callable fetcher function', () => {

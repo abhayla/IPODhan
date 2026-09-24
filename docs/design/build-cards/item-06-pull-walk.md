@@ -1,6 +1,6 @@
 # Item 6 — The pull walk over the plan
 
-Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 6: field-plan-walk.ts + 4 fetchers registered (NSE, DOC, BSE, CHITTORGARH) on refs/remotes/origin/main (PR #867), but INVESTORGAIN_GMP has no adapter and #762's 12,480 parked plan rows fix (#763) is not on prod
+Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 6: field-plan-walk.ts + 5 fetchers registered (NSE, DOC, BSE, CHITTORGARH, INVESTORGAIN_GMP — the last built this slice, staging proof owed) on refs/remotes/origin/main (PR #867 + this task's PR), and #762's 12,480 parked plan rows fix (#763) is not on prod
 
 ## Purpose
 

@@ -49,7 +49,7 @@ import {
 } from '@ipodhan/shared';
 import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/field-source-overrides-repository';
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 // Deep import, matching `filing-persist-deps.ts`: the barrel exports only the
 // INTERFACE (`IListingPerformanceRepository`), not the class.
@@ -73,6 +73,11 @@ import {
   ChittorgarhFieldFetcherState,
   CHITTORGARH_SERVEABLE_FIELDS,
 } from './field-plan-walk-chittorgarh-fetcher.js';
+import {
+  buildInvestorgainGmpFetcher,
+  INVESTORGAIN_GMP_SERVEABLE_FIELDS,
+  type GmpReader,
+} from './field-plan-walk-investorgain-gmp-fetcher.js';
 
 /**
  * Review round 1, m1: `ipo_details` has no shared repository class —
@@ -91,6 +96,28 @@ function makeIpoDetailsReader(): DocFetcherDeps['ipoDetailsReader'] {
         .where(eq(schema.ipoDetails.ipoId, ipoId))
         .limit(1);
       return (rows[0] as unknown as Record<string, unknown>) ?? null;
+    },
+  };
+}
+
+/**
+ * A direct, uncached read of `gmp_records`, filtered to the source the GMP
+ * job (`createGMPRecord` in `data-persister.ts`) actually writes. Deliberately
+ * NOT `GMPRepository.findLatest` — that method is cached
+ * (`CacheTTL.GMP_LATEST`) and PASS 3 can run in the same wake as the GMP job
+ * that just wrote a fresh row; see `field-plan-walk-investorgain-gmp-fetcher.ts`'s
+ * own doc comment for the full reasoning.
+ */
+function makeGmpReader(): GmpReader {
+  return {
+    async findLatestFromInvestorGain(ipoId: string) {
+      const rows = await db
+        .select({ id: schema.gmpRecords.id, gmp: schema.gmpRecords.gmp, timestamp: schema.gmpRecords.timestamp })
+        .from(schema.gmpRecords)
+        .where(and(eq(schema.gmpRecords.ipoId, ipoId), eq(schema.gmpRecords.source, 'INVESTORGAIN_GMP')))
+        .orderBy(desc(schema.gmpRecords.timestamp))
+        .limit(1);
+      return rows[0] ?? null;
     },
   };
 }
@@ -177,7 +204,7 @@ export function buildFieldPlanWalkFetchers(
   const fieldSources = new FieldSourcesRepository(db as never, redis as never);
   const documentRepository = new DocumentRepository(db as never, redis as never);
 
-  const isCapable = (sourceKey: 'DOC' | 'NSE' | 'BSE' | 'CHITTORGARH') => (tableName: string, fieldName: string) => {
+  const isCapable = (sourceKey: 'DOC' | 'NSE' | 'BSE' | 'CHITTORGARH' | 'INVESTORGAIN_GMP') => (tableName: string, fieldName: string) => {
     const entry = manifestFieldEntry(tableName, fieldName);
     return entry?.capability?.[sourceKey]?.capable === true;
   };
@@ -202,6 +229,11 @@ export function buildFieldPlanWalkFetchers(
     chittorgarhState
   );
 
+  const investorgainGmpFetcher = buildInvestorgainGmpFetcher({
+    gmpReader: makeGmpReader(),
+    isInvestorgainGmpCapable: isCapable('INVESTORGAIN_GMP'),
+  });
+
   return {
     // #705/#759: 57 manifest fields rank NSE, including the six E-1 fields
     // only the exchange may state. Without this entry every one of them
@@ -210,6 +242,11 @@ export function buildFieldPlanWalkFetchers(
     DOC: docFetcher,
     BSE: bseFetcher,
     CHITTORGARH: chittorgarhFetcher,
+    // Item 6 (this slice): `gmp_records.gmp` is the manifest's only field
+    // ranking this source (rank 1, ahead of CHITTORGARH). Reads the value
+    // the GMP job already wrote — no network call. See
+    // `field-plan-walk-investorgain-gmp-fetcher.ts` for the full reasoning.
+    INVESTORGAIN_GMP: investorgainGmpFetcher,
   };
 }
 
@@ -238,6 +275,7 @@ export function fieldPlanCoverageFingerprint(fetchers: Record<string, FieldFetch
     `NSE=${[...NSE_SERVEABLE_FIELDS.keys()].sort().join(',')}`,
     `CHITTORGARH=${[...CHITTORGARH_SERVEABLE_FIELDS].sort().join(',')}`,
     `DOC=${[...DOC_READABLE_TABLES].sort().join(',')}`,
+    `INVESTORGAIN_GMP=${[...INVESTORGAIN_GMP_SERVEABLE_FIELDS].sort().join(',')}`,
   ].join('|');
   return createHash('sha256').update(coverage).digest('hex').slice(0, 12);
 }

@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "read-only query against ipodhan_staging via the sanctioned tunnel (localhost:15432), not a live URL — gmp_records is written by the GMP job, never scraped by this fetcher",
+  "capturedAt": "2026-09-24",
+  "ipoId": "03908cfb-d33c-49fb-ae59-9b7063374e22",
+  "company": "LCC Projects Ltd.",
+  "note": "Real gmp_records row shape captured for item 6's INVESTORGAIN_GMP field-plan-walk fetcher: SELECT id, ipo_id, gmp, timestamp, source FROM gmp_records WHERE ipo_id = '03908cfb-d33c-49fb-ae59-9b7063374e22' AND source = 'INVESTORGAIN_GMP' ORDER BY timestamp DESC LIMIT 1. Numeric(10,2) gmp column reads back as a JS string in raw pg but as `number` through GMPRepository's Drizzle mapping (mode:'number', schema.ts:498) — trimmed to the fields the fetcher/reader actually use."
+}
