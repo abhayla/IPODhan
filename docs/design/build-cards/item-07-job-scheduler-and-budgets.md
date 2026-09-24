@@ -28,9 +28,9 @@ refused, `stale`); an unchanged price with a newer as-of moves only the as-of (`
 it was read); one `field_sources` row per written column. Outages: a series answer is no-such-symbol only on an
 HTTP 404 carrying NSE's JSON error body (`{"error": ...}`, measured) or an explicit empty quote list; an HTML 404
 (a renamed or retired route, captured 2026-09-24), an HTML/empty/`{}` 200, a 403, a 5xx or a timeout is UNKNOWN,
-logged with its cause, never counted. Round 3 canary (`NSE_CANARY_MIN_ASKED` = 2): when NSE gives a price to none
-of the >= 2 IPOs asked in a run, every NSE no-such-symbol answer in it is UNKNOWN (`nseEndpointSuspect` in the run
-line). BSE: only Category `Delisted` is no-such-symbol; a suspended scrip (500102 answers Category `Listed` with
+logged with its cause, never counted. (The round 3 NSE endpoint canary was removed in round 4 along with
+delisting detection, #983 — a no-such-symbol read is never counted toward anything in this job any more.)
+BSE: only Category `Delisted` is no-such-symbol; a suspended scrip (500102 answers Category `Listed` with
 DisplayText `Suspended due to Procedural reasons`) or any other category is UNKNOWN. **Not done:** the OD-8 page
 freeze (#975); the ISIN gap belongs to the pull walk (F-160, item 6); delisting detection (§2.3.3.3) is #983. Cron:
 `scripts/deploy-linux.sh` prod `14,29,44,59 9-14 * * 1-5` + `14,30 15 * * 1-5`, staging `12,27,42,57 9-14 * * 1-5` +
