@@ -12,11 +12,13 @@ import { db } from '@/lib/db';
 import { extractionLogs } from '@/lib/db';
 import { eq, desc } from 'drizzle-orm';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
+import { withAdminAuth } from '@/lib/middleware/admin-auth';
 
-export async function GET(
+export const GET = withAdminAuth(async (
   request: NextRequest,
+  _adminContext,
   { params }: { params: Promise<{ ipoId: string }> }
-) {
+) => {
   try {
     const { ipoId } = await params;
 
@@ -53,4 +55,4 @@ export async function GET(
   } catch (error) {
     return apiErrorResponse(error, '/api/admin/drhp/ipo/[ipoId]');
   }
-}
+});

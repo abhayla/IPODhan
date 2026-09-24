@@ -20,7 +20,7 @@
  *
  * Performance: <500ms target
  * Cache: 5 minutes TTL
- * Authentication: Admin-only (add middleware as needed)
+ * Authentication: Admin-only (requireAdminAuth, ADMIN_API_TOKEN)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -30,6 +30,7 @@ import { sql, gt, gte, eq, and, isNotNull } from 'drizzle-orm';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
+import { requireAdminAuth } from '@/lib/auth/admin-auth';
 
 interface DetectionMetrics {
   last24h: number;
@@ -81,6 +82,11 @@ interface PipelineMetrics {
  * Fetch real-time pipeline metrics
  */
 export async function GET(request: NextRequest) {
+  // requireAdminAuth (ADMIN_API_TOKEN), like the scraper status routes: the
+  // production audit (scripts/audit-prod.mjs) calls this with that token.
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
+
   try {
     const redis = getRedisClient();
 

@@ -10,7 +10,6 @@
  *   conflictIds: string[],
  *   resolvedSource: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | etc.,
  *   resolutionReason: string,
- *   resolvedBy: string,
  *   applyToDatabase: boolean,
  *   protectField?: boolean
  * }
@@ -23,18 +22,19 @@
  *   results: Array<ResolutionResult>
  * }
  *
- * Authentication: Admin-only (add authentication middleware as needed)
+ * Authentication: Admin-only (withAdminAuth); resolvedBy is the authenticated admin
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ConflictResolutionService } from '@/lib/services/conflict-resolution';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
+import { withAdminAuth } from '@/lib/middleware/admin-auth';
 
 /**
  * POST /api/admin/conflicts/bulk-resolve
  * Resolve multiple conflicts with same source choice
  */
-export async function POST(request: NextRequest) {
+export const POST = withAdminAuth(async (request: NextRequest, adminContext) => {
   try {
     const body = await request.json();
 
@@ -46,10 +46,10 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    if (!body.resolvedSource || !body.resolutionReason || !body.resolvedBy) {
+    if (!body.resolvedSource || !body.resolutionReason) {
       return NextResponse.json({
         success: false,
-        error: 'Missing required fields: resolvedSource, resolutionReason, resolvedBy',
+        error: 'Missing required fields: resolvedSource, resolutionReason',
       }, { status: 400 });
     }
 
@@ -66,7 +66,8 @@ export async function POST(request: NextRequest) {
     const result = await service.bulkResolve(body.conflictIds, {
       resolvedSource: body.resolvedSource,
       resolutionReason: body.resolutionReason,
-      resolvedBy: body.resolvedBy,
+      // The actor is the authenticated admin, never a client-supplied name.
+      resolvedBy: adminContext.adminName,
       applyToDatabase: body.applyToDatabase ?? true,
       protectField: body.protectField ?? false,
     });
@@ -81,4 +82,4 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return apiErrorResponse(error, '/api/admin/conflicts/bulk-resolve');
   }
-}
+});
