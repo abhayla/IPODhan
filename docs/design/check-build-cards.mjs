@@ -46,7 +46,6 @@ const UNKNOWN_ALLOWED = new Set([
   'item-10-verification-checks.md',
   'item-11-crore-conversion.md',
   'item-12-name-normaliser-and-duplicate-detection.md',
-  'item-14-bse-share-count-conversion.md',
   'item-19-merge-tool-shared-write-path.md',
   'item-21-read-side.md',
   'item-22-document-handling-and-download-limits.md',
@@ -176,7 +175,7 @@ if (isMain) try {
     if (!/^Status: (NOT STARTED|DONE \d{4}-\d{2}-\d{2} PRs #.+ proof .+|unknown — .+)$/.test(statusLine))
       problems.push(`${f}: no "Status:" line immediately after the H1, or one that does not match the accepted shapes`);
     else if (/^Status: unknown — /.test(statusLine) && !UNKNOWN_ALLOWED.has(f))
-      problems.push(`${f}: "Status: unknown" is only accepted for the ten cards named in UNKNOWN_ALLOWED (item 32 follow-up) — resolve this card against refs/remotes/origin/main instead of adding it to that list`);
+      problems.push(`${f}: "Status: unknown" is only accepted for the cards named in UNKNOWN_ALLOWED (item 32 follow-up) — resolve this card against refs/remotes/origin/main instead of adding it to that list`);
   }
 
   console.log(`build cards: ${files.length}`);

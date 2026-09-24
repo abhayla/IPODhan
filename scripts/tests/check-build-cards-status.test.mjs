@@ -159,7 +159,7 @@ test('a card reading Status: unknown that is NOT on the item-32 allow-list fails
   writeFixture('notallowed', MINIMAL_CARD('Status: unknown — a brand new reason nobody has reviewed yet'));
   const result = runGate();
   assert.equal(result.code, 1);
-  assert.match(result.out, /item-999999-status-fixture-notallowed\.md: "Status: unknown" is only accepted for the ten cards named in UNKNOWN_ALLOWED/);
+  assert.match(result.out, /item-999999-status-fixture-notallowed\.md: "Status: unknown" is only accepted for the cards named in UNKNOWN_ALLOWED/);
   cleanupFixtures();
 });
 
