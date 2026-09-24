@@ -246,9 +246,11 @@ describe('filing-persister — PRICE_BAND_AD mapping (DEEPA oracle)', () => {
       string,
       Record<string, unknown>,
     ];
-    expect(values.basisOfAllotmentDate).toBe('2026-09-04');
-    expect(values.initiationOfRefundsDate).toBe('2026-09-07');
-    expect(values.creditOfSharesDate).toBe('2026-09-07');
+    // #1016: these three are E-1 (exchange-stated) fields — refused from the document path
+    // (the #862 guard would otherwise throw), never written to `ipo_details`.
+    expect(values.basisOfAllotmentDate).toBeUndefined();
+    expect(values.initiationOfRefundsDate).toBeUndefined();
+    expect(values.creditOfSharesDate).toBeUndefined();
     expect(values.upiCutoffTime).toBe('17:00');
     expect(values.designatedExchange).toBe('BSE');
     expect(values.complianceOfficer).toBe('Vandana Modani');
