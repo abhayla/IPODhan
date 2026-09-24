@@ -872,6 +872,7 @@ jobs:
           tests/integration/alternative-sources.integration.test.ts
           tests/integration/corrigendum-suggestions.integration.test.ts
           tests/integration/merge-unmerge-roundtrip.integration.test.ts
+          tests/integration/document-field-receipts.integration.test.ts
           tests/integration/data-conflicts-repository-hold.integration.test.ts
           tests/integration/od73-settled-field.integration.test.ts
           tests/integration/db-timezone.integration.test.ts

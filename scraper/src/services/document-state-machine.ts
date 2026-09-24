@@ -31,9 +31,15 @@ import {
   DOCUMENT_TYPES,
   SUPERSEDING_TYPES,
   isBandBearingOfferingType,
+  isDocumentType,
   type DocumentType,
 } from './document-types.js';
 import type { LifecycleStage } from '../scheduler/stage-reconciler.js';
+import {
+  decidePlanRowSupersession as sharedPlanRowRule,
+  isFixedPriceIssue as sharedIsFixedPrice,
+  NON_REOPENING_TYPES as SHARED_NON_REOPENING_TYPES,
+} from '../../config/plan-supersession-rule.mjs';
 import { isDataJobSlotBoundary, nextDataJobSlotBoundary } from '@ipodhan/shared/scheduler/data-job-slots';
 
 export type DocumentFetchStateValue =
@@ -770,6 +776,131 @@ export function decideSupersession(
     supersededTypes: outranked,
     reason: `${incoming.docType} outranks ${outranked.join(', ')} for the fields it carries`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Plan-row supersession (spec §2.5, §2.5.1 trigger 3, §2.5.5 rules 1 and 3,
+// OD-65, OD-90; item 6)
+// ---------------------------------------------------------------------------
+
+/** A stored document as the plan-row comparator sees it. */
+export interface PlanDocumentRef {
+  id: string;
+  /** `documents.type`; an unknown type (legacy enum value) never outranks and is never outranked. */
+  docType: string;
+  filingDate: string | null;
+  sha256?: string | null;
+}
+
+export type PlanRowSupersession =
+  | { supersede: true; reason: string }
+  | { supersede: false; unordered: boolean; reason: string };
+
+/**
+ * Types that never reopen a plan row by themselves. OD-90 (2026-09-24): a
+ * corrigendum is applied only after ADMIN review, as suggestions — so the two
+ * §2.5.5 corrigendum tests become "a corrigendum never reopens a plan row".
+ * ADDENDUM is unread today (F-163) and is held to the same rule.
+ */
+export const NON_REOPENING_TYPES: readonly string[] = SHARED_NON_REOPENING_TYPES;
+
+/**
+ * Does `incoming` (a COMPLETED document of the same IPO) supersede `chosen`
+ * (the plan row's `chosen_document_id`) for a field whose document family is
+ * `family` (`docTypeFamily(manifest documentType)`)?
+ *
+ * §2.5: "A field is not re-asked while chosen_document_id is still the best
+ * available document, of the highest-precedence type, for that field" — so
+ * only a document whose type can carry the field (its family) is a candidate.
+ *
+ * - The same document is never a supersessor (OD-65: one read per document).
+ * - CORRIGENDUM / ADDENDUM never supersede (OD-90).
+ * - Same type (§2.5.5 Rule 1): the later `filing_date` of the SOURCE documents
+ *   wins, never the extraction completion order — delegated to
+ *   `decideSupersession`, the one same-type ordering rule (R3 sha256 and R4).
+ *   Either date missing => NOT superseded and reported `unordered` (inferred,
+ *   not spec-stated: the spec orders by filing_date and is silent on a missing
+ *   one; keeping a value beats guessing).
+ * - Different types: `DOCUMENT_PRECEDENCE` decides, regardless of filing_date —
+ *   EXCEPT §2.5.5 Rule 3: for a FIXED-PRICE issue the prospectus is the
+ *   baseline, not terminal, so a later-filed family document supersedes it
+ *   (both dates needed; else `unordered`). For a book-built issue the
+ *   prospectus is terminal, which the precedence table already expresses.
+ */
+export function decidePlanRowSupersession(
+  chosen: PlanDocumentRef,
+  incoming: PlanDocumentRef,
+  opts: { family: readonly string[]; fixedPrice: boolean }
+): PlanRowSupersession {
+  // One rule for the scraper and the PULL-FROZEN audit: scraper/config/plan-supersession-rule.mjs.
+  return sharedPlanRowRule(chosen, incoming, opts) as PlanRowSupersession;
+}
+
+/**
+ * The best COMPLETED document for a field, by the SAME comparator supersession
+ * uses — so a reopened row is re-answered from the document that reopened it,
+ * never from the one it was reopened away from. Starts from the first
+ * candidate in family order (the walk's historical preference, which still
+ * breaks an `unordered` tie) and replaces it whenever a later candidate
+ * supersedes it.
+ */
+export function bestPlanDocument<T extends PlanDocumentRef>(
+  candidatesInFamilyOrder: readonly T[],
+  opts: { family: readonly string[]; fixedPrice: boolean }
+): T | undefined {
+  let best: T | undefined;
+  for (const c of candidatesInFamilyOrder) {
+    if (!best) best = c;
+    else if (decidePlanRowSupersession(best, c, opts).supersede) best = c;
+  }
+  return best;
+}
+
+export interface PlanRowSupersessorResult<T extends PlanDocumentRef> {
+  /** The document the row is reopened in favour of, or undefined when it stays SUPPLIED. */
+  supersededBy: T | undefined;
+  reason: string;
+  /** Same-type candidates that could not be ordered (a missing filing_date) — logged, never acted on. */
+  unordered: T[];
+}
+
+/**
+ * One plan row against every COMPLETED document of its IPO: the one place that
+ * turns the pairwise rule into "reopen or not, and in favour of what". Used by
+ * the extraction write path, the dry-run tool and (through the same rule) the
+ * PULL-FROZEN audit check.
+ */
+export function findPlanRowSupersessor<T extends PlanDocumentRef>(
+  chosen: PlanDocumentRef,
+  candidates: readonly T[],
+  opts: { family: readonly string[]; fixedPrice: boolean }
+): PlanRowSupersessorResult<T> {
+  const supersessors: T[] = [];
+  const unordered: T[] = [];
+  let lastReason = 'no COMPLETED document outranks the chosen one';
+  for (const c of candidates) {
+    const d = decidePlanRowSupersession(chosen, c, opts);
+    if (d.supersede) {
+      supersessors.push(c);
+      lastReason = d.reason;
+    } else if ('unordered' in d && d.unordered) {
+      unordered.push(c);
+    }
+  }
+  const ordered = [...supersessors].sort(
+    (a, b) => opts.family.indexOf(a.docType) - opts.family.indexOf(b.docType)
+  );
+  const supersededBy = bestPlanDocument(ordered, opts);
+  if (supersededBy) lastReason = decidePlanRowSupersession(chosen, supersededBy, opts).reason;
+  return { supersededBy, reason: lastReason, unordered };
+}
+
+/**
+ * §2.5.5 Rule 3's fixed-price test: `ipo_details.issue_type`, and where that is
+ * null, "floor = cap" is taken as fixed-price (the spec's written fallback).
+ */
+export function isFixedPriceIssue(issueType: string | null | undefined, floor: number | null, cap: number | null): boolean {
+  return sharedIsFixedPrice(issueType, floor, cap);
 }
 
 /** True when `a` is a strictly later filing date than `b`. A null date never wins. */

@@ -969,6 +969,35 @@ export class IpoFieldPlanRepository extends BaseRepository {
   }
 
   /**
+   * Item 6 (spec §2.5, OD-91): reopen plan rows a better document supersedes.
+   * SUPPLIED -> PENDING with `superseded_by` set and the next ask due now,
+   * guarded on the row STILL being SUPPLIED on the same chosen document, so a
+   * row the walk changed since the read is left alone. `this.db` may be a
+   * transaction handle (the COMPLETED write passes its own), which is how the
+   * reopen lands in the same transaction as the document's status.
+   */
+  async reopenSuperseded(
+    rows: ReadonlyArray<{ planRowId: string; expectedChosenDocumentId: string; supersededBy: string; cause: string }>,
+    now: Date = new Date()
+  ): Promise<{ reopenedIds: string[] }> {
+    const reopenedIds: string[] = [];
+    for (const r of rows) {
+      const res = await this.db.execute(sql`
+        UPDATE ipo_field_plan
+           SET state = 'PENDING', superseded_by = ${r.supersededBy}::uuid, next_due_at = ${utc(now)}::timestamptz,
+               reason_code = NULL, cause = ${r.cause}, updated_at = ${utc(now)}::timestamptz
+         WHERE id = ${r.planRowId}::uuid
+           AND state = 'SUPPLIED'
+           AND chosen_document_id = ${r.expectedChosenDocumentId}::uuid
+        RETURNING id
+      `);
+      const got = ((res as unknown as { rows?: Array<{ id: string }> }).rows ?? []) as Array<{ id: string }>;
+      if (got.length > 0) reopenedIds.push(String(got[0].id));
+    }
+    return { reopenedIds };
+  }
+
+  /**
    * Write an attempt's result back onto the plan row.
    *
    * Every path is conditional on `claim_token` still matching: a superseded

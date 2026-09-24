@@ -421,6 +421,13 @@
       "when": 1790260592758,
       "tag": "0059_ipo_field_plan_chosen_confirmed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1790261661238,
+      "tag": "0060_document_field_receipts",
+      "breakpoints": true
     }
   ]
 }

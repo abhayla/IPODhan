@@ -1,0 +1,19 @@
+{
+  "_note": "Item 6 (spec §2.5, §2.5.5, OD-90, OD-91): the ONE precedence table. Read by scraper/src/services/document-types.ts (DOCUMENT_PRECEDENCE) and by scripts/lib/pull-frozen-checks.mjs (the PULL-FROZEN audit check). Higher number wins.",
+  "precedence": {
+    "PROSPECTUS": 100,
+    "BASIS_OF_ALLOTMENT_AD": 90,
+    "CORRIGENDUM": 80,
+    "ADDENDUM": 75,
+    "PRICE_BAND_AD": 70,
+    "ANCHOR_ALLOCATION_REPORT": 60,
+    "RHP": 50,
+    "RATIOS_BASIS_ISSUE_PRICE": 40,
+    "SECURITY_PARAMS_POST_ANCHOR": 30,
+    "SECURITY_PARAMS_PRE_ANCHOR": 25,
+    "BIDDING_CENTERS": 20,
+    "SAMPLE_APPLICATION_FORMS": 15,
+    "DRHP": 10
+  },
+  "nonReopeningTypes": ["CORRIGENDUM", "ADDENDUM"]
+}
