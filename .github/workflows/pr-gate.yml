@@ -1099,3 +1099,68 @@ jobs:
 
       - name: Every scraper integration test is run by CI or excluded with a reason
         run: node scripts/ci/require-integration-test-coverage.mjs
+
+  # The real `next build` (webpack pass), path-filtered so it only runs when
+  # web/** or packages/shared/** actually changed. Neither the `gate` job's
+  # `tsc --noEmit`/lint/unit-test steps nor `check-shared-js-imports-resolve.mjs`
+  # runs webpack, so the class "web build breaks while pr-gate stays green" was
+  # only PARTLY guarded until this job existed: the fast check catches an
+  # unresolvable `.js` import, but the 2026-09-24 incident's SECOND failure (a
+  # pre-existing type error in packages/shared that `next build`'s type-check
+  # step reached only after module resolution succeeded) is a class the fast
+  # check structurally cannot see. Public repo, GitHub-hosted minutes are free,
+  # so there is no billing reason to keep skipping the real build.
+  web-build:
+    name: Web production build (next build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check whether web/** or packages/shared/** changed
+        id: filter
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          if git diff --name-only "$BASE" "$HEAD" | grep -qE '^(web/|packages/shared/)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js 20
+        if: steps.filter.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.filter.outputs.run == 'true'
+        run: npm ci
+
+      - name: Build shared package
+        if: steps.filter.outputs.run == 'true'
+        run: |
+          rm -rf packages/shared/dist packages/shared/tsconfig.tsbuildinfo
+          cd packages/shared && npx tsc
+
+      - name: Shared .js-suffixed imports resolve under webpack too (fast pre-check)
+        if: steps.filter.outputs.run == 'true'
+        run: node scripts/ci/check-shared-js-imports-resolve.mjs
+
+      - name: next build
+        # No Sentry/DB/Redis env vars set — the local proof run (2026-09-24)
+        # succeeded with none of them set either (withSentryConfig no-ops
+        # without SENTRY_ORG/SENTRY_AUTH_TOKEN; the app's build-time code
+        # tolerates their absence). If a future change makes the build
+        # require one, add it here as the same dummy value local runs use,
+        # never a real secret.
+        if: steps.filter.outputs.run == 'true'
+        working-directory: ./web
+        run: npm run build
+        env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
