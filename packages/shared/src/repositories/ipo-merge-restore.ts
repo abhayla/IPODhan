@@ -197,3 +197,20 @@ export function missingForUnmerge(log: {
   missing.push('source keys superseded by an OD-86 relaunch merge: prior state not logged');
   return missing;
 }
+
+/**
+ * OD-92 unique pre-check: a unique index whose conflict rule the pre-check cannot evaluate as plain
+ * column equality (an expression, a WHERE predicate, or NULLS NOT DISTINCT) is refused by name
+ * rather than skipped, because skipping it would let a restore fail mid-way with a raw 23505.
+ * Returns the refusal line, or null when the index can be checked.
+ */
+export function uncheckableUniqueIndexRefusal(idx: {
+  table: string;
+  name: string;
+  complex: boolean;
+  nullsNotDistinct: boolean;
+}): string | null {
+  return idx.complex || idx.nullsNotDistinct
+    ? `refused: ${idx.table} has unique index ${idx.name} the pre-check cannot evaluate`
+    : null;
+}

@@ -49,7 +49,13 @@ import {
   type SourceKeyBoundVia,
 } from './ipo-source-keys';
 import { noteSourceKeyBind } from './source-key-lineage';
-import { captureMergeDeletions, missingForUnmerge, type MergeCapture, type NulledRef } from './ipo-merge-restore';
+import {
+  captureMergeDeletions,
+  missingForUnmerge,
+  uncheckableUniqueIndexRefusal,
+  type MergeCapture,
+  type NulledRef,
+} from './ipo-merge-restore';
 
 /** audit_logs.action_type of an OD-68 hold; read by the nightly `i_identity_held` check. */
 export const IDENTITY_HELD_ACTION = 'IDENTITY_HELD_FOR_REVIEW';
@@ -2041,17 +2047,28 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       ];
       const collisions: string[] = [];
       for (const set of restoreSets) {
-        const uniques = rows<{ name: string; cols: string[] | string }>(
+        const uniques = rows<{ name: string; cols: string[] | string; complex: boolean; nulls_not_distinct: boolean }>(
           await tx.execute(sql`
             select i.indexrelid::regclass::text as name,
+                   (i.indexprs is not null or i.indpred is not null) as complex,
+                   coalesce(i.indnullsnotdistinct, false) as nulls_not_distinct,
                    array(select a.attname::text from unnest(i.indkey) with ordinality k(attnum, ord)
                          join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum order by k.ord) as cols
             from pg_index i
             where i.indrelid = to_regclass(${`public.${set.table}`}) and i.indisunique and not i.indisprimary
-              and i.indexprs is null and i.indpred is null
           `)
         );
         for (const u of uniques) {
+          const refusal = uncheckableUniqueIndexRefusal({
+            table: set.table,
+            name: u.name,
+            complex: u.complex,
+            nullsNotDistinct: u.nulls_not_distinct,
+          });
+          if (refusal) {
+            collisions.push(refusal);
+            continue;
+          }
           const cols = Array.isArray(u.cols) ? u.cols : String(u.cols).replace(/^{|}$/g, '').split(',').filter(Boolean);
           if (!cols.length) continue;
           const match = sql.join(
