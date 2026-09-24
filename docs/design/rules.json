@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-24T14:08:30.573Z",
+  "generated_at": "2026-09-24T14:37:20.122Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 194,
-    "retired": 37
+    "retired": 39
   },
-  "next_id": 232,
+  "next_id": 234,
   "rules": [
     {
       "id": "R-151",
@@ -1035,12 +1035,12 @@
       "retired": false
     },
     {
-      "id": "R-199",
-      "hash": "ba8c3ee25482",
+      "id": "R-232",
+      "hash": "852fd4ad404a",
       "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
       "kind": "prose",
-      "text": "- Where the words come from: chosen_source, chosen_document_type and the confirmation date on the plan row (§2.3), read through FieldSourcesRepository.getIPOSourceMap(ipoId) (web/lib/repositories/field-sources-repository.ts:143) — one query per page, not one per field. - RETIRED by OD-72 (2026-09-23) — kept here as history: ~~A stale value says so, in grey:~~ \"last confirmed 28 August 2026, being rechecked\". That is the §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never blanked. - A conflict stays admin-only. An unresolved disagreement (§3.4) is not shown to the public. A reader cannot act on \"two sources disagree\"; showing it converts our internal uncertainty into their doubt about every other number on the page. - The cache key it lives under, and the one it must NOT use: the detail page's real key is getIPOBySlugKey — that is what IPORepository.findBySlug caches under (web/lib/repositories/ipo-repository.ts:389). getIPODetailKey exists in web/lib/cache/cache-keys.ts:47 and looks like the obvious choice, but its only caller is an admin edit route (web/app/api/admin/ipos/ — the per-id route handler, line 298) invalidating a key nothing populates. A revalidate that drops the wrong key is a correction that never reaches the page, so the design names the key rather than the function that sounds right. TTL is CacheTTL.IPO_DETAIL = 900 seconds (web/lib/cache/cache-keys.ts:16); the provenance line is part of the page payload, not a second fetch.",
-      "first_seen": "2026-09-23",
+      "text": "- Where the words come from: chosen_source, chosen_document_type and the read date chosen_confirmed_at on the plan row (§2.3), stamped when the row is recorded SUPPLIED with its evidence (OD-93; updated_at is not that date, because any write to the row moves it; rows already SUPPLIED with a source were backfilled from last_attempt_at, the same write's instant). Read by IpoFieldPlanRepository.getIPOProvenanceMap (web/lib/repositories/ipo-field-plan-repository.ts) — one query per page, not one per field. A row supplied before the read date was stored names its source with no date, and a block shows a date only when every field in it has one (OD-72: no fabricated date). The words are \"From the offer document, read 21 Sep 2026\", in IST. - A live figure shows the time of the figure (OD-72): \"Subscription as at 10:30 PM, 22 Sep\", from the source's own observation time (subscriptions.timestamp), in IST. - A missed live slot is an admin alert, not a public label (OD-72, OD-93): a bidding IPO with no subscription figure dated inside one of the 17 half-hour live slots (10:00-18:30 IST, weekdays that are not market holidays) is named, with its first missed slot, in one admin alert per IPO per IST day, and every missed slot appears in one end-of-day summary; every wake judges every ended slot of the day, so a skipped wake is still judged. F-165 measured the need on staging: 9 of 19 bidding IPOs had no figure inside the 14:00 IST slot on 2026-09-24. - RETIRED by OD-72 (2026-09-23) — kept here as history: ~~A stale value says so, in grey:~~ \"last confirmed 28 August 2026, being rechecked\". That is the §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never blanked. - A conflict stays admin-only. An unresolved disagreement (§3.4) is not shown to the public. A reader cannot act on \"two sources disagree\"; showing it converts our internal uncertainty into their doubt about every other number on the page. - The cache key it lives under, and the one it must NOT use: the detail page's real key is getIPOBySlugKey — that is what IPORepository.findBySlug caches under (web/lib/repositories/ipo-repository.ts:389). getIPODetailKey exists in web/lib/cache/cache-keys.ts:47 and looks like the obvious choice, but its only caller is an admin edit route (web/app/api/admin/ipos/ — the per-id route handler, line 298) invalidating a key nothing populates. A revalidate that drops the wrong key is a correction that never reaches the page, so the design names the key rather than the function that sounds right. TTL is CacheTTL.IPO_DETAIL = 900 seconds (web/lib/cache/cache-keys.ts:16). Wording fixed by OD-93: the provenance map is a second cached read beside the page payload, under its own slug-keyed key getIPOProvenanceKey(slug) = ipo:fieldplan:provenance:<slug>, and the OD-40 call drops it together with getIPOBySlugKey; an earlier draft said the line was part of the page payload, which the built page does not do.",
+      "first_seen": "2026-09-24",
       "retired": false
     },
     {
@@ -1053,12 +1053,12 @@
       "retired": false
     },
     {
-      "id": "R-086",
-      "hash": "640ee8f06f71",
+      "id": "R-233",
+      "hash": "cad7adc95950",
       "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
       "kind": "prose",
-      "text": "- The endpoint is new. A search of web/ for revalidatePath / revalidateTag / /api/revalidate returns zero matches: nothing in this application has ever revalidated a path on demand. - Authenticated, because an unauthenticated revalidate endpoint is a free way for anyone to make the site rebuild every page on demand. - Failure is not fatal. If the call fails, the timed rebuild still applies and the correction appears on the next natural revalidation; the failure is logged with its cause (signal-ownership.md R6), never swallowed. - The detail page also gets an explicit revalidate, so its fallback behaviour is a stated number rather than a framework default.",
-      "first_seen": "2026-09-09",
+      "text": "- The endpoint is new. A search of web/ for revalidatePath / revalidateTag / /api/revalidate returns zero matches: nothing in this application has ever revalidated a path on demand. - Authenticated, because an unauthenticated revalidate endpoint is a free way for anyone to make the site rebuild every page on demand. - The touched slugs survive a restart (OD-93). They are mirrored into one Redis set; a crash between a write and the end-of-cycle call leaves them there, and the next cycle's one call sends them with its own. - Failure is not fatal. If the call fails, the timed rebuild still applies and the correction appears on the next natural revalidation; the failure is logged with its cause (signal-ownership.md R6), never swallowed. - The detail page also gets an explicit revalidate, so its fallback behaviour is a stated number rather than a framework default.",
+      "first_seen": "2026-09-24",
       "retired": false
     },
     {
@@ -1753,6 +1753,24 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-199",
+      "hash": "ba8c3ee25482",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "prose",
+      "text": "- Where the words come from: chosen_source, chosen_document_type and the confirmation date on the plan row (§2.3), read through FieldSourcesRepository.getIPOSourceMap(ipoId) (web/lib/repositories/field-sources-repository.ts:143) — one query per page, not one per field. - RETIRED by OD-72 (2026-09-23) — kept here as history: ~~A stale value says so, in grey:~~ \"last confirmed 28 August 2026, being rechecked\". That is the §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never blanked. - A conflict stays admin-only. An unresolved disagreement (§3.4) is not shown to the public. A reader cannot act on \"two sources disagree\"; showing it converts our internal uncertainty into their doubt about every other number on the page. - The cache key it lives under, and the one it must NOT use: the detail page's real key is getIPOBySlugKey — that is what IPORepository.findBySlug caches under (web/lib/repositories/ipo-repository.ts:389). getIPODetailKey exists in web/lib/cache/cache-keys.ts:47 and looks like the obvious choice, but its only caller is an admin edit route (web/app/api/admin/ipos/ — the per-id route handler, line 298) invalidating a key nothing populates. A revalidate that drops the wrong key is a correction that never reaches the page, so the design names the key rather than the function that sounds right. TTL is CacheTTL.IPO_DETAIL = 900 seconds (web/lib/cache/cache-keys.ts:16); the provenance line is part of the page payload, not a second fetch.",
+      "first_seen": "2026-09-23",
+      "retired": true
+    },
+    {
+      "id": "R-086",
+      "hash": "640ee8f06f71",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "prose",
+      "text": "- The endpoint is new. A search of web/ for revalidatePath / revalidateTag / /api/revalidate returns zero matches: nothing in this application has ever revalidated a path on demand. - Authenticated, because an unauthenticated revalidate endpoint is a free way for anyone to make the site rebuild every page on demand. - Failure is not fatal. If the call fails, the timed rebuild still applies and the correction appears on the next natural revalidation; the failure is logged with its cause (signal-ownership.md R6), never swallowed. - The detail page also gets an explicit revalidate, so its fallback behaviour is a stated number rather than a framework default.",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-050",

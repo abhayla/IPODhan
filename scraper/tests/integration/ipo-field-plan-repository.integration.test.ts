@@ -1129,7 +1129,7 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     expect(persisted.chosenConfirmedAt).toBeNull();
   });
 
-  it('item 21: migration 0058 backfills the read date from last_attempt_at for SUPPLIED rows that name a source, and only those', async () => {
+  it('item 21: migration 0059 backfills the read date from last_attempt_at for SUPPLIED rows that name a source, and only those', async () => {
     const withSource = await seedRow({ state: 'SUPPLIED', chosenSource: 'DOC', fieldName: 'faceValue' });
     const noSource = await seedRow({ state: 'SUPPLIED', chosenSource: null, fieldName: 'issueSize' });
     const notSupplied = await seedRow({ state: 'CHECK_FAILED', chosenSource: 'DOC', fieldName: 'lotSize' });
@@ -1137,7 +1137,7 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     await db.execute(sql`UPDATE ipo_field_plan SET last_attempt_at = '2026-09-19 03:17:55', chosen_confirmed_at = NULL WHERE id IN (${withSource}::uuid, ${noSource}::uuid, ${notSupplied}::uuid)`);
     await db.execute(sql`UPDATE ipo_field_plan SET last_attempt_at = '2026-09-19 03:17:55', chosen_confirmed_at = '2026-09-01 00:00:00' WHERE id = ${already}::uuid`);
     const file = readFileSync(
-      fileURLToPath(new URL('../../../web/drizzle/migrations/0058_ipo_field_plan_chosen_confirmed_at.sql', import.meta.url)),
+      fileURLToPath(new URL('../../../web/drizzle/migrations/0059_ipo_field_plan_chosen_confirmed_at.sql', import.meta.url)),
       'utf8'
     );
     const update = file.split('--> statement-breakpoint').map((x) => x.trim()).find((x) => x.startsWith('UPDATE'));
