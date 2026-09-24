@@ -13,7 +13,7 @@
  *
  * RCA (2026-09-01, recurring): an aggregator's raw name/slug landed on the
  * row before OD-68's stripping existed everywhere it needed to. The write
- * path (computeIpoIdentitySlug, data-persister.ts) now strips decoration on
+ * path (computeIpoIdentitySlug, src/services/ipo-identity-slug.ts) now strips decoration on
  * every new/updated row; this tool repairs the rows minted before that held.
  * The Rays of Belief `-o` instance of this class was merged away manually on
  * 2026-09-24; this tool makes the repair re-runnable and class-wide instead
@@ -67,7 +67,7 @@ import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
 import { eq } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
-import { computeIpoIdentitySlug } from '../src/services/data-persister.js';
+import { computeIpoIdentitySlug } from '../src/services/ipo-identity-slug.js';
 import { openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike } from './lib/repair-tool.js';
 // The audit's OWN predicate — one definition, reused, not retyped.
 import { checkIpoTitleInName, stripIdentityNameDecoration, stripIdentitySlugSuffix } from '../../scripts/lib/detection-floor-checks.mjs';

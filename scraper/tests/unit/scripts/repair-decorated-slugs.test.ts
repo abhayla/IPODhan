@@ -14,7 +14,7 @@ vi.mock('../../../src/utils/logger.js', () => ({
   default: { info: vi.fn(), warn: warnMock, error: vi.fn() },
 }));
 
-vi.mock('../../../src/services/data-persister.js', () => ({
+vi.mock('../../../src/services/ipo-identity-slug.js', () => ({
   // Mirrors the real computeIpoIdentitySlug for a clean, non-OFS company name:
   // lowercase, spaces -> hyphens, strip anything non [a-z0-9-]. No offeringType
   // year suffix is exercised here (matches this class: OFS explicit rows are
