@@ -45,7 +45,6 @@ const UNKNOWN_ALLOWED = new Set([
   'item-09-re-read-loop.md',
   'item-10-verification-checks.md',
   'item-11-crore-conversion.md',
-  'item-12-name-normaliser-and-duplicate-detection.md',
   'item-19-merge-tool-shared-write-path.md',
   'item-21-read-side.md',
   'item-22-document-handling-and-download-limits.md',
