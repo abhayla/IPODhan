@@ -1,0 +1,10 @@
+{
+  "class_id": "a better document arrives but the fields already chosen from an older document stay on the older one",
+  "feature": "any per-field plan that records the document a value was chosen from (chosen_document_id) and settles the field as SUPPLIED, where a later filing of the same IPO can outrank that document (a higher-precedence type, or the same type with a newer filing_date)",
+  "symptom": "the plan row is SUPPLIED, so the walk does not ask for the field again. Nothing compares its chosen document with the documents that arrived after it, so a PROSPECTUS extracted after an RHP (or an RHP after a DRHP) leaves every field chosen from the older document where it was. Readers see a settled value with a document behind it, which looks correct. The generic test: count SUPPLIED plan rows whose chosen document is outranked by a COMPLETED document of the same IPO stored after the row last changed. Any row found proves the reopen step is missing, whatever the field.",
+  "first_seen": "2026-09-24, ipodhan_staging, measured read-only (F-164). 3 of 210 SUPPLIED plan rows with a chosen document: jindal-supreme-india-ltd, glass-wall-systems-india-ltd, lcc-projects-ltd, all ipos.company_description chosen from an RHP, each with a COMPLETED PROSPECTUS stored 2026-09-18 to 2026-09-22 while the plan rows last changed 2026-09-17. ipo_field_plan has no superseded_by column and decideSupersession (scraper/src/services/document-state-machine.ts) has no non-test caller. 48 of 345 documents carry filing_date, and none of the three prospectuses does.",
+  "fix_prs": "none yet. The spec (§2.5) makes wiring decideSupersession and backfilling documents.filing_date prerequisites of the pull walk (item 6); the filing_date backfill is also named in item 17.",
+  "detection_check": "none yet: PULL-FROZEN (pull_frozen) is specified in §4 but not built, because nothing records supersession. A type-rank-only version (SUPPLIED row chosen from DRHP/RHP while a COMPLETED RHP/PROSPECTUS of the same IPO exists) is buildable now and flags exactly these 3 rows on staging today.",
+  "status": "unguarded",
+  "spec_ref": ["§2.5", "§2.5.1"]
+}

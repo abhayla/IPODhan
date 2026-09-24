@@ -2032,6 +2032,11 @@ so itself: *"NOT YET CALLED BY THE RUNNER, and deliberately so"*
 orders by `filing_date`, which is populated on **24 of 256 documents**. So wiring supersession, and
 backfilling `filing_date`, are both prerequisites of the pull loop, not parts of it.
 
+Measured again 2026-09-24 (F-164): still unwired, and `ipo_field_plan` has no `superseded_by`
+column. On staging 3 SUPPLIED rows (Jindal Supreme, Glass Wall Systems, LCC Projects, all
+`company_description`) stay chosen from an RHP after the IPO's PROSPECTUS was extracted, and
+`filing_date` is populated on 48 of 345 documents. Check `PULL-FROZEN` (§4) waits on this wiring.
+
 #### 2.5.1 Every trigger that re-asks a field, in one place
 
 The triggers below were scattered across five sections of an earlier draft. An implementer would
