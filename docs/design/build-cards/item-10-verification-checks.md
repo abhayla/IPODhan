@@ -1,6 +1,6 @@
 # Item 10 — The verification checks of §4
 
-Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 10: 14 of 21 paper checks accounted for (12 merged in #859, more in #863), 4 found live defects now fixed at class level; 6 of the remaining 8 are BLOCKED on mechanisms that do not exist (pull_frozen supersession, item-9-dependent reread_* checks, pull_noblank, pull_noop_suppression); real deliverable is 13-15 checks not 21
+Status: DONE 2026-09-25 PRs #859, #863, #988, #1019, #1023 proof 2026-09-25 staging floor run (audit-detection-floor.mjs vs ipodhan_staging, 82 checks)
 
 ## Purpose
 
