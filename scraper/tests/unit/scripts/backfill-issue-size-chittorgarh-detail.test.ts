@@ -9,6 +9,7 @@ import {
   upsertIssueSizeProvenance,
   stampExactMatchProvenance,
   BACKFILL_UPDATED_BY,
+  isIssueSizeCandidate,
 } from '../../../scripts/backfill-issue-size-chittorgarh-detail.js';
 
 /** Builds a mocked db/tx exposing the exact chain the provenance helpers call. */
@@ -192,6 +193,37 @@ describe('decideIssueSizeRepair — above-floor recheck mode (round-N: Windlas/A
     const d = decideIssueSizeRepair({ current: 17_647_058, segment: 'MAINBOARD', sourced: 7_570_600_000 });
     expect(d.status).toBe('WRITE');
     expect(d.write).toBe(true);
+  });
+});
+
+describe('isIssueSizeCandidate (item 14, #728 class widening: NULL-segment rows in recheck mode)', () => {
+  it('below-floor mode: EXCLUDES a NULL-segment row (unchanged — no floor to compute)', () => {
+    expect(isIssueSizeCandidate({ segment: null, issueSize: '14797000' }, false)).toBe(false);
+  });
+
+  it('below-floor mode: still INCLUDES a known-segment below-floor row (no regression)', () => {
+    expect(isIssueSizeCandidate({ segment: 'MAINBOARD', issueSize: '17683000' }, false)).toBe(true);
+  });
+
+  it('below-floor mode: still EXCLUDES a known-segment above-floor row (no regression)', () => {
+    expect(isIssueSizeCandidate({ segment: 'MAINBOARD', issueSize: String(175_00_00_000) }, false)).toBe(false);
+  });
+
+  it('recheck mode: INCLUDES a NULL-segment row with a usable positive issue_size (banganga/nirbhay/piyush class)', () => {
+    expect(isIssueSizeCandidate({ segment: null, issueSize: '14797000' }, true)).toBe(true);
+  });
+
+  it('recheck mode: EXCLUDES a NULL-segment row with NULL issue_size (nothing to compare)', () => {
+    expect(isIssueSizeCandidate({ segment: null, issueSize: null }, true)).toBe(false);
+  });
+
+  it('recheck mode: EXCLUDES a NULL-segment row with a zero issue_size (same defect class, no usable current value)', () => {
+    expect(isIssueSizeCandidate({ segment: null, issueSize: '0' }, true)).toBe(false);
+  });
+
+  it('recheck mode: still requires a known-segment row to clear its floor (no regression)', () => {
+    expect(isIssueSizeCandidate({ segment: 'MAINBOARD', issueSize: '17683000' }, true)).toBe(false); // below floor
+    expect(isIssueSizeCandidate({ segment: 'MAINBOARD', issueSize: String(175_00_00_000) }, true)).toBe(true); // above floor
   });
 });
 

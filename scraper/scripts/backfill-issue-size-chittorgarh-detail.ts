@@ -142,6 +142,33 @@ interface Candidate {
 interface DiscoveryEntry { slug: string; id: string; }
 
 /**
+ * Pure candidate-selection predicate (item 14, #728 class widening,
+ * 2026-09-24). Extracted for unit testing (no DB) — see
+ * `scraper/tests/unit/scripts/backfill-issue-size-chittorgarh-detail.test.ts`.
+ *
+ * Below-floor mode is UNCHANGED: a known segment (and therefore a computable
+ * floor) is required to decide "below the floor" at all. In
+ * `--recheck-above-floor` mode the comparison is stored-vs-sourced, which
+ * does not need a floor — a NULL-segment row is ALWAYS considered there
+ * (banganga-paper-industries-ltd, light-of-life-trust,
+ * nirbhay-colours-india-ltd on staging: all NULL segment, one also NULL
+ * price_range_max). A known-segment row must still already clear its floor
+ * in recheck mode, same gate as before this change.
+ */
+export function isIssueSizeCandidate(
+  r: { segment: 'MAINBOARD' | 'SME' | null; issueSize: string | null },
+  recheckAboveFloor: boolean
+): boolean {
+  const floor = r.segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : r.segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
+  if (floor === null && !recheckAboveFloor) return false;
+  if (r.issueSize === null) return recheckAboveFloor ? false : true; // NULL — below-floor's "no usable value" class; nothing to recheck above the floor
+  const val = Number(r.issueSize);
+  if (!Number.isFinite(val) || val <= 0) return recheckAboveFloor ? false : true; // 0 — same defect class, below-floor only
+  if (!recheckAboveFloor) return val < floor;
+  return floor === null ? true : val >= floor;
+}
+
+/**
  * Pure decision: given the row's current stored value and a source-extracted
  * candidate, decide whether to write. Extracted for unit testing (no DB/network).
  * The extractor already applies the floor + shares-x-cap cross-check gate on
@@ -494,18 +521,29 @@ async function main() {
   );
   console.log(`discovery map: ${discovery.size} IPOs (+${report82Added} from report 82 fallback)`);
 
-  // 2. Selection: IPO offering type, price_range_max present, a LIVE status
-  //    (WITHDRAWN/POSTPONED excluded — see the STATUSES comment above),
-  //    and issue_size that is either NULL, 0, or a positive value below the
-  //    segment floor (round 4: NULL/0 is the SAME "no usable value" defect
-  //    class as a below-floor share count — all three get the same source
-  //    repair). Import the SAME floor constants the write-time guard uses —
-  //    never re-typed.
+  // 2. Selection: IPO offering type, a LIVE status (WITHDRAWN/POSTPONED
+  //    excluded — see the STATUSES comment above), and issue_size that is
+  //    either NULL, 0, or a positive value below the segment floor (round 4:
+  //    NULL/0 is the SAME "no usable value" defect class as a below-floor
+  //    share count — all three get the same source repair). Import the SAME
+  //    floor constants the write-time guard uses — never re-typed.
+  //
+  //    price_range_max present is required in BELOW-FLOOR mode only (the
+  //    write-time guard needs a cap to compute the floor's cross-check).
+  //    Item 14 (#728 class widening, 2026-09-24): --recheck-above-floor
+  //    compares the STORED value against the SOURCED value directly and does
+  //    not need a floor or a cap to do that — a NULL price_range_max row
+  //    (banganga-paper-industries-ltd, light-of-life-trust,
+  //    nirbhay-colours-india-ltd on staging) is CONSIDERED in recheck mode;
+  //    the shares-x-cap cross-check inside extractIssueSizeFromDetailHtml
+  //    already no-ops on a falsy priceRangeMax (chittorgarh-detail-fields.ts
+  //    `if (sharesOnPage !== null && opts.priceRangeMax)`), so passing null
+  //    through is safe, not a silent skip of a check that would otherwise run.
   const whereClauses = [
     eq(schema.ipos.offeringType, 'IPO'),
-    isNotNull(schema.ipos.priceRangeMax),
     inArray(schema.ipos.status, STATUSES as unknown as string[]),
   ];
+  if (!RECHECK_ABOVE_FLOOR) whereClauses.push(isNotNull(schema.ipos.priceRangeMax));
   if (SLUGS) whereClauses.push(inArray(schema.ipos.slug, SLUGS));
 
   const rows = await db
@@ -523,17 +561,10 @@ async function main() {
 
   const candidates: Candidate[] = rows
     .map((r) => ({ ...r, issueSize: r.issueSize == null ? null : String(r.issueSize) }))
-    .filter((r) => {
-      const floor = r.segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : r.segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
-      if (floor === null) return false;
-      if (r.issueSize === null) return RECHECK_ABOVE_FLOOR ? false : true; // NULL — below-floor's "no usable value" class; nothing to recheck above the floor
-      const val = Number(r.issueSize);
-      if (!Number.isFinite(val) || val <= 0) return RECHECK_ABOVE_FLOOR ? false : true; // 0 — same defect class, below-floor only
-      return RECHECK_ABOVE_FLOOR ? val >= floor : val < floor;
-    }) as Candidate[];
+    .filter((r) => isIssueSizeCandidate(r, RECHECK_ABOVE_FLOOR)) as Candidate[];
   console.log(
     RECHECK_ABOVE_FLOOR
-      ? `considered (offering_type=IPO, has price cap, live status, issue_size >= segment floor — recheck mode): ${candidates.length}`
+      ? `considered (offering_type=IPO, live status, issue_size >= segment floor OR segment unknown — recheck mode): ${candidates.length}`
       : `considered (offering_type=IPO, has price cap, live status, issue_size NULL/0/below segment floor): ${candidates.length}`
   );
 
@@ -581,8 +612,11 @@ async function main() {
       mode: RECHECK_ABOVE_FLOOR ? 'above-floor' : 'below-floor',
       overwriteAboveFloor: OVERWRITE_ABOVE_FLOOR,
     });
+    const capNote = c.priceRangeMax == null
+      ? ' (no price cap on this row — shares-x-cap cross-check skipped)'
+      : '';
     console.log(
-      `  ${c.slug}: old=${current ?? "NULL"} source=${value ?? 'none'} cap=${c.priceRangeMax} -> ${decision.status} (${decision.reason})`
+      `  ${c.slug}: old=${current ?? "NULL"} source=${value ?? 'none'} cap=${c.priceRangeMax ?? 'NULL'}${capNote} segment=${c.segment ?? 'NULL'} -> ${decision.status} (${decision.reason})`
     );
 
     if (decision.status === 'OK') {

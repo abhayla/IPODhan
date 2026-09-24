@@ -57,6 +57,7 @@ import {
   summariseIssueSizeConsistency,
   checkNoUnresolvedConflictOnLiveIpo, HIGH_VALUE_FIELDS, LIVE_STATUSES,
   checkIssueSizeSegmentFloor, checkIssueSizeSharesConsistency,
+  checkIssueSizeSourceCapability,
   checkLotBandSebiWindow, checkCorporateActionShape,
   classifyRouteResponse, classifyVerdictLeak, classifyConflictNoiseRatio, checkFreshnessPerType,
   checkPm2EnvHasTz, checkPm2LogSize, findUnreferencedDefinitions,
@@ -434,7 +435,7 @@ async function checkA_B() {
 // ---- (c): issue_size plausibility -------------------------------------------
 async function checkC() {
   const rows = await q(
-    `SELECT id, company_name, segment, issue_size AS "issueSize", price_range_max AS "priceRangeMax",
+    `SELECT id, company_name, slug, status, segment, issue_size AS "issueSize", price_range_max AS "priceRangeMax",
             (SELECT s.shares_offered FROM subscriptions s WHERE s.ipo_id = i.id AND s.shares_offered IS NOT NULL
               ORDER BY s.timestamp DESC LIMIT 1) AS "sharesOffered",
             -- The RAW listing_performance.issue_price, so the floor message can
@@ -472,6 +473,54 @@ async function checkC() {
     `${floorOffenders.length} violation(s)` + (floorOffenders.length ? `: ${floorOffenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
   record('c_issue_size_consistency', 'issue_size (total incl. OFS) is within 0.75x-3.0x of shares_offered (net public offer) x price_range_max', consistency.status,
     consistency.detail + (consistencyOffenders.length ? `: ${consistencyOffenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
+// ---- (c, source capability): current issueSize provenance vs field-manifest -
+// capability (item 14, #728 class). Reads capability directly from
+// field-manifest.json — never hard-codes BSE — so a future manifest edit
+// (adding/removing a capable source for this field) changes this check's
+// population without a code change.
+let ISSUE_SIZE_MANIFEST_CAPABILITY;
+let ISSUE_SIZE_MANIFEST_READ_ERROR;
+function loadIssueSizeManifestCapability() {
+  if (ISSUE_SIZE_MANIFEST_CAPABILITY !== undefined || ISSUE_SIZE_MANIFEST_READ_ERROR) return;
+  try {
+    const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'scraper', 'config', 'field-manifest.json'), 'utf8'));
+    ISSUE_SIZE_MANIFEST_CAPABILITY = manifest?.fields?.['ipos.issue_size']?.capability ?? null;
+    if (!ISSUE_SIZE_MANIFEST_CAPABILITY) ISSUE_SIZE_MANIFEST_READ_ERROR = 'field-manifest.json has no fields["ipos.issue_size"].capability entry';
+  } catch (e) {
+    ISSUE_SIZE_MANIFEST_READ_ERROR = e.message;
+  }
+}
+
+async function checkC_issueSizeSourceCapability() {
+  loadIssueSizeManifestCapability();
+  const name = 'ipos.issue_size current provenance source is manifest-capable for ipos.issue_size (field-manifest.json)';
+  if (ISSUE_SIZE_MANIFEST_READ_ERROR) {
+    record('c_issue_size_noncapable_source', name, 'UNVERIFIABLE', `field-manifest.json not readable: ${ISSUE_SIZE_MANIFEST_READ_ERROR}`);
+    return;
+  }
+  const rows = await q(
+    `SELECT i.id, i.company_name, i.slug, i.status, i.segment, i.issue_size AS "issueSize",
+            fs.source AS "issueSizeSource"
+       FROM ipos i
+       LEFT JOIN field_sources fs
+         ON fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.row_key = '' AND fs.field_name = 'issueSize'
+      WHERE ${REAL_IPO}`
+  );
+  const offenders = [];
+  for (const r of rows) {
+    const row = { source: r.issueSizeSource, issueSize: r.issueSize };
+    const v = checkIssueSizeSourceCapability(row, ISSUE_SIZE_MANIFEST_CAPABILITY);
+    if (v) {
+      const identity = `${r.slug ?? r.id} (status=${r.status}, segment=${r.segment ?? 'NULL'})`;
+      offenders.push(`${identity} — ${v}`);
+      notify('c_issue_size_noncapable_source', 'P1', r.id, `issue_size sourced from a non-capable source: ${r.company_name}`, `${identity} — ${v}`);
+    }
+  }
+  record('c_issue_size_noncapable_source', name, offenders.length === 0 ? 'PASS' : 'FAIL',
+    `${offenders.length} of ${rows.length} IPO row(s) currently source issueSize from a source field-manifest.json ranks non-capable`
+      + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
 // ---- (d): lot x band SEBI window + corporate-action shape -------------------
@@ -2850,6 +2899,7 @@ async function main() {
 === DETECTION-FLOOR AUDIT (T-335) — ${new Date().toISOString()} ===`);
   await checkA_B();
   await checkC();
+  await checkC_issueSizeSourceCapability();
   await checkD();
   await checkD_segmentProvenance();
   await checkE();
