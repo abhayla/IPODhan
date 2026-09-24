@@ -2089,6 +2089,25 @@ describe('walk records a gap under its FIELD gap key (#884 review rounds 1-2)', 
     }
   });
 
+  it('round 2 MINOR: an all-structural failure with NO gap key is logged as re-asked next data slot, not "only when the key changes"', async () => {
+    const warn = vi.spyOn(logger, 'warn');
+    try {
+      const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: null, rank3Source: null })]);
+      const d = deps({
+        fieldPlanRepository: repo as any,
+        sourceFetchers: { NSE: gapFetcher('NO_MAPPING') } as any,
+      } as any);
+      await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+      expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+      expect(repo.recorded[0].gapKey ?? null).toBeNull();
+      const msgs = warnMessages(warn);
+      expect(msgs.filter((m) => /only when the key changes/.test(m))).toHaveLength(0);
+      expect(msgs.filter((m) => /no gap key could be computed.*re-asked next data slot/.test(m))).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('no gap-key source, or one that throws: an all-gap row is charged (bounded), never left unkeyed', async () => {
     for (const gapKeys of [undefined, { forIpo: vi.fn(async () => { throw new Error('db down'); }) }]) {
       const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: null, rank3Source: null })]);

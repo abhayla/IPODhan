@@ -844,6 +844,50 @@ describe('W-124 round 2 — MAJOR-1: a complete LISTED row is excluded from ever
   });
 });
 
+describe('#943 round 2: a LISTED row attempted at LISTED is run again only on a new document (OD-81 event 2)', () => {
+  const ATTEMPTED = new Date('2026-09-20T00:00:00Z');
+  const rowsAttemptedAtListed = [
+    ...['DRHP', 'RHP', 'PRICE_BAND_AD', 'RATIOS_BASIS_ISSUE_PRICE', 'ANCHOR_ALLOCATION_REPORT', 'BASIS_OF_ALLOTMENT_AD'].map(
+      (docType, i) => ({ id: `f${i}`, docType, state: 'FOUND', lastAttemptAt: ATTEMPTED })
+    ),
+    { id: 'n1', docType: 'CORRIGENDUM', state: 'NOT_APPLICABLE', lastAttemptAt: ATTEMPTED },
+    { id: 'n2', docType: 'ADDENDUM', state: 'NOT_APPLICABLE', lastAttemptAt: ATTEMPTED },
+    {
+      id: 'p1',
+      docType: 'PROSPECTUS',
+      state: 'BLOCKED_ALL',
+      attempts: 6,
+      lastAttemptAt: ATTEMPTED,
+      attemptedAtStage: 'LISTED',
+      nextRetryAt: null,
+    },
+  ];
+
+  it.each([
+    ['no document seen since the attempt', new Date('2026-09-19T00:00:00Z'), false],
+    ['a document first seen after the attempt', new Date('2026-09-21T00:00:00Z'), true],
+  ])('%s -> runIpo called: %s', async (_label, uploadedAt, expectRun) => {
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+    dbExecuteMock.mockResolvedValue({
+      rows: [{ ...candidateRow('listed-held', 'LISTED'), listing_date: daysAgo(1) }],
+    });
+    vi.mocked(DocumentFetchStateRepository).mockImplementation(
+      () =>
+        ({
+          listForIpo: vi.fn(() => Promise.resolve(rowsAttemptedAtListed)),
+          update: vi.fn().mockResolvedValue(undefined),
+        }) as never
+    );
+    const findByIpoMock = vi.fn().mockResolvedValue([{ id: 'd1', uploadedAt }]);
+    vi.mocked(DocumentRepository).mockImplementation(() => ({ findByIPO: findByIpoMock }) as never);
+
+    const summary = await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+    const runIpoIds = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(runIpoIds.includes('listed-held')).toBe(expectRun);
+    expect(summary.listedComplete).toBe(expectRun ? 0 : 1);
+  });
+});
+
 describe('W-124 round 2 — MAJOR-2: LISTED enrichment is bounded to listedCap * 4', () => {
   it('only enriches the first listedCap * 4 LISTED rows — store.listForIpo is called at most that many times for LISTED stage', async () => {
     deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);

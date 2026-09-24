@@ -2389,6 +2389,11 @@ export class DocumentDiscoveryRunner {
         blockedSinceAt: transition.blockedSinceAt,
         attempts: (stateRow.attempts ?? 0) + 1,
         lastAttemptAt: now,
+        // Round 2 (OD-56): record the stage this attempt was made at, so a
+        // LISTED IPO's row is attempted once after entering LISTED and not
+        // every slot. A chain that concluded nothing (`chain_incomplete`)
+        // learned nothing, so it does not count as the stage's attempt.
+        ...(outcome !== 'chain_incomplete' ? { attemptedAtStage: ipo.stage } : {}),
         // Only the attempts that concern THIS document type, plus the shared
         // exchange calls (N8 — storing the whole cycle's log on every row grew
         // with the number of due types and buried the relevant lines).
@@ -2477,5 +2482,6 @@ export function toStateRow(row: DocumentFetchStateRow): StateRow {
     filingDate: row.filingDate,
     extractorVersion: row.extractorVersion,
     lastAttemptAt: row.lastAttemptAt,
+    attemptedAtStage: row.attemptedAtStage ?? null,
   };
 }

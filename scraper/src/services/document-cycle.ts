@@ -46,6 +46,7 @@ import {
   CYCLE_BUDGET,
   planIpoCycle,
   heldStatesSqlList,
+  OPEN_STATES,
   type IssueShape,
 } from './document-state-machine.js';
 import type { DocumentFetchStateRow } from '@ipodhan/shared/repositories/document-fetch-state-repository';
@@ -349,9 +350,10 @@ export interface DocumentCycleSummary {
    * Item 7 S2 (spec §2.1, OD-19/OD-33/OD-55): true only when EVERY pass of
    * this cycle ran to completion on its own budget slice — discovery
    * (PASS 1), extraction, field-plan generation (PASS 2.5) and the
-   * field-plan walk (PASS 3). LISTED work deferred past the per-cycle cap
-   * does NOT make it false (F-151, spec §6.1). `false` means at least one pass stopped
-   * early; the caller (index.ts's data-job slot) MUST NOT stamp the
+   * field-plan walk (PASS 3) — and no DUE LISTED work was deferred past the
+   * per-cycle cap (round 2 of #943: only rows not yet attempted since entering
+   * LISTED, or with a new document since, are due). `false` means at least one
+   * pass stopped early or due work was deferred; the caller (index.ts's data-job slot) MUST NOT stamp the
    * slot finished when this is false, or a partial wake reads as a
    * complete data-job slot (independent-review HIGH finding: the caller
    * previously keyed the stamp on `budgetExhausted` — PASS 1 only — so a
@@ -509,7 +511,7 @@ export function summarize(
    * Item 7 S2 (spec §2.1, OD-19/OD-33/OD-55): per-pass early-stop flags.
    * Every field defaults false/0 so existing callers (and tests) that never
    * pass this argument get `slotComplete: true` exactly when `budgetExhausted`
-   * is false (F-151: `listedDeferred` no longer counts), which keeps this an
+   * is false and `listedDeferred` is 0, which keeps this an
    * additive change to `summarize`'s public signature.
    */
   slotInfo: {
@@ -527,11 +529,14 @@ export function summarize(
   if (slotInfo.fieldPlanGenExhausted) incompletePasses.push('field_plan_generation_exhausted');
   if (slotInfo.fieldPlanWalkSkippedNoBudget) incompletePasses.push('field_plan_walk_no_budget');
   if (slotInfo.fieldPlanWalkExhausted) incompletePasses.push('field_plan_walk_exhausted');
-  // F-151: LISTED cap deferral is NOT a completion condition of the data slot.
-  // Spec §6.1 gives old (LISTED/CLOSED) IPOs to the 22:00 closed-IPO job, and
-  // a LISTED IPO only counted complete once nothing was due, which the removed
-  // document retry timer kept re-arming, so the slot never closed. The count
-  // stays on the summary (`listedDeferred`) so the backlog is still visible.
+  // Round 2 of #943: LISTED deferral IS a completion condition again, because
+  // `listedDeferred` now counts only LISTED IPOs with a DUE row (not yet
+  // attempted since entering LISTED, or a new document seen since: OD-56,
+  // OD-81). A row attempted once at LISTED is not due (planIpoCycle), so the
+  // due set shrinks every wake and the slot logs complete once it is empty.
+  // No other job fetches LISTED documents: the 22:00 closed-IPO job runs only
+  // the §2.4 field-plan walk, which never reads a document (§6.1).
+  if ((listedInfo.deferred ?? 0) > 0) incompletePasses.push('listed_deferred');
   return {
     ipos: results.length,
     skipped: results.filter((r) => r.skipped).length,
@@ -961,7 +966,37 @@ async function enrichRotatingCandidates(
       c.lastActivityIsProxy = proxy !== null;
     }
 
-    const plan = planIpoCycle({ stage: c.stage, rows, issue: c.issue });
+    let plan = planIpoCycle({ stage: c.stage, rows, issue: c.issue });
+
+    // Round 2 of #943 (OD-81 event 2): a LISTED row already attempted at
+    // LISTED is due again only when a document for the IPO was first seen after
+    // its last attempt. Read `documents.uploaded_at` ONLY when that is the one
+    // thing keeping an open row out of the plan, so a LISTED IPO with nothing
+    // open still costs no extra DB round trip (W-124 round 2, MAJOR-1).
+    const heldByListedOnce =
+      c.stage === 'LISTED' &&
+      plan.skipIpo &&
+      rows.some((r) => OPEN_STATES.includes(r.state) && r.attemptedAtStage === 'LISTED');
+    if (heldByListedOnce) {
+      let newestDocumentSeenAt: Date | null = null;
+      try {
+        for (const d of await deps.documents.findByIPO(c.id)) {
+          const at = (d as { uploadedAt?: Date | null }).uploadedAt ?? null;
+          if (at && (!newestDocumentSeenAt || at.getTime() > newestDocumentSeenAt.getTime())) {
+            newestDocumentSeenAt = at;
+          }
+        }
+      } catch (error) {
+        // Non-fatal: no new-document event is seen this wake; the next wake reads again.
+        logger.warn(
+          { ipoId: c.id, error: error instanceof Error ? error.message : String(error) },
+          'Round 2: could not load documents.uploaded_at for the LISTED new-document check (non-fatal)'
+        );
+      }
+      if (newestDocumentSeenAt) {
+        plan = planIpoCycle({ stage: c.stage, rows, issue: c.issue, options: { newestDocumentSeenAt } });
+      }
+    }
     c.alreadyComplete = plan.skipIpo;
     c.precomputedPlan = plan;
     enriched++;

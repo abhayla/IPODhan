@@ -72,6 +72,11 @@ export interface StateRow {
   filingDate: string | null;
   extractorVersion: string | null;
   lastAttemptAt: Date | null;
+  /**
+   * Stage at the last CONCLUDED attempt (`document_fetch_state.attempted_at_stage`).
+   * Optional so callers/tests that predate it read as "not attempted at this stage".
+   */
+  attemptedAtStage?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -283,6 +288,13 @@ export interface CycleOptions {
   /** Bumping this re-queues EXTRACTED rows built by an older extractor (R5). */
   extractorVersion?: string;
   now?: Date;
+  /**
+   * OD-81 event 2 / §2.5.1 trigger 3: the newest time a document for this IPO was
+   * first seen (`documents.uploaded_at`, any writer). A LISTED row already
+   * attempted at LISTED becomes due again only when a document for the IPO was
+   * first seen AFTER that row's last attempt. Absent = no such event known.
+   */
+  newestDocumentSeenAt?: Date | null;
 }
 
 /** The states from which a document may still be fetched. */
@@ -441,6 +453,16 @@ export function planIpoCycle(params: {
     // spec §2.1 "The timed backoff retry is removed", OD-21, OD-33.)
     if (attemptedThisSlot(row, now)) continue;
 
+    // Round 2 (OD-56 "once per STAGE CHANGE, never more", §2.5.1 "never on a
+    // backoff timer", OD-81): a LISTED IPO's open row is attempted ONCE after
+    // the IPO entered LISTED. After that it is not due, so it neither holds the
+    // data slot open nor spends a LISTED cap slot, until a NEW document for the
+    // IPO is first seen after the row's last attempt (OD-81 event 2). A missing
+    // row (a doc type first seen) is handled above: it is always due.
+    if (params.stage === 'LISTED' && !listedRowDue(row, options.newestDocumentSeenAt ?? null)) {
+      continue;
+    }
+
     due.push(docType);
   }
 
@@ -509,6 +531,22 @@ export function attemptedThisSlot(row: Pick<StateRow, 'nextRetryAt'>, now: Date)
   if (!next) return false;
   if (!isDataJobSlotBoundary(next)) return false;
   return next.getTime() > now.getTime();
+}
+
+/**
+ * Is an OPEN row of a LISTED IPO due (round 2 of #943)? Due when it has not had
+ * a concluded attempt since the IPO entered LISTED (`attemptedAtStage` is not
+ * LISTED), or when a document for the IPO was first seen after its last attempt.
+ * Never due merely because time passed: that is the timer F-151 removed.
+ */
+export function listedRowDue(
+  row: Pick<StateRow, 'attemptedAtStage' | 'lastAttemptAt'>,
+  newestDocumentSeenAt: Date | null
+): boolean {
+  if (row.attemptedAtStage !== 'LISTED') return true;
+  if (!newestDocumentSeenAt) return false;
+  if (!row.lastAttemptAt) return true;
+  return newestDocumentSeenAt.getTime() > row.lastAttemptAt.getTime();
 }
 
 export interface Transition {

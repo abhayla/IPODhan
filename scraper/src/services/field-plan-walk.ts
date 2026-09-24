@@ -1025,16 +1025,22 @@ async function attemptOneField(
     result.fieldsCheckFailed += 1;
     const classified = classifyWalkFailures(failures);
     const structural = classified?.allGaps === true;
-    logger.warn(
-      { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures },
-      structural
-        ? 'PASS 3: every rank failed with a STRUCTURAL gap — CHECK_FAILED recorded as definitive under its gap key, re-asked only when the key changes (NOT transient, NOT retired)'
-        : 'PASS 3: every rank failed for this field, at least one TRANSIENTLY — CHECK_FAILED, re-asked next data slot (NOT retired)'
-    );
     const gapKey =
       classified?.allGaps && ipoGapKeys
         ? fieldPlanGapKeyFor(ipoGapKeys, plan.tableName, plan.fieldName, classified.gapCodes)
         : null;
+    // Round 2 MINOR: the log says what the write below actually does. A
+    // structural failure with no gap key (no ipoGapKeys for this IPO) is NOT
+    // recorded under a key; it takes the charged next-slot path like a
+    // transient one, so it must not be logged as "re-asked only when the key changes".
+    logger.warn(
+      { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures, gapKey },
+      structural && gapKey
+        ? 'PASS 3: every rank failed with a STRUCTURAL gap — CHECK_FAILED recorded as definitive under its gap key, re-asked only when the key changes (NOT transient, NOT retired)'
+        : structural
+          ? 'PASS 3: every rank failed with a STRUCTURAL gap but no gap key could be computed — CHECK_FAILED, re-asked next data slot (NOT retired)'
+          : 'PASS 3: every rank failed for this field, at least one TRANSIENTLY — CHECK_FAILED, re-asked next data slot (NOT retired)'
+    );
     return recordAndClassify(deps, result, {
       planRowId: plan.id,
       claimToken: plan.claimToken,
