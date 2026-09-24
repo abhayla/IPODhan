@@ -11,6 +11,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, recordCorrigendumSuggestions, type CorrigendumPage, type RecordResult } from '@ipodhan/shared';
+import logger from '../utils/logger.js';
 
 export const CORRIGENDUM_DOC_TYPE = 'CORRIGENDUM';
 export const CORRIGENDUM_READER_VERSION = 'read_corrigendum_pages.py@2026-09-24';
@@ -58,6 +59,15 @@ export function buildCorrigendumSuggestionRunner(
 ): CorrigendumSuggestionRunner {
   return async ({ ipoId, documentId, pdfPath }) => {
     const pages = await readPages(pdfPath);
-    return recordCorrigendumSuggestions(database, { ipoId, documentId, pages });
+    const result = await recordCorrigendumSuggestions(database, { ipoId, documentId, pages });
+    // PR #989 review (MINOR 4): a corrigendum exists because something changed; reading one and
+    // finding no correction is not a success to pass silently — the admin never hears of it.
+    if (result.parsed === 0) {
+      logger.warn(
+        { ipoId, documentId, pageCount: pages.length },
+        'Corrigendum read yielded 0 suggestions — no correction pattern matched; needs a human look'
+      );
+    }
+    return result;
   };
 }

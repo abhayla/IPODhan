@@ -40,6 +40,14 @@ test('the predicate excludes every admin-only reason and keeps NULL reasons', ()
   for (const r of ADMIN_ONLY_CONFLICT_REASONS) assert.ok(p.includes(`'${r}'`), `${r} missing from ${p}`);
 });
 
+// OD-90 (item 9): a corrigendum suggestion (document_id set) is admin review work, not a dispute —
+// every count and behaviour read in the .mjs scripts skips it through the same predicate.
+// MUTATION: drop `document_id IS NULL` from behaviourConflictPredicate -> RED.
+test('the predicate excludes corrigendum suggestions (document_id IS NULL)', () => {
+  assert.match(behaviourConflictPredicate('dc'), /dc\.document_id IS NULL/);
+  assert.match(behaviourConflictPredicate(), /(^|[^.])document_id IS NULL/);
+});
+
 test('every count query used by the nightly floor carries the predicate', () => {
   for (const sql of [UNRESOLVED_CONFLICT_COUNT_SQL, UNRESOLVED_CONFLICT_NOISE_SQL, CONFLICTS_INSERTED_24H_SQL]) {
     assert.ok(sql.includes(behaviourConflictPredicate()), sql);

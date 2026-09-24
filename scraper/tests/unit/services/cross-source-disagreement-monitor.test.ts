@@ -100,6 +100,30 @@ describe('checkCrossSourceDisagreements', () => {
     expect(body.title).toContain('priceRangeMin');
   });
 
+  // OD-90 (item 9, PR #989 review round 1): a corrigendum suggestion is admin review work, not a
+  // cross-source disagreement — it must never page P1. MUTATION: drop the skip -> RED.
+  it('OD-90: never pages for an open corrigendum suggestion on an OPEN IPO', async () => {
+    const db = makeDb(
+      [{ id: 'ipo-1', companyName: 'Acme Ltd' }],
+      [
+        {
+          ipoId: 'ipo-1',
+          fieldName: 'closeDate',
+          source1: 'NSE',
+          value1: '2026-09-10',
+          source2: 'DRHP',
+          value2: '2026-09-11',
+          documentId: 'doc-corrigendum-1',
+        },
+      ]
+    );
+
+    const report = await checkCrossSourceDisagreements(db, new Date('2026-08-18T12:00:00Z'));
+
+    expect(report.disagreements).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('#687: dedupe key uses the IST day, not the UTC day (2026-09-15T20:30:00Z is 02:00 IST on the 16th)', async () => {
     const db = makeDb(
       [{ id: 'ipo-1', companyName: 'Acme Ltd' }],

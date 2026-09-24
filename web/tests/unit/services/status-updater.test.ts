@@ -116,6 +116,15 @@ describe('isTransitionHeld', () => {
     expect(isTransitionHeld(drivingField, unresolved)).toBe(false);
   });
 
+  // OD-90 (item 9, PR #989 review round 1): a corrigendum SUGGESTION (document_id set) waits for
+  // an admin; it is not a dispute and must never freeze OPEN->CLOSED while it waits.
+  // MUTATION: drop the isCorrigendumSuggestion skip in isTransitionHeld -> this goes RED.
+  it('does NOT hold on a pending corrigendum suggestion for the driving field (OD-90)', () => {
+    const drivingField = getTransitionDrivingField('OPEN', 'CLOSED');
+    const unresolved = [{ fieldName: 'closeDate', resolutionReason: null, documentId: 'doc-corrigendum-1' }];
+    expect(isTransitionHeld(drivingField, unresolved)).toBe(false);
+  });
+
   it('still holds when a real dispute sits next to an OD-75 row on the driving field', () => {
     const drivingField = getTransitionDrivingField('OPEN', 'CLOSED');
     const unresolved = [

@@ -15,7 +15,9 @@ export const ADMIN_ONLY_CONFLICT_REASONS = Object.freeze([SOURCE_CHANGED_OWN_VAL
 export function behaviourConflictPredicate(alias) {
   const col = alias ? `${alias}.resolution_reason` : 'resolution_reason';
   const list = ADMIN_ONLY_CONFLICT_REASONS.map((r) => `'${r}'`).join(', ');
-  return `(${col} IS NULL OR ${col} NOT IN (${list}))`;
+  const doc = alias ? `${alias}.document_id` : 'document_id';
+  // OD-90: a corrigendum suggestion (document_id set) is admin review work, never a dispute.
+  return `((${col} IS NULL OR ${col} NOT IN (${list})) AND ${doc} IS NULL)`;
 }
 
 /** Unresolved real-dispute rows — the backlog the ratchet (check f) counts. */

@@ -5,7 +5,7 @@
  */
 
 import { eq, and, isNull, isNotNull, lt, desc, sql } from 'drizzle-orm';
-import { SOURCE_CHANGED_OWN_VALUE, isAdminOnlyConflict } from '../utils/conflict-reasons';
+import { SOURCE_CHANGED_OWN_VALUE, isBehaviourConflict } from '../utils/conflict-reasons';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '../db/schema';
@@ -534,7 +534,9 @@ export class DataConflictsRepository extends BaseRepository {
           .where(
             and(
               eq(dataConflicts.ipoId, ipoId),
-              isNull(dataConflicts.resolvedAt)
+              isNull(dataConflicts.resolvedAt),
+              // OD-90: only the admin closes a corrigendum suggestion (accept or dismiss).
+              isNull(dataConflicts.documentId)
             )
           )
           .returning();
@@ -567,7 +569,7 @@ export class DataConflictsRepository extends BaseRepository {
             .select()
             .from(dataConflicts)
             .where(conditions.length > 0 ? and(...conditions) : undefined)
-        ).filter((c) => !isAdminOnlyConflict(c));
+        ).filter((c) => isBehaviourConflict(c)); // OD-90: suggestions are not disputes either
 
         const total = allConflicts.length;
         const unresolved = allConflicts.filter((c) => !c.resolvedAt).length;

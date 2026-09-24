@@ -15,6 +15,8 @@ import {
   CORRIGENDUM_DISMISSED,
   type CorrigendumPage,
 } from '@ipodhan/shared/services/corrigendum-suggestions';
+// @ts-expect-error -- plain .mjs module with no type declarations
+import { behaviourConflictPredicate } from '../../../scripts/lib/conflict-reasons.mjs';
 
 /**
  * Item 9 (OD-90, spec section 2.5.5 as amended): a stored corrigendum becomes an admin SUGGESTION
@@ -33,6 +35,7 @@ const IPO_A = '00000000-0000-4000-8000-00000000c9a1';
 const IPO_B = '00000000-0000-4000-8000-00000000c9b1';
 const DOC_A = '00000000-0000-4000-8000-00000000c9a2';
 const DOC_B = '00000000-0000-4000-8000-00000000c9b2';
+const DOC_C = '00000000-0000-4000-8000-00000000c9c2';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PAGES: CorrigendumPage[] = JSON.parse(
@@ -140,6 +143,15 @@ describe.skipIf(!DATABASE_URL)('item 9 (OD-90) — corrigendum suggestions in th
     await db.delete(schema.dataConflicts).where(and(eq(schema.dataConflicts.ipoId, IPO_A), sql`${schema.dataConflicts.documentId} is null`));
   });
 
+  it('the .mjs scripts predicate (nightly floor, ratchet, admin-queue size) excludes an open suggestion', async () => {
+    const res = await db.execute(sql.raw(
+      `SELECT count(*)::int AS n FROM data_conflicts WHERE ipo_id = '${IPO_A}' AND resolved_at IS NULL AND ${behaviourConflictPredicate()}`
+    ));
+    const all = await db.execute(sql.raw(`SELECT count(*)::int AS n FROM data_conflicts WHERE ipo_id = '${IPO_A}' AND resolved_at IS NULL`));
+    expect((all.rows[0] as { n: number }).n).toBe(1);
+    expect((res.rows[0] as { n: number }).n).toBe(0);
+  });
+
   it('ACCEPT writes the proposed value as an ADMIN value (provenance + protection) and closes the suggestion', async () => {
     const [row] = await suggestionsFor(IPO_A);
     const out = await acceptCorrigendumSuggestion(db as never, row.id, 'item9-test-admin');
@@ -167,5 +179,23 @@ describe.skipIf(!DATABASE_URL)('item 9 (OD-90) — corrigendum suggestions in th
     const [closed] = await suggestionsFor(IPO_B);
     expect(closed).toMatchObject({ resolvedSource: 'DRHP', resolutionReason: CORRIGENDUM_DISMISSED });
     expect(closed.resolvedAt).not.toBeNull();
+  });
+
+  // PR #989 review MINOR 5: two concurrent accepts of the SAME suggestion — exactly one writes.
+  it('two concurrent ACCEPTs of one suggestion: exactly one succeeds, and provenance keeps previousSource', async () => {
+    await db.insert(schema.documents).values({
+      id: DOC_C, ipoId: IPO_B, type: 'CORRIGENDUM', title: 'Corrigendum (second read)', url: `https://example.invalid/${DOC_C}.pdf`,
+      sha256: 'f'.repeat(64),
+    } as never);
+    await recordCorrigendumSuggestions(db as never, { ipoId: IPO_B, documentId: DOC_C, pages: PAGES });
+    const open = (await suggestionsFor(IPO_B)).find((x) => x.documentId === DOC_C && x.resolvedAt === null)!;
+    const [a, b] = await Promise.all([
+      acceptCorrigendumSuggestion(db as never, open.id, 'item9-admin-a'),
+      acceptCorrigendumSuggestion(db as never, open.id, 'item9-admin-b'),
+    ]);
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    const [closed] = (await suggestionsFor(IPO_B)).filter((x) => x.documentId === DOC_C);
+    expect(closed.resolvedBy).toBe(a.ok ? 'item9-admin-a' : 'item9-admin-b');
+    expect(await provenance(IPO_B)).toMatchObject({ source: 'ADMIN', previousSource: 'DRHP' });
   });
 });

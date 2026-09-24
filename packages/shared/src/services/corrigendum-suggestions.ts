@@ -285,10 +285,8 @@ async function loadOpenSuggestion(db: Db, conflictId: string) {
   return row;
 }
 
-/** True for a row that is a corrigendum suggestion (carries the document it was read from). */
-export function isCorrigendumSuggestion(row: { documentId?: string | null } | null | undefined): boolean {
-  return Boolean(row && row.documentId);
-}
+// One definition (packages/shared/src/utils/conflict-reasons.ts), re-exported for existing callers.
+export { isCorrigendumSuggestion } from '../utils/conflict-reasons';
 
 /**
  * The admin ACCEPTS a suggestion: the proposed value is written as an ADMIN value (field_sources
@@ -308,65 +306,79 @@ export async function acceptCorrigendumSuggestion(
     return { ok: false, conflictId, fieldName: row.fieldName, error: 'suggestion names no writable field; dismiss it or edit the field by hand' };
   }
   const value = row.value2;
-  await db.transaction(async (tx) => {
-    const t = tx as unknown as Db;
-    if (target.table === 'ipo_details') {
-      const updated = await t
-        .update(ipoDetails)
-        .set({ designatedExchange: value, updatedAt: new Date() } as never)
-        .where(eq(ipoDetails.ipoId, row.ipoId))
-        .returning({ id: ipoDetails.id });
-      if (updated.length === 0) {
-        await t.insert(ipoDetails).values({ ipoId: row.ipoId, designatedExchange: value, dataSource: 'MANUAL' } as never);
+  const alreadyDecided = new Error('corrigendum suggestion already decided');
+  try {
+    await db.transaction(async (tx) => {
+      const t = tx as unknown as Db;
+      // Claim the row FIRST, re-checking it is still open: a second concurrent accept blocks on this
+      // row lock, re-evaluates `resolved_at IS NULL` after the first commits, claims nothing, and
+      // rolls back before writing any field (PR #989 review, MINOR 5).
+      const claimed = await t
+        .update(dataConflicts)
+        .set({
+          resolvedSource: 'ADMIN',
+          resolutionReason: CORRIGENDUM_ACCEPTED,
+          resolvedBy: adminName,
+          resolvedAt: new Date(),
+          adminNote: note ?? null,
+        })
+        .where(and(eq(dataConflicts.id, conflictId), isNull(dataConflicts.resolvedAt)))
+        .returning({ id: dataConflicts.id });
+      if (claimed.length === 0) throw alreadyDecided;
+      if (target.table === 'ipo_details') {
+        const updated = await t
+          .update(ipoDetails)
+          .set({ designatedExchange: value, updatedAt: new Date() } as never)
+          .where(eq(ipoDetails.ipoId, row.ipoId))
+          .returning({ id: ipoDetails.id });
+        if (updated.length === 0) {
+          await t.insert(ipoDetails).values({ ipoId: row.ipoId, designatedExchange: value, dataSource: 'MANUAL' } as never);
+        }
+      } else {
+        await t
+          .update(ipos)
+          .set({ [row.fieldName]: value, lastManualEditAt: new Date() } as never)
+          .where(eq(ipos.id, row.ipoId));
       }
-    } else {
       await t
-        .update(ipos)
-        .set({ [row.fieldName]: value, lastManualEditAt: new Date() } as never)
-        .where(eq(ipos.id, row.ipoId));
-    }
-    await t
-      .insert(fieldSources)
-      .values({
-        ipoId: row.ipoId,
-        tableName: target.table,
-        rowKey: '',
-        fieldName: row.fieldName,
-        source: 'ADMIN',
-        confidence: 100,
-        previousValue: row.value1,
-        previousSource: (row.evidence as { storedSource?: string | null } | null)?.storedSource as never,
-        dataLineage: { method: 'ADMIN_CORRIGENDUM_ACCEPT', documentId: row.documentId, conflictId, by: adminName },
-      } as never)
-      .onConflictDoUpdate({
-        target: [fieldSources.ipoId, fieldSources.tableName, fieldSources.rowKey, fieldSources.fieldName],
-        set: {
+        .insert(fieldSources)
+        .values({
+          ipoId: row.ipoId,
+          tableName: target.table,
+          rowKey: '',
+          fieldName: row.fieldName,
           source: 'ADMIN',
           confidence: 100,
           previousValue: row.value1,
+          previousSource: (row.evidence as { storedSource?: string | null } | null)?.storedSource as never,
           dataLineage: { method: 'ADMIN_CORRIGENDUM_ACCEPT', documentId: row.documentId, conflictId, by: adminName },
-          updatedAt: new Date(),
-        } as never,
-      });
-    await createFieldProtectionService(t, null).markFieldAsManuallyEdited(
-      row.ipoId,
-      target.table,
-      row.fieldName,
-      adminName,
-      note ?? `Corrigendum accepted (document ${row.documentId})`,
-      true
-    );
-    await t
-      .update(dataConflicts)
-      .set({
-        resolvedSource: 'ADMIN',
-        resolutionReason: CORRIGENDUM_ACCEPTED,
-        resolvedBy: adminName,
-        resolvedAt: new Date(),
-        adminNote: note ?? null,
-      })
-      .where(eq(dataConflicts.id, conflictId));
-  });
+        } as never)
+        .onConflictDoUpdate({
+          target: [fieldSources.ipoId, fieldSources.tableName, fieldSources.rowKey, fieldSources.fieldName],
+          set: {
+            source: 'ADMIN',
+            confidence: 100,
+            previousValue: row.value1,
+            previousSource: (row.evidence as { storedSource?: string | null } | null)?.storedSource ?? null,
+            dataLineage: { method: 'ADMIN_CORRIGENDUM_ACCEPT', documentId: row.documentId, conflictId, by: adminName },
+            updatedAt: new Date(),
+          } as never,
+        });
+      await createFieldProtectionService(t, null).markFieldAsManuallyEdited(
+        row.ipoId,
+        target.table,
+        row.fieldName,
+        adminName,
+        note ?? `Corrigendum accepted (document ${row.documentId})`,
+        true
+      );
+    });
+  } catch (error) {
+    if (error === alreadyDecided) {
+      return { ok: false, conflictId, fieldName: row.fieldName, error: 'not an open corrigendum suggestion' };
+    }
+    throw error;
+  }
   return { ok: true, conflictId, fieldName: row.fieldName, appliedValue: value };
 }
 
@@ -379,7 +391,7 @@ export async function dismissCorrigendumSuggestion(
 ): Promise<SuggestionDecision> {
   const row = await loadOpenSuggestion(db, conflictId);
   if (!row) return { ok: false, conflictId, error: 'not an open corrigendum suggestion' };
-  await db
+  const claimed = await db
     .update(dataConflicts)
     .set({
       resolvedSource: row.source1,
@@ -388,6 +400,9 @@ export async function dismissCorrigendumSuggestion(
       resolvedAt: new Date(),
       adminNote: note ?? null,
     })
-    .where(eq(dataConflicts.id, conflictId));
+    // Re-check it is still open: a dismiss racing an accept must not overwrite the accept.
+    .where(and(eq(dataConflicts.id, conflictId), isNull(dataConflicts.resolvedAt)))
+    .returning({ id: dataConflicts.id });
+  if (claimed.length === 0) return { ok: false, conflictId, fieldName: row.fieldName, error: 'not an open corrigendum suggestion' };
   return { ok: true, conflictId, fieldName: row.fieldName, appliedValue: null };
 }

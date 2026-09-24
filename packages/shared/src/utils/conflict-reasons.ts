@@ -23,3 +23,23 @@ export const ADMIN_ONLY_CONFLICT_REASONS: readonly string[] = [SOURCE_CHANGED_OW
 export function isAdminOnlyConflict(row: { resolutionReason?: string | null }): boolean {
   return row.resolutionReason != null && ADMIN_ONLY_CONFLICT_REASONS.includes(row.resolutionReason);
 }
+
+/**
+ * OD-90 (item 9): a corrigendum SUGGESTION is a `data_conflicts` row that carries the document it
+ * was read from (`document_id` set). It is the admin's to accept or dismiss — ONLY an admin accept
+ * writes. Every AUTOMATIC reader of unresolved rows (the consolidation HOLD escapes, the
+ * status-transition hold, the cross-source disagreement monitor, conflict counts, auto-resolve)
+ * MUST skip it. The SQL twin for the `.mjs` scripts is `behaviourConflictPredicate()` in
+ * `scripts/lib/conflict-reasons.mjs` (`document_id IS NULL`).
+ */
+export function isCorrigendumSuggestion(row: { documentId?: string | null } | null | undefined): boolean {
+  return Boolean(row && row.documentId);
+}
+
+/**
+ * True for a row that is a real source-vs-source dispute: neither an admin-only record (OD-75) nor
+ * a corrigendum suggestion (OD-90). Use it wherever a row decides behaviour or enters a count.
+ */
+export function isBehaviourConflict(row: { resolutionReason?: string | null; documentId?: string | null }): boolean {
+  return !isAdminOnlyConflict(row) && !isCorrigendumSuggestion(row);
+}

@@ -56,7 +56,11 @@ import {
   type SmeCollapseEvidence,
 } from './listing-exchange-resolution.js';
 import logger from '../utils/logger.js';
-import { SOURCE_CHANGED_OWN_VALUE, isAdminOnlyConflict } from '@ipodhan/shared/utils/conflict-reasons';
+import {
+  SOURCE_CHANGED_OWN_VALUE,
+  isBehaviourConflict,
+  isCorrigendumSuggestion,
+} from '@ipodhan/shared/utils/conflict-reasons';
 import { toUtcEpochDay, toUtcEpochMs } from '../utils/date-string-parsing.js';
 import { validateFieldValue, type ValidationRule } from './field-extraction-validation.js';
 import { loadValidationRules } from '../config/validation-rules-loader.js';
@@ -2087,8 +2091,9 @@ export class DataConsolidationService {
       const otherExchange = incomingSource === 'NSE' ? 'BSE' : 'NSE';
       try {
         // OD-75 round 2: admin-only rows (a source changing its own value) are never a dispute.
+        // OD-90: nor is a corrigendum suggestion — only an admin decides it.
         const openConflicts = ((await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? []).filter(
-          (row: { resolutionReason?: string | null }) => !isAdminOnlyConflict(row)
+          (row: { resolutionReason?: string | null; documentId?: string | null }) => isBehaviourConflict(row)
         );
         const normalizedIncoming = normalize(fieldName, incomingValue, rules);
         const now = Date.now();
@@ -2168,6 +2173,9 @@ export class DataConsolidationService {
             const openConflicts = (await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? [];
             const ownRow = openConflicts.find(
               (row: any) =>
+                // OD-90: a corrigendum suggestion on this field is the admin's to accept or
+                // dismiss; closing it here would also bar it for good (unique suggestion_key).
+                !isCorrigendumSuggestion(row) &&
                 row.tableName === tableName &&
                 (row.rowKey ?? '') === rowKey &&
                 row.fieldName === fieldName
