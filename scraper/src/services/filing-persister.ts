@@ -52,6 +52,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { financialStatementsRowKey, ipoDetailsRowKey, ipoValuationRowKey } from './child-row-keys.js';
 import { createChildRowNoter } from './child-row-unresolved-noter.js';
+import { documentMayWriteField } from './document-family-gate.js';
 import type { ConsolidatedChildRowsResult, ChildRowInput, ChildConsolidationTable } from './data-consolidation-orchestrator.js';
 
 // ---------------------------------------------------------------- extraction
@@ -211,6 +212,11 @@ export interface PersistFilingSummary {
   written: Record<string, number>;
   /** Fields (or whole tables) the admin field-protection gate withheld. */
   skipped_protected: string[];
+  /**
+   * OD-96: `<table>.<column> (<docType>)` this document did not write because the column's
+   * manifest document family does not contain the document's type. The stored value is kept.
+   */
+  skipped_out_of_family: string[];
   /** Metric series withheld because two documents disagree about them. */
   skipped_cross_document_disagreement: string[];
   skipped_failed_check: string[];
@@ -781,6 +787,7 @@ export async function persistFilingExtraction(
   const skippedNoUnit: string[] = [];
   const skippedUnitMismatch: string[] = [];
   const skippedProtected: string[] = [];
+  const skippedOutOfFamily: string[] = [];
   const skippedCrossDoc: string[] = [];
   const iposFields: string[] = [];
   // Item 6 (OD-91): every field THIS document's extraction produced, taken
@@ -801,8 +808,17 @@ export async function persistFilingExtraction(
    */
   const filterFields = async (
     tableName: string,
-    data: Record<string, unknown>
+    input: Record<string, unknown>
   ): Promise<Record<string, unknown>> => {
+    // OD-96: an `ipos` column outside its manifest document family is not this document's to
+    // write. Scoped to `ipos` in #993 (the table whose provenance now names its document);
+    // the child tables' out-of-family writes are the owner-walked W-76/W-88 behaviour and wait
+    // for the owner's call (PR #1010 body).
+    const data: Record<string, unknown> = {};
+    for (const [col, v] of Object.entries(input)) {
+      if (tableName !== 'ipos' || documentMayWriteField(tableName, col, options.docType)) data[col] = v;
+      else skippedOutOfFamily.push(`${tableName}.${col} (${options.docType})`);
+    }
     if (!deps.protectionFilter) return data;
     const result = await deps.protectionFilter(ipoId, tableName, data, source);
     const kept = result.filtered as Record<string, unknown>;
@@ -2739,6 +2755,7 @@ export async function persistFilingExtraction(
     skipped_lower_priority_source: [...new Set(skippedLowerPriority)].sort(),
     skipped_unit_mismatch: [...new Set(skippedUnitMismatch)].sort(),
     skipped_protected: [...new Set(skippedProtected)].sort(),
+    skipped_out_of_family: [...new Set(skippedOutOfFamily)].sort(),
     skipped_cross_document_disagreement: [...new Set(skippedCrossDoc)].sort(),
     ipos_fields: iposFields,
     receipt_fields: receiptFields,

@@ -23,6 +23,9 @@ const DOC = {
   twinA: '00000000-0000-4000-8000-00000000d002',
   twinB: '00000000-0000-4000-8000-00000000d003',
   failed: '00000000-0000-4000-8000-00000000d004',
+  before: '00000000-0000-4000-8000-00000000d005',
+  nse: '00000000-0000-4000-8000-00000000d006',
+  race: '00000000-0000-4000-8000-00000000d007',
 };
 const FS = {
   single: '00000000-0000-4000-8000-00000000f001',
@@ -30,6 +33,9 @@ const FS = {
   none: '00000000-0000-4000-8000-00000000f003',
   failed: '00000000-0000-4000-8000-00000000f004',
   stamped: '00000000-0000-4000-8000-00000000f005',
+  before: '00000000-0000-4000-8000-00000000f006',
+  nse: '00000000-0000-4000-8000-00000000f007',
+  race: '00000000-0000-4000-8000-00000000f008',
 };
 
 let pool: Pool | null = null;
@@ -67,11 +73,17 @@ beforeAll(async () => {
   await doc(DOC.twinB, 'DRHP', 'COMPLETED', '2026-09-20 11:00:03');
   // Written at 13:00:00, the only document in the window FAILED: left alone.
   await doc(DOC.failed, 'PROSPECTUS', 'FAILED', '2026-09-20 13:00:02');
-  const fs = (id: string, field: string, at: string, lineage: Record<string, unknown> | null) =>
+  // Guard (c), window direction: the only document completed 2 s BEFORE the row was written.
+  await doc(DOC.before, 'RHP', 'COMPLETED', '2026-09-20 14:59:58');
+  // Guard (a), source filter: a COMPLETED filing 1 s after an NSE-owned row.
+  await doc(DOC.nse, 'RHP', 'COMPLETED', '2026-09-20 16:00:01');
+  // Guard (b), write-time re-check: an exact match whose row changes between plan and apply.
+  await doc(DOC.race, 'RHP', 'COMPLETED', '2026-09-20 17:00:01');
+  const fs = (id: string, field: string, at: string, lineage: Record<string, unknown> | null, source = 'DRHP') =>
     p.query(
       `INSERT INTO field_sources (id, ipo_id, table_name, row_key, field_name, source, confidence, data_lineage, updated_at, created_at)
-       VALUES ($1, $2, 'ipos', '', $3, 'DRHP', 100, $4::jsonb, $5, $5)`,
-      [id, IPO_ID, field, lineage === null ? null : JSON.stringify(lineage), at]
+       VALUES ($1, $2, 'ipos', '', $3, $6, 100, $4::jsonb, $5, $5)`,
+      [id, IPO_ID, field, lineage === null ? null : JSON.stringify(lineage), at, source]
     );
   await fs(FS.single, 'lotSize', '2026-09-20 10:00:00', { policyOrigin: 'manifest@1' });
   await fs(FS.twins, 'faceValue', '2026-09-20 11:00:00', null);
@@ -80,6 +92,9 @@ beforeAll(async () => {
   await fs(FS.failed, 'priceRangeMin', '2026-09-20 13:00:00', null);
   // Already carries a documentId: never a candidate.
   await fs(FS.stamped, 'priceRangeMax', '2026-09-20 10:00:00', { documentId: DOC.twinA });
+  await fs(FS.before, 'lotSize2', '2026-09-20 15:00:00', null);
+  await fs(FS.nse, 'openDate', '2026-09-20 16:00:00', null, 'NSE');
+  await fs(FS.race, 'faceValue2', '2026-09-20 17:00:00', null);
 }, 30000);
 
 afterAll(async () => {
@@ -97,6 +112,15 @@ describe.skipIf(!DATABASE_URL)('#993 repair: stamp documentId only on an exact s
     expect(mine(FS.none)).toMatchObject({ kind: 'skip', reason: 'NO_CANDIDATE' });
     expect(mine(FS.failed)).toMatchObject({ kind: 'skip', reason: 'NOT_A_COMPLETED_FILING' });
     expect(mine(FS.stamped)).toBeUndefined();
+    // Guard (c): a document extracted BEFORE the write is never a candidate.
+    expect(mine(FS.before)).toMatchObject({ kind: 'skip', reason: 'NO_CANDIDATE' });
+    // Guard (a): a row another source owns is never read, however well a document lines up.
+    expect(mine(FS.nse)).toBeUndefined();
+    expect(mine(FS.race)).toMatchObject({ kind: 'stamp', documentId: DOC.race });
+
+    // Guard (b): the row is rewritten after the plan was read (a concurrent writer) - the
+    // stamp must not land on the new write.
+    await pool!.query(`UPDATE field_sources SET updated_at = '2026-09-20 18:30:00' WHERE id = $1`, [FS.race]);
 
     const ours = plan.toStamp.filter((d) => d.row.ipoId === IPO_ID);
     const first = await applyStamps(dbx!, ours);
@@ -112,7 +136,7 @@ describe.skipIf(!DATABASE_URL)('#993 repair: stamp documentId only on an exact s
       at: '2026-09-20 10:00:00',
       l: { policyOrigin: 'manifest@1', documentId: DOC.single, documentIdRepair: REPAIR_MARKER },
     });
-    for (const id of [FS.twins, FS.none, FS.failed]) expect((byId.get(id) as { l: unknown }).l).toBeNull();
+    for (const id of [FS.twins, FS.none, FS.failed, FS.before, FS.nse, FS.race]) expect((byId.get(id) as { l: unknown }).l).toBeNull();
 
     const again = await planLineageRepair(dbx!);
     expect(again.toStamp.filter((d) => d.row.ipoId === IPO_ID)).toEqual([]);
