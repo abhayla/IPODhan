@@ -27,6 +27,7 @@ import { plantFieldPlanForIpo } from './field-plan-planting.js';
 import { recordBseDiscoveryMetadata, recordDocumentSourceHints, recordDiscoveredLeadManagers } from './data-persister.js';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import logger from '../utils/logger.js';
+import { runStoredZipExpansionPass } from './stored-zip-expansion-pass.js';
 import {
   DocumentDiscoveryRunner,
   defaultFetcher,
@@ -1701,6 +1702,23 @@ export async function runDocumentCycle(
       await processCandidate(ipo);
       processedIds.add(ipo.id);
       if (isPurgeCandidate) purgeProcessed = true;
+    }
+
+    // PASS 1.5 — item 22 round 3 (OD-36, F-154): expand a few zips stored
+    // before their other members were kept, through the runner's own
+    // `expandStoredZip` (the same function the repair CLI uses). Bounded per
+    // wake and idempotent (stored-zip-expansion-pass.ts). Skipped on a
+    // calendar-gated wake, like every other non-live network step (D-13).
+    // Non-fatal: a failure here must never stop extraction.
+    if (!calendarGate.gated) {
+      try {
+        await runStoredZipExpansionPass({ selection: documents, expander: runner });
+      } catch (error) {
+        logger.warn(
+          { cause: error instanceof Error ? error.message : String(error) },
+          'Stored-zip member expansion pass failed (non-fatal) — the zips stay selected for the next wake'
+        );
+      }
     }
 
     // PASS 2 — extraction. W-102: over EVERY candidate (not only the ones pass

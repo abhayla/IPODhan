@@ -1304,6 +1304,8 @@ documents were unwritten until now, and each is a rule with one real fixture beh
 
 *Measured shape of the multi-part case (F-154, 2026-09-24): all 41 distinct NSE offer-document zips on staging hold two or more PDFs, none a Volume I/II split; they bundle the offer document with a GID and, in 5 of 41, a corrigendum or price-band notice, which the one-member unwrap drops (4 of those 5 IPOs have no corrigendum document at all). Extracting per part therefore means each member becomes its own typed document, its zip position in `part_number`, so OD-30 precedence applies to the corrigendum.*
 
+*A member is typed by its own name; an ABRIDGED prospectus (NSE ships one in `FORMS_<SYM>.zip` with the application forms) is never typed as the Prospectus, the same rule the SEBI rung applies (F-159, measured 2026-09-24).*
+
 *Fixture status for the blank-password rule (F-153, 2026-09-24): the one real encrypted filing found locally, a BSE anchor allocation report, carries an owner password only and opens on the blank attempt in both pdfplumber and pypdfium2, so the extractor needs no new dependency; a real filing whose blank attempt FAILS has not been captured yet.*
 
 **Download limits (OD-37).** These bound a request whose URL came off a page we do not control.

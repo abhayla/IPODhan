@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-24T04:19:10.681Z",
+  "generated_at": "2026-09-24T06:59:53.994Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 193,
+    "live": 194,
     "retired": 35
   },
-  "next_id": 229,
+  "next_id": 230,
   "rules": [
     {
       "id": "R-151",
@@ -330,6 +330,15 @@
       "kind": "table",
       "text": "The exchange's own document id is stored beside the URL — NSE and BSE both carry a stable identifier for a filing; storing it means a moved or re-hosted link is still recognisably the same document — documents gains the column; the discovery runner already knows the id at parse time",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-229",
+      "hash": "2775c16fb558",
+      "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
+      "kind": "prose",
+      "text": "A member is typed by its own name; an ABRIDGED prospectus (NSE ships one in FORMS_<SYM>.zip with the application forms) is never typed as the Prospectus, the same rule the SEBI rung applies (F-159, measured 2026-09-24).",
+      "first_seen": "2026-09-24",
       "retired": false
     },
     {

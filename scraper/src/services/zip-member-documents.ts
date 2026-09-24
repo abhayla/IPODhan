@@ -94,6 +94,36 @@ export interface ZipMemberInput {
 
 export type SeenBySha = Map<string, { documentId: string; docType: DocumentType }>;
 
+/** A zip document stored before its other members were kept (item 22 round 3). */
+export interface StoredZip {
+  documentId: string;
+  ipoId: string;
+  slug: string | null;
+  /** The IPO's company name: the cover-page identity check's expectation. */
+  companyName: string;
+  type: DocumentType;
+  url: string;
+  title: string;
+  exchange: string;
+  /** NULL for a row stored before sha256 was written (W-1). */
+  sha256: string | null;
+}
+
+/** What `DocumentDiscoveryRunner.expandStoredZip` did with one stored zip. */
+export interface StoredZipExpansion {
+  zip: StoredZip;
+  /** Set when the zip was not expanded, with the reason printed and logged. */
+  refused?: string;
+  outcomes: ZipMemberOutcome[];
+  /** How the archive was proven to be the one the runner verified. */
+  identity?: 'sha256_match' | 'cover_check_passed';
+  /** The sha256 written onto a row that had none. */
+  backfilledSha256?: string | null;
+  /** True when `zip_members_checked_at` was written (apply + definite verdict). */
+  checked: boolean;
+  attempts: FetchAttempt[];
+}
+
 export async function storeZipMemberDocuments(
   deps: { documents: DocumentSink; storeDir?: string },
   input: ZipMemberInput,

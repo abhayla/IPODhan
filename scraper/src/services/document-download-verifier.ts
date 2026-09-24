@@ -355,6 +355,12 @@ const FOLDER_TYPABLE: ReadonlySet<DocumentType> = new Set<DocumentType>([
 export function classifyZipMemberName(
   name: string
 ): { type: DocumentType; typedBy: 'name' | 'folder' } | null {
+  // An ABRIDGED prospectus (the summary NSE ships in FORMS_<SYM>.zip with the
+  // application forms, e.g. FORMS_CLAYCRAFT/Abridged Prospectus.pdf, staging
+  // 2026-09-24) is never the offer document itself, the same rule the SEBI
+  // rung applies (sebi-source.ts). Typed by its words it reads as PROSPECTUS,
+  // and a stored member would close the PROSPECTUS type on a summary.
+  if (/abridged/i.test(baseName(name))) return null;
   const own = classifyByTitle(baseName(name));
   if (own) return { type: own, typedBy: 'name' };
   const parts = name.split(/[\/]/).filter(Boolean);

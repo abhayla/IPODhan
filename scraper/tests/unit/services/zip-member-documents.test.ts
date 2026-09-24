@@ -1,4 +1,4 @@
-// implements: R-160
+// implements: R-160, R-229
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as fsp from 'node:fs/promises';
@@ -174,6 +174,46 @@ afterEach(async () => {
   await fsp.rm(storeDir, { recursive: true, force: true });
 });
 
+/** The real Skyways BSE payload with its Corrigendum link removed (the exchanges list none). */
+const BSE_CORE_NO_CORRIGENDUM = (() => {
+  const core = JSON.parse(fixture('bse-skyways-core.json'));
+  core.IPONO_0[0].Corrigendum = '';
+  return JSON.stringify(core);
+})();
+
+function makeRunnerWith(opts: {
+  zip: Buffer;
+  sink: ReturnType<typeof urlKeyedSink>;
+  store: InMemoryDocumentFetchStateStore;
+  bseCore?: string;
+  /** url substring -> PDF body served for it. */
+  extra?: Record<string, Buffer>;
+  requested?: string[];
+}) {
+  const fetcher: HttpFetcher = async (url) => {
+    opts.requested?.push(url);
+    for (const [needle, body] of Object.entries(opts.extra ?? {})) {
+      if (url.includes(needle)) return { status: 200, contentType: 'application/pdf', body, url };
+    }
+    if (url.includes('listing.bseindia.com')) {
+      return { status: 200, contentType: 'text/html', body: Buffer.from('<html><h1>Object Moved</h1></html>'), url };
+    }
+    if (url.includes('RHP_SKYWAYS.zip')) return { status: 200, contentType: 'application/zip', body: opts.zip, url: ZIP_URL };
+    if (url.includes('GetMkt_ISSUE_BBS_IPO')) return json(opts.bseCore ?? fixture('bse-skyways-core.json'));
+    if (url.includes('symbol=SKYWAYS')) return json(fixture('nse-skyways.json'));
+    return { status: 404, contentType: 'text/html', body: Buffer.from('x'), url };
+  };
+  return new DocumentDiscoveryRunner({
+    fetcher,
+    store: opts.store,
+    documents: opts.sink,
+    counter: new NetworkCounter(),
+    now: () => new Date('2026-08-28T06:00:00Z'),
+    storeDir,
+    extractCoverText: async () => ({ usable: true, text: 'SKYWAYS AIR SERVICES LIMITED' }),
+  });
+}
+
 function makeRunner(
   zip: Buffer,
   documents: ReturnType<typeof urlKeyedSink>,
@@ -233,6 +273,11 @@ describe('zip member names (real, F-154)', () => {
       type: 'CORRIGENDUM',
       typedBy: 'name',
     });
+  });
+
+  it('never types an ABRIDGED prospectus as the Prospectus (real FORMS_CLAYCRAFT member, staging 2026-09-24)', () => {
+    expect(classifyZipMemberName('FORMS_CLAYCRAFT/Abridged Prospectus.pdf')).toBeNull();
+    expect(classifyZipMemberName('PROSPECTUS_X/X Limited_Prospectus.pdf')?.type).toBe('PROSPECTUS');
   });
 
   it('re-applies the size floor per member', () => {
@@ -381,12 +426,15 @@ describe('Tier A round 1 fixes (item 22)', () => {
     expect(result.attempts.some((a) => String(a.outcome).startsWith('zip_member_deduped_by_sha256_to:CORRIGENDUM'))).toBe(true);
   }, 60_000);
 
-  it('MAJOR 2b: a type the zip supplied is FOUND (with the member row id) and its fallback chain is not run', async () => {
+  it('MAJOR 2b: with NO exchange corrigendum link, a type the zip supplied is FOUND (with the member row id) and its fallback chain is not run', async () => {
     const sink = urlKeyedSink();
     // CORRIGENDUM is still wanted: no FOUND row for it.
     const existing = EXISTING.filter((r) => r.docType !== 'CORRIGENDUM');
     const store = await seededStore(existing);
-    const result = await makeRunner(makeMultiZip(MEMBERS), sink, store).runIpo(SKYWAYS, existing as never);
+    const result = await makeRunnerWith({ zip: makeMultiZip(MEMBERS), sink, store, bseCore: BSE_CORE_NO_CORRIGENDUM }).runIpo(
+      SKYWAYS,
+      existing as never
+    );
 
     const memberRow = sink.byUrl.get(zipMemberUrl(ZIP_URL, MEMBERS[0].name))!;
     const corrState = (await store.listForIpo('ipo-skyways')).find((r) => r.docType === 'CORRIGENDUM')!;
@@ -399,7 +447,119 @@ describe('Tier A round 1 fixes (item 22)', () => {
     // No SEBI / company / verifier rung ran for it.
     expect(result.attempts.some((a) => String(a.outcome).startsWith('rungs[CORRIGENDUM]') && /SEBI:(?!skipped)/.test(String(a.outcome)))).toBe(false);
   }, 60_000);
+});
 
+describe('round 2 review, MAJOR 1: an exchange-listed link is fetched even when the zip held that type (OD-33, OD-66)', () => {
+  const EXCHANGE_CORR = 'CorrigendumofRHPSkyways';
+  const existing = EXISTING.filter((r) => r.docType !== 'CORRIGENDUM');
+
+  it('a zip corrigendum AND a different exchange corrigendum: both are stored, the exchange one is what FOUND points at', async () => {
+    const sink = urlKeyedSink();
+    const store = await seededStore(existing);
+    const requested: string[] = [];
+    const result = await makeRunnerWith({
+      zip: makeMultiZip(MEMBERS),
+      sink,
+      store,
+      extra: { [EXCHANGE_CORR]: pdf('N', 90_000) },
+      requested,
+    }).runIpo(SKYWAYS, existing as never);
+
+    expect(requested.some((u) => u.includes(EXCHANGE_CORR))).toBe(true);
+    const exchangeRow = [...sink.byUrl.values()].find((r) => r.url.includes(EXCHANGE_CORR));
+    expect(exchangeRow?.type).toBe('CORRIGENDUM');
+    expect(sink.byUrl.get(zipMemberUrl(ZIP_URL, MEMBERS[0].name))?.type).toBe('CORRIGENDUM');
+    const corrState = (await store.listForIpo('ipo-skyways')).find((r) => r.docType === 'CORRIGENDUM')!;
+    expect(corrState).toMatchObject({ state: 'FOUND', documentId: exchangeRow!.id });
+    expect(result.attempts.some((a) => String(a.outcome).includes('found_in_zip'))).toBe(false);
+  }, 60_000);
+
+  it('the same bytes from the zip and from the exchange link: ONE row (sha256 dedupe), type FOUND', async () => {
+    const sink = urlKeyedSink();
+    const store = await seededStore(existing);
+    const result = await makeRunnerWith({
+      zip: makeMultiZip(MEMBERS),
+      sink,
+      store,
+      extra: { [EXCHANGE_CORR]: MEMBERS[0].content },
+    }).runIpo(SKYWAYS, existing as never);
+
+    const shaRows = [...sink.byUrl.values()].filter((r) => r.type === 'CORRIGENDUM');
+    // The zip's two corrigendum members, and nothing for the identical exchange copy.
+    expect(shaRows).toHaveLength(2);
+    expect([...sink.byUrl.keys()].some((u) => u.includes(EXCHANGE_CORR))).toBe(false);
+    expect(result.found).toContain('CORRIGENDUM');
+  }, 60_000);
+
+  it('the exchange link FAILS: the type stays open for the next slot, never closed as FOUND on the zip copy', async () => {
+    const sink = urlKeyedSink();
+    const store = await seededStore(existing);
+    const result = await makeRunnerWith({ zip: makeMultiZip(MEMBERS), sink, store }).runIpo(SKYWAYS, existing as never);
+
+    // The zip member is still stored as a document of the IPO ...
+    expect(sink.byUrl.get(zipMemberUrl(ZIP_URL, MEMBERS[0].name))?.type).toBe('CORRIGENDUM');
+    // ... but the listed (possibly newer) corrigendum is not given up on.
+    const corrState = (await store.listForIpo('ipo-skyways')).find((r) => r.docType === 'CORRIGENDUM')!;
+    expect(corrState.state).not.toBe('FOUND');
+    expect(result.found).not.toContain('CORRIGENDUM');
+  }, 60_000);
+});
+
+describe('round 3: stored zip members close their type on the next cycle; a fetched zip is marked examined', () => {
+  it('a member row stored earlier (e.g. by the expansion pass) makes CORRIGENDUM FOUND when the exchanges list none', async () => {
+    const sink = urlKeyedSink([
+      {
+        id: 'doc-member',
+        ipoId: 'ipo-skyways',
+        type: 'CORRIGENDUM' as never,
+        title: 'RHP | Rays of Belief_Corrigendum.pdf',
+        url: zipMemberUrl(ZIP_URL, MEMBERS[0].name),
+        exchange: 'NSE',
+        mediaType: 'PDF',
+      },
+    ]);
+    const withMembers = Object.assign(sink, {
+      async findZipMemberDocuments(ipoId: string) {
+        return [...sink.byUrl.values()]
+          .filter((r) => r.ipoId === ipoId && r.url.includes('#member='))
+          .map((r) => ({ id: r.id, type: String(r.type), url: r.url }));
+      },
+    });
+    const existing = [
+      ...EXISTING.filter((r) => r.docType !== 'CORRIGENDUM'),
+      { ...EXISTING[0], docType: 'RHP' },
+    ];
+    const store = await seededStore(existing);
+    const requested: string[] = [];
+    const result = await makeRunnerWith({
+      zip: makeMultiZip(MEMBERS),
+      sink: withMembers,
+      store,
+      bseCore: BSE_CORE_NO_CORRIGENDUM,
+      requested,
+    }).runIpo(SKYWAYS, existing as never);
+
+    const corrState = (await store.listForIpo('ipo-skyways')).find((r) => r.docType === 'CORRIGENDUM')!;
+    expect(corrState).toMatchObject({ state: 'FOUND', documentId: 'doc-member' });
+    expect(result.found).toContain('CORRIGENDUM');
+    expect(requested.some((u) => u.includes('RHP_SKYWAYS.zip'))).toBe(false);
+  }, 60_000);
+
+  it('a zip the runner fetches now is marked examined (after its members), so the expansion pass never re-downloads it', async () => {
+    const sink = urlKeyedSink();
+    const marked: string[] = [];
+    const withMarker = Object.assign(sink, {
+      async markZipMembersChecked(id: string) {
+        expect(sink.byUrl.get(zipMemberUrl(ZIP_URL, MEMBERS[0].name))).toBeDefined();
+        marked.push(id);
+      },
+    });
+    await makeRunner(makeMultiZip(MEMBERS), withMarker, await seededStore(EXISTING)).runIpo(SKYWAYS, EXISTING as never);
+    expect(marked).toEqual([sink.byUrl.get(ZIP_URL)!.id]);
+  }, 60_000);
+});
+
+describe('zip-supplied types (continued)', () => {
   it('markTypeFoundFromZip moves only an open row, never a FOUND or SUPERSEDED one', async () => {
     const store = await seededStore([
       { docType: 'CORRIGENDUM', state: 'WANTED' },

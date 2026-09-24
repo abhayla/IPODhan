@@ -680,6 +680,17 @@ export const documents = pgTable(
      */
     partNumber: integer('part_number'),
     exchangeDocumentId: varchar('exchange_document_id', { length: 255 }),
+    /**
+     * Item 22 (OD-36, F-154; migration 0055): when the OTHER members of the zip
+     * this row was fetched from were last examined (stored, deduped, or
+     * reported as GID / unclassified). NULL on a zip row means "never
+     * examined", which is exactly the selection of the stored-zip expansion
+     * pass; set on every zip the runner fetches now, and by that pass. A
+     * separate column rather than part_number: a one-member zip keeps
+     * part_number NULL ("the whole document") and must still leave the
+     * selection. Meaningless (NULL) on a bare-PDF row.
+     */
+    zipMembersCheckedAt: timestamp('zip_members_checked_at'),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),

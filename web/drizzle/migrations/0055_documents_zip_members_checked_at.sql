@@ -1,0 +1,11 @@
+-- Item 22 (OD-36, F-154; round 3): the durable "expanded" marker for a stored zip document.
+-- NULL means the zip's other members were never examined, so the data-slot stored-zip
+-- expansion pass (and scraper/scripts/repair-zip-member-documents.ts) selects it; a value
+-- means they were, and the zip is never downloaded again for that purpose. Not part_number:
+-- a one-member zip keeps part_number NULL and must still leave the selection. Additive and
+-- nullable: every existing zip row reads as "never examined", which is true.
+--
+-- HAND-WRITTEN for the same reason as 0051-0054 (#886: `db:generate` picks the wrong parent
+-- snapshot by filename sort). meta/0055_snapshot.json is 0054's snapshot plus this column,
+-- parented on 0054's id.
+ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "zip_members_checked_at" timestamp;

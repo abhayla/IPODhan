@@ -386,6 +386,13 @@
       "when": 1790224827454,
       "tag": "0054_document_fetch_state_attempted_at_stage",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1790232434366,
+      "tag": "0055_documents_zip_members_checked_at",
+      "breakpoints": true
     }
   ]
 }

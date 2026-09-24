@@ -1599,6 +1599,15 @@
       "phase1": true,
       "title": "121 of 129 recently listed IPOs have no ISIN; the pull walk mostly never asks for it, and its NSE fetcher answers not-available for stocks already trading",
       "detail": "Measured 2026-09-24 on ipodhan_staging (read-only): 121 of 129 LISTED IPOs with a listing date in the last 90 days have ipos.isin NULL. The manifest ranks ipos.isin DOC -> NSE -> BSE (scraper/config/field-manifest.json), so NSE is an allowed ISIN source. For those IPOs only 34 isin plan rows exist (so most were never planned for isin), and of those: 17 NOT_AVAILABLE_YET with cause rank2:NSE:NOT_AVAILABLE_YET, 10 rank1:DOC:NOT_AVAILABLE_YET, 5 CHECK_FAILED, 1 COVERAGE_GAP (Chittorgarh has no mapping). A stock that is already trading has an ISIN, so the NSE fetcher is reading an endpoint that does not carry it after listing, while NSE GetQuoteApi getSymbolData (F-150) returns the ISIN for a listed stock. Effect: item 7 S5 (post-listing price) cannot resolve BSE scrip codes (F-155 needs the ISIN) or count delisting safely for 121 of 129 IPOs. The right fix is in the pull walk (item 6), under the normal ranks, not a side-write from the price job. Related: F-150, F-155, OD-85, item 6, item 7 S5."
+    },
+    {
+      "id": "F-159",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "area": "documents",
+      "phase1": true,
+      "title": "An abridged prospectus inside an NSE FORMS zip types as PROSPECTUS by its member name",
+      "detail": "Measured 2026-09-24 on ipodhan_staging, read-only dry run of the item 22 stored-zip expansion (DocumentDiscoveryRunner.expandStoredZip, apply off): clay-craft-india-ltd FORMS_CLAYCRAFT.zip (https://nsearchives.nseindia.com/content/ipo/FORMS_CLAYCRAFT.zip) holds 'FORMS_CLAYCRAFT/Abridged Prospectus.pdf' (part 1, 437943 bytes), which classifyZipMemberName typed as PROSPECTUS, so the expansion would have stored it as a PROSPECTUS row and the next cycle would close the PROSPECTUS type FOUND on a summary. An abridged prospectus is never the offer document (the SEBI rung already refuses it, sebi-source.ts). Fixed in PR #969 round 3: classifyZipMemberName returns null (unclassified, logged, not stored) for a member whose base name says abridged; test 'never types an ABRIDGED prospectus as the Prospectus' is red without the guard. Other FORMS zips measured the same day (FORMS_TURTLEMINT) hold only forms, both unclassified."
     }
   ],
   "false_assertions": [

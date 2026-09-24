@@ -20,6 +20,19 @@ import type {
   IDocumentRepository,
 } from './types';
 
+/** A stored zip document row, as the stored-zip expansion reads it. */
+export interface StoredZipRow {
+  documentId: string;
+  ipoId: string;
+  slug: string | null;
+  companyName: string;
+  type: string;
+  url: string;
+  title: string;
+  exchange: string;
+  sha256: string | null;
+}
+
 export class DocumentRepository
   extends BaseRepository
   implements IDocumentRepository
@@ -156,6 +169,93 @@ export class DocumentRepository
       return rows.length > 0 ? { id: rows[0].id, type: String(rows[0].type) } : null;
     } catch (error) {
       throw new DatabaseError(`Failed to look up document by sha256 for IPO: ${ipoId}`, undefined, error);
+    }
+  }
+
+  /**
+   * Item 22 round 3 (OD-36, F-154): stored zip documents whose other members
+   * were never examined (`zip_members_checked_at IS NULL`). The selection of
+   * the data-slot stored-zip expansion pass and of
+   * `scripts/repair-zip-member-documents.ts` - ONE query for both. Oldest
+   * first, so a bounded pass works through the backlog in a stable order.
+   * `companyName` is the IPO's, for the cover-page identity check.
+   */
+  async listZipsWithUncheckedMembers(options: { limit?: number; slug?: string | null } = {}): Promise<StoredZipRow[]> {
+    try {
+      const { sql } = await import('drizzle-orm');
+      const limit = options.limit ?? null;
+      const slug = options.slug ?? null;
+      const result = await this.db.execute(sql`
+        SELECT d.id, d.ipo_id, i.slug, i.company_name, d.type::text AS type, d.url, d.title, d.exchange, d.sha256
+          FROM documents d
+          JOIN ipos i ON i.id = d.ipo_id
+         WHERE lower(d.url) LIKE '%.zip'
+           AND strpos(d.url, '#') = 0
+           AND d.zip_members_checked_at IS NULL
+           AND (${slug}::text IS NULL OR i.slug = ${slug})
+         ORDER BY d.uploaded_at, d.id
+         LIMIT ${limit}
+      `);
+      const rows = ((result as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<string, unknown>[];
+      return rows.map((r) => ({
+        documentId: String(r.id),
+        ipoId: String(r.ipo_id),
+        slug: (r.slug as string | null) ?? null,
+        companyName: String(r.company_name ?? ''),
+        type: String(r.type),
+        url: String(r.url),
+        title: String(r.title ?? ''),
+        exchange: String(r.exchange ?? 'NSE'),
+        sha256: r.sha256 ? String(r.sha256).trim() : null,
+      }));
+    } catch (error) {
+      throw new DatabaseError('Failed to list stored zips with unexamined members', undefined, error);
+    }
+  }
+
+  /**
+   * Item 22 round 3: this IPO's zip-member rows (url `<zip>#member=<name>`),
+   * oldest first, so the runner knows which types a stored zip supplied.
+   */
+  async findZipMemberDocuments(ipoId: string): Promise<{ id: string; type: string; url: string }[]> {
+    try {
+      const { and, sql } = await import('drizzle-orm');
+      const rows = await this.db
+        .select({ id: documents.id, type: documents.type, url: documents.url })
+        .from(documents)
+        .where(and(eq(documents.ipoId, ipoId), sql`strpos(${documents.url}, '#member=') > 0`))
+        .orderBy(documents.createdAt);
+      return rows.map((r) => ({ id: r.id, type: String(r.type), url: r.url }));
+    } catch (error) {
+      throw new DatabaseError(`Failed to list zip-member documents for IPO: ${ipoId}`, undefined, error);
+    }
+  }
+
+  /**
+   * Item 22 round 3: record that a stored zip's other members were examined,
+   * and backfill what the examination proved - the sha256 of a row stored
+   * before sha256 was written (W-1; only when the row has none), and the main
+   * member's zip position. Never overwrites a known hash.
+   */
+  async markZipMembersChecked(
+    documentId: string,
+    patch: { sha256?: string | null; partNumber?: number | null; at?: Date } = {}
+  ): Promise<void> {
+    try {
+      const { sql } = await import('drizzle-orm');
+      const [row] = await this.db
+        .update(documents)
+        .set({
+          zipMembersCheckedAt: patch.at ?? new Date(),
+          updatedAt: new Date(),
+          ...(patch.sha256 ? { sha256: sql`COALESCE(${documents.sha256}, ${patch.sha256})` as never } : {}),
+          ...(patch.partNumber != null ? { partNumber: patch.partNumber } : {}),
+        })
+        .where(eq(documents.id, documentId))
+        .returning({ ipoId: documents.ipoId });
+      if (row) await this.deleteCache(getDocumentsKey(row.ipoId));
+    } catch (error) {
+      throw new DatabaseError(`Failed to mark zip members checked for document: ${documentId}`, undefined, error);
     }
   }
 

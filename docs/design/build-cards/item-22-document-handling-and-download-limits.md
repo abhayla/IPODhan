@@ -326,7 +326,7 @@ find a gap in on the first pass).
 
 | Design section | Rule ids |
 |---|---|
-| §2.2.1 | R-021, R-023, R-025, R-159, R-160 |
+| §2.2.1 | R-021, R-023, R-025, R-159, R-160, R-229 |
 
 ## Known gaps
 
@@ -419,13 +419,29 @@ What was built:
   companies' notices.
 - `markTypeFoundFromZip`: each type a member supplied (stored, or already stored under the same type) is
   moved to FOUND in `document_fetch_state` through the state machine's `found` transition, with the member
-  row's id; the per-type loop skips the fallback chain for it (`EXCHANGES:found_in_zip`), so the chain no
-  longer records NOT_FOUND for a document already held (Tier A round 1, MAJOR 2).
+  row's id, and the per-type loop skips the fallback chain for it (`EXCHANGES:found_in_zip`) (Tier A round
+  1, MAJOR 2). Round 3 (round 2 review, MAJOR 1): ONLY when the exchanges list no link of their own for
+  that type and every consulted exchange answered. A corrigendum in the RHP zip is the one issued with the
+  RHP; the exchange's own corrigendum link can be a later one (OD-33, OD-66), so a listed link is always
+  fetched, identical bytes are absorbed by the sha256 dedupe, and a listed link that fails leaves the type
+  open for the next slot rather than closing it on the older zip copy.
+- Round 3: `runIpo` also reads the IPO's stored member rows (`DocumentRepository.findZipMemberDocuments`),
+  so a type supplied by a zip examined in an earlier run is closed by the same rule.
 - Member names: bit 11 of the zip flags means UTF-8; without it, valid UTF-8 bytes are read as UTF-8 (the
   Devanagari RHP_HTEL page has flag 0), else cp437.
-- Existing rows: `scraper/scripts/repair-zip-member-documents.ts` re-fetches every stored `.zip` without
-  `#member=` siblings through the same verifier, requires the chosen member's sha256 to equal the stored
-  one, and stores the members through the same `storeZipMemberDocuments` (dry run by default).
+- Existing rows (round 3): `DocumentDiscoveryRunner.expandStoredZip` is the one implementation. It
+  fetches through the runner's `request()` (OD-37 refusal, network counter, NSE ladder) and the same
+  verifier with the cover-page company check. Identity: a stored sha256 must equal the chosen member's;
+  a row with NO sha256 (33 of 168 stored zips on staging, 6 of them RHP zips) is expanded only when the
+  cover check passed, and the sha256 is backfilled. Members go through `storeZipMemberDocuments`.
+- The durable marker `documents.zip_members_checked_at` (migration 0055): written by the runner after a
+  zip's members are handled, and by `expandStoredZip` for every definite verdict (refusals included, a
+  transient HTTP failure excluded). Not `part_number`: a one-member zip keeps it NULL and must still leave
+  the selection. `DocumentRepository.listZipsWithUncheckedMembers` (marker NULL) is the one selection.
+- In the pipeline: PASS 1.5 of the data-slot document cycle (`stored-zip-expansion-pass.ts`) expands up
+  to 3 selected zips per wake, starting no download after 3 minutes, skipped on a calendar-gated wake.
+  Staging proves it through the normal deploy; prod gets it with the release; no manual run on a host.
+  `scraper/scripts/repair-zip-member-documents.ts` calls the same function (dry run by default).
 - `DocumentRepository.upsertDocument` fills `part_number` on an existing row when a caller supplies it.
 
 Precedence trace (OD-30): `DOCUMENT_TYPE_RANK` in `field-priority-matrix.ts` already ranks CORRIGENDUM
@@ -438,7 +454,8 @@ needs a CORRIGENDUM extractor, which is not built here.
 BSE: the unwrap is shared, so a multi-member BSE zip now also stores its other typed members. BSE's
 addendum/corrigendum fields are fetched by their own links as before; nothing else changes for BSE.
 
-Not done here: rows written before this change stay missing until each zip is re-fetched (the RHP
-state is FOUND, so the runner does not re-fetch it on its own); the fetch state of a type stored as a
-zip member is not moved to FOUND; the data-level audit check `zip_member_rows` is registered as
-`notCoveredByThisManifest`. Staging proof owed.
+Not done here: the data-level audit check `zip_member_rows` is registered as `notCoveredByThisManifest`;
+a zip whose archive changed since it was stored is marked examined and logged, not re-read (a newer
+version of the main filing is a separate class); no CORRIGENDUM extractor (F-158). Staging proof owed:
+the PASS 1.5 log line `Stored-zip member expansion pass (item 22)` with `membersStored > 0` on a data
+slot after the deploy, and the stored-zip backlog (`zip_members_checked_at IS NULL`) falling wake by wake.
