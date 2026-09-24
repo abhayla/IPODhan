@@ -11,6 +11,18 @@
  * classifier fix needs (PRICE_BAND_AD, CORRIGENDUM, BASIS_OF_ALLOTMENT_AD).
  */
 
+import { readFileSync } from 'node:fs';
+
+/**
+ * Item 6: the precedence table lives in ONE config file,
+ * scraper/config/document-precedence.json, so the PULL-FROZEN audit check
+ * (scripts/lib/pull-frozen-checks.mjs) reads the same numbers instead of a
+ * hand copy.
+ */
+const DOCUMENT_PRECEDENCE_CONFIG = JSON.parse(
+  readFileSync(new URL('../../config/document-precedence.json', import.meta.url), 'utf8')
+) as { precedence: Record<string, number>; nonReopeningTypes: string[] };
+
 export const DOCUMENT_TYPES = [
   'DRHP',
   'RHP',
@@ -50,21 +62,11 @@ export const SUPERSEDING_TYPES: readonly DocumentType[] = [
  * (lifecycle-plan header: Prospectus > RHP + Corrigendum + Addenda + PBA > DRHP).
  * Higher number wins. Consumed by supersession and, later, by WP C's resolver.
  */
-export const DOCUMENT_PRECEDENCE: Record<DocumentType, number> = {
-  PROSPECTUS: 100,
-  BASIS_OF_ALLOTMENT_AD: 90,
-  CORRIGENDUM: 80,
-  ADDENDUM: 75,
-  PRICE_BAND_AD: 70,
-  ANCHOR_ALLOCATION_REPORT: 60,
-  RHP: 50,
-  RATIOS_BASIS_ISSUE_PRICE: 40,
-  SECURITY_PARAMS_POST_ANCHOR: 30,
-  SECURITY_PARAMS_PRE_ANCHOR: 25,
-  BIDDING_CENTERS: 20,
-  SAMPLE_APPLICATION_FORMS: 15,
-  DRHP: 10,
-};
+export const DOCUMENT_PRECEDENCE: Record<DocumentType, number> = DOCUMENT_PRECEDENCE_CONFIG.precedence as Record<
+  DocumentType,
+  number
+>;
+
 
 /** True when `value` is one of the tracked document types. */
 export function isDocumentType(value: unknown): value is DocumentType {

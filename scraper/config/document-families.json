@@ -1,0 +1,27 @@
+{
+  "_note": "Item 6 (spec \u00a72.5, OD-91): the ONE per-field document-family table, keyed by the field manifest's documentType. A document can carry (and so supersede) a field only when its type is in that field's family; a field with no documentType has the chosen document's own type as its only family member. Read by scraper/config/plan-supersession-rule.mjs, which both the scraper (decidePlanRowSupersession, the DOC fetcher) and the PULL-FROZEN audit use.",
+  "families": {
+    "PRICE_BAND_AD": [
+      "PRICE_BAND_AD",
+      "RHP",
+      "PROSPECTUS",
+      "DRHP"
+    ],
+    "RHP": [
+      "RHP",
+      "DRHP",
+      "PROSPECTUS"
+    ],
+    "DRHP": [
+      "DRHP",
+      "RHP",
+      "PROSPECTUS"
+    ],
+    "PROSPECTUS": [
+      "PROSPECTUS",
+      "PRICE_BAND_AD",
+      "RHP",
+      "DRHP"
+    ]
+  }
+}

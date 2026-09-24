@@ -38,6 +38,7 @@ import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './l
 import { istDayIso } from './lib/ist-day.mjs';
 import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
 import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
+import { collectPullFrozen } from './lib/pull-frozen-checks.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
@@ -2636,6 +2637,24 @@ async function checkS_pullWrite() {
 // (as-is or snake_cased) is UNRESOLVABLE, counted and named, never silently dropped.
 const PULL_NOBLANK_WINDOW_HOURS = 24;
 
+// PULL-FROZEN (§4, guard on §2.5; OD-91, item 6): SUPPLIED plan rows whose chosen document is
+// outranked by a COMPLETED document whose own receipt has the field. Logic + probes live in
+// scripts/lib/pull-frozen-checks.mjs (one precedence definition, scraper/config/document-precedence.json).
+async function checkPullFrozen() {
+  const title = 'SUPPLIED rows whose chosen document is outranked by a receipted COMPLETED document';
+  let res;
+  try {
+    res = await collectPullFrozen(q);
+  } catch (e) {
+    record('pull_frozen', title, 'UNVERIFIABLE', `pull_frozen query failed: ${e.message}`);
+    return;
+  }
+  for (const o of res.offenders.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {
+    notify('pull_frozen', 'P2', o.split(':')[0], 'plan row frozen on an outranked document -- the §2.5 guard', o);
+  }
+  record('pull_frozen', title, res.status, res.detail);
+}
+
 async function checkS_pullNoblank() {
   const title = 'fields that went from a value to absent this slot';
   let fsRows;
@@ -3030,6 +3049,7 @@ async function main() {
   await checkS_pullPlanRank();
   await checkS_pullPlanStuckReclaim();
   await checkPullDocNayWithOfferDoc();
+  await checkPullFrozen();
   await checkPullPlanConfigGapAtCap();
   await checkPullPlanGapStalled();
   await checkS_pullOverrides();

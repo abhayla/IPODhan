@@ -1136,6 +1136,13 @@ export interface AutoPersistDeps {
      * tells the purge to leave that PDF alone.
      */
     pageRows?: DocumentPageRow[];
+    /**
+     * Item 6 (OD-91): every field this document's extraction produced. On
+     * COMPLETED it is written as document_field_receipts, and the plan rows
+     * this document supersedes for those fields are reopened (spec §2.5) —
+     * all in the SAME transaction as the status write.
+     */
+    receiptFields?: Array<{ tableName: string; rowKey: string; fieldName: string; value?: string | null }>;
   }) => Promise<void>;
   /** Stamp `document_fetch_state.extracted_at` + `extractor_version`. */
   setFetchStateExtracted: (args: {
@@ -1180,6 +1187,35 @@ export interface AutoPersistDeps {
   deadlineMs?: number;
   /** Clock used against `deadlineMs`. Defaults to `Date.now`. */
   now?: () => number;
+}
+
+/**
+ * Item 6 (OD-91): write this document's receipt, then reopen the plan rows it
+ * supersedes for the fields in that receipt. Runs inside the COMPLETED
+ * transaction (`tx`). A receipt is not provenance: nothing here touches
+ * field_sources, so OD-73's identical-value rule is unchanged.
+ */
+export async function writeReceiptAndReopen(
+  tx: { execute: (q: any) => Promise<any> },
+  doc: { id: string; ipoId: string; type: string; filingDate: string | Date | null; sha256: string | null },
+  receiptFields: ReadonlyArray<{ tableName: string; rowKey: string; fieldName: string; value?: string | null }>
+): Promise<{ reopenedIds: string[] }> {
+  const { sql } = await import('drizzle-orm');
+  for (const f of receiptFields) {
+    await tx.execute(sql`
+      INSERT INTO document_field_receipts (document_id, table_name, row_key, field_name, value)
+      VALUES (${doc.id}::uuid, ${f.tableName}, ${f.rowKey ?? ''}, ${f.fieldName}, ${f.value ?? null})
+      ON CONFLICT (document_id, table_name, row_key, field_name) DO UPDATE SET value = EXCLUDED.value
+    `);
+  }
+  const { reopenPlanRowsForCompletedDocument } = await import('./plan-supersession.js');
+  const filing =
+    doc.filingDate == null ? null : doc.filingDate instanceof Date ? doc.filingDate.toISOString().slice(0, 10) : String(doc.filingDate).slice(0, 10);
+  return reopenPlanRowsForCompletedDocument(
+    tx,
+    { id: doc.id, ipoId: doc.ipoId, docType: doc.type, filingDate: filing, sha256: doc.sha256 },
+    receiptFields
+  );
 }
 
 /** The real dependency set, wired to the database and the filesystem. */
@@ -1230,7 +1266,7 @@ export function buildAutoPersistDeps(
     runCorrigendumSuggestions: buildCorrigendumSuggestionRunner(),
     persistFiling: persistFilingExtraction,
     persisterDeps,
-    async setDocumentExtractionState({ documentId, status, error, retryCount, updatedAt, pageRows }) {
+    async setDocumentExtractionState({ documentId, status, error, retryCount, updatedAt, pageRows, receiptFields }) {
       // Round 4: the REAL writer. It does not compute the patch itself — it
       // hands `buildExtractionStatePatch` (the ONE pure function every status
       // write goes through) the same args the caller already decided, and
@@ -1251,11 +1287,6 @@ export function buildAutoPersistDeps(
         await db.insert(documentPagesTable).values(pageRows as never).onConflictDoNothing();
       }
       const patch = buildExtractionStatePatch(status as ExtractionStatus, { error, retryCount, updatedAt }, new Date());
-      const rows = await db
-        .update(documentsTable)
-        .set(patch as never)
-        .where(eq(documentsTable.id, documentId))
-        .returning({ ipoId: documentsTable.ipoId });
       // Staging incident (2026-09-06): this is a RAW `db.update`, so it never
       // goes through `DocumentRepository`'s own write methods and never hit
       // their `deleteCache(getDocumentsKey(ipoId))` calls — `findByIPO`'s
@@ -1265,6 +1296,22 @@ export function buildAutoPersistDeps(
       // (IN_PROGRESS/FAILED/COMPLETED/MANUAL_REVIEW all funnel through this
       // one function) must invalidate that key. Fail-open on a Redis error —
       // a missed invalidation costs one stale read, not the cycle.
+      // Item 6 (spec §2.5, OD-91): with a receipt, the status, the receipt and
+      // the plan-row reopen commit together (one transaction); every other
+      // status write keeps the single UPDATE below.
+      const withReceipt = status === 'COMPLETED' && receiptFields && receiptFields.length > 0;
+      const rows = withReceipt
+        ? await db.transaction(async (tx) => {
+            const updated = await tx.update(documentsTable).set(patch as never).where(eq(documentsTable.id, documentId))
+              .returning({ ipoId: documentsTable.ipoId, type: documentsTable.type, filingDate: documentsTable.filingDate, sha256: documentsTable.sha256 });
+            if (updated[0]) await writeReceiptAndReopen(tx as never, { id: documentId, ...updated[0] }, receiptFields);
+            return updated;
+          })
+        : await db
+            .update(documentsTable)
+            .set(patch as never)
+            .where(eq(documentsTable.id, documentId))
+            .returning({ ipoId: documentsTable.ipoId });
       const ipoId = rows[0]?.ipoId;
       if (ipoId) {
         try {
@@ -2288,6 +2335,7 @@ export async function processPendingFilings(
         status: 'COMPLETED',
         error: null,
         retryCount: 0,
+        receiptFields: summary.receipt_fields ?? [],
         // Item 18 slice 1b. An empty list here is normal and meaningful: a
         // scanned filing yields no text, nothing is stored, and the purge must
         // therefore never delete its PDF.

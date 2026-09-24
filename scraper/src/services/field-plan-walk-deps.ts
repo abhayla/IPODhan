@@ -216,6 +216,12 @@ export function buildFieldPlanWalkFetchers(
     manifestDocumentType: (tableName, fieldName) => manifestFieldEntry(tableName, fieldName)?.documentType,
     isDocCapable: isCapable('DOC'),
     ipoDetailsReader: makeIpoDetailsReader(),
+    // Item 6 (OD-91): per-document receipts, probed (a DB before 0060 has none).
+    receiptReader: async (ipoId: string) => {
+      const { loadSupersessionInputs } = await import('./plan-supersession.js');
+      const { db } = await import('@ipodhan/shared');
+      return (await loadSupersessionInputs(db as never, ipoId)).receipts;
+    },
   });
 
   const bseState = new BseFieldFetcherState();

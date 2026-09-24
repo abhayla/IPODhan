@@ -1852,6 +1852,12 @@ export const ipoFieldPlan = pgTable(
     // date, and the page then names the source with no date rather than a guess.
     chosenConfirmedAt: timestamp('chosen_confirmed_at'),
 
+    // ---- item 6 (spec §2.5, OD-91): the document that reopened this row ----
+    // Set when a COMPLETED document that outranks chosen_document_id, and whose
+    // receipt (document_field_receipts) has this field, moves the row
+    // SUPPLIED -> PENDING. NULL on every row no supersession has touched.
+    supersededBy: uuid('superseded_by').references(() => documents.id, { onDelete: 'set null' }),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -1904,6 +1910,42 @@ export const ipoFieldPlan = pgTable(
       .where(sql`${table.state} = 'CHECK_FAILED' AND ${table.attempts} < 5`),
   })
 );
+
+// ==================== DOCUMENT_FIELD_RECEIPTS (item 6, OD-91) ====================
+// Which fields ONE document's extraction produced, written in the same
+// transaction that marks the document COMPLETED. field_sources keeps only the
+// last writer per field, so it cannot say whether a later document printed a
+// field; this table can. A receipt is not provenance: writing one never
+// re-stamps field_sources (OD-73 unchanged). Rows exist only for documents
+// extracted after this table shipped (OD-91: going forward, no re-read, OD-65).
+// field_name is camelCase, the same convention as field_sources.field_name.
+export const documentFieldReceipts = pgTable(
+  'document_field_receipts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    tableName: varchar('table_name', { length: 100 }).notNull(),
+    rowKey: varchar('row_key', { length: 200 }).notNull().default(''),
+    fieldName: varchar('field_name', { length: 100 }).notNull(),
+    // The normalised value THIS document's extraction produced for the field
+    // (text; JSON for arrays/objects). The DOC fetcher credits the document
+    // only when this equals the column's current value (OD-73 "identical").
+    value: text('value'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueReceipt: unique('unique_document_field_receipt').on(
+      table.documentId,
+      table.tableName,
+      table.rowKey,
+      table.fieldName
+    ),
+  })
+);
+
+export type DocumentFieldReceipt = typeof documentFieldReceipts.$inferSelect;
 
 // ==================== RELATIONS ====================
 

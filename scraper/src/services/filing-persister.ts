@@ -23,6 +23,7 @@
  */
 
 import type { IPORepository } from '@ipodhan/shared';
+import { normalizeReceiptValue } from '../../config/plan-supersession-rule.mjs';
 import type {
   FinancialStatementsRepository,
   IpoValuationRepository,
@@ -247,6 +248,8 @@ export interface PersistFilingSummary {
   };
   /** What actually went to `ipos` via upsertIPO (issueSize et al). */
   ipos_fields: string[];
+  /** Item 6 (OD-91): every field this extraction produced (before any write filter), camelCase. */
+  receipt_fields?: Array<{ tableName: string; rowKey: string; fieldName: string; value?: string | null }>;
   applied: boolean;
 }
 
@@ -780,6 +783,11 @@ export async function persistFilingExtraction(
   const skippedProtected: string[] = [];
   const skippedCrossDoc: string[] = [];
   const iposFields: string[] = [];
+  // Item 6 (OD-91): every field THIS document's extraction produced, taken
+  // BEFORE any priority / protection / outranked-by-ad drop, so the receipt
+  // says what the document prints, not what won the write. Written by the
+  // caller as document_field_receipts in the COMPLETED transaction.
+  const receiptFields: Array<{ tableName: string; rowKey: string; fieldName: string; value: string | null }> = [];
 
   /**
    * Run a table's payload through the admin field-protection gate.
@@ -1266,6 +1274,7 @@ export async function persistFilingExtraction(
 
   // W-147: drop any headline column a price band advertisement already owns,
   // BEFORE the admin-protection gate and the write.
+  for (const [col, v] of Object.entries(iposCandidate)) receiptFields.push({ tableName: 'ipos', rowKey: '', fieldName: col, value: normalizeReceiptValue(v) });
   await dropOutranked('ipos', iposCandidate, [
     'issueSize',
     'priceRangeMin',
@@ -1477,6 +1486,7 @@ export async function persistFilingExtraction(
   }
 
   // W-147: the ipo_details half of the headline, same rule as `ipos` above.
+  for (const [col, v] of Object.entries(details)) receiptFields.push({ tableName: 'ipo_details', rowKey: '', fieldName: col, value: normalizeReceiptValue(v) });
   await dropOutranked('ipo_details', details, [
     'freshIssue',
     'ofsIssue',
@@ -2726,6 +2736,7 @@ export async function persistFilingExtraction(
     skipped_protected: [...new Set(skippedProtected)].sort(),
     skipped_cross_document_disagreement: [...new Set(skippedCrossDoc)].sort(),
     ipos_fields: iposFields,
+    receipt_fields: receiptFields,
     fresh_ofs_reconciliation: {
       ok: reconciliation.ok,
       kind: reconciliation.kind,

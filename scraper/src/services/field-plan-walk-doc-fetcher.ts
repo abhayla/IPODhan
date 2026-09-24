@@ -43,6 +43,9 @@ import type { DocumentRepository } from '@ipodhan/shared';
 // provenance reads use — see its doc comment ("field_sources.field_name is
 // camelCase (listingDate, bseIpoNo), not the snake_case column name").
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
+import { bestPlanDocument, isFixedPriceIssue, type PlanDocumentRef } from './document-state-machine.js';
+import { logger } from '../utils/logger.js';
+import { DOC_TYPE_FAMILIES, docTypeFamily as sharedDocTypeFamily, normalizeReceiptValue } from '../../config/plan-supersession-rule.mjs';
 
 /**
  * Which document-type family answers a manifest field's DOC rank, in
@@ -62,12 +65,7 @@ import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
  * document" guards the class. A price-band ad joins only the families whose
  * fields it can print (price-dependent and final terms).
  */
-export const DOC_TYPE_FAMILY: Record<string, ReadonlyArray<string>> = {
-  PRICE_BAND_AD: ['PRICE_BAND_AD', 'RHP', 'PROSPECTUS', 'DRHP'],
-  RHP: ['RHP', 'DRHP', 'PROSPECTUS'],
-  DRHP: ['DRHP', 'RHP', 'PROSPECTUS'],
-  PROSPECTUS: ['PROSPECTUS', 'PRICE_BAND_AD', 'RHP', 'DRHP'],
-};
+export const DOC_TYPE_FAMILY: Readonly<Record<string, ReadonlyArray<string>>> = DOC_TYPE_FAMILIES;
 
 /**
  * The document types whose COMPLETED extraction can answer a field whose
@@ -76,7 +74,7 @@ export const DOC_TYPE_FAMILY: Record<string, ReadonlyArray<string>> = {
  * event that reopens a NO_DOCUMENT_PROVENANCE row.
  */
 export function docTypeFamily(documentType: string): ReadonlyArray<string> {
-  return DOC_TYPE_FAMILY[documentType] ?? [documentType];
+  return sharedDocTypeFamily(documentType);
 }
 
 /**
@@ -111,6 +109,12 @@ export interface DocFetcherDeps {
    * write path uses, never a raw ad-hoc query invented here.
    */
   ipoDetailsReader: { findByIpoId(ipoId: string): Promise<Record<string, unknown> | null> };
+  /**
+   * Item 6 (OD-91): document id -> receipt keys (`table|rowKey|camelField`)
+   * for this IPO's documents. Optional: absent, or empty for every document
+   * (all extracted before OD-91), the fetcher keeps its pre-OD-91 choice.
+   */
+  receiptReader?: (ipoId: string) => Promise<Map<string, ReadonlyMap<string, string | null>>>;
 }
 
 interface MinimalDocument {
@@ -119,6 +123,33 @@ interface MinimalDocument {
   extractionStatus: string | null;
   isActive: boolean | null;
   sha256: string | null;
+  filingDate?: string | Date | null;
+}
+
+/**
+ * Item 6 (spec §2.5, OD-91): among this IPO's COMPLETED family documents whose
+ * OWN receipt has the field, the best one by the same comparator supersession
+ * uses (`bestPlanDocument`). Undefined when no family document has a receipt
+ * for the field — the caller then keeps its pre-OD-91 choice, so rows chosen
+ * before receipts existed do not churn.
+ */
+export function bestReceiptedDocument(
+  docs: MinimalDocument[],
+  family: ReadonlyArray<string>,
+  receipts: Map<string, ReadonlyMap<string, string | null>>,
+  key: string,
+  fixedPrice: boolean
+): MinimalDocument | undefined {
+  const receipted: Array<MinimalDocument & PlanDocumentRef> = [];
+  for (const type of family) {
+    for (const d of docs) {
+      if (d.type !== type || d.extractionStatus !== 'COMPLETED' || d.isActive === false) continue;
+      if (!receipts.get(d.id)?.has(key)) continue;
+      const fd = d.filingDate == null ? null : d.filingDate instanceof Date ? d.filingDate.toISOString().slice(0, 10) : String(d.filingDate).slice(0, 10);
+      receipted.push({ ...d, docType: d.type, filingDate: fd });
+    }
+  }
+  return bestPlanDocument(receipted, { family, fixedPrice });
 }
 
 function hasCompletedDocument(
@@ -308,6 +339,49 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
       // some point) but the live column is empty now. Never fabricate a
       // SUPPLIED with no value.
       return { outcome: 'NOT_PRINTED' };
+    }
+
+    // Item 6 (OD-91): with receipts, the best receipted document wins and an
+    // outranked lineage does not. Without any receipt for this field, the
+    // pre-OD-91 choice below stands unchanged.
+    if (deps.receiptReader) {
+      let receipts: Map<string, ReadonlyMap<string, string | null>> = new Map();
+      try {
+        receipts = await deps.receiptReader(ipoId);
+      } catch (error) {
+        return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error) };
+      }
+      // §2.5.5 Rule 3's fixed-price test reads ipo_details.issue_type for EVERY table, the same as
+      // the write path (plan-supersession.loadSupersessionInputs).
+      const ipoRow = (await deps.ipoRepository.findById(ipoId)) as unknown as Record<string, unknown> | null;
+      const detailsRow = await deps.ipoDetailsReader.findByIpoId(ipoId).catch(() => null);
+      const fixedPrice = isFixedPriceIssue(
+        (detailsRow?.issueType as string | null | undefined) ?? null,
+        ipoRow?.priceRangeMin == null ? null : Number(ipoRow.priceRangeMin),
+        ipoRow?.priceRangeMax == null ? null : Number(ipoRow.priceRangeMax)
+      );
+      const key = `${tableName}|${rowKey || ''}|${camelFieldName}`;
+      const best = bestReceiptedDocument(docs, family, receipts, key, fixedPrice);
+      if (best) {
+        const receipted = receipts.get(best.id)?.get(key) ?? null;
+        const current = normalizeReceiptValue(read.value);
+        if (receipted !== null && receipted === current) {
+          if (lineage.documentId && lineage.documentId !== best.id) {
+            logger.info(
+              { ipoId, tableName, fieldName, lineageDocumentId: lineage.documentId, chosenDocumentId: best.id, chosenType: best.type },
+              '[doc-fetcher] lineage document outranked by a receipted document with the identical value — plan row credits the receipted one (OD-91, OD-73)'
+            );
+          }
+          return { outcome: 'SUPPLIED', value: read.value, documentId: best.id, documentType: best.type, sha256: best.sha256 ?? undefined };
+        }
+        // The best document's own extraction produced a DIFFERENT value (e.g. dropped because
+        // the price band ad owns the headline) — it did not supply what the page shows, so the
+        // current choice stands.
+        logger.info(
+          { ipoId, tableName, fieldName, receiptedDocumentId: best.id, receiptedType: best.type, receiptedValue: receipted, currentValue: current, keptDocumentId: lineage.documentId ?? completedDoc.id },
+          '[doc-fetcher] best receipted document printed a different value than the column holds — current choice kept (OD-91)'
+        );
+      }
     }
 
     return {
