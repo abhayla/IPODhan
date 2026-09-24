@@ -405,6 +405,20 @@ export interface EligibilityInput {
    * Every other OD-69 refusal stands (names, CIN, ISIN, issue size).
    */
   relaunch?: RelaunchEvidence;
+  /**
+   * OD-94 (#679): `ipos.offering_type` on each side. Two populated, differing offering types are two
+   * offers (OD-70: a later event is its own row of its own type) and are refused, relaunch or not.
+   */
+  keepOfferingType?: unknown;
+  dropOfferingType?: unknown;
+  /**
+   * OD-94 (#679): `ipos.close_date` / `ipos.listing_date` on each side. Two populated, differing
+   * days are refused unless the OD-86 relaunch exception holds (a relaunch moves every date).
+   */
+  keepCloseDate?: unknown;
+  dropCloseDate?: unknown;
+  keepListingDate?: unknown;
+  dropListingDate?: unknown;
 }
 
 /** OD-86's four conditions, measured by the caller from both rows and their source keys. */
@@ -458,18 +472,38 @@ function numericOrAbsent(value: unknown): number | null {
   return n;
 }
 
+/** An offering_type value, upper-cased and trimmed; NULL / empty read as ABSENT. */
+function offeringTypeOrAbsent(value: unknown): string | null {
+  if (value == null) return null;
+  const t = String(value).trim().toUpperCase();
+  return t === '' ? null : t;
+}
+
 /** OD-35: open dates more than this many days apart are two offerings — also the bound on OD-86's relaunch exception. */
 export const RELAUNCH_MAX_OPEN_DATE_GAP_DAYS = 180;
 
 export type EligibilityResult = { eligible: true } | { eligible: false; reason: string };
 
 /**
- * The refusal checks the original script ran before ANY write: same
- * open_date, names fold to the same string (unless force-overridden), and no
- * disagreeing strong identifier. Pure so it is unit-testable without a DB —
+ * The refusal checks run before ANY write. Every compared dimension, in order:
+ * offering_type (OD-94, never waived), open_date (OD-69; OD-86 relaunch may differ within 180 days),
+ * close_date and listing_date (OD-94; OD-86 relaunch may differ), the name fold (unless
+ * force-overridden), the strong identifiers (OD-69), and issue_size (#672). A dimension refuses only
+ * when BOTH sides are populated and differ; the reason names the column and both values.
+ * Pure so it is unit-testable without a DB —
  * this is what stops a merge tool from combining two different offers.
  */
 export function checkMergeEligibility(input: EligibilityInput): EligibilityResult {
+  // OD-94 (#679): two offering types are two offers, whatever else agrees — checked first so the
+  // reason names the most basic disagreement, and never waived by OD-86 (a relaunch is one offer).
+  const keepType = offeringTypeOrAbsent(input.keepOfferingType);
+  const dropType = offeringTypeOrAbsent(input.dropOfferingType);
+  if (keepType !== null && dropType !== null && keepType !== dropType) {
+    return {
+      eligible: false,
+      reason: `offering_type disagrees (${keepType} vs ${dropType}) — two offering types are two offers (OD-94, OD-70)`,
+    };
+  }
   const keepDay = isoDay(input.keepOpenDate);
   const dropDay = isoDay(input.dropOpenDate);
   // Both unreadable (null/absent) keeps the original behaviour: not a refusal on date grounds —
@@ -508,6 +542,26 @@ export function checkMergeEligibility(input: EligibilityInput): EligibilityResul
           `the two rows' open date differs (${keepDay} vs ${dropDay}, ${spread} day(s) apart) — ` +
           `OD-69: a merge needs the same open date, so they are two offers`,
       };
+    }
+  }
+  // OD-94 (#679): a populated close or listing date that differs is a second offer, except for an
+  // OD-86 relaunch, which legitimately moves every date. An absent (or unreadable) side is not a
+  // disagreement — there is nothing to compare.
+  if (!relaunchException(input.relaunch)) {
+    for (const [column, keepValue, dropValue] of [
+      ['close_date', input.keepCloseDate, input.dropCloseDate],
+      ['listing_date', input.keepListingDate, input.dropListingDate],
+    ] as const) {
+      const k = isoDay(keepValue);
+      const d = isoDay(dropValue);
+      if (k !== null && d !== null && k !== d) {
+        return {
+          eligible: false,
+          reason:
+            `${column} disagrees (${k} vs ${d}) — a merge needs the same ${column} unless the pair is an ` +
+            `OD-86 relaunch, so they are two offers (OD-94)`,
+        };
+      }
     }
   }
   if (!input.forceDifferentName && foldCompanyName(input.keepCompanyName) !== foldCompanyName(input.dropCompanyName)) {

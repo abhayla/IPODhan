@@ -1,0 +1,10 @@
+{
+  "class_id": "merge gate skips a compared dimension",
+  "feature": "duplicate-IPO merge eligibility (OD-69, OD-86, OD-94)",
+  "symptom": "any column that distinguishes two offers but is absent from checkMergeEligibility lets a pair that disagrees on it be merged; the gate refuses only on the dimensions it lists, so a pair of different offering types, or with different populated close or listing dates, passed whenever the listed dimensions happened to agree or were absent on one side.",
+  "first_seen": "2026-09-16 (#679): ipodhan_staging cube-highways-trust (IPO, open/close/listing 2026-07-19/07-26/07-29) vs cube-highways-trust-cube-highways-trust-invit (INVITS, 2026-07-22/07-24/08-03) accepted in both directions; measured 2026-09-24: the IPO row is gone on staging, its slug redirects to the INVITS row with reason DUPLICATE_MERGE and no ipo_merge_log entry.",
+  "fix_prs": "item 12 / #679 (OD-94): offering_type always refused when both populated and differing; close_date and listing_date refused unless the OD-86 relaunch test passes; every compared dimension listed once in checkMergeEligibility's doc comment",
+  "detection_check": "scraper/tests/unit/duplicate-ipo-merge.test.ts 'offering type and close/listing dates (#679, OD-94)' (each guard mutation-tested). Gap: scraper/src/scheduler/jobs/duplicate-sweep-job.ts clusters by name only, reports no eligibility verdict, and its dryRun:false path merges by raw SQL without checkMergeEligibility (production calls it with dryRun:true only).",
+  "status": "unguarded",
+  "spec_ref": ["§2.3.3.2", "§2.3.3.3"]
+}
