@@ -226,7 +226,7 @@ not discovered mid-review.
 
 | Design section | Rule ids |
 |---|---|
-| §2.11 | R-081, R-082, R-083, R-085, R-086, R-087, R-162, R-163, R-164, R-199 |
+| §2.11 | R-081, R-082, R-083, R-085, R-087, R-162, R-163, R-164, R-232, R-233 |
 
 ## Status of this card's corrections (2026-09-10, implementation session)
 
