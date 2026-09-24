@@ -1,0 +1,5 @@
+{
+  "sourceUrl": "https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getSymbolData and https://api.bseindia.com/BseIndiaAPI/api/getScripHeaderData/w (several symbols and scrip codes; the per-response keys name each one)",
+  "capturedAt": "2026-09-24",
+  "pageType": true
+}
