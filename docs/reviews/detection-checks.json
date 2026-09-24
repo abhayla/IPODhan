@@ -933,6 +933,15 @@
         "3.2"
       ],
       "note": "#908. Ranked through the WRITER's own answers (review round 1 on PR #914, MAJOR-2): scraper/config/writer-source-ranking.json is generated from getSourcePriority/allowsSameSourceRefresh per field, source, IPO type, venue and ENABLE_POLICY_WRITER state (scraper/scripts/build-writer-ranking-snapshot.ts; tests/unit/config/writer-source-ranking.test.ts fails on a stale file); the audit applies the slot's flag the way slotAwareFlagDefault does. First staging run 2026-09-23 (before the fix deploys, manifest-ranked): 103 IDENTICAL_RESTAMP rows across 24 IPOs in 24 h (Adroit Industries 126 -> 126 among them), 40 settled-field writes passed."
+    },
+    {
+      "id": "t_source_local_time_shift",
+      "findingClass": "a subscription row whose stored timestamp is a zone-less source-local wall-clock string parsed as UTC by a TZ=UTC process — the value lands 5h30m (IST) ahead of the true observation instant. BSE's `Maxdt` varies intraday (e.g. \"13:36:42 IST\") as well as day-end (\"5:00:00 PM\"); `new Date(maxdt)` in scrapers/bse-api-scraper.ts before T-999 mis-parsed all of it, but only the day-end 5:00:00 PM case reliably survives to be PERSISTED (W-38's 5-minute-future guard rejects most shifted intraday reads outright), so the recoverable, detectable signature is specifically time-of-day 17:00:00 exactly for scope BSE_ONLY.",
+      "round7Findings": [],
+      "failThreshold": "any subscriptions row with scope = 'BSE_ONLY' whose \"timestamp\" time-of-day is exactly 17:00:00.000000 (fixed threshold, not a ratchet: a genuine UTC instant of 17:00:00 is 22:30 IST, a time BSE's exchange session has been closed for hours and never publishes a fresh subscription read at, so no legitimate row can land there) OR whose \"timestamp\" is more than 5 minutes later than the row's own creation time where that can be measured",
+      "severity": "P1",
+      "unverifiableWhen": "never — always runs against the subscriptions table",
+      "note": "Detection upgrade for T-999 (source-local-time-parsed-in-utc-process class). scripts/repair-bse-subscription-ist-shift.ts repairs the EXISTING rows this check flags (dry-run default, --apply on staging/ipodhan_test only). A future member of the class (a different source, or a different BSE field parsed the same wrong way) is caught by extending the same time-of-day / scope predicate, not by re-typing a new check."
     }
   ],
   "notCoveredByThisManifest": [

@@ -555,6 +555,33 @@ async function checkD() {
 // rows; this check is what stops the gap from silently reopening — measured
 // missing on 2026-09-10 (no existing check asserts provenance PRESENCE; the
 // checks above measure share and lineage, never absence).
+// ---- (T-999, source-local-time-parsed-in-utc-process): a BSE subscription
+// row's Maxdt is IST wall-clock with no numeric offset; `new Date(maxdt)` in
+// the TZ=UTC scraper process read it as UTC, shifting the stored value +5h30m.
+// BSE's day-end snapshot Maxdt is always "5:00:00 PM" IST -> the true instant
+// is 11:30:00 UTC, never 17:00:00 UTC (which would itself be 22:30 IST, hours
+// after the exchange session closed) — so any BSE_ONLY row time-stamped
+// exactly 17:00:00 is this class, not a coincidence. See
+// docs/reviews/failure-classes/source-local-time-parsed-in-utc-process.json.
+async function checkT_bseSubscriptionIstShift() {
+  const rows = await q(
+    `SELECT s.id, s.ipo_id AS "ipoId", i.slug, i.company_name AS "companyName", s."timestamp"
+       FROM subscriptions s
+       JOIN ipos i ON i.id = s.ipo_id
+      WHERE s.scope = 'BSE_ONLY'
+        AND to_char(s."timestamp", 'HH24:MI:SS') = '17:00:00'`
+  );
+  for (const r of rows) {
+    notify(
+      't_source_local_time_shift', 'P1', r.id,
+      `BSE_ONLY subscription row stamped exactly 17:00:00 (IST-as-UTC shift class): ${r.companyName}`,
+      `slug=${r.slug} ipoId=${r.ipoId} timestamp=${r.timestamp} — repair via scripts/repair-bse-subscription-ist-shift.ts`
+    );
+  }
+  record('t_source_local_time_shift', 'no BSE_ONLY subscription row is stamped exactly 17:00:00 (the IST-parsed-as-UTC shift signature)',
+    rows.length === 0 ? 'PASS' : 'FAIL', `${rows.length} row(s) at exactly 17:00:00`);
+}
+
 async function checkD_segmentProvenance() {
   const rows = await q(
     `SELECT i.id, i.company_name AS "companyName", i.offering_type AS "offeringType", i.segment,
@@ -3067,6 +3094,7 @@ async function main() {
   await checkS_pullNoblank();
   await checkS_incompletePagesUnretried();
   await checkS_corpusShape();
+  await checkT_bseSubscriptionIstShift();
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
