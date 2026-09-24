@@ -52,7 +52,20 @@ import {
   CLOSED_IPO_JOB_SLOT_IST_MINUTES,
 } from './scheduler/closed-ipo-job.js';
 import { writeFieldSourcesSnapshot } from './scheduler/closed-ipo-snapshot.js';
-import { anyIpoOpensToday, iposOpeningToday, OPENING_DAY_CHECK_TIME_IST_MINUTES } from './scheduler/opening-day-check.js';
+import { iposOpeningToday, OPENING_DAY_CHECK_TIME_IST_MINUTES } from './scheduler/opening-day-check.js';
+import { runOpeningDayDiscovery, createOpeningDayWriter } from './scheduler/opening-day-discovery.js';
+import { fetchCurrentIssueList } from './scrapers/nse-api-client.js';
+import { fetchBSEBoard } from './scrapers/bse-api-scraper.js';
+import {
+  createFieldProtectionService,
+  resolveIpoRow,
+  inferBoundVia,
+  SOURCE_KEY_NO_WRITE_ERROR_NAMES,
+} from '@ipodhan/shared';
+import { withSourceKeyLineage } from '@ipodhan/shared/repositories';
+import { ListingPerformanceRepository as OpeningDayListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
+import { DataConsolidationOrchestrator } from './services/data-consolidation-orchestrator.js';
+import { normalizeCompanyNameForMatching, computeIpoIdentitySlug } from './services/data-persister.js';
 import type { ClosedIpoResourceResult } from './scheduler/closed-ipo-job.js';
 import { readPlanSettlement } from './scheduler/closed-ipo-plan-settlement.js';
 import { plantFieldPlanForIpo } from './services/field-plan-planting.js';
@@ -705,25 +718,15 @@ async function runClosedIpoWake(): Promise<number> {
  * data job and closed-IPO job take (`scraper:cycle`) — §2.1's "heavy" lock
  * row lists all three; a second walker mid-cycle is how two writers race.
  *
- * What it does, and no more (§2.1): fetch the two exchange lists (NSE, BSE)
- * through the SAME orchestrators and the SAME consolidation/identity write
- * door the data job uses (`runNSEScraper({ discoveryOnly: true })` /
- * `runBSEScraper({ discoveryOnly: true })`) — discovery-only so the write
- * narrows to identity + status + the two date columns (review finding 2),
- * never a document downloader or extractor. Never runs the aggregator
- * refresh, the API fallback, the document cycle, or a field-plan write —
- * those are the data job's own steps and are not called here. Exactly the
- * two list calls per run (§7.4 budget row: "2 calls a day").
- *
- * Gate (review finding 1, CRITICAL): the gate CANNOT be "does the DB already
- * have a row opening today" — that is exactly false for the case this job
- * exists to catch (a brand-new IPO, or one whose stored `open_date` is NULL
- * or stale/postponed). So the lock is taken FIRST (skip-if-held, as before —
- * no ordering change there), THEN both lists are fetched, and ONLY THEN does
- * `opensTodayFromFetch` decide — from the FETCHED rows' own open dates
- * combined with any already-stored row — whether anything actually opens
- * today. A "no" is logged and exits cleanly; it is never used to skip the
- * fetch itself, because skipping the fetch is the bug being fixed.
+ * What it does, and no more (§2.1 as amended by OD-87): the two exchange
+ * LIST calls (NSE current issues, BSE board — §7.4 "2 calls a day"), the rows
+ * whose listed open date is today (IST), and for each an identity + status +
+ * open/close-date write through the shared identity resolution and the
+ * consolidated upsert (`scheduler/opening-day-discovery.ts`). No per-IPO
+ * detail or subscription call, no subscription snapshot, no verifier hint, no
+ * document or extraction, no aggregator/fallback/field-plan step. The lock is
+ * taken first (skip-if-held); the lists are always fetched — a stored-row
+ * gate would miss a brand-new, NULL-dated or postponed IPO (review finding 1).
  */
 async function runOpeningDayCheckWake(): Promise<number> {
   const now = new Date();
@@ -771,43 +774,45 @@ async function runOpeningDayCheckWake(): Promise<number> {
 
   let exitCode = 0;
   try {
-    // Review finding 1: fetch BOTH lists BEFORE deciding whether anything
-    // opens today — a day with no matching row is discovered by fetching,
-    // never assumed from what is already stored. Review finding 2: both
-    // calls run `discoveryOnly` — identity + status + dates only, no price
-    // band, lot size, issue size or subscription write.
+    // OD-87: the two exchange LIST calls only; today's rows get identity,
+    // status and the two dates through the identity + consolidated write.
     logger.info(
       { lockResource: CYCLE_LOCK_RESOURCE, scheduledAtIstMinutes: OPENING_DAY_CHECK_TIME_IST_MINUTES },
-      'Opening-day check: fetching the two exchange lists (discovery-only — no document, no extraction)'
+      'Opening-day check: fetching the two exchange lists (identity, status and dates only — no document, no extraction)'
     );
-    const [nseResult, bseResult] = await Promise.allSettled([
-      runNSEScraper({ discoveryOnly: true }),
-      runBSEScraper({ discoveryOnly: true }),
-    ]);
-    const failures: string[] = [];
-    if (nseResult.status === 'rejected') {
-      failures.push(`NSE: ${nseResult.reason instanceof Error ? nseResult.reason.message : String(nseResult.reason)}`);
-    }
-    if (bseResult.status === 'rejected') {
-      failures.push(`BSE: ${bseResult.reason instanceof Error ? bseResult.reason.message : String(bseResult.reason)}`);
-    }
-    const nseRowsChecked = nseResult.status === 'fulfilled' ? nseResult.value.iposProcessed : 0;
-    const bseRowsChecked = bseResult.status === 'fulfilled' ? bseResult.value.iposProcessed : 0;
-
-    // After the fetch+write, ask the DB whether anything actually opens
-    // today (finding 1's real gate — the FETCHED rows have, by now, already
-    // been consolidated into `ipos` by the discoveryOnly write above, so
-    // `anyIpoOpensToday` reads the post-fetch state, not a stale one).
-    let opensToday = true;
-    try {
-      opensToday = await anyIpoOpensToday(db, now);
-    } catch (error) {
-      logger.warn(
-        { error: error instanceof Error ? error.message : String(error) },
-        'Opening-day check: could not re-read open_date rows after the fetch — treating as due (fail open)'
-      );
-      opensToday = true;
-    }
+    const ipoRepository = new IPORepository(db, redis);
+    const consolidation = new DataConsolidationOrchestrator(
+      ipoRepository,
+      new FieldSourcesRepository(db, redis),
+      new DataConflictsRepository(db, redis),
+      redis,
+      new OpeningDayListingPerformanceRepository(db, redis)
+    );
+    const fieldProtection = createFieldProtectionService(db, redis);
+    const summary = await runOpeningDayDiscovery(
+      {
+        fetchNseList: fetchCurrentIssueList,
+        fetchBseList: fetchBSEBoard,
+        storedOpeningOn: () => iposOpeningToday(db, now),
+        writeRow: createOpeningDayWriter({
+          ipoRepository: ipoRepository as any,
+          resolveIpoRow: resolveIpoRow as any,
+          inferBoundVia: inferBoundVia as any,
+          withSourceKeyLineage,
+          noWriteErrorNames: SOURCE_KEY_NO_WRITE_ERROR_NAMES,
+          fieldProtection: fieldProtection as any,
+          consolidatedUpsertIPO: (claim, source, confidence, existing, onlyFields) =>
+            consolidation.consolidatedUpsertIPO(claim, source, confidence, existing, onlyFields),
+          normalizeName: normalizeCompanyNameForMatching,
+          identitySlug: computeIpoIdentitySlug as any,
+        }),
+      },
+      now
+    );
+    const failures = summary.failures;
+    const nseRowsChecked = summary.nseRowsChecked;
+    const bseRowsChecked = summary.bseRowsChecked;
+    const opensToday = summary.written.length > 0 || summary.storedOpeningToday.length > 0;
 
     if (!opensToday && failures.length === 0) {
       logger.info(
@@ -815,14 +820,14 @@ async function runOpeningDayCheckWake(): Promise<number> {
         `opening-day check: no IPO opens today (NSE ${nseRowsChecked} rows, BSE ${bseRowsChecked} rows checked)`
       );
     } else {
-      // signal-ownership R1 ("a number is not a reading"): name the rows
-      // opening today, not just the write counts.
-      const openingRows = opensToday ? await iposOpeningToday(db, now).catch(() => []) : [];
+      // signal-ownership R1 ("a number is not a reading"): name the rows.
       logger.info(
         {
-          nse: nseResult.status === 'fulfilled' ? { inserted: nseResult.value.iposInserted, updated: nseResult.value.iposUpdated, rowsChecked: nseRowsChecked } : 'failed',
-          bse: bseResult.status === 'fulfilled' ? { inserted: bseResult.value.iposInserted, updated: bseResult.value.iposUpdated, rowsChecked: bseRowsChecked } : 'failed',
-          openingToday: openingRows.map((row) => ({ id: row.id, companyName: row.companyName, status: row.status })),
+          todayIst: summary.todayIso,
+          nseRowsChecked,
+          bseRowsChecked,
+          written: summary.written,
+          openingToday: summary.storedOpeningToday.map((row) => ({ id: row.id, companyName: row.companyName, status: row.status })),
           failures,
         },
         'Opening-day check: run complete'

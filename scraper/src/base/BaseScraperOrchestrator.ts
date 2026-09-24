@@ -13,33 +13,6 @@
  * @see web/lib/admin/field-protection-checker.ts - Protection logic
  */
 
-/**
- * Item 7 S4 (spec §2.1 "Opening-day check": "it writes identity and status,
- * nothing else"). The allow-list `discoveryOnlyMode()` narrows a validated
- * row to before it reaches the field-protection filter or the
- * consolidation/identity write door. `companyName`/`symbol`/`isin`/`segment`/
- * `offeringType`/`offeringTypeExplicit`/`listingExchange` are identity;
- * `sourceKeys` is the OD-85 identity-resolution key list (not a data field —
- * dropping it would break record binding, not narrow a write); `status`,
- * `openDate`, `closeDate` are the one named group of date columns status is
- * derived from (deliberately grouped so it "could be dropped" as one unit,
- * per the reviewer's note). Every other key (price band, lot size, issue
- * size, registrar, lead managers, ...) is excluded.
- */
-const DISCOVERY_ONLY_FIELDS = [
-  'companyName',
-  'symbol',
-  'isin',
-  'segment',
-  'offeringType',
-  'offeringTypeExplicit',
-  'listingExchange',
-  'sourceKeys',
-  'status',
-  'openDate',
-  'closeDate',
-] as const;
-
 import type {
   IPORepository,
   SubscriptionRepository,
@@ -196,24 +169,6 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
   /** Enables the subscription-only mode described on `liveFiguresOnly` above. Chainable. */
   public liveFiguresOnlyMode(): this {
     this.liveFiguresOnly = true;
-    return this;
-  }
-
-  /**
-   * Item 7 S4 (spec §2.1 job table, "Opening-day check": "it writes identity
-   * and status, nothing else"). When set, `filteredIPOData` is narrowed to
-   * `DISCOVERY_ONLY_FIELDS` (identity columns + status + the two date columns
-   * status is derived from) BEFORE the field-protection filter and the
-   * consolidation/identity write door — so a fetched row that also carries a
-   * price band, lot size, issue size or subscription count writes NONE of
-   * those columns, through the SAME write path every other job uses. `false`
-   * (the default) leaves every other job's path unchanged.
-   */
-  protected discoveryOnly = false;
-
-  /** Enables the identity-and-status-only mode described on `discoveryOnly` above. Chainable. */
-  public discoveryOnlyMode(): this {
-    this.discoveryOnly = true;
     return this;
   }
 
@@ -693,34 +648,15 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     // Step 4: PROTECTION CHECK - Field-level filtering
     let filteredIPOData = validatedIPO;
 
-    // Item 7 S4 (OD-31): narrow BEFORE the protection filter and the write
-    // door — the discovery-only run must never carry a price band, lot
-    // size, issue size or any other field through, even one the protection
-    // filter would otherwise pass.
-    if (this.discoveryOnly) {
-      const narrowed: Record<string, unknown> = {};
-      for (const key of DISCOVERY_ONLY_FIELDS) {
-        if (key in (validatedIPO as Record<string, unknown>)) {
-          narrowed[key] = (validatedIPO as Record<string, unknown>)[key];
-        }
-      }
-      filteredIPOData = narrowed as typeof validatedIPO;
-    }
-
     if (ipoId) {
-      // Filter protected fields from the update data. Item 7 S4: this MUST
-      // run on `filteredIPOData` (already narrowed to the discovery-only
-      // allow-list above when active), never on the full `validatedIPO` —
-      // filterProtectedFields returns exactly the fields it was given minus
-      // the protected ones, so filtering the FULL payload here would hand
-      // every excluded field straight back and undo the narrowing above.
-      const originalFieldCount = Object.keys(filteredIPOData).length;
+      // Filter protected fields from the update data
+      const originalFieldCount = Object.keys(validatedIPO).length;
 
       // FIX: Access .filtered property from the result
       const filterResult = await this.fieldProtectionService.filterProtectedFields(
         ipoId,
         'ipos',
-        filteredIPOData,
+        validatedIPO,
         scraperName
       );
       filteredIPOData = filterResult.filtered as typeof validatedIPO;
@@ -752,14 +688,8 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
         // T-403 r5: this exit returns BEFORE the upsert, and the hint is not
         // part of the protected payload — it records WHERE this IPO's documents
         // live. Protecting the IPO's fields must not also suppress the only
-        // writer of `ipos.verifier_url` (T-403 r5's own class: the hint is
-        // written on EVERY exit of processIPO, protection notwithstanding —
-        // reading off the full `validatedIPO` is what makes that true, since
-        // the field-protection filter can legitimately empty `filteredIPOData`
-        // to `{}` while `verifierUrl` is still perfectly writable). Item 7 S4
-        // narrows this ONLY under discoveryOnly (which excludes `verifierUrl`
-        // from the allow-list on its own terms, before this filter ever runs).
-        await this.recordVerifierHint(ipoId, this.discoveryOnly ? filteredIPOData : validatedIPO);
+        // writer of `ipos.verifier_url`.
+        await this.recordVerifierHint(ipoId, validatedIPO);
         processResult.skipped = true;
         return processResult;
       }
@@ -842,10 +772,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     // with the flag ON in production, `ipos.verifier_url` stayed NULL for every
     // IPO and the verifier rung logged `skipped:no_verifier_url` forever. A
     // choke point that lives in one branch of an if/else is not a choke point.
-    // Item 7 S4: read off `filteredIPOData` (never `validatedIPO`) so
-    // discoveryOnly — which excludes `verifierUrl` from the allow-list —
-    // never writes this hint either.
-    await this.recordVerifierHint(upsertedIPOId, filteredIPOData);
+    await this.recordVerifierHint(upsertedIPOId, validatedIPO);
 
     processResult.processed = true;
 

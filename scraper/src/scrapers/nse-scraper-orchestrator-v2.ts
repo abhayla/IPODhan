@@ -269,14 +269,12 @@ export class NSEScraperOrchestratorV2 extends BaseScraperOrchestrator<ScrapedIPO
  * @returns Promise<NSEScraperResult> - Scraper execution summary, incl. segment counts
  */
 export async function runNSEScraper(
-  opts: { allowedStatuses?: readonly string[]; includeOFS?: boolean; liveFiguresOnly?: boolean; discoveryOnly?: boolean } = {}
+  opts: { allowedStatuses?: readonly string[]; includeOFS?: boolean; liveFiguresOnly?: boolean } = {}
 ): Promise<NSEScraperResult> {
   const orchestrator = new NSEScraperOrchestratorV2();
   if (opts.allowedStatuses) orchestrator.restrictToStatuses(opts.allowedStatuses);
   // Item 7 S1 round 1: the live-figures job writes subscription snapshots only (spec §2.1).
   if (opts.liveFiguresOnly) orchestrator.liveFiguresOnlyMode();
-  // Item 7 S4 (OD-31): the opening-day check writes identity + status + dates only.
-  if (opts.discoveryOnly) orchestrator.discoveryOnlyMode();
   if (opts.includeOFS) orchestrator.enableOFS();
   const baseResult = await orchestrator.run();
   return {

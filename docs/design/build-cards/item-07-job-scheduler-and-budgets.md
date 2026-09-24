@@ -2,24 +2,26 @@
 
 Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 7: scheduler built (scheduler/, due-step-cycle.ts) on refs/remotes/origin/main, but the OD-55 force-kill removal (#805) is merged and not on prod, and tiering (O-4) is unverified
 
-**Updated 2026-09-24 for S4 (OD-31, the opening-day check):** `--job=opening` is its own process
-(`runOpeningDayCheckWake`, scraper/src/index.ts), under the SAME heavy `scraper:cycle` lock the data
-and closed jobs take, skip-if-held. Gate `anyIpoOpensToday` (scraper/src/scheduler/opening-day-check.ts)
-checks whether any stored `open_date` equals today's IST calendar date BEFORE the lock is taken. When
-due, it runs the plain `runNSEScraper()` / `runBSEScraper()` discovery path (no status restriction, no
-`liveFiguresOnly`) -- the same orchestrators and consolidation/identity write door the data job uses --
-and calls nothing else: no aggregator refresh, no API fallback, no document cycle, no field-plan walk.
-09:45 IST is the scheduled time for prod (`OPENING_DAY_CHECK_TIME_IST_MINUTES`), PROVISIONAL per
-`docs/design/probes/exchange-list-change-time.out.json` (0/3 real observations). Staging is offset to
-09:47 IST (09:45 would collide with staging's own :45 data-job minute). Cron wiring:
-`scripts/deploy-linux.sh` `install_scraper_cron` (marker `# ipodhan-scraper-opening:<SLOT>`,
-`DEPLOY_SCRAPER_OPENING_JOB=0` to disable) and `scripts/scraper-wake.sh opening`. Tests: unit
-(`scraper/tests/unit/scheduler/opening-day-check.test.ts`), wiring/spy
-(`scraper/tests/unit/index-opening-day-check-wiring.test.ts` -- proves zero calls to the document/
-extraction path, the aggregator, the API fallback, GMP or the demand backfill), and shell
-(`scripts/tests/scraper-wake.test.sh` cases 6/10/19). Core proof (dry-run against the REAL live NSE +
-BSE list endpoints, zero DB writes) run 2026-09-24: 10 NSE rows + 19 BSE rows returned. Not yet proven
-on staging.
+**Updated 2026-09-24 for S4 (OD-31, OD-87, the opening-day check; round 3):** `--job=opening` is its own
+process (`runOpeningDayCheckWake`, scraper/src/index.ts), under the SAME heavy `scraper:cycle` lock the
+data and closed jobs take, skip-if-held. It no longer touches the NSE/BSE orchestrators (rounds 1-2 did,
+and leaked subscription snapshots, BSE detail calls and the verifier hint; BaseScraperOrchestrator and
+both v2 orchestrators are back to main's bytes). `scraper/src/scheduler/opening-day-discovery.ts` makes
+the two LIST calls only -- NSE `fetchCurrentIssueList()` (`/api/ipo-current-issue`, no per-row
+subscription call; a cold cookie jar adds NSE's two warm-up page loads) and BSE `fetchBSEBoard()`
+(`IPO_HomePageDetail/w`) -- keeps rows whose listed open date is today (IST, `istDayIso`), and writes each
+through `resolveIpoRow` + OD-85 source keys, the IPO lock and field protection, then
+`consolidatedUpsertIPO(..., onlyFields = companyName/status/openDate/closeDate)`, so the field-priority
+matrix still decides. No detail, subscription, verifier, document or extraction call. BSE's board has no
+segment field, so BSE rows claim none. 09:45 IST stays PROVISIONAL
+(`docs/design/probes/exchange-list-change-time.out.json`); staging runs 09:47 IST. Cron wiring:
+`scripts/deploy-linux.sh` `install_scraper_cron` and `scripts/scraper-wake.sh opening`. Tests:
+`scraper/tests/unit/scheduler/opening-day-discovery.test.ts` (2 list requests per run, today-only,
+payload fields, class cases new / NULL date / postponed date, IST at 2026-09-23T19:00Z; UTC-date and
+no-filter mutations each turn it red), `index-opening-day-check-wiring.test.ts`, `scraper-wake.test.sh`.
+Core proof 2026-09-24 against the live endpoints (read-only): 10 NSE + 19 BSE rows, 4 HTTP requests
+(2 NSE warm-up + 2 list); opening today: NSE Moneyview, A-One Steels, Green Asia Impex (SME); BSE
+Peshwa Wheat, Roopa Screen, A-One Steels, Moneyview. Not yet proven on staging.
 
 **Updated 2026-09-11 for OD-55 (supervisor): document job unbounded per document; see §2.1.**
 

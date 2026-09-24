@@ -965,6 +965,27 @@ export async function fetchCurrentIPOs(): Promise<NSEAPIResult> {
 }
 
 /**
+ * Item 7 S4 (OD-87, spec §2.1 "Opening-day check"): the NSE current-issue LIST
+ * alone — one `/api/ipo-current-issue` request (plus the session-cookie warm-up
+ * `makeRequest` does on a cold jar), each row mapped by `transformIPOData`.
+ * Unlike `fetchCurrentIPOs` it makes NO per-row subscription call: the
+ * opening-day check reads identity, status and dates only (§7.4: 2 calls a day).
+ */
+export async function fetchCurrentIssueList(): Promise<ScrapedIPO[]> {
+  const data = await makeRequest(ENDPOINTS.CURRENT_IPOS);
+  if (!Array.isArray(data)) return [];
+  const rows: ScrapedIPO[] = [];
+  for (const item of data) {
+    try {
+      rows.push(transformIPOData(item));
+    } catch (error) {
+      logger.warn({ symbol: item?.symbol, error: error instanceof Error ? error.message : String(error) }, 'NSE current-issue row could not be mapped');
+    }
+  }
+  return rows;
+}
+
+/**
  * Fetch the consolidated (whole-market) subscription table for one symbol
  * from `/api/ipo-active-category` (T-266). Returns null - never a zeroed
  * record - when the endpoint fails or the payload is unusable.

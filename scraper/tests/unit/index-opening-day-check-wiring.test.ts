@@ -121,7 +121,26 @@ vi.mock('../../src/services/cross-source-disagreement-monitor.js', () => ({
 }));
 // scheduler/opening-day-check.js is exercised for real (its own unit tests
 // cover the gate); only the DB layer beneath it is stubbed.
+const runOpeningDayDiscoveryMock = vi.fn().mockResolvedValue({
+  todayIso: '2026-09-03', nseRowsChecked: 2, bseRowsChecked: 3, written: [], storedOpeningToday: [], failures: [],
+});
+const createOpeningDayWriterMock = vi.fn(() => vi.fn());
+vi.mock('../../src/scheduler/opening-day-discovery.js', () => ({
+  runOpeningDayDiscovery: runOpeningDayDiscoveryMock,
+  createOpeningDayWriter: createOpeningDayWriterMock,
+}));
+vi.mock('../../src/services/data-consolidation-orchestrator.js', () => ({
+  DataConsolidationOrchestrator: vi.fn().mockImplementation(() => ({ consolidatedUpsertIPO: vi.fn() })),
+}));
 vi.mock('@ipodhan/shared', () => ({
+  IPORepository: vi.fn().mockImplementation(() => ({})),
+  IpoFieldPlanRepository: vi.fn().mockImplementation(() => ({})),
+  FieldSourcesRepository: vi.fn().mockImplementation(() => ({})),
+  filterProtectedFields: vi.fn(),
+  createFieldProtectionService: vi.fn().mockReturnValue({}),
+  resolveIpoRow: vi.fn(),
+  inferBoundVia: vi.fn(),
+  SOURCE_KEY_NO_WRITE_ERROR_NAMES: new Set<string>(),
   db: {
     delete: () => ({ where: () => ({ returning: vi.fn().mockResolvedValue([]) }) }),
     select: () => ({ from: () => ({ where: (...args: unknown[]) => {
@@ -197,16 +216,19 @@ describe('item 7 S4 - the opening-day check runs as its own --job=opening wake u
     vi.resetModules();
   });
 
-  it('§2.1: with an IPO opening today, the check acquires scraper:cycle, runs NSE+BSE discovery-only, releases the lock, and never calls the document/extraction path', async () => {
+  it('§2.1: with an IPO opening today, the check acquires scraper:cycle, runs the two exchange list calls only (OD-87), releases the lock, and never calls the document/extraction path', async () => {
     dbLimitMock.mockResolvedValue([{ id: 'ipo-open-today' }]);
     lockAcquireMock.mockResolvedValue({ acquired: true, token: 'opening-tok' });
     await runWith(['--source=all', '--job=opening'], THURSDAY_0945_IST);
 
     expect(lockAcquireMock).toHaveBeenCalledWith('scraper:cycle', expect.anything());
-    expect(runNSEScraperMock).toHaveBeenCalledTimes(1);
-    expect(runNSEScraperMock).toHaveBeenCalledWith({ discoveryOnly: true });
-    expect(runBSEScraperMock).toHaveBeenCalledTimes(1);
-    expect(runBSEScraperMock).toHaveBeenCalledWith({ discoveryOnly: true });
+    // OD-87: the two LIST functions only — never the full NSE/BSE orchestrators.
+    expect(runOpeningDayDiscoveryMock).toHaveBeenCalledTimes(1);
+    const deps = runOpeningDayDiscoveryMock.mock.calls[0][0];
+    expect(deps.fetchNseList.name).toBe('fetchCurrentIssueList');
+    expect(deps.fetchBseList.name).toBe('fetchBSEBoard');
+    expect(runNSEScraperMock).not.toHaveBeenCalled();
+    expect(runBSEScraperMock).not.toHaveBeenCalled();
     // Discovery-only (§2.1): no document/extraction call from this job.
     expect(runDocumentCycleMock).not.toHaveBeenCalled();
     expect(runDocumentPurgeMock).not.toHaveBeenCalled();
@@ -229,10 +251,13 @@ describe('item 7 S4 - the opening-day check runs as its own --job=opening wake u
     await runWith(['--source=all', '--job=opening'], THURSDAY_0945_IST);
 
     expect(lockAcquireMock).toHaveBeenCalledWith('scraper:cycle', expect.anything());
-    expect(runNSEScraperMock).toHaveBeenCalledTimes(1);
-    expect(runNSEScraperMock).toHaveBeenCalledWith({ discoveryOnly: true });
-    expect(runBSEScraperMock).toHaveBeenCalledTimes(1);
-    expect(runBSEScraperMock).toHaveBeenCalledWith({ discoveryOnly: true });
+    // OD-87: the two LIST functions only — never the full NSE/BSE orchestrators.
+    expect(runOpeningDayDiscoveryMock).toHaveBeenCalledTimes(1);
+    const deps = runOpeningDayDiscoveryMock.mock.calls[0][0];
+    expect(deps.fetchNseList.name).toBe('fetchCurrentIssueList');
+    expect(deps.fetchBseList.name).toBe('fetchBSEBoard');
+    expect(runNSEScraperMock).not.toHaveBeenCalled();
+    expect(runBSEScraperMock).not.toHaveBeenCalled();
     expect(lockReleaseMock).toHaveBeenCalledWith('scraper:cycle', 'opening-tok');
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
@@ -244,6 +269,7 @@ describe('item 7 S4 - the opening-day check runs as its own --job=opening wake u
     await runWith(['--source=all', '--job=opening'], THURSDAY_0945_IST);
 
     expect(lockAcquireMock).toHaveBeenCalledWith('scraper:cycle', expect.anything());
+    expect(runOpeningDayDiscoveryMock).not.toHaveBeenCalled();
     expect(runNSEScraperMock).not.toHaveBeenCalled();
     expect(runBSEScraperMock).not.toHaveBeenCalled();
     expect(lockReleaseMock).not.toHaveBeenCalled();
