@@ -37,7 +37,7 @@ import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { istDayIso } from './lib/ist-day.mjs';
 import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
-import { resolveColumn, isBlankCurrentValue, hadPreviousValue, isSafeTableName } from './lib/pull-noblank-checks.mjs';
+import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
@@ -2649,48 +2649,12 @@ async function checkS_pullNoblank() {
     record('pull_noblank', title, 'UNVERIFIABLE', `field_sources not readable: ${e.message}`);
     return;
   }
-  const checked = fsRows.filter((r) => hadPreviousValue(r.previousValue));
   const scopeNote = "row_key='' scope; a blanking with no field_sources row at all is outside this reading";
+  const { checked, offenders, unresolvable } = await evaluatePullNoblank(fsRows, q);
   if (checked.length === 0) {
     record('pull_noblank', title, 'PASS',
       `0 field_sources row(s) in the last ${PULL_NOBLANK_WINDOW_HOURS}h carried a non-empty previous_value to check (${scopeNote})`);
     return;
-  }
-
-  const byTable = new Map();
-  for (const r of checked) {
-    if (!byTable.has(r.tableName)) byTable.set(r.tableName, []);
-    byTable.get(r.tableName).push(r);
-  }
-
-  const offenders = [];
-  const unresolvable = [];
-  for (const [table, rows] of byTable) {
-    if (!isSafeTableName(table)) { unresolvable.push(`${table} (unsafe table name)`); continue; }
-    let colRows;
-    try {
-      colRows = await q(`SELECT column_name FROM information_schema.columns WHERE table_name = $1`, [table]);
-    } catch (e) {
-      unresolvable.push(`${table} (schema unreadable: ${e.message})`);
-      continue;
-    }
-    if (colRows.length === 0) { unresolvable.push(`${table} (no such table)`); continue; }
-    const columns = new Set(colRows.map((c) => c.column_name));
-    const idCol = table === 'ipos' ? 'id' : 'ipo_id';
-    for (const r of rows) {
-      const column = resolveColumn(columns, r.fieldName);
-      if (!column) { unresolvable.push(`${table}.${r.fieldName}`); continue; }
-      let current;
-      try {
-        [current] = await q(`SELECT "${column}" AS v FROM ${table} WHERE ${idCol} = $1`, [r.ipoId]);
-      } catch (e) {
-        unresolvable.push(`${table}.${column} (${e.message})`);
-        continue;
-      }
-      if (isBlankCurrentValue(current?.v)) {
-        offenders.push({ slug: r.slug, table, field: r.fieldName, previousValue: r.previousValue });
-      }
-    }
   }
 
   for (const o of offenders.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {

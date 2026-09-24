@@ -46,3 +46,67 @@ export function hadPreviousValue(previousValue) {
 export function isSafeTableName(table) {
   return typeof table === 'string' && /^[a-z_][a-z0-9_]*$/.test(table);
 }
+
+/**
+ * Drives the real query path so it is testable against a fake `q`, not just the pure helpers
+ * above (Tier B reviewer finding 1, MAJOR: the per-table information_schema lookup, id-column
+ * choice and current-value read all used to live inline in checkS_pullNoblank, so nothing
+ * planted a blanked row through them).
+ *
+ * @param {Array<{ipoId:string, slug:string, tableName:string, fieldName:string, previousValue:string|null}>} rows
+ *   raw field_sources rows for the window (row_key = ''), unfiltered.
+ * @param {(sql: string, params?: any[]) => Promise<any[]>} q async query function, same shape
+ *   as the pool query wrapper the audit script uses.
+ * @returns {Promise<{checked: Array, offenders: Array<{slug:string, table:string, field:string, previousValue:string|null}>, unresolvable: string[]}>}
+ */
+export async function evaluatePullNoblank(rows, q) {
+  const checked = rows.filter((r) => hadPreviousValue(r.previousValue));
+
+  const byTable = new Map();
+  for (const r of checked) {
+    if (!byTable.has(r.tableName)) byTable.set(r.tableName, []);
+    byTable.get(r.tableName).push(r);
+  }
+
+  const offenders = [];
+  const unresolvable = [];
+  for (const [table, tableRows] of byTable) {
+    if (!isSafeTableName(table)) { unresolvable.push(`${table} (unsafe table name)`); continue; }
+    let colRows;
+    try {
+      colRows = await q(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`,
+        [table]
+      );
+    } catch (e) {
+      unresolvable.push(`${table} (schema unreadable: ${e.message})`);
+      continue;
+    }
+    if (colRows.length === 0) { unresolvable.push(`${table} (no such table)`); continue; }
+    const columns = new Set(colRows.map((c) => c.column_name));
+    const idCol = table === 'ipos' ? 'id' : 'ipo_id';
+    for (const r of tableRows) {
+      const column = resolveColumn(columns, r.fieldName);
+      if (!column) { unresolvable.push(`${table}.${r.fieldName}`); continue; }
+      let currentRows;
+      try {
+        currentRows = await q(`SELECT "${column}" AS v FROM ${table} WHERE ${idCol} = $1 LIMIT 2`, [r.ipoId]);
+      } catch (e) {
+        unresolvable.push(`${table}.${column} (${e.message})`);
+        continue;
+      }
+      if (currentRows.length > 1) {
+        // anchor_investors and any other table without a unique ipo_id: picking one row would
+        // silently guess. Flag it as unresolvable instead (Tier B reviewer MINOR 2).
+        unresolvable.push(`${table}.${r.fieldName} (ambiguous: more than one row for ipo)`);
+        continue;
+      }
+      const current = currentRows[0];
+      if (isBlankCurrentValue(current?.v)) {
+        offenders.push({ slug: r.slug, table, field: r.fieldName, previousValue: r.previousValue });
+      }
+    }
+  }
+
+  return { checked, offenders, unresolvable };
+}

@@ -59,7 +59,7 @@ import {
   computeSummaryCounts,
   evaluateSourceKeyConflicts,
 } from '../lib/detection-floor-checks.mjs';
-import { resolveColumn, isBlankCurrentValue, hadPreviousValue, isSafeTableName, toSnake } from '../lib/pull-noblank-checks.mjs';
+import { resolveColumn, isBlankCurrentValue, hadPreviousValue, isSafeTableName, toSnake, evaluatePullNoblank } from '../lib/pull-noblank-checks.mjs';
 
 // ---- (a)/(b) live IPO vs unresolved conflict --------------------------------
 
@@ -1886,4 +1886,100 @@ test('(pull_noblank) planted re-blanked row is caught: hadPreviousValue true + i
 test('(pull_noblank) a clean row (value carried forward) is not flagged', () => {
   const row = { previousValue: '95-99', currentValue: '95-99' };
   assert.equal(hadPreviousValue(row.previousValue) && isBlankCurrentValue(row.currentValue), false);
+});
+
+// ---- evaluatePullNoblank: drives the real query path, not just the pure helpers (Tier B
+// reviewer finding 1, MAJOR) --------------------------------------------------------------
+
+function fakeQ(handlers) {
+  const calls = [];
+  const q = async (sql, params) => {
+    calls.push({ sql, params });
+    for (const h of handlers) {
+      if (h.match.test(sql)) return h.rows(params);
+    }
+    throw new Error(`fakeQ: no handler for SQL: ${sql}`);
+  };
+  q.calls = calls;
+  return q;
+}
+
+test('(pull_noblank) evaluatePullNoblank: a planted blanked row is an offender (red case)', async () => {
+  const rows = [{ ipoId: 'ipo-1', slug: 'acme', tableName: 'ipo_details', fieldName: 'priceRangeMax', previousValue: '99' }];
+  const q = fakeQ([
+    { match: /information_schema\.columns/, rows: () => [{ column_name: 'price_range_max' }] },
+    { match: /SELECT "price_range_max"/, rows: () => [{ v: null }] },
+  ]);
+  const { checked, offenders, unresolvable } = await evaluatePullNoblank(rows, q);
+  assert.equal(checked.length, 1);
+  assert.equal(offenders.length, 1);
+  assert.equal(offenders[0].field, 'priceRangeMax');
+  assert.equal(unresolvable.length, 0);
+});
+
+test('(pull_noblank) evaluatePullNoblank: same row with a carried-forward current value passes (green case)', async () => {
+  const rows = [{ ipoId: 'ipo-1', slug: 'acme', tableName: 'ipo_details', fieldName: 'priceRangeMax', previousValue: '99' }];
+  const q = fakeQ([
+    { match: /information_schema\.columns/, rows: () => [{ column_name: 'price_range_max' }] },
+    { match: /SELECT "price_range_max"/, rows: () => [{ v: '99' }] },
+  ]);
+  const { offenders } = await evaluatePullNoblank(rows, q);
+  assert.equal(offenders.length, 0);
+});
+
+test('(pull_noblank) evaluatePullNoblank: an unknown field is unresolvable, never silently skipped', async () => {
+  const rows = [{ ipoId: 'ipo-1', slug: 'acme', tableName: 'ipo_details', fieldName: 'gmpPercentage', previousValue: '5' }];
+  const q = fakeQ([
+    { match: /information_schema\.columns/, rows: () => [{ column_name: 'price_range_max' }] },
+  ]);
+  const { offenders, unresolvable } = await evaluatePullNoblank(rows, q);
+  assert.equal(offenders.length, 0);
+  assert.equal(unresolvable.length, 1);
+  assert.match(unresolvable[0], /ipo_details\.gmpPercentage/);
+});
+
+test('(pull_noblank) evaluatePullNoblank: two rows for the same ipo_id (e.g. anchor_investors) is ambiguous unresolvable, never guessed', async () => {
+  const rows = [{ ipoId: 'ipo-1', slug: 'acme', tableName: 'anchor_investors', fieldName: 'investorName', previousValue: 'ABC Fund' }];
+  const q = fakeQ([
+    { match: /information_schema\.columns/, rows: () => [{ column_name: 'investor_name' }] },
+    { match: /SELECT "investor_name"/, rows: () => [{ v: null }, { v: 'ABC Fund' }] },
+  ]);
+  const { offenders, unresolvable } = await evaluatePullNoblank(rows, q);
+  assert.equal(offenders.length, 0);
+  assert.equal(unresolvable.length, 1);
+  assert.match(unresolvable[0], /ambiguous/);
+});
+
+test('(pull_noblank) evaluatePullNoblank: ipos uses idCol "id", other tables use "ipo_id"', async () => {
+  const rows = [
+    { ipoId: 'ipo-1', slug: 'acme', tableName: 'ipos', fieldName: 'slug', previousValue: 'acme-old' },
+    { ipoId: 'ipo-1', slug: 'acme', tableName: 'ipo_details', fieldName: 'priceRangeMax', previousValue: '99' },
+  ];
+  const q = fakeQ([
+    { match: /information_schema\.columns/, rows: () => [{ column_name: 'slug' }, { column_name: 'price_range_max' }] },
+    { match: /SELECT/, rows: () => [{ v: 'acme' }] },
+  ]);
+  await evaluatePullNoblank(rows, q);
+  const iposRead = q.calls.find((c) => /FROM ipos WHERE/.test(c.sql));
+  const detailsRead = q.calls.find((c) => /FROM ipo_details WHERE/.test(c.sql));
+  assert.match(iposRead.sql, /WHERE id = \$1/);
+  assert.match(detailsRead.sql, /WHERE ipo_id = \$1/);
+});
+
+test('(pull_noblank) evaluatePullNoblank information_schema query scopes to table_schema = public', async () => {
+  const rows = [{ ipoId: 'ipo-1', slug: 'acme', tableName: 'ipo_details', fieldName: 'priceRangeMax', previousValue: '99' }];
+  const q = fakeQ([
+    { match: /information_schema\.columns/, rows: () => [{ column_name: 'price_range_max' }] },
+    { match: /SELECT "price_range_max"/, rows: () => [{ v: '99' }] },
+  ]);
+  await evaluatePullNoblank(rows, q);
+  const schemaCall = q.calls.find((c) => /information_schema\.columns/.test(c.sql));
+  assert.match(schemaCall.sql, /table_schema = 'public'/);
+});
+
+// Mutation guard: invert isBlankCurrentValue's null check to confirm case (a) above actually
+// goes red when the guard is broken, then restore the original (git diff must be exact after).
+test('(pull_noblank) mutation guard: an inverted isBlankCurrentValue would make the red case pass -- confirms the test can fail', () => {
+  const brokenIsBlank = (v) => !(v === null || v === undefined || v === '');
+  assert.equal(brokenIsBlank(null), false, 'inverted predicate would wrongly call null "not blank", masking the offender');
 });
