@@ -319,6 +319,7 @@ lock_key_for_job() {
 DATA_LOCK6="$(lock_key_for_job data)"
 LIVE_LOCK6="$(lock_key_for_job live)"
 CLOSED_LOCK6="$(lock_key_for_job closed)"
+OPENING_LOCK6="$(lock_key_for_job opening)"
 if [ "$DATA_LOCK6" = "lock:resource:scraper:cycle" ]; then
   pass "case 6: a data wake reads scraper:cycle - the lock its --job=data command takes"
 else
@@ -328,6 +329,11 @@ if [ "$CLOSED_LOCK6" = "lock:resource:scraper:cycle" ]; then
   pass "case 6: a closed wake reads scraper:cycle (--job=closed takes the SAME heavy lock as --job=data, item 7 S3)"
 else
   fail "case 6: a closed wake reads '$CLOSED_LOCK6', not scraper:cycle"
+fi
+if [ "$OPENING_LOCK6" = "lock:resource:scraper:cycle" ]; then
+  pass "case 6: an opening-day wake reads scraper:cycle (--job=opening takes the SAME heavy lock as --job=data/closed, item 7 S4, OD-31)"
+else
+  fail "case 6: an opening-day wake reads '$OPENING_LOCK6', not scraper:cycle"
 fi
 # OD-27: the live wake must read its OWN lock. Reading scraper:cycle would let
 # a data job holding the heavy lock for hours skip every live wake - the exact
@@ -742,6 +748,78 @@ FAKECRON
     pass "case 10: staging closed-wake minutes ($CLOSED_MIN10S) never equal a data (15,45) or live (20,50) minute"
   else
     fail "case 10: staging closed-wake minutes ($CLOSED_MIN10S) collide with a data/live minute - the night's run can be silently lost"
+  fi
+
+  # Item 7 S4 (OD-31): the opening-day check line REALLY reaches the crontab
+  # (prod install from earlier in this case), exactly once, and about 09:45
+  # IST -- clear of prod's data (:00/:30), live (:05/:35) and closed
+  # (:10/:40) minutes.
+  OPENING_LINES10="$(echo "$STORED" | grep -cF 'ipodhan-scraper-opening:prod' || true)"
+  if [ "${OPENING_LINES10:-0}" -eq 1 ] && echo "$STORED" | grep -F 'ipodhan-scraper-opening:prod' | grep -qF 'scraper-wake.sh opening'; then
+    pass "case 10: the opening-day check line REALLY reaches the crontab, exactly once after two installs"
+  else
+    fail "case 10: expected exactly one stored opening-day line, found ${OPENING_LINES10:-0}"
+    echo "$STORED"
+  fi
+  OPENING_CRON_LINE10="$(echo "$STORED" | grep -F 'ipodhan-scraper-opening:prod' | grep -oE '^[^ ]+ [^ ]+')"
+  OPENING_MIN10="$(echo "$OPENING_CRON_LINE10" | awk '{print $1}')"
+  OPENING_HOUR10="$(echo "$OPENING_CRON_LINE10" | awk '{print $2}')"
+  COLLIDES_OPEN10=0
+  for m in $(echo "$OPENING_MIN10" | tr ',' ' '); do
+    case ",0,30," in *",$m,"*) COLLIDES_OPEN10=1 ;; esac
+    case ",5,35," in *",$m,"*) COLLIDES_OPEN10=1 ;; esac
+    case ",10,40," in *",$m,"*) COLLIDES_OPEN10=1 ;; esac
+  done
+  if [ "$COLLIDES_OPEN10" -eq 0 ] && [ "$OPENING_HOUR10" = "9" ] && [ -n "$OPENING_MIN10" ]; then
+    pass "case 10: prod opening-day check fires at hour 9, minute $OPENING_MIN10 IST - clear of every data/live/closed minute"
+  else
+    fail "case 10: prod opening-day cron '$OPENING_MIN10 $OPENING_HOUR10' collides with an existing wake or is not near 09:45 IST"
+  fi
+
+  # DEPLOY_SCRAPER_OPENING_JOB=0 must REMOVE this slot's opening-day line
+  # (idempotently) and keep the data/live/closed lines and any unrelated entry.
+  (
+    PATH="$C10/bin:$PATH"; export PATH
+    DRY_RUN=0
+    SLOT=prod
+    SCRAPER_CRON='*/30 * * * *'
+    CURRENT_LINK="$C10/current"
+    SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
+    SCRAPER_WAKE_LOG="$C10/wake.log"
+    DEPLOY_SCRAPER_OPENING_JOB=0
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    eval "$CRON_FN"
+    install_scraper_cron
+    install_scraper_cron
+  ) > "$C10/disable-opening.log" 2>&1
+  STORED_OPENING_OFF="$(cat "$FAKE_CRONTAB_FILE" 2>/dev/null || true)"
+  if ! echo "$STORED_OPENING_OFF" | grep -qF 'ipodhan-scraper-opening:prod' \
+     && echo "$STORED_OPENING_OFF" | grep -qF 'ipodhan-scraper-closed:prod' \
+     && [ "$(echo "$STORED_OPENING_OFF" | grep -cF 'ipodhan-scraper-wake:prod')" -eq 1 ] \
+     && echo "$STORED_OPENING_OFF" | grep -qF 'some-other-job.sh'; then
+    pass "case 10: DEPLOY_SCRAPER_OPENING_JOB=0 removes the opening-day line, keeps the data/live/closed lines and the unrelated entry"
+  else
+    fail "case 10: disabling the opening-day job did not remove its line cleanly"
+    echo "$STORED_OPENING_OFF"; cat "$C10/disable-opening.log"
+  fi
+
+  # Item 7 S4: staging's opening-day minute must not collide with staging's
+  # OWN data wake (:15/:45) -- 09:45 IST would collide since staging's data
+  # wake fires at :15/:45 every hour, including 09:45.
+  OPENING_CRON_LINE10S="$(echo "$STORED_STAGING10" | grep -F 'ipodhan-scraper-opening:staging' | grep -oE '^[^ ]+ [^ ]+')"
+  OPENING_MIN10S="$(echo "$OPENING_CRON_LINE10S" | awk '{print $1}')"
+  OPENING_HOUR10S="$(echo "$OPENING_CRON_LINE10S" | awk '{print $2}')"
+  COLLIDES_OPEN10S=0
+  for m in $(echo "$OPENING_MIN10S" | tr ',' ' '); do
+    case ",15,45," in *",$m,"*) COLLIDES_OPEN10S=1 ;; esac
+    case ",20,50," in *",$m,"*) COLLIDES_OPEN10S=1 ;; esac
+    case ",25,55," in *",$m,"*) COLLIDES_OPEN10S=1 ;; esac
+  done
+  if [ "$COLLIDES_OPEN10S" -eq 0 ] && [ "$OPENING_HOUR10S" = "9" ] && [ -n "$OPENING_MIN10S" ]; then
+    pass "case 10: staging opening-day check fires at hour 9, minute $OPENING_MIN10S IST - clear of staging's data (15,45)/live (20,50)/closed (25,55) minutes"
+  else
+    fail "case 10: staging opening-day cron '$OPENING_MIN10S $OPENING_HOUR10S' collides with an existing staging wake or is not near 09:45 IST"
   fi
 
   # A crontab write that FAILS must warn loudly, never pass silently.
@@ -1273,6 +1351,7 @@ argv_for_job() {
 ARGV19L="$(argv_for_job live)"
 ARGV19D="$(argv_for_job data --extra)"
 ARGV19C="$(argv_for_job closed)"
+ARGV19O="$(argv_for_job opening)"
 ARGV19N="$(argv_for_job)"
 if [ "$ARGV19L" = "--job=live" ]; then
   pass "case 19: a live wake starts the scraper with --job=live"
@@ -1293,6 +1372,11 @@ if [ "$ARGV19C" = "--job=closed" ]; then
   pass "case 19: a closed wake starts the scraper with --job=closed (item 7 S3: its own process)"
 else
   fail "case 19: a closed wake started the job with '$ARGV19C', expected --job=closed"
+fi
+if [ "$ARGV19O" = "--job=opening" ]; then
+  pass "case 19: an opening-day wake starts the scraper with --job=opening (item 7 S4, OD-31: its own process)"
+else
+  fail "case 19: an opening-day wake started the job with '$ARGV19O', expected --job=opening"
 fi
 
 if [ "$FAILED" -ne 0 ]; then

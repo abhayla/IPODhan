@@ -2101,6 +2101,7 @@ preflight_scraper_wake() {
 SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
 SCRAPER_LIVE_CRON_MARKER="# ipodhan-scraper-live:$SLOT"
 SCRAPER_CLOSED_CRON_MARKER="# ipodhan-scraper-closed:$SLOT"
+SCRAPER_OPENING_CRON_MARKER="# ipodhan-scraper-opening:$SLOT"
 SCRAPER_WAKE_LOG="${DEPLOY_SCRAPER_WAKE_LOG:-/var/log/ipodhan-scraper-wake-$SLOT.log}"
 install_scraper_cron() {
   # MAJOR (Tier A review): the scheduled line pins $CURRENT_LINK, never a
@@ -2144,6 +2145,24 @@ install_scraper_cron() {
   local closed_enabled=1
   [ "${DEPLOY_SCRAPER_CLOSED_JOB:-1}" = "0" ] && closed_enabled=0
 
+  local opening_marker="${SCRAPER_OPENING_CRON_MARKER:-# ipodhan-scraper-opening:$SLOT}"
+  # Item 7 S4 (OD-31): the opening-day check, about 09:45 IST (PROVISIONAL,
+  # see scraper/src/scheduler/opening-day-check.ts and
+  # docs/design/probes/exchange-list-change-time.out.json). Prod uses 09:45
+  # itself -- clear of prod's data (:00/:30), live (:05/:35) and closed
+  # (:10/:40) minutes. Staging cannot share 09:45 with its OWN data wake
+  # (data 08:15/etc -> :15/:45 every hour, so 09:45 collides with staging's
+  # data minute) -- staging is offset to 09:47, the nearest free minute
+  # clear of every existing staging wake (data :15/:45, live :20/:50, closed
+  # :25/:55), carrying the same IST intent as prod's 09:45.
+  local opening_cron="${SCRAPER_OPENING_CRON:-}"
+  if [ -z "$opening_cron" ]; then
+    if [ "$SLOT" = "prod" ]; then opening_cron='45 9 * * *'; else opening_cron='47 9 * * *'; fi
+  fi
+  local opening_line="$opening_cron $wake_script opening >> $SCRAPER_WAKE_LOG 2>&1 $opening_marker"
+  local opening_enabled=1
+  [ "${DEPLOY_SCRAPER_OPENING_JOB:-1}" = "0" ] && opening_enabled=0
+
   # With a job disabled its line is not written, and the marker filter below
   # still removes any previous one - so disabling is idempotent.
   local new_lines="$cron_line"
@@ -2154,6 +2173,10 @@ $live_line"
   if (( closed_enabled )); then
     new_lines="$new_lines
 $closed_line"
+  fi
+  if (( opening_enabled )); then
+    new_lines="$new_lines
+$opening_line"
   fi
 
   if (( DRY_RUN )); then
@@ -2168,6 +2191,11 @@ $closed_line"
     else
       log "[dry-run] DEPLOY_SCRAPER_CLOSED_JOB=0: would REMOVE any '$closed_marker' line"
     fi
+    if (( opening_enabled )); then
+      log "[dry-run] would install crontab line: $opening_line"
+    else
+      log "[dry-run] DEPLOY_SCRAPER_OPENING_JOB=0: would REMOVE any '$opening_marker' line"
+    fi
     return 0
   fi
 
@@ -2178,10 +2206,10 @@ $closed_line"
 
   local existing
   existing="$(crontab -l 2>/dev/null || true)"
-  # Drop only this slot's previous data, live and closed lines, keep every
-  # other entry.
+  # Drop only this slot's previous data, live, closed and opening lines,
+  # keep every other entry.
   local kept
-  kept="$(printf '%s\n' "$existing" | grep -vF "$SCRAPER_CRON_MARKER" | grep -vF "$live_marker" | grep -vF "$closed_marker" || true)"
+  kept="$(printf '%s\n' "$existing" | grep -vF "$SCRAPER_CRON_MARKER" | grep -vF "$live_marker" | grep -vF "$closed_marker" | grep -vF "$opening_marker" || true)"
 
   if printf '%s\n%s\n' "$kept" "$new_lines" | grep -v '^$' | crontab -; then
     log "install_scraper_cron: scheduled the data wake for slot '$SLOT' at '$SCRAPER_CRON' -> $wake_script"
@@ -2194,6 +2222,11 @@ $closed_line"
       log "install_scraper_cron: scheduled the closed-IPO wake at '$closed_cron' -> $wake_script"
     else
       log "install_scraper_cron: DEPLOY_SCRAPER_CLOSED_JOB=0, so this slot's closed-IPO line was removed"
+    fi
+    if (( opening_enabled )); then
+      log "install_scraper_cron: scheduled the opening-day check at '$opening_cron' -> $wake_script"
+    else
+      log "install_scraper_cron: DEPLOY_SCRAPER_OPENING_JOB=0, so this slot's opening-day line was removed"
     fi
   else
     warn "install_scraper_cron: crontab write FAILED - THE SCRAPER WILL NOT BE WOKEN on this box. Add by hand: $new_lines"

@@ -52,6 +52,7 @@ import {
   CLOSED_IPO_JOB_SLOT_IST_MINUTES,
 } from './scheduler/closed-ipo-job.js';
 import { writeFieldSourcesSnapshot } from './scheduler/closed-ipo-snapshot.js';
+import { anyIpoOpensToday, iposOpeningToday, OPENING_DAY_CHECK_TIME_IST_MINUTES } from './scheduler/opening-day-check.js';
 import type { ClosedIpoResourceResult } from './scheduler/closed-ipo-job.js';
 import { readPlanSettlement } from './scheduler/closed-ipo-plan-settlement.js';
 import { plantFieldPlanForIpo } from './services/field-plan-planting.js';
@@ -357,12 +358,14 @@ export const LIVE_LOCK_TTL_MS = 4 * 60 * 1000;
 export const LIVE_JOB_DEADLINE_MS = 3.5 * 60 * 1000;
 
 /**
- * Item 7 S1/S3: the jobs `--job=` selects. `data` is the default so a cron
+ * Item 7 S1/S3/S4: the jobs `--job=` selects. `data` is the default so a cron
  * line without the flag behaves as before. `closed` (S3) is its own process
  * with its own wake under the heavy `scraper:cycle` lock (spec §2.1 job
  * table, §6.1) — it no longer runs as a post-step inside the data cycle.
+ * `opening` (S4, OD-31) is the discovery-only opening-day check — same heavy
+ * lock, skip-if-held, never fetches or extracts a document (§2.1).
  */
-export const SCRAPER_JOBS = ['data', 'live', 'closed'] as const;
+export const SCRAPER_JOBS = ['data', 'live', 'closed', 'opening'] as const;
 export type ScraperJob = (typeof SCRAPER_JOBS)[number];
 
 /**
@@ -690,6 +693,137 @@ async function runClosedIpoWake(): Promise<number> {
     process.removeListener('SIGINT', onSignal);
     const releaseTimeoutMs = Number(process.env.SIGNAL_LOCK_RELEASE_TIMEOUT_MS) || DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS;
     await raceWithTimeout(() => releaseCycleLockForClosedJob(), { timeoutMs: releaseTimeoutMs, label: 'closed-IPO cycle lock release' });
+  }
+
+  return exitCode;
+}
+
+/**
+ * Item 7 S4 (spec §2.1 job table row "Opening-day check", OD-31): the
+ * discovery-only check placed about 09:45 IST, only on a day an IPO is due
+ * to open. Its own process, its own wake, under the SAME heavy lock the
+ * data job and closed-IPO job take (`scraper:cycle`) — §2.1's "heavy" lock
+ * row lists all three; a second walker mid-cycle is how two writers race.
+ *
+ * What it does, and no more (§2.1): fetch the two exchange lists (NSE, BSE)
+ * through the SAME orchestrators and the SAME consolidation/identity write
+ * door the data job uses (`runNSEScraper()` / `runBSEScraper()` with no
+ * restriction and no `liveFiguresOnly` mode — the plain discovery path,
+ * which registers a new or changed IPO but never calls a document
+ * downloader or extractor; see nse-scraper-orchestrator-v2.ts /
+ * bse-scraper-orchestrator-v2.ts, neither of which references a document or
+ * filing extraction path). Never runs the aggregator refresh, the API
+ * fallback, the document cycle, or a field-plan write — those are the data
+ * job's own steps and are not called here.
+ *
+ * Gate (§2.1: "only on a day an IPO is due to open"): `anyIpoOpensToday`
+ * checks whether any stored `open_date` equals today's IST calendar date
+ * BEFORE the lock is taken — a day with no IPO opening costs zero lock
+ * contention and zero network calls, same ordering discipline as
+ * `runClosedIpoWake`'s flag check before its own lock acquire.
+ */
+async function runOpeningDayCheckWake(): Promise<number> {
+  const now = new Date();
+
+  let opensToday: boolean;
+  try {
+    opensToday = await anyIpoOpensToday(db, now);
+  } catch (error) {
+    logger.warn(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Opening-day check: could not read open_date rows — treating as due (fail open, per signal-ownership: a missed check costs more than an extra discovery run)'
+    );
+    opensToday = true;
+  }
+
+  if (!opensToday) {
+    logger.info('opening-day check: no IPO opens today');
+    return 0;
+  }
+
+  const redis = getRedisClient();
+  const lock = new DistributedLock(redis);
+  const lockResult = await lock.acquire(CYCLE_LOCK_RESOURCE, { ttl: CYCLE_LOCK_TTL_MS });
+
+  if (!lockResult.acquired) {
+    let holderStartedAt = 'unknown';
+    try {
+      const remainingTtlMs = await lock.getLockTTL(CYCLE_LOCK_RESOURCE);
+      if (remainingTtlMs > 0) {
+        const elapsedMs = CYCLE_LOCK_TTL_MS - remainingTtlMs;
+        holderStartedAt = new Date(Date.now() - elapsedMs).toISOString();
+      }
+    } catch (error) {
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Opening-day check: could not read scraper:cycle TTL to estimate the holder start time'
+      );
+    }
+    logger.warn(
+      { lockResource: CYCLE_LOCK_RESOURCE, holderStartedAt },
+      `opening-day check skipped: heavy lock held since ${holderStartedAt}`
+    );
+    return 0;
+  }
+
+  const token = lockResult.token;
+  let released = false;
+  const releaseCycleLockForOpeningCheck = async (): Promise<void> => {
+    if (released) return;
+    released = true;
+    try {
+      await lock.release(CYCLE_LOCK_RESOURCE, token);
+    } catch (error) {
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Opening-day check: lock release failed (non-fatal — the TTL will expire it)'
+      );
+    }
+  };
+
+  const onSignal = (signal: NodeJS.Signals) => {
+    logger.warn({ signal }, 'Opening-day check: signal received — releasing scraper:cycle before exit');
+    const releaseTimeoutMs = Number(process.env.SIGNAL_LOCK_RELEASE_TIMEOUT_MS) || DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS;
+    void raceWithTimeout(() => releaseCycleLockForOpeningCheck(), { timeoutMs: releaseTimeoutMs, label: 'opening-day check cycle lock release' })
+      .finally(() => process.exit(130));
+  };
+  process.once('SIGTERM', onSignal);
+  process.once('SIGINT', onSignal);
+
+  let exitCode = 0;
+  try {
+    logger.info(
+      { lockResource: CYCLE_LOCK_RESOURCE, scheduledAtIstMinutes: OPENING_DAY_CHECK_TIME_IST_MINUTES },
+      'Opening-day check: at least one IPO opens today — running discovery-only NSE + BSE list fetch (no document, no extraction)'
+    );
+    const [nseResult, bseResult] = await Promise.allSettled([runNSEScraper(), runBSEScraper()]);
+    const failures: string[] = [];
+    if (nseResult.status === 'rejected') {
+      failures.push(`NSE: ${nseResult.reason instanceof Error ? nseResult.reason.message : String(nseResult.reason)}`);
+    }
+    if (bseResult.status === 'rejected') {
+      failures.push(`BSE: ${bseResult.reason instanceof Error ? bseResult.reason.message : String(bseResult.reason)}`);
+    }
+    logger.info(
+      {
+        nse: nseResult.status === 'fulfilled' ? { inserted: nseResult.value.iposInserted, updated: nseResult.value.iposUpdated } : 'failed',
+        bse: bseResult.status === 'fulfilled' ? { inserted: bseResult.value.iposInserted, updated: bseResult.value.iposUpdated } : 'failed',
+        failures,
+      },
+      'Opening-day check: run complete'
+    );
+    if (failures.length > 0) exitCode = 1;
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Opening-day check failed (non-fatal)'
+    );
+    exitCode = 1;
+  } finally {
+    process.removeListener('SIGTERM', onSignal);
+    process.removeListener('SIGINT', onSignal);
+    const releaseTimeoutMs = Number(process.env.SIGNAL_LOCK_RELEASE_TIMEOUT_MS) || DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS;
+    await raceWithTimeout(() => releaseCycleLockForOpeningCheck(), { timeoutMs: releaseTimeoutMs, label: 'opening-day check cycle lock release' });
   }
 
   return exitCode;
@@ -1236,6 +1370,17 @@ export async function main() {
       const closedExitCode = await runClosedIpoWake();
       await flushOwnerNotify();
       process.exit(closedExitCode);
+      return;
+    }
+
+    // Item 7 S4 (OD-31): the opening-day check is its own process, under the
+    // SAME heavy lock (scraper:cycle) — discovery-only, never a document or
+    // extraction step. It returns here and never reaches the data cycle's
+    // steps or post-steps.
+    if (job === 'opening') {
+      const openingExitCode = await runOpeningDayCheckWake();
+      await flushOwnerNotify();
+      process.exit(openingExitCode);
       return;
     }
 
