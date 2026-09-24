@@ -94,6 +94,11 @@ export interface DiscoveryStepInput {
   conflictsBySeverity?: Record<string, number> | null;
   /** true when this write wrote `field_sources` provenance rows (F6). */
   fieldSourcesWritten: boolean;
+  /**
+   * How many `field_sources` rows the write produced, when the caller counted
+   * them (the opening-day check does). Omitted: F6 reports `fields.length`, as before.
+   */
+  fieldSourcesCount?: number;
   companyName?: string;
 }
 
@@ -198,7 +203,7 @@ export function planDiscoverySteps(input: DiscoveryStepInput): StepWrite[] {
       stepId: 'F6',
       status: 'DONE',
       source,
-      evidence: { fields: input.fields.length, path: input.created ? 'create' : 'consolidation' },
+      evidence: { fields: input.fieldSourcesCount ?? input.fields.length, path: input.created ? 'create' : 'consolidation' },
     });
   }
 

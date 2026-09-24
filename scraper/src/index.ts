@@ -53,7 +53,7 @@ import {
 } from './scheduler/closed-ipo-job.js';
 import { writeFieldSourcesSnapshot } from './scheduler/closed-ipo-snapshot.js';
 import { iposOpeningToday, OPENING_DAY_CHECK_TIME_IST_MINUTES } from './scheduler/opening-day-check.js';
-import { runOpeningDayDiscovery, createOpeningDayWriter } from './scheduler/opening-day-discovery.js';
+import { runOpeningDayDiscovery, createOpeningDayWriter, createProvenanceRecorder } from './scheduler/opening-day-discovery.js';
 import { fetchCurrentIssueList } from './scrapers/nse-api-client.js';
 import { fetchBSEBoard } from './scrapers/bse-api-scraper.js';
 import {
@@ -784,8 +784,12 @@ async function runOpeningDayCheckWake(): Promise<number> {
     );
     const ipoRepository = new IPORepository(db, redis);
     // OD-87 strict write: the matrix decides the four values; the writer SETs only those.
+    // The decision call's own provenance rows are recorded per IPO so the writer
+    // neither duplicates them nor leaves a written column without one.
+    const openingFieldSources = new FieldSourcesRepository(db, redis);
+    const openingProvenance = createProvenanceRecorder(openingFieldSources);
     const fieldPriority = new DataConsolidationService(
-      new FieldSourcesRepository(db, redis),
+      openingProvenance.repo,
       new DataConflictsRepository(db, redis),
       new OpeningDayListingPerformanceRepository(db, redis)
     );
@@ -803,9 +807,22 @@ async function runOpeningDayCheckWake(): Promise<number> {
           noWriteErrorNames: SOURCE_KEY_NO_WRITE_ERROR_NAMES,
           fieldProtection: fieldProtection as any,
           consolidateFields: (input) => fieldPriority.consolidateIPOData(input as any),
+          fieldSources: openingFieldSources as any,
+          sourceTrackingEnabled: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
+          decisionProvenance: openingProvenance,
           afterWrite: async (ipoId, info) => {
             if (info.created) await initStepLedger(ipoId);
-            await recordDiscoverySteps(ipoId, { source: info.source, created: info.created, fields: info.fields, offeringType: 'IPO', consolidated: true, fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING, companyName: info.companyName });
+            // F6 claims exactly the provenance rows this write produced (info.fieldSources).
+            await recordDiscoverySteps(ipoId, {
+              source: info.source,
+              created: info.created,
+              fields: info.fields,
+              offeringType: 'IPO',
+              consolidated: true,
+              fieldSourcesWritten: info.fieldSources.length > 0,
+              fieldSourcesCount: info.fieldSources.length,
+              companyName: info.companyName,
+            });
           },
           normalizeName: normalizeCompanyNameForMatching,
           identitySlug: computeIpoIdentitySlug as any,

@@ -19,6 +19,7 @@
  */
 
 import { istDayIso } from '@ipodhan/shared/utils/ist-day';
+import { logger } from '../utils/logger.js';
 import type { ScrapedIPO } from '../utils/validators.js';
 import { validateIPOData } from '../utils/validators.js';
 import type { BSEListRow } from '../scrapers/bse-api-scraper.js';
@@ -48,7 +49,12 @@ export interface OpeningDayPayload {
   sourceKeys: NonNullable<ScrapedIPO['sourceKeys']>;
 }
 
-export type OpeningDayWriteOutcome = 'inserted' | 'updated' | 'unchanged' | 'skipped';
+/**
+ * `deferred`: a newcomer (no stored row) this job does not create: a BSE-only
+ * row, or an NSE row whose list states no segment (OD-88). It is logged by
+ * name with the reason and left to the 14:00 data job.
+ */
+export type OpeningDayWriteOutcome = 'inserted' | 'updated' | 'unchanged' | 'skipped' | 'deferred';
 
 export interface OpeningDayDeps {
   /** NSE current-issue list: one list request (`fetchCurrentIssueList`). */
@@ -207,8 +213,69 @@ export interface OpeningDayWriterCollaborators {
   }) => Promise<{ fieldResults: Array<{ fieldName: string; finalValue: any; rejectedSources?: Array<{ source: string }> }> }>;
   normalizeName: (name: string) => string;
   identitySlug: (claim: any) => string;
+  /**
+   * `FieldSourcesRepository.trackFieldUpdate`, the single provenance writer.
+   * The writer calls it for every column it inserts, and for every column it
+   * SETs that the decision call did not already record (`decisionProvenance`).
+   */
+  fieldSources: {
+    trackFieldUpdate: (input: {
+      ipoId: string;
+      tableName: string;
+      fieldName: string;
+      source: OpeningDaySource;
+      confidence?: number;
+      previousValue?: string | null;
+    }) => Promise<unknown>;
+  };
+  /** `FEATURE_FLAGS.ENABLE_SOURCE_TRACKING`: off writes no provenance and claims none. */
+  sourceTrackingEnabled: boolean;
+  /**
+   * The provenance rows the decision call (`consolidateFields`) itself upserted
+   * for an EXISTING row, read and cleared per IPO (`createProvenanceRecorder`).
+   * The decision records provenance where the owning source changes; the writer
+   * must neither duplicate those rows nor leave a SET column without one.
+   * Omitted: the decision call is taken to have written none.
+   */
+  decisionProvenance?: { take: (ipoId: string) => string[] };
   /** Best-effort step-ledger record after a write; a failure never fails the write. */
-  afterWrite?: (ipoId: string, info: { source: OpeningDaySource; created: boolean; fields: string[]; companyName: string }) => Promise<void>;
+  afterWrite?: (
+    ipoId: string,
+    info: { source: OpeningDaySource; created: boolean; fields: string[]; companyName: string; fieldSources: string[] }
+  ) => Promise<void>;
+}
+
+/**
+ * Wraps a `FieldSourcesRepository` so every `trackFieldUpdate` the decision
+ * call makes is remembered by (ipoId, fieldName). Every other member passes
+ * straight through. `take(ipoId)` returns the distinct `ipos` field names
+ * upserted for that IPO since the last take, and forgets them.
+ */
+export function createProvenanceRecorder<R extends object>(repo: R): { repo: R; take: (ipoId: string) => string[] } {
+  const seen = new Map<string, Set<string>>();
+  const proxy = new Proxy(repo, {
+    get(target, prop) {
+      const value = Reflect.get(target, prop, target);
+      if (typeof value !== 'function') return value;
+      if (prop !== 'trackFieldUpdate') return value.bind(target);
+      return async (input: { ipoId: string; tableName: string; fieldName: string }) => {
+        const result = await value.call(target, input);
+        if (input.tableName === 'ipos') {
+          if (!seen.has(input.ipoId)) seen.set(input.ipoId, new Set());
+          seen.get(input.ipoId)!.add(input.fieldName);
+        }
+        return result;
+      };
+    },
+  });
+  return {
+    repo: proxy,
+    take: (ipoId: string) => {
+      const fields = [...(seen.get(ipoId) ?? [])];
+      seen.delete(ipoId);
+      return fields;
+    },
+  };
 }
 
 /** Same per-source confidence BaseScraperOrchestrator.getConfidenceScore gives the exchanges. */
@@ -227,10 +294,19 @@ function sameValue(a: unknown, b: unknown): boolean {
  * closeDate values that differ from what is stored. No other column is ever
  * in the SET: not listingExchanges, segment, offeringType or lastScrapedAt.
  *
- * A row with no match is created with the four fields plus the two NOT NULL
- * columns that have no default (schema.ts `ipos`): `slug` (the identity slug)
- * and `offeringType` = 'IPO' (only IPO rows reach this writer). `segment` and
- * `listingExchanges` are nullable and stay unset; createdAt/updatedAt default.
+ * A row with no match is created ONLY from the NSE list, which states the
+ * segment (OD-88): the four fields, the NSE-stated `segment` (the #860 guard in
+ * `IPORepository.create` refuses an IPO without one), and the two NOT NULL
+ * columns with no default (schema.ts `ipos`): `slug` (the identity slug) and
+ * `offeringType` = 'IPO' (only IPO rows reach this writer). `listingExchanges`
+ * stays unset; createdAt/updatedAt default. A BSE-only newcomer, or an NSE row
+ * with no segment, is not created: it is logged by name with the reason and
+ * returned as `deferred` for the 14:00 data job.
+ *
+ * Provenance: every column inserted gets its `field_sources` row (source =
+ * the list it came from, previous value null), except `slug`, which is derived
+ * from the name rather than stated by a source. On an update, every SET column
+ * has one: the decision call's own row where it wrote one, else the writer's.
  */
 export function createOpeningDayWriter(c: OpeningDayWriterCollaborators) {
   return async (source: OpeningDaySource, payload: OpeningDayPayload): Promise<OpeningDayWriteOutcome> => {
@@ -269,6 +345,22 @@ export function createOpeningDayWriter(c: OpeningDayWriterCollaborators) {
         throw error;
       }
 
+      if (!existing) {
+        const reason =
+          source !== 'NSE'
+            ? 'on the BSE list only; new rows come only from the NSE list, which states the segment (OD-88)'
+            : !payload.segment
+              ? 'the NSE list states no segment for it, and an IPO is never created without one (#860, OD-88)'
+              : null;
+        if (reason) {
+          logger.info(
+            { source, companyName: payload.companyName, key: payload.sourceKeys[0]?.keyValue ?? null, openDate: payload.openDate, reason },
+            `opening-day check: new IPO "${payload.companyName}" not created: ${reason}; left to the 14:00 data job`
+          );
+          return 'deferred';
+        }
+      }
+
       let fields: string[] = [...OPENING_DAY_FIELDS];
       if (existing) {
         const { filtered } = await c.fieldProtection.filterProtectedFields(existing.id, 'ipos', payload, source);
@@ -276,6 +368,7 @@ export function createOpeningDayWriter(c: OpeningDayWriterCollaborators) {
         if (fields.length === 0) return 'skipped';
       }
 
+      if (existing) c.decisionProvenance?.take(existing.id);
       const decision = await c.consolidateFields({
         ipoId: existing?.id ?? 'new',
         tableName: 'ipos',
@@ -298,18 +391,45 @@ export function createOpeningDayWriter(c: OpeningDayWriterCollaborators) {
       }
 
       let ipoId: string;
+      let written: Record<string, unknown>;
+      let alreadyTracked: string[] = [];
       if (existing) {
+        alreadyTracked = c.decisionProvenance?.take(existing.id) ?? [];
         if (Object.keys(set).length === 0) return 'unchanged';
         await c.ipoRepository.update(existing.id, set);
         ipoId = existing.id;
+        written = set;
       } else {
         if (!set.companyName || !set.status) return 'skipped';
-        const row = await c.ipoRepository.create({ ...set, slug, offeringType: 'IPO' }, { sourceKeys: keys, boundBy: `scraper:${source}` });
+        written = { ...set, segment: payload.segment, offeringType: 'IPO' };
+        const row = await c.ipoRepository.create({ ...written, slug }, { sourceKeys: keys, boundBy: `scraper:${source}` });
         ipoId = row.id;
       }
+
+      // Every provenance row this write produced: the decision call's own (which may
+      // include a column whose value did not change but whose owning source did) plus
+      // the writer's. The step ledger's F6 count is this list's length.
+      const fieldSources: string[] = alreadyTracked.filter((f) => !(f in written));
+      if (c.sourceTrackingEnabled) {
+        for (const fieldName of Object.keys(written)) {
+          if (!alreadyTracked.includes(fieldName)) {
+            const prior = existing?.[fieldName];
+            await c.fieldSources.trackFieldUpdate({
+              ipoId,
+              tableName: 'ipos',
+              fieldName,
+              source,
+              confidence: existing ? CONFIDENCE[source] : 100,
+              previousValue: prior === undefined || prior === null ? null : prior instanceof Date ? prior.toISOString() : String(prior),
+            });
+          }
+          fieldSources.push(fieldName);
+        }
+      }
+
       if (c.afterWrite) {
         try {
-          await c.afterWrite(ipoId, { source, created: !existing, fields: Object.keys(set), companyName: payload.companyName });
+          await c.afterWrite(ipoId, { source, created: !existing, fields: Object.keys(written), companyName: payload.companyName, fieldSources });
         } catch {
           // best-effort, like every post-write side effect (non-fatal-side-effects.md)
         }

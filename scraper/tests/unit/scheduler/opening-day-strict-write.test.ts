@@ -105,6 +105,8 @@ function harness(initial: Record<string, any> | null) {
     consolidateFields: vi.fn((input: any) => service.consolidateIPOData(input)),
     normalizeName: (n: string) => n.toLowerCase(),
     identitySlug: () => 'moneyview-limited',
+    fieldSources: { trackFieldUpdate: vi.fn(async () => undefined) },
+    sourceTrackingEnabled: true,
   };
   return { collaborators, sets, get row() { return row; }, ipoRepository };
 }
@@ -150,16 +152,25 @@ describe('opening-day strict write (OD-87): only name, status and the two dates 
     expect(h.row!.openDate).toBe(TODAY);
   });
 
-  it('a new row is created with identity, the four fields, slug and offeringType IPO only — no listingExchanges, no segment', async () => {
+  // Creation itself is proven on Postgres with the real IPORepository.create
+  // (tests/integration/opening-day-create.integration.test.ts). Here: OD-88.
+  it('OD-88: a BSE-only newcomer (no stored row) is not created and nothing is written', async () => {
     const h = harness(null);
     const outcome = await createOpeningDayWriter(h.collaborators as any)('BSE', selectOpeningToday([], [BSE_ROW], TODAY)[0].payload);
-    expect(outcome).toBe('inserted');
-    const created = h.sets[0];
-    expect(Object.keys(created).sort()).toEqual(
-      ['closeDate', 'companyName', 'offeringType', 'openDate', 'slug', 'status'].sort()
-    );
-    expect(created.offeringType).toBe('IPO');
-    expect(h.ipoRepository.create.mock.calls[0][1]).toMatchObject({ boundBy: 'scraper:BSE' });
+    expect(outcome).toBe('deferred');
+    expect(h.ipoRepository.create).not.toHaveBeenCalled();
+    expect(h.sets).toHaveLength(0);
+    expect(h.collaborators.fieldSources.trackFieldUpdate).not.toHaveBeenCalled();
+  });
+
+  it('CORE (provenance): NSE then BSE on a stored row, every SET column has its field_sources row from the source that set it', async () => {
+    const h = harness({ ...storedRow(), status: 'UPCOMING', openDate: null });
+    const write = createOpeningDayWriter(h.collaborators as any);
+    for (const { source, payload } of selectOpeningToday([NSE_ROW], [BSE_ROW], TODAY)) await write(source, payload);
+    const tracked = (h.collaborators.fieldSources.trackFieldUpdate.mock.calls as any[]).map(([r]) => [r.fieldName, r.source]);
+    const setCols = h.sets.flatMap((set) => Object.keys(set));
+    expect(tracked.map(([f]) => f).sort()).toEqual(setCols.sort());
+    expect(tracked).toEqual([['status', 'NSE'], ['openDate', 'NSE']]);
   });
 
   it('a locked IPO is checked BEFORE any source key is bound', async () => {

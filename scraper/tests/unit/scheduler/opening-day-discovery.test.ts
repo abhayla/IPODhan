@@ -3,12 +3,14 @@ import {
   runOpeningDayDiscovery,
   selectOpeningToday,
   createOpeningDayWriter,
+  createProvenanceRecorder,
   OPENING_DAY_FIELDS,
   type OpeningDayPayload,
 } from '../../../src/scheduler/opening-day-discovery.js';
 import { fetchCurrentIssueList } from '../../../src/scrapers/nse-api-client.js';
 import { fetchBSEBoard, type BSEListRow } from '../../../src/scrapers/bse-api-scraper.js';
 import type { ScrapedIPO } from '../../../src/utils/validators.js';
+import { logger } from '../../../src/utils/logger.js';
 
 /**
  * Item 7 S4 (spec §2.1 "Opening-day check" as amended by OD-87, §7.4 "2 calls a
@@ -149,19 +151,27 @@ describe('opening-day writer — identity path + field-priority decision, four f
       })),
       normalizeName: (n: string) => n.toLowerCase(),
       identitySlug: () => 'moneyview-limited',
+      fieldSources: { trackFieldUpdate: vi.fn().mockResolvedValue(undefined) },
+      sourceTrackingEnabled: true,
+      decisionProvenance: undefined as undefined | { take: (id: string) => string[] },
+      afterWrite: vi.fn().mockResolvedValue(undefined),
     };
     return c;
   }
 
-  it('(e1) not yet stored: resolves by the NSE key, asks the matrix about the four fields, creates with identity only', async () => {
+  // The row really being created (real IPORepository.create, #860 guard, field_sources) is proven
+  // on Postgres in tests/integration/opening-day-create.integration.test.ts; this case pins only the
+  // payload the writer hands to the create path.
+  it('(e1) not yet stored: resolves by the NSE key, asks the matrix about the four fields, hands create identity, status, dates and the NSE segment only', async () => {
     const c = collaborators(null);
-    expect(await createOpeningDayWriter(c)('NSE', payload)).toBe('inserted');
+    await createOpeningDayWriter(c)('NSE', payload);
     expect(c.resolveIpoRow.mock.calls[0][1].sourceKeys[0].keyValue).toBe('MONEYVIEW|EQ');
     const input = c.consolidateFields.mock.calls[0][0];
     expect([input.source, input.confidence, input.existingData]).toEqual(['NSE', 95, undefined]);
     expect(Object.keys(input.incomingData)).toEqual(['companyName', 'status', 'openDate', 'closeDate']);
     const [values, opts] = c.ipoRepository.create.mock.calls[0];
-    expect(Object.keys(values).sort()).toEqual(['closeDate', 'companyName', 'offeringType', 'openDate', 'slug', 'status']);
+    expect(Object.keys(values).sort()).toEqual(['closeDate', 'companyName', 'offeringType', 'openDate', 'segment', 'slug', 'status']);
+    expect(values.segment).toBe(payload.segment);
     expect(opts).toEqual({ sourceKeys: payload.sourceKeys, boundBy: 'scraper:NSE' });
   });
 
@@ -195,6 +205,78 @@ describe('opening-day writer — identity path + field-priority decision, four f
     expect(await createOpeningDayWriter(locked)('NSE', payload)).toBe('skipped');
     expect(locked.consolidateFields).not.toHaveBeenCalled();
     expect(locked.ipoRepository.bindSourceKeys).not.toHaveBeenCalled();
+  });
+
+  it('update: one field_sources row per SET column, and the ledger is told exactly those rows', async () => {
+    const c = collaborators({ id: 'ipo-1', companyName: 'Moneyview Limited', status: 'UPCOMING', openDate: null, closeDate: '2026-09-28', segment: 'MAINBOARD', offeringType: 'IPO' });
+    expect(await createOpeningDayWriter(c)('NSE', payload)).toBe('updated');
+    expect(c.ipoRepository.update).toHaveBeenCalledWith('ipo-1', { status: 'OPEN', openDate: '2026-09-24' });
+    const rows = c.fieldSources.trackFieldUpdate.mock.calls.map(([r]: any[]) => r);
+    expect(rows).toEqual([
+      { ipoId: 'ipo-1', tableName: 'ipos', fieldName: 'status', source: 'NSE', confidence: 95, previousValue: 'UPCOMING' },
+      { ipoId: 'ipo-1', tableName: 'ipos', fieldName: 'openDate', source: 'NSE', confidence: 95, previousValue: null },
+    ]);
+    const [, info] = c.afterWrite.mock.calls[0];
+    expect(info).toEqual({ source: 'NSE', created: false, fields: ['status', 'openDate'], companyName: 'Moneyview Limited', fieldSources: ['status', 'openDate'] });
+  });
+
+  it('a column whose provenance the decision call already wrote is not written twice, and is still counted', async () => {
+    const c = collaborators({ id: 'ipo-1', companyName: 'Moneyview Limited', status: 'UPCOMING', openDate: null, closeDate: '2026-09-28', segment: 'MAINBOARD', offeringType: 'IPO' });
+    const tracked = { trackFieldUpdate: vi.fn().mockResolvedValue(undefined) };
+    const recorder = createProvenanceRecorder(tracked);
+    c.decisionProvenance = recorder;
+    // The decision call records `status` itself (source changed), plus a stale row for another IPO.
+    c.consolidateFields = vi.fn(async (input: any) => {
+      await recorder.repo.trackFieldUpdate({ ipoId: 'ipo-1', tableName: 'ipos', fieldName: 'status' } as any);
+      await recorder.repo.trackFieldUpdate({ ipoId: 'ipo-9', tableName: 'ipos', fieldName: 'status' } as any);
+      return { fieldResults: Object.entries(input.incomingData).map(([fieldName, finalValue]) => ({ fieldName, finalValue })) };
+    });
+    await createOpeningDayWriter(c)('NSE', payload);
+    expect(c.fieldSources.trackFieldUpdate.mock.calls.map(([r]: any[]) => r.fieldName)).toEqual(['openDate']);
+    expect(c.afterWrite.mock.calls[0][1].fieldSources.sort()).toEqual(['openDate', 'status']);
+    expect(recorder.take('ipo-9')).toEqual(['status']);
+  });
+
+  it('with source tracking off, no provenance is written and none is claimed', async () => {
+    const c = collaborators({ id: 'ipo-1', companyName: 'Moneyview Limited', status: 'UPCOMING', openDate: null, closeDate: '2026-09-28', segment: 'MAINBOARD', offeringType: 'IPO' });
+    c.sourceTrackingEnabled = false;
+    await createOpeningDayWriter(c)('NSE', payload);
+    expect(c.fieldSources.trackFieldUpdate).not.toHaveBeenCalled();
+    expect(c.afterWrite.mock.calls[0][1].fieldSources).toEqual([]);
+  });
+
+  it('OD-88: a BSE-only newcomer is not created; the log line names it and gives the reason', async () => {
+    const info = vi.spyOn(logger, 'info');
+    const c = collaborators(null);
+    const bsePayload = selectOpeningToday([], BSE_ROWS, '2026-09-24')[0].payload;
+    expect(await createOpeningDayWriter(c)('BSE', bsePayload)).toBe('deferred');
+    expect(c.ipoRepository.create).not.toHaveBeenCalled();
+    expect(c.consolidateFields).not.toHaveBeenCalled();
+    expect(c.fieldSources.trackFieldUpdate).not.toHaveBeenCalled();
+    expect(c.afterWrite).not.toHaveBeenCalled();
+    const line = info.mock.calls.find((call) => String(call[1] ?? '').includes('PESHWA WHEAT LIMITED'));
+    expect(line?.[1]).toBe(
+      'opening-day check: new IPO "PESHWA WHEAT LIMITED" not created: on the BSE list only; new rows come only from the NSE list, which states the segment (OD-88); left to the 14:00 data job'
+    );
+    expect(line?.[0]).toMatchObject({ source: 'BSE', companyName: 'PESHWA WHEAT LIMITED', key: '8000', openDate: '2026-09-24' });
+    info.mockRestore();
+  });
+
+  it('OD-88: an NSE newcomer whose list states no segment is not created (the #860 guard is never reached)', async () => {
+    const info = vi.spyOn(logger, 'info');
+    const c = collaborators(null);
+    expect(await createOpeningDayWriter(c)('NSE', { ...payload, segment: null as any })).toBe('deferred');
+    expect(c.ipoRepository.create).not.toHaveBeenCalled();
+    expect(info.mock.calls.some((call) => String(call[1] ?? '').includes('"Moneyview Limited" not created: the NSE list states no segment'))).toBe(true);
+    info.mockRestore();
+  });
+
+  it('a BSE row for an IPO already stored is updated (existing rows from either list)', async () => {
+    const c = collaborators({ id: 'ipo-1', companyName: 'PESHWA WHEAT LIMITED', status: 'UPCOMING', openDate: '2026-09-24', closeDate: '2026-09-28', segment: 'SME', offeringType: 'IPO' });
+    const bsePayload = selectOpeningToday([], BSE_ROWS, '2026-09-24')[0].payload;
+    expect(await createOpeningDayWriter(c)('BSE', bsePayload)).toBe('updated');
+    expect(c.ipoRepository.update).toHaveBeenCalledWith('ipo-1', { status: 'OPEN' });
+    expect(c.fieldSources.trackFieldUpdate.mock.calls.map(([r]: any[]) => [r.fieldName, r.source])).toEqual([['status', 'BSE']]);
   });
 
   it('an OD-85 no-write decision (held / superseded key) writes nothing', async () => {

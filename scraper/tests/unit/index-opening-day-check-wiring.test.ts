@@ -125,9 +125,11 @@ const runOpeningDayDiscoveryMock = vi.fn().mockResolvedValue({
   todayIso: '2026-09-03', nseRowsChecked: 2, bseRowsChecked: 3, written: [], skippedNonIpo: [], storedOpeningToday: [], failures: [],
 });
 const createOpeningDayWriterMock = vi.fn(() => vi.fn());
+const createProvenanceRecorderMock = vi.fn((repo: unknown) => ({ repo, take: vi.fn(() => []) }));
 vi.mock('../../src/scheduler/opening-day-discovery.js', () => ({
   runOpeningDayDiscovery: runOpeningDayDiscoveryMock,
   createOpeningDayWriter: createOpeningDayWriterMock,
+  createProvenanceRecorder: createProvenanceRecorderMock,
 }));
 vi.mock('../../src/services/data-consolidation-service.js', () => ({
   DataConsolidationService: vi.fn().mockImplementation(() => ({ consolidateIPOData: vi.fn() })),
@@ -227,6 +229,12 @@ describe('item 7 S4 - the opening-day check runs as its own --job=opening wake u
     const deps = runOpeningDayDiscoveryMock.mock.calls[0][0];
     expect(deps.fetchNseList.name).toBe('fetchCurrentIssueList');
     expect(deps.fetchBseList.name).toBe('fetchBSEBoard');
+    // Provenance (round 5): the writer gets the provenance writer, the flag, and the
+    // recorder that tells it which rows the decision call already wrote.
+    const writerCollaborators = (createOpeningDayWriterMock.mock.calls as any[])[0][0];
+    expect(writerCollaborators.fieldSources).toBeDefined();
+    expect(typeof writerCollaborators.sourceTrackingEnabled).toBe('boolean');
+    expect(writerCollaborators.decisionProvenance).toBe(createProvenanceRecorderMock.mock.results[0].value);
     expect(runNSEScraperMock).not.toHaveBeenCalled();
     expect(runBSEScraperMock).not.toHaveBeenCalled();
     // Discovery-only (§2.1): no document/extraction call from this job.
