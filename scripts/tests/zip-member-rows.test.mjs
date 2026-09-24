@@ -220,7 +220,14 @@ try {
   ssotErr = e;
 }
 
-test('parity: classifyByTitle mirror equals the SSOT (document-classifier.ts, imported directly)', () => {
+// A Node without TypeScript type stripping (the pr-gate runner's, measured on
+// PR #1023: ERR_UNKNOWN_FILE_EXTENSION) cannot import the SSOT. The test then
+// SKIPS with the reason printed, the same convention as
+// generate-ipo-slug-parity.test.mjs; locally (Node 22.20) it runs.
+const stripTypesUnavailable = ssotErr?.code === 'ERR_UNKNOWN_FILE_EXTENSION';
+test('parity: classifyByTitle mirror equals the SSOT (document-classifier.ts, imported directly)', {
+  skip: stripTypesUnavailable ? `this Node cannot import .ts (${process.version}); run locally on Node >= 22.18` : false,
+}, () => {
   assert.equal(ssotErr, null, `could not import document-classifier.ts: ${ssotErr?.message}`);
   for (const t of TITLES) assert.equal(classifyByTitle(t), ssot.classifyByTitle(t), `title '${t}'`);
 });
