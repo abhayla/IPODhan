@@ -37,6 +37,8 @@ import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { istDayIso } from './lib/ist-day.mjs';
 import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
+import { resolveColumn, isBlankCurrentValue, hadPreviousValue, isSafeTableName } from './lib/pull-noblank-checks.mjs';
+import { pullNoopSuppressionVerdict } from './lib/pull-noop-suppression-checks.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
@@ -2446,6 +2448,53 @@ async function checkS_pullNoop() {
 }
 
 
+// PULL-NOOP suppression (item 10, OD-42): `pull_noop_suppression`, the manifest id from
+// docs/reviews/detection-checks/pull_noop_suppression.json (registered separately from the
+// already-built `pull_noop` above -- same ratio, a distinct id/consumer, and this one also
+// gates on ENABLE_FIELD_PLAN_WALK, the registry entry's stated prerequisite: without the
+// walk actually running in this slot, a 0-write ratio is not a healthy quiet cycle, it is a
+// cycle that asked nothing. See scripts/lib/pull-noop-suppression-checks.mjs for the pure
+// verdict logic (unit-tested without a DB).
+async function checkS_pullNoopSuppression() {
+  const title = 'writes this cycle / fields re-asked this cycle (walk-gated)';
+  const walkEnabled = process.env.ENABLE_FIELD_PLAN_WALK === 'true';
+  let row, topWriters;
+  try {
+    [row] = await q(
+      `SELECT
+         (SELECT count(*) FROM ipo_field_plan
+           WHERE last_attempt_at > now() - interval '24 hours')::int AS "reasked",
+         (SELECT count(*) FROM field_sources
+           WHERE updated_at > now() - interval '24 hours')::int AS "written",
+         (SELECT count(*) FROM documents
+           WHERE created_at > now() - interval '24 hours')::int AS "newDocuments"`
+    );
+    topWriters = await q(
+      `SELECT i.slug, count(*)::int AS n
+         FROM field_sources fs
+         JOIN ipos i ON i.id = fs.ipo_id
+        WHERE fs.updated_at > now() - interval '24 hours'
+        GROUP BY i.slug
+        ORDER BY n DESC
+        LIMIT $1`,
+      [MAX_OFFENDERS]
+    );
+  } catch (e) {
+    record('pull_noop_suppression', title, 'UNVERIFIABLE',
+      `ipo_field_plan/field_sources/documents not readable: ${e.message}`);
+    return;
+  }
+  const verdict = pullNoopSuppressionVerdict(row ?? { reasked: 0, written: 0, newDocuments: 0 }, walkEnabled);
+  const identities = topWriters.length
+    ? ` — top by writes: ${topWriters.map((t) => `${t.slug}=${t.n}`).join(', ')}`
+    : '';
+  if (verdict.status === 'WARN') {
+    notify('pull_noop_suppression', 'P2', 'cycle', 'write rate high with no matching document arrival to explain it', verdict.detail + identities);
+  }
+  record('pull_noop_suppression', title, verdict.status, verdict.detail + identities);
+}
+
+
 // E1-SOURCE: the ten E-1 (class T) fields are the exchange's to state -- open,
 // close, listing, allotment, refund and credit dates, status, exchanges. A
 // document may PRINT an intended date; only the exchange's own page says what
@@ -2614,6 +2663,94 @@ async function checkS_pullWrite() {
     missing.length === 0
       ? `0 of ${planRows.length} SUPPLIED row(s) lack a write`
       : `${missing.length} of ${planRows.length} SUPPLIED row(s) with no write: ${missing.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}`).join('; ')}`);
+}
+
+
+// PULL-NOBLANK (item 10, OD-42, design §2.6/§4): "fields that went from a value to absent
+// this slot" -- the guard on §2.6 ("A value we could not re-source is kept and marked stale,
+// never blanked"). Population: field_sources rows updated in the window whose previous_value
+// was non-blank -- i.e. a re-ask that HAD something to compare against -- scoped to
+// row_key='' (the singleton parent tables: ipos, ipo_details, financial_data,
+// anchor_investors). A row-keyed child table's blanking needs a per-row-key match this check
+// does not attempt, and a blanking done with no field_sources row at all (bypassing the
+// writer entirely) is likewise outside this reading -- both stated in the detail line, never
+// silently folded into a clean PASS.
+//
+// Column resolution reads information_schema per table (GENERIC OVER COLUMNS, same shape as
+// #654's provenance-parent-not-null fix): a field_sources.field_name with no matching column
+// (as-is or snake_cased) is UNRESOLVABLE, counted and named, never silently dropped.
+const PULL_NOBLANK_WINDOW_HOURS = 24;
+
+async function checkS_pullNoblank() {
+  const title = 'fields that went from a value to absent this slot';
+  let fsRows;
+  try {
+    fsRows = await q(
+      `SELECT fs.ipo_id AS "ipoId", i.slug, fs.table_name AS "tableName",
+              fs.field_name AS "fieldName", fs.previous_value AS "previousValue"
+         FROM field_sources fs
+         JOIN ipos i ON i.id = fs.ipo_id
+        WHERE fs.updated_at > now() - interval '${PULL_NOBLANK_WINDOW_HOURS} hours'
+          AND fs.row_key = ''`
+    );
+  } catch (e) {
+    record('pull_noblank', title, 'UNVERIFIABLE', `field_sources not readable: ${e.message}`);
+    return;
+  }
+  const checked = fsRows.filter((r) => hadPreviousValue(r.previousValue));
+  const scopeNote = "row_key='' scope; a blanking with no field_sources row at all is outside this reading";
+  if (checked.length === 0) {
+    record('pull_noblank', title, 'PASS',
+      `0 field_sources row(s) in the last ${PULL_NOBLANK_WINDOW_HOURS}h carried a non-empty previous_value to check (${scopeNote})`);
+    return;
+  }
+
+  const byTable = new Map();
+  for (const r of checked) {
+    if (!byTable.has(r.tableName)) byTable.set(r.tableName, []);
+    byTable.get(r.tableName).push(r);
+  }
+
+  const offenders = [];
+  const unresolvable = [];
+  for (const [table, rows] of byTable) {
+    if (!isSafeTableName(table)) { unresolvable.push(`${table} (unsafe table name)`); continue; }
+    let colRows;
+    try {
+      colRows = await q(`SELECT column_name FROM information_schema.columns WHERE table_name = $1`, [table]);
+    } catch (e) {
+      unresolvable.push(`${table} (schema unreadable: ${e.message})`);
+      continue;
+    }
+    if (colRows.length === 0) { unresolvable.push(`${table} (no such table)`); continue; }
+    const columns = new Set(colRows.map((c) => c.column_name));
+    const idCol = table === 'ipos' ? 'id' : 'ipo_id';
+    for (const r of rows) {
+      const column = resolveColumn(columns, r.fieldName);
+      if (!column) { unresolvable.push(`${table}.${r.fieldName}`); continue; }
+      let current;
+      try {
+        [current] = await q(`SELECT "${column}" AS v FROM ${table} WHERE ${idCol} = $1`, [r.ipoId]);
+      } catch (e) {
+        unresolvable.push(`${table}.${column} (${e.message})`);
+        continue;
+      }
+      if (isBlankCurrentValue(current?.v)) {
+        offenders.push({ slug: r.slug, table, field: r.fieldName, previousValue: r.previousValue });
+      }
+    }
+  }
+
+  for (const o of offenders.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {
+    notify('pull_noblank', 'P1', `${o.slug}:${o.table}.${o.field}`,
+      'field went from a value to absent this slot -- the §2.6 guard', `previousValue=${o.previousValue}`);
+  }
+  const unresolvedNote = unresolvable.length
+    ? `; ${unresolvable.length} unresolvable: ${[...new Set(unresolvable)].slice(0, MAX_OFFENDERS).join('; ')}`
+    : '';
+  const detail = `0 expected; found ${offenders.length} of ${checked.length} checked row(s)${unresolvedNote} (${scopeNote})`;
+  record('pull_noblank', title, offenders.length === 0 ? 'PASS' : 'FAIL',
+    (offenders.length ? `${offenders.slice(0, MAX_OFFENDERS).map((o) => `${o.slug}:${o.table}.${o.field}`).join('; ')} — ` : '') + detail);
 }
 
 
@@ -2982,9 +3119,11 @@ async function main() {
   await checkS_pullPlanOrigin();
   await checkS_pullAdmin();
   await checkS_pullNoop();
+  await checkS_pullNoopSuppression();
   await checkS_e1Source();
   await checkS_pullPlan();
   await checkS_pullWrite();
+  await checkS_pullNoblank();
   await checkS_incompletePagesUnretried();
   await checkS_corpusShape();
 

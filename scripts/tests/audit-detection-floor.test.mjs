@@ -59,6 +59,8 @@ import {
   computeSummaryCounts,
   evaluateSourceKeyConflicts,
 } from '../lib/detection-floor-checks.mjs';
+import { resolveColumn, isBlankCurrentValue, hadPreviousValue, isSafeTableName, toSnake } from '../lib/pull-noblank-checks.mjs';
+import { pullNoopSuppressionVerdict, PULL_NOOP_SUPPRESSION_RECOMMENDED_CEILING } from '../lib/pull-noop-suppression-checks.mjs';
 
 // ---- (a)/(b) live IPO vs unresolved conflict --------------------------------
 
@@ -1825,3 +1827,103 @@ test('(OD-76) the audit query counts walked rows by last_attempt_at and reads on
   // Mutation guard: a version of the fix that ignores migration0053Applied and always reports
   // UNVERIFIABLE on a missing table must fail case (a) above (red on the not-applicable PASS).
 }
+
+// ---- PULL-NOBLANK (item 10, OD-42): scripts/lib/pull-noblank-checks.mjs -----------------------
+
+test('(pull_noblank) toSnake converts camelCase to snake_case', () => {
+  assert.equal(toSnake('issueSize'), 'issue_size');
+  assert.equal(toSnake('priceRangeMax'), 'price_range_max');
+  assert.equal(toSnake('slug'), 'slug');
+});
+
+test('(pull_noblank) resolveColumn matches the field_name as-is first', () => {
+  const columns = new Set(['issuesize', 'issue_size']);
+  assert.equal(resolveColumn(columns, 'issuesize'), 'issuesize');
+});
+
+test('(pull_noblank) resolveColumn falls back to the snake_case form', () => {
+  const columns = new Set(['issue_size', 'id']);
+  assert.equal(resolveColumn(columns, 'issueSize'), 'issue_size');
+});
+
+test('(pull_noblank) resolveColumn returns null (unresolvable) when neither form matches', () => {
+  const columns = new Set(['id', 'slug']);
+  assert.equal(resolveColumn(columns, 'gmpPercentage'), null);
+});
+
+test('(pull_noblank) isBlankCurrentValue treats NULL/undefined/"" as blank, never 0 or false', () => {
+  assert.equal(isBlankCurrentValue(null), true);
+  assert.equal(isBlankCurrentValue(undefined), true);
+  assert.equal(isBlankCurrentValue(''), true);
+  assert.equal(isBlankCurrentValue(0), false);
+  assert.equal(isBlankCurrentValue(false), false);
+  assert.equal(isBlankCurrentValue('126'), false);
+});
+
+test('(pull_noblank) hadPreviousValue requires a non-empty (after trim) string', () => {
+  assert.equal(hadPreviousValue(null), false);
+  assert.equal(hadPreviousValue(undefined), false);
+  assert.equal(hadPreviousValue(''), false);
+  assert.equal(hadPreviousValue('   '), false);
+  assert.equal(hadPreviousValue('126'), true);
+});
+
+test('(pull_noblank) isSafeTableName accepts snake_case identifiers, rejects anything else', () => {
+  assert.equal(isSafeTableName('ipo_details'), true);
+  assert.equal(isSafeTableName('ipos'), true);
+  assert.equal(isSafeTableName('ipos; DROP TABLE ipos'), false);
+  assert.equal(isSafeTableName('Ipos'), false);
+  assert.equal(isSafeTableName(''), false);
+});
+
+// Mutation guard: a check that trusted a re-blanked row (previousValue had a value, current
+// value is blank) as healthy would pass silently. Assert the exact planted-vs-clean shape the
+// real checkS_pullNoblank query relies on these three predicates for.
+test('(pull_noblank) planted re-blanked row is caught: hadPreviousValue true + isBlankCurrentValue true', () => {
+  const row = { previousValue: '95-99', currentValue: null };
+  assert.equal(hadPreviousValue(row.previousValue) && isBlankCurrentValue(row.currentValue), true);
+});
+
+test('(pull_noblank) a clean row (value carried forward) is not flagged', () => {
+  const row = { previousValue: '95-99', currentValue: '95-99' };
+  assert.equal(hadPreviousValue(row.previousValue) && isBlankCurrentValue(row.currentValue), false);
+});
+
+// ---- PULL-NOOP suppression (item 10, OD-42): scripts/lib/pull-noop-suppression-checks.mjs -----
+
+test('(pull_noop_suppression) UNVERIFIABLE when ENABLE_FIELD_PLAN_WALK is off, even with writes', () => {
+  const v = pullNoopSuppressionVerdict({ reasked: 100, written: 90, newDocuments: 0 }, false);
+  assert.equal(v.status, 'UNVERIFIABLE');
+  assert.match(v.detail, /ENABLE_FIELD_PLAN_WALK is off/);
+});
+
+test('(pull_noop_suppression) UNVERIFIABLE when walk is on but nothing was re-asked (0 denominator)', () => {
+  const v = pullNoopSuppressionVerdict({ reasked: 0, written: 0, newDocuments: 0 }, true);
+  assert.equal(v.status, 'UNVERIFIABLE');
+  assert.match(v.detail, /no ipo_field_plan row was re-asked/);
+});
+
+// Mutation guard: a version that treats a 0/0 ratio from an off/never-ran walk as a pass must
+// go red here — a zero must never look like a healthy quiet cycle.
+test('(pull_noop_suppression) a walk that never ran (off) with a 0/0 ratio is UNVERIFIABLE, never PASS', () => {
+  const v = pullNoopSuppressionVerdict({ reasked: 0, written: 0, newDocuments: 0 }, false);
+  assert.equal(v.status, 'UNVERIFIABLE');
+});
+
+test('(pull_noop_suppression) PASSES a quiet cycle at or under the 5% recommended ceiling', () => {
+  const v = pullNoopSuppressionVerdict({ reasked: 1000, written: 50, newDocuments: 0 }, true);
+  assert.equal(v.status, 'PASS');
+  assert.equal(v.ratio, 0.05);
+  assert.match(v.detail, /50 write\(s\) \/ 1000 re-ask\(s\) = 5\.0%/);
+});
+
+test('(pull_noop_suppression) WARNs (not FAIL) above the ceiling with no matching document arrival', () => {
+  const v = pullNoopSuppressionVerdict({ reasked: 1000, written: 200, newDocuments: 0 }, true);
+  assert.equal(v.status, 'WARN');
+  assert.ok(v.ratio > PULL_NOOP_SUPPRESSION_RECOMMENDED_CEILING);
+  assert.match(v.detail, /above the RECOMMENDED 5% ceiling/);
+});
+
+test('(pull_noop_suppression) threshold is a stated recommendation (OD-18), not a measured number', () => {
+  assert.equal(PULL_NOOP_SUPPRESSION_RECOMMENDED_CEILING, 0.05);
+});
