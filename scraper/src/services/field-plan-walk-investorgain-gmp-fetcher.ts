@@ -106,6 +106,10 @@ export function buildInvestorgainGmpFetcher(deps: InvestorgainGmpFetcherDeps): F
       return { outcome: 'NOT_AVAILABLE_YET' };
     }
 
-    return { outcome: 'SUPPLIED', value: latest.gmp };
+    // OD-99 (OD-73): this value IS the one already stored in gmp_records --
+    // the GMP job wrote it (§2.1). Declared as `stored` so the walk records
+    // SUPPLIED and writes nothing; gmp_records is one row per GMP job run, so
+    // there is no single row the consolidated writer could key a write to.
+    return { outcome: 'SUPPLIED', value: latest.gmp, stored: { value: latest.gmp } };
   };
 }

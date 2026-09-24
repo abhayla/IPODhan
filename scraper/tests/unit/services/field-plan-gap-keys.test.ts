@@ -62,9 +62,9 @@ describe('buildFieldPlanIpoGapKeys (#884 review round 2)', () => {
     expect(fieldPlanGapKeyFor(k, 'ipos', 'not_in_manifest', ['NO_MAPPING'])).toBeNull();
   });
 
-  it('claim map offers both current variants per field; keys never contain the stamp terminator', () => {
+  it('claim map offers all three current variants per field; keys never contain the stamp terminator', () => {
     const m = fieldPlanClaimGapKeys(keys());
-    expect(m['ipos.face_value']).toHaveLength(2);
+    expect(m['ipos.face_value']).toHaveLength(3);
     for (const list of Object.values(m)) for (const key of list) expect(key).not.toContain(']');
   });
 
@@ -162,5 +162,35 @@ describe('buildFieldPlanIpoGapKeys (#884 review round 2)', () => {
       });
       expect(omitted).toEqual(explicitNull);
     });
+  });
+});
+
+// OD-99: a WRITER_CANNOT_ACCEPT row is keyed on the writer's capability for
+// the field's table, so a writer change reopens it -- and ONLY it.
+describe('OD-99: the writer variant', () => {
+  const withCap = (cap: (t: string) => string) =>
+    buildFieldPlanIpoGapKeys({ manifestFields: manifest() as never, coverageFingerprint: COV, extractorVersion: XV, documents: [drhp], writerCapability: cap });
+
+  it('a writer capability change moves withWriter and leaves plain and withDocuments as they were', () => {
+    const a = withCap(() => 'v1|child|cc1|s0').byField['ipos.face_value'];
+    const b = withCap(() => 'v1|child|cc1|s1').byField['ipos.face_value'];
+    expect(b.withWriter).not.toBe(a.withWriter);
+    expect(b.plain).toBe(a.plain);
+    expect(b.withDocuments).toBe(a.withDocuments);
+    expect(a.withWriter.startsWith(`${a.plain}|w`)).toBe(true);
+  });
+
+  it('the capability is read for the field\'s own TABLE', () => {
+    const seen: string[] = [];
+    withCap((t) => {
+      seen.push(t);
+      return 'x';
+    });
+    expect(new Set(seen)).toEqual(new Set(['ipos']));
+  });
+
+  it('record key: WRITER_CANNOT_ACCEPT -> withWriter', () => {
+    const k = withCap(() => 'v1|ipo|c1');
+    expect(fieldPlanGapKeyFor(k, 'ipos', 'face_value', ['WRITER_CANNOT_ACCEPT'])).toBe(k.byField['ipos.face_value'].withWriter);
   });
 });

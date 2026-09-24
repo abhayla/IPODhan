@@ -37,6 +37,7 @@ import {
   LOCK_DEFAULTS,
 } from '../utils/distributed-lock.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { SINGLETON_ROW_CHILD_TABLES } from './consolidated-writer-capability.js';
 import {
   toListingExchangesForSource,
   violatesSmeSingleExchange,
@@ -72,16 +73,6 @@ export type ChildConsolidationTable =
   | 'anchor_investors'
   | 'ipo_intermediaries'
   | 'peer_companies';
-
-/**
- * Tables with structurally ONE row per IPO. Only these may legitimately carry
- * the `''` row key — for any other table `''` means "the caller could not key
- * this row", which is a skip, not a write.
- */
-const SINGLETON_ROW_CHILD_TABLES: ReadonlySet<string> = new Set([
-  'ipo_details',
-  'anchor_investors',
-]);
 
 /** One incoming child row, already keyed by the caller. */
 export interface ChildRowInput {

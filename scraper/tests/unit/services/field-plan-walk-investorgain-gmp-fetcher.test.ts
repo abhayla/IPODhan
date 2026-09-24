@@ -56,7 +56,8 @@ describe('INVESTORGAIN_GMP fetcher — SUPPLIED, from the real staging row shape
     const reader = makeReader({ id: gmpFixture.id, gmp: gmpFixture.gmp, timestamp: new Date(gmpFixture.timestamp) });
     const fetcher = buildInvestorgainGmpFetcher({ gmpReader: reader, isInvestorgainGmpCapable: () => true });
     const answer = await fetcher(IPO_ID, 'gmp_records', '', 'gmp');
-    expect(answer).toEqual({ outcome: 'SUPPLIED', value: gmpFixture.gmp });
+    // OD-99: the answer declares it IS the stored value, so the walk writes nothing (OD-73).
+    expect(answer).toEqual({ outcome: 'SUPPLIED', value: gmpFixture.gmp, stored: { value: gmpFixture.gmp } });
     expect(reader.findLatestFromInvestorGain).toHaveBeenCalledTimes(1);
     expect(reader.findLatestFromInvestorGain).toHaveBeenCalledWith(IPO_ID);
   });

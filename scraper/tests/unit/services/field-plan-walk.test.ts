@@ -4,6 +4,8 @@ import {
   walkFieldPlanForIPO,
   classifyFailure,
   classifyWalkFailures,
+  storedValueEquals,
+  fieldPlanWriterCapability,
   type FieldFetcher,
   type FieldPlanWalkDeps,
 } from '../../../src/services/field-plan-walk.js';
@@ -324,7 +326,7 @@ describe('field-plan walk -- the dropped-write branch (the false-clean-state gua
     ]);
   });
 
-  it('treats a skipped CHILD-ROW write the same way (both row shapes, one rule)', async () => {
+  it('OD-99: a STRUCTURAL child-row refusal (MISSING_ROW_KEY) is recorded CHECK_FAILED, never re-queued PENDING', async () => {
     const repo = makeRepo([
       planRow({ tableName: 'financial_statements', rowKey: 'FY2025', fieldName: 'revenue' }),
     ]);
@@ -349,8 +351,33 @@ describe('field-plan walk -- the dropped-write branch (the false-clean-state gua
 
     const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
 
+    // No gap keys wired in this suite's deps: charged, re-asked next slot (bounded by the cap).
+    expect(repo.recorded[0].writeHappened).toBe(true);
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+    expect(repo.recorded[0].reasonCode).toBe('COVERAGE_GAP');
+    expect(repo.recorded[0].cause).toBe('rank1:NSE:WRITE_REFUSED:MISSING_ROW_KEY [gap:WRITER_CANNOT_ACCEPT]');
+    expect(repo.recorded[0].gapKey).toBeUndefined();
+    expect(result.fieldsWriteSkipped).toBe(0);
+    expect(result.fieldsCheckFailed).toBe(1);
+    expect(result.droppedWrites).toEqual([]);
+  });
+
+  it('OD-99: a TRANSIENT child-row drop (the write throws) keeps the PENDING re-queue', async () => {
+    const repo = makeRepo([
+      planRow({ tableName: 'financial_statements', rowKey: 'FY2025', fieldName: 'revenue' }),
+    ]);
+    const orch = {
+      consolidatedUpsertIPO: vi.fn(),
+      consolidatedUpsertChildRows: vi.fn(async () => {
+        throw new Error('lock lost mid-flight');
+      }),
+    };
+    const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
     expect(repo.recorded[0].writeHappened).toBe(false);
-    expect(repo.recorded[0].skipReason).toBe('MISSING_ROW_KEY');
+    expect(repo.recorded[0].skipReason).toBe('lock lost mid-flight');
     expect(result.fieldsWriteSkipped).toBe(1);
   });
 });
@@ -1993,8 +2020,11 @@ describe('classifyWalkFailures (#884: classified on the structured gap token, a 
 describe('walk records a gap under its FIELD gap key (#884 review rounds 1-2)', () => {
   const PLAIN = 'eaaaaaaaaaaaa|f0123456789ab|xextract_filing.py@2026-09-03';
   const WITH_DOCS = `${PLAIN}|dbbbbbbbbbbbb`;
+  const WITH_WRITER = `${PLAIN}|wcccccccccccc`;
   const source = () => {
-    const forIpo = vi.fn(async () => ({ byField: { 'ipos.issue_size': { plain: PLAIN, withDocuments: WITH_DOCS } } }));
+    const forIpo = vi.fn(async () => ({
+      byField: { 'ipos.issue_size': { plain: PLAIN, withDocuments: WITH_DOCS, withWriter: WITH_WRITER } },
+    }));
     return { forIpo };
   };
   const gapFetcher = (gap: string) => (async () => ({ outcome: 'CHECK_FAILED', reason: 'no mapping', transient: true, gap })) as any;
@@ -2012,7 +2042,7 @@ describe('walk records a gap under its FIELD gap key (#884 review rounds 1-2)', 
     } as any);
     await walkFieldPlanForIPO(IPO_ID, d, openBudget());
     expect(gapKeys.forIpo).toHaveBeenCalledTimes(1);
-    expect(repo.claimNextDueField.mock.calls[0][0]).toMatchObject({ gapKeys: { 'ipos.issue_size': [PLAIN, WITH_DOCS] } });
+    expect(repo.claimNextDueField.mock.calls[0][0]).toMatchObject({ gapKeys: { 'ipos.issue_size': [PLAIN, WITH_DOCS, WITH_WRITER] } });
     expect(repo.recorded[0].state).toBe('CHECK_FAILED');
     expect(repo.recorded[0].gapKey).toBe(PLAIN);
     expect(repo.recorded[0].cause).toContain('[gap:NO_FETCHER]');
@@ -2119,3 +2149,52 @@ describe('walk records a gap under its FIELD gap key (#884 review rounds 1-2)', 
   });
 });
 
+
+describe('OD-99: an answer equal to the stored value is SUPPLIED with no write (OD-73)', () => {
+  it('numeric compare: a NUMERIC read back as text equals the number (#976 trap); a different or absent value does not', () => {
+    expect(storedValueEquals('ipos', 'issue_size', '1250000000.00', 1250000000)).toBe(true);
+    expect(storedValueEquals('gmp_records', 'gmp', 42, '42.00')).toBe(true);
+    // Exact, not MONEY's 0.5% two-source tolerance: a one-rupee move is a change.
+    expect(storedValueEquals('gmp_records', 'gmp', 200, 201)).toBe(false);
+    expect(storedValueEquals('ipos', 'issue_size', '1250000000.00', 1250000001)).toBe(false);
+    expect(storedValueEquals('gmp_records', 'gmp', null, 42)).toBe(false);
+    expect(storedValueEquals('gmp_records', 'gmp', undefined, 42)).toBe(false);
+    // Non-numeric values go through the field's comparison family.
+    expect(storedValueEquals('ipos', 'isin', 'INE123A01011', 'INE123A01011')).toBe(true);
+    expect(storedValueEquals('ipos', 'isin', 'INE123A01011', 'INE123A01012')).toBe(false);
+  });
+
+  it('stored value declared and equal: SUPPLIED from that source, the writer is never called', async () => {
+    const repo = makeRepo([planRow({ tableName: 'gmp_records', rowKey: '', fieldName: 'gmp', rank1Source: 'NSE' })]);
+    const orch = makeOrchestrator();
+    const nse: FieldFetcher = async () => ({ outcome: 'SUPPLIED', value: 36, stored: { value: '36.00' } });
+    const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any, sourceFetchers: { NSE: nse } as any });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(orch.consolidatedUpsertChildRows).not.toHaveBeenCalled();
+    expect(orch.consolidatedUpsertIPO).not.toHaveBeenCalled();
+    expect(repo.recorded[0].state).toBe('SUPPLIED');
+    expect(repo.recorded[0].chosen?.source).toBe('NSE');
+    expect(result.fieldsSupplied).toBe(1);
+  });
+
+  it('stored value declared but DIFFERENT: the write is made as before', async () => {
+    const repo = makeRepo([planRow()]);
+    const orch = makeOrchestrator();
+    const nse: FieldFetcher = async () => ({ outcome: 'SUPPLIED', value: 36, stored: { value: 35 } });
+    const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any, sourceFetchers: { NSE: nse } as any });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(orch.consolidatedUpsertIPO).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('OD-99: the writer capability for the path the walk takes', () => {
+  it('ipos rides the ipo upsert; a multi-row child table and a singleton child table differ', () => {
+    expect(fieldPlanWriterCapability('ipos')).toMatch(/\|ipo\|c[01]$/);
+    expect(fieldPlanWriterCapability('gmp_records')).toMatch(/\|child\|cc[01]\|s0$/);
+    expect(fieldPlanWriterCapability('ipo_details')).toMatch(/\|child\|cc[01]\|s1$/);
+  });
+});

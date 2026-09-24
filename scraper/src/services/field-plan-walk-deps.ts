@@ -56,6 +56,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
 import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator.js';
 import type { FieldFetcher, FieldPlanWalkDeps, FieldPlanWalkOrchestrator } from './field-plan-walk.js';
+import { fieldPlanWriterCapability } from './field-plan-walk.js';
 import { findSupersessorForReopenedRow } from './plan-supersession.js';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import { createHash } from 'node:crypto';
@@ -364,6 +365,7 @@ export function buildFieldPlanGapKeySource(params: {
         documents,
         provenanceByField,
         overrideByField,
+        writerCapability: fieldPlanWriterCapability,
       });
     },
   };

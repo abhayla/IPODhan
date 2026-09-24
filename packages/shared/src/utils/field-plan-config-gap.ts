@@ -15,6 +15,14 @@
  * field-plan-walk-doc-fetcher.ts: "NEVER evidence the document does not
  * print". It is re-asked when the extractor version changes, like a config
  * gap is re-asked when the manifest or fetcher coverage changes.
+ *
+ * `WRITER_CANNOT_ACCEPT` (OD-99): the source ANSWERED, but the consolidated
+ * writer refused the write for a STRUCTURAL reason it will give again every
+ * time it is asked (MISSING_ROW_KEY, CHILD_TABLE_CONSOLIDATION_DISABLED,
+ * CONSOLIDATION_DISABLED). Declared by the walk, never by a fetcher. Unlike
+ * the codes above it IS charged as an attempt (the source was really asked),
+ * and its key carries the writer's capability for the table, so a writer
+ * change reopens it.
  */
 export const FIELD_PLAN_GAP_CODES = [
   'NO_FETCHER',
@@ -22,6 +30,7 @@ export const FIELD_PLAN_GAP_CODES = [
   'NO_DOCUMENT_TYPE',
   'COLUMN_READ_NOT_IMPLEMENTED',
   'NO_DOCUMENT_PROVENANCE',
+  'WRITER_CANNOT_ACCEPT',
 ] as const;
 export type FieldPlanGapCode = (typeof FIELD_PLAN_GAP_CODES)[number];
 
