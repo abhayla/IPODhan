@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "https://nsearchives.nseindia.com/content/ipo/RHP_SKYWAYS.zip",
+  "capturedAt": "2026-09-24",
+  "ipoId": "skyways-air-services-ltd",
+  "company": "Skyways Air Services Limited",
+  "note": "Real RapidOCR output (scraper/scripts/ocr_pages.ocr_pdf_pages, dpi 260) of page 1 of the zip member 'CorrigendumofRHPSkyways.pdf', a Financial Express newspaper page with no usable text layer. Trimmed to OCR lines 78-86, the lines around the corrigendum notice; the OCR interleaves a neighbouring advertisement's results table, kept verbatim because that is what the reader really sees. confidence is the page's mean box score. F-163: close date 'updated from Wednesday, August 26, 2026 to Thursday, August 27, 2026' — close_date is E-1 exchange-owned and OCR-only, so the suggestion must carry the OCR mark and the exchange value."
+}

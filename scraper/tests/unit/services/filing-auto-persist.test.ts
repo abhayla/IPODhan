@@ -92,6 +92,7 @@ import {
   HUNG_PROCESS_CEILING_MS as HUNG_PROCESS_CEILING_MS_REAL,
   CHILD_HUNG_CEILING_MS as CHILD_HUNG_CEILING_MS_REAL,
   ANCHOR_PASS_RESERVE_MS as ANCHOR_PASS_RESERVE_MS_REAL,
+  resolveAdmissionExtractionStatus,
   type AutoPersistDeps,
   type CandidateDocument,
 } from '../../../src/services/filing-auto-persist.js';
@@ -2538,5 +2539,65 @@ describe('OD-55 — a document whose read was stopped is left re-readable, not m
     const d = deps();
     await processPendingFilings(IPO, d);
     expect(stateCalls(d).some((c) => c.status === 'COMPLETED' && c.retryCount === 0)).toBe(true);
+  });
+});
+
+// ------------------------------------------------------ item 9 (OD-90): corrigendum suggestions
+
+const corrDoc = (o: Partial<CandidateDocument> = {}): CandidateDocument =>
+  doc({ id: 'corr-1', type: 'CORRIGENDUM', sha256: 'c'.repeat(64), ...o });
+
+function corrDeps(overrides: Partial<AutoPersistDeps> = {}): AutoPersistDeps {
+  return deps({
+    loadDocuments: vi.fn(async () => [corrDoc()]),
+    loadStates: vi.fn(async () => []) as never,
+    runCorrigendumSuggestions: vi.fn(async () => ({ parsed: 1, inserted: 1, duplicates: 0, ids: ['s-1'] })),
+    ...overrides,
+  });
+}
+
+describe('item 9 (OD-90) — a stored corrigendum is read into admin suggestions, never extracted', () => {
+  it('CORRIGENDUM is on the one extractable list, so it is no longer admitted NOT_EXTRACTABLE', () => {
+    expect(AUTO_PERSIST_DOC_TYPES).toContain('CORRIGENDUM');
+    expect(resolveAdmissionExtractionStatus('CORRIGENDUM')).toBe('PENDING');
+    expect(EXTRACTABLE_DOC_TYPES as readonly string[]).not.toContain('CORRIGENDUM');
+  });
+
+  it('routes the corrigendum to the suggestion runner, never to the filing extractor or persister', async () => {
+    const d = corrDeps();
+    const r = await processPendingFilings(IPO, d);
+    expect(d.runExtractor).not.toHaveBeenCalled();
+    expect(d.persistFiling).not.toHaveBeenCalled();
+    expect(d.runCorrigendumSuggestions).toHaveBeenCalledWith(
+      expect.objectContaining({ ipoId: 'ipo-1', documentId: 'corr-1' })
+    );
+    expect(r.corrigendaRead).toBe(1);
+    expect(r.corrigendumSuggestions).toBe(1);
+    expect(stateCalls(d)).toContainEqual(expect.objectContaining({ documentId: 'corr-1', status: 'COMPLETED' }));
+  });
+
+  it('reads a corrigendum once: a COMPLETED one is not selected again (no timer, OD-33)', async () => {
+    const d = corrDeps({
+      loadDocuments: vi.fn(async () => [corrDoc({ extractionStatus: 'COMPLETED', extractedAt: new Date() })]),
+    });
+    await processPendingFilings(IPO, d);
+    expect(d.runCorrigendumSuggestions).not.toHaveBeenCalled();
+  });
+
+  it('stamps FAILED with the reader cause when reading fails', async () => {
+    const d = corrDeps({ runCorrigendumSuggestions: vi.fn(async () => { throw new Error('PDF_PASSWORD_PROTECTED: x'); }) });
+    const r = await processPendingFilings(IPO, d);
+    expect(r.failed).toBe(1);
+    expect(stateCalls(d)).toContainEqual(
+      expect.objectContaining({ documentId: 'corr-1', status: 'FAILED', error: expect.stringContaining('PDF_PASSWORD_PROTECTED') })
+    );
+  });
+
+  it('still reads an SME corrigendum while the SME extraction flag is off (suggestions write nothing)', async () => {
+    MOCK_FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST = false;
+    const d = corrDeps();
+    await processPendingFilings({ ...IPO, segment: 'SME' }, d);
+    expect(d.runCorrigendumSuggestions).toHaveBeenCalledTimes(1);
+    expect(d.runExtractor).not.toHaveBeenCalled();
   });
 });

@@ -121,6 +121,11 @@ import {
 } from './step-ledger-recorders.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { runAnchorAutoPersist, type AnchorAutoOutcome } from './anchor-auto-persist.js';
+import {
+  CORRIGENDUM_DOC_TYPE,
+  buildCorrigendumSuggestionRunner,
+  type CorrigendumSuggestionRunner,
+} from './corrigendum-reader.js';
 import { SIDECAR_TIMEOUT_MS } from '../scrapers/anchor-investors-scraper.js';
 
 /**
@@ -557,6 +562,9 @@ export interface AutoPersistResult {
   anchorsPersisted: number;
   anchorsManualReview: number;
   anchorsFailed: number;
+  /** Item 9 (OD-90): corrigenda read this call, and the suggestion rows they added. */
+  corrigendaRead: number;
+  corrigendumSuggestions: number;
 }
 
 /**
@@ -745,8 +753,12 @@ export function selectPendingFilings(
     }
     const recordedVersion =
       versionByDocumentId.get(doc.id) ?? versionByDocType.get(type) ?? null;
+    // Item 9 (OD-33, OD-90): a corrigendum is read ONCE per document — its reader records
+    // suggestions and keeps no document_fetch_state version, so COMPLETED alone means done.
     const alreadyDone =
-      doc.extractionStatus === 'COMPLETED' && doc.extractedAt && recordedVersion === version;
+      doc.extractionStatus === 'COMPLETED' &&
+      doc.extractedAt &&
+      (recordedVersion === version || type === CORRIGENDUM_DOC_TYPE);
     if (alreadyDone) {
       skipped.push(`${type}: already extracted by ${version}`);
       continue;
@@ -1086,6 +1098,11 @@ export interface AutoPersistDeps {
     /** The SELECTED row and its already-verified store path (round-2 MAJOR-1). */
     document: { documentId: string; pdfPath: string };
   }) => Promise<AnchorAutoOutcome>;
+  /**
+   * Item 9 (OD-90): the corrigendum's suggestion step. Optional like the anchor route: absent,
+   * a selected corrigendum is reported as skipped, never run through the filing extractor.
+   */
+  runCorrigendumSuggestions?: CorrigendumSuggestionRunner;
   persistFiling: typeof persistFilingExtraction;
   persisterDeps: FilingPersisterDeps;
   /**
@@ -1210,6 +1227,7 @@ export function buildAutoPersistDeps(
     // SAME persister deps (one IPORepository, one protection filter) the
     // filing door uses — the shape `scripts/persist-filing.ts` already has.
     runAnchorPersist: (args) => runAnchorAutoPersist(args, persisterDeps, redis),
+    runCorrigendumSuggestions: buildCorrigendumSuggestionRunner(),
     persistFiling: persistFilingExtraction,
     persisterDeps,
     async setDocumentExtractionState({ documentId, status, error, retryCount, updatedAt, pageRows }) {
@@ -1513,6 +1531,54 @@ async function runAnchorDocument(
 }
 
 /**
+ * Item 9 (OD-90): read each selected CORRIGENDUM once and record its suggestions for admin
+ * review. Draws on no spawn budget (a corrigendum is a few pages, and exists because a published
+ * number is wrong, section 2.5.5) and writes NO field. Runs for SME and MAINBOARD alike: the
+ * SME extraction gate (D-15) is about an extractor writing values, and this step writes none.
+ */
+async function runCorrigendumPass(
+  ipo: AutoPersistIpo,
+  corrigendumPending: CandidateDocument[],
+  deps: AutoPersistDeps,
+  result: AutoPersistResult
+): Promise<void> {
+  for (const doc of corrigendumPending) {
+    if (!deps.runCorrigendumSuggestions) {
+      result.skipped.push(`${CORRIGENDUM_DOC_TYPE}: no corrigendum reader wired into these deps`);
+      continue;
+    }
+    const pdfPath = documentPath(ipo.id, doc.type, doc.sha256 as string, deps.storeDir ?? getStoreDir());
+    try {
+      const rec = await deps.runCorrigendumSuggestions({ ipoId: ipo.id, documentId: doc.id, pdfPath });
+      result.corrigendaRead++;
+      result.corrigendumSuggestions += rec.inserted;
+      await deps.setDocumentExtractionState({ documentId: doc.id, status: 'COMPLETED', error: null, retryCount: 0 });
+      logger.info(
+        { ipoId: ipo.id, documentId: doc.id, parsed: rec.parsed, inserted: rec.inserted, duplicates: rec.duplicates },
+        '[OD-90] corrigendum read: suggestions recorded for admin review'
+      );
+    } catch (error) {
+      const cause = error instanceof Error ? error.message : String(error);
+      result.failed++;
+      try {
+        await deps.setDocumentExtractionState({
+          documentId: doc.id,
+          status: 'FAILED',
+          error: `corrigendum_read_failed: ${cause}`.slice(0, 1000),
+          retryCount: (doc.retryCount ?? 0) + 1,
+        });
+      } catch (stampError) {
+        logger.warn(
+          { ipoId: ipo.id, documentId: doc.id, error: stampError instanceof Error ? stampError.message : String(stampError) },
+          'Could not stamp corrigendum FAILED (non-fatal)'
+        );
+      }
+      logger.warn({ ipoId: ipo.id, documentId: doc.id, cause }, '[OD-90] corrigendum read failed');
+    }
+  }
+}
+
+/**
  * Extract and persist every outstanding filing for ONE IPO.
  *
  * Returns a summary; never throws. The caller (the document cycle) treats this
@@ -1537,6 +1603,8 @@ export async function processPendingFilings(
     anchorsPersisted: 0,
     anchorsManualReview: 0,
     anchorsFailed: 0,
+    corrigendaRead: 0,
+    corrigendumSuggestions: 0,
   };
 
   // D-15: automatic extract+persist ran ONLY for MAINBOARD IPOs until the SME
@@ -1552,6 +1620,23 @@ export async function processPendingFilings(
   // second path. Checked before the spawn-budget gate (below) so an
   // SME IPO never consumes cycle-wide spawn budget either, while the flag is off.
   if (String(ipo.segment ?? '').toUpperCase() === 'SME' && !smeAutoPersistEnabled()) {
+    // Item 9 (OD-90): corrigenda are still read for an SME — suggestions only, no write.
+    // Only when a reader is wired: without one this branch still loads nothing (D-15).
+    if (deps.runCorrigendumSuggestions) try {
+      const smeDocs = await deps.loadDocuments(ipo.id);
+      const smeStates = await deps.loadStates(ipo.id);
+      const { pending: smePending } = selectPendingFilings(ipo.id, smeDocs, smeStates, {
+        storeDir: deps.storeDir,
+        version,
+        fileExists: deps.fileExists,
+      });
+      await runCorrigendumPass(ipo, smePending.filter((d) => d.type === CORRIGENDUM_DOC_TYPE), deps, result);
+    } catch (error) {
+      logger.warn(
+        { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+        'Could not run the corrigendum pass for an SME IPO (non-fatal)'
+      );
+    }
     try {
       await writeSteps(ipo.id, [
         {
@@ -1614,9 +1699,13 @@ export async function processPendingFilings(
   // W-168: the anchor allocation report is split OUT of the filing pending
   // list here, before either budget is applied — it never draws from the
   // filing spawn budget, and a filing document never waits behind an anchor.
-  const filingPending = pending.filter((d) => d.type !== ANCHOR_DOC_TYPE);
+  const corrigendumPending = pending.filter((d) => d.type === CORRIGENDUM_DOC_TYPE);
+  const filingPending = pending.filter((d) => d.type !== ANCHOR_DOC_TYPE && d.type !== CORRIGENDUM_DOC_TYPE);
   const anchorPending = pending.filter((d) => d.type === ANCHOR_DOC_TYPE);
   result.anchorsConsidered = anchorPending.length;
+
+  // Item 9 (OD-90): the corrigendum pass. Runs first and draws on no spawn budget.
+  await runCorrigendumPass(ipo, corrigendumPending, deps, result);
 
   // MAJOR-1: apply the cross-cycle spawn budget BEFORE extracting anything.
   // Docs beyond the remaining budget are left PENDING (untouched) and reported

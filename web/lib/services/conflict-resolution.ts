@@ -35,6 +35,11 @@ import { ipos } from '@/lib/db';
 import { DataConflictsRepository, type DataConflictRecord, type ConflictStats } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import { FieldProtectionRepository } from '@/lib/repositories/field-protection-repository';
 import type { ScraperSource } from '@ipodhan/shared/db/types';
+import {
+  acceptCorrigendumSuggestion,
+  dismissCorrigendumSuggestion,
+  isCorrigendumSuggestion,
+} from '@ipodhan/shared/services/corrigendum-suggestions';
 
 /**
  * Conflict resolution options
@@ -194,6 +199,27 @@ export class ConflictResolutionService {
         };
       }
 
+      // OD-90 (item 9): a corrigendum SUGGESTION is resolved only one of two ways. Choosing ADMIN
+      // accepts it — the proposed value is written as an ADMIN value (provenance + protection).
+      // Any other choice dismisses it and writes nothing. It never takes the generic path below,
+      // which writes only `ipos` columns and records no ADMIN provenance.
+      if (isCorrigendumSuggestion(conflict)) {
+        const decision =
+          options.resolvedSource === 'ADMIN'
+            ? await acceptCorrigendumSuggestion(db as never, conflictId, options.resolvedBy, options.adminNote)
+            : await dismissCorrigendumSuggestion(db as never, conflictId, options.resolvedBy, options.adminNote);
+        await this.clearCachesAfterSuggestionDecision(conflict.ipoId);
+        return {
+          success: decision.ok,
+          conflictId,
+          ipoId: conflict.ipoId,
+          fieldName: conflict.fieldName,
+          appliedValue: decision.appliedValue ?? null,
+          fieldProtected: decision.ok && options.resolvedSource === 'ADMIN',
+          error: decision.error,
+        };
+      }
+
       // Determine which value to apply based on resolved source
       const appliedValue = options.resolvedSource === conflict.source1
         ? conflict.value1
@@ -278,6 +304,17 @@ export class ConflictResolutionService {
       failed: results.filter(r => !r.success).length,
       results,
     };
+  }
+
+  /** OD-90: the list and the IPO page must not serve the pre-decision state from cache. */
+  private async clearCachesAfterSuggestionDecision(ipoId: string): Promise<void> {
+    try {
+      const redis = getRedisClient();
+      const keys = [...(await redis.keys('conflicts:*')), ...(await redis.keys('ipo:*'))];
+      if (keys.length > 0) await redis.del(...keys);
+    } catch (error) {
+      console.warn(`[Conflicts] cache invalidation after a corrigendum decision failed for ${ipoId}:`, error);
+    }
   }
 
   /**
@@ -405,6 +442,12 @@ export class ConflictResolutionService {
     };
 
     for (const conflict of conflicts) {
+      // OD-90: a corrigendum suggestion is never auto-resolved — only the admin decides it.
+      if (isCorrigendumSuggestion(conflict)) {
+        result.skipped++;
+        continue;
+      }
+
       // Auto-resolve if source1 or source2 is ADMIN
       if (conflict.source1 === 'ADMIN') {
         if (!options.dryRun) {

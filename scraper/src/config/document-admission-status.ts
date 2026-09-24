@@ -34,7 +34,8 @@ export const NOT_EXTRACTABLE_STATUS = 'NOT_EXTRACTABLE';
 
 /**
  * The doc types the automatic door will CONSIDER: the four the python filing
- * extractor parses, plus the anchor report (its own extractor, its own write door).
+ * extractor parses, plus the anchor report (its own extractor, its own write door),
+ * plus the corrigendum (its reader records admin-reviewed suggestions, OD-90).
  *
  * This is the SET both layers read. `filing-auto-persist.ts` re-exports it and its
  * predicate rather than defining them, so there is exactly one list — the admission
@@ -47,6 +48,9 @@ export const AUTO_PERSIST_DOC_TYPES: readonly string[] = [
   'DRHP',
   'PROSPECTUS',
   'ANCHOR_ALLOCATION_REPORT',
+  // Item 9 (OD-90): the corrigendum's reader is the SUGGESTION step
+  // (`corrigendum-reader.ts` -> admin conflicts queue). It writes no field; the admin does.
+  'CORRIGENDUM',
 ];
 
 /** Whether a document type has any extractor at all. */

@@ -42,6 +42,43 @@ interface Conflict {
   conflictReason: string;
   severity: 'INFO' | 'WARNING' | 'CRITICAL';
   detectedAt: string;
+  /** OD-90: set only on a corrigendum suggestion (the document it was read from). */
+  documentId?: string | null;
+  evidence?: CorrigendumEvidence | null;
+}
+
+interface CorrigendumEvidence {
+  origin?: string;
+  quote?: string;
+  page?: number;
+  ocr?: boolean;
+  ocrConfidence?: number | null;
+  exchangeOwned?: boolean;
+  exchangeValue?: string | null;
+}
+
+/**
+ * OD-90 (item 9): a corrigendum suggestion is decided as ACCEPT (the proposed value is written as
+ * an ADMIN value) or DISMISS (keep the stored value, write nothing). The proposal radio therefore
+ * carries ADMIN, not the row's document label.
+ */
+const proposalSource = (c: Conflict): string => (c.documentId ? 'ADMIN' : c.source2);
+
+function CorrigendumEvidenceNote({ conflict }: { conflict: Conflict }) {
+  if (!conflict.documentId || !conflict.evidence) return null;
+  const ev = conflict.evidence;
+  return (
+    <div className="mt-2 text-xs text-amber-200 space-y-1" data-testid="corrigendum-evidence">
+      <div>
+        Corrigendum, page {ev.page ?? '?'}
+        {ev.ocr ? ` (OCR, confidence ${ev.ocrConfidence ?? 'unknown'})` : ''}
+      </div>
+      {ev.quote ? <blockquote className="italic text-gray-300">&ldquo;{ev.quote}&rdquo;</blockquote> : null}
+      {ev.exchangeOwned ? (
+        <div>Exchange-owned field (E-1). Exchange value: {ev.exchangeValue ?? 'none stored'}</div>
+      ) : null}
+    </div>
+  );
 }
 
 // Matches ConflictStats from packages/shared/src/repositories/data-conflicts-repository.ts,
@@ -690,6 +727,7 @@ export default function ConflictsPage() {
                           <div className="text-sm text-white mt-1 font-mono">
                             {conflict.value2 || <span className="text-gray-500">null</span>}
                           </div>
+                          <CorrigendumEvidenceNote conflict={conflict} />
                         </div>
                       </td>
 
@@ -792,8 +830,8 @@ export default function ConflictsPage() {
                   <input
                     type="radio"
                     name="source"
-                    value={resolvingConflict.source2}
-                    checked={chosenSource === resolvingConflict.source2}
+                    value={proposalSource(resolvingConflict)}
+                    checked={chosenSource === proposalSource(resolvingConflict)}
                     onChange={(e) => setChosenSource(e.target.value)}
                     className="mt-1"
                   />
@@ -810,6 +848,10 @@ export default function ConflictsPage() {
                     <div className="text-white font-mono mt-2">
                       {resolvingConflict.value2 || <span className="text-gray-500">null</span>}
                     </div>
+                    {resolvingConflict.documentId ? (
+                      <div className="text-xs text-gray-300 mt-1">Accept: written as an ADMIN value. Choosing the other side dismisses it.</div>
+                    ) : null}
+                    <CorrigendumEvidenceNote conflict={resolvingConflict} />
                   </div>
                 </label>
               </div>

@@ -33,6 +33,7 @@ export * from './utils/offering-type';
 export * from './pipeline/step-catalogue';
 // Export field protection functions
 export * from './admin/field-protection-checker';
+export * from './services/corrigendum-suggestions';
 // Export repository interfaces and pagination types only
 export type {
   IIPORepository,

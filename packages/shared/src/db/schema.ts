@@ -1621,6 +1621,18 @@ export const dataConflicts = pgTable(
     resolvedAt: timestamp('resolved_at'),
     resolvedBy: varchar('resolved_by', { length: 255 }), // 'SYSTEM' or admin username
 
+    // OD-90 (item 9): a CORRIGENDUM SUGGESTION rides in this table as a proposed value against
+    // the stored one — value1/source1 = what is stored now (for an E-1 field that IS the
+    // exchange value), value2 = what the corrigendum says. All three columns are NULL on every
+    // source-vs-source conflict row. `document_id` names the corrigendum the suggestion was read
+    // from (the marker that routes the admin's resolve to accept-as-ADMIN / dismiss);
+    // `evidence` holds {origin, quote, page, ocr, ocrConfidence, exchangeOwned, storedSource};
+    // `suggestion_key` = sha256(document_id|field|quote) makes a re-read of the same document a
+    // no-op instead of a duplicate row.
+    documentId: uuid('document_id').references(() => documents.id, { onDelete: 'cascade' }),
+    evidence: jsonb('evidence'),
+    suggestionKey: varchar('suggestion_key', { length: 64 }),
+
     // Timestamps
     detectedAt: timestamp('detected_at').defaultNow().notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -1628,6 +1640,9 @@ export const dataConflicts = pgTable(
   (table) => ({
     // Performance indexes
     ipoIdIdx: index('idx_data_conflicts_ipo_id').on(table.ipoId),
+    // OD-90: one suggestion per (document, field, quote). NULL on ordinary conflict rows, and
+    // Postgres treats NULLs as distinct, so the constraint never touches them.
+    suggestionKeyUnique: unique('unique_data_conflicts_suggestion_key').on(table.suggestionKey),
     fieldNameIdx: index('idx_data_conflicts_field_name').on(table.fieldName),
     severityIdx: index('idx_data_conflicts_severity').on(table.severity),
     detectedAtIdx: index('idx_data_conflicts_detected_at').on(table.detectedAt.desc()),
