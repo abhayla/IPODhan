@@ -42,6 +42,16 @@ export function getIPOBySlugKey(slug: string): string {
 }
 
 /**
+ * Item 21 (OD-39, OD-40): the per-IPO provenance map the detail page's
+ * "From ..., read ..." lines are built from. Keyed by SLUG, not ipo id, so
+ * the end-of-cycle revalidate call -- which carries slugs only -- can drop it
+ * in the same step as the page's own key (page-revalidation-service.ts).
+ */
+export function getIPOProvenanceKey(slug: string): string {
+  return `ipo:fieldplan:provenance:${slug}`;
+}
+
+/**
  * Generate cache key for IPO detail endpoint (with all relations)
  */
 export function getIPODetailKey(slug: string): string {

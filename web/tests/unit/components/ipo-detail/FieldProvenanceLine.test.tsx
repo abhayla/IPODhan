@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { FieldProvenanceLine } from '@/components/ipo-detail/FieldProvenanceLine';
+import { FieldProvenanceLine, LiveFigureAsAt } from '@/components/ipo-detail/FieldProvenanceLine';
 
 const base = {
   chosenSource: 'DOC',
@@ -23,23 +23,43 @@ describe('FieldProvenanceLine', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('renders nothing when a row exists but has no confirmation date to show', () => {
+  it('item 21 (OD-72): a source with no recorded read date names the source and shows NO date', () => {
     const { container } = render(
       <FieldProvenanceLine provenance={{ ...base, confirmedAt: null }} />
     );
+    expect(container.textContent).toBe('From the offer document');
+  });
+
+  it('renders nothing when the row names no source', () => {
+    const { container } = render(
+      <FieldProvenanceLine provenance={{ ...base, chosenSource: null }} />
+    );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('item 21 (OD-72): a DOC field reads "From the offer document, read <IST date>"', () => {
+    // 2026-09-20T20:00Z is 21 Sep 01:30 IST: the IST calendar date, not the UTC one.
+    render(<FieldProvenanceLine provenance={{ ...base, confirmedAt: new Date('2026-09-20T20:00:00Z') }} />);
+    expect(screen.getByText('From the offer document, read 21 Sep 2026')).toBeInTheDocument();
+  });
+
+  it('item 21 (OD-72): no age-based stale marker, whatever the date', () => {
+    const { container } = render(
+      <FieldProvenanceLine provenance={{ ...base, confirmedAt: new Date('2024-01-01T00:00:00Z') }} />
+    );
+    expect(container.textContent).not.toMatch(/stale|recheck|confirmed/i);
   });
 
   it('names the offer document and the date when the field is fresh', () => {
     render(<FieldProvenanceLine provenance={base} />);
     expect(
-      screen.getByText('From the offer document, confirmed 6 September 2026')
+      screen.getByText('From the offer document, read 6 Sep 2026')
     ).toBeInTheDocument();
   });
 
   it('names the exchange when the exchange is what supplied the number', () => {
     render(<FieldProvenanceLine provenance={{ ...base, chosenSource: 'BSE', chosenDocumentType: null }} />);
-    expect(screen.getByText('From BSE, confirmed 6 September 2026')).toBeInTheDocument();
+    expect(screen.getByText('From BSE, read 6 Sep 2026')).toBeInTheDocument();
   });
 
   it('does not pretend one source spoke when the block mixes several', () => {
@@ -49,7 +69,7 @@ describe('FieldProvenanceLine', () => {
       />
     );
     expect(
-      screen.getByText('From more than one source, confirmed 6 September 2026')
+      screen.getByText('From more than one source, read 6 Sep 2026')
     ).toBeInTheDocument();
   });
 
@@ -58,8 +78,21 @@ describe('FieldProvenanceLine', () => {
     expect(screen.getByText(/SOMETHING_NEW/)).toBeInTheDocument();
   });
 
-  it('carries the confirmed-date marker text', () => {
-    const { container } = render(<FieldProvenanceLine provenance={base} />);
-    expect(container.textContent).toMatch(/confirmed/);
+});
+
+describe('LiveFigureAsAt (OD-72: a live figure shows the time of the figure, IST)', () => {
+  it('"Subscription as at 10:30 PM, 22 Sep" for 22 Sep 17:00Z', () => {
+    render(<LiveFigureAsAt label="Subscription" at={new Date('2026-09-22T17:00:00Z')} />);
+    expect(screen.getByText('Subscription as at 10:30 PM, 22 Sep')).toBeInTheDocument();
+  });
+
+  it('accepts the ISO string a cached payload carries', () => {
+    const { container } = render(<LiveFigureAsAt label="Subscription" at="2026-09-24T05:20:09.000Z" />);
+    expect(container.textContent).toBe('Subscription as at 10:50 AM, 24 Sep');
+  });
+
+  it('renders nothing when there is no figure time', () => {
+    const { container } = render(<LiveFigureAsAt label="Subscription" at={null} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

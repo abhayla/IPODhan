@@ -74,7 +74,7 @@ import { IpoRiskFactorsRepository } from '@ipodhan/shared/repositories/ipo-risk-
 import { FinancialStatementsRepository } from '@ipodhan/shared/repositories/financial-statements-repository';
 import { BrlmTrackRecordRepository } from '@ipodhan/shared/repositories/brlm-track-record-repository';
 import { SEARCH_CONFIG, SLUG_FALLBACK_MIN_SIMILARITY } from '@/lib/config/search';
-import { FieldProvenanceLine } from '@/components/ipo-detail/FieldProvenanceLine';
+import { FieldProvenanceLine, LiveFigureAsAt } from '@/components/ipo-detail/FieldProvenanceLine';
 import {
   IpoFieldPlanRepository,
   summariseFieldGroup,
@@ -368,7 +368,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     // Empty on any failure: a page that cannot say where a number came from
     // still shows the number. The provenance line is a caveat on the facts, not
     // a gate on them (safeLoad, same as every other block above).
-    safeLoad(() => fieldPlanRepository.getIPOProvenanceMap(ipo.id), {}),
+    safeLoad(() => fieldPlanRepository.getIPOProvenanceMap(ipo.id, ipo.slug), {}),
   ]);
 
   // OD-39: one line per key-facts block. summariseFieldGroup returns null when
@@ -720,6 +720,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               closeDate={ipo.closeDate ? new Date(ipo.closeDate) : null}
               status={ipo.status}
             />
+            <LiveFigureAsAt label="Subscription" at={latestSubscription?.timestamp ?? null} />
             </section>
 
             {/* 11. Broker Recommendations */}

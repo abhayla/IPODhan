@@ -22,7 +22,7 @@
  * named `ipo:list:*` and the list cache survives untouched. List pages are
  * refreshed here through `revalidatePath`, which actually works.
  */
-import { getIPOBySlugKey, getIPODetailKey } from '@/lib/cache/cache-keys';
+import { getIPOBySlugKey, getIPODetailKey, getIPOProvenanceKey } from '@/lib/cache/cache-keys';
 import { REVALIDATED_PATHS } from './page-revalidation-targets';
 
 export interface RevalidationDeps {
@@ -59,6 +59,10 @@ export async function revalidateForSlugs(
     try {
       await deps.redis.del(getIPOBySlugKey(slug));
       await deps.redis.del(getIPODetailKey(slug));
+      // Item 21: the "From ..., read ..." lines live under their own key, not
+      // inside the page payload -- without this drop a corrected source or
+      // read date waits out its 15-minute TTL behind a rebuilt page.
+      await deps.redis.del(getIPOProvenanceKey(slug));
       deps.revalidatePath(`/ipos/${slug}`);
     } catch {
       // One bad slug must not cost the whole cycle its refresh. The page it

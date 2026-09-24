@@ -16,7 +16,7 @@
  * or a live token. The cycle passes neither and gets the real ones.
  */
 import { logger } from '../utils/logger.js';
-import { drainTouched } from './touched-ipos-tracker.js';
+import { drainTouchedDurable } from './touched-ipos-tracker.js';
 
 /**
  * MUST match index.ts's `StepResult` exactly - it is a DISCRIMINATED UNION where
@@ -54,7 +54,7 @@ export async function triggerPageRevalidation(
   // touched, and the list could only ever grow. The cost of draining before a
   // failure is that one cycle's refresh is lost — those pages then wait out
   // their timer, which is exactly today's behaviour.
-  const slugs = drainTouched();
+  const slugs = await drainTouchedDurable();
 
   if (slugs.length === 0) {
     // Most cycles change nothing. Posting an empty list every 30 minutes is a

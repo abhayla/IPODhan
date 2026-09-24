@@ -30,6 +30,8 @@ import { runDuplicateSweepJob } from './scheduler/jobs/duplicate-sweep-job.js';
 import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js';
 import { runPrimaryDocBackfill, withTimeout } from './scripts/backfill-primary-source-documents.js';
 import { triggerPageRevalidation } from './services/page-revalidation-trigger.js';
+import { configureTouchedSlugStore } from './services/touched-ipos-tracker.js';
+import { checkLiveSlotMisses, dbCoverageLoader, redisSlotClaimer } from './services/live-slot-miss-monitor.js';
 import { CLI_SOURCE_ARGS } from './config/runnable-sources.js';
 import {
   runDocumentCycle,
@@ -510,6 +512,26 @@ async function runLiveFiguresJob(): Promise<number> {
     } else {
       logger.info({ gmpCandidates }, 'Live-figures job: UPCOMING/OPEN IPOs present — running the grey-market premium fetch');
       await runLiveStep('live:GMP', () => runInvestorgainGMPScraper());
+    }
+
+    // OD-72: did the last completed live slot refresh every bidding IPO? Runs
+    // on EVERY live wake, after the fetches so it never delays one (the 18:00
+    // slot is judged by the first wake after 18:30). It alerts the admin once
+    // per slot and touches no public page. A monitor, not a fetch: its own
+    // failure is logged with the cause and does not fail the live job.
+    if (!deadlineHit) {
+      try {
+        const r = await checkLiveSlotMisses({
+          loadCoverage: dbCoverageLoader(db as unknown as Parameters<typeof dbCoverageLoader>[0]),
+          claimSlotOnce: redisSlotClaimer(getRedisClient() as unknown as Parameters<typeof redisSlotClaimer>[0]),
+        });
+        logger.info(r, 'Live-figures job: live-slot miss check');
+      } catch (error) {
+        logger.error(
+          { error: error instanceof Error ? error.message : String(error), cause: error instanceof Error && error.cause ? String(error.cause) : undefined },
+          'Live-figures job: live-slot miss check failed (non-fatal) - no missed-slot alert could be evaluated this wake'
+        );
+      }
     }
   };
 
@@ -1350,6 +1372,10 @@ export async function main() {
     // T-340: refuse to start a --source=all cycle without the env the
     // post-scrape steps need — see assertRequiredEnvForCycle's doc comment.
     assertRequiredEnvForCycle(source);
+
+    // Item 21 (OD-40): touched slugs survive a crash between the write and the
+    // end-of-cycle revalidate - mirrored into Redis, drained by the next cycle.
+    configureTouchedSlugStore(getRedisClient());
 
     // T-327 P2-7: make the process TZ observable at every run — this is what
     // let NSE dates land a day early for months (local-TZ new Date() parsing

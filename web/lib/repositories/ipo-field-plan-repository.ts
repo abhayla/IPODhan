@@ -16,12 +16,14 @@
  * hard-code false, which would type-check as a permanently-false input a
  * later reader would trust.
  *
- * THE CONFIRMATION DATE IS PROVISIONAL, and that is a known gap, not an
- * oversight. `ipo_field_plan` has no column meaning "the date this value was
- * last reconfirmed correct" as distinct from `updated_at`, which any write to
- * the row bumps. So the date shown can drift forward on churn the row itself
- * would not call a reconfirmation. The fix is a `chosen_confirmed_at` column
- * in item 5's schema, not a guess here.
+ * THE DATE is `chosen_confirmed_at` (item 21, OD-72): the moment the chosen
+ * source was read, stamped by the plan repository when the row became
+ * SUPPLIED. It used to be `updated_at`, which any write to the row bumps, so
+ * the page's date drifted forward on churn. Rows supplied before the column
+ * existed have no read date and the line names the source only.
+ *
+ * Cached under getIPOProvenanceKey(slug) so the OD-40 end-of-cycle call,
+ * which carries slugs, drops it with the page's own key.
  */
 
 import { eq } from 'drizzle-orm';
@@ -30,6 +32,7 @@ import type { Redis } from 'ioredis';
 import * as schema from '@ipodhan/shared/db/schema';
 import { ipoFieldPlan } from '@ipodhan/shared/db/schema';
 import { BaseRepository } from './base-repository';
+import { getIPOProvenanceKey } from '@/lib/cache/cache-keys';
 
 export interface FieldProvenance {
   /** `table.column` — the manifest's key and the plan row's own key. */
@@ -40,16 +43,16 @@ export interface FieldProvenance {
   chosenSource: string | null;
   /** A `documentTypeEnum`-shaped value, e.g. 'RHP'. Null when the source is not a document. */
   chosenDocumentType: string | null;
-  /** PROVISIONAL — see the file header. Null when the row has never been written. */
+  /**
+   * When the chosen source was READ (`chosen_confirmed_at`, stamped when the
+   * row became SUPPLIED). Null when no read date was recorded -- rows supplied
+   * before the column existed. Never `updated_at`, which any write moves.
+   */
   confirmedAt: Date | null;
 }
 
 /** Set by summariseFieldGroup when a block's fields do not share one source. */
 export const MULTIPLE_SOURCES = 'MULTIPLE';
-
-function provenanceCacheKey(ipoId: string): string {
-  return `ipo:fieldplan:provenance:${ipoId}`;
-}
 
 export class IpoFieldPlanRepository extends BaseRepository {
   constructor(
@@ -66,9 +69,9 @@ export class IpoFieldPlanRepository extends BaseRepository {
    * nulls. There is nothing truthful to say about it yet, and an entry with a
    * null source would reach the page as a line that names no source.
    */
-  async getIPOProvenanceMap(ipoId: string): Promise<Record<string, FieldProvenance>> {
+  async getIPOProvenanceMap(ipoId: string, slug: string): Promise<Record<string, FieldProvenance>> {
     const rows = await this.getFromCache(
-      provenanceCacheKey(ipoId),
+      getIPOProvenanceKey(slug),
       async () =>
         this.db
           .select({
@@ -78,7 +81,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
             state: ipoFieldPlan.state,
             chosenSource: ipoFieldPlan.chosenSource,
             chosenDocumentType: ipoFieldPlan.chosenDocumentType,
-            updatedAt: ipoFieldPlan.updatedAt,
+            chosenConfirmedAt: ipoFieldPlan.chosenConfirmedAt,
           })
           .from(ipoFieldPlan)
           .where(eq(ipoFieldPlan.ipoId, ipoId)),
@@ -102,7 +105,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
         fieldName: row.fieldName,
         chosenSource: row.chosenSource,
         chosenDocumentType: row.chosenDocumentType ?? null,
-        confirmedAt: row.updatedAt ? new Date(row.updatedAt) : null,
+        confirmedAt: row.chosenConfirmedAt ? new Date(row.chosenConfirmedAt) : null,
       };
     }
     return out;
@@ -112,8 +115,10 @@ export class IpoFieldPlanRepository extends BaseRepository {
 /**
  * One line for a block that shows several fields.
  *
- * The block is only as good as its weakest member, so: the OLDEST confirmation
- * date wins, and one stale field makes the whole line stale. The source is
+ * The block is only as good as its weakest member, so: the OLDEST read date
+ * wins, and one member with NO recorded read date leaves the whole block
+ * without a date (a date shown for a block must be true of every field in
+ * it -- OD-72, no fabricated date). The source is
  * named only when every field in the block agrees — a block whose issue size
  * came from the offer document and whose OFS came from BSE must not tell the
  * reader "from the offer document", which would be false about half of what
@@ -128,7 +133,8 @@ export function summariseFieldGroup(
 
   const sources = new Set(present.map((p) => p.chosenSource));
   const unanimous = sources.size === 1;
-  const oldest = present.reduce<Date | null>((acc, p) => {
+  const undated = present.some((p) => !p.confirmedAt);
+  const oldest = undated ? null : present.reduce<Date | null>((acc, p) => {
     if (!p.confirmedAt) return acc;
     if (!acc) return p.confirmedAt;
     return p.confirmedAt.getTime() < acc.getTime() ? p.confirmedAt : acc;

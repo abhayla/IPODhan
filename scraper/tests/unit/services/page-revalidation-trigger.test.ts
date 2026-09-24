@@ -19,8 +19,13 @@
  *  - Failure is NEVER fatal. The scrape has already written its rows; a page
  *    that will not rebuild waits out its timer, which is today's behaviour.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { recordTouched, drainTouched } from '../../../src/services/touched-ipos-tracker.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  recordTouched,
+  drainTouched,
+  configureTouchedSlugStore,
+  TOUCHED_SLUGS_REDIS_KEY,
+} from '../../../src/services/touched-ipos-tracker.js';
 import { triggerPageRevalidation } from '../../../src/services/page-revalidation-trigger.js';
 import { logger } from '../../../src/utils/logger.js';
 
@@ -35,6 +40,49 @@ function fakeFetch(impl?: (url: string, init: RequestInit) => unknown) {
 }
 
 const ENV = { WEB_INTERNAL_URL: 'http://web:3001', ADMIN_API_TOKEN: 'tok' };
+
+/** An in-memory stand-in for the three Redis set calls; it outlives a "process". */
+function fakeStore() {
+  const sets = new Map<string, Set<string>>();
+  return {
+    sets,
+    sadd: vi.fn(async (k: string, m: string) => { if (!sets.has(k)) sets.set(k, new Set()); sets.get(k)!.add(m); return 1; }),
+    smembers: vi.fn(async (k: string) => Array.from(sets.get(k) ?? [])),
+    del: vi.fn(async (k: string) => { sets.delete(k); return 1; }),
+  };
+}
+
+describe('item 21 (OD-40): touched slugs survive a restart between the write and the revalidate', () => {
+  afterEach(() => { configureTouchedSlugStore(null); drainTouched(); });
+
+  it('a crash after the write still revalidates those pages on the NEXT cycle, in its one call', async () => {
+    const store = fakeStore();
+    configureTouchedSlugStore(store);
+    recordTouched('crashed-ltd');
+    await Promise.resolve();
+    // Simulated restart: the new process starts with an empty in-process Set;
+    // only Redis remembers what the dead process wrote.
+    drainTouched();
+    recordTouched('next-cycle-ltd');
+    const f = fakeFetch();
+    const r = await triggerPageRevalidation({ env: ENV, fetchImpl: f.fn });
+    expect(r.status).toBe('ok');
+    expect(f.calls).toHaveLength(1);
+    expect(JSON.parse(String(f.calls[0].init.body)).slugs.sort()).toEqual(['crashed-ltd', 'next-cycle-ltd']);
+    // Drained: the following cycle sends nothing again.
+    expect(store.sets.has(TOUCHED_SLUGS_REDIS_KEY)).toBe(false);
+  });
+
+  it('a Redis read failure still sends the slugs this process recorded (logged, not thrown)', async () => {
+    const store = fakeStore();
+    store.smembers = vi.fn(async () => { throw new Error('redis down'); });
+    configureTouchedSlugStore(store);
+    recordTouched('local-ltd');
+    const f = fakeFetch();
+    await triggerPageRevalidation({ env: ENV, fetchImpl: f.fn });
+    expect(JSON.parse(String(f.calls[0].init.body)).slugs).toEqual(['local-ltd']);
+  });
+});
 
 describe('triggerPageRevalidation', () => {
   beforeEach(() => { drainTouched(); });

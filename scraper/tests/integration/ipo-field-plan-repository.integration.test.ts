@@ -1059,6 +1059,72 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     expect(persisted.chosenPage).toBe(5);
   });
 
+  // ------------------------------------------- chosen_confirmed_at (item 21) ---
+  //
+  // OD-39 + OD-72: the page states the source and the date it was READ. That
+  // date is stamped only when a row is recorded SUPPLIED with its evidence;
+  // updated_at moves on any write and must not stand in for it.
+
+  it('item 21: a SUPPLIED outcome with evidence stamps chosen_confirmed_at with the read instant (UTC, drift 0)', async () => {
+    const id = await seedRow();
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
+    const readAt = new Date('2026-09-21T05:00:00.000Z'); // 10:30 IST
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claimed!.claimToken!,
+      writeHappened: true,
+      state: 'SUPPLIED',
+      chosen: { source: 'DOC', rank: 1, documentType: 'RHP' },
+      now: readAt,
+    });
+    const raw = await db.execute(sql`SELECT chosen_confirmed_at::text AS t FROM ipo_field_plan WHERE id = ${id}::uuid`);
+    // Round-trip the stored TEXT, not a parsed Date (ist-timezone rule): a 5h30m shift would show here.
+    expect((raw as unknown as { rows: { t: string }[] }).rows[0].t).toBe('2026-09-21 05:00:00');
+    const persisted = await readRow(id);
+    expect(persisted.chosenConfirmedAt!.toISOString()).toBe(readAt.toISOString());
+  });
+
+  it('item 21: a later non-SUPPLIED write leaves chosen_confirmed_at exactly as it was (updated_at moves, the read date does not)', async () => {
+    const id = await seedRow();
+    const claim1 = await repo.claimNextDueField({ ipoId: IPO_ID });
+    const readAt = new Date('2026-09-21T05:00:00.000Z');
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claim1!.claimToken!,
+      writeHappened: true,
+      state: 'SUPPLIED',
+      chosen: { source: 'DOC', rank: 1, documentType: 'RHP' },
+      now: readAt,
+    });
+    await db.execute(sql`UPDATE ipo_field_plan SET state = 'PENDING' WHERE id = ${id}::uuid`);
+    await forceDue(id);
+    const claim2 = await repo.claimNextDueField({ ipoId: IPO_ID });
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claim2!.claimToken!,
+      writeHappened: true,
+      state: 'CHECK_FAILED',
+      now: new Date('2026-09-23T05:00:00.000Z'),
+    });
+    const persisted = await readRow(id);
+    expect(persisted.chosenConfirmedAt!.toISOString()).toBe(readAt.toISOString());
+    expect(persisted.updatedAt.getTime()).toBeGreaterThan(readAt.getTime());
+  });
+
+  it('item 21: a row never recorded SUPPLIED has NO read date (null, never a fabricated one)', async () => {
+    const id = await seedRow();
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claimed!.claimToken!,
+      writeHappened: true,
+      state: 'CHECK_FAILED',
+      chosen: { source: 'DOC', rank: 1 },
+    });
+    const persisted = await readRow(id);
+    expect(persisted.chosenConfirmedAt).toBeNull();
+  });
+
   // ------------------------------------------- releaseClaimUnrecorded ---
   //
   // F2 (Tier A review): this method was added by item 6 AFTER this repository
