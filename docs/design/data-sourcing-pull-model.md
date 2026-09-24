@@ -1066,6 +1066,11 @@ endpoints, with the 90-day windows."*
 
 - **Source:** the same free public NSE and BSE quote endpoints the scrapers already reach — no new
   vendor, no key, no cost (§7.4 counts the calls).
+  **Measured 2026-09-24 (F-150):** BSE `getScripHeaderData` answers without cookies (Hero Motors 544936:
+  98.51). NSE `quote-equity` answers 403 even with a session; NSE `GetQuoteApi` (`getSymbolData`) answers
+  with the same session, but only for the stock's real trading series — `EQ` for mainboard, and `SM` or
+  `ST` for SME depending on the stock (IC Electricals `SM` 134.5, VINOD `ST` 72.85); a wrong series is a
+  404, which is therefore not by itself evidence of delisting.
 - **Window:** every 15 minutes during exchange market hours, for 90 days after the listing date;
   after that the job stops for that IPO and the page keeps the last value it had.
 - **Label:** the page shows the price **with the timestamp it was read at, marked "delayed"**. A

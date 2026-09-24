@@ -1509,6 +1509,15 @@
       "phase1": true,
       "title": "Verification of the source-key table on 18 real scenarios (2026-09-23)",
       "detail": "As first stated (two states, never re-matched by name) it failed 8 (Dhanwel, IC Electricals, Hero Motors, Rays of Belief, look-alikes, later OFS, symbol reuse, concurrency and others); with four fixes (four states; re-check every bind; supersede only on OD-83's test; offering-level keys only with NSE series) 15 pass, 2 are outside any key table, 1 needed an owner decision (OD-86). The scenario table is in section 2.3.3.2 \"Source record keys\". Related: F-126, F-127, F-134."
+    },
+    {
+      "id": "F-150",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "sources",
+      "phase1": true,
+      "title": "The free exchange quote endpoints return a post-listing price, but NSE needs the newer API and the exact trading series",
+      "detail": "Measured 2026-09-24 00:5x-07:2x IST with Node fetch from the laptop. BSE getScripHeaderData (api.bseindia.com/BseIndiaAPI/api/getScripHeaderData/w?scripcode=N) returns 200 without cookies: Hero Motors 544936 LTP 98.51 (IssueChgVal +14.51); NSE IPO 544937 returns 200 with LTP \"-\" (not trading yet). NSE /api/quote-equity returns 403 Access Denied even after the session warm-up that makes /api/all-upcoming-issues return 200, so the old endpoint is unusable. NSE /api/NextApi/apiClient/GetQuoteApi?functionName=getSymbolData&marketType=N&series=S&symbol=X returns 200 with that same session: HEROMOTORS series EQ lastPrice 98.4, listingDate 23-Sep-2026, boardStatus Main; ICELCO series SM lastPrice 134.5, listing 10-Jul-2026, SME; VINOD series ST lastPrice 72.85, listing 17-Sep-2026, SME, lastUpdateTime 23-Sep-2026 16:00:00. A wrong series gives 404 (VINOD EQ, VINOD SZ, ICELCO EQ) or an empty body (ICELCO ST). So SME trading series differ between stocks (SM vs ST), and the post-listing price job must use the stock's real trading series (or try EQ, BE, SM, ST and keep the one that answers) and must treat 404 as \"wrong series or no such symbol\", not as delisting evidence by itself (section 2.3.3.x delisting counts three consecutive no-such-symbol answers). The NSE response carries its own lastUpdateTime, which is the as-of time the page label needs. Related: OD-29, OD-54."
     }
   ],
   "false_assertions": [
