@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import * as schema from '../../../packages/shared/src/db/schema';
-import { dbCoverageLoader, lastCompletedLiveSlot } from '../../src/services/live-slot-miss-monitor';
+import { dbCoverageLoader, completedLiveSlotsToday } from '../../src/services/live-slot-miss-monitor';
 
 /**
  * The rule under test is SQL, so it runs on a real Postgres (ipodhan_test):
@@ -58,19 +58,21 @@ describe.skipIf(!DATABASE_URL)(`live-slot miss loader (${RUN_LABEL})`, () => {
     await pool.end();
   }, 60000);
 
-  it('names the bidding IPO with no figure inside the slot, and only the bidding IPOs', async () => {
-    const slot = lastCompletedLiveSlot(new Date('2026-09-22T05:50:00Z'))!; // 11:20 IST -> 10:30 slot
-    expect(slot.key).toBe('2026-09-22T10:30');
-    const rows = (await dbCoverageLoader(db as never)(slot)).filter((r) => ids.includes(r.id));
-    expect(rows.map((r) => [r.slug, r.covered])).toEqual([
-      ['item21-covered-ltd', true],
-      ['item21-missed-ltd', false],
+  it('one query judges every ended slot of the day: the bidding IPO with no figure inside a slot is named for that slot only', async () => {
+    const slots = completedLiveSlotsToday(new Date('2026-09-22T05:50:00Z')); // 11:20 IST -> 10:00 and 10:30
+    expect(slots.map((s) => s.key)).toEqual(['2026-09-22T10:00', '2026-09-22T10:30']);
+    const rows = (await dbCoverageLoader(db as never)(slots)).filter((r) => ids.includes(r.id));
+    expect(rows.map((r) => [r.slug, r.slotKey, r.covered])).toEqual([
+      ['item21-covered-ltd', '2026-09-22T10:00', false],
+      ['item21-covered-ltd', '2026-09-22T10:30', true],
+      ['item21-missed-ltd', '2026-09-22T10:00', true],
+      ['item21-missed-ltd', '2026-09-22T10:30', false],
     ]);
   });
 
   it('a Saturday is not a bidding day: nothing can be missed', async () => {
     await db.execute(sql`UPDATE ipos SET close_date = '2026-09-28' WHERE id = ${MISSED_ID}::uuid`);
-    const saturday = lastCompletedLiveSlot(new Date('2026-09-26T05:50:00Z'))!;
+    const saturday = completedLiveSlotsToday(new Date('2026-09-26T05:50:00Z'));
     const rows = (await dbCoverageLoader(db as never)(saturday)).filter((r) => ids.includes(r.id));
     expect(rows).toEqual([]);
   });

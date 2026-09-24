@@ -1,6 +1,8 @@
 // implements: item 5 slice s3 -- ipo_field_plan repository (claim + outcome)
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Pool } from 'pg';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql, inArray, eq, and } from 'drizzle-orm';
 // Relative imports, NOT the `@ipodhan/shared` alias -- a worktree's
@@ -1109,6 +1111,46 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     const persisted = await readRow(id);
     expect(persisted.chosenConfirmedAt!.toISOString()).toBe(readAt.toISOString());
     expect(persisted.updatedAt.getTime()).toBeGreaterThan(readAt.getTime());
+  });
+
+  it('item 21: a SUPPLIED outcome that names NO chosen source gets NO read date', async () => {
+    const id = await seedRow();
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claimed!.claimToken!,
+      writeHappened: true,
+      state: 'SUPPLIED',
+      chosen: { rank: 1 },
+      now: new Date('2026-09-21T05:00:00.000Z'),
+    });
+    const persisted = await readRow(id);
+    expect(persisted.chosenSource).toBeNull();
+    expect(persisted.chosenConfirmedAt).toBeNull();
+  });
+
+  it('item 21: migration 0058 backfills the read date from last_attempt_at for SUPPLIED rows that name a source, and only those', async () => {
+    const withSource = await seedRow({ state: 'SUPPLIED', chosenSource: 'DOC', fieldName: 'faceValue' });
+    const noSource = await seedRow({ state: 'SUPPLIED', chosenSource: null, fieldName: 'issueSize' });
+    const notSupplied = await seedRow({ state: 'CHECK_FAILED', chosenSource: 'DOC', fieldName: 'lotSize' });
+    const already = await seedRow({ state: 'SUPPLIED', chosenSource: 'BSE', fieldName: 'upiCutoffTime' });
+    await db.execute(sql`UPDATE ipo_field_plan SET last_attempt_at = '2026-09-19 03:17:55', chosen_confirmed_at = NULL WHERE id IN (${withSource}::uuid, ${noSource}::uuid, ${notSupplied}::uuid)`);
+    await db.execute(sql`UPDATE ipo_field_plan SET last_attempt_at = '2026-09-19 03:17:55', chosen_confirmed_at = '2026-09-01 00:00:00' WHERE id = ${already}::uuid`);
+    const file = readFileSync(
+      fileURLToPath(new URL('../../../web/drizzle/migrations/0058_ipo_field_plan_chosen_confirmed_at.sql', import.meta.url)),
+      'utf8'
+    );
+    const update = file.split('--> statement-breakpoint').map((x) => x.trim()).find((x) => x.startsWith('UPDATE'));
+    expect(update).toBeTruthy();
+    await db.execute(sql.raw(update!));
+    const read = async (id: string) =>
+      ((await db.execute(sql`SELECT chosen_confirmed_at::text AS t FROM ipo_field_plan WHERE id = ${id}::uuid`)) as unknown as {
+        rows: { t: string | null }[];
+      }).rows[0].t;
+    expect(await read(withSource)).toBe('2026-09-19 03:17:55');
+    expect(await read(noSource)).toBeNull();
+    expect(await read(notSupplied)).toBeNull();
+    expect(await read(already)).toBe('2026-09-01 00:00:00');
   });
 
   it('item 21: a row never recorded SUPPLIED has NO read date (null, never a fabricated one)', async () => {

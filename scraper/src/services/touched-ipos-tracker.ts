@@ -47,6 +47,7 @@ export interface TouchedSlugStore {
   sadd(key: string, member: string): Promise<unknown>;
   smembers(key: string): Promise<string[]>;
   del(key: string): Promise<unknown>;
+  rename(key: string, newKey: string): Promise<unknown>;
 }
 
 let store: TouchedSlugStore | null = null;
@@ -118,9 +119,22 @@ export async function drainTouchedDurable(): Promise<string[]> {
   const local = drainTouched();
   if (!store) return local;
   let persisted: string[] = [];
+  // ATOMIC read-and-clear: RENAME moves the whole set to a private key in one
+  // step, so a slug another process SADDs between our read and our clear lands
+  // in a fresh set for the next cycle instead of being deleted unseen (the
+  // SMEMBERS-then-DEL of the first version had that window).
+  const drainKey = `${TOUCHED_SLUGS_REDIS_KEY}:draining:${process.pid}:${Date.now()}`;
   try {
-    persisted = await store.smembers(TOUCHED_SLUGS_REDIS_KEY);
-    await store.del(TOUCHED_SLUGS_REDIS_KEY);
+    await store.rename(TOUCHED_SLUGS_REDIS_KEY, drainKey);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such key/i.test(message)) return local;
+    logger.warn({ error: message }, '[TouchedIPOs] could not move the persisted touched slugs aside - sending only the slugs this process recorded');
+    return local;
+  }
+  try {
+    persisted = await store.smembers(drainKey);
+    await store.del(drainKey);
   } catch (error) {
     logger.warn(
       { error: error instanceof Error ? error.message : String(error) },

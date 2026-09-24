@@ -12,23 +12,30 @@
  * close_date, a weekday that is not a market holiday) and has NO subscription
  * snapshot whose time falls inside the slot. The snapshot time is the SOURCE's
  * observation time (subscriptions.timestamp, W-38), so a slot counts as covered
- * only when the reader's figure actually advanced in it -- a fetch that ran and
- * stored nothing (source did not list the IPO, regression guard, stale time)
- * is a miss, which is what the reader experiences.
+ * only when the reader's figure actually advanced in it.
  *
- * Measured on staging 2026-09-24 before this was built (read-only): of 20 live
- * IPOs, 11 had all of 17 slots covered, while anand-seamless-ltd (SME) had 0 of
- * 17, himalaya-nutravedics-india-ltd 2 of 17 and s-k-offset-ltd 5 of 17.
+ * HOW OFTEN IT SPEAKS (OD-93, fix round 1 -- the first version sent one alert
+ * per slot, 17 a weekday on staging):
+ *  - one alert per IPO per IST day, at its FIRST missed slot, dedupeKey
+ *    `live-slot-miss:<env>:<slug>:<day>`;
+ *  - one end-of-day summary once the 18:00 slot has ended, listing each IPO
+ *    with every slot it missed;
+ *  - the environment (DEPLOY_SLOT) in every title; severity P2.
  *
- * ONCE PER MISS. Each live wake evaluates the most recent COMPLETED slot, sends
- * one alert for that slot listing every IPO that missed it, and claims the
- * slot with a Redis NX marker first, so a second wake in the same half hour (a
- * manual wake, a retry) never sends it twice. The Notifier dedupeKey is the
- * same slot key, a second line of defence.
+ * SKIPPED WAKES. Every wake judges EVERY ended slot of the IST day, not only
+ * the last one, so a slot whose wakes were skipped is still judged by the next
+ * wake that runs. A live cron dead for the WHOLE day is outside this check (no
+ * wake runs it); the data job's freshness SLO `open-ipo-gmp-subscription`
+ * (scraper/src/config/freshness-slo.ts, evaluated by triggerDataQualityWatchdog
+ * at each data slot) is what sees that. The nightly detection floor has no
+ * subscription-freshness check.
+ *
+ * A claim is written only AFTER the alert was accepted by the Notifier, so a
+ * failed or unconfigured send is retried by the next wake and logged at warn
+ * with its reason -- never logged as sent.
  */
 import { sql } from 'drizzle-orm';
 import { istDayIso } from '@ipodhan/shared/utils/ist-day';
-import { notifyOwner } from './owner-notify.js';
 import { logger } from '../utils/logger.js';
 
 const IST_OFFSET_MS = (5 * 60 + 30) * 60_000;
@@ -56,20 +63,7 @@ function hhmm(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
-/**
- * The most recent live slot that has fully ENDED at `now`, on today's IST date;
- * null before 10:30 IST (no slot of today has ended yet).
- */
-export function lastCompletedLiveSlot(now: Date): LiveSlot | null {
-  const istMs = now.getTime() + IST_OFFSET_MS;
-  const dayStartIstMs = Math.floor(istMs / 86_400_000) * 86_400_000;
-  const minuteOfDay = Math.floor((istMs - dayStartIstMs) / 60_000);
-  let start: number | null = null;
-  for (const s of LIVE_SLOT_STARTS_IST_MINUTES) {
-    if (s + SLOT_MINUTES <= minuteOfDay) start = s;
-  }
-  if (start === null) return null;
-  const day = istDayIso(now);
+function slotOf(dayStartIstMs: number, day: string, start: number): LiveSlot {
   const startUtc = new Date(dayStartIstMs + start * 60_000 - IST_OFFSET_MS);
   return {
     day,
@@ -81,105 +75,175 @@ export function lastCompletedLiveSlot(now: Date): LiveSlot | null {
   };
 }
 
+/** Every live slot of `now`'s IST day that has fully ENDED, in order (empty before 10:30 IST). */
+export function completedLiveSlotsToday(now: Date): LiveSlot[] {
+  const istMs = now.getTime() + IST_OFFSET_MS;
+  const dayStartIstMs = Math.floor(istMs / 86_400_000) * 86_400_000;
+  const minuteOfDay = Math.floor((istMs - dayStartIstMs) / 60_000);
+  const day = istDayIso(now);
+  return LIVE_SLOT_STARTS_IST_MINUTES.filter((s) => s + SLOT_MINUTES <= minuteOfDay).map((s) => slotOf(dayStartIstMs, day, s));
+}
+
+/** The most recent live slot of today that has fully ENDED; null before 10:30 IST. */
+export function lastCompletedLiveSlot(now: Date): LiveSlot | null {
+  const all = completedLiveSlotsToday(now);
+  return all.length ? all[all.length - 1] : null;
+}
+
 export interface BiddingIpo {
   id: string;
   slug: string;
   companyName: string;
 }
 
-/** Everything the check reads, injected so the rule is testable without a database. */
+export interface SlotCoverage extends BiddingIpo {
+  slotKey: string;
+  covered: boolean;
+}
+
+export interface AlertOutcome {
+  sent: boolean;
+  reason?: string;
+}
+
+/** Everything the check reads and writes, injected so the rule is testable without a database. */
 export interface LiveSlotMissDeps {
   now?: Date;
-  /** IPOs bidding on `slot.day` (trading day already applied), each with whether a snapshot landed inside the slot. */
-  loadCoverage(slot: LiveSlot): Promise<Array<BiddingIpo & { covered: boolean }>>;
-  /** True the FIRST time a slot key is claimed; false on every later call. */
-  claimSlotOnce(key: string): Promise<boolean>;
-  notify?: typeof notifyOwner;
+  /** DEPLOY_SLOT: 'staging' | 'prod'; named in every title and key. */
+  env?: string;
+  /** One row per (bidding IPO, ended slot) for the IST day of the given slots. */
+  loadDayCoverage(slots: LiveSlot[]): Promise<SlotCoverage[]>;
+  isClaimed(key: string): Promise<boolean>;
+  /** Written only after the alert it records was accepted. */
+  claim(key: string): Promise<void>;
+  send(
+    severity: 'P2',
+    title: string,
+    opts: { body?: string; type?: string; dedupeKey?: string }
+  ): Promise<AlertOutcome>;
 }
 
 export interface LiveSlotMissResult {
-  slot: string | null;
-  checked: number;
-  missed: string[];
-  alerted: boolean;
-  reason?: string;
+  day: string | null;
+  slotsJudged: number;
+  missedIpos: string[];
+  alertsSent: number;
+  summarySent: boolean;
+  unsent: string[];
 }
 
 export async function checkLiveSlotMisses(deps: LiveSlotMissDeps): Promise<LiveSlotMissResult> {
   const now = deps.now ?? new Date();
-  const slot = lastCompletedLiveSlot(now);
-  if (!slot) return { slot: null, checked: 0, missed: [], alerted: false, reason: 'no live slot of today has ended yet' };
+  const env = deps.env ?? process.env.DEPLOY_SLOT ?? 'unknown-env';
+  const slots = completedLiveSlotsToday(now);
+  const result: LiveSlotMissResult = { day: null, slotsJudged: slots.length, missedIpos: [], alertsSent: 0, summarySent: false, unsent: [] };
+  if (slots.length === 0) return result;
+  const day = slots[0].day;
+  result.day = day;
+  const byKey = new Map(slots.map((sl) => [sl.key, sl]));
 
-  const coverage = await deps.loadCoverage(slot);
-  const missed = coverage.filter((c) => !c.covered);
-  if (missed.length === 0) {
-    return { slot: slot.key, checked: coverage.length, missed: [], alerted: false, reason: 'every bidding IPO was refreshed in this slot' };
+  const rows = await deps.loadDayCoverage(slots);
+  const missed = new Map<string, { ipo: BiddingIpo; slots: LiveSlot[] }>();
+  for (const r of rows) {
+    if (r.covered) continue;
+    const slot = byKey.get(r.slotKey);
+    if (!slot) continue;
+    const entry = missed.get(r.slug) ?? { ipo: { id: r.id, slug: r.slug, companyName: r.companyName }, slots: [] };
+    entry.slots.push(slot);
+    missed.set(r.slug, entry);
+  }
+  for (const e of missed.values()) e.slots.sort((a, b) => a.startUtc.getTime() - b.startUtc.getTime());
+  result.missedIpos = Array.from(missed.keys()).sort();
+
+  const deliver = async (key: string, title: string, body: string, type: string): Promise<boolean> => {
+    if (await deps.isClaimed(key)) return false;
+    const out = await deps.send('P2', title, { body, type, dedupeKey: key });
+    if (!out.sent) {
+      result.unsent.push(key);
+      logger.warn({ key, reason: out.reason }, 'Live-slot miss: admin alert NOT sent - will retry on the next wake');
+      return false;
+    }
+    await deps.claim(key);
+    logger.info({ key }, 'Live-slot miss: admin alert sent (OD-72)');
+    return true;
+  };
+
+  for (const slug of result.missedIpos) {
+    const { ipo, slots: its } = missed.get(slug)!;
+    const first = its[0];
+    const ok = await deliver(
+      `live-slot-miss:${env}:${slug}:${day}`,
+      `[${env}] Live refresh missed: ${ipo.companyName} at ${first.label} IST on ${day}`,
+      `${ipo.companyName} (${slug}) had no subscription figure dated inside the ${first.label}-${first.endLabel} IST slot on ${day} ` +
+        '(the source listed no newer figure, the fetch failed, or the write was refused). ' +
+        'Later misses of this IPO today are listed in the end-of-day summary.',
+      'live-slot-miss'
+    );
+    if (ok) result.alertsSent += 1;
   }
 
-  if (!(await deps.claimSlotOnce(`live-slot-miss:${slot.key}`))) {
-    return {
-      slot: slot.key,
-      checked: coverage.length,
-      missed: missed.map((m) => m.slug),
-      alerted: false,
-      reason: 'this slot was already alerted by an earlier wake',
-    };
+  if (slots.length === LIVE_SLOT_STARTS_IST_MINUTES.length && result.missedIpos.length > 0) {
+    const lines = result.missedIpos.map((slug) => {
+      const e = missed.get(slug)!;
+      return `${e.ipo.companyName} (${slug}): ${e.slots.length} of ${slots.length} slots missed - ${e.slots.map((x) => x.label).join(', ')}`;
+    });
+    result.summarySent = await deliver(
+      `live-slot-summary:${env}:${day}`,
+      `[${env}] Live refresh summary ${day}: ${result.missedIpos.length} IPO(s) missed slots`,
+      lines.join('\n'),
+      'live-slot-summary'
+    );
   }
-
-  const notify = deps.notify ?? notifyOwner;
-  notify('P2', `Live refresh missed the ${slot.label} IST slot on ${slot.day}: ${missed.length} IPO(s)`, {
-    type: 'live-slot-miss',
-    dedupeKey: `live-slot-miss:${slot.key}`,
-    body: missed
-      .map(
-        (m) =>
-          `${m.companyName} (${m.slug}): no subscription figure dated inside ${slot.label}-${slot.endLabel} IST ${slot.day} ` +
-          '(the source listed no newer figure, the fetch failed, or the write was refused)'
-      )
-      .join('\n'),
-  });
-  logger.warn(
-    { slot: slot.key, missed: missed.map((m) => m.slug), checked: coverage.length },
-    'Live-slot miss: admin alert sent (OD-72) - named IPOs had no subscription figure inside the slot'
-  );
-  return { slot: slot.key, checked: coverage.length, missed: missed.map((m) => m.slug), alerted: true };
+  return result;
 }
 
 /**
- * The database half: IPOs bidding on the slot's IST day, and whether each has a
- * subscription snapshot dated inside the slot. A weekend or a market holiday
+ * The database half, one query for the whole day: every IPO bidding on the
+ * slots' IST day, crossed with every ended slot, and whether a subscription
+ * snapshot dated inside that slot exists. A weekend or a market holiday
  * returns no IPO -- nothing bids, so nothing can be missed. Timestamps are
  * bound as ISO strings (ist-timezone rule: never a Date object to a naive column).
  */
 export function dbCoverageLoader(db: { execute(q: ReturnType<typeof sql>): Promise<unknown> }) {
-  return async (slot: LiveSlot): Promise<Array<BiddingIpo & { covered: boolean }>> => {
+  return async (slots: LiveSlot[]): Promise<SlotCoverage[]> => {
+    if (slots.length === 0) return [];
+    const day = slots[0].day;
+    const values = sql.join(
+      slots.map((sl) => sql`(${sl.key}, ${sl.startUtc.toISOString()}::timestamptz, ${sl.endUtc.toISOString()}::timestamptz)`),
+      sql`, `
+    );
     const result = await db.execute(sql`
-      SELECT i.id, i.slug, i.company_name,
+      WITH slot(key, s, e) AS (VALUES ${values})
+      SELECT i.id, i.slug, i.company_name, slot.key AS slot_key,
              EXISTS (
-               SELECT 1 FROM subscriptions s
-               WHERE s.ipo_id = i.id
-                 AND s.timestamp >= ${slot.startUtc.toISOString()}::timestamptz
-                 AND s.timestamp <  ${slot.endUtc.toISOString()}::timestamptz
+               SELECT 1 FROM subscriptions x
+               WHERE x.ipo_id = i.id AND x.timestamp >= slot.s AND x.timestamp < slot.e
              ) AS covered
-      FROM ipos i
+      FROM ipos i CROSS JOIN slot
       WHERE i.status IN ('OPEN', 'CLOSED')
-        AND i.open_date <= ${slot.day}::date
-        AND i.close_date >= ${slot.day}::date
-        AND EXTRACT(ISODOW FROM ${slot.day}::date) < 6
-        AND NOT EXISTS (SELECT 1 FROM market_holidays h WHERE h.date = ${slot.day}::date)
-      ORDER BY i.slug
+        AND i.open_date <= ${day}::date
+        AND i.close_date >= ${day}::date
+        AND EXTRACT(ISODOW FROM ${day}::date) < 6
+        AND NOT EXISTS (SELECT 1 FROM market_holidays h WHERE h.date = ${day}::date)
+      ORDER BY i.slug, slot.key
     `);
     const rows = (result as { rows?: Array<Record<string, unknown>> }).rows ?? [];
     return rows.map((r) => ({
       id: r.id as string,
       slug: r.slug as string,
       companyName: (r.company_name as string) ?? (r.slug as string),
+      slotKey: r.slot_key as string,
       covered: r.covered === true,
     }));
   };
 }
 
-/** Redis NX claim, two days: long enough to outlive every wake of the slot's day. */
-export function redisSlotClaimer(redis: { set(...args: unknown[]): Promise<unknown> }) {
-  return async (key: string): Promise<boolean> => (await redis.set(key, '1', 'EX', 172_800, 'NX')) === 'OK';
+/** Redis-backed claims, two days: long enough to outlive every wake of the day. */
+export function redisClaims(redis: { exists(key: string): Promise<number>; set(...args: unknown[]): Promise<unknown> }) {
+  return {
+    isClaimed: async (key: string): Promise<boolean> => (await redis.exists(key)) > 0,
+    claim: async (key: string): Promise<void> => {
+      await redis.set(key, '1', 'EX', 172_800);
+    },
+  };
 }

@@ -49,6 +49,12 @@ function fakeStore() {
     sadd: vi.fn(async (k: string, m: string) => { if (!sets.has(k)) sets.set(k, new Set()); sets.get(k)!.add(m); return 1; }),
     smembers: vi.fn(async (k: string) => Array.from(sets.get(k) ?? [])),
     del: vi.fn(async (k: string) => { sets.delete(k); return 1; }),
+    rename: vi.fn(async (k: string, to: string) => {
+      if (!sets.has(k)) throw new Error('ERR no such key');
+      sets.set(to, sets.get(k)!);
+      sets.delete(k);
+      return 'OK';
+    }),
   };
 }
 
@@ -71,6 +77,25 @@ describe('item 21 (OD-40): touched slugs survive a restart between the write and
     expect(JSON.parse(String(f.calls[0].init.body)).slugs.sort()).toEqual(['crashed-ltd', 'next-cycle-ltd']);
     // Drained: the following cycle sends nothing again.
     expect(store.sets.has(TOUCHED_SLUGS_REDIS_KEY)).toBe(false);
+  });
+
+  it('the read-and-clear is atomic: a slug added while a drain is in progress survives for the next cycle', async () => {
+    const store = fakeStore();
+    configureTouchedSlugStore(store);
+    recordTouched('before-ltd');
+    await Promise.resolve();
+    // Another process records a slug the moment after our drain has read the set.
+    const realSmembers = store.smembers;
+    store.smembers = vi.fn(async (k: string) => {
+      const got = await realSmembers(k);
+      await store.sadd(TOUCHED_SLUGS_REDIS_KEY, 'during-drain-ltd');
+      return got;
+    });
+    drainTouched();
+    const f = fakeFetch();
+    await triggerPageRevalidation({ env: ENV, fetchImpl: f.fn });
+    expect(JSON.parse(String(f.calls[0].init.body)).slugs).toEqual(['before-ltd']);
+    expect(Array.from(store.sets.get(TOUCHED_SLUGS_REDIS_KEY) ?? [])).toEqual(['during-drain-ltd']);
   });
 
   it('a Redis read failure still sends the slugs this process recorded (logged, not thrown)', async () => {

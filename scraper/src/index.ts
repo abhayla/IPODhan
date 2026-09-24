@@ -31,7 +31,8 @@ import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js'
 import { runPrimaryDocBackfill, withTimeout } from './scripts/backfill-primary-source-documents.js';
 import { triggerPageRevalidation } from './services/page-revalidation-trigger.js';
 import { configureTouchedSlugStore } from './services/touched-ipos-tracker.js';
-import { checkLiveSlotMisses, dbCoverageLoader, redisSlotClaimer } from './services/live-slot-miss-monitor.js';
+import { checkLiveSlotMisses, dbCoverageLoader, redisClaims } from './services/live-slot-miss-monitor.js';
+import { sendOwnerAlert } from './services/owner-notify.js';
 import { CLI_SOURCE_ARGS } from './config/runnable-sources.js';
 import {
   runDocumentCycle,
@@ -514,25 +515,6 @@ async function runLiveFiguresJob(): Promise<number> {
       await runLiveStep('live:GMP', () => runInvestorgainGMPScraper());
     }
 
-    // OD-72: did the last completed live slot refresh every bidding IPO? Runs
-    // on EVERY live wake, after the fetches so it never delays one (the 18:00
-    // slot is judged by the first wake after 18:30). It alerts the admin once
-    // per slot and touches no public page. A monitor, not a fetch: its own
-    // failure is logged with the cause and does not fail the live job.
-    if (!deadlineHit) {
-      try {
-        const r = await checkLiveSlotMisses({
-          loadCoverage: dbCoverageLoader(db as unknown as Parameters<typeof dbCoverageLoader>[0]),
-          claimSlotOnce: redisSlotClaimer(getRedisClient() as unknown as Parameters<typeof redisSlotClaimer>[0]),
-        });
-        logger.info(r, 'Live-figures job: live-slot miss check');
-      } catch (error) {
-        logger.error(
-          { error: error instanceof Error ? error.message : String(error), cause: error instanceof Error && error.cause ? String(error.cause) : undefined },
-          'Live-figures job: live-slot miss check failed (non-fatal) - no missed-slot alert could be evaluated this wake'
-        );
-      }
-    }
   };
 
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
@@ -547,6 +529,28 @@ async function runLiveFiguresJob(): Promise<number> {
       logger.error(
         { lockResource: LIVE_LOCK_RESOURCE, deadlineMs: LIVE_JOB_DEADLINE_MS, ttlMs: LIVE_LOCK_TTL_MS },
         'Live-figures job: hard deadline reached (spec §2.1 live lock bound) — starting nothing new, releasing scraper:live and exiting 1'
+      );
+    }
+
+    // OD-72: did every ended live slot of today refresh every bidding IPO?
+    // Runs on EVERY live wake, after the fetches and EVEN when the deadline
+    // fired (a deadline is exactly when slots get missed). Judges every ended
+    // slot of the IST day, so skipped wakes are still judged. Admin alert only,
+    // no public page. A monitor, not a fetch: its failure is logged with the
+    // cause and does not fail the live job.
+    try {
+      const claims = redisClaims(getRedisClient() as unknown as Parameters<typeof redisClaims>[0]);
+      const r = await checkLiveSlotMisses({
+        loadDayCoverage: dbCoverageLoader(db as unknown as Parameters<typeof dbCoverageLoader>[0]),
+        isClaimed: claims.isClaimed,
+        claim: claims.claim,
+        send: sendOwnerAlert,
+      });
+      logger.info(r, 'Live-figures job: live-slot miss check');
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error), cause: error instanceof Error && error.cause ? String(error.cause) : undefined },
+        'Live-figures job: live-slot miss check failed (non-fatal) - no missed-slot alert could be evaluated this wake'
       );
     }
   } finally {

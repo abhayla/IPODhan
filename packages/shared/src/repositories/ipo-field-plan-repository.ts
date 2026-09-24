@@ -1040,9 +1040,10 @@ export class IpoFieldPlanRepository extends BaseRepository {
       // Item 21 (OD-72): the read date the page shows. Stamped only when this
       // write records a SUPPLIED answer WITH its evidence -- that is the moment
       // the winning source was read. Every other write (a failure, a gap, a
-      // SUPPLIED with no new evidence) leaves it as it was, so the date never
-      // drifts forward on churn the way updated_at does.
-      const stampRead = state === 'SUPPLIED' && hasChosen;
+      // SUPPLIED with no new evidence, a SUPPLIED naming no source) leaves it
+      // as it was, so the date never drifts forward on churn the way
+      // updated_at does, and a row that names no source carries no date.
+      const stampRead = state === 'SUPPLIED' && hasChosen && typeof chosen.source === 'string' && chosen.source.length > 0;
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
         SET state = ${state}::field_plan_state,
