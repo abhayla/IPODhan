@@ -127,6 +127,8 @@ import {
   type CorrigendumSuggestionRunner,
 } from './corrigendum-reader.js';
 import { SIDECAR_TIMEOUT_MS } from '../scrapers/anchor-investors-scraper.js';
+import type { ExtractionStatus, ExtractionStatePatchContext } from './extraction-state-patch.js';
+import { buildExtractionStatePatch } from './extraction-state-patch.js';
 
 /**
  * The extractor build that produced a stored extraction.
@@ -471,45 +473,16 @@ export function classifyDeterministicAnchorParseFailure(
   return { status: 'FAILED', error: `${reason} @id:${kind}:${shaTag}` };
 }
 
-/** The status values `buildExtractionStatePatch` (and the `documents` column) accept. */
-export type ExtractionStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'PENDING' | 'MANUAL_REVIEW';
-
-export interface ExtractionStatePatchContext {
-  /** Explicit `undefined` leaves `extraction_error` untouched; pass `null` to clear it. */
-  error?: string | null;
-  retryCount?: number;
-  /**
-   * Round 3 (MAJOR-1): explicit override for `updatedAt`, used ONLY by the
-   * busy-box revert path — a busy skip must restore the row's ORIGINAL
-   * `updatedAt`, not stamp a new one, because `documentExtractionBlocked`'s
-   * backoff gate anchors its wait window on `updatedAt`. Any other caller
-   * omits this and gets the real "now" below.
-   */
-  updatedAt?: Date;
-}
-
 /**
- * THE single function every extraction-status write goes through. Pure, so
- * every transition in the module doc comment's state table is a plain
- * input/output test with no database. Stamps `updatedAt: now` for every
- * REAL transition — the one exception is `ctx.updatedAt` (round 3 MAJOR-1),
- * which the busy-revert path uses to restore the row's exact pre-attempt
- * `updatedAt` instead of advancing the backoff clock on a skip.
+ * `ExtractionStatus`, `ExtractionStatePatchContext` and `buildExtractionStatePatch` now live in
+ * `./extraction-state-patch.js` (build-hygiene split, PR #1017 follow-up) — that module has zero
+ * imports of its own, so a script that needs only the pure patch function doesn't drag this
+ * file's whole import graph into `tsconfig.scripts.json`'s stricter program. Re-exported here so
+ * every existing import site (this file's own callers below, and `filing-auto-persist.js`
+ * importers elsewhere) is unaffected.
  */
-export function buildExtractionStatePatch(
-  transition: ExtractionStatus,
-  ctx: ExtractionStatePatchContext = {},
-  now: Date = new Date()
-): Record<string, unknown> {
-  const patch: Record<string, unknown> = {
-    extractionStatus: transition,
-    updatedAt: ctx.updatedAt ?? now,
-  };
-  if (ctx.error !== undefined) patch.extractionError = ctx.error;
-  if (transition === 'COMPLETED') patch.extractedAt = now;
-  if (ctx.retryCount !== undefined) patch.retryCount = ctx.retryCount;
-  return patch;
-}
+export type { ExtractionStatus, ExtractionStatePatchContext };
+export { buildExtractionStatePatch };
 
 export interface AutoPersistIpo {
   id: string;

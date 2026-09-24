@@ -54,7 +54,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike } from './lib/repair-tool';
 import { isExtractableDocType } from '../src/config/document-admission-status.js';
-import { buildExtractionStatePatch } from '../src/services/filing-auto-persist.js';
+import { buildExtractionStatePatch } from '../src/services/extraction-state-patch.js';
 
 const TOOL = 'repair-readmit-stranded-documents';
 const SCRAPER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
