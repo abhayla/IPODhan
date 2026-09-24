@@ -793,6 +793,19 @@
       "sourceDesign": "docs/design/build-cards/item-03-s1a-resolver.md"
     },
     {
+      "id": "pull_plan_pending_stranded",
+      "designId": "PULL-PLAN-PENDING-STRANDED",
+      "findingClass": "a due PENDING ipo_field_plan row on a live IPO whose last attempt never advances: claimNextDueField hands it to every walk first (pri 0), the walk drops the write (field-plan-walk.ts dropped-write branch leaves state, attempts and last_attempt_at untouched) and puts it back, forever. Found 2026-09-25 on staging: 25 gmp_records.gmp rows on live IPOs, write dropped as MISSING_ROW_KEY on every wake",
+      "whatItAsks": "every unclaimed, due PENDING plan row on an UPCOMING/OPEN/CLOSED IPO created 2+ slot boundaries ago has a last_attempt_at within the last two slot boundaries (isStrandedPendingRow, scripts/lib/field-plan-slot.mjs)",
+      "healthy": "0",
+      "alarmsWhen": "any non-zero; each row named by IPO slug, table.field and plan row id",
+      "scope": "ipo_field_plan state PENDING, claimed_at NULL, IPO status UPCOMING/OPEN/CLOSED, every table and field, prod + staging slots",
+      "consumer": "nightly floor-delta (NEW/GONE/SAME by row id)",
+      "consumerReason": "a stranded row is a per-row structural fact that stays until the write path or the plan row changes, so the same diffing consumer as pull_plan_stuck_reclaim reads it by identity",
+      "status": "built (fix/gmp-walk-pending-unclaimed)",
+      "sourceDesign": "docs/design/data-sourcing-pull-model.md §2.4, §2.5.1"
+    },
+    {
       "id": "pull_plan_rank",
       "designId": "PULL-PLAN-RANK",
       "findingClass": "a non-terminal ipo_field_plan row whose stored ranks disagree with the manifest policy for its own manifest_version",
