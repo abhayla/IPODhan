@@ -105,7 +105,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -I -S \"$(git rev-parse --show-toplevel)/.claude/hooks/board-owed-guard.py\" --event Stop",
+            "command": "f=\"$(git rev-parse --show-toplevel 2>/dev/null)/.claude/hooks/board-owed-guard.py\"; [ -f \"$f\" ] || exit 0; python -I -S \"$f\" --event Stop",
             "timeout": 120
           }
         ]
@@ -149,7 +149,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -I -S \"$(git rev-parse --show-toplevel)/.claude/hooks/board-owed-guard.py\" --event PostToolUseBash 2>/dev/null || exit 0",
+            "command": "f=\"$(git rev-parse --show-toplevel 2>/dev/null)/.claude/hooks/board-owed-guard.py\"; [ -f \"$f\" ] || exit 0; python -I -S \"$f\" --event PostToolUseBash 2>/dev/null || exit 0",
             "timeout": 15
           }
         ]
@@ -159,7 +159,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -I -S \"$(git rev-parse --show-toplevel)/.claude/hooks/board-owed-guard.py\" --event PostToolUseArtifact 2>/dev/null || exit 0",
+            "command": "f=\"$(git rev-parse --show-toplevel 2>/dev/null)/.claude/hooks/board-owed-guard.py\"; [ -f \"$f\" ] || exit 0; python -I -S \"$f\" --event PostToolUseArtifact 2>/dev/null || exit 0",
             "timeout": 15
           }
         ]
