@@ -1198,14 +1198,25 @@ export interface AutoPersistDeps {
 export async function writeReceiptAndReopen(
   tx: { execute: (q: any) => Promise<any> },
   doc: { id: string; ipoId: string; type: string; filingDate: string | Date | null; sha256: string | null },
-  receiptFields: ReadonlyArray<{ tableName: string; rowKey: string; fieldName: string; value?: string | null }>
+  receiptFields: ReadonlyArray<{
+    tableName: string;
+    rowKey: string;
+    fieldName: string;
+    value?: string | null;
+    sourceText?: string | null;
+    ocrConfidence?: number | null;
+  }>
 ): Promise<{ reopenedIds: string[] }> {
   const { sql } = await import('drizzle-orm');
   for (const f of receiptFields) {
+    // OD-97: source_text / ocr_confidence say where this document read the value.
+    const conf = f.ocrConfidence == null ? null : String(f.ocrConfidence);
     await tx.execute(sql`
-      INSERT INTO document_field_receipts (document_id, table_name, row_key, field_name, value)
-      VALUES (${doc.id}::uuid, ${f.tableName}, ${f.rowKey ?? ''}, ${f.fieldName}, ${f.value ?? null})
-      ON CONFLICT (document_id, table_name, row_key, field_name) DO UPDATE SET value = EXCLUDED.value
+      INSERT INTO document_field_receipts (document_id, table_name, row_key, field_name, value, source_text, ocr_confidence)
+      VALUES (${doc.id}::uuid, ${f.tableName}, ${f.rowKey ?? ''}, ${f.fieldName}, ${f.value ?? null},
+              ${f.sourceText ?? null}, ${conf}::numeric)
+      ON CONFLICT (document_id, table_name, row_key, field_name) DO UPDATE
+        SET value = EXCLUDED.value, source_text = EXCLUDED.source_text, ocr_confidence = EXCLUDED.ocr_confidence
     `);
   }
   const { reopenPlanRowsForCompletedDocument } = await import('./plan-supersession.js');

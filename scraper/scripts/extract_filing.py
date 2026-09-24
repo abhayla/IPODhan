@@ -2850,6 +2850,12 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
         **({"unread_pages": unread} if unread else {}),
         "unit": meta.get("unit"),
         "fiscal_years": meta.get("fiscal_years") or [],
+        # OD-97 (item 22): the page indices whose text came from OCR, ALWAYS
+        # present on a current envelope. An empty list says "every page came
+        # from the PDF's own text layer", which is a known TEXT read; a
+        # missing key (an older envelope) is UNKNOWN. The persister marks each
+        # value from this list plus the field's own page.
+        "ocr_pages": sorted(int(p) for p in (ocr_confidence or {})),
         "fields": fields,
     }
 

@@ -1,0 +1,1099 @@
+{
+  "doc_type": "PRICE_BAND_AD",
+  "source_doc": "steamhouse-pbad.pdf",
+  "pages": 4,
+  "extraction_status": "PARTIAL_OCR",
+  "unit": "millions",
+  "fiscal_years": [
+    2026,
+    2025,
+    2024
+  ],
+  "ocr_pages": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "fields": {
+    "price_band_floor": {
+      "value": 77.0,
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "price_band_ordering",
+        "passed": true,
+        "detail": "77.0 < 81.0 <= 1.2x floor"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "price_band_cap": {
+      "value": 81.0,
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "price_band_ordering",
+        "passed": true,
+        "detail": "77.0 < 81.0 <= 1.2x floor"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "face_value": {
+      "value": 2.0,
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "face_value_positive",
+        "passed": true,
+        "detail": "2.0"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "lot_size": {
+      "value": 185.0,
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "lot_min_application_value",
+        "passed": true,
+        "detail": "lot value 14245.0"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "lot_multiple": {
+      "value": 185.0,
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "lot_multiple_matches_lot",
+        "passed": true,
+        "detail": "185.0 == lot 185.0"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "floor_multiple_of_face": {
+      "value": 38.5,
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "floor_multiple_recomputed",
+        "passed": true,
+        "detail": "77.0/2.0 = 38.5 == 38.5"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "cap_multiple_of_face": {
+      "value": 40.5,
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "cap_multiple_recomputed",
+        "passed": true,
+        "detail": "81.0/2.0 = 40.5 == 40.5"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "shares_at_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "shares_x_price_equals_amount",
+        "passed": false,
+        "detail": "check_failed: shares, price or amount missing"
+      },
+      "source_text": "TEXT"
+    },
+    "shares_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "shares_x_price_equals_amount",
+        "passed": false,
+        "detail": "check_failed: shares, price or amount missing"
+      },
+      "source_text": "TEXT"
+    },
+    "fresh_issue_amount": {
+      "value": 3530.0,
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "prose_fallback",
+        "passed": true,
+        "detail": "table check fresh_issue_amount_consistent failed (None at both prices); offer sentence reads 3530.0"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "ofs_shares": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "ofs_shares_x_price_equals_amount",
+        "passed": false,
+        "detail": "check_failed: shares, price or amount missing"
+      },
+      "source_text": "TEXT"
+    },
+    "ofs_amount": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "ofs_shares_x_price_equals_amount",
+        "passed": false,
+        "detail": "check_failed: shares, price or amount missing"
+      },
+      "source_text": "TEXT"
+    },
+    "ofs_amount_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "ofs_shares_x_price_equals_amount",
+        "passed": false,
+        "detail": "check_failed: shares, price or amount missing"
+      },
+      "source_text": "TEXT"
+    },
+    "total_offer_shares_at_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "total_offer_size_reconciles",
+        "passed": false,
+        "detail": "check_failed: fresh + OFS shares at floor: parts sum 61.0 != printed total 51.0"
+      },
+      "source_text": "TEXT"
+    },
+    "total_offer_amount_at_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "total_offer_size_reconciles",
+        "passed": false,
+        "detail": "check_failed: fresh + OFS shares at floor: parts sum 61.0 != printed total 51.0"
+      },
+      "source_text": "TEXT"
+    },
+    "total_offer_shares_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "total_offer_size_reconciles",
+        "passed": false,
+        "detail": "check_failed: fresh + OFS shares at cap: parts sum 61.0 != printed total 11.0"
+      },
+      "source_text": "TEXT"
+    },
+    "shares_monotonic": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "more_shares_at_floor_than_cap",
+        "passed": false,
+        "detail": "check_failed: missing"
+      },
+      "source_text": "TEXT"
+    },
+    "market_cap_at_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "market_cap_ordering_and_consistency",
+        "passed": false,
+        "detail": "check_failed: missing inputs"
+      },
+      "source_text": "TEXT"
+    },
+    "market_cap_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "market_cap_ordering_and_consistency",
+        "passed": false,
+        "detail": "check_failed: missing inputs"
+      },
+      "source_text": "TEXT"
+    },
+    "post_offer_shares_at_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "post_offer_shares_x_price_equals_market_cap",
+        "passed": false,
+        "detail": "check_failed: 457.0x77.0 = 0.04mn vs printed 6276.406 (99.9994%)"
+      },
+      "source_text": "TEXT"
+    },
+    "post_offer_shares_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "post_offer_shares_x_price_equals_market_cap",
+        "passed": false,
+        "detail": "check_failed: 457.0x77.0 = 0.04mn vs printed 6276.406 (99.9994%)"
+      },
+      "source_text": "TEXT"
+    },
+    "issue_structure": {
+      "value": "FRESH_ONLY",
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "issue_structure_from_ofs_row",
+        "passed": true,
+        "detail": "ofs=0.0"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "weighted_average_ronw": {
+      "value": 24.14,
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "ronw_within_plausible_range",
+        "passed": true,
+        "detail": "24.14"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "book_building_regulation": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "regulation_cited",
+        "passed": false,
+        "detail": "check_failed: None"
+      },
+      "source_text": "TEXT"
+    },
+    "qib_pct": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "allocation_sums_and_qib_floor",
+        "passed": false,
+        "detail": "check_failed: one or more allocation percentages missing"
+      },
+      "source_text": "TEXT"
+    },
+    "nii_pct": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "allocation_sums_and_qib_floor",
+        "passed": false,
+        "detail": "check_failed: one or more allocation percentages missing"
+      },
+      "source_text": "TEXT"
+    },
+    "retail_pct": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "allocation_sums_and_qib_floor",
+        "passed": false,
+        "detail": "check_failed: one or more allocation percentages missing"
+      },
+      "source_text": "TEXT"
+    },
+    "designated_stock_exchange": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "designated_exchange_known",
+        "passed": false,
+        "detail": "check_failed: None"
+      },
+      "source_text": "TEXT"
+    },
+    "anchor_bid_date": {
+      "value": "2026-09-08",
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": true,
+        "detail": "anchor_bid_date=2026-09-08 < open_date=2026-09-09 < close_date=2026-09-11 < credit_date=2026-09-16"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "open_date": {
+      "value": "2026-09-09",
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": true,
+        "detail": "anchor_bid_date=2026-09-08 < open_date=2026-09-09 < close_date=2026-09-11 < credit_date=2026-09-16"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "close_date": {
+      "value": "2026-09-11",
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": true,
+        "detail": "anchor_bid_date=2026-09-08 < open_date=2026-09-09 < close_date=2026-09-11 < credit_date=2026-09-16"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "basis_of_allotment_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": true,
+        "detail": "anchor_bid_date=2026-09-08 < open_date=2026-09-09 < close_date=2026-09-11 < credit_date=2026-09-16"
+      },
+      "source_text": "TEXT"
+    },
+    "refund_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": true,
+        "detail": "anchor_bid_date=2026-09-08 < open_date=2026-09-09 < close_date=2026-09-11 < credit_date=2026-09-16"
+      },
+      "source_text": "TEXT"
+    },
+    "credit_date": {
+      "value": "2026-09-16",
+      "page": 3,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": true,
+        "detail": "anchor_bid_date=2026-09-08 < open_date=2026-09-09 < close_date=2026-09-11 < credit_date=2026-09-16"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.761
+    },
+    "listing_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": true,
+        "detail": "anchor_bid_date=2026-09-08 < open_date=2026-09-09 < close_date=2026-09-11 < credit_date=2026-09-16"
+      },
+      "source_text": "TEXT"
+    },
+    "upi_cutoff_time": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "upi_cutoff_parsed",
+        "passed": false,
+        "detail": "check_failed: None"
+      },
+      "source_text": "TEXT"
+    },
+    "rhp_filing_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "rhp_filed_before_open",
+        "passed": false,
+        "detail": "check_failed: missing"
+      },
+      "source_text": "TEXT"
+    },
+    "fiscal_years": {
+      "value": [
+        2026,
+        2025,
+        2024
+      ],
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "fiscal_years_consecutive",
+        "passed": true,
+        "detail": "3 years [2024, 2025, 2026]"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "unit": {
+      "value": "millions",
+      "page": 1,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "unit_not_stated",
+        "passed": true,
+        "detail": "millions"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7497
+    },
+    "pat_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "pat_year_series",
+        "passed": false,
+        "detail": "check_failed: no values"
+      },
+      "source_text": "TEXT"
+    },
+    "op_cash_flow_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "op_cash_flow_year_series",
+        "passed": false,
+        "detail": "check_failed: no values"
+      },
+      "source_text": "TEXT"
+    },
+    "dscr_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "row_not_in_document"
+      },
+      "source_text": "TEXT"
+    },
+    "rent_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "row_not_in_document"
+      },
+      "source_text": "TEXT"
+    },
+    "revenue_by_fy": {
+      "value": {
+        "2026": 74.29,
+        "2025": 70.79,
+        "2024": 37.74
+      },
+      "page": 1,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "revenue_by_fy_year_series",
+        "passed": true,
+        "detail": "3 years [2024, 2025, 2026]"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7497
+    },
+    "ebitda_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "row_not_in_document"
+      },
+      "source_text": "TEXT"
+    },
+    "financial_plausibility_pat_not_above_revenue": {
+      "value": true,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "pat_not_above_revenue",
+        "passed": true,
+        "detail": "not applicable (revenue or PAT missing)"
+      },
+      "source_text": "TEXT"
+    },
+    "financial_plausibility_ebitda_at_least_pat": {
+      "value": true,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "ebitda_at_least_pat",
+        "passed": true,
+        "detail": "not applicable (no profitable year with EBITDA)"
+      },
+      "source_text": "TEXT"
+    },
+    "financial_plausibility_yoy_ratio_within_bounds": {
+      "value": true,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "yoy_ratio_within_bounds",
+        "passed": true,
+        "detail": "MAINBOARD band 0.2x..5.0x — 2 steps within band"
+      },
+      "source_text": "TEXT"
+    },
+    "eps_basic_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "eps_year_series",
+        "passed": false,
+        "detail": "check_failed: no values"
+      },
+      "source_text": "TEXT"
+    },
+    "eps_diluted_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "eps_year_series",
+        "passed": false,
+        "detail": "check_failed: no values"
+      },
+      "source_text": "TEXT"
+    },
+    "eps_sign_matches_pat": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "eps_sign_matches_pat",
+        "passed": false,
+        "detail": "check_failed: no shared years"
+      },
+      "source_text": "TEXT"
+    },
+    "eps_weighted_average": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "weighted_eps_matches_year_series",
+        "passed": false,
+        "detail": "check_failed: weighted EPS: missing series, weights or printed average"
+      },
+      "source_text": "TEXT"
+    },
+    "ronw_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "ronw_year_table_not_in_document"
+      },
+      "source_text": "TEXT"
+    },
+    "pe_at_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "pe_equals_price_over_diluted_eps",
+        "passed": false,
+        "detail": "check_failed: P/E at floor: missing input"
+      },
+      "source_text": "TEXT"
+    },
+    "pe_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "pe_equals_price_over_diluted_eps",
+        "passed": false,
+        "detail": "check_failed: P/E at floor: missing input"
+      },
+      "source_text": "TEXT"
+    },
+    "financial_basis": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "financial_basis_not_stated"
+      },
+      "source_text": "TEXT"
+    },
+    "promoter_name": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "promoter_name_present",
+        "passed": false,
+        "detail": "check_failed: None"
+      },
+      "source_text": "TEXT"
+    },
+    "promoter_names": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "promoter_names_present",
+        "passed": false,
+        "detail": "check_failed: []"
+      },
+      "source_text": "TEXT"
+    },
+    "promoter_selling_shareholders": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "no_promoter_selling_shareholder_table"
+      },
+      "source_text": "TEXT"
+    },
+    "promoter_shares_held": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "promoter_shares_positive",
+        "passed": false,
+        "detail": "check_failed: None"
+      },
+      "source_text": "TEXT"
+    },
+    "promoter_holding_pre_pct": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "fresh_issue_dilutes_promoter",
+        "passed": false,
+        "detail": "check_failed: missing"
+      },
+      "source_text": "TEXT"
+    },
+    "promoter_holding_post_pct_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "fresh_issue_dilutes_promoter",
+        "passed": false,
+        "detail": "check_failed: missing"
+      },
+      "source_text": "TEXT"
+    },
+    "promoter_waca": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "promoter_waca_positive",
+        "passed": false,
+        "detail": "check_failed: None"
+      },
+      "source_text": "TEXT"
+    },
+    "waca_last_3y": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "cap_over_waca_equals_printed_multiple",
+        "passed": false,
+        "detail": "check_failed: cap price, WACA or printed multiple missing"
+      },
+      "source_text": "TEXT"
+    },
+    "cap_multiple_last_3y": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "cap_over_waca_equals_printed_multiple",
+        "passed": false,
+        "detail": "check_failed: cap price, WACA or printed multiple missing"
+      },
+      "source_text": "TEXT"
+    },
+    "waca_secondary_transactions": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "secondary_transaction_waca_row_not_in_document"
+      },
+      "source_text": "TEXT"
+    },
+    "floor_multiple_of_waca_secondary": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "secondary_transaction_waca_row_not_in_document"
+      },
+      "source_text": "TEXT"
+    },
+    "cap_multiple_of_waca_secondary": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "secondary_transaction_waca_row_not_in_document"
+      },
+      "source_text": "TEXT"
+    },
+    "pre_ipo_placement": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "pre_ipo_placement_stated",
+        "passed": false,
+        "detail": "check_failed: explicitly stated as none"
+      },
+      "source_text": "TEXT"
+    },
+    "brlm_sebi_regs": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "brlm_reg_numbers_found",
+        "passed": false,
+        "detail": "check_failed: []"
+      },
+      "source_text": "TEXT"
+    },
+    "registrar_sebi_reg": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "registrar_reg_number_found",
+        "passed": false,
+        "detail": "check_failed: None"
+      },
+      "source_text": "TEXT"
+    },
+    "brlm_track_record": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "brlm_rows_reconcile_with_total",
+        "passed": false,
+        "detail": "check_failed: missing parts or total"
+      },
+      "source_text": "TEXT"
+    },
+    "brlm_issues_3y_total": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "closed_below_le_total",
+        "passed": false,
+        "detail": "check_failed: missing"
+      },
+      "source_text": "TEXT"
+    },
+    "brlm_closed_below_total": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "closed_below_le_total",
+        "passed": false,
+        "detail": "check_failed: missing"
+      },
+      "source_text": "TEXT"
+    },
+    "peer_companies": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "peer_pe_average_matches_printed",
+        "passed": false,
+        "detail": "check_failed: industry peer group P/E: missing values or printed average"
+      },
+      "source_text": "TEXT"
+    },
+    "industry_peer_pe_average": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "peer_pe_average_matches_printed",
+        "passed": false,
+        "detail": "check_failed: industry peer group P/E: missing values or printed average"
+      },
+      "source_text": "TEXT"
+    },
+    "compliance_officer": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "compliance_officer_present",
+        "passed": false,
+        "detail": "check_failed: None"
+      },
+      "source_text": "TEXT"
+    },
+    "compliance_officer_phone": {
+      "value": null,
+      "page": 3,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "no_telephone_on_the_contact_person_line"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.761
+    },
+    "compliance_officer_email": {
+      "value": null,
+      "page": 3,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "no_email_on_the_contact_person_line"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.761
+    },
+    "cin": {
+      "value": "U40300GJ2015PLC083493",
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "cin_matches_mca_pattern",
+        "passed": true,
+        "detail": "U40300GJ2015PLC083493"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "business_description": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "description_within_length",
+        "passed": false,
+        "detail": "check_failed: missing"
+      },
+      "source_text": "TEXT"
+    },
+    "objects_of_offer": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "objects_section_not_in_document"
+      },
+      "source_text": "TEXT"
+    },
+    "concentration_kpis": {
+      "value": [
+        {
+          "label": "concentration_risk_our_top_ten_customers",
+          "value_pct": 47.87,
+          "fiscal_year": 2026
+        }
+      ],
+      "page": 0,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "concentration_percentages_in_range",
+        "passed": true,
+        "detail": "1 entries"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.7456
+    },
+    "syndicate_members": {
+      "value": [
+        {
+          "name": "Axis Capital Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "HDFC Securities Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "IIFL Capital Services Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "JM Financial ServicesLimited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "Kotak Securities Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "LKP Securities Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "Motilal Oswal Financial Services Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "SBICAP Secunities Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "Sharekhan Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "SMC Global Securities Limited",
+          "role": "SUB_SYNDICATE"
+        }
+      ],
+      "page": 3,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "syndicate_member_names_storable",
+        "passed": true,
+        "detail": "10 members"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.761
+    },
+    "issue_banks": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "no_sponsor_escrow_or_public_issue_bank_line"
+      },
+      "source_text": "TEXT"
+    },
+    "bid_windows": {
+      "value": [
+        {
+          "activity": "Submission and Revision in Bids",
+          "window": "Only between 10.00 a.m. and 5.00 p.m. (Indian Standard Time (\"IST"
+        },
+        {
+          "activity": "Submission of Electronic Applications (Online ASBA through 3-in-1 accounts) - For RIBS other than QIBs and NiIs",
+          "window": "Only between 10.00 a.m. and up to 5.00 p.m. IST"
+        },
+        {
+          "activity": "and Syndicate UPI ASBA applications where Bid Amount iS up to （R500.000）",
+          "window": "Only between 10.00 a.m. and up to 4.00 p.m. IST"
+        },
+        {
+          "activity": "Submission of Electronic Applications (Syndicate Non-Retail, Non-Individual Applications)",
+          "window": "Only between 10.00 a.m. and up to 3.00 p.m. IST"
+        },
+        {
+          "activity": "Submission of Physical Applications (Bank ASBA)",
+          "window": "Only between 10.00 a.m.. and up to 1.00 p.m. IST"
+        },
+        {
+          "activity": "more than 500000）",
+          "window": "Only between 10.00 a.m. and up to 12.00 p.m. IST"
+        },
+        {
+          "activity": "Upward Revision of Bids by QIBS and Non-Institutional Bidders categories",
+          "window": "Only between 10.00 a.m. and up to 4.00 p.m. IST"
+        },
+        {
+          "activity": "Upward or downward Revision of Bids or cancellation of Bids by RIBs",
+          "window": "Only between 10.00 a.m. and up to 4.00 p.m. IST"
+        }
+      ],
+      "page": 3,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "bid_window_rows_bounded",
+        "passed": true,
+        "detail": "8 rows"
+      },
+      "source_text": "OCR",
+      "ocr_confidence": 0.761
+    },
+    "promoter_group_transactions_since_drhp": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "statement_not_found"
+      },
+      "source_text": "TEXT"
+    },
+    "litigation_notices": {
+      "value": null,
+      "page": null,
+      "source_doc": "steamhouse-pbad.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "section_not_found"
+      },
+      "source_text": "TEXT"
+    }
+  }
+}

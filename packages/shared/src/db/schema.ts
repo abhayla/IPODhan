@@ -1942,6 +1942,13 @@ export const documentFieldReceipts = pgTable(
     // (text; JSON for arrays/objects). The DOC fetcher credits the document
     // only when this equals the column's current value (OD-73 "identical").
     value: text('value'),
+    // OD-97 (item 22): where THIS document read the value. 'TEXT' = the PDF's
+    // own text layer, 'OCR' = only OCR'd pages, 'MIXED' = parts from each or a
+    // page the extractor did not name in an OCR'd document. NULL = a receipt
+    // written before the mark existed (unknown). ocr_confidence is the lowest
+    // page confidence behind an 'OCR' value.
+    sourceText: varchar('source_text', { length: 8 }),
+    ocrConfidence: numeric('ocr_confidence', { precision: 5, scale: 4 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({

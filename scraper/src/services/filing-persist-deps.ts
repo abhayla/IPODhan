@@ -30,7 +30,8 @@ import {
   DataConflictsRepository,
   getRedisClient,
 } from '@ipodhan/shared';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import { normalizeReceiptValue } from '../../config/plan-supersession-rule.mjs';
 import * as schema from '@ipodhan/shared/db/schema';
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
@@ -160,11 +161,40 @@ export function buildFilingPersistDeps(
     riskFactors: new IpoRiskFactorsRepository(db, redis),
     documentFilingDateWriter: makeDocumentFilingDateWriter(new DocumentRepository(db, redis)),
     childRowConsolidator,
+    ocrPrecedence: makeOcrPrecedenceReader(),
     protectionFilter: (
       id: string,
       table: string,
       data: Record<string, unknown>,
       scraperName: string
     ) => filterProtectedFields(id, table, data, scraperName, db, redis),
+  };
+}
+
+/**
+ * OD-97: the two reads the OCR-loses rule needs. A text read is a receipt this
+ * IPO's own documents wrote with source_text 'TEXT'; receipts from before the
+ * mark existed (NULL) are unknown and never count.
+ */
+export function makeOcrPrecedenceReader(): NonNullable<import('./filing-persister.js').FilingPersisterDeps['ocrPrecedence']> {
+  return {
+    async textReceiptValues(ipoId: string, tableName: string, fieldName: string): Promise<string[]> {
+      const res = await db.execute(sql`
+        SELECT DISTINCT r.value
+          FROM document_field_receipts r
+          JOIN documents d ON d.id = r.document_id
+         WHERE d.ipo_id = ${ipoId}::uuid
+           AND r.table_name = ${tableName}
+           AND r.row_key = ''
+           AND r.field_name = ${fieldName}
+           AND r.source_text = 'TEXT'
+           AND r.value IS NOT NULL`);
+      const rows = ((res as { rows?: unknown[] }).rows ?? (res as unknown as unknown[])) as Array<{ value: string }>;
+      return rows.map((r) => normalizeReceiptValue(r.value)).filter((v): v is string => v !== null);
+    },
+    async storedDetails(ipoId: string): Promise<Record<string, unknown> | null> {
+      const [row] = await db.select().from(schema.ipoDetails).where(eq(schema.ipoDetails.ipoId, ipoId)).limit(1);
+      return (row as Record<string, unknown> | undefined) ?? null;
+    },
   };
 }

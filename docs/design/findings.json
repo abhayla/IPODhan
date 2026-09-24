@@ -1662,6 +1662,15 @@
       "phase1": true,
       "title": "BSE subscription time is an IST clock string read as UTC: intraday BSE-only figures are skipped as future (prod 465, staging 11) and the 17:00 day-end figure is stored as 22:30 IST",
       "detail": "Measured 2026-09-24 ~20:1x IST, read-only. mapBSESubscription (scraper/src/scrapers/bse-api-scraper.ts:462) parses BSE Maxdt with new Date(maxdt); Maxdt has no zone and is IST; both scraper processes run TZ=UTC (pm2 jlist). resolveSubscriptionSnapshotTimestamp (data-persister.ts:1673, W-38) then skips any snapshot more than 5 minutes in the future: pm2 logs count the skip line 465 times on prod and 11 on staging; example 2026-09-23 08:07:10Z Unitec Fibres Limited sourceTimestamp 2026-09-23T13:36:42.000Z (really 13:36:42 IST). ipodhan_staging subscriptions, last 7 days: rows at exactly 17:00:00 = 3 (09-21), 4 (09-22), 6 (09-23), all scope BSE_ONLY (liqvd-digital-india-ltd, unitec-fibres-ltd, s-k-offset-ltd, himalaya-nutravedics-india-ltd), some duplicated at one timestamp. Consequence: BSE-only IPOs lose intraday live figures, which is at least part of the live-slot misses F-165 measured (PR #997). Issue #999. Related: F-165, OD-19, OD-72, ist-timezone rule."
+    },
+    {
+      "id": "F-167",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "area": "document-extraction",
+      "phase1": true,
+      "title": "The per-value OCR mark is dropped before consolidation: 380 offer-document values on 54 IPOs came from OCR-route documents and none says which were read off an OCR page",
+      "detail": "Measured 2026-09-25 ~00:3x IST, read-only on ipodhan_staging. The extractor marks each field it read off an OCR'd page (scraper/scripts/ocr_pages.py annotate_fields: source_text 'OCR', ocr_confidence), but the persister's ExtractedField type (scraper/src/services/filing-persister.ts) carried only value/page/check, provenance was one lineage per document with confidence hard-coded 100, and document_field_receipts had no such column. Staging: ipo_pipeline_steps D6 DONE = 56 documents (OK_OCR 1, PARTIAL_OCR 55); field_sources rows written by those documents (joined on data_lineage.sourceSha = input_ref) = 288 values on 39 MAINBOARD IPOs + 92 values on 15 SME IPOs; field_sources rows whose lineage mentions ocr = 0; FILING_EXTRACTION lineage keys = docType, documentId, extractorVersion, field, method, policyOrigin, sourceDoc, sourceSha. Example: steamhouse-india-ltd's price band ad (BSE PriceBandAD_20260907153412.pdf) is all four pages OCR, and its band, lot and face value are stored at confidence 100 with no mark. Consequence: OD-36's rule (an OCR-only value never wins a disagreement against a text page) had nothing to act on. Fixed by OD-97: the envelope carries ocr_pages, each receipt carries source_text/ocr_confidence (migration 0062), the persister's provenance carries dataLineage.ocr, and an OCR-only value loses to a stored text-supported value. Values written before the fix stay unmarked (OD-65/OD-91: no re-read) and count as unknown."
     }
   ],
   "false_assertions": [
