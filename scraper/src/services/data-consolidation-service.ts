@@ -367,7 +367,7 @@ function isDetectedAtStillFresh(detectedAt: unknown, now: number): boolean {
  * status write via plain source priority. Defined locally (not imported
  * from web) to keep the scraper package dependency-free of web.
  */
-const TERMINAL_IPO_STATUSES = new Set<string>(['WITHDRAWN', 'POSTPONED']);
+export const TERMINAL_IPO_STATUSES: ReadonlySet<string> = new Set<string>(['WITHDRAWN', 'POSTPONED']);
 
 const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
 

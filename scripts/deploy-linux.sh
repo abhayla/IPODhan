@@ -2102,6 +2102,7 @@ SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
 SCRAPER_LIVE_CRON_MARKER="# ipodhan-scraper-live:$SLOT"
 SCRAPER_CLOSED_CRON_MARKER="# ipodhan-scraper-closed:$SLOT"
 SCRAPER_OPENING_CRON_MARKER="# ipodhan-scraper-opening:$SLOT"
+SCRAPER_PRICE_CRON_MARKER="# ipodhan-scraper-price:$SLOT"
 SCRAPER_WAKE_LOG="${DEPLOY_SCRAPER_WAKE_LOG:-/var/log/ipodhan-scraper-wake-$SLOT.log}"
 install_scraper_cron() {
   # MAJOR (Tier A review): the scheduled line pins $CURRENT_LINK, never a
@@ -2165,6 +2166,31 @@ install_scraper_cron() {
   local opening_enabled=1
   [ "${DEPLOY_SCRAPER_OPENING_JOB:-1}" = "0" ] && opening_enabled=0
 
+  local price_marker="${SCRAPER_PRICE_CRON_MARKER:-# ipodhan-scraper-price:$SLOT}"
+  # Item 7 S5 (OD-29): the post-listing price job, every 15 minutes in market
+  # hours (09:15-15:30 IST, Mon-Fri; the job itself gates the window and NSE
+  # holidays, so an edge wake outside it makes zero calls). This box's cron runs
+  # in IST. Prod reads at :14/:29/:44/:59 (09:29 to 15:14) plus the close read
+  # at 15:30 -- clear of prod's live (:05/:35) minutes, which share the live
+  # lock (spec 2.1), and of its data, closed (:10/:40) and opening (09:45)
+  # minutes. Staging reads at :12/:27/:42/:57 (to 15:12) plus 15:30, clear of
+  # its live (:20/:50), data (:15/:45), closed (:25/:55) and opening (09:40).
+  # 25 reads a trading day on each slot. The 15:30 read is the session's last
+  # trade (both lines carry the same marker, so the filter below replaces or
+  # removes them together).
+  local price_cron="${SCRAPER_PRICE_CRON:-}"
+  local price_close_cron="${SCRAPER_PRICE_CLOSE_CRON:-}"
+  if [ -z "$price_cron" ]; then
+    if [ "$SLOT" = "prod" ]; then price_cron='14,29,44,59 9-14 * * 1-5'; else price_cron='12,27,42,57 9-14 * * 1-5'; fi
+  fi
+  if [ -z "$price_close_cron" ]; then
+    if [ "$SLOT" = "prod" ]; then price_close_cron='14,30 15 * * 1-5'; else price_close_cron='12,30 15 * * 1-5'; fi
+  fi
+  local price_line="$price_cron $wake_script price >> $SCRAPER_WAKE_LOG 2>&1 $price_marker
+$price_close_cron $wake_script price >> $SCRAPER_WAKE_LOG 2>&1 $price_marker"
+  local price_enabled=1
+  [ "${DEPLOY_SCRAPER_PRICE_JOB:-1}" = "0" ] && price_enabled=0
+
   # With a job disabled its line is not written, and the marker filter below
   # still removes any previous one - so disabling is idempotent.
   local new_lines="$cron_line"
@@ -2179,6 +2205,10 @@ $closed_line"
   if (( opening_enabled )); then
     new_lines="$new_lines
 $opening_line"
+  fi
+  if (( price_enabled )); then
+    new_lines="$new_lines
+$price_line"
   fi
 
   if (( DRY_RUN )); then
@@ -2198,6 +2228,11 @@ $opening_line"
     else
       log "[dry-run] DEPLOY_SCRAPER_OPENING_JOB=0: would REMOVE any '$opening_marker' line"
     fi
+    if (( price_enabled )); then
+      log "[dry-run] would install crontab line: $price_line"
+    else
+      log "[dry-run] DEPLOY_SCRAPER_PRICE_JOB=0: would REMOVE any '$price_marker' line"
+    fi
     return 0
   fi
 
@@ -2208,10 +2243,10 @@ $opening_line"
 
   local existing
   existing="$(crontab -l 2>/dev/null || true)"
-  # Drop only this slot's previous data, live, closed and opening lines,
+  # Drop only this slot's previous data, live, closed, opening and price lines,
   # keep every other entry.
   local kept
-  kept="$(printf '%s\n' "$existing" | grep -vF "$SCRAPER_CRON_MARKER" | grep -vF "$live_marker" | grep -vF "$closed_marker" | grep -vF "$opening_marker" || true)"
+  kept="$(printf '%s\n' "$existing" | grep -vF "$SCRAPER_CRON_MARKER" | grep -vF "$live_marker" | grep -vF "$closed_marker" | grep -vF "$opening_marker" | grep -vF "$price_marker" || true)"
 
   if printf '%s\n%s\n' "$kept" "$new_lines" | grep -v '^$' | crontab -; then
     log "install_scraper_cron: scheduled the data wake for slot '$SLOT' at '$SCRAPER_CRON' -> $wake_script"
@@ -2229,6 +2264,11 @@ $opening_line"
       log "install_scraper_cron: scheduled the opening-day check at '$opening_cron' -> $wake_script"
     else
       log "install_scraper_cron: DEPLOY_SCRAPER_OPENING_JOB=0, so this slot's opening-day line was removed"
+    fi
+    if (( price_enabled )); then
+      log "install_scraper_cron: scheduled the post-listing price job at '$price_cron' and '$price_close_cron' -> $wake_script"
+    else
+      log "install_scraper_cron: DEPLOY_SCRAPER_PRICE_JOB=0, so this slot's price line was removed"
     fi
   else
     warn "install_scraper_cron: crontab write FAILED - THE SCRAPER WILL NOT BE WOKEN on this box. Add by hand: $new_lines"

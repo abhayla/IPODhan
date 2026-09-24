@@ -2,6 +2,46 @@
 
 Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 7: scheduler built (scheduler/, due-step-cycle.ts) on refs/remotes/origin/main, but the OD-55 force-kill removal (#805) is merged and not on prod, and tiering (O-4) is unverified
 
+**Updated 2026-09-24 for S5 round 5 (OD-29, OD-54, OD-38; F-150, F-155, F-160, F-162) — the post-listing price job, as
+built (delisting detection is a separate item, #983 — this job never writes a status):**
+`--job=price` is its own process (`runPostListingPriceWake`, scraper/src/scheduler/post-listing-price-wake.ts) under
+the §2.1 `live` lock class: the same `scraper:live` resource and 4-minute TTL as the live-figures job, skip-if-held,
+a 3-minute in-process run deadline (stalest price first, so a cut-short run resumes where it stopped), a 15-second
+timeout on every exchange request, and the wake wrapper's 300 s ceiling (same as `live`). It runs only 09:15-15:30
+IST Mon-Fri and not on an NSE holiday (`isPriceJobWindowIST` + `market_holidays`), for IPOs with status LISTED whose
+listing_date is one of the 90 IST dates starting at the listing day (`listing_date > today - 90`). Reads: NSE
+`GetQuoteApi getSymbolData` with the row's cached working series (`ipos.price_nse_series`) first, then EQ/BE/SM/ST in
+segment order; BSE `getScripHeaderData` only when NSE has no price, the scrip code from `ListofScripData` by ISIN (at
+most once per run). Calls are paced 400 ms apart and counted in the run line. NSE wins (spec field row 171).
+
+Before a price answer is written it is guarded (round 5, Tier A): the as-of is refused if it does not round-trip
+back to the same IST day/month/year the exchange text carried (`parseNseIstTimestamp` / `parseBseAsOn` reject a
+31-Feb that `new Date()` would otherwise roll forward into 3-Mar) or if it is more than 5 minutes ahead of now
+(`isAsOfTooFarInFuture`); the exchange's own ISIN (NSE `metaData.isinCode`) is compared against the stored
+`ipos.isin` and refused on a mismatch (logged with both values), never compared when the stored ISIN is null
+(F-160: 121 of 129 in-window IPOs have none) but the gap is still logged. An NSE row whose `secInfo.isSuspended`
+is present and not `"Active"` (the only trading-status field the captured fixture carries) is treated like BSE's
+own suspension case: no price this run. One candidate throwing an unexpected error is refused and logged by name;
+the run continues to the next candidate. `writePostListingPrice`: exactly `current_price` +
+`current_price_updated_at` via `IPORepository.update`; the as-of only moves forward (an older exchange as-of is
+refused, `stale`); an unchanged price with a newer as-of moves only the as-of (`confirmed`; §2.1 "Label": the time
+it was read); one `field_sources` row per written column. Outages: a series answer is no-such-symbol only on an
+HTTP 404 carrying NSE's JSON error body (`{"error": ...}`, measured) or an explicit empty quote list; an HTML 404
+(a renamed or retired route, captured 2026-09-24), an HTML/empty/`{}` 200, a 403, a 5xx or a timeout is UNKNOWN,
+logged with its cause, never counted. (The round 3 NSE endpoint canary was removed in round 4 along with
+delisting detection, #983 — a no-such-symbol read is never counted toward anything in this job any more.)
+BSE: only Category `Delisted` is no-such-symbol; a suspended scrip (500102 answers Category `Listed` with
+DisplayText `Suspended due to Procedural reasons`) or any other category is UNKNOWN. **Not done:** the OD-8 page
+freeze (#975); the ISIN gap belongs to the pull walk (F-160, item 6); delisting detection (§2.3.3.3) is #983. Cron:
+`scripts/deploy-linux.sh` prod `14,29,44,59 9-14 * * 1-5` + `14,30 15 * * 1-5`, staging `12,27,42,57 9-14 * * 1-5` +
+`12,30 15 * * 1-5` (IST box clock; 25 reads a day), `scripts/scraper-wake.sh price` (lock:resource:scraper:live).
+Tests: `scraper/tests/unit/scrapers/post-listing-quote.test.ts` (real 2026-09-24 responses; outage shapes refused;
+suspension refused; round-trip date rejection; cached series 1 call), `scraper/tests/unit/scheduler/post-listing-price.test.ts`
+(call counts, future as-of and ISIN-mismatch refusal, one bad candidate never stopping the run, unknown never
+counts, stale as-of refused, deadline), `scraper/tests/integration/post-listing-price.integration.test.ts`
+(ipodhan_test). Core proof 2026-09-24 12:18 IST (laptop, staging read-only): CSM NSE 103.35 / BSE 103.08, Hero
+Motors NSE 117.31 / BSE 117.43, Vinod Texworld NSE 69.25 (series ST, 2 calls). Not yet proven on staging.
+
 **Updated 2026-09-24 for S4 (OD-31, OD-87, the opening-day check; round 3):** `--job=opening` is its own
 process (`runOpeningDayCheckWake`, scraper/src/index.ts), under the SAME heavy `scraper:cycle` lock the
 data and closed jobs take, skip-if-held. It no longer touches the NSE/BSE orchestrators (rounds 1-2 did,
@@ -332,11 +372,12 @@ cannot land until this item's scheduler and budgets exist.
 | §2.1 | R-228, R-003, R-004, R-005, R-006, R-007, R-010, R-011, R-012, R-013, R-014, R-015, R-016, R-181, R-182, R-183, R-184, R-185, R-187, R-188 |
 | §2.1.3 | R-019, R-020 |
 | §5.1 | R-102, R-103, R-104 |
-| §7.4 | R-146, R-147, R-148 |
+| §7.4 | R-230, R-147, R-148 |
 
 ## Known gaps
 
 - **F-35 (MAJOR) — A nightly backlog drain adds a third extractor to a 2-vCPU box that already took a 522 outage from two.** Carried here rather than closed: a third extractor on a 2-vCPU box is a scheduling decision, and item 7 owns the lock, the budgets and the skip-rather-than-kill rule that bound it. Not fixed in the design (OD-47); it is this item's to close.
+- Delisting detection (§2.3.x) is split out of S5 by owner decision 2026-09-24 after three Tier A reds on the "exchange failure counted as delisting" class; it is a separate item (#983).
 
 None recorded yet. A finding this item owns but does not close is written here, with its
 id and the reason — that is what stops "zero open findings" being reached by dropping one.

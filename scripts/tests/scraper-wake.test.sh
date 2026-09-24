@@ -176,6 +176,16 @@ else
   fail "case 2b: a live wake did not run under the 300s ceiling"
   printf '%s\n' "$OUT2B_LIVE"
 fi
+# Item 7 S5 round 2: the price job shares the live lock class and gets the
+# same 300 s ceiling.
+OUT2B_PRICE="$(SCRAPER_WAKE_FAKE_LOCK_TTL="free"         SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh"         sh "$WAKE" price 2>&1)"
+if printf '%s' "$OUT2B_PRICE" | grep -F 'wake-starting' | grep -qF 'under a 300s hung-process ceiling'; then
+  pass "case 2b: a price wake runs under the live class's 300s ceiling (item 7 S5)"
+else
+  fail "case 2b: a price wake did not run under the 300s ceiling"
+  printf '%s
+' "$OUT2B_PRICE"
+fi
 OUT2B_DATA="$(SCRAPER_WAKE_FAKE_LOCK_TTL="free" \
         SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
         sh "$WAKE" data 2>&1)"
@@ -320,6 +330,7 @@ DATA_LOCK6="$(lock_key_for_job data)"
 LIVE_LOCK6="$(lock_key_for_job live)"
 CLOSED_LOCK6="$(lock_key_for_job closed)"
 OPENING_LOCK6="$(lock_key_for_job opening)"
+PRICE_LOCK6="$(lock_key_for_job price)"
 if [ "$DATA_LOCK6" = "lock:resource:scraper:cycle" ]; then
   pass "case 6: a data wake reads scraper:cycle - the lock its --job=data command takes"
 else
@@ -334,6 +345,15 @@ if [ "$OPENING_LOCK6" = "lock:resource:scraper:cycle" ]; then
   pass "case 6: an opening-day wake reads scraper:cycle (--job=opening takes the SAME heavy lock as --job=data/closed, item 7 S4, OD-31)"
 else
   fail "case 6: an opening-day wake reads '$OPENING_LOCK6', not scraper:cycle"
+fi
+# Item 7 S5 (OD-29, round 2): spec section 2.1's lock table puts the
+# post-listing price fetch in the live class, so the price wake reads the SAME
+# lock the live-figures job takes (scraper:live), never the heavy scraper:cycle
+# (a data job holding it for hours would starve the prices).
+if [ "$PRICE_LOCK6" = "lock:resource:scraper:live" ]; then
+  pass "case 6: a price wake reads scraper:live (the section 2.1 live class), never scraper:cycle (item 7 S5)"
+else
+  fail "case 6: a price wake reads '$PRICE_LOCK6', not scraper:live"
 fi
 # OD-27: the live wake must read its OWN lock. Reading scraper:cycle would let
 # a data job holding the heavy lock for hours skip every live wake - the exact

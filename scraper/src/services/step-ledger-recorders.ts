@@ -757,10 +757,10 @@ export function planPersistSteps(
 // H — the live-number writes
 // ---------------------------------------------------------------------------
 
-/** H1 subscription, H2 GMP, H3 anchor, H4 demand — one write, one row. */
+/** H1 subscription, H2 GMP, H3 anchor, H4 demand, H5 post-listing price — one write, one row. */
 export function recordLiveStep(
   ipoId: string,
-  stepId: 'H1' | 'H2' | 'H3' | 'H4' | 'F3' | 'J1',
+  stepId: 'H1' | 'H2' | 'H3' | 'H4' | 'H5' | 'F3' | 'J1',
   args: { status?: IpoStepStatus; source?: string | null; evidence?: unknown; error?: string | null } = {}
 ): Promise<number> {
   return writeSteps(ipoId, [

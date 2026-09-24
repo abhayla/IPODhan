@@ -19,7 +19,7 @@ import type { ScrapedFinancialData } from '../scrapers/financial-data-scraper.js
 import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 // Phase 2: Shadow Mode - Data Consolidation Service
-import { DataConsolidationService, collectImplausibleIssueSizeFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
+import { DataConsolidationService, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo, withSourceKeyLineage, sourceKeyLineageFor } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
@@ -620,6 +620,22 @@ export function mergeListingExchangesForSource(
 }
 
 /**
+ * Round 3 of PR #972 (review MINOR 3): the legacy fallback door (it runs when consolidation
+ * throws) must honour the same terminal-status rule as the consolidation path
+ * (`TERMINAL_IPO_STATUSES`): a stored WITHDRAWN or POSTPONED is never overwritten by an
+ * ordinary scrape's status. Returns the update without `status` when the stored one is
+ * terminal and the incoming one differs; otherwise the update unchanged.
+ */
+export function keepTerminalIpoStatus<T extends Record<string, any>>(existingStatus: unknown, update: T): T {
+  if (!('status' in update)) return update;
+  const stored = existingStatus == null ? null : String(existingStatus);
+  if (stored === null || !TERMINAL_IPO_STATUSES.has(stored) || String(update.status) === stored) return update;
+  const { status: _dropped, ...rest } = update;
+  logger.warn({ storedStatus: stored, incomingStatus: update.status }, '[LEGACY PATH] terminal ipo status kept; incoming status dropped');
+  return rest as T;
+}
+
+/**
  * W-16a: drop every key whose incoming value would replace a stored value with
  * nothing. `undefined` is always dropped; an explicit `null` is dropped only
  * when the row currently holds a value (a deliberate null on an already-empty
@@ -743,6 +759,102 @@ export async function writeOpeningDayIpoFields(params: {
   }
 
   return { outcome: existing ? 'updated' : 'inserted', ipoId, written, fieldSources: trackedFieldSources };
+}
+
+/** Minimal repository surface the post-listing price writes need (item 7 S5). */
+export interface PostListingPriceWriteRepo {
+  update: (ipoId: string, data: Record<string, unknown>) => Promise<unknown>;
+}
+
+/** The exact `ipos` columns the post-listing price write may SET (OD-29: the price and its as-of stamp). */
+export const POST_LISTING_PRICE_COLUMNS = ['currentPrice', 'currentPriceUpdatedAt'] as const;
+
+/** A stored `current_price_updated_at` (Date from the ORM, or the naive column's UTC text) as an instant. */
+export function storedAsOfInstant(value: unknown): Date | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const text = String(value).trim();
+  if (text === '') return null;
+  const iso = /[zZ]|[+-]\d{2}:?\d{2}$/.test(text) ? text.replace(' ', 'T') : `${text.replace(' ', 'T')}Z`;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Item 7 S5 (spec §2.1 job row "Post-listing price", OD-29, OD-54): the price job's ONLY
+ * door to the price columns. SETs at most `currentPrice` and `currentPriceUpdatedAt` (the
+ * repository adds its own `updated_at` housekeeping stamp) through `IPORepository.update`
+ * (cache invalidated), never `upsertIPO` (#951: the whole-row save writes unclaimed columns).
+ * `asOf` is the EXCHANGE's own as-of instant (NSE `lastUpdateTime` / BSE `Ason`, IST converted
+ * to UTC). Drizzle's timestamp mapper binds `asOf.toISOString()` (ist-timezone.md; the
+ * integration test round-trips it with drift 0).
+ *
+ *   stale     — the as-of is OLDER than the stored one (round 2, Tier A MAJOR 2: the as-of only
+ *               moves forward, so a slow run or a lagging exchange mirror can never overwrite a
+ *               newer price with an older one). Nothing is written.
+ *   unchanged — same price, same or no newer as-of. Nothing is written (OD-73).
+ *   confirmed — same price, newer as-of: only `currentPriceUpdatedAt` moves, because §2.1
+ *               "Label" shows the price "with the timestamp it was read at"; one provenance row.
+ *   updated   — a new price: both columns, one provenance row each.
+ */
+export async function writePostListingPrice(params: {
+  ipoRepository: PostListingPriceWriteRepo;
+  fieldSources: OpeningDayFieldSourcesWriter;
+  sourceTrackingEnabled: boolean;
+  ipoId: string;
+  existing: { currentPrice: unknown; currentPriceUpdatedAt: unknown };
+  price: number;
+  asOf: Date;
+  source: 'NSE' | 'BSE';
+}): Promise<{ outcome: 'updated' | 'confirmed' | 'unchanged' | 'stale'; written: string[]; fieldSources: string[] }> {
+  const { ipoRepository, fieldSources, sourceTrackingEnabled, ipoId, existing, price, asOf, source } = params;
+  if (!(Number.isFinite(price) && price > 0) || Number.isNaN(asOf.getTime())) {
+    throw new Error(`writePostListingPrice: refused price ${price} / as-of ${String(asOf)} for ${ipoId}`);
+  }
+  const storedAsOf = storedAsOfInstant(existing.currentPriceUpdatedAt);
+  if (storedAsOf && asOf.getTime() < storedAsOf.getTime()) {
+    return { outcome: 'stale', written: [], fieldSources: [] };
+  }
+  const rounded = price.toFixed(2);
+  const prior = existing.currentPrice === null || existing.currentPrice === undefined ? null : Number(existing.currentPrice);
+  const samePrice = prior !== null && prior.toFixed(2) === rounded;
+  if (samePrice && storedAsOf && asOf.getTime() === storedAsOf.getTime()) {
+    return { outcome: 'unchanged', written: [], fieldSources: [] };
+  }
+  const set: Record<string, unknown> = samePrice ? { currentPriceUpdatedAt: asOf } : { currentPrice: rounded, currentPriceUpdatedAt: asOf };
+  await ipoRepository.update(ipoId, set);
+  const tracked: string[] = [];
+  if (sourceTrackingEnabled) {
+    const previous: Record<string, string | null> = {
+      currentPrice: prior === null ? null : prior.toFixed(2),
+      currentPriceUpdatedAt: storedAsOf ? storedAsOf.toISOString() : null,
+    };
+    for (const fieldName of Object.keys(set)) {
+      await fieldSources.trackFieldUpdate({ ipoId, tableName: 'ipos', fieldName, source, confidence: 1, previousValue: previous[fieldName] });
+      tracked.push(fieldName);
+    }
+  }
+  return { outcome: samePrice ? 'confirmed' : 'updated', written: Object.keys(set), fieldSources: tracked };
+}
+
+/** The `ipos` column the post-listing state write may SET (the cached working NSE series). */
+export const POST_LISTING_STATE_COLUMNS = ['priceNseSeries'] as const;
+
+/**
+ * Item 7 S5 (spec §2.1 job row "Post-listing price"): the job's row state. SETs only
+ * `priceNseSeries` (the stock's working NSE series, asked first next time).
+ */
+export async function writePostListingState(params: {
+  ipoRepository: PostListingPriceWriteRepo;
+  ipoId: string;
+  patch: { nseSeries?: string };
+}): Promise<string[]> {
+  const { patch } = params;
+  const set: Record<string, unknown> = {};
+  if (patch.nseSeries !== undefined) set.priceNseSeries = patch.nseSeries;
+  if (Object.keys(set).length === 0) return [];
+  await params.ipoRepository.update(params.ipoId, set);
+  return Object.keys(set);
 }
 
 /**
@@ -1444,7 +1556,8 @@ async function upsertIPOInScope(
             offeringTypeSource
           );
         }
-        await ipoRepository.update(existingIPO.id, fallbackData);
+        const guardedFallback = keepTerminalIpoStatus((existingIPO as any).status, fallbackData);
+        await ipoRepository.update(existingIPO.id, guardedFallback);
 
         // S-02: the fallback door wrote the row but ran no consolidation, so F4
         // and F5 are deliberately NOT claimed here — nothing compared sources
@@ -1453,7 +1566,7 @@ async function upsertIPOInScope(
         ledgerFacts = {
           source,
           created: false,
-          fields: Object.keys(fallbackData),
+          fields: Object.keys(guardedFallback),
           offeringType: fallbackData.offeringType ?? null,
           consolidated: false,
           fieldSourcesWritten: false,

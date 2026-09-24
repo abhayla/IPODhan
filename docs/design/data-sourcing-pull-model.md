@@ -1080,6 +1080,12 @@ endpoints, with the 90-day windows."*
   **Measured 2026-09-24 (F-155):** no `ipos` row stores a BSE scrip code (0 of 387 on staging), so the BSE
   call needs one first: BSE `ListofScripData` (one call, 5,047 active equity scrips) maps `ISIN_NUMBER` to
   `SCRIP_CD` (CSM Technologies INE0ZK601013 -> 544806, 103.62). Both BSE calls refuse a bare User-Agent.
+  **Measured 2026-09-24 (F-162):** 8 of the 129 LISTED rows inside the 90-day window store an ISIN, so
+  BSE can be asked for few of them (the ISIN gap belongs to the pull walk, item 6: F-160); NSE
+  `getSymbolData` itself returns the ISIN; BSE's `segment=Equity` list includes the SME groups M and MT; a
+  refusal can arrive as an HTTP 200 HTML page. Under §2.3.3.3's "three consecutive no-such-symbol
+  answers", an unknown answer is not a no-such-symbol answer: a run where BSE cannot be asked (no ISIN) or
+  either exchange gave an outage page does not count.
 - **Window:** every 15 minutes during exchange market hours, for 90 days after the listing date;
   after that the job stops for that IPO and the page keeps the last value it had.
 - **Label:** the page shows the price **with the timestamp it was read at, marked "delayed"**. A
@@ -3425,18 +3431,18 @@ about 3 new filings a day.
 
 | Job | Calls/day | Bytes/day | GB/month |
 |---|---:|---:|---:|
-| Data job (00:00, 08:00, 14:00) | 123 | 22.9 MB | 0.67 |
+| Data job (00:00, 08:00, 14:00) | 123 | 22.57 MB | 0.66 |
 | Opening-day check (~09:45) | 2 | 0.01 MB | 0.00 |
 | Live figures (every 30 min, 10:00–18:30) | 342 | 0.12 MB | 0.00 |
-| Grey-market premium (every 30 min, all day) | 48 | 1.6 MB | 0.05 |
-| Post-listing price (every 15 min, market hours) | 300 | 0.11 MB | 0.00 |
-| Closed-IPO job (22:00, ten a night) | 20 | 25.1 MB | 0.74 |
-| **Total** | **835** | **49.8 MB** | **1.46** |
+| Grey-market premium (every 30 min, all day) | 48 | 1.61 MB | 0.05 |
+| Post-listing price (every 15 min, market hours) | 3,175 | 59.91 MB | 1.76 |
+| Closed-IPO job (22:00, ten a night) | 20 | 24.79 MB | 0.73 |
+| **Total** | **3,710** | **109.02 MB** | **3.19** |
 
-**1.46 GB a month is 0.018% of the plan's bandwidth.** The honest conclusion is that **bandwidth is
+**3.19 GB a month is 0.04% of the plan's bandwidth.** The honest conclusion is that **bandwidth is
 not a constraint on this design and never will be** — and saying so is the point of measuring. The
-two jobs that carry 96% of the bytes are the two that download documents; everything else is
-rounding error.
+post-listing price job carries 55% of the bytes (small quotes, but 3,175 of them a day) and the two
+jobs that download documents carry 43%; everything else is rounding error.
 
 #### The constraints that ARE real
 
@@ -3446,6 +3452,10 @@ rounding error.
 | **Disk** | 100 GB, currently 0.74 GB of documents (`probes/document-store-size.out.json`, production) | a working set: the last seven days' PDFs plus anything not yet extracted (OD-32) | the 5 GB store ceiling, now easy rather than tight — OD-32 turned an archive into a working set |
 | **Politeness at the source** | not ours to set | 835 requests a day across four hosts, the busiest being 48 GMP page reads | this is well under any published rate limit, and the design's own rule that a refusal is logged with its cause (§2.2.1) is what would tell us if a source disagreed |
 | **Paid APIs** | — | **zero** | phase 1 makes no paid call. Any future paid call needs its own line in this table and the owner's approval before it is written into a config |
+
+The politeness row's "835 requests a day" was counted before the post-listing price job existed. With it the
+count is **3,710 requests a day** (the cost table above), the busiest being that job's 3,175 NSE and BSE quote
+reads, paced 400 ms apart; still four hosts and still under any published rate limit.
 
 #### The budgets, and the alarm
 
