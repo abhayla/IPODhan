@@ -23,6 +23,18 @@ Core proof 2026-09-24 against the live endpoints (read-only): 10 NSE + 19 BSE ro
 (2 NSE warm-up + 2 list); opening today: NSE Moneyview, A-One Steels, Green Asia Impex (SME); BSE
 Peshwa Wheat, Roopa Screen, A-One Steels, Moneyview. Not yet proven on staging.
 
+**Updated 2026-09-24 for S4 round 5 (OD-88; supersedes the write description above):** the writer no longer
+calls `consolidatedUpsertIPO` (the whole-row save wrote unclaimed columns, #951). It asks the field-priority
+decision (`DataConsolidationService.consolidateIPOData`) about the four fields and SETs only the decided values
+through `IPORepository.update`. A new row is created only from the NSE list, with the segment NSE states, through
+the real `IPORepository.create` (the #860 guard is untouched); a BSE-only newcomer, or an NSE row with no segment,
+is logged by name with the reason and left to the 14:00 data job (OD-88). Every written column gets its
+`field_sources` row (`createProvenanceRecorder` counts the rows the decision call wrote itself, so none is
+duplicated or missed), and the step ledger's F6 evidence counts exactly those rows (`fieldSourcesCount`). Proof:
+`scraper/tests/integration/opening-day-create.integration.test.ts` on ipodhan_test, driven by the saved NSE list
+(`fixtures/nse/ipo-current-issue.live-2026-08-22.json`) and BSE board (`fixtures/documents/bse-ipo-homepage.json`).
+Staging proof owed: one opening-day morning.
+
 **Updated 2026-09-11 for OD-55 (supervisor): document job unbounded per document; see §2.1.**
 
 **Updated 2026-09-23 for slice S2 (OD-19, OD-55):** the data-job slots 00:00/08:00/14:00 IST are defined once in
@@ -313,7 +325,7 @@ cannot land until this item's scheduler and budgets exist.
 
 | Design section | Rule ids |
 |---|---|
-| §2.1 | R-224, R-003, R-004, R-005, R-006, R-007, R-010, R-011, R-012, R-013, R-014, R-015, R-016, R-181, R-182, R-183, R-184, R-185, R-187, R-188 |
+| §2.1 | R-228, R-003, R-004, R-005, R-006, R-007, R-010, R-011, R-012, R-013, R-014, R-015, R-016, R-181, R-182, R-183, R-184, R-185, R-187, R-188 |
 | §2.1.3 | R-019, R-020 |
 | §5.1 | R-102, R-103, R-104 |
 | §7.4 | R-146, R-147, R-148 |
