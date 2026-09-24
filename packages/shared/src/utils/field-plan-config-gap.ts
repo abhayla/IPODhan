@@ -19,10 +19,10 @@
  * `WRITER_CANNOT_ACCEPT` (OD-99): the source ANSWERED, but the consolidated
  * writer refused the write for a STRUCTURAL reason it will give again every
  * time it is asked (MISSING_ROW_KEY, CHILD_TABLE_CONSOLIDATION_DISABLED,
- * CONSOLIDATION_DISABLED). Declared by the walk, never by a fetcher. Unlike
- * the codes above it IS charged as an attempt (the source was really asked),
- * and its key carries the writer's capability for the table, so a writer
- * change reopens it.
+ * CONSOLIDATION_DISABLED). Declared by the walk, never by a fetcher. Like
+ * the codes above it is NOT charged as an attempt (#923: a configuration gap
+ * is not a failed attempt), and its key carries the writer's capability for
+ * the table, so a writer change reopens it.
  */
 export const FIELD_PLAN_GAP_CODES = [
   'NO_FETCHER',

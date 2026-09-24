@@ -107,6 +107,11 @@ export function fieldPlanWriterCapability(tableName: string): string {
   return consolidatedWriterCapability(SINGLETON_IPO_TABLES.has(tableName) ? 'ipo' : 'child', tableName);
 }
 
+/** OD-99: the fallback gap key when no per-field key exists -- the writer capability alone. */
+export function writerOnlyGapKey(tableName: string): string {
+  return `writer-only|${fieldPlanWriterCapability(tableName)}`;
+}
+
 export interface FieldPlanWalkResult {
   ipoId: string;
   fieldsAttempted: number;
@@ -155,14 +160,6 @@ export type FieldFetcherAnswer =
       documentType?: string;
       sha256?: string;
       page?: number;
-      /**
-       * OD-99 (OD-73): the value ALREADY stored for this field in its target
-       * table, when the fetcher read it (e.g. the INVESTORGAIN_GMP fetcher
-       * answers from the gmp_records row the GMP job wrote). Present and equal
-       * to `value` (numerically, `areEquivalent`) -> the walk records SUPPLIED
-       * and writes nothing. Omitted -> the walk always writes.
-       */
-      stored?: { value: unknown };
     }
   | { outcome: 'NOT_PRINTED' }
   | { outcome: 'NOT_AVAILABLE_YET' }
@@ -237,8 +234,6 @@ export interface RecordOutcomeCallParams {
   cause?: string | null;
   /** #884: set only when every rank failed with a structured gap code (see RecordOutcomeParams.gapKey). */
   gapKey?: string | null;
-  /** OD-99: a WRITER_CANNOT_ACCEPT gap is still charged (see RecordOutcomeParams.gapChargesAttempt). */
-  gapChargesAttempt?: boolean;
 }
 
 /** The slice of item 5's repository the walk uses. */
@@ -1014,29 +1009,6 @@ async function attemptOneField(
 
     const { rank, source, answer } = winner;
 
-    // OD-99 (OD-73: "An identical incoming value is never written and never
-    // re-stamps provenance"): the answer IS the value already stored for this
-    // field, so there is nothing to write. Recorded SUPPLIED from this source
-    // without calling the writer -- which is also what keeps a table the
-    // writer cannot key (gmp_records, one row per GMP job run) from being
-    // refused on every wake. Checked before the write, so it takes precedence
-    // over the structural-refusal branch below.
-    if (answer.stored && storedValueEquals(plan.tableName, plan.fieldName, answer.stored.value, answer.value)) {
-      logger.info(
-        { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, source, rank },
-        'PASS 3: the answer equals the stored value — SUPPLIED, nothing written (OD-73, OD-99)'
-      );
-      result.fieldsSupplied += 1;
-      return recordAndClassify(deps, result, {
-        planRowId: plan.id,
-        claimToken: plan.claimToken,
-        policyOrigin,
-        writeHappened: true,
-        state: 'SUPPLIED',
-        chosen: evidenceFor(source, rank, answer),
-      });
-    }
-
     const verdict = await runWrite(ipoId, plan, source, answer, deps);
 
     if (verdict.happened === false && STRUCTURAL_WRITE_SKIP_REASONS.has(verdict.skipReason)) {
@@ -1044,20 +1016,25 @@ async function attemptOneField(
       // the same way on every wake (OD-78: same cause, same outcome, no
       // retry). Re-queuing it PENDING (the branch below) looped 26 staging
       // gmp_records.gmp rows forever, claimed first on every wake with no
-      // state naming the cause. Recorded instead: CHECK_FAILED, the attempt
-      // charged, the skip reason in `cause`, under the field's writer gap key
-      // so the row is asked again only when the writer's capability changes.
-      // No key for this field (not in the manifest, or no keys this cycle):
-      // a charged CHECK_FAILED re-asked next slot, bounded by the attempts cap.
+      // state naming the cause. Recorded instead: CHECK_FAILED, the skip
+      // reason in `cause`, under a gap key that carries the writer's
+      // capability for the table, so the row is asked again only when that
+      // key changes. Like every configuration gap it is NOT charged as an
+      // attempt (#923): a charged row would reach the attempts cap and never
+      // be reopened, even after the writer is fixed.
       result.fieldsCheckFailed += 1;
       const gap: FieldPlanGapCode = 'WRITER_CANNOT_ACCEPT';
       const cause = `rank${rank}:${source}:WRITE_REFUSED:${verdict.skipReason} ${fieldPlanGapToken(gap)}`;
-      const gapKey = ipoGapKeys ? fieldPlanGapKeyFor(ipoGapKeys, plan.tableName, plan.fieldName, [gap]) : null;
+      // No per-field key (no keys this cycle, or the field left the manifest):
+      // park it under the writer's capability alone. The next cycle that has
+      // keys reads that as a changed key, asks once, and re-parks it under the
+      // full key -- never an every-slot re-ask.
+      const gapKey =
+        (ipoGapKeys ? fieldPlanGapKeyFor(ipoGapKeys, plan.tableName, plan.fieldName, [gap]) : null) ??
+        writerOnlyGapKey(plan.tableName);
       logger.warn(
         { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, source, rank, skipReason: verdict.skipReason, gapKey },
-        gapKey
-          ? 'PASS 3: the writer REFUSED this write structurally — CHECK_FAILED under its writer gap key, re-asked when the writer changes (OD-99)'
-          : 'PASS 3: the writer REFUSED this write structurally but no gap key could be computed — CHECK_FAILED, re-asked next data slot (OD-99)'
+        'PASS 3: the writer REFUSED this write structurally — CHECK_FAILED under its writer gap key, not charged, re-asked when the key changes (OD-99)'
       );
       return recordAndClassify(deps, result, {
         planRowId: plan.id,
@@ -1067,7 +1044,7 @@ async function attemptOneField(
         state: 'CHECK_FAILED',
         reasonCode: 'COVERAGE_GAP',
         cause,
-        ...(gapKey ? { gapKey, gapChargesAttempt: true } : {}),
+        gapKey,
       });
     }
 
@@ -1831,36 +1808,6 @@ function classifyValidationRejection(reason: string): { reasonCode: FieldPlanRea
     return { reasonCode: 'LOST_TO_HIGHER_PRIORITY', cause: reason };
   }
   return { reasonCode: 'FAILED_VALIDATION', cause: reason };
-}
-
-/**
- * OD-99: is the incoming answer the value already stored (OD-73: "An identical
- * incoming value is never written")? Numbers are compared EXACTLY after
- * parsing, so a NUMERIC read back as text ("1250000000.00") equals the number
- * 1250000000 (#976's text-compare trap) while a real one-rupee move still
- * counts as a change -- MONEY's 0.5% tolerance is for two sources' rounding,
- * not for "identical". Anything else goes through the field's own
- * comparison family (manifest), the same `areEquivalent` the verdict writer
- * uses. A null/absent stored value never equals an answer.
- */
-const EXACT_NUMERIC_TEXT = /^\s*-?\d+(?:\.\d+)?\s*$/;
-function exactNumber(value: unknown): number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'string' && EXACT_NUMERIC_TEXT.test(value)) return Number(value);
-  return null;
-}
-
-export function storedValueEquals(tableName: string, fieldName: string, stored: unknown, incoming: unknown): boolean {
-  if (stored === null || stored === undefined || incoming === null || incoming === undefined) return false;
-  const n1 = exactNumber(stored);
-  const n2 = exactNumber(incoming);
-  if (n1 !== null && n2 !== null) return n1 === n2;
-  const family = loadFieldManifest().fields[`${tableName}.${fieldName}`]?.comparisonFamily;
-  const camel = columnToCamelCase(fieldName);
-  const rules = getFieldRules(camel);
-  const a = normalizeChosen(camel, stored, rules);
-  const b = normalizeChosen(camel, incoming, rules);
-  return family && family !== 'ABSTAIN' ? areEquivalent(a, b, { family } as never) : areEquivalent(a, b, 0);
 }
 
 /** Failures carry their cause, wrapped ones included (signal-ownership R6). */

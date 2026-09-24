@@ -365,12 +365,14 @@ describe.skipIf(!DATABASE_URL)(`item 3 S3: field-plan walk, REAL DataConsolidati
  * CONSOLIDATION_DISABLED) was put back PENDING with attempts and
  * last_attempt_at untouched, so it was claimed first on every wake forever.
  *
- * (i)   gmp_records.gmp: the INVESTORGAIN_GMP fetcher answers the value the
- *       GMP job already stored -> SUPPLIED, chosen_source INVESTORGAIN_GMP,
- *       and ZERO gmp_records rows added (OD-73).
- * (ii)  a structural refusal (the REAL orchestrator's MISSING_ROW_KEY) ->
- *       CHECK_FAILED, gap WRITER_CANNOT_ACCEPT, attempts +1, and the next
- *       claim call does not return it.
+ * (i)   gmp_records.gmp with the REAL INVESTORGAIN_GMP fetcher and the REAL
+ *       orchestrator (the staging shape) -> CHECK_FAILED WRITER_CANNOT_ACCEPT
+ *       (MISSING_ROW_KEY), ZERO gmp_records rows added.
+ * (ii)  a structural refusal -> CHECK_FAILED, gap WRITER_CANNOT_ACCEPT,
+ *       attempts NOT charged (#923), and the next claim call does not return it.
+ * (ii-b) a row already at attempts=4 keeps attempts=4 and still reopens.
+ * (ii-c) no gap keys this cycle: parked under the writer-only key, not
+ *       charged, not re-offered by a claim until keys change.
  * (iii) a transient drop (LOCK_NOT_ACQUIRED) -> PENDING, attempts untouched.
  * (iv)  the (ii) row is offered again once the writer's capability changes.
  *
@@ -393,6 +395,7 @@ describe.skipIf(!DATABASE_URL)(`OD-99: structural write refusals and equal answe
   let planRepo: IpoFieldPlanRepository;
   let realOrchestrator: FieldPlanWalkOrchestrator;
   let walkFieldPlanForIPO: WalkFieldPlanForIPOFn;
+  let writerOnlyGapKey: (tableName: string) => string;
   let buildInvestorgainGmpFetcher: BuildGmpFetcherFn;
 
   const manifestFields = {
@@ -421,7 +424,7 @@ describe.skipIf(!DATABASE_URL)(`OD-99: structural write refusals and equal answe
     await redis.connect();
 
     const { DataConsolidationOrchestrator } = await import('../../src/services/data-consolidation-orchestrator.js');
-    ({ walkFieldPlanForIPO } = await import('../../src/services/field-plan-walk.js'));
+    ({ walkFieldPlanForIPO, writerOnlyGapKey } = await import('../../src/services/field-plan-walk.js'));
     ({ buildInvestorgainGmpFetcher } = await import('../../src/services/field-plan-walk-investorgain-gmp-fetcher.js'));
     realOrchestrator = new DataConsolidationOrchestrator(
       new IPORepository(db as never, redis as never),
@@ -515,7 +518,7 @@ describe.skipIf(!DATABASE_URL)(`OD-99: structural write refusals and equal answe
     };
   }
 
-  it('(i) the GMP fetcher answers the stored value: SUPPLIED from INVESTORGAIN_GMP, zero gmp_records rows written', async () => {
+  it('(i) the real GMP fetcher and real writer: CHECK_FAILED WRITER_CANNOT_ACCEPT (MISSING_ROW_KEY), zero gmp_records rows written', async () => {
     const id = await seedGmpPlanRow();
     const before = await countGmpRows();
     const fetcher = buildInvestorgainGmpFetcher({ gmpReader, isInvestorgainGmpCapable: () => true });
@@ -523,18 +526,16 @@ describe.skipIf(!DATABASE_URL)(`OD-99: structural write refusals and equal answe
     const result = await walkFieldPlanForIPO(OD99_IPO_ID, deps(fetcher, realOrchestrator) as never, openBudget());
 
     const row = await readPlanRow(id);
-    expect(row.state).toBe('SUPPLIED');
-    expect(row.chosenSource).toBe('INVESTORGAIN_GMP');
-    expect(row.chosenRank).toBe(1);
-    expect(row.attempts).toBe(1);
+    expect(row.state).toBe('CHECK_FAILED');
+    expect(row.cause).toContain('rank1:INVESTORGAIN_GMP:WRITE_REFUSED:MISSING_ROW_KEY [gap:WRITER_CANNOT_ACCEPT]');
+    expect(row.attempts).toBe(0);
     expect(row.claimToken).toBeNull();
-    expect(result.fieldsSupplied).toBe(1);
     expect(result.fieldsWriteSkipped).toBe(0);
     expect(before).toBe(1);
     expect(await countGmpRows()).toBe(1);
   });
 
-  it('(ii) a structural refusal (real MISSING_ROW_KEY) is CHECK_FAILED under a WRITER_CANNOT_ACCEPT gap key, charged, and not claimed again', async () => {
+  it('(ii) a structural refusal (real MISSING_ROW_KEY) is CHECK_FAILED under a WRITER_CANNOT_ACCEPT gap key, NOT charged, and not claimed again', async () => {
     const id = await seedGmpPlanRow();
     // A value the writer must actually be asked to write (no stored value declared).
     const fetcher: FieldFetcher = async () => ({ outcome: 'SUPPLIED', value: 55 });
@@ -543,7 +544,7 @@ describe.skipIf(!DATABASE_URL)(`OD-99: structural write refusals and equal answe
 
     const row = await readPlanRow(id);
     expect(row.state).toBe('CHECK_FAILED');
-    expect(row.attempts).toBe(1);
+    expect(row.attempts).toBe(0);
     expect(row.lastAttemptAt).not.toBeNull();
     expect(row.nextDueAt).toBeNull();
     expect(row.claimToken).toBeNull();
@@ -557,6 +558,43 @@ describe.skipIf(!DATABASE_URL)(`OD-99: structural write refusals and equal answe
 
     const again = await planRepo.claimNextDueField({ ipoId: OD99_IPO_ID, gapKeys: fieldPlanClaimGapKeys(gapKeysWith('w-A')) });
     expect(again).toBeNull();
+  });
+
+  it('(ii-b) a row at attempts=4 keeps attempts=4 after a structural refusal and still reopens on a writer change', async () => {
+    const id = await seedGmpPlanRow();
+    await db.update(schema.ipoFieldPlan).set({ attempts: 4 } as never).where(eq(schema.ipoFieldPlan.id, id));
+    const fetcher: FieldFetcher = async () => ({ outcome: 'SUPPLIED', value: 55 });
+
+    await walkFieldPlanForIPO(OD99_IPO_ID, deps(fetcher, realOrchestrator, 'w-A') as never, openBudget());
+
+    const row = await readPlanRow(id);
+    expect(row.state).toBe('CHECK_FAILED');
+    expect(row.attempts).toBe(4);
+    expect(await planRepo.claimNextDueField({ ipoId: OD99_IPO_ID, gapKeys: fieldPlanClaimGapKeys(gapKeysWith('w-A')) })).toBeNull();
+    const reopened = await planRepo.claimNextDueField({ ipoId: OD99_IPO_ID, gapKeys: fieldPlanClaimGapKeys(gapKeysWith('w-B')) });
+    expect(reopened?.id).toBe(id);
+    await planRepo.releaseClaimUnrecorded({ planRowId: id, claimToken: reopened!.claimToken as string });
+  });
+
+  it('(ii-c) no gap keys this cycle: CHECK_FAILED under the writer-only key, not charged, not re-offered by a slot claim', async () => {
+    const id = await seedGmpPlanRow();
+    const fetcher: FieldFetcher = async () => ({ outcome: 'SUPPLIED', value: 55 });
+    const noKeys = { ...deps(fetcher, realOrchestrator), gapKeys: undefined };
+
+    await walkFieldPlanForIPO(OD99_IPO_ID, noKeys as never, openBudget());
+
+    const row = await readPlanRow(id);
+    expect(row.state).toBe('CHECK_FAILED');
+    expect(row.attempts).toBe(0);
+    expect(row.nextDueAt).toBeNull();
+    expect(row.cause?.startsWith(`[gap-key:${writerOnlyGapKey('gmp_records')}]`)).toBe(true);
+    // A claim a full slot later, with or without keys matching the writer-only
+    // stamp, does not re-offer it every slot: only a key change does.
+    const later = new Date(Date.now() + 6 * 3600_000);
+    expect(await planRepo.claimNextDueField({ ipoId: OD99_IPO_ID, now: later })).toBeNull();
+    const withKeys = await planRepo.claimNextDueField({ ipoId: OD99_IPO_ID, now: later, gapKeys: fieldPlanClaimGapKeys(gapKeysWith('w-A')) });
+    expect(withKeys?.id).toBe(id);
+    await planRepo.releaseClaimUnrecorded({ planRowId: id, claimToken: withKeys!.claimToken as string });
   });
 
   it('(iii) a transient drop (LOCK_NOT_ACQUIRED) is still re-queued PENDING with attempts untouched', async () => {

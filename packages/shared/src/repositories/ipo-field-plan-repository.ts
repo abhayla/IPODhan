@@ -307,12 +307,6 @@ export interface RecordOutcomeParams {
    * changes. Ignored for any other state.
    */
   gapKey?: string | null;
-  /**
-   * OD-99: charge this gap row as an attempt anyway. Set only for a
-   * WRITER_CANNOT_ACCEPT gap -- the source WAS asked and answered; only the
-   * write was refused. The row is still re-offered only when its key changes.
-   */
-  gapChargesAttempt?: boolean;
   now?: Date;
 }
 
@@ -1238,7 +1232,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
       // was asked under; claimNextDueField offers it again only under a
       // different key. `last_attempt_at` is still stamped.
       const isGap = state === 'CHECK_FAILED' && typeof params.gapKey === 'string' && params.gapKey.length > 0;
-      const countsAsAttempt = !isGap || params.gapChargesAttempt === true;
+      const countsAsAttempt = !isGap;
       const recordedCause = isGap ? stampFieldPlanGapCause(params.gapKey as string, params.cause ?? null) : params.cause ?? null;
       const writeCause = hasCause || isGap;
 
