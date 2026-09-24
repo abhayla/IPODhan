@@ -387,6 +387,13 @@ export interface PlanRowBelowVersion {
   ipoListingDate: Date | null;
 }
 
+// SUPPLIED-reopen ("chosenDemoted") design removed 2026-09-24 after a
+// second Tier A review reproduced it firing with NO override present for
+// any field settled by its rank-2/3 source, looping every data slot (24
+// such rows on staging). It needs a durable design and is tracked at #968.
+// This file, per #893, only re-ranks non-SUPPLIED rows; a SUPPLIED row is
+// never touched by this upsert, exactly as on main before item 3.
+
 /** One row's new ranks, resolved by the caller from the current policy. */
 export interface PlanRowRankUpdate {
   id: string;
@@ -409,49 +416,34 @@ export class IpoFieldPlanRepository extends BaseRepository {
    * (item 3 S4, #893 — the Swap Test / "override re-rank" class).
    *
    * `ON CONFLICT (ipo_id, table_name, row_key, field_name) DO UPDATE` fires
-   * when a row already exists at that key. Two independent branches decide
-   * whether the `WHERE` clause lets the `UPDATE` through:
+   * when a row already exists at that key. The `WHERE` clause lets the
+   * `UPDATE` through for a **non-SUPPLIED row whose effective source order
+   * actually changed** — #893's actual bug: `field-plan-generator.ts`
+   * always stamps the CURRENT `manifest.version` regardless of whether an
+   * override produced the ranks, so an override taking effect (§2.3.5: "no
+   * deploy, no version bump") never satisfied the old `manifest_version <
+   * EXCLUDED.manifest_version` guard and was silently dropped. The `WHERE`
+   * now also fires on `rank1/2/3_source IS DISTINCT FROM EXCLUDED...` OR
+   * `policy_origin IS DISTINCT FROM EXCLUDED...` — version-increase remains
+   * one of the triggers (it still covers a registry bump whose ranks happen
+   * to be identical), never the only one. An identical re-plan (same ranks,
+   * same policy_origin, same or lower version) still changes 0 rows — the
+   * WHERE is false for every disjunct.
    *
-   *   1. **Non-SUPPLIED row, any rank/policy change.** #893's actual bug:
-   *      `field-plan-generator.ts` always stamps the CURRENT
-   *      `manifest.version` regardless of whether an override produced the
-   *      ranks, so an override taking effect (§2.3.5: "no deploy, no
-   *      version bump") never satisfied the old `manifest_version <
-   *      EXCLUDED.manifest_version` guard and was silently dropped. The
-   *      `WHERE` now also fires on `rank1/2/3_source IS DISTINCT FROM
-   *      EXCLUDED...` OR `policy_origin IS DISTINCT FROM EXCLUDED...` —
-   *      version-increase remains one of the triggers (it still covers a
-   *      registry bump whose ranks happen to be identical), never the only
-   *      one. An identical re-plan (same ranks, same policy_origin, same or
-   *      lower version) still changes 0 rows — the WHERE is false for every
-   *      disjunct.
+   * **A SUPPLIED row is never touched by this upsert** — the same rule as
+   * on main before item 3. A prior version of this fix (independent Tier A
+   * review, item 3 S2) reopened a SUPPLIED row whose `chosen_source` was
+   * outranked by the incoming order ("chosenDemoted"). A SECOND Tier A
+   * review (2026-09-24) reproduced that branch firing on staging with NO
+   * override present — any field settled by its rank-2/3 source re-plans
+   * with the same registry order every data slot, so `chosen_source =
+   * EXCLUDED.rank2_source` is true on every pass and the row loops PENDING
+   * forever (24 such rows measured on staging). Reopening a SUPPLIED row
+   * needs a mechanism that only fires on a REAL order change, not on every
+   * re-plan; that is tracked at #968 and is explicitly out of scope here.
    *
-   *   2. **SUPPLIED row whose settling source is now outranked.** OD-73:
-   *      once a field is settled by its best-ranked source, only a
-   *      HIGHER-ranked source may change it — so a SUPPLIED row is reopened
-   *      ONLY when its `chosen_source` sits at `EXCLUDED.rank2_source` or
-   *      `EXCLUDED.rank3_source` (a real source now outranks it) and NEVER
-   *      when `chosen_source = EXCLUDED.rank1_source` (still the best) or
-   *      is absent from the new order entirely (nothing to safely compare
-   *      against). Reopening means: `state` -> `PENDING` (claimed
-   *      unconditionally by `claimNextDueField`'s trigger-1 leg, no
-   *      `next_due_at` needed), and the rank list is narrowed to ONLY the
-   *      sources ranked ABOVE `chosen_source` (the demoted source itself
-   *      and everything below it become NULL) — this is the "simplest
-   *      correct mechanism" for "ask only sources above X": the walk
-   *      already asks `[rank1, rank2, rank3].filter(Boolean)` in order
-   *      (`field-plan-walk.ts:683`), so truncating the list below the
-   *      demoted source is sufficient without a new column or state.
-   *      `chosen_*` columns are left untouched — if every higher-ranked
-   *      source ends up unable to answer, the row falls back to EXHAUSTED
-   *      by the normal walk/`recordOutcome` path with the OLD chosen value
-   *      still on record until a higher source actually supplies one.
-   *      Live figures (status, subscription, listing-day prices) are
-   *      excluded from this call entirely — the generator never emits them
-   *      as `GeneratedFieldPlanRow`s (they follow OD-19, not the plan).
-   *
-   * Every other column not named above (`attempts`, `claimed_at`,
-   * `claim_token`, every `chosen_*` column) is still never carried back in.
+   * Every other column (`attempts`, `claimed_at`, `claim_token`, `state`,
+   * every `chosen_*` column) is never carried back in by this upsert.
    *
    * The `xmax = 0` trick in `RETURNING` is the ONLY reliable way to tell an
    * INSERT from an UPDATE out of one `INSERT ... ON CONFLICT` statement:
@@ -463,9 +455,6 @@ export class IpoFieldPlanRepository extends BaseRepository {
    * `repair-plan-rows-to-manifest-version.ts`'s operator-facing "inserted N
    * rows" line) trusts that number, so `inserted` counts ONLY genuine
    * inserts and `updated` is returned alongside it, never folded in.
-   * `updated` counts BOTH branches above (a plain re-rank and a
-   * SUPPLIED-reopen) — a caller that needs to distinguish reads `state` off
-   * the row it already has (SUPPLIED -> PENDING is visible there).
    *
    * Empty input is a no-op (an IPO's type key produced zero rows, or the
    * caller was already given an empty array) — never a wasted round trip.
@@ -482,13 +471,6 @@ export class IpoFieldPlanRepository extends BaseRepository {
         sql`, `
       );
 
-      // #893: a SUPPLIED row is reopened ONLY when its chosen_source is
-      // demoted to EXCLUDED's rank2 or rank3 slot (OD-73 — never when it is
-      // still rank1, never when it is absent from the new order).
-      const chosenIsRank2 = sql`ipo_field_plan.chosen_source = EXCLUDED.rank2_source`;
-      const chosenIsRank3 = sql`ipo_field_plan.chosen_source = EXCLUDED.rank3_source`;
-      const chosenDemoted = sql`(ipo_field_plan.chosen_source IS NOT NULL AND (${chosenIsRank2} OR ${chosenIsRank3}))`;
-
       const result = await this.db.execute(sql`
         INSERT INTO ipo_field_plan (
           ipo_id, table_name, row_key, field_name,
@@ -496,40 +478,21 @@ export class IpoFieldPlanRepository extends BaseRepository {
         )
         VALUES ${values}
         ON CONFLICT (ipo_id, table_name, row_key, field_name) DO UPDATE
-          SET rank1_source     = CASE
-                WHEN ipo_field_plan.state <> 'SUPPLIED' THEN EXCLUDED.rank1_source
-                WHEN ${chosenIsRank2} OR ${chosenIsRank3} THEN EXCLUDED.rank1_source
-                ELSE ipo_field_plan.rank1_source
-              END,
-              rank2_source     = CASE
-                WHEN ipo_field_plan.state <> 'SUPPLIED' THEN EXCLUDED.rank2_source
-                WHEN ${chosenIsRank3} THEN EXCLUDED.rank2_source
-                WHEN ${chosenIsRank2} THEN NULL
-                ELSE ipo_field_plan.rank2_source
-              END,
-              rank3_source     = CASE
-                WHEN ipo_field_plan.state <> 'SUPPLIED' THEN EXCLUDED.rank3_source
-                WHEN ${chosenIsRank2} OR ${chosenIsRank3} THEN NULL
-                ELSE ipo_field_plan.rank3_source
-              END,
+          SET rank1_source     = EXCLUDED.rank1_source,
+              rank2_source     = EXCLUDED.rank2_source,
+              rank3_source     = EXCLUDED.rank3_source,
               manifest_version = EXCLUDED.manifest_version,
               policy_origin    = EXCLUDED.policy_origin,
-              state            = CASE
-                WHEN ipo_field_plan.state = 'SUPPLIED' AND ${chosenDemoted} THEN 'PENDING'
-                ELSE ipo_field_plan.state
-              END,
               updated_at       = now()
-          WHERE (
-                  ipo_field_plan.state <> 'SUPPLIED'
-                  AND (
-                    ipo_field_plan.manifest_version < EXCLUDED.manifest_version
-                    OR ipo_field_plan.rank1_source IS DISTINCT FROM EXCLUDED.rank1_source
-                    OR ipo_field_plan.rank2_source IS DISTINCT FROM EXCLUDED.rank2_source
-                    OR ipo_field_plan.rank3_source IS DISTINCT FROM EXCLUDED.rank3_source
-                    OR ipo_field_plan.policy_origin IS DISTINCT FROM EXCLUDED.policy_origin
-                  )
+          WHERE ipo_field_plan.state <> 'SUPPLIED'
+                AND (
+                  ipo_field_plan.manifest_version < EXCLUDED.manifest_version
+                  OR ipo_field_plan.rank1_source IS DISTINCT FROM EXCLUDED.rank1_source
+                  OR ipo_field_plan.rank2_source IS DISTINCT FROM EXCLUDED.rank2_source
+                  OR ipo_field_plan.rank3_source IS DISTINCT FROM EXCLUDED.rank3_source
+                  OR ipo_field_plan.policy_origin IS DISTINCT FROM EXCLUDED.policy_origin
+                  
                 )
-                OR (ipo_field_plan.state = 'SUPPLIED' AND ${chosenDemoted})
         RETURNING id, (xmax = 0) AS inserted
       `);
 

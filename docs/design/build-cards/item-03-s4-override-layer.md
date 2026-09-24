@@ -105,24 +105,26 @@ never reached an already-planned row. Corrected procedure, run INSIDE an OD-19 d
 (00:00 / 08:00 / 14:00 IST — a wake outside a slot proves nothing, since the plan pass runs on the
 slot cadence, not on demand):
 
-1. **Non-SUPPLIED case first.** Pick a field whose plan row is NOT yet `SUPPLIED` for a named IPO
-   (`select ... from ipo_field_plan where field_name=... and state <> 'SUPPLIED'`). `set` swaps DOC
-   and CHITTORGARH for `ipos.issue_size` on staging (all IPOs); wake inside the next OD-19 slot; the
-   row now shows `rank1_source='CHITTORGARH'`, `policy_origin='override:<id>'`, `manifest_version`
-   UNCHANGED from before the swap — the version-unaware re-rank (#893) is the thing under test, so a
-   version bump between reads would hide a regression back to the old guard.
-2. **SUPPLIED case, checked separately.** Pick a different field whose plan row IS already
-   `SUPPLIED` for a named IPO, and whose `chosen_source` is the source the override is about to
-   demote. After the same `set` + wake, the row is REOPENED (`state='PENDING'`, `policy_origin =
-   'override:<id>'`, rank list narrowed to sources above the old `chosen_source`) — `chosen_source`
-   itself is untouched until a higher-ranked source actually answers. A SUPPLIED row whose
-   `chosen_source` is still rank1 under the new order stays SUPPLIED and unchanged (OD-73 negative
-   case) — check one of those too, on a third field, to prove the reopen is not indiscriminate.
+1. **Non-SUPPLIED case (the only case in scope).** Pick a field whose plan row is NOT yet
+   `SUPPLIED` for a named IPO (`select ... from ipo_field_plan where field_name=... and state <>
+   'SUPPLIED'`). `set` swaps DOC and CHITTORGARH for `ipos.issue_size` on staging (all IPOs); wake
+   inside the next OD-19 slot; the row now shows `rank1_source='CHITTORGARH'`,
+   `policy_origin='override:<id>'`, `manifest_version` UNCHANGED from before the swap — the
+   version-unaware re-rank (#893) is the thing under test, so a version bump between reads would
+   hide a regression back to the old guard.
+2. **SUPPLIED fields are OUT OF SCOPE (#968).** A prior version of this card's fix reopened a
+   SUPPLIED row whose `chosen_source` was outranked by the incoming order ("chosenDemoted"). A
+   second Tier A review (2026-09-24) reproduced that branch firing on staging with NO override
+   present — any field settled by its rank-2/3 source re-plans with the same registry order every
+   data slot, so the reopen condition was true on every pass (24 such rows measured). That
+   behaviour has been REMOVED from this PR; a SUPPLIED row is never touched by `upsertGeneratedRows`,
+   exactly as on main before item 3. Reopening a SUPPLIED row on a real order change needs a
+   durable design (a mechanism that fires only once per actual change, never on every re-plan) and
+   is tracked separately at #968 — do not re-add an "inferred" SUPPLIED rule here.
 3. Walk log `policy origin=override:<id>` for the named IPO; a write for that IPO carries
    `data_lineage.policyOrigin='override:<id>'`.
-4. `expire <id>`; wake inside the NEXT OD-19 slot; both rows show `registry:<v>` again (the
-   non-SUPPLIED row's ranks revert; the reopened row, if by then re-settled, is left as whatever
-   source actually supplied it).
+4. `expire <id>`; wake inside the NEXT OD-19 slot; the non-SUPPLIED row's ranks revert to
+   `registry:<v>`.
 
 Read by identity (row id, ipo slug, field name) and recorded in the ledger — never a bare row count.
 
