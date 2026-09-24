@@ -186,6 +186,8 @@ function makeRunnerWith(opts: {
   sink: ReturnType<typeof urlKeyedSink>;
   store: InMemoryDocumentFetchStateStore;
   bseCore?: string;
+  /** BSE consult answers 500 (http_error) on every attempt: an exchange the runner asked that could not answer. */
+  bseFail?: boolean;
   /** url substring -> PDF body served for it. */
   extra?: Record<string, Buffer>;
   requested?: string[];
@@ -199,7 +201,10 @@ function makeRunnerWith(opts: {
       return { status: 200, contentType: 'text/html', body: Buffer.from('<html><h1>Object Moved</h1></html>'), url };
     }
     if (url.includes('RHP_SKYWAYS.zip')) return { status: 200, contentType: 'application/zip', body: opts.zip, url: ZIP_URL };
-    if (url.includes('GetMkt_ISSUE_BBS_IPO')) return json(opts.bseCore ?? fixture('bse-skyways-core.json'));
+    if (url.includes('GetMkt_ISSUE_BBS_IPO')) {
+      if (opts.bseFail) return { status: 500, contentType: 'text/html', body: Buffer.from('err'), url };
+      return json(opts.bseCore ?? fixture('bse-skyways-core.json'));
+    }
     if (url.includes('symbol=SKYWAYS')) return json(fixture('nse-skyways.json'));
     return { status: 404, contentType: 'text/html', body: Buffer.from('x'), url };
   };
@@ -211,6 +216,7 @@ function makeRunnerWith(opts: {
     now: () => new Date('2026-08-28T06:00:00Z'),
     storeDir,
     extractCoverText: async () => ({ usable: true, text: 'SKYWAYS AIR SERVICES LIMITED' }),
+    sleep: async () => undefined,
   });
 }
 
@@ -543,6 +549,51 @@ describe('round 3: stored zip members close their type on the next cycle; a fetc
     expect(corrState).toMatchObject({ state: 'FOUND', documentId: 'doc-member' });
     expect(result.found).toContain('CORRIGENDUM');
     expect(requested.some((u) => u.includes('RHP_SKYWAYS.zip'))).toBe(false);
+  }, 60_000);
+
+  it('round 4 Tier A MAJOR (M2): a stored zip member does NOT close its type when an exchange TIMED OUT — only "answered, no link" may close it from the zip', async () => {
+    // Same shape as the previous test (a CORRIGENDUM member row is already
+    // stored), except BSE answers 500 on every retry instead of "no link".
+    // `exchangesAnswered` must be false, so neither guard
+    // (`candidates.length === 0 && exchangesAnswered` in the loop, and
+    // `!exchangesAnswered` after it) may treat "no candidates this cycle" as
+    // "the exchanges said there is no such filing" and close CORRIGENDUM FOUND
+    // on the zip's older copy. Dropping `exchangesAnswered` from either guard
+    // (the reviewer's round-3 mutation M2) makes this red: BSE's failure to
+    // answer would be silently read the same as BSE answering "no link".
+    const sink = urlKeyedSink([
+      {
+        id: 'doc-member',
+        ipoId: 'ipo-skyways',
+        type: 'CORRIGENDUM' as never,
+        title: 'RHP | Rays of Belief_Corrigendum.pdf',
+        url: zipMemberUrl(ZIP_URL, MEMBERS[0].name),
+        exchange: 'NSE',
+        mediaType: 'PDF',
+      },
+    ]);
+    const withMembers = Object.assign(sink, {
+      async findZipMemberDocuments(ipoId: string) {
+        return [...sink.byUrl.values()]
+          .filter((r) => r.ipoId === ipoId && r.url.includes('#member='))
+          .map((r) => ({ id: r.id, type: String(r.type), url: r.url }));
+      },
+    });
+    const existing = [
+      ...EXISTING.filter((r) => r.docType !== 'CORRIGENDUM'),
+      { ...EXISTING[0], docType: 'RHP' },
+    ];
+    const store = await seededStore(existing);
+    const result = await makeRunnerWith({
+      zip: makeMultiZip(MEMBERS),
+      sink: withMembers,
+      store,
+      bseFail: true,
+    }).runIpo(SKYWAYS, existing as never);
+
+    const corrState = (await store.listForIpo('ipo-skyways')).find((r) => r.docType === 'CORRIGENDUM')!;
+    expect(corrState.state).not.toBe('FOUND');
+    expect(result.found).not.toContain('CORRIGENDUM');
   }, 60_000);
 
   it('a zip the runner fetches now is marked examined (after its members), so the expansion pass never re-downloads it', async () => {

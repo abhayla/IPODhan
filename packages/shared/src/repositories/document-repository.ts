@@ -31,6 +31,8 @@ export interface StoredZipRow {
   title: string;
   exchange: string;
   sha256: string | null;
+  /** Item 22 round 4: distinct-slot failed re-fetch attempts so far. */
+  zipExpandAttempts: number;
 }
 
 export class DocumentRepository
@@ -173,11 +175,19 @@ export class DocumentRepository
   }
 
   /**
-   * Item 22 round 3 (OD-36, F-154): stored zip documents whose other members
-   * were never examined (`zip_members_checked_at IS NULL`). The selection of
-   * the data-slot stored-zip expansion pass and of
-   * `scripts/repair-zip-member-documents.ts` - ONE query for both. Oldest
-   * first, so a bounded pass works through the backlog in a stable order.
+   * Item 22 round 3 (OD-36, F-154); reordered round 4 (Tier A MAJOR): stored
+   * zip documents whose other members were never examined
+   * (`zip_members_checked_at IS NULL`). The selection of the data-slot
+   * stored-zip expansion pass and of `scripts/repair-zip-member-documents.ts`
+   * - ONE query for both.
+   *
+   * Ordered by LAST ATTEMPT (never-attempted first: `zip_last_attempt_slot`
+   * NULLS FIRST), never `uploaded_at`. Ordering by `uploaded_at` let one old,
+   * permanently-dead zip sort first on EVERY wake forever (it never leaves
+   * the selection because it never gets marked checked), starving every zip
+   * behind it — the round-4 Tier A MAJOR. Ordering by last-attempt means a
+   * zip that just failed rotates to the back, so the bounded per-wake pass
+   * (3 zips) reaches every other zip in the backlog before it comes up again.
    * `companyName` is the IPO's, for the cover-page identity check.
    */
   async listZipsWithUncheckedMembers(options: { limit?: number; slug?: string | null } = {}): Promise<StoredZipRow[]> {
@@ -186,14 +196,15 @@ export class DocumentRepository
       const limit = options.limit ?? null;
       const slug = options.slug ?? null;
       const result = await this.db.execute(sql`
-        SELECT d.id, d.ipo_id, i.slug, i.company_name, d.type::text AS type, d.url, d.title, d.exchange, d.sha256
+        SELECT d.id, d.ipo_id, i.slug, i.company_name, d.type::text AS type, d.url, d.title, d.exchange, d.sha256,
+               d.zip_expand_attempts
           FROM documents d
           JOIN ipos i ON i.id = d.ipo_id
          WHERE lower(d.url) LIKE '%.zip'
            AND strpos(d.url, '#') = 0
            AND d.zip_members_checked_at IS NULL
            AND (${slug}::text IS NULL OR i.slug = ${slug})
-         ORDER BY d.uploaded_at, d.id
+         ORDER BY d.zip_last_attempt_slot ASC NULLS FIRST, d.id
          LIMIT ${limit}
       `);
       const rows = ((result as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<string, unknown>[];
@@ -207,9 +218,39 @@ export class DocumentRepository
         title: String(r.title ?? ''),
         exchange: String(r.exchange ?? 'NSE'),
         sha256: r.sha256 ? String(r.sha256).trim() : null,
+        zipExpandAttempts: Number(r.zip_expand_attempts ?? 0),
       }));
     } catch (error) {
       throw new DatabaseError('Failed to list stored zips with unexamined members', undefined, error);
+    }
+  }
+
+  /**
+   * Item 22 round 4 (Tier A MAJOR, failure class container-unwrapped-to-one-member):
+   * record a failed re-fetch attempt on a stored zip, durably and once per
+   * DISTINCT data slot — a wake that repeats the same transient failure
+   * inside one slot (there are ~16 wakes/slot) must not burn the 3-attempt
+   * budget by itself. Returns the attempts count AFTER this call, so the
+   * caller can decide whether the 3rd distinct-slot failure closes the zip.
+   */
+  async markZipExpandAttemptFailed(documentId: string, slotEpochMinute: number, at: Date = new Date()): Promise<number> {
+    try {
+      const { sql } = await import('drizzle-orm');
+      const result = await this.db.execute(sql`
+        UPDATE documents
+           SET zip_expand_attempts = CASE
+                 WHEN zip_last_attempt_slot IS DISTINCT FROM ${slotEpochMinute} THEN zip_expand_attempts + 1
+                 ELSE zip_expand_attempts
+               END,
+               zip_last_attempt_slot = ${slotEpochMinute},
+               updated_at = ${at}
+         WHERE id = ${documentId}
+         RETURNING zip_expand_attempts
+      `);
+      const rows = ((result as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<string, unknown>[];
+      return rows.length > 0 ? Number(rows[0].zip_expand_attempts ?? 0) : 0;
+    } catch (error) {
+      throw new DatabaseError(`Failed to record zip expand attempt for document: ${documentId}`, undefined, error);
     }
   }
 
@@ -239,7 +280,7 @@ export class DocumentRepository
    */
   async markZipMembersChecked(
     documentId: string,
-    patch: { sha256?: string | null; partNumber?: number | null; at?: Date } = {}
+    patch: { sha256?: string | null; partNumber?: number | null; at?: Date; unresolvedReason?: string | null } = {}
   ): Promise<void> {
     try {
       const { sql } = await import('drizzle-orm');
@@ -248,6 +289,7 @@ export class DocumentRepository
         .set({
           zipMembersCheckedAt: patch.at ?? new Date(),
           updatedAt: new Date(),
+          zipUnresolvedReason: patch.unresolvedReason ?? null,
           ...(patch.sha256 ? { sha256: sql`COALESCE(${documents.sha256}, ${patch.sha256})` as never } : {}),
           ...(patch.partNumber != null ? { partNumber: patch.partNumber } : {}),
         })

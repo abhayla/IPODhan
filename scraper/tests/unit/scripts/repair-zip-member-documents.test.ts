@@ -86,12 +86,18 @@ const zipFetcher =
     return { status, contentType: 'application/zip', body, url };
   };
 
-type Row = DocumentSinkInput & { id: string; checkedAt?: boolean };
+type Row = DocumentSinkInput & {
+  id: string;
+  checkedAt?: boolean;
+  unresolvedReason?: string | null;
+  zipExpandAttempts?: number;
+  zipLastAttemptSlot?: number | null;
+};
 
 /** A documents table: rows by url, the marker, and the one selection query the pass and the CLI share. */
 function sink(preloaded: Row[] = []) {
   const rows = new Map<string, Row>(preloaded.map((r) => [r.url, { ...r }]));
-  const marked: { id: string; sha256?: string | null; partNumber?: number | null }[] = [];
+  const marked: { id: string; sha256?: string | null; partNumber?: number | null; unresolvedReason?: string | null }[] = [];
   return {
     rows,
     marked,
@@ -106,18 +112,34 @@ function sink(preloaded: Row[] = []) {
       const hit = [...rows.values()].find((r) => r.ipoId === ipoId && r.sha256 === s);
       return hit ? { id: hit.id, type: hit.type as string } : null;
     },
-    async markZipMembersChecked(id: string, patch: { sha256?: string | null; partNumber?: number | null } = {}) {
+    async markZipMembersChecked(
+      id: string,
+      patch: { sha256?: string | null; partNumber?: number | null; unresolvedReason?: string | null } = {}
+    ) {
       marked.push({ id, ...patch });
       const row = [...rows.values()].find((r) => r.id === id);
       if (row) {
         row.checkedAt = true;
+        row.unresolvedReason = patch.unresolvedReason ?? null;
         if (patch.sha256 && !row.sha256) row.sha256 = patch.sha256;
         if (patch.partNumber != null) row.partNumber = patch.partNumber;
       }
     },
+    /** Item 22 round 4: increments once per DISTINCT slot, mirroring the real repository's SQL CASE. */
+    async markZipExpandAttemptFailed(id: string, slotEpochMinute: number) {
+      const row = [...rows.values()].find((r) => r.id === id);
+      if (!row) return 0;
+      if (row.zipLastAttemptSlot !== slotEpochMinute) {
+        row.zipExpandAttempts = (row.zipExpandAttempts ?? 0) + 1;
+        row.zipLastAttemptSlot = slotEpochMinute;
+      }
+      return row.zipExpandAttempts ?? 0;
+    },
     async listZipsWithUncheckedMembers(o: { limit?: number } = {}) {
       const zips = [...rows.values()]
         .filter((r) => r.url.toLowerCase().endsWith('.zip') && !r.url.includes('#') && !r.checkedAt)
+        // Round 4: ordered by last-attempt (never-attempted first), not upload order.
+        .sort((a, b) => (a.zipLastAttemptSlot ?? -Infinity) - (b.zipLastAttemptSlot ?? -Infinity))
         .map((r) => ({
           documentId: r.id,
           ipoId: r.ipoId,
@@ -128,6 +150,7 @@ function sink(preloaded: Row[] = []) {
           title: r.title,
           exchange: r.exchange ?? 'NSE',
           sha256: r.sha256 ?? null,
+          zipExpandAttempts: r.zipExpandAttempts ?? 0,
         }));
       return o.limit ? zips.slice(0, o.limit) : zips;
     },
@@ -146,7 +169,8 @@ function runnerFor(
   fetcher: HttpFetcher,
   documents: ReturnType<typeof sink>,
   cover = 'HY-TECH ENGINEERS LIMITED',
-  counter = new NetworkCounter()
+  counter = new NetworkCounter(),
+  now?: () => Date
 ) {
   return new DocumentDiscoveryRunner({
     fetcher,
@@ -156,6 +180,7 @@ function runnerFor(
     storeDir,
     extractCoverText: async () =>
       cover ? { usable: true, text: cover } : ({ usable: false, reason: 'no_text_layer' } as never),
+    ...(now ? { now } : {}),
   });
 }
 
@@ -174,7 +199,7 @@ describe('repair-zip-member-documents (item 22)', () => {
     expect(describeResult(applied).toAdd).toBe(1);
     expect([...documents.rows.values()].map((r) => [r.type, r.partNumber])).toEqual([['CORRIGENDUM', 1]]);
     expect(applied.checked).toBe(true);
-    expect(documents.marked).toEqual([{ id: 'doc-rhp', sha256: null, partNumber: 3 }]);
+    expect(documents.marked).toEqual([{ id: 'doc-rhp', unresolvedReason: null, sha256: null, partNumber: 3 }]);
 
     const again = await repairOneZip(STORED, { runner, apply: false });
     expect(describeResult(again).toAdd).toBe(0);
@@ -211,7 +236,7 @@ describe('round 2 review, MAJOR 2: a zip stored with NO sha256 (W-1) is verified
     expect(r.identity).toBe('cover_check_passed');
     expect(r.backfilledSha256).toBe(sha(RHP));
     expect([...documents.rows.values()].map((x) => x.type)).toEqual(['CORRIGENDUM']);
-    expect(documents.marked).toEqual([{ id: 'doc-rhp', sha256: sha(RHP), partNumber: 3 }]);
+    expect(documents.marked).toEqual([{ id: 'doc-rhp', unresolvedReason: null, sha256: sha(RHP), partNumber: 3 }]);
   });
 
   it('cover names another company -> refused by the verifier, nothing stored', async () => {
@@ -268,17 +293,19 @@ describe('repair-zip-member-documents dry run across two zips of one IPO', () =>
   });
 });
 
+/** A stored zip row fixture, module-scoped so both the round 3 and round 4 describe blocks share it. */
+const zipRow = (n: number): Row => ({
+  id: `zip-${n}`,
+  ipoId: 'ipo-htel',
+  type: 'RHP' as never,
+  title: 'RHP',
+  url: `https://nsearchives.nseindia.com/content/ipo/RHP_Z${n}.zip`,
+  exchange: 'NSE',
+  mediaType: 'PDF',
+  sha256: sha(RHP),
+});
+
 describe('the in-pipeline stored-zip expansion pass (round 3)', () => {
-  const zipRow = (n: number): Row => ({
-    id: `zip-${n}`,
-    ipoId: 'ipo-htel',
-    type: 'RHP' as never,
-    title: 'RHP',
-    url: `https://nsearchives.nseindia.com/content/ipo/RHP_Z${n}.zip`,
-    exchange: 'NSE',
-    mediaType: 'PDF',
-    sha256: sha(RHP),
-  });
 
   it('expands at most N zips per wake; the marker makes the next wake do the rest, then 0', async () => {
     const documents = sink([1, 2, 3, 4, 5].map(zipRow));
@@ -320,5 +347,94 @@ describe('the in-pipeline stored-zip expansion pass (round 3)', () => {
     );
     expect(r.expanded).toBeLessThan(3);
     expect(r.skippedByCeiling).toBeGreaterThan(0);
+  });
+});
+
+describe('round 4 Tier A MAJOR: a permanently dead zip does not retry forever and cannot starve the backlog', () => {
+  // Three IST calendar days apart, well inside a data-job slot each time, so
+  // each call falls in a DIFFERENT distinct slot (mostRecentDataJobSlotEpochMinute).
+  const SLOT_DAYS = ['2026-09-01T01:00:00Z', '2026-09-02T01:00:00Z', '2026-09-03T01:00:00Z', '2026-09-04T01:00:00Z'];
+
+  it('a zip that 404s is NOT marked after 1 or 2 distinct-slot failures, but IS marked zip_unreachable after the 3rd', async () => {
+    const documents = sink([zipRow(1)]);
+    const dead = zipFetcher(Buffer.from('not found'), [], 404);
+
+    const r1 = await repairOneZip(
+      { ...STORED, documentId: 'zip-1', url: zipRow(1).url },
+      { runner: runnerFor(dead, documents, undefined, undefined, () => new Date(SLOT_DAYS[0])), apply: true }
+    );
+    expect(r1.checked).toBe(false);
+    expect(documents.marked).toEqual([]);
+
+    const r2 = await repairOneZip(
+      { ...STORED, documentId: 'zip-1', url: zipRow(1).url },
+      { runner: runnerFor(dead, documents, undefined, undefined, () => new Date(SLOT_DAYS[1])), apply: true }
+    );
+    expect(r2.checked).toBe(false);
+    expect(documents.marked).toEqual([]);
+
+    const r3 = await repairOneZip(
+      { ...STORED, documentId: 'zip-1', url: zipRow(1).url },
+      { runner: runnerFor(dead, documents, undefined, undefined, () => new Date(SLOT_DAYS[2])), apply: true }
+    );
+    expect(r3.checked).toBe(true);
+    expect(r3.refused).toMatch(/attempt 3\/3/);
+    expect(documents.marked).toEqual([{ id: 'zip-1', unresolvedReason: 'zip_unreachable', sha256: undefined, partNumber: undefined }]);
+    // Selection floor: it has left the backlog, same as an expanded zip.
+    expect((await documents.listZipsWithUncheckedMembers({})).map((z) => z.documentId)).not.toContain('zip-1');
+  });
+
+  it('repeated failures WITHIN one slot (many wakes) do not burn the budget: the same slot counts once', async () => {
+    const documents = sink([zipRow(1)]);
+    const dead = zipFetcher(Buffer.from('busy'), [], 503);
+    const sameSlot = () => new Date(SLOT_DAYS[0]);
+    for (let i = 0; i < 5; i++) {
+      await repairOneZip({ ...STORED, documentId: 'zip-1', url: zipRow(1).url }, { runner: runnerFor(dead, documents, undefined, undefined, sameSlot), apply: true });
+    }
+    expect(documents.rows.get(zipRow(1).url)!.zipExpandAttempts).toBe(1);
+    expect(documents.marked).toEqual([]);
+  });
+
+  it('ordering by last-attempt (never-attempted first), not upload order: one dead zip cannot starve the rest of the backlog', async () => {
+    // zip-1 is the OLDEST (lowest number = uploaded first) but 404s every
+    // time; zips 2 and 3 are healthy. With the OLD `ORDER BY uploaded_at`
+    // this dead zip would sort first on EVERY wake forever and a 1-per-wake
+    // (or even 3-per-wake, on a bigger backlog) cap would never reach 2 or 3.
+    const documents = sink([1, 2, 3].map(zipRow));
+    const calls: string[] = [];
+    const fetcher: HttpFetcher = async (url) => {
+      calls.push(url);
+      if (url.includes('Z1')) return { status: 404, contentType: 'text/html', body: Buffer.from('x'), url };
+      return { status: 200, contentType: 'application/zip', body: ZIP, url };
+    };
+    let day = 0;
+    const runner = runnerFor(fetcher, documents, undefined, undefined, () => new Date(SLOT_DAYS[day]));
+
+    // Wake 1 (slot 0, limit 1): only zip-1 exists with no last-attempt yet
+    // (all three tied), so upload order picks it first. It 404s: 1 failed
+    // attempt, stays in the backlog.
+    const w1 = await runStoredZipExpansionPass({ selection: documents, expander: runner }, { limit: 1 });
+    expect(w1.selected).toBe(1);
+    expect(calls[calls.length - 1]).toContain('Z1');
+
+    // Wake 2 (slot 1, limit 1): zip-1 now HAS a last-attempt; zip-2 and zip-3
+    // still have none, so they sort ahead of it. zip-2 is picked and expands.
+    day = 1;
+    const w2 = await runStoredZipExpansionPass({ selection: documents, expander: runner }, { limit: 1 });
+    expect(calls[calls.length - 1]).toContain('Z2');
+    expect(w2.expanded).toBe(1);
+
+    // Wake 3 (slot 2, limit 1): zip-3 is the only never-attempted zip left; picked and expands.
+    day = 2;
+    const w3 = await runStoredZipExpansionPass({ selection: documents, expander: runner }, { limit: 1 });
+    expect(calls[calls.length - 1]).toContain('Z3');
+    expect(w3.expanded).toBe(1);
+
+    // zip-2 and zip-3 both reached the front of the queue and expanded WITHOUT
+    // waiting for zip-1 to ever resolve — the round-4 fix. zip-1 is still open.
+    const remaining = await documents.listZipsWithUncheckedMembers({});
+    expect(remaining.map((z) => z.url)).toEqual([zipRow(1).url]);
+    expect(documents.rows.get(zipRow(1).url)!.checkedAt).toBeFalsy();
+    expect(documents.rows.get(zipRow(1).url)!.zipExpandAttempts).toBe(1);
   });
 });

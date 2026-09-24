@@ -30,6 +30,17 @@ import type { SeenBySha, StoredZip, StoredZipExpansion } from './zip-member-docu
 export const STORED_ZIP_EXPANSIONS_PER_WAKE = 3;
 export const STORED_ZIP_EXPANSION_CEILING_MS = 3 * 60 * 1000;
 
+/**
+ * Item 22 round 4 (Tier A MAJOR): how many DISTINCT data slots a transport-level
+ * re-fetch failure (404, timeout, refused address) may happen in before the zip
+ * is marked checked as `zip_unreachable` and leaves the selection. Not a
+ * per-wake count (there are ~16 wakes/slot) — `markZipExpandAttemptFailed`
+ * increments only when the slot changes, so a genuinely dead zip is retried on
+ * 3 SEPARATE data-job wakes (spread over up to 3 slots, i.e. up to a day) before
+ * it is given up on, never on 3 wakes 2 minutes apart.
+ */
+export const ZIP_EXPAND_MAX_ATTEMPTS = 3;
+
 export interface StoredZipSelection {
   listZipsWithUncheckedMembers(options: { limit?: number; slug?: string | null }): Promise<StoredZipRow[]>;
 }
@@ -42,6 +53,15 @@ export interface StoredZipPassSummary {
   selected: number;
   expanded: number;
   refused: number;
+  /**
+   * Item 22 round 4: refused AND `checked: true` — a zip closed without being
+   * expanded (cover-check refusal, an archive that changed, or 3 distinct-slot
+   * `zip_unreachable` failures). Distinguishable from `expanded` (members were
+   * stored) and from a still-pending refusal (`checked: false`, retried next
+   * wake) — requirement 4 of round 4: both a cover-check refusal and a
+   * `zip_unreachable` close are counted here and neither is read as expanded.
+   */
+  unresolved: number;
   unchecked: number;
   membersStored: number;
   skippedByCeiling: number;
@@ -61,7 +81,15 @@ export async function runStoredZipExpansionPass(
   const limit = options.limit ?? STORED_ZIP_EXPANSIONS_PER_WAKE;
   const ceilingMs = options.ceilingMs ?? STORED_ZIP_EXPANSION_CEILING_MS;
   const startedAt = now();
-  const summary: StoredZipPassSummary = { selected: 0, expanded: 0, refused: 0, unchecked: 0, membersStored: 0, skippedByCeiling: 0 };
+  const summary: StoredZipPassSummary = {
+    selected: 0,
+    expanded: 0,
+    refused: 0,
+    unresolved: 0,
+    unchecked: 0,
+    membersStored: 0,
+    skippedByCeiling: 0,
+  };
   const rows = await deps.selection.listZipsWithUncheckedMembers({ limit });
   summary.selected = rows.length;
   const seenByIpo = new Map<string, SeenBySha>();
@@ -79,8 +107,12 @@ export async function runStoredZipExpansionPass(
     let seen = seenByIpo.get(zip.ipoId);
     if (!seen) seenByIpo.set(zip.ipoId, (seen = new Map()));
     const r = await deps.expander.expandStoredZip(zip, { apply: true, seenBySha: seen });
-    if (r.refused) summary.refused += 1;
-    else summary.expanded += 1;
+    if (r.refused) {
+      summary.refused += 1;
+      if (r.checked) summary.unresolved += 1;
+    } else {
+      summary.expanded += 1;
+    }
     if (!r.checked) summary.unchecked += 1;
     summary.membersStored += r.outcomes.filter((o) => o.action === 'stored').length;
   }

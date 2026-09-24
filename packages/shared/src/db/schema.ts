@@ -691,6 +691,29 @@ export const documents = pgTable(
      * selection. Meaningless (NULL) on a bare-PDF row.
      */
     zipMembersCheckedAt: timestamp('zip_members_checked_at'),
+    /**
+     * Item 22 round 4 (Tier A MAJOR, F-151's class): how many DISTINCT data
+     * slots a re-fetch of this zip has failed in, and the epoch-minute
+     * (`mostRecentDataJobSlotEpochMinute`) of the most recent one. A dead zip
+     * (404, timeout, refused) used to leave `zipMembersCheckedAt` NULL forever
+     * and get re-downloaded every wake, starving the rest of the backlog
+     * behind it (selection ordered by `uploaded_at`). Counted per SLOT, not
+     * per wake (there are ~16 wakes/slot): a wake that repeats the same
+     * transient failure inside one slot must not burn through the 3-attempt
+     * budget by itself. At 3 distinct-slot failures the zip is marked checked
+     * with `zipUnresolvedReason = 'zip_unreachable'` — closed, not expanded.
+     */
+    zipExpandAttempts: integer('zip_expand_attempts').default(0).notNull(),
+    zipLastAttemptSlot: bigint('zip_last_attempt_slot', { mode: 'number' }),
+    /**
+     * Item 22 round 4: set alongside `zipMembersCheckedAt` whenever the zip
+     * was marked checked WITHOUT being expanded (a definite refusal — the
+     * archive changed, the cover check failed with no stored sha256, or
+     * `zip_unreachable` after 3 slots) so a checked-but-unresolved zip is
+     * distinguishable from one that was actually expanded. NULL means either
+     * "never checked" or "checked and expanded".
+     */
+    zipUnresolvedReason: varchar('zip_unresolved_reason', { length: 64 }),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),

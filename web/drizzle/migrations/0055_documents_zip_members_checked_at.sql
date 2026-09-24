@@ -9,3 +9,11 @@
 -- snapshot by filename sort). meta/0055_snapshot.json is 0054's snapshot plus this column,
 -- parented on 0054's id.
 ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "zip_members_checked_at" timestamp;
+
+-- Item 22 round 4 (Tier A MAJOR): a durable per-slot failed-attempt count so a
+-- dead zip (404/timeout/refused) is closed after 3 distinct data-slot
+-- failures instead of being re-fetched forever. Added to this SAME
+-- hand-written migration rather than a new one because 0055 is unmerged.
+ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "zip_expand_attempts" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "zip_last_attempt_slot" bigint;
+ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "zip_unresolved_reason" varchar(64);

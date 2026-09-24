@@ -59,6 +59,8 @@ import {
   type SebiFetcher,
 } from './sebi-source.js';
 import { compactCompanyNameKey } from '@ipodhan/shared/utils/company-name-normalizer';
+import { mostRecentDataJobSlotEpochMinute } from '@ipodhan/shared/scheduler/data-job-slots';
+import { ZIP_EXPAND_MAX_ATTEMPTS } from './stored-zip-expansion-pass.js';
 import {
   parseCompanyHostLinks,
   companyInvestorUrls,
@@ -534,7 +536,16 @@ export interface DocumentSink {
    * Item 22 round 3: the durable "members examined" marker on a zip row
    * (`documents.zip_members_checked_at`), plus what the examination proved.
    */
-  markZipMembersChecked?(documentId: string, patch?: { sha256?: string | null; partNumber?: number | null }): Promise<void>;
+  markZipMembersChecked?(
+    documentId: string,
+    patch?: { sha256?: string | null; partNumber?: number | null; unresolvedReason?: string | null }
+  ): Promise<void>;
+  /**
+   * Item 22 round 4 (Tier A MAJOR): record one failed re-fetch attempt on a
+   * stored zip, counted once per distinct data slot. Returns the attempts
+   * count after this call.
+   */
+  markZipExpandAttemptFailed?(documentId: string, slotEpochMinute: number): Promise<number>;
 }
 
 export interface DiscoveryIpo {
@@ -2135,7 +2146,15 @@ export class DocumentDiscoveryRunner {
    *   exchanges list no link of their own for it (MAJOR 1).
    * - `checked`: the marker is written (apply only) for every DEFINITE
    *   verdict, refusals included, so a zip is examined once. A transient
-   *   failure (no HTTP 200, a refused address) leaves it for the next wake.
+   *   TRANSPORT failure (no HTTP 200, a refused address, a timeout) does NOT
+   *   leave the zip unmarked forever any more (round 4 Tier A MAJOR: that
+   *   made a dead zip re-download on every wake and starve the backlog,
+   *   because the selection is ordered by last attempt and a never-marked
+   *   row never rotates out). Instead each such failure is counted, once per
+   *   DISTINCT data slot (`markZipExpandAttemptFailed`), and after
+   *   `ZIP_EXPAND_MAX_ATTEMPTS` distinct-slot failures the zip IS marked
+   *   checked, with `zipUnresolvedReason: 'zip_unreachable'` — closed as
+   *   unresolved, never silently treated as expanded.
    */
   async expandStoredZip(zip: StoredZip, opts: { apply: boolean; seenBySha?: SeenBySha }): Promise<StoredZipExpansion> {
     const attempts: FetchAttempt[] = [];
@@ -2146,11 +2165,14 @@ export class DocumentDiscoveryRunner {
     const done = async (
       result: Omit<StoredZipExpansion, 'zip' | 'attempts' | 'checked'>,
       definite: boolean,
-      patch: { sha256?: string | null; partNumber?: number | null } = {}
+      patch: { sha256?: string | null; partNumber?: number | null; unresolvedReason?: string | null } = {}
     ): Promise<StoredZipExpansion> => {
       let checked = false;
       if (definite && opts.apply && this.deps.documents.markZipMembersChecked) {
-        await this.deps.documents.markZipMembersChecked(zip.documentId, patch);
+        await this.deps.documents.markZipMembersChecked(zip.documentId, {
+          unresolvedReason: result.refused ? patch.unresolvedReason ?? 'refused' : null,
+          ...patch,
+        });
         checked = true;
       }
       logger.info(
@@ -2162,22 +2184,43 @@ export class DocumentDiscoveryRunner {
 
     if (!verdict || isVerifyFailure(verdict)) {
       const reason = verdict && isVerifyFailure(verdict) ? verdict.reason : 'no_response';
-      return done({ refused: `refetch_rejected:${reason} (http ${http})`, outcomes: [] }, http === 200);
+      if (http === 200) {
+        // A response came back but verifyDownload rejected the bytes
+        // deterministically (size, hash, corrupt archive) — re-fetching will
+        // not change that, so this is definite on the first attempt.
+        return done({ refused: `refetch_rejected:${reason} (http ${http})`, outcomes: [] }, true, { unresolvedReason: `verify_failed:${reason}` });
+      }
+      // Transport-level failure: 404, timeout, refused address, non-200.
+      // Count it once per distinct data slot; only the 3rd distinct-slot
+      // failure closes the zip as unresolved.
+      let attemptsSoFar = zip.zipExpandAttempts ?? 0;
+      if (opts.apply && this.deps.documents.markZipExpandAttemptFailed) {
+        const slot = mostRecentDataJobSlotEpochMinute(this.now());
+        attemptsSoFar = await this.deps.documents.markZipExpandAttemptFailed(zip.documentId, slot);
+      }
+      const exhausted = attemptsSoFar >= ZIP_EXPAND_MAX_ATTEMPTS;
+      return done(
+        { refused: `refetch_rejected:${reason} (http ${http}, attempt ${attemptsSoFar}/${ZIP_EXPAND_MAX_ATTEMPTS})`, outcomes: [] },
+        exhausted,
+        exhausted ? { unresolvedReason: 'zip_unreachable' } : {}
+      );
     }
-    if (!verdict.wasZip) return done({ refused: 'not_a_zip_any_more', outcomes: [] }, true);
+    if (!verdict.wasZip) return done({ refused: 'not_a_zip_any_more', outcomes: [] }, true, { unresolvedReason: 'not_a_zip_any_more' });
     if (zip.sha256 && verdict.sha256 !== zip.sha256) {
       return done(
         {
           refused: `archive_changed_since_stored (stored ${zip.sha256.slice(0, 8)}, now ${verdict.sha256.slice(0, 8)}) — held, not expanded`,
           outcomes: [],
         },
-        true
+        true,
+        { unresolvedReason: 'archive_changed_since_stored' }
       );
     }
     if (!zip.sha256 && verdict.coverCheck !== 'passed') {
       return done(
         { refused: `no_stored_sha256_and_cover_check_${verdict.coverCheck} — identity unproven, held, not expanded`, outcomes: [] },
-        true
+        true,
+        { unresolvedReason: `cover_check_${verdict.coverCheck}` }
       );
     }
 

@@ -107,6 +107,8 @@ export interface StoredZip {
   exchange: string;
   /** NULL for a row stored before sha256 was written (W-1). */
   sha256: string | null;
+  /** Item 22 round 4: distinct-slot failed re-fetch attempts so far. Absent in older callers = 0. */
+  zipExpandAttempts?: number;
 }
 
 /** What `DocumentDiscoveryRunner.expandStoredZip` did with one stored zip. */
