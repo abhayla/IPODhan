@@ -85,7 +85,7 @@ export interface FieldSourceSummary {
  * (`openDate`, not `open_date`) — a snake_case list here would match nothing
  * and the guard would silently never fire.
  */
-const E1_EXCHANGE_STATED_FIELDS: ReadonlySet<string> = new Set([
+export const E1_EXCHANGE_STATED_FIELDS: ReadonlySet<string> = new Set([
   'openDate',
   'closeDate',
   'listingDate',
@@ -98,8 +98,15 @@ const E1_EXCHANGE_STATED_FIELDS: ReadonlySet<string> = new Set([
   'bidDate',
 ]);
 
-/** Sources that mean "read out of an offer document", as opposed to fetched from a source that states the fact. */
-const DOCUMENT_PATH_SOURCES: ReadonlySet<string> = new Set(['DRHP', 'DOC', 'RHP', 'PROSPECTUS']);
+/**
+ * Sources that mean "read out of an offer document", as opposed to fetched from a source that
+ * states the fact. Exported (#1016) so a WRITER — not just this guard — can filter an E-1 field
+ * out of its own document-path payload before the write, instead of relying on this throw to be
+ * caught somewhere upstream. This is the single source of truth for both sets; a caller must
+ * never hand-list them (drift between two copies is exactly how #862 slipped through the first
+ * time — the exception existed as manifest metadata AND a validator, and neither guarded a write).
+ */
+export const DOCUMENT_PATH_SOURCES: ReadonlySet<string> = new Set(['DRHP', 'DOC', 'RHP', 'PROSPECTUS']);
 
 export class FieldSourcesRepository extends BaseRepository {
   constructor(

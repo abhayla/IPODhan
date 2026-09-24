@@ -23,6 +23,7 @@
  */
 
 import type { IPORepository } from '@ipodhan/shared';
+import { E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories/field-sources-repository';
 import { isFixedPriceIssue, normalizeReceiptValue, type RuleDocumentRef } from '../../config/plan-supersession-rule.mjs';
 import {
   columnMark,
@@ -1636,8 +1637,48 @@ export async function persistFilingExtraction(
     mark('promoterGroupTransactionsSinceDrhp', pgTxns.value);
   }
 
-  // W-147: the ipo_details half of the headline, same rule as `ipos` above.
+  // W-147: the ipo_details half of the headline, same rule as `ipos` above. Receipts are pushed
+  // BEFORE the #1016 E-1 filter below, so a refused field still gets a receipt recording what
+  // the document printed — the same treatment an OCR-losing field gets a few lines down — even
+  // though it is never written or tracked.
   for (const [col, v] of Object.entries(details)) receiptFields.push(receipt('ipo_details', col, v));
+
+  // #1016 (RCA of #862's follow-on): E-1 fields (the exchange-stated timetable/status/
+  // listing-venue set — `basisOfAllotmentDate`, `initiationOfRefundsDate`,
+  // `creditOfSharesDate` are the three that land in `ipo_details`) are the exchange's to
+  // state, never a document's. The #862 guard in `FieldSourcesRepository.trackFieldUpdate`
+  // already refuses these on the document path by THROWING — correctly, as a safety net for
+  // every OTHER caller — but nothing here caught it, so one E-1 field in an otherwise-clean
+  // extraction (a price-band ad, an RHP, any doc type — `source` is always DRHP for this
+  // persister, see `scraperSourceForDocType`) threw AFTER the `ipos` upsert had already run,
+  // failing the whole document and losing every other field's receipts.
+  //
+  // Filtered here, from the guard's OWN set (never a hand-list of the three), so the guard is
+  // never hit: the value is never written to `ipo_details`, never tracked, and every other
+  // field on this document still persists. Each refusal is a structured log line, not a
+  // silent drop.
+  if (DOCUMENT_PATH_SOURCES.has(source)) {
+    for (const field of Object.keys(details)) {
+      if (!E1_EXCHANGE_STATED_FIELDS.has(field)) continue;
+      logger.warn(
+        {
+          ipoId,
+          table: 'ipo_details',
+          field,
+          value: details[field],
+          documentId: options.documentId ?? null,
+          docType: options.docType,
+          source,
+          reason: 'e1-document-path-refused',
+        },
+        `e1-document-path-refused: '${field}' is exchange-stated (E-1); refused from the document path, not written (#862, #1016)`
+      );
+      skippedFailedCheck.push(
+        `ipo_details.${field}: e1-document-path-refused — exchange-stated field, refused from the document path (#862, #1016)`
+      );
+      delete details[field];
+    }
+  }
   if (Object.keys(details).length > 0 && deps.ocrPrecedence) {
     const { ok: storedDetailsOk, row: storedDetails } = await loadStoredDetails();
     if (!storedDetailsOk) {

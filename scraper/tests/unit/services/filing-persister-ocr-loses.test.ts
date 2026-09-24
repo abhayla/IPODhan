@@ -117,6 +117,9 @@ describe('OD-97 — an OCR-only value never wins a disagreement against a text p
     const r = (t: string, f: string) => summary.receipt_fields?.find((x) => x.tableName === t && x.fieldName === f);
     expect(r('ipos', 'priceRangeMax')).toMatchObject({ value: '81', sourceText: 'OCR', ocrConfidence: 0.7456 });
     expect(r('ipos', 'lotSize')).toMatchObject({ value: '185', sourceText: 'OCR' });
+    // #1016: creditOfSharesDate is an E-1 (exchange-stated) field — the receipt still records
+    // what the document printed (same treatment as an OCR value that loses precedence), but the
+    // field is refused from ipo_details before the write and is never tracked in field_sources.
     expect(r('ipo_details', 'creditOfSharesDate')).toMatchObject({
       value: '2026-09-16',
       sourceText: 'OCR',
@@ -124,13 +127,13 @@ describe('OD-97 — an OCR-only value never wins a disagreement against a text p
     });
   });
 
-  it('the mark reaches provenance (dataLineage.ocr) for the columns the persister tracks', async () => {
+  it('#1016: creditOfSharesDate (E-1) is never tracked in field_sources, OCR or not', async () => {
     const h = makeDeps({});
     await run(realOcrEnvelope(), h);
     const credit = h.trackFieldUpdate.mock.calls
       .map((c) => c[0] as { tableName: string; fieldName: string; dataLineage: Record<string, unknown> })
       .find((c) => c.tableName === 'ipo_details' && c.fieldName === 'creditOfSharesDate');
-    expect(credit?.dataLineage.ocr).toEqual({ sourceText: 'OCR', confidence: 0.761 });
+    expect(credit).toBeUndefined();
   });
 
   it('an OCR-only band cap loses to the stored text-page value; agreeing OCR fields still write', async () => {
@@ -191,7 +194,9 @@ describe('OD-97 — an OCR-only value never wins a disagreement against a text p
     };
     const summary = await run(realOcrEnvelope(), h);
     expect(h.detailsUpsert).not.toHaveBeenCalled();
-    expect(summary.skipped_lower_priority_source.join('\n')).toContain('ipo_details.creditOfSharesDate (OCR-only value; stored row unreadable');
+    // #1016: creditOfSharesDate is refused as E-1 before this OCR-precedence path even runs, so
+    // it no longer appears here — `lotMultiple` is the same-shape OCR-only column that does.
+    expect(summary.skipped_lower_priority_source.join('\n')).toContain('ipo_details.lotMultiple (OCR-only value; stored row unreadable');
   });
 });
 
@@ -211,7 +216,9 @@ describe('OD-97 — only a text read of a same-or-better document outvotes an OC
     });
     const summary = await run(realOcrEnvelope(), h, 'RHP');
     expect(scrapedOf().priceRangeMax).toBe(81);
-    expect((h.detailsUpsert.mock.calls[0]?.[1] as Record<string, unknown>).creditOfSharesDate).toBe('2026-09-16');
+    // #1016: creditOfSharesDate is E-1 — refused from the document path regardless of which
+    // document wins OCR-vs-text precedence, so it is never written to ipo_details at all.
+    expect((h.detailsUpsert.mock.calls[0]?.[1] as Record<string, unknown> | undefined)?.creditOfSharesDate).toBeUndefined();
     expect(summary.skipped_lower_priority_source.join('\n')).not.toContain('OD-97');
   });
 
@@ -281,12 +288,14 @@ describe('OD-97 — only a text read of a same-or-better document outvotes an OC
     const conf = (h: Harness, field: string) =>
       (h.trackFieldUpdate.mock.calls.map((c) => c[0] as { fieldName: string; confidence: number }).find((c) => c.fieldName === field))
         ?.confidence;
+    // #1016: creditOfSharesDate (E-1) is never tracked at all now, so `lotMultiple` — the same
+    // fixture's other OCR-marked ipo_details column (page 0, confidence 0.7456) — is the example.
     const ocr = makeDeps({});
     await run(realOcrEnvelope(), ocr);
-    expect(conf(ocr, 'creditOfSharesDate')).toBe(76);
+    expect(conf(ocr, 'lotMultiple')).toBe(75);
     const text = makeDeps({});
     await run(asTextRead(realOcrEnvelope()), text);
-    expect(conf(text, 'creditOfSharesDate')).toBe(100);
+    expect(conf(text, 'lotMultiple')).toBe(100);
   });
 });
 
