@@ -387,6 +387,13 @@ export interface PlanRowBelowVersion {
   ipoListingDate: Date | null;
 }
 
+// SUPPLIED-reopen ("chosenDemoted") design removed 2026-09-24 after a
+// second Tier A review reproduced it firing with NO override present for
+// any field settled by its rank-2/3 source, looping every data slot (24
+// such rows on staging). It needs a durable design and is tracked at #968.
+// This file, per #893, only re-ranks non-SUPPLIED rows; a SUPPLIED row is
+// never touched by this upsert, exactly as on main before item 3.
+
 /** One row's new ranks, resolved by the caller from the current policy. */
 export interface PlanRowRankUpdate {
   id: string;
@@ -404,27 +411,39 @@ export class IpoFieldPlanRepository extends BaseRepository {
 
   /**
    * Insert the generator's rows for one IPO, RECONCILED never REGENERATED —
-   * and, since item 3 slice S7 (#732), RE-RANKED on a version increase
-   * rather than left stale forever.
+   * and, since item 3 slice S7 (#732), RE-RANKED whenever the EFFECTIVE
+   * order actually changes, not only on a `manifest_version` increase
+   * (item 3 S4, #893 — the Swap Test / "override re-rank" class).
    *
-   * `ON CONFLICT (ipo_id, table_name, row_key, field_name) DO UPDATE` now
-   * fires when a row already exists at that key, but the UPDATE's own `SET`
-   * list and `WHERE` clause narrow it to exactly one thing: refresh the
-   * ranking columns (`rank1_source`, `rank2_source`, `rank3_source`,
-   * `manifest_version`, `policy_origin`, `updated_at`) when, and ONLY when,
-   * the incoming row carries a STRICTLY HIGHER `manifest_version` than the
-   * row already on disk, AND that row has not already been `SUPPLIED`.
-   * Every other column — `state`, `attempts`, `next_due_at`, `claimed_at`,
-   * `claim_token`, every `chosen_*` column — is absent from the `SET` list,
-   * so Postgres leaves it byte-for-byte as it was; this DELIBERATELY narrows
-   * the prior "never carries an existing row's live state back in" contract
-   * to "never carries live state EXCEPT the ranks, and only forward". A
-   * SUPPLIED row is still never touched — the ask was already answered, and
-   * rewriting its ranks would misrepresent how that answer was actually
-   * sourced. A same-version re-run changes nothing (the `<` comparison is
-   * false), so the insert stays idempotent per cycle exactly as before. A
-   * `manifest_version` bump that adds a field under a key not previously
-   * planned still inserts exactly that new row.
+   * `ON CONFLICT (ipo_id, table_name, row_key, field_name) DO UPDATE` fires
+   * when a row already exists at that key. The `WHERE` clause lets the
+   * `UPDATE` through for a **non-SUPPLIED row whose effective source order
+   * actually changed** — #893's actual bug: `field-plan-generator.ts`
+   * always stamps the CURRENT `manifest.version` regardless of whether an
+   * override produced the ranks, so an override taking effect (§2.3.5: "no
+   * deploy, no version bump") never satisfied the old `manifest_version <
+   * EXCLUDED.manifest_version` guard and was silently dropped. The `WHERE`
+   * now also fires on `rank1/2/3_source IS DISTINCT FROM EXCLUDED...` OR
+   * `policy_origin IS DISTINCT FROM EXCLUDED...` — version-increase remains
+   * one of the triggers (it still covers a registry bump whose ranks happen
+   * to be identical), never the only one. An identical re-plan (same ranks,
+   * same policy_origin, same or lower version) still changes 0 rows — the
+   * WHERE is false for every disjunct.
+   *
+   * **A SUPPLIED row is never touched by this upsert** — the same rule as
+   * on main before item 3. A prior version of this fix (independent Tier A
+   * review, item 3 S2) reopened a SUPPLIED row whose `chosen_source` was
+   * outranked by the incoming order ("chosenDemoted"). A SECOND Tier A
+   * review (2026-09-24) reproduced that branch firing on staging with NO
+   * override present — any field settled by its rank-2/3 source re-plans
+   * with the same registry order every data slot, so `chosen_source =
+   * EXCLUDED.rank2_source` is true on every pass and the row loops PENDING
+   * forever (24 such rows measured on staging). Reopening a SUPPLIED row
+   * needs a mechanism that only fires on a REAL order change, not on every
+   * re-plan; that is tracked at #968 and is explicitly out of scope here.
+   *
+   * Every other column (`attempts`, `claimed_at`, `claim_token`, `state`,
+   * every `chosen_*` column) is never carried back in by this upsert.
    *
    * The `xmax = 0` trick in `RETURNING` is the ONLY reliable way to tell an
    * INSERT from an UPDATE out of one `INSERT ... ON CONFLICT` statement:
@@ -466,7 +485,14 @@ export class IpoFieldPlanRepository extends BaseRepository {
               policy_origin    = EXCLUDED.policy_origin,
               updated_at       = now()
           WHERE ipo_field_plan.state <> 'SUPPLIED'
-            AND ipo_field_plan.manifest_version < EXCLUDED.manifest_version
+                AND (
+                  ipo_field_plan.manifest_version < EXCLUDED.manifest_version
+                  OR ipo_field_plan.rank1_source IS DISTINCT FROM EXCLUDED.rank1_source
+                  OR ipo_field_plan.rank2_source IS DISTINCT FROM EXCLUDED.rank2_source
+                  OR ipo_field_plan.rank3_source IS DISTINCT FROM EXCLUDED.rank3_source
+                  OR ipo_field_plan.policy_origin IS DISTINCT FROM EXCLUDED.policy_origin
+                  
+                )
         RETURNING id, (xmax = 0) AS inserted
       `);
 

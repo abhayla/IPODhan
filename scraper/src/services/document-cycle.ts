@@ -1795,12 +1795,17 @@ export async function runDocumentCycle(
     // `candidates` the cycle already selected — no new selection logic.
     // RECONCILED, NEVER REGENERATED: `upsertGeneratedRows` inserts rows for
     // (ipo, table, row_key, field) keys that do not already exist (design
-    // §2.3); since item 3 slice S7 (#732) it ALSO re-ranks an existing
-    // non-SUPPLIED row in place when this cycle's `manifest_version` is
-    // higher than the row's own — a same-version pass over an IPO whose
-    // rows are already planned still writes and mutates nothing. Non-fatal
-    // per IPO — one IPO's plan-generation failure must not stop the rest of
-    // the cycle.
+    // §2.3); since item 3 slice S7 (#732), and since #893's same-version
+    // override fix, it ALSO re-ranks an existing NON-SUPPLIED row in place
+    // whenever the effective source order actually changed — a higher
+    // `manifest_version`, OR a different rank1/2/3_source, OR a different
+    // `policy_origin` at the SAME version (an override set or expired). A
+    // SUPPLIED row is never touched by this upsert (unchanged from main
+    // before item 3; see #968 for the still-open, out-of-scope question of
+    // ever reopening one). A re-plan that changes nothing — same ranks, same
+    // policy_origin, same or lower version — still writes and mutates
+    // nothing. Non-fatal per IPO — one IPO's plan-generation failure must
+    // not stop the rest of the cycle.
     //
     // Review fix (Tier B, #693): mirrors PASS 2's ceiling exactly rather
     // than inventing a third convention — PASS 3 takes whatever remains of

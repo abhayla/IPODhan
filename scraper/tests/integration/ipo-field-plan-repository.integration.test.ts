@@ -1405,6 +1405,11 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
         rank2Source: 'BSE',
         rank3Source: null,
         manifestVersion: CURRENT_VERSION,
+        // #893: policy_origin must already match what the re-plan will send too,
+        // or a legacy null->'registry:N' backfill is (correctly) counted as a
+        // change under the fixed class -- this test is about ranks/version
+        // being truly identical, not about that backfill.
+        policyOrigin: `registry:${CURRENT_VERSION}`,
         state: 'PENDING',
       });
       const before = await readRow(id);
@@ -1513,6 +1518,192 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
       expect(after.chosenRank).toBe(2);
       
       expect(after.chosenDocumentId).toBe(DOCUMENT_ID);
+    });
+  });
+
+  // ------------------------- item 3 S4 (#893) — an override re-ranks WITHOUT a version bump ---
+  //
+  // RCA: `field-plan-generator.ts` stamps `manifestVersion: manifest.version` regardless of
+  // whether an override produced the ranks (an override "takes effect at the next cycle with
+  // no deploy" per §2.3.5 — it never bumps the manifest version), so the old
+  // `manifest_version < EXCLUDED.manifest_version` guard was always false for an override pass
+  // and the re-rank was silently dropped.
+  describe('item 3 S4 (#893) -- an override re-ranks an existing plan row at the SAME manifest version', () => {
+    const SAME_VERSION = 7;
+
+    it('a non-SUPPLIED row re-ranks when only policy_origin/ranks change, manifest_version unchanged (the Swap Test)', async () => {
+      const id = await seedRow({
+        fieldName: 'face_value',
+        rank1Source: 'DOC',
+        rank2Source: 'CHITTORGARH',
+        rank3Source: null,
+        manifestVersion: SAME_VERSION,
+        policyOrigin: `registry:${SAME_VERSION}`,
+        state: 'PENDING',
+      });
+
+      const { inserted, updated } = await repo.upsertGeneratedRows([
+        {
+          ipoId: IPO_ID,
+          tableName: 'ipo_details',
+          rowKey: '',
+          fieldName: 'face_value',
+          rank1Source: 'CHITTORGARH',
+          rank2Source: 'DOC',
+          rank3Source: null,
+          manifestVersion: SAME_VERSION,
+          policyOrigin: 'override:swap-test-1',
+        },
+      ]);
+      expect(inserted).toBe(0);
+      expect(updated).toBe(1);
+
+      const after = await readRow(id);
+      expect(after.id).toBe(id);
+      expect(after.rank1Source).toBe('CHITTORGARH');
+      expect(after.rank2Source).toBe('DOC');
+      expect(after.policyOrigin).toBe('override:swap-test-1');
+      expect(after.manifestVersion).toBe(SAME_VERSION);
+      expect(after.state).toBe('PENDING');
+    });
+
+    it('an identical re-plan (same ranks, same policy_origin, same version) writes 0 rows', async () => {
+      const id = await seedRow({
+        fieldName: 'face_value',
+        rank1Source: 'CHITTORGARH',
+        rank2Source: 'DOC',
+        rank3Source: null,
+        manifestVersion: SAME_VERSION,
+        policyOrigin: 'override:swap-test-1',
+        state: 'PENDING',
+      });
+      const before = await readRow(id);
+
+      const { inserted, updated } = await repo.upsertGeneratedRows([
+        {
+          ipoId: IPO_ID,
+          tableName: 'ipo_details',
+          rowKey: '',
+          fieldName: 'face_value',
+          rank1Source: 'CHITTORGARH',
+          rank2Source: 'DOC',
+          rank3Source: null,
+          manifestVersion: SAME_VERSION,
+          policyOrigin: 'override:swap-test-1',
+        },
+      ]);
+      expect(inserted).toBe(0);
+      expect(updated).toBe(0);
+
+      const after = await readRow(id);
+      expect(after).toEqual(before);
+    });
+
+    it('an expired override (plan pass returns registry order) re-ranks the row back, same version', async () => {
+      const id = await seedRow({
+        fieldName: 'face_value',
+        rank1Source: 'CHITTORGARH',
+        rank2Source: 'DOC',
+        rank3Source: null,
+        manifestVersion: SAME_VERSION,
+        policyOrigin: 'override:swap-test-1',
+        state: 'PENDING',
+      });
+
+      const { inserted, updated } = await repo.upsertGeneratedRows([
+        {
+          ipoId: IPO_ID,
+          tableName: 'ipo_details',
+          rowKey: '',
+          fieldName: 'face_value',
+          rank1Source: 'DOC',
+          rank2Source: 'CHITTORGARH',
+          rank3Source: null,
+          manifestVersion: SAME_VERSION,
+          policyOrigin: `registry:${SAME_VERSION}`,
+        },
+      ]);
+      expect(inserted).toBe(0);
+      expect(updated).toBe(1);
+
+      const after = await readRow(id);
+      expect(after.rank1Source).toBe('DOC');
+      expect(after.rank2Source).toBe('CHITTORGARH');
+      expect(after.policyOrigin).toBe(`registry:${SAME_VERSION}`);
+    });
+
+    it('a non-SUPPLIED row re-ranks when ONLY policy_origin changes (same ranks, same version) -- exactly 1 row updated', async () => {
+      const id = await seedRow({
+        fieldName: 'face_value',
+        rank1Source: 'DOC',
+        rank2Source: 'CHITTORGARH',
+        rank3Source: null,
+        manifestVersion: SAME_VERSION,
+        policyOrigin: `registry:${SAME_VERSION}`,
+        state: 'PENDING',
+      });
+
+      const { inserted, updated } = await repo.upsertGeneratedRows([
+        {
+          ipoId: IPO_ID,
+          tableName: 'ipo_details',
+          rowKey: '',
+          fieldName: 'face_value',
+          rank1Source: 'DOC',
+          rank2Source: 'CHITTORGARH',
+          rank3Source: null,
+          manifestVersion: SAME_VERSION,
+          policyOrigin: 'override:swap-test-5',
+        },
+      ]);
+      expect(inserted).toBe(0);
+      expect(updated).toBe(1);
+
+      const after = await readRow(id);
+      expect(after.rank1Source).toBe('DOC');
+      expect(after.rank2Source).toBe('CHITTORGARH');
+      expect(after.policyOrigin).toBe('override:swap-test-5');
+    });
+
+    // CRITICAL case from the second Tier A review (2026-09-24): a SUPPLIED
+    // row whose chosen_source sits at rank2 of the CURRENT order, re-planned
+    // with that SAME order (no override), must write 0 rows and stay
+    // SUPPLIED. The removed "chosenDemoted" branch fired here on every data
+    // slot with no override present -- this is the regression guard for #968
+    // staying deferred: nothing in this repository may reopen a SUPPLIED row.
+    it('a SUPPLIED row whose chosen_source equals rank2, re-planned with the SAME registry order, writes 0 rows and stays SUPPLIED', async () => {
+      const id = await seedRow({
+        fieldName: 'face_value',
+        rank1Source: 'DOC',
+        rank2Source: 'CHITTORGARH',
+        rank3Source: null,
+        manifestVersion: SAME_VERSION,
+        policyOrigin: `registry:${SAME_VERSION}`,
+        state: 'SUPPLIED',
+        chosenSource: 'CHITTORGARH',
+        chosenRank: 2,
+      });
+      const before = await readRow(id);
+
+      const { inserted, updated } = await repo.upsertGeneratedRows([
+        {
+          ipoId: IPO_ID,
+          tableName: 'ipo_details',
+          rowKey: '',
+          fieldName: 'face_value',
+          rank1Source: 'DOC',
+          rank2Source: 'CHITTORGARH',
+          rank3Source: null,
+          manifestVersion: SAME_VERSION,
+          policyOrigin: `registry:${SAME_VERSION}`,
+        },
+      ]);
+      expect(inserted).toBe(0);
+      expect(updated).toBe(0);
+
+      const after = await readRow(id);
+      expect(after).toEqual(before);
+      expect(after.state).toBe('SUPPLIED');
     });
   });
 
