@@ -88,6 +88,13 @@ describe('planDiscoverySteps — B and F from one upsertIPO', () => {
     expect(w.get('F5').evidence).toMatchObject({ conflictsDetected: 0 });
   });
 
+  it('F6 reports the counted provenance rows when the caller counted them (opening-day check), else fields.length', () => {
+    const counted = planDiscoverySteps({ ...base, fieldSourcesWritten: true, fieldSourcesCount: 2 }).find((w) => w.stepId === 'F6')!;
+    expect(counted.evidence).toMatchObject({ fields: 2 });
+    const uncounted = planDiscoverySteps({ ...base, fieldSourcesWritten: true }).find((w) => w.stepId === 'F6')!;
+    expect(uncounted.evidence).toMatchObject({ fields: base.fields.length });
+  });
+
   it('skips F6 when no provenance rows were written', () => {
     expect(byId(planDiscoverySteps({ ...base, fieldSourcesWritten: false })).has('F6')).toBe(false);
   });

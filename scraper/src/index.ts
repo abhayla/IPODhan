@@ -52,6 +52,22 @@ import {
   CLOSED_IPO_JOB_SLOT_IST_MINUTES,
 } from './scheduler/closed-ipo-job.js';
 import { writeFieldSourcesSnapshot } from './scheduler/closed-ipo-snapshot.js';
+import { iposOpeningToday, OPENING_DAY_CHECK_TIME_IST_MINUTES } from './scheduler/opening-day-check.js';
+import { runOpeningDayDiscovery, createOpeningDayWriter, createProvenanceRecorder } from './scheduler/opening-day-discovery.js';
+import { fetchCurrentIssueList } from './scrapers/nse-api-client.js';
+import { fetchBSEBoard } from './scrapers/bse-api-scraper.js';
+import {
+  createFieldProtectionService,
+  resolveIpoRow,
+  inferBoundVia,
+  SOURCE_KEY_NO_WRITE_ERROR_NAMES,
+} from '@ipodhan/shared';
+import { withSourceKeyLineage } from '@ipodhan/shared/repositories';
+import { ListingPerformanceRepository as OpeningDayListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
+import { DataConsolidationService } from './services/data-consolidation-service.js';
+import { initStepLedger } from './services/step-ledger.js';
+import { recordDiscoverySteps } from './services/step-ledger-recorders.js';
+import { normalizeCompanyNameForMatching, computeIpoIdentitySlug } from './services/data-persister.js';
 import type { ClosedIpoResourceResult } from './scheduler/closed-ipo-job.js';
 import { readPlanSettlement } from './scheduler/closed-ipo-plan-settlement.js';
 import { plantFieldPlanForIpo } from './services/field-plan-planting.js';
@@ -357,12 +373,14 @@ export const LIVE_LOCK_TTL_MS = 4 * 60 * 1000;
 export const LIVE_JOB_DEADLINE_MS = 3.5 * 60 * 1000;
 
 /**
- * Item 7 S1/S3: the jobs `--job=` selects. `data` is the default so a cron
+ * Item 7 S1/S3/S4: the jobs `--job=` selects. `data` is the default so a cron
  * line without the flag behaves as before. `closed` (S3) is its own process
  * with its own wake under the heavy `scraper:cycle` lock (spec §2.1 job
  * table, §6.1) — it no longer runs as a post-step inside the data cycle.
+ * `opening` (S4, OD-31) is the discovery-only opening-day check — same heavy
+ * lock, skip-if-held, never fetches or extracts a document (§2.1).
  */
-export const SCRAPER_JOBS = ['data', 'live', 'closed'] as const;
+export const SCRAPER_JOBS = ['data', 'live', 'closed', 'opening'] as const;
 export type ScraperJob = (typeof SCRAPER_JOBS)[number];
 
 /**
@@ -690,6 +708,165 @@ async function runClosedIpoWake(): Promise<number> {
     process.removeListener('SIGINT', onSignal);
     const releaseTimeoutMs = Number(process.env.SIGNAL_LOCK_RELEASE_TIMEOUT_MS) || DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS;
     await raceWithTimeout(() => releaseCycleLockForClosedJob(), { timeoutMs: releaseTimeoutMs, label: 'closed-IPO cycle lock release' });
+  }
+
+  return exitCode;
+}
+
+/**
+ * Item 7 S4 (spec §2.1 job table row "Opening-day check", OD-31): the
+ * discovery-only check placed about 09:45 IST, only on a day an IPO is due
+ * to open. Its own process, its own wake, under the SAME heavy lock the
+ * data job and closed-IPO job take (`scraper:cycle`) — §2.1's "heavy" lock
+ * row lists all three; a second walker mid-cycle is how two writers race.
+ *
+ * What it does, and no more (§2.1 as amended by OD-87): the two exchange
+ * LIST calls (NSE current issues, BSE board — §7.4 "2 calls a day"), the rows
+ * whose listed open date is today (IST), and for each an identity + status +
+ * open/close-date write through the shared identity resolution and the
+ * consolidated upsert (`scheduler/opening-day-discovery.ts`). No per-IPO
+ * detail or subscription call, no subscription snapshot, no verifier hint, no
+ * document or extraction, no aggregator/fallback/field-plan step. The lock is
+ * taken first (skip-if-held); the lists are always fetched — a stored-row
+ * gate would miss a brand-new, NULL-dated or postponed IPO (review finding 1).
+ */
+async function runOpeningDayCheckWake(): Promise<number> {
+  const now = new Date();
+  const redis = getRedisClient();
+  const lock = new DistributedLock(redis);
+  const lockResult = await lock.acquire(CYCLE_LOCK_RESOURCE, { ttl: CYCLE_LOCK_TTL_MS });
+
+  if (!lockResult.acquired) {
+    // Finding 5 (review): the lock (scraper/src/utils/distributed-lock.ts)
+    // stores only a random token, never a start time, and the data job
+    // renews the TTL every 5 minutes — so "TTL_MS - remainingTtlMs" is the
+    // time since the LAST renewal, not since the holder acquired the lock,
+    // and prints a plausible but WRONG time on every renewal boundary. There
+    // is no genuine start time to read; say so rather than compute one.
+    logger.warn(
+      { lockResource: CYCLE_LOCK_RESOURCE },
+      'opening-day check skipped: heavy lock held (start time unknown)'
+    );
+    return 0;
+  }
+
+  const token = lockResult.token;
+  let released = false;
+  const releaseCycleLockForOpeningCheck = async (): Promise<void> => {
+    if (released) return;
+    released = true;
+    try {
+      await lock.release(CYCLE_LOCK_RESOURCE, token);
+    } catch (error) {
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Opening-day check: lock release failed (non-fatal — the TTL will expire it)'
+      );
+    }
+  };
+
+  const onSignal = (signal: NodeJS.Signals) => {
+    logger.warn({ signal }, 'Opening-day check: signal received — releasing scraper:cycle before exit');
+    const releaseTimeoutMs = Number(process.env.SIGNAL_LOCK_RELEASE_TIMEOUT_MS) || DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS;
+    void raceWithTimeout(() => releaseCycleLockForOpeningCheck(), { timeoutMs: releaseTimeoutMs, label: 'opening-day check cycle lock release' })
+      .finally(() => process.exit(130));
+  };
+  process.once('SIGTERM', onSignal);
+  process.once('SIGINT', onSignal);
+
+  let exitCode = 0;
+  try {
+    // OD-87: the two exchange LIST calls only; today's rows get identity,
+    // status and the two dates through the identity + consolidated write.
+    logger.info(
+      { lockResource: CYCLE_LOCK_RESOURCE, scheduledAtIstMinutes: OPENING_DAY_CHECK_TIME_IST_MINUTES },
+      'Opening-day check: fetching the two exchange lists (identity, status and dates only — no document, no extraction)'
+    );
+    const ipoRepository = new IPORepository(db, redis);
+    // OD-87 strict write: the matrix decides the four values; the writer SETs only those.
+    // The decision call's own provenance rows are recorded per IPO so the writer
+    // neither duplicates them nor leaves a written column without one.
+    const openingFieldSources = new FieldSourcesRepository(db, redis);
+    const openingProvenance = createProvenanceRecorder(openingFieldSources);
+    const fieldPriority = new DataConsolidationService(
+      openingProvenance.repo,
+      new DataConflictsRepository(db, redis),
+      new OpeningDayListingPerformanceRepository(db, redis)
+    );
+    const fieldProtection = createFieldProtectionService(db, redis);
+    const summary = await runOpeningDayDiscovery(
+      {
+        fetchNseList: fetchCurrentIssueList,
+        fetchBseList: fetchBSEBoard,
+        storedOpeningOn: () => iposOpeningToday(db, now),
+        writeRow: createOpeningDayWriter({
+          ipoRepository: ipoRepository as any,
+          resolveIpoRow: resolveIpoRow as any,
+          inferBoundVia: inferBoundVia as any,
+          withSourceKeyLineage,
+          noWriteErrorNames: SOURCE_KEY_NO_WRITE_ERROR_NAMES,
+          fieldProtection: fieldProtection as any,
+          consolidateFields: (input) => fieldPriority.consolidateIPOData(input as any),
+          fieldSources: openingFieldSources as any,
+          sourceTrackingEnabled: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
+          decisionProvenance: openingProvenance,
+          afterWrite: async (ipoId, info) => {
+            if (info.created) await initStepLedger(ipoId);
+            // F6 claims exactly the provenance rows this write produced (info.fieldSources).
+            await recordDiscoverySteps(ipoId, {
+              source: info.source,
+              created: info.created,
+              fields: info.fields,
+              offeringType: 'IPO',
+              consolidated: true,
+              fieldSourcesWritten: info.fieldSources.length > 0,
+              fieldSourcesCount: info.fieldSources.length,
+              companyName: info.companyName,
+            });
+          },
+          normalizeName: normalizeCompanyNameForMatching,
+          identitySlug: computeIpoIdentitySlug as any,
+        }),
+      },
+      now
+    );
+    const failures = summary.failures;
+    const nseRowsChecked = summary.nseRowsChecked;
+    const bseRowsChecked = summary.bseRowsChecked;
+    const opensToday = summary.written.length > 0 || summary.storedOpeningToday.length > 0;
+
+    if (!opensToday && failures.length === 0) {
+      logger.info(
+        { nseRowsChecked, bseRowsChecked, skippedNonIpo: summary.skippedNonIpo },
+        `opening-day check: no IPO opens today (NSE ${nseRowsChecked} rows, BSE ${bseRowsChecked} rows checked)`
+      );
+    } else {
+      // signal-ownership R1 ("a number is not a reading"): name the rows.
+      logger.info(
+        {
+          todayIst: summary.todayIso,
+          nseRowsChecked,
+          bseRowsChecked,
+          written: summary.written,
+          skippedNonIpo: summary.skippedNonIpo,
+          openingToday: summary.storedOpeningToday.map((row) => ({ id: row.id, companyName: row.companyName, status: row.status })),
+          failures,
+        },
+        'Opening-day check: run complete'
+      );
+    }
+    if (failures.length > 0) exitCode = 1;
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Opening-day check failed (non-fatal)'
+    );
+    exitCode = 1;
+  } finally {
+    process.removeListener('SIGTERM', onSignal);
+    process.removeListener('SIGINT', onSignal);
+    const releaseTimeoutMs = Number(process.env.SIGNAL_LOCK_RELEASE_TIMEOUT_MS) || DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS;
+    await raceWithTimeout(() => releaseCycleLockForOpeningCheck(), { timeoutMs: releaseTimeoutMs, label: 'opening-day check cycle lock release' });
   }
 
   return exitCode;
@@ -1236,6 +1413,17 @@ export async function main() {
       const closedExitCode = await runClosedIpoWake();
       await flushOwnerNotify();
       process.exit(closedExitCode);
+      return;
+    }
+
+    // Item 7 S4 (OD-31): the opening-day check is its own process, under the
+    // SAME heavy lock (scraper:cycle) — discovery-only, never a document or
+    // extraction step. It returns here and never reaches the data cycle's
+    // steps or post-steps.
+    if (job === 'opening') {
+      const openingExitCode = await runOpeningDayCheckWake();
+      await flushOwnerNotify();
+      process.exit(openingExitCode);
       return;
     }
 
