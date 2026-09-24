@@ -252,11 +252,12 @@ describe.skipIf(!DATABASE_URL)(`field_sources LIVE constraint shape (${RUN_LABEL
     expect(rows[0].def).toBe('UNIQUE (ipo_id, table_name, row_key, field_name)');
   });
 
-  it('data_conflicts still has no unique constraint — nothing to widen there', async () => {
-    const { rows } = await pool!.query<{ conname: string }>(`
-      SELECT conname FROM pg_constraint
+  it('data_conflicts has exactly one unique constraint, on suggestion_key (OD-90, migration 0057) — nothing on (ipo,table,rowKey,field) widens', async () => {
+    const { rows } = await pool!.query<{ conname: string; def: string }>(`
+      SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint
       WHERE conrelid = 'data_conflicts'::regclass AND contype = 'u'
     `);
-    expect(rows.map((r) => r.conname)).toEqual([]);
+    expect(rows.map((r) => r.conname)).toEqual(['unique_data_conflicts_suggestion_key']);
+    expect(rows[0].def).toBe('UNIQUE (suggestion_key)');
   });
 });

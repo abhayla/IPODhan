@@ -19,8 +19,11 @@ describe('isExtractableDocType', () => {
   });
 
   it('is false for a type with no extractor', () => {
+    // Item 9 (OD-90) added CORRIGENDUM to AUTO_PERSIST_DOC_TYPES (its own reader,
+    // corrigendum-reader.ts) — it is no longer an example of "no extractor". ADDENDUM
+    // is not in AUTO_PERSIST_DOC_TYPES and has no extractor.
     expect(isExtractableDocType('RATIOS_BASIS_ISSUE_PRICE')).toBe(false);
-    expect(isExtractableDocType('CORRIGENDUM')).toBe(false);
+    expect(isExtractableDocType('ADDENDUM')).toBe(false);
   });
 
   it('is case-insensitive', () => {
