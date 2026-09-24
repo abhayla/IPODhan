@@ -86,6 +86,7 @@ export const PIPELINE_STEPS: readonly PipelineStepDefinition[] = [
   { id: 'H2', group: 'H', label: 'GMP' },
   { id: 'H3', group: 'H', label: 'Anchor allocation (T-1 anchor)' },
   { id: 'H4', group: 'H', label: 'Category demand graph' },
+  { id: 'H5', group: 'H', label: 'Post-listing price (15-minute delayed, OD-29)' },
 
   // I — Lifecycle
   { id: 'I1', group: 'I', label: 'Derive lifecycle stage' },

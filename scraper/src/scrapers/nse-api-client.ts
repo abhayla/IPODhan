@@ -1633,3 +1633,53 @@ export function nseSourceKeys(
     recordOpenDate: openDate ?? null,
   }];
 }
+
+/**
+ * Item 7 S5 (OD-29, OD-54, F-150): one NSE `GetQuoteApi` `getSymbolData` read for
+ * one symbol in one trading series. `/api/quote-equity` answers 403 even with a
+ * session (F-150), so the post-listing price job reads this endpoint with the same
+ * session warm-up `makeRequest` uses (two page loads on a cold cookie jar).
+ *
+ * Returns the raw status and body rather than throwing on a non-2xx: a 404 here
+ * means "wrong series or no such symbol" (F-150), which the caller must tell apart
+ * from a refusal (401/403, Akamai) — `makeRequest` would collapse both into an
+ * error and retry a 404-free auth refusal three times, which the call budget
+ * (§7.4) cannot absorb every 15 minutes. One 401/403 triggers ONE session refresh
+ * and ONE retry, no more.
+ */
+export async function fetchNseSymbolQuoteRaw(
+  symbol: string,
+  series: string,
+): Promise<{ status: number; body: string }> {
+  if (nseSessionCookies.length === 0) {
+    await initNSESession();
+  }
+  const url = new URL(BASE_URL + '/api/NextApi/apiClient/GetQuoteApi');
+  url.searchParams.set('functionName', 'getSymbolData');
+  url.searchParams.set('marketType', 'N');
+  url.searchParams.set('series', series);
+  url.searchParams.set('symbol', symbol);
+  const once = async () => {
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        ...DEFAULT_HEADERS,
+        Referer: `${BASE_URL}/get-quotes/equity?symbol=${encodeURIComponent(symbol)}`,
+        ...(nseSessionCookies.length > 0 && { Cookie: nseSessionCookies.join('; ') }),
+      },
+    });
+    return { status: response.status, body: await response.text() };
+  };
+  let result = await once();
+  if (result.status === 401 || result.status === 403) {
+    nseSessionCookies = [];
+    await initNSESession();
+    result = await once();
+  }
+  return result;
+}
+
+/** Tests only: start the next NSE read on a cold cookie jar, so its warm-up calls are counted. */
+export function resetNseSessionForTests(): void {
+  nseSessionCookies = [];
+}

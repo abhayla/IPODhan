@@ -333,6 +333,11 @@ export const ipos = pgTable(
     currentGainPercentage: numeric('current_gain_percentage', { precision: 5, scale: 2 }), // Current gain %
     currentGainAmount: numeric('current_gain_amount', { precision: 10, scale: 2 }), // Current gain amount
     currentPriceUpdatedAt: timestamp('current_price_updated_at'), // Last current price update
+    // Item 7 S5 (spec §2.3.3.3, OD-38): consecutive no-such-symbol answers from the post-listing
+    // price job, and the IST date of the third one (the job stops for the row). The DELISTED status
+    // value OD-38 names is not in ipo_status yet; delisted_on is the durable record until it is.
+    priceNoSymbolReads: integer('price_no_symbol_reads').notNull().default(0),
+    delistedOn: date('delisted_on'),
 
     // Metadata
     historicalDataSource: varchar('historical_data_source', { length: 100 }), // e.g., 'Chittorgarh'

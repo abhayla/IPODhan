@@ -745,6 +745,81 @@ export async function writeOpeningDayIpoFields(params: {
   return { outcome: existing ? 'updated' : 'inserted', ipoId, written, fieldSources: trackedFieldSources };
 }
 
+/** Minimal repository surface the post-listing price writes need (item 7 S5). */
+export interface PostListingPriceWriteRepo {
+  update: (ipoId: string, data: Record<string, unknown>) => Promise<unknown>;
+}
+
+/** The exact `ipos` columns the post-listing price write may SET (OD-29: the price and its as-of stamp). */
+export const POST_LISTING_PRICE_COLUMNS = ['currentPrice', 'currentPriceUpdatedAt'] as const;
+
+/**
+ * Item 7 S5 (spec §2.1 job row "Post-listing price", OD-29, OD-54): the price job's ONLY
+ * door to the price columns. SETs exactly `currentPrice` and `currentPriceUpdatedAt`
+ * (the repository adds its own `updated_at` housekeeping stamp) through
+ * `IPORepository.update` (cache invalidated), never `upsertIPO` (#951: the whole-row
+ * save writes unclaimed columns). `asOf` is the EXCHANGE's own as-of instant (NSE
+ * `lastUpdateTime` / BSE `Ason`, IST converted to UTC), not the fetch time, because the
+ * page labels the price with the time it was true (§2.1 "Label"). Drizzle's timestamp
+ * mapper binds `asOf.toISOString()` (ist-timezone.md: the ORM path binds the ISO string;
+ * the integration test round-trips it with drift 0).
+ *
+ * An identical price is a no-op (OD-73): no write, no provenance row, even when the as-of
+ * time moved. Every write gets one `field_sources` row per column, source NSE or BSE.
+ */
+export async function writePostListingPrice(params: {
+  ipoRepository: PostListingPriceWriteRepo;
+  fieldSources: OpeningDayFieldSourcesWriter;
+  sourceTrackingEnabled: boolean;
+  ipoId: string;
+  existing: { currentPrice: unknown; currentPriceUpdatedAt: unknown };
+  price: number;
+  asOf: Date;
+  source: 'NSE' | 'BSE';
+}): Promise<{ outcome: 'updated' | 'unchanged'; written: string[]; fieldSources: string[] }> {
+  const { ipoRepository, fieldSources, sourceTrackingEnabled, ipoId, existing, price, asOf, source } = params;
+  if (!(Number.isFinite(price) && price > 0) || Number.isNaN(asOf.getTime())) {
+    throw new Error(`writePostListingPrice: refused price ${price} / as-of ${String(asOf)} for ${ipoId}`);
+  }
+  const rounded = price.toFixed(2);
+  const prior = existing.currentPrice === null || existing.currentPrice === undefined ? null : Number(existing.currentPrice);
+  if (prior !== null && prior.toFixed(2) === rounded) {
+    return { outcome: 'unchanged', written: [], fieldSources: [] };
+  }
+  const set = { currentPrice: rounded, currentPriceUpdatedAt: asOf };
+  await ipoRepository.update(ipoId, set);
+  const tracked: string[] = [];
+  if (sourceTrackingEnabled) {
+    const previous: Record<string, string | null> = {
+      currentPrice: prior === null ? null : prior.toFixed(2),
+      currentPriceUpdatedAt: existing.currentPriceUpdatedAt instanceof Date ? existing.currentPriceUpdatedAt.toISOString() : existing.currentPriceUpdatedAt == null ? null : String(existing.currentPriceUpdatedAt),
+    };
+    for (const fieldName of Object.keys(set)) {
+      await fieldSources.trackFieldUpdate({ ipoId, tableName: 'ipos', fieldName, source, confidence: 1, previousValue: previous[fieldName] });
+      tracked.push(fieldName);
+    }
+  }
+  return { outcome: 'updated', written: Object.keys(set), fieldSources: tracked };
+}
+
+/**
+ * Item 7 S5 (spec §2.3.3.3, OD-38): the consecutive no-such-symbol count, kept on the row
+ * so it survives between 15-minute runs. SETs only `priceNoSymbolReads` and, on the third
+ * consecutive read, `delistedOn` (the IST date of that read). The `ipo_status` enum has no
+ * DELISTED value yet, so the status flip OD-38 names is a follow-up; `delistedOn` is what
+ * stops the job for the row. Called only when the count actually changes.
+ */
+export async function writePostListingSymbolReads(params: {
+  ipoRepository: PostListingPriceWriteRepo;
+  ipoId: string;
+  reads: number;
+  delistedOn: string | null;
+}): Promise<void> {
+  const set: Record<string, unknown> = { priceNoSymbolReads: params.reads };
+  if (params.delistedOn) set.delistedOn = params.delistedOn;
+  await params.ipoRepository.update(params.ipoId, set);
+}
+
 /**
  * Upsert IPO data to database with retry logic
  * Handles merge logic for dual-listed IPOs (both NSE and BSE)

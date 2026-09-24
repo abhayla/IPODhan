@@ -1080,6 +1080,11 @@ endpoints, with the 90-day windows."*
   **Measured 2026-09-24 (F-155):** no `ipos` row stores a BSE scrip code (0 of 387 on staging), so the BSE
   call needs one first: BSE `ListofScripData` (one call, 5,047 active equity scrips) maps `ISIN_NUMBER` to
   `SCRIP_CD` (CSM Technologies INE0ZK601013 -> 544806, 103.62). Both BSE calls refuse a bare User-Agent.
+  **Measured 2026-09-24 (F-159, open for owner decision):** only 8 of the 129 LISTED rows inside the
+  90-day window store an ISIN, so BSE can price or judge delisting for few of them; NSE `getSymbolData`
+  itself returns the ISIN; BSE's `segment=Equity` list includes the SME groups M and MT. Item 7 S5 counts a
+  no-such-symbol read toward delisting only when the ISIN is known (BSE side judged), and records the third
+  read as `ipos.delisted_on` because `ipo_status` has no DELISTED value yet.
 - **Window:** every 15 minutes during exchange market hours, for 90 days after the listing date;
   after that the job stops for that IPO and the page keeps the last value it had.
 - **Label:** the page shows the price **with the timestamp it was read at, marked "delayed"**. A

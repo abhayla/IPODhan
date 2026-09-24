@@ -48,7 +48,7 @@
 #       reading a pm2 exit code sees the standard "timed out" value)
 #   *   anything else is the job's own exit status - a crash, propagated
 #
-# Usage: scripts/scraper-wake.sh [data|live|closed|opening] [<extra scraper args>]
+# Usage: scripts/scraper-wake.sh [data|live|closed|opening|price] [<extra scraper args>]
 #   The job name picks BOTH the lock this wake reads and the --job= flag the
 #   scraper is started with (item 7 S1, spec section 2.1, OD-27) - together,
 #   never apart. See the job section below.
@@ -162,6 +162,9 @@ SCRAPER_CEILING_SECONDS="${SCRAPER_CEILING_SECONDS:-7200}"
 #             check), reads lock:resource:scraper:cycle -- same heavy lock as
 #             data/closed, per spec section 2.1's lock table ("heavy: the data
 #             job, the opening-day check, the closed-IPO job").
+#   price   -> --job=price (item 7 S5, OD-29: the post-listing price job),
+#             reads lock:resource:scraper:price -- its own live-class lock,
+#             never the heavy scraper:cycle (spec section 2.1 job table).
 # An explicit SCRAPER_LOCK_KEY in the environment still wins, for the suite.
 # --check: run ONLY the resolution checks below and exit - never start a cycle.
 # This is what the deploy calls, so the deploy's verdict and the wrapper's
@@ -174,13 +177,13 @@ fi
 
 SCRAPER_JOB="data"
 case "${1:-}" in
-  data|live|closed|opening) SCRAPER_JOB="$1"; shift ;;
+  data|live|closed|opening|price) SCRAPER_JOB="$1"; shift ;;
   "") : ;;
   --*) : ;;
   *) UNKNOWN_JOB="$1"; shift ;;
 esac
 if [ -n "${UNKNOWN_JOB:-}" ]; then
-  log "WARN unknown-job: '$UNKNOWN_JOB' is not one of data|live|closed|opening - proceeding with the default cycle"
+  log "WARN unknown-job: '$UNKNOWN_JOB' is not one of data|live|closed|opening|price - proceeding with the default cycle"
 fi
 
 case "$SCRAPER_JOB" in
@@ -195,6 +198,10 @@ case "$SCRAPER_JOB" in
   opening)
     SCRAPER_JOB_ARG="--job=opening"
     SCRAPER_JOB_LOCK_KEY="lock:resource:scraper:cycle"
+    ;;
+  price)
+    SCRAPER_JOB_ARG="--job=price"
+    SCRAPER_JOB_LOCK_KEY="lock:resource:scraper:price"
     ;;
   *)
     SCRAPER_JOB_ARG="--job=data"

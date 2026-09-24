@@ -2,6 +2,33 @@
 
 Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 7: scheduler built (scheduler/, due-step-cycle.ts) on refs/remotes/origin/main, but the OD-55 force-kill removal (#805) is merged and not on prod, and tiering (O-4) is unverified
 
+**Updated 2026-09-24 for S5 (OD-29, OD-54, OD-38; F-150, F-155, F-159) — the post-listing price job, as built:**
+`--job=price` is its own process (`runPostListingPriceWake`, scraper/src/scheduler/post-listing-price-wake.ts) under
+its own live-class lock `scraper:price` (TTL 14 min, skip-if-held; separate from `scraper:live` because both wake on
+the same half hours). It runs only 09:15-15:30 IST Mon-Fri and not on an NSE holiday (`isPriceJobWindowIST` +
+`market_holidays`), for IPOs with status LISTED, listing_date within the last 90 IST days and `delisted_on` NULL (a
+window on listing_date as OD-29 states it; stage inference from listing_date, #932, is untouched). Reads: NSE
+`GetQuoteApi getSymbolData` (`fetchNseSymbolQuoteRaw`, the client's session warm-up, one refresh on 401/403) over
+the series EQ/BE/SM/ST in segment order; BSE `getScripHeaderData` only when NSE has no price, the scrip code from
+`ListofScripData` by ISIN (fetched at most once per run, only when needed) (scraper/src/scrapers/post-listing-quote.ts).
+NSE wins (spec field row 171: NSE rank 1, BSE rank 2). The write is `writePostListingPrice` in data-persister.ts:
+exactly `current_price` and `current_price_updated_at` through `IPORepository.update` (plus its `updated_at`),
+the as-of being the exchange's own time (NSE lastUpdateTime / BSE Ason, IST -> UTC), one `field_sources` row per
+column (NSE/BSE), an identical price writes nothing (OD-73); step ledger H5 per IPO. Delisting (§2.3.3.3): a run is a
+no-such-symbol read only when NSE answers no series AND BSE's side is judged (ISIN absent from BSE's active list or
+the scrip not listed), nothing refused, and today is after the listing date; the count is `ipos.price_no_symbol_reads`
+and the third read sets `ipos.delisted_on` (migration 0056) and stops the job for the row. **Not done:** the status
+flip to DELISTED (no such `ipo_status` value; follow-up), and storing the NSE-returned ISIN (F-159, open for owner
+decision). Cron: `scripts/deploy-linux.sh` prod `14,29,44,59 9-15 * * 1-5`, staging `12,27,42,57 9-15 * * 1-5`
+(IST box clock), `scripts/scraper-wake.sh price` (lock:resource:scraper:price). Tests:
+`scraper/tests/unit/scrapers/post-listing-quote.test.ts` (real 2026-09-24 responses; exact call counts: 2 warm-up + 1
+EQ; SM 404 -> ST; 4 series 404 = no-symbol; 403 -> one refresh then refused), `scraper/tests/unit/scheduler/post-listing-price.test.ts`
+(call counts per run, delisting at the third consecutive read, a single 404 does not delist, refusal and missing ISIN
+never count), `scraper/tests/integration/post-listing-price.integration.test.ts` (ipodhan_test: changed columns
+exactly current_price/current_price_updated_at/updated_at, as-of text 2026-09-24 06:47:31 drift 0, identical price 0
+rows). Core proof 2026-09-24 12:18 IST (laptop, staging read-only): CSM NSE 103.35 / BSE 103.08, Hero Motors NSE
+117.31 / BSE 117.43, Vinod Texworld NSE 69.25 (series ST, 2 calls). Not yet proven on staging.
+
 **Updated 2026-09-24 for S4 (OD-31, OD-87, the opening-day check; round 3):** `--job=opening` is its own
 process (`runOpeningDayCheckWake`, scraper/src/index.ts), under the SAME heavy `scraper:cycle` lock the
 data and closed jobs take, skip-if-held. It no longer touches the NSE/BSE orchestrators (rounds 1-2 did,

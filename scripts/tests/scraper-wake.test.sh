@@ -320,6 +320,7 @@ DATA_LOCK6="$(lock_key_for_job data)"
 LIVE_LOCK6="$(lock_key_for_job live)"
 CLOSED_LOCK6="$(lock_key_for_job closed)"
 OPENING_LOCK6="$(lock_key_for_job opening)"
+PRICE_LOCK6="$(lock_key_for_job price)"
 if [ "$DATA_LOCK6" = "lock:resource:scraper:cycle" ]; then
   pass "case 6: a data wake reads scraper:cycle - the lock its --job=data command takes"
 else
@@ -334,6 +335,14 @@ if [ "$OPENING_LOCK6" = "lock:resource:scraper:cycle" ]; then
   pass "case 6: an opening-day wake reads scraper:cycle (--job=opening takes the SAME heavy lock as --job=data/closed, item 7 S4, OD-31)"
 else
   fail "case 6: an opening-day wake reads '$OPENING_LOCK6', not scraper:cycle"
+fi
+# Item 7 S5 (OD-29): the price wake reads its OWN live-class lock, never the
+# heavy scraper:cycle (a data job holding it for hours would starve the prices)
+# and never scraper:live (both wake on the same half hours).
+if [ "$PRICE_LOCK6" = "lock:resource:scraper:price" ]; then
+  pass "case 6: a price wake reads scraper:price, never scraper:cycle or scraper:live (item 7 S5)"
+else
+  fail "case 6: a price wake reads '$PRICE_LOCK6', not scraper:price"
 fi
 # OD-27: the live wake must read its OWN lock. Reading scraper:cycle would let
 # a data job holding the heavy lock for hours skip every live wake - the exact
