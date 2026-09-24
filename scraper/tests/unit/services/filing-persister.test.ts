@@ -2144,12 +2144,31 @@ describe('filing-persister — W-82 cin -> ipos.cin', () => {
     upsertIPOMock.mockClear();
   });
 
-  it('sends the CIN the document prints to ipos.cin via upsertIPO', async () => {
+  // OD-96 (#993 round 1): `ipos.cin` belongs to the RHP family (RHP/DRHP/PROSPECTUS), so these
+  // tests read the oracle as a PROSPECTUS; a price-band advertisement no longer writes it.
+  it('OD-96: a price-band advertisement does not write ipos.cin or ipos.companyDescription (outside the RHP family)', async () => {
     const s = makeDeps();
     const summary = await persistFilingExtraction(
       IPO_ID,
       extractionFromOracle('PRICE_BAND_AD'),
       { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+    expect(scraped.cin).toBeUndefined();
+    expect(scraped.companyDescription).toBeUndefined();
+    expect(summary.ipos_fields).not.toContain('cin');
+    expect(summary.skipped_out_of_family).toContain('ipos.cin (PRICE_BAND_AD)');
+    // In-family headline fields (PRICE_BAND_AD family) are still written by the ad.
+    expect(summary.ipos_fields).toEqual(expect.arrayContaining(['priceRangeMin', 'priceRangeMax']));
+  });
+
+  it('sends the CIN the document prints to ipos.cin via upsertIPO', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PROSPECTUS', apply: true },
       s.deps
     );
 
@@ -2193,7 +2212,7 @@ describe('filing-persister — W-82 cin -> ipos.cin', () => {
     const summary = await persistFilingExtraction(
       IPO_ID,
       extractionFromOracle('PRICE_BAND_AD'),
-      { docType: 'PRICE_BAND_AD', apply: true },
+      { docType: 'PROSPECTUS', apply: true },
       s.deps
     );
     const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
@@ -2207,7 +2226,7 @@ describe('filing-persister — W-82 cin -> ipos.cin', () => {
     const summary = await persistFilingExtraction(
       IPO_ID,
       extractionFromOracle('PRICE_BAND_AD'),
-      { docType: 'PRICE_BAND_AD' },
+      { docType: 'PROSPECTUS' },
       s.deps
     );
     expect(upsertIPOMock).not.toHaveBeenCalled();

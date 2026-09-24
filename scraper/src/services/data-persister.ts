@@ -885,11 +885,18 @@ export async function upsertIPO(
    * resolved, never values the source asserts. Passed straight through to
    * `consolidateIPOData`. Omitted means "every key is a claim" (unchanged).
    */
-  contextFields?: string[]
+  contextFields?: string[],
+  /**
+   * #993: the caller's `field_sources.data_lineage` for the values it supplies (the filing
+   * persister's `{method, docType, documentId, sourceSha, ...}`). Passed to consolidation, which
+   * merges it into a provenance row ONLY when the value written came from this caller's source
+   * (never onto a row another source owns). Omitted = unchanged behaviour.
+   */
+  lineage?: Record<string, unknown> | null
 ): Promise<string> {
   // OD-85: one record = one source-key lineage scope, so its field_sources rows carry the key ids
   // that bound it (reuses the caller's scope when BaseScraperOrchestrator already opened one).
-  return withSourceKeyLineage(() => upsertIPOInScope(ipoRepository, scrapedIPO, source, preResolvedIPO, contextFields));
+  return withSourceKeyLineage(() => upsertIPOInScope(ipoRepository, scrapedIPO, source, preResolvedIPO, contextFields, lineage));
 }
 
 async function upsertIPOInScope(
@@ -897,7 +904,8 @@ async function upsertIPOInScope(
   scrapedIPO: ScrapedIPO,
   source: ScraperSource,
   preResolvedIPO: IPO | null | undefined,
-  contextFields: string[] | undefined
+  contextFields: string[] | undefined,
+  lineage?: Record<string, unknown> | null
 ): Promise<string> {
   const startTime = Date.now();
   // T-478 round 3 (issue #225 follow-up, CRITICAL fix): the -ofs-<year> slug
@@ -1207,6 +1215,7 @@ async function upsertIPOInScope(
               incomingData: ipoData,
               contextFields,
               source: source,
+              incomingLineage: lineage ?? null,
               existingData: existingIPO as any,
               shadowMode: false, // Production mode - writes to database
               scrapedAt: new Date(),

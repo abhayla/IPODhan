@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-24T17:19:02.889Z",
+  "generated_at": "2026-09-24T19:48:24.122Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 194,
+    "live": 195,
     "retired": 39
   },
-  "next_id": 234,
+  "next_id": 235,
   "rules": [
     {
       "id": "R-151",
@@ -780,6 +780,15 @@
       "kind": "blockquote",
       "text": "A field is not re-asked while chosen_document_id is still the best available document, of the highest-precedence type, for that field.",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-234",
+      "hash": "6d87a33759d5",
+      "section": "2.5 When a supplied value is asked for again",
+      "kind": "prose",
+      "text": "OD-96 (2026-09-25, #993): a document writes a field only when that field's manifest document family contains the document's type — the same family the DOC fetcher credits with — so a value is never written from a document the fetcher will refuse; the stored value stays (OD-7). Applied to ipos; child tables open for owner decision (W-76, W-88).",
+      "first_seen": "2026-09-24",
       "retired": false
     },
     {
