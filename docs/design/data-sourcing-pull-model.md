@@ -2196,6 +2196,8 @@ earning its place before a line of it is built.
 
 #### 2.5.5 Two documents of the same type, and what a corrigendum does (OD-30)
 
+Measured 2026-09-24 (F-158): no extractor reads a corrigendum today. CORRIGENDUM is absent from the one extractable-type list, so a stored corrigendum is admitted as NOT_EXTRACTABLE and this subsection has no input yet.
+
 §2.5 says a better document supersedes a worse one, and `DOCUMENT_PRECEDENCE`
 (`document-types.ts:53`) says which type is better: `PROSPECTUS` 100, `BASIS_OF_ALLOTMENT_AD` 90,
 `CORRIGENDUM` 80, `ADDENDUM` 75, `PRICE_BAND_AD` 70, `RHP` 50, `DRHP` 10. That table answers "which

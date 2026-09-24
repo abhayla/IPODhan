@@ -1,0 +1,13 @@
+{
+  "class_id": "a precedence rule ranks an input type that no reader ever produces, so the rule is dead",
+  "feature": "any priority, override or precedence table (source ranks, document-type ranks, config layers) whose entries name an input the pipeline stores but never parses",
+  "symptom": "a precedence table says type X outranks type Y, and X is fetched and stored, so every part of the chain looks present. But the reader that turns X into field values does not exist or does not list X, so X never produces a value and Y always wins. Nothing fails: X rows exist with a terminal status such as NOT_EXTRACTABLE, the table is valid, and every test of the table passes because it feeds values directly. Universal shape: a ranking over producers is only as live as the set of producers that actually emit; a rank for a silent producer is documentation, not behaviour.",
+  "first_seen": "2026-09-24, IPODhan F-158: CORRIGENDUM ranked above RHP (OD-30, field-priority-matrix CORRIGENDUM: 0) but absent from AUTO_PERSIST_DOC_TYPES, so every stored corrigendum is NOT_EXTRACTABLE (staging: skyways-air-services-ltd; 2 CORRIGENDUM + 1 ADDENDUM rows).",
+  "fix_prs": "none yet -- a corrigendum extractor (it names only the fields it corrects) and adding CORRIGENDUM to the one extractable list",
+  "detection_check": "none yet: a test that every document type ranked in the field-priority matrix is either in AUTO_PERSIST_DOC_TYPES or listed as a named non-extractable exception with a reason",
+  "status": "unguarded",
+  "spec_ref": [
+    "§2.5.5",
+    "§2.2.1"
+  ]
+}
