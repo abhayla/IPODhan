@@ -428,6 +428,13 @@
       "when": 1790261661238,
       "tag": "0060_document_field_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1790264079375,
+      "tag": "0061_ipo_field_plan_reopened_under_policy",
+      "breakpoints": true
     }
   ]
 }

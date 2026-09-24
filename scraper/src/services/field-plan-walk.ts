@@ -62,6 +62,7 @@ import {
   type OverrideReader,
 } from '../config/field-source-policy.js';
 import { resolveIpoTypeKey, type PlanIpo } from './field-plan-generator.js';
+import { narrowRanksForReopen } from '@ipodhan/shared/utils/settled-field-override-reopen';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import {
@@ -233,6 +234,12 @@ export interface FieldPlanWalkRepository {
     planRowId: string;
     claimToken: string;
   }): Promise<{ released: boolean; reason?: string }>;
+  /** #968 (OD-95): put a reopened settled row back to SUPPLIED, evidence untouched. */
+  restoreSettledAfterReopen?(params: {
+    planRowId: string;
+    claimToken: string;
+    cause: string;
+  }): Promise<{ restored: boolean }>;
 }
 
 /** The slice of item 1's orchestrator the walk uses. */
@@ -645,6 +652,37 @@ export async function walkFieldPlanForIPO(
 }
 
 /**
+ * #968 (OD-95): put a reopened settled row back to SUPPLIED (evidence untouched)
+ * and release the claim. A repository without the method (an old mock) releases
+ * the claim unrecorded instead: the row stays reopened and narrowed, never
+ * overwritten by a lower source.
+ */
+async function restoreReopened(
+  ipoId: string,
+  plan: any,
+  deps: FieldPlanWalkDeps,
+  cause: string
+): Promise<'SETTLED' | 'SUPERSEDED'> {
+  logger.info(
+    { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, cause },
+    'PASS 3: override-reopened settled row restored to SUPPLIED (OD-95)'
+  );
+  if (deps.fieldPlanRepository.restoreSettledAfterReopen) {
+    const { restored } = await deps.fieldPlanRepository.restoreSettledAfterReopen({
+      planRowId: plan.id,
+      claimToken: plan.claimToken,
+      cause,
+    });
+    return restored ? 'SETTLED' : 'SUPERSEDED';
+  }
+  const { released } = await deps.fieldPlanRepository.releaseClaimUnrecorded({
+    planRowId: plan.id,
+    claimToken: plan.claimToken,
+  });
+  return released ? 'SETTLED' : 'SUPERSEDED';
+}
+
+/**
  * One field: walk ranks 1..3, write on the first SUPPLIED answer, and record
  * an outcome in EVERY branch. Returns 'SUPERSEDED' when `recordOutcome`
  * refused — the signal that another walker has taken this plan over.
@@ -676,8 +714,31 @@ async function attemptOneField(
       state: 'CHECK_FAILED',
     });
   }
-  const policy = policyResolution.policy;
+  let policy = policyResolution.policy;
   const policyOrigin = policyOriginString(policy.origin);
+
+  // #968 (spec §2.3.5, OD-73, OD-95): a SETTLED row an override reopened. Only the
+  // sources ranked ABOVE the settling source in the current effective order are
+  // asked (a prefix, so rank numbers are unchanged), so a source at or below it can
+  // never overwrite the settled value. The narrowing is the stored
+  // `reopened_under_policy`, so it holds on every pass. If that override is no
+  // longer the effective order (expired or replaced) or nothing ranks above the
+  // settling source any more, the row goes back to SUPPLIED with its value.
+  const reopenedUnder: string | null = plan.reopenedUnderPolicy ?? null;
+  if (reopenedUnder) {
+    const narrowed = plan.chosenSource ? narrowRanksForReopen(policy.ranks, plan.chosenSource) : [...policy.ranks];
+    if (policyOrigin !== reopenedUnder || narrowed.length === 0) {
+      return restoreReopened(
+        ipoId,
+        plan,
+        deps,
+        policyOrigin !== reopenedUnder
+          ? `OVERRIDE_RESTORED: ${reopenedUnder} is no longer the effective order (now ${policyOrigin}); settled value kept (OD-95)`
+          : `OVERRIDE_RESTORED: no source ranks above ${plan.chosenSource} under ${reopenedUnder}; settled value kept (OD-95)`
+      );
+    }
+    policy = { ...policy, ranks: narrowed as typeof policy.ranks };
+  }
   const ranks: [number, string | null][] = policy.ranks.map((source, i) => [i + 1, source]);
 
   const planRanks = [plan.rank1Source, plan.rank2Source, plan.rank3Source].filter(Boolean);
@@ -1002,6 +1063,19 @@ async function attemptOneField(
       state: 'SUPPLIED',
       chosen: evidenceFor(source, rank, answer),
     });
+  }
+
+  // #968 (OD-95): a reopened settled row where every higher source gave a
+  // definitive no keeps its settled value -- back to SUPPLIED, never EXHAUSTED
+  // (which would leave a settled field looking unsupplied). A transient failure
+  // falls through below: the row stays open, narrowed, and is re-asked next slot.
+  if (reopenedUnder && !sawTransientFailure) {
+    return restoreReopened(
+      ipoId,
+      plan,
+      deps,
+      `OVERRIDE_RESTORED: no source above ${plan.chosenSource} under ${reopenedUnder} has this field [${failures.join('; ')}]; settled value kept (OD-95)`
+    );
   }
 
   // Every rank fell through. Which of the two fallthroughs this is decides

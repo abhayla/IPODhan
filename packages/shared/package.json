@@ -28,6 +28,7 @@
     "./utils/registrar-matcher": "./src/utils/registrar-matcher.ts",
     "./utils/offering-type": "./src/utils/offering-type.ts",
     "./utils/field-plan-config-gap": "./src/utils/field-plan-config-gap.ts",
+    "./utils/settled-field-override-reopen": "./src/utils/settled-field-override-reopen.ts",
     "./utils/field-manifest-fingerprint": "./src/utils/field-manifest-fingerprint.ts",
     "./utils/company-identity-fold": "./src/utils/company-identity-fold.ts",
     "./utils/duplicate-ipo-merge": "./src/utils/duplicate-ipo-merge.ts",

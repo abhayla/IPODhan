@@ -1848,7 +1848,15 @@ export async function runDocumentCycle(
         );
       } else {
         const fieldPlanStartedAt = now();
-        const fieldPlanTotals = { ipos: 0, rowsInserted: 0, rowsReranked: 0, failed: 0 };
+        const fieldPlanTotals = {
+          ipos: 0,
+          rowsInserted: 0,
+          rowsReranked: 0,
+          settledReopened: 0,
+          settledRetargeted: 0,
+          settledRestored: 0,
+          failed: 0,
+        };
         for (const ipo of candidates) {
           if (now() - fieldPlanStartedAt >= fieldPlanGenBudgetMs) {
             fieldPlanGenExhausted = true;
@@ -1880,6 +1888,10 @@ export async function runDocumentCycle(
             fieldPlanTotals.ipos++;
             fieldPlanTotals.rowsInserted += planted.inserted;
             fieldPlanTotals.rowsReranked += planted.updated;
+            // #968 (OD-95): settled rows an override reopened, moved or restored this pass.
+            fieldPlanTotals.settledReopened += planted.settledReopened ?? 0;
+            fieldPlanTotals.settledRetargeted += planted.settledRetargeted ?? 0;
+            fieldPlanTotals.settledRestored += planted.settledRestored ?? 0;
           } catch (error) {
             fieldPlanTotals.failed++;
             logger.error(
