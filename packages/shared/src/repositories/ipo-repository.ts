@@ -1265,6 +1265,48 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Repair-tool entry point (item 12, OD-68 — decorated-slug cleanup): rename
+   * `ipos.slug` and write its `ipo_slug_redirects` row (old -> new) in ONE
+   * transaction, guarded on the row still holding `oldSlug` (never on `id`
+   * alone — a concurrent write could have changed the slug since the caller
+   * read it; returns 'raced' rather than clobbering it). Same write-ratchet
+   * rationale as `applyOfferTerms`/`applyFaceValue`/`applyIssueSizeRepair`:
+   * the write lives here, in this already-baselined file, not re-typed as a
+   * direct `db.update(ipos)` transaction in a new script
+   * (`scripts/check-write-ratchet.mjs`, T-316). The caller (the repair
+   * script) still owns the shadow guard (refusing when `oldSlug` is
+   * currently live on a DIFFERENT row) — that is a read, not a write, and
+   * belongs to the tool's own collision policy.
+   */
+  async renameSlugWithRedirect(
+    id: string,
+    oldSlug: string,
+    newSlug: string,
+    reason: string
+  ): Promise<'written' | 'raced'> {
+    const result = await this.db.transaction(async (tx) => {
+      const updated = await tx
+        .update(ipos)
+        .set({ slug: newSlug, updatedAt: new Date() })
+        .where(and(eq(ipos.id, id), eq(ipos.slug, oldSlug)))
+        .returning({ id: ipos.id });
+      if (updated.length === 0) return 'raced' as const;
+      await tx
+        .insert(ipoSlugRedirects)
+        .values({ oldSlug, ipoId: id, reason })
+        .onConflictDoNothing({ target: ipoSlugRedirects.oldSlug });
+      return 'written' as const;
+    });
+    if (result === 'written') {
+      await this.invalidateCache(
+        [getIPOByIdKey(id), getIPOBySlugKey(oldSlug), getIPOBySlugKey(newSlug)],
+        ['ipo:list:*', 'ipo:search:*', `ipo:detail:${oldSlug}`, `ipo:detail:${newSlug}`]
+      );
+    }
+    return result;
+  }
+
+  /**
    * Delete IPO by ID
    */
   async delete(id: string): Promise<void> {

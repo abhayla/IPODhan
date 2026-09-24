@@ -40,13 +40,18 @@
  *
  * Write: `ipos.slug` update + an `ipo_slug_redirects` row (old -> new,
  * `DECORATED_SLUG_CLEANUP`) in the SAME transaction, guarded on the row still
- * holding the slug it was read with (never on WHERE id alone). Shadow guard:
- * refuse the redirect if some OTHER live row currently holds the old slug
- * (mirrors repair-name-pollution-and-redirects.ts). Redis: `ipo:slug:<old>`,
- * `ipo:detail:<old>`, `ipo:slug:<new>`, `ipo:detail:<new>`, plus
- * `invalidateIPOCaches` (scraper/src/services/cache-invalidator.ts) for the
- * list/search patterns any renamed row could appear under — refuses to run
- * silently against the wrong Redis when REDIS_URL is unset (F3 pattern,
+ * holding the slug it was read with (never on WHERE id alone) — via
+ * `IPORepository.renameSlugWithRedirect` (packages/shared/src/repositories/
+ * ipo-repository.ts), the shared write path (write ratchet, R0,
+ * docs/architecture/write-path-hardening.md): this script never issues a
+ * direct `db.update(ipos)`/`db.insert(ipoSlugRedirects)` transaction itself.
+ * Shadow guard: refuse the redirect if some OTHER live row currently holds
+ * the old slug (mirrors repair-name-pollution-and-redirects.ts, run by this
+ * script BEFORE calling the repository). Redis: the repository invalidates
+ * `ipo:<id>`, `ipo:slug:<old>`, `ipo:slug:<new>`, plus the `ipo:list:*` /
+ * `ipo:search:*` / `ipo:detail:<old>` / `ipo:detail:<new>` patterns after the
+ * transaction commits — this script only warns when REDIS_URL is unset so a
+ * run is never mistaken for having invalidated the real cache (F3 pattern,
  * backfill-band-provenance-t276.ts).
  *
  * Usage (from scraper/, tunnel env exported per docs/ops/prod-ops-recipes.md
@@ -56,14 +61,13 @@
  * Prod is refused without --allow-prod (openRepairDb).
  */
 import '../../scripts/lib/alias-preflight-auto.mjs';
-import { db } from '@ipodhan/shared';
+import { db, IPORepository } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 import { computeIpoIdentitySlug } from '../src/services/data-persister.js';
-import { invalidateIPOCaches } from '../src/services/cache-invalidator.js';
 import { openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike } from './lib/repair-tool.js';
 // The audit's OWN predicate — one definition, reused, not retyped.
 import { checkIpoTitleInName, stripIdentityNameDecoration, stripIdentitySlugSuffix } from '../../scripts/lib/detection-floor-checks.mjs';
@@ -146,42 +150,29 @@ export async function planRow(row: IpoRow): Promise<PlanRow> {
   return { id: row.id, companyName: row.companyName, oldSlug: row.slug, newSlug, outcome: 'planned' };
 }
 
-export async function applyRename(plan: PlanRow, actualDb: string): Promise<'written' | 'skipped-shadow' | 'skipped-raced'> {
+export async function applyRename(
+  plan: PlanRow,
+  actualDb: string,
+  ipoRepository: Pick<IPORepository, 'renameSlugWithRedirect'>
+): Promise<'written' | 'skipped-shadow' | 'skipped-raced'> {
   // Shadow guard: never write a redirect for oldSlug if some OTHER live row
   // now holds it (mirrors repair-name-pollution-and-redirects.ts's writeRedirect).
   if (await slugIsLive(plan.oldSlug, plan.id)) {
     logger.warn({ oldSlug: plan.oldSlug, id: plan.id }, `${TOOL}: skip — oldSlug is LIVE on a different row (shadow guard)`);
     return 'skipped-shadow';
   }
-  const result = await db.transaction(async (tx) => {
-    const updated = await tx
-      .update(schema.ipos)
-      .set({ slug: plan.newSlug })
-      .where(sql`${schema.ipos.id} = ${plan.id} AND ${schema.ipos.slug} = ${plan.oldSlug}`)
-      .returning({ id: schema.ipos.id });
-    if (updated.length === 0) return 'raced';
-    await tx
-      .insert(schema.ipoSlugRedirects)
-      .values({ oldSlug: plan.oldSlug, ipoId: plan.id, reason: 'DECORATED_SLUG_CLEANUP' })
-      .onConflictDoNothing({ target: schema.ipoSlugRedirects.oldSlug });
-    return 'ok';
-  });
+  // The ipos.slug update + ipo_slug_redirects insert (guarded on the row
+  // still holding oldSlug) live in IPORepository.renameSlugWithRedirect —
+  // the shared write path (docs/architecture/write-path-hardening.md R0) —
+  // never as a direct db.update(ipos) transaction in this script.
+  if (!process.env.REDIS_URL) {
+    console.log(`  NOTE: REDIS_URL is unset — cache invalidation for ${plan.oldSlug} -> ${plan.newSlug} would silently`);
+    console.log('        target redis://localhost:6379, not the real cache (same class as the manual-db-reset gotcha).');
+  }
+  const result = await ipoRepository.renameSlugWithRedirect(plan.id, plan.oldSlug, plan.newSlug, 'DECORATED_SLUG_CLEANUP');
   if (result === 'raced') {
     logger.warn({ id: plan.id, oldSlug: plan.oldSlug }, `${TOOL}: skip — row's slug changed since it was read (raced)`);
     return 'skipped-raced';
-  }
-
-  if (!process.env.REDIS_URL) {
-    console.log(`  NOTE: REDIS_URL is unset — cache invalidation for ${plan.oldSlug} -> ${plan.newSlug} was SKIPPED (would silently`);
-    console.log('        target redis://localhost:6379, not the real cache — same class as the manual-db-reset gotcha).');
-  } else {
-    try {
-      const redis = getRedisClient();
-      await redis.del(`ipo:slug:${plan.oldSlug}`, `ipo:detail:${plan.oldSlug}`, `ipo:slug:${plan.newSlug}`, `ipo:detail:${plan.newSlug}`);
-      await invalidateIPOCaches(redis, plan.newSlug);
-    } catch (err) {
-      logger.warn({ err: err instanceof Error ? err.message : String(err) }, `${TOOL}: cache invalidation failed (non-fatal, DB write already committed)`);
-    }
   }
   return 'written';
 }
@@ -240,8 +231,9 @@ async function main(): Promise<void> {
 
   let written = 0, skippedShadow = 0, skippedRaced = 0;
   if (cli.apply) {
+    const ipoRepository = new IPORepository(db, getRedisClient());
     for (const p of planned) {
-      const outcome = await applyRename(p, actual);
+      const outcome = await applyRename(p, actual, ipoRepository);
       if (outcome === 'written') written++;
       else if (outcome === 'skipped-shadow') skippedShadow++;
       else skippedRaced++;

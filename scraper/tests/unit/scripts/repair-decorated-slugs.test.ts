@@ -27,13 +27,11 @@ vi.mock('../../../src/services/data-persister.js', () => ({
       .replace(/^-+|-+$/g, ''),
 }));
 
-vi.mock('../../../src/services/cache-invalidator.js', () => ({
-  invalidateIPOCaches: vi.fn().mockResolvedValue(undefined),
-}));
-
 const selectResults: Array<Array<{ id: string; companyName?: string }>> = [];
-const txUpdateReturning = vi.fn();
-const txInsertOnConflict = vi.fn();
+// The ipos.slug update + ipo_slug_redirects insert now live in
+// IPORepository.renameSlugWithRedirect (the shared write path, R0) —
+// applyRename() only calls that method, never db.transaction() directly.
+const renameSlugWithRedirect = vi.fn();
 
 vi.mock('@ipodhan/shared', () => ({
   db: {
@@ -44,22 +42,8 @@ vi.mock('@ipodhan/shared', () => ({
         }),
       }),
     }),
-    transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
-      fn({
-        update: () => ({
-          set: () => ({
-            where: () => ({
-              returning: async () => txUpdateReturning(),
-            }),
-          }),
-        }),
-        insert: () => ({
-          values: () => ({
-            onConflictDoNothing: async () => txInsertOnConflict(),
-          }),
-        }),
-      }),
   },
+  IPORepository: class {},
   getRedisClient: () => ({ del: vi.fn().mockResolvedValue(undefined) }),
 }));
 
@@ -112,8 +96,7 @@ describe('classify() — reuses the audit predicate, no third copy', () => {
 describe('planRow() / applyRename() — rename, redirect, collision refusal, idempotency', () => {
   beforeEach(() => {
     selectResults.length = 0;
-    txUpdateReturning.mockReset();
-    txInsertOnConflict.mockReset();
+    renameSlugWithRedirect.mockReset();
     warnMock.mockClear();
   });
 
@@ -162,8 +145,7 @@ describe('planRow() / applyRename() — rename, redirect, collision refusal, ide
   it('applyRename writes the slug update and the redirect in the same transaction', async () => {
     const { applyRename } = await import('../../../scripts/repair-decorated-slugs.js');
     selectResults.push([]); // slugIsLive(oldSlug) shadow-guard check: nobody else holds it
-    txUpdateReturning.mockResolvedValueOnce([{ id: 'ipo-1' }]);
-    txInsertOnConflict.mockResolvedValueOnce(undefined);
+    renameSlugWithRedirect.mockResolvedValueOnce('written');
 
     const outcome = await applyRename(
       {
@@ -173,12 +155,18 @@ describe('planRow() / applyRename() — rename, redirect, collision refusal, ide
         newSlug: 'purple-style-labs-limited',
         outcome: 'planned',
       },
-      'ipodhan_staging'
+      'ipodhan_staging',
+      { renameSlugWithRedirect }
     );
 
     expect(outcome).toBe('written');
-    expect(txUpdateReturning).toHaveBeenCalledTimes(1);
-    expect(txInsertOnConflict).toHaveBeenCalledTimes(1);
+    expect(renameSlugWithRedirect).toHaveBeenCalledTimes(1);
+    expect(renameSlugWithRedirect).toHaveBeenCalledWith(
+      'ipo-1',
+      'purple-style-labs-ltd-pernia-s-pop-up-studio-ipo',
+      'purple-style-labs-limited',
+      'DECORATED_SLUG_CLEANUP'
+    );
   });
 
   it('applyRename skips (shadow guard) when another live row now holds the old slug', async () => {
@@ -193,10 +181,11 @@ describe('planRow() / applyRename() — rename, redirect, collision refusal, ide
         newSlug: 'purple-style-labs-limited',
         outcome: 'planned',
       },
-      'ipodhan_staging'
+      'ipodhan_staging',
+      { renameSlugWithRedirect }
     );
 
     expect(outcome).toBe('skipped-shadow');
-    expect(txUpdateReturning).not.toHaveBeenCalled();
+    expect(renameSlugWithRedirect).not.toHaveBeenCalled();
   });
 });
