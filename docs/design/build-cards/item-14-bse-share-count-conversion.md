@@ -1,6 +1,6 @@
 # Item 14 — convert BSE `Issue_Size_No_of_shares` from a share count to rupees (F-54)
 
-Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 14: new writes are fixed (BSE is capable:false for ipos.issue_size on refs/remotes/origin/main, ranks DOC->CHITTORGARH; 6/6 #728 IPOs now hold the correct CHITTORGARH total) and the zero-sentinel bug is fixed (PR #870), but 17 non-zero existing rows still carry the wrong quantity and 20 hold 0, unrepaired — this item's own scope (existing-row repair) is not finished
+Status: DONE 2026-09-24 PRs #870, #971 proof scripts/audit-detection-floor.mjs c_issue_size_noncapable_source + scraper/scripts/backfill-issue-size-chittorgarh-detail.ts (recheck writes the capable source value and provenance); staging repair 40 -> 8 rows, residue #979 (no capable source, deferred data tuning)
 
 ## The design contradicts the code — read this before building anything
 
