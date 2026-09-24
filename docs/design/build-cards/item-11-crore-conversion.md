@@ -1,6 +1,6 @@
 # Item 11 — the crore conversion (OD-20) and `financial_data` becomes derived
 
-Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 11: the data conversion itself is WITHDRAWN (measured 2026-09-21, all 5 rupee columns are numeric(18,2), largest stored row uses 0.0027% of ceiling); PR #871 landed the two crore-threshold display readers, but the OD-48 exception-column unit tags remain open, so the card's own scope is not fully closed
+Status: DONE 2026-09-25 PRs #871, #964 proof docs/design/pull-model-completion-state.md row 11: web/lib/admin/field-labels.ts, web/lib/admin/dynamic-validation-rules.ts, scripts/generate-field-manifest.mjs
 
 ## Purpose
 
