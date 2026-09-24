@@ -122,15 +122,15 @@ vi.mock('../../src/services/cross-source-disagreement-monitor.js', () => ({
 // scheduler/opening-day-check.js is exercised for real (its own unit tests
 // cover the gate); only the DB layer beneath it is stubbed.
 const runOpeningDayDiscoveryMock = vi.fn().mockResolvedValue({
-  todayIso: '2026-09-03', nseRowsChecked: 2, bseRowsChecked: 3, written: [], storedOpeningToday: [], failures: [],
+  todayIso: '2026-09-03', nseRowsChecked: 2, bseRowsChecked: 3, written: [], skippedNonIpo: [], storedOpeningToday: [], failures: [],
 });
 const createOpeningDayWriterMock = vi.fn(() => vi.fn());
 vi.mock('../../src/scheduler/opening-day-discovery.js', () => ({
   runOpeningDayDiscovery: runOpeningDayDiscoveryMock,
   createOpeningDayWriter: createOpeningDayWriterMock,
 }));
-vi.mock('../../src/services/data-consolidation-orchestrator.js', () => ({
-  DataConsolidationOrchestrator: vi.fn().mockImplementation(() => ({ consolidatedUpsertIPO: vi.fn() })),
+vi.mock('../../src/services/data-consolidation-service.js', () => ({
+  DataConsolidationService: vi.fn().mockImplementation(() => ({ consolidateIPOData: vi.fn() })),
 }));
 vi.mock('@ipodhan/shared', () => ({
   IPORepository: vi.fn().mockImplementation(() => ({})),

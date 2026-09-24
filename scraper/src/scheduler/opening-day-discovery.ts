@@ -43,11 +43,12 @@ export interface OpeningDayPayload {
   symbol?: string | null;
   segment?: ScrapedIPO['segment'];
   listingExchange: OpeningDaySource;
-  offeringType: 'IPO';
+  /** NSE: the offeringType NSE's own mapper derived; BSE board: 'IPO'. Only 'IPO' is ever written. */
+  offeringType: string;
   sourceKeys: NonNullable<ScrapedIPO['sourceKeys']>;
 }
 
-export type OpeningDayWriteOutcome = 'inserted' | 'updated' | 'skipped';
+export type OpeningDayWriteOutcome = 'inserted' | 'updated' | 'unchanged' | 'skipped';
 
 export interface OpeningDayDeps {
   /** NSE current-issue list: one list request (`fetchCurrentIssueList`). */
@@ -65,6 +66,8 @@ export interface OpeningDaySummary {
   nseRowsChecked: number;
   bseRowsChecked: number;
   written: Array<{ source: OpeningDaySource; companyName: string; key: string | null; outcome: OpeningDayWriteOutcome | 'failed' }>;
+  /** Non-IPO offerings (RIGHTS, NCD, FPO, INVITS, REITS, ...) opening today on the NSE list — named, never written (§1.11). */
+  skippedNonIpo: Array<{ source: OpeningDaySource; companyName: string; offeringType: string }>;
   storedOpeningToday: Array<{ id: string; companyName: string; status: string }>;
   failures: string[];
 }
@@ -79,7 +82,8 @@ function narrowNse(row: ScrapedIPO): OpeningDayPayload | null {
     symbol: row.symbol ?? null,
     segment: row.segment,
     listingExchange: 'NSE',
-    offeringType: 'IPO',
+    // §1.11: RIGHTS / NCD / FPO / INVITS / REITS on the same NSE list are not IPOs; keep NSE's own type.
+    offeringType: row.offeringType ?? 'IPO',
     sourceKeys: row.sourceKeys ?? [],
   };
 }
@@ -104,16 +108,26 @@ function narrowBse(row: BSEListRow, todayIso: string): OpeningDayPayload | null 
   };
 }
 
-/** Rows whose listed open date is `todayIso`, narrowed to the OD-87 payload. */
+/**
+ * Rows whose listed open date is `todayIso`, narrowed to the OD-87 payload.
+ * A non-IPO NSE offering opening today is not returned; it is pushed onto
+ * `skippedNonIpo` (name + type) when that array is given.
+ */
 export function selectOpeningToday(
   nseRows: readonly ScrapedIPO[],
   bseRows: readonly BSEListRow[],
-  todayIso: string
+  todayIso: string,
+  skippedNonIpo?: Array<{ source: OpeningDaySource; companyName: string; offeringType: string }>
 ): Array<{ source: OpeningDaySource; payload: OpeningDayPayload }> {
   const out: Array<{ source: OpeningDaySource; payload: OpeningDayPayload }> = [];
   for (const r of nseRows) {
     const p = narrowNse(r);
-    if (p && p.openDate === todayIso) out.push({ source: 'NSE', payload: p });
+    if (!p || p.openDate !== todayIso) continue;
+    if (p.offeringType !== 'IPO') {
+      skippedNonIpo?.push({ source: 'NSE', companyName: p.companyName, offeringType: p.offeringType });
+      continue;
+    }
+    out.push({ source: 'NSE', payload: p });
   }
   for (const r of bseRows) {
     const p = narrowBse(r, todayIso);
@@ -137,7 +151,8 @@ export async function runOpeningDayDiscovery(deps: OpeningDayDeps, now: Date = n
   if (bse.status === 'rejected') failures.push(`BSE list: ${bse.reason instanceof Error ? bse.reason.message : String(bse.reason)}`);
 
   const written: OpeningDaySummary['written'] = [];
-  for (const { source, payload } of selectOpeningToday(nseRows, bseRows, todayIso)) {
+  const skippedNonIpo: OpeningDaySummary['skippedNonIpo'] = [];
+  for (const { source, payload } of selectOpeningToday(nseRows, bseRows, todayIso, skippedNonIpo)) {
     const key = payload.sourceKeys[0]?.keyValue ?? null;
     try {
       const outcome = await deps.writeRow(source, payload);
@@ -155,14 +170,19 @@ export async function runOpeningDayDiscovery(deps: OpeningDayDeps, now: Date = n
     failures.push(`stored rows: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  return { todayIso, nseRowsChecked: nseRows.length, bseRowsChecked: bseRows.length, written, storedOpeningToday, failures };
+  return { todayIso, nseRowsChecked: nseRows.length, bseRowsChecked: bseRows.length, written, skippedNonIpo, storedOpeningToday, failures };
 }
 
-/** Minimal collaborator surface the writer needs — the same objects BaseScraperOrchestrator builds. */
+
+/** Minimal collaborator surface the writer needs. */
 export interface OpeningDayWriterCollaborators {
   ipoRepository: {
     bindSourceKeys: (ipoId: string, keys: any[], opts: { boundVia: any; boundBy: string }) => Promise<unknown>;
-  } & Record<string, any>;
+    /** `IPORepository.update`: SET exactly the given keys (plus its own updatedAt). */
+    update: (ipoId: string, data: Record<string, unknown>) => Promise<unknown>;
+    /** `IPORepository.create`: the row and its OD-85 keys in one transaction. */
+    create: (values: any, opts: { sourceKeys: any[] | null; boundBy: string }) => Promise<{ id: string }>;
+  };
   resolveIpoRow: (repo: any, input: any) => Promise<any>;
   inferBoundVia: (incoming: any, existing: any) => any;
   withSourceKeyLineage: <T>(fn: () => Promise<T>) => Promise<T>;
@@ -171,25 +191,55 @@ export interface OpeningDayWriterCollaborators {
     isIPOLocked: (ipoId: string) => Promise<boolean>;
     filterProtectedFields: (ipoId: string, table: string, data: any, source: string) => Promise<{ filtered: Record<string, unknown> }>;
   };
-  consolidatedUpsertIPO: (claim: any, source: OpeningDaySource, confidence: number, existing: any, onlyFields: string[]) => Promise<{ ipoId: string; isNew: boolean; skipped: boolean; skipReason?: string }>;
+  /**
+   * The field-priority decision (`DataConsolidationService.consolidateIPOData`),
+   * the same matrix call the consolidated upsert makes. It decides values and
+   * records provenance; it never writes `ipos`.
+   */
+  consolidateFields: (input: {
+    ipoId: string;
+    tableName: 'ipos';
+    incomingData: Record<string, unknown>;
+    source: OpeningDaySource;
+    existingData?: Record<string, unknown>;
+    confidence: number;
+    offeringType?: string;
+  }) => Promise<{ fieldResults: Array<{ fieldName: string; finalValue: any; rejectedSources?: Array<{ source: string }> }> }>;
   normalizeName: (name: string) => string;
   identitySlug: (claim: any) => string;
+  /** Best-effort step-ledger record after a write; a failure never fails the write. */
+  afterWrite?: (ipoId: string, info: { source: OpeningDaySource; created: boolean; fields: string[]; companyName: string }) => Promise<void>;
 }
 
 /** Same per-source confidence BaseScraperOrchestrator.getConfidenceScore gives the exchanges. */
 const CONFIDENCE: Record<OpeningDaySource, number> = { NSE: 95, BSE: 90 };
 
+function sameValue(a: unknown, b: unknown): boolean {
+  const norm = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v ?? ''));
+  return norm(a) === norm(b);
+}
+
 /**
- * Write one payload: resolve identity (OD-85 keys first), bind keys, honour
- * the IPO lock and field protection, then the consolidated upsert with
- * `onlyFields` = the OD-87 fields still unprotected.
+ * Write one payload (OD-87 strict write). Order: resolve identity (OD-85 keys
+ * first) -> per-IPO lock, before anything is bound -> bind keys -> field
+ * protection -> the field-priority decision for the four fields -> ONE write
+ * whose SET clause holds only the decided companyName / status / openDate /
+ * closeDate values that differ from what is stored. No other column is ever
+ * in the SET: not listingExchanges, segment, offeringType or lastScrapedAt.
+ *
+ * A row with no match is created with the four fields plus the two NOT NULL
+ * columns that have no default (schema.ts `ipos`): `slug` (the identity slug)
+ * and `offeringType` = 'IPO' (only IPO rows reach this writer). `segment` and
+ * `listingExchanges` are nullable and stay unset; createdAt/updatedAt default.
  */
 export function createOpeningDayWriter(c: OpeningDayWriterCollaborators) {
   return async (source: OpeningDaySource, payload: OpeningDayPayload): Promise<OpeningDayWriteOutcome> => {
+    if (payload.offeringType !== 'IPO') return 'skipped';
     const validation = validateIPOData(payload);
     if (!validation.success) return 'skipped';
     return c.withSourceKeyLineage(async () => {
       const slug = c.identitySlug(payload);
+      const keys = payload.sourceKeys.length > 0 ? payload.sourceKeys : null;
       let existing: any;
       try {
         existing = await c.resolveIpoRow(c.ipoRepository, {
@@ -203,13 +253,16 @@ export function createOpeningDayWriter(c: OpeningDayWriterCollaborators) {
           priceRangeMin: null,
           segment: payload.segment ?? null,
           offeringType: undefined,
-          sourceKeys: payload.sourceKeys.length > 0 ? payload.sourceKeys : null,
+          sourceKeys: keys,
         });
-        if (existing && payload.sourceKeys.length > 0) {
-          await c.ipoRepository.bindSourceKeys(existing.id, payload.sourceKeys, {
-            boundVia: c.inferBoundVia(payload, existing),
-            boundBy: `scraper:${source}`,
-          });
+        if (existing) {
+          if (await c.fieldProtection.isIPOLocked(existing.id)) return 'skipped';
+          if (keys) {
+            await c.ipoRepository.bindSourceKeys(existing.id, keys, {
+              boundVia: c.inferBoundVia(payload, existing),
+              boundBy: `scraper:${source}`,
+            });
+          }
         }
       } catch (error) {
         if (c.noWriteErrorNames.has((error as { name?: string })?.name ?? '')) return 'skipped';
@@ -218,22 +271,50 @@ export function createOpeningDayWriter(c: OpeningDayWriterCollaborators) {
 
       let fields: string[] = [...OPENING_DAY_FIELDS];
       if (existing) {
-        if (await c.fieldProtection.isIPOLocked(existing.id)) return 'skipped';
         const { filtered } = await c.fieldProtection.filterProtectedFields(existing.id, 'ipos', payload, source);
         fields = fields.filter((f) => f in filtered);
         if (fields.length === 0) return 'skipped';
       }
 
-      // The stored identity rides along so the consolidated write keeps it (it
-      // does not become this write's claim: `onlyFields` below excludes it).
-      const claim = {
-        ...payload,
-        segment: payload.segment ?? existing?.segment ?? undefined,
+      const decision = await c.consolidateFields({
+        ipoId: existing?.id ?? 'new',
+        tableName: 'ipos',
+        incomingData: Object.fromEntries(fields.map((f) => [f, (payload as any)[f]])),
+        source,
+        existingData: existing
+          ? Object.fromEntries([...OPENING_DAY_FIELDS, 'offeringType', 'segment'].map((f) => [f, existing[f]]))
+          : undefined,
+        confidence: CONFIDENCE[source],
         offeringType: existing?.offeringType ?? payload.offeringType,
-      };
-      const r = await c.consolidatedUpsertIPO(claim, source, CONFIDENCE[source], existing ?? null, fields);
-      if (r.skipped) return 'skipped';
-      return r.isNew ? 'inserted' : 'updated';
+      });
+
+      const set: Record<string, unknown> = {};
+      for (const r of decision.fieldResults) {
+        if (!fields.includes(r.fieldName)) continue;
+        if (r.rejectedSources?.some((x) => x.source === source)) continue;
+        if (r.finalValue === undefined || r.finalValue === null || r.finalValue === '') continue;
+        if (existing && sameValue(r.finalValue, existing[r.fieldName])) continue;
+        set[r.fieldName] = r.finalValue;
+      }
+
+      let ipoId: string;
+      if (existing) {
+        if (Object.keys(set).length === 0) return 'unchanged';
+        await c.ipoRepository.update(existing.id, set);
+        ipoId = existing.id;
+      } else {
+        if (!set.companyName || !set.status) return 'skipped';
+        const row = await c.ipoRepository.create({ ...set, slug, offeringType: 'IPO' }, { sourceKeys: keys, boundBy: `scraper:${source}` });
+        ipoId = row.id;
+      }
+      if (c.afterWrite) {
+        try {
+          await c.afterWrite(ipoId, { source, created: !existing, fields: Object.keys(set), companyName: payload.companyName });
+        } catch {
+          // best-effort, like every post-write side effect (non-fatal-side-effects.md)
+        }
+      }
+      return existing ? 'updated' : 'inserted';
     });
   };
 }

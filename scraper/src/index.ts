@@ -64,7 +64,9 @@ import {
 } from '@ipodhan/shared';
 import { withSourceKeyLineage } from '@ipodhan/shared/repositories';
 import { ListingPerformanceRepository as OpeningDayListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
-import { DataConsolidationOrchestrator } from './services/data-consolidation-orchestrator.js';
+import { DataConsolidationService } from './services/data-consolidation-service.js';
+import { initStepLedger } from './services/step-ledger.js';
+import { recordDiscoverySteps } from './services/step-ledger-recorders.js';
 import { normalizeCompanyNameForMatching, computeIpoIdentitySlug } from './services/data-persister.js';
 import type { ClosedIpoResourceResult } from './scheduler/closed-ipo-job.js';
 import { readPlanSettlement } from './scheduler/closed-ipo-plan-settlement.js';
@@ -781,11 +783,10 @@ async function runOpeningDayCheckWake(): Promise<number> {
       'Opening-day check: fetching the two exchange lists (identity, status and dates only — no document, no extraction)'
     );
     const ipoRepository = new IPORepository(db, redis);
-    const consolidation = new DataConsolidationOrchestrator(
-      ipoRepository,
+    // OD-87 strict write: the matrix decides the four values; the writer SETs only those.
+    const fieldPriority = new DataConsolidationService(
       new FieldSourcesRepository(db, redis),
       new DataConflictsRepository(db, redis),
-      redis,
       new OpeningDayListingPerformanceRepository(db, redis)
     );
     const fieldProtection = createFieldProtectionService(db, redis);
@@ -801,8 +802,11 @@ async function runOpeningDayCheckWake(): Promise<number> {
           withSourceKeyLineage,
           noWriteErrorNames: SOURCE_KEY_NO_WRITE_ERROR_NAMES,
           fieldProtection: fieldProtection as any,
-          consolidatedUpsertIPO: (claim, source, confidence, existing, onlyFields) =>
-            consolidation.consolidatedUpsertIPO(claim, source, confidence, existing, onlyFields),
+          consolidateFields: (input) => fieldPriority.consolidateIPOData(input as any),
+          afterWrite: async (ipoId, info) => {
+            if (info.created) await initStepLedger(ipoId);
+            await recordDiscoverySteps(ipoId, { source: info.source, created: info.created, fields: info.fields, offeringType: 'IPO', consolidated: true, fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING, companyName: info.companyName });
+          },
           normalizeName: normalizeCompanyNameForMatching,
           identitySlug: computeIpoIdentitySlug as any,
         }),
@@ -816,7 +820,7 @@ async function runOpeningDayCheckWake(): Promise<number> {
 
     if (!opensToday && failures.length === 0) {
       logger.info(
-        { nseRowsChecked, bseRowsChecked },
+        { nseRowsChecked, bseRowsChecked, skippedNonIpo: summary.skippedNonIpo },
         `opening-day check: no IPO opens today (NSE ${nseRowsChecked} rows, BSE ${bseRowsChecked} rows checked)`
       );
     } else {
@@ -827,6 +831,7 @@ async function runOpeningDayCheckWake(): Promise<number> {
           nseRowsChecked,
           bseRowsChecked,
           written: summary.written,
+          skippedNonIpo: summary.skippedNonIpo,
           openingToday: summary.storedOpeningToday.map((row) => ({ id: row.id, companyName: row.companyName, status: row.status })),
           failures,
         },

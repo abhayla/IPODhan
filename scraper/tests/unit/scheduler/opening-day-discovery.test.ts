@@ -125,12 +125,16 @@ describe('opening-day discovery — only rows opening today (IST)', () => {
   });
 });
 
-describe('opening-day writer — identity path + consolidated upsert, four fields only', () => {
+describe('opening-day writer — identity path + field-priority decision, four fields only', () => {
   const payload: OpeningDayPayload = selectOpeningToday(NSE_ROWS, [], '2026-09-24')[0].payload;
 
   function collaborators(existing: any) {
     const c = {
-      ipoRepository: { bindSourceKeys: vi.fn().mockResolvedValue(undefined) },
+      ipoRepository: {
+        bindSourceKeys: vi.fn().mockResolvedValue(undefined),
+        update: vi.fn().mockResolvedValue(undefined),
+        create: vi.fn().mockResolvedValue({ id: 'ipo-new' }),
+      },
       resolveIpoRow: vi.fn().mockResolvedValue(existing),
       inferBoundVia: vi.fn().mockReturnValue('KEY'),
       withSourceKeyLineage: vi.fn(async (fn: () => Promise<any>) => fn()),
@@ -139,37 +143,42 @@ describe('opening-day writer — identity path + consolidated upsert, four field
         isIPOLocked: vi.fn().mockResolvedValue(false),
         filterProtectedFields: vi.fn(async (_id: string, _t: string, data: any) => ({ filtered: { ...data } })),
       },
-      consolidatedUpsertIPO: vi.fn().mockResolvedValue({ ipoId: 'ipo-1', isNew: !existing, skipped: false }),
+      // The incoming value wins (the matrix decision is exercised for real in opening-day-strict-write.test.ts).
+      consolidateFields: vi.fn(async (input: any) => ({
+        fieldResults: Object.entries(input.incomingData).map(([fieldName, finalValue]) => ({ fieldName, finalValue })),
+      })),
       normalizeName: (n: string) => n.toLowerCase(),
       identitySlug: () => 'moneyview-limited',
     };
     return c;
   }
 
-  it('(e1) not yet stored: resolves by the NSE key, creates via the consolidated upsert with onlyFields = the four fields', async () => {
+  it('(e1) not yet stored: resolves by the NSE key, asks the matrix about the four fields, creates with identity only', async () => {
     const c = collaborators(null);
     expect(await createOpeningDayWriter(c)('NSE', payload)).toBe('inserted');
     expect(c.resolveIpoRow.mock.calls[0][1].sourceKeys[0].keyValue).toBe('MONEYVIEW|EQ');
-    const [claim, source, confidence, existing, onlyFields] = c.consolidatedUpsertIPO.mock.calls[0];
-    expect([source, confidence, existing]).toEqual(['NSE', 95, null]);
-    expect(onlyFields).toEqual(['companyName', 'status', 'openDate', 'closeDate']);
-    expect(claim).not.toHaveProperty('priceRangeMin');
+    const input = c.consolidateFields.mock.calls[0][0];
+    expect([input.source, input.confidence, input.existingData]).toEqual(['NSE', 95, undefined]);
+    expect(Object.keys(input.incomingData)).toEqual(['companyName', 'status', 'openDate', 'closeDate']);
+    const [values, opts] = c.ipoRepository.create.mock.calls[0];
+    expect(Object.keys(values).sort()).toEqual(['closeDate', 'companyName', 'offeringType', 'openDate', 'slug', 'status']);
+    expect(opts).toEqual({ sourceKeys: payload.sourceKeys, boundBy: 'scraper:NSE' });
   });
 
-  it('(e2) stored with a NULL open date: binds the key and claims the open date', async () => {
-    const c = collaborators({ id: 'ipo-1', openDate: null, segment: 'MAINBOARD', offeringType: 'IPO' });
+  it('(e2) stored with a NULL open date: binds the key and SETs the open date', async () => {
+    const c = collaborators({ id: 'ipo-1', companyName: 'Moneyview Limited', status: 'OPEN', openDate: null, closeDate: '2026-09-28', segment: 'MAINBOARD', offeringType: 'IPO' });
     expect(await createOpeningDayWriter(c)('NSE', payload)).toBe('updated');
     expect(c.ipoRepository.bindSourceKeys).toHaveBeenCalledWith('ipo-1', payload.sourceKeys, { boundVia: 'KEY', boundBy: 'scraper:NSE' });
-    expect(c.consolidatedUpsertIPO.mock.calls[0][0].openDate).toBe('2026-09-24');
+    expect(c.ipoRepository.update).toHaveBeenCalledWith('ipo-1', { openDate: '2026-09-24' });
   });
 
-  it('(e3) stored with an old (postponed) open date: the new date is claimed; the matrix, not this job, decides', async () => {
-    const c = collaborators({ id: 'ipo-1', openDate: '2026-08-10', segment: 'MAINBOARD', offeringType: 'IPO' });
+  it('(e3) stored with an old (postponed) open date: the matrix sees both values; its pick is written', async () => {
+    const c = collaborators({ id: 'ipo-1', companyName: 'Moneyview Limited', status: 'OPEN', openDate: '2026-08-10', closeDate: '2026-09-28', segment: 'MAINBOARD', offeringType: 'IPO' });
     expect(await createOpeningDayWriter(c)('NSE', payload)).toBe('updated');
-    const [claim, , , existing, onlyFields] = c.consolidatedUpsertIPO.mock.calls[0];
-    expect(claim.openDate).toBe('2026-09-24');
-    expect(existing.openDate).toBe('2026-08-10');
-    expect(onlyFields).toContain('openDate');
+    const input = c.consolidateFields.mock.calls[0][0];
+    expect(input.incomingData.openDate).toBe('2026-09-24');
+    expect(input.existingData.openDate).toBe('2026-08-10');
+    expect(c.ipoRepository.update).toHaveBeenCalledWith('ipo-1', { openDate: '2026-09-24' });
   });
 
   it('protected fields are dropped from the claim; a locked IPO is skipped', async () => {
@@ -179,12 +188,13 @@ describe('opening-day writer — identity path + consolidated upsert, four field
       return { filtered: rest };
     });
     await createOpeningDayWriter(c)('NSE', payload);
-    expect(c.consolidatedUpsertIPO.mock.calls[0][4]).toEqual(['companyName', 'openDate', 'closeDate']);
+    expect(Object.keys(c.consolidateFields.mock.calls[0][0].incomingData)).toEqual(['companyName', 'openDate', 'closeDate']);
 
     const locked = collaborators({ id: 'ipo-2' });
     locked.fieldProtection.isIPOLocked = vi.fn().mockResolvedValue(true);
     expect(await createOpeningDayWriter(locked)('NSE', payload)).toBe('skipped');
-    expect(locked.consolidatedUpsertIPO).not.toHaveBeenCalled();
+    expect(locked.consolidateFields).not.toHaveBeenCalled();
+    expect(locked.ipoRepository.bindSourceKeys).not.toHaveBeenCalled();
   });
 
   it('an OD-85 no-write decision (held / superseded key) writes nothing', async () => {
@@ -192,6 +202,7 @@ describe('opening-day writer — identity path + consolidated upsert, four field
     const err = Object.assign(new Error('held'), { name: 'SourceKeyHeldError' });
     c.resolveIpoRow = vi.fn().mockRejectedValue(err);
     expect(await createOpeningDayWriter(c)('NSE', payload)).toBe('skipped');
-    expect(c.consolidatedUpsertIPO).not.toHaveBeenCalled();
+    expect(c.consolidateFields).not.toHaveBeenCalled();
+    expect(c.ipoRepository.create).not.toHaveBeenCalled();
   });
 });
