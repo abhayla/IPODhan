@@ -97,11 +97,34 @@ regenerated (`node scripts/build-detection-registry.mjs`).
 
 ## Staging proof
 
-**Swap Test, path 2**: `set` swaps DOC and CHITTORGARH for `ipos.issue_size` on staging (all IPOs);
-manual wake; plan rows for open/upcoming IPOs show `rank1_source='CHITTORGARH'`, `policy_origin =
-'override:<id>'`; walk log `policy origin=override:<id>` for a named IPO; a write for that IPO carries
-`data_lineage.policyOrigin='override:<id>'`; then `expire <id>`; next wake shows `registry:2` again.
-Read by identity and recorded in the ledger.
+**Swap Test, path 2 (corrected 2026-09-24, #893)**: the original wording checked one field with no
+regard to its plan row's state, and missed that `upsertGeneratedRows`'s old
+`manifest_version < EXCLUDED.manifest_version` guard never fires for an override (an override never
+bumps the manifest version, by design — §2.3.5 "no deploy, no version bump") — so the swap silently
+never reached an already-planned row. Corrected procedure, run INSIDE an OD-19 data slot boundary
+(00:00 / 08:00 / 14:00 IST — a wake outside a slot proves nothing, since the plan pass runs on the
+slot cadence, not on demand):
+
+1. **Non-SUPPLIED case first.** Pick a field whose plan row is NOT yet `SUPPLIED` for a named IPO
+   (`select ... from ipo_field_plan where field_name=... and state <> 'SUPPLIED'`). `set` swaps DOC
+   and CHITTORGARH for `ipos.issue_size` on staging (all IPOs); wake inside the next OD-19 slot; the
+   row now shows `rank1_source='CHITTORGARH'`, `policy_origin='override:<id>'`, `manifest_version`
+   UNCHANGED from before the swap — the version-unaware re-rank (#893) is the thing under test, so a
+   version bump between reads would hide a regression back to the old guard.
+2. **SUPPLIED case, checked separately.** Pick a different field whose plan row IS already
+   `SUPPLIED` for a named IPO, and whose `chosen_source` is the source the override is about to
+   demote. After the same `set` + wake, the row is REOPENED (`state='PENDING'`, `policy_origin =
+   'override:<id>'`, rank list narrowed to sources above the old `chosen_source`) — `chosen_source`
+   itself is untouched until a higher-ranked source actually answers. A SUPPLIED row whose
+   `chosen_source` is still rank1 under the new order stays SUPPLIED and unchanged (OD-73 negative
+   case) — check one of those too, on a third field, to prove the reopen is not indiscriminate.
+3. Walk log `policy origin=override:<id>` for the named IPO; a write for that IPO carries
+   `data_lineage.policyOrigin='override:<id>'`.
+4. `expire <id>`; wake inside the NEXT OD-19 slot; both rows show `registry:<v>` again (the
+   non-SUPPLIED row's ranks revert; the reopened row, if by then re-settled, is left as whatever
+   source actually supplied it).
+
+Read by identity (row id, ipo slug, field name) and recorded in the ledger — never a bare row count.
 
 ### Definition of Done
 
