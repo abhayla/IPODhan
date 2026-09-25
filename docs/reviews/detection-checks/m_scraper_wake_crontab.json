@@ -1,0 +1,10 @@
+{
+  "id": "m_scraper_wake_crontab",
+  "findingClass": "the deploying user's crontab has no (or more than one) '# ipodhan-scraper-wake:<slot>' line for a slot, or that line does not invoke the slot's current symlink at its cadence (*/30 prod, 15,45 staging) -- after #660 removed pm2's --cron-restart, cron is the ONLY thing that wakes the scraper, and pm2 status can no longer tell you the wake is alive",
+  "issue": 663,
+  "sourceTask": "T-503",
+  "failThreshold": "for either slot, crontab -l does not contain exactly one line matching /# ipodhan-scraper-wake:<slot>/ that starts with that slot's cadence and invokes its current symlink",
+  "severity": "P1",
+  "unverifiableWhen": "crontab is not reachable on this host (expected on a dev machine or CI; runs for real on the box via cron)",
+  "section": "checks"
+}

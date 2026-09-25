@@ -627,6 +627,24 @@
       "unverifiableWhen": "document_fetch_state table not present"
     },
     {
+      "id": "m_scraper_wake_crontab",
+      "findingClass": "the deploying user's crontab has no (or more than one) '# ipodhan-scraper-wake:<slot>' line for a slot, or that line does not invoke the slot's current symlink at its cadence (*/30 prod, 15,45 staging) -- after #660 removed pm2's --cron-restart, cron is the ONLY thing that wakes the scraper, and pm2 status can no longer tell you the wake is alive",
+      "issue": 663,
+      "sourceTask": "T-503",
+      "failThreshold": "for either slot, crontab -l does not contain exactly one line matching /# ipodhan-scraper-wake:<slot>/ that starts with that slot's cadence and invokes its current symlink",
+      "severity": "P1",
+      "unverifiableWhen": "crontab is not reachable on this host (expected on a dev machine or CI; runs for real on the box via cron)"
+    },
+    {
+      "id": "m_scraper_wake_freshness",
+      "findingClass": "for either slot, the newest line in /var/log/ipodhan-scraper-wake-<slot>.log is older than one cadence interval (30 min) plus slack (15 min) -- the crontab line existing (m_scraper_wake_crontab) is necessary and not sufficient: cron can fire a command that fails instantly (the exit-78 refusals in scraper-wake.sh), leaving the line present while the scraper stays asleep",
+      "issue": 663,
+      "sourceTask": "T-503",
+      "failThreshold": "for either slot, no wake log line at all, or the newest line's timestamp is more than 45 minutes old",
+      "severity": "P1",
+      "unverifiableWhen": "the wake log files are not reachable on this host (expected on a dev machine or CI; runs for real on the box via cron)"
+    },
+    {
       "id": "m_upcoming_missing_price_band_tracking",
       "findingClass": "a live IPO walks to its open date with a blank price band because no PRICE_BAND_AD fetch-state row was ever created — an ABSENCE no existing check can see, since every other document check reads FROM document_fetch_state and can only grade rows that exist",
       "round7Findings": [],

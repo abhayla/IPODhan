@@ -1096,6 +1096,13 @@ jobs:
       - name: Run wake-log delta test suite (#793 M2, signal-ownership R3)
         run: node --test scripts/tests/wake-delta.test.mjs
 
+      # #663: wake-delta.mjs above is a session/ssh tick tool, never scheduled.
+      # These are the nightly-floor predicates (crontab line + log freshness)
+      # that fill the gap it cannot — cron is the ONLY wake since #660 removed
+      # pm2's --cron-restart, and pm2 status can no longer tell you it stopped.
+      - name: Run scraper-wake nightly-floor detection test suite (#663)
+        run: node --test scripts/tests/scraper-wake-detection.test.mjs
+
       # #793 M3: the lineage check that runs OUTSIDE the scraper. The in-cycle
       # copy cannot fire on this incident - it lives in main(), which the config
       # refusal kills before it is reached.
