@@ -154,6 +154,8 @@ it by assuming.
 | OD-80 | *"Add FIELDS_PENDING"* — 2026-09-23. §6.2's five cause classes (`DOCUMENT_UNOBTAINABLE`, `EXTRACTOR_MISSING`, `VALIDATION_REJECTED`, `SOURCE_UNREACHABLE`, `WRITE_SKIPPED`) have no true value for an IPO left `PARTIAL` because fields remain that are not due yet or are waiting to retry (review probe: 2 not yet available, 30 not due, 5 retrying; nothing was down, missing, rejected or skipped); the code was writing `SOURCE_UNREACHABLE`, which would report "site down" falsely. **A sixth cause class, `FIELDS_PENDING`, is added to §6.2 and to the `closed_ipo_resourcing` cause list (one additive migration, approved by the owner with this decision); the per-state counts stay in `cause_detail`.** | 2026-09-23 | §6.2 | §6.2 lists six cause classes including FIELDS_PENDING |
 | OD-81 | *"On an event (Recommended)"* — 2026-09-23, spec-verified first. OD-78 re-picks a PARTIAL IPO only when its cause class or the source rankings change; for cause `FIELDS_PENDING` (OD-80: fields remain not due yet or waiting to retry) neither ever changes on its own, so such an IPO would never be walked again. Spec basis: OD-56 (an IPO is read once per STAGE CHANGE; a field whose source did not exist at the previous stage is a first read at the next stage), OD-62 (`NOT_PUBLISHED_YET` means ask again at the next stage boundary), §2.5.1 triggers 2 and 3 (a field is re-asked when its source publishes it, e.g. `isin` at listing, or when a better document arrives), OD-66 (a new document is read for its own fields), and "never on a backoff timer" (§2). Measured on staging 2026-09-23: 51 CLOSED IPOs with field plans will cross to LISTED (e.g. axiom-gas-engineering-ltd closed 2026-09-22, lists 2026-09-25); 354 documents across 58 IPOs were first seen after the IPO closed in the last 30 days (e.g. hero-motors-ltd closed 2026-09-18, PROSPECTUS and BASIS_OF_ALLOTMENT_AD first seen 2026-09-20). **A `PARTIAL` IPO with cause `FIELDS_PENDING` is picked again only on an event: (1) its stage changed since the last attempt (CLOSED to LISTED), (2) a new document for it was first seen after the last attempt, or (3) the source rankings changed (OD-78). No timer, never nightly without one of these; never-walked IPOs still take the nightly slots first, at most ten a night. Other PARTIAL/FAILED causes keep OD-78 unchanged.** | 2026-09-23 | §6.1, §6.2 | §6.1 rule 2 names the three FIELDS_PENDING re-pick events and states that no timer re-picks an IPO |
 | OD-82 | *"Counts as ranking"* — 2026-09-23, spec-verified first (Spec basis: §1 source labels, "`DOC` = the IPO's own offer document, best available type"; §2.5 and §6.5, documents are ranked by type; §6.2 `resourced_at_version`; OD-78; OD-81 event 3; Appendix A rows 132–134 and 137). **Clarifies OD-78: the "source rankings" whose change re-picks a PARTIAL/FAILED IPO are the rank lists, the capable flags AND the document type a `DOC` rank reads — because a `DOC` rank means a document of a stated type. Prose, notes and key order still never count. One shared definition (the field-manifest fingerprint) is used by the closed-IPO job's resourcing version and the field-plan gap key.** Measured: the four anchor-investor fields (`anchor_investors.total_shares_offered`, `total_amount_raised`, `anchor_investors_count`, `investor_list`) rank `DOC` only with no document type, so they are never askable (#884); 155 manifest entries carry a document type; staging `closed_ipo_resourcing` holds 10 rows, all DONE, 0 PARTIAL, so the one-time re-pick when the definition changes touches nothing today. | 2026-09-23 | §6.1, §6.2 | OD-78's rankings wording names the document type of a DOC rank, and one fingerprint definition is cited |
+| OD-102 | *"when admin goes to it, obviously after logging as an admin, he will have an edit button... at the sections level also and also at whole IPO level... I want to see the, all the three four sources of that particular each particular field. as per the spec... each source field should have a value associated with it it can be null it can be actual value it can be something else and there should be also be a text field at the end... he will select and save it once saved that will be the final data saved and it will be marked that it was updated by admin... nobody should replace it no scraper or anything should replace it in future for that particular IPO... should be applicable for each IPO... we will not let admin edit for the fields which are derived"* -- 2026-09-25, the owner's statement of the admin editing feature (Spec basis: §2.7, OD-61, OD-63, Appendix A). **Admin editing lives on the public IPO detail page.** A logged-in admin sees an Edit control for the whole IPO and for each section; a reader never does. Edit opens an edit view in which EVERY editable field lists each source Appendix A names for it (ranks 1 to 3) with the value the scraper actually got from that source (a value, an abstention per OD-60, or a failure cause), plus a free-text option last. The admin picks one and saves; the saved value is an ADMIN value (§2.7): it outranks every source, is marked as updated by admin, and no scraper or job replaces it for that IPO. It applies to every IPO. Derived fields are read-only. **SPEC CHANGE to OD-61**, which recorded per-page admin editing as "not in scope now": it is now in scope. §2.7 is confirmed, not changed. Whether pages other than the IPO detail page get the same control is open (§9.4). Measured the same day: no admin screen shows more than two source values, none offers a free-text value, and the per-source store is empty (F-168). | 2026-09-25 | §9, §9.2 | §9.2 states the Edit control on the IPO page, the per-source list from Appendix A ranks, the free-text option, the ADMIN write that holds, and derived fields read-only |
+| OD-103 | *"let's go with your recommendation of uh, every ask every listed source once in the same first round"* -- 2026-09-25, chosen over (A) show only what was collected and (C) a live fetch-all button (Spec basis: §2.4, OD-58, OD-60, OD-65, OD-73). **SPEC CHANGE to §2.4 ("SUPPLIED -> ... write it, record the evidence, stop"): in the FIRST round for an IPO, every source Appendix A lists for a field is asked once, and each answer -- a value, an abstention (OD-60), or a failure cause -- is stored as a witness of that field.** The published value is unchanged: the highest-ranked SUPPLIED answer (OD-73). No later round re-asks a settled field to collect witnesses (OD-65 unchanged). Why: the admin edit view (OD-102) shows each source's scraped value, and OD-58 already required agreement between independent witnesses, which a loop that stops at the first answer can never produce. Measured: F-168 (0 witness rows on staging; no witness column on production). | 2026-09-25 | §2.4, §9.3 | §2.4 carries the OD-103 amendment; §9.3 states that the edit view reads the stored witnesses and shows a never-asked source as such |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -2034,6 +2036,8 @@ for each IPO in phase 1, at each of the four slots:
     all three ranks failed -> state = EXHAUSTED, and see §2.6
 ```
 
+**Amended by OD-103 (2026-09-25):** in the FIRST round for an IPO the loop does not stop at the first SUPPLIED rank. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in `field_sources.witnesses`; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168.
+
 ### 2.5 When a supplied value is asked for again
 
 The first draft said a correct value is frozen and never re-asked. That is wrong, and it was the
@@ -3852,6 +3856,60 @@ that is there.
 It proves the code implements the **rules as written**. It cannot prove the rules are right — that is
 what the walkthroughs (§8.2), the probes (§0.0.3) and the review rounds are for. A design can be
 faithfully implemented and still be wrong about the world, and no amount of id-matching would say so.
+
+## 9. Admin data editing
+
+**Why this section exists.** The scraper will sometimes store a wrong value, or none. The owner's
+remedy is an admin who corrects the IPO by hand, choosing between what each source said or typing a
+value. Until 2026-09-25 the admin rules were scattered (§2.7, OD-61, OD-63, OD-90, the scraper/admin
+boundary in `spec-deviation-guideline.md` §5); this section states them together, and every owner
+answer about admin editing lands here as an OD row plus text, in the turn it is given.
+
+### 9.1 What exists today, measured 2026-09-25
+
+- Admin pages exist (`web/app/admin/`): a legacy per-IPO editor `/admin/edit/[slug]`, the
+  conflicts screen `/admin/conflicts` (which also carries the OD-90 corrigendum accept/dismiss),
+  a schema-driven "dynamic admin" for every table, audit, pipeline, reviews, settings. Six of them
+  are missing from the admin navigation.
+- No screen shows more than two source values for a field, and none offers a free-text value
+  (the conflict model is `source1/value1` against `source2/value2`).
+- The per-source store is empty: F-168.
+- Resolving a conflict writes the chosen value only for table `ipos`: F-169.
+- The dynamic-admin save writes no protection row and no audit row: F-170.
+- The legacy save never drops the detail page's cache key: F-171.
+- The admin queue is almost entirely listed IPOs, and humans have resolved 1 conflict in 19,106: F-172.
+
+### 9.2 The owner's feature (OD-102)
+
+1. **Where.** On the public IPO detail page. A logged-in admin sees an Edit control for the whole
+   IPO and one per section. A reader never sees it.
+2. **What the edit view shows, per editable field.** Every source Appendix A lists for the field
+   (ranks 1 to 3), each with the value the scraper got from that source, then a free-text option.
+3. **Save.** The picked or typed value is written as an ADMIN value (§2.7): it outranks every
+   source, is marked as updated by admin, and no scraper or job replaces it for that IPO. Clearing
+   it returns the field to the loop (§2.7).
+4. **Scope.** Every IPO.
+5. **Derived fields are read-only.** A value computed from other fields (for example minimum
+   investment = lot size x price) is never edited directly; correcting its inputs corrects it.
+
+### 9.3 Where the per-source values come from (OD-103)
+
+The edit view reads the witnesses stored for the field (§2.4 as amended by OD-103). Each source
+Appendix A lists appears in its rank order with one of: the value it gave; that it abstained
+(OD-60); the cause it failed with; or, for an IPO whose first round ran before OD-103, that it was
+never asked. The source that currently supplies the page is marked.
+
+### 9.4 Still open (asked one at a time, recorded here as answered)
+
+Who the admins are and how they log in; the queue's role next to the page editor (OD-63) and what
+to do with its 14,130 listed-IPO rows; which tables and list-shaped data (lead managers, promoters,
+financial rows) are editable, including adding and removing rows; rules for a typed value (units,
+checks, a required reason or evidence); what happens when a better document arrives after an admin
+save; undo and history; when a save reaches the public page; what a reader sees for an admin value;
+alerts; the two overlapping editors; pages other than the IPO detail page; creating a whole IPO by
+hand for the admin-owned types; mobile use.
+
+---
 
 ## Appendix A — the complete per-field source resolution (all 240 fields, all IPO types)
 

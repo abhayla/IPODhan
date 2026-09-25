@@ -1671,6 +1671,51 @@
       "phase1": true,
       "title": "The per-value OCR mark is dropped before consolidation: 380 offer-document values on 54 IPOs came from OCR-route documents and none says which were read off an OCR page",
       "detail": "Measured 2026-09-25 ~00:3x IST, read-only on ipodhan_staging. The extractor marks each field it read off an OCR'd page (scraper/scripts/ocr_pages.py annotate_fields: source_text 'OCR', ocr_confidence), but the persister's ExtractedField type (scraper/src/services/filing-persister.ts) carried only value/page/check, provenance was one lineage per document with confidence hard-coded 100, and document_field_receipts had no such column. Staging: ipo_pipeline_steps D6 DONE = 56 documents (OK_OCR 1, PARTIAL_OCR 55); field_sources rows written by those documents (joined on data_lineage.sourceSha = input_ref) = 288 values on 39 MAINBOARD IPOs + 92 values on 15 SME IPOs; field_sources rows whose lineage mentions ocr = 0; FILING_EXTRACTION lineage keys = docType, documentId, extractorVersion, field, method, policyOrigin, sourceDoc, sourceSha. Example: steamhouse-india-ltd's price band ad (BSE PriceBandAD_20260907153412.pdf) is all four pages OCR, and its band, lot and face value are stored at confidence 100 with no mark. Consequence: OD-36's rule (an OCR-only value never wins a disagreement against a text page) had nothing to act on. Fixed by OD-97: the envelope carries ocr_pages, each receipt carries source_text/ocr_confidence (migration 0062), the persister's provenance carries dataLineage.ocr, and an OCR-only value loses to a stored value supported by a text read of a same-or-better-ranked document for the field (OD-97 (d): a DRHP text read never outvotes an RHP OCR value; ranked by the one plan-row supersession comparator). Values written before the fix stay unmarked (OD-65/OD-91: no re-read) and count as unknown."
+    },
+    {
+      "id": "F-168",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "admin editing / witnesses",
+      "phase1": false,
+      "title": "The per-source store is empty: no field has ever recorded what more than one source said",
+      "detail": "Measured 2026-09-25, read-only via the sanctioned tunnel. ipodhan_staging: field_sources 13,624 rows (6,928 on table ipos); rows with witnesses not null = 0; rows with a non-empty witnesses array = 0; source='ADMIN' rows = 79. Production (ipodhan): the query fails with 'column \"witnesses\" does not exist' -- production runs a release older than the S2 migration. A writer exists (scraper/src/services/field-plan-walk-deps.ts:147 passes input.witnesses; scraper/src/services/witness-verdict.ts builds them), but the §2.4 loop stops at the first SUPPLIED rank, so ranks 2 and 3 are never asked for a supplied field. Why the writer produced zero rows on staging is unmeasured. Consequence: the admin edit view OD-102 asks for would show one value and 'never asked' for every other source, and OD-58's cross-check has no data. Decided by OD-103 (ask every listed source once in the first round). Spec: §2.4, §9.1, §9.3."
+    },
+    {
+      "id": "F-169",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "admin editing / conflicts",
+      "phase1": false,
+      "title": "Resolving a conflict writes the chosen value only for table ipos; for every child table the conflict is marked resolved and nothing is written",
+      "detail": "Read 2026-09-25 on origin/main: web/lib/services/conflict-resolution.ts:229 applies the value only when `options.applyToDatabase && conflict.tableName === 'ipos'`. A conflict on ipo_details, financial_statements, promoters or any other table is closed while the page keeps the old value, so the admin believes it is fixed. Spec: §9.1."
+    },
+    {
+      "id": "F-170",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "admin editing / write path",
+      "phase1": false,
+      "title": "The dynamic-admin save writes no protection row and no audit row, so the next scraper cycle can overwrite an admin edit and leave no trace",
+      "detail": "Read 2026-09-25 on origin/main: web/app/api/admin/dynamic/[table]/[id]/route.ts contains no call to markFieldAsManuallyEdited and no logAudit (grep of the file for either returns nothing), and carries '// TODO: Clear cache for field protection' at line 258. It is the only admin path to financial_statements, promoters, ipo_intermediaries, ipo_risk_factors and ipo_valuation. The scraper honours only field_protection_metadata (§2.4: 'if an admin protection row exists for this field -> skip'), so an edit made here is unprotected. Spec: §2.7, §9.1."
+    },
+    {
+      "id": "F-171",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "admin editing / cache",
+      "phase1": false,
+      "title": "The legacy admin save never drops the detail page's cache key; the public page shows the old value until the key expires",
+      "detail": "Read 2026-09-25 on origin/main: web/app/api/admin/update-field/route.ts:310 calls redis.del(getIPOByIdKey(ipoId), 'ipo:slug:*'). Redis DEL does not expand patterns, so the literal key 'ipo:slug:*' is deleted (it does not exist) and getIPOBySlugKey(slug) -- the key the detail page is read from (§2.11) -- survives for up to CacheTTL.IPO_DETAIL = 900 s. Spec: §2.11, §9.1."
+    },
+    {
+      "id": "F-172",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "admin editing / queue",
+      "phase1": false,
+      "title": "The admin conflicts queue is 99.8% listed IPOs and humans have resolved 1 of 19,106 conflicts",
+      "detail": "Measured 2026-09-25 on ipodhan_staging (read-only): unresolved data_conflicts by IPO status LISTED 14,130, OPEN 15, CLOSED 12, UPCOMING 3 (total 14,160); resolved 19,106, resolved_by SYSTEM 19,105, 'Admin' 1. spec-deviation-guideline.md §5.1 says the queue must be sized to one person and ordered live first; as stored it is neither. Spec: §9.1, §9.4."
     }
   ],
   "false_assertions": [

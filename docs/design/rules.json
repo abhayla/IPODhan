@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-24T20:53:25.338Z",
+  "generated_at": "2026-09-25T14:42:50.665Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 196,
+    "live": 197,
     "retired": 41
   },
-  "next_id": 238,
+  "next_id": 239,
   "rules": [
     {
       "id": "R-151",
@@ -762,6 +762,15 @@
       "kind": "prose",
       "text": "for rank in 1, 2, 3: answer = ask(source[rank]) SUPPLIED -> value passes its §1 check: write it, record the evidence, stop CHECK_FAILED / EXTRACT_FAILED -> record the named check or cause, try the next rank NOT_PRINTED -> this source never carries it: try the next rank, no retry, no error NOT_AVAILABLE_YET -> it will exist but does not yet: try the next rank for a PROVISIONAL value, and keep the field due so rank 1 reclaims it",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-238",
+      "hash": "dc468fcc0203",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "Amended by OD-103 (2026-09-25): in the FIRST round for an IPO the loop does not stop at the first SUPPLIED rank. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168.",
+      "first_seen": "2026-09-25",
       "retired": false
     },
     {
