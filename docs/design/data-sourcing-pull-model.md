@@ -173,6 +173,7 @@ it by assuming.
 | OD-118 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) reuse the OD-8 notice page and (C) redirect every hidden row to the home page (Spec basis: §2.9 and OD-8 "stays at its URL with a clear withdrawal notice rather than redirecting -- people who applied will search for it", OD-116, OD-38, OD-53, the existing `ipo_slug_redirects` table; raised by the independent review of §9; no fresh count of such rows -- the `i_same_ipo_two_rows` floor check did not run on 2026-09-25). **Corrects OD-116's mechanism: a hidden row is NOT shown through the OD-8 freeze. A hidden non-IPO row's address answers 410 Gone and leaves the sitemap, every list and search; its data stays in the database for admins and unhide restores it. A duplicate is not hidden but merged (OD-38), and its old address redirects to the surviving IPO through `ipo_slug_redirects`. A genuinely WITHDRAWN IPO keeps OD-8's notice page; OFS rows keep OD-53's notice.** | 2026-09-25 | §9.2 | §9.2 item 23 states 410 Gone for a hidden non-IPO row, merge plus redirect for a duplicate, and the OD-8 page only for WITHDRAWN |
 | OD-119 | *"B"* -- 2026-09-25, option (B) of three, chosen over (A) not editable, frozen with the OD-53 notice (recommended) and (C) only notice text and basic facts (Spec basis: OD-53, spec-deviation-guideline.md §5 "OFS ... out of scope for both scraper and admin", OD-102 "applicable for each IPO", §1.11 -- all 19 OFS rows have 0 lot size and 0 documents; raised by the independent review of §9). **SPEC CHANGE to spec-deviation-guideline.md §5 (admin side only): the OFS rows are admin-editable like any IPO in the same editor, under the same rules (OD-107 lists, OD-108 typed values with notes, OD-109 reader line, OD-116/OD-118 hide).** Unchanged: OD-53's scraper side -- the pull walk still spends nothing on them, so their source panel is empty and every value is typed; and their page keeps the OD-53 non-IPO notice. | 2026-09-25 | §9.2 | §9.2 item 4 states OFS rows are admin-editable with typed values and keep the OD-53 notice; spec-deviation-guideline.md §5 OFS row says admin-editable |
 | OD-120 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) admin values survive a relaunch and (C) clear only price and timetable fields (Spec basis: §2.9 "its document-sourced fields are invalidated the moment the relaunch filing arrives -- the old terms must not survive the relaunch", OD-102; real case F-131, Dhanwel; raised by the independent review of §9). **§2.9 applies to admin values too: when a POSTPONED IPO's relaunch filing arrives, admin values on its document fields are cleared with the rest and the new filing's values are used. The cleared admin values stay in the audit trail, and the admins get ONE alert listing each cleared value with a one-click re-apply for those still true.** | 2026-09-25 | §2.9, §9.2 | §2.9 says a relaunch clears admin values on document fields; §9.2 item 27 states the alert with re-apply |
+| OD-121 | *"Go with your recommendation"* -- 2026-09-25, after the owner sent the first version back: *"think from admin perspective... why will admin delete something either the data is correct or or he didn't like the data... refreshing the data could be one of the reason but in that case why would we not just manually update it"*. Option (A) of three, chosen over (B) A plus a "Return to automatic" button and (C) delete returns to the sources (Spec basis: §2.7 "Clearing the override returns the field to the loop automatically", OD-62, OD-109, §9.2 items 9, 11 and 22, the §2.4 clarification). **SPEC CHANGE to §2.7: an admin DELETE means "keep this field empty". It saves an admin empty value with a short reason (as OD-108 asks of a typed value); it holds like any admin value, the scraper never refills it, and the reader sees the field as not available with no source line. A newer value from a document or the exchange still arrives as a suggestion (and an instant alert on a live IPO). To get a source's value back, the admin picks that source in the panel. There is no "return to automatic" action.** Why: an admin deletes a value because it is wrong or does not apply; bringing back the sources' value would re-show exactly what they removed. §2.7's worry, a field "frozen out of the loop forever, invisibly", is met by the suggestions, which keep newer values visible. The only system-initiated release of an admin hold is the relaunch rule (OD-120). | 2026-09-25 | §2.7, §9.2 | §2.7 and §9.2 items 3, 11 and 22 state that delete keeps the field empty and that a source value comes back only by an admin pick |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -2400,6 +2401,12 @@ the override a one-way door: clear it, and the field is frozen out of the loop f
 `NOT_APPLICABLE` is **derived, not stored** — the walk checks for a live protection row each time it
 reaches the field. Clearing the override returns the field to the loop automatically.
 
+**Amended by OD-121 (2026-09-25), SPEC CHANGE:** an admin never "clears back to the loop". An admin
+DELETE saves an admin empty value that holds like any other admin value, and a source's value comes
+back only when an admin picks it. Newer values still reach the admin as suggestions (§2.4
+clarification), so nothing is frozen out invisibly. The only system release of an admin hold is a
+relaunch (OD-120).
+
 **Amended by OD-106 (2026-09-25):** one exception to "outranks everything". For the E-1 timetable fields
 other than `ipos.status`, a NEWER date from NSE or BSE that differs from the admin value replaces it,
 and the admin is alerted with the IPO and both dates, because a stale close date on a live IPO is the
@@ -3924,8 +3931,9 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
 2. **What the edit view shows, per editable field.** Every source Appendix A lists for the field
    (ranks 1 to 3), each with the value the scraper got from that source, then a free-text option.
 3. **Save.** The picked or typed value is written as an ADMIN value (§2.7): it outranks every
-   source, is marked as updated by admin, and no scraper or job replaces it for that IPO. Clearing
-   it returns the field to the loop (§2.7).
+   source, is marked as updated by admin, and no scraper or job replaces it for that IPO. Deleting
+   a value keeps the field empty (OD-121): an admin empty value with a reason, which holds the same
+   way; the reader sees the field as not available. A source's value comes back only by picking it.
 4. **Scope.** Every IPO. This includes the 19 OFS rows (OD-119): the scraper still skips them (OD-53),
    so every value is typed under item 12, and their page keeps the OD-53 non-IPO notice.
 5. **Derived fields are read-only.** A value computed from other fields (for example minimum
@@ -3965,8 +3973,9 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
     `admin-write-path-skips-part-of-the-write-contract`). Every admin write -- the IPO page editor,
     the queue, corrigendum accept (OD-90), list edits -- goes through one shared function that writes
     the value, records `ADMIN` provenance with the admin's name, sets protection, writes the audit
-    row with the previous value, and drops the cache keys of item 10. Undo is "clear": it removes the
-    admin value and returns the field to the loop (§2.7); the audit row keeps what was there before.
+    row with the previous value, and drops the cache keys of item 10. There is no "return to the
+    loop": delete keeps the field empty and picking a source brings its value back (OD-121); the
+    audit row keeps what was there before every change.
     The queue and the corrigendum accept are entry points into the same editor and function (§9.4),
     not separate writers. An accepted corrigendum suggestion is an admin PICK of the document, so the
     reader line is OD-109's picked form ("From the offer document, read <date>").
@@ -4012,8 +4021,8 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
     targets and every rule behaves as on a desktop. Fallback if lists prove costly: lists and create
     on desktop only.
 22. **No "re-scrape this IPO" button** (follows from OD-65 "one IPO, one round" and OD-56 "once per
-    stage change"). The editor shows what the sources said; it never triggers a new read. A field
-    the admin wants re-read is cleared (item 11), which returns it to the loop at its next stage.
+    stage change"). The editor shows what the sources said; it never triggers a new read. A newer value
+    reaches the admin as a suggestion at the reads OD-56 already schedules (§2.4 clarification).
 23. **A row that should not exist (OD-116, OD-118).** Never deleted. The admin hides it with a
     written reason: its address answers 410 Gone, it leaves the sitemap, every list and search, the
     scraper stops walking it, and its identifiers stay so it is not recreated. Its data stays for
@@ -4063,8 +4072,7 @@ An independent review on 2026-09-25 showed the discovery round was not complete.
 where earlier decisions already decide it (§2.4 clarification; OD-103 per stage; OD-111 identifier;
 items 7, 11, 16, 18, 24-26). Still the owner's to decide, asked one at a time:
 
-5. Clearing an admin value: a listed IPO has no next stage, so a cleared field is never read again;
-   and what the page shows right after a clear.
+None: the five questions raised by the review are answered (OD-117 to OD-121).
 
 ---
 
