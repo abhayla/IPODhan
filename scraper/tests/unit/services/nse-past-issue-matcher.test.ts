@@ -98,10 +98,19 @@ describe('matchNSEPastIssue — symbol-only identity mode (T-276)', () => {
     { company: 'Augmont Enterprises Limited', symbol: 'AUGMONT', priceRange: 'Rs.750 to Rs.788' },
   ];
 
-  it('still matches on an exact symbol', () => {
-    const m = matchNSEPastIssue({ companyName: 'Anything At All', symbol: 'TEMPSENS' }, issues, 'symbol');
+  it('still matches on an exact symbol when the name agrees too', () => {
+    const m = matchNSEPastIssue(
+      { companyName: 'Tempsens Instruments (India) Ltd.', symbol: 'TEMPSENS' },
+      issues,
+      'symbol'
+    );
     expect(m?.matchedBy).toBe('symbol');
     expect(m?.issue.symbol).toBe('TEMPSENS');
+  });
+
+  it('#562: refuses an exact symbol match when the name disagrees, even in symbol-only mode', () => {
+    const m = matchNSEPastIssue({ companyName: 'Anything At All', symbol: 'TEMPSENS' }, issues, 'symbol');
+    expect(m).toBeNull();
   });
 
   it('refuses a name-only match when identity is symbol-only', () => {
@@ -113,5 +122,49 @@ describe('matchNSEPastIssue — symbol-only identity mode (T-276)', () => {
   it('defaults to symbol+name so existing null-filling callers are unchanged', () => {
     const m = matchNSEPastIssue({ companyName: 'Augmont Enterprises Limited', symbol: null }, issues);
     expect(m?.matchedBy).toBe('name');
+  });
+});
+
+/**
+ * #562: rule 1 (exact symbol match, uncorroborated by name) pairs Injecto
+ * Polymers Limited with India Pesticides Limited because both happen to
+ * carry NSE symbol "IPL" - two unrelated companies, same 3-letter ticker.
+ * Verified against real NSE public-past-issues data 2026-09-11. Rule 2
+ * (unique normalized-name match) correctly returns no match for Injecto,
+ * which is why the fix gates the symbol rule behind name agreement rather
+ * than retiring it outright - the symbol signal is still valuable when it
+ * is corroborated.
+ */
+describe('matchNSEPastIssue - #562 symbol collision (Injecto Polymers / India Pesticides)', () => {
+  const nseIssues: NSEPastIssue[] = [
+    { company: 'India Pesticides Limited', symbol: 'IPL', priceRange: 'Rs.290 to Rs.296' },
+  ];
+
+  it('does NOT pair Injecto Polymers with India Pesticides on the shared symbol IPL (symbol+name identity)', () => {
+    const result = matchNSEPastIssue(
+      { companyName: 'Injecto Polymers Limited', symbol: 'IPL' },
+      nseIssues,
+      'symbol+name'
+    );
+    expect(result).toBeNull();
+  });
+
+  it('does NOT pair them even under symbol-only identity (the T-276 repair-overwrite mode)', () => {
+    const result = matchNSEPastIssue(
+      { companyName: 'Injecto Polymers Limited', symbol: 'IPL' },
+      nseIssues,
+      'symbol'
+    );
+    expect(result).toBeNull();
+  });
+
+  it('still accepts an exact symbol match when the normalized names also agree', () => {
+    const result = matchNSEPastIssue(
+      { companyName: 'India Pesticides Ltd.', symbol: 'IPL' },
+      nseIssues,
+      'symbol'
+    );
+    expect(result?.matchedBy).toBe('symbol');
+    expect(result?.issue.company).toBe('India Pesticides Limited');
   });
 });

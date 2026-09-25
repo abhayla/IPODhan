@@ -14,10 +14,17 @@
  * live production rows (T-270).
  *
  * The replacement only accepts a CONFIDENT identity signal:
- *   1. exact symbol match, or
- *   2. unique normalized-company-name match.
+ *   1. exact symbol match CORROBORATED by exact normalized-name agreement, or
+ *   2. unique normalized-company-name match (no symbol needed).
  * Everything else is reported as "no match" so the caller skips the row.
  * A missing band is honest; a wrong band reads as authoritative and is not.
+ *
+ * #562: rule 1 was originally uncorroborated exact-symbol-match. NSE reuses
+ * short ticker symbols across unrelated companies over time - "IPL" is both
+ * Injecto Polymers Limited and (a different listing of) India Pesticides
+ * Limited - so a bare symbol hit is not a confident identity signal on its
+ * own. Rule 1 now requires the normalized company names to agree too; rule 2
+ * (name-only) already correctly rejected that pair, so it is unchanged.
  *
  * @module scraper/src/services/nse-past-issue-matcher
  */
@@ -68,24 +75,29 @@ export function matchNSEPastIssue(
   dbIPO: MatchCandidate,
   nseIssues: NSEPastIssue[],
   /**
-   * T-276: `'symbol'` restricts matching to an exact stock-symbol hit and
-   * disables the normalized-name fallback entirely. Repair runs that WRITE over
-   * existing production values use this - after T-270 the bar for overwriting a
-   * value a user can see is an exact identifier, nothing softer.
+   * T-276: `'symbol'` restricts matching to an exact stock-symbol hit
+   * (still corroborated by name agreement - see #562) and disables the
+   * name-only fallback entirely. Repair runs that WRITE over existing
+   * production values use this - after T-270 the bar for overwriting a
+   * value a user can see is an exact, name-corroborated identifier.
    */
   identity: 'symbol' | 'symbol+name' = 'symbol+name'
 ): NSEMatch | null {
   const symbol = dbIPO.symbol?.trim().toLowerCase();
-  if (symbol) {
+  const normalized = normalizeCompanyName(dbIPO.companyName);
+
+  // #562: a bare symbol hit is not confident on its own - NSE tickers get
+  // reused across unrelated companies (Injecto Polymers / India Pesticides,
+  // both "IPL"). Require the normalized names to agree too.
+  if (symbol && normalized) {
     const bySymbol = nseIssues.filter(i => i.symbol?.trim().toLowerCase() === symbol);
-    if (bySymbol.length === 1) {
+    if (bySymbol.length === 1 && normalizeCompanyName(bySymbol[0].company) === normalized) {
       return { issue: bySymbol[0], matchedBy: 'symbol' };
     }
   }
 
   if (identity === 'symbol') return null;
 
-  const normalized = normalizeCompanyName(dbIPO.companyName);
   if (!normalized) return null;
 
   const byName = nseIssues.filter(i => normalizeCompanyName(i.company) === normalized);
