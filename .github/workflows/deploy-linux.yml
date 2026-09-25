@@ -162,12 +162,20 @@ jobs:
           SLOT: ${{ steps.slot.outputs.slot }}
           MODE: ${{ inputs.mode }}
           HEAD_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           set -uo pipefail
 
           note() {
             echo "$1"
             if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then echo "$1" >> "$GITHUB_STEP_SUMMARY"; fi
+          }
+
+          # Shared by both the loopback probe and the #649 public fallback
+          # probe below - reads a piped /api/version body and prints the sha
+          # it reports, or nothing if the body is missing/unparseable.
+          parse_served_sha() {
+            node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{const j=JSON.parse(d);console.log(String((j&&j.data&&j.data.sha)||(j&&j.sha)||""));}catch{console.log("");}});'
           }
 
           if [ "$MODE" != "window" ]; then
@@ -189,10 +197,28 @@ jobs:
           # fix for this incident.
           PORT="$(grep -E '^PORT=' "$PORT_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
           VERSION_URL="http://127.0.0.1:${PORT:-3000}/api/version"
-          SERVED_SHA="$(curl -fsS --max-time 10 "$VERSION_URL" 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{const j=JSON.parse(d);console.log(String((j&&j.data&&j.data.sha)||(j&&j.sha)||""));}catch{console.log("");}});' || true)"
+          SERVED_SHA="$(curl -fsS --max-time 10 "$VERSION_URL" 2>/dev/null | parse_served_sha || true)"
 
+          # #649: PORT_FILE readable-but-wrong, or the loopback port
+          # firewalled/dead, look identical to "genuinely down" and both used
+          # to fall straight to deploying blind. Before doing that, try a
+          # SECOND, independent read: staging's own PUBLIC endpoint (behind
+          # Cloudflare/nginx, so cache-busted with a query param). This is
+          # the only public staging hostname found in this repo (used
+          # throughout docs/ops runbooks and scraper/tests/.../README.md) -
+          # never invented here.
           if [ -z "$SERVED_SHA" ] || [ "$SERVED_SHA" = "unknown" ]; then
-            note "WARNING: could not read the sha staging is serving from $VERSION_URL (unreachable, unparseable, empty, or the literal placeholder 'unknown'). Deploying anyway - staging may be down BECAUSE it needs this code. This line is the alert: if it repeats every tick, staging /api/version is broken and the cadence gate is running blind."
+            note "WARNING: could not read the sha staging is serving from $VERSION_URL (unreachable, unparseable, empty, or the literal placeholder 'unknown'). Trying the public staging endpoint as a second, independent read before deploying blind."
+            # Cache-bust by run id (not HEAD_SHA, which is constant across
+            # every retry/re-run of the SAME head and would let an
+            # intermediate cache serve a stale answer on a retry) and also
+            # tell any cache in the path (Cloudflare/nginx) not to serve one.
+            PUBLIC_VERSION_URL="https://staging.ipodhan.com/api/version?cb=${RUN_ID:-unknown}"
+            SERVED_SHA="$(curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "$PUBLIC_VERSION_URL" 2>/dev/null | parse_served_sha || true)"
+            if [ -n "$SERVED_SHA" ] && [ "$SERVED_SHA" != "unknown" ]; then
+              note "Public fallback succeeded: $PUBLIC_VERSION_URL reports served sha $SERVED_SHA - continuing with the normal served-vs-head comparison instead of deploying blind."
+            else
+              note "WARNING: could not read the sha staging is serving from $VERSION_URL, so the public fallback $PUBLIC_VERSION_URL was probed as a second read (unreachable, unparseable, empty, or the literal placeholder 'unknown' there too). Deploying anyway - staging may be down BECAUSE it needs this code. This line is the alert: if it repeats every tick, both the local and public /api/version reads are broken and the cadence gate is running blind."
 
             # This branch decides to deploy BLIND - it cannot compute the
             # docs-only skip, so it always deploys, and the only trace of
@@ -204,9 +230,9 @@ jobs:
             # failure on top of the /api/version read it is reporting.
             if [ -n "${NOTIFIER_URL:-}" ] && [ -n "${NOTIFIER_KEY:-}" ]; then
               NOTIFY_BODY="$(node -e '
-                const [url] = process.argv.slice(1);
-                process.stdout.write(JSON.stringify(`Could not read the sha staging is serving from ${url} - deploying blind this tick.`));
-              ' "$VERSION_URL")"
+                const [url, publicUrl] = process.argv.slice(1);
+                process.stdout.write(JSON.stringify(`Could not read the sha staging is serving from ${url}, and the public fallback ${publicUrl} also failed - deploying blind this tick.`));
+              ' "$VERSION_URL" "$PUBLIC_VERSION_URL")"
               NOTIFY_RESPONSE="$(curl -sS -o /dev/null -w '%{http_code}' \
                 -X POST "${NOTIFIER_URL%/}/notify" \
                 -H 'Content-Type: application/json' \
@@ -220,6 +246,7 @@ jobs:
 
             echo "proceed=true" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
           fi
 
           if [ "$SERVED_SHA" = "$HEAD_SHA" ]; then
@@ -255,6 +282,64 @@ jobs:
           DEPLOYABLE_N="$(printf '%s\n' "$DEPLOYABLE" | wc -l | tr -d ' ')"
           note "Staging serves $SERVED_SHA, the head of main is $HEAD_SHA, $DEPLOYABLE_N of $CHANGED_N changed file(s) are deployable - deploying staging."
           echo "proceed=true" >> "$GITHUB_OUTPUT"
+
+      # #706: this job (`decide`) had NO failure/cancellation reporting at
+      # all - only the `deploy` job below (added by #627) pages the owner.
+      # A runner restart during `decide` (the measured root cause behind
+      # #621, which hit the OTHER job) would page nobody, because a
+      # cancelled/failed `decide` never reaches `deploy`. Same shape as the
+      # `deploy` job's "Report owner on deploy failure or cancellation" step
+      # (job.status distinguishes CANCELLED from FAILED, same Notifier
+      # gateway/env, fail-open on a Notifier outage), minus the pieces that
+      # only make sense for an in-flight deploy: no deploy log to grep for a
+      # FATAL line (`decide` never runs deploy-linux.sh) and no
+      # deploy-status.mjs STATUS row (`decide` never deploys, so there is
+      # nothing for a later successful deploy to clear).
+      - name: Report owner on decide failure or cancellation
+        if: failure() || cancelled()
+        shell: bash
+        run: |
+          set -uo pipefail
+          SLOT="${{ steps.slot.outputs.slot || inputs.slot }}"
+          SHA="${{ inputs.ref != '' && inputs.ref || github.sha }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Same cancellation-vs-failure distinction as the `deploy` job's
+          # own reporting step - `job.status` is 'cancelled' or 'failure'
+          # here (this step runs on those two only per its `if:` above).
+          JOB_STATUS="${{ job.status }}"
+          if [ "$JOB_STATUS" = "cancelled" ]; then
+            OUTCOME_WORD="CANCELLED"
+            OUTCOME_NOTE="The decide job was CANCELLED, not failed - decide never builds, so do NOT hunt for a build error. A cancellation means the run was stopped from outside: a cancel request, or the self-hosted runner service being stopped/restarted mid-job. Check the runner journal on the box around the cancel time."
+          else
+            OUTCOME_WORD="FAILED"
+            OUTCOME_NOTE=""
+          fi
+
+          if [ -z "${NOTIFIER_URL:-}" ] || [ -z "${NOTIFIER_KEY:-}" ]; then
+            echo "WARNING: NOTIFIER_URL/NOTIFIER_KEY not set in the runner's env - cannot page the owner for this $OUTCOME_WORD decide job (see runner .env setup in GLOBAL.md section 2)." >&2
+            exit 0
+          fi
+
+          BODY="$(node -e '
+            const [runUrl, outcomeNote] = process.argv.slice(1);
+            const lines = [`Run: ${runUrl}`, `Job: decide (the cheap pre-deploy gate - no build ran)`];
+            if (outcomeNote) lines.push(outcomeNote);
+            process.stdout.write(JSON.stringify(lines.join("\n")));
+          ' "$RUN_URL" "$OUTCOME_NOTE")"
+
+          RESPONSE="$(curl -sS -o /tmp/ipodhan-decide-alert-response-${{ github.run_id }}.json -w '%{http_code}' \
+            -X POST "${NOTIFIER_URL%/}/notify" \
+            -H 'Content-Type: application/json' \
+            -H "X-Api-Key: ${NOTIFIER_KEY}" \
+            --max-time 5 \
+            -d "{\"project\":\"ipodhan\",\"severity\":\"P1\",\"title\":\"deploy-linux decide ${OUTCOME_WORD} ${SHA} ${SLOT}\",\"body\":${BODY},\"type\":\"deploy\",\"dedupeKey\":\"deploy-linux-decide-${{ github.run_id }}\"}" || echo "curl-failed")"
+
+          echo "Notifier /notify HTTP status: $RESPONSE"
+          cat /tmp/ipodhan-decide-alert-response-${{ github.run_id }}.json 2>/dev/null || true
+          if [ "$RESPONSE" != "202" ]; then
+            echo "WARNING: Notifier did not return 202 - owner alert may not have been delivered (the $OUTCOME_WORD decide job is already reflected by this job's status)." >&2
+          fi
 
   deploy:
     name: Deploy (${{ needs.decide.outputs.slot }})
