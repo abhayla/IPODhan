@@ -165,6 +165,7 @@ it by assuming.
 | OD-110 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) inline editing on every page and (C) also registrar and market-holiday pages (Spec basis: OD-102 "I don't know whether all other pages should also have this edit feature or not but IPO details obviously should have", OD-105; none otherwise). **Admin editing of IPO data happens only on the IPO detail page. Every IPO row on the list, calendar, tracker and prospectus pages shows an admin-only "Edit" link that opens that IPO's editor. Registrars and market holidays stay in the existing admin screens, outside this feature.** | 2026-09-25 | §9.2 | §9.2 item 14 states detail-page-only editing, the admin-only Edit link on list pages, and registrars and holidays out of scope |
 | OD-111 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) no creating and (C) create with a name only (Spec basis: spec-deviation-guideline.md §5 -- REITS/INVITS 5, NCD 7, BUYBACK/TENDER 17 rows per §1.11 are admin-owned and "show admin-supplied provenance"; §5 identity merges "a human confirms"; OD-34; OD-68; none on admin-created rows; not measured: whether the scraper ever missed an IPO entirely). **An admin may create a new IPO row by hand, entering the company name, the offering type and at least one identifier (NSE or BSE symbol, CIN, or SEBI filing number). When the scraper later finds the same offering it binds to that row through the identifier (OD-34) instead of creating a second one; a later match on name alone is held for review (OD-68). For the admin-owned types the source panel is mostly empty, so values are typed under OD-108.** | 2026-09-25 | §9.2 | §9.2 item 15 states admin-created rows, the required identifier, and scraper binding by OD-34 |
 | OD-112 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) a daily digest only and (C) an instant alert for every item (Spec basis: OD-106 alert on an exchange override; OD-72 and OD-93 "one admin alert per IPO per day" for a missed live slot plus an end-of-day summary; item 35; signal-ownership.md R3; spec-deviation-guideline.md §5.1; none on admin-editing alerts otherwise; channel: the shared Notifier gateway, which already delivers IPODhan alerts to Telegram per GLOBAL.md §2; measured F-173: about 84 real disagreements, 19 on live IPOs). **Admin alerts go through the Notifier gateway to Telegram, to all admins, at two levels: an INSTANT alert only for an UPCOMING or OPEN IPO (the exchange replaced an admin date, a new real disagreement, a newer document disagreeing with an admin value); everything else in ONE daily digest at 09:00 IST, grouped by IPO with live IPOs first, with counts and a direct link into each IPO's editor.** | 2026-09-25 | §9.2 | §9.2 item 16 states the Notifier/Telegram channel, instant alerts for live IPOs only, and the 09:00 IST digest grouped by IPO |
+| OD-113 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) any admin manages admins and (C) accounts in a config file changed by deploy (Spec basis: OD-104 "same powers, no approval step"; none on account management -- searched add/remove admin, account, password reset, deactivate; today one shared token per `.claude/rules/admin-route-auth.md`). **Only the owner adds an admin, removes one, or resets a password. OD-104's equal powers cover data, not accounts. A removed admin loses access at once; every edit they made stays in place and stays attributed to them in the audit trail.** | 2026-09-25 | §9.2 | §9.2 item 6 states owner-only account management and that a removed admin's edits stay attributed |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -3914,6 +3915,8 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
 6. **Who (OD-104).** The owner plus one or two trusted people, each with a personal login. Every
    admin write records the admin's name. All admins have the same powers; no approval step. The
    public site recognises a logged-in admin so the Edit control can appear on the IPO page.
+   Only the owner adds, removes or resets an admin (OD-113); a removed admin loses access at once,
+   and their past edits stay, still attributed to them.
 7. **Which fields the edit view offers (OD-105, using the §1 classes).**
 
    | Group (owner's words) | §1 class | Fields | Admin editing |
@@ -3989,7 +3992,7 @@ No owner question was needed here; each point follows from a decision already ma
 
 ### 9.5 Still open (asked one at a time, recorded here as answered)
 
-Who can add or remove an admin; mobile use.
+Mobile use.
 
 ---
 
