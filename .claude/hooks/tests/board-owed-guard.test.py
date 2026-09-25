@@ -446,6 +446,23 @@ class BoardOwedGuardTest(unittest.TestCase):
         self.run_hook("PostToolUseBash", self.bash_payload(cmd, self.ipodhan))
         self.assertFalse(os.path.exists(self.marker), "heredoc body mention with embedded ; armed the marker")
 
+    def test_p2b_unquoted_heredoc_body_line_does_not_arm(self):
+        # Tier A r1 MAJOR-2: a plain body line; only heredoc stripping (not quote stripping) hides it
+        cmd = "cat <<EOF > n.md\nrun gate; gh pr merge 7\nEOF"
+        self.run_hook("PostToolUseBash", self.bash_payload(cmd, self.ipodhan))
+        self.assertFalse(os.path.exists(self.marker), "unquoted heredoc body line armed the marker")
+
+    def test_p2c_heredoc_inside_dq_substitution_with_odd_quotes_does_not_arm(self):
+        # Tier A r1 MAJOR-1: git commit -m "$(cat <<'EOF' ... EOF )" whose body has an odd number of "
+        cmd = "git commit -m \"$(cat <<'EOF'\nfix: 12\" screens\ngate; gh pr merge 5\nEOF\n)\""
+        self.run_hook("PostToolUseBash", self.bash_payload(cmd, self.ipodhan))
+        self.assertFalse(os.path.exists(self.marker), "heredoc inside \"$( )\" with an odd quote armed the marker")
+
+    def test_p2d_real_merge_after_a_heredoc_still_arms(self):
+        cmd = "cat > n.md <<'EOF'\nnotes\nEOF\nnode scripts/ops/merge-if-current.mjs 9 > /dev/null 2>&1 && gh pr merge 9 --squash"
+        self.run_hook("PostToolUseBash", self.bash_payload(cmd, self.ipodhan))
+        self.assertTrue(os.path.exists(self.marker), "a real merge after a heredoc failed to arm")
+
     def test_p3_comment_with_embedded_semicolon_does_not_arm(self):
         cmd = "# note: run gate; gh pr merge 5 later"
         self.run_hook("PostToolUseBash", self.bash_payload(cmd, self.ipodhan))

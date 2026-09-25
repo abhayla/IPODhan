@@ -115,6 +115,25 @@ _MERGE_STATEMENT_RE = re.compile(
 _HEREDOC_AT_RE = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
 
 
+def _strip_heredoc_bodies(command):
+    """Drop heredoc bodies line by line, wherever the `<<WORD` marker appears, including inside
+    a double-quoted `$( ... )` such as `git commit -m "$(cat <<'EOF' ... EOF\n)"`, where the
+    quote scanner alone would close the quote at an odd `"` in the body (Tier A r1 on #1039).
+    Ported from ~/.claude/hooks/merge-chain-guard.py. Linear: each line is visited once. The
+    marker is neutralised so the scanner below does not look for a delimiter that is gone."""
+    out = []
+    pending = []
+    for line in command.split("\n"):
+        if pending:
+            if line.strip() == pending[0]:
+                pending.pop(0)
+            continue
+        for m in _HEREDOC_AT_RE.finditer(line):
+            pending.append(m.group(3))
+        out.append(_HEREDOC_AT_RE.sub("HEREDOC", line))
+    return "\n".join(out)
+
+
 def _clean_command_text(command):
     """Return `command` with quoted strings, heredoc bodies and `#` comments
     blanked out, while every statement separator (newline, `;`, `&&`, `||`,
@@ -125,6 +144,7 @@ def _clean_command_text(command):
     `~/.claude/hooks/merge-chain-guard.py` `scan()` — see the note above
     `_STATEMENT_SPLIT_RE`. Best-effort (no real shell parser); fails toward
     leaving text alone (never toward removing a real separator)."""
+    command = _strip_heredoc_bodies(command)
     out = []
     i, n = 0, len(command)
     pending_heredocs = []
