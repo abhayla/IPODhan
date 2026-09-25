@@ -21,20 +21,30 @@ const SKYWAYS: ExtractionOnlyCandidate = {
   segment: 'MAINBOARD',
 };
 
+const STORED_SHA = '3b77bc3b'.padEnd(64, '0');
+// Injectable stand-in for `hasStoredFile` — true only for the exact
+// (ipoId, docType, sha256) triple a test marks as actually on disk.
+const fileExistsFor = (storedFor: Set<string>) => (ipoId: string, docType: string, _storeDir: string, sha256?: string | null) =>
+  !!sha256 && storedFor.has(`${ipoId}:${docType}:${sha256}`);
+
 describe('selectExtractionOnlyCandidates', () => {
-  it('(a) a LISTED IPO 24 days past listing holding a PENDING stored CORRIGENDUM is an extraction candidate', () => {
+  it('(a) a LISTED IPO 24 days past listing holding a PENDING STORED CORRIGENDUM (sha256 + file exists) is an extraction candidate', () => {
     const docs = new Map<string, StoredDocumentForExtractionCandidacy[]>([
-      ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'PENDING', purgedUnread: false }]],
+      ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'PENDING', purgedUnread: false, sha256: STORED_SHA }]],
     ]);
-    const selected = selectExtractionOnlyCandidates([SKYWAYS], docs, new Set());
+    const selected = selectExtractionOnlyCandidates([SKYWAYS], docs, new Set(), {
+      hasStoredFile: fileExistsFor(new Set([`skyways-id:CORRIGENDUM:${STORED_SHA}`])),
+    });
     expect(selected).toEqual([SKYWAYS]);
   });
 
   it('(b) the same IPO with no PENDING stored document is not a candidate', () => {
     const docs = new Map<string, StoredDocumentForExtractionCandidacy[]>([
-      ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'COMPLETED', purgedUnread: false }]],
+      ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'COMPLETED', purgedUnread: false, sha256: STORED_SHA }]],
     ]);
-    const selected = selectExtractionOnlyCandidates([SKYWAYS], docs, new Set());
+    const selected = selectExtractionOnlyCandidates([SKYWAYS], docs, new Set(), {
+      hasStoredFile: fileExistsFor(new Set([`skyways-id:CORRIGENDUM:${STORED_SHA}`])),
+    });
     expect(selected).toEqual([]);
   });
 
@@ -45,26 +55,79 @@ describe('selectExtractionOnlyCandidates', () => {
 
   it('(d) an ADDENDUM PENDING row does not make it a candidate — ADDENDUM has no extractor', () => {
     const docs = new Map<string, StoredDocumentForExtractionCandidacy[]>([
-      ['skyways-id', [{ ipoId: 'skyways-id', type: 'ADDENDUM', extractionStatus: 'PENDING', purgedUnread: false }]],
+      ['skyways-id', [{ ipoId: 'skyways-id', type: 'ADDENDUM', extractionStatus: 'PENDING', purgedUnread: false, sha256: STORED_SHA }]],
     ]);
-    const selected = selectExtractionOnlyCandidates([SKYWAYS], docs, new Set());
+    const selected = selectExtractionOnlyCandidates([SKYWAYS], docs, new Set(), {
+      hasStoredFile: fileExistsFor(new Set([`skyways-id:ADDENDUM:${STORED_SHA}`])),
+    });
     expect(selected).toEqual([]);
   });
 
   it('excludes an IPO already in the live-window candidate set — additive only, never a double dispatch', () => {
     const docs = new Map<string, StoredDocumentForExtractionCandidacy[]>([
-      ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'PENDING', purgedUnread: false }]],
+      ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'PENDING', purgedUnread: false, sha256: STORED_SHA }]],
     ]);
-    const selected = selectExtractionOnlyCandidates([SKYWAYS], docs, new Set(['skyways-id']));
+    const selected = selectExtractionOnlyCandidates([SKYWAYS], docs, new Set(['skyways-id']), {
+      hasStoredFile: fileExistsFor(new Set([`skyways-id:CORRIGENDUM:${STORED_SHA}`])),
+    });
     expect(selected).toEqual([]);
   });
 
   it('excludes a PENDING extractable document that has been purged unread — no bytes left to extract', () => {
     const docs = new Map<string, StoredDocumentForExtractionCandidacy[]>([
-      ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'PENDING', purgedUnread: true }]],
+      ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'PENDING', purgedUnread: true, sha256: STORED_SHA }]],
     ]);
-    const selected = selectExtractionOnlyCandidates([SKYWAYS], docs, new Set());
+    const selected = selectExtractionOnlyCandidates([SKYWAYS], docs, new Set(), {
+      hasStoredFile: fileExistsFor(new Set([`skyways-id:CORRIGENDUM:${STORED_SHA}`])),
+    });
     expect(selected).toEqual([]);
+  });
+
+  // The RCA case (measured on staging 2026-09-25): a PENDING, not-purged
+  // extractable row with NO sha256 is a discovered-but-never-downloaded link,
+  // not a stored document — it must never become a candidate, regardless of
+  // what `hasStoredFile` would say (it is never even asked: no hash means no
+  // known file name).
+  it('an IPO whose only PENDING document has sha256 NULL is NOT a candidate', () => {
+    const docs = new Map<string, StoredDocumentForExtractionCandidacy[]>([
+      ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'PENDING', purgedUnread: false, sha256: null }]],
+    ]);
+    const selected = selectExtractionOnlyCandidates([SKYWAYS], docs, new Set(), {
+      // Even a fileExists stub that says "yes" must not matter — sha256 gates first.
+      hasStoredFile: () => true,
+    });
+    expect(selected).toEqual([]);
+  });
+
+  // The head-of-line-blocking class this fix closes: 5 unstored older rows
+  // (no sha256) plus 1 stored newer row across 6 IPOs — the cap of 3 must
+  // select the one that is actually stored, never spend its 3 slots on
+  // rows `selectPendingFilings` will just skip.
+  it('with 5 unstored older rows and 1 stored newer row, the cap of 3 selects the stored one', () => {
+    const ipos: ExtractionOnlyCandidate[] = [
+      { id: 'unstored-1', companyName: 'Unstored 1', slug: 'unstored-1', segment: 'MAINBOARD' },
+      { id: 'unstored-2', companyName: 'Unstored 2', slug: 'unstored-2', segment: 'MAINBOARD' },
+      { id: 'unstored-3', companyName: 'Unstored 3', slug: 'unstored-3', segment: 'MAINBOARD' },
+      { id: 'unstored-4', companyName: 'Unstored 4', slug: 'unstored-4', segment: 'MAINBOARD' },
+      { id: 'unstored-5', companyName: 'Unstored 5', slug: 'unstored-5', segment: 'MAINBOARD' },
+      SKYWAYS,
+    ];
+    const docs = new Map<string, StoredDocumentForExtractionCandidacy[]>([
+      ['unstored-1', [{ ipoId: 'unstored-1', type: 'PROSPECTUS', extractionStatus: 'PENDING', purgedUnread: false, sha256: null, uploadedAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000) }]],
+      ['unstored-2', [{ ipoId: 'unstored-2', type: 'PROSPECTUS', extractionStatus: 'PENDING', purgedUnread: false, sha256: null, uploadedAt: new Date(Date.now() - 19 * 24 * 60 * 60 * 1000) }]],
+      ['unstored-3', [{ ipoId: 'unstored-3', type: 'PROSPECTUS', extractionStatus: 'PENDING', purgedUnread: false, sha256: null, uploadedAt: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000) }]],
+      ['unstored-4', [{ ipoId: 'unstored-4', type: 'PROSPECTUS', extractionStatus: 'PENDING', purgedUnread: false, sha256: null, uploadedAt: new Date(Date.now() - 17 * 24 * 60 * 60 * 1000) }]],
+      ['unstored-5', [{ ipoId: 'unstored-5', type: 'PROSPECTUS', extractionStatus: 'PENDING', purgedUnread: false, sha256: null, uploadedAt: new Date(Date.now() - 16 * 24 * 60 * 60 * 1000) }]],
+      ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'PENDING', purgedUnread: false, sha256: STORED_SHA, uploadedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000) }]],
+    ]);
+    const eligible = selectExtractionOnlyCandidates(ipos, docs, new Set(), {
+      hasStoredFile: fileExistsFor(new Set([`skyways-id:CORRIGENDUM:${STORED_SHA}`])),
+    });
+    // Only the stored one is even eligible — the 5 unstored rows never reach the cap at all.
+    expect(eligible.map((c) => c.id)).toEqual(['skyways-id']);
+    const { selected, deferred } = capExtractionOnlyCandidates(eligible, 3);
+    expect(selected.map((c) => c.id)).toEqual(['skyways-id']);
+    expect(deferred).toBe(0);
   });
 
   // (c) discovery is not run for it. Discovery (PASS 1) iterates ONLY
@@ -82,9 +145,13 @@ describe('selectExtractionOnlyCandidates', () => {
     // Yet it IS still an extraction candidate via the extraction-only path —
     // proving PASS 2 alone widens, discovery does not.
     const docs = new Map<string, StoredDocumentForExtractionCandidacy[]>([
-      ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'PENDING', purgedUnread: false }]],
+      ['skyways-id', [{ ipoId: 'skyways-id', type: 'CORRIGENDUM', extractionStatus: 'PENDING', purgedUnread: false, sha256: STORED_SHA }]],
     ]);
-    expect(selectExtractionOnlyCandidates([SKYWAYS], docs, new Set())).toEqual([SKYWAYS]);
+    expect(
+      selectExtractionOnlyCandidates([SKYWAYS], docs, new Set(), {
+        hasStoredFile: fileExistsFor(new Set([`skyways-id:CORRIGENDUM:${STORED_SHA}`])),
+      })
+    ).toEqual([SKYWAYS]);
   });
 });
 

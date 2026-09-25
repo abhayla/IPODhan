@@ -1243,6 +1243,17 @@ export interface StoredDocumentForExtractionCandidacy {
   purgedUnread: boolean;
   /** When this document was fetched — the age `capExtractionOnlyCandidates` orders by. */
   uploadedAt?: Date;
+  /**
+   * F-158/OD-98 recurrence (measured on staging 2026-09-25): a PENDING,
+   * purged_unread=false row is not necessarily a STORED file — 89 of 92 such
+   * rows on staging are discovered links never downloaded (no sha256, no file
+   * on disk). Without this field an extraction-only candidate could be a row
+   * `selectPendingFilings` (filing-auto-persist.ts) will immediately skip for
+   * "no sha256" / "no stored file", permanently head-of-line-blocking the cap
+   * ahead of the documents that ARE stored (the skyways-air-services-ltd
+   * class). `null`/`undefined` means "no hash on the row" — never a candidate.
+   */
+  sha256?: string | null;
 }
 
 /**
@@ -1267,14 +1278,32 @@ export interface StoredDocumentForExtractionCandidacy {
 export function selectExtractionOnlyCandidates(
   ipos: ExtractionOnlyCandidate[],
   documentsByIpoId: ReadonlyMap<string, StoredDocumentForExtractionCandidacy[]>,
-  alreadyCandidateIds: ReadonlySet<string>
+  alreadyCandidateIds: ReadonlySet<string>,
+  options: {
+    storeDir?: string;
+    /** Injectable for tests — same shape `hasStoredFile` reads (M7's file-demotion check). */
+    hasStoredFile?: (ipoId: string, docType: string, storeDir: string, sha256?: string | null) => boolean;
+  } = {}
 ): ExtractionOnlyCandidate[] {
+  const storeDir = options.storeDir ?? getStoreDir();
+  const fileExists = options.hasStoredFile ?? hasStoredFile;
   const result: ExtractionOnlyCandidate[] = [];
   for (const ipo of ipos) {
     if (alreadyCandidateIds.has(ipo.id)) continue;
     const docs = documentsByIpoId.get(ipo.id) ?? [];
+    // F-158/OD-98 recurrence fix: a candidate must be STORED and never read —
+    // exactly the predicate `selectPendingFilings` (filing-auto-persist.ts)
+    // uses to decide whether it can even attempt the document (sha256 present
+    // AND its file exists at `documentPath`). Reusing `hasStoredFile` (the
+    // same on-disk check `demoteMissingFiles` uses) rather than a second
+    // implementation of "does this document actually have bytes on disk".
     const eligible = docs.filter(
-      (d) => d.extractionStatus === 'PENDING' && !d.purgedUnread && isExtractableDocType(d.type)
+      (d) =>
+        d.extractionStatus === 'PENDING' &&
+        !d.purgedUnread &&
+        isExtractableDocType(d.type) &&
+        !!d.sha256 &&
+        fileExists(ipo.id, d.type, storeDir, d.sha256)
     );
     if (eligible.length === 0) continue;
     const oldestEligibleDocumentAt = eligible.reduce<Date | undefined>((oldest, d) => {
@@ -1329,36 +1358,47 @@ export function capExtractionOnlyCandidates(
  */
 export async function loadExtractionOnlyCandidateIpos(): Promise<ExtractionOnlyCandidate[]> {
   // ONE query — every PENDING/purged_unread=false document row plus its IPO's
-  // identity and the document's uploaded_at (the cap's ordering key). The type
-  // filter runs in JS against the SSOT predicate (never a hand-copied SQL type
-  // list, same convention as not-applicable-documents.mjs).
+  // identity, the document's sha256 (F-158/OD-98 recurrence: candidacy
+  // requires a STORED file, never just a discovered link) and uploaded_at
+  // (the cap's ordering key). The extractable-type filter and the
+  // stored-file check both run through `selectExtractionOnlyCandidates` —
+  // the SAME predicate `selectPendingFilings` uses to decide whether a
+  // document can even be attempted — never a second, hand-copied filter.
   const result = await db.execute(sql`
-    SELECT i.id, i.company_name AS "companyName", i.slug, i.segment, d.type::text AS type, d.uploaded_at AS "uploadedAt"
+    SELECT i.id, i.company_name AS "companyName", i.slug, i.segment,
+           d.type::text AS type, d.uploaded_at AS "uploadedAt", d.sha256 AS "sha256"
       FROM documents d
       JOIN ipos i ON i.id = d.ipo_id
      WHERE d.extraction_status = 'PENDING'
        AND d.purged_unread = false
   `);
   const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<string, unknown>[];
-  const byId = new Map<string, ExtractionOnlyCandidate>();
+  const ipoById = new Map<string, ExtractionOnlyCandidate>();
+  const docsByIpoId = new Map<string, StoredDocumentForExtractionCandidacy[]>();
   for (const r of rows) {
-    if (!isExtractableDocType(String(r.type ?? ''))) continue;
     const id = String(r.id);
-    const uploadedAt = r.uploadedAt ? new Date(r.uploadedAt as string | Date) : undefined;
-    const existing = byId.get(id);
-    if (!existing) {
-      byId.set(id, {
+    if (!ipoById.has(id)) {
+      ipoById.set(id, {
         id,
         companyName: String(r.companyName ?? ''),
         slug: (r.slug as string | null) ?? null,
         segment: (r.segment as string | null) ?? null,
-        ...(uploadedAt ? { oldestEligibleDocumentAt: uploadedAt } : {}),
       });
-    } else if (uploadedAt && (!existing.oldestEligibleDocumentAt || uploadedAt.getTime() < existing.oldestEligibleDocumentAt.getTime())) {
-      existing.oldestEligibleDocumentAt = uploadedAt;
     }
+    const uploadedAt = r.uploadedAt ? new Date(r.uploadedAt as string | Date) : undefined;
+    const doc: StoredDocumentForExtractionCandidacy = {
+      ipoId: id,
+      type: String(r.type ?? ''),
+      extractionStatus: 'PENDING',
+      purgedUnread: false,
+      sha256: (r.sha256 as string | null) ?? null,
+      ...(uploadedAt ? { uploadedAt } : {}),
+    };
+    const existing = docsByIpoId.get(id);
+    if (existing) existing.push(doc);
+    else docsByIpoId.set(id, [doc]);
   }
-  return [...byId.values()];
+  return selectExtractionOnlyCandidates([...ipoById.values()], docsByIpoId, new Set());
 }
 
 /**
@@ -1930,6 +1970,15 @@ export async function runDocumentCycle(
           ...candidates.map((c) => ({ id: c.id, companyName: c.companyName, slug: c.slug ?? null, segment: c.segment ?? null })),
           ...extractionOnlyCandidates,
         ];
+        // Signal-ownership R6 (failures carry their cause): an extraction-only
+        // candidate is selected specifically because it is believed STORED
+        // (F-158/OD-98) — so if `processPendingFilings` still skips every one
+        // of its documents, that reason (already extracted, MANUAL_REVIEW,
+        // backoff window, or — were the predicate above ever wrong again — no
+        // sha256/no stored file) must be visible, not silently absorbed. Only
+        // logged for THIS additive set; live-window candidates already surface
+        // their own signal via `spawned/failed/skippedBudget` above.
+        const extractionOnlyIds = new Set(extractionOnlyCandidates.map((c) => c.id));
         // W-168: one summary line per cycle — accumulated across every
         // candidate IPO's `processPendingFilings` call, logged once after
         // this loop (not per IPO, which would bury the cycle-wide picture
@@ -1969,6 +2018,12 @@ export async function runDocumentCycle(
               logger.info(
                 { ipoId: ipo.id, company: ipo.companyName, ...autoPersist },
                 'Filing auto-persist complete for one IPO'
+              );
+            }
+            if (extractionOnlyIds.has(ipo.id) && autoPersist.skipped.length > 0) {
+              logger.warn(
+                { ipoId: ipo.id, slug: ipo.slug, company: ipo.companyName, reasons: autoPersist.skipped },
+                'Extraction-only candidate (F-158/OD-98) skipped by processPendingFilings — see reasons'
               );
             }
             anchorCycleTotals.considered += autoPersist.anchorsConsidered;
