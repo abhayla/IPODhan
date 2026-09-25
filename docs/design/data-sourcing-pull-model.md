@@ -1065,6 +1065,8 @@ again. Only a new document for an existing IPO is scraped."* Written as four rul
 
 Measured 2026-09-24 (F-157): what that timer cost. 448 staging document rows in BLOCKED_ALL had been attempted 26,534 times, and their logs are mostly sources that ANSWERED without the document (no link, not on board, no symbol, 404), not outages.
 
+Re-measured 2026-09-26 (F-176): 460 BLOCKED_ALL rows remain on 103 real IPOs, 339 blocked over 7 days, including RHP on 20 and DRHP on 19 live IPOs.
+
 Every later re-read (a website disagreement, a fixed extractor) works from the **stored text**, never
 from a fresh download — which is what makes OD-32's seven-day PDF window safe.
 
@@ -2797,6 +2799,8 @@ indistinguishable from a rule that passes, and is exactly the "check that cannot
 spends §4 warning about, arriving through a different door.
 
 #### What is actually populated, measured 2026-09-09 through the read-only tunnel
+
+Re-measured 2026-09-26 (pending inventory): sector is empty on 369 of 390 IPO rows though field 13 names DOC then CG (F-175); 8,421 field-plan rows sit in CHECK_FAILED, re-claimed but unexplained (F-177).
 
 | Field | The rules that key on it | Populated | Of |
 |---|---|---:|---:|

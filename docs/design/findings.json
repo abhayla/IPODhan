@@ -1734,6 +1734,33 @@
       "phase1": false,
       "title": "List-shaped document data is empty on most non-listed IPOs, so an admin fixing it must be able to ADD rows, not only pick values",
       "detail": "Measured 2026-09-25 on ipodhan_staging, read-only: of 112 IPO rows with status UPCOMING, OPEN or CLOSED, the count with ZERO rows is lead_managers (array on ipos) 65, promoters 103, peer_companies 111, anchor_investors 107, ipo_intermediaries 98, financial_statements 96, ipo_risk_factors 89. Caveat: the 112 include non-offerings (coal-india-ltd, bharat-heavy-electricals-ltd, bank-of-maharashtra, central-bank-of-india -- OFS/corporate-action rows; 41 IPOs overall have segment null), so the share for real IPOs is lower and unmeasured here. Consequence: a per-field source panel (OD-102) has nothing to pick from for a list that has no rows; admin editing of these tables needs add and remove of whole rows. Spec: §9.2, §9.5, §2.10."
+    },
+    {
+      "id": "F-175",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "field 13 sector",
+      "phase1": false,
+      "title": "Sector is missing on 369 of 390 IPO rows although the spec names DOC then CG as its sources",
+      "detail": "Measured 2026-09-26 00:1x IST on ipodhan_staging, read-only: select on ipos -> sector null 175, empty string 194, filled 21, total 390. Spec field 13 (Appendix A row 13): DOC . CG . - (Moneycontrol retired; NSE/BSE payloads carry no sector). Issues #394, #343 and #73 are the same class: no live writer lands a sector value from DOC or CG. Source: pending-inventory-2026-09-26.md section 8."
+    },
+    {
+      "id": "F-176",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "document fetch / BLOCKED_ALL",
+      "phase1": false,
+      "title": "460 document slots on real IPOs are BLOCKED_ALL, 339 for over 7 days, including RHP/DRHP on live IPOs",
+      "detail": "Measured 2026-09-26 on ipodhan_staging, read-only: document_fetch_state state='BLOCKED_ALL' joined to ipos -> 460 rows on 103 IPOs, every one offering_type IPO (LISTED 198/51, CLOSED 143/24, OPEN 61/16, UPCOMING 58/12); blocked_since_at older than 7 days on 339. By doc type: BASIS_OF_ALLOTMENT_AD 74, PRICE_BAND_AD 66, RATIOS_BASIS_ISSUE_PRICE 63, PROSPECTUS 61, RHP 55 (20 on live IPOs), DRHP 54 (19 live), ANCHOR_ALLOCATION_REPORT 49, CORRIGENDUM 22, ADDENDUM 16. Issue #632 filed four rows; the class is this size. Cause per row not yet read. Source: pending-inventory-2026-09-26.md section 8."
+    },
+    {
+      "id": "F-177",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "field plan / CHECK_FAILED volume",
+      "phase1": false,
+      "title": "8,421 field-plan rows sit in CHECK_FAILED; they are re-claimed, but the failure volume is unexplained",
+      "detail": "Measured 2026-09-26 on ipodhan_staging, read-only: ipo_field_plan by state -> NOT_AVAILABLE_YET 8454, CHECK_FAILED 8421, SUPPLIED 340, EXHAUSTED 66. Of the 16,875 waiting rows only 42 were last updated more than 3 days ago (the #762 re-queue path works). CHECK_FAILED by IPO status: LISTED 3790, OPEN 2595, CLOSED 1369, UPCOMING 667. Why this many values fail validation is not measured; bears on item 4 and OD-62 (field_extraction_failures). Open for owner decision only if it implies a rule change."
     }
   ],
   "false_assertions": [
