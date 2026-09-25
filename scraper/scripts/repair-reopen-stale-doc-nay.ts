@@ -91,6 +91,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   buildIpoScopeCondition,
+  decideUndoIpoConflict,
   describeIpoScope,
   openRepairDb,
   queryCurrentDatabase,
@@ -287,6 +288,10 @@ async function main(): Promise<void> {
     console.error(
       `${TOOL}: --ipo was given but no usable uuid could be parsed from it (check quoting, placement or a missing value) — refusing rather than silently falling back to ALL IPOs DB-wide.`
     );
+    process.exit(2);
+  }
+  if (decideUndoIpoConflict(process.argv.slice(2), cli.undo !== null)) {
+    console.error(`${TOOL}: --ipo does not apply to --undo; the ledger defines the rows.`);
     process.exit(2);
   }
   if (!cli.expectDb) {

@@ -6,6 +6,9 @@
 // order.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   computeRemovedFieldKeys,
   parseArgs,
@@ -28,6 +31,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
 });
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 describe('computeRemovedFieldKeys', () => {
   it('returns a field key present in ipo_field_plan but absent from the manifest', () => {
@@ -153,7 +158,7 @@ function baseDeps(overrides: Partial<RunDeps> = {}): RunDeps {
       calls.push('snapshot-dry-run');
       return [REMOVED_ROW];
     },
-    snapshotAndDeleteInTransaction: async (_fieldKeys, onSnapshot) => {
+    snapshotAndDeleteInTransaction: async (_fieldKeys, _ipoScope, onSnapshot) => {
       calls.push('tx-start');
       onSnapshot([REMOVED_ROW]);
       calls.push('tx-delete');
@@ -253,7 +258,7 @@ describe('run — --apply: ledger written strictly before the delete, in one tra
     const deps = baseDeps({
       cli: baseCli({ apply: true }),
       dbLike: dbLikeReturning('ipodhan_staging'),
-      snapshotAndDeleteInTransaction: async (_keys, onSnapshot) => {
+      snapshotAndDeleteInTransaction: async (_keys, _ipoScope, onSnapshot) => {
         order.push('tx:snapshot');
         onSnapshot([REMOVED_ROW]);
         order.push('tx:after-onSnapshot');
@@ -387,4 +392,74 @@ describe('#1053 MAJOR-2: readSnapshot / readExistingFieldKeys scope condition is
     const rendered = new PgDialect().sqlToQuery(buildExistingFieldKeysQuery(null));
     expect(rendered.sql).not.toMatch(/ipo_id = ANY\(/);
   });
+
+  /**
+   * #1059 round 2 (MAJOR-2): `run()` must PASS the `ipoScope` it built (from
+   * `cli.ipoIds`, the same value it just printed the scope line from) into
+   * every deps call — never let a deps closure use a scope condition main()
+   * baked in independently. Verified by asserting the exact `ipoScope` object
+   * `run()` computed reaches every deps function it calls.
+   */
+  it("MUTATION: run() passes the SAME ipoScope object to readExistingFieldKeys, snapshotRows and snapshotAndDeleteInTransaction", async () => {
+    const scope = buildIpoScopeCondition(['00000000-0000-4000-9f61-00000000000b']);
+    const seen: unknown[] = [];
+    const deps = baseDeps({
+      cli: baseCli({ ipoIds: ['00000000-0000-4000-9f61-00000000000b'] }),
+      dbLike: dbLikeReturning('ipodhan_staging'),
+      readExistingFieldKeys: async (ipoScope) => {
+        seen.push(ipoScope);
+        return ['ipos.issue_size', 'gmp_records.gmp'];
+      },
+      snapshotRows: async (_fieldKeys, ipoScope) => {
+        seen.push(ipoScope);
+        return [REMOVED_ROW];
+      },
+    });
+    await run(deps);
+    expect(seen).toHaveLength(2);
+    // Both calls received a non-null SQL condition (scoped), not `null`
+    // (unscoped) — a call site silently dropping the scope would fail this.
+    for (const s of seen) expect(s).not.toBeNull();
+  });
+});
+
+/**
+ * #1059 round 2 (MAJOR-1): the accepted finding was that replacing
+ * `if (cli.unusableIpo)` in this tool's `main()` with a no-op keeps every
+ * existing test green, because nothing spawns the REAL CLI entrypoint with an
+ * unusable `--ipo` and checks the exit code. These spawn the actual script;
+ * the refusal happens before any DB call, so no DATABASE_URL is needed and
+ * `current_database()` (only printed after the refusal checks pass) must
+ * never appear in the output.
+ */
+describe('#1059 round 2 MAJOR-1/MINOR-2: main() actually refuses before touching the database', () => {
+  const SCRAPER = path.resolve(HERE, '..', '..', '..');
+
+  function spawnTool(args: string[]) {
+    const r = spawnSync('npx', ['tsx', 'scripts/repair-retire-manifest-removed-fields.ts', ...args], {
+      cwd: SCRAPER,
+      env: { ...process.env, DATABASE_URL: '', REDIS_URL: '' },
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+      timeout: 60_000,
+    });
+    return { code: r.status, out: `${r.stdout}\n${r.stderr}` };
+  }
+
+  it.each([
+    ['--ipo followed by another flag', ['--expect-db', 'ipodhan_test', '--ipo', '--apply']],
+    ['a trailing --ipo with no value', ['--expect-db', 'ipodhan_test', '--apply', '--ipo']],
+  ])('MUTATION: %s exits 2 and never reaches the database', (_label, args) => {
+    const r = spawnTool(args);
+    expect(r.code, r.out).toBe(2);
+    expect(r.out).toMatch(/no usable uuid could be parsed/);
+    expect(r.out).not.toMatch(/current_database/);
+  }, 60_000);
+
+  it('MUTATION: --ipo alongside --undo is refused, exit 2, before touching the database', () => {
+    const r = spawnTool(['--expect-db', 'ipodhan_test', '--undo', 'does-not-need-to-exist.json', '--ipo', '00000000-0000-4000-9f61-00000000000c']);
+    expect(r.code, r.out).toBe(2);
+    expect(r.out).toMatch(/--ipo does not apply to --undo/);
+    expect(r.out).not.toMatch(/current_database/);
+  }, 60_000);
 });

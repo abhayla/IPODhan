@@ -18,6 +18,7 @@ import {
   decideCacheInvalidationBlock,
   decideProdWriteRefusal,
   decideSchemaDriftRefusal,
+  decideUndoIpoConflict,
   describeDbConnectionTarget,
   describeIpoScope,
   flagIsPresent,
@@ -726,6 +727,24 @@ describe('#1045 — shared --ipo scope (test-isolation class)', () => {
 
     it('is false when the flag never appears', () => {
       expect(flagIsPresent(['--apply'], '--ipo')).toBe(false);
+    });
+  });
+
+  describe('decideUndoIpoConflict (#1059 round 2, MINOR-2)', () => {
+    it('true when --ipo is present and --undo was given', () => {
+      expect(decideUndoIpoConflict(['--undo', 'x.json', '--ipo', UUID_A], true)).toBe(true);
+    });
+
+    it('true for --ipo=<uuid> alongside --undo (the single-token form)', () => {
+      expect(decideUndoIpoConflict([`--ipo=${UUID_A}`, '--undo', 'x.json'], true)).toBe(true);
+    });
+
+    it('false when --undo was not given, even with --ipo present', () => {
+      expect(decideUndoIpoConflict(['--ipo', UUID_A, '--apply'], false)).toBe(false);
+    });
+
+    it('false when --ipo is absent, even with --undo given', () => {
+      expect(decideUndoIpoConflict(['--undo', 'x.json'], true)).toBe(false);
     });
   });
 

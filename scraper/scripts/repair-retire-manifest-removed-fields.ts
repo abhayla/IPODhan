@@ -72,6 +72,7 @@ import { fileURLToPath } from 'node:url';
 import { loadFieldManifest } from '../src/config/field-manifest-loader.js';
 import {
   buildIpoScopeCondition,
+  decideUndoIpoConflict,
   describeIpoScope,
   openRepairDb,
   queryCurrentDatabase,
@@ -135,10 +136,17 @@ export interface RunDeps {
   cli: Cli;
   dbLike: ExecuteLike;
   loadManifest: () => ReturnType<typeof loadFieldManifest>;
-  /** Every distinct `table.field` key currently present in `ipo_field_plan`. */
-  readExistingFieldKeys: () => Promise<string[]>;
+  /**
+   * Every distinct `table.field` key currently present in `ipo_field_plan`.
+   * #1059 round 2 (MAJOR-2): `run()` PASSES `ipoScope`, built from the exact
+   * `cli.ipoIds` it just printed the scope line from — the query is never
+   * allowed to use a scope condition main() built independently and handed
+   * over pre-baked, which is what let a call-site typo run unscoped while an
+   * unrelated printed line still claimed the scoped ids.
+   */
+  readExistingFieldKeys: (ipoScope: SQL | null) => Promise<string[]>;
   /** Read-only snapshot of every row for the given field keys (dry-run reporting). */
-  snapshotRows: (fieldKeys: readonly string[]) => Promise<Record<string, unknown>[]>;
+  snapshotRows: (fieldKeys: readonly string[], ipoScope: SQL | null) => Promise<Record<string, unknown>[]>;
   /**
    * MINOR-4: one transaction — snapshot the rows for `fieldKeys`, call
    * `onSnapshot` with them (the caller writes the ledger here, BEFORE any
@@ -147,6 +155,7 @@ export interface RunDeps {
    */
   snapshotAndDeleteInTransaction: (
     fieldKeys: readonly string[],
+    ipoScope: SQL | null,
     onSnapshot: (rows: Record<string, unknown>[]) => void
   ) => Promise<{ rows: Record<string, unknown>[]; deleted: number }>;
   /** MINOR-5: restore ledger rows inside one transaction; skips ids already present. */
@@ -196,6 +205,11 @@ export async function run(deps: RunDeps): Promise<RunResult> {
     return { exitCode: 1, refusedAt: 'prod-guard', wrote: false, deleted: 0, restored: 0, removedFieldKeys: [] };
   }
   log(`${TOOL}: schema/db check passed on "${actual}"`);
+  // #1059 round 2 (MAJOR-2): built HERE from `cli.ipoIds` and threaded into
+  // every read/delete call below — never a pre-baked condition main() handed
+  // over separately from what this line prints. A call site downstream that
+  // silently drops the scope now also prints "ALL IPOs" from the SAME value.
+  const ipoScope = buildIpoScopeCondition(cli.ipoIds ?? []);
   log(`${TOOL}: scope = ${describeIpoScope(cli.ipoIds ?? [])}`);
 
   // --undo: restore from a prior ledger, never computed against the current manifest.
@@ -222,7 +236,7 @@ export async function run(deps: RunDeps): Promise<RunResult> {
 
   const manifest = loadManifest();
   const manifestFieldKeys = new Set(Object.keys(manifest.fields));
-  const existingKeys = await readExistingFieldKeys();
+  const existingKeys = await readExistingFieldKeys(ipoScope);
   const removedFieldKeys = computeRemovedFieldKeys(existingKeys, manifestFieldKeys);
 
   if (removedFieldKeys.length === 0) {
@@ -233,14 +247,14 @@ export async function run(deps: RunDeps): Promise<RunResult> {
   log(`\n${TOOL}: ${removedFieldKeys.length} field key(s) in ipo_field_plan are no longer in the manifest: ${removedFieldKeys.join(', ')}`);
 
   if (!cli.apply) {
-    const rows = await snapshotRows(removedFieldKeys);
+    const rows = await snapshotRows(removedFieldKeys, ipoScope);
     log(`\n${TOOL}: ${rows.length} row(s) will be retired (deleted) across ${removedFieldKeys.length} field key(s).`);
     log(`\nDRY RUN — nothing written. Re-run with --apply --expect-db ${actual} to delete ${rows.length} row(s).`);
     return { exitCode: 0, wrote: false, deleted: 0, restored: 0, removedFieldKeys };
   }
 
   let ledgerPath = '';
-  const { rows, deleted } = await snapshotAndDeleteInTransaction(removedFieldKeys, (snapshotted) => {
+  const { rows, deleted } = await snapshotAndDeleteInTransaction(removedFieldKeys, ipoScope, (snapshotted) => {
     // MAJOR-2 / MINOR-4: this runs INSIDE the transaction, strictly before
     // the delete executes — the ledger is the before-image of exactly the
     // rows the delete below is about to remove, never a separately-read set.
@@ -295,11 +309,14 @@ async function main(): Promise<void> {
     );
     process.exit(2);
   }
+  if (decideUndoIpoConflict(process.argv.slice(2), cli.undoLedger !== null)) {
+    console.error(`${TOOL}: --ipo does not apply to --undo; the ledger defines the rows.`);
+    process.exit(2);
+  }
   const dbLike = db as unknown as ExecuteLike;
   const realDb = db as unknown as { transaction: <T>(fn: (tx: ExecuteLike) => Promise<T>) => Promise<T> };
-  const ipoScope = buildIpoScopeCondition(cli.ipoIds);
 
-  async function readSnapshot(tx: ExecuteLike, fieldKeys: readonly string[]): Promise<Record<string, unknown>[]> {
+  async function readSnapshot(tx: ExecuteLike, fieldKeys: readonly string[], ipoScope: SQL | null): Promise<Record<string, unknown>[]> {
     const rows: Record<string, unknown>[] = [];
     for (const key of fieldKeys) {
       const { tableName, fieldName } = fieldKeyToTableField(key);
@@ -314,15 +331,18 @@ async function main(): Promise<void> {
     cli,
     dbLike,
     loadManifest: loadFieldManifest,
-    readExistingFieldKeys: async () => {
+    // #1059 round 2 (MAJOR-2): `ipoScope` here is whatever `run()` built from
+    // `cli.ipoIds` and just printed — never a value this closure captured
+    // independently at main()'s top level.
+    readExistingFieldKeys: async (ipoScope) => {
       const res = await dbLike.execute(buildExistingFieldKeysQuery(ipoScope));
       const rows = (res as unknown as { rows: { table_name: string; field_name: string }[] }).rows ?? [];
       return rows.map((r) => `${r.table_name}.${r.field_name}`);
     },
-    snapshotRows: (fieldKeys) => readSnapshot(dbLike, fieldKeys),
-    snapshotAndDeleteInTransaction: async (fieldKeys, onSnapshot) => {
+    snapshotRows: (fieldKeys, ipoScope) => readSnapshot(dbLike, fieldKeys, ipoScope),
+    snapshotAndDeleteInTransaction: async (fieldKeys, ipoScope, onSnapshot) => {
       return realDb.transaction(async (tx) => {
-        const rows = await readSnapshot(tx, fieldKeys);
+        const rows = await readSnapshot(tx, fieldKeys, ipoScope);
         const ids = rows.map((r) => r.id as string);
         onSnapshot(rows); // ledger written here, strictly before the DELETE below
         let deleted = 0;

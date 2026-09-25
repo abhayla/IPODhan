@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import {
@@ -228,6 +229,88 @@ describe('#1054: buildRepairCandidatesQuery / buildZerosCandidatesQuery scope co
     const rendered = new PgDialect().sqlToQuery(buildZerosCandidatesQuery([]));
     expect(rendered.sql).not.toMatch(/= ANY\(/);
   });
+
+  /**
+   * #1059 round 2 (MINOR-1): the unscoped query is BYTE-IDENTICAL to
+   * origin/main's (branched, not an interpolated-but-empty scope clause) —
+   * no stray blank line or doubled whitespace left where the scope clause
+   * would have gone.
+   */
+  it('buildRepairCandidatesQuery: unscoped SQL is byte-identical to origin/main (no stray whitespace from the scope branch)', () => {
+    const rendered = new PgDialect().sqlToQuery(buildRepairCandidatesQuery([]));
+    expect(rendered.sql).toBe(`
+    SELECT i.id, i.slug, i.company_name AS "companyName", i.open_date::text AS "openDate", i.issue_size::text AS "issueSize",
+           i.price_range_max::text AS "priceRangeMax", i.verifier_url AS "verifierUrl",
+           ARRAY(SELECT f2.data_lineage->>'url' FROM field_sources f2
+                  WHERE f2.ipo_id = i.id AND f2.data_lineage->>'url' ILIKE 'https://www.chittorgarh.com/ipo/%') AS "lineageUrls"
+      FROM ipos i
+      JOIN field_sources fs ON fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.field_name = 'issueSize' AND fs.row_key = ''
+     WHERE i.offering_type = 'IPO' AND fs.source = 'BSE'
+     ORDER BY i.slug`);
+  });
+
+  it('buildZerosCandidatesQuery: unscoped SQL is byte-identical to origin/main (no stray whitespace from the scope branch)', () => {
+    const rendered = new PgDialect().sqlToQuery(buildZerosCandidatesQuery([]));
+    expect(rendered.sql).toBe(`
+    SELECT id, slug, offering_type::text AS "offeringType", segment::text AS segment, listing_exchanges AS "listingExchanges",
+           issue_size::text AS "issueSize", updated_at::text AS "updatedAt"
+      FROM ipos WHERE issue_size = 0 ORDER BY offering_type, slug`);
+  });
+});
+
+/**
+ * #1059 round 2 (MAJOR-1): the accepted finding was that replacing
+ * `if (ipoScope.unusable)` in this tool's `main()` with `if (false && ...)`
+ * keeps every existing test green, because no test ever spawns the REAL CLI
+ * entrypoint with an unusable `--ipo` form and checks the exit code — the
+ * `#1054` describe block above only exercises the shared `resolveIpoScope`
+ * helper, never this tool's own wiring of it. These spawn the actual script
+ * (no DATABASE_URL / DB reachability required: the refusal happens before
+ * `openRepairDb` ever runs) and assert exit 2 AND that no DB was reached
+ * (`current_database()` — printed only after the refusal checks pass —
+ * never appears in the output).
+ */
+describe('#1059 round 2 MAJOR-1: main() actually refuses an unusable --ipo before touching the DB', () => {
+  const SCRAPER = path.resolve(HERE, '..', '..', '..');
+
+  function spawnTool(args: string[]) {
+    const r = spawnSync('npx', ['tsx', 'scripts/repair-issue-size-chittorgarh-once-od74.ts', ...args], {
+      cwd: SCRAPER,
+      env: { ...process.env, DATABASE_URL: '', REDIS_URL: '' },
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+      timeout: 60_000,
+    });
+    return { code: r.status, out: `${r.stdout}\n${r.stderr}` };
+  }
+
+  it.each([
+    ['--ipo followed by another flag', ['--ipo', '--apply']],
+    ['a trailing --ipo with no value', ['--apply', '--ipo']],
+  ])('MUTATION: %s exits 2 and never reaches the database', (_label, args) => {
+    const r = spawnTool(args);
+    expect(r.code, r.out).toBe(2);
+    expect(r.out).toMatch(/no usable uuid could be parsed/);
+    expect(r.out).not.toMatch(/current_database/);
+  }, 60_000);
+
+  it('MUTATION: a non-uuid --ipo value exits 2 and never reaches the database', () => {
+    const r = spawnTool(['--apply', '--ipo', 'not-a-uuid']);
+    expect(r.code, r.out).toBe(2);
+    expect(r.out).toMatch(/not valid uuids/);
+    expect(r.out).not.toMatch(/current_database/);
+  }, 60_000);
+
+  /**
+   * #1059 round 2 (MINOR-2): `--ipo` alongside `--undo` is refused (the
+   * ledger's own row ids are the only scope `--undo` ever honors).
+   */
+  it('MUTATION: --ipo alongside --undo is refused, exit 2, before touching the database', () => {
+    const r = spawnTool(['--undo', 'does-not-need-to-exist.json', '--ipo', '00000000-0000-4000-9074-000000000009']);
+    expect(r.code, r.out).toBe(2);
+    expect(r.out).toMatch(/--ipo does not apply to --undo/);
+    expect(r.out).not.toMatch(/current_database/);
+  }, 60_000);
 });
 
 /**

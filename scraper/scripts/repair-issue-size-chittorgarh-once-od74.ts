@@ -56,6 +56,7 @@ import { invalidateIPOCaches } from '../src/services/cache-invalidator.js';
 import {
   assertNoSchemaDrift,
   buildIpoScopeCondition,
+  decideUndoIpoConflict,
   describeIpoScope,
   guardCacheInvalidation,
   openRepairDb,
@@ -270,8 +271,12 @@ type Counts = { writes: number; failures: number };
  */
 export function buildRepairCandidatesQuery(ipoIds: readonly string[]) {
   const scope = buildIpoScopeCondition(ipoIds, 'i.id');
-  const scopeClause = scope ? sql`AND ${scope}` : sql``;
-  return sql`
+  // #1059 round 2 (MINOR-1): branched, not an interpolated-but-empty
+  // `sql\`\`` clause, so the UNSCOPED query is byte-identical to origin/main's
+  // (no stray blank line / doubled whitespace where the scope clause would
+  // have gone) — same query, not merely an equivalent one.
+  return scope
+    ? sql`
     SELECT i.id, i.slug, i.company_name AS "companyName", i.open_date::text AS "openDate", i.issue_size::text AS "issueSize",
            i.price_range_max::text AS "priceRangeMax", i.verifier_url AS "verifierUrl",
            ARRAY(SELECT f2.data_lineage->>'url' FROM field_sources f2
@@ -279,7 +284,16 @@ export function buildRepairCandidatesQuery(ipoIds: readonly string[]) {
       FROM ipos i
       JOIN field_sources fs ON fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.field_name = 'issueSize' AND fs.row_key = ''
      WHERE i.offering_type = 'IPO' AND fs.source = 'BSE'
-       ${scopeClause}
+       AND ${scope}
+     ORDER BY i.slug`
+    : sql`
+    SELECT i.id, i.slug, i.company_name AS "companyName", i.open_date::text AS "openDate", i.issue_size::text AS "issueSize",
+           i.price_range_max::text AS "priceRangeMax", i.verifier_url AS "verifierUrl",
+           ARRAY(SELECT f2.data_lineage->>'url' FROM field_sources f2
+                  WHERE f2.ipo_id = i.id AND f2.data_lineage->>'url' ILIKE 'https://www.chittorgarh.com/ipo/%') AS "lineageUrls"
+      FROM ipos i
+      JOIN field_sources fs ON fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.field_name = 'issueSize' AND fs.row_key = ''
+     WHERE i.offering_type = 'IPO' AND fs.source = 'BSE'
      ORDER BY i.slug`;
 }
 
@@ -290,14 +304,26 @@ export function buildRepairCandidatesQuery(ipoIds: readonly string[]) {
  */
 export function buildZerosCandidatesQuery(ipoIds: readonly string[]) {
   const scope = buildIpoScopeCondition(ipoIds, 'id');
-  const scopeClause = scope ? sql`AND ${scope}` : sql``;
-  return sql`
+  // #1059 round 2 (MINOR-1): branched for the same byte-identical reason as
+  // buildRepairCandidatesQuery above.
+  return scope
+    ? sql`
     SELECT id, slug, offering_type::text AS "offeringType", segment::text AS segment, listing_exchanges AS "listingExchanges",
            issue_size::text AS "issueSize", updated_at::text AS "updatedAt"
-      FROM ipos WHERE issue_size = 0 ${scopeClause} ORDER BY offering_type, slug`;
+      FROM ipos WHERE issue_size = 0 AND ${scope} ORDER BY offering_type, slug`
+    : sql`
+    SELECT id, slug, offering_type::text AS "offeringType", segment::text AS segment, listing_exchanges AS "listingExchanges",
+           issue_size::text AS "issueSize", updated_at::text AS "updatedAt"
+      FROM ipos WHERE issue_size = 0 ORDER BY offering_type, slug`;
 }
 
 async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[], ipoIds: readonly string[]): Promise<Counts> {
+  // #1059 round 2 (MAJOR-2): printed from the SAME `ipoIds` this function
+  // actually uses to build the candidate query below — not from main()'s copy
+  // — so a call site accidentally passing `[]` here prints "ALL IPOs" and an
+  // integration test asserting the scope line catches it, rather than a
+  // main()-side print that stays correct regardless of what runRepair received.
+  console.log(`${TOOL_NAME}: scope = ${describeIpoScope(ipoIds)}`);
   const overrides = parseUrlOverrides(process.argv);
   const all = rowsOf<{
     id: string; slug: string; companyName: string; openDate: string | null; issueSize: string | null;
@@ -392,6 +418,9 @@ async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[], ipoIds
 }
 
 async function runZeros(APPLY: boolean, ledger: unknown[], ipoIds: readonly string[]): Promise<Counts> {
+  // #1059 round 2 (MAJOR-2): same reasoning as runRepair above — printed from
+  // the `ipoIds` this function actually passes into buildZerosCandidatesQuery.
+  console.log(`${TOOL_NAME}: scope = ${describeIpoScope(ipoIds)}`);
   const list = rowsOf<ZeroRow>(await db.execute(buildZerosCandidatesQuery(ipoIds)));
   const counts: Counts = { writes: 0, failures: 0 };
   const byType: Record<string, number> = {};
@@ -513,13 +542,22 @@ async function main(): Promise<number> {
     );
     return 2;
   }
+  if (decideUndoIpoConflict(process.argv, undoFile !== null)) {
+    console.error(`${TOOL_NAME}: --ipo does not apply to --undo; the ledger defines the rows.`);
+    return 2;
+  }
   const { dbName } = await openRepairDb(db, { apply: APPLY, allowProd: process.argv.includes('--allow-prod'), toolName: TOOL_NAME });
   currentDbName = dbName;
   await assertNoSchemaDrift(db, { apply: APPLY, toolName: TOOL_NAME });
   const prodMode = dbName === PRODUCTION_DATABASE_NAME || process.argv.includes('--prod-mode');
   const mode = undoFile ? 'undo' : process.argv.includes('--zeros') ? 'zeros' : 'repair';
   console.log(`OD-74 issue-size one-time repair — ${mode} — ${APPLY ? 'APPLY' : 'DRY-RUN'} — database ${dbName}${prodMode ? ' — PROD MODE (never fetches; pinned pages only)' : ''}`);
-  console.log(`${TOOL_NAME}: scope = ${describeIpoScope(ipoScope.ipoIds)}`);
+  // #1059 round 2 (MAJOR-2): the scope line a reader/test relies on is printed
+  // INSIDE runRepair/runZeros from the ids they actually received, not here —
+  // printing it here from `ipoScope.ipoIds` would stay correct even if the
+  // call site below silently handed `[]` to the run function, hiding an
+  // unscoped run behind a scoped-looking line. `--undo` stays ledger-scoped
+  // (unaffected by `--ipo`), so it has no scope line of its own here.
   const here = path.dirname(fileURLToPath(import.meta.url));
   const store = new PageStore(path.resolve(argValue('--store-dir') ?? path.join(here, 'data', 'od74-issue-size')), TOOL_NAME);
   const ctx: ReadCtx = { store, prodMode, allowFetch: !process.argv.includes('--no-fetch'), lastFetchAt: 0 };

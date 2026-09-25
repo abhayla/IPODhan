@@ -4,11 +4,16 @@
 // had the value silently discarded (parsed nowhere), never scoping the run.
 import { describe, it, expect } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   parseArgs,
   buildStaleRowsQuery,
   buildSettledByLowerRankQuery,
 } from '../../../scripts/repair-reopen-stale-doc-nay.js';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 describe('repair-reopen-stale-doc-nay parseArgs', () => {
   it('parses --expect-db, --apply, --allow-prod, --undo and --settled-by-lower-rank', () => {
@@ -128,4 +133,44 @@ describe('#1053 MAJOR-2: readStaleRows / readSettledByLowerRankRows scope condit
     const rendered = new PgDialect().sqlToQuery(buildSettledByLowerRankQuery([]));
     expect(rendered.sql).not.toMatch(/ipo_id = ANY\(/);
   });
+});
+
+/**
+ * #1059 round 2 (MAJOR-1/MINOR-2): same reasoning as the sibling spawn tests
+ * in repair-issue-size-chittorgarh-once-od74.test.ts and
+ * repair-retire-manifest-removed-fields.test.ts — spawn the REAL CLI entry
+ * with an unusable `--ipo` form, or `--ipo` alongside `--undo`, and assert
+ * exit 2 with no database reached (`current_database()` is printed only
+ * after these refusal checks pass).
+ */
+describe('#1059 round 2 MAJOR-1/MINOR-2: main() actually refuses before touching the database', () => {
+  const SCRAPER = path.resolve(HERE, '..', '..', '..');
+
+  function spawnTool(args: string[]) {
+    const r = spawnSync('npx', ['tsx', 'scripts/repair-reopen-stale-doc-nay.ts', ...args], {
+      cwd: SCRAPER,
+      env: { ...process.env, DATABASE_URL: '', REDIS_URL: '' },
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+      timeout: 60_000,
+    });
+    return { code: r.status, out: `${r.stdout}\n${r.stderr}` };
+  }
+
+  it.each([
+    ['--ipo followed by another flag', ['--expect-db', 'ipodhan_test', '--ipo', '--apply']],
+    ['a trailing --ipo with no value', ['--expect-db', 'ipodhan_test', '--apply', '--ipo']],
+  ])('MUTATION: %s exits 2 and never reaches the database', (_label, args) => {
+    const r = spawnTool(args);
+    expect(r.code, r.out).toBe(2);
+    expect(r.out).toMatch(/no usable uuid could be parsed/);
+    expect(r.out).not.toMatch(/current_database/);
+  }, 60_000);
+
+  it('MUTATION: --ipo alongside --undo is refused, exit 2, before touching the database', () => {
+    const r = spawnTool(['--expect-db', 'ipodhan_test', '--undo', 'does-not-need-to-exist.json', '--ipo', '00000000-0000-4000-9074-000000000009']);
+    expect(r.code, r.out).toBe(2);
+    expect(r.out).toMatch(/--ipo does not apply to --undo/);
+    expect(r.out).not.toMatch(/current_database/);
+  }, 60_000);
 });
