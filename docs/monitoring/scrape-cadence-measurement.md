@@ -191,10 +191,11 @@ instrumentation is needed for that either.
 
 ## 5. Reproduce this measurement
 
-1. Open the VPS DB tunnel (`vps-db-tunnel-setup` memory / `.claude/rules`):
+1. Open the VPS DB tunnel (`docs/ops/prod-ops-recipes.md` §1 — never as a raw `ssh -N -L` harness
+   background task; that leaks the tunnel across sessions, see that recipe's note):
 
    ```bash
-   ssh -i ~/.ssh/ipodhan_vps -N -L 15432:localhost:5432 Administrator@103.118.16.189
+   bash scripts/ops/db-tunnel.sh start
    ```
 
 2. Run the exact query used to produce §2's table against `scraper_logs`

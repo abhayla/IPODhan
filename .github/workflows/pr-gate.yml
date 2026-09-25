@@ -743,6 +743,22 @@ jobs:
           git config --global user.name "CI"
           python .claude/hooks/tests/board-owed-guard.test.py
 
+      - name: DB-tunnel SessionEnd hook self-tests (project-level, 2026-09-25)
+        # T-db-tunnel: the SessionEnd hook that stops an owned-and-leaked prod-DB tunnel
+        # (scripts/ops/db-tunnel.sh) is the detection/repair mechanism for the class in that
+        # script's header comment. This suite (10 cases, stdlib-only, no network, no real
+        # ssh/tunnel — a stub stop command asserts invocation, including that the child process
+        # receives CLAUDE_CODE_SESSION_ID explicitly) is its only gate.
+        run: python .claude/hooks/tests/db-tunnel-session-end.test.py
+
+      - name: DB-tunnel script self-tests (round 2, PR #1080)
+        # scripts/ops/db-tunnel.sh `stop`/`stop --leftover`/start-lock decision logic against
+        # stub netstat/ps/kill (DB_TUNNEL_NETSTAT/PS/KILL) — no network, no real ssh, no Windows
+        # host required. Proves `stop` only ever kills the exact recorded, currently-listening,
+        # ssh winpid (never a decoy/leftover process), and that a live start lock refuses a
+        # concurrent start. bash must be on PATH (present on ubuntu-latest runners).
+        run: python .claude/hooks/tests/db-tunnel-script.test.py
+
   # M-c: this job used to live in test.yml, which is workflow_dispatch-only —
   # so the gate that replays the journal from empty ran only when a human
   # remembered to click it. The two defects it exists to catch (0035's enum/table
