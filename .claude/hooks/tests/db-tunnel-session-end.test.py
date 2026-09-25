@@ -40,9 +40,9 @@ class DbTunnelSessionEndTest(unittest.TestCase):
         self.stub_path = os.path.join(self.tmp, "stub_stop.py")
         with open(self.stub_path, "w", encoding="utf-8") as f:
             f.write(
-                "import sys\n"
+                "import os, sys\n"
                 "with open(sys.argv[1], 'w', encoding='utf-8') as f:\n"
-                "    f.write('stopped')\n"
+                "    f.write('stopped:' + os.environ.get('CLAUDE_CODE_SESSION_ID', ''))\n"
             )
 
     def _run(self, session_id, env_overrides=None, payload_override=None):
@@ -84,6 +84,33 @@ class DbTunnelSessionEndTest(unittest.TestCase):
         proc = self._run(session_id="session-abc")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertStopped()
+
+    def test_child_env_gets_session_id_even_when_absent_from_hook_env(self):
+        # Round 2 reviewer finding: the hook must pass CLAUDE_CODE_SESSION_ID to the CHILD
+        # explicitly, never rely on the harness having exported it into the hook's own process.
+        # Simulate the harness NOT exporting it by deleting it from the hook's environment, then
+        # assert the child still saw the correct value via the payload -> env plumbing.
+        self._write_state(owner="session-abc")
+        env = dict(os.environ)
+        env.pop("CLAUDE_CODE_SESSION_ID", None)
+        env["DB_TUNNEL_STATE_FILE"] = self.state_path
+        env["DB_TUNNEL_STOP_COMMAND"] = "%s %s %s" % (sys.executable, self.stub_path, self.marker_path)
+        proc = subprocess.run(
+            [sys.executable, HOOK_PATH],
+            input=json.dumps({"session_id": "session-abc"}),
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=15,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        with open(self.marker_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertEqual(
+            content,
+            "stopped:session-abc",
+            "child did not receive CLAUDE_CODE_SESSION_ID from the hook (got: %r)" % content,
+        )
 
     def test_other_session_owner_does_not_invoke_stop(self):
         self._write_state(owner="session-abc")

@@ -16,11 +16,28 @@ This hook is the other half: on SessionEnd, if that state file's owner is THIS s
 it never blocks the session end — any failure here degrades to "the tunnel stays up", not "the
 session cannot end".
 
+The child process is given CLAUDE_CODE_SESSION_ID=<this session's id> explicitly in its own
+environment (round 2, reviewer finding: never rely on the harness having exported that variable
+into the hook's own process — db-tunnel.sh's owner_session() reads it from ITS environment, and
+the hook already has the id from the SessionEnd payload, so it passes it down rather than hoping).
+This also keeps the hook's own ownership check (state.get("owner") != session_id, below) as a
+second, independent gate before the child is even started — belt AND suspenders, not one or the
+other.
+
 Reads the Claude Code SessionEnd hook JSON from stdin, e.g. {"session_id": "...", ...}.
 
 Fail-open: any missing state file, any parse error, any subprocess failure -> exit 0 silently.
 This hook does its own work only when it can positively confirm session ownership; anything
-short of that is a no-op, never a block.
+short of that is a no-op, never a block. The subprocess timeout (20s, DB_TUNNEL_STOP_TIMEOUT) is
+kept below this hook's own harness timeout (30s, .claude/settings.json) so a slow stop always
+surfaces as "the stop command itself timed out" here rather than the harness killing the hook
+process first and leaving the outcome unlogged.
+
+Test coverage (.claude/hooks/tests/db-tunnel-session-end.test.py): the mutation case described
+there covers the owner-match branch (inverting it turns "other owner" red). It does NOT, by
+itself, cover the session-id-env-passing behaviour added in round 2 — that is a separate
+assertion (test_child_env_gets_session_id) with its own red-first mutation proof, not implied by
+the owner-match mutation.
 
 Off-switch: DB_TUNNEL_SESSION_END_GUARD=0 -> no-op.
 
@@ -84,12 +101,15 @@ def main() -> int:
         return 0
 
     try:
+        child_env = dict(os.environ)
+        child_env["CLAUDE_CODE_SESSION_ID"] = session_id
         subprocess.run(
             _stop_command(),
             cwd=_repo_root(),
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=int(os.environ.get("DB_TUNNEL_STOP_TIMEOUT", "20")),
+            env=child_env,
         )
     except Exception:
         # Best-effort: a failed stop here just leaves the tunnel up for the next
