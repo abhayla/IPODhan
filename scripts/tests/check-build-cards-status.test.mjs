@@ -160,7 +160,8 @@ test('a card reading Status: unknown that is NOT on the item-32 allow-list fails
   writeFixture('notallowed', MINIMAL_CARD('Status: unknown — a brand new reason nobody has reviewed yet'));
   const result = runGate();
   assert.equal(result.code, 1);
-  assert.match(result.out, /item-999999-status-fixture-notallowed\.md: "Status: unknown" is only accepted for the cards named in UNKNOWN_ALLOWED/);
+  // Item 32 closed (2026-09-25): REFUSE_UNKNOWN is true, so the refusal message is the outright one.
+  assert.match(result.out, /item-999999-status-fixture-notallowed\.md: "Status: unknown" is refused \(REFUSE_UNKNOWN is true\)/);
   cleanupFixtures();
 });
 
@@ -309,19 +310,16 @@ test('--offline-parked-check=skip is refused when CI is set, even locally', () =
 // --- REFUSE_UNKNOWN flip (mutation test, same technique as the Status-line-removal test above:
 // toggle the real constant in the real source file, prove the gate goes red, restore it) ---
 
-test('flipping REFUSE_UNKNOWN to true refuses every allow-listed `unknown` card', () => {
-  const gateSrc = GATE;
-  const original = fs.readFileSync(gateSrc, 'utf8');
-  try {
-    const flipped = original.replace('const REFUSE_UNKNOWN = false;', 'const REFUSE_UNKNOWN = true;');
-    assert.notEqual(flipped, original, 'fixture setup: expected to find and flip REFUSE_UNKNOWN');
-    fs.writeFileSync(gateSrc, flipped, 'utf8');
-    const result = runGate();
-    assert.equal(result.code, 1);
-    assert.match(result.out, /item-06-pull-walk\.md: "Status: unknown" is refused \(REFUSE_UNKNOWN is true\)/);
-  } finally {
-    fs.writeFileSync(gateSrc, original, 'utf8');
-  }
-  const restored = runGate();
-  assert.equal(restored.code, 0, restored.out);
+test('item 32 closed: REFUSE_UNKNOWN is true in the committed gate, UNKNOWN_ALLOWED is empty, and a planted unknown card is refused', () => {
+  const src = fs.readFileSync(GATE, 'utf8');
+  assert.match(src, /const REFUSE_UNKNOWN = true;/);
+  assert.match(src, /const UNKNOWN_ALLOWED = new Set\(\[\s*\]\);/);
+  cleanupFixtures();
+  writeFixture('refused', MINIMAL_CARD('Status: unknown — planted to prove the outright refusal'));
+  const result = runGate();
+  assert.equal(result.code, 1);
+  assert.match(result.out, /item-999999-status-fixture-refused\.md: "Status: unknown" is refused \(REFUSE_UNKNOWN is true\)/);
+  cleanupFixtures();
+  const clean = runGate();
+  assert.equal(clean.code, 0, clean.out);
 });

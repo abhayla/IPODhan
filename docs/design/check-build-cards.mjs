@@ -27,7 +27,7 @@ const offlineParkedCheckSkip = process.argv.includes('--offline-parked-check=ski
 // this to `true` and empties UNKNOWN_ALLOWED in the same change — `unknown` is then refused
 // outright, for every card, with no allow-list. Flipping it early (before the six cards below
 // resolve) makes the gate red on the whole tree; that is the point of the flip, not a bug in it.
-const REFUSE_UNKNOWN = false;
+const REFUSE_UNKNOWN = true;
 
 // Spelled exactly as `_TEMPLATE.md` spells them, in order.
 //
@@ -48,8 +48,6 @@ const HEADINGS = ['## Purpose', '## Serves', '## Files', '## Schema', '## Interf
 // nothing may be added back without re-doing the same origin/main + PR-merge verification this
 // list was built from. A NEW card reading `unknown` that is not on this list fails the gate.
 const UNKNOWN_ALLOWED = new Set([
-  'item-06-pull-walk.md',
-  'item-21-read-side.md',
 ]);
 
 /** Does the repository deliberately ignore this path? Asked of git, never guessed from a pattern. */
