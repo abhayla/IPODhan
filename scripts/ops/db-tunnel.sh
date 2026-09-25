@@ -55,8 +55,12 @@ KILL_CMD="${DB_TUNNEL_KILL:-taskkill}"
 
 # ps -W prints only the executable (no arguments), last on the row, after a STIME that is one or
 # two tokens and a path that may contain spaces. A row is ssh iff that executable's basename is
-# exactly ssh or ssh.exe, so ssh-agent, sshd or a path that merely contains "ssh" never match.
-SSH_ROW_AWK='function is_ssh_row(line) { return tolower(line) ~ /(^|[ \/\\])ssh(\.exe)?[ \t\r]*$/ }'
+# exactly ssh or ssh.exe (the path's LAST component), so ssh-agent, sshd, "my ssh.exe" or a
+# directory named ssh never match.
+SSH_ROW_AWK='function is_ssh_row(line,   n, parts) {
+  n = split(line, parts, /[\/\\]/)
+  return tolower(n > 1 ? parts[n] : $NF) ~ /^ssh(\.exe)?[ \t\r]*$/
+}'
 
 owner_session() {
   # CLAUDE_CODE_SESSION_ID is set by the harness inside a Claude Code session; outside one
@@ -191,7 +195,7 @@ reclaim_stale_lock() {
   # one source succeeds at most once), then delete only if what was renamed is still the lock that
   # was judged stale; otherwise it is another waiter's fresh lock and is put back untouched.
   local expected="$1" age="$2" grave
-  if [ -n "${DB_TUNNEL_TEST_RECLAIM_HOOK:-}" ]; then $DB_TUNNEL_TEST_RECLAIM_HOOK; fi
+  reclaim_test_hook before-rename
   grave="$LOCK_DIR.reclaim.$$.$RANDOM$RANDOM"
   mv -T "$LOCK_DIR" "$grave" 2>/dev/null || return 0
   if [ "$(lock_token "$grave")" = "$expected" ]; then
@@ -200,9 +204,25 @@ reclaim_stale_lock() {
     rmdir "$grave" 2>/dev/null
     return 0
   fi
-  if ! mv -T "$grave" "$LOCK_DIR" 2>/dev/null; then
-    echo "lock: took a fresh start-lock while reclaiming and could not put it back; left at $grave" >&2
+  # Put it back without ever clobbering: `mv -T` onto an EMPTY directory succeeds, so it could
+  # replace a third waiter's just-made lock (two holders). `mkdir` of the lock path is the same
+  # atomic primitive acquire_lock uses: it succeeds only if nobody holds the path, and only then
+  # are the fresh holder's files moved into it.
+  reclaim_test_hook before-putback
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    mv "$grave/created_at" "$grave/pid" "$LOCK_DIR/" 2>/dev/null
+    rmdir "$grave" 2>/dev/null
+    return 0
   fi
+  echo "lock: took pid $(cat "$grave/pid" 2>/dev/null)'s fresh start-lock while reclaiming and could not put it back (another waiter now holds $LOCK_DIR); left at $grave" >&2
+}
+
+reclaim_test_hook() {
+  # Test seam for the reclaim race: honoured only under DB_TUNNEL_TEST_MODE=1 (set by the test
+  # suite alone), run as ONE quoted command path, never word-split.
+  [ "${DB_TUNNEL_TEST_MODE:-}" = 1 ] || return 0
+  [ -n "${DB_TUNNEL_TEST_RECLAIM_HOOK:-}" ] || return 0
+  "$DB_TUNNEL_TEST_RECLAIM_HOOK" "$1"
 }
 
 release_lock() {
