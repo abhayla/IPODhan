@@ -33,7 +33,7 @@ import type { LiveMetricsMap } from '@/lib/services/live-metrics-service';
 import { formatIssueSizeCrores, formatIssueSizeCroresBare } from '@/lib/utils';
 import { formatIPODate, getAccessibleDate } from '@/lib/utils/date-formatter';
 import { formatPriceBand } from '@/lib/utils/kpi-formatters';
-import { IpoStatusChip, StatusDot, getDisplayStatus } from './ipo-status';
+import { IpoStatusChip, StatusDot, StatusSrLabel, getDisplayStatus } from './ipo-status';
 import { ListingKpiRibbon, type RibbonCell } from './ListingKpiRibbon';
 
 const PAGE_SIZE = 25;
@@ -115,14 +115,20 @@ function companyCol(): ColumnDef<IPO> {
     sortable: false,
     searchable: false,
     render: (value, row) => (
-      <Link
-        href={`/ipos/${row.slug}`}
-        title={value}
-        className="group flex items-center gap-2 text-gray-900 hover:text-primary"
-      >
+      <>
+        {/* Round-1 review on #107: the in-Link dot below is decorative (keeps
+            the link's accessible name exactly the company name); this sibling
+            carries the status for AT on mobile, where the Status column
+            (mobileHidden, "hidden md:table-cell") is out of the a11y tree. */}
+        <StatusSrLabel ipo={row} />
+        <Link
+          href={`/ipos/${row.slug}`}
+          title={value}
+          className="group flex items-center gap-2 text-gray-900 hover:text-primary"
+        >
         {/* Status as a dot on mobile (the standalone Status column is hidden < md
             so a value column leads the horizontal scroll) — R27 #1 */}
-        <StatusDot ipo={row} className="md:hidden" />
+        <StatusDot ipo={row} className="md:hidden" decorative />
         {/* Monogram is desktop-only — on the narrow mobile pinned cell the status
             dot + name are the signal; the avatar just costs name width (R32 #1). */}
         <span className="hidden shrink-0 sm:inline-flex">
@@ -138,7 +144,8 @@ function companyCol(): ColumnDef<IPO> {
             {companySubline(row)}
           </span>
         </span>
-      </Link>
+        </Link>
+      </>
     ),
   };
 }

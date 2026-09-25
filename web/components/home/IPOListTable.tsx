@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/table';
 import type { HomeIPOTableData } from '@/lib/services/home-ipo-service';
 import { formatPriceBand } from '@/lib/utils/kpi-formatters';
-import { IpoStatusChip, StatusDot } from '@/components/listing/ipo-status';
+import { IpoStatusChip, StatusDot, StatusSrLabel } from '@/components/listing/ipo-status';
 import { SubscriptionBar } from '@/components/shared/SubscriptionBar';
 import { MonogramChip } from '@/components/shared/MonogramChip';
 import { GmpDisplay } from '@/components/shared/GmpDisplay';
@@ -177,12 +177,18 @@ export function IPOListTable({
                 className="cursor-pointer transition-colors hover:bg-primary/5"
               >
                 <TableCell className="sticky left-0 z-10 border-r bg-card shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">
+                  {/* Round-1 review on #107: the dot inside the Link is decorative
+                      (keeps the link's accessible name exactly the company name);
+                      this sibling carries the status for AT on mobile, where the
+                      visible Status column below is display:none / out of the
+                      a11y tree. */}
+                  <StatusSrLabel ipo={ipo} />
                   <Link
                     href={`/ipos/${ipo.slug}`}
                     title={ipo.companyName}
                     className="flex items-center gap-2 font-medium text-foreground hover:text-primary"
                   >
-                    <StatusDot ipo={ipo} className="md:hidden" />
+                    <StatusDot ipo={ipo} className="md:hidden" decorative />
                     <span className="hidden shrink-0 sm:inline-flex">
                       <MonogramChip name={ipo.companyName} />
                     </span>
