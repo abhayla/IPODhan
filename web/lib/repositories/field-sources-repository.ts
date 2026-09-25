@@ -4,7 +4,7 @@
  * Tracks which scraper source provided each field value
  */
 
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -210,7 +210,19 @@ export class FieldSourcesRepository extends BaseRepository {
               confidence: input.confidence ?? 100,
               previousValue: input.previousValue || null,
               previousSource: input.previousSource || null,
-              dataLineage: input.dataLineage ? (input.dataLineage as unknown) : null,
+              // #755 (mirrors packages/shared's PR #753 MAJOR-4 fix): MERGE, never replace. A
+              // plain object here REPLACES the whole jsonb column on conflict, so a
+              // provenance-only write (e.g. `{policyOrigin}`) silently destroyed whatever
+              // `docType`/other keys an earlier write on the SAME row (same ON CONFLICT target)
+              // had set. `excluded.data_lineage` is the row this statement tried to INSERT (the
+              // caller's new value); `field_sources.data_lineage` is what is already stored.
+              // COALESCE guards the first write (nothing stored yet) and a caller that omits
+              // dataLineage entirely so it never overwrites a good value with null. `||` is
+              // Postgres jsonb concatenation: keys in the incoming value win on overlap, every
+              // other existing key survives — the same semantics as `{...existing, ...incoming}`.
+              dataLineage: input.dataLineage
+                ? sql`COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) || ${JSON.stringify(input.dataLineage)}::jsonb`
+                : sql`${fieldSources.dataLineage}`,
               updatedAt: new Date(),
               updatedBy: input.updatedBy || 'SYSTEM',
             },
