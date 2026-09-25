@@ -934,6 +934,24 @@ jobs:
   # Windows/Git-Bash). ubuntu-latest has ss/fuser/setsid for real, so this
   # job proves the fake-root harness (and the escalation logic it drives)
   # against a genuine Linux host, independent of every other job here.
+  # Run-discipline B3 (owner directive 2026-09-25): 44 of 149 PR Gate runs
+  # failed on repeated misses (an integration test missing from CI's run
+  # list, a ratchet/baseline drift, type-check:scripts, render-board --check,
+  # lint:ci) that a local pre-push gate now catches before the push. This
+  # proves the path -> check-set MAPPING (scripts/ci/pre-push-local.sh) via
+  # its --plan mode, same idiom as merge-if-current-cli.test.mjs (a real
+  # throwaway git repo, not a re-implementation of the path logic).
+  pre-push-local-gate-test:
+    name: Pre-Push Local Gate Mapping Test (run-discipline B3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run pre-push-local.sh mapping test
+        run: bash scripts/tests/pre-push-local.test.sh
+
   deploy-script-tests:
     name: Deploy Script Tests (W-136/W-136b/W-169)
     runs-on: ubuntu-latest

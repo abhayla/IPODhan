@@ -242,6 +242,11 @@ export async function GET(request: NextRequest) {
   `.claude/skills/windows-deployment-expert/` describe that retired path — read them as history.
 - **Commit gate (husky pre-commit):** staged-secret scan → workflow-file ASCII check → lint-staged
   (`tsc --noEmit` on `web/**` only). Nothing type-checks `scraper/` or `packages/shared/` at commit time.
+- **Push gate (husky pre-push, `scripts/ci/pre-push-local.sh`, run-discipline B3):** path-maps the pushed
+  diff against `origin/main` and runs the matching slice of `.github/workflows/pr-gate.yml`'s own checks
+  (web tsc/lint/targeted tests, scraper targeted tests + `type-check:scripts` + the static integration/
+  detection/ratchet gates, design/docs/board `--check` generators, hook self-tests) before the push leaves
+  the machine. Escape hatch: `PRE_PUSH_LOCAL_SKIP=1 git push` (prints a warning, never silent).
 - **Shared package must be compiled before web/scraper builds:** `cd packages/shared && npx tsc` — CI verifies `dist/db/schema.d.ts` exists. If types from `@ipodhan/shared` seem stale locally, rebuild it.
 
 ---
