@@ -47,10 +47,10 @@ function loadManifest(): { fields: Record<string, any> } {
 }
 
 describe('field-manifest comparisonFamily (S3b step 1, issue #775)', () => {
-  it('every one of the 190 manifest fields carries a comparisonFamily', () => {
+  it('every one of the 176 manifest fields carries a comparisonFamily', () => {
     const manifest = loadManifest();
     const keys = Object.keys(manifest.fields);
-    expect(keys.length).toBe(190);
+    expect(keys.length).toBe(176); // OD-100 (#1022): 14 job-owned fields (gmp, subscriptions, demand graph), no manifest row
 
     const missing = keys.filter((k) => !manifest.fields[k].comparisonFamily);
     expect(missing).toEqual([]);
@@ -69,7 +69,7 @@ describe('field-manifest comparisonFamily (S3b step 1, issue #775)', () => {
   // Layer 1 (amount-columns probe): the 76 MONEY-shaped + 24 RATIO-shaped fields
   // the probe classifies with zero guesses (docs/design/s3b-verdict-plan.md
   // "MEASURED: this classifies 100 of 190 fields").
-  it('the 100 probe-covered fields resolve to MONEY (76) or RATIO (24), never guessed from naming', () => {
+  it('the 88 probe-covered fields resolve to MONEY (71) or RATIO (17), never guessed from naming', () => {
     const manifest = loadManifest();
     const probe = JSON.parse(
       fs.readFileSync(
@@ -95,8 +95,8 @@ describe('field-manifest comparisonFamily (S3b step 1, issue #775)', () => {
         ratioCount++;
       }
     }
-    expect(moneyCount).toBe(76);
-    expect(ratioCount).toBe(24);
+    expect(moneyCount).toBe(71); // OD-100 (#1022): 5 MONEY-shaped job-owned fields retired (listing_performance quote columns stay walk-owned)
+    expect(ratioCount).toBe(17); // OD-100 (#1022, review round 2): 7 RATIO-shaped (MULTIPLE) subscriptions fields retired
   });
 
   // Layer 2 (schema.ts column type): the null-collapse bug (#774) this whole
@@ -114,11 +114,12 @@ describe('field-manifest comparisonFamily (S3b step 1, issue #775)', () => {
     expect(manifest.fields['documents.filing_date']?.comparisonFamily).toBe('DATE');
   });
 
-  it('exactly 10 DATE fields and 4 BOOLEAN fields (measured column-type counts)', () => {
+  it('exactly 10 DATE fields and 3 BOOLEAN fields (measured column-type counts)', () => {
+    // OD-100 (#1022, review round 2): ipo_demand_graph.is_cut_off (BOOLEAN) is job-owned, no manifest row (4 -> 3).
     const manifest = loadManifest();
     const families = Object.values(manifest.fields).map((e: any) => e.comparisonFamily);
     expect(families.filter((f) => f === 'DATE').length).toBe(10);
-    expect(families.filter((f) => f === 'BOOLEAN').length).toBe(4);
+    expect(families.filter((f) => f === 'BOOLEAN').length).toBe(3);
   });
 
   // Layer 3 decision (b): the 6 true sets of scalars get a new SET family; the

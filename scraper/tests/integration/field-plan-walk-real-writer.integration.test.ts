@@ -365,8 +365,11 @@ describe.skipIf(!DATABASE_URL)(`item 3 S3: field-plan walk, REAL DataConsolidati
  * CONSOLIDATION_DISABLED) was put back PENDING with attempts and
  * last_attempt_at untouched, so it was claimed first on every wake forever.
  *
- * (i)   gmp_records.gmp with the REAL INVESTORGAIN_GMP fetcher and the REAL
- *       orchestrator (the staging shape) -> CHECK_FAILED WRITER_CANNOT_ACCEPT
+ * (i)   gmp_records.gmp (a real MISSING_ROW_KEY write shape — the fetcher
+ *       below is a fixed test double, not production code: the INVESTORGAIN_GMP
+ *       field-plan fetcher was retired under OD-100/#1022, since gmp_records.gmp
+ *       no longer gets a manifest row at all — the GMP job owns it) with the
+ *       REAL orchestrator (the staging shape) -> CHECK_FAILED WRITER_CANNOT_ACCEPT
  *       (MISSING_ROW_KEY), ZERO gmp_records rows added.
  * (ii)  a structural refusal -> CHECK_FAILED, gap WRITER_CANNOT_ACCEPT,
  *       attempts NOT charged (#923), and the next claim call does not return it.
@@ -386,7 +389,20 @@ const OD99_SLUG = 'od99-structural-write-drop-fixture';
 // ipodhan_test still has the pre-ALTER integer gmp column (schema.ts B2/G14 note), so a whole number.
 const OD99_STORED_GMP = 42;
 
-type BuildGmpFetcherFn = typeof import('../../src/services/field-plan-walk-investorgain-gmp-fetcher.js').buildInvestorgainGmpFetcher;
+// Test-local fixed double for the retired INVESTORGAIN_GMP field-plan
+// fetcher (OD-100/#1022 deleted the production adapter — gmp_records.gmp no
+// longer has a manifest row, so nothing builds this in production any more).
+// This case still needs A real, plain fetcher that answers SUPPLIED so it can
+// exercise the orchestrator's REAL MISSING_ROW_KEY write refusal on a REAL
+// table shape (gmp_records has no per-row key) — that refusal class is what
+// OD-99 tests, not the (now-retired) GMP-specific fetcher logic.
+function buildFixedGmpFetcher(reader: { findLatestFromInvestorGain(ipoId: string): Promise<{ gmp: number } | null> }): FieldFetcher {
+  return async (ipoId: string) => {
+    const latest = await reader.findLatestFromInvestorGain(ipoId);
+    if (!latest) return { outcome: 'NOT_AVAILABLE_YET' };
+    return { outcome: 'SUPPLIED', value: latest.gmp };
+  };
+}
 
 describe.skipIf(!DATABASE_URL)(`OD-99: structural write refusals and equal answers (${OD99_RUN_LABEL})`, () => {
   let pool: Pool | null = null;
@@ -396,7 +412,6 @@ describe.skipIf(!DATABASE_URL)(`OD-99: structural write refusals and equal answe
   let realOrchestrator: FieldPlanWalkOrchestrator;
   let walkFieldPlanForIPO: WalkFieldPlanForIPOFn;
   let writerOnlyGapKey: (tableName: string) => string;
-  let buildInvestorgainGmpFetcher: BuildGmpFetcherFn;
 
   const manifestFields = {
     'gmp_records.gmp': { ranks: ['INVESTORGAIN_GMP', 'CHITTORGARH'] },
@@ -425,7 +440,6 @@ describe.skipIf(!DATABASE_URL)(`OD-99: structural write refusals and equal answe
 
     const { DataConsolidationOrchestrator } = await import('../../src/services/data-consolidation-orchestrator.js');
     ({ walkFieldPlanForIPO, writerOnlyGapKey } = await import('../../src/services/field-plan-walk.js'));
-    ({ buildInvestorgainGmpFetcher } = await import('../../src/services/field-plan-walk-investorgain-gmp-fetcher.js'));
     realOrchestrator = new DataConsolidationOrchestrator(
       new IPORepository(db as never, redis as never),
       new FieldSourcesRepository(db as never, redis as never),
@@ -521,7 +535,7 @@ describe.skipIf(!DATABASE_URL)(`OD-99: structural write refusals and equal answe
   it('(i) the real GMP fetcher and real writer: CHECK_FAILED WRITER_CANNOT_ACCEPT (MISSING_ROW_KEY), zero gmp_records rows written', async () => {
     const id = await seedGmpPlanRow();
     const before = await countGmpRows();
-    const fetcher = buildInvestorgainGmpFetcher({ gmpReader, isInvestorgainGmpCapable: () => true });
+    const fetcher = buildFixedGmpFetcher(gmpReader);
 
     const result = await walkFieldPlanForIPO(OD99_IPO_ID, deps(fetcher, realOrchestrator) as never, openBudget());
 

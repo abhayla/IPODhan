@@ -1361,7 +1361,7 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
       expect(stale.find((r) => r.id === id)).toBeDefined();
     });
 
-    it('an SME IPO gains its subscriptions.* rows via upsertGeneratedRows (the rows the version-1 manifest never planned)', async () => {
+    it('an SME IPO gains a walk-owned BSE-only row via upsertGeneratedRows (subscriptions.* are job-owned since OD-100, so listing_performance.current_price_bse stands in)', async () => {
       await db
         .update(schema.ipos)
         .set({ segment: 'SME', listingExchanges: ['BSE'] })
@@ -1370,23 +1370,23 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
       const before = await db
         .select()
         .from(schema.ipoFieldPlan)
-        .where(and(eq(schema.ipoFieldPlan.ipoId, IPO_ID), eq(schema.ipoFieldPlan.tableName, 'subscriptions')));
+        .where(and(eq(schema.ipoFieldPlan.ipoId, IPO_ID), eq(schema.ipoFieldPlan.tableName, 'listing_performance')));
       expect(before.length).toBe(0);
 
       const ipoType = resolveIpoTypeKey({ segment: 'SME', listingExchanges: ['BSE'] });
       expect(ipoType).toBe('SME_BSE');
       const policy = resolveFieldSourcePolicy(
-        { table: 'subscriptions', column: 'total_subscription', ipoType },
+        { table: 'listing_performance', column: 'current_price_bse', ipoType },
         { manifest }
       );
-      expect(policy.ranks).toEqual(['BSE', 'CHITTORGARH']);
+      expect(policy.ranks[0]).toBe('BSE');
 
       const { inserted } = await repo.upsertGeneratedRows([
         {
           ipoId: IPO_ID,
-          tableName: 'subscriptions',
+          tableName: 'listing_performance',
           rowKey: '',
-          fieldName: 'total_subscription',
+          fieldName: 'current_price_bse',
           rank1Source: policy.ranks[0] ?? null,
           rank2Source: policy.ranks[1] ?? null,
           rank3Source: policy.ranks[2] ?? null,
@@ -1399,10 +1399,10 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
       const after = await db
         .select()
         .from(schema.ipoFieldPlan)
-        .where(and(eq(schema.ipoFieldPlan.ipoId, IPO_ID), eq(schema.ipoFieldPlan.tableName, 'subscriptions')));
+        .where(and(eq(schema.ipoFieldPlan.ipoId, IPO_ID), eq(schema.ipoFieldPlan.tableName, 'listing_performance')));
       expect(after.length).toBe(1);
       expect(after[0].rank1Source).toBe('BSE');
-      expect(after[0].rank2Source).toBe('CHITTORGARH');
+      expect(after[0].rank2Source).toBe(policy.ranks[1] ?? null);
 
       await db
         .update(schema.ipos)

@@ -1817,27 +1817,20 @@ describe('field-plan walk -- S3b-2 the comparator decides, verdict is written (d
     expect(call.verdict).toBe('DISPUTED');
   });
 
-  it('flag ON -- a single-capable-source field on SME_NSE (listing_performance.current_price_nse) -> SINGLE_SOURCE', async () => {
+  it('flag ON -- a single-capable-source field on SME_NSE (ipos.cin) -> SINGLE_SOURCE', async () => {
+    // listing_performance.current_price_nse (the prior example field) is job-owned under
+    // OD-100 (#1022, review round 2) and no longer carries a manifest row; ipos.cin is DOC-only
+    // for SME_NSE (a real remaining single-capable-source field) and exercises the same path.
     FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
-    const repo = makeRepo([planRow({ tableName: 'listing_performance', fieldName: 'current_price_nse', rowKey: 'row1', rank1Source: 'NSE', rank2Source: null, rank3Source: null })]);
+    const repo = makeRepo([planRow({ tableName: 'ipos', fieldName: 'cin', rank1Source: 'DOC', rank2Source: null, rank3Source: null })]);
     const trackWitnessVerdict = vi.fn(async () => undefined);
-    const nse = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: '105.50' }));
-    const childOrchestrator = {
-      consolidatedUpsertIPO: vi.fn(),
-      consolidatedUpsertChildRows: vi.fn(async () => ({
-        rowsProcessed: 1,
-        rowsUpdated: 1,
-        rowsSkipped: 0,
-        conflictsDetected: 0,
-        rows: [{ rowKey: 'row1', consolidatedData: {}, fieldsProcessed: 1, fieldsUpdated: 1, conflictsDetected: 0, skipped: false, fieldResults: [fieldResult('currentPriceNse', '105.50', 'NSE' as never)] }],
-      })),
-    };
+    const doc = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: 'U12345MH2020PLC123456' }));
     const d = deps({
       fieldPlanRepository: repo as any,
-      orchestrator: childOrchestrator as any,
-      sourceFetchers: { NSE: nse } as any,
-      // manifest: listing_performance.current_price_nse rank.SME_NSE = ['NSE'] -- 1 capable source.
-      resolvePolicy: async () => ({ ranks: ['NSE'], documentType: undefined, origin: { kind: 'registry' as const, version: 2 }, na: false }),
+      orchestrator: orchestratorFor('cin', 'U12345MH2020PLC123456', 'DRHP') as any,
+      sourceFetchers: { DOC: doc } as any,
+      // manifest: ipos.cin rank.SME_NSE = ['DOC'] -- 1 capable source.
+      resolvePolicy: async () => ({ ranks: ['DOC'], documentType: undefined, origin: { kind: 'registry' as const, version: 2 }, na: false }),
       trackWitnessVerdict,
     });
 

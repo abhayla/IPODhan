@@ -397,6 +397,13 @@ export async function generateManifest({ F, RESOLVE }) {
   for (const f of F) {
     if (!SOURCED_CLASSES.has(f.cls)) continue; // C/I: never sourced, no manifest row (item-02 rule)
     const key = `${f.t}.${f.c}`;
+    // OD-100 (#1022): a field whose opts declare `jobOwned` has its own scheduled job that keeps
+    // it fresh (e.g. gmp_records.gmp <- the GMP job); the field-plan walk never asks for it, so it
+    // gets no manifest row, generically — never a per-table `if (f.t === 'gmp_records')` special case.
+    if (f.o.jobOwned) {
+      skipped.push(`skipped ${key}: job-owned (${f.o.jobOwned}) — the walk never asks for it (OD-100)`);
+      continue;
+    }
 
     const rankByType = {};
     let hasAnyRealRank = false;

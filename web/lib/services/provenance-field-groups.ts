@@ -29,7 +29,9 @@ export type ProvenanceBlock =
 
 export const PROVENANCE_FIELD_GROUPS: Readonly<Record<ProvenanceBlock, readonly string[]>> = {
   // The ribbon repeats the headline numbers from the table below it.
-  factRibbon: ['ipos.issue_size', 'subscriptions.total_subscription'],
+  // subscriptions.total_subscription removed (OD-100, #1022, review round 2): the table is
+  // job-owned (Live-figures job) and no longer carries a manifest row for provenance purposes.
+  factRibbon: ['ipos.issue_size'],
   // ipos.* date/size/type fields + fresh/OFS split rendered directly in the details table.
   ipoDetailsTable: ['ipos.issue_size', 'ipo_details.fresh_issue', 'ipo_details.ofs_issue', 'ipo_details.issue_type', 'ipos.open_date', 'ipos.close_date', 'ipos.allotment_date', 'ipos.listing_date', 'ipos.price_range_min', 'ipos.price_range_max', 'ipos.lot_size', 'ipos.face_value'],
   // ipo_valuation.* floor/cap figures rendered in the pricing/valuation grid.
@@ -325,38 +327,12 @@ export const NOT_IN_ANY_BLOCK: Readonly<Record<string, string>> = {
     'rendered by AnchorInvestorsSection\'s own table (bid date, shares, amount, investor list), not a key-facts block',
   'documents.filing_date':
     'rendered by DocumentList (filing date per document), not a key-facts block',
-  'subscriptions.qib_subscription':
-    'the subscription table shows all categories together; the ribbon already carries one line for the total, and further per-category lines would bury the numbers',
-  'subscriptions.nii_subscription':
-    'the subscription table shows all categories together; the ribbon already carries one line for the total, and further per-category lines would bury the numbers',
-  'subscriptions.retail_subscription':
-    'the subscription table shows all categories together; the ribbon already carries one line for the total, and further per-category lines would bury the numbers',
-  'subscriptions.employee_subscription':
-    'the subscription table shows all categories together; the ribbon already carries one line for the total, and further per-category lines would bury the numbers',
-  'subscriptions.b_nii_subscription':
-    'the subscription table shows all categories together; the ribbon already carries one line for the total, and further per-category lines would bury the numbers',
-  'subscriptions.s_nii_subscription':
-    'the subscription table shows all categories together; the ribbon already carries one line for the total, and further per-category lines would bury the numbers',
-  'subscriptions.total_shares_bid':
-    'the subscription table shows all categories together; the ribbon already carries one line for the total, and further per-category lines would bury the numbers',
-  'subscriptions.shares_offered':
-    'the subscription table shows all categories together; the ribbon already carries one line for the total, and further per-category lines would bury the numbers',
-  'gmp_records.gmp':
-    'rendered by the GMP widget on the fact ribbon area as a live indicator, not a per-field provenance line — GMP is a separate real-time signal, not a planned/verified field',
   'listing_performance.current_price':
     'rendered by ListingPerformance\'s own price panel (current/BSE/NSE price), not the listingDetails key-facts block which only carries the fixed listing_price',
   'listing_performance.current_price_bse':
     'rendered by ListingPerformance\'s own price panel (current/BSE/NSE price), not the listingDetails key-facts block which only carries the fixed listing_price',
   'listing_performance.current_price_nse':
     'rendered by ListingPerformance\'s own price panel (current/BSE/NSE price), not the listingDetails key-facts block which only carries the fixed listing_price',
-  'ipo_demand_graph.price_point':
-    'rendered by the demand-graph chart component (price point / cumulative quantity per exchange), not a key-facts block',
-  'ipo_demand_graph.is_cut_off':
-    'rendered by the demand-graph chart component (price point / cumulative quantity per exchange), not a key-facts block',
-  'ipo_demand_graph.cumulative_quantity':
-    'rendered by the demand-graph chart component (price point / cumulative quantity per exchange), not a key-facts block',
-  'ipo_demand_graph.exchange':
-    'rendered by the demand-graph chart component (price point / cumulative quantity per exchange), not a key-facts block',
   'registrars.name':
     'rendered by CompanyContactSection / AllotmentCheckerCard (registrar name, contact, website), not a key-facts block',
   'registrars.short_name':
