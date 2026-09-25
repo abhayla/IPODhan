@@ -5,6 +5,10 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scrubGitEnv, assertHermeticRepo } from '../../tests/lib/hermetic-git.mjs';
+
+// A pre-push hook exports GIT_DIR; drop it so fixture git never hits the real repo (#1037).
+scrubGitEnv();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(__dirname, '..', 'require-detection-change.mjs');
@@ -16,6 +20,7 @@ function git(cwd, args) {
 function initRepo() {
   const dir = mkdtempSync(join(tmpdir(), 'require-detection-change-'));
   git(dir, ['init', '--quiet', '-b', 'main']);
+  assertHermeticRepo(dir);
   git(dir, ['config', 'user.email', 'test@example.com']);
   git(dir, ['config', 'user.name', 'Test']);
   return dir;

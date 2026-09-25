@@ -924,6 +924,24 @@ jobs:
           tests/integration/post-listing-price.integration.test.ts
           tests/integration/repair-bse-subscription-ist-shift.integration.test.ts
 
+  # Run-discipline B3 (owner directive 2026-09-25): 44 of 149 PR Gate runs
+  # failed on repeated misses (an integration test missing from CI's run
+  # list, a ratchet/baseline drift, type-check:scripts, render-board --check,
+  # lint:ci) that a local pre-push gate now catches before the push. This
+  # drives the REAL .husky/pre-push hook through `git push` to a throwaway
+  # local bare remote (delete, tag, new/existing/force-pushed branch, wrong
+  # branch checked out, a failing check) plus the --plan path mapping.
+  pre-push-local-gate-test:
+    name: Pre-Push Local Gate Mapping Test (run-discipline B3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run pre-push-local.sh mapping test
+        run: bash scripts/tests/pre-push-local.test.sh
+
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under
   # scripts/tests, never the deploy-script bash suites. That suite covers

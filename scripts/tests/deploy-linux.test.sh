@@ -9,6 +9,9 @@
 # Run: bash scripts/tests/deploy-linux.test.sh
 
 set -uo pipefail
+# A pre-push hook exports GIT_DIR; drop it so fixture git never hits the real repo (#1037).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hermetic-git.sh"
+hermetic_git_env
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_SCRIPT="$SCRIPT_DIR/../deploy-linux.sh"
@@ -3100,7 +3103,8 @@ git init -q --bare "$FIXTURE_UPSTREAM"
 FIXTURE_WORK="$(fresh_root)/work"
 git init -q "$FIXTURE_WORK"
 (
-  cd "$FIXTURE_WORK"
+  cd "$FIXTURE_WORK" || exit 1
+  assert_hermetic_repo "$FIXTURE_WORK"
   git config user.email "test@example.com"
   git config user.name "deploy-linux fixture"
   git checkout -q -b main
