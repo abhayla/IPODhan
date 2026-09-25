@@ -157,6 +157,7 @@ it by assuming.
 | OD-102 | *"when admin goes to it, obviously after logging as an admin, he will have an edit button... at the sections level also and also at whole IPO level... I want to see the, all the three four sources of that particular each particular field. as per the spec... each source field should have a value associated with it it can be null it can be actual value it can be something else and there should be also be a text field at the end... he will select and save it once saved that will be the final data saved and it will be marked that it was updated by admin... nobody should replace it no scraper or anything should replace it in future for that particular IPO... should be applicable for each IPO... we will not let admin edit for the fields which are derived"* -- 2026-09-25, the owner's statement of the admin editing feature (Spec basis: §2.7, OD-61, OD-63, Appendix A). **Admin editing lives on the public IPO detail page.** A logged-in admin sees an Edit control for the whole IPO and for each section; a reader never does. Edit opens an edit view in which EVERY editable field lists each source Appendix A names for it (ranks 1 to 3) with the value the scraper actually got from that source (a value, an abstention per OD-60, or a failure cause), plus a free-text option last. The admin picks one and saves; the saved value is an ADMIN value (§2.7): it outranks every source, is marked as updated by admin, and no scraper or job replaces it for that IPO. It applies to every IPO. Derived fields are read-only. **SPEC CHANGE to OD-61**, which recorded per-page admin editing as "not in scope now": it is now in scope. §2.7 is confirmed, not changed. Whether pages other than the IPO detail page get the same control is open (§9.5). Measured the same day: no admin screen shows more than two source values, none offers a free-text value, and the per-source store is empty (F-168). | 2026-09-25 | §9, §9.2 | §9.2 states the Edit control on the IPO page, the per-source list from Appendix A ranks, the free-text option, the ADMIN write that holds, and derived fields read-only |
 | OD-103 | *"let's go with your recommendation of uh, every ask every listed source once in the same first round"* -- 2026-09-25, chosen over (A) show only what was collected and (C) a live fetch-all button (Spec basis: §2.4, OD-58, OD-60, OD-65, OD-73). **SPEC CHANGE to §2.4 ("SUPPLIED -> ... write it, record the evidence, stop"): in the FIRST round for an IPO, every source Appendix A lists for a field is asked once, and each answer -- a value, an abstention (OD-60), or a failure cause -- is stored as a witness of that field.** The published value is unchanged: the highest-ranked SUPPLIED answer (OD-73). No later round re-asks a settled field to collect witnesses (OD-65 unchanged). Why: the admin edit view (OD-102) shows each source's scraped value, and OD-58 already required agreement between independent witnesses, which a loop that stops at the first answer can never produce. Measured: F-168 (0 witness rows on staging; no witness column on production). | 2026-09-25 | §2.4, §9.3 | §2.4 carries the OD-103 amendment; §9.3 states that the edit view reads the stored witnesses and shows a never-asked source as such |
 | OD-104 | *"B"* -- 2026-09-25, chosen over (A) only the owner with one shared login and (C) roles with maker-checker approval (Spec basis: none on admin identity -- the spec said nothing about who the admins are or how they log in; searched login, admin user/role/identity, resolved_by, edited_by, approve. Today's build per `.claude/rules/admin-route-auth.md`: one shared `ADMIN_AUTH_TOKEN` and a free-typed admin name). **The admins are the owner plus one or two trusted people. Each admin has a personal login, and every admin write (a value picked or typed, a value cleared, a conflict or suggestion settled) records that admin's name. All admins have the same powers; there is no approval step.** Because OD-102 puts the Edit control on the public IPO page, the public site must recognise a logged-in admin; a reader session never sees an admin control. Approval roles (C) can be added later on top of personal logins without reworking the write path. | 2026-09-25 | §9.2 | §9.2 states personal logins, the admin name on every write, equal powers, no approval step |
+| OD-105 | *"find out what are the type of categories of fields one is that's never read from anywhere they are calculated one is which gets read in every scraping a multiple times a day and one that gets read when a new documents arrive... what I meant was the fields that uh, up gets updated when a new document is arrived not the one that gets updated daily and not the ones which are calculated"* -- 2026-09-25, the owner's clarification of OD-102's scope, given in reply to a question about how an admin value behaves on live fields (Spec basis: §1 classes, OD-19, OD-56, OD-66, OD-73, E-1 §1.2.1). **The admin per-source editing of OD-102 covers the fields read when a new document arrives -- class D, 162 fields. It does NOT cover the fields read many times a day (class X subscription and demand graph, W grey market, M market prices, and `ipos.status` -- 19 fields) nor the calculated fields (class C, 13), which are read-only.** So the lock question for live fields does not arise: they are not admin-editable. Class I stays read-only except its three `ADMIN` settings. The E-1 timetable fields other than status -- all ten of E-1 minus status (read from the exchange, never from the document) fit none of the three groups and are asked separately (§9.5). | 2026-09-25 | §9.2 | §9.2 item 7 limits the per-source edit view to class D, lists X, W, M and status as not editable and C as read-only |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -3895,15 +3896,16 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
 6. **Who (OD-104).** The owner plus one or two trusted people, each with a personal login. Every
    admin write records the admin's name. All admins have the same powers; no approval step. The
    public site recognises a logged-in admin so the Edit control can appear on the IPO page.
-7. **Which fields the edit view offers, by the §1 class of each field (settled by §1 and Appendix A,
-   no owner question).** Class **C** (13, computed) is read-only: it is OD-102's "derived", and
-   Appendix A gives each one's formula. Class **I** (37, pipeline bookkeeping) is read-only, except
-   the three Appendix A ranks `ADMIN` -- `ipos.rating_override`, `ipos.scraper_locked`,
-   `registrars.active` -- which are admin settings with no source, so the edit view shows only the
-   free-text or on/off control for them. Classes **D** (162) and **T** (10) settle (OD-73) and get
-   the full per-source panel. The fields that are never settled -- `ipos.status`, class **X**
-   (subscription, demand graph), **W** (grey market), **M** (market prices) -- are the open question
-   in §9.5.
+7. **Which fields the edit view offers (OD-105, using the §1 classes).**
+
+   | Group (owner's words) | §1 class | Fields | Admin editing |
+   |---|---|---:|---|
+   | read when a new document arrives | D | 162 | **yes -- the full per-source panel (OD-102)** |
+   | read many times a day | X, W, M and `ipos.status` | 19 | no |
+   | calculated | C | 13 | no (read-only; OD-102 "derived") |
+   | the exchange timetable, never from the document (E-1) | T except status | 9 | open, §9.5 |
+   | our own bookkeeping | I | 37 | no, except the three `ADMIN` settings (`ipos.rating_override`, `ipos.scraper_locked`, `registrars.active`), which show a plain value or on/off control |
+
 
 ### 9.3 Where the per-source values come from (OD-103)
 
@@ -3929,8 +3931,9 @@ No owner question was needed here; each point follows from a decision already ma
 
 ### 9.5 Still open (asked one at a time, recorded here as answered)
 
-How an admin value behaves on a field that is never settled (status, subscription, demand graph,
-grey market, market prices); who can add or remove an admin; which tables and list-shaped data (lead managers, promoters,
+Whether the E-1 timetable fields other than status (open, close, listing, allotment, basis-of-allotment, refund
+and credit dates, listing exchanges, anchor bid date) are admin-editable, and if so what a later
+exchange change does to an admin value; who can add or remove an admin; which tables and list-shaped data (lead managers, promoters,
 financial rows) are editable, including adding and removing rows; rules for a typed value (units,
 checks, a required reason or evidence); what happens when a better document arrives after an admin
 save; undo and history; when a save reaches the public page; what a reader sees for an admin value;
