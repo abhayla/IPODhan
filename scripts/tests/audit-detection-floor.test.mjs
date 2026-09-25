@@ -307,6 +307,49 @@ test('(OD-61) does not false-positive on an unrelated field whose name merely co
   assert.equal(r.fail, false, 'the JSON-key regex requires a quoted key immediately followed by a colon, not a substring anywhere in the body');
 });
 
+// #897: e_verdict_leak_sweep was red 4 nights on prod on the SAME offender, /api/performance/
+// mainboard, because ipoScore.verdict is the public IPO RATING (rendered by IPOCard.tsx's
+// VerdictBadge) -- a different concept from OD-61's consensus verdict that happens to share a key
+// name. Failing test first, on the REAL classifyVerdictLeak: the actual production response shape
+// must PASS.
+test('(#897) PASSES the real /api/performance/mainboard shape -- ipoScore.verdict is the public IPO rating, not an OD-61 consensus verdict', () => {
+  const body = JSON.stringify({
+    success: true,
+    data: [
+      {
+        id: 1,
+        companyName: 'Example Co',
+        ipoScore: { verdict: 'SKIP', confidence: 'HIGH', reasoning: 'Poor (Avoid)', totalScore: 32 },
+      },
+      { id: 2, companyName: 'Second Co', ipoScore: null },
+    ],
+  });
+  const r = classifyVerdictLeak('/api/performance/mainboard', body);
+  assert.equal(r.fail, false, 'ipoScore.verdict is allow-listed BY PATH -- it is the public rating, not an OD-61 leak');
+});
+
+test('(#897) still FAILS an OD-61 consensus verdict sitting BESIDE an unrelated, innocent ipoScore object in the same payload', () => {
+  const body = JSON.stringify({
+    success: true,
+    data: [
+      { id: 1, companyName: 'Example Co', ipoScore: { verdict: 'SKIP', confidence: 'HIGH' } },
+    ],
+    consensus: { verdict: 'DISPUTED', witnesses: [{ source: 'NSE', value: 1000 }, { source: 'BSE', value: 900 }] },
+  });
+  const r = classifyVerdictLeak('/api/performance/mainboard', body);
+  assert.equal(r.fail, true, 'the ipoScore allow-list must not swallow a REAL OD-61 leak living elsewhere in the same body — mutation guard');
+});
+
+test('(#897) mutation guard: a "witnesses" key planted directly on ipoScore itself still FAILS (the allow-list is path-scoped, not key-scoped)', () => {
+  const body = JSON.stringify({
+    success: true,
+    data: [{ id: 1, ipoScore: { verdict: 'SKIP', confidence: 'HIGH' } }],
+    witnesses: [{ source: 'NSE', value: 1000 }],
+  });
+  const r = classifyVerdictLeak('/api/performance/mainboard', body);
+  assert.equal(r.fail, true);
+});
+
 // ---- (f) conflict noise ratio -------------------------------------------------
 
 test('(f) FAILS on an 86%-noise ratio (round-7 shape)', () => {
