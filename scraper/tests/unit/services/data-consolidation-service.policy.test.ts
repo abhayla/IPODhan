@@ -490,12 +490,12 @@ describe('item 3 S1b: the writer decides a FLIPPED field from resolveFieldSource
     }
   });
 
-  it('(xiv) the refusal is keyed on the MANIFEST code, not the raw writer string: a DRHP write (manifest DOC) on subscriptions.qib_subscription is refused while raw-string comparison would miss it', async () => {
-    // subscriptions.qib_subscription marks DOC capable:false. The writer source is `DRHP`; the
+  it('(xiv) the refusal is keyed on the MANIFEST code, not the raw writer string: a DRHP write (manifest DOC) on listing_performance.listing_price is refused (subscriptions are job-owned since OD-100) while raw-string comparison would miss it', async () => {
+    // listing_performance.listing_price marks DOC capable:false. The writer source is `DRHP`; the
     // manifest code is `DOC`. A guard comparing raw strings would look up `policy.incapable.DRHP`,
     // find nothing, and let the value through. This test dies on that mistake.
     const { resolveFieldSourcePolicy: resolve } = await import('../../../src/config/field-source-policy.js');
-    const policy = resolve({ table: 'subscriptions', column: 'qib_subscription', ipoType: 'MAINBOARD' });
+    const policy = resolve({ table: 'listing_performance', column: 'listing_price', ipoType: 'MAINBOARD' });
     expect(Object.keys(policy.incapable)).toContain('DOC');
     expect(Object.keys(policy.incapable)).not.toContain('DRHP');
 
