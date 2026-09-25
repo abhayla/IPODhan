@@ -249,6 +249,13 @@ jobs:
           node --test scripts/tests/check-drizzle-iso-string.test.mjs
           node scripts/ci/check-drizzle-iso-string.mjs
 
+      - name: E2E env shape (#504, #81 — DB env + webServer gating)
+        # #504: ci.yml's "Run E2E tests" step must carry DATABASE_URL (mirrors the
+        # integration step) or its webServer boots with no DB and both its passes
+        # and failures are meaningless. #81: playwright.config.ts must not boot a
+        # local webServer when PROD_BASE_URL is set (prod-verify sweep).
+        run: node --test scripts/tests/e2e-env-shape.test.mjs
+
       - name: Manifest unit follows stored unit (F-156, item 11 — detection check for threshold-in-one-unit-column-in-another)
         # 2nd occurrence of the class: the manifest's `unit` and the admin validators trusted a
         # wrong tag on 12 real columns for weeks. This proves the manifest's unit matches the

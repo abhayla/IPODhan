@@ -141,9 +141,14 @@ jobs:
         working-directory: ./web
 
       - name: Run E2E tests
+        # #504: playwright.config.ts's webServer boots `npm run dev`, which
+        # inherits this step's env — DATABASE_URL is required for the same
+        # reason the sibling "Run integration tests" step above sets it, or
+        # every pass and every failure here is meaningless (app has no DB).
         run: npm run test:e2e
         working-directory: ./web
         env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
           REDIS_URL: redis://localhost:6379
 
       - name: Build
