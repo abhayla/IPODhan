@@ -52,16 +52,33 @@
  *   npx tsx scripts/repair-retire-manifest-removed-fields.ts --expect-db ipodhan_staging --apply \
  *     --undo scripts/state/repair-retire-manifest-removed-fields-<ts>.json
  *
- * Exit codes: 0 done (or dry run / nothing to repair); 1 usage/guard refusal.
+ * `--ipo <uuid>` (#1045, repeatable or comma-separated) scopes the read/apply
+ * to only the named IPO(s) — every row read, ledgered and deleted is filtered
+ * by `ipo_id`. Omit it for today's DB-wide default. A test spawning this tool
+ * against the shared `ipodhan_test` database MUST pass its own fixture's
+ * `--ipo` so it cannot touch another integration file's rows running in
+ * parallel (issue #1045).
+ *
+ * Exit codes: 0 done (or dry run / nothing to repair); 1 usage/guard refusal;
+ * 2 an `--ipo` value failed uuid validation, or `--ipo`/`--ipo=` was present
+ * but yielded no usable uuid (#1053 review round 2).
  */
 import '../../scripts/lib/alias-preflight-auto.mjs';
 import { db } from '@ipodhan/shared';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadFieldManifest } from '../src/config/field-manifest-loader.js';
-import { openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike } from './lib/repair-tool.js';
+import {
+  buildIpoScopeCondition,
+  describeIpoScope,
+  openRepairDb,
+  queryCurrentDatabase,
+  resolveIpoScope,
+  writeLedgerFile,
+  type ExecuteLike,
+} from './lib/repair-tool.js';
 
 const TOOL = 'repair-retire-manifest-removed-fields';
 const SCRAPER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -71,16 +88,26 @@ export interface Cli {
   allowProd: boolean;
   expectDb: string | null;
   undoLedger: string | null;
+  /** #1045: `--ipo <uuid>` (repeatable or comma-separated); empty = unscoped, today's DB-wide default. */
+  ipoIds: string[];
+  /** `--ipo` values that failed uuid validation; a non-empty list refuses the run (exit 2). */
+  invalidIpo: string[];
+  /** `--ipo`/`--ipo=` present in argv but yielded zero usable ids (#1053 MAJOR-1); refuses the run (exit 2). */
+  unusableIpo: boolean;
 }
 
 export function parseArgs(argv: readonly string[]): Cli {
   const at = argv.indexOf('--expect-db');
   const undoAt = argv.indexOf('--undo');
+  const ipoScope = resolveIpoScope(argv, '--ipo');
   return {
     apply: argv.includes('--apply'),
     allowProd: argv.includes('--allow-prod'),
     expectDb: at >= 0 && argv[at + 1] && !argv[at + 1].startsWith('--') ? argv[at + 1] : null,
     undoLedger: undoAt >= 0 && argv[undoAt + 1] && !argv[undoAt + 1].startsWith('--') ? argv[undoAt + 1] : null,
+    ipoIds: ipoScope.ipoIds,
+    invalidIpo: ipoScope.invalid,
+    unusableIpo: ipoScope.unusable,
   };
 }
 
@@ -169,6 +196,7 @@ export async function run(deps: RunDeps): Promise<RunResult> {
     return { exitCode: 1, refusedAt: 'prod-guard', wrote: false, deleted: 0, restored: 0, removedFieldKeys: [] };
   }
   log(`${TOOL}: schema/db check passed on "${actual}"`);
+  log(`${TOOL}: scope = ${describeIpoScope(cli.ipoIds ?? [])}`);
 
   // --undo: restore from a prior ledger, never computed against the current manifest.
   if (cli.undoLedger) {
@@ -238,18 +266,44 @@ function fieldKeyToTableField(key: string): { tableName: string; fieldName: stri
   return { tableName: key.slice(0, dot), fieldName: key.slice(dot + 1) };
 }
 
+/**
+ * Pure (no DB) query builders, exported so review round 2's compiled-SQL
+ * scope test can assert the `ipo_id = ANY(...)` clause is present when scoped
+ * and absent when not, without executing against a database (#1053 MAJOR-2).
+ */
+export function buildSnapshotQuery(ipoScope: SQL | null, tableName: string, fieldName: string): SQL {
+  return ipoScope
+    ? sql`SELECT row_to_json(t) AS j FROM ipo_field_plan t WHERE table_name = ${tableName} AND field_name = ${fieldName} AND ${ipoScope}`
+    : sql`SELECT row_to_json(t) AS j FROM ipo_field_plan t WHERE table_name = ${tableName} AND field_name = ${fieldName}`;
+}
+
+export function buildExistingFieldKeysQuery(ipoScope: SQL | null): SQL {
+  return ipoScope
+    ? sql`SELECT DISTINCT table_name, field_name FROM ipo_field_plan WHERE ${ipoScope}`
+    : sql`SELECT DISTINCT table_name, field_name FROM ipo_field_plan`;
+}
+
 async function main(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2));
+  if (cli.invalidIpo.length > 0) {
+    console.error(`${TOOL}: --ipo value(s) are not valid uuids, refusing: ${cli.invalidIpo.join(', ')}`);
+    process.exit(2);
+  }
+  if (cli.unusableIpo) {
+    console.error(
+      `${TOOL}: --ipo was given but no usable uuid could be parsed from it (check quoting, placement or a missing value) — refusing rather than silently falling back to ALL IPOs DB-wide.`
+    );
+    process.exit(2);
+  }
   const dbLike = db as unknown as ExecuteLike;
   const realDb = db as unknown as { transaction: <T>(fn: (tx: ExecuteLike) => Promise<T>) => Promise<T> };
+  const ipoScope = buildIpoScopeCondition(cli.ipoIds);
 
   async function readSnapshot(tx: ExecuteLike, fieldKeys: readonly string[]): Promise<Record<string, unknown>[]> {
     const rows: Record<string, unknown>[] = [];
     for (const key of fieldKeys) {
       const { tableName, fieldName } = fieldKeyToTableField(key);
-      const res = await tx.execute(
-        sql`SELECT row_to_json(t) AS j FROM ipo_field_plan t WHERE table_name = ${tableName} AND field_name = ${fieldName}`
-      );
+      const res = await tx.execute(buildSnapshotQuery(ipoScope, tableName, fieldName));
       const resultRows = (res as unknown as { rows: { j: Record<string, unknown> }[] }).rows ?? [];
       rows.push(...resultRows.map((r) => r.j));
     }
@@ -261,7 +315,7 @@ async function main(): Promise<void> {
     dbLike,
     loadManifest: loadFieldManifest,
     readExistingFieldKeys: async () => {
-      const res = await dbLike.execute(sql`SELECT DISTINCT table_name, field_name FROM ipo_field_plan`);
+      const res = await dbLike.execute(buildExistingFieldKeysQuery(ipoScope));
       const rows = (res as unknown as { rows: { table_name: string; field_name: string }[] }).rows ?? [];
       return rows.map((r) => `${r.table_name}.${r.field_name}`);
     },

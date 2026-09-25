@@ -13,10 +13,16 @@ import {
   alreadyRepairedKey,
   assertNoSchemaDrift,
   buildAlreadyRepairedSet,
+  buildIpoScopeCondition,
+  collectFlagValues,
   decideProdWriteRefusal,
   decideSchemaDriftRefusal,
+  describeIpoScope,
+  flagIsPresent,
   openRepairDb,
+  parseIpoScope,
   probeFieldSourcesRowKeyColumn,
+  resolveIpoScope,
   PRODUCTION_DATABASE_NAME,
   queryCurrentDatabase,
   readFieldSource,
@@ -315,6 +321,182 @@ describe('writeLedgerFile', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('#1045 — shared --ipo scope (test-isolation class)', () => {
+  const UUID_A = '00000000-0000-4000-9161-000000000001';
+  const UUID_B = '00000000-0000-4000-9161-000000000002';
+
+  describe('collectFlagValues', () => {
+    it('collects every occurrence of a repeatable flag', () => {
+      expect(collectFlagValues(['--ipo', UUID_A, '--ipo', UUID_B, '--apply'], '--ipo')).toEqual([UUID_A, UUID_B]);
+    });
+
+    it('returns empty when the flag is absent', () => {
+      expect(collectFlagValues(['--apply'], '--ipo')).toEqual([]);
+    });
+
+    it('does not swallow the next flag as a value', () => {
+      expect(collectFlagValues(['--ipo', '--apply'], '--ipo')).toEqual([]);
+    });
+
+    it('MUTATION (#1053 MAJOR-1): parses the --flag=value single-token form', () => {
+      expect(collectFlagValues([`--ipo=${UUID_A}`], '--ipo')).toEqual([UUID_A]);
+    });
+  });
+
+  describe('parseIpoScope', () => {
+    it('MUTATION: a flag unknown/ignored turns this red — recognizes a single --ipo value', () => {
+      expect(parseIpoScope([UUID_A])).toEqual({ ipoIds: [UUID_A], invalid: [] });
+    });
+
+    it('splits comma-separated values from one --ipo', () => {
+      expect(parseIpoScope([`${UUID_A},${UUID_B}`])).toEqual({ ipoIds: [UUID_A, UUID_B], invalid: [] });
+    });
+
+    it('merges repeated --ipo occurrences and dedupes', () => {
+      expect(parseIpoScope([UUID_A, UUID_A, UUID_B])).toEqual({ ipoIds: [UUID_A, UUID_B], invalid: [] });
+    });
+
+    it('reports a non-uuid value as invalid rather than silently dropping or accepting it', () => {
+      expect(parseIpoScope(['not-a-uuid'])).toEqual({ ipoIds: [], invalid: ['not-a-uuid'] });
+    });
+
+    it('is unscoped (empty ipoIds) when no --ipo is given', () => {
+      expect(parseIpoScope([])).toEqual({ ipoIds: [], invalid: [] });
+    });
+  });
+
+  describe('describeIpoScope', () => {
+    it('names ALL IPOs when unscoped', () => {
+      expect(describeIpoScope([])).toMatch(/ALL IPOs/);
+    });
+
+    it('names the scoped ids so the tool header states what it will touch', () => {
+      expect(describeIpoScope([UUID_A, UUID_B])).toContain(UUID_A);
+      expect(describeIpoScope([UUID_A, UUID_B])).toContain(UUID_B);
+    });
+  });
+
+  /**
+   * #1053 review round 2, MAJOR-1: every measured form where `--ipo` is
+   * PRESENT in argv but `collectFlagValues`/`parseIpoScope` alone yield zero
+   * ids and zero invalid tokens — indistinguishable, at the values level,
+   * from "the flag was never given". A caller trusting only `ipoIds.length
+   * === 0` treats each of these as unscoped/DB-wide, which for a --apply
+   * repair tool means "every candidate row in the database". `resolveIpoScope`
+   * must flag all five as `unusable: true` by inspecting argv directly.
+   */
+  describe('resolveIpoScope (#1053 MAJOR-1: present-but-unusable --ipo)', () => {
+    it('MUTATION: is unusable when --ipo is immediately followed by another flag', () => {
+      expect(resolveIpoScope(['--ipo', '--apply'])).toEqual({ ipoIds: [], invalid: [], unusable: true });
+    });
+
+    it('MUTATION: is unusable when --ipo is the trailing argv token', () => {
+      expect(resolveIpoScope(['--expect-db', 'ipodhan_test', '--ipo'])).toEqual({
+        ipoIds: [],
+        invalid: [],
+        unusable: true,
+      });
+    });
+
+    it('MUTATION: is unusable when --ipo is given an empty string', () => {
+      expect(resolveIpoScope(['--ipo', ''])).toEqual({ ipoIds: [], invalid: [], unusable: true });
+    });
+
+    it('MUTATION: is unusable when --ipo is given a bare comma', () => {
+      expect(resolveIpoScope(['--ipo', ','])).toEqual({ ipoIds: [], invalid: [], unusable: true });
+    });
+
+    it('MUTATION: parses the --ipo=<uuid> single-token form rather than treating it as absent', () => {
+      expect(resolveIpoScope([`--ipo=${UUID_A}`])).toEqual({ ipoIds: [UUID_A], invalid: [], unusable: false });
+    });
+
+    it('is NOT unusable, and unscoped, when --ipo is never given at all', () => {
+      expect(resolveIpoScope(['--expect-db', 'ipodhan_test', '--apply'])).toEqual({
+        ipoIds: [],
+        invalid: [],
+        unusable: false,
+      });
+    });
+
+    it('is NOT unusable when --ipo carries a real uuid', () => {
+      expect(resolveIpoScope(['--ipo', UUID_A])).toEqual({ ipoIds: [UUID_A], invalid: [], unusable: false });
+    });
+
+    it('reports invalid (not unusable) when --ipo carries a non-uuid token', () => {
+      expect(resolveIpoScope(['--ipo', 'not-a-uuid'])).toEqual({ ipoIds: [], invalid: ['not-a-uuid'], unusable: false });
+    });
+  });
+
+  describe('flagIsPresent', () => {
+    it('is true for the bare flag', () => {
+      expect(flagIsPresent(['--ipo', UUID_A], '--ipo')).toBe(true);
+    });
+
+    it('is true for the --flag=value form', () => {
+      expect(flagIsPresent([`--ipo=${UUID_A}`], '--ipo')).toBe(true);
+    });
+
+    it('is false when the flag never appears', () => {
+      expect(flagIsPresent(['--apply'], '--ipo')).toBe(false);
+    });
+  });
+
+  /**
+   * Flatten a drizzle SQL fragment to the literal text plus bound params.
+   * `Param` (a `sql.param()` binding) and `StringChunk` (literal text, including
+   * a nested `sql.raw()` fragment) both carry a `.value` array, so they are
+   * told apart by constructor name — never by `Array.isArray(node.value)`
+   * alone, which matches both and would silently read a bound array param as
+   * literal text.
+   */
+  function flattenSql(node: any, out: { text: string[]; params: unknown[] } = { text: [], params: [] }) {
+    if (node == null) return out;
+    if (typeof node !== 'object') return out;
+    if (Array.isArray(node)) {
+      for (const n of node) flattenSql(n, out);
+      return out;
+    }
+    if (Array.isArray(node.queryChunks)) {
+      for (const chunk of node.queryChunks) flattenSql(chunk, out);
+      return out;
+    }
+    if (node.constructor?.name === 'Param') {
+      out.params.push(node.value);
+      return out;
+    }
+    if (Array.isArray(node.value)) {
+      out.text.push(node.value.join(''));
+      return out;
+    }
+    if ('value' in node) {
+      out.params.push(node.value);
+      return out;
+    }
+    return out;
+  }
+
+  describe('buildIpoScopeCondition — the candidate-row filter itself', () => {
+    it('MUTATION: an ignored --ipo turns this red — returns null (no filter) when unscoped', () => {
+      expect(buildIpoScopeCondition([])).toBeNull();
+    });
+
+    it('builds an `ipo_id = ANY(...)` condition binding the ids as ONE array param, not a tuple', () => {
+      const cond = buildIpoScopeCondition([UUID_A, UUID_B]);
+      const flat = flattenSql(cond);
+      expect(flat.text.join('')).toContain('ipo_id = ANY(');
+      expect(flat.text.join('')).toContain('::uuid[]');
+      // exactly one bound param carrying the whole id array — never one param per id
+      expect(flat.params).toEqual([[UUID_A, UUID_B]]);
+    });
+
+    it('qualifies the column with a caller-supplied table alias (e.g. a joined query)', () => {
+      const cond = buildIpoScopeCondition([UUID_A], 'p.ipo_id');
+      const flat = flattenSql(cond);
+      expect(flat.text.join('')).toContain('p.ipo_id = ANY(');
+    });
   });
 });
 

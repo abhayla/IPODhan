@@ -32,6 +32,9 @@ const ID = {
   suppliedNormal: '00000000-0000-4000-9161-000000000005',
 };
 const IDS = Object.values(ID);
+// #1045: scope every non-undo run to this file's own fixture IPOs so a
+// parallel integration file's rows are never read, ledgered or reopened.
+const IDS_SCOPE = IDS.join(',');
 const DOC_STALE = '00000000-0000-4000-9161-0000000000d1';
 const DOC_NONDOC = '00000000-0000-4000-9161-0000000000d2';
 const DOC_SUPPLIED_STALE = '00000000-0000-4000-9161-0000000000d4';
@@ -123,7 +126,7 @@ describe.skipIf(!DATABASE_URL)(`repair-reopen-stale-doc-nay on real Postgres (${
 
   it('dry run selects only the stale row (offer doc extracted before last_attempt_at)', () => {
     const before = { }; // no-op placeholder, snapshot compared after apply instead
-    const r = run(['--expect-db', 'ipodhan_test']);
+    const r = run(['--expect-db', 'ipodhan_test', '--ipo', IDS_SCOPE]);
     expect(r.code, r.out).toBe(0);
     expect(r.out).toMatch(/1 stale DOC NOT_AVAILABLE_YET row\(s\) on 1 IPO/);
     expect(r.out).toMatch(/f161-stale/);
@@ -134,7 +137,7 @@ describe.skipIf(!DATABASE_URL)(`repair-reopen-stale-doc-nay on real Postgres (${
 
   let ledger = '';
   it('--apply reopens only the stale row; no-doc and non-DOC rows untouched', async () => {
-    const r = run(['--expect-db', 'ipodhan_test', '--apply']);
+    const r = run(['--expect-db', 'ipodhan_test', '--apply', '--ipo', IDS_SCOPE]);
     expect(r.code, r.out).toBe(0);
     ledger = r.out.match(/ledger \(before-image[^)]*\) written to (\S+\.json)/)![1];
     const after = await snapshot();
@@ -145,7 +148,7 @@ describe.skipIf(!DATABASE_URL)(`repair-reopen-stale-doc-nay on real Postgres (${
   }, 60_000);
 
   it('re-running --apply is a no-op (already reopened rows no longer match the cause)', () => {
-    const r = run(['--expect-db', 'ipodhan_test', '--apply']);
+    const r = run(['--expect-db', 'ipodhan_test', '--apply', '--ipo', IDS_SCOPE]);
     expect(r.code, r.out).toBe(0);
     expect(r.out).toMatch(/0 stale DOC NOT_AVAILABLE_YET row\(s\)/);
   }, 60_000);
@@ -162,7 +165,7 @@ describe.skipIf(!DATABASE_URL)(`repair-reopen-stale-doc-nay on real Postgres (${
   // extracted before last_attempt_at) -- a row rank 2 (CHITTORGARH) settled
   // while DOC's answer was the pre-#982 false negative.
   it('--settled-by-lower-rank dry run selects only the SUPPLIED-stale row', () => {
-    const r = run(['--expect-db', 'ipodhan_test', '--settled-by-lower-rank']);
+    const r = run(['--expect-db', 'ipodhan_test', '--settled-by-lower-rank', '--ipo', IDS_SCOPE]);
     expect(r.code, r.out).toBe(0);
     expect(r.out).toMatch(/1 settled-by-lower-rank SUPPLIED row\(s\) on 1 IPO/);
     expect(r.out).toMatch(/f161-supplied-stale/);
@@ -174,7 +177,7 @@ describe.skipIf(!DATABASE_URL)(`repair-reopen-stale-doc-nay on real Postgres (${
   }, 60_000);
 
   it('base flag (no --settled-by-lower-rank) never selects a SUPPLIED row', () => {
-    const r = run(['--expect-db', 'ipodhan_test']);
+    const r = run(['--expect-db', 'ipodhan_test', '--ipo', IDS_SCOPE]);
     expect(r.code, r.out).toBe(0);
     // f161-stale was restored to NOT_AVAILABLE_YET by the --undo above, so it
     // is expected here; the two SUPPLIED rows must never be.
@@ -187,7 +190,7 @@ describe.skipIf(!DATABASE_URL)(`repair-reopen-stale-doc-nay on real Postgres (${
     const before = await snapshot();
     expect(before['f161-supplied-stale']).toMatchObject({ state: 'SUPPLIED', chosenSource: 'CHITTORGARH' });
 
-    const r = run(['--expect-db', 'ipodhan_test', '--settled-by-lower-rank', '--apply']);
+    const r = run(['--expect-db', 'ipodhan_test', '--settled-by-lower-rank', '--apply', '--ipo', IDS_SCOPE]);
     expect(r.code, r.out).toBe(0);
     suppliedLedger = r.out.match(/ledger \(before-image[^)]*\) written to (\S+\.json)/)![1];
 
@@ -201,7 +204,7 @@ describe.skipIf(!DATABASE_URL)(`repair-reopen-stale-doc-nay on real Postgres (${
   }, 60_000);
 
   it('re-running --settled-by-lower-rank --apply is a no-op (row no longer SUPPLIED)', () => {
-    const r = run(['--expect-db', 'ipodhan_test', '--settled-by-lower-rank', '--apply']);
+    const r = run(['--expect-db', 'ipodhan_test', '--settled-by-lower-rank', '--apply', '--ipo', IDS_SCOPE]);
     expect(r.code, r.out).toBe(0);
     expect(r.out).toMatch(/0 settled-by-lower-rank SUPPLIED row\(s\)/);
   }, 60_000);

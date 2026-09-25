@@ -5,14 +5,18 @@
 // flag, a prod db) and asserting the refusal, plus the apply/undo write
 // order.
 import { describe, it, expect, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import {
   computeRemovedFieldKeys,
   parseArgs,
   run,
+  buildSnapshotQuery,
+  buildExistingFieldKeysQuery,
   type Cli,
   type RunDeps,
   type LedgerPayload,
 } from '../../../scripts/repair-retire-manifest-removed-fields.js';
+import { buildIpoScopeCondition } from '../../../scripts/lib/repair-tool.js';
 
 describe('computeRemovedFieldKeys', () => {
   it('returns a field key present in ipo_field_plan but absent from the manifest', () => {
@@ -37,19 +41,91 @@ describe('computeRemovedFieldKeys', () => {
 describe('parseArgs', () => {
   it('parses --expect-db, --apply, --allow-prod and --undo', () => {
     const cli = parseArgs(['--expect-db', 'ipodhan_staging', '--apply', '--allow-prod', '--undo', 'ledger.json']);
-    expect(cli).toEqual({ apply: true, allowProd: true, expectDb: 'ipodhan_staging', undoLedger: 'ledger.json' });
+    expect(cli).toEqual({
+      apply: true,
+      allowProd: true,
+      expectDb: 'ipodhan_staging',
+      undoLedger: 'ledger.json',
+      ipoIds: [],
+      invalidIpo: [],
+      unusableIpo: false,
+    });
   });
 
   it('defaults to a dry run with no undo when only --expect-db is given', () => {
     const cli = parseArgs(['--expect-db', 'ipodhan_test']);
-    expect(cli).toEqual({ apply: false, allowProd: false, expectDb: 'ipodhan_test', undoLedger: null });
+    expect(cli).toEqual({
+      apply: false,
+      allowProd: false,
+      expectDb: 'ipodhan_test',
+      undoLedger: null,
+      ipoIds: [],
+      invalidIpo: [],
+      unusableIpo: false,
+    });
+  });
+
+  // #1045: red before the fix — --ipo did not exist, so the flag's value was
+  // silently ignored (parsed nowhere) instead of scoping the run.
+  it('MUTATION: an unrecognized/ignored --ipo turns this red — parses a single --ipo value', () => {
+    const cli = parseArgs(['--expect-db', 'ipodhan_test', '--ipo', '00000000-0000-4000-9f61-000000000001']);
+    expect(cli.ipoIds).toEqual(['00000000-0000-4000-9f61-000000000001']);
+    expect(cli.invalidIpo).toEqual([]);
+  });
+
+  it('parses repeated --ipo flags and comma-separated values together', () => {
+    const cli = parseArgs([
+      '--expect-db', 'ipodhan_test',
+      '--ipo', '00000000-0000-4000-9f61-000000000001,00000000-0000-4000-9f61-000000000002',
+      '--ipo', '00000000-0000-4000-9f61-000000000003',
+    ]);
+    expect(cli.ipoIds).toEqual([
+      '00000000-0000-4000-9f61-000000000001',
+      '00000000-0000-4000-9f61-000000000002',
+      '00000000-0000-4000-9f61-000000000003',
+    ]);
+  });
+
+  it('reports a non-uuid --ipo value as invalid rather than silently accepting or dropping it', () => {
+    const cli = parseArgs(['--expect-db', 'ipodhan_test', '--ipo', 'not-a-uuid']);
+    expect(cli.invalidIpo).toEqual(['not-a-uuid']);
+    expect(cli.ipoIds).toEqual([]);
+  });
+
+  // #1053 review round 2 MAJOR-1: a present-but-unusable --ipo must never
+  // read the same as "no --ipo given" — each of these fell back to unscoped
+  // (ipoIds: []) before the fix, which for --apply means every row DB-wide.
+  it.each([
+    ['--ipo followed by another flag', ['--expect-db', 'ipodhan_test', '--ipo', '--apply']],
+    ['a trailing --ipo with no value', ['--expect-db', 'ipodhan_test', '--ipo']],
+    ['--ipo given an empty string', ['--expect-db', 'ipodhan_test', '--ipo', '']],
+    ['--ipo given a bare comma', ['--expect-db', 'ipodhan_test', '--ipo', ',']],
+  ])('MUTATION: unusableIpo is true for %s', (_label, argv) => {
+    const cli = parseArgs(argv);
+    expect(cli.unusableIpo).toBe(true);
+    expect(cli.ipoIds).toEqual([]);
+    expect(cli.invalidIpo).toEqual([]);
+  });
+
+  it('MUTATION: parses the --ipo=<uuid> single-token form instead of treating it as absent', () => {
+    const cli = parseArgs(['--expect-db', 'ipodhan_test', '--ipo=00000000-0000-4000-9f61-000000000001']);
+    expect(cli.ipoIds).toEqual(['00000000-0000-4000-9f61-000000000001']);
+    expect(cli.unusableIpo).toBe(false);
   });
 });
 
 const REMOVED_ROW = { id: 'row-1', table_name: 'gmp_records', field_name: 'gmp', state: 'PENDING' };
 
 function baseCli(overrides: Partial<Cli> = {}): Cli {
-  return { apply: false, allowProd: false, expectDb: 'ipodhan_staging', undoLedger: null, ...overrides };
+  return {
+    apply: false,
+    allowProd: false,
+    expectDb: 'ipodhan_staging',
+    undoLedger: null,
+    ipoIds: [],
+    invalidIpo: [],
+    ...overrides,
+  };
 }
 
 function baseDeps(overrides: Partial<RunDeps> = {}): RunDeps {
@@ -255,5 +331,49 @@ describe('run — --undo', () => {
     const result = await run(deps);
     expect(result.exitCode).toBe(0);
     expect(restoreRowsInTransaction).toHaveBeenCalled();
+  });
+});
+
+/**
+ * #1053 review round 2, MAJOR-2: the compiled SQL of both reads must carry
+ * `ipo_id = ANY(...)` — bound as ONE array param — when scoped, and carry no
+ * such clause at all when unscoped. Rendered via `PgDialect().sqlToQuery`
+ * (the same text node-postgres receives), not executed against a database.
+ *
+ * MUTATION VERIFIED (2026-09-25, manually): passing `null` in place of the
+ * real `ipoScope` in `main()`'s call sites (i.e. dropping the scope
+ * condition) turns both "scoped" cases below red — `.sql` no longer contains
+ * `ipo_id = ANY(` and `.params` no longer carries the id array — while the
+ * "unscoped" cases (already `null`) stay green, confirming the assertion
+ * actually exercises the scope clause rather than passing vacuously. This is
+ * exactly the class the four green-but-wrong deletions in review round 2
+ * missed: 72 unit tests stayed green when the scope condition was removed
+ * from these query builders, because nothing asserted on the compiled SQL.
+ */
+describe('#1053 MAJOR-2: readSnapshot / readExistingFieldKeys scope condition is present in the compiled SQL', () => {
+  const UUID = '00000000-0000-4000-9f61-00000000000a';
+
+  it('buildSnapshotQuery: scoped — carries ipo_id = ANY($n::uuid[]) with the ids as one param', () => {
+    const scope = buildIpoScopeCondition([UUID]);
+    const rendered = new PgDialect().sqlToQuery(buildSnapshotQuery(scope, 'ipos', 'issue_size'));
+    expect(rendered.sql).toMatch(/ipo_id = ANY\(\$\d+::uuid\[\]\)/);
+    expect(rendered.params).toContainEqual([UUID]);
+  });
+
+  it('buildSnapshotQuery: unscoped (null) — carries no ANY(...) scope clause at all', () => {
+    const rendered = new PgDialect().sqlToQuery(buildSnapshotQuery(null, 'ipos', 'issue_size'));
+    expect(rendered.sql).not.toMatch(/ipo_id = ANY\(/);
+  });
+
+  it('buildExistingFieldKeysQuery: scoped — carries ipo_id = ANY($n::uuid[]) with the ids as one param', () => {
+    const scope = buildIpoScopeCondition([UUID]);
+    const rendered = new PgDialect().sqlToQuery(buildExistingFieldKeysQuery(scope));
+    expect(rendered.sql).toMatch(/ipo_id = ANY\(\$\d+::uuid\[\]\)/);
+    expect(rendered.params).toContainEqual([UUID]);
+  });
+
+  it('buildExistingFieldKeysQuery: unscoped (null) — carries no ANY(...) scope clause at all', () => {
+    const rendered = new PgDialect().sqlToQuery(buildExistingFieldKeysQuery(null));
+    expect(rendered.sql).not.toMatch(/ipo_id = ANY\(/);
   });
 });
