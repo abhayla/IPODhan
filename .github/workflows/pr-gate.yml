@@ -245,6 +245,7 @@ jobs:
         # generator did not produce and prints the resolved-plan diff vs this PR's base sha.
         run: |
           node --test scripts/tests/check-field-manifest-current.test.mjs
+          node --test scripts/tests/no-hand-authored-capability-table.test.mjs
           node scripts/ci/check-field-manifest-current.mjs --base "${{ github.event.pull_request.base.sha }}"
 
       - name: Drizzle timestamp bind-contract gate (iso-string-bound-to-drizzle-timestamp, #954)
