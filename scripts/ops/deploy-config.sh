@@ -69,7 +69,15 @@ CONFIG_DIR="$ROOT/shared/config/$SLOT"
 MANIFEST_TARGET="$CONFIG_DIR/field-manifest.json"
 CONFIG_SHA_FILE="$CONFIG_DIR/CONFIG_SHA"
 LOG_FILE="$ROOT/shared/config/deploy-config.log"
-STATE_DIR="${DEPLOY_CONFIG_STATE_DIR:-$SCRIPT_DIR/state}"
+# #751: NOT $SCRIPT_DIR/state. On a deployed release $SCRIPT_DIR is
+# <release-dir>/scripts/ops — inside that release's OWN directory tree, and
+# deploy-linux.sh creates a fresh release dir on every deploy. Defaulting the
+# 4/day staging cap counter there meant it reset every time a new release was
+# cut in between staging config-only deploys. $ROOT/shared/config/state is a
+# sibling of the $ROOT/shared/config/<slot>/ dirs this script already writes
+# into release-independently, so it persists across releases the same way
+# they do. DEPLOY_CONFIG_STATE_DIR remains the test/override escape hatch.
+STATE_DIR="${DEPLOY_CONFIG_STATE_DIR:-$ROOT/shared/config/state}"
 
 # ---------------------------------------------------------------- prod-guard
 if [ "$SLOT" = "prod" ] && [ "$OWNERS_WORD" -ne 1 ]; then

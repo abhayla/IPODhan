@@ -734,6 +734,66 @@ STUBEOF
     fail "case15: expected a 'server default' log line naming the chosen source ($OUT)"
   fi
 }
+
+# ---------------------------------------------------------------- case 16
+# #751: STATE_DIR defaults to $SCRIPT_DIR/state, and on a deployed release
+# $SCRIPT_DIR is <release-dir>/scripts/ops — INSIDE that release's own
+# directory tree. deploy-linux.sh creates a fresh release dir on every
+# deploy, so the 4/day staging cap counter must NOT reset just because the
+# NEXT staging config-only deploy happens to run from a different release's
+# copy of this script. This case copies the real script into TWO separate
+# fake release dirs (mirroring current-staging flipping across a deploy,
+# #751's own mechanism) sharing one $ROOT, runs 4 staging deploys from
+# release 1 with NO DEPLOY_CONFIG_STATE_DIR override (the on-box, undocumented
+# default path #751 is about), then a 5th from release 2 — which must be
+# refused by the SAME cap, proving the count carried across releases.
+{
+  REPO="$(build_fixture_repo)"
+  SHA_V2="$(commit_v2_on_main "$REPO")"
+  ROOT="$(fresh_dir)"
+
+  RELEASES_ROOT="$(fresh_dir)"
+  REL1_SCRIPT_DIR="$RELEASES_ROOT/release-1/scripts/ops"
+  REL2_SCRIPT_DIR="$RELEASES_ROOT/release-2/scripts/ops"
+  mkdir -p "$REL1_SCRIPT_DIR" "$REL2_SCRIPT_DIR"
+  cp "$DEPLOY_CONFIG" "$REL1_SCRIPT_DIR/deploy-config.sh"
+  cp "$DEPLOY_CONFIG" "$REL2_SCRIPT_DIR/deploy-config.sh"
+  chmod +x "$REL1_SCRIPT_DIR/deploy-config.sh" "$REL2_SCRIPT_DIR/deploy-config.sh"
+
+  run_from_release() {
+    local script_dir="$1" run_label="$2"
+    env -u DEPLOY_CONFIG_STATE_DIR DEPLOY_CONFIG_REPO="$REPO" \
+      DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+      bash "$script_dir/deploy-config.sh" --root "$ROOT" \
+      --slot staging --sha "$SHA_V2" --reason "case16 $run_label" 2>&1
+  }
+
+  CASE16_OK=1
+  for i in 1 2 3 4; do
+    OUT16="$(run_from_release "$REL1_SCRIPT_DIR" "release-1 run $i")"
+    RC16=$?
+    if [ "$RC16" -ne 0 ]; then
+      fail "case16: release-1 run $i of 4 unexpectedly refused ($OUT16)"
+      CASE16_OK=0
+    fi
+  done
+  if [ "$CASE16_OK" -eq 1 ]; then
+    pass "case16: 4 staging runs from release-1 (default STATE_DIR, no override) all succeeded"
+  fi
+
+  OUT16_5="$(run_from_release "$REL2_SCRIPT_DIR" "release-2 run 5")"
+  RC16_5=$?
+  if [ "$RC16_5" -ne 0 ]; then
+    pass "case16: 5th staging run, from a DIFFERENT release dir, is refused by the same cap (#751 — state persists across releases)"
+  else
+    fail "case16: expected the 5th staging run (from release-2) to be refused by release-1's cap, got exit 0 — STATE_DIR reset across releases (#751)"
+  fi
+  if printf '%s' "$OUT16_5" | grep -qi "cap"; then
+    pass "case16: cross-release refusal reason names 'cap'"
+  else
+    fail "case16: cross-release refusal did not name cap ($OUT16_5)"
+  fi
+}
 echo "---"
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL PASS"
