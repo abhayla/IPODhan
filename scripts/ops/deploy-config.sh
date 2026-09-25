@@ -39,6 +39,28 @@ OWNERS_WORD=0
 fatal() { echo "FATAL: $1" >&2; exit 1; }
 log() { echo "$1"; }
 
+# ---------------------------------------------------------------- ist-day
+# #1057: the staging cap below is a per-DAY counter the runbook and the
+# owner read as an IST day (.claude/rules/ist-timezone.md — every schedule
+# and cadence is stated and reasoned about in IST). Keying it on `date -u`
+# resets the cap at 05:30 IST instead of midnight IST. IST = UTC+5:30, no
+# DST; computed here by fixed-offset arithmetic on the epoch second (never
+# `TZ=Asia/Kolkata date`, which needs tzdata the box may not have) —
+# mirrors scripts/lib/ist-day.mjs and scripts/vps-data-audit-cron.sh's
+# DATE_TAG. DEPLOY_CONFIG_NOW (epoch seconds) lets a test inject the clock
+# instead of reading the real one.
+#
+# NOT sourced from scripts/ops/lib/ist-day.sh (#1064 added that shared copy
+# for deploy-staging-now.sh): this function stays self-contained because
+# this script is copied ALONE into a deployed release / test fixture
+# (scripts/tests/deploy-config.test.sh cases 15/16 cp only this file, no
+# sibling lib/ dir — mirrors the real #748 git-archive export), so adding a
+# `source "$SCRIPT_DIR/lib/..."` dependency would break every one of those.
+ist_today() {
+  local epoch="${DEPLOY_CONFIG_NOW:-$(date +%s)}"
+  date -u -d "@$(( epoch + 19800 ))" +%F
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --slot) SLOT="${2:-}"; shift 2 ;;
@@ -166,13 +188,13 @@ SHA="$RESOLVED_SHA"
 log "lineage OK: $SHA is on origin/main"
 
 # --------------------------------------------------------------------- cap
-# Staging: at most 4 config-deploy runs per UTC calendar day (state file
-# idiom borrowed from deploy-staging-now.sh's daily cap). Prod carries no
-# cap — the owner's word (--i-have-the-owners-word) is the gate for prod.
+# Staging: at most 4 config-deploy runs per IST calendar day (#1057; state
+# file idiom borrowed from deploy-staging-now.sh's daily cap). Prod carries
+# no cap — the owner's word (--i-have-the-owners-word) is the gate for prod.
 if [ "$SLOT" = "staging" ] && [ "$DRY_RUN" -ne 1 ]; then
   DAILY_CAP=4
   mkdir -p "$STATE_DIR"
-  TODAY="$(date -u '+%Y-%m-%d')"
+  TODAY="$(ist_today)"
   STATE_FILE="$STATE_DIR/deploy-config-staging-$TODAY.json"
   if [ -f "$STATE_FILE" ]; then
     COUNT="$(node -e '
@@ -233,7 +255,7 @@ printf '%s %s %s %s %s %s\n' "$TS" "$SLOT" "$SHA" "$SHA256" "$USER" "$REASON" >>
 
 if [ "$SLOT" = "staging" ]; then
   mkdir -p "$STATE_DIR"
-  TODAY="$(date -u '+%Y-%m-%d')"
+  TODAY="$(ist_today)"
   STATE_FILE="$STATE_DIR/deploy-config-staging-$TODAY.json"
   node -e '
     const fs = require("fs");

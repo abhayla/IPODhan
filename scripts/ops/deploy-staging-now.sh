@@ -21,6 +21,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/ist-day.sh
+source "$SCRIPT_DIR/lib/ist-day.sh"
+
 REPO="${STAGING_NOW_REPO:-abhayla/IPODhan}"
 GH_BIN="${GH_BIN:-gh}"
 STATE_DIR="${STAGING_NOW_STATE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/ops/state}"
@@ -68,7 +72,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 mkdir -p "$STATE_DIR"
-TODAY="$(date -u '+%Y-%m-%d')"
+# #1064: keyed on the IST calendar day, not the UTC one - a UTC day reset
+# the 2/day cap at 05:30 IST instead of midnight IST (this PR's own sweep
+# grep missed this quoted `date -u` form). STAGING_NOW_NOW (epoch seconds)
+# lets a test inject the clock instead of reading the real one.
+TODAY="$(ist_day_from_epoch "${STAGING_NOW_NOW:-$(date +%s)}")"
 STATE_FILE="$STATE_DIR/staging-now-$TODAY.json"
 
 # Minimal JSON array of {ts, reason, override} objects, read/written with

@@ -794,6 +794,61 @@ STUBEOF
     fail "case16: cross-release refusal did not name cap ($OUT16_5)"
   fi
 }
+# ----------------------------------------------------------------- case 17
+# #1057: the staging cap is keyed on the IST calendar day, not the UTC day.
+#  A) 23:59 IST and 00:01 IST, two minutes apart but crossing an IST
+#     midnight, land in DIFFERENT day-state files.
+#  B) 05:29 IST and 05:31 IST, crossing a UTC midnight but NOT an IST
+#     midnight, land in the SAME day-state file and both count toward the
+#     cap — this is the exact defect #1057 reports (the old `date -u` code
+#     would have treated these as different UTC days and reset the cap).
+# DEPLOY_CONFIG_NOW (epoch seconds) injects the clock so this never depends
+# on when the suite happens to run.
+{
+  REPO="$(build_fixture_repo)"
+  ROOT="$(fresh_dir)"
+  SHA_V2="$(commit_v2_on_main "$REPO")"
+  STATE_DIR="$(fresh_dir)"
+
+  NOW_2359_IST="$(date -u -d '2026-01-01T18:29:00Z' +%s)"   # 2026-01-01 23:59 IST
+  NOW_0001_IST="$(date -u -d '2026-01-01T18:31:00Z' +%s)"   # 2026-01-02 00:01 IST
+
+  DEPLOY_CONFIG_NOW="$NOW_2359_IST" DEPLOY_CONFIG_STATE_DIR="$STATE_DIR" \
+    run_deploy "$REPO" "$ROOT" --slot staging --sha "$SHA_V2" --reason "case17a 23:59 IST" >/dev/null 2>&1
+  DEPLOY_CONFIG_NOW="$NOW_0001_IST" DEPLOY_CONFIG_STATE_DIR="$STATE_DIR" \
+    run_deploy "$REPO" "$ROOT" --slot staging --sha "$SHA_V2" --reason "case17a 00:01 IST" >/dev/null 2>&1
+
+  if [ -f "$STATE_DIR/deploy-config-staging-2026-01-01.json" ] && [ -f "$STATE_DIR/deploy-config-staging-2026-01-02.json" ]; then
+    pass "case17a: 23:59 IST and 00:01 IST (2 min apart, crossing IST midnight) land in different day-state files"
+  else
+    fail "case17a: expected deploy-config-staging-2026-01-01.json AND -2026-01-02.json, got: $(ls "$STATE_DIR")"
+  fi
+
+  STATE_DIR_B="$(fresh_dir)"
+  NOW_0529_IST="$(date -u -d '2026-01-01T23:59:00Z' +%s)"   # 2026-01-02 05:29 IST
+  NOW_0531_IST="$(date -u -d '2026-01-02T00:01:00Z' +%s)"   # 2026-01-02 05:31 IST
+
+  DEPLOY_CONFIG_NOW="$NOW_0529_IST" DEPLOY_CONFIG_STATE_DIR="$STATE_DIR_B" \
+    run_deploy "$REPO" "$ROOT" --slot staging --sha "$SHA_V2" --reason "case17b 05:29 IST" >/dev/null 2>&1
+  DEPLOY_CONFIG_NOW="$NOW_0531_IST" DEPLOY_CONFIG_STATE_DIR="$STATE_DIR_B" \
+    run_deploy "$REPO" "$ROOT" --slot staging --sha "$SHA_V2" --reason "case17b 05:31 IST" >/dev/null 2>&1
+
+  if [ -f "$STATE_DIR_B/deploy-config-staging-2026-01-02.json" ] && [ ! -f "$STATE_DIR_B/deploy-config-staging-2026-01-01.json" ]; then
+    COUNT_B="$(node -e '
+      const fs = require("fs");
+      const rows = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      console.log(Array.isArray(rows) ? rows.length : 0);
+    ' "$STATE_DIR_B/deploy-config-staging-2026-01-02.json" 2>/dev/null || echo 0)"
+    if [ "$COUNT_B" = "2" ]; then
+      pass "case17b: 05:29 IST and 05:31 IST (crossing UTC midnight, same IST day) land in the same day-state file and both count toward the cap"
+    else
+      fail "case17b: expected 2 entries in the 2026-01-02 state file, got $COUNT_B"
+    fi
+  else
+    fail "case17b: expected only deploy-config-staging-2026-01-02.json, got: $(ls "$STATE_DIR_B")"
+  fi
+}
+
 echo "---"
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL PASS"
