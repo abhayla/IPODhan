@@ -10,10 +10,12 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { scrapeBSEDocuments } from '../../src/scrapers/bse-document-scraper.js';
 import { detectDocumentType } from '../../src/utils/document-type-mapper.js';
 import { db, getRedisClient, DocumentRepository } from '@ipodhan/shared';
 import type { DocumentInsert } from '@ipodhan/shared';
+import { ipos } from '@ipodhan/shared/db/schema';
 import { randomUUID } from 'crypto';
 
 describe('BSE Document Scraper Integration', () => {
@@ -23,12 +25,27 @@ describe('BSE Document Scraper Integration', () => {
   beforeAll(async () => {
     const redis = getRedisClient();
     documentRepository = new DocumentRepository(db, redis);
+
+    // #572: `documents.ipo_id` carries an FK to `ipos.id` (documents_ipo_id_ipos_id_fk).
+    // Every case below inserts documents rows against mockIPOId, so the parent
+    // row must exist first or every insert is rejected with SQLSTATE 23503.
+    await db.insert(ipos).values({
+      id: mockIPOId,
+      companyName: 'BSE Document Scraper Test IPO Co Ltd',
+      slug: `bse-document-scraper-test-${mockIPOId}`,
+      status: 'UPCOMING',
+    });
   });
 
   afterAll(async () => {
     // Cleanup test documents
     try {
       await documentRepository.deleteByIPO(mockIPOId);
+    } catch (error) {
+      // Ignore cleanup errors
+    }
+    try {
+      await db.delete(ipos).where(eq(ipos.id, mockIPOId));
     } catch (error) {
       // Ignore cleanup errors
     }
@@ -103,7 +120,9 @@ describe('BSE Document Scraper Integration', () => {
     });
 
     it('should persist documents to database with sequence numbers', async () => {
-      const mockIPO = randomUUID();
+      // #572: reuse the seeded parent row (a fresh randomUUID() here has no
+      // row in `ipos` and the FK on documents.ipo_id rejects every insert).
+      const mockIPO = mockIPOId;
 
       const documents: DocumentInsert[] = [
         {
@@ -157,7 +176,8 @@ describe('BSE Document Scraper Integration', () => {
     });
 
     it('should handle duplicate URL updates', async () => {
-      const mockIPO = randomUUID();
+      // #572: same fix — reuse the seeded parent row, not an unseeded uuid.
+      const mockIPO = mockIPOId;
       const duplicateURL = `https://www.bseindia.com/test-duplicate-${Date.now()}.pdf`;
 
       const doc1: DocumentInsert = {

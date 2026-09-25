@@ -145,7 +145,13 @@ describe('IPO Alerts Fallback Integration', () => {
           expect(transformed.openDate).toBe(ipoData.open_date);
           expect(transformed.closeDate).toBe(ipoData.close_date);
           expect(transformed.listingExchange).toBe(ipoData.exchange);
-          expect(transformed.category).toBe(ipoData.category);
+          // #574: transformIPOAlertsData no longer produces `category` — it
+          // derives `segment` + `offeringType` from the API's category
+          // (segmentAndOfferingTypeFromAlertsCategory in validators.ts).
+          // Every fixture row here is category 'MAINBOARD', which maps to
+          // segment 'MAINBOARD' + offeringType 'IPO'.
+          expect(transformed.segment).toBe(ipoData.category);
+          expect(transformed.offeringType).toBe('IPO');
           expect(transformed.status).toBe(ipoData.status);
         }
       }
