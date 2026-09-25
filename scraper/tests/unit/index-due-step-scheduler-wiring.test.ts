@@ -37,6 +37,7 @@ const dbCountRowsMock = vi.fn().mockResolvedValue([{ c: 0 }]);
 const isDiscoveryDueMock = vi.fn().mockReturnValue(false);
 const isMarketHoursISTMock = vi.fn().mockReturnValue(false);
 const mostRecentDiscoverySlotLabelMock = vi.fn().mockReturnValue('08:30 IST');
+const mostRecentDiscoverySlotEpochMinuteMock = vi.fn().mockReturnValue(12345);
 const shouldRunOnCatchUpCadenceMock = vi.fn().mockResolvedValue(false);
 const isCatchUpCadenceDueMock = vi.fn().mockResolvedValue(false);
 const markCatchUpCadenceRanMock = vi.fn().mockResolvedValue(undefined);
@@ -44,6 +45,12 @@ const markCatchUpCadenceRanMock = vi.fn().mockResolvedValue(undefined);
 const lockAcquireMock = vi.fn().mockResolvedValue({ acquired: true, token: 'tok-1' });
 const lockReleaseMock = vi.fn().mockResolvedValue(true);
 const lockExtendMock = vi.fn().mockResolvedValue(true);
+
+// Issue #943: the per-slot discovery-attempts counter. Defaults to 1 so an
+// existing test's single failing wake doesn't accidentally trip the cap.
+const redisIncrMock = vi.fn().mockResolvedValue(1);
+const redisExpireMock = vi.fn().mockResolvedValue(1);
+const sendOwnerAlertMock = vi.fn().mockResolvedValue({ sent: false, reason: 'not configured' });
 
 // Round-4 MEDIUM/LOW: stable mock refs (not a fresh object per `getRedisClient()`
 // call) so tests can assert on `redis.set` calls (the discovery cadence stamp)
@@ -87,6 +94,13 @@ vi.mock('../../src/scheduler/due-step-cycle.js', () => ({
   isDiscoveryDue: isDiscoveryDueMock,
   isMarketHoursIST: isMarketHoursISTMock,
   mostRecentDiscoverySlotLabel: mostRecentDiscoverySlotLabelMock,
+  mostRecentDiscoverySlotEpochMinute: mostRecentDiscoverySlotEpochMinuteMock,
+}));
+vi.mock('../../src/services/owner-notify.js', () => ({
+  sendOwnerAlert: sendOwnerAlertMock,
+  notifyOwner: vi.fn(),
+  heartbeat: vi.fn(),
+  flushOwnerNotify: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../../src/utils/distributed-lock.js', () => ({
   DistributedLock: vi.fn().mockImplementation(() => ({
@@ -109,7 +123,7 @@ vi.mock('@ipodhan/shared', () => ({
     delete: () => ({ where: () => ({ returning: dbReturningMock }) }),
     select: () => ({ from: () => ({ where: dbCountRowsMock }) }),
   },
-  getRedisClient: () => ({ get: redisGetMock, set: redisSetMock }),
+  getRedisClient: () => ({ get: redisGetMock, set: redisSetMock, incr: redisIncrMock, expire: redisExpireMock }),
   ScraperLogRepository: vi.fn().mockImplementation(() => ({})),
 }));
 vi.mock('@ipodhan/shared/db/schema', () => ({
@@ -145,6 +159,10 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
     dbCountRowsMock.mockResolvedValue([{ c: 0 }]);
     redisGetMock.mockReset().mockResolvedValue(null);
     redisSetMock.mockReset().mockResolvedValue('OK');
+    redisIncrMock.mockReset().mockResolvedValue(1);
+    redisExpireMock.mockReset().mockResolvedValue(1);
+    sendOwnerAlertMock.mockReset().mockResolvedValue({ sent: false, reason: 'not configured' });
+    mostRecentDiscoverySlotEpochMinuteMock.mockReset().mockReturnValue(12345);
   });
 
   afterEach(() => {
@@ -403,6 +421,83 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
 
       const stampCalls = redisSetMock.mock.calls.filter((call) => call[0] === 'due-step:last-discovery');
       expect(stampCalls).toHaveLength(1);
+    });
+
+    /**
+     * Issue #943: BSE failing on every wake of the SAME slot must not hold
+     * the slot open forever — the third failed attempt closes it anyway,
+     * logs an error naming the slot + sources + attempts, and alerts (OD-72).
+     */
+    describe('issue #943 — per-slot discovery-attempts cap', () => {
+      it('attempt 1 and 2 in the same slot: leaves the slot open, no alert, no error log', async () => {
+        isDiscoveryDueMock.mockReturnValue(true);
+        runBSEScraperMock.mockResolvedValueOnce({ ...baseScraperResult, success: false, iposMerged: 0, smeCount: 0, mainboardCount: 0 });
+        redisIncrMock.mockResolvedValueOnce(1);
+        const { main: main1 } = await import('../../src/index.js');
+        await main1();
+
+        expect(redisSetMock).not.toHaveBeenCalledWith('due-step:last-discovery', expect.any(String));
+        expect(sendOwnerAlertMock).not.toHaveBeenCalled();
+
+        vi.resetModules();
+        runBSEScraperMock.mockResolvedValueOnce({ ...baseScraperResult, success: false, iposMerged: 0, smeCount: 0, mainboardCount: 0 });
+        redisIncrMock.mockResolvedValueOnce(2);
+        const { main: main2 } = await import('../../src/index.js');
+        await main2();
+
+        expect(redisSetMock).not.toHaveBeenCalledWith('due-step:last-discovery', expect.any(String));
+        expect(sendOwnerAlertMock).not.toHaveBeenCalled();
+      });
+
+      it('attempt 3 (MAX_DISCOVERY_ATTEMPTS) in the same slot: stamps the slot closed, logs an error, and alerts', async () => {
+        isDiscoveryDueMock.mockReturnValue(true);
+        runBSEScraperMock.mockResolvedValueOnce({ ...baseScraperResult, success: false, iposMerged: 0, smeCount: 0, mainboardCount: 0 });
+        redisIncrMock.mockResolvedValueOnce(3);
+        const { main } = await import('../../src/index.js');
+        await main();
+
+        expect(redisSetMock).toHaveBeenCalledWith('due-step:last-discovery', expect.any(String));
+        expect(sendOwnerAlertMock).toHaveBeenCalledTimes(1);
+        const [severity, title, opts] = sendOwnerAlertMock.mock.calls[0];
+        expect(severity).toBe('P1');
+        expect(title).toMatch(/slot closed/i);
+        expect(opts.body).toContain('attempts=3');
+      });
+
+      it('success on attempt 1 stamps the slot as today and never touches the attempts counter', async () => {
+        isDiscoveryDueMock.mockReturnValue(true);
+        const { main } = await import('../../src/index.js');
+        await main();
+
+        const stampCalls = redisSetMock.mock.calls.filter((call) => call[0] === 'due-step:last-discovery');
+        expect(stampCalls).toHaveLength(1);
+        expect(redisIncrMock).not.toHaveBeenCalled();
+        expect(sendOwnerAlertMock).not.toHaveBeenCalled();
+      });
+
+      it('a new slot resets the count: a fresh slot epoch minute starts INCR at 1 again', async () => {
+        isDiscoveryDueMock.mockReturnValue(true);
+        mostRecentDiscoverySlotEpochMinuteMock.mockReturnValue(99999);
+        runBSEScraperMock.mockResolvedValueOnce({ ...baseScraperResult, success: false, iposMerged: 0, smeCount: 0, mainboardCount: 0 });
+        redisIncrMock.mockResolvedValueOnce(1);
+        const { main } = await import('../../src/index.js');
+        await main();
+
+        expect(redisIncrMock).toHaveBeenCalledWith('due-step:discovery-attempts:99999');
+        expect(redisSetMock).not.toHaveBeenCalledWith('due-step:last-discovery', expect.any(String));
+        expect(sendOwnerAlertMock).not.toHaveBeenCalled();
+      });
+
+      it('Redis INCR failing keeps the old retry-next-wake behaviour (no stamp, no alert)', async () => {
+        isDiscoveryDueMock.mockReturnValue(true);
+        runBSEScraperMock.mockResolvedValueOnce({ ...baseScraperResult, success: false, iposMerged: 0, smeCount: 0, mainboardCount: 0 });
+        redisIncrMock.mockRejectedValueOnce(new Error('redis down'));
+        const { main } = await import('../../src/index.js');
+        await main();
+
+        expect(redisSetMock).not.toHaveBeenCalledWith('due-step:last-discovery', expect.any(String));
+        expect(sendOwnerAlertMock).not.toHaveBeenCalled();
+      });
     });
 
     /**
