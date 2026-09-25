@@ -327,6 +327,12 @@ export const NOT_IN_ANY_BLOCK: Readonly<Record<string, string>> = {
     'rendered by AnchorInvestorsSection\'s own table (bid date, shares, amount, investor list), not a key-facts block',
   'documents.filing_date':
     'rendered by DocumentList (filing date per document), not a key-facts block',
+  'listing_performance.current_price':
+    'rendered by ListingPerformance\'s own price panel (current/BSE/NSE price), not the listingDetails key-facts block which only carries the fixed listing_price',
+  'listing_performance.current_price_bse':
+    'rendered by ListingPerformance\'s own price panel (current/BSE/NSE price), not the listingDetails key-facts block which only carries the fixed listing_price',
+  'listing_performance.current_price_nse':
+    'rendered by ListingPerformance\'s own price panel (current/BSE/NSE price), not the listingDetails key-facts block which only carries the fixed listing_price',
   'registrars.name':
     'rendered by CompanyContactSection / AllotmentCheckerCard (registrar name, contact, website), not a key-facts block',
   'registrars.short_name':
