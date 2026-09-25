@@ -162,6 +162,7 @@ it by assuming.
 | OD-107 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) edit existing rows only and (C) per-row ownership (Spec basis: none on admin row edits -- the spec said nothing about an admin adding or removing rows; related OD-102, OD-66, §2.10, Appendix A #21; measured F-174). **For list-shaped document data (lead managers, promoters, peer companies, anchor investors, intermediaries, financial-statement years, risk factors) the admin can add, edit and remove whole rows. Once an admin changes a list, the WHOLE list is admin-owned for that IPO: no scraper replaces or extends it. A later document that brings a different list is shown to the admin as a suggestion (rows to add or remove), never applied by itself.** | 2026-09-25 | §9.2 | §9.2 item 8 states add/edit/remove rows, whole-list admin ownership, and later-document lists as suggestions |
 | OD-108 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) notes optional and (C) a failed check blocks the save (Spec basis: the per-field check column of §1 and Appendix A; none on admin-typed values -- the spec said nothing about checks, units or reasons for them; measured F-156). **A value an admin TYPES must pass the same §1 check as a scraped value; it is entered in the unit the reader sees and the screen shows, before saving, the value that will be stored and how the page will display it; every typed value carries a short source note (document and page, or a URL). A PICKED source value needs no note. A typed value that fails its check can still be saved, only with a written reason, and the reason is kept with the audit row.** Why: F-156 -- issue size is stored in rupees but the admin form labels it crore, so typing 875 for Rs 875 cr stores Rs 875; and the form's crore warning fires on 336 of 337 real values. | 2026-09-25 | §9.2 | §9.2 item 12 states the §1 check, reader-unit entry with a stored-value preview, the required source note for typed values, and save-with-reason on a failed check |
 | OD-109 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) keep "From a manual correction" and (C) no line for admin values (Spec basis: OD-39 "The reader should see where a number came from and when it was last confirmed", OD-61, OD-72; none on admin wording; today `web/components/ipo-detail/FieldProvenanceLine.tsx:40` prints ADMIN as "a manual correction"). **The reader line for an admin value tells the true source and never says "correction": an admin who PICKED a source shows that source and the date it was read ("From NSE, read 25 Sep 2026"); an admin who TYPED a value shows "Checked by the IPODhan team, <date>". The admin's own name is never shown to a reader; it stays in the audit row.** | 2026-09-25 | §2.11, §9.2 | §2.11 and §9.2 item 13 state picked-source wording, "Checked by the IPODhan team" for typed values, no "correction", no admin name |
+| OD-110 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) inline editing on every page and (C) also registrar and market-holiday pages (Spec basis: OD-102 "I don't know whether all other pages should also have this edit feature or not but IPO details obviously should have", OD-105; none otherwise). **Admin editing of IPO data happens only on the IPO detail page. Every IPO row on the list, calendar, tracker and prospectus pages shows an admin-only "Edit" link that opens that IPO's editor. Registrars and market holidays stay in the existing admin screens, outside this feature.** | 2026-09-25 | §9.2 | §9.2 item 14 states detail-page-only editing, the admin-only Edit link on list pages, and registrars and holidays out of scope |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -3950,6 +3951,9 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
 13. **What a reader sees (OD-109).** A picked value shows its real source and read date ("From NSE,
     read 25 Sep 2026"); a typed value shows "Checked by the IPODhan team, 25 Sep 2026". The word
     "correction" is never used, and no admin's name is shown to a reader.
+14. **Where editing appears (OD-110).** Only on the IPO detail page. List, calendar, tracker and
+    prospectus pages show an admin-only "Edit" link per IPO row that opens that IPO's editor.
+    Registrars and market holidays stay in the existing admin screens, outside this feature.
 ### 9.3 Where the per-source values come from (OD-103)
 
 The edit view reads the witnesses stored for the field (§2.4 as amended by OD-103). Each source
@@ -3974,7 +3978,7 @@ No owner question was needed here; each point follows from a decision already ma
 
 ### 9.5 Still open (asked one at a time, recorded here as answered)
 
-Who can add or remove an admin; alerts; pages other than the IPO detail page; creating a whole IPO by
+Who can add or remove an admin; alerts; creating a whole IPO by
 hand for the admin-owned types; mobile use.
 
 ---
