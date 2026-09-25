@@ -161,6 +161,7 @@ it by assuming.
 | OD-106 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) the admin value holds forever and (C) not editable (Spec basis: E-1 §1.2.1 "a stale close date on a live IPO -- the single most damaging error this site can make", OD-35, OD-73, §2.7, OD-102, OD-105; real case F-131, the Dhanwel postponement and relaunch). **SPEC CHANGE to §2.7 for the E-1 timetable fields other than `ipos.status` only: they are admin-editable with the same per-source panel (NSE, BSE, Chittorgarh, then a typed value), but when NSE or BSE later publishes a NEWER date that differs from the admin value, the exchange date replaces it and the admin is alerted with the IPO and both dates.** For every class D field the admin value still holds until an admin clears it (§2.7, OD-102). Not measured: how often an exchange date was wrong and needed a human. | 2026-09-25 | §2.7, §9.2 | §2.7 names the E-1 exception; §9.2 item 7 marks the E-1 fields other than status as editable with exchange override and alert |
 | OD-107 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) edit existing rows only and (C) per-row ownership (Spec basis: none on admin row edits -- the spec said nothing about an admin adding or removing rows; related OD-102, OD-66, §2.10, Appendix A #21; measured F-174). **For list-shaped document data (lead managers, promoters, peer companies, anchor investors, intermediaries, financial-statement years, risk factors) the admin can add, edit and remove whole rows. Once an admin changes a list, the WHOLE list is admin-owned for that IPO: no scraper replaces or extends it. A later document that brings a different list is shown to the admin as a suggestion (rows to add or remove), never applied by itself.** | 2026-09-25 | §9.2 | §9.2 item 8 states add/edit/remove rows, whole-list admin ownership, and later-document lists as suggestions |
 | OD-108 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) notes optional and (C) a failed check blocks the save (Spec basis: the per-field check column of §1 and Appendix A; none on admin-typed values -- the spec said nothing about checks, units or reasons for them; measured F-156). **A value an admin TYPES must pass the same §1 check as a scraped value; it is entered in the unit the reader sees and the screen shows, before saving, the value that will be stored and how the page will display it; every typed value carries a short source note (document and page, or a URL). A PICKED source value needs no note. A typed value that fails its check can still be saved, only with a written reason, and the reason is kept with the audit row.** Why: F-156 -- issue size is stored in rupees but the admin form labels it crore, so typing 875 for Rs 875 cr stores Rs 875; and the form's crore warning fires on 336 of 337 real values. | 2026-09-25 | §9.2 | §9.2 item 12 states the §1 check, reader-unit entry with a stored-value preview, the required source note for typed values, and save-with-reason on a failed check |
+| OD-109 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) keep "From a manual correction" and (C) no line for admin values (Spec basis: OD-39 "The reader should see where a number came from and when it was last confirmed", OD-61, OD-72; none on admin wording; today `web/components/ipo-detail/FieldProvenanceLine.tsx:40` prints ADMIN as "a manual correction"). **The reader line for an admin value tells the true source and never says "correction": an admin who PICKED a source shows that source and the date it was read ("From NSE, read 25 Sep 2026"); an admin who TYPED a value shows "Checked by the IPODhan team, <date>". The admin's own name is never shown to a reader; it stays in the audit row.** | 2026-09-25 | §2.11, §9.2 | §2.11 and §9.2 item 13 state picked-source wording, "Checked by the IPODhan team" for typed values, no "correction", no admin name |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -2468,6 +2469,10 @@ without it, the loop has nowhere to write 84% of what it extracts.
 
 ### 2.11 What the reader sees (OD-39, OD-40, OD-41)
 
+**Amended by OD-109 (2026-09-25):** for an admin value the line names the source the admin picked
+(with that source's read date), or reads "Checked by the IPODhan team, <date>" for a typed value; it
+never says "correction" and never shows an admin's name.
+
 Everything above this point is about getting the right number into the database. This section is
 about the only part a reader ever meets. It exists because the design had a measurable hole: the
 system already records where every value came from and when it was last confirmed, and **not one
@@ -3942,6 +3947,9 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
     shows Rs 875 cr"). It needs a short source note (document and page, or a URL); a picked source
     value does not. If the check fails, the admin may still save with a written reason, kept on the
     audit row. Why: F-156.
+13. **What a reader sees (OD-109).** A picked value shows its real source and read date ("From NSE,
+    read 25 Sep 2026"); a typed value shows "Checked by the IPODhan team, 25 Sep 2026". The word
+    "correction" is never used, and no admin's name is shown to a reader.
 ### 9.3 Where the per-source values come from (OD-103)
 
 The edit view reads the witnesses stored for the field (§2.4 as amended by OD-103). Each source
@@ -3966,8 +3974,7 @@ No owner question was needed here; each point follows from a decision already ma
 
 ### 9.5 Still open (asked one at a time, recorded here as answered)
 
-Who can add or remove an admin; what a reader sees for an admin value;
-alerts; pages other than the IPO detail page; creating a whole IPO by
+Who can add or remove an admin; alerts; pages other than the IPO detail page; creating a whole IPO by
 hand for the admin-owned types; mobile use.
 
 ---
