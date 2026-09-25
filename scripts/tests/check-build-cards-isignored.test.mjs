@@ -94,3 +94,31 @@ test('the answer is cached per input string', () => {
   assert.equal(first, second);
   assert.equal(first, false);
 });
+
+// Issue #810: a `!docs/**` negation pattern being the DECIDING match makes `git check-ignore -v`
+// print that pattern with exit 0, even though the path is genuinely NOT ignored (confirmed with
+// `-q` on the same path, which correctly exits 1 -- `-v` and `-q` disagree on this exact case).
+// isIgnored() must not read a matched pattern beginning with `!` as "ignored": a negation pattern
+// can never be the reason a path IS excluded.
+test('a path whose only matching .gitignore pattern is a negation (!docs/**) is NOT ignored (#810)', () => {
+  const tmp = fs.mkdtempSync(path.join(REPO_ROOT, 'zz-negation-fixture-'));
+  try {
+    // isIgnored() always runs `git check-ignore` with `cwd: REPO` (the real repo root), so the
+    // fixture must be a real tracked-repo path this test can clean up -- not a separate tmp git
+    // repo -- to exercise the exact code path the bug lives in.
+    const gitignorePath = path.join(REPO_ROOT, '.gitignore');
+    const original = fs.readFileSync(gitignorePath, 'utf8');
+    const relDir = path.relative(REPO_ROOT, tmp).split(path.sep).join('/');
+    fs.writeFileSync(gitignorePath, `${original}\n*.md\n!${relDir}/**\n`);
+    try {
+      const target = path.join(tmp, 'real-file.md');
+      fs.writeFileSync(target, 'fixture\n');
+      const relTarget = path.relative(REPO_ROOT, target).split(path.sep).join('/');
+      assert.equal(isIgnored(relTarget), false);
+    } finally {
+      fs.writeFileSync(gitignorePath, original);
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

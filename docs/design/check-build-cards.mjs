@@ -73,12 +73,19 @@ function isIgnored(p) {
   const r = spawnSync('git', ['check-ignore', '-v', '--', p], { cwd: REPO, encoding: 'utf8' });
   // 0 = a pattern matched (verify it below), 1 = no pattern matched, anything else = git could not
   // answer, and an unanswered question is not a pass.
+  //
+  // Issue #810: when the DECIDING match is a negation pattern (`!docs/**`), `-v` reports that
+  // pattern with exit 0 even though the path is genuinely NOT ignored -- confirmed by running
+  // `-q` on the same path, which correctly exits 1. `-v` and `-q` disagree on this exact case.
+  // A negation pattern can never be the reason a path IS ignored, so a reported pattern starting
+  // with `!` is always treated as "not ignored", regardless of the exit code.
   let answer = false;
   if (r.status === 0) {
     const firstLine = (r.stdout || '').split(/\r?\n/, 1)[0];
     const beforeTab = firstLine.split('\t')[0];
     const m = /^(.*):(\d+):(.*)$/.exec(beforeTab);
-    answer = Boolean(m && m[3].trim().length > 0);
+    const pattern = m ? m[3].trim() : '';
+    answer = Boolean(pattern.length > 0 && !pattern.startsWith('!'));
   }
   ignoreCache.set(p, answer);
   return answer;
