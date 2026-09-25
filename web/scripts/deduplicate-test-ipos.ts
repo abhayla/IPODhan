@@ -31,6 +31,8 @@ import { pathToFileURL } from 'node:url';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '../../packages/shared/src/db/schema.js';
 
+type IpoRow = typeof schema.ipos.$inferSelect;
+
 let db: NodePgDatabase<typeof schema>;
 
 /**
@@ -71,7 +73,7 @@ const DUPLICATE_GROUPS: DuplicateGroup[] = [
 /**
  * Score IPO record completeness (higher = more complete)
  */
-function scoreCompleteness(ipo: any): number {
+function scoreCompleteness(ipo: IpoRow): number {
   let score = 0;
 
   // Core fields (10 points each)
@@ -113,8 +115,8 @@ function scoreCompleteness(ipo: any): number {
 /**
  * Merge data from source IPO into target IPO (prefer non-null values)
  */
-function mergeIPOData(target: any, source: any): any {
-  const merged = { ...target };
+function mergeIPOData(target: IpoRow, source: IpoRow): IpoRow {
+  const merged: Record<string, unknown> = { ...target };
 
   for (const [key, value] of Object.entries(source)) {
     // Skip metadata fields
@@ -128,7 +130,7 @@ function mergeIPOData(target: any, source: any): any {
     }
   }
 
-  return merged;
+  return merged as IpoRow;
 }
 
 /**

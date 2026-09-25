@@ -20,15 +20,33 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { deduplicateGroup, setDbForTest } from '../../../scripts/deduplicate-test-ipos.js';
+import {
+  ipos,
+  subscriptions,
+  gmpRecords,
+  financialData,
+  documents,
+  listingPerformance,
+  peerCompanies,
+} from '../../../lib/db/index.js';
+
+/** The exact db shape `deduplicateGroup` is driven with - kept in sync via `setDbForTest`'s own signature. */
+type MockDb = Parameters<typeof setDbForTest>[0];
 
 interface Call {
   op: 'select' | 'update' | 'delete';
   table: string;
 }
 
+/** drizzle pgTable objects carry a symbol-keyed name; this mock instead reads a
+ *  per-call tag stamped onto each imported table object below. */
+interface TaggedTable {
+  __mockName?: string;
+}
+
 /** Minimal drizzle-shaped chainable query builder recorder. */
 function makeMockDb(opts: {
-  duplicates: any[];
+  duplicates: Record<string, unknown>[];
   canonicalPeers: { normalizedName: string }[];
   duplicatePeers: { id: string; normalizedName: string }[];
   txShouldThrowOn?: string; // table name to throw on, inside the transaction
@@ -36,16 +54,9 @@ function makeMockDb(opts: {
   const calls: Call[] = [];
   let peerSelectCallCount = 0;
 
-  function tableNameOf(tableObj: any): string {
-    // drizzle pgTable objects carry a symbol-keyed name; fall back to a
-    // per-call tag threaded through the mock builders below instead of
-    // introspecting drizzle internals.
-    return tableObj.__mockName ?? 'unknown';
-  }
-
   function selectBuilder(forTable: string) {
     return {
-      from: (tableObj: any) => {
+      from: (tableObj: TaggedTable) => {
         const table = tableObj.__mockName ?? forTable;
         return {
           where: () => {
@@ -68,7 +79,7 @@ function makeMockDb(opts: {
   }
 
   function mutationBuilder(op: 'update' | 'delete') {
-    return (tableObj: any) => {
+    return (tableObj: TaggedTable) => {
       const table = tableObj.__mockName ?? 'unknown';
       const runAndRecord = () => {
         calls.push({ op, table });
@@ -78,23 +89,23 @@ function makeMockDb(opts: {
         return Promise.resolve();
       };
       if (op === 'update') {
-        return { set: () => ({ where: runAndRecord }) };
+        return { set: (_data: Record<string, unknown>) => ({ where: runAndRecord }) };
       }
       return { where: runAndRecord };
     };
   }
 
   const tx = {
-    select: (_cols?: any) => selectBuilder('tx-select'),
+    select: (_cols?: Record<string, unknown>) => selectBuilder('tx-select'),
     update: mutationBuilder('update'),
     delete: mutationBuilder('delete'),
   };
 
   const db = {
-    select: (_cols?: any) => selectBuilder('outer-select'),
+    select: (_cols?: Record<string, unknown>) => selectBuilder('outer-select'),
     update: mutationBuilder('update'),
     delete: mutationBuilder('delete'),
-    transaction: vi.fn(async (fn: (tx: any) => Promise<void>) => {
+    transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => {
       calls.push({ op: 'select', table: '__transaction_start__' });
       return fn(tx);
     }),
@@ -105,22 +116,13 @@ function makeMockDb(opts: {
 
 // Tag the imported table objects with a stable name the mock can read,
 // without depending on drizzle-orm's internal symbol shape.
-import {
-  ipos,
-  subscriptions,
-  gmpRecords,
-  financialData,
-  documents,
-  listingPerformance,
-  peerCompanies,
-} from '../../../lib/db/index.js';
-(ipos as any).__mockName = 'ipos';
-(subscriptions as any).__mockName = 'subscriptions';
-(gmpRecords as any).__mockName = 'gmp_records';
-(financialData as any).__mockName = 'financial_data';
-(documents as any).__mockName = 'documents';
-(listingPerformance as any).__mockName = 'listing_performance';
-(peerCompanies as any).__mockName = 'peer_companies';
+(ipos as unknown as TaggedTable).__mockName = 'ipos';
+(subscriptions as unknown as TaggedTable).__mockName = 'subscriptions';
+(gmpRecords as unknown as TaggedTable).__mockName = 'gmp_records';
+(financialData as unknown as TaggedTable).__mockName = 'financial_data';
+(documents as unknown as TaggedTable).__mockName = 'documents';
+(listingPerformance as unknown as TaggedTable).__mockName = 'listing_performance';
+(peerCompanies as unknown as TaggedTable).__mockName = 'peer_companies';
 
 const group = {
   companyPattern: '%acme%',
@@ -155,7 +157,7 @@ describe('deduplicateGroup - #447 transaction wrapping', () => {
       canonicalPeers: [],
       duplicatePeers: [],
     });
-    setDbForTest(db as any);
+    setDbForTest(db as unknown as MockDb);
 
     await deduplicateGroup(group, false);
 
@@ -190,7 +192,7 @@ describe('deduplicateGroup - #447 transaction wrapping', () => {
       duplicatePeers: [],
       txShouldThrowOn: 'financial_data',
     });
-    setDbForTest(db as any);
+    setDbForTest(db as unknown as MockDb);
 
     await expect(deduplicateGroup(group, false)).rejects.toThrow('mock failure on financial_data');
 
@@ -213,7 +215,7 @@ describe('deduplicateGroup - #447 transaction wrapping', () => {
         { id: 'peer-unique', normalizedName: 'other peer co' },
       ],
     });
-    setDbForTest(db as any);
+    setDbForTest(db as unknown as MockDb);
 
     await deduplicateGroup(group, false);
 
