@@ -1677,16 +1677,29 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           // Get the latest timestamp
           const latestResult = await this.db
             .select({
-              timestamp: sql<Date>`MAX(${ipoDemandGraph.timestamp})`,
+              // `MAX()` on a raw sql fragment is not a schema column, so drizzle
+              // never runs PgTimestamp.mapFromDriverValue() on it — the driver
+              // value comes back as the raw naive-timestamp TEXT (e.g.
+              // '2026-09-17 04:42:34'), not a Date, despite the `sql<Date>` type
+              // annotation (a compile-time lie only). Reusing that raw text
+              // directly as an `eq()` parameter crashed every call (#954): drizzle's
+              // PgTimestamp.mapToDriverValue() assumes a Date and calls
+              // `.toISOString()` unconditionally, throwing `TypeError: value.toISOString
+              // is not a function` for every IPO with demand data. Parse it as UTC
+              // explicitly (ist-timezone.md) before reuse, same as the gmp/subscription
+              // raw-sql timestamps above.
+              timestamp: sql<string>`MAX(${ipoDemandGraph.timestamp})`,
             })
             .from(ipoDemandGraph)
             .where(eq(ipoDemandGraph.ipoId, ipoId));
 
-          if (!latestResult[0]?.timestamp) {
+          const rawLatestTimestamp = latestResult[0]?.timestamp ?? null;
+          const latestTimestamp = parseNaiveTimestampAsUtc(
+            rawLatestTimestamp as unknown as string | null
+          );
+          if (!latestTimestamp) {
             return null;
           }
-
-          const latestTimestamp = latestResult[0].timestamp;
 
           // Get stats for latest snapshot
           const stats = await this.db
