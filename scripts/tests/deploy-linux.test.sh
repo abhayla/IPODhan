@@ -3341,6 +3341,124 @@ else
   fi
 fi
 
+# --- Case 36 (#706): the `decide` job (the first ~170 lines of the file, ---
+# --- everything before `  deploy:`) must ALSO report failure/cancellation --
+# --- - only `deploy` had a reporting step (added by #627). A runner --------
+# --- restart during `decide` - the measured root cause behind #621, which -
+# --- hit the OTHER job - pages nobody unless `decide` has its own guard. --
+if [ ! -f "$WORKFLOW_FILE" ]; then
+  fail "case 36: $WORKFLOW_FILE not found - workflow renamed or moved?"
+else
+  # Isolate the `decide:` job's own text (everything from `  decide:` up to
+  # but not including `  deploy:`), so this case can never accidentally
+  # match the `deploy` job's own, differently-named reporting step.
+  DECIDE_JOB="$(awk '/^  decide:/{f=1} /^  deploy:/{f=0} f{print}' "$WORKFLOW_FILE")"
+
+  if [ -z "$DECIDE_JOB" ]; then
+    fail "case 36: could not isolate the 'decide:' job body in $WORKFLOW_FILE - job renamed/reordered? (#706 guard is now blind)"
+  else
+    if emitn "$DECIDE_JOB" | grep -qF -- '- name: Report owner on decide failure or cancellation'; then
+      pass "case 36: the decide job has its own failure/cancellation reporting step"
+    else
+      fail "case 36: no 'Report owner on decide failure or cancellation' step found inside the decide job (#706)"
+    fi
+
+    DECIDE_REPORT_STEP="$(emitn "$DECIDE_JOB" | sed -n '/- name: Report owner on decide failure or cancellation/,$p')"
+    if emitn "$DECIDE_REPORT_STEP" | grep -qF 'if: failure() || cancelled()'; then
+      pass "case 36: the decide-reporting step fires on a cancellation, not only a failure"
+    else
+      fail "case 36: the decide-reporting step is NOT guarded by 'failure() || cancelled()' - a cancelled decide would page nobody (#706)"
+    fi
+
+    if emitn "$DECIDE_REPORT_STEP" | grep -qF 'JOB_STATUS="${{ job.status }}"'; then
+      pass "case 36: the decide-reporting step reads job.status to tell cancelled from failed"
+    else
+      fail "case 36: the decide-reporting step does not read job.status - its text cannot distinguish a cancellation (#706)"
+    fi
+
+    if emitn "$DECIDE_REPORT_STEP" | grep -qF 'OUTCOME_WORD="CANCELLED"' && emitn "$DECIDE_REPORT_STEP" | grep -qF 'OUTCOME_WORD="FAILED"'; then
+      pass "case 36: both CANCELLED and FAILED outcome words are defined for decide"
+    else
+      fail "case 36: expected both OUTCOME_WORD values in the decide-reporting step (#706)"
+    fi
+
+    if emitn "$DECIDE_REPORT_STEP" | grep -qF 'deploy-linux decide ${OUTCOME_WORD} ${SHA} ${SLOT}'; then
+      pass "case 36: the decide Notifier title carries the outcome word, not a hardcoded FAILED"
+    else
+      fail "case 36: the decide Notifier title does not interpolate OUTCOME_WORD (#706)"
+    fi
+  fi
+
+  # No step inside `decide:` may keep a bare `if: failure()` - it would be
+  # blind to a cancellation the same way #621 was.
+  if emitn "$DECIDE_JOB" | grep -nE '^[[:space:]]*if:[[:space:]]*failure\(\)[[:space:]]*$' > /tmp/deploy-test-36-bare.log 2>&1; then
+    fail "case 36: a bare 'if: failure()' remains inside the decide job - it is blind to cancellations (#706)"
+    cat /tmp/deploy-test-36-bare.log
+  else
+    pass "case 36: no bare 'if: failure()' guard remains inside the decide job"
+  fi
+fi
+
+# --- Case 37 (#649): the scheduled staging guard's "could not read the -----
+# --- served sha locally" branch must try a SECOND, independent read - -----
+# --- staging's own PUBLIC /api/version - before falling back to deploying -
+# --- blind. PORT_FILE readable-but-wrong or the loopback port firewalled --
+# --- used to look identical to "genuinely down", both going straight to --
+# --- blind. These are static assertions on the workflow file + an --------
+# --- ordering check (the public probe must appear BEFORE the blind-deploy -
+# --- Notifier alert in the gate step's source, so it runs first).
+if [ ! -f "$WORKFLOW_FILE" ]; then
+  fail "case 37: $WORKFLOW_FILE not found - workflow renamed or moved?"
+else
+  GATE_STEP="$(sed -n '/- name: Decide whether a window staging deploy is needed/,/^  deploy:/p' "$WORKFLOW_FILE")"
+
+  if [ -z "$GATE_STEP" ]; then
+    fail "case 37: could not locate the scheduled-staging gate step in $WORKFLOW_FILE - step renamed? (#649 guard is now blind)"
+  else
+    if emitn "$GATE_STEP" | grep -qF 'https://staging.ipodhan.com/api/version'; then
+      pass "case 37: the gate step probes the real public staging hostname (staging.ipodhan.com), not a placeholder"
+    else
+      fail "case 37: expected a probe against https://staging.ipodhan.com/api/version in the gate step (#649) - never invent a hostname, grep the repo for the real one"
+    fi
+
+    # Cache-busted per #649's own wording (staging sits behind Cloudflare/nginx).
+    if emitn "$GATE_STEP" | grep -qE 'PUBLIC_VERSION_URL="https://staging\.ipodhan\.com/api/version\?[a-zA-Z0-9_]+='; then
+      pass "case 37: the public probe URL carries a cache-busting query param"
+    else
+      fail "case 37: the public probe URL is not cache-busted with a query param (#649 - staging is behind Cloudflare/nginx)"
+    fi
+
+    # Ordering: the public-probe line must appear BEFORE the blind-deploy
+    # Notifier alert block, i.e. before it decides proceed=true unconditionally
+    # on this branch. Uses line numbers within the isolated step text.
+    PUBLIC_PROBE_LINE="$(emitn "$GATE_STEP" | grep -n 'PUBLIC_VERSION_URL=' | head -n1 | cut -d: -f1)"
+    BLIND_NOTIFY_LINE="$(emitn "$GATE_STEP" | grep -n 'window guard deploying staging blind' | head -n1 | cut -d: -f1)"
+    if [ -n "$PUBLIC_PROBE_LINE" ] && [ -n "$BLIND_NOTIFY_LINE" ] && [ "$PUBLIC_PROBE_LINE" -lt "$BLIND_NOTIFY_LINE" ]; then
+      pass "case 37: the public fallback probe runs BEFORE the blind-deploy Notifier alert"
+    else
+      fail "case 37: the public fallback probe does not run before the blind-deploy path (#649) - probe_line=$PUBLIC_PROBE_LINE blind_line=$BLIND_NOTIFY_LINE"
+    fi
+
+    # The existing PORT_FILE/loopback read must still run FIRST (the public
+    # probe is a fallback, not a replacement) - VERSION_URL (loopback) must
+    # appear before PUBLIC_VERSION_URL.
+    LOOPBACK_LINE="$(emitn "$GATE_STEP" | grep -n 'VERSION_URL="http://127.0.0.1' | head -n1 | cut -d: -f1)"
+    if [ -n "$LOOPBACK_LINE" ] && [ -n "$PUBLIC_PROBE_LINE" ] && [ "$LOOPBACK_LINE" -lt "$PUBLIC_PROBE_LINE" ]; then
+      pass "case 37: the loopback probe still runs first; the public probe is a fallback, not a replacement"
+    else
+      fail "case 37: the loopback probe does not run before the public fallback probe (#649) - loopback_line=$LOOPBACK_LINE public_line=$PUBLIC_PROBE_LINE"
+    fi
+
+    # If the public probe succeeds, the gate must NOT deploy blind - it
+    # should fall through to the normal served-vs-head comparison instead.
+    if emitn "$GATE_STEP" | grep -qF 'continuing with the normal served-vs-head comparison instead of deploying blind'; then
+      pass "case 37: a successful public fallback continues to the normal comparison instead of deploying blind"
+    else
+      fail "case 37: no evidence the gate continues normally after a successful public fallback (#649)"
+    fi
+  fi
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1
