@@ -114,6 +114,19 @@ run_case_grep "slot staging DECLARES (and matches) PROD db ipodhan -> fail (T-28
   "targets the PRODUCTION database" \
   "$FIXTURES/slot/staging/web.env.local.declares-prod-db-on-staging" "$FIXTURES/slot/staging/scraper.env"
 
+# #369: mutation-sweep survivor. The existing "points-at-prod" fixture above
+# trips BOTH the primary "db != want" check AND the secondary "slot != prod
+# && db == ipodhan" check on the same input (DATABASE_URL's db is literally
+# "ipodhan"), so neutralising the PRIMARY check alone still leaves this
+# suite green via the secondary branch — the primary guard has no test of
+# its own (T-285 P3-1 class). This fixture targets a non-prod, non-"ipodhan"
+# database name ("some_other_nonprod_db") that still mismatches
+# DSN_ASSERT_DB=ipodhan_staging, so ONLY the primary "db != want" branch can
+# catch it; the secondary branch's "db == ipodhan" test is false here.
+run_case_grep "slot staging DSN mismatches a non-prod db (primary-only branch, #369)" 1 \
+  "declares DSN_ASSERT_DB=ipodhan_staging but DATABASE_URL targets database 'some_other_nonprod_db'" \
+  "$FIXTURES/slot/staging/web.env.local.points-at-wrong-nonprod-db" "$FIXTURES/slot/staging/scraper.env"
+
 run_case "slot prod + prod DSN -> pass" 0 \
   "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env"
 
