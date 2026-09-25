@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-25T16:08:34.989Z",
+  "generated_at": "2026-09-25T16:12:54.742Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 198,
-    "retired": 41
+    "live": 199,
+    "retired": 42
   },
-  "next_id": 240,
+  "next_id": 242,
   "rules": [
     {
       "id": "R-151",
@@ -765,11 +765,20 @@
       "retired": false
     },
     {
-      "id": "R-238",
-      "hash": "dc468fcc0203",
+      "id": "R-240",
+      "hash": "610cc95bb738",
       "section": "2.4 What the loop does, per field",
       "kind": "prose",
-      "text": "Amended by OD-103 (2026-09-25): in the FIRST round for an IPO the loop does not stop at the first SUPPLIED rank. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168.",
+      "text": "Amended by OD-103 (2026-09-25): in the first read of each stage for an IPO (OD-56) the loop does not stop at the first SUPPLIED rank. At the draft-document stage the exchanges usually have nothing yet; they are asked again at the open stage, when they publish. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168.",
+      "first_seen": "2026-09-25",
+      "retired": false
+    },
+    {
+      "id": "R-241",
+      "hash": "0f557ad118da",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "Clarified 2026-09-25 (independent review of §9; follows from OD-106, OD-107 and §9.2 item 9): the \"skip\" above means \"never WRITE\", not \"never read\". A field an admin holds is still asked at the reads that OD-56 and OD-66 already schedule (a stage change, a new document); the answer is stored as a witness and, when it differs from the admin value, becomes a suggestion in the admin queue (§9.2 items 8 and 9). It is written only in the one case OD-106 names (a newer, different NSE or BSE date on an E-1 field). No extra read is scheduled for a held field (OD-65). Without this, items 8 and 9 and OD-106 could never fire, because the loop would never see the newer value.",
       "first_seen": "2026-09-25",
       "retired": false
     },
@@ -1789,6 +1798,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-238",
+      "hash": "dc468fcc0203",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "Amended by OD-103 (2026-09-25): in the FIRST round for an IPO the loop does not stop at the first SUPPLIED rank. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168.",
+      "first_seen": "2026-09-25",
+      "retired": true
     },
     {
       "id": "R-159",
