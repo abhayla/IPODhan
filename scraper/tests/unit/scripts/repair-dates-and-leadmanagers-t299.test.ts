@@ -39,6 +39,7 @@ describe('repair-dates-and-leadmanagers-t299.ts — prod-write refusal via openR
     await openRepairDb(mockProdPool(), {
       apply: true,
       allowProd: true,
+      redisConfigured: true,
       toolName: 'repair-dates-and-leadmanagers-t299',
       log: () => {},
       error: () => {},

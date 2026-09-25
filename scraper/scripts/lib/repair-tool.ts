@@ -48,6 +48,13 @@ import path from 'node:path';
 export const PRODUCTION_DATABASE_NAME = 'ipodhan';
 
 /**
+ * The one database name where the shared Redis client's localhost:6379
+ * fallback (packages/shared/src/cache/redis-client.ts) is actually correct —
+ * a local/tunnelled test run has no separate "real" Redis to miss.
+ */
+export const LOCAL_TEST_DATABASE_NAME = 'ipodhan_test';
+
+/**
  * #1045: shared `--ipo <uuid>` scope for every repair tool that spawns a
  * DB-wide process against the shared `ipodhan_test` database from an
  * integration test — see the class RCA in issue #1045. One implementation,
@@ -197,6 +204,48 @@ export function decideProdWriteRefusal(input: {
   return { refuse: false };
 }
 
+/**
+ * Pure refusal decision for the #715 Redis fail-closed guard: refusing to
+ * APPLY writes against a REMOTE database (anything other than
+ * `ipodhan_test`) when neither REDIS_URL nor REDIS_HOST is set.
+ *
+ * RCA (#715): every repair/backfill tool that invalidates cache goes through
+ * `getRedisClient()` (packages/shared/src/cache/redis-client.ts), which SILENTLY
+ * falls back to `redis://localhost:6379` — the LAPTOP's Redis — when neither
+ * env var is set. A tool run over an SSH tunnel to a remote DB (staging,
+ * prod) then deletes keys on the laptop's Redis, logs "Connected
+ * successfully" / "Cache DEL ...", and reports success, while the real
+ * slot's cache keeps serving the pre-repair value until the TTL expires. The
+ * write itself lands correctly; only cache invalidation silently no-ops.
+ *
+ * `redisConfigured` MUST be measured from the SAME process env the shared
+ * Redis client factory reads (`process.env.REDIS_URL` /
+ * `process.env.REDIS_HOST`) — never assumed. `ipodhan_test` is exempt: it is
+ * the one database a local/tunnelled dev run legitimately pairs with a local
+ * Redis, so the existing localhost fallback is correct there, not a bug.
+ */
+export function decideRedisFailClosedRefusal(input: {
+  apply: boolean;
+  dbName: string;
+  redisConfigured: boolean;
+  toolName?: string;
+}): { refuse: boolean; reason?: string } {
+  if (!input.apply) return { refuse: false }; // a dry run invalidates nothing — nothing to refuse
+  if (input.redisConfigured) return { refuse: false };
+  const isLocalTestDb = (input.dbName ?? '').toLowerCase() === LOCAL_TEST_DATABASE_NAME;
+  if (isLocalTestDb) return { refuse: false };
+  const prefix = input.toolName ? `${input.toolName}: ` : '';
+  return {
+    refuse: true,
+    reason:
+      `${prefix}refusing to APPLY writes against "${input.dbName}" — neither REDIS_URL nor ` +
+      'REDIS_HOST is set. Cache invalidation would silently fall back to redis://localhost:6379 ' +
+      `(the LAPTOP's Redis, not this slot's), report success, and leave "${input.dbName}"'s real ` +
+      'cache serving stale values until the TTL expires (#715). Set REDIS_URL/REDIS_HOST for this ' +
+      `slot before running --apply, or target ${LOCAL_TEST_DATABASE_NAME}.`,
+  };
+}
+
 /** Ask the SAME pool that will do the writing which database it is connected to. */
 export async function queryCurrentDatabase(dbLike: ExecuteLike): Promise<string> {
   const result = await dbLike.execute(sql`SELECT current_database() AS name`);
@@ -233,6 +282,14 @@ export async function openRepairDb(
     log?: (line: string) => void;
     error?: (line: string) => void;
     onRefuse?: (reason: string) => void;
+    /**
+     * Whether the shared Redis client (packages/shared/src/cache/redis-client.ts)
+     * has a real target configured for this slot. Defaults to reading
+     * `process.env.REDIS_URL` / `process.env.REDIS_HOST` directly — the SAME
+     * env vars that client reads — so callers do not need to thread this
+     * through; tests override it for determinism (#715).
+     */
+    redisConfigured?: boolean;
   }
 ): Promise<OpenRepairDbResult> {
   const log = options.log ?? ((l: string) => console.log(l));
@@ -249,6 +306,19 @@ export async function openRepairDb(
   if (decision.refuse) {
     err(decision.reason!);
     (options.onRefuse ?? ((): void => process.exit(1)))(decision.reason!);
+    return { dbName, isProd };
+  }
+  const redisConfigured =
+    options.redisConfigured ?? Boolean(process.env.REDIS_URL || process.env.REDIS_HOST);
+  const redisDecision = decideRedisFailClosedRefusal({
+    apply: options.apply,
+    dbName,
+    redisConfigured,
+    toolName: options.toolName,
+  });
+  if (redisDecision.refuse) {
+    err(redisDecision.reason!);
+    (options.onRefuse ?? ((): void => process.exit(1)))(redisDecision.reason!);
     return { dbName, isProd };
   }
   if (options.apply && isProd && options.allowProd) {

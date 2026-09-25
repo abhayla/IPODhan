@@ -225,6 +225,11 @@ production `--apply` so the backup survives on durable storage, not somewhere th
 `buildAlreadyRepairedSet()` (per-field idempotency) and `writeLedgerFile()`. CI enforces it:
 `scripts/ci/require-repair-tool-module.mjs` fails a PR whose new `scraper/scripts/{repair,backfill}-*.ts` neither
 imports the module nor carries `// repair-tool-exempt: <YYYY-MM-DD> <reason>`.
+**Redis fail-closed (#715):** `openRepairDb()` also refuses an `--apply` against any database other than
+`ipodhan_test` when neither `REDIS_URL` nor `REDIS_HOST` is set — the recipes above (staging/prod, over the
+DB tunnel) export `DATABASE_*` but not Redis, so export the slot's `REDIS_URL` too (section 2/8b's
+`ssh rfp-vps 'grep ^REDIS_URL= ...'` pattern) before `--apply`; otherwise the tool now stops before any write
+instead of silently invalidating the laptop's own Redis and leaving the real cache stale.
 
 **8a-i. Line-ending-safe matching (GitHub #449).** The row-matching hash above is taken over the
 migration `.sql` file exactly as `readMigrationFiles()` (drizzle-orm) and this tool both read it — and

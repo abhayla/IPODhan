@@ -8,7 +8,7 @@
  *   - drop `previousSource` from the upsert row           -> MUTATION 2 red
  *   - key the idempotency set by ipoId only (not field)   -> MUTATION 3 red
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   alreadyRepairedKey,
   assertNoSchemaDrift,
@@ -16,6 +16,7 @@ import {
   buildIpoScopeCondition,
   collectFlagValues,
   decideProdWriteRefusal,
+  decideRedisFailClosedRefusal,
   decideSchemaDriftRefusal,
   describeIpoScope,
   flagIsPresent,
@@ -23,6 +24,7 @@ import {
   parseIpoScope,
   probeFieldSourcesRowKeyColumn,
   resolveIpoScope,
+  LOCAL_TEST_DATABASE_NAME,
   PRODUCTION_DATABASE_NAME,
   queryCurrentDatabase,
   readFieldSource,
@@ -114,10 +116,106 @@ describe('openRepairDb — prints the real database name and gates the write', (
     const log = vi.fn();
     const onRefuse = vi.fn();
     const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan' }]);
-    const r = await openRepairDb({ execute }, { apply: true, allowProd: true, toolName: 't', log, error: vi.fn(), onRefuse });
+    const r = await openRepairDb({ execute }, { apply: true, allowProd: true,
+      redisConfigured: true, toolName: 't', log, error: vi.fn(), onRefuse });
     expect(onRefuse).not.toHaveBeenCalled();
     expect(r.isProd).toBe(true);
     expect(log).toHaveBeenCalledWith(expect.stringContaining('ALLOW-PROD'));
+  });
+});
+
+describe('decideRedisFailClosedRefusal — the #715 fail-closed cache-invalidation guard', () => {
+  it('MUTATION: deleting this refusal turns it red — --apply against a remote db with no REDIS_URL/REDIS_HOST is refused', () => {
+    const d = decideRedisFailClosedRefusal({
+      apply: true,
+      dbName: 'ipodhan_staging',
+      redisConfigured: false,
+      toolName: 'tool-x',
+    });
+    expect(d.refuse).toBe(true);
+    expect(d.reason).toMatch(/refusing to APPLY/);
+    expect(d.reason).toMatch(/tool-x/);
+    expect(d.reason).toMatch(/ipodhan_staging/);
+    expect(d.reason).toMatch(/localhost:6379/);
+    expect(d.reason).toMatch(/#715/);
+  });
+
+  it('also refuses --apply against prod ("ipodhan") with no REDIS_URL/REDIS_HOST — this is a SEPARATE guard from the prod-write refusal', () => {
+    expect(
+      decideRedisFailClosedRefusal({ apply: true, dbName: PRODUCTION_DATABASE_NAME, redisConfigured: false }).refuse
+    ).toBe(true);
+  });
+
+  it('never refuses a dry run, even against a remote db with no Redis configured', () => {
+    expect(
+      decideRedisFailClosedRefusal({ apply: false, dbName: 'ipodhan_staging', redisConfigured: false }).refuse
+    ).toBe(false);
+  });
+
+  it('proceeds when REDIS_URL/REDIS_HOST IS configured for the slot', () => {
+    expect(
+      decideRedisFailClosedRefusal({ apply: true, dbName: 'ipodhan_staging', redisConfigured: true }).refuse
+    ).toBe(false);
+  });
+
+  it(`proceeds against ${LOCAL_TEST_DATABASE_NAME} with no Redis configured — the one db the localhost fallback is correct for`, () => {
+    expect(
+      decideRedisFailClosedRefusal({ apply: true, dbName: LOCAL_TEST_DATABASE_NAME, redisConfigured: false }).refuse
+    ).toBe(false);
+  });
+
+  it(`is case-insensitive on the ${LOCAL_TEST_DATABASE_NAME} exemption`, () => {
+    expect(
+      decideRedisFailClosedRefusal({ apply: true, dbName: 'IPODhan_Test', redisConfigured: false }).refuse
+    ).toBe(false);
+  });
+});
+
+describe('openRepairDb — the #715 Redis fail-closed guard, wired through the same entry point every repair tool calls', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('MUTATION: deleting the wiring turns this red — refuses --apply against a remote db when process.env has neither REDIS_URL nor REDIS_HOST', async () => {
+    vi.stubEnv('REDIS_URL', '');
+    vi.stubEnv('REDIS_HOST', '');
+    const onRefuse = vi.fn();
+    const error = vi.fn();
+    const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan_staging' }]);
+    await openRepairDb({ execute }, { apply: true, allowProd: false, toolName: 'tool-x', log: vi.fn(), error, onRefuse });
+    expect(onRefuse).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('tool-x: refusing to APPLY'));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('#715'));
+  });
+
+  it(`does not refuse against ${LOCAL_TEST_DATABASE_NAME} even with no REDIS_URL/REDIS_HOST in the environment`, async () => {
+    vi.stubEnv('REDIS_URL', '');
+    vi.stubEnv('REDIS_HOST', '');
+    const onRefuse = vi.fn();
+    const execute = vi.fn().mockResolvedValue([{ name: LOCAL_TEST_DATABASE_NAME }]);
+    await openRepairDb({ execute }, { apply: true, allowProd: false, toolName: 't', log: vi.fn(), error: vi.fn(), onRefuse });
+    expect(onRefuse).not.toHaveBeenCalled();
+  });
+
+  it('does not refuse a dry run against a remote db, even with no REDIS_URL/REDIS_HOST', async () => {
+    vi.stubEnv('REDIS_URL', '');
+    vi.stubEnv('REDIS_HOST', '');
+    const onRefuse = vi.fn();
+    const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan_staging' }]);
+    await openRepairDb({ execute }, { apply: false, allowProd: false, toolName: 't', log: vi.fn(), error: vi.fn(), onRefuse });
+    expect(onRefuse).not.toHaveBeenCalled();
+  });
+
+  it('the explicit redisConfigured option overrides reading process.env directly', async () => {
+    vi.stubEnv('REDIS_URL', '');
+    vi.stubEnv('REDIS_HOST', '');
+    const onRefuse = vi.fn();
+    const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan_staging' }]);
+    await openRepairDb(
+      { execute },
+      { apply: true, allowProd: false, toolName: 't', log: vi.fn(), error: vi.fn(), onRefuse, redisConfigured: true }
+    );
+    expect(onRefuse).not.toHaveBeenCalled();
   });
 });
 

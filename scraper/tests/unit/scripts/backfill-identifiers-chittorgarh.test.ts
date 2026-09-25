@@ -39,6 +39,7 @@ describe('backfill-identifiers-chittorgarh.ts — prod-write refusal via openRep
     await openRepairDb(mockProdPool(), {
       apply: true,
       allowProd: true,
+      redisConfigured: true,
       toolName: 'backfill-identifiers-chittorgarh',
       log: () => {},
       error: () => {},

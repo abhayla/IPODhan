@@ -39,6 +39,7 @@ describe('backfill-lot-size-from-chittorgarh.ts — prod-write refusal via openR
     await openRepairDb(mockProdPool(), {
       apply: true,
       allowProd: true,
+      redisConfigured: true,
       toolName: 'backfill-lot-size-from-chittorgarh',
       log: () => {},
       error: () => {},

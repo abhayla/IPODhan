@@ -55,6 +55,7 @@ describe('repair-migration-journal-dates.ts — prod-write refusal via openRepai
     await openRepairDb(mockProdPool(), {
       apply: true,
       allowProd: true,
+      redisConfigured: true,
       toolName: 'repair-migration-journal-dates',
       log: () => {},
       error: () => {},

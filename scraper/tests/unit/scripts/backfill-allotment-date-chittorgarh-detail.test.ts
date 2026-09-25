@@ -39,6 +39,7 @@ describe('backfill-allotment-date-chittorgarh-detail.ts — prod-write refusal v
     await openRepairDb(mockProdPool(), {
       apply: true,
       allowProd: true,
+      redisConfigured: true,
       toolName: 'backfill-allotment-date-chittorgarh-detail',
       log: () => {},
       error: () => {},

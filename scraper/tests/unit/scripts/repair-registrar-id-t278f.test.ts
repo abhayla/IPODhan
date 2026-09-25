@@ -38,6 +38,7 @@ describe('repair-registrar-id-t278f.ts — prod-write refusal via openRepairDb()
     await openRepairDb(mockProdPool(), {
       apply: true,
       allowProd: true,
+      redisConfigured: true,
       toolName: 'repair-registrar-id-t278f',
       log: () => {},
       error: () => {},

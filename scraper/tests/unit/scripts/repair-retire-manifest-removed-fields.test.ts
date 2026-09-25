@@ -4,7 +4,7 @@
 // mutating the deps a real caller would supply (a wrong db name, a missing
 // flag, a prod db) and asserting the refusal, plus the apply/undo write
 // order.
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import {
   computeRemovedFieldKeys,
@@ -17,6 +17,17 @@ import {
   type LedgerPayload,
 } from '../../../scripts/repair-retire-manifest-removed-fields.js';
 import { buildIpoScopeCondition } from '../../../scripts/lib/repair-tool.js';
+
+// #715: openRepairDb() now fail-closes an --apply run against a non-test db
+// when neither REDIS_URL nor REDIS_HOST is set. These tests exercise the
+// PROD-write and --undo guards, not the Redis guard, so stub a value in so
+// run()'s real openRepairDb() call doesn't refuse for an unrelated reason.
+beforeEach(() => {
+  vi.stubEnv('REDIS_URL', 'redis://unit-test-not-real:6379');
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('computeRemovedFieldKeys', () => {
   it('returns a field key present in ipo_field_plan but absent from the manifest', () => {

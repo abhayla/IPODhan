@@ -69,6 +69,7 @@ describe('backfill-price-bands.ts — prod-write refusal via openRepairDb()', ()
     await openRepairDb(mockProdPool(), {
       apply: true,
       allowProd: true,
+      redisConfigured: true,
       toolName: 'backfill-price-bands',
       log: () => {},
       error: () => {},
