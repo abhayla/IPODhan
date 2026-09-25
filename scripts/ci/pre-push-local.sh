@@ -105,6 +105,15 @@ if [ "$HAS_RATCHET_PATHS" = "1" ]; then
   CHECKS+=("Write ratchet (no new direct ipos writers)|.|node scripts/check-write-ratchet.mjs")
 fi
 
+if [ "$RUN_WEB" = "1" ] || [ "$RUN_SCRAPER" = "1" ]; then
+  # web/tsc and scraper both import @ipodhan/shared's compiled dist/ output
+  # (CLAUDE.md: "Shared package must be compiled before web/scraper builds").
+  # Same step pr-gate.yml runs before its own web/scraper checks — a stale or
+  # missing dist/ produces TS6305 "not built from source" errors that look
+  # like real type errors and mask whatever the push actually broke.
+  CHECKS+=("Build shared package|.|rm -rf packages/shared/dist packages/shared/tsconfig.tsbuildinfo && cd packages/shared && npx tsc")
+fi
+
 if [ "$RUN_SCRAPER" = "1" ]; then
   # Targeted vitest on touched test files (fast path); falls back to no-op if
   # the touched set has no *.test.ts under scraper/ (source-only changes still
