@@ -9,7 +9,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyLine, extractFailures, parseLogLines } from '../ops/lib/failure-classifier.mjs';
+import { classifyLine, extractFailures, parseLogLines, ERROR_CLASSES } from '../ops/lib/failure-classifier.mjs';
 
 // Rentomojo Ltd. — staging, 2026-09-07T16:16:31.384Z — price-band ad insert fails.
 const RENTOMOJO_PERSIST = {
@@ -78,6 +78,39 @@ test('classifyLine: Rentomojo persist-numeric-overflow (code 22003)', () => {
   assert.equal(c.errorClass, 'persist-numeric-overflow');
   assert.equal(c.ipoId, 'b28d9d2a-cb24-4d84-8e1a-297ba828884a');
   assert.equal(c.docType, 'PRICE_BAND_AD');
+});
+
+// #426: the numeric guard's own REFUSAL (mark() in filing-persister.ts, level
+// 40) — a DISTINCT write-path event from the THROW-path rules above (level
+// 50, an insert that actually reached the driver). Before this fix, both
+// arms fell into the generic 'other' rule (msg matches /refused/i) with no
+// docType — a bare identity, not the full one signal-ownership R6 requires.
+const FRESHISSUE_GUARD_OVERFLOW = {
+  level: 40, time: '2026-09-16T10:00:00.000Z', ipoId: 'aaaaaaaa-0000-0000-0000-000000000001',
+  docType: 'PRICE_BAND_AD', col: 'freshIssue', value: '999999999999999999999', precision: 18, scale: 2,
+  reason: 'persist-numeric-overflow',
+  msg: 'persist-numeric-overflow: value refused for ipo_details column',
+};
+
+const FACEVALUE_GUARD_UNPARSEABLE = {
+  level: 40, time: '2026-09-16T10:05:00.000Z', ipoId: 'aaaaaaaa-0000-0000-0000-000000000002',
+  docType: 'RHP', col: 'faceValue', value: '1,05,55,67,000', precision: 10, scale: 2,
+  reason: 'persist-numeric-unparseable',
+  msg: 'persist-numeric-unparseable: value refused for ipo_details column',
+};
+
+test('classifyLine: numeric-guard overflow REFUSAL classifies as persist-numeric-overflow with docType, not "other" (#426)', () => {
+  const c = classifyLine(FRESHISSUE_GUARD_OVERFLOW);
+  assert.equal(c.errorClass, 'persist-numeric-overflow');
+  assert.equal(c.docType, 'PRICE_BAND_AD');
+  assert.notEqual(c.errorClass, 'other');
+});
+
+test('classifyLine: numeric-guard unparseable REFUSAL classifies as persist-numeric-unparseable, a real ERROR_CLASSES member (#426)', () => {
+  const c = classifyLine(FACEVALUE_GUARD_UNPARSEABLE);
+  assert.equal(c.errorClass, 'persist-numeric-unparseable');
+  assert.equal(c.docType, 'RHP');
+  assert.ok(ERROR_CLASSES.includes('persist-numeric-unparseable'));
 });
 
 test('classifyLine: a plain insert failure with no code still falls into persist-insert-failed', () => {

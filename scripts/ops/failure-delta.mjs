@@ -30,7 +30,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseLogLines, extractFailures, ERROR_CLASSES } from './lib/failure-classifier.mjs';
-import { parseTrackArg, resolveTrackedState, countUntracked, formatSshFailure } from './lib/failure-tick-state.mjs';
+import { parseTrackArg, resolveTrackedState, countUntracked, formatSshFailure, latestCycleWindow } from './lib/failure-tick-state.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = path.join(__dirname, 'state');
@@ -180,7 +180,13 @@ function main() {
 
   const raw = args.fromFile ? readFileSync(args.fromFile, 'utf8') : fetchLogTailOrExit(args.slot, args.lines);
   const parsed = parseLogLines(raw);
-  const currentMap = extractFailures(parsed);
+  // #429: bound the scan to the latest COMPLETE cycle (between the two most
+  // recent "Scraper execution completed" markers) rather than the raw fixed
+  // line-count window — a failure that stopped recurring is then simply
+  // absent from currentMap and diff() reports it GONE, instead of staying
+  // SAME until it scrolls out of a 5000-line window hours later.
+  const windowed = latestCycleWindow(parsed);
+  const currentMap = extractFailures(windowed);
 
   const state = loadState(args.slot, args.stateDir ?? STATE_DIR);
   const { NEW, GONE, SAME } = diff(currentMap, state.failures);
@@ -199,7 +205,7 @@ function main() {
   // --track always wins over a class track since it targets only that ipoId).
   resolveTrackedState(currentMap, state.failures, args.track, classIssues);
 
-  console.log(`failure-delta --slot ${args.slot} (last ${args.lines} log lines, ${parsed.length} parsed)`);
+  console.log(`failure-delta --slot ${args.slot} (last ${args.lines} log lines, ${parsed.length} parsed, ${windowed.length} in latest complete cycle window)`);
   console.log(`NEW=${NEW.length} GONE=${GONE.length} SAME=${SAME.length}`);
   console.log('');
 

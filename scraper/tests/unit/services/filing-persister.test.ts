@@ -29,6 +29,7 @@ import {
   scraperSourceForDocType,
   fitsNumericColumn,
   classifyNumericFit,
+  isNumericGuardCandidate,
   type FilingExtraction,
   type FilingPersisterDeps,
 } from '../../../src/services/filing-persister';
@@ -1050,6 +1051,22 @@ describe('filing-persister — T-504/#402 ipo_details numeric overflow (Rentomoj
     // digits" and must not be logged as persist-numeric-overflow.
     expect(classifyNumericFit('1,05,55,67,000', 18, 2)).toBe('unparseable');
     expect(fitsNumericColumn('1,05,55,67,000', 18, 2)).toBe(false);
+  });
+
+  // #426 (defense-in-depth without a guard on the guard): no current mark()
+  // call site passes a raw NUMBER into a numeric-limited ipo_details column
+  // — every call passes `.toString()`. That means reverting the
+  // `|| typeof v === 'number'` clause added in PR #423 review MINOR-2 left
+  // the whole test suite green (nothing exercises the number branch through
+  // persistFilingExtraction). This asserts the predicate directly so a
+  // revert of the number branch turns THIS test red, independent of
+  // whether a future caller happens to pass a number.
+  it('isNumericGuardCandidate: covers both string and number — reverting the number branch (#423 MINOR-2) must fail this test', () => {
+    expect(isNumericGuardCandidate('10555670000.00')).toBe(true);
+    expect(isNumericGuardCandidate(10555670000.0)).toBe(true);
+    expect(isNumericGuardCandidate(null)).toBe(false);
+    expect(isNumericGuardCandidate(undefined)).toBe(false);
+    expect(isNumericGuardCandidate({})).toBe(false);
   });
 });
 

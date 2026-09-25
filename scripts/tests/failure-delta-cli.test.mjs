@@ -16,6 +16,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.join(__dirname, '..', 'ops', 'failure-delta.mjs');
 const FIXTURE = path.join(__dirname, 'fixtures', 'failure-delta-cli.log');
 const FIXTURE_NEW_KEY = path.join(__dirname, 'fixtures', 'failure-delta-cli-newkey.log');
+const FIXTURE_OLD_FAILURE = path.join(__dirname, 'fixtures', 'failure-delta-old-failure.log');
+const FIXTURE_CLEAN_CYCLES_AFTER = path.join(__dirname, 'fixtures', 'failure-delta-clean-cycles-after.log');
 
 function run(args) {
   try {
@@ -52,6 +54,29 @@ test('T-502 (#413): a class --track on run 1 persists and covers a NEW key of th
     const second = run(['--slot', 'staging', '--from-file', FIXTURE_NEW_KEY, '--state-dir', stateDir]);
     assert.equal(second.code, 0, 'the persisted class track must cover a key first seen on this run');
     assert.match(second.stdout, /NEW\s+.*TRACKED #402/);
+  } finally {
+    rmSync(stateDir, { recursive: true, force: true });
+  }
+});
+
+// #429: failure-delta reported a failure as SAME long after it stopped
+// because it scanned a fixed line window instead of bounding to the latest
+// COMPLETE cycle. Run 1 establishes state with the old failure present (a
+// single "Scraper execution completed" boundary — too few markers to bound,
+// so the full window is used, matching a real first-ever tick). Run 2 reads
+// a log with the SAME old failure line plus two MORE clean cycle boundaries
+// after it — the failure must report GONE, not SAME.
+test('CLI: a failure that does not recur in the latest complete cycle reports GONE, not SAME (#429)', () => {
+  const stateDir = mkdtempSync(path.join(tmpdir(), 'failure-delta-cli-'));
+  try {
+    const first = run(['--slot', 'staging', '--from-file', FIXTURE_OLD_FAILURE, '--state-dir', stateDir, '--track', 'persist-insert-failed=402']);
+    assert.equal(first.code, 0, 'first run must exit 0 once tracked');
+    assert.match(first.stdout, /NEW\s+.*persist-insert-failed.*TRACKED #402/);
+
+    const second = run(['--slot', 'staging', '--from-file', FIXTURE_CLEAN_CYCLES_AFTER, '--state-dir', stateDir]);
+    assert.equal(second.code, 0, 'second run must exit 0 — the failure is gone, nothing left untracked');
+    assert.match(second.stdout, /GONE\s+.*persist-insert-failed/, 'must report GONE');
+    assert.doesNotMatch(second.stdout, /SAME\s+.*persist-insert-failed/, 'must NOT report SAME — this is the #429 bug');
   } finally {
     rmSync(stateDir, { recursive: true, force: true });
   }

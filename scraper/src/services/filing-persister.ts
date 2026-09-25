@@ -653,6 +653,22 @@ export function classifyNumericFit(
   return Math.abs(n) < 10 ** maxIntegerDigits ? 'fits' : 'overflow';
 }
 
+/**
+ * #426 (defense-in-depth without a guard on the guard): `mark()` below only
+ * runs the numeric-column guard when this predicate is true. PR #423 review
+ * MINOR-2 widened it from `typeof v === 'string'` to also cover `number`
+ * because a numeric() column's mapped value CAN arrive as a raw number, but
+ * no current call site actually passes one into a numeric-limited
+ * `ipo_details` column — so the existing test suite (which asserts
+ * `classifyNumericFit` directly, never `mark()`) stays green even if the
+ * `|| number` clause is reverted. Exported and named so a revert is caught
+ * by a fast, direct unit test instead of depending on a future caller to
+ * happen to pass a number.
+ */
+export function isNumericGuardCandidate(v: unknown): v is string | number {
+  return typeof v === 'string' || typeof v === 'number';
+}
+
 /** Boolean convenience wrapper over `classifyNumericFit` (kept for callers that only need fits/doesn't-fit). */
 export function fitsNumericColumn(
   value: string | number,
@@ -1501,7 +1517,7 @@ export async function persistFilingExtraction(
     // Round 2 (PR #423 review, MINOR-2): a numeric() column's mapped value
     // can arrive as either a string (round2(...).toString()) or a raw
     // number — the guard must cover both, not just strings.
-    if (typeof v === 'string' || typeof v === 'number') {
+    if (isNumericGuardCandidate(v)) {
       const limit = numericColumnLimit(schema.ipoDetails, col);
       if (limit) {
         const fit = classifyNumericFit(v, limit.precision, limit.scale);
@@ -1512,8 +1528,10 @@ export async function persistFilingExtraction(
           // silently coercing a locale-formatted string to NaN) — the rest
           // of the extraction still persists.
           const reason = fit === 'unparseable' ? 'persist-numeric-unparseable' : 'persist-numeric-overflow';
+          // #426: carry docType so failure-delta.mjs resolves this refusal to a full
+          // identity (ipoId, docType, errorClass), not just an ipoId + bare "other".
           logger.warn(
-            { ipoId, col, value: v, precision: limit.precision, scale: limit.scale, reason },
+            { ipoId, docType: options.docType, col, value: v, precision: limit.precision, scale: limit.scale, reason },
             `${reason}: value refused for ipo_details column`
           );
           skippedFailedCheck.push(
