@@ -1,0 +1,10 @@
+{
+  "id": "m_scraper_wake_freshness",
+  "findingClass": "for either slot, the newest line in /var/log/ipodhan-scraper-wake-<slot>.log is older than one cadence interval (30 min) plus slack (15 min) -- the crontab line existing (m_scraper_wake_crontab) is necessary and not sufficient: cron can fire a command that fails instantly (the exit-78 refusals in scraper-wake.sh), leaving the line present while the scraper stays asleep",
+  "issue": 663,
+  "sourceTask": "T-503",
+  "failThreshold": "for either slot, no wake log line at all, or the newest line's timestamp is more than 45 minutes old",
+  "severity": "P1",
+  "unverifiableWhen": "the wake log files are not reachable on this host (expected on a dev machine or CI; runs for real on the box via cron)",
+  "section": "checks"
+}

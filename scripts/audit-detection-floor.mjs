@@ -90,6 +90,11 @@ import {
 import { collectRowKeyCoverage, ROW_KEYED_CHILD_TABLES } from './lib/row-key-coverage-checks.mjs';
 import { extractShape, compareShape, partitionFixtures, loadHtmlFixtureEntries, summarizeCorpusShape, toPosixPath } from './lib/corpus-shape-checks.mjs';
 import { findFixtureFiles } from './lib/fixture-provenance-checks.mjs';
+import {
+  checkScraperWakeCrontabLine, checkScraperWakeFreshness,
+  SCRAPER_WAKE_CADENCE_BY_SLOT, SCRAPER_WAKE_CADENCE_MINUTES, SCRAPER_WAKE_FRESHNESS_SLACK_MINUTES,
+} from './lib/scraper-wake-detection.mjs';
+import { newestWakeTimestamp } from './ops/wake-delta.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
 import { adminQueueSize, formatAdminQueueBlock } from './ops/admin-queue-size.mjs';
 import { behaviourConflictPredicate, unresolvedConflictCountSql, unresolvedConflictNoiseSql, conflictsInserted24hSql, ensureDocumentIdProbe } from './lib/conflict-reasons.mjs';
@@ -1323,6 +1328,64 @@ async function checkH() {
   }
   record('h_pm2_env_tz', 'every pm2 process has TZ in its environment', tzOffenders.length === 0 ? 'PASS' : 'FAIL', tzOffenders.join('; ') || 'all set');
   record('h_pm2_log_size', 'every pm2 log file is under 100MB', sizeOffenders.length === 0 ? 'PASS' : 'FAIL', sizeOffenders.join('; ') || 'all under ceiling');
+}
+
+// ---- (h2): #663 — the scraper's crontab wake, and evidence it fired -----------
+//
+// Same "runs for real on the box, UNVERIFIABLE elsewhere" convention as
+// checkH's pm2 checks: `crontab -l` and the slot's local wake log both exist
+// only on the deploying host, never on a dev machine or in CI. This audit
+// script runs unattended on the box via cron (h_pm2_env_tz's own comment:
+// "runs for real on the box via cron"), so THAT run is the first real proof —
+// this dev-machine run below can only demonstrate UNVERIFIABLE gracefully.
+const SCRAPER_WAKE_SLOTS = ['prod', 'staging'];
+const SCRAPER_WAKE_LOG_PATH_BY_SLOT = {
+  prod: '/var/log/ipodhan-scraper-wake-prod.log',
+  staging: '/var/log/ipodhan-scraper-wake-staging.log',
+};
+const SCRAPER_WAKE_FRESHNESS_CEILING_MINUTES = SCRAPER_WAKE_CADENCE_MINUTES + SCRAPER_WAKE_FRESHNESS_SLACK_MINUTES;
+
+function scraperWakeFreshnessViolation(slot) {
+  const logPath = SCRAPER_WAKE_LOG_PATH_BY_SLOT[slot];
+  try {
+    if (!existsSync(logPath)) return `slot ${slot}: log file not present at ${logPath}`;
+    return checkScraperWakeFreshness(slot, newestWakeTimestamp(readFileSync(logPath, 'utf8')), new Date().toISOString());
+  } catch (e) {
+    return `slot ${slot}: could not read the wake log: ${e.message}`;
+  }
+}
+
+// #663: two invariants over BOTH slots, one record() id each (same
+// "population, offenders" shape as m_brlm_count/checkH) — reported by slot
+// per signal-ownership.md R1, never as a bare pass/fail. `crontab -l` and the
+// local wake log both exist only on the deploying host, so this check runs
+// for real on the box via cron (checkH's pm2 pattern) and is UNVERIFIABLE on
+// a dev machine or in CI; that box's own next scheduled run is the first real
+// proof of a VPS-only runtime input.
+async function checkScraperWake() {
+  let crontabText;
+  try {
+    crontabText = execFileSync('crontab', ['-l'], { encoding: 'utf8', timeout: 10000 });
+  } catch (e) {
+    const detail = 'crontab not reachable on this host (expected on a dev machine/CI; runs for real on the box via cron)';
+    record('m_scraper_wake_crontab', `crontab -l carries exactly one "# ipodhan-scraper-wake:<slot>" line per slot, naming the current symlink and that slot's cadence`, 'UNVERIFIABLE', detail);
+    record('m_scraper_wake_freshness', `newest wake log line per slot is within ${SCRAPER_WAKE_FRESHNESS_CEILING_MINUTES} minutes`, 'UNVERIFIABLE', detail);
+    return;
+  }
+
+  const cronOffenders = SCRAPER_WAKE_SLOTS
+    .map((slot) => checkScraperWakeCrontabLine(slot, crontabText))
+    .filter(Boolean);
+  for (const v of cronOffenders) notify('m_scraper_wake_crontab', 'P1', v, 'no live crontab wake for a scraper slot', v);
+  record('m_scraper_wake_crontab', `crontab -l carries exactly one "# ipodhan-scraper-wake:<slot>" line per slot, naming the current symlink and that slot's cadence (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
+    cronOffenders.length === 0 ? 'PASS' : 'FAIL', cronOffenders.join('; ') || 'present for every slot');
+
+  const freshOffenders = SCRAPER_WAKE_SLOTS
+    .map((slot) => scraperWakeFreshnessViolation(slot))
+    .filter(Boolean);
+  for (const v of freshOffenders) notify('m_scraper_wake_freshness', 'P1', v, 'a scraper slot has not been woken recently', v);
+  record('m_scraper_wake_freshness', `newest wake log line per slot is within ${SCRAPER_WAKE_FRESHNESS_CEILING_MINUTES} minutes (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
+    freshOffenders.length === 0 ? 'PASS' : 'FAIL', freshOffenders.join('; ') || 'fresh for every slot');
 }
 
 // ---- (i): wire-or-retire — scheduler tree reachable from the prod entrypoint --
@@ -3334,6 +3397,7 @@ async function main() {
   await runCheck(checkG3_inertDetector);
   await runCheck(checkG);
   await runCheck(checkH);
+  await runCheck(checkScraperWake);
   await runCheck(checkI);
   await runCheck(checkIdentity);
   await runCheck(checkSourceKeyConflicts);

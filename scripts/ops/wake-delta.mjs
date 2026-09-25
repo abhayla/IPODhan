@@ -59,7 +59,29 @@ const FAILURE_KINDS = ['wake-failed', 'ceiling-tripped'];
  * Parse the timestamp, the kind, and the exit code. A line whose shape does not
  * match is not silently dropped — see parseWakeLog's `unparsed` return.
  */
-const LINE_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s+scraper-wake:\s+([a-z-]+):\s*(.*)$/;
+export const LINE_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s+scraper-wake:\s+([a-z-]+):\s*(.*)$/;
+
+/**
+ * #663: the newest timestamp among ALL wake lines (wake-starting,
+ * wake-skipped, wake-complete, wake-failed, ceiling-tripped — every kind, not
+ * only failures), for `audit-detection-floor.mjs`'s freshness check. Every
+ * wake, successful or not, writes at least one line via `scraper-wake.sh`'s
+ * `log()`, so the newest line's age IS "when did a wake last actually
+ * happen" — `parseWakeLog`'s `failures` array only carries the two failure
+ * kinds and would read a healthy, silent wake as "nothing here", the exact
+ * silence #663 is about. Reuses LINE_RE rather than a second regex
+ * (duplicated-check-implementations.md).
+ */
+export function newestWakeTimestamp(raw) {
+  let newest = null;
+  for (const line of String(raw ?? '').split(/\r?\n/)) {
+    const m = LINE_RE.exec(line.trim());
+    if (!m) continue;
+    const ts = m[1];
+    if (newest === null || ts > newest) newest = ts;
+  }
+  return newest;
+}
 
 export function parseWakeLog(raw) {
   const failures = [];
