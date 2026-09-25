@@ -43,7 +43,12 @@ import {
 } from './services/document-cycle.js';
 import { raceWithTimeout, DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS } from './utils/race-with-timeout.js';
 import { shouldRunOnCatchUpCadence, isCatchUpCadenceDue, markCatchUpCadenceRan } from './scheduler/catch-up-cadence.js';
-import { isDiscoveryDue, isBiddingHoursIST, mostRecentDiscoverySlotLabel } from './scheduler/due-step-cycle.js';
+import {
+  isDiscoveryDue,
+  isBiddingHoursIST,
+  mostRecentDiscoverySlotLabel,
+  mostRecentDiscoverySlotEpochMinute,
+} from './scheduler/due-step-cycle.js';
 import { mostRecentDataJobSlotBoundary } from '@ipodhan/shared/scheduler/data-job-slots';
 import { runDemandBackfill } from './scripts/backfill-demand-graph.js';
 import { DistributedLock } from './utils/distributed-lock.js';
@@ -287,6 +292,21 @@ const CYCLE_LOCK_EXTEND_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Redis key tracking the last discovery (NSE+BSE) run, for the data job's 3-slot/day catch-up cadence (OD-19). */
 const DISCOVERY_LAST_RUN_KEY = 'due-step:last-discovery';
+
+/**
+ * Issue #943: a per-SLOT attempt counter (keyed by the slot's own epoch
+ * minute, so a new slot always starts at zero). Without this, one source
+ * that keeps failing (NSE or BSE) leaves `DISCOVERY_LAST_RUN_KEY` unstamped
+ * forever, and every 30-minute wake re-runs discovery -- and the website
+ * list scrapers gated on the same stamp -- up to 48 times a day instead of
+ * the OD-19 budget of 3. After MAX_DISCOVERY_ATTEMPTS failed wakes in the
+ * SAME slot, the slot is closed anyway (stamped, logged, alerted via OD-72)
+ * so the job does not spin forever on a source that will not recover before
+ * the slot boundary moves on.
+ */
+const DISCOVERY_ATTEMPTS_KEY_PREFIX = 'due-step:discovery-attempts:';
+const DISCOVERY_ATTEMPTS_TTL_SECONDS = 24 * 60 * 60;
+const MAX_DISCOVERY_ATTEMPTS = Number(process.env.DUE_STEP_DISCOVERY_MAX_ATTEMPTS) || 3;
 
 /** Aggregator refresh (Chittorgarh) cadence: at most once per day. */
 const AGGREGATOR_INTERVAL_MINUTES = 24 * 60;
@@ -1034,10 +1054,50 @@ async function runDueStepCycle(
       );
     }
   } else {
-    logger.warn(
-      { nseOk, bseOk, slot: mostRecentDiscoverySlotLabel(now) },
-      'Due-step cycle: discovery step(s) failed — leaving the cadence key unstamped so the next cycle retries'
-    );
+    let attempts = 0;
+    let attemptsCounterFailed = false;
+    try {
+      const attemptsKey = `${DISCOVERY_ATTEMPTS_KEY_PREFIX}${mostRecentDiscoverySlotEpochMinute(now)}`;
+      attempts = await redis.incr(attemptsKey);
+      await redis.expire(attemptsKey, DISCOVERY_ATTEMPTS_TTL_SECONDS);
+    } catch (error) {
+      attemptsCounterFailed = true;
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Due-step cycle: discovery attempt-counter increment failed (non-fatal) — leaving the cadence key unstamped so the next cycle retries'
+      );
+    }
+
+    if (!attemptsCounterFailed && attempts >= MAX_DISCOVERY_ATTEMPTS) {
+      // Issue #943: close the slot anyway rather than let a permanently
+      // failing source hold it open past the OD-19 budget forever.
+      try {
+        await redis.set(DISCOVERY_LAST_RUN_KEY, now.toISOString());
+      } catch (error) {
+        logger.debug(
+          { error: error instanceof Error ? error.message : String(error) },
+          'Due-step cycle: discovery last-run persist failed after capping attempts (non-fatal)'
+        );
+      }
+      logger.error(
+        { nseOk, bseOk, attempts, slot: mostRecentDiscoverySlotLabel(now) },
+        'Due-step cycle: discovery failed on every attempt this slot — closing the slot anyway and alerting (issue #943, OD-72)'
+      );
+      await sendOwnerAlert(
+        'P1',
+        'IPODhan data slot closed after repeated discovery failures',
+        {
+          body: `slot=${mostRecentDiscoverySlotLabel(now)} nseOk=${nseOk} bseOk=${bseOk} attempts=${attempts}`,
+          type: 'due-step-discovery-slot-capped',
+          dedupeKey: `due-step-discovery-cap-${mostRecentDiscoverySlotEpochMinute(now)}`,
+        }
+      );
+    } else {
+      logger.warn(
+        { nseOk, bseOk, attempts, slot: mostRecentDiscoverySlotLabel(now) },
+        'Due-step cycle: discovery step(s) failed — leaving the cadence key unstamped so the next cycle retries'
+      );
+    }
   }
 
   // (c) live data — MOVED OUT (item 7 S1, spec §2.1, OD-27/OD-28). Subscription,
