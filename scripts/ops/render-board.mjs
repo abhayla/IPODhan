@@ -270,7 +270,7 @@ const built = verdicts.BUILT;
 const partial = verdicts.PARTIAL;
 const notBuilt = verdicts['NOT BUILT'];
 const itemsTotal = itemRows.length;
-need(itemsTotal === 29, `parsed ${itemsTotal} build items, expected 29`);
+need(itemsTotal === 30, `parsed ${itemsTotal} build items, expected 30`);
 need(built + partial + notBuilt === itemsTotal, 'verdict counts do not sum to the row count');
 const stagingProvenText = stagingProven === 0
   ? 'unmeasured &mdash; no item yet records a <code>Staging proof:</code> line in its evidence (docs/design/pull-model-completion-state.md)'

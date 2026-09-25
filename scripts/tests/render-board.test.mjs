@@ -47,10 +47,10 @@ for (const r of rows) {
   if (v) truth[v[1]] += 1;
   if (r.includes('data-staged="1"')) truthStaged += 1;
 }
-ok('29 build items parsed', rows.length === 29, `got ${rows.length}`);
-ok('verdicts sum to row count', truth.BUILT + truth.PARTIAL + truth['NOT BUILT'] === 29);
+ok('30 build items parsed', rows.length === 30, `got ${rows.length}`);
+ok('verdicts sum to row count', truth.BUILT + truth.PARTIAL + truth['NOT BUILT'] === 30);
 ok('page states the derived built count',
-  html.includes(`${truth.BUILT} / 29 built`), `expected "${truth.BUILT} / 29 built"`);
+  html.includes(`${truth.BUILT} / 30 built`), `expected "${truth.BUILT} / 30 built"`);
 ok('page states the derived breakdown',
   html.includes(`${truth.BUILT} built &middot; ${truth.PARTIAL} partial &middot; ${truth['NOT BUILT']} not built`));
 ok('stdout reports the same numbers',
@@ -64,13 +64,13 @@ ok('stdout reports the same numbers',
 // staging" figure must be DERIVED (a count of data-staged rows) or the literal
 // word "unmeasured", never a typed number.
 ok('tile label says "on main", not just "built"',
-  html.includes(`${truth.BUILT} / 29 built on main`), `expected "${truth.BUILT} / 29 built on main"`);
+  html.includes(`${truth.BUILT} / 30 built on main`), `expected "${truth.BUILT} / 30 built on main"`);
 ok('tile sub-line names the source is code on main',
   html.includes('(code on <b>main</b>)'));
 ok('proven-on-staging figure is derived from data-staged rows',
   truthStaged === 0
     ? html.includes('Proven on staging: <b>unmeasured')
-    : html.includes(`Proven on staging: <b>${truthStaged} of 29 items`),
+    : html.includes(`Proven on staging: <b>${truthStaged} of 30 items`),
   `truthStaged=${truthStaged}`);
 ok('unmeasured proven-on-staging names the command/marker that would measure it',
   truthStaged > 0 || html.includes('Staging proof:'),
@@ -83,7 +83,7 @@ ok('unmeasured proven-on-staging names the command/marker that would measure it'
 const meterOk = (html.match(/<span class="on-ok"><\/span>/g) || []).length;
 const meterWarn = (html.match(/<span class="on-warn"><\/span>/g) || []).length;
 const meterBad = (html.match(/<span class="on-bad"><\/span>/g) || []).length;
-ok('meter has exactly 29 segments', meterOk + meterWarn + meterBad === 29,
+ok('meter has exactly 30 segments', meterOk + meterWarn + meterBad === 30,
   `${meterOk}+${meterWarn}+${meterBad}`);
 ok('meter segments match the verdicts',
   meterOk === truth.BUILT && meterWarn === truth.PARTIAL && meterBad === truth['NOT BUILT']);
