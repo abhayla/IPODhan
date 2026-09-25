@@ -84,6 +84,20 @@ def _extract_pr_number(merge_stmt):
 # verb (comment / print / search) before the merge pattern is tested against
 # ONLY that statement, with common prefixes (cd X &&, env assignment, node,
 # npx) stripped first.
+#
+# #1036 (2026-09-25): that split happened on the RAW command, before quoted
+# strings, heredoc bodies and comments were removed. A `;` or `|` INSIDE a
+# quoted string (e.g. a test harness's `'{"tool_input":{"command":"gate; gh
+# pr merge 5"}}'`, or a heredoc body line, or a comment line that itself
+# contains a `;`) split the quote/comment open, so the trailing fragment
+# ("gh pr merge 5"...) no longer started with `#` or an echo/grep/python
+# leading verb and matched the merge pattern for real. Fix: strip quoted
+# text, heredoc bodies and `#` comments FIRST (preserving every separator
+# outside them), then split. Ported from the linear scanner in
+# `~/.claude/hooks/merge-chain-guard.py` `scan()` (round-2 Tier A review) —
+# that guard already solved this exact class for the sibling `gh pr merge`
+# chain-guard. This is an independent copy: board-owed-guard stays
+# stdlib-only and fail-open, and hook files here never import each other.
 _STATEMENT_SPLIT_RE = re.compile(r"&&|\|\||[;|]|\(")
 _NON_MERGE_LEADING_VERB_RE = re.compile(
     r"^(?:echo|printf|grep|rg|cat|sed|awk|python[0-9.]*|node\s+-e)\b", re.IGNORECASE
@@ -98,14 +112,79 @@ _LEADING_PREFIX_RE = re.compile(
 _MERGE_STATEMENT_RE = re.compile(
     r"^(?:gh\s+pr\s+merge\b|\S*merge-if-current\.mjs\b)", re.IGNORECASE
 )
+_HEREDOC_AT_RE = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+
+
+def _clean_command_text(command):
+    """Return `command` with quoted strings, heredoc bodies and `#` comments
+    blanked out, while every statement separator (newline, `;`, `&&`, `||`,
+    `|`, `(`) that lies OUTSIDE them is preserved verbatim in place — so the
+    existing line/regex statement splitter below still works, now blind to a
+    merge phrase that only appears inside a string, a comment, or a heredoc
+    body line. Ported from the scanning half of
+    `~/.claude/hooks/merge-chain-guard.py` `scan()` — see the note above
+    `_STATEMENT_SPLIT_RE`. Best-effort (no real shell parser); fails toward
+    leaving text alone (never toward removing a real separator)."""
+    out = []
+    i, n = 0, len(command)
+    pending_heredocs = []
+    while i < n:
+        c = command[i]
+        nxt = command[i + 1] if i + 1 < n else ""
+        if c == "\\" and nxt:
+            out.append(c)
+            out.append(nxt)
+            i += 2
+            continue
+        if c == "'":
+            j = command.find("'", i + 1)
+            i = n if j < 0 else j + 1
+            out.append("''")
+            continue
+        if c == '"':
+            j = i + 1
+            while j < n and command[j] != '"':
+                j += 2 if command[j] == "\\" else 1
+            i = j + 1 if j <= n else n
+            out.append('""')
+            continue
+        if c == "#" and (not out or out[-1][-1:].isspace()):
+            j = command.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if c == "<" and nxt == "<":
+            m = _HEREDOC_AT_RE.match(command, i)
+            if m:
+                pending_heredocs.append(m.group(3))
+                out.append("<<H")
+                i = m.end()
+                continue
+        if c == "\n" and pending_heredocs:
+            out.append("\n")
+            i += 1
+            for delim in pending_heredocs:
+                while i < n:
+                    j = command.find("\n", i)
+                    line = command[i:] if j < 0 else command[i:j]
+                    i = n if j < 0 else j + 1
+                    if line.strip() == delim:
+                        break
+            pending_heredocs = []
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
 
 
 def _iter_statements(command):
     """Split a shell command into individual statements on ; && || | ( and
-    newlines. A best-effort lexical split (no real shell parser) — good
-    enough to tell a real merge invocation from a comment/echo/grep about
-    one, which is the only thing this guard needs."""
-    for raw_line in command.splitlines():
+    newlines, after `_clean_command_text` has blanked quoted strings,
+    heredoc bodies and `#` comments. A best-effort lexical split (no real
+    shell parser) — good enough to tell a real merge invocation from a
+    comment/echo/grep/heredoc about one, which is the only thing this guard
+    needs."""
+    cleaned = _clean_command_text(command)
+    for raw_line in cleaned.splitlines():
         for chunk in _STATEMENT_SPLIT_RE.split(raw_line):
             stmt = chunk.strip()
             if stmt:
