@@ -181,6 +181,47 @@ describe.skipIf(!DATABASE_URL)('OD-92 merge then unmerge restores every row exac
     expect(log.rows[0].unmerged_by).toBe('unmerge.test');
   });
 
+  /**
+   * #1072 round 2 (Tier A finding, same class as #755/#753/#1065/#1068): `mergeDuplicateInto`'s
+   * carried-field `field_sources` write is an `onConflictDoUpdate` on
+   * (ipo_id, table_name, row_key, field_name) — the SURVIVOR's `faceValue` provenance row (seeded
+   * here with pre-existing docType/preExisting lineage keys) hits that SAME conflict target when
+   * the merge carries `faceValue` from the dropped row. Proves the fix merges rather than
+   * replaces on the real write path, and that unmerge's delete+reinsert from
+   * `fieldSourcesBefore.keep` restores the pre-merge row EXACTLY (no merge artifacts left behind).
+   */
+  it('#1072: a survivor field_sources row with pre-existing lineage keeps them through merge (SQL merge, not replace) and unmerge restores exactly', async () => {
+    await plantPair();
+    await pool!.query(
+      `INSERT INTO field_sources (ipo_id, table_name, row_key, field_name, source, data_lineage)
+       VALUES ($1, 'ipos', '', 'faceValue', 'NSE', $2::jsonb)`,
+      [K, JSON.stringify({ docType: 'RHP', preExisting: true })]
+    );
+
+    await repo!.mergeDuplicateInto(K, D, { apply: true, mergedBy: 'unmerge.test' });
+    const id = await mergeLogId(D);
+
+    const readLineage = async () => {
+      const r = await pool!.query(
+        `SELECT data_lineage FROM field_sources WHERE ipo_id = $1 AND table_name = 'ipos' AND row_key = '' AND field_name = 'faceValue'`,
+        [K]
+      );
+      expect(r.rows).toHaveLength(1);
+      return r.rows[0].data_lineage as Record<string, unknown>;
+    };
+
+    const merged = await readLineage();
+    // the pre-existing keys survived the merge's onConflictDoUpdate ...
+    expect(merged).toMatchObject({ docType: 'RHP', preExisting: true });
+    // ... AND the merge's own provenance was added on top (a true merge, not a bare pass-through).
+    expect(merged).toMatchObject({ tool: 'merge-duplicate-ipo', mergedFrom: D });
+
+    await repo!.unmergeDuplicate(id, { apply: true, unmergedBy: 'unmerge.test' });
+
+    const restored = await readLineage();
+    expect(restored).toEqual({ docType: 'RHP', preExisting: true });
+  });
+
   it('a second unmerge of the same entry is refused', async () => {
     await plantPair();
     await repo!.mergeDuplicateInto(K, D, { apply: true, mergedBy: 'unmerge.test' });

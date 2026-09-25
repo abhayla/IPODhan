@@ -2607,13 +2607,16 @@ export async function recordDiscoveredLeadManagers(
       )
       .limit(1);
 
+    // OD-85: the binding key ids when this record came through a key bind, else null as before.
+    const sourceKeyLineage = sourceKeyLineageFor(ipoId) ?? null;
+    const sourceKeyLineageJson = sourceKeyLineage === null ? null : JSON.stringify(sourceKeyLineage);
+
     const provenanceRow = {
       source: source as never,
       confidence: 100,
       previousValue: null,
       previousSource: (previous[0]?.source ?? null) as never,
-      // OD-85: the binding key ids when this record came through a key bind, else null as before.
-      dataLineage: (sourceKeyLineageFor(ipoId) ?? null) as never,
+      dataLineage: sourceKeyLineage as never,
       updatedAt: new Date(),
       updatedBy: 'SYSTEM',
     };
@@ -2623,7 +2626,19 @@ export async function recordDiscoveredLeadManagers(
       .values({ ipoId, tableName: 'ipos', fieldName: 'leadManagers', ...provenanceRow })
       .onConflictDoUpdate({
         target: [fieldSourcesTable.ipoId, fieldSourcesTable.tableName, fieldSourcesTable.fieldName],
-        set: provenanceRow,
+        set: {
+          ...provenanceRow,
+          // #1072 round 2 (same class as #755/#753/#1065/#1068): a plain object here REPLACES
+          // the whole jsonb column on conflict, destroying whatever docType/other keys an
+          // earlier write on this SAME (ipo, table, row) had set. Same coalesce-and-concat merge
+          // as field-sources-repository.ts's fix, made null-safe: when THIS write carries no
+          // source-key lineage (sourceKeyLineage === null), keep the existing column value
+          // rather than overwriting it with NULL.
+          dataLineage:
+            sourceKeyLineageJson === null
+              ? sqlOp`${fieldSourcesTable.dataLineage}`
+              : sqlOp`COALESCE(${fieldSourcesTable.dataLineage}, '{}'::jsonb) || ${sourceKeyLineageJson}::jsonb`,
+        },
       });
 
     return true;

@@ -1839,7 +1839,16 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               confidence: p.confidence,
               previousValue: keepValueBefore === null || keepValueBefore === undefined ? null : String(keepValueBefore),
               previousSource: previousSource as (typeof fieldSources.$inferInsert)['previousSource'],
-              dataLineage: { tool: 'merge-duplicate-ipo', mergedFrom: dropId, note: p.note, at: new Date().toISOString() },
+              // #1068 sweep (same class as #755/#753/#1065): MERGE, never replace. A plain
+              // object here REPLACES the whole jsonb column on conflict, destroying whatever
+              // docType/other keys an earlier write on this SAME (ipo, table, row, field) had
+              // set. Same coalesce-and-concat merge as field-sources-repository.ts's fix.
+              dataLineage: sql`COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) || ${JSON.stringify({
+                tool: 'merge-duplicate-ipo',
+                mergedFrom: dropId,
+                note: p.note,
+                at: new Date().toISOString(),
+              })}::jsonb`,
               updatedBy: 'merge-duplicate-ipo',
               updatedAt: new Date(),
             },
