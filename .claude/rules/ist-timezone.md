@@ -2,7 +2,7 @@
 
 # IST is the project's timezone. Every time a human reads is IST.
 
-version: "1.1.0" (owner approved 2026-09-25, Q4) (owner directive 2026-09-19: "All time zones should be in IST hours... We are in IST
+version: "1.1.1" (1.1.1: #954 mechanism corrected; 1.1.0 owner approved 2026-09-25, Q4) (owner directive 2026-09-19: "All time zones should be in IST hours... We are in IST
 time zone, Indian standard time. So everything should by default be in IST time zone.")
 
 ## Why this rule exists
@@ -64,12 +64,13 @@ So: UTC in the column, IST at every boundary a human touches.
     `TypeError: value.toISOString is not a function` at query time — a string has no `.toISOString()`
     method. **Never pass a string to a drizzle timestamp operator or write field**; pass the `Date`.
   - **Measured 2026-09-25 (#954):** `/api/ipos/[slug]/demand-graph` returned HTTP 500 for every IPO
-    with demand data across 4 prod nights (09-16 through 09-23) because its repository query bound
-    `date.toISOString()` into a drizzle `gte()` on a default-mode `timestamp()` column — exactly the
-    binding this rule previously told every path to use. Fixed in PR #1069 (bind the `Date`); the
-    same class recurred in the #1033 builder's first fix attempt on a `.set()` call (PR #1067, caught
-    before merge). Registered as failure class `iso-string-bound-to-drizzle-timestamp`
-    (`docs/reviews/failure-classes/iso-string-bound-to-drizzle-timestamp.json`).
+    with demand data across 4 prod nights (09-16 through 09-23). Mechanism (read from the fix,
+    e555855b): a raw `sql<Date>`MAX(timestamp)`` returned naive-timestamp TEXT, and that string was
+    reused in a drizzle `eq()` on a `timestamp()` column, where drizzle called `.toISOString()` on it.
+    Fixed in PR #1069. The `.toISOString()`-into-the-query-builder shape then recurred in the #1033
+    builder's first fix attempt on a `.set()` call (PR #1067, caught before merge). Both are the
+    same class: a string reaching a drizzle timestamp mapper (`iso-string-bound-to-drizzle-timestamp`,
+    `docs/reviews/failure-classes/iso-string-bound-to-drizzle-timestamp.json`).
   - A drizzle column declared `timestamp(..., { mode: 'string' })` or `date(...)` is unaffected by
     either rule — its driver value already IS a string, so `.toISOString()` is correct there too.
   - **A raw `sql<Date>\`...\`` fragment returns TEXT, not a `Date`** — raw sql results are never mapped
