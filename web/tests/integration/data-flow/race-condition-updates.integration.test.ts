@@ -206,13 +206,20 @@ describe('Category 3.1: Simultaneous Scraper Updates', () => {
     expect(succeeded).toBe(50);
     expect(failed).toBe(0);
 
-    // Check overall performance - 50 concurrent updates should complete in reasonable time
-    // Target: < 5 seconds total (allowing for concurrent resource contention)
-    expect(totalDuration).toBeLessThan(5000);
+    // #839: was a tight 5000ms wall-clock target (and a 100ms-average one
+    // right after it), which flipped pass/fail with machine load alone
+    // (5142ms one run, passing the next, no code change between them) — a
+    // laptop shared with other vitest workers/an SSH tunnel is not a stable
+    // enough clock for either budget. Loosened to orders-of-magnitude smoke
+    // bounds (option 2 of #839, the issue's own recommendation for this
+    // file): still catches a real regression class (50 concurrent updates
+    // pathologically serializing, or an N+1 per update) without flapping on
+    // scheduler noise.
+    expect(totalDuration).toBeLessThan(60_000);
 
-    // Average time per update should be acceptable
+    // Average time per update should be a smoke bound, not a tight target.
     const avgDuration = totalDuration / 50;
-    expect(avgDuration).toBeLessThan(100); // 100ms average per update
+    expect(avgDuration).toBeLessThan(1_000); // was 100ms; same class as totalDuration above
 
     // Check field sources were tracked for all updates
     const trackedSources = await db
