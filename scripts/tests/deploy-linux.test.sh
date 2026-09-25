@@ -3399,63 +3399,178 @@ else
   fi
 fi
 
-# --- Case 37 (#649): the scheduled staging guard's "could not read the -----
-# --- served sha locally" branch must try a SECOND, independent read - -----
-# --- staging's own PUBLIC /api/version - before falling back to deploying -
-# --- blind. PORT_FILE readable-but-wrong or the loopback port firewalled --
-# --- used to look identical to "genuinely down", both going straight to --
-# --- blind. These are static assertions on the workflow file + an --------
-# --- ordering check (the public probe must appear BEFORE the blind-deploy -
-# --- Notifier alert in the gate step's source, so it runs first).
+# --- Case 37 (#649): BEHAVIOUR test, not a text grep. Round-1 review --------
+# --- (Tier A, REVISE) found that a text-grep-only case 37 stayed green -----
+# --- under mutations that: set the success condition to `if true`, delete -
+# --- the public curl line, invert the condition, or move the probe after --
+# --- the blind `exit 0`. This version extracts the gate step's OWN `run:` -
+# --- block out of the real workflow file and actually EXECUTES it (with a -
+# --- fake `curl` on PATH standing in for the network), so a mutation that -
+# --- changes behaviour is caught by an assertion on the real $GITHUB_OUTPUT
+# --- `proceed=` value, not by matching a comment or a variable name.
 if [ ! -f "$WORKFLOW_FILE" ]; then
   fail "case 37: $WORKFLOW_FILE not found - workflow renamed or moved?"
 else
-  GATE_STEP="$(sed -n '/- name: Decide whether a window staging deploy is needed/,/^  deploy:/p' "$WORKFLOW_FILE")"
+  GATE_RUN_BLOCK="/tmp/deploy-test-37-gate-block.sh"
+  # Extract the bash body of the "Decide whether a window staging deploy is
+  # needed" step's `run: |` block: start at the first `run: |` line after
+  # its `id: gate` marker, stop at the next step (`      - name:`, 6-space
+  # indent). Trailing comment lines belonging to the NEXT step may be
+  # swept in too (this extraction is indentation-agnostic, unlike YAML's
+  # own block-scalar rule) - harmless, since a `#`-led line is a valid bash
+  # comment regardless of its column.
+  awk '
+    /id: gate/ {ingate=1}
+    ingate && /^        run: \|/ && !started {capture=1; started=1; next}
+    capture && /^      - name:/ {capture=0; exit}
+    capture {print}
+  ' "$WORKFLOW_FILE" > "$GATE_RUN_BLOCK"
 
-  if [ -z "$GATE_STEP" ]; then
-    fail "case 37: could not locate the scheduled-staging gate step in $WORKFLOW_FILE - step renamed? (#649 guard is now blind)"
+  if [ ! -s "$GATE_RUN_BLOCK" ]; then
+    fail "case 37: could not extract the gate step's run: block from $WORKFLOW_FILE (#649 behaviour harness cannot run - step renamed/restructured?)"
   else
-    if emitn "$GATE_STEP" | grep -qF 'https://staging.ipodhan.com/api/version'; then
+    if ! bash -n "$GATE_RUN_BLOCK" 2>/tmp/deploy-test-37-syntax.log; then
+      fail "case 37: the extracted gate run: block is not valid bash - see /tmp/deploy-test-37-syntax.log"
+      cat /tmp/deploy-test-37-syntax.log
+    else
+      pass "case 37: the extracted gate run: block is valid, executable bash"
+    fi
+
+    # Fake `curl` on PATH: routes by URL. The loopback probe (127.0.0.1)
+    # ALWAYS fails here - simulating "PORT_FILE readable-but-wrong, or the
+    # loopback port firewalled/dead" (#649's own scenario) - so every case
+    # below reaches the public-fallback branch under test. The public
+    # staging endpoint's response is controlled by FAKE_PUBLIC_MODE.
+    FAKE_BIN_DIR="$(mktemp -d)"
+    cat > "$FAKE_BIN_DIR/curl" <<'FAKECURL'
+#!/usr/bin/env bash
+url="${@: -1}"
+case "$url" in
+  http://127.0.0.1:*)
+    exit 7
+    ;;
+  https://staging.ipodhan.com/api/version\?*)
+    case "${FAKE_PUBLIC_MODE:-fail}" in
+      head) printf '{"data":{"sha":"%s"}}' "$FAKE_HEAD_SHA" ;;
+      unknown) printf '{"data":{"sha":"unknown"}}' ;;
+      garbage) printf 'not-json-at-all' ;;
+      *) exit 7 ;;
+    esac
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+FAKECURL
+    chmod +x "$FAKE_BIN_DIR/curl"
+
+    # Runs the real gate block as a real subprocess with the fake curl
+    # first on PATH, a real $GITHUB_OUTPUT file, and MODE=window (the only
+    # mode where this branch is reachable at all). Sets $LAST_PROCEED to the
+    # `proceed=` value the block actually wrote (empty if none), and writes
+    # the block's full stdout/stderr to $2 (a case-specific log file) so
+    # callers can assert on WHICH branch actually ran, not only the final
+    # proceed value - two different branches can produce the same proceed
+    # value (the #649 public-fallback branch, and the pre-existing
+    # git-cat-file "served sha is not a commit in this clone" branch further
+    # down both end in proceed=true), so the proceed value alone is not
+    # enough to prove the RIGHT branch ran. Round-1 review measured exactly
+    # this: mutating the fallback's own success/failure check to `if true`
+    # still landed on proceed=true for the fail/unknown/garbage cases via
+    # that OTHER branch, staying green under a proceed-only assertion.
+    LAST_PROCEED=""
+    run_gate_case() {
+      local public_mode="$1" log_file="$2" head_sha="$3" out_file
+      out_file="$(mktemp)"
+      (
+        PATH="$FAKE_BIN_DIR:$PATH"
+        export PATH FAKE_PUBLIC_MODE="$public_mode" FAKE_HEAD_SHA="$head_sha"
+        export MODE=window SLOT=staging HEAD_SHA="$head_sha" RUN_ID=999999
+        export GITHUB_OUTPUT="$out_file"
+        unset GITHUB_STEP_SUMMARY NOTIFIER_URL NOTIFIER_KEY 2>/dev/null
+        bash --noprofile --norc -o pipefail "$GATE_RUN_BLOCK" >"$log_file" 2>&1
+      )
+      LAST_PROCEED="$(grep -E '^proceed=' "$out_file" 2>/dev/null | tail -n1 | cut -d= -f2)"
+      rm -f "$out_file"
+    }
+
+    FIXED_HEAD_SHA="deadbeef00000000000000000000000000000000"
+    LOG_HEAD="/tmp/deploy-test-37-log-head.txt"
+    LOG_FAIL="/tmp/deploy-test-37-log-fail.txt"
+    LOG_UNKNOWN="/tmp/deploy-test-37-log-unknown.txt"
+    LOG_GARBAGE="/tmp/deploy-test-37-log-garbage.txt"
+
+    run_gate_case head "$LOG_HEAD" "$FIXED_HEAD_SHA"
+    if [ "$LAST_PROCEED" = "false" ]; then
+      pass "case 37: public fallback reports staging already serves HEAD -> proceed=false (no deploy needed)"
+    else
+      fail "case 37: expected proceed=false when the public fallback reports HEAD's own sha - got '$LAST_PROCEED' (#649)"
+    fi
+    if grep -qF 'Public fallback succeeded' "$LOG_HEAD"; then
+      pass "case 37: the HEAD case took the public-fallback SUCCESS branch (not a coincidental proceed value)"
+    else
+      fail "case 37: the HEAD case did not log 'Public fallback succeeded' - proceed=false may be coming from a different branch (#649)"
+    fi
+
+    run_gate_case fail "$LOG_FAIL" "$FIXED_HEAD_SHA"
+    if [ "$LAST_PROCEED" = "true" ]; then
+      pass "case 37: both loopback and public curl fail -> proceed=true (deploy blind, per #649's own erring-toward-deploy design)"
+    else
+      fail "case 37: expected proceed=true when both the loopback and public reads fail - got '$LAST_PROCEED' (#649)"
+    fi
+    # This is the assertion that catches the round-1 'if true' mutation: it
+    # proves the code actually took the #649 blind-deploy ELSE branch (whose
+    # note() text is unique - "was probed as a second read") rather than
+    # coincidentally landing on proceed=true via the unrelated git-cat-file
+    # "not a commit in this clone" branch further down the script.
+    if grep -qF 'was probed as a second read' "$LOG_FAIL"; then
+      pass "case 37: the fail case actually took the #649 blind-deploy branch (not a coincidental proceed value via the unrelated git-cat-file fallback)"
+    else
+      fail "case 37: proceed=true did not come from the #649 blind-deploy branch - the public-fallback success check may have been mutated to always succeed (e.g. 'if true') (#649)"
+    fi
+
+    run_gate_case unknown "$LOG_UNKNOWN" "$FIXED_HEAD_SHA"
+    if [ "$LAST_PROCEED" = "true" ]; then
+      pass "case 37: public probe returns the literal 'unknown' placeholder -> proceed=true (deploy blind)"
+    else
+      fail "case 37: expected proceed=true when the public probe returns 'unknown' - got '$LAST_PROCEED' (#649)"
+    fi
+    if grep -qF 'was probed as a second read' "$LOG_UNKNOWN"; then
+      pass "case 37: the unknown case actually took the #649 blind-deploy branch (not a coincidental proceed value)"
+    else
+      fail "case 37: proceed=true for the 'unknown' case did not come from the #649 blind-deploy branch (#649)"
+    fi
+
+    run_gate_case garbage "$LOG_GARBAGE" "$FIXED_HEAD_SHA"
+    if [ "$LAST_PROCEED" = "true" ]; then
+      pass "case 37: public probe returns unparseable garbage -> proceed=true (deploy blind)"
+    else
+      fail "case 37: expected proceed=true when the public probe returns unparseable garbage - got '$LAST_PROCEED' (#649)"
+    fi
+    if grep -qF 'was probed as a second read' "$LOG_GARBAGE"; then
+      pass "case 37: the garbage case actually took the #649 blind-deploy branch (not a coincidental proceed value)"
+    else
+      fail "case 37: proceed=true for the garbage case did not come from the #649 blind-deploy branch (#649)"
+    fi
+
+    rm -f "$LOG_HEAD" "$LOG_FAIL" "$LOG_UNKNOWN" "$LOG_GARBAGE"
+
+    # Static, cheap checks that complement the behaviour cases above: the
+    # real hostname (never a placeholder) and a cache-busting query param
+    # are present in the actual workflow source.
+    if grep -qF 'https://staging.ipodhan.com/api/version' "$GATE_RUN_BLOCK"; then
       pass "case 37: the gate step probes the real public staging hostname (staging.ipodhan.com), not a placeholder"
     else
       fail "case 37: expected a probe against https://staging.ipodhan.com/api/version in the gate step (#649) - never invent a hostname, grep the repo for the real one"
     fi
 
-    # Cache-busted per #649's own wording (staging sits behind Cloudflare/nginx).
-    if emitn "$GATE_STEP" | grep -qE 'PUBLIC_VERSION_URL="https://staging\.ipodhan\.com/api/version\?[a-zA-Z0-9_]+='; then
+    if grep -qE 'PUBLIC_VERSION_URL="https://staging\.ipodhan\.com/api/version\?[a-zA-Z0-9_]+=' "$GATE_RUN_BLOCK"; then
       pass "case 37: the public probe URL carries a cache-busting query param"
     else
       fail "case 37: the public probe URL is not cache-busted with a query param (#649 - staging is behind Cloudflare/nginx)"
     fi
 
-    # Ordering: the public-probe line must appear BEFORE the blind-deploy
-    # Notifier alert block, i.e. before it decides proceed=true unconditionally
-    # on this branch. Uses line numbers within the isolated step text.
-    PUBLIC_PROBE_LINE="$(emitn "$GATE_STEP" | grep -n 'PUBLIC_VERSION_URL=' | head -n1 | cut -d: -f1)"
-    BLIND_NOTIFY_LINE="$(emitn "$GATE_STEP" | grep -n 'window guard deploying staging blind' | head -n1 | cut -d: -f1)"
-    if [ -n "$PUBLIC_PROBE_LINE" ] && [ -n "$BLIND_NOTIFY_LINE" ] && [ "$PUBLIC_PROBE_LINE" -lt "$BLIND_NOTIFY_LINE" ]; then
-      pass "case 37: the public fallback probe runs BEFORE the blind-deploy Notifier alert"
-    else
-      fail "case 37: the public fallback probe does not run before the blind-deploy path (#649) - probe_line=$PUBLIC_PROBE_LINE blind_line=$BLIND_NOTIFY_LINE"
-    fi
-
-    # The existing PORT_FILE/loopback read must still run FIRST (the public
-    # probe is a fallback, not a replacement) - VERSION_URL (loopback) must
-    # appear before PUBLIC_VERSION_URL.
-    LOOPBACK_LINE="$(emitn "$GATE_STEP" | grep -n 'VERSION_URL="http://127.0.0.1' | head -n1 | cut -d: -f1)"
-    if [ -n "$LOOPBACK_LINE" ] && [ -n "$PUBLIC_PROBE_LINE" ] && [ "$LOOPBACK_LINE" -lt "$PUBLIC_PROBE_LINE" ]; then
-      pass "case 37: the loopback probe still runs first; the public probe is a fallback, not a replacement"
-    else
-      fail "case 37: the loopback probe does not run before the public fallback probe (#649) - loopback_line=$LOOPBACK_LINE public_line=$PUBLIC_PROBE_LINE"
-    fi
-
-    # If the public probe succeeds, the gate must NOT deploy blind - it
-    # should fall through to the normal served-vs-head comparison instead.
-    if emitn "$GATE_STEP" | grep -qF 'continuing with the normal served-vs-head comparison instead of deploying blind'; then
-      pass "case 37: a successful public fallback continues to the normal comparison instead of deploying blind"
-    else
-      fail "case 37: no evidence the gate continues normally after a successful public fallback (#649)"
-    fi
+    rm -rf "$FAKE_BIN_DIR"
   fi
 fi
 

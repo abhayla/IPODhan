@@ -162,6 +162,7 @@ jobs:
           SLOT: ${{ steps.slot.outputs.slot }}
           MODE: ${{ inputs.mode }}
           HEAD_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           set -uo pipefail
 
@@ -208,8 +209,12 @@ jobs:
           # never invented here.
           if [ -z "$SERVED_SHA" ] || [ "$SERVED_SHA" = "unknown" ]; then
             note "WARNING: could not read the sha staging is serving from $VERSION_URL (unreachable, unparseable, empty, or the literal placeholder 'unknown'). Trying the public staging endpoint as a second, independent read before deploying blind."
-            PUBLIC_VERSION_URL="https://staging.ipodhan.com/api/version?cb=${HEAD_SHA}"
-            SERVED_SHA="$(curl -fsS --max-time 10 "$PUBLIC_VERSION_URL" 2>/dev/null | parse_served_sha || true)"
+            # Cache-bust by run id (not HEAD_SHA, which is constant across
+            # every retry/re-run of the SAME head and would let an
+            # intermediate cache serve a stale answer on a retry) and also
+            # tell any cache in the path (Cloudflare/nginx) not to serve one.
+            PUBLIC_VERSION_URL="https://staging.ipodhan.com/api/version?cb=${RUN_ID}"
+            SERVED_SHA="$(curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "$PUBLIC_VERSION_URL" 2>/dev/null | parse_served_sha || true)"
             if [ -n "$SERVED_SHA" ] && [ "$SERVED_SHA" != "unknown" ]; then
               note "Public fallback succeeded: $PUBLIC_VERSION_URL reports served sha $SERVED_SHA - continuing with the normal served-vs-head comparison instead of deploying blind."
             else
@@ -225,9 +230,9 @@ jobs:
             # failure on top of the /api/version read it is reporting.
             if [ -n "${NOTIFIER_URL:-}" ] && [ -n "${NOTIFIER_KEY:-}" ]; then
               NOTIFY_BODY="$(node -e '
-                const [url] = process.argv.slice(1);
-                process.stdout.write(JSON.stringify(`Could not read the sha staging is serving from ${url} - deploying blind this tick.`));
-              ' "$VERSION_URL")"
+                const [url, publicUrl] = process.argv.slice(1);
+                process.stdout.write(JSON.stringify(`Could not read the sha staging is serving from ${url}, and the public fallback ${publicUrl} also failed - deploying blind this tick.`));
+              ' "$VERSION_URL" "$PUBLIC_VERSION_URL")"
               NOTIFY_RESPONSE="$(curl -sS -o /dev/null -w '%{http_code}' \
                 -X POST "${NOTIFIER_URL%/}/notify" \
                 -H 'Content-Type: application/json' \
