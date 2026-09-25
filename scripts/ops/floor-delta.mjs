@@ -35,6 +35,13 @@ import { istDayIso } from '../lib/ist-day.mjs';
 
 const FAIL_LINE = /^\[FAIL\]\s+(\S+)\s+(.*)$/;
 const PASS_LINE = /^\[PASS\]\s+(\S+)\s+(.*)$/;
+// #1055/#947: a check that threw (before main() isolated each check) or a check whose table/column
+// migration is not yet applied reports UNVERIFIABLE or is simply absent from the run — either way
+// it is NOT the same as "was FAIL, now resolved". These two extra patterns let parseFloorOutput see
+// every id the run actually reported, so diffFloor can tell "GONE because it now passes/is
+// not-applicable" apart from "MISSING because it never ran tonight".
+const UNVERIFIABLE_LINE = /^\[UNVERIFIABLE\]\s+(\S+)\s+(.*)$/;
+const SKIP_LINE = /^\[SKIP\]\s+(\S+)\s+(.*)$/;
 const QUOTED_ENTITY = /"([^"]+)"/g;
 
 /**
@@ -48,33 +55,41 @@ export function parseFloorOutput(text) {
     const line = rawLine.trimEnd();
     const failMatch = line.match(FAIL_LINE);
     const passMatch = !failMatch && line.match(PASS_LINE);
-    const match = failMatch || passMatch;
+    const unverifiableMatch = !failMatch && !passMatch && line.match(UNVERIFIABLE_LINE);
+    const skipMatch = !failMatch && !passMatch && !unverifiableMatch && line.match(SKIP_LINE);
+    const match = failMatch || passMatch || unverifiableMatch || skipMatch;
     if (!match) continue;
     const [, checkId, detail] = match;
     const entities = new Set();
     for (const m of detail.matchAll(QUOTED_ENTITY)) entities.add(m[1]);
-    checks.set(checkId, {
-      status: failMatch ? 'FAIL' : 'PASS',
-      detail,
-      entities,
-    });
+    const status = failMatch ? 'FAIL' : passMatch ? 'PASS' : unverifiableMatch ? 'UNVERIFIABLE' : 'SKIP';
+    checks.set(checkId, { status, detail, entities });
   }
   return checks;
 }
 
 /**
  * Diff two parsed nights (today vs yesterday). Pure function.
- * Returns { newIds, goneIds, sameIds, newEntitiesByCheck } where
+ * Returns { newIds, goneIds, missingIds, sameIds, newEntitiesByCheck } where
  * newEntitiesByCheck is a Map<checkId, string[]> — only for checks present
  * (as FAIL) in BOTH nights, listing entities that are in today but not
  * yesterday.
+ *
+ * goneIds vs missingIds (#1055): a FAIL id from yesterday that is truly
+ * resolved appears TONIGHT with a non-FAIL status (PASS, or UNVERIFIABLE/SKIP
+ * with an explicit not-applicable reason) — that is GONE. A FAIL id from
+ * yesterday that has NO line at all tonight never ran (it crashed, or the
+ * roster dropped it) — that is MISSING, and is never counted as GONE, because
+ * "no line" proves nothing about whether the underlying issue is fixed.
  */
 export function diffFloor(todayChecks, yesterdayChecks) {
   const todayFail = new Set([...todayChecks].filter(([, v]) => v.status === 'FAIL').map(([id]) => id));
   const yesterdayFail = new Set([...yesterdayChecks].filter(([, v]) => v.status === 'FAIL').map(([id]) => id));
 
   const newIds = [...todayFail].filter((id) => !yesterdayFail.has(id)).sort();
-  const goneIds = [...yesterdayFail].filter((id) => !todayFail.has(id)).sort();
+  const resolvedCandidates = [...yesterdayFail].filter((id) => !todayFail.has(id));
+  const missingIds = resolvedCandidates.filter((id) => !todayChecks.has(id)).sort();
+  const goneIds = resolvedCandidates.filter((id) => todayChecks.has(id)).sort();
   const sameIds = [...todayFail].filter((id) => yesterdayFail.has(id)).sort();
 
   const newEntitiesByCheck = new Map();
@@ -85,14 +100,15 @@ export function diffFloor(todayChecks, yesterdayChecks) {
     if (newEntities.length > 0) newEntitiesByCheck.set(id, newEntities);
   }
 
-  return { newIds, goneIds, sameIds, newEntitiesByCheck };
+  return { newIds, goneIds, missingIds, sameIds, newEntitiesByCheck };
 }
 
-export function formatReport({ newIds, goneIds, sameIds, newEntitiesByCheck }, { todayPath, yesterdayPath } = {}) {
+export function formatReport({ newIds, goneIds, missingIds, sameIds, newEntitiesByCheck }, { todayPath, yesterdayPath } = {}) {
   const lines = [];
   lines.push(`=== FLOOR DELTA${todayPath ? `: ${yesterdayPath} -> ${todayPath}` : ''} ===`);
   lines.push(`NEW (${newIds.length}): ${newIds.length ? newIds.join(', ') : '(none)'}`);
   lines.push(`GONE (${goneIds.length}): ${goneIds.length ? goneIds.join(', ') : '(none)'}`);
+  lines.push(`MISSING (${missingIds.length}): ${missingIds.length ? missingIds.join(', ') : '(none)'}`);
   lines.push(`SAME (${sameIds.length}): ${sameIds.length ? sameIds.join(', ') : '(none)'}`);
   if (newEntitiesByCheck.size > 0) {
     lines.push(`NEW ENTITIES (${newEntitiesByCheck.size} check(s)):`);
@@ -103,7 +119,13 @@ export function formatReport({ newIds, goneIds, sameIds, newEntitiesByCheck }, {
     lines.push('NEW ENTITIES: (none)');
   }
   const hasNew = newIds.length > 0 || newEntitiesByCheck.size > 0;
-  lines.push(`=== VERDICT: ${hasNew ? 'NEW FINDINGS — escalate before queued work (signal-ownership.md R4)' : 'no new findings'} ===`);
+  const hasMissing = missingIds.length > 0;
+  const verdict = hasNew
+    ? 'NEW FINDINGS — escalate before queued work (signal-ownership.md R4)'
+    : hasMissing
+      ? `floor incomplete — ${missingIds.length} check(s) did not run — do not read as clean`
+      : 'no new findings';
+  lines.push(`=== VERDICT: ${verdict} ===`);
   return lines.join('\n');
 }
 
@@ -111,12 +133,13 @@ export function formatReport({ newIds, goneIds, sameIds, newEntitiesByCheck }, {
 // rejected with 400. This script's finding is never P0/P1 (no outage, no
 // live-data corruption by itself — it's a detection signal), so it maps to
 // P2 on a NEW finding and info otherwise.
-export function buildNotifyPayload(summary, { newIds, newEntitiesByCheck }) {
+export function buildNotifyPayload(summary, { newIds, newEntitiesByCheck, missingIds }) {
   const hasNew = newIds.length > 0 || newEntitiesByCheck.size > 0;
+  const hasMissing = (missingIds?.length ?? 0) > 0;
   return {
     project: 'ipodhan',
-    severity: hasNew ? 'P2' : 'info',
-    title: hasNew ? 'nightly floor: NEW finding(s)' : 'nightly floor: no new findings',
+    severity: hasNew ? 'P2' : hasMissing ? 'P2' : 'info',
+    title: hasNew ? 'nightly floor: NEW finding(s)' : hasMissing ? 'nightly floor: incomplete run' : 'nightly floor: no new findings',
     body: summary.slice(0, 3500),
     type: 'floor-delta',
     dedupeKey: `floor-delta-${istDayIso()}`,
@@ -184,7 +207,8 @@ async function main() {
   if (notify) await postToNotifier(report, delta);
 
   const hasNew = delta.newIds.length > 0 || delta.newEntitiesByCheck.size > 0;
-  process.exit(hasNew ? 3 : 0);
+  const hasMissing = delta.missingIds.length > 0;
+  process.exit(hasNew || hasMissing ? 3 : 0);
 }
 
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;

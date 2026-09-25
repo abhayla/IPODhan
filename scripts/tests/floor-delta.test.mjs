@@ -15,7 +15,7 @@
 // Run: node --test scripts/tests/floor-delta.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -35,9 +35,10 @@ test('parseFloorOutput resolves real [FAIL]/[PASS] lines to check ids with entit
   assert.equal(checks.get('c_issue_size_floor').status, 'FAIL');
   assert.ok(checks.get('c_issue_size_floor').entities.has('NIRBHAY COLOURS INDIA LTD'));
   assert.equal(checks.get('c_issue_size_consistency').status, 'PASS');
-  // UNVERIFIABLE lines (h_pm2_env_tz etc.) are neither FAIL nor PASS and MUST
-  // be ignored, never silently counted as passing.
-  assert.equal(checks.has('h_pm2_env_tz'), false);
+  // UNVERIFIABLE lines (h_pm2_env_tz etc.) are now tracked too (#1055: needed to tell a check
+  // that ran-but-was-blind apart from one that never ran at all) — but they must never be
+  // silently counted as passing (diffFloor's FAIL-only sets ignore anything not literally FAIL).
+  if (checks.has('h_pm2_env_tz')) assert.notEqual(checks.get('h_pm2_env_tz').status, 'PASS');
 });
 
 test('diffFloor: red before the fix — a naive equality diff on line text would call everything NEW', () => {
@@ -138,6 +139,65 @@ test('CLI: --notify skips cleanly with no NOTIFIER_URL/NOTIFIER_KEY set (never t
   }
   assert.equal(status, 3);
   assert.match(stdout, /NOTIFY-SKIP/);
+});
+
+// #1055: a check crashed (before main() isolated each check) and left NO LINE at all in
+// tonight's run. The old diffFloor called that GONE ("was FAIL, isn't now") — floor-delta.mjs's
+// real 2026-09-24->25 run reported GONE(14) and "no new findings" for 14 checks that simply never
+// ran. MISSING must be the reported category, never GONE, and the verdict must say the floor is
+// incomplete rather than clean.
+test('diffFloor: a FAIL id with no line at all tonight is MISSING, never GONE', () => {
+  const yesterday = parseFloorOutput('[FAIL] a_check some detail\n[FAIL] b_check other detail\n[PASS] c_check fine\n');
+  const today = parseFloorOutput('[FAIL] a_check some detail\n[PASS] c_check fine\n'); // b_check crashed: no line at all
+  const { goneIds, missingIds } = diffFloor(today, yesterday);
+  assert.deepEqual(missingIds, ['b_check']);
+  assert.deepEqual(goneIds, []);
+});
+
+test('diffFloor: a FAIL id that genuinely resolves to PASS tonight is GONE, not MISSING', () => {
+  const yesterday = parseFloorOutput('[FAIL] a_check some detail\n[FAIL] b_check other detail\n');
+  const today = parseFloorOutput('[FAIL] a_check some detail\n[PASS] b_check now fine\n');
+  const { goneIds, missingIds } = diffFloor(today, yesterday);
+  assert.deepEqual(goneIds, ['b_check']);
+  assert.deepEqual(missingIds, []);
+});
+
+test('diffFloor: a FAIL id downgraded to UNVERIFIABLE (not-applicable PASS text) is GONE, not MISSING — it ran and reported', () => {
+  const yesterday = parseFloorOutput('[FAIL] b_check old detail\n');
+  const today = parseFloorOutput('[UNVERIFIABLE] b_check crashed — some error\n');
+  const { goneIds, missingIds } = diffFloor(today, yesterday);
+  assert.deepEqual(goneIds, ['b_check']);
+  assert.deepEqual(missingIds, []);
+});
+
+test('formatReport: any MISSING id makes the verdict "floor incomplete", never "no new findings"', () => {
+  const yesterday = parseFloorOutput('[FAIL] a_check x\n[FAIL] b_check y\n');
+  const today = parseFloorOutput('[FAIL] a_check x\n'); // b_check absent — crashed
+  const delta = diffFloor(today, yesterday);
+  const report = formatReport(delta);
+  assert.match(report, /MISSING \(1\): b_check/);
+  assert.match(report, /VERDICT: floor incomplete — 1 check\(s\) did not run/);
+  assert.doesNotMatch(report, /VERDICT: no new findings/);
+});
+
+test('CLI: exits 3 on MISSING alone, even with no NEW ids', () => {
+  const todayFix = join(REPO_ROOT, 'scripts', 'ops', 'fixtures', 'floor-today-missing-test.txt');
+  const yesterdayFix = join(REPO_ROOT, 'scripts', 'ops', 'fixtures', 'floor-yesterday-missing-test.txt');
+  writeFileSync(yesterdayFix, '[FAIL] a_check x\n[FAIL] b_check y\n');
+  writeFileSync(todayFix, '[FAIL] a_check x\n'); // b_check missing, a_check unchanged (no NEW)
+  let stdout = '';
+  let status = 0;
+  try {
+    stdout = execFileSync(process.execPath, [join(REPO_ROOT, 'scripts', 'ops', 'floor-delta.mjs'), todayFix, yesterdayFix], { encoding: 'utf-8' });
+  } catch (err) {
+    stdout = err.stdout;
+    status = err.status;
+  } finally {
+    unlinkSync(todayFix);
+    unlinkSync(yesterdayFix);
+  }
+  assert.equal(status, 3);
+  assert.match(stdout, /MISSING \(1\): b_check/);
 });
 
 test('CLI: usage error (missing args) exits 2', () => {

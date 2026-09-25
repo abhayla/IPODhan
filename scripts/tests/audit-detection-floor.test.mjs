@@ -891,11 +891,44 @@ test('every detection-checks.json check id is recorded by a function that is act
     // specific to audit-detection-floor.mjs's own check-function structure,
     // has nothing to assert for it here.
     if (!owner) continue;
-    const invoked = new RegExp(`\\b${owner.name}\\s*\\(`).test(mainBody);
+    // #1055: main() now dispatches every check through runCheck(checkX) (per-check try/catch
+    // isolation, so one throw can't blind every later check) instead of calling checkX()
+    // directly — so "invoked" must also recognise the function passed BY REFERENCE to runCheck,
+    // not only a direct call.
+    const invoked = new RegExp(`\\b${owner.name}\\s*\\(`).test(mainBody)
+      || new RegExp(`\\brunCheck\\(\\s*${owner.name}\\s*\\)`).test(mainBody);
     if (!invoked) notInvoked.push(`${id} (owner ${owner.name} defined but never called from main())`);
   }
 
   assert.deepEqual(notInvoked, [], `check(s) recorded by a function main() never calls: ${notInvoked.join('; ')}`);
+});
+
+// #1055 RCA: main() was a flat sequence of `await checkX()` calls with no isolation — one check's
+// uncaught error (checkC_issueSizeSourceCapability's 'column fs.row_key does not exist' on a DB
+// whose migrations lag main) aborted every check after it: 59 of 63 checks never ran, and
+// floor-delta.mjs then reported the missing ones as GONE. This is the failing-test-first proof for
+// the CLASS (not just that one check): every top-level check call inside main() must go through
+// runCheck(), which gives it its own try/catch. A future check added as a bare `await checkX();`
+// (reverting to the pre-fix shape) must fail this test, not silently reintroduce the crash class.
+test('#1055: every check dispatched from main() goes through runCheck() (per-check try/catch isolation)', () => {
+  const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  const mainStart = script.indexOf('async function main()');
+  assert.ok(mainStart !== -1, 'main() not found — regex drifted from the source shape');
+  const mainEnd = script.indexOf('\nmain().catch(');
+  assert.ok(mainEnd !== -1, 'main().catch(...) entrypoint not found — regex drifted from the source shape');
+  const mainBody = script.slice(mainStart, mainEnd);
+
+  // Every bare `await checkXxx(...)` / `checkXxx(...)` call directly in main() (not inside
+  // runCheck(...) or a comment) is a check dispatched WITHOUT isolation.
+  const bareCalls = [...mainBody.matchAll(/(?<!runCheck\()\b(check[A-Za-z_]+)\s*\(\s*\)/g)]
+    .map((m) => m[1])
+    // adminQueueSize / rosterManifest etc. are not check functions and are already inside their
+    // own try/catch below the check-dispatch block — exclude anything not named checkXxx.
+    .filter((name) => /^check[A-Z]/.test(name) || /^check[a-z]/.test(name));
+  assert.deepEqual(bareCalls, [], `check(s) called directly instead of via runCheck(): ${bareCalls.join(', ')} — a throw here would abort every later check again (#1055)`);
+
+  const runCheckCalls = [...mainBody.matchAll(/runCheck\(\s*(check[A-Za-z_]+)\s*\)/g)].map((m) => m[1]);
+  assert.ok(runCheckCalls.length >= 50, `expected at least 50 checks dispatched via runCheck(), found ${runCheckCalls.length} — main() may have regressed to the flat call shape`);
 });
 
 // ---- (l) T-340 NSE status cross-check ---------------------------------------
