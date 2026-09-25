@@ -162,11 +162,28 @@ function collectSourceFiles(root) {
 const IMPORT_RE =
   /(?:\bimport\b[^'"()]*?\bfrom\s*|\bexport\b[^'"()]*?\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]/g;
 
+// #463 finding 1: `import type { X } from '...'` / `export type { X } from
+// '...'` are erased by TypeScript at compile time — there is no runtime
+// call, so they can never be a runtime layering violation, only a
+// compile-time coupling. Detects the `type` keyword directly after `import`
+// or `export` (optionally before a `{`), which is the only place it can sit
+// for a type-only import/re-export. A regular `import { type X } from ...`
+// (an inline type-only SPECIFIER inside an otherwise-normal import) still
+// pulls in the module at runtime for its other named imports, so it is
+// deliberately NOT matched here — only the whole-statement `import type` /
+// `export type` form is type-only in every case.
+const TYPE_ONLY_PREFIX_RE = /\b(?:import|export)\s+type\b/;
+
 function extractSpecifiers(source) {
   const specs = [];
   let m;
   IMPORT_RE.lastIndex = 0;
   while ((m = IMPORT_RE.exec(source)) !== null) {
+    // m[0] is the FULL matched statement, from the `import`/`export` keyword
+    // through the closing quote (the `[^'"()]*?` branch of IMPORT_RE spans
+    // newlines), so testing it directly also covers a multi-line
+    // `import type {\n  Foo,\n} from '...'`.
+    if (TYPE_ONLY_PREFIX_RE.test(m[0])) continue;
     specs.push(m[1]);
   }
   return specs;
@@ -231,7 +248,18 @@ function posixJoin(...parts) {
 
 // SAMPLE_CAP: how many identities to print per ignore-category so a reader
 // can see WHAT was skipped, not just a bare count (signal-ownership.md R1).
+// The two genuinely large lists (unmapped files: ~1205, bare/unaliased
+// specifiers: ~2000) keep this bound — truncation earns its place there.
 const SAMPLE_CAP = 10;
+// #463 finding 3: the unresolved relative/alias specifier list is small
+// (14 in the real repo) — at that size a 10-item cap truncates for no
+// reason and signal-ownership.md R1 ("print identities, not a count") is
+// better served by printing all of them. Set well above any realistic
+// count for THIS category specifically so it never silently starts
+// truncating a list that grows a little; if it ever needs truncation this
+// category has stopped being small and the cap should be revisited, not
+// raised again.
+const UNRESOLVED_RELATIVE_SAMPLE_CAP = 200;
 
 function buildGraph(files, root, fileSet) {
   const edges = []; // { fromRel, toRel }
@@ -264,7 +292,7 @@ function buildGraph(files, root, fileSet) {
       const resolved = resolveToFile(candidate, fileSet);
       if (!resolved) {
         unresolved.relative++;
-        if (samples.relative.length < SAMPLE_CAP) {
+        if (samples.relative.length < UNRESOLVED_RELATIVE_SAMPLE_CAP) {
           samples.relative.push(`${f.rel} -> "${spec}"`);
         }
         continue;
@@ -362,6 +390,22 @@ function main() {
       violations.push({ fromRel, toRel, fromMod, toMod });
     }
   }
+
+  // #463 finding 2: a file pair with multiple import STATEMENTS between the
+  // same two files (e.g. two separate `import` lines) produced one
+  // `violations` entry per statement, inflating both the printed headline
+  // count and (via a human copying it) the baseline file itself — the real
+  // repo's baseline carried 41 entries for 40 distinct (from, to) pairs
+  // before this fix. Deduplicate by (fromRel, toRel) so every downstream
+  // count (the FAIL headline, the baselined-edge list, the baseline itself)
+  // reflects distinct file pairs, matching what a human reviewing or
+  // editing config/module-boundary-baseline.json actually sees.
+  const violationsByPair = new Map();
+  for (const v of violations) {
+    violationsByPair.set(edgeKey(v.fromRel, v.toRel), v);
+  }
+  violations.length = 0;
+  violations.push(...violationsByPair.values());
 
   // A same-module edge (a file importing another file mapped to the SAME
   // module) can never be a boundary violation — fromIdx === toIdx always.
