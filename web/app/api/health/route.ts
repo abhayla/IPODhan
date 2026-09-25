@@ -42,6 +42,17 @@ import { getRedisClient } from '@/lib/cache/redis-client';
  */
 export const dynamic = 'force-dynamic';
 
+// #138: this endpoint had NO Cache-Control at all, so Cloudflare applied its
+// own default caching and served hours-old cached 200s through a live DB
+// outage — the real 503 was only visible at the origin or with a
+// cache-busting query param. Every response path (both probes, both
+// healthy/unhealthy outcomes) MUST carry this so a monitor hitting the
+// public URL never sees a stale cached body.
+const NO_STORE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate',
+  Pragma: 'no-cache',
+} as const;
+
 const DB_TIMEOUT_MS = 2000;
 const REDIS_TIMEOUT_MS = 2000;
 
@@ -65,7 +76,7 @@ export async function GET(request: Request) {
   if (searchParams.get('probe') === 'live') {
     return NextResponse.json(
       { status: 'alive', probe: 'live', timestamp },
-      { status: 200 }
+      { status: 200, headers: NO_STORE_HEADERS }
     );
   }
 
@@ -148,5 +159,6 @@ export async function GET(request: Request) {
   // Return 503 if the database (the hard dependency) is unhealthy.
   return NextResponse.json(responseData, {
     status: isHealthy ? 200 : 503,
+    headers: NO_STORE_HEADERS,
   });
 }

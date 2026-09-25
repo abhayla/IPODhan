@@ -173,5 +173,13 @@ export async function GET() {
 
   const statusCode = healthStatus.status === 'unhealthy' ? 503 : 200;
 
-  return NextResponse.json(healthStatus, { status: statusCode });
+  // #138: no Cache-Control here let Cloudflare cache a stale "healthy" body
+  // through a real outage; every response (success and failure) is no-store.
+  return NextResponse.json(healthStatus, {
+    status: statusCode,
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      Pragma: 'no-cache',
+    },
+  });
 }
