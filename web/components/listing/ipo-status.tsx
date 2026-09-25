@@ -111,6 +111,25 @@ export function StatusDot({
   );
 }
 
+/** Screen-reader-only status label for the mobile pinned Company cell.
+ *
+ * Round-1 review finding on #107: making the in-Link `StatusDot` decorative
+ * (aria-hidden, no aria-label) fixed the link's accessible name but left
+ * mobile screen-reader users with NO status announcement at all — the
+ * standalone `IpoStatusChip` Status column is `hidden md:table-cell`
+ * (display:none below md), which removes it from the accessibility tree on
+ * mobile too, not just visually.
+ *
+ * Renders OUTSIDE the `<Link>` (a sibling in the same cell) so it never
+ * touches the link's accessible name, and is `md:hidden` so it drops out of
+ * the accessibility tree at the same breakpoint the visible `IpoStatusChip`
+ * column appears — a screen-reader user hears the status exactly once,
+ * from whichever of the two is actually present at the current viewport. */
+export function StatusSrLabel({ ipo }: { ipo: StatusInput }) {
+  const { label } = getDisplayStatus(ipo);
+  return <span className="sr-only md:hidden">{label}</span>;
+}
+
 export function IpoStatusChip({ ipo }: { ipo: StatusInput }) {
   const { status, label } = getDisplayStatus(ipo);
   const tone = TONE[status];
