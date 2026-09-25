@@ -43,7 +43,117 @@ const OPERATOR_NAMES = [
 
 const SCAN_DIRS = ['web', 'scraper/src', 'packages/shared/src', 'scripts'];
 const FILE_EXTENSIONS = new Set(['.ts', '.tsx', '.mjs', '.js']);
-const EXCLUDE_PATTERNS = [/\/node_modules\//, /\/dist\//, /\.test\.(ts|mjs|js)$/, /\/tests?\//];
+const EXCLUDE_PATTERNS = [
+  /\/node_modules\//,
+  /\/dist\//,
+  /\.test\.(ts|mjs|js)$/,
+  /\/tests?\//,
+  // This detector's own source quotes both offending shapes (in comments,
+  // messages and the offender-object literal) to document/report them — it
+  // is not itself a drizzle write path and would otherwise self-flag.
+  /\/ci\/check-drizzle-iso-string\.mjs$/,
+];
+
+/**
+ * Strip `//` line comments and `/* *\/` block comments (keeping newlines, so
+ * line numbers stay stable) so a `sql<Date>` example written INSIDE a comment
+ * is never matched by the raw-sql-fragment scan below. Deliberately simple
+ * (no full tokenizer): strings/templates are tracked only well enough to
+ * avoid treating `//` inside a URL string as a comment start.
+ */
+function stripComments(source) {
+  let result = '';
+  let i = 0;
+  const len = source.length;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let inString = null; // ' " `
+  while (i < len) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (inLineComment) {
+      if (ch === '\n') {
+        inLineComment = false;
+        result += ch;
+      } else {
+        result += ' ';
+      }
+      i++;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === '*' && next === '/') {
+        inBlockComment = false;
+        result += '  ';
+        i += 2;
+        continue;
+      }
+      result += ch === '\n' ? '\n' : ' ';
+      i++;
+      continue;
+    }
+    if (inString) {
+      if (ch === '\\') {
+        result += source.slice(i, i + 2);
+        i += 2;
+        continue;
+      }
+      if (ch === inString) {
+        inString = null;
+      }
+      result += ch;
+      i++;
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      inLineComment = true;
+      i += 2;
+      result += '  ';
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      inBlockComment = true;
+      i += 2;
+      result += '  ';
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      inString = ch;
+      result += ch;
+      i++;
+      continue;
+    }
+    result += ch;
+    i++;
+  }
+  return result;
+}
+
+/**
+ * Detect a raw `sql<Date>` (or `sql<Date | null>`, or any spacing variant)
+ * type-argument fragment. Raw `sql` results are NEVER mapped by drizzle
+ * (`stripSqlTemplates` above only blanks the TEMPLATE BODY, not this type
+ * argument that sits before the opening backtick), so a value typed `Date`
+ * here is a LIE at runtime — it is naive-timestamp TEXT. Reusing that value
+ * in a later drizzle operator (e.g. `eq(col, thatValue)`) crashed #954's
+ * sibling bug in `ipo-repository.ts` (`sql<Date>\`MAX(...)\``, fixed in
+ * e555855b). Scanned on the COMMENT-STRIPPED source so a `sql<Date>` example
+ * inside `//` or `/* *\/` prose is never flagged.
+ */
+function findSqlDateOffenders(file, source) {
+  const cleaned = stripComments(source);
+  const offenders = [];
+  const lines = cleaned.split('\n');
+  const sqlDateRe = /\bsql\s*<\s*Date\b[^>\n]*>/g;
+  lines.forEach((line, idx) => {
+    sqlDateRe.lastIndex = 0;
+    let m;
+    while ((m = sqlDateRe.exec(line)) !== null) {
+      offenders.push({ file, line: idx + 1, text: line.trim(), colRef: 'sql<Date>', kind: 'raw-sql-date' });
+    }
+  });
+  return offenders;
+}
 
 /**
  * Strip `sql`...`` tagged template contents (and other template-literal
@@ -239,6 +349,8 @@ function findOffenders(file, source, flaggableColumns) {
     }
   }
 
+  offenders.push(...findSqlDateOffenders(file, source));
+
   return offenders;
 }
 
@@ -265,7 +377,7 @@ function main() {
     } catch {
       continue;
     }
-    if (!source.includes('.toISOString(')) continue;
+    if (!source.includes('.toISOString(') && !/\bsql\s*<\s*Date\b/.test(source)) continue;
     const offenders = findOffenders(relFile, source, flaggableColumns);
     allOffenders.push(...offenders);
   }
@@ -290,13 +402,17 @@ function main() {
 
   if (newOffenders.length > 0) {
     console.error(
-      `[check-drizzle-iso-string] FAIL: ${newOffenders.length} new offender(s) — a ".toISOString()" ` +
-        `string is bound to a drizzle query-builder operator or .set()/.values() field on what appears ` +
-        `to be a default-mode (Date) timestamp() column. Drizzle calls .toISOString() itself on the ` +
-        `value it receives, so binding a string throws TypeError at query time (class: ` +
-        `iso-string-bound-to-drizzle-timestamp, #954). Pass a Date object instead, or if the column is ` +
-        `genuinely { mode: 'string' } and this is a false positive, add the entry to ` +
-        `scripts/ci/drizzle-iso-string-baseline.json with a reason.\n`
+      `[check-drizzle-iso-string] FAIL: ${newOffenders.length} new offender(s), two shapes of the same ` +
+        `class (iso-string-bound-to-drizzle-timestamp, #954): ` +
+        `(1) a ".toISOString()" string bound to a drizzle query-builder operator or .set()/.values() ` +
+        `field on what appears to be a default-mode (Date) timestamp() column — drizzle calls ` +
+        `.toISOString() itself on the value it receives, so binding a string throws TypeError at query ` +
+        `time; pass a Date object instead. ` +
+        `(2) a raw "sql<Date>\`...\`" fragment — raw sql results are never mapped by drizzle, so the ` +
+        `value is naive-timestamp TEXT despite the type; type it sql<string> and parse with ` +
+        `parseNaiveTimestampAsUtc before reuse (#954). ` +
+        `If a flagged column is genuinely { mode: 'string' } and this is a false positive, add the ` +
+        `entry to scripts/ci/drizzle-iso-string-baseline.json with a reason.\n`
     );
     newOffenders.forEach((o) => {
       console.error(`  ${o.file}:${o.line}  ${o.text}`);
@@ -310,7 +426,7 @@ function main() {
   );
 }
 
-export { stripSqlTemplates, loadColumnClassification, findOffenders, keyOf };
+export { stripSqlTemplates, stripComments, loadColumnClassification, findOffenders, findSqlDateOffenders, keyOf };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   main();

@@ -2,8 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   stripSqlTemplates,
+  stripComments,
   loadColumnClassification,
   findOffenders,
+  findSqlDateOffenders,
 } from '../ci/check-drizzle-iso-string.mjs';
 
 // A synthetic schema slice with one column of each kind this check must
@@ -105,6 +107,52 @@ test('stripSqlTemplates: blanks a sql`` template body but keeps line count stabl
   const cleaned = stripSqlTemplates(source);
   assert.equal(cleaned.includes('toISOString'), false);
   assert.equal(cleaned.split('\n').length, source.split('\n').length);
+});
+
+test('RED: sql<Date>`MAX(${t.ts})` raw sql fragment is flagged (the #954 sibling shape, raw sql is never drizzle-mapped)', () => {
+  const source = 'const row = sql<Date>`MAX(${ipoDemandGraph.timestamp})`;';
+  const offenders = findSqlDateOffenders('fake.ts', source);
+  assert.equal(offenders.length, 1);
+  assert.equal(offenders[0].kind, 'raw-sql-date');
+});
+
+test('RED: sql<Date | null>`...` and spacing variants are flagged', () => {
+  const variants = [
+    'const a = sql<Date | null>`MAX(t)`;',
+    'const b = sql< Date >`MAX(t)`;',
+    'const c = sql <Date>`MAX(t)`;',
+  ];
+  for (const source of variants) {
+    const offenders = findSqlDateOffenders('fake.ts', source);
+    assert.equal(offenders.length, 1, `expected a flag for: ${source}`);
+  }
+});
+
+test('GREEN: sql<Date>`...` inside a // line comment is not flagged', () => {
+  const source = '// example: sql<Date>`MAX(t)` is the wrong shape\nconst x = 1;';
+  const offenders = findSqlDateOffenders('fake.ts', source);
+  assert.equal(offenders.length, 0);
+});
+
+test('GREEN: sql<Date>`...` inside a /* */ block comment is not flagged', () => {
+  const source = '/* sql<Date>`MAX(t)` — do not do this */\nconst x = 1;';
+  const offenders = findSqlDateOffenders('fake.ts', source);
+  assert.equal(offenders.length, 0);
+});
+
+test('GREEN: sql<string>`...` (the correct shape) is not flagged', () => {
+  const source = 'const row = sql<string>`MAX(${ipoDemandGraph.timestamp})`;';
+  const offenders = findSqlDateOffenders('fake.ts', source);
+  assert.equal(offenders.length, 0);
+});
+
+test('stripComments: blanks // and /* */ comments but keeps line count and real code stable', () => {
+  const source = '// a comment\nconst x = 1; // trailing\n/* block\n comment */\nconst y = 2;';
+  const cleaned = stripComments(source);
+  assert.equal(cleaned.split('\n').length, source.split('\n').length);
+  assert.equal(cleaned.includes('comment'), false);
+  assert.ok(cleaned.includes('const x = 1;'));
+  assert.ok(cleaned.includes('const y = 2;'));
 });
 
 test('real repo tree: current committed baseline has zero live offenders (#1069/#1067 already fixed)', () => {

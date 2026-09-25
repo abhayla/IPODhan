@@ -72,6 +72,11 @@ So: UTC in the column, IST at every boundary a human touches.
     (`docs/reviews/failure-classes/iso-string-bound-to-drizzle-timestamp.json`).
   - A drizzle column declared `timestamp(..., { mode: 'string' })` or `date(...)` is unaffected by
     either rule — its driver value already IS a string, so `.toISOString()` is correct there too.
+  - **A raw `sql<Date>\`...\`` fragment returns TEXT, not a `Date`** — raw sql results are never mapped
+    by drizzle, so typing it `Date` is a lie the compiler cannot catch. Type it `sql<string>` and parse
+    with `parseNaiveTimestampAsUtc` before reusing the value (e.g. in a later `eq()`); reusing the
+    untyped-as-string result crashed `ipo-repository.ts`'s `sql<Date>\`MAX(...)\`` line (#954, fixed
+    e555855b). CI check: `scripts/ci/check-drizzle-iso-string.mjs`.
   - The two rules never overlap in one call: a `sql\`\`` template's interpolated value is a raw pg
     parameter (bind the string) even when the template's RESULT is later handed to a drizzle
     comparison; the split is by binding layer, not by which function call it sits inside.
