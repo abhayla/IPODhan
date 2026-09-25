@@ -63,6 +63,17 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: node --test glob guard (#461 — hollow-gate prevention)
+        # `node --test` with a wildcard argument exits 0 silently when the
+        # wildcard matches zero files. This CI has 0 wildcard-shaped
+        # `node --test` invocations today (audited in #461); this step keeps
+        # it that way — the first tidier-looking edit that swaps a literal
+        # path list for a wildcard fails here instead of silently becoming a
+        # gate that can never fail.
+        run: |
+          node --test scripts/ci/tests/check-node-test-no-globs.test.mjs
+          node scripts/ci/check-node-test-no-globs.mjs
+
       - name: Write-ratchet self-test (T-316)
         # Mutation-proof: scripts/tests/check-write-ratchet.test.mjs imports
         # the actual PATTERNS from the script under test, so a deleted

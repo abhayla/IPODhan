@@ -6,6 +6,13 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/unit/**/*.test.ts'],
+    // #451: a target outside `include` (e.g. `tests/integration/...` run
+    // without `-c vitest.integration.config.ts`) must FAIL, never silently
+    // exit 0 with "0 tests, 0 passed". Currently-installed vitest (1.6.1)
+    // already exits 1 for this on this repo's config; this pins that
+    // behaviour explicitly so a future vitest upgrade or config change
+    // cannot silently flip it back to the class this issue describes.
+    passWithNoTests: false,
     // T-306 (T-300C2 advisory): with no testTimeout set, vitest's 5000ms
     // default is tight enough that the index-*-wiring tests (which spin up a
     // real scheduler/CLI wiring path under mocks) intermittently exceeded it
