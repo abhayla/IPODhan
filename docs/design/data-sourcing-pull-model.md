@@ -158,6 +158,7 @@ it by assuming.
 | OD-103 | *"let's go with your recommendation of uh, every ask every listed source once in the same first round"* -- 2026-09-25, chosen over (A) show only what was collected and (C) a live fetch-all button (Spec basis: §2.4, OD-58, OD-60, OD-65, OD-73). **SPEC CHANGE to §2.4 ("SUPPLIED -> ... write it, record the evidence, stop"): in the FIRST round for an IPO, every source Appendix A lists for a field is asked once, and each answer -- a value, an abstention (OD-60), or a failure cause -- is stored as a witness of that field.** The published value is unchanged: the highest-ranked SUPPLIED answer (OD-73). No later round re-asks a settled field to collect witnesses (OD-65 unchanged). Why: the admin edit view (OD-102) shows each source's scraped value, and OD-58 already required agreement between independent witnesses, which a loop that stops at the first answer can never produce. Measured: F-168 (0 witness rows on staging; no witness column on production). | 2026-09-25 | §2.4, §9.3 | §2.4 carries the OD-103 amendment; §9.3 states that the edit view reads the stored witnesses and shows a never-asked source as such |
 | OD-104 | *"B"* -- 2026-09-25, chosen over (A) only the owner with one shared login and (C) roles with maker-checker approval (Spec basis: none on admin identity -- the spec said nothing about who the admins are or how they log in; searched login, admin user/role/identity, resolved_by, edited_by, approve. Today's build per `.claude/rules/admin-route-auth.md`: one shared `ADMIN_AUTH_TOKEN` and a free-typed admin name). **The admins are the owner plus one or two trusted people. Each admin has a personal login, and every admin write (a value picked or typed, a value cleared, a conflict or suggestion settled) records that admin's name. All admins have the same powers; there is no approval step.** Because OD-102 puts the Edit control on the public IPO page, the public site must recognise a logged-in admin; a reader session never sees an admin control. Approval roles (C) can be added later on top of personal logins without reworking the write path. | 2026-09-25 | §9.2 | §9.2 states personal logins, the admin name on every write, equal powers, no approval step |
 | OD-105 | *"find out what are the type of categories of fields one is that's never read from anywhere they are calculated one is which gets read in every scraping a multiple times a day and one that gets read when a new documents arrive... what I meant was the fields that uh, up gets updated when a new document is arrived not the one that gets updated daily and not the ones which are calculated"* -- 2026-09-25, the owner's clarification of OD-102's scope, given in reply to a question about how an admin value behaves on live fields (Spec basis: §1 classes, OD-19, OD-56, OD-66, OD-73, E-1 §1.2.1). **The admin per-source editing of OD-102 covers the fields read when a new document arrives -- class D, 162 fields. It does NOT cover the fields read many times a day (class X subscription and demand graph, W grey market, M market prices, and `ipos.status` -- 19 fields) nor the calculated fields (class C, 13), which are read-only.** So the lock question for live fields does not arise: they are not admin-editable. Class I stays read-only except its three `ADMIN` settings. The E-1 timetable fields other than status -- all ten of E-1 minus status (read from the exchange, never from the document) fit none of the three groups and are asked separately (§9.5). | 2026-09-25 | §9.2 | §9.2 item 7 limits the per-source edit view to class D, lists X, W, M and status as not editable and C as read-only |
+| OD-106 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) the admin value holds forever and (C) not editable (Spec basis: E-1 §1.2.1 "a stale close date on a live IPO -- the single most damaging error this site can make", OD-35, OD-73, §2.7, OD-102, OD-105; real case F-131, the Dhanwel postponement and relaunch). **SPEC CHANGE to §2.7 for the E-1 timetable fields other than `ipos.status` only: they are admin-editable with the same per-source panel (NSE, BSE, Chittorgarh, then a typed value), but when NSE or BSE later publishes a NEWER date that differs from the admin value, the exchange date replaces it and the admin is alerted with the IPO and both dates.** For every class D field the admin value still holds until an admin clears it (§2.7, OD-102). Not measured: how often an exchange date was wrong and needed a human. | 2026-09-25 | §2.7, §9.2 | §2.7 names the E-1 exception; §9.2 item 7 marks the E-1 fields other than status as editable with exchange override and alert |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -2377,6 +2378,11 @@ the override a one-way door: clear it, and the field is frozen out of the loop f
 `NOT_APPLICABLE` is **derived, not stored** — the walk checks for a live protection row each time it
 reaches the field. Clearing the override returns the field to the loop automatically.
 
+**Amended by OD-106 (2026-09-25):** one exception to "outranks everything". For the E-1 timetable fields
+other than `ipos.status`, a NEWER date from NSE or BSE that differs from the admin value replaces it,
+and the admin is alerted with the IPO and both dates, because a stale close date on a live IPO is the
+worst error this site can make (E-1). Every class D field keeps the rule unchanged (OD-102).
+
 ### 2.8 When the plan itself is wrong
 
 The ranks are resolved per IPO type. If the type is corrected, the ranks are wrong and nothing in the
@@ -3880,6 +3886,8 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
 - The dynamic-admin save writes no protection row and no audit row: F-170.
 - The legacy save never drops the detail page's cache key: F-171.
 - The admin queue is almost entirely listed IPOs, and humans have resolved 1 conflict in 19,106: F-172.
+- List-shaped data (lead managers, promoters, peers, anchors, intermediaries, financial rows, risk
+  factors) is empty on most non-listed IPOs: F-174.
 
 ### 9.2 The owner's feature (OD-102)
 
@@ -3903,7 +3911,7 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
    | read when a new document arrives | D | 162 | **yes -- the full per-source panel (OD-102)** |
    | read many times a day | X, W, M and `ipos.status` | 19 | no |
    | calculated | C | 13 | no (read-only; OD-102 "derived") |
-   | the exchange timetable, never from the document (E-1) | T except status | 9 | open, §9.5 |
+   | the exchange timetable, never from the document (E-1) | T except status | 9 | **yes, per-source panel; a newer, different NSE or BSE date replaces the admin value and alerts the admin (OD-106)** |
    | our own bookkeeping | I | 37 | no, except the three `ADMIN` settings (`ipos.rating_override`, `ipos.scraper_locked`, `registrars.active`), which show a plain value or on/off control |
 
 
@@ -3931,9 +3939,7 @@ No owner question was needed here; each point follows from a decision already ma
 
 ### 9.5 Still open (asked one at a time, recorded here as answered)
 
-Whether the E-1 timetable fields other than status (open, close, listing, allotment, basis-of-allotment, refund
-and credit dates, listing exchanges, anchor bid date) are admin-editable, and if so what a later
-exchange change does to an admin value; who can add or remove an admin; which tables and list-shaped data (lead managers, promoters,
+Who can add or remove an admin; which tables and list-shaped data (lead managers, promoters,
 financial rows) are editable, including adding and removing rows; rules for a typed value (units,
 checks, a required reason or evidence); what happens when a better document arrives after an admin
 save; undo and history; when a save reaches the public page; what a reader sees for an admin value;

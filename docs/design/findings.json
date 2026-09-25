@@ -1725,6 +1725,15 @@
       "phase1": false,
       "title": "99.4% of the unresolved conflicts are not disagreements under OD-59, OD-60 and OD-75; 84 are real, and every live one checked is the BSE issue-size class",
       "detail": "Measured 2026-09-25 on ipodhan_staging, read-only, 14,160 unresolved data_conflicts. Classified: source1 = source2 (a source against itself, OD-75) 12,785 (LISTED 12,774 on 181 IPOs, live 11 on 7); one side empty, null or 0 (an abstention, OD-60) 1,176 (all LISTED, 27 IPOs); equal after removing case and punctuation (OD-59) 115 (all LISTED, 7 IPOs); the rest 84 (LISTED 65 on 26 IPOs; OPEN/CLOSED/UPCOMING 19 on 18 IPOs). The normalisation is a crude letters-and-digits compare, so the 115 and the 84 are approximate (a numeric compare per OD-59 could move a few between them). The 8 live rows sampled are all issueSize, CHITTORGARH higher than BSE: armee-infotech-ltd 3,000,000,000 vs 2,600,624,600; moneyview-ltd 10,916,800,000 vs 7,440,773,600; acevector-ltd 4,200,000,000 vs 2,226,874,980; swastika-infra-ltd, a-one-steels-india-ltd, german-green-steel-and-power-ltd, acme-universal-safezone-9-ltd, varmora-granito-ltd (NSE) likewise -- the known BSE issue-size-low class (#728), not a new one. Consequence: the queue an admin would open today is 14,160 rows of which about 84 need a human; §9.4 removes the rest under their own reasons. Spec: §9.4, OD-59, OD-60, OD-63, OD-75."
+    },
+    {
+      "id": "F-174",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "admin editing / list data",
+      "phase1": false,
+      "title": "List-shaped document data is empty on most non-listed IPOs, so an admin fixing it must be able to ADD rows, not only pick values",
+      "detail": "Measured 2026-09-25 on ipodhan_staging, read-only: of 112 IPO rows with status UPCOMING, OPEN or CLOSED, the count with ZERO rows is lead_managers (array on ipos) 65, promoters 103, peer_companies 111, anchor_investors 107, ipo_intermediaries 98, financial_statements 96, ipo_risk_factors 89. Caveat: the 112 include non-offerings (coal-india-ltd, bharat-heavy-electricals-ltd, bank-of-maharashtra, central-bank-of-india -- OFS/corporate-action rows; 41 IPOs overall have segment null), so the share for real IPOs is lower and unmeasured here. Consequence: a per-field source panel (OD-102) has nothing to pick from for a list that has no rows; admin editing of these tables needs add and remove of whole rows. Spec: §9.2, §9.5, §2.10."
     }
   ],
   "false_assertions": [
