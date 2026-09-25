@@ -236,6 +236,19 @@ jobs:
           node --test scripts/tests/check-field-manifest-current.test.mjs
           node scripts/ci/check-field-manifest-current.mjs --base "${{ github.event.pull_request.base.sha }}"
 
+      - name: Drizzle timestamp bind-contract gate (iso-string-bound-to-drizzle-timestamp, #954)
+        # ist-timezone.md's "bind toISOString(), never a Date" rule is correct for raw node-postgres
+        # parameters but WRONG for drizzle-mapped timestamp() columns through the query builder:
+        # drizzle's own PgTimestamp.mapToDriverValue calls .toISOString() on whatever it receives, so
+        # binding an already-stringified value throws TypeError at query time (#954: demand-graph
+        # 500s on 4 prod nights; PR #1069 fixed it, #1033's first attempt hit the same class on a
+        # .set() call, PR #1067). Self-test is mutation-proof: red on a planted
+        # gte(ipos.createdAt, d.toISOString()) against a synthetic default-mode timestamp column,
+        # green on the Date-bound and sql`` (raw-pg) forms and on date()/mode:'string' columns.
+        run: |
+          node --test scripts/tests/check-drizzle-iso-string.test.mjs
+          node scripts/ci/check-drizzle-iso-string.mjs
+
       - name: Manifest unit follows stored unit (F-156, item 11 — detection check for threshold-in-one-unit-column-in-another)
         # 2nd occurrence of the class: the manifest's `unit` and the admin validators trusted a
         # wrong tag on 12 real columns for weeks. This proves the manifest's unit matches the
