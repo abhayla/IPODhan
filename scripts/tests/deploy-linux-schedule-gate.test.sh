@@ -27,6 +27,9 @@
 # Exit 0 = every branch behaves; exit 1 = at least one case failed.
 
 set -uo pipefail
+# A pre-push hook exports GIT_DIR; drop it so fixture git never hits the real repo (#1037).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hermetic-git.sh"
+hermetic_git_env
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WF="$REPO_ROOT/.github/workflows/deploy-linux.yml"
@@ -86,8 +89,9 @@ bash -n "$TMP/gate.sh" || { echo "FAIL: the gate step body is not valid bash" >&
 # Throwaway history: base -> docs-only commit -> code commit.
 REPO="$TMP/repo"
 mkdir -p "$REPO"
-cd "$REPO"
+cd "$REPO" || exit 1
 git init -q .
+assert_hermetic_repo "$REPO"
 git config user.email test@example.com
 git config user.name test
 mkdir -p docs

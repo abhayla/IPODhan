@@ -214,6 +214,38 @@ commit_file "$D" config/some.json "{}"
 P="$(plan "$D")"
 echo "$P" | grep -q "check-write-ratchet" && pass || fail "code push mapped to no checks: $P"
 
+# --- 11. Hermetic: a push from a LINKED WORKTREE must not let a check's -----
+# throwaway-repo fixture write into the host repository. git exports GIT_DIR
+# (=.git/worktrees/<name>) into the hook; on 2026-09-25 a companion test's
+# naive `git init; git config user.*; git commit` in a temp dir inherited it and
+# set core.bare=true + [user] Test in the shared config and committed on the
+# pushed branch. The probe below is deliberately NAIVE (no scrub of its own), so
+# only the gate protects the host; the assertions read the host's state.
+D="$(new_repo)"
+WT="$D-wt"
+git -C "$D" worktree add -q -b hermetic "$WT" >/dev/null 2>&1
+mkdir -p "$WT/scripts/tests"
+cat > "$WT/scripts/tests/naive-fixture.test.sh" <<'PROBE'
+t="$(mktemp -d)"; cd "$t" || exit 1
+git init -q && git config user.name Test && git config user.email test@example.com \
+  && git commit -q --allow-empty -m "chore: init"
+exit 0
+PROBE
+git -C "$WT" add -A && git -C "$WT" commit -q -m "add naive fixture test"
+H_BARE_BEFORE="$(git -C "$D" config --get core.bare)"
+H_HEAD_BEFORE="$(git -C "$WT" rev-parse HEAD)"
+H_USER_BEFORE="$(git -C "$D" config --local --get user.name)"
+push "$WT" origin hermetic
+ran 'check-write-ratchet' && pass || fail "hermetic: the gate did not run its checks (rc=$RC): $OUT"
+[ "$(git -C "$D" config --get core.bare)" = "$H_BARE_BEFORE" ] && pass \
+  || fail "hermetic: host core.bare changed $H_BARE_BEFORE -> $(git -C "$D" config --get core.bare)"
+[ "$(git -C "$D" config --local --get user.name)" = "$H_USER_BEFORE" ] && pass \
+  || fail "hermetic: host local user.name changed '$H_USER_BEFORE' -> '$(git -C "$D" config --local --get user.name)'"
+[ "$(git -C "$WT" rev-parse HEAD 2>/dev/null)" = "$H_HEAD_BEFORE" ] && pass \
+  || fail "hermetic: pushed branch HEAD moved to $(git -C "$WT" log -1 --format='%h %an %s' 2>&1)"
+[ -z "$(git -C "$WT" status --short 2>&1)" ] && pass \
+  || fail "hermetic: worktree status changed: $(git -C "$WT" status --short 2>&1)"
+
 echo ""
 echo "pre-push-local.test.sh: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
