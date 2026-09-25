@@ -170,6 +170,7 @@ it by assuming.
 | OD-115 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) single fields only on a phone and (C) desktop only (Spec basis: none on mobile -- searched mobile, phone, responsive; OD-112 sends live-IPO alerts to Telegram). **The IPO editor works fully on a phone: the per-source panel stacks vertically with large tap targets, and every rule (OD-107 lists, OD-108 units, notes and checks, OD-111 create) behaves as on a desktop. If list editing proves costly on a small screen, lists and create may fall back to desktop-only (option B) as a build decision; it does not change what the feature does.** | 2026-09-25 | §9.2 | §9.2 item 21 states full phone editing with the stacked panel and the B fallback |
 | OD-116 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) hard delete and (C) no removal from the editor (Spec basis: OD-53 "frozen as non-IPO listings with a notice (reusing the OD-8 withdrawn-page freeze mechanism)", OD-38 "every automatic merge is logged and reversible", spec-deviation-guideline.md §5; none on admin removal; real cases F-174: coal-india-ltd, bharat-heavy-electricals-ltd, bank-of-maharashtra, central-bank-of-india stored as CLOSED IPOs). **An admin never deletes an IPO row. A wrong row (a non-IPO, a corporate action, a row that should not exist) is HIDDEN with a written reason through the OD-8/OD-53 freeze mechanism: it leaves every public page, the scraper stops walking it, and its identifiers stay so the scraper recognises it instead of recreating it. Unhide restores it with its data. A true duplicate is merged with the existing merge tool (OD-38), which the admin confirms.** | 2026-09-25 | §9.2 | §9.2 item 23 states hide-with-reason via the freeze mechanism, no delete, identifiers kept, unhide, duplicates via the OD-38 merge |
 | OD-117 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) the admin wins on both and (C) split (Spec basis: E-1 §1.2.1 "the single most damaging error", OD-106, OD-107; raised by the independent review of §9; real cases: anchor lists empty on 107 of 112 non-listed IPOs, F-174; no measured case of listing exchanges changing after the first read). **Every E-1 field follows OD-106 the same way. `anchor_investors.bid_date` follows OD-106 even inside an admin-owned anchor list (OD-107): the exchange's newer, different date replaces the admin's and alerts; the investor rows themselves stay admin-owned. For `listing_exchanges`, "newer" means the exchange now publishes a value different from the one it published when the admin saved; that value replaces the admin's and alerts.** | 2026-09-25 | §9.2 | §9.2 item 7 states that bid_date follows OD-106 inside an admin-owned list and what "newer" means for listing_exchanges |
+| OD-118 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) reuse the OD-8 notice page and (C) redirect every hidden row to the home page (Spec basis: §2.9 and OD-8 "stays at its URL with a clear withdrawal notice rather than redirecting -- people who applied will search for it", OD-116, OD-38, OD-53, the existing `ipo_slug_redirects` table; raised by the independent review of §9; no fresh count of such rows -- the `i_same_ipo_two_rows` floor check did not run on 2026-09-25). **Corrects OD-116's mechanism: a hidden row is NOT shown through the OD-8 freeze. A hidden non-IPO row's address answers 410 Gone and leaves the sitemap, every list and search; its data stays in the database for admins and unhide restores it. A duplicate is not hidden but merged (OD-38), and its old address redirects to the surviving IPO through `ipo_slug_redirects`. A genuinely WITHDRAWN IPO keeps OD-8's notice page; OFS rows keep OD-53's notice.** | 2026-09-25 | §9.2 | §9.2 item 23 states 410 Gone for a hidden non-IPO row, merge plus redirect for a duplicate, and the OD-8 page only for WITHDRAWN |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -4009,10 +4010,13 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
 22. **No "re-scrape this IPO" button** (follows from OD-65 "one IPO, one round" and OD-56 "once per
     stage change"). The editor shows what the sources said; it never triggers a new read. A field
     the admin wants re-read is cleared (item 11), which returns it to the loop at its next stage.
-23. **A row that should not exist (OD-116).** Never deleted. The admin hides it with a written
-    reason through the OD-8/OD-53 freeze mechanism: it leaves every public page, the scraper stops
-    walking it, and its identifiers stay so it is not recreated. Unhide restores it. A true
-    duplicate is merged with the OD-38 merge tool, confirmed by the admin.
+23. **A row that should not exist (OD-116, OD-118).** Never deleted. The admin hides it with a
+    written reason: its address answers 410 Gone, it leaves the sitemap, every list and search, the
+    scraper stops walking it, and its identifiers stay so it is not recreated. Its data stays for
+    admins; unhide restores it. A true duplicate is instead merged with the OD-38 merge tool
+    (confirmed by the admin) and its old address redirects to the surviving IPO through
+    `ipo_slug_redirects`. This is not the OD-8 freeze: a genuinely WITHDRAWN IPO keeps OD-8's notice
+    page, and OFS rows keep OD-53's.
 24. **Source values never reach a reader** (follows from OD-61). The per-source values, witnesses and
     suggestions are fetched by the edit view through its own logged-in request. They are never part
     of the public page payload or its cache keys.
@@ -4052,8 +4056,6 @@ An independent review on 2026-09-25 showed the discovery round was not complete.
 where earlier decisions already decide it (§2.4 clarification; OD-103 per stage; OD-111 identifier;
 items 7, 11, 16, 18, 24-26). Still the owner's to decide, asked one at a time:
 
-2. What "hidden" (OD-116) shows at the IPO's URL: OD-8's freeze keeps the page with a notice, while
-   OD-116 says the row leaves every public page; also search engines and the sitemap.
 3. OFS rows: `spec-deviation-guideline.md` §5 puts them out of scope for the admin (OD-53), while
    OD-102 says every IPO.
 4. A postponed IPO that relaunches: §2.9 invalidates document fields when the relaunch filing
