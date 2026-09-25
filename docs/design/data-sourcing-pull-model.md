@@ -167,6 +167,7 @@ it by assuming.
 | OD-112 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) a daily digest only and (C) an instant alert for every item (Spec basis: OD-106 alert on an exchange override; OD-72 and OD-93 "one admin alert per IPO per day" for a missed live slot plus an end-of-day summary; item 35; signal-ownership.md R3; spec-deviation-guideline.md §5.1; none on admin-editing alerts otherwise; channel: the shared Notifier gateway, which already delivers IPODhan alerts to Telegram per GLOBAL.md §2; measured F-173: about 84 real disagreements, 19 on live IPOs). **Admin alerts go through the Notifier gateway to Telegram, to all admins, at two levels: an INSTANT alert only for an UPCOMING or OPEN IPO (the exchange replaced an admin date, a new real disagreement, a newer document disagreeing with an admin value); everything else in ONE daily digest at 09:00 IST, grouped by IPO with live IPOs first, with counts and a direct link into each IPO's editor.** | 2026-09-25 | §9.2 | §9.2 item 16 states the Notifier/Telegram channel, instant alerts for live IPOs only, and the 09:00 IST digest grouped by IPO |
 | OD-113 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) any admin manages admins and (C) accounts in a config file changed by deploy (Spec basis: OD-104 "same powers, no approval step"; none on account management -- searched add/remove admin, account, password reset, deactivate; today one shared token per `.claude/rules/admin-route-auth.md`). **Only the owner adds an admin, removes one, or resets a password. OD-104's equal powers cover data, not accounts. A removed admin loses access at once; every edit they made stays in place and stays attributed to them in the audit trail.** | 2026-09-25 | §9.2 | §9.2 item 6 states owner-only account management and that a removed admin's edits stay attributed |
 | OD-114 | *"just give the basic uh, feature for admin email phone number and name okay and maybe telegram id do not uh, complicate too many things this is not my area of priority right now maintaining the IPOs not maintaining the admins"* -- 2026-09-25, given in reply to the mobile question, about the admin accounts of OD-104 and OD-113 (Spec basis: OD-104, OD-112, OD-113; none on admin account fields). **An admin account holds only name, email, phone number and an optional Telegram ID; the admin logs in with email and password. Nothing more is built for admin management now (no roles, no two-factor login, no self-service screens beyond the owner adding, removing and resetting per OD-113).** Alerts (OD-112) go to the IPODhan Telegram chat the Notifier gateway already delivers to; the stored Telegram ID identifies the admin but is not yet used for per-person delivery, because the gateway's `POST /notify` has no recipient field (GLOBAL.md §2). Risk stated, not acted on: a password is the only guard on a value that outranks every source (§2.7). | 2026-09-25 | §9.2 | §9.2 item 6 lists the four account fields, email-and-password login, and nothing further for admin management |
+| OD-115 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) single fields only on a phone and (C) desktop only (Spec basis: none on mobile -- searched mobile, phone, responsive; OD-112 sends live-IPO alerts to Telegram). **The IPO editor works fully on a phone: the per-source panel stacks vertically with large tap targets, and every rule (OD-107 lists, OD-108 units, notes and checks, OD-111 create) behaves as on a desktop. If list editing proves costly on a small screen, lists and create may fall back to desktop-only (option B) as a build decision; it does not change what the feature does.** | 2026-09-25 | §9.2 | §9.2 item 21 states full phone editing with the stacked panel and the B fallback |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -3982,6 +3983,12 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
 20. **Two admins on one field** (follows from OD-104). A save is refused if the field changed after
     the editor was opened; the admin sees the newer value and who set it, and saves again if still
     needed. No save silently undoes another admin's.
+21. **On a phone (OD-115).** Full editing; the source panel stacks vertically with large tap
+    targets and every rule behaves as on a desktop. Fallback if lists prove costly: lists and create
+    on desktop only.
+22. **No "re-scrape this IPO" button** (follows from OD-65 "one IPO, one round" and OD-56 "once per
+    stage change"). The editor shows what the sources said; it never triggers a new read. A field
+    the admin wants re-read is cleared (item 11), which returns it to the loop at its next stage.
 ### 9.3 Where the per-source values come from (OD-103)
 
 The edit view reads the witnesses stored for the field (§2.4 as amended by OD-103). Each source
@@ -4006,7 +4013,7 @@ No owner question was needed here; each point follows from a decision already ma
 
 ### 9.5 Still open (asked one at a time, recorded here as answered)
 
-Mobile use.
+Removing or hiding a wrong IPO row.
 
 ---
 
