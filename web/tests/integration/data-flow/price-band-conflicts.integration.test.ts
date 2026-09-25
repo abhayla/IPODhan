@@ -290,11 +290,18 @@ describe('Category 2.4: Price Band Conflicts', () => {
       confidence: 95,
     });
 
-    // Performance target: <500ms
-    expect(result.performanceMs).toBeLessThan(500);
+    // #839: was a tight 500ms wall-clock target, which flipped pass/fail with
+    // machine load alone (936ms one run, passing the next, no code change
+    // between them) — a laptop shared with other vitest workers/an SSH
+    // tunnel is not a stable enough clock for a 500ms budget. Loosened to an
+    // orders-of-magnitude smoke bound (option 2 of #839): this still catches
+    // a real regression class (an accidental N+1 query or a missing index
+    // turning one consolidation pass into a multi-second one) without
+    // flapping on scheduler noise.
+    expect(result.performanceMs).toBeLessThan(10_000);
 
-    console.log('✅ Consolidation performance target met');
-    console.log(`   Duration: ${result.performanceMs}ms (target: <500ms)`);
+    console.log('✅ Consolidation performance smoke check passed');
+    console.log(`   Duration: ${result.performanceMs}ms (smoke bound: <10s)`);
     console.log(`   Fields processed: ${result.fieldsProcessed}`);
   });
 });

@@ -98,6 +98,28 @@ vi.mock('../../../src/services/data-persister.js', () => ({
   recordDiscoveredLeadManagers: vi.fn().mockResolvedValue(undefined),
 }));
 
+/**
+ * #727: a partial mock, not a full replacement. Every describe block ABOVE
+ * this one (the empty-registry refusal, the eleven-counter summary, the
+ * once-per-cycle builders) exercises the REAL `walkFieldPlanForIPO` and
+ * depends on it driving `claimNextDueFieldMock` — so the default
+ * implementation call-throughs to the real function. Only the new
+ * "PASS 3 summary carries dropped-write/exhausted-field identities" describe
+ * block below overrides it per-call (`mockImplementationOnce`), to hand the
+ * cycle a canned `droppedWrites`/`exhaustedFields` array per IPO without
+ * reconstructing a real multi-rank fetcher scenario for each one.
+ */
+const walkFieldPlanForIPOMock = vi.fn();
+vi.mock('../../../src/services/field-plan-walk.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/services/field-plan-walk.js')>();
+  walkFieldPlanForIPOMock.mockImplementation(actual.walkFieldPlanForIPO);
+  return {
+    ...actual,
+    walkFieldPlanForIPO: (...args: Parameters<typeof actual.walkFieldPlanForIPO>) =>
+      walkFieldPlanForIPOMock(...args),
+  };
+});
+
 const runIpoMock = vi.fn().mockImplementation((ipo: { id: string }) => ({
   ipoId: ipo.id,
   companyName: 'Test Co',
@@ -407,5 +429,125 @@ describe('PASS 3 DOES run once the registry is populated (the guard is not a bla
     // candidate IPOs, which is what the per-IPO rebuild bug produced (5 for
     // 3 IPOs: 1 guard-check + 1-per-IPO).
     expect(buildFieldPlanWalkFetchersMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('#727: PASS 3 summary carries the droppedWrites/exhaustedFields identity lines and their cap', () => {
+  /**
+   * A full `FieldPlanWalkResult`, mirroring the real shape (`field-plan-walk.ts`'s
+   * `FieldPlanWalkResult`), with every counter zeroed except the two identity
+   * arrays under test — those come from the caller.
+   */
+  function walkResult(overrides: {
+    ipoId: string;
+    droppedWrites?: Array<{ tableName: string; rowKey: string; fieldName: string; source: string; skipReason: string }>;
+    exhaustedFields?: Array<{ tableName: string; rowKey: string; fieldName: string }>;
+  }) {
+    return {
+      ipoId: overrides.ipoId,
+      fieldsAttempted: 0,
+      fieldsSupplied: 0,
+      fieldsExhausted: 0,
+      fieldsCheckFailed: 0,
+      fieldsSkippedProtected: 0,
+      fieldsWriteSkipped: 0,
+      fieldsNotAvailableYet: 0,
+      fieldsProvisional: 0,
+      outcomesRefused: 0,
+      outcomesFailed: 0,
+      stoppedReason: 'NO_DUE_FIELDS' as const,
+      droppedWrites: overrides.droppedWrites ?? [],
+      exhaustedFields: overrides.exhaustedFields ?? [],
+    };
+  }
+
+  function summaryPayload(): Record<string, unknown> | undefined {
+    const call = loggerInfoMock.mock.calls.find(
+      (c: unknown[]) => typeof c[1] === 'string' && (c[1] as string).includes('PASS 3 field-plan walk summary')
+    );
+    return call?.[0] as Record<string, unknown> | undefined;
+  }
+
+  it('a dropped write and an exhausted field from a single IPO walk appear in the summary arrays', async () => {
+    hasFetchers = true;
+    dbExecuteMock.mockResolvedValue({ rows: [candidateRow('ipo-1')] });
+    walkFieldPlanForIPOMock.mockImplementationOnce(async (ipoId: string) =>
+      walkResult({
+        ipoId,
+        droppedWrites: [
+          { tableName: 'ipos', rowKey: ipoId, fieldName: 'lotSize', source: 'NSE', skipReason: 'CHECK_FAILED' },
+        ],
+        exhaustedFields: [{ tableName: 'ipos', rowKey: ipoId, fieldName: 'registrar' }],
+      })
+    );
+
+    await runDocumentCycle({ wakeBudgetMs: 30 * 60 * 1000 });
+
+    const payload = summaryPayload();
+    expect(payload).toBeDefined();
+    expect(payload!.droppedWrites).toEqual(['ipo-1:ipos.lotSize (source=NSE, CHECK_FAILED)']);
+    expect(payload!.exhaustedFields).toEqual(['ipo-1:ipos.registrar']);
+  });
+
+  it('aggregates identities from MULTIPLE IPOs in one cycle into the same two arrays', async () => {
+    hasFetchers = true;
+    dbExecuteMock.mockResolvedValue({ rows: [candidateRow('ipo-1'), candidateRow('ipo-2')] });
+    walkFieldPlanForIPOMock
+      .mockImplementationOnce(async (ipoId: string) =>
+        walkResult({
+          ipoId,
+          droppedWrites: [{ tableName: 'ipos', rowKey: ipoId, fieldName: 'lotSize', source: 'NSE', skipReason: 'CHECK_FAILED' }],
+        })
+      )
+      .mockImplementationOnce(async (ipoId: string) =>
+        walkResult({
+          ipoId,
+          droppedWrites: [{ tableName: 'ipos', rowKey: ipoId, fieldName: 'issueSize', source: 'BSE', skipReason: 'CHECK_FAILED' }],
+        })
+      );
+
+    await runDocumentCycle({ wakeBudgetMs: 30 * 60 * 1000 });
+
+    const payload = summaryPayload();
+    expect(payload!.droppedWrites).toEqual([
+      'ipo-1:ipos.lotSize (source=NSE, CHECK_FAILED)',
+      'ipo-2:ipos.issueSize (source=BSE, CHECK_FAILED)',
+    ]);
+  });
+
+  // The cap boundary (#727 item 2): 12 IPOs x 5 dropped writes each = 60 real
+  // drops in the cycle, spread the way a real cycle spreads them (a handful
+  // of fields per IPO, never one IPO dumping 50+ at once). The per-IPO guard
+  // (`if (droppedWriteLines.length < MAX_WALK_IDENTITY_LINES)`) checks the
+  // running total BEFORE each IPO's batch, so 5-per-IPO lands exactly on the
+  // 50-line cap after IPO #10 (45 + 5 = 50) and IPOs #11-12 contribute
+  // nothing further — the summary array has exactly 50 entries, not 60, and
+  // the cycle does not throw.
+  it('caps the aggregated identity lines at 50 across many IPOs, never throwing or growing past it', async () => {
+    hasFetchers = true;
+    const ipoIds = Array.from({ length: 12 }, (_, i) => `ipo-${i + 1}`);
+    dbExecuteMock.mockResolvedValue({ rows: ipoIds.map((id) => candidateRow(id)) });
+
+    for (const ipoId of ipoIds) {
+      walkFieldPlanForIPOMock.mockImplementationOnce(async () =>
+        walkResult({
+          ipoId,
+          droppedWrites: Array.from({ length: 5 }, (_, j) => ({
+            tableName: 'ipos',
+            rowKey: ipoId,
+            fieldName: `field${j}`,
+            source: 'NSE',
+            skipReason: 'CHECK_FAILED',
+          })),
+        })
+      );
+    }
+
+    await expect(runDocumentCycle({ wakeBudgetMs: 30 * 60 * 1000 })).resolves.not.toThrow();
+
+    const payload = summaryPayload();
+    expect(payload).toBeDefined();
+    expect(Array.isArray(payload!.droppedWrites)).toBe(true);
+    expect((payload!.droppedWrites as unknown[]).length).toBe(50);
   });
 });
