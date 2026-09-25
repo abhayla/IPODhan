@@ -341,6 +341,14 @@ export async function acceptCorrigendumSuggestion(
         // this write and the field_sources insert below in the ONE transaction.
         await IPORepository.applyAdminCorrigendumValue(t, row.ipoId, row.fieldName, value);
       }
+      // #1033 (ist-timezone.md): `updatedAt`/`createdAt` are bound explicitly here as JS `Date`
+      // objects (drizzle's PgTimestamp.mapToDriverValue always converts a Date via
+      // `.toISOString()` before it reaches Postgres, so this is timezone-independent). Left
+      // unset, a first-ever INSERT for this (ipo, table, row, field) falls through to the
+      // column's `defaultNow()` -- Postgres's own server-side `now()`, which writes the
+      // SESSION's timezone-dependent wall clock instead of a value this code controls. The
+      // `onConflictDoUpdate` branch below already set `updatedAt` explicitly; this closes the
+      // same gap on the INSERT branch so both paths use the identical, proven-safe mechanism.
       await t
         .insert(fieldSources)
         .values({
@@ -353,6 +361,8 @@ export async function acceptCorrigendumSuggestion(
           previousValue: row.value1,
           previousSource: (row.evidence as { storedSource?: string | null } | null)?.storedSource as never,
           dataLineage: { method: 'ADMIN_CORRIGENDUM_ACCEPT', documentId: row.documentId, conflictId, by: adminName },
+          updatedAt: new Date(),
+          createdAt: new Date(),
         } as never)
         .onConflictDoUpdate({
           target: [fieldSources.ipoId, fieldSources.tableName, fieldSources.rowKey, fieldSources.fieldName],
