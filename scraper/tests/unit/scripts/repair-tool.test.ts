@@ -13,9 +13,13 @@ import {
   alreadyRepairedKey,
   assertNoSchemaDrift,
   buildAlreadyRepairedSet,
+  buildIpoScopeCondition,
+  collectFlagValues,
   decideProdWriteRefusal,
   decideSchemaDriftRefusal,
+  describeIpoScope,
   openRepairDb,
+  parseIpoScope,
   probeFieldSourcesRowKeyColumn,
   PRODUCTION_DATABASE_NAME,
   queryCurrentDatabase,
@@ -315,6 +319,113 @@ describe('writeLedgerFile', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('#1045 — shared --ipo scope (test-isolation class)', () => {
+  const UUID_A = '00000000-0000-4000-9161-000000000001';
+  const UUID_B = '00000000-0000-4000-9161-000000000002';
+
+  describe('collectFlagValues', () => {
+    it('collects every occurrence of a repeatable flag', () => {
+      expect(collectFlagValues(['--ipo', UUID_A, '--ipo', UUID_B, '--apply'], '--ipo')).toEqual([UUID_A, UUID_B]);
+    });
+
+    it('returns empty when the flag is absent', () => {
+      expect(collectFlagValues(['--apply'], '--ipo')).toEqual([]);
+    });
+
+    it('does not swallow the next flag as a value', () => {
+      expect(collectFlagValues(['--ipo', '--apply'], '--ipo')).toEqual([]);
+    });
+  });
+
+  describe('parseIpoScope', () => {
+    it('MUTATION: a flag unknown/ignored turns this red — recognizes a single --ipo value', () => {
+      expect(parseIpoScope([UUID_A])).toEqual({ ipoIds: [UUID_A], invalid: [] });
+    });
+
+    it('splits comma-separated values from one --ipo', () => {
+      expect(parseIpoScope([`${UUID_A},${UUID_B}`])).toEqual({ ipoIds: [UUID_A, UUID_B], invalid: [] });
+    });
+
+    it('merges repeated --ipo occurrences and dedupes', () => {
+      expect(parseIpoScope([UUID_A, UUID_A, UUID_B])).toEqual({ ipoIds: [UUID_A, UUID_B], invalid: [] });
+    });
+
+    it('reports a non-uuid value as invalid rather than silently dropping or accepting it', () => {
+      expect(parseIpoScope(['not-a-uuid'])).toEqual({ ipoIds: [], invalid: ['not-a-uuid'] });
+    });
+
+    it('is unscoped (empty ipoIds) when no --ipo is given', () => {
+      expect(parseIpoScope([])).toEqual({ ipoIds: [], invalid: [] });
+    });
+  });
+
+  describe('describeIpoScope', () => {
+    it('names ALL IPOs when unscoped', () => {
+      expect(describeIpoScope([])).toMatch(/ALL IPOs/);
+    });
+
+    it('names the scoped ids so the tool header states what it will touch', () => {
+      expect(describeIpoScope([UUID_A, UUID_B])).toContain(UUID_A);
+      expect(describeIpoScope([UUID_A, UUID_B])).toContain(UUID_B);
+    });
+  });
+
+  /**
+   * Flatten a drizzle SQL fragment to the literal text plus bound params.
+   * `Param` (a `sql.param()` binding) and `StringChunk` (literal text, including
+   * a nested `sql.raw()` fragment) both carry a `.value` array, so they are
+   * told apart by constructor name — never by `Array.isArray(node.value)`
+   * alone, which matches both and would silently read a bound array param as
+   * literal text.
+   */
+  function flattenSql(node: any, out: { text: string[]; params: unknown[] } = { text: [], params: [] }) {
+    if (node == null) return out;
+    if (typeof node !== 'object') return out;
+    if (Array.isArray(node)) {
+      for (const n of node) flattenSql(n, out);
+      return out;
+    }
+    if (Array.isArray(node.queryChunks)) {
+      for (const chunk of node.queryChunks) flattenSql(chunk, out);
+      return out;
+    }
+    if (node.constructor?.name === 'Param') {
+      out.params.push(node.value);
+      return out;
+    }
+    if (Array.isArray(node.value)) {
+      out.text.push(node.value.join(''));
+      return out;
+    }
+    if ('value' in node) {
+      out.params.push(node.value);
+      return out;
+    }
+    return out;
+  }
+
+  describe('buildIpoScopeCondition — the candidate-row filter itself', () => {
+    it('MUTATION: an ignored --ipo turns this red — returns null (no filter) when unscoped', () => {
+      expect(buildIpoScopeCondition([])).toBeNull();
+    });
+
+    it('builds an `ipo_id = ANY(...)` condition binding the ids as ONE array param, not a tuple', () => {
+      const cond = buildIpoScopeCondition([UUID_A, UUID_B]);
+      const flat = flattenSql(cond);
+      expect(flat.text.join('')).toContain('ipo_id = ANY(');
+      expect(flat.text.join('')).toContain('::uuid[]');
+      // exactly one bound param carrying the whole id array — never one param per id
+      expect(flat.params).toEqual([[UUID_A, UUID_B]]);
+    });
+
+    it('qualifies the column with a caller-supplied table alias (e.g. a joined query)', () => {
+      const cond = buildIpoScopeCondition([UUID_A], 'p.ipo_id');
+      const flat = flattenSql(cond);
+      expect(flat.text.join('')).toContain('p.ipo_id = ANY(');
+    });
   });
 });
 

@@ -52,7 +52,15 @@
  *   npx tsx scripts/repair-retire-manifest-removed-fields.ts --expect-db ipodhan_staging --apply \
  *     --undo scripts/state/repair-retire-manifest-removed-fields-<ts>.json
  *
- * Exit codes: 0 done (or dry run / nothing to repair); 1 usage/guard refusal.
+ * `--ipo <uuid>` (#1045, repeatable or comma-separated) scopes the read/apply
+ * to only the named IPO(s) — every row read, ledgered and deleted is filtered
+ * by `ipo_id`. Omit it for today's DB-wide default. A test spawning this tool
+ * against the shared `ipodhan_test` database MUST pass its own fixture's
+ * `--ipo` so it cannot touch another integration file's rows running in
+ * parallel (issue #1045).
+ *
+ * Exit codes: 0 done (or dry run / nothing to repair); 1 usage/guard refusal;
+ * 2 an `--ipo` value failed uuid validation.
  */
 import '../../scripts/lib/alias-preflight-auto.mjs';
 import { db } from '@ipodhan/shared';
@@ -61,7 +69,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadFieldManifest } from '../src/config/field-manifest-loader.js';
-import { openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike } from './lib/repair-tool.js';
+import {
+  buildIpoScopeCondition,
+  collectFlagValues,
+  describeIpoScope,
+  openRepairDb,
+  parseIpoScope,
+  queryCurrentDatabase,
+  writeLedgerFile,
+  type ExecuteLike,
+} from './lib/repair-tool.js';
 
 const TOOL = 'repair-retire-manifest-removed-fields';
 const SCRAPER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -71,16 +88,23 @@ export interface Cli {
   allowProd: boolean;
   expectDb: string | null;
   undoLedger: string | null;
+  /** #1045: `--ipo <uuid>` (repeatable or comma-separated); empty = unscoped, today's DB-wide default. */
+  ipoIds: string[];
+  /** `--ipo` values that failed uuid validation; a non-empty list refuses the run (exit 2). */
+  invalidIpo: string[];
 }
 
 export function parseArgs(argv: readonly string[]): Cli {
   const at = argv.indexOf('--expect-db');
   const undoAt = argv.indexOf('--undo');
+  const ipoScope = parseIpoScope(collectFlagValues(argv, '--ipo'));
   return {
     apply: argv.includes('--apply'),
     allowProd: argv.includes('--allow-prod'),
     expectDb: at >= 0 && argv[at + 1] && !argv[at + 1].startsWith('--') ? argv[at + 1] : null,
     undoLedger: undoAt >= 0 && argv[undoAt + 1] && !argv[undoAt + 1].startsWith('--') ? argv[undoAt + 1] : null,
+    ipoIds: ipoScope.ipoIds,
+    invalidIpo: ipoScope.invalid,
   };
 }
 
@@ -169,6 +193,7 @@ export async function run(deps: RunDeps): Promise<RunResult> {
     return { exitCode: 1, refusedAt: 'prod-guard', wrote: false, deleted: 0, restored: 0, removedFieldKeys: [] };
   }
   log(`${TOOL}: schema/db check passed on "${actual}"`);
+  log(`${TOOL}: scope = ${describeIpoScope(cli.ipoIds ?? [])}`);
 
   // --undo: restore from a prior ledger, never computed against the current manifest.
   if (cli.undoLedger) {
@@ -240,15 +265,22 @@ function fieldKeyToTableField(key: string): { tableName: string; fieldName: stri
 
 async function main(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2));
+  if (cli.invalidIpo.length > 0) {
+    console.error(`${TOOL}: --ipo value(s) are not valid uuids, refusing: ${cli.invalidIpo.join(', ')}`);
+    process.exit(2);
+  }
   const dbLike = db as unknown as ExecuteLike;
   const realDb = db as unknown as { transaction: <T>(fn: (tx: ExecuteLike) => Promise<T>) => Promise<T> };
+  const ipoScope = buildIpoScopeCondition(cli.ipoIds);
 
   async function readSnapshot(tx: ExecuteLike, fieldKeys: readonly string[]): Promise<Record<string, unknown>[]> {
     const rows: Record<string, unknown>[] = [];
     for (const key of fieldKeys) {
       const { tableName, fieldName } = fieldKeyToTableField(key);
       const res = await tx.execute(
-        sql`SELECT row_to_json(t) AS j FROM ipo_field_plan t WHERE table_name = ${tableName} AND field_name = ${fieldName}`
+        ipoScope
+          ? sql`SELECT row_to_json(t) AS j FROM ipo_field_plan t WHERE table_name = ${tableName} AND field_name = ${fieldName} AND ${ipoScope}`
+          : sql`SELECT row_to_json(t) AS j FROM ipo_field_plan t WHERE table_name = ${tableName} AND field_name = ${fieldName}`
       );
       const resultRows = (res as unknown as { rows: { j: Record<string, unknown> }[] }).rows ?? [];
       rows.push(...resultRows.map((r) => r.j));
@@ -261,7 +293,11 @@ async function main(): Promise<void> {
     dbLike,
     loadManifest: loadFieldManifest,
     readExistingFieldKeys: async () => {
-      const res = await dbLike.execute(sql`SELECT DISTINCT table_name, field_name FROM ipo_field_plan`);
+      const res = await dbLike.execute(
+        ipoScope
+          ? sql`SELECT DISTINCT table_name, field_name FROM ipo_field_plan WHERE ${ipoScope}`
+          : sql`SELECT DISTINCT table_name, field_name FROM ipo_field_plan`
+      );
       const rows = (res as unknown as { rows: { table_name: string; field_name: string }[] }).rows ?? [];
       return rows.map((r) => `${r.table_name}.${r.field_name}`);
     },

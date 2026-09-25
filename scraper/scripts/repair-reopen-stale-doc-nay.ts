@@ -70,6 +70,13 @@
  *   npx tsx scripts/repair-reopen-stale-doc-nay.ts --expect-db ipodhan_test --settled-by-lower-rank --apply
  * Prod is refused without --allow-prod (openRepairDb).
  *
+ * `--ipo <uuid>` (#1045, repeatable or comma-separated) scopes the SELECT and
+ * every UPDATE to only the named IPO(s). Omit it for today's DB-wide default.
+ * A test spawning this tool against the shared `ipodhan_test` database MUST
+ * pass its own fixture's `--ipo` so it cannot touch another integration
+ * file's rows running in parallel (issue #1045). `--undo` stays scoped by its
+ * own ledger regardless of `--ipo`.
+ *
  * No detection change: pull_doc_nay_with_offer_doc already detects this class by IPO identity.
  */
 import '../../scripts/lib/alias-preflight-auto.mjs';
@@ -78,7 +85,16 @@ import { sql } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike } from './lib/repair-tool';
+import {
+  buildIpoScopeCondition,
+  collectFlagValues,
+  describeIpoScope,
+  openRepairDb,
+  parseIpoScope,
+  queryCurrentDatabase,
+  writeLedgerFile,
+  type ExecuteLike,
+} from './lib/repair-tool';
 
 const TOOL = 'repair-reopen-stale-doc-nay';
 const SCRAPER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -122,7 +138,9 @@ function mapStaleRows(result: unknown): StaleDocNayRow[] {
  * Same SQL as `checkPullDocNayWithOfferDoc` in scripts/audit-detection-floor.mjs
  * (item 6 / F-161) — one population definition, read here rather than retyped.
  */
-async function readStaleRows(): Promise<StaleDocNayRow[]> {
+async function readStaleRows(ipoIds: readonly string[]): Promise<StaleDocNayRow[]> {
+  const scope = buildIpoScopeCondition(ipoIds, 'p.ipo_id');
+  const scopeClause = scope ? sql`AND ${scope}` : sql``;
   const result = await (db as any).execute(sql`
     SELECT p.id, p.ipo_id, i.slug, p.table_name, p.row_key, p.field_name, p.state::text AS state,
            p.reason_code, p.cause, p.last_attempt_at::text AS last_attempt_at
@@ -131,6 +149,7 @@ async function readStaleRows(): Promise<StaleDocNayRow[]> {
      WHERE p.rank1_source = 'DOC'
        AND p.state = 'NOT_AVAILABLE_YET'
        AND left(p.cause, 27) = 'rank1:DOC:NOT_AVAILABLE_YET'
+       ${scopeClause}
        AND EXISTS (SELECT 1 FROM documents d
                     WHERE d.ipo_id = p.ipo_id
                       AND d.extraction_status = 'COMPLETED'
@@ -149,7 +168,9 @@ async function readStaleRows(): Promise<StaleDocNayRow[]> {
  * `readStaleRows` with `state = 'SUPPLIED'` in place of `state =
  * 'NOT_AVAILABLE_YET'`.
  */
-async function readSettledByLowerRankRows(): Promise<StaleDocNayRow[]> {
+async function readSettledByLowerRankRows(ipoIds: readonly string[]): Promise<StaleDocNayRow[]> {
+  const scope = buildIpoScopeCondition(ipoIds, 'p.ipo_id');
+  const scopeClause = scope ? sql`AND ${scope}` : sql``;
   const result = await (db as any).execute(sql`
     SELECT p.id, p.ipo_id, i.slug, p.table_name, p.row_key, p.field_name, p.state::text AS state,
            p.reason_code, p.cause, p.last_attempt_at::text AS last_attempt_at
@@ -158,6 +179,7 @@ async function readSettledByLowerRankRows(): Promise<StaleDocNayRow[]> {
      WHERE p.rank1_source = 'DOC'
        AND p.state = 'SUPPLIED'
        AND left(p.cause, 27) = 'rank1:DOC:NOT_AVAILABLE_YET'
+       ${scopeClause}
        AND EXISTS (SELECT 1 FROM documents d
                     WHERE d.ipo_id = p.ipo_id
                       AND d.extraction_status = 'COMPLETED'
@@ -176,12 +198,16 @@ export function breakdownBySlug(rows: readonly StaleDocNayRow[]): Array<{ slug: 
   return [...byIpo.entries()].map(([slug, n]) => ({ slug, rows: n })).sort((a, b) => b.rows - a.rows);
 }
 
-interface Cli {
+export interface Cli {
   apply: boolean;
   allowProd: boolean;
   expectDb: string | null;
   undo: string | null;
   settledByLowerRank: boolean;
+  /** #1045: `--ipo <uuid>` (repeatable or comma-separated); empty = unscoped, today's DB-wide default. */
+  ipoIds: string[];
+  /** `--ipo` values that failed uuid validation; a non-empty list refuses the run (exit 2). */
+  invalidIpo: string[];
 }
 
 function valueAfter(argv: readonly string[], flag: string): string | null {
@@ -190,12 +216,15 @@ function valueAfter(argv: readonly string[], flag: string): string | null {
 }
 
 export function parseArgs(argv: readonly string[]): Cli {
+  const ipoScope = parseIpoScope(collectFlagValues(argv, '--ipo'));
   return {
     apply: argv.includes('--apply'),
     allowProd: argv.includes('--allow-prod'),
     expectDb: valueAfter(argv, '--expect-db'),
     undo: valueAfter(argv, '--undo'),
     settledByLowerRank: argv.includes('--settled-by-lower-rank'),
+    ipoIds: ipoScope.ipoIds,
+    invalidIpo: ipoScope.invalid,
   };
 }
 
@@ -232,6 +261,10 @@ async function runUndo(cli: Cli, actual: string, ledgerPath: string): Promise<vo
 
 async function main(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2));
+  if (cli.invalidIpo.length > 0) {
+    console.error(`${TOOL}: --ipo value(s) are not valid uuids, refusing: ${cli.invalidIpo.join(', ')}`);
+    process.exit(2);
+  }
   if (!cli.expectDb) {
     console.error(`${TOOL}: --expect-db <name> is required on every run (dry or applied); refusing to guess the target database.`);
     process.exit(1);
@@ -242,13 +275,16 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   await openRepairDb(db as ExecuteLike, { apply: cli.apply, allowProd: cli.allowProd, toolName: TOOL });
+  console.log(`${TOOL}: scope = ${describeIpoScope(cli.ipoIds)}`);
 
   if (cli.undo) {
     await runUndo(cli, actual, path.resolve(cli.undo));
     return;
   }
 
-  const rows = cli.settledByLowerRank ? await readSettledByLowerRankRows() : await readStaleRows();
+  const rows = cli.settledByLowerRank
+    ? await readSettledByLowerRankRows(cli.ipoIds)
+    : await readStaleRows(cli.ipoIds);
   const label = cli.settledByLowerRank ? 'settled-by-lower-rank SUPPLIED' : 'stale DOC NOT_AVAILABLE_YET';
   const breakdown = breakdownBySlug(rows);
 

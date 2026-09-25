@@ -40,12 +40,76 @@
 // to) before any module below can read the wrong tree.
 import '../../../scripts/lib/alias-preflight-auto.mjs';
 import * as schema from '@ipodhan/shared/db/schema';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
 import fs from 'node:fs';
 import path from 'node:path';
 
 /** The one database name a repair tool refuses to WRITE to without --allow-prod. */
 export const PRODUCTION_DATABASE_NAME = 'ipodhan';
+
+/**
+ * #1045: shared `--ipo <uuid>` scope for every repair tool that spawns a
+ * DB-wide process against the shared `ipodhan_test` database from an
+ * integration test — see the class RCA in issue #1045. One implementation,
+ * imported rather than retyped, same rationale as the rest of this module.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Every value following one or more occurrences of a repeatable CLI flag. */
+export function collectFlagValues(argv: readonly string[], flag: string): string[] {
+  const values: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === flag && argv[i + 1] !== undefined && !argv[i + 1].startsWith('--')) {
+      values.push(argv[i + 1]);
+    }
+  }
+  return values;
+}
+
+export interface IpoScopeParseResult {
+  /** Deduped, validated uuids. Empty = unscoped (today's DB-wide default, unchanged). */
+  ipoIds: string[];
+  /** Any `--ipo` value that failed uuid validation — the caller refuses (exit 2), never silently drops it. */
+  invalid: string[];
+}
+
+/**
+ * Parse repeatable (`--ipo a --ipo b`) and/or comma-separated (`--ipo a,b`)
+ * `--ipo` values, validating each as a uuid. A value that is not a uuid is
+ * reported in `invalid`, never silently ignored or silently included.
+ */
+export function parseIpoScope(rawValues: readonly string[]): IpoScopeParseResult {
+  const all = rawValues
+    .flatMap((v) => v.split(','))
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+  const invalid = all.filter((v) => !UUID_RE.test(v));
+  const ipoIds = [...new Set(all.filter((v) => UUID_RE.test(v)))];
+  return { ipoIds, invalid };
+}
+
+/** Human-readable scope line for the tool's header — printed so a run always states what it will touch. */
+export function describeIpoScope(ipoIds: readonly string[]): string {
+  return ipoIds.length === 0 ? 'ALL IPOs (unscoped, DB-wide)' : `${ipoIds.length} IPO(s): ${ipoIds.join(', ')}`;
+}
+
+/**
+ * The candidate-row filter every repair tool ANDs into its SELECT / DELETE /
+ * UPDATE when scoped to specific IPOs, so a test spawning the tool with
+ * `--ipo <its fixture id>` can only ever touch its own fixture rows even
+ * while vitest runs other integration files in parallel against the same
+ * shared database (#1045). Returns `null` when unscoped — today's DB-wide
+ * behaviour, unchanged. Binds the ids as ONE array parameter via
+ * `sql.param()`, never a JS array interpolated directly into the template
+ * (drizzle expands that into a parenthesized tuple, which `ANY()` rejects —
+ * the #1042 finding). `column` lets a caller qualify the column with its
+ * table alias (e.g. `p.ipo_id`); it is always a fixed identifier from the
+ * tool's own code, never user input.
+ */
+export function buildIpoScopeCondition(ipoIds: readonly string[], column = 'ipo_id'): SQL | null {
+  if (ipoIds.length === 0) return null;
+  return sql`${sql.raw(column)} = ANY(${sql.param([...ipoIds])}::uuid[])`;
+}
 
 /** Minimal shape of the drizzle handle these helpers need (keeps them unit-testable). */
 export interface ExecuteLike {

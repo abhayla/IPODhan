@@ -78,14 +78,14 @@ afterAll(async () => {
 
 describe.skipIf(!DATABASE_URL)(`repair-retire-manifest-removed-fields on real Postgres (${SKIP_REASON})`, () => {
   it('dry run reports the removed-field row without deleting anything', () => {
-    const r = run(['--expect-db', 'ipodhan_test']);
+    const r = run(['--expect-db', 'ipodhan_test', '--ipo', IPO_ID]);
     expect(r.code, r.out).toBe(0);
     expect(r.out).toMatch(new RegExp(`${REMOVED_FIELD}\\.gmp`));
   }, 60_000);
 
   let ledger = '';
   it('--apply deletes only the removed-field row via the REAL SQL (fails red before the fix)', async () => {
-    const r = run(['--expect-db', 'ipodhan_test', '--apply']);
+    const r = run(['--expect-db', 'ipodhan_test', '--apply', '--ipo', IPO_ID]);
     // Before the fix: exits 1, stderr carries "Failed query ... ANY((" and 0 rows
     // are ever deleted (the whole thing is one transaction). After the fix: exits 0.
     expect(r.code, r.out).toBe(0);
@@ -96,7 +96,7 @@ describe.skipIf(!DATABASE_URL)(`repair-retire-manifest-removed-fields on real Po
   }, 60_000);
 
   it('re-running --apply is a no-op (the row is already gone)', () => {
-    const r = run(['--expect-db', 'ipodhan_test', '--apply']);
+    const r = run(['--expect-db', 'ipodhan_test', '--apply', '--ipo', IPO_ID]);
     expect(r.code, r.out).toBe(0);
     expect(r.out).toMatch(/nothing to repair/);
   }, 60_000);

@@ -37,19 +37,68 @@ describe('computeRemovedFieldKeys', () => {
 describe('parseArgs', () => {
   it('parses --expect-db, --apply, --allow-prod and --undo', () => {
     const cli = parseArgs(['--expect-db', 'ipodhan_staging', '--apply', '--allow-prod', '--undo', 'ledger.json']);
-    expect(cli).toEqual({ apply: true, allowProd: true, expectDb: 'ipodhan_staging', undoLedger: 'ledger.json' });
+    expect(cli).toEqual({
+      apply: true,
+      allowProd: true,
+      expectDb: 'ipodhan_staging',
+      undoLedger: 'ledger.json',
+      ipoIds: [],
+      invalidIpo: [],
+    });
   });
 
   it('defaults to a dry run with no undo when only --expect-db is given', () => {
     const cli = parseArgs(['--expect-db', 'ipodhan_test']);
-    expect(cli).toEqual({ apply: false, allowProd: false, expectDb: 'ipodhan_test', undoLedger: null });
+    expect(cli).toEqual({
+      apply: false,
+      allowProd: false,
+      expectDb: 'ipodhan_test',
+      undoLedger: null,
+      ipoIds: [],
+      invalidIpo: [],
+    });
+  });
+
+  // #1045: red before the fix — --ipo did not exist, so the flag's value was
+  // silently ignored (parsed nowhere) instead of scoping the run.
+  it('MUTATION: an unrecognized/ignored --ipo turns this red — parses a single --ipo value', () => {
+    const cli = parseArgs(['--expect-db', 'ipodhan_test', '--ipo', '00000000-0000-4000-9f61-000000000001']);
+    expect(cli.ipoIds).toEqual(['00000000-0000-4000-9f61-000000000001']);
+    expect(cli.invalidIpo).toEqual([]);
+  });
+
+  it('parses repeated --ipo flags and comma-separated values together', () => {
+    const cli = parseArgs([
+      '--expect-db', 'ipodhan_test',
+      '--ipo', '00000000-0000-4000-9f61-000000000001,00000000-0000-4000-9f61-000000000002',
+      '--ipo', '00000000-0000-4000-9f61-000000000003',
+    ]);
+    expect(cli.ipoIds).toEqual([
+      '00000000-0000-4000-9f61-000000000001',
+      '00000000-0000-4000-9f61-000000000002',
+      '00000000-0000-4000-9f61-000000000003',
+    ]);
+  });
+
+  it('reports a non-uuid --ipo value as invalid rather than silently accepting or dropping it', () => {
+    const cli = parseArgs(['--expect-db', 'ipodhan_test', '--ipo', 'not-a-uuid']);
+    expect(cli.invalidIpo).toEqual(['not-a-uuid']);
+    expect(cli.ipoIds).toEqual([]);
   });
 });
 
 const REMOVED_ROW = { id: 'row-1', table_name: 'gmp_records', field_name: 'gmp', state: 'PENDING' };
 
 function baseCli(overrides: Partial<Cli> = {}): Cli {
-  return { apply: false, allowProd: false, expectDb: 'ipodhan_staging', undoLedger: null, ...overrides };
+  return {
+    apply: false,
+    allowProd: false,
+    expectDb: 'ipodhan_staging',
+    undoLedger: null,
+    ipoIds: [],
+    invalidIpo: [],
+    ...overrides,
+  };
 }
 
 function baseDeps(overrides: Partial<RunDeps> = {}): RunDeps {
