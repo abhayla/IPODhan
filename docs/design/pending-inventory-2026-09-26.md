@@ -199,8 +199,8 @@ Not issues; measured from the items and the board:
 | Issue | Title | Why it is yours | Size |
 |---|---|---|---|
 | #58 (decided: OD-124, show gain %) | Mainboard 'Recently Listed' cards don't show listing-gain % (generic IPOCardEnhanced) | UI card content; the data spec is silent (searched: listing gain, card). |  |
-| #106 | decision: AllotmentCheckerCard null-registrarUrl UX — R28 #3 fallback vs ISS-007 contract… | Allotment card fallback when registrar URL is null is a UX choice; spec silent (searched: registrar_url, allotment). |  |
-| #167 | Populate IPO Reviews/Scores/Anchor Investors feature (currently de-navved, code exists bu… | Reviews/scores/anchor pages need a source decision; spec silent (searched: review, score). |  |
+| #106 (closed: R28 #3 already built, 3ca734a4 on prod) | decision: AllotmentCheckerCard null-registrarUrl UX — R28 #3 fallback vs ISS-007 contract… | Allotment card fallback when registrar URL is null is a UX choice; spec silent (searched: registrar_url, allotment). |  |
+| #167 (decided: OD-125, no reviews; retire pages, fix score scale) | Populate IPO Reviews/Scores/Anchor Investors feature (currently de-navved, code exists bu… | Reviews/scores/anchor pages need a source decision; spec silent (searched: review, score). |  |
 | #979 (decided: OD-123, NOT_SOURCED) | Item 14 residue: 8 old CLOSED IPOs keep a non-capable issue_size with no capable source t… | OD-74 repairs issue size once from the CG detail page; it says nothing for the 8 rows with no CG page and no capable source. | S |
 
 ## 5. Needs owner OK (host change) / in flight / unknown / out of repo
