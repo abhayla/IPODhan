@@ -1716,6 +1716,15 @@
       "phase1": false,
       "title": "The admin conflicts queue is 99.8% listed IPOs and humans have resolved 1 of 19,106 conflicts",
       "detail": "Measured 2026-09-25 on ipodhan_staging (read-only): unresolved data_conflicts by IPO status LISTED 14,130, OPEN 15, CLOSED 12, UPCOMING 3 (total 14,160); resolved 19,106, resolved_by SYSTEM 19,105, 'Admin' 1. spec-deviation-guideline.md §5.1 says the queue must be sized to one person and ordered live first; as stored it is neither. Spec: §9.1, §9.4."
+    },
+    {
+      "id": "F-173",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "admin editing / queue",
+      "phase1": false,
+      "title": "99.4% of the unresolved conflicts are not disagreements under OD-59, OD-60 and OD-75; 84 are real, and every live one checked is the BSE issue-size class",
+      "detail": "Measured 2026-09-25 on ipodhan_staging, read-only, 14,160 unresolved data_conflicts. Classified: source1 = source2 (a source against itself, OD-75) 12,785 (LISTED 12,774 on 181 IPOs, live 11 on 7); one side empty, null or 0 (an abstention, OD-60) 1,176 (all LISTED, 27 IPOs); equal after removing case and punctuation (OD-59) 115 (all LISTED, 7 IPOs); the rest 84 (LISTED 65 on 26 IPOs; OPEN/CLOSED/UPCOMING 19 on 18 IPOs). The normalisation is a crude letters-and-digits compare, so the 115 and the 84 are approximate (a numeric compare per OD-59 could move a few between them). The 8 live rows sampled are all issueSize, CHITTORGARH higher than BSE: armee-infotech-ltd 3,000,000,000 vs 2,600,624,600; moneyview-ltd 10,916,800,000 vs 7,440,773,600; acevector-ltd 4,200,000,000 vs 2,226,874,980; swastika-infra-ltd, a-one-steels-india-ltd, german-green-steel-and-power-ltd, acme-universal-safezone-9-ltd, varmora-granito-ltd (NSE) likewise -- the known BSE issue-size-low class (#728), not a new one. Consequence: the queue an admin would open today is 14,160 rows of which about 84 need a human; §9.4 removes the rest under their own reasons. Spec: §9.4, OD-59, OD-60, OD-63, OD-75."
     }
   ],
   "false_assertions": [
