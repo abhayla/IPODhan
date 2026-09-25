@@ -83,14 +83,30 @@ const TONE: Record<DisplayStatus, { chip: string; dot: string }> = {
 };
 
 /** Just the colored status dot — used inside the pinned Company cell on mobile so
- * the standalone Status column can be dropped and a VALUE column leads (R27 #1). */
-export function StatusDot({ ipo, className = '' }: { ipo: StatusInput; className?: string }) {
+ * the standalone Status column can be dropped and a VALUE column leads (R27 #1).
+ *
+ * `decorative` MUST be true whenever this is rendered inside an already-labeled
+ * interactive element (e.g. the company `<Link>`) — otherwise the dot's own
+ * `aria-label` is prepended to that element's accessible name (#107: a screen
+ * reader announced "Open Currently Open IPO" instead of "Currently Open IPO").
+ * When decorative, the dot carries no accessible name of its own and is hidden
+ * from the accessibility tree; the visual `title` tooltip is unaffected. */
+export function StatusDot({
+  ipo,
+  className = '',
+  decorative = false,
+}: {
+  ipo: StatusInput;
+  className?: string;
+  decorative?: boolean;
+}) {
   const { status, label } = getDisplayStatus(ipo);
   return (
     <span
       className={`h-2 w-2 shrink-0 rounded-full ${TONE[status].dot} ${className}`}
       title={label}
-      aria-label={label}
+      aria-label={decorative ? undefined : label}
+      aria-hidden={decorative ? true : undefined}
     />
   );
 }

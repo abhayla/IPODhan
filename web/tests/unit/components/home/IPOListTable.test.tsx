@@ -141,8 +141,9 @@ describe('IPOListTable Component', () => {
         />
       );
 
-      // accessible name is prefixed by the mobile-only StatusDot's aria-label (e.g. "Open")
-      const link = screen.getByRole('link', { name: /Currently Open IPO$/ });
+      // #107: the mobile-only StatusDot is decorative and must NOT contribute to
+      // the link's accessible name — exact match, not a substring/prefix match.
+      const link = screen.getByRole('link', { name: 'Currently Open IPO' });
       expect(link).toBeInTheDocument();
       expect(link).toHaveAttribute('href', '/ipos/currently-open-ipo');
     });
@@ -371,8 +372,8 @@ describe('IPOListTable Component', () => {
       render(
         <IPOListTable title="Test Table" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />
       );
-      // accessible name is prefixed by the mobile-only StatusDot's aria-label (e.g. "Open")
-      const companyLink = screen.getByRole('link', { name: /Currently Open IPO$/ });
+      // #107: exact accessible name — the decorative StatusDot must not pollute it.
+      const companyLink = screen.getByRole('link', { name: 'Currently Open IPO' });
       expect(companyLink.className).toMatch(/font-medium/);
       // the name span (inside the link) carries the truncation
       const nameSpan = companyLink.querySelector('span.truncate');

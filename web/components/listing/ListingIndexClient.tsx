@@ -122,7 +122,7 @@ function companyCol(): ColumnDef<IPO> {
       >
         {/* Status as a dot on mobile (the standalone Status column is hidden < md
             so a value column leads the horizontal scroll) — R27 #1 */}
-        <StatusDot ipo={row} className="md:hidden" />
+        <StatusDot ipo={row} className="md:hidden" decorative />
         {/* Monogram is desktop-only — on the narrow mobile pinned cell the status
             dot + name are the signal; the avatar just costs name width (R32 #1). */}
         <span className="hidden shrink-0 sm:inline-flex">

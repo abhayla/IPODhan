@@ -182,7 +182,7 @@ export function IPOListTable({
                     title={ipo.companyName}
                     className="flex items-center gap-2 font-medium text-foreground hover:text-primary"
                   >
-                    <StatusDot ipo={ipo} className="md:hidden" />
+                    <StatusDot ipo={ipo} className="md:hidden" decorative />
                     <span className="hidden shrink-0 sm:inline-flex">
                       <MonogramChip name={ipo.companyName} />
                     </span>
