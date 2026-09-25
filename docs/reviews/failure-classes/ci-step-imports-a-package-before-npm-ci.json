@@ -1,0 +1,10 @@
+{
+  "class_id": "a CI step that runs before `npm ci` imports an npm package, so it passes on every laptop and fails in CI",
+  "feature": "any step in a workflow job that runs a repo script or test (node --test, node scripts/...) placed before the job's `npm ci` / Install dependencies step, and any later edit that adds an npm import to a script such a step already runs",
+  "symptom": "the script or its self-test imports a package that is only present after `npm ci` hoists it into node_modules (e.g. typescript, reachable only via the web/scraper/packages workspaces). Every local run passes, because a developer checkout or worktree already has node_modules (worktrees even junction them in). In CI the step runs first, the import fails with a module-resolution error, and the whole gate job goes red on every PR -- including the gate that guards the class the change was fixing. The builder's own 'red before, green after' proof cannot see it, because it never reproduces CI's step order.",
+  "first_seen": "2026-09-25 ~19:30 IST, IPODhan, PR #1087 (#694): scripts/ci/require-repair-tool-module.mjs switched from a hand-written stripper to `import ts from 'typescript'`; its two T-490 steps sat at pr-gate.yml ~264/273, before `npm ci` at ~450 in the single `gate` job. Local self-test 19/19 pass; pr-gate run 36141849851 failed at 'Repair-tool module lint self-test (T-490)'. Found by the Tier B reviewer reading step order, confirmed by the red run. Fixed in the same PR by moving both steps after npm ci (merged 2026-09-25). Two later PRs in the same run (#1096, #1099, #1101) placed their new steps pre-install only after checking their imports were Node builtins -- the check this class needs.",
+  "fix_prs": "#1087 (steps moved after npm ci)",
+  "detection_check": "none automated. Builder and reviewer briefs in the easy-wins-2 run carried the line 'if the step runs before npm ci, the test must import only Node builtins'. A static gate (every pre-install node step's import graph resolves without node_modules) would guard it.",
+  "status": "unguarded",
+  "spec_ref": []
+}

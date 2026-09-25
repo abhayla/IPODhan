@@ -268,6 +268,7 @@ full Tier A adversarial pass with mutation tests on the fold function (per
 | §2.3.3.2 | R-041, R-042, R-043, R-044, R-045, R-046, R-047, R-048, R-170, R-191, R-206, R-193, R-194, R-195, R-196, R-197, R-220, R-221, R-222, R-223 |
 | §2.3.4 | R-053 |
 
+<!-- end generated -->
 ## Known gaps
 
 None recorded yet. A finding this item owns but does not close is written here, with its

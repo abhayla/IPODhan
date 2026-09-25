@@ -228,6 +228,7 @@ not discovered mid-review.
 |---|---|
 | §2.11 | R-081, R-082, R-083, R-085, R-087, R-162, R-163, R-164, R-232, R-233 |
 
+<!-- end generated -->
 ## Status of this card's corrections (2026-09-10, implementation session)
 
 This card was written against an earlier `§2.11` and flags three places as "the design is wrong".

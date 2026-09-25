@@ -243,6 +243,7 @@ immediately in parallel with item 1. One review round expected.
 | §0.5.1 | R-151 |
 | §2.1 (OD-33, sha256 identity — dedup this item's "never re-downloads" line depends on) | R-010 |
 
+<!-- end generated -->
 ## Known gaps
 
 A document whose PDF was already deleted under the pre-OD-32 close-date-anchored rule, and which

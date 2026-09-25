@@ -276,6 +276,7 @@ this card had to work out that the design's flattened table did not carry.
 |---|---|
 | §5.2 | R-105, R-106, R-107, R-108, R-109, R-110, R-111, R-112, R-113 |
 
+<!-- end generated -->
 ## Known gaps
 
 - **F-95 (MAJOR) — The crore conversion silently activates a dormant scoring bug: every IPO currently scores as the largest possible.** Carried here rather than closed: the conversion activates a dormant scoring bug on every IPO at once; it is a release-note and threshold-recalibration item, deliberately not fixed ahead of the conversion. Not fixed in the design (OD-47); it is this item's to close.

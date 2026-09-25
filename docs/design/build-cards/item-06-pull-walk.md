@@ -268,6 +268,7 @@ PULL-NOOP detection check ships unable to do its one job.
 | §2.6 | R-077, R-078, R-198 |
 | §2.8 | R-079 |
 
+<!-- end generated -->
 ## Deviations from this card, declared (item 6 implementation, Tier A review round 1)
 
 **1. The all-ranks fallthrough does NOT always record EXHAUSTED.** The pseudocode above says

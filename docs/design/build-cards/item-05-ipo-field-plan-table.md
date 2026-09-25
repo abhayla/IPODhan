@@ -403,6 +403,7 @@ foundation.
 |---|---|
 | §2.3 | R-026, R-027, R-028, R-029 |
 
+<!-- end generated -->
 ## Known gaps
 
 None recorded yet. A finding this item owns but does not close is written here, with its

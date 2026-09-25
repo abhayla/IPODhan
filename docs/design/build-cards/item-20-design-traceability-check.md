@@ -132,6 +132,7 @@ every arm, per Tier A. It sits in release R1 (§7.5) because every later release
 |---|---|
 | §7.6 | R-142, R-143, R-144 |
 
+<!-- end generated -->
 ## Known gaps
 
 - **It proves conformance to the rules as written, never that the rules are right.** §8.5 says this

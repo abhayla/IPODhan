@@ -286,6 +286,7 @@ real owner fork O-13 (the grey-market premium and the market-hours gate).
 | §6.6 | R-126, R-127, R-128, R-129, R-130, R-131 |
 | §7.6 | R-142, R-143, R-144 |
 
+<!-- end generated -->
 ## Known gaps
 
 - **F-58 (MAJOR) — NSE returns an EMPTY issueInfo block for an SME IPO, so every SME-NSE rank that relies on an NSE LABEL is unproven.** Carried here rather than closed: NSE returns an empty issueInfo for SME, so SME_NSE ranks that rely on an NSE label are unproven; the manifest is where a per-type capability is declared. Not fixed in the design (OD-47); it is this item's to close.

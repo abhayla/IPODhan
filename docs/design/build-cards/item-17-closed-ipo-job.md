@@ -371,6 +371,7 @@ immediately alongside item 1.
 | §6.2 | R-124 |
 | §6.5 | R-125 |
 
+<!-- end generated -->
 ## Known gaps
 
 None recorded yet. A finding this item owns but does not close is written here, with its

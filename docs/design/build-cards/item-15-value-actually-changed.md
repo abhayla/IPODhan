@@ -172,6 +172,7 @@ review round.
 |---|---|
 | §2.5.2 | R-061, R-062, R-063 |
 
+<!-- end generated -->
 ## Known gaps
 
 None recorded yet. A finding this item owns but does not close is written here, with its

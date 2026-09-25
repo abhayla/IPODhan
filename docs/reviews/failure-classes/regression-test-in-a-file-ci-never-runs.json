@@ -1,0 +1,10 @@
+{
+  "class_id": "a fix's regression test is added to a test file that no CI workflow runs, so the guard exists only on the laptop",
+  "feature": "any node --test / bash test file under scripts/tests, scripts/lib or scripts/ci/tests: pr-gate.yml names those files one by one, so a file absent from it is never executed by CI, while vitest suites run by include pattern",
+  "symptom": "the builder writes the failing-test-first case, shows red then green locally, and even mutation-proves it -- in a file pr-gate.yml does not name. CI stays green whatever happens to the guarded code, because the file is never run. The PR reads as 'guarded' and the regression can return silently. A test file that already existed unwired inherits the gap: adding a case to it looks like adding coverage.",
+  "first_seen": "2026-09-25 ~20:00 IST, IPODhan easy-wins-2 run: PR #1096 (#426, #429) put its mutation-proved cases in scripts/tests/failure-classifier.test.mjs, failure-tick-state.test.mjs and failure-delta-cli.test.mjs; PR #1099 (#599) in scripts/lib/signal-health-checks.test.mjs. `grep` of .github/workflows/pr-gate.yml returned zero hits for all four (Tier B review). The builder had disclosed it as the pre-existing '28 of 51 scripts/tests files unwired' gap. Fixed in the same PRs by adding one pr-gate step per file (Node-builtins-only imports, placed before npm ci).",
+  "fix_prs": "#1096, #1099 (fix round 1: files named in pr-gate.yml)",
+  "detection_check": "none for scripts/ tests (scripts/ci/require-integration-test-coverage.mjs covers scraper integration tests only). Reviewer briefs carried 'list each test file WIRED/UNWIRED with the workflow line'. A gate that fails when a *.test.mjs / *.test.sh under scripts/ is named by no workflow (with an explicit exemption list for the known backlog) would guard it.",
+  "status": "unguarded",
+  "spec_ref": []
+}
