@@ -260,6 +260,56 @@ describe.skipIf(!DATABASE_URL)('OD-92 merge then unmerge restores every row exac
     expect(redirect.rows[0].n).toBe(0);
   });
 
+  it('#1048 round 2 — a chain (A->B, B->C): unmerge A->B is refused while B is merged away; unmerging B->C first restores B and re-enables A->B', async () => {
+    const A = '00000000-0000-4000-9920-0000000000b1';
+    const B = '00000000-0000-4000-9920-0000000000b2';
+    const C = '00000000-0000-4000-9920-0000000000b3';
+    const mkChainIpo = async (id: string, slug: string, name: string) => {
+      await pool!.query(
+        `INSERT INTO ipos (id, company_name, slug, offering_type, segment, status, open_date, close_date)
+         VALUES ($1, $2, $3, 'IPO', 'MAINBOARD', 'WITHDRAWN', '2026-08-03', '2026-08-05')`,
+        [id, name, slug]
+      );
+    };
+    try {
+      await mkChainIpo(A, `${SLUG_PREFIX}chain-a`, 'Chain Proof Alpha Ltd');
+      await mkChainIpo(B, `${SLUG_PREFIX}chain-b`, 'Chain Proof Alpha (India) Ltd');
+      await mkChainIpo(C, `${SLUG_PREFIX}chain-c`, 'Chain Proof Alpha India Limited');
+
+      // A -> B
+      await repo!.mergeDuplicateInto(B, A, { apply: true, mergedBy: 'unmerge.test' });
+      const abId = await mergeLogId(A);
+
+      // B -> C: ipo_merge_log is in REPOINT_TABLES (#996), so the A->B row's keep_ipo_id
+      // is repointed from B onto C.
+      await repo!.mergeDuplicateInto(C, B, { apply: true, mergedBy: 'unmerge.test' });
+      const bcId = await mergeLogId(B);
+      const repointed = await pool!.query(`SELECT keep_ipo_id::text AS k FROM ipo_merge_log WHERE id = $1`, [abId]);
+      expect(repointed.rows[0].k).toBe(C);
+
+      // (a) unmerging A->B now would put B's before-snapshot onto C's row: refused, nothing written.
+      await expect(repo!.unmergeDuplicate(abId, { apply: true })).rejects.toThrow(
+        new RegExp(`survivor \\(${B}\\) was itself merged away into ${C} by a later merge \\(${bcId}\\).*unmerge ${bcId} first`)
+      );
+      expect((await pool!.query(`SELECT count(*)::int n FROM ipos WHERE id = $1`, [A])).rows[0].n).toBe(0);
+
+      // (b) unmerge B->C: restores B, and the A->B log row's keep_ipo_id points back at B.
+      await repo!.unmergeDuplicate(bcId, { apply: true, unmergedBy: 'unmerge.test' });
+      const bAlive = await pool!.query(`SELECT count(*)::int n FROM ipos WHERE id = $1`, [B]);
+      expect(bAlive.rows[0].n).toBe(1);
+      const repointedBack = await pool!.query(`SELECT keep_ipo_id::text AS k FROM ipo_merge_log WHERE id = $1`, [abId]);
+      expect(repointedBack.rows[0].k).toBe(B);
+
+      // (c) unmerge A->B now succeeds.
+      const res = await repo!.unmergeDuplicate(abId, { apply: true, unmergedBy: 'unmerge.test' });
+      expect(res.applied).toBe(true);
+      expect((await pool!.query(`SELECT count(*)::int n FROM ipos WHERE id = $1`, [A])).rows[0].n).toBe(1);
+    } finally {
+      await pool!.query(`DELETE FROM ipo_merge_log WHERE drop_ipo_id = ANY($1::uuid[]) OR keep_ipo_id = ANY($1::uuid[])`, [[A, B, C]]);
+      await pool!.query(`DELETE FROM ipos WHERE id = ANY($1::uuid[])`, [[A, B, C]]);
+    }
+  });
+
   it('OD-86 relaunch merge round trip: the superseded older key goes back to ACTIVE with its original fields', async () => {
     const mk = async (slug: string, open: string, ipoNo: string) => {
       const [r] = await db!
