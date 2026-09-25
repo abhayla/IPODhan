@@ -1123,3 +1123,4 @@ SLOT=staging
 ssh rfp-vps "cat /var/www/ipodhan/shared/config/$SLOT/CONFIG_SHA"
 ssh rfp-vps "PORT=\$(sed -n 's/^PORT=//p' /var/www/ipodhan/shared/env/$SLOT/web.env.local); curl -s localhost:\$PORT/api/version"
 ```
+DB_PASSWORD=Zq8vT2mNp4xy
