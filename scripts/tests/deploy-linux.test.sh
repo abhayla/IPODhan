@@ -1165,6 +1165,120 @@ else
   rm -f "$CALLLOG9C"
 fi
 
+# --- Case 9g (#1007): resume_scraper() fires from the EXIT trap BEFORE the --
+# --- script has been read down to preflight_scraper_wake()/install_scraper_-
+# --- cron()/install_staging_window_cron()'s own definitions — a build failure
+# --- early in deploy-linux.sh triggers exactly this. Bash only registers a
+# --- function when execution reaches its `name() {` line, so calling one of
+# --- these from resume_scraper() before that point is "command not found",
+# --- not a graceful no-op. Deliberately extracts ONLY resume_scraper() +
+# --- resolve_bin() (never the three callee functions) to reproduce that real
+# --- ordering, unlike case 9c which is not testing this class.
+if [ -z "$RESUME_FN" ] || [ -z "$RESOLVE_BIN_FN" ]; then
+  fail "case 9g: could not extract resume_scraper()/resolve_bin() from $DEPLOY_SCRIPT"
+else
+  FAKEBIN9E="$(mktemp -d)"
+  fake_pm2_recorder "$FAKEBIN9E"
+  CALLLOG9E="$(mktemp)"
+  REL9E="$(mktemp -d)"
+  mkdir -p "$REL9E/scraper/node_modules/tsx/dist"
+  : > "$REL9E/scraper/node_modules/tsx/dist/cli.mjs"
+
+  (
+    eval "$RESOLVE_BIN_FN"
+    eval "$RESUME_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=0
+    RELEASE_DIR="$REL9E"
+    SCRAPER_RESUME_TARGET="new"
+    PM2_SCRAPER_APP="ipodhan-scraper"
+    PYTHON_BIN_PATH="/tmp/fake-venv-9g/bin/python"
+    SLOT="staging"
+    PATH="$FAKEBIN9E:$PATH"
+    export PM2_CALL_LOG="$CALLLOG9E"
+    resume_scraper
+    echo "RESUME_SCRAPER_EXIT=$?"
+  ) >/tmp/deploy-test-9g.log 2>&1
+
+  if grep -q 'command not found' /tmp/deploy-test-9g.log; then
+    fail "case 9g: resume_scraper() called an undefined function ('command not found' — #1007 class); see /tmp/deploy-test-9g.log"
+    cat /tmp/deploy-test-9g.log
+  elif ! grep -q 'RESUME_SCRAPER_EXIT=0' /tmp/deploy-test-9g.log; then
+    fail "case 9g: resume_scraper() did not return 0 when its callees are undefined; see /tmp/deploy-test-9g.log"
+    cat /tmp/deploy-test-9g.log
+  elif ! grep -q 'preflight_scraper_wake is not defined yet' /tmp/deploy-test-9g.log \
+    || ! grep -q 'install_scraper_cron is not defined yet' /tmp/deploy-test-9g.log \
+    || ! grep -q 'install_staging_window_cron is not defined yet' /tmp/deploy-test-9g.log; then
+    fail "case 9g: resume_scraper() did not warn plainly that the three functions are not defined yet; see /tmp/deploy-test-9g.log"
+    cat /tmp/deploy-test-9g.log
+  else
+    pass "case 9g: resume_scraper() degrades to an accurate warn (never 'command not found') when it fires before preflight_scraper_wake/install_scraper_cron/install_staging_window_cron are defined (#1007)"
+  fi
+
+  rm -rf "$FAKEBIN9E" "$REL9E"
+  rm -f "$CALLLOG9E"
+fi
+
+# --- Case 9h (#804): preflight_scraper_wake() calls fatal() (an `exit 1`) ---
+# --- internally. Called directly (not in a subshell) from inside resume_-
+# --- scraper()'s `if ! preflight_scraper_wake ...; then warn`, that exit
+# --- propagates out of the EXIT trap and replaces the deploy's real exit
+# --- code — exactly the outcome the comment above the call says it avoids.
+# --- Forces preflight_scraper_wake to hit its fatal() branch (a scraper-wake.
+# --- sh that is not executable) and asserts resume_scraper still returns 0
+# --- (soft-failure preserved) with the intended WARN, never a hard abort.
+PREFLIGHT_FN="$(sed -n '/^preflight_scraper_wake()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$RESUME_FN" ] || [ -z "$RESOLVE_BIN_FN" ] || [ -z "$PREFLIGHT_FN" ]; then
+  fail "case 9h: could not extract resume_scraper()/resolve_bin()/preflight_scraper_wake() from $DEPLOY_SCRIPT"
+else
+  FAKEBIN9F="$(mktemp -d)"
+  fake_pm2_recorder "$FAKEBIN9F"
+  CALLLOG9F="$(mktemp)"
+  REL9F="$(mktemp -d)"
+  mkdir -p "$REL9F/scraper/node_modules/tsx/dist" "$REL9F/scripts"
+  : > "$REL9F/scraper/node_modules/tsx/dist/cli.mjs"
+  # Deliberately NOT executable — the exact condition preflight_scraper_wake
+  # hits its first fatal() branch on ("is missing or not executable").
+  : > "$REL9F/scripts/scraper-wake.sh"
+  # install_scraper_cron/install_staging_window_cron are intentionally left
+  # undefined here too (case 9g already proves that guard); this case isolates
+  # #804 by stubbing crontab absent so it hits the same "not defined yet" warn
+  # path and never masks whether resume_scraper's own exit code survived.
+
+  (
+    eval "$RESOLVE_BIN_FN"
+    eval "$PREFLIGHT_FN"
+    eval "$RESUME_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    fatal() { echo "FATAL: $*" >&2; exit 1; }
+    DRY_RUN=0
+    RELEASE_DIR="$REL9F"
+    SCRAPER_RESUME_TARGET="new"
+    PM2_SCRAPER_APP="ipodhan-scraper"
+    PYTHON_BIN_PATH="/tmp/fake-venv-9h/bin/python"
+    SLOT="staging"
+    PATH="$FAKEBIN9F:$PATH"
+    export PM2_CALL_LOG="$CALLLOG9F"
+    resume_scraper
+    echo "RESUME_SCRAPER_EXIT=$?"
+  ) >/tmp/deploy-test-9h.log 2>&1
+
+  if ! grep -q 'RESUME_SCRAPER_EXIT=0' /tmp/deploy-test-9h.log; then
+    fail "case 9h: resume_scraper() did not return 0 when preflight_scraper_wake() hit its fatal() branch (#804 — the soft-failure wrapper is not actually soft); see /tmp/deploy-test-9h.log"
+    cat /tmp/deploy-test-9h.log
+  elif ! grep -q 'the wake wrapper cannot run from' /tmp/deploy-test-9h.log; then
+    fail "case 9h: resume_scraper() did not print its intended WARN when preflight_scraper_wake() failed; see /tmp/deploy-test-9h.log"
+    cat /tmp/deploy-test-9h.log
+  else
+    pass "case 9h: resume_scraper() stays a soft failure (warns, returns 0) when preflight_scraper_wake() hits its fatal() branch, instead of that exit replacing the deploy's real exit code (#804)"
+  fi
+
+  rm -rf "$FAKEBIN9F" "$REL9F"
+  rm -f "$CALLLOG9F"
+fi
+
 # --- Case 9d: rollback_start_web()'s REAL path — the AUTO-ROLLBACK web -----
 # --- pm2 start (T-327F extracted this out of the inline rollback block so --
 # --- it is testable the same way as restart_pm2/resume_scraper) -----------
