@@ -274,22 +274,6 @@ jobs:
         # own prior output (the drift gate above only proves that).
         run: node --test scripts/tests/manifest-unit-matches-current-unit.test.mjs
 
-      - name: Repair-tool module lint self-test (T-490)
-        # Mutation-proof: scripts/ci/tests/require-repair-tool-module.test.mjs
-        # imports the real predicates from the lint, so weakening the import
-        # check or accepting an undated exemption turns this red before the
-        # lint below can silently stop catching the class.
-        run: node --test scripts/ci/tests/require-repair-tool-module.test.mjs
-
-      - name: Repair-tool module - every repair/backfill tool uses the shared guards (T-490)
-        # Three repair tools each re-typed the guard pattern on 2026-09-07 and
-        # each got a different part wrong (no provenance row; an env-based prod
-        # guard the host-based pool bypasses; a direct `ipos` writer). Every
-        # scraper/scripts/{repair,backfill}-*.ts must import
-        # scraper/scripts/lib/repair-tool.ts or carry a dated
-        # `// repair-tool-exempt: <date> <reason>` line.
-        run: node scripts/ci/require-repair-tool-module.mjs
-
       - name: Write ratchet — no new direct `ipos` writers (T-316/R0)
         # Grep-based gate, not ESLint (T-313C amendment): catches raw .sql/.mjs
         # writers and the runtime-resolved dynamic-table admin route that a
@@ -467,6 +451,28 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Repair-tool module lint self-test (T-490)
+        # Mutation-proof: scripts/ci/tests/require-repair-tool-module.test.mjs
+        # imports the real predicates from the lint, so weakening the import
+        # check or accepting an undated exemption turns this red before the
+        # lint below can silently stop catching the class.
+        # Needs node_modules (#694 fix round 1): the lint now parses source
+        # with TypeScript's own AST (`import ts from 'typescript'`) instead of
+        # a hand-written regex stripper, so this runs after npm ci, not with
+        # the pre-install gates above — its first placement, before install,
+        # failed CI with ERR_MODULE_NOT_FOUND (run 36141849851).
+        run: node --test scripts/ci/tests/require-repair-tool-module.test.mjs
+
+      - name: Repair-tool module - every repair/backfill tool uses the shared guards (T-490)
+        # Three repair tools each re-typed the guard pattern on 2026-09-07 and
+        # each got a different part wrong (no provenance row; an env-based prod
+        # guard the host-based pool bypasses; a direct `ipos` writer). Every
+        # scraper/scripts/{repair,backfill}-*.ts must import
+        # scraper/scripts/lib/repair-tool.ts or carry a dated
+        # `// repair-tool-exempt: <date> <reason>` line.
+        # Needs node_modules (#694 fix round 1) — see the self-test above.
+        run: node scripts/ci/require-repair-tool-module.mjs
 
       - name: Merge-gate self-tests (merge-if-current, stale-green incident 2026-09-11)
         # Mutation-proof: scripts/tests/merge-freshness.test.mjs drives every

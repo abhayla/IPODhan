@@ -4,16 +4,22 @@
 // so weakening the import check or accepting an undated exemption turns a
 // named test red before the lint can silently stop catching the class.
 //
+// #694: rewritten for the TypeScript-AST-based classifier (ts.createSourceFile
+// instead of a hand-written regex comment/string stripper). The stripper's
+// internal helpers (stripComments, stripCommentsAndStrings, MODULE_IMPORT_PATTERN)
+// are gone; parseSource/importsRepairToolModule/callsGuardEntryPoint replace
+// them and are tested directly below, alongside classifyToolFile end-to-end.
+//
 //   node --test scripts/ci/tests/require-repair-tool-module.test.mjs
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  callsGuardEntryPoint,
   classifyToolFile,
   EXEMPTION_PATTERN,
-  MODULE_IMPORT_PATTERN,
-  stripComments,
-  stripCommentsAndStrings,
+  importsRepairToolModule,
+  parseSource,
   TOOL_FILENAME_PATTERN,
 } from '../require-repair-tool-module.mjs';
 
@@ -81,22 +87,19 @@ ${FIXTURE_WITHOUT_IMPORT}`;
   assert.equal(r.guardCalled, false);
 });
 
-test('MUTATION: stripCommentsAndStrings removes comments and string bodies but keeps real code', () => {
-  const stripped = stripCommentsAndStrings(
-    `import { openRepairDb } from './lib/repair-tool.js';\n// openRepairDb(fake);\nconst s = 'openRepairDb(';\nopenRepairDb(db);\n`
-  );
-  assert.match(stripped, /openRepairDb\(db\)/);
-  assert.equal((stripped.match(/openRepairDb\s*\(/g) || []).length, 1);
+test('MUTATION: callsGuardEntryPoint finds the real call, ignores a comment and a string with the same text', () => {
+  const src = `import { openRepairDb } from './lib/repair-tool.js';\n// openRepairDb(fake);\nconst s = 'openRepairDb(';\nopenRepairDb(db);\n`;
+  assert.equal(callsGuardEntryPoint(parseSource('t.ts', src)), true);
 });
 
-// T-492 round 2 (#390): the single-pass tokenizer fix. A `//` INSIDE a
-// template-literal URL used to be treated as a line-comment start by the old
-// three-pass stripper (block comments, then line comments, then strings, run
-// as separate sequential .replace() calls) because the line-comment pass ran
-// BEFORE the string pass and had no idea it was inside a backtick. That left
-// the backtick unclosed and desynced the string regex for the rest of the
-// file, which is exactly what made all six #386 batch-1 tools read as
-// "guard not called" even with openRepairDb() correctly wired in.
+test('MUTATION: callsGuardEntryPoint is false when the only occurrence is in a comment/string', () => {
+  const src = `// openRepairDb(fake);\nconst s = 'openRepairDb(';\n`;
+  assert.equal(callsGuardEntryPoint(parseSource('t.ts', src)), false);
+});
+
+// T-492 round 2 (#390): a `//` INSIDE a template-literal URL used to be
+// treated as a line-comment start by the old three-pass regex stripper. The
+// AST parser has no such ambiguity — a TemplateExpression is one node.
 test('GREEN: a template-literal URL containing "//" no longer breaks the guard-call check', () => {
   const fixture = `import { openRepairDb } from './lib/repair-tool.js';
 async function fetchReport(year) {
@@ -111,23 +114,22 @@ async function main() {
   assert.equal(r.verdict, 'ok');
 });
 
-test('GREEN: stripCommentsAndStrings does not run away past a template-literal "//" URL', () => {
-  const src = `const u = \`https://example.com/a\`;\nopenRepairDb(db);\n`;
-  const stripped = stripCommentsAndStrings(src);
-  assert.match(stripped, /openRepairDb\(db\)/);
-});
-
-// KNOWN LIMITATION (documented, not fixed here — fail-CLOSED, never silently
-// accepting an unguarded tool): the tokenizer has no concept of a regex
-// literal, so a bare `"` inside two separate `/.../ ` regex literals is read
-// as two halves of one unterminated string spanning everything between them,
-// swallowing a real openRepairDb() call in the middle. This is the safe
-// failure direction (a false VIOLATION on a tool that IS guarded forces a
-// human look — never a false OK on one that is NOT), so it is left as-is
-// rather than papered over with a fragile regex-literal detector. If this
-// ever fires on a real tool, fix by hand (reformat the regex or move the
-// guard call before it) rather than loosening the check.
-test('DOCUMENTED FALSE-POSITIVE: two regex literals each containing a bare quote can swallow a real openRepairDb() call', () => {
+// #694: the exact class this issue reports, reproduced with the PROVEN
+// repro (two bare-quote regex literals sandwiching the real call — measured
+// against the OLD implementation via `git show HEAD^` before this fix: it
+// desyncs on the first `/"/g`'s quote, treats everything up to the SECOND
+// `/"/g`'s quote as one unterminated string, and swallows the real
+// openRepairDb() call in between, reading as verdict 'violation'/guardCalled
+// false). A single regex literal with an even number of internal quotes
+// (e.g. `/<a\s+href="([^"]+)"/i`, 3 quote chars but a trailing unmatched one
+// that finds no further double-quote to pair with) does NOT reliably
+// reproduce the bug — the two-regex fixture below is what #694 and the old
+// test suite's "DOCUMENTED FALSE-POSITIVE" test actually proved broken.
+// The AST parser recognises a RegularExpressionLiteral as its own node kind
+// (never a string), so both fixtures are correctly GREEN now — flipping the
+// old test's "documented false-positive" assertion is the point of #694,
+// not a silent regression: this is the fix landing.
+test('#694 GREEN: two bare-quote regex literals sandwiching openRepairDb() no longer swallow the real call', () => {
   const fixture = `import { openRepairDb } from './lib/repair-tool.js';
 const QUOTE_A = /"/g;
 async function main() {
@@ -135,18 +137,56 @@ async function main() {
 }
 const QUOTE_B = /"/g;
 `;
-  const r = classifyToolFile('repair-fixture-regex-quotes.ts', fixture);
-  // Fail-closed: this currently reads as a violation even though the guard
-  // IS called. Asserting the CURRENT behavior here means a future tokenizer
-  // improvement that fixes this has to consciously flip this assertion, not
-  // silently regress the safe direction.
+  const r = classifyToolFile('repair-fixture-t694.ts', fixture);
+  assert.equal(r.verdict, 'ok');
+});
+
+test('#694 GREEN: an href-matching regex literal with an internal quote does not break the guard-call check', () => {
+  const fixture = `import { openRepairDb } from './lib/repair-tool.js';
+const HREF_PATTERN = /<a\\s+href="([^"]+)"/i;
+async function main() {
+  await openRepairDb(db, { apply: APPLY, allowProd: false, toolName: 'x' });
+}
+`;
+  const r = classifyToolFile('repair-fixture-t694-href.ts', fixture);
+  assert.equal(r.verdict, 'ok');
+});
+
+// #694's other direction: a real openRepairDb( call that sits ONLY inside a
+// string literal (never executed) must still be a violation — the fix must
+// not become MORE permissive, only correctly context-aware.
+test('#694 RED: openRepairDb( written only inside a string literal (not real code) is still a violation', () => {
+  const fixture = `import { openRepairDb } from './lib/repair-tool.js';
+const QUOTE_A = /"/g;
+const note = "call openRepairDb(db) yourself";
+const QUOTE_B = /"/g;
+`;
+  const r = classifyToolFile('repair-fixture-t694b.ts', fixture);
   assert.equal(r.verdict, 'violation');
+  assert.equal(r.imported, true);
   assert.equal(r.guardCalled, false);
 });
 
-test('MUTATION: stripComments keeps string literals, so a real import specifier still matches', () => {
-  assert.match(stripComments(FIXTURE_WITH_IMPORT), /lib\/repair-tool\.js/);
-  assert.doesNotMatch(stripComments(`// from './lib/repair-tool.js'`), /repair-tool/);
+test('importsRepairToolModule matches a relative and a deep specifier, not an unrelated one', () => {
+  assert.equal(
+    importsRepairToolModule(parseSource('t.ts', `import { openRepairDb } from './lib/repair-tool.js';`)),
+    true
+  );
+  assert.equal(
+    importsRepairToolModule(
+      parseSource('t.ts', `import {\n  openRepairDb,\n} from '../../scraper/scripts/lib/repair-tool.js';`)
+    ),
+    true
+  );
+  assert.equal(
+    importsRepairToolModule(parseSource('t.ts', `import { x } from './lib/chittorgarh-report82-discovery.js';`)),
+    false
+  );
+  // must be a real import declaration — a bare specifier inside an expression is not an import
+  assert.equal(
+    importsRepairToolModule(parseSource('t.ts', `const s = "from './lib/repair-tool.js'";`)),
+    false
+  );
 });
 
 test('GREEN: a dated exemption with a real reason is accepted', () => {
@@ -181,14 +221,6 @@ test('MUTATION: the filename pattern still matches both tool prefixes', () => {
   assert.ok(TOOL_FILENAME_PATTERN.test('repair-x.ts'));
   assert.ok(TOOL_FILENAME_PATTERN.test('backfill-x.ts'));
   assert.ok(!TOOL_FILENAME_PATTERN.test('repair-x.test.mjs'));
-});
-
-test('MUTATION: the import pattern matches a relative and a deep specifier, not an unrelated one', () => {
-  assert.ok(MODULE_IMPORT_PATTERN.test(`import { openRepairDb } from './lib/repair-tool.js';`));
-  assert.ok(MODULE_IMPORT_PATTERN.test(`import {\n  openRepairDb,\n} from '../../scraper/scripts/lib/repair-tool.js';`));
-  assert.ok(!MODULE_IMPORT_PATTERN.test(`import { x } from './lib/chittorgarh-report82-discovery.js';`));
-  // must be at statement position — a bare specifier inside an expression is not an import
-  assert.ok(!MODULE_IMPORT_PATTERN.test(`const s = "from './lib/repair-tool.js'";`));
 });
 
 test('MUTATION: the exemption pattern requires a date and a 10+ char reason', () => {
