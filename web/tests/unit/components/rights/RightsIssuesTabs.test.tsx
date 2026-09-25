@@ -51,59 +51,83 @@ describe('RightsIssuesTabs', () => {
     vi.useRealTimers();
   });
 
-  it('does NOT hardcode the upcoming-tab default year to 2025 — a 2026-only upcoming rights issue is visible', () => {
-    const upcomingRights: RightsIssueData[] = [
-      makeRights({
-        id: 'rights-2026',
-        companyName: '2026 Only Rights Issue',
-        openDate: '2026-04-05',
-      }),
-    ];
+  // #446: these renders are fast in isolation (~1s for the whole file) but
+  // share no async/deadline logic of their own — the only thing that made
+  // them fail under concurrent full-suite load was vitest's 5s DEFAULT test
+  // timeout leaving too small a margin against scheduling delay on a busy
+  // machine. Explicit 20s removes that dependency on the machine being
+  // quiet without changing what each test actually waits for (nothing).
+  const GENEROUS_TIMEOUT = 20000;
 
-    render(<RightsIssuesTabs upcomingRights={upcomingRights} liveRights={[]} initialTab="upcoming" />);
+  it(
+    'does NOT hardcode the upcoming-tab default year to 2025 — a 2026-only upcoming rights issue is visible',
+    () => {
+      const upcomingRights: RightsIssueData[] = [
+        makeRights({
+          id: 'rights-2026',
+          companyName: '2026 Only Rights Issue',
+          openDate: '2026-04-05',
+        }),
+      ];
 
-    expect(screen.getByText('2026 Only Rights Issue')).toBeInTheDocument();
-  });
+      render(<RightsIssuesTabs upcomingRights={upcomingRights} liveRights={[]} initialTab="upcoming" />);
 
-  it('does NOT hardcode the live-tab default year to 2025 — a 2026-only live rights issue is visible', () => {
-    const liveRights: RightsIssueData[] = [
-      makeRights({
-        id: 'rights-2026-live',
-        companyName: '2026 Only Live Rights Issue',
-        openDate: '2026-05-05',
-      }),
-    ];
+      expect(screen.getByText('2026 Only Rights Issue')).toBeInTheDocument();
+    },
+    GENEROUS_TIMEOUT
+  );
 
-    render(<RightsIssuesTabs upcomingRights={[]} liveRights={liveRights} initialTab="live" />);
+  it(
+    'does NOT hardcode the live-tab default year to 2025 — a 2026-only live rights issue is visible',
+    () => {
+      const liveRights: RightsIssueData[] = [
+        makeRights({
+          id: 'rights-2026-live',
+          companyName: '2026 Only Live Rights Issue',
+          openDate: '2026-05-05',
+        }),
+      ];
 
-    expect(screen.getByText('2026 Only Live Rights Issue')).toBeInTheDocument();
-  });
+      render(<RightsIssuesTabs upcomingRights={[]} liveRights={liveRights} initialTab="live" />);
 
-  it('defaults each tab to the latest year that actually has rows for that tab', () => {
-    const upcomingRights: RightsIssueData[] = [
-      makeRights({ id: 'r-2024', companyName: 'Old Upcoming 2024', openDate: '2024-01-05' }),
-      makeRights({ id: 'r-2026', companyName: 'Latest Upcoming 2026', openDate: '2026-01-05' }),
-    ];
+      expect(screen.getByText('2026 Only Live Rights Issue')).toBeInTheDocument();
+    },
+    GENEROUS_TIMEOUT
+  );
 
-    render(<RightsIssuesTabs upcomingRights={upcomingRights} liveRights={[]} initialTab="upcoming" />);
+  it(
+    'defaults each tab to the latest year that actually has rows for that tab',
+    () => {
+      const upcomingRights: RightsIssueData[] = [
+        makeRights({ id: 'r-2024', companyName: 'Old Upcoming 2024', openDate: '2024-01-05' }),
+        makeRights({ id: 'r-2026', companyName: 'Latest Upcoming 2026', openDate: '2026-01-05' }),
+      ];
 
-    expect(screen.getByText('Latest Upcoming 2026')).toBeInTheDocument();
-    expect(screen.queryByText('Old Upcoming 2024')).not.toBeInTheDocument();
-  });
+      render(<RightsIssuesTabs upcomingRights={upcomingRights} liveRights={[]} initialTab="upcoming" />);
+
+      expect(screen.getByText('Latest Upcoming 2026')).toBeInTheDocument();
+      expect(screen.queryByText('Old Upcoming 2024')).not.toBeInTheDocument();
+    },
+    GENEROUS_TIMEOUT
+  );
 
   // T-310 (P2): the table used to render openDate under a "Record Date" header
   // and closeDate under a "Renunciation Date" header — fields the schema does
   // not hold and a wrong value for which misleads eligibility decisions. Only
   // "Open Date" / "Close Date" columns (the fields the data actually is) are
   // rendered; the misleading labels must never reappear.
-  it('never labels a date column "Record Date" or "Renunciation Date" — only Open Date / Close Date are shown', () => {
-    const upcomingRights: RightsIssueData[] = [makeRights({ id: 'r-1' })];
+  it(
+    'never labels a date column "Record Date" or "Renunciation Date" — only Open Date / Close Date are shown',
+    () => {
+      const upcomingRights: RightsIssueData[] = [makeRights({ id: 'r-1' })];
 
-    render(<RightsIssuesTabs upcomingRights={upcomingRights} liveRights={[]} initialTab="upcoming" />);
+      render(<RightsIssuesTabs upcomingRights={upcomingRights} liveRights={[]} initialTab="upcoming" />);
 
-    expect(screen.getByText('Open Date')).toBeInTheDocument();
-    expect(screen.getByText('Close Date')).toBeInTheDocument();
-    expect(screen.queryByText('Record Date')).not.toBeInTheDocument();
-    expect(screen.queryByText('Renunciation Date')).not.toBeInTheDocument();
-  });
+      expect(screen.getByText('Open Date')).toBeInTheDocument();
+      expect(screen.getByText('Close Date')).toBeInTheDocument();
+      expect(screen.queryByText('Record Date')).not.toBeInTheDocument();
+      expect(screen.queryByText('Renunciation Date')).not.toBeInTheDocument();
+    },
+    GENEROUS_TIMEOUT
+  );
 });
