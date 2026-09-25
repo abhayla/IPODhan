@@ -213,7 +213,7 @@ jobs:
             # every retry/re-run of the SAME head and would let an
             # intermediate cache serve a stale answer on a retry) and also
             # tell any cache in the path (Cloudflare/nginx) not to serve one.
-            PUBLIC_VERSION_URL="https://staging.ipodhan.com/api/version?cb=${RUN_ID}"
+            PUBLIC_VERSION_URL="https://staging.ipodhan.com/api/version?cb=${RUN_ID:-unknown}"
             SERVED_SHA="$(curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "$PUBLIC_VERSION_URL" 2>/dev/null | parse_served_sha || true)"
             if [ -n "$SERVED_SHA" ] && [ "$SERVED_SHA" != "unknown" ]; then
               note "Public fallback succeeded: $PUBLIC_VERSION_URL reports served sha $SERVED_SHA - continuing with the normal served-vs-head comparison instead of deploying blind."

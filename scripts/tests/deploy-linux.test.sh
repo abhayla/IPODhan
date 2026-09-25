@@ -3488,7 +3488,13 @@ FAKECURL
         export MODE=window SLOT=staging HEAD_SHA="$head_sha" RUN_ID=999999
         export GITHUB_OUTPUT="$out_file"
         unset GITHUB_STEP_SUMMARY NOTIFIER_URL NOTIFIER_KEY 2>/dev/null
-        bash --noprofile --norc -o pipefail "$GATE_RUN_BLOCK" >"$log_file" 2>&1
+        # Round 2 (#1091): production runs this step's `run:` block via the
+        # step's own explicit `shell: bash --noprofile --norc -o pipefail
+        # {0}` (no -e), but the schedule-gate test suite deliberately also
+        # exercises it under -e as defense-in-depth against a future shell
+        # override - and that run caught a real bug (RUN_ID unbound under
+        # -u when not exported). Match that here too: -e -o pipefail.
+        bash --noprofile --norc -e -o pipefail "$GATE_RUN_BLOCK" >"$log_file" 2>&1
       )
       LAST_PROCEED="$(grep -E '^proceed=' "$out_file" 2>/dev/null | tail -n1 | cut -d= -f2)"
       rm -f "$out_file"
