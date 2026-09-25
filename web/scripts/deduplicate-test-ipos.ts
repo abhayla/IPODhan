@@ -8,36 +8,41 @@
  *   npx tsx scripts/deduplicate-test-ipos.ts --dry-run    # Preview changes
  *   npx tsx scripts/deduplicate-test-ipos.ts --execute    # Apply changes
  *
- * DEFERRED (issue #447, item 1 slice s2): this script re-parents
- * peer_companies (and other child tables) with a bare per-row UPDATE,
- * no transaction around the multi-table sequence. Now that
- * peer_companies carries UNIQUE (ipo_id, normalized_name)
- * (web/drizzle/migrations/_gated/E1_row_key_unique_constraints.sql,
- * applied after the normalized_name backfill), that UPDATE throws if
- * the canonical and duplicate IPO share a peer company name, AFTER
- * earlier tables (subscriptions, gmp_records, financial_data,
- * documents, listing_performance) have already been reassigned and
- * committed -- a partial re-parent with no rollback.
- * NOT fixed in this slice: this is a one-off historical script (Phase
- * 11 Step 3 / MULTI_IPO_DATA_INVESTIGATION_PLAN.md), already run to
- * completion against its 3 hardcoded DUPLICATE_GROUPS, not on any live
- * or scheduled path, and exempted from the documents-cache-invalidation
- * scan as a known legacy file. Trigger to actually fix: before this
- * script is next run with --execute (DUPLICATE_GROUPS extended for a
- * new duplicate set, or re-run against fresh test data), wrap the
- * Step 3 reassignment loop in one db.transaction(...) and add a
- * merge-or-skip branch on the peer_companies UPDATE (catch the unique
- * violation, DELETE the duplicate's colliding row instead of
- * reassigning it, since the canonical IPO already has that peer).
+ * FIXED (issue #447, item 1 slice s2 follow-up): the re-parenting sequence
+ * (per-table FK reassignment, then duplicate delete - Steps 3-4) now runs
+ * inside one `db.transaction(...)`, per the original DEFERRED note this
+ * replaces - a throw at any step rolls back the whole re-parent instead of
+ * leaving some tables reassigned and others not, with the duplicate row
+ * still present. `peer_companies` carries
+ * UNIQUE (ipo_id, normalized_name) (web/drizzle/migrations/_gated/
+ * E1_row_key_unique_constraints.sql), so a canonical and duplicate IPO that
+ * share a peer company name would violate it on a bare reassignment; the
+ * peer-company step now DELETES the duplicate's colliding row first (the
+ * canonical IPO already has that peer) and only reassigns the rest.
+ * `promoters` and `ipo_intermediaries` get the same unique constraint but
+ * this script never re-parents them (it predates those tables' population
+ * for these test IPOs), so no equivalent branch is needed for them here.
  */
 
 import { getDb } from '../lib/db/index.js';
 import { ipos, subscriptions, gmpRecords, financialData, documents, listingPerformance, peerCompanies } from '../lib/db/index.js';
-import { eq, ilike, sql } from 'drizzle-orm';
+import { eq, ilike, inArray } from 'drizzle-orm';
+import { pathToFileURL } from 'node:url';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '../../packages/shared/src/db/schema.js';
 
 let db: NodePgDatabase<typeof schema>;
+
+/**
+ * Test-only injection point (#447 regression coverage) - lets the unit test
+ * drive `deduplicateGroup`'s execute path against a mocked
+ * `NodePgDatabase`-shaped object without a real Postgres connection, so the
+ * transaction/rollback behaviour is provable without standing up
+ * ipodhan_test for what is otherwise a one-off historical script.
+ */
+export function setDbForTest(mockDb: NodePgDatabase<typeof schema>): void {
+  db = mockDb;
+}
 
 interface DuplicateGroup {
   companyPattern: string;
@@ -129,7 +134,7 @@ function mergeIPOData(target: any, source: any): any {
 /**
  * De-duplicate a group of IPOs
  */
-async function deduplicateGroup(group: DuplicateGroup, dryRun: boolean = true): Promise<void> {
+export async function deduplicateGroup(group: DuplicateGroup, dryRun: boolean = true): Promise<void> {
   console.log(`\n=== Processing: ${group.canonicalName} ===`);
 
   // Find all duplicates
@@ -210,46 +215,76 @@ async function deduplicateGroup(group: DuplicateGroup, dryRun: boolean = true): 
 
     console.log(`     ✅ Updated canonical record`);
 
-    // Step 3: Reassign foreign key references
-    for (const duplicate of toMerge) {
-      // Reassign subscriptions
-      await db.update(subscriptions)
-        .set({ ipoId: canonical.id })
-        .where(eq(subscriptions.ipoId, duplicate.id));
+    // #447: Steps 3-4 (the actual re-parenting: reassigning every child
+    // table's ipo_id, then deleting the duplicate ipos row) run in one
+    // transaction - a throw partway through (e.g. a peer_companies
+    // unique-constraint hit) rolls back the whole re-parent instead of
+    // leaving some tables reassigned, others not, and the duplicate row
+    // still present.
+    await db.transaction(async (tx) => {
+      // Step 3: Reassign foreign key references
+      for (const duplicate of toMerge) {
+        // Reassign subscriptions
+        await tx.update(subscriptions)
+          .set({ ipoId: canonical.id })
+          .where(eq(subscriptions.ipoId, duplicate.id));
 
-      // Reassign GMP records
-      await db.update(gmpRecords)
-        .set({ ipoId: canonical.id })
-        .where(eq(gmpRecords.ipoId, duplicate.id));
+        // Reassign GMP records
+        await tx.update(gmpRecords)
+          .set({ ipoId: canonical.id })
+          .where(eq(gmpRecords.ipoId, duplicate.id));
 
-      // Reassign financial data
-      await db.update(financialData)
-        .set({ ipoId: canonical.id })
-        .where(eq(financialData.ipoId, duplicate.id));
+        // Reassign financial data
+        await tx.update(financialData)
+          .set({ ipoId: canonical.id })
+          .where(eq(financialData.ipoId, duplicate.id));
 
-      // Reassign documents
-      await db.update(documents)
-        .set({ ipoId: canonical.id })
-        .where(eq(documents.ipoId, duplicate.id));
+        // Reassign documents
+        await tx.update(documents)
+          .set({ ipoId: canonical.id })
+          .where(eq(documents.ipoId, duplicate.id));
 
-      // Reassign listing performance
-      await db.update(listingPerformance)
-        .set({ ipoId: canonical.id })
-        .where(eq(listingPerformance.ipoId, duplicate.id));
+        // Reassign listing performance
+        await tx.update(listingPerformance)
+          .set({ ipoId: canonical.id })
+          .where(eq(listingPerformance.ipoId, duplicate.id));
 
-      // Reassign peer companies
-      await db.update(peerCompanies)
-        .set({ ipoId: canonical.id })
-        .where(eq(peerCompanies.ipoId, duplicate.id));
+        // Reassign peer companies (#447): a peer whose normalized_name
+        // already exists under the canonical IPO would violate
+        // unique_peer_companies_ipo_id_normalized_name on a bare
+        // reassignment - the canonical IPO already has that peer, so
+        // delete the duplicate's colliding row instead of reassigning it.
+        const canonicalPeerNames = new Set(
+          (
+            await tx
+              .select({ normalizedName: peerCompanies.normalizedName })
+              .from(peerCompanies)
+              .where(eq(peerCompanies.ipoId, canonical.id))
+          ).map((r) => r.normalizedName)
+        );
+        const duplicatePeers = await tx
+          .select({ id: peerCompanies.id, normalizedName: peerCompanies.normalizedName })
+          .from(peerCompanies)
+          .where(eq(peerCompanies.ipoId, duplicate.id));
+        const collidingIds = duplicatePeers
+          .filter((p) => canonicalPeerNames.has(p.normalizedName))
+          .map((p) => p.id);
+        if (collidingIds.length > 0) {
+          await tx.delete(peerCompanies).where(inArray(peerCompanies.id, collidingIds));
+        }
+        await tx.update(peerCompanies)
+          .set({ ipoId: canonical.id })
+          .where(eq(peerCompanies.ipoId, duplicate.id));
 
-      console.log(`     ✅ Reassigned foreign keys from ${duplicate.slug}`);
-    }
+        console.log(`     ✅ Reassigned foreign keys from ${duplicate.slug}`);
+      }
 
-    // Step 4: Delete duplicate records
-    for (const duplicate of toMerge) {
-      await db.delete(ipos).where(eq(ipos.id, duplicate.id));
-      console.log(`     ✅ Deleted duplicate: ${duplicate.slug}`);
-    }
+      // Step 4: Delete duplicate records
+      for (const duplicate of toMerge) {
+        await tx.delete(ipos).where(eq(ipos.id, duplicate.id));
+        console.log(`     ✅ Deleted duplicate: ${duplicate.slug}`);
+      }
+    });
 
     console.log(`\n  ✅ De-duplication complete!`);
   }
@@ -317,7 +352,12 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((error) => {
-  console.error('❌ Error during de-duplication:', error);
-  process.exit(1);
-});
+// Guarded (#447 test coverage): running `main()` unconditionally on import
+// would open a real DB connection and `process.exit(0)` the moment a test
+// imports this module for `deduplicateGroup` / `setDbForTest`.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error('❌ Error during de-duplication:', error);
+    process.exit(1);
+  });
+}
