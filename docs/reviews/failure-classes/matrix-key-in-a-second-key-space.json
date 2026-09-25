@@ -1,0 +1,10 @@
+{
+  "class_id": "a config key written in a different naming form than the callers use, so its rules silently never apply",
+  "feature": "the field priority matrix (scraper/src/config/field-priority-matrix.ts) and any other per-field config table looked up by a field name that callers spell in another form (snake_case vs camelCase, table column vs ORM property)",
+  "symptom": "the lookup normalises the caller's name (toCamelKey) and falls back to the raw string. An entry keyed in the OTHER form is reachable only by a caller that passes that form -- in practice, only a test. Production callers pass the real property name, miss the entry, and get the DEFAULT rules, with no error and no log. A test written with the entry's own spelling passes, so it pins the dead entry and hides the miss. Wider shape: any second key space (alias, CLI name, snake/camel) that is not validated against the real set of names turns configuration into dead text.",
+  "first_seen": "2026-09-25 -- IPODhan, found by the tests-only builder for #754 on branch test/tests-only-839-754-727 (probe via npx tsx against the real matrix): min_investment / minInvestment, issue_price / issuePrice, fresh_issue_size / freshIssue, offer_for_sale_size / ofsIssue. For each pair the snake_case (configured) form gives DRHP sameSourceRefresh true, confidenceThreshold 85-95, normalization currency/number; the camelCase form production passes gives sameSourceRefresh false, confidenceThreshold 75, normalization none (the defaults). Not yet measured: listing_price, listing_gain_percentage, expected_listing_price, peer_companies. Issue #754 (comment 5828983851).",
+  "fix_prs": "none yet -- deferred from the 2026-09-25 low-hanging run because correcting the keys changes the winning source, threshold and normalisation of four live fields and needs real-data proof (data-testing session)",
+  "detection_check": "none yet; the natural one is a CI test that every FIELD_PRIORITY_MATRIX key resolves to a real schema property (packages/shared/src/db/schema.ts) in the form callers pass, so a key in the wrong form fails the build",
+  "status": "unguarded",
+  "spec_ref": ["§1.11"]
+}
