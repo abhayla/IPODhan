@@ -14,6 +14,13 @@ Class under test: `stop` must NEVER kill a process it did not record as ITS tunn
   - `stop --leftover` kills only an UNCLAIMED ssh listener, skips a claimed one and a non-ssh one
   - owner mismatch (no --force)                                         -> refuse, no kill
   - the start lock, already held                                        -> `start` refuses
+  - the start lock, stale                                               -> reclaimed, start proceeds
+  - a second reclaimer that meets a FRESH lock                          -> puts it back, refuses
+  - `start` timing out with its ssh bound but not resolvable            -> kills its own ssh child
+  - a listener whose command merely contains "ssh" (ssh-agent)          -> not ssh, no kill
+
+`ssh` itself is a fake placed first on PATH (and DB_TUNNEL_SSH_KEY points at a key that does not
+exist), so no test can open a real tunnel; test_fake_ssh_is_first_on_path fails if it is not.
 
 Run:
     python .claude/hooks/tests/db-tunnel-script.test.py
@@ -72,8 +79,43 @@ KILL_STUB = (
     "        f.writelines(lines)\n"
 )
 
+# Fake `ssh`: records its argv, never touches the network. In "orphan" mode it acts out the
+# intermediate-wrapper case: it spawns a child (a sleep, listed in the stub ps as an ssh row whose
+# PPID is the wrapper and whose WINPID is NOT the listener's) and binds the stub port.
+FAKE_SSH = r"""#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$DB_TUNNEL_TEST_SSH_LOG"
+if [ "${DB_TUNNEL_TEST_FAKE_SSH_MODE:-exit}" = orphan ]; then
+  sleep 30 &
+  child=$!
+  printf '%s %s 1 424242 ? 0 00:00 /usr/bin/ssh\n' "$child" "$$" >> "$DB_TUNNEL_TEST_PS_FILE"
+  printf '  TCP    127.0.0.1:15432       0.0.0.0:0              LISTENING       8080\n' >> "$DB_TUNNEL_TEST_NETSTAT_FILE"
+  printf '%s\n' "$child" > "$DB_TUNNEL_TEST_SSH_CHILD_FILE"
+  wait
+  exit 0
+fi
+echo 'fake ssh: no network in tests' >&2
+exit 255
+"""
+
+# Stands in for a second waiter that reclaimed the stale lock first and now holds a FRESH one.
+FRESH_LOCK_HOOK = r"""import os, time
+d = os.environ['DB_TUNNEL_LOCK_DIR']
+for n in ('created_at', 'pid'):
+    p = os.path.join(d, n)
+    if os.path.exists(p):
+        os.remove(p)
+os.rmdir(d)
+os.mkdir(d)
+with open(os.path.join(d, 'created_at'), 'w') as f:
+    f.write(str(int(time.time())))
+with open(os.path.join(d, 'pid'), 'w') as f:
+    f.write('424242')
+"""
+
 NETSTAT_LINE = "  TCP    127.0.0.1:15432       0.0.0.0:0              LISTENING       %s"
-PS_LINE_SSH = "%s   1   1   %s  ?   0   00:00 /usr/bin/ssh -N -L 15432:localhost:5432 host"
+# Real `ps -W` rows carry the executable only, no arguments (measured 2026-09-25).
+PS_LINE_SSH = "%s   1   1   %s  ?   0   00:00 /usr/bin/ssh"
+PS_LINE_SSH_AGENT = "%s   1   1   %s  ?   0   00:00 /usr/bin/ssh-agent"
 PS_LINE_OTHER = "%s   1   1   %s  ?   0   00:00 /usr/bin/notepad.exe"
 
 
@@ -96,9 +138,24 @@ class DbTunnelScriptTest(unittest.TestCase):
         with open(self.kill_stub, "w", encoding="utf-8") as f:
             f.write(KILL_STUB)
 
+        self.bin_dir = os.path.join(self.tmp, "bin")
+        os.makedirs(self.bin_dir)
+        self.fake_ssh = os.path.join(self.bin_dir, "ssh")
+        with open(self.fake_ssh, "w", encoding="utf-8", newline="\n") as f:
+            f.write(FAKE_SSH)
+        os.chmod(self.fake_ssh, 0o755)
+        self.ssh_log = os.path.join(self.tmp, "ssh-argv.log")
+        self.ssh_child_file = os.path.join(self.tmp, "ssh-child.pid")
+        self.fresh_lock_hook = os.path.join(self.tmp, "fresh_lock_hook.py")
+        with open(self.fresh_lock_hook, "w", encoding="utf-8") as f:
+            f.write(FRESH_LOCK_HOOK)
+
         self._spawned_pids = []
 
     def tearDown(self):
+        if os.path.exists(self.ssh_child_file):
+            with open(self.ssh_child_file, "r", encoding="utf-8") as f:
+                self._spawned_pids.append(f.read().strip())
         for pid in self._spawned_pids:
             subprocess.run([BASH, "-c", "kill %s 2>/dev/null" % pid], capture_output=True)
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -122,6 +179,10 @@ class DbTunnelScriptTest(unittest.TestCase):
     def _base_env(self):
         env = dict(os.environ)
         env.pop("CLAUDE_CODE_SESSION_ID", None)
+        env["PATH"] = self.bin_dir + os.pathsep + env.get("PATH", "")
+        env["DB_TUNNEL_SSH_KEY"] = os.path.join(self.tmp, "no-such-key")
+        env["DB_TUNNEL_TEST_SSH_LOG"] = self.ssh_log
+        env["DB_TUNNEL_TEST_SSH_CHILD_FILE"] = self.ssh_child_file
         env["DB_TUNNEL_STATE_FILE"] = self.state_path
         env["DB_TUNNEL_LOCK_DIR"] = self.lock_dir
         env["DB_TUNNEL_LOG_FILE"] = self.log_path
@@ -170,6 +231,19 @@ class DbTunnelScriptTest(unittest.TestCase):
             state.update(extra)
         with open(self.state_path, "w", encoding="utf-8") as f:
             json.dump(state, f)
+
+    def _ssh_calls(self):
+        if not os.path.exists(self.ssh_log):
+            return []
+        with open(self.ssh_log, "r", encoding="utf-8") as f:
+            return [l for l in f.read().splitlines() if l]
+
+    def _write_lock(self, created_at, pid):
+        os.makedirs(self.lock_dir)
+        with open(os.path.join(self.lock_dir, "created_at"), "w", encoding="utf-8") as f:
+            f.write(str(int(created_at)))
+        with open(os.path.join(self.lock_dir, "pid"), "w", encoding="utf-8") as f:
+            f.write(str(pid))
 
     def _kill_calls(self):
         if not os.path.exists(self.kill_log):
@@ -287,6 +361,90 @@ class DbTunnelScriptTest(unittest.TestCase):
         self.assertIn("lock", proc.stderr.lower())
         # Must never have gotten far enough to attempt an ssh connection.
         self.assertFalse(os.path.exists(self.log_path) and os.path.getsize(self.log_path) > 0)
+        self.assertEqual(self._ssh_calls(), [])
+
+    # --- #1082 follow-ups -------------------------------------------------------------------
+
+    def test_fake_ssh_is_first_on_path(self):
+        # The safety net for every test that reaches `start`'s launch: the `ssh` the script
+        # would run resolves to this test's fake, never the real binary.
+        proc = subprocess.run(
+            [BASH, "-c", 'p="$(command -v ssh)"; cygpath -w "$p" 2>/dev/null || echo "$p"'],
+            capture_output=True, text=True, env=self._base_env(), timeout=10,
+        )
+        resolved = os.path.normcase(os.path.normpath(proc.stdout.strip()))
+        self.assertEqual(resolved, os.path.normcase(os.path.normpath(self.fake_ssh)), proc.stderr)
+
+    def test_start_launches_only_the_fake_ssh(self):
+        self._set_netstat([])
+        proc = self._run("start")
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        self.assertIn("no listener", proc.stderr)
+        calls = self._ssh_calls()
+        self.assertEqual(len(calls), 1, calls)
+        self.assertIn("no-such-key", calls[0])
+        self.assertIn("15432:localhost:5432", calls[0])
+        self.assertFalse(os.path.exists(self.lock_dir), "start must release its lock")
+
+    def test_stale_lock_is_reclaimed(self):
+        # A lock left by a crashed start, older than the staleness window, must not block start.
+        self._write_lock(time.time() - 600, pid=111111)
+        self._set_netstat([])
+        proc = self._run("start", env_overrides={"DB_TUNNEL_LOCK_WAIT_SECS": "1"})
+        self.assertIn("removing stale start-lock", proc.stderr)
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        self.assertEqual(len(self._ssh_calls()), 1, "start must have proceeded past the lock")
+
+    def test_second_reclaimer_never_deletes_a_fresh_lock(self):
+        # Two waiters both judged the same lock stale; the other got there first and now holds
+        # a FRESH lock (the hook). This start must put that lock back, not delete it, and must
+        # not launch ssh: exactly one holder.
+        self._write_lock(time.time() - 600, pid=111111)
+        self._set_netstat([])
+        proc = self._run(
+            "start",
+            env_overrides={
+                "DB_TUNNEL_LOCK_STALE_SECS": "60",
+                "DB_TUNNEL_LOCK_WAIT_SECS": "1",
+                "DB_TUNNEL_TEST_RECLAIM_HOOK": "%s %s" % (sys.executable, self.fresh_lock_hook),
+            },
+        )
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertEqual(self._ssh_calls(), [])
+        with open(os.path.join(self.lock_dir, "pid"), "r", encoding="utf-8") as f:
+            self.assertEqual(f.read().strip(), "424242", "the fresh holder's lock must survive")
+        self.assertEqual([n for n in os.listdir(self.tmp) if n.startswith("lock.reclaim.")], [])
+
+    def test_start_timeout_kills_its_own_ssh_child(self):
+        # ssh bound the port but its WINPID has no ssh row in ps -W, so start times out. The
+        # wrapper's ssh child must be killed too, not orphaned as an unrecorded tunnel.
+        self._set_netstat([])
+        self._set_ps([])
+        proc = self._run(
+            "start",
+            env_overrides={"DB_TUNNEL_TEST_FAKE_SSH_MODE": "orphan", "DB_TUNNEL_WAIT_SECS": "3"},
+        )
+        self.assertTrue(os.path.exists(self.ssh_child_file), proc.stderr)
+        with open(self.ssh_child_file, "r", encoding="utf-8") as f:
+            child = f.read().strip()
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertFalse(os.path.exists(self.state_path), "no state may be written")
+        alive = None
+        for _ in range(20):
+            alive = subprocess.run([BASH, "-c", "kill -0 %s" % child], capture_output=True)
+            if alive.returncode != 0:
+                break
+            time.sleep(0.25)
+        self.assertNotEqual(alive.returncode, 0, "start's own ssh child %s was orphaned" % child)
+
+    def test_listener_named_like_ssh_but_not_ssh_is_not_killed(self):
+        self._write_state(owner="manual", winpid=9001)
+        self._set_netstat([NETSTAT_LINE % "9001"])
+        self._set_ps([PS_LINE_SSH_AGENT % (66, "9001")])
+        proc = self._run("stop", "--force")
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertIn("NOT an ssh process", proc.stderr)
+        self.assertEqual(self._kill_calls(), [])
 
 
 if __name__ == "__main__":
