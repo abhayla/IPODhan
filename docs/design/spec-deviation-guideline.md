@@ -206,7 +206,7 @@ document or an exchange** versus **what only a human can settle**.
 | **Absences** | Every absence stored with one of **OD-62's four reason codes** — `SOURCE_UNREACHABLE`, `NOT_PUBLISHED_YET`, `EXTRACTION_FAILED`, `FAILED_VALIDATION` — **never a bare null** | A field **`EXHAUSTED`** after every source abstained or failed (§2.6) |
 | **Disagreements** | The **re-read loop to its §3.3 bounds** — 2 per (IPO, field, `sha256`), 1 per document per day, 1 per IPO per slot — before any human is asked | A disagreement **unresolved within those bounds**, which arrives on the admin surface with **both values, both sources and the receipt** (§3.4) |
 | **Identity** | Binding per **OD-34** (CIN, then the SEBI draft filing number, then the exchange symbol, then the normalised name), **OD-35** (one row is one offering; 180 days; an offering-type change is a new row) and **OD-38** (three no-such-symbol reads set DELISTED; every automatic merge logged and reversible) | **Production data repairs and identity merges** — the pipeline **proposes**, logs, and keeps it reversible; a **human confirms** |
-| **OFS** | — | **Frozen per OD-53** (18 rows as non-IPO listings), out of scope for both scraper and admin. |
+| **OFS** | — | **Frozen per OD-53** (18 rows as non-IPO listings): the scraper never walks them. **Admin-editable by hand since OD-119 (2026-09-25)** -- every value typed, the OD-53 notice kept. |
 | **Never** | — | **Guessing from a peer, a ratio or a formula is forbidden.** An absence is an absence. |
 
 **Why the thin types sit on the admin side.** Not because their documents are harder, but because
