@@ -1,6 +1,15 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 import { parseBseParties } from '../../../src/services/bse-party-parser.js';
+
+vi.mock('@ipodhan/shared/repositories', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@ipodhan/shared/repositories')>();
+  return { ...actual, sourceKeyLineageFor: vi.fn().mockReturnValue(null) };
+});
+
 import { recordDiscoveredLeadManagers } from '../../../src/services/data-persister.js';
+import { sourceKeyLineageFor } from '@ipodhan/shared/repositories';
 
 /**
  * T-503 / #416 — real Steamhouse India payload (BSE core-API
@@ -257,5 +266,72 @@ describe('T-513 / #419 — recordDiscoveredLeadManagers invalidates the IPO cach
     // cache-layer failure here must not be reported as a write failure.
     expect(result).toEqual({ written: true });
     expect(ipoRepository.invalidateIpoCache).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * MAJOR 2 (Tier A round 2 on #1072): `recordDiscoveredLeadManagers`'s `field_sources`
+ * onConflictDoUpdate for `leadManagers` set `dataLineage: sourceKeyLineageFor(ipoId) ?? null` —
+ * a plain object (or plain `null`) that REPLACES the whole jsonb column on conflict, destroying
+ * whatever docType/other keys an earlier write on this SAME (ipo, table, row) had set. Same class
+ * as #755/#753/#1065/#1068. RED before the fix: `set.dataLineage` is the caller's raw value with
+ * no reference to the existing column. Fix must be null-safe: `sourceKeyLineageFor` legitimately
+ * returns `null` (this write carries no source-key binding), and in that case the existing column
+ * value MUST be kept, never overwritten with NULL.
+ *
+ * Note: this ON CONFLICT target is 3 columns (ipoId, tableName, fieldName) rather than the
+ * 4-column unique index (missing rowKey) — tracked separately as #1074; NOT this fix's target.
+ */
+describe('recordDiscoveredLeadManagers — field_sources dataLineage MERGE, never replace (MAJOR 2, #1072 round 2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function sqlText(expr: unknown): string {
+    return new PgDialect().sqlToQuery(expr as SQL).sql;
+  }
+
+  it('a source-key-bound write merges via SQL over the EXISTING column, preserving prior keys', async () => {
+    vi.mocked(sourceKeyLineageFor).mockReturnValue({ sourceKeyIds: ['sk-1', 'sk-2'] });
+    const { dbLike, fieldSourcesRows } = fakeTransactionalDb({ simulatedStoredLeadManagers: null });
+    const ipoRepository = fakeIpoRepository();
+
+    await recordDiscoveredLeadManagers(
+      ipoRepository as never,
+      'ipo-1',
+      ['NSE Broker Securities Limited'],
+      'NSE',
+      dbLike as never
+    );
+
+    const lineage = fieldSourcesRows[0]!.dataLineage;
+    const isPlainObject =
+      lineage !== null &&
+      typeof lineage === 'object' &&
+      !('queryChunks' in (lineage as object)) &&
+      !('sql' in (lineage as object));
+    expect(isPlainObject).toBe(false);
+    expect(sqlText(lineage)).toMatch(/COALESCE\("field_sources"\."data_lineage",\s*'\{\}'::jsonb\)\s*\|\|/i);
+  });
+
+  it('a write with NO source-key lineage (sourceKeyLineageFor returns null) does not overwrite the existing column with NULL', async () => {
+    vi.mocked(sourceKeyLineageFor).mockReturnValue(null);
+    const { dbLike, fieldSourcesRows } = fakeTransactionalDb({ simulatedStoredLeadManagers: null });
+    const ipoRepository = fakeIpoRepository();
+
+    await recordDiscoveredLeadManagers(
+      ipoRepository as never,
+      'ipo-1',
+      ['NSE Broker Securities Limited'],
+      'NSE',
+      dbLike as never
+    );
+
+    const lineage = fieldSourcesRows[0]!.dataLineage;
+    // A bare `null` here would REPLACE the column, wiping any existing dataLineage. The fix must
+    // pass a SQL expression that keeps the existing column value instead.
+    expect(lineage).not.toBeNull();
+    expect(sqlText(lineage)).toMatch(/"field_sources"\."data_lineage"/i);
+    expect(sqlText(lineage)).not.toMatch(/null::jsonb/i);
   });
 });

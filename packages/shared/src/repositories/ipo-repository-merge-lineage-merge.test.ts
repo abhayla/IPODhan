@@ -12,8 +12,15 @@
  * RED before the fix: `set.dataLineage` is the caller's raw
  * `{ tool: 'merge-duplicate-ipo', ... }` object, with no reference to the existing row's
  * dataLineage at all.
+ *
+ * MAJOR 1 (Tier A round 2 on #1072): the "not a plain object" check alone is a mutation hole
+ * (M3) -- a REPLACE written as raw SQL with no `COALESCE(...) ||` merge is also "not a plain
+ * object" and would pass. Compile the actual SQL via drizzle's own `PgDialect` and assert it
+ * contains the coalesce-merge over the EXISTING `field_sources.data_lineage` column.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 import { IPORepository } from './ipo-repository';
 
 const KEEP_ID = '00000000-0000-4000-8000-00000000ke01';
@@ -119,5 +126,10 @@ describe('IPORepository.mergeDuplicateInto — field_sources dataLineage MERGE, 
       !('queryChunks' in (setClause.dataLineage as object)) &&
       !('sql' in (setClause.dataLineage as object));
     expect(isPlainReplacingObject).toBe(false);
+
+    // MAJOR 1: "not a plain object" is not enough (M3) -- assert the compiled SQL actually
+    // merges over the EXISTING column rather than just wrapping the replacement in `sql`.
+    const compiled = new PgDialect().sqlToQuery(setClause.dataLineage as SQL);
+    expect(compiled.sql).toMatch(/COALESCE\("field_sources"\."data_lineage",\s*'\{\}'::jsonb\)\s*\|\|/i);
   });
 });
