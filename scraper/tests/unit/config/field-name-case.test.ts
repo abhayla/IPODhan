@@ -14,8 +14,9 @@ const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf-8')) as {
 };
 
 describe('field-name-case (item 3 S1b, C2)', () => {
-  it('the manifest actually has 190 keys (guards against a silently truncated fixture)', () => {
-    expect(Object.keys(manifest.fields).length).toBe(190);
+  it('the manifest actually has 189 keys (guards against a silently truncated fixture)', () => {
+    // OD-100 (#1022): gmp_records.gmp is job-owned and no longer carries a manifest row (190 -> 189).
+    expect(Object.keys(manifest.fields).length).toBe(189);
   });
 
   it('every field-manifest.json key round-trips column -> camelCase -> column', () => {

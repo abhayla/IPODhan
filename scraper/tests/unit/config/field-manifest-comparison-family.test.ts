@@ -47,10 +47,10 @@ function loadManifest(): { fields: Record<string, any> } {
 }
 
 describe('field-manifest comparisonFamily (S3b step 1, issue #775)', () => {
-  it('every one of the 190 manifest fields carries a comparisonFamily', () => {
+  it('every one of the 189 manifest fields carries a comparisonFamily', () => {
     const manifest = loadManifest();
     const keys = Object.keys(manifest.fields);
-    expect(keys.length).toBe(190);
+    expect(keys.length).toBe(189); // OD-100 (#1022): gmp_records.gmp job-owned, no manifest row
 
     const missing = keys.filter((k) => !manifest.fields[k].comparisonFamily);
     expect(missing).toEqual([]);
@@ -69,7 +69,7 @@ describe('field-manifest comparisonFamily (S3b step 1, issue #775)', () => {
   // Layer 1 (amount-columns probe): the 76 MONEY-shaped + 24 RATIO-shaped fields
   // the probe classifies with zero guesses (docs/design/s3b-verdict-plan.md
   // "MEASURED: this classifies 100 of 190 fields").
-  it('the 100 probe-covered fields resolve to MONEY (76) or RATIO (24), never guessed from naming', () => {
+  it('the 99 probe-covered fields resolve to MONEY (75) or RATIO (24), never guessed from naming', () => {
     const manifest = loadManifest();
     const probe = JSON.parse(
       fs.readFileSync(
@@ -95,7 +95,7 @@ describe('field-manifest comparisonFamily (S3b step 1, issue #775)', () => {
         ratioCount++;
       }
     }
-    expect(moneyCount).toBe(76);
+    expect(moneyCount).toBe(75); // OD-100 (#1022): gmp_records.gmp (MONEY-shaped) retired from the manifest
     expect(ratioCount).toBe(24);
   });
 

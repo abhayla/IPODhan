@@ -89,7 +89,6 @@
     "financial_statements.total_income DOC NO_COLUMN_READ",
     "financial_statements.unit CHITTORGARH NO_MAPPING",
     "financial_statements.unit DOC NO_COLUMN_READ",
-    "gmp_records.gmp CHITTORGARH NO_MAPPING",
     "ipo_demand_graph.cumulative_quantity BSE NO_MAPPING",
     "ipo_demand_graph.cumulative_quantity NSE NO_MAPPING",
     "ipo_demand_graph.exchange BSE NO_MAPPING",

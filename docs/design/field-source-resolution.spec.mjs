@@ -12,6 +12,26 @@ const MC_RETIRED_NOTE = 'Moneycontrol retired 2026-09-09 (MC_SERVES is empty); N
 export const F = [];
 const add = (t, c, cls, r, o = {}) => F.push({ t, c, cls, r, o });
 
+// OD-100 (#1022), MAJOR-1 (review round 2): the ONE declared list of tables/fields §2.1's job
+// table assigns to a dedicated scheduled job — a job-owned table or field gets no manifest row and
+// no plan row; the field-plan walk never asks for it, whatever rank the spec's own table above
+// states. Driven generically by `add()`'s `jobOwned` opt below (never a per-table special case in
+// the generator); this map is read by the `add(...)` calls themselves, so adding a table here is the
+// only edit needed to mark every one of its sourced fields job-owned.
+export const JOB_OWNED_TABLES = {
+  gmp_records: 'GMP job (section 2.1, createGMPRecord in data-persister.ts, every 30 minutes)',
+  subscriptions: 'Live-figures job (section 2.1, every 30 minutes 10:00-18:30 IST: "subscription and the demand graph"; "never touch ... a field plan row")',
+  ipo_demand_graph: 'Live-figures job (section 2.1, every 30 minutes 10:00-18:30 IST: "subscription and the demand graph"; "never touch ... a field plan row")',
+};
+// Individual fields (not a whole table) the S5 Post-listing price job owns — listing_performance
+// also carries listing_price (a DIFFERENT, NSE/BSE/CG-ranked field the data job settles once, not
+// owned by this job), so only the three quote columns §2.1 names are marked, never the whole table.
+export const JOB_OWNED_FIELDS = {
+  'listing_performance.current_price': 'Post-listing price job (section 2.1, every 15 minutes during market hours for 90 days post-listing, from the free NSE/BSE quote endpoints)',
+  'listing_performance.current_price_bse': 'Post-listing price job (section 2.1, every 15 minutes during market hours for 90 days post-listing, from the free NSE/BSE quote endpoints)',
+  'listing_performance.current_price_nse': 'Post-listing price job (section 2.1, every 15 minutes during market hours for 90 days post-listing, from the free NSE/BSE quote endpoints)',
+};
+
 // ---------- ipos (32) ----------
 add('ipos','symbol','D',['DOC','NSE','BSE'],{doc:'E7 cover'});
 add('ipos','company_name','D',['DOC','NSE','BSE'],{doc:'cover'});
@@ -233,14 +253,18 @@ add('documents','filing_date','D',['DOC','BSE','—'],{doc:'B9',note:'historical
 // ---------- subscriptions (11) ----------
 add('subscriptions','timestamp','I',['—','—','—'],{});
 for (const c of ['qib_subscription','nii_subscription','retail_subscription','total_subscription'])
-  add('subscriptions',c,'X',['NSE','BSE','CG'],{only:'no document can carry a live figure',na:['TENDER','BUYBACK']});
+  add('subscriptions',c,'X',['NSE','BSE','CG'],{only:'no document can carry a live figure',na:['TENDER','BUYBACK'],jobOwned:JOB_OWNED_TABLES.subscriptions});
 for (const c of ['employee_subscription','b_nii_subscription','s_nii_subscription','total_shares_bid','shares_offered'])
-  add('subscriptions',c,'X',['NSE','BSE','—'],{only:'no document can carry a live figure',na:['TENDER','BUYBACK']});
+  add('subscriptions',c,'X',['NSE','BSE','—'],{only:'no document can carry a live figure',na:['TENDER','BUYBACK'],jobOwned:JOB_OWNED_TABLES.subscriptions});
 add('subscriptions','scope','I',['—','—','—'],{});
 
 // ---------- gmp_records (4) ----------
 add('gmp_records','timestamp','I',['—','—','—'],{});
-add('gmp_records','gmp','W',['IG','CG','—'],{only:'grey market has no official source, ever'});
+// OD-100 (#1022, review round 2 MAJOR-1): a live figure with its own scheduled job is owned by
+// that job, never by the field-plan walk — the walk's InvestorGain/Chittorgarh ranks above never
+// resolve to a plan row now that jobOwned is set; the generator excludes the field entirely
+// (item-02 rule, extended: C/I are never sourced, jobOwned is sourced-but-not-by-the-walk).
+add('gmp_records','gmp','W',['IG','CG','—'],{only:'grey market has no official source, ever',jobOwned:JOB_OWNED_TABLES.gmp_records});
 add('gmp_records','source','I',['—','—','—'],{});
 add('gmp_records','gmp_percentage','C',['—','—','—'],{formula:'gmp ÷ price_range_max × 100'});
 
@@ -248,11 +272,11 @@ add('gmp_records','gmp_percentage','C',['—','—','—'],{formula:'gmp ÷ pric
 add('listing_performance','listing_price','M',['NSE','BSE','CG'],{only:'post-listing market data'});
 add('listing_performance','issue_price','C',['—','—','—'],{formula:'ipos.price_range_max at listing'});
 add('listing_performance','listing_gain_percent','C',['—','—','—'],{formula:'(listing − issue) ÷ issue × 100'});
-add('listing_performance','current_price','M',['NSE','BSE','CG'],{only:'post-listing market data'});
+add('listing_performance','current_price','M',['NSE','BSE','CG'],{only:'post-listing market data',jobOwned:JOB_OWNED_FIELDS['listing_performance.current_price']});
 add('listing_performance','current_gain_percent','C',['—','—','—'],{formula:'(current − issue) ÷ issue × 100'});
 add('listing_performance','last_updated','I',['—','—','—'],{});
-add('listing_performance','current_price_bse','M',['BSE','—','—'],{only:'BSE quote by definition',exchOnly:'BSE'});
-add('listing_performance','current_price_nse','M',['NSE','—','—'],{only:'NSE quote by definition',exchOnly:'NSE'});
+add('listing_performance','current_price_bse','M',['BSE','—','—'],{only:'BSE quote by definition',exchOnly:'BSE',jobOwned:JOB_OWNED_FIELDS['listing_performance.current_price_bse']});
+add('listing_performance','current_price_nse','M',['NSE','—','—'],{only:'NSE quote by definition',exchOnly:'NSE',jobOwned:JOB_OWNED_FIELDS['listing_performance.current_price_nse']});
 add('listing_performance','symbol','C',['—','—','—'],{formula:'copy of ipos.symbol'});
 add('listing_performance','company_name','C',['—','—','—'],{formula:'copy of ipos.company_name'});
 add('listing_performance','listing_date','C',['—','—','—'],{formula:'copy of ipos.listing_date (E-1 sourced)'});
@@ -266,7 +290,7 @@ add('ipo_demand_graph','timestamp','I',['—','—','—'],{});
 // is offering-type scoped only; the issue_type dimension is not modeled by this generator and
 // must be checked separately by any consumer of this table.
 for (const c of ['price_point','is_cut_off','cumulative_quantity','exchange'])
-  add('ipo_demand_graph',c,'X',['NSE','BSE','—'],{only:'live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book',na:['RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK']});
+  add('ipo_demand_graph',c,'X',['NSE','BSE','—'],{only:'live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book',na:['RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK'],jobOwned:JOB_OWNED_TABLES.ipo_demand_graph});
 
 // ---------- registrars (10) ----------
 add('registrars','name','D',['DOC','REG','CG'],{doc:'E3'});

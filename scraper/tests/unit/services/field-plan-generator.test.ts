@@ -154,6 +154,21 @@ describe('generateFieldPlan - over the real manifest', () => {
     const keys = rows.map((r) => r.tableName + '.' + r.fieldName);
     expect(new Set(keys).size).toBe(keys.length);
   });
+
+  // OD-100 (#1022): gmp_records is job-owned (the GMP job, section 2.1
+  // createGMPRecord in data-persister.ts keeps it fresh every 30 minutes) —
+  // the walk never asks for it, on any offering type. Red before OD-100
+  // (the manifest carried gmp_records.gmp with rank ['INVESTORGAIN_GMP',
+  // 'CHITTORGARH']), green after (field-source-resolution.spec.mjs's
+  // `jobOwned` opt makes the generator skip it entirely — no manifest row,
+  // so no plan row, for any table starting with gmp_records).
+  it('produces zero gmp_records rows for every offering type — the GMP job owns that table, not the walk', () => {
+    for (const ipo of [MAINBOARD_IPO, SME_BSE_IPO, SME_NSE_IPO]) {
+      const rows = generateFieldPlan(ipo, manifest).filter((r) => r.tableName === 'gmp_records');
+      expect(rows).toEqual([]);
+    }
+    expect(manifest.fields['gmp_records.gmp']).toBeUndefined();
+  });
 });
 
 describe('generateFieldPlan - refusals', () => {
