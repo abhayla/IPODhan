@@ -299,9 +299,29 @@ export function classifyRouteResponse(routePath, status, bodyText) {
 // starts GREEN; the mutation test is adding either key to a public serializer and watching it fail.
 const VERDICT_LEAK_KEYS = ['verdict', 'witnesses'];
 
+// #897: e_verdict_leak_sweep was red 4 nights straight on the SAME offender, /api/performance/
+// mainboard, because its `ipoScore.verdict` field is the public IPO RATING (rendered on the reader
+// card by IPOCard.tsx via VerdictBadge) — a same-named-but-different-concept "verdict" from OD-61's
+// consensus verdict (a disagreement between sources). The check matched the WORD "verdict"
+// anywhere in the response text, never the CONCEPT, so a public field that has always been public
+// reads as a leak forever. A permanently-red check teaches people to ignore it, which is exactly
+// when a REAL OD-61 leak would go unseen.
+//
+// Fix is a PATH allow-list, not a schema-shape match (the smaller change the issue names): the
+// `ipoScore` object is a flat DB row (packages/shared's ipoScores table — string/number/null
+// values only, no nested objects per web/lib/repositories/ipo-repository.ts), so every
+// `"ipoScore":{...}` (or `"ipoScore":null`) occurrence can be stripped from the body BEFORE the
+// leak scan without risking swallowing an unrelated OD-61 key that happens to sit right after it.
+// Anything else named `verdict`/`witnesses` anywhere else in the payload — the OD-61 shape this
+// check exists to catch — still fails.
+const IPO_SCORE_OBJECT_PATTERN = /\\?"ipoScore\\?"\s*:\s*(\\?\{[^{}]*\\?\}|null)/g;
+
 export function classifyVerdictLeak(routePath, bodyText) {
   const reasons = [];
-  const body = bodyText || '';
+  const rawBody = bodyText || '';
+  // Strip every known-public ipoScore object (by path, not by key name) before scanning — this is
+  // the ONLY allow-list; every other verdict/witnesses occurrence in the payload still fails.
+  const body = rawBody.replace(IPO_SCORE_OBJECT_PATTERN, '"ipoScore":null');
   // A plain substring match on the raw JSON text (not a parsed-object key walk) so a leak is
   // caught even if the key sits inside a stringified/escaped nested payload — the same
   // "match the text, not a schema" posture SQL_LEAK_PATTERNS above uses.

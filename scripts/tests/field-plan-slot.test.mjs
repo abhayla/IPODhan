@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   mostRecentFieldPlanSlotBoundary,
+  slotsAgoBoundary,
   FIELD_PLAN_SLOT_IST_MINUTES,
   PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS,
   isStuckReclaimRow,
@@ -149,6 +150,60 @@ test('(F6) isStuckReclaimRow: GREEN — SUPPLIED/PENDING/EXHAUSTED states are ne
   for (const state of ['SUPPLIED', 'PENDING', 'EXHAUSTED', 'NOT_PRINTED']) {
     assert.equal(isStuckReclaimRow({ state, attempts: 0, claimedAt: null, lastAttemptAt: stale }, now), false, `${state} must never be flagged stuck`);
   }
+});
+
+// ---- #936: "two slots ago" was really "one slot ago" (self-composed boundary is a no-op) --------
+
+test('(#936) slotsAgoBoundary: one slot ago != two slots ago — the exact bug (calling the boundary fn on its own output is a no-op)', () => {
+  const now = istToUtc('2026-09-15', 14, 0); // exactly the 14:00 IST slot boundary
+  const oneAgo = slotsAgoBoundary(now, 1); // 14:00 IST (the current slot itself)
+  const twoAgo = slotsAgoBoundary(now, 2); // 08:00 IST (one slot before the current one)
+  assert.equal(oneAgo.toISOString(), istToUtc('2026-09-15', 14, 0).toISOString());
+  assert.equal(twoAgo.toISOString(), istToUtc('2026-09-15', 8, 0).toISOString());
+  assert.notEqual(oneAgo.getTime(), twoAgo.getTime(), 'one-slot-ago and two-slots-ago boundaries must differ — the naive MRB(MRB(now)) call made them identical');
+  // The naive, buggy composition — kept here as a comment, not code, so this test documents the
+  // exact regression without reintroducing it:
+  //   const buggyTwoAgo = mostRecentFieldPlanSlotBoundary(mostRecentFieldPlanSlotBoundary(now));
+  //   buggyTwoAgo.getTime() === oneAgo.getTime() // true — the bug
+});
+
+test('(#936) isStuckReclaimRow: RED under the old bug — a row attempted 09:00 IST (one slot old, normal cadence) at now=14:00 IST must NOT be stuck', () => {
+  // Under the pre-fix code, the threshold was MRB(MRB(now)) = MRB(14:00) = 14:00 IST (a no-op
+  // second call), so ANY lastAttemptAt before the current slot's own start read as stuck — even a
+  // row attempted only one slot ago, inside the *previous* slot window [08:00, 14:00). This is
+  // the discriminating case #936 asked for: a real "one slot old" row must read as healthy.
+  const now = istToUtc('2026-09-15', 14, 0);
+  const row = {
+    state: 'NOT_AVAILABLE_YET',
+    attempts: 1,
+    claimedAt: null,
+    lastAttemptAt: istToUtc('2026-09-15', 9, 0).toISOString(), // inside the 08:00 slot -- one slot old
+  };
+  assert.equal(isStuckReclaimRow(row, now), false, 'one slot of lag is normal cadence (per this check\'s own doc comment) -- must not be flagged stuck');
+});
+
+test('(#936) isStuckReclaimRow: a row attempted before the 08:00 slot (two slots old) at now=14:00 IST IS stuck', () => {
+  const now = istToUtc('2026-09-15', 14, 0);
+  const row = {
+    state: 'NOT_AVAILABLE_YET',
+    attempts: 1,
+    claimedAt: null,
+    lastAttemptAt: istToUtc('2026-09-15', 7, 59).toISOString(), // just before the 08:00 slot -- two slots old
+  };
+  assert.equal(isStuckReclaimRow(row, now), true);
+});
+
+test('(#936) isStrandedPendingRow: same class — a row last attempted one slot ago (inside [08:00,14:00)) is not stranded at now=14:00 IST', () => {
+  const now = istToUtc('2026-09-15', 14, 0);
+  const row = {
+    state: 'PENDING',
+    claimedAt: null,
+    ipoStatus: 'OPEN',
+    nextDueAt: null,
+    createdAt: istToUtc('2026-09-14', 0, 0).toISOString(),
+    lastAttemptAt: istToUtc('2026-09-15', 9, 0).toISOString(),
+  };
+  assert.equal(isStrandedPendingRow(row, now), false);
 });
 
 // ---- overnight false-positive regression (the exact bug this round fixed) -

@@ -71,6 +71,23 @@ export function mostRecentFieldPlanSlotBoundary(now = new Date()) {
 
 export { FIELD_PLAN_SLOT_IST_MINUTES };
 
+// #936: mostRecentFieldPlanSlotBoundary(mostRecentFieldPlanSlotBoundary(now)) does NOT compute "two
+// slots ago" — the boundary function is idempotent on its own output (a boundary IS a slot start,
+// so "at or before" of a boundary returns that same boundary), so the second call is a no-op and
+// the result is really "one slot ago" (the CURRENT slot's own start), never two. Measured: for
+// `now` at or after the 14:00 IST slot, the buggy call returns 14:00 IST both times; the correct
+// two-slots-back boundary is 00:00 IST (14:00 -> 08:00 -> 00:00). Class: every reader of "N slots
+// ago" in this file (isStuckReclaimRow, isStrandedPendingRow) that composed the boundary function
+// with itself. Fix: step back by one minute before each further call, so each application moves to
+// a strictly earlier slot instead of restating the one it was just given.
+export function slotsAgoBoundary(now, count) {
+  let boundary = mostRecentFieldPlanSlotBoundary(now);
+  for (let i = 1; i < count; i++) {
+    boundary = mostRecentFieldPlanSlotBoundary(new Date(boundary.getTime() - 60_000));
+  }
+  return boundary;
+}
+
 /** attempts cap mirrors FIELD_PLAN_RECLAIM_MAX_ATTEMPTS in
  * packages/shared/src/repositories/ipo-field-plan-repository.ts (a
  * partial-index predicate and a plain-Node check cannot share a TS export,
@@ -143,7 +160,7 @@ export function isStuckReclaimRow(row, now = new Date()) {
   if (!reclaimableState) return false;
   if (row.claimedAt != null) return false;
 
-  const twoSlotsAgo = mostRecentFieldPlanSlotBoundary(mostRecentFieldPlanSlotBoundary(now));
+  const twoSlotsAgo = slotsAgoBoundary(now, 2);
   if (row.lastAttemptAt == null) return true;
   return new Date(row.lastAttemptAt).getTime() < twoSlotsAgo.getTime();
 }
@@ -171,7 +188,7 @@ export function isStrandedPendingRow(row, now = new Date()) {
   if (row.state !== 'PENDING') return false;
   if (row.claimedAt != null) return false;
   if (!LIVE_IPO_STATUSES.includes(row.ipoStatus)) return false;
-  const twoSlotsAgo = mostRecentFieldPlanSlotBoundary(mostRecentFieldPlanSlotBoundary(now));
+  const twoSlotsAgo = slotsAgoBoundary(now, 2);
   if (row.nextDueAt != null && new Date(row.nextDueAt).getTime() > now.getTime()) return false;
   if (row.createdAt != null && new Date(row.createdAt).getTime() >= twoSlotsAgo.getTime()) return false;
   if (row.lastAttemptAt == null) return true;
