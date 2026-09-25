@@ -1,6 +1,6 @@
 # Item 7 — The job scheduler and the budgets
 
-Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 7: scheduler built (scheduler/, due-step-cycle.ts) on refs/remotes/origin/main, but the OD-55 force-kill removal (#805) is merged and not on prod, and tiering (O-4) is unverified
+Status: PARTIAL 2026-09-25 PRs #941, #949, #972 proof 2026-09-25 staging S2b/S4/S5 runs parked #943
 
 **Updated 2026-09-24 for S5 round 5 (OD-29, OD-54, OD-38; F-150, F-155, F-160, F-162) — the post-listing price job, as
 built (delisting detection is a separate item, #983 — this job never writes a status):**

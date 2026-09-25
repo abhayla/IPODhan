@@ -1,6 +1,6 @@
 # Item 17 — The closed-IPO job (OD-22)
 
-Status: NOT STARTED
+Status: DONE 2026-09-25 PRs #919 proof 2026-09-25 09:00 IST staging closed-IPO run (10 IPOs, PARTIAL with cause classes, 0 zero-work DONE)
 
 **Confirmed NOT STARTED on 2026-09-20** by checking this card's own four named artefacts on
 `refs/remotes/origin/main` rather than by title search: `closedIpoResourcing` in
