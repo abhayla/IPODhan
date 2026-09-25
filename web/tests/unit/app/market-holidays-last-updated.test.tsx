@@ -35,7 +35,7 @@ describe('MarketHolidaysPage — "Last updated"', () => {
             exchange: 'BOTH',
             type: 'TRADING',
             year: 2026,
-            updatedAt: '2025-10-13T14:37:01.000Z', // earlier row
+            updatedAt: '2025-09-01T00:00:00.000Z', // earlier row — must NOT win
           },
           {
             id: 'h2',
@@ -44,7 +44,7 @@ describe('MarketHolidaysPage — "Last updated"', () => {
             exchange: 'BOTH',
             type: 'TRADING',
             year: 2026,
-            updatedAt: '2025-10-13T14:37:01.000Z', // max across rows
+            updatedAt: '2025-10-13T14:37:01.000Z', // max across rows — must win
           },
         ],
       }),

@@ -191,6 +191,58 @@ describe('MainboardPerformanceTrackerClient', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+  // #207 (T-302C2 finding, PR #202): locks the `undefined`-not-`[]` fallback
+  // contract at the CLIENT boundary. getSegmentPerformanceData returns
+  // `undefined` (never `[]`) on a repository error so the page falls back to
+  // a client fetch instead of caching a false empty state for 5 minutes
+  // (revalidate = 300). Without these two cases, changing `loading`/
+  // `hasServerData` to use `?.length` (treating `[]` the same as `undefined`)
+  // would silently reintroduce that bug with a green suite.
+  it('initialData=undefined: shows the loading skeleton and fetches from the client', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            id: 'client-fetched-1',
+            companyName: 'Client Fetched Co Ltd',
+            slug: 'client-fetched-co-ltd',
+            segment: 'MAINBOARD',
+            listingDate: '2026-01-10',
+            issuePrice: '120.00',
+            listingClose: '130.50',
+            listingGainPercent: 8.75,
+            currentPriceLive: 145.2,
+            currentGainLive: 21.0,
+          },
+        ],
+      }),
+    });
+
+    render(<MainboardPerformanceTrackerClient initialYear="2026" initialData={undefined} />);
+
+    // undefined => loading=true on first render => the skeleton, not the
+    // "no IPOs" empty state or a real row, is what shows synchronously.
+    expect(screen.queryByText('Client Fetched Co Ltd')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No Mainboard IPOs listed/i)).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText('Client Fetched Co Ltd')).toBeInTheDocument();
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('initialData=[]: does NOT fetch and renders the honest empty state immediately', () => {
+    render(<MainboardPerformanceTrackerClient initialYear="2026" initialData={[]} />);
+
+    // [] !== undefined => hasServerData is true => the client must trust the
+    // server's empty result and skip the redundant fetch (this is the old
+    // "cache a false empty state" bug PR #202 removed — reintroducing it
+    // would instead SKIP the fetch on real undefined, the opposite defect).
+    expect(screen.getByText(/No Mainboard IPOs listed in 2026/i)).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it('never contains a mock/demo-data generator function in its module source', () => {
     // Guards against reintroducing generateMockPerformanceData or an equivalent.
     const filePath = path.resolve(
