@@ -273,7 +273,12 @@ async function main(): Promise<void> {
         onSnapshot(rows); // ledger written here, strictly before the DELETE below
         let deleted = 0;
         if (ids.length > 0) {
-          const res = await tx.execute(sql`DELETE FROM ipo_field_plan WHERE id = ANY(${ids}::uuid[]) RETURNING id`);
+          // NOTE (RCA, 2026-09-25): drizzle's sql`` expands a JS array interpolated as
+          // `${ids}` into a parenthesized parameter LIST -- `ANY(($2, $3, ...))` -- which
+          // Postgres rejects for `ANY()`. Bind it as ONE array parameter via sql.param(),
+          // the same fix already applied in repair-not-extractable-documents.ts and
+          // repair-readmit-stranded-documents.ts.
+          const res = await tx.execute(sql`DELETE FROM ipo_field_plan WHERE id = ANY(${sql.param(ids)}::uuid[]) RETURNING id`);
           const resultRows = (res as unknown as { rows: { id: string }[] }).rows ?? [];
           deleted = resultRows.length;
         }

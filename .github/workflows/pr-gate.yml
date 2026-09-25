@@ -918,6 +918,7 @@ jobs:
           tests/integration/source-record-keys-od85.integration.test.ts
           tests/integration/repair-issue-size-od74.integration.test.ts
           tests/integration/repair-reopen-stale-doc-nay.integration.test.ts
+          tests/integration/repair-retire-manifest-removed-fields.integration.test.ts
           tests/integration/oracle-parity.test.ts
           tests/integration/opening-day-create.integration.test.ts
           tests/integration/post-listing-price.integration.test.ts
