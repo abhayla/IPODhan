@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import {
   readPrintedTotal,
   decideOd74,
@@ -13,9 +14,12 @@ import {
   fiscalYearOf,
   matchLookupRows,
   TOOL_NAME,
+  buildRepairCandidatesQuery,
+  buildZerosCandidatesQuery,
 } from '../../../scripts/repair-issue-size-chittorgarh-once-od74.js';
 import { decidePageRead, PageStore, sha256Of } from '../../../scripts/lib/od74-page-store.js';
 import { classifyZeroAction } from '../../../scripts/lib/od77-issue-size-zeros.js';
+import { resolveIpoScope } from '../../../scripts/lib/repair-tool.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // REAL pages, fetched once from chittorgarh.com on 2026-09-23 (OD-74 core proof).
@@ -183,5 +187,91 @@ describe('classifyZeroAction — OD-77 (a stored 0 is never kept as a value)', (
   });
   it('OFS, RIGHTS, NCD and IPO: the 0 is a missing value -> NOT_SOURCED', () => {
     for (const t of ['OFS', 'RIGHTS', 'NCD', 'IPO']) expect(classifyZeroAction(t)).toBe('NOT_SOURCED');
+  });
+});
+
+/**
+ * #1054 (sweep of #1045/#1053's class): the shared `--ipo` scope, wired into
+ * this tool's two distinct candidate queries. Compiled-SQL tests rendered via
+ * `PgDialect().sqlToQuery` (the same text node-postgres receives), not
+ * executed against a database — same pattern as
+ * `repair-reopen-stale-doc-nay.test.ts`'s MAJOR-2 tests.
+ *
+ * MUTATION VERIFIED (manual): commenting out the `scopeClause` interpolation
+ * in either `buildRepairCandidatesQuery` or `buildZerosCandidatesQuery` (so
+ * the query is always built unscoped) turns that function's "scoped" case red
+ * — `.sql` no longer contains `= ANY(` and `.params` no longer carries the id
+ * array — while the "unscoped" case stays green, confirming the assertion
+ * actually exercises the scope clause rather than passing vacuously.
+ */
+describe('#1054: buildRepairCandidatesQuery / buildZerosCandidatesQuery scope condition is present in the compiled SQL', () => {
+  const UUID = '00000000-0000-4000-9074-000000000009';
+
+  it('buildRepairCandidatesQuery: scoped — carries i.id = ANY($n::uuid[]) with the ids as one param', () => {
+    const rendered = new PgDialect().sqlToQuery(buildRepairCandidatesQuery([UUID]));
+    expect(rendered.sql).toMatch(/i\.id = ANY\(\$\d+::uuid\[\]\)/);
+    expect(rendered.params).toContainEqual([UUID]);
+  });
+
+  it('buildRepairCandidatesQuery: unscoped — carries no ANY(...) scope clause at all', () => {
+    const rendered = new PgDialect().sqlToQuery(buildRepairCandidatesQuery([]));
+    expect(rendered.sql).not.toMatch(/= ANY\(/);
+  });
+
+  it('buildZerosCandidatesQuery: scoped — carries id = ANY($n::uuid[]) with the ids as one param', () => {
+    const rendered = new PgDialect().sqlToQuery(buildZerosCandidatesQuery([UUID]));
+    expect(rendered.sql).toMatch(/id = ANY\(\$\d+::uuid\[\]\)/);
+    expect(rendered.params).toContainEqual([UUID]);
+  });
+
+  it('buildZerosCandidatesQuery: unscoped — carries no ANY(...) scope clause at all', () => {
+    const rendered = new PgDialect().sqlToQuery(buildZerosCandidatesQuery([]));
+    expect(rendered.sql).not.toMatch(/= ANY\(/);
+  });
+});
+
+/**
+ * #1054: refusal coverage for the five present-but-unusable `--ipo` forms
+ * measured in #1053's review round 2, using the same shared `resolveIpoScope`
+ * this tool's `main()` calls — a present-but-unusable flag must never read as
+ * "not given" (which would silently fall back to unscoped, DB-wide, for an
+ * `--apply` repair tool).
+ */
+describe('#1054: resolveIpoScope refusal forms wired into main()', () => {
+  it('a single valid --ipo parses to one id, not unusable', () => {
+    const r = resolveIpoScope(['--apply', '--ipo', '00000000-0000-4000-9074-000000000001'], '--ipo');
+    expect(r.ipoIds).toEqual(['00000000-0000-4000-9074-000000000001']);
+    expect(r.invalid).toEqual([]);
+    expect(r.unusable).toBe(false);
+  });
+
+  it('an unscoped run (no --ipo) is not unusable and has no ids', () => {
+    const r = resolveIpoScope(['--apply'], '--ipo');
+    expect(r.ipoIds).toEqual([]);
+    expect(r.unusable).toBe(false);
+  });
+
+  it.each([
+    ['--ipo followed by another flag', ['--ipo', '--apply']],
+    ['a trailing --ipo with no value', ['--apply', '--ipo']],
+    ['--ipo given an empty string', ['--ipo', '', '--apply']],
+    ['--ipo given a bare comma', ['--ipo', ',', '--apply']],
+  ])('MUTATION: unusable is true for %s', (_label, argv) => {
+    const r = resolveIpoScope(argv, '--ipo');
+    expect(r.unusable).toBe(true);
+    expect(r.ipoIds).toEqual([]);
+    expect(r.invalid).toEqual([]);
+  });
+
+  it('MUTATION: parses the --ipo=<uuid> single-token form instead of treating it as absent', () => {
+    const r = resolveIpoScope(['--apply', '--ipo=00000000-0000-4000-9074-000000000001'], '--ipo');
+    expect(r.ipoIds).toEqual(['00000000-0000-4000-9074-000000000001']);
+    expect(r.unusable).toBe(false);
+  });
+
+  it('a non-uuid --ipo value is reported invalid, not silently accepted or dropped', () => {
+    const r = resolveIpoScope(['--apply', '--ipo', 'not-a-uuid'], '--ipo');
+    expect(r.invalid).toEqual(['not-a-uuid']);
+    expect(r.ipoIds).toEqual([]);
   });
 });

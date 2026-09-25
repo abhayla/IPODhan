@@ -53,7 +53,17 @@ import {
   extractIssueSizeRupeesFromDetailHtml,
 } from '../src/scrapers/chittorgarh-detail-fields.js';
 import { invalidateIPOCaches } from '../src/services/cache-invalidator.js';
-import { assertNoSchemaDrift, guardCacheInvalidation, openRepairDb, PRODUCTION_DATABASE_NAME, upsertFieldSource, writeLedgerFile } from './lib/repair-tool.js';
+import {
+  assertNoSchemaDrift,
+  buildIpoScopeCondition,
+  describeIpoScope,
+  guardCacheInvalidation,
+  openRepairDb,
+  PRODUCTION_DATABASE_NAME,
+  resolveIpoScope,
+  upsertFieldSource,
+  writeLedgerFile,
+} from './lib/repair-tool.js';
 import { decidePageRead, PageStore } from './lib/od74-page-store.js';
 import { applyZeroRow, classifyZeroAction, undoZeroRow, type ZeroOutcome, type ZeroRow } from './lib/od77-issue-size-zeros.js';
 
@@ -251,12 +261,17 @@ async function lookupPage(
 interface Od74Before { issueSize: string; updatedAt: string; fieldSource: Record<string, unknown> | null }
 type Counts = { writes: number; failures: number };
 
-async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[]): Promise<Counts> {
-  const overrides = parseUrlOverrides(process.argv);
-  const all = rowsOf<{
-    id: string; slug: string; companyName: string; openDate: string | null; issueSize: string | null;
-    priceRangeMax: string | null; verifierUrl: string | null; lineageUrls: string[] | null;
-  }>(await db.execute(sql`
+/**
+ * #1054 (sweep of #1045/#1053's class): the `runRepair` candidate query, ANDed
+ * with the shared `--ipo` scope when given. Exported (pure, no DB) so the
+ * compiled-SQL scope test can assert `i.id = ANY(...)` is present when scoped
+ * and absent when not, without executing against a database — same pattern as
+ * `repair-reopen-stale-doc-nay.ts`'s `buildStaleRowsQuery`.
+ */
+export function buildRepairCandidatesQuery(ipoIds: readonly string[]) {
+  const scope = buildIpoScopeCondition(ipoIds, 'i.id');
+  const scopeClause = scope ? sql`AND ${scope}` : sql``;
+  return sql`
     SELECT i.id, i.slug, i.company_name AS "companyName", i.open_date::text AS "openDate", i.issue_size::text AS "issueSize",
            i.price_range_max::text AS "priceRangeMax", i.verifier_url AS "verifierUrl",
            ARRAY(SELECT f2.data_lineage->>'url' FROM field_sources f2
@@ -264,7 +279,30 @@ async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[]): Promi
       FROM ipos i
       JOIN field_sources fs ON fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.field_name = 'issueSize' AND fs.row_key = ''
      WHERE i.offering_type = 'IPO' AND fs.source = 'BSE'
-     ORDER BY i.slug`));
+       ${scopeClause}
+     ORDER BY i.slug`;
+}
+
+/**
+ * #1054: the `runZeros` candidate query (a distinct shape from the repair
+ * query above — `issue_size = 0`, no join), ANDed with the shared `--ipo`
+ * scope when given. Exported for the same compiled-SQL testability reason.
+ */
+export function buildZerosCandidatesQuery(ipoIds: readonly string[]) {
+  const scope = buildIpoScopeCondition(ipoIds, 'id');
+  const scopeClause = scope ? sql`AND ${scope}` : sql``;
+  return sql`
+    SELECT id, slug, offering_type::text AS "offeringType", segment::text AS segment, listing_exchanges AS "listingExchanges",
+           issue_size::text AS "issueSize", updated_at::text AS "updatedAt"
+      FROM ipos WHERE issue_size = 0 ${scopeClause} ORDER BY offering_type, slug`;
+}
+
+async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[], ipoIds: readonly string[]): Promise<Counts> {
+  const overrides = parseUrlOverrides(process.argv);
+  const all = rowsOf<{
+    id: string; slug: string; companyName: string; openDate: string | null; issueSize: string | null;
+    priceRangeMax: string | null; verifierUrl: string | null; lineageUrls: string[] | null;
+  }>(await db.execute(buildRepairCandidatesQuery(ipoIds)));
   for (const r of all.filter((x) => !(Number(x.issueSize) > 0))) {
     console.log(`  OUT-OF-CLASS ${r.slug}: issue_size=${r.issueSize ?? 'NULL'} — no BSE-computed value (the --zeros mode owns it)`);
   }
@@ -353,11 +391,8 @@ async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[]): Promi
   return counts;
 }
 
-async function runZeros(APPLY: boolean, ledger: unknown[]): Promise<Counts> {
-  const list = rowsOf<ZeroRow>(await db.execute(sql`
-    SELECT id, slug, offering_type::text AS "offeringType", segment::text AS segment, listing_exchanges AS "listingExchanges",
-           issue_size::text AS "issueSize", updated_at::text AS "updatedAt"
-      FROM ipos WHERE issue_size = 0 ORDER BY offering_type, slug`));
+async function runZeros(APPLY: boolean, ledger: unknown[], ipoIds: readonly string[]): Promise<Counts> {
+  const list = rowsOf<ZeroRow>(await db.execute(buildZerosCandidatesQuery(ipoIds)));
   const counts: Counts = { writes: 0, failures: 0 };
   const byType: Record<string, number> = {};
   for (const r of list) {
@@ -463,12 +498,28 @@ export class RefusedError extends Error {}
 async function main(): Promise<number> {
   const undoFile = argValue('--undo');
   const APPLY = process.argv.includes('--apply') || undoFile !== null;
+  // #1054 (sweep of #1045/#1053's class): `--ipo` scopes both candidate
+  // queries so an integration test can only ever touch its own fixture rows.
+  // `--undo` stays ledger-scoped (unchanged) — the ledger's own row ids are
+  // the scope, per the brief.
+  const ipoScope = resolveIpoScope(process.argv, '--ipo');
+  if (ipoScope.invalid.length > 0) {
+    console.error(`${TOOL_NAME}: --ipo value(s) are not valid uuids, refusing: ${ipoScope.invalid.join(', ')}`);
+    return 2;
+  }
+  if (ipoScope.unusable) {
+    console.error(
+      `${TOOL_NAME}: --ipo was given but no usable uuid could be parsed from it (check quoting, placement or a missing value) — refusing rather than silently falling back to ALL IPOs DB-wide.`
+    );
+    return 2;
+  }
   const { dbName } = await openRepairDb(db, { apply: APPLY, allowProd: process.argv.includes('--allow-prod'), toolName: TOOL_NAME });
   currentDbName = dbName;
   await assertNoSchemaDrift(db, { apply: APPLY, toolName: TOOL_NAME });
   const prodMode = dbName === PRODUCTION_DATABASE_NAME || process.argv.includes('--prod-mode');
   const mode = undoFile ? 'undo' : process.argv.includes('--zeros') ? 'zeros' : 'repair';
   console.log(`OD-74 issue-size one-time repair — ${mode} — ${APPLY ? 'APPLY' : 'DRY-RUN'} — database ${dbName}${prodMode ? ' — PROD MODE (never fetches; pinned pages only)' : ''}`);
+  console.log(`${TOOL_NAME}: scope = ${describeIpoScope(ipoScope.ipoIds)}`);
   const here = path.dirname(fileURLToPath(import.meta.url));
   const store = new PageStore(path.resolve(argValue('--store-dir') ?? path.join(here, 'data', 'od74-issue-size')), TOOL_NAME);
   const ctx: ReadCtx = { store, prodMode, allowFetch: !process.argv.includes('--no-fetch'), lastFetchAt: 0 };
@@ -476,7 +527,12 @@ async function main(): Promise<number> {
   let counts: Counts = { writes: 0, failures: 0 };
   let exitCode = 0;
   try {
-    counts = mode === 'undo' ? await runUndo(undoFile!, ledger) : mode === 'zeros' ? await runZeros(APPLY, ledger) : await runRepair(APPLY, ctx, ledger);
+    counts =
+      mode === 'undo'
+        ? await runUndo(undoFile!, ledger)
+        : mode === 'zeros'
+          ? await runZeros(APPLY, ledger, ipoScope.ipoIds)
+          : await runRepair(APPLY, ctx, ledger, ipoScope.ipoIds);
     if (counts.failures > 0) exitCode = 1;
   } catch (e) {
     exitCode = e instanceof RefusedError ? 2 : 1;
