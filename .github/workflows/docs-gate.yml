@@ -116,3 +116,8 @@ jobs:
           # runs two of those DoD walks concurrently in one checkout, so they mutate the
           # same files at once. Run it by hand when touching root resolution.
           node --test scripts/tests/check-dod-d14-mechanism.test.mjs
+
+      - name: PR template spec-deviation block (item 31)
+        # The PR template's spec-deviation block (#813) had a test no workflow ran;
+        # found 2026-09-25 while writing item 31's proof line.
+        run: node --test scripts/tests/pr-template-deviation-block.test.mjs
