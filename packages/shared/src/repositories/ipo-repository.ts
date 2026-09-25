@@ -1955,6 +1955,27 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       if (!keepBefore) {
         throw new DatabaseError(`unmergeDuplicate: merge ${mergeId} has no survivor snapshot (pre-#900 log)`, undefined);
       }
+      // OD-92 chain guard: `keepId` (log.keep_ipo_id) is repointed forward when the survivor of THIS
+      // merge is itself later merged away (REPOINT_TABLES, #996's fix). If it no longer matches the
+      // survivor id this entry's own before-snapshot recorded, step 7 below would write this entry's
+      // (older) pre-merge values onto the WRONG row — the later survivor's row, not the one this merge
+      // actually touched. Refuse and name the later merge to unmerge first (chain unwinds newest-first).
+      const beforeId = String((keepBefore as { id?: unknown }).id ?? '');
+      if (beforeId && beforeId !== keepId) {
+        const laterMerge = rows<{ id: string }>(
+          await tx.execute(sql`
+            select id::text as id from ipo_merge_log
+            where drop_ipo_id = ${beforeId} and unmerged_at is null
+            order by merged_at desc limit 1
+          `)
+        )[0];
+        throw new DatabaseError(
+          `unmergeDuplicate: merge ${mergeId}'s survivor (${beforeId}) was itself merged away into ${keepId} by a later merge` +
+            (laterMerge ? ` (${laterMerge.id})` : '') +
+            ` — unmerge ${laterMerge ? laterMerge.id : 'that later merge'} first, then retry ${mergeId}`,
+          undefined
+        );
+      }
       const rd = (log.restoreData ?? null) as null | {
         deletedRows: { table: string; rows: Record<string, unknown>[] }[];
         nulledRefs: NulledRef[];

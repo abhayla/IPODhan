@@ -124,6 +124,10 @@ describe('REPOINT_TABLES', () => {
     expect(REPOINT_TABLES.has('subscriptions')).toBe(false);
     expect(REPOINT_TABLES.has('gmp_records')).toBe(false);
   });
+
+  it('#996: classifies ipo_merge_log as repoint, not delete — a chain merge must not erase earlier merge history', () => {
+    expect(REPOINT_TABLES.has('ipo_merge_log')).toBe(true);
+  });
 });
 
 describe('planCarryFields', () => {
