@@ -18,9 +18,11 @@ import {
   decideProdWriteRefusal,
   decideSchemaDriftRefusal,
   describeIpoScope,
+  flagIsPresent,
   openRepairDb,
   parseIpoScope,
   probeFieldSourcesRowKeyColumn,
+  resolveIpoScope,
   PRODUCTION_DATABASE_NAME,
   queryCurrentDatabase,
   readFieldSource,
@@ -338,6 +340,10 @@ describe('#1045 — shared --ipo scope (test-isolation class)', () => {
     it('does not swallow the next flag as a value', () => {
       expect(collectFlagValues(['--ipo', '--apply'], '--ipo')).toEqual([]);
     });
+
+    it('MUTATION (#1053 MAJOR-1): parses the --flag=value single-token form', () => {
+      expect(collectFlagValues([`--ipo=${UUID_A}`], '--ipo')).toEqual([UUID_A]);
+    });
   });
 
   describe('parseIpoScope', () => {
@@ -370,6 +376,71 @@ describe('#1045 — shared --ipo scope (test-isolation class)', () => {
     it('names the scoped ids so the tool header states what it will touch', () => {
       expect(describeIpoScope([UUID_A, UUID_B])).toContain(UUID_A);
       expect(describeIpoScope([UUID_A, UUID_B])).toContain(UUID_B);
+    });
+  });
+
+  /**
+   * #1053 review round 2, MAJOR-1: every measured form where `--ipo` is
+   * PRESENT in argv but `collectFlagValues`/`parseIpoScope` alone yield zero
+   * ids and zero invalid tokens — indistinguishable, at the values level,
+   * from "the flag was never given". A caller trusting only `ipoIds.length
+   * === 0` treats each of these as unscoped/DB-wide, which for a --apply
+   * repair tool means "every candidate row in the database". `resolveIpoScope`
+   * must flag all five as `unusable: true` by inspecting argv directly.
+   */
+  describe('resolveIpoScope (#1053 MAJOR-1: present-but-unusable --ipo)', () => {
+    it('MUTATION: is unusable when --ipo is immediately followed by another flag', () => {
+      expect(resolveIpoScope(['--ipo', '--apply'])).toEqual({ ipoIds: [], invalid: [], unusable: true });
+    });
+
+    it('MUTATION: is unusable when --ipo is the trailing argv token', () => {
+      expect(resolveIpoScope(['--expect-db', 'ipodhan_test', '--ipo'])).toEqual({
+        ipoIds: [],
+        invalid: [],
+        unusable: true,
+      });
+    });
+
+    it('MUTATION: is unusable when --ipo is given an empty string', () => {
+      expect(resolveIpoScope(['--ipo', ''])).toEqual({ ipoIds: [], invalid: [], unusable: true });
+    });
+
+    it('MUTATION: is unusable when --ipo is given a bare comma', () => {
+      expect(resolveIpoScope(['--ipo', ','])).toEqual({ ipoIds: [], invalid: [], unusable: true });
+    });
+
+    it('MUTATION: parses the --ipo=<uuid> single-token form rather than treating it as absent', () => {
+      expect(resolveIpoScope([`--ipo=${UUID_A}`])).toEqual({ ipoIds: [UUID_A], invalid: [], unusable: false });
+    });
+
+    it('is NOT unusable, and unscoped, when --ipo is never given at all', () => {
+      expect(resolveIpoScope(['--expect-db', 'ipodhan_test', '--apply'])).toEqual({
+        ipoIds: [],
+        invalid: [],
+        unusable: false,
+      });
+    });
+
+    it('is NOT unusable when --ipo carries a real uuid', () => {
+      expect(resolveIpoScope(['--ipo', UUID_A])).toEqual({ ipoIds: [UUID_A], invalid: [], unusable: false });
+    });
+
+    it('reports invalid (not unusable) when --ipo carries a non-uuid token', () => {
+      expect(resolveIpoScope(['--ipo', 'not-a-uuid'])).toEqual({ ipoIds: [], invalid: ['not-a-uuid'], unusable: false });
+    });
+  });
+
+  describe('flagIsPresent', () => {
+    it('is true for the bare flag', () => {
+      expect(flagIsPresent(['--ipo', UUID_A], '--ipo')).toBe(true);
+    });
+
+    it('is true for the --flag=value form', () => {
+      expect(flagIsPresent([`--ipo=${UUID_A}`], '--ipo')).toBe(true);
+    });
+
+    it('is false when the flag never appears', () => {
+      expect(flagIsPresent(['--apply'], '--ipo')).toBe(false);
     });
   });
 

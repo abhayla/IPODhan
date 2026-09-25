@@ -3,7 +3,12 @@
 // fix: --ipo did not exist on this Cli shape, so a test passing it would have
 // had the value silently discarded (parsed nowhere), never scoping the run.
 import { describe, it, expect } from 'vitest';
-import { parseArgs } from '../../../scripts/repair-reopen-stale-doc-nay.js';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import {
+  parseArgs,
+  buildStaleRowsQuery,
+  buildSettledByLowerRankQuery,
+} from '../../../scripts/repair-reopen-stale-doc-nay.js';
 
 describe('repair-reopen-stale-doc-nay parseArgs', () => {
   it('parses --expect-db, --apply, --allow-prod, --undo and --settled-by-lower-rank', () => {
@@ -22,6 +27,7 @@ describe('repair-reopen-stale-doc-nay parseArgs', () => {
       settledByLowerRank: true,
       ipoIds: [],
       invalidIpo: [],
+      unusableIpo: false,
     });
   });
 
@@ -35,6 +41,7 @@ describe('repair-reopen-stale-doc-nay parseArgs', () => {
       settledByLowerRank: false,
       ipoIds: [],
       invalidIpo: [],
+      unusableIpo: false,
     });
   });
 
@@ -60,5 +67,65 @@ describe('repair-reopen-stale-doc-nay parseArgs', () => {
     const cli = parseArgs(['--expect-db', 'ipodhan_test', '--ipo', 'not-a-uuid']);
     expect(cli.invalidIpo).toEqual(['not-a-uuid']);
     expect(cli.ipoIds).toEqual([]);
+  });
+
+  // #1053 review round 2 MAJOR-1: a present-but-unusable --ipo must never
+  // read the same as "no --ipo given" — each of these fell back to unscoped
+  // (ipoIds: []) before the fix, which for --apply means every row DB-wide.
+  it.each([
+    ['--ipo followed by another flag', ['--expect-db', 'ipodhan_test', '--ipo', '--apply']],
+    ['a trailing --ipo with no value', ['--expect-db', 'ipodhan_test', '--ipo']],
+    ['--ipo given an empty string', ['--expect-db', 'ipodhan_test', '--ipo', '']],
+    ['--ipo given a bare comma', ['--expect-db', 'ipodhan_test', '--ipo', ',']],
+  ])('MUTATION: unusableIpo is true for %s', (_label, argv) => {
+    const cli = parseArgs(argv);
+    expect(cli.unusableIpo).toBe(true);
+    expect(cli.ipoIds).toEqual([]);
+    expect(cli.invalidIpo).toEqual([]);
+  });
+
+  it('MUTATION: parses the --ipo=<uuid> single-token form instead of treating it as absent', () => {
+    const cli = parseArgs(['--expect-db', 'ipodhan_test', '--ipo=00000000-0000-4000-9161-000000000001']);
+    expect(cli.ipoIds).toEqual(['00000000-0000-4000-9161-000000000001']);
+    expect(cli.unusableIpo).toBe(false);
+  });
+});
+
+/**
+ * #1053 review round 2, MAJOR-2: the compiled SQL of both reads must carry
+ * `ipo_id = ANY(...)` — bound as ONE array param — when scoped, and carry no
+ * such clause at all when unscoped. Rendered via `PgDialect().sqlToQuery`
+ * (the same text node-postgres receives), not executed against a database.
+ *
+ * MUTATION VERIFIED (2026-09-25, manually): commenting out the `scopeClause`
+ * interpolation in `buildStaleRowsQuery`/`buildSettledByLowerRankQuery` (so
+ * the query is always built unscoped) turns both "scoped" cases below red —
+ * `.sql` no longer contains `ipo_id = ANY(` and `.params` no longer carries
+ * the id array — while the "unscoped" cases stay green, confirming the
+ * assertion is actually exercising the scope clause and not passing vacuously.
+ */
+describe('#1053 MAJOR-2: readStaleRows / readSettledByLowerRankRows scope condition is present in the compiled SQL', () => {
+  const UUID = '00000000-0000-4000-9161-000000000009';
+
+  it('buildStaleRowsQuery: scoped — carries ipo_id = ANY($n::uuid[]) with the ids as one param', () => {
+    const rendered = new PgDialect().sqlToQuery(buildStaleRowsQuery([UUID]));
+    expect(rendered.sql).toMatch(/p\.ipo_id = ANY\(\$\d+::uuid\[\]\)/);
+    expect(rendered.params).toContainEqual([UUID]);
+  });
+
+  it('buildStaleRowsQuery: unscoped — carries no ANY(...) scope clause at all', () => {
+    const rendered = new PgDialect().sqlToQuery(buildStaleRowsQuery([]));
+    expect(rendered.sql).not.toMatch(/ipo_id = ANY\(/);
+  });
+
+  it('buildSettledByLowerRankQuery: scoped — carries ipo_id = ANY($n::uuid[]) with the ids as one param', () => {
+    const rendered = new PgDialect().sqlToQuery(buildSettledByLowerRankQuery([UUID]));
+    expect(rendered.sql).toMatch(/p\.ipo_id = ANY\(\$\d+::uuid\[\]\)/);
+    expect(rendered.params).toContainEqual([UUID]);
+  });
+
+  it('buildSettledByLowerRankQuery: unscoped — carries no ANY(...) scope clause at all', () => {
+    const rendered = new PgDialect().sqlToQuery(buildSettledByLowerRankQuery([]));
+    expect(rendered.sql).not.toMatch(/ipo_id = ANY\(/);
   });
 });

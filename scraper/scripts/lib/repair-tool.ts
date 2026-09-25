@@ -55,15 +55,35 @@ export const PRODUCTION_DATABASE_NAME = 'ipodhan';
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Every value following one or more occurrences of a repeatable CLI flag. */
+/**
+ * Every value following one or more occurrences of a repeatable CLI flag, plus
+ * the `--flag=value` form. Review round 2 (#1053, MAJOR-1): `--ipo=<uuid>` is
+ * the common single-token form and must be PARSED, not silently ignored.
+ */
 export function collectFlagValues(argv: readonly string[], flag: string): string[] {
   const values: string[] = [];
+  const eqPrefix = `${flag}=`;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === flag && argv[i + 1] !== undefined && !argv[i + 1].startsWith('--')) {
       values.push(argv[i + 1]);
+    } else if (argv[i].startsWith(eqPrefix)) {
+      values.push(argv[i].slice(eqPrefix.length));
     }
   }
   return values;
+}
+
+/**
+ * True when `flag` appears ANYWHERE in argv, in either the bare (`--ipo`) or
+ * `--ipo=value` form — regardless of whether `collectFlagValues` was able to
+ * extract a usable value from it. Needed because `collectFlagValues` silently
+ * drops a flag with no following non-flag token (`--ipo --apply`, a trailing
+ * `--ipo`), which is otherwise indistinguishable from "the flag was never
+ * given at all" once you only look at the collected values (#1053 MAJOR-1).
+ */
+export function flagIsPresent(argv: readonly string[], flag: string): boolean {
+  const eqPrefix = `${flag}=`;
+  return argv.some((a) => a === flag || a.startsWith(eqPrefix));
 }
 
 export interface IpoScopeParseResult {
@@ -86,6 +106,32 @@ export function parseIpoScope(rawValues: readonly string[]): IpoScopeParseResult
   const invalid = all.filter((v) => !UUID_RE.test(v));
   const ipoIds = [...new Set(all.filter((v) => UUID_RE.test(v)))];
   return { ipoIds, invalid };
+}
+
+export interface IpoScopeResolution extends IpoScopeParseResult {
+  /**
+   * True when `flag` is PRESENT in argv but produced zero valid ids AND zero
+   * invalid tokens — the five measured forms from #1053's review: `--ipo
+   * --apply` (next token is another flag), a trailing `--ipo` (no next
+   * token), `--ipo ""`, `--ipo ,` (only empty/comma tokens), and previously
+   * `--ipo=<uuid>` before this fix parsed it. Without this check every one of
+   * those forms silently fell back to `ipoIds: []` — unscoped, DB-wide — which
+   * for a `--apply` repair tool means "every candidate row in the database",
+   * the opposite of what `--ipo` asked for. The caller MUST refuse (exit 2)
+   * rather than run unscoped when this is true.
+   */
+  unusable: boolean;
+}
+
+/**
+ * The one call every repair tool's `parseArgs` should make for `--ipo`:
+ * combines presence detection with value parsing so a present-but-unusable
+ * flag can never be silently read as "not given".
+ */
+export function resolveIpoScope(argv: readonly string[], flag = '--ipo'): IpoScopeResolution {
+  const present = flagIsPresent(argv, flag);
+  const { ipoIds, invalid } = parseIpoScope(collectFlagValues(argv, flag));
+  return { ipoIds, invalid, unusable: present && ipoIds.length === 0 && invalid.length === 0 };
 }
 
 /** Human-readable scope line for the tool's header — printed so a run always states what it will touch. */

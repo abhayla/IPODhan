@@ -77,6 +77,10 @@
  * file's rows running in parallel (issue #1045). `--undo` stays scoped by its
  * own ledger regardless of `--ipo`.
  *
+ * Exit codes: 0 done (or dry run / nothing to repair); 1 usage/guard refusal;
+ * 2 an `--ipo` value failed uuid validation, or `--ipo`/`--ipo=` was present
+ * but yielded no usable uuid (#1053 review round 2).
+ *
  * No detection change: pull_doc_nay_with_offer_doc already detects this class by IPO identity.
  */
 import '../../scripts/lib/alias-preflight-auto.mjs';
@@ -87,11 +91,10 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   buildIpoScopeCondition,
-  collectFlagValues,
   describeIpoScope,
   openRepairDb,
-  parseIpoScope,
   queryCurrentDatabase,
+  resolveIpoScope,
   writeLedgerFile,
   type ExecuteLike,
 } from './lib/repair-tool';
@@ -137,11 +140,14 @@ function mapStaleRows(result: unknown): StaleDocNayRow[] {
 /**
  * Same SQL as `checkPullDocNayWithOfferDoc` in scripts/audit-detection-floor.mjs
  * (item 6 / F-161) — one population definition, read here rather than retyped.
+ * Exported (pure, no DB) so review round 2's compiled-SQL scope test can
+ * assert the `ipo_id = ANY(...)` clause is present when scoped and absent
+ * when not, without executing against a database (#1053 MAJOR-2).
  */
-async function readStaleRows(ipoIds: readonly string[]): Promise<StaleDocNayRow[]> {
+export function buildStaleRowsQuery(ipoIds: readonly string[]) {
   const scope = buildIpoScopeCondition(ipoIds, 'p.ipo_id');
   const scopeClause = scope ? sql`AND ${scope}` : sql``;
-  const result = await (db as any).execute(sql`
+  return sql`
     SELECT p.id, p.ipo_id, i.slug, p.table_name, p.row_key, p.field_name, p.state::text AS state,
            p.reason_code, p.cause, p.last_attempt_at::text AS last_attempt_at
       FROM ipo_field_plan p
@@ -158,7 +164,11 @@ async function readStaleRows(ipoIds: readonly string[]): Promise<StaleDocNayRow[
                       AND d.extracted_at IS NOT NULL
                       AND p.last_attempt_at > d.extracted_at)
      ORDER BY i.slug, p.table_name, p.field_name, p.row_key
-  `);
+  `;
+}
+
+async function readStaleRows(ipoIds: readonly string[]): Promise<StaleDocNayRow[]> {
+  const result = await (db as any).execute(buildStaleRowsQuery(ipoIds));
   return mapStaleRows(result);
 }
 
@@ -166,12 +176,13 @@ async function readStaleRows(ipoIds: readonly string[]): Promise<StaleDocNayRow[
  * --settled-by-lower-rank (#1025): the SUPPLIED half of the identical
  * `pull_doc_nay_with_offer_doc` population — see the file header. Same SQL as
  * `readStaleRows` with `state = 'SUPPLIED'` in place of `state =
- * 'NOT_AVAILABLE_YET'`.
+ * 'NOT_AVAILABLE_YET'`. Exported (pure, no DB) for the same reason as
+ * `buildStaleRowsQuery` above.
  */
-async function readSettledByLowerRankRows(ipoIds: readonly string[]): Promise<StaleDocNayRow[]> {
+export function buildSettledByLowerRankQuery(ipoIds: readonly string[]) {
   const scope = buildIpoScopeCondition(ipoIds, 'p.ipo_id');
   const scopeClause = scope ? sql`AND ${scope}` : sql``;
-  const result = await (db as any).execute(sql`
+  return sql`
     SELECT p.id, p.ipo_id, i.slug, p.table_name, p.row_key, p.field_name, p.state::text AS state,
            p.reason_code, p.cause, p.last_attempt_at::text AS last_attempt_at
       FROM ipo_field_plan p
@@ -188,7 +199,11 @@ async function readSettledByLowerRankRows(ipoIds: readonly string[]): Promise<St
                       AND d.extracted_at IS NOT NULL
                       AND p.last_attempt_at > d.extracted_at)
      ORDER BY i.slug, p.table_name, p.field_name, p.row_key
-  `);
+  `;
+}
+
+async function readSettledByLowerRankRows(ipoIds: readonly string[]): Promise<StaleDocNayRow[]> {
+  const result = await (db as any).execute(buildSettledByLowerRankQuery(ipoIds));
   return mapStaleRows(result);
 }
 
@@ -208,6 +223,8 @@ export interface Cli {
   ipoIds: string[];
   /** `--ipo` values that failed uuid validation; a non-empty list refuses the run (exit 2). */
   invalidIpo: string[];
+  /** `--ipo`/`--ipo=` present in argv but yielded zero usable ids (#1053 MAJOR-1); refuses the run (exit 2). */
+  unusableIpo: boolean;
 }
 
 function valueAfter(argv: readonly string[], flag: string): string | null {
@@ -216,7 +233,7 @@ function valueAfter(argv: readonly string[], flag: string): string | null {
 }
 
 export function parseArgs(argv: readonly string[]): Cli {
-  const ipoScope = parseIpoScope(collectFlagValues(argv, '--ipo'));
+  const ipoScope = resolveIpoScope(argv, '--ipo');
   return {
     apply: argv.includes('--apply'),
     allowProd: argv.includes('--allow-prod'),
@@ -225,6 +242,7 @@ export function parseArgs(argv: readonly string[]): Cli {
     settledByLowerRank: argv.includes('--settled-by-lower-rank'),
     ipoIds: ipoScope.ipoIds,
     invalidIpo: ipoScope.invalid,
+    unusableIpo: ipoScope.unusable,
   };
 }
 
@@ -263,6 +281,12 @@ async function main(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2));
   if (cli.invalidIpo.length > 0) {
     console.error(`${TOOL}: --ipo value(s) are not valid uuids, refusing: ${cli.invalidIpo.join(', ')}`);
+    process.exit(2);
+  }
+  if (cli.unusableIpo) {
+    console.error(
+      `${TOOL}: --ipo was given but no usable uuid could be parsed from it (check quoting, placement or a missing value) — refusing rather than silently falling back to ALL IPOs DB-wide.`
+    );
     process.exit(2);
   }
   if (!cli.expectDb) {
