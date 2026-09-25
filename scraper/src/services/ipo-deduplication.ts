@@ -369,11 +369,6 @@ export function createDeduplicationService(
   return new IPODeduplicationService(db);
 }
 
-/**
- * Export types for use in other services
- */
-export type {
-  IPOCandidate,
-  DeduplicationMatch,
-  DeduplicationStats,
-};
+// IPOCandidate, DeduplicationMatch and DeduplicationStats are already exported
+// at their `export interface` declarations above (TS2484: this block was a
+// duplicate re-export of the same names, which tsc treats as a conflict).

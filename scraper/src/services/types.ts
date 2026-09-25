@@ -7,7 +7,8 @@
  * Scraper source types
  * Re-exported from field-priority-matrix for consistency
  */
-export type { ScraperSource } from '../config/field-priority-matrix.js';
+import type { ScraperSource } from '../config/field-priority-matrix.js';
+export type { ScraperSource };
 
 /**
  * Scraper type (alias for ScraperSource for compatibility)

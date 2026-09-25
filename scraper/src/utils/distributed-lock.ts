@@ -440,7 +440,6 @@ export const LOCK_DEFAULTS = {
   RETRY_DELAY: 200, // 200ms between retries
 } as const;
 
-/**
- * Export types for external use
- */
-export type { LockResult, LockConfig };
+// LockResult and LockConfig are already exported at their `export interface`
+// declarations above (TS2484: this was a duplicate re-export of the same
+// names, which tsc treats as a conflict).

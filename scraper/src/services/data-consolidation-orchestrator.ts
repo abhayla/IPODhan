@@ -816,7 +816,6 @@ export class DataConsolidationOrchestrator {
   }
 }
 
-/**
- * Export types for external use
- */
-export type { ConsolidatedUpsertResult };
+// ConsolidatedUpsertResult is already exported at its `export interface`
+// declaration above (TS2484: this was a duplicate re-export of the same
+// name, which tsc treats as a conflict).
