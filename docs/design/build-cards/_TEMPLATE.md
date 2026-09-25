@@ -17,17 +17,30 @@ Rules that apply to every card:
 - **No number is typed from memory** (OD-18). Measure it, or cite where it comes from.
 - **No card invents a decision.** If the design does not say, the card says the design does not say.
 - **Every card carries a `Status:` line immediately after its H1** (build item 32,
-  `docs/design/spec-deviation-guideline.md` §8 mechanism 4), one of exactly two shapes, asserted by
-  `docs/design/check-build-cards.mjs --gate`:
+  `docs/design/spec-deviation-guideline.md` §8 mechanism 4), one of three accepted shapes, asserted
+  by `docs/design/check-build-cards.mjs --gate`:
 
   ```
   Status: NOT STARTED
   Status: DONE 2026-09-14 PRs #745, #758 proof 2026-09-14 22:00 cycle
+  Status: PARTIAL 2026-09-25 PRs #1027 proof 2026-09-25 22:00 cycle parked #943, #1022
   ```
 
+  `PARTIAL` (owner decision 2026-09-25, #1027, "Add PARTIAL shape (Recommended)") is for an item
+  whose built part is proven and whose remainder is genuinely parked: it names the PRs and proof of
+  the built part, plus every parked issue. The gate additionally checks, via `gh`, that **every**
+  named parked issue is open and carries the `parked` label — a closed or unlabelled issue fails the
+  card, and an unreachable `gh` fails the card too (fails CLOSED; the local-only
+  `--offline-parked-check=skip` flag is never valid in CI).
+
   A bolded `**Status:**` does NOT satisfy the gate — the same shape that once let a Budget line go
-  invisible to its own regex. The gate asserts the line's SHAPE, not the truth of a `DONE` claim; a
-  card marked DONE against PR numbers that were never merged still passes.
+  invisible to its own regex. The gate asserts the line's SHAPE (and, for PARTIAL, the named issues'
+  real state); it does not otherwise verify the truth of a `DONE` claim — a card marked DONE against
+  PR numbers that were never merged still passes.
+
+  `unknown` is accepted as a fourth, TEMPORARY shape, but only for the small, shrink-only
+  `UNKNOWN_ALLOWED` list in `check-build-cards.mjs` — see that file for the current list and the
+  `REFUSE_UNKNOWN` switch that will retire it.
 
 ---
 

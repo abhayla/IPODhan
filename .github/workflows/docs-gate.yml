@@ -56,6 +56,15 @@ jobs:
         # Run explicitly as well as via the design gate below, so a build-card
         # failure names itself in the step list instead of arriving as one line
         # of D16's output.
+        #
+        # #1027: a card's `Status: PARTIAL ... parked #NNN` line resolves each named issue's
+        # state via `gh issue view` (one call per distinct number, never per card — see
+        # resolveParkedIssueStates in check-build-cards.mjs), so this step needs a token `gh`
+        # will use. GITHUB_TOKEN is always present in a workflow run; GH_TOKEN is what `gh`
+        # itself reads (same pattern as pr-gate.yml's "Run detection change gate" step).
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: node docs/design/check-build-cards.mjs --gate
 
       - name: Design consistency gate
