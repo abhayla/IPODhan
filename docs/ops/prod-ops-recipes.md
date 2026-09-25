@@ -1123,3 +1123,30 @@ SLOT=staging
 ssh rfp-vps "cat /var/www/ipodhan/shared/config/$SLOT/CONFIG_SHA"
 ssh rfp-vps "PORT=\$(sed -n 's/^PORT=//p' /var/www/ipodhan/shared/env/$SLOT/web.env.local); curl -s localhost:\$PORT/api/version"
 ```
+
+## 16. unattended-upgrades must not restart the Actions runners (owner-approved 2026-09-26, #630)
+
+**Why:** needrestart's post-upgrade sweep restarted `actions.runner.*`, which killed staging deploy run 34549307959
+(`a854ca7a`) at 06:45:46 IST and skipped `deploy-linux.sh`'s EXIT trap, leaving an orphan `npm run build` and a
+half-built release folder. It recurs on every upgrade that overlaps a deploy.
+
+**Applied 2026-09-26 on the VPS (owner OK for this one change):** `/etc/needrestart/conf.d/zz-no-actions-runner-restart.conf`
+
+```
+$nrconf{override_rc}{qr(^actions\.runner\..+\.service$)} = 0;
+```
+
+It covers both runners on the box (`actions.runner.abhayla-IPODhan.linux-vps-ipodhan` and
+`actions.runner.abhayla-BestDematAccount.hostinger-deploy`). Security upgrades still apply; a runner picks up library
+updates at its next normal restart.
+
+**Read it back (read-only):**
+
+```
+ssh -o BatchMode=yes rfp-vps 'perl -c /etc/needrestart/conf.d/zz-no-actions-runner-restart.conf; systemctl is-active actions.runner.abhayla-IPODhan.linux-vps-ipodhan.service'
+```
+
+Proof that needrestart loads it: `needrestart.conf` lines 229-230 `do` every `conf.d/*.conf`; loading the real config
+and matching the IPODhan runner's unit name yields exactly one rule, `^actions\.runner\..+\.service$ => 0`.
+**Undo:** `rm /etc/needrestart/conf.d/zz-no-actions-runner-restart.conf`. The repo-side half (a deploy start removes
+orphan half-built releases the killed trap left behind) stays open in #630.
