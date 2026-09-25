@@ -164,6 +164,7 @@ it by assuming.
 | OD-109 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) keep "From a manual correction" and (C) no line for admin values (Spec basis: OD-39 "The reader should see where a number came from and when it was last confirmed", OD-61, OD-72; none on admin wording; today `web/components/ipo-detail/FieldProvenanceLine.tsx:40` prints ADMIN as "a manual correction"). **The reader line for an admin value tells the true source and never says "correction": an admin who PICKED a source shows that source and the date it was read ("From NSE, read 25 Sep 2026"); an admin who TYPED a value shows "Checked by the IPODhan team, <date>". The admin's own name is never shown to a reader; it stays in the audit row.** | 2026-09-25 | §2.11, §9.2 | §2.11 and §9.2 item 13 state picked-source wording, "Checked by the IPODhan team" for typed values, no "correction", no admin name |
 | OD-110 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) inline editing on every page and (C) also registrar and market-holiday pages (Spec basis: OD-102 "I don't know whether all other pages should also have this edit feature or not but IPO details obviously should have", OD-105; none otherwise). **Admin editing of IPO data happens only on the IPO detail page. Every IPO row on the list, calendar, tracker and prospectus pages shows an admin-only "Edit" link that opens that IPO's editor. Registrars and market holidays stay in the existing admin screens, outside this feature.** | 2026-09-25 | §9.2 | §9.2 item 14 states detail-page-only editing, the admin-only Edit link on list pages, and registrars and holidays out of scope |
 | OD-111 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) no creating and (C) create with a name only (Spec basis: spec-deviation-guideline.md §5 -- REITS/INVITS 5, NCD 7, BUYBACK/TENDER 17 rows per §1.11 are admin-owned and "show admin-supplied provenance"; §5 identity merges "a human confirms"; OD-34; OD-68; none on admin-created rows; not measured: whether the scraper ever missed an IPO entirely). **An admin may create a new IPO row by hand, entering the company name, the offering type and at least one identifier (NSE or BSE symbol, CIN, or SEBI filing number). When the scraper later finds the same offering it binds to that row through the identifier (OD-34) instead of creating a second one; a later match on name alone is held for review (OD-68). For the admin-owned types the source panel is mostly empty, so values are typed under OD-108.** | 2026-09-25 | §9.2 | §9.2 item 15 states admin-created rows, the required identifier, and scraper binding by OD-34 |
+| OD-112 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) a daily digest only and (C) an instant alert for every item (Spec basis: OD-106 alert on an exchange override; OD-72 and OD-93 "one admin alert per IPO per day" for a missed live slot plus an end-of-day summary; item 35; signal-ownership.md R3; spec-deviation-guideline.md §5.1; none on admin-editing alerts otherwise; channel: the shared Notifier gateway, which already delivers IPODhan alerts to Telegram per GLOBAL.md §2; measured F-173: about 84 real disagreements, 19 on live IPOs). **Admin alerts go through the Notifier gateway to Telegram, to all admins, at two levels: an INSTANT alert only for an UPCOMING or OPEN IPO (the exchange replaced an admin date, a new real disagreement, a newer document disagreeing with an admin value); everything else in ONE daily digest at 09:00 IST, grouped by IPO with live IPOs first, with counts and a direct link into each IPO's editor.** | 2026-09-25 | §9.2 | §9.2 item 16 states the Notifier/Telegram channel, instant alerts for live IPOs only, and the 09:00 IST digest grouped by IPO |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -3960,6 +3961,10 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
     scraper later binds to it by that identifier (OD-34) instead of adding a duplicate; a name-only
     match is held for review (OD-68). For the admin-owned types (`spec-deviation-guideline.md` §5)
     values are mostly typed, under item 12.
+16. **Alerts (OD-112).** Through the Notifier gateway to Telegram, to all admins. Instant only for
+    an UPCOMING or OPEN IPO (exchange replaced an admin date, a new real disagreement, a newer
+    document disagreeing with an admin value); everything else in one daily digest at 09:00 IST,
+    grouped by IPO, live first, with counts and a link into each IPO's editor.
 ### 9.3 Where the per-source values come from (OD-103)
 
 The edit view reads the witnesses stored for the field (§2.4 as amended by OD-103). Each source
@@ -3984,7 +3989,7 @@ No owner question was needed here; each point follows from a decision already ma
 
 ### 9.5 Still open (asked one at a time, recorded here as answered)
 
-Who can add or remove an admin; alerts; mobile use.
+Who can add or remove an admin; mobile use.
 
 ---
 
