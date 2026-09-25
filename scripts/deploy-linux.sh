@@ -711,8 +711,31 @@ resume_scraper() {
   # exit code with this one and mask why the deploy failed. A loud warn is the
   # right level - the deploy's own outcome is already non-zero on that path,
   # and restart_pm2's preflight is what gates the SUCCESS path.
-  if ! preflight_scraper_wake "$target_dir/scripts/scraper-wake.sh" 2>&1; then
-    warn "resume_scraper: the wake wrapper cannot run from $target_dir — the scraper will NOT wake. See the FATAL line above; fix the box before relying on this release."
+  #
+  # #1007/#804 fix: this trap can fire before the script has been read down to
+  # preflight_scraper_wake()'s own definition (bash only registers a function
+  # when execution reaches its `name() {` line — a build failure early in the
+  # script fires this EXIT trap while that line, and install_scraper_cron's
+  # and install_staging_window_cron's, are still below the point execution
+  # ever reached). Calling an undefined function is "command not found", not a
+  # false return, so the old `if ! preflight_scraper_wake ...; then warn` never
+  # even reached the warn — it left the OS cron pointed at whichever release
+  # was already current, silently. `declare -F` guards every call the same way
+  # for all three functions, so a genuinely early failure degrades to an
+  # accurate warn instead of a spurious shell error.
+  #
+  # It also runs the call in a subshell `( … )`: preflight_scraper_wake calls
+  # fatal() internally (an `exit 1`), which — called directly, not in a
+  # subshell — exits the WHOLE script from inside this EXIT trap and replaces
+  # the deploy's real exit code with 1 (#804). The subshell contains that
+  # exit to just the subshell; `if !` then sees its non-zero return and takes
+  # the warn branch the comment above always intended.
+  if declare -F preflight_scraper_wake >/dev/null; then
+    if ! ( preflight_scraper_wake "$target_dir/scripts/scraper-wake.sh" ) 2>&1; then
+      warn "resume_scraper: the wake wrapper cannot run from $target_dir — the scraper will NOT wake. See the FATAL line above; fix the box before relying on this release."
+    fi
+  else
+    warn "resume_scraper: preflight_scraper_wake is not defined yet at this point in the script (the deploy failed before reaching its definition) — skipping the wake preflight; the OS cron still points at whichever release was already current."
   fi
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
   # T-327 P2-7: TZ=UTC is explicit at every pm2 start — pm2 captures the
@@ -740,8 +763,20 @@ resume_scraper() {
   # --no-autorestart and scheduled nothing: the same total outage as the
   # original defect, reached by a different route. The schedule is re-asserted
   # here against whichever release we actually resumed.
-  install_scraper_cron
-  install_staging_window_cron # no-op for prod; re-asserts the window line on a staging resume/rollback the same way the scraper wake line is re-asserted above
+  #
+  # #1007: same declare -F guard as preflight_scraper_wake above — a build
+  # failure early enough in the script means these two are not defined yet
+  # either, so calling them unguarded is "command not found", not a no-op.
+  if declare -F install_scraper_cron >/dev/null; then
+    install_scraper_cron
+  else
+    warn "resume_scraper: install_scraper_cron is not defined yet at this point in the script — cron left unchanged; the previous release's schedule remains in effect."
+  fi
+  if declare -F install_staging_window_cron >/dev/null; then
+    install_staging_window_cron # no-op for prod; re-asserts the window line on a staging resume/rollback the same way the scraper wake line is re-asserted above
+  else
+    warn "resume_scraper: install_staging_window_cron is not defined yet at this point in the script — staging window cron left unchanged."
+  fi
 }
 # Item 01: the EXIT trap now also removes the release directory this
 # invocation created when the deploy failed (cleanup_failed_release_dir,
