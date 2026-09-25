@@ -300,8 +300,9 @@ export const FEATURE_FLAGS = {
    * past the create-time check converges instead of living in prod forever.
    * Job runs DRY-RUN (report/log only) at all times, regardless of this flag —
    * this flag only gates whether the job runs AT ALL on the cron schedule.
-   * Actual merge/delete (`dryRun: false`) is never wired to the cron path in
-   * this build; a separate, explicit activation is Abhay's call.
+   * The `dryRun: false` apply path was removed from this job (#1003); an
+   * actual merge now only ever happens through `mergeDuplicateInto` (the
+   * logged, reversible merge tool, OD-92), never from this sweep.
    * Default: false
    */
   ENABLE_DUPLICATE_SWEEP_JOB: process.env.ENABLE_DUPLICATE_SWEEP_JOB === 'true',
