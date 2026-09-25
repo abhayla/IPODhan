@@ -242,11 +242,13 @@ export async function GET(request: NextRequest) {
   `.claude/skills/windows-deployment-expert/` describe that retired path — read them as history.
 - **Commit gate (husky pre-commit):** staged-secret scan → workflow-file ASCII check → lint-staged
   (`tsc --noEmit` on `web/**` only). Nothing type-checks `scraper/` or `packages/shared/` at commit time.
-- **Push gate (husky pre-push, `scripts/ci/pre-push-local.sh`, run-discipline B3):** path-maps the pushed
-  diff against `origin/main` and runs the matching slice of `.github/workflows/pr-gate.yml`'s own checks
-  (web tsc/lint/targeted tests, scraper targeted tests + `type-check:scripts` + the static integration/
-  detection/ratchet gates, design/docs/board `--check` generators, hook self-tests) before the push leaves
-  the machine. Escape hatch: `PRE_PUSH_LOCAL_SKIP=1 git push` (prints a warning, never silent).
+- **Push gate (husky pre-push, `scripts/ci/pre-push-local.sh`, run-discipline B3):** reads the pushed refs git
+  sends on stdin and gates exactly those ranges (remote sha..local sha; new branch = merge-base with `origin/main`;
+  deletes and tags skipped), running the matching slice of `pr-gate.yml` (ratchets on every code push, web
+  tsc/lint, scraper `type-check:scripts`, board/registry `--check`, workflow ASCII, hook and companion tests).
+  Checks run on the working tree, so it REFUSES a push of a ref that is not HEAD or with uncommitted tracked
+  changes. The detection-change gate is left to CI (it reads the PR body). Plan only: `--plan`. Escape hatch:
+  `PRE_PUSH_LOCAL_SKIP=1 git push` (prints a warning, never silent).
 - **Shared package must be compiled before web/scraper builds:** `cd packages/shared && npx tsc` — CI verifies `dist/db/schema.d.ts` exists. If types from `@ipodhan/shared` seem stale locally, rebuild it.
 
 ---

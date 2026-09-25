@@ -1,1 +1,3 @@
-bash scripts/ci/pre-push-local.sh
+# git sends one "<local ref> <local sha> <remote ref> <remote sha>" line per pushed ref on stdin;
+# --stdin makes the gate read them (it inherits this stdin). $1/$2 = remote name, url.
+bash scripts/ci/pre-push-local.sh --stdin "$@"
