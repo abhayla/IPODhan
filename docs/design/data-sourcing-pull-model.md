@@ -168,6 +168,7 @@ it by assuming.
 | OD-113 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) any admin manages admins and (C) accounts in a config file changed by deploy (Spec basis: OD-104 "same powers, no approval step"; none on account management -- searched add/remove admin, account, password reset, deactivate; today one shared token per `.claude/rules/admin-route-auth.md`). **Only the owner adds an admin, removes one, or resets a password. OD-104's equal powers cover data, not accounts. A removed admin loses access at once; every edit they made stays in place and stays attributed to them in the audit trail.** | 2026-09-25 | §9.2 | §9.2 item 6 states owner-only account management and that a removed admin's edits stay attributed |
 | OD-114 | *"just give the basic uh, feature for admin email phone number and name okay and maybe telegram id do not uh, complicate too many things this is not my area of priority right now maintaining the IPOs not maintaining the admins"* -- 2026-09-25, given in reply to the mobile question, about the admin accounts of OD-104 and OD-113 (Spec basis: OD-104, OD-112, OD-113; none on admin account fields). **An admin account holds only name, email, phone number and an optional Telegram ID; the admin logs in with email and password. Nothing more is built for admin management now (no roles, no two-factor login, no self-service screens beyond the owner adding, removing and resetting per OD-113).** Alerts (OD-112) go to the IPODhan Telegram chat the Notifier gateway already delivers to; the stored Telegram ID identifies the admin but is not yet used for per-person delivery, because the gateway's `POST /notify` has no recipient field (GLOBAL.md §2). Risk stated, not acted on: a password is the only guard on a value that outranks every source (§2.7). | 2026-09-25 | §9.2 | §9.2 item 6 lists the four account fields, email-and-password login, and nothing further for admin management |
 | OD-115 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) single fields only on a phone and (C) desktop only (Spec basis: none on mobile -- searched mobile, phone, responsive; OD-112 sends live-IPO alerts to Telegram). **The IPO editor works fully on a phone: the per-source panel stacks vertically with large tap targets, and every rule (OD-107 lists, OD-108 units, notes and checks, OD-111 create) behaves as on a desktop. If list editing proves costly on a small screen, lists and create may fall back to desktop-only (option B) as a build decision; it does not change what the feature does.** | 2026-09-25 | §9.2 | §9.2 item 21 states full phone editing with the stacked panel and the B fallback |
+| OD-116 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) hard delete and (C) no removal from the editor (Spec basis: OD-53 "frozen as non-IPO listings with a notice (reusing the OD-8 withdrawn-page freeze mechanism)", OD-38 "every automatic merge is logged and reversible", spec-deviation-guideline.md §5; none on admin removal; real cases F-174: coal-india-ltd, bharat-heavy-electricals-ltd, bank-of-maharashtra, central-bank-of-india stored as CLOSED IPOs). **An admin never deletes an IPO row. A wrong row (a non-IPO, a corporate action, a row that should not exist) is HIDDEN with a written reason through the OD-8/OD-53 freeze mechanism: it leaves every public page, the scraper stops walking it, and its identifiers stay so the scraper recognises it instead of recreating it. Unhide restores it with its data. A true duplicate is merged with the existing merge tool (OD-38), which the admin confirms.** | 2026-09-25 | §9.2 | §9.2 item 23 states hide-with-reason via the freeze mechanism, no delete, identifiers kept, unhide, duplicates via the OD-38 merge |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -3989,6 +3990,10 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
 22. **No "re-scrape this IPO" button** (follows from OD-65 "one IPO, one round" and OD-56 "once per
     stage change"). The editor shows what the sources said; it never triggers a new read. A field
     the admin wants re-read is cleared (item 11), which returns it to the loop at its next stage.
+23. **A row that should not exist (OD-116).** Never deleted. The admin hides it with a written
+    reason through the OD-8/OD-53 freeze mechanism: it leaves every public page, the scraper stops
+    walking it, and its identifiers stay so it is not recreated. Unhide restores it. A true
+    duplicate is merged with the OD-38 merge tool, confirmed by the admin.
 ### 9.3 Where the per-source values come from (OD-103)
 
 The edit view reads the witnesses stored for the field (§2.4 as amended by OD-103). Each source
@@ -4011,9 +4016,10 @@ No owner question was needed here; each point follows from a decision already ma
 - **What remains is ordered for one person (`spec-deviation-guideline.md` §5.1):** live and upcoming
   IPOs first, grouped by IPO, open count in the nightly report (item 35).
 
-### 9.5 Still open (asked one at a time, recorded here as answered)
+### 9.5 Still open
 
-Removing or hiding a wrong IPO row.
+Nothing, as of 2026-09-25: every question of the discovery round is answered (OD-102 to OD-116)
+or follows from an earlier decision (§9.2 items 9-11, 17-20, 22; §9.4).
 
 ---
 
