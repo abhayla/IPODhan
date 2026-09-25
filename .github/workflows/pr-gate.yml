@@ -197,6 +197,14 @@ jobs:
         # other pre-install gates rather than after npm ci.
         run: node --test scripts/tests/no-experimental-strip-types-in-tests.test.mjs
 
+      - name: Test-DB drift-precondition self-tests (#558)
+        # Pure resolveDatabaseUrl() unit tests only (Node builtins, no DB) —
+        # the drift check itself is scripts/assert-schema-drift.ts's own,
+        # already exercised by the "Assert schema drift" step in the
+        # scraper-document-integration job. This just proves the wrapper
+        # resolves the same DATABASE_URL a real integration run would use.
+        run: node --test scripts/tests/assert-test-db-not-drifted.test.mjs
+
       - name: Document-state check self-tests (T-403)
         # Mutation-proof: scripts/tests/document-state-checks.test.mjs imports
         # the real predicates from scripts/lib/document-state-checks.mjs, so
