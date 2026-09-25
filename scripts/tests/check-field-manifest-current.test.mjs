@@ -104,7 +104,18 @@ const KNOWN_UNIT_CORRECTIONS = {
   'financial_statements.revenue': 'per_row',
 };
 
-test('case 3: the generator reproduces all 10 v1 rows exactly (rank/capability/unit/na)', async () => {
+// OD-100 (#1022, review round 2 MAJOR-1): 4 of the 10 v1 hand-written rows are subscriptions.*
+// fields that are now job-owned (the Live-figures job) and correctly carry NO manifest row at
+// all — a declared, dated exclusion, not the generator silently dropping a v1 field. Any OTHER
+// v1 row going missing still fails this test.
+const JOB_OWNED_V1_EXCLUSIONS = new Set([
+  'subscriptions.total_subscription',
+  'subscriptions.retail_subscription',
+  'subscriptions.qib_subscription',
+  'subscriptions.nii_subscription',
+]);
+
+test('case 3: the generator reproduces all 10 v1 rows exactly (rank/capability/unit/na), except the 4 now job-owned (OD-100)', async () => {
   const { generateManifest } = await import(pathToFileURL(GENERATOR).href);
   const spec = await import(pathToFileURL(SPEC_PATH).href);
   const { manifest } = await generateManifest(spec);
@@ -113,6 +124,7 @@ test('case 3: the generator reproduces all 10 v1 rows exactly (rank/capability/u
   for (const [key, original] of Object.entries(ORIGINAL_V1_ROWS)) {
     const gen = manifest.fields[key];
     if (!gen) {
+      if (JOB_OWNED_V1_EXCLUSIONS.has(key)) continue;
       mismatches.push(`${key}: missing from generated manifest`);
       continue;
     }
