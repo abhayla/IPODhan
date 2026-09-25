@@ -20,6 +20,14 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CARDS = path.join(HERE, 'build-cards');
 const REPO = path.resolve(HERE, '../..');
 const gate = process.argv.includes('--gate');
+const offlineParkedCheckSkip = process.argv.includes('--offline-parked-check=skip');
+
+// Item 32 (#1027, owner decision 2026-09-25, "Add PARTIAL shape (Recommended)"): once every
+// UNKNOWN_ALLOWED card below has resolved to DONE / NOT STARTED / PARTIAL, the supervisor flips
+// this to `true` and empties UNKNOWN_ALLOWED in the same change — `unknown` is then refused
+// outright, for every card, with no allow-list. Flipping it early (before the six cards below
+// resolve) makes the gate red on the whole tree; that is the point of the flip, not a bug in it.
+const REFUSE_UNKNOWN = false;
 
 // Spelled exactly as `_TEMPLATE.md` spells them, in order.
 //
@@ -87,15 +95,146 @@ function isIgnored(p) {
 // subprocess for every case.
 export { isIgnored };
 
+// --- Status-line shapes (item 32; #1027 adds PARTIAL) ---
+//
+// Four shapes are matched against, but only three are ever ACCEPTED unconditionally: `unknown`
+// is accepted only for the cards on UNKNOWN_ALLOWED (or refused outright once REFUSE_UNKNOWN
+// flips). PARTIAL is accepted only when every parked issue it names resolves as open + labelled
+// `parked` — that resolution is NOT done here, so this function stays a pure string match the
+// tests can drive with no network.
+const NOT_STARTED_RE = /^Status: NOT STARTED$/;
+const DONE_RE = /^Status: DONE \d{4}-\d{2}-\d{2} PRs #.+ proof .+$/;
+const UNKNOWN_RE = /^Status: unknown — .+$/;
+// `parked #NNN[, #NNN...]` at the very end of the line — one or more issue numbers, comma-separated.
+const PARTIAL_RE = /^Status: PARTIAL \d{4}-\d{2}-\d{2} PRs #.+ proof .+ parked (#\d+(?:,\s*#\d+)*)$/;
+
+/**
+ * Classify a card's Status line by shape alone (no issue-state resolution).
+ * Returns `{ shape: 'NOT_STARTED' | 'DONE' | 'UNKNOWN' | 'PARTIAL' | 'INVALID', parkedIssues? }`.
+ * `parkedIssues` (PARTIAL only) is an array of issue numbers, as written on the line.
+ */
+export function classifyStatusLine(statusLine) {
+  if (NOT_STARTED_RE.test(statusLine)) return { shape: 'NOT_STARTED' };
+  if (DONE_RE.test(statusLine)) return { shape: 'DONE' };
+  if (UNKNOWN_RE.test(statusLine)) return { shape: 'UNKNOWN' };
+  const m = PARTIAL_RE.exec(statusLine);
+  if (m) {
+    const parkedIssues = [...m[1].matchAll(/\d+/g)].map((x) => Number(x[0]));
+    return { shape: 'PARTIAL', parkedIssues };
+  }
+  return { shape: 'INVALID' };
+}
+
+/**
+ * The full predicate for one card's Status line, pure and network-free: every fact it needs
+ * about the outside world (whether `gh` could be asked at all, and each parked issue's resolved
+ * state) is passed in as `parkedIssueStates` (a `Map<number, {state, labels}|null>`) and `ghOk`
+ * (boolean) rather than fetched here — this is what lets
+ * `scripts/tests/check-build-cards-status.test.mjs` drive every PARTIAL branch with no network
+ * call.
+ *
+ * Returns a problem string, or `null` when the line is accepted.
+ */
+export function validateStatusLine(statusLine, filename, opts) {
+  const { unknownAllowed, ghOk, parkedIssueStates, offlineSkip, refuseUnknown } = opts;
+  const parsed = classifyStatusLine(statusLine);
+
+  if (parsed.shape === 'INVALID') {
+    return `${filename}: no "Status:" line immediately after the H1, or one that does not match the accepted shapes (NOT STARTED / DONE / PARTIAL / allow-listed unknown)`;
+  }
+
+  if (parsed.shape === 'UNKNOWN') {
+    if (refuseUnknown) {
+      return `${filename}: "Status: unknown" is refused (REFUSE_UNKNOWN is true) — resolve this card to DONE, NOT STARTED or PARTIAL`;
+    }
+    if (!unknownAllowed.has(filename)) {
+      return `${filename}: "Status: unknown" is only accepted for the cards named in UNKNOWN_ALLOWED (item 32 follow-up) — resolve this card against refs/remotes/origin/main instead of adding it to that list`;
+    }
+    return null;
+  }
+
+  if (parsed.shape === 'PARTIAL') {
+    if (offlineSkip) return null; // local-only escape hatch; never set in CI (see main()).
+    if (!ghOk) {
+      return `${filename}: PARTIAL names parked issue(s) but \`gh\` could not be reached to verify them — this fails CLOSED by design; if you are offline, re-run locally with --offline-parked-check=skip (never in CI)`;
+    }
+    for (const n of parsed.parkedIssues) {
+      const state = parkedIssueStates.get(n);
+      if (state === undefined || state === null) {
+        return `${filename}: PARTIAL names parked issue #${n}, which \`gh\` could not read (missing, inaccessible, or the run's single lookup for it failed)`;
+      }
+      if (state.state !== 'OPEN') {
+        return `${filename}: PARTIAL names parked issue #${n}, but it is ${state.state}, not open — PARTIAL requires every named issue to be open and labelled \`parked\``;
+      }
+      if (!state.labels.includes('parked')) {
+        return `${filename}: PARTIAL names parked issue #${n}, which is open but not labelled \`parked\` — PARTIAL requires the label`;
+      }
+    }
+    return null;
+  }
+
+  return null; // NOT_STARTED / DONE
+}
+
+/**
+ * Resolve every named parked-issue number to `{state, labels}` (or `null` if `gh` could not read
+ * it) with exactly one `gh issue view` call per distinct number for the whole run — never once
+ * per card. Returns `{ ghOk, parkedIssueStates }`. Skipped entirely (returns `ghOk: true`, an
+ * empty map — `offlineSkip` is checked before the map is ever consulted) when `offlineSkip`.
+ */
+export function resolveParkedIssueStates(numbers, offlineSkip) {
+  const parkedIssueStates = new Map();
+  if (offlineSkip || numbers.size === 0) return { ghOk: true, parkedIssueStates };
+
+  const auth = spawnSync('gh', ['auth', 'status'], { encoding: 'utf8' });
+  if (auth.status !== 0) return { ghOk: false, parkedIssueStates };
+
+  for (const n of numbers) {
+    const r = spawnSync('gh', ['issue', 'view', String(n), '--json', 'state,labels'], { encoding: 'utf8' });
+    if (r.status !== 0) { parkedIssueStates.set(n, null); continue; }
+    try {
+      const data = JSON.parse(r.stdout);
+      parkedIssueStates.set(n, { state: data.state, labels: (data.labels || []).map((l) => l.name) });
+    } catch {
+      parkedIssueStates.set(n, null);
+    }
+  }
+  return { ghOk: true, parkedIssueStates };
+}
+
 const isMain = Boolean(process.argv[1]) && (
   import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`
   || import.meta.url === `file:///${process.argv[1].replace(/\\/g, '/')}`
 );
 
 if (isMain) try {
+  // `--offline-parked-check=skip` is a local-only escape hatch (no `gh` reachable) — never valid
+  // in CI, which always has GH_TOKEN wired for this step (see docs-gate.yml).
+  if (offlineParkedCheckSkip && process.env.CI) {
+    console.error('check-build-cards: --offline-parked-check=skip is refused in CI (process.env.CI is set) — CI must resolve parked issues for real, never skip the check.');
+    process.exit(2);
+  }
+
   const files = fs.readdirSync(CARDS).filter((f) => /^item-\d+-.*\.md$/.test(f)).sort();
   const problems = [];
   let pathsChecked = 0, pathsMissing = 0, excused = 0;
+
+  // Pass 1: read every card's Status line and collect the union of parked-issue numbers PARTIAL
+  // lines name, so the run resolves each one exactly once — never once per card.
+  const cardStatusLines = new Map(); // filename -> statusLine
+  const parkedNumbers = new Set();
+  for (const f of files) {
+    const md = fs.readFileSync(path.join(CARDS, f), 'utf8');
+    const bodyLines = md.split(/\r?\n/);
+    const h1Idx = bodyLines.findIndex((l) => l.startsWith('# '));
+    let statusIdx = h1Idx + 1;
+    while (statusIdx < bodyLines.length && bodyLines[statusIdx].trim() === '') statusIdx++;
+    const statusLine = h1Idx === -1 ? '' : (bodyLines[statusIdx] || '');
+    cardStatusLines.set(f, statusLine);
+    const parsed = classifyStatusLine(statusLine);
+    if (parsed.shape === 'PARTIAL') parsed.parkedIssues.forEach((n) => parkedNumbers.add(n));
+  }
+  const { ghOk, parkedIssueStates } = resolveParkedIssueStates(parkedNumbers, offlineParkedCheckSkip);
 
   for (const f of files) {
     const md = fs.readFileSync(path.join(CARDS, f), 'utf8');
@@ -164,15 +303,17 @@ if (isMain) try {
     // A bolded `**Status:**` must NOT satisfy this. The Budget regex above is
     // /Budget:\s*\d+\s*min/i and a bolded Budget line is invisible to it — the same shape that
     // let a build card ship with a Budget the gate could not see.
-    const bodyLines = md.split(/\r?\n/);
-    const h1Idx = bodyLines.findIndex((l) => l.startsWith('# '));
-    let statusIdx = h1Idx + 1;
-    while (statusIdx < bodyLines.length && bodyLines[statusIdx].trim() === '') statusIdx++;
-    const statusLine = h1Idx === -1 ? '' : (bodyLines[statusIdx] || '');
-    if (!/^Status: (NOT STARTED|DONE \d{4}-\d{2}-\d{2} PRs #.+ proof .+|unknown — .+)$/.test(statusLine))
-      problems.push(`${f}: no "Status:" line immediately after the H1, or one that does not match the accepted shapes`);
-    else if (/^Status: unknown — /.test(statusLine) && !UNKNOWN_ALLOWED.has(f))
-      problems.push(`${f}: "Status: unknown" is only accepted for the cards named in UNKNOWN_ALLOWED (item 32 follow-up) — resolve this card against refs/remotes/origin/main instead of adding it to that list`);
+    //
+    // Three accepted shapes now (#1027): NOT STARTED, DONE, and PARTIAL (a built part proven, a
+    // remainder parked to a named, open, `parked`-labelled issue). `unknown` is a fourth, TEMPORARY
+    // shape accepted only for the six cards on UNKNOWN_ALLOWED until each resolves — see
+    // REFUSE_UNKNOWN above.
+    const statusLine = cardStatusLines.get(f);
+    const problem = validateStatusLine(statusLine, f, {
+      unknownAllowed: UNKNOWN_ALLOWED, ghOk, parkedIssueStates, offlineSkip: offlineParkedCheckSkip,
+      refuseUnknown: REFUSE_UNKNOWN,
+    });
+    if (problem) problems.push(problem);
   }
 
   console.log(`build cards: ${files.length}`);
