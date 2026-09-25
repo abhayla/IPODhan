@@ -18,7 +18,11 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['./vitest.integration.setup.ts'],
     include: ['tests/integration/**/*.test.ts'],
-    testTimeout: 60000
+    testTimeout: 60000,
+    // #451: same guard as vitest.config.ts — a target outside `include`
+    // (e.g. a unit-test path run against this config by mistake) must fail
+    // loudly instead of silently exiting 0.
+    passWithNoTests: false
   },
   resolve: {
     alias: {
