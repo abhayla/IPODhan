@@ -374,6 +374,7 @@ cannot land until this item's scheduler and budgets exist.
 | §5.1 | R-102, R-103, R-104 |
 | §7.4 | R-230, R-147, R-148 |
 
+<!-- end generated -->
 ## Known gaps
 
 - **F-35 (MAJOR) — A nightly backlog drain adds a third extractor to a 2-vCPU box that already took a 522 outage from two.** Carried here rather than closed: a third extractor on a 2-vCPU box is a scheduling decision, and item 7 owns the lock, the budgets and the skip-rather-than-kill rule that bound it. Not fixed in the design (OD-47); it is this item's to close.

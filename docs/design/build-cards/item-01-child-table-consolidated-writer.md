@@ -345,6 +345,7 @@ row-retirement rule before this lands.
 |---|---|
 | §1.12 | R-158 |
 
+<!-- end generated -->
 ## Known gaps
 
 - **F-74 (MAJOR) — Item 1 adds three new UNIQUE constraints to production tables with no pre-migration duplicate check or repair step.** Carried here rather than closed: three new UNIQUE constraints need a pre-migration duplicate scan and a repair step; probe duplicate-scan.mjs measures whether any exist today. Not fixed in the design (OD-47); it is this item's to close.

@@ -175,6 +175,7 @@ cannot happen until they do.
 | §4.5 | R-097, R-099, R-145, R-149, R-150 |
 | §4.6 | R-171, R-172, R-173, R-174, R-175, R-176 |
 
+<!-- end generated -->
 ## Known gaps
 
 - **F-30 (MAJOR) — Four of the six migration gates are prose, not commands.** Carried here rather than closed: the six gates become named scripts with exit codes; until item 10 ships they are prose, and the card says so. Not fixed in the design (OD-47); it is this item's to close.

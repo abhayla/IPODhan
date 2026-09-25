@@ -328,6 +328,7 @@ find a gap in on the first pass).
 |---|---|
 | §2.2.1 | R-021, R-023, R-025, R-160, R-229, R-236 |
 
+<!-- end generated -->
 ## Known gaps
 
 - **No real multi-part fixture was captured or transcribed this session.** §2.2.1 names the

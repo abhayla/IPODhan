@@ -178,6 +178,7 @@ exercised end-to-end before the pull walk exists to have supplied the values thi
 | §3.1 | R-090 |
 | §3.2 | R-091, R-200, R-201, R-202, R-203, R-204, R-207 |
 
+<!-- end generated -->
 ## Known gaps
 
 - **F-163 (open parts).** The rule set maps two phrasings (Rays "should be read as X instead of Y" for

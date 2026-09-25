@@ -144,6 +144,7 @@ review, CI-gated merge on green per `engineering-roles.md`'s review-tier table).
 |---|---|
 | §1.11.1 | R-157 |
 
+<!-- end generated -->
 ## Known gaps
 
 None recorded yet. A finding this item owns but does not close is written here, with its

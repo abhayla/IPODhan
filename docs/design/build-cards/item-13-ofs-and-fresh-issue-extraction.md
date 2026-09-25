@@ -179,6 +179,7 @@ one beyond "withhold both").
 |---|---|
 | §2.5.4 | R-066, R-067, R-068, R-069, R-070 |
 
+<!-- end generated -->
 ## Known gaps
 
 None recorded yet. A finding this item owns but does not close is written here, with its

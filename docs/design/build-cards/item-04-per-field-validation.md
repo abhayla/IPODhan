@@ -429,6 +429,7 @@ real owner fork O-13 (the grey-market premium and the market-hours gate).
 | §5.3 | R-114 |
 | §5.3.1 | R-115 |
 
+<!-- end generated -->
 ## Known gaps
 
 None recorded yet. A finding this item owns but does not close is written here, with its

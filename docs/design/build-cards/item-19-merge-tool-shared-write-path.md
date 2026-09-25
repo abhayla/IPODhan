@@ -232,6 +232,7 @@ roll back together, not just that both succeed on the happy path.
 |---|---|
 | §2.3.3.3 | R-049, R-231, R-051, R-052 |
 
+<!-- end generated -->
 ## Known gaps
 
 - **Delisting is not built here.** §2.3.3.3 covers both delisting (the post-listing price job's

@@ -310,6 +310,7 @@ None. This item implements no numbered rule of the design — it is scaffolding 
 the items that do. Stated explicitly rather than left blank, because an empty list and
 a forgotten list look identical.
 
+<!-- end generated -->
 ## Known gaps
 
 None recorded yet. A finding this item owns but does not close is written here, with its
