@@ -501,6 +501,12 @@ function loadIssueSizeManifestCapability() {
   }
 }
 
+// field_sources.row_key ships in 20260910043758_salty_shen (#1055: prod was 19 migrations behind
+// main and did not have it, which threw 'column fs.row_key does not exist' and, before main()
+// isolated each check, aborted every check after this one). Not-applied -> PASS, not-applicable;
+// applied-but-fails, or unknown state -> UNVERIFIABLE (#947's class, same shape as
+// checkSourceKeyConflicts' 0053 gate).
+const FIELD_SOURCES_ROW_KEY_MIGRATION = '20260910043758_salty_shen';
 async function checkC_issueSizeSourceCapability() {
   loadIssueSizeManifestCapability();
   const name = 'ipos.issue_size current provenance source is manifest-capable for ipos.issue_size (field-manifest.json)';
@@ -508,14 +514,31 @@ async function checkC_issueSizeSourceCapability() {
     record('c_issue_size_noncapable_source', name, 'UNVERIFIABLE', `field-manifest.json not readable: ${ISSUE_SIZE_MANIFEST_READ_ERROR}`);
     return;
   }
-  const rows = await q(
-    `SELECT i.id, i.company_name, i.slug, i.status, i.segment, i.issue_size AS "issueSize",
-            fs.source AS "issueSizeSource"
-       FROM ipos i
-       LEFT JOIN field_sources fs
-         ON fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.row_key = '' AND fs.field_name = 'issueSize'
-      WHERE ${REAL_IPO}`
-  );
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.id, i.company_name, i.slug, i.status, i.segment, i.issue_size AS "issueSize",
+              fs.source AS "issueSizeSource"
+         FROM ipos i
+         LEFT JOIN field_sources fs
+           ON fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.row_key = '' AND fs.field_name = 'issueSize'
+        WHERE ${REAL_IPO}`
+    );
+  } catch (e) {
+    if (e.code === '42703' || e.code === '42P01') {
+      const applied = await isMigrationApplied(FIELD_SOURCES_ROW_KEY_MIGRATION);
+      if (applied === false) {
+        record('c_issue_size_noncapable_source', name, 'PASS',
+          `not applicable — migration ${FIELD_SOURCES_ROW_KEY_MIGRATION} (field_sources.row_key) not applied on this database`);
+        return;
+      }
+      record('c_issue_size_noncapable_source', name, 'UNVERIFIABLE',
+        `field_sources.row_key read failed (migration applied=${applied}): ${e.message}`);
+      return;
+    }
+    record('c_issue_size_noncapable_source', name, 'UNVERIFIABLE', `field_sources read failed: ${e.message}`);
+    return;
+  }
   const offenders = [];
   for (const r of rows) {
     const row = { source: r.issueSizeSource, issueSize: r.issueSize };
@@ -1692,30 +1715,41 @@ async function checkIdentity() {
 // Mirrors assert-migrations-applied.sh's exact decision (which is drizzle-kit migrate()'s own
 // decision, node_modules/drizzle-kit/api.js): a migration counts as applied when
 // MAX(created_at) in drizzle.__drizzle_migrations is >= that migration's journaled `when`. Reads
-// meta/_journal.json for the 0053 entry's `when` rather than hand-copying the literal, so a
+// meta/_journal.json for the named entry's `when` rather than hand-copying the literal, so a
 // re-numbered journal can't silently desync this from the migration it actually names.
 // Returns true/false, or null when the journal entry or the DB read failed (state unknown —
 // the caller must NOT treat null as "not applied", only as "cannot tell").
-async function isMigration0053Applied() {
-  let when0053;
-  try {
-    const journalPath = join(REPO_ROOT, 'web/drizzle/migrations/meta/_journal.json');
-    const journal = JSON.parse(readFileSync(journalPath, 'utf8'));
-    const entry = journal.entries.find((e) => e.tag === '0053_ipo_source_keys');
-    if (!entry) return null;
-    when0053 = entry.when;
-  } catch {
-    return null;
-  }
-  try {
-    const [{ maxCreatedAt }] = await q(
-      `SELECT COALESCE(MAX(created_at), 0)::bigint AS "maxCreatedAt" FROM drizzle.__drizzle_migrations`
-    );
-    return Number(maxCreatedAt) >= Number(when0053);
-  } catch {
-    return null;
-  }
+// Generalised from the 0053-only isMigration0053Applied() (#945) so any check gated on a
+// migration-added column/table (fs.row_key / 20260910043758_salty_shen, closed_ipo_resourcing /
+// 0050, ipo_merge_log / 0051, etc — #947's class) can use the same decision by naming its tag.
+const MIGRATION_APPLIED_CACHE = new Map(); // tag -> Promise<boolean|null>
+async function isMigrationApplied(tag) {
+  if (MIGRATION_APPLIED_CACHE.has(tag)) return MIGRATION_APPLIED_CACHE.get(tag);
+  const promise = (async () => {
+    let when;
+    try {
+      const journalPath = join(REPO_ROOT, 'web/drizzle/migrations/meta/_journal.json');
+      const journal = JSON.parse(readFileSync(journalPath, 'utf8'));
+      const entry = journal.entries.find((e) => e.tag === tag);
+      if (!entry) return null;
+      when = entry.when;
+    } catch {
+      return null;
+    }
+    try {
+      const [{ maxCreatedAt }] = await q(
+        `SELECT COALESCE(MAX(created_at), 0)::bigint AS "maxCreatedAt" FROM drizzle.__drizzle_migrations`
+      );
+      return Number(maxCreatedAt) >= Number(when);
+    } catch {
+      return null;
+    }
+  })();
+  MIGRATION_APPLIED_CACHE.set(tag, promise);
+  return promise;
 }
+// Back-compat alias — #945's tests/callers name this; kept as a thin wrapper on the generalised fn.
+const isMigration0053Applied = () => isMigrationApplied('0053_ipo_source_keys');
 
 // i_source_key_conflict (OD-85, docs/design/data-sourcing-pull-model.md §2.3.3.2 "Source record keys"):
 // one IPO holding two ACTIVE keys of the same source and type (a supersede that never happened, or a
@@ -3234,6 +3268,24 @@ async function checkZipMemberRows() {
   }
 }
 
+// #1055: main() used to be a flat sequence of `await checkX()` calls with no isolation, so one
+// check's uncaught error (e.g. checkC_issueSizeSourceCapability's 'column fs.row_key does not
+// exist' on a DB whose migrations lag main) aborted every check after it — 59 of 63 checks never
+// ran, and floor-delta.mjs then reported the missing ones as GONE (fixed). runCheck() gives every
+// call its own try/catch: a throw becomes ONE '[UNVERIFIABLE] <fnName> ... — <error message>' line
+// (same record()/console.log shape as every other line) and main() moves on to the next check.
+// This does not replace fixing individual checks to gate on isMigrationApplied() (done for the
+// #1055 crash site; #947 tracks the rest) — it is the floor under all of them: a check that still
+// throws for an unrelated reason no longer takes the other 62 down with it. check_roster (below)
+// separately flags any check id this run's fallback line didn't cover.
+async function runCheck(fn) {
+  try {
+    await fn();
+  } catch (e) {
+    record(fn.name || 'unknown_check', fn.name || 'unknown_check', 'UNVERIFIABLE', e && e.stack ? e.message : String(e));
+  }
+}
+
 async function main() {
   await assertSessionTimezoneUtc();
   // Item 9: probe data_conflicts.document_id ONCE, before any check builds a predicate that
@@ -3241,62 +3293,62 @@ async function main() {
   await ensureDocumentIdProbe(q);
   console.log(`
 === DETECTION-FLOOR AUDIT (T-335) — ${new Date().toISOString()} ===`);
-  await checkA_B();
-  await checkC();
-  await checkC_issueSizeSourceCapability();
-  await checkD();
-  await checkD_strandedReadmit();
-  await checkD_segmentProvenance();
-  await checkE();
-  await checkE_unknownSlug404();
-  await checkF();
-  await checkG1_repeatedWarn();
-  await checkG3_inertDetector();
-  await checkG();
-  await checkH();
-  checkI();
-  await checkIdentity();
-  await checkSourceKeyConflicts();
-  await checkSettledFieldRewrites();
-  await checkClosedIpoDoneWithoutWalk();
-  await checkK();
-  await checkCycleOverrunAudit();
-  await checkL();
-  await checkJ();
-  await checkM();
-  await checkN();
-  checkO();
-  await checkP();
-  await checkQ_rowKeyCoverage();
-  await checkR_provenanceParentNotNull();
-  await checkNotApplicableDocuments();
-  checkS_pullPolicy();
-  await checkS_pullWritePolicy();
-  await checkS_pullPlanRank();
-  await checkS_pullPlanStuckReclaim();
-  await checkS_pullPlanPendingStranded();
-  await checkPullDocNayWithOfferDoc();
-  await checkPullFrozen();
-  await checkPullPlanConfigGapAtCap();
-  await checkPullPlanGapStalled();
-  await checkS_pullOverrides();
-  await checkS_pullYield();
-  await checkS_pullExhaust();
-  await checkS_pullExcused();
-  await checkS_pullWalk();
-  await checkS_pullType();
-  await checkS_pullPlanOrigin();
-  await checkS_pullAdmin();
-  await checkS_pullNoop();
-  await checkS_e1Source();
-  await checkS_pullPlan();
-  await checkS_pullWrite();
-  await checkS_pullNoblank();
-  await checkS_incompletePagesUnretried();
-  await checkS_corpusShape();
-  await checkT_bseSubscriptionIstShift();
-  await checkD_iposDocLineageDocumentId();
-  await checkZipMemberRows();
+  await runCheck(checkA_B);
+  await runCheck(checkC);
+  await runCheck(checkC_issueSizeSourceCapability);
+  await runCheck(checkD);
+  await runCheck(checkD_strandedReadmit);
+  await runCheck(checkD_segmentProvenance);
+  await runCheck(checkE);
+  await runCheck(checkE_unknownSlug404);
+  await runCheck(checkF);
+  await runCheck(checkG1_repeatedWarn);
+  await runCheck(checkG3_inertDetector);
+  await runCheck(checkG);
+  await runCheck(checkH);
+  await runCheck(checkI);
+  await runCheck(checkIdentity);
+  await runCheck(checkSourceKeyConflicts);
+  await runCheck(checkSettledFieldRewrites);
+  await runCheck(checkClosedIpoDoneWithoutWalk);
+  await runCheck(checkK);
+  await runCheck(checkCycleOverrunAudit);
+  await runCheck(checkL);
+  await runCheck(checkJ);
+  await runCheck(checkM);
+  await runCheck(checkN);
+  await runCheck(checkO);
+  await runCheck(checkP);
+  await runCheck(checkQ_rowKeyCoverage);
+  await runCheck(checkR_provenanceParentNotNull);
+  await runCheck(checkNotApplicableDocuments);
+  await runCheck(checkS_pullPolicy);
+  await runCheck(checkS_pullWritePolicy);
+  await runCheck(checkS_pullPlanRank);
+  await runCheck(checkS_pullPlanStuckReclaim);
+  await runCheck(checkS_pullPlanPendingStranded);
+  await runCheck(checkPullDocNayWithOfferDoc);
+  await runCheck(checkPullFrozen);
+  await runCheck(checkPullPlanConfigGapAtCap);
+  await runCheck(checkPullPlanGapStalled);
+  await runCheck(checkS_pullOverrides);
+  await runCheck(checkS_pullYield);
+  await runCheck(checkS_pullExhaust);
+  await runCheck(checkS_pullExcused);
+  await runCheck(checkS_pullWalk);
+  await runCheck(checkS_pullType);
+  await runCheck(checkS_pullPlanOrigin);
+  await runCheck(checkS_pullAdmin);
+  await runCheck(checkS_pullNoop);
+  await runCheck(checkS_e1Source);
+  await runCheck(checkS_pullPlan);
+  await runCheck(checkS_pullWrite);
+  await runCheck(checkS_pullNoblank);
+  await runCheck(checkS_incompletePagesUnretried);
+  await runCheck(checkS_corpusShape);
+  await runCheck(checkT_bseSubscriptionIstShift);
+  await runCheck(checkD_iposDocLineageDocumentId);
+  await runCheck(checkZipMemberRows);
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
