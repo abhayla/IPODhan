@@ -13,6 +13,10 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scrubGitEnv, assertHermeticRepo } from './lib/hermetic-git.mjs';
+
+// A pre-push hook exports GIT_DIR; drop it so fixture git never hits the real repo (#1037).
+scrubGitEnv();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.join(__dirname, '..', 'ops', 'merge-if-current.mjs');
@@ -39,6 +43,7 @@ const CONSOLIDATOR = [
 function buildRepo(mainMoves, branchEdits) {
   const repo = mkdtempSync(path.join(tmpdir(), 'merge-if-current-'));
   git(repo, ['init', '--quiet', '--initial-branch=main']);
+  assertHermeticRepo(repo);
   git(repo, ['config', 'user.email', 'test@example.com']);
   git(repo, ['config', 'user.name', 'test']);
 

@@ -12,6 +12,10 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scrubGitEnv, assertHermeticRepo } from '../../tests/lib/hermetic-git.mjs';
+
+// A pre-push hook exports GIT_DIR; drop it so fixture git never hits the real repo (#1037).
+scrubGitEnv();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(__dirname, '..', 'check-design-traceability.mjs');
@@ -331,6 +335,7 @@ function git(cwd, args) {
 
 function initGitFixture(root) {
   git(root, ['init', '-q']);
+  assertHermeticRepo(root);
   git(root, ['config', 'core.autocrlf', 'false']);
   git(root, ['config', 'user.email', 'fixture@example.com']);
   git(root, ['config', 'user.name', 'Fixture']);

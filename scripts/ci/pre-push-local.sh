@@ -34,6 +34,17 @@
 # Escape hatch: PRE_PUSH_LOCAL_SKIP=1 git push   (prints a warning; never silent)
 set -u
 
+# git exports GIT_DIR into hooks (from a linked worktree: .git/worktrees/<name>).
+# Every check below may spawn tests that build throwaway repos; with GIT_DIR
+# inherited, their `git init` / `git config user.*` / `git commit` in a temp dir
+# hit THIS repository instead (2026-09-25: core.bare=true + [user] Test in the
+# shared .git/config, fixture commits on the pushed branch, files overwritten).
+# Neither `cd` nor `git -C` overrides an exported GIT_DIR, so drop git's
+# repo-local variables here; after the cd below, git finds this repo from cwd.
+for v in GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT          GIT_OBJECT_DIRECTORY GIT_DIR GIT_WORK_TREE GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE          GIT_INDEX_FILE GIT_NO_REPLACE_OBJECTS GIT_REPLACE_REF_BASE GIT_PREFIX GIT_SHALLOW_FILE          GIT_COMMON_DIR $(git rev-parse --local-env-vars 2>/dev/null); do
+  unset "$v"
+done
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
