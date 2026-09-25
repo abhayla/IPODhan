@@ -5640,6 +5640,83 @@
       "unit": "keep",
       "comparisonFamily": "MONEY"
     },
+    "listing_performance.current_price": {
+      "class": "M",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "post-listing market data"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [],
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
+    },
+    "listing_performance.current_price_bse": {
+      "class": "M",
+      "rank": {
+        "MAINBOARD": [
+          "BSE"
+        ],
+        "SME_BSE": [
+          "BSE"
+        ],
+        "SME_NSE": []
+      },
+      "capability": {
+        "BSE": {
+          "capable": true,
+          "reason": "BSE quote by definition"
+        }
+      },
+      "na": [],
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
+    },
+    "listing_performance.current_price_nse": {
+      "class": "M",
+      "rank": {
+        "MAINBOARD": [
+          "NSE"
+        ],
+        "SME_BSE": [],
+        "SME_NSE": [
+          "NSE"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "NSE quote by definition"
+        }
+      },
+      "na": [],
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
+    },
     "registrars.name": {
       "class": "D",
       "documentType": "RHP",

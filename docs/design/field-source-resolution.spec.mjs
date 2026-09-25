@@ -23,14 +23,10 @@ export const JOB_OWNED_TABLES = {
   subscriptions: 'Live-figures job (section 2.1, every 30 minutes 10:00-18:30 IST: "subscription and the demand graph"; "never touch ... a field plan row")',
   ipo_demand_graph: 'Live-figures job (section 2.1, every 30 minutes 10:00-18:30 IST: "subscription and the demand graph"; "never touch ... a field plan row")',
 };
-// Individual fields (not a whole table) the S5 Post-listing price job owns — listing_performance
-// also carries listing_price (a DIFFERENT, NSE/BSE/CG-ranked field the data job settles once, not
-// owned by this job), so only the three quote columns §2.1 names are marked, never the whole table.
-export const JOB_OWNED_FIELDS = {
-  'listing_performance.current_price': 'Post-listing price job (section 2.1, every 15 minutes during market hours for 90 days post-listing, from the free NSE/BSE quote endpoints)',
-  'listing_performance.current_price_bse': 'Post-listing price job (section 2.1, every 15 minutes during market hours for 90 days post-listing, from the free NSE/BSE quote endpoints)',
-  'listing_performance.current_price_nse': 'Post-listing price job (section 2.1, every 15 minutes during market hours for 90 days post-listing, from the free NSE/BSE quote endpoints)',
-};
+// Individual job-owned fields: none today. The S5 Post-listing price job writes ONLY ipos.current_price
+// (scraper/src/scheduler/post-listing-price.ts), which is not a field-plan field; listing_performance.current_price*
+// are NOT written by any scheduled job, so they stay walk-owned (supervisor correction, 2026-09-25).
+export const JOB_OWNED_FIELDS = {};
 
 // ---------- ipos (32) ----------
 add('ipos','symbol','D',['DOC','NSE','BSE'],{doc:'E7 cover'});
@@ -272,11 +268,11 @@ add('gmp_records','gmp_percentage','C',['—','—','—'],{formula:'gmp ÷ pric
 add('listing_performance','listing_price','M',['NSE','BSE','CG'],{only:'post-listing market data'});
 add('listing_performance','issue_price','C',['—','—','—'],{formula:'ipos.price_range_max at listing'});
 add('listing_performance','listing_gain_percent','C',['—','—','—'],{formula:'(listing − issue) ÷ issue × 100'});
-add('listing_performance','current_price','M',['NSE','BSE','CG'],{only:'post-listing market data',jobOwned:JOB_OWNED_FIELDS['listing_performance.current_price']});
+add('listing_performance','current_price','M',['NSE','BSE','CG'],{only:'post-listing market data'});
 add('listing_performance','current_gain_percent','C',['—','—','—'],{formula:'(current − issue) ÷ issue × 100'});
 add('listing_performance','last_updated','I',['—','—','—'],{});
-add('listing_performance','current_price_bse','M',['BSE','—','—'],{only:'BSE quote by definition',exchOnly:'BSE',jobOwned:JOB_OWNED_FIELDS['listing_performance.current_price_bse']});
-add('listing_performance','current_price_nse','M',['NSE','—','—'],{only:'NSE quote by definition',exchOnly:'NSE',jobOwned:JOB_OWNED_FIELDS['listing_performance.current_price_nse']});
+add('listing_performance','current_price_bse','M',['BSE','—','—'],{only:'BSE quote by definition',exchOnly:'BSE'});
+add('listing_performance','current_price_nse','M',['NSE','—','—'],{only:'NSE quote by definition',exchOnly:'NSE'});
 add('listing_performance','symbol','C',['—','—','—'],{formula:'copy of ipos.symbol'});
 add('listing_performance','company_name','C',['—','—','—'],{formula:'copy of ipos.company_name'});
 add('listing_performance','listing_date','C',['—','—','—'],{formula:'copy of ipos.listing_date (E-1 sourced)'});
