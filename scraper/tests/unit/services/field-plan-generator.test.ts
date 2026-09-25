@@ -315,7 +315,9 @@ describe('generateFieldPlan - fields with no ranked source are not planned (#858
 
   it('STILL plans the fields that DO have a source — the guard must not empty the plan', () => {
     const rows = generateFieldPlan(SME_BSE_IPO, manifest);
-    expect(rowFor(rows, 'listing_performance', 'current_price_bse')).toBeDefined();
+    // listing_performance.current_price_bse is job-owned (OD-100, #1022) and no longer planned;
+    // ipos.issue_size is a real SME_BSE-ranked field that stays.
+    expect(rowFor(rows, 'ipos', 'issue_size')).toBeDefined();
     expect(rows.length).toBeGreaterThan(100);
   });
 });

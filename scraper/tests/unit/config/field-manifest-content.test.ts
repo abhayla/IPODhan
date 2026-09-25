@@ -63,16 +63,14 @@ const GROUP_C_TO_REAL_FIELD: Record<string, string> = {
   fresh_issue_size: 'ipo_details.fresh_issue',
   offer_for_sale_size: 'ipo_details.ofs_issue',
   min_investment: 'ipo_details.min_investment',
-  total_subscription: 'subscriptions.total_subscription',
-  retail_subscription: 'subscriptions.retail_subscription',
-  qib_subscription: 'subscriptions.qib_subscription',
-  nii_subscription: 'subscriptions.nii_subscription',
   listing_price: 'listing_performance.listing_price',
 };
 
-// Group-C keys whose real schema field is spec-class C (computed) or absent
-// from the spec's F array (an orphaned/never-written column) — genuinely not
-// eligible for a rank/capability manifest row.
+// Group-C keys whose real schema field is spec-class C (computed), absent
+// from the spec's F array (an orphaned/never-written column), or job-owned
+// (OD-100, #1022, review round 2 — a table/field a dedicated scheduled job
+// owns carries no manifest row) — genuinely not eligible for a rank/capability
+// manifest row.
 const NOT_MANIFEST_ELIGIBLE: Record<string, string> = {
   peer_companies:
     'the matrix key writes the whole peer_companies table (one-to-many, 10 real columns) — no single table.column it resolves to',
@@ -84,6 +82,10 @@ const NOT_MANIFEST_ELIGIBLE: Record<string, string> = {
   gmp_percentage: 'gmp_records.gmp_percentage is spec class C — computed as gmp ÷ price_range_max × 100, not sourced',
   expected_listing_price: 'gmp_records.expected_listing_price has zero entries in the spec F array (orphaned column, no writer)',
   listing_gain_percentage: 'ipos.listing_gain_percentage (Story 7.10 legacy) has zero entries in the spec F array (orphaned column, no writer)',
+  total_subscription: 'subscriptions is job-owned (OD-100, #1022: the Live-figures job) — no manifest row',
+  retail_subscription: 'subscriptions is job-owned (OD-100, #1022: the Live-figures job) — no manifest row',
+  qib_subscription: 'subscriptions is job-owned (OD-100, #1022: the Live-figures job) — no manifest row',
+  nii_subscription: 'subscriptions is job-owned (OD-100, #1022: the Live-figures job) — no manifest row',
 };
 
 describe('field-manifest.json content — Group-C fields (item 2 slice 5; 13 of the original 16 after item 3 S1d deleted 3 dead matrix keys)', () => {
@@ -110,6 +112,10 @@ describe('field-manifest.json content — Group-C fields (item 2 slice 5; 13 of 
       'gmp_records.gmp_percentage',
       'gmp_records.expected_listing_price',
       'ipos.listing_gain_percentage',
+      'subscriptions.total_subscription',
+      'subscriptions.retail_subscription',
+      'subscriptions.qib_subscription',
+      'subscriptions.nii_subscription',
     ];
     for (const f of notEligibleRealFields) {
       expect(manifest.fields[f]).toBeUndefined();
