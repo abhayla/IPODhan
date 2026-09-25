@@ -56,6 +56,7 @@ import {
   checkExtractionStuck,
   checkStrandedNotExtractable,
   AUTO_PERSIST_DOC_TYPES_MIRROR,
+  checkNseLeadManagerProvenanceHasValue,
 } from './lib/document-state-checks.mjs';
 import {
   summariseIssueSizeConsistency,
@@ -1220,6 +1221,27 @@ async function checkM() {
   for (const v of short) notify('m_brlm_count', 'P2', v, 'Fewer lead managers stored than BSE lists', v);
   record('m_brlm_count', `stored lead managers >= the BSE payload count (${brlm.length} row(s) with a recorded payload count)`,
     short.length === 0 ? 'PASS' : 'FAIL', short.slice(0, MAX_OFFENDERS).join('; '));
+
+  // #418: m_brlm_count only covers the BSE arm (BSE payload count vs stored
+  // count). The NSE-sourced arm (recordDiscoveredLeadManagers's
+  // parseNseLeadManagers fallback) has no BSE payload count to compare
+  // against, so the one checkable invariant is that its OWN provenance row
+  // agrees with the value it claims to have written: every field_sources row
+  // naming NSE as the source of ipos.lead_managers must see a non-empty
+  // ipos.lead_managers.
+  const nseProvenance = await q(`
+    SELECT i.company_name, fs.source AS provenance_source,
+           coalesce(CASE WHEN jsonb_typeof(i.lead_managers) = 'array' THEN jsonb_array_length(i.lead_managers) END, 0)::int AS stored_count
+      FROM field_sources fs
+      JOIN ipos i ON i.id = fs.ipo_id
+     WHERE fs.table_name = 'ipos' AND fs.field_name = 'leadManagers' AND fs.source = 'NSE'
+  `);
+  const nseOffenders = nseProvenance
+    .map((r) => checkNseLeadManagerProvenanceHasValue({ companyName: r.company_name, provenanceSource: r.provenance_source, storedLeadManagerCount: r.stored_count }))
+    .filter(Boolean);
+  for (const v of nseOffenders) notify('m_brlm_nse_provenance', 'P2', v, 'field_sources names NSE as the lead-manager source but ipos.lead_managers is empty', v);
+  record('m_brlm_nse_provenance', `every field_sources row naming NSE as the source of ipos.lead_managers has a non-empty stored value (${nseProvenance.length} such provenance row(s))`,
+    nseOffenders.length === 0 ? 'PASS' : 'FAIL', nseOffenders.slice(0, MAX_OFFENDERS).join('; '));
 
   // T-403 M6: does the stored type still agree with the classifier? Fixing the
   // classifier only helped documents discovered afterwards; nothing compared the

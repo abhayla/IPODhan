@@ -1,0 +1,10 @@
+{
+  "id": "m_brlm_nse_provenance",
+  "findingClass": "a field_sources row names NSE as the source of ipos.lead_managers but ipos.lead_managers is null or empty — the NSE-sourced arm of lead-manager discovery has no BSE payload count to compare against, so this is the one invariant it can be checked against: the write and its provenance row must agree",
+  "issue": 418,
+  "sourceTask": "T-503",
+  "failThreshold": "EXISTS a field_sources row (table_name='ipos', field_name='leadManagers', source='NSE') for which ipos.lead_managers is null or an empty array",
+  "severity": "P2",
+  "unverifiableWhen": "never emitted UNVERIFIABLE — a population of zero NSE-sourced provenance rows is a clean PASS (0 candidates, 0 offenders), same convention as d_segment_provenance",
+  "section": "checks"
+}

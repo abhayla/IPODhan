@@ -33,6 +33,7 @@ import {
   NEVER_ESCALATES_MIN_RETRIES,
   checkStrandedNotExtractable,
   AUTO_PERSIST_DOC_TYPES_MIRROR,
+  checkNseLeadManagerProvenanceHasValue,
 } from '../lib/document-state-checks.mjs';
 
 const NOW = '2026-08-28T06:00:00Z';
@@ -869,4 +870,50 @@ test('stranded PASSes a PENDING row of an extractable type — that is a live qu
 test('stranded mirror includes CORRIGENDUM post-#989', () => {
   assert.ok(AUTO_PERSIST_DOC_TYPES_MIRROR.includes('CORRIGENDUM'));
   assert.ok(!AUTO_PERSIST_DOC_TYPES_MIRROR.includes('ADDENDUM'));
+});
+
+// --- 418: NSE-sourced lead-manager provenance vs. the stored value ----------
+
+test('418 FAILs when field_sources records NSE as source but ipos.lead_managers is empty', () => {
+  // The class #418 exists for: recordDiscoveredLeadManagers's NSE-sourced arm
+  // writes lead_managers and the field_sources provenance row together, but a
+  // LATER write path that touches one without the other leaves this drift —
+  // and m_brlm_count (BSE-payload-only) cannot see it.
+  const violation = checkNseLeadManagerProvenanceHasValue({
+    companyName: 'Rays Power Infra Ltd.',
+    provenanceSource: 'NSE',
+    storedLeadManagerCount: 0,
+  });
+  assert.match(violation, /field_sources records NSE as the source of lead_managers, but ipos\.lead_managers has 0 entries/);
+});
+
+test('418b FAILs when the provenance row is NSE and lead_managers is null (count coerces to 0)', () => {
+  const violation = checkNseLeadManagerProvenanceHasValue({
+    companyName: 'Z',
+    provenanceSource: 'NSE',
+    storedLeadManagerCount: null,
+  });
+  assert.match(violation, /has 0 entries/);
+});
+
+test('418c PASSes when the NSE-sourced provenance row has a non-empty value', () => {
+  assert.equal(
+    checkNseLeadManagerProvenanceHasValue({
+      companyName: 'X',
+      provenanceSource: 'NSE',
+      storedLeadManagerCount: 2,
+    }),
+    null
+  );
+});
+
+test('418d PASSes rows with no NSE provenance row at all (BSE-sourced, or none) — not this check\'s population', () => {
+  assert.equal(
+    checkNseLeadManagerProvenanceHasValue({ companyName: 'X', provenanceSource: 'BSE', storedLeadManagerCount: 0 }),
+    null
+  );
+  assert.equal(
+    checkNseLeadManagerProvenanceHasValue({ companyName: 'X', provenanceSource: null, storedLeadManagerCount: 0 }),
+    null
+  );
 });

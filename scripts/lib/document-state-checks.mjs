@@ -189,6 +189,32 @@ export function checkLeadManagerCount(row) {
   return `"${entityOf(row)}": ${stored} lead manager(s) stored but the BSE payload lists ${payload}`;
 }
 
+/**
+ * FAIL — a `field_sources` row records that `ipos.lead_managers` was last
+ * written from NSE (`source='NSE'`, `table_name='ipos'`,
+ * `field_name='leadManagers'`), but `ipos.lead_managers` is null or empty.
+ *
+ * #418: `m_brlm_count` only compares `ipos.lead_managers` against
+ * `bse_payload_lead_manager_count`, which is BSE-only by design
+ * (`document-cycle.ts` F-2: "a count NSE supplied is not a BSE payload
+ * count"). `recordDiscoveredLeadManagers`'s NSE-sourced arm
+ * (`document-discovery-runner.ts` falls back to `parseNseLeadManagers` when
+ * BSE is unreachable) writes `ipos.lead_managers` and its `field_sources`
+ * provenance row in the SAME transaction
+ * (`data-persister.ts:recordDiscoveredLeadManagers`), so the two can only
+ * diverge afterwards — a later write that touches `ipos.lead_managers`
+ * without updating `field_sources` (or vice versa) leaves a provenance row
+ * claiming NSE supplied names that are no longer there. There is no BSE
+ * payload count to compare an NSE-sourced value against, so this checks the
+ * one invariant that IS checkable without one: provenance and value agree.
+ */
+export function checkNseLeadManagerProvenanceHasValue(row) {
+  if (row.provenanceSource !== 'NSE') return null;
+  const count = Number(row.storedLeadManagerCount ?? 0);
+  if (Number.isFinite(count) && count > 0) return null;
+  return `"${entityOf(row)}": field_sources records NSE as the source of lead_managers, but ipos.lead_managers has ${count} entries`;
+}
+
 /** Count BRLM + all '#'-separated co-BRLMs in a raw BSE payload pair. */
 export function countBsePayloadLeadManagers(brlmField, coField) {
   const count = (field) =>
