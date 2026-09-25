@@ -10,7 +10,7 @@
  * still reaches the admin as `field = unknown` with its quote.
  */
 import { createHash } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '../db/schema';
 import { dataConflicts, fieldSources, ipoDetails, ipos } from '../db/schema';
@@ -371,7 +371,16 @@ export async function acceptCorrigendumSuggestion(
             confidence: 100,
             previousValue: row.value1,
             previousSource: (row.evidence as { storedSource?: string | null } | null)?.storedSource ?? null,
-            dataLineage: { method: 'ADMIN_CORRIGENDUM_ACCEPT', documentId: row.documentId, conflictId, by: adminName },
+            // #1068 (same class as #755/#753/#1065): MERGE, never replace. A plain object here
+            // REPLACES the whole jsonb column on conflict, destroying whatever docType/other
+            // keys an earlier write on this SAME (ipo, table, row, field) had set. Same
+            // coalesce-and-concat merge as field-sources-repository.ts's fix.
+            dataLineage: sql`COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) || ${JSON.stringify({
+              method: 'ADMIN_CORRIGENDUM_ACCEPT',
+              documentId: row.documentId,
+              conflictId,
+              by: adminName,
+            })}::jsonb`,
             updatedAt: new Date(),
           } as never,
         });
