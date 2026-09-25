@@ -431,6 +431,87 @@ class BoardOwedGuardTest(unittest.TestCase):
         p = self.run_stop("anyone")
         self.assertEqual(p.returncode, 0, p.stderr)
 
+    # (p) #1036: quote-, heredoc- and comment-aware statement splitting. A
+    # `;`/`|` INSIDE quoted text, a heredoc body line, or a comment line that
+    # itself contains a `;` must never arm the marker on the mention alone.
+    def test_p1_quoted_json_with_embedded_semicolon_does_not_arm(self):
+        # the real #1036 shape: a test harness piping a JSON blob whose
+        # quoted command string contains "gate; gh pr merge 5"
+        cmd = 'echo \'{"tool_input":{"command":"gate; gh pr merge 5"}}\' | cat'
+        self.run_hook("PostToolUseBash", self.bash_payload(cmd, self.ipodhan))
+        self.assertFalse(os.path.exists(self.marker), "quoted mention with embedded ; armed the marker")
+
+    def test_p2_heredoc_body_line_with_embedded_semicolon_does_not_arm(self):
+        cmd = 'cat <<\'EOF\'\ncommit note: "fix; gh pr merge 42" pending\nEOF'
+        self.run_hook("PostToolUseBash", self.bash_payload(cmd, self.ipodhan))
+        self.assertFalse(os.path.exists(self.marker), "heredoc body mention with embedded ; armed the marker")
+
+    def test_p2b_unquoted_heredoc_body_line_does_not_arm(self):
+        # Tier A r1 MAJOR-2: a plain body line; only heredoc stripping (not quote stripping) hides it
+        cmd = "cat <<EOF > n.md\nrun gate; gh pr merge 7\nEOF"
+        self.run_hook("PostToolUseBash", self.bash_payload(cmd, self.ipodhan))
+        self.assertFalse(os.path.exists(self.marker), "unquoted heredoc body line armed the marker")
+
+    def test_p2c_heredoc_inside_dq_substitution_with_odd_quotes_does_not_arm(self):
+        # Tier A r1 MAJOR-1: git commit -m "$(cat <<'EOF' ... EOF )" whose body has an odd number of "
+        cmd = "git commit -m \"$(cat <<'EOF'\nfix: 12\" screens\ngate; gh pr merge 5\nEOF\n)\""
+        self.run_hook("PostToolUseBash", self.bash_payload(cmd, self.ipodhan))
+        self.assertFalse(os.path.exists(self.marker), "heredoc inside \"$( )\" with an odd quote armed the marker")
+
+    def test_p2d_real_merge_after_a_heredoc_still_arms(self):
+        cmd = "cat > n.md <<'EOF'\nnotes\nEOF\nnode scripts/ops/merge-if-current.mjs 9 > /dev/null 2>&1 && gh pr merge 9 --squash"
+        self.run_hook("PostToolUseBash", self.bash_payload(cmd, self.ipodhan))
+        self.assertTrue(os.path.exists(self.marker), "a real merge after a heredoc failed to arm")
+
+    def test_p3_comment_with_embedded_semicolon_does_not_arm(self):
+        cmd = "# note: run gate; gh pr merge 5 later"
+        self.run_hook("PostToolUseBash", self.bash_payload(cmd, self.ipodhan))
+        self.assertFalse(os.path.exists(self.marker), "comment mention with embedded ; armed the marker")
+
+    def test_p4_python_dash_c_string_with_embedded_semicolon_does_not_arm(self):
+        cmd = 'python -c "gate(); gh pr merge 5"'
+        self.run_hook("PostToolUseBash", self.bash_payload(cmd, self.ipodhan))
+        self.assertFalse(os.path.exists(self.marker), "python -c string mention with embedded ; armed the marker")
+
+    def test_p5_real_run_against_todays_false_positive_payload(self):
+        # one real run of the handler against a payload shaped like the one
+        # that produced the false "Board owed: merge(s) #5" on 2026-09-25
+        payload = {
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": 'echo \'{"tool_input":{"command":"gate; gh pr merge 5"}}\' | python h.py'
+            },
+            "cwd": self.ipodhan,
+        }
+        p = self.run_hook("PostToolUseBash", payload)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertFalse(os.path.exists(self.marker), "today's false-positive payload still arms the marker")
+
+    def test_p6_real_merges_still_arm_after_the_scanner_change(self):
+        # regression guard for the fix itself: real merges (a/a2/i5/i6) must
+        # still record after quote/heredoc/comment stripping is added.
+        for cmd, pr in (
+            ("gh pr merge 123 --squash", "123"),
+            ("node scripts/ops/merge-if-current.mjs --pr 456", "456"),
+        ):
+            marker = os.path.join(self.tmp, "p6-marker-%s.jsonl" % pr)
+            if os.path.exists(marker):
+                os.remove(marker)
+            env = os.environ.copy()
+            env["BOARD_OWED_MARKER"] = marker
+            env["BOARD_OWED_ERROR_LOG"] = self.errlog
+            env["BOARD_PUBLISHED_STAMP"] = self.stamp
+            env["BOARD_OWED_NO_REGEN"] = "1"
+            p = subprocess.run(
+                [sys.executable, HOOK_PATH, "--event", "PostToolUseBash"],
+                input=json.dumps(self.bash_payload(cmd, self.ipodhan)),
+                capture_output=True, text=True, env=env, timeout=30,
+            )
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertTrue(os.path.exists(marker), "real merge %r stopped arming" % cmd)
+            rec = json.loads(open(marker, encoding="utf-8").read().strip())
+            self.assertEqual(rec["pr"], pr)
+
     def test_o10_stop_hook_active_never_blocks(self):
         self.write_marker([{"pr": "1", "session_id": "me"}])
         p = self.run_stop("me", stop_hook_active=True)
