@@ -66,6 +66,13 @@ The main / default branch MUST have enforced protections:
 - Disallow force-push and branch deletion on main
 - Linear history enforced if using squash merges
 
+## Local pre-push gate (project-specific)
+
+IPODhan runs `scripts/ci/pre-push-local.sh` via `.husky/pre-push`, mirroring the relevant slice of
+`.github/workflows/pr-gate.yml` for the pushed diff's paths — see CLAUDE.md's Commit gate section.
+Escape hatch is `PRE_PUSH_LOCAL_SKIP=1 git push` (warns, never silent); `--no-verify` is still blocked
+by the global git-hook-bypass-guard.
+
 ## CRITICAL RULES
 
 - MUST follow Conventional Commits format on every commit
