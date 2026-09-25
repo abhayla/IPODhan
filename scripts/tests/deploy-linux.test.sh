@@ -2841,10 +2841,10 @@ FAKERC30
   if emit "$OUT30A" | grep -q 'releasing lock:resource:scraper:cycle (held: 111s remaining)' \
      && emit "$OUT30A" | grep -q 'releasing lock:resource:filing-auto-persist:cycle (held: 111s remaining)' \
      && emit "$OUT30A" | grep -q 'cycle locks released: 2' \
-     && emitn "$OUT30A" | grep -q -- '-t 3 -u redis://localhost:6379/1 GET lock:resource:scraper:cycle' \
-     && emitn "$OUT30A" | grep -q -- '-t 3 -u redis://localhost:6379/1 GET lock:resource:filing-auto-persist:cycle' \
-     && emitn "$OUT30A" | grep -qE -- '-t 3 -u redis://localhost:6379/1 EVAL .*lock:resource:scraper:cycle tok-abc$' \
-     && emitn "$OUT30A" | grep -qE -- '-t 3 -u redis://localhost:6379/1 EVAL .*lock:resource:filing-auto-persist:cycle tok-abc$' \
+     && emitn "$OUT30A" | grep -q -- '-u redis://localhost:6379/1 GET lock:resource:scraper:cycle' \
+     && emitn "$OUT30A" | grep -q -- '-u redis://localhost:6379/1 GET lock:resource:filing-auto-persist:cycle' \
+     && emitn "$OUT30A" | grep -qE -- '-u redis://localhost:6379/1 EVAL .*lock:resource:scraper:cycle tok-abc$' \
+     && emitn "$OUT30A" | grep -qE -- '-u redis://localhost:6379/1 EVAL .*lock:resource:filing-auto-persist:cycle tok-abc$' \
      && ! emit "$OUT30A" | grep -q 'DEL-CALLED-DIRECTLY'; then
     pass "case 30a: both cycle locks held -> released via EVAL compare-and-delete on the GET token, DEL never issued directly"
   else
@@ -2900,7 +2900,12 @@ FAKERC30
 
   # 30f: the full argv log for a held-both run is EXACTLY six calls — one
   # GET, one TTL, one EVAL per key, nothing else (no stray key, no
-  # additional command) — and every call carries the -t 3 connect timeout.
+  # additional command). #719: no call carries a "-t 3" flag — it is not a
+  # real redis-cli option in any version, and the deployed redis-cli
+  # 7.0.15 refuses it outright ("Unrecognized option ... '-t'"), which is
+  # exactly why every real GET/TTL/EVAL used to come back empty. The 3s
+  # bound now comes from the outer `timeout 3` wrapper, invisible to
+  # redis-cli's own argv.
   RC_LOG_30F="$(emitn "$OUT30A" | awk '/^--- rc-log ---$/{f=1;next} f')"
   RC_LINES_30F="$(printf '%s\n' "$RC_LOG_30F" | grep -c .)"
   if [ "$RC_LINES_30F" -eq 6 ] \
@@ -2908,12 +2913,13 @@ FAKERC30
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' TTL ')" -eq 2 ] \
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' EVAL ')" -eq 2 ] \
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' DEL ')" -eq 0 ] \
-     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -vc -- '^-t 3 -u ')" -eq 0 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c -- '-t 3')" -eq 0 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -vc -- '^-u ')" -eq 0 ] \
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c 'lock:resource:scraper:cycle')" -eq 3 ] \
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c 'lock:resource:filing-auto-persist:cycle')" -eq 3 ]; then
-    pass "case 30f: argv log is exactly GET/TTL/EVAL for the two known keys, -t 3 on every call, no other key or command"
+    pass "case 30f: argv log is exactly GET/TTL/EVAL for the two known keys, no -t 3 on any call (#719), no other key or command"
   else
-    fail "case 30f: expected exactly 6 calls (GET/TTL/EVAL x2 keys) all carrying -t 3, no stray key/command — got: $RC_LOG_30F"
+    fail "case 30f: expected exactly 6 calls (GET/TTL/EVAL x2 keys), none carrying -t 3, no stray key/command — got: $RC_LOG_30F"
   fi
 
   rm -rf "$FAKEBIN30" "$ENVDIR30"

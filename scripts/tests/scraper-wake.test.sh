@@ -1399,6 +1399,86 @@ else
   fail "case 19: an opening-day wake started the job with '$ARGV19O', expected --job=opening"
 fi
 
+# --- Case 20: the REAL redis-cli code path (#719) --------------------------
+# Every case above drives lock_is_held via SCRAPER_WAKE_FAKE_LOCK_TTL, which
+# never executes the wrapper's actual `redis-cli ... TTL ...` line — so the
+# defect measured on staging (58 lock-read-unavailable lines on 2026-09-25,
+# 99 on 09-24: `redis-cli -t 3` is not a real redis-cli flag in ANY version,
+# and the deployed redis-cli 7.0.15 refuses it outright before a connection
+# is even attempted) had no case that could ever go red. These cases stub
+# `redis-cli` on PATH to reproduce that shape exactly, with REDIS_URL
+# exported directly (bypassing the SCRAPER_DIR/.env lookup, which is a
+# separate concern already covered elsewhere).
+STUBDIR="$(mktemp -d)"
+
+# case 20a: a redis-cli that behaves like the real staging binary — refuses
+# an unrecognized '-t' flag, but answers correctly once it is gone. Proves
+# the fix (removing -t, bounding with the outer `timeout` instead): a lock
+# read via the REAL code path must now succeed and report the true TTL,
+# where before the fix it always fell through to the fail-open branch.
+printf '%s\n' \
+  '#!/bin/sh' \
+  'for a in "$@"; do' \
+  '  case "$a" in' \
+  "    -t) echo \"Unrecognized option or bad number of args for: '-t'\" >&2; exit 1 ;;" \
+  '  esac' \
+  'done' \
+  'echo 300' \
+  > "$STUBDIR/redis-cli"
+chmod +x "$STUBDIR/redis-cli"
+
+OUT20A="$(PATH="$STUBDIR:$PATH" REDIS_URL="redis://127.0.0.1:6379/1" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT20A" | grep -q "wake-skipped:.*lock_ttl=300s remaining"; then
+  pass "case 20a: real redis-cli code path (real-shaped stub, no -t) reads the TTL and skips correctly"
+else
+  fail "case 20a: expected a wake-skipped line with lock_ttl=300s remaining, got: $OUT20A"
+fi
+if printf '%s' "$OUT20A" | grep -qi "lock-read-unavailable"; then
+  fail "case 20a: a working redis-cli still logged lock-read-unavailable (the -t defect) — got: $OUT20A"
+else
+  pass "case 20a: no lock-read-unavailable line when redis-cli actually works"
+fi
+
+# case 20b: signal-ownership.md R6 — a redis-cli that RUNS and returns an
+# error (reachable Redis, real defect: bad auth) must have its cause printed
+# in the wrapper's log line, not just a bare "got ''" that reads the same as
+# "Redis is unreachable".
+printf '%s\n' \
+  '#!/bin/sh' \
+  'echo "NOAUTH Authentication required." >&2' \
+  'exit 1' \
+  > "$STUBDIR/redis-cli"
+chmod +x "$STUBDIR/redis-cli"
+
+OUT20B="$(PATH="$STUBDIR:$PATH" REDIS_URL="redis://127.0.0.1:6379/1" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT20B" | grep -q "lock-read-unavailable: TTL for lock:resource:scraper:cycle returned no usable value (redis-cli exit 1: NOAUTH Authentication required.)"; then
+  pass "case 20b: an error from a REACHABLE redis-cli names its own cause (exit code + stderr), not a bare 'unreadable TTL'"
+else
+  fail "case 20b: expected the cause-bearing lock-read-unavailable line, got: $OUT20B"
+fi
+
+# case 20c: the actual committed script never INVOKES redis-cli with -t —
+# a static guard against the defect coming back, independent of the stub
+# cases above (which would also catch a *different* invalid flag). Comment
+# lines (this fix's own explanatory prose quotes the old, broken
+# invocation) are excluded so the guard checks executable code, not prose.
+if grep -vE '^\s*#' "$WAKE" | grep -qE "redis-cli[^|]*-t 3"; then
+  fail "case 20c: $WAKE still invokes redis-cli with '-t 3' (not a real redis-cli flag on the deployed 7.0.15 binary — #719)"
+else
+  pass "case 20c: $WAKE does not invoke redis-cli with the invalid '-t 3' flag"
+fi
+if grep -vE '^\s*#' "$DEPLOY_SCRIPT" | grep -qE "redis-cli[^|]*-t 3"; then
+  fail "case 20c: $DEPLOY_SCRIPT (release_scraper_cycle_locks) still invokes redis-cli with '-t 3' — same #719 class"
+else
+  pass "case 20c: $DEPLOY_SCRIPT does not invoke redis-cli with the invalid '-t 3' flag"
+fi
+
+rm -rf "$STUBDIR"
+
 if [ "$FAILED" -ne 0 ]; then
   echo "scraper-wake.test.sh: FAILED"
   exit 1
