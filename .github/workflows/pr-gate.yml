@@ -458,6 +458,21 @@ jobs:
         # resolve.extensionAlias guard. Pure fs check, no install needed.
         run: node scripts/ci/check-shared-js-imports-resolve.mjs
 
+      - name: Failure-classifier self-test (#426, unwired at merge — R1 fix round)
+        # scripts/ops/lib/failure-classifier.mjs imports Node builtins only
+        # (node:fs, node:path, node:url) — no npm package — so this runs here
+        # with the other pre-install node --test steps, not after npm ci.
+        run: node --test scripts/tests/failure-classifier.test.mjs
+
+      - name: Failure-tick-state self-test (#429, unwired at merge — R1 fix round)
+        # scripts/ops/lib/failure-tick-state.mjs is Node builtins only.
+        run: node --test scripts/tests/failure-tick-state.test.mjs
+
+      - name: Failure-delta CLI self-test (#426/#429, unwired at merge — R1 fix round)
+        # scripts/ops/failure-delta.mjs and its CLI test import Node builtins
+        # only (node:child_process, node:fs, node:os, node:path, node:url).
+        run: node --test scripts/tests/failure-delta-cli.test.mjs
+
       - name: Install dependencies
         run: npm ci
 
