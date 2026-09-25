@@ -119,7 +119,10 @@ jobs:
         # (the round-7 fresh-review coverage floor promoted to FAIL-level
         # nightly checks), so weakening/deleting a predicate turns this red
         # before it can silently stop catching that finding class again. No
-        # deps needed (Node builtins only).
+        # deps needed (Node builtins only). GH_TOKEN: the design-consistency
+        # positive control runs the card gate, which checks parked issues with gh.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           node --test scripts/tests/audit-detection-floor.test.mjs
           node --test scripts/tests/detection-floor-issue-size-select.test.mjs
