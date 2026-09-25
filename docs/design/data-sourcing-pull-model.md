@@ -3895,6 +3895,15 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
 6. **Who (OD-104).** The owner plus one or two trusted people, each with a personal login. Every
    admin write records the admin's name. All admins have the same powers; no approval step. The
    public site recognises a logged-in admin so the Edit control can appear on the IPO page.
+7. **Which fields the edit view offers, by the §1 class of each field (settled by §1 and Appendix A,
+   no owner question).** Class **C** (13, computed) is read-only: it is OD-102's "derived", and
+   Appendix A gives each one's formula. Class **I** (37, pipeline bookkeeping) is read-only, except
+   the three Appendix A ranks `ADMIN` -- `ipos.rating_override`, `ipos.scraper_locked`,
+   `registrars.active` -- which are admin settings with no source, so the edit view shows only the
+   free-text or on/off control for them. Classes **D** (162) and **T** (10) settle (OD-73) and get
+   the full per-source panel. The fields that are never settled -- `ipos.status`, class **X**
+   (subscription, demand graph), **W** (grey market), **M** (market prices) -- are the open question
+   in §9.5.
 
 ### 9.3 Where the per-source values come from (OD-103)
 
@@ -3920,7 +3929,8 @@ No owner question was needed here; each point follows from a decision already ma
 
 ### 9.5 Still open (asked one at a time, recorded here as answered)
 
-Who can add or remove an admin; which tables and list-shaped data (lead managers, promoters,
+How an admin value behaves on a field that is never settled (status, subscription, demand graph,
+grey market, market prices); who can add or remove an admin; which tables and list-shaped data (lead managers, promoters,
 financial rows) are editable, including adding and removing rows; rules for a typed value (units,
 checks, a required reason or evidence); what happens when a better document arrives after an admin
 save; undo and history; when a save reaches the public page; what a reader sees for an admin value;
