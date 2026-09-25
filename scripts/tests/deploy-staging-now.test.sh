@@ -132,6 +132,53 @@ else
   FAILED=1
 fi
 
+# --- #1064: the per-day cap is keyed on the IST day, not the UTC day ---
+# (.claude/rules/ist-timezone.md: every schedule/cadence is IST). Mirrors
+# deploy-config.test.sh cases 17a/17b. STAGING_NOW_NOW (epoch seconds)
+# injects the clock instead of reading the real one.
+: > "$STUB_LOG"
+STATE_DIR_IST_A="$TMP/state-ist-a"
+NOW_2359_IST="$(date -u -d '2026-01-01T18:29:00Z' +%s)"   # 2026-01-01 23:59 IST
+NOW_0001_IST="$(date -u -d '2026-01-01T18:31:00Z' +%s)"   # 2026-01-02 00:01 IST
+
+PATH="$TMP/bin:$PATH" STUB_GH_LOG="$STUB_LOG" STAGING_NOW_STATE_DIR="$STATE_DIR_IST_A" \
+  STAGING_NOW_NOW="$NOW_2359_IST" bash "$SCRIPT" --reason "case-ist-a 23:59 IST" >/dev/null 2>&1
+PATH="$TMP/bin:$PATH" STUB_GH_LOG="$STUB_LOG" STAGING_NOW_STATE_DIR="$STATE_DIR_IST_A" \
+  STAGING_NOW_NOW="$NOW_0001_IST" bash "$SCRIPT" --reason "case-ist-a 00:01 IST" >/dev/null 2>&1
+
+IST_A_FILE_COUNT="$(ls -1 "$STATE_DIR_IST_A" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$IST_A_FILE_COUNT" -eq 2 ]; then
+  echo "PASS: case-ist-a: 23:59 IST and 00:01 IST (2 min apart, crossing IST midnight) land in different day-state files"
+else
+  echo "FAIL: case-ist-a expected 2 day-state files (IST midnight crossed), got $IST_A_FILE_COUNT" >&2
+  ls -la "$STATE_DIR_IST_A" >&2 || true
+  FAILED=1
+fi
+
+STATE_DIR_IST_B="$TMP/state-ist-b"
+NOW_0529_IST="$(date -u -d '2026-01-01T23:59:00Z' +%s)"   # 2026-01-02 05:29 IST
+NOW_0531_IST="$(date -u -d '2026-01-02T00:01:00Z' +%s)"   # 2026-01-02 05:31 IST
+
+PATH="$TMP/bin:$PATH" STUB_GH_LOG="$STUB_LOG" STAGING_NOW_STATE_DIR="$STATE_DIR_IST_B" \
+  STAGING_NOW_NOW="$NOW_0529_IST" bash "$SCRIPT" --reason "case-ist-b 05:29 IST" >/dev/null 2>&1
+PATH="$TMP/bin:$PATH" STUB_GH_LOG="$STUB_LOG" STAGING_NOW_STATE_DIR="$STATE_DIR_IST_B" \
+  STAGING_NOW_NOW="$NOW_0531_IST" bash "$SCRIPT" --reason "case-ist-b 05:31 IST" >/dev/null 2>&1
+
+IST_B_FILE_COUNT="$(ls -1 "$STATE_DIR_IST_B" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$IST_B_FILE_COUNT" -eq 1 ]; then
+  DISPATCH_IN_FILE="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).length)' "$STATE_DIR_IST_B"/*.json)"
+  if [ "$DISPATCH_IN_FILE" -eq 2 ]; then
+    echo "PASS: case-ist-b: 05:29 IST and 05:31 IST (crossing UTC midnight, same IST day) land in the same day-state file and both count toward the cap"
+  else
+    echo "FAIL: case-ist-b same file but expected 2 dispatches recorded, got $DISPATCH_IN_FILE" >&2
+    FAILED=1
+  fi
+else
+  echo "FAIL: case-ist-b expected 1 day-state file (same IST day), got $IST_B_FILE_COUNT" >&2
+  ls -la "$STATE_DIR_IST_B" >&2 || true
+  FAILED=1
+fi
+
 if [ "$FAILED" -eq 0 ]; then
   echo "deploy-staging-now.test.sh: PASSED"
 else

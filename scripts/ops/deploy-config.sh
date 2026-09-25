@@ -49,6 +49,13 @@ log() { echo "$1"; }
 # mirrors scripts/lib/ist-day.mjs and scripts/vps-data-audit-cron.sh's
 # DATE_TAG. DEPLOY_CONFIG_NOW (epoch seconds) lets a test inject the clock
 # instead of reading the real one.
+#
+# NOT sourced from scripts/ops/lib/ist-day.sh (#1064 added that shared copy
+# for deploy-staging-now.sh): this function stays self-contained because
+# this script is copied ALONE into a deployed release / test fixture
+# (scripts/tests/deploy-config.test.sh cases 15/16 cp only this file, no
+# sibling lib/ dir — mirrors the real #748 git-archive export), so adding a
+# `source "$SCRIPT_DIR/lib/..."` dependency would break every one of those.
 ist_today() {
   local epoch="${DEPLOY_CONFIG_NOW:-$(date +%s)}"
   date -u -d "@$(( epoch + 19800 ))" +%F
