@@ -160,6 +160,7 @@ it by assuming.
 | OD-105 | *"find out what are the type of categories of fields one is that's never read from anywhere they are calculated one is which gets read in every scraping a multiple times a day and one that gets read when a new documents arrive... what I meant was the fields that uh, up gets updated when a new document is arrived not the one that gets updated daily and not the ones which are calculated"* -- 2026-09-25, the owner's clarification of OD-102's scope, given in reply to a question about how an admin value behaves on live fields (Spec basis: §1 classes, OD-19, OD-56, OD-66, OD-73, E-1 §1.2.1). **The admin per-source editing of OD-102 covers the fields read when a new document arrives -- class D, 162 fields. It does NOT cover the fields read many times a day (class X subscription and demand graph, W grey market, M market prices, and `ipos.status` -- 19 fields) nor the calculated fields (class C, 13), which are read-only.** So the lock question for live fields does not arise: they are not admin-editable. Class I stays read-only except its three `ADMIN` settings. The E-1 timetable fields other than status -- all ten of E-1 minus status (read from the exchange, never from the document) fit none of the three groups and are asked separately (§9.5). | 2026-09-25 | §9.2 | §9.2 item 7 limits the per-source edit view to class D, lists X, W, M and status as not editable and C as read-only |
 | OD-106 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) the admin value holds forever and (C) not editable (Spec basis: E-1 §1.2.1 "a stale close date on a live IPO -- the single most damaging error this site can make", OD-35, OD-73, §2.7, OD-102, OD-105; real case F-131, the Dhanwel postponement and relaunch). **SPEC CHANGE to §2.7 for the E-1 timetable fields other than `ipos.status` only: they are admin-editable with the same per-source panel (NSE, BSE, Chittorgarh, then a typed value), but when NSE or BSE later publishes a NEWER date that differs from the admin value, the exchange date replaces it and the admin is alerted with the IPO and both dates.** For every class D field the admin value still holds until an admin clears it (§2.7, OD-102). Not measured: how often an exchange date was wrong and needed a human. | 2026-09-25 | §2.7, §9.2 | §2.7 names the E-1 exception; §9.2 item 7 marks the E-1 fields other than status as editable with exchange override and alert |
 | OD-107 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) edit existing rows only and (C) per-row ownership (Spec basis: none on admin row edits -- the spec said nothing about an admin adding or removing rows; related OD-102, OD-66, §2.10, Appendix A #21; measured F-174). **For list-shaped document data (lead managers, promoters, peer companies, anchor investors, intermediaries, financial-statement years, risk factors) the admin can add, edit and remove whole rows. Once an admin changes a list, the WHOLE list is admin-owned for that IPO: no scraper replaces or extends it. A later document that brings a different list is shown to the admin as a suggestion (rows to add or remove), never applied by itself.** | 2026-09-25 | §9.2 | §9.2 item 8 states add/edit/remove rows, whole-list admin ownership, and later-document lists as suggestions |
+| OD-108 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) notes optional and (C) a failed check blocks the save (Spec basis: the per-field check column of §1 and Appendix A; none on admin-typed values -- the spec said nothing about checks, units or reasons for them; measured F-156). **A value an admin TYPES must pass the same §1 check as a scraped value; it is entered in the unit the reader sees and the screen shows, before saving, the value that will be stored and how the page will display it; every typed value carries a short source note (document and page, or a URL). A PICKED source value needs no note. A typed value that fails its check can still be saved, only with a written reason, and the reason is kept with the audit row.** Why: F-156 -- issue size is stored in rupees but the admin form labels it crore, so typing 875 for Rs 875 cr stores Rs 875; and the form's crore warning fires on 336 of 337 real values. | 2026-09-25 | §9.2 | §9.2 item 12 states the §1 check, reader-unit entry with a stored-value preview, the required source note for typed values, and save-with-reason on a failed check |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -3935,6 +3936,12 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
     the value, records `ADMIN` provenance with the admin's name, sets protection, writes the audit
     row with the previous value, and drops the cache keys of item 10. Undo is "clear": it removes the
     admin value and returns the field to the loop (§2.7); the audit row keeps what was there before.
+12. **A typed value (OD-108).** It must pass the field's §1 check, the same one a scraped value
+    passes. It is entered in the unit the reader sees (issue size in Rs crore), and before saving
+    the screen shows what will be stored and how the page will show it ("stores Rs 8,75,00,00,000,
+    shows Rs 875 cr"). It needs a short source note (document and page, or a URL); a picked source
+    value does not. If the check fails, the admin may still save with a written reason, kept on the
+    audit row. Why: F-156.
 ### 9.3 Where the per-source values come from (OD-103)
 
 The edit view reads the witnesses stored for the field (§2.4 as amended by OD-103). Each source
@@ -3959,8 +3966,7 @@ No owner question was needed here; each point follows from a decision already ma
 
 ### 9.5 Still open (asked one at a time, recorded here as answered)
 
-Who can add or remove an admin; rules for a typed value (units,
-checks, a required reason or evidence); what a reader sees for an admin value;
+Who can add or remove an admin; what a reader sees for an admin value;
 alerts; pages other than the IPO detail page; creating a whole IPO by
 hand for the admin-owned types; mobile use.
 
