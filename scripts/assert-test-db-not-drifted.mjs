@@ -30,6 +30,18 @@
 // no configured database has its own "no tests" skip behaviour
 // (no-tests-exits-zero.md) — refusing here would be a NEW failure mode, not
 // this issue's fix.
+//
+// ROUND 1 REVIEW (Tier B REVISE): the unconditional refusal above blocked
+// EVERY local `test:integration` run the moment `ipodhan_test` carried any
+// drift — measured 2026-09-25: 15 real findings on the shared box today,
+// none of which a developer can fix without the owner's DB-change approval
+// (no-new-databases.md / no-DB-change rule). A precondition that can never
+// be satisfied without an approval nobody in the loop can grant is not a
+// precondition, it is a lockout. `IPODHAN_ACCEPT_TEST_DB_DRIFT=1` is the
+// fix: an explicit, never-silent override — every override run still
+// prints every finding plus an "ACCEPTED DRIFT (override)" line to stderr,
+// so a developer who sets it is choosing to proceed with eyes open, not
+// hiding the drift.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -38,6 +50,8 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
+
+export const OVERRIDE_ENV_VAR = 'IPODHAN_ACCEPT_TEST_DB_DRIFT';
 
 /**
  * Same resolution order the integration suites themselves rely on:
@@ -58,6 +72,64 @@ export function resolveDatabaseUrl(env = process.env, repoRoot = REPO_ROOT, read
   return null;
 }
 
+/**
+ * PURE decision: given whether the drift check found drift, the findings
+ * text it printed, and whether the override env var is set, decide what to
+ * print and what to exit with. No DB, no subprocess — the self-test injects
+ * all three inputs directly. This is the whole class-level fix: a
+ * three-way branch (no drift / drift+override / drift+no-override), never a
+ * two-way "pass or refuse forever".
+ */
+export function decideOutcome({ hadDrift, findingsText, overrideSet }) {
+  if (!hadDrift) {
+    return { exitCode: 0, lines: ['assert-test-db-not-drifted: OK — schema matches the migration journal.'] };
+  }
+
+  const findingsBlock = (findingsText ?? '').trim() || '(no findings text captured — see the raw audit:schema-drift output above)';
+
+  if (overrideSet) {
+    return {
+      exitCode: 0,
+      lines: [
+        '',
+        `assert-test-db-not-drifted: schema drift detected, but ${OVERRIDE_ENV_VAR}=1 is set — proceeding anyway.`,
+        findingsBlock,
+        `ACCEPTED DRIFT (override): ${OVERRIDE_ENV_VAR}=1 accepted the drift above; this integration run continues against a local database that does NOT match the migration journal (#558).`,
+      ],
+    };
+  }
+
+  return {
+    exitCode: 1,
+    lines: [
+      '',
+      'assert-test-db-not-drifted: REFUSING to run the integration suite — the schema drift below means your local test',
+      'database does not match the migration journal (#558):',
+      findingsBlock,
+      '',
+      'Rebuild it with the documented recipe (docs/ops/prod-ops-recipes.md, "ipodhan_test" rebuild recipe):',
+      '  PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d \'"\')',
+      '  DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test" psql "$DATABASE_URL" -c "\\',
+      '    DROP SCHEMA public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS drizzle CASCADE;"',
+      '  cd web && DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test" npm run db:migrate',
+      '',
+      `Or, if this drift is expected right now and you want to proceed anyway, set ${OVERRIDE_ENV_VAR}=1 — every run with it set`,
+      'still prints every finding above plus an "ACCEPTED DRIFT (override)" line, so the override is never silent.',
+    ],
+  };
+}
+
+/** Runs the real, existing assert-schema-drift.ts and captures its output instead of streaming it, so decideOutcome() can quote the findings. */
+function runDriftCheck(databaseUrl) {
+  try {
+    const stdout = execFileSync('npx', ['tsx', path.join(REPO_ROOT, 'scripts', 'assert-schema-drift.ts'), databaseUrl], { encoding: 'utf8' });
+    return { hadDrift: false, findingsText: stdout };
+  } catch (e) {
+    const findingsText = [e.stdout, e.stderr].filter(Boolean).join('\n');
+    return { hadDrift: true, findingsText };
+  }
+}
+
 function main() {
   const resolved = resolveDatabaseUrl();
   if (!resolved) {
@@ -66,20 +138,11 @@ function main() {
   }
 
   console.log(`assert-test-db-not-drifted: checking schema drift against ${resolved.source} before the seeded integration run...`);
-  try {
-    execFileSync('npx', ['tsx', path.join(REPO_ROOT, 'scripts', 'assert-schema-drift.ts'), resolved.url], { stdio: 'inherit' });
-  } catch {
-    console.error('');
-    console.error('assert-test-db-not-drifted: REFUSING to run the integration suite — the schema drift printed above (from');
-    console.error('npm run audit:schema-drift) means your local test database does not match the migration journal (#558).');
-    console.error('Rebuild it with the documented recipe (docs/ops/prod-ops-recipes.md, "ipodhan_test" rebuild recipe):');
-    console.error('  PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d \'"\')');
-    console.error('  DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test" psql "$DATABASE_URL" -c "\\');
-    console.error('    DROP SCHEMA public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS drizzle CASCADE;"');
-    console.error('  cd web && DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test" npm run db:migrate');
-    process.exit(1);
-  }
-  console.log('assert-test-db-not-drifted: OK — schema matches the migration journal.');
+  const { hadDrift, findingsText } = runDriftCheck(resolved.url);
+  const outcome = decideOutcome({ hadDrift, findingsText, overrideSet: process.env[OVERRIDE_ENV_VAR] === '1' });
+  const print = hadDrift ? console.error : console.log;
+  for (const line of outcome.lines) print(line);
+  process.exit(outcome.exitCode);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
