@@ -345,6 +345,135 @@ test('a map with only SAME-MODULE edges -> exit 2 (the MAJOR fix: both-mapped > 
   }
 });
 
+test('#463 finding 1: a type-only "import type { X } from ..." is NOT counted as an import edge (no runtime coupling)', () => {
+  const root = makeFixtureRoot();
+  try {
+    writeFile(
+      root,
+      'scraper/src/extraction/foo.ts',
+      "import type { ReadSideThing } from '../read-side/ipo-reader';\n" +
+        "import { fetchOne } from '../download/fetch';\n" +
+        'export const x: ReadSideThing | null = null;\nexport const y = () => fetchOne();\n'
+    );
+    writeFile(root, 'scraper/src/read-side/ipo-reader.ts', 'export type ReadSideThing = { id: string };\n');
+    writeFile(root, 'scraper/src/download/fetch.ts', 'export const fetchOne = () => 1;\n');
+    const mapPath = writeMap(root, [
+      { glob: 'scraper/src/extraction/**/*.ts', module: 'extraction' },
+      { glob: 'scraper/src/read-side/**/*.ts', module: 'read-side' },
+      { glob: 'scraper/src/download/**/*.ts', module: 'download' },
+    ]);
+    const res = run(root, mapPath);
+    // Would be exit 1 (upward edge extraction -> read-side) if the type-only
+    // import were still counted — must PASS instead, and never even mention
+    // ipo-reader.ts in its violation list.
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(res.stdout, /PASS/);
+    assert.doesNotMatch(res.stderr, /ipo-reader\.ts/);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('#463 finding 1: a MULTI-LINE "import type {\\n...\\n} from ..." is also not counted', () => {
+  const root = makeFixtureRoot();
+  try {
+    writeFile(
+      root,
+      'scraper/src/extraction/foo.ts',
+      'import type {\n  ReadSideThing,\n} from \'../read-side/ipo-reader\';\n' +
+        "import { fetchOne } from '../download/fetch';\n" +
+        'export const x: ReadSideThing | null = null;\nexport const y = () => fetchOne();\n'
+    );
+    writeFile(root, 'scraper/src/read-side/ipo-reader.ts', 'export type ReadSideThing = { id: string };\n');
+    writeFile(root, 'scraper/src/download/fetch.ts', 'export const fetchOne = () => 1;\n');
+    const mapPath = writeMap(root, [
+      { glob: 'scraper/src/extraction/**/*.ts', module: 'extraction' },
+      { glob: 'scraper/src/read-side/**/*.ts', module: 'read-side' },
+      { glob: 'scraper/src/download/**/*.ts', module: 'download' },
+    ]);
+    const res = run(root, mapPath);
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.doesNotMatch(res.stderr, /ipo-reader\.ts/);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('#463 finding 1: an INLINE type specifier ("import { type X, y } from ...") is still a real runtime edge', () => {
+  const root = makeFixtureRoot();
+  try {
+    // Only the WHOLE-STATEMENT `import type` / `export type` form is
+    // type-only in every case — an inline `{ type X, y }` still pulls in
+    // the module at runtime for `y`, so it must still count as an edge.
+    writeFile(
+      root,
+      'scraper/src/extraction/foo.ts',
+      "import { type ReadSideThing, getIpo } from '../read-side/ipo-reader';\n" +
+        'export const x: ReadSideThing | null = null;\nexport const y = () => getIpo();\n'
+    );
+    writeFile(root, 'scraper/src/read-side/ipo-reader.ts', 'export type ReadSideThing = { id: string };\nexport const getIpo = () => null;\n');
+    const mapPath = writeMap(root, [
+      { glob: 'scraper/src/extraction/**/*.ts', module: 'extraction' },
+      { glob: 'scraper/src/read-side/**/*.ts', module: 'read-side' },
+    ]);
+    const res = run(root, mapPath);
+    assert.equal(res.status, 1, res.stdout + res.stderr);
+    assert.match(res.stderr, /ipo-reader\.ts/);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('#463 finding 2: two import statements between the same file pair count as ONE violation, not two', () => {
+  const root = makeFixtureRoot();
+  try {
+    writeFile(
+      root,
+      'scraper/src/extraction/foo.ts',
+      "import { getIpo } from '../read-side/ipo-reader';\n" +
+        "import { getIpoAgain } from '../read-side/ipo-reader';\n" +
+        'export const x = () => getIpo() ?? getIpoAgain();\n'
+    );
+    writeFile(root, 'scraper/src/read-side/ipo-reader.ts', 'export const getIpo = () => null;\nexport const getIpoAgain = () => null;\n');
+    const mapPath = writeMap(root, [
+      { glob: 'scraper/src/extraction/**/*.ts', module: 'extraction' },
+      { glob: 'scraper/src/read-side/**/*.ts', module: 'read-side' },
+    ]);
+    const res = run(root, mapPath);
+    assert.equal(res.status, 1, res.stdout + res.stderr);
+    assert.match(res.stderr, /1 upward import edge\(s\) not in the baseline/);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('#463 finding 3: 14 unresolved relative specifiers are ALL printed, no "... and N more" truncation', () => {
+  const root = makeFixtureRoot();
+  try {
+    const lines = [];
+    for (let i = 0; i < 14; i++) {
+      lines.push(`import { x${i} } from '../missing/does-not-exist-${i}';`);
+    }
+    lines.push("import { fetchOne } from '../download/fetch';");
+    lines.push('export const y = () => fetchOne();');
+    writeFile(root, 'scraper/src/extraction/foo.ts', lines.join('\n') + '\n');
+    writeFile(root, 'scraper/src/download/fetch.ts', 'export const fetchOne = () => 1;\n');
+    const mapPath = writeMap(root, [
+      { glob: 'scraper/src/extraction/**/*.ts', module: 'extraction' },
+      { glob: 'scraper/src/download/**/*.ts', module: 'download' },
+    ]);
+    const res = run(root, mapPath);
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(res.stdout, /unresolved relative\/alias specifiers ignored: 14/);
+    assert.doesNotMatch(res.stdout, /and \d+ more/);
+    for (let i = 0; i < 14; i++) {
+      assert.match(res.stdout, new RegExp(`does-not-exist-${i}`));
+    }
+  } finally {
+    cleanup(root);
+  }
+});
+
 test('resolveModule is first-match-wins: an earlier, narrower glob beats a later, broader one', () => {
   const root = makeFixtureRoot();
   try {
