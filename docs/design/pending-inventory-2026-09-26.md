@@ -26,12 +26,13 @@
 | DUPLICATE | 1 | same class as another open issue |
 | PARKED | 4 | on hold — excluded |
 
-## 1. The 29 pull-model items
+## 1. The 30 pull-model items
 
-26 BUILT, 3 PARTIAL (`pull-model-completion-state.md`).
+**Corrected 2026-09-26:** OD-122 (2026-09-25) added item 36, admin data editing (§9, OD-102 to OD-122), as a release-gate item, NOT BUILT. This inventory first read the list before that change and said 29. Now: 26 BUILT, 3 PARTIAL, 1 NOT BUILT (`pull-model-completion-state.md`). Item 36 is issue #1108 and heads the goal; per OD-122 every production release, including the admin-route auth fix, waits for it.
 
 | Item | What is left | Status |
 |---|---|---|
+| 36 Admin data editing | Everything: §9, OD-102 to OD-122 (#1108) | **NOT BUILT** (goal) |
 | 6 The pull walk | Proof that a new prospectus reopens receipted fields: needs a real event | PARKED #1034 |
 | 19 Merge tool | Staging unmerge proof after migration 0058: needs a real duplicate pair | PARKED #1032 |
 | 7 Scheduler + budgets | O-4 demand-ordered tiering has no staging proof at all; a staging proof of the OD-55 force-kill removal can run now. "#805 not on prod" is a release matter, not a staging gap | **BUILD** (goal T1) |
@@ -200,7 +201,7 @@ Not issues; measured from the items and the board:
 | #58 | Mainboard 'Recently Listed' cards don't show listing-gain % (generic IPOCardEnhanced) | UI card content; the data spec is silent (searched: listing gain, card). |  |
 | #106 | decision: AllotmentCheckerCard null-registrarUrl UX — R28 #3 fallback vs ISS-007 contract… | Allotment card fallback when registrar URL is null is a UX choice; spec silent (searched: registrar_url, allotment). |  |
 | #167 | Populate IPO Reviews/Scores/Anchor Investors feature (currently de-navved, code exists bu… | Reviews/scores/anchor pages need a source decision; spec silent (searched: review, score). |  |
-| #979 | Item 14 residue: 8 old CLOSED IPOs keep a non-capable issue_size with no capable source t… | OD-74 repairs issue size once from the CG detail page; it says nothing for the 8 rows with no CG page and no capable source. | S |
+| #979 (decided: OD-123, NOT_SOURCED) | Item 14 residue: 8 old CLOSED IPOs keep a non-capable issue_size with no capable source t… | OD-74 repairs issue size once from the CG detail page; it says nothing for the 8 rows with no CG page and no capable source. | S |
 
 ## 5. Needs owner OK (host change) / in flight / unknown / out of repo
 
