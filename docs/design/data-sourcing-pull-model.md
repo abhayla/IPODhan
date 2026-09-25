@@ -3971,6 +3971,17 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
     an UPCOMING or OPEN IPO (exchange replaced an admin date, a new real disagreement, a newer
     document disagreeing with an admin value); everything else in one daily digest at 09:00 IST,
     grouped by IPO, live first, with counts and a link into each IPO's editor.
+17. **Every IPO, every status** (follows from OD-102 "applicable for each IPO"). Listed and closed
+    IPOs are editable exactly like live ones.
+18. **Plan-invalidating fields** (follows from §2.8). Saving `offering_type`, `segment` or
+    `listing_exchanges` rebuilds that IPO's plan, which changes which sources each field has; the
+    editor says so before the save.
+19. **Scraper and admin at the same moment** (follows from §2.7 and OD-102). The scraper re-checks
+    the protection row inside the same transaction as its write, so an admin save that lands in the
+    middle of a cycle is never overwritten by that cycle.
+20. **Two admins on one field** (follows from OD-104). A save is refused if the field changed after
+    the editor was opened; the admin sees the newer value and who set it, and saves again if still
+    needed. No save silently undoes another admin's.
 ### 9.3 Where the per-source values come from (OD-103)
 
 The edit view reads the witnesses stored for the field (§2.4 as amended by OD-103). Each source
