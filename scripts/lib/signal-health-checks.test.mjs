@@ -8,6 +8,7 @@ import {
   classifyConflictBacklogRatchet,
   nextRatchetBaseline,
   classifyInertDetector,
+  formatRepeatedMessagesDetail,
   REPEATED_MESSAGE_MAX_OCCURRENCES_24H,
   CONFLICT_BACKLOG_MAX_UNRESOLVED,
 } from './signal-health-checks.mjs';
@@ -28,6 +29,36 @@ test('F1: exactly at the threshold does not FAIL (> not >=)', () => {
 test('F1: below threshold PASSes; no rows PASSes', () => {
   assert.equal(classifyRepeatedMessages([{ message: 'rare', count: 3 }]).fail, false);
   assert.equal(classifyRepeatedMessages([]).fail, false);
+});
+
+// #599: g_repeated_warn's record() call printed only "N offending message(s)"
+// — a bare count, in direct violation of signal-ownership.md R1 ("resolved
+// to identities before it is reported"). Nobody could tell WHICH message
+// tripped the check from that output alone.
+test('#599: formatRepeatedMessagesDetail prints the message text, status and count — not a bare count', () => {
+  const detail = formatRepeatedMessagesDetail([
+    { message: 'InvIT/REIT unit-price mis-typed as currency', status: 'FAILURE', count: 25 },
+  ]);
+  assert.match(detail, /InvIT\/REIT unit-price mis-typed as currency/);
+  assert.match(detail, /FAILURE/);
+  assert.match(detail, /25/);
+  assert.doesNotMatch(detail, /^\d+ offending message\(s\)$/, 'must not regress to the bare-count shape');
+});
+
+test('#599: formatRepeatedMessagesDetail joins multiple offenders with "; ", one per identity', () => {
+  const detail = formatRepeatedMessagesDetail([
+    { message: 'first noisy message', status: 'FAILURE', count: 30 },
+    { message: 'second noisy message', status: 'PARTIAL', count: 21 },
+  ]);
+  assert.equal(
+    detail,
+    '"first noisy message" (FAILURE) x30; "second noisy message" (PARTIAL) x21'
+  );
+});
+
+test('#599: formatRepeatedMessagesDetail on zero offenders says so explicitly, not an empty string', () => {
+  assert.equal(formatRepeatedMessagesDetail([]), 'no message repeated beyond threshold');
+  assert.equal(formatRepeatedMessagesDetail(undefined), 'no message repeated beyond threshold');
 });
 
 // ---- F2 ----------------------------------------------------------------

@@ -473,6 +473,13 @@ jobs:
         # only (node:child_process, node:fs, node:os, node:path, node:url).
         run: node --test scripts/tests/failure-delta-cli.test.mjs
 
+      - name: Signal-health-checks self-test (#599, unwired at merge — R1 fix round)
+        # scripts/lib/signal-health-checks.mjs imports Node builtins only
+        # (node:test, node:assert/strict) — no npm package — so this runs
+        # here with the other pre-install node --test steps, not after
+        # npm ci.
+        run: node --test scripts/lib/signal-health-checks.test.mjs
+
       - name: Install dependencies
         run: npm ci
 

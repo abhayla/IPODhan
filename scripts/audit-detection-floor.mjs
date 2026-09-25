@@ -104,7 +104,7 @@ const FILING_EXTRACTOR_STUCK_TYPES = EXTRACTABLE_DOC_TYPES_MIRROR.filter(
 );
 import {
   classifyRepeatedMessages, classifyConflictBacklogRatchet, nextRatchetBaseline, classifyInertDetector,
-  REPEATED_MESSAGE_MAX_OCCURRENCES_24H,
+  REPEATED_MESSAGE_MAX_OCCURRENCES_24H, formatRepeatedMessagesDetail,
 } from './lib/signal-health-checks.mjs';
 import {
   fetchZipCentralDirectory, pdfMembers, selectMainMember, classifyOtherMembers, compareZipToRows,
@@ -897,19 +897,25 @@ async function checkG1_repeatedWarn() {
     return;
   }
   const rows = await q(`
-    SELECT left(error_message, 120) AS message, count(*)::int AS count
+    SELECT left(error_message, 120) AS message, status, count(*)::int AS count
       FROM scraper_logs
      WHERE status IN ('FAILURE', 'PARTIAL')
        AND error_message IS NOT NULL
        AND created_at > now() - interval '24 hours'
-     GROUP BY 1
+     GROUP BY 1, 2
      HAVING count(*) > $1
      ORDER BY count(*) DESC`, [REPEATED_MESSAGE_MAX_OCCURRENCES_24H]);
   const cls = classifyRepeatedMessages(rows);
   for (const o of cls.offenders.slice(0, MAX_OFFENDERS)) {
-    notify('g_repeated_warn', 'P2', o.message, 'scraper_logs message repeated beyond threshold', `"${o.message}" logged ${o.count}x in the last 24h (>${REPEATED_MESSAGE_MAX_OCCURRENCES_24H}) — a signal that repeats forever stops being a signal`);
+    notify('g_repeated_warn', 'P2', o.message, 'scraper_logs message repeated beyond threshold', `"${o.message}" (${o.status}) logged ${o.count}x in the last 24h (>${REPEATED_MESSAGE_MAX_OCCURRENCES_24H}) — a signal that repeats forever stops being a signal`);
   }
-  record('g_repeated_warn', `no single scraper_logs message repeats >${REPEATED_MESSAGE_MAX_OCCURRENCES_24H}x/24h`, cls.fail ? 'FAIL' : 'PASS', `${cls.offenders.length} offending message(s)`);
+  // #599: was `${cls.offenders.length} offending message(s)` — a bare count
+  // (signal-ownership.md R1 violation). Now mirrors m_blocked_all_age /
+  // l_nse_status_crosscheck: the offending message text (truncated to 120
+  // chars by the query), its status ("level") and its repeat count, one per
+  // offender, bounded by MAX_OFFENDERS like every other identity list in
+  // this file.
+  record('g_repeated_warn', `no single scraper_logs message repeats >${REPEATED_MESSAGE_MAX_OCCURRENCES_24H}x/24h`, cls.fail ? 'FAIL' : 'PASS', formatRepeatedMessagesDetail(cls.offenders.slice(0, MAX_OFFENDERS)));
 }
 
 // ---- (g3): inert detector, WINDOWED (#191 F3, T-465 round 2) ----------------

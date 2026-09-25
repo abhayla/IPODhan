@@ -27,6 +27,25 @@ export function classifyRepeatedMessages(rows, maxOccurrences = REPEATED_MESSAGE
   return { fail: offenders.length > 0, offenders };
 }
 
+// #599: the g_repeated_warn check's record() call printed only
+// `${offenders.length} offending message(s)` — a bare count, in direct
+// violation of .claude/rules/signal-ownership.md R1 ("A failure counter MUST
+// be resolved to identities before it is reported"). The check already
+// knows exactly which message(s) tripped it (via `offenders`, above) and
+// simply never printed them. This formats the SAME shape
+// m_blocked_all_age / l_nse_status_crosscheck already use in
+// audit-detection-floor.mjs (join identities with '; ', bounded by
+// MAX_OFFENDERS at the call site) so a reader never has to query
+// scraper_logs by hand to find the offending message.
+// @param {{message: string, status?: string, count: number}[]} offenders
+// @returns {string}
+export function formatRepeatedMessagesDetail(offenders) {
+  if (!offenders || offenders.length === 0) return 'no message repeated beyond threshold';
+  return offenders
+    .map((o) => `"${o.message}"${o.status ? ` (${o.status})` : ''} x${o.count}`)
+    .join('; ');
+}
+
 // ---- F2: unbounded backlog ceiling ------------------------------------------
 // Absolute ceiling, independent of and in addition to the noise-RATIO check
 // (f_conflict_noise_ratio) — a backlog can be 100% "genuine" disagreements by
