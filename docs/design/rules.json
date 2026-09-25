@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-25T16:32:47.011Z",
+  "generated_at": "2026-09-25T16:34:23.243Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 199,
-    "retired": 42
+    "retired": 43
   },
-  "next_id": 242,
+  "next_id": 243,
   "rules": [
     {
       "id": "R-151",
@@ -1035,12 +1035,12 @@
       "retired": false
     },
     {
-      "id": "R-080",
-      "hash": "628d516073ff",
+      "id": "R-242",
+      "hash": "c71484bea4df",
       "section": "2.9 Statuses outside the three the first draft named",
       "kind": "prose",
-      "text": "- POSTPONED — not terminal, it comes back. Stays in scope at the normal four-slot cadence. A relaunched issue almost always carries a revised price band and a new window, so its document-sourced fields are invalidated the moment the relaunch filing arrives (§2.5 trigger 3) — the old terms must not survive the relaunch. - WITHDRAWN — terminal. The walk stops. Existing values are kept as a record, because someone who applied wants to see what they applied to. The page stays at its URL with a clear withdrawal notice rather than redirecting — people who applied will search for it. GMP and subscription polling stop, because a withdrawn issue with a ticking grey-market premium reads as live and is actively misleading. And the IPO leaves the §4 denominators, so a dead issue does not drag the coverage numbers of the live ones.",
-      "first_seen": "2026-09-09",
+      "text": "- POSTPONED — not terminal, it comes back. Stays in scope at the normal four-slot cadence. A relaunched issue almost always carries a revised price band and a new window, so its document-sourced fields are invalidated the moment the relaunch filing arrives (§2.5 trigger 3) — the old terms must not survive the relaunch. This includes admin values (OD-120): they are cleared with the rest, kept in the audit trail, and listed in one alert with a re-apply option. - WITHDRAWN — terminal. The walk stops. Existing values are kept as a record, because someone who applied wants to see what they applied to. The page stays at its URL with a clear withdrawal notice rather than redirecting — people who applied will search for it. GMP and subscription polling stop, because a withdrawn issue with a ticking grey-market premium reads as live and is actively misleading. And the IPO leaves the §4 denominators, so a dead issue does not drag the coverage numbers of the live ones.",
+      "first_seen": "2026-09-25",
       "retired": false
     },
     {
@@ -1798,6 +1798,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-080",
+      "hash": "628d516073ff",
+      "section": "2.9 Statuses outside the three the first draft named",
+      "kind": "prose",
+      "text": "- POSTPONED — not terminal, it comes back. Stays in scope at the normal four-slot cadence. A relaunched issue almost always carries a revised price band and a new window, so its document-sourced fields are invalidated the moment the relaunch filing arrives (§2.5 trigger 3) — the old terms must not survive the relaunch. - WITHDRAWN — terminal. The walk stops. Existing values are kept as a record, because someone who applied wants to see what they applied to. The page stays at its URL with a clear withdrawal notice rather than redirecting — people who applied will search for it. GMP and subscription polling stop, because a withdrawn issue with a ticking grey-market premium reads as live and is actively misleading. And the IPO leaves the §4 denominators, so a dead issue does not drag the coverage numbers of the live ones.",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-238",

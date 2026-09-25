@@ -172,6 +172,7 @@ it by assuming.
 | OD-117 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) the admin wins on both and (C) split (Spec basis: E-1 §1.2.1 "the single most damaging error", OD-106, OD-107; raised by the independent review of §9; real cases: anchor lists empty on 107 of 112 non-listed IPOs, F-174; no measured case of listing exchanges changing after the first read). **Every E-1 field follows OD-106 the same way. `anchor_investors.bid_date` follows OD-106 even inside an admin-owned anchor list (OD-107): the exchange's newer, different date replaces the admin's and alerts; the investor rows themselves stay admin-owned. For `listing_exchanges`, "newer" means the exchange now publishes a value different from the one it published when the admin saved; that value replaces the admin's and alerts.** | 2026-09-25 | §9.2 | §9.2 item 7 states that bid_date follows OD-106 inside an admin-owned list and what "newer" means for listing_exchanges |
 | OD-118 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) reuse the OD-8 notice page and (C) redirect every hidden row to the home page (Spec basis: §2.9 and OD-8 "stays at its URL with a clear withdrawal notice rather than redirecting -- people who applied will search for it", OD-116, OD-38, OD-53, the existing `ipo_slug_redirects` table; raised by the independent review of §9; no fresh count of such rows -- the `i_same_ipo_two_rows` floor check did not run on 2026-09-25). **Corrects OD-116's mechanism: a hidden row is NOT shown through the OD-8 freeze. A hidden non-IPO row's address answers 410 Gone and leaves the sitemap, every list and search; its data stays in the database for admins and unhide restores it. A duplicate is not hidden but merged (OD-38), and its old address redirects to the surviving IPO through `ipo_slug_redirects`. A genuinely WITHDRAWN IPO keeps OD-8's notice page; OFS rows keep OD-53's notice.** | 2026-09-25 | §9.2 | §9.2 item 23 states 410 Gone for a hidden non-IPO row, merge plus redirect for a duplicate, and the OD-8 page only for WITHDRAWN |
 | OD-119 | *"B"* -- 2026-09-25, option (B) of three, chosen over (A) not editable, frozen with the OD-53 notice (recommended) and (C) only notice text and basic facts (Spec basis: OD-53, spec-deviation-guideline.md §5 "OFS ... out of scope for both scraper and admin", OD-102 "applicable for each IPO", §1.11 -- all 19 OFS rows have 0 lot size and 0 documents; raised by the independent review of §9). **SPEC CHANGE to spec-deviation-guideline.md §5 (admin side only): the OFS rows are admin-editable like any IPO in the same editor, under the same rules (OD-107 lists, OD-108 typed values with notes, OD-109 reader line, OD-116/OD-118 hide).** Unchanged: OD-53's scraper side -- the pull walk still spends nothing on them, so their source panel is empty and every value is typed; and their page keeps the OD-53 non-IPO notice. | 2026-09-25 | §9.2 | §9.2 item 4 states OFS rows are admin-editable with typed values and keep the OD-53 notice; spec-deviation-guideline.md §5 OFS row says admin-editable |
+| OD-120 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) admin values survive a relaunch and (C) clear only price and timetable fields (Spec basis: §2.9 "its document-sourced fields are invalidated the moment the relaunch filing arrives -- the old terms must not survive the relaunch", OD-102; real case F-131, Dhanwel; raised by the independent review of §9). **§2.9 applies to admin values too: when a POSTPONED IPO's relaunch filing arrives, admin values on its document fields are cleared with the rest and the new filing's values are used. The cleared admin values stay in the audit trail, and the admins get ONE alert listing each cleared value with a one-click re-apply for those still true.** | 2026-09-25 | §2.9, §9.2 | §2.9 says a relaunch clears admin values on document fields; §9.2 item 27 states the alert with re-apply |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -2456,7 +2457,8 @@ two at any time:
 - **POSTPONED — not terminal, it comes back.** Stays in scope at the normal four-slot cadence. A
   relaunched issue almost always carries a revised price band and a new window, so **its
   document-sourced fields are invalidated the moment the relaunch filing arrives** (§2.5 trigger 3)
-  — the old terms must not survive the relaunch.
+  — the old terms must not survive the relaunch. **This includes admin values (OD-120)**: they are
+  cleared with the rest, kept in the audit trail, and listed in one alert with a re-apply option.
 - **WITHDRAWN — terminal.** The walk stops. **Existing values are kept as a record**, because
   someone who applied wants to see what they applied to. The page **stays at its URL** with a clear
   withdrawal notice rather than redirecting — people who applied will search for it. **GMP and
@@ -4030,6 +4032,9 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
     OD-85). When an admin changes a CIN, symbol, ISIN or source record number, the old value is kept
     as an alias that binding still matches, so the next scrape binds to this row instead of creating
     a second one.
+27. **A relaunched IPO (OD-120).** When a POSTPONED IPO's relaunch filing arrives, admin values on
+    its document fields are cleared with the rest (§2.9). They stay in the audit trail, and one
+    alert lists each cleared value with a one-click re-apply for those still true.
 ### 9.3 Where the per-source values come from (OD-103)
 
 The edit view reads the witnesses stored for the field (§2.4 as amended by OD-103). Each source
@@ -4058,8 +4063,6 @@ An independent review on 2026-09-25 showed the discovery round was not complete.
 where earlier decisions already decide it (§2.4 clarification; OD-103 per stage; OD-111 identifier;
 items 7, 11, 16, 18, 24-26). Still the owner's to decide, asked one at a time:
 
-4. A postponed IPO that relaunches: §2.9 invalidates document fields when the relaunch filing
-   arrives, while OD-102 says an admin value is never replaced.
 5. Clearing an admin value: a listed IPO has no next stage, so a cleared field is never read again;
    and what the page shows right after a clear.
 
