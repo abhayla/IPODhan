@@ -1,14 +1,17 @@
 /**
- * T-293F — proves the post-insert duplicate-sweep job actually CONVERGES a
- * planted duplicate pair, using the real IC Electricals names from the
- * live-prod recreation the T-293C checker found (finding #5: "IC Electricals
- * Company Ltd" / "IC Electricals Co.Ltd." — two live rows for one company).
+ * T-293F — proves the post-insert duplicate-sweep job computes the right
+ * plan for a planted duplicate pair, using the real IC Electricals names
+ * from the live-prod recreation the T-293C checker found (finding #5:
+ * "IC Electricals Company Ltd" / "IC Electricals Co.Ltd." — two live rows
+ * for one company).
  *
- * Before this test, `duplicate-sweep-job.ts` had zero coverage (checker
- * finding #4): "the sweep converges nothing today" was aspirational, never
- * proven. This exercises `runDuplicateSweepJob({ dryRun: false })` end to
- * end against a mocked db, asserting the loser is repointed, redirected, and
- * deleted, and the keeper (the more complete row) survives.
+ * #1003 (Tier A review of #1001, 2026-09-24): `runDuplicateSweepJob({
+ * dryRun: false })` used to APPLY the plan itself with raw SQL — no
+ * `checkMergeEligibility` gate and no `ipo_merge_log` row, so a merge it
+ * made could not be undone. That apply branch is removed; `dryRun: false`
+ * now throws instead of writing. This file's "converges" case (below) is
+ * rewritten to assert the REFUSAL, not a raw-SQL write — the plan/report
+ * behaviour (dry-run, default) is unchanged and still asserted.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -114,38 +117,34 @@ describe('runDuplicateSweepJob (T-293F — proves convergence, not just wiring)'
     selectRows = [KEEPER, LOSER, UNRELATED];
   });
 
-  it('(c) converges a planted duplicate pair (real IC Electricals names) after one sweep run', async () => {
-    const result = await runDuplicateSweepJob({ dryRun: false });
+  it('#1003: dryRun:false is refused before any write — the ungated raw-SQL apply path is gone', async () => {
+    await expect(runDuplicateSweepJob({ dryRun: false })).rejects.toThrow(/#1003/);
 
-    expect(result.applied).toBe(true);
+    // No row was read, no write was attempted — the refusal happens before the plan is even built.
+    expect(insertValuesMock).not.toHaveBeenCalled();
+    const deleteCall = executeMock.mock.calls.find(([q]) => JSON.stringify(q).includes('DELETE FROM ipos'));
+    expect(deleteCall).toBeUndefined();
+
+    // MUTATION CHECK: restoring the old raw-SQL apply branch (no throw on
+    // `dryRun: false`) makes the `rejects.toThrow` assertion above fail —
+    // the promise resolves instead of rejecting.
+  });
+
+  it('(c) still computes the right plan for a planted duplicate pair (real IC Electricals names) in dry-run', async () => {
+    const result = await runDuplicateSweepJob({ dryRun: true });
+
+    expect(result.applied).toBe(false);
     expect(result.dupClusters).toHaveLength(1);
     const cluster = result.dupClusters[0];
     expect(cluster.keepId).toBe(KEEPER.id);
     expect(cluster.deleteIds).toEqual([LOSER.id]);
 
-    // The loser's slug is redirected to the keeper BEFORE the delete (T-278F
-    // discipline) — reason must be DUPLICATE_MERGE so a merged-away slug
-    // still resolves instead of 404ing.
-    expect(insertValuesMock).toHaveBeenCalledTimes(1);
-    const redirectRow = insertValuesMock.mock.calls[0][0];
-    expect(redirectRow).toMatchObject({
-      oldSlug: LOSER.slug,
-      ipoId: KEEPER.id,
-      reason: 'DUPLICATE_MERGE',
-    });
-
-    // The loser row is actually deleted from ipos.
-    const rawSql = (q: any) => JSON.stringify(q);
-    const deleteCall = executeMock.mock.calls.find(([q]) =>
-      rawSql(q).includes('DELETE FROM ipos') && rawSql(q).includes(LOSER.id)
-    );
-    expect(deleteCall).toBeDefined();
-
     // The unrelated row (Cocoa Traders — a negative-fold case per the
-    // normalizer's own tests) must never be touched.
-    const cocoaTouched = executeMock.mock.calls.some(([q]) => rawSql(q).includes(UNRELATED.id))
-      || insertValuesMock.mock.calls.some(([row]) => row.ipoId === UNRELATED.id || row.oldSlug === UNRELATED.slug);
-    expect(cocoaTouched).toBe(false);
+    // normalizer's own tests) must never appear in the plan.
+    expect(cluster.deleteIds).not.toContain(UNRELATED.id);
+    expect(insertValuesMock).not.toHaveBeenCalled();
+    const deleteCall = executeMock.mock.calls.find(([q]) => JSON.stringify(q).includes('DELETE FROM ipos'));
+    expect(deleteCall).toBeUndefined();
   });
 
   it('dry-run (default) computes the same plan but performs no writes', async () => {

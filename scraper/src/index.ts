@@ -2062,8 +2062,9 @@ export async function triggerRegistrarHealthCheck(): Promise<StepResult> {
  * registered in `SchedulerService` (`scheduler.ts`, cron `'30 4 * * *'`
  * IST), which production never imports — the same T-179/T-176 dead-path
  * trap as the registrar health check above. Wires the SAME dry-run-only
- * sweep (report/log a duplicate-cluster plan; NEVER deletes — actual
- * merge/delete stays §GATE, `dryRun: false` is never passed here) onto the
+ * sweep (report/log a duplicate-cluster plan; NEVER deletes — the `dryRun:
+ * false` apply path was removed from this job (#1003), so an actual merge
+ * only ever happens through `mergeDuplicateInto`) onto the
  * path prod actually runs, gated by a last-run catch-up cadence (not a
  * wall-clock window — see `catch-up-cadence.ts`) so the full-table scan
  * fires roughly once a day, matching the original schedule's intent.
