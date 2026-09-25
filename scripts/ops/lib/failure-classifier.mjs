@@ -27,6 +27,26 @@ const RULES = [
     match: (l) => l.msg === 'Filing persist failed (non-fatal)' && typeof l.error === 'string' && /insert into/i.test(l.error),
   },
   {
+    // #426: the numeric guard's own REFUSAL (scraper/src/services/filing-persister.ts
+    // `mark()`, level 40 — a value that would overflow a numeric(precision,scale)
+    // column is refused before the insert, never thrown) is a distinct write-path
+    // event from the THROW-path rule above (level 50, driver code 22003), but its
+    // message also matches the generic 'other' rule's /refused/i pattern, so it
+    // fell into 'other' with no docType — exactly the counts-not-identities shape
+    // signal-ownership R6 exists to stop. Matched on the guard's own literal
+    // message prefix (`${reason}: value refused for ...`, filing-persister.ts) so a
+    // message rewording breaks this rule loudly (test fails) rather than silently
+    // reclassifying back to 'other'.
+    errorClass: 'persist-numeric-overflow',
+    match: (l) => typeof l.msg === 'string' && l.msg.startsWith('persist-numeric-overflow: value refused for'),
+  },
+  {
+    // Same guard, the 'unparseable' arm (a comma/locale-formatted or non-numeric
+    // string) — was previously not an ERROR_CLASSES member at all.
+    errorClass: 'persist-numeric-unparseable',
+    match: (l) => typeof l.msg === 'string' && l.msg.startsWith('persist-numeric-unparseable: value refused for'),
+  },
+  {
     errorClass: 'unit-unparseable',
     match: (l) => l.msg === 'W-45 cross-document agreement refused the paired persist — nothing written' && typeof l.reason === 'string' && /no parseable unit/i.test(l.reason),
   },

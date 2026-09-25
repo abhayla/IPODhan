@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTrackArg, resolveTrackedState, countUntracked, formatSshFailure } from '../ops/lib/failure-tick-state.mjs';
+import { parseTrackArg, resolveTrackedState, countUntracked, formatSshFailure, latestCycleWindow } from '../ops/lib/failure-tick-state.mjs';
 
 const ERROR_CLASSES = ['persist-insert-failed', 'unit-unparseable', 'spawn-timeout-hard', 'spawn-timeout-soft', 'anchor-deterministic-refusal', 'other'];
 
@@ -101,4 +101,36 @@ test('formatSshFailure prefers stderr, falls back to message, never includes a s
   const formatted = formatSshFailure(err);
   assert.ok(!formatted.includes('at '), 'must not include a stack trace frame');
   assert.equal(formatted, 'failure-delta: ssh read failed: boom');
+});
+
+// #429: an old failure that scrolls into a fixed line-count window stays
+// SAME forever, even after later cycles ran clean. latestCycleWindow()
+// bounds the scan to the span AFTER the second-to-last cycle boundary
+// ("Scraper execution completed"), so a failure that did not recur in the
+// latest complete cycle is simply excluded — diff() then reports it GONE.
+
+const BOUNDARY = { level: 30, msg: 'Scraper execution completed' };
+const FAILURE = { level: 50, msg: 'Filing persist failed (non-fatal)', ipoId: 'ipo-1' };
+const OTHER = { level: 30, msg: 'something else entirely' };
+
+test('latestCycleWindow: fewer than 2 boundary markers falls back to the full window unchanged', () => {
+  const lines = [FAILURE, OTHER];
+  assert.deepEqual(latestCycleWindow(lines), lines);
+
+  const oneBoundary = [FAILURE, BOUNDARY];
+  assert.deepEqual(latestCycleWindow(oneBoundary), oneBoundary);
+});
+
+test('latestCycleWindow: an old failure before the 2nd-to-last boundary is excluded from the latest cycle window', () => {
+  // old failure -> boundary #1 (old cycle end) -> clean cycle -> boundary #2 (latest cycle end)
+  const lines = [FAILURE, BOUNDARY, OTHER, BOUNDARY];
+  const windowed = latestCycleWindow(lines);
+  assert.deepEqual(windowed, [OTHER, BOUNDARY]);
+  assert.ok(!windowed.includes(FAILURE), 'the old failure must not survive into the latest cycle window');
+});
+
+test('latestCycleWindow: a failure recurring inside the latest cycle window is kept', () => {
+  const lines = [FAILURE, BOUNDARY, FAILURE, BOUNDARY];
+  const windowed = latestCycleWindow(lines);
+  assert.deepEqual(windowed, [FAILURE, BOUNDARY]);
 });

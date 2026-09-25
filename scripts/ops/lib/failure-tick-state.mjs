@@ -80,3 +80,41 @@ export function formatSshFailure(err) {
   const reason = err?.stderr?.toString?.().trim() || err?.message || String(err);
   return `failure-delta: ssh read failed: ${reason}`;
 }
+
+// #429: `scraper/src/index.ts` logs this exact msg once at the end of every
+// cycle (level 30), win or lose. It is the only cycle-boundary marker
+// already present in the log — no new instrumentation needed.
+export const CYCLE_BOUNDARY_MSG = 'Scraper execution completed';
+
+/**
+ * Bounds a parsed log window down to the LATEST COMPLETE cycle (the span
+ * between the two most recent cycle-boundary markers), instead of the raw
+ * fixed-line-count scan `failure-delta.mjs` reads over ssh.
+ *
+ * Without this, a failure logged hours ago stays inside the scanned window
+ * (default last 5000 lines) long after it stopped recurring, and
+ * `extractFailures` + `diff()` keep reporting it SAME — it can never report
+ * GONE while its one occurrence is still in range (#429). Bounding to the
+ * latest complete cycle means a failure that did NOT recur in the newest
+ * finished cycle is simply absent from `currentMap`, so `diff()`'s existing
+ * NEW/GONE/SAME logic reports it GONE on its own — no new "is this still
+ * failing" check needed against production (which this ops-only fix must
+ * not touch — no ssh, no DB tunnel, no VPS run).
+ *
+ * Fewer than 2 boundary markers in the scanned window means there is no
+ * complete cycle to bound to yet (e.g. right after a slot's first-ever run,
+ * or a tiny test fixture) — falls back to the full window unchanged rather
+ * than guessing.
+ * @param {object[]} parsedLines
+ * @param {string} [boundaryMsg]
+ * @returns {object[]}
+ */
+export function latestCycleWindow(parsedLines, boundaryMsg = CYCLE_BOUNDARY_MSG) {
+  const boundaryIdxs = [];
+  for (let i = 0; i < parsedLines.length; i++) {
+    if (parsedLines[i]?.msg === boundaryMsg) boundaryIdxs.push(i);
+  }
+  if (boundaryIdxs.length < 2) return parsedLines;
+  const start = boundaryIdxs[boundaryIdxs.length - 2] + 1;
+  return parsedLines.slice(start);
+}
