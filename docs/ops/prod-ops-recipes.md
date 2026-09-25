@@ -11,7 +11,7 @@ cited). Hosts: Linux VPS `72.61.240.224` (nginx + pm2, prod + staging), Windows 
 | Target | Command | Notes |
 |---|---|---|
 | Linux VPS | `ssh -o BatchMode=yes rfp-vps '<cmd>'` | alias in `~/.ssh/config` (`Host rfp-vps`, key auth). Pipe through `grep -vi kex` to drop the post-quantum KEX warning. Read paths only (owner rule: the VPS is production, no ad-hoc runs). |
-| DB tunnel | `ssh -i ~/.ssh/ipodhan_vps -o BatchMode=yes -o ServerAliveInterval=60 -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new -N -L 15432:localhost:5432 Administrator@103.118.16.189` | run in the background; `localhost:15432` then reaches prod Postgres. Manual and session-scoped: every fresh session starts with the port down. |
+| DB tunnel | `bash scripts/ops/db-tunnel.sh start` (then `status` / `stop`) | `localhost:15432` then reaches prod Postgres. **Never start this tunnel as a harness background task** — a bare `ssh ... -N -L 15432:localhost:5432 ...` launched by the session harness has no live Windows parent under Git Bash (MSYS), so TaskStop cannot kill it by walking the process tree and the port is left open across sessions (measured 2026-09-25, twice in one afternoon — full RCA in the script's own header comment, `scripts/ops/db-tunnel.sh`). `db-tunnel.sh start` records the owning session and PID; a project SessionEnd hook (`.claude/hooks/db-tunnel-session-end.py`) stops it automatically when that session ends. Shared across worktrees via `~/.claude/.ipodhan-db-tunnel.json`. |
 
 ## 2. Reading prod / staging state (read-only, safe any time)
 

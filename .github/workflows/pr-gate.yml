@@ -743,6 +743,13 @@ jobs:
           git config --global user.name "CI"
           python .claude/hooks/tests/board-owed-guard.test.py
 
+      - name: DB-tunnel SessionEnd hook self-tests (project-level, 2026-09-25)
+        # T-db-tunnel: the SessionEnd hook that stops an owned-and-leaked prod-DB tunnel
+        # (scripts/ops/db-tunnel.sh) is the detection/repair mechanism for the class in that
+        # script's header comment. This suite (9 cases, stdlib-only, no network, no real
+        # ssh/tunnel — a stub stop command asserts invocation) is its only gate.
+        run: python .claude/hooks/tests/db-tunnel-session-end.test.py
+
   # M-c: this job used to live in test.yml, which is workflow_dispatch-only —
   # so the gate that replays the journal from empty ran only when a human
   # remembered to click it. The two defects it exists to catch (0035's enum/table
