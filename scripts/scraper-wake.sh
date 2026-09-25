@@ -395,7 +395,20 @@ lock_is_held() {
     return 1
   fi
 
-  ttl="$(redis-cli -t 3 -u "$redis_url" TTL "$SCRAPER_LOCK_KEY" 2>/dev/null || true)"
+  # #719: `redis-cli -t 3` (the flag this line used to pass) is not a real
+  # redis-cli option in ANY version - there is no client-side connection
+  # timeout flag by that name. On the staging box's actual redis-cli
+  # (7.0.15) it is refused outright ("Unrecognized option ... '-t'") before
+  # a connection is even attempted, so the command's stdout is always empty
+  # and every wake hit the catch-all "unreadable TTL" branch below,
+  # unconditionally, on a Redis that was reachable the whole time. `timeout`
+  # (already a hard dependency of this script - see the no-ceiling check
+  # above) bounds the same 3s window from the OUTSIDE instead.
+  ttl_err_file="/tmp/scraper-wake-ttl-err.$$"
+  ttl="$(timeout 3 redis-cli -u "$redis_url" TTL "$SCRAPER_LOCK_KEY" 2>"$ttl_err_file")"
+  ttl_rc=$?
+  ttl_err="$(cat "$ttl_err_file" 2>/dev/null)"
+  rm -f "$ttl_err_file"
   # TTL semantics: -2 = key does not exist, -1 = exists with no expiry,
   # >0 = seconds remaining. Only -2 (and 0) mean free. A -1 (a lock with no
   # TTL, i.e. a leaked lock that will never expire on its own) counts as HELD
@@ -405,7 +418,17 @@ lock_is_held() {
     -1) LOCK_TTL="-1 (no expiry set - leaked lock, will not self-clear)"; return 0 ;;
     0) return 1 ;;
     ''|*[!0-9-]*)
-      log "WARN lock-read-unavailable: unreadable TTL for $SCRAPER_LOCK_KEY (got '$ttl') - proceeding (fail-open, see header)"
+      if [ "$ttl_rc" -ne 0 ] && [ -n "$ttl_err" ]; then
+        # signal-ownership.md R6: a failure carries its cause. redis-cli ran
+        # and returned an ERROR (a bad invocation, an ACL/auth denial, a
+        # protocol mismatch) rather than a bare connection timeout - that is
+        # a real defect in THIS wrapper, not evidence that Redis is down,
+        # and reads differently from the "redis-cli missing"/"no REDIS_URL"
+        # cases above.
+        log "WARN lock-read-unavailable: TTL for $SCRAPER_LOCK_KEY returned no usable value (redis-cli exit $ttl_rc: $ttl_err) - proceeding (fail-open, see header)"
+      else
+        log "WARN lock-read-unavailable: unreadable TTL for $SCRAPER_LOCK_KEY (got '$ttl') - proceeding (fail-open, see header)"
+      fi
       return 1
       ;;
     *) LOCK_TTL="${ttl}s remaining"; return 0 ;;
