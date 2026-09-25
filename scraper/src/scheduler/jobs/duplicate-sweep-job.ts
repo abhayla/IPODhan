@@ -10,15 +10,15 @@
  * every cycle, so a pair that slips through still converges instead of
  * living in prod forever.
  *
- * Default DRY-RUN (report/log only, mirrors `stage-reconciler-job.ts`'s
- * convention): it computes + logs the duplicate-cluster plan, but does NOT
- * delete rows. Actual merge/delete is §GATE — `runDuplicateSweepJob({ dryRun:
- * false })` is intentionally never called from the scheduled cron path in
- * this build; activation (wiring `dryRun: false` into the cron trigger) is
- * Abhay's call, same posture as `ENABLE_STAGE_RECONCILER`.
+ * DRY-RUN ONLY (report/log only, mirrors `stage-reconciler-job.ts`'s
+ * convention): it computes + logs the duplicate-cluster plan and never
+ * writes. #1003: the `dryRun: false` apply branch this file used to carry
+ * merged pairs with raw SQL, ungated (no `checkMergeEligibility`, no
+ * `ipo_merge_log` row) — it is removed; `opts.dryRun === false` is refused.
+ * A discovered cluster is merged through `IPORepository.mergeDuplicateInto`.
  */
 import { db } from '@ipodhan/shared/db';
-import { ipos, ipoSlugRedirects } from '@ipodhan/shared/db/schema';
+import { ipos } from '@ipodhan/shared/db/schema';
 import { sql } from 'drizzle-orm';
 import logger from '../../utils/logger.js';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
@@ -58,16 +58,30 @@ async function realChildValue(ipoId: string): Promise<number> {
 }
 
 /**
- * Run one sweep cycle. dryRun (default true) computes + logs the plan only —
- * no writes. §GATE: `dryRun: false` performs the actual merge (repoint
- * gmp/subscriptions + scalar-field backfill + CASCADE delete), identical to
- * `scripts/merge-duplicate-ipos.ts --apply`.
+ * Run one sweep cycle. This job is DRY-RUN ONLY: it computes + logs the
+ * duplicate-cluster plan and never writes.
+ *
+ * #1003 (Tier A review of #1001, 2026-09-24): the old `dryRun: false` branch
+ * merged pairs with raw SQL — no `checkMergeEligibility` gate (#1001) and no
+ * `ipo_merge_log` row (#994), so a merge it made could not be undone and
+ * could combine two different offers the gated tool would refuse. Its only
+ * caller (`index.ts`) always passed `dryRun: true`, so nothing in production
+ * used the removed path; `opts.dryRun === false` now throws rather than
+ * silently keep it reachable. To actually merge a discovered cluster, use
+ * `IPORepository.mergeDuplicateInto` (the gated path both `--apply` CLIs and
+ * this job's plan should route through) — never a raw `DELETE FROM ipos`.
  */
 export async function runDuplicateSweepJob(
   opts: { dryRun?: boolean } = {}
 ): Promise<DuplicateSweepResult> {
-  const dryRun = opts.dryRun !== false;
-  logger.info({ dryRun }, '[duplicate-sweep-job] cycle start');
+  if (opts.dryRun === false) {
+    throw new Error(
+      '[duplicate-sweep-job] dryRun: false is refused (#1003) — the raw-SQL apply path bypassed ' +
+        'checkMergeEligibility and wrote no ipo_merge_log row; merge a discovered cluster through ' +
+        'IPORepository.mergeDuplicateInto instead.'
+    );
+  }
+  logger.info({ dryRun: true }, '[duplicate-sweep-job] cycle start');
 
   const all = (await db
     .select({
@@ -108,42 +122,19 @@ export async function runDuplicateSweepJob(
       keepSlug: keep.slug,
       deleteIds: dups.map((d) => d.id),
     });
-
-    if (!dryRun) {
-      await db.transaction(async (tx) => {
-        for (const dup of dups) {
-          for (const col of ['symbol', 'isin'] as const) {
-            await tx.execute(sql.raw(
-              `UPDATE ipos SET ${col} = dup.${col} FROM ipos dup ` +
-              `WHERE ipos.id = '${keep.id}' AND dup.id = '${dup.id}' ` +
-              `AND ipos.${col} IS NULL AND dup.${col} IS NOT NULL`));
-          }
-          await tx.execute(sql.raw(`UPDATE subscriptions SET ipo_id = '${keep.id}' WHERE ipo_id = '${dup.id}'`));
-          await tx.execute(sql.raw(
-            `DELETE FROM gmp_records d WHERE d.ipo_id = '${dup.id}' AND EXISTS (` +
-            `SELECT 1 FROM gmp_records k WHERE k.ipo_id = '${keep.id}' ` +
-            `AND k."timestamp" = d."timestamp" AND k.source = d.source)`));
-          await tx.execute(sql.raw(`UPDATE gmp_records SET ipo_id = '${keep.id}' WHERE ipo_id = '${dup.id}'`));
-          // Same redirect-before-delete discipline as merge-duplicate-ipos.ts
-          // --apply (T-293): a merged-away slug must not 404.
-          await tx
-            .insert(ipoSlugRedirects)
-            .values({ oldSlug: dup.slug, ipoId: keep.id, reason: 'DUPLICATE_MERGE' })
-            .onConflictDoNothing({ target: ipoSlugRedirects.oldSlug });
-          await tx.execute(sql.raw(`DELETE FROM ipos WHERE id = '${dup.id}'`));
-        }
-      });
-    }
+    // #1003: this job only ever computes and reports the plan. The apply
+    // branch that used to run here (ungated raw-SQL merge) is removed —
+    // `opts.dryRun === false` is refused above, before any row is read.
   }
 
   const result: DuplicateSweepResult = {
     totalIpos: all.length,
     clusters: clusters.size,
     dupClusters,
-    applied: !dryRun,
+    applied: false,
   };
   logger.info(
-    { totalIpos: result.totalIpos, dupClusterCount: dupClusters.length, dryRun },
+    { totalIpos: result.totalIpos, dupClusterCount: dupClusters.length, dryRun: true },
     '[duplicate-sweep-job] cycle complete'
   );
   return result;

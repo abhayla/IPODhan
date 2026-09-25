@@ -29,13 +29,11 @@ function stripCommentsPreservingLines(source: string): string {
     .replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length));
 }
 
-// Legacy, already-run, one-off historical migration script (Phase 10/11
-// "de-duplicate test IPOs") — imports from the STALE `web/lib/db/index.js`
-// duplicate the root CLAUDE.md explicitly forbids for new code, reassigns
-// foreign keys for a fixed list of named test companies, and is not part of
-// the live write-path class this scan guards. Exempted by name, not silently
-// skipped — remove this line if the script is ever revived for a live run.
-const EXEMPT_FILES = new Set(['scripts/deduplicate-test-ipos.ts']);
+// #1003: `scripts/deduplicate-test-ipos.ts` (the legacy, already-run, one-off
+// Phase 10/11 "de-duplicate test IPOs" migration this exemption named) was
+// deleted — it merged/deleted `ipos` rows with no eligibility gate and no
+// `ipo_merge_log` write. Nothing exempted now that it is gone.
+const EXEMPT_FILES = new Set<string>([]);
 
 function collect(): string[] {
   return fg.sync(['scripts/**/*.ts', 'src/**/*.ts'], { cwd: ROOT, absolute: false, dot: false });
