@@ -2404,8 +2404,11 @@ reaches the field. Clearing the override returns the field to the loop automatic
 **Amended by OD-121 (2026-09-25), SPEC CHANGE:** an admin never "clears back to the loop". An admin
 DELETE saves an admin empty value that holds like any other admin value, and a source's value comes
 back only when an admin picks it. Newer values still reach the admin as suggestions (§2.4
-clarification), so nothing is frozen out invisibly. The only system release of an admin hold is a
-relaunch (OD-120).
+clarification) at the reads OD-56 schedules. **Caveat:** an IPO the walk no longer reads -- listed more
+than `LIVE_WINDOW_DAYS_AFTER_LISTING` (10) days ago (OD-98), and the listed IPOs OD-78 leaves unwalked --
+receives no newer value, so there the admin's value or empty is final unless an admin changes it. The
+only system releases of an admin hold are a relaunch (OD-120) and a newer E-1 exchange value (OD-106,
+OD-117).
 
 **Amended by OD-106 (2026-09-25):** one exception to "outranks everything". For the E-1 timetable fields
 other than `ipos.status`, a NEWER date from NSE or BSE that differs from the admin value replaces it,
@@ -4044,6 +4047,15 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
 27. **A relaunched IPO (OD-120).** When a POSTPONED IPO's relaunch filing arrives, admin values on
     its document fields are cleared with the rest (§2.9). They stay in the audit trail, and one
     alert lists each cleared value with a one-click re-apply for those still true.
+28. **Round-2 review clarifications** (independent review, 2026-09-25; each follows from the decisions
+    named). (a) An admin EMPTY value on an E-1 field is replaced by a newer exchange value with an
+    alert, like any admin value there (OD-106, OD-117 "every E-1 field follows OD-106 the same way");
+    an admin who blanks a date is missing the right date, which is what the exchange then supplies.
+    (b) Removing rows from an admin-owned list (OD-107) takes a short reason and an audit row, as a
+    delete does (OD-121); removing every row leaves the list admin-empty. (c) A relaunch (OD-120)
+    releases admin EMPTY values too, and its alert reads "you had blanked X; the new filing says Y".
+    (d) For IPOs the walk no longer reads (OD-78, OD-98), no suggestion arrives, so the admin value or
+    empty is final there (§2.7 caveat).
 ### 9.3 Where the per-source values come from (OD-103)
 
 The edit view reads the witnesses stored for the field (§2.4 as amended by OD-103). Each source

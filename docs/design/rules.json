@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-25T17:55:41.608Z",
+  "generated_at": "2026-09-25T17:58:44.659Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 200,
-    "retired": 43
+    "retired": 44
   },
-  "next_id": 244,
+  "next_id": 245,
   "rules": [
     {
       "id": "R-151",
@@ -1026,11 +1026,11 @@
       "retired": false
     },
     {
-      "id": "R-243",
-      "hash": "967d7e0d4648",
+      "id": "R-244",
+      "hash": "c2b7131af997",
       "section": "2.7 Admin overrides",
       "kind": "prose",
-      "text": "Amended by OD-121 (2026-09-25), SPEC CHANGE: an admin never \"clears back to the loop\". An admin DELETE saves an admin empty value that holds like any other admin value, and a source's value comes back only when an admin picks it. Newer values still reach the admin as suggestions (§2.4 clarification), so nothing is frozen out invisibly. The only system release of an admin hold is a relaunch (OD-120).",
+      "text": "Amended by OD-121 (2026-09-25), SPEC CHANGE: an admin never \"clears back to the loop\". An admin DELETE saves an admin empty value that holds like any other admin value, and a source's value comes back only when an admin picks it. Newer values still reach the admin as suggestions (§2.4 clarification) at the reads OD-56 schedules. Caveat: an IPO the walk no longer reads -- listed more than LIVE_WINDOW_DAYS_AFTER_LISTING (10) days ago (OD-98), and the listed IPOs OD-78 leaves unwalked -- receives no newer value, so there the admin's value or empty is final unless an admin changes it. The only system releases of an admin hold are a relaunch (OD-120) and a newer E-1 exchange value (OD-106, OD-117).",
       "first_seen": "2026-09-25",
       "retired": false
     },
@@ -1807,6 +1807,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-243",
+      "hash": "967d7e0d4648",
+      "section": "2.7 Admin overrides",
+      "kind": "prose",
+      "text": "Amended by OD-121 (2026-09-25), SPEC CHANGE: an admin never \"clears back to the loop\". An admin DELETE saves an admin empty value that holds like any other admin value, and a source's value comes back only when an admin picks it. Newer values still reach the admin as suggestions (§2.4 clarification), so nothing is frozen out invisibly. The only system release of an admin hold is a relaunch (OD-120).",
+      "first_seen": "2026-09-25",
+      "retired": true
     },
     {
       "id": "R-080",
