@@ -330,6 +330,51 @@ describe('round 5 (Tier A MAJOR 1 + MAJOR 2): a price answer is validated before
     expect(logs.join(' | ')).toMatch(/stored ISIN is null; NSE answered INE012G01022 \(not compared, F-160\)/);
   });
 
+  it('#987: an as-of dated before the listing date is refused: no write, no state write, logged by name and both dates', async () => {
+    // Listed 2026-09-17; the quote's as-of is 2019-06-15 IST -- long before it ever listed
+    // (the reviewer's real probe on #972). Only a future-skew check existed before this.
+    const c = cand({ companyName: 'PreListing', symbol: 'PRL', isin: null, listingDate: '2026-09-17' });
+    const stalePrice: QuoteOutcome = {
+      kind: 'price', exchange: 'NSE', price: 250, calls: 1, series: 'EQ',
+      asOf: new Date('2019-06-15T04:00:00Z'), asOfText: '15-Jun-2019 09:30:00',
+    };
+    const h = harness([c], { PRL: stalePrice }, {});
+    const logs: string[] = [];
+    const s = await runPostListingPriceJob({ ...h.deps, log: (line) => logs.push(line) });
+    expect(h.prices).toEqual([]);
+    expect(h.states).toEqual([]);
+    expect(s.refused).toEqual(['PreListing']);
+    expect(logs.join(' | ')).toMatch(
+      /PreListing NSE read refused — as-of .* is before the listing date 2026-09-17/
+    );
+  });
+
+  it('#987: an as-of on the listing date itself is accepted (boundary, not refused)', async () => {
+    const c = cand({ companyName: 'ListingDay', symbol: 'LST', listingDate: '2026-09-17' });
+    const onListingDay: QuoteOutcome = {
+      kind: 'price', exchange: 'NSE', price: 300, calls: 1, series: 'EQ',
+      // 2026-09-17T10:00:00Z is 2026-09-17 15:30 IST -- same IST calendar day as listing.
+      asOf: new Date('2026-09-17T10:00:00Z'), asOfText: '17-Sep-2026 15:30:00',
+    };
+    const h = harness([c], { LST: onListingDay }, {});
+    const s = await runPostListingPriceJob(h.deps);
+    expect(h.prices).toEqual([{ id: 'id-ListingDay', exchange: 'NSE', price: 300 }]);
+    expect(s.updated).toEqual(['ListingDay']);
+  });
+
+  it('#987: a failed series-state write after a successful price write does not double-count the stock', async () => {
+    const c = cand({ companyName: 'StateFail', symbol: 'SF', nseSeries: 'OLD' });
+    const h = harness([c], { SF: price('NSE', 88, 1, 'EQ') }, {});
+    h.deps.writeState = async () => { throw new Error('state write boom'); };
+    const logs: string[] = [];
+    const s = await runPostListingPriceJob({ ...h.deps, log: (line) => logs.push(line) });
+    // The price write already succeeded and is counted exactly once.
+    expect(h.prices).toEqual([{ id: 'id-StateFail', exchange: 'NSE', price: 88 }]);
+    expect(s.updated).toEqual(['StateFail']);
+    expect(s.refused).toEqual([]);
+    expect(logs.join(' | ')).toMatch(/StateFail price updated but series-state write failed \(non-fatal\): state write boom/);
+  });
+
   it('one candidate throwing an unexpected error is refused and logged, but never stops the rest of the run', async () => {
     const good = cand({ companyName: 'Good', symbol: 'GOOD' });
     const bad = cand({ companyName: 'Bad', symbol: 'BAD' });

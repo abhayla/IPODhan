@@ -151,9 +151,13 @@ type Verdict = 'price' | 'no-symbol' | 'refused' | 'unknown';
 
 /**
  * Round 5 (Tier A MAJOR 1 + MAJOR 2): a price answer is never written on trust alone.
- * Refused (no write) when the as-of is more than 5 minutes ahead of now, or when the
- * exchange's own ISIN disagrees with the stored one. A null stored ISIN is never compared
- * (F-160: 121 of 129 in-window IPOs have none) but is still logged so the gap is visible.
+ * Refused (no write) when the as-of is more than 5 minutes ahead of now, when the as-of
+ * predates the listing (#987 follow-up: only a future skew was refused, so a stock with a
+ * cached/stale quote endpoint could take a price dated years before it ever listed — the
+ * reviewer's probe was an IPO listed 2026-09-20, no stored ISIN, that took an NSE price
+ * stamped 15-Jun-2019), or when the exchange's own ISIN disagrees with the stored one. A
+ * null stored ISIN is never compared (F-160: 121 of 129 in-window IPOs have none) but is
+ * still logged so the gap is visible.
  */
 function guardPriceRead(
   c: PriceCandidate,
@@ -165,6 +169,15 @@ function guardPriceRead(
       ok: false,
       reason: `as-of ${q.asOfText} (${q.asOf.toISOString()}) is more than 5 minutes ahead of now (${now.toISOString()})`,
     };
+  }
+  if (c.listingDate) {
+    const asOfIstDate = istDayIso(q.asOf);
+    if (asOfIstDate < c.listingDate) {
+      return {
+        ok: false,
+        reason: `as-of ${q.asOfText} (${q.asOf.toISOString()}, IST date ${asOfIstDate}) is before the listing date ${c.listingDate} — can't belong to this listing`,
+      };
+    }
   }
   if (q.isin) {
     if (c.isin) {
@@ -226,13 +239,17 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
       let isinNote: string | null = null;
       if (nse?.kind === 'price') {
         const guard = guardPriceRead(c, nse, deps.now);
-        if (guard.ok) {
-          winner = nse;
-          isinNote = guard.isinNote;
-        } else {
+        // `guard.ok ? ... : guard.reason` fails to narrow under scraper's
+        // `strict: false` (TS2339 x3, #987 follow-up): the discriminated union
+        // isn't narrowed in the `else` branch without strict null checks. An
+        // explicit `=== false` check narrows correctly either way.
+        if (guard.ok === false) {
           nseVerdict = 'refused';
           nseDetail = guard.reason;
           deps.log(`post-listing price: ${name} NSE read refused — ${guard.reason}`, { ipoId: c.id, exchange: 'NSE', reason: guard.reason });
+        } else {
+          winner = nse;
+          isinNote = guard.isinNote;
         }
       }
 
@@ -254,13 +271,13 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
           bseDetail = bse.kind === 'price' ? `scrip ${scrip.code}` : `scrip ${scrip.code}: ${bse.detail}`;
           if (bse.kind === 'price') {
             const guard = guardPriceRead(c, bse, deps.now);
-            if (guard.ok) {
-              winner = bse;
-              isinNote = guard.isinNote;
-            } else {
+            if (guard.ok === false) {
               bseVerdict = 'refused';
               bseDetail = guard.reason;
               deps.log(`post-listing price: ${name} BSE read refused — ${guard.reason}`, { ipoId: c.id, exchange: 'BSE', reason: guard.reason });
+            } else {
+              winner = bse;
+              isinNote = guard.isinNote;
             }
           }
         }
@@ -269,8 +286,21 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
       if (winner) {
         const outcome = await deps.writePrice(c, winner);
         summary[outcome].push(name);
+        // The price write already landed and is already counted above (`summary[outcome]`).
+        // A failure in this follow-up state write must not fall into the candidate's outer
+        // catch, which would push the same stock into `summary.refused` too -- double-counting
+        // a stock that got its price written (#987 follow-up: "the run summary counts the
+        // stock twice"). Logged and swallowed; the cached series is just a call-count
+        // optimization, not correctness-bearing.
         if (winner.exchange === 'NSE' && winner.series && winner.series !== c.nseSeries) {
-          await deps.writeState(c, { nseSeries: winner.series });
+          try {
+            await deps.writeState(c, { nseSeries: winner.series });
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            deps.log(`post-listing price: ${name} price ${outcome} but series-state write failed (non-fatal): ${detail}`, {
+              ipoId: c.id, reason: 'state-write-failed', error: detail,
+            });
+          }
         }
         deps.log(
           `post-listing price: ${name} ${outcome} ${winner.exchange} ${winner.price} as of ${winner.asOfText}${isinNote ? ` (${isinNote})` : ''}`,
