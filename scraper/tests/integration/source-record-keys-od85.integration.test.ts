@@ -61,9 +61,20 @@ const noRedis = {
   keys: async () => [], scan: async () => ['0', []],
 } as never;
 
+/**
+ * #995 class fix: this suite depends on the shared `ipodhan_test` database being clean of its OWN
+ * leftover state, not just of rows whose companyName is in NAMES. Every key this suite binds or
+ * creates carries `boundBy: 'od85.test'` (see `ingest` and every direct `bindSourceKeys` call below)
+ * -- a crashed prior run (or a companyName that drifts out of sync with NAMES, e.g. a new test case
+ * added without updating the list) can leave an ACTIVE key on an ipo this companyName-only sweep
+ * never finds, which then collides with the unique (source, key_type, binding_value) index the next
+ * time this suite tries to bind that same key value, and the resolver returns 'held'/'duplicate'
+ * instead of 'created'/'bound' -- reproduced 2026-09-25 by planting exactly such a leftover key.
+ */
 async function cleanup() {
-  const rows = await db!.select({ id: schema.ipos.id }).from(schema.ipos).where(inArray(schema.ipos.companyName, NAMES));
-  const ids = rows.map((r) => r.id);
+  const byName = await db!.select({ id: schema.ipos.id }).from(schema.ipos).where(inArray(schema.ipos.companyName, NAMES));
+  const byMarker = await db!.select({ id: schema.ipoSourceKeys.ipoId }).from(schema.ipoSourceKeys).where(eq(schema.ipoSourceKeys.boundBy, 'od85.test'));
+  const ids = Array.from(new Set([...byName.map((r) => r.id), ...byMarker.map((r) => r.id)]));
   await db!.execute(sql`DELETE FROM audit_logs WHERE action_type IN ('IDENTITY_HELD_FOR_REVIEW', 'IDENTITY_HOLD_OVERRIDDEN')`);
   if (ids.length === 0) return;
   await db!.execute(sql`DELETE FROM ipo_merge_log WHERE keep_ipo_id IN ${sql.raw(`(${ids.map((i) => `'${i}'`).join(',')})`)}`);
