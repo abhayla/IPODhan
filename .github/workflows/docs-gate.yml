@@ -36,6 +36,10 @@ jobs:
   docs:
     name: Design consistency & registry
     runs-on: ubuntu-latest
+    # Every step here may run the card gate (directly or through D16 of
+    # check-design-consistency), which checks parked issues with gh (#1029).
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 

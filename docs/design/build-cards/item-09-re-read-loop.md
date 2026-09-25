@@ -1,6 +1,6 @@
 # Item 9 — The re-read loop
 
-Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 9: OD-65/OD-66 superseded the spec's re-read-the-bytes loop (#876 merged). The corrigendum reader is built on feat/item9-corrigendum-reader (OD-90): a stored CORRIGENDUM is read once into admin-reviewed suggestions (data_conflicts, migration 0057), accepted as an ADMIN value or dismissed; core-proven on ipodhan_test with the real Rays of Belief letter; staging proof owed
+Status: DONE 2026-09-25 PRs #876, #989, #1017, #1031 proof 2026-09-25 staging admin ACCEPT of the Skyways corrigendum suggestion (conflict e7e7b920)
 
 ## Purpose
 

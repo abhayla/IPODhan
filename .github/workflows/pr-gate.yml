@@ -119,7 +119,10 @@ jobs:
         # (the round-7 fresh-review coverage floor promoted to FAIL-level
         # nightly checks), so weakening/deleting a predicate turns this red
         # before it can silently stop catching that finding class again. No
-        # deps needed (Node builtins only).
+        # deps needed (Node builtins only). GH_TOKEN: the design-consistency
+        # positive control runs the card gate, which checks parked issues with gh.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           node --test scripts/tests/audit-detection-floor.test.mjs
           node --test scripts/tests/detection-floor-issue-size-select.test.mjs
@@ -405,6 +408,10 @@ jobs:
         # unknown rule id"); it ran in no workflow before this slice, so that
         # class was caught by nothing. Assigned to this gate step by a review
         # finding during item 20 slice 4 (design-traceability CI wiring).
+        # D16 runs the card gate, which checks every `parked #NNN` issue on a
+        # PARTIAL card with gh (item 32, #1029) and fails closed without a token.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: node docs/design/check-design-consistency.mjs --gate
 
       - name: Field-plan reclaim max-attempts pin (#762 S8 review round 2 MAJOR-1; wired #923 round 3 finding MAJOR-C)

@@ -49,11 +49,7 @@ const HEADINGS = ['## Purpose', '## Serves', '## Files', '## Schema', '## Interf
 // list was built from. A NEW card reading `unknown` that is not on this list fails the gate.
 const UNKNOWN_ALLOWED = new Set([
   'item-06-pull-walk.md',
-  'item-07-job-scheduler-and-budgets.md',
-  'item-09-re-read-loop.md',
-  'item-19-merge-tool-shared-write-path.md',
   'item-21-read-side.md',
-  'item-22-document-handling-and-download-limits.md',
 ]);
 
 /** Does the repository deliberately ignore this path? Asked of git, never guessed from a pattern. */
@@ -186,12 +182,15 @@ export function resolveParkedIssueStates(numbers, offlineSkip) {
   const parkedIssueStates = new Map();
   if (offlineSkip || numbers.size === 0) return { ghOk: true, parkedIssueStates };
 
-  const auth = spawnSync('gh', ['auth', 'status'], { encoding: 'utf8' });
-  if (auth.status !== 0) return { ghOk: false, parkedIssueStates };
-
+  // No `gh auth status` probe: in GitHub Actions it exits non-zero for the
+  // installation token (it cannot read /user) even though `gh issue view`
+  // works. Reachability is judged from the real calls instead: if EVERY view
+  // fails, gh is unreachable and the gate fails closed.
+  let anyOk = false;
   for (const n of numbers) {
     const r = spawnSync('gh', ['issue', 'view', String(n), '--json', 'state,labels'], { encoding: 'utf8' });
     if (r.status !== 0) { parkedIssueStates.set(n, null); continue; }
+    anyOk = true;
     try {
       const data = JSON.parse(r.stdout);
       parkedIssueStates.set(n, { state: data.state, labels: (data.labels || []).map((l) => l.name) });
@@ -199,7 +198,7 @@ export function resolveParkedIssueStates(numbers, offlineSkip) {
       parkedIssueStates.set(n, null);
     }
   }
-  return { ghOk: true, parkedIssueStates };
+  return { ghOk: anyOk, parkedIssueStates };
 }
 
 const isMain = Boolean(process.argv[1]) && (
