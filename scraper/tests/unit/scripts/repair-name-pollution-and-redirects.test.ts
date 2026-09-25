@@ -38,7 +38,6 @@ describe('repair-name-pollution-and-redirects.ts — prod-write refusal via open
     await openRepairDb(mockProdPool(), {
       apply: true,
       allowProd: true,
-      redisConfigured: true,
       toolName: 'repair-name-pollution-and-redirects',
       log: () => {},
       error: () => {},

@@ -38,7 +38,6 @@ describe('backfill-registrar-chittorgarh-detail.ts — prod-write refusal via op
     await openRepairDb(mockProdPool(), {
       apply: true,
       allowProd: true,
-      redisConfigured: true,
       toolName: 'backfill-registrar-chittorgarh-detail',
       log: () => {},
       error: () => {},

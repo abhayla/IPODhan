@@ -225,11 +225,20 @@ production `--apply` so the backup survives on durable storage, not somewhere th
 `buildAlreadyRepairedSet()` (per-field idempotency) and `writeLedgerFile()`. CI enforces it:
 `scripts/ci/require-repair-tool-module.mjs` fails a PR whose new `scraper/scripts/{repair,backfill}-*.ts` neither
 imports the module nor carries `// repair-tool-exempt: <YYYY-MM-DD> <reason>`.
-**Redis fail-closed (#715):** `openRepairDb()` also refuses an `--apply` against any database other than
-`ipodhan_test` when neither `REDIS_URL` nor `REDIS_HOST` is set — the recipes above (staging/prod, over the
-DB tunnel) export `DATABASE_*` but not Redis, so export the slot's `REDIS_URL` too (section 2/8b's
-`ssh rfp-vps 'grep ^REDIS_URL= ...'` pattern) before `--apply`; otherwise the tool now stops before any write
-instead of silently invalidating the laptop's own Redis and leaving the real cache stale.
+**Redis fail-closed, #1070 redesign of #715:** the guard moved OFF `openRepairDb()` (which used to refuse
+the tool's ENTIRE `--apply` — including the many repair tools that never touch cache at all) and onto the
+actual cache-invalidation call (`guardCacheInvalidation()` in `scraper/scripts/lib/repair-tool.ts`, called
+only by the handful of tools that invalidate). A tool's write against staging/prod is never blocked by
+this. What IS blocked: the invalidation step itself, whenever the resolved Redis target (from `REDIS_URL`'s
+hostname, or `REDIS_HOST`) is unset OR is this box's own loopback address (`localhost` / `127.0.0.1` /
+`::1`) — a laptop tunnel to the DB has no route to the VPS's own Redis, so a `REDIS_URL` pointing at
+localhost is still the laptop's Redis, not the slot's, even though it counts as "set". On a block the tool
+prints the exact keys it would have deleted plus the on-box command to drop them yourself, e.g.
+(prod = db 0, staging = db 1, per section 5 above):
+```
+redis-cli -n 0 DEL 'ipo:detail:<slug>' 'ipo:slug:<slug>' 'ipo:list:*' 'ipo:search:*' 'ipos:history:*'
+```
+`ipodhan_test` is exempt — it always connects to local Redis, the one db that pairing is correct for.
 
 **8a-i. Line-ending-safe matching (GitHub #449).** The row-matching hash above is taken over the
 migration `.sql` file exactly as `readMigrationFiles()` (drizzle-orm) and this tool both read it — and

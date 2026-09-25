@@ -75,7 +75,6 @@ describe('repair-segment-hygiene-t287.ts — prod-write refusal via openRepairDb
     await openRepairDb(mockProdPool(), {
       apply: true,
       allowProd: true,
-      redisConfigured: true,
       toolName: 'repair-segment-hygiene-t287',
       log: () => {},
       error: () => {},

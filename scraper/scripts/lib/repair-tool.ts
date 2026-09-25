@@ -205,45 +205,144 @@ export function decideProdWriteRefusal(input: {
 }
 
 /**
- * Pure refusal decision for the #715 Redis fail-closed guard: refusing to
- * APPLY writes against a REMOTE database (anything other than
- * `ipodhan_test`) when neither REDIS_URL nor REDIS_HOST is set.
+ * #1070 round-2 redesign of the #715 Redis fail-closed guard.
  *
- * RCA (#715): every repair/backfill tool that invalidates cache goes through
- * `getRedisClient()` (packages/shared/src/cache/redis-client.ts), which SILENTLY
- * falls back to `redis://localhost:6379` — the LAPTOP's Redis — when neither
- * env var is set. A tool run over an SSH tunnel to a remote DB (staging,
- * prod) then deletes keys on the laptop's Redis, logs "Connected
- * successfully" / "Cache DEL ...", and reports success, while the real
- * slot's cache keeps serving the pre-repair value until the TTL expires. The
- * write itself lands correctly; only cache invalidation silently no-ops.
+ * The #715 version (`decideRedisFailClosedRefusal`, retired here) was wired
+ * into `openRepairDb()` and refused the ENTIRE tool run for any --apply
+ * against a remote db with no Redis configured — even the ~27 of 42 repair
+ * tools that never invalidate cache at all (no `getRedisClient()` /
+ * `invalidateIPOCaches()` call anywhere in the tool). That is a refusal with
+ * no defect behind it for those tools.
  *
- * `redisConfigured` MUST be measured from the SAME process env the shared
- * Redis client factory reads (`process.env.REDIS_URL` /
- * `process.env.REDIS_HOST`) — never assumed. `ipodhan_test` is exempt: it is
- * the one database a local/tunnelled dev run legitimately pairs with a local
- * Redis, so the existing localhost fallback is correct there, not a bug.
+ * It was ALSO wrong on its own terms: `redisConfigured` meant "REDIS_URL or
+ * REDIS_HOST is set", but a set REDIS_URL pointing at localhost/127.0.0.1 is
+ * STILL the laptop's Redis (the laptop cannot reach the VPS's own Redis over
+ * an SSH tunnel opened only for Postgres) — so a configured-but-loopback
+ * target passed the guard and silently invalidated the wrong Redis anyway.
+ *
+ * This version moves the check to the ACTUAL cache-invalidation call site
+ * (`guardCacheInvalidation`, below) — tools that never invalidate are
+ * unaffected — and checks the RESOLVED HOST, not merely "is something set".
+ * The repair tool's write is never blocked, only its own cache-invalidation
+ * step: on a block, the exact keys that would have been deleted are printed
+ * with the on-box command to drop them (docs/ops/prod-ops-recipes.md §5),
+ * and the tool's exit status is unaffected.
  */
-export function decideRedisFailClosedRefusal(input: {
-  apply: boolean;
+
+/** Hosts that mean "this box's own Redis" — never a remote slot's (#1070). */
+const LOCAL_REDIS_HOSTS: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '::1']);
+
+/**
+ * The Redis host a repair tool's cache invalidation would actually connect
+ * to, resolved from the SAME env vars the shared Redis client factory reads
+ * (`packages/shared/src/cache/redis-client.ts`): REDIS_URL first (its
+ * hostname), REDIS_HOST otherwise. Returns null when neither is set — the
+ * factory's own localhost:6379 fallback case. An unparseable REDIS_URL is
+ * treated as "not configured" (null), never as "safe" — a malformed value is
+ * closer to unset than to a verified remote target.
+ */
+export function resolveRedisTargetHost(input: { redisUrl?: string; redisHost?: string }): string | null {
+  if (input.redisUrl) {
+    try {
+      return new URL(input.redisUrl).hostname || null;
+    } catch {
+      return null;
+    }
+  }
+  return input.redisHost || null;
+}
+
+/**
+ * Which slot a database name belongs to, for the printed on-box redis-cli
+ * recipe (docs/ops/prod-ops-recipes.md §5): prod is Redis db 0, staging db 1.
+ * `ipodhan_test` never reaches this (guardCacheInvalidation never blocks it).
+ */
+export function repairToolRedisSlot(dbName: string): { slot: 'prod' | 'staging' | 'unknown'; dbIndex: number | null } {
+  const lower = (dbName ?? '').toLowerCase();
+  if (lower === PRODUCTION_DATABASE_NAME) return { slot: 'prod', dbIndex: 0 };
+  if (lower.includes('staging')) return { slot: 'staging', dbIndex: 1 };
+  return { slot: 'unknown', dbIndex: null };
+}
+
+/**
+ * Pure decision: should this cache invalidation CONNECT to Redis, or BLOCK
+ * (never connect, caller prints the keys it would have deleted instead)?
+ *
+ * `ipodhan_test` is exempt — it is the one database a local/tunnelled dev
+ * run legitimately pairs with local Redis. Every other database blocks
+ * unless `redisHost` resolves to something OTHER than this box's own
+ * loopback address.
+ */
+export function decideCacheInvalidationBlock(input: {
   dbName: string;
-  redisConfigured: boolean;
-  toolName?: string;
-}): { refuse: boolean; reason?: string } {
-  if (!input.apply) return { refuse: false }; // a dry run invalidates nothing — nothing to refuse
-  if (input.redisConfigured) return { refuse: false };
+  redisHost: string | null;
+}): { block: boolean; reason?: string } {
   const isLocalTestDb = (input.dbName ?? '').toLowerCase() === LOCAL_TEST_DATABASE_NAME;
-  if (isLocalTestDb) return { refuse: false };
-  const prefix = input.toolName ? `${input.toolName}: ` : '';
+  if (isLocalTestDb) return { block: false };
+  if (input.redisHost && !LOCAL_REDIS_HOSTS.has(input.redisHost)) return { block: false };
   return {
-    refuse: true,
-    reason:
-      `${prefix}refusing to APPLY writes against "${input.dbName}" — neither REDIS_URL nor ` +
-      'REDIS_HOST is set. Cache invalidation would silently fall back to redis://localhost:6379 ' +
-      `(the LAPTOP's Redis, not this slot's), report success, and leave "${input.dbName}"'s real ` +
-      'cache serving stale values until the TTL expires (#715). Set REDIS_URL/REDIS_HOST for this ' +
-      `slot before running --apply, or target ${LOCAL_TEST_DATABASE_NAME}.`,
+    block: true,
+    reason: input.redisHost
+      ? `REDIS_URL/REDIS_HOST resolves to "${input.redisHost}" — this box's own loopback Redis, not "${input.dbName}"'s slot Redis`
+      : 'neither REDIS_URL nor REDIS_HOST is set (falls back to the LAPTOP\'s redis://localhost:6379)',
   };
+}
+
+/** The block notice: the keys that would have been deleted, plus the on-box command to drop them. */
+export function formatCacheInvalidationBlockNotice(input: {
+  dbName: string;
+  toolName: string;
+  keys: readonly string[];
+  reason: string;
+}): string {
+  const { slot, dbIndex } = repairToolRedisSlot(input.dbName);
+  const slotLabel = slot === 'unknown' ? `"${input.dbName}" (slot unmeasured)` : `${slot} ("${input.dbName}")`;
+  const dbFlag = dbIndex === null ? '-n <slot db index>' : `-n ${dbIndex}`;
+  const delArgs = input.keys.map((k) => `'${k}'`).join(' ');
+  return (
+    `${input.toolName}: BLOCKED cache invalidation for ${slotLabel} — ${input.reason} (#1070). ` +
+    'The repair write itself is NOT blocked — only this step. Keys that would have been deleted:\n' +
+    input.keys.map((k) => `  - ${k}`).join('\n') +
+    '\nRun this on the VPS to drop them (docs/ops/prod-ops-recipes.md §5):\n' +
+    `  redis-cli ${dbFlag} DEL ${delArgs}`
+  );
+}
+
+/**
+ * The guard every repair-tool cache-invalidation call site uses INSTEAD of
+ * calling `getRedisClient()` unconditionally (#1070). Only tools that
+ * actually invalidate cache call this — a tool with no cache to invalidate
+ * never calls it and is completely unaffected.
+ *
+ * `redisHost` is injectable for tests; production callers omit it and it is
+ * resolved from `process.env.REDIS_URL` / `process.env.REDIS_HOST` — the
+ * same env vars the shared Redis client factory reads.
+ */
+export function guardCacheInvalidation(input: {
+  dbName: string;
+  toolName: string;
+  keys: readonly string[];
+  redisHost?: string | null;
+  log?: (line: string) => void;
+}): { blocked: boolean } {
+  const log = input.log ?? ((l: string) => console.log(l));
+  const redisHost =
+    input.redisHost !== undefined
+      ? input.redisHost
+      : resolveRedisTargetHost({ redisUrl: process.env.REDIS_URL, redisHost: process.env.REDIS_HOST });
+  const decision = decideCacheInvalidationBlock({ dbName: input.dbName, redisHost });
+  if (decision.block) {
+    log(
+      formatCacheInvalidationBlockNotice({
+        dbName: input.dbName,
+        toolName: input.toolName,
+        keys: input.keys,
+        reason: decision.reason!,
+      })
+    );
+    return { blocked: true };
+  }
+  return { blocked: false };
 }
 
 /** Ask the SAME pool that will do the writing which database it is connected to. */
@@ -272,6 +371,12 @@ export interface OpenRepairDbResult {
  *
  * `onRefuse` defaults to `process.exit(1)` after printing the reason; tests
  * pass their own so the refusal is observable without killing the runner.
+ *
+ * #1070: this no longer touches Redis at all — the #715 fail-closed guard
+ * that used to run here (`decideRedisFailClosedRefusal`) blocked EVERY
+ * repair tool's --apply, including the ~27 of 42 that never invalidate cache
+ * in the first place. That check moved to `guardCacheInvalidation`, called
+ * only by the tools that actually invalidate, at the point they do it.
  */
 export async function openRepairDb(
   dbLike: ExecuteLike,
@@ -282,14 +387,6 @@ export async function openRepairDb(
     log?: (line: string) => void;
     error?: (line: string) => void;
     onRefuse?: (reason: string) => void;
-    /**
-     * Whether the shared Redis client (packages/shared/src/cache/redis-client.ts)
-     * has a real target configured for this slot. Defaults to reading
-     * `process.env.REDIS_URL` / `process.env.REDIS_HOST` directly — the SAME
-     * env vars that client reads — so callers do not need to thread this
-     * through; tests override it for determinism (#715).
-     */
-    redisConfigured?: boolean;
   }
 ): Promise<OpenRepairDbResult> {
   const log = options.log ?? ((l: string) => console.log(l));
@@ -306,19 +403,6 @@ export async function openRepairDb(
   if (decision.refuse) {
     err(decision.reason!);
     (options.onRefuse ?? ((): void => process.exit(1)))(decision.reason!);
-    return { dbName, isProd };
-  }
-  const redisConfigured =
-    options.redisConfigured ?? Boolean(process.env.REDIS_URL || process.env.REDIS_HOST);
-  const redisDecision = decideRedisFailClosedRefusal({
-    apply: options.apply,
-    dbName,
-    redisConfigured,
-    toolName: options.toolName,
-  });
-  if (redisDecision.refuse) {
-    err(redisDecision.reason!);
-    (options.onRefuse ?? ((): void => process.exit(1)))(redisDecision.reason!);
     return { dbName, isProd };
   }
   if (options.apply && isProd && options.allowProd) {

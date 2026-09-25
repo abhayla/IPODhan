@@ -64,7 +64,7 @@ import {
   parsePriceRange,
   type NSEPastIssue,
 } from '../src/services/nse-past-issue-matcher.js';
-import { openRepairDb } from './lib/repair-tool.js';
+import { guardCacheInvalidation, openRepairDb } from './lib/repair-tool.js';
 
 // T-492 round 2: dry-run by default (repair-tool convention); --apply opts into writes.
 // --dry-run is still accepted (no-op) so an old invocation that passed it explicitly still works.
@@ -215,7 +215,7 @@ async function backfillPriceBands() {
   console.log('========================================\n');
 
   try {
-    await openRepairDb(db, {
+    const { dbName } = await openRepairDb(db, {
       apply: !DRY_RUN,
       allowProd: process.argv.includes('--allow-prod'),
       toolName: 'backfill-price-bands',
@@ -367,8 +367,15 @@ async function backfillPriceBands() {
         // detail/list entries so the corrected band is visible immediately
         // instead of waiting out CacheTTL.IPO_DETAIL/IPO_LIST.
         try {
-          const redis = getRedisClient();
-          await invalidateIPOCaches(redis, dbIPO.slug);
+          const guard = guardCacheInvalidation({
+            dbName,
+            toolName: 'backfill-price-bands',
+            keys: [`ipo:detail:${dbIPO.slug}`, `ipo:slug:${dbIPO.slug}`, 'ipo:list:*', 'ipo:search:*', 'ipos:history:*'],
+          });
+          if (!guard.blocked) {
+            const redis = getRedisClient();
+            await invalidateIPOCaches(redis, dbIPO.slug);
+          }
         } catch (cacheError) {
           logger.warn(
             { slug: dbIPO.slug, error: cacheError instanceof Error ? cacheError.message : String(cacheError) },
