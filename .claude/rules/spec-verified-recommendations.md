@@ -2,7 +2,10 @@
 
 # Every question and recommendation to the owner is verified against the spec first
 
-version: "1.2.0" (1.2.0, owner 2026-09-23: "these findings will be helpful in creating the logic of
+version: "1.4.0"
+(1.4.0, owner 2026-09-25: "before deciding how an action behaves, ask why the admin would take it ... This will add a lot of value when you do some research or uh, provide a recommendation")
+(1.3.0, owner 2026-09-25: "whenever you are recommending something, do not recommend just anything randomly. Always verify it against the specs which are already there... If it is not there, then you can say that nothing is mentioned and this is what my recommendation is"; and "whatever is finalized should be in the spec document ... any findings any web search ... should also be added to findings document as well as the spec document")
+(1.2.0, owner 2026-09-23: "these findings will be helpful in creating the logic of
 the system ... whenever there is a new finding, it should automatically get updated in this system";
 portable copy `~/.claude/rules/spec-first.md` R6)
 (1.1.0, owner 2026-09-23 evening: "whenever I provide you input, that additional
@@ -40,7 +43,9 @@ The common cause: "the owning section" was read as ONE section. A subject usuall
    spec for EVERY key term of the subject: the field names, plan states, cause and reason codes, job
    names and source labels involved. Also check §0.0.1 (the OD rows), §1.11 (the per-type exceptions)
    and the definition of every source label used (§1). Read every hit that could constrain the
-   answer. Put a `Spec basis:` line (sections + OD rows) inside the question text.
+   answer. Put a `Spec basis:` line (sections + OD rows) inside the question text. When the spec is
+   silent, write `Spec basis: none — the spec says nothing about <subject> (searched: <terms>)` and label
+   the recommendation as best practice, not requirement.
 2. **Answered by the spec means no question.** If the spec already decides it, build to the spec and
    say so in one line. Asking anyway is a defect.
 3. **The recommendation conforms to the spec.** The recommended option must follow the spec's stated
@@ -51,15 +56,22 @@ The common cause: "the owning section" was read as ONE section. A subject usuall
 5. **Real scenarios, visible where the owner reads.** Each option carries real rows from prod or
    staging (names, numbers, dates), or says "no real case in N days" when there is none. Examples
    go inside the question's previews, because the owner often sees only the question box.
+5b. **An action is designed from its actor's intent.** Before recommending how a user action behaves
+   (delete, clear, hide, undo, override, accept), list why the actor takes it and what they want then,
+   and recommend the behaviour that serves those reasons. Why: OD-121 (2026-09-25), where "clear goes
+   back to the sources" was recommended from the mechanism and would have re-shown the value the admin
+   had just removed. Portable copy: `~/.claude/rules/spec-first.md` R3b.
 6. **Every owner answer lands in the spec before the code.** A decision, a clarification, a
    correction or an "I meant X": record it as an OD row in §0.0.1, plus the section text, in its own
    change or the same change as the code. Recording it only in an issue, a PR body or memory is not
-   enough. If the spec already said it and was misread, reword the spec so it cannot be misread.
+   enough. If the spec already said it and was misread, reword the spec so it cannot be misread. In a
+   question-by-question session, each answer is written into the spec in the SAME turn it is given.
 7. **A brief to a builder cites the spec section it implements.** A brief whose instructions
    contradict the spec is the supervisor's defect, not the builder's.
 8. **"Check the spec" from the owner is a miss.** Record it, re-read per rule 1, and come back with
    the new recommendation and what changed.
-9. **Research findings are recorded, same turn.** Every finding proven on real data (which
+9. **Research findings are recorded, same turn.** Every finding proven on real data, from code, or from
+   a web search or other external source (which
    identifier a source carries, where a rule breaks on a real case, a value a source gets wrong)
    goes into `docs/design/findings.json` as an F-id with real values, sources and date, is cited in
    the spec section it bears on, and, if it is a defect class, into `docs/reviews/failure-classes/`.
@@ -75,5 +87,6 @@ The common cause: "the owning section" was read as ONE section. A subject usuall
 - MUST show real rows per option, inside the question itself.
 - MUST record every owner decision AND clarification as an OD row in the spec before or with the code.
 - MUST cite the implemented spec section in every builder brief.
+- MUST design a recommended action behaviour from why the actor takes the action (rule 5b).
 - MUST record every proven research finding as an F-id in `docs/design/findings.json`, cited in the
   spec, and (if a defect class) in `docs/reviews/failure-classes/`, same turn it is proven.

@@ -1,0 +1,14 @@
+{
+  "class_id": "an admin write path that performs only part of the admin write contract",
+  "feature": "every admin route that changes a published value (web/app/api/admin/**: update-field, update-field-record, dynamic/[table]/[id], conflicts/resolve and bulk-resolve, corrigendum accept)",
+  "symptom": "an admin save must do four things together: write the value to the table the page reads, record it as an ADMIN value the scraper will not overwrite (protection row), record who and why (audit), and drop the cache key the page is served from. A path that does fewer reports success while the page shows the old value, or shows the new value until the next scraper cycle silently replaces it, or changes it with no trace. Each path was written separately, so each has a different missing step. Wider shape: a multi-step contract implemented once per caller instead of once, so every caller is a new chance to drop a step.",
+  "first_seen": "2026-09-25 -- IPODhan, read on origin/main while specifying admin editing: (1) conflict resolve writes the value only for table ipos (web/lib/services/conflict-resolution.ts:229; F-169); (2) dynamic-admin PATCH writes no protection row and no audit row, cache TODO at line 258 (F-170); (3) legacy update-field drops a literal 'ipo:slug:*' key and never the detail page key (update-field/route.ts:310; F-171)",
+  "fix_prs": "none yet -- the admin editing build (§9, OD-102) is to route every admin save through one shared write function; no fix PR exists",
+  "detection_check": "none. A cheap one: a test that enumerates every route under web/app/api/admin/ that writes a table and asserts it calls the single shared admin-write function, plus an integration test that saves through each path and asserts value written, protection row present, audit row present, detail key gone",
+  "status": "unguarded",
+  "spec_ref": [
+    "§2.7",
+    "§2.11",
+    "§9.1"
+  ]
+}

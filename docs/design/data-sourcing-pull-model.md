@@ -154,6 +154,27 @@ it by assuming.
 | OD-80 | *"Add FIELDS_PENDING"* — 2026-09-23. §6.2's five cause classes (`DOCUMENT_UNOBTAINABLE`, `EXTRACTOR_MISSING`, `VALIDATION_REJECTED`, `SOURCE_UNREACHABLE`, `WRITE_SKIPPED`) have no true value for an IPO left `PARTIAL` because fields remain that are not due yet or are waiting to retry (review probe: 2 not yet available, 30 not due, 5 retrying; nothing was down, missing, rejected or skipped); the code was writing `SOURCE_UNREACHABLE`, which would report "site down" falsely. **A sixth cause class, `FIELDS_PENDING`, is added to §6.2 and to the `closed_ipo_resourcing` cause list (one additive migration, approved by the owner with this decision); the per-state counts stay in `cause_detail`.** | 2026-09-23 | §6.2 | §6.2 lists six cause classes including FIELDS_PENDING |
 | OD-81 | *"On an event (Recommended)"* — 2026-09-23, spec-verified first. OD-78 re-picks a PARTIAL IPO only when its cause class or the source rankings change; for cause `FIELDS_PENDING` (OD-80: fields remain not due yet or waiting to retry) neither ever changes on its own, so such an IPO would never be walked again. Spec basis: OD-56 (an IPO is read once per STAGE CHANGE; a field whose source did not exist at the previous stage is a first read at the next stage), OD-62 (`NOT_PUBLISHED_YET` means ask again at the next stage boundary), §2.5.1 triggers 2 and 3 (a field is re-asked when its source publishes it, e.g. `isin` at listing, or when a better document arrives), OD-66 (a new document is read for its own fields), and "never on a backoff timer" (§2). Measured on staging 2026-09-23: 51 CLOSED IPOs with field plans will cross to LISTED (e.g. axiom-gas-engineering-ltd closed 2026-09-22, lists 2026-09-25); 354 documents across 58 IPOs were first seen after the IPO closed in the last 30 days (e.g. hero-motors-ltd closed 2026-09-18, PROSPECTUS and BASIS_OF_ALLOTMENT_AD first seen 2026-09-20). **A `PARTIAL` IPO with cause `FIELDS_PENDING` is picked again only on an event: (1) its stage changed since the last attempt (CLOSED to LISTED), (2) a new document for it was first seen after the last attempt, or (3) the source rankings changed (OD-78). No timer, never nightly without one of these; never-walked IPOs still take the nightly slots first, at most ten a night. Other PARTIAL/FAILED causes keep OD-78 unchanged.** | 2026-09-23 | §6.1, §6.2 | §6.1 rule 2 names the three FIELDS_PENDING re-pick events and states that no timer re-picks an IPO |
 | OD-82 | *"Counts as ranking"* — 2026-09-23, spec-verified first (Spec basis: §1 source labels, "`DOC` = the IPO's own offer document, best available type"; §2.5 and §6.5, documents are ranked by type; §6.2 `resourced_at_version`; OD-78; OD-81 event 3; Appendix A rows 132–134 and 137). **Clarifies OD-78: the "source rankings" whose change re-picks a PARTIAL/FAILED IPO are the rank lists, the capable flags AND the document type a `DOC` rank reads — because a `DOC` rank means a document of a stated type. Prose, notes and key order still never count. One shared definition (the field-manifest fingerprint) is used by the closed-IPO job's resourcing version and the field-plan gap key.** Measured: the four anchor-investor fields (`anchor_investors.total_shares_offered`, `total_amount_raised`, `anchor_investors_count`, `investor_list`) rank `DOC` only with no document type, so they are never askable (#884); 155 manifest entries carry a document type; staging `closed_ipo_resourcing` holds 10 rows, all DONE, 0 PARTIAL, so the one-time re-pick when the definition changes touches nothing today. | 2026-09-23 | §6.1, §6.2 | OD-78's rankings wording names the document type of a DOC rank, and one fingerprint definition is cited |
+| OD-102 | *"when admin goes to it, obviously after logging as an admin, he will have an edit button... at the sections level also and also at whole IPO level... I want to see the, all the three four sources of that particular each particular field. as per the spec... each source field should have a value associated with it it can be null it can be actual value it can be something else and there should be also be a text field at the end... he will select and save it once saved that will be the final data saved and it will be marked that it was updated by admin... nobody should replace it no scraper or anything should replace it in future for that particular IPO... should be applicable for each IPO... we will not let admin edit for the fields which are derived"* -- 2026-09-25, the owner's statement of the admin editing feature (Spec basis: §2.7, OD-61, OD-63, Appendix A). **Admin editing lives on the public IPO detail page.** A logged-in admin sees an Edit control for the whole IPO and for each section; a reader never does. Edit opens an edit view in which EVERY editable field lists each source Appendix A names for it (ranks 1 to 3) with the value the scraper actually got from that source (a value, an abstention per OD-60, or a failure cause), plus a free-text option last. The admin picks one and saves; the saved value is an ADMIN value (§2.7): it outranks every source, is marked as updated by admin, and no scraper or job replaces it for that IPO. It applies to every IPO. Derived fields are read-only. **SPEC CHANGE to OD-61**, which recorded per-page admin editing as "not in scope now": it is now in scope. §2.7 is confirmed, not changed. Whether pages other than the IPO detail page get the same control is open (§9.5). Measured the same day: no admin screen shows more than two source values, none offers a free-text value, and the per-source store is empty (F-168). | 2026-09-25 | §9, §9.2 | §9.2 states the Edit control on the IPO page, the per-source list from Appendix A ranks, the free-text option, the ADMIN write that holds, and derived fields read-only |
+| OD-103 | *"let's go with your recommendation of uh, every ask every listed source once in the same first round"* -- 2026-09-25, chosen over (A) show only what was collected and (C) a live fetch-all button (Spec basis: §2.4, OD-58, OD-60, OD-65, OD-73). **SPEC CHANGE to §2.4 ("SUPPLIED -> ... write it, record the evidence, stop"): in the FIRST round for an IPO (the first read at each stage, OD-56 -- worded so on 2026-09-25 after an independent review), every source Appendix A lists for a field is asked once, and each answer -- a value, an abstention (OD-60), or a failure cause -- is stored as a witness of that field.** The published value is unchanged: the highest-ranked SUPPLIED answer (OD-73). No later round re-asks a settled field to collect witnesses (OD-65 unchanged). Why: the admin edit view (OD-102) shows each source's scraped value, and OD-58 already required agreement between independent witnesses, which a loop that stops at the first answer can never produce. Measured: F-168 (0 witness rows on staging; no witness column on production). | 2026-09-25 | §2.4, §9.3 | §2.4 carries the OD-103 amendment; §9.3 states that the edit view reads the stored witnesses and shows a never-asked source as such |
+| OD-104 | *"B"* -- 2026-09-25, chosen over (A) only the owner with one shared login and (C) roles with maker-checker approval (Spec basis: none on admin identity -- the spec said nothing about who the admins are or how they log in; searched login, admin user/role/identity, resolved_by, edited_by, approve. Today's build per `.claude/rules/admin-route-auth.md`: one shared `ADMIN_AUTH_TOKEN` and a free-typed admin name). **The admins are the owner plus one or two trusted people. Each admin has a personal login, and every admin write (a value picked or typed, a value cleared, a conflict or suggestion settled) records that admin's name. All admins have the same powers; there is no approval step.** Because OD-102 puts the Edit control on the public IPO page, the public site must recognise a logged-in admin; a reader session never sees an admin control. Approval roles (C) can be added later on top of personal logins without reworking the write path. | 2026-09-25 | §9.2 | §9.2 states personal logins, the admin name on every write, equal powers, no approval step |
+| OD-105 | *"find out what are the type of categories of fields one is that's never read from anywhere they are calculated one is which gets read in every scraping a multiple times a day and one that gets read when a new documents arrive... what I meant was the fields that uh, up gets updated when a new document is arrived not the one that gets updated daily and not the ones which are calculated"* -- 2026-09-25, the owner's clarification of OD-102's scope, given in reply to a question about how an admin value behaves on live fields (Spec basis: §1 classes, OD-19, OD-56, OD-66, OD-73, E-1 §1.2.1). **The admin per-source editing of OD-102 covers the fields read when a new document arrives -- class D, 162 fields. It does NOT cover the fields read many times a day (class X subscription and demand graph, W grey market, M market prices, and `ipos.status` -- 19 fields) nor the calculated fields (class C, 13), which are read-only.** So the lock question for live fields does not arise: they are not admin-editable. Class I stays read-only except its three `ADMIN` settings. The E-1 timetable fields other than status -- all ten of E-1 minus status (read from the exchange, never from the document) fit none of the three groups and are asked separately (§9.5). | 2026-09-25 | §9.2 | §9.2 item 7 limits the per-source edit view to class D, lists X, W, M and status as not editable and C as read-only |
+| OD-106 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) the admin value holds forever and (C) not editable (Spec basis: E-1 §1.2.1 "a stale close date on a live IPO -- the single most damaging error this site can make", OD-35, OD-73, §2.7, OD-102, OD-105; real case F-131, the Dhanwel postponement and relaunch). **SPEC CHANGE to §2.7 for the E-1 timetable fields other than `ipos.status` only: they are admin-editable with the same per-source panel (NSE, BSE, Chittorgarh, then a typed value), but when NSE or BSE later publishes a NEWER date that differs from the admin value, the exchange date replaces it and the admin is alerted with the IPO and both dates.** For every class D field the admin value still holds until an admin clears it (§2.7, OD-102). Not measured: how often an exchange date was wrong and needed a human. | 2026-09-25 | §2.7, §9.2 | §2.7 names the E-1 exception; §9.2 item 7 marks the E-1 fields other than status as editable with exchange override and alert |
+| OD-107 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) edit existing rows only and (C) per-row ownership (Spec basis: none on admin row edits -- the spec said nothing about an admin adding or removing rows; related OD-102, OD-66, §2.10, Appendix A #21; measured F-174). **For list-shaped document data (lead managers, promoters, peer companies, anchor investors, intermediaries, financial-statement years, risk factors) the admin can add, edit and remove whole rows. Once an admin changes a list, the WHOLE list is admin-owned for that IPO: no scraper replaces or extends it. A later document that brings a different list is shown to the admin as a suggestion (rows to add or remove), never applied by itself.** | 2026-09-25 | §9.2 | §9.2 item 8 states add/edit/remove rows, whole-list admin ownership, and later-document lists as suggestions |
+| OD-108 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) notes optional and (C) a failed check blocks the save (Spec basis: the per-field check column of §1 and Appendix A; none on admin-typed values -- the spec said nothing about checks, units or reasons for them; measured F-156). **A value an admin TYPES must pass the same §1 check as a scraped value; it is entered in the unit the reader sees and the screen shows, before saving, the value that will be stored and how the page will display it; every typed value carries a short source note (document and page, or a URL). A PICKED source value needs no note. A typed value that fails its check can still be saved, only with a written reason, and the reason is kept with the audit row.** Why: F-156 -- issue size is stored in rupees but the admin form labels it crore, so typing 875 for Rs 875 cr stores Rs 875; and the form's crore warning fires on 336 of 337 real values. | 2026-09-25 | §9.2 | §9.2 item 12 states the §1 check, reader-unit entry with a stored-value preview, the required source note for typed values, and save-with-reason on a failed check |
+| OD-109 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) keep "From a manual correction" and (C) no line for admin values (Spec basis: OD-39 "The reader should see where a number came from and when it was last confirmed", OD-61, OD-72; none on admin wording; today `web/components/ipo-detail/FieldProvenanceLine.tsx:40` prints ADMIN as "a manual correction"). **The reader line for an admin value tells the true source and never says "correction": an admin who PICKED a source shows that source and the date it was read ("From NSE, read 25 Sep 2026"); an admin who TYPED a value shows "Checked by the IPODhan team, <date>". The admin's own name is never shown to a reader; it stays in the audit row.** | 2026-09-25 | §2.11, §9.2 | §2.11 and §9.2 item 13 state picked-source wording, "Checked by the IPODhan team" for typed values, no "correction", no admin name |
+| OD-110 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) inline editing on every page and (C) also registrar and market-holiday pages (Spec basis: OD-102 "I don't know whether all other pages should also have this edit feature or not but IPO details obviously should have", OD-105; none otherwise). **Admin editing of IPO data happens only on the IPO detail page. Every IPO row on the list, calendar, tracker and prospectus pages shows an admin-only "Edit" link that opens that IPO's editor. Registrars and market holidays stay in the existing admin screens, outside this feature.** | 2026-09-25 | §9.2 | §9.2 item 14 states detail-page-only editing, the admin-only Edit link on list pages, and registrars and holidays out of scope |
+| OD-111 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) no creating and (C) create with a name only (Spec basis: spec-deviation-guideline.md §5 -- REITS/INVITS 5, NCD 7, BUYBACK/TENDER 17 rows per §1.11 are admin-owned and "show admin-supplied provenance"; §5 identity merges "a human confirms"; OD-34; OD-68; none on admin-created rows; not measured: whether the scraper ever missed an IPO entirely). **An admin may create a new IPO row by hand, entering the company name, the offering type and at least one identifier that binding uses under OD-89 (CIN, an exchange or aggregator record number per OD-85, or the NSE or BSE symbol; corrected 2026-09-25 -- the first wording offered the SEBI filing number, which OD-89 removed from binding). When the scraper later finds the same offering it binds to that row through the identifier (OD-34) instead of creating a second one; a later match on name alone is held for review (OD-68). For the admin-owned types the source panel is mostly empty, so values are typed under OD-108.** | 2026-09-25 | §9.2 | §9.2 item 15 states admin-created rows, the required identifier, and scraper binding by OD-34 |
+| OD-112 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) a daily digest only and (C) an instant alert for every item (Spec basis: OD-106 alert on an exchange override; OD-72 and OD-93 "one admin alert per IPO per day" for a missed live slot plus an end-of-day summary; item 35; signal-ownership.md R3; spec-deviation-guideline.md §5.1; none on admin-editing alerts otherwise; channel: the shared Notifier gateway, which already delivers IPODhan alerts to Telegram per GLOBAL.md §2; measured F-173: about 84 real disagreements, 19 on live IPOs). **Admin alerts go through the Notifier gateway to Telegram, to all admins, at two levels: an INSTANT alert only for an UPCOMING or OPEN IPO (the exchange replaced an admin date, a new real disagreement, a newer document disagreeing with an admin value); everything else in ONE daily digest at 09:00 IST, grouped by IPO with live IPOs first, with counts and a direct link into each IPO's editor.** | 2026-09-25 | §9.2 | §9.2 item 16 states the Notifier/Telegram channel, instant alerts for live IPOs only, and the 09:00 IST digest grouped by IPO |
+| OD-113 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) any admin manages admins and (C) accounts in a config file changed by deploy (Spec basis: OD-104 "same powers, no approval step"; none on account management -- searched add/remove admin, account, password reset, deactivate; today one shared token per `.claude/rules/admin-route-auth.md`). **Only the owner adds an admin, removes one, or resets a password. OD-104's equal powers cover data, not accounts. A removed admin loses access at once; every edit they made stays in place and stays attributed to them in the audit trail.** | 2026-09-25 | §9.2 | §9.2 item 6 states owner-only account management and that a removed admin's edits stay attributed |
+| OD-114 | *"just give the basic uh, feature for admin email phone number and name okay and maybe telegram id do not uh, complicate too many things this is not my area of priority right now maintaining the IPOs not maintaining the admins"* -- 2026-09-25, given in reply to the mobile question, about the admin accounts of OD-104 and OD-113 (Spec basis: OD-104, OD-112, OD-113; none on admin account fields). **An admin account holds only name, email, phone number and an optional Telegram ID; the admin logs in with email and password. Nothing more is built for admin management now (no roles, no two-factor login, no self-service screens beyond the owner adding, removing and resetting per OD-113).** Alerts (OD-112) go to the IPODhan Telegram chat the Notifier gateway already delivers to; the stored Telegram ID identifies the admin but is not yet used for per-person delivery, because the gateway's `POST /notify` has no recipient field (GLOBAL.md §2). Risk stated, not acted on: a password is the only guard on a value that outranks every source (§2.7). | 2026-09-25 | §9.2 | §9.2 item 6 lists the four account fields, email-and-password login, and nothing further for admin management |
+| OD-115 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) single fields only on a phone and (C) desktop only (Spec basis: none on mobile -- searched mobile, phone, responsive; OD-112 sends live-IPO alerts to Telegram). **The IPO editor works fully on a phone: the per-source panel stacks vertically with large tap targets, and every rule (OD-107 lists, OD-108 units, notes and checks, OD-111 create) behaves as on a desktop. If list editing proves costly on a small screen, lists and create may fall back to desktop-only (option B) as a build decision; it does not change what the feature does.** | 2026-09-25 | §9.2 | §9.2 item 21 states full phone editing with the stacked panel and the B fallback |
+| OD-116 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) hard delete and (C) no removal from the editor (Spec basis: OD-53 "frozen as non-IPO listings with a notice (reusing the OD-8 withdrawn-page freeze mechanism)", OD-38 "every automatic merge is logged and reversible", spec-deviation-guideline.md §5; none on admin removal; real cases F-174: coal-india-ltd, bharat-heavy-electricals-ltd, bank-of-maharashtra, central-bank-of-india stored as CLOSED IPOs). **An admin never deletes an IPO row. A wrong row (a non-IPO, a corporate action, a row that should not exist) is HIDDEN with a written reason through the OD-8/OD-53 freeze mechanism: it leaves every public page, the scraper stops walking it, and its identifiers stay so the scraper recognises it instead of recreating it. Unhide restores it with its data. A true duplicate is merged with the existing merge tool (OD-38), which the admin confirms.** | 2026-09-25 | §9.2 | §9.2 item 23 states hide-with-reason via the freeze mechanism, no delete, identifiers kept, unhide, duplicates via the OD-38 merge |
+| OD-117 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) the admin wins on both and (C) split (Spec basis: E-1 §1.2.1 "the single most damaging error", OD-106, OD-107; raised by the independent review of §9; real cases: anchor lists empty on 107 of 112 non-listed IPOs, F-174; no measured case of listing exchanges changing after the first read). **Every E-1 field follows OD-106 the same way. `anchor_investors.bid_date` follows OD-106 even inside an admin-owned anchor list (OD-107): the exchange's newer, different date replaces the admin's and alerts; the investor rows themselves stay admin-owned. For `listing_exchanges`, "newer" means the exchange now publishes a value different from the one it published when the admin saved; that value replaces the admin's and alerts.** | 2026-09-25 | §9.2 | §9.2 item 7 states that bid_date follows OD-106 inside an admin-owned list and what "newer" means for listing_exchanges |
+| OD-118 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) reuse the OD-8 notice page and (C) redirect every hidden row to the home page (Spec basis: §2.9 and OD-8 "stays at its URL with a clear withdrawal notice rather than redirecting -- people who applied will search for it", OD-116, OD-38, OD-53, the existing `ipo_slug_redirects` table; raised by the independent review of §9; no fresh count of such rows -- the `i_same_ipo_two_rows` floor check did not run on 2026-09-25). **Corrects OD-116's mechanism: a hidden row is NOT shown through the OD-8 freeze. A hidden non-IPO row's address answers 410 Gone and leaves the sitemap, every list and search; its data stays in the database for admins and unhide restores it. A duplicate is not hidden but merged (OD-38), and its old address redirects to the surviving IPO through `ipo_slug_redirects`. A genuinely WITHDRAWN IPO keeps OD-8's notice page; OFS rows keep OD-53's notice.** | 2026-09-25 | §9.2 | §9.2 item 23 states 410 Gone for a hidden non-IPO row, merge plus redirect for a duplicate, and the OD-8 page only for WITHDRAWN |
+| OD-119 | *"B"* -- 2026-09-25, option (B) of three, chosen over (A) not editable, frozen with the OD-53 notice (recommended) and (C) only notice text and basic facts (Spec basis: OD-53, spec-deviation-guideline.md §5 "OFS ... out of scope for both scraper and admin", OD-102 "applicable for each IPO", §1.11 -- all 19 OFS rows have 0 lot size and 0 documents; raised by the independent review of §9). **SPEC CHANGE to spec-deviation-guideline.md §5 (admin side only): the OFS rows are admin-editable like any IPO in the same editor, under the same rules (OD-107 lists, OD-108 typed values with notes, OD-109 reader line, OD-116/OD-118 hide).** Unchanged: OD-53's scraper side -- the pull walk still spends nothing on them, so their source panel is empty and every value is typed; and their page keeps the OD-53 non-IPO notice. | 2026-09-25 | §9.2 | §9.2 item 4 states OFS rows are admin-editable with typed values and keep the OD-53 notice; spec-deviation-guideline.md §5 OFS row says admin-editable |
+| OD-120 | *"Go with your recommendation."* -- 2026-09-25, option (A) of three, chosen over (B) admin values survive a relaunch and (C) clear only price and timetable fields (Spec basis: §2.9 "its document-sourced fields are invalidated the moment the relaunch filing arrives -- the old terms must not survive the relaunch", OD-102; real case F-131, Dhanwel; raised by the independent review of §9). **§2.9 applies to admin values too: when a POSTPONED IPO's relaunch filing arrives, admin values on its document fields are cleared with the rest and the new filing's values are used. The cleared admin values stay in the audit trail, and the admins get ONE alert listing each cleared value with a one-click re-apply for those still true.** | 2026-09-25 | §2.9, §9.2 | §2.9 says a relaunch clears admin values on document fields; §9.2 item 27 states the alert with re-apply |
+| OD-121 | *"Go with your recommendation"* -- 2026-09-25, after the owner sent the first version back: *"think from admin perspective... why will admin delete something either the data is correct or or he didn't like the data... refreshing the data could be one of the reason but in that case why would we not just manually update it"*. Option (A) of three, chosen over (B) A plus a "Return to automatic" button and (C) delete returns to the sources (Spec basis: §2.7 "Clearing the override returns the field to the loop automatically", OD-62, OD-109, §9.2 items 9, 11 and 22, the §2.4 clarification). **SPEC CHANGE to §2.7: an admin DELETE means "keep this field empty". It saves an admin empty value with a short reason (as OD-108 asks of a typed value); it holds like any admin value, the scraper never refills it, and the reader sees the field as not available with no source line. A newer value from a document or the exchange still arrives as a suggestion (and an instant alert on a live IPO). To get a source's value back, the admin picks that source in the panel. There is no "return to automatic" action.** Why: an admin deletes a value because it is wrong or does not apply; bringing back the sources' value would re-show exactly what they removed. §2.7's worry, a field "frozen out of the loop forever, invisibly", is met by the suggestions, which keep newer values visible. The only system-initiated release of an admin hold is the relaunch rule (OD-120). | 2026-09-25 | §2.7, §9.2 | §2.7 and §9.2 items 3, 11 and 22 state that delete keeps the field empty and that a source value comes back only by an admin pick |
+| OD-122 | *"(B) Add it to the completion list. Nothing goes to production until admin editing is built and proven on staging."* -- 2026-09-25, chosen over (A) track it separately (recommended) (Spec basis: `.claude/rules/staging-is-the-release-gate.md` R1-R2 "every remaining pull-model build item implemented and proven on staging", `docs/design/pull-model-completion-state.md`). **Admin data editing (§9, OD-102 to OD-121) is a release-gate build item: it is item 36 of `pull-model-completion-state.md`, and no production deploy is planned while it is not BUILT and proven on staging.** Consequence stated at the time of the decision: every production release waits for the whole admin feature, including already-merged fixes waiting for a release (for example the admin-route authentication fix). | 2026-09-25 | §9 | §9 states that admin editing is release-gate item 36 |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -2034,6 +2055,16 @@ for each IPO in phase 1, at each of the four slots:
     all three ranks failed -> state = EXHAUSTED, and see §2.6
 ```
 
+**Amended by OD-103 (2026-09-25):** in the first read of each stage for an IPO (OD-56) the loop does not stop at the first SUPPLIED rank. At the draft-document stage the exchanges usually have nothing yet; they are asked again at the open stage, when they publish. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in `field_sources.witnesses`; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168.
+
+**Clarified 2026-09-25 (independent review of §9; follows from OD-106, OD-107 and §9.2 item 9):** the
+"skip" above means "never WRITE", not "never read". A field an admin holds is still asked at the
+reads that OD-56 and OD-66 already schedule (a stage change, a new document); the answer is stored as a
+witness and, when it differs from the admin value, becomes a suggestion in the admin queue (§9.2
+items 8 and 9). It is written only in the one case OD-106 names (a newer, different NSE or BSE date on
+an E-1 field). No extra read is scheduled for a held field (OD-65). Without this, items 8 and 9 and
+OD-106 could never fire, because the loop would never see the newer value.
+
 ### 2.5 When a supplied value is asked for again
 
 The first draft said a correct value is frozen and never re-asked. That is wrong, and it was the
@@ -2371,6 +2402,20 @@ the override a one-way door: clear it, and the field is frozen out of the loop f
 `NOT_APPLICABLE` is **derived, not stored** — the walk checks for a live protection row each time it
 reaches the field. Clearing the override returns the field to the loop automatically.
 
+**Amended by OD-121 (2026-09-25), SPEC CHANGE:** an admin never "clears back to the loop". An admin
+DELETE saves an admin empty value that holds like any other admin value, and a source's value comes
+back only when an admin picks it. Newer values still reach the admin as suggestions (§2.4
+clarification) at the reads OD-56 schedules. **Caveat:** an IPO the walk no longer reads -- listed more
+than `LIVE_WINDOW_DAYS_AFTER_LISTING` (10) days ago (OD-98), and the listed IPOs OD-78 leaves unwalked --
+receives no newer value, so there the admin's value or empty is final unless an admin changes it. The
+only system releases of an admin hold are a relaunch (OD-120) and a newer E-1 exchange value (OD-106,
+OD-117).
+
+**Amended by OD-106 (2026-09-25):** one exception to "outranks everything". For the E-1 timetable fields
+other than `ipos.status`, a NEWER date from NSE or BSE that differs from the admin value replaces it,
+and the admin is alerted with the IPO and both dates, because a stale close date on a live IPO is the
+worst error this site can make (E-1). Every class D field keeps the rule unchanged (OD-102).
+
 ### 2.8 When the plan itself is wrong
 
 The ranks are resolved per IPO type. If the type is corrected, the ranks are wrong and nothing in the
@@ -2423,7 +2468,8 @@ two at any time:
 - **POSTPONED — not terminal, it comes back.** Stays in scope at the normal four-slot cadence. A
   relaunched issue almost always carries a revised price band and a new window, so **its
   document-sourced fields are invalidated the moment the relaunch filing arrives** (§2.5 trigger 3)
-  — the old terms must not survive the relaunch.
+  — the old terms must not survive the relaunch. **This includes admin values (OD-120)**: they are
+  cleared with the rest, kept in the audit trail, and listed in one alert with a re-apply option.
 - **WITHDRAWN — terminal.** The walk stops. **Existing values are kept as a record**, because
   someone who applied wants to see what they applied to. The page **stays at its URL** with a clear
   withdrawal notice rather than redirecting — people who applied will search for it. **GMP and
@@ -2453,6 +2499,10 @@ without it, the loop has nowhere to write 84% of what it extracts.
 ---
 
 ### 2.11 What the reader sees (OD-39, OD-40, OD-41)
+
+**Amended by OD-109 (2026-09-25):** for an admin value the line names the source the admin picked
+(with that source's read date), or reads "Checked by the IPODhan team, <date>" for a typed value; it
+never says "correction" and never shows an admin's name.
 
 Everything above this point is about getting the right number into the database. This section is
 about the only part a reader ever meets. It exists because the design had a measurable hole: the
@@ -3852,6 +3902,195 @@ that is there.
 It proves the code implements the **rules as written**. It cannot prove the rules are right — that is
 what the walkthroughs (§8.2), the probes (§0.0.3) and the review rounds are for. A design can be
 faithfully implemented and still be wrong about the world, and no amount of id-matching would say so.
+
+## 9. Admin data editing
+
+**Release gate (OD-122).** This feature is build item 36 of `pull-model-completion-state.md`: no
+production deploy is planned until it is built and proven on staging. Tracking issue #1108.
+
+**Why this section exists.** The scraper will sometimes store a wrong value, or none. The owner's
+remedy is an admin who corrects the IPO by hand, choosing between what each source said or typing a
+value. Until 2026-09-25 the admin rules were scattered (§2.7, OD-61, OD-63, OD-90, the scraper/admin
+boundary in `spec-deviation-guideline.md` §5); this section states them together, and every owner
+answer about admin editing lands here as an OD row plus text, in the turn it is given.
+
+### 9.1 What exists today, measured 2026-09-25
+
+- Admin pages exist (`web/app/admin/`): a legacy per-IPO editor `/admin/edit/[slug]`, the
+  conflicts screen `/admin/conflicts` (which also carries the OD-90 corrigendum accept/dismiss),
+  a schema-driven "dynamic admin" for every table, audit, pipeline, reviews, settings. Six pages
+  (conflicts, reviews, pipeline, anchor investors, metrics, edit) are missing from the admin
+  navigation, which has five entries (`web/app/admin/layout.tsx:41-47`).
+- No screen shows more than two source values for a field, and none offers a free-text value
+  (the conflict model is `source1/value1` against `source2/value2`).
+- The per-source store is empty: F-168.
+- Resolving a conflict writes the chosen value only for table `ipos`: F-169.
+- The dynamic-admin save writes no protection row and no audit row: F-170.
+- The legacy save never drops the detail page's cache key: F-171.
+- The admin queue is almost entirely listed IPOs, and humans have resolved 1 conflict in 19,106: F-172.
+- List-shaped data (lead managers, promoters, peers, anchors, intermediaries, financial rows, risk
+  factors) is empty on most non-listed IPOs: F-174.
+
+### 9.2 The owner's feature (OD-102)
+
+1. **Where.** On the public IPO detail page. A logged-in admin sees an Edit control for the whole
+   IPO and one per section. A reader never sees it.
+2. **What the edit view shows, per editable field.** Every source Appendix A lists for the field
+   (ranks 1 to 3), each with the value the scraper got from that source, then a free-text option.
+3. **Save.** The picked or typed value is written as an ADMIN value (§2.7): it outranks every
+   source, is marked as updated by admin, and no scraper or job replaces it for that IPO. Deleting
+   a value keeps the field empty (OD-121): an admin empty value with a reason, which holds the same
+   way; the reader sees the field as not available. A source's value comes back only by picking it.
+4. **Scope.** Every IPO. This includes the 19 OFS rows (OD-119): the scraper still skips them (OD-53),
+   so every value is typed under item 12, and their page keeps the OD-53 non-IPO notice.
+5. **Derived fields are read-only.** A value computed from other fields (for example minimum
+   investment = lot size x price) is never edited directly; correcting its inputs corrects it.
+6. **Who (OD-104).** The owner plus one or two trusted people, each with a personal login. Every
+   admin write records the admin's name. All admins have the same powers; no approval step. The
+   public site recognises a logged-in admin so the Edit control can appear on the IPO page.
+   Only the owner adds, removes or resets an admin (OD-113); a removed admin loses access at once,
+   and their past edits stay, still attributed to them.
+   An account holds only name, email, phone number and an optional Telegram ID, and the admin logs
+   in with email and password (OD-114). Nothing more is built for admin management now.
+7. **Which fields the edit view offers (OD-105, using the §1 classes).**
+
+   | Group (owner's words) | §1 class | Fields | Admin editing |
+   |---|---|---:|---|
+   | read when a new document arrives | D | 162 | **yes -- the full per-source panel (OD-102)** |
+   | read many times a day | X, W, M and `ipos.status` | 19 | no |
+   | calculated | C | 13 | no (read-only; OD-102 "derived") |
+   | the exchange timetable, never from the document (E-1) | T except status | 9 | **yes, per-source panel; a newer, different NSE or BSE date replaces the admin value and alerts the admin (OD-106); this holds for the anchor bid date even inside an admin-owned anchor list, and for `listing_exchanges` "newer" means the exchange now publishes a different value than when the admin saved (OD-117)** |
+   | our own bookkeeping | I | 37 | no, except the two `ADMIN` settings on the IPO (`ipos.rating_override`, `ipos.scraper_locked`), which show a plain value or on/off control; `registrars.active` stays in the existing registrar admin screen (OD-110) |
+
+
+8. **Lists (OD-107).** For list-shaped document data -- lead managers, promoters, peer companies,
+   anchor investors, intermediaries, financial-statement years, risk factors -- the admin can add,
+   edit and remove whole rows. Once an admin changes a list, the whole list is admin-owned for that
+   IPO; a later document's different list becomes a suggestion (rows to add or remove), never an
+   automatic change. Why rows and not only picks: most of these lists are empty today (F-174).
+9. **A newer document after an admin save** (follows from OD-102, OD-107, OD-63, OD-66). When a
+   document read after an admin save supplies a different value for an admin-held field, the
+   admin value stays; the document's value is stored as a witness and listed in the admin queue
+   (§9.4) as a suggestion with the document and page. Nothing is overwritten.
+10. **A save is live at once** (follows from OD-40 and §2.11). An admin save drops the detail
+    page's cache keys (`getIPOBySlugKey(slug)` and `getIPOProvenanceKey(slug)`) and calls the
+    authenticated revalidate endpoint for that slug, so a reader sees the new value on the next
+    request, not up to 900 s later (the defect F-171 describes).
+11. **One write function, several entry points** (follows from §2.7, OD-104 and the failure class
+    `admin-write-path-skips-part-of-the-write-contract`). Every admin write -- the IPO page editor,
+    the queue, corrigendum accept (OD-90), list edits -- goes through one shared function that writes
+    the value, records `ADMIN` provenance with the admin's name, sets protection, writes the audit
+    row with the previous value, and drops the cache keys of item 10. There is no "return to the
+    loop": delete keeps the field empty and picking a source brings its value back (OD-121); the
+    audit row keeps what was there before every change.
+    The queue and the corrigendum accept are entry points into the same editor and function (§9.4),
+    not separate writers. An accepted corrigendum suggestion is an admin PICK of the document, so the
+    reader line is OD-109's picked form ("From the offer document, read <date>").
+12. **A typed value (OD-108).** It must pass the field's §1 check, the same one a scraped value
+    passes. It is entered in the unit the reader sees (issue size in Rs crore), and before saving
+    the screen shows what will be stored and how the page will show it ("stores Rs 8,75,00,00,000,
+    shows Rs 875 cr"). It needs a short source note (document and page, or a URL); a picked source
+    value does not. If the check fails, the admin may still save with a written reason, kept on the
+    audit row. Why: F-156.
+13. **What a reader sees (OD-109).** A picked value shows its real source and read date ("From NSE,
+    read 25 Sep 2026"); a typed value shows "Checked by the IPODhan team, 25 Sep 2026". The word
+    "correction" is never used, and no admin's name is shown to a reader.
+14. **Where editing appears (OD-110).** Only on the IPO detail page. List, calendar, tracker and
+    prospectus pages show an admin-only "Edit" link per IPO row that opens that IPO's editor.
+    Registrars and market holidays stay in the existing admin screens, outside this feature.
+15. **Creating an IPO (OD-111).** An admin may create a row by hand with the company name, the
+    offering type and at least one identifier binding uses (OD-89: CIN, an exchange or aggregator
+    record number per OD-85, or the NSE or BSE symbol; not the SEBI filing number, which OD-89 dropped).
+    The scraper later binds to it by that identifier instead of adding a duplicate; a name-only
+    match is held for review (OD-68). For the admin-owned types (`spec-deviation-guideline.md` §5)
+    values are mostly typed, under item 12.
+16. **Alerts (OD-112).** Through the Notifier gateway to the one IPODhan Telegram chat (the gateway
+    has no per-person recipient, OD-114), which every admin joins. Instant only for
+    an UPCOMING or OPEN IPO (exchange replaced an admin date, a new real disagreement, a newer
+    document disagreeing with an admin value); everything else in one daily digest at 09:00 IST,
+    grouped by IPO, live first, with counts and a link into each IPO's editor.
+17. **Every IPO, every status** (follows from OD-102 "applicable for each IPO"). Listed and closed
+    IPOs are editable exactly like live ones.
+18. **Plan-invalidating fields** (follows from §2.8). Saving `offering_type`, `segment` or
+    `listing_exchanges` rebuilds that IPO's plan, which changes which sources each field has; the
+    editor says so before the save. An admin correcting a misclassified type fixes the SAME row (the
+    §2.8 Mopshop precedent): OD-35's "an offering-type change is a new row" is about a genuinely new
+    offering, not a correction. A field the corrected type makes not-applicable (§1.11, e.g. issue
+    size on a BUYBACK) follows the type rule and disappears from the page; any admin value on it is
+    kept in the audit row, not shown.
+19. **Scraper and admin at the same moment** (follows from §2.7 and OD-102). The scraper re-checks
+    the protection row inside the same transaction as its write, so an admin save that lands in the
+    middle of a cycle is never overwritten by that cycle.
+20. **Two admins on one field** (follows from OD-104). A save is refused if the field changed after
+    the editor was opened; the admin sees the newer value and who set it, and saves again if still
+    needed. No save silently undoes another admin's.
+21. **On a phone (OD-115).** Full editing; the source panel stacks vertically with large tap
+    targets and every rule behaves as on a desktop. Fallback if lists prove costly: lists and create
+    on desktop only.
+22. **No "re-scrape this IPO" button** (follows from OD-65 "one IPO, one round" and OD-56 "once per
+    stage change"). The editor shows what the sources said; it never triggers a new read. A newer value
+    reaches the admin as a suggestion at the reads OD-56 already schedules (§2.4 clarification).
+23. **A row that should not exist (OD-116, OD-118).** Never deleted. The admin hides it with a
+    written reason: its address answers 410 Gone, it leaves the sitemap, every list and search, the
+    scraper stops walking it, and its identifiers stay so it is not recreated. Its data stays for
+    admins; unhide restores it. A true duplicate is instead merged with the OD-38 merge tool
+    (confirmed by the admin) and its old address redirects to the surviving IPO through
+    `ipo_slug_redirects`. This is not the OD-8 freeze: a genuinely WITHDRAWN IPO keeps OD-8's notice
+    page, and OFS rows keep OD-53's.
+24. **Source values never reach a reader** (follows from OD-61). The per-source values, witnesses and
+    suggestions are fetched by the edit view through its own logged-in request. They are never part
+    of the public page payload or its cache keys.
+25. **Suggestions and alerts do not repeat** (follows from OD-66 and OD-93). A dismissed suggestion
+    for the same field and the same document never returns; a different, newer document may raise a
+    new one, judged on its own fields. An instant alert is sent once per IPO, event type and IST day,
+    using the gateway's `dedupeKey`, the same shape as OD-93's missed-slot alert.
+26. **Editing an identifier keeps the old one** (follows from OD-68 "that should never happen" and
+    OD-85). When an admin changes a CIN, symbol, ISIN or source record number, the old value is kept
+    as an alias that binding still matches, so the next scrape binds to this row instead of creating
+    a second one.
+27. **A relaunched IPO (OD-120).** When a POSTPONED IPO's relaunch filing arrives, admin values on
+    its document fields are cleared with the rest (§2.9). They stay in the audit trail, and one
+    alert lists each cleared value with a one-click re-apply for those still true.
+28. **Round-2 review clarifications** (independent review, 2026-09-25; each follows from the decisions
+    named). (a) An admin EMPTY value on an E-1 field is replaced by a newer exchange value with an
+    alert, like any admin value there (OD-106, OD-117 "every E-1 field follows OD-106 the same way");
+    an admin who blanks a date is missing the right date, which is what the exchange then supplies.
+    (b) Removing rows from an admin-owned list (OD-107) takes a short reason and an audit row, as a
+    delete does (OD-121); removing every row leaves the list admin-empty. (c) A relaunch (OD-120)
+    releases admin EMPTY values too, and its alert reads "you had blanked X; the new filing says Y".
+    (d) For IPOs the walk no longer reads (OD-78, OD-98), no suggestion arrives, so the admin value or
+    empty is final there (§2.7 caveat).
+### 9.3 Where the per-source values come from (OD-103)
+
+The edit view reads the witnesses stored for the field (§2.4 as amended by OD-103). Each source
+Appendix A lists appears in its rank order with one of: the value it gave; that it abstained
+(OD-60); the cause it failed with; or, for an IPO whose first round ran before OD-103, that it was
+never asked. The source that currently supplies the page is marked.
+
+### 9.4 The admin queue, as the existing decisions already settle it
+
+No owner question was needed here; each point follows from a decision already made.
+
+- **The queue is the to-do list; the IPO page editor is where a value is changed.** OD-63 says the
+  admin supplies a value "through the existing field-edit and field-protection path"; OD-102 makes
+  that path the IPO page editor. So an item in `/admin/conflicts` opens the IPO page editor at that
+  field, and there is one place where an admin value is written.
+- **Most of today's queue is not a disagreement by the spec's own definitions (F-173).** A source
+  changing its own earlier value has its own reason and is never an alert (OD-75); an empty answer
+  is an abstention, not a vote (OD-60); values equal in meaning agree (OD-59). Those rows leave the
+  disagreement list under those reasons; they are not deleted.
+- **What remains is ordered for one person (`spec-deviation-guideline.md` §5.1):** live and upcoming
+  IPOs first, grouped by IPO, open count in the nightly report (item 35).
+
+### 9.5 Still open
+
+An independent review on 2026-09-25 showed the discovery round was not complete. Fixed in the text
+where earlier decisions already decide it (§2.4 clarification; OD-103 per stage; OD-111 identifier;
+items 7, 11, 16, 18, 24-26). Still the owner's to decide, asked one at a time:
+
+None: the five questions raised by the review are answered (OD-117 to OD-121).
+
+---
 
 ## Appendix A — the complete per-field source resolution (all 240 fields, all IPO types)
 

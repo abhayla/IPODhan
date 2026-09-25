@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-24T20:53:25.338Z",
+  "generated_at": "2026-09-25T18:22:12.334Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 196,
-    "retired": 41
+    "live": 200,
+    "retired": 44
   },
-  "next_id": 238,
+  "next_id": 245,
   "rules": [
     {
       "id": "R-151",
@@ -765,6 +765,24 @@
       "retired": false
     },
     {
+      "id": "R-240",
+      "hash": "610cc95bb738",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "Amended by OD-103 (2026-09-25): in the first read of each stage for an IPO (OD-56) the loop does not stop at the first SUPPLIED rank. At the draft-document stage the exchanges usually have nothing yet; they are asked again at the open stage, when they publish. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168.",
+      "first_seen": "2026-09-25",
+      "retired": false
+    },
+    {
+      "id": "R-241",
+      "hash": "0f557ad118da",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "Clarified 2026-09-25 (independent review of §9; follows from OD-106, OD-107 and §9.2 item 9): the \"skip\" above means \"never WRITE\", not \"never read\". A field an admin holds is still asked at the reads that OD-56 and OD-66 already schedule (a stage change, a new document); the answer is stored as a witness and, when it differs from the admin value, becomes a suggestion in the admin queue (§9.2 items 8 and 9). It is written only in the one case OD-106 names (a newer, different NSE or BSE date on an E-1 field). No extra read is scheduled for a held field (OD-65). Without this, items 8 and 9 and OD-106 could never fire, because the loop would never see the newer value.",
+      "first_seen": "2026-09-25",
+      "retired": false
+    },
+    {
       "id": "R-057",
       "hash": "321ea5324792",
       "section": "2.5 When a supplied value is asked for again",
@@ -1008,6 +1026,15 @@
       "retired": false
     },
     {
+      "id": "R-244",
+      "hash": "c2b7131af997",
+      "section": "2.7 Admin overrides",
+      "kind": "prose",
+      "text": "Amended by OD-121 (2026-09-25), SPEC CHANGE: an admin never \"clears back to the loop\". An admin DELETE saves an admin empty value that holds like any other admin value, and a source's value comes back only when an admin picks it. Newer values still reach the admin as suggestions (§2.4 clarification) at the reads OD-56 schedules. Caveat: an IPO the walk no longer reads -- listed more than LIVE_WINDOW_DAYS_AFTER_LISTING (10) days ago (OD-98), and the listed IPOs OD-78 leaves unwalked -- receives no newer value, so there the admin's value or empty is final unless an admin changes it. The only system releases of an admin hold are a relaunch (OD-120) and a newer E-1 exchange value (OD-106, OD-117).",
+      "first_seen": "2026-09-25",
+      "retired": false
+    },
+    {
       "id": "R-079",
       "hash": "52fab110146e",
       "section": "2.8 When the plan itself is wrong",
@@ -1017,12 +1044,21 @@
       "retired": false
     },
     {
-      "id": "R-080",
-      "hash": "628d516073ff",
+      "id": "R-242",
+      "hash": "c71484bea4df",
       "section": "2.9 Statuses outside the three the first draft named",
       "kind": "prose",
-      "text": "- POSTPONED — not terminal, it comes back. Stays in scope at the normal four-slot cadence. A relaunched issue almost always carries a revised price band and a new window, so its document-sourced fields are invalidated the moment the relaunch filing arrives (§2.5 trigger 3) — the old terms must not survive the relaunch. - WITHDRAWN — terminal. The walk stops. Existing values are kept as a record, because someone who applied wants to see what they applied to. The page stays at its URL with a clear withdrawal notice rather than redirecting — people who applied will search for it. GMP and subscription polling stop, because a withdrawn issue with a ticking grey-market premium reads as live and is actively misleading. And the IPO leaves the §4 denominators, so a dead issue does not drag the coverage numbers of the live ones.",
-      "first_seen": "2026-09-09",
+      "text": "- POSTPONED — not terminal, it comes back. Stays in scope at the normal four-slot cadence. A relaunched issue almost always carries a revised price band and a new window, so its document-sourced fields are invalidated the moment the relaunch filing arrives (§2.5 trigger 3) — the old terms must not survive the relaunch. This includes admin values (OD-120): they are cleared with the rest, kept in the audit trail, and listed in one alert with a re-apply option. - WITHDRAWN — terminal. The walk stops. Existing values are kept as a record, because someone who applied wants to see what they applied to. The page stays at its URL with a clear withdrawal notice rather than redirecting — people who applied will search for it. GMP and subscription polling stop, because a withdrawn issue with a ticking grey-market premium reads as live and is actively misleading. And the IPO leaves the §4 denominators, so a dead issue does not drag the coverage numbers of the live ones.",
+      "first_seen": "2026-09-25",
+      "retired": false
+    },
+    {
+      "id": "R-239",
+      "hash": "e905e2414358",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "prose",
+      "text": "Amended by OD-109 (2026-09-25): for an admin value the line names the source the admin picked (with that source's read date), or reads \"Checked by the IPODhan team, <date>\" for a typed value; it never says \"correction\" and never shows an admin's name.",
+      "first_seen": "2026-09-25",
       "retired": false
     },
     {
@@ -1771,6 +1807,33 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-243",
+      "hash": "967d7e0d4648",
+      "section": "2.7 Admin overrides",
+      "kind": "prose",
+      "text": "Amended by OD-121 (2026-09-25), SPEC CHANGE: an admin never \"clears back to the loop\". An admin DELETE saves an admin empty value that holds like any other admin value, and a source's value comes back only when an admin picks it. Newer values still reach the admin as suggestions (§2.4 clarification), so nothing is frozen out invisibly. The only system release of an admin hold is a relaunch (OD-120).",
+      "first_seen": "2026-09-25",
+      "retired": true
+    },
+    {
+      "id": "R-080",
+      "hash": "628d516073ff",
+      "section": "2.9 Statuses outside the three the first draft named",
+      "kind": "prose",
+      "text": "- POSTPONED — not terminal, it comes back. Stays in scope at the normal four-slot cadence. A relaunched issue almost always carries a revised price band and a new window, so its document-sourced fields are invalidated the moment the relaunch filing arrives (§2.5 trigger 3) — the old terms must not survive the relaunch. - WITHDRAWN — terminal. The walk stops. Existing values are kept as a record, because someone who applied wants to see what they applied to. The page stays at its URL with a clear withdrawal notice rather than redirecting — people who applied will search for it. GMP and subscription polling stop, because a withdrawn issue with a ticking grey-market premium reads as live and is actively misleading. And the IPO leaves the §4 denominators, so a dead issue does not drag the coverage numbers of the live ones.",
+      "first_seen": "2026-09-09",
+      "retired": true
+    },
+    {
+      "id": "R-238",
+      "hash": "dc468fcc0203",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "Amended by OD-103 (2026-09-25): in the FIRST round for an IPO the loop does not stop at the first SUPPLIED rank. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168.",
+      "first_seen": "2026-09-25",
+      "retired": true
     },
     {
       "id": "R-159",
