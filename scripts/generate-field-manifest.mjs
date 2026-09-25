@@ -74,77 +74,6 @@ function documentTypeForDocCode(docCode) {
   return undefined;
 }
 
-// Capability reasons for the 10 fields item 2 hand-authored (item-02-field-manifest-and-priority-
-// config.md). These are prose that references review-round history, spec line numbers and probe
-// dates not expressible as a spec data field today — carried forward VERBATIM from the committed
-// v1 manifest rather than paraphrased or invented, per the S0b card adjustment 2. `financial_
-// statements.revenue`'s MONEYCONTROL entry is deliberately DROPPED here: S0a retired MC from every
-// authored rank, so a manifest that still ranked it would misstate spec truth (see the header note
-// above and the PR body's 10-row diff).
-const HAND_AUTHORED_CAPABILITY = {
-  'ipos.issue_size': {
-    DOC: { capable: true, reason: 'the PBA prints the total offer size at the cap (fresh + OFS)' },
-    BSE: { capable: false, reason: "review round 5, item C: BSE measured live 2026-09-16 on all 6 live mainboard IPOs, 41-76% BELOW the printed total offer on 6/6 (Hero Motors 7,000,000,084 vs 10,000,000,000; SS Retail 3,543,935,252 vs 5,007,500,000; NSE 150,692,948,700 vs 265,796,400,000; Jindal Supreme 827,164,800 vs 1,248,800,000; Manika Plastech 855,476,760 vs 1,255,000,000; Sonaselection 940,940,000 vs 1,415,700,000). computeBSEIssueSize (bse-api-scraper.ts) never implemented the anchor-portion add-back the 2026-09-09 ARCIL note proposed. UNVERIFIED HYPOTHESIS: BSE's Issue_Size_No_of_shares may be the public portion excluding anchors/reservations -- not yet confirmed. See docs/design/field-source-resolution.spec.mjs's ipos.issue_size note for the full history." },
-    CHITTORGARH: { capable: true, reason: "CG list API field 'Total Issue Amount (Incl. Firm reservations) (Rs.cr.)' reads the printed total directly, not shares x price (field-priority-matrix.ts:415-421, T-453 comment)" },
-    NSE: { capable: false, reason: 'NSE computes (sharesOffered/netOffer) x price, excluding the OFS portion — it cannot print the total (field-priority-matrix.ts:406-412, T-453). The CURRENT field-priority-matrix.ts issueSize entry still lists NSE (rank 4, below CHITTORGARH) — item 3 removes it to match this manifest.' },
-    MONEYCONTROL: { capable: false, reason: 'OD-3 retires Moneycontrol as a scheduled source' },
-  },
-  'ipo_details.fresh_issue': {
-    DOC: { capable: true, reason: 'the PBA prints the fresh-issue rupee amount separately from the OFS amount' },
-    BSE: { capable: true, reason: 'BSE detail payload carries a fresh-issue figure' },
-    CHITTORGARH: { capable: true, reason: 'CG list API carries the fresh-issue line item' },
-    NSE: { capable: false, reason: 'same T-453 reasoning as ipos.issue_size — no printed fresh/OFS split' },
-    MONEYCONTROL: { capable: false, reason: 'OD-3 retires Moneycontrol as a scheduled source' },
-  },
-  'financial_statements.revenue': {
-    DOC: { capable: true, reason: 'the RHP prints the full restated 3-5 year revenue series' },
-    CHITTORGARH: { capable: true, reason: "CG's 'financialTable' (chittorgarh-detail-fields.ts, getTableById 'financialTable') DOES carry a restated per-fiscal-year revenue/total-income/EBITDA/PAT series — field-source-resolution.spec.mjs:122-124 corrects an earlier draft's wrong claim that no website publishes this" },
-    NSE: { capable: false, reason: "§2.3.5: NSE's API returns bidding and demand data only — no financial fields" },
-    BSE: { capable: false, reason: 'no BSE financials endpoint carries a restated series' },
-    // MONEYCONTROL intentionally NOT carried forward — see header note: S0a retired MC from every
-    // authored rank, so this generator does not resurrect a capable:true entry for it here either.
-  },
-  'ipo_details.ofs_issue': {
-    DOC: { capable: true, reason: 'the PBA prints the offer-for-sale rupee amount separately from the fresh-issue amount' },
-    BSE: { capable: true, reason: 'BSE detail payload carries an OFS figure alongside the fresh-issue figure' },
-    CHITTORGARH: { capable: true, reason: 'CG list API carries the offer-for-sale line item' },
-    NSE: { capable: false, reason: 'same T-453 reasoning as ipos.issue_size — NSE computes offer value from shares×price with no printed fresh/OFS split' },
-    MONEYCONTROL: { capable: false, reason: 'OD-3 retires Moneycontrol as a scheduled source' },
-  },
-  'ipo_details.min_investment': {
-    DOC: { capable: true, reason: 'the PBA states the lot size and price band the minimum investment is derived from — spec (field-source-resolution.spec.mjs:78) tags it neverPopulated: no second publisher prints this display value separately' },
-  },
-  'subscriptions.total_subscription': {
-    NSE: { capable: true, reason: "NSE's bidding-detail API returns the aggregate subscription multiple across all investor categories live during the bid window" },
-    BSE: { capable: true, reason: "BSE's bidding-detail API returns the same live figure" },
-    CHITTORGARH: { capable: true, reason: 'CG mirrors the exchange live subscription figures during the bid window' },
-    DOC: { capable: false, reason: 'no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)' },
-  },
-  'subscriptions.retail_subscription': {
-    NSE: { capable: true, reason: "NSE's bidding-detail API returns the retail-category subscription multiple live during the bid window" },
-    BSE: { capable: true, reason: "BSE's bidding-detail API returns the same live figure" },
-    CHITTORGARH: { capable: true, reason: 'CG mirrors the exchange live subscription figures during the bid window' },
-    DOC: { capable: false, reason: 'no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)' },
-  },
-  'subscriptions.qib_subscription': {
-    NSE: { capable: true, reason: "NSE's bidding-detail API returns the QIB-category subscription multiple live during the bid window" },
-    BSE: { capable: true, reason: "BSE's bidding-detail API returns the same live figure" },
-    CHITTORGARH: { capable: true, reason: 'CG mirrors the exchange live subscription figures during the bid window' },
-    DOC: { capable: false, reason: 'no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)' },
-  },
-  'subscriptions.nii_subscription': {
-    NSE: { capable: true, reason: "NSE's bidding-detail API returns the NII-category subscription multiple live during the bid window" },
-    BSE: { capable: true, reason: "BSE's bidding-detail API returns the same live figure" },
-    CHITTORGARH: { capable: true, reason: 'CG mirrors the exchange live subscription figures during the bid window' },
-    DOC: { capable: false, reason: 'no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)' },
-  },
-  'listing_performance.listing_price': {
-    NSE: { capable: true, reason: 'NSE publishes the actual listing-day traded price' },
-    BSE: { capable: true, reason: 'BSE publishes the actual listing-day traded price' },
-    CHITTORGARH: { capable: true, reason: 'CG mirrors the exchange listing-day price' },
-    DOC: { capable: false, reason: 'listing price is post-listing market data — no filing document carries it (spec field-source-resolution.spec.mjs:245)' },
-  },
-};
 
 // documentSection prose for the same 10 fields — hand-authored quotes of RHP/PBA table names that
 // are not spec data either. Carried forward verbatim; NOT regenerated for the other 180 fields
@@ -439,7 +368,7 @@ export async function generateManifest({ F, RESOLVE }) {
     const poolCodes = candidatePoolCodes(f);
     const rankedManifestCodes = new Set(Object.values(rankByType).flat());
 
-    const hand = HAND_AUTHORED_CAPABILITY[key];
+    const hand = f.o.capability; // moved to the spec's own rows (#739) — the generator reads only the spec
     if (hand) {
       Object.assign(capability, hand);
     } else {
