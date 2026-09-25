@@ -38,16 +38,29 @@ describe('playwright.config.ts prod-verify gating', () => {
 
       expect(config.webServer).toBeUndefined();
     },
-    20000 // cold import of @playwright/test's config module is slow
+    // #446: a cold import of @playwright/test's config module is CPU/IO
+    // bound, not deadline-bound — under concurrent full-suite load on the
+    // same machine it can miss a margin that is generous in isolation
+    // (measured 471ms alone). 20s -> 40s so the test fails only on a real
+    // regression, never on the machine being busy.
+    40000
   );
 
-  it('keeps the local dev webServer when PROD_BASE_URL is unset', async () => {
-    delete process.env.PROD_BASE_URL;
-    const config = await loadConfig();
+  it(
+    'keeps the local dev webServer when PROD_BASE_URL is unset',
+    async () => {
+      delete process.env.PROD_BASE_URL;
+      const config = await loadConfig();
 
-    expect(config.webServer).toBeDefined();
-    expect((config.webServer as { command: string }).command).toBe('npm run dev');
-  });
+      expect(config.webServer).toBeDefined();
+      expect((config.webServer as { command: string }).command).toBe('npm run dev');
+    },
+    // Same cold-import cost as the sibling case above; this one previously
+    // relied on vitest's 5s default, which the sibling test's own comment
+    // already flagged as "slow" — no timing dependency to remove here (the
+    // import itself IS the cost), so the margin is widened instead (#446).
+    40000
+  );
 });
 
 describe('run-prod-verify.mjs (round 2: arg forwarding + URL validation)', () => {
