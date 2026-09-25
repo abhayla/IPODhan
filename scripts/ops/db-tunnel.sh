@@ -53,6 +53,15 @@ NETSTAT_CMD="${DB_TUNNEL_NETSTAT:-netstat}"
 PS_CMD="${DB_TUNNEL_PS:-ps}"
 KILL_CMD="${DB_TUNNEL_KILL:-taskkill}"
 
+# ps -W prints only the executable (no arguments), last on the row, after a STIME that is one or
+# two tokens and a path that may contain spaces. A row is ssh iff that executable's basename is
+# exactly ssh or ssh.exe (the path's LAST component), so ssh-agent, sshd, "my ssh.exe" or a
+# directory named ssh never match.
+SSH_ROW_AWK='function is_ssh_row(line,   n, parts) {
+  n = split(line, parts, /[\/\\]/)
+  return tolower(n > 1 ? parts[n] : $NF) ~ /^ssh(\.exe)?[ \t\r]*$/
+}'
+
 owner_session() {
   # CLAUDE_CODE_SESSION_ID is set by the harness inside a Claude Code session; outside one
   # (a human running this by hand) there is no such session, so the owner is "manual".
@@ -93,25 +102,36 @@ msys_pid_alive() {
 
 is_ssh_winpid() {
   # $1 = Windows PID. Exit 0 iff `ps -W`'s WINPID column has a row for this PID whose command
-  # mentions ssh. This is the ONLY test that authorizes killing a Windows process by PID.
-  $PS_CMD -W 2>/dev/null | awk -v w="$1" '
+  # is the ssh binary (is_ssh_row). This is the ONLY test that authorizes killing a Windows
+  # process by PID.
+  $PS_CMD -W 2>/dev/null | awk -v w="$1" "$SSH_ROW_AWK"'
     NR==1 { next }
-    $4==w && $0 ~ /ssh/ { found=1 }
+    $4==w && is_ssh_row($0) { found=1 }
     END { exit !found }
   '
 }
 
 msys_pid_for_winpid() {
   # $1 = Windows PID. Prints the msys PID of the row whose WINPID column matches and whose
-  # command mentions ssh, or nothing. Measured 2026-09-25: `$!` from `nohup ssh ... &` is
+  # command is the ssh binary, or nothing. Measured 2026-09-25: `$!` from `nohup ssh ... &` is
   # SOMETIMES the ssh process's own msys PID and sometimes an intermediate wrapper's — the one
   # thing that is always reliable is that the socket's owning Windows PID (from netstat) matches
   # the WINPID column of the ssh row in `ps -W`. Resolve backward from there instead of trusting
   # the parent/child relationship of `$!`.
-  $PS_CMD -W 2>/dev/null | awk -v w="$1" '
+  $PS_CMD -W 2>/dev/null | awk -v w="$1" "$SSH_ROW_AWK"'
     NR==1 { next }
-    $4==w && $0 ~ /ssh/ { print $1; found=1 }
+    $4==w && is_ssh_row($0) { print $1; found=1 }
     END { if (!found) exit 1 }
+  '
+}
+
+ssh_children_of() {
+  # $1 = msys PID of the wrapper THIS start launched. Prints the msys PIDs of ssh rows whose PPID
+  # is that wrapper: the only processes, besides the wrapper itself, that this start owns. Never a
+  # name-pattern kill — a child is identified by its parent being our own `$!`.
+  $PS_CMD -W 2>/dev/null | awk -v p="$1" "$SSH_ROW_AWK"'
+    NR==1 { next }
+    $2==p && is_ssh_row($0) { print $1 }
   '
 }
 
@@ -145,13 +165,13 @@ acquire_lock() {
       return 0
     fi
     if [ -f "$LOCK_DIR/created_at" ]; then
-      local created now age
+      local created now age token
+      token="$(lock_token "$LOCK_DIR")"
       created="$(cat "$LOCK_DIR/created_at" 2>/dev/null || echo 0)"
       now="$(date +%s)"
       age=$((now - created))
       if [ "$age" -ge "$LOCK_STALE_SECS" ]; then
-        echo "lock: removing stale start-lock (${age}s old)" >&2
-        rm -rf "$LOCK_DIR" 2>/dev/null
+        reclaim_stale_lock "$token" "$age"
         continue
       fi
     fi
@@ -163,8 +183,53 @@ acquire_lock() {
   done
 }
 
+lock_token() {
+  # Identity of one lock instance: its creation second plus its holder's PID.
+  printf '%s:%s' "$(cat "$1/created_at" 2>/dev/null)" "$(cat "$1/pid" 2>/dev/null)"
+}
+
+reclaim_stale_lock() {
+  # $1 = token of the lock judged stale, $2 = its age. Two waiters can both judge the same lock
+  # stale. Deleting it by path would let the slower one delete the FRESH lock the faster one has
+  # just taken, leaving two holders. So: rename it to a name only this process uses (a rename of
+  # one source succeeds at most once), then delete only if what was renamed is still the lock that
+  # was judged stale; otherwise it is another waiter's fresh lock and is put back untouched.
+  local expected="$1" age="$2" grave
+  reclaim_test_hook before-rename
+  grave="$LOCK_DIR.reclaim.$$.$RANDOM$RANDOM"
+  mv -T "$LOCK_DIR" "$grave" 2>/dev/null || return 0
+  if [ "$(lock_token "$grave")" = "$expected" ]; then
+    echo "lock: removing stale start-lock (${age}s old)" >&2
+    rm -f "$grave/created_at" "$grave/pid"
+    rmdir "$grave" 2>/dev/null
+    return 0
+  fi
+  # Put it back without ever clobbering: `mv -T` onto an EMPTY directory succeeds, so it could
+  # replace a third waiter's just-made lock (two holders). `mkdir` of the lock path is the same
+  # atomic primitive acquire_lock uses: it succeeds only if nobody holds the path, and only then
+  # are the fresh holder's files moved into it.
+  reclaim_test_hook before-putback
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    mv "$grave/created_at" "$grave/pid" "$LOCK_DIR/" 2>/dev/null
+    rmdir "$grave" 2>/dev/null
+    return 0
+  fi
+  echo "lock: took pid $(cat "$grave/pid" 2>/dev/null)'s fresh start-lock while reclaiming and could not put it back (another waiter now holds $LOCK_DIR); left at $grave" >&2
+}
+
+reclaim_test_hook() {
+  # Test seam for the reclaim race: honoured only under DB_TUNNEL_TEST_MODE=1 (set by the test
+  # suite alone), run as ONE quoted command path, never word-split.
+  [ "${DB_TUNNEL_TEST_MODE:-}" = 1 ] || return 0
+  [ -n "${DB_TUNNEL_TEST_RECLAIM_HOOK:-}" ] || return 0
+  "$DB_TUNNEL_TEST_RECLAIM_HOOK" "$1"
+}
+
 release_lock() {
-  rm -rf "$LOCK_DIR" 2>/dev/null
+  # Only the holder removes the lock (the pid file is written right after mkdir).
+  [ "$(cat "$LOCK_DIR/pid" 2>/dev/null)" = "$$" ] || return 0
+  rm -f "$LOCK_DIR/created_at" "$LOCK_DIR/pid"
+  rmdir "$LOCK_DIR" 2>/dev/null
 }
 
 do_status() {
@@ -238,7 +303,17 @@ do_start() {
   done
 
   if [ -z "$ssh_msys_pid" ]; then
+    # The wrapper may be an intermediate whose child is the ssh that bound the port; killing only
+    # the wrapper would orphan that ssh (an unrecorded tunnel). Collect our wrapper's ssh children
+    # while the wrapper is still alive (so its PID cannot have been reused), then kill both.
+    local owned_children="" c
+    if msys_pid_alive "$wrapper_pid"; then
+      owned_children="$(ssh_children_of "$wrapper_pid")"
+    fi
     kill "$wrapper_pid" 2>/dev/null
+    for c in $owned_children; do
+      kill "$c" 2>/dev/null
+    done
     winpids="$(listener_winpids)"
     if [ -n "$winpids" ]; then
       # Something else is now listening on the port. Never adopt or overwrite whatever that
