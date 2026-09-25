@@ -1,6 +1,6 @@
 # Item 21 — the read side: provenance line, cache-busting revalidate, canonical tag (OD-39, OD-40, OD-41)
 
-Status: unknown — item is PARTIAL per docs/design/pull-model-completion-state.md row 21: FieldProvenanceLine.tsx + test exist on refs/remotes/origin/main, but the chosenConfirmedAt column is missing, the staleness threshold has no value (open owner decision, not a build), and the touched-slugs tracker does not survive a restart
+Status: DONE 2026-09-25 PRs #997 proof 2026-09-25 10:50 IST staging missed-slot alert (4 IPOs, alertsSent 4)
 
 ## Purpose
 
