@@ -341,8 +341,6 @@ export const NOT_IN_ANY_BLOCK: Readonly<Record<string, string>> = {
     'the subscription table shows all categories together; the ribbon already carries one line for the total, and further per-category lines would bury the numbers',
   'subscriptions.shares_offered':
     'the subscription table shows all categories together; the ribbon already carries one line for the total, and further per-category lines would bury the numbers',
-  'gmp_records.gmp':
-    'rendered by the GMP widget on the fact ribbon area as a live indicator, not a per-field provenance line — GMP is a separate real-time signal, not a planned/verified field',
   'listing_performance.current_price':
     'rendered by ListingPerformance\'s own price panel (current/BSE/NSE price), not the listingDetails key-facts block which only carries the fixed listing_price',
   'listing_performance.current_price_bse':
