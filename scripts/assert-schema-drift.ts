@@ -66,6 +66,9 @@ import { resolveDiscreteDbParams } from '@ipodhan/shared/db';
 import * as schema from '@ipodhan/shared/db/schema';
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
 import { is } from 'drizzle-orm';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 export interface ColumnExpectation {
   tableName: string;
@@ -84,7 +87,8 @@ export interface Drift {
     | 'MISSING_UNIQUE_CONSTRAINT'
     | 'UNIQUE_CONSTRAINT_COLUMN_MISMATCH'
     | 'UNDECLARED_INDEX'
-    | 'UNDECLARED_UNIQUE_CONSTRAINT';
+    | 'UNDECLARED_UNIQUE_CONSTRAINT'
+    | 'STALE_UNDECLARED_BASELINE_ENTRY';
   detail: string;
 }
 
@@ -742,6 +746,76 @@ export async function checkUndeclaredUniqueConstraints(client: Client): Promise<
   return diffUndeclaredUniqueConstraints(live, collectExpectedUniqueConstraints(), collectExpectedUniqueColumns());
 }
 
+// ==================== SHRINK-ONLY BASELINE FOR UNDECLARED FINDINGS (review round 1) ====================
+// PR #1204 review round 1 (MAJOR): wiring SCHEMA_DRIFT_CHECK_UNDECLARED=1 into
+// the nightly VPS cron unconditionally would make it exit 1 EVERY night from
+// the first run — 38 pre-existing findings on staging alone (prod
+// unmeasured), permanently red, which hides the next REAL new finding
+// (signal-ownership.md R3/R4: new beats standing; a permanently-red gate is
+// no gate). Same shape as config/scripts-typecheck-exclude-baseline.json
+// (T-434): the committed baseline is the ONLY legitimate source of "already
+// known (#665), still open" findings, and it can only shrink — an entry is
+// removed the moment its object is fixed (declared in schema.ts, migrated
+// properly, or dropped), never re-added by hand once gone.
+
+export interface UndeclaredBaselineEntry {
+  kind: 'UNDECLARED_INDEX' | 'UNDECLARED_UNIQUE_CONSTRAINT';
+  tableName: string;
+  name: string;
+  issue: string;
+}
+
+function matchesBaselineEntry(drift: Drift, entry: UndeclaredBaselineEntry): boolean {
+  return drift.kind === entry.kind && drift.detail.startsWith(`"${entry.tableName}.${entry.name}"`);
+}
+
+/**
+ * Splits the live UNDECLARED_INDEX/UNDECLARED_UNIQUE_CONSTRAINT drifts against
+ * the committed baseline into three buckets:
+ *  - known: matches a baseline entry — already tracked on #665, reported as
+ *    INFO, never fails the gate by itself.
+ *  - newDrifts: NOT in the baseline — a genuinely new finding since the
+ *    baseline was last measured. THIS is what fails the gate. Prod is never
+ *    connected to from this script's normal callers, so the first nightly
+ *    run against production may surface entries here that staging never had;
+ *    that is expected (see this file's header on SCHEMA_DRIFT_CHECK_UNDECLARED)
+ *    and is resolved by a reviewed PR adding them to the baseline, not by
+ *    silently swallowing them.
+ *  - staleEntries: a baseline entry whose object no longer exists live — the
+ *    baseline must SHRINK (the object was fixed) or it is stale bookkeeping.
+ *    Also fails the gate, so a fix is never "free" to leave the baseline
+ *    claiming an object still exists.
+ * Pure function over plain data — the unit test needs no database.
+ */
+export function diffAgainstUndeclaredBaseline(
+  liveDrifts: Drift[],
+  baseline: UndeclaredBaselineEntry[]
+): { known: Drift[]; newDrifts: Drift[]; staleEntries: UndeclaredBaselineEntry[] } {
+  const known: Drift[] = [];
+  const newDrifts: Drift[] = [];
+  for (const drift of liveDrifts) {
+    if (baseline.some((entry) => matchesBaselineEntry(drift, entry))) {
+      known.push(drift);
+    } else {
+      newDrifts.push(drift);
+    }
+  }
+  const staleEntries = baseline.filter((entry) => !liveDrifts.some((drift) => matchesBaselineEntry(drift, entry)));
+  return { known, newDrifts, staleEntries };
+}
+
+const UNDECLARED_BASELINE_PATH = join(
+  fileURLToPath(new URL('.', import.meta.url)),
+  '..',
+  'config',
+  'schema-drift-undeclared-baseline.json'
+);
+
+export function loadUndeclaredBaseline(path: string = UNDECLARED_BASELINE_PATH): UndeclaredBaselineEntry[] {
+  const raw = JSON.parse(readFileSync(path, 'utf8')) as { entries: UndeclaredBaselineEntry[] };
+  return raw.entries;
+}
+
 /**
  * Checks every named index schema.ts declares against pg_index on the live
  * database, ordered by column position (unnest(indkey) WITH ORDINALITY,
@@ -901,26 +975,53 @@ async function main() {
 
     // #665: the reverse direction (live object, undeclared in schema.ts) is
     // gated behind SCHEMA_DRIFT_CHECK_UNDECLARED=1 rather than run
-    // unconditionally like the four checks above. Measured against
-    // ipodhan_staging 2026-09-26 (read-only): 3 genuinely undeclared objects
-    // once the column-level-.unique() false positives are excluded
-    // (ipos_symbol_key, users_email_key, users_phone_key, api_keys_key_hash_key,
-    // ipo_details_isin_key and others — see #665's comment thread for the full
-    // list). Those are real, long-standing gaps this repo has never closed,
-    // not something introduced by this change — but wiring the check
-    // unconditionally into pr-gate.yml's blocking "Assert schema drift" step
-    // today would fail every PR on pre-existing drift this PR did not create,
-    // with no way to verify from this worktree whether the CI job's freshly
-    // journal-built database carries the same objects (it did not have DB
-    // access to compare against pr-gate.yml's ephemeral Postgres service
-    // container). The nightly audit (vps-data-audit-cron.sh) opts in
-    // explicitly so real drift is still caught within 24h; pr-gate.yml and
-    // deploy-linux.sh are unaffected until each finding is triaged (fixed,
-    // migrated, or added to the allow-list above with a reason).
+    // unconditionally like the four checks above, AND filtered through a
+    // shrink-only baseline (config/schema-drift-undeclared-baseline.json,
+    // diffAgainstUndeclaredBaseline() below) before it can fail anything —
+    // review round 1 (MAJOR): 38 pre-existing findings on staging alone (prod
+    // never measured — this script never connects to it from this check)
+    // would otherwise make the nightly VPS cron exit 1 EVERY night from the
+    // first run, permanently red, which hides the next real new finding
+    // (signal-ownership.md R3/R4). Only a genuinely NEW undeclared object, or
+    // a baseline entry whose object no longer exists live (the baseline
+    // failing to shrink), is fatal. The first nightly run against PRODUCTION
+    // may still name extra NEW objects staging never had (this file never
+    // connects to prod to check) — that is expected, reported by name, and
+    // resolved by a reviewed PR adding them to the baseline, never silently.
+    // pr-gate.yml and deploy-linux.sh remain unaffected (checkUndeclared stays
+    // false there) until each finding is triaged.
     const checkUndeclared = process.env.SCHEMA_DRIFT_CHECK_UNDECLARED === '1';
     const [undeclaredIndexDrifts, undeclaredUniqueConstraintDrifts] = checkUndeclared
       ? await Promise.all([checkUndeclaredIndexes(client), checkUndeclaredUniqueConstraints(client)])
       : [[], []];
+
+    // Review round 1 fix: run the raw undeclared drifts through the
+    // shrink-only baseline (config/schema-drift-undeclared-baseline.json)
+    // BEFORE they can fail the gate — see diffAgainstUndeclaredBaseline()'s
+    // header for why. Only genuinely NEW findings (never seen before) and
+    // stale baseline entries (an object the baseline still claims exists but
+    // doesn't anymore) are fatal; the 38 already-known #665 findings are
+    // reported as INFO, not FATAL, every run.
+    let undeclaredNewDrifts: Drift[] = [];
+    let undeclaredStaleDrifts: Drift[] = [];
+    if (checkUndeclared) {
+      const baseline = loadUndeclaredBaseline();
+      const { known, newDrifts, staleEntries } = diffAgainstUndeclaredBaseline(
+        [...undeclaredIndexDrifts, ...undeclaredUniqueConstraintDrifts],
+        baseline
+      );
+      if (known.length > 0) {
+        console.log(
+          `INFO: ${known.length} known (#665) undeclared index/constraint finding(s), tracked in config/schema-drift-undeclared-baseline.json, ${known.length} remaining:`
+        );
+        for (const drift of known) console.log(`  [${drift.kind}] ${drift.detail}`);
+      }
+      undeclaredNewDrifts = newDrifts;
+      undeclaredStaleDrifts = staleEntries.map((entry) => ({
+        kind: 'STALE_UNDECLARED_BASELINE_ENTRY',
+        detail: `"${entry.tableName}.${entry.name}" (${entry.kind}, ${entry.issue}) is in config/schema-drift-undeclared-baseline.json but no longer exists live — remove it (the baseline can only shrink)`,
+      }));
+    }
 
     // SCHEMA_DRIFT_IGNORE_GATED=1 is set by the T-405 "replay the journal
     // from empty" CI job (pr-gate.yml scraper-document-integration) AND, as
@@ -937,8 +1038,8 @@ async function main() {
       ...matviewDrifts,
       ...indexDrifts,
       ...uniqueConstraintDrifts,
-      ...undeclaredIndexDrifts,
-      ...undeclaredUniqueConstraintDrifts,
+      ...undeclaredNewDrifts,
+      ...undeclaredStaleDrifts,
     ];
     const knownGated = ignoreGated
       ? combined.filter((d) => isKnownGatedDrift(d) || isKnownGatedIndexDrift(d) || isKnownGatedUniqueConstraintDrift(d))

@@ -188,3 +188,57 @@ test('the gated ipo_risk_factors legacy constraint is suppressed by the reviewed
   const otherDrifts = diffUndeclaredUniqueConstraints(otherConstraints, [], [], ALLOWED_UNDECLARED_UNIQUE_CONSTRAINTS);
   assert.equal(otherDrifts.length, 1);
 });
+
+// ---- diffAgainstUndeclaredBaseline() (review round 1 — shrink-only baseline) ----
+
+import { diffAgainstUndeclaredBaseline, type UndeclaredBaselineEntry, type Drift } from '../assert-schema-drift';
+
+test('an object in the baseline is reported as known, not fatal', () => {
+  const baseline: UndeclaredBaselineEntry[] = [
+    { kind: 'UNDECLARED_INDEX', tableName: 'ipos', name: 'ipos_symbol_key', issue: '#665' },
+  ];
+  const liveDrifts: Drift[] = [
+    { kind: 'UNDECLARED_INDEX', detail: '"ipos.ipos_symbol_key" (columns: symbol, UNIQUE) exists on the live database but is not declared anywhere in schema.ts' },
+  ];
+  const { known, newDrifts, staleEntries } = diffAgainstUndeclaredBaseline(liveDrifts, baseline);
+  assert.equal(known.length, 1);
+  assert.deepEqual(newDrifts, []);
+  assert.deepEqual(staleEntries, []);
+});
+
+test('a NEW object not in the baseline fails (appears in newDrifts)', () => {
+  const baseline: UndeclaredBaselineEntry[] = [
+    { kind: 'UNDECLARED_INDEX', tableName: 'ipos', name: 'ipos_symbol_key', issue: '#665' },
+  ];
+  const liveDrifts: Drift[] = [
+    { kind: 'UNDECLARED_INDEX', detail: '"ipos.ipos_symbol_key" (columns: symbol, UNIQUE) exists on the live database but is not declared anywhere in schema.ts' },
+    { kind: 'UNDECLARED_UNIQUE_CONSTRAINT', detail: '"prod_only_table.brand_new_constraint" (columns: foo) exists on the live database but is not declared anywhere in schema.ts' },
+  ];
+  const { known, newDrifts } = diffAgainstUndeclaredBaseline(liveDrifts, baseline);
+  assert.equal(known.length, 1);
+  assert.equal(newDrifts.length, 1);
+  assert.match(newDrifts[0].detail, /prod_only_table\.brand_new_constraint/);
+});
+
+test('a stale baseline entry (object no longer live) is reported so the baseline is forced to shrink', () => {
+  const baseline: UndeclaredBaselineEntry[] = [
+    { kind: 'UNDECLARED_INDEX', tableName: 'ipos', name: 'ipos_symbol_key', issue: '#665' },
+    { kind: 'UNDECLARED_INDEX', tableName: 'users', name: 'users_email_key', issue: '#665' },
+  ];
+  // users_email_key was fixed (declared in schema.ts) and no longer drifts live.
+  const liveDrifts: Drift[] = [
+    { kind: 'UNDECLARED_INDEX', detail: '"ipos.ipos_symbol_key" (columns: symbol, UNIQUE) exists on the live database but is not declared anywhere in schema.ts' },
+  ];
+  const { known, newDrifts, staleEntries } = diffAgainstUndeclaredBaseline(liveDrifts, baseline);
+  assert.equal(known.length, 1);
+  assert.deepEqual(newDrifts, []);
+  assert.equal(staleEntries.length, 1);
+  assert.equal(staleEntries[0].name, 'users_email_key');
+});
+
+test('an empty baseline against no live drifts is fully clean (all buckets empty)', () => {
+  const { known, newDrifts, staleEntries } = diffAgainstUndeclaredBaseline([], []);
+  assert.deepEqual(known, []);
+  assert.deepEqual(newDrifts, []);
+  assert.deepEqual(staleEntries, []);
+});

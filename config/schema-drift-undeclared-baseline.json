@@ -1,0 +1,234 @@
+{
+  "_comment": "Shrink-only baseline (same model as config/scripts-typecheck-exclude-baseline.json) for assert-schema-drift.ts UNDECLARED_INDEX/UNDECLARED_UNIQUE_CONSTRAINT findings (#665). Seeded 2026-09-26 from a read-only ipodhan_staging measurement. The reverse check (SCHEMA_DRIFT_CHECK_UNDECLARED=1) FAILS on any live object of these kinds NOT in this list (a NEW undeclared object) and ALSO FAILS on any entry here that no longer exists live (a STALE_UNDECLARED_BASELINE_ENTRY) -- the list can only shrink, as each object is fixed (declared in schema.ts, migrated, or dropped), never grow silently. Prod was never measured (no prod DB connection from this change) -- the first nightly run against production may name additional NEW objects; add them here only via a reviewed PR, never by hand-editing past what a real measurement showed.",
+  "count": 38,
+  "entries": [
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "ab_experiments",
+      "name": "ab_experiments_name_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_UNIQUE_CONSTRAINT",
+      "tableName": "ab_experiments",
+      "name": "ab_experiments_name_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "ab_experiments",
+      "name": "idx_ab_experiments_status",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "api_keys",
+      "name": "api_keys_key_hash_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_UNIQUE_CONSTRAINT",
+      "tableName": "api_keys",
+      "name": "api_keys_key_hash_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "documents",
+      "name": "idx_documents_sha256",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "gmp_records",
+      "name": "uq_gmp_records_ipo_ts_source",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_UNIQUE_CONSTRAINT",
+      "tableName": "gmp_records",
+      "name": "uq_gmp_records_ipo_ts_source",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "ipo_details",
+      "name": "ipo_details_isin_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_UNIQUE_CONSTRAINT",
+      "tableName": "ipo_details",
+      "name": "ipo_details_isin_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "ipo_scores",
+      "name": "idx_ipo_scores_calculated",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "ipo_scores",
+      "name": "idx_ipo_scores_ipo_id",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "ipo_scores",
+      "name": "ipo_scores_ipo_id_calculated_at_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_UNIQUE_CONSTRAINT",
+      "tableName": "ipo_scores",
+      "name": "ipo_scores_ipo_id_calculated_at_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "ipos",
+      "name": "idx_ipo_details_dates",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "ipos",
+      "name": "idx_ipo_details_status",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "ipos",
+      "name": "idx_ipos_company_name_trgm",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "ipos",
+      "name": "idx_ipos_dates",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "ipos",
+      "name": "idx_ipos_gmp_updated_at",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "ipos",
+      "name": "ipos_symbol_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_UNIQUE_CONSTRAINT",
+      "tableName": "ipos",
+      "name": "ipos_symbol_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "pipeline_status",
+      "name": "idx_pipeline_status_last_run",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "pipeline_status",
+      "name": "idx_pipeline_status_source",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "pipeline_status",
+      "name": "pipeline_status_source_pipeline_type_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_UNIQUE_CONSTRAINT",
+      "tableName": "pipeline_status",
+      "name": "pipeline_status_source_pipeline_type_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "score_history",
+      "name": "idx_score_history_ipo_time",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "score_history",
+      "name": "idx_score_history_version",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "score_performance",
+      "name": "idx_score_performance_analyzed",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "score_performance",
+      "name": "idx_score_performance_ipo",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "subscription_data",
+      "name": "idx_subscription_data_ipo",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "user_watchlist",
+      "name": "idx_user_watchlist_user",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "user_watchlist",
+      "name": "user_watchlist_user_id_ipo_id_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_UNIQUE_CONSTRAINT",
+      "tableName": "user_watchlist",
+      "name": "user_watchlist_user_id_ipo_id_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "users",
+      "name": "idx_users_phone",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "users",
+      "name": "users_email_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_UNIQUE_CONSTRAINT",
+      "tableName": "users",
+      "name": "users_email_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_INDEX",
+      "tableName": "users",
+      "name": "users_phone_key",
+      "issue": "#665"
+    },
+    {
+      "kind": "UNDECLARED_UNIQUE_CONSTRAINT",
+      "tableName": "users",
+      "name": "users_phone_key",
+      "issue": "#665"
+    }
+  ]
+}
