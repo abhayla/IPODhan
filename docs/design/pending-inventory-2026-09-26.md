@@ -26,12 +26,13 @@
 | DUPLICATE | 1 | same class as another open issue |
 | PARKED | 4 | on hold — excluded |
 
-## 1. The 29 pull-model items
+## 1. The 30 pull-model items
 
-26 BUILT, 3 PARTIAL (`pull-model-completion-state.md`).
+**Corrected 2026-09-26:** OD-122 (2026-09-25) added item 36, admin data editing (§9, OD-102 to OD-122), as a release-gate item, NOT BUILT. This inventory first read the list before that change and said 29. Now: 26 BUILT, 3 PARTIAL, 1 NOT BUILT (`pull-model-completion-state.md`). Item 36 is issue #1108 and heads the goal; per OD-122 every production release, including the admin-route auth fix, waits for it.
 
 | Item | What is left | Status |
 |---|---|---|
+| 36 Admin data editing | Everything: §9, OD-102 to OD-122 (#1108) | **NOT BUILT** (goal) |
 | 6 The pull walk | Proof that a new prospectus reopens receipted fields: needs a real event | PARKED #1034 |
 | 19 Merge tool | Staging unmerge proof after migration 0058: needs a real duplicate pair | PARKED #1032 |
 | 7 Scheduler + budgets | O-4 demand-ordered tiering has no staging proof at all; a staging proof of the OD-55 force-kill removal can run now. "#805 not on prod" is a release matter, not a staging gap | **BUILD** (goal T1) |
@@ -197,10 +198,10 @@ Not issues; measured from the items and the board:
 
 | Issue | Title | Why it is yours | Size |
 |---|---|---|---|
-| #58 | Mainboard 'Recently Listed' cards don't show listing-gain % (generic IPOCardEnhanced) | UI card content; the data spec is silent (searched: listing gain, card). |  |
-| #106 | decision: AllotmentCheckerCard null-registrarUrl UX — R28 #3 fallback vs ISS-007 contract… | Allotment card fallback when registrar URL is null is a UX choice; spec silent (searched: registrar_url, allotment). |  |
-| #167 | Populate IPO Reviews/Scores/Anchor Investors feature (currently de-navved, code exists bu… | Reviews/scores/anchor pages need a source decision; spec silent (searched: review, score). |  |
-| #979 | Item 14 residue: 8 old CLOSED IPOs keep a non-capable issue_size with no capable source t… | OD-74 repairs issue size once from the CG detail page; it says nothing for the 8 rows with no CG page and no capable source. | S |
+| #58 (decided: OD-124, show gain %) | Mainboard 'Recently Listed' cards don't show listing-gain % (generic IPOCardEnhanced) | UI card content; the data spec is silent (searched: listing gain, card). |  |
+| #106 (closed: R28 #3 already built, 3ca734a4 on prod) | decision: AllotmentCheckerCard null-registrarUrl UX — R28 #3 fallback vs ISS-007 contract… | Allotment card fallback when registrar URL is null is a UX choice; spec silent (searched: registrar_url, allotment). |  |
+| #167 (decided: OD-125, no reviews; retire pages, fix score scale) | Populate IPO Reviews/Scores/Anchor Investors feature (currently de-navved, code exists bu… | Reviews/scores/anchor pages need a source decision; spec silent (searched: review, score). |  |
+| #979 (decided: OD-123, NOT_SOURCED) | Item 14 residue: 8 old CLOSED IPOs keep a non-capable issue_size with no capable source t… | OD-74 repairs issue size once from the CG detail page; it says nothing for the 8 rows with no CG page and no capable source. | S |
 
 ## 5. Needs owner OK (host change) / in flight / unknown / out of repo
 
@@ -209,7 +210,7 @@ Not issues; measured from the items and the board:
 | #573 | bse-scraper.integration.test.ts fails: 3 'Data Discrepancy Handling' cases red | Run `cd scraper && npx vitest run tests/integration/bse-scraper.integration.test.ts` to confirm current pass/fail, then either fix the test's expectations or the merge logic, and add the file to pr-gate.yml's scraper-do… | S |
 | #607 | wt-sweep -Apply deletes worktrees MID-RUN, killing work in flight (detached-HEAD / verifi… | Global wt-sweep tooling (~/.claude/tools), not IPODhan code; separate task. | M |
 | #613 | wt-new.ps1 creates the node_modules junction inconsistently — 2 of 5 trees lack it, and w… | Global worktree tooling (~/.claude/tools), not IPODhan code; separate task. |  |
-| #630 | unattended-upgrades restarts the self-hosted Actions runner mid-deploy — it killed one to… | Runner restarted mid-deploy by unattended-upgrades; the fix is a VPS config change, which needs the owner OK per the production-host rule. |  |
+| #630 (host half DONE 2026-09-26, recipe section 16; repo-side orphan-release cleanup remains, T4) | unattended-upgrades restarts the self-hosted Actions runner mid-deploy — it killed one to… | Runner restarted mid-deploy by unattended-upgrades; the fix is a VPS config change, which needs the owner OK per the production-host rule. |  |
 | #715 | Repair tools fall back to localhost:6379 for cache invalidation when REDIS_URL is unset: … | fail-closed cache invalidation when REDIS_URL/REDIS_HOST unset; PR #1070 (open) implements it | M |
 | #719 | Staging wake wrapper cannot read the Redis cycle lock TTL and proceeds fail-open on every… | Read /var/log/ipodhan-scraper-wake-staging.log on staging for 'lock-read-unavailable' lines today (owner-run, via the sanctioned ops recipe) and compare the daily count against the issue's 17/17 baseline. | S |
 | #802 | peer_companies has not been written since 2026-06-17, while its three sibling tables writ… | Both issues report the identical write-path gap for peer_companies via document extraction; #802 narrows the RCA but does not describe a different defect. | M |
