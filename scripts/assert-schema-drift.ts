@@ -66,6 +66,9 @@ import { resolveDiscreteDbParams } from '@ipodhan/shared/db';
 import * as schema from '@ipodhan/shared/db/schema';
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
 import { is } from 'drizzle-orm';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 export interface ColumnExpectation {
   tableName: string;
@@ -82,7 +85,10 @@ export interface Drift {
     | 'MISSING_INDEX'
     | 'INDEX_COLUMN_MISMATCH'
     | 'MISSING_UNIQUE_CONSTRAINT'
-    | 'UNIQUE_CONSTRAINT_COLUMN_MISMATCH';
+    | 'UNIQUE_CONSTRAINT_COLUMN_MISMATCH'
+    | 'UNDECLARED_INDEX'
+    | 'UNDECLARED_UNIQUE_CONSTRAINT'
+    | 'STALE_UNDECLARED_BASELINE_ENTRY';
   detail: string;
 }
 
@@ -109,6 +115,76 @@ export interface MatviewExpectation {
   name: string;
   referencedBy: string;
 }
+
+// Item 665: reverse-direction shapes. checkIndexes()/checkUniqueConstraints()
+// above only ever ask "is what schema.ts declares present live?" — they have
+// no way to notice a live object schema.ts never mentions at all (#665:
+// ipos_symbol_key exists on staging, hand-applied, absent from schema.ts;
+// the next `drizzle-kit generate` could silently DROP it). These shapes let
+// the reverse check run as a pure function over plain data, so the unit test
+// never needs a database.
+
+/** A single-column .unique() modifier on a column (distinct from a
+ * table-level unique() builder call — drizzle exposes these two very
+ * differently; see collectExpectedUniqueColumns()'s header comment). */
+export interface UniqueColumnExpectation {
+  tableName: string;
+  columnName: string;
+}
+
+export interface LiveIndexRow {
+  tableName: string;
+  indexName: string;
+  /** Column names, in ordinal order — unordered comparisons hide a reordered
+   * composite index serving a different query, same discipline as above. */
+  columns: string[];
+  isUnique: boolean;
+  isPrimary: boolean;
+}
+
+export interface LiveConstraintRow {
+  tableName: string;
+  constraintName: string;
+  constraintType: 'UNIQUE' | 'PRIMARY KEY';
+  columns: string[];
+}
+
+/** A live object this check has already looked at and decided is not this
+ * item's gap to close — with a one-line reason. Never used for a real
+ * unknown; a genuine undeclared object is reported as a Drift and, per the
+ * defect-fix contract, filed as a finding instead of silently swallowed. */
+export interface AllowedUndeclaredEntry {
+  tableName: string;
+  name: string;
+  reason: string;
+}
+
+// One entry: the automatic backing index Postgres creates for the legacy
+// ipo_risk_factors unique constraint (see ALLOWED_UNDECLARED_UNIQUE_CONSTRAINTS
+// below — same E2 gated migration, same reason, both sides of one constraint).
+// Anything else here would need its own one-line reason; a real, unexplained
+// gap belongs in the findings list, never silently added to this array.
+export const ALLOWED_UNDECLARED_INDEXES: AllowedUndeclaredEntry[] = [
+  {
+    tableName: 'ipo_risk_factors',
+    name: 'unique_ipo_risk_factors_ipo_seq',
+    reason:
+      "Postgres's automatic backing index for the legacy pre-rekey unique constraint on (ipo_id, seq); " +
+      'see ALLOWED_UNDECLARED_UNIQUE_CONSTRAINTS below for the full reason (E2 gated migration).',
+  },
+];
+
+export const ALLOWED_UNDECLARED_UNIQUE_CONSTRAINTS: AllowedUndeclaredEntry[] = [
+  {
+    tableName: 'ipo_risk_factors',
+    name: 'unique_ipo_risk_factors_ipo_seq',
+    reason:
+      'legacy pre-rekey constraint on (ipo_id, seq); schema.ts now declares unique_ipo_risk_factors_ipo_heading_hash ' +
+      'instead, applied by hand per-slot via web/drizzle/migrations/_gated/E2_risk_factor_heading_hash_key.sql ' +
+      '(same reason KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT above tolerates the new name being absent pre-E2). ' +
+      'Remove this entry once every slot has E2 applied and the old constraint dropped.',
+  },
+];
 
 // ==================== EXPECTED MATVIEWS REGISTRY ====================
 // Small, explicit, human-maintained — see file header point 3.
@@ -463,6 +539,284 @@ export function collectExpectedUniqueConstraints(): UniqueConstraintExpectation[
 }
 
 /**
+ * Item 665: `.unique()` chained directly on a COLUMN (e.g.
+ * `slug: varchar(...).notNull().unique()`) is a completely different drizzle
+ * code path from the table-level `unique()` builder call that
+ * collectExpectedUniqueConstraints() reads — getTableConfig().uniqueConstraints
+ * only ever holds the latter (it comes from the table's extraConfigBuilder;
+ * see node_modules/drizzle-orm/pg-core/utils.*). A column-level `.unique()`
+ * shows up only on the COLUMN object itself (`col.isUnique`), and its
+ * constraint name is unreliable to predict: drizzle defaults an unnamed one to
+ * `${table}_${column}_unique` (drizzle-orm/pg-core/unique-constraint.*
+ * uniqueKeyName()), but a real, applied migration for the same declared
+ * column may instead carry Postgres's OWN default name (`${table}_${column}_key`)
+ * when the original DDL used a bare `UNIQUE` column modifier rather than a
+ * named constraint — measured on ipodhan_staging 2026-09-26: admin_settings,
+ * ipo_details, ipo_financials and ipo_slug_redirects all declare `.unique()`
+ * in schema.ts today but carry live constraints named with the Postgres
+ * default, not drizzle's. So this list is matched by (table, column) identity
+ * in the reverse-drift checks below, never by name.
+ */
+export function collectExpectedUniqueColumns(): UniqueColumnExpectation[] {
+  const expectations: UniqueColumnExpectation[] = [];
+  for (const value of Object.values(schema)) {
+    if (!is(value, PgTable)) continue;
+    const cfg = getTableConfig(value as PgTable);
+    for (const col of cfg.columns) {
+      if ((col as unknown as { isUnique?: boolean }).isUnique) {
+        expectations.push({ tableName: cfg.name, columnName: col.name });
+      }
+    }
+  }
+  return expectations;
+}
+
+/**
+ * Item 665 (#665): the reverse direction. checkIndexes()/checkUniqueConstraints()
+ * only ever check "declared -> present live"; this asks "present live ->
+ * declared", which is the class #665 actually reports (ipos_symbol_key exists
+ * on staging, hand-applied, and schema.ts has never heard of it — a
+ * `drizzle-kit generate` run against the live DB's drift could DROP it).
+ *
+ * Deliberately excluded (not drift, matched generically rather than by name):
+ *  - a PRIMARY KEY's automatic backing index (isPrimary) — schema.ts declares
+ *    the primary key on the column itself, never as a named index/constraint.
+ *  - the automatic backing index Postgres creates for a declared table-level
+ *    unique() or column-level .unique() — the constraint IS the declaration;
+ *    its backing index is not a second, separate thing to also declare.
+ * Anything else undeclared is a real gap and is reported, never silently
+ * dropped — see ALLOWED_UNDECLARED_INDEXES's header for the one exception
+ * this file currently recognizes by name.
+ */
+export function diffUndeclaredIndexes(
+  liveIndexes: LiveIndexRow[],
+  declaredIndexes: IndexExpectation[],
+  declaredUniqueConstraints: UniqueConstraintExpectation[],
+  declaredUniqueColumns: UniqueColumnExpectation[],
+  allowList: AllowedUndeclaredEntry[] = ALLOWED_UNDECLARED_INDEXES
+): Drift[] {
+  const declaredIndexNames = new Set(declaredIndexes.map((d) => d.indexName));
+  const declaredUcNames = new Set(declaredUniqueConstraints.map((d) => d.constraintName));
+  const declaredUniqueColumnKeys = new Set(declaredUniqueColumns.map((c) => `${c.tableName}.${c.columnName}`));
+  const allowedKeys = new Set(allowList.map((a) => `${a.tableName}.${a.name}`));
+
+  const drifts: Drift[] = [];
+  for (const live of liveIndexes) {
+    if (live.isPrimary) continue;
+    if (declaredIndexNames.has(live.indexName)) continue;
+    if (declaredUcNames.has(live.indexName)) continue;
+    if (
+      live.isUnique &&
+      live.columns.length === 1 &&
+      declaredUniqueColumnKeys.has(`${live.tableName}.${live.columns[0]}`)
+    ) {
+      continue;
+    }
+    if (allowedKeys.has(`${live.tableName}.${live.indexName}`)) continue;
+    drifts.push({
+      kind: 'UNDECLARED_INDEX',
+      detail: `"${live.tableName}.${live.indexName}" (columns: ${live.columns.join(', ')}${live.isUnique ? ', UNIQUE' : ''}) exists on the live database but is not declared anywhere in schema.ts`,
+    });
+  }
+  return drifts;
+}
+
+/** Same idea as diffUndeclaredIndexes(), for UNIQUE constraints (PRIMARY KEY
+ * constraints are excluded the same way PK indexes are above). */
+export function diffUndeclaredUniqueConstraints(
+  liveConstraints: LiveConstraintRow[],
+  declaredUniqueConstraints: UniqueConstraintExpectation[],
+  declaredUniqueColumns: UniqueColumnExpectation[],
+  allowList: AllowedUndeclaredEntry[] = ALLOWED_UNDECLARED_UNIQUE_CONSTRAINTS
+): Drift[] {
+  const declaredUcNames = new Set(declaredUniqueConstraints.map((d) => d.constraintName));
+  const declaredUniqueColumnKeys = new Set(declaredUniqueColumns.map((c) => `${c.tableName}.${c.columnName}`));
+  const allowedKeys = new Set(allowList.map((a) => `${a.tableName}.${a.name}`));
+
+  const drifts: Drift[] = [];
+  for (const live of liveConstraints) {
+    if (live.constraintType === 'PRIMARY KEY') continue;
+    if (declaredUcNames.has(live.constraintName)) continue;
+    if (live.columns.length === 1 && declaredUniqueColumnKeys.has(`${live.tableName}.${live.columns[0]}`)) continue;
+    if (allowedKeys.has(`${live.tableName}.${live.constraintName}`)) continue;
+    drifts.push({
+      kind: 'UNDECLARED_UNIQUE_CONSTRAINT',
+      detail: `"${live.tableName}.${live.constraintName}" (columns: ${live.columns.join(', ')}) exists on the live database but is not declared anywhere in schema.ts`,
+    });
+  }
+  return drifts;
+}
+
+/** Reads every plain-table index on `public`, one row per index (ordinal
+ * column order preserved) — the live-side input to diffUndeclaredIndexes().
+ * Unlike checkIndexes() above, this is NOT scoped to schema.ts's declared
+ * table names: the whole point is to see objects schema.ts never mentions. */
+export async function queryLiveIndexes(client: Client): Promise<LiveIndexRow[]> {
+  const { rows } = await client.query<{
+    table_name: string;
+    index_name: string;
+    column_name: string;
+    is_unique: boolean;
+    is_primary: boolean;
+  }>(
+    `SELECT t.relname AS table_name, i.relname AS index_name, a.attname AS column_name,
+            ix.indisunique AS is_unique, ix.indisprimary AS is_primary
+     FROM pg_index ix
+     JOIN pg_class t ON t.oid = ix.indrelid
+     JOIN pg_class i ON i.oid = ix.indexrelid
+     JOIN pg_namespace n ON n.oid = t.relnamespace
+     CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS x(attnum, ord)
+     JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = x.attnum
+     WHERE n.nspname = 'public' AND t.relkind = 'r'
+     ORDER BY t.relname, i.relname, x.ord`
+  );
+  const byIndex = new Map<string, LiveIndexRow>();
+  for (const row of rows) {
+    const key = `${row.table_name}.${row.index_name}`;
+    let entry = byIndex.get(key);
+    if (!entry) {
+      entry = {
+        tableName: row.table_name,
+        indexName: row.index_name,
+        columns: [],
+        isUnique: row.is_unique,
+        isPrimary: row.is_primary,
+      };
+      byIndex.set(key, entry);
+    }
+    entry.columns.push(row.column_name);
+  }
+  return [...byIndex.values()];
+}
+
+/** Reads every UNIQUE / PRIMARY KEY constraint on `public`, one row per
+ * constraint (ordinal column order preserved) — the live-side input to
+ * diffUndeclaredUniqueConstraints(). Not scoped to schema.ts's declared table
+ * names, same reasoning as queryLiveIndexes(). */
+export async function queryLiveUniqueConstraints(client: Client): Promise<LiveConstraintRow[]> {
+  const { rows } = await client.query<{
+    table_name: string;
+    constraint_name: string;
+    constraint_type: 'UNIQUE' | 'PRIMARY KEY';
+    column_name: string;
+  }>(
+    `SELECT tc.table_name, tc.constraint_name, tc.constraint_type, kcu.column_name
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.key_column_usage kcu
+       ON kcu.constraint_name = tc.constraint_name
+      AND kcu.constraint_schema = tc.constraint_schema
+      AND kcu.table_schema = tc.table_schema
+     WHERE tc.table_schema = 'public'
+       AND tc.constraint_type IN ('UNIQUE', 'PRIMARY KEY')
+     ORDER BY tc.table_name, tc.constraint_name, kcu.ordinal_position`
+  );
+  const byConstraint = new Map<string, LiveConstraintRow>();
+  for (const row of rows) {
+    const key = `${row.table_name}.${row.constraint_name}`;
+    let entry = byConstraint.get(key);
+    if (!entry) {
+      entry = {
+        tableName: row.table_name,
+        constraintName: row.constraint_name,
+        constraintType: row.constraint_type,
+        columns: [],
+      };
+      byConstraint.set(key, entry);
+    }
+    entry.columns.push(row.column_name);
+  }
+  return [...byConstraint.values()];
+}
+
+/** Live-DB entrypoints wiring the pure diff functions above to a real
+ * connection — what main() calls. Gated behind SCHEMA_DRIFT_CHECK_UNDECLARED=1
+ * (see main()'s header comment on that flag for why it defaults off in CI). */
+export async function checkUndeclaredIndexes(client: Client): Promise<Drift[]> {
+  const live = await queryLiveIndexes(client);
+  return diffUndeclaredIndexes(
+    live,
+    collectExpectedIndexes(),
+    collectExpectedUniqueConstraints(),
+    collectExpectedUniqueColumns()
+  );
+}
+
+export async function checkUndeclaredUniqueConstraints(client: Client): Promise<Drift[]> {
+  const live = await queryLiveUniqueConstraints(client);
+  return diffUndeclaredUniqueConstraints(live, collectExpectedUniqueConstraints(), collectExpectedUniqueColumns());
+}
+
+// ==================== SHRINK-ONLY BASELINE FOR UNDECLARED FINDINGS (review round 1) ====================
+// PR #1204 review round 1 (MAJOR): wiring SCHEMA_DRIFT_CHECK_UNDECLARED=1 into
+// the nightly VPS cron unconditionally would make it exit 1 EVERY night from
+// the first run — 38 pre-existing findings on staging alone (prod
+// unmeasured), permanently red, which hides the next REAL new finding
+// (signal-ownership.md R3/R4: new beats standing; a permanently-red gate is
+// no gate). Same shape as config/scripts-typecheck-exclude-baseline.json
+// (T-434): the committed baseline is the ONLY legitimate source of "already
+// known (#665), still open" findings, and it can only shrink — an entry is
+// removed the moment its object is fixed (declared in schema.ts, migrated
+// properly, or dropped), never re-added by hand once gone.
+
+export interface UndeclaredBaselineEntry {
+  kind: 'UNDECLARED_INDEX' | 'UNDECLARED_UNIQUE_CONSTRAINT';
+  tableName: string;
+  name: string;
+  issue: string;
+}
+
+function matchesBaselineEntry(drift: Drift, entry: UndeclaredBaselineEntry): boolean {
+  return drift.kind === entry.kind && drift.detail.startsWith(`"${entry.tableName}.${entry.name}"`);
+}
+
+/**
+ * Splits the live UNDECLARED_INDEX/UNDECLARED_UNIQUE_CONSTRAINT drifts against
+ * the committed baseline into three buckets:
+ *  - known: matches a baseline entry — already tracked on #665, reported as
+ *    INFO, never fails the gate by itself.
+ *  - newDrifts: NOT in the baseline — a genuinely new finding since the
+ *    baseline was last measured. THIS is what fails the gate. Prod is never
+ *    connected to from this script's normal callers, so the first nightly
+ *    run against production may surface entries here that staging never had;
+ *    that is expected (see this file's header on SCHEMA_DRIFT_CHECK_UNDECLARED)
+ *    and is resolved by a reviewed PR adding them to the baseline, not by
+ *    silently swallowing them.
+ *  - staleEntries: a baseline entry whose object no longer exists live — the
+ *    baseline must SHRINK (the object was fixed) or it is stale bookkeeping.
+ *    Also fails the gate, so a fix is never "free" to leave the baseline
+ *    claiming an object still exists.
+ * Pure function over plain data — the unit test needs no database.
+ */
+export function diffAgainstUndeclaredBaseline(
+  liveDrifts: Drift[],
+  baseline: UndeclaredBaselineEntry[]
+): { known: Drift[]; newDrifts: Drift[]; staleEntries: UndeclaredBaselineEntry[] } {
+  const known: Drift[] = [];
+  const newDrifts: Drift[] = [];
+  for (const drift of liveDrifts) {
+    if (baseline.some((entry) => matchesBaselineEntry(drift, entry))) {
+      known.push(drift);
+    } else {
+      newDrifts.push(drift);
+    }
+  }
+  const staleEntries = baseline.filter((entry) => !liveDrifts.some((drift) => matchesBaselineEntry(drift, entry)));
+  return { known, newDrifts, staleEntries };
+}
+
+const UNDECLARED_BASELINE_PATH = join(
+  fileURLToPath(new URL('.', import.meta.url)),
+  '..',
+  'config',
+  'schema-drift-undeclared-baseline.json'
+);
+
+export function loadUndeclaredBaseline(path: string = UNDECLARED_BASELINE_PATH): UndeclaredBaselineEntry[] {
+  const raw = JSON.parse(readFileSync(path, 'utf8')) as { entries: UndeclaredBaselineEntry[] };
+  return raw.entries;
+}
+
+/**
  * Checks every named index schema.ts declares against pg_index on the live
  * database, ordered by column position (unnest(indkey) WITH ORDINALITY,
  * mirroring assert-row-key-constraints.ts's ordinal_position read for
@@ -619,6 +973,56 @@ async function main() {
       checkUniqueConstraints(client),
     ]);
 
+    // #665: the reverse direction (live object, undeclared in schema.ts) is
+    // gated behind SCHEMA_DRIFT_CHECK_UNDECLARED=1 rather than run
+    // unconditionally like the four checks above, AND filtered through a
+    // shrink-only baseline (config/schema-drift-undeclared-baseline.json,
+    // diffAgainstUndeclaredBaseline() below) before it can fail anything —
+    // review round 1 (MAJOR): 38 pre-existing findings on staging alone (prod
+    // never measured — this script never connects to it from this check)
+    // would otherwise make the nightly VPS cron exit 1 EVERY night from the
+    // first run, permanently red, which hides the next real new finding
+    // (signal-ownership.md R3/R4). Only a genuinely NEW undeclared object, or
+    // a baseline entry whose object no longer exists live (the baseline
+    // failing to shrink), is fatal. The first nightly run against PRODUCTION
+    // may still name extra NEW objects staging never had (this file never
+    // connects to prod to check) — that is expected, reported by name, and
+    // resolved by a reviewed PR adding them to the baseline, never silently.
+    // pr-gate.yml and deploy-linux.sh remain unaffected (checkUndeclared stays
+    // false there) until each finding is triaged.
+    const checkUndeclared = process.env.SCHEMA_DRIFT_CHECK_UNDECLARED === '1';
+    const [undeclaredIndexDrifts, undeclaredUniqueConstraintDrifts] = checkUndeclared
+      ? await Promise.all([checkUndeclaredIndexes(client), checkUndeclaredUniqueConstraints(client)])
+      : [[], []];
+
+    // Review round 1 fix: run the raw undeclared drifts through the
+    // shrink-only baseline (config/schema-drift-undeclared-baseline.json)
+    // BEFORE they can fail the gate — see diffAgainstUndeclaredBaseline()'s
+    // header for why. Only genuinely NEW findings (never seen before) and
+    // stale baseline entries (an object the baseline still claims exists but
+    // doesn't anymore) are fatal; the 38 already-known #665 findings are
+    // reported as INFO, not FATAL, every run.
+    let undeclaredNewDrifts: Drift[] = [];
+    let undeclaredStaleDrifts: Drift[] = [];
+    if (checkUndeclared) {
+      const baseline = loadUndeclaredBaseline();
+      const { known, newDrifts, staleEntries } = diffAgainstUndeclaredBaseline(
+        [...undeclaredIndexDrifts, ...undeclaredUniqueConstraintDrifts],
+        baseline
+      );
+      if (known.length > 0) {
+        console.log(
+          `INFO: ${known.length} known (#665) undeclared index/constraint finding(s), tracked in config/schema-drift-undeclared-baseline.json, ${known.length} remaining:`
+        );
+        for (const drift of known) console.log(`  [${drift.kind}] ${drift.detail}`);
+      }
+      undeclaredNewDrifts = newDrifts;
+      undeclaredStaleDrifts = staleEntries.map((entry) => ({
+        kind: 'STALE_UNDECLARED_BASELINE_ENTRY',
+        detail: `"${entry.tableName}.${entry.name}" (${entry.kind}, ${entry.issue}) is in config/schema-drift-undeclared-baseline.json but no longer exists live — remove it (the baseline can only shrink)`,
+      }));
+    }
+
     // SCHEMA_DRIFT_IGNORE_GATED=1 is set by the T-405 "replay the journal
     // from empty" CI job (pr-gate.yml scraper-document-integration) AND, as
     // of #464 (item 1 slice s10), by scripts/deploy-linux.sh's migration
@@ -629,7 +1033,14 @@ async function main() {
     // the CLI/exit-code boundary, so checkColumns() itself keeps reporting
     // the full truth for every other caller (the self-test included).
     const ignoreGated = process.env.SCHEMA_DRIFT_IGNORE_GATED === '1';
-    const combined = [...columnDrifts, ...matviewDrifts, ...indexDrifts, ...uniqueConstraintDrifts];
+    const combined = [
+      ...columnDrifts,
+      ...matviewDrifts,
+      ...indexDrifts,
+      ...uniqueConstraintDrifts,
+      ...undeclaredNewDrifts,
+      ...undeclaredStaleDrifts,
+    ];
     const knownGated = ignoreGated
       ? combined.filter((d) => isKnownGatedDrift(d) || isKnownGatedIndexDrift(d) || isKnownGatedUniqueConstraintDrift(d))
       : [];

@@ -244,8 +244,13 @@ run_audit() {
   # migration is journaled as applied but the live DDL never actually matched
   # (ipo_scores.algorithm_version varchar(10) vs SSOT varchar(50); calendar_view
   # never created) between deploys, e.g. after an out-of-band manual DB change.
-  echo "--- [5/6] assert-schema-drift (live DB vs schema.ts) ---"
-  npx tsx scripts/assert-schema-drift.ts || { failed=1; echo "GATE FAILED: assert-schema-drift"; }
+  # #665: SCHEMA_DRIFT_CHECK_UNDECLARED=1 adds the reverse direction (a live
+  # index/unique constraint schema.ts never declares, e.g. ipos_symbol_key) —
+  # opted in here, and only here, because pr-gate.yml's ephemeral CI database
+  # and deploy-linux.sh have not been verified clean of the same pre-existing
+  # drift (see assert-schema-drift.ts main()'s comment on this flag).
+  echo "--- [5/6] assert-schema-drift (live DB vs schema.ts, both directions) ---"
+  SCHEMA_DRIFT_CHECK_UNDECLARED=1 npx tsx scripts/assert-schema-drift.ts || { failed=1; echo "GATE FAILED: assert-schema-drift"; }
 
   # #187 (T-461), g_reverse_sweep: the reverse sweep (external chittorgarh.com
   # calendar -> is this IPO visible on our site). Wired NON-FATAL like step 4

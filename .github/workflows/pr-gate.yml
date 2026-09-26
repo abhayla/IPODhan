@@ -1140,6 +1140,7 @@ jobs:
         run: |
           npx tsx --test scripts/tests/audit-consensus-verdict.test.ts
           npx tsx --test scripts/tests/known-gated-type-drift.test.ts
+          npx tsx --test scripts/tests/assert-schema-drift-undeclared.test.ts
 
       - name: Run the document-state integration tests
         # THIS LIST IS GATED. Every file under scraper/tests/integration/ must
