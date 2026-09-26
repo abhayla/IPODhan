@@ -20,7 +20,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { decidePurge } from '../../../src/services/document-store.js';
-import { PURGE_CANDIDATES_SQL } from '../../../src/services/document-cycle.js';
+import { PURGE_CANDIDATES_SQL, buildPurgeCandidatesSql } from '../../../src/services/document-cycle.js';
 
 const day = (n: number) => new Date(Date.parse('2026-09-11T00:00:00Z') + n * 86_400_000);
 
@@ -121,7 +121,44 @@ describe('PURGE_CANDIDATES_SQL — candidates are not gated on close_date alone 
     // per-document extracted_at hold ever ran, so a NULL or not-yet-due
     // close_date meant the IPO was never even considered. The fix must add an
     // independent extraction-age condition to the WHERE clause.
-    expect(PURGE_CANDIDATES_SQL).toMatch(/extracted_at\s*<\s*now\(\)\s*-\s*make_interval/);
+    //
+    // Pinned as a substring rather than a loose word-match: a mutation that
+    // deletes the whole `OR EXISTS (...)` arm must fail this test, not just a
+    // mutation that rewords its comment.
+    expect(PURGE_CANDIDATES_SQL).toContain('OR EXISTS (');
+    expect(PURGE_CANDIDATES_SQL).toMatch(
+      /OR EXISTS \(\s*SELECT 1 FROM documents d2\s*WHERE d2\.ipo_id = i\.id\s*AND d2\.extracted_at IS NOT NULL\s*AND d2\.extracted_at\s*<\s*now\(\)\s*-\s*make_interval\(days => \{\{RETENTION_DAYS\}\}\)/
+    );
     expect(PURGE_CANDIDATES_SQL).not.toMatch(/close_date\s+IS\s+NOT\s+NULL\s*\n\s*AND\s*\(/i);
+  });
+
+  it('has exactly two {{RETENTION_DAYS}} placeholders — pinning the shape the round-2 CRITICAL bit us on', () => {
+    // #933 round 2 (Tier A review of PR #1131): the query has TWO
+    // `{{RETENTION_DAYS}}` occurrences (the close-date arm and the
+    // extraction-age EXISTS arm). If this count ever drops to one, a
+    // first-match-only substitution bug becomes invisible again; if it rises,
+    // `buildPurgeCandidatesSql` must still leave zero unsubstituted (below).
+    const occurrences = PURGE_CANDIDATES_SQL.match(/\{\{RETENTION_DAYS\}\}/g) ?? [];
+    expect(occurrences.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('CRITICAL (#933 round 2): buildPurgeCandidatesSql substitutes EVERY placeholder, not just the first', () => {
+    // This is the exact defect the Tier A review found: runDocumentPurge used
+    // to call `PURGE_CANDIDATES_SQL.replace('{{RETENTION_DAYS}}', ...)` —
+    // String.prototype.replace(string, ...) replaces only the FIRST match —
+    // so the second ({{RETENTION_DAYS}}) arm reached Postgres as literal text,
+    // which is invalid SQL, caught as non-fatal, so nothing was ever purged.
+    // This test calls the ACTUAL function `runDocumentPurge` uses (not a
+    // duplicated .replace() call), so a regression in that function — not
+    // just in this test file — is what turns this red.
+    const substituted = buildPurgeCandidatesSql(7);
+    expect(substituted).not.toMatch(/\{\{/);
+    expect(substituted).not.toContain('RETENTION_DAYS');
+    // And the substituted value is correct, not just "no braces left".
+    const daysMatches = substituted.match(/make_interval\(days => (\d+)\)/g) ?? [];
+    expect(daysMatches.length).toBeGreaterThanOrEqual(2);
+    for (const m of daysMatches) {
+      expect(m).toBe('make_interval(days => 7)');
+    }
   });
 });

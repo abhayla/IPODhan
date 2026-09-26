@@ -2554,6 +2554,27 @@ export const PURGE_CANDIDATES_SQL = `
 `;
 
 /**
+ * Substitutes every `{{RETENTION_DAYS}}` placeholder in `PURGE_CANDIDATES_SQL`.
+ *
+ * #933 round 2 CRITICAL (Tier A review of PR #1131): the query gained a
+ * SECOND `{{RETENTION_DAYS}}` occurrence (the extraction-age EXISTS arm)
+ * alongside the original close-date arm, but the call site substituted with
+ * `String.prototype.replace(string, ...)`, which replaces only the FIRST
+ * match. The second arm reached Postgres as the literal text
+ * `{{RETENTION_DAYS}}` on every single run, which is invalid SQL syntax;
+ * `runDocumentPurge`'s caller treats a purge failure as non-fatal
+ * (`non-fatal-side-effects.md`), so the purge silently did NOTHING, forever —
+ * including the withdrawal arm and the 30-day hard cap — and the store would
+ * grow to the 5 GB cap (the 2026-06-13 disk-full class). Exported so a test
+ * can assert on the ACTUAL substitution path rather than duplicating it.
+ */
+export function buildPurgeCandidatesSql(retentionDays: number): string {
+  // W-101: retentionDays is validated finite/>=0 by getRetentionDays(); Math.trunc
+  // guards against a non-integer env value producing invalid SQL syntax.
+  return PURGE_CANDIDATES_SQL.replaceAll('{{RETENTION_DAYS}}', String(Math.trunc(retentionDays)));
+}
+
+/**
  * PURGE_PDFS (D4). Deletes local PDFs for IPOs past
  * `close_date + PROSPECTUS_RETENTION_DAYS`, or withdrawn. FILES ONLY — the
  * `documents` and `document_fetch_state` rows and everything extracted from the
@@ -2563,11 +2584,7 @@ export async function runDocumentPurge(): Promise<PurgeSummary> {
   const retentionDays = getRetentionDays();
   const maxRetentionDays = getMaxRetentionDays();
 
-  // W-101: retentionDays is validated finite/>=0 by getRetentionDays(); Math.trunc
-  // guards against a non-integer env value producing invalid SQL syntax.
-  const result = await db.execute(
-    sql.raw(PURGE_CANDIDATES_SQL.replace('{{RETENTION_DAYS}}', String(Math.trunc(retentionDays))))
-  );
+  const result = await db.execute(sql.raw(buildPurgeCandidatesSql(retentionDays)));
   const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<
     string,
     unknown
