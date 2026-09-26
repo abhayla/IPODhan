@@ -939,7 +939,10 @@ test('every detection-checks.json check id is recorded by a function that is act
     // directly — so "invoked" must also recognise the function passed BY REFERENCE to runCheck,
     // not only a direct call.
     const invoked = new RegExp(`\\b${owner.name}\\s*\\(`).test(mainBody)
-      || new RegExp(`\\brunCheck\\(\\s*${owner.name}\\s*\\)`).test(mainBody);
+      // #1113: runCheck(checkX, ['id1', 'id2']) now carries the owned ids as a second
+      // argument, so "runCheck(checkX)" alone no longer matches — accept a trailing
+      // comma (more args) as well as the immediate close-paren.
+      || new RegExp(`\\brunCheck\\(\\s*${owner.name}\\s*[,)]`).test(mainBody);
     if (!invoked) notInvoked.push(`${id} (owner ${owner.name} defined but never called from main())`);
   }
 
@@ -970,8 +973,118 @@ test('#1055: every check dispatched from main() goes through runCheck() (per-che
     .filter((name) => /^check[A-Z]/.test(name) || /^check[a-z]/.test(name));
   assert.deepEqual(bareCalls, [], `check(s) called directly instead of via runCheck(): ${bareCalls.join(', ')} — a throw here would abort every later check again (#1055)`);
 
-  const runCheckCalls = [...mainBody.matchAll(/runCheck\(\s*(check[A-Za-z_]+)\s*\)/g)].map((m) => m[1]);
+  // #1113: runCheck(checkX, [...ids]) — allow a trailing comma (more args), not just
+  // the immediate close-paren the pre-#1113 shape had.
+  const runCheckCalls = [...mainBody.matchAll(/runCheck\(\s*(check[A-Za-z_]+)\s*[,)]/g)].map((m) => m[1]);
   assert.ok(runCheckCalls.length >= 50, `expected at least 50 checks dispatched via runCheck(), found ${runCheckCalls.length} — main() may have regressed to the flat call shape`);
+});
+
+// ---- #1113: a thrown check is attributed to its REGISTERED ids, not its JS function name -------
+// RCA: runCheck(fn) recorded a throw under fn.name (e.g. "checkSettledFieldRewrites"), never
+// under the id(s) the function actually calls record() with (e.g. "s_settled_field_rewritten").
+// floor-delta.mjs diffs by registered id, so the real id read as silently ABSENT (never
+// NEW/GONE/SAME) while a fake, unregistered id appeared instead. Measured on the prod floor run
+// referenced by #1113: `[UNVERIFIABLE] checkSettledFieldRewrites checkSettledFieldRewrites —
+// column fs.row_key does not exist` plus a check_roster FAIL naming s_settled_field_rewritten as
+// missing. These tests import the REAL function under test (runCheckAgainstIds), not a
+// re-implementation.
+import { runCheckAgainstIds } from '../lib/run-check.mjs';
+
+test('#1113: a thrown check is recorded UNVERIFIABLE under EACH id it owns, with "threw: <message>" as the cause, never under the function name', async () => {
+  const results = [];
+  const record = (id, name, status, detail) => results.push({ id, name, status, detail });
+  async function checkSettledFieldRewrites() { throw new Error('column fs.row_key does not exist'); }
+
+  await runCheckAgainstIds(checkSettledFieldRewrites, ['s_settled_field_rewritten'], { record, results });
+
+  assert.deepEqual(results.map((r) => r.id), ['s_settled_field_rewritten']);
+  assert.equal(results[0].status, 'UNVERIFIABLE');
+  assert.equal(results[0].detail, 'threw: column fs.row_key does not exist');
+  assert.ok(!results.some((r) => r.id === 'checkSettledFieldRewrites'),
+    'must not fall back to recording under the JS function name');
+});
+
+test('#1113: a check that owns MULTIPLE ids (e.g. checkA_B) records every one of them on a throw', async () => {
+  const results = [];
+  const record = (id, name, status, detail) => results.push({ id, name, status, detail });
+  async function checkA_B() { throw new Error('ipowatch fetch failed'); }
+
+  await runCheckAgainstIds(checkA_B, ['a_b_live_conflict', 'a_b_min_application'], { record, results });
+
+  assert.deepEqual(results.map((r) => r.id).sort(), ['a_b_live_conflict', 'a_b_min_application']);
+  assert.ok(results.every((r) => r.status === 'UNVERIFIABLE' && r.detail === 'threw: ipowatch fetch failed'));
+});
+
+test('#1113: an id already recorded before the throw (partial results) is not double-recorded', async () => {
+  const results = [{ id: 'a_b_live_conflict', name: 'x', status: 'FAIL', detail: 'already reported' }];
+  const record = (id, name, status, detail) => results.push({ id, name, status, detail });
+  async function checkA_B() { throw new Error('second half crashed'); }
+
+  await runCheckAgainstIds(checkA_B, ['a_b_live_conflict', 'a_b_min_application'], { record, results });
+
+  const ids = results.map((r) => r.id);
+  assert.deepEqual(ids, ['a_b_live_conflict', 'a_b_min_application']);
+  assert.equal(results[0].detail, 'already reported', 'the pre-existing row for a_b_live_conflict must be left alone');
+  assert.equal(results[1].status, 'UNVERIFIABLE');
+});
+
+test('#1113: a check that does not throw records nothing via runCheckAgainstIds', async () => {
+  const results = [];
+  const record = (id, name, status, detail) => results.push({ id, name, status, detail });
+  let called = false;
+  async function checkOk() { called = true; }
+
+  await runCheckAgainstIds(checkOk, ['ok_id'], { record, results });
+
+  assert.equal(called, true);
+  assert.deepEqual(results, []);
+});
+
+test('#1113: falls back to the function name only when no ids are passed (defensive default, not the normal path)', async () => {
+  const results = [];
+  const record = (id, name, status, detail) => results.push({ id, name, status, detail });
+  async function checkSomething() { throw new Error('boom'); }
+
+  await runCheckAgainstIds(checkSomething, [], { record, results });
+
+  assert.deepEqual(results.map((r) => r.id), ['checkSomething']);
+});
+
+// #1113 test (b): every runCheck(...) call inside main() names the ids it owns, and the union
+// of every named id equals the set check_roster (the existing roster consumer, docs/reviews/
+// detection-checks.json) uses. A call left with an empty [] (or reverted to the pre-#1113
+// no-args shape) would silently lose per-check id attribution again.
+test('#1113: every runCheck() call in main() names ids, and their union equals the roster', () => {
+  const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  const manifest = JSON.parse(readFileSync(new URL('../../docs/reviews/detection-checks.json', import.meta.url), 'utf8'));
+  const declared = new Set(
+    manifest.checks.filter((c) => !c.auditScript || c.auditScript === manifest.auditScript).map((c) => c.id)
+  );
+
+  const mainStart = script.indexOf('async function main()');
+  const mainEnd = script.indexOf('\nmain().catch(');
+  assert.ok(mainStart !== -1 && mainEnd !== -1, 'regex drifted from the source shape');
+  const mainBody = script.slice(mainStart, mainEnd);
+
+  // Function names include digits (checkE_unknownSlug404, checkG1_repeatedWarn,
+  // checkS_e1Source) — the fn-name class must allow 0-9, not just letters/underscore.
+  const calls = [...mainBody.matchAll(/runCheck\(\s*(check[A-Za-z0-9_]+)\s*,\s*\[([^\]]*)\]\s*\)/g)];
+  assert.ok(calls.length >= 50, `expected at least 50 runCheck(fn, [ids]) calls, found ${calls.length}`);
+
+  const unionIds = new Set();
+  const emptyIdsCalls = [];
+  for (const [, fnName, idsSrc] of calls) {
+    const ids = [...idsSrc.matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1]);
+    if (ids.length === 0) emptyIdsCalls.push(fnName);
+    for (const id of ids) unionIds.add(id);
+  }
+  assert.deepEqual(emptyIdsCalls, [], `runCheck() call(s) with no ids named: ${emptyIdsCalls.join(', ')}`);
+
+  // check_roster is recorded directly by main() itself (the roster consumer runs LAST, after
+  // every runCheck() call, and deliberately is not one of the checks runCheck dispatches) — not
+  // a gap in per-check id attribution, so it is excluded from this union requirement.
+  const missingFromUnion = [...declared].filter((id) => id !== 'check_roster' && !unionIds.has(id));
+  assert.deepEqual(missingFromUnion, [], `roster id(s) never named by any runCheck() call: ${missingFromUnion.join(', ')}`);
 });
 
 // ---- (l) T-340 NSE status cross-check ---------------------------------------
