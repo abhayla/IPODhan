@@ -70,9 +70,13 @@
 
 set -uo pipefail
 
-DIR="/root/data-audit-ipodhan"
-REPO="$DIR/repo"
-STATE_DIR="$DIR/state"
+# Overridable via env for scripts/tests/vps-cron-reexec.test.sh (#348) — the
+# production default (no env vars set) is byte-for-byte what it always was.
+DIR="${DATA_AUDIT_DIR:-/root/data-audit-ipodhan}"
+REPO="${DATA_AUDIT_REPO:-$DIR/repo}"
+STATE_DIR="${DATA_AUDIT_STATE_DIR:-$DIR/state}"
+NOTIFIER_ENV="${DATA_AUDIT_NOTIFIER_ENV:-/root/notifier/.env}"
+PROD_ENV="${DATA_AUDIT_PROD_ENV:-/var/www/ipodhan/shared/env/prod/web.env.local}"
 # #687 slice 2: VPS clock is UTC but the nightly run fires 02:00-03:45 IST
 # (still the previous UTC day) -- use the IST calendar day, not the host clock,
 # so the floor state file and run log land on the day the run actually happened in IST.
@@ -81,10 +85,48 @@ STATE_DIR="$DIR/state"
 # tzdata on the host -- mirrors scripts/lib/ist-day.mjs.
 DATE_TAG="$(date -u -d "@$(( $(date +%s) + 19800 ))" +%F)"
 LOG="$STATE_DIR/run-$DATE_TAG.log"
-NOTIFIER_ENV="/root/notifier/.env"
-PROD_ENV="/var/www/ipodhan/shared/env/prod/web.env.local"
 
 mkdir -p "$STATE_DIR"
+
+# #348 fix — RCA: run_audit() below is a bash FUNCTION, and bash parses a
+# function's body exactly once, when this script starts. The old code did
+# `git fetch` + `git reset --hard origin/main` INSIDE run_audit(), so by the
+# time that reset landed a new script body on disk, this already-running
+# process was executing the OLD body from memory — the reset only took
+# effect on the FOLLOWING cron tick, one night late.
+#
+# Class: every future change to this file — new steps, fixed flags, notifier
+# changes — must take effect the SAME night it merges to main, not the next
+# one. This block fixes the class, not one instance, because it runs before
+# ANY of run_audit's logic is parsed.
+#
+# Fix: fetch + reset happen HERE, before run_audit is even defined, then the
+# process re-execs itself once (`exec bash "$0" "$@"`) so bash re-parses this
+# file from disk with tonight's content. DATA_AUDIT_REEXECED guards against a
+# re-exec loop.
+#
+# If the fetch or reset fails (network blip, GitHub outage, a bad checkout),
+# the audit is NOT skipped: the currently checked-out copy runs as-is and a
+# WARN line names the cause, so a transient git failure never costs a night
+# of the audit outright — it only risks one more night of staleness, which is
+# exactly the failure mode this fix exists to shrink from "always" to "rare".
+if [[ -z "${DATA_AUDIT_REEXECED:-}" ]]; then
+  REEXEC_WARN=""
+  if [[ -d "$REPO/.git" ]]; then
+    if ! FETCH_ERR="$(git -C "$REPO" fetch origin main --quiet 2>&1)"; then
+      REEXEC_WARN="git fetch failed: ${FETCH_ERR:-no output}"
+    elif ! RESET_ERR="$(git -C "$REPO" reset --hard origin/main --quiet 2>&1)"; then
+      REEXEC_WARN="git reset --hard failed: ${RESET_ERR:-no output}"
+    fi
+  else
+    REEXEC_WARN="no .git checkout found at $REPO"
+  fi
+  if [[ -n "$REEXEC_WARN" ]]; then
+    echo "WARN: #348 pre-reexec fetch/reset skipped ($REEXEC_WARN) — running the currently checked-out copy of $0, it may be one night stale" >> "$LOG" 2>&1
+  fi
+  export DATA_AUDIT_REEXECED=1
+  exec bash "$0" "$@"
+fi
 
 # run_audit is a FUNCTION, not a brace group. `return` inside it ends only the
 # function, so a missing checkout or a red gate always falls through to the
@@ -106,9 +148,20 @@ run_audit() {
   fi
 
   cd "$REPO" || { echo "FATAL: repo checkout missing at $REPO"; return 1; }
-  git fetch origin main --quiet
-  git reset --hard origin/main --quiet
-  echo "checked out: $(git log -1 --oneline)"
+  # #348: fetch + reset already happened ONCE, at the very top of this file,
+  # before run_audit() was even parsed (see the re-exec block above this
+  # function). Removed here rather than kept as a no-op safety net — this
+  # process is already running the freshly-reset tree by construction (it IS
+  # the re-exec'd process, or the fetch/reset failed and it deliberately fell
+  # through to run the on-disk copy as-is), so a second fetch+reset here would
+  # be a redundant network call, not an extra safety margin.
+  #
+  # Detection (the issue's own idea, #348): print the checked-out sha and this
+  # script's OWN step count at the start of every run, so a stale run — one
+  # still running an old body after a merge — is visible directly in the log
+  # rather than needing a second tool to notice.
+  STEP_COUNT="$(grep -c '^  echo "--- \[' "$0")"
+  echo "checked out: $(git log -1 --oneline) ($STEP_COUNT audit steps in this script)"
 
   # --ignore-scripts skips the root `prepare: husky` hook (no git-hook context
   # on this box). Only `pg` is actually needed by the audit scripts.

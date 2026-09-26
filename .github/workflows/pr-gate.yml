@@ -1121,6 +1121,16 @@ jobs:
       - name: Run staging window cron install test suite (deploy-linux.sh)
         run: bash scripts/tests/staging-window-cron.test.sh
 
+      # #348: a merged change to vps-data-audit-cron.sh used to take effect
+      # one night late, because the old script did its git fetch+reset INSIDE
+      # the run_audit() function bash had already parsed. Builds a real bare
+      # origin + clone, pushes a new script version behind the running
+      # process's back, and asserts the re-exec picks it up the SAME run;
+      # also proves a failed fetch/reset still lets the audit complete, with
+      # a WARN line naming the cause.
+      - name: Run VPS data-audit cron self-reexec test suite (#348)
+        run: bash scripts/tests/vps-cron-reexec.test.sh
+
       - name: Run staging window deploy script test suite (VPS cron payload)
         run: bash scripts/tests/staging-window-deploy.test.sh
 
