@@ -146,6 +146,11 @@ jobs:
         # move. The module now NAMES never-extractable PENDING documents by type.
         run: node --test scripts/tests/not-applicable-documents.test.mjs
 
+      - name: "issuer_ratio_yield verdict self-test (#771)"
+        # The verdict reads E9 ratioReasons.current_ratio only: quick_ratio always
+        # records a reason, so a whole-evidence token match would pass everything.
+        run: node --test scripts/tests/ratio-yield-verdict.test.mjs
+
       - name: "IST-day guard and helper self-tests (#687)"
         # The #687 family (a day derived from the UTC clock reads as yesterday
         # for the first 5h30m of every IST day) was fixed in four slices, but
@@ -1062,6 +1067,7 @@ jobs:
           tests/integration/post-listing-price.integration.test.ts
           tests/integration/repair-bse-subscription-ist-shift.integration.test.ts
           tests/integration/rhp-promoters-peers-persist.integration.test.ts
+          tests/integration/prospectus-ratio-reason-ledger.integration.test.ts
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under

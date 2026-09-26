@@ -106,6 +106,7 @@ import {
 import { newestWakeTimestamp } from './ops/wake-delta.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
 import { adminQueueSize, formatAdminQueueBlock } from './ops/admin-queue-size.mjs';
+import { ratioYieldFailure } from './lib/ratio-yield-verdict.mjs';
 import { behaviourConflictPredicate, unresolvedConflictCountSql, unresolvedConflictNoiseSql, conflictsInserted24hSql, ensureDocumentIdProbe, conflictWriterNoiseSql } from './lib/conflict-reasons.mjs';
 
 // The three filing-extractor types this specific stuck-detection query cares about
@@ -1372,13 +1373,17 @@ async function checkM() {
        AND d.extracted_at IS NOT NULL
        AND d.extracted_at >= timestamp '${RATIO_WIRING_MERGED_AT}'
   `);
+  // #771: the verdict reads E9 `ratioReasons.current_ratio` only. The old
+  // any-token regex over the whole evidence would pass every document once E9
+  // carried reasons, because quick_ratio always records one.
   const ratioSilent = ratioRows
-    .filter((r) => !r.has_ratio && !/ratio_note_not_in_document|ratio_row_not_in_note|balance_sheet_inputs_absent/.test(r.step_evidence))
-    .map((r) => `${r.company_name} (${r.doc_type} ${r.document_id.slice(0, 8)}): no current_ratio and no recorded reason`);
+    .map((r) => ({ r, cause: ratioYieldFailure({ hasRatio: r.has_ratio, stepEvidence: r.step_evidence }) }))
+    .filter(({ cause }) => cause !== null)
+    .map(({ r, cause }) => `${r.company_name} (${r.doc_type} ${r.document_id.slice(0, 8)}): ${cause}`);
   for (const v of ratioSilent)
     notify('issuer_ratio_yield', 'P2', v, 'A completed filing extraction yielded no issuer ratio and named no cause', v);
   record('issuer_ratio_yield',
-    `every COMPLETED RHP/DRHP/PROSPECTUS extracted since ${RATIO_WIRING_MERGED_AT} carries a current_ratio or a recorded reason for its absence (${ratioRows.length} document(s) in the population)`,
+    `every COMPLETED RHP/DRHP/PROSPECTUS extracted since ${RATIO_WIRING_MERGED_AT} carries a current_ratio or E9 ratioReasons.current_ratio = ratio_note_not_in_document (${ratioRows.length} document(s) in the population)`,
     ratioRows.length === 0
       ? 'UNVERIFIABLE'
       : (ratioSilent.length === 0 ? 'PASS' : 'FAIL'),
