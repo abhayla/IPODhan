@@ -35,7 +35,13 @@ import { parseBseParties } from '../src/services/bse-party-parser.js';
 import { recordDiscoveredLeadManagers } from '../src/services/data-persister.js';
 import { db, resolveDiscreteDbParams } from '@ipodhan/shared/db';
 import { getRedisClient, IPORepository } from '@ipodhan/shared';
-import { openRepairDb, writeLedgerFile, type ExecuteLike } from './lib/repair-tool.js';
+import {
+  createNoopRedisClient,
+  guardCacheInvalidation,
+  openRepairDb,
+  writeLedgerFile,
+  type ExecuteLike,
+} from './lib/repair-tool.js';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
 // Importing `db` above already runs `configureUtcTimestampParsing()` at
@@ -88,12 +94,25 @@ const pool = new Proxy({} as Pool, {
   },
 });
 
-// Same lazy discipline as getPool() above: only constructed when APPLY
-// actually calls recordDiscoveredLeadManagers, never on a pure-helper import.
+// Constructed inside main(), after openRepairDb() gives us dbName and only
+// when APPLY actually calls recordDiscoveredLeadManagers — never on a
+// pure-helper import. #715 class sweep (require-cache-invalidation-guard.mjs):
+// getRedisClient() must be gated by guardCacheInvalidation, same as every
+// other repair tool below repair-tool.ts, or an unguarded call can
+// invalidate THIS box's own loopback Redis instead of the target slot's.
 let _ipoRepository: IPORepository | undefined;
-function getIpoRepository(): IPORepository {
+let _redisClient: ReturnType<typeof getRedisClient> | undefined;
+function getIpoRepository(dbName: string): IPORepository {
   if (!_ipoRepository) {
-    _ipoRepository = new IPORepository(db, getRedisClient());
+    const guard = guardCacheInvalidation({
+      dbName,
+      toolName: 'repair-lead-managers-from-payload',
+      keys: ['ipo:detail:*', 'ipo:list:*', 'ipo:search:*'],
+    });
+    _redisClient = guard.blocked
+      ? (createNoopRedisClient() as unknown as ReturnType<typeof getRedisClient>)
+      : getRedisClient();
+    _ipoRepository = new IPORepository(db, _redisClient);
   }
   return _ipoRepository;
 }
@@ -186,7 +205,7 @@ async function main() {
       // scraper cycle's write always wins over this repair — no separate
       // pre-read needed here.
       const { written: didWrite } = await recordDiscoveredLeadManagers(
-        getIpoRepository(),
+        getIpoRepository(dbName),
         row.id as string,
         rawNames,
         'BSE'
@@ -206,6 +225,13 @@ async function main() {
   console.log(`Ledger written: ${LEDGER_PATH}`);
 
   await pool.end();
+  // Tier A review, round 2: close the real Redis connection (when one was
+  // opened) so the process exits instead of hanging on an open socket.
+  // `createNoopRedisClient()`'s object has no `disconnect` — this only ever
+  // fires on the real, guard-approved client.
+  if (_redisClient && typeof (_redisClient as { disconnect?: () => void }).disconnect === 'function') {
+    (_redisClient as { disconnect: () => void }).disconnect();
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
