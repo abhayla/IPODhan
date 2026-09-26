@@ -22,7 +22,6 @@ import {
   getCurrentIPOs,
   getUpcomingIPOs,
   getRecentlyListedIPOs,
-  getAllListedIPOs,
   filterByYear,
   createMockAPIResponse,
   emptyFixtures,
@@ -32,13 +31,9 @@ import {
 // Mock dependencies. The service uses the repository layer directly
 // (IPORepository.findAll), NOT the HTTP api-client; mock the repository.
 const mockFindAll = vi.fn();
-const mockFindByIPOIds = vi.fn();
 vi.mock('@/lib/db/index', () => ({ db: {} }));
 vi.mock('@/lib/repositories/ipo-repository', () => ({
   IPORepository: vi.fn().mockImplementation(() => ({ findAll: mockFindAll })),
-}));
-vi.mock('@/lib/repositories/listing-performance-repository', () => ({
-  ListingPerformanceRepository: vi.fn().mockImplementation(() => ({ findByIPOIds: mockFindByIPOIds })),
 }));
 vi.mock('@/lib/cache/redis-client');
 
@@ -47,8 +42,6 @@ describe('Mainboard Landing Service', () => {
     // Do NOT restoreAllMocks — it wipes the IPORepository factory implementation.
     vi.clearAllMocks();
     mockFindAll.mockReset();
-    mockFindByIPOIds.mockReset();
-    mockFindByIPOIds.mockResolvedValue([]);
 
     // Mock Redis cache (always miss for testing fresh data)
     vi.mocked(redisClient.safeGet).mockResolvedValue(null);
@@ -66,7 +59,6 @@ describe('Mainboard Landing Service', () => {
       mockFindAll.mockResolvedValue(
         createMockAPIResponse(mainboardIPOFixtures)
       );
-      mockFindByIPOIds.mockResolvedValue([]);
 
       // Act
       const result = await getMainboardSummaryMetrics();
@@ -80,63 +72,6 @@ describe('Mainboard Landing Service', () => {
       expect(mockFindAll).toHaveBeenCalledWith(
         expect.objectContaining({ segment: ['MAINBOARD'], offeringType: ['IPO'] })
       );
-    });
-
-    it('should compute listedInGain/listedInLoss/gainAOT/lossAOT from real listing_performance rows (#98)', async () => {
-      // Arrange: 4 LISTED IPOs. Real listing_performance rows: two gainers
-      // (+10%, +30%), one loser (-20%), one flat (0.00% — neither gain nor
-      // loss), and one LISTED IPO with NO listing_performance row at all
-      // (excluded, never counted as 0).
-      const listedIPOs = getAllListedIPOs();
-      expect(listedIPOs.length).toBeGreaterThanOrEqual(1);
-      mockFindAll.mockResolvedValue(createMockAPIResponse(mainboardIPOFixtures));
-      mockFindByIPOIds.mockResolvedValue([
-        { ipoId: listedIPOs[0].id, listingGainPercent: '10.00' },
-        { ipoId: listedIPOs[1]?.id ?? 'missing-1', listingGainPercent: '-20.00' },
-      ]);
-
-      // Act
-      const result = await getMainboardSummaryMetrics();
-
-      // Assert: exact counts and averages, not just "not mocked"
-      expect(result.listedInGain).toBe(1);
-      expect(result.listedInLoss).toBe(1);
-      expect(result.gainAOT).toBe(10);
-      expect(result.lossAOT).toBe(-20);
-
-      // The aggregate was computed from the LISTED ids of this segment
-      const listedIds = mockFindByIPOIds.mock.calls[0][0] as string[];
-      for (const ipo of mainboardIPOFixtures.filter((i) => i.status === 'LISTED')) {
-        expect(listedIds).toContain(ipo.id);
-      }
-    });
-
-    it('should exclude a 0.00% listing gain from both gain and loss buckets', async () => {
-      const listedIPOs = getAllListedIPOs();
-      mockFindAll.mockResolvedValue(createMockAPIResponse(mainboardIPOFixtures));
-      mockFindByIPOIds.mockResolvedValue([
-        { ipoId: listedIPOs[0].id, listingGainPercent: '0.00' },
-      ]);
-
-      const result = await getMainboardSummaryMetrics();
-
-      expect(result.listedInGain).toBe(0);
-      expect(result.listedInLoss).toBe(0);
-      expect(result.gainAOT).toBeNull();
-      expect(result.lossAOT).toBeNull();
-    });
-
-    it('should exclude a LISTED IPO with no listing_performance row, never counting it as 0', async () => {
-      mockFindAll.mockResolvedValue(createMockAPIResponse(mainboardIPOFixtures));
-      // No rows returned at all — every LISTED IPO is missing its row.
-      mockFindByIPOIds.mockResolvedValue([]);
-
-      const result = await getMainboardSummaryMetrics();
-
-      expect(result.listedInGain).toBe(0);
-      expect(result.listedInLoss).toBe(0);
-      expect(result.gainAOT).toBeNull();
-      expect(result.lossAOT).toBeNull();
     });
 
     it('should calculate upcomingAndOngoing correctly', async () => {
@@ -165,11 +100,7 @@ describe('Mainboard Landing Service', () => {
       // Assert
       expect(result).toEqual({
         totalIPOs: 0,
-        listedInGain: null,
-        listedInLoss: null,
         upcomingAndOngoing: 0,
-        gainAOT: null,
-        lossAOT: null,
       });
     });
 

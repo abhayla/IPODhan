@@ -288,11 +288,7 @@ export const mainboardIPOFixtures: IPO[] = [
 
 export const summaryMetricsFixture: MainboardSummaryMetrics = {
   totalIPOs: 15,
-  listedInGain: 5,
-  listedInLoss: 3,
   upcomingAndOngoing: 6,
-  gainAOT: 25.0,
-  lossAOT: 15.0,
 };
 
 // ==================== REVIEW FIXTURES ====================
@@ -447,10 +443,6 @@ export const emptyFixtures = {
   reviews: [],
   summaryMetrics: {
     totalIPOs: 0,
-    listedInGain: 0,
-    listedInLoss: 0,
     upcomingAndOngoing: 0,
-    gainAOT: 0,
-    lossAOT: 0,
   },
 };

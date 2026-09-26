@@ -288,11 +288,7 @@ export const smeIPOFixtures: IPO[] = [
 
 export const summaryMetricsFixture: SMESummaryMetrics = {
   totalIPOs: 15,
-  listedInGain: 4,
-  listedInLoss: 3,
   upcomingAndOngoing: 6,
-  gainAOT: 30.0,
-  lossAOT: 20.0,
 };
 
 // ==================== REVIEW FIXTURES ====================
@@ -447,10 +443,6 @@ export const emptyFixtures = {
   reviews: [],
   summaryMetrics: {
     totalIPOs: 0,
-    listedInGain: 0,
-    listedInLoss: 0,
     upcomingAndOngoing: 0,
-    gainAOT: 0,
-    lossAOT: 0,
   },
 };

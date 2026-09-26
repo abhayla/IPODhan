@@ -11,7 +11,6 @@ import { getRedisClient, safeGet, safeSet } from '@/lib/cache/redis-client';
 import type { IPO } from '@/lib/db/types';
 import { db } from '@/lib/db';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
-import { computeGainLossAggregates } from '@/lib/services/landing-gain-loss-aggregates';
 
 // ==================== TYPES ====================
 
@@ -20,11 +19,7 @@ import { computeGainLossAggregates } from '@/lib/services/landing-gain-loss-aggr
  */
 export interface MainboardSummaryMetrics {
   totalIPOs: number;
-  listedInGain: number | null;
-  listedInLoss: number | null;
   upcomingAndOngoing: number;
-  gainAOT: number | null; // null until computed from real listing_performance aggregates (#98)
-  lossAOT: number | null; // null until computed from real listing_performance aggregates (#98)
 }
 
 /**
@@ -122,12 +117,6 @@ export async function getMainboardSummaryMetrics(): Promise<MainboardSummaryMetr
       // Calculate totalIPOs
       const totalIPOs = ipos.length;
 
-      // Gain/loss splits and averages were MOCKED (60/40, 25%/15%) — now
-      // computed from real listing_performance rows for LISTED IPOs (#98).
-      const listedIPOs = ipos.filter((ipo) => ipo.status === 'LISTED');
-      const { listedInGain, listedInLoss, gainAOT, lossAOT } =
-        await computeGainLossAggregates(listedIPOs.map((ipo) => ipo.id));
-
       // Count upcoming and ongoing IPOs
       const upcomingAndOngoing = ipos.filter(
         (ipo) => ipo.status === 'UPCOMING' || ipo.status === 'OPEN'
@@ -135,21 +124,13 @@ export async function getMainboardSummaryMetrics(): Promise<MainboardSummaryMetr
 
       return {
         totalIPOs,
-        listedInGain,
-        listedInLoss,
         upcomingAndOngoing,
-        gainAOT,
-        lossAOT,
       };
     } catch (error) {
       console.error('Error fetching Mainboard summary metrics:', error);
       return {
         totalIPOs: 0,
-        listedInGain: null,
-        listedInLoss: null,
         upcomingAndOngoing: 0,
-        gainAOT: null,
-        lossAOT: null,
       };
     }
   });

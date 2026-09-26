@@ -179,11 +179,7 @@ describe('Mainboard Landing Page Integration', () => {
       // Arrange
       vi.mocked(mainboardLandingService.getMainboardSummaryMetrics).mockResolvedValue({
         totalIPOs: 0,
-        listedInGain: 0,
-        listedInLoss: 0,
         upcomingAndOngoing: 0,
-        gainAOT: 0,
-        lossAOT: 0,
       });
 
       // Act
@@ -191,8 +187,6 @@ describe('Mainboard Landing Page Integration', () => {
 
       // Assert
       expect(metrics.totalIPOs).toBe(0);
-      expect(metrics.listedInGain).toBe(0);
-      expect(metrics.listedInLoss).toBe(0);
       expect(metrics.upcomingAndOngoing).toBe(0);
     });
   });
@@ -215,7 +209,7 @@ describe('Mainboard Landing Page Integration', () => {
 
       // Assert - Check data types
       expect(typeof metrics.totalIPOs).toBe('number');
-      expect(typeof metrics.gainAOT).toBe('number');
+      expect(typeof metrics.upcomingAndOngoing).toBe('number');
       expect(Array.isArray(currentIPOs)).toBe(true);
     });
 

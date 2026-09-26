@@ -22,7 +22,6 @@ import {
   getCurrentIPOs,
   getUpcomingIPOs,
   getRecentlyListedIPOs,
-  getAllListedIPOs,
   filterByYear,
   createMockAPIResponse,
   emptyFixtures,
@@ -31,13 +30,9 @@ import {
 
 // Mock dependencies. Service uses IPORepository.findAll directly, not api-client.
 const mockFindAll = vi.fn();
-const mockFindByIPOIds = vi.fn();
 vi.mock('@/lib/db/index', () => ({ db: {} }));
 vi.mock('@/lib/repositories/ipo-repository', () => ({
   IPORepository: vi.fn().mockImplementation(() => ({ findAll: mockFindAll })),
-}));
-vi.mock('@/lib/repositories/listing-performance-repository', () => ({
-  ListingPerformanceRepository: vi.fn().mockImplementation(() => ({ findByIPOIds: mockFindByIPOIds })),
 }));
 vi.mock('@/lib/cache/redis-client');
 
@@ -46,8 +41,6 @@ describe('SME Landing Service', () => {
     // Do NOT restoreAllMocks — it wipes the IPORepository factory implementation.
     vi.clearAllMocks();
     mockFindAll.mockReset();
-    mockFindByIPOIds.mockReset();
-    mockFindByIPOIds.mockResolvedValue([]);
 
     // Mock Redis cache (always miss for testing fresh data)
     vi.mocked(redisClient.safeGet).mockResolvedValue(null);
@@ -80,60 +73,6 @@ describe('SME Landing Service', () => {
       );
     });
 
-    it('should compute listedInGain/listedInLoss/gainAOT/lossAOT from real listing_performance rows (#98)', async () => {
-      // Arrange: real listing_performance rows for two of the LISTED SME IPOs
-      // — one gainer (+42%), one loser (-18%) — the rest have no row and are
-      // excluded (never counted as 0).
-      const listedIPOs = getAllListedIPOs();
-      expect(listedIPOs.length).toBeGreaterThanOrEqual(1);
-      mockFindAll.mockResolvedValue(createMockAPIResponse(smeIPOFixtures));
-      mockFindByIPOIds.mockResolvedValue([
-        { ipoId: listedIPOs[0].id, listingGainPercent: '42.00' },
-        { ipoId: listedIPOs[1]?.id ?? 'missing-1', listingGainPercent: '-18.00' },
-      ]);
-
-      // Act
-      const result = await getSMESummaryMetrics();
-
-      // Assert
-      expect(result.listedInGain).toBe(1);
-      expect(result.listedInLoss).toBe(1);
-      expect(result.gainAOT).toBe(42);
-      expect(result.lossAOT).toBe(-18);
-
-      const listedIds = mockFindByIPOIds.mock.calls[0][0] as string[];
-      for (const ipo of smeIPOFixtures.filter((i) => i.status === 'LISTED')) {
-        expect(listedIds).toContain(ipo.id);
-      }
-    });
-
-    it('should exclude a 0.00% listing gain from both gain and loss buckets', async () => {
-      const listedIPOs = getAllListedIPOs();
-      mockFindAll.mockResolvedValue(createMockAPIResponse(smeIPOFixtures));
-      mockFindByIPOIds.mockResolvedValue([
-        { ipoId: listedIPOs[0].id, listingGainPercent: '0.00' },
-      ]);
-
-      const result = await getSMESummaryMetrics();
-
-      expect(result.listedInGain).toBe(0);
-      expect(result.listedInLoss).toBe(0);
-      expect(result.gainAOT).toBeNull();
-      expect(result.lossAOT).toBeNull();
-    });
-
-    it('should exclude a LISTED IPO with no listing_performance row, never counting it as 0', async () => {
-      mockFindAll.mockResolvedValue(createMockAPIResponse(smeIPOFixtures));
-      mockFindByIPOIds.mockResolvedValue([]);
-
-      const result = await getSMESummaryMetrics();
-
-      expect(result.listedInGain).toBe(0);
-      expect(result.listedInLoss).toBe(0);
-      expect(result.gainAOT).toBeNull();
-      expect(result.lossAOT).toBeNull();
-    });
-
     it('should calculate upcomingAndOngoing correctly', async () => {
       // Arrange
       mockFindAll.mockResolvedValue(
@@ -160,11 +99,7 @@ describe('SME Landing Service', () => {
       // Assert
       expect(result).toEqual({
         totalIPOs: 0,
-        listedInGain: null,
-        listedInLoss: null,
         upcomingAndOngoing: 0,
-        gainAOT: null,
-        lossAOT: null,
       });
     });
 
