@@ -3115,11 +3115,13 @@ build item 4.
 5. **A document is re-extracted only when a new reason exists**: a newer document type arrives, the
    extractor version changes, or the re-read loop asks. **Never on a backoff timer.** Seven
    re-extractions of the same bytes becomes impossible by construction rather than by a retry limit
-   somebody remembers to set. **Related: F-193** (2026-09-26) measures a consequence of the retry
-   ceiling this rule shares a boundary with: the 10-attempt block marker for a stuck extraction
-   overwrote its own `extraction_error` cause, so 4 of 6 staging documents at the ceiling could not
-   say whether they were blocked by their own content or by a transient environment failure (a spawn
-   timeout, resource exhaustion) — fixed by keeping kind + last cause in the marker (PR #1190).
+   somebody remembers to set.
+
+**Related: F-193** (2026-09-26) measures a consequence of the retry ceiling this rule shares a
+boundary with: the 10-attempt block marker for a stuck extraction overwrote its own
+`extraction_error` cause, so 4 of 6 staging documents at the ceiling could not say whether they were
+blocked by their own content or by a transient environment failure (a spawn timeout, resource
+exhaustion) — fixed by keeping kind + last cause in the marker (PR #1190).
 
 #### The validation rules are configuration, not code
 
