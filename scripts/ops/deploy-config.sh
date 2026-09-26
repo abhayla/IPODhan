@@ -35,7 +35,19 @@ MANIFEST_REL_PATH="scraper/config/field-manifest.json"
 # below, so there is no legitimate case where a caller NEEDS GIT_DIR/
 # GIT_WORK_TREE honored — refusing would only add an extra failure mode for
 # an environment leak the caller may not even know about.
-unset GIT_DIR GIT_WORK_TREE
+#
+# ------------------------------------------------------------------ F8 (#752)
+# GIT_DIR/GIT_WORK_TREE are not the only env vars that redirect git's
+# repository discovery. GIT_OBJECT_DIRECTORY and GIT_COMMON_DIR (and any
+# other GIT_* var git itself treats as repo-scoped) leaked from a parent
+# process can make every git call this script makes read a DIFFERENT
+# repo's object database or common dir than $REPO_ROOT's own — proven by a
+# false lineage refusal when GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR pointed at
+# an unrelated decoy repo (case23). 'git rev-parse --local-env-vars' is
+# git's own authoritative list of these vars (safer than hand-naming a
+# second one after missing GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR here), so
+# clear the whole set rather than two named ones.
+unset $(git rev-parse --local-env-vars) 2>/dev/null || true
 
 # ------------------------------------------------------------------ F6 (#752)
 # The repo-root fallback chain below only asks "is this a git work tree",
@@ -43,10 +55,29 @@ unset GIT_DIR GIT_WORK_TREE
 # OTHER git work tree (a sibling checkout, a version-controlled home
 # directory) would pass silently and the manifest would be read from the
 # wrong repo. EXPECTED_REPO_REMOTE_RE matches the real IPODhan remote in
-# every form 'git remote get-url origin' can print it: https or ssh, with or
-# without the trailing '.git'. Checked against $REPO_ROOT's own 'origin'
-# once REPO_ROOT is chosen (see the "repo-root: identity" block below).
-EXPECTED_REPO_REMOTE_RE='^(https://github\.com/|git@github\.com:)abhayla/IPODhan(\.git)?$'
+# every form 'git remote get-url origin' can print it: https, the
+# 'ssh://git@host/...' long form, or the 'git@host:owner/repo' scp-like
+# short form, any case (GitHub repo paths are case-insensitive — matched
+# with grep -Eqi below), with or without the trailing '.git', with or
+# without a trailing '/'. Matched against the CREDENTIAL-REDACTED origin
+# (see redact_origin_url below), never the raw one — a matcher run against
+# a raw 'user:pass@host' URL would leak the credential into the refusal
+# message the moment it does not match.
+EXPECTED_REPO_REMOTE_RE='^(https://github\.com/|ssh://github\.com/|git@github\.com:)abhayla/IPODhan(\.git)?/?$'
+
+# ------------------------------------------------------------------ F9 (#752)
+# A MAJOR finding on the F6 refusal: it printed the raw origin URL, which
+# leaks any embedded 'user:pass@' credential (a GitHub PAT/installation
+# token in an 'https://x-access-token:ghs_...@github.com/...' remote,
+# exactly the form GitHub Actions injects) into the operator's terminal AND
+# the deploy log. redact_origin_url strips 'user[:pass]@' from an
+# 'https://' or 'ssh://' origin before it is EVER matched or printed. The
+# scp-like 'git@host:owner/repo' short form is left untouched — the fixed
+# literal user 'git' there is the SSH protocol convention, not a
+# leaked/variable credential, and there is no password component to strip.
+redact_origin_url() {
+  printf '%s' "$1" | sed -E 's#^(https?://|ssh://)[^/@]*@#\1#'
+}
 
 # The on-box checkout that a deployed release (a git-free 'git archive |
 # tar -x' export, #748) falls back to when nothing overrides it. A
@@ -208,13 +239,18 @@ fi
 # is still refused by its own (earlier, more specific) message rather than
 # a confusing "no origin remote" one.
 if ! REPO_ROOT_ORIGIN="$(cd "$REPO_ROOT" && git remote get-url origin 2>&1)"; then
-  fatal "repo-root: '$REPO_ROOT' ($REPO_ROOT_SOURCE) has no readable 'origin' remote ($REPO_ROOT_ORIGIN) — refusing to trust an unidentified repo (repo-root)"
+  fatal "repo-root: '$REPO_ROOT' ($REPO_ROOT_SOURCE) has no readable 'origin' remote ($(redact_origin_url "$REPO_ROOT_ORIGIN")) — refusing to trust an unidentified repo (repo-root)"
 fi
-if ! printf '%s' "$REPO_ROOT_ORIGIN" | grep -Eq "$EXPECTED_REPO_REMOTE_RE"; then
-  fatal "repo-root: '$REPO_ROOT' ($REPO_ROOT_SOURCE) has origin '$REPO_ROOT_ORIGIN', which is not the IPODhan remote — refusing to read a manifest from an unrelated repo (repo-root)"
+# F9 (#752): redact once, then never touch $REPO_ROOT_ORIGIN (the raw
+# value) again — every match and every message below uses the redacted
+# copy so a credential in the raw origin can never reach a match failure
+# message or the log.
+REPO_ROOT_ORIGIN_REDACTED="$(redact_origin_url "$REPO_ROOT_ORIGIN")"
+if ! printf '%s' "$REPO_ROOT_ORIGIN_REDACTED" | grep -Eqi "$EXPECTED_REPO_REMOTE_RE"; then
+  fatal "repo-root: '$REPO_ROOT' ($REPO_ROOT_SOURCE) has origin '$REPO_ROOT_ORIGIN_REDACTED', which is not the IPODhan remote — refusing to read a manifest from an unrelated repo (repo-root)"
 fi
 
-log "repo-root: using $REPO_ROOT ($REPO_ROOT_SOURCE, origin $REPO_ROOT_ORIGIN)"
+log "repo-root: using $REPO_ROOT ($REPO_ROOT_SOURCE, origin $REPO_ROOT_ORIGIN_REDACTED)"
 
 # ------------------------------------------------------------------ lineage
 # Same lineage rule as deploy-linux.sh step 0.5: the sha must be reachable
