@@ -1,0 +1,9 @@
+{
+  "sourceUrl": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1790052525734.pdf",
+  "sourceUrlFrom": "ipodhan_staging documents.url (read-only, 2026-09-26)",
+  "storePath": "/var/www/ipodhan/shared/prospectus/staging/4c8942b5-b8e1-4972-85f0-a1562f5f38b7/RHP-2edac6b2.pdf",
+  "capturedAt": "2026-09-26",
+  "ipoId": "german-green-steel-and-power-ltd",
+  "company": "German Green Steel and Power",
+  "note": "#545 peer fixture. 'pages' = [pageIndex, text] pairs from pdfplumber page.extract_text() exactly as extract_filing.py reads them (0-based pages [181, 182, 184]); 'tables' = page.extract_tables() for pages [181, 182], exactly as tables_for_page returns them."
+}

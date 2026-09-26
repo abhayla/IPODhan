@@ -1029,6 +1029,73 @@ PROMOTER_GROUP_TXN_NEGATIVE_RX = re.compile(r"\bhave\s+not\b|\bhas\s+not\b|\bno\
 PROMOTER_GROUP_TXN_MAX = 500
 
 
+OUR_PROMOTERS_RX = re.compile(r"^\s*OUR PROMOTERS?\s*:", re.I)
+
+# A statement line that ends mid-list ("A, B AND") continues on the next line.
+_PROMOTER_LIST_CONTINUES = re.compile(r"(,|\bAND)\s*$", re.I)
+
+# The cover statement sits on the first pages of every SEBI ICDR offer document.
+_PROMOTER_COVER_PAGES = 5
+
+
+def promoter_names_from_statement(raw):
+    """Split the text after "OUR PROMOTER(S):" into title-cased names."""
+    raw = (raw or "").strip()
+    raw = re.split(r"\s{2,}|(?<=[a-z])\s+INITIAL PUBLIC", raw)[0]
+    names = []
+    for part in re.split(r",|\bAND\b", raw, flags=re.I):
+        name = part.strip().strip(".").title()
+        # "&" and "/" are kept: a promoter can be a firm ("Jallan & Sons") or
+        # carry a joint name ("A/B Holdings"); dropping them lost the row (#545).
+        if 3 <= len(name) <= 60 and re.match(r"^[A-Za-z][A-Za-z .'&/\-]+$", name):
+            names.append(name)
+    return names
+
+
+# The cover prints the issuer's registered name on the line just above its CIN.
+_CIN_LINE_RX = re.compile(r"corporate\s+identity\s+number|\bCIN\s*[:\-]", re.I)
+_COVER_NAME_RX = re.compile(r"^[A-Z0-9][A-Z0-9 &.,'()\-]*\b(?:LIMITED|LTD\.?)\s*$")
+
+
+def read_cover_company_name(page_texts):
+    """The issuer's name as its own offer-document cover prints it, or None.
+
+    #545 round 2: the peer reader needs it to recognise the issuer's row in a
+    comparison table printed with no divider, instead of assuming row 1 is the
+    issuer."""
+    for _index, text in page_texts[:_PROMOTER_COVER_PAGES]:
+        lines = [ln.strip() for ln in (text or "").split("\n")]
+        for i, line in enumerate(lines):
+            if i and _CIN_LINE_RX.search(line) and _COVER_NAME_RX.match(lines[i - 1]):
+                return lines[i - 1]
+    return None
+
+
+def read_cover_promoters(page_texts):
+    """(names, page) from a prospectus's cover "OUR PROMOTERS: A, B AND C".
+
+    #545. RHP/DRHP covers print the statement on two or three of their first
+    pages, and one of them may wrap the list onto a second line. Each occurrence
+    is read with its continuation joined, and the fullest reading wins, so a
+    wrapped copy can never shorten the list another copy prints whole.
+    """
+    best, best_page = [], None
+    for index, text in page_texts[:_PROMOTER_COVER_PAGES]:
+        lines = (text or "").split("\n")
+        for i, line in enumerate(lines):
+            if not OUR_PROMOTERS_RX.match(line):
+                continue
+            statement = line.split(":", 1)[1]
+            j = i
+            while _PROMOTER_LIST_CONTINUES.search(statement) and j + 1 < len(lines):
+                j += 1
+                statement = statement + " " + lines[j]
+            names = promoter_names_from_statement(statement)
+            if len(names) > len(best):
+                best, best_page = names, index
+    return best, best_page
+
+
 def promoter_group_transactions(lines):
     """([{summary}], anchor) — the promoter-group transactions the ad discloses
     since the DRHP. [] when the ad states there were none; (None, None) when the
@@ -1604,14 +1671,9 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     # "OUR PROMOTER: X" and "OUR PROMOTERS: A, B AND C" — the plural form was
     # silently unmatched, which then broke every promoter-row lookup downstream.
     prom, prom_names = None, []
-    pn = _find(lines, re.compile(r"^\s*OUR PROMOTERS?\s*:", re.I))
+    pn = _find(lines, OUR_PROMOTERS_RX)
     if pn >= 0:
-        raw = lines[pn].split(":", 1)[1].strip()
-        raw = re.split(r"\s{2,}|(?<=[a-z])\s+INITIAL PUBLIC", raw)[0]
-        for part in re.split(r",|\bAND\b", raw, flags=re.I):
-            name = part.strip().strip(".").title()
-            if 3 <= len(name) <= 60 and re.match(r"^[A-Za-z][A-Za-z .'\-]+$", name):
-                prom_names.append(name)
+        prom_names = promoter_names_from_statement(lines[pn].split(":", 1)[1])
         prom = prom_names[0] if prom_names else None
     emit.put("promoter_name", prom, page_for(pn), "promoter_name_present", (bool(prom), "%s" % prom))
     emit.put("promoter_names", prom_names or None, page_for(pn), "promoter_names_present",
@@ -2600,6 +2662,20 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     # the cover's own lakh/crore figures are converted into it exactly.
     extract_offering_headline(page_texts, emit, segment, unit, doc_type=doc_type)
 
+    # #545. The promoters, from the cover statement every offer document prints.
+    # Only the price band ad read it before, so an IPO filed as RHP/DRHP alone
+    # never got a `promoters` row. Same field names as the ad, so the persister's
+    # existing promoters block writes them unchanged.
+    cover_names, cover_page = read_cover_promoters(page_texts)
+    if cover_names:
+        emit.put("promoter_name", cover_names[0], cover_page, "promoter_name_present",
+                 (True, cover_names[0]))
+        emit.put("promoter_names", cover_names, cover_page, "promoter_names_present",
+                 (True, "%s" % cover_names))
+    else:
+        emit.null("promoter_name", "our_promoters_statement_not_on_cover")
+        emit.null("promoter_names", "our_promoters_statement_not_on_cover")
+
     for key, name in (("revenue", "revenue_by_fy"), ("totalIncome", "total_income_by_fy"),
                       ("profit", "pat_by_fy"), ("eps", "eps_basic_by_fy"),
                       ("ebitda", "ebitda_by_fy"), ("netWorth", "net_worth_by_fy")):
@@ -2688,20 +2764,35 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     # no table reader is supplied, so adding this cannot regress a field that
     # already worked.
     if tables_for_page is not None:
-        found, reason = peer_companies.extract_peer_companies(page_texts, tables_for_page)
+        found, reason = peer_companies.extract_peer_companies(
+            page_texts, tables_for_page, issuer_name=read_cover_company_name(page_texts))
         if found is None:
             # The reason names WHICH miss it was - absent, lookalike-only,
             # section-found-but-unreadable, or extraction failed with its cause.
             # "no peers" alone is unactionable.
             emit.null("peer_companies", reason)
         else:
-            emit.put(
-                "peer_companies",
-                found["peers"],
-                found["page"],
-                "peer_list_matches_printed_summary",
-                peer_companies.check_against_printed_summary(found["peers"], page_texts),
-            )
+            passed, detail = peer_companies.check_against_printed_summary(found["peers"], page_texts)
+            if passed is None:
+                # No printed summary: the list stands on the check that DID run
+                # (rows parsed from the located section), and the cross-check is
+                # recorded as not run - never as a pass (#545 round 2).
+                emit.put(
+                    "peer_companies",
+                    found["peers"],
+                    found["page"],
+                    "peer_rows_parsed_from_peer_section",
+                    (True, "%d peer row(s) parsed from page %d" % (len(found["peers"]), found["page"])),
+                )
+            else:
+                emit.put("peer_companies", found["peers"], found["page"],
+                         "peer_list_matches_printed_summary", (passed, detail))
+            emit.fields["peer_companies"]["cross_check"] = {
+                "name": "peer_list_matches_printed_summary",
+                "status": ("not_cross_checked" if passed is None
+                           else "passed" if passed else "failed"),
+                "detail": detail,
+            }
 
     # Item 8b slice 3a. The issuer's OWN ratio note (Companies Act Schedule III),
     # READ rather than recomputed - see financial_ratios.py's docstring for the

@@ -165,6 +165,8 @@ const extraState = {};
 // healthy the pipeline was, so they are outside this check's population
 // (their backfill is slice 3b).
 const RATIO_WIRING_MERGED_AT = process.env.RATIO_WIRING_MERGED_AT || '2026-09-16';
+// #545: the date the RHP/DRHP extractor started emitting promoters and peers.
+const PROMOTER_PEER_WIRING_MERGED_AT = process.env.PROMOTER_PEER_WIRING_MERGED_AT || '2026-09-26';
 
 // installUtcTimestampParsing() MUST run before the pool is created / any
 // query runs — it registers the process-wide OID-1114 parser (see pg-utc.mjs
@@ -1382,6 +1384,52 @@ async function checkM() {
     ratioRows.length === 0
       ? `no prospectus-family document has completed extraction since ${RATIO_WIRING_MERGED_AT}`
       : ratioSilent.slice(0, MAX_OFFENDERS).join('; '));
+
+  // #545: does a completed prospectus extraction YIELD the issuer's promoters
+  // and listed peers? Both are printed in every RHP/DRHP (the cover's "OUR
+  // PROMOTERS:" line; the Basis for Offer Price peer comparison), yet staging on
+  // 2026-09-26 had 59 of 91 COMPLETED RHP/DRHP documents on IPOs with 0 promoter
+  // rows and 89 of 91 with 0 peer rows, and nothing said so. An IPO with no peer
+  // rows PASSES only when its E6 step carries the extractor's own statement that
+  // the issuer has no listed peer - any other empty result is a miss with an
+  // identity, never a count. Scoped to documents extracted after the fix, for
+  // the same reason as issuer_ratio_yield: earlier rows cannot carry what the
+  // extractor did not yet emit, and are only re-read on their next extraction.
+  const yieldRows = await q(`
+    SELECT i.company_name, d.id::text AS document_id, d.type::text AS doc_type,
+           (SELECT count(*) FROM promoters p WHERE p.ipo_id = d.ipo_id)::int AS promoter_rows,
+           (SELECT count(*) FROM peer_companies pc WHERE pc.ipo_id = d.ipo_id)::int AS peer_rows,
+           coalesce(s.evidence::text, '') AS e6_evidence
+      FROM documents d
+      JOIN ipos i ON i.id = d.ipo_id
+      LEFT JOIN ipo_pipeline_steps s ON s.ipo_id = d.ipo_id AND s.step_id = 'E6'
+     WHERE i.${REAL_IPO}
+       AND d.type::text IN ('RHP', 'DRHP')
+       AND d.extraction_status = 'COMPLETED'
+       AND d.extracted_at IS NOT NULL
+       AND d.extracted_at >= timestamp '${PROMOTER_PEER_WIRING_MERGED_AT}'
+  `);
+  const yieldMisses = yieldRows
+    .flatMap((r) => {
+      const out = [];
+      const tag = `${r.company_name} (${r.doc_type} ${r.document_id.slice(0, 8)})`;
+      if (r.promoter_rows === 0) out.push(`${tag}: 0 promoters`);
+      if (r.peer_rows === 0 && !/peer_comparison_issuer_states_no_listed_peers/.test(r.e6_evidence)) {
+        const why = (r.e6_evidence.match(/"peerReason":"([^"]+)"/) || [])[1] || 'no E6 reason';
+        out.push(`${tag}: 0 peers (${why})`);
+      }
+      return out;
+    });
+  for (const v of yieldMisses)
+    notify('prospectus_promoters_peers_yield', 'P2', v, 'A completed RHP/DRHP extraction left its IPO with no promoters or no peers', v);
+  record('prospectus_promoters_peers_yield',
+    `every COMPLETED RHP/DRHP extracted since ${PROMOTER_PEER_WIRING_MERGED_AT} leaves its IPO with >=1 promoter row and >=1 peer row, or a stated no-listed-peers reason (${yieldRows.length} document(s) in the population)`,
+    yieldRows.length === 0
+      ? 'UNVERIFIABLE'
+      : (yieldMisses.length === 0 ? 'PASS' : 'FAIL'),
+    yieldRows.length === 0
+      ? `no RHP/DRHP has completed extraction since ${PROMOTER_PEER_WIRING_MERGED_AT}`
+      : yieldMisses.slice(0, MAX_OFFENDERS).join('; '));
 
   // BRLM count vs the BSE payload (F17). We cannot re-fetch BSE from the audit
   // (read-only, and it would double the traffic), so the comparison is against
@@ -3714,7 +3762,7 @@ async function main() {
   await runCheck(checkCycleOverrunAudit, ['m_cycle_overrun']);
   await runCheck(checkL, ['l_nse_status_crosscheck']);
   await runCheck(checkJ, ['j_sector_populated', 'j_segment_not_null', 'j_cron_executable', 'j_dead_source_retire_by']);
-  await runCheck(checkM, ['m_document_state', 'm_blocked_all_age', 'm_found_not_extracted', 'm_not_yet_filed_age', 'm_upcoming_missing_price_band_tracking', 'm_absence_without_evidence', 'm_extract_failed', 'm_extraction_stuck', 'm_live_ipo_has_state', 'listed_rotation_stall', 'issuer_ratio_yield', 'm_brlm_count', 'm_brlm_nse_provenance', 'm_document_type_classifier']);
+  await runCheck(checkM, ['m_document_state', 'm_blocked_all_age', 'm_found_not_extracted', 'm_not_yet_filed_age', 'm_upcoming_missing_price_band_tracking', 'm_absence_without_evidence', 'm_extract_failed', 'm_extraction_stuck', 'm_live_ipo_has_state', 'listed_rotation_stall', 'issuer_ratio_yield', 'prospectus_promoters_peers_yield', 'm_brlm_count', 'm_brlm_nse_provenance', 'm_document_type_classifier']);
   await runCheck(checkN, ['m_fix_merged_not_served']);
   await runCheck(checkO, ['m_deploy_failure_open']);
   await runCheck(checkP, ['p_document_provenance_share']);

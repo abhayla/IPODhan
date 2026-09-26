@@ -48,6 +48,7 @@ import type {
   PromoterAcquisitionRangeInsert,
 } from '@ipodhan/shared';
 import type { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
+import { PEER_VALUE_COLUMNS } from '../repositories/peer-company-repository.js';
 import { upsertIPO } from './data-persister.js';
 import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 import { headingHashForRiskFactor } from '@ipodhan/shared/utils/risk-factor-heading-key';
@@ -2766,7 +2767,12 @@ export async function persistFilingExtraction(
         companyName: p.companyName,
         // Item 1 slice s1 (row-key prep, F-74): the future row key.
         normalizedName: p.key as string,
-        isListed: true, // the ad's peer table lists only listed comparables
+        // #545 round 2: the row's own group when the document states it
+        // (`Listed Peers` / `Unlisted Peers`); undefined when it does not (a
+        // combined `Listed and unlisted Peers` divider, or the ad, which
+        // carries no group). Undefined keeps the stored value, else true: the
+        // ICDR basis-for-price comparison is of LISTED industry peers.
+        isListed: typeof p.is_listed === 'boolean' ? p.is_listed : undefined,
         peRatio: numOrNull(p.pe),
         eps: numOrNull(p.eps_basic),
         dilutedEps: numOrNull(p.eps_diluted),
@@ -2776,6 +2782,16 @@ export async function persistFilingExtraction(
         dataSource: source,
         lastUpdated: new Date(),
       }));
+    // #545 round 2: a peer set that carries NO figure at all (the prospectus
+    // text path reads names only) is not a replacement for a stored set. It
+    // only fills gaps: rows another source stored - Chittorgarh's, with their
+    // ratios - are left exactly as they are, and only unseen peers are added.
+    // A set WITH figures replaces as before (DRHP outranks CHITTORGARH for
+    // peer_companies in field-priority-matrix.ts), but a null in it never
+    // erases a stored non-null value for the same peer.
+    const nameOnly = peerRows.every((row) =>
+      PEER_VALUE_COLUMNS.every((col) => row[col] === null || row[col] === undefined)
+    );
     if (peerRows.length > 0) {
       if (
         await replaceAllowed('peer_companies', {
@@ -2792,16 +2808,31 @@ export async function persistFilingExtraction(
           // `lastUpdated` are write metadata, not facts about the peer, so they
           // are neither provenanced nor resolvable. Last-wins on a duplicate key
           // mirrors `PeerCompanyRepository.replaceForIpo`.
+          // Provenance is filed only for what the document PRINTED: a column
+          // it left empty is not a DOC claim of null, so it is dropped from the
+          // claim rather than offered to the consolidator as a value.
+          const claims = peerRows.map((row) => ({
+            rowKey: row.normalizedName,
+            row: Object.fromEntries(
+              Object.entries(row).filter(([, v]) => v !== null && v !== undefined)
+            ) as Record<string, unknown>,
+          }));
           await consolidateChildRows(
             'peer_companies',
-            peerRows.map((row) => ({
-              rowKey: row.normalizedName,
-              row: row as unknown as Record<string, unknown>,
-            })),
+            claims,
             ['companyName', 'isListed', 'peRatio', 'eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio'],
             ['isListed', 'peRatio', 'eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio']
           );
-          await deps.peerCompanies.replaceForIpo(ipoId, peerRows);
+          claims.forEach((claim, i) => {
+            for (const col of ['isListed', ...PEER_VALUE_COLUMNS] as const) {
+              const v = claim.row[col];
+              if (v !== null && v !== undefined) (peerRows[i] as Record<string, unknown>)[col] = v;
+            }
+          });
+          await deps.peerCompanies.replaceForIpo(ipoId, peerRows as never, {
+            nullNeverOverwrites: true,
+            fillGapsOnly: nameOnly,
+          });
           await trackField('peer_companies', 'rows');
         }
         bump(written, 'peer_companies', peerRows.length);

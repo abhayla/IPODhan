@@ -19,9 +19,13 @@ from a guess about how such tables "usually" look:
   parse failure rejects a row that is exactly as complete as it can be.
 """
 
+import re
+
+from peer_row_groups import group_of, split_issuer_and_peers
 from peer_table_columns import (
     NAME,
     detect_header_row_count,
+    divider_listed_status,
     is_divider_row,
     is_placeholder,
     map_columns,
@@ -49,7 +53,7 @@ def _value(row, index):
     return text
 
 
-def parse_peer_table(table):
+def parse_peer_table(table, issuer_name=None):
     """Return ``{"issuer": record|None, "peers": [record, ...], "columns": {...}}``.
 
     Records are dicts keyed by canonical field name, with None for anything the
@@ -60,18 +64,21 @@ def parse_peer_table(table):
     header_rows = detect_header_row_count(table)
     columns = map_columns(reconstruct_headers(table, header_rows), table[header_rows:])
     name_index = columns.get(NAME, 0)
+    value_indexes = [i for f, i in columns.items() if f != NAME and i is not None]
+    first_value = min(value_indexes) if value_indexes else None
 
-    issuer = None
-    peers = []
-    seen_divider = False
+    rows = []  # (record, group) - group None above every divider
+    group = None
+    any_divider = False
 
     for row in table[header_rows:]:
         if is_divider_row(row):
             # Everything after this line is a comparator. Before it, the issuer.
-            seen_divider = True
+            group = group_of(divider_listed_status(row))
+            any_divider = True
             continue
 
-        name = _cell(row, name_index)
+        name = _row_name(row, name_index, first_value)
         if not name:
             continue
 
@@ -82,12 +89,49 @@ def parse_peer_table(table):
             1 for field, value in record.items() if field != NAME and value is not None
         )
         if real_values < _MIN_VALUES:
-            # A continuation fragment or a note, not a company row.
+            # A name-only row directly under a company row is the rest of that
+            # company's name, wrapped into its own table row (Green Asia Impex
+            # RHP p141: "Apex Frozen Foods" / "Limited"). Anything else is a
+            # stray fragment or a note.
+            if rows and real_values == 0 and _is_name_tail(name):
+                rows[-1][0][NAME] = "%s %s" % (rows[-1][0][NAME], name)
             continue
 
-        if seen_divider:
-            peers.append(record)
-        elif issuer is None:
-            issuer = record
+        rows.append((record, group))
 
+    issuer, peers = split_issuer_and_peers(rows, any_divider, issuer_name)
     return {"issuer": issuer, "peers": peers, "columns": columns}
+
+
+_NAME_TAIL_MAX = 40
+# A wrapped name's last line ends in the company's legal form. Requiring that
+# keeps a note or a stray label from being glued onto the row above it.
+_LEGAL_FORM_END = re.compile(r"\b(limited|ltd\.?|corporation|corp\.?|plc|inc\.?)\s*[*#]*$", re.I)
+
+
+def _is_name_tail(text):
+    return (
+        len(text) <= _NAME_TAIL_MAX
+        and not any(ch.isdigit() for ch in text)
+        and bool(_LEGAL_FORM_END.search(text))
+    )
+
+
+def _row_name(row, name_index, first_value):
+    """The row's company name.
+
+    Normally the mapped name column. pdfplumber sometimes puts the header in one
+    column and the names one column to the right (Green Asia Impex RHP p141: the
+    header "Name of the Company" is column 0, every name is column 1), so an
+    empty name cell falls back to the first cell holding letters that sits
+    before the first value column.
+    """
+    name = _cell(row, name_index)
+    if name:
+        return name
+    stop = first_value if first_value is not None else len(row)
+    for index in range(0, min(stop, len(row))):
+        text = _cell(row, index)
+        if text and any(ch.isalpha() for ch in text) and not is_placeholder(text):
+            return text
+    return None

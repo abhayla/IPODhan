@@ -34,13 +34,23 @@ _PEER_HEADING = re.compile(
     re.I,
 )
 
-# `6.`, `8.`, `VI.`, `III.` — optional, and never sufficient on its own.
-_SECTION_MARKER = re.compile(r"^\s*(\d{1,2}|[IVXLC]{1,5})[.)]\s+", re.I)
+# `6.`, `8.`, `VI.`, `III.`, `f)` — optional, and never sufficient on its own.
+# The single-letter form is German Green Steel's RHP (p181, "f) Comparison of
+# Accounting Ratios with listed industry peers"): without it the marker stayed
+# glued to the phrase, the heading never "started with Comparison", and the
+# locator walked on to the KPI table three pages later (#545).
+_SECTION_MARKER = re.compile(r"^\s*(\d{1,2}|[IVXLC]{1,5}|[a-z])[.)]\s+", re.I)
 
 # Matched so the KPI table can be REFUSED with a named reason rather than
 # silently not-matched: "we found nothing" and "we found the wrong thing and
 # declined it" are different outcomes, and only one is worth alerting on.
-_KPI_HEADING = re.compile(r"comparison\s+of\s+kpis?\b", re.I)
+# Both spellings are real: Kanohar's "Comparison of KPIs with our peers" and
+# German Green's "Comparison of Key Performance Indicators with listed industry
+# peers" (RHP p184). The second also satisfies _PEER_HEADING, so without this
+# alternative it was taken for the peer table (#545).
+_KPI_HEADING = re.compile(
+    r"comparison\s+of\s+(?:kpis?\b|key\s+performance\s+indicators?)", re.I
+)
 
 _NOTES_TERMINATOR = re.compile(r"^notes?\s*:", re.I)
 _SOURCE_TERMINATOR = re.compile(r"^source\s*:", re.I)
