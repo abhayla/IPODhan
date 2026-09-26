@@ -281,6 +281,16 @@ def is_near_memory_ceiling(limit_mb=None, threshold=NEAR_CEILING_THRESHOLD):
     return size_mb >= threshold * limit_mb
 
 
+def _exception_chain(exc, limit=8):
+    """`exc`, then what it was raised from (`__cause__`, else `__context__`),
+    bounded and cycle-safe."""
+    seen = []
+    while exc is not None and len(seen) < limit and all(exc is not s for s in seen):
+        seen.append(exc)
+        exc = exc.__cause__ or exc.__context__
+    return seen
+
+
 def is_memory_exhaustion(exc):
     """True when `exc` is the RLIMIT_AS ceiling manifesting as something OTHER
     than a plain `MemoryError` (which every caller already catches directly).
@@ -304,15 +314,21 @@ def is_memory_exhaustion(exc):
     ordinary bug just because THIS particular exception shape was not
     anticipated.
     """
-    if isinstance(exc, MemoryError):
-        return True
-    if isinstance(exc, OSError) and exc.errno in _MEMORY_EXHAUSTION_ERRNOS:
-        return True
-    message = str(exc)
-    if message and _MEMORY_EXHAUSTION_MESSAGE_RE.search(message):
-        return True
-    if isinstance(exc, SystemError):
-        return True
+    # #1046: walk the cause chain. RapidOCR wraps every onnxruntime failure in
+    # `ONNXRuntimeError('ONNXRuntime inferece failed.') from e`, so the words
+    # that say "memory" ("... Status Message: bad allocation") live only on
+    # `__cause__`. Reading the outer exception alone sent four staging offer
+    # documents to exit 1 (an ordinary crash) instead of the ceiling's exit 3.
+    for link in _exception_chain(exc):
+        if isinstance(link, MemoryError):
+            return True
+        if isinstance(link, OSError) and link.errno in _MEMORY_EXHAUSTION_ERRNOS:
+            return True
+        message = str(link)
+        if message and _MEMORY_EXHAUSTION_MESSAGE_RE.search(message):
+            return True
+        if isinstance(link, SystemError):
+            return True
     if is_near_memory_ceiling():
         return True
     return False

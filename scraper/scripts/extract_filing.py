@@ -3054,13 +3054,24 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
                 # directly is what makes partial progress reportable.
                 by_page = dict(page_texts)
                 done = set()
+                # #1046: pages OCR could not read at any size, with the cause.
+                # Named in the envelope (OD-55) instead of failing the document.
+                page_failures = {}
                 stop_reason = "ceiling_reached"
+                dpi = ocr_dpi or ocr_pages.DEFAULT_DPI
                 try:
-                    for idx, image, _scale in ocr_pages.render_pages_scaled(
-                        pdf_path, scanned, ocr_dpi or ocr_pages.DEFAULT_DPI,
-                        ocr_pages.MAX_EDGE_PX
+                    for idx, image, scale in ocr_pages.render_pages_scaled(
+                        pdf_path, scanned, dpi, ocr_pages.MAX_EDGE_PX
                     ):
-                        text, conf = ocr_pages.ocr_image(image, backend)
+                        try:
+                            (text, conf), _used = ocr_pages.read_page_with_fallback(
+                                pdf_path, idx, image, scale,
+                                lambda im: ocr_pages.ocr_image(im, backend), dpi)
+                        except ocr_pages.OcrPageUnreadable as unreadable:
+                            page_failures[idx] = unreadable.reason
+                            sys.stderr.write("%s; page named in the envelope\n"
+                                             % unreadable)
+                            continue
                         by_page[idx] = text
                         ocr_confidence[idx] = conf
                         done.add(idx)
@@ -3090,7 +3101,8 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
                     # envelope is shaped from what actually finished rather
                     # than from what was planned.
                     unread_pages = [
-                        (i, stop_reason) for i in scanned if i not in done
+                        (i, page_failures.get(i, stop_reason))
+                        for i in scanned if i not in done
                     ]
                     page_texts = sorted(by_page.items())
 
