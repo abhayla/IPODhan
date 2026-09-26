@@ -7,7 +7,12 @@
 // Slice s1 (docs/design/build-cards/item-20-design-traceability-check.md):
 // failure modes 1-3. Slice s2 (this file, mode 4): a rule's hash changed and
 // neither its owning card nor a test that names it is in the pull request
-// diff.
+// diff. #469 (mode 5): mode 1's ANY-card semantics let a card silently drop
+// a rule it OWNS (per docs/design/rule-ownership.json) while a different,
+// non-owning card's stale mention keeps the rule "claimed" and the gate
+// green. Mode 5 additionally requires every rule id assigned by
+// rule-ownership.json to item N to be claimed BY ITEM N's OWN card (hand-owned
+// cards, per apply-rule-ownership.mjs's HAND_OWNED_MARKER, are exempt).
 //
 // detection-check: design_traceability
 // ^ This file IS the check that docs/reviews/detection-checks/design_traceability.json
@@ -18,7 +23,7 @@
 //
 // Usage:
 //   node scripts/ci/check-design-traceability.mjs
-//     [--rules <path>] [--cards <dir>] [--unclaimed <path>]
+//     [--rules <path>] [--cards <dir>] [--unclaimed <path>] [--ownership <path>]
 //     [--tests <dir>]... [--base <ref>]
 //
 // --base is OPT-IN, not defaulted internally: mode 4 runs `git show` and
@@ -44,6 +49,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { HAND_OWNED_MARKER } from '../../docs/design/apply-rule-ownership.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
@@ -60,12 +66,13 @@ const REPO_ROOT = join(__dirname, '..', '..');
 const MODE2_ENFORCE = process.env.DESIGN_TRACEABILITY_MODE2_ENFORCE === 'true' ? true : false;
 
 function parseArgs(argv) {
-  const opts = { rules: null, cards: null, unclaimed: null, tests: [], base: null, baseGiven: false };
+  const opts = { rules: null, cards: null, unclaimed: null, ownership: null, tests: [], base: null, baseGiven: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--rules') opts.rules = argv[++i];
     else if (a === '--cards') opts.cards = argv[++i];
     else if (a === '--unclaimed') opts.unclaimed = argv[++i];
+    else if (a === '--ownership') opts.ownership = argv[++i];
     else if (a === '--tests') opts.tests.push(argv[++i]);
     else if (a === '--base') {
       opts.baseGiven = true;
@@ -100,10 +107,16 @@ function resolveOptions(argv) {
   const parsed = parseArgs(argv);
   const requestedTestRoots = parsed.tests.length ? parsed.tests : defaultTestRoots();
   const testRoots = requestedTestRoots.filter((r) => existsSync(r));
+  const rulesPath = parsed.rules || join(REPO_ROOT, 'docs', 'design', 'rules.json');
   return {
-    rulesPath: parsed.rules || join(REPO_ROOT, 'docs', 'design', 'rules.json'),
+    rulesPath,
     cardsDir: parsed.cards || join(REPO_ROOT, 'docs', 'design', 'build-cards'),
     unclaimedPath: parsed.unclaimed || join(REPO_ROOT, 'docs', 'design', 'rules-unclaimed.json'),
+    // Default sits next to whatever --rules resolved to, NOT next to REPO_ROOT
+    // unconditionally — a self-test fixture that passes --rules under a temp
+    // dir must never see the REAL repo's rule-ownership.json cross the
+    // boundary, which an REPO_ROOT-anchored default would do silently.
+    ownershipPath: parsed.ownership || join(dirname(rulesPath), 'rule-ownership.json'),
     requestedTestRoots,
     testRoots,
     base: parsed.base,
@@ -247,6 +260,95 @@ function loadTestDeclarations(testRoots) {
   return declares;
 }
 
+// Returns Map<itemNumber, { file, claimedIds, handOwned }> — one entry per
+// card file, independent of loadCardClaims()'s ruleId-keyed view. Mode 5
+// needs to ask "does ITEM N's card claim this rule", which a ruleId->cards
+// map cannot answer without re-deriving the item number from every card's
+// path on every lookup.
+function loadCardsByItem(cardsDir) {
+  const byItem = new Map();
+  const files = readdirSync(cardsDir).filter((f) => /^item-\d+-.*\.md$/.test(f));
+  for (const file of files) {
+    const full = join(cardsDir, file);
+    const text = readFileSync(full, 'utf8');
+    const headingMatch = /^## Rules implemented\s*$/m.exec(text);
+    let claimedIds = new Set();
+    let handOwned = false;
+    if (headingMatch) {
+      const start = headingMatch.index;
+      let section = text.slice(start);
+      const nextHeading = section.slice(headingMatch[0].length).search(/\n## /);
+      if (nextHeading >= 0) section = section.slice(0, headingMatch[0].length + nextHeading);
+      claimedIds = new Set(section.match(RULE_ID_RE) || []);
+      // #1106's marker means the card's list is curated by hand and is never
+      // regenerated — the same reason apply-rule-ownership.mjs treats it as
+      // SKIPPED rather than REFUSED applies here: a hand-owned card is
+      // exempt from the ownership-claim requirement below, not a violation.
+      handOwned = section.includes(HAND_OWNED_MARKER);
+    }
+    const m = /^item-(\d+)/.exec(file);
+    if (!m) continue;
+    const rel = relative(REPO_ROOT, full).split('\\').join('/');
+    byItem.set(Number(m[1]), { file: rel, claimedIds, handOwned });
+  }
+  return byItem;
+}
+
+// Returns Map<ruleId, Set<itemNumber>> | null. Mirrors the section->item walk
+// in docs/design/apply-rule-ownership.mjs main() exactly (a rule's owning
+// item(s) come from `own.sections[section-prefix]`, which is either an array
+// of item numbers or null for "declared unclaimed by design"). Returns null
+// when no ownership file exists at the resolved path — callers then fall
+// back to the old ANY-card semantics for every rule, which is also what
+// happens for any individual rule whose section has no row (unmapped) or a
+// null row: those are informational gaps for apply-rule-ownership.mjs to
+// report, not this gate's job to enforce ownership for.
+function loadRuleOwnership(ownershipPath, rules) {
+  if (!existsSync(ownershipPath)) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(ownershipPath, 'utf8'));
+  } catch (e) {
+    fail2(`could not parse ${ownershipPath} as JSON: ${e.message}`);
+  }
+  const sections = (parsed && parsed.sections) || {};
+  const owners = new Map();
+  for (const r of rules) {
+    const sec = String(r.section || '').split(' ')[0];
+    const items = sections[sec];
+    if (!Array.isArray(items) || items.length === 0) continue; // unmapped or declared-null: no owner to enforce
+    owners.set(r.id, new Set(items));
+  }
+  return owners;
+}
+
+// Returns the MODE 5 findings: a rule id whose rule-ownership.json owner is
+// item N, where item N's card exists, is not hand-owned, and does not claim
+// the id — regardless of whether some OTHER, non-owning card claims it. This
+// is what issue #469 asked for: under the old ANY-card semantics, item-20's
+// card could drop R-142..R-144 (§7.6, owned by items [2, 20]) while item-02's
+// card kept claiming them, and the gate stayed green because "claimed by no
+// card at all" was never true. Here, item 20 not claiming an id it owns is
+// itself the finding, independent of item 2.
+function computeOwnershipGaps(ownershipMap, cardsByItem) {
+  const gaps = [];
+  if (!ownershipMap) return gaps;
+  for (const [id, items] of ownershipMap) {
+    for (const item of [...items].sort((a, b) => a - b)) {
+      const card = cardsByItem.get(item);
+      if (!card) {
+        gaps.push({ id, item, file: `(no item-${item}-*.md card file found)` });
+        continue;
+      }
+      if (card.handOwned) continue;
+      if (!card.claimedIds.has(id)) {
+        gaps.push({ id, item, file: card.file });
+      }
+    }
+  }
+  return gaps;
+}
+
 // --- Mode 4 (hash drift) helpers. All git calls run with cwd = the current
 // process's working directory, which is the repo root both in CI (checked
 // out there) and in the self-test (spawnSync sets cwd to the fixture repo).
@@ -346,9 +448,8 @@ function computeHashDrift({ base, rulesPath, rules, cardClaims, testDeclarations
 }
 
 function main() {
-  const { rulesPath, cardsDir, unclaimedPath, requestedTestRoots, testRoots, base, baseGiven } = resolveOptions(
-    process.argv.slice(2)
-  );
+  const { rulesPath, cardsDir, unclaimedPath, ownershipPath, requestedTestRoots, testRoots, base, baseGiven } =
+    resolveOptions(process.argv.slice(2));
 
   // Self-guard, --base side: `--base` present with no value (empty string,
   // or as the final argv token) must not fall back to mode 4's ordinary
@@ -400,6 +501,36 @@ function main() {
     hasBlockingFinding = true;
     lines.push(`MODE 1 — ${orphans.length} live rule(s) claimed by no build card and not declared unclaimed:`);
     for (const id of orphans) lines.push(`  - ${id}`);
+  }
+
+  // --- Mode 5 (#469): per-card ownership. ANY-card semantics above cannot
+  // notice a card silently dropping a rule it OWNS (docs/design/rule-ownership.json)
+  // as long as some other, non-owning card still mentions the id — the §7.6
+  // case from the issue (R-142..R-144 owned by items [2, 20]; item 20's card
+  // dropping them stayed green because item 02's card still listed them).
+  // Skipped entirely (not a failure) when no rule-ownership.json is found at
+  // the resolved path — see loadRuleOwnership()'s doc comment.
+  const cardsByItem = loadCardsByItem(cardsDir);
+  // Retired rules are excluded, same as liveIds above — a retired rule's old
+  // section->item row still sits in rule-ownership.json (nobody re-authors
+  // history), and a card correctly stops listing a rule once it retires, so
+  // scoring that as a "gap" would be counting the retirement itself as a bug.
+  const ownershipMap = loadRuleOwnership(ownershipPath, rules.filter((r) => !r.retired));
+  if (ownershipMap === null) {
+    lines.push(`MODE 5 — SKIPPED (no rule-ownership.json found at ${ownershipPath})`);
+  } else {
+    const ownershipGaps = computeOwnershipGaps(ownershipMap, cardsByItem);
+    if (ownershipGaps.length > 0) {
+      hasBlockingFinding = true;
+      lines.push(
+        `MODE 5 — ${ownershipGaps.length} rule(s) assigned by rule-ownership.json to a card that does not claim them:`
+      );
+      for (const g of ownershipGaps) {
+        lines.push(`  - ${g.id} assigned to item ${g.item}'s card (${g.file}), not claimed there`);
+      }
+    } else {
+      lines.push(`MODE 5 — ${ownershipMap.size} owned rule(s) checked against their owning card(s), 0 gaps`);
+    }
   }
 
   // --- Mode 2: a card claims a rule id that no test declares (REPORTING) ---
