@@ -30,8 +30,6 @@ export const REVALIDATED_PATHS: readonly string[] = [
   '/sme-ipo-performance-tracker',
   '/mainboard-ipo-prospectus',
   '/sme-ipo-prospectus',
-  '/mainboard-ipo-reviews',
-  '/sme-ipo-reviews',
   '/fpo-listings',
   '/ofs',
   '/ncd',

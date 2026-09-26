@@ -13,6 +13,7 @@ import { formatIPODate } from '@/lib/utils/date-formatter';
 import { Building2, GitCompare, ExternalLink } from 'lucide-react';
 import { SubscriptionProgressBar } from './SubscriptionProgressBar';
 import { AnimatedScore } from './AnimatedScore';
+import { adaptStoredScore } from '@/lib/adapters/ipo-score-display-adapter';
 import { GMPSparkline } from './GMPSparkline';
 import { CompactSubscriptionBreakdown } from './CompactSubscriptionBreakdown';
 import { QuickStatsGrid } from './QuickStatsGrid';
@@ -95,11 +96,14 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
     }
   };
 
-  // Determine border color based on score (if available)
+  // Determine border color based on score (if available). OD-125 (#167): the
+  // stored `ipo_scores` row is 0-100 raw; these thresholds are calibrated for
+  // the 0-10 scale `/api/ipos/[slug]/score` and IPOScoreSection use, so the
+  // raw value is converted via adaptStoredScore(...) before comparing.
   const getBorderColor = () => {
     if (!ipo.ipoScore) return 'border-border';
 
-    const score = ipo.ipoScore.totalScore;
+    const score = adaptStoredScore(ipo.ipoScore).totalScore;
     if (score >= 8.5) return 'border-success'; // Exceptional
     if (score >= 7.0) return 'border-accent'; // Strong
     if (score >= 6.0) return 'border-secondary'; // Good
@@ -175,7 +179,7 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
               <div className="text-right">
                 <p className="text-xs text-muted-foreground mb-1">IPODhan Score</p>
                 <AnimatedScore
-                  score={ipo.ipoScore.totalScore}
+                  score={adaptStoredScore(ipo.ipoScore).totalScore}
                   size="lg"
                   gradient={true}
                   showSuffix={true}

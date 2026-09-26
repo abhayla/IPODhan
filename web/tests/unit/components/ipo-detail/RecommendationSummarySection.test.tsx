@@ -9,8 +9,10 @@
  * - Sentiment analysis visualization
  * - Top Apply/Avoid reasons
  * - Latest 3 reviews display
- * - View All Reviews link (segment-specific)
  * - Empty state
+ *
+ * OD-125 (#167): the "View All Reviews" link tests were removed with the
+ * link itself when the mainboard/SME review list pages were retired.
  *
  * Coverage Target: >85%
  */
@@ -49,7 +51,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -62,7 +63,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -83,7 +83,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={summary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -95,7 +94,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -110,7 +108,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -141,7 +138,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={summary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -159,7 +155,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -176,7 +171,6 @@ describe('RecommendationSummarySection', () => {
       const { container } = render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -190,7 +184,6 @@ describe('RecommendationSummarySection', () => {
       const { container } = render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -208,7 +201,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -222,7 +214,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -240,7 +231,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={summary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -255,7 +245,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -271,7 +260,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -285,7 +273,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -294,48 +281,6 @@ describe('RecommendationSummarySection', () => {
     });
   });
 
-  // ==================== View All Reviews Link ====================
-
-  describe('View All Reviews Link', () => {
-    it('should link to /mainboard-ipo-reviews for MAINBOARD segment', () => {
-      render(
-        <RecommendationSummarySection
-          reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
-        />
-      );
-
-      const link = screen.getByRole('link', { name: /View All 3 Reviews/i });
-      expect(link).toHaveAttribute('href', '/mainboard-ipo-reviews');
-    });
-
-    it('should link to /sme-ipo-reviews for SME segment', () => {
-      render(
-        <RecommendationSummarySection
-          reviewSummary={mockReviewSummary}
-          ipoSegment="SME"
-        />
-      );
-
-      const link = screen.getByRole('link', { name: /View All 3 Reviews/i });
-      expect(link).toHaveAttribute('href', '/sme-ipo-reviews');
-    });
-
-    it('should display correct review count in link text', () => {
-      const summary = createMockReviewSummary({
-        totalReviews: 15,
-      });
-
-      render(
-        <RecommendationSummarySection
-          reviewSummary={summary}
-          ipoSegment="MAINBOARD"
-        />
-      );
-
-      expect(screen.getByText('View All 15 Reviews')).toBeInTheDocument();
-    });
-  });
 
   // ==================== Empty State ====================
 
@@ -344,7 +289,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockEmptyReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -360,7 +304,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={null}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -385,7 +328,6 @@ describe('RecommendationSummarySection', () => {
       const { container } = render(
         <RecommendationSummarySection
           reviewSummary={summary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -401,7 +343,6 @@ describe('RecommendationSummarySection', () => {
       const { container } = render(
         <RecommendationSummarySection
           reviewSummary={summary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -421,7 +362,6 @@ describe('RecommendationSummarySection', () => {
       const { container } = render(
         <RecommendationSummarySection
           reviewSummary={summary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -438,7 +378,6 @@ describe('RecommendationSummarySection', () => {
       const { container } = render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -450,7 +389,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -462,7 +400,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 
@@ -478,7 +415,6 @@ describe('RecommendationSummarySection', () => {
       render(
         <RecommendationSummarySection
           reviewSummary={mockReviewSummary}
-          ipoSegment="MAINBOARD"
         />
       );
 

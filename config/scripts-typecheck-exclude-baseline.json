@@ -9,7 +9,6 @@
     "scripts/backfill-financial-data.ts",
     "scripts/backfill-financials-chittorgarh-detail.ts",
     "scripts/backfill-financials-pdf.ts",
-    "scripts/backfill-ipo-reviews.ts",
     "scripts/backfill-issue-size-chittorgarh-detail.ts",
     "scripts/backfill-objectives.ts",
     "scripts/backfill-peer-companies.ts",

@@ -9,6 +9,7 @@ import { Star } from 'lucide-react';
 import { HighlightedText } from '@/components/search/HighlightedText';
 import { ListingPerformanceBadge } from './ListingPerformanceBadge';
 import { ScoreBadge } from './ScoreBadge';
+import { adaptStoredScore } from '@/lib/adapters/ipo-score-display-adapter';
 import { VerdictBadge } from './VerdictBadge';
 import { formatIPODate, getAccessibleDate, getISODate } from '@/lib/utils/date-formatter';
 import { cn } from '@/lib/utils';
@@ -154,7 +155,9 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
               {/* IPO Score Badge (Story 4.7) — absent score renders nothing;
                   a 'Score Pending' chip on every card reads as a broken pipeline
                   (2026-07-02 blind review) */}
-              {ipo.ipoScore && <ScoreBadge score={ipo.ipoScore.totalScore} size="sm" />}
+              {ipo.ipoScore && (
+                <ScoreBadge score={adaptStoredScore(ipo.ipoScore).totalScore} size="sm" />
+              )}
               {/* Listing Performance Badge for LISTED IPOs (Story 6.3) */}
               {ipo.status === 'LISTED' && listingGainPercent !== null && (
                 <ListingPerformanceBadge

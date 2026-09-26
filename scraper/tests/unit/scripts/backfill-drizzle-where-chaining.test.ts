@@ -13,7 +13,6 @@
  */
 import { describe, it, expect } from 'vitest';
 import { and } from 'drizzle-orm';
-import { buildIpoReviewsConditions } from '../../../scripts/backfill-ipo-reviews.js';
 import { buildPeerCompaniesConditions } from '../../../scripts/backfill-peer-companies.js';
 import { buildObjectivesIposConditions } from '../../../scripts/backfill-objectives.js';
 import { buildAnchorInvestorsIposConditions } from '../../../scripts/backfill-anchor-investors.js';
@@ -56,22 +55,6 @@ function flattenSql(node: any, out: { text: string[]; params: unknown[] } = { te
 function flatten(conds: unknown[]) {
   return flattenSql(and(...(conds as any[])));
 }
-
-describe('backfill-ipo-reviews.ts — buildIpoReviewsConditions', () => {
-  it('status + segment together: BOTH predicates present (status no longer dropped)', () => {
-    const where = flatten(buildIpoReviewsConditions({ status: 'OPEN', segment: 'MAINBOARD' }));
-    expect(where.params).toContain('OPEN');
-    expect(where.params).toContain('MAINBOARD');
-  });
-
-  it('no status given: the default OPEN/CLOSED/LISTED set is still applied', () => {
-    const where = flatten(buildIpoReviewsConditions({ segment: 'SME' }));
-    expect(where.params).toContain('OPEN');
-    expect(where.params).toContain('CLOSED');
-    expect(where.params).toContain('LISTED');
-    expect(where.params).toContain('SME');
-  });
-});
 
 describe('backfill-peer-companies.ts — buildPeerCompaniesConditions', () => {
   it('status + sector together: BOTH predicates present alongside the base sector-not-null filter', () => {

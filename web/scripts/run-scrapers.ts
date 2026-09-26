@@ -6,7 +6,6 @@
  */
 
 import { marketHolidaysScraper } from '../lib/scrapers/sources/market-holidays-scraper';
-import { ipoReviewsScraper } from '../lib/scrapers/sources/ipo-reviews-scraper';
 import { prospectusScraper } from '../lib/scrapers/sources/prospectus-scraper';
 
 async function sleep(ms: number): Promise<void> {
@@ -38,28 +37,7 @@ async function main() {
 
   await sleep(5000); // Rate limiting
 
-  // 2. IPO Reviews
-  console.log('\n2. Scraping IPO Reviews...');
-  try {
-    const reviewsResult = await ipoReviewsScraper.scrape('ALL');
-
-    if (reviewsResult.success && reviewsResult.data) {
-      console.log(`   SUCCESS: Scraped ${reviewsResult.data.length} reviews`);
-
-      const mainboard = reviewsResult.data.filter(r => r.category === 'MAINBOARD').length;
-      const sme = reviewsResult.data.filter(r => r.category === 'SME').length;
-
-      console.log(`   Mainboard: ${mainboard} | SME: ${sme}`);
-    } else {
-      console.log(`   FAILED: ${reviewsResult.error}`);
-    }
-  } catch (error) {
-    console.error(`   CRASHED:`, error);
-  }
-
-  await sleep(5000); // Rate limiting
-
-  // 3. Prospectus Documents
+  // 2. Prospectus Documents
   console.log('\n3. Scraping Prospectus Documents...');
   try {
     const prospectusResult = await prospectusScraper.scrape();

@@ -725,10 +725,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* 11. Broker Recommendations */}
             {hasBrokerReviews && (
-              <RecommendationSummarySection
-                reviewSummary={reviewSummary}
-                ipoSegment={ipo.segment as 'MAINBOARD' | 'SME'}
-              />
+              <RecommendationSummarySection reviewSummary={reviewSummary} />
             )}
 
             {/* 12. IPO Objectives Section */}
