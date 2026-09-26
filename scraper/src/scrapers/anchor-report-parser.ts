@@ -604,19 +604,21 @@ function looksLikeTotalRow(rec: RawRecord, noInvestorShapedRowFollows: boolean):
 /**
  * #347: index (into `rows`) of the investor row at which the printed
  * percentages first account for the whole anchor portion, when investor rows
- * with percentages FOLLOW it and the first of them repeats a portion row's
- * share count - the signature of a mutual-fund / insurance sub-table. Null
- * when the rows never reach 100%, nothing follows, or what follows is not a
- * repeat, which leaves the table exactly as it was read.
+ * with percentages FOLLOW it as a corroborated repeat block (the first two of
+ * them each repeat a kept row by share count AND name) and the kept rows sum
+ * to the letter's printed allocation when it prints one - the signature of a
+ * mutual-fund / insurance sub-table. Null otherwise, which leaves the table
+ * exactly as it was read.
  *
- * Of the positions within PERCENT_SUM_TOLERANCE of 100 (scanned until the
- * running sum overshoots), the closest to 100 wins, the later one on a tie, so
+ * Of the positions within PERCENT_SUM_TOLERANCE of 100 (scanned up to and
+ * including the row that overshoots), the closest to 100 wins, the later one on a tie, so
  * a small last row (0.02%) is never cut off by an earlier position that was
  * already "within a point".
  */
 export function mainPortionEnd(
   rows: RawRecord[],
-  isInvestor: (rec: RawRecord) => boolean
+  isInvestor: (rec: RawRecord) => boolean,
+  preambleTotal: number | null = null
 ): number | null {
   const pctOf = (rec: RawRecord): number | null => {
     if (!isInvestor(rec)) return null;
@@ -630,31 +632,71 @@ export function mainPortionEnd(
     const pct = pctOf(rows[i]);
     if (pct === null) continue;
     sum += pct;
-    if (sum > 100 + PERCENT_SUM_TOLERANCE) break;
+    // Every row's gap is evaluated, the one that oversteps the band included:
+    // a letter whose printed percents run a little over 100 (rounding, a
+    // damaged glyph) must be able to land its cut on its TRUE last row.
     const gap = Math.abs(sum - 100);
     if (gap <= PERCENT_SUM_TOLERANCE && gap <= atGap) {
       at = i;
       atGap = gap;
     }
+    if (sum > 100 + PERCENT_SUM_TOLERANCE) break;
   }
   if (at === null) return null;
-  // The rows past that point must be a REPEAT of the portion - the first one
-  // that reads carries a share count some portion row already printed. An
-  // unrelated investor-shaped row there means the letter is not shaped the
-  // way this assumes, and the table is left exactly as read (fail closed).
-  const portionShares = new Set(
-    rows
-      .slice(0, at + 1)
-      .map(readRow)
-      .filter((c): c is Candidate => c !== null)
-      .map((c) => c.shares)
-  );
-  const firstBeyond = rows
+  const kept = rows
+    .slice(0, at + 1)
+    .filter((r) => pctOf(r) !== null)
+    .map(readRow);
+  const keptRows = kept.filter((c): c is Candidate => c !== null);
+  // The kept portion must reconcile to the letter's own total when it prints
+  // one: every kept row read, and their shares summing to it exactly.
+  if (preambleTotal !== null) {
+    if (keptRows.length !== kept.length) return null;
+    if (keptRows.reduce((s, c) => s + c.shares, 0) !== preambleTotal) return null;
+  }
+  // The discarded remainder must be CORROBORATED as a repeat block: its first
+  // SUB_TABLE_REPEAT_ROWS readable rows each repeat a kept row by share count
+  // AND name. A share count alone is not a repeat - round lots (79,120 on
+  // eight KANOHAR rows) recur among genuine investors. Anything less leaves
+  // the table exactly as read, and the arithmetic refuses it if it is wrong.
+  const beyond = rows
     .slice(at + 1)
     .filter((r) => pctOf(r) !== null)
     .map(readRow)
-    .find((c): c is Candidate => c !== null);
-  return firstBeyond !== undefined && portionShares.has(firstBeyond.shares) ? at : null;
+    .filter((c): c is Candidate => c !== null)
+    .slice(0, SUB_TABLE_REPEAT_ROWS);
+  if (beyond.length < SUB_TABLE_REPEAT_ROWS) return null;
+  const repeats = (c: Candidate): boolean =>
+    keptRows.some((k) => k.shares === c.shares && namesShareAWord(k.name, c.name));
+  return beyond.every(repeats) ? at : null;
+}
+
+/** Rows after the 100% point that must repeat the portion before it is cut. */
+const SUB_TABLE_REPEAT_ROWS = 2;
+/** Words too common in fund names to identify one. */
+const GENERIC_NAME_WORDS = new Set([
+  'FUND', 'FUNDS', 'MUTUAL', 'LIMITED', 'TRUST', 'TRUSTEE', 'CAPITAL', 'INDIA', 'EQUITY',
+  'SCHEME', 'INSURANCE', 'COMPANY', 'LIFE', 'INVESTMENT', 'INVESTMENTS', 'OPPORTUNITIES',
+]);
+
+/**
+ * Do two printed names share a distinctive word? The sub-table re-wraps a
+ * name ("MUTUAL FUND A/C ICICI PRUDENTIAL HOUSING" in the main table,
+ * "FUND A/C ICICI PRUDENTIAL HOUSING OPPORTUNITIES" in VARMORA's mutual-fund
+ * table), so exact equality is too strict; one shared word of four or more
+ * letters that is not generic fund vocabulary identifies the same investor.
+ */
+export function namesShareAWord(a: string, b: string): boolean {
+  const words = (s: string): Set<string> =>
+    new Set(
+      s
+        .toUpperCase()
+        .split(/[^A-Z0-9]+/)
+        .filter((w) => w.length >= 4 && !GENERIC_NAME_WORDS.has(w))
+    );
+  const wa = words(a);
+  for (const w of words(b)) if (wa.has(w)) return true;
+  return false;
 }
 
 /**
@@ -746,7 +788,11 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   // row's share of the portion came out wrong ("ARANDA prints 8.55% but holds
   // 5.43%"). Everything after that point is sub-table, and its own Total (if
   // one is printed before the next investor row) is the letter's Total.
-  const portionEnd = mainPortionEnd(mainIdx.map((i) => all[i]), looksInvestorShaped);
+  const portionEnd = mainPortionEnd(
+    mainIdx.map((i) => all[i]),
+    looksInvestorShaped,
+    parsePreambleTotalShares(fullText)
+  );
   if (portionEnd !== null) {
     const lastIdx = mainIdx[portionEnd];
     const nextInvestorIdx =

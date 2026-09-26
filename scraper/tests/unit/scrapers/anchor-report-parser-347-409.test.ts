@@ -172,12 +172,55 @@ describe('#347 - the refusal still fires when the letter is not shaped as assume
   it('mainPortionEnd picks the position closest to 100, never an earlier near-miss', () => {
     const row = (name: string, shares: string, pct: string) => ({ name, cells: [shares, pct, '10', '1'] });
     const rows = [
-      row('A', '9,900', '99.10%'),
-      row('B', '50', '0.50%'),
-      row('C', '40', '0.40%'),
-      row('A', '9,900', '99.10%'),
+      row('ALPHA GROWTH', '9,900', '99.10%'),
+      row('BRAVO VALUE', '5,000', '0.50%'),
+      row('CHARLIE SMALLCAP', '4,000', '0.40%'),
+      row('ALPHA GROWTH', '9,900', '99.10%'),
+      row('BRAVO VALUE', '5,000', '0.50%'),
     ];
     expect(mainPortionEnd(rows, (r) => r.name !== '')).toBe(2);
+  });
+
+  it('review probe: three genuine investors on one round lot are never cut as a repeat', () => {
+    // Identical 1,000-share lots; the printed percents overstep the band at
+    // the TRUE last row. The old rule cut after row 2 because row 3's share
+    // count "repeated" row 1's, dropping a genuine investor.
+    const row = (name: string, pct: string) => ({ name, cells: ['1,000', pct, '100', '1,00,000'] });
+    const rows = [row('ALPHA GROWTH', '49.50%'), row('BRAVO VALUE', '49.60%'), row('CHARLIE SMALLCAP', '1.95%')];
+    expect(mainPortionEnd(rows, () => true)).toBeNull();
+  });
+
+  it('a single repeat row after 100% is not a corroborated sub-table: no cut', () => {
+    const row = (name: string, shares: string, pct: string) => ({ name, cells: [shares, pct, '10', '1'] });
+    const rows = [
+      row('ALPHA GROWTH', '6,000', '60.00%'),
+      row('BRAVO VALUE', '4,000', '40.00%'),
+      row('ALPHA GROWTH', '6,000', '60.00%'),
+    ];
+    expect(mainPortionEnd(rows, () => true)).toBeNull();
+  });
+
+  it('two rows after 100% on the same round lots but other investors are not a repeat', () => {
+    const row = (name: string, shares: string, pct: string) => ({ name, cells: [shares, pct, '10', '1'] });
+    const rows = [
+      row('ALPHA GROWTH', '6,000', '60.00%'),
+      row('BRAVO VALUE', '4,000', '40.00%'),
+      row('DELTA MIDCAP', '6,000', '60.00%'),
+      row('ECHO FLEXICAP', '4,000', '40.00%'),
+    ];
+    expect(mainPortionEnd(rows, () => true)).toBeNull();
+  });
+
+  it('a kept portion that does not sum to the printed allocation is not cut', () => {
+    const row = (name: string, shares: string, pct: string) => ({ name, cells: [shares, pct, '10', '1'] });
+    const rows = [
+      row('ALPHA GROWTH', '6,000', '60.00%'),
+      row('BRAVO VALUE', '4,000', '40.00%'),
+      row('ALPHA GROWTH', '6,000', '60.00%'),
+      row('BRAVO VALUE', '4,000', '40.00%'),
+    ];
+    expect(mainPortionEnd(rows, () => true, 10000)).toBe(1);
+    expect(mainPortionEnd(rows, () => true, 10001)).toBeNull();
   });
 
   it('mainPortionEnd returns null when the rows never reach 100%', () => {
