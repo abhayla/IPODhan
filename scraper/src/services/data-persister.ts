@@ -20,7 +20,7 @@ import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 // Phase 2: Shadow Mode - Data Consolidation Service
 import { DataConsolidationService, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
-import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo, withSourceKeyLineage, sourceKeyLineageFor } from '@ipodhan/shared/repositories';
+import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo, withSourceKeyLineage, sourceKeyLineageFor, E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { ipoDemandGraph, ipoDetails, ipos as iposTable, fieldSources as fieldSourcesTable } from '@ipodhan/shared/db/schema';
@@ -1640,17 +1640,107 @@ async function upsertIPOInScope(
         const guardedFallback = keepTerminalIpoStatus((existingIPO as any).status, fallbackData);
         await ipoRepository.update(existingIPO.id, guardedFallback);
 
-        // S-02: the fallback door wrote the row but ran no consolidation, so F4
-        // and F5 are deliberately NOT claimed here — nothing compared sources
-        // this time. Recording them anyway would make the ledger lie about the
-        // one path where cross-verification did not happen.
+        // #454: this door writes published `ipos` values with zero
+        // cross-source comparison (that is what "fallback" means), but a
+        // published value with NO lineage AT ALL is the defect — staging
+        // measured 11 rows with issueSize > 0 and no issueSize field_sources
+        // row, all written on a prior version of this exact door. Track every
+        // field this write actually persisted, at this write's source, same
+        // shape as the create path (P3-11) and `recordDiscoveredLeadManagers`
+        // (row_key '', bulkTrackFieldUpdates). Bookkeeping fields the caller
+        // never asserted as data (`lastScrapedAt`, `updatedAt`) are excluded —
+        // provenance for them would be noise, not lineage.
+        //
+        // Round 1 review (OD-73 CRITICAL + two MAJORs) found this first cut
+        // over-claimed:
+        //  1. It re-stamped a field with THIS source's provenance even when
+        //     the incoming value was IDENTICAL to the stored one (raw
+        //     `previousValue !== value` was never even checked) — a
+        //     lower-ranked source silently demoted a DOC-owned settled value.
+        //     Fixed by skipping any field where `valuesEqualForWrite` (the
+        //     same normalized-equality the write-gate itself uses, not a
+        //     raw `String()` compare that a date/decimal type difference
+        //     would fool) says nothing changed.
+        //  2. It ignored `contextFields`/`listingExchange(s)` context (OD-66)
+        //     and could hand `status`/`listingExchanges` to a DOCUMENT_PATH
+        //     source, which `trackFieldUpdate` refuses (#862's E-1 guard) —
+        //     AFTER `ipoRepository.update` above had already committed,
+        //     turning a would-have-succeeded write into a thrown error with
+        //     a half-recorded ledger. Fixed by excluding both the caller's
+        //     context fields (both spellings, matching the consolidation
+        //     door's own #938 handling) and any E-1 field for a document
+        //     source BEFORE the write, and by never letting a provenance
+        //     write failure propagate past this point — signal-ownership.md
+        //     R6: the failure is logged with its cause, not swallowed silently.
+        const FALLBACK_BOOKKEEPING_FIELDS = new Set(['lastScrapedAt', 'updatedAt']);
+        let fallbackProvenanceWriteFailed = false;
+        if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
+          const fallbackContextFields = new Set([
+            ...(contextFields ?? []),
+            ...(listingExchangeIsContext ? ['listingExchanges'] : []),
+          ]);
+          const isDocumentSource = DOCUMENT_PATH_SOURCES.has(source);
+          const fieldsToTrack = Object.entries(guardedFallback)
+            .filter(([fieldName, value]) => {
+              if (FALLBACK_BOOKKEEPING_FIELDS.has(fieldName)) return false;
+              if (value === undefined || value === null) return false;
+              if (fallbackContextFields.has(fieldName)) return false;
+              if (isDocumentSource && E1_EXCHANGE_STATED_FIELDS.has(fieldName)) return false;
+              const previousValue = (existingIPO as any)?.[fieldName];
+              if (valuesEqualForWrite(previousValue, value, fieldName)) return false;
+              return true;
+            })
+            .map(([fieldName, value]) => {
+              const previousValue = (existingIPO as any)?.[fieldName];
+              return {
+                fieldName,
+                source,
+                confidence: 100,
+                previousValue: previousValue !== undefined && previousValue !== null ? String(previousValue) : null,
+                // #993: this write's own lineage (method/docType/documentId/sourceSha, ...),
+                // the same field the consolidation door passes as `incomingLineage` — dropped
+                // entirely by this door before this fix.
+                dataLineage: (lineage ?? undefined) as Record<string, unknown> | undefined,
+              };
+            });
+
+          if (fieldsToTrack.length > 0) {
+            try {
+              const fieldSourcesRepo = getFieldSourcesRepository();
+              await fieldSourcesRepo.bulkTrackFieldUpdates(existingIPO.id, 'ipos', fieldsToTrack);
+            } catch (e: any) {
+              // The `ipos` row already committed above — a provenance-write
+              // failure here must never surface as upsertIPO throwing (that
+              // would read as "the write failed" when the write succeeded
+              // and only its lineage is incomplete).
+              fallbackProvenanceWriteFailed = true;
+              logger.error(
+                {
+                  ipoId: existingIPO.id,
+                  source,
+                  fields: fieldsToTrack.map((f) => f.fieldName),
+                  error: e?.message,
+                  cause: e?.cause instanceof Error ? e.cause.message : e?.cause,
+                  stack: e?.stack,
+                },
+                '[DataPersister] #454 fallback-door provenance write failed after the ipos update committed'
+              );
+            }
+          }
+        }
+
+        // S-02: the fallback door wrote the row but ran no cross-source
+        // consolidation, so F4/F5 are deliberately NOT claimed here — nothing
+        // compared sources this time. `fieldSourcesWritten` now reflects
+        // whether lineage rows were actually written for THIS write (the
+        // ledger must stay honest about what happened on this door, per #454).
         ledgerFacts = {
           source,
           created: false,
           fields: Object.keys(guardedFallback),
           offeringType: fallbackData.offeringType ?? null,
           consolidated: false,
-          fieldSourcesWritten: false,
+          fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && !fallbackProvenanceWriteFailed,
           companyName: scrapedIPO.companyName,
         };
 

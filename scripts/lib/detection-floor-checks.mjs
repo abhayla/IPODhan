@@ -1472,3 +1472,43 @@ export function evaluateSourceKeyConflicts({ keys = [], tableMissing = false, re
     disputed,
   };
 }
+
+// ---- (r): a PUBLISHED value with NO field_sources row at all (#454) ---------
+//
+// Mirror image of `checkSegmentHasProvenance` above: that one flags a
+// field_sources row naming a NULL parent value; this flags the opposite — a
+// real, non-null (and, for issueSize, POSITIVE) published value with no
+// field_sources row naming ANY source at all.
+//
+/**
+ * @param {{ companyName: string, slug: string, fieldName: string, hasProvenance: boolean }} row
+ *   `hasProvenance` is an EXISTS(...) over field_sources for (ipoId, 'ipos',
+ *   fieldName, row_key='') — the SQL caller is responsible for having already
+ *   filtered `row` down to a non-null (and, for issueSize, positive) value;
+ *   this predicate only decides provenance, same division of labour as
+ *   `checkSegmentHasProvenance`.
+ */
+export function checkPublishedWithoutProvenance(row) {
+  if (row.hasProvenance) return null;
+  return `"${row.companyName}" (${row.slug}).${row.fieldName}`;
+}
+
+/**
+ * #454 round 1: the migration-lag probe branch (field_sources.row_key not
+ * yet applied on this database) is the SAME shape as
+ * `checkC_issueSizeSourceCapability`'s inline classification in
+ * audit-detection-floor.mjs — pulled out here, once, so it has a fixture
+ * instead of living only inline where a mutation cannot be shown red.
+ *
+ * @param {{ code?: string, message: string }} err - the thrown pg error
+ * @param {boolean|null} migrationApplied - `isMigrationApplied(...)` result
+ */
+export function classifyRowKeyProbeError(err, migrationApplied) {
+  if (err.code === '42703' || err.code === '42P01') {
+    if (migrationApplied === false) {
+      return { status: 'PASS', reason: 'migration-not-applied' };
+    }
+    return { status: 'UNVERIFIABLE', reason: `field_sources.row_key read failed (migration applied=${migrationApplied}): ${err.message}` };
+  }
+  return { status: 'UNVERIFIABLE', reason: `ipos/field_sources not readable: ${err.message}` };
+}

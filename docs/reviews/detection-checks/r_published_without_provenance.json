@@ -1,0 +1,11 @@
+{
+  "id": "r_published_without_provenance",
+  "findingClass": "a published, non-null ipos value (issueSize, priceRangeMin/Max, lotSize, open/close/listingDate) has NO field_sources row naming ANY source — the mirror image of r_provenance_parent_not_null (a false claim of provenance vs. no claim at all), so nothing says who vouches for a value the reader sees on the page",
+  "round7Findings": [],
+  "sourceTask": "#454 (2026-09-26): the data-persister.ts fallback door (taken when consolidation is disabled or throws) wrote ipos fields via ipoRepository.update with zero field_sources writes; prod: Manika Plastech issue_size with zero field_sources rows; staging: 11 rows with issue_size > 0 and no issueSize provenance, all created 2025-12..2026-03. Owner-side correction: the known population is 10 legacy rows, none recent.",
+  "registryClass": "absence-that-looks-like-a-value",
+  "failThreshold": "for offering_type = 'IPO' rows: issueSize > 0, or priceRangeMin/priceRangeMax/lotSize/openDate/closeDate/listingDate IS NOT NULL, with no field_sources row (table_name='ipos', row_key='') naming that field",
+  "severity": "P2",
+  "unverifiableWhen": "ipos or field_sources is not readable, or field_sources.row_key is not yet migrated on this database (PASS, not-applicable, when the migration is confirmed absent) — reported as UNVERIFIABLE with the error otherwise, never as a PASS",
+  "section": "checks"
+}
