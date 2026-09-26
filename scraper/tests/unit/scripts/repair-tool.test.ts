@@ -18,6 +18,7 @@ import {
   decideCacheInvalidationBlock,
   decideProdWriteRefusal,
   decideSchemaDriftRefusal,
+  describeDbConnectionTarget,
   describeIpoScope,
   flagIsPresent,
   formatCacheInvalidationBlockNotice,
@@ -38,6 +39,13 @@ import {
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+
+// #481: openRepairDb now pre-checks the connection env before calling
+// dbLike.execute(). Every existing openRepairDb() call in this file uses a
+// MOCKED dbLike that never touches the network, so tests supply a usable
+// fake env (never a real credential) purely to reach the same mocked
+// dbLike.execute() path as before — the assertions below are unchanged.
+const FAKE_USABLE_ENV: NodeJS.ProcessEnv = { DATABASE_URL: 'postgresql://user:pw@localhost:5432/fake_test_db' }; // secret-scan:allow (dummy fixture)
 
 function mockTx(existingSource: string | null) {
   const limit = vi.fn().mockResolvedValue(existingSource ? [{ source: existingSource }] : []);
@@ -102,7 +110,7 @@ describe('openRepairDb — prints the real database name and gates the write', (
   it('prints the `current_database(): <name>` line the ops recipes and dry-run proofs read', async () => {
     const log = vi.fn();
     const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan_staging' }]);
-    const r = await openRepairDb({ execute }, { apply: false, allowProd: false, toolName: 't', log, error: vi.fn() });
+    const r = await openRepairDb({ execute }, { apply: false, allowProd: false, toolName: 't', log, error: vi.fn(), env: FAKE_USABLE_ENV });
     expect(log).toHaveBeenCalledWith('current_database(): ipodhan_staging');
     expect(r).toEqual({ dbName: 'ipodhan_staging', isProd: false });
   });
@@ -111,7 +119,7 @@ describe('openRepairDb — prints the real database name and gates the write', (
     const onRefuse = vi.fn();
     const error = vi.fn();
     const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan' }]);
-    await openRepairDb({ execute }, { apply: true, allowProd: false, toolName: 'tool-x', log: vi.fn(), error, onRefuse });
+    await openRepairDb({ execute }, { apply: true, allowProd: false, toolName: 'tool-x', log: vi.fn(), error, onRefuse, env: FAKE_USABLE_ENV });
     expect(onRefuse).toHaveBeenCalledTimes(1);
     expect(error).toHaveBeenCalledWith(expect.stringContaining('tool-x: refusing to APPLY'));
   });
@@ -121,10 +129,125 @@ describe('openRepairDb — prints the real database name and gates the write', (
     const onRefuse = vi.fn();
     const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan' }]);
     const r = await openRepairDb({ execute }, { apply: true, allowProd: true,
-      toolName: 't', log, error: vi.fn(), onRefuse });
+      toolName: 't', log, error: vi.fn(), onRefuse, env: FAKE_USABLE_ENV });
     expect(onRefuse).not.toHaveBeenCalled();
     expect(r.isProd).toBe(true);
     expect(log).toHaveBeenCalledWith(expect.stringContaining('ALLOW-PROD'));
+  });
+});
+
+describe('describeDbConnectionTarget — #481 pre-connect env check (pure, no I/O)', () => {
+  it('the discrete form (DATABASE_HOST+DATABASE_PASSWORD) is usable and redacts to host:port/db', () => {
+    const d = describeDbConnectionTarget({
+      DATABASE_HOST: '127.0.0.1',
+      DATABASE_PORT: '15432',
+      DATABASE_NAME: 'ipodhan_staging',
+      DATABASE_PASSWORD: 'super-secret-pw',
+    } as NodeJS.ProcessEnv);
+    expect(d.usable).toBe(true);
+    expect(d.target).toBe('127.0.0.1:15432/ipodhan_staging');
+    expect(d.target).not.toContain('super-secret-pw');
+  });
+
+  it('a lone DATABASE_URL is usable — initPool() honours it when DATABASE_HOST/PASSWORD are absent', () => {
+    const d = describeDbConnectionTarget({
+      DATABASE_URL: 'postgresql://ipodhan_app:super-secret-pw@127.0.0.1:15432/ipodhan_staging', // secret-scan:allow (dummy fixture)
+    } as NodeJS.ProcessEnv);
+    expect(d.usable).toBe(true);
+    expect(d.target).toBe('127.0.0.1:15432/ipodhan_staging');
+    expect(d.target).not.toContain('super-secret-pw');
+    expect(d.target).not.toContain('ipodhan_app');
+  });
+
+  it('MUTATION: neither form set is unusable and names BOTH missing forms, never a bare count', () => {
+    const d = describeDbConnectionTarget({} as NodeJS.ProcessEnv);
+    expect(d.usable).toBe(false);
+    expect(d.missing).toHaveLength(2);
+    expect(d.missing.join(' ')).toMatch(/DATABASE_HOST/);
+    expect(d.missing.join(' ')).toMatch(/DATABASE_URL/);
+  });
+
+  it('DATABASE_HOST alone (no DATABASE_PASSWORD) falls through to the DATABASE_URL check, not the discrete form', () => {
+    const d = describeDbConnectionTarget({
+      DATABASE_HOST: '127.0.0.1',
+      DATABASE_URL: 'postgresql://u:pw@localhost:5432/fallback_db', // secret-scan:allow (dummy fixture)
+    } as NodeJS.ProcessEnv);
+    expect(d.usable).toBe(true);
+    expect(d.target).toBe('localhost:5432/fallback_db');
+  });
+});
+
+describe('openRepairDb — #481: an unusable env never refuses a SUCCESSFUL mocked connection', () => {
+  it('a mocked dbLike that resolves succeeds even with neither DATABASE_HOST+PASSWORD nor DATABASE_URL set — no pre-connect refusal, so the dozens of other repair-tool test files (mocked dbLike, no env set) are unaffected', async () => {
+    const onRefuse = vi.fn();
+    const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan_staging' }]);
+    const r = await openRepairDb(
+      { execute },
+      { apply: false, allowProd: false, toolName: 'tool-y', log: vi.fn(), error: vi.fn(), onRefuse, env: {} as NodeJS.ProcessEnv }
+    );
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(onRefuse).not.toHaveBeenCalled();
+    expect(r).toEqual({ dbName: 'ipodhan_staging', isProd: false });
+  });
+});
+
+describe('openRepairDb — #481: a connection failure names its target and cause, never an anonymous stack', () => {
+  it('MUTATION: deleting this catch turns it red — a timeout-shaped error is reported with host:port/db and the wrapped cause', async () => {
+    const onRefuse = vi.fn();
+    const error = vi.fn();
+    const timeoutError = new Error('Failed query: SELECT current_database() AS name');
+    (timeoutError as { cause?: unknown }).cause = Object.assign(new Error('Connection terminated due to connection timeout'), {
+      code: 'ETIMEDOUT',
+    });
+    const execute = vi.fn().mockRejectedValue(timeoutError);
+    const r = await openRepairDb(
+      { execute },
+      {
+        apply: false,
+        allowProd: false,
+        toolName: 'tool-z',
+        log: vi.fn(),
+        error,
+        onRefuse,
+        env: { DATABASE_HOST: '127.0.0.1', DATABASE_PORT: '15432', DATABASE_NAME: 'ipodhan_staging', DATABASE_PASSWORD: 'pw' } as NodeJS.ProcessEnv,
+      }
+    );
+    expect(onRefuse).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('tool-z: failed to connect to 127.0.0.1:15432/ipodhan_staging'));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('Connection terminated due to connection timeout'));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('ETIMEDOUT'));
+    expect(error).not.toHaveBeenCalledWith(expect.stringContaining('pw')); // never the password
+    expect(r).toEqual({ dbName: '', isProd: false });
+  });
+
+  it('a plain Error with no .cause still reports its own message rather than throwing unhandled', async () => {
+    const onRefuse = vi.fn();
+    const error = vi.fn();
+    const execute = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+    await openRepairDb(
+      { execute },
+      { apply: false, allowProd: false, toolName: 't', log: vi.fn(), error, onRefuse, env: FAKE_USABLE_ENV }
+    );
+    expect(onRefuse).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('ECONNREFUSED'));
+  });
+
+  it('#481 the reported class: env unusable AND the connection genuinely fails — names BOTH missing forms instead of an anonymous stack', async () => {
+    const onRefuse = vi.fn();
+    const error = vi.fn();
+    const timeoutError = new Error('Failed query: SELECT current_database() AS name');
+    (timeoutError as { cause?: unknown }).cause = Object.assign(new Error('Connection terminated due to connection timeout'), {
+      code: 'ETIMEDOUT',
+    });
+    const execute = vi.fn().mockRejectedValue(timeoutError);
+    const r = await openRepairDb(
+      { execute },
+      { apply: false, allowProd: false, toolName: 'tool-q', log: vi.fn(), error, onRefuse, env: {} as NodeJS.ProcessEnv }
+    );
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('DATABASE_HOST'));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('DATABASE_URL'));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('Connection terminated due to connection timeout'));
+    expect(r).toEqual({ dbName: '', isProd: false });
   });
 });
 
@@ -267,7 +390,7 @@ describe('openRepairDb — #1070: never touches Redis; a tool that never invalid
     vi.stubEnv('REDIS_HOST', '');
     const onRefuse = vi.fn();
     const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan_staging' }]);
-    const r = await openRepairDb({ execute }, { apply: true, allowProd: false, toolName: 'tool-x', log: vi.fn(), error: vi.fn(), onRefuse });
+    const r = await openRepairDb({ execute }, { apply: true, allowProd: false, toolName: 'tool-x', log: vi.fn(), error: vi.fn(), onRefuse, env: FAKE_USABLE_ENV });
     expect(onRefuse).not.toHaveBeenCalled();
     expect(r).toEqual({ dbName: 'ipodhan_staging', isProd: false });
   });
@@ -277,7 +400,7 @@ describe('openRepairDb — #1070: never touches Redis; a tool that never invalid
     vi.stubEnv('REDIS_HOST', '');
     const onRefuse = vi.fn();
     const execute = vi.fn().mockResolvedValue([{ name: PRODUCTION_DATABASE_NAME }]);
-    const r = await openRepairDb({ execute }, { apply: true, allowProd: true, toolName: 'tool-x', log: vi.fn(), error: vi.fn(), onRefuse });
+    const r = await openRepairDb({ execute }, { apply: true, allowProd: true, toolName: 'tool-x', log: vi.fn(), error: vi.fn(), onRefuse, env: FAKE_USABLE_ENV });
     expect(onRefuse).not.toHaveBeenCalled();
     expect(r.isProd).toBe(true);
   });
