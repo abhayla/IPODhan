@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill: financials + KPIs + peers + objectives for genuine IPOs from the
  * Chittorgarh per-IPO detail page (C3b, #8). NO LLM — pure deterministic HTML
@@ -25,6 +24,8 @@
  * Run from scraper/. DB is prod via the SSH tunnel (localhost:15432); creds come
  * from web/.env.local (the scraper's own .env has stale direct-prod creds).
  */
+import { openRepairDb, readExpectDbFlag, type ExecuteLike } from './lib/repair-tool.js';
+import { pathToFileURL } from 'node:url';
 import { config as loadEnv } from 'dotenv';
 // override:true is REQUIRED — an imported module (scraper config.ts) loads the
 // scraper's own .env (stale DIRECT-prod creds 103.118.16.189:5432, firewalled)
@@ -52,6 +53,7 @@ import type { ScrapedPeerCompany } from '../src/scrapers/peer-companies-scraper.
 import logger from '../src/utils/logger.js';
 
 const APPLY = process.argv.includes('--apply');
+const TOOL = 'backfill-financials-chittorgarh-detail';
 const FORCE = process.argv.includes('--force');
 const limitIdx = process.argv.indexOf('--limit');
 const LIMIT = limitIdx >= 0 ? parseInt(process.argv[limitIdx + 1], 10) : Infinity;
@@ -122,7 +124,13 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 5): Promise<T> {
   throw lastErr;
 }
 
-async function main() {
+export async function main() {
+  await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
   const redis = getRedisClient();
   const ipoRepo = new IPORepository(db, redis);
   const finRepo = new FinancialDataRepository(db, redis);
@@ -273,7 +281,8 @@ async function main() {
   process.exit(stats.failed > stats.fin + stats.peers + stats.objectives ? 1 : 0);
 }
 
-main().catch((e) => {
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) main().catch((e) => {
   logger.error({ error: e instanceof Error ? e.message : String(e) }, 'C3b financials backfill crashed');
   console.error(e);
   process.exit(1);

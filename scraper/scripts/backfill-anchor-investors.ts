@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill Anchor Investors Script
  *
@@ -14,6 +13,7 @@
  * @module scripts/backfill-anchor-investors
  */
 
+import { openRepairDb, readExpectDbFlag, type ExecuteLike } from './lib/repair-tool.js';
 import dotenv from 'dotenv';
 import { pathToFileURL } from 'node:url';
 
@@ -27,6 +27,9 @@ import { AnchorInvestorRepository } from '../src/repositories/anchor-investor-re
 import { createAnchorInvestors } from '../src/services/data-persister.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { eq, and, isNotNull, inArray, sql } from 'drizzle-orm';
+
+const APPLY = process.argv.includes('--apply');
+const TOOL = 'backfill-anchor-investors';
 
 /**
  * #488 — collects the IPO filter conditions for one combined `where(and(...))`
@@ -87,7 +90,17 @@ function parseArgs(): {
 /**
  * Main backfill function
  */
-async function main() {
+export async function main() {
+  await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
+  if (!APPLY) {
+    console.log(`${TOOL}: DRY-RUN — this tool has no read-only preview, so nothing past current_database() was read and nothing was written. Re-run with --apply to write.`);
+    process.exit(0);
+  }
   const args = parseArgs();
 
   logger.info('[Backfill Anchor Investors] Starting backfill script', args);

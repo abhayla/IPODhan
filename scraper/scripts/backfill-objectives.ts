@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill Objectives Script
  *
@@ -19,7 +18,7 @@ import { pathToFileURL } from 'node:url';
 import { logger } from '../src/utils/logger.js';
 import { scrapeIPOObjectives } from '../src/scrapers/objectives-scraper.js';
 import { updateIPOObjectives } from '../src/services/data-persister.js';
-import { createNoopRedisClient, guardCacheInvalidation, queryCurrentDatabase } from './lib/repair-tool.js';
+import { createNoopRedisClient, guardCacheInvalidation, openRepairDb, readExpectDbFlag, type ExecuteLike } from './lib/repair-tool.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { eq, and, isNotNull, inArray, sql, isNull } from 'drizzle-orm';
 
@@ -85,7 +84,20 @@ function parseArgs(): {
 /**
  * Main backfill function
  */
-async function main() {
+const APPLY = process.argv.includes('--apply');
+const TOOL = 'backfill-objectives';
+
+export async function main() {
+  const { dbName: dbNameForGuard } = await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
+  if (!APPLY) {
+    console.log(`${TOOL}: DRY-RUN — this tool has no read-only preview, so nothing past current_database() was read and nothing was written. Re-run with --apply to write.`);
+    process.exit(0);
+  }
   const args = parseArgs();
 
   logger.info('[Backfill Objectives] Starting backfill script', args);
@@ -104,10 +116,9 @@ async function main() {
     // #715 class sweep: this repository's writes invalidate cache
     // internally (no explicit invalidateIPOCaches() call to wrap here), so
     // the guard decides which Redis client the repository ever sees.
-    const dbNameForGuard = await queryCurrentDatabase(db);
     const guard = guardCacheInvalidation({
       dbName: dbNameForGuard,
-      toolName: 'backfill-objectives',
+      toolName: TOOL,
       keys: ['ipo:detail:*', 'ipo:list:*', 'ipo:search:*'],
     });
     const redis = guard.blocked ? (createNoopRedisClient() as unknown as ReturnType<typeof getRedisClient>) : getRedisClient();

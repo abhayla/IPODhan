@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill Script: Peer Companies
  *
@@ -19,6 +18,7 @@
  *   npx tsx scripts/backfill-peer-companies.ts --force
  */
 
+import { openRepairDb, readExpectDbFlag, type ExecuteLike } from './lib/repair-tool.js';
 import dotenv from 'dotenv';
 import { pathToFileURL } from 'node:url';
 
@@ -30,6 +30,9 @@ import { db } from '@ipodhan/shared';
 import { logger } from '../src/utils/logger.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { and, isNull, not, inArray, eq } from 'drizzle-orm';
+
+const APPLY = process.argv.includes('--apply');
+const TOOL = 'backfill-peer-companies';
 
 interface BackfillOptions {
   limit?: number;
@@ -79,7 +82,17 @@ async function parseArgs(): Promise<BackfillOptions> {
   return options;
 }
 
-async function main() {
+export async function main() {
+  await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
+  if (!APPLY) {
+    console.log(`${TOOL}: DRY-RUN — this tool has no read-only preview, so nothing past current_database() was read and nothing was written. Re-run with --apply to write.`);
+    process.exit(0);
+  }
   console.log('='.repeat(80));
   console.log('PEER COMPANIES BACKFILL SCRIPT');
   console.log('='.repeat(80));

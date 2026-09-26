@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill Financial Data Script
  *
@@ -11,6 +10,8 @@
  *   npx tsx scripts/backfill-financial-data.ts --force  (re-scrape existing data)
  */
 
+import { openRepairDb, readExpectDbFlag, type ExecuteLike } from './lib/repair-tool.js';
+import { pathToFileURL } from 'node:url';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -26,6 +27,9 @@ import {
 import { scrapeFinancialData } from '../src/scrapers/financial-data-scraper.js';
 import { createFinancialData } from '../src/services/data-persister.js';
 import logger from '../src/utils/logger.js';
+
+const APPLY = process.argv.includes('--apply');
+const TOOL = 'backfill-financial-data';
 
 interface BackfillOptions {
   limit?: number;
@@ -115,7 +119,17 @@ async function getIPOsForBackfill(
 /**
  * Main backfill function
  */
-async function backfillFinancialData() {
+export async function main() {
+  await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
+  if (!APPLY) {
+    console.log(`${TOOL}: DRY-RUN — this tool has no read-only preview, so nothing past current_database() was read and nothing was written. Re-run with --apply to write.`);
+    process.exit(0);
+  }
   const startTime = Date.now();
   const options = parseArgs();
 
@@ -207,5 +221,5 @@ async function backfillFinancialData() {
   }
 }
 
-// Run backfill
-backfillFinancialData();
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) void main();

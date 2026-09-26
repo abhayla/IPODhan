@@ -1,8 +1,3 @@
-// repair-tool-exempt: 2026-09-16 pre-existing T-300 tool, surfaced by widening
-// TOOL_FILENAME_PATTERN to include refresh-*.ts (lane C item 14 slice 6); it
-// predates scripts/lib/repair-tool.ts and has no prod-write guard at all today
-// (no openRepairDb call) — migrating it is a separate class from this slice's
-// scope; tracked as its own follow-up rather than silently widened around.
 /**
  * P1-2 DATA repair (round-5 review, T-300): refresh the 15-row `registrars`
  * table with LIVE-VERIFIED allotment-check URLs.
@@ -34,14 +29,16 @@
  * dry-run by default; --apply writes. Run from scraper/ with tunnel env
  * exported (DATABASE_HOST=127.0.0.1 PORT=15432 ipodhan_app creds).
  */
+import { openRepairDb, readExpectDbFlag, writeLedgerFile, type ExecuteLike } from './lib/repair-tool.js';
+import { pathToFileURL } from 'node:url';
 import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { eq } from 'drizzle-orm';
-import fs from 'node:fs';
 import path from 'node:path';
 import logger from '../src/utils/logger.js';
 
 const APPLY = process.argv.includes('--apply');
+const TOOL = 'refresh-registrar-urls-t300';
 const EVIDENCE_DIR =
   process.env.T300_EVIDENCE_DIR ?? 'D:\\Abhay\\GetWorkDone\\evidence\\2026-08-23-T-300';
 
@@ -131,7 +128,13 @@ const REFRESHES: UrlRefresh[] = [
   },
 ];
 
-async function main() {
+export async function main() {
+  await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
   console.log('='.repeat(80));
   console.log(`REGISTRAR URL REFRESH (P1-2, T-300, round-5) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
@@ -156,13 +159,12 @@ async function main() {
   });
 
   if (touched.length > 0) {
-    fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
-    const backupPath = path.join(EVIDENCE_DIR, `registrars-backup-${Date.now()}.json`);
-    fs.writeFileSync(backupPath, JSON.stringify(current, null, 2));
+    const backupPath = writeLedgerFile(path.join(EVIDENCE_DIR, `registrars-backup-${Date.now()}.json`), current);
     console.log(`Backup of all ${current.length} registrar rows written: ${backupPath}`);
   }
 
   let written = 0;
+  const applied: { registrarId: string; name: string; changes: string[] }[] = [];
   for (const r of REFRESHES) {
     const row = byName.get(r.name)!;
     const changes: string[] = [];
@@ -191,8 +193,13 @@ async function main() {
       if (r.active !== undefined) update.active = r.active;
       await db.update(schema.registrars).set(update).where(eq(schema.registrars.id, row.id));
       logger.info({ registrarId: row.id, name: r.name, changes }, 'registrar URL refreshed (T-300)');
+      applied.push({ registrarId: String(row.id), name: r.name, changes });
       written++;
     }
+  }
+  if (applied.length > 0) {
+    const ledgerPath = writeLedgerFile(path.join(EVIDENCE_DIR, `registrars-applied-${Date.now()}.json`), applied);
+    console.log(`Applied ledger (${applied.length} rows) written: ${ledgerPath}`);
   }
 
   console.log(`\ntouched: ${touched.length} | written: ${written}`);
@@ -201,7 +208,8 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => {
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) main().catch((e) => {
   logger.error({ error: e instanceof Error ? e.message : String(e) }, 'registrar URL refresh crashed');
   console.error(e);
   process.exit(1);

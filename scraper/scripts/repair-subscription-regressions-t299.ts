@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Repair: subscription rows corrupted by the T-266 in-run-memory guard gap
  * (T-296 P1-1, T-299 fix). The old guard had no memory of what was already
@@ -47,12 +46,15 @@
  * DATABASE_PORT=15432 + creds), dry-run by default, --apply writes.
  */
 import { Pool } from 'pg';
+import { pathToFileURL } from 'node:url';
+import { openRepairDb, readExpectDbFlag } from './lib/repair-tool.js';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { configureUtcTimestampParsing, resolveDiscreteDbParams } from '@ipodhan/shared/db';
 
 configureUtcTimestampParsing();
 
 const APPLY = process.argv.includes('--apply');
+const TOOL = 'repair-subscription-regressions-t299';
 const LEDGER_DIR = 'D:/Abhay/GetWorkDone/evidence/2026-08-23-T-299';
 const LEDGER_PATH = `${LEDGER_DIR}/subscription-repair-ledger.json`;
 const SINCE = '2026-06-01 00:00:00'; // naive literal, compared to naive column only (no tz cast)
@@ -80,7 +82,17 @@ const pool = new Proxy({} as Pool, {
   },
 });
 
-async function main() {
+export async function main() {
+  // openRepairDb reads current_database() from the SAME raw pg pool the DELETE runs on.
+  await openRepairDb(
+    { execute: () => pool.query('SELECT current_database() AS name') },
+    {
+      apply: APPLY,
+      allowProd: process.argv.includes('--allow-prod'),
+      toolName: TOOL,
+      expectDb: readExpectDbFlag(process.argv),
+    }
+  );
   console.log('='.repeat(80));
   console.log(`SUBSCRIPTION REGRESSION REPAIR (T-299 P1-1) - ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
@@ -192,7 +204,8 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => {
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) main().catch((e) => {
   console.error('subscription regression repair crashed:', e);
   process.exit(1);
 });

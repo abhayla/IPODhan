@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Repair: field_sources provenance for the 87 price-band rows the T-276
  * backfill wrote directly (T-278 P3-7, GitHub #165 F1).
@@ -25,6 +24,8 @@
  * dry-run by default; --apply writes.
  * Run from scraper/ with tunnel env exported (DATABASE_HOST=127.0.0.1 PORT=15432 + creds).
  */
+import { openRepairDb, readExpectDbFlag, type ExecuteLike } from './lib/repair-tool.js';
+import { pathToFileURL } from 'node:url';
 import { db } from '@ipodhan/shared';
 import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
 import { FieldSourcesRepository } from '@ipodhan/shared/repositories';
@@ -34,6 +35,7 @@ import { readFileSync } from 'node:fs';
 import logger from '../src/utils/logger.js';
 
 const APPLY = process.argv.includes('--apply');
+const TOOL = 'repair-field-sources-price-band-t276';
 const csvIdx = process.argv.indexOf('--csv');
 const CSV_PATH = csvIdx >= 0 ? process.argv[csvIdx + 1] : undefined;
 
@@ -54,7 +56,13 @@ function parseCsv(text: string): Record<string, string>[] {
   });
 }
 
-async function main() {
+export async function main() {
+  await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
   console.log('='.repeat(80));
   console.log(`FIELD_SOURCES REPAIR — price band provenance to NSE (T-276 ledger) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
@@ -117,7 +125,8 @@ async function main() {
   process.exit(skipped > 0 && skipped >= written ? 1 : 0);
 }
 
-main().catch((e) => {
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) main().catch((e) => {
   logger.error({ error: e instanceof Error ? e.message : String(e) }, 'field_sources repair crashed');
   console.error(e);
   process.exit(1);

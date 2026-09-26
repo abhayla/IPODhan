@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill (Stage E): enrich financial_data from stored RHP/Prospectus PDFs via
  * the free pdfplumber sidecar (C3b, #8). NO LLM.
@@ -21,6 +20,8 @@
  * dry-run by default; --apply writes. --limit N caps PDFs; --force re-extracts.
  * Run from scraper/ (tunnel creds from web/.env.local, override:true).
  */
+import { openRepairDb, readExpectDbFlag, type ExecuteLike } from './lib/repair-tool.js';
+import { pathToFileURL } from 'node:url';
 import { config as loadEnv } from 'dotenv';
 loadEnv({ path: '../web/.env.local', override: true });
 
@@ -34,6 +35,7 @@ import type { ScrapedFinancialData } from '../src/scrapers/financial-data-scrape
 import logger from '../src/utils/logger.js';
 
 const APPLY = process.argv.includes('--apply');
+const TOOL = 'backfill-financials-pdf';
 const FORCE = process.argv.includes('--force');
 const limitIdx = process.argv.indexOf('--limit');
 const LIMIT = limitIdx >= 0 ? parseInt(process.argv[limitIdx + 1], 10) : Infinity;
@@ -122,7 +124,13 @@ function existingToScraped(row: Record<string, any> | undefined): Partial<Scrape
   };
 }
 
-async function main() {
+export async function main() {
+  await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
   const redis = getRedisClient();
   const finRepo = new FinancialDataRepository(db, redis);
 
@@ -251,7 +259,8 @@ async function main() {
   process.exit(stats.failed > stats.enriched ? 1 : 0);
 }
 
-main().catch((e) => {
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) main().catch((e) => {
   logger.error({ error: e instanceof Error ? e.message : String(e) }, 'C3b PDF backfill crashed');
   console.error(e);
   process.exit(1);
