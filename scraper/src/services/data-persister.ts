@@ -916,6 +916,30 @@ export async function writePostListingState(params: {
 }
 
 /**
+ * #983 / OD-38 (spec 2.3.3.3): persist the post-listing price job's delisting count. On the third
+ * consecutive delisting report (`delistAt` set) the row's status becomes DELISTED with the third
+ * read's instant in `delisted_at`; the price job then stops for it (it selects LISTED rows only).
+ * Only these four columns are written.
+ */
+export async function writeDelistingState(params: {
+  ipoRepository: PostListingPriceWriteRepo;
+  ipoId: string;
+  next: { strikes: number; reads: Array<{ at: string; exchange: string; detail: string }> };
+  delistAt: Date | null;
+}): Promise<string[]> {
+  const set: Record<string, unknown> = {
+    delistingStrikes: params.next.strikes,
+    delistingStrikeReads: params.next.reads.length > 0 ? params.next.reads : null,
+  };
+  if (params.delistAt) {
+    set.status = 'DELISTED';
+    set.delistedAt = params.delistAt;
+  }
+  await params.ipoRepository.update(params.ipoId, set);
+  return Object.keys(set);
+}
+
+/**
  * Upsert IPO data to database with retry logic
  * Handles merge logic for dual-listed IPOs (both NSE and BSE)
  * Enhanced Phase 11 Step 2: Fuzzy company name matching to prevent duplicates

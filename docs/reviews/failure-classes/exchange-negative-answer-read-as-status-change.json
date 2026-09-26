@@ -1,0 +1,13 @@
+{
+  "class_id": "an exchange answer read as a status change without proving what the answer means",
+  "feature": "post-listing price job delisting detection (#983, OD-38); any job that turns an external endpoint's negative answer into a row status",
+  "symptom": "a job treats a negative endpoint answer (a 404, an empty list, a missing entry in a list) as evidence about the entity, when the same answer is also produced by causes unrelated to the entity: a wrong query parameter (series), a renamed key, a truncated list, an outage page. The status change then fires on the endpoint's failure or on our own stale key. Universal shape: a negative answer is only evidence when a real case of the thing it claims to detect has been captured and shown to produce it, and the same answer has been shown NOT to be produced by the other causes. Here the real delisting answer turned out to be a positive report (secStatus 'Permanent Suspended'), not the negative one assumed.",
+  "first_seen": "2026-09-24 to 2026-09-26: three Tier A rounds on #972 found outage/wrong-series/refusal answers counted as delisting; #983 measured (F-184) that the NSE no-such-symbol 404 is byte-identical for HEROMOTORS/SM (wrong series), ZZNOSUCHSYM (never existed) and ADANITRANS/EQ (renamed, still trading), while HDFC, IDFC, CAIRN, ESSAROIL and HEXAWARE (delisted) never return it",
+  "fix_prs": "#983: classifier counts only explicit reports (NSE 'Permanent Suspended', BSE 'Delisted'); UNKNOWN for outage/suspension/not-asked/truncated BSE list (< 4000 of ~5,047); per-series run canary; three consecutive reads persisted in ipos.delisting_strikes/delisting_strike_reads",
+  "detection_check": "d_delisted_reads (nightly floor): lists every DELISTED row with its three read instants and fails a DELISTED row without them",
+  "status": "guarded",
+  "spec_ref": [
+    "§2.3.3.3",
+    "§2.1"
+  ]
+}

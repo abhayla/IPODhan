@@ -64,6 +64,7 @@ import {
   parseCheckConstraintValues,
   checkExtractionStatusDeclared,
 } from './lib/document-state-checks.mjs';
+import { checkDelistedRow, describeDelistedRow } from './lib/delisting-checks.mjs';
 import {
   summariseIssueSizeConsistency,
   checkNoUnresolvedConflictOnLiveIpo, HIGH_VALUE_FIELDS, LIVE_STATUSES,
@@ -838,6 +839,35 @@ async function checkD_extractionStatusDeclared() {
   }
   record('d_extraction_status_declared', text, offenders.length === 0 ? 'PASS' : 'FAIL',
     `${offenders.length} row(s) outside {${declared.join(', ')}}` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
+// ---- (d, delisted reads): #983 / OD-38 — every row the post-listing price job set DELISTED,
+// named with the three consecutive delisting reads that set it, so a false delisting is read the
+// next morning. A DELISTED row without exactly those three reads (and delisted_at = the third)
+// was not made by the rule and FAILS. A DB without migration 0066 is UNVERIFIABLE.
+async function checkD_delistedReads() {
+  const id = 'd_delisted_reads';
+  const text = 'every DELISTED ipos row carries the three consecutive delisting reads that set it (#983, OD-38)';
+  const cols = await q(
+    `SELECT 1 FROM information_schema.columns WHERE table_name = 'ipos' AND column_name = 'delisting_strike_reads'`
+  );
+  if (cols.length === 0) {
+    record('d_delisted_reads', text, 'UNVERIFIABLE', 'ipos.delisting_strike_reads not present on this database (migration 0066 not applied)');
+    return;
+  }
+  const rows = await q(
+    `SELECT id, slug, delisting_strikes AS strikes, delisting_strike_reads AS reads, delisted_at::text AS "delistedAt"
+       FROM ipos WHERE status::text = 'DELISTED' ORDER BY delisted_at DESC NULLS FIRST`
+  );
+  const offenders = [];
+  for (const r of rows) {
+    const v = checkDelistedRow(r);
+    if (v) { offenders.push(v); notify(id, 'P1', r.id, 'DELISTED row without its three delisting reads', v); }
+  }
+  const listed = rows.map(describeDelistedRow);
+  record('d_delisted_reads', text, offenders.length === 0 ? 'PASS' : 'FAIL',
+    `${rows.length} DELISTED row(s)` + (listed.length ? `: ${listed.slice(0, MAX_OFFENDERS).join('; ')}` : '') +
+    (offenders.length ? ` | ${offenders.length} without their reads: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
 async function checkD_segmentProvenance() {
@@ -3743,6 +3773,7 @@ async function main() {
   await runCheck(checkD, ['d_lot_band_window', 'd_corporate_action_shape']);
   await runCheck(checkD_strandedReadmit, ['d_stranded_readmit']);
   await runCheck(checkD_extractionStatusDeclared, ['d_extraction_status_declared']);
+  await runCheck(checkD_delistedReads, ['d_delisted_reads']);
   await runCheck(checkD_segmentProvenance, ['d_segment_provenance']);
   await runCheck(checkE, ['e_route_sweep', 'e_verdict_leak_sweep']);
   await runCheck(checkE_unknownSlug404, ['e_unknown_slug_404']);
