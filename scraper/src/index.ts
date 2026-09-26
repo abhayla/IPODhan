@@ -1351,8 +1351,6 @@ export function validateValidationRulesAtStartup(
  *   npm run start:bse                 (BSE only)
  *   npm run start:chittorgarh         (Chittorgarh only)
  *   npm run start:gmp                 (Investorgain GMP only)
- *   npm run start:fallback            (IPO Alerts API fallback)
- *   npm run start:api                 (alias for fallback)
  *   npm run start:all                 (NSE + BSE + Chittorgarh + API fallback + GMP sequentially)
  */
 export async function main() {
