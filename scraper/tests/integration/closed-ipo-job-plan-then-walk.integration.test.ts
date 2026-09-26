@@ -542,6 +542,7 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
       recFlipNoDate: id(9), // case (b): attempted while CLOSED, LISTED now, listing_date NULL -> picked
       recSameListed: id(10), // recorded LISTED, still LISTED, listing_date = attempt day -> NOT picked
       recSameClosed: id(11), // recorded CLOSED, still CLOSED -> NOT picked
+      recBackward: id(12), // recorded LISTED, now CLOSED (a source flip-flop): backward, NOT a stage change -> NOT picked
     };
     const all = Object.values(IDS);
     const cleanup = async () => {
@@ -569,6 +570,7 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
       await seed(IDS.recFlipNoDate, 'LISTED', null);
       await seed(IDS.recSameListed, 'LISTED', L);
       await seed(IDS.recSameClosed, 'CLOSED', sql`${L} + 5`);
+      await seed(IDS.recBackward, 'CLOSED', sql`${L} - 5`);
 
       const { loadFieldManifest } = await import('../../src/config/field-manifest-loader.js');
       const { EXTRACTOR_VERSION } = await import('../../src/services/filing-auto-persist.js');
@@ -588,6 +590,7 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
         [IDS.recFlipNoDate, 'CLOSED'],
         [IDS.recSameListed, 'LISTED'],
         [IDS.recSameClosed, 'CLOSED'],
+        [IDS.recBackward, 'LISTED'],
       ];
       for (const [ipoId, statusAtAttempt] of recorded) {
         await db.execute(sql`INSERT INTO closed_ipo_resourcing (ipo_id, first_attempt_at, last_attempt_at, attempts, outcome, cause_class,

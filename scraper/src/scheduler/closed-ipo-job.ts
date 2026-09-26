@@ -122,10 +122,12 @@ export const CLOSED_IPO_JOB_DEFAULT_CAP = 10;
  *
  * OD-81 (owner, 2026-09-23): a PARTIAL IPO whose cause is FIELDS_PENDING is
  * picked again only on an EVENT -- no timer, never nightly without one:
- *   (1) its stage changed since the last attempt (CLOSED -> LISTED, or any other
- *       difference). #932: every attempt records the status the job selected the
- *       IPO with (`closed_ipo_resourcing.status_at_attempt`, migration 0063), and
- *       the event is "current status IS DISTINCT FROM the recorded one". This
+ *   (1) its stage changed since the last attempt: the FORWARD step CLOSED -> LISTED.
+ *       #932: every attempt records the status the job selected the IPO with
+ *       (`closed_ipo_resourcing.status_at_attempt`, migration 0063), and the event
+ *       is "recorded CLOSED, LISTED now". A backward flip (LISTED -> CLOSED) is not a
+ *       stage change (OD-56, OD-127): status is newest-wins across sources, so a
+ *       source flip-flop must not re-pick an IPO every night. This
  *       replaces the #919 inference from `listing_date`, which missed a status
  *       that flipped to LISTED more than a day after listing_date (while the job
  *       attempted it in the lag) and a LISTED IPO with no listing_date.
@@ -159,7 +161,7 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
        OR (
          r.outcome = 'PARTIAL' AND r.cause_class = 'FIELDS_PENDING'
          AND (
-           (r.status_at_attempt IS NOT NULL AND upper(i.status::text) IS DISTINCT FROM upper(r.status_at_attempt))
+           (upper(r.status_at_attempt) = 'CLOSED' AND upper(i.status::text) = 'LISTED')
            OR (r.status_at_attempt IS NULL AND upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)
            OR EXISTS (
              SELECT 1 FROM document_fetch_state d
@@ -193,7 +195,7 @@ export function closedIpoCandidatesQuery(resourcedAtVersion: string, cap: number
        OR (
          r.outcome = 'PARTIAL' AND r.cause_class = 'FIELDS_PENDING'
          AND (
-           (r.status_at_attempt IS NOT NULL AND upper(i.status::text) IS DISTINCT FROM upper(r.status_at_attempt))
+           (upper(r.status_at_attempt) = 'CLOSED' AND upper(i.status::text) = 'LISTED')
            OR (r.status_at_attempt IS NULL AND upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)
            OR EXISTS (
              SELECT 1 FROM document_fetch_state d

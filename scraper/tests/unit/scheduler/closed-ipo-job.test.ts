@@ -89,10 +89,16 @@ describe('closedIpoCandidatesQuery — OD-81 FIELDS_PENDING events', () => {
     expect(q.params).toEqual(['v-now', 10]);
   });
 
-  it('event (1) stage change (#932): the current status differs from the status RECORDED at the last attempt', () => {
+  it('event (1) stage change (#932): the FORWARD step recorded CLOSED -> LISTED now', () => {
     expect(norm(renderedSelection().sql)).toContain(
-      norm(`(r.status_at_attempt IS NOT NULL AND upper(i.status::text) IS DISTINCT FROM upper(r.status_at_attempt))`)
+      norm(`(upper(r.status_at_attempt) = 'CLOSED' AND upper(i.status::text) = 'LISTED')`)
     );
+  });
+
+  it('event (1) never fires on a backward flip or "any difference" (#932 round 1: LISTED -> CLOSED is not a stage change)', () => {
+    const t = norm(renderedSelection().sql);
+    expect(t).not.toMatch(/IS DISTINCT FROM upper\(r\.status_at_attempt\)/);
+    expect(t).not.toMatch(/status_at_attempt\) = 'LISTED'/);
   });
 
   it('event (1) legacy rule (#932): a row with NO recorded status (attempted before 0063) falls back to the listing_date inference', () => {
