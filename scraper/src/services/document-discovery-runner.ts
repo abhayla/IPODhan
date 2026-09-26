@@ -190,6 +190,18 @@ export const EXCHANGE_FAILURE_OUTCOMES = [
   'no_detail_row',
 ];
 
+/**
+ * #632: outcomes that mean 'this exchange does not carry this issue' — an
+ * ABSTENTION (OD-60), neither an answer for the issue nor a failure. Such an
+ * exchange can never settle a type ('no link here' says nothing about a filing
+ * it does not list), but it also did not fail, so a chain in which the
+ * exchanges only abstained reads EXCHANGES:no_link and escalates, rather than
+ * EXCHANGES:failed (which sent every such row straight to BLOCKED_ALL).
+ * `not_carried` = NSE HTTP 200 with an empty `issueInfo` (an SME-on-BSE issue:
+ * 29 of 44 blocked SME symbols measured 2026-09-26).
+ */
+export const EXCHANGE_ABSTAIN_OUTCOMES = ['not_on_board', 'no_symbol', 'not_carried'];
+
 /** Per-request ceiling for a JSON API call. Generous vs the old 15 s cap. */
 export const FETCH_TIMEOUT_MS = 20_000;
 
@@ -1283,8 +1295,18 @@ export class DocumentDiscoveryRunner {
       if (res.status === 200) {
         try {
           const payload = JSON.parse(res.body.toString('utf8'));
+          const issueInfo = (payload?.issueInfo ?? null) as Record<string, unknown> | null;
+          // #632: NSE answers 200 for ANY symbol; an issue it does not list
+          // comes back with `issueInfo: {}` (no `dataList` at all — measured on
+          // 29 of 44 blocked SME symbols, 2026-09-26). That is 'not carried',
+          // never 'ok': recorded as ok it settled SME types NSE cannot hold. A
+          // PRESENT dataList (even empty) is NSE answering for the issue.
+          if (!issueInfo || typeof issueInfo !== 'object' || !Array.isArray(issueInfo.dataList)) {
+            attempts.push({ source: 'NSE', http: 200, ms, outcome: 'not_carried', url });
+            return null;
+          }
           attempts.push({ source: 'NSE', http: 200, ms, outcome: 'ok', url });
-          return (payload?.issueInfo ?? null) as Record<string, unknown> | null;
+          return issueInfo;
         } catch {
           attempts.push({ source: 'NSE', http: 200, ms, outcome: 'shape_error', url });
           return null;
@@ -2443,7 +2465,9 @@ export class DocumentDiscoveryRunner {
     // not carry this issue at all (F13 — the mainboard board never lists SME).
     // Only a source that was asked and could not answer counts against us.
     const anyExchangeFailed = consulted.some((a) => EXCHANGE_FAILURE_OUTCOMES.includes(a.outcome));
-    const exchangesAnswered = consulted.some((a) => a.outcome === 'ok') && !anyExchangeFailed;
+    const exchangesAnswered =
+      consulted.some((a) => a.outcome === 'ok' || EXCHANGE_ABSTAIN_OUTCOMES.includes(a.outcome)) &&
+      !anyExchangeFailed;
 
     // B-1: did every exchange APPLICABLE to this IPO actually cover it?
     //
@@ -2457,7 +2481,10 @@ export class DocumentDiscoveryRunner {
     const nseApplicable = Boolean(ipo.symbol);
     const bseOk = consulted.some((a) => a.source === 'BSE' && a.outcome === 'ok');
     const nseOk = consulted.some((a) => a.source === 'NSE' && a.outcome === 'ok');
-    const exchangeCoverageComplete = (!bseApplicable || bseOk) && (!nseApplicable || nseOk);
+    // #632: and at least one exchange must actually have answered for the issue —
+    // an SME with no NSE symbol has no applicable exchange, which is no coverage.
+    const exchangeCoverageComplete =
+      (bseOk || nseOk) && (!bseApplicable || bseOk) && (!nseApplicable || nseOk);
 
     const foundInLoop = new Set<DocumentType>();
     for (const docType of plan.due) {
