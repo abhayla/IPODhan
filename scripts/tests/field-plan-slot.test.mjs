@@ -271,5 +271,14 @@ test('(stranded) the floor check filters through isStrandedPendingRow (one defin
   const body = src.slice(start, src.indexOf('\n}\n', start));
   assert.match(body, /isStrandedPendingRow\(/);
   assert.match(body, /record\('pull_plan_pending_stranded'/);
-  assert.match(src, /await checkS_pullPlanPendingStranded\(\)/, 'the check is invoked by the floor run');
+  // #1056 (fixing #1055) wrapped every floor check in runCheck() for
+  // per-check isolation, so the invocation shape changed from a bare
+  // `await checkS_pullPlanPendingStranded()` to `await runCheck(
+  // checkS_pullPlanPendingStranded, [...])`. Match the wrapper call, not the
+  // now-removed bare-call literal.
+  assert.match(
+    src,
+    /await runCheck\(checkS_pullPlanPendingStranded\b/,
+    'the check is invoked by the floor run (via runCheck for per-check isolation, #1056)'
+  );
 });
