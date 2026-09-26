@@ -20,6 +20,7 @@ import {
   findMissingArtifacts,
   lintJournal,
   snapshotKey,
+  formatWhenIst,
   MONOTONIC_CHECK_FROM_IDX,
   FUTURE_CHECK_AFTER_IDX,
 } from '../lib/migration-journal-lint.mjs';
@@ -193,6 +194,24 @@ test('lintJournal composes all three rules', () => {
     snapshotKeys: new Set(),
   });
   assert.ok(violations.some((v) => new RegExp(`idx ${MONOTONIC_CHECK_FROM_IDX}\\b`).test(v)));
+});
+
+test('violation messages carry ISO+IST, not a bare epoch-ms number (GitHub #501, ist-timezone.md)', () => {
+  const entries = [
+    { idx: 33, when: 1000, tag: 'a' },
+    { idx: 34, when: 500, tag: 'b' },
+  ];
+  const violations = findNonMonotonicWhen(entries);
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /UTC/);
+  assert.match(violations[0], /IST/);
+});
+
+test('formatWhenIst renders both the UTC ISO string and the IST wall-clock reading', () => {
+  // 2025-10-19T00:00:00.000Z is entry idx 11's real `when` (GitHub #501).
+  const formatted = formatWhenIst(1760832000000);
+  assert.match(formatted, /2025-10-19T00:00:00\.000Z UTC/);
+  assert.match(formatted, /2025-10-19 05:30:00\.000 IST/);
 });
 
 // ---- Live gate over the real journal in this repo ----

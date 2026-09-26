@@ -15,6 +15,16 @@
 // (scripts/ci/check-migration-journal.mjs) and its self-test
 // (scripts/tests/check-migration-journal.test.mjs) so a weakened predicate
 // turns the self-test red before it can stop catching the class again.
+//
+// GitHub #501 named two pre-existing backwards-in-time pairs (idx 11->12,
+// idx 31->32) as a "monotonicity" defect distinct from #442's future-dating
+// class. Both pairs are already covered here: MONOTONIC_CHECK_FROM_IDX = 33
+// exempts exactly those two, named-and-reasoned above, and the LIVE test
+// `check-migration-journal.test.mjs` pins the count at exactly 2 so a THIRD
+// backwards pair (new or from editing the grandfathered range) fails CI. No
+// new check was needed; formatWhenIst() below only makes the two named pairs
+// (and any future violation) readable in IST without a manual epoch-ms
+// conversion (`ist-timezone.md`).
 
 /**
  * @typedef {{ idx: number, when: number, tag: string, version?: string, breakpoints?: boolean }} JournalEntry
@@ -75,6 +85,23 @@
 export const MONOTONIC_CHECK_FROM_IDX = 33;
 
 /**
+ * Format an epoch-ms `when` value as ISO (UTC) plus its IST wall-clock
+ * reading, for violation messages a human reads (`ist-timezone.md`: every
+ * timestamp shown to a reader is IST, labelled). GitHub #501 confirmed the
+ * two grandfathered pairs below MONOTONIC_CHECK_FROM_IDX by eye from a bare
+ * epoch-ms diff ("reads as 2025-10-19" / "reads as 2024-10-26") — this
+ * removes that manual conversion step for the next reader.
+ * @param {number} whenMs
+ * @returns {string}
+ */
+export function formatWhenIst(whenMs) {
+  const utcIso = new Date(whenMs).toISOString();
+  const istMs = whenMs + 5.5 * 60 * 60 * 1000;
+  const ist = new Date(istMs).toISOString().replace('T', ' ').replace('Z', '');
+  return `${whenMs} = ${utcIso} UTC = ${ist} IST`;
+}
+
+/**
  * Future-dated `when` is checked for every entry — no idx-based exemption.
  *
  * Round 3 (T-403) had grandfathered idx <= 33 here because idx 33's `when`
@@ -117,7 +144,8 @@ export function findNonMonotonicWhen(entries) {
     if (cur.idx < MONOTONIC_CHECK_FROM_IDX) continue; // pre-existing, already-deployed drift — see doc above
     if (cur.when <= prev.when) {
       violations.push(
-        `idx ${cur.idx} (${cur.tag}) has when=${cur.when}, which is <= idx ${prev.idx} (${prev.tag})'s when=${prev.when}. ` +
+        `idx ${cur.idx} (${cur.tag}) has when=${formatWhenIst(cur.when)}, which is <= ` +
+          `idx ${prev.idx} (${prev.tag})'s when=${formatWhenIst(prev.when)}. ` +
           `drizzle's migrator only applies an entry whose when is strictly greater than the last applied created_at — ` +
           `this entry would be silently skipped.`
       );
@@ -181,7 +209,7 @@ export function findFutureDatedWhen(entries, nowMs) {
     const violated = e.when > allowedMax;
     if (violated) {
       violations.push(
-        `idx ${e.idx} (${e.tag}) has when=${e.when}, more than ${CLOCK_SKEW_TOLERANCE_MS}ms in the future relative to now (${nowMs}) ` +
+        `idx ${e.idx} (${e.tag}) has when=${formatWhenIst(e.when)}, more than ${CLOCK_SKEW_TOLERANCE_MS}ms in the future relative to now (${formatWhenIst(nowMs)}) ` +
           `and beyond the minimum needed to stay monotonic past its predecessor (allowed max ${allowedMax}). ` +
           `Hand-typed future dates are exactly the class that caused a migration to be silently skipped (T-403 round 3). ` +
           `Fix the machine's clock and regenerate this migration (drizzle-kit generate) so its 'when' is stamped fresh — ` +
