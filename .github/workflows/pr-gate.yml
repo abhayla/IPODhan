@@ -1026,6 +1026,16 @@ jobs:
         # concurrent start. bash must be on PATH (present on ubuntu-latest runners).
         run: python .claude/hooks/tests/db-tunnel-script.test.py
 
+      - name: Mutation-guard-sweep mechanics self-test (#196)
+        # scripts/tests/mutation-guard-sweep.mjs is the standing weekly sweep
+        # (.github/workflows/mutation-guard-sweep.yml, deliberately NOT here
+        # because it re-runs several slow real suites per registered guard).
+        # This step proves only the sweep's OWN mechanics — mutate a tiny
+        # throwaway fixture guard, detect CAUGHT vs GAP correctly, restore
+        # byte-identical — using node:fs/crypto/child_process builtins only,
+        # so it needs no dependency install and runs in under a second.
+        run: node scripts/tests/mutation-guard-sweep.mjs --self-test
+
   # M-c: this job used to live in test.yml, which is workflow_dispatch-only —
   # so the gate that replays the journal from empty ran only when a human
   # remembered to click it. The two defects it exists to catch (0035's enum/table
