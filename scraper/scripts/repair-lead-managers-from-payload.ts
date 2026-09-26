@@ -58,9 +58,26 @@ const BSE_HEADERS = {
   Accept: 'application/json',
 };
 
-const pool = new Pool({
-  options: '-c timezone=UTC',
-  ...resolveDiscreteDbParams(),
+// Lazy — see repair-dates-and-leadmanagers-t299.ts: resolveDiscreteDbParams()
+// throws when DATABASE_NAME/DATABASE_USER are missing, and a script imported
+// for its pure helpers with no DB env set must not pay for (or fail on) a
+// Pool it never uses (#640 round 1 review).
+let _pool: Pool | undefined;
+function getPool(): Pool {
+  if (!_pool) {
+    _pool = new Pool({
+      options: '-c timezone=UTC',
+      ...resolveDiscreteDbParams(),
+    });
+  }
+  return _pool;
+}
+const pool = new Proxy({} as Pool, {
+  get(_target, prop) {
+    const real = getPool();
+    const value = (real as any)[prop];
+    return typeof value === 'function' ? value.bind(real) : value;
+  },
 });
 
 // `db` (the shared drizzle handle, same DATABASE_HOST/PORT/NAME env as `pool`

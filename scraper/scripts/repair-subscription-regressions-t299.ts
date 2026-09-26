@@ -58,9 +58,26 @@ const LEDGER_PATH = `${LEDGER_DIR}/subscription-repair-ledger.json`;
 const SINCE = '2026-06-01 00:00:00'; // naive literal, compared to naive column only (no tz cast)
 const NAMED_SELF_HEALED_SLUGS = ['tempsens-instruments-india-ltd', 'augmont-enterprises-ltd'];
 
-const pool = new Pool({
-  options: '-c timezone=UTC', // GitHub #28: session UTC so the naive `timestamp` column reads/compares as UTC, matching app writes
-  ...resolveDiscreteDbParams(),
+// Lazy — see repair-dates-and-leadmanagers-t299.ts: resolveDiscreteDbParams()
+// throws when DATABASE_NAME/DATABASE_USER are missing, and a script imported
+// for its pure helpers with no DB env set must not pay for (or fail on) a
+// Pool it never uses (#640 round 1 review).
+let _pool: Pool | undefined;
+function getPool(): Pool {
+  if (!_pool) {
+    _pool = new Pool({
+      options: '-c timezone=UTC', // GitHub #28: session UTC so the naive `timestamp` column reads/compares as UTC, matching app writes
+      ...resolveDiscreteDbParams(),
+    });
+  }
+  return _pool;
+}
+const pool = new Proxy({} as Pool, {
+  get(_target, prop) {
+    const real = getPool();
+    const value = (real as any)[prop];
+    return typeof value === 'function' ? value.bind(real) : value;
+  },
 });
 
 async function main() {

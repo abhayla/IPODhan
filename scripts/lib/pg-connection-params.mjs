@@ -13,6 +13,22 @@
 // whichever variable is missing, never defaults.
 
 /**
+ * Describe which of DATABASE_HOST/DATABASE_PASSWORD are actually set, from
+ * the real env state — never assume both are set just because this function
+ * was called (#640 round 1 review).
+ * @param {NodeJS.ProcessEnv} env
+ */
+function describeHostPasswordState(env) {
+  const present = [
+    env.DATABASE_HOST ? 'DATABASE_HOST' : null,
+    env.DATABASE_PASSWORD ? 'DATABASE_PASSWORD' : null,
+  ].filter(Boolean);
+  if (present.length === 0) return 'neither DATABASE_HOST nor DATABASE_PASSWORD is set';
+  if (present.length === 1) return `${present[0]} is set (the other is not)`;
+  return `${present.join(' and ')} are set`;
+}
+
+/**
  * @param {NodeJS.ProcessEnv} env
  * @returns {{ host: string, port: number, database: string, user: string, password: string }}
  */
@@ -22,14 +38,14 @@ export function resolveDiscreteDbParams(env = process.env) {
   const database = env.DATABASE_NAME;
   if (!database) {
     throw new Error(
-      'DATABASE_HOST and DATABASE_PASSWORD are set but DATABASE_NAME is missing — refusing to ' +
+      `${describeHostPasswordState(env)}, but DATABASE_NAME is missing — refusing to ` +
         "default to the production database name ('ipodhan'). Set DATABASE_NAME explicitly (#640)."
     );
   }
   const user = env.DATABASE_USER;
   if (!user) {
     throw new Error(
-      'DATABASE_HOST and DATABASE_PASSWORD are set but DATABASE_USER is missing — refusing to ' +
+      `${describeHostPasswordState(env)}, but DATABASE_USER is missing — refusing to ` +
         "default to the superuser ('postgres'). Set DATABASE_USER explicitly (#640)."
     );
   }

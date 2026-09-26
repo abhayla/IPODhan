@@ -26,11 +26,20 @@ for (const line of readFileSync(join(__dirname, '..', 'web', '.env.local'), 'utf
 const EXECUTE = process.argv.includes('--execute');
 installUtcTimestampParsing();
 
-const pool = createUtcPool({
-  ...resolveDiscreteDbParams(),
-  ssl: false, max: 4,
-});
-const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
+// Lazy — resolveDiscreteDbParams() throws when DATABASE_NAME/DATABASE_USER
+// are missing; deferring the Pool build to first query means an import that
+// never queries never pays for (or fails on) it (#640 round 1 review).
+let _pool;
+function getPool() {
+  if (!_pool) {
+    _pool = createUtcPool({
+      ...resolveDiscreteDbParams(),
+      ssl: false, max: 4,
+    });
+  }
+  return _pool;
+}
+const q = (sql, p) => getPool().query(sql, p).then((r) => r.rows);
 const REAL_IPO = `offering_type = 'IPO'`;
 
 // Multi-signal date plausibility, mirroring sanitizeIpoDates() in validators.ts.
@@ -56,7 +65,7 @@ const DATE_CORRUPT_WHERE = `${REAL_IPO} AND (${NULL_CLOSE} OR ${NULL_OPEN} OR ${
 
 async function main() {
   try {
-    await assertUtcSession(pool);
+    await assertUtcSession(getPool());
   } catch (err) {
     console.error(err.message);
     process.exit(2);
@@ -73,7 +82,7 @@ async function main() {
   console.log(`date-stomp rows (open<close<allotment<listing violated): ${corrupt.length}`);
   for (const r of corrupt) console.log(`   ${r.company_name} | O ${r.o} C ${r.c} A ${r.a} L ${r.l}`);
 
-  if (!EXECUTE) { console.log(`\nDRY RUN — re-run with --execute to apply.`); await pool.end(); return; }
+  if (!EXECUTE) { console.log(`\nDRY RUN — re-run with --execute to apply.`); await getPool().end(); return; }
 
   const r1 = await q(`UPDATE ipos SET issue_size = NULL, updated_at = now() WHERE ${REAL_IPO} AND issue_size = 0`);
   // Null only the implausible field(s), keep the rest of the row intact.
@@ -108,6 +117,6 @@ async function main() {
   const left = await q(`SELECT count(*)::int n FROM ipos WHERE ${DATE_CORRUPT_WHERE}`);
   const regLeft = await q(`SELECT count(*)::int n FROM ipos WHERE ${regWhere}`);
   console.log(`read-back: issue_size=0 now ${z2}; date-stomp remaining ${left[0].n}; registrar-pollution remaining ${regLeft[0].n}`);
-  await pool.end();
+  await getPool().end();
 }
 main().catch((e) => { console.error(e); process.exit(1); });

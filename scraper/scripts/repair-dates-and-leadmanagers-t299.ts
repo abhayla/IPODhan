@@ -52,9 +52,29 @@ const APPLY = process.argv.includes('--apply');
 const LEDGER_DIR = 'D:/Abhay/GetWorkDone/evidence/2026-08-23-T-299';
 const LEDGER_PATH = `${LEDGER_DIR}/dates-leadmanagers-repair-ledger.json`;
 
-const pool = new Pool({
-  options: '-c timezone=UTC', // GitHub #28: session UTC so `updated_at = now()` writes UTC-naive, matching app writes
-  ...resolveDiscreteDbParams(),
+// Lazy: resolveDiscreteDbParams() throws when DATABASE_NAME/DATABASE_USER are
+// missing, and this module is imported by
+// tests/unit/scripts/repair-dates-and-leadmanagers-t299.test.ts for its pure
+// helpers (mapSqlToPgQuery) with no DB env set at all — a pool built at
+// import time would throw on every test run (#640 round 1 review). Building
+// it on first actual use means an import that never touches the DB never
+// pays for (or fails on) a Pool.
+let _pool: Pool | undefined;
+function getPool(): Pool {
+  if (!_pool) {
+    _pool = new Pool({
+      options: '-c timezone=UTC', // GitHub #28: session UTC so `updated_at = now()` writes UTC-naive, matching app writes
+      ...resolveDiscreteDbParams(),
+    });
+  }
+  return _pool;
+}
+const pool = new Proxy({} as Pool, {
+  get(_target, prop) {
+    const real = getPool();
+    const value = (real as any)[prop];
+    return typeof value === 'function' ? value.bind(real) : value;
+  },
 });
 
 // repair-tool.ts's openRepairDb() calls dbLike.execute(sql`...`) with a

@@ -6,6 +6,7 @@ import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { eq, ilike } from 'drizzle-orm';
 import pg from 'pg';
 import * as schema from '@ipodhan/shared/db/schema';
+import { resolveDiscreteDbParams } from '../../../packages/shared/src/db/index';
 import logger from '../utils/logger.js';
 
 const { Pool } = pg;
@@ -15,11 +16,7 @@ type IPO = typeof schema.ipos.$inferSelect;
 async function verifyBSEData() {
   // Create database connection
   const pool = new Pool({
-    host: process.env.DATABASE_HOST || '103.118.16.189',
-    port: parseInt(process.env.DATABASE_PORT || '5432'),
-    database: process.env.DATABASE_NAME || 'ipodhan',
-    user: process.env.DATABASE_USER || 'postgres',
-    password: process.env.DATABASE_PASSWORD,
+    ...resolveDiscreteDbParams(),
   });
 
   const db = drizzle(pool, { schema });
