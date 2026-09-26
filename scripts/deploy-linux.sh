@@ -1070,7 +1070,54 @@ cleanup_orphan_release_dirs() {
   [ -d "$RELEASES_DIR" ] || return 0
 
   local -a protected=()
-  local link target canon entry base canon_entry newest_complete="" p is_protected pid kb mb
+  local link target canon entry base canon_entry newest_complete="" p is_protected pid kb mb any_marker=0
+
+  # Review round 1 MAJOR (#630): a release dir created before this mechanism
+  # shipped carries NO `.deploy-*` marker at all. The "no later completed
+  # release to compare against" guard below protects it only while NOTHING
+  # in this slot has a marker yet - the very NEXT deploy after this ships
+  # marks ITS OWN new release complete, and from that point on every
+  # pre-existing marker-less release reads as "unmarked and older than the
+  # newest completed release", i.e. exactly this function's own definition
+  # of orphan debris. Simulated: prod releases 0905/0906/0907-f0c66b6b
+  # (current at f0c66b6b) all pre-date this PR. Deploy D1 (this mechanism's
+  # first run) marks its own new release complete. Without this backfill,
+  # deploy D2's cleanup would delete 0906 and f0c66b6b as "killed-deploy
+  # debris" - breaking KEEP_RELEASES retention and destroying the rollback
+  # target that predates this PR; staging does the same to its own current.
+  # Fix: the FIRST time cleanup ever runs against a slot with NO marker
+  # anywhere, that is not "one orphan among markered releases" - it is
+  # "this mechanism has never run here before", and every correctly-named
+  # release dir that is not currently mid-build (no `.build.pid`) is
+  # grandfathered in as complete, once, logging each one. From the next
+  # deploy on, every dir carries a marker and normal orphan detection
+  # applies. This never runs a second time for the same slot: once ANY dir
+  # has a marker (including one this loop itself just wrote), any_marker=1
+  # and the ordinary per-dir logic below is what evaluates every dir.
+  for entry in "$RELEASES_DIR"/*/; do
+    [ -d "$entry" ] || continue
+    entry="${entry%/}"
+    base="$(basename "$entry")"
+    [[ "$base" =~ ^[0-9]{8}-[0-9]{6}-[0-9a-fA-F]{7,40}$ ]] || continue
+    if [ -f "$entry/.deploy-complete" ] || [ -f "$entry/.deploy-rolled-back" ]; then
+      any_marker=1
+      break
+    fi
+  done
+  if [ "$any_marker" -eq 0 ]; then
+    for entry in "$RELEASES_DIR"/*/; do
+      [ -d "$entry" ] || continue
+      entry="${entry%/}"
+      base="$(basename "$entry")"
+      [[ "$base" =~ ^[0-9]{8}-[0-9]{6}-[0-9a-fA-F]{7,40}$ ]] || continue
+      [ -f "$entry/.build.pid" ] && continue
+      if : > "$entry/.deploy-complete" 2>/dev/null; then
+        log "orphan-cleanup: backfilled completion marker: $entry"
+      else
+        warn "orphan-cleanup: could not write the backfill completion marker into $entry - it may be wrongly treated as orphan debris on a future deploy"
+      fi
+    done
+  fi
 
   for link in "$ROOT"/current "$ROOT"/current-*; do
     [ -L "$link" ] || [ -f "$link" ] || continue
@@ -2751,7 +2798,12 @@ if ! verify_public_health; then
     DEPLOY_ROLLED_BACK=1
     # #630: mark this release as "kept for investigation", not orphan debris —
     # cleanup_orphan_release_dirs() on the NEXT deploy must never sweep it.
-    : > "$RELEASE_DIR/.deploy-rolled-back" 2>/dev/null || true
+    # Review round 1: a silent `|| true` here would hide the one failure mode
+    # that actually matters (a full disk, permissions) at the exact moment
+    # this release needs its protection recorded loudly, not quietly dropped.
+    if ! : > "$RELEASE_DIR/.deploy-rolled-back" 2>/dev/null; then
+      warn "could not write the .deploy-rolled-back marker for $RELEASE_DIR - the NEXT deploy's orphan-cleanup may wrongly treat this investigation-kept release as debris"
+    fi
     atomic_flip_current "$PREVIOUS_RELEASE"
     basename "$PREVIOUS_RELEASE" | sed 's/^[0-9]*-[0-9]*-//' > "$ROOT/DEPLOYED_SHA-$SLOT"
     SCRAPER_RESUME_TARGET="prev"
@@ -2774,7 +2826,13 @@ trap - EXIT
 # deploy (of any slot; the marker's meaning does not depend on which slot's
 # release it is) treats a `.deploy-complete` dir as permanently protected,
 # whether it is `current` or a retention-kept older release.
-: > "$RELEASE_DIR/.deploy-complete" 2>/dev/null || true
+# Review round 1 (`:2777` in that round's line numbering): a silent `|| true`
+# here would hide a write failure at the one moment it matters most - the
+# NEXT deploy's orphan-cleanup has no other way to know this release
+# finished, and would eventually treat it as unmarked debris.
+if ! : > "$RELEASE_DIR/.deploy-complete" 2>/dev/null; then
+  warn "could not write the .deploy-complete marker for $RELEASE_DIR - a FUTURE deploy's orphan-cleanup may wrongly treat this successful release as debris"
+fi
 
 # ------------------------------------------------------------------- 12. prune
 # T-243: persist the process list so a reboot resurrects THIS release. Without

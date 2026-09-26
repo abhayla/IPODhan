@@ -1179,3 +1179,12 @@ A directory with a live `.build.pid` is never signalled — the cleanup refuses 
 assumption a build is genuinely still running (another deploy, or the orphan process itself). A stale
 `.build.pid` (dead pid) is removed along with its half-built directory. See
 `scripts/tests/deploy-linux.test.sh` case 39 for the fixture coverage.
+
+**Review round 1 fix (one-time backfill):** every release dir on the box today (0905/0906/f0c66b6b on
+prod, and staging's current releases) pre-dates this mechanism and carries no marker. Without a
+backfill, the SECOND deploy after this ships would read them as "unmarked and older than the newest
+completed release" — i.e. its own definition of orphan debris — and delete them, destroying
+KEEP_RELEASES retention and the pre-PR rollback target. Fix: the first time `cleanup_orphan_release_dirs()`
+ever runs against a slot with NO `.deploy-*` marker anywhere, every correctly-named release dir that is
+not mid-build is stamped `.deploy-complete` once (logged per dir as `backfilled completion marker: <dir>`)
+before any deletion logic runs. `current`'s target is always skipped regardless of marker (case 39f).
