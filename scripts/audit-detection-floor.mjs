@@ -39,6 +39,7 @@ import { istDayIso } from './lib/ist-day.mjs';
 import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isStrandedPendingRow, LIVE_IPO_STATUSES, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
 import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
 import { collectPullFrozen } from './lib/pull-frozen-checks.mjs';
+import { runCheckAgainstIds } from './lib/run-check.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
@@ -1693,18 +1694,40 @@ async function checkSettledFieldRewrites() {
     readFileSync(new URL('../scraper/config/writer-source-ranking.json', import.meta.url), 'utf8')
   );
   const policyWriterOn = policyWriterOnFromEnv(process.env);
-  const rows = await q(
-    `SELECT i.slug, i.segment::text AS segment, i.listing_exchanges AS "listingExchanges",
-            fs.field_name AS "fieldName", fs.source::text AS source,
-            fs.previous_source::text AS "previousSource", fs.previous_value AS "previousValue",
-            fs.updated_at::text AS "updatedAt",
-            ${settledCurrentValueSql()} AS "currentValue"
-       FROM field_sources fs JOIN ipos i ON i.id = fs.ipo_id
-      WHERE fs.table_name = 'ipos' AND fs.row_key = ''
-        AND fs.field_name = ANY($1)
-        AND fs.updated_at > (now() AT TIME ZONE 'UTC') - make_interval(hours => $2)`,
-    [snapshot.fields, SETTLED_WINDOW_HOURS]
-  );
+  const name = `no settled ipos field (${snapshot.fields.join('/')}) re-stamped with an identical value or rewritten by a source the writer ranks equal/lower in ${SETTLED_WINDOW_HOURS}h (§3.2 OD-73/OD-75)`;
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.slug, i.segment::text AS segment, i.listing_exchanges AS "listingExchanges",
+              fs.field_name AS "fieldName", fs.source::text AS source,
+              fs.previous_source::text AS "previousSource", fs.previous_value AS "previousValue",
+              fs.updated_at::text AS "updatedAt",
+              ${settledCurrentValueSql()} AS "currentValue"
+         FROM field_sources fs JOIN ipos i ON i.id = fs.ipo_id
+        WHERE fs.table_name = 'ipos' AND fs.row_key = ''
+          AND fs.field_name = ANY($1)
+          AND fs.updated_at > (now() AT TIME ZONE 'UTC') - make_interval(hours => $2)`,
+      [snapshot.fields, SETTLED_WINDOW_HOURS]
+    );
+  } catch (e) {
+    // #1113: field_sources.row_key ships in FIELD_SOURCES_ROW_KEY_MIGRATION — on a DB that
+    // lags main (prod, measured 2026-09-25) this threw 'column fs.row_key does not exist'
+    // uncaught, taking down every check after it before runCheck() isolated each call (#1055).
+    // Same not-applicable-when-not-applied handling as checkC_issueSizeSourceCapability.
+    if (e.code === '42703' || e.code === '42P01') {
+      const applied = await isMigrationApplied(FIELD_SOURCES_ROW_KEY_MIGRATION);
+      if (applied === false) {
+        record('s_settled_field_rewritten', name, 'PASS',
+          `not applicable — migration ${FIELD_SOURCES_ROW_KEY_MIGRATION} (field_sources.row_key) not applied on this database`);
+        return;
+      }
+      record('s_settled_field_rewritten', name, 'UNVERIFIABLE',
+        `field_sources.row_key read failed (migration applied=${applied}): ${e.message}`);
+      return;
+    }
+    record('s_settled_field_rewritten', name, 'UNVERIFIABLE', `field_sources read failed: ${e.message}`);
+    return;
+  }
   const findings = findSettledFieldRewrites(rows, snapshot, policyWriterOn);
   const byIpo = new Map();
   for (const f of findings) {
@@ -1716,8 +1739,7 @@ async function checkSettledFieldRewrites() {
       fs.map((f) => `${f.fieldName} ${f.kind} ${f.previousSource}->${f.source} (${f.previousValue} -> ${f.currentValue})`).join('; '));
   }
   const flagNote = `writer ranking with ENABLE_POLICY_WRITER=${policyWriterOn ? 'on' : 'off'}`;
-  record('s_settled_field_rewritten',
-    `no settled ipos field (${snapshot.fields.join('/')}) re-stamped with an identical value or rewritten by a source the writer ranks equal/lower in ${SETTLED_WINDOW_HOURS}h (§3.2 OD-73/OD-75)`,
+  record('s_settled_field_rewritten', name,
     findings.length === 0 ? 'PASS' : 'FAIL',
     (findings.length
       ? `${byIpo.size} IPO(s): ` + [...byIpo.entries()].slice(0, MAX_OFFENDERS)
@@ -3369,12 +3391,18 @@ async function checkZipMemberRows() {
 // #1055 crash site; #947 tracks the rest) — it is the floor under all of them: a check that still
 // throws for an unrelated reason no longer takes the other 62 down with it. check_roster (below)
 // separately flags any check id this run's fallback line didn't cover.
-async function runCheck(fn) {
-  try {
-    await fn();
-  } catch (e) {
-    record(fn.name || 'unknown_check', fn.name || 'unknown_check', 'UNVERIFIABLE', e && e.stack ? e.message : String(e));
-  }
+//
+// #1113: a thrown check used to be recorded under its JS FUNCTION NAME (e.g.
+// "checkSettledFieldRewrites"), not the registered check id(s) it owns (e.g.
+// "s_settled_field_rewritten") — so floor-delta.mjs, which diffs by registered
+// id, never saw the real id as NEW/GONE/SAME, and a fake unregistered id
+// appeared instead. Every call site below now names the ids the function
+// actually calls record() with (read from its record('<id>' ... ) calls, not
+// guessed); on a throw, EVERY owned id not already recorded this run is
+// logged UNVERIFIABLE with the cause. The id-attribution logic itself lives
+// in ./lib/run-check.mjs so it can be unit-tested without a DB connection.
+async function runCheck(fn, ids = []) {
+  return runCheckAgainstIds(fn, ids, { record, results });
 }
 
 async function main() {
@@ -3384,63 +3412,63 @@ async function main() {
   await ensureDocumentIdProbe(q);
   console.log(`
 === DETECTION-FLOOR AUDIT (T-335) — ${new Date().toISOString()} ===`);
-  await runCheck(checkA_B);
-  await runCheck(checkC);
-  await runCheck(checkC_issueSizeSourceCapability);
-  await runCheck(checkD);
-  await runCheck(checkD_strandedReadmit);
-  await runCheck(checkD_segmentProvenance);
-  await runCheck(checkE);
-  await runCheck(checkE_unknownSlug404);
-  await runCheck(checkF);
-  await runCheck(checkG1_repeatedWarn);
-  await runCheck(checkG3_inertDetector);
-  await runCheck(checkG);
-  await runCheck(checkH);
-  await runCheck(checkScraperWake);
-  await runCheck(checkI);
-  await runCheck(checkIdentity);
-  await runCheck(checkSourceKeyConflicts);
-  await runCheck(checkSettledFieldRewrites);
-  await runCheck(checkClosedIpoDoneWithoutWalk);
-  await runCheck(checkK);
-  await runCheck(checkCycleOverrunAudit);
-  await runCheck(checkL);
-  await runCheck(checkJ);
-  await runCheck(checkM);
-  await runCheck(checkN);
-  await runCheck(checkO);
-  await runCheck(checkP);
-  await runCheck(checkQ_rowKeyCoverage);
-  await runCheck(checkR_provenanceParentNotNull);
-  await runCheck(checkNotApplicableDocuments);
-  await runCheck(checkS_pullPolicy);
-  await runCheck(checkS_pullWritePolicy);
-  await runCheck(checkS_pullPlanRank);
-  await runCheck(checkS_pullPlanStuckReclaim);
-  await runCheck(checkS_pullPlanPendingStranded);
-  await runCheck(checkPullDocNayWithOfferDoc);
-  await runCheck(checkPullFrozen);
-  await runCheck(checkPullPlanConfigGapAtCap);
-  await runCheck(checkPullPlanGapStalled);
-  await runCheck(checkS_pullOverrides);
-  await runCheck(checkS_pullYield);
-  await runCheck(checkS_pullExhaust);
-  await runCheck(checkS_pullExcused);
-  await runCheck(checkS_pullWalk);
-  await runCheck(checkS_pullType);
-  await runCheck(checkS_pullPlanOrigin);
-  await runCheck(checkS_pullAdmin);
-  await runCheck(checkS_pullNoop);
-  await runCheck(checkS_e1Source);
-  await runCheck(checkS_pullPlan);
-  await runCheck(checkS_pullWrite);
-  await runCheck(checkS_pullNoblank);
-  await runCheck(checkS_incompletePagesUnretried);
-  await runCheck(checkS_corpusShape);
-  await runCheck(checkT_bseSubscriptionIstShift);
-  await runCheck(checkD_iposDocLineageDocumentId);
-  await runCheck(checkZipMemberRows);
+  await runCheck(checkA_B, ['a_b_live_conflict', 'a_b_min_application']);
+  await runCheck(checkC, ['c_issue_size_floor', 'c_issue_size_consistency']);
+  await runCheck(checkC_issueSizeSourceCapability, ['c_issue_size_noncapable_source']);
+  await runCheck(checkD, ['d_lot_band_window', 'd_corporate_action_shape']);
+  await runCheck(checkD_strandedReadmit, ['d_stranded_readmit']);
+  await runCheck(checkD_segmentProvenance, ['d_segment_provenance']);
+  await runCheck(checkE, ['e_route_sweep', 'e_verdict_leak_sweep']);
+  await runCheck(checkE_unknownSlug404, ['e_unknown_slug_404']);
+  await runCheck(checkF, ['f_conflict_noise_ratio']);
+  await runCheck(checkG1_repeatedWarn, ['g_repeated_warn']);
+  await runCheck(checkG3_inertDetector, ['g_inert_detector']);
+  await runCheck(checkG, ['g_freshness_per_type']);
+  await runCheck(checkH, ['h_pm2_env_tz', 'h_pm2_log_size']);
+  await runCheck(checkScraperWake, ['m_scraper_wake_crontab', 'm_scraper_wake_freshness']);
+  await runCheck(checkI, ['i_wire_or_retire']);
+  await runCheck(checkIdentity, ['i_same_ipo_two_rows', 'i_ipo_title_in_name', 'i_company_two_live_rows', 'i_name_bound_live', 'i_identity_held']);
+  await runCheck(checkSourceKeyConflicts, ['i_source_key_conflict']);
+  await runCheck(checkSettledFieldRewrites, ['s_settled_field_rewritten']);
+  await runCheck(checkClosedIpoDoneWithoutWalk, ['closed_ipo_done_without_walk']);
+  await runCheck(checkK, ['k_step_ledger_silence', 'k_step_consecutive_failures']);
+  await runCheck(checkCycleOverrunAudit, ['m_cycle_overrun']);
+  await runCheck(checkL, ['l_nse_status_crosscheck']);
+  await runCheck(checkJ, ['j_sector_populated', 'j_segment_not_null', 'j_cron_executable', 'j_dead_source_retire_by']);
+  await runCheck(checkM, ['m_document_state', 'm_blocked_all_age', 'm_found_not_extracted', 'm_not_yet_filed_age', 'm_upcoming_missing_price_band_tracking', 'm_absence_without_evidence', 'm_extract_failed', 'm_extraction_stuck', 'm_live_ipo_has_state', 'listed_rotation_stall', 'issuer_ratio_yield', 'm_brlm_count', 'm_brlm_nse_provenance', 'm_document_type_classifier']);
+  await runCheck(checkN, ['m_fix_merged_not_served']);
+  await runCheck(checkO, ['m_deploy_failure_open']);
+  await runCheck(checkP, ['p_document_provenance_share']);
+  await runCheck(checkQ_rowKeyCoverage, ['q_field_sources_row_key_coverage']);
+  await runCheck(checkR_provenanceParentNotNull, ['r_provenance_parent_not_null']);
+  await runCheck(checkNotApplicableDocuments, ['not_applicable_documents_named']);
+  await runCheck(checkS_pullPolicy, ['pull_policy']);
+  await runCheck(checkS_pullWritePolicy, ['pull_write_policy']);
+  await runCheck(checkS_pullPlanRank, ['pull_plan_rank']);
+  await runCheck(checkS_pullPlanStuckReclaim, ['pull_plan_stuck_reclaim']);
+  await runCheck(checkS_pullPlanPendingStranded, ['pull_plan_pending_stranded']);
+  await runCheck(checkPullDocNayWithOfferDoc, ['pull_doc_nay_with_offer_doc']);
+  await runCheck(checkPullFrozen, ['pull_frozen']);
+  await runCheck(checkPullPlanConfigGapAtCap, ['pull_plan_config_gap_at_cap']);
+  await runCheck(checkPullPlanGapStalled, ['pull_plan_gap_stalled']);
+  await runCheck(checkS_pullOverrides, ['pull_overrides']);
+  await runCheck(checkS_pullYield, ['pull_yield']);
+  await runCheck(checkS_pullExhaust, ['pull_exhaust']);
+  await runCheck(checkS_pullExcused, ['pull_excused']);
+  await runCheck(checkS_pullWalk, ['pull_walk']);
+  await runCheck(checkS_pullType, ['pull_type']);
+  await runCheck(checkS_pullPlanOrigin, ['pull_plan_origin']);
+  await runCheck(checkS_pullAdmin, ['pull_admin']);
+  await runCheck(checkS_pullNoop, ['pull_noop']);
+  await runCheck(checkS_e1Source, ['e1_source']);
+  await runCheck(checkS_pullPlan, ['pull_plan']);
+  await runCheck(checkS_pullWrite, ['pull_write']);
+  await runCheck(checkS_pullNoblank, ['pull_noblank']);
+  await runCheck(checkS_incompletePagesUnretried, ['m_incomplete_pages_unretried']);
+  await runCheck(checkS_corpusShape, ['corpus_shape']);
+  await runCheck(checkT_bseSubscriptionIstShift, ['t_source_local_time_shift']);
+  await runCheck(checkD_iposDocLineageDocumentId, ['d_ipos_doc_lineage_document_id']);
+  await runCheck(checkZipMemberRows, ['zip_member_rows']);
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this
