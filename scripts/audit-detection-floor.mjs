@@ -847,7 +847,7 @@ async function checkE_unknownSlug404() {
 
 // ---- (f2, #818 / F-181): rows the conflict writer must never produce ------------
 async function checkF_conflictWriterNoise() {
-  const label = 'no data_conflicts row written in 48h on a bookkeeping field or with float residue in a value (#818)';
+  const label = 'no data_conflicts row written in 48h on a bookkeeping field or with float residue in a rupee-amount value (#818)';
   if (!(await tableExists('data_conflicts'))) {
     record('f_conflict_writer_noise', label, 'UNVERIFIABLE', 'data_conflicts table not present');
     return;

@@ -13,6 +13,7 @@ import * as cheerio from 'cheerio';
 import { getSectorCode } from '../config/sector-codes.js';
 import { logger } from '../utils/logger.js';
 import { withRetry } from '../utils/retry-utils.js';
+import { scaleToRupees, RUPEES_PER_LAKH } from '../utils/rupee-amount.js';
 
 export interface ScrapedPeerCompany {
   companyName: string;
@@ -295,7 +296,7 @@ function extractSymbol(companyName: string): string | null {
  * Parse market cap text to number (in Crores)
  * Examples: "₹1,234 Cr", "₹5.6 L Cr", "1234.56"
  */
-function parseMarketCap(text: string): number | undefined {
+export function parseMarketCap(text: string): number | undefined {
   if (!text) return undefined;
 
   // Remove currency symbols and commas
@@ -304,7 +305,8 @@ function parseMarketCap(text: string): number | undefined {
   // Handle "L Cr" (Lakh Crores)
   if (cleaned.includes('L Cr')) {
     const value = parseFloat(cleaned.replace(/[^\d.]/g, ''));
-    return value * 100000; // Convert lakh crores to crores
+    // #818: lakh crore -> crore, rounded to market_cap's NUMERIC(15,2) scale (5.6 * 1e5 carries float residue).
+    return scaleToRupees(value, RUPEES_PER_LAKH);
   }
 
   // Handle "Cr" (Crores)

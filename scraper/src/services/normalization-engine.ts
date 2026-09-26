@@ -9,7 +9,7 @@ import type { NormalizationType, FieldRules } from '../config/field-priority-mat
 // repo's existing fold (item 12, prod-wired in ipo-identity.ts) — not a second
 // one, so "Pvt Ltd" means here exactly what it means at discovery time.
 import { foldCompanyIdentity } from '@ipodhan/shared/utils/company-identity-fold';
-import { scaleToRupees } from '../utils/rupee-amount.js';
+import { scaleToRupees, RUPEES_PER_CRORE } from '../utils/rupee-amount.js';
 
 /**
  * Main normalization function
@@ -85,7 +85,7 @@ export function normalizeCurrency(value: string | number, fieldName?: string): n
     if (fieldName && (isCroreScaleField(fieldName))) {
       // For large amounts, if number is small (< 10000), likely in crores
       if (value < 10000) {
-        return scaleToRupees(value, 1e7); // Convert crores to rupees
+        return scaleToRupees(value, RUPEES_PER_CRORE); // Convert crores to rupees
       }
     }
     return value;
@@ -144,7 +144,7 @@ export function normalizeCurrency(value: string | number, fieldName?: string): n
     if (fieldName && (isCroreScaleField(fieldName))) {
       // For financial fields, small numbers are likely in crores
       if (num < 10000 && num > 0) {
-        return num * 1e7;
+        return scaleToRupees(num, RUPEES_PER_CRORE);
       }
     }
 

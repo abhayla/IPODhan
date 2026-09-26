@@ -17,6 +17,7 @@ import { parseChittorgarhAmount } from '../../../src/scrapers/chittorgarh-scrape
 import { extractIssueSizeFromDetailHtml } from '../../../src/scrapers/chittorgarh-detail-fields.js';
 import { normalizeCurrency } from '../../../src/services/normalization-engine.js';
 import { toRupees } from '../../../src/services/filing-persister.js';
+import { parseMarketCap } from '../../../src/scrapers/peer-companies-scraper.js';
 
 vi.mock('../../../src/config/feature-flags.js', () => ({
   FEATURE_FLAGS: {
@@ -186,6 +187,17 @@ describe('#818 (4) crore -> rupees is exact at every parse boundary', () => {
   it('normalizeCurrency (crore string and bare crore number)', () => {
     expect(normalizeCurrency('₹42.84 Cr')).toBe(428400000);
     expect(normalizeCurrency(24.58, 'issueSize')).toBe(245800000);
+  });
+
+  it('normalizeCurrency plain-string crore branch (fix round 1: the reviewer probe values)', () => {
+    expect(normalizeCurrency('42.84', 'issueSize')).toBe(428400000);
+    expect(normalizeCurrency('24.58', 'issueSize')).toBe(245800000);
+  });
+
+  it('peer market cap in lakh crore -> crore at the NUMERIC(15,2) scale (fix round 1)', () => {
+    // 1.13 * 1e5 = 112999.99999999999 and 2.51 * 1e5 = 250999.99999999997 in IEEE-754.
+    expect(parseMarketCap('₹1.13 L Cr')).toBe(113000);
+    expect(parseMarketCap('₹2.51 L Cr')).toBe(251000);
   });
 
   it('filing amount in crore', () => {

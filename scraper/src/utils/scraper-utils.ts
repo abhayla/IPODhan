@@ -242,34 +242,6 @@ export async function retryWithExponentialBackoff<T>(
 }
 
 /**
- * Parse Indian currency format to number
- * Handles Cr (Crores), Lakh, etc.
- * @param value - Currency string (e.g., "₹100 Cr", "500 Lakh")
- * @returns Number in basic units
- */
-export function parseIndianCurrency(value: string): number {
-  if (!value) return 0;
-
-  // Remove currency symbols and trim
-  const cleaned = value.replace(/[₹,\s]/g, '').toLowerCase();
-
-  // Match number and unit
-  const match = cleaned.match(/^([\d.]+)(cr|crore|lakh|l)?$/);
-  if (!match) return 0;
-
-  const num = parseFloat(match[1]);
-  const unit = match[2];
-
-  if (unit === 'cr' || unit === 'crore') {
-    return num * 10000000; // 1 Crore = 10 Million
-  } else if (unit === 'lakh' || unit === 'l') {
-    return num * 100000; // 1 Lakh = 100 Thousand
-  }
-
-  return num;
-}
-
-/**
  * Parse date from various formats
  * Handles DD-MMM-YYYY, DD/MM/YYYY, etc.
  * @param dateStr - Date string

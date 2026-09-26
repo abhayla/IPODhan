@@ -8,7 +8,6 @@ import {
   normalizeCompanyName,
   fuzzyMatch,
   retryWithExponentialBackoff,
-  parseIndianCurrency,
   parseDate,
   sanitizeText,
   detectRenderingType,
@@ -174,45 +173,6 @@ describe('scraper-utils', () => {
       }
 
       expect(delays).toEqual([1000, 2000, 4000]); // Exponential: 1s, 2s, 4s
-    });
-  });
-
-  describe('parseIndianCurrency', () => {
-    it('should parse crores correctly', () => {
-      expect(parseIndianCurrency('₹100 Cr')).toBe(1000000000);
-      expect(parseIndianCurrency('100 Crore')).toBe(1000000000);
-      expect(parseIndianCurrency('50 cr')).toBe(500000000);
-    });
-
-    it('should parse lakhs correctly', () => {
-      expect(parseIndianCurrency('₹50 Lakh')).toBe(5000000);
-      expect(parseIndianCurrency('100 L')).toBe(10000000);
-      expect(parseIndianCurrency('25 lakh')).toBe(2500000);
-    });
-
-    it('should handle decimal values', () => {
-      expect(parseIndianCurrency('₹1.5 Cr')).toBe(15000000);
-      expect(parseIndianCurrency('2.75 Lakh')).toBe(275000);
-    });
-
-    it('should handle numbers without units', () => {
-      expect(parseIndianCurrency('1000')).toBe(1000);
-      expect(parseIndianCurrency('₹500')).toBe(500);
-    });
-
-    it('should remove commas and spaces', () => {
-      expect(parseIndianCurrency('₹1,00,000')).toBe(100000);
-      expect(parseIndianCurrency('100 Cr')).toBe(1000000000);
-    });
-
-    it('should return 0 for empty or invalid strings', () => {
-      expect(parseIndianCurrency('')).toBe(0);
-      expect(parseIndianCurrency('invalid')).toBe(0);
-    });
-
-    it('should handle mixed case', () => {
-      expect(parseIndianCurrency('₹100 CR')).toBe(1000000000);
-      expect(parseIndianCurrency('50 LAKH')).toBe(5000000);
     });
   });
 
