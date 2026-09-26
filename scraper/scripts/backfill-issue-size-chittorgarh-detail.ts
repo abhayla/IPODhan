@@ -55,6 +55,7 @@ import {
 } from '../src/services/data-consolidation-service.js';
 import logger from '../src/utils/logger.js';
 import {
+  guardCacheInvalidation,
   openRepairDb,
   PRODUCTION_DATABASE_NAME,
   readFieldSource,
@@ -773,7 +774,12 @@ async function main() {
         written++;
         console.log(`    WROTE ${c.slug} issue_size ${current ?? 'NULL'} -> ${value}`);
         console.log(`    drop cache keys: ipo:slug:${c.slug}  ipo:id:${c.id}`);
-        if (process.env.REDIS_URL) {
+        const cacheGuard = guardCacheInvalidation({
+          dbName,
+          toolName: 'backfill-issue-size',
+          keys: [`ipo:detail:${c.slug}`, `ipo:slug:${c.slug}`, `ipo:id:${c.id}`, 'ipo:list:*', 'ipo:search:*', 'ipos:history:*'],
+        });
+        if (!cacheGuard.blocked) {
           try {
             await dropIpoCacheKeys(getRedisClient(), c.slug, c.id);
           } catch (err) {

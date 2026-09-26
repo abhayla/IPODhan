@@ -53,7 +53,7 @@ import {
   extractIssueSizeRupeesFromDetailHtml,
 } from '../src/scrapers/chittorgarh-detail-fields.js';
 import { invalidateIPOCaches } from '../src/services/cache-invalidator.js';
-import { assertNoSchemaDrift, openRepairDb, PRODUCTION_DATABASE_NAME, upsertFieldSource, writeLedgerFile } from './lib/repair-tool.js';
+import { assertNoSchemaDrift, guardCacheInvalidation, openRepairDb, PRODUCTION_DATABASE_NAME, upsertFieldSource, writeLedgerFile } from './lib/repair-tool.js';
 import { decidePageRead, PageStore } from './lib/od74-page-store.js';
 import { applyZeroRow, classifyZeroAction, undoZeroRow, type ZeroOutcome, type ZeroRow } from './lib/od77-issue-size-zeros.js';
 
@@ -441,8 +441,16 @@ export function ipoRepo(tx: unknown): IPORepository {
   return new IPORepository(tx as never, (process.env.REDIS_URL ? getRedisClient() : noRedis) as never);
 }
 
+/** Set once main() resolves openRepairDb()'s dbName — #1070's guard needs it and dropCache() is called from several places below main(). */
+let currentDbName = '';
+
 async function dropCache(slug: string): Promise<void> {
-  if (!process.env.REDIS_URL) return;
+  const guard = guardCacheInvalidation({
+    dbName: currentDbName,
+    toolName: TOOL_NAME,
+    keys: [`ipo:detail:${slug}`, `ipo:slug:${slug}`, 'ipo:list:*', 'ipo:search:*', 'ipos:history:*'],
+  });
+  if (guard.blocked) return;
   try {
     await invalidateIPOCaches(getRedisClient() as never, slug);
   } catch (e) {
@@ -456,6 +464,7 @@ async function main(): Promise<number> {
   const undoFile = argValue('--undo');
   const APPLY = process.argv.includes('--apply') || undoFile !== null;
   const { dbName } = await openRepairDb(db, { apply: APPLY, allowProd: process.argv.includes('--allow-prod'), toolName: TOOL_NAME });
+  currentDbName = dbName;
   await assertNoSchemaDrift(db, { apply: APPLY, toolName: TOOL_NAME });
   const prodMode = dbName === PRODUCTION_DATABASE_NAME || process.argv.includes('--prod-mode');
   const mode = undoFile ? 'undo' : process.argv.includes('--zeros') ? 'zeros' : 'repair';

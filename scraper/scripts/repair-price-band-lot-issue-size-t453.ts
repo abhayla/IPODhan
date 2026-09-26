@@ -40,7 +40,7 @@ import { IPORepository, type IPOInsert } from '@ipodhan/shared/repositories';
 import { eq } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
-import { openRepairDb, upsertFieldSource, writeLedgerFile } from './lib/repair-tool.js';
+import { createNoopRedisClient, guardCacheInvalidation, openRepairDb, upsertFieldSource, writeLedgerFile } from './lib/repair-tool.js';
 
 type OfferTermsUpdate = Pick<Partial<IPOInsert>, 'priceRangeMin' | 'priceRangeMax' | 'lotSize' | 'issueSize'>;
 
@@ -154,7 +154,7 @@ async function main() {
   console.log(`PRICE BAND / LOT SIZE / ISSUE SIZE REPAIR (#453) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
 
-  await openRepairDb(db, {
+  const { dbName } = await openRepairDb(db, {
     apply: APPLY,
     allowProd: ALLOW_PROD,
     toolName: 'repair-price-band-lot-issue-size-t453',
@@ -248,7 +248,17 @@ async function main() {
   writeLedgerFile(backupPath, { capturedAt: new Date().toISOString(), ipo });
   console.log(`backup written: ${backupPath}`);
 
-  const redisClient = getRedisClient();
+  // #715 class sweep: replaces the old `!REDIS_URL && !REDIS_HOST` check,
+  // which missed a REDIS_URL/REDIS_HOST that RESOLVES to this box's own
+  // loopback (the exact class the review flagged). applyRepairAtomically's
+  // repo invalidates cache internally, so the guard decides which client it
+  // ever sees.
+  const redisGuard = guardCacheInvalidation({
+    dbName,
+    toolName: 'repair-price-band-lot-issue-size-t453',
+    keys: [`ipo:id:${ipo.id}`, `ipo:slug:${ipo.slug}`],
+  });
+  const redisClient = redisGuard.blocked ? (createNoopRedisClient() as unknown as ReturnType<typeof getRedisClient>) : getRedisClient();
 
   // `issueSize` is a drizzle `numeric` column (string-typed on the insert
   // shape); the other three targets are plain integer columns — assign
@@ -291,13 +301,6 @@ async function main() {
   const ledgerPath = `evidence/${new Date().toISOString().slice(0, 10)}-T453/applied-${ipo.slug}.json`;
   writeLedgerFile(ledgerPath, { appliedAt: new Date().toISOString(), ipo: after, targets });
   console.log(`ledger written: ${ledgerPath}`);
-
-  if (!process.env.REDIS_URL && !process.env.REDIS_HOST) {
-    console.log(
-      'cache: production Redis was NOT invalidated through the tunnel; run DEL ipo:id:<id> ipo:slug:<slug> ' +
-        'on the prod host, or wait for the 15-minute TTL'
-    );
-  }
 
   console.log('\nAPPLY complete.');
   console.log('='.repeat(80));

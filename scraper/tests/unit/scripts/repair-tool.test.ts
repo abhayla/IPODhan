@@ -8,21 +8,27 @@
  *   - drop `previousSource` from the upsert row           -> MUTATION 2 red
  *   - key the idempotency set by ipoId only (not field)   -> MUTATION 3 red
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   alreadyRepairedKey,
   assertNoSchemaDrift,
   buildAlreadyRepairedSet,
   buildIpoScopeCondition,
   collectFlagValues,
+  decideCacheInvalidationBlock,
   decideProdWriteRefusal,
   decideSchemaDriftRefusal,
   describeIpoScope,
   flagIsPresent,
+  formatCacheInvalidationBlockNotice,
+  guardCacheInvalidation,
   openRepairDb,
   parseIpoScope,
   probeFieldSourcesRowKeyColumn,
+  repairToolRedisSlot,
   resolveIpoScope,
+  resolveRedisTargetHost,
+  LOCAL_TEST_DATABASE_NAME,
   PRODUCTION_DATABASE_NAME,
   queryCurrentDatabase,
   readFieldSource,
@@ -114,10 +120,166 @@ describe('openRepairDb — prints the real database name and gates the write', (
     const log = vi.fn();
     const onRefuse = vi.fn();
     const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan' }]);
-    const r = await openRepairDb({ execute }, { apply: true, allowProd: true, toolName: 't', log, error: vi.fn(), onRefuse });
+    const r = await openRepairDb({ execute }, { apply: true, allowProd: true,
+      toolName: 't', log, error: vi.fn(), onRefuse });
     expect(onRefuse).not.toHaveBeenCalled();
     expect(r.isProd).toBe(true);
     expect(log).toHaveBeenCalledWith(expect.stringContaining('ALLOW-PROD'));
+  });
+});
+
+describe('resolveRedisTargetHost — reads the SAME env the shared Redis client factory reads (#1070)', () => {
+  it('prefers REDIS_URL, extracting its hostname', () => {
+    expect(resolveRedisTargetHost({ redisUrl: 'redis://10.0.0.5:6379/1', redisHost: 'ignored' })).toBe('10.0.0.5');
+  });
+
+  it('falls back to REDIS_HOST when REDIS_URL is unset', () => {
+    expect(resolveRedisTargetHost({ redisHost: '10.0.0.5' })).toBe('10.0.0.5');
+  });
+
+  it('returns null when neither is set', () => {
+    expect(resolveRedisTargetHost({})).toBeNull();
+  });
+
+  it('treats an unparseable REDIS_URL as not-configured (null), never as safe', () => {
+    expect(resolveRedisTargetHost({ redisUrl: 'not a url' })).toBeNull();
+  });
+});
+
+describe('repairToolRedisSlot — the on-box redis-cli db index (prod 0, staging 1)', () => {
+  it('maps the production database name to db 0', () => {
+    expect(repairToolRedisSlot(PRODUCTION_DATABASE_NAME)).toEqual({ slot: 'prod', dbIndex: 0 });
+  });
+
+  it('maps any staging-named database to db 1', () => {
+    expect(repairToolRedisSlot('ipodhan_staging')).toEqual({ slot: 'staging', dbIndex: 1 });
+  });
+
+  it('reports unknown/null for anything else', () => {
+    expect(repairToolRedisSlot('some_other_db')).toEqual({ slot: 'unknown', dbIndex: null });
+  });
+});
+
+describe('decideCacheInvalidationBlock — the #1070 redesign of the #715 guard', () => {
+  it('MUTATION: deleting the localhost check turns this red — staging + REDIS_URL=redis://127.0.0.1:6379 BLOCKS (still the laptop, not the slot Redis)', () => {
+    const d = decideCacheInvalidationBlock({ dbName: 'ipodhan_staging', redisHost: '127.0.0.1' });
+    expect(d.block).toBe(true);
+    expect(d.reason).toMatch(/loopback/);
+  });
+
+  it('blocks staging with REDIS_URL/REDIS_HOST unset entirely', () => {
+    const d = decideCacheInvalidationBlock({ dbName: 'ipodhan_staging', redisHost: null });
+    expect(d.block).toBe(true);
+    expect(d.reason).toMatch(/neither REDIS_URL nor REDIS_HOST/);
+  });
+
+  it('also blocks prod with a loopback/unset Redis target — a SEPARATE guard from the prod-write refusal', () => {
+    expect(decideCacheInvalidationBlock({ dbName: PRODUCTION_DATABASE_NAME, redisHost: null }).block).toBe(true);
+    expect(decideCacheInvalidationBlock({ dbName: PRODUCTION_DATABASE_NAME, redisHost: '::1' }).block).toBe(true);
+  });
+
+  it('connects (does not block) when the resolved host is a real remote target', () => {
+    expect(decideCacheInvalidationBlock({ dbName: 'ipodhan_staging', redisHost: 'redis-staging.internal' }).block).toBe(
+      false
+    );
+  });
+
+  it(`always connects for ${LOCAL_TEST_DATABASE_NAME}, even with no Redis host resolved — the one db local Redis is correct for`, () => {
+    expect(decideCacheInvalidationBlock({ dbName: LOCAL_TEST_DATABASE_NAME, redisHost: null }).block).toBe(false);
+  });
+
+  it(`is case-insensitive on the ${LOCAL_TEST_DATABASE_NAME} exemption`, () => {
+    expect(decideCacheInvalidationBlock({ dbName: 'IPODhan_Test', redisHost: null }).block).toBe(false);
+  });
+});
+
+describe('formatCacheInvalidationBlockNotice — prints the exact keys and the on-box command', () => {
+  it('lists every key and the correct db index for staging', () => {
+    const msg = formatCacheInvalidationBlockNotice({
+      dbName: 'ipodhan_staging',
+      toolName: 'tool-x',
+      keys: ['ipo:detail:foo', 'ipo:list:*'],
+      reason: 'neither REDIS_URL nor REDIS_HOST is set',
+    });
+    expect(msg).toMatch(/tool-x: BLOCKED/);
+    expect(msg).toMatch(/#1070/);
+    expect(msg).toMatch(/ipo:detail:foo/);
+    expect(msg).toMatch(/ipo:list:\*/);
+    expect(msg).toMatch(/redis-cli -n 1 DEL/);
+  });
+
+  it('uses db 0 for prod', () => {
+    const msg = formatCacheInvalidationBlockNotice({
+      dbName: PRODUCTION_DATABASE_NAME,
+      toolName: 'tool-x',
+      keys: ['ipo:detail:foo'],
+      reason: 'unset',
+    });
+    expect(msg).toMatch(/redis-cli -n 0 DEL/);
+  });
+});
+
+describe('guardCacheInvalidation — the call site every repair-tool invalidation goes through instead of getRedisClient() directly (#1070)', () => {
+  it('blocks and prints (does not connect) for staging + REDIS_URL=redis://127.0.0.1:6379', () => {
+    const log = vi.fn();
+    const r = guardCacheInvalidation({
+      dbName: 'ipodhan_staging',
+      toolName: 'tool-x',
+      keys: ['ipo:detail:foo'],
+      redisHost: resolveRedisTargetHost({ redisUrl: 'redis://127.0.0.1:6379' }),
+      log,
+    });
+    expect(r.blocked).toBe(true);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('BLOCKED cache invalidation'));
+  });
+
+  it('blocks and prints for staging with REDIS_URL/REDIS_HOST unset', () => {
+    const log = vi.fn();
+    const r = guardCacheInvalidation({ dbName: 'ipodhan_staging', toolName: 'tool-x', keys: ['ipo:detail:foo'], redisHost: null, log });
+    expect(r.blocked).toBe(true);
+    expect(log).toHaveBeenCalledTimes(1);
+  });
+
+  it(`connects (never blocks, never prints) for ${LOCAL_TEST_DATABASE_NAME}`, () => {
+    const log = vi.fn();
+    const r = guardCacheInvalidation({ dbName: LOCAL_TEST_DATABASE_NAME, toolName: 'tool-x', keys: ['ipo:detail:foo'], redisHost: null, log });
+    expect(r.blocked).toBe(false);
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it('reads process.env.REDIS_URL/REDIS_HOST by default when redisHost is not injected', () => {
+    vi.stubEnv('REDIS_URL', '');
+    vi.stubEnv('REDIS_HOST', '');
+    const log = vi.fn();
+    const r = guardCacheInvalidation({ dbName: 'ipodhan_staging', toolName: 'tool-x', keys: ['ipo:detail:foo'], log });
+    expect(r.blocked).toBe(true);
+    vi.unstubAllEnvs();
+  });
+});
+
+describe('openRepairDb — #1070: never touches Redis; a tool that never invalidates cache is never refused', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('an --apply against a remote db succeeds with NO Redis env set at all — openRepairDb no longer gates on Redis', async () => {
+    vi.stubEnv('REDIS_URL', '');
+    vi.stubEnv('REDIS_HOST', '');
+    const onRefuse = vi.fn();
+    const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan_staging' }]);
+    const r = await openRepairDb({ execute }, { apply: true, allowProd: false, toolName: 'tool-x', log: vi.fn(), error: vi.fn(), onRefuse });
+    expect(onRefuse).not.toHaveBeenCalled();
+    expect(r).toEqual({ dbName: 'ipodhan_staging', isProd: false });
+  });
+
+  it('an --apply against prod (--allow-prod given) succeeds with no Redis env set — the prod-write guard and the retired Redis guard are independent', async () => {
+    vi.stubEnv('REDIS_URL', '');
+    vi.stubEnv('REDIS_HOST', '');
+    const onRefuse = vi.fn();
+    const execute = vi.fn().mockResolvedValue([{ name: PRODUCTION_DATABASE_NAME }]);
+    const r = await openRepairDb({ execute }, { apply: true, allowProd: true, toolName: 'tool-x', log: vi.fn(), error: vi.fn(), onRefuse });
+    expect(onRefuse).not.toHaveBeenCalled();
+    expect(r.isProd).toBe(true);
   });
 });
 

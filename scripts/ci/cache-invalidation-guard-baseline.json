@@ -1,0 +1,112 @@
+{
+  "backfill-anchor-investors.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "backfill-band-provenance-t276.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "backfill-bse-historical.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "backfill-chittorgarh-documents.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "backfill-financial-data.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "backfill-financials-chittorgarh-detail.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "backfill-financials-pdf.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "backfill-listing-performance-chittorgarh.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "backfill-step-ledger.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "merge-duplicate-ipos.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "migrate-financial-data-to-ipo-financials.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "persist-filing.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "refresh-staging-row-from-prod.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "repair-decorated-slugs.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "repair-face-value-band-chittorgarh.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "repair-field-sources-price-band-t276.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "repair-plan-rows-to-manifest-version.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "repair-provenance-for-absent-values.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "repair-segment-hygiene-t287.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "repair-source-trust-batch-t292.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "reset-document.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  },
+  "retype-ratios-documents.ts": {
+    "reason": "not migrated in this PR (#715 class sweep, Tier B); calls getRedisClient/invalidateIPOCaches directly, still unguarded against a resolved-loopback Redis target; tracked for follow-up migration to guardCacheInvalidation",
+    "since": "2026-09-26",
+    "trackedIn": "#715"
+  }
+}

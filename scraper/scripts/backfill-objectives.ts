@@ -19,6 +19,7 @@ import { pathToFileURL } from 'node:url';
 import { logger } from '../src/utils/logger.js';
 import { scrapeIPOObjectives } from '../src/scrapers/objectives-scraper.js';
 import { updateIPOObjectives } from '../src/services/data-persister.js';
+import { createNoopRedisClient, guardCacheInvalidation, queryCurrentDatabase } from './lib/repair-tool.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { eq, and, isNotNull, inArray, sql, isNull } from 'drizzle-orm';
 
@@ -100,7 +101,16 @@ async function main() {
 
   try {
     // db and getRedisClient are already imported from @ipodhan/shared
-    const redis = getRedisClient();
+    // #715 class sweep: this repository's writes invalidate cache
+    // internally (no explicit invalidateIPOCaches() call to wrap here), so
+    // the guard decides which Redis client the repository ever sees.
+    const dbNameForGuard = await queryCurrentDatabase(db);
+    const guard = guardCacheInvalidation({
+      dbName: dbNameForGuard,
+      toolName: 'backfill-objectives',
+      keys: ['ipo:detail:*', 'ipo:list:*', 'ipo:search:*'],
+    });
+    const redis = guard.blocked ? (createNoopRedisClient() as unknown as ReturnType<typeof getRedisClient>) : getRedisClient();
 
     const ipoRepository = new IPORepository(db, redis);
     const documentRepository = new DocumentRepository(db);
