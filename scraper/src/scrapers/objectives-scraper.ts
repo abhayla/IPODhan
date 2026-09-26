@@ -37,9 +37,9 @@ async function getDRHPUrl(
     // Look for DRHP, RHP, or PROSPECTUS
     const drhpDoc = documents.find(
       (doc) =>
-        doc.documentType === 'DRHP' ||
-        doc.documentType === 'RHP' ||
-        doc.documentType === 'PROSPECTUS'
+        doc.type === 'DRHP' ||
+        doc.type === 'RHP' ||
+        doc.type === 'PROSPECTUS'
     );
 
     if (!drhpDoc) {
@@ -47,7 +47,7 @@ async function getDRHPUrl(
       return null;
     }
 
-    return drhpDoc.documentUrl;
+    return drhpDoc.url;
   } catch (error) {
     logger.error({ ipoId, error }, 'Failed to get DRHP URL');
     return null;

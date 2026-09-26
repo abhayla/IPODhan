@@ -605,7 +605,7 @@ async function main() {
   //    through is safe, not a silent skip of a check that would otherwise run.
   const whereClauses = [
     eq(schema.ipos.offeringType, 'IPO'),
-    inArray(schema.ipos.status, STATUSES as unknown as string[]),
+    inArray(schema.ipos.status, STATUSES),
   ];
   if (!RECHECK_ABOVE_FLOOR) whereClauses.push(isNotNull(schema.ipos.priceRangeMax));
   if (SLUGS) whereClauses.push(inArray(schema.ipos.slug, SLUGS));

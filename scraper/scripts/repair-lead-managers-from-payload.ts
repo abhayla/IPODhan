@@ -34,13 +34,27 @@ import { sanitizeLeadManagers } from '../src/utils/validators.js';
 import { parseBseParties } from '../src/services/bse-party-parser.js';
 import { recordDiscoveredLeadManagers } from '../src/services/data-persister.js';
 import { db, resolveDiscreteDbParams } from '@ipodhan/shared/db';
-import { openRepairDb, writeLedgerFile, type ExecuteLike } from './lib/repair-tool.js';
+import { getRedisClient, IPORepository } from '@ipodhan/shared';
+import {
+  createNoopRedisClient,
+  guardCacheInvalidation,
+  openRepairDb,
+  writeLedgerFile,
+  type ExecuteLike,
+} from './lib/repair-tool.js';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
 // Importing `db` above already runs `configureUtcTimestampParsing()` at
 // module load (packages/shared/src/db/index.ts). Writes route through
-// `recordDiscoveredLeadManagers` (data-persister.ts) — no IPORepository/redis
-// needed here (that door owns its own field_sources + cache concerns).
+// `recordDiscoveredLeadManagers` (data-persister.ts), which needs a
+// `Pick<IPORepository, 'invalidateIpoCache'>` (T-513/#419) to clear the
+// cache after a durable write — the comment this replaced ("no
+// IPORepository/redis needed here") predates that signature change (#434:
+// the call below was passing `row.id` positionally into the `ipoRepository`
+// param, `rawNames` into `ipoId`, `'BSE'` into `names`, leaving `source`
+// undefined — never worked). `ipoRepository` is constructed lazily, same
+// discipline as `getPool()` below, so importing this file for its pure
+// helpers never opens a Redis connection.
 
 const APPLY = process.argv.includes('--apply');
 const ALLOW_PROD = process.argv.includes('--allow-prod');
@@ -79,6 +93,29 @@ const pool = new Proxy({} as Pool, {
     return typeof value === 'function' ? value.bind(real) : value;
   },
 });
+
+// Constructed inside main(), after openRepairDb() gives us dbName and only
+// when APPLY actually calls recordDiscoveredLeadManagers — never on a
+// pure-helper import. #715 class sweep (require-cache-invalidation-guard.mjs):
+// getRedisClient() must be gated by guardCacheInvalidation, same as every
+// other repair tool below repair-tool.ts, or an unguarded call can
+// invalidate THIS box's own loopback Redis instead of the target slot's.
+let _ipoRepository: IPORepository | undefined;
+let _redisClient: ReturnType<typeof getRedisClient> | undefined;
+function getIpoRepository(dbName: string): IPORepository {
+  if (!_ipoRepository) {
+    const guard = guardCacheInvalidation({
+      dbName,
+      toolName: 'repair-lead-managers-from-payload',
+      keys: ['ipo:detail:*', 'ipo:list:*', 'ipo:search:*'],
+    });
+    _redisClient = guard.blocked
+      ? (createNoopRedisClient() as unknown as ReturnType<typeof getRedisClient>)
+      : getRedisClient();
+    _ipoRepository = new IPORepository(db, _redisClient);
+  }
+  return _ipoRepository;
+}
 
 // `db` (the shared drizzle handle, same DATABASE_HOST/PORT/NAME env as `pool`
 // below) already implements ExecuteLike's `.execute(sql\`...\`)` natively —
@@ -167,7 +204,12 @@ async function main() {
       // guard is evaluated by Postgres inside the UPDATE, so a concurrent
       // scraper cycle's write always wins over this repair — no separate
       // pre-read needed here.
-      const { written: didWrite } = await recordDiscoveredLeadManagers(row.id, rawNames, 'BSE');
+      const { written: didWrite } = await recordDiscoveredLeadManagers(
+        getIpoRepository(dbName),
+        row.id as string,
+        rawNames,
+        'BSE'
+      );
       if (didWrite) written++;
       else console.log(`    (no-op: ${row.slug}.lead_managers was filled concurrently — write-once guard held)`);
     }
@@ -183,6 +225,13 @@ async function main() {
   console.log(`Ledger written: ${LEDGER_PATH}`);
 
   await pool.end();
+  // Tier A review, round 2: close the real Redis connection (when one was
+  // opened) so the process exits instead of hanging on an open socket.
+  // `createNoopRedisClient()`'s object has no `disconnect` — this only ever
+  // fires on the real, guard-approved client.
+  if (_redisClient && typeof (_redisClient as { disconnect?: () => void }).disconnect === 'function') {
+    (_redisClient as { disconnect: () => void }).disconnect();
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

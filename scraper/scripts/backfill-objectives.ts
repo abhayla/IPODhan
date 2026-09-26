@@ -33,8 +33,8 @@ import { eq, and, isNotNull, inArray, sql, isNull } from 'drizzle-orm';
  */
 export function buildObjectivesIposConditions(args: { status?: string; ipoId?: string }) {
   const conditions = [
-    inArray(schema.documents.documentType, ['DRHP', 'RHP', 'PROSPECTUS']),
-    isNotNull(schema.documents.documentUrl),
+    inArray(schema.documents.type, ['DRHP', 'RHP', 'PROSPECTUS']),
+    isNotNull(schema.documents.url),
   ];
 
   if (args.status) {
@@ -124,7 +124,7 @@ export async function main() {
     const redis = guard.blocked ? (createNoopRedisClient() as unknown as ReturnType<typeof getRedisClient>) : getRedisClient();
 
     const ipoRepository = new IPORepository(db, redis);
-    const documentRepository = new DocumentRepository(db);
+    const documentRepository = new DocumentRepository(db, redis);
 
     // Step 1: Get IPOs with DRHP documents
     let iposQuery = db

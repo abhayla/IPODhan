@@ -41,8 +41,8 @@ const TOOL = 'backfill-anchor-investors';
  */
 export function buildAnchorInvestorsIposConditions(args: { ipoId?: string; status?: string }) {
   const conditions = [
-    inArray(schema.documents.documentType, ['DRHP', 'RHP', 'PROSPECTUS']),
-    isNotNull(schema.documents.documentUrl),
+    inArray(schema.documents.type, ['DRHP', 'RHP', 'PROSPECTUS']),
+    isNotNull(schema.documents.url),
   ];
 
   if (args.ipoId) {

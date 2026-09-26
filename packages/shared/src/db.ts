@@ -4,6 +4,15 @@ import { pool as sharedPool } from './db/index';
 // Re-export db from drizzle setup for repositories
 export { db } from './db/index';
 
+// Re-export timezone/session helpers. `@ipodhan/shared/db` resolves here
+// (this file) rather than to `./db/index.ts` under the scraper's `paths`
+// mapping (bundler moduleResolution picks the sibling `db.ts` file before
+// the `db/` directory's `index.ts`), so callers importing these names via
+// the subpath specifier need them re-exported here too (#434). Package.json
+// `exports["./db"]` still points at `./db/index.ts` for the runtime/Node
+// resolution path, so this is additive only, not a behaviour change.
+export { configureUtcTimestampParsing, resolveDiscreteDbParams } from './db/index';
+
 /**
  * Get PostgreSQL connection pool.
  *

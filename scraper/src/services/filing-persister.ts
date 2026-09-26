@@ -2761,7 +2761,17 @@ export async function persistFilingExtraction(
   if (peers.length > 0) {
     const peerRows = peers
       .filter((p) => typeof p.name === 'string' && (p.name as string).trim() !== '')
-      .map((p) => ({ ...p, companyName: (p.name as string).trim(), key: rowKeyForName((p.name as string).trim()) }))
+      // Spreading a bare `Record<string, unknown>` (no named properties) drops
+      // its index signature in the inferred type, leaving only the two added
+      // keys visible below — a TS inference quirk, not a runtime change. The
+      // cast restores the original record's fields for the final `.map`.
+      .map(
+        (p) =>
+          ({ ...p, companyName: (p.name as string).trim(), key: rowKeyForName((p.name as string).trim()) }) as Record<
+            string,
+            unknown
+          > & { companyName: string; key: string | null }
+      )
       .filter((p) => {
         if (p.key === null) {
           logger.warn(

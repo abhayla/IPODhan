@@ -7,7 +7,6 @@ import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeLeadManagers, sanitizeIpoWriteFields } from '../utils/validators.js';
 import { isDateSequenceCoherent } from './ipo-date-plausibility.js';
 import { shouldPersistSubscriptionSnapshot, recordSuppressionOutcome, type SuppressionCounterStore } from './subscription-coverage-registry.js';
-import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
 // W-14: the SAME per-source rule set, re-run once on the MERGED record at the
 // consolidation write door (see the block in upsertIPO for why).
@@ -2452,81 +2451,19 @@ export async function createIPOReviews(
     reviewUrl?: string;
   }>
 ): Promise<number> {
-  const startTime = Date.now();
-
-  if (scrapedReviews.length === 0) {
-    logger.info({ ipoId }, 'No reviews to persist (empty array)');
-    return 0;
-  }
-
-  const result = await retryWithExponentialBackoff(
-    async () => {
-      let createdCount = 0;
-      let updatedCount = 0;
-
-      // Process each review with upsert logic (create or update if exists)
-      for (const review of scrapedReviews) {
-        const year = review.publishedDate.getFullYear();
-
-        // Check if review already exists (by IPO ID + author)
-        const existing = await reviewRepository.findByIPOIdAndAuthor(ipoId, review.author);
-
-        if (existing) {
-          // Update existing review
-          await reviewRepository.update(existing.id, {
-            reviewTitle: review.reviewTitle,
-            recommendation: review.recommendation,
-            reviewContent: review.reviewContent,
-            reviewUrl: review.reviewUrl,
-            publishedDate: review.publishedDate,
-            year,
-            segment,
-            isApproved: false, // Reset approval on update
-          });
-          updatedCount++;
-          logger.debug({ ipoId, author: review.author }, 'Updated existing review');
-        } else {
-          // Create new review
-          await reviewRepository.create({
-            ipoId,
-            reviewTitle: review.reviewTitle,
-            author: review.author,
-            recommendation: review.recommendation,
-            reviewContent: review.reviewContent,
-            reviewUrl: review.reviewUrl,
-            publishedDate: review.publishedDate,
-            year,
-            segment,
-            isApproved: false, // Requires moderation
-          });
-          createdCount++;
-          logger.debug({ ipoId, author: review.author }, 'Created new review');
-        }
-      }
-
-      logger.info(
-        { ipoId, created: createdCount, updated: updatedCount, total: scrapedReviews.length },
-        'IPO reviews persisted successfully'
-      );
-
-      return createdCount + updatedCount;
-    },
-    `Create IPO reviews for IPO: ${ipoId}`
-  );
-
-  const duration = Date.now() - startTime;
-
-  logger.info(
-    {
-      ipoId,
-      reviewsProcessed: result,
-      totalReviews: scrapedReviews.length,
-      duration
-    },
-    'IPO reviews persistence complete'
-  );
-
-  return result;
+  // OD-125 (2026-09-26): "IPODhan publishes no opinion reviews of IPOs" —
+  // the review scraper/repository path is being retired (#167; #1189,
+  // parked, deletes this function entirely). #434 fixed this function's
+  // type errors (the `retryWithExponentialBackoff` call was passing a
+  // string label into its `retries: number` param, so the loop below never
+  // ran — see PR #1198). Fixing that bug would have made the upsert body
+  // start running again, reviving retired functionality from a type-only
+  // PR. Kept as a documented, type-correct no-op instead: #1189 removes it
+  // for real. Do not restore the body here.
+  void reviewRepository;
+  void segment;
+  logger.debug({ ipoId, reviewCount: scrapedReviews.length }, 'createIPOReviews: no-op (OD-125/#167, reviews retired)');
+  return 0;
 }
 
 // ==================== IPO OBJECTIVES ====================

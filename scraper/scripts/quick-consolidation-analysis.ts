@@ -14,7 +14,7 @@ async function analyzeConsolidation() {
     const fieldSourcesResult = await db.execute<{ count: string }>(
       sql`SELECT COUNT(*) as count FROM field_sources`
     );
-    const totalFieldSources = parseInt(fieldSourcesResult[0]?.count || '0');
+    const totalFieldSources = parseInt(fieldSourcesResult.rows[0]?.count || '0');
     console.log(`✅ Total Field Sources Tracked: ${totalFieldSources}`);
 
     // 2. Count by source
@@ -22,7 +22,7 @@ async function analyzeConsolidation() {
       sql`SELECT source, COUNT(*) as count FROM field_sources GROUP BY source ORDER BY count DESC`
     );
     console.log('\n📊 Field Sources by Scraper:');
-    sourceDistResult.forEach(row => {
+    sourceDistResult.rows.forEach(row => {
       console.log(`   ${row.source}: ${row.count} fields`);
     });
 
@@ -30,14 +30,16 @@ async function analyzeConsolidation() {
     const conflictsResult = await db.execute<{ count: string }>(
       sql`SELECT COUNT(*) as count FROM data_conflicts`
     );
-    const totalConflicts = parseInt(conflictsResult[0]?.count || '0');
+    const totalConflicts = parseInt(conflictsResult.rows[0]?.count || '0');
     console.log(`\n⚔️  Total Conflicts Detected: ${totalConflicts}`);
 
     let conflictsBySeverity: Array<{ severity: string; count: string }> = [];
     if (totalConflicts > 0) {
-      conflictsBySeverity = await db.execute<{ severity: string; count: string }>(
-        sql`SELECT severity, COUNT(*) as count FROM data_conflicts GROUP BY severity`
-      );
+      conflictsBySeverity = (
+        await db.execute<{ severity: string; count: string }>(
+          sql`SELECT severity, COUNT(*) as count FROM data_conflicts GROUP BY severity`
+        )
+      ).rows;
       console.log('   By Severity:');
       conflictsBySeverity.forEach(row => {
         const emoji = row.severity === 'CRITICAL' ? '🔴' : row.severity === 'WARNING' ? '🟡' : 'ℹ️';
@@ -59,9 +61,9 @@ async function analyzeConsolidation() {
           LIMIT 10`
     );
 
-    console.log(`\n⏱️  Recent Consolidations (last 10 min): ${recentResult.length}`);
-    if (recentResult.length > 0) {
-      recentResult.forEach(row => {
+    console.log(`\n⏱️  Recent Consolidations (last 10 min): ${recentResult.rows.length}`);
+    if (recentResult.rows.length > 0) {
+      recentResult.rows.forEach(row => {
         console.log(`   ${row.source}: ${row.fields_count} fields for IPO ${row.ipo_id.substring(0, 8)}...`);
       });
     }
@@ -70,7 +72,7 @@ async function analyzeConsolidation() {
     const uniqueIPOsResult = await db.execute<{ count: string }>(
       sql`SELECT COUNT(DISTINCT ipo_id) as count FROM field_sources`
     );
-    const uniqueIPOs = parseInt(uniqueIPOsResult[0]?.count || '0');
+    const uniqueIPOs = parseInt(uniqueIPOsResult.rows[0]?.count || '0');
     console.log(`\n🎯 Unique IPOs Consolidated: ${uniqueIPOs}`);
 
     // 6. Go/No-Go Recommendation

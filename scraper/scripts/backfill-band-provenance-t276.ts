@@ -262,10 +262,16 @@ async function main() {
     // field would overwrite its previous_source (the ORIGINAL wrong source, the audit trail)
     // with 'NSE', since upsertBandFieldSourceProvenance reads whatever is currently there as
     // "previous". Skipping already-repaired fields preserves that trail.
-    const fieldPlan: { fieldName: 'priceRangeMin' | 'priceRangeMax'; previousValue: number | null }[] = [
+    // The array literal must be assigned to a fully-typed const BEFORE
+    // `.filter()` — assigning straight through the `.filter()` call chain
+    // does not flow this declaration's contextual type back onto the
+    // literal, so `fieldName` widens to `string` and the whole thing fails
+    // against `upsertBandFieldSourceProvenance`'s narrower parameter (#434).
+    const fieldCandidates: { fieldName: 'priceRangeMin' | 'priceRangeMax'; previousValue: number | null }[] = [
       { fieldName: 'priceRangeMin', previousValue: row.beforeMin },
       { fieldName: 'priceRangeMax', previousValue: row.beforeMax },
-    ].filter((f) => {
+    ];
+    const fieldPlan = fieldCandidates.filter((f) => {
       if (alreadyRepaired.has(alreadyRepairedKey(dbRow.id, f.fieldName))) {
         skippedAlreadyRepaired++;
         console.log(`  SKIP ${row.slug}.${f.fieldName}: already carries this backfill's NSE provenance stamp (idempotent no-op)`);
