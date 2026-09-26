@@ -32,19 +32,9 @@ import type { FilingExtraction, PersistFilingSummary } from './filing-persister.
 /** One planned ledger row. `ipoId` is supplied by the writer, not the planner. */
 export type StepWrite = Omit<UpsertStepInput, 'ipoId'>;
 
-/**
- * Spec section 5 backoff: a FAILED step is re-due at `now + 2^attempts x 15 min`,
- * capped at 6 hours. `attempts` is the count BEFORE this failure, so a first
- * failure waits 15 minutes rather than half an hour.
- */
-export const BACKOFF_BASE_MS = 15 * 60 * 1000;
-export const BACKOFF_CAP_MS = 6 * 60 * 60 * 1000;
-
-export function backoffNextDueAt(attemptsBeforeThisFailure: number, now: Date = new Date()): Date {
-  const exponent = Math.max(0, Math.min(attemptsBeforeThisFailure, 30));
-  const delay = Math.min(BACKOFF_BASE_MS * Math.pow(2, exponent), BACKOFF_CAP_MS);
-  return new Date(now.getTime() + delay);
-}
+// #959: the `2^attempts x 15 min` backoff helper that lived here is deleted. Its
+// only callers re-read a STORED document on a timer, which the spec forbids
+// (§2 "One download, one read", OD-33, OD-21: "no timed retry").
 
 /**
  * Write a planned batch. Never throws: a ledger failure is bookkeeping about a
@@ -665,9 +655,16 @@ export function planExtractionSteps(
 }
 
 /**
- * Every E-step FAILED, with the error and a backoff, when the extractor could
- * not be run or did not return usable JSON. Silence here is exactly the failure
- * mode the ledger exists to remove.
+ * Every E-step written when the extractor could not be run or did not return
+ * usable JSON. Silence here is exactly the failure mode the ledger exists to
+ * remove.
+ *
+ * #959: no due TIME. A stored document is re-read only on a new extractor
+ * version or a new document (spec §2 "One download, one read", OD-33, OD-21),
+ * so the rows carry `nextDueAt: null` and either:
+ *  - `blockedReason` given: BLOCKED, the reason appended to the error, so the
+ *    ledger says what will revive the document (signal-ownership R6);
+ *  - otherwise: FAILED — an unfinished read the gate resumes at the next pass.
  */
 export function planExtractionFailureSteps(
   error: string,
@@ -676,19 +673,18 @@ export function planExtractionFailureSteps(
     documentId?: string | null;
     sourceSha?: string | null;
     version: string;
-    attemptsBefore?: number;
-    now?: Date;
+    blockedReason?: string;
   }
 ): StepWrite[] {
-  const nextDueAt = backoffNextDueAt(options.attemptsBefore ?? 0, options.now);
+  const message = options.blockedReason ? `${error} — ${options.blockedReason}` : error;
   return ['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10'].map((stepId) => ({
     stepId,
-    status: 'FAILED' as IpoStepStatus,
+    status: (options.blockedReason ? 'BLOCKED' : 'FAILED') as IpoStepStatus,
     source: options.docType,
     inputRef: options.sourceSha ?? options.documentId ?? null,
     version: options.version,
-    error: error.slice(0, 1000),
-    nextDueAt,
+    error: message.slice(0, 1000),
+    nextDueAt: null,
   }));
 }
 
