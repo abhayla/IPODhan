@@ -3747,8 +3747,10 @@ if [ -n "$CLEANUP_ORPHAN_FN" ] && [ -n "$RESOLVE_LINK_FN" ] && [ -n "$COLLECT_LI
   : > "$R39C/releases/20260901-090000-1111111/.deploy-complete"
   printf '%s\n' "$R39C/releases/20260901-090000-1111111" > "$R39C/current"
   echo "$$" > "$R39C/releases/20260905-101112-5555555/.build.pid"
+  set +e
   run_orphan_cleanup_39 "$R39C" /tmp/deploy-test-39c.log "$R39C/releases/20260915-000000-8888888"
   RC39C=$?
+  set -e
   if [ "$RC39C" -ne 0 ] && grep -q "^FATAL: orphan-cleanup: .*LIVE build process" /tmp/deploy-test-39c.log; then
     pass "case 39c: a live build pidfile refuses to proceed (rc=$RC39C) instead of touching anything"
   else
