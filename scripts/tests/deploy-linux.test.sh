@@ -3652,6 +3652,348 @@ else
   fail "case 38: expected every real scraper pm2 start to carry SCRAPER_WAKE_TRIGGER=deploy (labelled=$PM2_LABELLED38 total=$PM2_COUNT38)"
 fi
 
+# --- Case 39: #630 - orphan release-dir + orphan build cleanup at deploy ---
+# --- start. A deploy killed mid-build (unattended-upgrades restarting the --
+# --- Actions runner mid-job) skips the EXIT trap (SIGKILL cannot be -------
+# --- trapped), so cleanup_failed_release_dir() never runs for that --------
+# --- invocation and its half-built release dir + build process survive ----
+# --- indefinitely. Driven at function level (release names are runtime ----
+# --- timestamps) - same isolation technique as case 33d/33f. --------------
+CLEANUP_ORPHAN_FN="$(sed -n '/^cleanup_orphan_release_dirs()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -n "$CLEANUP_ORPHAN_FN" ] && [ -n "$RESOLVE_LINK_FN" ] && [ -n "$COLLECT_LIVE_FN" ]; then
+  run_orphan_cleanup_39() {
+    # $1 = fixture root, $2 = log file, $3 = this invocation's own (not-yet-created) RELEASE_DIR
+    local froot="$1" logf="$2" reldir="$3"
+    (
+      eval "$RESOLVE_LINK_FN"
+      eval "$COLLECT_LIVE_FN"
+      eval "$CLEANUP_ORPHAN_FN"
+      log() { echo "==> $*"; }
+      warn() { echo "WARN: $*" >&2; }
+      fatal() { echo "FATAL: $*" >&2; exit 1; }
+      DRY_RUN=1
+      DEPLOY_DRYRUN_PM2_RELEASE_DIRS=""
+      ROOT="$froot"
+      RELEASES_DIR="$froot/releases"
+      RELEASE_DIR="$reldir"
+      cleanup_orphan_release_dirs
+    ) >"$logf" 2>&1
+  }
+
+  # --- 39a: a half-built orphan (no marker, no pidfile) OLDER than the -----
+  # --- newest completed release is removed; `current`'s target and a -------
+  # --- retention-kept older COMPLETED release both survive. ----------------
+  R39A="$(mktemp -d)"
+  mkdir -p "$R39A/releases/20260901-090000-1111111" \
+           "$R39A/releases/20260905-101112-3333333" \
+           "$R39A/releases/20260910-120000-2222222"
+  : > "$R39A/releases/20260901-090000-1111111/.deploy-complete"
+  : > "$R39A/releases/20260910-120000-2222222/.deploy-complete"
+  printf '%s\n' "$R39A/releases/20260910-120000-2222222" > "$R39A/current"
+  run_orphan_cleanup_39 "$R39A" /tmp/deploy-test-39a.log "$R39A/releases/20260915-000000-8888888"
+  if [ -d "$R39A/releases/20260905-101112-3333333" ]; then
+    fail "case 39a: the half-built orphan (no marker, no pidfile, older than a later completed release) was NOT removed"
+  else
+    pass "case 39a: the half-built orphan with no marker and no pidfile, older than a later completed release, was removed"
+  fi
+  if [ -d "$R39A/releases/20260901-090000-1111111" ] && [ -d "$R39A/releases/20260910-120000-2222222" ]; then
+    pass "case 39a: both completed releases (current, and a retention-kept older one) survive"
+  else
+    fail "case 39a: a completed release was removed"
+  fi
+  if grep -q "orphan-cleanup: removed orphan release dir" /tmp/deploy-test-39a.log; then
+    pass "case 39a: the removal is logged with its path"
+  else
+    fail "case 39a: no 'orphan-cleanup: removed orphan release dir' log line"
+  fi
+  rm -rf "$R39A"
+
+  # --- 39b: a stale pidfile (recorded pid is dead) -> pidfile removed, the --
+  # --- half-built dir removed. -----------------------------------------------
+  R39B="$(mktemp -d)"
+  mkdir -p "$R39B/releases/20260901-090000-1111111" "$R39B/releases/20260905-101112-4444444"
+  : > "$R39B/releases/20260901-090000-1111111/.deploy-complete"
+  printf '%s\n' "$R39B/releases/20260901-090000-1111111" > "$R39B/current"
+  ( : ) & DEADPID39=$!
+  wait "$DEADPID39" 2>/dev/null || true
+  echo "$DEADPID39" > "$R39B/releases/20260905-101112-4444444/.build.pid"
+  run_orphan_cleanup_39 "$R39B" /tmp/deploy-test-39b.log "$R39B/releases/20260915-000000-8888888"
+  if [ -d "$R39B/releases/20260905-101112-4444444" ]; then
+    fail "case 39b: a dir with a stale (dead-pid) build pidfile was NOT removed"
+  else
+    pass "case 39b: a dir with a stale build pidfile (dead pid) was removed"
+  fi
+  if grep -q "orphan-cleanup: removing stale build pidfile" /tmp/deploy-test-39b.log; then
+    pass "case 39b: the stale-pidfile removal is logged"
+  else
+    fail "case 39b: no 'orphan-cleanup: removing stale build pidfile' log line"
+  fi
+  rm -rf "$R39B"
+
+  # --- 39c: a LIVE pid (a build genuinely still running - another deploy, --
+  # --- or the orphan build process #630 describes) is never killed by ------
+  # --- this cleanup; it refuses to proceed instead (owner rule 5: a -------
+  # --- process-stop must never match on a bare/reused pid without proof). --
+  # No spawned/backgrounded process here on purpose: after ~38 prior cases'
+  # worth of background jobs (probes, fake pm2 apps, mutex holders) in one
+  # long-running shell, a freshly `sleep N &`-ed job proved flaky under this
+  # harness's job control (hung intermittently past this point on a slow/
+  # loaded box). This test's own PID ($$) is unconditionally alive for the
+  # whole duration of this script and needs no spawn/kill/wait at all - it
+  # exercises the exact same `kill -0 "$pid"` liveness branch with zero
+  # background-job risk.
+  R39C="$(mktemp -d)"
+  mkdir -p "$R39C/releases/20260901-090000-1111111" "$R39C/releases/20260905-101112-5555555"
+  : > "$R39C/releases/20260901-090000-1111111/.deploy-complete"
+  printf '%s\n' "$R39C/releases/20260901-090000-1111111" > "$R39C/current"
+  echo "$$" > "$R39C/releases/20260905-101112-5555555/.build.pid"
+  set +e
+  run_orphan_cleanup_39 "$R39C" /tmp/deploy-test-39c.log "$R39C/releases/20260915-000000-8888888"
+  RC39C=$?
+  set -e
+  if [ "$RC39C" -ne 0 ] && grep -q "^FATAL: orphan-cleanup: .*LIVE build process" /tmp/deploy-test-39c.log; then
+    pass "case 39c: a live build pidfile refuses to proceed (rc=$RC39C) instead of touching anything"
+  else
+    fail "case 39c: expected a non-zero rc and a FATAL '...LIVE build process' line (rc=$RC39C)"
+    cat /tmp/deploy-test-39c.log
+  fi
+  if [ -d "$R39C/releases/20260905-101112-5555555" ]; then
+    pass "case 39c: the directory with a live build was left untouched"
+  else
+    fail "case 39c: the directory with a live build was removed"
+  fi
+  # Static, mutation-proof check that the cleanup structurally CANNOT signal
+  # a build process (owner rule 5): the only `kill` call in the function
+  # body is the `kill -0` liveness probe, never a `kill -TERM`/`kill -9`/
+  # bare `kill <pid>` that would actually stop it.
+  KILL_CALLS_39C="$(printf '%s\n' "$CLEANUP_ORPHAN_FN" | grep -oE 'kill[[:space:]]+-?[A-Za-z0-9]*' || true)"
+  KILL_NOT_DASH0_39C="$(printf '%s\n' "$KILL_CALLS_39C" | grep -v -- '-0' | grep -c . || true)"
+  if [ -n "$KILL_CALLS_39C" ] && [ "${KILL_NOT_DASH0_39C:-0}" -eq 0 ]; then
+    pass "case 39c: cleanup_orphan_release_dirs() contains only 'kill -0' liveness checks, never a signal that stops the process"
+  else
+    fail "case 39c: expected only 'kill -0' in cleanup_orphan_release_dirs() - found: $KILL_CALLS_39C"
+  fi
+  rm -rf "$R39C"
+
+  # --- 39d: a marker-less dir is left alone when NO completed release ------
+  # --- exists yet to compare it against - the grandfather case for the -----
+  # --- very first deploy after this mechanism ships (nothing has a marker --
+  # --- yet; must not wipe pre-existing, legitimately retained history). ----
+  R39D="$(mktemp -d)"
+  mkdir -p "$R39D/releases/20260905-101112-6666666"
+  run_orphan_cleanup_39 "$R39D" /tmp/deploy-test-39d.log "$R39D/releases/20260915-000000-8888888"
+  if [ -d "$R39D/releases/20260905-101112-6666666" ]; then
+    pass "case 39d: a marker-less dir is left alone when no completed release exists yet to compare against"
+  else
+    fail "case 39d: a marker-less dir was removed with nothing completed to compare against - would wipe pre-existing history on the first run after shipping"
+  fi
+  rm -rf "$R39D"
+
+  # --- 39e: a release kept for investigation after an auto-rollback --------
+  # --- (.deploy-rolled-back) is never swept as orphan debris. --------------
+  R39E="$(mktemp -d)"
+  mkdir -p "$R39E/releases/20260901-090000-1111111" "$R39E/releases/20260905-101112-7777777"
+  : > "$R39E/releases/20260901-090000-1111111/.deploy-complete"
+  : > "$R39E/releases/20260905-101112-7777777/.deploy-rolled-back"
+  printf '%s\n' "$R39E/releases/20260901-090000-1111111" > "$R39E/current"
+  run_orphan_cleanup_39 "$R39E" /tmp/deploy-test-39e.log "$R39E/releases/20260915-000000-8888888"
+  if [ -d "$R39E/releases/20260905-101112-7777777" ]; then
+    pass "case 39e: a release kept for investigation after an auto-rollback is never swept as orphan debris"
+  else
+    fail "case 39e: a rolled-back (kept-for-investigation) release dir was removed"
+  fi
+  if grep -q "orphan-cleanup: keeping .* kept for investigation" /tmp/deploy-test-39e.log; then
+    pass "case 39e: the keep is logged with its reason"
+  else
+    fail "case 39e: no 'orphan-cleanup: keeping ... kept for investigation' log line"
+  fi
+  rm -rf "$R39E"
+
+  # --- 39f: review round 1 MAJOR - a pre-PR (marker-less) release layout ---
+  # --- must survive TWO consecutive deploys, not just one. The grandfather -
+  # --- guard (39d) protects a marker-less dir only while NO completed ------
+  # --- release exists yet in that slot; the very next deploy after this ----
+  # --- ships marks ITS OWN release complete, and from then on every ---------
+  # --- pre-existing marker-less release reads as "unmarked and older than --
+  # --- the newest completed release" - exactly this function's own --------
+  # --- definition of orphan debris. Simulated (owner-reported, matches the -
+  # --- real prod layout): releases 0905/0906/0907-f0c66b6b, current at -----
+  # --- f0c66b6b, none marked. D1 (this mechanism's first run against this --
+  # --- slot) must backfill every one of them; D2 must then find every dir --
+  # --- already marked and delete nothing that retention would keep. -------
+  # Mutation harness: every mutant runs against a TEMP COPY of the extracted
+  # function TEXT (never the real file on disk) - $DEPLOY_SCRIPT is hashed
+  # before and after and must be byte-identical throughout.
+  ORIG_SHA256_39F="$(sha256sum "$DEPLOY_SCRIPT" | cut -d' ' -f1)"
+
+  run_39f_scenario() {
+    # $1 = the cleanup_orphan_release_dirs() function TEXT to use (real or a
+    # mutant), $2 = log file. Prints the fixture root on stdout.
+    local cleanup_fn_text="$1" logf="$2" froot
+    froot="$(mktemp -d)"
+    mkdir -p "$froot/releases/20260905-153542-d38b72aa" \
+             "$froot/releases/20260906-152438-f9b67d0a" \
+             "$froot/releases/20260907-170024-f0c66b6b"
+    printf '%s\n' "$froot/releases/20260907-170024-f0c66b6b" > "$froot/current"
+    # --- deploy D1: this mechanism's first-ever run against this slot -----
+    (
+      eval "$RESOLVE_LINK_FN"
+      eval "$COLLECT_LIVE_FN"
+      eval "$cleanup_fn_text"
+      log() { echo "==> $*"; }
+      warn() { echo "WARN: $*" >&2; }
+      fatal() { echo "FATAL: $*" >&2; exit 1; }
+      DRY_RUN=1
+      DEPLOY_DRYRUN_PM2_RELEASE_DIRS=""
+      ROOT="$froot"
+      RELEASES_DIR="$froot/releases"
+      RELEASE_DIR="$froot/releases/20261001-160000-aaaaaaaa"
+      cleanup_orphan_release_dirs
+    ) >"$logf" 2>&1
+    # D1 succeeds: new release, marker, flip, prune to the newest 3 (drop the
+    # oldest) - the same bookkeeping step 12 performs on a real success.
+    mkdir -p "$froot/releases/20261001-160000-aaaaaaaa"
+    : > "$froot/releases/20261001-160000-aaaaaaaa/.deploy-complete"
+    printf '%s\n' "$froot/releases/20261001-160000-aaaaaaaa" > "$froot/current"
+    rm -rf "$froot/releases/20260905-153542-d38b72aa"
+    # --- deploy D2: the deploy this bug actually breaks -------------------
+    (
+      eval "$RESOLVE_LINK_FN"
+      eval "$COLLECT_LIVE_FN"
+      eval "$cleanup_fn_text"
+      log() { echo "==> $*"; }
+      warn() { echo "WARN: $*" >&2; }
+      fatal() { echo "FATAL: $*" >&2; exit 1; }
+      DRY_RUN=1
+      DEPLOY_DRYRUN_PM2_RELEASE_DIRS=""
+      ROOT="$froot"
+      RELEASES_DIR="$froot/releases"
+      RELEASE_DIR="$froot/releases/20261002-160000-bbbbbbbb"
+      cleanup_orphan_release_dirs
+    ) >>"$logf" 2>&1
+    printf '%s' "$froot"
+  }
+
+  # --- the real function: every retention-kept release survives both -------
+  F39F_REAL="$(run_39f_scenario "$CLEANUP_ORPHAN_FN" /tmp/deploy-test-39f-real.log)"
+  if [ -d "$F39F_REAL/releases/20260906-152438-f9b67d0a" ] && [ -d "$F39F_REAL/releases/20260907-170024-f0c66b6b" ] && [ -d "$F39F_REAL/releases/20261001-160000-aaaaaaaa" ]; then
+    pass "case 39f: two consecutive deploys over a marker-less pre-PR layout keep every retention-kept release (0906, f0c66b6b, and D1's own release all survive D2)"
+  else
+    fail "case 39f: a retention-kept pre-PR release was deleted across two consecutive deploys"
+    ls -1 "$F39F_REAL/releases" 2>/dev/null
+  fi
+  if grep -q "orphan-cleanup: backfilled completion marker" /tmp/deploy-test-39f-real.log; then
+    pass "case 39f: the backfill is logged for each grandfathered release"
+  else
+    fail "case 39f: no 'orphan-cleanup: backfilled completion marker' log line from D1"
+  fi
+  rm -rf "$F39F_REAL"
+
+  # --- mutant 1: the backfill body can never run (guard forced false) ------
+  # An inverted-condition mutant (`-eq 1`) is NOT enough here: by D2's start
+  # a real marker already exists (D1's own release, stamped by this
+  # harness's "D1 succeeds" step regardless of what happened inside D1's
+  # cleanup call), so `any_marker` legitimately becomes 1 on D2 too - an
+  # inverted condition would then fire the backfill anyway, for the wrong
+  # reason, and hide the mutation. Forcing the guard to `false` disables the
+  # backfill body unconditionally, in every deploy, which is what "the
+  # backfill never ran" actually means.
+  MUT_NO_BACKFILL_39F="$(printf '%s\n' "$CLEANUP_ORPHAN_FN" | sed 's/if \[ "\$any_marker" -eq 0 \]; then/if false; then/')"
+  if [ "$MUT_NO_BACKFILL_39F" = "$CLEANUP_ORPHAN_FN" ]; then
+    fail "case 39f mutation setup: the any_marker sed did not change anything - mutation setup is broken"
+  else
+    F39F_NB="$(run_39f_scenario "$MUT_NO_BACKFILL_39F" /tmp/deploy-test-39f-nobackfill.log)"
+    if [ -d "$F39F_NB/releases/20260906-152438-f9b67d0a" ] && [ -d "$F39F_NB/releases/20260907-170024-f0c66b6b" ]; then
+      fail "case 39f mutation-proof: disabling the backfill should have let D2 delete the marker-less pre-PR releases, but the mutant still kept them - 39f does not actually depend on the backfill"
+    else
+      pass "case 39f mutation-proof: disabling the backfill correctly makes 39f fail (mutant deleted a pre-PR release on D2)"
+    fi
+    rm -rf "$F39F_NB"
+  fi
+
+  # --- mutant 2: the `current`-target skip never matches -------------------
+  # This needs its OWN minimal scenario, not the two-deploy 39f dance: in
+  # 39f's own scenario, by the time `current` moves onto a NEW release
+  # (D1's aaaaaaaa), that release is ALSO independently protected by its own
+  # `.deploy-complete` marker (this harness stamps it, mirroring the real
+  # success path) - so removing the current-skip alone can never turn 39f
+  # red there, no matter how correct the assertion is, because a SECOND,
+  # independent guard already covers that exact directory. The current-skip
+  # is only load-bearing on its OWN when `current` points at a dir that has
+  # NO marker while at least one OTHER dir in the slot does (any_marker=1,
+  # so backfill does not run) - e.g. `current` was hand-repointed without
+  # ever going through this mechanism. One cleanup call is enough to show it.
+  # `current` must point at the OLDER, unmarked dir here, and the marked
+  # dir must be NEWER - otherwise guard 6's own "not older than the newest
+  # completed release" grandfather clause protects it on its own, and the
+  # current-skip mutation can never be shown to matter (verified: got this
+  # backwards on the first attempt and the mutant stayed green).
+  R39F_CUR="$(mktemp -d)"
+  mkdir -p "$R39F_CUR/releases/20260901-090000-1111111" "$R39F_CUR/releases/20260905-101112-2222222"
+  : > "$R39F_CUR/releases/20260905-101112-2222222/.deploy-complete"
+  printf '%s\n' "$R39F_CUR/releases/20260901-090000-1111111" > "$R39F_CUR/current"
+  run_cleanup_39f_once() {
+    local cleanup_fn_text="$1" froot="$2" logf="$3" collect_fn_text="${4:-$COLLECT_LIVE_FN}"
+    (
+      eval "$RESOLVE_LINK_FN"
+      eval "$collect_fn_text"
+      eval "$cleanup_fn_text"
+      log() { echo "==> $*"; }
+      warn() { echo "WARN: $*" >&2; }
+      fatal() { echo "FATAL: $*" >&2; exit 1; }
+      DRY_RUN=1
+      DEPLOY_DRYRUN_PM2_RELEASE_DIRS=""
+      ROOT="$froot"
+      RELEASES_DIR="$froot/releases"
+      RELEASE_DIR="$froot/releases/20260915-000000-8888888"
+      cleanup_orphan_release_dirs
+    ) >"$logf" 2>&1
+  }
+  run_cleanup_39f_once "$CLEANUP_ORPHAN_FN" "$R39F_CUR" /tmp/deploy-test-39f-curreal.log
+  if [ -d "$R39F_CUR/releases/20260901-090000-1111111" ]; then
+    pass "case 39f: 'current' pointing at an OLDER unmarked release survives even though a NEWER release is already marked complete (guard 6 alone would call it orphan debris)"
+  else
+    fail "case 39f: 'current' (unmarked, older than the newest completed release) was deleted - the current-target skip is not holding"
+  fi
+
+  # collect_live_release_dirs() ALSO resolves current/current-* on its own
+  # (pre-existing behaviour, unrelated to this PR - it treats them as "live"
+  # dirs for the pm2-cwd cross-check) - so cleanup_orphan_release_dirs()'s
+  # OWN current-link loop is redundant belt-and-braces protection today.
+  # Mutating only cleanup_orphan_release_dirs()'s copy leaves the OTHER
+  # copy still protecting `current`, and the mutant stays green for the
+  # wrong reason (verified: this is exactly what happened on the first
+  # attempt). To isolate THIS function's own guard, both copies of the
+  # identical loop are mutated together.
+  MUT_NO_CURRENT_39F="$(printf '%s\n' "$CLEANUP_ORPHAN_FN" | sed 's/for link in "\$ROOT"\/current "\$ROOT"\/current-\*; do/for link in "\$ROOT"\/__none_39f__; do/')"
+  MUT_NO_CURRENT_COLLECT_39F="$(printf '%s\n' "$COLLECT_LIVE_FN" | sed 's/for link in "\$ROOT"\/current "\$ROOT"\/current-\*; do/for link in "\$ROOT"\/__none_39f__; do/')"
+  if [ "$MUT_NO_CURRENT_39F" = "$CLEANUP_ORPHAN_FN" ] || [ "$MUT_NO_CURRENT_COLLECT_39F" = "$COLLECT_LIVE_FN" ]; then
+    fail "case 39f mutation setup: the current-link sed did not change anything - mutation setup is broken"
+  else
+    R39F_CUR_MUT="$(mktemp -d)"
+    mkdir -p "$R39F_CUR_MUT/releases/20260901-090000-1111111" "$R39F_CUR_MUT/releases/20260905-101112-2222222"
+    : > "$R39F_CUR_MUT/releases/20260905-101112-2222222/.deploy-complete"
+    printf '%s\n' "$R39F_CUR_MUT/releases/20260901-090000-1111111" > "$R39F_CUR_MUT/current"
+    run_cleanup_39f_once "$MUT_NO_CURRENT_39F" "$R39F_CUR_MUT" /tmp/deploy-test-39f-curmut.log "$MUT_NO_CURRENT_COLLECT_39F"
+    if [ -d "$R39F_CUR_MUT/releases/20260901-090000-1111111" ]; then
+      fail "case 39f mutation-proof: disabling the 'current' skip should have let cleanup delete current's own (unmarked, older) target, but the mutant still kept it - the current-target skip is not actually exercised"
+    else
+      pass "case 39f mutation-proof: disabling the 'current' skip correctly makes cleanup delete current's own target - the skip is load-bearing"
+    fi
+    rm -rf "$R39F_CUR_MUT"
+  fi
+  rm -rf "$R39F_CUR"
+
+  NEW_SHA256_39F="$(sha256sum "$DEPLOY_SCRIPT" | cut -d' ' -f1)"
+  if [ "$NEW_SHA256_39F" = "$ORIG_SHA256_39F" ]; then
+    pass "case 39f: $DEPLOY_SCRIPT is byte-identical after the mutation checks (sha256 $NEW_SHA256_39F) - every mutant ran only against an in-memory copy of the extracted function text"
+  else
+    fail "case 39f: $DEPLOY_SCRIPT changed on disk during the mutation checks (was $ORIG_SHA256_39F, now $NEW_SHA256_39F)"
+  fi
+else
+  fail "case 39: could not extract cleanup_orphan_release_dirs()/resolve_link_target()/collect_live_release_dirs() from $DEPLOY_SCRIPT - renamed?"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1
