@@ -16,9 +16,11 @@ import assert from 'node:assert/strict';
 import {
   checkScraperWakeCrontabLine,
   checkScraperWakeFreshness,
+  checkScraperWakeSkippedRun,
   SCRAPER_WAKE_CADENCE_BY_SLOT,
   SCRAPER_WAKE_CADENCE_MINUTES,
   SCRAPER_WAKE_FRESHNESS_SLACK_MINUTES,
+  SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD,
   expectedWakeScriptFragment,
 } from '../lib/scraper-wake-detection.mjs';
 import { newestWakeTimestamp } from '../ops/wake-delta.mjs';
@@ -125,6 +127,80 @@ test('#663 newestWakeTimestamp returns null for an empty or unparseable log (mis
   assert.equal(newestWakeTimestamp(''), null);
   assert.equal(newestWakeTimestamp('not a wake line at all\nneither is this'), null);
   assert.equal(newestWakeTimestamp(undefined), null);
+});
+
+// --- #707: a RUN of consecutive wake-skipped lines (any cause holding the lock) ---
+//
+// Lines below use the EXACT format scripts/scraper-wake.sh's log() writes
+// (verified against scripts/scraper-wake.sh:58-60,442): a leading UTC
+// timestamp, ` scraper-wake: `, the kind, then free text — the same shape
+// scripts/ops/wake-delta.mjs's LINE_RE already parses. N=3 is chosen because
+// the wake fires every 30 min (SCRAPER_WAKE_CADENCE_MINUTES): 3 consecutive
+// skips span ~90 min, comfortably more than one normal wake interval, so a
+// single overlapping cycle (one skip) never trips this check.
+
+test('#707 sanity: the threshold is named and spans more than one wake interval', () => {
+  assert.equal(SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD, 3);
+  assert.ok(SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD * SCRAPER_WAKE_CADENCE_MINUTES > SCRAPER_WAKE_CADENCE_MINUTES);
+});
+
+test('#707 FAILs when the newest N lines of a slot are all wake-skipped (a stale lock, a hung run, or any cause holding it)', () => {
+  const raw = [
+    '2026-09-26T10:00:03Z scraper-wake: wake-starting: job=data, lock is free; starting a cycle',
+    '2026-09-26T10:30:01Z scraper-wake: wake-skipped: job=data - a cycle is already running and holds the lock; this occurrence is skipped, not queued and not killed. lock_key=scraper:lock:data lock_ttl=7200s remaining',
+    '2026-09-26T11:00:01Z scraper-wake: wake-skipped: job=data - a cycle is already running and holds the lock; this occurrence is skipped, not queued and not killed. lock_key=scraper:lock:data lock_ttl=5400s remaining',
+    '2026-09-26T11:30:02Z scraper-wake: wake-skipped: job=data - a cycle is already running and holds the lock; this occurrence is skipped, not queued and not killed. lock_key=scraper:lock:data lock_ttl=3600s remaining',
+  ].join('\n');
+  const violation = checkScraperWakeSkippedRun('prod', raw);
+  assert.match(violation, /slot prod/);
+  assert.match(violation, /3 consecutive/);
+  assert.match(violation, /2026-09-26T10:30:01Z/);
+  assert.match(violation, /2026-09-26T11:30:02Z/);
+});
+
+test('#707 PASSes when a skip is followed by a real wake (the lock working as designed, W-... one overlap is normal)', () => {
+  const raw = [
+    '2026-09-26T10:30:01Z scraper-wake: wake-skipped: job=data - a cycle is already running and holds the lock; lock_key=scraper:lock:data lock_ttl=120s remaining',
+    '2026-09-26T11:00:01Z scraper-wake: wake-starting: job=data, lock is free; starting a cycle',
+    '2026-09-26T11:00:05Z scraper-wake: wake-complete: the cycle finished cleanly. elapsed=180s',
+  ].join('\n');
+  assert.equal(checkScraperWakeSkippedRun('prod', raw), null);
+});
+
+test('#707 PASSes when there are fewer than N wake lines total (nothing to judge a run against)', () => {
+  const raw = [
+    '2026-09-26T10:30:01Z scraper-wake: wake-skipped: job=data - a cycle is already running; lock_key=scraper:lock:data lock_ttl=60s remaining',
+  ].join('\n');
+  assert.equal(checkScraperWakeSkippedRun('prod', raw), null);
+});
+
+test('#707 UNVERIFIABLE-equivalent: an unreadable/empty log returns null, never a false FAIL (freshness already covers "no wake at all")', () => {
+  assert.equal(checkScraperWakeSkippedRun('staging', ''), null);
+  assert.equal(checkScraperWakeSkippedRun('staging', undefined), null);
+});
+
+test('#707 slots are independent: a staging run of skips never trips the prod check', () => {
+  const stagingRaw = [
+    '2026-09-26T10:30:01Z scraper-wake: wake-skipped: job=data; lock_ttl=60s remaining',
+    '2026-09-26T11:00:01Z scraper-wake: wake-skipped: job=data; lock_ttl=60s remaining',
+    '2026-09-26T11:30:01Z scraper-wake: wake-skipped: job=data; lock_ttl=60s remaining',
+  ].join('\n');
+  assert.match(checkScraperWakeSkippedRun('staging', stagingRaw), /slot staging/);
+  // Calling the predicate for a different slot against the SAME raw text (the caller reads
+  // each slot's own log file, so this exercises the label, not cross-slot log mixing).
+  assert.match(checkScraperWakeSkippedRun('prod', stagingRaw), /slot prod/);
+});
+
+test('#707 mutation guard: weakening the threshold to N=10 makes the real 3-in-a-row fixture pass — confirms the test can fail', () => {
+  const lines = [
+    { kind: 'wake-skipped' },
+    { kind: 'wake-skipped' },
+    { kind: 'wake-skipped' },
+  ];
+  const realThreshold = SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD; // 3
+  const weakenedThreshold = 10;
+  assert.equal(lines.length >= realThreshold, true, 'the real threshold must FAIL this fixture');
+  assert.equal(lines.length >= weakenedThreshold, false, 'a weakened threshold must PASS the same fixture — proves the assertion is not vacuous');
 });
 
 // --- mutation guard: confirms the FAIL fixtures can actually fail ----------

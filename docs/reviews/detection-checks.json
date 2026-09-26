@@ -661,6 +661,15 @@
       "unverifiableWhen": "the wake log files are not reachable on this host (expected on a dev machine or CI; runs for real on the box via cron)"
     },
     {
+      "id": "m_scraper_wake_skipped_run",
+      "findingClass": "for either slot, the newest 3 consecutive lines in /var/log/ipodhan-scraper-wake-<slot>.log are all wake-skipped -- a stale cycle lock (TTL 2h05m) after a SIGKILL, OOM or reboot makes every wake print wake-skipped for up to 2h05m with nothing raising an alert; a run of skips spanning more than one 30min wake interval is the same visible shape whatever the underlying cause (a stale lock, a hung run, or anything else holding it)",
+      "issue": 707,
+      "sourceTask": "T-503",
+      "failThreshold": "for either slot, the newest 3 wake log lines are all wake-skipped",
+      "severity": "P1",
+      "unverifiableWhen": "the wake log files are not reachable on this host (expected on a dev machine or CI; runs for real on the box via cron)"
+    },
+    {
       "id": "m_upcoming_missing_price_band_tracking",
       "findingClass": "a live IPO walks to its open date with a blank price band because no PRICE_BAND_AD fetch-state row was ever created — an ABSENCE no existing check can see, since every other document check reads FROM document_fetch_state and can only grade rows that exist",
       "round7Findings": [],

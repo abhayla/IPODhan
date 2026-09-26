@@ -95,8 +95,9 @@ import { collectRowKeyCoverage, ROW_KEYED_CHILD_TABLES } from './lib/row-key-cov
 import { extractShape, compareShape, partitionFixtures, loadHtmlFixtureEntries, summarizeCorpusShape, toPosixPath } from './lib/corpus-shape-checks.mjs';
 import { findFixtureFiles } from './lib/fixture-provenance-checks.mjs';
 import {
-  checkScraperWakeCrontabLine, checkScraperWakeFreshness,
+  checkScraperWakeCrontabLine, checkScraperWakeFreshness, checkScraperWakeSkippedRun,
   SCRAPER_WAKE_CADENCE_BY_SLOT, SCRAPER_WAKE_CADENCE_MINUTES, SCRAPER_WAKE_FRESHNESS_SLACK_MINUTES,
+  SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD,
 } from './lib/scraper-wake-detection.mjs';
 import { newestWakeTimestamp } from './ops/wake-delta.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
@@ -1492,6 +1493,23 @@ function scraperWakeFreshnessViolation(slot) {
   }
 }
 
+// #707: after a SIGKILL, OOM or reboot the scraper cycle lock (TTL 2h05m)
+// makes every wake print "wake-skipped" until the lock clears — up to 2h05m
+// with nothing raising an alert. Same "runs for real on the box, UNVERIFIABLE
+// elsewhere" convention as scraperWakeFreshnessViolation above: it reads the
+// SAME log file the same way, just judging the tail instead of the newest
+// line's age, so a stale lock (or a hung run, or any other cause holding it)
+// is caught even while the freshness check still sees a "recent enough" line.
+function scraperWakeSkippedRunViolation(slot) {
+  const logPath = SCRAPER_WAKE_LOG_PATH_BY_SLOT[slot];
+  try {
+    if (!existsSync(logPath)) return `slot ${slot}: log file not present at ${logPath}`;
+    return checkScraperWakeSkippedRun(slot, readFileSync(logPath, 'utf8'));
+  } catch (e) {
+    return `slot ${slot}: could not read the wake log: ${e.message}`;
+  }
+}
+
 // #663: two invariants over BOTH slots, one record() id each (same
 // "population, offenders" shape as m_brlm_count/checkH) — reported by slot
 // per signal-ownership.md R1, never as a bare pass/fail. `crontab -l` and the
@@ -1507,6 +1525,7 @@ async function checkScraperWake() {
     const detail = 'crontab not reachable on this host (expected on a dev machine/CI; runs for real on the box via cron)';
     record('m_scraper_wake_crontab', `crontab -l carries exactly one "# ipodhan-scraper-wake:<slot>" line per slot, naming the current symlink and that slot's cadence`, 'UNVERIFIABLE', detail);
     record('m_scraper_wake_freshness', `newest wake log line per slot is within ${SCRAPER_WAKE_FRESHNESS_CEILING_MINUTES} minutes`, 'UNVERIFIABLE', detail);
+    record('m_scraper_wake_skipped_run', `newest ${SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD} wake log lines per slot are not all wake-skipped`, 'UNVERIFIABLE', detail);
     return;
   }
 
@@ -1523,6 +1542,13 @@ async function checkScraperWake() {
   for (const v of freshOffenders) notify('m_scraper_wake_freshness', 'P1', v, 'a scraper slot has not been woken recently', v);
   record('m_scraper_wake_freshness', `newest wake log line per slot is within ${SCRAPER_WAKE_FRESHNESS_CEILING_MINUTES} minutes (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
     freshOffenders.length === 0 ? 'PASS' : 'FAIL', freshOffenders.join('; ') || 'fresh for every slot');
+
+  const skippedRunOffenders = SCRAPER_WAKE_SLOTS
+    .map((slot) => scraperWakeSkippedRunViolation(slot))
+    .filter(Boolean);
+  for (const v of skippedRunOffenders) notify('m_scraper_wake_skipped_run', 'P1', v, 'a scraper slot has printed a run of consecutive wake-skipped lines', v);
+  record('m_scraper_wake_skipped_run', `newest ${SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD} wake log lines per slot are not all wake-skipped (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
+    skippedRunOffenders.length === 0 ? 'PASS' : 'FAIL', skippedRunOffenders.join('; ') || 'no stuck-lock run on any slot');
 }
 
 // ---- (i): wire-or-retire — scheduler tree reachable from the prod entrypoint --
@@ -3647,7 +3673,7 @@ async function main() {
   await runCheck(checkG3_inertDetector, ['g_inert_detector']);
   await runCheck(checkG, ['g_freshness_per_type']);
   await runCheck(checkH, ['h_pm2_env_tz', 'h_pm2_log_size']);
-  await runCheck(checkScraperWake, ['m_scraper_wake_crontab', 'm_scraper_wake_freshness']);
+  await runCheck(checkScraperWake, ['m_scraper_wake_crontab', 'm_scraper_wake_freshness', 'm_scraper_wake_skipped_run']);
   await runCheck(checkI, ['i_wire_or_retire']);
   await runCheck(checkIdentity, ['i_same_ipo_two_rows', 'i_ipo_title_in_name', 'i_company_two_live_rows', 'i_name_bound_live', 'i_identity_held']);
   await runCheck(checkSourceKeyConflicts, ['i_source_key_conflict']);
