@@ -5,6 +5,9 @@
 // (chittorgarh-scraper tests); this file's job is the ADAPTER (resolution +
 // capability gating + serveable-field mapping), not re-proving the parser.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import nodePath from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const scrapeChittorgarhIPOsMock = vi.fn();
 
@@ -159,5 +162,66 @@ describe('CHITTORGARH fetcher — transient failures', () => {
     );
     const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
     expect(answer).toEqual({ outcome: 'CHECK_FAILED', reason: 'ETIMEDOUT' });
+  });
+});
+
+// #394 / #343 / #73: spec field 13 ipos.sector, rank 2 CHITTORGARH (after DOC). The list row's
+// verifierUrl is the IPO's CG detail page; the page is a REAL capture (fixtures/chittorgarh).
+describe('CHITTORGARH fetcher — ipos.sector from the detail page', () => {
+  const PARAMOUNT_HTML = readFileSync(
+    nodePath.resolve(nodePath.dirname(fileURLToPath(import.meta.url)), '..', '..', 'fixtures', 'chittorgarh', 'chittorgarh-paramount-syntex-detail.html'),
+    'utf8'
+  );
+  const URL_ = 'https://www.chittorgarh.com/ipo/paramount-syntex-ipo/2743/';
+
+  function sectorFetcher(fetchDetailHtml: (url: string) => Promise<string>, state = new ChittorgarhFieldFetcherState()) {
+    return buildChittorgarhFetcher(
+      {
+        ipoRepository: makeIpoRepository('Paramount Syntex Ltd.'),
+        isChittorgarhCapable: () => true,
+        fetchDetailHtml,
+      },
+      state
+    );
+  }
+
+  it('answers SUPPLIED "Other Textile Products" from the real page at the row verifierUrl', async () => {
+    scrapeChittorgarhIPOsMock.mockResolvedValue({ ipos: [{ companyName: 'Paramount Syntex Ltd.', verifierUrl: URL_ }], errors: [] });
+    const fetchDetailHtml = vi.fn().mockResolvedValue(PARAMOUNT_HTML);
+    const answer = await sectorFetcher(fetchDetailHtml)(IPO_ID, 'ipos', '', 'sector');
+    expect(answer).toEqual({ outcome: 'SUPPLIED', value: 'Other Textile Products' });
+    expect(fetchDetailHtml).toHaveBeenCalledTimes(1);
+    expect(fetchDetailHtml).toHaveBeenCalledWith(URL_);
+  });
+
+  it('fetches one detail page once per cycle, however many fields ask', async () => {
+    scrapeChittorgarhIPOsMock.mockResolvedValue({ ipos: [{ companyName: 'Paramount Syntex Ltd.', verifierUrl: URL_ }], errors: [] });
+    const fetchDetailHtml = vi.fn().mockResolvedValue(PARAMOUNT_HTML);
+    const fetcher = sectorFetcher(fetchDetailHtml);
+    await fetcher(IPO_ID, 'ipos', '', 'sector');
+    await fetcher(IPO_ID, 'ipos', '', 'sector');
+    expect(fetchDetailHtml).toHaveBeenCalledTimes(1);
+  });
+
+  it('a page with no mappable industry answers NOT_AVAILABLE_YET — never SUPPLIED ""', async () => {
+    scrapeChittorgarhIPOsMock.mockResolvedValue({ ipos: [{ companyName: 'Paramount Syntex Ltd.', verifierUrl: URL_ }], errors: [] });
+    const fetchDetailHtml = vi.fn().mockResolvedValue(PARAMOUNT_HTML.replace(/ipo_industry/g, 'ipo_xindustry'));
+    const answer = await sectorFetcher(fetchDetailHtml)(IPO_ID, 'ipos', '', 'sector');
+    expect(answer).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
+  });
+
+  it('a list row with no verifierUrl answers NOT_AVAILABLE_YET without fetching', async () => {
+    scrapeChittorgarhIPOsMock.mockResolvedValue({ ipos: [{ companyName: 'Paramount Syntex Ltd.' }], errors: [] });
+    const fetchDetailHtml = vi.fn();
+    const answer = await sectorFetcher(fetchDetailHtml)(IPO_ID, 'ipos', '', 'sector');
+    expect(answer).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
+    expect(fetchDetailHtml).not.toHaveBeenCalled();
+  });
+
+  it('a detail fetch failure answers CHECK_FAILED transient with its cause', async () => {
+    scrapeChittorgarhIPOsMock.mockResolvedValue({ ipos: [{ companyName: 'Paramount Syntex Ltd.', verifierUrl: URL_ }], errors: [] });
+    const fetchDetailHtml = vi.fn().mockRejectedValue(new Error(`Chittorgarh detail ${URL_} HTTP 503`));
+    const answer = await sectorFetcher(fetchDetailHtml)(IPO_ID, 'ipos', '', 'sector');
+    expect(answer).toEqual({ outcome: 'CHECK_FAILED', reason: `Chittorgarh detail ${URL_} HTTP 503`, transient: true });
   });
 });
