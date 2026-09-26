@@ -7,7 +7,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * on arrival, and again only when (a) a newer document type arrives for that IPO, (b) the extractor
  * version changes ... There is no interval, no backoff timer"), §5.3 rule 5 ("Never on a backoff timer"),
  * OD-21 ("no timed retry"), §2.2 (a walk killed mid-extraction must be resumable — an OOM kill, a deploy
- * or a crash), OD-55 (a document is read to completion).
+ * or a crash), OD-55 (a document is read to completion), OD-32 (the file is kept a week "so that we re-read it if
+ * previous reads were not successful" — round 1: unfinished reads are re-read each pass inside that window).
  *
  * Measured on ipodhan_staging 2026-09-26: 6 documents sat on the timer — 2 anchor deterministic refusals
  * (retry 1) and 4 `HARD_FAILURE:4..8` "extractor exited 1" (retries 4-8). The fixtures below are those shapes.
@@ -47,6 +48,9 @@ import {
   parseFailedVersion,
   parseFailedSha,
   parseUnfinishedCount,
+  parseUnfinishedSince,
+  markHardFailure,
+  UNFINISHED_READS_EXHAUSTED_REASON,
   type AutoPersistDeps,
   type CandidateDocument,
 } from '../../../src/services/filing-auto-persist.js';
@@ -57,6 +61,8 @@ const V = EXTRACTOR_VERSION;
 const NEXT = 'extract_filing.py@next-build';
 const now = new Date('2026-09-26T10:00:00Z');
 const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60_000);
+const eightDaysAgo = new Date(now.getTime() - 8 * 24 * 60 * 60_000);
+const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60_000);
 const WAIT_REASON = /waits for a new extractor version or a new document \(#959/;
 
 const SHA = 'b'.repeat(64);
@@ -144,19 +150,16 @@ describe('#959 gate — the version is the trigger, elapsed time is not', () => 
     expect(documentExtractionBlocked(row, NEXT, now)).toEqual({ blocked: false });
   });
 
-  it('staging shape: HARD_FAILURE:4..8 "extractor exited 1" stays blocked with a named reason until the version changes', () => {
+  it('staging shape: legacy HARD_FAILURE:4..8 (memory abort, no window start) — re-read inside the OD-32 window from its last write, parked after it', () => {
     for (const n of [4, 8]) {
-      const row = {
-        extractionStatus: 'FAILED',
-        extractionError: `${HARD_FAILURE_MARKER}:${n}:extractor: extractor exited 1`,
-        retryCount: n,
-        updatedAt: thirtyDaysAgo,
-      };
-      const gate = documentExtractionBlocked(row, V, now);
-      expect(gate.blocked).toBe(true);
-      expect(gate.reason).toMatch(WAIT_REASON);
-      expect(gate.reason).toContain(`${n} unfinished attempt(s)`);
-      expect(documentExtractionBlocked(row, NEXT, now)).toEqual({ blocked: false });
+      const err = `${HARD_FAILURE_MARKER}:${n}:extractor: extractor exited 1`;
+      const recent = { extractionStatus: 'FAILED', extractionError: err, retryCount: n, updatedAt: twoDaysAgo };
+      expect(documentExtractionBlocked(recent, V, now, 7)).toEqual({ blocked: false });
+      const old = { ...recent, updatedAt: thirtyDaysAgo };
+      const gate = documentExtractionBlocked(old, V, now, 7);
+      expect(gate).toMatchObject({ blocked: true, park: true });
+      expect(gate.reason).toContain(UNFINISHED_READS_EXHAUSTED_REASON);
+      expect(documentExtractionBlocked(old, NEXT, now, 7)).toEqual({ blocked: false });
     }
   });
 
@@ -211,22 +214,42 @@ describe('#959 gate — the version is the trigger, elapsed time is not', () => 
     expect(gate).toEqual({ blocked: false });
   });
 
-  it('an IN_PROGRESS row left by a killed run is resumed once with no wait; a second interruption blocks it', () => {
+  it('an IN_PROGRESS row is resumed at every pass inside the OD-32 window (no second-interruption block), parked after it', () => {
     expect(
-      documentExtractionBlocked({ extractionStatus: 'IN_PROGRESS', extractionError: null, retryCount: 1, updatedAt: now }, V, now)
+      documentExtractionBlocked({ extractionStatus: 'IN_PROGRESS', extractionError: null, retryCount: 1, updatedAt: now }, V, now, 7)
     ).toEqual({ blocked: false });
-    const secondInterruption = documentExtractionBlocked(
-      {
-        extractionStatus: 'IN_PROGRESS',
-        extractionError: withFailedVersion('INTERRUPTED:1:the previous run stopped mid-extraction', V),
-        retryCount: 2,
-        updatedAt: thirtyDaysAgo,
-      },
+    const interruptedTwice = (since: Date) =>
+      withFailedVersion(`INTERRUPTED:2@${since.getTime()}:the previous run stopped mid-extraction`, V, SHA);
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'IN_PROGRESS', extractionError: interruptedTwice(twoDaysAgo), retryCount: 3, updatedAt: now, sha256: SHA },
+        V,
+        now,
+        7
+      )
+    ).toEqual({ blocked: false });
+    const gate = documentExtractionBlocked(
+      { extractionStatus: 'IN_PROGRESS', extractionError: interruptedTwice(eightDaysAgo), retryCount: 3, updatedAt: now, sha256: SHA },
       V,
-      now
+      now,
+      7
     );
-    expect(secondInterruption.blocked).toBe(true);
-    expect(secondInterruption.reason).toMatch(WAIT_REASON);
+    expect(gate).toMatchObject({ blocked: true, park: true });
+    expect(gate.reason).toContain(UNFINISHED_READS_EXHAUSTED_REASON);
+  });
+
+  it('the window is anchored on the FIRST unfinished attempt: a later attempt keeps the original start', () => {
+    const first = markHardFailure(null, 'extractor: killed', V, SHA, eightDaysAgo);
+    expect(parseUnfinishedSince(first)).toBe(eightDaysAgo.getTime());
+    const second = markHardFailure(withFailedVersion(first, V, SHA), 'extractor: killed again', V, SHA, now);
+    expect(second).toBe(`${HARD_FAILURE_MARKER}:2@${eightDaysAgo.getTime()}:extractor: killed again`);
+  });
+
+  it('M5: the count and window start RESET at a new extractor version, and at new bytes', () => {
+    const prev = withFailedVersion(`${HARD_FAILURE_MARKER}:3@${eightDaysAgo.getTime()}:extractor: killed`, V, SHA);
+    expect(markHardFailure(prev, 'x', NEXT, SHA, now)).toBe(`${HARD_FAILURE_MARKER}:1@${now.getTime()}:x`);
+    expect(markHardFailure(prev, 'x', V, 'e'.repeat(64), now)).toBe(`${HARD_FAILURE_MARKER}:1@${now.getTime()}:x`);
+    expect(markHardFailure(prev, 'x', V, SHA, now)).toBe(`${HARD_FAILURE_MARKER}:4@${eightDaysAgo.getTime()}:x`);
   });
 
   it('a FAILED row with retryCount 0 is still blocked (no retryCount loophole back into a loop)', () => {
@@ -284,7 +307,7 @@ describe('#959 service — processPendingFilings on the real gate', () => {
     const d = deps({ runExtractor: vi.fn(() => ({ ok: false as const, error: 'killed', hardFailure: true })) });
     await processPendingFilings(IPO, d);
     const failed = stateCalls(d).find((c) => c.status === 'FAILED');
-    expect(failed?.error).toBe(`${HARD_FAILURE_MARKER}:1:extractor: killed ${TAG}`);
+    expect(String(failed?.error)).toMatch(new RegExp(`^${HARD_FAILURE_MARKER}:1@\\d+:extractor: killed ${TAG}$`));
     const eSteps = recordedSteps.flatMap((s) => s.writes).filter((w) => /^E\d+$/.test(String(w.stepId)));
     for (const w of eSteps) {
       expect(w.status).toBe('FAILED');
@@ -292,45 +315,99 @@ describe('#959 service — processPendingFilings on the real gate', () => {
     }
   });
 
-  it('resuming an IN_PROGRESS row stamps INTERRUPTED:1 with the version, so a second kill blocks it', async () => {
-    const d = deps({
-      loadDocuments: vi.fn(async () => [doc({ extractionStatus: 'IN_PROGRESS', retryCount: 1, updatedAt: now })]),
+  it('double interrupt end to end: resumed each pass inside the window, then parked FAILED + BLOCKED ledger + visible to the check', async () => {
+    // Pass 1: a row left IN_PROGRESS by a killed run is resumed; the stamp records INTERRUPTED:1 with its window start.
+    const d1 = deps({
+      loadDocuments: vi.fn(async () => [doc({ extractionStatus: 'IN_PROGRESS', retryCount: 1, updatedAt: new Date() })]),
+      runExtractor: vi.fn(() => ({ ok: true as const, extraction: extraction() })),
     });
-    await processPendingFilings(IPO, d);
-    const stamp = stateCalls(d)[0];
-    expect(stamp.status).toBe('IN_PROGRESS');
-    expect(stamp.retryCount).toBe(2);
-    expect(parseUnfinishedCount(String(stamp.error))).toBe(1);
-    expect(String(stamp.error)).toMatch(/^INTERRUPTED:1:/);
-    expect(parseFailedVersion(String(stamp.error))).toBe(V);
-    // What the NEXT pass sees if this resume is also killed:
-    expect(
-      documentExtractionBlocked(
-        { extractionStatus: 'IN_PROGRESS', extractionError: String(stamp.error), retryCount: 2, updatedAt: thirtyDaysAgo },
-        V,
-        now
-      ).blocked
-    ).toBe(true);
+    // The resumed run is killed too: simulate by reading only the IN_PROGRESS stamp it wrote.
+    await processPendingFilings(IPO, d1);
+    const stamp1 = stateCalls(d1)[0];
+    expect(stamp1.status).toBe('IN_PROGRESS');
+    expect(String(stamp1.error)).toMatch(/^INTERRUPTED:1@\d+:/);
+
+    // Pass 2 (killed again, still inside the window): resumed again — no second-interruption block.
+    const d2 = deps({
+      loadDocuments: vi.fn(async () => [
+        doc({ extractionStatus: 'IN_PROGRESS', extractionError: String(stamp1.error), retryCount: 2, updatedAt: new Date() }),
+      ]),
+    });
+    const r2 = await processPendingFilings(IPO, d2);
+    expect(r2.spawned).toBe(1);
+    const stamp2 = stateCalls(d2)[0];
+    expect(String(stamp2.error)).toMatch(/^INTERRUPTED:2@\d+:/);
+    expect(parseUnfinishedSince(String(stamp2.error))).toBe(parseUnfinishedSince(String(stamp1.error)));
+
+    // Pass 3: the same row, still IN_PROGRESS, its first interruption 8 days back — past the OD-32 window.
+    const since8 = String(stamp2.error).replace(/^INTERRUPTED:2@\d+:/, `INTERRUPTED:2@${Date.now() - 8 * 24 * 60 * 60_000}:`);
+    const d3 = deps({
+      loadDocuments: vi.fn(async () => [
+        doc({ extractionStatus: 'IN_PROGRESS', extractionError: since8, retryCount: 3, updatedAt: new Date() }),
+      ]),
+    });
+    recordedSteps.length = 0;
+    const r3 = await processPendingFilings(IPO, d3);
+    expect(r3.spawned).toBe(0);
+    expect(d3.runExtractor).not.toHaveBeenCalled();
+    const parked = stateCalls(d3);
+    expect(parked).toHaveLength(1);
+    expect(parked[0].status).toBe('FAILED');
+    expect(String(parked[0].error)).toMatch(/^UNFINISHED_EXHAUSTED: INTERRUPTED:2@\d+:/);
+    expect(parseFailedVersion(String(parked[0].error))).toBe(V);
+    const eSteps = recordedSteps.flatMap((s) => s.writes).filter((w) => /^E\d+$/.test(String(w.stepId)));
+    expect(eSteps).toHaveLength(10);
+    for (const w of eSteps) {
+      expect(w.status).toBe('BLOCKED');
+      expect(w.nextDueAt).toBeNull();
+      expect(String(w.error)).toContain(UNFINISHED_READS_EXHAUSTED_REASON);
+    }
+    // Pass 4: the parked row is structural now — blocked, NOT parked again (no repeated writes).
+    const d4 = deps({
+      loadDocuments: vi.fn(async () => [
+        doc({ extractionStatus: 'FAILED', extractionError: String(parked[0].error), retryCount: 3, updatedAt: new Date() }),
+      ]),
+    });
+    const r4 = await processPendingFilings(IPO, d4);
+    expect(r4.spawned).toBe(0);
+    expect(stateCalls(d4)).toEqual([]);
+    expect(r4.skipped.some((s) => WAIT_REASON.test(s))).toBe(true);
   });
 
-  it('a persist throw is one unfinished read: PERSIST_FAILURE:1 tagged, resumable once, then blocked', async () => {
+  it('M11: pages left unread are an UNFINISHED read — INCOMPLETE_PAGES marker, re-read at the next pass', async () => {
+    const d = deps({
+      runExtractor: vi.fn(() => ({
+        ok: true as const,
+        extraction: { ...extraction(), unread_pages: [{ page: 7, reason: 'timeout' }] } as never,
+      })),
+    });
+    await processPendingFilings(IPO, d);
+    const failed = stateCalls(d).find((c) => c.status === 'FAILED');
+    expect(String(failed?.error)).toMatch(/^INCOMPLETE_PAGES:1@\d+:1 page\(s\) never read \[7\] \(timeout\)/);
+    expect(parseUnfinishedCount(String(failed?.error))).toBe(1);
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'FAILED', extractionError: String(failed?.error), retryCount: 1, updatedAt: new Date(), sha256: SHA },
+        V
+      )
+    ).toEqual({ blocked: false });
+  });
+
+  it('a persist throw is an unfinished read: PERSIST_FAILURE tagged, re-read again at the next pass inside the window', async () => {
     const d = deps({ persistFiling: vi.fn(async () => { throw new Error('connection reset'); }) as never });
     await processPendingFilings(IPO, d);
     const failed = stateCalls(d).find((c) => c.status === 'FAILED');
-    expect(failed?.error).toBe(`PERSIST_FAILURE:1:persist: connection reset ${TAG}`);
-    const row = { extractionStatus: 'FAILED', extractionError: String(failed?.error), retryCount: 1, updatedAt: now };
-    expect(documentExtractionBlocked(row, V, now)).toEqual({ blocked: false });
-
+    expect(String(failed?.error)).toMatch(new RegExp(`^PERSIST_FAILURE:1@\\d+:persist: connection reset ${TAG}$`));
+    const row = { extractionStatus: 'FAILED', extractionError: String(failed?.error), retryCount: 1, updatedAt: new Date() };
     const d2 = deps({
       persistFiling: vi.fn(async () => { throw new Error('connection reset'); }) as never,
       loadDocuments: vi.fn(async () => [doc({ ...row })]),
     });
-    await processPendingFilings(IPO, d2);
+    const r2 = await processPendingFilings(IPO, d2);
+    expect(r2.spawned).toBe(1);
     const failed2 = stateCalls(d2).find((c) => c.status === 'FAILED');
-    expect(failed2?.error).toBe(`PERSIST_FAILURE:2:persist: connection reset ${TAG}`);
-    expect(
-      documentExtractionBlocked({ ...row, extractionError: String(failed2?.error), retryCount: 2 }, V, now).blocked
-    ).toBe(true);
+    expect(String(failed2?.error)).toMatch(/^PERSIST_FAILURE:2@\d+:/);
+    expect(documentExtractionBlocked({ ...row, extractionError: String(failed2?.error), retryCount: 2 }, V).blocked).toBe(false);
   });
 });
 

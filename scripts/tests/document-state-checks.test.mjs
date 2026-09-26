@@ -736,6 +736,22 @@ test('#959 m_extraction_stuck FAILs a FAILED row with no marker past the floor â
   assert.match(v, /waits for a new extractor version or a new document, #959/);
 });
 
+test('#959 round 1 m_extraction_stuck FAILs an IN_PROGRESS row not written for 48h; PASSes it under the floor', () => {
+  const v = checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'IN_PROGRESS', extractionError: null, hoursSinceUpdate: 72 });
+  assert.match(v, /IN_PROGRESS \(interrupted and never resumed or parked, #959\)/);
+  assert.equal(checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'IN_PROGRESS', hoursSinceUpdate: 47 }), null);
+});
+
+test('#959 round 1 m_extraction_stuck FAILs a row parked as UNFINISHED_EXHAUSTED', () => {
+  const v = checkExtractionStuck({
+    ...STUCK_BASE,
+    extractionStatus: 'FAILED',
+    extractionError: 'UNFINISHED_EXHAUSTED: INTERRUPTED:2@1790000000000:stopped @failed-at:extract_filing.py@2026-09-03',
+    hoursSinceUpdate: 50,
+  });
+  assert.match(v, /waits for a new extractor version or a new document, #959/);
+});
+
 test('#959 m_extraction_stuck PASSes the same parked FAILED row under the 48h floor', () => {
   const v = checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'FAILED', extractionError: 'timeout', hoursSinceUpdate: 47 });
   assert.equal(v, null);

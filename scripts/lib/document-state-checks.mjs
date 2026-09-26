@@ -591,14 +591,26 @@ export function checkExtractionStuck(row) {
     retryCount >= NEVER_ESCALATES_MIN_RETRIES &&
     retryCount < MAX_EXTRACTION_ATTEMPTS;
 
-  // 5th shape (#959): with the extraction backoff timer removed, EVERY FAILED
-  // row is parked until a new extractor version or new bytes (only a single
-  // unfinished read is resumed, at the very next pass), and its updated_at no
-  // longer moves. So any FAILED row past the floor is waiting on a trigger
-  // that may never come without a human (an extractor fix) — surface it.
+  // 5th shape (#959): with the extraction backoff timer removed, a FAILED row
+  // is re-read only on a new extractor version or new bytes (an unfinished
+  // read is re-read each pass inside the OD-32 window, which keeps its
+  // updated_at moving, then parked FAILED as UNFINISHED_EXHAUSTED). So a
+  // FAILED row whose updated_at is past the floor is waiting on a trigger that
+  // may never come without a human (an extractor fix) — surface it.
   const isParkedFailed = extractionStatus === 'FAILED' && !isHardFailure && !isNeverEscalating;
+  // 6th shape (#959 round 1): an IN_PROGRESS row not written for 48h — no pass
+  // has resumed or parked it, so it would otherwise sit with no signal at all.
+  const isStaleInProgress = extractionStatus === 'IN_PROGRESS';
 
-  if (!isManualReview && !isFetchStateFailed && !isHardFailure && !isNeverEscalating && !isParkedFailed) return null;
+  if (
+    !isManualReview &&
+    !isFetchStateFailed &&
+    !isHardFailure &&
+    !isNeverEscalating &&
+    !isParkedFailed &&
+    !isStaleInProgress
+  )
+    return null;
 
   const hours = row.hoursSinceUpdate === null || row.hoursSinceUpdate === undefined ? null : Number(row.hoursSinceUpdate);
   if (hours === null || !Number.isFinite(hours) || hours <= EXTRACTION_STUCK_MAX_HOURS) return null;
@@ -611,7 +623,9 @@ export function checkExtractionStuck(row) {
         ? `FAILED (${HARD_FAILURE_MARKER})`
         : isNeverEscalating
           ? `FAILED (never-escalates, retryCount=${retryCount})`
-          : 'FAILED (waits for a new extractor version or a new document, #959)';
+          : isStaleInProgress
+            ? 'IN_PROGRESS (interrupted and never resumed or parked, #959)'
+            : 'FAILED (waits for a new extractor version or a new document, #959)';
   const label = row.companyName ?? row.slug ?? row.ipoId ?? 'unknown IPO';
   return `${label}: ${docType} stuck ${shape} for ${hours.toFixed(1)}h (> ${EXTRACTION_STUCK_MAX_HOURS}h) — needs-decision`;
 }
