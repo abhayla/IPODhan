@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill: IPO DRHP/RHP/Prospectus documents from Chittorgarh report 20/29 (C3a keystone)
  *
@@ -18,6 +17,8 @@
  *   npx tsx scripts/backfill-chittorgarh-documents.ts --apply    # persist
  *   npx tsx scripts/backfill-chittorgarh-documents.ts --apply --limit=20
  */
+import { openRepairDb, readExpectDbFlag, type ExecuteLike } from './lib/repair-tool.js';
+import { pathToFileURL } from 'node:url';
 import { db, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { eq } from 'drizzle-orm';
@@ -31,6 +32,7 @@ import {
 import logger from '../src/utils/logger.js';
 
 const APPLY = process.argv.includes('--apply');
+const TOOL = 'backfill-chittorgarh-documents';
 const LIMIT = (() => {
   const a = process.argv.find((x) => x.startsWith('--limit='));
   return a ? parseInt(a.split('=')[1], 10) : Infinity;
@@ -48,7 +50,13 @@ function mapExchange(raw: string | null): string | null {
   return /nse/i.test(raw) ? 'NSE' : 'BSE';
 }
 
-async function main() {
+export async function main() {
+  await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
   console.log('='.repeat(80));
   console.log(`CHITTORGARH DOCUMENTS BACKFILL — ${APPLY ? 'APPLY (writing)' : 'DRY-RUN (no writes)'}`);
   console.log('='.repeat(80));
@@ -174,7 +182,8 @@ async function main() {
   process.exit(failed > written ? 1 : 0);
 }
 
-main().catch((e) => {
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) main().catch((e) => {
   logger.error({ error: e instanceof Error ? e.message : String(e) }, 'Chittorgarh documents backfill crashed');
   console.error(e);
   process.exit(1);

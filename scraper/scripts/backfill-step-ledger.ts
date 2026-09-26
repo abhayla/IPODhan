@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * S-01 — backfill per-IPO pipeline ledger rows from an out-of-band source
  * (today: the DEEPA walk, docs/walks/2026-09-02-deepa-pipeline-walk.md).
@@ -25,6 +24,7 @@
  * tight for a 15-connection burst; set PG_CONNECTION_TIMEOUT_MS=20000 and
  * SHARED_DB_POOL_MAX=3 (T-433) or initForIpo times out on the first insert.
  */
+import { openRepairDb, readExpectDbFlag, type ExecuteLike } from './lib/repair-tool.js';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { db, getRedisClient, IpoPipelineStepsRepository } from '@ipodhan/shared';
@@ -33,6 +33,9 @@ import { isPipelineStepId } from '@ipodhan/shared/pipeline/step-catalogue';
 import * as schema from '@ipodhan/shared/db/schema';
 import { eq, or } from 'drizzle-orm';
 import logger from '../src/utils/logger.js';
+
+const APPLY = process.argv.includes('--apply');
+const TOOL = 'backfill-step-ledger';
 
 // Read off the pgEnum, never hand-copied -- a hand-written list silently rots
 // the moment a status is added to or removed from the schema.
@@ -78,7 +81,7 @@ async function resolveIpoId(identifier: string): Promise<string> {
   return rows[0].id;
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const ipoArg = argValue('--ipo');
   const ipoIdArg = argValue('--ipo-id');
   const setArg = argValue('--set');
@@ -95,6 +98,16 @@ async function main(): Promise<void> {
   // the whole run rather than leaving a half-applied ledger.
   const pairs = parseSet(setArg);
   const evidence = evidenceFile ? JSON.parse(readFileSync(evidenceFile, 'utf8')) : undefined;
+  await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
+  if (!APPLY) {
+    console.log(`${TOOL}: DRY-RUN — this tool has no read-only preview, so nothing past current_database() was read and nothing was written. Re-run with --apply to write.`);
+    process.exit(0);
+  }
   const ipoId = ipoIdArg ?? (await resolveIpoId(ipoArg as string));
 
   const repo = new IpoPipelineStepsRepository(db, getRedisClient());

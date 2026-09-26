@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * BSE historical enrichment backfill (enumerate-and-match).
  *
@@ -15,6 +14,8 @@
  *   Default is DRY-RUN (no writes): reports the proposed enrichments only.
  */
 
+import { openRepairDb, readExpectDbFlag, type ExecuteLike } from './lib/repair-tool.js';
+import { pathToFileURL } from 'node:url';
 import { db } from '@ipodhan/shared/db';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { and, eq, or, isNull, sql } from 'drizzle-orm';
@@ -42,6 +43,7 @@ function arg(name: string, def: number): number {
 const FROM = arg('from', 7772);
 const TO = arg('to', 7100);
 const APPLY = process.argv.includes('--apply');
+const TOOL = 'backfill-bse-historical';
 
 function asArray<T>(j: unknown): T[] {
   if (Array.isArray(j)) return j as T[];
@@ -98,7 +100,13 @@ function missingFields(s: Skeleton, bse: ReturnType<typeof mapBSEDetailToScraped
   return out;
 }
 
-async function main() {
+export async function main() {
+  await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
   logger.info({ from: FROM, to: TO, apply: APPLY }, `BSE historical backfill — ${APPLY ? 'APPLY (writes)' : 'DRY-RUN (no writes)'}`);
 
   // 1. Pull MAINBOARD skeletons missing structural data.
@@ -200,7 +208,8 @@ async function main() {
   console.log(`\nDONE — enriched ${ok}, failed ${fail}.`);
 }
 
-main()
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) main()
   .then(() => process.exit(0))
   .catch((e) => {
     logger.error({ error: e instanceof Error ? e.message : String(e) }, 'backfill crashed');

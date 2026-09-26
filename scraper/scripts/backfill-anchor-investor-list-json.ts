@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * W-52: `createAnchorInvestors` (scraper/src/services/data-persister.ts)
  * previously wrote `investorList: JSON.stringify(anchorData.investorList)`
@@ -24,6 +23,7 @@
  *   npx tsx scripts/backfill-anchor-investor-list-json.ts --allow-prod            # dry-run against prod
  *   npx tsx scripts/backfill-anchor-investor-list-json.ts --allow-prod --apply    # writes against prod
  */
+import { openRepairDb, readExpectDbFlag, type ExecuteLike } from './lib/repair-tool.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -31,6 +31,7 @@ import { db } from '@ipodhan/shared';
 import { sql } from 'drizzle-orm';
 
 const APPLY = process.argv.includes('--apply');
+const TOOL = 'backfill-anchor-investor-list-json';
 const ALLOW_PROD = process.argv.includes('--allow-prod');
 
 /**
@@ -64,8 +65,14 @@ export function assertTestDatabase(allowProd: boolean): void {
   }
 }
 
-async function main() {
+export async function main() {
   assertTestDatabase(ALLOW_PROD);
+  await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
 
   console.log('='.repeat(80));
   console.log(`ANCHOR_INVESTORS.INVESTOR_LIST JSON-STRING BACKFILL (W-52) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);

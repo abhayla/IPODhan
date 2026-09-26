@@ -25,6 +25,7 @@ import {
   formatCacheInvalidationBlockNotice,
   guardCacheInvalidation,
   openRepairDb,
+  readExpectDbFlag,
   parseIpoScope,
   probeFieldSourcesRowKeyColumn,
   repairToolRedisSlot,
@@ -134,6 +135,31 @@ describe('openRepairDb — prints the real database name and gates the write', (
     expect(onRefuse).not.toHaveBeenCalled();
     expect(r.isProd).toBe(true);
     expect(log).toHaveBeenCalledWith(expect.stringContaining('ALLOW-PROD'));
+  });
+});
+
+describe('openRepairDb — #671: --expect-db refuses a pool connected to a different database', () => {
+  it('refuses (even a dry run) when expectDb names another database, before the prod decision', async () => {
+    const onRefuse = vi.fn();
+    const error = vi.fn();
+    const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan' }]);
+    await openRepairDb({ execute }, { apply: false, allowProd: false, toolName: 'tool-x', expectDb: 'ipodhan_staging', log: vi.fn(), error, onRefuse, env: FAKE_USABLE_ENV });
+    expect(onRefuse).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('--expect-db said "ipodhan_staging"'));
+  });
+
+  it('passes when expectDb matches (case-insensitive) and when it is absent', async () => {
+    const onRefuse = vi.fn();
+    const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan_staging' }]);
+    await openRepairDb({ execute }, { apply: true, allowProd: false, toolName: 't', expectDb: 'IPODHAN_STAGING', log: vi.fn(), error: vi.fn(), onRefuse, env: FAKE_USABLE_ENV });
+    await openRepairDb({ execute }, { apply: true, allowProd: false, toolName: 't', expectDb: null, log: vi.fn(), error: vi.fn(), onRefuse, env: FAKE_USABLE_ENV });
+    expect(onRefuse).not.toHaveBeenCalled();
+  });
+
+  it('readExpectDbFlag reads both --expect-db <name> and --expect-db=<name>', () => {
+    expect(readExpectDbFlag(['--expect-db', 'ipodhan_test'])).toBe('ipodhan_test');
+    expect(readExpectDbFlag(['--expect-db=ipodhan_staging', '--apply'])).toBe('ipodhan_staging');
+    expect(readExpectDbFlag(['--apply'])).toBeNull();
   });
 });
 

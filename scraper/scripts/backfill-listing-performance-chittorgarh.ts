@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill: listing_performance for LISTED IPOs via Chittorgarh report 25 (B1)
  *
@@ -15,6 +14,8 @@
  *   npx tsx scripts/backfill-listing-performance-chittorgarh.ts          # dry-run
  *   npx tsx scripts/backfill-listing-performance-chittorgarh.ts --apply
  */
+import { openRepairDb, readExpectDbFlag, type ExecuteLike } from './lib/repair-tool.js';
+import { pathToFileURL } from 'node:url';
 import { db, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -24,6 +25,7 @@ import { fetchChittorgarhListingRows, type ChittorgarhListingRow } from '../src/
 import logger from '../src/utils/logger.js';
 
 const APPLY = process.argv.includes('--apply');
+const TOOL = 'backfill-listing-performance-chittorgarh';
 
 // P3-3 (T-287): widened from a 4-year window (2023-24..2026-27) to cover every
 // fiscal year Chittorgarh's report-25 has ever returned data for. Root cause
@@ -53,7 +55,13 @@ function gainOrNull(v: number | null): string | null {
 /** Prices are numeric(10,2) (#79, post-C3) — keep paise, never Math.round to whole ₹. */
 const rnd = (v: number | null | undefined) => (v == null ? null : Math.round(v * 100) / 100);
 
-async function main() {
+export async function main() {
+  await openRepairDb(db as ExecuteLike, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: TOOL,
+    expectDb: readExpectDbFlag(process.argv),
+  });
   console.log('='.repeat(80));
   console.log(`LISTING-PERFORMANCE (Chittorgarh report 25) BACKFILL — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
@@ -151,7 +159,8 @@ async function main() {
   process.exit(failed > written ? 1 : 0);
 }
 
-main().catch((e) => {
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) main().catch((e) => {
   logger.error({ error: e instanceof Error ? e.message : String(e) }, 'listing-perf chittorgarh backfill crashed');
   console.error(e);
   process.exit(1);

@@ -80,6 +80,11 @@ export function collectFlagValues(argv: readonly string[], flag: string): string
   return values;
 }
 
+/** #671: the `--expect-db <name>` / `--expect-db=<name>` value, or null when not given. */
+export function readExpectDbFlag(argv: readonly string[]): string | null {
+  return collectFlagValues(argv, '--expect-db')[0] ?? null;
+}
+
 /**
  * True when `flag` appears ANYWHERE in argv, in either the bare (`--ipo`) or
  * `--ipo=value` form — regardless of whether `collectFlagValues` was able to
@@ -495,6 +500,12 @@ export async function openRepairDb(
     onRefuse?: (reason: string) => void;
     /** Injectable for tests; production callers omit it (defaults to `process.env`). */
     env?: NodeJS.ProcessEnv;
+    /**
+     * #671: the database the operator says this run targets (`--expect-db`).
+     * When given and it differs from current_database(), the run is refused
+     * — dry or applied — before any read or write. Absent = no assertion.
+     */
+    expectDb?: string | null;
   }
 ): Promise<OpenRepairDbResult> {
   const log = options.log ?? ((l: string) => console.log(l));
@@ -538,6 +549,13 @@ export async function openRepairDb(
     return { dbName: '', isProd: false };
   }
   log(`current_database(): ${dbName}`);
+  if (options.expectDb && options.expectDb.toLowerCase() !== dbName.toLowerCase()) {
+    const reason =
+      `${prefix}--expect-db said "${options.expectDb}" but this pool is connected to "${dbName}" — refusing before any read or write.`;
+    err(reason);
+    onRefuse(reason);
+    return { dbName, isProd: dbName.toLowerCase() === PRODUCTION_DATABASE_NAME };
+  }
   const decision = decideProdWriteRefusal({
     apply: options.apply,
     dbName,
