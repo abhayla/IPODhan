@@ -477,6 +477,24 @@ test('(j) PASSES a dead source that has a documented retire-by decision', () => 
   assert.equal(checkDeadSourceHasRetireBy('API_FALLBACK', 7, true), null);
 });
 
+// #240: API_FALLBACK is retired (RCA: not a spec source, 0 hits for
+// API_FALLBACK/ipoalerts in docs/design/data-sourcing-pull-model.md; dead for
+// 7+ scraper_logs cycles with no retire-by decision, per the nightly
+// j_dead_source_retire_by check). This asserts the real retirement record
+// audit-detection-floor.mjs reads at runtime (docs/reviews/dead-source-retirement.json)
+// actually satisfies the check — not a re-implementation of the file's shape.
+test('(j) the real dead-source-retirement.json documents API_FALLBACK, so j_dead_source_retire_by PASSES for it', () => {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const retirementPath = join(__dirname, '..', '..', 'docs', 'reviews', 'dead-source-retirement.json');
+  const retirementDoc = JSON.parse(readFileSync(retirementPath, 'utf8'));
+  assert.ok(retirementDoc.API_FALLBACK, 'docs/reviews/dead-source-retirement.json must document API_FALLBACK (#240)');
+  assert.equal(
+    checkDeadSourceHasRetireBy('API_FALLBACK', 7, !!retirementDoc.API_FALLBACK),
+    null,
+    'the recorded retirement must satisfy j_dead_source_retire_by even after 7+ degraded cycles'
+  );
+});
+
 test('(j) FAILS on an IPO row with a NULL segment', () => {
   const row = { offeringType: 'IPO', segment: null, companyName: 'Test Co' };
   assert.ok(checkSegmentPopulatedForIpo(row) !== null);

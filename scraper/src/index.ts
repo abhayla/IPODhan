@@ -11,7 +11,6 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 
 import { runNSEScraper } from './scrapers/nse-scraper-orchestrator-v2.js';
 import { runBSEScraper } from './scrapers/bse-scraper-orchestrator-v2.js';
-import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator-v2.js';
 import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator-v2.js';
 import {
   runIssueTypeFillJob,
@@ -311,15 +310,9 @@ const MAX_DISCOVERY_ATTEMPTS = Number(process.env.DUE_STEP_DISCOVERY_MAX_ATTEMPT
 /** Aggregator refresh (Chittorgarh) cadence: at most once per day. */
 const AGGREGATOR_INTERVAL_MINUTES = 24 * 60;
 
-/**
- * Round-3 C3: the IPO Alerts API fallback source. Under the due-step scheduler
- * the legacy per-source blocks are skipped for 'all', and round 1 forgot to
- * re-home this one — with the flag on it never ran at all. It is a
- * low-frequency, rate-limited backstop, so it belongs on a once-a-day cadence
- * inside the cycle, stamped only AFTER a successful run (M2).
- */
-const API_FALLBACK_CADENCE_KEY = 'due-step-api-fallback';
-const API_FALLBACK_INTERVAL_MINUTES = 24 * 60;
+// #240: the API_FALLBACK once-a-day due-step cadence (round-3 C3) is retired
+// along with the source itself — see docs/reviews/dead-source-retirement.json
+// and config/runnable-sources.ts.
 const AGGREGATOR_CADENCE_KEY = 'due-step-aggregators';
 
 /**
@@ -1206,21 +1199,8 @@ async function runDueStepCycle(
     }
   }
 
-  // (e) API fallback — once/day (round-3 C3). Same isDue/markRan discipline as
-  // the aggregators: a failed or killed run leaves the key unstamped so the
-  // next cycle retries instead of skipping the source for a whole day.
-  const apiFallbackDue = await isCatchUpCadenceDue(redis, API_FALLBACK_CADENCE_KEY, API_FALLBACK_INTERVAL_MINUTES, now);
-  if (!apiFallbackDue) {
-    logger.info('Due-step cycle: IPO Alerts API fallback not due yet (< 24h since last run) — skipped');
-  } else {
-    logger.info('Due-step cycle: IPO Alerts API fallback cadence due — running');
-    const fallbackOk = await runCycleStep('apiFallback', () => runIPOAlertsFallback('scheduled'));
-    if (fallbackOk) {
-      await markCatchUpCadenceRan(redis, API_FALLBACK_CADENCE_KEY, API_FALLBACK_INTERVAL_MINUTES, slotStartedAt);
-    } else {
-      logger.warn('Due-step cycle: API fallback did not succeed — cadence key NOT stamped, it will retry next cycle');
-    }
-  }
+  // (e) API fallback — retired (#240). See the removal note above
+  // AGGREGATOR_CADENCE_KEY and docs/reviews/dead-source-retirement.json.
 
   return cycleResult;
 }
@@ -1371,8 +1351,6 @@ export function validateValidationRulesAtStartup(
  *   npm run start:bse                 (BSE only)
  *   npm run start:chittorgarh         (Chittorgarh only)
  *   npm run start:gmp                 (Investorgain GMP only)
- *   npm run start:fallback            (IPO Alerts API fallback)
- *   npm run start:api                 (alias for fallback)
  *   npm run start:all                 (NSE + BSE + Chittorgarh + API fallback + GMP sequentially)
  */
 export async function main() {
@@ -1721,33 +1699,12 @@ export async function main() {
       );
     }
 
-    // Run IPO Alerts API fallback scraper
-    if (source === 'fallback' || source === 'api' || runsLegacyAllPath) {
-      logger.info('Running IPO Alerts API fallback scraper (manual execution)');
-
-      const fallbackResult = await runIPOAlertsFallback('manual');
-
-      combinedResult.success = combinedResult.success && fallbackResult.success;
-      combinedResult.iposProcessed += fallbackResult.iposProcessed;
-      combinedResult.iposInserted += fallbackResult.iposInserted;
-      combinedResult.iposUpdated += fallbackResult.iposUpdated;
-      combinedResult.iposFailed += fallbackResult.iposFailed;
-      combinedResult.errors.push(...fallbackResult.errors);
-
-      logger.info(
-        {
-          success: fallbackResult.success,
-          iposProcessed: fallbackResult.iposProcessed,
-          iposInserted: fallbackResult.iposInserted,
-          iposSkipped: fallbackResult.iposSkipped,
-          iposFailed: fallbackResult.iposFailed,
-          rateLimitUsed: fallbackResult.rateLimitUsed,
-          rateLimitRemaining: fallbackResult.rateLimitRemaining,
-          triggerReason: fallbackResult.triggerReason
-        },
-        'IPO Alerts API fallback scraper completed'
-      );
-    }
+    // #240: the IPO Alerts API fallback scraper (source API_FALLBACK) is
+    // retired — not a spec source, not a walk fetcher, dead for 7+ cycles
+    // with no retire-by decision. Removed rather than special-cased, same as
+    // item 16's Moneycontrol: `--source=fallback`/`--source=api` no longer
+    // validate (config/runnable-sources.ts) and `runsLegacyAllPath` no longer
+    // invokes it. See docs/reviews/dead-source-retirement.json.
 
     // Run Investorgain GMP scraper (populates gmp_records table)
     if (source === 'gmp' || runsLegacyAllPath) {

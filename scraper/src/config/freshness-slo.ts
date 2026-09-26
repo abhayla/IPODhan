@@ -103,13 +103,11 @@ export const FRESHNESS_SLOS: FreshnessSLO[] = [
     justification:
       'priceRangeMin/priceRangeMax/open_date/close_date sources[1] (field-priority-matrix.ts) — same class/SLO as NSE.',
   },
-  {
-    source: 'API_FALLBACK',
-    dataClass: 'listed-company-statics',
-    maxStalenessMs: LISTED_STATICS_MAX_STALENESS_MS,
-    justification:
-      "On-demand fallback only (index.ts 'manual' trigger reason) — not a primary-cadence source; matches CacheTTL.REFERENCE (7d).",
-  },
+  // #240: API_FALLBACK retired (not a spec source, dead for 7+ cycles with no
+  // retire-by — see docs/reviews/dead-source-retirement.json). Its SLO entry
+  // is removed, not left armed, per the item-16/Moneycontrol precedent
+  // (`freshness-slo-no-retired-sources.test.ts` fails if a retired source
+  // keeps an SLO here).
 ];
 
 /**
@@ -164,12 +162,7 @@ export const DUE_STEP_FRESHNESS_SLOS: FreshnessSLO[] = [
     maxStalenessMs: DUE_STEP_DISCOVERY_MAX_STALENESS_MS,
     justification: 'Due-step scheduler: same data-job slots as NSE (OD-19).',
   },
-  {
-    source: 'API_FALLBACK',
-    dataClass: 'listed-company-statics',
-    maxStalenessMs: DUE_STEP_DAILY_MAX_STALENESS_MS,
-    justification: 'Due-step scheduler: API fallback runs once per 24h inside the cycle (round-3 C3/C4).',
-  },
+  // #240: API_FALLBACK retired — see the removal note above FRESHNESS_SLOS.
 ];
 
 /**

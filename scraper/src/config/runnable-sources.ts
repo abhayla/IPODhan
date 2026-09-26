@@ -24,16 +24,19 @@ import type { ScraperSource } from './field-priority-matrix.js';
 /**
  * CLI argument -> the `ScraperSource` its scrape is recorded under.
  *
- * `fallback` and `api` are two spellings of the same runner, which is why the
- * map has more keys than the set below has members.
+ * #240: `fallback`/`api` (API_FALLBACK, the ipoalerts.in fallback) retired —
+ * it is not a source in the spec (`docs/design/data-sourcing-pull-model.md`
+ * has zero hits for API_FALLBACK/ipoalerts) and not a walk fetcher, and its
+ * scheduled cadence had been DEGRADED for 7+ cycles with no retire-by
+ * decision (nightly `j_dead_source_retire_by`). Same retirement shape as
+ * item 16's Moneycontrol: removed from the allow-list, not special-cased, so
+ * it fails the same unrecognised-value path as any other bad string.
  */
 export const CLI_SOURCE_ALIASES: Readonly<Record<string, ScraperSource>> = Object.freeze({
   nse: 'NSE',
   bse: 'BSE',
   chittorgarh: 'CHITTORGARH',
   gmp: 'INVESTORGAIN_GMP',
-  fallback: 'API_FALLBACK',
-  api: 'API_FALLBACK',
 });
 
 /** The `--source=` values `index.ts` accepts. `all` runs every runner above. */

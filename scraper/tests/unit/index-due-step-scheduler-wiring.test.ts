@@ -223,7 +223,9 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
       expect(runMoneycontrolScraperMock).not.toHaveBeenCalled();
       expect(runChittorgarhScraperMock).toHaveBeenCalledTimes(1);
       expect(runInvestorgainGMPScraperMock).toHaveBeenCalledTimes(1);
-      expect(runIPOAlertsFallbackMock).toHaveBeenCalledTimes(1);
+      // #240: API_FALLBACK is retired, same as Moneycontrol above — the legacy
+      // `--source=all` fallback must not reach it either.
+      expect(runIPOAlertsFallbackMock).not.toHaveBeenCalled();
       // Legacy calls carry no restriction argument.
       expect(runNSEScraperMock).toHaveBeenCalledWith();
       expect(exitSpy).toHaveBeenCalledWith(0);
@@ -332,38 +334,18 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
 
 
     /**
-     * Round-3 C3: with the flag ON the legacy per-source blocks are skipped for
-     * 'all', and round 1 forgot to re-home the IPO Alerts API fallback — the
-     * source never ran at all. It now runs inside the cycle on a 24h cadence.
+     * #240: API_FALLBACK is retired (not a spec source, dead for 7+ cycles
+     * with no retire-by decision — docs/reviews/dead-source-retirement.json).
+     * The due-step cycle must never invoke it, on any cadence state.
      */
-    it('C3: API fallback runs inside the cycle when its cadence is due, and stamps the key AFTER success', async () => {
+    it('#240: API fallback never runs inside the due-step cycle, regardless of cadence state', async () => {
       isDiscoveryDueMock.mockReturnValue(true); // item 7 S2b: a data-job slot wake
-      isCatchUpCadenceDueMock.mockImplementation(async (_redis: unknown, jobName: string) => jobName === 'due-step-api-fallback');
-      const { main } = await import('../../src/index.js');
-      await main();
-
-      expect(runIPOAlertsFallbackMock).toHaveBeenCalledTimes(1);
-      expect(runIPOAlertsFallbackMock).toHaveBeenCalledWith('scheduled');
-      expect(markCatchUpCadenceRanMock).toHaveBeenCalledWith(expect.anything(), 'due-step-api-fallback', 24 * 60, expect.any(Date));
-    });
-
-    it('C3: API fallback is skipped when its cadence is not due', async () => {
-      isCatchUpCadenceDueMock.mockResolvedValue(false);
+      isCatchUpCadenceDueMock.mockResolvedValue(true);
       const { main } = await import('../../src/index.js');
       await main();
 
       expect(runIPOAlertsFallbackMock).not.toHaveBeenCalled();
-    });
-
-    it('C3/M2: a FAILING API fallback does not stamp the cadence key (it retries next cycle)', async () => {
-      isDiscoveryDueMock.mockReturnValue(true); // item 7 S2b: a data-job slot wake
-      isCatchUpCadenceDueMock.mockImplementation(async (_redis: unknown, jobName: string) => jobName === 'due-step-api-fallback');
-      runIPOAlertsFallbackMock.mockRejectedValueOnce(new Error('rate limited'));
-      const { main } = await import('../../src/index.js');
-      await main();
-
-      expect(markCatchUpCadenceRanMock).not.toHaveBeenCalledWith(expect.anything(), 'due-step-api-fallback', 24 * 60, expect.any(Date));
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(markCatchUpCadenceRanMock).not.toHaveBeenCalledWith(expect.anything(), 'due-step-api-fallback', expect.anything(), expect.anything());
     });
 
     /**
@@ -649,7 +631,7 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
         expect(exitSpy).toHaveBeenCalledWith(0);
       });
 
-      it('a slot wake (08:15 IST) runs discovery, Chittorgarh and the API fallback', async () => {
+      it('a slot wake (08:15 IST) runs discovery and Chittorgarh; API fallback stays retired (#240)', async () => {
         store.set('due-step:last-discovery', istToUtc('2026-09-23T00:05:00').toISOString());
         vi.setSystemTime(istToUtc('2026-09-23T08:15:00'));
         const { main } = await import('../../src/index.js');
@@ -658,7 +640,7 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
         expect(runNSEScraperMock).toHaveBeenCalledTimes(1);
         expect(runBSEScraperMock).toHaveBeenCalledTimes(1);
         expect(runChittorgarhScraperMock).toHaveBeenCalledWith({ allowedStatuses: ['UPCOMING', 'OPEN'] });
-        expect(runIPOAlertsFallbackMock).toHaveBeenCalledWith('scheduled');
+        expect(runIPOAlertsFallbackMock).not.toHaveBeenCalled();
       });
 
       it('a missed slot is caught up once on the next wake, and the wake after it does nothing', async () => {
@@ -686,11 +668,13 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
         await main();
 
         const slot = istToUtc('2026-09-23T08:00:00').getTime();
-        for (const key of ['due-step-aggregators', 'due-step-api-fallback']) {
+        for (const key of ['due-step-aggregators']) {
           const call = markCatchUpCadenceRanMock.mock.calls.find((c) => c[1] === key);
           expect(call, key).toBeDefined();
           expect((call![3] as Date).getTime(), key).toBe(slot);
         }
+        // #240: API_FALLBACK is retired — its cadence key is never stamped.
+        expect(markCatchUpCadenceRanMock.mock.calls.some((c) => c[1] === 'due-step-api-fallback')).toBe(false);
       });
     });
 

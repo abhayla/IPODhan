@@ -1,0 +1,7 @@
+{
+  "API_FALLBACK": {
+    "retiredAt": "2026-09-26",
+    "issue": "#240",
+    "reason": "Not a source in the spec (docs/design/data-sourcing-pull-model.md has zero hits for API_FALLBACK/ipoalerts) and not a walk fetcher. The nightly j_dead_source_retire_by check flagged it DEGRADED for 7+ consecutive scraper_logs cycles with no retire-by decision. The scraper no longer schedules or manually invokes it (config/runnable-sources.ts drops the fallback/api CLI aliases; src/index.ts drops the due-step 24h cadence and the manual --source=fallback/api branch). The ScraperSource enum value and existing scraper_logs/field_sources history are kept as-is — this is a retirement of the RUN mechanism, not a deletion of history, matching the item-16 Moneycontrol precedent."
+  }
+}
