@@ -157,3 +157,149 @@ describe('#454 — the fallback door records field_sources provenance for every 
     expect(src).toMatch(/fieldSourcesWritten:\s*FEATURE_FLAGS\.ENABLE_SOURCE_TRACKING/);
   });
 });
+
+describe('#454 round 1 (OD-73 CRITICAL) — the fallback door tracks only fields whose value actually changed', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    bulkTrackFieldUpdatesMock.mockResolvedValue(1);
+    consolidateIPODataMock.mockRejectedValue(new Error('consolidation throws (simulated) - forces the fallback door'));
+  });
+
+  it('an IDENTICAL incoming value is never tracked — no re-stamp of a settled field with a new source', async () => {
+    // Reviewer probe shape: CHITTORGARH resends the SAME stored issueSize.
+    // Before the fix this re-stamped issueSize as CHITTORGARH, silently
+    // demoting whatever previously owned it (e.g. DOC) to CHITTORGARH.
+    const ipoRepository = makeIpoRepository();
+    const existing = existingRow({ issueSize: 123456789 });
+
+    await upsertIPO(ipoRepository, scrape({ issueSize: 123456789 }), 'CHITTORGARH', existing);
+
+    const [, , fields] = bulkTrackFieldUpdatesMock.mock.calls[0] ?? [null, null, []];
+    const names = (fields ?? []).map((f: any) => f.fieldName);
+    expect(names).not.toContain('issueSize');
+    // companyName/status are also unchanged in this probe (same values in
+    // scrape() and existingRow()) — none of them should be re-stamped either.
+    expect(names).not.toContain('companyName');
+    expect(names).not.toContain('status');
+  });
+
+  it('a CHANGED value is still tracked, naming the incoming source — the positive control', async () => {
+    const ipoRepository = makeIpoRepository();
+    const existing = existingRow({ issueSize: 20000000 });
+
+    await upsertIPO(ipoRepository, scrape({ issueSize: 50000000 }), 'CHITTORGARH', existing);
+
+    const [, , fields] = bulkTrackFieldUpdatesMock.mock.calls[0];
+    const row = fields.find((f: any) => f.fieldName === 'issueSize');
+    expect(row).toBeDefined();
+    expect(row.source).toBe('CHITTORGARH');
+    expect(row.previousValue).toBe('20000000');
+  });
+
+  it('a type-only difference (stored NUMERIC string vs incoming JS number) is NOT a change — mirrors valuesEqualForWrite, not raw String()', async () => {
+    const ipoRepository = makeIpoRepository();
+    // Postgres NUMERIC often round-trips as a string; a raw String()
+    // comparison of two DIFFERENTLY-TYPED-but-equal values would report a
+    // false change. valuesEqualForWrite normalizes both to numbers first.
+    const existing = existingRow({ issueSize: '123456789.00' as any });
+
+    await upsertIPO(ipoRepository, scrape({ issueSize: 123456789 }), 'CHITTORGARH', existing);
+
+    const [, , fields] = bulkTrackFieldUpdatesMock.mock.calls[0] ?? [null, null, []];
+    const names = (fields ?? []).map((f: any) => f.fieldName);
+    expect(names).not.toContain('issueSize');
+  });
+});
+
+describe('#454 round 1 (MAJOR) — the fallback door honours contextFields/lineage and never throws past the committed update', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    bulkTrackFieldUpdatesMock.mockResolvedValue(1);
+    consolidateIPODataMock.mockRejectedValue(new Error('consolidation throws (simulated) - forces the fallback door'));
+  });
+
+  // Filing-persister call shape: source DRHP, contextFields naming the
+  // identity-resolution fields it had to supply but is not claiming.
+  function filingPersisterCall(ipoRepository: any, overrides: Record<string, unknown> = {}) {
+    const existing = existingRow({
+      segment: 'MAINBOARD',
+      companyName: 'Manika Plastech Ltd',
+      status: 'UPCOMING',
+      listingExchanges: ['BSE'],
+      issueSize: 100,
+      ...overrides,
+    });
+    return upsertIPO(
+      ipoRepository,
+      scrape({
+        companyName: 'Manika Plastech Ltd', // same value — context, not a claim
+        status: 'LISTED', // DIFFERENT value but declared context — must not be tracked
+        listingExchange: 'BSE', // context, singular spelling
+        issueSize: 150000000, // the actual claim this write is making (MAINBOARD-plausible)
+      }),
+      'DRHP',
+      existing,
+      ['companyName', 'status', 'listingExchange'],
+      { method: 'filing', docType: 'RHP', documentId: 'doc-1' }
+    );
+  }
+
+  it('never re-stamps a contextFields field, even under the singular "listingExchange" spelling and even when its value changed', async () => {
+    const ipoRepository = makeIpoRepository();
+
+    await filingPersisterCall(ipoRepository);
+
+    const [, , fields] = bulkTrackFieldUpdatesMock.mock.calls[0] ?? [null, null, []];
+    const names = (fields ?? []).map((f: any) => f.fieldName);
+    expect(names).not.toContain('companyName');
+    expect(names).not.toContain('status');
+    expect(names).not.toContain('listingExchanges');
+  });
+
+  it('excludes an E-1 exchange-stated field for a document source even when NOT declared as context (the repository would otherwise throw)', async () => {
+    // status is E-1 and was declared context above; use a call that does NOT
+    // declare it context but still changes it, to prove the guard is a
+    // SEPARATE, independent exclusion — not merely inferred from context.
+    const ipoRepository = makeIpoRepository();
+    const existing = existingRow({ segment: 'MAINBOARD', status: 'UPCOMING' });
+
+    await upsertIPO(
+      ipoRepository,
+      scrape({ status: 'LISTED', issueSize: 150000000 }),
+      'DRHP',
+      existing,
+      ['companyName'], // status NOT declared context this time
+      null
+    );
+
+    expect(ipoRepository.update).toHaveBeenCalledTimes(1); // the ipos write still succeeds
+    const [, , fields] = bulkTrackFieldUpdatesMock.mock.calls[0] ?? [null, null, []];
+    const names = (fields ?? []).map((f: any) => f.fieldName);
+    expect(names).not.toContain('status');
+    expect(names).toContain('issueSize'); // the non-E-1 claim still gets tracked
+  });
+
+  it('passes this write\'s lineage through to the tracked field(s) (#993)', async () => {
+    const ipoRepository = makeIpoRepository();
+
+    await filingPersisterCall(ipoRepository);
+
+    const [, , fields] = bulkTrackFieldUpdatesMock.mock.calls[0];
+    const row = fields.find((f: any) => f.fieldName === 'issueSize');
+    expect(row).toBeDefined();
+    expect(row.dataLineage).toEqual({ method: 'filing', docType: 'RHP', documentId: 'doc-1' });
+  });
+
+  it('a provenance-write failure never propagates past the already-committed ipos update', async () => {
+    const ipoRepository = makeIpoRepository();
+    bulkTrackFieldUpdatesMock.mockRejectedValueOnce(
+      new Error("E-1 field 'status' may not be written from the document path (source=DRHP).")
+    );
+
+    await expect(
+      upsertIPO(ipoRepository, scrape({ issueSize: 50000000 }), 'CHITTORGARH', existingRow({ issueSize: 20000000 }))
+    ).resolves.toBe('ipo-454');
+
+    expect(ipoRepository.update).toHaveBeenCalledTimes(1);
+  });
+});

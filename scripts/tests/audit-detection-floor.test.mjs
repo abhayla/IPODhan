@@ -21,6 +21,8 @@ import {
   checkLotBandSebiWindow,
   checkCorporateActionShape,
   checkSegmentHasProvenance,
+  checkPublishedWithoutProvenance,
+  classifyRowKeyProbeError,
   classifyRouteResponse,
   classifyVerdictLeak,
   classifyConflictNoiseRatio,
@@ -244,6 +246,49 @@ test('(d) PASSES a non-NULL segment that carries a field_sources row', () => {
 test('(d) PASSES a NULL segment regardless of provenance (nothing to source)', () => {
   const row = { companyName: 'Example Co', offeringType: 'RIGHTS', segment: null, hasSegmentProvenance: false };
   assert.equal(checkSegmentHasProvenance(row), null);
+});
+
+// ---- (r) published value with no field_sources row at all (#454) ------------
+
+test('(r) FAILS naming "company" (slug).field for a published value with no provenance row', () => {
+  const row = { companyName: 'Manika Plastech Ltd', slug: 'manika-plastech-ltd', fieldName: 'issueSize', hasProvenance: false };
+  const v = checkPublishedWithoutProvenance(row);
+  assert.ok(v !== null);
+  assert.equal(v, '"Manika Plastech Ltd" (manika-plastech-ltd).issueSize');
+});
+
+test('(r) PASSES when the value carries a field_sources row', () => {
+  const row = { companyName: 'Manika Plastech Ltd', slug: 'manika-plastech-ltd', fieldName: 'issueSize', hasProvenance: true };
+  assert.equal(checkPublishedWithoutProvenance(row), null);
+});
+
+test('(r) mutation guard: an inverted hasProvenance check would make the red case pass — confirms the test can fail', () => {
+  const invertedCheck = (row) => (!row.hasProvenance ? null : `"${row.companyName}" (${row.slug}).${row.fieldName}`);
+  const failingRow = { companyName: 'Manika Plastech Ltd', slug: 'manika-plastech-ltd', fieldName: 'issueSize', hasProvenance: false };
+  // The REAL predicate flags this row (FAIL); the inverted mutant does not.
+  assert.ok(checkPublishedWithoutProvenance(failingRow) !== null);
+  assert.equal(invertedCheck(failingRow), null);
+});
+
+test('(r) probe: a live migration-lag error (row_key column missing, migration NOT applied) is PASS/not-applicable, never a false FAIL', () => {
+  const err = { code: '42703', message: 'column fs.row_key does not exist' };
+  const outcome = classifyRowKeyProbeError(err, false);
+  assert.equal(outcome.status, 'PASS');
+  assert.equal(outcome.reason, 'migration-not-applied');
+});
+
+test('(r) probe: the same missing-column error with the migration APPLIED is UNVERIFIABLE, never a silent PASS', () => {
+  const err = { code: '42703', message: 'column fs.row_key does not exist' };
+  const outcome = classifyRowKeyProbeError(err, true);
+  assert.equal(outcome.status, 'UNVERIFIABLE');
+  assert.match(outcome.reason, /migration applied=true/);
+});
+
+test('(r) probe: an unrelated read failure (not a missing-column error) is UNVERIFIABLE, never treated as migration lag', () => {
+  const err = { code: '08006', message: 'connection terminated' };
+  const outcome = classifyRowKeyProbeError(err, null);
+  assert.equal(outcome.status, 'UNVERIFIABLE');
+  assert.match(outcome.reason, /ipos\/field_sources not readable/);
 });
 
 // ---- (e) route sweep ---------------------------------------------------------

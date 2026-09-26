@@ -339,6 +339,11 @@ export class FieldSourcesRepository extends BaseRepository {
       source: ScraperSource;
       confidence?: number;
       previousValue?: string | null;
+      /** #454 round 1: passed through to `trackFieldUpdate` so a caller writing
+       *  several fields under one lineage (e.g. a document scrape's
+       *  {method, docType, documentId, sourceSha, ...}) does not need to fall
+       *  back to per-field trackFieldUpdate calls just to carry it. */
+      dataLineage?: Record<string, unknown>;
     }>
   ): Promise<number> {
     const results = [];
@@ -351,6 +356,7 @@ export class FieldSourcesRepository extends BaseRepository {
         source: field.source,
         confidence: field.confidence,
         previousValue: field.previousValue,
+        dataLineage: field.dataLineage,
       });
       results.push(result);
     }

@@ -82,6 +82,7 @@ import {
   evaluateSourceKeyConflicts,
   findSettledFieldRewrites, SETTLED_FIELD_COLUMNS, policyWriterOnFromEnv, settledCurrentValueSql,
   findClosedIpoDoneWithoutWalk,
+  checkPublishedWithoutProvenance, classifyRowKeyProbeError,
 } from './lib/detection-floor-checks.mjs';
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
@@ -2380,22 +2381,24 @@ const PUBLISHED_WITHOUT_PROVENANCE_NAME =
   `every published, non-null ipos value on ${PUBLISHED_WITHOUT_PROVENANCE_FIELDS.map((f) => f.field).join('/')} (${PUBLISHED_WITHOUT_PROVENANCE_FIELDS.filter((f) => f.positiveOnly).map((f) => f.field).join('/')} > 0) carries a field_sources row naming its source (row_key '')`;
 
 async function checkR_publishedWithoutProvenance() {
-  const selectCols = PUBLISHED_WITHOUT_PROVENANCE_FIELDS
-    .map((f) => `i.${f.column}`)
-    .join(', ');
+  // Population/threshold filtering (non-null, and > 0 for issueSize) stays in
+  // SQL so the row volume this reads is small; the PURE decision — does this
+  // row carry provenance — is `checkPublishedWithoutProvenance` (scripts/lib/
+  // detection-floor-checks.mjs), same division of labour as
+  // `checkD_segmentProvenance`/`checkSegmentHasProvenance` above.
   const unionSql = PUBLISHED_WITHOUT_PROVENANCE_FIELDS
     .map(
       (f) => `
-        SELECT i.id, i.company_name AS "companyName", i.slug, '${f.field}' AS "fieldName"
+        SELECT i.id, i.company_name AS "companyName", i.slug, '${f.field}' AS "fieldName",
+               EXISTS (
+                 SELECT 1 FROM field_sources fs
+                  WHERE fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.row_key = ''
+                    AND fs.field_name = '${f.field}'
+               ) AS "hasProvenance"
           FROM ipos i
          WHERE ${REAL_IPO}
            AND i.${f.column} IS NOT NULL
-           ${f.positiveOnly ? `AND i.${f.column} > 0` : ''}
-           AND NOT EXISTS (
-             SELECT 1 FROM field_sources fs
-              WHERE fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.row_key = ''
-                AND fs.field_name = '${f.field}'
-           )`
+           ${f.positiveOnly ? `AND i.${f.column} > 0` : ''}`
     )
     .join('\n        UNION ALL\n');
 
@@ -2403,32 +2406,30 @@ async function checkR_publishedWithoutProvenance() {
   try {
     rows = await q(unionSql);
   } catch (e) {
-    if (e.code === '42703' || e.code === '42P01') {
-      const applied = await isMigrationApplied(FIELD_SOURCES_ROW_KEY_MIGRATION);
-      if (applied === false) {
-        record('r_published_without_provenance', PUBLISHED_WITHOUT_PROVENANCE_NAME, 'PASS',
-          `not applicable — migration ${FIELD_SOURCES_ROW_KEY_MIGRATION} (field_sources.row_key) not applied on this database`);
-        return;
-      }
-      record('r_published_without_provenance', PUBLISHED_WITHOUT_PROVENANCE_NAME, 'UNVERIFIABLE',
-        `field_sources.row_key read failed (migration applied=${applied}): ${e.message}`);
-      return;
-    }
-    record('r_published_without_provenance', PUBLISHED_WITHOUT_PROVENANCE_NAME, 'UNVERIFIABLE',
-      `ipos/field_sources not readable: ${e.message}`);
+    const applied =
+      e.code === '42703' || e.code === '42P01' ? await isMigrationApplied(FIELD_SOURCES_ROW_KEY_MIGRATION) : null;
+    const outcome = classifyRowKeyProbeError(e, applied);
+    record('r_published_without_provenance', PUBLISHED_WITHOUT_PROVENANCE_NAME, outcome.status,
+      outcome.reason === 'migration-not-applied'
+        ? `not applicable — migration ${FIELD_SOURCES_ROW_KEY_MIGRATION} (field_sources.row_key) not applied on this database`
+        : outcome.reason);
     return;
   }
 
-  const offenders = rows.map((r) => `"${r.companyName}" (${r.slug}).${r.fieldName}`);
-  for (const offender of offenders) {
-    notify('r_published_without_provenance', 'P2', offender.slice(0, 120),
-      'a published ipos value has no field_sources row naming its source', offender);
+  const offenders = [];
+  for (const r of rows) {
+    const v = checkPublishedWithoutProvenance(r);
+    if (v) {
+      offenders.push(v);
+      notify('r_published_without_provenance', 'P2', v.slice(0, 120),
+        'a published ipos value has no field_sources row naming its source', v);
+    }
   }
   record('r_published_without_provenance', PUBLISHED_WITHOUT_PROVENANCE_NAME,
-    rows.length === 0 ? 'PASS' : 'FAIL',
-    rows.length === 0
+    offenders.length === 0 ? 'PASS' : 'FAIL',
+    offenders.length === 0
       ? 'every published value on this field list carries provenance'
-      : `${rows.length} row(s): ${offenders.slice(0, MAX_OFFENDERS).join('; ')}`);
+      : `${offenders.length} row(s): ${offenders.slice(0, MAX_OFFENDERS).join('; ')}`);
 }
 
 // ---- (S) item 3 slice S6: PULL-POLICY / PULL-WRITE-POLICY / PULL-PLAN-RANK --

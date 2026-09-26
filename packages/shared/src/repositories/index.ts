@@ -15,7 +15,7 @@ export { ListingPerformanceRepository } from './listing-performance-repository';
 export { RegistrarRepository } from './registrar-repository';
 export { MarketHolidayRepository } from './market-holiday-repository';
 export { ScraperLogRepository } from './scraper-log-repository';
-export { FieldSourcesRepository } from './field-sources-repository';
+export { FieldSourcesRepository, E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from './field-sources-repository';
 export { DataConflictsRepository } from './data-conflicts-repository';
 // Item 4 (OD-21): per-field validation failures recorded before the write.
 export { FieldExtractionFailuresRepository } from './field-extraction-failures-repository';
