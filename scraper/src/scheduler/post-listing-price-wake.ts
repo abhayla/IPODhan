@@ -22,7 +22,7 @@ import logger from '../utils/logger.js';
 import { DistributedLock } from '../utils/distributed-lock.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { defaultHolidayLookup } from '../services/document-cycle-calendar-gate.js';
-import { writePostListingPrice, writePostListingState } from '../services/data-persister.js';
+import { writeDelistingState, writePostListingPrice, writePostListingState } from '../services/data-persister.js';
 import { recordLiveStep } from '../services/step-ledger-recorders.js';
 import {
   createPacer,
@@ -140,6 +140,9 @@ export async function runPostListingPriceWake(now: Date = new Date()): Promise<n
           patch,
         });
       },
+      writeDelisting: async (c, next, delistAt) => {
+        await writeDelistingState({ ipoRepository: ipoRepository as any, ipoId: c.id, next, delistAt });
+      },
       log: (line, fields) => logger.info(fields, line),
     });
     logger.info(
@@ -153,6 +156,7 @@ export async function runPostListingPriceWake(now: Date = new Date()): Promise<n
         noPrice: summary.noPrice,
         refused: summary.refused,
         notReached: summary.notReached,
+        delisting: summary.delisting,
         calls: summary.calls,
         elapsedMs: Date.now() - startedAt,
       },
