@@ -38,6 +38,47 @@ export const SCRAPER_WAKE_CADENCE_MINUTES = 30;
  */
 export const SCRAPER_WAKE_FRESHNESS_SLACK_MINUTES = 15;
 
+/**
+ * #707: a stale lock (2h05m TTL), a hung run, or any other cause holding the
+ * lock all produce the SAME visible shape at the tail of the wake log — a run
+ * of consecutive `wake-skipped` lines. One skip is the lock working as
+ * designed (two cycles legitimately overlapped); a RUN of them across
+ * multiple wakes means the lock has not cleared for longer than one wake
+ * interval. The wake fires every SCRAPER_WAKE_CADENCE_MINUTES (30) minutes,
+ * so N=3 spans ~90 minutes — comfortably more than one interval, so a single
+ * overlap never trips it, but a stuck lock does within two more wakes.
+ */
+export const SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD = 3;
+
+/** scraper-wake.sh's log() line shape (see newestWakeTimestamp's own comment
+ * in scripts/ops/wake-delta.mjs) — reused rather than re-implemented here
+ * (duplicated-check-implementations.md). */
+import { LINE_RE as WAKE_LOG_LINE_RE } from '../ops/wake-delta.mjs';
+
+/**
+ * FAIL — the newest SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD lines in the log are
+ * ALL `wake-skipped`, whatever the underlying cause (a stale lock, a hung
+ * cycle, anything else holding it). Names the slot and the first/last skipped
+ * timestamps in the violation string rather than a bare count
+ * (signal-ownership.md R1). Returns null (never a false FAIL) when the log
+ * has fewer than the threshold's worth of parseable lines — freshness
+ * already covers "no wake at all". #707.
+ */
+export function checkScraperWakeSkippedRun(slot, raw) {
+  const lines = [];
+  for (const line of String(raw ?? '').split(/\r?\n/)) {
+    const m = WAKE_LOG_LINE_RE.exec(line.trim());
+    if (!m) continue;
+    lines.push({ timestamp: m[1], kind: m[2] });
+  }
+  if (lines.length < SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD) return null;
+
+  const tail = lines.slice(-SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD);
+  if (!tail.every((l) => l.kind === 'wake-skipped')) return null;
+
+  return `slot ${slot}: the newest ${SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD} consecutive wake lines are all wake-skipped, from ${tail[0].timestamp} to ${tail[tail.length - 1].timestamp} — spans more than one ${SCRAPER_WAKE_CADENCE_MINUTES}min wake interval, consistent with a stale lock, a hung cycle, or any cause holding the lock (#707)`;
+}
+
 function markerFor(slot) {
   return `# ipodhan-scraper-wake:${slot}`;
 }
