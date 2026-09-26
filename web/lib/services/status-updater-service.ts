@@ -45,14 +45,14 @@ export function isTerminalStatus(status: string | null | undefined): boolean {
  * LISTED (or whose listing_date was cleared) was written LISTED -> CLOSED every
  * cycle; the listing-performance job reads LISTED rows only, so from then on
  * nothing advanced it again. Only an ADMIN edit may move a listed IPO back.
- * Round 2: the same holds for every rung (CLOSED -> OPEN, OPEN -> UPCOMING), the
- * rule the scraper's consolidation resolver applies too (isStatusRegression).
+ * Round 3 (F-131 Dhanwel, OD-83, OD-87): the other backward moves stay allowed
+ * here. This ladder reads only the stored dates, and it can only answer OPEN or
+ * UPCOMING for a CLOSED row when the stored window has not passed — i.e. an
+ * exchange relaunch moved the dates, which must move the status with them.
+ * Only LISTED -> anything comes from an ABSENT listing date, never a newer window.
  */
-const STATUS_LADDER: readonly string[] = ['UPCOMING', 'OPEN', 'CLOSED', 'LISTED'];
 export function isDateLadderRegression(from: string | null | undefined, to: IPOStatus): boolean {
-  const a = STATUS_LADDER.indexOf(String(from ?? '').toUpperCase());
-  const b = STATUS_LADDER.indexOf(to);
-  return a !== -1 && b !== -1 && b < a;
+  return String(from ?? '').toUpperCase() === 'LISTED' && to !== 'LISTED';
 }
 
 /**

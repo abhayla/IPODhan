@@ -125,7 +125,7 @@ async function main() {
         '[DRY-RUN] would advance CLOSED->LISTED + write listing_performance'
       );
     } else {
-      const scraped = buildListingScrapedIPO(ipo, best.row);
+      const scraped = buildListingScrapedIPO(ipo, best.row, best.method);
       // T-318 (Phase-1 completion): resolve identity ONCE here instead of
       // letting upsertIPO re-resolve independently (one of the 6 direct
       // callers named in review-round2 P1-2/C2).

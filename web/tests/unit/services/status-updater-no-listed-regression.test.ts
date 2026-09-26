@@ -120,6 +120,12 @@ describe('#70: updateIPOStatuses never takes a LISTED row back', () => {
     expect(result.closedToListed).toBe(1);
   });
 
+  it('F-131 Dhanwel relaunch: a CLOSED row whose stored window moved to the future goes back to UPCOMING', async () => {
+    queryRows = [row({ id: 'dhanwel', slug: 'dhanwel-hybird-seeds-ltd', status: 'CLOSED', openDate: '2026-08-19', closeDate: '2026-08-21', listingDate: null })];
+    await updateIPOStatuses({ now: new Date('2026-08-10T06:00:00Z') });
+    expect(updatedRows).toEqual([{ id: 'dhanwel', set: expect.objectContaining({ status: 'UPCOMING' }) }]);
+  });
+
   it('getOutdatedStatusCount does not count a LISTED row as outdated', async () => {
     queryRows = [row({})];
     const r = await getOutdatedStatusCount(new Date('2026-09-26T06:00:00Z'));
@@ -136,8 +142,8 @@ describe('isDateLadderRegression', () => {
     ['OPEN', 'CLOSED', false],
     ['UPCOMING', 'OPEN', false],
     ['listed', 'CLOSED', true],
-    ['CLOSED', 'OPEN', true],
-    ['OPEN', 'UPCOMING', true],
+    ['CLOSED', 'OPEN', false],
+    ['OPEN', 'UPCOMING', false],
     ['WITHDRAWN', 'CLOSED', false],
   ])('%s -> %s is a regression: %s', (from, to, expected) => {
     expect(isDateLadderRegression(from, to as never)).toBe(expected);

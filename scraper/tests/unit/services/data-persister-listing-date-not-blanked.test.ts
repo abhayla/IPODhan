@@ -1,6 +1,7 @@
 /**
  * #70 round 2 — absence is not a value: the merged-record date sanitizer must
- * never write NULL over a stored ipos.listing_date.
+ * never write NULL over a stored ipos.listing_date when the merged record simply
+ * has none; a present date the sanitizer rejects is still written as NULL.
  *
  * Staging 2026-09-26 (supervisor, read-only): glass-wall-systems-india-ltd and
  * lumino-industries-ltd each have listingDate provenance in field_sources
@@ -129,40 +130,36 @@ function consolidationResult(consolidatedData: Record<string, unknown>, fieldsUp
 }
 
 
-describe('#70: a stored listing_date is never blanked by the merged-record sanitizer', () => {
+describe('#70: absence is not a value, a rejection is', () => {
   beforeEach(() => { vi.clearAllMocks(); resolveRegistrarIdMock.mockReturnValue(null); });
 
-  it('close >= listing on the merged record: the update does not write listingDate: null', async () => {
+  it('ABSENT: the merged record carries listingDate null -> the stored listing_date is not blanked', async () => {
     consolidateIPODataMock.mockResolvedValue(
-      consolidationResult({ status: 'CLOSED', openDate: '2026-08-27', closeDate: '2026-09-04', listingDate: '2026-09-03' }, 1)
-    );
-    const ipoRepository = makeIpoRepository();
-    await upsertIPO(
-      ipoRepository,
-      scrape({ listingExchange: 'NSE', status: 'CLOSED', openDate: '2026-08-27', closeDate: '2026-09-04' }),
-      'NSE',
-      existingRow({ status: 'LISTED', listingExchanges: ['NSE'], openDate: '2026-08-27', closeDate: '2026-08-29', listingDate: '2026-09-03' })
-    );
-    const patches = ipoRepository.update.mock.calls.map((c: unknown[]) => c[1] as Record<string, unknown>);
-    for (const p of patches) {
-      expect(p.listingDate === null).toBe(false);
-    }
-  });
-
-  it('a merged record whose listing date is rejected still never blanks a stored one when open/close are absent', async () => {
-    consolidateIPODataMock.mockResolvedValue(
-      consolidationResult({ status: 'LISTED', listingDate: '2026-09-03' }, 1)
+      consolidationResult({ status: 'LISTED', openDate: '2026-08-27', closeDate: '2026-08-29', listingDate: null }, 1)
     );
     const ipoRepository = makeIpoRepository();
     await upsertIPO(
       ipoRepository,
       scrape({ listingExchange: 'NSE', status: 'LISTED' }),
       'NSE',
-      existingRow({ status: 'LISTED', listingExchanges: ['NSE'], openDate: null, closeDate: null, listingDate: '2026-09-03' })
+      existingRow({ status: 'LISTED', listingExchanges: ['NSE'], openDate: '2026-08-27', closeDate: '2026-08-29', listingDate: '2026-09-03' })
     );
     const patches = ipoRepository.update.mock.calls.map((c: unknown[]) => c[1] as Record<string, unknown>);
-    for (const p of patches) {
-      expect(p.listingDate === null).toBe(false);
-    }
+    for (const p of patches) expect(p.listingDate === null).toBe(false);
+  });
+
+  it('REJECTED: a present listing date the sanitizer rejects (close >= listing) is still written as NULL', async () => {
+    consolidateIPODataMock.mockResolvedValue(
+      consolidationResult({ status: 'CLOSED', openDate: '2026-09-09', closeDate: '2026-09-11', listingDate: '2026-09-03' }, 1)
+    );
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ listingExchange: 'NSE', status: 'CLOSED', openDate: '2026-09-09', closeDate: '2026-09-11' }),
+      'NSE',
+      existingRow({ status: 'CLOSED', listingExchanges: ['NSE'], openDate: '2026-09-09', closeDate: '2026-09-11', listingDate: '2026-09-03' })
+    );
+    const patches = ipoRepository.update.mock.calls.map((c: unknown[]) => c[1] as Record<string, unknown>);
+    expect(patches.some((p) => p.listingDate === null)).toBe(true);
   });
 });

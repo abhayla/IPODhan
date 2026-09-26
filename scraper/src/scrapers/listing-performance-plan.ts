@@ -39,6 +39,7 @@ export type SkipReason =
   // #70: a CLOSED row the listing source cannot safely advance.
   | 'not-an-ipo'
   | 'not-listed-yet'
+  | 'no-close-date'
   | 'listing-date-unparseable'
   | 'listing-date-in-future'
   | 'listing-date-not-after-close'
@@ -105,7 +106,7 @@ export function planListingPerformanceUpdates(
         skipped.push({ ipoId: ipo.id, companyName: ipo.companyName, reason });
         continue;
       }
-      advance = buildListingScrapedIPO(ipo, match.row);
+      advance = buildListingScrapedIPO(ipo, match.row, match.method);
     }
 
     const record = buildListingPerformanceRecord(ipo, match.row);
@@ -144,6 +145,9 @@ function advanceBlocker(
   todayIst: string | undefined
 ): SkipReason | null {
   if (ipo.offeringType !== 'IPO') return 'not-an-ipo';
+  // #70 round 3: "listing > close" cannot be checked without a close date, and a
+  // row with no window is not known to have closed at all.
+  if (!ipo.closeDate) return 'no-close-date';
   const listingDate = parseCgListingDate(row.listingDate);
   if (!listingDate) return 'listing-date-unparseable';
   if (!todayIst || listingDate > todayIst) return 'listing-date-in-future';

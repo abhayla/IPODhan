@@ -160,30 +160,42 @@ function toListingExchange(row: ChittorgarhListingRow, ipo: StuckIpo): 'NSE' | '
  * nothing else is stomped. The status is set to LISTED because listing_date has
  * arrived — identical to what computeTargetStatus would derive.
  */
-export function buildListingScrapedIPO(ipo: StuckIpo, row: ChittorgarhListingRow): ScrapedIPO {
+export function buildListingScrapedIPO(
+  ipo: StuckIpo,
+  row: ChittorgarhListingRow,
+  matchMethod?: MatchMethod
+): ScrapedIPO {
   const listingDate = parseCgListingDate(row.listingDate);
   if (!listingDate) {
     throw new Error(`Cannot build listing update for ${ipo.companyName}: unparseable listing date "${row.listingDate}"`);
   }
+  // #70 round 3: never invent a value the row does not have. Open/close dates are
+  // sent only when the row already holds them (no open = close = listing), the
+  // issue size only when known, and a symbol/ISIN is taken from the listing row
+  // only when the match itself was on an identifier — a slug or name match is not
+  // evidence that the listing row's identifiers belong to this IPO.
+  const identifierMatch = matchMethod === 'isin' || matchMethod === 'symbol';
   const issueSizeNum =
     ipo.issueSize === null || ipo.issueSize === undefined
-      ? 0
+      ? null
       : typeof ipo.issueSize === 'string'
-        ? parseFloat(ipo.issueSize) || 0
+        ? parseFloat(ipo.issueSize)
         : ipo.issueSize;
+  const symbol = ipo.symbol ?? (identifierMatch ? row.nseSymbol : null);
+  const isin = ipo.isin ?? (identifierMatch ? row.isin : null);
 
   return {
     companyName: ipo.companyName,
-    issueSize: issueSizeNum,
-    openDate: ipo.openDate ?? listingDate,
-    closeDate: ipo.closeDate ?? listingDate,
+    ...(issueSizeNum && Number.isFinite(issueSizeNum) && issueSizeNum > 0 ? { issueSize: issueSizeNum } : {}),
+    ...(ipo.openDate ? { openDate: ipo.openDate } : {}),
+    ...(ipo.closeDate ? { closeDate: ipo.closeDate } : {}),
     listingExchange: toListingExchange(row, ipo),
     segment: ipo.segment ?? undefined,
     offeringType: ipo.offeringType as ScrapedIPO['offeringType'],
     status: 'LISTED',
     listingDate,
-    symbol: ipo.symbol ?? row.nseSymbol ?? undefined,
-    isin: (ipo.isin ?? row.isin ?? undefined) || undefined,
+    ...(symbol ? { symbol } : {}),
+    ...(isin ? { isin } : {}),
     ...(ipo.priceRangeMax ? { priceRangeMax: ipo.priceRangeMax } : {}),
   };
 }

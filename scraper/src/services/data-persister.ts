@@ -1305,16 +1305,21 @@ async function upsertIPOInScope(
               updatedAt: new Date(),
             };
 
-            // #70: absence is not a value. When the sanitizer rejects the merged
-            // listing date it writes `listingDate: null`, which blanked a stored
-            // ipos.listing_date that field_sources still records (glass-wall /
-            // lumino on staging) — a write consolidation never decided. A NULL
-            // here only ever means "no usable value this cycle": keep the column.
-            if (finalData.listingDate == null && existingIPO.listingDate != null) {
+            // #70: absence is not a value. A merged record with NO listing date
+            // (consolidation had nothing to say) must not blank the stored one.
+            // A listing date that WAS present and that sanitizeIpoDates REJECTED
+            // (e.g. the kwality branch: close >= listing) is a decision, not an
+            // absence: it is still written as NULL, and the incoherent-sequence
+            // warning above names it (round 3, Tier A review of #1121).
+            if (
+              rawConsolidated.listingDate == null &&
+              finalData.listingDate == null &&
+              existingIPO.listingDate != null
+            ) {
               if ('listingDate' in finalData) {
                 logger.warn(
-                  { ipoId: existingIPO.id, source, storedListingDate: existingIPO.listingDate, mergedListingDate: rawConsolidated.listingDate },
-                  '[DataPersister] #70 refusing to blank a stored listing_date (merged value rejected or absent)'
+                  { ipoId: existingIPO.id, source, storedListingDate: existingIPO.listingDate },
+                  '[DataPersister] #70 merged record carries no listing date - keeping the stored one'
                 );
               }
               delete finalData.listingDate;

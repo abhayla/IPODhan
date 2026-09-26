@@ -14,8 +14,10 @@
  * "listing > close"), field 8 `status` (legal transition UPCOMING->OPEN->CLOSED->LISTED),
  * fields 176-178 / 224 (listing_performance.listing_date is a copy of ipos.listing_date).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { planListingPerformanceUpdates } from '../../../src/scrapers/listing-performance-plan.js';
+import { buildListingScrapedIPO } from '../../../src/services/listing-reconciliation.js';
+import { makeListingAdvanceWriter } from '../../../src/scrapers/listing-advance-writer.js';
 import type { ChittorgarhListingRow } from '../../../src/scrapers/chittorgarh-listing-scraper.js';
 import type { StuckIpo } from '../../../src/services/listing-reconciliation.js';
 
@@ -122,3 +124,71 @@ describe('#70: a CLOSED IPO whose listing is known advances to LISTED', () => {
     expect(skipped).toEqual([expect.objectContaining({ reason: 'no-listing-source-match' })]);
   });
 });
+
+describe('#70 round 3: the advance never invents values', () => {
+  it('a CLOSED row with no close date is not advanced', () => {
+    const { records, skipped } = planListingPerformanceUpdates([glassWall({ closeDate: null })], [cgRow()], TODAY);
+    expect(records).toEqual([]);
+    expect(skipped).toEqual([expect.objectContaining({ reason: 'no-close-date' })]);
+  });
+
+  it('never sends open/close dates the row does not hold (no open = close = listing)', () => {
+    const scraped = buildListingScrapedIPO(glassWall({ openDate: null, closeDate: null }), cgRow(), 'isin');
+    expect('openDate' in scraped).toBe(false);
+    expect('closeDate' in scraped).toBe(false);
+    expect(scraped.listingDate).toBe('2026-09-16');
+  });
+
+  it("sends the row's own open/close dates unchanged", () => {
+    const scraped = buildListingScrapedIPO(glassWall(), cgRow(), 'slug');
+    expect(scraped.openDate).toBe('2026-09-09');
+    expect(scraped.closeDate).toBe('2026-09-11');
+  });
+
+  it.each(['slug', 'name'] as const)("a %s match never copies the listing row's symbol or ISIN", (method) => {
+    const scraped = buildListingScrapedIPO(glassWall(), cgRow({ isin: 'INE0GLASS011' }), method);
+    expect(scraped.symbol).toBeUndefined();
+    expect(scraped.isin).toBeUndefined();
+  });
+
+  it('an identifier match may fill the missing identifier', () => {
+    const scraped = buildListingScrapedIPO(glassWall({ isin: 'INE0GLASS011' }), cgRow({ isin: 'INE0GLASS011' }), 'isin');
+    expect(scraped.symbol).toBe('GLASSWALL');
+  });
+});
+
+describe('#70 round 3: LISTED is claimed only after the listing date is stored', () => {
+  const scraped = () => buildListingScrapedIPO(glassWall(), cgRow(), 'slug');
+
+  it('date rejected: one write, status sent as context only, no LISTED claim', async () => {
+    const upsert = vi.fn().mockResolvedValue('id');
+    const write = makeListingAdvanceWriter({
+      resolve: async () => null,
+      upsert,
+      readBack: async () => ({ storedListingDate: null, storedStatus: 'CLOSED' }),
+    });
+    const out = await write(glassWall(), scraped());
+    expect(upsert).toHaveBeenCalledTimes(1);
+    const [payload, , ctx] = upsert.mock.calls[0];
+    expect(payload.status).toBe('CLOSED');
+    expect(ctx).toContain('status');
+    expect(ctx).not.toContain('listingDate');
+    expect(out.storedListingDate).toBeNull();
+  });
+
+  it('date stored: the second write claims LISTED', async () => {
+    const upsert = vi.fn().mockResolvedValue('id');
+    const reads = [
+      { storedListingDate: '2026-09-16', storedStatus: 'CLOSED' },
+      { storedListingDate: '2026-09-16', storedStatus: 'LISTED' },
+    ];
+    const write = makeListingAdvanceWriter({ resolve: async () => null, upsert, readBack: async () => reads.shift()! });
+    const out = await write(glassWall(), scraped());
+    expect(upsert).toHaveBeenCalledTimes(2);
+    const [payload2, , ctx2] = upsert.mock.calls[1];
+    expect(payload2.status).toBe('LISTED');
+    expect(ctx2).not.toContain('status');
+    expect(out).toEqual({ storedListingDate: '2026-09-16', storedStatus: 'LISTED' });
+  });
+});
+
