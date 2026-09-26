@@ -195,18 +195,10 @@ def test_a_name_only_fragment_is_not_emitted_as_a_peer():
 @pytest.mark.parametrize(
     "fixture",
     [
-        # Karamtara's headers are single-level, so this passes today - which is
-        # what makes the check meaningful rather than a blanket "known broken".
+        # Karamtara's headers are single-level - included so the check stays
+        # meaningful rather than reading as "PRASOLCHEM special-cased".
         KARAMTARA,
-        pytest.param(
-            PRASOLCHEM,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="#596 two-level headers map a child column by its LABEL's "
-                       "index; PRASOLCHEM's Basic/Diluted labels sit one column "
-                       "right of their data",
-            ),
-        ),
+        PRASOLCHEM,
     ],
 )
 def test_no_mapped_column_is_empty_for_EVERY_peer(fixture):
@@ -217,27 +209,26 @@ def test_no_mapped_column_is_empty_for_EVERY_peer(fixture):
     wrong column - there is no honest reading in which a prospectus prints a
     header and then leaves it blank for every single company.
 
-    The instance that exposed it: PRASOLCHEM's EPS header is two-level - a
-    parent `EPS as on March 31, 2026` spanning several columns with `Basic` and
-    `Diluted` underneath. pdfplumber centres each child LABEL inside its
+    The instance that exposed it (#606): PRASOLCHEM's EPS header is two-level -
+    a parent `EPS as on March 31, 2026` spanning several columns with `Basic`
+    and `Diluted` underneath. pdfplumber centres each child LABEL inside its
     sub-span while the numbers sit left-aligned, so the label lands one column
     to the RIGHT of its own data:
 
         header row 3:   [8]='Basic'   [11]='Diluted'
         every data row: [7]=60.19     [10]=60.19
 
-    `map_columns` assigns the child by the label's index, so `eps_basic` -> 8
-    and `eps_diluted` -> 11, both empty in every body row. All seven peers carry
-    a null EPS, and `filing-persister` reads exactly those two keys - so the
-    database gets nulls for a number the table prints plainly.
+    `map_columns` used to assign the child by the label's index, so `eps_basic`
+    -> 8 and `eps_diluted` -> 11, both empty in every body row. All seven peers
+    carried a null EPS, and `filing-persister` reads exactly those two keys - so
+    the database got nulls for a number the table prints plainly. Fixed by
+    handing `map_columns` the body rows: any mapped column empty in every row is
+    relocated to its nearest unclaimed neighbour that DOES carry data.
 
-    Nothing caught it, because `test_every_peer_carries_real_values_not_just_a_name`
-    only demands two non-null values and revenue, NAV and P/E already supply
-    them. A row can lose half its columns and still look healthy.
-
-    `strict=True` so whoever fixes the mapper is FORCED to delete this marker.
-    An xfail that quietly starts passing is how a known defect becomes a
-    forgotten one.
+    Nothing caught it before this test, because
+    `test_every_peer_carries_real_values_not_just_a_name` only demands two
+    non-null values and revenue, NAV and P/E already supply them. A row can
+    lose half its columns and still look healthy.
     """
     parsed = parse_peer_table(cells(*fixture))
     peers = parsed["peers"]

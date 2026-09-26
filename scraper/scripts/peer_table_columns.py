@@ -181,7 +181,23 @@ def reconstruct_headers(rows, header_row_count):
     return headers
 
 
-def map_columns(headers):
+def _column_has_data(rows, index):
+    """True when at least one row carries a non-empty cell at ``index``.
+
+    Any non-empty text counts, including a pending placeholder (`NA#`, `[.]`) -
+    the question here is only "does this column hold a printed value anywhere",
+    not "does it hold a usable one". A column that is blank in every row is not
+    a real data column, whatever the header above it says.
+    """
+    for row in rows:
+        if index < len(row):
+            cell = " ".join((row[index] or "").split())
+            if cell:
+                return True
+    return False
+
+
+def map_columns(headers, data_rows=None):
     """Return ``{canonical_field: column_index}``.
 
     Columns whose reconstructed header is empty are dropped, because the
@@ -189,6 +205,18 @@ def map_columns(headers):
     column count is not the real one. A field already claimed by an earlier
     column is not overwritten: the first real match wins, so a stray later
     mention cannot steal a mapping.
+
+    ``data_rows`` (the table's body rows, issuer + peers, after the header) is
+    OPTIONAL but load-bearing for two-level headers: pdfplumber centres a child
+    label (`Basic`, `Diluted`) inside its parent's sub-span while the numbers
+    beneath it sit LEFT-ALIGNED, so the label's own column index is one column
+    to the right of where its data actually is (#606). A label-only mapper has
+    no way to see that; a mapped column that is empty in every body row is the
+    tell. When ``data_rows`` is given, any mapped column found empty in every
+    row is corrected to its nearest unclaimed neighbour (checked left first,
+    since that is the direction the observed shift runs, then right) that DOES
+    carry data. The correction is local and evidence-driven - it never invents
+    a mapping, it only relocates one that has already proven itself wrong.
     """
     mapping = {}
     last_metric = None
@@ -252,6 +280,20 @@ def map_columns(headers):
             mapping[matched] = index
             if matched in (EPS_BASIC, EPS_COMBINED, EPS_DILUTED, PE, PE_BASIC, PE_DILUTED):
                 last_metric = matched
+
+    if data_rows:
+        claimed = set(mapping.values())
+        for field, index in list(mapping.items()):
+            if _column_has_data(data_rows, index):
+                continue
+            for candidate in (index - 1, index + 1):
+                if candidate < 0 or candidate >= len(headers) or candidate in claimed:
+                    continue
+                if _column_has_data(data_rows, candidate):
+                    mapping[field] = candidate
+                    claimed.discard(index)
+                    claimed.add(candidate)
+                    break
 
     return mapping
 

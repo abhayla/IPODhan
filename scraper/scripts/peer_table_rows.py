@@ -58,7 +58,7 @@ def parse_peer_table(table):
     bury a formatting decision inside a parser.
     """
     header_rows = detect_header_row_count(table)
-    columns = map_columns(reconstruct_headers(table, header_rows))
+    columns = map_columns(reconstruct_headers(table, header_rows), table[header_rows:])
     name_index = columns.get(NAME, 0)
 
     issuer = None
