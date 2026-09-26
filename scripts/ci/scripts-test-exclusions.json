@@ -1,0 +1,23 @@
+{
+  "$comment": [
+    "Test files under scripts/tests/ or scripts/ci/tests/ that no CI workflow",
+    "runs, on purpose. Enforced by scripts/ci/require-scripts-test-coverage.mjs:",
+    "every *.test.{mjs,ts,sh} file directly under those two directories must be",
+    "wired into a `run:` step in .github/workflows/ or listed here.",
+    "kind 'cannot-run-in-ci' = needs a database, the VPS, a live external site,",
+    "or a credential CI does not have. kind 'broken' = cannot currently run or",
+    "pass anywhere; it needs a tracking issue, because a broken test hiding",
+    "inside 'excluded' is exactly the silence this gate exists to end",
+    "(issues #616, #681, #1158).",
+    "Paths must name one file exactly, under scripts/tests/ or scripts/ci/tests/",
+    "— no wildcards."
+  ],
+  "exclusions": [
+    {
+      "file": "scripts/tests/audit-ipo-coverage.test.mjs",
+      "kind": "broken",
+      "issue": "#1173",
+      "reason": "The self-test is a real defect finder, not a broken test: audit-ipo-coverage.mjs's subRows SELECT is missing face_value, authoritative_issue_price and company_website, which three SUBSTANCE_CHECKS predicates read — those predicates silently no-op on every row today. Wiring this into CI now would fail every PR on a pre-existing production defect it did not cause. Excluded until the SELECT is fixed (issue #1173), then it wires in as a normal pass."
+    }
+  ]
+}

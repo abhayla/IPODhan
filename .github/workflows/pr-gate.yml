@@ -63,6 +63,15 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: "scripts/tests coverage gate (#616, #681, #1158 — wire-or-retire)"
+        # Every scripts/tests/ and scripts/ci/tests/ *.test.{mjs,ts,sh} file
+        # must be run by a `run:` step in some workflow, or explicitly
+        # excluded with a reason in scripts/ci/scripts-test-exclusions.json.
+        # Runs before `npm ci` on purpose (builtins-only import, T-570) so a
+        # missing dependency install can never mask this gate. Self-test:
+        # scripts/tests/require-scripts-test-coverage.test.mjs.
+        run: node scripts/ci/require-scripts-test-coverage.mjs
+
       - name: node --test glob guard (#461 — hollow-gate prevention)
         # `node --test` with a wildcard argument exits 0 silently when the
         # wildcard matches zero files. This CI has 0 wildcard-shaped
@@ -480,8 +489,66 @@ jobs:
         # npm ci.
         run: node --test scripts/lib/signal-health-checks.test.mjs
 
+      - name: "scripts/tests wire-or-retire batch 1 (#616/#681/#1158, builtins-only)"
+        # All 23 of these import Node builtins only (or a local scripts/lib
+        # or scripts/ops or docs/design module that itself imports builtins
+        # only) — no npm package, so they run here with the other pre-install
+        # node --test steps, not after npm ci. Each is a self-test for a
+        # script/checker that previously existed and never ran once in CI.
+        run: |
+          node --test scripts/tests/admin-queue-size.test.mjs
+          node --test scripts/tests/apply-rule-ownership.test.mjs
+          node --test scripts/tests/audit-findings-to-issues.test.mjs
+          node --test scripts/tests/audit-ipo-coverage-distinct-on.test.mjs
+          node --test scripts/tests/audit-ipo-coverage-exit-reason.test.mjs
+          node --test scripts/tests/audit-ipo-coverage-served-stored.test.mjs
+          node --test scripts/tests/audit-reverse-sweep.test.mjs
+          node --test scripts/tests/cache-poison-bisect.test.mjs
+          node --test scripts/tests/check-build-cards-isignored.test.mjs
+          node --test scripts/tests/check-ledger-rows-for-done-cards.test.mjs
+          node --test scripts/tests/check-stage3-dod.test.mjs
+          node --test scripts/tests/details-row-coverage.test.mjs
+          node --test scripts/tests/document-state-checks-name-their-entity.test.mjs
+          node --test scripts/tests/field-plan-slot.test.mjs
+          node --test scripts/tests/floor-delta-notifier.test.mjs
+          node --test scripts/tests/floor-delta.test.mjs
+          node --test scripts/tests/issue-size-consistency-coverage.test.mjs
+          node --test scripts/tests/merged-not-deployed.test.mjs
+          node --test scripts/tests/plan-rank2-never-bse-for-issue-size-invariant.test.mjs
+          node --test scripts/tests/pull-frozen-checks.test.mjs
+
+      - name: "scripts/tests wire-or-retire batch 2, slow suites (#616/#681)"
+        # Split from batch 1 only because these two are individually slow
+        # (check-build-cards-status drives real git subprocesses ~25s;
+        # check-dod-root-resolution's check-dod.mjs walks the full spec tree
+        # twice, ~100s) — grouping them separately keeps batch 1's failure
+        # output short to read. Builtins-only, same as batch 1.
+        run: |
+          node --test scripts/tests/check-build-cards-status.test.mjs
+          node --test scripts/tests/check-dod-root-resolution.test.mjs
+
+      - name: "scripts/tests wire-or-retire batch 3 (#616/#681)"
+        run: |
+          node --test scripts/tests/require-repair-tool-module.test.mjs
+          node --test scripts/tests/seo-surface-checks.test.mjs
+          node --test scripts/tests/vps-data-audit-cron.test.mjs
+          node --test scripts/tests/zip-member-rows.test.mjs
+          node --test scripts/tests/require-scripts-test-coverage.test.mjs
+
+      - name: "main-gate.yml structural self-test (#616/#681)"
+        # fs/path/url builtins only — reads .github/workflows/main-gate.yml
+        # off disk, asserts it parses and carries its required shape.
+        run: node --test scripts/tests/main-gate-workflow.test.mjs
+
       - name: Install dependencies
         run: npm ci
+
+      - name: "pg-utc self-test (#616/#681, needs the pg package — after npm ci)"
+        # scripts/lib/pg-utc.mjs and its test import the `pg` npm package
+        # (type-parser registration only — no live connection), so this runs
+        # after npm ci, same placement as the other pg-importing
+        # scripts/tests/*.test.mjs in this job.
+        run: node --test scripts/tests/pg-utc.test.mjs
 
       - name: Run assert-repair-held self-test (#698, scheduled cycles only)
         # assert-repair-held.mjs is the real-data proof every data-repair fix
@@ -591,6 +658,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: "scripts/tests wire-or-retire, Node-22-only suites (#616/#681)"
+        # These three FAIL LOUD (no skip) on Node < 22.10 because they import
+        # a .ts SSOT via erasable-TypeScript type stripping through a plain
+        # top-level `import`/`await import` with no try/catch fallback — same
+        # constraint as every other suite in this window. Placed first in the
+        # window so a stripping failure here is not masked by a later step's
+        # output. generate-ipo-slug-parity.test.mjs degrades to a SKIP on
+        # Node 20 (own try/catch) but is grouped here anyway for the parity
+        # coverage it actually exists to provide.
+        run: |
+          node --test scripts/tests/generate-ipo-slug-parity.test.mjs
+          node --test scripts/tests/duplicate-ipo-merge-tolerance-parity.test.mjs
+          node --test scripts/tests/pull-policy-checks.test.mjs
 
       - name: Company-name normalizer parity self-test (T-518)
         # scripts/tests/normalize-company-name-parity.test.mjs imports BOTH
@@ -970,6 +1051,21 @@ jobs:
           SCHEMA_DRIFT_IGNORE_GATED: '1'
         run: npm run audit:schema-drift
 
+      - name: "assert-schema-drift.ts self-test (#616/#681/#800 — needs a live DB)"
+        # scripts/tests/assert-schema-drift.test.ts refuses without a reachable
+        # DATABASE_URL/TEST_DATABASE_URL ("FATAL: set DATABASE_URL..."), so it
+        # was deliberately left OUT of the Node-22/tsx batch in the `gate` job
+        # (#800) — adding it there would make that job red on every PR. This
+        # job already provisions Postgres for the steps above, so it runs
+        # here instead. It CREATEs/DROPs its own throwaway fixture table
+        # (__schema_drift_selftest_fixture__), never touching the app schema,
+        # so no SCHEMA_DRIFT_IGNORE_GATED is needed. Not `--test` — the file
+        # is a plain script with its own pass/fail exit code, not a
+        # node:test suite.
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
+        run: npx tsx scripts/tests/assert-schema-drift.test.ts
+
       - name: Self-invalidate KNOWN_GATED_INDEX_DRIFT / KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT
         # scripts/tests/known-gated-registry-invalidation.test.ts — tsx, not
         # bare node --test, because it imports assert-schema-drift.ts through
@@ -1153,6 +1249,17 @@ jobs:
       # success, so the gate is only worth having if it is run.
       - name: Run deployed-config preflight test suite (#793 M1)
         run: bash scripts/tests/deploy-linux-config-preflight.test.sh
+
+      # #616/#681: unwired at merge, same class as every other suite in this
+      # job — named explicitly because pr-gate never globs.
+      - name: Run deploy-and-watch test suite (#616/#681)
+        run: bash scripts/tests/deploy-and-watch.test.sh
+
+      - name: Run assert-migrations-applied test suite (#616/#681)
+        run: bash scripts/tests/assert-migrations-applied.test.sh
+
+      - name: Run VPS disk-hygiene test suite (#616/#681)
+        run: bash scripts/tests/vps-disk-hygiene.test.sh
 
       # #793 M2: the consumer for the wake log. 18 wake-failed lines sat unread
       # in /var/log/ipodhan-scraper-wake-staging.log during that outage.
