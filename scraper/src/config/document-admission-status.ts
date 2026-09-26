@@ -29,8 +29,10 @@
  * rows re-enter the queue.
  */
 
+import type { DocumentExtractionStatus } from '@ipodhan/shared/db/schema';
+
 /** The terminal status for a document whose type has no extractor. */
-export const NOT_EXTRACTABLE_STATUS = 'NOT_EXTRACTABLE';
+export const NOT_EXTRACTABLE_STATUS = 'NOT_EXTRACTABLE' satisfies DocumentExtractionStatus;
 
 /**
  * The doc types the automatic door will CONSIDER: the four the python filing
@@ -71,6 +73,6 @@ export function isExtractableDocType(type: string): boolean {
  * defaulting an unrecognised shape to "queued" would re-create the bug for the one
  * case least likely to have an extractor.
  */
-export function resolveAdmissionExtractionStatus(type: string): string {
+export function resolveAdmissionExtractionStatus(type: string): 'PENDING' | typeof NOT_EXTRACTABLE_STATUS {
   return isExtractableDocType(type) ? 'PENDING' : NOT_EXTRACTABLE_STATUS;
 }

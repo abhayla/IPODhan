@@ -11,6 +11,7 @@ import {
   boolean,
   jsonb,
   bigint,
+  bigserial,
   index,
   pgEnum,
   unique,
@@ -159,6 +160,26 @@ export const reviewRecommendationEnum = pgEnum('review_recommendation', [
   'Not Recommended',
 ]);
 
+/**
+ * #676 / F-183: the ONE value set of `documents.extraction_status`. Every writer's type is derived
+ * from it and the DB CHECK is generated from it.
+ *   PENDING         admitted, queued for an extractor (default)
+ *   IN_PROGRESS     an extraction attempt is running (the attempt is counted at this stamp)
+ *   COMPLETED       extracted and persisted
+ *   FAILED          the last attempt failed; retried by the document cycle
+ *   MANUAL_REVIEW   blocked for a human: the retry ceiling was hit, or a scan-quality refusal
+ *   NOT_EXTRACTABLE its type has no extractor (#869, scraper/src/config/document-admission-status.ts)
+ */
+export const DOCUMENT_EXTRACTION_STATUSES = [
+  'PENDING',
+  'IN_PROGRESS',
+  'COMPLETED',
+  'FAILED',
+  'MANUAL_REVIEW',
+  'NOT_EXTRACTABLE',
+] as const;
+export type DocumentExtractionStatus = (typeof DOCUMENT_EXTRACTION_STATUSES)[number];
+
 export const ipoVerdictEnum = pgEnum('ipo_verdict', [
   'APPLY',
   'CONSIDER',
@@ -171,6 +192,14 @@ export const confidenceLevelEnum = pgEnum('confidence_level', [
   'LOW',
 ]);
 
+/**
+ * #676: the Postgres enum below types `extraction_logs.status` ONLY. It is NOT the value set of
+ * `documents.extraction_status` (SUCCESS / PARTIAL were never written there; measured on
+ * ipodhan_staging 2026-09-26, F-183). The documents column's closed set is
+ * `DOCUMENT_EXTRACTION_STATUSES`, declared once here and enforced twice: by the column's
+ * `$type` (a writer cannot compile with an undeclared literal) and by the DB CHECK
+ * `ck_documents_extraction_status` (migration 0065), so a raw-SQL writer cannot slip one past.
+ */
 export const extractionStatusEnum = pgEnum('extraction_status', [
   'PENDING',
   'IN_PROGRESS',
@@ -653,10 +682,12 @@ export const documents = pgTable(
     exchange: varchar('exchange', { length: 10 }), // 'NSE' | 'BSE' - source exchange
 
     // DRHP extraction tracking (Phase 0: Data Flow Architecture)
-    extractionStatus: varchar('extraction_status', { length: 50 }).default('PENDING'), // PENDING|IN_PROGRESS|COMPLETED|FAILED|MANUAL_REVIEW
+    // #676: closed set DOCUMENT_EXTRACTION_STATUSES, enforced by $type and ck_documents_extraction_status.
+    extractionStatus: varchar('extraction_status', { length: 50 }).$type<DocumentExtractionStatus>().default('PENDING'),
     extractionConfidence: numeric('extraction_confidence', { precision: 5, scale: 2 }), // 0-100%
     extractedAt: timestamp('extracted_at'),
-    extractionError: text('extraction_error'), // Error message if extraction failed
+    // The LAST attempt's cause only; every attempt's cause is kept in document_extraction_attempts (#634).
+    extractionError: text('extraction_error'),
     retryCount: integer('retry_count').default(0).notNull(), // Number of extraction attempts
 
     // OD-32 (item 18): this document's PDF was purged while its text had never
@@ -739,8 +770,54 @@ export const documents = pgTable(
 
     // Keep URL unique globally to prevent exact duplicates
     uniqueUrl: unique('unique_url').on(table.url),
+
+    // #676: a writer (typed or raw SQL) cannot store a status outside the declared set.
+    extractionStatusDeclared: check(
+      'ck_documents_extraction_status',
+      sql`${table.extractionStatus} IN (${sql.raw(DOCUMENT_EXTRACTION_STATUSES.map((v) => `'${v}'`).join(', '))})`
+    ),
   })
 );
+
+// ==================== TABLE 5-attempts: DOCUMENT_EXTRACTION_ATTEMPTS (#634) ====================
+
+/**
+ * One row per FAILED extraction attempt of a document, append-only.
+ *
+ * Why this exists (#634): `documents.extraction_error` is one column each attempt overwrites, and
+ * `ipo_pipeline_steps` keeps one row per (ipo, step), so a document at the 10-attempt ceiling
+ * could not answer "the same fault ten times, or ten different faults?" from its own data.
+ *
+ * Why a table and not an array column on `documents`: an INSERT is append-only by construction
+ * (no read-modify-write of a growing array racing a concurrent writer), a cause can be grouped
+ * and counted in plain SQL, and the history of a document at the ceiling does not bloat every
+ * read of the hot `documents` row.
+ *
+ * `attempt_number` is the document's `retry_count` at the failure (the attempt is counted at the
+ * IN_PROGRESS stamp). It is not unique: an extractor-version bump resets the count to 1, so the
+ * order of record is `id` (bigserial) / `attempted_at`. No backfill: attempts before migration
+ * 0065 were never recorded and cannot be reconstructed; those documents keep only their last
+ * `extraction_error`.
+ */
+export const documentExtractionAttempts = pgTable(
+  'document_extraction_attempts',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    attemptNumber: integer('attempt_number').notNull(),
+    outcome: varchar('outcome', { length: 50 }).$type<DocumentExtractionStatus>().notNull(),
+    cause: text('cause').notNull(),
+    attemptedAt: timestamp('attempted_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    documentIdIdx: index('idx_document_extraction_attempts_document').on(table.documentId, table.id),
+    outcomeIsFailure: check('ck_document_extraction_attempts_outcome', sql`${table.outcome} IN ('FAILED', 'MANUAL_REVIEW')`),
+  })
+);
+
+export type DocumentExtractionAttempt = typeof documentExtractionAttempts.$inferSelect;
 
 // ==================== TABLE 5a: DOCUMENT_PAGES (OD-32, item 18) ====================
 

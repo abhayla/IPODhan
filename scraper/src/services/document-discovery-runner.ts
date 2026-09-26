@@ -60,6 +60,7 @@ import {
 } from './sebi-source.js';
 import { compactCompanyNameKey } from '@ipodhan/shared/utils/company-name-normalizer';
 import { mostRecentDataJobSlotEpochMinute } from '@ipodhan/shared/scheduler/data-job-slots';
+import type { DocumentExtractionStatus } from '@ipodhan/shared/db/schema';
 import { ZIP_EXPAND_MAX_ATTEMPTS } from './stored-zip-expansion-pass.js';
 import {
   parseCompanyHostLinks,
@@ -506,7 +507,8 @@ export interface DocumentSinkInput {
   url: string;
   exchange: string;
   mediaType: string;
-  extractionStatus: string;
+  /** #676: the declared set only (DOCUMENT_EXTRACTION_STATUSES); a free string no longer compiles. */
+  extractionStatus: DocumentExtractionStatus;
   isActive: boolean;
   fileSize?: number;
   /** sha256 of the stored bytes (W-1) — the persisted form of the E7/R2 rule. */

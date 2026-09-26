@@ -1797,6 +1797,15 @@
       "phase1": false,
       "title": "The nightly floor audits production, which lags main's migrations, so a check reading a new column throws",
       "detail": "Measured 2026-09-26: the VPS cron (scripts/vps-data-audit-cron.sh) resets to origin/main nightly and audits the production DB. Floor runs of 2026-09-24 (26 lines) and 2026-09-25 (7 lines) ended with no SUMMARY because one throwing check killed main() (fixed by #1056); the 2026-09-26 run completed (85 checks) but checkSettledFieldRewrites threw \"column fs.row_key does not exist\" and was recorded under its function name, so check_roster reported s_settled_field_rewritten as never run. Fixed by PR #1117 (#1113): throws record under registered ids and the check probes the migration."
+    },
+    {
+      "id": "F-183",
+      "sev": "MINOR",
+      "status": "FIXED",
+      "area": "documents / extraction",
+      "phase1": false,
+      "title": "documents.extraction_status had three different value sets (declared enum, column comment, values written) and nothing enforced any of them; extraction_error kept only the last attempt's cause",
+      "detail": "Measured 2026-09-26 on ipodhan_staging (read-only, 375 documents): written values COMPLETED 158, PENDING 90, NOT_EXTRACTABLE 77, MANUAL_REVIEW 43, FAILED 7 (IN_PROGRESS 0, written transiently at each attempt's stamp). Declared Postgres enum extraction_status = PENDING, IN_PROGRESS, SUCCESS, PARTIAL, FAILED, which types only extraction_logs.status (information_schema: the documents column is varchar(50), no CHECK). Column comment: PENDING|IN_PROGRESS|COMPLETED|FAILED|MANUAL_REVIEW (missing NOT_EXTRACTABLE, written by the #869 admission stamp). QUEUED_FOR_REVIEW was read by web/app/api/admin/metrics/data-pipeline/route.ts and written by nothing (0 rows). By type: ANCHOR_ALLOCATION_REPORT MANUAL_REVIEW 39 (max retry_count 10), PRICE_BAND_AD MANUAL_REVIEW 3 (10), RHP MANUAL_REVIEW 1 (10); each such row keeps one extraction_error, the last. The spec (section 1.8, rows 147-150) named no value set. Fixed by #676/#634: one set DOCUMENT_EXTRACTION_STATUSES enforced by the column type and ck_documents_extraction_status (NOT VALID, migration 0065), and document_extraction_attempts keeping every failed attempt's cause. No backfill."
     }
   ],
   "false_assertions": [

@@ -11,7 +11,7 @@ import { describe, it, expect, vi } from 'vitest';
  * writer had zero coverage.
  */
 
-const { setMock, dbUpdateMock, db, invalidateForIpoMock } = vi.hoisted(() => {
+const { setMock, dbUpdateMock, insertValuesMock, transactionMock, db, invalidateForIpoMock } = vi.hoisted(() => {
   const setMock = vi.fn(async () => undefined);
   const invalidateForIpoMock = vi.fn(async () => undefined);
   const dbUpdateSet = vi.fn((patch: unknown) => {
@@ -21,12 +21,24 @@ const { setMock, dbUpdateMock, db, invalidateForIpoMock } = vi.hoisted(() => {
         // Cache-invalidation fix (2026-09-06): the real writer now reads the
         // updated row's ipoId back via `.returning()` to invalidate
         // `DocumentRepository`'s `findByIPO` cache-aside key.
-        returning: vi.fn(async () => [{ ipoId: 'ipo-1' }]),
+        returning: vi.fn(async () => [{ ipoId: 'ipo-1', retryCount: 3 }]),
       })),
     };
   });
   const dbUpdateMock = vi.fn(() => ({ set: dbUpdateSet }));
-  return { setMock, dbUpdateMock, db: { update: dbUpdateMock }, invalidateForIpoMock };
+  // #634: a FAILED / MANUAL_REVIEW write runs in a transaction and appends an attempt row.
+  const insertValuesMock = vi.fn(async () => undefined);
+  const insertMock = vi.fn(() => ({ values: insertValuesMock }));
+  const tx = { update: dbUpdateMock, insert: insertMock };
+  const transactionMock = vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx));
+  return {
+    setMock,
+    dbUpdateMock,
+    insertValuesMock,
+    transactionMock,
+    db: { update: dbUpdateMock, insert: insertMock, transaction: transactionMock },
+    invalidateForIpoMock,
+  };
 });
 
 vi.mock('@ipodhan/shared', async (importOriginal) => ({
@@ -118,5 +130,21 @@ describe('the REAL setDocumentExtractionState writer passes the patch to db.upda
     expect(appliedPatch.updatedAt).toBeInstanceOf(Date);
     expect((appliedPatch.updatedAt as Date).getTime()).toBeGreaterThanOrEqual(now.getTime());
     expect(invalidateForIpoMock).toHaveBeenCalledWith('ipo-1');
+    // #634: the same transaction appends the cause, numbered by the row's retry_count read back.
+    expect(transactionMock).toHaveBeenCalledTimes(1);
+    expect(insertValuesMock).toHaveBeenCalledTimes(1);
+    expect(insertValuesMock.mock.calls[0][0]).toMatchObject({
+      documentId: 'doc-1', attemptNumber: 3, outcome: 'FAILED', cause: 'extractor: boom',
+    });
+  });
+
+  it('#634: the busy-box revert (FAILED restored, no error) and an IN_PROGRESS stamp append nothing', async () => {
+    insertValuesMock.mockClear();
+    transactionMock.mockClear();
+    const deps = buildAutoPersistDeps({} as never);
+    await deps.setDocumentExtractionState({ documentId: 'doc-1', status: 'FAILED', retryCount: 2, updatedAt: new Date(0) });
+    await deps.setDocumentExtractionState({ documentId: 'doc-1', status: 'IN_PROGRESS', retryCount: 3 });
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(insertValuesMock).not.toHaveBeenCalled();
   });
 });

@@ -34,6 +34,8 @@ import {
   checkStrandedNotExtractable,
   AUTO_PERSIST_DOC_TYPES_MIRROR,
   checkNseLeadManagerProvenanceHasValue,
+  parseCheckConstraintValues,
+  checkExtractionStatusDeclared,
 } from '../lib/document-state-checks.mjs';
 
 const NOW = '2026-08-28T06:00:00Z';
@@ -916,4 +918,25 @@ test('418d PASSes rows with no NSE provenance row at all (BSE-sourced, or none) 
     checkNseLeadManagerProvenanceHasValue({ companyName: 'X', provenanceSource: null, storedLeadManagerCount: 0 }),
     null
   );
+});
+
+// #676: the declared set is parsed from the DB's own CHECK definition (the real pg_get_constraintdef
+// text read from ipodhan_test after migration 0065), and a row outside it is named by identity.
+const REAL_CK_DEF = "CHECK (((extraction_status)::text = ANY ((ARRAY['PENDING'::character varying, 'IN_PROGRESS'::character varying, 'COMPLETED'::character varying, 'FAILED'::character varying, 'MANUAL_REVIEW'::character varying, 'NOT_EXTRACTABLE'::character varying])::text[]))) NOT VALID";
+
+test('#676 parseCheckConstraintValues reads the six declared values from the real constraint text', () => {
+  assert.deepEqual(parseCheckConstraintValues(REAL_CK_DEF),
+    ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED', 'MANUAL_REVIEW', 'NOT_EXTRACTABLE']);
+  assert.deepEqual(parseCheckConstraintValues(null), []);
+});
+
+test('#676 checkExtractionStatusDeclared flags undeclared and NULL, passes every declared value', () => {
+  const declared = parseCheckConstraintValues(REAL_CK_DEF);
+  for (const s of declared) {
+    assert.equal(checkExtractionStatusDeclared({ id: 'd', slug: 'x', type: 'RHP', extractionStatus: s }, declared), null);
+  }
+  assert.match(checkExtractionStatusDeclared({ id: 'd1', slug: 'x', type: 'DRHP', extractionStatus: 'QUEUED_FOR_REVIEW' }, declared),
+    /x\/DRHP \(d1\): extraction_status 'QUEUED_FOR_REVIEW' is not in the declared set/);
+  assert.match(checkExtractionStatusDeclared({ id: 'd2', slug: 'x', type: 'RHP', extractionStatus: 'SUCCESS' }, declared), /'SUCCESS'/);
+  assert.match(checkExtractionStatusDeclared({ id: 'd3', slug: 'x', type: 'RHP', extractionStatus: null }, declared), /NULL/);
 });

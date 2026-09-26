@@ -12,8 +12,46 @@
  * changes. Behaviour is unchanged — this is a pure move, not a rewrite.
  */
 
-/** The status values `buildExtractionStatePatch` (and the `documents` column) accept. */
-export type ExtractionStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'PENDING' | 'MANUAL_REVIEW';
+import type { DocumentExtractionStatus } from '@ipodhan/shared/db/schema';
+
+/**
+ * The status values `buildExtractionStatePatch` writes: the column's declared set
+ * (`DOCUMENT_EXTRACTION_STATUSES`, #676) minus NOT_EXTRACTABLE, which only the admission stamp
+ * (`resolveAdmissionExtractionStatus`) writes. Derived, never retyped, so an undeclared literal
+ * cannot compile here. Type-only import: no runtime edge into the shared package.
+ */
+export type ExtractionStatus = Exclude<DocumentExtractionStatus, 'NOT_EXTRACTABLE'>;
+
+/** The outcomes that record an attempt row (#634): the attempt failed and carries a cause. */
+export const ATTEMPT_RECORDING_OUTCOMES: readonly ExtractionStatus[] = ['FAILED', 'MANUAL_REVIEW'];
+
+export interface ExtractionAttemptRow {
+  documentId: string;
+  attemptNumber: number;
+  outcome: ExtractionStatus;
+  cause: string;
+  attemptedAt: Date;
+}
+
+/**
+ * #634: the `document_extraction_attempts` row a status write must append, or null when the
+ * write is not a failed attempt. A row is appended ONLY for FAILED / MANUAL_REVIEW with an
+ * explicit non-empty cause: the busy-box revert restores a previous FAILED status with
+ * `error` undefined and is NOT an attempt, and an IN_PROGRESS / COMPLETED / PENDING stamp
+ * carries no failure. `attemptNumber` is the document's `retry_count` after the write (the
+ * attempt was counted at its IN_PROGRESS stamp).
+ */
+export function buildExtractionAttemptRow(
+  documentId: string,
+  transition: ExtractionStatus,
+  error: string | null | undefined,
+  attemptNumber: number,
+  now: Date = new Date()
+): ExtractionAttemptRow | null {
+  if (!ATTEMPT_RECORDING_OUTCOMES.includes(transition)) return null;
+  if (typeof error !== 'string' || error.trim() === '') return null;
+  return { documentId, attemptNumber, outcome: transition, cause: error, attemptedAt: now };
+}
 
 export interface ExtractionStatePatchContext {
   /** Explicit `undefined` leaves `extraction_error` untouched; pass `null` to clear it. */
