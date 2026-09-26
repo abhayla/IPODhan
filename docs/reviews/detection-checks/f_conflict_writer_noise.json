@@ -1,0 +1,9 @@
+{
+  "id": "f_conflict_writer_noise",
+  "findingClass": "the conflict writer records rows no source disagreement produced: a writer-stamped bookkeeping field (lastScrapedAt, updatedAt, ...) or a value with binary-float residue (428400000.00000006), #818 / F-181",
+  "round7Findings": [],
+  "failThreshold": "any data_conflicts row with detected_at in the last 48h whose field_name is in WRITER_BOOKKEEPING_FIELDS, or whose field_name is in RUPEE_AMOUNT_FIELDS (NUMERIC(...,2) money columns, scripts/lib/conflict-reasons.mjs) and whose value1/value2 is a plain number with more than two decimals; ratios and percentages are never judged for decimals; identities (slug, field, both sides) printed",
+  "severity": "P2",
+  "unverifiableWhen": "data_conflicts table not present",
+  "section": "checks"
+}

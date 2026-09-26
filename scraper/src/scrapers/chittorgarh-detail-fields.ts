@@ -1,3 +1,4 @@
+import { scaleToRupees, RUPEES_PER_CRORE } from '../utils/rupee-amount.js';
 /**
  * Pure extractors for the Chittorgarh per-IPO detail page (#8 data-completeness).
  *
@@ -560,7 +561,7 @@ function parseCroreToRupees(amountStr: string): number | null {
   const cleaned = amountStr.replace(/,/g, '');
   const amount = parseFloat(cleaned);
   if (!Number.isFinite(amount) || amount <= 0) return null;
-  return amount * 10_000_000;
+  return scaleToRupees(amount, RUPEES_PER_CRORE);
 }
 
 export function extractIssueSizeFromDetailHtml(

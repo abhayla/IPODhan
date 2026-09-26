@@ -31,6 +31,7 @@ export function chittorgarhSourceKeys(
   }];
 }
 import { offeringTypeFromBusinessTrustName } from '../utils/data-validation.js';
+import { scaleToRupees, RUPEES_PER_CRORE } from '../utils/rupee-amount.js';
 
 const CHITTORGARH_API_BASE = 'https://webnodejs.chittorgarh.com/cloud/report/data-read';
 const REPORT_ID = '82'; // IPO list report ID
@@ -190,7 +191,7 @@ function parseChittorgarhPrice(priceStr: string): { min: number; max: number } {
  * @param amountStr - "11607.01" (in crores)
  * @returns Number in basic units
  */
-function parseChittorgarhAmount(amountStr: string): number {
+export function parseChittorgarhAmount(amountStr: string): number {
   if (!amountStr) return 0;
 
   const cleaned = amountStr.replace(/[,\s]/g, '');
@@ -199,7 +200,7 @@ function parseChittorgarhAmount(amountStr: string): number {
   if (isNaN(amount)) return 0;
 
   // Amount is already in crores, convert to basic units (multiply by 10^7)
-  return amount * 10000000;
+  return scaleToRupees(amount, RUPEES_PER_CRORE);
 }
 
 /**

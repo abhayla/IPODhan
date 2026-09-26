@@ -98,7 +98,7 @@ import {
 import { newestWakeTimestamp } from './ops/wake-delta.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
 import { adminQueueSize, formatAdminQueueBlock } from './ops/admin-queue-size.mjs';
-import { behaviourConflictPredicate, unresolvedConflictCountSql, unresolvedConflictNoiseSql, conflictsInserted24hSql, ensureDocumentIdProbe } from './lib/conflict-reasons.mjs';
+import { behaviourConflictPredicate, unresolvedConflictCountSql, unresolvedConflictNoiseSql, conflictsInserted24hSql, ensureDocumentIdProbe, conflictWriterNoiseSql } from './lib/conflict-reasons.mjs';
 
 // The three filing-extractor types this specific stuck-detection query cares about
 // (never the anchor report or PRICE_BAND_AD — this check is about `scripts/extract_filing.py`
@@ -843,6 +843,21 @@ async function checkE_unknownSlug404() {
     status,
     `${offenders.length} failing, ${unreachable} unreachable` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join(' | ')}` : realSlug ? `; real slug checked: ${realSlug}` : '; no LISTED row to check the positive case')
   );
+}
+
+// ---- (f2, #818 / F-181): rows the conflict writer must never produce ------------
+async function checkF_conflictWriterNoise() {
+  const label = 'no data_conflicts row written in 48h on a bookkeeping field or with float residue in a rupee-amount value (#818)';
+  if (!(await tableExists('data_conflicts'))) {
+    record('f_conflict_writer_noise', label, 'UNVERIFIABLE', 'data_conflicts table not present');
+    return;
+  }
+  const rows = await q(conflictWriterNoiseSql());
+  const offenders = rows.map((r) => `${r.slug ?? '?'} ${r.fieldName} ${r.source1}=${r.value1} vs ${r.source2}=${r.value2}`);
+  if (offenders.length) {
+    notify('f_conflict_writer_noise', 'P2', 'aggregate', 'data_conflicts writer noise (bookkeeping field or float residue)', offenders.slice(0, MAX_OFFENDERS).join(' | '));
+  }
+  record('f_conflict_writer_noise', label, offenders.length ? 'FAIL' : 'PASS', `${offenders.length} row(s)` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join(' | ')}` : ''));
 }
 
 // ---- (f): conflict noise ratio + shrink-only backlog ratchet ----------------
@@ -3422,6 +3437,7 @@ async function main() {
   await runCheck(checkE, ['e_route_sweep', 'e_verdict_leak_sweep']);
   await runCheck(checkE_unknownSlug404, ['e_unknown_slug_404']);
   await runCheck(checkF, ['f_conflict_noise_ratio']);
+  await runCheck(checkF_conflictWriterNoise, ['f_conflict_writer_noise']);
   await runCheck(checkG1_repeatedWarn, ['g_repeated_warn']);
   await runCheck(checkG3_inertDetector, ['g_inert_detector']);
   await runCheck(checkG, ['g_freshness_per_type']);

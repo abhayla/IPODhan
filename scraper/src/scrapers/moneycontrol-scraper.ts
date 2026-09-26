@@ -15,6 +15,7 @@ import logger from '../utils/logger.js';
 import type { MoneycontrolIPO } from '../utils/validators.js';
 import { sanitizeText } from '../utils/scraper-utils.js';
 import { parseDdMmmYy } from '../utils/date-string-parsing.js';
+import { scaleToRupees, RUPEES_PER_CRORE, RUPEES_PER_LAKH } from '../utils/rupee-amount.js';
 
 const MONEYCONTROL_URL = 'https://www.moneycontrol.com/ipo/';
 
@@ -73,9 +74,9 @@ function parseMoneycontrolCurrency(text: string): number {
   const unit = match[2];
 
   if (unit === 'cr' || unit === 'crore') {
-    return num * 10000000; // 1 Crore = 10 Million
+    return scaleToRupees(num, RUPEES_PER_CRORE);
   } else if (unit === 'lakh') {
-    return num * 100000; // 1 Lakh = 100 Thousand
+    return scaleToRupees(num, RUPEES_PER_LAKH);
   }
 
   return num;

@@ -77,3 +77,64 @@ export const unresolvedConflictNoiseSql = () =>
 /** Real-dispute rows detected in the last 24h (check g: is the detector inert?). */
 export const conflictsInserted24hSql = () =>
   `SELECT count(*)::int inserted FROM data_conflicts WHERE detected_at > now() - interval '24 hours' AND ${behaviourConflictPredicate()}`;
+
+/**
+ * #818 / F-181: twin of `WRITER_BOOKKEEPING_FIELDS` in packages/shared/src/utils/conflict-reasons.ts
+ * (kept equal by scripts/tests/conflict-reasons-parity.test.mjs). Columns the writer stamps itself
+ * (spec section 1 class I) — a data_conflicts row on one of them is writer noise, never a conflict.
+ */
+export const WRITER_BOOKKEEPING_FIELDS = Object.freeze([
+  'id',
+  'createdAt',
+  'updatedAt',
+  'lastScrapedAt',
+  'scrapedAt',
+  'lastUpdated',
+  'lastVerifiedAt',
+]);
+
+/**
+ * #818 fix round 1: the money columns a unit conversion (crore / lakh / million -> rupees or crore)
+ * writes, all NUMERIC(..., 2) in packages/shared/src/db/schema.ts. Float residue (more than two
+ * decimals) is judged ONLY on these fields — a subscription ratio or a percentage may legitimately
+ * carry more decimals and is never flagged. The parity test checks every name is a scale-2 column.
+ */
+export const RUPEE_AMOUNT_FIELDS = Object.freeze([
+  'issueSize',
+  'freshIssue',
+  'ofsIssue',
+  'minInvestment',
+  'marketCap',
+  'totalBorrowings',
+  'totalAmountRaised',
+  'mcapAtFloor',
+  'mcapAtCap',
+]);
+
+/** The float-residue test on a stored text value: a plain number with 3+ decimals. */
+export const FLOAT_RESIDUE_PATTERN = '^-?[0-9]+[.][0-9]{3,}$';
+
+const sqlList = (names) => names.map((f) => `'${f}'`).join(', ');
+
+/**
+ * #818 check f_conflict_writer_noise: data_conflicts rows written in the last 48h that the writer
+ * must never produce — a bookkeeping field, or a RUPEE_AMOUNT_FIELDS value carrying binary-float
+ * residue (e.g. issueSize 428400000.00000006). Identities, never a bare count. Reads no
+ * document_id, so it runs on a DB that lags main's migrations (F-182).
+ */
+export const conflictWriterNoiseSql = () =>
+  `SELECT i.slug, dc.field_name AS "fieldName", dc.source1, dc.value1, dc.source2, dc.value2
+     FROM data_conflicts dc LEFT JOIN ipos i ON i.id = dc.ipo_id
+    WHERE dc.detected_at > now() - interval '48 hours'
+      AND (dc.field_name IN (${sqlList(WRITER_BOOKKEEPING_FIELDS)})
+           OR (dc.field_name IN (${sqlList(RUPEE_AMOUNT_FIELDS)})
+               AND (dc.value1 ~ '${FLOAT_RESIDUE_PATTERN}' OR dc.value2 ~ '${FLOAT_RESIDUE_PATTERN}')))
+    ORDER BY dc.detected_at DESC`;
+
+/** JS twin of the SQL predicate, for tests: would this row be flagged? */
+export function isConflictWriterNoise(row) {
+  if (WRITER_BOOKKEEPING_FIELDS.includes(row.fieldName)) return true;
+  if (!RUPEE_AMOUNT_FIELDS.includes(row.fieldName)) return false;
+  const re = new RegExp(FLOAT_RESIDUE_PATTERN);
+  return [row.value1, row.value2].some((v) => v != null && re.test(String(v)));
+}

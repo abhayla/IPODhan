@@ -138,3 +138,39 @@ test('adminQueueSize counts only real disputes (the conflict query carries the p
   assert.ok(conflictSql.includes(behaviourConflictPredicate('dc')), conflictSql);
   _setDocumentIdProbeForTests(undefined);
 });
+
+test('#818: the .mjs bookkeeping-field list equals the TS list (parity)', async () => {
+  const { WRITER_BOOKKEEPING_FIELDS, conflictWriterNoiseSql } = await import('../lib/conflict-reasons.mjs');
+  const ts = readFileSync(join(ROOT, 'packages/shared/src/utils/conflict-reasons.ts'), 'utf8');
+  const list = /WRITER_BOOKKEEPING_FIELDS: readonly string\[\] = \[([^\]]*)\]/.exec(ts);
+  assert.ok(list, 'WRITER_BOOKKEEPING_FIELDS not found in the TS source');
+  const names = list[1].split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
+  assert.deepEqual([...WRITER_BOOKKEEPING_FIELDS], names);
+  const sql = conflictWriterNoiseSql();
+  assert.match(sql, /'lastScrapedAt'/);
+  assert.match(sql, /\[0-9\]\{3,\}/);
+  assert.doesNotMatch(sql, /document_id/);
+});
+
+test('#818: every RUPEE_AMOUNT_FIELDS name is a NUMERIC(..., 2) column in the schema', async () => {
+  const { RUPEE_AMOUNT_FIELDS } = await import('../lib/conflict-reasons.mjs');
+  const schema = readFileSync(join(ROOT, 'packages/shared/src/db/schema.ts'), 'utf8');
+  for (const f of RUPEE_AMOUNT_FIELDS) {
+    assert.match(schema, new RegExp(`\\b${f}: numeric\\('[a-z_]+', \\{ precision: \\d+, scale: 2 \\}\\)`), `${f} is not a scale-2 numeric column`);
+  }
+});
+
+test('#818: float residue is flagged on money fields only; a 3-decimal subscription ratio passes', async () => {
+  const { isConflictWriterNoise, conflictWriterNoiseSql } = await import('../lib/conflict-reasons.mjs');
+  // The two staging values (vinod-texworld-ltd, panchatv-bharat-ltd).
+  assert.equal(isConflictWriterNoise({ fieldName: 'issueSize', value1: '428300000.00', value2: '428400000.00000006' }), true);
+  assert.equal(isConflictWriterNoise({ fieldName: 'issueSize', value1: '210800000.00', value2: '245799999.99999997' }), true);
+  assert.equal(isConflictWriterNoise({ fieldName: 'issueSize', value1: '601000000.00', value2: '600000000' }), false);
+  assert.equal(isConflictWriterNoise({ fieldName: 'totalSubscription', value1: '12.345', value2: '13.678' }), false);
+  assert.equal(isConflictWriterNoise({ fieldName: 'retailSubscriptionPct', value1: '45.125', value2: '46.5' }), false);
+  assert.equal(isConflictWriterNoise({ fieldName: 'lastScrapedAt', value1: 'a', value2: 'b' }), true);
+  assert.equal(isConflictWriterNoise({ fieldName: 'listingDate', value1: '2026-09-30', value2: '2026-10-05' }), false);
+  const sql = conflictWriterNoiseSql();
+  assert.match(sql, /dc\.field_name IN \('issueSize'/);
+  assert.doesNotMatch(sql, /OR dc\.value1 ~[^)]*\)\s*ORDER/);
+});

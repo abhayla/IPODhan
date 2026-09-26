@@ -63,6 +63,7 @@ import { financialStatementsRowKey, ipoDetailsRowKey, ipoValuationRowKey } from 
 import { createChildRowNoter } from './child-row-unresolved-noter.js';
 import { documentMayWriteField, fieldDocumentFamily } from './document-family-gate.js';
 import type { ConsolidatedChildRowsResult, ChildRowInput, ChildConsolidationTable } from './data-consolidation-orchestrator.js';
+import { scaleToRupees } from '../utils/rupee-amount.js';
 
 // ---------------------------------------------------------------- extraction
 
@@ -389,7 +390,7 @@ export function parseFilingUnit(unit: string | null | undefined): FilingUnit | n
 
 /** Published unit -> rupees. Filing money fields are amounts, never per-share. */
 export function toRupees(value: number, unit: FilingUnit): number {
-  return value * RUPEES_PER_UNIT[unit];
+  return scaleToRupees(value, RUPEES_PER_UNIT[unit]);
 }
 
 /** Published unit -> INR crore (the unit financial_data is denominated in). */

@@ -54,3 +54,27 @@ export function isCorrigendumSuggestion(row: { documentId?: string | null } | nu
 export function isBehaviourConflict(row: { resolutionReason?: string | null; documentId?: string | null }): boolean {
   return !isAdminOnlyConflict(row) && !isCorrigendumSuggestion(row);
 }
+
+/**
+ * #818 / F-181 (spec §1 class I, "Our own pipeline produces it (bookkeeping) — writer named, no
+ * ranking"): columns the writer itself stamps. No source ranks them, so two values of one of these
+ * can never be a source disagreement or a source changing its own value (OD-75) — a new
+ * `lastScrapedAt` on every scrape is the pipeline clock moving, not a conflict. Measured on staging
+ * 2026-09-23..25: `lastScrapedAt` / `updatedAt` DRHP-vs-DRHP rows on moneyview-ltd,
+ * skyways-air-services-ltd, steamhouse-india-ltd, veegaland-developers-ltd. The consolidator
+ * passes these straight through and the conflicts repository refuses them.
+ */
+export const WRITER_BOOKKEEPING_FIELDS: readonly string[] = [
+  'id',
+  'createdAt',
+  'updatedAt',
+  'lastScrapedAt',
+  'scrapedAt',
+  'lastUpdated',
+  'lastVerifiedAt',
+];
+
+/** True for a column the writer stamps itself (spec class I) — never resolved, never a conflict. */
+export function isWriterBookkeepingField(fieldName: string): boolean {
+  return WRITER_BOOKKEEPING_FIELDS.includes(fieldName);
+}
