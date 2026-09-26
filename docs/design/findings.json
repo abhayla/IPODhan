@@ -1833,6 +1833,87 @@
       "phase1": false,
       "title": "Document peer-table figures are never persisted: the extractor returns printed text, filing-persister's numOrNull accepts numbers only, so document peer sets save names-only and Chittorgarh is the only source of peer figures",
       "detail": "The extractor returns peer figures as printed text (e.g. '132.00'). filing-persister.ts's numOrNull (~732-734) is `typeof v === 'number' && Number.isFinite(v) ? v.toString() : null` -- a string input returns null. Every peer_companies.pe_ratio / eps / diluted_eps / ronw / nav / pbv_ratio value extracted from a document is therefore written null; only peer_companies.company_name and is_listed persist from a document. Chittorgarh (rank 2) is left as the only source that actually writes the peer figures fields 123-128 name. Tracked in #1165, open for a build item. Related: field 121-130 peer_companies manifest rows, F-185."
+    },
+    {
+      "id": "F-187",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "migrations / drizzle-kit",
+      "phase1": false,
+      "title": "drizzle-kit 0.31.7 picks the base snapshot for `db:generate` by sorting `meta/` file names, not by the `prevId` chain, so two naming schemes in one repo make it read the chain from the wrong end",
+      "detail": "Measured 2026-09-26 (#886, PR #1203, fix/886-snapshot-chain). `web/drizzle/migrations/meta/` mixes timestamp-named snapshots (idx 33-49, `20260906090638_`..`20260918211158_`) with sequence-named ones (idx 50-65, `0050_`..`0065_`), from a mid-history naming-scheme change. drizzle-kit's `prepareOutFolder` (`bin.cjs` 8104-8105, 21584) sorts `readdir` and takes the LAST name; `0050_..0065_` sort before every `2026..._`, so `db:generate` picked `20260918211158_snapshot.json` (id d0938915) as the base although the real `prevId` chain head is `0065_snapshot.json` (id 9472c00a). A dry `db:generate` with no schema change emitted 8,113 bytes of spurious DDL (4 CREATE TYPE, 5 CREATE TABLE, 14 ADD COLUMN, 9 ADD CONSTRAINT, 8 CREATE INDEX) re-creating everything 0050-0065 already added; applying it anywhere those migrations already ran would fail on `CREATE TYPE ... already exists`. The existing `prevId` chain-continuity check passed throughout, because the chain itself was never broken -- only the tool's SELECTION of the chain head was wrong. Fixed by a bridge snapshot (`20260926161247_snapshot.json`) whose name sorts last; detection upgraded with a new `head-sorts-last` rule in `scripts/ci/check-migration-snapshot-chain.mjs`. No owning section in `docs/design/data-sourcing-pull-model.md` -- this is a migration-tooling defect, not a data-sourcing rule; recorded here per the findings registry rather than the spec. Failure class: `generator-base-chosen-by-name-sort-not-by-lineage` (already registered)."
+    },
+    {
+      "id": "F-188",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "document discovery / exchange verdict",
+      "phase1": true,
+      "title": "NSE answers HTTP 200 with an empty `issueInfo: {}` for an issue it does not carry; that empty-but-200 reply was recorded as an answer for an SME-on-BSE issue and as a failure when every consulted exchange only abstained",
+      "detail": "Measured 2026-09-26 (#632, PR #1200, fix/632-blocked-all), staging read-only through the tunnel: 482 BLOCKED_ALL rows on 108 IPOs. Group A: 211 rows / 62 IPOs 'settled' by exchanges, 181 rows / 44 SME IPOs by NSE:ok alone; a live GET of those 44 NSE ipo-detail?series=SME URLs returned 29 of 44 with `issueInfo: {}` (no `dataList`) -- e.g. PESHWA, ROBOKIDZ, FXML -- which had been recorded `ok`, so SEBI/company-site/verifier rungs were skipped (`exchanges_settled_it`) although NSE does not actually list those SME issues. Group B: 212 rows 'EXCHANGES:failed', of which 159 (27 IPOs) had ONLY abstentions (122 NSE:no_symbol, 37 BSE:not_on_board+NSE:no_symbol) -- nothing failed, every consulted exchange had simply abstained (OD-60), yet the verdict logic required at least one `ok` reply to avoid a failure state, so these rows went BLOCKED_ALL (P2) on their first concluded chain. Fix: NSE empty `issueInfo` now outcomes `not_carried`; `EXCHANGE_ABSTAIN_OUTCOMES` (`not_on_board`, `no_symbol`, `not_carried`) count as answered-without-link, never as coverage; exchange coverage additionally requires at least one exchange `ok`. Spec basis: OD-60 (\"a source that returns zero, null or an empty value has ABSTAINED; it has not voted\"), section 2.5.1. Failure class: `exchange-abstention-read-as-answer-or-failure` (already registered)."
+    },
+    {
+      "id": "F-189",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "document discovery / SME sourcing",
+      "phase1": true,
+      "title": "SME document discovery asks NSE only; BSE is never consulted, although the spec's stated SME order is NSE then BSE, so a BSE-only-listed SME IPO has no exchange document source at all (open for owner decision: whether this is a build gap or needs a scoped fix contract)",
+      "detail": "Measured 2026-09-26 (#1201), found while reading the #632 cause data (read-only on ipodhan_staging). Of the 44 SME IPOs with BLOCKED_ALL rows and an NSE-only chain, 29 return an empty `issueInfo: {}` when checked live against NSE (e.g. PESHWA, ROBOKIDZ) -- meaning those 29 are BSE-only listings for which NSE was the only exchange source ever asked, because the SME document-discovery code path does not call BSE at all. Spec basis: 'On SME. The order is NSE then BSE as instructed.' This is a build gap against a stated spec order (deferred per run-discipline B7 -- found outside the contract-1 done list). Distinct from #632/F-188: that finding is about misreading NSE's reply once asked; this finding is that BSE is never asked in the first place. No existing failure-class file covered this mechanism; added `sme-document-discovery-never-asks-bse` (status: unguarded)."
+    },
+    {
+      "id": "F-190",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "field provenance / consolidation",
+      "phase1": true,
+      "title": "companyName written at IPO creation gets no field_sources provenance row at all -- 47 of 396 staging IPOs have a company_name with zero provenance, although OD-88 requires every column a check writes to carry its field_sources row",
+      "detail": "Measured 2026-09-26 (#1196), read-only on ipodhan_staging 20:33 IST: 396 IPOs have a `company_name`; 47 have no `field_sources` row for `field_name='companyName'`. Of IPOs created in the last 14 days: lotSize has provenance on 32/32, openDate on 40/40, companyName on only 40/46. The 6 recent misses (Acme India Industries, TNA Solutions, SJP Ultrasonics, Nityas Gems & Jewellery, Eventions, Sollfege Smart Electronics) all came from one Chittorgarh discovery cycle (2026-09-25 18:45 UTC); each got provenance rows about 11s later, but only for `issueSize`, `issueType` and `sector`, never `companyName` -- Nityas has 84 provenance rows total and still none for companyName. Suspected mechanism (unverified): the create branch of `DataConsolidationOrchestrator` (`data-consolidation-orchestrator.ts` ~385-392) calls `ipoRepository.create()` without tracking sources; later writers in the same cycle cover some fields but not the identity/name column. Spec basis: OD-88 ('every column the check writes carries its field_sources row'), OD-128. Deferred (found outside contract 1's done list, run-discipline B7); next step named in the issue is to measure per-column across all 47 and name the writer. No existing failure-class file covered create-time provenance omission (the closest, `provenance-write-drops-the-document-id`, is about a writer building the wrong lineage object, not skipping provenance entirely) -- added `field-written-at-creation-never-gets-provenance` (status: unguarded)."
+    },
+    {
+      "id": "F-191",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "schema drift / migrations",
+      "phase1": false,
+      "title": "the schema-drift audit only ever compared schema.ts to the live DB in one direction (declared -> live); 38 live indexes and unique constraints hand-applied to staging and never declared in schema.ts were invisible to it",
+      "detail": "Measured 2026-09-26 (#665, PR #1204, closes #665). `assert-schema-drift.ts`'s `checkIndexes()`/`checkUniqueConstraints()` only checked schema.ts-declared objects against the live database; an object present live but never declared (e.g. staging's `ipos_symbol_key`, found 2026-09-16 by lane C while fixing the duplicate-IPO merge tool) was invisible, so the next `drizzle-kit generate` could silently attempt to drop it. Fix adds the reverse direction (`diffUndeclaredIndexes()`/`diffUndeclaredUniqueConstraints()`), matching a declared `.unique()` to its live backing object by (table, column) identity rather than by name, because Postgres's own default naming (`_key` suffix) and drizzle's default naming (`_unique` suffix) both occur live on the same schema depending on how the original migration was hand-written -- measured on staging: `admin_settings`, `ipo_details`, `ipo_financials`, `ipo_slug_redirects` all declare `.unique()` but carry `_key`-suffixed live constraints, which a name-only match would have false-positived on all four. No owning section in `docs/design/data-sourcing-pull-model.md` -- this is a schema-tooling defect, not a data-sourcing rule. Added failure class `schema-drift-audit-checked-declared-to-live-only-not-the-reverse` (status: guarded, PR #1204 landed the fix)."
+    },
+    {
+      "id": "F-192",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "document extraction / OCR",
+      "phase1": false,
+      "title": "RapidOCR's page-image-sized memory allocation fails under the extractor's RLIMIT_AS ceiling and re-raises as a generic ONNXRuntimeError, so a page-size OOM was misclassified as a content failure and blocked the whole document on every retry",
+      "detail": "Measured 2026-09-25/26 (#1046, PR #1195, refs #1046, Tier A). RapidOCR's text detector runs at the page image's full size (`limit_type: min`), so memory grows with page area; under the extractor's `RLIMIT_AS` ceiling (3072 MB, `memory_guard`) a large scanned page cannot allocate inside onnxruntime, which re-raises the allocation failure as `ONNXRuntimeError 'inference failed'` -- the underlying `bad allocation` text survived only on `__cause__`, which the memory classifier did not walk, so the extractor exited 1 (content failure) instead of exit 3 (the ceiling's own exit code). One failing page then failed the whole document on every retry. Staging had 4 HARD_FAILURE rows sharing this exact stack: kanohar-electricals-ltd PROSPECTUS (6 retries), elevate-campuses-ltd RHP (8), swastika-infra-ltd DRHP (8), runwal-enterprises-ltd PRICE_BAND_AD (4). Class covers every OCR'd page whose detector run cannot allocate under the ceiling, across all three `ocr_pages` callers (the extractor, anchor reports, corrigendum pages). Fix: `memory_guard.is_memory_exhaustion` now walks the `__cause__`/`__context__` chain; `ocr_pages.read_page_with_fallback` re-renders a failing page at progressively smaller long-edge sizes (2400px, then 1600px) before giving up. No owning section in `docs/design/data-sourcing-pull-model.md` -- an extraction-infrastructure defect, not a sourcing/priority rule. Added failure class `ocr-page-oom-under-rlimit-misclassified-as-content-failure` (status: guarded)."
+    },
+    {
+      "id": "F-193",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "document extraction / retry ceiling",
+      "phase1": false,
+      "title": "the 10-attempt block marker overwrote extraction_error with a bare terminal string, erasing whether a document was blocked by its own content or by a transient environment failure (spawn timeout, resource exhaustion) -- 4 of 6 blocked staging rows had no recoverable cause",
+      "detail": "Measured 2026-09-26 (#583, recurrence of #396; PR #1190, round 2, Tier A). Six documents on staging carried `blocked_after_10_attempts@extract_filing.py@2026-09-03` (MANUAL_REVIEW, retry_count 10) with the cause overwritten. Two of the six had a recoverable cause from logs: ESDS Software RHP edc03a70, `spawn failed: spawnSync nice ETIMEDOUT` under the then-10-minute EXTRACT_TIMEOUT_MS (log 2026-09-10T18:35:16Z), and an NSE ANCHOR_ALLOCATION_REPORT, `anchor sidecar timed out after 120000ms` (log 2026-09-18T03:18:27Z). The other 4 (PRICE_BAND_AD on swastika-infra, adroit-industries, moneyview; ANCHOR_ALLOCATION_REPORT on shanti-inorganics) had NO recoverable cause: the block marker had overwritten `extraction_error`, the append-only `document_extraction_attempts` table (migration 0065) is not yet applied on staging, and retained logs carried no failure line for them by the time this was read. #396 (same ETIMEDOUT class, prod, 2026-09-07) had been closed by a detector only, per signal-ownership R5 ('fixed on main is not fixed until the signal it closed has gone'), and recurred. Fix: every failure kind still counts toward the 10-attempt limit (no unbounded retry, OD-21/OD-33/section 5.3 'never on a backoff timer'), but the block marker now keeps kind + last cause (`blocked_after_10_attempts kind=<kind> last=<cause> @<version>`). Spec basis: OD-21, OD-33, section 5.3 step 5, section 2.1. Failure classes: `transient-failure-counted-toward-a-permanent-block` and `retry-loop-keeps-only-its-last-cause` (both already registered)."
+    },
+    {
+      "id": "F-194",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "monitoring / alert channel",
+      "phase1": false,
+      "title": "no check measured the alert channel's own signal-to-noise on an ongoing basis; a 2026-09-19..26 window measured 32.1% P1 share against the T-285 20% cap, with the largest alert type at 48.9% of volume",
+      "detail": "Measured 2026-09-26 (#195, PR #1213, J1 built). T-285 had found 92% of owner alerts were one type, 86% of those a source compared against itself, 97% tagged P1 -- and a genuine `heartbeat-miss` P1 went unactioned for 23h, buried under the flood. That root cause was fixed, but nothing measured the channel afterward to catch a recurrence. `scripts/audit-alert-channel.mjs` now reads the Notifier's own `delivery-log.jsonl` and asserts over a trailing 7-day window for project `ipodhan`: no single alert type over 60% of volume, P1 alerts at or under 20%, zero self-comparisons (the T-285 shape). Wired into `scripts/vps-data-audit-cron.sh` step [7/7], non-fatal. Real measured result over 2026-09-19..26 (8,879 delivery-log lines read on the VPS, read-only): P1 share 32.1% (above the 20% cap), largest alert type 48.9% of volume, self-comparisons 0. This is a pre-existing condition the new check surfaces, not a new bug -- open for owner decision whether the 20% P1 cap or the alert mix itself needs a rule change (J2, the synthetic-alert drill, needs a Notifier routing/config change out of scope for this task and is recorded separately in `docs/contracts/.run/owner-questions-2026-09-26.md`). No owning section in `docs/design/data-sourcing-pull-model.md` -- an operational-monitoring finding, not a sourcing rule. Added failure class `alert-channel-signal-to-noise-never-measured-on-an-ongoing-basis` (status: guarded, J1 landed)."
+    },
+    {
+      "id": "F-195",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "scraper integration tests / CI",
+      "phase1": false,
+      "title": "two scraper integration test files raced on shared look-alike fixtures under vitest's file-level parallelism, passing alone and failing only when run with the other 51 files in the CI-equivalent invocation",
+      "detail": "Measured 2026-09-26 (#252, PR #1209, closes #252). Running `cd scraper && npx vitest run -c vitest.integration.config.ts` against `ipodhan_test` (the sanctioned tunnel DB) reproduced the CI invocation exactly. `identity-matching-od68.integration.test.ts` and `source-record-keys-od85.integration.test.ts` both PASS when run alone and FAIL when run together with the other 51 integration files (wrong outcome, e.g. `'bound'` vs `'held'`), because they share look-alike fixture rows that vitest's file-level parallelism lets race against each other on the same test database. Separately, `consolidation-dedup.integration.test.ts` had been fixed 2026-09-11 to use `DATABASE_URL` but its `exclusions.json` entry (`cannot-run-in-ci`, stale reason 'builds pool from web/.env.local') was never updated, so a working file sat excluded from CI; `nse-subscription.integration.test.ts` was confirmed correctly excluded (31/32 assertions passed against `ipodhan_test`, 1 failed only on live NSE data). Class: every scraper integration test file not run by CI, or that fails only under CI's full-file parallel invocation -- all 54 files under `scraper/tests/integration/`. Fix: config-level isolation for the two racing files, `consolidation-dedup` moved into the CI run list, `nse-subscription`'s exclusion reason updated with the live-NSE measurement. No owning section in `docs/design/data-sourcing-pull-model.md` -- a test-infrastructure defect. Added failure class `shared-fixtures-race-under-file-level-test-parallelism` (status: guarded)."
     }
   ],
   "false_assertions": [
