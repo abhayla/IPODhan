@@ -35,6 +35,11 @@ const ID = {
 };
 const IDS = Object.values(ID);
 const STAMP = '2026-06-16 12:52:00';
+// #1054 (sweep of #1045/#1053's class): every non-undo spawn below is scoped
+// to this file's own fixture rows via `--ipo`, so it can only ever touch its
+// own rows even while vitest runs other integration files in parallel
+// against the same shared `ipodhan_test` database.
+const IPO_SCOPE = IDS.join(',');
 
 let pool: Pool | null = null;
 let tmpStore = '';
@@ -102,9 +107,14 @@ describe.skipIf(!DATABASE_URL)(`OD-74/OD-77 repair on real Postgres (${SKIP_REAS
   it('prod mode with no pinned pages refuses, exit 2, nothing written', async () => {
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'od74-empty-'));
     const before = await snapshot();
-    const r = run(['--apply', '--prod-mode', '--no-fetch', '--store-dir', empty]);
+    const r = run(['--apply', '--prod-mode', '--no-fetch', '--store-dir', empty, '--ipo', IPO_SCOPE]);
     expect(r.code, r.out).toBe(2);
     expect(r.out).toMatch(/prod mode never fetches/);
+    // #1054: a reviewer found #1053's tests never asserted the scope line
+    // itself — an empty scope passed at the call site (a typo, a dropped
+    // flag) would pass silently. Assert the printed line names all 5 fixture
+    // ids, not just that SOME scope text appears.
+    expect(r.out).toMatch(/scope = 5 IPO\(s\)/);
     expect(await snapshot()).toEqual(before);
     fs.rmSync(empty, { recursive: true, force: true });
   }, 150_000);
@@ -112,8 +122,9 @@ describe.skipIf(!DATABASE_URL)(`OD-74/OD-77 repair on real Postgres (${SKIP_REAS
   let applyLedger = '';
   it('apply: writes only the real difference; identical and within-rounding rows untouched', async () => {
     const before = await snapshot();
-    const r = run(['--apply', '--no-fetch', '--store-dir', tmpStore]);
+    const r = run(['--apply', '--no-fetch', '--store-dir', tmpStore, '--ipo', IPO_SCOPE]);
     expect(r.code, r.out).toBe(0);
+    expect(r.out).toMatch(/scope = 5 IPO\(s\)/);
     applyLedger = r.out.match(/ledger (\S+\.json)/)![1];
     const after = await snapshot();
     expect(after['od74-t-write'].size).toBe('11000000000.00');
@@ -123,8 +134,9 @@ describe.skipIf(!DATABASE_URL)(`OD-74/OD-77 repair on real Postgres (${SKIP_REAS
 
   let zerosLedger = '';
   it('--zeros apply: TENDER 0 -> NULL with no plan row; OFS 0 -> NULL with NOT_SOURCED', async () => {
-    const r = run(['--zeros', '--apply']);
+    const r = run(['--zeros', '--apply', '--ipo', IPO_SCOPE]);
     expect(r.code, r.out).toBe(0);
+    expect(r.out).toMatch(/scope = 5 IPO\(s\)/);
     zerosLedger = r.out.match(/ledger (\S+\.json)/)![1];
     const s = await snapshot();
     expect(s['od74-t-tender']).toMatchObject({ size: null, rc: null });

@@ -147,6 +147,21 @@ export function describeIpoScope(ipoIds: readonly string[]): string {
 }
 
 /**
+ * #1059 round 2 (MINOR-2): `--ipo` scopes the candidate SELECT a repair tool
+ * runs when it is DECIDING what to repair; `--undo` restores rows the ledger
+ * already names, and the ledger's own row ids are the only scope that means
+ * anything there. Combining them silently would read as "restore only the
+ * named IPOs' rows from this ledger", which none of the three `--undo`
+ * implementations do (they replay every ledger row) — so a `--ipo` alongside
+ * `--undo` is refused rather than silently ignored. One implementation,
+ * imported by every repair tool's `main()`, same rationale as the rest of
+ * this module.
+ */
+export function decideUndoIpoConflict(argv: readonly string[], undoGiven: boolean, ipoFlag = '--ipo'): boolean {
+  return undoGiven && flagIsPresent(argv, ipoFlag);
+}
+
+/**
  * The candidate-row filter every repair tool ANDs into its SELECT / DELETE /
  * UPDATE when scoped to specific IPOs, so a test spawning the tool with
  * `--ipo <its fixture id>` can only ever touch its own fixture rows even
