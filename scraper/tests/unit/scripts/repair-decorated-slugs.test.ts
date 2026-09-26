@@ -31,7 +31,7 @@ const selectResults: Array<Array<{ id: string; companyName?: string }>> = [];
 // The ipos.slug update + ipo_slug_redirects insert now live in
 // IPORepository.renameSlugWithRedirect (the shared write path, R0) —
 // applyRename() only calls that method, never db.transaction() directly.
-const renameSlugWithRedirect = vi.fn();
+const renameSlugWithRedirectDetailed = vi.fn();
 
 vi.mock('@ipodhan/shared', () => ({
   db: {
@@ -96,7 +96,7 @@ describe('classify() — reuses the audit predicate, no third copy', () => {
 describe('planRow() / applyRename() — rename, redirect, collision refusal, idempotency', () => {
   beforeEach(() => {
     selectResults.length = 0;
-    renameSlugWithRedirect.mockReset();
+    renameSlugWithRedirectDetailed.mockReset();
     warnMock.mockClear();
   });
 
@@ -145,7 +145,12 @@ describe('planRow() / applyRename() — rename, redirect, collision refusal, ide
   it('applyRename writes the slug update and the redirect in the same transaction', async () => {
     const { applyRename } = await import('../../../scripts/repair-decorated-slugs.js');
     selectResults.push([]); // slugIsLive(oldSlug) shadow-guard check: nobody else holds it
-    renameSlugWithRedirect.mockResolvedValueOnce('written');
+    renameSlugWithRedirectDetailed.mockResolvedValueOnce({
+      outcome: 'written',
+      before: { slug: 'purple-style-labs-ltd-pernia-s-pop-up-studio-ipo', updatedAt: '2026-09-01 10:00:00' },
+      after: { slug: 'purple-style-labs-limited', updatedAt: '2026-09-26 12:00:00' },
+      redirect: null,
+    });
 
     const outcome = await applyRename(
       {
@@ -156,12 +161,14 @@ describe('planRow() / applyRename() — rename, redirect, collision refusal, ide
         outcome: 'planned',
       },
       'ipodhan_staging',
-      { renameSlugWithRedirect }
+      { renameSlugWithRedirectDetailed }
     );
 
-    expect(outcome).toBe('written');
-    expect(renameSlugWithRedirect).toHaveBeenCalledTimes(1);
-    expect(renameSlugWithRedirect).toHaveBeenCalledWith(
+    expect(outcome.outcome).toBe('written');
+    // a pre-existing redirect (redirect: null) is never ledgered as an insert (#457)
+    expect(outcome.changes.map((c) => `${c.table}.${c.field}`)).toEqual(['ipos.slug', 'ipos.updated_at']);
+    expect(renameSlugWithRedirectDetailed).toHaveBeenCalledTimes(1);
+    expect(renameSlugWithRedirectDetailed).toHaveBeenCalledWith(
       'ipo-1',
       'purple-style-labs-ltd-pernia-s-pop-up-studio-ipo',
       'purple-style-labs-limited',
@@ -182,10 +189,11 @@ describe('planRow() / applyRename() — rename, redirect, collision refusal, ide
         outcome: 'planned',
       },
       'ipodhan_staging',
-      { renameSlugWithRedirect }
+      { renameSlugWithRedirectDetailed }
     );
 
-    expect(outcome).toBe('skipped-shadow');
-    expect(renameSlugWithRedirect).not.toHaveBeenCalled();
+    expect(outcome.outcome).toBe('skipped-shadow');
+    expect(outcome.changes).toEqual([]);
+    expect(renameSlugWithRedirectDetailed).not.toHaveBeenCalled();
   });
 });

@@ -37,10 +37,12 @@ import { db, resolveDiscreteDbParams } from '@ipodhan/shared/db';
 import { getRedisClient, IPORepository } from '@ipodhan/shared';
 import {
   createNoopRedisClient,
+  diffToLedgerEntries,
   guardCacheInvalidation,
   openRepairDb,
   writeLedgerFile,
   type ExecuteLike,
+  type RepairLedgerFieldChange,
 } from './lib/repair-tool.js';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
@@ -122,6 +124,43 @@ function getIpoRepository(dbName: string): IPORepository {
 // no raw-SQL forwarder needed for the guard.
 const repairDbGuard: ExecuteLike = db;
 
+/**
+ * #457 round 2: the two rows `recordDiscoveredLeadManagers` writes — the
+ * `ipos` row (lead_managers, updated_at) and its `field_sources` provenance
+ * row (inserted, or upserted over an existing one) — read as text/json so a
+ * restore is exact. Taken immediately before and after the write; the ledger is
+ * their diff, so it holds only what actually changed.
+ */
+async function snapshotLeadManagerRows(ipoId: string): Promise<{ ipo: Record<string, unknown> | null; fs: Record<string, unknown> | null }> {
+  const ipo = await pool.query(
+    `select lead_managers, updated_at::text as updated_at from ipos where id = $1`,
+    [ipoId]
+  );
+  const fs = await pool.query(
+    `select id::text as id, source::text as source, confidence, previous_value, previous_source::text as previous_source,
+            data_lineage, updated_at::text as updated_at, updated_by
+       from field_sources
+      where ipo_id = $1 and table_name = 'ipos' and row_key = '' and field_name = 'leadManagers'`,
+    [ipoId]
+  );
+  return { ipo: ipo.rows[0] ?? null, fs: fs.rows[0] ?? null };
+}
+
+export function leadManagerLedgerEntries(
+  ipoId: string,
+  before: { ipo: Record<string, unknown> | null; fs: Record<string, unknown> | null },
+  after: { ipo: Record<string, unknown> | null; fs: Record<string, unknown> | null }
+): RepairLedgerFieldChange[] {
+  const out: RepairLedgerFieldChange[] = [];
+  if (before.ipo && after.ipo) out.push(...diffToLedgerEntries('ipos', ipoId, before.ipo, after.ipo));
+  if (after.fs) {
+    const id = String(after.fs.id);
+    if (!before.fs) out.push({ table: 'field_sources', rowKey: id, field: '(row)', before: null, after: after.fs });
+    else out.push(...diffToLedgerEntries('field_sources', id, before.fs, after.fs));
+  }
+  return out;
+}
+
 async function fetchBseLeadManagers(ipoNo: number): Promise<string[] | null> {
   const url = `${BSE_API_BASE}GetMkt_ISSUE_BBS_IPO/w?IPO_NO=${ipoNo}`;
   const res = await fetch(url, { headers: BSE_HEADERS });
@@ -141,6 +180,7 @@ async function main() {
   console.log('='.repeat(80));
 
   const ledger: unknown[] = [];
+  const changes: RepairLedgerFieldChange[] = [];
 
   const { dbName } = await openRepairDb(repairDbGuard, {
     apply: APPLY,
@@ -204,13 +244,17 @@ async function main() {
       // guard is evaluated by Postgres inside the UPDATE, so a concurrent
       // scraper cycle's write always wins over this repair — no separate
       // pre-read needed here.
+      const before = await snapshotLeadManagerRows(row.id as string);
       const { written: didWrite } = await recordDiscoveredLeadManagers(
         getIpoRepository(dbName),
         row.id as string,
         rawNames,
         'BSE'
       );
-      if (didWrite) written++;
+      if (didWrite) {
+        written++;
+        changes.push(...leadManagerLedgerEntries(row.id as string, before, await snapshotLeadManagerRows(row.id as string)));
+      }
       else console.log(`    (no-op: ${row.slug}.lead_managers was filled concurrently — write-once guard held)`);
     }
   }
@@ -221,7 +265,24 @@ async function main() {
       `skipped no bse_ipo_no: ${skippedNoIpoNo} | skipped fetch failed: ${skippedFetchFailed} | skipped sanitized empty: ${skippedSanitizedEmpty}`
   );
 
-  writeLedgerFile(LEDGER_PATH, { apply: APPLY, dbName, generatedAt: new Date().toISOString(), ledger });
+  writeLedgerFile(LEDGER_PATH, {
+    tool: 'repair-lead-managers-from-payload',
+    mode: APPLY ? 'apply' : 'dry-run',
+    generatedAt: new Date().toISOString(),
+    // applied: only rows the write-once guard let through, every changed column of both rows.
+    // dry run: the planned lead_managers value per candidate.
+    changes: APPLY
+      ? changes
+      : (ledger as Array<{ ipoId: string; before: unknown; after: unknown }>).map((r) => ({
+          table: 'ipos',
+          rowKey: r.ipoId,
+          field: 'lead_managers',
+          before: r.before,
+          after: r.after,
+        })),
+    dbName,
+    ledger,
+  });
   console.log(`Ledger written: ${LEDGER_PATH}`);
 
   await pool.end();

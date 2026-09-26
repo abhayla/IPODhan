@@ -34,7 +34,7 @@ import { db } from '@ipodhan/shared';
 import { sql } from 'drizzle-orm';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike } from './lib/repair-tool';
+import { changesFromReturnedRow, openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike, type RepairLedgerFieldChange } from './lib/repair-tool';
 
 const TOOL = 'repair-ipos-lineage-document-id';
 const SCRAPER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -55,6 +55,8 @@ export interface CandidateRow {
   slug: string;
   fieldName: string;
   updatedAt: string;
+  /** field_sources.data_lineage as read by the plan (the dry-run ledger's `before`). */
+  dataLineage?: unknown;
   documents: CandidateDocument[];
 }
 
@@ -90,6 +92,7 @@ export async function planLineageRepair(dbx: RepairDb): Promise<{
   const res = await dbx.execute(sql`
     select fs.id::text as id, fs.ipo_id::text as "ipoId", i.slug as slug, fs.field_name as "fieldName",
            to_char(fs.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.US') as "updatedAt",
+           fs.data_lineage as "dataLineage",
            coalesce((
              select json_agg(json_build_object(
                       'id', d.id::text, 'type', d.type::text, 'extractionStatus', d.extraction_status,
@@ -113,30 +116,61 @@ export async function planLineageRepair(dbx: RepairDb): Promise<{
   return { rows, toStamp, skipped };
 }
 
-/** Stamps each decided row, re-checking in the WHERE clause that it is still unstamped and unchanged. */
+/**
+ * Stamps each decided row, re-checking in the WHERE clause that it is still unstamped and unchanged.
+ * Returns the ids actually stamped AND, per stamped row, the true before/after of the ONE column the
+ * UPDATE changes (`field_sources.data_lineage`), read under FOR UPDATE by the same statement (#457).
+ */
 export async function applyStamps(
   dbx: RepairDb,
   toStamp: ReadonlyArray<Extract<RowDecision, { kind: 'stamp' }>>
-): Promise<{ stampedIds: string[] }> {
+): Promise<{ stampedIds: string[]; changes: RepairLedgerFieldChange[] }> {
   const stampedIds: string[] = [];
+  const changes: RepairLedgerFieldChange[] = [];
   if (toStamp.length > 0) {
     await dbx.transaction(async (tx) => {
       for (const d of toStamp) {
         const out = await tx.execute(sql`
-          update field_sources
-             set data_lineage = coalesce(data_lineage, '{}'::jsonb)
+          with old as (
+            select id, data_lineage
+              from field_sources
+             where id = ${d.row.id}::uuid
+               and (data_lineage->>'documentId') is null
+               and to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.US') = ${d.row.updatedAt}
+             for update
+          )
+          update field_sources fs
+             set data_lineage = coalesce(fs.data_lineage, '{}'::jsonb)
                    || jsonb_build_object('documentId', ${d.documentId}::text, 'documentIdRepair', ${REPAIR_MARKER}::text)
-           where id = ${d.row.id}::uuid
-             and (data_lineage->>'documentId') is null
-             and to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.US') = ${d.row.updatedAt}
-          returning id::text as id`);
-        const hit = (out as unknown as { rows: Array<{ id: string }> }).rows;
-        if (hit.length === 1) stampedIds.push(hit[0].id);
+            from old
+           where fs.id = old.id
+          returning fs.id::text as id, old.data_lineage as old_data_lineage, fs.data_lineage as new_data_lineage`);
+        const hit = (out as unknown as { rows: Array<Record<string, unknown>> }).rows;
+        if (hit.length === 1) {
+          stampedIds.push(String(hit[0].id));
+          changes.push(...changesFromReturnedRow('field_sources', String(hit[0].id), hit[0], ['data_lineage']));
+        }
       }
     });
   }
 
-  return { stampedIds };
+  return { stampedIds, changes };
+}
+
+/** The dry-run ledger: the planned stamp of `field_sources.data_lineage`, before = the value the plan read. */
+export function plannedLineageChanges(
+  toStamp: ReadonlyArray<Extract<RowDecision, { kind: 'stamp' }>>
+): RepairLedgerFieldChange[] {
+  return toStamp.map((d) => {
+    const before = (d.row.dataLineage ?? null) as Record<string, unknown> | null;
+    return {
+      table: 'field_sources',
+      rowKey: d.row.id,
+      field: 'data_lineage',
+      before,
+      after: { ...(before ?? {}), documentId: d.documentId, documentIdRepair: REPAIR_MARKER },
+    };
+  });
 }
 
 async function main(): Promise<void> {
@@ -172,19 +206,17 @@ async function main(): Promise<void> {
     console.log(`  leave: ${s.row.slug} ipos.${s.row.fieldName} row ${s.row.id} ${s.reason} [${docs}]`);
   }
 
-  const { stampedIds } = cli.apply ? await applyStamps(db as unknown as RepairDb, toStamp) : { stampedIds: [] as string[] };
+  const { stampedIds, changes } = cli.apply
+    ? await applyStamps(db as unknown as RepairDb, toStamp)
+    : { stampedIds: [] as string[], changes: plannedLineageChanges(toStamp) };
 
   writeLedgerFile(path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${cli.apply ? 'applied' : 'dryrun'}-${Date.now()}.json`), {
     tool: TOOL,
     mode: cli.apply ? 'apply' : 'dry-run',
     generatedAt: new Date().toISOString(),
-    changes: toStamp.map((d) => ({
-      table: 'field_sources',
-      rowKey: d.row.id,
-      field: d.row.fieldName,
-      before: null,
-      after: d.documentId,
-    })),
+    // #457 round 2: applied = only the rows the guarded UPDATE changed (a raced row is absent),
+    // keyed by field_sources.id, column data_lineage, with the value it held before.
+    changes,
     database: actual,
     apply: cli.apply,
     at: new Date().toISOString(),
