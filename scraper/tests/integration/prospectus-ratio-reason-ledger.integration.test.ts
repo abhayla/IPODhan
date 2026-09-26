@@ -13,6 +13,11 @@ import * as schema from '../../../packages/shared/src/db/schema';
 import { IpoPipelineStepsRepository } from '../../../packages/shared/src/repositories/ipo-pipeline-steps-repository';
 import { planExtractionSteps } from '../../src/services/step-ledger-recorders.js';
 import type { FilingExtraction } from '../../src/services/filing-persister.js';
+// The floor check's OWN verdict (issuer_ratio_yield), not a copy of its old
+// regex: #771 review round 1 found this test still carrying the any-token
+// pattern the check had already dropped.
+// @ts-expect-error - plain .mjs, no type declarations
+import { ratioYieldVerdict, RATIO_FIXED_EXTRACTOR_VERSION } from '../../../scripts/lib/ratio-yield-verdict.mjs';
 
 /**
  * #771 — `issuer_ratio_yield` (scripts/audit-detection-floor.mjs) failed on
@@ -49,8 +54,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = path.join(__dirname, '..', '..', 'scripts');
 const FIXTURES = path.join(__dirname, '..', 'fixtures');
 
-/** The floor check's own reason tokens (audit-detection-floor.mjs, issuer_ratio_yield). */
-const FLOOR_REASON = /ratio_note_not_in_document|ratio_row_not_in_note|balance_sheet_inputs_absent/;
 
 // `<<<PAGE n>>>` text fixtures (financial-ratios/) or [[n, text], ...] JSON (extractor/).
 const EXTRACT_PY = [
@@ -153,14 +156,17 @@ describe.skipIf(!DATABASE_URL || !PYTHON)('#771 prospectus ratio: a value or a r
     await landSteps(extraction);
     const v = await floorVerdict();
     expect(v.hasRatio).toBe(false);
-    expect(v.evidence).toMatch(FLOOR_REASON);
     expect(JSON.parse(v.evidence).ratioReasons.current_ratio).toBe('ratio_note_not_in_document');
+    expect(ratioYieldVerdict({ hasRatio: v.hasRatio, stepEvidence: v.evidence, extractorVersion: RATIO_FIXED_EXTRACTOR_VERSION }))
+      .toEqual({ status: 'PASS', cause: null });
   });
 
   it('a real ratio note in a non-Prasol layout is READ, so no reason is recorded for it', async () => {
     const extraction = realExtraction('financial-ratios/a-one-steels-key-financial-ratios.txt');
     // The issuer prints "a) Current ratio (in times) ... 1.34 1.27 5.67%Less than 25%".
     expect(extraction.fields?.current_ratio?.value).toBe(1.34);
+    // The page the row was READ from (fixture page 555), not the note's first page.
+    expect((extraction.fields?.current_ratio as { page?: number } | undefined)?.page).toBe(555);
     await landSteps(extraction);
     const v = await floorVerdict();
     const reasons = JSON.parse(v.evidence).ratioReasons as Record<string, string>;

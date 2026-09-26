@@ -2802,11 +2802,15 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     #
     # Unlike the peer block above this needs no `tables_for_page`: the note is
     # line-oriented text, so it runs on every prospectus-family document.
+    #
+    # #771: the page recorded is the page the row was READ from. The note's
+    # first page is often boilerplate (measured: 4 of 4 real prospectuses), so
+    # recording it pointed every provenance line at a page with no value on it.
     ratio_pages = financial_ratios.find_ratio_note_pages(page_texts)
-    printed = financial_ratios.read_printed_ratios(page_texts) if ratio_pages else {}
-    ratio_page = ratio_pages[0] if ratio_pages else None
+    printed = financial_ratios.read_printed_ratio_rows(page_texts) if ratio_pages else {}
     for name in ("current_ratio", "inventory_turnover"):
-        values = printed.get(name) or []
+        rows = printed.get(name) or []
+        values, ratio_page = rows[0] if rows else ([], None)
         if not values:
             # Named causes, not a bare absence: the note may be missing entirely
             # or present with only the other ratio in it.

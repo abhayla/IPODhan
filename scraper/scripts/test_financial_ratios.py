@@ -194,3 +194,45 @@ def test_the_accounting_ratios_statement_is_not_the_ratio_note():
     Statutory Ratios') carries EPS / RoNW / NAV and no current ratio."""
     found = find_ratio_note_pages(pages("green-asia-impex-statement-of-ratios.txt"))
     assert 320 not in found, found
+
+
+# ------------------------------------------------------- #771 review round 1
+# The value span must be the ratio columns, never the numerator/denominator
+# amounts some issuers print in front of them. Before this round the lazy
+# `mid` plus a `{2,}` value run took EVERY number from the first one that could
+# start a run, so an amount became the "current ratio".
+
+_ADVERSARIAL = (
+    "a) Current Ratio Current Assets 1,234.56 Current Liabilities 987.65 1.25 1.10 13.6%"
+)
+
+
+def _note(*lines):
+    return [(7, "60 Key Financial Ratios\n" + "\n".join(lines))]
+
+
+def test_amounts_before_the_ratio_columns_are_not_read_as_the_ratio():
+    got = read_printed_ratios(_note(_ADVERSARIAL))
+    assert got["current_ratio"] == [1.25, 1.10], got
+
+
+def test_a_qualified_current_ratio_row_is_not_the_current_ratio():
+    """'Current Ratio excluding inventory' is a quick / acid-test ratio under
+    another name; publishing it as the current ratio is a wrong number."""
+    only_b = _note("b) Current Ratio excluding inventory Current Assets less Inventories "
+                   "Current Liabilities 0.80 0.75 6.67%")
+    assert "current_ratio" not in read_printed_ratios(only_b)
+    both = _note(_ADVERSARIAL,
+                 "b) Current Ratio excluding inventory Current Assets less Inventories "
+                 "Current Liabilities 0.80 0.75 6.67%")
+    assert read_printed_ratios(both)["current_ratio"] == [1.25, 1.10]
+
+
+def test_the_page_returned_is_the_page_of_the_row_not_the_heading():
+    """ratio_page names where the value was READ. A heading on page 10 with the
+    row on the continuation page 11 must report 11."""
+    from financial_ratios import read_printed_ratio_rows
+    text = [(10, "49 Financial Ratios\nsome preamble"),
+            (11, "1 Current Ratio Current Assets Current Liabilities 1.54 1.34 15.09% x")]
+    rows = read_printed_ratio_rows(text)
+    assert rows["current_ratio"][0] == ([1.54, 1.34], 11), rows

@@ -106,7 +106,7 @@ import {
 import { newestWakeTimestamp } from './ops/wake-delta.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
 import { adminQueueSize, formatAdminQueueBlock } from './ops/admin-queue-size.mjs';
-import { ratioYieldFailure } from './lib/ratio-yield-verdict.mjs';
+import { ratioYieldVerdict, summarizeRatioYield, RATIO_FIXED_EXTRACTOR_VERSION, RATIO_YIELD_TRACKING_ISSUE } from './lib/ratio-yield-verdict.mjs';
 import { behaviourConflictPredicate, unresolvedConflictCountSql, unresolvedConflictNoiseSql, conflictsInserted24hSql, ensureDocumentIdProbe, conflictWriterNoiseSql } from './lib/conflict-reasons.mjs';
 
 // The three filing-extractor types this specific stuck-detection query cares about
@@ -1362,34 +1362,48 @@ async function checkM() {
   const ratioRows = await q(`
     SELECT i.company_name, d.id::text AS document_id, d.type::text AS doc_type,
            fd.current_ratio IS NOT NULL AS has_ratio,
-           coalesce(s.evidence::text, '') AS step_evidence
+           coalesce(s.evidence::text, '') AS step_evidence,
+           dfs.extractor_version
       FROM documents d
       JOIN ipos i ON i.id = d.ipo_id
       LEFT JOIN financial_data fd ON fd.ipo_id = d.ipo_id
       LEFT JOIN ipo_pipeline_steps s ON s.ipo_id = d.ipo_id AND s.step_id = 'E9'
+      LEFT JOIN LATERAL (
+        SELECT f.extractor_version FROM document_fetch_state f
+         WHERE f.document_id = d.id
+         ORDER BY f.extracted_at DESC NULLS LAST LIMIT 1
+      ) dfs ON true
      WHERE i.${REAL_IPO}
        AND d.type::text IN ('RHP', 'DRHP', 'PROSPECTUS')
        AND d.extraction_status = 'COMPLETED'
        AND d.extracted_at IS NOT NULL
        AND d.extracted_at >= timestamp '${RATIO_WIRING_MERGED_AT}'
   `);
-  // #771: the verdict reads E9 `ratioReasons.current_ratio` only. The old
-  // any-token regex over the whole evidence would pass every document once E9
-  // carried reasons, because quick_ratio always records one.
-  const ratioSilent = ratioRows
-    .map((r) => ({ r, cause: ratioYieldFailure({ hasRatio: r.has_ratio, stepEvidence: r.step_evidence }) }))
-    .filter(({ cause }) => cause !== null)
-    .map(({ r, cause }) => `${r.company_name} (${r.doc_type} ${r.document_id.slice(0, 8)}): ${cause}`);
+  // #771: the verdict reads E9 `ratioReasons.current_ratio` only (quick_ratio
+  // always records a reason, so an any-token match passed everything), and it
+  // JUDGES only documents stored by the fixed reader - compared by the stored
+  // extractor_version, not by a date. Older documents are pending re-read (the
+  // version bump re-opens them), never FAIL: a pre-fix row judged against
+  // post-fix behaviour is a FAIL no night can clear (signal-ownership R5).
+  const ratioVerdicts = ratioRows.map((r) => ({
+    r,
+    ...ratioYieldVerdict({ hasRatio: r.has_ratio, stepEvidence: r.step_evidence, extractorVersion: r.extractor_version }),
+  }));
+  const ratioSummary = summarizeRatioYield(ratioVerdicts);
+  const ratioSilent = ratioVerdicts
+    .filter((v) => v.status === 'FAIL')
+    .map(({ r, cause }) => `${r.company_name} (${r.doc_type} ${r.document_id.slice(0, 8)} @${r.extractor_version}): ${cause} [#${RATIO_YIELD_TRACKING_ISSUE}]`);
   for (const v of ratioSilent)
     notify('issuer_ratio_yield', 'P2', v, 'A completed filing extraction yielded no issuer ratio and named no cause', v);
+  const ratioCounts = `${ratioSummary.judged} judged at >= ${RATIO_FIXED_EXTRACTOR_VERSION}, ${ratioSummary.pending} pending re-read, ${ratioSummary.fails} FAIL`;
   record('issuer_ratio_yield',
-    `every COMPLETED RHP/DRHP/PROSPECTUS extracted since ${RATIO_WIRING_MERGED_AT} carries a current_ratio or E9 ratioReasons.current_ratio = ratio_note_not_in_document (${ratioRows.length} document(s) in the population)`,
-    ratioRows.length === 0
-      ? 'UNVERIFIABLE'
-      : (ratioSilent.length === 0 ? 'PASS' : 'FAIL'),
+    `every COMPLETED RHP/DRHP/PROSPECTUS stored at extractor ${RATIO_FIXED_EXTRACTOR_VERSION} or later carries a current_ratio or E9 ratioReasons.current_ratio = ratio_note_not_in_document; older ones are pending re-read (${ratioCounts}; tracking #${RATIO_YIELD_TRACKING_ISSUE})`,
+    ratioSummary.status,
     ratioRows.length === 0
       ? `no prospectus-family document has completed extraction since ${RATIO_WIRING_MERGED_AT}`
-      : ratioSilent.slice(0, MAX_OFFENDERS).join('; '));
+      : ratioSummary.status === 'UNVERIFIABLE'
+        ? `no document re-read by the fixed reader yet: ${ratioCounts}`
+        : [ratioCounts, ...ratioSilent.slice(0, MAX_OFFENDERS)].join('; '));
 
   // #545: does a completed prospectus extraction YIELD the issuer's promoters
   // and listed peers? Both are printed in every RHP/DRHP (the cover's "OUR

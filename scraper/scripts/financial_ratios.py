@@ -60,8 +60,18 @@ _NOTE_HEADING = re.compile(
 #     anchored on the first variance percentage after them, which may be
 #     parenthesised ("(8.10%)") or glued to the reason ("5.67%Less than 25%").
 # Values stay newest period first, so values[0] is still the one persisted.
+#
+# #771 review round 1: a label followed by a QUALIFIER ("Current Ratio
+# excluding inventory") is a different ratio under a similar name - an
+# acid-test ratio - and not a row of THIS ratio. The negative lookahead refuses
+# it rather than publishing it as the current ratio.
+_QUALIFIER = (
+    r"(?!\s*\(?\s*(?:excluding|excl\b|ex\b|ex-|without|net\s+of|adjusted|"
+    r"less\b|after\b|before\b))"
+)
 _ROW = re.compile(
     r"^\s*(?:\d+\s+|\(?[a-z]\)\s*)?(?P<name>Current\s+Ratio|Inventory\s+turnover\s+Ratio)\b"
+    + _QUALIFIER +
     r"(?P<mid>.*?)"
     r"(?P<vals>(?:\s+-?\d[\d,]*\s*\.\s*\d+|\s+-?\d[\d,]*\.\d+){2,})"
     r"\s+(?P<var>\(?-?[\d.]+\s*%)",
@@ -81,7 +91,10 @@ _ROW = re.compile(
 # So the repair happens HERE, inside the already-identified value span, where a
 # lone digit followed by ".NN" cannot be anything else.
 _SPLIT_DIGIT = re.compile(r"(?<![\d.])(\d)\s+\.(\d)")
-_NUMBER = re.compile(r"-?\d[\d,]*\.\d+")
+_WHOLE_NUMBER = re.compile(r"^-?\d[\d,]*\.\d+$")
+# One variance column: "15.09%", "-6.38%", "(2.65)%", "(8.10%)", or glued to
+# the reason that follows ("5.67%Less than 25%") - only the leading token.
+_VARIANCE = re.compile(r"\s*\(?-?\d[\d.,]*\s*\)?\s*%\)?")
 
 _KEYS = {"current ratio": "current_ratio", "inventory turnover ratio": "inventory_turnover"}
 
@@ -116,8 +129,62 @@ def _has_ratio_row(text):
     return any(_ROW.match(" ".join(line.split())) for line in (text or "").split("\n"))
 
 
-def _values(span):
-    return [float(n.replace(",", "")) for n in _NUMBER.findall(_SPLIT_DIGIT.sub(r"\1.\2", span))]
+def _row_values(line, match):
+    """The ratio columns of one matched row, newest period first.
+
+    #771 review round 1. The row's regex span is NOT the ratio columns: an
+    issuer that prints its numerator and denominator AMOUNTS ("Current Assets
+    1,234.56 Current Liabilities 987.65 1.25 1.10 13.6%") puts a number right
+    in front of the ratios, and the lazy `mid` hands it to `vals`. So the
+    columns are rebuilt from the structure Schedule III fixes instead:
+
+      - the ratios are the TRAILING run of decimal numbers before the first
+        variance column (the numbers after the last non-numeric word);
+      - a note prints one variance column per consecutive pair of periods, so
+        N variance columns mean N + 1 period values. The run is cut to its
+        LAST N + 1 numbers; anything in front of them is an amount.
+
+    Measured on the four real layouts: Prasol and A-One Steels print one
+    variance and two periods; German Green Steel and Green Asia Impex print two
+    variances and three periods.
+    """
+    before = _SPLIT_DIGIT.sub(r"\1.\2", line[match.end("name"):match.start("var")])
+    run = []
+    for token in reversed(before.split()):
+        if not _WHOLE_NUMBER.match(token):
+            break
+        run.append(float(token.replace(",", "")))
+    run.reverse()
+    variances = 0
+    at = match.start("var")
+    while True:
+        found = _VARIANCE.match(line, at)
+        if not found or found.end() == at:
+            break
+        variances += 1
+        at = found.end()
+    periods = variances + 1
+    return run[-periods:] if len(run) > periods else run
+
+
+def read_printed_ratio_rows(page_texts):
+    """``{"current_ratio": [(values, page), ...], ...}``: each matched row with
+    the page it was READ from. #771: `ratio_page` names that page, not the
+    first page of the note - on all four real prospectuses the first page was
+    boilerplate, not the row."""
+    out = {}
+    for index in find_ratio_note_pages(page_texts):
+        text = next((t for i, t in page_texts if i == index), "") or ""
+        for raw in text.split("\n"):
+            line = " ".join(raw.split())
+            match = _ROW.match(line)
+            if not match:
+                continue
+            key = _KEYS[" ".join(match.group("name").split()).lower()]
+            values = _row_values(line, match)
+            if len(values) >= 2:
+                out.setdefault(key, []).append((values, index))
+    return out
 
 
 def read_printed_ratios(page_texts):
@@ -128,18 +195,8 @@ def read_printed_ratios(page_texts):
     preserve - unlike the peer table, where digit grouping and percent signs are
     the persister's business.
     """
-    out = {}
-    for index in find_ratio_note_pages(page_texts):
-        text = next((t for i, t in page_texts if i == index), "") or ""
-        for line in text.split("\n"):
-            match = _ROW.match(" ".join(line.split()))
-            if not match:
-                continue
-            key = _KEYS[" ".join(match.group("name").split()).lower()]
-            values = _values(match.group("vals"))
-            if len(values) >= 2:
-                out.setdefault(key, []).extend(values)
-    return out
+    return {key: [v for values, _page in rows for v in values]
+            for key, rows in read_printed_ratio_rows(page_texts).items()}
 
 
 def derive_quick_ratio(current_assets, inventories, current_liabilities):
