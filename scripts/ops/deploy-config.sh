@@ -23,6 +23,62 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST_REL_PATH="scraper/config/field-manifest.json"
 
+# ------------------------------------------------------------------ F5 (#752)
+# A leaked GIT_DIR/GIT_WORK_TREE (from a parent process, a git alias/wrapper,
+# or a hook-invoked shell) makes git skip repository discovery entirely, so
+# 'git rev-parse --is-inside-work-tree' prints "true" for ANY cwd and the
+# repo-root guard below is never actually exercised — every later git call
+# then silently reads whichever repo GIT_DIR names, not $REPO_ROOT.
+# Unsetting both here (rather than refusing when they are set) is the
+# simpler, always-safe fix: this script never wants to operate on the
+# invoker's ambient git context, only on the explicit $REPO_ROOT it resolves
+# below, so there is no legitimate case where a caller NEEDS GIT_DIR/
+# GIT_WORK_TREE honored — refusing would only add an extra failure mode for
+# an environment leak the caller may not even know about.
+#
+# ------------------------------------------------------------------ F8 (#752)
+# GIT_DIR/GIT_WORK_TREE are not the only env vars that redirect git's
+# repository discovery. GIT_OBJECT_DIRECTORY and GIT_COMMON_DIR (and any
+# other GIT_* var git itself treats as repo-scoped) leaked from a parent
+# process can make every git call this script makes read a DIFFERENT
+# repo's object database or common dir than $REPO_ROOT's own — proven by a
+# false lineage refusal when GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR pointed at
+# an unrelated decoy repo (case23). 'git rev-parse --local-env-vars' is
+# git's own authoritative list of these vars (safer than hand-naming a
+# second one after missing GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR here), so
+# clear the whole set rather than two named ones.
+unset $(git rev-parse --local-env-vars) 2>/dev/null || true
+
+# ------------------------------------------------------------------ F6 (#752)
+# The repo-root fallback chain below only asks "is this a git work tree",
+# never "is this IPODhan" — a release tree that happens to sit under some
+# OTHER git work tree (a sibling checkout, a version-controlled home
+# directory) would pass silently and the manifest would be read from the
+# wrong repo. EXPECTED_REPO_REMOTE_RE matches the real IPODhan remote in
+# every form 'git remote get-url origin' can print it: https, the
+# 'ssh://git@host/...' long form, or the 'git@host:owner/repo' scp-like
+# short form, any case (GitHub repo paths are case-insensitive — matched
+# with grep -Eqi below), with or without the trailing '.git', with or
+# without a trailing '/'. Matched against the CREDENTIAL-REDACTED origin
+# (see redact_origin_url below), never the raw one — a matcher run against
+# a raw 'user:pass@host' URL would leak the credential into the refusal
+# message the moment it does not match.
+EXPECTED_REPO_REMOTE_RE='^(https://github\.com/|ssh://github\.com/|git@github\.com:)abhayla/IPODhan(\.git)?/?$'
+
+# ------------------------------------------------------------------ F9 (#752)
+# A MAJOR finding on the F6 refusal: it printed the raw origin URL, which
+# leaks any embedded 'user:pass@' credential (a GitHub PAT/installation
+# token in an 'https://x-access-token:ghs_...@github.com/...' remote,
+# exactly the form GitHub Actions injects) into the operator's terminal AND
+# the deploy log. redact_origin_url strips 'user[:pass]@' from an
+# 'https://' or 'ssh://' origin before it is EVER matched or printed. The
+# scp-like 'git@host:owner/repo' short form is left untouched — the fixed
+# literal user 'git' there is the SSH protocol convention, not a
+# leaked/variable credential, and there is no password component to strip.
+redact_origin_url() {
+  printf '%s' "$1" | sed -E 's#^(https?://|ssh://)[^/@]*@#\1#'
+}
+
 # The on-box checkout that a deployed release (a git-free 'git archive |
 # tar -x' export, #748) falls back to when nothing overrides it. A
 # constant, not buried inline, so it is easy to find/override; tests point
@@ -106,6 +162,20 @@ if [ "$SLOT" = "prod" ] && [ "$OWNERS_WORD" -ne 1 ]; then
   fatal "prod-guard: --slot prod requires --i-have-the-owners-word — refusing without it (prod-guard)"
 fi
 
+# F7 (#752): DEPLOY_CONFIG_LINEAGE_SKIP_FETCH exists ONLY so a test can point
+# the lineage check at a local fixture repo with no real 'origin' remote
+# (see the lineage section below). Skipping the fetch means the lineage
+# check walks a possibly-stale origin/main and can accept a sha that was
+# reverted upstream — /var/www/ipodhan/repo is not kept current by any
+# other deploy step, so this script's own fetch is the ONLY thing making
+# origin/main fresh on the box. That risk is never acceptable for a prod
+# deploy, so it is refused outright (before anything else runs), with the
+# reason printed first per the signal-ownership rule that every refusal
+# names its cause.
+if [ "$SLOT" = "prod" ] && [ "${DEPLOY_CONFIG_LINEAGE_SKIP_FETCH:-0}" = "1" ]; then
+  fatal "prod-guard: DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 is refused for --slot prod — it skips the fetch that keeps origin/main fresh, so a stale or reverted sha could pass lineage; this variable is test-only (prod-guard)"
+fi
+
 # ------------------------------------------------------------------- repo-root
 # On a deployed release this script's own dir has no .git anywhere above it
 # (scripts/deploy-linux.sh step 4 ships releases as a 'git archive | tar -x'
@@ -133,19 +203,22 @@ is_real_work_tree() {
 #   3. SERVER_REPO_DEFAULT (the deployed-release case: the on-box sibling
 #      checkout at /var/www/ipodhan/repo, overridable for tests) — used
 #      only when it IS a real work tree.
-# Whichever candidate is chosen is logged so an operator can see what the
-# script picked without reading the source.
+# The chosen source label is folded into the single "repo-root: using ..."
+# log line below, once the identity check (F6) has also run — so an
+# operator sees WHICH candidate won AND which repo it actually points at,
+# in one line, without reading the source.
 if [ -n "${DEPLOY_CONFIG_REPO:-}" ]; then
   REPO_ROOT="$DEPLOY_CONFIG_REPO"
-  log "repo-root: using $REPO_ROOT (DEPLOY_CONFIG_REPO override)"
+  REPO_ROOT_SOURCE="DEPLOY_CONFIG_REPO override"
 elif is_real_work_tree "$SCRIPT_DIR/../.."; then
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-  log "repo-root: using $REPO_ROOT (script's own checkout)"
+  REPO_ROOT_SOURCE="script's own checkout"
 elif is_real_work_tree "$SERVER_REPO_DEFAULT"; then
   REPO_ROOT="$(cd "$SERVER_REPO_DEFAULT" && pwd)"
-  log "repo-root: using $REPO_ROOT (server default)"
+  REPO_ROOT_SOURCE="server default"
 else
   REPO_ROOT="$SCRIPT_DIR/../.."
+  REPO_ROOT_SOURCE="no candidate"
 fi
 
 # Re-verify the chosen REPO_ROOT (needed for the DEPLOY_CONFIG_REPO branch,
@@ -157,6 +230,27 @@ fi
 if ! REPO_ROOT_CHECK_OUT="$(cd "$REPO_ROOT" 2>&1 && git rev-parse --is-inside-work-tree 2>&1)" || [ "$REPO_ROOT_CHECK_OUT" != "true" ]; then
   fatal "repo-root: '$REPO_ROOT' is not a usable git working tree ($REPO_ROOT_CHECK_OUT) — set DEPLOY_CONFIG_REPO to a checkout that can reach origin/main, e.g. DEPLOY_CONFIG_REPO=/var/www/ipodhan/repo (repo-root)"
 fi
+
+# ------------------------------------------------------------ F6 (#752)
+# "Is a real git work tree" is not "is IPODhan" — assert the resolved
+# repo's origin actually IS the IPODhan remote before trusting anything it
+# reads (see EXPECTED_REPO_REMOTE_RE above). Checked here, after the
+# work-tree re-verify, so a bare repo / .git dir / dubious-ownership case
+# is still refused by its own (earlier, more specific) message rather than
+# a confusing "no origin remote" one.
+if ! REPO_ROOT_ORIGIN="$(cd "$REPO_ROOT" && git remote get-url origin 2>&1)"; then
+  fatal "repo-root: '$REPO_ROOT' ($REPO_ROOT_SOURCE) has no readable 'origin' remote ($(redact_origin_url "$REPO_ROOT_ORIGIN")) — refusing to trust an unidentified repo (repo-root)"
+fi
+# F9 (#752): redact once, then never touch $REPO_ROOT_ORIGIN (the raw
+# value) again — every match and every message below uses the redacted
+# copy so a credential in the raw origin can never reach a match failure
+# message or the log.
+REPO_ROOT_ORIGIN_REDACTED="$(redact_origin_url "$REPO_ROOT_ORIGIN")"
+if ! printf '%s' "$REPO_ROOT_ORIGIN_REDACTED" | grep -Eqi "$EXPECTED_REPO_REMOTE_RE"; then
+  fatal "repo-root: '$REPO_ROOT' ($REPO_ROOT_SOURCE) has origin '$REPO_ROOT_ORIGIN_REDACTED', which is not the IPODhan remote — refusing to read a manifest from an unrelated repo (repo-root)"
+fi
+
+log "repo-root: using $REPO_ROOT ($REPO_ROOT_SOURCE, origin $REPO_ROOT_ORIGIN_REDACTED)"
 
 # ------------------------------------------------------------------ lineage
 # Same lineage rule as deploy-linux.sh step 0.5: the sha must be reachable
