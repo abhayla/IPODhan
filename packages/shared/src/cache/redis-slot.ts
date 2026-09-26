@@ -15,7 +15,19 @@
  * a misconfiguration, not something to paper over).
  *
  * Fail closed: no derivable database name -> throw. There is no silent
- * fallback to an unprefixed key space.
+ * fallback to an unprefixed key space. The ONE exception is `next build`
+ * (NEXT_PHASE=phase-production-build) with no database env, e.g. CI: there
+ * the factories return a no-cache client that rejects every command, which
+ * is exactly the Redis-down path every caller already handles (before #151 a
+ * build reached an unreachable localhost Redis and fell back the same way).
+ * It never writes anywhere, and the runtime (next start, the scraper, every
+ * script) never takes it: at runtime a missing database still throws.
+ *
+ * The ONLY deliberately cross-slot key space is BOX_WIDE_KEY_PREFIX ("box:"),
+ * reached through getBoxWideRedisClient() (packages/shared/src/cache/
+ * redis-client.ts). It exists for box-wide resources such as the extractor
+ * lock (two slots' python extractors on one 2-vCPU box starved the site into
+ * Cloudflare 522s, W-178), and no database name can derive it.
  *
  * The shell twin of this derivation is scripts/lib/redis-slot-prefix.sh; both
  * are pinned to scripts/tests/fixtures/redis-slot-cases.json.
@@ -29,6 +41,8 @@ const KNOWN_SLOT_BY_DATABASE: Record<string, string> = {
 };
 
 const SAFE_DATABASE_NAME = /^[A-Za-z0-9_-]+$/;
+
+const NAMESPACED = Symbol.for('ipodhan.redisSlotNamespace');
 
 type Env = Record<string, string | undefined>;
 
@@ -92,7 +106,91 @@ export function resolveRedisKeyPrefix(env: Env = process.env): string {
   return `${resolveRedisSlot(env)}:`;
 }
 
-const NAMESPACED = Symbol.for('ipodhan.redisSlotNamespace');
+/**
+ * The deliberately shared key space for box-wide resources (see header). A
+ * database-derived prefix is always `prod:`, `staging:` or `db-<name>:`, so it
+ * can never collide with this one.
+ */
+export const BOX_WIDE_KEY_PREFIX = 'box:';
+
+/** Next.js sets NEXT_PHASE=phase-production-build in `next build` and its workers. */
+export function isNextProductionBuild(env: Env = process.env): boolean {
+  return env.NEXT_PHASE === 'phase-production-build';
+}
+
+/**
+ * What every client factory calls: the slot prefix, or `null` meaning "use the
+ * build-time no-cache client". `null` is returned ONLY for a missing database
+ * name during `next build`; any other failure (a DEPLOY_SLOT mismatch, an
+ * unsafe name) and any failure at runtime still throws.
+ */
+export function resolveRedisKeyPrefixOrBuildNoCache(env: Env = process.env): string | null {
+  try {
+    return resolveRedisKeyPrefix(env);
+  } catch (error) {
+    if (isNextProductionBuild(env) && error instanceof RedisSlotError && /no database name/.test(error.message)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+const NO_CACHE_TAG = 'build-no-cache';
+const NO_CACHE_MESSAGE =
+  'build-time no-cache: `next build` has no database env, so there is no Redis slot namespace; ' +
+  'the caller falls back to the database exactly as when Redis is down';
+
+/**
+ * A Redis stand-in for `next build` without a database env: every command
+ * rejects (the Redis-down path), pipelines/multi reject on exec, event
+ * registration is a no-op, and no socket is ever opened. Typed as Redis so
+ * factories can return it unchanged.
+ */
+export function createBuildTimeNoCacheClient(): Redis {
+  const reject = () => Promise.reject(new RedisSlotError(NO_CACHE_MESSAGE));
+  const chain: Record<string, unknown> = {};
+  const chainProxy: unknown = new Proxy(chain, {
+    get: (_t, prop) => {
+      if (prop === 'then' || typeof prop === 'symbol') return undefined;
+      if (prop === 'exec') return reject;
+      return () => chainProxy;
+    },
+  });
+  const target: Record<string | symbol, unknown> = { [NAMESPACED]: NO_CACHE_TAG };
+  const client: unknown = new Proxy(target, {
+    get: (t, prop) => {
+      if (prop === NAMESPACED) return NO_CACHE_TAG;
+      if (prop === 'then' || typeof prop === 'symbol') return undefined;
+      switch (prop) {
+        case 'status':
+          return 'end';
+        case 'options':
+          return { keyPrefix: '' };
+        case 'on':
+        case 'once':
+        case 'off':
+        case 'addListener':
+        case 'removeListener':
+        case 'removeAllListeners':
+        case 'setMaxListeners':
+          return () => client;
+        case 'quit':
+          return () => Promise.resolve('OK');
+        case 'disconnect':
+          return () => undefined;
+        case 'duplicate':
+          return () => createBuildTimeNoCacheClient();
+        case 'pipeline':
+        case 'multi':
+          return () => chainProxy;
+        default:
+          return t[prop as string] ?? reject;
+      }
+    },
+  });
+  return client as Redis;
+}
+
 
 /**
  * ioredis `keyPrefix` rewrites every KEY argument (GET/SET/DEL/EVAL KEYS...),
@@ -127,6 +225,25 @@ export function applyRedisSlotNamespace<T extends Redis>(client: T, prefix: stri
     const [cursor, keys] = await originalScan(...scanArgs);
     return [cursor, keys.map((k) => strip(k) as string)];
   };
+
+  // round-1 minor: ioredis duplicate() copies options (so the keyPrefix
+  // survives) but not these instance patches. Re-apply them, and refuse a
+  // keyPrefix override: a duplicate must stay in its parent's key space
+  // (the one cross-slot space goes through getBoxWideRedisClient()).
+  if (typeof client.duplicate === 'function') {
+    const originalDuplicate = client.duplicate.bind(client) as (override?: Record<string, unknown>) => T;
+    (client as unknown as { duplicate: (override?: Record<string, unknown>) => T }).duplicate = (
+      override?: Record<string, unknown>
+    ) => {
+      if (override && 'keyPrefix' in override && override.keyPrefix !== prefix) {
+        throw new RedisSlotError(
+          `duplicate() may not change the keyPrefix (${prefix} -> ${String(override.keyPrefix)}); ` +
+            'a duplicate stays in its parent key space'
+        );
+      }
+      return applyRedisSlotNamespace(originalDuplicate(override), prefix);
+    };
+  }
 
   tagged[NAMESPACED] = prefix;
   return client;

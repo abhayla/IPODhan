@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { findOffenders, ALLOWED_FACTORIES } from '../ci/check-redis-client-factories.mjs';
+import { findOffenders, ALLOWED_FACTORIES, BOX_WIDE_CALLERS } from '../ci/check-redis-client-factories.mjs';
 
 const read = (map) => (f) => map[f];
 
@@ -21,4 +21,15 @@ test('the four factories, test files and comments pass', () => {
   files['scraper/src/a.test.ts'] = 'new Redis()';
   files['web/lib/b.ts'] = '// new Redis( in a comment\n * new Redis( in a docblock\nconst ok = getRedisClient();';
   assert.deepEqual(findOffenders(Object.keys(files), read(files)), []);
+});
+
+test('#151 round 1: the box-wide (cross-slot) client is used only by its allow-listed callers', () => {
+  const files = {
+    'scraper/src/services/document-cycle.ts': 'const l = new DistributedLock(getBoxWideRedisClient());',
+    'web/lib/rogue-cache.ts': 'const c = getBoxWideRedisClient();\nawait c.set("ipo:1", v);',
+  };
+  assert.deepEqual(findOffenders(Object.keys(files), read(files)), [
+    'web/lib/rogue-cache.ts:1: const c = getBoxWideRedisClient();',
+  ]);
+  assert.ok(BOX_WIDE_CALLERS.has('scraper/src/services/document-cycle.ts'));
 });

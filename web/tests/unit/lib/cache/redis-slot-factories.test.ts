@@ -31,6 +31,7 @@ function slotEnv(databaseUrl: string | undefined): void {
   else delete process.env.DATABASE_URL;
   delete process.env.DATABASE_HOST;
   delete process.env.DEPLOY_SLOT;
+  delete process.env.NEXT_PHASE;
   process.env.REDIS_URL = 'redis://127.0.0.1:1';
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -56,6 +57,25 @@ describe('every Redis client factory is slot-namespaced (#151)', () => {
 
     it(`${file}: no database -> throws instead of an unprefixed client`, async () => {
       slotEnv(undefined);
+      const mod = await load();
+      expect(() => mod.getRedisClient()).toThrow(/no database name/);
+    });
+
+    // Round-1 finding 1: CI's `next build` (job 108374259774) has no database
+    // env; /sitemap.xml's prerender called getRedisClient() outside a try and
+    // the build died. At BUILD time only, the factory hands back the no-cache
+    // client (every command rejects = the Redis-down path callers handle).
+    it(`${file}: no database during next build -> no-cache client, not a throw`, async () => {
+      slotEnv(undefined);
+      process.env.NEXT_PHASE = 'phase-production-build';
+      const client = (await load()).getRedisClient();
+      expect(redisSlotNamespaceOf(client)).toBe('build-no-cache');
+      await expect(client.get('ipo:list:x')).rejects.toThrow(/build-time no-cache/);
+    });
+
+    it(`${file}: no database at runtime (phase-production-server) -> still throws`, async () => {
+      slotEnv(undefined);
+      process.env.NEXT_PHASE = 'phase-production-server';
       const mod = await load();
       expect(() => mod.getRedisClient()).toThrow(/no database name/);
     });

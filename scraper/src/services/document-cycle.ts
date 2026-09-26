@@ -21,7 +21,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { db, getRedisClient } from '@ipodhan/shared';
+import { db, getBoxWideRedisClient, getRedisClient } from '@ipodhan/shared';
 import { DocumentRepository, DocumentFetchStateRepository, IPORepository, IpoPipelineStepsRepository, IpoFieldPlanRepository } from '@ipodhan/shared';
 import { plantFieldPlanForIpo } from './field-plan-planting.js';
 import { recordBseDiscoveryMetadata, recordDocumentSourceHints, recordDiscoveredLeadManagers } from './data-persister.js';
@@ -86,6 +86,12 @@ import {
   EXTRACTOR_VERSION,
 } from './filing-auto-persist.js';
 import { DistributedLock } from '../utils/distributed-lock.js';
+import {
+  BOX_EXTRACTOR_LOCK_RESOURCE,
+  SLOT_EXTRACTION_LOCK_RESOURCE,
+  acquireExtractionLocks,
+  releaseExtractionLocks,
+} from './extraction-locks.js';
 import { isExtractableDocType } from '../config/document-admission-status.js';
 import {
   computeCalendarGate,
@@ -95,7 +101,7 @@ import {
 } from './document-cycle-calendar-gate.js';
 
 /** MAJOR-1: key + TTL for the cycle-level extraction lock (document-cycle.ts). */
-const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
+const FILING_EXTRACTION_LOCK_KEY = SLOT_EXTRACTION_LOCK_RESOURCE;
 /**
  * W-168 round 2: moved to `filing-auto-persist.ts` (re-exported here
  * unchanged for existing importers) so `anchorMaxSpawnsPerCycle()` can clamp
@@ -127,14 +133,21 @@ export { FILING_EXTRACTION_LOCK_TTL_MS };
  * this registry never changes when or whether the lock is released on the
  * normal path, it only gives the signal path a way to do the same release.
  */
-const heldLocks: Array<{ key: string; token: string }> = [];
+// #151 round 1: `scope` says which key space the lock lives in - the slot's
+// (getRedisClient) or the one box-wide space (getBoxWideRedisClient, the
+// cross-slot extractor lock). Releasing a box lock through the slot client
+// would name `<slot>:lock:resource:extractor`, a key nobody holds.
+type HeldLockScope = 'slot' | 'box';
+const heldLocks: Array<{ key: string; token: string; scope: HeldLockScope }> = [];
 
-export function registerHeldLock(key: string, token: string): void {
-  heldLocks.push({ key, token });
+export function registerHeldLock(key: string, token: string, scope: HeldLockScope = 'slot'): void {
+  heldLocks.push({ key, token, scope });
 }
 
-export function unregisterHeldLock(key: string, token: string): void {
-  const index = heldLocks.findIndex((entry) => entry.key === key && entry.token === token);
+export function unregisterHeldLock(key: string, token: string, scope: HeldLockScope = 'slot'): void {
+  const index = heldLocks.findIndex(
+    (entry) => entry.key === key && entry.token === token && entry.scope === scope
+  );
   if (index !== -1) {
     heldLocks.splice(index, 1);
   }
@@ -150,12 +163,15 @@ export function unregisterHeldLock(key: string, token: string): void {
 export async function releaseHeldLocks(): Promise<void> {
   if (heldLocks.length === 0) return;
   const toRelease = heldLocks.splice(0, heldLocks.length);
-  const redis = getRedisClient();
-  const lock = new DistributedLock(redis as never);
-  for (const { key, token } of toRelease) {
+  const locks: Record<HeldLockScope, DistributedLock | undefined> = { slot: undefined, box: undefined };
+  const lockFor = (scope: HeldLockScope): DistributedLock =>
+    (locks[scope] ??= new DistributedLock(
+      (scope === 'box' ? getBoxWideRedisClient() : getRedisClient()) as never
+    ));
+  for (const { key, token, scope } of toRelease) {
     try {
-      const released = await lock.release(key, token);
-      logger.warn({ key, released }, 'Signal path: released held lock before exit');
+      const released = await lockFor(scope).release(key, token);
+      logger.warn({ key, scope, released }, 'Signal path: released held lock before exit');
     } catch (error) {
       logger.warn(
         { key, error: error instanceof Error ? error.message : String(error) },
@@ -1498,7 +1514,13 @@ export async function runDocumentCycle(
   // running. `lockToken` is undefined when the flag is off (no lock needed)
   // or when the lock could not be acquired (extraction skipped this cycle).
   const distributedLock = new DistributedLock(redis as never);
+  // #151 round 1: the box-wide extractor lock (see extraction-locks.ts) -
+  // at most one slot's python extractor on the shared 2-vCPU box.
+  // Built only when extraction may run (flag on), so a flag-off cycle opens
+  // no box-wide connection.
+  let boxLock: DistributedLock | undefined;
   let lockToken: string | undefined;
+  let boxLockToken: string | undefined;
   const spawnBudget: SpawnBudget = { remaining: DEFAULT_MAX_SPAWNS_PER_CYCLE };
   // W-168: the anchor allocation report's OWN cycle-wide budget, separate from
   // `spawnBudget` above — see `filing-auto-persist.ts`'s `anchorSpawnBudget`
@@ -1506,16 +1528,22 @@ export async function runDocumentCycle(
   // filing budget for the cycle).
   const anchorSpawnBudget: SpawnBudget = { remaining: anchorMaxSpawnsPerCycle() };
   if (FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST) {
-    const lock = await distributedLock.acquire(FILING_EXTRACTION_LOCK_KEY, { ttl: FILING_EXTRACTION_LOCK_TTL_MS });
-    if (lock.acquired) {
-      lockToken = lock.token;
-      if (lockToken) {
-        registerHeldLock(FILING_EXTRACTION_LOCK_KEY, lockToken);
-      }
-    } else {
+    boxLock = new DistributedLock(getBoxWideRedisClient() as never);
+    const locks = await acquireExtractionLocks(distributedLock, boxLock, FILING_EXTRACTION_LOCK_TTL_MS);
+    if (locks.acquired) {
+      lockToken = locks.slotToken;
+      boxLockToken = locks.boxToken;
+      registerHeldLock(FILING_EXTRACTION_LOCK_KEY, lockToken);
+      registerHeldLock(BOX_EXTRACTOR_LOCK_RESOURCE, boxLockToken, 'box');
+    } else if (locks.heldBy === 'slot') {
       logger.warn(
         { key: FILING_EXTRACTION_LOCK_KEY },
         'Filing auto-persist lock already held by another cycle — skipping extraction this cycle (non-fatal)'
+      );
+    } else {
+      logger.warn(
+        { key: `box:lock:resource:${BOX_EXTRACTOR_LOCK_RESOURCE}` },
+        'Box-wide extractor lock held by the other slot — skipping extraction this cycle so two extractors never share the box (W-178, non-fatal)'
       );
     }
   }
@@ -2455,10 +2483,11 @@ export async function runDocumentCycle(
     // (flag off, or another cycle already had it), and now guaranteed to run
     // on EVERY exit path (return above, or a throw anywhere in the try block)
     // rather than only the successful-fallthrough path.
-    if (lockToken) {
+    if (lockToken && boxLockToken && boxLock) {
       unregisterHeldLock(FILING_EXTRACTION_LOCK_KEY, lockToken);
+      unregisterHeldLock(BOX_EXTRACTOR_LOCK_RESOURCE, boxLockToken, 'box');
       try {
-        await distributedLock.release(FILING_EXTRACTION_LOCK_KEY, lockToken);
+        await releaseExtractionLocks(distributedLock, boxLock, { slotToken: lockToken, boxToken: boxLockToken });
       } catch (error) {
         logger.warn(
           { error: error instanceof Error ? error.message : String(error) },

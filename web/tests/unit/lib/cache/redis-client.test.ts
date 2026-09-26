@@ -13,6 +13,7 @@ const RedisMock = vi.fn().mockImplementation(function (this: Record<string, unkn
   this.on = vi.fn();
   this.keys = vi.fn();
   this.scan = vi.fn();
+  this.duplicate = vi.fn();
 });
 
 vi.mock('ioredis', () => ({

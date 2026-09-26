@@ -20,6 +20,38 @@ redis_slot_env_value() {
   printf '%s' "$_rsev"
 }
 
+# redis_slot_pct_decode STRING -> STRING with every %HH decoded, the way the
+# TS twin's decodeURIComponent does for the characters a database name may
+# hold. A %HH that decodes to anything outside [A-Za-z0-9_/-] is left as a
+# literal "%", so the unsafe-name check below refuses it exactly as the TS
+# side refuses the decoded character (never silently dropped - e.g. a %0A
+# would otherwise vanish inside $(...), turning "ipodhan%0A" into "ipodhan").
+redis_slot_pct_decode() {
+  _rspd_in="$1"; _rspd_out=""
+  while [ -n "$_rspd_in" ]; do
+    case "$_rspd_in" in
+      %[0-9A-Fa-f][0-9A-Fa-f]*)
+        _rspd_rest="${_rspd_in#%??}"
+        _rspd_hex="${_rspd_in#%}"; _rspd_hex="${_rspd_hex%"$_rspd_rest"}"
+        _rspd_oct="$(printf '%03o' "0x$_rspd_hex")"
+        # shellcheck disable=SC2059
+        _rspd_ch="$(printf "\\$_rspd_oct")"
+        case "$_rspd_ch" in
+          [A-Za-z0-9_/-]) _rspd_out="$_rspd_out$_rspd_ch" ;;
+          *) _rspd_out="$_rspd_out%" ;;
+        esac
+        _rspd_in="$_rspd_rest"
+        ;;
+      *)
+        _rspd_rest="${_rspd_in#?}"
+        _rspd_out="$_rspd_out${_rspd_in%"$_rspd_rest"}"
+        _rspd_in="$_rspd_rest"
+        ;;
+    esac
+  done
+  printf '%s' "$_rspd_out"
+}
+
 # redis_slot_prefix DATABASE_URL DATABASE_HOST DATABASE_PASSWORD DATABASE_NAME DEPLOY_SLOT
 # Prints the prefix (e.g. "prod:") and returns 0, or prints the reason on
 # stderr and returns 1. Branch order mirrors the pg pool (initPool): discrete
@@ -36,6 +68,8 @@ redis_slot_prefix() {
     esac
     _rsp_db="${_rsp_db%%\?*}"
     _rsp_db="${_rsp_db%%#*}"
+    # new URL().pathname then decodeURIComponent, then the first segment.
+    _rsp_db="$(redis_slot_pct_decode "$_rsp_db")"
     _rsp_db="${_rsp_db%%/*}"
   else
     _rsp_db=""

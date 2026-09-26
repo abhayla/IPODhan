@@ -6,7 +6,11 @@
  */
 
 import Redis from 'ioredis';
-import { applyRedisSlotNamespace, resolveRedisKeyPrefix } from '@ipodhan/shared/cache/redis-slot';
+import {
+  applyRedisSlotNamespace,
+  createBuildTimeNoCacheClient,
+  resolveRedisKeyPrefixOrBuildNoCache,
+} from '@ipodhan/shared/cache/redis-slot';
 import { CacheError } from '../errors/repository-errors';
 
 let redisClient: Redis | null = null;
@@ -18,8 +22,14 @@ export function getRedisClient(): Redis {
   if (!redisClient) {
     // #151: prod and staging share one Redis; every key carries the slot
     // derived from the connected database. Throws (fail closed) when no
-    // database name is derivable, before any connection is opened.
-    const keyPrefix = resolveRedisKeyPrefix();
+    // database name is derivable at runtime, before any connection is opened.
+    const keyPrefix = resolveRedisKeyPrefixOrBuildNoCache();
+    if (keyPrefix === null) {
+      // `next build` with no database env (CI): the Redis-down path, no
+      // socket, no key written. Never taken at runtime - see redis-slot.ts.
+      redisClient = createBuildTimeNoCacheClient();
+      return redisClient;
+    }
 
     // F2 (T-264 P2-3): this client used to build its connection from
     // REDIS_HOST/REDIS_PORT/REDIS_PASSWORD only, ignoring both REDIS_URL

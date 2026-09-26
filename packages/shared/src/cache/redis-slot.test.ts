@@ -9,7 +9,15 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Redis from 'ioredis';
 import { InMemoryRedisBackend } from '../testing/in-memory-redis-backend';
-import { resolveRedisKeyPrefix } from './redis-slot';
+import {
+  BOX_WIDE_KEY_PREFIX,
+  applyRedisSlotNamespace,
+  createBuildTimeNoCacheClient,
+  redisSlotNamespaceOf,
+  resolveRedisKeyPrefix,
+  resolveRedisKeyPrefixOrBuildNoCache,
+} from './redis-slot';
+import IORedis from 'ioredis';
 
 const PROD_URL = 'postgresql://ipodhan_app@db:5432/ipodhan';
 const STAGING_URL = 'postgresql://ipodhan_app@db:5432/ipodhan_staging';
@@ -128,5 +136,81 @@ describe('real shared getRedisClient: prod and staging on ONE Redis', () => {
     delete process.env.DATABASE_HOST;
     const mod = await import('./redis-client');
     expect(() => mod.getRedisClient()).toThrow(/no database name/);
+  });
+});
+
+
+describe('build-time no-cache path (round-1 finding 1: next build has no database env)', () => {
+  const BUILD = { NEXT_PHASE: 'phase-production-build' };
+
+  it('no database at BUILD time -> no-cache (null), never a throw and never an unprefixed prefix', () => {
+    expect(resolveRedisKeyPrefixOrBuildNoCache(BUILD)).toBeNull();
+  });
+
+  it('no database at RUNTIME (next start sets phase-production-server; scraper sets none) -> still throws', () => {
+    expect(() => resolveRedisKeyPrefixOrBuildNoCache({ NEXT_PHASE: 'phase-production-server' })).toThrow(/no database name/);
+    expect(() => resolveRedisKeyPrefixOrBuildNoCache({})).toThrow(/no database name/);
+  });
+
+  it('a database at build time still gets its slot (the VPS build has the env)', () => {
+    expect(resolveRedisKeyPrefixOrBuildNoCache({ ...BUILD, DATABASE_URL: STAGING_URL })).toBe('staging:');
+  });
+
+  it('a DEPLOY_SLOT/database mismatch at build time is NOT turned into no-cache', () => {
+    expect(() =>
+      resolveRedisKeyPrefixOrBuildNoCache({ ...BUILD, DATABASE_URL: PROD_URL, DEPLOY_SLOT: 'staging' })
+    ).toThrow(/disagrees/);
+  });
+
+  it('the no-cache client rejects every command like Redis-down, is not thenable, and opens no socket', async () => {
+    const client = createBuildTimeNoCacheClient();
+    await expect(client.get('ipo:list:x')).rejects.toThrow(/build-time no-cache/);
+    await expect(client.setex('k', 1, 'v')).rejects.toThrow(/build-time no-cache/);
+    await expect(client.keys('*')).rejects.toThrow(/build-time no-cache/);
+    await expect(client.pipeline().get('a').exec()).rejects.toThrow(/build-time no-cache/);
+    expect((client as unknown as { then?: unknown }).then).toBeUndefined();
+    expect(client.on('error', () => {})).toBe(client);
+    expect(client.status).toBe('end');
+    await expect(client.quit()).resolves.toBe('OK');
+    expect(redisSlotNamespaceOf(client)).toBe('build-no-cache');
+  });
+});
+
+describe('duplicate() keeps the slot namespace (round-1 minor)', () => {
+  const opened2: IORedis[] = [];
+  afterEach(() => {
+    for (const c of opened2.splice(0)) c.disconnect();
+  });
+
+  it('a duplicate carries the prefix AND the KEYS/SCAN patch', async () => {
+    const backend = new InMemoryRedisBackend();
+    const base = applyRedisSlotNamespace(
+      new IORedis('redis://127.0.0.1:1', { keyPrefix: 'prod:', lazyConnect: true }),
+      'prod:'
+    );
+    const dup = backend.attach(base.duplicate());
+    opened2.push(base, dup);
+    expect(dup.options.keyPrefix).toBe('prod:');
+    expect(redisSlotNamespaceOf(dup)).toBe('prod:');
+    backend.store.set('staging:ipo:1', { value: 's' });
+    await dup.set('ipo:1', 'p');
+    expect(await dup.keys('ipo:*')).toEqual(['ipo:1']);
+  });
+
+  it('a duplicate may not override the keyPrefix (that would be an unprefixed or foreign key space)', () => {
+    const base = applyRedisSlotNamespace(
+      new IORedis('redis://127.0.0.1:1', { keyPrefix: 'prod:', lazyConnect: true }),
+      'prod:'
+    );
+    opened2.push(base);
+    expect(() => base.duplicate({ keyPrefix: '' })).toThrow(/keyPrefix/);
+    expect(() => base.duplicate({ keyPrefix: 'staging:' })).toThrow(/keyPrefix/);
+  });
+});
+
+describe('the box-wide key space is explicit and never a slot', () => {
+  it('BOX_WIDE_KEY_PREFIX is "box:", which no database name can produce', () => {
+    expect(BOX_WIDE_KEY_PREFIX).toBe('box:');
+    for (const c of fixture.cases) if (c.prefix) expect(c.prefix).not.toBe(BOX_WIDE_KEY_PREFIX);
   });
 });
