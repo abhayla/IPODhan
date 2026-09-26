@@ -186,6 +186,13 @@ unset RUNNER_TRACKING_ID
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# #151: the Redis slot prefix the scraper's own locks carry (twin of
+# packages/shared/src/cache/redis-slot.ts). Guarded: a missing helper only
+# disables the lock release below, which is already fail-safe.
+if [ -f "$SCRIPT_DIR/lib/redis-slot-prefix.sh" ]; then
+  # shellcheck source=lib/redis-slot-prefix.sh
+  . "$SCRIPT_DIR/lib/redis-slot-prefix.sh"
+fi
 
 if (( DRY_RUN )); then
   ROOT="${DEPLOY_ROOT:-${TMPDIR:-/tmp}/ipodhan-deploy-dryrun}"
@@ -604,8 +611,17 @@ fi
 #   - `filing-auto-persist:cycle` (FILING_EXTRACTION_LOCK_KEY,
 #     scraper/src/services/document-cycle.ts — 45-minute TTL)
 # `DistributedLock` (scraper/src/utils/distributed-lock.ts) stores these
-# under `lock:resource:<resourceId>`, so the real keys are
-# `lock:resource:scraper:cycle` and `lock:resource:filing-auto-persist:cycle`.
+# under `lock:resource:<resourceId>`, and (#151) every Redis client carries
+# the slot prefix derived from the scraper's database, so the real keys are
+# `<slot>:lock:resource:scraper:cycle` and
+# `<slot>:lock:resource:filing-auto-persist:cycle` (slot = prod | staging).
+# Before #151 both slots shared the unprefixed keys on ONE Redis, so a staging
+# deploy here could delete a lock a live PROD cycle held.
+# The box-wide extractor lock `box:lock:resource:extractor` (#151 round 1,
+# scraper/src/services/extraction-locks.ts) is deliberately NOT released here:
+# its holder may be the OTHER slot's live extractor, and this function cannot
+# tell whose token it reads. The stopped scraper releases its own copy on the
+# signal path (releaseHeldLocks); failing that, the lock expires via its TTL.
 # The next 1-2 cycles then log "previous cycle still running" / "lock
 # already held by another cycle" and exit without doing any work, losing up
 # to 45 minutes of staging evidence per deploy.
@@ -644,6 +660,24 @@ release_scraper_cycle_locks() {
     return 0
   fi
 
+  # #151: the same slot prefix the scraper process derives from ITS database
+  # (read from the same env file), cross-checked against the slot being
+  # deployed. No derivable prefix -> release nothing (never an unprefixed
+  # key, which would be the other slot's lock or nobody's).
+  if ! command -v redis_slot_prefix >/dev/null 2>&1; then
+    warn "release_scraper_cycle_locks: scripts/lib/redis-slot-prefix.sh not loaded; cycle locks left to expire"
+    return 0
+  fi
+  local key_prefix db_url db_host db_password db_name
+  db_url="$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_URL)"
+  db_host="$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_HOST)"
+  db_password="$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_PASSWORD)"
+  db_name="$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_NAME)"
+  if ! key_prefix="$(redis_slot_prefix "$db_url" "$db_host" "$db_password" "$db_name" "${SLOT:-}" 2>&1)"; then
+    warn "release_scraper_cycle_locks: cannot derive the Redis slot prefix from $SCRAPER_ENV_FILE (${key_prefix}); cycle locks left to expire"
+    return 0
+  fi
+
   local key value ttl released=0
   # The scraper runs under pm2 with --cron-restart=$SCRAPER_CRON -- a fresh cycle can
   # start (and take a NEW lock with a NEW token) in the window between our
@@ -659,7 +693,7 @@ release_scraper_cycle_locks() {
   # every deploy since it was written, regardless of whether a lock was
   # actually held. `timeout` bounds the same 3s window from the outside
   # instead (this script already requires GNU coreutils timeout elsewhere).
-  for key in "lock:resource:scraper:cycle" "lock:resource:filing-auto-persist:cycle"; do
+  for key in "${key_prefix}lock:resource:scraper:cycle" "${key_prefix}lock:resource:filing-auto-persist:cycle"; do
     value="$(timeout 3 redis-cli -u "$redis_url" GET "$key" 2>/dev/null || true)"
     if [ -z "$value" ]; then
       log "release_scraper_cycle_locks: $key not held"
@@ -679,6 +713,98 @@ release_scraper_cycle_locks() {
   return 0
 }
 release_scraper_cycle_locks || true
+
+# #151 round 1 (finding 3): the slot namespace moved every cache key from
+# `ipo:slug:x` to `prod:ipo:slug:x` / `staging:ipo:slug:x`. An AUTO-ROLLBACK
+# restarts OLD code, which reads the old UNPREFIXED keys again - and those
+# were frozen when the new code took over (no writer, no invalidation since),
+# some up to 7 days from expiry and some with no TTL at all. Served as-is they
+# would show readers data from before the flip. So the rollback deletes the
+# unprefixed CACHE keys first; the old code then misses and reads the DB.
+#
+# Scope, deliberately narrow:
+#   - only the top-level namespaces of web/lib/cache/cache-keys.ts and
+#     packages/shared/src/cache/cache-keys.ts (pinned by deploy-linux.test.sh
+#     case 30k parity, so a new namespace there fails CI until listed here);
+#   - SCAN (`redis-cli --scan --pattern`), never KEYS, which blocks Redis;
+#   - never a `lock:` key, never a slot-prefixed (`prod:`, `staging:`,
+#     `db-*:`) or box-wide (`box:`) key, and never a non-cache STATE key that
+#     happens to share a cache namespace (LEGACY_NON_CACHE_KEY_PATTERNS).
+# Deleting a cache key can only cause a cache miss (the reader falls back to
+# the database), so this is safe even while the other slot is live.
+# Fail-safe like release_scraper_cycle_locks: never fails the rollback.
+LEGACY_CACHE_KEY_NAMESPACES="anchor calendar details documents financial financials gmp ipo ipos listing peers pipeline reference registrar registrars review reviews score subscription"
+LEGACY_NON_CACHE_KEY_PATTERNS="subscription:suppressed-cycles:*"
+clear_legacy_unprefixed_cache_keys() {
+  if (( DRY_RUN )); then
+    log "[dry-run] would clear legacy unprefixed cache keys (namespaces: $LEGACY_CACHE_KEY_NAMESPACES)"
+    return 0
+  fi
+  if ! command -v redis-cli >/dev/null 2>&1; then
+    warn "clear_legacy_unprefixed_cache_keys: redis-cli not found; the rolled-back release may serve pre-flip cache entries until they expire"
+    return 0
+  fi
+  # The web app is the cache's reader, so its REDIS_URL / REDIS_DB decide
+  # which Redis db is cleaned; the scraper env is only a fallback.
+  # Same env-file read pattern as release_scraper_cycle_locks (last value,
+  # quotes stripped); self-contained so it works without the slot helper.
+  _legacy_env_value() {
+    local v
+    v="$(grep -E "^$2=" "$1" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+    v="${v%\"}"; v="${v#\"}"
+    v="${v%\'}"; v="${v#\'}"
+    printf '%s' "$v"
+  }
+  local redis_url redis_db
+  redis_url="$(_legacy_env_value "$WEB_ENV_FILE" REDIS_URL)"
+  [ -n "$redis_url" ] || redis_url="$(_legacy_env_value "$SCRAPER_ENV_FILE" REDIS_URL)"
+  redis_db="$(_legacy_env_value "$WEB_ENV_FILE" REDIS_DB)"
+  if [ -z "$redis_url" ]; then
+    warn "clear_legacy_unprefixed_cache_keys: REDIS_URL not found in $WEB_ENV_FILE or $SCRAPER_ENV_FILE; pre-flip cache entries left to expire"
+    return 0
+  fi
+  local -a rc=(redis-cli -u "$redis_url")
+  [ -n "$redis_db" ] && rc+=(-n "$redis_db")
+
+  local ns key scanned=0 skipped=0 cleared=0 batch_out
+  local found; found="$(mktemp)"
+  for ns in $LEGACY_CACHE_KEY_NAMESPACES; do
+    timeout 120 "${rc[@]}" --scan --pattern "${ns}:*" 2>/dev/null >> "$found" || true
+  done
+  local todelete; todelete="$(mktemp)"
+  while IFS= read -r key; do
+    [ -n "$key" ] || continue
+    scanned=$((scanned + 1))
+    case "$key" in
+      lock:*|prod:*|staging:*|box:*|db-*) skipped=$((skipped + 1)); continue ;;
+    esac
+    # shellcheck disable=SC2254
+    local state_pat is_state=0
+    for state_pat in $LEGACY_NON_CACHE_KEY_PATTERNS; do
+      case "$key" in $state_pat) is_state=1 ;; esac
+    done
+    if [ "$is_state" = 1 ]; then skipped=$((skipped + 1)); continue; fi
+    printf '%s\n' "$key" >> "$todelete"
+  done < <(sort -u "$found")
+  # UNLINK in batches of 100 (non-blocking delete); each call prints how many
+  # of its keys existed.
+  local -a batch=()
+  while IFS= read -r key; do
+    batch+=("$key")
+    if [ "${#batch[@]}" -ge 100 ]; then
+      batch_out="$(timeout 10 "${rc[@]}" UNLINK "${batch[@]}" 2>/dev/null || true)"
+      [[ "$batch_out" =~ ^[0-9]+$ ]] && cleared=$((cleared + batch_out))
+      batch=()
+    fi
+  done < "$todelete"
+  if [ "${#batch[@]}" -gt 0 ]; then
+    batch_out="$(timeout 10 "${rc[@]}" UNLINK "${batch[@]}" 2>/dev/null || true)"
+    [[ "$batch_out" =~ ^[0-9]+$ ]] && cleared=$((cleared + batch_out))
+  fi
+  rm -f "$found" "$todelete"
+  log "clear_legacy_unprefixed_cache_keys: scanned $scanned, skipped $skipped (lock/slot/box/state), legacy unprefixed cache keys cleared: $cleared"
+  return 0
+}
 
 # A single trap resumes the scraper on ANY exit path (success, rollback, or a
 # hard failure before the flip) — it is never left stopped by this script.
@@ -2608,6 +2734,8 @@ if ! verify_public_health; then
     atomic_flip_current "$PREVIOUS_RELEASE"
     basename "$PREVIOUS_RELEASE" | sed 's/^[0-9]*-[0-9]*-//' > "$ROOT/DEPLOYED_SHA-$SLOT"
     SCRAPER_RESUME_TARGET="prev"
+    # #151: the old code reads the old unprefixed cache keys; drop them first.
+    clear_legacy_unprefixed_cache_keys || true
     rollback_start_web
     echo "Rolled back to the previous release. Investigate before re-deploying." >&2
     exit 1

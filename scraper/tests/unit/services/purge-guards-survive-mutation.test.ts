@@ -29,6 +29,7 @@ const purgeIpoDocumentsMock = vi
 vi.mock('@ipodhan/shared', () => ({
   db: { execute: (...args: unknown[]) => dbExecuteMock(...args) },
   getRedisClient: () => ({}),
+  getBoxWideRedisClient: () => ({}),
   DocumentRepository: vi.fn().mockImplementation(() => ({ findByIPO: vi.fn().mockResolvedValue([]) })),
   DocumentFetchStateRepository: vi.fn().mockImplementation(() => ({
     listForIpo: vi.fn().mockResolvedValue([]),

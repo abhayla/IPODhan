@@ -269,6 +269,15 @@ jobs:
           node --test scripts/tests/check-drizzle-iso-string.test.mjs
           node scripts/ci/check-drizzle-iso-string.mjs
 
+      # #151: prod and staging share ONE Redis; every client must come from a
+      # slot-namespaced factory (keyPrefix derived from the connected database),
+      # or its keys are shared across slots again (a staging write served on
+      # prod). Refuses any `new Redis(` outside the four factories.
+      - name: Redis clients only from the slot-namespaced factories (#151)
+        run: |
+          node --test scripts/tests/check-redis-client-factories.test.mjs
+          node scripts/ci/check-redis-client-factories.mjs
+
       - name: E2E env shape (#504, #81 — DB env + webServer gating)
         # #504: ci.yml's "Run E2E tests" step must carry DATABASE_URL (mirrors the
         # integration step) or its webServer boots with no DB and both its passes
@@ -1102,6 +1111,12 @@ jobs:
       # have gone green. Named explicitly because pr-gate never globs.
       - name: "Run assert-env-keys test suite (rollout-flag liveness gate, #656)"
         run: bash scripts/tests/assert-env-keys.test.sh
+
+      # #151: the shell twin of packages/shared/src/cache/redis-slot.ts names the
+      # lock keys deploy-linux.sh releases and scraper-wake.sh reads; pinned to
+      # the same fixture as the TS derivation so the two cannot drift.
+      - name: Run redis slot prefix parity suite (#151)
+        run: bash scripts/tests/redis-slot-prefix.test.sh
 
       # Slice s17: deploy-linux.yml no longer triggers on push; staging is
       # deployed by a 15-minute poll that fires only when main's head differs

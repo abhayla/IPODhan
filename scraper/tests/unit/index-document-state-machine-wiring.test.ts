@@ -159,6 +159,7 @@ vi.mock('@ipodhan/shared', () => ({
     }),
   },
   getRedisClient: () => ({}),
+  getBoxWideRedisClient: () => ({}),
   ScraperLogRepository: vi.fn().mockImplementation(() => ({})),
 }));
 vi.mock('@ipodhan/shared/db/schema', () => ({
