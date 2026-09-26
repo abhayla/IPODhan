@@ -7,6 +7,17 @@
 import { describe, it, expect } from 'vitest';
 import { DataConsolidationOrchestrator } from '../../../src/services/data-consolidation-orchestrator.js';
 
+// #951: extractConsolidatedData takes the write's claim (the keys of the
+// consolidated incomingData). These tests exercise a full scrape, so every
+// mapped key is claimed.
+const ALL_CLAIMED = new Set([
+  'companyName', 'segment', 'offeringType', 'sector', 'issueSize', 'priceRangeMin',
+  'priceRangeMax', 'lotSize', 'faceValue', 'status', 'openDate', 'closeDate',
+  'allotmentDate', 'listingDate', 'companyDescription', 'registrar', 'leadManagers',
+  'listingExchanges', 'symbol', 'isin',
+]);
+
+
 function makeOrchestrator() {
   return new DataConsolidationOrchestrator({} as any, {} as any, {} as any, null);
 }
@@ -16,7 +27,7 @@ describe('DataConsolidationOrchestrator.extractConsolidatedData faceValue (W-02 
     const orchestrator: any = makeOrchestrator();
     const result = { fieldResults: [] } as any;
     const originalScraped = { companyName: 'Deepa Jewellers Limited', offeringType: 'IPO', status: 'CLOSED' } as any;
-    const consolidated = orchestrator.extractConsolidatedData(result, originalScraped);
+    const consolidated = orchestrator.extractConsolidatedData(result, originalScraped, undefined, undefined, ALL_CLAIMED);
     expect(consolidated.faceValue).toBeUndefined();
   });
 
@@ -24,7 +35,7 @@ describe('DataConsolidationOrchestrator.extractConsolidatedData faceValue (W-02 
     const orchestrator: any = makeOrchestrator();
     const result = { fieldResults: [{ fieldName: 'faceValue', finalValue: 2 }] } as any;
     const originalScraped = { companyName: 'Deepa Jewellers Limited', offeringType: 'IPO', status: 'CLOSED' } as any;
-    const consolidated = orchestrator.extractConsolidatedData(result, originalScraped);
+    const consolidated = orchestrator.extractConsolidatedData(result, originalScraped, undefined, undefined, ALL_CLAIMED);
     expect(consolidated.faceValue).toBe(2);
   });
 });

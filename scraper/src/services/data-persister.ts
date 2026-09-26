@@ -606,7 +606,7 @@ export function mergeListingExchangesForSource(
   const existing = existingExchanges ?? [];
   // W-145: ONE rule for what a source proves — an aggregator's 'BOTH' is
   // unknown, NSE/BSE assert only themselves.
-  const incoming = toListingExchangesForSource(scrapedListingExchange, source);
+  const incoming = toListingExchangesForSource(scrapedListingExchange, source, segment);
   if (!incoming) return existing;
 
   let merged = existing;
@@ -992,7 +992,20 @@ async function upsertIPOInScope(
       // (undefined), and unknown leaves the column NULL rather than writing a
       // guessed pair. `[scrapedIPO.listingExchange]` used to be written blind,
       // which produced `[undefined]` the moment the field became optional.
-      const listingExchanges = toListingExchangesForSource(scrapedIPO.listingExchange, source);
+      // #938: an exchange feed proves a listing only for an SME issue (a
+      // mainboard book runs on both exchanges whatever the listing), so the
+      // segment — the payload's, else the stored row's — is part of the rule.
+      // #938 echo: a listing exchange the caller declared as CONTEXT (the
+      // filing persister re-sends the STORED boards so the row resolves) is
+      // not this write's claim, under either spelling of the key.
+      const listingExchangeIsContext =
+        contextFields?.includes('listingExchange') === true ||
+        contextFields?.includes('listingExchanges') === true;
+      const listingExchanges = toListingExchangesForSource(
+        scrapedIPO.listingExchange,
+        source,
+        scrapedIPO.segment ?? existingIPO?.segment ?? null
+      );
 
       // Stage A.5 write-path date-plausibility guard (#41/#52): a current scrape must
       // not stomp an old IPO's open/close dates. Anchor on the trustworthy post-IPO
@@ -1213,7 +1226,12 @@ async function upsertIPOInScope(
               ipoId: existingIPO.id,
               tableName: 'ipos',
               incomingData: ipoData,
-              contextFields,
+              // #938 echo: the caller names the payload key (`listingExchange`,
+              // singular); the consolidator sees the mapped `listingExchanges`.
+              // Name both, or the stored boards are re-claimed as this source's.
+              contextFields: listingExchangeIsContext
+                ? [...new Set([...(contextFields ?? []), 'listingExchanges'])]
+                : contextFields,
               source: source,
               incomingLineage: lineage ?? null,
               existingData: existingIPO as any,
@@ -1229,13 +1247,15 @@ async function upsertIPOInScope(
             // board, so a merge that would widen an SME row is refused here too
             // (the consolidation service logs the conflict row).
             let mergedExchanges = existingIPO.listingExchanges as ('NSE' | 'BSE')[];
-            const incomingExchanges = toListingExchangesForSource(scrapedIPO.listingExchange, source);
+            const segment = (existingIPO.segment ?? scrapedIPO.segment) as string | null | undefined;
+            const incomingExchanges = listingExchangeIsContext
+              ? undefined
+              : toListingExchangesForSource(scrapedIPO.listingExchange, source, segment);
             if (incomingExchanges) {
               const widened = [...(mergedExchanges ?? [])];
               for (const exchange of incomingExchanges) {
                 if (!widened.includes(exchange)) widened.push(exchange);
               }
-              const segment = (existingIPO.segment ?? scrapedIPO.segment) as string | null | undefined;
               if (violatesSmeSingleExchange(segment, widened)) {
                 logger.warn(
                   { ipoId: existingIPO.id, source, segment, stored: mergedExchanges, incomingExchanges },
@@ -1532,7 +1552,8 @@ async function upsertIPOInScope(
           listingExchanges: mergeListingExchangesForSource(
             (existingIPO as any).listingExchanges,
             source,
-            scrapedIPO.listingExchange,
+            // #938 echo: context is never a claim, on this door either.
+            listingExchangeIsContext ? undefined : scrapedIPO.listingExchange,
             ((existingIPO as any).segment ?? scrapedIPO.segment) as string | null | undefined
           ),
           lastScrapedAt: new Date(),

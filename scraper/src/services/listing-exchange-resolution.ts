@@ -21,6 +21,16 @@
  * 4. **SME invariant.** An SME issue lists on exactly ONE board (NSE Emerge or
  *    BSE SME). A merge that would give an SME row two exchanges is a conflict,
  *    not a write.
+ * 5. **A bidding venue is not a listing venue (#938, F-135).** An exchange's
+ *    issue feed shows every issue that exchange runs BIDDING for. A mainboard
+ *    book runs on both exchanges whatever the listing (the NSE current-issue
+ *    feed carries the NSE-side book of every live mainboard IPO, fixture
+ *    README tests/fixtures/nse), so an NSE or BSE mainboard payload proves
+ *    "bids are taken here", never "lists here" — NSE's own IPO lists on BSE
+ *    only (price band ad, RHP p.3) yet appears in NSE's feed. Only an SME
+ *    platform (NSE Emerge / BSE SME) is exclusive, so only an SME payload is a
+ *    listing self-assertion. A payload whose segment is not known to be SME
+ *    carries no listing claim (rule 3: unknown never overwrites).
  */
 
 import type { ScraperSource } from '../config/field-priority-matrix.js';
@@ -48,10 +58,16 @@ const BOTH_EVIDENCING_SOURCES: ReadonlySet<ScraperSource> = new Set<ScraperSourc
  */
 export function toListingExchangesForSource(
   listingExchange: ScrapedListingExchange | undefined,
-  source: ScraperSource
+  source: ScraperSource,
+  /**
+   * The issue's segment as best known at the call (the payload's, else the
+   * stored row's). Required, not optional: every caller must decide it,
+   * because an exchange feed is a listing claim ONLY for an SME issue (rule 5).
+   */
+  segment: string | null | undefined
 ): ListingExchange[] | undefined {
   if (SELF_ASSERTING_SOURCES.has(source)) {
-    return [source as ListingExchange];
+    return segment === 'SME' ? [source as ListingExchange] : undefined;
   }
 
   if (listingExchange === 'NSE' || listingExchange === 'BSE') {

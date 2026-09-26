@@ -27,6 +27,17 @@ import { DataConsolidationService } from '../../../src/services/data-consolidati
 import { DataConsolidationOrchestrator } from '../../../src/services/data-consolidation-orchestrator.js';
 import type { FieldSourcesRepository, DataConflictsRepository } from '@ipodhan/shared';
 
+// #951: extractConsolidatedData takes the write's claim (the keys of the
+// consolidated incomingData). These tests exercise a full scrape, so every
+// mapped key is claimed.
+const ALL_CLAIMED = new Set([
+  'companyName', 'segment', 'offeringType', 'sector', 'issueSize', 'priceRangeMin',
+  'priceRangeMax', 'lotSize', 'faceValue', 'status', 'openDate', 'closeDate',
+  'allotmentDate', 'listingDate', 'companyDescription', 'registrar', 'leadManagers',
+  'listingExchanges', 'symbol', 'isin',
+]);
+
+
 // W-177 round 3 (MINOR-2): the public `consolidatedUpsertIPO` door also
 // fires the step-ledger side effects (best-effort, caught, non-fatal per
 // the orchestrator's own comment) — but with no real Postgres in this unit
@@ -141,7 +152,7 @@ describe('W-177 round 2 — DataConsolidationOrchestrator.extractConsolidatedDat
 
     const orchestrator: any = makeOrchestrator();
     const originalScraped = shantiIncoming() as any;
-    const created = orchestrator.extractConsolidatedData(result, originalScraped, 'CHITTORGARH', null);
+    const created = orchestrator.extractConsolidatedData(result, originalScraped, 'CHITTORGARH', null, ALL_CLAIMED);
 
     // The bug: `?? originalScraped.issueSize?.toString()` would re-admit "5691200" here.
     expect(created.issueSize).toBeUndefined();
@@ -163,7 +174,7 @@ describe('W-177 round 2 — DataConsolidationOrchestrator.extractConsolidatedDat
     const patch = orchestrator.extractConsolidatedData(result, shantiIncoming() as any, 'CHITTORGARH', {
       id: 'shanti-id',
       ...existingData,
-    });
+    }, ALL_CLAIMED);
 
     expect(patch.issueSize).toBeUndefined();
   });
@@ -186,7 +197,7 @@ describe('W-177 round 2 — DataConsolidationOrchestrator.extractConsolidatedDat
     const patch = orchestrator.extractConsolidatedData(result, shantiIncoming() as any, 'CHITTORGARH', {
       id: 'shanti-id',
       ...existingData,
-    });
+    }, ALL_CLAIMED);
 
     expect(patch.issueSize?.toString()).toBe('47200000');
   });
@@ -196,7 +207,7 @@ describe('W-177 round 2 — DataConsolidationOrchestrator.extractConsolidatedDat
     const orchestrator: any = makeOrchestrator();
     const originalScraped = { companyName: 'X', offeringType: 'IPO', status: 'OPEN', sector: 'Chemicals' } as any;
 
-    const patch = orchestrator.extractConsolidatedData(result, originalScraped, 'CHITTORGARH', null);
+    const patch = orchestrator.extractConsolidatedData(result, originalScraped, 'CHITTORGARH', null, ALL_CLAIMED);
 
     expect(patch.companyName).toBe('X');
     expect(patch.status).toBe('OPEN');
@@ -231,7 +242,7 @@ describe('W-177 round 2 — DataConsolidationOrchestrator.extractConsolidatedDat
     });
 
     const orchestrator: any = makeOrchestrator();
-    const patch = orchestrator.extractConsolidatedData(result, incoming as any, 'CHITTORGARH', null);
+    const patch = orchestrator.extractConsolidatedData(result, incoming as any, 'CHITTORGARH', null, ALL_CLAIMED);
     expect(patch.issueSize).toBeUndefined();
   });
 });
@@ -250,7 +261,7 @@ describe('W-177 round 3 (MINOR-1) — the sweep is field-generic, not issueSize-
     } as any;
     const originalScraped = { companyName: 'X', offeringType: 'IPO', status: 'OPEN' } as any;
 
-    const patch = orchestrator.extractConsolidatedData(result, originalScraped, 'CHITTORGARH', null);
+    const patch = orchestrator.extractConsolidatedData(result, originalScraped, 'CHITTORGARH', null, ALL_CLAIMED);
 
     // If the sweep only covered issueSize (the round-2 fix's literal diff),
     // `status` would still read `consolidated.status || originalScraped.status`

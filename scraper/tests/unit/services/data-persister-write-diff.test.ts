@@ -143,10 +143,12 @@ describe('round-3 C1/C2: the write skip is decided by a diff against the ROW, no
     // board — widening it is now refused by the invariant. This test is about
     // the write-DIFF mechanism (a row-level change with fieldsUpdated 0 still
     // writes), so it runs on a MAINBOARD row, where a two-board union is legal.
+    // #938: an exchange feed no longer claims a mainboard listing (it is a
+    // bidding venue), so the row-level change comes from a page-stating source.
     await upsertIPO(
       ipoRepository,
       scrape({ listingExchange: 'BSE', segment: 'MAINBOARD' }),
-      'BSE',
+      'CHITTORGARH',
       existingRow({ listingExchanges: ['NSE'], segment: 'MAINBOARD' })
     );
 
