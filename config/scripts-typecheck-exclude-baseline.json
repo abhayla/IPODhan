@@ -1,6 +1,6 @@
 {
   "_comment": "Shrink-only baseline (same model as config/write-ratchet-baseline.json, T-316) for scraper/tsconfig.scripts.json's `exclude` array. This list is the ONLY source of legitimate exclusions for scraper/scripts/**/*.ts from `npm run type-check:scripts`. Regenerate ONLY when REMOVING an entry (a script was fixed to type-check cleanly under scraper/tsconfig.scripts.json) via `node scripts/tests/scripts-typecheck-exclude-shrink.test.mjs --update`. NEVER hand-add a new entry to grandfather a newly-broken script into the exclude list — fix the script's types instead. See issue #434.",
-  "count": 23,
+  "count": 22,
   "files": [
     "scripts/backfill-anchor-investor-list-json.ts",
     "scripts/backfill-anchor-investors.ts",
