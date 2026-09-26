@@ -22,7 +22,25 @@ export default defineConfig({
     // #451: same guard as vitest.config.ts — a target outside `include`
     // (e.g. a unit-test path run against this config by mistake) must fail
     // loudly instead of silently exiting 0.
-    passWithNoTests: false
+    passWithNoTests: false,
+    // #252 follow-up: vitest's default file-level parallelism runs different
+    // integration test FILES concurrently in separate worker processes, all
+    // against the ONE shared Postgres target this suite requires. Several
+    // files reuse the exact same fixture company names ("Rays of Belief
+    // Ltd", "Himalayan Solar Ltd", "Himalaya Nutravedics India Ltd") because
+    // those names encode real look-alike scenarios from the identity-match
+    // spec — renaming them per file would make the fixture less realistic,
+    // not more. Two files racing those names against the same `ipos` table
+    // (identity matching resolves by normalized name GLOBALLY, not scoped to
+    // a test's own rows) made identity-matching-od68 and
+    // source-record-keys-od85 fail non-deterministically when run together
+    // (measured 2026-09-26: both pass individually, both fail when run in
+    // the same invocation) — an outcome depending on which worker's insert
+    // committed first is exactly the class this integration tier exists to
+    // prevent silently. Serializing file execution trades one dimension of
+    // speed for determinism against a single live DB target; it does not
+    // change what any test asserts.
+    fileParallelism: false
   },
   resolve: {
     alias: {

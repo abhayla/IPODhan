@@ -1199,6 +1199,7 @@ jobs:
           tests/integration/field-plan-walk-verdict-writer.integration.test.ts
           tests/integration/field-plan-walk-reason-codes.integration.test.ts
           tests/integration/closed-ipo-job-plan-then-walk.integration.test.ts
+          tests/integration/consolidation-dedup.integration.test.ts
           tests/integration/normalizer-sql-agreement.integration.test.ts
           tests/integration/derived-key-recompute-guard.integration.test.ts
           tests/integration/alternative-sources.integration.test.ts
