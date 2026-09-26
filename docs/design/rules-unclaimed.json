@@ -26,6 +26,7 @@
     "R-240": "OD-103 (2026-09-25, reworded after review): witnesses collected at the first read of each stage. No build card yet: admin-editing discovery (section 9.5) is still open. Carded when discovery closes.",
     "R-241": "Section 2.4 clarification (2026-09-25): an admin-held field is read and recorded as a witness, never written, except OD-106. No build card yet: admin-editing discovery (section 9.5) is still open. Carded when discovery closes.",
     "R-244": "OD-121 (2026-09-25): section 2.7 amendment, an admin delete keeps the field empty. No build card yet: admin-editing discovery has just closed; carded with the admin editing build. Reworded after the round-2 review (caveat for IPOs no longer walked).",
-    "R-245": "measurement note (2026-09-26 re-measurement and contract 1 findings F-175, F-177, F-179..F-182); it records measured facts, not a behaviour a build card implements - each finding is tracked by its own issue or PR"
+    "R-245": "measurement note (2026-09-26 re-measurement and contract 1 findings F-175, F-177, F-179..F-182); it records measured facts, not a behaviour a build card implements - each finding is tracked by its own issue or PR",
+    "R-246": "2.3.3.3 (2026-09-26): F-184 citation under OD-38 -- a research finding open for owner decision (owner Q5), not a rule to build; OD-38's counted-reads text is unchanged pending that decision."
   }
 }

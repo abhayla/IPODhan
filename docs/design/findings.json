@@ -1806,6 +1806,33 @@
       "phase1": false,
       "title": "documents.extraction_status had three different value sets (declared enum, column comment, values written) and nothing enforced any of them; extraction_error kept only the last attempt's cause",
       "detail": "Measured 2026-09-26 on ipodhan_staging (read-only, 375 documents): written values COMPLETED 158, PENDING 90, NOT_EXTRACTABLE 77, MANUAL_REVIEW 43, FAILED 7 (IN_PROGRESS 0, written transiently at each attempt's stamp). Declared Postgres enum extraction_status = PENDING, IN_PROGRESS, SUCCESS, PARTIAL, FAILED, which types only extraction_logs.status (information_schema: the documents column is varchar(50), no CHECK). Column comment: PENDING|IN_PROGRESS|COMPLETED|FAILED|MANUAL_REVIEW (missing NOT_EXTRACTABLE, written by the #869 admission stamp). QUEUED_FOR_REVIEW was read by web/app/api/admin/metrics/data-pipeline/route.ts and written by nothing (0 rows). By type: ANCHOR_ALLOCATION_REPORT MANUAL_REVIEW 39 (max retry_count 10), PRICE_BAND_AD MANUAL_REVIEW 3 (10), RHP MANUAL_REVIEW 1 (10); each such row keeps one extraction_error, the last. The spec (section 1.8, rows 147-150) named no value set. Fixed by #676/#634: one set DOCUMENT_EXTRACTION_STATUSES enforced by the column type and ck_documents_extraction_status (NOT VALID, migration 0065), and document_extraction_attempts keeping every failed attempt's cause. No backfill."
+    },
+    {
+      "id": "F-184",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "post-listing-price",
+      "phase1": true,
+      "title": "NSE never answers 'no such symbol' for a delisted stock; it answers secStatus 'Permanent Suspended'. The no-such-symbol 404 is what a wrong series, a never-existed symbol and a RENAMED symbol return (open for owner decision: OD-38 counts no-such-symbol reads)",
+      "detail": "Measured 2026-09-26 from the laptop, NSE GetQuoteApi getSymbolData and BSE getScripHeaderData, bodies in scraper/tests/fixtures/post-listing-price/delisting-read-shapes-2026-09-26.json. Delisted companies HDFC, IDFC, CAIRN, ESSAROIL, HEXAWARE: HTTP 200 in series EQ, secInfo.secStatus 'Permanent Suspended', isSuspended 'Suspended', lastPrice 0, lastUpdateTime null, metaData.isinCode present (HDFC INE001A01036). Temporarily suspended BALLARPUR and JETAIRWAYS: 200 in series BZ with secStatus 'Temporary Suspended', and an all-null quote row in EQ. HTTP 404 body {\"error\":\"Unexpected end of JSON input\"} is byte-identical for HEROMOTORS in the wrong series SM, for ZZNOSUCHSYM (never existed) and for ADANITRANS EQ, the old symbol of Adani Energy Solutions which still trades as ADANIENSOL. BSE: HDFC 500010 answers Category '' and Header.DisplayText 'Delisted' (not Category 'Delisted' as the #972 reader assumed), last LTP 2729.95 as of 12 Jul 23; 999999 answers Cmpname.FullN null. Consequence: a body match cannot tell a wrong series from a missing symbol; counting all-series-404 reads toward DELISTED would delist a renamed company and would never catch a delisted one. #983 therefore counts only explicit delisting reports (secStatus 'Permanent Suspended', BSE DisplayText/Category 'Delisted') and records all-series-404 as NO_SUCH_SYMBOL without counting it. OD-38's text ('three consecutive no-such-symbol reads') is open for owner decision. Related: OD-38, section 2.3.3.3, F-150, F-160, F-162, #972, #983."
+    },
+    {
+      "id": "F-185",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "documents / extraction",
+      "phase1": false,
+      "title": "0 of 4 real RHP/DRHP documents print a Highest/Lowest peer summary, so a summary cross-check never fires on real documents",
+      "detail": "Measured 2026-09-26 (PR #1161) against four real offer documents: A-One Steels RHP, A-One Steels DRHP, German Green RHP, Green Asia RHP. None of the four prints a Highest/Lowest peer-group summary line alongside its peer comparison table. A cross-check keyed to that summary line therefore has zero real documents to run against in this sample; peer figures are read from the per-company table rows (peer_companies.*), never from a document-level summary line. Related: field 121-130 peer_companies manifest rows, F-186, #1161."
+    },
+    {
+      "id": "F-186",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "documents / extraction",
+      "phase1": false,
+      "title": "Document peer-table figures are never persisted: the extractor returns printed text, filing-persister's numOrNull accepts numbers only, so document peer sets save names-only and Chittorgarh is the only source of peer figures",
+      "detail": "The extractor returns peer figures as printed text (e.g. '132.00'). filing-persister.ts's numOrNull (~732-734) is `typeof v === 'number' && Number.isFinite(v) ? v.toString() : null` -- a string input returns null. Every peer_companies.pe_ratio / eps / diluted_eps / ronw / nav / pbv_ratio value extracted from a document is therefore written null; only peer_companies.company_name and is_listed persist from a document. Chittorgarh (rank 2) is left as the only source that actually writes the peer figures fields 123-128 name. Tracked in #1165, open for a build item. Related: field 121-130 peer_companies manifest rows, F-185."
     }
   ],
   "false_assertions": [
