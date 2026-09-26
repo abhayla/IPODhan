@@ -1,0 +1,13 @@
+{
+  "_spec": "docs/reviews/ipo-pipeline-stage-gap-analysis.md section 6, row 2: 'Resolve document links - captured GetMkt_ISSUE_BBS_IPO + ipo-detail payloads - document-discovery-runner (T-403) with network stubbed - typed links: Skyways RHP/PBA/CORRIGENDUM/ADDENDUM, 3 BRLMs'.",
+  "_provenance": "Values match the existing, deeper suite scraper/tests/unit/services/document-discovery-runner.test.ts ('finds Skyways documents and all THREE lead managers from the BSE core payload'), which already drives the same real fixtures through the same real DocumentDiscoveryRunner class. This ladder file adds the stage-2-scoped golden the ladder is organized around; it does not re-assert that suite's full depth (BLOCKED_ALL, SME abstain, retry ladder etc. stay there).",
+  "skywaysMainboard": {
+    "leadManagers": [
+      "Holani Consultants Private Limited",
+      "Shannon Advisors Private Limited",
+      "Dolat Finserv Private Limited"
+    ],
+    "foundContains": ["RHP", "CORRIGENDUM", "ADDENDUM", "PRICE_BAND_AD"],
+    "minFoundCount": 4
+  }
+}

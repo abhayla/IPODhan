@@ -1,0 +1,58 @@
+{
+  "_spec": "docs/reviews/ipo-pipeline-stage-gap-analysis.md section 6, row 1 (\"Discover IPO ... 4 ipos rows with correct segment/offering_type/dates\"), and nse-api-client.ts transformIPOData()'s own documented formulas (parseNSEDate DD-MMM-YYYY, parsePriceRange 'X to Y', determineStatus ACTIVE/FORTHCOMING mapping, computeNSEIssueSizeRupees = shares x floor price). Values below are hand-derived from those documented rules, not copied from a live run.",
+  "cases": {
+    "augmont-mainboard-open": {
+      "fixture": "ipo-current-issue.live-2026-08-22.json",
+      "index": 0,
+      "endpointCategory": null,
+      "expected": {
+        "companyName": "Augmont Enterprises Limited",
+        "symbol": "AUGMONT",
+        "segment": "MAINBOARD",
+        "offeringType": "IPO",
+        "status": "OPEN",
+        "openDate": "2026-08-21",
+        "closeDate": "2026-08-25",
+        "priceRangeMin": 750,
+        "priceRangeMax": 788,
+        "issueSize": 5786999250
+      }
+    },
+    "tempsens-mainboard-open": {
+      "fixture": "ipo-current-issue.live-2026-08-22.json",
+      "index": 1,
+      "endpointCategory": null,
+      "expected": {
+        "companyName": "Tempsens Instruments (India) Limited",
+        "symbol": "TEMPSENS",
+        "segment": "MAINBOARD",
+        "offeringType": "IPO",
+        "status": "OPEN",
+        "openDate": "2026-08-20",
+        "closeDate": "2026-08-24",
+        "priceRangeMin": 285,
+        "priceRangeMax": 300,
+        "issueSize": 4326775095
+      }
+    },
+    "kanohar-ofs-forthcoming": {
+      "fixture": "../../../../fixtures/nse/ofs-ipo-shaped-unverified-2026-09-07.json",
+      "rawItemKey": "rawItem",
+      "endpointCategory": "ofs",
+      "expected": {
+        "companyName": "Kanohar Electricals Limited",
+        "symbol": "KANOHAR",
+        "segment": "MAINBOARD",
+        "offeringType": "OFS",
+        "offeringTypeExplicit": true,
+        "status": "UPCOMING",
+        "openDate": "2026-09-08",
+        "closeDate": "2026-09-10",
+        "priceRangeMin": 601,
+        "priceRangeMax": 632,
+        "issueSize": 10186706595
+      }
+    }
+  },
+  "notGap": "No real captured NSE payload with series/platform=SME exists anywhere under scraper/tests/fixtures (checked 2026-09-26) -- the SME segment branch of transformIPOData() is therefore NOT covered by this stage-1 harness. Recorded here rather than invented; add an SME case the next time a real SME current-issue payload is captured."
+}

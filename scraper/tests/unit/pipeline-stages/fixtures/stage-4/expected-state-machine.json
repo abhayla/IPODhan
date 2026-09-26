@@ -1,0 +1,12 @@
+{
+  "_spec": "docs/reviews/ipo-pipeline-stage-gap-analysis.md section 6, row 4: 'State machine - run 1 then run 2 - run-document-discovery.ts - run 2 = 0 network calls; ESDS DRHP NOT_YET_FILED'.",
+  "_provenance": "The run1-then-run2-zero-network property and the NOT_YET_FILED-vs-NOT_FOUND (F3/F6, W-28) distinction are proven in depth by the pre-existing scraper/tests/unit/services/document-discovery-runner.test.ts ('THE acceptance property - run 2 makes ZERO network calls') and document-discovery-runner-attempted-stage.test.ts. This ladder file drives the SAME real DocumentDiscoveryRunner + real Skyways fixtures to record the stage-4 golden the ladder is organized around, not to re-derive the deeper suite.",
+  "run1": { "networkCallsGreaterThan": 0 },
+  "run2": { "networkCalls": 0, "due": [], "supersededContains": "DRHP" },
+  "run3": { "skipped": true, "networkCalls": 0 },
+  "closedStage": {
+    "note": "Skyways at stage CLOSED with both exchanges answering: PROSPECTUS is DUE and the miss is SETTLED, so it must read as notFound, never notYetFiled (W-28) -- the ESDS DRHP-not-yet-filed case in the gap-analysis table names the SAME mechanism (a settled miss on a type that genuinely has not been filed), proven here on the fixture this repo actually has.",
+    "notFoundContains": "PROSPECTUS",
+    "notYetFiledExcludes": "PROSPECTUS"
+  }
+}

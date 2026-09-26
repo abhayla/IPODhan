@@ -35,13 +35,20 @@ Rules, all load-bearing:
 | # | Stage | File | Status |
 |---|---|---|---|
 | 0 | DB rebuild from journal | `stage-0-db-rebuild.test.ts` | done (part 1) |
-| 1 | Discover IPO | — | existing orchestrator unit tests |
-| 2–4 | Resolve links / download+verify / state machine | — | on the T-403 branch |
+| 1 | Discover IPO | `stage-1-discover.test.ts` | done (part 3, #258) — MAINBOARD + OFS; SME segment untested, no real SME fixture in repo (see the test's own note) |
+| 2 | Resolve document links | `stage-2-resolve-links.test.ts` | done (part 3, #258) — T-403 (merged `ce9fb4ff`, PR #266) is now `main`; reuses the real `DocumentDiscoveryRunner` + fixtures the deeper `document-discovery-runner.test.ts` suite already drives |
+| 3 | Download + verify + store | `stage-3-download-verify.test.ts` | done (part 3, #258) — sha256 dedup + HTML rejection proven at the store layer; PDF byte *content* is structurally-real, not a full captured filing (see the fixture's `pdfGap`) |
+| 4 | State machine | `stage-4-state-machine.test.ts` | done (part 3, #258) — run2/run3 zero-network property + settled-miss-vs-not-yet-filed (W-28), on Skyways (no ESDS fixture shaped for this runner exists in repo) |
 | 5 | Extract | `stage-5-extract.test.ts` | done (part 2) |
 | 6 | Persist with precedence | `stage-6-persist-precedence.test.ts` | done (part 2) — 4 red-by-design |
 | 7 | Supersede | `stage-7-supersede.test.ts` | done (part 2) — 2 red-by-design |
 | 8 | Render | `web/tests/unit/pipeline-stages/stage-8-render.test.tsx` | done (part 2) — 2 red-by-design |
 | 9 | VPS runtime preflight | `stage-9-runtime-preflight.test.ts` | done (part 1) |
+
+All ten rungs (0-9) now have an isolated fixture-in/expected-output-file-out test. Stages 2-4's
+underlying code (T-403 WP A+B) merged to `main` well before this file was written (PR #266,
+#270, #271, #274) — the gap this closes was the ISOLATED HARNESS, not the feature code, which
+already had deep (100+ assertion) coverage under `scraper/tests/unit/services/document-*.ts`.
 
 ## Running
 

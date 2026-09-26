@@ -1,0 +1,11 @@
+{
+  "_spec": "docs/reviews/ipo-pipeline-stage-gap-analysis.md section 6, row 3: 'Download + verify + store - links, HTTP stubbed with real bytes + the BSE Object Moved HTML - verifier + store - sha256 dedup, no HTML stored, files under <ipo_id>/'.",
+  "objectMovedHtml": {
+    "_provenance": "The literal BSE redirect-page body already used as the real captured shape in scraper/tests/unit/services/document-discovery-runner-download.test.ts (T-403 M4/F2 fixtures) -- reused verbatim here rather than retyped, so this golden and that test agree on what BSE actually serves.",
+    "body": "<html><body><h1>Object Moved</h1></body></html>",
+    "contentType": "text/html; charset=UTF-8",
+    "status": 200,
+    "expectedVerdict": "html_body"
+  },
+  "pdfGap": "No full real RHP/DRHP PDF byte content is checked into this repo (only page-text extractions under scraper/tests/fixtures/extractor/ and *.ocr.pages.json). This stage's PDF-acceptance and sha256-dedup cases therefore use a structurally-real PDF buffer (starts with the %PDF magic, over the MIN_DOCUMENT_BYTES floor) -- the same approach document-download-verifier.test.ts and document-discovery-runner-download.test.ts already take for this exact reason. This is a stated gap, not an invented fixture: the byte CONTENT is synthetic filler, only the shape (magic bytes + size) is asserted."
+}
