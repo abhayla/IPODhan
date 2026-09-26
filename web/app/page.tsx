@@ -7,8 +7,7 @@ import { HomeIPOTablesSection } from "@/components/home/HomeIPOTablesSection";
 import { DataFreshness } from "@/components/shared/DataFreshness";
 import { ListingKpiRibbon, type RibbonCell } from "@/components/listing/ListingKpiRibbon";
 import { IPOTableSkeleton } from "@/components/home/IPOTableSkeleton";
-// TEMP: AsyncErrorBoundary commented out - causes webpack error (Session 5)
-// import { AsyncErrorBoundary } from "@/components/error/AsyncErrorBoundary";
+import { AsyncErrorBoundary } from "@/components/error/AsyncErrorBoundary";
 import {
   generateOrganizationSchema,
   generateIPOListingSchema,
@@ -134,8 +133,7 @@ export default async function Home() {
               <h2 className="text-lg font-semibold text-foreground">Latest IPO updates</h2>
               <DataFreshness asOf={new Date().toISOString()} />
             </div>
-            {/* TEMP: AsyncErrorBoundary commented out - causes webpack error (Session 5) */}
-            {/* <AsyncErrorBoundary
+            <AsyncErrorBoundary
               loadingFallback={<IPOTableSkeleton />}
               fallback={
                 <div className="text-center py-12">
@@ -144,14 +142,14 @@ export default async function Home() {
                   </p>
                 </div>
               }
-            > */}
+            >
               <HomeIPOTablesSection
                 mainboardIPOs={mainboardIPOs}
                 smeIPOs={smeIPOs}
                 upcomingMainboardIPOs={upcomingMainboardIPOs}
                 upcomingSMEIPOs={upcomingSMEIPOs}
               />
-            {/* </AsyncErrorBoundary> */}
+            </AsyncErrorBoundary>
           </div>
         </section>
 
