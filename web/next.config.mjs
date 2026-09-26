@@ -58,6 +58,39 @@ const nextConfig = {
           },
         ],
       },
+      // #568: `/api/version` MUST stay `force-static` (it is the mechanism
+      // that lets `curl .../api/version` prove a deploy flip actually
+      // happened — see the route's own docstring), but `force-static`
+      // attaches Next's own `s-maxage=31536000` header, which Cloudflare
+      // then caches at the edge for a year. A public read of the served sha
+      // can silently return an old release's sha. Every cache in the path
+      // is told not to store: `Cache-Control: no-store` for the browser,
+      // `CDN-Cache-Control: no-store` for the generic CDN override many
+      // shared caches honour, and `Cloudflare-CDN-Cache-Control: no-store`
+      // because Cloudflare prefers ITS OWN header above the other two when
+      // deciding what to cache at the edge — so this is the one that
+      // actually stops the year-long edge cache, not a belt-and-braces
+      // extra. `/api/health` carries the same class of fix (#138 already
+      // set `Cache-Control` in the route's own response, force-dynamic
+      // isn't cached by Next in the first place, but it is still a public
+      // URL used to decide whether a deploy proof is real, so it gets the
+      // same explicit no-store discipline here for consistency).
+      {
+        source: '/api/version',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate' },
+          { key: 'CDN-Cache-Control', value: 'no-store' },
+          { key: 'Cloudflare-CDN-Cache-Control', value: 'no-store' },
+        ],
+      },
+      {
+        source: '/api/health',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate' },
+          { key: 'CDN-Cache-Control', value: 'no-store' },
+          { key: 'Cloudflare-CDN-Cache-Control', value: 'no-store' },
+        ],
+      },
       // CORS for API endpoints
       {
         source: '/api/:path*',
