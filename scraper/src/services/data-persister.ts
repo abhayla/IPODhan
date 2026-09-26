@@ -518,6 +518,16 @@ async function retryWithBackoff<T>(
     } catch (error: any) {
       lastError = error;
 
+      // #928: a hold (OD-68) or a key no-write (OD-85) is a decision recorded in
+      // audit_logs, not a database failure: one warn line, no error lines, no retry.
+      if (SOURCE_KEY_NO_WRITE_ERROR_NAMES.has(error?.name)) {
+        logger.warn(
+          { errorName: error.name, operation: operationName, message: error?.message },
+          'identity decision - nothing written, not retried'
+        );
+        throw error;
+      }
+
       // Enhanced error logging (Story 11.2)
       const pgErrorDetails = {
         message: error?.message,

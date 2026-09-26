@@ -77,7 +77,7 @@ export function slugTakenReason(
     return { rule: 'OD-71', reason: 'slug_taken: the slug holder is WITHDRAWN (a refiling is a new offering)' };
   }
   if (incoming.segment && holder.segment && incoming.segment !== holder.segment) {
-    return { rule: 'OD-35', reason: `slug_taken: segment differs (${incoming.segment} vs ${holder.segment})` };
+    return { rule: 'OD-68', reason: `slug_taken: segment differs (${incoming.segment} vs ${holder.segment})` };
   }
   const inType = incoming.offeringType ?? 'IPO';
   if (holder.offeringType && inType !== holder.offeringType) {

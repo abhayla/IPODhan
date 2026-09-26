@@ -72,7 +72,7 @@ export interface OpeningDaySummary {
   todayIso: string;
   nseRowsChecked: number;
   bseRowsChecked: number;
-  written: Array<{ source: OpeningDaySource; companyName: string; key: string | null; outcome: OpeningDayWriteOutcome | 'failed' }>;
+  written: Array<{ source: OpeningDaySource; companyName: string; key: string | null; outcome: OpeningDayWriteOutcome | 'failed' | 'held' }>;
   /** Non-IPO offerings (RIGHTS, NCD, FPO, INVITS, REITS, ...) opening today on the NSE list — named, never written (§1.11). */
   skippedNonIpo: Array<{ source: OpeningDaySource; companyName: string; offeringType: string }>;
   storedOpeningToday: Array<{ id: string; companyName: string; status: string }>;
@@ -165,6 +165,12 @@ export async function runOpeningDayDiscovery(deps: OpeningDayDeps, now: Date = n
       const outcome = await deps.writeRow(source, payload);
       written.push({ source, companyName: payload.companyName, key, outcome });
     } catch (error) {
+      // #928: a hold is a recorded decision (audit_logs, i_identity_held), not a failure.
+      if ((error as { name?: string })?.name === 'IdentityHeldForReviewError') {
+        logger.warn({ source, companyName: payload.companyName, key, reason: (error as Error).message }, 'opening-day check: record held for review - nothing written');
+        written.push({ source, companyName: payload.companyName, key, outcome: 'held' });
+        continue;
+      }
       failures.push(`${source} ${payload.companyName}: ${error instanceof Error ? error.message : String(error)}`);
       written.push({ source, companyName: payload.companyName, key, outcome: 'failed' });
     }

@@ -483,6 +483,18 @@ export class DataConsolidationOrchestrator {
 
       return result;
     } catch (error) {
+      // #928: a record held for review (OD-68/OD-69/OD-71) is a decision already
+      // recorded in audit_logs - a skipped outcome at warn, not a failure.
+      if ((error as { name?: string })?.name === 'IdentityHeldForReviewError') {
+        logger.warn({ slug, source, reason: (error as Error).message }, '[DataConsolidation] record held for review - nothing written');
+        return {
+          ipoId: '',
+          isNew: false,
+          skipped: true,
+          locked: false,
+          skipReason: 'HELD_FOR_REVIEW: ' + (error as Error).message,
+        };
+      }
       logger.error(
         {
           slug,

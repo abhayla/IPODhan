@@ -15,6 +15,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { IPORepository, slugTakenReason } from './ipo-repository';
 import { IdentityHeldForReviewError, DatabaseError } from '../errors/repository-errors';
 import { ipos, auditLogs } from '../db/schema';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 // Real identities. Rays of Belief's CIN is the one seeded from prod in
 // identity-matching-od68.integration.test.ts; IC Electricals' CIN is quoted in OD-83.
@@ -26,10 +27,23 @@ type Row = Record<string, unknown>;
 function stubDb(iposRows: Row[]) {
   const auditInserts: Row[] = [];
   const iposInserts: Row[] = [];
+  // The stub HONOURS a single-column equality: `where(eq(ipos.<col>, v))` is rendered to
+  // SQL and only rows whose <col> equals v come back (review round 1: a stub returning every
+  // row let `eq(ipos.id, data.slug)` pass). Any other condition (the OD-68 fold query) gets
+  // every row, and every rendered ipos query is recorded for assertion.
+  const iposQueries: { sql: string; params: unknown[] }[] = [];
+  const dialect = new PgDialect();
+  const camel = (col: string) => col.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
   const select = vi.fn().mockImplementation(() => ({
     from: (table: unknown) => ({
-      where: () => {
-        const rows = table === ipos ? iposRows : [];
+      where: (cond: unknown) => {
+        let rows: Row[] = [];
+        if (table === ipos) {
+          const q = dialect.sqlToQuery(cond as never);
+          iposQueries.push({ sql: q.sql, params: q.params });
+          const m = /^"ipos"\."(\w+)" = \$1$/.exec(q.sql);
+          rows = m ? iposRows.filter((r) => r[camel(m[1])] === q.params[0]) : iposRows;
+        }
         return Object.assign(Promise.resolve(rows), { limit: async () => [] });
       },
     }),
@@ -49,7 +63,7 @@ function stubDb(iposRows: Row[]) {
       };
     },
   }));
-  return { db: { select, insert } as unknown as ConstructorParameters<typeof IPORepository>[0], auditInserts, iposInserts };
+  return { db: { select, insert } as unknown as ConstructorParameters<typeof IPORepository>[0], auditInserts, iposInserts, iposQueries };
 }
 
 function makeRepo(iposRows: Row[]) {
@@ -72,7 +86,7 @@ const RAYS_ROW = {
 
 describe('#928: a declined bind whose slug is taken is HELD, never a silent unique-constraint failure', () => {
   it('OD-69: same name + slug, DIFFERENT CIN -> IdentityHeldForReviewError, no ipos insert, one audit_logs hold naming the CIN', async () => {
-    const { repo, auditInserts, iposInserts } = makeRepo([RAYS_ROW]);
+    const { repo, auditInserts, iposInserts, iposQueries } = makeRepo([RAYS_ROW]);
     const err = await repo
       .create({
         companyName: 'Rays of Belief Limited',
@@ -86,6 +100,7 @@ describe('#928: a declined bind whose slug is taken is HELD, never a silent uniq
       } as never)
       .catch((e) => e);
     expect(err).toBeInstanceOf(IdentityHeldForReviewError);
+    expect(iposQueries).toContainEqual({ sql: '"ipos"."slug" = $1', params: ['rays-of-belief-ltd'] });
     expect((err as IdentityHeldForReviewError).candidates.map((c) => c.slug)).toEqual(['rays-of-belief-ltd']);
     expect(iposInserts).toHaveLength(0);
     expect(auditInserts).toHaveLength(1);
@@ -144,7 +159,7 @@ describe('#928: a declined bind whose slug is taken is HELD, never a silent uniq
 
 describe('slugTakenReason names the rule that refused the bind', () => {
   it.each([
-    [{ segment: 'MAINBOARD' }, { segment: 'SME', status: 'UPCOMING' }, 'OD-35', 'slug_taken: segment differs (MAINBOARD vs SME)'],
+    [{ segment: 'MAINBOARD' }, { segment: 'SME', status: 'UPCOMING' }, 'OD-68', 'slug_taken: segment differs (MAINBOARD vs SME)'],
     [{ offeringType: 'RIGHTS' }, { offeringType: 'IPO' }, 'OD-70', 'slug_taken: offering type differs (RIGHTS vs IPO)'],
     [{ openDate: '2026-09-01' }, { openDate: '2025-12-01' }, 'OD-35', 'slug_taken: open date beyond 180 days (2026-09-01 vs 2025-12-01)'],
     [{ openDate: '2026-09-01' }, { openDate: '2026-08-01' }, 'OD-68', 'slug_taken: identity resolution did not bind the row holding this slug'],

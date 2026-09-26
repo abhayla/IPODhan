@@ -1759,6 +1759,17 @@ test('(i) findUndecidedIdentityHolds FLAGS a recent OD-68 hold nobody has decide
   assert.equal(out[0].at, '2026-09-23T04:00:00Z');
 });
 
+test('(i) findUndecidedIdentityHolds keeps the hold details.reason so the nightly line names the refusing rule (#928)', () => {
+  const now = new Date('2026-09-26T10:00:00Z');
+  const reason = 'slug_taken: CIN differs (U31909DL2005PLC139412 vs U85110DL2017PLC322623)';
+  const out = findUndecidedIdentityHolds(
+    [{ slug: 'rays-of-belief-ltd', companyName: 'Rays of Belief Limited', candidates: 'rays-of-belief-ltd', reason, at: '2026-09-26T04:00:00Z' }],
+    [], now,
+  );
+  assert.equal(out.length, 1);
+  assert.equal(out[0].reason, reason);
+});
+
 test('(i) findUndecidedIdentityHolds PASSES a hold a human overrode afterwards, and a hold older than 2 days', () => {
   const now = new Date('2026-09-23T10:00:00Z');
   const holds = [
