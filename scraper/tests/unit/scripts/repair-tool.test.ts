@@ -9,6 +9,7 @@
  *   - key the idempotency set by ipoId only (not field)   -> MUTATION 3 red
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { types as pgTypes } from 'pg';
 import {
   alreadyRepairedKey,
   assertNoSchemaDrift,
@@ -962,6 +963,63 @@ describe('decideStaleCorrectionSkip (#422)', () => {
       currentValue: null,
     });
     expect(d.skip).toBe(false);
+  });
+
+  // #422 round 2 (supervisor MAJOR): the raw `pg` driver's own OID-1082 (DATE)
+  // type parser hands back `new Date(year, month - 1, day)` — LOCAL date
+  // parts, not a UTC instant. Both the raw-`pg` repair tools AND drizzle's
+  // default `date()` column mode (a pass-through of that same driver value)
+  // receive exactly this shape for a live row's current DATE column value.
+  // Before this fix, `String(dateObject)` never equalled a plain 'YYYY-MM-DD'
+  // `from` string, so every date-typed correction was falsely skipped as
+  // "changed since" even when nothing had changed. This test pins the real
+  // pg parser's output — not a hand-typed Date — as the current value.
+  it('treats a real pg-parsed DATE value as equal to its matching YYYY-MM-DD `from`, proceeding on a non-terminal row (#422 round 2)', () => {
+    const parseDateOid1082 = pgTypes.getTypeParser(1082) as (v: string) => unknown;
+    const currentValue = parseDateOid1082('2026-02-16');
+    expect(currentValue).toBeInstanceOf(Date); // pin the shape this test depends on
+
+    const d = decideStaleCorrectionSkip({
+      status: 'UPCOMING',
+      citationDate: '2026-08-23',
+      latestSourceDate: null,
+      assumedFromValue: '2026-02-16',
+      currentValue,
+    });
+    expect(d.skip).toBe(false);
+    expect(d.reason).toBeUndefined();
+  });
+
+  it('NEVER uses toISOString() to compare a DATE value — that shifts IST midnight to the previous UTC calendar day', () => {
+    // Reproduces the supervisor's exact probe: IST local midnight for
+    // 2026-02-16, expressed as a Date the way the raw pg OID-1082 parser
+    // builds one (local year/month/day components).
+    const localMidnight = new Date(2026, 1, 16); // month is 0-indexed: Feb
+    // The forbidden shape the reviewer's round-1 suggestion used.
+    expect(localMidnight.toISOString().slice(0, 10)).not.toBe('2026-02-16');
+
+    const d = decideStaleCorrectionSkip({
+      status: 'OPEN',
+      citationDate: '2026-08-23',
+      latestSourceDate: null,
+      assumedFromValue: '2026-02-16',
+      currentValue: localMidnight,
+    });
+    expect(d.skip).toBe(false);
+  });
+
+  it('still skips (does not falsely proceed) when the current DATE value is one calendar day different from `from`', () => {
+    const parseDateOid1082 = pgTypes.getTypeParser(1082) as (v: string) => unknown;
+    const currentValue = parseDateOid1082('2026-02-17');
+    const d = decideStaleCorrectionSkip({
+      status: 'UPCOMING',
+      citationDate: '2026-08-23',
+      latestSourceDate: null,
+      assumedFromValue: '2026-02-16',
+      currentValue,
+    });
+    expect(d.skip).toBe(true);
+    expect(d.reason).toMatch(/current value/);
   });
 });
 
