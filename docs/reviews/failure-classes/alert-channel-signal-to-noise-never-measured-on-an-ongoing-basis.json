@@ -1,0 +1,10 @@
+{
+  "class_id": "an alert channel's own signal-to-noise (type concentration, severity mix, self-comparisons) is never measured on an ongoing basis, so a fixed root cause can recur silently",
+  "feature": "scripts/audit-alert-channel.mjs, wired into scripts/vps-data-audit-cron.sh step [7/7]",
+  "symptom": "a monitoring/alerting pipeline can fail two opposite ways -- too loud (one alert type or self-comparison floods the channel until a real signal is buried) or silently disconnected (the send path is dead but 'ran fine') -- and neither shows up in any product-level check unless something reads the channel's own delivery log on a recurring cadence and asserts bounds on it. Fixing the root cause of one bad incident (T-285) without adding that ongoing measurement leaves the class open to recur under a different alert type.",
+  "first_seen": "T-285 (prior incident): of 378 owner alerts, 346 (92%) were one type, 298 of those (86%) compared a source against itself, 97% were tagged P1; a genuine heartbeat-miss P1 went unactioned for 23h, buried under the flood. Re-measured 2026-09-26 (#195, PR #1213) over the trailing 2026-09-19..26 window (8,879 delivery-log lines read read-only on the VPS): P1 share 32.1% (over the new 20% cap), largest single alert type 48.9% of volume, self-comparisons 0.",
+  "fix_prs": "#1213 (J1, built): scripts/audit-alert-channel.mjs reads Notifier's delivery-log.jsonl for project ipodhan and asserts over a trailing 7-day window: no single alert type over 60% of volume, P1 alerts at or under 20%, zero source1==source2 self-comparisons; always prints the type/severity histogram; wired non-fatal into the existing VPS data-audit cron. J2 (a synthetic-alert drill proving the send path itself is alive) is NOT built -- it needs a Notifier routing/config change out of scope for this task, recorded separately as an owner question.",
+  "detection_check": "scripts/audit-alert-channel.mjs, run weekly via scripts/vps-data-audit-cron.sh step [7/7].",
+  "status": "guarded",
+  "spec_ref": []
+}

@@ -1,0 +1,10 @@
+{
+  "class_id": "an OCR page detector's memory-exhaustion allocation failure is re-raised as a generic runtime error, so a resource-ceiling OOM is misclassified as a content failure",
+  "feature": "scraper's OCR pipeline: memory_guard.is_memory_exhaustion + ocr_pages.read_page_with_fallback, called by the extractor, anchor reports (ocr_pdf_page_boxes) and corrigendum pages (ocr_pdf_pages)",
+  "symptom": "RapidOCR's text detector allocates memory proportional to the full page-image size (limit_type: min); under the extractor's RLIMIT_AS ceiling, a large scanned page cannot allocate inside onnxruntime. onnxruntime re-raises that allocation failure as a generic `ONNXRuntimeError 'inference failed'`, with the real `bad allocation` text surviving only on `__cause__`/`__context__`. A classifier that reads only the outer message therefore reports a content/parse failure (exit 1) instead of a resource-ceiling failure (exit 3), and the retry loop treats it as content -- so it retries the same oversized page at the same size every time and fails identically forever, blocking the whole document.",
+  "first_seen": "2026-09-25/26 -- #1046, PR #1195. Four staging HARD_FAILURE documents shared this exact stack: kanohar-electricals-ltd PROSPECTUS (6 retries), elevate-campuses-ltd RHP (8), swastika-infra-ltd DRHP (8), runwal-enterprises-ltd PRICE_BAND_AD (4).",
+  "fix_prs": "#1195: memory_guard.is_memory_exhaustion walks the __cause__/__context__ chain so a wrapped allocation failure is correctly classified; ocr_pages.read_page_with_fallback re-renders a failing page at progressively smaller long-edge sizes (2400px, then 1600px) before giving up, covering all three ocr_pages callers.",
+  "detection_check": "none yet named beyond the classifier fix itself; a nightly count of documents blocked with an OCR-classified memory-exhaustion cause, expected to fall to 0 after the fix deploys, would close the loop.",
+  "status": "guarded",
+  "spec_ref": []
+}
