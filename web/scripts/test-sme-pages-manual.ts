@@ -128,7 +128,7 @@ async function main() {
   const browser = await chromium.launch({ headless: false });
 
   try {
-    // Test all 6 pages
+    // Test all 5 pages (SME Reviews retired, OD-125/#167 - now 301s to /sme-ipos)
     results.push(await testPage(browser, 'SME Landing Page', `${BASE_URL}/sme-ipos`));
     results.push(await testPage(browser, 'SME Calendar', `${BASE_URL}/sme-ipo-calendar`));
     results.push(
@@ -136,7 +136,6 @@ async function main() {
     );
     results.push(await testPage(browser, 'SME Prospectus', `${BASE_URL}/sme-ipo-prospectus`));
     results.push(await testPage(browser, 'SME Listings', `${BASE_URL}/sme-ipo-listings`));
-    results.push(await testPage(browser, 'SME Reviews', `${BASE_URL}/sme-ipo-reviews`));
 
     // Generate report
     const report = generateReport(results);

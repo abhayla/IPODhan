@@ -399,8 +399,6 @@ async function run() {
     // (T-264 P3-5 / T-272 P2-3).
     const TITLE_ROUTES = {
       home: '/',
-      mainboardReviews: '/mainboard-ipo-reviews',
-      smeReviews: '/sme-ipo-reviews',
       mainboardListings: '/mainboard-ipo-listings',
       smeListings: '/sme-ipo-listings',
     };

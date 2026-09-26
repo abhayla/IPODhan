@@ -150,28 +150,6 @@ export type IPOPeer = IPO & {
 };
 
 /**
- * Review summary with aggregated statistics
- * Story 11.16: IPO Recommendations Summary Section
- */
-export interface ReviewSummary {
-  averageRating: number;
-  totalReviews: number;
-  recommendationBreakdown: {
-    apply: number;
-    subscribe: number;
-    avoid: number;
-    notRecommended: number;
-  };
-  sentimentAnalysis: {
-    positive: number;
-    negative: number;
-  };
-  topApplyReasons: string[];
-  topAvoidReasons: string[];
-  latestReviews: IPOReview[];
-}
-
-/**
  * IPO Detail Response
  * Complete IPO data with all relations for detail page (Story 4.1, 4.7, 4.10, 4.11, 11.10, 11.16)
  */
@@ -190,7 +168,6 @@ export interface IPODetailResponse {
   peers: IPOPeer[];
   ipoScore: IPOScore | null; // Story 4.7
   anchorInvestor: AnchorInvestor | null; // Story 11.10: Anchor investor details
-  reviewSummary: ReviewSummary | null; // Story 11.16: Review summary
   metadata: {
     lastUpdated: string;
   };

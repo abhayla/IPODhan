@@ -27,10 +27,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // fixing it — lane C's open slice — must not have its file touched by this
 // PR. Remove an entry the same day its PR lands; a stale entry here hides a
 // real regression the next time someone edits that file.
-//   scraper/src/jobs/ipo-reviews-job.ts — already fixed on lane C's branch
-//     fix/pm-c-item02-s3a-segment-honest-null (see issue #488); not yet
-//     merged to main at the time of this PR.
-const KNOWN_PENDING_EXEMPTIONS = new Set([join('scraper', 'src', 'jobs', 'ipo-reviews-job.ts')]);
+//   (2026-09-26, OD-125/#167: scraper/src/jobs/ipo-reviews-job.ts was
+//   retired, not fixed — the file no longer exists, so its exemption is
+//   removed rather than left dangling.)
+const KNOWN_PENDING_EXEMPTIONS = new Set([]);
 
 const SCAN_ROOTS = [
   'packages/shared/src',
