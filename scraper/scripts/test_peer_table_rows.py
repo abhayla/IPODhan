@@ -155,19 +155,20 @@ def test_a_single_peer_table_is_valid():
     assert result["peers"][0]["name"].startswith("Innovator")
 
 
-def test_a_table_with_no_divider_takes_the_first_row_as_the_issuer():
+def test_a_table_with_no_divider_finds_the_issuer_row_by_name():
     """#545: A-One Steels' DRHP (p150) prints no divider at all - the issuer's
     row first, its three comparators straight after. The old rule (no divider,
-    no peers) rejected a complete, correct table. The issuer is still never a
-    peer: it is the FIRST row, as in every prospectus measured."""
+    no peers) rejected a complete, correct table. Round 2: the issuer row is
+    recognised by the document's own company name, never by position alone."""
     table = [
         ["Name of Company", "Face Value", "Revenue from operations", "P/E"],
         ["Some Company Limited", "2.00", "4,569.71", "12.00"],
         ["Another Company Limited", "10.00", "2,275.15", "16.54"],
     ]
-    result = parse_peer_table(table)
+    result = parse_peer_table(table, "SOME COMPANY LIMITED")
     assert [p["name"] for p in result["peers"]] == ["Another Company Limited"]
     assert result["issuer"]["name"] == "Some Company Limited"
+    assert parse_peer_table(table)["peers"] == []
 
 
 def test_a_single_row_with_no_divider_yields_no_peers():

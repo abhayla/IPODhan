@@ -21,9 +21,11 @@ from a guess about how such tables "usually" look:
 
 import re
 
+from peer_row_groups import group_of, split_issuer_and_peers
 from peer_table_columns import (
     NAME,
     detect_header_row_count,
+    divider_listed_status,
     is_divider_row,
     is_placeholder,
     map_columns,
@@ -51,7 +53,7 @@ def _value(row, index):
     return text
 
 
-def parse_peer_table(table):
+def parse_peer_table(table, issuer_name=None):
     """Return ``{"issuer": record|None, "peers": [record, ...], "columns": {...}}``.
 
     Records are dicts keyed by canonical field name, with None for anything the
@@ -65,14 +67,15 @@ def parse_peer_table(table):
     value_indexes = [i for f, i in columns.items() if f != NAME and i is not None]
     first_value = min(value_indexes) if value_indexes else None
 
-    rows = []  # (record, after_divider)
-    seen_divider = False
+    rows = []  # (record, group) - group None above every divider
+    group = None
     any_divider = False
 
     for row in table[header_rows:]:
         if is_divider_row(row):
             # Everything after this line is a comparator. Before it, the issuer.
-            seen_divider = any_divider = True
+            group = group_of(divider_listed_status(row))
+            any_divider = True
             continue
 
         name = _row_name(row, name_index, first_value)
@@ -94,23 +97,9 @@ def parse_peer_table(table):
                 rows[-1][0][NAME] = "%s %s" % (rows[-1][0][NAME], name)
             continue
 
-        rows.append((record, seen_divider))
+        rows.append((record, group))
 
-    issuer = None
-    peers = []
-    if any_divider:
-        for record, after in rows:
-            if after:
-                peers.append(record)
-            elif issuer is None:
-                issuer = record
-    elif len(rows) >= 2:
-        # No divider row at all (A-One Steels DRHP p150, #545): the issuer's own
-        # row is still printed FIRST - every prospectus measured does - and the
-        # comparators follow it. Requiring the divider rejected a complete table.
-        issuer = rows[0][0]
-        peers = [record for record, _after in rows[1:]]
-
+    issuer, peers = split_issuer_and_peers(rows, any_divider, issuer_name)
     return {"issuer": issuer, "peers": peers, "columns": columns}
 
 

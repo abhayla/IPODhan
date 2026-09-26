@@ -24,6 +24,29 @@ export type PeerCompanyInsert = Omit<
   normalizedName: string;
 };
 
+/**
+ * #545 round 2. How a document's peer set meets rows another source already
+ * stored. Omitted = the original whole-set replace (the Chittorgarh path in
+ * data-persister.ts is unchanged).
+ */
+export interface PeerReplaceOptions {
+  /**
+   * A null (or absent) value in an incoming row is "this source printed
+   * nothing here", never "erase". The stored non-null value for the same row
+   * key is kept. `isListed` falls back to the stored value, then to true.
+   */
+  nullNeverOverwrites?: boolean;
+  /**
+   * The incoming set is NOT a complete replacement (it carries names only):
+   * rows it does not name are kept untouched, rows it names that already
+   * exist are left as stored, and only new row keys are inserted.
+   */
+  fillGapsOnly?: boolean;
+}
+
+/** The value columns a peer row carries; identity and write metadata excluded. */
+export const PEER_VALUE_COLUMNS = ['peRatio', 'eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio'] as const;
+
 export class PeerCompanyRepository {
   constructor(private db: NodePgDatabase<typeof schema>) {}
 
@@ -105,7 +128,11 @@ export class PeerCompanyRepository {
    * because the unit test that asserted the old wipe-on-empty behaviour
    * had to be updated to match.
    */
-  async replaceForIpo(ipoId: string, rows: PeerCompanyInsert[]): Promise<PeerCompany[]> {
+  async replaceForIpo(
+    ipoId: string,
+    rows: PeerCompanyInsert[],
+    options: PeerReplaceOptions = {}
+  ): Promise<PeerCompany[]> {
     if (rows.length === 0) return [];
 
     const byRowKey = new Map<string, PeerCompanyInsert>();
@@ -114,9 +141,41 @@ export class PeerCompanyRepository {
     }
     const deduped = [...byRowKey.values()];
 
+    if (!options.nullNeverOverwrites && !options.fillGapsOnly) {
+      return this.db.transaction(async (tx) => {
+        await tx.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, ipoId));
+        return tx.insert(schema.peerCompanies).values(deduped).returning();
+      });
+    }
+
+    // Read, merge and write in ONE transaction, so the stored rows the merge
+    // reads are the rows it replaces.
     return this.db.transaction(async (tx) => {
+      const stored = await tx
+        .select()
+        .from(schema.peerCompanies)
+        .where(eq(schema.peerCompanies.ipoId, ipoId));
+      const storedByKey = new Map(stored.map((row) => [row.normalizedName, row]));
+
+      if (options.fillGapsOnly) {
+        const fresh = deduped
+          .filter((row) => !storedByKey.has(row.normalizedName))
+          .map((row) => ({ ...row, isListed: row.isListed ?? true }));
+        if (fresh.length === 0) return [];
+        return tx.insert(schema.peerCompanies).values(fresh).returning();
+      }
+
+      const merged = deduped.map((row) => {
+        const prior = storedByKey.get(row.normalizedName);
+        const out: Record<string, unknown> = { ...row };
+        for (const col of PEER_VALUE_COLUMNS) {
+          if (out[col] === null || out[col] === undefined) out[col] = prior ? prior[col] : null;
+        }
+        if (typeof out.isListed !== 'boolean') out.isListed = prior ? prior.isListed : true;
+        return out as PeerCompanyInsert;
+      });
       await tx.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, ipoId));
-      return tx.insert(schema.peerCompanies).values(deduped).returning();
+      return tx.insert(schema.peerCompanies).values(merged).returning();
     });
   }
 }

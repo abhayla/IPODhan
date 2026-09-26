@@ -23,7 +23,8 @@ table exists.
 
 import re
 
-from peer_table_columns import is_divider_row
+from peer_row_groups import group_of, split_issuer_and_peers
+from peer_table_columns import divider_listed_status, is_divider_row
 
 _VALUE_TOKEN = re.compile(
     r"^(?:[(\-+]?[\d,]*\d(?:\.\d+)?%?\)?[*#]*|\[[●•.]?\][*#]*|n\.?a\.?[*#]*|-|nil)$", re.I
@@ -70,11 +71,11 @@ def _clean(name):
     return name.rstrip("*# ").strip()
 
 
-def parse_peer_text_rows(lines):
+def parse_peer_text_rows(lines, issuer_name=None):
     """Return ``{"issuer": record|None, "peers": [record, ...]}`` from the text
     lines of a located peer section. Records carry only ``name``."""
-    rows = []  # [name, after_divider]
-    seen_divider = False
+    rows = []  # [name, group] - group None above every divider
+    group = None
     any_divider = False
     extending = False
     for raw in lines:
@@ -82,13 +83,14 @@ def parse_peer_text_rows(lines):
         if not line:
             continue
         if is_divider_row([line]):
-            seen_divider = any_divider = True
+            group = group_of(divider_listed_status([line]))
+            any_divider = True
             extending = False
             continue
         split = _row_split(line)
         if split is not None:
             name = _LONE_LETTER.sub("", split[0])
-            rows.append([name, seen_divider])
+            rows.append([name, group])
             extending = True
             continue
         if extending and _is_tail(line):
@@ -98,16 +100,6 @@ def parse_peer_text_rows(lines):
             continue
         extending = False
 
-    records = [({"name": _clean(name)}, after) for name, after in rows if _clean(name)]
-    issuer = None
-    peers = []
-    if any_divider:
-        for record, after in records:
-            if after:
-                peers.append(record)
-            elif issuer is None:
-                issuer = record
-    elif len(records) >= 2:
-        issuer = records[0][0]
-        peers = [record for record, _after in records[1:]]
+    records = [({"name": _clean(name)}, grp) for name, grp in rows if _clean(name)]
+    issuer, peers = split_issuer_and_peers(records, any_divider, issuer_name)
     return {"issuer": issuer, "peers": peers}

@@ -79,7 +79,8 @@ _BASIC_OR_DILUTED = re.compile(r"^\s*\(?\s*(basic|dilut)", re.I)
 
 # "Listed and unlisted Peers" is German Green Steel's RHP p181 (#545).
 _DIVIDER = re.compile(
-    r"^\s*(listed\s+(?:and\s+unlisted\s+)?peers?|(?:listed\s+)?peer\s+group\s*:?)\s*$", re.I
+    r"^\s*((?:un)?listed\s+(?:and\s+unlisted\s+)?peers?\s*:?|(?:(?:un)?listed\s+)?peer\s+group\s*:?)\s*$",
+    re.I,
 )
 
 # Cells that are legitimately absent rather than missing: a value that waits on
@@ -359,6 +360,22 @@ def is_divider_row(row):
     """True for the `Listed peers` / `Peer Group:` separator."""
     joined = " ".join((c or "").strip() for c in row).strip()
     return bool(_DIVIDER.match(joined))
+
+
+def divider_listed_status(row):
+    """Whether the rows under this divider are listed companies.
+
+    True under `Listed Peers` / `Peer Group` (the ICDR basis-for-price section
+    compares LISTED industry peers), False under `Unlisted Peers`, and None
+    under a combined `Listed and unlisted Peers` divider, which does not say
+    which of its rows is which (German Green Steel RHP p181, #545).
+    """
+    joined = " ".join(" ".join((c or "").strip() for c in row).split()).lower()
+    if "listed and unlisted" in joined:
+        return None
+    if joined.startswith("unlisted"):
+        return False
+    return True
 
 
 def is_placeholder(value):

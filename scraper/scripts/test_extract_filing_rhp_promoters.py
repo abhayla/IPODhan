@@ -55,3 +55,10 @@ def test_no_promoter_line_is_a_named_null_not_a_guess():
     out = run(pages, "RHP", "synthetic", "MAINBOARD")
     field = out["fields"]["promoter_names"]
     assert field["value"] is None
+
+
+def test_promoter_names_with_ampersand_or_slash_are_kept():
+    # #545 round 2: a firm or joint promoter name was silently dropped.
+    from extract_filing import promoter_names_from_statement
+    assert promoter_names_from_statement("SUNIL JALLAN, JALLAN & SONS AND A/B HOLDINGS") == [
+        "Sunil Jallan", "Jallan & Sons", "A/B Holdings"]

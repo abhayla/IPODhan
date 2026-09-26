@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq, inArray, and } from 'drizzle-orm';
 import { Redis } from 'ioredis';
-import * as fs from 'fs';
+import { spawnSync } from 'child_process';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 // Relative imports, NOT the `@ipodhan/shared` alias — a worktree's
@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 // (same guard as field-plan-walk-real-writer.integration.test.ts and
 // peer-company-replace-atomicity.integration.test.ts).
 import * as schema from '../../../packages/shared/src/db/schema';
+import { rowKeyForName } from '../../../packages/shared/src/utils/company-name-normalizer';
 import { IPORepository } from '../../../packages/shared/src/repositories/ipo-repository';
 import { FieldSourcesRepository } from '../../../packages/shared/src/repositories/field-sources-repository';
 import { DataConflictsRepository } from '../../../packages/shared/src/repositories/data-conflicts-repository';
@@ -39,16 +40,15 @@ type DataConsolidationOrchestratorCtor =
  * REAL RHP extraction into `promoters` rows, `peer_companies` rows, and their
  * `field_sources` provenance.
  *
- * The extraction payload is never hand-typed. It is the RECORDED output of
- * `extract_filing.run()` (the Python extractor `filing-persister.ts` is fed
- * from in production) called against pages taken from TWO real, committed
- * fixtures for the same issuer's RHP — `a-one-steels-india-ltd-rhp-cover-
- * pages.json` (promoters, `test_extract_filing_rhp_promoters.py`) and
- * `a-one-steels-india-ltd-rhp-peer-pages.json` (peers,
- * `test_extract_filing_rhp_peers.py`) — concatenated so one `FilingExtraction`
- * envelope carries both fields from one real document, exactly as
- * `a-one-steels-india-ltd-rhp-promoters-peers-extraction.json` records
- * (regeneration command in its sibling `.meta.json`).
+ * The extraction payload is never hand-typed and never a recorded copy. It is
+ * produced AT TEST TIME by `extract_filing.run()` (the Python extractor
+ * `filing-persister.ts` is fed from in production) on pages from TWO real,
+ * committed fixtures for the same issuer's RHP — `a-one-steels-india-ltd-rhp-
+ * cover-pages.json` and `a-one-steels-india-ltd-rhp-peer-pages.json` —
+ * concatenated so one `FilingExtraction` envelope carries both fields. Round 2
+ * dropped the recorded copy: it went stale whenever the extractor changed, and
+ * it was one more identity-unchecked fixture. Needs `python` on PATH; skipped
+ * (never failed) without it, like stage-5-extract.test.ts arm B.
  *
  * Follows the REAL-orchestrator pattern of
  * field-plan-walk-real-writer.integration.test.ts (real Pool + real ioredis +
@@ -58,9 +58,9 @@ type DataConsolidationOrchestratorCtor =
  *
  * SKIPS CLEANLY when no database is configured.
  *
- * To run:
+ * To run (both flag states - prod runs with child consolidation OFF):
  *   DATABASE_URL=postgresql://ipodhan_app:<pw>@localhost:15432/ipodhan_test \
- *   REDIS_URL=redis://localhost:6379/15 \
+ *   REDIS_URL=redis://localhost:6379/15 ENABLE_CHILD_TABLE_CONSOLIDATION=false|true \
  *     npx vitest run -c vitest.integration.config.ts \
  *     tests/integration/rhp-promoters-peers-persist.integration.test.ts
  */
@@ -70,31 +70,60 @@ type DataConsolidationOrchestratorCtor =
 // reasoning as field-plan-walk-real-writer.integration.test.ts's top-of-file
 // comment. This file only ever imports those two modules dynamically, in
 // beforeAll, after these lines run.
-process.env.ENABLE_CHILD_TABLE_CONSOLIDATION = 'true';
+// Child consolidation defaults ON here; ENABLE_CHILD_TABLE_CONSOLIDATION=false
+// runs the file the way production runs (the flag is off on prod).
+const CHILD_CONSOLIDATION = (process.env.ENABLE_CHILD_TABLE_CONSOLIDATION ?? 'true') === 'true';
+process.env.ENABLE_CHILD_TABLE_CONSOLIDATION = String(CHILD_CONSOLIDATION);
 process.env.ENABLE_DATA_CONSOLIDATION = 'true';
 process.env.CONSOLIDATION_PERCENTAGE = '100';
 process.env.ENABLE_SOURCE_TRACKING = 'true';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const REDIS_URL = process.env.REDIS_URL;
-const SKIP_REASON = '#545: DATABASE_URL not set';
+// The interpreter that runs the real extractor. In CI a missing interpreter is
+// a FAILURE, never a skip: a skipped proof reads as a green one.
+const PYTHON = ['python3', 'python'].find(
+  (bin) => spawnSync(bin, ['--version'], { encoding: 'utf-8' }).status === 0
+);
+if (!PYTHON && process.env.CI) throw new Error('#545: no python on PATH - the persist proof needs the real extractor');
+const PYTHON_OK = Boolean(PYTHON);
 
 const IPO_ID = '00000000-0000-4000-8000-0000000545a1';
 const DOC_ID = '00000000-0000-4000-8000-0000000545d1';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FIXTURE_PATH = path.join(
-  __dirname,
-  '..',
-  'fixtures',
-  'extractor',
-  'a-one-steels-india-ltd-rhp-promoters-peers-extraction.json'
-);
+const SCRIPTS_DIR = path.join(__dirname, '..', '..', 'scripts');
+const FIXTURE_DIR = path.join(__dirname, '..', 'fixtures', 'extractor');
 
-/** The recorded, real extractor output — loaded fresh per test so a mutation never leaks. */
+// extract_filing.run() on the two real A-One Steels RHP fixtures (cover + peer pages).
+const EXTRACT_PY = [
+  'import json, sys',
+  'from extract_filing import run',
+  'd = sys.argv[1]',
+  "cover = json.load(open(d + '/a-one-steels-india-ltd-rhp-cover-pages.json', encoding='utf-8'))",
+  "peer = json.load(open(d + '/a-one-steels-india-ltd-rhp-peer-pages.json', encoding='utf-8'))",
+  "pages = [tuple(p) for p in cover] + [tuple(p) for p in peer['pages']]",
+  "tables = {int(k): v for k, v in peer['tables'].items()}",
+  "out = run(pages, 'RHP', 'a-one-steels-rhp', 'MAINBOARD', tables_for_page=lambda i: tables.get(i, []))",
+  'sys.stdout.write(json.dumps(out))',
+].join('\n');
+
+let extractionJson = '';
+
+function runRealExtractor(): string {
+  const res = spawnSync(PYTHON as string, ['-c', EXTRACT_PY, FIXTURE_DIR], {
+    cwd: SCRIPTS_DIR,
+    encoding: 'utf-8',
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (res.status !== 0) throw new Error(`extract_filing.run failed: ${res.stderr}`);
+  return res.stdout;
+}
+
+/** The real extractor's output - parsed fresh per test so a mutation never leaks. */
 function loadExtraction(): FilingExtraction {
-  const raw = fs.readFileSync(FIXTURE_PATH, 'utf-8');
-  return JSON.parse(raw) as FilingExtraction;
+  return JSON.parse(extractionJson) as FilingExtraction;
 }
 
 const EXPECTED_PROMOTERS = ['Sandeep Kumar', 'Sunil Jallan', 'Krishan Kumar Jalan'];
@@ -119,9 +148,12 @@ async function cleanup() {
   await db.delete(schema.ipos).where(inArray(schema.ipos.id, [IPO_ID]));
 }
 
-describe.skipIf(!DATABASE_URL)(`#545 RHP promoters + peers persist with provenance (${SKIP_REASON})`, () => {
+describe.skipIf(!DATABASE_URL || !PYTHON_OK)(
+  `#545 RHP promoters + peers persist with provenance (child consolidation ${CHILD_CONSOLIDATION ? 'on' : 'off'})`,
+  () => {
   beforeAll(async () => {
     if (!DATABASE_URL) return;
+    extractionJson = runRealExtractor();
     pool = new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' });
     const dbCheck = await pool.query('select current_database()');
     const currentDb = dbCheck.rows[0].current_database as string;
@@ -254,7 +286,7 @@ describe.skipIf(!DATABASE_URL)(`#545 RHP promoters + peers persist with provenan
     expect(peerRows.map((r) => r.companyName).sort()).toEqual([...EXPECTED_PEERS].sort());
   });
 
-  it('field_sources rows record source DOC (the offer document — scraperSourceForDocType) with the promoters/peer_companies table_name and row_key', async () => {
+  it.skipIf(!CHILD_CONSOLIDATION)('field_sources rows record source DOC (the offer document — scraperSourceForDocType) with the promoters/peer_companies table_name and row_key', async () => {
     const extraction = loadExtraction();
     await persistFilingExtraction(
       IPO_ID,
@@ -356,4 +388,75 @@ describe.skipIf(!DATABASE_URL)(`#545 RHP promoters + peers persist with provenan
     // load-bearing.
     expect(promoterRows.map((r) => r.name).sort()).not.toEqual([...EXPECTED_PROMOTERS].sort());
   });
-});
+
+  // ------------------------------------------------------------ #545 round 2
+  // Chittorgarh had already stored these peers WITH ratios. The RHP text path
+  // reads names only. Before round 2 the persister's whole-set replace deleted
+  // every stored row and re-inserted the names with null ratios.
+  const CHITTORGARH_ROWS = [
+    { companyName: 'MSP Steel and Power Limited', peRatio: '61.52', eps: '0.60', dilutedEps: '0.56', ronw: '3.28', nav: '18.18', pbvRatio: '1.10' },
+    { companyName: 'Kamdhenu Limited', peRatio: '14.57', eps: '2.78', dilutedEps: '2.72', ronw: '19.77', nav: '14.06', pbvRatio: '2.05' },
+  ];
+  const RATIO_COLS = ['peRatio', 'eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio'] as const;
+
+  async function seedChittorgarhPeers() {
+    await db.insert(schema.peerCompanies).values(
+      CHITTORGARH_ROWS.map((r) => ({
+        ipoId: IPO_ID,
+        ...r,
+        normalizedName: rowKeyForName(r.companyName) as string,
+        isListed: true,
+        dataSource: 'CHITTORGARH',
+        lastUpdated: new Date(),
+      })) as never
+    );
+  }
+
+  async function storedPeers() {
+    return db.select().from(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, IPO_ID));
+  }
+
+  it('a name-only DOC peer set never nulls a ratio another source stored, and never deletes its rows', async () => {
+    await seedChittorgarhPeers();
+    const extraction = loadExtraction();
+    const peers = (extraction.fields.peer_companies as unknown as { value: Record<string, unknown>[] }).value;
+    // The real payload IS name-only: the text path assigns no figure to a column.
+    expect(peers.every((p) => ['pe', 'eps_basic', 'eps_diluted', 'ronw_pct', 'nav', 'pb'].every((k) => p[k] == null))).toBe(true);
+
+    await persistFilingExtraction(IPO_ID, extraction, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+
+    const after = await storedPeers();
+    for (const seeded of CHITTORGARH_ROWS) {
+      const row = after.find((r) => r.companyName === seeded.companyName);
+      expect(row, seeded.companyName).toBeDefined();
+      for (const col of RATIO_COLS) {
+        expect(row![col], `${seeded.companyName}.${col}`).not.toBeNull();
+        expect(Number(row![col])).toBeCloseTo(Number(seeded[col]), 2);
+      }
+    }
+    // The document's peers Chittorgarh did not have are added (gap fill).
+    expect(after.map((r) => r.companyName)).toEqual(
+      expect.arrayContaining(['Jai Balaji Industries Ltd.', 'Shyam Metallics and Energy Ltd.'])
+    );
+  });
+
+  it('a DOC peer set WITH figures still wins where it printed a value, and a null in it keeps the stored value', async () => {
+    await seedChittorgarhPeers();
+    const extraction = loadExtraction();
+    const peers = (extraction.fields.peer_companies as unknown as { value: Record<string, unknown>[] }).value;
+    const msp = peers.find((p) => p.name === 'MSP Steel and Power Limited')!;
+    // A printed P/E, as a number: the persister's numOrNull takes numbers only
+    // (the ad path emits floats); every other column left empty.
+    msp.pe = 70.01;
+
+    await persistFilingExtraction(IPO_ID, extraction, { docType: 'RHP', documentId: DOC_ID, apply: true }, deps);
+
+    const row = (await storedPeers()).find((r) => r.companyName === 'MSP Steel and Power Limited')!;
+    expect(Number(row.peRatio)).toBeCloseTo(70.01, 2); // DRHP outranks CHITTORGARH
+    for (const col of ['eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio'] as const) {
+      expect(row[col], col).not.toBeNull();
+      expect(Number(row[col])).toBeCloseTo(Number(CHITTORGARH_ROWS[0][col]), 2);
+    }
+  });
+  }
+);

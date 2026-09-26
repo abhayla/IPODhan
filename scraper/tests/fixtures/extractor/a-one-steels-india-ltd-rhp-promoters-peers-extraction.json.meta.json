@@ -1,8 +1,0 @@
-{
-  "note": "#545 integration-test fixture. This is the RECORDED output of extract_filing.run() called with the pages from the two committed REAL fixtures for the same issuer/document (a-one-steels-india-ltd-rhp-cover-pages.json + a-one-steels-india-ltd-rhp-peer-pages.json), concatenated so one FilingExtraction envelope carries both `promoter_names` and `peer_companies` from a single real RHP. Regenerate with: cd scraper/scripts && python -c \"import json,sys; sys.path.insert(0,'.'); from extract_filing import run; cover=json.load(open('../tests/fixtures/extractor/a-one-steels-india-ltd-rhp-cover-pages.json',encoding='utf-8')); peer=json.load(open('../tests/fixtures/extractor/a-one-steels-india-ltd-rhp-peer-pages.json',encoding='utf-8')); pages=[tuple(p) for p in cover]+[tuple(p) for p in peer['pages']]; tables={int(k):v for k,v in peer['tables'].items()}; out=run(pages,'RHP','a-one-steels-combined','MAINBOARD',tables_for_page=lambda i: tables.get(i, [])); json.dump(out, open('../tests/fixtures/extractor/a-one-steels-india-ltd-rhp-promoters-peers-extraction.json','w',encoding='utf-8'), indent=2)\"",
-  "generatedFrom": [
-    "a-one-steels-india-ltd-rhp-cover-pages.json",
-    "a-one-steels-india-ltd-rhp-peer-pages.json"
-  ],
-  "generatedAt": "2026-09-26"
-}

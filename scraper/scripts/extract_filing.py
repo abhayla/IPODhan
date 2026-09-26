@@ -1035,7 +1035,7 @@ OUR_PROMOTERS_RX = re.compile(r"^\s*OUR PROMOTERS?\s*:", re.I)
 _PROMOTER_LIST_CONTINUES = re.compile(r"(,|\bAND)\s*$", re.I)
 
 # The cover statement sits on the first pages of every SEBI ICDR offer document.
-_COVER_PAGES = 5
+_PROMOTER_COVER_PAGES = 5
 
 
 def promoter_names_from_statement(raw):
@@ -1045,9 +1045,30 @@ def promoter_names_from_statement(raw):
     names = []
     for part in re.split(r",|\bAND\b", raw, flags=re.I):
         name = part.strip().strip(".").title()
-        if 3 <= len(name) <= 60 and re.match(r"^[A-Za-z][A-Za-z .'\-]+$", name):
+        # "&" and "/" are kept: a promoter can be a firm ("Jallan & Sons") or
+        # carry a joint name ("A/B Holdings"); dropping them lost the row (#545).
+        if 3 <= len(name) <= 60 and re.match(r"^[A-Za-z][A-Za-z .'&/\-]+$", name):
             names.append(name)
     return names
+
+
+# The cover prints the issuer's registered name on the line just above its CIN.
+_CIN_LINE_RX = re.compile(r"corporate\s+identity\s+number|\bCIN\s*[:\-]", re.I)
+_COVER_NAME_RX = re.compile(r"^[A-Z0-9][A-Z0-9 &.,'()\-]*\b(?:LIMITED|LTD\.?)\s*$")
+
+
+def read_cover_company_name(page_texts):
+    """The issuer's name as its own offer-document cover prints it, or None.
+
+    #545 round 2: the peer reader needs it to recognise the issuer's row in a
+    comparison table printed with no divider, instead of assuming row 1 is the
+    issuer."""
+    for _index, text in page_texts[:_PROMOTER_COVER_PAGES]:
+        lines = [ln.strip() for ln in (text or "").split("\n")]
+        for i, line in enumerate(lines):
+            if i and _CIN_LINE_RX.search(line) and _COVER_NAME_RX.match(lines[i - 1]):
+                return lines[i - 1]
+    return None
 
 
 def read_cover_promoters(page_texts):
@@ -1059,7 +1080,7 @@ def read_cover_promoters(page_texts):
     wrapped copy can never shorten the list another copy prints whole.
     """
     best, best_page = [], None
-    for index, text in page_texts[:_COVER_PAGES]:
+    for index, text in page_texts[:_PROMOTER_COVER_PAGES]:
         lines = (text or "").split("\n")
         for i, line in enumerate(lines):
             if not OUR_PROMOTERS_RX.match(line):
@@ -2743,20 +2764,35 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     # no table reader is supplied, so adding this cannot regress a field that
     # already worked.
     if tables_for_page is not None:
-        found, reason = peer_companies.extract_peer_companies(page_texts, tables_for_page)
+        found, reason = peer_companies.extract_peer_companies(
+            page_texts, tables_for_page, issuer_name=read_cover_company_name(page_texts))
         if found is None:
             # The reason names WHICH miss it was - absent, lookalike-only,
             # section-found-but-unreadable, or extraction failed with its cause.
             # "no peers" alone is unactionable.
             emit.null("peer_companies", reason)
         else:
-            emit.put(
-                "peer_companies",
-                found["peers"],
-                found["page"],
-                "peer_list_matches_printed_summary",
-                peer_companies.check_against_printed_summary(found["peers"], page_texts),
-            )
+            passed, detail = peer_companies.check_against_printed_summary(found["peers"], page_texts)
+            if passed is None:
+                # No printed summary: the list stands on the check that DID run
+                # (rows parsed from the located section), and the cross-check is
+                # recorded as not run - never as a pass (#545 round 2).
+                emit.put(
+                    "peer_companies",
+                    found["peers"],
+                    found["page"],
+                    "peer_rows_parsed_from_peer_section",
+                    (True, "%d peer row(s) parsed from page %d" % (len(found["peers"]), found["page"])),
+                )
+            else:
+                emit.put("peer_companies", found["peers"], found["page"],
+                         "peer_list_matches_printed_summary", (passed, detail))
+            emit.fields["peer_companies"]["cross_check"] = {
+                "name": "peer_list_matches_printed_summary",
+                "status": ("not_cross_checked" if passed is None
+                           else "passed" if passed else "failed"),
+                "detail": detail,
+            }
 
     # Item 8b slice 3a. The issuer's OWN ratio note (Companies Act Schedule III),
     # READ rather than recomputed - see financial_ratios.py's docstring for the

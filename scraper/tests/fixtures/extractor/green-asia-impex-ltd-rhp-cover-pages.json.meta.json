@@ -1,5 +1,7 @@
 {
-  "sourceUrl": "/var/www/ipodhan/shared/prospectus/staging/f0afbef2-789f-4076-805e-441164c07697/RHP-075585a1.pdf",
+  "sourceUrl": "https://nsearchives.nseindia.com/content/ipo/RHP_GREENASIA.zip",
+  "sourceUrlFrom": "ipodhan_staging documents.url (read-only, 2026-09-26)",
+  "storePath": "/var/www/ipodhan/shared/prospectus/staging/f0afbef2-789f-4076-805e-441164c07697/RHP-075585a1.pdf",
   "capturedAt": "2026-09-26",
   "ipoId": "green-asia-impex-ltd",
   "company": "Green Asia Impex",

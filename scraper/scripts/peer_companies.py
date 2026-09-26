@@ -80,7 +80,8 @@ def check_against_printed_summary(peers, page_texts):
     exact-match oracle would fail on a CORRECT parse, and a check that fails on
     correct output is a check somebody switches off.
 
-    Returns the ``(passed, detail)`` pair the emitter expects.
+    Returns ``(passed, detail)``: True / False when the document prints a
+    summary, None when it prints none (not cross-checked).
     """
     whole = "\n".join(t or "" for _i, t in page_texts)
     named = _SUMMARY_LINE.findall(whole)
@@ -92,17 +93,15 @@ def check_against_printed_summary(peers, page_texts):
 
     if not wanted:
         # No summary in the document, so there is nothing to cross-check
-        # against. Reported as NOT passed rather than as a pass: "we could not
-        # check" and "we checked and it was right" are different states, and
-        # collapsing them is how an unverified value acquires a clean mark.
-        #
-        # CHANGED #545: this returned False, and the extractor's Emitter NULLS a
-        # value whose check did not pass - so every prospectus that prints no
-        # highest/lowest summary (A-One Steels' DRHP, Green Asia Impex's RHP)
-        # lost a peer table it had read correctly. The absence is still stated
-        # in the detail; it is not a pass of the cross-check, it is the absence
-        # of one, and the list itself is kept.
-        return True, "peer summary absent - peer list not cross-checked against the document"
+        # against. `None` is the third state - NOT CROSS-CHECKED - and never a
+        # pass: "we could not check" and "we checked and it was right" are
+        # different facts, and collapsing them is how an unverified value
+        # acquires a clean mark (#545 round 2). The caller keeps the list under
+        # the check that did run (the rows parsed from the located section) and
+        # records this state beside it. Measured 2026-09-26: 0 of 4 real
+        # prospectuses print the summary (A-One Steels RHP + DRHP, German Green
+        # Steel RHP, Green Asia Impex RHP).
+        return None, "not_cross_checked: document prints no highest/lowest P/E summary naming a peer"
 
     have = set()
     for peer in peers:
@@ -127,7 +126,7 @@ def find_peer_section_page(page_texts):
     return None
 
 
-def _looks_like_the_peer_table(table):
+def _looks_like_the_peer_table(table, issuer_name=None):
     """Pick the peer table out of a page that holds several.
 
     Never by index: it is table 1 of 2 on one issuer and 1 of 11 on another. A
@@ -136,13 +135,13 @@ def _looks_like_the_peer_table(table):
     AND a divider was found AND rows followed it.
     """
     try:
-        parsed = parse_peer_table(table)
+        parsed = parse_peer_table(table, issuer_name)
     except Exception:
         return None
     return parsed if parsed["peers"] else None
 
 
-def extract_peer_companies(page_texts, tables_for_page):
+def extract_peer_companies(page_texts, tables_for_page, issuer_name=None):
     """Return ``(result, reason)``.
 
     On success `result` is ``{"page": index, "issuer": record, "peers": [...],
@@ -150,7 +149,9 @@ def extract_peer_companies(page_texts, tables_for_page):
     `reason` names WHICH miss it was.
 
     `tables_for_page(index)` returns that page's tables as lists of rows of
-    cells. The caller owns the PDF and its memory discipline.
+    cells. The caller owns the PDF and its memory discipline. `issuer_name` is
+    the offer document's own company name, used only to recognise the issuer's
+    row in a table printed with no divider (`peer_row_groups.py`).
     """
     page = find_peer_section_page(page_texts)
     if page is None:
@@ -169,8 +170,12 @@ def extract_peer_companies(page_texts, tables_for_page):
         lines.extend((by_index[p] or "").split("\n"))
     _heading, body = find_peer_table_section(lines)
     body_text = " ".join(" ".join(body).split())
-    if _NO_PEERS_STATEMENT.search(body_text):
-        return None, NO_LISTED_PEERS
+    # The "no listed peers" statement is read only AFTER parsing, as the reason
+    # for an empty result. A section can say "there are no listed companies
+    # engaged exclusively in our business; however, the following listed
+    # peers..." and then print them - checking the sentence first threw those
+    # rows away (#545 round 2).
+    states_no_peers = bool(_NO_PEERS_STATEMENT.search(body_text))
 
     any_table = False
     for p in span:
@@ -186,7 +191,7 @@ def extract_peer_companies(page_texts, tables_for_page):
             return None, "%s: %s" % (TABLE_EXTRACTION_FAILED, err)
         any_table = any_table or bool(tables)
         for table in tables:
-            parsed = _looks_like_the_peer_table(table)
+            parsed = _looks_like_the_peer_table(table, issuer_name)
             if parsed is not None:
                 return (
                     {
@@ -200,13 +205,15 @@ def extract_peer_companies(page_texts, tables_for_page):
 
     # No table gave rows: the body may be set as plain text with no rules
     # (A-One Steels RHP p221), where pdfplumber finds the header cells only.
-    parsed = parse_peer_text_rows(body)
+    parsed = parse_peer_text_rows(body, issuer_name)
     if parsed["peers"]:
         return (
             {"page": page, "issuer": parsed["issuer"], "peers": parsed["peers"], "columns": {}},
             None,
         )
 
+    if states_no_peers:
+        return None, NO_LISTED_PEERS
     if not any_table:
         # The section's heading is in the text but no table was extracted from
         # its page(s), and its text holds no company rows either. Measured on
