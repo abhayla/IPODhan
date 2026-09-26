@@ -33,7 +33,16 @@ import re
 
 # The note's own heading. The number varies by issuer (Prasol's is note 49), so
 # the digits are optional rather than matched.
-_NOTE_HEADING = re.compile(r"\bfinancial\s+ratios\b", re.I)
+#
+# #771: issuers title the same Schedule III note several ways. Measured on real
+# prospectuses: "49 Financial Ratios" (Prasol), "60 Key Financial Ratios"
+# (A-One Steels), "47 Ratio Analysis" (German Green Steel) and "Restated
+# Consolidated Statement of Ratios" (Green Asia Impex). The last is matched as
+# the exact phrase so the accounting-ratios statement ("Statement of Earnings
+# Per Share and Other Statutory Ratios") is not swept in.
+_NOTE_HEADING = re.compile(
+    r"\bfinancial\s+ratios\b|\bratio\s+analysis\b|\bstatement\s+of\s+ratios\b", re.I
+)
 
 # A row: <sr> <name> <numerator words> <denominator words> <value> <value> <variance%>
 #
@@ -41,11 +50,21 @@ _NOTE_HEADING = re.compile(r"\bfinancial\s+ratios\b", re.I)
 # applied to that span alone. Anchoring on the trailing variance percentage is
 # what makes the span unambiguous - the reason column that follows is free prose
 # of any length, so parsing from the end of the line is not reliable.
+#
+# #771 widened this from the one layout it was built on (Prasol) to the ones
+# measured on real prospectuses, without loosening what makes a line a ROW:
+#   - the serial is a digit ("1"), a letter ("a)", "(a)"), or absent (Green
+#     Asia prints the label on its own line and the values on an unnumbered
+#     "Current Ratio 1.16 1.13 1.08 2.66% 3.80%" line);
+#   - two OR MORE period values (German Green Steel prints three), still
+#     anchored on the first variance percentage after them, which may be
+#     parenthesised ("(8.10%)") or glued to the reason ("5.67%Less than 25%").
+# Values stay newest period first, so values[0] is still the one persisted.
 _ROW = re.compile(
-    r"^\s*\d+\s+(?P<name>Current\s+Ratio|Inventory\s+turnover\s+Ratio)\b"
+    r"^\s*(?:\d+\s+|\(?[a-z]\)\s*)?(?P<name>Current\s+Ratio|Inventory\s+turnover\s+Ratio)\b"
     r"(?P<mid>.*?)"
-    r"(?P<vals>(?:\s+-?\d[\d,]*\s*\.\s*\d+|\s+-?\d[\d,]*\.\d+){2})"
-    r"\s+(?P<var>-?[\d.]+\s*%)",
+    r"(?P<vals>(?:\s+-?\d[\d,]*\s*\.\s*\d+|\s+-?\d[\d,]*\.\d+){2,})"
+    r"\s+(?P<var>\(?-?[\d.]+\s*%)",
     re.I,
 )
 
@@ -118,7 +137,7 @@ def read_printed_ratios(page_texts):
                 continue
             key = _KEYS[" ".join(match.group("name").split()).lower()]
             values = _values(match.group("vals"))
-            if len(values) == 2:
+            if len(values) >= 2:
                 out.setdefault(key, []).extend(values)
     return out
 

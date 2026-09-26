@@ -1,0 +1,8 @@
+{
+  "sourceSha256": "2edac6b25883bc924a62879e3a00a83859ab74c33038741a97cb509f6303ad0e",
+  "capturedAt": "2026-09-26",
+  "ipoId": "german-green-steel-and-power",
+  "company": "German Green Steel and Power Limited",
+  "source": "staging document store (read-only scp), text layer by pdfplumber page.extract_text() - the same call the extractor makes",
+  "note": "RHP PDF page 440, note 47 'Ratio Analysis'. THREE periods per row and two variance columns ('1 Current Ratio Current Assets Current Liabilities 0.97 1.03 1.06 -6.38% (2.65)% -'); a two-value reader either misses the row or reads the OLDER pair (1.03, 1.06) as newest. Captured for #771: every one of these PDFs prints its current ratio and the reader returned ratio_row_not_in_note for all of them. Mangling preserved; text layer only, the PDF is not committed."
+}

@@ -155,3 +155,42 @@ def test_a_stray_ratio_row_elsewhere_is_not_swept_in():
     assert find_ratio_note_pages(stray) == [10]
     got = read_printed_ratios(stray)
     assert 9.99 not in got.get("current_ratio", []), got
+
+
+# --------------------------------------------------------------------- #771
+# Three more real prospectuses, three more layouts. Before #771 the reader was
+# built from Prasol alone (a digit serial, exactly two values, a "Financial
+# Ratios" heading) and returned `ratio_row_not_in_note` for every one of these,
+# although each prints its current ratio. The fixtures are the issuers' own
+# pages; the expected values are read off those pages by eye.
+
+
+def test_a_lettered_serial_and_a_glued_variance_are_read():
+    """A-One Steels: 'a) Current ratio (in times) ... 1.34 1.27 5.67%Less than 25%'."""
+    got = read_printed_ratios(pages("a-one-steels-key-financial-ratios.txt"))
+    assert got["current_ratio"][:2] == [1.34, 1.27], got
+    assert got["inventory_turnover"][:2] == [4.02, 4.37], got
+
+
+def test_three_periods_are_read_newest_first_not_the_older_pair():
+    """German Green Steel prints FY25, FY24, FY23 then two variance columns.
+    A two-value pattern either misses the row or takes (1.03, 1.06) - the
+    older pair - and publishes last year's ratio as this year's."""
+    got = read_printed_ratios(pages("german-green-steel-ratio-analysis.txt"))
+    assert got["current_ratio"][:3] == [0.97, 1.03, 1.06], got
+
+
+def test_a_statement_of_ratios_with_no_financial_ratios_heading_is_found():
+    """Green Asia Impex titles the note 'Statement of Ratios', puts the label
+    on its own line and the values on a later unnumbered line."""
+    found = find_ratio_note_pages(pages("green-asia-impex-statement-of-ratios.txt"))
+    assert 321 in found, found
+    got = read_printed_ratios(pages("green-asia-impex-statement-of-ratios.txt"))
+    assert got["current_ratio"][:3] == [1.16, 1.13, 1.08], got
+
+
+def test_the_accounting_ratios_statement_is_not_the_ratio_note():
+    """Green Asia's page 320 ('Statement of Earnings Per Share and Other
+    Statutory Ratios') carries EPS / RoNW / NAV and no current ratio."""
+    found = find_ratio_note_pages(pages("green-asia-impex-statement-of-ratios.txt"))
+    assert 320 not in found, found
