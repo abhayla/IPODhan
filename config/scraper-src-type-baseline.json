@@ -75,44 +75,9 @@
     "message": "Cannot find module '../../web/lib/cache/cache-keys' or its corresponding type declarations."
   },
   {
-    "file": "scraper/src/repositories/anchor-investor-repository.ts",
-    "code": "TS2345",
-    "message": "Argument of type '{ updatedAt: Date; ipoId?: string; bidDate?: Date | null; totalSharesOffered?: number; totalAmountRaised?: number; anchorInvestorsCount?: number; lockIn50PercentDate?: Date | null; lockInRemainingDate?: Date | null; investorList?: string; }' is not assignable to parameter of type '{ ipoId?: string | SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>; bidDate?: string | SQL<unknown> | PgColumn<ColumnBaseConfig<...>, {}, {}>; ... 8 more ...; investorList?: SQL<...> | ... 1 more ... | IndividualInvestor[]; }'."
-  },
-  {
-    "file": "scraper/src/repositories/anchor-investor-repository.ts",
-    "code": "TS2769",
-    "message": "No overload matches this call."
-  },
-  {
     "file": "scraper/src/scrapers/bse-detail-scraper.ts",
     "code": "TS2305",
     "message": "Module '\"@ipodhan/shared\"' has no exported member 'DocumentInsert'."
-  },
-  {
-    "file": "scraper/src/scrapers/financial-data-scraper.ts",
-    "code": "TS2339",
-    "message": "Property 'documentType' does not exist on type '{ type: \"DRHP\" | \"RHP\" | \"PROSPECTUS\" | \"CORRIGENDUM\" | \"ADDENDUM\" | \"PRICE_BAND_AD\" | \"ANCHOR_ALLOCATION_REPORT\" | \"BASIS_OF_ALLOTMENT_AD\" | \"RATIOS_BASIS_ISSUE_PRICE\" | \"BIDDING_CENTERS\" | ... 4 more ... | \"ASBA_PROCESSING_CIRCULAR\"; ... 25 more ...; zipUnresolvedReason: string; }'."
-  },
-  {
-    "file": "scraper/src/scrapers/financial-data-scraper.ts",
-    "code": "TS2339",
-    "message": "Property 'documentType' does not exist on type '{ type: \"DRHP\" | \"RHP\" | \"PROSPECTUS\" | \"CORRIGENDUM\" | \"ADDENDUM\" | \"PRICE_BAND_AD\" | \"ANCHOR_ALLOCATION_REPORT\" | \"BASIS_OF_ALLOTMENT_AD\" | \"RATIOS_BASIS_ISSUE_PRICE\" | \"BIDDING_CENTERS\" | ... 4 more ... | \"ASBA_PROCESSING_CIRCULAR\"; ... 25 more ...; zipUnresolvedReason: string; }'."
-  },
-  {
-    "file": "scraper/src/scrapers/financial-data-scraper.ts",
-    "code": "TS2339",
-    "message": "Property 'documentType' does not exist on type '{ type: \"DRHP\" | \"RHP\" | \"PROSPECTUS\" | \"CORRIGENDUM\" | \"ADDENDUM\" | \"PRICE_BAND_AD\" | \"ANCHOR_ALLOCATION_REPORT\" | \"BASIS_OF_ALLOTMENT_AD\" | \"RATIOS_BASIS_ISSUE_PRICE\" | \"BIDDING_CENTERS\" | ... 4 more ... | \"ASBA_PROCESSING_CIRCULAR\"; ... 25 more ...; zipUnresolvedReason: string; }'."
-  },
-  {
-    "file": "scraper/src/scrapers/financial-data-scraper.ts",
-    "code": "TS2339",
-    "message": "Property 'documentUrl' does not exist on type '{ type: \"DRHP\" | \"RHP\" | \"PROSPECTUS\" | \"CORRIGENDUM\" | \"ADDENDUM\" | \"PRICE_BAND_AD\" | \"ANCHOR_ALLOCATION_REPORT\" | \"BASIS_OF_ALLOTMENT_AD\" | \"RATIOS_BASIS_ISSUE_PRICE\" | \"BIDDING_CENTERS\" | ... 4 more ... | \"ASBA_PROCESSING_CIRCULAR\"; ... 25 more ...; zipUnresolvedReason: string; }'."
-  },
-  {
-    "file": "scraper/src/scrapers/financial-data-scraper.ts",
-    "code": "TS2724",
-    "message": "'\"@ipodhan/shared\"' has no exported member named 'FinancialDataInsert'. Did you mean 'FinancialData'?"
   },
   {
     "file": "scraper/src/scrapers/ipo-alerts-fallback-orchestrator-v2.ts",
@@ -123,36 +88,6 @@
     "file": "scraper/src/scrapers/ipo-alerts-fallback-orchestrator-v2.ts",
     "code": "TS2415",
     "message": "Class 'IPOAlertsFallbackOrchestratorV2' incorrectly extends base class 'BaseScraperOrchestrator<{ companyName: string; offeringType: \"IPO\" | \"FPO\" | \"RIGHTS\" | \"OFS\" | \"IPP\" | \"QIP\" | \"PREFERENTIAL\" | \"NCD\" | \"BONDS\" | \"INVITS\" | \"REITS\" | \"BUYBACK\" | \"DELISTING\" | \"TENDER\"; ... 20 more ...; sourceKeys?: { ...; }[]; }, never>'."
-  },
-  {
-    "file": "scraper/src/scrapers/objectives-scraper.ts",
-    "code": "TS2339",
-    "message": "Property 'documentType' does not exist on type '{ type: \"DRHP\" | \"RHP\" | \"PROSPECTUS\" | \"CORRIGENDUM\" | \"ADDENDUM\" | \"PRICE_BAND_AD\" | \"ANCHOR_ALLOCATION_REPORT\" | \"BASIS_OF_ALLOTMENT_AD\" | \"RATIOS_BASIS_ISSUE_PRICE\" | \"BIDDING_CENTERS\" | ... 4 more ... | \"ASBA_PROCESSING_CIRCULAR\"; ... 25 more ...; zipUnresolvedReason: string; }'."
-  },
-  {
-    "file": "scraper/src/scrapers/objectives-scraper.ts",
-    "code": "TS2339",
-    "message": "Property 'documentType' does not exist on type '{ type: \"DRHP\" | \"RHP\" | \"PROSPECTUS\" | \"CORRIGENDUM\" | \"ADDENDUM\" | \"PRICE_BAND_AD\" | \"ANCHOR_ALLOCATION_REPORT\" | \"BASIS_OF_ALLOTMENT_AD\" | \"RATIOS_BASIS_ISSUE_PRICE\" | \"BIDDING_CENTERS\" | ... 4 more ... | \"ASBA_PROCESSING_CIRCULAR\"; ... 25 more ...; zipUnresolvedReason: string; }'."
-  },
-  {
-    "file": "scraper/src/scrapers/objectives-scraper.ts",
-    "code": "TS2339",
-    "message": "Property 'documentType' does not exist on type '{ type: \"DRHP\" | \"RHP\" | \"PROSPECTUS\" | \"CORRIGENDUM\" | \"ADDENDUM\" | \"PRICE_BAND_AD\" | \"ANCHOR_ALLOCATION_REPORT\" | \"BASIS_OF_ALLOTMENT_AD\" | \"RATIOS_BASIS_ISSUE_PRICE\" | \"BIDDING_CENTERS\" | ... 4 more ... | \"ASBA_PROCESSING_CIRCULAR\"; ... 25 more ...; zipUnresolvedReason: string; }'."
-  },
-  {
-    "file": "scraper/src/scrapers/objectives-scraper.ts",
-    "code": "TS2339",
-    "message": "Property 'documentUrl' does not exist on type '{ type: \"DRHP\" | \"RHP\" | \"PROSPECTUS\" | \"CORRIGENDUM\" | \"ADDENDUM\" | \"PRICE_BAND_AD\" | \"ANCHOR_ALLOCATION_REPORT\" | \"BASIS_OF_ALLOTMENT_AD\" | \"RATIOS_BASIS_ISSUE_PRICE\" | \"BIDDING_CENTERS\" | ... 4 more ... | \"ASBA_PROCESSING_CIRCULAR\"; ... 25 more ...; zipUnresolvedReason: string; }'."
-  },
-  {
-    "file": "scraper/src/scrapers/peer-companies-scraper.ts",
-    "code": "TS2339",
-    "message": "Property 'dataSource' does not exist on type 'PeerMetrics'."
-  },
-  {
-    "file": "scraper/src/scrapers/peer-companies-scraper.ts",
-    "code": "TS2353",
-    "message": "Object literal may only specify known properties, and 'maxRetries' does not exist in type 'RetryOptions'."
   },
   {
     "file": "scraper/src/scripts/comprehensive-verification.ts",
@@ -293,61 +228,6 @@
     "file": "scraper/src/services/data-merger.ts",
     "code": "TS2339",
     "message": "Property 'category' does not exist on type 'IPOWithSources'."
-  },
-  {
-    "file": "scraper/src/services/data-persister.ts",
-    "code": "TS2345",
-    "message": "Argument of type 'string' is not assignable to parameter of type 'number'."
-  },
-  {
-    "file": "scraper/src/services/data-persister.ts",
-    "code": "TS2724",
-    "message": "'\"@ipodhan/shared\"' has no exported member named 'FinancialDataInsert'. Did you mean 'FinancialData'?"
-  },
-  {
-    "file": "scraper/src/services/filing-persister.ts",
-    "code": "TS2339",
-    "message": "Property 'eps_basic' does not exist on type '{ companyName: string; key: string; }'."
-  },
-  {
-    "file": "scraper/src/services/filing-persister.ts",
-    "code": "TS2339",
-    "message": "Property 'eps_diluted' does not exist on type '{ companyName: string; key: string; }'."
-  },
-  {
-    "file": "scraper/src/services/filing-persister.ts",
-    "code": "TS2339",
-    "message": "Property 'is_listed' does not exist on type '{ companyName: string; key: string; }'."
-  },
-  {
-    "file": "scraper/src/services/filing-persister.ts",
-    "code": "TS2339",
-    "message": "Property 'is_listed' does not exist on type '{ companyName: string; key: string; }'."
-  },
-  {
-    "file": "scraper/src/services/filing-persister.ts",
-    "code": "TS2339",
-    "message": "Property 'nav' does not exist on type '{ companyName: string; key: string; }'."
-  },
-  {
-    "file": "scraper/src/services/filing-persister.ts",
-    "code": "TS2339",
-    "message": "Property 'pb' does not exist on type '{ companyName: string; key: string; }'."
-  },
-  {
-    "file": "scraper/src/services/filing-persister.ts",
-    "code": "TS2339",
-    "message": "Property 'pe' does not exist on type '{ companyName: string; key: string; }'."
-  },
-  {
-    "file": "scraper/src/services/filing-persister.ts",
-    "code": "TS2339",
-    "message": "Property 'ronw_pct' does not exist on type '{ companyName: string; key: string; }'."
-  },
-  {
-    "file": "scraper/src/services/in-memory-document-fetch-state-store.ts",
-    "code": "TS2741",
-    "message": "Property 'attemptedAtStage' is missing in type '{ id: `${string}-${string}-${string}-${string}-${string}`; ipoId: string; docType: string; state: \"WANTED\"; documentId: null; attempts: number; lastAttemptAt: null; nextRetryAt: null; lastAttempt: null; firstSeenAt: Date; ... 5 more ...; updatedAt: Date; }' but required in type 'DocumentFetchStateRow'."
   },
   {
     "file": "scraper/src/tests/unit/base-scraper-orchestrator.test.ts",

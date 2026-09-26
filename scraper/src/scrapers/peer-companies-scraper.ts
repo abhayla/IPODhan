@@ -38,6 +38,7 @@ export interface PeerMetrics {
   ronw?: number;
   nav?: number;
   pbvRatio?: number;
+  dataSource?: 'MONEYCONTROL' | 'SCREENER' | 'NSE' | 'CHITTORGARH';
 }
 
 /**
@@ -230,7 +231,7 @@ async function scrapePeerMetricsFromScreener(symbol: string): Promise<PeerMetric
       }
     });
 
-    metrics.dataSource = 'SCREENER' as any;
+    metrics.dataSource = 'SCREENER';
     return metrics;
 
   } catch (error: any) {
@@ -262,9 +263,16 @@ async function fetchWithRetry(url: string): Promise<string> {
       return response.data;
     },
     {
-      maxRetries: 3,
-      initialDelay: 1000,
-      backoffMultiplier: 2,
+      // #434: these option keys never matched `RetryOptions` (maxAttempts/
+      // delayMs/exponentialBackoff), so they were silently dropped by the
+      // object-literal excess-property check having nowhere to apply (the
+      // call compiled only because this file was outside the type-check
+      // gate) and every call ran on withRetry's defaults. Renamed to the
+      // real keys; the values (3 attempts, 1000ms, doubling backoff) match
+      // those defaults exactly, so retry behaviour is unchanged.
+      maxAttempts: 3,
+      delayMs: 1000,
+      exponentialBackoff: true,
       onRetry: (attempt, error) => {
         logger.warn(`[Peer Companies] Retry attempt ${attempt} for ${url}: ${error.message}`);
       }

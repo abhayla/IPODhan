@@ -216,7 +216,10 @@ export async function run(
   const assertDb = overrides.assertConnectedDatabase ?? assertConnectedDatabase;
 
   const ipoArg = arg('ipo');
-  const docType = arg('doc-type') as FilingDocType | undefined;
+  // 'ANCHOR_ALLOCATION_REPORT' is a CLI-only sentinel selecting anchorMode
+  // below — never passed to `persistFiling`, which is why `FilingDocType`
+  // (the actual doc types that service persists) doesn't carry it (#434).
+  const docType = arg('doc-type') as FilingDocType | 'ANCHOR_ALLOCATION_REPORT' | undefined;
   const jsonPath = arg('json');
   const apply = argv.includes('--apply');
   const expectDb = arg('expect-db');

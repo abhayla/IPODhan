@@ -2510,8 +2510,7 @@ export async function createIPOReviews(
       );
 
       return createdCount + updatedCount;
-    },
-    `Create IPO reviews for IPO: ${ipoId}`
+    }
   );
 
   const duration = Date.now() - startTime;

@@ -34,13 +34,21 @@ import { sanitizeLeadManagers } from '../src/utils/validators.js';
 import { parseBseParties } from '../src/services/bse-party-parser.js';
 import { recordDiscoveredLeadManagers } from '../src/services/data-persister.js';
 import { db, resolveDiscreteDbParams } from '@ipodhan/shared/db';
+import { getRedisClient, IPORepository } from '@ipodhan/shared';
 import { openRepairDb, writeLedgerFile, type ExecuteLike } from './lib/repair-tool.js';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
 // Importing `db` above already runs `configureUtcTimestampParsing()` at
 // module load (packages/shared/src/db/index.ts). Writes route through
-// `recordDiscoveredLeadManagers` (data-persister.ts) — no IPORepository/redis
-// needed here (that door owns its own field_sources + cache concerns).
+// `recordDiscoveredLeadManagers` (data-persister.ts), which needs a
+// `Pick<IPORepository, 'invalidateIpoCache'>` (T-513/#419) to clear the
+// cache after a durable write — the comment this replaced ("no
+// IPORepository/redis needed here") predates that signature change (#434:
+// the call below was passing `row.id` positionally into the `ipoRepository`
+// param, `rawNames` into `ipoId`, `'BSE'` into `names`, leaving `source`
+// undefined — never worked). `ipoRepository` is constructed lazily, same
+// discipline as `getPool()` below, so importing this file for its pure
+// helpers never opens a Redis connection.
 
 const APPLY = process.argv.includes('--apply');
 const ALLOW_PROD = process.argv.includes('--allow-prod');
@@ -79,6 +87,16 @@ const pool = new Proxy({} as Pool, {
     return typeof value === 'function' ? value.bind(real) : value;
   },
 });
+
+// Same lazy discipline as getPool() above: only constructed when APPLY
+// actually calls recordDiscoveredLeadManagers, never on a pure-helper import.
+let _ipoRepository: IPORepository | undefined;
+function getIpoRepository(): IPORepository {
+  if (!_ipoRepository) {
+    _ipoRepository = new IPORepository(db, getRedisClient());
+  }
+  return _ipoRepository;
+}
 
 // `db` (the shared drizzle handle, same DATABASE_HOST/PORT/NAME env as `pool`
 // below) already implements ExecuteLike's `.execute(sql\`...\`)` natively —
@@ -167,7 +185,12 @@ async function main() {
       // guard is evaluated by Postgres inside the UPDATE, so a concurrent
       // scraper cycle's write always wins over this repair — no separate
       // pre-read needed here.
-      const { written: didWrite } = await recordDiscoveredLeadManagers(row.id, rawNames, 'BSE');
+      const { written: didWrite } = await recordDiscoveredLeadManagers(
+        getIpoRepository(),
+        row.id as string,
+        rawNames,
+        'BSE'
+      );
       if (didWrite) written++;
       else console.log(`    (no-op: ${row.slug}.lead_managers was filled concurrently — write-once guard held)`);
     }

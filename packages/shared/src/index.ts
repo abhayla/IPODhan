@@ -54,7 +54,9 @@ export type {
   HistoricalIPOResponse,
   IPOInsert,
   SubscriptionInsert,
-  GMPRecordInsert
+  GMPRecordInsert,
+  FinancialData,
+  FinancialDataInsert
 } from './repositories/types';
 // Export all types (includes entity types and domain types)
 export * from './types/index';

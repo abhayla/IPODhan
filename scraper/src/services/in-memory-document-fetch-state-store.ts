@@ -46,6 +46,7 @@ export class InMemoryDocumentFetchStateStore implements IDocumentFetchStateStore
       documentId: null,
       attempts: 0,
       lastAttemptAt: null,
+      attemptedAtStage: null,
       nextRetryAt: null,
       lastAttempt: null,
       firstSeenAt: now,

@@ -8,8 +8,10 @@
 
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, type InferInsertModel } from 'drizzle-orm';
 import { logger } from '../utils/logger';
+
+type AnchorInvestorsInsert = InferInsertModel<typeof schema.anchorInvestors>;
 
 /**
  * Data structure for creating anchor investor record
@@ -54,9 +56,16 @@ export class AnchorInvestorRepository {
    */
   async create(data: NewAnchorInvestor) {
     try {
+      // The domain `NewAnchorInvestor` shape (Date objects, a JSON-stringified
+      // `investorList`) has always matched what callers pass and what
+      // node-postgres's driver accepts for these `date`/`jsonb` columns at
+      // runtime; drizzle's own inferred insert type is narrower (string-mode
+      // dates, IndividualInvestor[]) and only surfaces once this file is
+      // type-checked at all (#434). No behaviour change — same object, same
+      // runtime call.
       const [anchorInvestor] = await this.db
         .insert(schema.anchorInvestors)
-        .values(data)
+        .values(data as unknown as AnchorInvestorsInsert)
         .returning();
 
       logger.info(`[AnchorInvestorRepository] Created anchor investor record for IPO ${data.ipoId}`);
@@ -72,12 +81,13 @@ export class AnchorInvestorRepository {
    */
   async update(id: string, data: Partial<NewAnchorInvestor>) {
     try {
+      // Same domain-vs-drizzle-inferred shape gap as .create() above.
       const [updated] = await this.db
         .update(schema.anchorInvestors)
         .set({
           ...data,
           updatedAt: new Date()
-        })
+        } as unknown as Partial<AnchorInvestorsInsert>)
         .where(eq(schema.anchorInvestors.id, id))
         .returning();
 

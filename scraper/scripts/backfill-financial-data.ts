@@ -83,9 +83,9 @@ async function getIPOsForBackfill(
     const documents = await documentRepository.findByIPO(ipo.id);
     const hasDRHP = documents.some(
       (doc) =>
-        doc.documentType === 'DRHP' ||
-        doc.documentType === 'RHP' ||
-        doc.documentType === 'PROSPECTUS'
+        doc.type === 'DRHP' ||
+        doc.type === 'RHP' ||
+        doc.type === 'PROSPECTUS'
     );
 
     if (!hasDRHP) {

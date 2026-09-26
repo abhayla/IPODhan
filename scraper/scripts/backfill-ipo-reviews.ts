@@ -115,6 +115,10 @@ export async function main() {
     // db is already imported from @ipodhan/shared
 
     // Get IPOs to process
+    // `.$dynamic()` makes the builder reassignable (T-1108/#434 class): without
+    // it, `query = query.where(...)` narrows to a type incompatible with the
+    // original `let query =` declaration (same fix as backfill-anchor-investors.ts
+    // / backfill-objectives.ts).
     let query = db
       .select({
         id: schema.ipos.id,
@@ -123,7 +127,8 @@ export async function main() {
         status: schema.ipos.status,
         segment: schema.ipos.segment,
       })
-      .from(schema.ipos);
+      .from(schema.ipos)
+      .$dynamic();
 
     query = query.where(and(...buildIpoReviewsConditions(options)));
 
