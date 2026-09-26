@@ -830,18 +830,19 @@ async function main() {
  * `ipos:history:*` pattern keys stale — a repaired issue_size could still
  * render its OLD value on the listing/search pages after a "fixed" write.
  * Routes through the scraper's own `invalidateIPOCaches` (the canonical set
- * for detail/slug/list/search/history) for everything it covers, then drops
- * `ipo:id:<id>` directly — that key is NOT one `invalidateIPOCaches` clears
- * (it only takes a slug), so this backfill (which has both slug and id from
- * its `ipos` row) still has to own it.
+ * for id/slug/detail/list/search/history) for everything it covers.
+ *
+ * #551 round 2: `invalidateIPOCaches` now takes the ipo id directly (it used
+ * to only take a slug and never cleared `ipo:id:<id>` at all — the key
+ * `IPORepository.findById()` actually caches under), so this backfill no
+ * longer has to drop that key itself on top of the call.
  */
 export async function dropIpoCacheKeys(
   redis: { del: (...keys: string[]) => Promise<unknown> },
   slug: string,
   id: string
 ): Promise<void> {
-  await invalidateIPOCaches(redis as unknown as Parameters<typeof invalidateIPOCaches>[0], slug);
-  await redis.del(`ipo:id:${id}`);
+  await invalidateIPOCaches(redis as unknown as Parameters<typeof invalidateIPOCaches>[0], id, slug);
 }
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;

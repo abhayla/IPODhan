@@ -1,38 +1,54 @@
 import type Redis from 'ioredis';
 import logger from '../utils/logger.js';
+import { getIPOInvalidationKeys } from '@ipodhan/shared/cache/cache-keys';
 
 /**
- * Invalidate IPO-related cache keys
+ * Invalidate IPO-related cache keys.
+ *
+ * #551 round 2: this used to take only a slug and hand-roll `ipo:detail:
+ * <slug>` (a key nothing populates) — it never cleared `ipo:id:<id>`, the key
+ * `IPORepository.findById()` actually caches under, because it never took an
+ * id at all. Its four scraper/scripts callers each hold the real IPO row
+ * (`.id` and `.slug`) already. Now derives its EXACT keys from the shared
+ * `getIPOInvalidationKeys` SSOT (same generators the readers use) so this
+ * module can never drift from the web/packages-shared copy again — but keeps
+ * its own SCAN-based `deleteKeysByPattern` for the pattern keys (this file's
+ * whole reason to exist over the web/shared modules, which use blocking
+ * `KEYS`) and its extra `ipos:history:*` pattern, which `getIPOInvalidationKeys`
+ * does not cover.
  * @param redis - Redis client instance
+ * @param ipoId - IPO id for targeted invalidation (required — see above)
  * @param slug - IPO slug for targeted invalidation
  */
 export async function invalidateIPOCaches(
   redis: Redis,
+  ipoId: string,
   slug: string
 ): Promise<void> {
   try {
-    logger.debug({ slug }, 'Invalidating IPO caches');
+    logger.debug({ ipoId, slug }, 'Invalidating IPO caches');
 
-    const keysToDelete: string[] = [
-      `ipo:detail:${slug}`,
-      `ipo:slug:${slug}`,
-    ];
+    const entries = getIPOInvalidationKeys(ipoId, slug);
+    const exact = entries.filter((k) => !k.includes('*'));
+    const patterns = entries.filter((k) => k.includes('*'));
 
     // Delete specific keys
-    if (keysToDelete.length > 0) {
-      await redis.del(...keysToDelete);
+    if (exact.length > 0) {
+      await redis.del(...exact);
     }
 
-    // Delete pattern-based keys (all IPO lists and searches)
-    await deleteKeysByPattern(redis, 'ipo:list:*');
-    await deleteKeysByPattern(redis, 'ipo:search:*');
+    // Delete pattern-based keys (all IPO lists and searches), plus the
+    // history-page pattern getIPOInvalidationKeys doesn't know about.
+    for (const pattern of patterns) {
+      await deleteKeysByPattern(redis, pattern);
+    }
     await deleteKeysByPattern(redis, 'ipos:history:*');
 
-    logger.debug({ slug, keysDeleted: keysToDelete.length }, 'IPO caches invalidated');
+    logger.debug({ ipoId, slug, exactKeysDeleted: exact.length }, 'IPO caches invalidated');
   } catch (error) {
     // Log error but don't crash scraper (cache miss is acceptable)
     logger.error(
-      { error: error instanceof Error ? error.message : String(error), slug },
+      { error: error instanceof Error ? error.message : String(error), ipoId, slug },
       'Failed to invalidate IPO caches'
     );
   }

@@ -84,7 +84,7 @@ async function main() {
   const redis = getRedisClient();
   const documentRepository = new DocumentRepository(db, redis);
 
-  const touchedSlugs = new Set<string>();
+  const touchedBySlug = new Map<string, string>(); // slug -> ipoId
   const touchedIpoIds = new Set<string>();
   for (const r of candidates) {
     await db.update(documents).set({ type: RETYPE_TO }).where(eq(documents.id, r.id));
@@ -95,12 +95,15 @@ async function main() {
     // on the repository EXACTLY for a raw-write caller like this one.
     await documentRepository.invalidateForIpo(r.ipoId);
     touchedIpoIds.add(r.ipoId);
-    if (r.slug) touchedSlugs.add(r.slug);
+    // #551 round 2: invalidateIPOCaches now requires the ipo id (it used to
+    // clear ipo:detail:<slug> and never touched ipo:id:<id> at all), so slug
+    // and ipoId are paired here instead of collected into two plain Sets.
+    if (r.slug) touchedBySlug.set(r.slug, r.ipoId);
   }
-  for (const slug of touchedSlugs) {
-    await invalidateIPOCaches(redis, slug);
+  for (const [slug, ipoId] of touchedBySlug) {
+    await invalidateIPOCaches(redis, ipoId, slug);
   }
-  console.log(`Retyped ${candidates.length} row(s), invalidated documents cache for ${touchedIpoIds.size} IPO(s), ipo cache for ${touchedSlugs.size} IPO(s).`);
+  console.log(`Retyped ${candidates.length} row(s), invalidated documents cache for ${touchedIpoIds.size} IPO(s), ipo cache for ${touchedBySlug.size} IPO(s).`);
 }
 
 if (process.argv[1] && process.argv[1].endsWith('retype-ratios-documents.ts')) {

@@ -370,11 +370,11 @@ async function backfillPriceBands() {
           const guard = guardCacheInvalidation({
             dbName,
             toolName: 'backfill-price-bands',
-            keys: [`ipo:detail:${dbIPO.slug}`, `ipo:slug:${dbIPO.slug}`, 'ipo:list:*', 'ipo:search:*', 'ipos:history:*'],
+            keys: [`ipo:detail:${dbIPO.slug}`, `ipo:slug:${dbIPO.slug}`, `ipo:id:${dbIPO.id}`, 'ipo:list:*', 'ipo:search:*', 'ipos:history:*'],
           });
           if (!guard.blocked) {
             const redis = getRedisClient();
-            await invalidateIPOCaches(redis, dbIPO.slug);
+            await invalidateIPOCaches(redis, dbIPO.id, dbIPO.slug);
           }
         } catch (cacheError) {
           logger.warn(

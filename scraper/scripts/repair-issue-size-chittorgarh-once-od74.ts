@@ -408,7 +408,7 @@ async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[], ipoIds
       }
       counts.writes++;
       ledger.push({ undo: 'od74', id: r.id, slug: r.slug, wrote: String(printed.rupees), before });
-      await dropCache(r.slug);
+      await dropCache(r.slug, r.id);
     } catch (e) {
       counts.failures++;
       console.error(`    WRITE FAILED ${r.slug}: ${e instanceof Error ? e.message : e}`);
@@ -438,7 +438,7 @@ async function runZeros(APPLY: boolean, ledger: unknown[], ipoIds: readonly stri
       ledger.push({ ...o, undo: o.written ? 'od77' : undefined });
       if (o.written) {
         counts.writes++;
-        await dropCache(r.slug);
+        await dropCache(r.slug, r.id);
       }
     } catch (e) {
       counts.failures++;
@@ -489,7 +489,9 @@ async function runUndo(file: string, ledger: unknown[]): Promise<Counts> {
       ledger.push({ slug: e.slug, undone: ok });
       if (ok) {
         counts.writes++;
-        await dropCache(e.slug);
+        // od74 ledger rows carry `id` directly; od77 (ZeroOutcome) rows only
+        // ever carried it inside `before.ipoId` — never a top-level `id`.
+        await dropCache(e.slug, e.id ?? e.before?.ipoId ?? '');
       }
     } catch (err) {
       counts.failures++;
@@ -508,15 +510,15 @@ export function ipoRepo(tx: unknown): IPORepository {
 /** Set once main() resolves openRepairDb()'s dbName — #1070's guard needs it and dropCache() is called from several places below main(). */
 let currentDbName = '';
 
-async function dropCache(slug: string): Promise<void> {
+async function dropCache(slug: string, id: string): Promise<void> {
   const guard = guardCacheInvalidation({
     dbName: currentDbName,
     toolName: TOOL_NAME,
-    keys: [`ipo:detail:${slug}`, `ipo:slug:${slug}`, 'ipo:list:*', 'ipo:search:*', 'ipos:history:*'],
+    keys: [`ipo:detail:${slug}`, `ipo:slug:${slug}`, `ipo:id:${id}`, 'ipo:list:*', 'ipo:search:*', 'ipos:history:*'],
   });
   if (guard.blocked) return;
   try {
-    await invalidateIPOCaches(getRedisClient() as never, slug);
+    await invalidateIPOCaches(getRedisClient() as never, id, slug);
   } catch (e) {
     console.log(`    cache drop failed for ${slug} (drop ipo:* keys by hand): ${e instanceof Error ? e.message : e}`);
   }
