@@ -121,6 +121,13 @@ jobs:
         # deps needed (Node builtins only).
         run: node --test scripts/tests/scripts-typecheck-exclude-shrink.test.mjs
 
+      - name: "Scraper/src type-check baseline self-test (#890)"
+        # scripts/ci/check-scraper-src-types.mjs's parsing/diffing helpers import
+        # Node builtins only (node:fs, node:child_process, node:path, node:url) — the
+        # actual `npx tsc` invocation only happens in main(), not in these exported
+        # helpers, so this runs with the other pre-npm-ci, dependency-free gates.
+        run: node --test scripts/tests/check-scraper-src-types.test.mjs
+
       - name: "Substance-check self-tests (#597, #601, #608)"
         # These three were UNWIRED and therefore never ran in CI - they passed
         # by not being in the pipeline, which is the wire-or-retire shape this
@@ -834,6 +841,22 @@ jobs:
       - name: Type-check scraper scripts (T-433 MAJOR-4 - scraper/tsconfig.json only ever covered src/**)
         run: npm run type-check:scripts
         working-directory: ./scraper
+
+      - name: Type-check scraper/src against a fresh shared build, shrink-only baseline (#890)
+        # #890/#891 measured that no CI job type-checked scraper/src directly, and that the
+        # reported error count (0 / 22 / 98) depended on which scripts happened to exist and
+        # whether packages/shared/dist was fresh, not on scraper/src's actual correctness.
+        # This runs scraper/tsconfig.json (include: src/**/*) after rebuilding
+        # packages/shared/dist from source itself, then fails on any error not already in
+        # config/scraper-src-type-baseline.json (keyed by file + TS code + normalized
+        # message, never line number) and fails if a baselined error is no longer
+        # reproduced (shrink-only — a fix must shrink the baseline in the same PR).
+        # Imports `node:child_process`/`node:fs` only (no third-party package needed to
+        # PARSE tsc's output), but it invokes `npx tsc` in packages/shared and scraper/,
+        # both of which need node_modules present, so this runs after "Install
+        # dependencies" (npm ci) above, same placement as the other tsc-invoking steps in
+        # this job.
+        run: node scripts/ci/check-scraper-src-types.mjs
 
       - name: Run shared package unit tests (T-433 MAJOR-5 - packages/shared test files had no runner)
         run: npx vitest run
