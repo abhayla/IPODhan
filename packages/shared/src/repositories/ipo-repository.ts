@@ -1412,20 +1412,57 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     newSlug: string,
     reason: string
   ): Promise<'written' | 'raced'> {
+    return (await this.renameSlugWithRedirectDetailed(id, oldSlug, newSlug, reason)).outcome;
+  }
+
+  /**
+   * Same write as `renameSlugWithRedirect`, returning what it ACTUALLY changed
+   * (#457): the `ipos` row's slug/updated_at before (read under FOR UPDATE in
+   * the same transaction) and after, and the `ipo_slug_redirects` row only if
+   * THIS call inserted it (`onConflictDoNothing` returns nothing when a redirect
+   * for `oldSlug` already existed — that pre-existing row is not ours to undo).
+   * Timestamps are returned as the column's own text so a restore is exact.
+   */
+  async renameSlugWithRedirectDetailed(
+    id: string,
+    oldSlug: string,
+    newSlug: string,
+    reason: string
+  ): Promise<
+    | { outcome: 'raced' }
+    | {
+        outcome: 'written';
+        before: { slug: string; updatedAt: string | null };
+        after: { slug: string; updatedAt: string | null };
+        redirect: { id: string; oldSlug: string; ipoId: string; reason: string; createdAt: string } | null;
+      }
+  > {
     const result = await this.db.transaction(async (tx) => {
+      const locked = await tx
+        .select({ slug: ipos.slug, updatedAt: sql<string | null>`${ipos.updatedAt}::text` })
+        .from(ipos)
+        .where(and(eq(ipos.id, id), eq(ipos.slug, oldSlug)))
+        .for('update');
+      if (locked.length === 0) return { outcome: 'raced' as const };
       const updated = await tx
         .update(ipos)
         .set({ slug: newSlug, updatedAt: new Date() })
         .where(and(eq(ipos.id, id), eq(ipos.slug, oldSlug)))
-        .returning({ id: ipos.id });
-      if (updated.length === 0) return 'raced' as const;
-      await tx
+        .returning({ slug: ipos.slug, updatedAt: sql<string | null>`${ipos.updatedAt}::text` });
+      if (updated.length === 0) return { outcome: 'raced' as const };
+      const inserted = await tx
         .insert(ipoSlugRedirects)
         .values({ oldSlug, ipoId: id, reason })
-        .onConflictDoNothing({ target: ipoSlugRedirects.oldSlug });
-      return 'written' as const;
+        .onConflictDoNothing({ target: ipoSlugRedirects.oldSlug })
+        .returning({ id: ipoSlugRedirects.id, createdAt: sql<string>`${ipoSlugRedirects.createdAt}::text` });
+      return {
+        outcome: 'written' as const,
+        before: { slug: locked[0].slug, updatedAt: locked[0].updatedAt },
+        after: { slug: updated[0].slug, updatedAt: updated[0].updatedAt },
+        redirect: inserted.length === 1 ? { id: inserted[0].id, oldSlug, ipoId: id, reason, createdAt: inserted[0].createdAt } : null,
+      };
     });
-    if (result === 'written') {
+    if (result.outcome === 'written') {
       await this.invalidateCache(
         [getIPOByIdKey(id), getIPOBySlugKey(oldSlug), getIPOBySlugKey(newSlug)],
         ['ipo:list:*', 'ipo:search:*', `ipo:detail:${oldSlug}`, `ipo:detail:${newSlug}`]

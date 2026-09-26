@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import * as fsp from 'node:fs/promises';
 import * as os from 'node:os';
 import { join } from 'node:path';
-import { repairOneZip, describe as describeResult, type StoredZip } from '../../../scripts/repair-zip-member-documents.js';
+import { repairOneZip, describe as describeResult, zipLedgerChanges, type StoredZip, type StoredZipExpansion } from '../../../scripts/repair-zip-member-documents.js';
 import { InMemoryDocumentFetchStateStore } from '../../../src/services/in-memory-document-fetch-state-store.js';
 import {
   DocumentDiscoveryRunner,
@@ -464,5 +464,62 @@ describe('final Tier A check (owner item 4): unresolved zips are recorded with t
     expect([w1.unresolved, w2.unresolved, w3.unresolved]).toEqual([0, 0, 1]);
     expect(w3.expanded).toBe(0);
     expect(documents.marked).toEqual([{ id: 'zip-1', unresolvedReason: 'zip_unreachable', sha256: undefined, partNumber: undefined }]);
+  });
+});
+
+describe('#457 round 2 (CRITICAL): the applied ledger lists only documents this run WROTE', () => {
+  const zip = { documentId: 'zip-1', ipoId: 'ipo-1', slug: 'x', type: 'RHP', url: 'https://x/z.zip' } as unknown as StoredZip;
+  const base = { position: 1, bytes: 10, reason: 'r' };
+  const result: StoredZipExpansion = {
+    zip,
+    checked: true,
+    attempts: [],
+    outcomes: [
+      // bytes already stored as a document that existed BEFORE this run
+      { ...base, member: 'a.pdf', sha256: 'aa', action: 'duplicate', documentId: 'doc-preexisting', type: 'RHP' as never },
+      { ...base, member: 'b.pdf', sha256: 'bb', action: 'stored', documentId: 'doc-new', type: 'ADDENDUM' as never },
+      { ...base, member: 'c.pdf', sha256: 'cc', action: 'skipped' },
+    ],
+  };
+  const row = (o: Record<string, unknown>) => ({ ipo_id: 'ipo-1', updated_at: '2026-09-01 00:00:00', ...o });
+  const before = new Map([
+    ['zip-1', row({ type: 'RHP', zip_members_checked_at: null })],
+    ['doc-preexisting', row({ type: 'RHP', sha256: 'aa' })],
+  ]);
+  const after = new Map([
+    ['zip-1', row({ type: 'RHP', zip_members_checked_at: '2026-09-26 10:00:00' })],
+    ['doc-preexisting', row({ type: 'RHP', sha256: 'aa' })],
+    ['doc-new', row({ type: 'ADDENDUM', sha256: 'bb' })],
+  ]);
+
+  it('a `duplicate` outcome (an existing document id) is never recorded, as an insert or at all', () => {
+    const changes = zipLedgerChanges({ results: [result], apply: true, before, after });
+    expect(changes.filter((c) => c.rowKey === 'doc-preexisting')).toEqual([]);
+    // an undo that deletes every (row) insert would delete only doc-new
+    const inserts = changes.filter((c) => c.field === '(row)' && c.before === null).map((c) => c.rowKey);
+    expect(inserts).toEqual(['doc-new']);
+    // the zip row's own side effect (the checked marker) is recorded with its true before
+    expect(changes).toContainEqual({ table: 'documents', rowKey: 'zip-1', field: 'zip_members_checked_at', before: null, after: '2026-09-26 10:00:00' });
+  });
+
+  it('a `stored` outcome whose upsert matched an EXISTING row is an update of changed columns, not an insert', () => {
+    const storedOnExisting: StoredZipExpansion = { ...result, outcomes: [{ ...base, member: 'a.pdf', sha256: 'a2', action: 'stored', documentId: 'doc-preexisting' }] };
+    const after2 = new Map(after);
+    after2.set('doc-preexisting', row({ type: 'RHP', sha256: 'a2', updated_at: '2026-09-26 10:00:00' }));
+    const changes = zipLedgerChanges({ results: [storedOnExisting], apply: true, before, after: after2 });
+    const mine = changes.filter((c) => c.rowKey === 'doc-preexisting');
+    expect(mine.map((c) => [c.field, c.before, c.after])).toEqual([
+      ['updated_at', '2026-09-01 00:00:00', '2026-09-26 10:00:00'],
+      ['sha256', 'aa', 'a2'],
+    ]);
+    expect(mine.some((c) => c.field === '(row)')).toBe(false);
+  });
+
+  it('dry run lists only `would_store` members as planned inserts', () => {
+    const dry: StoredZipExpansion = { ...result, checked: false, outcomes: [
+      { ...base, member: 'a.pdf', sha256: 'aa', action: 'duplicate', documentId: 'doc-preexisting' },
+      { ...base, member: 'b.pdf', sha256: 'bb', action: 'would_store' },
+    ] };
+    expect(zipLedgerChanges({ results: [dry], apply: false }).map((c) => c.rowKey)).toEqual(['zip-1:b.pdf']);
   });
 });

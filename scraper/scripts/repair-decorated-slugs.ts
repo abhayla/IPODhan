@@ -68,7 +68,7 @@ import { eq } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 import { computeIpoIdentitySlug } from '../src/services/ipo-identity-slug.js';
-import { openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike } from './lib/repair-tool.js';
+import { openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike, type RepairLedgerFieldChange } from './lib/repair-tool.js';
 // The audit's OWN predicate — one definition, reused, not retyped.
 import { checkIpoTitleInName, stripIdentityNameDecoration, stripIdentitySlugSuffix } from '../../scripts/lib/detection-floor-checks.mjs';
 
@@ -150,31 +150,64 @@ export async function planRow(row: IpoRow): Promise<PlanRow> {
   return { id: row.id, companyName: row.companyName, oldSlug: row.slug, newSlug, outcome: 'planned' };
 }
 
+/**
+ * #457 round 2: the ledger entries for ONE written rename — exactly what
+ * `renameSlugWithRedirectDetailed` reports it changed: `ipos.slug` and
+ * `ipos.updated_at` (before read under FOR UPDATE), plus the
+ * `ipo_slug_redirects` row as an insert ONLY when this call inserted it.
+ * A restore deletes that redirect by its id and puts both ipos columns back.
+ */
+export function renameLedgerEntries(
+  id: string,
+  detail: Extract<Awaited<ReturnType<IPORepository['renameSlugWithRedirectDetailed']>>, { outcome: 'written' }>
+): RepairLedgerFieldChange[] {
+  const entries: RepairLedgerFieldChange[] = [
+    { table: 'ipos', rowKey: id, field: 'slug', before: detail.before.slug, after: detail.after.slug },
+    { table: 'ipos', rowKey: id, field: 'updated_at', before: detail.before.updatedAt, after: detail.after.updatedAt },
+  ];
+  if (detail.redirect) {
+    entries.push({
+      table: 'ipo_slug_redirects',
+      rowKey: detail.redirect.id,
+      field: '(row)',
+      before: null,
+      after: {
+        id: detail.redirect.id,
+        old_slug: detail.redirect.oldSlug,
+        ipo_id: detail.redirect.ipoId,
+        reason: detail.redirect.reason,
+        created_at: detail.redirect.createdAt,
+      },
+    });
+  }
+  return entries;
+}
+
 export async function applyRename(
   plan: PlanRow,
   actualDb: string,
-  ipoRepository: Pick<IPORepository, 'renameSlugWithRedirect'>
-): Promise<'written' | 'skipped-shadow' | 'skipped-raced'> {
+  ipoRepository: Pick<IPORepository, 'renameSlugWithRedirectDetailed'>
+): Promise<{ outcome: 'written' | 'skipped-shadow' | 'skipped-raced'; changes: RepairLedgerFieldChange[] }> {
   // Shadow guard: never write a redirect for oldSlug if some OTHER live row
   // now holds it (mirrors repair-name-pollution-and-redirects.ts's writeRedirect).
   if (await slugIsLive(plan.oldSlug, plan.id)) {
     logger.warn({ oldSlug: plan.oldSlug, id: plan.id }, `${TOOL}: skip — oldSlug is LIVE on a different row (shadow guard)`);
-    return 'skipped-shadow';
+    return { outcome: 'skipped-shadow', changes: [] };
   }
   // The ipos.slug update + ipo_slug_redirects insert (guarded on the row
-  // still holding oldSlug) live in IPORepository.renameSlugWithRedirect —
+  // still holding oldSlug) live in IPORepository.renameSlugWithRedirectDetailed —
   // the shared write path (docs/architecture/write-path-hardening.md R0) —
   // never as a direct db.update(ipos) transaction in this script.
   if (!process.env.REDIS_URL) {
     console.log(`  NOTE: REDIS_URL is unset — cache invalidation for ${plan.oldSlug} -> ${plan.newSlug} would silently`);
     console.log('        target redis://localhost:6379, not the real cache (same class as the manual-db-reset gotcha).');
   }
-  const result = await ipoRepository.renameSlugWithRedirect(plan.id, plan.oldSlug, plan.newSlug, 'DECORATED_SLUG_CLEANUP');
-  if (result === 'raced') {
+  const result = await ipoRepository.renameSlugWithRedirectDetailed(plan.id, plan.oldSlug, plan.newSlug, 'DECORATED_SLUG_CLEANUP');
+  if (result.outcome === 'raced') {
     logger.warn({ id: plan.id, oldSlug: plan.oldSlug }, `${TOOL}: skip — row's slug changed since it was read (raced)`);
-    return 'skipped-raced';
+    return { outcome: 'skipped-raced', changes: [] };
   }
-  return 'written';
+  return { outcome: 'written', changes: renameLedgerEntries(plan.id, result) };
 }
 
 async function main(): Promise<void> {
@@ -230,10 +263,16 @@ async function main(): Promise<void> {
   }
 
   let written = 0, skippedShadow = 0, skippedRaced = 0;
+  // #457 round 2: applied = only what each written rename returned (a raced or
+  // shadowed row is absent). Dry run = the planned slug change.
+  const changes: RepairLedgerFieldChange[] = cli.apply
+    ? []
+    : planned.map((p) => ({ table: 'ipos', rowKey: p.id, field: 'slug', before: p.oldSlug, after: p.newSlug }));
   if (cli.apply) {
     const ipoRepository = new IPORepository(db, getRedisClient());
     for (const p of planned) {
-      const outcome = await applyRename(p, actual, ipoRepository);
+      const { outcome, changes: rowChanges } = await applyRename(p, actual, ipoRepository);
+      changes.push(...rowChanges);
       if (outcome === 'written') written++;
       else if (outcome === 'skipped-shadow') skippedShadow++;
       else skippedRaced++;
@@ -246,13 +285,7 @@ async function main(): Promise<void> {
       tool: TOOL,
       mode: cli.apply ? 'apply' : 'dry-run',
       generatedAt: new Date().toISOString(),
-      changes: planned.map((p) => ({
-        table: 'ipos',
-        rowKey: p.id,
-        field: 'slug',
-        before: p.oldSlug,
-        after: p.newSlug,
-      })),
+      changes,
       database: actual,
       apply: cli.apply,
       at: new Date().toISOString(),

@@ -97,10 +97,14 @@ import {
   queryCurrentDatabase,
   resolveIpoScope,
   writeLedgerFile,
+  changesFromReturnedRow,
   type ExecuteLike,
+  type RepairLedgerFieldChange,
 } from './lib/repair-tool';
 
 const TOOL = 'repair-reopen-stale-doc-nay';
+/** Every column the reopen UPDATE sets — each one is ledgered with its true before/after (#457). */
+export const REOPEN_COLUMNS = ['state', 'reason_code', 'next_due_at', 'claimed_at', 'claim_token', 'updated_at'] as const;
 const SCRAPER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** The same offer-document family the DOC fetcher and the floor check both use. */
@@ -324,20 +328,18 @@ async function main(): Promise<void> {
   }
   if (breakdown.length > 30) console.log(`  ... and ${breakdown.length - 30} more IPO(s)`);
 
-  const ledgerFor = (applied: boolean, changed: readonly StaleDocNayRow[]) =>
+  // #457 round 2: applied = the per-column before/after RETURNED by the guarded
+  // UPDATE (every column it sets, not only `state`). Dry run = the plan: the
+  // columns the read knows (state, reason_code); the rest are written by the
+  // UPDATE from the clock/NULL and appear only in an applied ledger.
+  const ledgerFor = (applied: boolean, changed: readonly StaleDocNayRow[], changes: readonly RepairLedgerFieldChange[]) =>
     writeLedgerFile(
       path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${applied ? 'applied' : 'dryrun'}-${Date.now()}.json`),
       {
         tool: TOOL,
         mode: applied ? 'apply' : ('dry-run' as const),
         generatedAt: new Date().toISOString(),
-        changes: changed.map((r) => ({
-          table: 'ipo_field_plan',
-          rowKey: r.id,
-          field: 'state',
-          before: r.state,
-          after: 'PENDING',
-        })),
+        changes,
         database: actual,
         apply: applied,
         at: new Date().toISOString(),
@@ -358,25 +360,51 @@ async function main(): Promise<void> {
     );
 
   if (!cli.apply) {
-    const ledgerPath = ledgerFor(false, rows);
+    const ledgerPath = ledgerFor(
+      false,
+      rows,
+      rows.flatMap((r) => [
+        { table: 'ipo_field_plan', rowKey: r.id, field: 'state', before: r.state, after: 'PENDING' },
+        ...(r.reasonCode !== null ? [{ table: 'ipo_field_plan', rowKey: r.id, field: 'reason_code', before: r.reasonCode, after: null }] : []),
+      ])
+    );
     console.log(`${TOOL}: ledger (dry run) written to ${ledgerPath}`);
     console.log(`${TOOL}: DRY RUN (${label}) — nothing was written. Re-run with --apply to reopen the ${rows.length} listed above.`);
     return;
   }
   const changed: StaleDocNayRow[] = [];
+  const changes: RepairLedgerFieldChange[] = [];
   for (const r of rows) {
     const res = await (db as any).execute(sql`
-      UPDATE ipo_field_plan
+      WITH old AS (
+        SELECT id, state::text AS state, reason_code, next_due_at::text AS next_due_at,
+               claimed_at::text AS claimed_at, claim_token, updated_at::text AS updated_at
+          FROM ipo_field_plan
+         WHERE id = ${r.id}::uuid
+           AND state = ${r.state}::field_plan_state
+           AND cause IS NOT DISTINCT FROM ${r.cause}
+         FOR UPDATE
+      )
+      UPDATE ipo_field_plan p
          SET state = 'PENDING', next_due_at = now(), claimed_at = NULL, claim_token = NULL,
              reason_code = NULL, updated_at = now()
-       WHERE id = ${r.id}::uuid
-         AND state = ${r.state}::field_plan_state
-         AND cause IS NOT DISTINCT FROM ${r.cause}
-      RETURNING id
+        FROM old
+       WHERE p.id = old.id
+      RETURNING p.id::text AS id,
+                old.state AS old_state, p.state::text AS new_state,
+                old.reason_code AS old_reason_code, p.reason_code AS new_reason_code,
+                old.next_due_at AS old_next_due_at, p.next_due_at::text AS new_next_due_at,
+                old.claimed_at AS old_claimed_at, p.claimed_at::text AS new_claimed_at,
+                old.claim_token AS old_claim_token, p.claim_token AS new_claim_token,
+                old.updated_at AS old_updated_at, p.updated_at::text AS new_updated_at
     `);
-    if (rowsOf(res).length > 0) changed.push(r);
+    const hit = rowsOf(res);
+    if (hit.length > 0) {
+      changed.push(r);
+      changes.push(...changesFromReturnedRow('ipo_field_plan', r.id, hit[0], REOPEN_COLUMNS));
+    }
   }
-  const ledgerPath = ledgerFor(true, changed);
+  const ledgerPath = ledgerFor(true, changed, changes);
   console.log(`${TOOL}: reopened ${changed.length} of ${rows.length} rows (a row that changed since the read is skipped).`);
   console.log(`${TOOL}: ledger (before-image of exactly the ${changed.length} changed rows) written to ${ledgerPath}. Undo: --undo ${ledgerPath} --apply`);
 }

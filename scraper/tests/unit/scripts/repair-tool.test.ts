@@ -957,3 +957,20 @@ describe('MUTATION 4 — the ON CONFLICT arbiter of upsertFieldSource (item 1 sl
     ]);
   });
 });
+
+describe('#457 round 2: writeLedgerFile validates the shape at runtime (an untyped or cast caller still fails)', () => {
+  it('throws, and writes nothing, on an old-shape payload with no `changes` / no `before`', async () => {
+    const { writeLedgerFile } = await import('../../../scripts/lib/repair-tool.js');
+    const os = await import('node:os');
+    const fsm = await import('node:fs');
+    const pth = await import('node:path');
+    const file = pth.join(os.tmpdir(), `ledger-457-${process.pid}.json`);
+    const untyped = (p: unknown) => writeLedgerFile(file, p as never);
+    expect(() => untyped({ apply: true, dbName: 'x', ledger: [] })).toThrow(/tool/);
+    expect(() => untyped({ tool: 't', mode: 'apply', generatedAt: 'x', ledger: [] })).toThrow(/changes/);
+    expect(() =>
+      untyped({ tool: 't', mode: 'apply', generatedAt: 'x', changes: [{ table: 'ipos', rowKey: 'a', field: 'slug', after: 'b' }] })
+    ).toThrow(/no `before`/);
+    expect(fsm.existsSync(file)).toBe(false);
+  });
+});

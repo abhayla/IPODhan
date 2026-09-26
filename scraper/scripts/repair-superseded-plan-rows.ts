@@ -82,8 +82,10 @@ async function main(): Promise<void> {
       changes: evaluation.reopen
         .filter((v) => !apply || changed.includes(v.row.planRowId))
         .map((v) => ({
-          table: v.row.tableName,
-          rowKey: v.row.rowKey ?? v.row.planRowId,
+          // #457 round 2: `state` lives on the PLAN row (ipo_field_plan.id), not on the
+          // data table the plan row targets.
+          table: 'ipo_field_plan',
+          rowKey: v.row.planRowId,
           field: 'state',
           before: 'SUPPLIED',
           after: 'PENDING',

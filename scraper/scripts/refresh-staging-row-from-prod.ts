@@ -72,7 +72,7 @@ import { Pool } from 'pg';
 import { eq, sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
-import { openRepairDb, upsertFieldSource, writeLedgerFile, PRODUCTION_DATABASE_NAME } from './lib/repair-tool.js';
+import { openRepairDb, upsertFieldSource, writeLedgerFile, PRODUCTION_DATABASE_NAME, type RepairLedgerFieldChange, type RepairLedgerPayload } from './lib/repair-tool.js';
 
 // Read every `timestamp without time zone` value on the SECOND (prod
 // read-only) pool as UTC as well — the outer `db` proxy already does this
@@ -301,8 +301,10 @@ export interface ApplyRefreshInput {
   toWrite: FieldDiff[];
   selectCols: SelectedFields;
   stamp: string;
-  writeBackup: (path: string, payload: unknown) => string;
-  writeLedger: (path: string, payload: unknown) => string;
+  // #457 round 2: typed, never `unknown` — an `unknown` slot let the round-1
+  // ledger keep its old shape past tsc (scripts/ci/check-repair-ledger-calls.mjs).
+  writeBackup: (path: string, payload: RepairLedgerPayload) => string;
+  writeLedger: (path: string, payload: RepairLedgerPayload) => string;
   upsert: typeof upsertFieldSource;
 }
 
@@ -345,11 +347,28 @@ export async function applyRefresh(
   const backupPath = `evidence/${dateDir}-lane-c-item-14-s6-${slug}/before.json`;
   // Backup MUST be written before the transaction opens — asserted by call
   // order in the unit test (a mock recording invocation sequence).
-  writeBackup(backupPath, { capturedAt: stamp, slug, row: stagingRow });
+  const iposChanges: RepairLedgerFieldChange[] = writable.map((d) => ({
+    table: 'ipos',
+    rowKey: stagingRow.id,
+    field: IPOS_FIELD_COLUMNS[d.field as RefreshableField]?.name ?? d.field,
+    before: d.stagingValue,
+    after: d.prodValue,
+  }));
+  writeBackup(backupPath, {
+    tool: TOOL_NAME,
+    mode: 'apply',
+    generatedAt: new Date().toISOString(),
+    // The planned ipos changes (a before-image taken before the transaction opens).
+    changes: iposChanges,
+    capturedAt: stamp,
+    slug,
+    row: stagingRow,
+  });
 
+  const fieldSourceChanges: RepairLedgerFieldChange[] = [];
   await executors.transaction(async (tx) => {
     for (const d of writable) {
-      await upsert(tx as any, {
+      const upserted = await upsert(tx as any, {
         ipoId: stagingRow.id,
         fieldName: d.field,
         source: 'ADMIN',
@@ -362,6 +381,7 @@ export async function applyRefresh(
         },
         updatedBy: UPDATED_BY,
       });
+      fieldSourceChanges.push(...(upserted?.changes ?? []));
     }
     // Routed through the shared repository (write-ratchet T-316/R0) rather
     // than a direct `tx.update(schema.ipos)` — see the RefreshWriteExecutors
@@ -384,6 +404,11 @@ export async function applyRefresh(
 
   const ledgerPath = `evidence/${dateDir}-lane-c-item-14-s6-${slug}/applied.json`;
   writeLedger(ledgerPath, {
+    tool: TOOL_NAME,
+    mode: 'apply',
+    generatedAt: new Date().toISOString(),
+    // The committed transaction: every ipos column and every field_sources upsert it wrote.
+    changes: [...iposChanges, ...fieldSourceChanges],
     appliedAt: stamp,
     slug,
     written: writable.map((d) => ({ field: d.field, from: d.stagingValue, to: d.prodValue })),
