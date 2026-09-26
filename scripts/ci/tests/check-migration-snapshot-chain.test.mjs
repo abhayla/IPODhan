@@ -152,3 +152,55 @@ test('the same chain, repaired the way this PR repairs it, is clean', () => {
     []
   );
 });
+
+test('#886: a head that does NOT sort last is caught by head-sorts-last', () => {
+  // drizzle-kit picks the parent of the next migration by sorting meta/ file
+  // names and taking the LAST one, not by walking prevId. Real ids from
+  // 2026-09-26: the chain runs ...211158 -> 0050 -> ... -> 0065, so 0065 is
+  // the head, but "0065_" sorts before "2026..." and drizzle diffs against
+  // 20260918211158, re-emitting every table 0050..0065 created.
+  const snaps = [
+    { file: '20260918211158_snapshot.json', id: 'd0938915', prevId: '7587087d' },
+    { file: '20260918201752_snapshot.json', id: '7587087d', prevId: ROOT },
+    { file: '0050_snapshot.json', id: 'c1009d2e', prevId: 'd0938915' },
+    { file: '0065_snapshot.json', id: '9472c00a', prevId: 'c1009d2e' },
+  ];
+  const problems = analyze(snaps, [
+    { idx: 48, tag: '20260918201752_cheerful_the_liberteens' },
+    { idx: 49, tag: '20260918211158_little_wrecking_crew' },
+    { idx: 50, tag: '0050_bright_power_man' },
+    { idx: 65, tag: '0065_document_extraction_attempts' },
+  ]);
+  assert.deepEqual(rules(problems), ['head-sorts-last']);
+  const p = problems[0];
+  assert.match(p.detail, /0065_snapshot\.json/);
+  assert.match(p.detail, /20260918211158_snapshot\.json/);
+});
+
+test('#886 repaired: a timestamp-named bridge chained to the head sorts last and is clean', () => {
+  const snaps = [
+    { file: '20260918211158_snapshot.json', id: 'd0938915', prevId: '7587087d' },
+    { file: '20260918201752_snapshot.json', id: '7587087d', prevId: ROOT },
+    { file: '0050_snapshot.json', id: 'c1009d2e', prevId: 'd0938915' },
+    { file: '0065_snapshot.json', id: '9472c00a', prevId: 'c1009d2e' },
+    { file: '20260926170000_snapshot.json', id: 'bridge', prevId: '9472c00a' },
+  ];
+  assert.deepEqual(
+    analyze(snaps, [
+      { idx: 48, tag: '20260918201752_cheerful_the_liberteens' },
+      { idx: 49, tag: '20260918211158_little_wrecking_crew' },
+      { idx: 50, tag: '0050_bright_power_man' },
+      { idx: 65, tag: '0065_document_extraction_attempts' },
+    ]),
+    []
+  );
+});
+
+test('#886 recurrence: an index-named migration added after the bridge is caught', () => {
+  const snaps = [
+    { file: '0065_snapshot.json', id: '9472c00a', prevId: ROOT },
+    { file: '20260926170000_snapshot.json', id: 'bridge', prevId: '9472c00a' },
+    { file: '0066_snapshot.json', id: 'next', prevId: 'bridge' },
+  ];
+  assert.deepEqual(rules(analyze(snaps, [])), ['head-sorts-last']);
+});

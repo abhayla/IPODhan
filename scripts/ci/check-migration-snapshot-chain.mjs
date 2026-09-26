@@ -35,7 +35,7 @@
  * So a broken chain is not a tidiness problem. It stops every lane from creating
  * a migration, and the head it leaves behind misdescribes the database.
  *
- * Four rules, all mechanical:
+ * Five rules, all mechanical:
  *
  *   unique-parent   — no two snapshots may share a prevId. This is the exact
  *                     collision drizzle refuses on, caught at PR time instead.
@@ -46,10 +46,15 @@
  *   journal-order   — where a snapshot's tag prefix IS in the journal, its parent
  *                     must sit at a LOWER idx. A parent with a higher idx means a
  *                     migration was inserted behind one that already shipped.
+ *   head-sorts-last — the chain head must be the LAST file by name sort, because
+ *                     that (not prevId) is how drizzle-kit picks the base of the
+ *                     next migration (#886, added 2026-09-26).
  *
  * Deliberately NOT a rule: "every journal entry has a snapshot". Fourteen of this
  * repository's 38 entries are hand-written repair migrations that never had one,
- * and 20260909200044 is a snapshot with no journal entry at all. Demanding a
+ * and 20260909200044 is a snapshot with no journal entry at all (so is
+ * 20260926161247, the #886 bridge: a byte copy of 0065 with a new id, chained
+ * to 0065, named so the head sorts last without renaming any applied migration). Demanding a
  * one-to-one mapping would fire 24 times on a healthy repository and be switched
  * off within the week — a check nobody can act on is worse than no check.
  */
@@ -123,6 +128,26 @@ export function analyze(snapshots, journalEntries) {
         `${heads.length} head snapshot(s) (a head is one nobody names as parent): ` +
         `${heads.map(h => h.file).join(', ') || '(none — the chain is a cycle)'}`,
     });
+  }
+
+  // drizzle-kit does NOT walk prevId to find the parent of the next migration:
+  // it sorts the file names in meta/ and takes the LAST one
+  // (drizzle-kit 0.31 prepareOutFolder: readdirSync(meta).sort()). A chain can
+  // be perfectly linear and still hand drizzle the wrong base if the head does
+  // not sort last — #886: 0050..0065 were named "00NN_" after timestamp-named
+  // "2026..._" snapshots, so every `db:generate` diffed against idx 49 and
+  // re-emitted 5 tables, 4 enums and 20 columns that already exist.
+  if (heads.length === 1) {
+    const lastSorted = [...snapshots].map(s => s.file).sort().at(-1);
+    if (lastSorted !== heads[0].file) {
+      problems.push({
+        rule: 'head-sorts-last',
+        detail:
+          `the chain head is ${heads[0].file}, but drizzle-kit takes the last file by name sort, ` +
+          `${lastSorted}, as the base of the next migration. Name new migrations with a timestamp ` +
+          `prefix (\`npm run db:generate\` uses --prefix=timestamp), never a hand-picked "00NN_" index.`,
+      });
+    }
   }
 
   // Chain order must agree with journal order: walking parents from the head
