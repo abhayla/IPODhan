@@ -38,6 +38,19 @@ export function isTerminalStatus(status: string | null | undefined): boolean {
 }
 
 /**
+ * #70 — a LISTED IPO is never taken back by the date ladder. Spec field 8
+ * (`status`): "must be a legal transition (UPCOMING->OPEN->CLOSED->LISTED);
+ * never regresses without an ADMIN row". computeTargetStatus answers CLOSED for
+ * any row whose listing_date is empty, so a row an exchange had already marked
+ * LISTED (or whose listing_date was cleared) was written LISTED -> CLOSED every
+ * cycle; the listing-performance job reads LISTED rows only, so from then on
+ * nothing advanced it again. Only an ADMIN edit may move a listed IPO back.
+ */
+export function isDateLadderRegression(from: string | null | undefined, to: IPOStatus): boolean {
+  return String(from ?? '').toUpperCase() === 'LISTED' && to !== 'LISTED';
+}
+
+/**
  * T-328 (LIFECYCLE-1, belt-and-suspenders half of HOLD): the date field that
  * DRIVES each transition computeTargetStatus can produce. If that field has
  * an unresolved HIGH_VALUE data_conflicts row for this IPO, the transition is
@@ -196,6 +209,7 @@ export async function updateIPOStatuses(
       today
     );
     if (!target || target === r.status) continue;
+    if (isDateLadderRegression(r.status, target)) continue; // #70: never LISTED -> CLOSED
 
     // T-328: refuse to flip status when the field driving this transition
     // has an unresolved HIGH_VALUE dispute for this IPO — belt-and-suspenders
@@ -313,6 +327,7 @@ export async function getOutdatedStatusCount(now: Date = new Date()): Promise<{
       today
     );
     if (!target || target === r.status) continue;
+    if (isDateLadderRegression(r.status, target)) continue; // #70: must agree with the writer
     total++;
     if (r.status === 'UPCOMING' && target === 'OPEN') upcomingToOpen++;
     else if (r.status === 'OPEN' && target === 'CLOSED') openToClosed++;

@@ -1,0 +1,15 @@
+{
+  "id": "listing_known_not_advanced",
+  "findingClass": "an IPO whose listing the system already recorded (a listing_performance row with a listing date) while ipos.status is not LISTED, ipos.listing_date is NULL, or ipos.listing_date differs -- readers see a listed company as closed and not listed (#70, #36, #72)",
+  "round7Findings": [],
+  "failThreshold": "any listing_performance row with listing_date NOT NULL whose ipos row (status not WITHDRAWN/POSTPONED) has status <> LISTED, listing_date NULL, or listing_date <> listing_performance.listing_date; reported by slug with both dates and the status",
+  "severity": "P2",
+  "unverifiableWhen": "never -- both tables exist on every slot",
+  "section": "checks",
+  "spec_ref": [
+    "field 7 listing_date",
+    "field 8 status",
+    "fields 176-178 / 224 listing_performance copies of ipos.*"
+  ],
+  "note": "Measured read-only by the supervisor on ipodhan_staging 2026-09-26: glass-wall-systems-india-ltd (lp listing_date 2026-09-16, price 214.85) and lumino-industries-ltd (lp 2026-09-03, price 110.32) both CLOSED with ipos.listing_date NULL; 258 of 275 LISTED IPOs have a listing row. The check itself has not yet been run against staging (builder had no DB access); the first nightly run is its proof. Fixed by the listing-performance job reading CLOSED rows and writing ipos first (scraper/src/scrapers/listing-performance-updater.ts) and by the status updater never taking LISTED back (web/lib/services/status-updater-service.ts)."
+}

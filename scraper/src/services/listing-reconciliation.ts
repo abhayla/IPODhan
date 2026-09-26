@@ -209,7 +209,10 @@ export function buildListingPerformanceRecord(
     ipoId: ipo.id,
     symbol: ipo.symbol ?? row.nseSymbol ?? null,
     companyName: ipo.companyName,
-    listingDate: parseCgListingDate(row.listingDate),
+    // Spec fields 176-178 / 224: a copy of ipos.listing_date (E-1, NSE > BSE > CG).
+    // The source's date is used only while ipos has none, and only after the
+    // caller has written it to ipos (#70).
+    listingDate: ipo.listingDate ?? parseCgListingDate(row.listingDate),
     listingPrice: listingClose,
     issuePrice: issuePrice,
     listingGainPercent: gain !== null ? gain.toFixed(2) : null,

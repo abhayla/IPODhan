@@ -39,7 +39,7 @@
  */
 
 import { pathToFileURL } from 'node:url';
-import { eq } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { db } from '@ipodhan/shared/db';
 import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
@@ -49,6 +49,8 @@ import { describeDbCause } from '@ipodhan/shared/errors/db-cause';
 import { fetchChittorgarhListingRows } from './chittorgarh-listing-scraper.js';
 import type { StuckIpo } from '../services/listing-reconciliation.js';
 import { planListingPerformanceUpdates } from './listing-performance-plan.js';
+import type { ListingAdvanceWriter } from './listing-advance-writer.js';
+import { istDayIso } from '@ipodhan/shared/utils/ist-day';
 import logger from '../utils/logger.js';
 
 export interface ListingPerformanceUpdateResult {
@@ -60,6 +62,11 @@ export interface ListingPerformanceUpdateResult {
   skipped: number;
   /** Real write failures. A healthy cycle has 0 here. */
   failures: number;
+  /**
+   * #70: IPOs whose empty `ipos.listing_date` was filled from the listing source
+   * this cycle (CLOSED -> LISTED), by slug. A number alone is not a reading.
+   */
+  advancedToListed?: string[];
   duration: number;
   timestamp: string;
 }
@@ -87,7 +94,9 @@ export function recentFiscalYears(now: Date): Array<{ year: number; range: strin
 /**
  * Main function to update listing performance for all LISTED IPOs.
  */
-export async function updateListingPerformance(): Promise<ListingPerformanceUpdateResult> {
+export async function updateListingPerformance(
+  deps: { advanceListing?: ListingAdvanceWriter; now?: Date } = {}
+): Promise<ListingPerformanceUpdateResult> {
   const startTime = Date.now();
   const timestamp = new Date().toISOString();
 
@@ -100,15 +109,19 @@ export async function updateListingPerformance(): Promise<ListingPerformanceUpda
   let skipped = 0;
   let failures = 0;
   let skipReasons: Record<string, number> = {};
+  const advancedToListed: string[] = [];
 
   try {
     const redis = getRedisClient();
     const repository = new ListingPerformanceRepository(db, redis);
 
     // Step 1: every LISTED IPO, with the fields the matcher needs
-    // (ISIN > symbol > slug > normalized name).
+    // (ISIN > symbol > slug > normalized name). #70: CLOSED IPOs too — the
+    // listing source is the one job that knows a CLOSED IPO has listed, and
+    // reading LISTED rows only meant a listing it had already recorded never
+    // reached ipos.listing_date / status. The plan decides which may advance.
     const listedIPOsResult = await db.query.ipos.findMany({
-      where: eq(schema.ipos.status, 'LISTED'),
+      where: inArray(schema.ipos.status, ['LISTED', 'CLOSED']),
       columns: {
         id: true,
         companyName: true,
@@ -126,8 +139,11 @@ export async function updateListingPerformance(): Promise<ListingPerformanceUpda
       },
     });
 
-    totalListedIPOs = listedIPOsResult.length;
-    logger.info({ totalListedIPOs }, 'Found LISTED IPOs in database');
+    totalListedIPOs = listedIPOsResult.filter((i) => String(i.status) === 'LISTED').length;
+    logger.info(
+      { totalListedIPOs, closedCandidates: listedIPOsResult.length - totalListedIPOs },
+      'Found LISTED (and CLOSED candidate) IPOs in database'
+    );
 
     const ipos: StuckIpo[] = listedIPOsResult.map((i) => ({
       id: i.id,
@@ -165,7 +181,7 @@ export async function updateListingPerformance(): Promise<ListingPerformanceUpda
     existingRecords = existingPerformanceRecords.length;
 
     // Step 4: decide what to write (pure, unit-tested).
-    const plan = planListingPerformanceUpdates(ipos, listingRows);
+    const plan = planListingPerformanceUpdates(ipos, listingRows, istDayIso(deps.now ?? new Date()));
     skipped = plan.skipped.length;
 
     skipReasons = plan.skipped.reduce<Record<string, number>>((acc, s) => {
@@ -178,9 +194,32 @@ export async function updateListingPerformance(): Promise<ListingPerformanceUpda
     );
 
     // Step 5: write.
+    // The ipos write path (upsertIPO) is loaded only when a row needs it.
+    let advanceListing = deps.advanceListing;
+    if (!advanceListing && plan.records.some((r) => r.advance)) {
+      const { createListingAdvanceWriter } = await import('./listing-advance-writer.js');
+      advanceListing = createListingAdvanceWriter(redis);
+    }
     for (const planned of plan.records) {
       try {
-        await repository.upsert(planned.record);
+        let record = planned.record;
+        if (planned.advance) {
+          // #70: ipos first. The listing row is a copy of ipos.listing_date,
+          // so it is written with the date ipos actually holds, or not at all.
+          const stored = await advanceListing!(planned.ipo, planned.advance);
+          if (!stored.storedListingDate) {
+            skipped++;
+            skipReasons['listing-not-advanced'] = (skipReasons['listing-not-advanced'] ?? 0) + 1;
+            logger.warn(
+              { ipoId: planned.ipo.id, slug: planned.ipo.slug, storedStatus: stored.storedStatus },
+              'Listing source date was not taken by ipos - listing_performance row not written'
+            );
+            continue;
+          }
+          advancedToListed.push(planned.ipo.slug);
+          record = { ...record, listingDate: stored.storedListingDate };
+        }
+        await repository.upsert(record);
 
         if (existingIPOIds.has(planned.ipo.id)) {
           recordsUpdated++;
@@ -219,6 +258,7 @@ export async function updateListingPerformance(): Promise<ListingPerformanceUpda
       failures,
       duration,
       timestamp,
+      advancedToListed,
     };
 
     logger.info(result, 'Listing performance update completed');
