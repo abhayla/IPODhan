@@ -298,6 +298,26 @@ jobs:
           node --test scripts/tests/check-drizzle-iso-string.test.mjs
           node scripts/ci/check-drizzle-iso-string.mjs
 
+      - name: Deleted-file-still-referenced gate (#1193, deleted-file-still-referenced-by-ci)
+        # A PR that deletes a file but leaves a test, a fixture list or a baseline JSON still
+        # naming it goes red one reference per round (#1189: a stale count in
+        # config/scripts-typecheck-exclude-baseline.json, a hardcoded filename in
+        # check-drizzle-where-chaining.test.mjs, two web tests still importing deleted routes
+        # that no PR workflow runs). For every path `git diff --diff-filter=D` reports deleted
+        # against the PR base, greps the tracked tree (excluding docs/, *.md, node_modules,
+        # .next, dist, CHANGELOG) for the exact path and for the basename-without-extension as a
+        # whole token immediately touching a path separator or quote — tuned against real
+        # history so English prose/CSV rows don't fire. A directory-count floor (e.g.
+        # admin-routes-static-guard.test.ts's >=31 route-file assertion) names no path and is
+        # NOT covered here — see the script's header note; that class is covered by running the
+        # full unit suite of every touched workspace before push (defect-fix-contract.md).
+        # Reaches Node + git builtins only, so it runs pre-install with the other cheap gates.
+        # Self-test: scripts/ci/tests/check-deleted-file-references.test.mjs (temp-git-repo
+        # fixtures, red-then-green).
+        run: |
+          node --test scripts/ci/tests/check-deleted-file-references.test.mjs
+          node scripts/ci/check-deleted-file-references.mjs "origin/${{ github.event.pull_request.base.ref }}" "HEAD"
+
       - name: E2E env shape (#504, #81 — DB env + webServer gating)
         # #504: ci.yml's "Run E2E tests" step must carry DATABASE_URL (mirrors the
         # integration step) or its webServer boots with no DB and both its passes
