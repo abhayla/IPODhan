@@ -483,6 +483,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run assert-repair-held self-test (#698, scheduled cycles only)
+        # assert-repair-held.mjs is the real-data proof every data-repair fix
+        # must pass (defect-fix-contract.md item 5), and nothing in CI ran its
+        # self-test. It now counts only scheduled cycles (scraper_steps.trigger),
+        # so a deploy restart between wakes can no longer pass for a cycle; this
+        # suite pins that, and fails if the schedule filter is dropped. Moved
+        # here (round 2) from the deploy-script-tests job, which never runs
+        # npm ci: scripts/lib/pg-utc.mjs (imported by assert-repair-held.mjs)
+        # imports the `pg` package, so it needs node_modules — runs after npm
+        # ci, same placement as the other pg-importing scripts/tests/*.test.mjs
+        # steps below.
+        run: node scripts/tests/assert-repair-held.test.mjs
+
       - name: DB connection default self-test (#640)
         # Runs after npm ci: the checker parses with the typescript compiler API.
         # scripts/ci/tests/check-db-connection-defaults.test.mjs drives the
@@ -1133,13 +1146,10 @@ jobs:
       - name: Run wake-log delta test suite (#793 M2, signal-ownership R3)
         run: node --test scripts/tests/wake-delta.test.mjs
 
-      # #698: assert-repair-held.mjs is the real-data proof every data-repair
-      # fix must pass (defect-fix-contract.md item 5), and nothing in CI ran its
-      # self-test. It now counts only scheduled cycles (scraper_steps.trigger),
-      # so a deploy restart between wakes can no longer pass for a cycle; this
-      # suite pins that, and fails if the schedule filter is dropped.
-      - name: Run assert-repair-held self-test (#698, scheduled cycles only)
-        run: node scripts/tests/assert-repair-held.test.mjs
+      # #698: assert-repair-held.mjs's self-test moved to the "Lint, Type-check
+      # & Unit Tests" job (after its npm ci) — this job never runs npm ci, and
+      # scripts/lib/pg-utc.mjs (imported by assert-repair-held.mjs) imports the
+      # `pg` package, so running it here failed with ERR_MODULE_NOT_FOUND.
 
       # #663: wake-delta.mjs above is a session/ssh tick tool, never scheduled.
       # These are the nightly-floor predicates (crontab line + log freshness)
