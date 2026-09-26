@@ -15,15 +15,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  */
 
 const releaseMock = vi.fn();
+const SLOT_CLIENT = { space: 'slot' };
+const BOX_CLIENT = { space: 'box' };
 
 vi.mock('../../../src/utils/distributed-lock.js', () => ({
-  DistributedLock: vi.fn().mockImplementation(() => ({
-    release: (...args: unknown[]) => releaseMock(...args),
+  DistributedLock: vi.fn().mockImplementation((client: { space?: string }) => ({
+    release: (...args: unknown[]) => releaseMock(client?.space, ...args),
   })),
 }));
 
 vi.mock('@ipodhan/shared', () => ({
-  getRedisClient: vi.fn(() => ({})),
+  getRedisClient: vi.fn(() => SLOT_CLIENT),
+  getBoxWideRedisClient: vi.fn(() => BOX_CLIENT),
   db: {},
 }));
 
@@ -50,8 +53,8 @@ describe('W-140 held-lock registry', () => {
     await releaseHeldLocks();
 
     expect(releaseMock).toHaveBeenCalledTimes(2);
-    expect(releaseMock).toHaveBeenCalledWith('lock:a', 'token-a');
-    expect(releaseMock).toHaveBeenCalledWith('lock:b', 'token-b');
+    expect(releaseMock).toHaveBeenCalledWith('slot', 'lock:a', 'token-a');
+    expect(releaseMock).toHaveBeenCalledWith('slot', 'lock:b', 'token-b');
 
     // Idempotent: a second call with nothing registered does not re-release.
     releaseMock.mockClear();
@@ -76,7 +79,7 @@ describe('W-140 held-lock registry', () => {
     await releaseHeldLocks();
 
     expect(releaseMock).toHaveBeenCalledTimes(1);
-    expect(releaseMock).toHaveBeenCalledWith('lock:d', 'token-2');
+    expect(releaseMock).toHaveBeenCalledWith('slot', 'lock:d', 'token-2');
   });
 
   it('unregisterHeldLock on an unknown key+token pair is a no-op (does not throw, does not remove anything else)', async () => {
@@ -86,7 +89,7 @@ describe('W-140 held-lock registry', () => {
     await releaseHeldLocks();
 
     expect(releaseMock).toHaveBeenCalledTimes(1);
-    expect(releaseMock).toHaveBeenCalledWith('lock:e', 'token-e');
+    expect(releaseMock).toHaveBeenCalledWith('slot', 'lock:e', 'token-e');
   });
 
   it('swallows a release error for one lock and still releases the rest', async () => {
@@ -102,12 +105,30 @@ describe('W-140 held-lock registry', () => {
     await expect(releaseHeldLocks()).resolves.toBeUndefined();
 
     expect(releaseMock).toHaveBeenCalledTimes(2);
-    expect(releaseMock).toHaveBeenCalledWith('lock:fails', 'token-fails');
-    expect(releaseMock).toHaveBeenCalledWith('lock:ok', 'token-ok');
+    expect(releaseMock).toHaveBeenCalledWith('slot', 'lock:fails', 'token-fails');
+    expect(releaseMock).toHaveBeenCalledWith('slot', 'lock:ok', 'token-ok');
   });
 
   it('releaseHeldLocks on an empty registry never calls release', async () => {
     await releaseHeldLocks();
     expect(releaseMock).not.toHaveBeenCalled();
+  });
+
+  it('#151 round 1: a box-scoped lock is released through the BOX-WIDE client, a slot lock through the slot client', async () => {
+    registerHeldLock('filing-auto-persist:cycle', 'slot-tok');
+    registerHeldLock('extractor', 'box-tok', 'box');
+
+    await releaseHeldLocks();
+
+    expect(releaseMock).toHaveBeenCalledTimes(2);
+    expect(releaseMock).toHaveBeenCalledWith('slot', 'filing-auto-persist:cycle', 'slot-tok');
+    expect(releaseMock).toHaveBeenCalledWith('box', 'extractor', 'box-tok');
+  });
+
+  it('#151 round 1: unregistering a slot lock never removes a box lock with the same key+token', async () => {
+    registerHeldLock('k', 't', 'box');
+    unregisterHeldLock('k', 't');
+    await releaseHeldLocks();
+    expect(releaseMock).toHaveBeenCalledWith('box', 'k', 't');
   });
 });

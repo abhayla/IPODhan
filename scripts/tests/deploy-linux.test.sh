@@ -2971,6 +2971,102 @@ FAKERC30
   fi
 
   rm -rf "$FAKEBIN30" "$ENVDIR30"
+
+  # --- Case 30k (#151 round 1, finding 3): the AUTO-ROLLBACK restarts OLD
+  # --- code, which reads the old UNPREFIXED cache keys - entries up to 7 days
+  # --- old, some with no TTL, written before the flip to the slot namespace.
+  # --- The rollback must clear those cache keys by the known cache-key
+  # --- namespaces (SCAN, never KEYS), and must NEVER delete a lock key, a
+  # --- non-cache state key, or any slot-prefixed / box-wide key.
+  CLEAR_LEGACY_FN_30K="$(awk '/^clear_legacy_unprefixed_cache_keys\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
+  NS_LINE_30K="$(grep -E '^LEGACY_CACHE_KEY_NAMESPACES=' "$DEPLOY_SCRIPT" || true)"
+  STATE_LINE_30K="$(grep -E '^LEGACY_NON_CACHE_KEY_PATTERNS=' "$DEPLOY_SCRIPT" || true)"
+  STORE30K="$(mktemp)"; RCLOG30K="$(mktemp)"; FAKEBIN30K="$(mktemp -d)"; ENVDIR30K="$(mktemp -d)"
+  printf 'REDIS_URL=redis://localhost:6379/0\n' > "$ENVDIR30K/web.env.local"
+  printf 'DATABASE_URL=postgresql://u@db:5432/ipodhan\n' >> "$ENVDIR30K/web.env.local"
+  printf 'REDIS_URL=redis://wrong:6379/9\n' > "$ENVDIR30K/scraper.env"
+  printf '%s\n' \
+    'ipo:slug:acme' 'ipo:list:all' 'gmp:latest:12' 'subscription:latest:12' 'calendar:2026-09' \
+    'lock:resource:scraper:cycle' 'lock:resource:ipo:acme' 'lock:resource:filing-auto-persist:cycle' \
+    'prod:ipo:slug:acme' 'staging:gmp:latest:12' 'box:lock:resource:extractor' 'db-ipodhan_test:ipo:x' \
+    'subscription:suppressed-cycles:12' 'unrelated:key' > "$STORE30K"
+  cat > "$FAKEBIN30K/redis-cli" <<FAKERC30K
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> '$RCLOG30K'
+args=("\$@"); f=(); i=0; pattern=""; scan=0
+while [ \$i -lt \${#args[@]} ]; do
+  case "\${args[\$i]}" in
+    -u|-n) i=\$((i+2)); continue ;;
+    --scan) scan=1; i=\$((i+1)); continue ;;
+    --pattern) pattern="\${args[\$((i+1))]}"; i=\$((i+2)); continue ;;
+    *) f+=("\${args[\$i]}"); i=\$((i+1)) ;;
+  esac
+done
+if [ "\$scan" = 1 ]; then
+  while IFS= read -r k; do
+    case "\$k" in \$pattern) printf '%s\n' "\$k" ;; esac
+  done < '$STORE30K'
+  exit 0
+fi
+case "\${f[0]}" in
+  UNLINK|DEL)
+    n=0
+    for k in "\${f[@]:1}"; do
+      if grep -qxF -- "\$k" '$STORE30K'; then grep -vxF -- "\$k" '$STORE30K' > '$STORE30K.t'; mv '$STORE30K.t' '$STORE30K'; n=\$((n+1)); fi
+    done
+    echo "\$n" ;;
+  KEYS) echo "KEYS-CALLED" >&2; exit 1 ;;
+  *) echo "unexpected \${f[0]}" >&2; exit 1 ;;
+esac
+FAKERC30K
+  chmod +x "$FAKEBIN30K/redis-cli"
+  OUT30K="$(
+    log() { echo "LOG: $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=0
+    WEB_ENV_FILE="$ENVDIR30K/web.env.local"
+    SCRAPER_ENV_FILE="$ENVDIR30K/scraper.env"
+    PATH="$FAKEBIN30K:$PATH"
+    eval "$NS_LINE_30K"; eval "$STATE_LINE_30K"
+    eval "$CLEAR_LEGACY_FN_30K"
+    clear_legacy_unprefixed_cache_keys
+  2>&1)"
+  LEFT30K="$(sort "$STORE30K" | tr '\n' ' ')"
+  WANT30K="$(printf '%s\n' 'box:lock:resource:extractor' 'db-ipodhan_test:ipo:x' 'lock:resource:filing-auto-persist:cycle' 'lock:resource:ipo:acme' 'lock:resource:scraper:cycle' 'prod:ipo:slug:acme' 'staging:gmp:latest:12' 'subscription:suppressed-cycles:12' 'unrelated:key' | sort | tr '\n' ' ')"
+  if [ -n "$CLEAR_LEGACY_FN_30K" ] && [ "$LEFT30K" = "$WANT30K" ] \
+     && emit "$OUT30K" | grep -q 'legacy unprefixed cache keys cleared: 5' \
+     && grep -q -- '--scan --pattern ipo:\*' "$RCLOG30K" \
+     && grep -q -- '-u redis://localhost:6379/0' "$RCLOG30K" \
+     && ! grep -q 'redis://wrong' "$RCLOG30K" \
+     && ! grep -qE '(^| )KEYS( |$)' "$RCLOG30K"; then
+    pass "case 30k: rollback clears exactly the 5 unprefixed cache keys (SCAN, web REDIS_URL), never a lock, a state key, or a prod:/staging:/box:/db- key"
+  else
+    fail "case 30k: expected only the unprefixed cache keys removed. left=[$LEFT30K] want=[$WANT30K] out=$OUT30K log=$(cat "$RCLOG30K")"
+  fi
+
+  # 30k-static: the AUTO-ROLLBACK branch calls it after the flip back and
+  # BEFORE the old web process starts (so the first request it serves never
+  # reads a stale unprefixed entry).
+  RB_BLOCK_30K="$(awk '/log "AUTO-ROLLBACK to /,/rollback_start_web$/' "$DEPLOY_SCRIPT")"
+  if emit "$RB_BLOCK_30K" | grep -q '^ *clear_legacy_unprefixed_cache_keys || true$' \
+     && [ "$(emitn "$RB_BLOCK_30K" | grep -n 'clear_legacy_unprefixed_cache_keys' | cut -d: -f1)" -lt "$(emitn "$RB_BLOCK_30K" | grep -n 'rollback_start_web' | cut -d: -f1)" ]; then
+    pass "case 30k static: the AUTO-ROLLBACK branch clears legacy cache keys before rollback_start_web"
+  else
+    fail "case 30k static: expected 'clear_legacy_unprefixed_cache_keys || true' before rollback_start_web in the AUTO-ROLLBACK branch — got: $RB_BLOCK_30K"
+  fi
+
+  # 30k-parity: the shell namespace list is exactly the set of top-level
+  # namespaces in the two cache-keys.ts files (a new cache namespace added
+  # there without being added here would survive a rollback, stale).
+  NS_TS_30K="$(cat "$SCRIPT_DIR/../../web/lib/cache/cache-keys.ts" "$SCRIPT_DIR/../../packages/shared/src/cache/cache-keys.ts" \
+    | grep -oE "[\`'][a-z_-]+:" | tr -d "\`'" | tr -d ':' | sort -u | tr '\n' ' ')"
+  NS_SH_30K="$(eval "$NS_LINE_30K"; printf '%s\n' $LEGACY_CACHE_KEY_NAMESPACES | sort -u | tr '\n' ' ')"
+  if [ -n "$NS_TS_30K" ] && [ "$NS_TS_30K" = "$NS_SH_30K" ]; then
+    pass "case 30k parity: LEGACY_CACHE_KEY_NAMESPACES matches the namespaces in both cache-keys.ts files"
+  else
+    fail "case 30k parity: cache-keys.ts namespaces [$NS_TS_30K] != deploy-linux.sh LEGACY_CACHE_KEY_NAMESPACES [$NS_SH_30K]"
+  fi
+  rm -rf "$STORE30K" "$STORE30K.t" "$RCLOG30K" "$FAKEBIN30K" "$ENVDIR30K"
 fi
 
 

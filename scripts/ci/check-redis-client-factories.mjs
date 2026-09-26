@@ -29,15 +29,32 @@ const EXT = /\.(ts|tsx|mts|cts|js|mjs|cjs)$/;
 const TEST_FILE = /\.(test|spec)\.[a-z]+$/;
 const CONSTRUCT = /\bnew\s+(?:IORedis|Redis|Cluster|Redis\.Cluster)\s*\(/;
 
+/**
+ * #151 round 1: getBoxWideRedisClient() is the ONE deliberately cross-slot key
+ * space ("box:"), for resources the two slots genuinely share (the 2-vCPU box
+ * itself - the extractor lock). Every caller is named here, so cached data can
+ * never drift into a key space both slots read.
+ */
+export const BOX_WIDE_CALLERS = new Set([
+  'packages/shared/src/cache/redis-client.ts',
+  'scraper/src/services/document-cycle.ts',
+]);
+const BOX_WIDE_CALL = /\bgetBoxWideRedisClient\s*\(/;
+
 export function findOffenders(files, readText) {
   const offenders = [];
   for (const file of files) {
-    if (ALLOWED_FACTORIES.has(file) || TEST_FILE.test(file)) continue;
+    if (TEST_FILE.test(file)) continue;
+    const factory = ALLOWED_FACTORIES.has(file);
+    const boxCaller = BOX_WIDE_CALLERS.has(file);
+    if (factory && boxCaller) continue;
     const lines = readText(file).split(/\r?\n/);
     lines.forEach((line, i) => {
       const code = line.replace(/\/\/.*$/, '');
       if (/^\s*\*/.test(code)) return;
-      if (CONSTRUCT.test(code)) offenders.push(`${file}:${i + 1}: ${line.trim()}`);
+      if ((!factory && CONSTRUCT.test(code)) || (!boxCaller && BOX_WIDE_CALL.test(code))) {
+        offenders.push(`${file}:${i + 1}: ${line.trim()}`);
+      }
     });
   }
   return offenders;
@@ -70,8 +87,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const offenders = findOffenders(files, (f) => readFileSync(join(REPO, f), 'utf8'));
   if (offenders.length > 0) {
     console.error(
-      `check-redis-client-factories: ${offenders.length} Redis client(s) constructed outside the slot-namespaced factories (#151).\n` +
-        'Use getRedisClient() from @ipodhan/shared (or web/lib/cache/redis-client) so the key carries the slot prefix:\n' +
+      `check-redis-client-factories: ${offenders.length} Redis client(s) constructed outside the slot-namespaced factories, or box-wide client use outside BOX_WIDE_CALLERS (#151).\n` +
+        'Use getRedisClient() from @ipodhan/shared (or web/lib/cache/redis-client) so the key carries the slot prefix;\n' +
+        'getBoxWideRedisClient, the cross-slot "box:" key space, is only for the callers named in BOX_WIDE_CALLERS:\n' +
         offenders.map((o) => `  ${o}`).join('\n')
     );
     process.exit(1);

@@ -50,6 +50,7 @@ vi.mock('@ipodhan/shared', () => ({
     insert: (...args: unknown[]) => dbInsertMock(...args),
   },
   getRedisClient: () => ({}),
+  getBoxWideRedisClient: () => ({}),
   DocumentRepository: vi.fn().mockImplementation(() => ({
     findByIPO: vi.fn().mockResolvedValue([]),
   })),
