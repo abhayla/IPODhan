@@ -395,6 +395,35 @@ lock_is_held() {
     return 1
   fi
 
+  # #719 round 2: staging carries REDIS_URL, REDIS_HOST, REDIS_PORT,
+  # REDIS_PASSWORD and REDIS_DB as SEPARATE keys - the app authenticates via
+  # ioredis options (packages/shared/src/cache/redis-client.ts), but REDIS_URL
+  # alone has no password, so every real TTL read got NOAUTH and fell into
+  # the fail-open branch below (22/22 wakes on 2026-09-26). Read the password
+  # and db override from the same two places REDIS_URL itself is read (env
+  # first, then this file), and mirror redis-client.ts's rule that an
+  # explicit REDIS_DB always wins over whatever db the URL encodes.
+  redis_password="${REDIS_PASSWORD:-}"
+  if [ -z "$redis_password" ] && [ -f "$SCRAPER_DIR/.env" ]; then
+    redis_password="$(grep -E '^REDIS_PASSWORD=' "$SCRAPER_DIR/.env" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+    redis_password="${redis_password%\"}"
+    redis_password="${redis_password#\"}"
+    redis_password="${redis_password%\'}"
+    redis_password="${redis_password#\'}"
+  fi
+  redis_db="${REDIS_DB:-}"
+  if [ -z "$redis_db" ] && [ -f "$SCRAPER_DIR/.env" ]; then
+    redis_db="$(grep -E '^REDIS_DB=' "$SCRAPER_DIR/.env" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+    redis_db="${redis_db%\"}"
+    redis_db="${redis_db#\"}"
+    redis_db="${redis_db%\'}"
+    redis_db="${redis_db#\'}"
+  fi
+  redis_db_opt=""
+  if [ -n "$redis_db" ]; then
+    redis_db_opt="-n $redis_db"
+  fi
+
   # #719: `redis-cli -t 3` (the flag this line used to pass) is not a real
   # redis-cli option in ANY version - there is no client-side connection
   # timeout flag by that name. On the staging box's actual redis-cli
@@ -404,8 +433,17 @@ lock_is_held() {
   # unconditionally, on a Redis that was reachable the whole time. `timeout`
   # (already a hard dependency of this script - see the no-ceiling check
   # above) bounds the same 3s window from the OUTSIDE instead.
+  #
+  # The password is passed via the REDISCLI_AUTH environment variable, set
+  # ONLY for this one command substitution - never as a `-a`/`--pass` argv
+  # flag, which `ps` on the same host can read. It is never echoed and never
+  # written to $ttl_err_file or the wake log.
   ttl_err_file="/tmp/scraper-wake-ttl-err.$$"
-  ttl="$(timeout 3 redis-cli -u "$redis_url" TTL "$SCRAPER_LOCK_KEY" 2>"$ttl_err_file")"
+  if [ -n "$redis_password" ]; then
+    ttl="$(REDISCLI_AUTH="$redis_password" timeout 3 redis-cli -u "$redis_url" $redis_db_opt TTL "$SCRAPER_LOCK_KEY" 2>"$ttl_err_file")"
+  else
+    ttl="$(timeout 3 redis-cli -u "$redis_url" $redis_db_opt TTL "$SCRAPER_LOCK_KEY" 2>"$ttl_err_file")"
+  fi
   ttl_rc=$?
   ttl_err="$(cat "$ttl_err_file" 2>/dev/null)"
   rm -f "$ttl_err_file"
