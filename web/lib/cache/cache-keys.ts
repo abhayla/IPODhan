@@ -192,6 +192,15 @@ export function getIPOScoreKey(ipoId: string): string {
 
 /**
  * Get all cache key patterns for IPO invalidation
+ *
+ * #551: the exact keys are `ipo:id:<id>` and, when a slug is known,
+ * `ipo:slug:<slug>` (`getIPOBySlugKey`/`getIPOByIdKey` — what
+ * `IPORepository.findBySlug()`/`findById()` actually cache under) PLUS
+ * `ipo:detail:<slug>` (`getIPODetailKey`). Nothing populates the last one
+ * today, but the admin write path (`web/app/api/admin/ipos/[id]/route.ts`)
+ * and `page-revalidation-service.ts` both clear it defensively so a future
+ * reader that starts caching under it is never left stale by a helper that
+ * forgot about it. Clearing an unpopulated key is a harmless no-op DEL.
  */
 export function getIPOInvalidationKeys(ipoId: string, slug?: string): string[] {
   const keys = [
@@ -201,7 +210,8 @@ export function getIPOInvalidationKeys(ipoId: string, slug?: string): string[] {
   ];
 
   if (slug) {
-    keys.push(`ipo:slug:${slug}`);
+    keys.push(getIPOBySlugKey(slug));
+    keys.push(getIPODetailKey(slug));
   }
 
   return keys;

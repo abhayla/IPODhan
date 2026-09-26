@@ -124,6 +124,13 @@ export function getListingPerformanceKey(ipoId: string): string {
 
 /**
  * Get all cache key patterns for IPO invalidation
+ *
+ * #551: mirrors `web/lib/cache/cache-keys.ts`'s `getIPOInvalidationKeys` byte
+ * for byte. Exact keys are `ipo:id:<id>` and, when a slug is known,
+ * `ipo:slug:<slug>` (what `IPORepository.findBySlug()`/`findById()` actually
+ * cache under) PLUS `ipo:detail:<slug>`, kept for parity with the web admin
+ * write path even though nothing populates it today — clearing an
+ * unpopulated key is a harmless no-op DEL.
  */
 export function getIPOInvalidationKeys(ipoId: string, slug?: string): string[] {
   const keys = [
@@ -133,7 +140,8 @@ export function getIPOInvalidationKeys(ipoId: string, slug?: string): string[] {
   ];
 
   if (slug) {
-    keys.push(`ipo:slug:${slug}`);
+    keys.push(getIPOBySlugKey(slug));
+    keys.push(getIPODetailKey(slug));
   }
 
   return keys;

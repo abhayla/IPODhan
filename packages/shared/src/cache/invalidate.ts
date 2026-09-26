@@ -6,24 +6,30 @@
  * Usage: Call after scraper updates or manual data modifications
  */
 
-import { safeDelPattern, safeDel } from './redis-client';
+import { safeDelPattern, safeDel, getRedisClient } from './redis-client';
 import { getRegistrarInvalidationKeys } from './cache-keys';
 import { logger } from '../logger';
+import { invalidateIPOCaches } from './ipo-cache-invalidation';
 
 /**
- * Invalidate all cached data for a specific IPO
- * Removes: detail cache, subscription cache, list caches containing this IPO
+ * Invalidate all cached data for a specific IPO.
+ *
+ * #551: this used to hand-roll `ipo:detail:<slug>` + `ipo:subscription:<slug>`
+ * — TWO keys nothing populates (readers cache the detail lookup under
+ * `getIPOBySlugKey` -> `ipo:slug:<slug>`, and the subscription snapshot under
+ * `getLatestSubscriptionKey` -> `subscription:latest:<ipoId>`). It never had
+ * a caller (measured: zero importers anywhere in web, scraper or this
+ * package), so the wrong keys shipped invisibly. Now delegates to the one
+ * canonical module (`ipo-cache-invalidation.ts`), which derives its key set
+ * from the same `cache-keys.ts` generators the readers use. `ipoId` is
+ * required by that module; pass `''` when only a slug is known (a write path
+ * that has the real id should call `invalidateIPOCaches` directly instead of
+ * this slug-only convenience wrapper).
  */
-export async function invalidateIPOCache(slug: string): Promise<void> {
+export async function invalidateIPOCache(slug: string, ipoId = ''): Promise<void> {
   try {
     logger.info({ slug }, 'Invalidating IPO cache');
-
-    // Delete specific IPO caches
-    await safeDel([`ipo:detail:${slug}`, `ipo:subscription:${slug}`]);
-
-    // Invalidate all list caches (they may contain this IPO)
-    await safeDelPattern('ipo:list:*');
-
+    await invalidateIPOCaches(getRedisClient(), ipoId, slug);
     logger.info({ slug }, 'IPO cache invalidated successfully');
   } catch (error) {
     logger.error({ error, slug }, 'Failed to invalidate IPO cache');
