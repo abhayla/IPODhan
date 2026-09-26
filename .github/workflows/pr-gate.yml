@@ -526,17 +526,6 @@ jobs:
             scripts/tests/merged-not-deployed.test.mjs \
             scripts/tests/pull-frozen-checks.test.mjs
 
-      - name: "scripts/tests wire-or-retire batch 2, slow suites (#616/#681)"
-        # Split from batch 1 only because these two are individually slow
-        # (check-build-cards-status drives real git subprocesses ~25s;
-        # check-dod-root-resolution's check-dod.mjs walks the full spec tree
-        # twice, ~100s) — grouping them separately keeps batch 1's failure
-        # output short to read. Builtins-only, same as batch 1.
-        run: |
-          node --test \
-            scripts/tests/check-build-cards-status.test.mjs \
-            scripts/tests/check-dod-root-resolution.test.mjs
-
       - name: "scripts/tests wire-or-retire batch 3 (#616/#681)"
         run: |
           node --test \

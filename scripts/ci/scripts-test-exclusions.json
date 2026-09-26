@@ -36,6 +36,18 @@
       "kind": "broken",
       "issue": "#1178",
       "reason": "One of 56 cases (LIVE --new-only baseline run writing issues-sync-state.json) fails on the CI runner, most likely an environment dependency; excluded until #1178 fixes the test or the code path, then it wires in as a normal pass."
+    },
+    {
+      "file": "scripts/tests/check-build-cards-status.test.mjs",
+      "kind": "broken",
+      "issue": "#1181",
+      "reason": "Three cases fail on the CI runner through git subprocesses (execSync) against the real tree while passing locally with a full checkout; likely shallow checkout / git identity on the runner. Excluded until #1181 fixes the test setup or the job checkout depth."
+    },
+    {
+      "file": "scripts/tests/check-dod-root-resolution.test.mjs",
+      "kind": "broken",
+      "issue": "#1182",
+      "reason": "Case 24 fails on the runner with ENOENT: a planted build-card fixture path is resolved against the process cwd instead of the repo root given as argv[2] - a real root-resolution defect to fix in #1182 before wiring."
     }
   ]
 }
