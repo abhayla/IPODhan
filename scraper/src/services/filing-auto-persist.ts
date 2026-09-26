@@ -508,7 +508,7 @@ export async function writeStatusWithAttempt(
   patch: Record<string, unknown>,
   now: Date = new Date()
 ): Promise<Array<{ ipoId: string; retryCount: number }>> {
-  return dbx.transaction(async (tx) => {
+  const updated = await dbx.transaction(async (tx) => {
     const updated = await tx
       .update(documentsTable)
       .set(patch as never)
@@ -520,6 +520,24 @@ export async function writeStatusWithAttempt(
     if (attempt) await tx.insert(documentExtractionAttemptsTable).values(attempt);
     return updated;
   });
+  // #676: invalidate `documents:<ipoId>` AFTER commit, never inside the tx — a
+  // rollback leaving a cleared cache is harmless (re-caches on next read), but
+  // a commit must always be followed by one, or `findByIPO`'s 1h cache-aside
+  // keeps serving the pre-write row (same class as `setDocumentExtractionState`
+  // above). Fail-open on a Redis error, matching that handler.
+  const ipoId = updated[0]?.ipoId;
+  if (ipoId) {
+    try {
+      const repo = new DocumentRepository(dbx as never, getRedisClient() as never);
+      await repo.invalidateForIpo(ipoId);
+    } catch (cacheError) {
+      logger.warn(
+        { documentId, ipoId, error: cacheError instanceof Error ? cacheError.message : String(cacheError) },
+        'Could not invalidate documents cache after a transactional status write (non-fatal)'
+      );
+    }
+  }
+  return updated;
 }
 
 export interface AutoPersistIpo {
