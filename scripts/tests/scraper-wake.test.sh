@@ -301,7 +301,7 @@ fi
 # ceiling from just one of them survived a "does a timeout exist anywhere" grep.
 JOB_LAUNCHES="$(grep -vE '^[[:space:]]*#' "$WAKE" | grep -cE 'cd "\$SCRAPER_DIR" && exec ' || true)"
 JOB_BOUNDED="$(grep -vE '^[[:space:]]*#' "$WAKE" | grep -cE 'cd "\$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after=([0-9]+|"\$SCRAPER_KILL_AFTER_SECONDS") "\$SCRAPER_CEILING_SECONDS"' || true)"
-# #624: the backstop became SCRAPER_KILL_AFTER_SECONDS so case 21e can prove it
+# #624: the backstop became SCRAPER_KILL_AFTER_SECONDS so case 22e can prove it
 # in seconds; production never sets it, so its DEFAULT is what runs.
 if grep -qE 'SCRAPER_KILL_AFTER_SECONDS="\$\{SCRAPER_KILL_AFTER_SECONDS:-60\}"' "$WAKE"; then
   pass "case 5b: the SIGKILL backstop defaults to 60s"
@@ -1514,7 +1514,7 @@ fi
 
 rm -rf "$STUBDIR"
 
-# --- Case 21 (#624): a deploy's signal reaches the job, which releases its lock
+# --- Case 22 (#624): a deploy's signal reaches the job, which releases its lock
 # pm2 starts THIS wrapper (interpreter.json maps .sh to bash) and stops it with
 # SIGINT (pm2 5.x KILL_SIGNAL), then SIGKILL after kill_timeout. Before #624 the
 # wrapper ran the job as a FOREGROUND child: bash defers a SIGINT until that
@@ -1594,7 +1594,7 @@ run_signal_case() {
 for _sh in bash sh; do
   for _sig in INT TERM; do
     run_signal_case "fwd-$_sh-$_sig" job-lock.sh "$_sig" "$_sh"
-    _lbl="case 21 ($_sh, SIG$_sig to the wrapper, as pm2 stop/delete sends)"
+    _lbl="case 22 ($_sh, SIG$_sig to the wrapper, as pm2 stop/delete sends)"
     if [ "$SIG_RC" = timeout ]; then
       fail "$_lbl: the wrapper was still running ${SIG_SECS}s after the signal - it did not pass the signal on (#624)"
     else
@@ -1629,23 +1629,106 @@ for _sh in bash sh; do
   done
 done
 
-# case 21e: a job that IGNORES the forwarded signal is still bounded - the
+# case 22e: a job that IGNORES the forwarded signal is still bounded - the
 # kill-after backstop kills it and the wrapper exits (pm2 is never left waiting
 # on a wedged job, and nothing is orphaned).
 run_signal_case deaf job-deaf.sh INT bash
 if [ "$SIG_RC" != timeout ] && [ "$SIG_JOB_ALIVE" = no ]; then
-  pass "case 21e: a job that ignores the signal is killed by the backstop; the wrapper exited ${SIG_SECS}s after SIGINT (exit $SIG_RC)"
+  pass "case 22e: a job that ignores the signal is killed by the backstop; the wrapper exited ${SIG_SECS}s after SIGINT (exit $SIG_RC)"
 else
-  fail "case 21e: a signal-deaf job was not bounded (wrapper rc=$SIG_RC after ${SIG_SECS}s, job alive=$SIG_JOB_ALIVE). log: $SIG_OUT"
+  fail "case 22e: a signal-deaf job was not bounded (wrapper rc=$SIG_RC after ${SIG_SECS}s, job alive=$SIG_JOB_ALIVE). log: $SIG_OUT"
 fi
 if printf '%s' "$SIG_OUT" | grep -q 'scraper-wake: wake-interrupted: job=data'; then
-  pass "case 21e: the backstop kill is logged as wake-interrupted, not as a ceiling trip"
+  pass "case 22e: the backstop kill is logged as wake-interrupted, not as a ceiling trip"
 else
-  fail "case 21e: expected a wake-interrupted line, got: $SIG_OUT"
+  fail "case 22e: expected a wake-interrupted line, got: $SIG_OUT"
+fi
+
+# case 22g (#624 round 2): no process the job started outlives the wrapper, on
+# ANY way the wake ends. In production the job is tsx -> node, and node runs
+# the python PDF/OCR extractors through spawnSync. spawnSync blocks node's
+# event loop, so a forwarded SIGTERM cannot run node's handler; tsx SIGKILLs
+# node about 30 ms later and python is orphaned, still burning the 2-vCPU box.
+# The stub below stands in for that: it starts a long-lived grandchild (a
+# `sleep 300`, the "python extractor") and then exits on the signal, the
+# ceiling or on its own WITHOUT taking the grandchild with it. After the
+# wrapper has exited, the grandchild must be gone. Red before the session
+# sweep: nothing ever signalled the grandchild.
+cat > "$SIGDIR/job-orphan.sh" <<'STUB'
+#!/bin/sh
+echo $$ > "$STUB_DIR/job.pid"
+# The grandchild ignores TERM/INT/HUP and holds none of the job's stdio: on the
+# fallback (no setsid) branch timeout's own group signal would otherwise kill
+# it and hide the defect, and an inherited stdout would hold $(...) open.
+(trap '' TERM INT HUP; exec sleep 300) </dev/null >/dev/null 2>&1 &
+echo $! > "$STUB_DIR/gc.pid"
+trap 'exit 130' TERM INT
+echo READY >> "$STUB_DIR/events"
+if [ "${STUB_MODE:-}" = exit ]; then exit 0; fi
+while :; do sleep 1 & wait $!; done
+STUB
+chmod +x "$SIGDIR/job-orphan.sh"
+
+# grandchild_check <label> <dir> <log>: pass when the recorded grandchild is gone
+grandchild_check() {
+  _gc="$(cat "$2/gc.pid" 2>/dev/null)"
+  if [ -z "$_gc" ]; then
+    fail "$1: the stub never recorded its grandchild pid - the case did not run. log: $3"
+  elif kill -0 "$_gc" 2>/dev/null; then
+    fail "$1: grandchild pid $_gc (the python-extractor stand-in) outlived the wrapper - orphaned. log: $3"
+    kill -KILL "$_gc" 2>/dev/null
+  else
+    pass "$1: the grandchild pid $_gc did not outlive the wrapper"
+    if printf '%s' "$3" | grep -qE "scraper-wake: wake-swept: job=data .*killed=[0-9 ]*\b$_gc\b"; then
+      pass "$1: a wake-swept line names the killed pid $_gc"
+    else
+      fail "$1: expected a wake-swept line naming pid $_gc, got: $3"
+    fi
+  fi
+}
+
+for _sh in bash sh; do
+  run_signal_case "orphan-$_sh" job-orphan.sh INT "$_sh"
+  grandchild_check "case 22g ($_sh, deploy stop)" "$SIGDIR/orphan-$_sh" "$SIG_OUT"
+  if printf '%s' "$SIG_OUT" | grep -qE 'scraper-wake: wake-interrupted: job=data .*exit=130'; then
+    pass "case 22g ($_sh, deploy stop): still logged wake-interrupted with the job's own exit 130 after the sweep"
+  else
+    fail "case 22g ($_sh, deploy stop): expected wake-interrupted ... exit=130, got: $SIG_OUT"
+  fi
+done
+
+_d="$SIGDIR/orphan-ceiling"; mkdir -p "$_d"; : > "$_d/events"
+OUT22C="$(STUB_DIR="$_d" DEPLOY_SLOT=prod SCRAPER_WAKE_FAKE_LOCK_TTL=free \
+  SCRAPER_WAKE_CMD="$SIGDIR/job-orphan.sh" SCRAPER_CEILING_SECONDS=2 SCRAPER_KILL_AFTER_SECONDS=3 \
+  bash "$WAKE" data 2>&1)"; RC22C=$?
+grandchild_check "case 22g (ceiling trip)" "$_d" "$OUT22C"
+if [ "$RC22C" -eq 124 ] && printf '%s' "$OUT22C" | grep -q 'scraper-wake: ceiling-tripped:'; then
+  pass "case 22g (ceiling trip): still exits 124 with the ceiling-tripped line after the sweep"
+else
+  fail "case 22g (ceiling trip): expected exit 124 + ceiling-tripped, got rc=$RC22C: $OUT22C"
+fi
+
+_d="$SIGDIR/orphan-exit"; mkdir -p "$_d"; : > "$_d/events"
+OUT22X="$(STUB_MODE=exit STUB_DIR="$_d" DEPLOY_SLOT=prod SCRAPER_WAKE_FAKE_LOCK_TTL=free \
+  SCRAPER_WAKE_CMD="$SIGDIR/job-orphan.sh" SCRAPER_CEILING_SECONDS=40 SCRAPER_KILL_AFTER_SECONDS=3 \
+  bash "$WAKE" data 2>&1)"; RC22X=$?
+grandchild_check "case 22g (job exits on its own)" "$_d" "$OUT22X"
+if [ "$RC22X" -eq 0 ] && printf '%s' "$OUT22X" | grep -q 'scraper-wake: wake-complete:'; then
+  pass "case 22g (job exits on its own): still exits 0 with wake-complete after the sweep"
+else
+  fail "case 22g (job exits on its own): expected exit 0 + wake-complete, got rc=$RC22X: $OUT22X"
+fi
+
+# case 22h: the sweep targets pids, never a command-line pattern (owner rule: a
+# pattern can match the caller's own argv and kill the calling shell).
+if grep -vE '^[[:space:]]*#' "$WAKE" | grep -qE '\b(pkill|killall)\b|pgrep -f'; then
+  fail "case 22h: $WAKE kills or finds processes by name/pattern - build the target from pids"
+else
+  pass "case 22h: $WAKE never kills by a command-line pattern"
 fi
 rm -rf "$SIGDIR"
 
-# case 21f: every scraper `pm2 start` in the deploy passes --no-treekill and a
+# case 22f: every scraper `pm2 start` in the deploy passes --no-treekill and a
 # --kill-timeout longer than the wrapper's 60 s backstop. Without --no-treekill
 # pm2 signals EVERY process in the tree directly (lib/TreeKill.js): node gets a
 # second copy of the signal via timeout and tsx, and SIGKILL lands on the whole
@@ -1656,9 +1739,9 @@ _n_total="$(printf '%s\n' "$PM2_SCRAPER_STARTS" | grep -c 'pm2 start')"
 _n_notree="$(printf '%s\n' "$PM2_SCRAPER_STARTS" | grep -c -- '--no-treekill')"
 _n_kt="$(printf '%s\n' "$PM2_SCRAPER_STARTS" | grep -cE -- '--kill-timeout (6[5-9]|[7-9][0-9])[0-9]{3}\b')"
 if [ "$_n_total" -gt 0 ] && [ "$_n_notree" -eq "$_n_total" ] && [ "$_n_kt" -eq "$_n_total" ]; then
-  pass "case 21f: all $_n_total scraper pm2 start(s) pass --no-treekill and a --kill-timeout above the 60 s backstop"
+  pass "case 22f: all $_n_total scraper pm2 start(s) pass --no-treekill and a --kill-timeout above the 60 s backstop"
 else
-  fail "case 21f: of $_n_total scraper pm2 start(s), $_n_notree pass --no-treekill and $_n_kt pass a --kill-timeout of 65000-99999 ms"
+  fail "case 22f: of $_n_total scraper pm2 start(s), $_n_notree pass --no-treekill and $_n_kt pass a --kill-timeout of 65000-99999 ms"
   printf '%s\n' "$PM2_SCRAPER_STARTS"
 fi
 

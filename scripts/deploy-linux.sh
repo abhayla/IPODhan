@@ -1989,13 +1989,15 @@ restart_pm2() {
   # SCRAPER_CRON so this function's own test isolation (case 9b) doesn't
   # abort on an unbound variable under `set -u` before pm2 ever runs.
   # #624: --no-treekill makes pm2 signal the wrapper pid ONLY; the wrapper
-  # passes one SIGTERM on to the job so it releases its locks. pm2's default
+  # passes one SIGTERM on to the job so it releases its locks, then SIGKILLs
+  # whatever the job left running in its session (python extractors), since
+  # with --no-treekill nothing else would. pm2's default
   # treekill signals every pid in the tree (node gets duplicate copies, and a
   # second copy aborts the release) and SIGKILLs the whole tree after 1600 ms.
   # --kill-timeout 75000 outlasts the wrapper's 60 s --kill-after backstop, so
   # pm2 never SIGKILLs a wrapper that is still waiting for a lock release.
   # Both are stored in pm2's app record, so a later `pm2 stop`/`delete` of this
-  # app uses them too. scripts/tests/scraper-wake.test.sh case 21f pins them.
+  # app uses them too. scripts/tests/scraper-wake.test.sh case 22f pins them.
   ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" SCRAPER_WAKE_TRIGGER=deploy pm2 start "$RELEASE_DIR/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
       --no-treekill --kill-timeout 75000 --no-autorestart )
   # The alarm clock. Without this the wrapper above runs once and never again.
