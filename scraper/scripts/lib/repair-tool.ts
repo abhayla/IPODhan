@@ -804,9 +804,92 @@ export function buildAlreadyRepairedSet<T extends { ipoId: string; fieldName: st
   return new Set(rows.filter(isRepairedByThisTool).map((r) => alreadyRepairedKey(r.ipoId, r.fieldName)));
 }
 
-/** Write an applied-ledger / backup artifact, creating its directory. */
-export function writeLedgerFile(filePath: string, payload: unknown): string {
+/**
+ * #457: one changed FIELD's prior and new value — the unit a repair can be
+ * undone from. A ledger holding only a list of changed row ids (the
+ * `backfill-normalized-name` class before this fix) is not a rollback
+ * artifact: it names WHAT was touched but not what to restore it to.
+ */
+export interface RepairLedgerFieldChange {
+  /** The table the row lives in (e.g. `promoters`, `field_sources`, `drizzle.__drizzle_migrations`). */
+  table: string;
+  /** The row's identity — a uuid/id string, or a composite key for tables with no single-column PK. */
+  rowKey: string | Record<string, string | number>;
+  /** The column name that changed. */
+  field: string;
+  /** The value BEFORE this repair — read from the row in the same read/transaction that decided to change it. */
+  before: unknown;
+  /** The value AFTER this repair (the value written, or that would be written on a dry run). */
+  after: unknown;
+}
+
+/**
+ * The required shape of every repair/backfill ledger or backup artifact
+ * (#457). `changes` is mandatory and MUST carry a `before` for every entry —
+ * that is the type-level detection: a tool that only records changed ids
+ * cannot satisfy this type, so it fails `tsc` before it ever runs. Extra
+ * tool-specific fields (counts, scope, timing) are still allowed alongside
+ * `changes` via the index signature.
+ */
+export interface RepairLedgerPayload {
+  tool: string;
+  mode: 'dry-run' | 'apply';
+  /** ISO-8601 UTC instant this ledger was written — read from the clock, per `.claude/rules/ist-timezone.md`. */
+  generatedAt: string;
+  changes: readonly RepairLedgerFieldChange[];
+  [extra: string]: unknown;
+}
+
+/**
+ * Diff two snapshots of the SAME row into per-field ledger entries — the
+ * mechanical way a repair tool turns a `before` row (read in the same
+ * transaction as the write) and an `after` row (the values it wrote, or
+ * would write on a dry run) into `RepairLedgerPayload['changes']`. Only
+ * fields that actually differ are emitted; a field absent from both objects
+ * is ignored. Comparison is by `JSON.stringify` equality, which is exact for
+ * the primitive/date-as-string/number values these tools repair.
+ */
+export function diffToLedgerEntries(
+  table: string,
+  rowKey: string | Record<string, string | number>,
+  before: Record<string, unknown>,
+  after: Record<string, unknown>
+): RepairLedgerFieldChange[] {
+  const fields = new Set([...Object.keys(before), ...Object.keys(after)]);
+  const entries: RepairLedgerFieldChange[] = [];
+  for (const field of fields) {
+    const b = before[field];
+    const a = after[field];
+    if (JSON.stringify(b) !== JSON.stringify(a)) {
+      entries.push({ table, rowKey, field, before: b, after: a });
+    }
+  }
+  return entries;
+}
+
+/**
+ * Write an applied-ledger / backup artifact, creating its directory.
+ *
+ * The `payload` type is the detection mechanism for #457: `changes` is
+ * mandatory and every entry requires `before` — a tool that tracks only
+ * changed ids, or forgets to read the prior value, fails `tsc`, not a
+ * runtime audit. `writeJsonLines` below is the JSONL variant for tools
+ * repairing a huge number of rows.
+ */
+export function writeLedgerFile(filePath: string, payload: RepairLedgerPayload): string {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 1));
+  return filePath;
+}
+
+/**
+ * JSONL variant of `writeLedgerFile` for a repair tool writing a very large
+ * number of rows, where a single JSON document would be unwieldy. Each line
+ * is one `RepairLedgerFieldChange` (never a bare id) — same rollback
+ * guarantee, one entry per line instead of one array in one document.
+ */
+export function writeLedgerJsonLines(filePath: string, changes: readonly RepairLedgerFieldChange[]): string {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, changes.map((c) => JSON.stringify(c)).join('\n') + (changes.length > 0 ? '\n' : ''));
   return filePath;
 }

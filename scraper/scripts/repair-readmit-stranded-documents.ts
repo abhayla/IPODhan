@@ -177,6 +177,15 @@ async function main(): Promise<void> {
     path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${cli.apply ? 'applied' : 'dryrun'}-${Date.now()}.json`),
     {
       tool: TOOL,
+      mode: cli.apply ? 'apply' : 'dry-run',
+      generatedAt: new Date().toISOString(),
+      changes: selected.map((r) => ({
+        table: 'documents',
+        rowKey: r.id,
+        field: 'extraction_status',
+        before: STRANDED_STATUS,
+        after: READMIT_STATUS,
+      })),
       database: actual,
       apply: cli.apply,
       at: new Date().toISOString(),

@@ -198,6 +198,15 @@ async function main(): Promise<number> {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const ledger = writeLedgerFile(path.join(here, 'state', `repair-closed-ipo-false-done-${dbName}-${stamp}.json`), {
     tool: 'repair-closed-ipo-false-done',
+    mode: 'apply',
+    generatedAt: new Date().toISOString(),
+    changes: rows.map((r) => ({
+      table: 'closed_ipo_resourcing',
+      rowKey: r.ipo_id,
+      field: 'outcome',
+      before: r.outcome,
+      after: 'PARTIAL',
+    })),
     db: dbName,
     before: rows,
   });

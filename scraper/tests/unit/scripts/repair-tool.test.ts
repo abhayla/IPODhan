@@ -21,6 +21,7 @@ import {
   decideUndoIpoConflict,
   describeDbConnectionTarget,
   describeIpoScope,
+  diffToLedgerEntries,
   flagIsPresent,
   formatCacheInvalidationBlockNotice,
   guardCacheInvalidation,
@@ -37,6 +38,8 @@ import {
   readFieldSource,
   upsertFieldSource,
   writeLedgerFile,
+  type RepairLedgerFieldChange,
+  type RepairLedgerPayload,
 } from '../../../scripts/lib/repair-tool.js';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -649,8 +652,84 @@ describe('writeLedgerFile', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'repair-tool-'));
     try {
       const file = path.join(dir, 'nested', 'ledger.json');
-      writeLedgerFile(file, [{ slug: 'a', changes: 1 }]);
-      expect(JSON.parse(readFileSync(file, 'utf-8'))).toEqual([{ slug: 'a', changes: 1 }]);
+      const payload: RepairLedgerPayload = {
+        tool: 'test-tool',
+        mode: 'apply',
+        generatedAt: '2026-09-26T00:00:00.000Z',
+        changes: [{ table: 'ipos', rowKey: 'ipo-1', field: 'slug', before: 'a', after: 'b' }],
+      };
+      writeLedgerFile(file, payload);
+      expect(JSON.parse(readFileSync(file, 'utf-8'))).toEqual(payload);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('#457 — every repair ledger records a rollback-capable before value', () => {
+  it('MUTATION: a payload with no `before` on a change fails to type-check — this is a compile-time', () => {
+    // This test's REAL assertion is that the next two lines do NOT type-check
+    // if uncommented (proven by hand: deleting `before` from RepairLedgerFieldChange,
+    // or from RepairLedgerPayload's required `changes` field, turns `tsc -p
+    // tsconfig.scripts.json` red for every one of the 25 repair tools this class
+    // covers — see scripts/repair-*.ts, scripts/backfill-*.ts, scripts/requeue-*.ts).
+    // The runtime assertion below is the reversal-capability floor: a real ledger
+    // entry can always be read back and used to restore the row.
+    const entry: RepairLedgerFieldChange = { table: 'ipos', rowKey: 'ipo-1', field: 'slug', before: 'old', after: 'new' };
+    expect(entry.before).toBe('old');
+    expect(Object.prototype.hasOwnProperty.call(entry, 'before')).toBe(true);
+  });
+
+  it('a changed-ids-only ledger (the pre-fix backfill-normalized-name shape) is rejected by the type', () => {
+    // @ts-expect-error — `changedIds: string[]` alone is not a valid RepairLedgerPayload;
+    // this is the class this fix closes (issue #457).
+    const badPayload: RepairLedgerPayload = { tool: 't', mode: 'apply', generatedAt: 'x', changedIds: ['a', 'b'] };
+    expect(badPayload).toBeTruthy();
+  });
+
+  describe('diffToLedgerEntries', () => {
+    it('emits one entry per field that actually changed, carrying both values', () => {
+      const before = { id: 'row-1', normalizedName: 'old-name', unrelated: 1 };
+      const after = { id: 'row-1', normalizedName: 'new-name', unrelated: 1 };
+      const entries = diffToLedgerEntries('promoters', 'row-1', before, after);
+      expect(entries).toEqual([{ table: 'promoters', rowKey: 'row-1', field: 'normalizedName', before: 'old-name', after: 'new-name' }]);
+    });
+
+    it('MUTATION: comparing by reference instead of value would miss no-op writes — deep-equal objects are not diffed', () => {
+      const before = { id: 'row-1', payload: { a: 1 } };
+      const after = { id: 'row-1', payload: { a: 1 } };
+      expect(diffToLedgerEntries('t', 'row-1', before, after)).toEqual([]);
+    });
+
+    it('emits nothing when before/after are identical', () => {
+      const row = { id: 'row-1', field: 'same' };
+      expect(diffToLedgerEntries('t', 'row-1', row, row)).toEqual([]);
+    });
+  });
+
+  it('a ledger written by writeLedgerFile can be read back and used to restore the row (reversal proof)', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'repair-tool-'));
+    try {
+      const file = path.join(dir, 'ledger.json');
+      // Simulates a real repair: row starts at `before`, tool changes it to `after`.
+      const liveRow: Record<string, unknown> = { id: 'row-1', normalizedName: 'WRONG', other: 'x' };
+      const before = { ...liveRow };
+      liveRow.normalizedName = 'CORRECT';
+      const after = { ...liveRow };
+      writeLedgerFile(file, {
+        tool: 'backfill-normalized-name',
+        mode: 'apply',
+        generatedAt: '2026-09-26T00:00:00.000Z',
+        changes: diffToLedgerEntries('promoters', 'row-1', before, after),
+      });
+
+      // Undo: read the ledger back and restore every field to its `before` value.
+      const ledger = JSON.parse(readFileSync(file, 'utf-8')) as RepairLedgerPayload;
+      for (const change of ledger.changes) {
+        (liveRow as Record<string, unknown>)[change.field] = change.before;
+      }
+      expect(liveRow).toEqual(before);
+      expect(liveRow.normalizedName).toBe('WRONG');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

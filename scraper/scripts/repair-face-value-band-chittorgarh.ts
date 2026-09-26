@@ -508,7 +508,17 @@ async function main() {
           try {
             const dateDir = stamp.slice(0, 10);
             const backupPath = `evidence/${dateDir}-decision4-blank-unsourced-${row.slug}/before.json`;
-            writeLedgerFile(backupPath, { capturedAt: stamp, row });
+            writeLedgerFile(backupPath, {
+              tool: TOOL_NAME,
+              mode: 'apply',
+              generatedAt: stamp,
+              changes: [
+                { table: 'ipos', rowKey: row.id, field: 'priceRangeMin', before: row.priceRangeMin, after: null },
+                { table: 'ipos', rowKey: row.id, field: 'priceRangeMax', before: row.priceRangeMax, after: null },
+              ],
+              capturedAt: stamp,
+              row,
+            });
             await (db as any).transaction(async (tx: unknown) => {
               const repo = new IPORepository(tx as any, redisClient);
               // No field_sources row for either blanked column — the absence is
@@ -517,7 +527,18 @@ async function main() {
               await repo.applyOfferTerms(row.id, { priceRangeMin: null, priceRangeMax: null });
             });
             const ledgerPath = `evidence/${dateDir}-decision4-blank-unsourced-${row.slug}/applied.json`;
-            writeLedgerFile(ledgerPath, { appliedAt: stamp, slug: row.slug, blanked: ['priceRangeMin', 'priceRangeMax'] });
+            writeLedgerFile(ledgerPath, {
+              tool: TOOL_NAME,
+              mode: 'apply',
+              generatedAt: stamp,
+              changes: [
+                { table: 'ipos', rowKey: row.id, field: 'priceRangeMin', before: row.priceRangeMin, after: null },
+                { table: 'ipos', rowKey: row.id, field: 'priceRangeMax', before: row.priceRangeMax, after: null },
+              ],
+              appliedAt: stamp,
+              slug: row.slug,
+              blanked: ['priceRangeMin', 'priceRangeMax'],
+            });
             anyWrote = true;
             console.log(`  BLANKED: priceRangeMin/priceRangeMax -> NULL — backup ${backupPath}, ledger ${ledgerPath}`);
           } catch (e) {

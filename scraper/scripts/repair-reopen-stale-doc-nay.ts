@@ -329,6 +329,15 @@ async function main(): Promise<void> {
       path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${applied ? 'applied' : 'dryrun'}-${Date.now()}.json`),
       {
         tool: TOOL,
+        mode: applied ? 'apply' : ('dry-run' as const),
+        generatedAt: new Date().toISOString(),
+        changes: changed.map((r) => ({
+          table: 'ipo_field_plan',
+          rowKey: r.id,
+          field: 'state',
+          before: r.state,
+          after: 'PENDING',
+        })),
         database: actual,
         apply: applied,
         at: new Date().toISOString(),

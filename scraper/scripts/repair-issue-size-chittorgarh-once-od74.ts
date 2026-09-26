@@ -577,9 +577,33 @@ async function main(): Promise<number> {
     console.error(`${e instanceof RefusedError ? 'REFUSED' : 'FAILED'}: ${e instanceof Error ? e.message : e}`);
     ledger.push({ outcome: exitCode === 2 ? 'REFUSED' : 'FAILED', error: e instanceof Error ? e.message : String(e) });
   } finally {
+    // #457: this tool's ledger rows are heterogeneous (`stored`/`printed`/`wrote`
+    // key names differ by submode). Every row that names a repaired ipos row
+    // carries `id` + `stored` (the prior issueSize) — that pair is lifted into
+    // a typed `changes` entry; rows describing a skip/refusal (no `id`) carry
+    // no field change and are left out of `changes` (still visible in `rows`).
+    const changes = ledger.flatMap((r) => {
+      if (r && typeof r === 'object' && 'id' in r && 'stored' in r) {
+        const row = r as { id: string; stored: unknown; printed?: { rupees?: unknown }; wrote?: unknown };
+        return [
+          {
+            table: 'ipos',
+            rowKey: row.id,
+            field: 'issueSize',
+            before: row.stored,
+            after: row.printed?.rupees ?? row.wrote ?? null,
+          },
+        ];
+      }
+      return [];
+    });
     const file = writeLedgerFile(path.join(here, 'state', `od74-issue-size-${mode}-${dbName}-${APPLY ? 'apply' : 'dryrun'}-${Date.now()}.json`), {
+      tool: TOOL_NAME,
+      mode: APPLY ? 'apply' : 'dry-run',
+      generatedAt: new Date().toISOString(),
+      changes,
       dbName,
-      mode,
+      subMode: mode,
       apply: APPLY,
       rows: ledger,
     });
