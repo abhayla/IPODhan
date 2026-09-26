@@ -1,6 +1,16 @@
 /**
  * IPO Score Utilities (Story 4.7)
  * Helper functions for score colors, ranges, and display
+ *
+ * OD-125 (#167): getScoreBgClass/TextClass/BorderClass, getScoreCategory and
+ * formatScore render the badge total on the SAME 0-10 scale
+ * `/api/ipos/[slug]/score` and IPOScoreSection use (see
+ * lib/adapters/ipo-score-display-adapter.ts) — a stored `ipo_scores` row
+ * (0-100 raw) must be converted via `adaptStoredScore(...).totalScore`
+ * before it reaches these functions. isScoreInRange/ScoreRange/
+ * getScoreRangeLabel/getScorePercentage/formatComponentScore are unrelated:
+ * they filter the RAW 0-100 `ipo_scores.totalScore` column and are left on
+ * that scale.
  */
 
 import type { IPOVerdict, ConfidenceLevel } from '@/lib/db/types';
@@ -11,43 +21,43 @@ import type { IPOVerdict, ConfidenceLevel } from '@/lib/db/types';
 export type ScoreRange = '0-25' | '26-50' | '51-75' | '76-100' | 'all';
 
 /**
- * Score color scheme based on total score
- * 0-25: red, 26-50: orange, 51-75: yellow, 76-100: green
+ * Score color scheme based on total score (0-10 scale — see file header)
+ * 0-2.5: red, 2.6-5: orange, 5.1-7.5: yellow, 7.6-10: green
  */
 export function getScoreColor(score: number): string {
-  if (score <= 25) return 'red';
-  if (score <= 50) return 'orange';
-  if (score <= 75) return 'yellow';
+  if (score <= 2.5) return 'red';
+  if (score <= 5) return 'orange';
+  if (score <= 7.5) return 'yellow';
   return 'green';
 }
 
 /**
- * Get Tailwind CSS classes for score badge background
+ * Get Tailwind CSS classes for score badge background (0-10 scale)
  */
 export function getScoreBgClass(score: number): string {
-  if (score >= 76) return 'bg-green-100 dark:bg-green-900/20';
-  if (score >= 51) return 'bg-yellow-100 dark:bg-yellow-900/20';
-  if (score >= 26) return 'bg-orange-100 dark:bg-orange-900/20';
+  if (score >= 7.6) return 'bg-green-100 dark:bg-green-900/20';
+  if (score >= 5.1) return 'bg-yellow-100 dark:bg-yellow-900/20';
+  if (score >= 2.6) return 'bg-orange-100 dark:bg-orange-900/20';
   return 'bg-red-100 dark:bg-red-900/20';
 }
 
 /**
- * Get Tailwind CSS classes for score badge text
+ * Get Tailwind CSS classes for score badge text (0-10 scale)
  */
 export function getScoreTextClass(score: number): string {
-  if (score >= 76) return 'text-green-700 dark:text-green-300';
-  if (score >= 51) return 'text-yellow-700 dark:text-yellow-300';
-  if (score >= 26) return 'text-orange-700 dark:text-orange-300';
+  if (score >= 7.6) return 'text-green-700 dark:text-green-300';
+  if (score >= 5.1) return 'text-yellow-700 dark:text-yellow-300';
+  if (score >= 2.6) return 'text-orange-700 dark:text-orange-300';
   return 'text-red-700 dark:text-red-300';
 }
 
 /**
- * Get Tailwind CSS classes for score badge border
+ * Get Tailwind CSS classes for score badge border (0-10 scale)
  */
 export function getScoreBorderClass(score: number): string {
-  if (score >= 76) return 'border-green-300 dark:border-green-700';
-  if (score >= 51) return 'border-yellow-300 dark:border-yellow-700';
-  if (score >= 26) return 'border-orange-300 dark:border-orange-700';
+  if (score >= 7.6) return 'border-green-300 dark:border-green-700';
+  if (score >= 5.1) return 'border-yellow-300 dark:border-yellow-700';
+  if (score >= 2.6) return 'border-orange-300 dark:border-orange-700';
   return 'border-red-300 dark:border-red-700';
 }
 
@@ -169,10 +179,10 @@ export function getScoreRangeLabel(range: ScoreRange): string {
 }
 
 /**
- * Format score for display (adds /100)
+ * Format score for display on the API's 0-10 scale (adds /10)
  */
 export function formatScore(score: number): string {
-  return `${score}/100`;
+  return `${score}/10`;
 }
 
 /**
@@ -190,11 +200,11 @@ export function getScorePercentage(score: number, maxScore: number = 100): numbe
 }
 
 /**
- * Get score performance category
+ * Get score performance category (0-10 scale — see file header)
  */
 export function getScoreCategory(score: number): string {
-  if (score <= 25) return 'Poor';
-  if (score <= 50) return 'Below Average';
-  if (score <= 75) return 'Good';
+  if (score <= 2.5) return 'Poor';
+  if (score <= 5) return 'Below Average';
+  if (score <= 7.5) return 'Good';
   return 'Excellent';
 }

@@ -91,7 +91,6 @@ vi.mock('pg', () => ({ Pool: h.Pool, default: { Pool: h.Pool } }));
 vi.mock('../../../src/utils/logger.js', () => ({ default: h.logger, logger: h.logger }));
 vi.mock('../../../src/utils/validators.js', () => h.mod('validators'));
 vi.mock('../../../src/services/data-persister.js', () => h.mod('data-persister'));
-vi.mock('../../../src/jobs/ipo-reviews-job.js', () => h.mod('ipo-reviews-job'));
 vi.mock('../../../src/jobs/peer-companies-job.js', () => h.mod('peer-companies-job'));
 vi.mock('../../../src/repositories/anchor-investor-repository.js', () => h.mod('anchor-investor-repository'));
 vi.mock('../../../src/repositories/peer-company-repository.js', () => h.mod('peer-company-repository'));
@@ -126,7 +125,6 @@ const TOOLS: ToolCase[] = [
   { file: 'backfill-financial-data', probe: 'db.execute', applyIsNew: true },
   { file: 'backfill-financials-chittorgarh-detail', probe: 'db.execute' },
   { file: 'backfill-financials-pdf', probe: 'db.execute' },
-  { file: 'backfill-ipo-reviews', probe: 'db.execute', applyIsNew: true },
   { file: 'backfill-listing-performance-chittorgarh', probe: 'db.execute' },
   { file: 'backfill-objectives', probe: 'db.execute', applyIsNew: true },
   { file: 'backfill-peer-companies', probe: 'db.execute', applyIsNew: true },

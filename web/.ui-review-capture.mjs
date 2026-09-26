@@ -22,8 +22,6 @@ const ROUTES = [
   ['sme-performance', '/sme-ipo-performance-tracker'],
   ['mainboard-prospectus', '/mainboard-ipo-prospectus'],
   ['sme-prospectus', '/sme-ipo-prospectus'],
-  ['mainboard-reviews', '/mainboard-ipo-reviews'],
-  ['sme-reviews', '/sme-ipo-reviews'],
   ['history', '/history'],
   ['ncd', '/ncd'],
   ['ofs', '/ofs'],

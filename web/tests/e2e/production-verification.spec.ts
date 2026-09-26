@@ -31,7 +31,6 @@ const ROUTES: string[] = [
   '/mainboard-ipo-listings',
   '/mainboard-ipo-performance-tracker',
   '/mainboard-ipo-prospectus',
-  '/mainboard-ipo-reviews',
   '/mainboard-ipos',
   '/market-holidays',
   '/ncd',
@@ -44,7 +43,6 @@ const ROUTES: string[] = [
   '/sme-ipo-listings',
   '/sme-ipo-performance-tracker',
   '/sme-ipo-prospectus',
-  '/sme-ipo-reviews',
   '/sme-ipos',
   '/terms',
   '/tools',
@@ -91,8 +89,9 @@ const ROUTES: string[] = [
 // assert the year control still exists and still points at the current year or
 // later. That is the actual defect, independent of how many rows exist.
 //
-// NOTE the deliberate omission: /mainboard-ipo-reviews and the prospectus pages
-// are legitimately empty and are tracked separately (#167).
+// NOTE the deliberate omission: the prospectus pages are legitimately empty.
+// /mainboard-ipo-reviews and /sme-ipo-reviews were retired (OD-125, #167) —
+// they now 301 to /mainboard-ipos and /sme-ipos, already covered above.
 const EMPTY_STATE_PHRASES = [
   /No NCDs available/i,
   /No upcoming rights issues available/i,
