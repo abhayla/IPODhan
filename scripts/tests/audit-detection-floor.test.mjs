@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { parseIpowatchDetail, parseIpowatchDate, parsePriceBand, parseRupeeAmount, computeOracleCoverageWarning } from '../lib/ipowatch-oracle-parser.mjs';
+import { parseChittorgarhIssueSizeDetail, evaluateUpcomingSourceDrift, ROUNDING_TOLERANCE_RUPEES } from '../lib/upcoming-source-drift-checks.mjs';
 import {
   checkNoUnresolvedConflictOnLiveIpo,
   checkIssueSizeSegmentFloor,
@@ -2182,6 +2183,136 @@ test('(pull_noblank) evaluatePullNoblank information_schema query scopes to tabl
 test('(pull_noblank) mutation guard: an inverted isBlankCurrentValue would make the red case pass -- confirms the test can fail', () => {
   const brokenIsBlank = (v) => !(v === null || v === undefined || v === '');
   assert.equal(brokenIsBlank(null), false, 'inverted predicate would wrongly call null "not blank", masking the offender');
+});
+
+// ---- c_upcoming_source_drift (#349) ----------------------------------------
+// Fixtures captured 2026-09-26 from three LIVE chittorgarh.com IPO detail
+// pages (scripts/tests/fixtures/chittorgarh-issue-size/), each carrying real
+// "Total Issue Size" rows: Nityas Gems & Jewellery 108 Cr, Vishal Nirmiti
+// 178 Cr, SRIT India 218 Cr.
+const CHITTORGARH_ISSUE_SIZE_FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'chittorgarh-issue-size');
+function readCgFixture(name) {
+  return readFileSync(join(CHITTORGARH_ISSUE_SIZE_FIXTURES_DIR, name), 'utf8');
+}
+
+test('(upcoming_source_drift) parses the real Nityas Gems & Jewellery detail page (108 Cr)', () => {
+  const parsed = parseChittorgarhIssueSizeDetail(readCgFixture('nityas-gems-jewellery-detail.html'));
+  assert.ok(parsed);
+  assert.equal(parsed.unit, 'Cr');
+  assert.equal(parsed.amountRupees, 108 * 1_00_00_000);
+  assert.equal(parsed.shares, 1_44_56_000);
+});
+
+test('(upcoming_source_drift) parses the real Vishal Nirmiti detail page (178 Cr)', () => {
+  const parsed = parseChittorgarhIssueSizeDetail(readCgFixture('vishal-nirmiti-detail.html'));
+  assert.ok(parsed);
+  assert.equal(parsed.amountRupees, 178 * 1_00_00_000);
+});
+
+test('(upcoming_source_drift) parses the real SRIT India detail page (218 Cr)', () => {
+  const parsed = parseChittorgarhIssueSizeDetail(readCgFixture('srit-india-detail.html'));
+  assert.ok(parsed);
+  assert.equal(parsed.amountRupees, 218 * 1_00_00_000);
+});
+
+test('(upcoming_source_drift) returns null (UNVERIFIABLE, never a silent zero) on a page missing the Total Issue Size row', () => {
+  assert.equal(parseChittorgarhIssueSizeDetail('<html><body>not an IPO page</body></html>'), null);
+  assert.equal(parseChittorgarhIssueSizeDetail(''), null);
+});
+
+function ipoRow({ id, companyName, slug, issueSize, issueSizeSource = 'CHITTORGARH', issueSizeUpdatedAt = '2026-09-20T00:00:00Z' }) {
+  return { id, companyName, slug, normalizedKey: normalizeCompanyKey(companyName), issueSize, issueSizeSource, issueSizeUpdatedAt };
+}
+
+test('(upcoming_source_drift) FAILS on the Karamtara shape: stored 1,750 Cr vs page 875 Cr, names the slug', () => {
+  const ipoRows = [ipoRow({ id: 'ipo-karamtara', companyName: 'Karamtara Engineering Ltd', slug: 'karamtara-engineering-ltd', issueSize: 17_500_000_000 })];
+  const pageResultsByKey = new Map([
+    [normalizeCompanyKey('Karamtara Engineering Ltd'), { ok: true, parsed: { amountRupees: 875 * 1_00_00_000, unit: 'Cr' } }],
+  ]);
+  const result = evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey });
+  assert.equal(result.examined, 1);
+  assert.equal(result.violations.length, 1);
+  assert.match(result.violations[0].message, /"karamtara-engineering-ltd"/);
+  assert.equal(result.violations[0].provenanceSource, 'CHITTORGARH');
+});
+
+test('(upcoming_source_drift) PASSES when stored equals the Chittorgarh page figure exactly', () => {
+  const ipoRows = [ipoRow({ id: 'ipo-srit', companyName: 'SRIT India Ltd', slug: 'srit-india-ltd', issueSize: 218 * 1_00_00_000 })];
+  const pageResultsByKey = new Map([
+    [normalizeCompanyKey('SRIT India Ltd'), { ok: true, parsed: { amountRupees: 218 * 1_00_00_000, unit: 'Cr' } }],
+  ]);
+  const result = evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey });
+  assert.equal(result.violations.length, 0);
+  assert.equal(result.examined, 1);
+});
+
+test('(upcoming_source_drift) PASSES within the 2-decimal-crore rounding tolerance (Rs 1 lakh)', () => {
+  const ipoRows = [ipoRow({ id: 'ipo-round', companyName: 'Rounding Co Ltd', slug: 'rounding-co-ltd', issueSize: 108 * 1_00_00_000 + ROUNDING_TOLERANCE_RUPEES })];
+  const pageResultsByKey = new Map([
+    [normalizeCompanyKey('Rounding Co Ltd'), { ok: true, parsed: { amountRupees: 108 * 1_00_00_000, unit: 'Cr' } }],
+  ]);
+  const result = evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey });
+  assert.equal(result.violations.length, 0, 'a Rs 1 lakh diff is within the 2-decimal-crore print tolerance');
+});
+
+test('(upcoming_source_drift) FAILS just beyond the rounding tolerance', () => {
+  const ipoRows = [ipoRow({ id: 'ipo-round2', companyName: 'Rounding Co Two Ltd', slug: 'rounding-co-two-ltd', issueSize: 108 * 1_00_00_000 + ROUNDING_TOLERANCE_RUPEES + 1 })];
+  const pageResultsByKey = new Map([
+    [normalizeCompanyKey('Rounding Co Two Ltd'), { ok: true, parsed: { amountRupees: 108 * 1_00_00_000, unit: 'Cr' } }],
+  ]);
+  const result = evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey });
+  assert.equal(result.violations.length, 1);
+});
+
+test('(upcoming_source_drift) an unreachable/unparseable page is EXCLUDED, never silently passed', () => {
+  const ipoRows = [ipoRow({ id: 'ipo-x', companyName: 'Unreachable Co Ltd', slug: 'unreachable-co-ltd', issueSize: 500_00_00_000 })];
+  const pageResultsByKey = new Map([
+    [normalizeCompanyKey('Unreachable Co Ltd'), { ok: false, reason: 'fetch failed' }],
+  ]);
+  const result = evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey });
+  assert.equal(result.violations.length, 0);
+  assert.equal(result.unreachable, 1);
+  assert.equal(result.examined, 1);
+  assert.equal(result.consideredForVerdict, 0);
+  assert.equal(result.allUnreachable, true, 'the only examined row was unreachable -> caller must report UNVERIFIABLE, not PASS');
+});
+
+test('(upcoming_source_drift) allUnreachable is false when at least one page WAS readable', () => {
+  const ipoRows = [
+    ipoRow({ id: 'ipo-x', companyName: 'Unreachable Co Ltd', slug: 'unreachable-co-ltd', issueSize: 500_00_00_000 }),
+    ipoRow({ id: 'ipo-srit', companyName: 'SRIT India Ltd', slug: 'srit-india-ltd', issueSize: 218 * 1_00_00_000 }),
+  ];
+  const pageResultsByKey = new Map([
+    [normalizeCompanyKey('Unreachable Co Ltd'), { ok: false, reason: 'fetch failed' }],
+    [normalizeCompanyKey('SRIT India Ltd'), { ok: true, parsed: { amountRupees: 218 * 1_00_00_000, unit: 'Cr' } }],
+  ]);
+  const result = evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey });
+  assert.equal(result.allUnreachable, false);
+  assert.equal(result.consideredForVerdict, 1);
+});
+
+test('(upcoming_source_drift) a NULL stored issue_size is excluded (a different check\'s population)', () => {
+  const ipoRows = [ipoRow({ id: 'ipo-null', companyName: 'Null Co Ltd', slug: 'null-co-ltd', issueSize: null })];
+  const pageResultsByKey = new Map([
+    [normalizeCompanyKey('Null Co Ltd'), { ok: true, parsed: { amountRupees: 108 * 1_00_00_000, unit: 'Cr' } }],
+  ]);
+  const result = evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey });
+  assert.equal(result.violations.length, 0);
+});
+
+test('(upcoming_source_drift) an IPO not matched on the Chittorgarh dashboard at all is outside this check\'s reach, not a violation', () => {
+  const ipoRows = [ipoRow({ id: 'ipo-unmatched', companyName: 'Unmatched Co Ltd', slug: 'unmatched-co-ltd', issueSize: 500_00_00_000 })];
+  const result = evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey: new Map() });
+  assert.equal(result.examined, 0);
+  assert.equal(result.violations.length, 0);
+  assert.equal(result.allUnreachable, false);
+});
+
+// Mutation guard: an inverted tolerance comparison would make the red Karamtara case pass.
+test('(upcoming_source_drift) mutation guard: inverting the diff>tolerance check would mask the Karamtara defect', () => {
+  const diff = Math.abs(17_500_000_000 - 875 * 1_00_00_000);
+  const brokenPredicate = (d, tol) => !(d > tol);
+  assert.equal(brokenPredicate(diff, ROUNDING_TOLERANCE_RUPEES), false, 'inverted predicate would wrongly call the Karamtara-shaped drift "within tolerance"');
 });
 
 // Item 10 zip_member_rows: its tests live in their own file; imported here so

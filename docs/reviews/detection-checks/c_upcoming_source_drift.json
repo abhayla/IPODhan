@@ -1,0 +1,9 @@
+{
+  "id": "c_upcoming_source_drift",
+  "findingClass": "a live (UPCOMING/OPEN) IPO's stored ipos.issue_size has drifted from the issuer's current figure because the pipeline never re-checked an already-populated row after the issuer revised the size (#349, Karamtara: 1,750 Cr stored vs 875 Cr on the issuer's page, stale 4+ days)",
+  "round7Findings": [],
+  "failThreshold": "abs(ipos.issue_size - Chittorgarh detail page \"Total Issue Size\") > Rs 1,00,000 (the smallest difference CG's 2-decimal-crore print format can express) for a live (UPCOMING/OPEN) IPO matched on chittorgarh.com's dashboard",
+  "severity": "P1",
+  "unverifiableWhen": "the chittorgarh.com dashboard cannot be fetched at all, returns zero entries for both segments, or every matched IPO's detail page is unreachable/unparseable this run",
+  "section": "checks"
+}

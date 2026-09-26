@@ -41,6 +41,8 @@ import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
 import { collectPullFrozen } from './lib/pull-frozen-checks.mjs';
 import { runCheckAgainstIds } from './lib/run-check.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
+import { fetchOracleCalendar } from './lib/chittorgarh-oracle-parser.mjs';
+import { parseChittorgarhIssueSizeDetail, evaluateUpcomingSourceDrift, ROUNDING_TOLERANCE_RUPEES } from './lib/upcoming-source-drift-checks.mjs';
 import {
   checkBlockedAllAge,
   checkFoundNotExtracted,
@@ -559,6 +561,114 @@ async function checkC_issueSizeSourceCapability() {
   record('c_issue_size_noncapable_source', name, offenders.length === 0 ? 'PASS' : 'FAIL',
     `${offenders.length} of ${rows.length} IPO row(s) currently source issueSize from a source field-manifest.json ranks non-capable`
       + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
+// ---- c_upcoming_source_drift (#349) -----------------------------------------
+// Karamtara's issue_size sat stale at 1,750 Cr for 4+ days after the issuer
+// cut it to 875 Cr — every 30-min cycle since left the wrong figure in place
+// (#349). c_issue_size_floor/c_issue_size_consistency (checkC above) only
+// catch a stored value that is implausible in isolation; they never re-check
+// a plausible-but-STALE value against the live source. This check does: it
+// fetches chittorgarh.com's own IPO detail page for every live IPO and
+// compares its printed "Total Issue Size" against ipos.issue_size (OD-73/
+// OD-74 rank DOC then CHITTORGARH for this field, so CHITTORGARH is the
+// legitimate current source for the rows that are not DOC-sourced).
+//
+// Spec: docs/design/data-sourcing-pull-model.md issue_size rank (OD-74),
+// OD-73/OD-75. signal-ownership.md R1: a failure is named by identity
+// (slug, stored vs page value, provenance source/date), never a bare count.
+const CHITTORGARH_DETAIL_HEADERS = {
+  'User-Agent': 'IPODhan-detection-floor-audit/1.0 (+https://ipodhan.com; non-ingested cross-check, see scripts/audit-detection-floor.mjs)',
+  Accept: 'text/html',
+};
+// Politeness delay between successive Chittorgarh detail-page fetches — same
+// convention as IPOWATCH_REQUEST_DELAY_MS (checkA_B): configurable for
+// tests/local runs, the nightly cron uses the 400ms default.
+const CHITTORGARH_DETAIL_REQUEST_DELAY_MS = Number(process.env.CHITTORGARH_DETAIL_REQUEST_DELAY_MS ?? 400);
+
+async function fetchChittorgarhDetailHtml(url) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 20000);
+  const res = await fetch(url, { signal: ctrl.signal, headers: CHITTORGARH_DETAIL_HEADERS }).finally(() => clearTimeout(t));
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+  return res.text();
+}
+
+async function checkUpcomingSourceDrift() {
+  const name = `live IPO ipos.issue_size agrees with the Chittorgarh detail-page "Total Issue Size" figure (tolerance Rs ${ROUNDING_TOLERANCE_RUPEES.toLocaleString('en-IN')} — the smallest difference CG's 2-decimal-crore print format can express)`;
+
+  let rows;
+  try {
+    rows = await q(
+      `SELECT i.id, i.company_name AS "companyName", i.slug, i.status,
+              i.issue_size AS "issueSize", fs.source AS "issueSizeSource",
+              fs.updated_at AS "issueSizeUpdatedAt"
+         FROM ipos i
+         LEFT JOIN field_sources fs
+           ON fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.row_key = '' AND fs.field_name = 'issueSize'
+        WHERE ${REAL_IPO} AND i.status IN ('${LIVE_STATUSES.join("','")}')`
+    );
+  } catch (e) {
+    record('c_upcoming_source_drift', name, 'UNVERIFIABLE', `ipos/field_sources read failed: ${e.message}`);
+    return;
+  }
+  const ipoRows = rows.map((r) => ({
+    id: r.id, companyName: r.companyName, slug: r.slug, issueSize: r.issueSize,
+    issueSizeSource: r.issueSizeSource, issueSizeUpdatedAt: r.issueSizeUpdatedAt,
+    normalizedKey: normalizeCompanyKey(r.companyName),
+  }));
+
+  let calendar;
+  try {
+    calendar = await fetchOracleCalendar();
+  } catch (e) {
+    record('c_upcoming_source_drift', name, 'UNVERIFIABLE',
+      `could not reach chittorgarh.com's dashboard at all (${e.message}) — this check is BLIND tonight, not passing`);
+    return;
+  }
+  if (calendar.entries.length === 0) {
+    record('c_upcoming_source_drift', name, 'UNVERIFIABLE',
+      'chittorgarh.com dashboard returned zero entries for both segments — page shape likely changed, this check is BLIND tonight');
+    return;
+  }
+  const dashboardByKey = new Map();
+  for (const entry of calendar.entries) {
+    const k = normalizeCompanyKey(entry.name);
+    if (k && !dashboardByKey.has(k)) dashboardByKey.set(k, entry);
+  }
+
+  const pageResultsByKey = new Map();
+  let first = true;
+  for (const ipo of ipoRows) {
+    const entry = dashboardByKey.get(ipo.normalizedKey);
+    if (!entry) continue; // not on chittorgarh's live dashboard at all — outside this check's reach
+    if (!first) await sleep(CHITTORGARH_DETAIL_REQUEST_DELAY_MS);
+    first = false;
+    try {
+      const html = await fetchChittorgarhDetailHtml(entry.sourceUrl);
+      const parsed = parseChittorgarhIssueSizeDetail(html);
+      pageResultsByKey.set(ipo.normalizedKey, parsed ? { ok: true, parsed } : { ok: false, reason: 'unparseable' });
+    } catch {
+      pageResultsByKey.set(ipo.normalizedKey, { ok: false, reason: 'unreachable' });
+    }
+  }
+
+  const result = evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey });
+  const dashboardNote = calendar.ok ? '' : `; WARN: chittorgarh dashboard fetch partial (${calendar.errors.join('; ')})`;
+
+  if (result.allUnreachable) {
+    record('c_upcoming_source_drift', name, 'UNVERIFIABLE',
+      `all ${result.examined} matched Chittorgarh detail page(s) were unreachable/unparseable — this check is BLIND tonight, not passing${dashboardNote}`);
+    return;
+  }
+
+  for (const v of result.violations) {
+    notify('c_upcoming_source_drift', 'P1', v.ipoId, `Live IPO "${v.companyName}" carries a stale issue_size vs Chittorgarh`, v.message);
+  }
+  const detail = `${result.violations.length} violation(s) over ${result.consideredForVerdict} of ${result.examined} matched-and-readable `
+    + `Chittorgarh detail page(s) (${ipoRows.length} live IPOs total, ${result.unreachable} unreachable, ${result.unparseable} unparseable, excluded not passed)${dashboardNote}`
+    + (result.violations.length ? `: ${result.violations.slice(0, MAX_OFFENDERS).map((v) => v.message).join('; ')}` : '');
+  record('c_upcoming_source_drift', name, result.violations.length === 0 ? 'PASS' : 'FAIL', detail);
 }
 
 // ---- (d): lot x band SEBI window + corporate-action shape -------------------
@@ -3431,6 +3541,7 @@ async function main() {
   await runCheck(checkA_B, ['a_b_live_conflict', 'a_b_min_application']);
   await runCheck(checkC, ['c_issue_size_floor', 'c_issue_size_consistency']);
   await runCheck(checkC_issueSizeSourceCapability, ['c_issue_size_noncapable_source']);
+  await runCheck(checkUpcomingSourceDrift, ['c_upcoming_source_drift']);
   await runCheck(checkD, ['d_lot_band_window', 'd_corporate_action_shape']);
   await runCheck(checkD_strandedReadmit, ['d_stranded_readmit']);
   await runCheck(checkD_segmentProvenance, ['d_segment_provenance']);

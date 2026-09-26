@@ -58,6 +58,14 @@
       "note": "Item 14 (2026-09-24, staging measurement): 8 LISTED + 7 CLOSED IPO rows currently source issueSize from BSE, which the manifest marks capable:false (BSE measured 41-76% below the printed total offer on 6/6 live mainboard IPOs, review round 5 item C). Reads the capable-source set from field-manifest.json rather than hard-coding BSE, so the check tracks the manifest, not one incident."
     },
     {
+      "id": "c_upcoming_source_drift",
+      "findingClass": "a live (UPCOMING/OPEN) IPO's stored ipos.issue_size has drifted from the issuer's current figure because the pipeline never re-checked an already-populated row after the issuer revised the size (#349, Karamtara: 1,750 Cr stored vs 875 Cr on the issuer's page, stale 4+ days)",
+      "round7Findings": [],
+      "failThreshold": "abs(ipos.issue_size - Chittorgarh detail page \"Total Issue Size\") > Rs 1,00,000 (the smallest difference CG's 2-decimal-crore print format can express) for a live (UPCOMING/OPEN) IPO matched on chittorgarh.com's dashboard",
+      "severity": "P1",
+      "unverifiableWhen": "the chittorgarh.com dashboard cannot be fetched at all, returns zero entries for both segments, or every matched IPO's detail page is unreachable/unparseable this run"
+    },
+    {
       "id": "check_roster",
       "designId": "CHECK-ROSTER",
       "findingClass": "pull-model verification check CHECK-ROSTER: every id above appears in tonight’s report",
