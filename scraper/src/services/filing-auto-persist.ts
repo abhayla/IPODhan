@@ -263,6 +263,39 @@ export const MAX_EXTRACTION_ATTEMPTS = 10;
 export const EXTRACTION_BLOCKED_ERROR = 'blocked_after_10_attempts';
 
 /**
+ * #583: the 10-attempt block KEEPS the failure kind and the last cause instead
+ * of overwriting `extraction_error` with the bare marker. Before this, 4 of the
+ * 6 documents parked on staging (2026-09-26) carried no cause at all, so nobody
+ * could tell a box that could not run the extractor from a document the
+ * extractor cannot read (signal-ownership R6).
+ *
+ * Shape: `blocked_after_10_attempts kind=<kind> last=<cause> @<version>`. The
+ * version stays the LAST token (`withBlockedVersion`), so `parseBlockedVersion`
+ * still reads it and the version-change unblock (transition 6) is unchanged.
+ * A legacy `blocked_after_10_attempts@<version>` row still parses too.
+ *
+ * `kind` is `transient:<spawn_timeout|spawn_resource|sidecar_timeout|...>`,
+ * `hard` (killed / memory ceiling), `persist_error` or `deterministic`. It is
+ * RECORDED only: every kind counts toward the attempt limit, and a blocked
+ * document recovers only by the spec's own triggers (§5.3 step 5), never on a
+ * timer (OD-21).
+ */
+export function buildBlockedMarker(version: string, kind: string, lastCause: string): string {
+  const cause = lastCause.replace(/\s+/g, ' ').trim();
+  return withBlockedVersion(`${EXTRACTION_BLOCKED_ERROR} kind=${kind} last=${cause}`, version);
+}
+
+/** Reads `{ kind, lastCause }` back off a block marker; `null` for a legacy
+ * bare marker or anything else. The version is `parseBlockedVersion`'s job. */
+export function parseBlockedMarker(error: string | null | undefined): { kind: string; lastCause: string } | null {
+  if (!error) return null;
+  const m = new RegExp(`^${EXTRACTION_BLOCKED_ERROR} kind=(\\S+) last=(.*) @\\S+$`, 's').exec(error);
+  return m ? { kind: m[1], lastCause: m[2] } : null;
+}
+
+export { classifySpawnErrorCode, isTransientSpawnError } from '../utils/transient-spawn-error.js';
+
+/**
  * W-137: the python extractor's own "the memory ceiling tripped" exit code
  * (`memory_guard.EXIT_MEMORY_CEILING`) — a HARD failure, same bucket as a
  * signal-killed process (`result.status === null`, logged as "extractor
@@ -284,6 +317,7 @@ export const EXTRACTOR_MEMORY_CEILING_EXIT = 3;
  */
 import { isMemoryAbortStderr } from './memory-abort-stderr.js';
 import { withLowPriority, EXTRACTOR_BUSY_EXIT_CODE } from '../utils/low-priority-spawn.js';
+import { classifySpawnErrorCode, type SpawnFailureKind } from '../utils/transient-spawn-error.js';
 export {
   MEMORY_ABORT_STDERR_RE,
   MEMORY_ABORT_KILLED_RE,
@@ -866,6 +900,11 @@ export type ExtractorFailure = {
    * backoff will ever open this document, so the caller writes MANUAL_REVIEW
    * immediately instead of counting it toward the 10-attempt floor. */
   passwordProtected?: boolean;
+  /** #583: set when the failure says nothing about THIS document — the
+   * process could not start, or was stopped by our own spawn clock
+   * (`classifySpawnErrorCode`). Recorded as the block marker's `kind` only;
+   * the attempt counts toward the limit exactly like any other failure. */
+  transientKind?: SpawnFailureKind;
 };
 export type ExtractorSuccess = { ok: true; extraction: FilingExtraction };
 export type ExtractorResult = ExtractorSuccess | ExtractorFailure;
@@ -1048,8 +1087,15 @@ export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme,
     // forever, never reaching the 24h hard-failure floor a 2nd consecutive
     // timeout is supposed to trigger — exactly as unsafe to retry hourly as
     // an OOM kill (see the `result.status === null` comment below).
-    const isTimeout = (result.error as NodeJS.ErrnoException).code === 'ETIMEDOUT';
-    return { ok: false, error: `spawn failed: ${result.error.message}`, hardFailure: isTimeout };
+    const code = (result.error as NodeJS.ErrnoException).code;
+    const isTimeout = code === 'ETIMEDOUT';
+    const transientKind = classifySpawnErrorCode(code);
+    return {
+      ok: false,
+      error: `spawn failed: ${result.error.message}`,
+      hardFailure: isTimeout,
+      ...(transientKind ? { transientKind } : {}),
+    };
   }
   if (result.status !== 0) {
     // W-137: `result.status === null` means the process was terminated by a
@@ -1394,14 +1440,19 @@ export function buildAutoPersistDeps(
  * IN_PROGRESS (transition 1) has reached `MAX_EXTRACTION_ATTEMPTS`. One
  * function so all three failure sites in `processPendingFilings` decide the
  * same way.
+ *
+ * #583: every failure kind counts and every kind is blocked at the limit (no
+ * unbounded retry). The block records `kind` and the last cause
+ * (`buildBlockedMarker`) so the parked row still says why it was parked.
  */
-function classifyFailure(
+export function classifyFailure(
   retryCountAtStamp: number,
   version: string,
-  rawError: string
+  rawError: string,
+  opts: { kind?: string } = {}
 ): { status: 'FAILED' | 'MANUAL_REVIEW'; error: string } {
   if (retryCountAtStamp >= MAX_EXTRACTION_ATTEMPTS) {
-    return { status: 'MANUAL_REVIEW', error: `${EXTRACTION_BLOCKED_ERROR}@${version}` };
+    return { status: 'MANUAL_REVIEW', error: buildBlockedMarker(version, opts.kind ?? 'deterministic', rawError) };
   }
   return { status: 'FAILED', error: rawError };
 }
@@ -1595,7 +1646,7 @@ async function runAnchorDocument(
   let classified: { status: 'FAILED' | 'MANUAL_REVIEW'; error: string };
   if (outcome.kind === 'hard_failure') {
     const rawError = markHardFailure(doc.extractionError, outcome.reason);
-    classified = classifyFailure(retryCountAtStamp, version, rawError);
+    classified = classifyFailure(retryCountAtStamp, version, rawError, { kind: 'hard' });
   } else if (outcome.deterministic) {
     classified = classifyDeterministicAnchorParseFailure(
       outcome.sourceKind ?? 'parse_failed',
@@ -1605,7 +1656,12 @@ async function runAnchorDocument(
       version
     );
   } else {
-    classified = classifyFailure(retryCountAtStamp, version, outcome.reason);
+    classified = classifyFailure(retryCountAtStamp, version, outcome.reason, {
+      kind:
+        outcome.kind === 'failed' && outcome.transientKind
+          ? `transient:${outcome.transientKind}`
+          : 'deterministic',
+    });
   }
   if (classified.status === 'MANUAL_REVIEW') result.anchorsManualReview++;
   else result.anchorsFailed++;
@@ -1615,11 +1671,15 @@ async function runAnchorDocument(
       reason: outcome.reason,
       hardFailure: outcome.kind === 'hard_failure',
       deterministic: outcome.kind === 'failed' && outcome.deterministic === true,
+      transientKind: outcome.kind === 'failed' ? outcome.transientKind : undefined,
+      retryCount: retryCountAtStamp,
       status: classified.status,
     },
-    classified.status === 'MANUAL_REVIEW'
-      ? 'Anchor allocation report failed the same deterministic way twice — recorded MANUAL_REVIEW (W-168)'
-      : 'Anchor allocation report failed (non-fatal) — recorded with a backoff (W-142)'
+    classified.status !== 'MANUAL_REVIEW'
+      ? 'Anchor allocation report failed (non-fatal) — recorded with a backoff (W-142)'
+      : outcome.kind === 'failed' && outcome.deterministic === true
+        ? 'Anchor allocation report failed the same deterministic way twice — recorded MANUAL_REVIEW (W-168)'
+        : `Anchor allocation report failed for the ${MAX_EXTRACTION_ATTEMPTS}th time — blocked until EXTRACTOR_VERSION changes (kind and last cause kept in extraction_error)`
   );
   await deps
     .setDocumentExtractionState({
@@ -2108,7 +2168,8 @@ export async function processPendingFilings(
                 // >= 24h once this has happened twice on the SAME document,
                 // instead of retrying hourly.
                 markHardFailure(doc.extractionError, `extractor: ${run.error}`)
-              : `extractor: ${run.error}`
+              : `extractor: ${run.error}`,
+            { kind: run.transientKind ? `transient:${run.transientKind}` : run.hardFailure ? 'hard' : 'deterministic' }
           );
       const blocked = classified.status === 'MANUAL_REVIEW';
       logger.error(
@@ -2119,15 +2180,18 @@ export async function processPendingFilings(
           retryCount: newRetryCount,
           blocked,
           hardFailure: run.hardFailure === true,
+          transientKind: run.transientKind,
           passwordProtected: run.passwordProtected === true,
         },
         run.passwordProtected
           ? 'Filing PDF is password-protected — the blank attempt failed, recorded MANUAL_REVIEW (OD-36), never retried on a clock'
           : blocked
             ? 'Filing extraction failed for the 10th time — blocked until EXTRACTOR_VERSION changes'
-            : run.hardFailure
-              ? 'Filing extractor was killed (OOM/memory ceiling) — recorded as FAILED with a hard backoff (>=24h after the 2nd such failure)'
-              : 'Filing extraction failed (non-fatal) — recorded as FAILED with a backoff'
+            : run.transientKind
+              ? 'Filing extraction failed for a transient reason (spawn timeout / box could not start it) — recorded FAILED with a backoff; it still counts toward the attempt limit'
+              : run.hardFailure
+                ? 'Filing extractor was killed (OOM/memory ceiling) — recorded as FAILED with a hard backoff (>=24h after the 2nd such failure)'
+                : 'Filing extraction failed (non-fatal) — recorded as FAILED with a backoff'
       );
       await writeSteps(
         ipo.id,
@@ -2276,7 +2340,7 @@ export async function processPendingFilings(
       // (round-3 MINOR-5 — PENDING would drop the document straight back to
       // the front of the queue with no backoff at all). `doc.retryCount`
       // already holds the value the IN_PROGRESS stamp wrote earlier this run.
-      const classified = classifyFailure(doc.retryCount ?? 0, version, `persist: ${message}`);
+      const classified = classifyFailure(doc.retryCount ?? 0, version, `persist: ${message}`, { kind: 'persist_error' });
       await writeSteps(ipo.id, [
         {
           stepId: 'G3',

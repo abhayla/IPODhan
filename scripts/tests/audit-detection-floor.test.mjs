@@ -1457,9 +1457,10 @@ function extractExtractionStuckSql(auditSource) {
   const marker = 'SELECT i.company_name, i.slug, i.status AS ipo_status';
   const start = auditSource.indexOf(marker);
   assert.ok(start !== -1, 'extractionStuckRows query not found in audit-detection-floor.mjs — has it been renamed/moved?');
-  const end = auditSource.indexOf('d.type = ANY($1)', start);
+  const endMarker = "starts_with(d.extraction_error, 'blocked_after_'))";
+  const end = auditSource.indexOf(endMarker, start);
   assert.ok(end !== -1, 'could not locate the end of the extractionStuckRows query');
-  return auditSource.slice(start, end + 'd.type = ANY($1)'.length);
+  return auditSource.slice(start, end + endMarker.length);
 }
 
 test('m_extraction_stuck query: every i./d./fs.<col> reference is a real column of ipos/documents/document_fetch_state (schema.ts SSOT)', () => {

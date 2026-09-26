@@ -45,9 +45,24 @@ describe('MAJOR-2 — a timed-out sidecar is not a memory abort', () => {
     });
     const result = extractPageTexts('C:/store/x.pdf');
     expect(result.ok).toBe(false);
-    expect((result as { kind: string }).kind).toBe('sidecar_error');
+    expect((result as { kind: string }).kind).toBe('sidecar_timeout');
     expect((result as { reason: string }).reason).toContain(String(SIDECAR_TIMEOUT_MS));
     expect((result as { reason: string }).reason).not.toContain('memory');
+  });
+
+  it('#583: EAGAIN / ENOMEM / EMFILE (the box could not start the sidecar) is sidecar_spawn_resource, like the filing path', () => {
+    for (const code of ['EAGAIN', 'ENOMEM', 'EMFILE']) {
+      spawnSyncMock.mockReturnValue({
+        status: null,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        error: Object.assign(new Error(`spawnSync nice ${code}`), { code }),
+      });
+      const result = extractPageTexts('C:/store/x.pdf');
+      expect((result as { kind: string }).kind).toBe('sidecar_spawn_resource');
+      expect((result as { reason: string }).reason).toContain(code);
+    }
   });
 
   it('exit 3 (the memory guard) IS a hard failure', () => {
@@ -90,7 +105,7 @@ describe('MAJOR-2 — a timed-out sidecar is not a memory abort', () => {
       error: Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }),
     });
     const result = extractPageTexts('C:/store/x.pdf');
-    expect((result as { kind: string }).kind).toBe('sidecar_error');
+    expect((result as { kind: string }).kind).toBe('sidecar_timeout');
   });
 
   it('another signal with no memory signature is an ordinary failure naming the signal', () => {

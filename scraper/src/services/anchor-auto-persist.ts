@@ -87,6 +87,13 @@ export type AnchorAutoOutcome =
        * failure — see the `deterministic` doc below.
        */
       sourceKind?: AnchorScrapeFailureKind | AnchorRefusalKind;
+      /**
+       * #583: set when the failure says nothing about the report (the sidecar
+       * hit its own spawn timeout, or could not be started). Recorded as the
+       * block marker's kind only; it counts toward the attempt limit like any
+       * other failure.
+       */
+      transientKind?: 'sidecar_timeout' | 'spawn_resource';
     };
 
 /**
@@ -135,6 +142,12 @@ export function classifyAnchorAutoOutcome(input: {
       summary,
       deterministic: failure.kind === 'parse_failed',
       sourceKind: failure.kind,
+      transientKind:
+        failure.kind === 'sidecar_timeout'
+          ? 'sidecar_timeout'
+          : failure.kind === 'sidecar_spawn_resource'
+            ? 'spawn_resource'
+            : undefined,
     };
   }
 

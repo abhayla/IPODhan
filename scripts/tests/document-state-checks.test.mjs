@@ -811,7 +811,7 @@ test('396 PASSes below NEVER_ESCALATES_MIN_RETRIES (2 retries — still ordinary
   assert.equal(v, null);
 });
 
-test('396 PASSes at/above MAX_EXTRACTION_ATTEMPTS (that shape belongs to MANUAL_REVIEW instead)', () => {
+test('396 never-escalates does not claim a row at MAX_EXTRACTION_ATTEMPTS (the retry-ceiling shape reports it instead)', () => {
   const v = checkExtractionStuck({
     ...STUCK_BASE,
     extractionStatus: 'FAILED',
@@ -819,7 +819,86 @@ test('396 PASSes at/above MAX_EXTRACTION_ATTEMPTS (that shape belongs to MANUAL_
     retryCount: MAX_EXTRACTION_ATTEMPTS,
     hoursSinceUpdate: 96,
   });
-  assert.equal(v, null);
+  assert.notEqual(v, null);
+  assert.doesNotMatch(v, /never-escalates/);
+  assert.match(v, /at the retry ceiling/);
+});
+
+// ---- checkExtractionStuck, 5th shape (#583: the retry ceiling, any age, any type) ----
+
+const CEILING_ROW = {
+  companyName: 'National Stock Exchange of India Ltd.',
+  ipoId: 'b8c5d769-3ad1-4c6c-b58d-9f37965ee343',
+  documentId: '09f303fa-96e5-4d64-8c99-192113a63686',
+  ipoStatus: 'LISTED',
+  docType: 'ANCHOR_ALLOCATION_REPORT',
+};
+
+test('583 FAILs an ANCHOR_ALLOCATION_REPORT at retry_count 10 updated 1h ago, naming ipo, doc, type, kind and cause', () => {
+  const v = checkExtractionStuck({
+    ...CEILING_ROW,
+    extractionStatus: 'MANUAL_REVIEW',
+    extractionError:
+      'blocked_after_10_attempts kind=transient:sidecar_timeout last=anchor: anchor sidecar timed out after 120000ms @extract_filing.py@2026-09-26',
+    retryCount: 10,
+    hoursSinceUpdate: 1,
+  });
+  assert.notEqual(v, null);
+  assert.match(v, /b8c5d769-3ad1-4c6c-b58d-9f37965ee343/);
+  assert.match(v, /doc 09f303fa-96e5-4d64-8c99-192113a63686 ANCHOR_ALLOCATION_REPORT/);
+  assert.match(v, /kind=transient:sidecar_timeout/);
+  assert.match(v, /cause=anchor: anchor sidecar timed out after 120000ms/);
+});
+
+test('583 FAILs a legacy bare-marker PRICE_BAND_AD block updated 1h ago, saying the cause is unrecorded', () => {
+  const v = checkExtractionStuck({
+    ...CEILING_ROW,
+    docType: 'PRICE_BAND_AD',
+    extractionStatus: 'MANUAL_REVIEW',
+    extractionError: 'blocked_after_10_attempts@extract_filing.py@2026-09-03',
+    retryCount: 10,
+    hoursSinceUpdate: 1,
+  });
+  assert.notEqual(v, null);
+  assert.match(v, /PRICE_BAND_AD: at the retry ceiling/);
+  assert.match(v, /kind=unrecorded/);
+});
+
+test('583 FAILs a FAILED row at retry_count 10 of any type even with no block marker, age 1h', () => {
+  const v = checkExtractionStuck({
+    ...CEILING_ROW,
+    docType: 'PRICE_BAND_AD',
+    extractionStatus: 'FAILED',
+    extractionError: 'extractor: boom',
+    retryCount: 10,
+    hoursSinceUpdate: 1,
+  });
+  assert.notEqual(v, null);
+  assert.match(v, /retryCount=10/);
+});
+
+test('583 PASSes a PRICE_BAND_AD below the ceiling (retry_count 9, FAILED, 1h) and a non-ceiling MANUAL_REVIEW anchor refusal', () => {
+  assert.equal(
+    checkExtractionStuck({ ...CEILING_ROW, docType: 'PRICE_BAND_AD', extractionStatus: 'FAILED', extractionError: 'x', retryCount: 9, hoursSinceUpdate: 1 }),
+    null
+  );
+  assert.equal(
+    checkExtractionStuck({
+      ...CEILING_ROW,
+      extractionStatus: 'MANUAL_REVIEW',
+      extractionError: 'anchor: only 0 investor rows could be read @extract_filing.py@2026-09-26',
+      retryCount: 2,
+      hoursSinceUpdate: 1,
+    }),
+    null
+  );
+});
+
+test('583 PASSes a ceiling row on a WITHDRAWN IPO (not live)', () => {
+  assert.equal(
+    checkExtractionStuck({ ...CEILING_ROW, ipoStatus: 'WITHDRAWN', extractionStatus: 'MANUAL_REVIEW', extractionError: 'blocked_after_10_attempts@v', retryCount: 10, hoursSinceUpdate: 1 }),
+    null
+  );
 });
 
 test('396 PASSes when the marker IS present (already caught by the HARD_FAILURE shape, not double-counted)', () => {

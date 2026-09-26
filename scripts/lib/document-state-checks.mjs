@@ -571,6 +571,8 @@ export const NEVER_ESCALATES_MIN_RETRIES = 3;
 export function checkExtractionStuck(row) {
   const ipoStatus = String(row.ipoStatus ?? '').toUpperCase();
   if (!LIVE_EXTRACTION_STATUSES.has(ipoStatus)) return null;
+  const ceiling = checkRetryCeiling(row);
+  if (ceiling) return ceiling;
   const docType = String(row.docType ?? '').toUpperCase();
   if (!REQUIRED_EXTRACTION_DOC_TYPES.has(docType)) return null;
 
@@ -605,6 +607,57 @@ export function checkExtractionStuck(row) {
         : `FAILED (never-escalates, retryCount=${retryCount})`;
   const label = row.companyName ?? row.slug ?? row.ipoId ?? 'unknown IPO';
   return `${label}: ${docType} stuck ${shape} for ${hours.toFixed(1)}h (> ${EXTRACTION_STUCK_MAX_HOURS}h) — needs-decision`;
+}
+
+/** Mirror of `EXTRACTION_BLOCKED_ERROR` in filing-auto-persist.ts. */
+export const EXTRACTION_BLOCKED_PREFIX = 'blocked_after_10_attempts';
+
+/**
+ * Reads kind + last cause off a block marker
+ * (`blocked_after_10_attempts kind=<kind> last=<cause> @<version>`, #583). A
+ * legacy bare `blocked_after_10_attempts@<version>` row has neither: the block
+ * overwrote them, so they are reported as `unrecorded`, never guessed.
+ */
+export function parseBlockedMarkerMirror(error) {
+  const m = new RegExp(`^${EXTRACTION_BLOCKED_PREFIX} kind=(\\S+) last=(.*) @\\S+$`, 's').exec(String(error ?? ''));
+  return m ? { kind: m[1], lastCause: m[2] } : null;
+}
+
+/**
+ * m_extraction_stuck, 5th shape (#583): a document at the retry ceiling —
+ * parked by the 10-attempt block, or with `retry_count >= MAX_EXTRACTION_ATTEMPTS`
+ * — on a live IPO, reported WHATEVER the age of `updated_at` and for EVERY
+ * document type (ANCHOR_ALLOCATION_REPORT and PRICE_BAND_AD included).
+ *
+ * Why no age floor: every retry re-stamps `documents.updated_at`, so an
+ * age-keyed shape never sees a document that keeps failing, and a block is
+ * terminal until a spec trigger (§5.3 step 5) fires — waiting 48h adds nothing.
+ * Why every type: 5 of the 6 documents parked on staging on 2026-09-26 were
+ * PRICE_BAND_AD or ANCHOR_ALLOCATION_REPORT, which the other shapes skip.
+ *
+ * The line carries identities: IPO, document id, type, kind and last cause.
+ */
+export function checkRetryCeiling(row) {
+  const extractionStatus = row.extractionStatus ?? null;
+  const extractionError = String(row.extractionError ?? '');
+  const retryCount = row.retryCount === null || row.retryCount === undefined ? NaN : Number(row.retryCount);
+  const isBlocked = extractionStatus === 'MANUAL_REVIEW' && extractionError.startsWith(EXTRACTION_BLOCKED_PREFIX);
+  const atCeiling = Number.isFinite(retryCount) && retryCount >= MAX_EXTRACTION_ATTEMPTS;
+  if (!isBlocked && !atCeiling) return null;
+
+  const parsed = parseBlockedMarkerMirror(extractionError);
+  const kind = parsed ? parsed.kind : isBlocked ? 'unrecorded' : 'not-blocked-yet';
+  const cause = parsed
+    ? parsed.lastCause
+    : isBlocked
+      ? 'unrecorded (legacy marker overwrote it)'
+      : extractionError || 'none';
+  const label = row.companyName ?? row.slug ?? row.ipoId ?? 'unknown IPO';
+  const docType = String(row.docType ?? '').toUpperCase() || 'UNKNOWN_TYPE';
+  return (
+    `${label} [ipo ${row.ipoId ?? '?'}] doc ${row.documentId ?? '?'} ${docType}: at the retry ceiling ` +
+    `(status=${extractionStatus}, retryCount=${Number.isFinite(retryCount) ? retryCount : '?'}, kind=${kind}, cause=${cause.slice(0, 200)}) — needs-decision`
+  );
 }
 
 /**

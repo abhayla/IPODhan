@@ -78,6 +78,8 @@ import {
   parseBlockedVersion,
   withBlockedVersion,
   EXTRACTION_BLOCKED_ERROR,
+  buildBlockedMarker,
+  parseBlockedMarker,
   EXTRACTOR_MEMORY_CEILING_EXIT,
   HARD_FAILURE_MARKER,
   HARD_FAILURE_MIN_BACKOFF_MS,
@@ -1237,7 +1239,7 @@ describe('processPendingFilings — per-document retry bookkeeping (MAJOR-A)', (
       runExtractor: vi.fn(() => ({ ok: false as const, error: 'boom' })),
     });
     await processPendingFilings(IPO, d);
-    const expectedError = `${EXTRACTION_BLOCKED_ERROR}@${EXTRACTOR_VERSION}`;
+    const expectedError = `${EXTRACTION_BLOCKED_ERROR} kind=deterministic last=extractor: boom @${EXTRACTOR_VERSION}`;
     expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
       expect.objectContaining({
         documentId: 'doc-1',
@@ -2599,5 +2601,136 @@ describe('item 9 (OD-90) — a stored corrigendum is read into admin suggestions
     await processPendingFilings({ ...IPO, segment: 'SME' }, d);
     expect(d.runCorrigendumSuggestions).toHaveBeenCalledTimes(1);
     expect(d.runExtractor).not.toHaveBeenCalled();
+  });
+});
+
+// ------------------------------------------------ #583: the block keeps its kind and cause
+
+describe('#583 — spawn failures are classified, and the 10-attempt block keeps kind + last cause', () => {
+  beforeEach(() => {
+    spawnSyncMock.mockReset();
+    delete process.env.PYTHON_BIN;
+  });
+
+  const spawnErr = (code: string) => ({
+    status: null,
+    signal: code === 'ETIMEDOUT' ? 'SIGTERM' : null,
+    stdout: '',
+    stderr: '',
+    error: Object.assign(new Error(`spawnSync nice ${code}`), { code }),
+  });
+
+  it('a spawn ETIMEDOUT (the #583 shape) is transientKind spawn_timeout, still hard (24h floor)', () => {
+    spawnSyncMock.mockReturnValueOnce(spawnErr('ETIMEDOUT'));
+    const r = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+    expect(r).toMatchObject({ ok: false, transientKind: 'spawn_timeout', hardFailure: true });
+  });
+
+  it('a spawn EAGAIN / ENOMEM / EMFILE is transientKind spawn_resource, not hard', () => {
+    for (const code of ['EAGAIN', 'ENOMEM', 'EMFILE']) {
+      spawnSyncMock.mockReturnValueOnce(spawnErr(code));
+      const r = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+      expect(r).toMatchObject({ ok: false, transientKind: 'spawn_resource', hardFailure: false });
+    }
+  });
+
+  it('a missing explicit PYTHON_BIN (ENOENT) and an ordinary non-zero exit carry no transient kind', () => {
+    process.env.PYTHON_BIN = '/opt/venv/bin/python';
+    spawnSyncMock.mockReturnValueOnce(spawnErr('ENOENT'));
+    expect((defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false }) as { transientKind?: string }).transientKind).toBeUndefined();
+    delete process.env.PYTHON_BIN;
+    spawnSyncMock.mockReturnValueOnce({ status: 1, stdout: '', stderr: 'Traceback: KeyError' });
+    expect((defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false }) as { transientKind?: string }).transientKind).toBeUndefined();
+  });
+
+  it('the marker round-trips: kind and cause read back, the version still parses, and a legacy bare marker still parses', () => {
+    const m = buildBlockedMarker('extract_filing.py@2026-09-26', 'transient:spawn_timeout', 'extractor: spawn failed:\n  spawnSync nice ETIMEDOUT');
+    expect(m).toBe(`${EXTRACTION_BLOCKED_ERROR} kind=transient:spawn_timeout last=extractor: spawn failed: spawnSync nice ETIMEDOUT @extract_filing.py@2026-09-26`);
+    expect(parseBlockedVersion(m)).toBe('extract_filing.py@2026-09-26');
+    expect(parseBlockedMarker(m)).toEqual({ kind: 'transient:spawn_timeout', lastCause: 'extractor: spawn failed: spawnSync nice ETIMEDOUT' });
+    expect(parseBlockedVersion(`${EXTRACTION_BLOCKED_ERROR}@extract_filing.py@2026-09-03`)).toBe('extract_filing.py@2026-09-03');
+    expect(parseBlockedMarker(`${EXTRACTION_BLOCKED_ERROR}@extract_filing.py@2026-09-03`)).toBeNull();
+  });
+
+  it('a very long cause is truncated but the version suffix survives the 1000-char cap', () => {
+    const m = buildBlockedMarker('v9', 'deterministic', 'x'.repeat(5000));
+    expect(m.length).toBeLessThanOrEqual(1000);
+    expect(parseBlockedVersion(m)).toBe('v9');
+  });
+
+  it('the version-change unblock still works on the new marker: blocked at the same version, eligible at a new one', () => {
+    const now = new Date();
+    const row = {
+      extractionStatus: 'MANUAL_REVIEW',
+      extractionError: buildBlockedMarker('v1', 'transient:sidecar_timeout', 'anchor: anchor sidecar timed out after 120000ms'),
+      retryCount: 10,
+      updatedAt: now,
+    };
+    expect(documentExtractionBlocked(row, 'v1', now).blocked).toBe(true);
+    expect(documentExtractionBlocked(row, 'v2', now).blocked).toBe(false);
+  });
+
+  const atCeiling = () =>
+    doc({
+      extractionStatus: 'FAILED',
+      retryCount: MAX_EXTRACTION_ATTEMPTS - 1,
+      extractionError: 'extractor: spawn failed: spawnSync nice ETIMEDOUT',
+      updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+    });
+
+  it('filing path: a TRANSIENT failure on the 10th attempt is still blocked (no unbounded retry), with kind and cause kept', async () => {
+    const d = deps({
+      loadDocuments: vi.fn(async () => [atCeiling()]),
+      runExtractor: vi.fn(() => ({
+        ok: false as const,
+        error: 'spawn failed: spawnSync nice ETIMEDOUT',
+        hardFailure: true,
+        transientKind: 'spawn_timeout' as const,
+      })),
+    });
+    await processPendingFilings(IPO, d);
+    const blocked = stateCalls(d).find((c) => c.status === 'MANUAL_REVIEW');
+    expect(blocked).toBeDefined();
+    expect(blocked.retryCount).toBe(MAX_EXTRACTION_ATTEMPTS);
+    expect(parseBlockedMarker(blocked.error)).toEqual({
+      kind: 'transient:spawn_timeout',
+      lastCause: expect.stringContaining('spawnSync nice ETIMEDOUT'),
+    });
+    expect(parseBlockedVersion(blocked.error)).toBe(EXTRACTOR_VERSION);
+  });
+
+  it('filing path: a DETERMINISTIC failure on the 10th attempt is blocked with kind=deterministic and its cause', async () => {
+    const d = deps({
+      loadDocuments: vi.fn(async () => [atCeiling()]),
+      runExtractor: vi.fn(() => ({ ok: false as const, error: 'extractor exited 1: KeyError', hardFailure: false })),
+    });
+    await processPendingFilings(IPO, d);
+    const blocked = stateCalls(d).find((c) => c.status === 'MANUAL_REVIEW');
+    expect(parseBlockedMarker(blocked?.error)).toEqual({ kind: 'deterministic', lastCause: 'extractor: extractor exited 1: KeyError' });
+  });
+
+  it('anchor path: a sidecar timeout on the 10th attempt is blocked with kind=transient:sidecar_timeout (NSE anchor report, staging 2026-09-18)', async () => {
+    const d = anchorDeps({
+      loadDocuments: vi.fn(async () => [
+        anchorDoc({
+          extractionStatus: 'FAILED',
+          retryCount: MAX_EXTRACTION_ATTEMPTS - 1,
+          extractionError: 'anchor: text sidecar failed: ONNXRuntimeError',
+          updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        }),
+      ]),
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'failed' as const,
+        reason: 'anchor: anchor sidecar timed out after 120000ms',
+        transientKind: 'sidecar_timeout' as const,
+      })),
+    });
+    const r = await processPendingFilings(IPO, d);
+    const blocked = stateCalls(d).find((c) => c.status === 'MANUAL_REVIEW');
+    expect(parseBlockedMarker(blocked?.error)).toEqual({
+      kind: 'transient:sidecar_timeout',
+      lastCause: 'anchor: anchor sidecar timed out after 120000ms',
+    });
+    expect(r.anchorsManualReview).toBe(1);
   });
 });

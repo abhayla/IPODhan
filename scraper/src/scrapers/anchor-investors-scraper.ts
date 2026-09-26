@@ -37,6 +37,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { documentPath, getStoreDir } from '../services/document-store';
 import { parseAnchorReport } from './anchor-report-parser';
 import { isMemoryAbortStderr } from '../services/memory-abort-stderr.js';
+import { classifySpawnErrorCode } from '../utils/transient-spawn-error.js';
 import { withLowPriority, EXTRACTOR_BUSY_EXIT_CODE } from '../utils/low-priority-spawn.js';
 
 /**
@@ -148,6 +149,14 @@ export type AnchorScrapeFailureKind =
   | 'hard_failure'
   | 'empty_pages'
   | 'sidecar_error'
+  /** #583: the sidecar hit its own `SIDECAR_TIMEOUT_MS` spawn clock — says
+   * nothing about the report. Recorded as a transient kind; it still counts
+   * toward the attempt limit like every other failure. */
+  | 'sidecar_timeout'
+  /** #583: the kernel refused to start the sidecar (EAGAIN/ENOMEM/EMFILE/
+   * ENFILE, `classifySpawnErrorCode`) — same classification as the filing
+   * extractor's spawn. Transient kind, still counted. */
+  | 'sidecar_spawn_resource'
   | 'parse_failed'
   | 'issue_size_conflict'
   | 'error'
@@ -183,7 +192,14 @@ export interface AnchorScrapeOutcome {
 /** The sidecar's own outcome, before any anchor-table parsing. */
 export type SidecarFailure = {
   ok: false;
-  kind: 'hard_failure' | 'empty_pages' | 'sidecar_error' | 'busy' | 'password_protected';
+  kind:
+    | 'hard_failure'
+    | 'empty_pages'
+    | 'sidecar_error'
+    | 'sidecar_timeout'
+    | 'sidecar_spawn_resource'
+    | 'busy'
+    | 'password_protected';
   reason: string;
 };
 export type SidecarResult = { ok: true; pages: string[] } | SidecarFailure;
@@ -445,11 +461,17 @@ export function extractPageTexts(pdfPath: string): SidecarResult {
   // an error line that named a cause that never happened. The timeout is
   // checked FIRST and reported honestly as an ordinary retryable failure;
   // only exit 3 or the W-137 stderr shape is a memory abort.
-  const timedOut = (res.error as { code?: string } | undefined)?.code === 'ETIMEDOUT';
+  const spawnKind = classifySpawnErrorCode((res.error as { code?: string } | undefined)?.code);
+  if (spawnKind === 'spawn_resource') {
+    const reason = `anchor sidecar could not be started (${String((res.error as { code?: string }).code)}): ${res.error?.message ?? ''}`;
+    logger.error(`[Anchor Investors] ${reason}`);
+    return { ok: false, kind: 'sidecar_spawn_resource', reason };
+  }
+  const timedOut = spawnKind === 'spawn_timeout';
   if (timedOut && !memoryAbort) {
     const reason = `anchor sidecar timed out after ${SIDECAR_TIMEOUT_MS}ms`;
     logger.error(`[Anchor Investors] ${reason}`);
-    return { ok: false, kind: 'sidecar_error', reason };
+    return { ok: false, kind: 'sidecar_timeout', reason };
   }
   if (memoryAbort) {
     const reason = `anchor sidecar memory abort (exit ${String(res.status)}): ${stderr.slice(0, 300)}`;

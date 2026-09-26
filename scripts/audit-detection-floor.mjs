@@ -58,6 +58,7 @@ import {
   checkAbsenceWithoutEvidence,
   checkCycleOverrun,
   checkExtractionStuck,
+  MAX_EXTRACTION_ATTEMPTS,
   checkStrandedNotExtractable,
   AUTO_PERSIST_DOC_TYPES_MIRROR,
   checkNseLeadManagerProvenanceHasValue,
@@ -1255,7 +1256,7 @@ async function checkM() {
   // comment. FAIL-level, joins `documents` to its sibling `document_fetch_state`
   // row (same ipo+doc_type) so all three stuck shapes are caught in one check.
   const extractionStuckRows = await q(`
-    SELECT i.company_name, i.slug, i.status AS ipo_status, d.type AS doc_type,
+    SELECT i.company_name, i.slug, i.status AS ipo_status, i.id AS ipo_id, d.id AS document_id, d.type AS doc_type,
            d.extraction_status, d.extraction_error, d.retry_count, d.updated_at AS doc_updated_at,
            fs.state AS fetch_state
       FROM documents d
@@ -1263,11 +1264,13 @@ async function checkM() {
       LEFT JOIN document_fetch_state fs ON fs.ipo_id = d.ipo_id AND fs.doc_type = d.type
      WHERE i.${REAL_IPO}
        AND i.status IN ('UPCOMING','OPEN','CLOSED','LISTED')
-       AND d.type = ANY($1)
-  `, [FILING_EXTRACTOR_STUCK_TYPES]);
+       AND (d.type = ANY($1) OR d.retry_count >= $2 OR starts_with(d.extraction_error, 'blocked_after_'))
+  `, [FILING_EXTRACTOR_STUCK_TYPES, MAX_EXTRACTION_ATTEMPTS]);
   const nowMs = Date.now();
   const extractionStuck = extractionStuckRows
     .map((r) => ({
+      ipoId: r.ipo_id,
+      documentId: r.document_id,
       companyName: r.company_name,
       slug: r.slug,
       ipoStatus: r.ipo_status,
@@ -1283,7 +1286,7 @@ async function checkM() {
   for (const v of extractionStuck)
     notify('m_extraction_stuck', 'P1', v, 'Required document type stuck in extraction (MANUAL_REVIEW/EXTRACT_FAILED/HARD_FAILURE) past 48h', v);
   record('m_extraction_stuck',
-    'no DRHP/RHP/PROSPECTUS stuck MANUAL_REVIEW, EXTRACT_FAILED, or FAILED+HARD_FAILURE for more than 48h on a live IPO',
+    'no DRHP/RHP/PROSPECTUS stuck MANUAL_REVIEW, EXTRACT_FAILED, or FAILED+HARD_FAILURE for more than 48h on a live IPO, and no document of ANY type at the retry ceiling (blocked or retry_count >= 10), whatever its age',
     extractionStuck.length === 0 ? 'PASS' : 'FAIL', extractionStuck.slice(0, MAX_OFFENDERS).join('; '));
 
   const liveIpos = await q(`

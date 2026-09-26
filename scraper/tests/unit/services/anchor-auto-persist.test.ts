@@ -128,6 +128,17 @@ describe('classifyAnchorAutoOutcome — the outcome map', () => {
     }
   });
 
+  it('#583: a sidecar timeout / spawn-resource failure is FAILED with a transient kind recorded (never deterministic)', () => {
+    const t = classifyAnchorAutoOutcome({ failure: { kind: 'sidecar_timeout', reason: 'anchor sidecar timed out after 120000ms' } });
+    expect(t.kind).toBe('failed');
+    expect((t as { transientKind?: string }).transientKind).toBe('sidecar_timeout');
+    expect((t as { deterministic?: boolean }).deterministic).toBe(false);
+    const r = classifyAnchorAutoOutcome({ failure: { kind: 'sidecar_spawn_resource', reason: 'EAGAIN' } });
+    expect((r as { transientKind?: string }).transientKind).toBe('spawn_resource');
+    const err = classifyAnchorAutoOutcome({ failure: { kind: 'sidecar_error', reason: 'ONNXRuntimeError' } });
+    expect((err as { transientKind?: string }).transientKind).toBeUndefined();
+  });
+
   it('a missing summary is FAILED, never a claimed persist', () => {
     expect(classifyAnchorAutoOutcome({}).kind).toBe('failed');
   });
