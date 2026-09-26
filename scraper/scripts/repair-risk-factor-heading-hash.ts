@@ -286,7 +286,14 @@ async function main(): Promise<void> {
   });
   console.log(`slot: ${opened.dbName}${opened.isProd ? ' (PRODUCTION)' : ''}, apply=${APPLY}`);
 
-  const ledger: Record<string, unknown> = { apply: APPLY, at: new Date().toISOString() };
+  const ledger: Record<string, unknown> = {
+    tool: 'repair-risk-factor-heading-hash',
+    mode: APPLY ? 'apply' : 'dry-run',
+    generatedAt: new Date().toISOString(),
+    changes: [] as unknown[],
+    apply: APPLY,
+    at: new Date().toISOString(),
+  };
 
   if (DO_BACKFILL) {
     // Read and write inside ONE transaction: a row a live scraper cycle
@@ -302,9 +309,21 @@ async function main(): Promise<void> {
           await tx.update(ipoRiskFactors).set({ headingHash: row.headingHash }).where(eq(ipoRiskFactors.id, row.id));
         }
       }
-      return { scanned: rows.length, ...plan };
+      const beforeById = new Map(rows.map((r) => [r.id, r.currentHash]));
+      return { scanned: rows.length, beforeById, ...plan };
     });
     ledger.backfill = { scanned: result.scanned, written: result.toWrite.length, alreadyCorrect: result.alreadyCorrect, nullKey: result.nullKey };
+    const existingChanges = Array.isArray(ledger.changes) ? (ledger.changes as unknown[]) : [];
+    ledger.changes = [
+      ...existingChanges,
+      ...result.toWrite.map((row) => ({
+        table: 'ipo_risk_factors',
+        rowKey: row.id,
+        field: 'headingHash',
+        before: result.beforeById.get(row.id) ?? null,
+        after: row.headingHash,
+      })),
+    ];
     console.log(`backfill: scanned=${result.scanned} ${APPLY ? 'written' : 'would write'}=${result.toWrite.length} alreadyCorrect=${result.alreadyCorrect} nullKey=${result.nullKey.length}`);
   }
 
@@ -348,6 +367,16 @@ async function main(): Promise<void> {
       rows: plan.deletes,
       conflicts: plan.conflicts,
     };
+    ledger.changes = [
+      ...(Array.isArray(ledger.changes) ? (ledger.changes as unknown[]) : []),
+      ...plan.deletes.map((victim) => ({
+        table: 'ipo_risk_factors',
+        rowKey: victim.id,
+        field: '(row)',
+        before: victim,
+        after: null,
+      })),
+    ];
     console.log(
       `dedupe: ${APPLY ? 'deleted' : 'would delete'}=${plan.deletes.length} surplus rows ` +
         `across ${plan.collapsedGroups} collapsed group(s); conflicted groups=${plan.conflicts.length}`
@@ -376,7 +405,7 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`ledger: ${writeLedgerFile(`logs/repair-risk-factor-heading-hash-${Date.now()}.json`, ledger)}`);
+  console.log(`ledger: ${writeLedgerFile(`logs/repair-risk-factor-heading-hash-${Date.now()}.json`, ledger as unknown as import('./lib/repair-tool.js').RepairLedgerPayload)}`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {

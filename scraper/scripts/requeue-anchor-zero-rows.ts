@@ -223,6 +223,15 @@ async function main(): Promise<void> {
 
     const ledger = {
       tool: TOOL,
+      mode: (cli.apply ? 'apply' : 'dry-run') as 'apply' | 'dry-run',
+      generatedAt: new Date().toISOString(),
+      changes: requeue.map((d) => ({
+        table: 'documents',
+        rowKey: d.document.id,
+        field: 'extraction_status',
+        before: d.document.extractionStatus,
+        after: REQUEUED_STATUS,
+      })),
       database: actual,
       apply: cli.apply,
       at: new Date().toISOString(),

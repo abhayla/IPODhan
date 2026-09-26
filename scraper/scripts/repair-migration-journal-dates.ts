@@ -368,7 +368,21 @@ async function main() {
 
   const plan = decision.plan;
   const backupPath = path.join(EVIDENCE_DIR, `migration-journal-dates-backup-${dbName}.json`);
-  writeLedgerFile(backupPath, { dbName, capturedAt: new Date().toISOString(), rows: plan });
+  writeLedgerFile(backupPath, {
+    tool: 'repair-migration-journal-dates',
+    mode: decision.outcome,
+    generatedAt: new Date().toISOString(),
+    changes: plan.map((p) => ({
+      table: 'drizzle.__drizzle_migrations',
+      rowKey: String(p.rowId),
+      field: 'created_at',
+      before: p.before,
+      after: p.after,
+    })),
+    dbName,
+    capturedAt: new Date().toISOString(),
+    rows: plan,
+  });
   console.log(`\nbackup written: ${backupPath} (${plan.length} row(s))`);
 
   if (decision.outcome === 'dry-run') {

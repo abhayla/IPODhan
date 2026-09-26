@@ -77,6 +77,17 @@ async function main(): Promise<void> {
     path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${apply ? 'applied' : 'dryrun'}-${Date.now()}.json`),
     {
       tool: TOOL,
+      mode: apply ? 'apply' : 'dry-run',
+      generatedAt: new Date().toISOString(),
+      changes: evaluation.reopen
+        .filter((v) => !apply || changed.includes(v.row.planRowId))
+        .map((v) => ({
+          table: v.row.tableName,
+          rowKey: v.row.rowKey ?? v.row.planRowId,
+          field: 'state',
+          before: 'SUPPLIED',
+          after: 'PENDING',
+        })),
       database: actual,
       apply,
       at: new Date().toISOString(),

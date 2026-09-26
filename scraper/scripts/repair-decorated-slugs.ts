@@ -244,6 +244,15 @@ async function main(): Promise<void> {
     `evidence/${TOOL}-${cli.apply ? 'applied' : 'dryrun'}-${Date.now()}.json`,
     {
       tool: TOOL,
+      mode: cli.apply ? 'apply' : 'dry-run',
+      generatedAt: new Date().toISOString(),
+      changes: planned.map((p) => ({
+        table: 'ipos',
+        rowKey: p.id,
+        field: 'slug',
+        before: p.oldSlug,
+        after: p.newSlug,
+      })),
       database: actual,
       apply: cli.apply,
       at: new Date().toISOString(),

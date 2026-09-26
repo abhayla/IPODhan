@@ -176,6 +176,15 @@ async function main(): Promise<void> {
 
   writeLedgerFile(path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${cli.apply ? 'applied' : 'dryrun'}-${Date.now()}.json`), {
     tool: TOOL,
+    mode: cli.apply ? 'apply' : 'dry-run',
+    generatedAt: new Date().toISOString(),
+    changes: toStamp.map((d) => ({
+      table: 'field_sources',
+      rowKey: d.row.id,
+      field: d.row.fieldName,
+      before: null,
+      after: d.documentId,
+    })),
     database: actual,
     apply: cli.apply,
     at: new Date().toISOString(),

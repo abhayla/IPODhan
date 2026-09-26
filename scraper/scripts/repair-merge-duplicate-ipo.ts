@@ -427,17 +427,37 @@ async function main(): Promise<number> {
     drop: plan.drop,
     children: {},
   };
-  for (const { table, col } of [...plan.toDelete, ...plan.toRepoint]) {
+  const childChanges: { table: string; rowKey: string; field: string; before: unknown; after: unknown }[] = [];
+  for (const { table, col } of plan.toDelete) {
     const r = await db.execute(
       sql`select * from ${sql.identifier(table)} where ${sql.identifier(col)} in (${KEEP}, ${DROP})`
     );
-    const rows = (r as unknown as { rows: unknown[] }).rows;
+    const rows = (r as unknown as { rows: Record<string, unknown>[] }).rows;
     if (rows.length) backup.children[table] = rows;
+    for (const row of rows.filter((rw) => rw[col] === DROP)) {
+      childChanges.push({ table, rowKey: String(row.id ?? `${table}:${col}:${DROP}`), field: '(row)', before: row, after: null });
+    }
   }
-  const backupFile = writeLedgerFile(
-    `scripts/state/merge-backup-${DROP}-${Date.now()}.json`,
-    backup
-  );
+  for (const { table, col } of plan.toRepoint) {
+    const r = await db.execute(
+      sql`select * from ${sql.identifier(table)} where ${sql.identifier(col)} in (${KEEP}, ${DROP})`
+    );
+    const rows = (r as unknown as { rows: Record<string, unknown>[] }).rows;
+    if (rows.length) backup.children[table] = rows;
+    for (const row of rows.filter((rw) => rw[col] === DROP)) {
+      childChanges.push({ table, rowKey: String(row.id ?? `${table}:${col}:${DROP}`), field: col, before: DROP, after: KEEP });
+    }
+  }
+  const backupFile = writeLedgerFile(`scripts/state/merge-backup-${DROP}-${Date.now()}.json`, {
+    tool: 'repair-merge-duplicate-ipo',
+    mode: APPLY ? 'apply' : 'dry-run',
+    generatedAt: new Date().toISOString(),
+    changes: [
+      { table: 'ipos', rowKey: DROP, field: '(row)', before: plan.drop, after: null },
+      ...childChanges,
+    ],
+    ...backup,
+  });
   console.log(`backup:    ${backupFile}`);
 
   printPlan(plan);
@@ -478,6 +498,16 @@ async function main(): Promise<number> {
   const readbackOk = readback.every((c) => c.pass);
 
   writeLedgerFile(`scripts/state/merge-applied-${DROP}-${Date.now()}.json`, {
+    tool: 'repair-merge-duplicate-ipo',
+    mode: 'apply',
+    generatedAt: new Date().toISOString(),
+    changes: applied.patch.map((p) => ({
+      table: 'ipos',
+      rowKey: KEEP,
+      field: p.column,
+      before: (plan.keep as Record<string, unknown>)[p.column] ?? null,
+      after: p.value,
+    })),
     appliedAt: new Date().toISOString(),
     keepId: KEEP,
     dropId: DROP,

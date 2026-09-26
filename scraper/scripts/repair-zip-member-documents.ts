@@ -164,6 +164,20 @@ async function main(): Promise<void> {
     path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${cli.apply ? 'applied' : 'dryrun'}-${Date.now()}.json`),
     {
       tool: TOOL,
+      mode: cli.apply ? 'apply' : 'dry-run',
+      generatedAt: new Date().toISOString(),
+      // Inserts only — `before` is null (no prior document row for a new zip member).
+      changes: results.flatMap((r) =>
+        r.outcomes
+          .filter((o) => o.action === 'would_store' || o.action === 'stored' || o.documentId)
+          .map((o) => ({
+            table: 'documents',
+            rowKey: o.documentId ?? `${r.zip.documentId}:${o.member}`,
+            field: '(row)',
+            before: null,
+            after: { member: o.member, sha256: o.sha256, type: o.type ?? null },
+          }))
+      ),
       database: actual,
       apply: cli.apply,
       at: new Date().toISOString(),
