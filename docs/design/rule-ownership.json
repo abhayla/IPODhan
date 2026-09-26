@@ -76,6 +76,7 @@
     "2.6": [
       6
     ],
+    "2.7": null,
     "2.8": [
       6
     ],
@@ -143,6 +144,7 @@
     ]
   },
   "_unclaimed_sections": {
+    "2.7": "Admin data editing (spec §9, OD-102..OD-121) is not built yet (release-gate item 36, docs/design/pull-model-completion-state.md) — no build card owns it. Declared unclaimed until a card is created for it, per OD-52. Unrelated to #1106; added only so apply-rule-ownership.mjs can run to completion after spec §9 landed (#1107) without a matching card.",
     "5.6": "A standing constraint on HOW we work (no language model in the phase-1 pipeline), not a thing any build item constructs. OD-52 allows this, provided it is declared rather than silent.",
     "7.1": "The build sequence describes the items themselves; a rule about the order of the work is not implemented BY one of the items in it.",
     "7.3": "The honest list of what the author is unsure about. These become rules only once they are answered, and then they land in the section that answers them.",

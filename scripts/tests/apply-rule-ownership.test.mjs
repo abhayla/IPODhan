@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spliceGeneratedBlock, buildBlock, MARKER, END_MARKER } from '../../docs/design/apply-rule-ownership.mjs';
+import { spliceGeneratedBlock, buildBlock, MARKER, END_MARKER, HAND_OWNED_MARKER } from '../../docs/design/apply-rule-ownership.mjs';
 
 const RULE = (id, section) => ({ id, section });
 
@@ -134,6 +134,31 @@ test('a rules block with no generator marker at all (hand-written) is REFUSED', 
   assert.match(refused, /written by hand/i);
   assert.equal(changed, false);
   assert.equal(next, md);
+});
+
+test('#1106: a rules block carrying the hand-owned marker is SKIPPED, never refused and never rewritten', () => {
+  const md = [
+    '# item-24',
+    '',
+    '## Rules implemented',
+    '',
+    HAND_OWNED_MARKER,
+    '',
+    '- `defect-fix-contract.md` - RCA, class, failing test first, fix at class level.',
+    '- `ist-timezone.md` - the window is evaluated on an IST calendar day.',
+    '',
+    '## Known gaps',
+    '',
+    '- none',
+    '',
+  ].join('\n');
+  const newBlock = buildBlock([RULE('R-158', '§1.12')]);
+  const { next, changed, refused, skipped } = spliceGeneratedBlock(md, newBlock, 'item-24-stage-gate-deadlock.md');
+  assert.equal(refused, null);
+  assert.equal(changed, false);
+  assert.equal(skipped, true);
+  assert.equal(next, md, 'card must be left byte-for-byte untouched when hand-owned');
+  assert.ok(!next.includes('R-158'), 'the generated block must never have been spliced in');
 });
 
 test('re-running with no change produces changed=false (idempotent)', () => {
