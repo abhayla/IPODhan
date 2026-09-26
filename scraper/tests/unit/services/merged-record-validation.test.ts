@@ -302,17 +302,24 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
   });
 
   it('(f) an unusual-but-valid MAINBOARD lot of 40 is written (WARNING only)', async () => {
+    // #721: band raised to 260-300 (min investment 40 x 300 = ₹12,000) so the
+    // pair sits INSIDE the MAINBOARD SEBI window (₹10,000-₹16,000) - the old
+    // fixture (100-110, min investment ₹4,400) was actually an impossible
+    // pair that Rule 9 simply had nowhere to report before this fix; keeping
+    // it would have turned this "valid, WARNING only" test into a false
+    // negative for the very rule #721 wires up. Lot 40 still trips
+    // LOT_SIZE_UNUSUAL_MAINBOARD (WARNING, <50) - that is the case under test.
     mockConsolidated({
       companyName: 'Acme Industries Limited',
       lotSize: 40,
-      priceRangeMin: 100,
-      priceRangeMax: 110,
+      priceRangeMin: 260,
+      priceRangeMax: 300,
     });
 
     const ipoRepository = makeIpoRepository();
     await upsertIPO(
       ipoRepository,
-      scrape({ lotSize: 40, priceRangeMin: 100, priceRangeMax: 110 }),
+      scrape({ lotSize: 40, priceRangeMin: 260, priceRangeMax: 300 }),
       'BSE',
       existingRow()
     );
@@ -469,6 +476,85 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     );
 
     warnSpy.mockRestore();
+  });
+
+  it('(n) #721: an arithmetically impossible lot/band pair for the STORED (MAINBOARD) segment is dropped, even though the BSE payload carries no segment', async () => {
+    // Lot 100 x band-cap ₹2,165 = ₹2,16,500 minimum investment — inside no
+    // SEBI window at all, but nowhere near MAINBOARD's ₹10,000-₹16,000 (the
+    // ICICI Prudential AMC shape the Rule 9 comment names). Chosen so Rule 1
+    // (LOT_SIZE_TOO_LOW, already mapped) does NOT also fire: lot=100 is >= 10,
+    // so only Rule 9 (LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD) is in play — this
+    // isolates the class this test guards (the unmapped rule), rather than
+    // accidentally passing off an already-mapped rule's drop.
+    mockConsolidated({
+      companyName: 'Acme Industries Limited',
+      lotSize: 100,
+      priceRangeMin: 1900,
+      priceRangeMax: 2165,
+    });
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ lotSize: 100, priceRangeMin: 1900, priceRangeMax: 2165 }), // no segment - BSE shape
+      'BSE',
+      existingRow() // stored segment MAINBOARD governs
+    );
+
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch).not.toHaveProperty('lotSize');
+    // The band itself is not the suspect field here (it is well within the
+    // 20% MAINBOARD width limit) - only the lot is dropped.
+    expect(patch.priceRangeMin).toBe(1900);
+    expect(patch.priceRangeMax).toBe(2165);
+
+    expect(fieldSourcesMock.findByField).toHaveBeenCalledWith('ipo-id', 'ipos', 'lotSize');
+    expect(upsertConflictMock).toHaveBeenCalledTimes(1);
+    const conflict = upsertConflictMock.mock.calls[0][0];
+    expect(conflict).toMatchObject({
+      fieldName: 'lotEconomics',
+      source1: 'NSE',
+      source2: 'BSE',
+      severity: 'CRITICAL',
+      resolutionReason: 'MERGED_RECORD_VALIDATION:LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD',
+    });
+    expect(conflict.source1).not.toBe(conflict.source2);
+  });
+
+  it('(o) #721: an impossible lot/band pair for a stored SME segment is dropped', async () => {
+    // Lot 10 x band-cap ₹50 = ₹500 minimum investment for an SME row:
+    // nowhere near the ₹1,00,000-₹2,00,000 SME window. lot=10 is chosen (not
+    // <10) so Rule 1's LOT_SIZE_TOO_LOW branch never fires here — this
+    // isolates LOT_ECONOMICS_IMPOSSIBLE_SME the same way test (n) isolates
+    // the MAINBOARD arm, so a reviewer can trace this drop to Rule 9's own
+    // rule name and message, not an already-mapped sibling rule.
+    mockConsolidated({
+      companyName: 'Acme Industries Limited',
+      lotSize: 10,
+      priceRangeMin: 40,
+      priceRangeMax: 50,
+    });
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ lotSize: 10, priceRangeMin: 40, priceRangeMax: 50 }),
+      'BSE',
+      existingRow({ segment: 'SME', lotSize: 1200, priceRangeMin: 70, priceRangeMax: 80 })
+    );
+
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch).not.toHaveProperty('lotSize');
+    expect(patch.priceRangeMin).toBe(40);
+    expect(patch.priceRangeMax).toBe(50);
+
+    expect(upsertConflictMock).toHaveBeenCalledTimes(1);
+    const conflict = upsertConflictMock.mock.calls[0][0];
+    expect(conflict).toMatchObject({
+      fieldName: 'lotEconomics',
+      severity: 'CRITICAL',
+      resolutionReason: 'MERGED_RECORD_VALIDATION:LOT_ECONOMICS_IMPOSSIBLE_SME',
+    });
   });
 
   it('(m) stored owner equals the incoming source: no conflict written, field still dropped, warn logged', async () => {

@@ -17,7 +17,6 @@
     "SMEProspectusTable"
   ],
   "scraperValidationRules": [
-    "LOT_SIZE_UNUSUAL_MAINBOARD",
     "LOT_SIZE_UNUSUAL_SME",
     "OFFERING_TYPE_MISMATCH",
     "OFFERING_TYPE_AUTO_FIX",
