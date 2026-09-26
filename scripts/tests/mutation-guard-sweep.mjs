@@ -26,7 +26,7 @@
  * failed restore is unambiguous, and so restoring via `git stash`/checkout
  * as a last-resort recovery never discards real uncommitted work).
  */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -166,11 +166,20 @@ function runSelfTest() {
   // themselves (mutate → run → detect → restore byte-identical) without
   // touching any real guard or running a slow real suite. Runs fast enough
   // for pr-gate.
-  const os = process;
   const fixtureDir = path.join(REPO_ROOT, 'scripts', 'tests', '.mutation-sweep-selftest-fixture');
-  const fs = { rm: (p) => { try { execSync(`rm -rf "${p}"`); } catch { /* best-effort */ } } };
-  fs.rm(fixtureDir);
-  execSync(`mkdir -p "${fixtureDir}"`);
+  // Node's own fs, not a shell-string execSync('rm -rf ...')/execSync('mkdir -p ...') —
+  // those go through cmd.exe on Windows, which has no `rm` (silent no-op inside a
+  // swallow-all catch) and reads `-p` as a folder name for `mkdir` (created a stray
+  // `-p/` directory at the repo root). Guarded so this can only ever touch the
+  // fixture directory, never an arbitrary path.
+  const rmFixtureDir = (dir) => {
+    if (dir !== fixtureDir) {
+      throw new Error(`refusing to rm a path outside the self-test fixture root: ${dir}`);
+    }
+    rmSync(dir, { recursive: true, force: true });
+  };
+  rmFixtureDir(fixtureDir);
+  mkdirSync(fixtureDir, { recursive: true });
 
   const guardedFile = path.join(fixtureDir, 'guarded.mjs');
   const caughtSuite = path.join(fixtureDir, 'caught.suite.mjs');
@@ -231,7 +240,7 @@ function runSelfTest() {
     ok = false;
   }
 
-  fs.rm(fixtureDir);
+  rmFixtureDir(fixtureDir);
 
   if (ok) {
     console.log('SELF-TEST PASS: mutate/run/detect/restore mechanics all correct.');
