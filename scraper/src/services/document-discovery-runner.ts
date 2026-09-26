@@ -1301,12 +1301,30 @@ export class DocumentDiscoveryRunner {
           // 29 of 44 blocked SME symbols, 2026-09-26). That is 'not carried',
           // never 'ok': recorded as ok it settled SME types NSE cannot hold. A
           // PRESENT dataList (even empty) is NSE answering for the issue.
-          if (!issueInfo || typeof issueInfo !== 'object' || !Array.isArray(issueInfo.dataList)) {
-            attempts.push({ source: 'NSE', http: 200, ms, outcome: 'not_carried', url });
-            return null;
+          // ONLY that exact shape — `issueInfo` present, a plain object, zero
+          // keys — is 'not carried'. Anything else without a dataList (no
+          // `issueInfo` key, null, a renamed field) is an NSE shape change and
+          // must read as `shape_error` (a failure that alerts), never as a
+          // quiet abstention that would skip NSE for every IPO.
+          const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+            v !== null && typeof v === 'object' && !Array.isArray(v);
+          if (isPlainObject(issueInfo) && Array.isArray(issueInfo.dataList)) {
+            attempts.push({ source: 'NSE', http: 200, ms, outcome: 'ok', url });
+            return issueInfo;
           }
-          attempts.push({ source: 'NSE', http: 200, ms, outcome: 'ok', url });
-          return issueInfo;
+          const notCarried =
+            isPlainObject(payload) &&
+            Object.prototype.hasOwnProperty.call(payload, 'issueInfo') &&
+            isPlainObject(issueInfo) &&
+            Object.keys(issueInfo).length === 0;
+          attempts.push({
+            source: 'NSE',
+            http: 200,
+            ms,
+            outcome: notCarried ? 'not_carried' : 'shape_error',
+            url,
+          });
+          return null;
         } catch {
           attempts.push({ source: 'NSE', http: 200, ms, outcome: 'shape_error', url });
           return null;

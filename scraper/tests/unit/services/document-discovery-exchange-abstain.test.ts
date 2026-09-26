@@ -173,6 +173,37 @@ describe('#632 NSE 200 with an empty issueInfo does not carry the issue', () => 
   }, 60_000);
 });
 
+describe('#632 an NSE shape change is a shape_error, never not_carried', () => {
+  const peshwa = JSON.parse(fixture('nse-ipo-detail-empty-issueinfo-peshwa-sme.json'));
+  const { issueInfo: _drop, ...withoutIssueInfo } = peshwa;
+  const cases: [string, string][] = [
+    ['no issueInfo key', JSON.stringify(withoutIssueInfo)],
+    ['issueInfo: null', JSON.stringify({ ...peshwa, issueInfo: null })],
+    ['whole-body {}', '{}'],
+    ['whole-body null', 'null'],
+    ['whole-body []', '[]'],
+    ['renamed dataList', JSON.stringify({ ...peshwa, issueInfo: { dataRows: [{ title: 'x', value: 'y' }] } })],
+  ];
+  for (const [name, body] of cases) {
+    it(`${name} -> shape_error`, async () => {
+      const { runner } = makeRunner({ 'ipo-detail': json(body) }, 'Peshwa Wheat Limited');
+      const ipo: DiscoveryIpo = {
+        id: 'ipo-shape',
+        companyName: 'Peshwa Wheat Limited',
+        symbol: 'PESHWA',
+        segment: 'SME',
+        stage: 'CLOSED',
+        bseIpoNo: null,
+      };
+      const result = await runner.runIpo(ipo, ALL_BUT_PROSPECTUS as never);
+      expect(result.attempts.filter((a) => a.source === 'NSE').map((a) => a.outcome)).toEqual([
+        'shape_error',
+      ]);
+      expect(chainFor(result.attempts as never, 'PROSPECTUS')).toContain('EXCHANGES:failed');
+    }, 60_000);
+  }
+});
+
 describe('#632 exchanges that only abstained are not a FAILED exchange verdict', () => {
   it('BSE not_on_board + NSE no_symbol reads EXCHANGES:no_link and escalates', async () => {
     const { runner, seen } = makeRunner(
