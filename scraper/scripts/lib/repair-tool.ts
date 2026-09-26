@@ -828,6 +828,35 @@ export interface StaleCorrectionDecision {
 }
 
 /**
+ * Format a value for the `from`-vs-current comparison as CALENDAR TEXT, never
+ * via `toISOString()` (#422 round 2). A hard-coded correction's `from` is
+ * always a plain 'YYYY-MM-DD' string, but the row's live current value can
+ * arrive as a JS `Date` two different ways that both bite the same way: the
+ * raw `pg` driver's own OID-1082 (DATE) type parser (used by every raw
+ * `pool.query()` repair tool) and drizzle's default `date()` column mode
+ * (`PgDateString`, whose `mapFromDriverValue` is a pass-through of that same
+ * raw driver value) BOTH hand back whatever `pg-types` built for OID 1082 —
+ * `new Date(year, month - 1, day)`, constructed from LOCAL date parts, not a
+ * UTC instant. `.toISOString()` then converts that local midnight to UTC:
+ * with the process on IST (UTC+5:30), 2026-02-16 local midnight becomes
+ * `2026-02-15T18:30:00.000Z`, one calendar day EARLY — the exact class this
+ * repo's `.claude/rules/ist-timezone.md` names for naive timestamps, now
+ * shown to hit a plain DATE column too. The correct read of that Date object
+ * is its own LOCAL calendar parts (`getFullYear`/`getMonth`/`getDate`) —
+ * because that is exactly how it was constructed, the round-trip is exact.
+ */
+function toComparableCorrectionText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(value);
+}
+
+/**
  * Pure decision (unit-testable without a DB): should this ONE field-level
  * correction from a hard-coded table be skipped as stale? Checks, in the
  * order given in issue #422:
@@ -867,8 +896,8 @@ export function decideStaleCorrectionSkip(input: StaleCorrectionCheckInput): Sta
         'current value — cannot confirm the citation still applies (#422)',
     };
   }
-  const assumedText = input.assumedFromValue === null ? null : String(input.assumedFromValue);
-  const currentText = input.currentValue === null ? null : String(input.currentValue);
+  const assumedText = toComparableCorrectionText(input.assumedFromValue);
+  const currentText = toComparableCorrectionText(input.currentValue);
   if (assumedText !== currentText) {
     return {
       skip: true,
