@@ -19,11 +19,7 @@ import { IPORepository } from '@/lib/repositories/ipo-repository';
  */
 export interface MainboardSummaryMetrics {
   totalIPOs: number;
-  listedInGain: number | null;
-  listedInLoss: number | null;
   upcomingAndOngoing: number;
-  gainAOT: number | null; // null until computed from real listing_performance aggregates (#98)
-  lossAOT: number | null; // null until computed from real listing_performance aggregates (#98)
 }
 
 /**
@@ -39,33 +35,6 @@ export interface ReviewWithIPO {
   ipoId: string;
   ipoName: string;
   ipoSlug: string;
-}
-
-/**
- * Performance highlight with gain/loss data
- */
-export interface PerformanceHighlight {
-  id: string;
-  companyName: string;
-  slug: string;
-  issuePrice: number;
-  currentPrice: number;
-  gainPercent: number;
-  listingDate: string;
-}
-
-/**
- * Subscription status with IPO details
- */
-export interface SubscriptionStatusData {
-  id: string;
-  companyName: string;
-  slug: string;
-  totalSubscription: number | null;
-  qibSubscription: number | null;
-  niiSubscription: number | null;
-  retailSubscription: number | null;
-  closeDate: string | null;
 }
 
 /**
@@ -91,8 +60,6 @@ const CACHE_KEYS = {
   UPCOMING_IPOS: 'mainboard:landing:upcoming',
   RECENTLY_LISTED: 'mainboard:landing:recent',
   REVIEWS: 'mainboard:landing:reviews',
-  PERFORMANCE: 'mainboard:landing:performance',
-  SUBSCRIPTION: 'mainboard:landing:subscription',
   DETAILED_LIST: (year: number) => `mainboard:landing:detailed:${year}`,
 } as const;
 
@@ -123,14 +90,6 @@ async function getCachedOrFetch<T>(
   }
 }
 
-/**
- * Calculate gain percentage
- */
-function calculateGainPercent(issuePrice: number, currentPrice: number): number {
-  if (!issuePrice || !currentPrice) return 0;
-  return ((currentPrice - issuePrice) / issuePrice) * 100;
-}
-
 // ==================== PUBLIC API FUNCTIONS ====================
 
 /**
@@ -158,42 +117,20 @@ export async function getMainboardSummaryMetrics(): Promise<MainboardSummaryMetr
       // Calculate totalIPOs
       const totalIPOs = ipos.length;
 
-      // For listed IPOs, we need current price data
-      // Note: This requires listingPerformance data from API
-      // For MVP, we'll use mock calculations based on available data
-      const listedIPOs = ipos.filter((ipo) => ipo.status === 'LISTED');
-
-      // Gain/loss splits and averages were MOCKED (60/40, 25%/15%) — render
-      // nothing rather than fabricated numbers until real aggregates exist (#98).
-      void listedIPOs;
-      const listedInGain = null;
-      const listedInLoss = null;
-
       // Count upcoming and ongoing IPOs
       const upcomingAndOngoing = ipos.filter(
         (ipo) => ipo.status === 'UPCOMING' || ipo.status === 'OPEN'
       ).length;
 
-      const gainAOT = null;
-      const lossAOT = null;
-
       return {
         totalIPOs,
-        listedInGain,
-        listedInLoss,
         upcomingAndOngoing,
-        gainAOT,
-        lossAOT,
       };
     } catch (error) {
       console.error('Error fetching Mainboard summary metrics:', error);
       return {
         totalIPOs: 0,
-        listedInGain: null,
-        listedInLoss: null,
         upcomingAndOngoing: 0,
-        gainAOT: null,
-        lossAOT: null,
       };
     }
   });
@@ -320,106 +257,6 @@ export async function getMainboardReviews(): Promise<ReviewWithIPO[]> {
 }
 
 /**
- * Get performance highlights (top gainers and losers)
- * AC#4: Content section displays top gainers/losers
- */
-export async function getMainboardPerformanceHighlights(): Promise<{
-  topGainers: PerformanceHighlight[];
-  topLosers: PerformanceHighlight[];
-}> {
-  return getCachedOrFetch(CACHE_KEYS.PERFORMANCE, async () => {
-    try {
-      const redis = getRedisClient();
-      const ipoRepository = new IPORepository(db, redis);
-
-      // Fetch listed Mainboard IPOs
-      const response = await ipoRepository.findAll({
-        segment: ['MAINBOARD'],
-        offeringType: ['IPO'],
-        status: ['LISTED'],
-        limit: 50,
-        page: 1,
-        sortBy: 'createdAt',
-        sortOrder: 'desc'
-      });
-
-      // Mock performance data (replace with actual listingPerformance API)
-      const performances: PerformanceHighlight[] = response.data
-        .filter((ipo) => ipo.priceRangeMax && ipo.listingDate)
-        .map((ipo) => {
-          // Mock current price: issue price * (1 + random gain/loss)
-          const issuePrice = ipo.priceRangeMax!;
-          const randomGain = (Math.random() - 0.4) * 50; // -20% to +30%
-          const currentPrice = issuePrice * (1 + randomGain / 100);
-
-          return {
-            id: ipo.id,
-            companyName: ipo.companyName,
-            slug: ipo.slug,
-            issuePrice,
-            currentPrice,
-            gainPercent: calculateGainPercent(issuePrice, currentPrice),
-            listingDate: ipo.listingDate!,
-          };
-        });
-
-      // Sort by gain percentage
-      const sortedByGain = [...performances].sort((a, b) => b.gainPercent - a.gainPercent);
-
-      // Top 3 gainers
-      const topGainers = sortedByGain.slice(0, 3);
-
-      // Top 3 losers (lowest gain percentage)
-      const topLosers = sortedByGain.slice(-3).reverse();
-
-      return { topGainers, topLosers };
-    } catch (error) {
-      console.error('Error fetching Mainboard performance highlights:', error);
-      return { topGainers: [], topLosers: [] };
-    }
-  });
-}
-
-/**
- * Get subscription status for current IPOs
- * AC#4: Content section displays subscription data
- */
-export async function getMainboardSubscriptionStatus(): Promise<SubscriptionStatusData[]> {
-  return getCachedOrFetch(CACHE_KEYS.SUBSCRIPTION, async () => {
-    try {
-      const redis = getRedisClient();
-      const ipoRepository = new IPORepository(db, redis);
-
-      // Fetch current (OPEN) Mainboard IPOs
-      const response = await ipoRepository.findAll({
-        segment: ['MAINBOARD'],
-        offeringType: ['IPO'],
-        status: ['OPEN'],
-        limit: CONTENT_LIMIT,
-        page: 1,
-        sortBy: 'createdAt',
-        sortOrder: 'desc'
-      });
-
-      // Transform to subscription data (mock - replace with actual subscription API)
-      return response.data.map((ipo) => ({
-        id: ipo.id,
-        companyName: ipo.companyName,
-        slug: ipo.slug,
-        totalSubscription: Math.random() * 20, // Mock: 0-20x subscription
-        qibSubscription: Math.random() * 30,
-        niiSubscription: Math.random() * 15,
-        retailSubscription: Math.random() * 10,
-        closeDate: ipo.closeDate,
-      }));
-    } catch (error) {
-      console.error('Error fetching Mainboard subscription status:', error);
-      return [];
-    }
-  });
-}
-
-/**
  * Get detailed Mainboard IPO list with filtering
  * AC#8: Detailed table shows all columns with filters
  * AC#16: Only Mainboard IPOs displayed
@@ -520,9 +357,7 @@ export async function clearMainboardLandingCaches(): Promise<void> {
       CACHE_KEYS.CURRENT_IPOS,
       CACHE_KEYS.UPCOMING_IPOS,
       CACHE_KEYS.RECENTLY_LISTED,
-      CACHE_KEYS.REVIEWS,
-      CACHE_KEYS.PERFORMANCE,
-      CACHE_KEYS.SUBSCRIPTION
+      CACHE_KEYS.REVIEWS
     );
     console.log('Mainboard landing page caches cleared successfully');
   } catch (error) {

@@ -14,8 +14,6 @@ import {
   getSMEUpcomingIPOs,
   getSMERecentlyListedIPOs,
   getSMEReviews,
-  getSMEPerformanceHighlights,
-  getSMESubscriptionStatus,
   getSMEDetailedList,
   clearSMELandingCaches,
 } from '@/lib/services/sme-landing-service';
@@ -24,7 +22,6 @@ import {
   getCurrentIPOs,
   getUpcomingIPOs,
   getRecentlyListedIPOs,
-  getAllListedIPOs,
   filterByYear,
   createMockAPIResponse,
   emptyFixtures,
@@ -69,11 +66,6 @@ describe('SME Landing Service', () => {
       expect(result).toBeDefined();
       expect(result.totalIPOs).toBe(smeIPOFixtures.length);
       expect(result.upcomingAndOngoing).toBeGreaterThan(0);
-      // Mocked gain/loss metrics removed — null until real aggregates (#98)
-      expect(result.listedInGain).toBeNull();
-      expect(result.listedInLoss).toBeNull();
-      expect(result.gainAOT).toBeNull();
-      expect(result.lossAOT).toBeNull();
 
       // Verify API called with correct params
       expect(mockFindAll).toHaveBeenCalledWith(
@@ -107,11 +99,7 @@ describe('SME Landing Service', () => {
       // Assert
       expect(result).toEqual({
         totalIPOs: 0,
-        listedInGain: null,
-        listedInLoss: null,
         upcomingAndOngoing: 0,
-        gainAOT: null,
-        lossAOT: null,
       });
     });
 
@@ -401,157 +389,6 @@ describe('SME Landing Service', () => {
     });
   });
 
-  // ==================== TEST: getSMEPerformanceHighlights ====================
-
-  describe('getSMEPerformanceHighlights', () => {
-    it('should calculate top gainers and losers', async () => {
-      // Arrange
-      const listedIPOs = getAllListedIPOs();
-      mockFindAll.mockResolvedValue(
-        createMockAPIResponse(listedIPOs)
-      );
-
-      // Act
-      const result = await getSMEPerformanceHighlights();
-
-      // Assert
-      expect(result).toHaveProperty('topGainers');
-      expect(result).toHaveProperty('topLosers');
-      expect(result.topGainers).toBeInstanceOf(Array);
-      expect(result.topLosers).toBeInstanceOf(Array);
-      expect(result.topGainers.length).toBeLessThanOrEqual(3);
-      expect(result.topLosers.length).toBeLessThanOrEqual(3);
-    });
-
-    it('should include gainPercent in performance highlights', async () => {
-      // Arrange
-      const listedIPOs = getAllListedIPOs();
-      mockFindAll.mockResolvedValue(
-        createMockAPIResponse(listedIPOs)
-      );
-
-      // Act
-      const result = await getSMEPerformanceHighlights();
-
-      // Assert
-      if (result.topGainers.length > 0) {
-        expect(result.topGainers[0]).toHaveProperty('gainPercent');
-        expect(result.topGainers[0]).toHaveProperty('issuePrice');
-        expect(result.topGainers[0]).toHaveProperty('currentPrice');
-        expect(result.topGainers[0]).toHaveProperty('companyName');
-      }
-    });
-
-    it('should return top gainers sorted by highest gain first', async () => {
-      // Arrange
-      const listedIPOs = getAllListedIPOs();
-      mockFindAll.mockResolvedValue(
-        createMockAPIResponse(listedIPOs)
-      );
-
-      // Act
-      const result = await getSMEPerformanceHighlights();
-
-      // Assert
-      for (let i = 0; i < result.topGainers.length - 1; i++) {
-        expect(result.topGainers[i].gainPercent).toBeGreaterThanOrEqual(
-          result.topGainers[i + 1].gainPercent
-        );
-      }
-    });
-
-    it('should return empty arrays on error', async () => {
-      // Arrange
-      mockFindAll.mockRejectedValue(new Error('Fetch Error'));
-
-      // Act
-      const result = await getSMEPerformanceHighlights();
-
-      // Assert
-      expect(result).toEqual({ topGainers: [], topLosers: [] });
-    });
-
-    it('should fetch LISTED IPOs with limit 50', async () => {
-      // Arrange
-      mockFindAll.mockResolvedValue(
-        createMockAPIResponse(getAllListedIPOs())
-      );
-
-      // Act
-      await getSMEPerformanceHighlights();
-
-      // Assert
-      expect(mockFindAll).toHaveBeenCalledWith(
-        expect.objectContaining({ segment: ['SME'], offeringType: ['IPO'], status: ['LISTED'] })
-      );
-    });
-  });
-
-  // ==================== TEST: getSMESubscriptionStatus ====================
-
-  describe('getSMESubscriptionStatus', () => {
-    it('should fetch OPEN IPOs with subscription data', async () => {
-      // Arrange
-      const currentIPOs = getCurrentIPOs();
-      mockFindAll.mockResolvedValue(
-        createMockAPIResponse(currentIPOs)
-      );
-
-      // Act
-      const result = await getSMESubscriptionStatus();
-
-      // Assert
-      expect(result).toBeInstanceOf(Array);
-      expect(result.length).toBeLessThanOrEqual(6);
-      result.forEach((item) => {
-        expect(item).toHaveProperty('companyName');
-        expect(item).toHaveProperty('totalSubscription');
-        expect(item).toHaveProperty('qibSubscription');
-        expect(item).toHaveProperty('niiSubscription');
-        expect(item).toHaveProperty('retailSubscription');
-      });
-
-      // Verify API called with correct params
-      expect(mockFindAll).toHaveBeenCalledWith(
-        expect.objectContaining({ segment: ['SME'], offeringType: ['IPO'], status: ['OPEN'] })
-      );
-    });
-
-    it('should include all subscription fields', async () => {
-      // Arrange
-      const currentIPOs = getCurrentIPOs();
-      mockFindAll.mockResolvedValue(
-        createMockAPIResponse(currentIPOs)
-      );
-
-      // Act
-      const result = await getSMESubscriptionStatus();
-
-      // Assert
-      if (result.length > 0) {
-        expect(result[0]).toHaveProperty('id');
-        expect(result[0]).toHaveProperty('companyName');
-        expect(result[0]).toHaveProperty('slug');
-        expect(result[0]).toHaveProperty('totalSubscription');
-        expect(result[0]).toHaveProperty('qibSubscription');
-        expect(result[0]).toHaveProperty('niiSubscription');
-        expect(result[0]).toHaveProperty('retailSubscription');
-        expect(result[0]).toHaveProperty('closeDate');
-      }
-    });
-
-    it('should return empty array on error', async () => {
-      // Arrange
-      mockFindAll.mockRejectedValue(new Error('API Down'));
-
-      // Act
-      const result = await getSMESubscriptionStatus();
-
-      // Assert
-      expect(result).toEqual([]);
-    });
-  });
-
   // ==================== TEST: getSMEDetailedList ====================
 
   describe('getSMEDetailedList', () => {
@@ -703,9 +540,7 @@ describe('SME Landing Service', () => {
         'sme:landing:current',
         'sme:landing:upcoming',
         'sme:landing:recent',
-        'sme:landing:reviews',
-        'sme:landing:performance',
-        'sme:landing:subscription'
+        'sme:landing:reviews'
       );
     });
 
@@ -734,8 +569,6 @@ describe('SME Landing Service', () => {
       await expect(getSMEUpcomingIPOs()).resolves.toEqual([]);
       await expect(getSMERecentlyListedIPOs()).resolves.toEqual([]);
       await expect(getSMEReviews()).resolves.toEqual([]);
-      await expect(getSMEPerformanceHighlights()).resolves.toBeDefined();
-      await expect(getSMESubscriptionStatus()).resolves.toEqual([]);
       await expect(getSMEDetailedList()).resolves.toBeDefined();
     });
 

@@ -19,11 +19,7 @@ import { IPORepository } from '@/lib/repositories/ipo-repository';
  */
 export interface SMESummaryMetrics {
   totalIPOs: number;
-  listedInGain: number | null;
-  listedInLoss: number | null;
   upcomingAndOngoing: number;
-  gainAOT: number | null; // null until computed from real listing_performance aggregates (#98)
-  lossAOT: number | null; // null until computed from real listing_performance aggregates (#98)
 }
 
 /**
@@ -39,33 +35,6 @@ export interface ReviewWithIPO {
   ipoId: string;
   ipoName: string;
   ipoSlug: string;
-}
-
-/**
- * Performance highlight with gain/loss data
- */
-export interface PerformanceHighlight {
-  id: string;
-  companyName: string;
-  slug: string;
-  issuePrice: number;
-  currentPrice: number;
-  gainPercent: number;
-  listingDate: string;
-}
-
-/**
- * Subscription status with IPO details
- */
-export interface SubscriptionStatusData {
-  id: string;
-  companyName: string;
-  slug: string;
-  totalSubscription: number | null;
-  qibSubscription: number | null;
-  niiSubscription: number | null;
-  retailSubscription: number | null;
-  closeDate: string | null;
 }
 
 /**
@@ -91,8 +60,6 @@ const CACHE_KEYS = {
   UPCOMING_IPOS: 'sme:landing:upcoming',
   RECENTLY_LISTED: 'sme:landing:recent',
   REVIEWS: 'sme:landing:reviews',
-  PERFORMANCE: 'sme:landing:performance',
-  SUBSCRIPTION: 'sme:landing:subscription',
   DETAILED_LIST: (year: number) => `sme:landing:detailed:${year}`,
 } as const;
 
@@ -123,14 +90,6 @@ async function getCachedOrFetch<T>(
   }
 }
 
-/**
- * Calculate gain percentage
- */
-function calculateGainPercent(issuePrice: number, currentPrice: number): number {
-  if (!issuePrice || !currentPrice) return 0;
-  return ((currentPrice - issuePrice) / issuePrice) * 100;
-}
-
 // ==================== PUBLIC API FUNCTIONS ====================
 
 /**
@@ -158,45 +117,20 @@ export async function getSMESummaryMetrics(): Promise<SMESummaryMetrics> {
       // Calculate totalIPOs
       const totalIPOs = ipos.length;
 
-      // For listed IPOs, we need current price data
-      // Note: This requires listingPerformance data from API
-      // For MVP, we'll use mock calculations based on available data
-      const listedIPOs = ipos.filter((ipo) => ipo.status === 'LISTED');
-
-      // Count IPOs in gain (mock: assume 55% in gain for SME)
-      // Mocked metrics removed — null until real listing_performance aggregates (#98).
-      void listedIPOs;
-      const listedInGain = null;
-
-      // Count IPOs in loss (mock: assume 45% in loss)
-      const listedInLoss = null;
-
       // Count upcoming and ongoing IPOs
       const upcomingAndOngoing = ipos.filter(
         (ipo) => ipo.status === 'UPCOMING' || ipo.status === 'OPEN'
       ).length;
 
-      // Calculate average gain (mock: 30% for SME)
-      const gainAOT = null;
-      const lossAOT = null;
-
       return {
         totalIPOs,
-        listedInGain,
-        listedInLoss,
         upcomingAndOngoing,
-        gainAOT,
-        lossAOT,
       };
     } catch (error) {
       console.error('Error fetching SME summary metrics:', error);
       return {
         totalIPOs: 0,
-        listedInGain: null,
-        listedInLoss: null,
         upcomingAndOngoing: 0,
-        gainAOT: null,
-        lossAOT: null,
       };
     }
   });
@@ -327,108 +261,6 @@ export async function getSMEReviews(): Promise<ReviewWithIPO[]> {
 }
 
 /**
- * Get performance highlights (top gainers and losers)
- * AC#4: Content section displays top gainers/losers
- * AC#16: Only SME IPOs displayed
- */
-export async function getSMEPerformanceHighlights(): Promise<{
-  topGainers: PerformanceHighlight[];
-  topLosers: PerformanceHighlight[];
-}> {
-  return getCachedOrFetch(CACHE_KEYS.PERFORMANCE, async () => {
-    try {
-      const redis = getRedisClient();
-      const ipoRepository = new IPORepository(db, redis);
-
-      // Fetch listed SME IPOs
-      const response = await ipoRepository.findAll({
-        segment: ['SME'],
-        offeringType: ['IPO'],
-        status: ['LISTED'],
-        limit: 50,
-        page: 1,
-        sortBy: 'createdAt',
-        sortOrder: 'desc'
-      });
-
-      // Mock performance data (replace with actual listingPerformance API)
-      const performances: PerformanceHighlight[] = response.data
-        .filter((ipo) => ipo.priceRangeMax && ipo.listingDate)
-        .map((ipo) => {
-          // Mock current price: issue price * (1 + random gain/loss)
-          const issuePrice = ipo.priceRangeMax!;
-          const randomGain = (Math.random() - 0.3) * 60; // -18% to +42%
-          const currentPrice = issuePrice * (1 + randomGain / 100);
-
-          return {
-            id: ipo.id,
-            companyName: ipo.companyName,
-            slug: ipo.slug,
-            issuePrice,
-            currentPrice,
-            gainPercent: calculateGainPercent(issuePrice, currentPrice),
-            listingDate: ipo.listingDate!,
-          };
-        });
-
-      // Sort by gain percentage
-      const sortedByGain = [...performances].sort((a, b) => b.gainPercent - a.gainPercent);
-
-      // Top 3 gainers
-      const topGainers = sortedByGain.slice(0, 3);
-
-      // Top 3 losers (lowest gain percentage)
-      const topLosers = sortedByGain.slice(-3).reverse();
-
-      return { topGainers, topLosers };
-    } catch (error) {
-      console.error('Error fetching SME performance highlights:', error);
-      return { topGainers: [], topLosers: [] };
-    }
-  });
-}
-
-/**
- * Get subscription status for current SME IPOs
- * AC#4: Content section displays subscription data
- * AC#16: Only SME IPOs displayed
- */
-export async function getSMESubscriptionStatus(): Promise<SubscriptionStatusData[]> {
-  return getCachedOrFetch(CACHE_KEYS.SUBSCRIPTION, async () => {
-    try {
-      const redis = getRedisClient();
-      const ipoRepository = new IPORepository(db, redis);
-
-      // Fetch current (OPEN) SME IPOs
-      const response = await ipoRepository.findAll({
-        segment: ['SME'],
-        offeringType: ['IPO'],
-        status: ['OPEN'],
-        limit: CONTENT_LIMIT,
-        page: 1,
-        sortBy: 'createdAt',
-        sortOrder: 'desc'
-      });
-
-      // Transform to subscription data (mock - replace with actual subscription API)
-      return response.data.map((ipo) => ({
-        id: ipo.id,
-        companyName: ipo.companyName,
-        slug: ipo.slug,
-        totalSubscription: Math.random() * 15, // Mock: 0-15x subscription
-        qibSubscription: Math.random() * 25,
-        niiSubscription: Math.random() * 12,
-        retailSubscription: Math.random() * 8,
-        closeDate: ipo.closeDate,
-      }));
-    } catch (error) {
-      console.error('Error fetching SME subscription status:', error);
-      return [];
-    }
-  });
-}
-
-/**
  * Get detailed SME IPO list with filtering
  * AC#8: Detailed table shows all columns with filters
  * AC#16: Only SME IPOs displayed (category=SME filter applied throughout)
@@ -529,9 +361,7 @@ export async function clearSMELandingCaches(): Promise<void> {
       CACHE_KEYS.CURRENT_IPOS,
       CACHE_KEYS.UPCOMING_IPOS,
       CACHE_KEYS.RECENTLY_LISTED,
-      CACHE_KEYS.REVIEWS,
-      CACHE_KEYS.PERFORMANCE,
-      CACHE_KEYS.SUBSCRIPTION
+      CACHE_KEYS.REVIEWS
     );
     console.log('SME landing page caches cleared successfully');
   } catch (error) {

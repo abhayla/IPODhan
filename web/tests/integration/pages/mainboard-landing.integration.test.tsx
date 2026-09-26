@@ -16,8 +16,6 @@ import {
   getRecentlyListedIPOs,
   summaryMetricsFixture,
   reviewFixtures,
-  performanceHighlightFixtures,
-  subscriptionStatusFixtures,
   emptyFixtures,
 } from '@/tests/fixtures/mainboard-landing.fixture';
 
@@ -51,12 +49,6 @@ describe('Mainboard Landing Page Integration', () => {
         getRecentlyListedIPOs()
       );
       vi.mocked(mainboardLandingService.getMainboardReviews).mockResolvedValue(reviewFixtures);
-      vi.mocked(
-        mainboardLandingService.getMainboardPerformanceHighlights
-      ).mockResolvedValue(performanceHighlightFixtures);
-      vi.mocked(mainboardLandingService.getMainboardSubscriptionStatus).mockResolvedValue(
-        subscriptionStatusFixtures
-      );
       vi.mocked(mainboardLandingService.getMainboardDetailedList).mockResolvedValue({
         data: mainboardIPOFixtures,
         totalCount: mainboardIPOFixtures.length,
@@ -69,10 +61,6 @@ describe('Mainboard Landing Page Integration', () => {
       const recentlyListedIPOs =
         await mainboardLandingService.getMainboardRecentlyListedIPOs();
       const reviews = await mainboardLandingService.getMainboardReviews();
-      const performanceHighlights =
-        await mainboardLandingService.getMainboardPerformanceHighlights();
-      const subscriptionStatus =
-        await mainboardLandingService.getMainboardSubscriptionStatus();
       const detailedList = await mainboardLandingService.getMainboardDetailedList();
 
       // Assert
@@ -81,8 +69,6 @@ describe('Mainboard Landing Page Integration', () => {
       expect(upcomingIPOs).toEqual(getUpcomingIPOs());
       expect(recentlyListedIPOs).toEqual(getRecentlyListedIPOs());
       expect(reviews).toEqual(reviewFixtures);
-      expect(performanceHighlights).toEqual(performanceHighlightFixtures);
-      expect(subscriptionStatus).toEqual(subscriptionStatusFixtures);
       expect(detailedList.data).toEqual(mainboardIPOFixtures);
     });
 
@@ -172,12 +158,6 @@ describe('Mainboard Landing Page Integration', () => {
       vi.mocked(mainboardLandingService.getMainboardReviews).mockResolvedValue(
         emptyFixtures.reviews
       );
-      vi.mocked(
-        mainboardLandingService.getMainboardPerformanceHighlights
-      ).mockResolvedValue(emptyFixtures.performanceHighlights);
-      vi.mocked(mainboardLandingService.getMainboardSubscriptionStatus).mockResolvedValue(
-        emptyFixtures.subscriptionStatus
-      );
 
       // Act
       const metrics = await mainboardLandingService.getMainboardSummaryMetrics();
@@ -186,10 +166,6 @@ describe('Mainboard Landing Page Integration', () => {
       const recentlyListedIPOs =
         await mainboardLandingService.getMainboardRecentlyListedIPOs();
       const reviews = await mainboardLandingService.getMainboardReviews();
-      const performanceHighlights =
-        await mainboardLandingService.getMainboardPerformanceHighlights();
-      const subscriptionStatus =
-        await mainboardLandingService.getMainboardSubscriptionStatus();
 
       // Assert - All should return empty but defined results
       expect(metrics).toEqual(emptyFixtures.summaryMetrics);
@@ -197,19 +173,13 @@ describe('Mainboard Landing Page Integration', () => {
       expect(upcomingIPOs).toEqual([]);
       expect(recentlyListedIPOs).toEqual([]);
       expect(reviews).toEqual([]);
-      expect(performanceHighlights).toEqual({ topGainers: [], topLosers: [] });
-      expect(subscriptionStatus).toEqual([]);
     });
 
     it('should return zero metrics when no IPOs exist', async () => {
       // Arrange
       vi.mocked(mainboardLandingService.getMainboardSummaryMetrics).mockResolvedValue({
         totalIPOs: 0,
-        listedInGain: 0,
-        listedInLoss: 0,
         upcomingAndOngoing: 0,
-        gainAOT: 0,
-        lossAOT: 0,
       });
 
       // Act
@@ -217,8 +187,6 @@ describe('Mainboard Landing Page Integration', () => {
 
       // Assert
       expect(metrics.totalIPOs).toBe(0);
-      expect(metrics.listedInGain).toBe(0);
-      expect(metrics.listedInLoss).toBe(0);
       expect(metrics.upcomingAndOngoing).toBe(0);
     });
   });
@@ -234,22 +202,15 @@ describe('Mainboard Landing Page Integration', () => {
       vi.mocked(mainboardLandingService.getMainboardCurrentIPOs).mockResolvedValue(
         getCurrentIPOs()
       );
-      vi.mocked(mainboardLandingService.getMainboardPerformanceHighlights).mockResolvedValue(
-        performanceHighlightFixtures
-      );
 
       // Act
       const metrics = await mainboardLandingService.getMainboardSummaryMetrics();
       const currentIPOs = await mainboardLandingService.getMainboardCurrentIPOs();
-      const performanceHighlights =
-        await mainboardLandingService.getMainboardPerformanceHighlights();
 
       // Assert - Check data types
       expect(typeof metrics.totalIPOs).toBe('number');
-      expect(typeof metrics.gainAOT).toBe('number');
+      expect(typeof metrics.upcomingAndOngoing).toBe('number');
       expect(Array.isArray(currentIPOs)).toBe(true);
-      expect(Array.isArray(performanceHighlights.topGainers)).toBe(true);
-      expect(Array.isArray(performanceHighlights.topLosers)).toBe(true);
     });
 
     it('should filter only MAINBOARD category IPOs', async () => {
@@ -296,44 +257,6 @@ describe('Mainboard Landing Page Integration', () => {
     });
   });
 
-  // ==================== TEST: Performance Highlights ====================
-
-  describe('Performance Highlights Integration', () => {
-    it('should return exactly 3 top gainers and 3 top losers', async () => {
-      // Arrange
-      vi.mocked(
-        mainboardLandingService.getMainboardPerformanceHighlights
-      ).mockResolvedValue(performanceHighlightFixtures);
-
-      // Act
-      const result = await mainboardLandingService.getMainboardPerformanceHighlights();
-
-      // Assert
-      expect(result.topGainers.length).toBe(3);
-      expect(result.topLosers.length).toBe(3);
-    });
-
-    it('should include gainPercent in performance highlights', async () => {
-      // Arrange
-      vi.mocked(
-        mainboardLandingService.getMainboardPerformanceHighlights
-      ).mockResolvedValue(performanceHighlightFixtures);
-
-      // Act
-      const result = await mainboardLandingService.getMainboardPerformanceHighlights();
-
-      // Assert
-      result.topGainers.forEach((gainer) => {
-        expect(gainer).toHaveProperty('gainPercent');
-        expect(typeof gainer.gainPercent).toBe('number');
-      });
-
-      result.topLosers.forEach((loser) => {
-        expect(loser).toHaveProperty('gainPercent');
-        expect(typeof loser.gainPercent).toBe('number');
-      });
-    });
-  });
 
   // ==================== TEST: URL Query Params ====================
 
