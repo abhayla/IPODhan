@@ -505,6 +505,25 @@ jobs:
         # Needs node_modules (#694 fix round 1) — see the self-test above.
         run: node scripts/ci/require-repair-tool-module.mjs
 
+      - name: Cache-invalidation guard lint self-test (#715 class sweep)
+        # Mutation-proof: scripts/ci/tests/require-cache-invalidation-guard.test.mjs
+        # imports the real predicates from the lint below, so weakening the
+        # call check or accepting a reasonless baseline entry turns this red
+        # before the lint can silently stop catching the class.
+        run: node --test scripts/ci/tests/require-cache-invalidation-guard.test.mjs
+
+      - name: Cache-invalidation guard - every getRedisClient/invalidateIPOCaches/dropIpoCacheKeys caller is guarded (#715)
+        # #1070 fixed the Redis fail-closed guard for 3 of ~26 scraper/scripts
+        # tools that invalidate cache after an --apply write; the rest were
+        # unguarded against a REDIS_URL/REDIS_HOST that resolves to this
+        # box's own loopback Redis (silently invalidating the wrong slot).
+        # Every scraper/scripts/*.ts tool that calls one of those three
+        # functions must call guardCacheInvalidation() (repair-tool.ts), or
+        # carry a dated exemption comment, or a reasoned entry in
+        # scripts/ci/cache-invalidation-guard-baseline.json for a tool not
+        # yet migrated.
+        run: node scripts/ci/require-cache-invalidation-guard.mjs
+
       - name: Merge-gate self-tests (merge-if-current, stale-green incident 2026-09-11)
         # Mutation-proof: scripts/tests/merge-freshness.test.mjs drives every
         # clause of scripts/ops/lib/merge-freshness.mjs, and

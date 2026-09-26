@@ -345,6 +345,32 @@ export function guardCacheInvalidation(input: {
   return { blocked: false };
 }
 
+/**
+ * A Redis-shaped no-op for call sites where cache invalidation happens
+ * INSIDE a repository method (`IPORepository`, etc.) rather than at an
+ * explicit `invalidateIPOCaches()` call the tool can wrap directly (#715
+ * class sweep). When `guardCacheInvalidation` blocks, the caller passes this
+ * instead of the real `getRedisClient()` result so the repository's own
+ * cache-aside writes go nowhere instead of hitting this box's loopback
+ * Redis. Same method subset as the existing no-op in
+ * `scraper/scripts/probe-doc-fetcher.ts`.
+ */
+export function createNoopRedisClient(): {
+  get: () => Promise<null>;
+  set: () => Promise<string>;
+  setex: () => Promise<string>;
+  del: () => Promise<number>;
+  keys: () => Promise<string[]>;
+} {
+  return {
+    get: async () => null,
+    set: async () => 'OK',
+    setex: async () => 'OK',
+    del: async () => 0,
+    keys: async (): Promise<string[]> => [],
+  };
+}
+
 /** Ask the SAME pool that will do the writing which database it is connected to. */
 export async function queryCurrentDatabase(dbLike: ExecuteLike): Promise<string> {
   const result = await dbLike.execute(sql`SELECT current_database() AS name`);

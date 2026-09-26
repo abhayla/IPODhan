@@ -57,7 +57,7 @@ import { sql } from 'drizzle-orm';
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
-import { openRepairDb, writeLedgerFile } from './lib/repair-tool.js';
+import { createNoopRedisClient, guardCacheInvalidation, openRepairDb, writeLedgerFile } from './lib/repair-tool.js';
 import { notifyOwner, flushOwnerNotify } from '../src/services/owner-notify.js';
 
 const args = process.argv.slice(2);
@@ -120,7 +120,14 @@ export async function runUnmerge(mergeId: string): Promise<number> {
     console.error(`refused: --expect-db said "${EXPECT_DB}" but this connection is on "${dbName}"`);
     return 1;
   }
-  const repo = new IPORepository(db, getRedisClient());
+  // #715 class sweep: unmergeDuplicate() invalidates cache internally, so
+  // the guard decides which Redis client the repository ever sees.
+  const unmergeGuard = guardCacheInvalidation({
+    dbName,
+    toolName: 'repair-merge-duplicate-ipo --unmerge',
+    keys: ['ipo:detail:*', 'ipo:list:*', 'ipo:search:*'],
+  });
+  const repo = new IPORepository(db, unmergeGuard.blocked ? (createNoopRedisClient() as unknown as ReturnType<typeof getRedisClient>) : getRedisClient());
   let r: UnmergeResult;
   try {
     r = await repo.unmergeDuplicate(mergeId, {
@@ -384,7 +391,14 @@ async function main(): Promise<number> {
   });
   if (refused) return 1;
 
-  const redis = getRedisClient();
+  // #715 class sweep: mergeDuplicateInto() invalidates cache internally, so
+  // the guard decides which Redis client the repository ever sees.
+  const mergeGuard = guardCacheInvalidation({
+    dbName,
+    toolName: 'repair-merge-duplicate-ipo',
+    keys: ['ipo:detail:*', 'ipo:list:*', 'ipo:search:*'],
+  });
+  const redis = mergeGuard.blocked ? (createNoopRedisClient() as unknown as ReturnType<typeof getRedisClient>) : getRedisClient();
   const repo = new IPORepository(db, redis);
 
   // --- plan first, always — this is also the backup source: every direct child row is
