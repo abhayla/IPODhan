@@ -820,6 +820,19 @@ jobs:
         # node_modules to exist first.
         run: node --test scripts/tests/scraper-vitest-alias-table.test.mjs
 
+      - name: "Shared /db subpath resolves under tsx (#392)"
+        # Spawns real `tsx` against a checked-in fixture that statically
+        # imports `configureUtcTimestampParsing` from the `@ipodhan/shared/db`
+        # subpath specifier, exactly as every scraper/scripts/*.ts file is
+        # invoked. Under the scraper's tsconfig `paths` mapping, tsx's
+        # bundler-style resolution for that extensionless subpath prefers the
+        # sibling FILE packages/shared/src/db.ts over the directory
+        # packages/shared/src/db/index.ts (which package.json `exports` points
+        # at), so a name db.ts doesn't re-export throws a SyntaxError at
+        # import time. Needs node_modules/tsx present, so this runs here,
+        # after npm ci, with the other tsx-invoking steps.
+        run: node --test scripts/tests/issue-392-shared-db-subpath-resolution.test.mjs
+
       - name: Run lint
         run: npm run lint:ci
         working-directory: ./web
