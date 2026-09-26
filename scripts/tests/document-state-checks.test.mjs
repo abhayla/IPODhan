@@ -811,15 +811,18 @@ test('396 PASSes below NEVER_ESCALATES_MIN_RETRIES (2 retries — still ordinary
   assert.equal(v, null);
 });
 
-test('396 PASSes at/above MAX_EXTRACTION_ATTEMPTS (that shape belongs to MANUAL_REVIEW instead)', () => {
-  const v = checkExtractionStuck({
-    ...STUCK_BASE,
-    extractionStatus: 'FAILED',
-    extractionError: 'spawnSync nice ETIMEDOUT',
-    retryCount: MAX_EXTRACTION_ATTEMPTS,
-    hoursSinceUpdate: 96,
-  });
-  assert.equal(v, null);
+test('583 FAILs a FAILED row at/above MAX_EXTRACTION_ATTEMPTS (transient failures no longer block, so this state is reachable)', () => {
+  for (const retryCount of [MAX_EXTRACTION_ATTEMPTS, MAX_EXTRACTION_ATTEMPTS + 4]) {
+    const v = checkExtractionStuck({
+      ...STUCK_BASE,
+      extractionStatus: 'FAILED',
+      extractionError: 'extractor: spawn failed: spawnSync nice EAGAIN',
+      retryCount,
+      hoursSinceUpdate: 96,
+    });
+    assert.notEqual(v, null);
+    assert.match(v, new RegExp(`never-escalates, retryCount=${retryCount}`));
+  }
 });
 
 test('396 PASSes when the marker IS present (already caught by the HARD_FAILURE shape, not double-counted)', () => {

@@ -2601,3 +2601,105 @@ describe('item 9 (OD-90) — a stored corrigendum is read into admin suggestions
     expect(d.runExtractor).not.toHaveBeenCalled();
   });
 });
+
+// ------------------------------------------------ #583: transient failures never hard-block
+
+describe('#583 — a TRANSIENT extraction failure never reaches the 10-attempt block', () => {
+  beforeEach(() => {
+    spawnSyncMock.mockReset();
+    delete process.env.PYTHON_BIN;
+  });
+
+  const spawnErr = (code: string) => ({
+    status: null,
+    signal: code === 'ETIMEDOUT' ? 'SIGTERM' : null,
+    stdout: '',
+    stderr: '',
+    error: Object.assign(new Error(`spawnSync nice ${code}`), { code }),
+  });
+
+  it('a spawn ETIMEDOUT (the #583 shape) is classified transient, and still hard (24h floor)', () => {
+    spawnSyncMock.mockReturnValueOnce(spawnErr('ETIMEDOUT'));
+    const r = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+    expect(r).toMatchObject({ ok: false, transient: true, hardFailure: true });
+  });
+
+  it('a spawn EAGAIN / ENOMEM (the box could not start the process) is transient, not hard', () => {
+    for (const code of ['EAGAIN', 'ENOMEM']) {
+      spawnSyncMock.mockReturnValueOnce(spawnErr(code));
+      const r = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+      expect(r).toMatchObject({ ok: false, transient: true, hardFailure: false });
+    }
+  });
+
+  it('an explicit PYTHON_BIN that is missing (ENOENT) and an ordinary non-zero exit are NOT transient', () => {
+    process.env.PYTHON_BIN = '/opt/venv/bin/python';
+    spawnSyncMock.mockReturnValueOnce(spawnErr('ENOENT'));
+    expect(defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false })).toMatchObject({ transient: false });
+    delete process.env.PYTHON_BIN;
+    spawnSyncMock.mockReturnValueOnce({ status: 1, stdout: '', stderr: 'Traceback: KeyError' });
+    const r = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+    expect((r as { transient?: boolean }).transient).not.toBe(true);
+  });
+
+  const atCeiling = () =>
+    doc({
+      extractionStatus: 'FAILED',
+      retryCount: MAX_EXTRACTION_ATTEMPTS - 1,
+      extractionError: 'extractor: spawn failed: spawnSync nice ETIMEDOUT',
+      updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+    });
+
+  it('filing path: a transient failure on the 10th attempt stays FAILED (retryable), never MANUAL_REVIEW', async () => {
+    const d = deps({
+      loadDocuments: vi.fn(async () => [atCeiling()]),
+      runExtractor: vi.fn(() => ({
+        ok: false as const,
+        error: 'spawn failed: spawnSync nice ETIMEDOUT',
+        hardFailure: true,
+        transient: true,
+      })),
+    });
+    const r = await processPendingFilings(IPO, d);
+    const calls = stateCalls(d);
+    expect(calls).toContainEqual(expect.objectContaining({ status: 'IN_PROGRESS', retryCount: MAX_EXTRACTION_ATTEMPTS }));
+    expect(calls.some((c) => c.status === 'MANUAL_REVIEW')).toBe(false);
+    const failed = calls.find((c) => c.status === 'FAILED');
+    expect(failed.error).toContain('ETIMEDOUT');
+    expect(failed.error).not.toContain(EXTRACTION_BLOCKED_ERROR);
+    expect(r.failed).toBe(1);
+  });
+
+  it('filing path control: a DETERMINISTIC failure on the 10th attempt is still blocked (the rule discriminates)', async () => {
+    const d = deps({
+      loadDocuments: vi.fn(async () => [atCeiling()]),
+      runExtractor: vi.fn(() => ({ ok: false as const, error: 'extractor exited 1: KeyError', hardFailure: false })),
+    });
+    await processPendingFilings(IPO, d);
+    const blocked = stateCalls(d).find((c) => c.status === 'MANUAL_REVIEW');
+    expect(blocked?.error).toBe(`${EXTRACTION_BLOCKED_ERROR}@${EXTRACTOR_VERSION}`);
+  });
+
+  it('anchor path: a sidecar timeout on the 10th attempt stays FAILED, never MANUAL_REVIEW (NSE anchor report, staging 2026-09-18)', async () => {
+    const d = anchorDeps({
+      loadDocuments: vi.fn(async () => [
+        anchorDoc({
+          extractionStatus: 'FAILED',
+          retryCount: MAX_EXTRACTION_ATTEMPTS - 1,
+          extractionError: 'anchor: text sidecar failed: ONNXRuntimeError',
+          updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        }),
+      ]),
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'failed' as const,
+        reason: 'anchor: anchor sidecar timed out after 120000ms',
+        transient: true,
+      })),
+    });
+    const r = await processPendingFilings(IPO, d);
+    expect(stateCalls(d).some((c) => c.status === 'MANUAL_REVIEW')).toBe(false);
+    expect(stateCalls(d).find((c) => c.status === 'FAILED')?.error).toContain('timed out');
+    expect(r.anchorsFailed).toBe(1);
+    expect(r.anchorsManualReview).toBe(0);
+  });
+});

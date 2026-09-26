@@ -128,6 +128,18 @@ describe('classifyAnchorAutoOutcome — the outcome map', () => {
     }
   });
 
+  it('#583: a sidecar TIMEOUT is retryable FAILED marked transient (never deterministic), so it cannot reach the 10-attempt block', () => {
+    const out = classifyAnchorAutoOutcome({
+      failure: { kind: 'sidecar_timeout', reason: 'anchor sidecar timed out after 120000ms' },
+    });
+    expect(out.kind).toBe('failed');
+    expect((out as { transient?: boolean }).transient).toBe(true);
+    expect((out as { deterministic?: boolean }).deterministic).toBe(false);
+    // an ordinary sidecar error is NOT transient — it keeps the old path
+    const err = classifyAnchorAutoOutcome({ failure: { kind: 'sidecar_error', reason: 'ONNXRuntimeError' } });
+    expect((err as { transient?: boolean }).transient).not.toBe(true);
+  });
+
   it('a missing summary is FAILED, never a claimed persist', () => {
     expect(classifyAnchorAutoOutcome({}).kind).toBe('failed');
   });

@@ -148,6 +148,10 @@ export type AnchorScrapeFailureKind =
   | 'hard_failure'
   | 'empty_pages'
   | 'sidecar_error'
+  /** #583: the sidecar hit its own `SIDECAR_TIMEOUT_MS` spawn clock — says
+   * nothing about the report, so it is retryable and never the failure that
+   * writes the 10-attempt block. */
+  | 'sidecar_timeout'
   | 'parse_failed'
   | 'issue_size_conflict'
   | 'error'
@@ -183,7 +187,7 @@ export interface AnchorScrapeOutcome {
 /** The sidecar's own outcome, before any anchor-table parsing. */
 export type SidecarFailure = {
   ok: false;
-  kind: 'hard_failure' | 'empty_pages' | 'sidecar_error' | 'busy' | 'password_protected';
+  kind: 'hard_failure' | 'empty_pages' | 'sidecar_error' | 'sidecar_timeout' | 'busy' | 'password_protected';
   reason: string;
 };
 export type SidecarResult = { ok: true; pages: string[] } | SidecarFailure;
@@ -449,7 +453,7 @@ export function extractPageTexts(pdfPath: string): SidecarResult {
   if (timedOut && !memoryAbort) {
     const reason = `anchor sidecar timed out after ${SIDECAR_TIMEOUT_MS}ms`;
     logger.error(`[Anchor Investors] ${reason}`);
-    return { ok: false, kind: 'sidecar_error', reason };
+    return { ok: false, kind: 'sidecar_timeout', reason };
   }
   if (memoryAbort) {
     const reason = `anchor sidecar memory abort (exit ${String(res.status)}): ${stderr.slice(0, 300)}`;

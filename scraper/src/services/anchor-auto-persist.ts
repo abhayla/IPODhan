@@ -87,6 +87,12 @@ export type AnchorAutoOutcome =
        * failure — see the `deterministic` doc below.
        */
       sourceKind?: AnchorScrapeFailureKind | AnchorRefusalKind;
+      /**
+       * #583: true when the failure says nothing about the report (the
+       * sidecar hit its own spawn timeout). Retryable FAILED, and never the
+       * failure that writes the 10-attempt MANUAL_REVIEW block.
+       */
+      transient?: boolean;
     };
 
 /**
@@ -135,6 +141,7 @@ export function classifyAnchorAutoOutcome(input: {
       summary,
       deterministic: failure.kind === 'parse_failed',
       sourceKind: failure.kind,
+      transient: failure.kind === 'sidecar_timeout',
     };
   }
 

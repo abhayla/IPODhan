@@ -562,6 +562,13 @@ export const NEVER_ESCALATES_MIN_RETRIES = 3;
  * `filing-auto-persist.ts`'s retry ladder) rather than re-deriving "same
  * error text" from attempts the row no longer carries.
  *
+ * #583: the shape has NO upper bound on `retryCount` any more. A TRANSIENT
+ * failure (spawn EAGAIN/ENOMEM, a sidecar timeout) no longer writes the
+ * 10-attempt MANUAL_REVIEW block, so a FAILED row at or past
+ * `MAX_EXTRACTION_ATTEMPTS` is now a reachable state — a document the box keeps
+ * failing to run. Bounding the shape at 10 would make exactly that row
+ * invisible.
+ *
  * Takes ONE row per (ipo, required doc type) already carrying BOTH signals —
  * the `documents.extraction_status`/`extraction_error`/`retry_count` triple
  * AND the sibling `document_fetch_state.state` for the same (ipo, doc_type),
@@ -588,8 +595,7 @@ export function checkExtractionStuck(row) {
     extractionStatus === 'FAILED' &&
     !hasHardFailureMarker &&
     Number.isFinite(retryCount) &&
-    retryCount >= NEVER_ESCALATES_MIN_RETRIES &&
-    retryCount < MAX_EXTRACTION_ATTEMPTS;
+    retryCount >= NEVER_ESCALATES_MIN_RETRIES;
 
   if (!isManualReview && !isFetchStateFailed && !isHardFailure && !isNeverEscalating) return null;
 
