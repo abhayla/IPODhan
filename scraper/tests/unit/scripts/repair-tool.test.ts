@@ -18,6 +18,8 @@ import {
   decideCacheInvalidationBlock,
   decideProdWriteRefusal,
   decideSchemaDriftRefusal,
+  decideStaleCorrectionSkip,
+  queryLatestFieldSourceDate,
   decideUndoIpoConflict,
   describeDbConnectionTarget,
   describeIpoScope,
@@ -876,5 +878,117 @@ describe('MUTATION 4 — the ON CONFLICT arbiter of upsertFieldSource (item 1 sl
       'row_key',
       'field_name',
     ]);
+  });
+});
+
+describe('decideStaleCorrectionSkip (#422)', () => {
+  it('skips a LISTED row even when latestSourceDate/assumedFrom would otherwise pass', () => {
+    const d = decideStaleCorrectionSkip({
+      status: 'LISTED',
+      citationDate: '2026-08-23',
+      latestSourceDate: null,
+      assumedFromValue: null,
+      currentValue: '2026-08-28',
+    });
+    expect(d.skip).toBe(true);
+    expect(d.reason).toMatch(/status is LISTED/);
+  });
+
+  it('skips a CLOSED row', () => {
+    expect(
+      decideStaleCorrectionSkip({
+        status: 'CLOSED',
+        citationDate: '2026-08-23',
+        latestSourceDate: null,
+        assumedFromValue: null,
+        currentValue: 'x',
+      }).skip
+    ).toBe(true);
+  });
+
+  it('skips when field_sources has a source newer than the citation', () => {
+    const d = decideStaleCorrectionSkip({
+      status: 'UPCOMING',
+      citationDate: '2026-08-23',
+      latestSourceDate: '2026-09-01',
+      assumedFromValue: 'FPO',
+      currentValue: 'FPO',
+    });
+    expect(d.skip).toBe(true);
+    expect(d.reason).toMatch(/newer source/);
+  });
+
+  it('skips when the table entry carries no recorded from value', () => {
+    const d = decideStaleCorrectionSkip({
+      status: 'UPCOMING',
+      citationDate: '2026-08-23',
+      latestSourceDate: null,
+      currentValue: null,
+    });
+    expect(d.skip).toBe(true);
+    expect(d.reason).toMatch(/no recorded 'from' value/);
+  });
+
+  it('skips when the current value differs from the value the citation was taken against', () => {
+    const d = decideStaleCorrectionSkip({
+      status: 'UPCOMING',
+      citationDate: '2026-08-23',
+      latestSourceDate: null,
+      assumedFromValue: 'FPO',
+      currentValue: 'IPO',
+    });
+    expect(d.skip).toBe(true);
+    expect(d.reason).toMatch(/current value/);
+  });
+
+  it('does not skip when the row is non-terminal, the source is not newer, and the current value matches from', () => {
+    const d = decideStaleCorrectionSkip({
+      status: 'UPCOMING',
+      citationDate: '2026-08-23',
+      latestSourceDate: '2026-08-20',
+      assumedFromValue: 'FPO',
+      currentValue: 'FPO',
+    });
+    expect(d.skip).toBe(false);
+    expect(d.reason).toBeUndefined();
+  });
+
+  it('treats a null assumedFrom/currentValue pair as matching (not a false mismatch)', () => {
+    const d = decideStaleCorrectionSkip({
+      status: 'UPCOMING',
+      citationDate: '2026-08-23',
+      latestSourceDate: null,
+      assumedFromValue: null,
+      currentValue: null,
+    });
+    expect(d.skip).toBe(false);
+  });
+});
+
+describe('queryLatestFieldSourceDate (#422)', () => {
+  it('returns null when no field_sources row exists', async () => {
+    const tx = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => [],
+          }),
+        }),
+      }),
+    };
+    expect(await queryLatestFieldSourceDate(tx as any, { ipoId: 'x', fieldName: 'openDate' })).toBeNull();
+  });
+
+  it('returns the updatedAt date as YYYY-MM-DD', async () => {
+    const tx = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => [{ updatedAt: new Date('2026-09-01T12:00:00Z') }],
+          }),
+        }),
+      }),
+    };
+    expect(await queryLatestFieldSourceDate(tx as any, { ipoId: 'x', fieldName: 'openDate' })).toBe('2026-09-01');
   });
 });

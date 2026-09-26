@@ -43,7 +43,7 @@ import { Pool } from 'pg';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { sanitizeLeadManagers } from '../src/utils/validators.js';
 import { configureUtcTimestampParsing, resolveDiscreteDbParams } from '@ipodhan/shared/db';
-import { openRepairDb, type ExecuteLike } from './lib/repair-tool.js';
+import { decideStaleCorrectionSkip, openRepairDb, type ExecuteLike } from './lib/repair-tool.js';
 import { pathToFileURL } from 'node:url';
 
 configureUtcTimestampParsing();
@@ -134,16 +134,33 @@ async function main() {
     toolName: 'repair-dates-and-leadmanagers-t299',
   });
 
+  // #422: every entry cites the same 2026-08-23 T-299 evidence pass (see
+  // LEDGER_DIR above) and carries `assumedFrom` -- the value the row held
+  // when that citation was captured, taken from this file's own header
+  // comment for each case -- so the stale-correction guard can tell whether
+  // the row has moved on since, instead of re-proposing a dated correction
+  // forever.
+  const CITATION_DATE = '2026-08-23';
+  // field_sources.field_name is camelCase (see repair-tool.ts's own lookups)
+  // even though this file's `field` values are the snake_case `ipos` column
+  // names used in its raw SQL.
+  const FIELD_SOURCES_NAME: Record<string, string> = {
+    allotment_date: 'allotmentDate',
+    listing_date: 'listingDate',
+  };
+
   const dateFixes: Array<{
     slug: string;
     field: 'allotment_date' | 'listing_date';
     newValue: string | null;
+    assumedFrom: string | null;
     reason: string;
   }> = [
     {
       slug: 'anawil-wire-and-engineering-ltd',
       field: 'allotment_date',
       newValue: '2026-08-06',
+      assumedFrom: '2025-08-06',
       reason:
         'close=2026-08-05, listing=2026-08-10; 2026-08-06 is T+1 after close, matches every sibling IPO pattern - only the year digit (2025) was corrupted',
     },
@@ -151,6 +168,7 @@ async function main() {
       slug: 'kwality-walls-india-ltd',
       field: 'listing_date',
       newValue: null,
+      assumedFrom: '2026-02-16',
       reason:
         'open (2026-04-23) and close (2026-05-07) are mutually coherent; listing (2026-02-16) precedes both - it is the outlier, no corroborating source found, nulled per the write-path guard behavior',
     },
@@ -158,6 +176,7 @@ async function main() {
       slug: 'twinkle-papers-ltd',
       field: 'allotment_date',
       newValue: null,
+      assumedFrom: '2026-07-02',
       reason:
         'allotment (2026-07-02) precedes close (2026-07-03) by one day; no corroborating source found, nulled per the write-path guard behavior',
     },
@@ -165,7 +184,7 @@ async function main() {
 
   for (const fix of dateFixes) {
     const before = await pool.query(
-      `select id, slug, open_date, close_date, allotment_date, listing_date from ipos where slug = $1`,
+      `select id, slug, status, open_date, close_date, allotment_date, listing_date from ipos where slug = $1`,
       [fix.slug]
     );
     if (before.rows.length === 0) {
@@ -173,6 +192,24 @@ async function main() {
       continue;
     }
     const row = before.rows[0];
+
+    const fsResult = await pool.query(
+      `select to_char(max(updated_at), 'YYYY-MM-DD') as d from field_sources where ipo_id = $1 and table_name = 'ipos' and field_name = $2`,
+      [row.id, FIELD_SOURCES_NAME[fix.field]]
+    );
+    const decision = decideStaleCorrectionSkip({
+      status: row.status,
+      citationDate: CITATION_DATE,
+      latestSourceDate: fsResult.rows[0]?.d ?? null,
+      assumedFromValue: fix.assumedFrom,
+      currentValue: row[fix.field],
+    });
+    if (decision.skip) {
+      console.log(`  SKIP ${fix.slug}.${fix.field}: ${decision.reason}`);
+      ledger.push({ case: 'date-repair-skipped', slug: fix.slug, field: fix.field, before: row, reason: decision.reason });
+      continue;
+    }
+
     ledger.push({ case: 'date-repair', slug: fix.slug, field: fix.field, before: row, newValue: fix.newValue, reason: fix.reason });
     console.log(`  ${APPLY ? 'UPDATE' : 'would update'}: ${fix.slug}.${fix.field} -> ${fix.newValue} (${fix.reason})`);
     if (APPLY) {
