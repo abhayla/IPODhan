@@ -186,6 +186,13 @@ unset RUNNER_TRACKING_ID
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# #151: the Redis slot prefix the scraper's own locks carry (twin of
+# packages/shared/src/cache/redis-slot.ts). Guarded: a missing helper only
+# disables the lock release below, which is already fail-safe.
+if [ -f "$SCRIPT_DIR/lib/redis-slot-prefix.sh" ]; then
+  # shellcheck source=lib/redis-slot-prefix.sh
+  . "$SCRIPT_DIR/lib/redis-slot-prefix.sh"
+fi
 
 if (( DRY_RUN )); then
   ROOT="${DEPLOY_ROOT:-${TMPDIR:-/tmp}/ipodhan-deploy-dryrun}"
@@ -604,8 +611,12 @@ fi
 #   - `filing-auto-persist:cycle` (FILING_EXTRACTION_LOCK_KEY,
 #     scraper/src/services/document-cycle.ts — 45-minute TTL)
 # `DistributedLock` (scraper/src/utils/distributed-lock.ts) stores these
-# under `lock:resource:<resourceId>`, so the real keys are
-# `lock:resource:scraper:cycle` and `lock:resource:filing-auto-persist:cycle`.
+# under `lock:resource:<resourceId>`, and (#151) every Redis client carries
+# the slot prefix derived from the scraper's database, so the real keys are
+# `<slot>:lock:resource:scraper:cycle` and
+# `<slot>:lock:resource:filing-auto-persist:cycle` (slot = prod | staging).
+# Before #151 both slots shared the unprefixed keys on ONE Redis, so a staging
+# deploy here could delete a lock a live PROD cycle held.
 # The next 1-2 cycles then log "previous cycle still running" / "lock
 # already held by another cycle" and exit without doing any work, losing up
 # to 45 minutes of staging evidence per deploy.
@@ -644,6 +655,24 @@ release_scraper_cycle_locks() {
     return 0
   fi
 
+  # #151: the same slot prefix the scraper process derives from ITS database
+  # (read from the same env file), cross-checked against the slot being
+  # deployed. No derivable prefix -> release nothing (never an unprefixed
+  # key, which would be the other slot's lock or nobody's).
+  if ! command -v redis_slot_prefix >/dev/null 2>&1; then
+    warn "release_scraper_cycle_locks: scripts/lib/redis-slot-prefix.sh not loaded; cycle locks left to expire"
+    return 0
+  fi
+  local key_prefix db_url db_host db_password db_name
+  db_url="$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_URL)"
+  db_host="$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_HOST)"
+  db_password="$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_PASSWORD)"
+  db_name="$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_NAME)"
+  if ! key_prefix="$(redis_slot_prefix "$db_url" "$db_host" "$db_password" "$db_name" "${SLOT:-}" 2>&1)"; then
+    warn "release_scraper_cycle_locks: cannot derive the Redis slot prefix from $SCRAPER_ENV_FILE (${key_prefix}); cycle locks left to expire"
+    return 0
+  fi
+
   local key value ttl released=0
   # The scraper runs under pm2 with --cron-restart=$SCRAPER_CRON -- a fresh cycle can
   # start (and take a NEW lock with a NEW token) in the window between our
@@ -659,7 +688,7 @@ release_scraper_cycle_locks() {
   # every deploy since it was written, regardless of whether a lock was
   # actually held. `timeout` bounds the same 3s window from the outside
   # instead (this script already requires GNU coreutils timeout elsewhere).
-  for key in "lock:resource:scraper:cycle" "lock:resource:filing-auto-persist:cycle"; do
+  for key in "${key_prefix}lock:resource:scraper:cycle" "${key_prefix}lock:resource:filing-auto-persist:cycle"; do
     value="$(timeout 3 redis-cli -u "$redis_url" GET "$key" 2>/dev/null || true)"
     if [ -z "$value" ]; then
       log "release_scraper_cycle_locks: $key not held"

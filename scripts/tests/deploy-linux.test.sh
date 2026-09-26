@@ -2756,6 +2756,7 @@ else
   FAKEBIN30="$(mktemp -d)"
   ENVDIR30="$(mktemp -d)"
   printf 'REDIS_URL=redis://localhost:6379/1\n' > "$ENVDIR30/scraper.env"
+  printf 'DATABASE_URL=postgresql://ipodhan_app@db:5432/ipodhan_staging\n' >> "$ENVDIR30/scraper.env"
 
   # run_release_locks_30 sources the REAL function body with a fake
   # `log`/`warn` and a fake `redis-cli` ahead of PATH (or no redis-cli at
@@ -2826,6 +2827,10 @@ FAKERC30
       else
         PATH="$FAKEBIN30:$PATH"
       fi
+      SLOT="${SLOT30:-}"
+      if [ -z "${NO_SLOT_LIB30:-}" ]; then
+        . "$SCRIPT_DIR/../lib/redis-slot-prefix.sh"
+      fi
       eval "$RELEASE_LOCKS_FN_30"
       release_scraper_cycle_locks
     ) 2>&1
@@ -2838,13 +2843,13 @@ FAKERC30
   # key, using the REDIS_URL from the temp env file (asserts the `-u` URL
   # form is passed), and the final summary line.
   OUT30A="$(run_release_locks_30 held-both 0)"
-  if emit "$OUT30A" | grep -q 'releasing lock:resource:scraper:cycle (held: 111s remaining)' \
-     && emit "$OUT30A" | grep -q 'releasing lock:resource:filing-auto-persist:cycle (held: 111s remaining)' \
+  if emit "$OUT30A" | grep -q 'releasing staging:lock:resource:scraper:cycle (held: 111s remaining)' \
+     && emit "$OUT30A" | grep -q 'releasing staging:lock:resource:filing-auto-persist:cycle (held: 111s remaining)' \
      && emit "$OUT30A" | grep -q 'cycle locks released: 2' \
-     && emitn "$OUT30A" | grep -q -- '-u redis://localhost:6379/1 GET lock:resource:scraper:cycle' \
-     && emitn "$OUT30A" | grep -q -- '-u redis://localhost:6379/1 GET lock:resource:filing-auto-persist:cycle' \
-     && emitn "$OUT30A" | grep -qE -- '-u redis://localhost:6379/1 EVAL .*lock:resource:scraper:cycle tok-abc$' \
-     && emitn "$OUT30A" | grep -qE -- '-u redis://localhost:6379/1 EVAL .*lock:resource:filing-auto-persist:cycle tok-abc$' \
+     && emitn "$OUT30A" | grep -q -- '-u redis://localhost:6379/1 GET staging:lock:resource:scraper:cycle' \
+     && emitn "$OUT30A" | grep -q -- '-u redis://localhost:6379/1 GET staging:lock:resource:filing-auto-persist:cycle' \
+     && emitn "$OUT30A" | grep -qE -- '-u redis://localhost:6379/1 EVAL .*staging:lock:resource:scraper:cycle tok-abc$' \
+     && emitn "$OUT30A" | grep -qE -- '-u redis://localhost:6379/1 EVAL .*staging:lock:resource:filing-auto-persist:cycle tok-abc$' \
      && ! emit "$OUT30A" | grep -q 'DEL-CALLED-DIRECTLY'; then
     pass "case 30a: both cycle locks held -> released via EVAL compare-and-delete on the GET token, DEL never issued directly"
   else
@@ -2853,8 +2858,8 @@ FAKERC30
 
   # 30b: neither key held -> both logged 'not held', released 0.
   OUT30B="$(run_release_locks_30 held-none 0)"
-  if emit "$OUT30B" | grep -q 'lock:resource:scraper:cycle not held' \
-     && emit "$OUT30B" | grep -q 'lock:resource:filing-auto-persist:cycle not held' \
+  if emit "$OUT30B" | grep -q 'staging:lock:resource:scraper:cycle not held' \
+     && emit "$OUT30B" | grep -q 'staging:lock:resource:filing-auto-persist:cycle not held' \
      && emit "$OUT30B" | grep -q 'cycle locks released: 0' \
      && ! emit "$OUT30B" | grep -qi 'releasing'; then
     pass "case 30b: neither cycle lock held -> both 'not held', released 0"
@@ -2888,9 +2893,9 @@ FAKERC30
   # compare returns 0, the key is left alone, and the summary reflects 0
   # released (never a false "released" claim for a lock we didn't own).
   OUT30E="$(run_release_locks_30 token-changed 0)"
-  if emit "$OUT30E" | grep -q 'releasing lock:resource:scraper:cycle (held: 111s remaining)' \
-     && emit "$OUT30E" | grep -q 'lock:resource:scraper:cycle token changed, not released' \
-     && emit "$OUT30E" | grep -q 'lock:resource:filing-auto-persist:cycle token changed, not released' \
+  if emit "$OUT30E" | grep -q 'releasing staging:lock:resource:scraper:cycle (held: 111s remaining)' \
+     && emit "$OUT30E" | grep -q 'staging:lock:resource:scraper:cycle token changed, not released' \
+     && emit "$OUT30E" | grep -q 'staging:lock:resource:filing-auto-persist:cycle token changed, not released' \
      && emit "$OUT30E" | grep -q 'cycle locks released: 0' \
      && ! emit "$OUT30E" | grep -q 'DEL-CALLED-DIRECTLY'; then
     pass "case 30e: token changed between GET and EVAL -> 'token changed, not released', released count 0"
@@ -2915,11 +2920,54 @@ FAKERC30
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' DEL ')" -eq 0 ] \
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c -- '-t 3')" -eq 0 ] \
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -vc -- '^-u ')" -eq 0 ] \
-     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c 'lock:resource:scraper:cycle')" -eq 3 ] \
-     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c 'lock:resource:filing-auto-persist:cycle')" -eq 3 ]; then
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c 'staging:lock:resource:scraper:cycle')" -eq 3 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c 'staging:lock:resource:filing-auto-persist:cycle')" -eq 3 ]; then
     pass "case 30f: argv log is exactly GET/TTL/EVAL for the two known keys, no -t 3 on any call (#719), no other key or command"
   else
     fail "case 30f: expected exactly 6 calls (GET/TTL/EVAL x2 keys), none carrying -t 3, no stray key/command — got: $RC_LOG_30F"
+  fi
+
+  # 30g (#151): the keys carry the slot prefix derived from the scraper's
+  # DATABASE_URL. No derivable database -> nothing is released (never the
+  # unprefixed key, which is the other slot's lock or nobody's), WARN, rc 0.
+  cp "$ENVDIR30/scraper.env" "$ENVDIR30/scraper.env.bak"
+  printf 'REDIS_URL=redis://localhost:6379/1\n' > "$ENVDIR30/scraper.env"
+  OUT30G="$(run_release_locks_30 held-both 0)"
+  cp "$ENVDIR30/scraper.env.bak" "$ENVDIR30/scraper.env"
+  if emit "$OUT30G" | grep -q 'cannot derive the Redis slot prefix' \
+     && emit "$OUT30G" | grep -q 'cycle locks left to expire' \
+     && ! emitn "$OUT30G" | grep -q -- '-u redis://'; then
+    pass "case 30g: no DATABASE_URL in the scraper env -> no slot prefix -> WARN, no redis-cli call"
+  else
+    fail "case 30g: expected a WARN and zero redis-cli calls when the slot prefix cannot be derived — got: $OUT30G"
+  fi
+
+  # 30h (#151): the slot being deployed disagrees with the scraper env's
+  # database (a prod deploy reading a staging DATABASE_URL) -> refuse.
+  OUT30H="$(SLOT30=prod run_release_locks_30 held-both 0)"
+  if emit "$OUT30H" | grep -q 'DEPLOY_SLOT=prod disagrees' \
+     && ! emitn "$OUT30H" | grep -q -- '-u redis://'; then
+    pass "case 30h: deploy slot prod vs staging database -> WARN naming the disagreement, no redis-cli call"
+  else
+    fail "case 30h: expected the slot/database disagreement to block the release — got: $OUT30H"
+  fi
+
+  # 30i (#151): matching slot -> prefixed keys, same as 30a.
+  OUT30I="$(SLOT30=staging run_release_locks_30 held-both 0)"
+  if emitn "$OUT30I" | grep -q -- '-u redis://localhost:6379/1 GET staging:lock:resource:scraper:cycle' \
+     && emit "$OUT30I" | grep -q 'cycle locks released: 2'; then
+    pass "case 30i: deploy slot staging + staging database -> staging:-prefixed keys released"
+  else
+    fail "case 30i: expected staging:-prefixed keys with a matching slot — got: $OUT30I"
+  fi
+
+  # 30j (#151): helper library absent -> WARN, nothing released.
+  OUT30J="$(NO_SLOT_LIB30=1 run_release_locks_30 held-both 0)"
+  if emit "$OUT30J" | grep -q 'redis-slot-prefix.sh not loaded' \
+     && ! emitn "$OUT30J" | grep -q -- '-u redis://'; then
+    pass "case 30j: slot helper not loaded -> WARN, no redis-cli call"
+  else
+    fail "case 30j: expected a WARN and no redis-cli call without the slot helper — got: $OUT30J"
   fi
 
   rm -rf "$FAKEBIN30" "$ENVDIR30"

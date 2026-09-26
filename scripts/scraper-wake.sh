@@ -68,6 +68,12 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SCRAPER_DIR="${SCRAPER_DIR:-$REPO_ROOT/scraper}"
+# #151: Redis slot prefix (twin of packages/shared/src/cache/redis-slot.ts).
+# Guarded: a missing helper makes the lock read below "unknowable" (fail-open,
+# logged), never a read of the unprefixed key.
+if [ -f "$SCRIPT_DIR/lib/redis-slot-prefix.sh" ]; then
+  . "$SCRIPT_DIR/lib/redis-slot-prefix.sh"
+fi
 # Review round 5, item D: pm2 passes DEPLOY_SLOT; cron does not (#660 --
 # cron-launched staging wakes had NO DEPLOY_SLOT at all, which
 # feature-flags.ts's slotAwareFlagDefault() reads to pick a flag's per-slot
@@ -227,6 +233,36 @@ case "$SCRAPER_JOB" in
     SCRAPER_JOB_LOCK_KEY="lock:resource:scraper:cycle"
     ;;
 esac
+# #151: prod and staging share ONE Redis, and every scraper Redis client
+# prefixes its keys with the slot derived from the database it connects to
+# (`staging:lock:resource:scraper:cycle`). Read the SAME key: derive the
+# prefix from the same DATABASE_* values the scraper sees (process env first,
+# then scraper/.env - dotenv never overrides a set variable). No derivable
+# prefix -> the lock state is unknowable (fail-open below), never a read of
+# the unprefixed key, which is the other slot's lock or nobody's.
+SCRAPER_LOCK_PREFIX_ERR=""
+if [ -n "${SCRAPER_LOCK_KEY:-}" ]; then
+  :
+elif command -v redis_slot_prefix >/dev/null 2>&1; then
+  _slot_var() {
+    eval "_slot_val=\${$1:-}"
+    if [ -z "$_slot_val" ] && [ -f "$SCRAPER_DIR/.env" ]; then
+      _slot_val="$(redis_slot_env_value "$SCRAPER_DIR/.env" "$1")"
+    fi
+    printf '%s' "$_slot_val"
+  }
+  _slot_url="$(_slot_var DATABASE_URL)"
+  _slot_host="$(_slot_var DATABASE_HOST)"
+  _slot_pw="$(_slot_var DATABASE_PASSWORD)"
+  _slot_db="$(_slot_var DATABASE_NAME)"
+  if _slot_prefix="$(redis_slot_prefix "$_slot_url" "$_slot_host" "$_slot_pw" "$_slot_db" "${DEPLOY_SLOT_NAME:-}" 2>&1)"; then
+    SCRAPER_LOCK_KEY="$_slot_prefix$SCRAPER_JOB_LOCK_KEY"
+  else
+    SCRAPER_LOCK_PREFIX_ERR="$_slot_prefix"
+  fi
+else
+  SCRAPER_LOCK_PREFIX_ERR="scripts/lib/redis-slot-prefix.sh not loaded"
+fi
 SCRAPER_LOCK_KEY="${SCRAPER_LOCK_KEY:-$SCRAPER_JOB_LOCK_KEY}"
 
 # THE LIVE JOB'S OWN CEILING (round 1, Tier A finding). The live-figures job is a
@@ -393,6 +429,11 @@ lock_is_held() {
     fi
     LOCK_TTL="${SCRAPER_WAKE_FAKE_LOCK_TTL}s remaining"
     return 0
+  fi
+
+  if [ -n "$SCRAPER_LOCK_PREFIX_ERR" ]; then
+    log "WARN lock-read-unavailable: cannot derive the Redis slot prefix for $SCRAPER_JOB_LOCK_KEY ($SCRAPER_LOCK_PREFIX_ERR) - proceeding (fail-open, see header)"
+    return 1
   fi
 
   if ! command -v redis-cli >/dev/null 2>&1; then
