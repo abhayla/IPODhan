@@ -1061,6 +1061,7 @@ jobs:
           tests/integration/opening-day-create.integration.test.ts
           tests/integration/post-listing-price.integration.test.ts
           tests/integration/repair-bse-subscription-ist-shift.integration.test.ts
+          tests/integration/rhp-promoters-peers-persist.integration.test.ts
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under
