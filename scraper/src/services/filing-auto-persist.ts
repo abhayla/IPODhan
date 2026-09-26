@@ -146,8 +146,14 @@ import { buildExtractionStatePatch, buildExtractionAttemptRow } from './extracti
  * E/G ledger row's `version`. Bumping it is what makes every already-extracted
  * document eligible again — which is the only re-extraction trigger, so a bump
  * is a deliberate act, not a side effect of an unrelated change.
+ *
+ * #771 bumped '@2026-09-26' to '@2026-09-26b': staging had already re-read 9
+ * prospectus-family documents at '@2026-09-26' with the OLD ratio reader, so
+ * that string cannot mean "ratios read by the fixed reader". The ratio
+ * verdict (scripts/lib/ratio-yield-verdict.mjs RATIO_FIXED_EXTRACTOR_VERSION)
+ * judges only documents stored at or after this value; a test pins the two.
  */
-export const EXTRACTOR_VERSION = 'extract_filing.py@2026-09-26';
+export const EXTRACTOR_VERSION = 'extract_filing.py@2026-09-26b';
 
 /** Doc types `scripts/extract_filing.py` understands. Anything else is skipped. */
 import {

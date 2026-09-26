@@ -1,0 +1,9 @@
+{
+  "sourceUrl": "https://www.aonesteelgroup.com/wp-content/uploads/2026/09/RHP.pdf",
+  "sourceSha256": "23b38abbf69d7a23b523a1519b5b92c948395945ccb35a31c05aaf13bf3744eb",
+  "capturedAt": "2026-09-26",
+  "ipoId": "a-one-steels-india-ltd",
+  "company": "A-One Steels India Limited",
+  "source": "staging document store (read-only scp), text layer by pdfplumber page.extract_text() - the same call the extractor makes; sourceUrl is the staging documents.url for this sha256, read-only 2026-09-26",
+  "note": "RHP PDF pages 555-556, note 60 'Key Financial Ratios'. Rows are lettered ('a) Current ratio (in times) ... 1.34 1.27 5.67%Less than 25%'): a letter serial, not a digit, and the variance glued to the reason text; negative variances in parentheses ('(8.10%)'). Captured for #771: every one of these PDFs prints its current ratio and the reader returned ratio_row_not_in_note for all of them. Mangling preserved; text layer only, the PDF is not committed."
+}

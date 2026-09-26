@@ -1,0 +1,9 @@
+{
+  "sourceUrl": "https://nsearchives.nseindia.com/content/ipo/RHP_GREENASIA.zip",
+  "sourceSha256": "075585a176fce7f8b75d097c7771ecba03ad4021df23a9043367fb4af416f478",
+  "capturedAt": "2026-09-26",
+  "ipoId": "green-asia-impex",
+  "company": "Green Asia Impex Limited",
+  "source": "staging document store (read-only scp), text layer by pdfplumber page.extract_text() - the same call the extractor makes; sourceUrl is the staging documents.url for this sha256, read-only 2026-09-26",
+  "note": "RHP PDF pages 320-321. Page 321 is 'Restated Consolidated Statement of Ratios' (note 26A): NO 'Financial Ratios' heading, the row label '1 Current Ratio (in times)' sits on its own line and the values on a later line with no serial ('Current Ratio 1.16 1.13 1.08 2.66% 3.80%'), three periods. Page 320 is the accounting-ratios statement (EPS, RoNW, NAV) and carries no current ratio - it must not be read as the note. Captured for #771: every one of these PDFs prints its current ratio and the reader returned ratio_row_not_in_note for all of them. Mangling preserved; text layer only, the PDF is not committed."
+}

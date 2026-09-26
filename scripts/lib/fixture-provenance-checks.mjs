@@ -255,6 +255,16 @@ export function companiesMatch(normalizeFn, nameA, nameB) {
   return initialismMatch(nameA, nameB) || initialismMatch(nameB, nameA);
 }
 
+function flattenForSearch(text) {
+  return ` ${String(text).toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim()} `;
+}
+
+/** #771: true when the normalized meta.company occurs, word-bounded, in `text`. */
+export function textNamesCompany(normalizeFn, company, text) {
+  const needle = flattenForSearch(normalizeFn(company));
+  return needle.trim().length > 0 && flattenForSearch(text).includes(needle);
+}
+
 /**
  * Full per-file check. Returns
  * { status: 'pass' | 'fail', reasons: string[], identityChecked: boolean, identitySkipReason: string | null }.
@@ -313,6 +323,17 @@ export function checkFixture(root, fixtureRelPath, normalizeFn) {
           );
         }
       }
+    }
+  } else if (extname(fixtureRelPath) === '.txt' && prov.meta.pageType !== true && prov.meta.company) {
+    // #771: a TXT fixture is a document's text layer, and the issuer's name is
+    // printed on its pages. The identity is CONFIRMED when meta.company appears
+    // in that text; when it does not, the fixture stays a counted skip exactly
+    // as before (never a new failure - a page dump need not repeat the name).
+    const text = readFileSync(join(root, fixtureRelPath), 'utf8');
+    if (textNamesCompany(normalizeFn, prov.meta.company, text)) {
+      identityChecked = true;
+    } else {
+      identitySkipReason = 'company name not found in the .txt text layer';
     }
   } else {
     // Round 2 review, MAJOR 5: JSON/TXT fixtures get no identity check — the

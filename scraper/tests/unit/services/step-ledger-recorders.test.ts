@@ -288,6 +288,54 @@ describe('planExtractionSteps — E1..E10 and D6', () => {
     expect('peerReason' in (w.get('E6').evidence as Record<string, unknown>)).toBe(false);
   });
 
+  // ------------------------------------------------------------------ #771
+  // The extractor names WHY it read no ratio (check.detail on a passed
+  // not_extractable check), but E9 carried only FAILED checks, so the reason
+  // never reached the ledger and `issuer_ratio_yield` saw a silent absence on
+  // every prospectus-family document extracted since 2026-09-16.
+  it('E9: a ratio the extractor could not read carries its named cause', () => {
+    const w = byId(planExtractionSteps(extraction({
+      current_ratio: nulled('ratio_row_not_in_note'),
+      inventory_turnover: nulled('ratio_note_not_in_document'),
+      quick_ratio: nulled('balance_sheet_inputs_absent:current_assets,inventories,current_liabilities'),
+    }), opts));
+    expect(w.get('E9').evidence).toMatchObject({
+      ratioReasons: {
+        current_ratio: 'ratio_row_not_in_note',
+        inventory_turnover: 'ratio_note_not_in_document',
+        quick_ratio: 'balance_sheet_inputs_absent:current_assets,inventories,current_liabilities',
+      },
+    });
+    // The floor check greps the serialised evidence for exactly these tokens.
+    expect(JSON.stringify(w.get('E9').evidence)).toMatch(
+      /ratio_note_not_in_document|ratio_row_not_in_note|balance_sheet_inputs_absent/
+    );
+  });
+
+  it('E9: a ratio that WAS read records no reason for it', () => {
+    const w = byId(planExtractionSteps(extraction({
+      current_ratio: { value: 1.54, page: 441, check: { name: 'ratio_read_as_printed', passed: true, detail: 'as printed: 1.54' } },
+      quick_ratio: nulled('balance_sheet_inputs_absent:current_assets'),
+    }), opts));
+    const reasons = (w.get('E9').evidence as { ratioReasons: Record<string, string> }).ratioReasons;
+    expect('current_ratio' in reasons).toBe(false);
+    expect(reasons.quick_ratio).toBe('balance_sheet_inputs_absent:current_assets');
+  });
+
+  it('E9: a null ratio with no detail is said as such, never dropped', () => {
+    const w = byId(planExtractionSteps(extraction({
+      current_ratio: { value: null, page: null },
+    }), opts));
+    expect(w.get('E9').evidence).toMatchObject({
+      ratioReasons: { current_ratio: 'ratio_null_without_reason' },
+    });
+  });
+
+  it('E9: a document with no ratio fields at all (price-band ad) carries no ratioReasons', () => {
+    const w = byId(planExtractionSteps(extraction({ price_band_floor: ok(100) }), opts));
+    expect('ratioReasons' in (w.get('E9').evidence as Record<string, unknown>)).toBe(false);
+  });
+
   it('a section this doc type does not carry at all is NOT_AVAILABLE_YET, never FAILED', () => {
     const w = byId(planExtractionSteps(extraction({ price_band_floor: ok(100) }), opts));
     expect(w.get('E8').status).toBe('NOT_AVAILABLE_YET');

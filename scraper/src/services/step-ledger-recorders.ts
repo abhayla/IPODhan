@@ -450,6 +450,9 @@ export const E_STEP_FIELDS: Record<string, string[]> = {
   E8: ['risk_factors', 'risk_factor_count', 'litigation_notices'],
 };
 
+/** The issuer ratios `extract_filing.py` emits for a prospectus-family document (#771). */
+const RATIO_FIELDS = ['current_ratio', 'inventory_turnover', 'quick_ratio'] as const;
+
 /** The `[•]` placeholder marker the extractor emits for an unpriced cell (E10). */
 export const PLACEHOLDER_REASON = 'not_priced_yet';
 
@@ -567,6 +570,22 @@ export function planExtractionSteps(
   // extraction ran, with the failures as its evidence.
   const checked = Object.entries(fields).filter(([, f]) => f?.check?.name);
   const failed = checked.filter(([, f]) => f.check?.passed === false);
+
+  // #771. The ratio reader's null is a PASSED `not_extractable` check whose
+  // `detail` names the cause (`ratio_note_not_in_document`,
+  // `ratio_row_not_in_note`, `balance_sheet_inputs_absent:...`). E9 above lists
+  // only FAILED checks, so that cause was dropped here on every prospectus-family
+  // document and `issuer_ratio_yield` read an absence with no reason. Only the
+  // ratio fields the extractor actually emitted are listed: a price-band ad
+  // emits none, so it carries no `ratioReasons` at all rather than a fake one.
+  const ratioReasons: Record<string, string> = {};
+  for (const name of RATIO_FIELDS) {
+    const f = fields[name];
+    if (!f || (f.value !== null && f.value !== undefined)) continue;
+    ratioReasons[name] = f.check?.detail || 'ratio_null_without_reason';
+  }
+  const ratioEmitted = RATIO_FIELDS.some((n) => fields[n] !== undefined);
+
   writes.push({
     ...common,
     stepId: 'E9',
@@ -576,6 +595,7 @@ export function planExtractionSteps(
       checksRun: checked.length,
       checksFailed: failed.length,
       failedFields: failed.map(([n]) => n).slice(0, 20),
+      ...(ratioEmitted ? { ratioReasons } : {}),
     },
   });
 

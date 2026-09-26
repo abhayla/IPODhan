@@ -117,6 +117,13 @@ for a specific JSON shape (e.g. the NSE `ipo-detail-*.json` fixtures, which
 do carry a `companyName` field) should add a shape-specific check, not widen
 this generic one.
 
+**TXT text layers (#771).** A `.txt` fixture with `meta.company` (and not
+`pageType: true`) is identity-CHECKED when that company's normalized name
+appears, word-bounded, in its text - a prospectus page dump prints the
+issuer's name. When the name is absent the fixture stays a counted skip
+(`company name not found in the .txt text layer`); it never becomes a new
+failure. JSON fixtures remain unchecked.
+
 ## Creating a new fixture
 
 Never hand-save a page again. Use
