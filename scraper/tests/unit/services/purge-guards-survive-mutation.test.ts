@@ -136,3 +136,21 @@ describe('runDocumentPurge — the per-document guard survives a fetch-state/doc
     expect(summary.purged).toBe(0);
   });
 });
+
+describe('runDocumentPurge — the SQL it actually sends to the DB (final review pin)', () => {
+  it('is fully substituted (no {{ placeholders left) and carries the extraction EXISTS arm', async () => {
+    dbExecuteMock.mockResolvedValue({ rows: [] });
+
+    await runDocumentPurge();
+
+    expect(dbExecuteMock).toHaveBeenCalledTimes(1);
+    const sqlArg = dbExecuteMock.mock.calls[0][0] as {
+      queryChunks: Array<{ value?: string[] }>;
+    };
+    const sentSql = sqlArg.queryChunks.map((c) => (c?.value ? c.value.join('') : '')).join('');
+
+    expect(sentSql).not.toMatch(/\{\{/);
+    expect(sentSql).toContain('OR EXISTS (');
+    expect(sentSql).toMatch(/d2\.extracted_at\s*<\s*now\(\)\s*-\s*make_interval\(days => \d+\)/);
+  });
+});
