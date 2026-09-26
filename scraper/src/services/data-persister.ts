@@ -606,7 +606,7 @@ export function mergeListingExchangesForSource(
   const existing = existingExchanges ?? [];
   // W-145: ONE rule for what a source proves — an aggregator's 'BOTH' is
   // unknown, NSE/BSE assert only themselves.
-  const incoming = toListingExchangesForSource(scrapedListingExchange, source, segment);
+  const incoming = toListingExchangesForSource(scrapedListingExchange, source);
   if (!incoming) return existing;
 
   let merged = existing;
@@ -992,20 +992,13 @@ async function upsertIPOInScope(
       // (undefined), and unknown leaves the column NULL rather than writing a
       // guessed pair. `[scrapedIPO.listingExchange]` used to be written blind,
       // which produced `[undefined]` the moment the field became optional.
-      // #938: an exchange feed proves a listing only for an SME issue (a
-      // mainboard book runs on both exchanges whatever the listing), so the
-      // segment — the payload's, else the stored row's — is part of the rule.
       // #938 echo: a listing exchange the caller declared as CONTEXT (the
       // filing persister re-sends the STORED boards so the row resolves) is
       // not this write's claim, under either spelling of the key.
       const listingExchangeIsContext =
         contextFields?.includes('listingExchange') === true ||
         contextFields?.includes('listingExchanges') === true;
-      const listingExchanges = toListingExchangesForSource(
-        scrapedIPO.listingExchange,
-        source,
-        scrapedIPO.segment ?? existingIPO?.segment ?? null
-      );
+      const listingExchanges = toListingExchangesForSource(scrapedIPO.listingExchange, source);
 
       // Stage A.5 write-path date-plausibility guard (#41/#52): a current scrape must
       // not stomp an old IPO's open/close dates. Anchor on the trustworthy post-IPO
@@ -1250,7 +1243,7 @@ async function upsertIPOInScope(
             const segment = (existingIPO.segment ?? scrapedIPO.segment) as string | null | undefined;
             const incomingExchanges = listingExchangeIsContext
               ? undefined
-              : toListingExchangesForSource(scrapedIPO.listingExchange, source, segment);
+              : toListingExchangesForSource(scrapedIPO.listingExchange, source);
             if (incomingExchanges) {
               const widened = [...(mergedExchanges ?? [])];
               for (const exchange of incomingExchanges) {

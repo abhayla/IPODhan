@@ -15,8 +15,10 @@
  * #938 real case (staging, 2026-09-17 03:15 UTC = 08:45 IST, the 08:00 OD-19
  * cycle): national-stock-exchange-of-india-ltd, field_sources listingExchanges
  * = {source DRHP, value ["BSE","NSE"], previous_value ["BSE"], previous_source
- * DRHP}. The price band ad and RHP p.3 say BSE only (F-135). The test below
- * reproduces that exact provenance row from an NSE mainboard feed payload.
+ * DRHP}. The price band ad and RHP p.3 say BSE only (F-135). This file fixes
+ * only the provenance stamp; whether an exchange feed may add a board it only
+ * runs bidding for is an open owner question (F-135) and stays as spec row 17
+ * has it (NSE > BSE > CG, E-1).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -49,7 +51,6 @@ vi.mock('../../../src/config/feature-flags.js', async (importOriginal) => ({
 }));
 
 import { DataConsolidationOrchestrator } from '../../../src/services/data-consolidation-orchestrator.js';
-import { toListingExchangesForSource } from '../../../src/services/listing-exchange-resolution.js';
 
 const IPO_ID = '00000000-0000-4000-8000-000000000951';
 
@@ -169,125 +170,14 @@ describe('#951: an update writes only the fields its caller claimed', () => {
   });
 });
 
-describe('#938: an exchange that only runs the bidding is never recorded as a listing exchange', () => {
-  let h: ReturnType<typeof harness>;
-  const NSE_IPO_ROW = () =>
-    storedRow({
-      companyName: 'National Stock Exchange of India Ltd',
-      slug: 'national-stock-exchange-of-india-ltd',
-      segment: 'MAINBOARD',
-      listingExchanges: ['BSE'],
-    });
-
-  beforeEach(() => {
-    h = harness([provenanceRow('listingExchanges', 'DRHP', ['BSE'])]);
-  });
-
-  it('an NSE mainboard feed payload (full, unfiltered scrape) does not add NSE to a DRHP-sourced [BSE]', async () => {
-    await h.orchestrator.consolidatedUpsertIPO(
-      {
-        companyName: 'National Stock Exchange of India Ltd',
-        segment: 'MAINBOARD',
-        offeringType: 'IPO',
-        status: 'OPEN',
-        listingExchange: 'NSE',
-        symbol: 'NSE',
-      } as any,
-      'NSE',
-      100,
-      NSE_IPO_ROW()
-    );
-
-    // The staging row this reproduces: {source DRHP, value [BSE,NSE], previous [BSE], previous_source DRHP}.
-    const exchangeProvenance = h.fieldSourcesRepository.trackFieldUpdate.mock.calls.filter(
-      (c: any[]) => JSON.stringify(c).includes('listingExchanges')
-    );
-    expect(exchangeProvenance).toHaveLength(0);
-    expect(writtenPayload(h.ipoRepository)).not.toHaveProperty('listingExchanges');
-  });
-
-  it('the same for a BSE mainboard feed payload on an NSE-only row (the mirror case)', async () => {
-    h = harness([provenanceRow('listingExchanges', 'DRHP', ['NSE'])]);
-    await h.orchestrator.consolidatedUpsertIPO(
-      { ...listPayload('BSE'), segment: 'MAINBOARD' },
-      'BSE',
-      100,
-      storedRow({ listingExchanges: ['NSE'] })
-    );
-    expect(writtenPayload(h.ipoRepository)).not.toHaveProperty('listingExchanges');
-  });
-
-  it('a BSE payload with NO segment (BSE API) on a stored MAINBOARD row carries no listing claim', async () => {
-    h = harness([provenanceRow('listingExchanges', 'DRHP', ['NSE'])]);
-    await h.orchestrator.consolidatedUpsertIPO(
-      { ...listPayload('BSE'), segment: undefined },
-      'BSE',
-      100,
-      storedRow({ listingExchanges: ['NSE'] })
-    );
-    expect(writtenPayload(h.ipoRepository)).not.toHaveProperty('listingExchanges');
-  });
-
-  it('SME is unchanged: an exchange feed IS the listing venue and still self-asserts', async () => {
-    h = harness();
-    await h.orchestrator.consolidatedUpsertIPO(
-      listPayload('BSE'), 'BSE', 100, storedRow({ segment: 'SME', listingExchanges: null })
-    );
-    expect(writtenPayload(h.ipoRepository).listingExchanges).toEqual(['BSE']);
-  });
-
-  it('a BSE payload with NO segment on a stored SME row still self-asserts (the stored segment decides)', async () => {
-    h = harness();
-    await h.orchestrator.consolidatedUpsertIPO(
-      { ...listPayload('BSE'), segment: undefined },
-      'BSE',
-      100,
-      storedRow({ segment: 'SME', listingExchanges: null })
-    );
-    expect(writtenPayload(h.ipoRepository).listingExchanges).toEqual(['BSE']);
-  });
-
-  it('SME invariant still holds: a second exchange on an SME row is refused', async () => {
-    h = harness([provenanceRow('listingExchanges', 'BSE', ['BSE'])]);
-    await h.orchestrator.consolidatedUpsertIPO(
-      listPayload('NSE'), 'NSE', 100, storedRow({ segment: 'SME', listingExchanges: ['BSE'] })
-    );
-    expect(writtenPayload(h.ipoRepository).listingExchanges).toEqual(['BSE']);
-  });
-
-  it('a page-stating source (Chittorgarh "Listing At") still widens a mainboard set', async () => {
-    h = harness([provenanceRow('listingExchanges', 'DRHP', ['BSE'])]);
-    await h.orchestrator.consolidatedUpsertIPO(
-      { ...listPayload('NSE'), segment: 'MAINBOARD', listingExchange: 'BOTH' },
-      'CHITTORGARH',
-      100,
-      storedRow({ listingExchanges: ['BSE'] })
-    );
-    expect(writtenPayload(h.ipoRepository).listingExchanges).toEqual(['BSE', 'NSE']);
-  });
-});
-
-describe('#938 boundary: toListingExchangesForSource needs the segment for an exchange source', () => {
-  it('exact outputs', () => {
-    expect(toListingExchangesForSource('NSE', 'NSE', 'MAINBOARD')).toBeUndefined();
-    expect(toListingExchangesForSource('BSE', 'BSE', 'MAINBOARD')).toBeUndefined();
-    expect(toListingExchangesForSource('BSE', 'BSE', undefined)).toBeUndefined();
-    expect(toListingExchangesForSource('BSE', 'BSE', null)).toBeUndefined();
-    expect(toListingExchangesForSource('NSE', 'NSE', 'SME')).toEqual(['NSE']);
-    expect(toListingExchangesForSource('BOTH', 'BSE', 'SME')).toEqual(['BSE']);
-    expect(toListingExchangesForSource('BOTH', 'CHITTORGARH', 'MAINBOARD')).toEqual(['NSE', 'BSE']);
-    expect(toListingExchangesForSource('BOTH', 'DRHP', 'MAINBOARD')).toEqual(['NSE', 'BSE']);
-    expect(toListingExchangesForSource('BSE', 'CHITTORGARH', undefined)).toEqual(['BSE']);
-  });
-});
-
-describe('#938 mechanism: the set-merge stamps a widened union with the PRIOR source', () => {
-  it('an NSE [NSE] reaching the union of a DRHP [BSE] yields EXACTLY the staging provenance row', async () => {
-    // Why the fix is at the boundary and not here: data-consolidation-service
-    // Case 2b records a union under `existingSource || incomingSource` (there is
-    // no MERGED source), so whoever adds a member, the row reads "DRHP said
-    // [BSE,NSE]". That is the staging row for the NSE IPO, byte for byte. Stopping
-    // the bidding-venue [NSE] from being produced is what keeps it out.
+describe('#938 provenance: a widened set is recorded under the source that ADDED the member', () => {
+  it('an NSE [NSE] widening a DRHP [BSE] is recorded as NSE, with DRHP as the previous source', async () => {
+    // Before this fix the row read {source DRHP, value [BSE,NSE], previous
+    // '["BSE"]', previous_source DRHP} -- the staging row for the NSE IPO, byte
+    // for byte: data-consolidation-service Case 2b stamped the union with
+    // `existingSource || incomingSource`, crediting DRHP with a board it never
+    // named. Whether NSE's feed may add a board it only runs bidding for is an
+    // open owner question (F-135, #938) and is NOT changed here.
     const { orchestrator, fieldSourcesRepository } = harness([
       provenanceRow('listingExchanges', 'DRHP', ['BSE']),
     ]);
@@ -303,10 +193,11 @@ describe('#938 mechanism: the set-merge stamps a widened union with the PRIOR so
     expect(result.consolidatedData.listingExchanges).toEqual(['BSE', 'NSE']);
     const tracked = fieldSourcesRepository.trackFieldUpdate.mock.calls
       .map((c: any[]) => c[0])
-      .find((row: any) => row.fieldName === 'listingExchanges');
-    expect(tracked).toMatchObject({
+      .filter((row: any) => row.fieldName === 'listingExchanges');
+    expect(tracked).toHaveLength(1);
+    expect(tracked[0]).toMatchObject({
       fieldName: 'listingExchanges',
-      source: 'DRHP',
+      source: 'NSE',
       value: ['BSE', 'NSE'],
       previousValue: '["BSE"]', // serialised, as field_sources.previous_value stores it
       previousSource: 'DRHP',

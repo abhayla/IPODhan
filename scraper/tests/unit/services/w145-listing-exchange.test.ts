@@ -63,33 +63,27 @@ function fieldSourceRow(fieldName: string, source: string, value: any, updatedAt
 }
 
 describe('W-145 boundary mapping (toListingExchangesForSource)', () => {
-  it('NSE and BSE may assert ONLY themselves — even when the payload says BOTH (SME issue)', () => {
-    expect(toListingExchangesForSource('BOTH', 'NSE', 'SME')).toEqual(['NSE']);
-    expect(toListingExchangesForSource('BOTH', 'BSE', 'SME')).toEqual(['BSE']);
-    expect(toListingExchangesForSource('BSE', 'NSE', 'SME')).toEqual(['NSE']);
-    expect(toListingExchangesForSource(undefined, 'BSE', 'SME')).toEqual(['BSE']);
-  });
-
-  it('#938: a mainboard (or unknown-segment) exchange payload is a bidding venue, not a listing claim', () => {
-    expect(toListingExchangesForSource('NSE', 'NSE', 'MAINBOARD')).toBeUndefined();
-    expect(toListingExchangesForSource(undefined, 'BSE', 'MAINBOARD')).toBeUndefined();
-    expect(toListingExchangesForSource(undefined, 'BSE', undefined)).toBeUndefined();
+  it('NSE and BSE may assert ONLY themselves — even when the payload says BOTH', () => {
+    expect(toListingExchangesForSource('BOTH', 'NSE')).toEqual(['NSE']);
+    expect(toListingExchangesForSource('BOTH', 'BSE')).toEqual(['BSE']);
+    expect(toListingExchangesForSource('BSE', 'NSE')).toEqual(['NSE']);
+    expect(toListingExchangesForSource(undefined, 'BSE')).toEqual(['BSE']);
   });
 
   it('a page-stating source may report BOTH; an aggregator may not', () => {
-    expect(toListingExchangesForSource('BOTH', 'CHITTORGARH', 'MAINBOARD')).toEqual(['NSE', 'BSE']);
-    expect(toListingExchangesForSource('BOTH', 'MONEYCONTROL', 'MAINBOARD')).toBeUndefined();
-    expect(toListingExchangesForSource('BOTH', 'API_FALLBACK', 'MAINBOARD')).toBeUndefined();
+    expect(toListingExchangesForSource('BOTH', 'CHITTORGARH')).toEqual(['NSE', 'BSE']);
+    expect(toListingExchangesForSource('BOTH', 'MONEYCONTROL')).toBeUndefined();
+    expect(toListingExchangesForSource('BOTH', 'API_FALLBACK')).toBeUndefined();
   });
 
   it('a bottom source may still ADD the one board it names', () => {
-    expect(toListingExchangesForSource('BSE', 'MONEYCONTROL', 'SME')).toEqual(['BSE']);
-    expect(toListingExchangesForSource('NSE', 'API_FALLBACK', 'SME')).toEqual(['NSE']);
+    expect(toListingExchangesForSource('BSE', 'MONEYCONTROL')).toEqual(['BSE']);
+    expect(toListingExchangesForSource('NSE', 'API_FALLBACK')).toEqual(['NSE']);
   });
 
   it('unknown stays unknown — never a guessed pair', () => {
-    expect(toListingExchangesForSource(undefined, 'MONEYCONTROL', 'SME')).toBeUndefined();
-    expect(toListingExchangesForSource(undefined, 'CHITTORGARH', 'SME')).toBeUndefined();
+    expect(toListingExchangesForSource(undefined, 'MONEYCONTROL')).toBeUndefined();
+    expect(toListingExchangesForSource(undefined, 'CHITTORGARH')).toBeUndefined();
   });
 });
 
@@ -126,11 +120,7 @@ describe('W-145 consolidation of listingExchanges', () => {
     vi.clearAllMocks();
   });
 
-  // #938 (F-135) reversed this test's old expectation ("a mainboard row stored
-  // as ["BSE"] gains NSE from an NSE self-assertion"): a mainboard book runs on
-  // both exchanges, so NSE's feed proves bidding, not listing - that union is how
-  // the NSE IPO (BSE-only per its RHP) came to read ["BSE","NSE"].
-  it('#938: an NSE mainboard feed payload does not widen a mainboard row stored as ["BSE"]', async () => {
+  it('union rule: a mainboard row stored as ["BSE"] gains NSE from an NSE self-assertion', async () => {
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
       fieldSourceRow('listingExchanges', 'BSE', ['BSE']),
     ]);
@@ -138,12 +128,12 @@ describe('W-145 consolidation of listingExchanges', () => {
     const result = await service.consolidateIPOData({
       ipoId: 'w145',
       tableName: 'ipos',
-      incomingData: { listingExchanges: toListingExchangesForSource('BOTH', 'NSE', 'MAINBOARD') },
+      incomingData: { listingExchanges: toListingExchangesForSource('BOTH', 'NSE') },
       source: 'NSE',
       existingData: { listingExchanges: ['BSE'], segment: 'MAINBOARD' } as any,
     });
 
-    expect(result.consolidatedData.listingExchanges).toEqual(['BSE']);
+    expect(result.consolidatedData.listingExchanges).toEqual(['BSE', 'NSE']);
     expect(result.conflictsDetected).toBe(0);
   });
 
@@ -153,7 +143,7 @@ describe('W-145 consolidation of listingExchanges', () => {
     ]);
 
     // What moneycontrol-scraper now emits for an issue whose board it cannot see.
-    const incoming = toListingExchangesForSource(undefined, 'MONEYCONTROL', 'SME');
+    const incoming = toListingExchangesForSource(undefined, 'MONEYCONTROL');
     expect(incoming).toBeUndefined();
 
     const result = await service.consolidateIPOData({
@@ -175,7 +165,7 @@ describe('W-145 consolidation of listingExchanges', () => {
     const result = await service.consolidateIPOData({
       ipoId: 'w145',
       tableName: 'ipos',
-      incomingData: { listingExchanges: toListingExchangesForSource(undefined, 'NSE', 'SME') },
+      incomingData: { listingExchanges: toListingExchangesForSource(undefined, 'NSE') },
       source: 'NSE',
       existingData: { listingExchanges: ['BSE'], segment: 'SME' } as any,
     });
@@ -193,7 +183,7 @@ describe('W-145 consolidation of listingExchanges', () => {
     });
   });
 
-  it('the same widening on a MAINBOARD row, from a page-stating source, is a plain union, no conflict', async () => {
+  it('the same widening on a MAINBOARD row is a plain union, no conflict', async () => {
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
       fieldSourceRow('listingExchanges', 'BSE', ['BSE']),
     ]);
@@ -201,10 +191,8 @@ describe('W-145 consolidation of listingExchanges', () => {
     const result = await service.consolidateIPOData({
       ipoId: 'w145',
       tableName: 'ipos',
-      // #938: an exchange feed no longer speaks for a mainboard listing; the
-      // "Listing At" line Chittorgarh prints does.
-      incomingData: { listingExchanges: toListingExchangesForSource('NSE', 'CHITTORGARH', 'MAINBOARD') },
-      source: 'CHITTORGARH',
+      incomingData: { listingExchanges: toListingExchangesForSource(undefined, 'NSE') },
+      source: 'NSE',
       existingData: { listingExchanges: ['BSE'], segment: 'MAINBOARD' } as any,
     });
 
@@ -284,7 +272,7 @@ describe('W-145 round 2: evidence-based collapse of an SME row already stored wi
     return service.consolidateIPOData({
       ipoId: 'w145-sme',
       tableName: 'ipos',
-      incomingData: { listingExchanges: toListingExchangesForSource(undefined, opts.source ?? 'BSE', opts.segment ?? 'SME') },
+      incomingData: { listingExchanges: toListingExchangesForSource(undefined, opts.source ?? 'BSE') },
       source: opts.source ?? 'BSE',
       existingData: {
         listingExchanges: ['NSE', 'BSE'],
@@ -348,7 +336,7 @@ describe('W-145 round 2: evidence-based collapse of an SME row already stored wi
     const result = await service.consolidateIPOData({
       ipoId: 'w145-sme',
       tableName: 'ipos',
-      incomingData: { listingExchanges: toListingExchangesForSource('BSE', 'CHITTORGARH', 'SME') },
+      incomingData: { listingExchanges: toListingExchangesForSource('BSE', 'CHITTORGARH') },
       source: 'CHITTORGARH',
       existingData: { listingExchanges: ['NSE', 'BSE'], segment: 'SME' } as any,
     });
@@ -385,7 +373,7 @@ describe('W-145 round 3: tier-2 evidence quality, conflict cleanup, missing repo
     return service.consolidateIPOData({
       ipoId: 'w145-sme',
       tableName: 'ipos',
-      incomingData: { listingExchanges: toListingExchangesForSource(undefined, source, segment) },
+      incomingData: { listingExchanges: toListingExchangesForSource(undefined, source) },
       source,
       existingData: { listingExchanges: ['NSE', 'BSE'], segment } as any,
     });
@@ -460,7 +448,7 @@ describe('W-145 round 3: tier-2 evidence quality, conflict cleanup, missing repo
     const result = await service.consolidateIPOData({
       ipoId: 'w145-sme',
       tableName: 'ipos',
-      incomingData: { listingExchanges: toListingExchangesForSource(undefined, 'BSE', 'SME') },
+      incomingData: { listingExchanges: toListingExchangesForSource(undefined, 'BSE') },
       source: 'BSE',
       existingData: { listingExchanges: ['BSE'], segment: 'SME' } as any,
     });
@@ -477,7 +465,7 @@ describe('W-145 round 3: tier-2 evidence quality, conflict cleanup, missing repo
     const result = await service.consolidateIPOData({
       ipoId: 'w145-sme',
       tableName: 'ipos',
-      incomingData: { listingExchanges: toListingExchangesForSource(undefined, 'NSE', null) },
+      incomingData: { listingExchanges: toListingExchangesForSource(undefined, 'NSE') },
       source: 'NSE',
       existingData: { listingExchanges: ['NSE', 'BSE'], segment: null } as any,
     });

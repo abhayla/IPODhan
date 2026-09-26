@@ -144,7 +144,11 @@ describe('consolidation write-path guards (Deepa walk)', () => {
     expect(result.consolidatedData.listingExchanges).toEqual(['BSE', 'NSE']);
   });
 
-  it('W-17/W-18(ii): a set-valued merge that ADDS a member keeps the prior source and records history', async () => {
+  // #938 (2026-09-26): the provenance row now names the source that ADDED the
+  // member (NSE here), not the prior source; the prior source stays on the row
+  // as previousSource. Keeping the prior source credited it with a board it
+  // never named (the NSE IPO's staging row read "DRHP said [BSE,NSE]").
+  it('W-17/W-18(ii): a set-valued merge that ADDS a member is recorded under the adding source, with history', async () => {
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
       fieldSourceRow('listingExchanges', 'BSE', ['BSE']),
     ]);
@@ -161,7 +165,7 @@ describe('consolidation write-path guards (Deepa walk)', () => {
     expect(result.consolidatedData.listingExchanges).toEqual(['BSE', 'NSE']);
     const track = trackCallFor('listingExchanges')[0];
     expect(track).toBeDefined();
-    expect(track.source).toBe('BSE');
+    expect(track.source).toBe('NSE');
     expect(track.previousValue).toBe('["BSE"]');
     expect(track.previousSource).toBe('BSE');
   });

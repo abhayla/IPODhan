@@ -265,11 +265,7 @@ export class DataConsolidationOrchestrator {
       }
 
       // Prepare incoming data for consolidation
-      let incomingData = this.mapScrapedIPOToConsolidationInput(
-        scrapedIPO,
-        source,
-        existingIPO?.segment ?? null
-      );
+      let incomingData = this.mapScrapedIPOToConsolidationInput(scrapedIPO, source);
       // Review round 3: filter to exactly the caller's claim, AFTER slug
       // computation and identity resolution above — the full scrapedIPO
       // shape (identity fields included) is still what resolved `existingIPO`
@@ -517,8 +513,7 @@ export class DataConsolidationOrchestrator {
    */
   private mapScrapedIPOToConsolidationInput(
     scrapedIPO: ScrapedIPO,
-    source: ScraperSource,
-    storedSegment: string | null
+    source: ScraperSource
   ): Record<string, any> {
     // W-145: the incoming record used to carry `listingExchange` (SINGULAR)
     // while the stored record carries `listingExchanges` (PLURAL), so the
@@ -527,13 +522,7 @@ export class DataConsolidationOrchestrator {
     // HERE, at the one boundary, and the singular spelling never enters the
     // record shape again. `undefined` (unknown) is OMITTED entirely, so the
     // absent-never-overwrites-present guard keeps the stored value.
-    // #938: an exchange feed is a listing claim only for an SME issue — the
-    // segment is this payload's, else the stored row's (BSE's API sends none).
-    const listingExchanges = toListingExchangesForSource(
-      scrapedIPO.listingExchange,
-      source,
-      scrapedIPO.segment ?? storedSegment
-    );
+    const listingExchanges = toListingExchangesForSource(scrapedIPO.listingExchange, source);
 
     return {
       companyName: scrapedIPO.companyName,
@@ -713,7 +702,7 @@ export class DataConsolidationOrchestrator {
       (Array.isArray(consolidated.listingExchanges) && consolidated.listingExchanges.length > 0
         ? consolidated.listingExchanges
         : undefined) ??
-      toListingExchangesForSource(originalScraped.listingExchange, source, segment) ??
+      toListingExchangesForSource(originalScraped.listingExchange, source) ??
       stored;
 
     if (resolved === undefined) return undefined;
