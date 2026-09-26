@@ -1805,6 +1805,7 @@ async function checkIdentity() {
   const heldRows = await q(
     `SELECT action_type AS "actionType", new_value AS slug,
             details->'incoming'->>'companyName' AS "companyName",
+            details->>'reason' AS reason,
             old_value AS candidates, "timestamp"::text AS at
        FROM audit_logs
       WHERE action_type IN ('IDENTITY_HELD_FOR_REVIEW', 'IDENTITY_HOLD_OVERRIDDEN')
@@ -1816,7 +1817,7 @@ async function checkIdentity() {
     heldRows.filter((r) => r.actionType === 'IDENTITY_HOLD_OVERRIDDEN').map(toIso),
   );
   for (const h of undecided) {
-    notify('i_identity_held', 'P2', h.slug, 'Incoming IPO record held for review (OD-68)', `"${h.companyName}" [${h.slug}] vs ${h.candidates} - a same-name live row has a differing known open date or price band; decide: fix the row, or create via /admin (override)`);
+    notify('i_identity_held', 'P2', h.slug, 'Incoming IPO record held for review (OD-68)', `"${h.companyName}" [${h.slug}] vs ${h.candidates} - ${h.reason || 'a same-name live row has a differing known open date or price band'}; decide: fix the row, or create via /admin (override)`);
   }
   record('i_identity_held', 'no incoming IPO record has been held for review (OD-68) in the last 2 days without a human decision',
     undecided.length === 0 ? 'PASS' : 'FAIL',

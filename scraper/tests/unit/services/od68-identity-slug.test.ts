@@ -89,4 +89,29 @@ describe('OD-68: a held create is a decision, not a transient failure', () => {
     ).rejects.toBeInstanceOf(IdentityHeldForReviewError);
     expect(ipoRepository.create).toHaveBeenCalledTimes(1);
   });
+
+  it('#928: a held create logs ONE warn line and no error-level "database failure" lines', async () => {
+    const { default: logger } = await import('../../../src/utils/logger.js');
+    const errorSpy = vi.spyOn(logger, 'error');
+    const warnSpy = vi.spyOn(logger, 'warn');
+    const held = new IdentityHeldForReviewError('held (OD-69) slug_taken', { companyName: 'Rays of Belief Limited', slug: 'rays-of-belief-ltd', openDate: null, priceRangeMin: null }, []);
+    const ipoRepository = {
+      findByIsin: vi.fn().mockResolvedValue(null),
+      findBySymbol: vi.fn().mockResolvedValue(null),
+      findByNormalizedName: vi.fn().mockResolvedValue(null),
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([]),
+      findBySlug: vi.fn().mockResolvedValue(null),
+      findByFuzzyName: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockRejectedValue(held),
+      update: vi.fn(),
+    } as any;
+    await expect(
+      upsertIPO(ipoRepository, { companyName: 'Rays of Belief Limited', segment: 'MAINBOARD', openDate: '2026-09-01' } as any, 'CHITTORGARH' as any)
+    ).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+    const msgs = (spy: typeof errorSpy) => spy.mock.calls.map((c) => String(c[c.length - 1]));
+    expect(msgs(errorSpy).filter((m) => /Database operation failed|Permanent database error/.test(m))).toEqual([]);
+    expect(msgs(warnSpy).filter((m) => m === 'identity decision - nothing written, not retried')).toHaveLength(1);
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
 });

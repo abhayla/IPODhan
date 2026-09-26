@@ -288,3 +288,17 @@ describe('opening-day writer — identity path + field-priority decision, four f
     expect(c.ipoRepository.create).not.toHaveBeenCalled();
   });
 });
+
+describe('opening-day discovery — a held record is a decision, not a failure (#928)', () => {
+  it('writeRow throwing IdentityHeldForReviewError is recorded as outcome "held", never in failures', async () => {
+    const { IdentityHeldForReviewError } = await import('@ipodhan/shared/repositories');
+    const writeRow = vi.fn().mockRejectedValue(
+      new IdentityHeldForReviewError('held (OD-69) slug_taken', { companyName: 'x', slug: 'x', openDate: null, priceRangeMin: null }, [])
+    );
+    const { d } = deps({ writeRow });
+    const s = await runOpeningDayDiscovery(d, NOW);
+    expect(s.written.length).toBeGreaterThan(0);
+    expect(s.written.every((w) => w.outcome === 'held')).toBe(true);
+    expect(s.failures).toEqual([]);
+  });
+});
