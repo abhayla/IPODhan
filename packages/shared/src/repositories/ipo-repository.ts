@@ -59,6 +59,39 @@ import {
 
 /** audit_logs.action_type of an OD-68 hold; read by the nightly `i_identity_held` check. */
 export const IDENTITY_HELD_ACTION = 'IDENTITY_HELD_FOR_REVIEW';
+
+/**
+ * #928: why a create whose slug is already held was not bound to that row, named
+ * by the spec rule that refused it, so the audit_logs hold says what to decide.
+ */
+export function slugTakenReason(
+  incoming: { cin?: string | null; segment?: string | null; offeringType?: string | null; openDate?: unknown },
+  holder: { cin?: string | null; status?: string | null; segment?: string | null; offeringType?: string | null; openDate?: unknown }
+): { rule: string; reason: string } {
+  const inCin = normalizeCin(incoming.cin ?? null);
+  const rowCin = normalizeCin(holder.cin ?? null);
+  if (inCin && rowCin && inCin !== rowCin) {
+    return { rule: 'OD-69', reason: `slug_taken: CIN differs (${inCin} vs ${rowCin})` };
+  }
+  if (holder.status === 'WITHDRAWN') {
+    return { rule: 'OD-71', reason: 'slug_taken: the slug holder is WITHDRAWN (a refiling is a new offering)' };
+  }
+  if (incoming.segment && holder.segment && incoming.segment !== holder.segment) {
+    return { rule: 'OD-35', reason: `slug_taken: segment differs (${incoming.segment} vs ${holder.segment})` };
+  }
+  const inType = incoming.offeringType ?? 'IPO';
+  if (holder.offeringType && inType !== holder.offeringType) {
+    return { rule: 'OD-70', reason: `slug_taken: offering type differs (${inType} vs ${holder.offeringType})` };
+  }
+  const day = (v: unknown): string | null =>
+    v == null || v === '' ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
+  const a = day(incoming.openDate);
+  const b = day(holder.openDate);
+  if (a && b && Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000 > 180) {
+    return { rule: 'OD-35', reason: `slug_taken: open date beyond 180 days (${a} vs ${b})` };
+  }
+  return { rule: 'OD-68', reason: 'slug_taken: identity resolution did not bind the row holding this slug' };
+}
 import {
   normalizedCompanyNameSql,
   compactNormalizedCompanyNameSql,
@@ -1058,6 +1091,58 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * #928 (OD-69 / OD-71 / OD-35, #903): the record reached create because
+   * `resolveIpoRow` declined the row that already holds its slug (a differing
+   * CIN, a WITHDRAWN holder, another segment or type, a date beyond 180 days).
+   * The insert would fail on `ipos.slug`'s unique constraint on every cycle with
+   * no durable trace. It is HELD instead (OD-68: "held for review instead of
+   * creating a second row"; OD-85 read rule 3: "a failed check writes nothing
+   * and holds the record"), recorded in audit_logs and read nightly by
+   * `i_identity_held`. The slug a genuinely separate second row should take is
+   * not decided by the spec, so no alternative slug is minted here.
+   */
+  private async holdIfSlugTaken(data: IPOInsert): Promise<void> {
+    if (!data.slug) return;
+    const rows = await this.db
+      .select({
+        id: ipos.id,
+        slug: ipos.slug,
+        companyName: ipos.companyName,
+        openDate: ipos.openDate,
+        priceRangeMin: ipos.priceRangeMin,
+        status: ipos.status,
+        segment: ipos.segment,
+        offeringType: ipos.offeringType,
+        cin: ipos.cin,
+      })
+      .from(ipos)
+      .where(eq(ipos.slug, data.slug));
+    const holder = rows.find((r) => r.slug === data.slug);
+    if (!holder) return;
+
+    const why = slugTakenReason(data, holder);
+    const incoming = {
+      companyName: data.companyName ?? '',
+      slug: data.slug,
+      openDate: data.openDate == null ? null : String(data.openDate).slice(0, 10),
+      priceRangeMin: data.priceRangeMin ?? null,
+    };
+    const candidate = {
+      id: holder.id, slug: holder.slug, companyName: holder.companyName, openDate: holder.openDate, priceRangeMin: holder.priceRangeMin, status: holder.status,
+    };
+    logger.warn(
+      { incoming, holder: candidate, rule: why.rule, reason: why.reason },
+      'identity_held_for_review: the slug is held by a row identity resolution did not bind - NOT created (#928)'
+    );
+    await this.recordIdentityHold(incoming, strictIdentityCompanyName(incoming.companyName), [candidate], why);
+    throw new IdentityHeldForReviewError(
+      `IPORepository.create: "${incoming.companyName}" held for review (${why.rule}) - slug ${data.slug} is held by ${holder.id}; ${why.reason}; no row created`,
+      incoming,
+      [{ ...candidate }]
+    );
+  }
+
+  /**
    * The durable half of a hold: one audit_logs row per (incoming slug, first
    * candidate) per day, so a record re-scraped every cycle does not flood the
    * log. A failure here never turns a hold into a create - the caller throws
@@ -1066,7 +1151,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   private async recordIdentityHold(
     incoming: { companyName: string; slug: string; openDate: string | null; priceRangeMin: unknown },
     fold: string,
-    candidates: { id: string; slug: string; companyName: string; openDate: unknown; priceRangeMin: unknown; status: unknown }[]
+    candidates: { id: string; slug: string; companyName: string; openDate: unknown; priceRangeMin: unknown; status: unknown }[],
+    why?: { rule: string; reason: string }
   ): Promise<void> {
     try {
       const existing = await this.db
@@ -1083,9 +1169,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         fieldName: 'identity',
         oldValue: candidates.map((c) => c.slug).join(','),
         newValue: incoming.slug,
-        details: { rule: 'OD-68', identityFold: fold, incoming, candidates },
+        details: why
+          ? { rule: why.rule, reason: why.reason, identityFold: fold, incoming, candidates }
+          : { rule: 'OD-68', identityFold: fold, incoming, candidates },
         success: false,
-        errorMessage: `held for review: "${incoming.companyName}" matches ${candidates.map((c) => c.slug).join(', ')} with a differing known open date or price band`,
+        errorMessage: why
+          ? `held for review: "${incoming.companyName}" - ${why.reason}`
+          : `held for review: "${incoming.companyName}" matches ${candidates.map((c) => c.slug).join(', ')} with a differing known open date or price band`,
       });
     } catch (error) {
       logger.error(
@@ -1141,6 +1231,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       });
     } else {
       await this.holdIfIdentityUnbound(data);
+      await this.holdIfSlugTaken(data);
     }
     try {
 

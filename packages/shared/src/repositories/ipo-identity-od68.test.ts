@@ -66,6 +66,40 @@ describe('identity decoration (OD-68 S1/S3)', () => {
   });
 });
 
+describe('#553 / S2: the real staging ARCIL pair binds the BSE-bound row, never a second unbound row', () => {
+  // ipodhan_staging 2026-09-11 (#553): 0ef10ead (BSE IPO_NO 7950, created 09-06) and
+  // 5677e1e9 (no BSE id, created 09-09), same open 2026-09-09 / close 2026-09-11, MAINBOARD.
+  const ARCIL_BSE = {
+    id: '0ef10ead',
+    companyName: 'ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED',
+    slug: 'asset-reconstruction-company-india-limited',
+    segment: 'MAINBOARD',
+    offeringType: 'IPO',
+    status: 'OPEN',
+    openDate: '2026-09-09',
+    priceRangeMin: null,
+    bseIpoNo: 7950,
+  } as unknown as IPO;
+  const incoming = {
+    companyName: 'Asset Reconstruction Co.(India) Ltd.',
+    normalizedName: 'asset reconstruction india',
+    slug: 'asset-reconstruction-co-india-ltd',
+    segment: 'MAINBOARD' as const,
+    openDate: '2026-09-09',
+    priceRangeMin: null,
+  };
+
+  it('with the name/slug tiers all missing, the strict identity fold + same open date binds 0ef10ead', async () => {
+    const r = repo({ findLiveByOpenDate: vi.fn().mockResolvedValue([ARCIL_BSE]) });
+    await expect(resolveIpoRow(r, incoming)).resolves.toMatchObject({ id: '0ef10ead' });
+  });
+
+  it('a known differing price band on the same day still refuses the bind (S2 corroboration stands)', async () => {
+    const r = repo({ findLiveByOpenDate: vi.fn().mockResolvedValue([{ ...ARCIL_BSE, priceRangeMin: 100 }]) });
+    await expect(resolveIpoRow(r, { ...incoming, priceRangeMin: 120 })).resolves.toBeNull();
+  });
+});
+
 describe('resolveIpoRow — OD-68 matching', () => {
   it('S1: a decorated slug is stripped before the slug tier (rays-of-belief-ltd-o finds rays-of-belief-ltd)', async () => {
     const findBySlug = vi.fn(async (slug: string) => (slug === 'rays-of-belief-ltd' ? RAYS : null));
