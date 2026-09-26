@@ -365,23 +365,6 @@ jobs:
         # Fix: collect conditions into an array, apply ONE where(and(...)).
         run: node scripts/ci/check-drizzle-where-chaining.mjs
 
-      - name: DB connection default self-test (#640)
-        # scripts/ci/tests/check-db-connection-defaults.test.mjs drives the
-        # real findOffenders() against the pre-fix shape
-        # (`DATABASE_NAME || 'ipodhan'` / `DATABASE_USER || 'postgres'`) and
-        # the fixed shape (resolveDiscreteDbParams() spread), so a weakened or
-        # deleted rule turns this red before the gate below can silently stop
-        # catching it.
-        run: node --test scripts/ci/tests/check-db-connection-defaults.test.mjs
-
-      - name: DB connection defaults never silently default to production (#640)
-        # `process.env.DATABASE_NAME || 'ipodhan'` / `DATABASE_USER || 'postgres'`
-        # meant a script run through the tunnel that forgot the env var
-        # silently connected to production, as the superuser. Baseline is
-        # shrink-only, each entry carries a reason —
-        # scripts/ci/db-connection-defaults-baseline.json.
-        run: node scripts/ci/check-db-connection-defaults.mjs
-
       - name: Security-boundary wiring self-test (item 20 / slice 6)
         # 15 cases, most of them mutations: a name only in a comment, a second
         # declaration of the same function in another module, a comma inside a
@@ -499,6 +482,24 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: DB connection default self-test (#640)
+        # Runs after npm ci: the checker parses with the typescript compiler API.
+        # scripts/ci/tests/check-db-connection-defaults.test.mjs drives the
+        # real findOffenders() against the pre-fix shape
+        # (`DATABASE_NAME || 'ipodhan'` / `DATABASE_USER || 'postgres'`) and
+        # the fixed shape (resolveDiscreteDbParams() spread), so a weakened or
+        # deleted rule turns this red before the gate below can silently stop
+        # catching it.
+        run: node --test scripts/ci/tests/check-db-connection-defaults.test.mjs
+
+      - name: DB connection defaults never silently default to production (#640)
+        # `process.env.DATABASE_NAME || 'ipodhan'` / `DATABASE_USER || 'postgres'`
+        # meant a script run through the tunnel that forgot the env var
+        # silently connected to production, as the superuser. Baseline is
+        # shrink-only, each entry carries a reason —
+        # scripts/ci/db-connection-defaults-baseline.json.
+        run: node scripts/ci/check-db-connection-defaults.mjs
 
       - name: Repair-tool module lint self-test (T-490)
         # Mutation-proof: scripts/ci/tests/require-repair-tool-module.test.mjs
