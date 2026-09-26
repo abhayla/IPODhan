@@ -642,3 +642,27 @@ export function checkStrandedNotExtractable(row) {
   if (!AUTO_PERSIST_DOC_TYPES_MIRROR.includes(type)) return null;
   return `"${entityOf(row)}": ${type} is NOT_EXTRACTABLE but its type is on the extractable list (stranded pre-#989; repair via scraper/scripts/repair-readmit-stranded-documents.ts)`;
 }
+
+// ---- #676: documents.extraction_status holds only a declared value ----------
+// The declared set is NOT mirrored here by hand: it is read from the audited
+// database's own CHECK constraint `ck_documents_extraction_status` (migration
+// 0065, generated from DOCUMENT_EXTRACTION_STATUSES in
+// packages/shared/src/db/schema.ts), so schema.ts stays the one source. The
+// constraint is NOT VALID, so rows written before 0065 are never scanned by
+// Postgres; this check is what reports one of them by identity.
+
+/**
+ * The value list inside a `pg_get_constraintdef` of an `IN (...)` / `= ANY (ARRAY[...])` check,
+ * e.g. CHECK (((extraction_status)::text = ANY ((ARRAY['PENDING'::character varying, ...])::text[]))) NOT VALID
+ * Returns [] when the definition names no quoted value (the caller treats that as unverifiable).
+ */
+export function parseCheckConstraintValues(constraintDef) {
+  return [...String(constraintDef ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]);
+}
+
+/** A violation line for a documents row whose extraction_status is not declared, else null. NULL is not declared. */
+export function checkExtractionStatusDeclared(row, declared) {
+  const s = row.extractionStatus;
+  if (s != null && declared.includes(s)) return null;
+  return `${row.slug ?? row.ipoId}/${row.type} (${row.id}): extraction_status ${s == null ? 'NULL' : `'${s}'`} is not in the declared set`;
+}

@@ -851,6 +851,16 @@ loop reads them rather than sourcing them.
 | 151 | `sha256` | 115 | I | download | 64 hex; identity of the file for the re-read loop |
 | 152 | `filing_date` | 24 | **D** | DOC cover, rank 2 BSE payload | `< open_date`; **this is the field the document-type healing rule depends on**, and it is populated on only 24 of 256 documents |
 
+**`extraction_status` value set and attempt history (F-183, #676, #634; measured 2026-09-26).** The spec
+named no value set for `extraction_status`; F-183 measured three different ones in the code and the
+values actually written on staging. The one set is now `PENDING`, `IN_PROGRESS`, `COMPLETED`, `FAILED`,
+`MANUAL_REVIEW`, `NOT_EXTRACTABLE` (`DOCUMENT_EXTRACTION_STATUSES` in `packages/shared/src/db/schema.ts`,
+enforced by the column type and the CHECK `ck_documents_extraction_status`, and audited nightly by
+`d_extraction_status_declared`). `extraction_error` holds the LAST attempt's cause only. Every failed attempt's
+cause, with its attempt number and time, is kept in `document_extraction_attempts` (migration 0065), so a
+document at the `retry_count` ceiling can show whether it failed the same way every time. Attempts made before
+0065 were never recorded and are not reconstructed.
+
 ### 1.9 Live market data (fields 153–184)
 
 | # | Table.field | rows | Cls | 1 | 2 | 3 | Unit | Check | Verify / disagreement |

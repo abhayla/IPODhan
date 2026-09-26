@@ -277,7 +277,9 @@ async function getDRHPMetrics(): Promise<DRHPMetrics> {
       }
     } else if (doc.extractionStatus === 'FAILED') {
       failed++;
-    } else if (doc.extractionStatus === 'QUEUED_FOR_REVIEW') {
+    } else if (doc.extractionStatus === 'MANUAL_REVIEW') {
+      // #676: QUEUED_FOR_REVIEW was never written by any writer (0 of 375 staging rows, 2026-09-26);
+      // MANUAL_REVIEW is the declared "waiting for a human" status (DOCUMENT_EXTRACTION_STATUSES).
       queuedForReview++;
     } else if (doc.extractionStatus === 'PENDING') {
       pendingExtraction++;

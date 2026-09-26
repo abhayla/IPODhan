@@ -78,10 +78,15 @@
  *     bump the document is eligible again, and its NEXT IN_PROGRESS stamp
  *     resets `retryCount` to 1 rather than incrementing from 10.
  *
- * The E1..E10 ledger rows are still WRITTEN on every extraction attempt (with
- * `attemptsBefore` taken from the document's own `retry_count`, not a shared
- * ledger counter) — they remain the audit trail of what happened — but they
- * are no longer READ to decide whether this cycle may spawn python.
+ * The E1..E10 ledger rows are WRITTEN on every extraction attempt (with
+ * `attemptsBefore` taken from the document's own `retry_count`), but
+ * `ipo_pipeline_steps` holds ONE row per (ipo, step), so each attempt
+ * OVERWRITES the last: the ledger is a last-attempt snapshot, not an attempt
+ * history (#634). They are not READ to decide whether this cycle may spawn
+ * python. The attempt history is `document_extraction_attempts`: every
+ * FAILED / MANUAL_REVIEW write appends one row (attempt number, cause, time)
+ * in the same transaction as the status write, so a document at the retry
+ * ceiling can answer "the same fault ten times, or ten different faults?".
  */
 
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
@@ -91,7 +96,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import { db, getRedisClient, DocumentRepository } from '@ipodhan/shared';
-import { documents as documentsTable, documentPages as documentPagesTable } from '@ipodhan/shared/db/schema';
+import {
+  documents as documentsTable,
+  documentPages as documentPagesTable,
+  documentExtractionAttempts as documentExtractionAttemptsTable,
+} from '@ipodhan/shared/db/schema';
 import type { DocumentFetchStateRow } from '@ipodhan/shared/repositories/document-fetch-state-repository';
 import logger from '../utils/logger.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
@@ -128,7 +137,7 @@ import {
 } from './corrigendum-reader.js';
 import { SIDECAR_TIMEOUT_MS } from '../scrapers/anchor-investors-scraper.js';
 import type { ExtractionStatus, ExtractionStatePatchContext } from './extraction-state-patch.js';
-import { buildExtractionStatePatch } from './extraction-state-patch.js';
+import { buildExtractionStatePatch, buildExtractionAttemptRow } from './extraction-state-patch.js';
 
 /**
  * The extractor build that produced a stored extraction.
@@ -483,6 +492,35 @@ export function classifyDeterministicAnchorParseFailure(
  */
 export type { ExtractionStatus, ExtractionStatePatchContext };
 export { buildExtractionStatePatch };
+
+/**
+ * #634: a failed extraction attempt's status write AND its append to
+ * `document_extraction_attempts`, in one transaction, so the status can never say FAILED without
+ * the cause being on record (and vice versa). The attempt number is the row's own `retry_count`
+ * after the write, read back with RETURNING (the attempt was counted at its IN_PROGRESS stamp).
+ * Exported so the integration test drives this exact code on ipodhan_test.
+ */
+export async function writeStatusWithAttempt(
+  dbx: typeof db,
+  documentId: string,
+  status: ExtractionStatus,
+  error: string | null | undefined,
+  patch: Record<string, unknown>,
+  now: Date = new Date()
+): Promise<Array<{ ipoId: string; retryCount: number }>> {
+  return dbx.transaction(async (tx) => {
+    const updated = await tx
+      .update(documentsTable)
+      .set(patch as never)
+      .where(eq(documentsTable.id, documentId))
+      .returning({ ipoId: documentsTable.ipoId, retryCount: documentsTable.retryCount });
+    const attempt = updated[0]
+      ? buildExtractionAttemptRow(documentId, status, error, Number(updated[0].retryCount ?? 0), now)
+      : null;
+    if (attempt) await tx.insert(documentExtractionAttemptsTable).values(attempt);
+    return updated;
+  });
+}
 
 export interface AutoPersistIpo {
   id: string;
@@ -1095,7 +1133,7 @@ export interface AutoPersistDeps {
    */
   setDocumentExtractionState: (args: {
     documentId: string;
-    status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'PENDING' | 'MANUAL_REVIEW';
+    status: ExtractionStatus;
     error?: string | null;
     retryCount?: number;
     /** Round 3 (MAJOR-1): busy-revert-only override, see `ExtractionStatePatchContext.updatedAt`. */
@@ -1284,7 +1322,14 @@ export function buildAutoPersistDeps(
       // the plan-row reopen commit together (one transaction); every other
       // status write keeps the single UPDATE below.
       const withReceipt = status === 'COMPLETED' && receiptFields && receiptFields.length > 0;
-      const rows = withReceipt
+      // #634: a failed attempt (FAILED / MANUAL_REVIEW with a cause) also APPENDS its cause to
+      // document_extraction_attempts in the same transaction, so the next attempt's overwrite of
+      // `extraction_error` no longer erases it. The attempt number is the row's own retry_count
+      // after the write (counted at the IN_PROGRESS stamp), read back with RETURNING.
+      const recordsAttempt = buildExtractionAttemptRow(documentId, status as ExtractionStatus, error, 0) !== null;
+      const rows = recordsAttempt
+        ? await writeStatusWithAttempt(db as never, documentId, status as ExtractionStatus, error, patch)
+        : withReceipt
         ? await db.transaction(async (tx) => {
             const updated = await tx.update(documentsTable).set(patch as never).where(eq(documentsTable.id, documentId))
               .returning({ ipoId: documentsTable.ipoId, type: documentsTable.type, filingDate: documentsTable.filingDate, sha256: documentsTable.sha256 });

@@ -1,0 +1,10 @@
+{
+  "id": "d_extraction_status_declared",
+  "findingClass": "documents.extraction_status holds a value outside its declared set (#676, F-183: the declared Postgres enum, the column comment and the values written were three different sets, and the varchar column accepted anything)",
+  "round7Findings": [],
+  "failThreshold": "any documents row whose extraction_status is NULL or not in the value list of the database's own CHECK ck_documents_extraction_status (read via pg_get_constraintdef, never hand-mirrored)",
+  "severity": "P2",
+  "unverifiableWhen": "ck_documents_extraction_status is not present on the audited database (migration 0065 not applied yet)",
+  "note": "The CHECK is NOT VALID, so Postgres enforces it on every write after 0065 but never scans rows written before it; this check is what names such a row by slug/type/id. Measured on ipodhan_staging 2026-09-26 (read-only): 375 documents, 0 outside {PENDING, IN_PROGRESS, COMPLETED, FAILED, MANUAL_REVIEW, NOT_EXTRACTABLE}; staging lacks 0065 so the check reads UNVERIFIABLE there until the next staging deploy. Discrimination proven by scripts/tests/document-state-checks.test.mjs on the real constraint text read from ipodhan_test: all six declared values pass; QUEUED_FOR_REVIEW, SUCCESS and NULL fail.",
+  "section": "checks"
+}

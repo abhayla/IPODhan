@@ -61,6 +61,8 @@ import {
   checkStrandedNotExtractable,
   AUTO_PERSIST_DOC_TYPES_MIRROR,
   checkNseLeadManagerProvenanceHasValue,
+  parseCheckConstraintValues,
+  checkExtractionStatusDeclared,
 } from './lib/document-state-checks.mjs';
 import {
   summariseIssueSizeConsistency,
@@ -803,6 +805,37 @@ async function checkD_strandedReadmit() {
     offenders.length === 0 ? 'PASS' : 'FAIL',
     `${offenders.length} of ${rows.length} candidate row(s) stranded` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : '')
   );
+}
+
+// ---- (d, extraction status declared): #676 — every documents.extraction_status
+// is a declared value. The declared set is read from the DB's own CHECK
+// (ck_documents_extraction_status, migration 0065), never hand-mirrored; a DB
+// that has not applied 0065 yet is UNVERIFIABLE, not PASS.
+async function checkD_extractionStatusDeclared() {
+  const id = 'd_extraction_status_declared';
+  const text = 'every documents.extraction_status is a value declared by ck_documents_extraction_status (#676)';
+  const defs = await q(
+    `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+      WHERE conname = 'ck_documents_extraction_status' AND conrelid = 'public.documents'::regclass`
+  );
+  const declared = defs.length ? parseCheckConstraintValues(defs[0].def) : [];
+  if (declared.length === 0) {
+    record('d_extraction_status_declared', text, 'UNVERIFIABLE', 'ck_documents_extraction_status not present on this database (migration 0065 not applied)');
+    return;
+  }
+  const rows = await q(
+    `SELECT d.id, d.ipo_id AS "ipoId", i.slug, d.type::text AS type, d.extraction_status AS "extractionStatus"
+       FROM documents d LEFT JOIN ipos i ON i.id = d.ipo_id
+      WHERE d.extraction_status IS NULL OR NOT (d.extraction_status = ANY($1::text[]))`,
+    [declared]
+  );
+  const offenders = [];
+  for (const r of rows) {
+    const v = checkExtractionStatusDeclared(r, declared);
+    if (v) { offenders.push(v); notify(id, 'P2', r.id, 'documents row holds an undeclared extraction_status', v); }
+  }
+  record('d_extraction_status_declared', text, offenders.length === 0 ? 'PASS' : 'FAIL',
+    `${offenders.length} row(s) outside {${declared.join(', ')}}` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
 async function checkD_segmentProvenance() {
@@ -3661,6 +3694,7 @@ async function main() {
   await runCheck(checkUpcomingSourceDrift, ['c_upcoming_source_drift']);
   await runCheck(checkD, ['d_lot_band_window', 'd_corporate_action_shape']);
   await runCheck(checkD_strandedReadmit, ['d_stranded_readmit']);
+  await runCheck(checkD_extractionStatusDeclared, ['d_extraction_status_declared']);
   await runCheck(checkD_segmentProvenance, ['d_segment_provenance']);
   await runCheck(checkE, ['e_route_sweep', 'e_verdict_leak_sweep']);
   await runCheck(checkE_unknownSlug404, ['e_unknown_slug_404']);
