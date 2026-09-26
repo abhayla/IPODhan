@@ -48,7 +48,6 @@ import {
 } from '@/components/ipo/charts';
 import { IPOObjectivesSection } from '@/components/ipo-detail/IPOObjectivesSection';
 import { CompanyContactSection } from '@/components/ipo-detail/CompanyContactSection';
-import { RecommendationSummarySection } from '@/components/ipo-detail/RecommendationSummarySection';
 import { CategoryReservationSection } from '@/components/ipo-detail/CategoryReservationSection';
 import { PendingDataNotice } from '@/components/ipo-detail/PendingDataNotice';
 import { TerminalIpoNotice } from '@/components/ipo-detail/TerminalIpoNotice';
@@ -60,7 +59,6 @@ import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
-import { ReviewRepository } from '@/lib/repositories/review-repository';
 import { IPOScoreRealtimeRepository } from '@/lib/repositories/ipo-score-realtime-repository';
 import {
   adaptStoredScore,
@@ -233,7 +231,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   // Initialize repositories (Server Components use repositories directly)
   const redis = getRedisClient();
   const ipoRepository = new IPORepository(db, redis);
-  const reviewRepository = new ReviewRepository(db, redis);
   const fieldPlanRepository = new IpoFieldPlanRepository(db, redis);
 
   // A retired slug (name-pollution cleanup, dedup merge, admin rename) 308s to
@@ -264,9 +261,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     notFound();
   }
 
-  // Fetch review summary (Story 11.16)
-  const reviewSummary = await reviewRepository.getReviewSummary(ipoWithRelations.id);
-
   // T-489: one score display model regardless of source (stored editorial
   // row vs. realtime financial-data score) — see getScoreDisplayModel above.
   const scoreDisplay = await getScoreDisplayModel(
@@ -296,7 +290,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     peers: [],
     ipoScore: ipoWithRelations.ipoScore ?? null,
     anchorInvestor: ipoWithRelations.anchorInvestor ?? null,
-    reviewSummary: reviewSummary ?? null,
     metadata: {
       lastUpdated: new Date().toISOString(),
     },
@@ -444,7 +437,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   const hasScore = Boolean(scoreDisplay);
   const hasFinancials = Boolean(financialData);
   const hasGmpHistory = (gmpRecords?.length ?? 0) > 0;
-  const hasBrokerReviews = Boolean(reviewSummary && (reviewSummary.totalReviews ?? 0) > 0);
   const hasObjectives = (ipo.objectives?.length ?? 0) > 0;
   const hasPromoterHolding = Boolean(
     financialData?.promoterHoldingPreIssue && financialData?.promoterHoldingPostIssue
@@ -464,7 +456,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     !hasFinancials && 'Financials & KPIs',
     !hasSubscriptions && 'Subscription',
     !hasGmpHistory && 'GMP trend',
-    !hasBrokerReviews && 'Broker reviews',
     !hasPromoterHolding && 'Promoter holding',
     !hasAnchor && 'Anchor investors',
     !hasPeers && 'Peer comparison',
@@ -726,11 +717,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             />
             <LiveFigureAsAt label="Subscription" at={latestSubscription?.timestamp ?? null} />
             </section>
-
-            {/* 11. Broker Recommendations */}
-            {hasBrokerReviews && (
-              <RecommendationSummarySection reviewSummary={reviewSummary} />
-            )}
 
             {/* 12. IPO Objectives Section */}
             {hasObjectives && (

@@ -12,7 +12,7 @@
     "re-read",
     "read-side"
   ],
-  "coverageFloor": 109,
+  "coverageFloor": 108,
   "entries": [
     {
       "glob": "scraper/src/services/document-discovery-runner.ts",
@@ -248,10 +248,6 @@
     },
     {
       "glob": "scraper/src/scrapers/ipo-alerts-fallback.ts",
-      "module": "extraction"
-    },
-    {
-      "glob": "scraper/src/scrapers/ipo-reviews-aggregator.ts",
       "module": "extraction"
     },
     {

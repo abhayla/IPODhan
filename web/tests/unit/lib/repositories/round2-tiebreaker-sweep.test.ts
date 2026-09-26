@@ -16,7 +16,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ScraperLogRepository } from '@/lib/repositories/scraper-log-repository';
 import { GMPRepository } from '@/lib/repositories/gmp-repository';
 import { SubscriptionRepository } from '@/lib/repositories/subscription-repository';
-import { ReviewRepository } from '@/lib/repositories/review-repository';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import type Redis from 'ioredis';
 
@@ -89,23 +88,6 @@ describe('SubscriptionRepository.findByIPO — #358 tiebreaker', () => {
     mockDb.select = vi.fn().mockReturnValue(mockSelect);
 
     await repository.findByIPO({ ipoId: 'ipo-1', limit: 10 });
-
-    expect(mockSelect.orderBy.mock.calls[0].length).toBeGreaterThan(1);
-  });
-});
-
-describe('ReviewRepository.findByIpoId — #358 tiebreaker', () => {
-  it('publishedDate sort + limit carries a secondary key', async () => {
-    const repository = new ReviewRepository(mockDb, mockRedis);
-    const mockSelect = {
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-      orderBy: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockResolvedValue([]),
-    };
-    mockDb.select = vi.fn().mockReturnValue(mockSelect);
-
-    await repository.findByIpoId('ipo-1', 10);
 
     expect(mockSelect.orderBy.mock.calls[0].length).toBeGreaterThan(1);
   });
