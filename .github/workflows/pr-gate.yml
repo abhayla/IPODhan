@@ -513,12 +513,10 @@ jobs:
         # npm ci (batch 4 below).
         run: |
           node --test scripts/tests/apply-rule-ownership.test.mjs
-          node --test scripts/tests/audit-ipo-coverage-exit-reason.test.mjs
           node --test scripts/tests/audit-reverse-sweep.test.mjs
           node --test scripts/tests/cache-poison-bisect.test.mjs
           node --test scripts/tests/check-build-cards-isignored.test.mjs
           node --test scripts/tests/check-ledger-rows-for-done-cards.test.mjs
-          node --test scripts/tests/check-stage3-dod.test.mjs
           node --test scripts/tests/details-row-coverage.test.mjs
           node --test scripts/tests/document-state-checks-name-their-entity.test.mjs
           node --test scripts/tests/field-plan-slot.test.mjs
@@ -569,6 +567,8 @@ jobs:
         #     -> typescript
         # None opens a database connection.
         run: |
+          node --test scripts/tests/audit-ipo-coverage-exit-reason.test.mjs
+          node --test scripts/tests/check-stage3-dod.test.mjs
           node --test scripts/tests/admin-queue-size.test.mjs
           node --test scripts/tests/audit-ipo-coverage-distinct-on.test.mjs
           node --test scripts/tests/audit-ipo-coverage-served-stored.test.mjs
