@@ -207,15 +207,17 @@ export async function storeDocument(params: {
 }
 
 /**
- * Days elapsed since `closeDate`, compared as whole days so the boundary does
- * not move with the time of day. Null when there is no usable close date.
+ * Days elapsed since `anchor` (a close date OR a last-successful-extraction
+ * timestamp — both are "the clock started here" instants), compared as whole
+ * days so the boundary does not move with the time of day. Null when there is
+ * no usable anchor.
  */
-function daysSinceClose(closeDate: Date | string | null, now: Date): number | null {
-  if (!closeDate) return null;
-  const close = closeDate instanceof Date ? closeDate : new Date(closeDate);
-  if (Number.isNaN(close.getTime())) return null;
+function daysSince(anchor: Date | string | null, now: Date): number | null {
+  if (!anchor) return null;
+  const at = anchor instanceof Date ? anchor : new Date(anchor);
+  if (Number.isNaN(at.getTime())) return null;
   const dayMs = 24 * 60 * 60 * 1000;
-  return Math.floor(now.getTime() / dayMs) - Math.floor(close.getTime() / dayMs);
+  return Math.floor(now.getTime() / dayMs) - Math.floor(at.getTime() / dayMs);
 }
 
 /**
@@ -235,7 +237,7 @@ export function isPurgeDue(params: {
   now?: Date;
 }): boolean {
   if (params.withdrawn === true) return true;
-  const elapsed = daysSinceClose(params.closeDate, params.now ?? new Date());
+  const elapsed = daysSince(params.closeDate, params.now ?? new Date());
   if (elapsed === null) return false;
   return elapsed > (params.retentionDays ?? DEFAULT_RETENTION_DAYS);
 }
@@ -328,6 +330,23 @@ export function decidePurge(params: {
    * failure, not a safer one. The SQL that feeds the real call site supplies it.
    */
   textlessCount?: number;
+  /**
+   * OD-32 (#933): the most recent successful extraction across this IPO's
+   * documents. This, not `closeDate`, is the soft window's anchor.
+   *
+   * Measured on staging 2026-09-23 (#933): a document extracted 2026-09-11
+   * (due for deletion 2026-09-18 under OD-32) was still on disk on
+   * 2026-09-23 because the ONLY clock this function read was `closeDate`
+   * (close 2026-09-21, so due 2026-09-28) — ten days late, and an IPO whose
+   * close_date is NULL would never purge on this clock at all, however old
+   * its extraction was.
+   *
+   * OPTIONAL: absent/null means nothing has ever been successfully extracted
+   * for this IPO, and the function falls back to the close-date clock so the
+   * hard cap still protects the disk against a filing nobody has managed to
+   * read (`document-purge-policy.test.ts`'s existing arms are unaffected).
+   */
+  lastExtractedAt?: Date | string | null;
   retentionDays?: number;
   maxRetentionDays?: number;
   now?: Date;
@@ -349,11 +368,16 @@ export function decidePurge(params: {
 
   if (params.withdrawn === true) return { purge: true, reason: 'withdrawn' };
 
-  const elapsed = daysSinceClose(params.closeDate, params.now ?? new Date());
-  if (elapsed === null) return { purge: false, reason: 'no_close_date' };
-
+  const now = params.now ?? new Date();
   const soft = params.retentionDays ?? DEFAULT_RETENTION_DAYS;
   const hard = params.maxRetentionDays ?? DEFAULT_MAX_RETENTION_DAYS;
+
+  // OD-32 anchor: once something has been successfully extracted, ITS clock
+  // decides the soft window, regardless of what close_date says. Falls
+  // through to the close-date clock only when nothing has ever extracted.
+  const extractionElapsed = daysSince(params.lastExtractedAt ?? null, now);
+  const elapsed = extractionElapsed !== null ? extractionElapsed : daysSince(params.closeDate, now);
+  if (elapsed === null) return { purge: false, reason: 'no_close_date' };
 
   if (elapsed > hard) return { purge: true, reason: 'hard_cap' };
   if (elapsed <= soft) return { purge: false, reason: 'not_due' };

@@ -2535,13 +2535,44 @@ export const PURGE_CANDIDATES_SQL = `
       LEFT JOIN document_fetch_state s ON s.ipo_id = i.id
       LEFT JOIN documents d ON d.ipo_id = i.id
      WHERE i.offering_type = 'IPO'
-       AND i.close_date IS NOT NULL
        AND (
-         i.close_date < now() - make_interval(days => {{RETENTION_DAYS}})
+         (i.close_date IS NOT NULL AND i.close_date < now() - make_interval(days => {{RETENTION_DAYS}}))
          OR upper(i.status::text) IN ('WITHDRAWN', 'POSTPONED')
+         -- #933 (OD-32): a document's OWN extraction clock is a candidate
+         -- trigger independent of close_date. Before this, an IPO whose
+         -- close_date was NULL or not yet due was never even considered here,
+         -- however old its last successful extraction was -- so the RCA was
+         -- never a decidePurge bug alone, it started at candidate selection.
+         OR EXISTS (
+           SELECT 1 FROM documents d2
+            WHERE d2.ipo_id = i.id
+              AND d2.extracted_at IS NOT NULL
+              AND d2.extracted_at < now() - make_interval(days => {{RETENTION_DAYS}})
+         )
        )
      GROUP BY i.id, i.close_date, i.status
 `;
+
+/**
+ * Substitutes every `{{RETENTION_DAYS}}` placeholder in `PURGE_CANDIDATES_SQL`.
+ *
+ * #933 round 2 CRITICAL (Tier A review of PR #1131): the query gained a
+ * SECOND `{{RETENTION_DAYS}}` occurrence (the extraction-age EXISTS arm)
+ * alongside the original close-date arm, but the call site substituted with
+ * `String.prototype.replace(string, ...)`, which replaces only the FIRST
+ * match. The second arm reached Postgres as the literal text
+ * `{{RETENTION_DAYS}}` on every single run, which is invalid SQL syntax;
+ * `runDocumentPurge`'s caller treats a purge failure as non-fatal
+ * (`non-fatal-side-effects.md`), so the purge silently did NOTHING, forever —
+ * including the withdrawal arm and the 30-day hard cap — and the store would
+ * grow to the 5 GB cap (the 2026-06-13 disk-full class). Exported so a test
+ * can assert on the ACTUAL substitution path rather than duplicating it.
+ */
+export function buildPurgeCandidatesSql(retentionDays: number): string {
+  // W-101: retentionDays is validated finite/>=0 by getRetentionDays(); Math.trunc
+  // guards against a non-integer env value producing invalid SQL syntax.
+  return PURGE_CANDIDATES_SQL.replaceAll('{{RETENTION_DAYS}}', String(Math.trunc(retentionDays)));
+}
 
 /**
  * PURGE_PDFS (D4). Deletes local PDFs for IPOs past
@@ -2553,11 +2584,7 @@ export async function runDocumentPurge(): Promise<PurgeSummary> {
   const retentionDays = getRetentionDays();
   const maxRetentionDays = getMaxRetentionDays();
 
-  // W-101: retentionDays is validated finite/>=0 by getRetentionDays(); Math.trunc
-  // guards against a non-integer env value producing invalid SQL syntax.
-  const result = await db.execute(
-    sql.raw(PURGE_CANDIDATES_SQL.replace('{{RETENTION_DAYS}}', String(Math.trunc(retentionDays))))
-  );
+  const result = await db.execute(sql.raw(buildPurgeCandidatesSql(retentionDays)));
   const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<
     string,
     unknown
@@ -2573,6 +2600,11 @@ export async function runDocumentPurge(): Promise<PurgeSummary> {
       // Item 18 slice 2: supplied, so the veto is live rather than a parameter
       // nothing passes. An unwired guard is the class item 20's gate exists for.
       textlessCount: Number(row.textless_count ?? 0),
+      // #933 (OD-32): the soft window's anchor is this IPO's most recent
+      // successful extraction, not close_date. `latest_extracted_at` is null
+      // when nothing has ever extracted, in which case decidePurge falls back
+      // to the close-date clock on its own.
+      lastExtractedAt: (row.latest_extracted_at as Date | string | null) ?? null,
       retentionDays,
       maxRetentionDays,
     });
@@ -2607,7 +2639,16 @@ export async function runDocumentPurge(): Promise<PurgeSummary> {
     summary.purged++;
     summary.filesDeleted += purge.filesDeleted;
     summary.bytesFreed += purge.bytesFreed;
-    logger.info({ ipoId: String(row.id), reason: decision.reason }, 'Purged IPO document PDFs');
+    logger.info(
+      {
+        ipoId: String(row.id),
+        reason: decision.reason,
+        // #933: names which clock actually fired, since the anchor now
+        // differs per IPO (extraction when available, close_date otherwise).
+        anchor: row.latest_extracted_at ? 'last_successful_extraction' : 'close_date',
+      },
+      'Purged IPO document PDFs'
+    );
   }
   return summary;
 }
