@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "https://www.sebi.gov.in/sebi_data/attachdocs/aug-2026/1787293220556.pdf",
+  "capturedAt": "2026-09-26",
+  "ipoId": "hy-tech-engineers-ltd",
+  "company": "Hy-Tech Engineers",
+  "note": "RHP dated 2026-08-27 (SEBI filing page https://www.sebi.gov.in/filings/public-issues/aug-2026/hy-tech-engineers-limited-rhp_103844.html). [pageIndex, text] pairs from pdfplumber page.extract_text() exactly as extract_filing.py reads them; 0-based pages 22-63 = SECTION II - RISK FACTORS through the page that opens SECTION III. #502/#503 fixture."
+}

@@ -2090,21 +2090,86 @@ def extract_objects_of_offer(page_texts):
 
 _RF_HEAD_RX = re.compile(r"^\s*(?:SECTION\s+[IVXL]+\s*[-–—:]?\s*)?RISK FACTORS\s*$", re.I)
 _SECTION_RX = re.compile(r"^\s*SECTION\s+[IVXL]+\b", re.I)
+_RF_ITEM_RX = re.compile(r"^(\d{1,3})\.\s+(.+)$")
+# A risk-factor category banner ("INTERNAL RISKS", "RISKS RELATING TO OUR
+# BUSINESS") sits between two risk factors; it is neither's body.
+_RF_BANNER_RX = re.compile(r"^[A-Z0-9][A-Z0-9 ,&'’()/-]*\bRISKS?\b[A-Z0-9 ,&'’()/-]*$")
+
+
+def _rf_real_candidates(cands):
+    """#502/#503: pick which numbered lines are the chapter's own risk factors.
+
+    `cands` is the ordered list of every "<n>. text" line in the chapter. The
+    chapter numbers its risk factors 1..N once; a table or list INSIDE a risk
+    factor restarts at "1." (a properties table, a top-ten-customers table, a
+    list of regulator notices) and then runs 2, 3, ... — so its row "2." sits
+    exactly where the next risk factor "2." is awaited. Strict sequence alone
+    took those rows as risk factors (prasol: 8 notice rows and 10 property
+    rows; hy-tech: the customer rows) and published their cells as headings.
+
+    So a restart at "1." opens a NESTED run. A line whose number both
+    continues the chapter and continues the open nested run is ambiguous; it
+    belongs to the nested run when the same number appears again later as an
+    ORPHAN (its previous numbered line is not n-1) — that later line is the
+    risk factor printed after the table ended. Accepting a risk factor closes
+    any nested run, because a list never outlives the risk factor holding it."""
+    real, expected, nested = [], 1, None
+    for i, (_pos, n) in enumerate(cands):
+        if n == expected:
+            if nested == n and any(
+                cands[j][1] == n and cands[j - 1][1] != n - 1 for j in range(i + 1, len(cands))
+            ):
+                nested += 1
+                continue
+            real.append(i)
+            expected += 1
+            nested = None
+        elif n == 1:
+            nested = 2
+        elif nested is not None and n == nested:
+            nested += 1
+    return real
+
+
+def _rf_split_heading(joined, limit):
+    sentence = re.match(r"^(.+?[.?!])(?:\s|$)", joined)
+    if sentence:
+        # A found first sentence is used verbatim — W-80: never truncate it,
+        # even past `limit`, so a short heading is never mangled by a cap
+        # meant for the no-sentence fallback below.
+        heading = sentence.group(1)
+    elif len(joined) <= limit:
+        heading = joined
+    else:
+        # No sentence-ending punctuation within reach: cut at the last word
+        # boundary before `limit` chars (never mid-word, never mid-number —
+        # both are single unbroken tokens with no internal whitespace) and
+        # mark the cut with an ellipsis so a truncated heading is visibly
+        # partial rather than looking like a complete, un-terminated one.
+        cut = joined[:limit].rstrip()
+        last_space = cut.rfind(" ")
+        if last_space > 0:
+            cut = cut[:last_space]
+        return cut.rstrip() + "…", joined[len(cut):].strip()
+    return heading.strip(), joined[len(heading):].strip()
 
 
 def extract_risk_factors(page_texts, limit=480):
-    """E8: the numbered risk factors of the RISK FACTORS chapter.
+    """E8: the numbered risk factors of the RISK FACTORS chapter, each with its
+    heading AND its body (spec fields 146/147/159: `heading`, `body`).
 
     The chapter heading is matched in ANY of its printed forms ("SECTION II -
     RISK FACTORS" as well as a bare "RISK FACTORS"); a line carrying dot
-    leaders is the table of contents, not the chapter. Items are accepted only
-    in strict sequence (n == previous + 1), which is what separates a real risk
-    factor from the nested lists and wrapped line numbers that also start with
-    "<digits>." inside the chapter."""
-    items, first_page, expected, in_section = [], None, 1, False
+    leaders is the table of contents, not the chapter. Which numbered lines are
+    risk factors is decided by `_rf_real_candidates` (chapter sequence, with
+    tables/lists inside a risk factor recognised by their restart at "1.").
+    heading = the risk factor's first sentence; body = the rest of its text up
+    to the next risk factor (page numbers and category banners dropped). One
+    row per heading: a heading printed twice keeps its first occurrence."""
+    lines, first_page, in_section = [], None, False
     for idx, text in page_texts:
-        lines = [ln.strip() for ln in (text or "").split("\n")]
-        headings = [ln for ln in lines if "...." not in ln]
+        raw = [ln.strip() for ln in (text or "").split("\n")]
+        headings = [ln for ln in raw if "...." not in ln]
         if not in_section:
             if any(_RF_HEAD_RX.match(ln) for ln in headings):
                 in_section = True
@@ -2113,42 +2178,27 @@ def extract_risk_factors(page_texts, limit=480):
                 continue
         elif any(_SECTION_RX.match(ln) and not _RF_HEAD_RX.match(ln) for ln in headings):
             break
-        current = None
-        for ln in lines:
-            m = re.match(r"^(\d{1,3})\.\s+(.+)$", ln)
-            if m and int(m.group(1)) == expected:
-                current = {"n": expected, "parts": [m.group(2)]}
-                items.append(current)
-                expected += 1
+        for ln in raw:
+            if not ln or re.match(r"^\d{1,4}$", ln) or _RF_HEAD_RX.match(ln) or _RF_BANNER_RX.match(ln):
                 continue
-            if current is not None:
-                if not ln or re.match(r"^\d{1,4}$", ln) or re.match(r"^\d{1,3}\.\s", ln):
-                    current = None
-                else:
-                    current["parts"].append(ln)
-    out = []
-    for item in items:
-        joined = re.sub(r"\s+", " ", " ".join(item["parts"])).strip()
-        sentence = re.match(r"^(.+?[.?!])(?:\s|$)", joined)
-        if sentence:
-            # A found first sentence is used verbatim — W-80: never truncate it,
-            # even past `limit`, so a short heading is never mangled by a cap
-            # meant for the no-sentence fallback below.
-            heading = sentence.group(1)
-        elif len(joined) <= limit:
-            heading = joined
-        else:
-            # No sentence-ending punctuation within reach: cut at the last word
-            # boundary before `limit` chars (never mid-word, never mid-number —
-            # both are single unbroken tokens with no internal whitespace) and
-            # mark the cut with an ellipsis so a truncated heading is visibly
-            # partial rather than looking like a complete, un-terminated one.
-            cut = joined[:limit].rstrip()
-            last_space = cut.rfind(" ")
-            if last_space > 0:
-                cut = cut[:last_space]
-            heading = cut.rstrip() + "…"
-        out.append({"n": item["n"], "heading": heading.strip()})
+            lines.append(ln)
+    cands = []
+    for pos, ln in enumerate(lines):
+        m = _RF_ITEM_RX.match(ln)
+        if m:
+            cands.append((pos, int(m.group(1))))
+    real = [cands[i] for i in _rf_real_candidates(cands)]
+    out, seen = [], set()
+    for k, (pos, n) in enumerate(real):
+        end = real[k + 1][0] if k + 1 < len(real) else len(lines)
+        first = _RF_ITEM_RX.match(lines[pos]).group(2)
+        joined = re.sub(r"\s+", " ", " ".join([first] + lines[pos + 1:end])).strip()
+        heading, body = _rf_split_heading(joined, limit)
+        key = re.sub(r"[^a-z0-9]+", "", heading.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"n": n, "heading": heading, "body": body or None})
     return out, first_page
 
 
