@@ -1761,6 +1761,42 @@
       "phase1": false,
       "title": "8,421 field-plan rows sit in CHECK_FAILED; they are re-claimed, but the failure volume is unexplained",
       "detail": "Measured 2026-09-26 on ipodhan_staging, read-only: ipo_field_plan by state -> NOT_AVAILABLE_YET 8454, CHECK_FAILED 8421, SUPPLIED 340, EXHAUSTED 66. Of the 16,875 waiting rows only 42 were last updated more than 3 days ago (the #762 re-queue path works). CHECK_FAILED by IPO status: LISTED 3790, OPEN 2595, CLOSED 1369, UPCOMING 667. Why this many values fail validation is not measured; bears on item 4 and OD-62 (field_extraction_failures). Open for owner decision only if it implies a rule change."
+    },
+    {
+      "id": "F-179",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "field 13 sector / Chittorgarh",
+      "phase1": false,
+      "title": "A Chittorgarh IPO detail page carries exactly one numeric industry code, and Chittorgarh's industry index names all 197 codes",
+      "detail": "Measured 2026-09-26 from the laptop on 4 live CG detail pages: Paramount Syntex (SME) code 66 = Other Textile Products; Dove Soft (SME) 176 = Software Products; Runwal Enterprises (Mainboard) 78 = Real Estate related services; Nityas Gems & Jewellery (Mainboard) 53 = Gems, Jewellery And Watches. The name appears on the page only in a \"Recently Listed IPOs in X\" heading, and only when CG has other IPOs of that industry; the index page maps all 197 codes. All 5 sector values stored on ipodhan_staging (21 rows) are in the index. Basis for OD-126; PR #1122."
+    },
+    {
+      "id": "F-180",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "field_sources / lead managers / logging",
+      "phase1": false,
+      "title": "The discovered-lead-manager provenance upsert failed on every call (42P10) and its log line dropped the database cause",
+      "detail": "Measured 2026-09-26: ipodhan_staging field_sources has one unique index, unique_field_source_per_ipo (ipo_id, table_name, row_key, field_name); recordDiscoveredLeadManagers used ON CONFLICT (ipo_id, table_name, field_name), so Postgres raised 42P10 and rolled back the ipos.lead_managers write. Staging pm2 logs: 18 \"Failed to record discovered lead managers (non-fatal)\" warnings across 9 IPOs, each showing only drizzle's \"Failed query:\" wrapper, so a grep for 42P10 found 0 lines. 7 of the 9 IPOs had lead_managers NULL and no provenance (axiom-gas-engineering-ltd, bench-mark-infotech-services-ltd, coreintegra-consulting-services-ltd, green-asia-impex-ltd, himalayan-solar-ltd, pooja-logistics-ltd, spectraa-technology-solutions-ltd). Fixed by PR #1118 (#1074)."
+    },
+    {
+      "id": "F-181",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "data_conflicts / admin queue",
+      "phase1": false,
+      "title": "Same-source unresolved conflicts are still created daily, from four code defects",
+      "detail": "Measured 2026-09-26 on ipodhan_staging: unresolved data_conflicts created 09-23/09-24/09-25 = 7/2/21, of which source1 = source2 on 3/2/8; open total 14,162. The 13 same-source rows of 09-23..09-25 split into (1) bookkeeping fields lastScrapedAt/updatedAt logged as conflicts (moneyview-ltd, skyways-air-services-ltd x2, steamhouse-india-ltd, veegaland-developers-ltd); (2) field_name \"unknown\" from DRHP with a document (veegaland-developers-ltd, skyways-air-services-ltd); (3) a source refreshing its own value logged as a conflict (CHITTORGARH listingDate sai-urja-indo-ventures-ltd 2026-09-30 -> 2026-10-05; issueSize shree-tnb-polymers-ltd, green-asia-impex-ltd; companyName acevector-ltd); (4) float artefacts in CG issue size (vinod-texworld-ltd 428400000.00000006, panchatv-bharat-ltd 245799999.99999997). Contradicts an earlier reading that no new noise rows were being created. Bears on OD-75 and #818."
+    },
+    {
+      "id": "F-182",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "detection floor",
+      "phase1": false,
+      "title": "The nightly floor audits production, which lags main's migrations, so a check reading a new column throws",
+      "detail": "Measured 2026-09-26: the VPS cron (scripts/vps-data-audit-cron.sh) resets to origin/main nightly and audits the production DB. Floor runs of 2026-09-24 (26 lines) and 2026-09-25 (7 lines) ended with no SUMMARY because one throwing check killed main() (fixed by #1056); the 2026-09-26 run completed (85 checks) but checkSettledFieldRewrites threw \"column fs.row_key does not exist\" and was recorded under its function name, so check_roster reported s_settled_field_rewritten as never run. Fixed by PR #1117 (#1113): throws record under registered ids and the check probes the migration."
     }
   ],
   "false_assertions": [
