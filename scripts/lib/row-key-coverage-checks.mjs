@@ -53,7 +53,12 @@
 // `PersistFilingSummary.marker_write_failed` / `AnchorPersistSummary.markerWriteFailed`,
 // rolled up into the `markerWriteFailed` field of the "Anchor auto-persist
 // summary for this cycle (W-168)" log line in `document-cycle.ts`. That
-// counter, not this audit check, is the signal for a failed marker write.
+// counter, not this audit check, is the signal for a failed marker write —
+// and the nightly floor check `m_provenance_marker_write_failed`
+// (scripts/lib/scraper-wake-detection.mjs's checkProvenanceMarkerWriteFailed,
+// registered in scripts/audit-detection-floor.mjs) is what actually reads
+// that structured log line and reports it, closing the gap this comment used
+// to leave open.
 import { rowKeyForName } from './normalize-company-name.mjs';
 
 // GUARD (table list): the four multi-row child tables this check sweeps.

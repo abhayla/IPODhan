@@ -99,8 +99,9 @@ import { extractShape, compareShape, partitionFixtures, loadHtmlFixtureEntries, 
 import { findFixtureFiles } from './lib/fixture-provenance-checks.mjs';
 import {
   checkScraperWakeCrontabLine, checkScraperWakeFreshness, checkScraperWakeSkippedRun,
+  checkProvenanceMarkerWriteFailed,
   SCRAPER_WAKE_CADENCE_BY_SLOT, SCRAPER_WAKE_CADENCE_MINUTES, SCRAPER_WAKE_FRESHNESS_SLACK_MINUTES,
-  SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD,
+  SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD, PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS,
 } from './lib/scraper-wake-detection.mjs';
 import { newestWakeTimestamp } from './ops/wake-delta.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
@@ -1588,6 +1589,22 @@ function scraperWakeSkippedRunViolation(slot) {
   }
 }
 
+// #648: same log file, same "runs for real on the box, UNVERIFIABLE
+// elsewhere" convention — cron redirects the scraper's own stdout (pino JSON)
+// into this file alongside the scraper-wake.sh `log()` lines the checks above
+// read (scripts/deploy-linux.sh install_scraper_cron: `>> $SCRAPER_WAKE_LOG
+// 2>&1`). See scripts/lib/scraper-wake-detection.mjs's
+// checkProvenanceMarkerWriteFailed for the class this closes.
+function scraperMarkerWriteFailedViolation(slot) {
+  const logPath = SCRAPER_WAKE_LOG_PATH_BY_SLOT[slot];
+  try {
+    if (!existsSync(logPath)) return `slot ${slot}: log file not present at ${logPath}`;
+    return checkProvenanceMarkerWriteFailed(slot, readFileSync(logPath, 'utf8'), new Date().toISOString());
+  } catch (e) {
+    return `slot ${slot}: could not read the wake log: ${e.message}`;
+  }
+}
+
 // #663: two invariants over BOTH slots, one record() id each (same
 // "population, offenders" shape as m_brlm_count/checkH) — reported by slot
 // per signal-ownership.md R1, never as a bare pass/fail. `crontab -l` and the
@@ -1604,6 +1621,7 @@ async function checkScraperWake() {
     record('m_scraper_wake_crontab', `crontab -l carries exactly one "# ipodhan-scraper-wake:<slot>" line per slot, naming the current symlink and that slot's cadence`, 'UNVERIFIABLE', detail);
     record('m_scraper_wake_freshness', `newest wake log line per slot is within ${SCRAPER_WAKE_FRESHNESS_CEILING_MINUTES} minutes`, 'UNVERIFIABLE', detail);
     record('m_scraper_wake_skipped_run', `newest ${SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD} wake log lines per slot are not all wake-skipped`, 'UNVERIFIABLE', detail);
+    record('m_provenance_marker_write_failed', `no provenance-marker-write-failed event in the last ${PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS}h per slot`, 'UNVERIFIABLE', detail);
     return;
   }
 
@@ -1627,6 +1645,17 @@ async function checkScraperWake() {
   for (const v of skippedRunOffenders) notify('m_scraper_wake_skipped_run', 'P1', v, 'a scraper slot has printed a run of consecutive wake-skipped lines', v);
   record('m_scraper_wake_skipped_run', `newest ${SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD} wake log lines per slot are not all wake-skipped (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
     skippedRunOffenders.length === 0 ? 'PASS' : 'FAIL', skippedRunOffenders.join('; ') || 'no stuck-lock run on any slot');
+
+  // #648: F-101/#615 made a failed provenance-marker write catchable-and-silent
+  // (child-row-unresolved-noter.ts logs it as event `provenance-marker-write-failed`
+  // but nothing read that log until now — signal-ownership.md R3, "every nightly
+  // signal has a consumer that diffs").
+  const markerWriteOffenders = SCRAPER_WAKE_SLOTS
+    .map((slot) => scraperMarkerWriteFailedViolation(slot))
+    .filter(Boolean);
+  for (const v of markerWriteOffenders) notify('m_provenance_marker_write_failed', 'P2', v, 'a scraper slot logged a failed provenance-marker write', v);
+  record('m_provenance_marker_write_failed', `no provenance-marker-write-failed event in the last ${PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS}h per slot (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
+    markerWriteOffenders.length === 0 ? 'PASS' : 'FAIL', markerWriteOffenders.join('; ') || 'no failed marker writes on any slot');
 }
 
 // ---- (i): wire-or-retire — scheduler tree reachable from the prod entrypoint --
@@ -3752,7 +3781,7 @@ async function main() {
   await runCheck(checkG3_inertDetector, ['g_inert_detector']);
   await runCheck(checkG, ['g_freshness_per_type']);
   await runCheck(checkH, ['h_pm2_env_tz', 'h_pm2_log_size']);
-  await runCheck(checkScraperWake, ['m_scraper_wake_crontab', 'm_scraper_wake_freshness', 'm_scraper_wake_skipped_run']);
+  await runCheck(checkScraperWake, ['m_scraper_wake_crontab', 'm_scraper_wake_freshness', 'm_scraper_wake_skipped_run', 'm_provenance_marker_write_failed']);
   await runCheck(checkI, ['i_wire_or_retire']);
   await runCheck(checkIdentity, ['i_same_ipo_two_rows', 'i_ipo_title_in_name', 'i_company_two_live_rows', 'i_name_bound_live', 'i_identity_held']);
   await runCheck(checkSourceKeyConflicts, ['i_source_key_conflict']);
