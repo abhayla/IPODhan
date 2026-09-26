@@ -50,6 +50,21 @@ describe('MAJOR-2 — a timed-out sidecar is not a memory abort', () => {
     expect((result as { reason: string }).reason).not.toContain('memory');
   });
 
+  it('#583: EAGAIN / ENOMEM / EMFILE (the box could not start the sidecar) is sidecar_spawn_resource, like the filing path', () => {
+    for (const code of ['EAGAIN', 'ENOMEM', 'EMFILE']) {
+      spawnSyncMock.mockReturnValue({
+        status: null,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        error: Object.assign(new Error(`spawnSync nice ${code}`), { code }),
+      });
+      const result = extractPageTexts('C:/store/x.pdf');
+      expect((result as { kind: string }).kind).toBe('sidecar_spawn_resource');
+      expect((result as { reason: string }).reason).toContain(code);
+    }
+  });
+
   it('exit 3 (the memory guard) IS a hard failure', () => {
     spawnSyncMock.mockReturnValue({
       status: ANCHOR_SIDECAR_MEMORY_CEILING_EXIT,
