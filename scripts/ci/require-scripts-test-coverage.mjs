@@ -47,7 +47,12 @@ const EXCLUSIONS = 'scripts/ci/scripts-test-exclusions.json';
 const MIN_REASON_LENGTH = 30;
 const KINDS = new Set(['cannot-run-in-ci', 'broken']);
 const TEST_FILE_RE = /\.test\.(mjs|ts|sh)$/;
-const REF_RE = /scripts\/(?:tests|ci\/tests)\/[A-Za-z0-9._/-]+\.test\.(?:mjs|ts|sh)/g;
+// Anchored both ends so a reference names ONE file exactly: without the
+// lookbehind `myscripts/tests/x.test.mjs` or `.scripts/tests/...` would count,
+// and without the lookahead `foo.test.mjs.bak` / `foo.test.mjsx` would satisfy
+// `foo.test.mjs` (round-1 review finding, #616). A trailing sentence period is
+// still allowed; `.` followed by a word character is not.
+export const REF_RE = /(?<![\w.])scripts\/(?:tests|ci\/tests)\/[A-Za-z0-9._/-]+?\.test\.(?:mjs|ts|sh)(?!\w|\.\w)/g;
 
 /**
  * Every `*.test.{mjs,ts,sh}` file directly under scripts/tests/ or

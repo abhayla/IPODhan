@@ -15,7 +15,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { analyze, listScriptsTests, listWorkflowFiles } from '../ci/require-scripts-test-coverage.mjs';
+import { analyze, listScriptsTests, listWorkflowFiles, REF_RE } from '../ci/require-scripts-test-coverage.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -213,6 +213,34 @@ test('a multi-line run: block wires every file it mentions', () => {
   withRepo({ files: ['a.test.mjs', 'b.test.mjs'], runFiles: [], exclusions: [], workflow }, (root) => {
     assert.deepEqual(analyze({ root }).problems, []);
   });
+});
+
+for (const longer of ['foo.test.mjs.bak', 'foo.test.mjsx']) {
+  test(`a reference to ${longer} does NOT wire foo.test.mjs (anchored REF_RE, round-1 finding 2)`, () => {
+    const workflow = [
+      'jobs:',
+      '  gate:',
+      '    steps:',
+      '      - name: runs a longer-named file only',
+      `        run: node --test scripts/tests/${longer}`,
+      '',
+    ].join('\n');
+    withRepo({ files: ['foo.test.mjs'], runFiles: [], exclusions: [], workflow }, (root) => {
+      const { problems, wired } = analyze({ root });
+      assert.ok(!wired.includes('scripts/tests/foo.test.mjs'), `wired: ${wired.join(', ')}`);
+      assert.ok(problems.some((p) => p.startsWith('scripts/tests/foo.test.mjs runs in NO CI workflow')));
+    });
+  });
+}
+
+test('REF_RE matches an exact reference, a ./ prefix and a trailing period, never a longer name', () => {
+  const hits = (t) => [...t.matchAll(REF_RE)].map((m) => m[0]);
+  assert.deepEqual(hits('node --test scripts/tests/foo.test.mjs'), ['scripts/tests/foo.test.mjs']);
+  assert.deepEqual(hits('node --test ./scripts/ci/tests/foo.test.ts'), ['scripts/ci/tests/foo.test.ts']);
+  assert.deepEqual(hits('see scripts/tests/foo.test.sh.'), ['scripts/tests/foo.test.sh']);
+  assert.deepEqual(hits('scripts/tests/foo.test.mjs.bak'), []);
+  assert.deepEqual(hits('scripts/tests/foo.test.mjsx'), []);
+  assert.deepEqual(hits('myscripts/tests/foo.test.mjs'), []);
 });
 
 test('the REAL repository tree is fully classified', () => {

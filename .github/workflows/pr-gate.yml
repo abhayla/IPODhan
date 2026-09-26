@@ -72,6 +72,19 @@ jobs:
         # scripts/tests/require-scripts-test-coverage.test.mjs.
         run: node scripts/ci/require-scripts-test-coverage.mjs
 
+      - name: "CI step install order (T-570 — pre-install steps reach builtins only)"
+        # For every job of every workflow, resolves the static import graph
+        # (import/export-from, literal import()/require(), relative .js->.ts)
+        # of each `node` / `node --test` file run BEFORE the job's npm ci (or
+        # in a job with none) and fails naming the step, file, package and
+        # import chain when it reaches an npm package. Three misplacements on
+        # 2026-09-26 (#1139 typescript, #1146 pg, #1174 pg) each passed
+        # locally and failed here with ERR_MODULE_NOT_FOUND. Builtins-only
+        # itself. Self-test: scripts/tests/check-ci-step-install-order.test.mjs.
+        run: |
+          node --test scripts/tests/check-ci-step-install-order.test.mjs
+          node scripts/ci/check-ci-step-install-order.mjs
+
       - name: node --test glob guard (#461 — hollow-gate prevention)
         # `node --test` with a wildcard argument exits 0 silently when the
         # wildcard matches zero files. This CI has 0 wildcard-shaped
@@ -490,18 +503,18 @@ jobs:
         run: node --test scripts/lib/signal-health-checks.test.mjs
 
       - name: "scripts/tests wire-or-retire batch 1 (#616/#681/#1158, builtins-only)"
-        # All 23 of these import Node builtins only (or a local scripts/lib
-        # or scripts/ops or docs/design module that itself imports builtins
-        # only) — no npm package, so they run here with the other pre-install
-        # node --test steps, not after npm ci. Each is a self-test for a
-        # script/checker that previously existed and never ran once in CI.
+        # Each of these 16 reaches Node builtins only through its whole import
+        # graph (local scripts/lib, scripts/ops and docs/design modules
+        # included) — proven, not asserted: the "CI step install order" gate
+        # above (T-570) resolves every pre-install step's import graph and
+        # fails naming the step, file, package and chain if one reaches an npm
+        # package. Each is a self-test for a script/checker that previously
+        # existed and never ran once in CI. The four that reach `pg` run after
+        # npm ci (batch 4 below).
         run: |
-          node --test scripts/tests/admin-queue-size.test.mjs
           node --test scripts/tests/apply-rule-ownership.test.mjs
           node --test scripts/tests/audit-findings-to-issues.test.mjs
-          node --test scripts/tests/audit-ipo-coverage-distinct-on.test.mjs
           node --test scripts/tests/audit-ipo-coverage-exit-reason.test.mjs
-          node --test scripts/tests/audit-ipo-coverage-served-stored.test.mjs
           node --test scripts/tests/audit-reverse-sweep.test.mjs
           node --test scripts/tests/cache-poison-bisect.test.mjs
           node --test scripts/tests/check-build-cards-isignored.test.mjs
@@ -514,7 +527,6 @@ jobs:
           node --test scripts/tests/floor-delta.test.mjs
           node --test scripts/tests/issue-size-consistency-coverage.test.mjs
           node --test scripts/tests/merged-not-deployed.test.mjs
-          node --test scripts/tests/plan-rank2-never-bse-for-issue-size-invariant.test.mjs
           node --test scripts/tests/pull-frozen-checks.test.mjs
 
       - name: "scripts/tests wire-or-retire batch 2, slow suites (#616/#681)"
@@ -529,7 +541,6 @@ jobs:
 
       - name: "scripts/tests wire-or-retire batch 3 (#616/#681)"
         run: |
-          node --test scripts/tests/require-repair-tool-module.test.mjs
           node --test scripts/tests/seo-surface-checks.test.mjs
           node --test scripts/tests/vps-data-audit-cron.test.mjs
           node --test scripts/tests/zip-member-rows.test.mjs
@@ -542,6 +553,28 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: "scripts/tests wire-or-retire batch 4, npm packages (#616/#681 round 2, T-570)"
+        # These reach an npm package through their import graph, so they run
+        # after npm ci. Round 1 put them in the builtins-only batch 1/3 and CI
+        # went red (ERR_MODULE_NOT_FOUND); the T-570 gate now fails that
+        # placement before CI does. Chains, as the gate reports them:
+        #   admin-queue-size -> scripts/ops/admin-queue-size.mjs -> pg
+        #   audit-ipo-coverage-distinct-on -> pg (direct)
+        #   audit-ipo-coverage-served-stored -> scripts/audit-ipo-coverage.mjs
+        #     -> scripts/lib/pg-utc.mjs -> pg
+        #   plan-rank2-never-bse-for-issue-size-invariant ->
+        #     scripts/lib/repair-invariants/plan-rank2-never-bse-for-issue-size.mjs
+        #     -> scripts/lib/pg-utc.mjs -> pg
+        #   require-repair-tool-module -> scripts/ci/require-repair-tool-module.mjs
+        #     -> typescript
+        # None opens a database connection.
+        run: |
+          node --test scripts/tests/admin-queue-size.test.mjs
+          node --test scripts/tests/audit-ipo-coverage-distinct-on.test.mjs
+          node --test scripts/tests/audit-ipo-coverage-served-stored.test.mjs
+          node --test scripts/tests/plan-rank2-never-bse-for-issue-size-invariant.test.mjs
+          node --test scripts/tests/require-repair-tool-module.test.mjs
 
       - name: "pg-utc self-test (#616/#681, needs the pg package — after npm ci)"
         # scripts/lib/pg-utc.mjs and its test import the `pg` npm package
