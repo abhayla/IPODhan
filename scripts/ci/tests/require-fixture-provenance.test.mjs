@@ -16,6 +16,7 @@ import {
   deriveFilenameCompanyClaim,
   extractHtmlCompanyName,
   companiesMatch,
+  textNamesCompany,
 } from '../../lib/fixture-provenance-checks.mjs';
 import { normalizeCompanyNameForMatching } from '../../lib/normalize-company-name.mjs';
 
@@ -244,4 +245,34 @@ test('MAJOR 3(b): identitySkipReason under 20 chars is refused as a real provena
     assert.equal(result.status, 'fail');
     assert.match(result.reasons.join(' '), /20\+ characters/);
   });
+});
+
+test('#771: a TXT fixture whose text names meta.company is identity-CHECKED', () => {
+  withTempFixtureRoot((root, dir) => {
+    const file = 'a-one-ratios.txt';
+    writeFileSync(join(dir, file), '<<<PAGE 1>>>\nA-ONE STEELS INDIA LIMITED\nCurrent ratio 1.34 1.27 5.67%');
+    writeFileSync(join(dir, `${file}.meta.json`),
+      JSON.stringify({ sourceUrl: 'https://x', capturedAt: '2026-09-26', company: 'A-One Steels India Limited' }));
+    const result = checkFixture(root, `scraper/tests/fixtures/${file}`, normalizeCompanyNameForMatching);
+    assert.equal(result.status, 'pass');
+    assert.equal(result.identityChecked, true);
+    assert.equal(result.identitySkipReason, null);
+  });
+});
+
+test('#771: a TXT fixture whose text does NOT name meta.company stays a counted skip, never checked', () => {
+  withTempFixtureRoot((root, dir) => {
+    const file = 'other.txt';
+    writeFileSync(join(dir, file), 'Neochem Bio Solutions Limited - Current ratio 1.10 1.00 10%');
+    writeFileSync(join(dir, `${file}.meta.json`),
+      JSON.stringify({ sourceUrl: 'https://x', capturedAt: '2026-09-26', company: 'Vikran Engineering Limited' }));
+    const result = checkFixture(root, `scraper/tests/fixtures/${file}`, normalizeCompanyNameForMatching);
+    assert.equal(result.identityChecked, false);
+    assert.match(result.identitySkipReason, /not found in the \.txt text layer/);
+  });
+});
+
+test('#771: a company name is matched on word boundaries, not as a substring of another word', () => {
+  assert.equal(textNamesCompany(normalizeCompanyNameForMatching, 'Asia Impex Limited', 'Green Asia Impex Limited'), true);
+  assert.equal(textNamesCompany(normalizeCompanyNameForMatching, 'Sia Impex Limited', 'Green Asia Impex Limited'), false);
 });
