@@ -1364,6 +1364,16 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Repair-tool entry point (#1051, name-pollution cleanup): write ONLY `companyName`, through
+   * `update()`, which stores the sanitized form. Same write-ratchet rationale as `applyFaceValue`:
+   * the write lives in this already-baselined file, never re-typed as a direct `db.update(ipos)`
+   * in a script (`scripts/check-write-ratchet.mjs`, T-316).
+   */
+  async applySanitizedCompanyName(id: string, companyName: string): Promise<IPO> {
+    return this.update(id, { companyName });
+  }
+
+  /**
    * Repair-tool entry point (OD-74 item 14 / OD-77): write ONLY `issueSize`. A fresh repair write
    * stamps `updatedAt` now (through `update()`); the tool's `--undo` passes `restoreUpdatedAt` to put
    * the row back to its exact before-image. Same write-ratchet rationale as `applyOfferTerms`: the

@@ -16,21 +16,20 @@
  *           ALREADY_LISTED_BSE | DEBT_ISSUER_BSE | GENUINE_IPO (CG universe or
  *           fresh NSE listing) | NO_EVIDENCE.
  *
- * Default run is READ-ONLY (classification TSV + summary). De-pollution modes
- * (OWNER-GATED — dry-run unless --apply is also passed):
- *   --depollute delete   delete every proven-not-IPO skeleton row (verdicts
- *                        ALREADY_LISTED / ALREADY_LISTED_BSE / CORP_ACTION_BSE_* /
- *                        DEBT_ISSUER_BSE). Safe: these rows own ZERO relation
- *                        rows (verified 2026-07-02) and all FKs cascade.
- *   --depollute reclass  set offering_type to the evidence-backed type instead
- *                        (only rows with a derivable reclass_to: IR_flag types +
- *                        DEBT_ISSUER_BSE→NCD). ALREADY_LISTED* rows have no
- *                        derivable subtype and are SKIPPED by reclass.
- * NO_EVIDENCE and GENUINE_IPO* rows are never touched by either mode.
+ * The script is READ-ONLY, always (#1051). `--depollute delete|reclass` prints the
+ * rows each mode WOULD act on (proven-not-IPO verdicts: ALREADY_LISTED /
+ * ALREADY_LISTED_BSE / CORP_ACTION_BSE_* / DEBT_ISSUER_BSE; reclass only where a
+ * type is derivable) and writes nothing; `--apply` is refused. Why: spec OD-116
+ * says an `ipos` row is never deleted (a wrong row is HIDDEN with a reason
+ * through the OD-8/OD-53 freeze, keeping its identifiers so the scraper does
+ * not recreate it), and the only sanctioned way to remove a row is the gated,
+ * logged, undoable merge `IPORepository.mergeDuplicateInto` (section 2.3.3.3,
+ * OD-38, OD-92). The raw `delete` and `update` this script used to run bypassed
+ * both. NO_EVIDENCE and GENUINE_IPO* rows are never listed.
  *
  * Env: DATABASE_HOST/PORT/USER/PASSWORD/NAME (tunnel). Run:
  *   npx tsx scripts/audit/classify-suspect-ipos.ts [--out suspects.tsv]
- *   npx tsx scripts/audit/classify-suspect-ipos.ts --depollute delete [--apply]
+ *   npx tsx scripts/audit/classify-suspect-ipos.ts --depollute delete|reclass   # report only
  */
 import { Client } from 'pg';
 import { writeFileSync } from 'fs';
@@ -215,16 +214,22 @@ async function main() {
   for (const [v, n] of Object.entries(tally).sort((a, b) => b[1] - a[1])) console.log(`  ${v.padEnd(30)} ${n}`);
   if (outPath) { writeFileSync(outPath, lines.join('\n')); console.log(`\nTSV written: ${outPath}`); }
 
-  // ---- OWNER-GATED de-pollution (dry-run unless --apply) ----
+  // ---- De-pollution REPORT (read-only; #1051, OD-116) ----
   const depArg = process.argv.indexOf('--depollute');
   if (depArg === -1) return;
   const mode = process.argv[depArg + 1];
-  const APPLY = process.argv.includes('--apply');
   if (mode !== 'delete' && mode !== 'reclass') throw new Error(`--depollute needs delete|reclass, got: ${mode}`);
+  if (process.argv.includes('--apply')) {
+    throw new Error(
+      '--apply is refused: this audit script never writes ipos (#1051). OD-116: an ipos row is never deleted; ' +
+        'hide a wrong row through the OD-8/OD-53 freeze, and merge a true duplicate with ' +
+        'scraper/scripts/repair-merge-duplicate-ipo.ts (the gated, logged, undoable merge).'
+    );
+  }
 
-  // Minimum-evidence gate: the CG fetchers swallow per-FY failures, so a CG outage
-  // would strip every genuine IPO of its GENUINE_IPO evidence and flip it to
-  // ALREADY_LISTED_BSE — a delete target. Refuse de-pollution on degraded evidence.
+  // Minimum-evidence gate: the CG fetchers swallow per-FY failures, so a CG outage would strip
+  // every genuine IPO of its GENUINE_IPO evidence and flip it to ALREADY_LISTED_BSE. A report built
+  // on degraded evidence would name genuine IPOs as not-IPO, so refuse it.
   const degraded: string[] = [];
   if (cg118.size < 500) degraded.push(`cg118=${cg118.size} (<500)`);
   if (cg25.size < 500) degraded.push(`cg25=${cg25.size} (<500)`);
@@ -232,7 +237,7 @@ async function main() {
   if (bseMaster.byName.size < 4000) degraded.push(`bseEquityMaster=${bseMaster.byName.size} (<4000)`);
   if (bseDebt.byName.size < 1000) degraded.push(`bseDebtMaster=${bseDebt.byName.size} (<1000)`);
   if (degraded.length > 0) {
-    throw new Error(`DEPOLLUTE REFUSED — evidence degraded/incomplete: ${degraded.join(', ')}. Fix the source fetches and re-run.`);
+    throw new Error(`DEPOLLUTE REPORT REFUSED — evidence degraded/incomplete: ${degraded.join(', ')}. Fix the source fetches and re-run.`);
   }
 
   const provenNotIpo = (v: string) =>
@@ -240,35 +245,9 @@ async function main() {
   const targets = verdictRows.filter((r) =>
     mode === 'delete' ? provenNotIpo(r.verdict) : provenNotIpo(r.verdict) && r.reclassTo
   );
-  console.log(`\n=== DEPOLLUTE ${mode.toUpperCase()} — ${APPLY ? 'APPLY' : 'DRY-RUN'} — ${targets.length} rows ===`);
-  for (const t of targets) console.log(`  ${mode === 'delete' ? 'DELETE' : `RECLASS -> ${t.reclassTo}`}  [${t.verdict}] ${t.name}`);
-  if (!APPLY) { console.log('\nDRY-RUN. Re-run with --apply (owner-gated).'); return; }
-
-  const cw = new Client({
-    host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'),
-    user: process.env.DATABASE_USER, password: process.env.DATABASE_PASSWORD, database: process.env.DATABASE_NAME,
-    ssl: false, connectionTimeoutMillis: 12000,
-  });
-  await cw.connect();
-  let ok = 0, failed = 0;
-  for (const t of targets) {
-    try {
-      if (mode === 'delete') {
-        await cw.query('delete from ipos where id = $1', [t.id]);
-      } else {
-        await cw.query('update ipos set offering_type = $2 where id = $1', [t.id, t.reclassTo]);
-      }
-      ok++;
-    } catch (e) {
-      failed++;
-      console.log(`  FAILED ${t.name}: ${(e as Error).message}`);
-    }
-  }
-  // read-back: how many suspects remain
-  const rb = await cw.query(
-    `select count(*)::int n from ipos where offering_type='IPO' and status='CLOSED' and listing_date is null`);
-  await cw.end();
-  console.log(`\nAPPLY complete: ${mode}=${ok} failed=${failed}. Read-back: remaining CLOSED/no-listing 'IPO' rows = ${rb.rows[0].n}`);
+  console.log(`
+=== DEPOLLUTE ${mode.toUpperCase()} — REPORT ONLY (nothing is written) — ${targets.length} rows ===`);
+  for (const t of targets) console.log(`  ${mode === 'delete' ? 'NOT-IPO' : `RECLASS -> ${t.reclassTo}`}  [${t.verdict}] ${t.name} (${t.id})`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

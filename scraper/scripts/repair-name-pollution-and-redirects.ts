@@ -29,22 +29,34 @@
  *     (`isRealIPO`) — never write a redirect that chains into a 404 (e.g. the
  *     citius-transnet INVITS case).
  *  5. Child-row safety guard (mirrors the original manual op): a loser is
- *     merged (redirect written, row deleted) ONLY if it has zero rows across
- *     all 18 ipo_id-bearing child tables; otherwise it is left untouched and
- *     logged for manual review.
- *  6. Shadow guard (checker #3a, belt-and-suspenders alongside the app-level
- *     fix in IPORepository.findRedirectSlug): before writing a redirect row
- *     for `oldSlug`, skip if some OTHER live ipos row currently holds that
- *     exact slug — never shadow a live row.
- *  7. Redirect writes are idempotent via `onConflictDoNothing` on the unique
- *     `old_slug` column.
+ *     merged ONLY if it has zero rows across the ipo_id-bearing child tables
+ *     listed below; otherwise it is left untouched and logged for manual review.
+ *  6. #1051: every loser is merged through `IPORepository.mergeDuplicateInto`
+ *     (spec section 2.3.3.3, OD-38, OD-69, OD-92) — the gated, logged,
+ *     undoable merge. It runs the eligibility gate (`checkMergeEligibility`),
+ *     writes the `ipo_merge_log` row, the slug redirect (reason
+ *     DUPLICATE_MERGE, so `repair-merge-duplicate-ipo.ts --unmerge <merge-id>`
+ *     can take it back) and removes the loser, all in one transaction. A
+ *     refused pair is reported with the gate's reason and SKIPPED, never
+ *     forced: the tool never passes forceDifferentName. Known refusal
+ *     (measured 2026-09-26 on the gate as it stands): a bare trailing status
+ *     letter ("X Ltd. O") or a trailing " IPO" word — the identity fold keeps
+ *     those on purpose (company-identity-fold.ts, "DELIBERATELY NARROW"), so a
+ *     human reviews the pair and, if it really is one IPO, runs
+ *     `repair-merge-duplicate-ipo.ts --keep <id> --drop <id> --force-different-name`.
+ *     The bracketed "(X IPO) CT" twin shape passes.
+ *  7. Canonical rename: shadow guard (checker #3a) first — skip the slug
+ *     rename if some OTHER live ipos row already holds the clean slug; then
+ *     `IPORepository.renameSlugWithRedirect` (slug + redirect, one
+ *     transaction) and `applySanitizedCompanyName`. No direct `ipos` write
+ *     lives in this file (#1051, write ratchet).
  *
  * Run from scraper/ with tunnel env exported
  * (DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 + creds). Usage:
  *   npx tsx scripts/repair-name-pollution-and-redirects.ts            # dry-run
  *   npx tsx scripts/repair-name-pollution-and-redirects.ts --apply    # writes
  */
-import { db } from '@ipodhan/shared';
+import { db, getRedisClient, IPORepository } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { sanitizeDisplayCompanyName, normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
@@ -52,12 +64,13 @@ import { isRealIPO } from '@ipodhan/shared/utils/offering-type';
 import { eq, sql } from 'drizzle-orm';
 import logger from '../src/utils/logger.js';
 import { pathToFileURL } from 'node:url';
-import { openRepairDb } from './lib/repair-tool.js';
+import { createNoopRedisClient, guardCacheInvalidation, openRepairDb } from './lib/repair-tool.js';
 
-const APPLY = process.argv.includes('--apply');
+/** Recorded verbatim in `ipo_merge_log.merged_by` for every merge this tool makes. */
+export const MERGED_BY = 'repair-name-pollution-and-redirects.ts';
 
-// The 18 ipo_id-bearing child tables (schema.ts), excluding ipoSlugRedirects
-// itself (that's what this script writes, not a dependency to check).
+// The ipo_id-bearing child tables (schema.ts) a loser must have none of,
+// excluding ipoSlugRedirects itself.
 const CHILD_TABLES: { name: string; table: (typeof schema)[keyof typeof schema] }[] = [
   { name: 'subscriptions', table: schema.subscriptions },
   { name: 'ipoDemandGraph', table: schema.ipoDemandGraph },
@@ -87,19 +100,49 @@ interface IpoRow {
   createdAt: Date;
 }
 
-async function hasChildRows(ipoId: string): Promise<string[]> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Db = any;
+type MergeRepo = Pick<IPORepository, 'mergeDuplicateInto'>;
+type RepairRepo = Pick<IPORepository, 'mergeDuplicateInto' | 'renameSlugWithRedirect' | 'applySanitizedCompanyName'>;
+
+export type LoserOutcome = { outcome: 'merged' | 'planned' } | { outcome: 'refused'; reason: string };
+
+/**
+ * #1051: merge one loser into the canonical row through the gated, logged, undoable merge.
+ * `mergeDuplicateInto` throws `mergeDuplicateInto: refused — <reason>` when its eligibility gate
+ * says the pair is two offers; that refusal is returned for this row (never retried with a looser
+ * option, never forced). Any other error is rethrown, so a broken merge stops the run.
+ */
+export async function mergeLoser(
+  repo: MergeRepo,
+  canonicalId: string,
+  loserId: string,
+  opts: { apply: boolean }
+): Promise<LoserOutcome> {
+  try {
+    await repo.mergeDuplicateInto(canonicalId, loserId, { apply: opts.apply, mergedBy: MERGED_BY });
+    return { outcome: opts.apply ? 'merged' : 'planned' };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const refused = message.match(/mergeDuplicateInto: refused — ([\s\S]*)$/);
+    if (refused) return { outcome: 'refused', reason: refused[1] };
+    throw err;
+  }
+}
+
+async function hasChildRows(dbx: Db, ipoId: string): Promise<string[]> {
   const owners: string[] = [];
   for (const { name, table } of CHILD_TABLES) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const t = table as any;
-    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(t).where(eq(t.ipoId, ipoId)).limit(1);
+    const [row] = await dbx.select({ n: sql<number>`count(*)::int` }).from(t).where(eq(t.ipoId, ipoId)).limit(1);
     if (row && row.n > 0) owners.push(`${name}(${row.n})`);
   }
   return owners;
 }
 
-async function slugIsLive(slug: string, excludeId?: string): Promise<boolean> {
-  const rows = await db
+async function slugIsLive(dbx: Db, slug: string, excludeId?: string): Promise<boolean> {
+  const rows: { id: string }[] = await dbx
     .select({ id: schema.ipos.id })
     .from(schema.ipos)
     .where(eq(schema.ipos.slug, slug))
@@ -107,38 +150,25 @@ async function slugIsLive(slug: string, excludeId?: string): Promise<boolean> {
   return rows.some((r) => r.id !== excludeId);
 }
 
-/**
- * `excludeId` is the row that CURRENTLY, legitimately owns `oldSlug` and is
- * about to be renamed-away or deleted in this same operation — not the
- * redirect's target. Excluding the target here would false-positive on every
- * merge (the loser being merged always "shadows" itself until it is deleted).
- */
-async function writeRedirect(oldSlug: string, ipoId: string, reason: string, excludeId: string): Promise<'written' | 'skipped-shadow' | 'skipped-exists'> {
-  if (await slugIsLive(oldSlug, excludeId)) {
-    logger.warn({ oldSlug, ipoId }, 'skip redirect write: oldSlug is a LIVE slug on a different IPO (shadow guard)');
-    return 'skipped-shadow';
-  }
-  if (!APPLY) return 'written';
-  const result = await db
-    .insert(schema.ipoSlugRedirects)
-    .values({ oldSlug, ipoId, reason })
-    .onConflictDoNothing({ target: schema.ipoSlugRedirects.oldSlug })
-    .returning({ id: schema.ipoSlugRedirects.id });
-  return result.length > 0 ? 'written' : 'skipped-exists';
+export interface RepairCounts {
+  renamed: number;
+  merged: number;
+  refused: { loserId: string; slug: string; reason: string }[];
+  untouched: number;
+  skippedNotServable: number;
+  skippedChildRows: number;
+  skippedShadow: number;
+  skippedAmbiguous: number;
 }
 
-async function main() {
-  console.log('='.repeat(80));
-  console.log(`NAME-POLLUTION + REDIRECT REPAIR (T-278 P3-1 recreate) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
-  console.log('='.repeat(80));
-
-  await openRepairDb(db, {
-    apply: APPLY,
-    allowProd: process.argv.includes('--allow-prod'),
-    toolName: 'repair-name-pollution-and-redirects',
-  });
-
-  const rows = (await db
+/** The whole repair, over every `ipos` row. Dry run unless `opts.apply`. */
+export async function runNamePollutionRepair(
+  dbx: Db,
+  repo: RepairRepo,
+  opts: { apply: boolean; log?: (line: string) => void }
+): Promise<RepairCounts> {
+  const log = opts.log ?? ((l: string) => console.log(l));
+  const rows = (await dbx
     .select({
       id: schema.ipos.id,
       companyName: schema.ipos.companyName,
@@ -158,12 +188,21 @@ async function main() {
     groups.set(key, bucket);
   }
 
-  let renamed = 0, merged = 0, skippedNotServable = 0, skippedChildRows = 0, skippedShadow = 0, skippedAmbiguous = 0, untouched = 0;
+  const c: RepairCounts = {
+    renamed: 0,
+    merged: 0,
+    refused: [],
+    untouched: 0,
+    skippedNotServable: 0,
+    skippedChildRows: 0,
+    skippedShadow: 0,
+    skippedAmbiguous: 0,
+  };
 
   for (const [key, bucket] of groups) {
     const anyPolluted = bucket.some((r) => sanitizeDisplayCompanyName(r.companyName) !== r.companyName.trim());
     if (bucket.length === 1 && !anyPolluted) {
-      untouched++;
+      c.untouched++;
       continue; // already clean, no duplicates — nothing to do (idempotent no-op)
     }
 
@@ -174,16 +213,15 @@ async function main() {
     } else if (alreadyClean.length === 0) {
       canonical = [...bucket].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
     } else {
-      // 2+ already-clean rows share an identity key — never guess which is
-      // canonical; leave for manual review.
+      // 2+ already-clean rows share an identity key — never guess which is canonical.
       logger.warn({ key, ids: alreadyClean.map((r) => r.id) }, 'ambiguous group: multiple already-clean rows share identity key, skipping');
-      skippedAmbiguous++;
+      c.skippedAmbiguous++;
       continue;
     }
 
     if (!isRealIPO(canonical.offeringType)) {
       logger.warn({ key, canonicalId: canonical.id, offeringType: canonical.offeringType }, 'skip group: canonical offeringType not servable by /ipos/[slug]');
-      skippedNotServable++;
+      c.skippedNotServable++;
       continue;
     }
 
@@ -191,44 +229,79 @@ async function main() {
     const cleanSlug = generateIPOSlug(cleanName);
     const losers = bucket.filter((r) => r.id !== canonical.id);
 
-    console.log(`\ngroup "${key}" | canonical=${canonical.companyName} (${canonical.id}) | losers=${losers.length}`);
+    log(`\ngroup "${key}" | canonical=${canonical.companyName} (${canonical.id}) | losers=${losers.length}`);
 
     if (canonical.companyName !== cleanName || canonical.slug !== cleanSlug) {
       const oldSlug = canonical.slug;
-      console.log(`  RENAME canonical: "${canonical.companyName}" -> "${cleanName}" | slug ${oldSlug} -> ${cleanSlug}`);
-      if (cleanSlug !== oldSlug) {
-        const outcome = await writeRedirect(oldSlug, canonical.id, losers.length > 0 ? 'DUPLICATE_MERGE_AND_NAME_POLLUTION_CLEANUP' : 'NAME_POLLUTION_CLEANUP', canonical.id);
-        if (outcome === 'skipped-shadow') skippedShadow++;
+      log(`  RENAME canonical: "${canonical.companyName}" -> "${cleanName}" | slug ${oldSlug} -> ${cleanSlug}`);
+      let slugOk = cleanSlug !== oldSlug;
+      if (slugOk && (await slugIsLive(dbx, cleanSlug, canonical.id))) {
+        logger.warn({ oldSlug, cleanSlug, ipoId: canonical.id }, 'skip slug rename: target slug is LIVE on a different IPO (shadow guard)');
+        c.skippedShadow++;
+        slugOk = false;
       }
-      if (APPLY) {
-        await db.update(schema.ipos).set({ companyName: cleanName, slug: cleanSlug }).where(eq(schema.ipos.id, canonical.id));
+      if (opts.apply) {
+        if (slugOk) {
+          const reason = losers.length > 0 ? 'DUPLICATE_MERGE_AND_NAME_POLLUTION_CLEANUP' : 'NAME_POLLUTION_CLEANUP';
+          const r = await repo.renameSlugWithRedirect(canonical.id, oldSlug, cleanSlug, reason);
+          if (r === 'raced') logger.warn({ ipoId: canonical.id, oldSlug }, 'slug rename raced: the row no longer holds oldSlug, left as is');
+        }
+        if (canonical.companyName !== cleanName) await repo.applySanitizedCompanyName(canonical.id, cleanName);
       }
-      renamed++;
+      c.renamed++;
     }
 
     for (const loser of losers) {
-      const owners = await hasChildRows(loser.id);
+      const owners = await hasChildRows(dbx, loser.id);
       if (owners.length > 0) {
         logger.warn({ loserId: loser.id, slug: loser.slug, owners }, 'skip merge: loser has child rows, needs manual review');
-        skippedChildRows++;
+        c.skippedChildRows++;
         continue;
       }
-      console.log(`  MERGE loser "${loser.companyName}" (${loser.slug}) -> canonical ${cleanSlug}`);
-      const outcome = await writeRedirect(loser.slug, canonical.id, 'DUPLICATE_MERGE_AND_NAME_POLLUTION_CLEANUP', loser.id);
-      if (outcome === 'skipped-shadow') {
-        skippedShadow++;
-        continue; // do NOT delete a row whose slug we couldn't safely redirect
+      const out = await mergeLoser(repo, canonical.id, loser.id, { apply: opts.apply });
+      if (out.outcome === 'refused') {
+        log(`  REFUSED loser "${loser.companyName}" (${loser.slug}, ${loser.id}) -> canonical ${canonical.id}: ${out.reason}`);
+        c.refused.push({ loserId: loser.id, slug: loser.slug, reason: out.reason });
+        continue;
       }
-      if (APPLY) {
-        await db.delete(schema.ipos).where(eq(schema.ipos.id, loser.id));
-      }
-      merged++;
+      log(`  MERGE loser "${loser.companyName}" (${loser.slug}) -> canonical ${canonical.id} [${out.outcome}]`);
+      c.merged++;
     }
   }
+  return c;
+}
+
+async function main() {
+  const APPLY = process.argv.includes('--apply');
+  console.log('='.repeat(80));
+  console.log(`NAME-POLLUTION + REDIRECT REPAIR (T-278 P3-1 recreate) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
+  console.log('='.repeat(80));
+
+  const { dbName } = await openRepairDb(db, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: 'repair-name-pollution-and-redirects',
+  });
+  // mergeDuplicateInto / renameSlugWithRedirect invalidate cache internally, so the guard decides
+  // which Redis client the repository ever sees (#715 class).
+  const guard = guardCacheInvalidation({
+    dbName,
+    toolName: 'repair-name-pollution-and-redirects',
+    keys: ['ipo:detail:*', 'ipo:list:*', 'ipo:search:*'],
+  });
+  const redis = guard.blocked ? (createNoopRedisClient() as unknown as ReturnType<typeof getRedisClient>) : getRedisClient();
+  const repo = new IPORepository(db, redis);
+
+  const c = await runNamePollutionRepair(db, repo, { apply: APPLY });
 
   console.log('\n' + '='.repeat(80));
-  console.log(`renamed: ${renamed} | merged(deleted): ${merged} | untouched(already clean): ${untouched}`);
-  console.log(`skipped — not servable: ${skippedNotServable} | child rows: ${skippedChildRows} | shadow: ${skippedShadow} | ambiguous: ${skippedAmbiguous}`);
+  console.log(
+    `renamed: ${c.renamed} | merged${APPLY ? '' : '(planned)'}: ${c.merged} | refused by merge gate: ${c.refused.length} | untouched(already clean): ${c.untouched}`
+  );
+  console.log(
+    `skipped — not servable: ${c.skippedNotServable} | child rows: ${c.skippedChildRows} | shadow: ${c.skippedShadow} | ambiguous: ${c.skippedAmbiguous}`
+  );
+  for (const r of c.refused) console.log(`  refused ${r.slug} (${r.loserId}): ${r.reason}`);
   if (!APPLY) console.log('\nDRY-RUN: re-run with --apply to write.');
   console.log('='.repeat(80));
   process.exit(0);
