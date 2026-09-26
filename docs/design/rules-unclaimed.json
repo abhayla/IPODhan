@@ -2,6 +2,7 @@
   "_why": "OD-52. A rule that no build item implements is allowed — the deploy cadence, the honest uncertainties, the language-model constraint are rules about how we WORK, not code. What is not allowed is silence. D19 fails on any rule id that is neither claimed by a card nor listed here with a reason.",
   "_generated_by": "docs/design/apply-rule-ownership.mjs",
   "unclaimed": {
+    "R-244": "2.7 — Admin data editing (spec §9, OD-102..OD-121) is not built yet (release-gate item 36, docs/design/pull-model-completion-state.md) — no build card owns it. Declared unclaimed until a card is created for it, per OD-52. Unrelated to #1106; added only so apply-rule-ownership.mjs can run to completion after spec §9 landed (#1107) without a matching card.",
     "R-119": "5.6 — A standing constraint on HOW we work (no language model in the phase-1 pipeline), not a thing any build item constructs. OD-52 allows this, provided it is declared rather than silent.",
     "R-120": "5.6 — A standing constraint on HOW we work (no language model in the phase-1 pipeline), not a thing any build item constructs. OD-52 allows this, provided it is declared rather than silent.",
     "R-121": "5.6 — A standing constraint on HOW we work (no language model in the phase-1 pipeline), not a thing any build item constructs. OD-52 allows this, provided it is declared rather than silent.",
@@ -15,18 +16,6 @@
     "R-138": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
     "R-139": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
     "R-140": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
-    "R-141": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
-    "R-189": "A CORRECTION note, not a buildable rule: it records that §5.2's capacity table stated numeric(15,2) while the live schema is numeric(18,2), and that the overflow argument for the crore conversion therefore does not hold (OD-67). There is nothing to build — the decision it records is to NOT do the migration — so no build card claims it.",
-    "R-214": "2.3.3.2 identity-research subsection, 2026-09-23. Research evidence (a value table built from findings F-1 to F-3) recorded for an owner decision, not a rule to build — no OD row changes the binding order or matching rules by itself; see docs/design/findings.json F-124..F-135.",
-    "R-217": "2.3.3.2 identity-research subsection, 2026-09-23. A per-finding citation list (F-124..F-141) pointing at docs/design/findings.json; none of these findings change OD-34/OD-35/OD-68/OD-69/OD-71 by themselves — each candidate rule change needs its own owner decision, so nothing here is a buildable rule.",
-    "R-219": "2.3.3.2, 2026-09-23. The OD-83/OD-84 explanatory paragraph (exchange postponement is the same IPO; an attempt is defined by filing status before open dates exist) — a decision record and its rationale, not a new mechanism for item 12 to build beyond what R-177/R-218 already cover.",
-    "R-227": "2.1 job-table notes, 2026-09-24. The F-151 staging measurement (the 00:00 slot never closed because the document retry timer re-dues the same documents every wake) — an observation citing #943, not a new rule; the fix is tracked in #943 and item 7.",
-    "R-237": "2.5.5, 2026-09-25 (OD-98). A fine-grained fix to item 9's corrigendum reader (F-158/OD-90 follow-up), not a new build card — implemented directly in scraper/src/services/document-cycle.ts (selectExtractionOnlyCandidates, loadExtractionOnlyCandidateIpos) and scraper/scripts/repair-readmit-stranded-documents.ts, pinned by scraper/tests/unit/services/document-cycle-extraction-only-candidates.test.ts.",
-    "R-239": "OD-109 (2026-09-25): reader wording for admin values in section 2.11; no build card yet because admin-editing discovery (section 9.5) is still open. Carded when discovery closes.",
-    "R-240": "OD-103 (2026-09-25, reworded after review): witnesses collected at the first read of each stage. No build card yet: admin-editing discovery (section 9.5) is still open. Carded when discovery closes.",
-    "R-241": "Section 2.4 clarification (2026-09-25): an admin-held field is read and recorded as a witness, never written, except OD-106. No build card yet: admin-editing discovery (section 9.5) is still open. Carded when discovery closes.",
-    "R-244": "OD-121 (2026-09-25): section 2.7 amendment, an admin delete keeps the field empty. No build card yet: admin-editing discovery has just closed; carded with the admin editing build. Reworded after the round-2 review (caveat for IPOs no longer walked).",
-    "R-245": "measurement note (2026-09-26 re-measurement and contract 1 findings F-175, F-177, F-179..F-182); it records measured facts, not a behaviour a build card implements - each finding is tracked by its own issue or PR",
-    "R-246": "2.3.3.3 (2026-09-26): F-184 citation under OD-38 -- a research finding open for owner decision (owner Q5), not a rule to build; OD-38's counted-reads text is unchanged pending that decision."
+    "R-141": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code."
   }
 }

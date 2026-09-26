@@ -241,7 +241,6 @@ immediately in parallel with item 1. One review round expected.
 | Design section | Rule ids |
 |---|---|
 | §0.5.1 | R-151 |
-| §2.1 (OD-33, sha256 identity — dedup this item's "never re-downloads" line depends on) | R-010 |
 
 <!-- end generated -->
 ## Known gaps
