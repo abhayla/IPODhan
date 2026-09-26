@@ -218,3 +218,53 @@ def test_the_issuer_row_is_not_swallowed_into_the_header():
     table = peer_table(*KARAMTARA)
     first_data = table[detect_header_row_count(table)]
     assert "Karamtara" in " ".join(first_data)
+
+
+def test_the_two_level_shift_is_corrected_against_the_real_fixture():
+    """#606: PRASOLCHEM's EPS is two-level - `Basic` labelled at column 8,
+    `Diluted` at 11 - but the numbers sit one column to their LEFT (7 and 10).
+    Handing ``map_columns`` the body rows must relocate both children onto
+    their real data, not just report where their labels print."""
+    table = peer_table(*PRASOLCHEM)
+    header_rows = detect_header_row_count(table)
+    m = map_columns(reconstruct_headers(table, header_rows), table[header_rows:])
+    assert m["eps_basic"] == 7
+    assert m["eps_diluted"] == 10
+
+
+def test_relocation_never_lands_on_a_separately_labelled_column():
+    """Round-1 review of #606: the first fix treated "unclaimed" as "fair game",
+    so an unmapped column with its OWN header text - a `CMP (Rs)` column the
+    field priority matrix does not track - got taken as the diluted-EPS value
+    whenever it happened to sit next to a genuinely empty Diluted column and
+    carry data. A wrong value under a label is worse than an empty field.
+
+    Built from PRASOLCHEM's real shape (parent `EPS as on ...` at column 3,
+    `Basic` at 4 with data restored to the parent's own column exactly as the
+    real fixture does, `Diluted` at 6) with ONE change: a `CMP (Rs)` column
+    inserted at 5 - between the two children - carrying real closing prices
+    (125.50 / 98.10 / 150.00, the reviewer's own probe values), and the
+    Diluted column left genuinely blank in every row (no peer reports it,
+    which does happen - not every issuer prints a diluted EPS).
+    """
+    headers = [
+        "Name of Company",
+        "Face Value",
+        "EPS as on March 31, 2026",
+        "Basic",
+        "CMP (Rs)",
+        "Diluted",
+        "NAV as on March 31, 2026",
+    ]
+    rows = [
+        ["Prasol Chemicals Limited", "2", "14.33", "", "125.50", "", "77.33"],
+        ["Aarti Industries Limited", "5", "11.56", "", "98.10", "", "164.27"],
+        ["Atul Limited", "10", "230.25", "", "150.00", "", "2,136.46"],
+    ]
+    m = map_columns(headers, rows)
+    assert m["eps_diluted"] == 5, (
+        "eps_diluted was relocated onto CMP (Rs) — a share price read as an "
+        "earnings figure: %r" % m
+    )
+    assert m["eps_basic"] == 2, m
+    assert m["nav"] == 6, m
