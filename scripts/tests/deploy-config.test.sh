@@ -107,6 +107,27 @@ commit_unmerged() {
   printf '%s' "$sha"
 }
 
+# A fixture repo whose 'origin' is exactly the given URL (case21/case22) —
+# for probing EXPECTED_REPO_REMOTE_RE and credential redaction against
+# every origin shape the guard must accept or refuse.
+build_repo_with_origin() {
+  local origin_url="$1" repo
+  repo="$(fresh_dir)"
+  (
+    cd "$repo"
+    git init -q
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    git remote add origin "$origin_url"
+    mkdir -p scraper/config
+    echo '{"version":1,"fields":{}}' > scraper/config/field-manifest.json
+    git add -A
+    git commit -q -m "v1"
+    git update-ref refs/remotes/origin/main HEAD
+  ) >/dev/null 2>&1
+  printf '%s' "$repo"
+}
+
 run_deploy() {
   # run_deploy <repo> <root> [extra args...]
   #
@@ -1023,6 +1044,154 @@ STUBEOF
     pass "case20: SKIP_FETCH=1 remains allowed for --slot staging (unaffected by the prod-only refusal)"
   else
     fail "case20: expected staging with SKIP_FETCH=1 to still succeed, got rc=$RC_STAGING ($OUT_STAGING)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 21
+# #752 MAJOR: the F6 identity refusal printed the RAW origin URL, which
+# leaks any embedded 'user:pass@' credential (a GitHub Actions installation
+# token, exactly this shape) into the operator's terminal and the deploy
+# log. Confirmed red on the pre-fix script: an ACCEPTED credentialed origin
+# still logged the raw URL (with 'ghs_FAKE' inside it) at the "repo-root:
+# using ..." line, and a REFUSED foreign origin echoed the raw credential
+# straight back in the fatal message.
+{
+  CRED_REPO="$(build_repo_with_origin "https://x-access-token:ghs_FAKE@github.com/abhayla/IPODhan.git")"
+  SHA="$(cd "$CRED_REPO" && git rev-parse HEAD)"
+  ROOT="$(fresh_dir)"
+
+  OUT="$(run_deploy "$CRED_REPO" "$ROOT" --slot staging --sha "$SHA" --reason "case21a credentialed IPODhan origin" 2>&1)"
+  RC=$?
+
+  if [ "$RC" -eq 0 ]; then
+    pass "case21a: a credentialed https origin for the real IPODhan remote is accepted"
+  else
+    fail "case21a: expected exit 0 for a credentialed IPODhan origin, got rc=$RC ($OUT)"
+  fi
+
+  if ! printf '%s' "$OUT" | grep -q "ghs_FAKE"; then
+    pass "case21a: no output (stdout/stderr) contains the embedded credential"
+  else
+    fail "case21a: the credential 'ghs_FAKE' leaked into output ($OUT)"
+  fi
+
+  FOREIGN_CRED_REPO="$(build_repo_with_origin "https://x-access-token:ghs_FAKE@github.com/someoneelse/unrelated-fork.git")"
+  FOREIGN_CRED_SHA="$(cd "$FOREIGN_CRED_REPO" && git rev-parse HEAD)"
+  ROOT2="$(fresh_dir)"
+
+  OUT2="$(run_deploy "$FOREIGN_CRED_REPO" "$ROOT2" --slot staging --sha "$FOREIGN_CRED_SHA" --reason "case21b credentialed foreign origin" 2>&1)"
+  RC2=$?
+
+  if [ "$RC2" -ne 0 ] && printf '%s' "$OUT2" | grep -q "unrelated-fork"; then
+    pass "case21b: a refused foreign origin still names the repo in the refusal"
+  else
+    fail "case21b: expected a repo-root refusal naming the foreign repo, got rc=$RC2 ($OUT2)"
+  fi
+
+  if ! printf '%s' "$OUT2" | grep -q "ghs_"; then
+    pass "case21b: the refusal's printed URL has its credentials stripped (no 'ghs_' anywhere)"
+  else
+    fail "case21b: the refusal leaked the credential ($OUT2)"
+  fi
+
+  if [ ! -e "$ROOT2/shared/config/staging/field-manifest.json" ]; then
+    pass "case21b: nothing written for the refused credentialed foreign origin"
+  else
+    fail "case21b: manifest was written despite the credentialed foreign-origin refusal"
+  fi
+}
+
+# ---------------------------------------------------------------- case 22
+# #752 MINOR: EXPECTED_REPO_REMOTE_RE was case-sensitive and only accepted
+# 'https://github.com/...' or the 'git@github.com:...' scp-like form with
+# no trailing '.git' variance — refusing real, legitimate origins
+# ('ssh://git@github.com/...', a lowercase 'ipodhan', a trailing '/') that
+# 'git remote get-url origin' can genuinely print. A different owner or
+# repo name must still be refused regardless of case.
+{
+  SSH_REPO="$(build_repo_with_origin "ssh://git@github.com/abhayla/IPODhan.git")"
+  SSH_SHA="$(cd "$SSH_REPO" && git rev-parse HEAD)"
+  OUT_SSH="$(run_deploy "$SSH_REPO" "$(fresh_dir)" --slot staging --sha "$SSH_SHA" --reason "case22 ssh form" 2>&1)"
+  if [ $? -eq 0 ]; then
+    pass "case22: ssh://git@github.com/abhayla/IPODhan.git is accepted"
+  else
+    fail "case22: expected the ssh:// long form to be accepted ($OUT_SSH)"
+  fi
+
+  LOWER_REPO="$(build_repo_with_origin "https://github.com/abhayla/ipodhan")"
+  LOWER_SHA="$(cd "$LOWER_REPO" && git rev-parse HEAD)"
+  OUT_LOWER="$(run_deploy "$LOWER_REPO" "$(fresh_dir)" --slot staging --sha "$LOWER_SHA" --reason "case22 lowercase, no .git" 2>&1)"
+  if [ $? -eq 0 ]; then
+    pass "case22: a lowercase 'ipodhan' origin with no .git suffix is accepted"
+  else
+    fail "case22: expected a lowercase, suffix-less origin to be accepted ($OUT_LOWER)"
+  fi
+
+  SLASH_REPO="$(build_repo_with_origin "https://github.com/abhayla/IPODhan.git/")"
+  SLASH_SHA="$(cd "$SLASH_REPO" && git rev-parse HEAD)"
+  OUT_SLASH="$(run_deploy "$SLASH_REPO" "$(fresh_dir)" --slot staging --sha "$SLASH_SHA" --reason "case22 trailing slash" 2>&1)"
+  if [ $? -eq 0 ]; then
+    pass "case22: a trailing '/' on the origin is accepted"
+  else
+    fail "case22: expected a trailing-slash origin to be accepted ($OUT_SLASH)"
+  fi
+
+  FORK_REPO="$(build_repo_with_origin "https://github.com/abhayla/IPODhan-fork.git")"
+  FORK_SHA="$(cd "$FORK_REPO" && git rev-parse HEAD)"
+  OUT_FORK="$(run_deploy "$FORK_REPO" "$(fresh_dir)" --slot staging --sha "$FORK_SHA" --reason "case22 negative: different repo name" 2>&1)"
+  RC_FORK=$?
+  if [ "$RC_FORK" -ne 0 ] && printf '%s' "$OUT_FORK" | grep -q "IPODhan-fork"; then
+    pass "case22: a different repo name (IPODhan-fork) is still refused"
+  else
+    fail "case22: expected IPODhan-fork to be refused as a foreign repo, got rc=$RC_FORK ($OUT_FORK)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 23
+# #752 F8: GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR leaked from a parent process
+# (like GIT_DIR/GIT_WORK_TREE, case18) can redirect git's repository
+# discovery for every call this script makes. Confirmed red on the pre-fix
+# script: pointing these two at an unrelated decoy repo's .git dir made
+# 'git rev-parse HEAD' inside the REAL $REPO_ROOT resolve against the
+# decoy's object database, so the real repo's own commit could not be
+# found and a legitimate deploy was falsely refused as a lineage failure.
+{
+  DECOY_REPO="$(fresh_dir)"
+  (
+    cd "$DECOY_REPO"
+    git init -q
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    git remote add origin "https://github.com/abhayla/IPODhan.git"
+    mkdir -p scraper/config
+    echo '{"version":999,"decoy":true}' > scraper/config/field-manifest.json
+    git add -A
+    git commit -q -m "decoy"
+    git update-ref refs/remotes/origin/main HEAD
+  ) >/dev/null 2>&1
+
+  REPO="$(build_fixture_repo)"
+  SHA_V2="$(commit_v2_on_main "$REPO")"
+  ROOT="$(fresh_dir)"
+
+  OUT="$(GIT_OBJECT_DIRECTORY="$DECOY_REPO/.git/objects" GIT_COMMON_DIR="$DECOY_REPO/.git" \
+    DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" \
+    --slot staging --sha "$SHA_V2" --reason "case23 leaked GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR" 2>&1)"
+  RC=$?
+
+  if [ "$RC" -eq 0 ]; then
+    pass "case23: leaked GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR does not block a legitimate deploy"
+  else
+    fail "case23: expected exit 0 with GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR leaked at a decoy, got rc=$RC ($OUT)"
+  fi
+
+  MANIFEST="$ROOT/shared/config/staging/field-manifest.json"
+  if [ -f "$MANIFEST" ] && grep -q '"version":2' "$MANIFEST"; then
+    pass "case23: the real repo's manifest (v2) was deployed, not the decoy's"
+  else
+    fail "case23: wrong/no manifest deployed with GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR leaked ($(cat "$MANIFEST" 2>&1))"
   fi
 }
 
