@@ -1142,6 +1142,7 @@ jobs:
         run: >-
           npx vitest run -c vitest.integration.config.ts
           tests/integration/bse-document-scraper.integration.test.ts
+          tests/integration/bse-scraper.integration.test.ts
           tests/integration/ipo-alerts-fallback.integration.test.ts
           tests/integration/document-fetch-state-repository.integration.test.ts
           tests/integration/child-table-normalized-name.integration.test.ts
