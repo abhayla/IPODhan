@@ -43,24 +43,24 @@ describe('validateOverwriteAboveFloorRequiresSlug (round-4: refuse a whole-table
 });
 
 describe('dropIpoCacheKeys (round-N residue: cache must be dropped by the tool, not by hand)', () => {
-  it('drops the canonical set (ipo:detail/ipo:slug via invalidateIPOCaches, plus ipo:id which that helper does not cover) — round 5', async () => {
+  it('drops the canonical set (ipo:id/ipo:slug/ipo:detail) in ONE call — #551 round 2', async () => {
     const del = vi.fn().mockResolvedValue(1);
     const scan = vi.fn().mockResolvedValue(['0', []]); // invalidateIPOCaches's list/search/history SCAN, no matches
     await dropIpoCacheKeys({ del, scan }, 'ather-energy', 'ipo-123');
-    // invalidateIPOCaches(redis, 'ather-energy') deletes ipo:detail + ipo:slug in one call...
-    expect(del).toHaveBeenCalledWith('ipo:detail:ather-energy', 'ipo:slug:ather-energy');
-    // ...then dropIpoCacheKeys itself deletes ipo:id, which invalidateIPOCaches never touches.
-    expect(del).toHaveBeenCalledWith('ipo:id:ipo-123');
-    expect(del).toHaveBeenCalledTimes(2);
+    // #551 round 2: invalidateIPOCaches(redis, 'ipo-123', 'ather-energy') now
+    // takes the id directly and clears ipo:id/ipo:slug/ipo:detail together —
+    // dropIpoCacheKeys no longer has to drop ipo:id itself on top of the call.
+    expect(del).toHaveBeenCalledWith('ipo:id:ipo-123', 'ipo:slug:ather-energy', 'ipo:detail:ather-energy');
+    expect(del).toHaveBeenCalledTimes(1);
   });
 
-  it('still drops ipo:id even if invalidateIPOCaches itself fails (fail-open, non-fatal)', async () => {
+  it('is non-fatal when invalidateIPOCaches itself fails (fail-open)', async () => {
     // invalidateIPOCaches catches its own errors and never throws (T-264 fail-open
-    // convention), but this proves dropIpoCacheKeys does not depend on its success.
-    const del = vi.fn().mockResolvedValue(1);
-    const scan = vi.fn().mockRejectedValue(new Error('redis down'));
-    await dropIpoCacheKeys({ del, scan }, 'ather-energy', 'ipo-123');
-    expect(del).toHaveBeenCalledWith('ipo:id:ipo-123');
+    // convention); this proves dropIpoCacheKeys never throws even when the
+    // underlying exact-key delete itself rejects.
+    const del = vi.fn().mockRejectedValue(new Error('redis down'));
+    const scan = vi.fn().mockResolvedValue(['0', []]);
+    await expect(dropIpoCacheKeys({ del, scan }, 'ather-energy', 'ipo-123')).resolves.not.toThrow();
   });
 
   it('source-level proof: the only call site of dropIpoCacheKeys() sits AFTER the `if (!APPLY) continue;` dry-run gate (round-4: renamed from a no-op instanceof-Function check)', async () => {
