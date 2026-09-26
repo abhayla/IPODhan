@@ -287,10 +287,24 @@ async function getConsolidationService(): Promise<DataConsolidationService> {
 
 /**
  * The rules the merged pass OWNS, and the fields each one refuses to write.
- * Everything else `validateIPOData` can report (offering-type shape guards,
- * required-field, date ordering, lot economics) is already enforced per source
- * and on the create path - re-acting on it here would silently widen this
- * guard's blast radius far past W-14.
+ *
+ * #721 audit (every ERROR-severity rule `validateIPOData` can emit, checked
+ * against this map): REQUIRED_FIELD_MISSING (companyName), CLOSE_DATE_BEFORE_
+ * OPEN (dates), NON_IPO_WINDOW_TOO_LONG / NON_IPO_CORPORATE_ACTION_SHAPE /
+ * NON_IPO_SCRIP_CODE_NAME / NON_IPO_TRUST_SHAPE (offeringType/companyName
+ * shape guards) stay OUT of this map deliberately: each is a whole-row
+ * shape/presence judgment (is this row an IPO at all, is a required field
+ * present), already enforced per source and on the create path - dropping
+ * one FIELD from an update can neither fix nor meaningfully express "this
+ * row is not an IPO", and re-acting on them here would silently widen this
+ * guard's blast radius far past W-14 into rejecting whole updates it was
+ * never designed to gate. LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD/SME (Rule 9)
+ * is DIFFERENT in kind from those: it is a per-FIELD arithmetic check
+ * (lotSize x priceRangeMax against a SEBI window) of exactly the shape the
+ * other entries below already cover, and unlike them it is a MERGED-only
+ * rule - segment usually is not on the incoming payload at all, so it can
+ * only ever fire here, on the merged view. Leaving it out was the actual
+ * bug #721 reports; it is mapped below.
  */
 const MERGED_RULE_FIELDS: Record<string, string[]> = {
   PRICE_BAND_INVERTED: ['priceRangeMin', 'priceRangeMax'],
@@ -298,6 +312,26 @@ const MERGED_RULE_FIELDS: Record<string, string[]> = {
   PRICE_BAND_TOO_WIDE_SME: ['priceRangeMin', 'priceRangeMax'],
   LOT_SIZE_INVALID: ['lotSize'],
   LOT_SIZE_TOO_LOW: ['lotSize'],
+  // #721: Rule 9 (LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD/SME, data-validation.ts
+  // ~L556) is a genuinely MERGED-only rule — it needs segment + lot + band
+  // together, which per-source validation rarely has (a BSE payload carries
+  // no segment at all; the merged view resolves it from the STORED row, see
+  // `applyMergedRecordValidation` above). Before this entry, an ERROR from
+  // this rule matched no key in this map, `fieldsToDrop` was `undefined`,
+  // and the `continue` a few lines below silently skipped it: no field
+  // dropped, no warn logged, no data_conflicts row — the exact "never runs"
+  // shape #721 reported, though the root cause is this map, not the rule.
+  // Drop `lotSize`, not the band: the rule's own message ("This lot/band
+  // pair is arithmetically impossible... reject and flag for
+  // reclassification") treats the pair as jointly impossible, but the
+  // existing sibling rules for the same input shape (LOT_SIZE_TOO_LOW,
+  // LOT_SIZE_INVALID) already establish the convention that the LOT is the
+  // suspect value when a lot/band combination fails a SEBI check — the band
+  // alone is independently validated by PRICE_BAND_TOO_WIDE_*/INVERTED above,
+  // so re-dropping it here on a rule that never flagged the band's own shape
+  // would discard a value nothing else found wrong.
+  LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD: ['lotSize'],
+  LOT_ECONOMICS_IMPOSSIBLE_SME: ['lotSize'],
 };
 
 /**
@@ -385,6 +419,14 @@ async function applyMergedRecordValidation(
     const fieldsToDrop = MERGED_RULE_FIELDS[error.rule];
     if (!fieldsToDrop) continue;
 
+    // #721: LOT_SIZE_TOO_LOW and LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD/SME can
+    // both fire on the SAME impossible lot (a lot under 10 that is also
+    // outside its segment's SEBI window) - both map to `lotSize`. Once an
+    // earlier rule THIS CALL has already dropped every field this one would
+    // drop, there is nothing left to reject and no second CRITICAL
+    // data_conflicts row is warranted for the same field/value pair.
+    if (fieldsToDrop.every((field) => droppedFields.includes(field))) continue;
+
     const rejectedValues: Record<string, any> = {};
     const keptValues: Record<string, any> = {};
     for (const field of fieldsToDrop) {
@@ -438,7 +480,13 @@ async function applyMergedRecordValidation(
         await getDataConflictsRepository().upsertConflict({
           ipoId: existingIPO.id,
           tableName: 'ipos',
-          fieldName: error.field,
+          // F-181/#818 class: `error.field` is validateIPOData's own grouping
+          // label ('lotEconomics', 'priceBand') - never an `ipos` column, so
+          // the admin queue can't resolve the row against a real field. Use
+          // `ownerField` (fieldsToDrop[0], the actual column this rule drops
+          // and the same name `findByField` above was already queried with)
+          // instead; the rule name itself still lives in `resolutionReason`.
+          fieldName: ownerField,
           source1: ownerRecord.source as any,
           value1: JSON.stringify(keptValues),
           source2: source as any,
