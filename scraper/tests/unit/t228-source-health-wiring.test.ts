@@ -46,11 +46,14 @@ describe('T-228 / failure tracker covers every scraper-log-tracked source', () =
 });
 
 describe('T-228 / fallback reports a canonical ScraperSource', () => {
-  it('names itself API_FALLBACK, the value the health surfaces query', () => {
+  it('names itself API_FALLBACK — the orchestrator class and enum value are kept for scraper_logs/field_sources history (#240)', () => {
     const orchestrator = new IPOAlertsFallbackOrchestratorV2('manual');
     const name = (orchestrator as unknown as { getScraperName(): string }).getScraperName();
     expect(name).toBe('API_FALLBACK');
-    expect(FRESHNESS_SLOS.some((slo) => slo.source === name)).toBe(true);
+    // #240: API_FALLBACK is retired — the scheduler no longer runs it, so it
+    // must not keep a freshness SLO (freshness-slo-no-retired-sources.test.ts
+    // is the generic guard for this class).
+    expect(FRESHNESS_SLOS.some((slo) => slo.source === name)).toBe(false);
   });
 });
 

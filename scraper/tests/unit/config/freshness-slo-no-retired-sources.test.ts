@@ -70,6 +70,12 @@ describe('every freshness SLO names a source the scheduler can still run', () =>
     expect(DUE_STEP_FRESHNESS_SLOS.map((s) => s.source)).not.toContain('MONEYCONTROL');
   });
 
+  it('API_FALLBACK specifically is gone (#240: not a spec source, dead 7+ cycles, no retire-by)', () => {
+    expect(RUNNABLE_SCRAPER_SOURCES).not.toContain('API_FALLBACK');
+    expect(FRESHNESS_SLOS.map((s) => s.source)).not.toContain('API_FALLBACK');
+    expect(DUE_STEP_FRESHNESS_SLOS.map((s) => s.source)).not.toContain('API_FALLBACK');
+  });
+
   it('the sources that ARE still running keep their SLOs', () => {
     // The opposite failure: "fix" this by emptying the SLO table and the
     // monitor stops watching the sources that matter.
