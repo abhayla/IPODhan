@@ -1,0 +1,90 @@
+name: Mutation Guard Sweep (#196)
+#
+# A green suite is not evidence a guard is load-bearing (T-285 P3-1 found
+# three shipped guards that could be neutralised to `if false` with every
+# existing test still green). This workflow runs the standing sweep
+# (scripts/tests/mutation-guard-sweep.mjs) against the registered guard set
+# (scripts/tests/mutation-guard-registry.json): for each guard it mutates the
+# condition, runs the guard's own suite, and fails the job if the suite
+# stayed green (a GAP). It restores every file byte-identical whether it
+# passes or fails.
+#
+# Deliberately NOT part of pr-gate.yml: it re-runs several of pr-gate's own
+# suites (deploy-linux, assert-env-keys, scraper vitest subsets, one pytest
+# module) once per registered guard, which is slow and would duplicate
+# pr-gate's per-PR cost for no per-PR signal (a guard's regression tests
+# already fail pr-gate directly; this catches a DIFFERENT class — a guard
+# that was quietly deleted or neutered while its tests kept passing).
+#
+# The sweep's own MECHANICS (mutate/run/detect/restore) get a fast,
+# throwaway-fixture self-test that DOES run in pr-gate — see the
+# `mutation-guard-sweep-selftest` step of `python-tests` in pr-gate.yml is
+# node-based, so it is its own job there. This workflow is for the slow,
+# real-guard run only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Run a single guard id from the registry (optional; omit to run all)'
+        required: false
+        type: string
+  schedule:
+    # Weekly, per #196's spec ("run weekly (or per-PR when a guard file
+    # changes)"). Sunday 03:00 UTC = 08:30 IST — outside any deploy window
+    # (ist-timezone.md), before the working day.
+    - cron: '0 3 * * 0'
+
+jobs:
+  sweep:
+    name: Sweep registered guards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install root dependencies (deploy-linux.test.sh, assert-env-keys.test.sh)
+        run: npm ci
+
+      - name: Setup Python 3.12 (memory_guard suite)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: scraper/scripts/requirements-test.txt
+
+      - name: Install scraper dependencies (vitest guards)
+        working-directory: ./scraper
+        run: npm ci
+
+      - name: Compile @ipodhan/shared
+        working-directory: ./packages/shared
+        run: npx tsc
+
+      - name: Install Python test dependencies
+        run: python -m pip install -r scraper/scripts/requirements-test.txt
+
+      - name: Run mutation guard sweep
+        run: |
+          if [ -n "${{ inputs.only }}" ]; then
+            node scripts/tests/mutation-guard-sweep.mjs --only "${{ inputs.only }}"
+          else
+            node scripts/tests/mutation-guard-sweep.mjs
+          fi
+
+      - name: Assert clean tree after sweep (every mutation must have been restored)
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "FATAL: tree is dirty after the sweep - a mutation was not restored." >&2
+            git status --porcelain >&2
+            git diff >&2
+            exit 1
+          fi
+          echo "OK: tree is clean - every mutation was restored byte-identical."

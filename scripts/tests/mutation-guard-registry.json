@@ -1,0 +1,77 @@
+{
+  "_comment": "Registry for scripts/tests/mutation-guard-sweep.mjs (#196). Each entry neutralises one shipped guard and asserts its named suite goes RED under the mutation. `pattern` must match the file's CURRENT text exactly once (checked before mutating); `mutation` replaces it. A GAP (suite stays green) is a real finding, not a script bug.",
+  "guards": [
+    {
+      "id": "served-sha-post-flip-probe",
+      "issue": 196,
+      "file": "scripts/deploy-linux.sh",
+      "pattern": "if [ \"$served_sha\" != \"$SHORT_SHA\" ]; then",
+      "mutation": "if false; then",
+      "suite": "bash scripts/tests/deploy-linux.test.sh",
+      "description": "post-flip /api/version served-sha vs SHORT_SHA comparison (verify_public_health)"
+    },
+    {
+      "id": "dsn-db-mismatch",
+      "issue": 196,
+      "file": "scripts/assert-env-keys.sh",
+      "pattern": "if [ \"$db\" != \"$want\" ]; then",
+      "mutation": "if false; then",
+      "suite": "bash scripts/tests/assert-env-keys.test.sh",
+      "description": "assert_slot_dsn: DSN_ASSERT_DB declared vs DATABASE_URL's actual database"
+    },
+    {
+      "id": "non-prod-slot-to-prod-db",
+      "issue": 196,
+      "file": "scripts/assert-env-keys.sh",
+      "pattern": "if [ \"$slot\" != \"prod\" ] && [ \"$db\" = \"ipodhan\" ]; then",
+      "mutation": "if false; then",
+      "suite": "bash scripts/tests/assert-env-keys.test.sh",
+      "description": "assert_slot_dsn: non-prod slot pointed at the production database"
+    },
+    {
+      "id": "guard-cache-invalidation-block",
+      "issue": 715,
+      "file": "scraper/scripts/lib/repair-tool.ts",
+      "pattern": "if (decision.block) {",
+      "mutation": "if (false) {",
+      "suite": "cd scraper && npx vitest run tests/unit/scripts/repair-tool.test.ts",
+      "description": "guardCacheInvalidation: repair tools blocked from writing without invalidating cache"
+    },
+    {
+      "id": "extraction-retry-ceiling",
+      "issue": 583,
+      "file": "scripts/lib/document-state-checks.mjs",
+      "pattern": "const atCeiling = Number.isFinite(retryCount) && retryCount >= MAX_EXTRACTION_ATTEMPTS;",
+      "mutation": "const atCeiling = false;",
+      "suite": "node --test scripts/tests/document-state-checks.test.mjs",
+      "description": "checkRetryCeiling: a document stuck at the extraction retry ceiling"
+    },
+    {
+      "id": "memory-guard-cause-walk",
+      "issue": 1046,
+      "file": "scraper/scripts/memory_guard.py",
+      "pattern": "        exc = exc.__cause__",
+      "mutation": "        exc = None",
+      "suite": "cd scraper && python -m pytest scripts/test_memory_guard.py scripts/test_ocr_inference_failure_1046.py -q",
+      "description": "_exception_chain: walk __cause__ so a wrapped onnxruntime OOM is recognised"
+    },
+    {
+      "id": "nse-not-carried-shape-rule",
+      "issue": 632,
+      "file": "scraper/src/services/document-discovery-runner.ts",
+      "pattern": "            Object.keys(issueInfo).length === 0;",
+      "mutation": "            true;",
+      "suite": "cd scraper && npx vitest run tests/unit/services/document-discovery-exchange-abstain.test.ts",
+      "description": "NSE not_carried vs shape_error: an empty issueInfo is abstention, anything else must alert"
+    },
+    {
+      "id": "snapshot-chain-head-sorts-last",
+      "issue": 886,
+      "file": "scripts/ci/check-migration-snapshot-chain.mjs",
+      "pattern": "    if (lastSorted !== heads[0].file) {",
+      "mutation": "    if (false) {",
+      "suite": "node --test scripts/ci/tests/check-migration-snapshot-chain.test.mjs",
+      "description": "migration snapshot chain: the chain head must sort last by filename (drizzle-kit's own rule)"
+    }
+  ]
+}
