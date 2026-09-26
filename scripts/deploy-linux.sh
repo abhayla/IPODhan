@@ -1018,7 +1018,134 @@ cleanup_failed_release_dir() {
   log "cleanup: removed the release dir this failed deploy created: $dir (freed ${mb} MB / ${kb} KB) - nothing served it"
 }
 
+# --------------------------- 2.10 orphan release-dir + orphan build cleanup (#630)
+# A deploy killed mid-build (unattended-upgrades restarting the Actions runner
+# mid-job — #630 — or any other hard kill of this script) skips the EXIT trap
+# entirely: SIGKILL cannot be caught, so cleanup_failed_release_dir() above
+# never runs for that invocation. Measured on the box 2026-09-26: staging run
+# a854ca7a was SIGKILLed at 06:45:46 IST and left BOTH (a) its half-built
+# release dir `releases-staging/20260911-011204-a854ca7a` and (b) its `npm run
+# build` process, still running as an orphan (not in the runner's process
+# group, so it survives the parent's SIGKILL). Neither is cleaned by anything
+# until a human notices. This runs at the START of every deploy, before this
+# invocation creates its own $RELEASE_DIR, so a genuinely still-running build
+# is discovered (and this deploy refuses to proceed) before any new work is
+# wasted, and disk filled with old debris is cleared before this deploy needs
+# the space.
+#
+# Completion is marked by a `.deploy-complete` file the success path writes
+# into $RELEASE_DIR right after `trap - EXIT` disarms cleanup_failed_release_dir
+# (below, ~"12. prune") — the same point that already means "this release is
+# done, never touch it." A release kept deliberately for investigation after
+# an auto-rollback carries `.deploy-rolled-back` instead (written where
+# DEPLOY_ROLLED_BACK=1 is set) — orphan cleanup must never sweep evidence an
+# operator was just told to go look at.
+#
+# Guards (same discipline as cleanup_failed_release_dir() above):
+#   1. only a <stamp>-<sha> dir directly under $RELEASES_DIR is ever touched.
+#   2. never a dir any slot's `current`/`current-*` resolves to, or a live
+#      ipodhan-* pm2 process's cwd (collect_live_release_dirs()) — same
+#      canonical-path comparison as guard 2 above.
+#   3. never a dir carrying `.deploy-complete` (a completed release — of ANY
+#      slot, current or retained by KEEP_RELEASES) or `.deploy-rolled-back`
+#      (kept for investigation) — both are permanent holds, never orphans.
+#   4. a dir with a LIVE `.build.pid` (the recorded PID is actually running)
+#      is a build IN PROGRESS — this cleanup NEVER signals it (killing a bare
+#      PID that may have been reused by an unrelated process is exactly what
+#      owner rule 5 forbids); it refuses to proceed instead, the same way the
+#      deploy mutex refuses two overlapping deploys of one slot.
+#   5. a dir with a STALE `.build.pid` (the PID is not running) had its build
+#      killed with nothing left alive — remove the pidfile and the dir.
+#   6. a dir with NEITHER marker NOR pidfile predates this mechanism. It is
+#      removed ONLY when it is older (by its <stamp>-<sha> name, sorting
+#      lexicographically by build time, same assumption step 12's prune
+#      relies on) than the newest dir that DOES carry `.deploy-complete` — a
+#      later deploy has since succeeded, so this one cannot be anything but
+#      debris from a killed run. A marker-less dir that is NOT older than the
+#      newest completed release (including "no completed release exists
+#      yet") is left alone: on the very first deploy after this ships,
+#      nothing has a marker yet, and this is the one case that must not
+#      delete a legitimately retained older release out from under retention.
+cleanup_orphan_release_dirs() {
+  [ -d "$RELEASES_DIR" ] || return 0
+
+  local -a protected=()
+  local link target canon entry base canon_entry newest_complete="" p is_protected pid kb mb
+
+  for link in "$ROOT"/current "$ROOT"/current-*; do
+    [ -L "$link" ] || [ -f "$link" ] || continue
+    target="$(resolve_link_target "$link")"
+    [ -n "$target" ] || continue
+    protected+=("$(readlink -f "$target" 2>/dev/null || printf '%s' "$target")")
+  done
+  while IFS= read -r target; do
+    [ -n "$target" ] || continue
+    protected+=("$(readlink -f "$target" 2>/dev/null || printf '%s' "$target")")
+  done < <(collect_live_release_dirs)
+  # This invocation's own release dir (a same-second retry) is never orphan debris.
+  protected+=("$(readlink -f "$RELEASE_DIR" 2>/dev/null || printf '%s' "$RELEASE_DIR")")
+
+  # Pass 1: the newest completed release name, across ALL entries (not just
+  # unprotected ones) — a retention-kept old release still counts.
+  for entry in "$RELEASES_DIR"/*/; do
+    [ -d "$entry" ] || continue
+    entry="${entry%/}"
+    base="$(basename "$entry")"
+    [[ "$base" =~ ^[0-9]{8}-[0-9]{6}-[0-9a-fA-F]{7,40}$ ]] || continue
+    if [ -f "$entry/.deploy-complete" ]; then
+      if [ -z "$newest_complete" ] || [[ "$base" > "$newest_complete" ]]; then
+        newest_complete="$base"
+      fi
+    fi
+  done
+
+  for entry in "$RELEASES_DIR"/*/; do
+    [ -d "$entry" ] || continue
+    entry="${entry%/}"
+    base="$(basename "$entry")"
+    [[ "$base" =~ ^[0-9]{8}-[0-9]{6}-[0-9a-fA-F]{7,40}$ ]] || continue
+
+    canon_entry="$(readlink -f "$entry" 2>/dev/null || printf '%s' "$entry")"
+    is_protected=0
+    for p in "${protected[@]}"; do
+      if [ "$p" = "$canon_entry" ]; then
+        is_protected=1
+        break
+      fi
+    done
+    [ "$is_protected" -eq 1 ] && continue
+
+    [ -f "$entry/.deploy-complete" ] && continue
+    if [ -f "$entry/.deploy-rolled-back" ]; then
+      log "orphan-cleanup: keeping $base - kept for investigation after an earlier auto-rollback"
+      continue
+    fi
+
+    if [ -f "$entry/.build.pid" ]; then
+      pid="$(cat "$entry/.build.pid" 2>/dev/null || true)"
+      if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+        fatal "orphan-cleanup: $base has a LIVE build process (pid $pid) — a concurrent deploy of this slot appears to be running. Refusing to proceed; nothing is touched until that build finishes or is confirmed dead."
+      fi
+      log "orphan-cleanup: removing stale build pidfile for $base (pid $pid is not running)"
+      rm -f "$entry/.build.pid"
+    else
+      if [ -z "$newest_complete" ] || ! [[ "$base" < "$newest_complete" ]]; then
+        log "orphan-cleanup: leaving $base alone - no completion marker and no later completed release to compare against yet"
+        continue
+      fi
+    fi
+
+    kb="$(du -sk "$entry" 2>/dev/null | cut -f1 || true)"
+    case "$kb" in ''|*[!0-9]*) kb=0 ;; esac
+    mb=$(( kb / 1024 ))
+    rm -rf "${entry:?}"
+    log "orphan-cleanup: removed orphan release dir left by a killed deploy: $entry (freed ${mb} MB / ${kb} KB)"
+  done
+}
+
 # ------------------------------------------------- 3. prepare layout + release dir
+log "Checking for orphan release debris from a previous killed deploy (#630)"
+cleanup_orphan_release_dirs
 log "Preparing layout and release directory $RELEASE_NAME"
 if [ -d "$RELEASE_DIR" ]; then
   # Item 01 guard 1: a pre-existing directory was NOT created by this
@@ -1214,7 +1341,24 @@ build_release() {
   # HUSKY=0: release dirs are `git archive` exports, not git repos.
   ( cd "$RELEASE_DIR" && NODE_ENV=development HUSKY=0 npm ci --include=dev --no-audit --no-fund )
   ( cd "$RELEASE_DIR/packages/shared" && npx tsc )
-  ( cd "$RELEASE_DIR/web" && npm run build )
+  # #630: backgrounded + pidfile so a hard kill of THIS script (SIGKILL, which
+  # cannot be trapped — e.g. unattended-upgrades restarting the Actions
+  # runner mid-job) leaves a trail: cleanup_orphan_release_dirs() on the NEXT
+  # deploy reads this pidfile to tell "build still running" (refuse to
+  # proceed) from "build died with the parent" (stale pidfile, safe to
+  # remove) from "build never started" (no pidfile at all). Removed on every
+  # exit path (success or failure) via the trap below — a pidfile left
+  # behind after this function returns would misread a FINISHED build as
+  # still running.
+  ( cd "$RELEASE_DIR/web" && npm run build ) &
+  local build_pid=$!
+  echo "$build_pid" > "$RELEASE_DIR/.build.pid"
+  local build_rc=0
+  wait "$build_pid" || build_rc=$?
+  rm -f "$RELEASE_DIR/.build.pid"
+  if [ "$build_rc" -ne 0 ]; then
+    return "$build_rc"
+  fi
   # T-243: NO second `npm ci` inside scraper/. npm ci run from a workspace
   # MEMBER installs only that member's deps and PRUNES everything else - it
   # deleted next/ and husky/ from the tree the web build had just produced.
@@ -2605,6 +2749,9 @@ if ! verify_public_health; then
     # Set BEFORE the flip: everything from here on can die on a full disk, and
     # the EXIT cleanup must know this was a rollback however far it got.
     DEPLOY_ROLLED_BACK=1
+    # #630: mark this release as "kept for investigation", not orphan debris —
+    # cleanup_orphan_release_dirs() on the NEXT deploy must never sweep it.
+    : > "$RELEASE_DIR/.deploy-rolled-back" 2>/dev/null || true
     atomic_flip_current "$PREVIOUS_RELEASE"
     basename "$PREVIOUS_RELEASE" | sed 's/^[0-9]*-[0-9]*-//' > "$ROOT/DEPLOYED_SHA-$SLOT"
     SCRAPER_RESUME_TARGET="prev"
@@ -2622,6 +2769,12 @@ fi
 # delete+start it a second time. (The rollback branch above intentionally
 # leaves the trap armed so it performs the scraper's actual restart.)
 trap - EXIT
+
+# #630: mark this release complete — cleanup_orphan_release_dirs() on the NEXT
+# deploy (of any slot; the marker's meaning does not depend on which slot's
+# release it is) treats a `.deploy-complete` dir as permanently protected,
+# whether it is `current` or a retention-kept older release.
+: > "$RELEASE_DIR/.deploy-complete" 2>/dev/null || true
 
 # ------------------------------------------------------------------- 12. prune
 # T-243: persist the process list so a reboot resurrects THIS release. Without

@@ -3652,6 +3652,155 @@ else
   fail "case 38: expected every real scraper pm2 start to carry SCRAPER_WAKE_TRIGGER=deploy (labelled=$PM2_LABELLED38 total=$PM2_COUNT38)"
 fi
 
+# --- Case 39: #630 - orphan release-dir + orphan build cleanup at deploy ---
+# --- start. A deploy killed mid-build (unattended-upgrades restarting the --
+# --- Actions runner mid-job) skips the EXIT trap (SIGKILL cannot be -------
+# --- trapped), so cleanup_failed_release_dir() never runs for that --------
+# --- invocation and its half-built release dir + build process survive ----
+# --- indefinitely. Driven at function level (release names are runtime ----
+# --- timestamps) - same isolation technique as case 33d/33f. --------------
+CLEANUP_ORPHAN_FN="$(sed -n '/^cleanup_orphan_release_dirs()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -n "$CLEANUP_ORPHAN_FN" ] && [ -n "$RESOLVE_LINK_FN" ] && [ -n "$COLLECT_LIVE_FN" ]; then
+  run_orphan_cleanup_39() {
+    # $1 = fixture root, $2 = log file, $3 = this invocation's own (not-yet-created) RELEASE_DIR
+    local froot="$1" logf="$2" reldir="$3"
+    (
+      eval "$RESOLVE_LINK_FN"
+      eval "$COLLECT_LIVE_FN"
+      eval "$CLEANUP_ORPHAN_FN"
+      log() { echo "==> $*"; }
+      warn() { echo "WARN: $*" >&2; }
+      fatal() { echo "FATAL: $*" >&2; exit 1; }
+      DRY_RUN=1
+      DEPLOY_DRYRUN_PM2_RELEASE_DIRS=""
+      ROOT="$froot"
+      RELEASES_DIR="$froot/releases"
+      RELEASE_DIR="$reldir"
+      cleanup_orphan_release_dirs
+    ) >"$logf" 2>&1
+  }
+
+  # --- 39a: a half-built orphan (no marker, no pidfile) OLDER than the -----
+  # --- newest completed release is removed; `current`'s target and a -------
+  # --- retention-kept older COMPLETED release both survive. ----------------
+  R39A="$(mktemp -d)"
+  mkdir -p "$R39A/releases/20260901-090000-1111111" \
+           "$R39A/releases/20260905-101112-3333333" \
+           "$R39A/releases/20260910-120000-2222222"
+  : > "$R39A/releases/20260901-090000-1111111/.deploy-complete"
+  : > "$R39A/releases/20260910-120000-2222222/.deploy-complete"
+  printf '%s\n' "$R39A/releases/20260910-120000-2222222" > "$R39A/current"
+  run_orphan_cleanup_39 "$R39A" /tmp/deploy-test-39a.log "$R39A/releases/20260915-000000-8888888"
+  if [ -d "$R39A/releases/20260905-101112-3333333" ]; then
+    fail "case 39a: the half-built orphan (no marker, no pidfile, older than a later completed release) was NOT removed"
+  else
+    pass "case 39a: the half-built orphan with no marker and no pidfile, older than a later completed release, was removed"
+  fi
+  if [ -d "$R39A/releases/20260901-090000-1111111" ] && [ -d "$R39A/releases/20260910-120000-2222222" ]; then
+    pass "case 39a: both completed releases (current, and a retention-kept older one) survive"
+  else
+    fail "case 39a: a completed release was removed"
+  fi
+  if grep -q "orphan-cleanup: removed orphan release dir" /tmp/deploy-test-39a.log; then
+    pass "case 39a: the removal is logged with its path"
+  else
+    fail "case 39a: no 'orphan-cleanup: removed orphan release dir' log line"
+  fi
+  rm -rf "$R39A"
+
+  # --- 39b: a stale pidfile (recorded pid is dead) -> pidfile removed, the --
+  # --- half-built dir removed. -----------------------------------------------
+  R39B="$(mktemp -d)"
+  mkdir -p "$R39B/releases/20260901-090000-1111111" "$R39B/releases/20260905-101112-4444444"
+  : > "$R39B/releases/20260901-090000-1111111/.deploy-complete"
+  printf '%s\n' "$R39B/releases/20260901-090000-1111111" > "$R39B/current"
+  ( : ) & DEADPID39=$!
+  wait "$DEADPID39" 2>/dev/null || true
+  echo "$DEADPID39" > "$R39B/releases/20260905-101112-4444444/.build.pid"
+  run_orphan_cleanup_39 "$R39B" /tmp/deploy-test-39b.log "$R39B/releases/20260915-000000-8888888"
+  if [ -d "$R39B/releases/20260905-101112-4444444" ]; then
+    fail "case 39b: a dir with a stale (dead-pid) build pidfile was NOT removed"
+  else
+    pass "case 39b: a dir with a stale build pidfile (dead pid) was removed"
+  fi
+  if grep -q "orphan-cleanup: removing stale build pidfile" /tmp/deploy-test-39b.log; then
+    pass "case 39b: the stale-pidfile removal is logged"
+  else
+    fail "case 39b: no 'orphan-cleanup: removing stale build pidfile' log line"
+  fi
+  rm -rf "$R39B"
+
+  # --- 39c: a LIVE pid (a build genuinely still running - another deploy, --
+  # --- or the orphan build process #630 describes) is never killed by ------
+  # --- this cleanup; it refuses to proceed instead (owner rule 5: a -------
+  # --- process-stop must never match on a bare/reused pid without proof). --
+  R39C="$(mktemp -d)"
+  mkdir -p "$R39C/releases/20260901-090000-1111111" "$R39C/releases/20260905-101112-5555555"
+  : > "$R39C/releases/20260901-090000-1111111/.deploy-complete"
+  printf '%s\n' "$R39C/releases/20260901-090000-1111111" > "$R39C/current"
+  sleep 30 & LIVEPID39=$!
+  echo "$LIVEPID39" > "$R39C/releases/20260905-101112-5555555/.build.pid"
+  run_orphan_cleanup_39 "$R39C" /tmp/deploy-test-39c.log "$R39C/releases/20260915-000000-8888888"
+  RC39C=$?
+  STILL_ALIVE39C=0
+  kill -0 "$LIVEPID39" 2>/dev/null && STILL_ALIVE39C=1
+  kill "$LIVEPID39" 2>/dev/null || true
+  wait "$LIVEPID39" 2>/dev/null || true
+  if [ "$RC39C" -ne 0 ] && grep -q "^FATAL: orphan-cleanup: .*LIVE build process" /tmp/deploy-test-39c.log; then
+    pass "case 39c: a live build pidfile refuses to proceed (rc=$RC39C) instead of touching anything"
+  else
+    fail "case 39c: expected a non-zero rc and a FATAL '...LIVE build process' line (rc=$RC39C)"
+    cat /tmp/deploy-test-39c.log
+  fi
+  if [ -d "$R39C/releases/20260905-101112-5555555" ]; then
+    pass "case 39c: the directory with a live build was left untouched"
+  else
+    fail "case 39c: the directory with a live build was removed"
+  fi
+  if [ "$STILL_ALIVE39C" -eq 1 ]; then
+    pass "case 39c: cleanup never sent the live build process a signal (it was still alive when checked)"
+  else
+    fail "case 39c: the live build process was not alive right after cleanup ran - cleanup may have killed it"
+  fi
+  rm -rf "$R39C"
+
+  # --- 39d: a marker-less dir is left alone when NO completed release ------
+  # --- exists yet to compare it against - the grandfather case for the -----
+  # --- very first deploy after this mechanism ships (nothing has a marker --
+  # --- yet; must not wipe pre-existing, legitimately retained history). ----
+  R39D="$(mktemp -d)"
+  mkdir -p "$R39D/releases/20260905-101112-6666666"
+  run_orphan_cleanup_39 "$R39D" /tmp/deploy-test-39d.log "$R39D/releases/20260915-000000-8888888"
+  if [ -d "$R39D/releases/20260905-101112-6666666" ]; then
+    pass "case 39d: a marker-less dir is left alone when no completed release exists yet to compare against"
+  else
+    fail "case 39d: a marker-less dir was removed with nothing completed to compare against - would wipe pre-existing history on the first run after shipping"
+  fi
+  rm -rf "$R39D"
+
+  # --- 39e: a release kept for investigation after an auto-rollback --------
+  # --- (.deploy-rolled-back) is never swept as orphan debris. --------------
+  R39E="$(mktemp -d)"
+  mkdir -p "$R39E/releases/20260901-090000-1111111" "$R39E/releases/20260905-101112-7777777"
+  : > "$R39E/releases/20260901-090000-1111111/.deploy-complete"
+  : > "$R39E/releases/20260905-101112-7777777/.deploy-rolled-back"
+  printf '%s\n' "$R39E/releases/20260901-090000-1111111" > "$R39E/current"
+  run_orphan_cleanup_39 "$R39E" /tmp/deploy-test-39e.log "$R39E/releases/20260915-000000-8888888"
+  if [ -d "$R39E/releases/20260905-101112-7777777" ]; then
+    pass "case 39e: a release kept for investigation after an auto-rollback is never swept as orphan debris"
+  else
+    fail "case 39e: a rolled-back (kept-for-investigation) release dir was removed"
+  fi
+  if grep -q "orphan-cleanup: keeping .* kept for investigation" /tmp/deploy-test-39e.log; then
+    pass "case 39e: the keep is logged with its reason"
+  else
+    fail "case 39e: no 'orphan-cleanup: keeping ... kept for investigation' log line"
+  fi
+  rm -rf "$R39E"
+else
+  fail "case 39: could not extract cleanup_orphan_release_dirs()/resolve_link_target()/collect_live_release_dirs() from $DEPLOY_SCRIPT - renamed?"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1

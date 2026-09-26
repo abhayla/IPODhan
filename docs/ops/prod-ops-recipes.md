@@ -1166,5 +1166,16 @@ ssh -o BatchMode=yes rfp-vps 'perl -c /etc/needrestart/conf.d/zz-no-actions-runn
 
 Proof that needrestart loads it: `needrestart.conf` lines 229-230 `do` every `conf.d/*.conf`; loading the real config
 and matching the IPODhan runner's unit name yields exactly one rule, `^actions\.runner\..+\.service$ => 0`.
-**Undo:** `rm /etc/needrestart/conf.d/zz-no-actions-runner-restart.conf`. The repo-side half (a deploy start removes
-orphan half-built releases the killed trap left behind) stays open in #630.
+**Undo:** `rm /etc/needrestart/conf.d/zz-no-actions-runner-restart.conf`.
+
+**Repo-side half (#630, closed by the PR this line cites):** `scripts/deploy-linux.sh` now runs
+`cleanup_orphan_release_dirs()` at the START of every deploy, before this invocation creates its own
+release dir — for BOTH the half-built release directory and the orphan `npm run build` process a
+SIGKILLed deploy leaves behind (the EXIT trap cannot fire on a SIGKILL, so `cleanup_failed_release_dir()`
+never runs for that invocation). A release is protected from removal by a `.deploy-complete` marker
+(written on every successful deploy, whether `current` or a retention-kept older release) or a
+`.deploy-rolled-back` marker (written when a release is kept for investigation after an auto-rollback).
+A directory with a live `.build.pid` is never signalled — the cleanup refuses to proceed instead, on the
+assumption a build is genuinely still running (another deploy, or the orphan process itself). A stale
+`.build.pid` (dead pid) is removed along with its half-built directory. See
+`scripts/tests/deploy-linux.test.sh` case 39 for the fixture coverage.
