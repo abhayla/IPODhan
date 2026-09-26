@@ -23,7 +23,7 @@ import { ReviewRepository } from '@/lib/repositories/review-repository';
 // ==================== TEST DATA ====================
 
 const testIPO = {
-  id: 'test-ipo-reviews-detail',
+  id: '33333333-3333-4333-8333-333333333331',
   companyName: 'Review Summary Test Corp',
   slug: 'review-summary-test-corp',
   segment: 'MAINBOARD' as const,
@@ -40,7 +40,7 @@ const testIPO = {
 
 const testReviewsApproved = [
   {
-    id: 'test-review-approved-001',
+    id: '44444444-4444-4444-8444-444444444441',
     ipoId: testIPO.id,
     author: 'ICICI Direct',
     reviewTitle: 'Strong Growth Story - Subscribe',
@@ -57,7 +57,7 @@ const testReviewsApproved = [
     moderatedAt: new Date('2025-10-21'),
   },
   {
-    id: 'test-review-approved-002',
+    id: '44444444-4444-4444-8444-444444444442',
     ipoId: testIPO.id,
     author: 'Motilal Oswal',
     reviewTitle: 'May Apply with Caution',
@@ -73,7 +73,7 @@ const testReviewsApproved = [
     moderatedAt: new Date('2025-10-20'),
   },
   {
-    id: 'test-review-approved-003',
+    id: '44444444-4444-4444-8444-444444444443',
     ipoId: testIPO.id,
     author: 'Angel Broking',
     reviewTitle: 'High Valuation - Avoid',
@@ -92,7 +92,7 @@ const testReviewsApproved = [
 
 const testReviewsPending = [
   {
-    id: 'test-review-pending-001',
+    id: '44444444-4444-4444-8444-444444444444',
     ipoId: testIPO.id,
     author: 'Sharekhan',
     reviewTitle: 'Pending Review - Not Recommended',
@@ -108,7 +108,7 @@ const testReviewsPending = [
 
 // IPO with no reviews
 const testIPONoReviews = {
-  id: 'test-ipo-no-reviews',
+  id: '33333333-3333-4333-8333-333333333332',
   companyName: 'No Reviews Test Corp',
   slug: 'no-reviews-test-corp',
   segment: 'SME' as const,

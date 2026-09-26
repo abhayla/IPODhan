@@ -45,13 +45,15 @@ interface TestReview {
   reviewUrl: string | null;
   recommendation: 'May apply' | 'Subscribe' | 'Avoid' | 'Not Recommended';
   publishedDate: Date;
+  year: number;
+  segment: 'MAINBOARD' | 'SME';
   isApproved: boolean;
 }
 
 // ==================== TEST DATA ====================
 
 const testIPO: TestIPO = {
-  id: 'test-ipo-admin-reviews',
+  id: '11111111-1111-4111-8111-111111111111',
   companyName: 'Admin Review Test Corp',
   slug: 'admin-review-test-corp',
   segment: 'MAINBOARD',
@@ -61,7 +63,7 @@ const testIPO: TestIPO = {
 
 const testReviews: TestReview[] = [
   {
-    id: 'test-review-pending-001',
+    id: '22222222-2222-4222-8222-222222222221',
     ipoId: testIPO.id,
     author: 'Test Broker Alpha',
     reviewTitle: 'Test Review Pending 1',
@@ -69,10 +71,12 @@ const testReviews: TestReview[] = [
     reviewUrl: 'https://example.com/review-1',
     recommendation: 'May apply',
     publishedDate: new Date('2025-10-20'),
+    year: 2025,
+    segment: 'MAINBOARD',
     isApproved: false,
   },
   {
-    id: 'test-review-pending-002',
+    id: '22222222-2222-4222-8222-222222222222',
     ipoId: testIPO.id,
     author: 'Test Broker Beta',
     reviewTitle: 'Test Review Pending 2',
@@ -80,10 +84,12 @@ const testReviews: TestReview[] = [
     reviewUrl: null,
     recommendation: 'Avoid',
     publishedDate: new Date('2025-10-19'),
+    year: 2025,
+    segment: 'MAINBOARD',
     isApproved: false,
   },
   {
-    id: 'test-review-approved-001',
+    id: '22222222-2222-4222-8222-222222222223',
     ipoId: testIPO.id,
     author: 'Test Broker Gamma',
     reviewTitle: 'Test Review Approved',
@@ -91,6 +97,8 @@ const testReviews: TestReview[] = [
     reviewUrl: 'https://example.com/review-3',
     recommendation: 'Subscribe',
     publishedDate: new Date('2025-10-18'),
+    year: 2025,
+    segment: 'MAINBOARD',
     isApproved: true,
   },
 ];
@@ -215,7 +223,7 @@ describe('Admin Review API Integration Tests', () => {
       const response = await getReviews(request);
       const data = await response.json();
 
-      const review = data.data.find((r: any) => r.id === 'test-review-pending-001');
+      const review = data.data.find((r: any) => r.id === '22222222-2222-4222-8222-222222222221');
       expect(review).toBeDefined();
       expect(review).toHaveProperty('id');
       expect(review).toHaveProperty('ipoId');
@@ -230,7 +238,7 @@ describe('Admin Review API Integration Tests', () => {
 
   describe('PATCH /api/admin/reviews/[id] - Approve Review', () => {
     it('should approve review and update fields', async () => {
-      const reviewId = 'test-review-pending-001';
+      const reviewId = '22222222-2222-4222-8222-222222222221';
       const request = createMockRequest(
         `http://localhost:3000/api/admin/reviews/${reviewId}`,
         {
@@ -256,7 +264,7 @@ describe('Admin Review API Integration Tests', () => {
     });
 
     it('should require authentication for approval', async () => {
-      const reviewId = 'test-review-pending-001';
+      const reviewId = '22222222-2222-4222-8222-222222222221';
       const request = new NextRequest(
         new URL(`http://localhost:3000/api/admin/reviews/${reviewId}`),
         {
@@ -273,7 +281,7 @@ describe('Admin Review API Integration Tests', () => {
     });
 
     it('should validate action parameter (400 for invalid)', async () => {
-      const reviewId = 'test-review-pending-002';
+      const reviewId = '22222222-2222-4222-8222-222222222222';
       const request = createMockRequest(
         `http://localhost:3000/api/admin/reviews/${reviewId}`,
         {
@@ -296,7 +304,7 @@ describe('Admin Review API Integration Tests', () => {
     });
 
     it('should return 404 for non-existent review', async () => {
-      const reviewId = 'non-existent-review-id';
+      const reviewId = '99999999-9999-4999-8999-999999999999';
       const request = createMockRequest(
         `http://localhost:3000/api/admin/reviews/${reviewId}`,
         {
@@ -322,7 +330,7 @@ describe('Admin Review API Integration Tests', () => {
 
   describe('PATCH /api/admin/reviews/[id] - Reject Review', () => {
     it('should reject review and update fields', async () => {
-      const reviewId = 'test-review-pending-002';
+      const reviewId = '22222222-2222-4222-8222-222222222222';
       const request = createMockRequest(
         `http://localhost:3000/api/admin/reviews/${reviewId}`,
         {
@@ -363,7 +371,7 @@ describe('Admin Review API Integration Tests', () => {
       expect(cachedBefore).not.toBeNull();
 
       // Approve review
-      const reviewId = 'test-review-pending-001';
+      const reviewId = '22222222-2222-4222-8222-222222222221';
       const request = createMockRequest(
         `http://localhost:3000/api/admin/reviews/${reviewId}`,
         {
@@ -390,7 +398,7 @@ describe('Admin Review API Integration Tests', () => {
   describe('Only Approved Reviews in Public Summary', () => {
     it('should only include approved reviews in public API', async () => {
       // First, approve a review
-      const reviewId = 'test-review-pending-001';
+      const reviewId = '22222222-2222-4222-8222-222222222221';
       const approveRequest = createMockRequest(
         `http://localhost:3000/api/admin/reviews/${reviewId}`,
         {

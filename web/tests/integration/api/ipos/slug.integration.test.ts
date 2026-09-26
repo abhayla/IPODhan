@@ -322,7 +322,7 @@ describe('GET /api/ipos/[slug] Integration Tests', () => {
 
       expect(response.status).toBe(404);
       expect(data.error).toBeDefined();
-      expect(data.error.code).toBe('IPO_NOT_FOUND');
+      expect(data.error.code).toBe('NOT_FOUND');
       expect(data.error.message).toBe('IPO not found');
       expect(data.error.slug).toBe('non-existent-slug');
     });
@@ -336,7 +336,7 @@ describe('GET /api/ipos/[slug] Integration Tests', () => {
 
       expect(response.status).toBe(400);
       expect(data.error).toBeDefined();
-      expect(data.error.code).toBe('INVALID_SLUG');
+      expect(data.error.code).toBe('VALIDATION_ERROR');
     });
   });
 

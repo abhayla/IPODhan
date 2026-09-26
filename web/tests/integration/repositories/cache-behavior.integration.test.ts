@@ -62,8 +62,11 @@ describe('Cache Behavior Integration Tests', () => {
       await ipoRepo.findById(testIpoId);
 
       const ttl = await redis.ttl(`ipo:id:${testIpoId}`);
-      expect(ttl).toBeGreaterThan(1700); // ~30 min (1800s)
-      expect(ttl).toBeLessThanOrEqual(1800);
+      // CacheTTL.IPO_DETAIL is 900s (15 min, Story 4.1) -- lib/cache/cache-keys.ts.
+      // Was asserted as ~30 min (1800s); that value belongs to the separate
+      // CacheTTL.IPO_DETAILS (1800s, Story 4.11) key, not this one.
+      expect(ttl).toBeGreaterThan(800); // ~15 min (900s)
+      expect(ttl).toBeLessThanOrEqual(900);
     });
 
     it('should use correct TTL for IPO list', async () => {
@@ -120,7 +123,8 @@ describe('Cache Behavior Integration Tests', () => {
 
       // Populate cache
       const first = await subRepo.findLatest(testIpoId);
-      expect(first?.totalSubscription).toBe('5.5');
+      // Postgres numeric(x,2) round-trips '5.5' as '5.50'.
+      expect(first?.totalSubscription).toBe('5.50');
 
       // Create new snapshot (should invalidate cache)
       await subRepo.createSnapshot({
