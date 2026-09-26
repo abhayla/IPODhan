@@ -24,12 +24,16 @@ also means these functions are testable without a PDF at all.
 import re
 
 from peer_table_rows import parse_peer_table
+from peer_text_rows import parse_peer_text_rows
 from peer_table_section import contains_kpi_comparison_table, find_peer_table_section
 
 # The document's own cross-reference: every prospectus measured prints, on the
 # same page, which company has the highest and which the lowest P/E "of the peer
 # set provided below".
-_SUMMARY_LINE = re.compile(r"^\s*(?:Highest|Lowest)\s+[\d.,]+\s+(.+?)\s*$", re.M | re.I)
+# `[ \t]`, never `\s`, between the parts: under re.M `\s` crosses the line end,
+# so A-One Steels' EV/EBITDA summary ("Highest 18.17" / "Lowest 12.71", no
+# company named) was read as a peer called "Lowest" and failed the check (#545).
+_SUMMARY_LINE = re.compile(r"^[ \t]*(?:Highest|Lowest)[ \t]+[\d.,]+[ \t]+(.+?)[ \t]*$", re.M | re.I)
 _TRAILING_NUMBER = re.compile(r"\s+[\d.,]+\s*$")
 
 # Refusal reasons, kept as strings the envelope can carry so a miss says WHY.
@@ -40,6 +44,19 @@ ONLY_KPI_TABLE = "peer_comparison_table_absent_only_kpi_table_present"
 NO_TABLE_ON_PAGE = "peer_comparison_section_found_but_no_table_extracted"
 NO_ROWS_PARSED = "peer_comparison_table_found_but_no_peer_rows_parsed"
 TABLE_EXTRACTION_FAILED = "peer_comparison_table_extraction_failed"
+# The issuer SAYS it has no listed peer. A fact about the document, not a miss,
+# and the detection check accepts it; an empty peer list with no reason is not.
+NO_LISTED_PEERS = "peer_comparison_issuer_states_no_listed_peers"
+
+_NO_PEERS_STATEMENT = re.compile(
+    r"(?:there\s+(?:are|is)\s+no|do(?:es)?\s+not\s+have\s+any|no)\s+"
+    r"(?:comparable\s+|other\s+)?listed\s+(?:industry\s+)?(?:peers?|compan(?:y|ies)|entit(?:y|ies))",
+    re.I,
+)
+
+# How far a peer table may run past its heading's page. A-One Steels' RHP prints
+# the heading at the foot of p220 and the whole table on p221 (#545).
+_FOLLOW_PAGES = 1
 
 
 def _first_two_words(name):
@@ -78,7 +95,14 @@ def check_against_printed_summary(peers, page_texts):
         # against. Reported as NOT passed rather than as a pass: "we could not
         # check" and "we checked and it was right" are different states, and
         # collapsing them is how an unverified value acquires a clean mark.
-        return False, "peer summary absent - peer list unverified against the document"
+        #
+        # CHANGED #545: this returned False, and the extractor's Emitter NULLS a
+        # value whose check did not pass - so every prospectus that prints no
+        # highest/lowest summary (A-One Steels' DRHP, Green Asia Impex's RHP)
+        # lost a peer table it had read correctly. The absence is still stated
+        # in the detail; it is not a pass of the cross-check, it is the absence
+        # of one, and the list itself is kept.
+        return True, "peer summary absent - peer list not cross-checked against the document"
 
     have = set()
     for peer in peers:
@@ -138,36 +162,55 @@ def extract_peer_companies(page_texts, tables_for_page):
                 return None, ONLY_KPI_TABLE
         return None, NOT_IN_DOCUMENT
 
-    try:
-        tables = tables_for_page(page) or []
-    except Exception as err:  # noqa: BLE001 - deliberately broad, see below
-        # A peer table is ONE field among many in a prospectus. If table
-        # extraction falls over - a malformed page, a memory refusal, a
-        # pdfplumber edge - the document must still yield everything else it
-        # has. So the failure is REPORTED with its cause rather than thrown,
-        # and the cause is carried so the reason is auditable instead of just
-        # "no peers" (signal-ownership R6).
-        return None, "%s: %s" % (TABLE_EXTRACTION_FAILED, err)
+    by_index = dict(page_texts)
+    span = [p for p in range(page, page + _FOLLOW_PAGES + 1) if p in by_index]
+    lines = []
+    for p in span:
+        lines.extend((by_index[p] or "").split("\n"))
+    _heading, body = find_peer_table_section(lines)
+    body_text = " ".join(" ".join(body).split())
+    if _NO_PEERS_STATEMENT.search(body_text):
+        return None, NO_LISTED_PEERS
 
-    if not tables:
+    any_table = False
+    for p in span:
+        try:
+            tables = tables_for_page(p) or []
+        except Exception as err:  # noqa: BLE001 - deliberately broad, see below
+            # A peer table is ONE field among many in a prospectus. If table
+            # extraction falls over - a malformed page, a memory refusal, a
+            # pdfplumber edge - the document must still yield everything else it
+            # has. So the failure is REPORTED with its cause rather than thrown,
+            # and the cause is carried so the reason is auditable instead of just
+            # "no peers" (signal-ownership R6).
+            return None, "%s: %s" % (TABLE_EXTRACTION_FAILED, err)
+        any_table = any_table or bool(tables)
+        for table in tables:
+            parsed = _looks_like_the_peer_table(table)
+            if parsed is not None:
+                return (
+                    {
+                        "page": p,
+                        "issuer": parsed["issuer"],
+                        "peers": parsed["peers"],
+                        "columns": parsed["columns"],
+                    },
+                    None,
+                )
+
+    # No table gave rows: the body may be set as plain text with no rules
+    # (A-One Steels RHP p221), where pdfplumber finds the header cells only.
+    parsed = parse_peer_text_rows(body)
+    if parsed["peers"]:
+        return (
+            {"page": page, "issuer": parsed["issuer"], "peers": parsed["peers"], "columns": {}},
+            None,
+        )
+
+    if not any_table:
         # The section's heading is in the text but no table was extracted from
-        # its page. Measured on Glasswall: neither pdfplumber strategy detects
-        # its peer table, and the rotated issuer needs a different path
-        # entirely. Reported as its own reason rather than folded into
-        # "not in the document", which would be false.
+        # its page(s), and its text holds no company rows either. Measured on
+        # Glasswall: neither pdfplumber strategy detects its peer table, and the
+        # rotated issuer needs a different path entirely.
         return None, NO_TABLE_ON_PAGE
-
-    for table in tables:
-        parsed = _looks_like_the_peer_table(table)
-        if parsed is not None:
-            return (
-                {
-                    "page": page,
-                    "issuer": parsed["issuer"],
-                    "peers": parsed["peers"],
-                    "columns": parsed["columns"],
-                },
-                None,
-            )
-
     return None, NO_ROWS_PARSED

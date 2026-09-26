@@ -705,6 +705,16 @@
       "unverifiableWhen": "field_sources is unreadable, or fewer than 20 provenance rows were written on the printed offer-term fields in the 14-day window"
     },
     {
+      "id": "prospectus_promoters_peers_yield",
+      "findingClass": "a completed RHP/DRHP extraction leaves its IPO with no promoters or no listed peers, and nothing names why - every prospectus prints both, so an empty child table after a completed read is a reader that failed in silence",
+      "round7Findings": [],
+      "failThreshold": "any COMPLETED RHP/DRHP document extracted on or after the wiring date whose IPO has 0 promoters rows, or 0 peer_companies rows without the E6 step evidence peerReason peer_comparison_issuer_states_no_listed_peers; each offender is named with its document id and the extractor's own peer reason",
+      "severity": "P2",
+      "unverifiableWhen": "no RHP/DRHP has completed extraction since the wiring date - the population is empty, which is a statement about the corpus and not about the pipeline",
+      "why": "#545: staging 2026-09-26 had 91 COMPLETED RHP/DRHP documents, 59 on IPOs with 0 promoter rows and 89 on IPOs with 0 peer rows. The promoter reader was never called on the prospectus path, and the peer reader returned peer_comparison_table_found_but_no_peer_rows_parsed on every real RHP tried, through five separate mechanisms (table on the page after its heading, text-only table body, a letter-marker heading plus a KPI lookalike, no divider row, a missing highest/lowest summary nulling the list). Unit tests on real pages prove each reader reads; only an audit over real rows proves they are still being called and still yield.",
+      "locatorNote": "Scoped to documents extracted on or after PROMOTER_PEER_WIRING_MERGED_AT (default 2026-09-26): documents completed earlier could not carry promoters or peers however healthy the pipeline is now, and are only re-read on their next extraction. Implemented in scripts/audit-detection-floor.mjs next to issuer_ratio_yield."
+    },
+    {
       "id": "pull_admin",
       "designId": "PULL-ADMIN",
       "findingClass": "pull-model verification check PULL-ADMIN: fields skipped for admin reasons with no live protection row",

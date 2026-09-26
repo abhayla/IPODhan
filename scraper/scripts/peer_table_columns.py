@@ -77,7 +77,10 @@ _PATTERNS = [
 # A sub-header that names only which half of a merged metric it is.
 _BASIC_OR_DILUTED = re.compile(r"^\s*\(?\s*(basic|dilut)", re.I)
 
-_DIVIDER = re.compile(r"^\s*(listed\s+peers?|peer\s+group\s*:?)\s*$", re.I)
+# "Listed and unlisted Peers" is German Green Steel's RHP p181 (#545).
+_DIVIDER = re.compile(
+    r"^\s*(listed\s+(?:and\s+unlisted\s+)?peers?|(?:listed\s+)?peer\s+group\s*:?)\s*$", re.I
+)
 
 # Cells that are legitimately absent rather than missing: a value that waits on
 # the final Offer Price. `[.]` is what the filled-circle placeholder degrades to
