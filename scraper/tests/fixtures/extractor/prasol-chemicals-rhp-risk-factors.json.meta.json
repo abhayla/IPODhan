@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1788411848709.pdf",
+  "capturedAt": "2026-09-26",
+  "ipoId": "prasol-chemicals-ltd",
+  "company": "Prasol Chemicals",
+  "note": "RHP dated 2026-09-02 (SEBI filing page https://www.sebi.gov.in/filings/public-issues/sep-2026/prasol-chemicals-limited-rhp_104222.html). [pageIndex, text] pairs from pdfplumber page.extract_text() exactly as extract_filing.py reads them; 0-based pages 26-91 = SECTION II: RISK FACTORS through the page that opens SECTION III. #502/#503 fixture."
+}
