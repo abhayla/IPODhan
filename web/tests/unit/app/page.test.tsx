@@ -293,6 +293,47 @@ describe('Home Page (Story 9.3)', () => {
       expect(screen.getByTestId('error-boundary')).toBeInTheDocument();
       expect(screen.getByTestId('ipo-tables-section')).toBeInTheDocument();
     });
+
+    // Proof (#57): the wrapper existing is not evidence it works. This test uses
+    // the REAL AsyncErrorBoundary (unmocked) and makes the wrapped section throw
+    // during render, then asserts the fallback markup shows and the rest of the
+    // page survives. Suppress the expected console.error from React's own
+    // error-boundary logging + componentDidCatch's dev-mode console.error.
+    it('shows the boundary fallback and keeps the rest of the page when the tables section throws', async () => {
+      vi.resetModules();
+      vi.doUnmock('@/components/error/AsyncErrorBoundary');
+      vi.doMock('@/components/home/HomeIPOTablesSection', () => ({
+        HomeIPOTablesSection: () => {
+          throw new Error('boom: tables section render failure');
+        },
+      }));
+
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const { default: HomeWithRealBoundary } = await import('@/app/page');
+        const page = await HomeWithRealBoundary();
+        render(page);
+
+        // Fallback markup passed to AsyncErrorBoundary in app/page.tsx
+        expect(
+          screen.getByText(/Unable to load IPO data at this time/i)
+        ).toBeInTheDocument();
+
+        // The section that threw is gone
+        expect(screen.queryByTestId('ipo-tables-section')).toBeNull();
+
+        // Rest of the page still renders
+        expect(
+          screen.getByText(/India's IPO tracker — live subscription, GMP & allotment/i)
+        ).toBeInTheDocument();
+        expect(screen.getByText(/Latest IPO updates/i)).toBeInTheDocument();
+        expect(screen.getByRole('navigation', { name: /tools/i })).toBeInTheDocument();
+      } finally {
+        consoleErrorSpy.mockRestore();
+        vi.doUnmock('@/components/home/HomeIPOTablesSection');
+        vi.resetModules();
+      }
+    });
   });
 
   describe('Responsive Design', () => {
