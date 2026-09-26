@@ -2348,6 +2348,89 @@ async function checkR_provenanceParentNotNull() {
       : `${result.count} row(s): ${offenders.slice(0, MAX_OFFENDERS).join('; ')}`);
 }
 
+// ---- (r): a PUBLISHED value with NO field_sources row at all (#454) ---------
+//
+// This is the mirror image of checkR_provenanceParentNotNull above: that check
+// catches a field_sources row naming a NULL parent value (a false claim of
+// provenance); this one catches the opposite shape — a real, non-null,
+// PUBLISHED value that has NO field_sources row naming ANY source at all,
+// so nothing says who vouches for it.
+//
+// RCA (#454): the fallback door in data-persister.ts (taken when consolidation
+// throws) used to write `ipos` fields via `ipoRepository.update` with zero
+// `field_sources` writes. Fixed in the same PR as this check; this check is
+// the standing detector so the NEXT write path with the same gap (or a
+// pre-fix row still sitting on prod/staging) is named, not silently missed.
+//
+// Owner-side correction on #454 (2026-09-26): the known population is 10
+// LEGACY rows, none recent — so this check's population is EVERY offering_type
+// IPO row (created any time), and a row created before the fix stays a known,
+// named legacy finding rather than a surprise; a row created AFTER the fix
+// lands is the one that means the class recurred.
+const PUBLISHED_WITHOUT_PROVENANCE_FIELDS = [
+  { column: 'issue_size', field: 'issueSize', positiveOnly: true },
+  { column: 'price_range_min', field: 'priceRangeMin', positiveOnly: false },
+  { column: 'price_range_max', field: 'priceRangeMax', positiveOnly: false },
+  { column: 'lot_size', field: 'lotSize', positiveOnly: false },
+  { column: 'open_date', field: 'openDate', positiveOnly: false },
+  { column: 'close_date', field: 'closeDate', positiveOnly: false },
+  { column: 'listing_date', field: 'listingDate', positiveOnly: false },
+];
+const PUBLISHED_WITHOUT_PROVENANCE_NAME =
+  `every published, non-null ipos value on ${PUBLISHED_WITHOUT_PROVENANCE_FIELDS.map((f) => f.field).join('/')} (${PUBLISHED_WITHOUT_PROVENANCE_FIELDS.filter((f) => f.positiveOnly).map((f) => f.field).join('/')} > 0) carries a field_sources row naming its source (row_key '')`;
+
+async function checkR_publishedWithoutProvenance() {
+  const selectCols = PUBLISHED_WITHOUT_PROVENANCE_FIELDS
+    .map((f) => `i.${f.column}`)
+    .join(', ');
+  const unionSql = PUBLISHED_WITHOUT_PROVENANCE_FIELDS
+    .map(
+      (f) => `
+        SELECT i.id, i.company_name AS "companyName", i.slug, '${f.field}' AS "fieldName"
+          FROM ipos i
+         WHERE ${REAL_IPO}
+           AND i.${f.column} IS NOT NULL
+           ${f.positiveOnly ? `AND i.${f.column} > 0` : ''}
+           AND NOT EXISTS (
+             SELECT 1 FROM field_sources fs
+              WHERE fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.row_key = ''
+                AND fs.field_name = '${f.field}'
+           )`
+    )
+    .join('\n        UNION ALL\n');
+
+  let rows;
+  try {
+    rows = await q(unionSql);
+  } catch (e) {
+    if (e.code === '42703' || e.code === '42P01') {
+      const applied = await isMigrationApplied(FIELD_SOURCES_ROW_KEY_MIGRATION);
+      if (applied === false) {
+        record('r_published_without_provenance', PUBLISHED_WITHOUT_PROVENANCE_NAME, 'PASS',
+          `not applicable — migration ${FIELD_SOURCES_ROW_KEY_MIGRATION} (field_sources.row_key) not applied on this database`);
+        return;
+      }
+      record('r_published_without_provenance', PUBLISHED_WITHOUT_PROVENANCE_NAME, 'UNVERIFIABLE',
+        `field_sources.row_key read failed (migration applied=${applied}): ${e.message}`);
+      return;
+    }
+    record('r_published_without_provenance', PUBLISHED_WITHOUT_PROVENANCE_NAME, 'UNVERIFIABLE',
+      `ipos/field_sources not readable: ${e.message}`);
+    return;
+  }
+
+  const offenders = rows.map((r) => `"${r.companyName}" (${r.slug}).${r.fieldName}`);
+  for (const offender of offenders) {
+    notify('r_published_without_provenance', 'P2', offender.slice(0, 120),
+      'a published ipos value has no field_sources row naming its source', offender);
+  }
+  record('r_published_without_provenance', PUBLISHED_WITHOUT_PROVENANCE_NAME,
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    rows.length === 0
+      ? 'every published value on this field list carries provenance'
+      : `${rows.length} row(s): ${offenders.slice(0, MAX_OFFENDERS).join('; ')}`);
+}
+
 // ---- (S) item 3 slice S6: PULL-POLICY / PULL-WRITE-POLICY / PULL-PLAN-RANK --
 //
 // Three checks that compare what the pull-model system actually did against
@@ -3579,6 +3662,7 @@ async function main() {
   await runCheck(checkP, ['p_document_provenance_share']);
   await runCheck(checkQ_rowKeyCoverage, ['q_field_sources_row_key_coverage']);
   await runCheck(checkR_provenanceParentNotNull, ['r_provenance_parent_not_null']);
+  await runCheck(checkR_publishedWithoutProvenance, ['r_published_without_provenance']);
   await runCheck(checkNotApplicableDocuments, ['not_applicable_documents_named']);
   await runCheck(checkS_pullPolicy, ['pull_policy']);
   await runCheck(checkS_pullWritePolicy, ['pull_write_policy']);

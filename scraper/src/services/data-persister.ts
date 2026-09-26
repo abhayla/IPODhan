@@ -1640,17 +1640,51 @@ async function upsertIPOInScope(
         const guardedFallback = keepTerminalIpoStatus((existingIPO as any).status, fallbackData);
         await ipoRepository.update(existingIPO.id, guardedFallback);
 
-        // S-02: the fallback door wrote the row but ran no consolidation, so F4
-        // and F5 are deliberately NOT claimed here — nothing compared sources
-        // this time. Recording them anyway would make the ledger lie about the
-        // one path where cross-verification did not happen.
+        // #454: this door writes published `ipos` values with zero
+        // cross-source comparison (that is what "fallback" means), but a
+        // published value with NO lineage AT ALL is the defect — staging
+        // measured 11 rows with issueSize > 0 and no issueSize field_sources
+        // row, all written on a prior version of this exact door. Track every
+        // field this write actually persisted, at this write's source, same
+        // shape as the create path (P3-11) and `recordDiscoveredLeadManagers`
+        // (row_key '', bulkTrackFieldUpdates). Bookkeeping fields the caller
+        // never asserted as data (`lastScrapedAt`, `updatedAt`) are excluded —
+        // provenance for them would be noise, not lineage.
+        const FALLBACK_BOOKKEEPING_FIELDS = new Set(['lastScrapedAt', 'updatedAt']);
+        if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
+          const fieldsToTrack = Object.entries(guardedFallback)
+            .filter(
+              ([fieldName, value]) =>
+                !FALLBACK_BOOKKEEPING_FIELDS.has(fieldName) && value !== undefined && value !== null
+            )
+            .map(([fieldName]) => ({
+              fieldName,
+              source,
+              confidence: 100,
+              previousValue:
+                (existingIPO as any)?.[fieldName] !== undefined && (existingIPO as any)?.[fieldName] !== null
+                  ? String((existingIPO as any)[fieldName])
+                  : null,
+            }));
+
+          if (fieldsToTrack.length > 0) {
+            const fieldSourcesRepo = getFieldSourcesRepository();
+            await fieldSourcesRepo.bulkTrackFieldUpdates(existingIPO.id, 'ipos', fieldsToTrack);
+          }
+        }
+
+        // S-02: the fallback door wrote the row but ran no cross-source
+        // consolidation, so F4/F5 are deliberately NOT claimed here — nothing
+        // compared sources this time. `fieldSourcesWritten` now reflects
+        // whether lineage rows were actually written for THIS write (the
+        // ledger must stay honest about what happened on this door, per #454).
         ledgerFacts = {
           source,
           created: false,
           fields: Object.keys(guardedFallback),
           offeringType: fallbackData.offeringType ?? null,
           consolidated: false,
-          fieldSourcesWritten: false,
+          fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
           companyName: scrapedIPO.companyName,
         };
 
