@@ -1,0 +1,10 @@
+{
+  "id": "d_delisted_reads",
+  "findingClass": "a LISTED IPO set DELISTED on reads that were not three consecutive exchange delisting reports (#983, OD-38; the false-positive class of #972's three Tier A rounds: an outage, a wrong-series 404 or a renamed symbol counted as delisting)",
+  "round7Findings": [],
+  "failThreshold": "any ipos row with status DELISTED whose delisting_strike_reads is not exactly 3 valid, time-ordered instants, or whose delisting_strikes < 3, or whose delisted_at is not the third read's instant; every DELISTED row is listed in the detail with its three read times either way",
+  "severity": "P1",
+  "unverifiableWhen": "ipos.delisting_strike_reads is not present on the audited database (migration 0066 not applied yet)",
+  "note": "Predicate scripts/lib/delisting-checks.mjs, tested by scripts/tests/delisting-checks.test.mjs (the price job's own row shape passes; null reads, 2 reads, out-of-order, invalid instant, strikes 1, delisted_at NULL and delisted_at not the third read each fail). The row shape is the one the ipodhan_test integration test writes (scraper/tests/integration/delisting-strikes.integration.test.ts). Listing every DELISTED row is the point: a delisting that followed the rule on a wrong signal still PASSES this check, so the morning reader must read the listed reads.",
+  "section": "checks"
+}

@@ -409,9 +409,9 @@ describe('BSE categories and suspension (round 3)', () => {
     expect(q.kind).toBe('refused');
   });
 
-  it('Category Delisted is the one no-such-symbol category', async () => {
+  it('Category Delisted is a delisting report (#983: kept apart from no-such-symbol)', async () => {
     const q = await readBsePrice('500102', { fetchRaw: async () => ({ status: 200, body: withCategory('Delisted') }) });
-    expect(q.kind).toBe('no-symbol');
+    expect(q.kind).toBe('delisted');
   });
 
   it('Category Listed with no suspension text still reads the price', async () => {

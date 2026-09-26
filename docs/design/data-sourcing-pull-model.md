@@ -1941,6 +1941,15 @@ stops for that IPO, the row's status becomes **DELISTED with the date of the thi
 page is frozen with the withdrawn-notice mechanism (OD-8). Three reads rather than one because a
 single bad answer from an exchange endpoint is a normal event and a status change is not.
 
+**Measured 2026-09-26 (F-184, #983; open for owner decision):** NSE does not answer "no such symbol"
+for a delisted stock. Five delisted companies answer HTTP 200 with `secStatus` "Permanent Suspended";
+the no-such-symbol 404 body is the same for a wrong series, a symbol that never existed and a renamed
+symbol whose company still trades (ADANITRANS). BSE reports a delisted scrip with `DisplayText`
+"Delisted". The build (#983) counts only these explicit delisting reports, with every other exchange
+asked and answering without an outage; an all-series 404 is logged as NO_SUCH_SYMBOL and not counted;
+an unknown read neither counts nor resets; a price read resets. Whether a no-such-symbol read should
+also count is a SPEC CHANGE question for the owner (the OD-38 wording).
+
 **Every automatic merge is reversible.** §2.3.3.1 makes converging identifiers merge automatically,
 which is right — a warning nobody reads is what produced the duplicate row we already had — but an
 automatic merge that cannot be undone is a one-way door on a guess:

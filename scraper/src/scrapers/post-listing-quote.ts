@@ -27,6 +27,9 @@ import { fetchNseSymbolQuoteRaw } from './nse-api-client.js';
 export type QuoteOutcome =
   | { kind: 'price'; exchange: 'NSE' | 'BSE'; price: number; asOf: Date; asOfText: string; series?: string; isin?: string | null; calls: number }
   | { kind: 'no-symbol'; exchange: 'NSE' | 'BSE'; detail: string; calls: number }
+  // #983 / OD-38: the exchange itself reports the scrip delisted (NSE secStatus "Permanent
+  // Suspended", BSE Category "Delisted"). `isin` is the exchange's own ISIN when it sent one.
+  | { kind: 'delisted'; exchange: 'NSE' | 'BSE'; detail: string; isin?: string | null; calls: number }
   | { kind: 'refused'; exchange: 'NSE' | 'BSE'; detail: string; calls: number };
 
 /** IST is UTC+05:30 with no daylight saving; both exchanges publish IST wall-clock times. */
@@ -111,6 +114,22 @@ export function parseNseSymbolData(body: string): { price: number; asOf: Date; a
  * A value present and not "Active" means the row is a suspension notice, not a live price —
  * BSE's own suspension case (round 3) is treated the same way: no price this run.
  */
+/**
+ * #983 / OD-38: NSE's own word for a delisted scrip. Measured 2026-09-26 on five companies
+ * delisted after a merger or a voluntary delisting (HDFC, IDFC, CAIRN, ESSAROIL, HEXAWARE):
+ * getSymbolData answers HTTP 200 in the stock's series with `secInfo.secStatus`
+ * "Permanent Suspended" (isSuspended "Suspended", lastPrice 0, lastUpdateTime null). A
+ * temporarily suspended stock answers "Temporary Suspended" (BALLARPUR, JETAIRWAYS, series BZ)
+ * and a live one "Listed". Exact match only: any other word is not a delisting report.
+ * Fixture: scraper/tests/fixtures/post-listing-price/delisting-read-shapes-2026-09-26.json.
+ */
+export const NSE_DELISTED_SEC_STATUS = 'Permanent Suspended';
+
+export function nseDelistedStatus(row: any): string | null {
+  const status = row?.secInfo?.secStatus;
+  return typeof status === 'string' && status.trim().toLowerCase() === NSE_DELISTED_SEC_STATUS.toLowerCase() ? status.trim() : null;
+}
+
 export function nseSuspensionNotice(row: any): string | null {
   const status = row?.secInfo?.isSuspended;
   if (typeof status !== 'string' || status.trim() === '') return null;
@@ -157,6 +176,7 @@ export function isNseNoSuchSeriesBody(body: string): boolean {
 export function classifyNseSeriesAnswer(res: { status: number; body: string }):
   | { kind: 'price'; quote: NonNullable<ReturnType<typeof parseNseSymbolData>> }
   | { kind: 'no-symbol' }
+  | { kind: 'delisted'; detail: string; isin: string | null }
   | { kind: 'refused'; detail: string } {
   if (res.status === 404) {
     return isNseNoSuchSeriesBody(res.body)
@@ -177,6 +197,12 @@ export function classifyNseSeriesAnswer(res: { status: number; body: string }):
   }
   if (parsed.equityResponse.length === 0) return { kind: 'no-symbol' };
   const row = parsed.equityResponse[0];
+  const delisted = nseDelistedStatus(row);
+  if (delisted) {
+    const isinCode = row?.metaData?.isinCode;
+    const isin = typeof isinCode === 'string' && /^IN[A-Z0-9]{10}$/.test(isinCode) ? isinCode : null;
+    return { kind: 'delisted', detail: `secStatus ${delisted}`, isin };
+  }
   const suspended = nseSuspensionNotice(row);
   if (suspended) return { kind: 'refused', detail: `scrip suspended: isSuspended=${suspended}` };
   const quote = parseNseSymbolData(res.body);
@@ -208,6 +234,7 @@ export async function readNsePrice(
     const answer = classifyNseSeriesAnswer(res);
     if (answer.kind === 'price') return { kind: 'price', exchange: 'NSE', ...answer.quote, series, calls };
     if (answer.kind === 'refused') return { kind: 'refused', exchange: 'NSE', detail: `series ${series}: ${answer.detail}`, calls };
+    if (answer.kind === 'delisted') return { kind: 'delisted', exchange: 'NSE', detail: `series ${series}: ${answer.detail}`, isin: answer.isin, calls };
   }
   return { kind: 'no-symbol', exchange: 'NSE', detail: `every series answered no-such-symbol for ${symbol}`, calls };
 }
@@ -226,6 +253,7 @@ export function bseScripHeaderUrl(scripCode: string): string {
 export function parseBseScripHeader(body: string):
   | { kind: 'price'; price: number; asOf: Date; asOfText: string }
   | { kind: 'no-symbol'; detail: string }
+  | { kind: 'delisted'; detail: string }
   | { kind: 'refused'; detail: string } {
   if (/Access Denied/i.test(body)) return { kind: 'refused', detail: `Access Denied page (${body.length} bytes)` };
   let parsed: any;
@@ -247,7 +275,14 @@ export function parseBseScripHeader(body: string):
   // that says the scrip no longer trades. "Listed" (or blank, with a named scrip) goes on to the
   // price. Anything else — "Suspended", "Permitted", a word BSE adds later — is UNKNOWN: a
   // suspended scrip still exists and may resume, so it is never a real "no such symbol" answer.
-  if (/^delisted$/i.test(category)) return { kind: 'no-symbol', detail: `scrip category ${category}` };
+  // #983: measured 2026-09-26, HDFC (500010) answers Category "Delisted" (Ason 12 Jul 23): BSE's
+  // own delisting report, kept apart from "no scrip in the answer" (999999, FullN null).
+  if (/^delisted$/i.test(category)) return { kind: 'delisted', detail: `scrip category ${category}` };
+  // Measured the same day: the REAL HDFC answer has Category "" and Header.DisplayText exactly
+  // "Delisted" (with its last pre-delisting LTP 2729.95 as of 12 Jul 23). Exact word only.
+  if (/^delisted$/i.test(String(header.DisplayText ?? '').trim())) {
+    return { kind: 'delisted', detail: `DisplayText ${String(header.DisplayText).trim()} (last LTP ${header.LTP} as of ${header.Ason})` };
+  }
   if (category && !/^listed$/i.test(category)) return { kind: 'refused', detail: `scrip category ${category} (not Listed, not Delisted: unknown)` };
   // Measured 2026-09-24: a suspended scrip (500102) answers Category "Listed" with DisplayText
   // "Suspended due to Procedural reasons" and its last pre-suspension LTP (0.89, as of 22 Jun 23).

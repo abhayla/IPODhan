@@ -56,7 +56,8 @@ function harness(candidates: PriceCandidate[], nse: Record<string, QuoteOutcome>
     candidates,
     readNse: async (s, _seg, cached) => { calls.nse.push([s, cached]); return nse[s]; },
     readBse: async (code) => { calls.bse.push(code); return bse[code]; },
-    loadBseScrips: async () => { calls.bseList++; return new Map(Object.entries(scrips)); },
+    // #983: a real active list is ~5,047 scrips; a short one is a truncated fetch, so the fake is padded.
+    loadBseScrips: async () => { calls.bseList++; return new Map([...Object.entries(scrips), ...Array.from({ length: 5047 }, (_, i) => [`PAD${i}`, `P${i}`] as [string, string])]); },
     writePrice: async (c, q) => { prices.push({ id: c.id, exchange: q.exchange, price: q.price }); return 'updated'; },
     writeState: async (c, patch) => { states.push({ id: c.id, ...patch }); },
     log: () => {},

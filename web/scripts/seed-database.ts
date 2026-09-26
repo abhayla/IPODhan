@@ -428,6 +428,7 @@ function calculateStatusDistribution(total: number): Record<IPOStatus, number> {
     // dead IPOs in a dev database and mask the real ones.
     WITHDRAWN: 0,
     POSTPONED: 0,
+    DELISTED: 0, // #983: set only by the price job on three exchange delisting reports
   };
 }
 

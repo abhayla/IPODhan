@@ -55,6 +55,9 @@ export const ipoStatusEnum = pgEnum('ipo_status', [
   // physical in Postgres, so migration 0046 only ADDs VALUEs.
   'WITHDRAWN',
   'POSTPONED',
+  // #983 / OD-38 (spec 2.3.3.3): set by the post-listing price job after three consecutive
+  // reads in which the exchange itself reports the scrip delisted. Appended, never reordered.
+  'DELISTED',
 ]);
 
 export const documentTypeEnum = pgEnum('document_type', [
@@ -365,6 +368,14 @@ export const ipos = pgTable(
     // Item 7 S5 (spec §2.1 "Post-listing price"): the stock's working NSE trading series
     // (EQ/BE/SM/ST), asked first so a run costs one call per stock.
     priceNseSeries: varchar('price_nse_series', { length: 4 }),
+    // #983 / OD-38 (spec 2.3.3.3): consecutive price-job reads in which an exchange reported the
+    // scrip delisted. Reset to 0 by any price read; an UNKNOWN read (outage, refusal, wrong series,
+    // a voided run) leaves it untouched. `delisting_strike_reads` keeps the reads that make up the
+    // current run of strikes ({ at, exchange, detail }[], newest last) so a DELISTED row shows the
+    // exact three reads that set it; `delisted_at` is the third read's instant.
+    delistingStrikes: integer('delisting_strikes').notNull().default(0),
+    delistingStrikeReads: jsonb('delisting_strike_reads').$type<Array<{ at: string; exchange: string; detail: string }>>(),
+    delistedAt: timestamp('delisted_at'),
 
     // Metadata
     historicalDataSource: varchar('historical_data_source', { length: 100 }), // e.g., 'Chittorgarh'
