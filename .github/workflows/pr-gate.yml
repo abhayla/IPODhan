@@ -541,6 +541,7 @@ jobs:
         run: |
           node --test \
             scripts/tests/apply-rule-ownership.test.mjs \
+            scripts/tests/audit-alert-channel.test.mjs \
             scripts/tests/audit-reverse-sweep.test.mjs \
             scripts/tests/cache-poison-bisect.test.mjs \
             scripts/tests/check-ledger-rows-for-done-cards.test.mjs \
