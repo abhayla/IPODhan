@@ -173,4 +173,10 @@ describe('#754: FIELD_PRIORITY_MATRIX has no NEW unreachable snake_case key', ()
         `they are reachable again: ${noLongerDead.join(', ')}`
     ).toEqual([]);
   });
+
+  it('KNOWN_DEAD_KEYS only ever shrinks (a new dead key is fixed, never added here)', () => {
+    // Pinned at the #754 sweep's count. Lower this number when #1186 fixes a key;
+    // raising it hides a new unreachable rule instead of fixing it.
+    expect(KNOWN_DEAD_KEYS.size).toBeLessThanOrEqual(13);
+  });
 });
