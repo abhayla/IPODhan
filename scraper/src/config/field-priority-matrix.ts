@@ -272,22 +272,17 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
 
   // ==================== DESCRIPTIVE FIELDS (#69) ====================
   // Both were 0/285: no matrix entry meant consolidation silently dropped them.
-  // sector (T-455, issue #242, round-7 P3-1): the matrix used to list NSE, BSE,
-  //   MONEYCONTROL and CHITTORGARH as sources, but NONE of them ever writes a
-  //   sector value today — NSE read a field the payload never carries (fixed by
-  //   removing that read in nse-api-client.ts), BSE explicitly emits `undefined`
-  //   ("Not available in BSE main table" — bse-scraper.ts), and neither the
-  //   Moneycontrol nor Chittorgarh scrapers assign a `sector` key anywhere
-  //   (verified by source grep). Listing a source that can never deliver is
-  //   worse than listing none — it hides the gap. ADMIN (manual override) is
-  //   the only live source until a real scraped source exists; re-add a source
-  //   here only when its scraper actually assigns `sector`.
+  // sector (spec field 13: DOC then CG; #394/#343/#73, 2026-09-26): T-455 (#242) cut the list to
+  //   ADMIN because no scraper assigned `sector`. The field-plan walk's CHITTORGARH fetcher now
+  //   reads it from the IPO detail page, mapped through the fixed sector list
+  //   (scraper/config/sector-list.json), so CHITTORGARH is listed again, below DRHP (the writer
+  //   source every DOC answer maps to). NSE/BSE payloads still carry no sector and stay unlisted.
   // company_description: DRHP "Our Business" or Chittorgarh "About" (id=ipoSummary).
   sector: {
-    sources: ['ADMIN'],
+    sources: ['ADMIN', 'DRHP', 'CHITTORGARH'],
     normalization: 'none',
     confidenceThreshold: 80,
-    description: 'Industry sector - manual/ADMIN only; no live scraper source currently populates it (T-455/#242)',
+    description: 'Industry sector (spec field 13): document, then the Chittorgarh industry from the fixed sector list',
     validation: { regex: '^.{2,100}$' },
   },
 

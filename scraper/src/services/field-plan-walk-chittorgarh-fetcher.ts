@@ -20,22 +20,38 @@ import type { FieldFetcher, FieldFetcherAnswer } from './field-plan-walk.js';
 import type { IPORepository } from '@ipodhan/shared';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { scrapeChittorgarhIPOs } from '../scrapers/chittorgarh-scraper.js';
+import { extractSectorFromDetailHtml, fetchChittorgarhDetailHtml } from '../scrapers/chittorgarh-detail-sector.js';
 import type { ChittorgarhIPO } from '../utils/validators.js';
 // `plan.fieldName` is the manifest's snake_case key; `ChittorgarhIPO`'s
 // fields are camelCase.
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { logger } from '../utils/logger.js';
 
-export const CHITTORGARH_SERVEABLE_FIELDS: ReadonlySet<string> = new Set(['ipos.issueSize']);
+// ipos.sector (#394/#343/#73, spec field 13 rank 2): read from the IPO's DETAIL
+// page (the list row's verifierUrl), one GET per IPO per cycle, mapped through the
+// fixed sector list (scraper/config/sector-list.json, check F1).
+export const CHITTORGARH_SERVEABLE_FIELDS: ReadonlySet<string> = new Set(['ipos.issueSize', 'ipos.sector']);
 
 export interface ChittorgarhFetcherDeps {
   ipoRepository: IPORepository;
   isChittorgarhCapable: (tableName: string, fieldName: string) => boolean;
+  /** Injected in tests; defaults to one live GET of the CG detail page. */
+  fetchDetailHtml?: (url: string) => Promise<string>;
 }
 
 /** Per-cycle memo — one instance per document-cycle wake, shared across every IPO's walk. */
 export class ChittorgarhFieldFetcherState {
   private list: Promise<ChittorgarhIPO[]> | null = null;
+  private detailPages = new Map<string, Promise<string>>();
+
+  getDetailHtml(url: string, fetchDetailHtml: (url: string) => Promise<string>): Promise<string> {
+    let page = this.detailPages.get(url);
+    if (!page) {
+      page = fetchDetailHtml(url);
+      this.detailPages.set(url, page);
+    }
+    return page;
+  }
 
   private getList(): Promise<ChittorgarhIPO[]> {
     if (!this.list) {
@@ -138,7 +154,26 @@ export function buildChittorgarhFetcher(
       return { outcome: 'SUPPLIED', value: row.issueSize };
     }
 
-    // Unreachable today (CHITTORGARH_SERVEABLE_FIELDS names only issueSize,
+    if (camelFieldName === 'sector') {
+      if (!row.verifierUrl) return { outcome: 'NOT_AVAILABLE_YET' };
+      let html: string;
+      try {
+        html = await state.getDetailHtml(row.verifierUrl, deps.fetchDetailHtml ?? fetchChittorgarhDetailHtml);
+      } catch (error) {
+        return {
+          outcome: 'CHECK_FAILED',
+          reason: error instanceof Error ? error.message : String(error),
+          transient: true,
+        };
+      }
+      // Absent stays absent: no code, or a code outside the fixed list, is
+      // NOT_AVAILABLE_YET (re-asked), never SUPPLIED '' (#394).
+      const sector = extractSectorFromDetailHtml(html);
+      if (!sector) return { outcome: 'NOT_AVAILABLE_YET' };
+      return { outcome: 'SUPPLIED', value: sector };
+    }
+
+    // Unreachable today (CHITTORGARH_SERVEABLE_FIELDS names only issueSize and sector,
     // and the gate above already answers CHECK_FAILED transient for
     // anything else) — kept as a defensive fallback with the SAME
     // review-round-2 reasoning: a field this fetcher's mapping branch does
