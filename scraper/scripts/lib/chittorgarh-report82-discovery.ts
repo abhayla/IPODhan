@@ -22,12 +22,25 @@
  * of the fiscal year. Measured against the live endpoint on 2026-09-16:
  * FY2025-26 SME alone runs to page 54 (267 rows), FY2025-26 mainboard to
  * page 21 (103 rows), FY2024-25 SME past page 45 — all three already over
- * the old cap. The reader now paginates until the first empty page (hard
- * ceiling 200 pages, to fail loud instead of looping forever if the upstream
- * shape changes), and dedupes rows by `~URLRewrite_Folder_Name` (the slug —
- * the only stable per-company key report 82 exposes; there is no separate
- * numeric id field on the row itself, only the one embedded in the `Company`
- * anchor href, which is a per-company constant, not a page artifact).
+ * the old cap. The reader paginates until the first empty page, dedupes rows
+ * by `~URLRewrite_Folder_Name` (the slug — the only stable per-company key
+ * report 82 exposes; there is no separate numeric id field on the row
+ * itself, only the one embedded in the `Company` anchor href, which is a
+ * per-company constant, not a page artifact), and stops (hard ceiling 200
+ * pages, to fail loud instead of looping forever if the upstream shape
+ * changes again).
+ *
+ * Fix (#695, 2026-09-26): FY2026-27 broke a different assumption — the
+ * endpoint serves the SAME full dataset on every page number (82 mainboard
+ * / 149 SME rows), so no page is EVER empty and the "stop on empty page"
+ * condition can never fire; the reader made 200 requests per category and
+ * threw at the ceiling. The real end-of-data signal is a page that adds
+ * ZERO NEW rows after dedupe — that covers both shapes (an empty page has
+ * zero new rows trivially; a repeated full page has zero new rows because
+ * every row was already seen) — so the walk now stops there, names which
+ * stop condition ended it (empty page / no-new-rows dedupe / hard ceiling),
+ * and the ceiling stays as the last-resort guard against a shape neither
+ * condition catches.
  */
 
 export interface DiscoveryEntry {
@@ -51,6 +64,7 @@ export async function fetchReport82CurrentYear(
   const seenSlugs = new Set<string>();
   let dupes = 0;
   let page = 1;
+  let stopCondition: 'empty page' | 'no new rows after dedupe' | null = null;
   for (; page <= MAX_REPORT82_PAGES; page++) {
     const u = `https://webnodejs.chittorgarh.com/cloud/report/data-read/82/${page}/10/${resolvedYear}/${range}/0/${category}/0?search=&v=15-11`;
     const r = await fetch(u, {
@@ -66,7 +80,11 @@ export async function fetchReport82CurrentYear(
     const d: any = await r.json();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pageRows: any[] = d?.reportTableData ?? [];
-    if (!pageRows.length) break;
+    if (!pageRows.length) {
+      stopCondition = 'empty page';
+      break;
+    }
+    let newRowsThisPage = 0;
     for (const row of pageRows) {
       const slug = row?.['~URLRewrite_Folder_Name'] ? String(row['~URLRewrite_Folder_Name']) : '';
       if (slug && seenSlugs.has(slug)) {
@@ -75,16 +93,27 @@ export async function fetchReport82CurrentYear(
       }
       if (slug) seenSlugs.add(slug);
       rows.push(row);
+      newRowsThisPage++;
+    }
+    // FY2026-27 shape (#695): the endpoint can serve the SAME non-empty page
+    // forever, so an empty page is never guaranteed. A page whose rows are
+    // ALL already-seen (zero new after dedupe) is the same "no more data"
+    // signal as an empty page — stop here instead of walking to the ceiling.
+    if (newRowsThisPage === 0) {
+      stopCondition = 'no new rows after dedupe';
+      break;
     }
     await new Promise((res) => setTimeout(res, 300));
   }
   if (page > MAX_REPORT82_PAGES) {
     throw new Error(
-      `report 82 ${range} ${category}: hit the ${MAX_REPORT82_PAGES}-page hard ceiling without an empty page — refusing to loop forever`
+      `report 82 ${range} ${category}: hit the ${MAX_REPORT82_PAGES}-page hard ceiling without an empty page or a no-new-rows page — refusing to loop forever`
     );
   }
   // eslint-disable-next-line no-console
-  console.log(`report82 ${range} ${category}: ${page - 1} pages, ${rows.length} rows (${dupes} duplicate rows collapsed)`);
+  console.log(
+    `report82 ${range} ${category}: ${page} pages, ${rows.length} rows (${dupes} duplicate rows collapsed), stopped on: ${stopCondition}`
+  );
   return rows;
 }
 
