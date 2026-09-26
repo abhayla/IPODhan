@@ -1,0 +1,16 @@
+{
+  "_comment": "#151: the Redis key namespace derived from the connected database. Pinned by BOTH packages/shared/src/cache/redis-slot.test.ts (TS) and scripts/tests/redis-slot-prefix.test.sh (bash twin) so the app and the deploy/wake scripts can never name different lock keys.",
+  "cases": [
+    { "env": { "DATABASE_URL": "postgresql://ipodhan_app@103.118.16.189:5432/ipodhan" }, "prefix": "prod:" },
+    { "env": { "DATABASE_URL": "postgresql://ipodhan_app@103.118.16.189:5432/ipodhan_staging" }, "prefix": "staging:" },
+    { "env": { "DATABASE_URL": "postgresql://ipodhan_app@103.118.16.189:5432/ipodhan_staging?sslmode=require" }, "prefix": "staging:" },
+    { "env": { "DATABASE_URL": "postgres://u@localhost:15432/ipodhan_test" }, "prefix": "db-ipodhan_test:" },
+    { "env": { "DATABASE_URL": "postgresql://ipodhan_app@h:5432/ipodhan", "DEPLOY_SLOT": "prod" }, "prefix": "prod:" },
+    { "env": { "DATABASE_URL": "postgresql://ipodhan_app@h:5432/ipodhan_staging", "DEPLOY_SLOT": "staging" }, "prefix": "staging:" },
+    { "env": { "DATABASE_HOST": "h", "DATABASE_PASSWORD": "pw", "DATABASE_NAME": "ipodhan_staging", "DATABASE_URL": "postgresql://u@h:5432/ipodhan" }, "prefix": "staging:" },
+    { "env": { "DATABASE_URL": "postgresql://ipodhan_app@h:5432/ipodhan_staging", "DEPLOY_SLOT": "prod" }, "error": "disagrees" },
+    { "env": { "DATABASE_URL": "postgresql://ipodhan_app@h:5432/ipodhan", "DEPLOY_SLOT": "staging" }, "error": "disagrees" },
+    { "env": {}, "error": "no database name" },
+    { "env": { "DATABASE_URL": "postgresql://u@h:5432/" }, "error": "no database name" }
+  ]
+}

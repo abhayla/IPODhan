@@ -6,6 +6,7 @@
  */
 
 import Redis from 'ioredis';
+import { applyRedisSlotNamespace, resolveRedisKeyPrefix } from '@ipodhan/shared/cache/redis-slot';
 import { CacheError } from '../errors/repository-errors';
 
 let redisClient: Redis | null = null;
@@ -15,6 +16,11 @@ let redisClient: Redis | null = null;
  */
 export function getRedisClient(): Redis {
   if (!redisClient) {
+    // #151: prod and staging share one Redis; every key carries the slot
+    // derived from the connected database. Throws (fail closed) when no
+    // database name is derivable, before any connection is opened.
+    const keyPrefix = resolveRedisKeyPrefix();
+
     // F2 (T-264 P2-3): this client used to build its connection from
     // REDIS_HOST/REDIS_PORT/REDIS_PASSWORD only, ignoring both REDIS_URL
     // (whose path segment selects the db, e.g. "redis://...:6379/1") and an
@@ -36,19 +42,23 @@ export function getRedisClient(): Redis {
       enableReadyCheck: true,
       lazyConnect: false,
       connectTimeout: 5000, // 5 second timeout for connection
+      keyPrefix,
       ...(process.env.REDIS_DB !== undefined
         ? { db: parseInt(process.env.REDIS_DB, 10) }
         : {}),
     };
 
-    redisClient = process.env.REDIS_URL
-      ? new Redis(process.env.REDIS_URL, sharedOptions)
-      : new Redis({
-          host: process.env.REDIS_HOST || 'localhost',
-          port: parseInt(process.env.REDIS_PORT || '6379'),
-          password: process.env.REDIS_PASSWORD,
-          ...sharedOptions,
-        });
+    redisClient = applyRedisSlotNamespace(
+      process.env.REDIS_URL
+        ? new Redis(process.env.REDIS_URL, sharedOptions)
+        : new Redis({
+            host: process.env.REDIS_HOST || 'localhost',
+            port: parseInt(process.env.REDIS_PORT || '6379'),
+            password: process.env.REDIS_PASSWORD,
+            ...sharedOptions,
+          }),
+      keyPrefix
+    );
 
     // Handle connection events
     redisClient.on('error', (error) => {
