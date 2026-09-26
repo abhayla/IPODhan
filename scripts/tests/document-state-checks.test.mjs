@@ -730,8 +730,14 @@ test('m_extraction_stuck FAILs on FAILED with a HARD_FAILURE marker past 48h', (
   assert.match(v, /HARD_FAILURE/);
 });
 
-test('m_extraction_stuck PASSes on FAILED WITHOUT a HARD_FAILURE marker (ordinary retryable failure)', () => {
+test('#959 m_extraction_stuck FAILs a FAILED row with no marker past the floor — parked until a new extractor version', () => {
   const v = checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'FAILED', extractionError: 'timeout', hoursSinceUpdate: 96 });
+  assert.notEqual(v, null);
+  assert.match(v, /waits for a new extractor version or a new document, #959/);
+});
+
+test('#959 m_extraction_stuck PASSes the same parked FAILED row under the 48h floor', () => {
+  const v = checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'FAILED', extractionError: 'timeout', hoursSinceUpdate: 47 });
   assert.equal(v, null);
 });
 
@@ -798,7 +804,7 @@ test('396 PASSes the SAME shape under the 48h floor (not yet stuck long enough)'
   assert.equal(v, null);
 });
 
-test('396 PASSes below NEVER_ESCALATES_MIN_RETRIES (2 retries — still ordinary backoff)', () => {
+test('396/#959 below NEVER_ESCALATES_MIN_RETRIES is not never-escalates, but IS the parked-FAILED shape', () => {
   const v = checkExtractionStuck({
     ...STUCK_BASE,
     extractionStatus: 'FAILED',
@@ -806,10 +812,11 @@ test('396 PASSes below NEVER_ESCALATES_MIN_RETRIES (2 retries — still ordinary
     retryCount: NEVER_ESCALATES_MIN_RETRIES - 1,
     hoursSinceUpdate: 96,
   });
-  assert.equal(v, null);
+  assert.doesNotMatch(v, /never-escalates/);
+  assert.match(v, /#959/);
 });
 
-test('396 PASSes at/above MAX_EXTRACTION_ATTEMPTS (that shape belongs to MANUAL_REVIEW instead)', () => {
+test('396/#959 at/above MAX_EXTRACTION_ATTEMPTS is not never-escalates, but a FAILED row there is still parked', () => {
   const v = checkExtractionStuck({
     ...STUCK_BASE,
     extractionStatus: 'FAILED',
@@ -817,7 +824,8 @@ test('396 PASSes at/above MAX_EXTRACTION_ATTEMPTS (that shape belongs to MANUAL_
     retryCount: MAX_EXTRACTION_ATTEMPTS,
     hoursSinceUpdate: 96,
   });
-  assert.equal(v, null);
+  assert.doesNotMatch(v, /never-escalates/);
+  assert.match(v, /#959/);
 });
 
 test('396 PASSes when the marker IS present (already caught by the HARD_FAILURE shape, not double-counted)', () => {

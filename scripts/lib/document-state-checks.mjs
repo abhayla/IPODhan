@@ -591,7 +591,14 @@ export function checkExtractionStuck(row) {
     retryCount >= NEVER_ESCALATES_MIN_RETRIES &&
     retryCount < MAX_EXTRACTION_ATTEMPTS;
 
-  if (!isManualReview && !isFetchStateFailed && !isHardFailure && !isNeverEscalating) return null;
+  // 5th shape (#959): with the extraction backoff timer removed, EVERY FAILED
+  // row is parked until a new extractor version or new bytes (only a single
+  // unfinished read is resumed, at the very next pass), and its updated_at no
+  // longer moves. So any FAILED row past the floor is waiting on a trigger
+  // that may never come without a human (an extractor fix) — surface it.
+  const isParkedFailed = extractionStatus === 'FAILED' && !isHardFailure && !isNeverEscalating;
+
+  if (!isManualReview && !isFetchStateFailed && !isHardFailure && !isNeverEscalating && !isParkedFailed) return null;
 
   const hours = row.hoursSinceUpdate === null || row.hoursSinceUpdate === undefined ? null : Number(row.hoursSinceUpdate);
   if (hours === null || !Number.isFinite(hours) || hours <= EXTRACTION_STUCK_MAX_HOURS) return null;
@@ -602,7 +609,9 @@ export function checkExtractionStuck(row) {
       ? 'EXTRACT_FAILED'
       : isHardFailure
         ? `FAILED (${HARD_FAILURE_MARKER})`
-        : `FAILED (never-escalates, retryCount=${retryCount})`;
+        : isNeverEscalating
+          ? `FAILED (never-escalates, retryCount=${retryCount})`
+          : 'FAILED (waits for a new extractor version or a new document, #959)';
   const label = row.companyName ?? row.slug ?? row.ipoId ?? 'unknown IPO';
   return `${label}: ${docType} stuck ${shape} for ${hours.toFixed(1)}h (> ${EXTRACTION_STUCK_MAX_HOURS}h) — needs-decision`;
 }

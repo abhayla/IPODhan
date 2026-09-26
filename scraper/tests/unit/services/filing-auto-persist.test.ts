@@ -80,7 +80,7 @@ import {
   EXTRACTION_BLOCKED_ERROR,
   EXTRACTOR_MEMORY_CEILING_EXIT,
   HARD_FAILURE_MARKER,
-  HARD_FAILURE_MIN_BACKOFF_MS,
+  withFailedVersion,
   parseHardFailureCount,
   markHardFailure,
   isMemoryAbortStderr,
@@ -448,7 +448,7 @@ describe('processPendingFilings — the D-15 lift behind ENABLE_SME_FILING_AUTO_
 });
 
 describe('processPendingFilings — failures are recorded, never fatal', () => {
-  it('an extractor failure writes FAILED E-rows with a backoff, marks IN_PROGRESS with retryCount 1, and FAILED with retryCount unchanged', async () => {
+  it('an extractor failure writes BLOCKED E-rows with no due time (#959), marks IN_PROGRESS with retryCount 1, and FAILED with retryCount unchanged', async () => {
     const d = deps({ runExtractor: vi.fn(() => ({ ok: false as const, error: 'extractor exited 1: boom' })) });
 
     const result = await processPendingFilings(IPO, d);
@@ -460,9 +460,9 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
     const eWrites = recordedSteps.flatMap((r) => r.writes).filter((w) => w.stepId.startsWith('E'));
     expect(eWrites).toHaveLength(10);
     for (const w of eWrites) {
-      expect(w.status).toBe('FAILED');
+      expect(w.status).toBe('BLOCKED');
       expect((w as { error?: string }).error).toContain('boom');
-      expect((w as { nextDueAt?: Date }).nextDueAt).toBeInstanceOf(Date);
+      expect((w as { nextDueAt?: Date | null }).nextDueAt).toBeNull();
     }
     // Round 4: the attempt is counted at the IN_PROGRESS stamp (transition 1) —
     // retryCount 1 written THERE, and the subsequent FAILED write (transition
@@ -597,11 +597,13 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
 
   it('W-178c round 2: a busy result on a FAILED row (carrying HARD_FAILURE:2) restores FAILED with the exact same error string and retryCount, and refunds the spawn budget', async () => {
     const spawnBudget = { remaining: 2 };
-    const hardFailureError = markHardFailure(markHardFailure(null, 'extractor: killed'), 'extractor: killed again');
-    // Past the 24h hard-failure floor (`HARD_FAILURE_MIN_BACKOFF_MS`) so
-    // `documentExtractionBlocked` admits this row into `pendingForThisCall`
-    // in the first place — otherwise the busy-revert code under test never
-    // runs at all.
+    // #959: failed at an OLDER extractor build, so the version change admits
+    // this row into `pendingForThisCall` in the first place — otherwise the
+    // busy-revert code under test never runs at all.
+    const hardFailureError = withFailedVersion(
+      markHardFailure(markHardFailure(null, 'extractor: killed'), 'extractor: killed again'),
+      'extract_filing.py@old-build'
+    );
     const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
     const d = deps({
       spawnBudget,
@@ -631,8 +633,7 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
     expect(revertCall).toBeDefined();
     expect(revertCall[0]).toMatchObject({ documentId: 'doc-1', status: 'FAILED', retryCount: 5 });
     // The error key is OMITTED (not re-written, not nulled) — the row's own
-    // HARD_FAILURE:2 marker (needed by `documentExtractionBlocked`'s 24h
-    // backoff gate) survives the busy revert untouched.
+    // HARD_FAILURE:2 marker and failed-at tag survive the busy revert untouched.
     expect(revertCall[0]).not.toHaveProperty('error');
   });
 
@@ -684,7 +685,12 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
     const d = deps({
       spawnBudget,
       loadDocuments: vi.fn(async () => [
-        doc({ extractionStatus: 'FAILED', retryCount: 5, updatedAt: originalUpdatedAt }),
+        doc({
+          extractionStatus: 'FAILED',
+          retryCount: 5,
+          updatedAt: originalUpdatedAt,
+          extractionError: withFailedVersion('extractor: boom', 'extract_filing.py@old-build'),
+        }),
       ]),
       runExtractor: vi.fn(() => ({
         ok: false as const,
@@ -878,65 +884,41 @@ describe('documentExtractionBlocked — pure per-document gate logic', () => {
     ).toBe(true);
   });
 
-  it('FAILED with retryCount 1 blocks 5 minutes later, and is clear 20 minutes later', () => {
+  // #959: the backoff timer is gone — elapsed time never re-admits a FAILED
+  // row; only a new extractor version or new bytes do (full contract in
+  // extraction-no-backoff-timer.test.ts).
+  it('#959 — FAILED with retryCount 1 blocks 5 minutes later AND 30 days later; a new version revives it', () => {
     const fiveMinAgo = new Date(now.getTime() - 5 * 60_000);
-    const twentyMinAgo = new Date(now.getTime() - 20 * 60_000);
-    // attemptsBefore = retryCount(1) - 1 = 0 -> backoff = 15 min.
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60_000);
+    for (const updatedAt of [fiveMinAgo, thirtyDaysAgo]) {
+      expect(documentExtractionBlocked({ extractionStatus: 'FAILED', retryCount: 1, updatedAt }, V1, now).blocked).toBe(
+        true
+      );
+    }
     expect(
-      documentExtractionBlocked({ extractionStatus: 'FAILED', retryCount: 1, updatedAt: fiveMinAgo }, V1, now).blocked
-    ).toBe(true);
+      documentExtractionBlocked({ extractionStatus: 'FAILED', retryCount: 1, updatedAt: fiveMinAgo }, 'next-build', now)
+    ).toEqual({ blocked: false });
+  });
+
+  it('#959 — a killed-mid-extraction IN_PROGRESS row is resumed once with no wait (§2.2 resumability)', () => {
     expect(
-      documentExtractionBlocked({ extractionStatus: 'FAILED', retryCount: 1, updatedAt: twentyMinAgo }, V1, now).blocked
+      documentExtractionBlocked({ extractionStatus: 'IN_PROGRESS', retryCount: 1, updatedAt: now }, V1, now).blocked
     ).toBe(false);
   });
 
-  it('(c) a killed-mid-extraction IN_PROGRESS row is gated by the SAME backoff as FAILED', () => {
-    const fiveMinAgo = new Date(now.getTime() - 5 * 60_000);
-    const twentyMinAgo = new Date(now.getTime() - 20 * 60_000);
-    expect(
-      documentExtractionBlocked({ extractionStatus: 'IN_PROGRESS', retryCount: 1, updatedAt: fiveMinAgo }, V1, now)
-        .blocked
-    ).toBe(true);
-    expect(
-      documentExtractionBlocked({ extractionStatus: 'IN_PROGRESS', retryCount: 1, updatedAt: twentyMinAgo }, V1, now)
-        .blocked
-    ).toBe(false);
-  });
-
-  // W-137: a document that has been killed/hit the memory ceiling TWICE must
-  // not be retried an hour later just because the normal exponential curve
-  // (2^attempts x 15 min, capped at 6h) says it is due.
-  it('W-137 — 2 consecutive hard failures back off at least 24h, past the normal 6h cap', () => {
-    const twentyHoursAgo = new Date(now.getTime() - 20 * 60 * 60_000);
+  it('W-137/#959 — 2 unfinished attempts (hard failures) block until the version changes, however long ago', () => {
     const twentyFiveHoursAgo = new Date(now.getTime() - 25 * 60 * 60_000);
     const twoHardFailures = `${HARD_FAILURE_MARKER}:2:extractor exited null: killed`;
-
-    // Ordinary exponential backoff at retryCount 5 is already capped at 6h,
-    // so 20h later it would normally be clear — the hard-failure floor must
-    // still hold it.
-    expect(
-      documentExtractionBlocked(
-        { extractionStatus: 'FAILED', retryCount: 5, updatedAt: twentyHoursAgo, extractionError: twoHardFailures },
-        V1,
-        now
-      ).blocked
-    ).toBe(true);
-
-    expect(
-      documentExtractionBlocked(
-        { extractionStatus: 'FAILED', retryCount: 5, updatedAt: twentyFiveHoursAgo, extractionError: twoHardFailures },
-        V1,
-        now
-      ).blocked
-    ).toBe(false);
+    const row = { extractionStatus: 'FAILED', retryCount: 5, updatedAt: twentyFiveHoursAgo, extractionError: twoHardFailures };
+    expect(documentExtractionBlocked(row, V1, now).blocked).toBe(true);
+    expect(documentExtractionBlocked(row, 'next-build', now).blocked).toBe(false);
   });
 
-  it('W-137 — a SINGLE hard failure still uses the normal exponential backoff (no 24h floor yet)', () => {
-    const twentyMinAgo = new Date(now.getTime() - 20 * 60_000);
+  it('W-137/#959 — a SINGLE hard failure is resumed at the next pass with no wait', () => {
     const oneHardFailure = `${HARD_FAILURE_MARKER}:1:extractor exited null: killed`;
     expect(
       documentExtractionBlocked(
-        { extractionStatus: 'FAILED', retryCount: 1, updatedAt: twentyMinAgo, extractionError: oneHardFailure },
+        { extractionStatus: 'FAILED', retryCount: 1, updatedAt: now, extractionError: oneHardFailure },
         V1,
         now
       ).blocked
@@ -1070,7 +1052,7 @@ describe('processPendingFilings — W-137 hard-failure marker written end to end
    * the `markHardFailure` call at its only call site (~941-943) left every
    * other test in this file green — this test is red against that deletion.
    */
-  it('two signal-killed extractions on the same document write HARD_FAILURE:1 then HARD_FAILURE:2, and a third attempt is refused by the 24h floor', async () => {
+  it('two signal-killed extractions on the same document write HARD_FAILURE:1 then HARD_FAILURE:2, and a third attempt is refused until the version changes (#959)', async () => {
     const makeKilledRunner = () =>
       vi.fn(() => ({ ok: false as const, error: 'extractor exited null (signal SIGKILL): ', hardFailure: true }));
 
@@ -1081,18 +1063,20 @@ describe('processPendingFilings — W-137 hard-failure marker written end to end
     const failed1 = (d1.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
       (c) => c[0].status === 'FAILED'
     );
-    expect(failed1[0].error).toBe(`${HARD_FAILURE_MARKER}:1:extractor: extractor exited null (signal SIGKILL): `);
+    expect(failed1[0].error).toBe(
+      withFailedVersion(`${HARD_FAILURE_MARKER}:1:extractor: extractor exited null (signal SIGKILL): `, EXTRACTOR_VERSION, SHA)
+    );
 
     // --- attempt 2: document now FAILED with the 1st hard-failure marker,
     // updated 20 minutes ago — clear of the ordinary exponential backoff
     // (retryCount 1 -> 15 min) but still only ONE hard failure, so it is
     // NOT yet held by the 24h floor and the extractor runs again. ---------
-    const twentyMinAgo = new Date(Date.now() - 20 * 60_000);
+    // #959: resumed at the very next pass — no wait at all.
     const docAfterFirstHardFailure = doc({
       extractionStatus: 'FAILED',
       retryCount: 1,
       extractionError: failed1[0].error,
-      updatedAt: twentyMinAgo,
+      updatedAt: new Date(),
     });
     const d2 = deps({ runExtractor: makeKilledRunner(), loadDocuments: vi.fn(async () => [docAfterFirstHardFailure]) });
     const r2 = await processPendingFilings(IPO, d2);
@@ -1100,24 +1084,26 @@ describe('processPendingFilings — W-137 hard-failure marker written end to end
     const failed2 = (d2.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
       (c) => c[0].status === 'FAILED'
     );
-    expect(failed2[0].error).toBe(`${HARD_FAILURE_MARKER}:2:extractor: extractor exited null (signal SIGKILL): `);
+    expect(failed2[0].error).toBe(
+      withFailedVersion(`${HARD_FAILURE_MARKER}:2:extractor: extractor exited null (signal SIGKILL): `, EXTRACTOR_VERSION, SHA)
+    );
 
     // --- attempt 3: document now carries its 2nd hard-failure marker,
     // updated 20 hours ago — clear of the normal exponential cap (6h) but
     // still inside the W-137 24h hard-failure floor. The extractor MUST NOT
     // be spawned a third time, and the refusal reason must be recorded. ---
-    const twentyHoursAgo = new Date(Date.now() - 20 * 60 * 60_000);
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60_000);
     const docAfterSecondHardFailure = doc({
       extractionStatus: 'FAILED',
       retryCount: 2,
       extractionError: failed2[0].error,
-      updatedAt: twentyHoursAgo,
+      updatedAt: thirtyDaysAgo,
     });
     const d3 = deps({ runExtractor: makeKilledRunner(), loadDocuments: vi.fn(async () => [docAfterSecondHardFailure]) });
     const r3 = await processPendingFilings(IPO, d3);
     expect(r3.spawned).toBe(0);
     expect(d3.runExtractor).not.toHaveBeenCalled();
-    expect(r3.skipped.some((s) => /extraction backing off until/.test(s))).toBe(true);
+    expect(r3.skipped.some((s) => /waits for a new extractor version or a new document/.test(s))).toBe(true);
   });
 });
 
@@ -1139,10 +1125,10 @@ describe('selectPendingFilings — the per-document retry gate (MAJOR-A)', () =>
     const y = doc({ id: 'doc-y', type: 'PROSPECTUS', sha256: 'b'.repeat(64), extractionStatus: 'PENDING' });
     const { pending, skipped } = selectPendingFilings('ipo-1', [x, y], twoStates, { fileExists: () => true, now });
     expect(pending.map((d) => d.id)).toEqual(['doc-y']);
-    expect(skipped.join(' ')).toContain('backing off');
+    expect(skipped.join(' ')).toContain('waits for a new extractor version or a new document');
   });
 
-  it('(b) doc X FAILED 1 attempt 20 min ago -> X is selected — its own backoff window has elapsed', () => {
+  it('(b) #959: doc X FAILED 1 attempt 20 min ago is NOT selected by elapsed time; it IS at a new extractor version', () => {
     const x = doc({
       id: 'doc-x',
       type: 'RHP',
@@ -1150,7 +1136,8 @@ describe('selectPendingFilings — the per-document retry gate (MAJOR-A)', () =>
       retryCount: 1,
       updatedAt: new Date(now.getTime() - 20 * 60_000),
     });
-    const { pending } = selectPendingFilings('ipo-1', [x], twoStates, { fileExists: () => true, now });
+    expect(selectPendingFilings('ipo-1', [x], twoStates, { fileExists: () => true, now }).pending).toEqual([]);
+    const { pending } = selectPendingFilings('ipo-1', [x], twoStates, { fileExists: () => true, now, version: 'next-build' });
     expect(pending.map((d) => d.id)).toEqual(['doc-x']);
   });
 
@@ -1211,15 +1198,14 @@ describe('processPendingFilings — per-document retry bookkeeping (MAJOR-A)', (
     );
   });
 
-  it('a failure passes this document own PREVIOUS retryCount as attemptsBefore, producing the matching backoff', async () => {
+  it('#959: a failure after earlier attempts carries NO due time on the ledger, whatever the retryCount', async () => {
     const d = deps({
       loadDocuments: vi.fn(async () => [doc({ retryCount: 4 })]),
       runExtractor: vi.fn(() => ({ ok: false as const, error: 'boom' })),
     });
     await processPendingFilings(IPO, d);
-    const eWrite = recordedSteps.flatMap((r) => r.writes).find((w) => w.stepId === 'E1') as { nextDueAt?: Date };
-    // attemptsBefore=4 (the value BEFORE the IN_PROGRESS stamp) -> 2^4 x 15min = 4h.
-    expect(eWrite.nextDueAt).toBeInstanceOf(Date);
+    const eWrite = recordedSteps.flatMap((r) => r.writes).find((w) => w.stepId === 'E1') as { nextDueAt?: Date | null };
+    expect(eWrite.nextDueAt).toBeNull();
     // Round 4: the IN_PROGRESS stamp writes retryCount 5 (4+1); the later
     // FAILED write carries no retryCount at all (unchanged from that stamp).
     expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
@@ -1312,16 +1298,18 @@ describe('processPendingFilings — the W-45 disagreement failure path (round 4)
       expect(call[0]).not.toHaveProperty('retryCount');
     }
 
-    // Selected again once its own backoff (retryCount 1 -> 15 min) elapses.
+    // #959: never re-selected by elapsed time; selected again at a new extractor version.
     const failedDoc = doc({
       id: 'doc-ad',
       type: 'PRICE_BAND_AD',
       sha256: 'b'.repeat(64),
       extractionStatus: 'FAILED',
+      extractionError: failedCalls[0][0].error,
       retryCount: 1,
-      updatedAt: new Date(Date.now() - 20 * 60_000),
+      updatedAt: new Date(Date.now() - 30 * 24 * 60 * 60_000),
     });
-    const { pending } = selectPendingFilings('ipo-1', [failedDoc], [], { fileExists: () => true });
+    expect(selectPendingFilings('ipo-1', [failedDoc], [], { fileExists: () => true }).pending).toEqual([]);
+    const { pending } = selectPendingFilings('ipo-1', [failedDoc], [], { fileExists: () => true, version: 'next-build' });
     expect(pending.map((x) => x.id)).toEqual(['doc-ad']);
   });
 });
@@ -1898,9 +1886,10 @@ describe('W-168 — deterministic anchor parser refusals escalate faster than a 
     // `<reason> @id:<kind>:<sha16>` this module stamps on a first occurrence.
     const previouslyFailed = anchorDoc({
       extractionStatus: 'FAILED',
-      extractionError: `${parseFailedReason} @id:parse_failed:${SHA.slice(0, 16)}`,
+      // #959: failed at an OLDER extractor build — the version change is what
+      // admits it; the same refusal again at the new build is the second strike.
+      extractionError: withFailedVersion(`${parseFailedReason} @id:parse_failed:${SHA.slice(0, 16)}`, 'extract_filing.py@old-build'),
       retryCount: 1,
-      // Long past its backoff window, so the per-document gate admits it.
       updatedAt: new Date(0),
     });
     const d = anchorDeps({
@@ -1924,8 +1913,13 @@ describe('W-168 — deterministic anchor parser refusals escalate faster than a 
   it('a DIFFERENT sha resets the count — treated as a fresh first occurrence, not escalated', async () => {
     const previouslyFailed = anchorDoc({
       extractionStatus: 'FAILED',
-      // Stamped against an OLD sha (the file was re-fetched with new bytes).
-      extractionError: `${parseFailedReason} @id:parse_failed:${'f'.repeat(16)}`,
+      // Stamped against an OLD sha (the file was re-fetched with new bytes) —
+      // #959: new bytes on the row are a new document, which is what admits it.
+      extractionError: withFailedVersion(
+        `${parseFailedReason} @id:parse_failed:${'f'.repeat(16)}`,
+        EXTRACTOR_VERSION,
+        'f'.repeat(64)
+      ),
       retryCount: 1,
       sha256: SHA,
       updatedAt: new Date(0),
@@ -1954,7 +1948,7 @@ describe('W-168 — deterministic anchor parser refusals escalate faster than a 
     const secondRunReasonWithNoise = 'anchor: no bid price could be derived from the investor  rows'; // extra space, OCR noise
     const previouslyFailed = anchorDoc({
       extractionStatus: 'FAILED',
-      extractionError: `${firstRunReason} @id:parse_failed:${SHA.slice(0, 16)}`,
+      extractionError: withFailedVersion(`${firstRunReason} @id:parse_failed:${SHA.slice(0, 16)}`, 'extract_filing.py@old-build'),
       retryCount: 1,
       updatedAt: new Date(0),
     });
@@ -2083,7 +2077,12 @@ describe('W-142 — the outcome map written to documents.extraction_status', () 
     const originalUpdatedAt = new Date('2026-01-01T00:00:00.000Z');
     const d = anchorDeps({
       loadDocuments: vi.fn(async () => [
-        anchorDoc({ extractionStatus: 'FAILED', retryCount: 5, updatedAt: originalUpdatedAt }),
+        anchorDoc({
+          extractionStatus: 'FAILED',
+          retryCount: 5,
+          updatedAt: originalUpdatedAt,
+          extractionError: withFailedVersion('anchor: boom', 'extract_filing.py@old-build'),
+        }),
       ]),
       runAnchorPersist: vi.fn(async () => ({
         kind: 'busy' as const,
@@ -2312,7 +2311,7 @@ describe('W-142 round 2 — MINOR-2: blank-name rows are published, never silent
 describe('extraction timeout — staging incident regression (ESDS Software, ipo af03ab82)', () => {
   const now = new Date('2026-09-06T15:56:17Z');
 
-  it('(a) a FAILED row, retryCount 5, updated 20 min ago, ETIMEDOUT error — blocked by backoff', () => {
+  it('(a) a FAILED row, retryCount 5, updated 20 min ago, ETIMEDOUT error — blocked (#959: until the version changes)', () => {
     const twentyMinAgo = new Date(now.getTime() - 20 * 60_000);
     const gate = documentExtractionBlocked(
       {
@@ -2330,10 +2329,14 @@ describe('extraction timeout — staging incident regression (ESDS Software, ipo
   it('(b) a timeout failure through processPendingFilings writes FAILED with retryCount = prev+1, never left IN_PROGRESS', async () => {
     const d = deps({
       loadDocuments: vi.fn(async () => [
-        // retryCount 4's own backoff (2^3 x 15min = 2h) must already have
-        // elapsed, or the gate blocks selection before this call ever spawns
-        // — the scenario under test is "eligible again, then times out".
-        doc({ retryCount: 4, extractionStatus: 'FAILED', updatedAt: new Date(Date.now() - 3 * 60 * 60_000) }),
+        // #959: failed at an OLDER extractor build, so the version change makes
+        // it eligible again — the scenario under test is "eligible again, then times out".
+        doc({
+          retryCount: 4,
+          extractionStatus: 'FAILED',
+          extractionError: withFailedVersion('extractor: boom', 'extract_filing.py@old-build'),
+          updatedAt: new Date(Date.now() - 3 * 60 * 60_000),
+        }),
       ]),
       runExtractor: vi.fn(() => ({
         ok: false as const,
@@ -2371,31 +2374,16 @@ describe('extraction timeout — staging incident regression (ESDS Software, ipo
     expect((result as { error: string }).error).toContain('ETIMEDOUT');
   });
 
-  it('(c) two consecutive ETIMEDOUT hard failures apply the 24h floor — a document that cannot finish in 10 min twice will not finish on the third try either', () => {
+  it('(c) two consecutive ETIMEDOUT hard failures block the document until the version changes (#959) — it will not finish on the third try either', () => {
     const rawError = 'extractor: spawn failed: spawnSync nice ETIMEDOUT';
     const afterFirst = markHardFailure(null, rawError);
     const afterSecond = markHardFailure(afterFirst, rawError);
     expect(afterSecond).toBe(`${HARD_FAILURE_MARKER}:2:${rawError}`);
 
-    const twentyHoursAgo = new Date(now.getTime() - 20 * 60 * 60_000);
-    const twentyFiveHoursAgo = new Date(now.getTime() - 25 * 60 * 60_000);
-
-    // Ordinary exponential backoff at retryCount 5 is capped at 6h — 20h
-    // later it would normally be clear. The hard-failure floor must still hold.
-    expect(
-      documentExtractionBlocked(
-        { extractionStatus: 'FAILED', retryCount: 5, updatedAt: twentyHoursAgo, extractionError: afterSecond },
-        EXTRACTOR_VERSION,
-        now
-      ).blocked
-    ).toBe(true);
-    expect(
-      documentExtractionBlocked(
-        { extractionStatus: 'FAILED', retryCount: 5, updatedAt: twentyFiveHoursAgo, extractionError: afterSecond },
-        EXTRACTOR_VERSION,
-        now
-      ).blocked
-    ).toBe(false);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60_000);
+    const row = { extractionStatus: 'FAILED', retryCount: 5, updatedAt: thirtyDaysAgo, extractionError: afterSecond };
+    expect(documentExtractionBlocked(row, EXTRACTOR_VERSION, now).blocked).toBe(true);
+    expect(documentExtractionBlocked(row, 'next-build', now).blocked).toBe(false);
   });
 
   it('(d) "left IN_PROGRESS" is logged ONLY for a row whose status was IN_PROGRESS before this cycle\'s stamp — never for a FAILED row', () => {

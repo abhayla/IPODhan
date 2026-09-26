@@ -6,8 +6,6 @@ import {
   planExtractionFailureSteps,
   planPersistSteps,
   planLifecycleSteps,
-  backoffNextDueAt,
-  BACKOFF_CAP_MS,
 } from '../../../src/services/step-ledger-recorders.js';
 import { isPipelineStepId } from '@ipodhan/shared';
 import type { IpoRunResult } from '../../../src/services/document-discovery-runner.js';
@@ -384,36 +382,14 @@ describe('planExtractionSteps — E1..E10 and D6', () => {
 });
 
 describe('planExtractionFailureSteps — a failed extractor is loud, not silent', () => {
-  it('marks every E step FAILED with the error and a backoff', () => {
-    const now = new Date('2026-09-03T10:00:00Z');
-    const writes = planExtractionFailureSteps('extractor exited 1: boom', {
-      docType: 'RHP',
-      version: 'v1',
-      attemptsBefore: 0,
-      now,
-    });
+  it('marks every E step FAILED with the error and NO due time (#959: never on a timer)', () => {
+    const writes = planExtractionFailureSteps('extractor exited 1: boom', { docType: 'RHP', version: 'v1' });
     expect(writes).toHaveLength(10);
     for (const w of writes) {
       expect(w.status).toBe('FAILED');
       expect(w.error).toContain('boom');
-      expect(w.nextDueAt.getTime()).toBe(now.getTime() + 15 * 60 * 1000);
+      expect(w.nextDueAt).toBeNull();
     }
-  });
-
-  it('backoff doubles per attempt and caps at 6 hours (spec section 5)', () => {
-    const now = new Date('2026-09-03T10:00:00Z');
-    expect(backoffNextDueAt(0, now).getTime() - now.getTime()).toBe(15 * 60 * 1000);
-    expect(backoffNextDueAt(1, now).getTime() - now.getTime()).toBe(30 * 60 * 1000);
-    expect(backoffNextDueAt(4, now).getTime() - now.getTime()).toBe(4 * 60 * 60 * 1000);
-    expect(backoffNextDueAt(20, now).getTime() - now.getTime()).toBe(BACKOFF_CAP_MS);
-  });
-
-  it('MAJOR-2: attempts 0/1/5/10 produce 15min/30min/6h(cap)/6h(cap) offsets', () => {
-    const now = new Date('2026-09-03T10:00:00Z');
-    expect(backoffNextDueAt(0, now).getTime() - now.getTime()).toBe(15 * 60 * 1000);
-    expect(backoffNextDueAt(1, now).getTime() - now.getTime()).toBe(30 * 60 * 1000);
-    expect(backoffNextDueAt(5, now).getTime() - now.getTime()).toBe(BACKOFF_CAP_MS);
-    expect(backoffNextDueAt(10, now).getTime() - now.getTime()).toBe(BACKOFF_CAP_MS);
   });
 });
 

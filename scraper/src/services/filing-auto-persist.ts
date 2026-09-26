@@ -26,9 +26,11 @@
  *     `persistFilingExtraction` -> `upsertIPO` -> consolidation, so the field-
  *     priority matrix and the admin locks still decide the outcome.
  *   - It never fails the cycle. An extractor crash, a malformed JSON, a missing
- *     python — each becomes FAILED ledger rows with the error and a backoff
- *     (`2^attempts x 15 min`, capped at 6 hours), and the document returns to
- *     PENDING so a LATER cycle retries it once that backoff has elapsed.
+ *     python — each becomes a FAILED document row and E-step ledger rows with
+ *     the error. #959: NO backoff timer — the document is read again only on a
+ *     new extractor version or a new document (spec §2 "One download, one
+ *     read", OD-33, OD-21); an UNFINISHED read (killed, interrupted, pages left
+ *     unread, persist threw) is resumed once at the next pass (§2.2).
  *   - It never re-extracts a document that the current extractor version has
  *     already extracted, so a steady-state cycle spawns no python at all.
  *   - It never spawns more than `maxSpawnsPerCycle` python processes across
@@ -47,26 +49,27 @@
  * returns the exact `documents` column patch, and `setDocumentExtractionState`
  * applies it with `db.update(documents).set(patch)`. The patch ALWAYS
  * includes `updatedAt: now` (round-3 review MAJOR-1: `documents.updated_at`
- * has no `$onUpdate` and no trigger — without this write the backoff clock
- * never advances).
+ * has no `$onUpdate` and no trigger; #959: `updated_at` is audit only — the
+ * gate never reads elapsed time).
  *
  *  1. select -> IN_PROGRESS: `{status IN_PROGRESS, retryCount: prev+1,
  *     updatedAt}`. The attempt is counted HERE, at the stamp — a process
  *     killed mid-extraction (row left IN_PROGRESS) still consumes an attempt
- *     (round-3 MINOR-6). An IN_PROGRESS row is eligible for selection again
- *     on the NEXT cycle (crash recovery), subject to the same retry/backoff
- *     rule as FAILED, reading its own `retry_count`/`updated_at`.
+ *     (round-3 MINOR-6). An IN_PROGRESS row is resumed ONCE at the next pass
+ *     (crash recovery, §2.2); the resume stamp records `INTERRUPTED:<n>:` so a
+ *     second interruption blocks it (#959).
  *  2. extractor ok + persist ok -> COMPLETED: `{status COMPLETED, retryCount:
  *     0, extractionError: null, extractedAt: now, updatedAt}`.
  *  3. extractor failure OR persist throw OR a W-45 cross-document
  *     disagreement -> FAILED: `{status FAILED, extractionError: <reason>,
  *     updatedAt}`; `retryCount` is left UNCHANGED — it was already counted at
  *     the IN_PROGRESS stamp (1). Round-3 MAJOR-4/MINOR-5: neither a W-45
- *     refusal nor a persist throw is MANUAL_REVIEW or PENDING any more — both
- *     are retried with backoff exactly like an extractor failure.
- *  4. Selection gate: skip when FAILED or IN_PROGRESS and
- *     `now < backoffNextDueAt(retryCount - 1, updatedAt)` (2^n x 15 min,
- *     capped at 6 h). Skip when COMPLETED at the current `EXTRACTOR_VERSION`.
+ *     refusal nor a persist throw is MANUAL_REVIEW or PENDING any more.
+ *     #959: every FAILED error ends ` @failed-at:<version>#<sha16>`.
+ *  4. Selection gate (#959, `documentExtractionBlocked`): skip a FAILED or
+ *     IN_PROGRESS row while the version and bytes it failed on are the current
+ *     ones, except the one resume of a single unfinished read. No timer.
+ *     Skip when COMPLETED at the current `EXTRACTOR_VERSION`.
  *  5. When the retryCount the IN_PROGRESS stamp (1) already wrote has reached
  *     `MAX_EXTRACTION_ATTEMPTS` (10), a subsequent failure (3) writes
  *     MANUAL_REVIEW instead of FAILED, with `extractionError:
@@ -117,7 +120,6 @@ import {
   planPersistSteps,
   recordLiveStep,
   writeSteps,
-  backoffNextDueAt,
 } from './step-ledger-recorders.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { runAnchorAutoPersist, type AnchorAutoOutcome } from './anchor-auto-persist.js';
@@ -282,15 +284,27 @@ export {
 } from './memory-abort-stderr.js';
 
 /** Marks a FAILED row's `extraction_error` as a HARD failure (killed/OOM),
- * with the count of consecutive hard failures embedded — read back by
- * `documentExtractionBlocked` to widen the backoff past the normal
- * exponential curve. Format: `HARD_FAILURE:<n>:<original error>`. */
+ * with the count of consecutive unfinished attempts embedded — read back by
+ * `documentExtractionBlocked`. Format: `HARD_FAILURE:<n>:<original error>`. */
 export const HARD_FAILURE_MARKER = 'HARD_FAILURE';
 
-/** W-137: after the 2nd consecutive hard failure (killed/memory-ceiling) for
- * the SAME document, back off at least a day rather than retrying hourly —
- * a document that kills the box does not become safe to retry an hour later. */
-export const HARD_FAILURE_MIN_BACKOFF_MS = 24 * 60 * 60 * 1000;
+/**
+ * #959: the "unfinished read" markers. An attempt that did not FINISH reading
+ * the document (the extractor was killed or hit the memory ceiling, the
+ * previous run died mid-extraction, the read was stopped with pages unread,
+ * or the persist threw) is not a verdict on the document, so the spec's
+ * resumability rule (§2.2: "a 2-vCPU box can still lose a process to an OOM
+ * kill, a deploy or a crash mid-extraction") lets it be resumed ONCE at the
+ * next pass. They share ONE counter, so any second unfinished attempt at the
+ * same extractor version blocks the document — this is what stops a document
+ * that kills the box from crash-looping, without any timer.
+ */
+export const INTERRUPTED_MARKER = 'INTERRUPTED';
+export const PERSIST_FAILURE_MARKER = 'PERSIST_FAILURE';
+export const INCOMPLETE_PAGES_MARKER = 'INCOMPLETE_PAGES';
+const UNFINISHED_RE = new RegExp(
+  `^(?:${HARD_FAILURE_MARKER}|${INTERRUPTED_MARKER}|${PERSIST_FAILURE_MARKER}|${INCOMPLETE_PAGES_MARKER}):(\\d+):`
+);
 
 /** Reads the consecutive-hard-failure count off a `HARD_FAILURE:<n>:...`
  * marked error string. Returns 0 for anything else (including null/undefined
@@ -303,21 +317,115 @@ export function parseHardFailureCount(error: string | null | undefined): number 
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/** #959: the unfinished-attempt count off any of the four unfinished markers; 0 otherwise. */
+export function parseUnfinishedCount(error: string | null | undefined): number {
+  if (!error) return 0;
+  const match = UNFINISHED_RE.exec(error);
+  if (!match) return 0;
+  const n = Number(match[1]);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** #959: `<marker>:<previous unfinished count + 1>:<raw error>`. The previous count is read
+ * from ANY unfinished marker, so a kill after an interruption is the second unfinished attempt. */
+export function markUnfinished(
+  marker: string,
+  previousError: string | null | undefined,
+  rawError: string,
+  version?: string
+): string {
+  // At a NEW extractor version the count starts again: the version change is the trigger that
+  // readmitted the document, so its earlier unfinished attempts were at another build.
+  const sameVersion =
+    version === undefined || (parseFailedVersion(previousError) ?? UNTAGGED_FAILURE_VERSION) === version;
+  const previous = sameVersion ? parseUnfinishedCount(stripFailedVersion(previousError)) : 0;
+  return `${marker}:${previous + 1}:${rawError}`;
+}
+
 /** Wraps a hard-failure's raw error with the marker + incremented count, read
- * back by `parseHardFailureCount` on the NEXT cycle's gate check. */
-export function markHardFailure(previousError: string | null | undefined, rawError: string): string {
-  return `${HARD_FAILURE_MARKER}:${parseHardFailureCount(previousError) + 1}:${rawError}`;
+ * back by `parseUnfinishedCount` on the NEXT pass's gate check. */
+export function markHardFailure(
+  previousError: string | null | undefined,
+  rawError: string,
+  version?: string
+): string {
+  return markUnfinished(HARD_FAILURE_MARKER, previousError, rawError, version);
+}
+
+/** #959: the error a resumed IN_PROGRESS row is stamped with — the interruption is recorded as an
+ * unfinished attempt BEFORE the resume runs, so a second kill finds it and blocks the document. */
+export function interruptedResumeError(
+  previousError: string | null | undefined,
+  version: string,
+  sha256?: string | null
+): string {
+  return withFailedVersion(
+    markUnfinished(
+      INTERRUPTED_MARKER,
+      previousError,
+      'the previous run stopped mid-extraction (process killed or restarted)',
+      version
+    ),
+    version,
+    sha256
+  );
 }
 
 /**
- * The per-document gate. Pure, so the backoff arithmetic is testable without a
- * database. `doc` is the subset of `documents` columns the gate reads.
+ * #959: every FAILED (and every resumed IN_PROGRESS) `extraction_error` ends with the extractor
+ * version it happened at, ` @failed-at:<version>`, so the gate can tell "nothing changed" from
+ * "the extractor changed" — the spec's only re-read trigger for the same bytes. No schema change,
+ * same approach as the MANUAL_REVIEW `@<version>` suffix. Truncated FIRST so the tag survives the
+ * 1000-char column cap.
+ */
+export const FAILED_AT_VERSION_TAG = ' @failed-at:';
+const FAILED_AT_VERSION_RE = / @failed-at:([^\s#]+)(?:#([0-9a-f]+))?$/;
+/** `sha256`, when known, is recorded too (`#<first 16 hex>`): `documents.sha256` is refreshed
+ * in place when the bytes at a URL change (document-repository upsert), and new bytes are a new
+ * document — the other spec trigger — even though the row id is the same. */
+export function withFailedVersion(error: string, version: string, sha256?: string | null, max = 1000): string {
+  const base = stripFailedVersion(error) ?? '';
+  const suffix = `${FAILED_AT_VERSION_TAG}${version}${sha256 ? `#${sha256.slice(0, 16)}` : ''}`;
+  return `${base.slice(0, Math.max(0, max - suffix.length))}${suffix}`;
+}
+export function parseFailedVersion(error: string | null | undefined): string | null {
+  if (!error) return null;
+  const match = FAILED_AT_VERSION_RE.exec(error);
+  return match ? match[1] : null;
+}
+export function parseFailedSha(error: string | null | undefined): string | null {
+  if (!error) return null;
+  const match = FAILED_AT_VERSION_RE.exec(error);
+  return match?.[2] ?? null;
+}
+export function stripFailedVersion(error: string | null | undefined): string | null | undefined {
+  if (!error) return error;
+  return error.replace(FAILED_AT_VERSION_RE, '');
+}
+
+/**
+ * #959: the version a FAILED/IN_PROGRESS row WITHOUT a ` @failed-at:` tag is read against — every
+ * such row was written before #959, and `EXTRACTOR_VERSION` has been this value since 2026-09-03,
+ * so it is exactly the build they failed at (staging's 6 timer rows were last tried 2026-09-24..26).
+ * Pinned (never `EXTRACTOR_VERSION` itself) so the NEXT version bump revives them, as the spec says.
+ */
+export const UNTAGGED_FAILURE_VERSION = 'extract_filing.py@2026-09-03';
+
+/** #959: the one sentence every skip of a parked failure carries (signal-ownership R6). */
+export const WAITS_FOR_TRIGGER =
+  'waits for a new extractor version or a new document (#959; OD-33, §2 "One download, one read": never on a timer)';
+
+/**
+ * The per-document gate. Pure, so it is testable without a database. `doc` is
+ * the subset of `documents` columns the gate reads.
  */
 export interface DocumentGate {
   extractionStatus: string | null;
   extractionError?: string | null;
   retryCount: number;
   updatedAt: Date | null;
+  /** #959: the row's CURRENT bytes; differs from the tagged sha when a new document replaced them. */
+  sha256?: string | null;
 }
 
 /**
@@ -351,34 +459,38 @@ export function withBlockedVersion(reason: string, version: string, max = 1000):
 }
 
 /**
- * True when this cycle must not spawn the extractor for THIS document.
+ * True when this pass must not spawn the extractor for THIS document. Scoped
+ * to the one document, never to the whole IPO (MAJOR-A).
  *
- * Two independent reasons, both scoped to the one document — never to the
- * whole IPO (MAJOR-A):
- *  - blocked-at-this-version: `extractionStatus === 'MANUAL_REVIEW'` AND the
- *    version encoded in `extractionError` equals `version` (round-4 MAJOR-2:
- *    a bare MANUAL_REVIEW check made the block permanent even across an
- *    `EXTRACTOR_VERSION` bump). A different/missing encoded version means the
- *    document is eligible again — exactly like an ordinary un-extracted one.
- *  - backing off: the document's last stamp was FAILED, or is still
- *    IN_PROGRESS from a run that died mid-extraction (round-4 MINOR-6), and
- *    the exponential backoff window (`backoffNextDueAt`, reused verbatim from
- *    `step-ledger-recorders.ts`) measured from `updatedAt` has not elapsed.
- *    `retryCount` already includes the attempt that set `updatedAt`, so the
- *    attempt count the backoff formula wants (the count BEFORE that attempt)
- *    is `retryCount - 1`.
+ * #959 — NO TIMER. The spec reads a stored document once, on arrival, and
+ * again only when "(a) a newer document type arrives for that IPO, (b) the
+ * extractor version changes, or (c) the re-read loop of §3 asks for it. There
+ * is no interval, no backoff timer" (§2 "One download, one read", OD-33; §5.3
+ * rule 5; OD-21). The re-read loop (c) was withdrawn by OD-65, and a newer
+ * document arrives as its OWN `documents` row (sha256 identity), which this
+ * gate admits as PENDING. So for the SAME bytes the only trigger left is the
+ * extractor version, and `updatedAt`/elapsed time is never read here.
  *
- * Round 5 (MINOR-2): the hard-failure 24h floor is NOT a one-time wait —
- * `hardFailureCount` (parsed off `extractionError`) is only ever reset by a
- * COMPLETED run. A document stuck at `HARD_FAILURE:2` (or higher) is blocked
- * on this same 24h cadence every cycle, indefinitely, until either a run of
- * the extractor actually completes for it or an operator manually clears
- * `extraction_error`.
+ *  - MANUAL_REVIEW: blocked while the version encoded in `extractionError`
+ *    equals `version`; a different encoded version revives it; no encoded
+ *    version at all (operator-set / legacy) stays blocked (F6).
+ *  - FAILED / IN_PROGRESS: read against the version the failure happened at
+ *    (` @failed-at:<v>`, or `UNTAGGED_FAILURE_VERSION` for rows written before
+ *    #959). A different version revives it (trigger b). At the same version:
+ *      - an IN_PROGRESS row with no earlier unfinished attempt is a read a
+ *        killed/restarted run never finished (§2.2) — resumed ONCE, at the
+ *        next pass, with no wait;
+ *      - a FAILED row whose only history is ONE unfinished attempt (killed,
+ *        memory ceiling, pages left unread, persist threw) is resumed ONCE the
+ *        same way;
+ *      - everything else — a structural refusal (the extractor read the file
+ *        and could not use it), or a second unfinished attempt — is blocked
+ *        with `WAITS_FOR_TRIGGER` in the reason, until the version changes.
  */
 export function documentExtractionBlocked(
   doc: DocumentGate,
   version: string,
-  now: Date = new Date()
+  _now: Date = new Date()
 ): { blocked: boolean; reason?: string } {
   if (doc.extractionStatus === 'MANUAL_REVIEW') {
     const blockedVersion = parseBlockedVersion(doc.extractionError);
@@ -402,36 +514,28 @@ export function documentExtractionBlocked(
     }
     return { blocked: false };
   }
-  if ((doc.extractionStatus === 'FAILED' || doc.extractionStatus === 'IN_PROGRESS') && doc.retryCount > 0) {
-    const anchor = doc.updatedAt ?? now;
-    let nextDueAt = backoffNextDueAt(doc.retryCount - 1, anchor);
-    // W-137: 2+ consecutive killed/memory-ceiling failures on this SAME
-    // document override the normal (6h-capped) exponential backoff with a
-    // floor of 24h — the document is what kills the box, not the timing.
-    // Round 5 (MINOR-2): only a COMPLETED run resets the retry/error state —
-    // a document stuck at HARD_FAILURE:2 (or higher) stays on this 24h
-    // cadence FOREVER, cycle after cycle, until either a run completes or an
-    // operator manually clears `extraction_error`. This is stated explicitly
-    // in the blocked reason below so an operator reading the skip log does
-    // not mistake it for a one-time wait.
-    const hardFailureCount = parseHardFailureCount(doc.extractionError);
-    const hardFloorApplies = hardFailureCount >= 2;
-    if (hardFloorApplies) {
-      const hardFloor = new Date(anchor.getTime() + HARD_FAILURE_MIN_BACKOFF_MS);
-      if (hardFloor.getTime() > nextDueAt.getTime()) nextDueAt = hardFloor;
-    }
-    if (nextDueAt.getTime() > now.getTime()) {
-      // MAJOR-3: a hard-failure floor is never silent — the 24h wait is not
-      // "try again soon", it is "this document has killed the extractor
-      // twice; look at it". The ordinary exponential backoff keeps its
-      // terser message since it is expected, routine retry timing.
+  if (doc.extractionStatus === 'FAILED' || doc.extractionStatus === 'IN_PROGRESS') {
+    const failedAt = parseFailedVersion(doc.extractionError) ?? UNTAGGED_FAILURE_VERSION;
+    if (failedAt !== version) return { blocked: false };
+    const failedSha = parseFailedSha(doc.extractionError);
+    if (failedSha && doc.sha256 && doc.sha256.slice(0, 16) !== failedSha) return { blocked: false };
+    const unfinished = parseUnfinishedCount(stripFailedVersion(doc.extractionError));
+    if (doc.extractionStatus === 'IN_PROGRESS') {
+      if (unfinished === 0) return { blocked: false };
       return {
         blocked: true,
-        reason: hardFloorApplies
-          ? `extraction backing off until ${nextDueAt.toISOString()} — ${hardFailureCount} consecutive hard failures (killed/OOM), needs manual extraction if this recurs (repeats every 24h until a run completes or an operator clears extraction_error)`
-          : `extraction backing off until ${nextDueAt.toISOString()}`,
+        reason: `extraction interrupted again at ${version} after ${unfinished} unfinished attempt(s) — ${WAITS_FOR_TRIGGER}`,
       };
     }
+    if (unfinished === 1) return { blocked: false };
+    const cause = (stripFailedVersion(doc.extractionError) ?? 'no error recorded').slice(0, 200);
+    return {
+      blocked: true,
+      reason:
+        unfinished > 1
+          ? `extraction failed at ${version} after ${unfinished} unfinished attempt(s) (killed/memory ceiling/interrupted): ${cause} — ${WAITS_FOR_TRIGGER}`
+          : `extraction failed at ${version}: ${cause} — ${WAITS_FOR_TRIGGER}`,
+    };
   }
   return { blocked: false };
 }
@@ -466,11 +570,11 @@ export function classifyDeterministicAnchorParseFailure(
   version: string
 ): { status: 'FAILED' | 'MANUAL_REVIEW'; error: string } {
   const shaTag = sha256 ? sha256.slice(0, 16) : 'unknown';
-  const prevMatch = /@id:([a-z0-9_]+):([0-9a-f]+|unknown)\s*$/i.exec(previousError ?? '');
+  const prevMatch = /@id:([a-z0-9_]+):([0-9a-f]+|unknown)\s*$/i.exec(stripFailedVersion(previousError) ?? '');
   if (prevMatch && prevMatch[1] === kind && prevMatch[2] === shaTag) {
     return { status: 'MANUAL_REVIEW', error: withBlockedVersion(reason, version) };
   }
-  return { status: 'FAILED', error: `${reason} @id:${kind}:${shaTag}` };
+  return { status: 'FAILED', error: withFailedVersion(`${reason} @id:${kind}:${shaTag}`, version, sha256) };
 }
 
 /**
@@ -736,9 +840,9 @@ export function selectPendingFilings(
       skipped.push(`${type}: already extracted by ${version}`);
       continue;
     }
-    // MAJOR-A: per-document gate — MANUAL_REVIEW at this version, or still
-    // within this document's own backoff window (FAILED or crash-recovered
-    // IN_PROGRESS). Never reads any other document's state, so one
+    // MAJOR-A: per-document gate — MANUAL_REVIEW at this version, or FAILED /
+    // crash-recovered IN_PROGRESS at the same version and bytes (#959: no
+    // timer). Never reads any other document's state, so one
     // permanently-unparseable file can no longer block its siblings.
     const gate = documentExtractionBlocked(
       {
@@ -746,6 +850,7 @@ export function selectPendingFilings(
         extractionError: doc.extractionError,
         retryCount: doc.retryCount ?? 0,
         updatedAt: doc.updatedAt,
+        sha256: doc.sha256,
       },
       version,
       options.now
@@ -755,11 +860,10 @@ export function selectPendingFilings(
       continue;
     }
     if (doc.extractionStatus === 'IN_PROGRESS') {
-      // A row left IN_PROGRESS means a previous cycle died mid-extract, and its
-      // own backoff window (checked above) has elapsed. Retry it rather than
-      // leaving it stuck forever — the extractor is deterministic and the
-      // persist door is idempotent, so a duplicate run costs time, not
-      // correctness.
+      // A row left IN_PROGRESS means a previous cycle died mid-extract (§2.2).
+      // Resume it once (the gate above blocks a second interruption, #959) —
+      // the extractor is deterministic and the persist door is idempotent, so
+      // a duplicate run costs time, not correctness.
       logger.warn({ ipoId, docType: type }, 'Document left IN_PROGRESS by an earlier run — retrying');
     }
     pending.push({ ...doc, type });
@@ -1329,12 +1433,15 @@ export function buildAutoPersistDeps(
 function classifyFailure(
   retryCountAtStamp: number,
   version: string,
-  rawError: string
+  rawError: string,
+  sha256?: string | null
 ): { status: 'FAILED' | 'MANUAL_REVIEW'; error: string } {
   if (retryCountAtStamp >= MAX_EXTRACTION_ATTEMPTS) {
     return { status: 'MANUAL_REVIEW', error: `${EXTRACTION_BLOCKED_ERROR}@${version}` };
   }
-  return { status: 'FAILED', error: rawError };
+  // #959: the version goes ON the row, so the gate re-reads these bytes only
+  // when the extractor changes — never on a timer.
+  return { status: 'FAILED', error: withFailedVersion(rawError, version, sha256) };
 }
 
 /**
@@ -1351,8 +1458,8 @@ function classifyFailure(
  *   all-blank names      -> MANUAL_REVIEW (same class: the name column failed)
  *   empty pages (W-139)  -> MANUAL_REVIEW, "no text and OCR heuristic did not fire"
  *   memory ceiling / OOM -> FAILED via the W-137 hard-failure marker (>=24h
- *                           backoff from the second such failure)
- *   anything else        -> FAILED with the ordinary 2^n x 15 min backoff
+ *                           resumed once, blocked at the second, #959)
+ *   anything else        -> FAILED, re-read only on a new extractor version or new bytes (#959)
  *
  * H3 (the anchor step) is recorded at the same sites the other doc types
  * record theirs: the success row is written by `anchor-persister.ts` itself on
@@ -1377,6 +1484,8 @@ async function runAnchorDocument(
      * IN_PROGRESS stamp — restored verbatim on a busy-box revert so the
      * backoff clock (`documentExtractionBlocked`) does not advance on a skip. */
     previousUpdatedAt?: Date | null;
+    /** #959: set when the stamp recorded an interruption; the busy revert restores this error. */
+    previousError?: string | null;
     stateId?: string;
   }
 ): Promise<{ persisted: boolean; busy?: boolean }> {
@@ -1466,6 +1575,7 @@ async function runAnchorDocument(
         status: ctx.previousStatus,
         retryCount: ctx.previousRetryCount,
         ...(ctx.previousUpdatedAt ? { updatedAt: ctx.previousUpdatedAt } : {}),
+        ...(ctx.previousError !== undefined ? { error: ctx.previousError } : {}),
       })
       .catch(() => undefined);
     // Round 3 (MINOR-4): the filing-loop busy branch restores `doc.retryCount`
@@ -1473,6 +1583,7 @@ async function runAnchorDocument(
     // the pre-attempt value, not the in-flight IN_PROGRESS stamp — the anchor
     // branch must do the same.
     doc.retryCount = ctx.previousRetryCount;
+    if (ctx.previousError !== undefined) doc.extractionError = ctx.previousError;
     return { persisted: false, busy: true };
   }
 
@@ -1518,8 +1629,8 @@ async function runAnchorDocument(
   // failures are NOT `outcome.deterministic` and keep their existing paths.
   let classified: { status: 'FAILED' | 'MANUAL_REVIEW'; error: string };
   if (outcome.kind === 'hard_failure') {
-    const rawError = markHardFailure(doc.extractionError, outcome.reason);
-    classified = classifyFailure(retryCountAtStamp, version, rawError);
+    const rawError = markHardFailure(doc.extractionError, outcome.reason, version);
+    classified = classifyFailure(retryCountAtStamp, version, rawError, doc.sha256);
   } else if (outcome.deterministic) {
     classified = classifyDeterministicAnchorParseFailure(
       outcome.sourceKind ?? 'parse_failed',
@@ -1529,7 +1640,7 @@ async function runAnchorDocument(
       version
     );
   } else {
-    classified = classifyFailure(retryCountAtStamp, version, outcome.reason);
+    classified = classifyFailure(retryCountAtStamp, version, outcome.reason, doc.sha256);
   }
   if (classified.status === 'MANUAL_REVIEW') result.anchorsManualReview++;
   else result.anchorsFailed++;
@@ -1543,7 +1654,7 @@ async function runAnchorDocument(
     },
     classified.status === 'MANUAL_REVIEW'
       ? 'Anchor allocation report failed the same deterministic way twice — recorded MANUAL_REVIEW (W-168)'
-      : 'Anchor allocation report failed (non-fatal) — recorded with a backoff (W-142)'
+      : `Anchor allocation report failed (non-fatal) — recorded FAILED; ${WAITS_FOR_TRIGGER}`
   );
   await deps
     .setDocumentExtractionState({
@@ -1595,7 +1706,8 @@ async function runCorrigendumPass(
         await deps.setDocumentExtractionState({
           documentId: doc.id,
           status: 'FAILED',
-          error: `corrigendum_read_failed: ${cause}`.slice(0, 1000),
+          // #959: read once per document; the version tag lets the gate hold it until the build changes.
+          error: withFailedVersion(`corrigendum_read_failed: ${cause}`, deps.version ?? EXTRACTOR_VERSION, doc.sha256),
           retryCount: (doc.retryCount ?? 0) + 1,
         });
       } catch (stampError) {
@@ -1858,8 +1970,19 @@ export async function processPendingFilings(
       const newRetryCount = revivingAfterManualReview ? 1 : previousRetryCount + 1;
       doc.retryCount = newRetryCount;
 
+      // #959: same interruption record as the filing loop's resume stamp.
+      const previousError = doc.extractionError ?? null;
+      const resumeError =
+        doc.extractionStatus === 'IN_PROGRESS' ? interruptedResumeError(doc.extractionError, version, doc.sha256) : undefined;
+      if (resumeError !== undefined) doc.extractionError = resumeError;
+
       try {
-        await deps.setDocumentExtractionState({ documentId: doc.id, status: 'IN_PROGRESS', retryCount: newRetryCount });
+        await deps.setDocumentExtractionState({
+          documentId: doc.id,
+          status: 'IN_PROGRESS',
+          retryCount: newRetryCount,
+          ...(resumeError !== undefined ? { error: resumeError } : {}),
+        });
       } catch (error) {
         logger.warn(
           { ipoId: ipo.id, docType: doc.type, error: error instanceof Error ? error.message : String(error) },
@@ -1879,6 +2002,7 @@ export async function processPendingFilings(
         previousRetryCount,
         previousStatus,
         previousUpdatedAt,
+        ...(resumeError !== undefined ? { previousError } : {}),
         stateId: stateIdByDocType.get(ANCHOR_DOC_TYPE),
       });
       if (outcome.persisted) anyPersisted = true;
@@ -1943,8 +2067,22 @@ export async function processPendingFilings(
     // — one increment, read wherever this document is handled again this run.
     doc.retryCount = newRetryCount;
 
+    // #959: a row still IN_PROGRESS is a read a killed/restarted run never
+    // finished. Record that interruption on the stamp itself, so if THIS
+    // resume is killed too the gate finds a second unfinished attempt and
+    // blocks the document instead of looping on it.
+    const previousError = doc.extractionError ?? null;
+    const resumeError =
+      doc.extractionStatus === 'IN_PROGRESS' ? interruptedResumeError(doc.extractionError, version, doc.sha256) : undefined;
+    if (resumeError !== undefined) doc.extractionError = resumeError;
+
     try {
-      await deps.setDocumentExtractionState({ documentId: doc.id, status: 'IN_PROGRESS', retryCount: newRetryCount });
+      await deps.setDocumentExtractionState({
+        documentId: doc.id,
+        status: 'IN_PROGRESS',
+        retryCount: newRetryCount,
+        ...(resumeError !== undefined ? { error: resumeError } : {}),
+      });
     } catch (error) {
       logger.warn(
         { ipoId: ipo.id, docType, error: error instanceof Error ? error.message : String(error) },
@@ -1995,11 +2133,14 @@ export async function processPendingFilings(
             status: previousStatus,
             retryCount: previousRetryCount,
             ...(previousUpdatedAt ? { updatedAt: previousUpdatedAt } : {}),
+            // #959: undo the resume stamp's interruption record too — a busy box is not an attempt.
+            ...(resumeError !== undefined ? { error: previousError } : {}),
           });
         } catch {
           /* already logged by the writer; a stuck IN_PROGRESS status must not fail the cycle */
         }
         doc.retryCount = previousRetryCount;
+        doc.extractionError = previousError;
         // Round 3 (MAJOR-2): a busy box is a signal about the WHOLE box, not
         // this one document — every remaining candidate in `pendingForThisCall`
         // would just wait `EXTRACTOR_LOCK_WAIT_S` (90s) each and hit the same
@@ -2017,7 +2158,7 @@ export async function processPendingFilings(
       // the FIRST occurrence — straight to MANUAL_REVIEW, never through
       // classifyFailure's 10-attempt floor (that floor exists for failures a
       // retry COULD fix; a retry never supplies the password). #959 (the
-      // extraction-failure backoff timer) is explicitly out of scope here —
+      // extraction-failure timer, now removed) is not needed here —
       // this document simply never re-enters that timer.
       const classified = run.passwordProtected
         ? { status: 'MANUAL_REVIEW' as const, error: withBlockedVersion(`extractor: ${run.error}`, version) }
@@ -2027,11 +2168,12 @@ export async function processPendingFilings(
             run.hardFailure
               ? // W-137: a killed/memory-ceiling extractor is a HARD failure —
                 // embed the (incrementing) hard-failure marker so the NEXT
-                // cycle's `documentExtractionBlocked` widens the backoff to
+                // pass's `documentExtractionBlocked` blocks (#959, was a 24h floor)
                 // >= 24h once this has happened twice on the SAME document,
                 // instead of retrying hourly.
-                markHardFailure(doc.extractionError, `extractor: ${run.error}`)
-              : `extractor: ${run.error}`
+                markHardFailure(doc.extractionError, `extractor: ${run.error}`, version)
+              : `extractor: ${run.error}`,
+            doc.sha256
           );
       const blocked = classified.status === 'MANUAL_REVIEW';
       logger.error(
@@ -2049,8 +2191,15 @@ export async function processPendingFilings(
           : blocked
             ? 'Filing extraction failed for the 10th time — blocked until EXTRACTOR_VERSION changes'
             : run.hardFailure
-              ? 'Filing extractor was killed (OOM/memory ceiling) — recorded as FAILED with a hard backoff (>=24h after the 2nd such failure)'
-              : 'Filing extraction failed (non-fatal) — recorded as FAILED with a backoff'
+              ? 'Filing extractor was killed (OOM/memory ceiling) — recorded as FAILED; resumed once at the next pass, blocked after a second unfinished attempt (#959)'
+              : `Filing extraction failed (non-fatal) — recorded as FAILED; ${WAITS_FOR_TRIGGER}`
+      );
+      // #959: the ledger says what the gate will do next — BLOCKED with the
+      // trigger that revives it, or FAILED and due at the next pass (one
+      // resume of an unfinished read). No due TIME: nothing waits on a clock.
+      const gateAfter = documentExtractionBlocked(
+        { extractionStatus: classified.status, extractionError: classified.error, retryCount: newRetryCount, updatedAt: null },
+        version
       );
       await writeSteps(
         ipo.id,
@@ -2059,12 +2208,13 @@ export async function processPendingFilings(
           documentId: doc.id,
           sourceSha: doc.sha256,
           version,
-          attemptsBefore: previousRetryCount,
+          // MANUAL_REVIEW's own error already names its block and version.
+          ...(gateAfter.blocked && !blocked ? { blockedReason: WAITS_FOR_TRIGGER } : {}),
         })
       );
       // MAJOR-A: the document's own extraction_status becomes FAILED (not
       // PENDING) — `documentExtractionBlocked` reads FAILED + retry_count +
-      // updated_at to compute this document's backoff window, so the status
+      // the failed-at tag (#959) to hold this document, so the status
       // must say FAILED for the gate to hold it until that window elapses.
       // retryCount is omitted here — it is unchanged from the IN_PROGRESS
       // stamp above, except for MANUAL_REVIEW where it is written again for
@@ -2141,12 +2291,12 @@ export async function processPendingFilings(
 
   if (refusedReason) {
     result.failed += extractions.length;
-    // Transition 3: a W-45 refusal is FAILED-with-backoff, never MANUAL_REVIEW
+    // Transition 3: a W-45 refusal is FAILED (held until a new version, #959), never MANUAL_REVIEW
     // or PENDING (round-3 MAJOR-4) — it is retried like any other extraction
     // failure. `doc.retryCount` already holds the value the IN_PROGRESS stamp
     // wrote for THIS document earlier in this run.
     for (const { doc } of extractions) {
-      const classified = classifyFailure(doc.retryCount ?? 0, version, `w45_disagreement: ${refusedReason}`);
+      const classified = classifyFailure(doc.retryCount ?? 0, version, `w45_disagreement: ${refusedReason}`, doc.sha256);
       await deps
         .setDocumentExtractionState({
           documentId: doc.id,
@@ -2195,11 +2345,18 @@ export async function processPendingFilings(
         { ipoId: ipo.id, docType, error: message, cause: cause?.message, code },
         'Filing persist failed (non-fatal)'
       );
-      // Transition 3: a persist throw is FAILED-with-backoff, never PENDING
+      // Transition 3: a persist throw is FAILED (PERSIST_FAILURE, one resume, #959), never PENDING
       // (round-3 MINOR-5 — PENDING would drop the document straight back to
       // the front of the queue with no backoff at all). `doc.retryCount`
       // already holds the value the IN_PROGRESS stamp wrote earlier this run.
-      const classified = classifyFailure(doc.retryCount ?? 0, version, `persist: ${message}`);
+      // #959: a persist throw is an UNFINISHED read (the document was read; the
+      // write did not land) — resumable once, then blocked, never timed.
+      const classified = classifyFailure(
+        doc.retryCount ?? 0,
+        version,
+        markUnfinished(PERSIST_FAILURE_MARKER, doc.extractionError, `persist: ${message}`, version),
+        doc.sha256
+      );
       await writeSteps(ipo.id, [
         {
           stepId: 'G3',
@@ -2244,13 +2401,12 @@ export async function processPendingFilings(
     // its interrupt intends. Only the "nothing left to do" stamp is withheld.
     //
     // FAILED (or MANUAL_REVIEW once attempts run out) rather than a sixth
-    // status value, and the attempt count LEFT as stamped rather than reset:
-    // that reuses the existing exponential backoff
-    // (`documentExtractionBlocked`, 15 min doubling to a 6 h cap) and the
-    // MAX_EXTRACTION_ATTEMPTS(10) -> MANUAL_REVIEW parking that already work.
+    // status value, and the attempt count LEFT as stamped rather than reset.
+    // #959: marked `INCOMPLETE_PAGES:<n>:` — an unfinished read, so the gate
+    // resumes it ONCE (OD-55: the recorded pages exist so a later pass can
+    // read them) and blocks it after a second stopped read at the same version.
     // Resetting the count to 0 while leaving the document eligible would
-    // re-run a two-hour extraction every single cycle, forever, with no
-    // backoff — far worse than the defect it replaces.
+    // re-run a two-hour extraction every single cycle, forever.
     const unreadRaw: unknown = (extraction as unknown as Record<string, unknown>).unread_pages;
     const unreadPages: Array<Record<string, unknown>> = Array.isArray(unreadRaw)
       ? unreadRaw.filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
@@ -2284,8 +2440,8 @@ export async function processPendingFilings(
       //     off on the capped 6h/24h cadence forever and never park:
       //     `documentExtractionBlocked` has no attempt cap of its own for a
       //     FAILED row — the cap lives in `classifyFailure`.
-      const incompleteError = `INCOMPLETE_PAGES: ${pages.length} page(s) never read [${pages.join(',')}] (${reasons.join(',')})`;
-      const classifiedIncomplete = classifyFailure(doc.retryCount ?? 0, version, incompleteError);
+      const incompleteError = `${markUnfinished(INCOMPLETE_PAGES_MARKER, doc.extractionError, '', version)}${pages.length} page(s) never read [${pages.join(',')}] (${reasons.join(',')})`;
+      const classifiedIncomplete = classifyFailure(doc.retryCount ?? 0, version, incompleteError, doc.sha256);
       logger.warn(
         {
           ipoId: ipo.id,
