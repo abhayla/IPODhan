@@ -302,11 +302,15 @@ export class DataConsolidationOrchestrator {
       }
 
       // Extract consolidated values for database insert/update
+      // #951: the keys of `incomingData` (after the `onlyFields` filter) ARE
+      // this write's claim. An update writes only those, so a field the caller
+      // never claimed stays `undefined` and the stored column is left alone.
       const consolidatedIPOData = this.extractConsolidatedData(
         consolidationResult,
         scrapedIPO,
         source,
-        existingIPO
+        existingIPO,
+        new Set(Object.keys(incomingData))
       );
 
       // Protect an authoritative corporate-action classification from being downgraded to a
@@ -579,7 +583,8 @@ export class DataConsolidationOrchestrator {
     result: ConsolidationResult,
     originalScraped: ScrapedIPO,
     source: ScraperSource,
-    existingIPO?: IPO | null
+    existingIPO: IPO | null | undefined,
+    claimed: ReadonlySet<string>
   ): Partial<IPOInsert> {
     const consolidated: any = {};
 
@@ -617,7 +622,7 @@ export class DataConsolidationOrchestrator {
       rejectedFields.has(fieldName) ? undefined : value;
 
     // Ensure required fields have values
-    return {
+    const data: Record<string, unknown> = {
       companyName: consolidated.companyName || fallback('companyName', originalScraped.companyName),
       segment: consolidated.segment ?? fallback('segment', originalScraped.segment) ?? null,
       offeringType: consolidated.offeringType || fallback('offeringType', originalScraped.offeringType),
@@ -641,11 +646,26 @@ export class DataConsolidationOrchestrator {
       companyDescription: consolidated.companyDescription,
       registrar: consolidated.registrar,
       leadManagers: consolidated.leadManagers,
-      listingExchanges: this.extractListingExchanges(consolidated, originalScraped, source, existingIPO),
+      listingExchanges: this.extractListingExchanges(consolidated, originalScraped, source, existingIPO, claimed),
       symbol: consolidated.symbol,
       isin: consolidated.isin,
-      lastScrapedAt: new Date(),
-    } as Partial<IPOInsert>;
+    };
+
+    // #951: on an UPDATE, a field outside this write's claim is never written.
+    // The raw-scrape fallbacks above exist so a brand-new row gets its
+    // identity columns; on an existing row they re-wrote whatever the payload
+    // happened to carry (an NSE-only opening-day check reduced a stored
+    // ['NSE','BSE'] to ['NSE'], a BSE one then to ['BSE']). Deleting the key —
+    // not setting it undefined-by-accident — is what keeps the stored column.
+    if (existingIPO) {
+      for (const key of Object.keys(data)) {
+        if (!claimed.has(key)) delete data[key];
+      }
+    }
+
+    // Bookkeeping this write owns: the row WAS scraped now, whatever it claimed.
+    data.lastScrapedAt = new Date();
+    return data as Partial<IPOInsert>;
   }
 
   /**
@@ -665,9 +685,19 @@ export class DataConsolidationOrchestrator {
     consolidated: any,
     originalScraped: ScrapedIPO,
     source: ScraperSource,
-    existingIPO?: IPO | null
+    existingIPO: IPO | null | undefined,
+    claimed: ReadonlySet<string>
   ): ('NSE' | 'BSE')[] | undefined {
+    // #951: not claimed -> nothing to write. The old body fell through to the
+    // raw scrape and then the stored value, so an unclaimed field was still
+    // written — as this source's single board.
+    if (!claimed.has('listingExchanges')) return undefined;
+
     const stored = (existingIPO?.listingExchanges as ('NSE' | 'BSE')[] | null | undefined) ?? undefined;
+    const segment = (consolidated.segment ?? originalScraped.segment ?? existingIPO?.segment) as
+      | string
+      | null
+      | undefined;
     const resolved: ('NSE' | 'BSE')[] | undefined =
       (Array.isArray(consolidated.listingExchanges) && consolidated.listingExchanges.length > 0
         ? consolidated.listingExchanges
@@ -682,10 +712,6 @@ export class DataConsolidationOrchestrator {
     // second exchange onto an SME row (and logs the conflict); if a two-board
     // value still reaches here, keep the stored single board rather than write
     // the violation.
-    const segment = (consolidated.segment ?? originalScraped.segment ?? existingIPO?.segment) as
-      | string
-      | null
-      | undefined;
     if (violatesSmeSingleExchange(segment, resolved)) {
       logger.warn(
         { source, segment, resolved, stored },

@@ -1975,7 +1975,12 @@ export class DataConsolidationService {
           rowKey,
           fieldName,
           value: merged,
-          source: existingSource || incomingSource,
+          // #938: the provenance row names the source that ADDED the member.
+          // It used to carry the prior source (`existingSource || incomingSource`),
+          // so an NSE scrape widening a DRHP ['BSE'] was recorded as "DRHP said
+          // ['BSE','NSE']" -- a claim DRHP never made. The prior source stays
+          // on the row as `previousSource`.
+          source: incomingSource,
           previousValue: storedValue,
           previousSource: existingSource,
         });
