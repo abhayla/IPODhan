@@ -67,7 +67,7 @@
 ### AC4: Deployment Package Script
 **Files:**
 - `scripts/create-deployment-package.sh` (5.1 KB)
-- `scripts/create-deployment-package.ps1` (6.9 KB)
+- PowerShell variant (6.9 KB) — retired 2026-09 with the Windows deploy path, issue #881
 
 - ✅ Both Bash and PowerShell versions created
 - ✅ Scripts build web and scraper

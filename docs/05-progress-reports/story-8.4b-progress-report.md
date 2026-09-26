@@ -150,7 +150,7 @@ Created comprehensive guide covering:
 - Clear next steps for Story 8.5 (Monitoring & Alerts)
 
 ### Database Setup Script
-**File:** `scripts/setup-production-database.ps1`
+**File:** PowerShell database setup script, `scripts/` (retired 2026-09 with the Windows deploy path — issue #881)
 
 Created automated PowerShell script covering:
 - PostgreSQL connection testing
@@ -195,7 +195,7 @@ Created automated PowerShell script covering:
    - `docs/deployment/phase6-post-deployment.md` (500+ lines)
 
 2. **Scripts:**
-   - `scripts/setup-production-database.ps1` (450+ lines)
+   - PowerShell database setup script (450+ lines) — retired 2026-09, issue #881
 
 3. **Progress Report:**
    - `docs/stories/progress-reports/story-8.4b-progress-report.md` (this file)

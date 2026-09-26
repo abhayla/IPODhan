@@ -1,3 +1,7 @@
+# Kept deliberately: the Windows VPS 103.118.16.189 still runs PostgreSQL 16 for every
+# app, and the nightly `IPODhan-DB-Backup` scheduled task (02:00 IST) on that host may
+# invoke this script (see issue #881; CLAUDE.md "Production & Deployment").
+#
 # Database Backup Script for IPODhan (Windows/PowerShell)
 #
 # This script creates automated PostgreSQL database backups with:

@@ -13,7 +13,7 @@
 | 1 | Site accessible at https://ipodhan.com with SSL (A+ rating) | Phase 3: SSL/TLS config<br>Phase 4: SSL Labs test | SSL Labs testing procedure | ✅ PASS |
 | 2 | PM2 running both apps (2 cluster, 1 fork) | Phase 1: PM2 install<br>Phase 2: PM2 startup<br>Phase 4: PM2 verification | pm2 status commands | ✅ PASS |
 | 3 | Scraper executing on schedule | Phase 2: Cron config<br>Phase 4: Scraper verification | Database query checks | ✅ PASS |
-| 4 | Database and Redis connected | Phase 1: DB/Redis setup<br>Script: setup-production-database.ps1<br>Phase 4: Connectivity tests | Health check verification | ✅ PASS |
+| 4 | Database and Redis connected | Phase 1: DB/Redis setup<br>Script: setup-production-database-ps1 [retired, issue #881]<br>Phase 4: Connectivity tests | Health check verification | ✅ PASS |
 | 5 | Cloudflare caching active | Phase 3: Caching rules<br>Phase 4: Cache verification | cf-cache-status checks | ✅ PASS |
 | 6 | Environment variables secured | Phase 2: .env.production setup<br>Phase 4: Security testing | File permissions verification | ✅ PASS |
 | 7 | Auto-restart on crash enabled | Phase 1: PM2 config<br>Phase 4: Crash recovery test | PM2 restart verification | ✅ PASS |
@@ -87,7 +87,7 @@
 - ✓ Phase 1 (phase1-vps-environment-setup.md):
   - PostgreSQL database creation for shared server
   - Redis cache configuration
-- ✓ Script (setup-production-database.ps1): Automated database setup
+- ✓ Script (setup-production-database-ps1 [retired, issue #881]): Automated database setup
   - Database creation
   - User creation with secure password
   - Connection testing
@@ -238,7 +238,7 @@
 | Phase 6 | phase6-post-deployment.md | 735 | All AC final verification |
 
 **Total Documentation:** 4,791 lines across 6 phase guides
-**Supporting Scripts:** 458 lines (setup-production-database.ps1)
+**Supporting Scripts:** 458 lines (setup-production-database-ps1 [retired, issue #881])
 
 ---
 

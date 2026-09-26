@@ -173,7 +173,7 @@ The IPODhan project already had **excellent performance architecture**:
 - ✅ ecosystem.config.js configured for Windows VPS
 - ✅ Health check endpoint verified (PostgreSQL + Redis)
 - ✅ .env.production.template with 117 lines of documentation
-- ✅ Deployment scripts (create-deployment-package.ps1 + .sh)
+- ✅ Deployment scripts (create-deployment-package.sh; the .ps1 variant was retired 2026-09 with the Windows deploy path — issue #881)
 - ✅ Comprehensive deployment documentation
 - ✅ Rollback procedures documented (416 lines)
 - ✅ Deployment checklist created (553 lines)
@@ -181,8 +181,7 @@ The IPODhan project already had **excellent performance architecture**:
 ### Files Verified
 1. `ecosystem.config.js` - PM2 configuration
 2. `.env.production.template` - Environment template
-3. `scripts/create-deployment-package.ps1` - PowerShell script
-4. `scripts/create-deployment-package.sh` - Bash script
+3. `scripts/create-deployment-package.sh` - Bash script (the PowerShell variant was retired 2026-09 with the Windows deploy path — issue #881)
 5. `web/app/api/health/route.ts` - Health endpoint
 6. `docs/deployment/ROLLBACK.md` - Rollback procedures
 7. `docs/deployment/DEPLOYMENT-CHECKLIST.md` - Deployment checklist

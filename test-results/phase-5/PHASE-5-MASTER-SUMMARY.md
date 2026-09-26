@@ -404,7 +404,7 @@ Coverage:
 **DO TODAY (15 minutes):**
 ```bash
 # Linux/Mac: ./test-results/phase-5/setup-log-rotation.sh
-# Windows: .\test-results\phase-5\setup-log-rotation.ps1
+# Windows PowerShell variant retired with the Windows deploy path (#881)
 ```
 
 **DO THIS WEEK (2-4 hours):**
