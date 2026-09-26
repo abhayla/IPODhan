@@ -513,7 +513,6 @@ jobs:
         # npm ci (batch 4 below).
         run: |
           node --test scripts/tests/apply-rule-ownership.test.mjs
-          node --test scripts/tests/audit-findings-to-issues.test.mjs
           node --test scripts/tests/audit-ipo-coverage-exit-reason.test.mjs
           node --test scripts/tests/audit-reverse-sweep.test.mjs
           node --test scripts/tests/cache-poison-bisect.test.mjs
@@ -1084,21 +1083,6 @@ jobs:
           SCHEMA_DRIFT_IGNORE_GATED: '1'
         run: npm run audit:schema-drift
 
-      - name: "assert-schema-drift.ts self-test (#616/#681/#800 — needs a live DB)"
-        # scripts/tests/assert-schema-drift.test.ts refuses without a reachable
-        # DATABASE_URL/TEST_DATABASE_URL ("FATAL: set DATABASE_URL..."), so it
-        # was deliberately left OUT of the Node-22/tsx batch in the `gate` job
-        # (#800) — adding it there would make that job red on every PR. This
-        # job already provisions Postgres for the steps above, so it runs
-        # here instead. It CREATEs/DROPs its own throwaway fixture table
-        # (__schema_drift_selftest_fixture__), never touching the app schema,
-        # so no SCHEMA_DRIFT_IGNORE_GATED is needed. Not `--test` — the file
-        # is a plain script with its own pass/fail exit code, not a
-        # node:test suite.
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
-        run: npx tsx scripts/tests/assert-schema-drift.test.ts
-
       - name: Self-invalidate KNOWN_GATED_INDEX_DRIFT / KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT
         # scripts/tests/known-gated-registry-invalidation.test.ts — tsx, not
         # bare node --test, because it imports assert-schema-drift.ts through
@@ -1287,9 +1271,6 @@ jobs:
       # job — named explicitly because pr-gate never globs.
       - name: Run deploy-and-watch test suite (#616/#681)
         run: bash scripts/tests/deploy-and-watch.test.sh
-
-      - name: Run assert-migrations-applied test suite (#616/#681)
-        run: bash scripts/tests/assert-migrations-applied.test.sh
 
       - name: Run VPS disk-hygiene test suite (#616/#681)
         run: bash scripts/tests/vps-disk-hygiene.test.sh

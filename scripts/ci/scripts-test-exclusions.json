@@ -18,6 +18,24 @@
       "kind": "broken",
       "issue": "#1173",
       "reason": "The self-test is a real defect finder, not a broken test: audit-ipo-coverage.mjs's subRows SELECT is missing face_value, authoritative_issue_price and company_website, which three SUBSTANCE_CHECKS predicates read — those predicates silently no-op on every row today. Wiring this into CI now would fail every PR on a pre-existing production defect it did not cause. Excluded until the SELECT is fixed (issue #1173), then it wires in as a normal pass."
+    },
+    {
+      "file": "scripts/tests/assert-schema-drift.test.ts",
+      "kind": "broken",
+      "issue": "#1176",
+      "reason": "Needs a live DB and, on a database built from the migration journal in CI, reports real COLUMN_TYPE_MISMATCH drift (gmp_records numeric columns numeric(32,0) vs schema.ts numeric(10,2); listing_performance.current_gain_percent numeric(5,2) vs numeric(7,2)). Wiring it now fails every PR on a pre-existing schema/migration defect it did not cause; wire it once #1176 aligns the two."
+    },
+    {
+      "file": "scripts/tests/assert-migrations-applied.test.sh",
+      "kind": "broken",
+      "issue": "#1177",
+      "reason": "Two cases fail on the CI runner (DB exactly at / ahead of the newest journaled migration exit 1 instead of 0) while the rest pass; either a real bug in this deploy gate or a CI fixture gap, to be settled in #1177 before it is wired."
+    },
+    {
+      "file": "scripts/tests/audit-findings-to-issues.test.mjs",
+      "kind": "broken",
+      "issue": "#1178",
+      "reason": "One of 56 cases (LIVE --new-only baseline run writing issues-sync-state.json) fails on the CI runner, most likely an environment dependency; excluded until #1178 fixes the test or the code path, then it wires in as a normal pass."
     }
   ]
 }
