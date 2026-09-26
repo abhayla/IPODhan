@@ -1579,6 +1579,32 @@ else
   pass "case 21d: $DEPLOY_SCRIPT never passes a password to redis-cli via argv"
 fi
 
+# case 21e (Tier A review MINOR): a non-numeric REDIS_DB must NEVER reach
+# redis-cli's argv — unquoted word-splitting on it would turn one config
+# value into extra, attacker-shaped arguments. The stub fails the case
+# outright if it ever sees a `-n` flag at all for this run; the wrapper must
+# fall back to the URL's own db (still succeeding, via the SAME real code
+# path as case 20a) rather than pass the bad value through.
+printf '%s\n' \
+  '#!/bin/sh' \
+  'for a in "$@"; do' \
+  '  case "$a" in -n) echo "SAW -n WITH A NON-NUMERIC REDIS_DB" >&2; exit 2 ;; esac' \
+  'done' \
+  'echo 90' \
+  > "$STUBDIR/redis-cli"
+chmod +x "$STUBDIR/redis-cli"
+
+OUT21E="$(PATH="$STUBDIR:$PATH" REDIS_URL="redis://127.0.0.1:6379/1" \
+  REDIS_DB="3; rm -rf /" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT21E" | grep -q "wake-skipped:.*lock_ttl=90s remaining" \
+   && printf '%s' "$OUT21E" | grep -qi "REDIS_DB='3; rm -rf /' is not a plain non-negative integer"; then
+  pass "case 21e: a non-numeric REDIS_DB is rejected with a named cause and never reaches redis-cli's argv"
+else
+  fail "case 21e: expected the bad REDIS_DB to be ignored (with a named WARN) and the read to still succeed, got: $OUT21E"
+fi
+
 rm -rf "$STUBDIR"
 
 if [ "$FAILED" -ne 0 ]; then

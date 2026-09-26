@@ -651,17 +651,25 @@ release_scraper_cycle_locks() {
   # "released 0 locks" on every deploy regardless of whether a lock was
   # actually held. Read the password/db override from the same env file and
   # authenticate the same way scraper-wake.sh's lock read now does.
-  local redis_password redis_db redis_db_opt
+  local redis_password redis_db
   redis_password="$(grep -E '^REDIS_PASSWORD=' "$SCRAPER_ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
   redis_password="${redis_password%\"}"; redis_password="${redis_password#\"}"
   redis_password="${redis_password%\'}"; redis_password="${redis_password#\'}"
   redis_db="$(grep -E '^REDIS_DB=' "$SCRAPER_ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
   redis_db="${redis_db%\"}"; redis_db="${redis_db#\"}"
   redis_db="${redis_db%\'}"; redis_db="${redis_db#\'}"
-  redis_db_opt=""
-  if [ -n "$redis_db" ]; then
-    redis_db_opt="-n $redis_db"
-  fi
+  # A REDIS_DB that is not purely digits must never reach redis-cli's argv -
+  # unquoted word-splitting on it would turn one config value into extra,
+  # attacker-shaped redis-cli arguments. Ignore anything that fails this
+  # check (loudly) rather than pass it through.
+  case "$redis_db" in
+    ''|*[!0-9]*)
+      if [ -n "$redis_db" ]; then
+        warn "release_scraper_cycle_locks: REDIS_DB='$redis_db' is not a plain non-negative integer - ignoring it, using the URL's own db"
+      fi
+      redis_db=""
+      ;;
+  esac
   # The password is passed via REDISCLI_AUTH, set only on the individual
   # redis-cli command lines below (never exported into this script's own
   # environment, so it cannot leak into pm2/scraper processes this function
@@ -685,25 +693,25 @@ release_scraper_cycle_locks() {
   # instead (this script already requires GNU coreutils timeout elsewhere).
   for key in "lock:resource:scraper:cycle" "lock:resource:filing-auto-persist:cycle"; do
     if [ -n "$redis_password" ]; then
-      value="$(REDISCLI_AUTH="$redis_password" timeout 3 redis-cli -u "$redis_url" $redis_db_opt GET "$key" 2>/dev/null || true)"
+      value="$(REDISCLI_AUTH="$redis_password" timeout 3 redis-cli -u "$redis_url" ${redis_db:+-n "$redis_db"} GET "$key" 2>/dev/null || true)"
     else
-      value="$(timeout 3 redis-cli -u "$redis_url" $redis_db_opt GET "$key" 2>/dev/null || true)"
+      value="$(timeout 3 redis-cli -u "$redis_url" ${redis_db:+-n "$redis_db"} GET "$key" 2>/dev/null || true)"
     fi
     if [ -z "$value" ]; then
       log "release_scraper_cycle_locks: $key not held"
       continue
     fi
     if [ -n "$redis_password" ]; then
-      ttl="$(REDISCLI_AUTH="$redis_password" timeout 3 redis-cli -u "$redis_url" $redis_db_opt TTL "$key" 2>/dev/null || true)"
+      ttl="$(REDISCLI_AUTH="$redis_password" timeout 3 redis-cli -u "$redis_url" ${redis_db:+-n "$redis_db"} TTL "$key" 2>/dev/null || true)"
     else
-      ttl="$(timeout 3 redis-cli -u "$redis_url" $redis_db_opt TTL "$key" 2>/dev/null || true)"
+      ttl="$(timeout 3 redis-cli -u "$redis_url" ${redis_db:+-n "$redis_db"} TTL "$key" 2>/dev/null || true)"
     fi
     log "release_scraper_cycle_locks: releasing $key (held: ${ttl}s remaining)"
     local eval_result
     if [ -n "$redis_password" ]; then
-      eval_result="$(REDISCLI_AUTH="$redis_password" timeout 3 redis-cli -u "$redis_url" $redis_db_opt EVAL       "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"       1 "$key" "$value" 2>/dev/null || true)"
+      eval_result="$(REDISCLI_AUTH="$redis_password" timeout 3 redis-cli -u "$redis_url" ${redis_db:+-n "$redis_db"} EVAL       "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"       1 "$key" "$value" 2>/dev/null || true)"
     else
-      eval_result="$(timeout 3 redis-cli -u "$redis_url" $redis_db_opt EVAL       "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"       1 "$key" "$value" 2>/dev/null || true)"
+      eval_result="$(timeout 3 redis-cli -u "$redis_url" ${redis_db:+-n "$redis_db"} EVAL       "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"       1 "$key" "$value" 2>/dev/null || true)"
     fi
     if [ "$eval_result" = "1" ]; then
       released=$((released + 1))

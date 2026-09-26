@@ -419,10 +419,18 @@ lock_is_held() {
     redis_db="${redis_db%\'}"
     redis_db="${redis_db#\'}"
   fi
-  redis_db_opt=""
-  if [ -n "$redis_db" ]; then
-    redis_db_opt="-n $redis_db"
-  fi
+  # A REDIS_DB that is not purely digits must never reach redis-cli's argv -
+  # unquoted word-splitting on a value like "3 --eval /etc/passwd" would turn
+  # one config value into extra, attacker-shaped redis-cli arguments. Ignore
+  # anything that fails this check (loudly) rather than pass it through.
+  case "$redis_db" in
+    ''|*[!0-9]*)
+      if [ -n "$redis_db" ]; then
+        log "WARN lock-read-unavailable: REDIS_DB='$redis_db' is not a plain non-negative integer - ignoring it, using the URL's own db"
+      fi
+      redis_db=""
+      ;;
+  esac
 
   # #719: `redis-cli -t 3` (the flag this line used to pass) is not a real
   # redis-cli option in ANY version - there is no client-side connection
@@ -440,9 +448,9 @@ lock_is_held() {
   # written to $ttl_err_file or the wake log.
   ttl_err_file="/tmp/scraper-wake-ttl-err.$$"
   if [ -n "$redis_password" ]; then
-    ttl="$(REDISCLI_AUTH="$redis_password" timeout 3 redis-cli -u "$redis_url" $redis_db_opt TTL "$SCRAPER_LOCK_KEY" 2>"$ttl_err_file")"
+    ttl="$(REDISCLI_AUTH="$redis_password" timeout 3 redis-cli -u "$redis_url" ${redis_db:+-n "$redis_db"} TTL "$SCRAPER_LOCK_KEY" 2>"$ttl_err_file")"
   else
-    ttl="$(timeout 3 redis-cli -u "$redis_url" $redis_db_opt TTL "$SCRAPER_LOCK_KEY" 2>"$ttl_err_file")"
+    ttl="$(timeout 3 redis-cli -u "$redis_url" ${redis_db:+-n "$redis_db"} TTL "$SCRAPER_LOCK_KEY" 2>"$ttl_err_file")"
   fi
   ttl_rc=$?
   ttl_err="$(cat "$ttl_err_file" 2>/dev/null)"
