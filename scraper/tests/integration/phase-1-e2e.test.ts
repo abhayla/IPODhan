@@ -146,12 +146,17 @@ describe.skipIf(!DATABASE_URL)('Phase 1: E2E consolidation pipeline (ipodhan_tes
     // #575 / T-299: a brand-new IPO's ipoId is the literal sentinel 'new' while
     // consolidateIPOData runs, and trackFieldSource is a documented no-op for
     // that sentinel (real lineage on create is seeded by data-persister.ts's
-    // upsertIPO, a different write path) — so `field_sources` is correctly
-    // empty right after THIS door creates a row. Provenance for this path is
-    // exercised below in test 2 (the row's second, update write DOES have a
-    // real uuid and does track).
-    expect(await fieldSourcesRepository!.findByIPOId(result.ipoId)).toEqual([]);
+    // upsertIPO, a different write path) — so `field_sources` is EMPTY right
+    // after THIS door creates a row, for every field. Round-1 review (Tier B):
+    // asserting that as correct pins a gap OD-88 says should not exist (every
+    // written column carries a field_sources row); staging read confirmed it
+    // (companyName lacks lineage on 47/396 IPOs, #1196). Deliberately NOT
+    // asserted either way here — see the todo below and #1196. Provenance
+    // tracking on THIS write path is exercised in test 2 (its second, update
+    // write has a real uuid and does track).
   }, 10000);
+
+  it.todo('create path records field_sources for every written column (#1196, OD-88)');
 
   it('2: NSE vs BSE conflict detection (dual-source, 10% issue-size gap -> WARNING)', async () => {
     const created = await orchestrator!.consolidatedUpsertIPO(nseIPOData, 'NSE', 95);
@@ -254,5 +259,5 @@ describe.skipIf(!DATABASE_URL)('Phase 1: E2E consolidation pipeline (ipodhan_tes
       const savedIPO = await ipoRepository!.findBySlug(slug);
       expect(savedIPO).toBeDefined();
     }
-  }, 20000);
+  }, 45000); // sequential writes over the sanctioned SSH tunnel can exceed 20s under load; CI's local-container DB has no such latency
 });
