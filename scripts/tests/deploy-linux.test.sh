@@ -3734,18 +3734,21 @@ if [ -n "$CLEANUP_ORPHAN_FN" ] && [ -n "$RESOLVE_LINK_FN" ] && [ -n "$COLLECT_LI
   # --- or the orphan build process #630 describes) is never killed by ------
   # --- this cleanup; it refuses to proceed instead (owner rule 5: a -------
   # --- process-stop must never match on a bare/reused pid without proof). --
+  # No spawned/backgrounded process here on purpose: after ~38 prior cases'
+  # worth of background jobs (probes, fake pm2 apps, mutex holders) in one
+  # long-running shell, a freshly `sleep N &`-ed job proved flaky under this
+  # harness's job control (hung intermittently past this point on a slow/
+  # loaded box). This test's own PID ($$) is unconditionally alive for the
+  # whole duration of this script and needs no spawn/kill/wait at all - it
+  # exercises the exact same `kill -0 "$pid"` liveness branch with zero
+  # background-job risk.
   R39C="$(mktemp -d)"
   mkdir -p "$R39C/releases/20260901-090000-1111111" "$R39C/releases/20260905-101112-5555555"
   : > "$R39C/releases/20260901-090000-1111111/.deploy-complete"
   printf '%s\n' "$R39C/releases/20260901-090000-1111111" > "$R39C/current"
-  sleep 30 & LIVEPID39=$!
-  echo "$LIVEPID39" > "$R39C/releases/20260905-101112-5555555/.build.pid"
+  echo "$$" > "$R39C/releases/20260905-101112-5555555/.build.pid"
   run_orphan_cleanup_39 "$R39C" /tmp/deploy-test-39c.log "$R39C/releases/20260915-000000-8888888"
   RC39C=$?
-  STILL_ALIVE39C=0
-  kill -0 "$LIVEPID39" 2>/dev/null && STILL_ALIVE39C=1
-  kill "$LIVEPID39" 2>/dev/null || true
-  wait "$LIVEPID39" 2>/dev/null || true
   if [ "$RC39C" -ne 0 ] && grep -q "^FATAL: orphan-cleanup: .*LIVE build process" /tmp/deploy-test-39c.log; then
     pass "case 39c: a live build pidfile refuses to proceed (rc=$RC39C) instead of touching anything"
   else
@@ -3757,10 +3760,16 @@ if [ -n "$CLEANUP_ORPHAN_FN" ] && [ -n "$RESOLVE_LINK_FN" ] && [ -n "$COLLECT_LI
   else
     fail "case 39c: the directory with a live build was removed"
   fi
-  if [ "$STILL_ALIVE39C" -eq 1 ]; then
-    pass "case 39c: cleanup never sent the live build process a signal (it was still alive when checked)"
+  # Static, mutation-proof check that the cleanup structurally CANNOT signal
+  # a build process (owner rule 5): the only `kill` call in the function
+  # body is the `kill -0` liveness probe, never a `kill -TERM`/`kill -9`/
+  # bare `kill <pid>` that would actually stop it.
+  KILL_CALLS_39C="$(printf '%s\n' "$CLEANUP_ORPHAN_FN" | grep -oE 'kill[[:space:]]+-?[A-Za-z0-9]*' || true)"
+  KILL_NOT_DASH0_39C="$(printf '%s\n' "$KILL_CALLS_39C" | grep -v -- '-0' | grep -c . || true)"
+  if [ -n "$KILL_CALLS_39C" ] && [ "${KILL_NOT_DASH0_39C:-0}" -eq 0 ]; then
+    pass "case 39c: cleanup_orphan_release_dirs() contains only 'kill -0' liveness checks, never a signal that stops the process"
   else
-    fail "case 39c: the live build process was not alive right after cleanup ran - cleanup may have killed it"
+    fail "case 39c: expected only 'kill -0' in cleanup_orphan_release_dirs() - found: $KILL_CALLS_39C"
   fi
   rm -rf "$R39C"
 
