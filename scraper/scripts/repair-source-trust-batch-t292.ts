@@ -293,7 +293,13 @@ async function main() {
     id: r.id,
     row: namedRowsById.get(r.id) ?? classRowsById.get(r.id) ?? null,
   }));
-  writeLedgerFile(backupPath, fullClassBackup);
+  writeLedgerFile(backupPath, {
+    tool: 'repair-source-trust-batch-t292',
+    mode: APPLY ? 'apply' : 'dry-run',
+    generatedAt: new Date().toISOString(),
+    changes: repairs.flatMap((r) => r.changes.map((c) => ({ table: 'ipos', rowKey: r.id, field: c.field, before: c.from, after: c.to }))),
+    fullClassBackup,
+  });
   console.log(`backup written: ${backupPath} (${fullClassBackup.length} row(s), full pre-change snapshot)`);
 
   for (const r of repairs) {
@@ -346,7 +352,21 @@ async function main() {
   }
 
   const ledgerPath = path.join(EVIDENCE_DIR, 't292-source-trust-applied-ledger.json');
-  writeLedgerFile(ledgerPath, ledger);
+  writeLedgerFile(ledgerPath, {
+    tool: 'repair-source-trust-batch-t292',
+    mode: 'apply',
+    generatedAt: new Date().toISOString(),
+    changes: ledger.flatMap((entry) =>
+      ((entry.changes as { field: string; from: unknown; to: unknown }[]) ?? []).map((c) => ({
+        table: 'ipos',
+        rowKey: String(entry.id),
+        field: c.field,
+        before: c.from,
+        after: c.to,
+      }))
+    ),
+    ledger,
+  });
   console.log(`\nAPPLY complete: written=${written}, failed=${failures.length} (of ${repairs.length} targeted rows)`);
   console.log(`ledger written: ${ledgerPath}`);
   if (failures.length > 0) {

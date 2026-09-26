@@ -259,6 +259,9 @@ async function runFalseSupplied(cli: Cli, actual: string): Promise<void> {
 
   const ledger = {
     tool: `${TOOL}--false-supplied`,
+    mode: (cli.apply ? 'apply' : 'dry-run') as 'apply' | 'dry-run',
+    generatedAt: new Date().toISOString(),
+    changes: requeue.map((d) => ({ table: 'ipo_field_plan', rowKey: d.row.id, field: 'state', before: 'SUPPLIED', after: REQUEUED_STATE })),
     database: actual,
     apply: cli.apply,
     at: new Date().toISOString(),
@@ -370,6 +373,9 @@ async function main(): Promise<void> {
 
     const ledger = {
       tool: TOOL,
+      mode: (cli.apply ? 'apply' : 'dry-run') as 'apply' | 'dry-run',
+      generatedAt: new Date().toISOString(),
+      changes: requeue.map((d) => ({ table: 'ipo_field_plan', rowKey: d.row.id, field: 'state', before: d.row.state, after: REQUEUED_STATE })),
       database: actual,
       apply: cli.apply,
       at: new Date().toISOString(),

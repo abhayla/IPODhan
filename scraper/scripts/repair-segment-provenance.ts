@@ -416,7 +416,14 @@ async function main() {
     }
 
     const blankBackupPath = `evidence/${new Date().toISOString().slice(0, 10)}-decision4-blank-unsourced/before.json`;
-    writeLedgerFile(blankBackupPath, { capturedAt: new Date().toISOString(), rows: toBlank.map((d) => d.row) });
+    writeLedgerFile(blankBackupPath, {
+      tool: 'repair-segment-provenance',
+      mode: 'apply',
+      generatedAt: new Date().toISOString(),
+      changes: toBlank.map((d) => ({ table: 'ipos', rowKey: d.row.id, field: 'segment', before: d.row.segment, after: null })),
+      capturedAt: new Date().toISOString(),
+      rows: toBlank.map((d) => d.row),
+    });
     console.log(`backup written: ${blankBackupPath}`);
 
     await db.transaction(async (tx) => {
@@ -445,6 +452,10 @@ async function main() {
 
     const blankLedgerPath = `evidence/${new Date().toISOString().slice(0, 10)}-decision4-blank-unsourced/applied.json`;
     writeLedgerFile(blankLedgerPath, {
+      tool: 'repair-segment-provenance',
+      mode: 'apply',
+      generatedAt: new Date().toISOString(),
+      changes: toBlank.map((d) => ({ table: 'ipos', rowKey: d.row.id, field: 'segment', before: d.row.segment, after: null })),
       appliedAt: new Date().toISOString(),
       updatedBy: BLANK_UPDATED_BY,
       written: toBlank.length,
@@ -470,7 +481,14 @@ async function main() {
   }
 
   const backupPath = `evidence/${new Date().toISOString().slice(0, 10)}-lane-c-item-02-s3b/before.json`;
-  writeLedgerFile(backupPath, { capturedAt: new Date().toISOString(), rows: toTouch.map((d) => d.row) });
+  writeLedgerFile(backupPath, {
+    tool: 'repair-segment-provenance',
+    mode: 'apply',
+    generatedAt: new Date().toISOString(),
+    changes: toTouch.map((d) => ({ table: 'ipos', rowKey: d.row.id, field: 'segment', before: d.row.segment, after: d.decision.newSegment })),
+    capturedAt: new Date().toISOString(),
+    rows: toTouch.map((d) => d.row),
+  });
   console.log(`backup written: ${backupPath}`);
 
   await db.transaction(async (tx) => {
@@ -519,6 +537,10 @@ async function main() {
 
   const ledgerPath = `evidence/${new Date().toISOString().slice(0, 10)}-lane-c-item-02-s3b/applied.json`;
   writeLedgerFile(ledgerPath, {
+    tool: 'repair-segment-provenance',
+    mode: 'apply',
+    generatedAt: new Date().toISOString(),
+    changes: toTouch.map((d) => ({ table: 'ipos', rowKey: d.row.id, field: 'segment', before: d.row.segment, after: d.decision.newSegment })),
     appliedAt: new Date().toISOString(),
     written: toTouch.length,
     decisions: toTouch.map((d) => ({ id: d.row.id, companyName: d.row.companyName, action: d.decision.action, newSegment: d.decision.newSegment })),

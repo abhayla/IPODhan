@@ -79,6 +79,7 @@ import {
   resolveIpoScope,
   writeLedgerFile,
   type ExecuteLike,
+  type RepairLedgerFieldChange,
 } from './lib/repair-tool.js';
 
 const TOOL = 'repair-retire-manifest-removed-fields';
@@ -126,10 +127,14 @@ export function computeRemovedFieldKeys(
 
 export interface LedgerPayload {
   tool: string;
+  mode: 'dry-run' | 'apply';
+  generatedAt: string;
+  changes: readonly RepairLedgerFieldChange[];
   at: string;
   dbName: string;
   removedFieldKeys: string[];
   rows: Record<string, unknown>[];
+  [extra: string]: unknown;
 }
 
 export interface RunDeps {
@@ -264,6 +269,15 @@ export async function run(deps: RunDeps): Promise<RunResult> {
         payload
       )))({
       tool: TOOL,
+      mode: 'apply',
+      generatedAt: new Date().toISOString(),
+      changes: snapshotted.map((row) => ({
+        table: 'ipo_field_plan',
+        rowKey: String((row as Record<string, unknown>).id ?? JSON.stringify(row)),
+        field: '(row)',
+        before: row,
+        after: null,
+      })),
       at: new Date().toISOString(),
       dbName: actual,
       removedFieldKeys,
@@ -376,7 +390,16 @@ async function main(): Promise<void> {
     },
     readLedger: (filePath: string) => {
       const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      return { tool: raw.tool ?? TOOL, at: raw.at ?? '', dbName: raw.dbName ?? '', removedFieldKeys: raw.removedFieldKeys ?? [], rows: raw.rows ?? [] };
+      return {
+        tool: raw.tool ?? TOOL,
+        mode: raw.mode ?? 'apply',
+        generatedAt: raw.generatedAt ?? raw.at ?? '',
+        changes: raw.changes ?? [],
+        at: raw.at ?? '',
+        dbName: raw.dbName ?? '',
+        removedFieldKeys: raw.removedFieldKeys ?? [],
+        rows: raw.rows ?? [],
+      };
     },
   });
   process.exit(result.exitCode);

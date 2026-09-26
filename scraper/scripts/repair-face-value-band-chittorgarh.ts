@@ -78,7 +78,7 @@ import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-n
 import { eq, sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
-import { assertNoSchemaDrift, openRepairDb, upsertFieldSource, writeLedgerFile, queryCurrentDatabase } from './lib/repair-tool.js';
+import { assertNoSchemaDrift, openRepairDb, upsertFieldSource, writeLedgerFile, queryCurrentDatabase, type RepairLedgerFieldChange, type RepairLedgerPayload } from './lib/repair-tool.js';
 import { fetchReport82CurrentYear } from './lib/chittorgarh-report82-discovery.js';
 import { extractFaceValueFromDetailHtml } from '../src/scrapers/chittorgarh-detail-fields.js';
 
@@ -280,8 +280,9 @@ export interface ApplyRowInput {
   resolvedFaceValue: number | null;
   reportUrlNote: string;
   stamp: string;
-  writeBackup: (path: string, payload: unknown) => string;
-  writeLedger: (path: string, payload: unknown) => string;
+  // #457 round 2: typed — an `unknown` slot let this call keep the old shape past tsc.
+  writeBackup: (path: string, payload: RepairLedgerPayload) => string;
+  writeLedger: (path: string, payload: RepairLedgerPayload) => string;
   upsert: typeof upsertFieldSource;
 }
 
@@ -322,11 +323,20 @@ export async function applyRowRepair(
 
   const dateDir = stamp.slice(0, 10);
   const backupPath = `evidence/${dateDir}-lane-c-item-02-s6-${row.slug}/before.json`;
-  writeBackup(backupPath, { capturedAt: stamp, row });
+  const column = { priceRangeMin: 'price_range_min', priceRangeMax: 'price_range_max', faceValue: 'face_value' } as const;
+  const iposChanges: RepairLedgerFieldChange[] = fieldsToWrite.map((f) => ({
+    table: 'ipos',
+    rowKey: row.id,
+    field: column[f.field],
+    before: f.from,
+    after: f.to,
+  }));
+  writeBackup(backupPath, { tool: TOOL_NAME, mode: 'apply', generatedAt: new Date().toISOString(), changes: iposChanges, capturedAt: stamp, row });
 
+  const fieldSourceChanges: RepairLedgerFieldChange[] = [];
   await executors.transaction(async (tx) => {
     for (const f of fieldsToWrite) {
-      await upsert(tx as any, {
+      const upserted = await upsert(tx as any, {
         ipoId: row.id,
         fieldName: f.field,
         source: 'CHITTORGARH',
@@ -340,6 +350,7 @@ export async function applyRowRepair(
         },
         updatedBy: UPDATED_BY,
       });
+      fieldSourceChanges.push(...(upserted?.changes ?? []));
     }
 
     const repo = executors.makeRepo(tx);
@@ -362,6 +373,10 @@ export async function applyRowRepair(
 
   const ledgerPath = `evidence/${dateDir}-lane-c-item-02-s6-${row.slug}/applied.json`;
   writeLedger(ledgerPath, {
+    tool: TOOL_NAME,
+    mode: 'apply',
+    generatedAt: new Date().toISOString(),
+    changes: [...iposChanges, ...fieldSourceChanges],
     appliedAt: stamp,
     slug: row.slug,
     written: fieldsToWrite.map((f) => ({ field: f.field, from: f.from, to: f.to })),
@@ -508,7 +523,17 @@ async function main() {
           try {
             const dateDir = stamp.slice(0, 10);
             const backupPath = `evidence/${dateDir}-decision4-blank-unsourced-${row.slug}/before.json`;
-            writeLedgerFile(backupPath, { capturedAt: stamp, row });
+            writeLedgerFile(backupPath, {
+              tool: TOOL_NAME,
+              mode: 'apply',
+              generatedAt: stamp,
+              changes: [
+                { table: 'ipos', rowKey: row.id, field: 'price_range_min', before: row.priceRangeMin, after: null },
+                { table: 'ipos', rowKey: row.id, field: 'price_range_max', before: row.priceRangeMax, after: null },
+              ],
+              capturedAt: stamp,
+              row,
+            });
             await (db as any).transaction(async (tx: unknown) => {
               const repo = new IPORepository(tx as any, redisClient);
               // No field_sources row for either blanked column — the absence is
@@ -517,7 +542,18 @@ async function main() {
               await repo.applyOfferTerms(row.id, { priceRangeMin: null, priceRangeMax: null });
             });
             const ledgerPath = `evidence/${dateDir}-decision4-blank-unsourced-${row.slug}/applied.json`;
-            writeLedgerFile(ledgerPath, { appliedAt: stamp, slug: row.slug, blanked: ['priceRangeMin', 'priceRangeMax'] });
+            writeLedgerFile(ledgerPath, {
+              tool: TOOL_NAME,
+              mode: 'apply',
+              generatedAt: stamp,
+              changes: [
+                { table: 'ipos', rowKey: row.id, field: 'price_range_min', before: row.priceRangeMin, after: null },
+                { table: 'ipos', rowKey: row.id, field: 'price_range_max', before: row.priceRangeMax, after: null },
+              ],
+              appliedAt: stamp,
+              slug: row.slug,
+              blanked: ['priceRangeMin', 'priceRangeMax'],
+            });
             anyWrote = true;
             console.log(`  BLANKED: priceRangeMin/priceRangeMax -> NULL — backup ${backupPath}, ledger ${ledgerPath}`);
           } catch (e) {

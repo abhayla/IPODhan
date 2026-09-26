@@ -77,6 +77,19 @@ async function main(): Promise<void> {
     path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${apply ? 'applied' : 'dryrun'}-${Date.now()}.json`),
     {
       tool: TOOL,
+      mode: apply ? 'apply' : 'dry-run',
+      generatedAt: new Date().toISOString(),
+      changes: evaluation.reopen
+        .filter((v) => !apply || changed.includes(v.row.planRowId))
+        .map((v) => ({
+          // #457 round 2: `state` lives on the PLAN row (ipo_field_plan.id), not on the
+          // data table the plan row targets.
+          table: 'ipo_field_plan',
+          rowKey: v.row.planRowId,
+          field: 'state',
+          before: 'SUPPLIED',
+          after: 'PENDING',
+        })),
       database: actual,
       apply,
       at: new Date().toISOString(),

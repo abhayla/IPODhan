@@ -245,7 +245,14 @@ async function main() {
   }
 
   const backupPath = `evidence/${new Date().toISOString().slice(0, 10)}-T453/before-${ipo.slug}.json`;
-  writeLedgerFile(backupPath, { capturedAt: new Date().toISOString(), ipo });
+  writeLedgerFile(backupPath, {
+    tool: 'repair-price-band-lot-issue-size-t453',
+    mode: 'apply',
+    generatedAt: new Date().toISOString(),
+    changes: targets.map((t) => ({ table: 'ipos', rowKey: ipo.id, field: t.field, before: t.from ?? null, after: t.to })),
+    capturedAt: new Date().toISOString(),
+    ipo,
+  });
   console.log(`backup written: ${backupPath}`);
 
   // #715 class sweep: replaces the old `!REDIS_URL && !REDIS_HOST` check,
@@ -299,7 +306,15 @@ async function main() {
   console.log(JSON.stringify(after, null, 1));
 
   const ledgerPath = `evidence/${new Date().toISOString().slice(0, 10)}-T453/applied-${ipo.slug}.json`;
-  writeLedgerFile(ledgerPath, { appliedAt: new Date().toISOString(), ipo: after, targets });
+  writeLedgerFile(ledgerPath, {
+    tool: 'repair-price-band-lot-issue-size-t453',
+    mode: 'apply',
+    generatedAt: new Date().toISOString(),
+    changes: targets.map((t) => ({ table: 'ipos', rowKey: ipo.id, field: t.field, before: t.from ?? null, after: t.to })),
+    appliedAt: new Date().toISOString(),
+    ipo: after,
+    targets,
+  });
   console.log(`ledger written: ${ledgerPath}`);
 
   console.log('\nAPPLY complete.');

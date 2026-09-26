@@ -201,6 +201,25 @@ async function main(): Promise<void> {
 
   writeLedgerFile(path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${cli.apply ? 'applied' : 'dryrun'}-${Date.now()}.json`), {
     tool: TOOL,
+    mode: cli.apply ? 'apply' : 'dry-run',
+    generatedAt: new Date().toISOString(),
+    changes: [
+      ...plan.toShift.map((row) => ({
+        table: 'subscriptions',
+        rowKey: row.id,
+        field: 'timestamp',
+        before: row.timestamp,
+        after: new Date(new Date(row.timestamp).getTime() - SHIFT_MS).toISOString(),
+      })),
+      // deleted as a post-shift duplicate of `survivorId` — see `plan.toDeleteAsDuplicate` below for that id
+      ...plan.toDeleteAsDuplicate.map(({ row }) => ({
+        table: 'subscriptions',
+        rowKey: row.id,
+        field: '(row)',
+        before: row,
+        after: null,
+      })),
+    ],
     database: actual,
     apply: cli.apply,
     at: new Date().toISOString(),

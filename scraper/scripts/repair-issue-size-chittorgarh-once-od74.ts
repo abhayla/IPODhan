@@ -55,6 +55,7 @@ import {
 import { invalidateIPOCaches } from '../src/services/cache-invalidator.js';
 import {
   assertNoSchemaDrift,
+  diffToLedgerEntries,
   buildIpoScopeCondition,
   decideUndoIpoConflict,
   describeIpoScope,
@@ -64,6 +65,7 @@ import {
   resolveIpoScope,
   upsertFieldSource,
   writeLedgerFile,
+  type RepairLedgerFieldChange,
 } from './lib/repair-tool.js';
 import { decidePageRead, PageStore } from './lib/od74-page-store.js';
 import { applyZeroRow, classifyZeroAction, undoZeroRow, type ZeroOutcome, type ZeroRow } from './lib/od77-issue-size-zeros.js';
@@ -317,6 +319,14 @@ export function buildZerosCandidatesQuery(ipoIds: readonly string[]) {
       FROM ipos WHERE issue_size = 0 ORDER BY offering_type, slug`;
 }
 
+/**
+ * #457 round 2: the typed changes of THIS run — pushed only from the committed
+ * write (issue_size + updated_at read under FOR UPDATE before, and read back
+ * after, in the same transaction; plus the field_sources upsert's own
+ * before/after), or from the dry-run plan. Never lifted from heterogeneous rows.
+ */
+const od74Changes: RepairLedgerFieldChange[] = [];
+
 async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[], ipoIds: readonly string[]): Promise<Counts> {
   // #1059 round 2 (MAJOR-2): printed from the SAME `ipoIds` this function
   // actually uses to build the candidate query below — not from main()'s copy
@@ -369,6 +379,7 @@ async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[], ipoIds
     console.log(`  ${r.slug} | stored ${stored} | printed ${printed.rupees ?? 'none'} | ${d.status} (${printed.reason ?? d.reason}) | ${url} [${p.how}]${lookupNote ? ` [${lookupNote}]` : ''}`);
     ledger.push({ id: r.id, slug: r.slug, stored, printed: printed.rupees, status: d.status, url, sha256: p.sha256, readAt: p.readAt });
     plans.push({ r, url, sha256: p.sha256, readAt: p.readAt, printed, d });
+    if (!APPLY && d.write) od74Changes.push({ table: 'ipos', rowKey: r.id, field: 'issue_size', before: r.issueSize, after: String(printed.rupees) });
     if (!ctx.prodMode) ctx.store.recordExpected(r.slug, { url, printedRupees: printed.rupees, status: d.status });
   }
   if (refusals.length > 0) {
@@ -380,7 +391,7 @@ async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[], ipoIds
   for (const { r, url, sha256, readAt, printed, d } of plans) {
     if (!d.write || !APPLY) continue;
     try {
-      const before = await db.transaction(async (tx) => {
+      const committed = await db.transaction(async (tx) => {
         const cur = rowsOf<{ issueSize: string; updatedAt: string }>(
           await tx.execute(sql`SELECT issue_size::text AS "issueSize", updated_at::text AS "updatedAt" FROM ipos WHERE id = ${r.id} FOR UPDATE`)
         )[0];
@@ -390,7 +401,10 @@ async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[], ipoIds
             FROM field_sources WHERE ipo_id = ${r.id} AND table_name = 'ipos' AND field_name = 'issueSize' AND row_key = ''`))[0] ?? null;
         if (!cur || cur.issueSize !== r.issueSize) return null;
         await ipoRepo(tx).applyIssueSizeRepair(r.id, String(printed.rupees));
-        await upsertFieldSource(tx, {
+        const now = rowsOf<{ issueSize: string; updatedAt: string }>(
+          await tx.execute(sql`SELECT issue_size::text AS "issueSize", updated_at::text AS "updatedAt" FROM ipos WHERE id = ${r.id}`)
+        )[0];
+        const upserted = await upsertFieldSource(tx, {
           ipoId: r.id,
           fieldName: 'issueSize',
           source: 'CHITTORGARH',
@@ -400,12 +414,20 @@ async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[], ipoIds
           updatedBy: TOOL_NAME,
         });
         const before: Od74Before = { issueSize: cur.issueSize, updatedAt: cur.updatedAt, fieldSource: fsRow };
-        return before;
+        return {
+          before,
+          changes: [
+            ...diffToLedgerEntries('ipos', r.id, { issue_size: cur.issueSize, updated_at: cur.updatedAt }, { issue_size: now?.issueSize ?? null, updated_at: now?.updatedAt ?? null }),
+            ...upserted.changes,
+          ],
+        };
       });
-      if (!before) {
+      if (!committed) {
         console.log(`    SKIP ${r.slug}: row changed since selection`);
         continue;
       }
+      const { before } = committed;
+      od74Changes.push(...committed.changes);
       counts.writes++;
       ledger.push({ undo: 'od74', id: r.id, slug: r.slug, wrote: String(printed.rupees), before });
       await dropCache(r.slug);
@@ -578,8 +600,13 @@ async function main(): Promise<number> {
     ledger.push({ outcome: exitCode === 2 ? 'REFUSED' : 'FAILED', error: e instanceof Error ? e.message : String(e) });
   } finally {
     const file = writeLedgerFile(path.join(here, 'state', `od74-issue-size-${mode}-${dbName}-${APPLY ? 'apply' : 'dryrun'}-${Date.now()}.json`), {
+      tool: TOOL_NAME,
+      mode: APPLY ? 'apply' : 'dry-run',
+      generatedAt: new Date().toISOString(),
+      // repair mode only; `zeros` / `undo` runs keep their before-image in `rows`
+      // (the undo reads `rows`) and are listed as a remaining gap on #457.
+      changes: od74Changes,
       dbName,
-      mode,
       apply: APPLY,
       rows: ledger,
     });
