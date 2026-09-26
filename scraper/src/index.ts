@@ -95,6 +95,7 @@ import { randomUUID, createHash } from 'crypto';
 import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories';
 import { scraperLogs, scraperSteps, ipos, ipoFieldPlan } from '@ipodhan/shared/db/schema';
+import { readWakeTrigger } from './scheduler/wake-trigger.js';
 import { lt, inArray, count, eq } from 'drizzle-orm';
 import logger from './utils/logger.js';
 import { heartbeat, flushOwnerNotify } from './services/owner-notify.js';
@@ -203,6 +204,7 @@ async function runStep(cycleId: string, step: StepName, fn: () => Promise<StepRe
       status: result.status,
       reason: result.reason ?? null,
       durationMs,
+      trigger: readWakeTrigger(),
     });
   } catch (logError) {
     logger.error(

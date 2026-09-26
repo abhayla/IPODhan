@@ -1477,6 +1477,34 @@ else
   pass "case 20c: $DEPLOY_SCRIPT does not invoke redis-cli with the invalid '-t 3' flag"
 fi
 
+# --- Case 21 (#698): the wake records WHAT launched it ------------------------
+# assert-repair-held counts only scheduled cycles, so the wrapper must hand the
+# job a validated SCRAPER_WAKE_TRIGGER: cron passes `schedule`, the deploy's pm2
+# start passes `deploy`, anything else (unset or a typo) becomes `unknown`, which
+# the tool never counts. The value is read back from a fake job's own env.
+printf '%s\n' '#!/bin/sh' 'echo "ENV_TRIGGER=${SCRAPER_WAKE_TRIGGER:-<unset>}"' 'exit 0' > "$FIXDIR/job-trigger.sh"
+chmod +x "$FIXDIR/job-trigger.sh"
+for t21 in schedule deploy; do
+  OUT21="$(SCRAPER_WAKE_TRIGGER="$t21" SCRAPER_WAKE_FAKE_LOCK_TTL=free SCRAPER_WAKE_CMD="$FIXDIR/job-trigger.sh" SCRAPER_CEILING_SECONDS=30 sh "$WAKE" data 2>&1)"
+  if printf '%s' "$OUT21" | grep -qx "ENV_TRIGGER=$t21"; then
+    pass "case 21: SCRAPER_WAKE_TRIGGER=$t21 reaches the job unchanged"
+  else
+    fail "case 21: SCRAPER_WAKE_TRIGGER=$t21 did not reach the job"; printf '%s\n' "$OUT21"
+  fi
+done
+OUT21U="$(env -u SCRAPER_WAKE_TRIGGER SCRAPER_WAKE_FAKE_LOCK_TTL=free SCRAPER_WAKE_CMD="$FIXDIR/job-trigger.sh" SCRAPER_CEILING_SECONDS=30 sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT21U" | grep -qx 'ENV_TRIGGER=unknown'; then
+  pass "case 21: an unset SCRAPER_WAKE_TRIGGER is exported to the job as 'unknown' (never counted as a cycle)"
+else
+  fail "case 21: an unset SCRAPER_WAKE_TRIGGER did not default to 'unknown' in the job's env"; printf '%s\n' "$OUT21U"
+fi
+OUT21B="$(SCRAPER_WAKE_TRIGGER='cron;rm' SCRAPER_WAKE_FAKE_LOCK_TTL=free SCRAPER_WAKE_CMD="$FIXDIR/job-trigger.sh" SCRAPER_CEILING_SECONDS=30 sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT21B" | grep -qx 'ENV_TRIGGER=unknown' && printf '%s' "$OUT21B" | grep -qF 'WARN unknown-trigger'; then
+  pass "case 21: an invalid SCRAPER_WAKE_TRIGGER is replaced by 'unknown' with a WARN line naming it"
+else
+  fail "case 21: an invalid SCRAPER_WAKE_TRIGGER was not coerced to 'unknown' with a WARN"; printf '%s\n' "$OUT21B"
+fi
+
 rm -rf "$STUBDIR"
 
 if [ "$FAILED" -ne 0 ]; then

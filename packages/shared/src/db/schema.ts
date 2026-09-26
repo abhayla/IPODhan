@@ -1090,6 +1090,11 @@ export const scraperSteps = pgTable(
     status: text('status').notNull(), // 'ok' | 'skipped' | 'failed'
     reason: text('reason'), // required when status='skipped'; the failure message when status='failed'
     durationMs: integer('duration_ms').notNull(),
+    // #698: what launched the run that wrote this row - 'schedule' (a cron
+    // wake), 'deploy' (the deploy's pm2 start) or 'unknown'. Set from the
+    // wake wrapper's SCRAPER_WAKE_TRIGGER. NULL on rows written before the
+    // column existed. scripts/assert-repair-held.mjs counts only 'schedule'.
+    trigger: text('trigger'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({

@@ -3580,6 +3580,78 @@ FAKECURL
   fi
 fi
 
+# --- Case 38 (#698): every wake says what launched it ----------------------
+# scripts/assert-repair-held.mjs counts only scheduled cycles. It can only tell
+# a scheduled wake from a deploy restart if the two launch sites label
+# themselves: every crontab line install_scraper_cron() writes carries
+# SCRAPER_WAKE_TRIGGER=schedule, and every REAL scraper `pm2 start` carries
+# SCRAPER_WAKE_TRIGGER=deploy. The cron half runs the real function against a
+# fake crontab seeded with an OLD unlabelled line, so it also proves the
+# upgrade replaces that line rather than adding a second one (idempotent).
+CRON_FN38="$(sed -n '/^install_scraper_cron()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$CRON_FN38" ]; then
+  fail "case 38: could not extract install_scraper_cron() from $DEPLOY_SCRIPT - renamed?"
+else
+  C38="$(mktemp -d)"
+  mkdir -p "$C38/bin"
+  cat > "$C38/bin/crontab" <<'FAKECRON'
+#!/bin/sh
+case "${1:-}" in
+  -l) [ -f "$FAKE_CRONTAB_FILE" ] && cat "$FAKE_CRONTAB_FILE"; exit 0 ;;
+  -)  cat > "$FAKE_CRONTAB_FILE"; exit 0 ;;
+  *)  echo "fake crontab: unexpected args: $*" >&2; exit 2 ;;
+esac
+FAKECRON
+  chmod +x "$C38/bin/crontab"
+  for slot38 in prod staging; do
+    FAKE_CRONTAB_FILE="$C38/table-$slot38"
+    export FAKE_CRONTAB_FILE
+    printf '%s\n' '0 3 * * * /usr/local/bin/some-other-job.sh' \
+      "*/30 * * * * $C38/current/scripts/scraper-wake.sh data >> $C38/wake.log 2>&1 # ipodhan-scraper-wake:$slot38" > "$FAKE_CRONTAB_FILE"
+    (
+      PATH="$C38/bin:$PATH"; export PATH
+      DRY_RUN=0
+      SLOT="$slot38"
+      if [ "$slot38" = prod ]; then SCRAPER_CRON='*/30 * * * *'; else SCRAPER_CRON='15,45 * * * *'; fi
+      CURRENT_LINK="$C38/current"
+      SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
+      SCRAPER_WAKE_LOG="$C38/wake.log"
+      log() { :; }
+      warn() { echo "WARN: $*" >&2; }
+      eval "$CRON_FN38"
+      install_scraper_cron
+      install_scraper_cron
+    ) > "$C38/install-$slot38.log" 2>&1
+    STORED38="$(cat "$FAKE_CRONTAB_FILE")"
+    WAKE_TOTAL38="$(printf '%s\n' "$STORED38" | grep -cF 'scraper-wake.sh' || true)"
+    WAKE_LABELLED38="$(printf '%s\n' "$STORED38" | grep -F 'scraper-wake.sh' | grep -cE ' SCRAPER_WAKE_TRIGGER=schedule [^ ]*scraper-wake\.sh ' || true)"
+    DATA_LINES38="$(printf '%s\n' "$STORED38" | grep -cF "ipodhan-scraper-wake:$slot38" || true)"
+    OTHER38="$(printf '%s\n' "$STORED38" | grep -cF 'some-other-job.sh' || true)"
+    if [ "${WAKE_TOTAL38:-0}" -ge 5 ] && [ "$WAKE_TOTAL38" = "$WAKE_LABELLED38" ] && [ "$DATA_LINES38" = 1 ] && [ "$OTHER38" = 1 ]; then
+      pass "case 38: $slot38 - every installed scraper cron line ($WAKE_LABELLED38/$WAKE_TOTAL38) carries SCRAPER_WAKE_TRIGGER=schedule; the old unlabelled data line was replaced (1 data line after two installs), the unrelated entry kept"
+    else
+      fail "case 38: $slot38 - expected every scraper cron line labelled schedule, 1 data line, 1 unrelated entry (labelled=$WAKE_LABELLED38 total=$WAKE_TOTAL38 data=$DATA_LINES38 other=$OTHER38)"
+      printf '%s\n' "$STORED38"
+    fi
+    if printf '%s\n' "$STORED38" | grep -F 'ipodhan-scraper-wake:' | grep -qE '^(\*/30|15,45) \* \* \* \* '; then
+      pass "case 38: $slot38 - the data line still starts with its cadence (the #663 crontab check reads it with startsWith)"
+    else
+      fail "case 38: $slot38 - the data line no longer starts with its cadence"
+    fi
+  done
+  rm -rf "$C38"
+fi
+
+STRIPPED38="$(grep -vE '^[[:space:]]*#' "$DEPLOY_SCRIPT")"
+PM2_LINES38="$(emitn "$STRIPPED38" | grep -E 'pm2 start .*scraper-wake\.sh' | grep -v '\[dry-run\]' || true)"
+PM2_COUNT38="$(emitn "$PM2_LINES38" | grep -c . || true)"
+PM2_LABELLED38="$(emitn "$PM2_LINES38" | grep -c 'SCRAPER_WAKE_TRIGGER=deploy ' || true)"
+if [ "${PM2_COUNT38:-0}" -ge 2 ] && [ "$PM2_COUNT38" = "$PM2_LABELLED38" ]; then
+  pass "case 38: every real scraper pm2 start ($PM2_LABELLED38/$PM2_COUNT38) carries SCRAPER_WAKE_TRIGGER=deploy"
+else
+  fail "case 38: expected every real scraper pm2 start to carry SCRAPER_WAKE_TRIGGER=deploy (labelled=$PM2_LABELLED38 total=$PM2_COUNT38)"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1

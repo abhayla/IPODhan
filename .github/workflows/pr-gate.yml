@@ -1133,6 +1133,14 @@ jobs:
       - name: Run wake-log delta test suite (#793 M2, signal-ownership R3)
         run: node --test scripts/tests/wake-delta.test.mjs
 
+      # #698: assert-repair-held.mjs is the real-data proof every data-repair
+      # fix must pass (defect-fix-contract.md item 5), and nothing in CI ran its
+      # self-test. It now counts only scheduled cycles (scraper_steps.trigger),
+      # so a deploy restart between wakes can no longer pass for a cycle; this
+      # suite pins that, and fails if the schedule filter is dropped.
+      - name: Run assert-repair-held self-test (#698, scheduled cycles only)
+        run: node scripts/tests/assert-repair-held.test.mjs
+
       # #663: wake-delta.mjs above is a session/ssh tick tool, never scheduled.
       # These are the nightly-floor predicates (crontab line + log freshness)
       # that fill the gap it cannot — cron is the ONLY wake since #660 removed

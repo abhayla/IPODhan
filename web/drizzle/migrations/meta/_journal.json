@@ -449,6 +449,13 @@
       "when": 1790397051850,
       "tag": "0063_closed_ipo_resourcing_status_at_attempt",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1790407732517,
+      "tag": "0064_scraper_steps_trigger",
+      "breakpoints": true
     }
   ]
 }

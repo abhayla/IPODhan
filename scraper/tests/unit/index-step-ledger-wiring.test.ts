@@ -176,6 +176,26 @@ describe('scraper/src/index.ts one-shot --source=all path (T-340 step ledger)', 
     expect(heartbeatRow).toMatchObject({ status: 'ok' });
   });
 
+  // #698: every row names what launched the run, so assert-repair-held can count
+  // only scheduled cycles. The wake wrapper exports SCRAPER_WAKE_TRIGGER; a run
+  // started any other way (unset, or an invalid value) is recorded as 'unknown'.
+  it.each([
+    ['schedule', 'schedule'],
+    ['deploy', 'deploy'],
+    [undefined, 'unknown'],
+    ['cron', 'unknown'],
+  ])('writes trigger=%s -> %s on EVERY scraper_steps row', async (envValue, expected) => {
+    if (envValue === undefined) delete process.env.SCRAPER_WAKE_TRIGGER;
+    else process.env.SCRAPER_WAKE_TRIGGER = envValue;
+    const { main, STEP_NAMES } = await import('../../src/index.js');
+
+    await main();
+
+    const rows = insertValuesMock.mock.calls.map((c) => c[0]);
+    expect(rows).toHaveLength(STEP_NAMES.length);
+    expect(rows.map((r) => r.trigger)).toEqual(STEP_NAMES.map(() => expected));
+  });
+
   it('a ledger-write failure (DB down) never fails the cycle', async () => {
     insertValuesMock.mockRejectedValue(new Error('DB unreachable'));
     const { main } = await import('../../src/index.js');
