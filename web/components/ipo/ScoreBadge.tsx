@@ -27,8 +27,11 @@ interface ScoreBadgeProps {
 }
 
 /**
- * ScoreBadge component displays IPO total score (0-100) with color coding
- * Color scheme: 0-25=red, 26-50=orange, 51-75=yellow, 76-100=green
+ * ScoreBadge component displays IPO total score on the 0-10 scale
+ * `/api/ipos/[slug]/score` and IPOScoreSection use (OD-125, #167) — a stored
+ * `ipo_scores` row (0-100 raw) is converted via `adaptStoredScore(...)`
+ * before it reaches this component; callers never pass the raw column.
+ * Color scheme: 0-2.5=red, 2.6-5=orange, 5.1-7.5=yellow, 7.6-10=green
  */
 export function ScoreBadge({
   score,

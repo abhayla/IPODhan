@@ -8,24 +8,24 @@
  * - Sentiment analysis (positive/negative split)
  * - Top Apply and Avoid reasons
  * - Latest 3 sample reviews
- * - Link to full reviews page
+ *
+ * OD-125 (#167): the "View All Reviews" link to the mainboard/SME review LIST
+ * pages was removed when those pages were retired — this section still
+ * renders per-IPO broker recommendations (a live, non-empty feature), it just
+ * no longer links out to a list page that no longer exists.
  *
  * @component
  * @param {Object} reviewSummary - Aggregated review data from ReviewRepository
- * @param {string} ipoSegment - IPO segment for navigation (MAINBOARD or SME)
  */
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import Link from 'next/link';
 import { Star, TrendingUp, TrendingDown, MessageSquare, Trophy } from 'lucide-react';
 import type { ReviewSummary } from '@/lib/repositories/review-repository';
 
 interface RecommendationSummarySectionProps {
   reviewSummary: ReviewSummary | null;
-  ipoSegment: 'MAINBOARD' | 'SME';
 }
 
 /**
@@ -162,7 +162,6 @@ function EmptyState() {
  */
 export function RecommendationSummarySection({
   reviewSummary,
-  ipoSegment,
 }: RecommendationSummarySectionProps) {
   // Show empty state if no reviews
   if (!reviewSummary) {
@@ -178,10 +177,6 @@ export function RecommendationSummarySection({
     topAvoidReasons,
     latestReviews,
   } = reviewSummary;
-
-  // Determine review page URL based on segment
-  const reviewsPageUrl =
-    ipoSegment === 'MAINBOARD' ? '/mainboard-ipo-reviews' : '/sme-ipo-reviews';
 
   return (
     <Card>
@@ -349,15 +344,6 @@ export function RecommendationSummarySection({
               </div>
             </div>
           )}
-
-          {/* View All Reviews Link */}
-          <div className="border-t pt-6">
-            <Link href={reviewsPageUrl}>
-              <Button variant="outline" className="w-full md:w-auto">
-                View All {totalReviews} Reviews
-              </Button>
-            </Link>
-          </div>
 
           {/* Information Note */}
           <div className="text-xs text-muted-foreground border-t pt-4">

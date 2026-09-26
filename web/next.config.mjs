@@ -35,6 +35,22 @@ const nextConfig = {
   // lucide-react. See docs/monitoring/webpack-session5-root-cause.md
   transpilePackages: ['recharts', 'date-fns'],
 
+  // OD-125 (#167): IPODhan publishes no opinion reviews of IPOs. The
+  // mainboard/SME review LIST pages are retired; each redirects (301) to its
+  // live-data counterpart rather than 404ing, since these were real,
+  // crawlable, previously-indexed URLs (see app/sitemap.ts's now-removed
+  // PLACEHOLDER_ROUTES history). The individual review detail route
+  // (/ipo-reviews/[reviewId]) and the /api/reviews/* endpoints had no
+  // inbound links and no natural redirect target, so those simply 404 on
+  // removal instead — the two retirement classes get one stated policy each,
+  // not silent inconsistency.
+  async redirects() {
+    return [
+      { source: '/mainboard-ipo-reviews', destination: '/mainboard-ipos', permanent: true },
+      { source: '/sme-ipo-reviews', destination: '/sme-ipos', permanent: true },
+    ];
+  },
+
   // Performance: Browser caching headers for static assets
   // Security: CORS configuration for API endpoints
   async headers() {

@@ -251,11 +251,8 @@ test.describe('Phase 4: SME Pages Testing', () => {
     expect(result.passed, result.errors.join('; ')).toBe(true);
   });
 
-  test('6. /sme-ipo-reviews - IPO Reviews', async ({ page }) => {
-    const result = await testSMEPage(page, 'SME Reviews', `${BASE_URL}/sme-ipo-reviews`);
-    testResults.push(result);
-    expect(result.passed, result.errors.join('; ')).toBe(true);
-  });
+  // Test 6 (/sme-ipo-reviews) removed: the route was retired (OD-125, #167)
+  // and now 301s to /sme-ipos, already covered by test 1.
 
   test.afterAll(async () => {
     // Generate comprehensive report
