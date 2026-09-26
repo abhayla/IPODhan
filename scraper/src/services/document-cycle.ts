@@ -1995,7 +1995,7 @@ export async function runDocumentCycle(
         // this loop (not per IPO, which would bury the cycle-wide picture
         // the live evidence needed: three failing anchors in a row was only
         // visible by reading every per-IPO log line by hand).
-        const anchorCycleTotals = { considered: 0, spawned: 0, persisted: 0, manualReview: 0, failed: 0 };
+        const anchorCycleTotals = { considered: 0, spawned: 0, persisted: 0, manualReview: 0, failed: 0, markerWriteFailed: 0 };
         for (const ipo of extractionCandidates) {
           if (now() - extractionStartedAt >= extractionBudgetMs) {
             extractionExhausted = true;
@@ -2042,6 +2042,10 @@ export async function runDocumentCycle(
             anchorCycleTotals.persisted += autoPersist.anchorsPersisted;
             anchorCycleTotals.manualReview += autoPersist.anchorsManualReview;
             anchorCycleTotals.failed += autoPersist.anchorsFailed;
+            // #648: rolls filing- and anchor-side marker-write failures into the
+            // one line this cycle already prints below — signal-ownership.md
+            // R1 (a count, printed where a human reads the cycle already).
+            anchorCycleTotals.markerWriteFailed += autoPersist.markerWriteFailed;
           } catch (error) {
             logger.error(
               { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },

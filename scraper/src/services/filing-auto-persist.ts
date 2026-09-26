@@ -594,6 +594,12 @@ export interface AutoPersistResult {
   /** Item 9 (OD-90): corrigenda read this call, and the suggestion rows they added. */
   corrigendaRead: number;
   corrigendumSuggestions: number;
+  /**
+   * #648: `PersistFilingSummary.marker_write_failed` / `AnchorPersistSummary.markerWriteFailed`
+   * summed across every filing and anchor persist this call made — how many
+   * `unresolved:<reason>` provenance markers themselves failed to write.
+   */
+  markerWriteFailed: number;
 }
 
 /**
@@ -1467,6 +1473,13 @@ async function runAnchorDocument(
     };
   }
 
+  // #648: every kind that can carry a summary can carry this counter — the
+  // consolidation-and-marker step runs before the persister's own refusal
+  // gates, so a marker-write failure is not limited to the 'persisted' kind.
+  if ('summary' in outcome && outcome.summary?.markerWriteFailed) {
+    result.markerWriteFailed += outcome.summary.markerWriteFailed;
+  }
+
   if (outcome.kind === 'persisted') {
     result.extracted++;
     result.persisted++;
@@ -1699,6 +1712,7 @@ export async function processPendingFilings(
     anchorsFailed: 0,
     corrigendaRead: 0,
     corrigendumSuggestions: 0,
+    markerWriteFailed: 0,
   };
 
   // D-15: automatic extract+persist ran ONLY for MAINBOARD IPOs until the SME
@@ -2285,6 +2299,7 @@ export async function processPendingFilings(
     }
 
     result.persisted++;
+    if (summary.marker_write_failed) result.markerWriteFailed += summary.marker_write_failed;
     anyPersisted = true;
     await writeSteps(
       ipo.id,

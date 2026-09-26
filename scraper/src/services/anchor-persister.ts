@@ -157,6 +157,12 @@ export interface AnchorPersistSummary {
    * those cases; this reports that its provenance is a marker, not a resolution.
    */
   unresolvedChildRows?: string[];
+  /**
+   * #648: how many of this call's own `unresolved:<reason>` marker writes
+   * themselves failed to reach `field_sources` — see the identical field on
+   * `PersistFilingSummary` in `filing-persister.ts`. 0/absent when nothing failed.
+   */
+  markerWriteFailed?: number;
   /** Populated only when a gate failed; the run wrote nothing. */
   refusedReason: string | null;
   /** W-142: which gate refused, stated structurally — never parsed out of `refusedReason`. */
@@ -613,6 +619,7 @@ export async function persistAnchorReport(
   // field. Until then the resolved values are expected to equal this run's,
   // since this persister is the table's only writer.
   const unresolvedChildRows: string[] = [];
+  let markerWriteFailed = 0;
   if (apply && FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION) {
     const noter = createChildRowNoter({
       apply,
@@ -654,6 +661,7 @@ export async function persistAnchorReport(
         await noter.markChildRowsUnresolved('anchor_investors', `consolidation-skipped: ${reason}`);
       }
     }
+    markerWriteFailed = noter.getMarkerWriteFailures();
   }
 
   if (apply) {
@@ -698,6 +706,7 @@ export async function persistAnchorReport(
     // Only when consolidation ran and something went wrong. Absent otherwise,
     // so the flag-OFF summary is byte-identical to the pre-s7c one.
     ...(unresolvedChildRows.length > 0 ? { unresolvedChildRows } : {}),
+    ...(markerWriteFailed > 0 ? { markerWriteFailed } : {}),
     written: 1,
     investorsWritten: publishableRows.length,
     totals,

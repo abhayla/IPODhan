@@ -76,6 +76,15 @@ export interface ChildRowNoterConfig {
 export interface ChildRowNoter {
   markChildRowsUnresolved(tableName: string, reason: string): Promise<void>;
   /**
+   * #648: how many times THIS noter's own marker write (the `unresolved:<reason>`
+   * `field_sources` row, not the child row itself) failed to reach the database —
+   * either because no `fieldSources` repository was injected, or because
+   * `trackFieldUpdate` threw. Read once at the end of the persist call and folded
+   * into the per-cycle counter the caller already reports (signal-ownership.md
+   * R1: a count, never silent).
+   */
+  getMarkerWriteFailures(): number;
+  /**
    * The ONE handling shape for "the consolidator threw", shared by every call
    * site so no site can quietly diverge.
    *
@@ -98,12 +107,23 @@ export interface ChildRowNoter {
 export function createChildRowNoter(config: ChildRowNoterConfig): ChildRowNoter {
   const { apply, ipoId, source, lineage, fieldSources, updatedBy, logPrefix } = config;
 
+  // #648: F-101 (fixed in #615) made `markChildRowsUnresolved` catch its OWN
+  // failure so the write it is called mid-way through can still finish. That
+  // catch also meant a failed SENTINEL write left nothing behind: the pair
+  // reads as "writer not live" to `q_field_sources_row_key_coverage` — visually
+  // IDENTICAL to "the flag is off". This counter, plus the structured log
+  // below (event `provenance-marker-write-failed`, carrying the underlying
+  // cause per signal-ownership.md R6), is the signal that closes that gap
+  // without reopening F-101's throw-and-abort failure mode.
+  let markerWriteFailures = 0;
+
   const markChildRowsUnresolved = async (tableName: string, reason: string): Promise<void> => {
     if (!apply) return;
     const rowKey = unresolvedRowKey(reason);
     if (!fieldSources) {
+      markerWriteFailures++;
       logger.error(
-        { ipoId, tableName, rowKey },
+        { event: 'provenance-marker-write-failed', ipoId, tableName, rowKey, cause: 'no fieldSources repository injected' },
         `${logPrefix} no fieldSources repository — could not file the unresolved-row provenance marker`
       );
       return;
@@ -123,8 +143,19 @@ export function createChildRowNoter(config: ChildRowNoterConfig): ChildRowNoter 
         updatedBy,
       });
     } catch (error) {
+      markerWriteFailures++;
+      const cause = (error as { cause?: { message?: string; code?: string } } | undefined)?.cause;
+      const code = cause?.code ?? (error as { code?: string } | undefined)?.code;
       logger.error(
-        { err: error, ipoId, tableName, rowKey },
+        {
+          event: 'provenance-marker-write-failed',
+          err: error,
+          ipoId,
+          tableName,
+          rowKey,
+          causeMessage: cause?.message ?? (error as Error)?.message ?? 'unknown',
+          causeCode: code ?? null,
+        },
         `${logPrefix} could not file the unresolved-row provenance marker — this pair still reads as "writer not live" to the row-key coverage check`
       );
     }
@@ -145,5 +176,9 @@ export function createChildRowNoter(config: ChildRowNoterConfig): ChildRowNoter 
     return `consolidation failed: ${detail}`;
   };
 
-  return { markChildRowsUnresolved, noteConsolidationThrew };
+  return {
+    markChildRowsUnresolved,
+    noteConsolidationThrew,
+    getMarkerWriteFailures: () => markerWriteFailures,
+  };
 }
