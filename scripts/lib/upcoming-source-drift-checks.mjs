@@ -76,10 +76,11 @@ export function evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey, toleran
   let unreachable = 0;
   let unparseable = 0;
   const violations = [];
+  const unmatchedSlugs = [];
 
   for (const ipo of ipoRows) {
     const result = pageResultsByKey.get(ipo.normalizedKey);
-    if (!result) continue; // not matched on the dashboard at all — outside this check's reach, not a violation
+    if (!result) { unmatchedSlugs.push(ipo.slug ?? ipo.companyName); continue; } // not matched on the dashboard at all — outside this check's reach, not a violation
     examined += 1;
     if (!result.ok) {
       if (result.reason === 'unparseable') unparseable += 1;
@@ -108,6 +109,13 @@ export function evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey, toleran
 
   const consideredForVerdict = examined - unreachable - unparseable;
   const allUnreachable = examined > 0 && consideredForVerdict === 0;
+  // Round-1 review finding (#1128): a live-IPO population that exists but
+  // matched ZERO dashboard entries left examined=0, allUnreachable=false (it
+  // requires examined>0), and fell through to a false PASS on zero evidence.
+  // totalLiveIpos/unmatchedSlugs let the caller tell "0 live IPOs" (genuinely
+  // not applicable) apart from "N live IPOs, 0 matched" (BLIND, UNVERIFIABLE).
+  const totalLiveIpos = ipoRows.length;
+  const noneMatched = totalLiveIpos > 0 && examined === 0;
 
   return {
     examined,
@@ -115,6 +123,9 @@ export function evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey, toleran
     unparseable,
     consideredForVerdict,
     allUnreachable,
+    totalLiveIpos,
+    noneMatched,
+    unmatchedSlugs,
     violations,
   };
 }

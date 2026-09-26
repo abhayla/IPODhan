@@ -656,6 +656,16 @@ async function checkUpcomingSourceDrift() {
   const result = evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey });
   const dashboardNote = calendar.ok ? '' : `; WARN: chittorgarh dashboard fetch partial (${calendar.errors.join('; ')})`;
 
+  if (result.totalLiveIpos === 0) {
+    record('c_upcoming_source_drift', name, 'PASS', `not applicable — 0 live IPOs${dashboardNote}`);
+    return;
+  }
+  if (result.noneMatched) {
+    record('c_upcoming_source_drift', name, 'UNVERIFIABLE',
+      `${result.totalLiveIpos} live IPO(s) exist but 0 were matched on chittorgarh.com's dashboard — this check is BLIND tonight, not passing`
+      + `${dashboardNote}: ${result.unmatchedSlugs.slice(0, 10).map((s) => `"${s}"`).join(', ')}`);
+    return;
+  }
   if (result.allUnreachable) {
     record('c_upcoming_source_drift', name, 'UNVERIFIABLE',
       `all ${result.examined} matched Chittorgarh detail page(s) were unreachable/unparseable — this check is BLIND tonight, not passing${dashboardNote}`);

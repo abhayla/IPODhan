@@ -2308,6 +2308,35 @@ test('(upcoming_source_drift) an IPO not matched on the Chittorgarh dashboard at
   assert.equal(result.allUnreachable, false);
 });
 
+// Round-1 review finding (#1128): live IPOs exist but ZERO matched the
+// dashboard -> examined=0, allUnreachable=false (needs examined>0) -> old
+// caller fell through to a false PASS on zero evidence. Must be UNVERIFIABLE.
+test('(upcoming_source_drift) (a) live IPOs exist but NONE matched the dashboard -> noneMatched=true, names the unmatched slugs', () => {
+  const ipoRows = [
+    ipoRow({ id: 'ipo-a', companyName: 'Alpha Co Ltd', slug: 'alpha-co-ltd', issueSize: 100_00_00_000 }),
+    ipoRow({ id: 'ipo-b', companyName: 'Beta Co Ltd', slug: 'beta-co-ltd', issueSize: 200_00_00_000 }),
+  ];
+  const result = evaluateUpcomingSourceDrift({ ipoRows, pageResultsByKey: new Map() });
+  assert.equal(result.totalLiveIpos, 2);
+  assert.equal(result.examined, 0);
+  assert.equal(result.noneMatched, true, 'a live population with 0 matches must be flagged distinctly from "0 live IPOs" or "0 violations"');
+  assert.deepEqual(result.unmatchedSlugs.sort(), ['alpha-co-ltd', 'beta-co-ltd']);
+});
+
+// (b) genuinely zero live IPOs -> not applicable, PASS, never confused with (a).
+test('(upcoming_source_drift) (b) zero live IPOs -> noneMatched=false (genuinely not applicable)', () => {
+  const result = evaluateUpcomingSourceDrift({ ipoRows: [], pageResultsByKey: new Map() });
+  assert.equal(result.totalLiveIpos, 0);
+  assert.equal(result.noneMatched, false, 'an empty live-IPO population is "not applicable", not "BLIND" — must not trip the (a) branch');
+});
+
+// Mutation guard: dropping `totalLiveIpos > 0` from noneMatched would make
+// case (b) (0 live IPOs) wrongly report noneMatched=true too.
+test('(upcoming_source_drift) mutation guard: noneMatched must require totalLiveIpos > 0', () => {
+  const brokenNoneMatched = (totalLiveIpos, examined) => examined === 0; // missing the totalLiveIpos>0 guard
+  assert.equal(brokenNoneMatched(0, 0), true, 'without the guard, 0 live IPOs would be wrongly classified as (a) noneMatched instead of (b) not-applicable');
+});
+
 // Mutation guard: an inverted tolerance comparison would make the red Karamtara case pass.
 test('(upcoming_source_drift) mutation guard: inverting the diff>tolerance check would mask the Karamtara defect', () => {
   const diff = Math.abs(17_500_000_000 - 875 * 1_00_00_000);
