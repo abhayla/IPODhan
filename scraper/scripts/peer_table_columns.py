@@ -212,14 +212,41 @@ def map_columns(headers, data_rows=None):
     beneath it sit LEFT-ALIGNED, so the label's own column index is one column
     to the right of where its data actually is (#606). A label-only mapper has
     no way to see that; a mapped column that is empty in every body row is the
-    tell. When ``data_rows`` is given, any mapped column found empty in every
-    row is corrected to its nearest unclaimed neighbour (checked left first,
-    since that is the direction the observed shift runs, then right) that DOES
-    carry data. The correction is local and evidence-driven - it never invents
-    a mapping, it only relocates one that has already proven itself wrong.
+    tell.
+
+    When ``data_rows`` is given, a child column found empty in every row is
+    relocated to its nearest neighbour (checked left first, since that is the
+    direction the observed shift runs, then right) - but ONLY when that
+    neighbour is a pure continuation column: no header text of its own in any
+    header row (or it IS the parent's own label column, which is not a
+    "foreign" field - see below), and it sits inside the SAME parent's span as
+    the child being relocated. A neighbour that carries its own header text -
+    a real, separately labelled column such as `CMP (Rs)` that the field
+    priority matrix does not track - is never taken, even when it holds data
+    and is not itself mapped to any field (round-1 review, #606: an unmapped
+    CMP column sitting next to a genuinely empty Diluted-EPS column was picked
+    up as `eps_diluted`, silently putting share prices under an earnings
+    field). A candidate that fails this check, or that carries no data either,
+    leaves the field mapped to its original (empty) column - a genuinely
+    absent value stays absent rather than being pointed at someone else's
+    number. Restricted to the two-level Basic/Diluted children specifically:
+    this is the one shape the shift is proven on; an ordinary single-level
+    field found empty across every row is left alone, because "empty" for it
+    is not evidence of a shift, just evidence the document has no value there.
     """
     mapping = {}
+    # child_of[field] = span_start: the column index of the field's PARENT
+    # header, recorded only for fields resolved via the bare Basic/Diluted
+    # sub-header branch below. Only these are eligible for the empty-column
+    # relocation - see the docstring. The span's END is deliberately not fixed
+    # here: it is the next MAPPED field's column (computed after the whole
+    # header row is read), never the next merely-labelled one - an unmapped
+    # column such as `CMP (Rs)` does not end a parent's span, it just never
+    # qualifies as a relocation target (the header-text check below is what
+    # excludes it).
+    child_of = {}
     last_metric = None
+    last_metric_parent_start = None
     for index, header in enumerate(headers):
         text = " ".join((header or "").split())
         # Belt and braces, NOT the mechanism — mutation testing showed removing
@@ -246,6 +273,7 @@ def map_columns(headers, data_rows=None):
         parent = _parent_metric(text)
         if parent is not None and _child_follows(headers, index):
             last_metric = parent
+            last_metric_parent_start = index
             continue
 
         matched = None
@@ -275,19 +303,45 @@ def map_columns(headers, data_rows=None):
                     matched = PE_DILUTED if is_diluted else PE_BASIC
                 else:
                     matched = EPS_DILUTED if is_diluted else EPS_BASIC
+                if matched not in mapping and last_metric_parent_start is not None:
+                    child_of[matched] = last_metric_parent_start
 
         if matched is not None and matched not in mapping:
             mapping[matched] = index
             if matched in (EPS_BASIC, EPS_COMBINED, EPS_DILUTED, PE, PE_BASIC, PE_DILUTED):
                 last_metric = matched
 
-    if data_rows:
+    if data_rows and child_of:
         claimed = set(mapping.values())
-        for field, index in list(mapping.items()):
-            if _column_has_data(data_rows, index):
+        # The span's end is the nearest already-MAPPED field to the right of
+        # the parent - never an unmapped column, however clearly it is
+        # labelled. That is precisely what keeps an unmapped `CMP (Rs)` column
+        # from ending the span early on one side, and from being read as
+        # "inside" it as a target on the other: the header-text check just
+        # below is the thing that actually excludes it.
+        for field, span_start in child_of.items():
+            index = mapping.get(field)
+            if index is None or _column_has_data(data_rows, index):
                 continue
+            span_end = min(
+                (v for f, v in mapping.items() if v > span_start and f not in child_of),
+                default=len(headers),
+            )
             for candidate in (index - 1, index + 1):
-                if candidate < 0 or candidate >= len(headers) or candidate in claimed:
+                if candidate < span_start or candidate >= span_end:
+                    continue
+                if candidate in claimed:
+                    continue
+                # A pure continuation column carries no header text of its own;
+                # the parent's own label column is the one exception, since it
+                # is not a foreign field - it is this same child's own parent.
+                # A candidate carrying ITS OWN header text - a real, separately
+                # labelled column the matrix does not track (`CMP (Rs)`) - is
+                # never taken, even though it lies inside the open span and
+                # holds data (#606 round-1 review).
+                is_continuation = not headers[candidate].strip()
+                is_parent_column = candidate == span_start
+                if not (is_continuation or is_parent_column):
                     continue
                 if _column_has_data(data_rows, candidate):
                     mapping[field] = candidate
