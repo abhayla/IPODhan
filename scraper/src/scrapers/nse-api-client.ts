@@ -329,15 +329,28 @@ async function makeRequest(endpoint: string, params?: Record<string, string>, re
 }
 
 /**
- * Parse NSE date format to ISO 8601
+ * Parse NSE date format to ISO 8601.
+ *
+ * #963: previously returned `istDateIso(new Date())` (today's IST date) on a
+ * null/empty/unparseable input. NSE sometimes lists an IPO before its dates
+ * are fixed (`issueStartDate`/`issueEndDate` blank) — the fabricated "today"
+ * then flowed through `transformIPOData` as a real open/close date, and
+ * `determineStatus`'s date ladder derived OPEN from it, which the opening-day
+ * discovery job then selected by. A missing date must stay absent (undefined)
+ * so a higher-confidence source can supply it, never a made-up value
+ * (absence-written-as-a-sentinel-value class,
+ * docs/reviews/failure-classes/absence-written-as-a-sentinel-value.json).
  */
-export function parseNSEDate(dateStr: string | null | undefined): string {
+export function parseNSEDate(dateStr: string | null | undefined): string | undefined {
   if (!dateStr) {
-    return istDateIso(new Date());
+    return undefined;
   }
 
   try {
     const cleaned = dateStr.trim();
+    if (!cleaned) {
+      return undefined;
+    }
 
     // Handle DD-MMM-YYYY format (e.g., "09-Oct-2025") — string arithmetic,
     // TZ-invariant by construction (T-327, round-7 P1-1).
@@ -358,9 +371,11 @@ export function parseNSEDate(dateStr: string | null | undefined): string {
       return date.toISOString().split('T')[0];
     }
 
-    return istDateIso(new Date());
+    logger.warn({ rawValue: dateStr }, '[NSE] parseNSEDate: unparseable date left absent (#963)');
+    return undefined;
   } catch {
-    return istDateIso(new Date());
+    logger.warn({ rawValue: dateStr }, '[NSE] parseNSEDate: threw while parsing, left absent (#963)');
+    return undefined;
   }
 }
 
@@ -405,7 +420,7 @@ export function parsePriceRange(priceStr: string | null | undefined): { min: num
  * Determine IPO status from NSE data
  * Maps NSE status to IPODhan schema (NSE 'OPEN' -> IPODhan 'LIVE')
  */
-export function determineStatus(statusStr: string | null | undefined, startDate: string, endDate: string): 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' | 'WITHDRAWN' | 'POSTPONED' {
+export function determineStatus(statusStr: string | null | undefined, startDate: string | undefined, endDate: string | undefined): 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' | 'WITHDRAWN' | 'POSTPONED' {
   if (statusStr) {
     const status = statusStr.toUpperCase();
     // I4 / W-41 — terminal states first: a pulled issue must never fall through
@@ -433,6 +448,15 @@ export function determineStatus(statusStr: string | null | undefined, startDate:
     if (status.includes('UPCOMING') || status.includes('FORTHCOMING')) {
       return 'UPCOMING';
     }
+  }
+
+  // #963: NSE gave no status text. Derive from dates ONLY when both are
+  // real (known) values — a missing date is never treated as "today" or
+  // any other stand-in, so it must never drive OPEN/CLOSED here. With no
+  // status text and no known dates there is nothing to derive from; UPCOMING
+  // is the safe default (never asserts a livened/closed state we cannot see).
+  if (startDate === undefined || endDate === undefined) {
+    return 'UPCOMING';
   }
 
   // Determine from dates

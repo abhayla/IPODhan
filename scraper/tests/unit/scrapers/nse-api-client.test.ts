@@ -171,25 +171,109 @@ describe('nse-api-client today derivation uses the IST day (#687 slice 2)', () =
     vi.useRealTimers();
   });
 
-  it('parseNSEDate falls back to the IST today, not the UTC today, on missing input', () => {
-    // Mocked instant 2026-09-15T20:30:00Z = 02:00 IST on 2026-09-16 — a naive
-    // `new Date().toISOString().split('T')[0]` reads UTC day 2026-09-15, one
-    // day BEHIND the real IST calendar day.
+  it('determineStatus classifies a row opening today-in-IST as OPEN, not UPCOMING (real, known dates)', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-15T20:30:00Z'));
     expect(istDateIso(new Date())).toBe('2026-09-16');
 
-    expect(parseNSEDate(null)).toBe('2026-09-16');
-    expect(parseNSEDate(undefined)).toBe('2026-09-16');
-    expect(parseNSEDate('not-a-real-date-at-all-####')).toBe('2026-09-16');
-  });
-
-  it('determineStatus classifies a row opening today-in-IST as OPEN, not UPCOMING', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-09-15T20:30:00Z'));
-
-    // No statusStr supplied -> falls through to the date ladder.
+    // No statusStr supplied -> falls through to the date ladder. Both dates
+    // are real (known) values here, so the date ladder is expected to apply.
     const status = determineStatus(null, '2026-09-16', '2026-09-18');
     expect(status).toBe('OPEN');
+  });
+});
+
+/**
+ * #963 (Tier A review of PR #949, item 7 S4): `parseNSEDate` returned
+ * `istDateIso(new Date())` (today's IST date) for a null/empty/unparseable
+ * NSE date, so `transformIPOData` stored open === close === today and
+ * `determineStatus` derived OPEN from that fabricated pair. The opening-day
+ * discovery job (`opening-day-discovery.ts` `selectOpeningToday`) then
+ * selected the row by exactly that made-up value, and `narrowNse`'s
+ * `!row.openDate` guard was dead code as a result. Class (registered):
+ * absence-written-as-a-sentinel-value — a missing date must stay absent
+ * (undefined), never a stand-in value, for EVERY caller of `parseNSEDate`
+ * and `determineStatus` (mapper + opening-day check), across all offering
+ * types and segments.
+ */
+describe('parseNSEDate leaves a missing/unparseable date absent, never today (#963 fix)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('returns undefined (not today) for null/undefined/empty/garbage input', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-15T20:30:00Z'));
+    expect(istDateIso(new Date())).toBe('2026-09-16'); // sanity: today would be 2026-09-16 if fabricated
+
+    expect(parseNSEDate(null)).toBeUndefined();
+    expect(parseNSEDate(undefined)).toBeUndefined();
+    expect(parseNSEDate('')).toBeUndefined();
+    expect(parseNSEDate('   ')).toBeUndefined();
+    expect(parseNSEDate('-')).toBeUndefined();
+    expect(parseNSEDate('not-a-real-date-at-all-####')).toBeUndefined();
+  });
+
+  it('still parses a real DD-MMM-YYYY date exactly (regression: valid input unaffected)', () => {
+    expect(parseNSEDate('24-Aug-2026')).toBe('2026-08-24');
+  });
+
+  it('still parses a real DD/MM/YYYY date exactly (regression: valid input unaffected)', () => {
+    expect(parseNSEDate('24/08/2026')).toBe('2026-08-24');
+  });
+});
+
+describe('determineStatus never infers OPEN/CLOSED from a missing date (#963 fix)', () => {
+  it('returns UPCOMING (not OPEN) when no status text and BOTH dates are missing', () => {
+    expect(determineStatus(null, undefined, undefined)).toBe('UPCOMING');
+    expect(determineStatus(undefined, undefined, undefined)).toBe('UPCOMING');
+  });
+
+  it('returns UPCOMING (not OPEN/CLOSED) when no status text and only one date is missing', () => {
+    expect(determineStatus(null, undefined, '2026-09-18')).toBe('UPCOMING');
+    expect(determineStatus(null, '2026-09-16', undefined)).toBe('UPCOMING');
+  });
+
+  it('still uses the explicit NSE status text even when both dates are missing (unaffected)', () => {
+    expect(determineStatus('Active', undefined, undefined)).toBe('OPEN');
+    expect(determineStatus('Closed', undefined, undefined)).toBe('CLOSED');
+  });
+});
+
+describe('transformIPOData leaves openDate/closeDate absent instead of fabricating today (#963 fix, real NSE mapper)', () => {
+  it('a row with issueStartDate/issueEndDate null (derived from a real capture with dates blanked) gets openDate/closeDate undefined and status UPCOMING, never OPEN from a fabricated date', async () => {
+    const { transformIPOData } = await import('../../../src/scrapers/nse-api-client.js');
+    // Derived from the real captured fixture
+    // tests/fixtures/nse/ipo-current-issue.live-2026-08-22.json, with only
+    // issueStartDate/issueEndDate overwritten to null to reproduce NSE
+    // listing an IPO before its dates are fixed (no such row exists in
+    // today's live capture — every captured row already has both dates).
+    const fixture = (await import('../../fixtures/nse/ipo-current-issue.live-2026-08-22.json', { with: { type: 'json' } })).default;
+    const record = { ...(Array.isArray(fixture) ? fixture[0] : fixture) };
+    record.issueStartDate = null;
+    record.issueEndDate = null;
+    delete record.status; // no status text either, to force the date ladder
+
+    const result = transformIPOData(record, 'ipo');
+
+    expect(result.openDate).toBeUndefined();
+    expect(result.closeDate).toBeUndefined();
+    expect(result.status).toBe('UPCOMING');
+    expect(result.status).not.toBe('OPEN');
+  });
+
+  it('a row with a real status string and blank dates still reads status from the status text (unaffected)', async () => {
+    const { transformIPOData } = await import('../../../src/scrapers/nse-api-client.js');
+    const fixture = (await import('../../fixtures/nse/ipo-current-issue.live-2026-08-22.json', { with: { type: 'json' } })).default;
+    const record = { ...(Array.isArray(fixture) ? fixture[0] : fixture) };
+    record.issueStartDate = '';
+    record.issueEndDate = undefined;
+    record.status = 'Active';
+
+    const result = transformIPOData(record, 'ipo');
+
+    expect(result.openDate).toBeUndefined();
+    expect(result.closeDate).toBeUndefined();
+    expect(result.status).toBe('OPEN');
   });
 });
