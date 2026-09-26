@@ -81,10 +81,19 @@ const PRINTED_OFFER_TERMS: Array<{ field: string; docValue: number; webValue: nu
   { field: 'priceRangeMin', docValue: 100, webValue: 90 },
   { field: 'priceRangeMax', docValue: 105, webValue: 95 },
   { field: 'lotSize', docValue: 1200, webValue: 1400 },
-  { field: 'min_investment', docValue: 126000, webValue: 133000 },
-  { field: 'issue_price', docValue: 105, webValue: 95 },
-  { field: 'fresh_issue_size', docValue: 5000000000, webValue: 3000000000 },
-  { field: 'offer_for_sale_size', docValue: 2000000000, webValue: 1000000000 },
+  // #754: these four were snake_case literals (`min_investment`, `issue_price`,
+  // `fresh_issue_size`, `offer_for_sale_size`) that no schema column and no
+  // production write path ever uses (packages/shared/src/db/schema.ts:1332-1335
+  // has `freshIssue`/`ofsIssue`/`minInvestment`; `issuePrice` at line 959) — the
+  // matrix entries at those snake_case keys were reachable only through
+  // getFieldRules()'s literal-string fallback, never through the camelCase path
+  // consolidateIPOData/getSourcePriority actually use in production
+  // (filing-persister.ts writes `freshIssue`/`ofsIssue`, never
+  // `fresh_issue_size`/`offer_for_sale_size`). Rewritten to the real columns.
+  { field: 'minInvestment', docValue: 126000, webValue: 133000 },
+  { field: 'issuePrice', docValue: 105, webValue: 95 },
+  { field: 'freshIssue', docValue: 5000000000, webValue: 3000000000 },
+  { field: 'ofsIssue', docValue: 2000000000, webValue: 1000000000 },
 ];
 
 /** Re-ranked fields whose values are strings, not numbers. */
