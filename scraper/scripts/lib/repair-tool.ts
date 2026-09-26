@@ -371,6 +371,59 @@ export function createNoopRedisClient(): {
   };
 }
 
+/**
+ * Pure description of whether the CURRENT env gives `initPool()`
+ * (`packages/shared/src/db/index.ts`) anything to connect to, for
+ * `openRepairDb`'s pre-connect check (#481).
+ *
+ * `initPool()` picks the discrete form (`DATABASE_HOST`+`DATABASE_PORT`+
+ * `DATABASE_USER`+`DATABASE_PASSWORD`+`DATABASE_NAME`) when BOTH
+ * `DATABASE_HOST` and `DATABASE_PASSWORD` are set, and otherwise falls back
+ * to `connectionString: process.env.DATABASE_URL` — which already works
+ * correctly for a lone `DATABASE_URL` (confirmed by reading that file; #481's
+ * own framing of "initPool ignores DATABASE_URL" does not hold for that
+ * case). The one shape that is genuinely unusable is NEITHER form present:
+ * `connectionString` is then `undefined`, `pg.Pool` falls back to its own
+ * defaults (`PGHOST`/localhost), and — reaching nothing through a tunnel —
+ * hangs until the full connection-timeout wait before failing anonymously.
+ *
+ * Never returns the password or the full `DATABASE_URL` in `target` — only
+ * host:port/db, so a caller can safely log it (signal-ownership R6: a
+ * failure carries its cause, without carrying a secret).
+ */
+export interface DbConnectionTargetDescription {
+  usable: boolean;
+  /** host:port/db (or a redacted placeholder) — never a password or full URL. */
+  target: string;
+  /** Named only when `usable` is false. */
+  missing: string[];
+}
+
+export function describeDbConnectionTarget(env: NodeJS.ProcessEnv = process.env): DbConnectionTargetDescription {
+  if (env.DATABASE_HOST && env.DATABASE_PASSWORD) {
+    const host = env.DATABASE_HOST;
+    const port = env.DATABASE_PORT || '5432';
+    const name = env.DATABASE_NAME || 'ipodhan';
+    return { usable: true, target: `${host}:${port}/${name}`, missing: [] };
+  }
+  if (env.DATABASE_URL) {
+    try {
+      const parsed = new URL(env.DATABASE_URL);
+      const name = parsed.pathname.replace(/^\//, '') || '(unnamed)';
+      return { usable: true, target: `${parsed.hostname}:${parsed.port || '5432'}/${name}`, missing: [] };
+    } catch {
+      // Malformed but present: let the real connection attempt fail and
+      // report its own cause, rather than guessing here.
+      return { usable: true, target: 'DATABASE_URL (set, unparsable — host/db unknown)', missing: [] };
+    }
+  }
+  return {
+    usable: false,
+    target: 'unset',
+    missing: ['DATABASE_HOST+DATABASE_PORT+DATABASE_USER+DATABASE_PASSWORD+DATABASE_NAME (discrete form)', 'DATABASE_URL (connection-string form)'],
+  };
+}
+
 /** Ask the SAME pool that will do the writing which database it is connected to. */
 export async function queryCurrentDatabase(dbLike: ExecuteLike): Promise<string> {
   const result = await dbLike.execute(sql`SELECT current_database() AS name`);
@@ -413,11 +466,50 @@ export async function openRepairDb(
     log?: (line: string) => void;
     error?: (line: string) => void;
     onRefuse?: (reason: string) => void;
+    /** Injectable for tests; production callers omit it (defaults to `process.env`). */
+    env?: NodeJS.ProcessEnv;
   }
 ): Promise<OpenRepairDbResult> {
   const log = options.log ?? ((l: string) => console.log(l));
   const err = options.error ?? ((l: string) => console.error(l));
-  const dbName = await queryCurrentDatabase(dbLike);
+  const onRefuse = options.onRefuse ?? ((): void => process.exit(1));
+  const prefix = options.toolName ? `${options.toolName}: ` : '';
+
+  // #481: describe the env's connection target up front — pure, no I/O — so a
+  // CONNECTION FAILURE below can be reported with what it was actually trying
+  // to reach, instead of an anonymous DrizzleQueryError/timeout. This does
+  // NOT refuse pre-emptively on an unusable env: dozens of existing repair
+  // tools' own unit tests call openRepairDb() with a mocked dbLike and no env
+  // set at all (a connection that will never actually happen), and a
+  // pre-connect refusal here would falsely refuse every one of them. The
+  // refusal that matters — a REAL connection actually failing — is caught
+  // below regardless of why it failed.
+  const target = describeDbConnectionTarget(options.env ?? process.env);
+
+  let dbName: string;
+  try {
+    dbName = await queryCurrentDatabase(dbLike);
+  } catch (connectError) {
+    // #481: name the target and the underlying cause instead of letting an
+    // anonymous DrizzleQueryError/timeout surface (signal-ownership R6).
+    const cause =
+      connectError instanceof Error && connectError.cause instanceof Error
+        ? connectError.cause.message
+        : connectError instanceof Error
+          ? connectError.message
+          : String(connectError);
+    const code =
+      (connectError as { cause?: { code?: string }; code?: string } | undefined)?.cause?.code ??
+      (connectError as { code?: string } | undefined)?.code;
+    const targetDescription = target.usable
+      ? target.target
+      : `unset (neither ${target.missing.join(' nor ')} is usable — see docs/ops/prod-ops-recipes.md §4)`;
+    const reason =
+      `${prefix}failed to connect to ${targetDescription}: ${cause}${code ? ` (${code})` : ''} (#481)`;
+    err(reason);
+    onRefuse(reason);
+    return { dbName: '', isProd: false };
+  }
   log(`current_database(): ${dbName}`);
   const decision = decideProdWriteRefusal({
     apply: options.apply,
@@ -428,7 +520,7 @@ export async function openRepairDb(
   const isProd = dbName.toLowerCase() === PRODUCTION_DATABASE_NAME;
   if (decision.refuse) {
     err(decision.reason!);
-    (options.onRefuse ?? ((): void => process.exit(1)))(decision.reason!);
+    onRefuse(decision.reason!);
     return { dbName, isProd };
   }
   if (options.apply && isProd && options.allowProd) {
