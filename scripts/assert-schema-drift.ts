@@ -62,6 +62,7 @@
 // to) before any module below can read the wrong tree.
 import './lib/alias-preflight-auto.mjs';
 import { Client } from 'pg';
+import { resolveDiscreteDbParams } from '@ipodhan/shared/db';
 import * as schema from '@ipodhan/shared/db/schema';
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
 import { is } from 'drizzle-orm';
@@ -592,11 +593,7 @@ function resolveClient(): Client {
   }
   if (process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD) {
     return new Client({
-      host: process.env.DATABASE_HOST,
-      port: parseInt(process.env.DATABASE_PORT || '5432', 10),
-      database: process.env.DATABASE_NAME || 'ipodhan',
-      user: process.env.DATABASE_USER || 'postgres',
-      password: process.env.DATABASE_PASSWORD,
+      ...resolveDiscreteDbParams(),
     });
   }
   console.error('FATAL: no DATABASE_URL (arg or env var) and no DATABASE_HOST+DATABASE_PASSWORD pair.');

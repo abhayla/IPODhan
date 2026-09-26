@@ -57,6 +57,58 @@ export function resolveDatabaseSsl(env: NodeJS.ProcessEnv = process.env): false 
 }
 
 /**
+ * Resolve the discrete-parameter (DATABASE_HOST-branch) connection fields
+ * (#640). Previously `database` defaulted to 'ipodhan' (production) and
+ * `user` to 'postgres' (superuser) when DATABASE_NAME/DATABASE_USER were
+ * unset — a script or env missing either variable connected to prod as the
+ * superuser, silently. Now both are REQUIRED once DATABASE_HOST +
+ * DATABASE_PASSWORD select this branch: throws a named error identifying
+ * which variable is missing, never defaults.
+ */
+/**
+ * Describe which of DATABASE_HOST/DATABASE_PASSWORD are actually set, from
+ * the real env state — never assume both are set just because this function
+ * was called (#640 round 1 review).
+ */
+function describeHostPasswordState(env: NodeJS.ProcessEnv): string {
+  const present = [
+    env.DATABASE_HOST ? 'DATABASE_HOST' : null,
+    env.DATABASE_PASSWORD ? 'DATABASE_PASSWORD' : null,
+  ].filter((v): v is string => v !== null);
+  if (present.length === 0) return 'neither DATABASE_HOST nor DATABASE_PASSWORD is set';
+  if (present.length === 1) return `${present[0]} is set (the other is not)`;
+  return `${present.join(' and ')} are set`;
+}
+
+export function resolveDiscreteDbParams(
+  env: NodeJS.ProcessEnv = process.env
+): { host: string; port: number; database: string; user: string; password: string } {
+  const host = env.DATABASE_HOST as string;
+  const password = env.DATABASE_PASSWORD as string;
+  const database = env.DATABASE_NAME;
+  if (!database) {
+    throw new Error(
+      `${describeHostPasswordState(env)}, but DATABASE_NAME is missing — refusing to ` +
+        "default to the production database name ('ipodhan'). Set DATABASE_NAME explicitly (#640)."
+    );
+  }
+  const user = env.DATABASE_USER;
+  if (!user) {
+    throw new Error(
+      `${describeHostPasswordState(env)}, but DATABASE_USER is missing — refusing to ` +
+        "default to the superuser ('postgres'). Set DATABASE_USER explicitly (#640)."
+    );
+  }
+  return {
+    host,
+    port: parseInt(env.DATABASE_PORT || '5432', 10),
+    database,
+    user,
+    password,
+  };
+}
+
+/**
  * Get or create the PostgreSQL connection pool
  * Uses lazy initialization to ensure environment variables are loaded first
  */
@@ -77,11 +129,7 @@ function getPool(): Pool {
     poolInstance = new Pool(
       process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
         ? {
-            host: process.env.DATABASE_HOST,
-            port: parseInt(process.env.DATABASE_PORT || '5432'),
-            database: process.env.DATABASE_NAME || 'ipodhan',
-            user: process.env.DATABASE_USER || 'postgres',
-            password: process.env.DATABASE_PASSWORD,
+            ...resolveDiscreteDbParams(),
             options: '-c timezone=UTC', // Force session UTC (#28)
             // ==================== CONNECTION POOL SIZE (T-242 M3) ====================
             // Env-driven so the Linux deploy's worst-case connection count (web

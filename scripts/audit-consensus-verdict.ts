@@ -44,6 +44,7 @@
  */
 import './lib/alias-preflight-auto.mjs';
 import { Client } from 'pg';
+import { resolveDiscreteDbParams } from '@ipodhan/shared/db';
 import { computeVerdict, type Verdict } from '../scraper/src/services/witness-verdict.ts';
 import { loadFieldManifest } from '../scraper/src/config/field-manifest-loader.ts';
 import { resolveIpoTypeKey, type IpoTypeKey } from '../scraper/src/services/field-plan-generator.ts';
@@ -252,11 +253,7 @@ function resolveClient(): Client {
   if (argOrUrl) return new Client({ connectionString: argOrUrl });
   if (process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD) {
     return new Client({
-      host: process.env.DATABASE_HOST,
-      port: parseInt(process.env.DATABASE_PORT || '5432', 10),
-      database: process.env.DATABASE_NAME || 'ipodhan',
-      user: process.env.DATABASE_USER || 'postgres',
-      password: process.env.DATABASE_PASSWORD,
+      ...resolveDiscreteDbParams(),
     });
   }
   console.error('FATAL: no DATABASE_URL (arg or env var) and no DATABASE_HOST+DATABASE_PASSWORD pair.');

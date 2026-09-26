@@ -17,6 +17,7 @@
 import pg from 'pg';
 import { pathToFileURL } from 'node:url';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from '../lib/pg-utc.mjs';
+import { resolveDiscreteDbParams } from '../lib/pg-connection-params.mjs';
 // OD-75 round 2: admin-only rows (a source changing its own value) are not queue work.
 import { behaviourConflictPredicate, ensureDocumentIdProbe } from '../lib/conflict-reasons.mjs';
 
@@ -125,11 +126,7 @@ async function main() {
   const pool = createUtcPool(
     process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
       ? {
-          host: process.env.DATABASE_HOST,
-          port: parseInt(process.env.DATABASE_PORT || '5432'),
-          database: process.env.DATABASE_NAME || 'ipodhan',
-          user: process.env.DATABASE_USER || 'postgres',
-          password: process.env.DATABASE_PASSWORD,
+          ...resolveDiscreteDbParams(),
           ssl: false,
           max: 4,
         }

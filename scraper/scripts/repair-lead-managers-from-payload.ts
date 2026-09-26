@@ -33,7 +33,7 @@ import { join } from 'node:path';
 import { sanitizeLeadManagers } from '../src/utils/validators.js';
 import { parseBseParties } from '../src/services/bse-party-parser.js';
 import { recordDiscoveredLeadManagers } from '../src/services/data-persister.js';
-import { db } from '@ipodhan/shared/db';
+import { db, resolveDiscreteDbParams } from '@ipodhan/shared/db';
 import { openRepairDb, writeLedgerFile, type ExecuteLike } from './lib/repair-tool.js';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
@@ -58,13 +58,26 @@ const BSE_HEADERS = {
   Accept: 'application/json',
 };
 
-const pool = new Pool({
-  options: '-c timezone=UTC',
-  host: process.env.DATABASE_HOST,
-  port: parseInt(process.env.DATABASE_PORT || '5432'),
-  database: process.env.DATABASE_NAME || 'ipodhan',
-  user: process.env.DATABASE_USER || 'postgres',
-  password: process.env.DATABASE_PASSWORD,
+// Lazy — see repair-dates-and-leadmanagers-t299.ts: resolveDiscreteDbParams()
+// throws when DATABASE_NAME/DATABASE_USER are missing, and a script imported
+// for its pure helpers with no DB env set must not pay for (or fail on) a
+// Pool it never uses (#640 round 1 review).
+let _pool: Pool | undefined;
+function getPool(): Pool {
+  if (!_pool) {
+    _pool = new Pool({
+      options: '-c timezone=UTC',
+      ...resolveDiscreteDbParams(),
+    });
+  }
+  return _pool;
+}
+const pool = new Proxy({} as Pool, {
+  get(_target, prop) {
+    const real = getPool();
+    const value = (real as any)[prop];
+    return typeof value === 'function' ? value.bind(real) : value;
+  },
 });
 
 // `db` (the shared drizzle handle, same DATABASE_HOST/PORT/NAME env as `pool`

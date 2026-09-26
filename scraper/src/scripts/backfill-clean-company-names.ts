@@ -23,6 +23,7 @@ import { readFileSync } from 'node:fs';
 import { Client } from 'pg';
 import { sanitizeCompanyName } from '../utils/validators.js';
 import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
+import { resolveDiscreteDbParams } from '../../../packages/shared/src/db/index';
 import logger from '../utils/logger.js';
 
 // Load web/.env.local (same discrete-param creds the audit/app use) without clobbering
@@ -40,11 +41,7 @@ async function main() {
   const apply = process.argv.includes('--apply');
   loadEnv();
   const client = new Client({
-    host: process.env.DATABASE_HOST,
-    port: parseInt(process.env.DATABASE_PORT || '5432', 10),
-    database: process.env.DATABASE_NAME || 'ipodhan',
-    user: process.env.DATABASE_USER,
-    password: process.env.DATABASE_PASSWORD,
+    ...resolveDiscreteDbParams(),
     ssl: false,
   });
   await client.connect();

@@ -8,6 +8,7 @@ import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
+import { resolveDiscreteDbParams } from './lib/pg-connection-params.mjs';
 import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
 import { FIELDS, deriveStage, dueFieldKeysForStage, computeStageGaps } from './lib/ipo-stage-completeness.mjs';
 import { evaluateDetailsRowCoverage } from './lib/details-row-coverage.mjs';
@@ -81,11 +82,7 @@ installUtcTimestampParsing();
 const pool = createUtcPool(
   process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
     ? {
-        host: process.env.DATABASE_HOST,
-        port: parseInt(process.env.DATABASE_PORT || '5432'),
-        database: process.env.DATABASE_NAME || 'ipodhan',
-        user: process.env.DATABASE_USER || 'postgres',
-        password: process.env.DATABASE_PASSWORD,
+        ...resolveDiscreteDbParams(),
         ssl: false,
         max: 4,
       }
