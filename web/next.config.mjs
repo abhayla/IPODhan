@@ -70,21 +70,10 @@ const nextConfig = {
       // because Cloudflare prefers ITS OWN header above the other two when
       // deciding what to cache at the edge — so this is the one that
       // actually stops the year-long edge cache, not a belt-and-braces
-      // extra. `/api/health` carries the same class of fix (#138 already
-      // set `Cache-Control` in the route's own response, force-dynamic
-      // isn't cached by Next in the first place, but it is still a public
-      // URL used to decide whether a deploy proof is real, so it gets the
-      // same explicit no-store discipline here for consistency).
+      // extra. `/api/health` already sets `Cache-Control: no-store` in its
+      // own route response and is force-dynamic, so it needs no entry here.
       {
         source: '/api/version',
-        headers: [
-          { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate' },
-          { key: 'CDN-Cache-Control', value: 'no-store' },
-          { key: 'Cloudflare-CDN-Cache-Control', value: 'no-store' },
-        ],
-      },
-      {
-        source: '/api/health',
         headers: [
           { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate' },
           { key: 'CDN-Cache-Control', value: 'no-store' },

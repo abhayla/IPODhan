@@ -5,11 +5,11 @@
  * Cloudflare happily caches the route at the edge for a year. A public read
  * of the served sha can then be silently stale.
  *
- * The fix is a `next.config.mjs` `headers()` rule for `/api/version` (and
- * `/api/health` while we're here — same class of "public URL used to decide
- * whether a deploy proof is real") that tells every cache in the path
- * (browser, Cloudflare's shared cache, and Cloudflare's CDN-specific
- * override) not to store the response.
+ * The fix is a `next.config.mjs` `headers()` rule for `/api/version` that
+ * tells every cache in the path (browser, Cloudflare's shared cache, and
+ * Cloudflare's CDN-specific override) not to store the response.
+ * (`/api/health` already sets `Cache-Control: no-store` in its own route
+ * response and is force-dynamic, so it needs no rule here.)
  *
  * This test reads the REAL next.config.mjs headers() function — it does not
  * re-implement the config, per the issue's instruction not to duplicate the
@@ -60,12 +60,5 @@ describe('next.config.mjs headers() — /api/version must not be edge-cached (#5
     const rules = await getHeaderRules();
     const value = findHeader(rules, '/api/version', 'Cloudflare-CDN-Cache-Control');
     expect(value).toBe('no-store');
-  });
-
-  it('also covers /api/health with the same no-store discipline (same class: a public URL used to decide if a deploy proof is real)', async () => {
-    const rules = await getHeaderRules();
-    const rule = rules.find((r) => r.source === '/api/health');
-    expect(rule, 'expected a headers() rule with source "/api/health"').toBeDefined();
-    expect(findHeader(rules, '/api/health', 'Cloudflare-CDN-Cache-Control')).toBe('no-store');
   });
 });
