@@ -138,7 +138,7 @@ import { buildExtractionStatePatch } from './extraction-state-patch.js';
  * document eligible again — which is the only re-extraction trigger, so a bump
  * is a deliberate act, not a side effect of an unrelated change.
  */
-export const EXTRACTOR_VERSION = 'extract_filing.py@2026-09-03';
+export const EXTRACTOR_VERSION = 'extract_filing.py@2026-09-26';
 
 /** Doc types `scripts/extract_filing.py` understands. Anything else is skipped. */
 import {
