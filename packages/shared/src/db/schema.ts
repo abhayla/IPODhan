@@ -2578,7 +2578,8 @@ export const closedIpoResourcing = pgTable(
     resourcedAtVersion: varchar('resourced_at_version', { length: 50 }).notNull(),
     // OD-81 event (1), #932: the IPO's status (`ipos.status::text`) as the job saw it
     // when it selected the IPO for this attempt. A PARTIAL / FIELDS_PENDING IPO is
-    // re-picked when its current status differs. NULL = a row last attempted before
+    // re-picked only on the forward step: recorded CLOSED, now LISTED (a backward
+    // flip is not a stage change, OD-127). NULL = a row last attempted before
     // this column existed; the selection falls back to the listing_date inference
     // for it once, and the next attempt fills it.
     statusAtAttempt: varchar('status_at_attempt', { length: 20 }),
