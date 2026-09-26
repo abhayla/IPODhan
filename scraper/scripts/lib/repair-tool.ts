@@ -416,9 +416,21 @@ export interface DbConnectionTargetDescription {
 
 export function describeDbConnectionTarget(env: NodeJS.ProcessEnv = process.env): DbConnectionTargetDescription {
   if (env.DATABASE_HOST && env.DATABASE_PASSWORD) {
+    // Mirror `resolveDiscreteDbParams()` (packages/shared/src/db/index.ts)
+    // exactly: it THROWS when DATABASE_NAME or DATABASE_USER is missing,
+    // refusing to default to the production name ('ipodhan') or the
+    // superuser ('postgres') (#640). This description must agree — labelling
+    // an incomplete discrete env as a usable 'ipodhan' target here would tell
+    // the operator the opposite of what initPool() will actually do.
+    const missing: string[] = [];
+    if (!env.DATABASE_NAME) missing.push('DATABASE_NAME');
+    if (!env.DATABASE_USER) missing.push('DATABASE_USER');
+    if (missing.length > 0) {
+      return { usable: false, target: 'unset', missing };
+    }
     const host = env.DATABASE_HOST;
     const port = env.DATABASE_PORT || '5432';
-    const name = env.DATABASE_NAME || 'ipodhan';
+    const name = env.DATABASE_NAME;
     return { usable: true, target: `${host}:${port}/${name}`, missing: [] };
   }
   if (env.DATABASE_URL) {

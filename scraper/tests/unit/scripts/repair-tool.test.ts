@@ -143,6 +143,7 @@ describe('describeDbConnectionTarget — #481 pre-connect env check (pure, no I/
       DATABASE_HOST: '127.0.0.1',
       DATABASE_PORT: '15432',
       DATABASE_NAME: 'ipodhan_staging',
+      DATABASE_USER: 'ipodhan_app',
       DATABASE_PASSWORD: 'super-secret-pw',
     } as NodeJS.ProcessEnv);
     expect(d.usable).toBe(true);
@@ -166,6 +167,26 @@ describe('describeDbConnectionTarget — #481 pre-connect env check (pure, no I/
     expect(d.missing).toHaveLength(2);
     expect(d.missing.join(' ')).toMatch(/DATABASE_HOST/);
     expect(d.missing.join(' ')).toMatch(/DATABASE_URL/);
+  });
+
+  it('#640: DATABASE_HOST+DATABASE_PASSWORD with DATABASE_NAME unset is unusable, and NEVER labelled ipodhan — resolveDiscreteDbParams() throws on this exact shape', () => {
+    const d = describeDbConnectionTarget({
+      DATABASE_HOST: 'h',
+      DATABASE_PASSWORD: 'p',
+    } as NodeJS.ProcessEnv);
+    expect(d.usable).toBe(false);
+    expect(d.missing).toContain('DATABASE_NAME');
+    expect(d.target).not.toContain('ipodhan');
+  });
+
+  it('#640: DATABASE_HOST+DATABASE_PASSWORD+DATABASE_NAME with DATABASE_USER unset is unusable and names DATABASE_USER', () => {
+    const d = describeDbConnectionTarget({
+      DATABASE_HOST: 'h',
+      DATABASE_PASSWORD: 'p',
+      DATABASE_NAME: 'ipodhan_staging',
+    } as NodeJS.ProcessEnv);
+    expect(d.usable).toBe(false);
+    expect(d.missing).toContain('DATABASE_USER');
   });
 
   it('DATABASE_HOST alone (no DATABASE_PASSWORD) falls through to the DATABASE_URL check, not the discrete form', () => {
@@ -210,7 +231,7 @@ describe('openRepairDb — #481: a connection failure names its target and cause
         log: vi.fn(),
         error,
         onRefuse,
-        env: { DATABASE_HOST: '127.0.0.1', DATABASE_PORT: '15432', DATABASE_NAME: 'ipodhan_staging', DATABASE_PASSWORD: 'pw' } as NodeJS.ProcessEnv,
+        env: { DATABASE_HOST: '127.0.0.1', DATABASE_PORT: '15432', DATABASE_NAME: 'ipodhan_staging', DATABASE_USER: 'ipodhan_app', DATABASE_PASSWORD: 'pw' } as NodeJS.ProcessEnv,
       }
     );
     expect(onRefuse).toHaveBeenCalledTimes(1);
