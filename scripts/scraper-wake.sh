@@ -99,6 +99,24 @@ else
   exit 1
 fi
 
+# #698: what launched this wake. Cron lines installed by deploy-linux.sh pass
+# `schedule`; the deploy's own `pm2 start` passes `deploy`. The scraper writes
+# it onto every scraper_steps row, and scripts/assert-repair-held.mjs counts
+# only `schedule` cycles, because a deploy restart is not the scheduled cycle a
+# repair has to survive. Anything else (unset, or a typo) becomes `unknown`
+# rather than refusing the wake: a wrong label must never stop the scraper, and
+# `unknown` is never counted, so the error shows up as an uncounted cycle.
+case "${SCRAPER_WAKE_TRIGGER:-}" in
+  schedule|deploy|unknown) : ;;
+  "") SCRAPER_WAKE_TRIGGER=unknown ;;
+  *)
+    log "WARN unknown-trigger: SCRAPER_WAKE_TRIGGER='$SCRAPER_WAKE_TRIGGER' is not one of schedule|deploy|unknown - recording it as unknown"
+    SCRAPER_WAKE_TRIGGER=unknown
+    ;;
+esac
+export SCRAPER_WAKE_TRIGGER
+log "SCRAPER_WAKE_TRIGGER resolved: $SCRAPER_WAKE_TRIGGER"
+
 # --- The 2-hour hung-process ceiling (OD-55) -------------------------------
 # 7200 seconds. Overridable ONLY for the test harness; production never sets
 # it. This is a crash guard, not a budget: nothing about a slow-but-

@@ -762,7 +762,7 @@ resume_scraper() {
   # runs — the TZ=UTC prefix was never the problem; the line never executed.
   # In production SCRAPER_CRON is always set well before this function is
   # ever called, so the fallback here is dead weight on the real deploy path.
-  ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$target_dir/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
+  ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" SCRAPER_WAKE_TRIGGER=deploy pm2 start "$target_dir/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
       --no-autorestart ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
   # CRITICAL (Tier A review): this path had NO cron install. resume_scraper
@@ -1988,7 +1988,7 @@ restart_pm2() {
   # W-178 round 2: see resume_scraper()'s comment above — default-expand
   # SCRAPER_CRON so this function's own test isolation (case 9b) doesn't
   # abort on an unbound variable under `set -u` before pm2 ever runs.
-  ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$RELEASE_DIR/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
+  ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" SCRAPER_WAKE_TRIGGER=deploy pm2 start "$RELEASE_DIR/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
       --no-autorestart )
   # The alarm clock. Without this the wrapper above runs once and never again.
   install_scraper_cron
@@ -2157,11 +2157,20 @@ install_scraper_cron() {
   # agree with docs/ops/prod-ops-recipes.md section 12, which already documents
   # the `current/...` form.
   local wake_script="${1:-$CURRENT_LINK/scripts/scraper-wake.sh}"
+  # #698: every line cron runs is labelled as a scheduled wake. The wrapper
+  # exports it and the scraper writes it onto each scraper_steps row, which is
+  # how scripts/assert-repair-held.mjs tells a scheduled cycle from a deploy
+  # restart (the pm2 start lines below pass SCRAPER_WAKE_TRIGGER=deploy). The
+  # assignment sits inside the command, after the five time fields, so the
+  # #663 crontab check (cadence prefix + current-symlink fragment) and the
+  # marker filter below are unchanged, and an old unlabelled line is replaced
+  # by marker like any other.
+  local wake_cmd="SCRAPER_WAKE_TRIGGER=schedule $wake_script"
   # The wrapper is cwd-independent by design, so cron needs no `cd`. Output is
   # appended to a slot-scoped log because a cron job's stdout otherwise goes to
   # local mail nobody reads - and the skip/ceiling lines ARE the proof artifact
   # this slice exists to produce, so they must land somewhere greppable.
-  local cron_line="$SCRAPER_CRON $wake_script data >> $SCRAPER_WAKE_LOG 2>&1 $SCRAPER_CRON_MARKER"
+  local cron_line="$SCRAPER_CRON $wake_cmd data >> $SCRAPER_WAKE_LOG 2>&1 $SCRAPER_CRON_MARKER"
   # Defaults here too (not only at the top level) so this function stays
   # self-contained when the suite extracts and evals it on its own.
   local live_marker="${SCRAPER_LIVE_CRON_MARKER:-# ipodhan-scraper-live:$SLOT}"
@@ -2171,7 +2180,7 @@ install_scraper_cron() {
   if [ -z "$live_cron" ]; then
     if [ "$SLOT" = "prod" ]; then live_cron='5,35 * * * *'; else live_cron='20,50 * * * *'; fi
   fi
-  local live_line="$live_cron $wake_script live >> $SCRAPER_WAKE_LOG 2>&1 $live_marker"
+  local live_line="$live_cron $wake_cmd live >> $SCRAPER_WAKE_LOG 2>&1 $live_marker"
   local live_enabled=1
   [ "${DEPLOY_SCRAPER_LIVE_JOB:-1}" = "0" ] && live_enabled=0
 
@@ -2185,7 +2194,7 @@ install_scraper_cron() {
   if [ -z "$closed_cron" ]; then
     if [ "$SLOT" = "prod" ]; then closed_cron='10,40 22,23 * * *'; else closed_cron='25,55 22,23 * * *'; fi
   fi
-  local closed_line="$closed_cron $wake_script closed >> $SCRAPER_WAKE_LOG 2>&1 $closed_marker"
+  local closed_line="$closed_cron $wake_cmd closed >> $SCRAPER_WAKE_LOG 2>&1 $closed_marker"
   local closed_enabled=1
   [ "${DEPLOY_SCRAPER_CLOSED_JOB:-1}" = "0" ] && closed_enabled=0
 
@@ -2205,7 +2214,7 @@ install_scraper_cron() {
   if [ -z "$opening_cron" ]; then
     if [ "$SLOT" = "prod" ]; then opening_cron='45 9 * * *'; else opening_cron='40 9 * * *'; fi
   fi
-  local opening_line="$opening_cron $wake_script opening >> $SCRAPER_WAKE_LOG 2>&1 $opening_marker"
+  local opening_line="$opening_cron $wake_cmd opening >> $SCRAPER_WAKE_LOG 2>&1 $opening_marker"
   local opening_enabled=1
   [ "${DEPLOY_SCRAPER_OPENING_JOB:-1}" = "0" ] && opening_enabled=0
 
@@ -2229,8 +2238,8 @@ install_scraper_cron() {
   if [ -z "$price_close_cron" ]; then
     if [ "$SLOT" = "prod" ]; then price_close_cron='14,30 15 * * 1-5'; else price_close_cron='12,30 15 * * 1-5'; fi
   fi
-  local price_line="$price_cron $wake_script price >> $SCRAPER_WAKE_LOG 2>&1 $price_marker
-$price_close_cron $wake_script price >> $SCRAPER_WAKE_LOG 2>&1 $price_marker"
+  local price_line="$price_cron $wake_cmd price >> $SCRAPER_WAKE_LOG 2>&1 $price_marker
+$price_close_cron $wake_cmd price >> $SCRAPER_WAKE_LOG 2>&1 $price_marker"
   local price_enabled=1
   [ "${DEPLOY_SCRAPER_PRICE_JOB:-1}" = "0" ] && price_enabled=0
 

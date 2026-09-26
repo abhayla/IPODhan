@@ -304,20 +304,24 @@ row is not "repaired" on the strength of one clean read — three separate repai
 minutes-to-cycles of deploy (T-281 price-band collapse re-minted 11 min later; T-282's correct guard
 never ran because `CONSOLIDATION_PERCENTAGE=0`; T-277C merged duplicates were re-created next cycle).
 `scripts/assert-repair-held.mjs` closes this: it records the invariant's violation count now (must be
-0), records a cycle marker, polls until N real scraper cycles have passed, and re-runs the invariant
-after each — FAIL loudly on any regression, UNVERIFIABLE if the scraper never touched live data in the
-window.
+0), records the newest completed data cycle (the `heartbeat` row in `scraper_steps`), polls until N
+more SCHEDULED cycles complete, and re-runs the invariant after every cycle it sees — FAIL loudly on any
+regression, UNVERIFIABLE if N scheduled cycles did not complete in the window. Since #698 only cycles with
+`scraper_steps.trigger = 'schedule'` count: a deploy restart prints as `deploy (not counted)` and an
+unlabelled run as `unknown (not counted)`; `--allow-restarts` counts them all. The tool prints the two SQL
+statements it runs at start-up.
 ```bash
 PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
 DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging" \
-  node scripts/assert-repair-held.mjs scripts/lib/repair-invariants/issue-size-t451.mjs --cycles 2 --timeout-min 40
+  node scripts/assert-repair-held.mjs scripts/lib/repair-invariants/issue-size-t451.mjs --cycles 2 --timeout-min 90
 # generic form — any command whose stdout's LAST line is a bare integer violation count:
 DATABASE_URL="..." node scripts/assert-repair-held.mjs "node scripts/audit-ipo-coverage.mjs --gate | tail -1" --cycles 2
 ```
-Staging cycles land at :15/:45, so 2 cycles takes up to ~35 min — launch it in the background
+Staging data wakes land at :15/:45 and a cycle counts only once it finishes, so 2 cycles takes up to
+~60-90 min (default timeout 90) — launch it in the background
 (`nohup ... > .tmp/proof.log 2>&1 &`) and keep working; do not block a PR gate on it (risk noted in the
 #192 plan). Exit 0 = held; exit 1 = regressed (per-cycle counts printed); exit 2 = UNVERIFIABLE (the
-invariant crashed, or the cycle marker never advanced within the timeout — never a silent pass).
+invariant crashed, or fewer than N scheduled cycles completed within the timeout — never a silent pass).
 
 ### Merging two rows that are one IPO (duplicate rows)
 

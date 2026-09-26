@@ -9,7 +9,7 @@
 // proof" tool, not a prose promise.
 //
 // Usage:
-//   node scripts/assert-repair-held.mjs <invariant> [--cycles N] [--timeout-min M]
+//   node scripts/assert-repair-held.mjs <invariant> [--cycles N] [--timeout-min M] [--allow-restarts]
 //
 // <invariant> is either:
 //   - a path to a .mjs module (relative or absolute) exporting a default
@@ -22,29 +22,26 @@
 //     Accepts literally anything with that contract — `psql -tAc "..."`,
 //     `node scripts/audit-ipo-coverage.mjs --gate | tail -1`, etc.
 //
-// Cycle detection: a "cycle" is scraper activity that could plausibly have
-// re-touched the affected rows, not a fixed sleep. The marker is
-// GREATEST(MAX(ipos.last_scraped_at), MAX(ipos.updated_at)) across the WHOLE
-// table (not just the repaired rows — those may not be due every wake, so
-// using only their own timestamps would under-count real cycles) combined
-// with MAX(scraper_logs.created_at) when that table exists, per the #192
-// spec ("record max(last_scraped_at) over live rows, plus the latest
-// scraper_logs cycle id if that table exists"). Because a single wake can
-// write several scraper_logs rows / row updates within seconds of each
-// other, an advance is only counted as a NEW cycle once the marker has moved
-// forward by at least CYCLE_GAP_MS (default 4 min) from the last counted
-// value — production wakes are ~30 min apart (due-step-cycle.ts), so a 4 min
-// floor safely collapses one wake's burst of writes into one cycle without
-// requiring a hardcoded 30-min wait. **Assumption:** if this floor is ever
-// wrong for a given deployment cadence, override with --cycle-gap-min.
+// Cycle detection (#698): a "cycle" is one COMPLETED scheduled data cycle, not
+// a fixed sleep and not any write at all. Each `--source=all` run writes a
+// `heartbeat` row to scraper_steps as its last step, and every scraper_steps
+// row records what launched the run (scraper_steps.trigger, from the wake
+// wrapper's SCRAPER_WAKE_TRIGGER): `schedule` for a cron wake, `deploy` for the
+// deploy's pm2 start, `unknown`/NULL otherwise. Only `schedule` cycles count
+// toward --cycles; every other cycle is still checked (a regression after it
+// fails the run) and printed as `<trigger> (not counted)`. Before #698 the
+// marker was the newest write to ipos / scraper_logs, so a deploy restart
+// landing between scheduled wakes counted as a cycle, and nothing in the DB
+// could tell the two apart. `--allow-restarts` counts every completed cycle
+// again, explicitly. The default timeout is 90 min because two scheduled data
+// wakes are 30 min apart and each cycle has to finish before it counts.
 //
 // Exit codes:
 //   0 — held clean across N cycles.
 //   1 — a violation reappeared (regression) — the repair did NOT hold.
-//   2 — UNVERIFIABLE: the invariant itself failed to run, OR the cycle
-//       marker never advanced within the timeout (scraper never touched
-//       live data in the window, so N cycles were never observed — this
-//       proves nothing either way, it is not a silent pass).
+//   2 — UNVERIFIABLE: the invariant itself failed to run, OR fewer than N
+//       scheduled cycles completed within the timeout (deploy restarts do not
+//       fill the gap) — this proves nothing either way, it is not a silent pass.
 // Item 1 slice s14 -- FIRST import on purpose. ESM evaluates imported modules in
 // source order, so this runs (and prints which checkout @ipodhan/shared resolves
 // to) before any module below can read the wrong tree.
@@ -59,13 +56,13 @@ import { resolveDiscreteDbParams } from './lib/pg-connection-params.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function parseArgs(argv) {
-  const args = { invariant: null, cycles: 2, timeoutMin: 40, cycleGapMin: 4, pollSec: 60 };
+  const args = { invariant: null, cycles: 2, timeoutMin: 90, pollSec: 60, allowRestarts: false };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--cycles') args.cycles = parseInt(argv[++i], 10);
     else if (a === '--timeout-min') args.timeoutMin = parseFloat(argv[++i]);
-    else if (a === '--cycle-gap-min') args.cycleGapMin = parseFloat(argv[++i]);
+    else if (a === '--allow-restarts') args.allowRestarts = true;
     else if (a === '--poll-sec') args.pollSec = parseFloat(argv[++i]);
     else rest.push(a);
   }
@@ -127,100 +124,123 @@ export async function resolveInvariant(invariantArg, pool, { cwd = process.cwd()
   };
 }
 
-// Reads the cycle marker: { maxRowTs: Date|null, maxLogTs: Date|null, hasScraperLogs: boolean }.
-// Exported for the unit test via a fake pool.
-export async function readCycleMarker(pool) {
-  const { rows } = await pool.query(
-    `SELECT GREATEST(MAX(last_scraped_at), MAX(updated_at)) AS max_ts FROM ipos`
-  );
-  const maxRowTs = rows[0]?.max_ts ?? null;
-  let maxLogTs = null;
-  let hasScraperLogs = true;
-  try {
-    const { rows: logRows } = await pool.query(`SELECT MAX(created_at) AS max_ts FROM scraper_logs`);
-    maxLogTs = logRows[0]?.max_ts ?? null;
-  } catch {
-    hasScraperLogs = false; // table absent — fall back to ipos-only marker
-  }
-  return { maxRowTs, maxLogTs, hasScraperLogs };
+// #698: the cycle marker. A cycle is one COMPLETED data cycle: the `heartbeat`
+// row that `--source=all` writes as its last scraper_steps row (scraper/src/
+// index.ts, after every step that can write to an IPO). Each row carries the
+// wake trigger (`schedule` | `deploy` | `unknown`, NULL before migration 0064).
+// Timestamps stay as the database's own text (`created_at::text`) and are bound
+// back as text, so no JS Date conversion can shift them (ist-timezone.md).
+export const CYCLE_BASELINE_SQL =
+  `SELECT MAX(created_at)::text AS max_at FROM scraper_steps WHERE step = 'heartbeat'`;
+export const CYCLES_SINCE_SQL =
+  `SELECT cycle_id::text AS cycle_id, trigger, created_at::text AS at FROM scraper_steps ` +
+  `WHERE step = 'heartbeat' AND ($1::text IS NULL OR created_at > $1::timestamp) ` +
+  `ORDER BY created_at, cycle_id`;
+
+export async function readCycleBaseline(pool) {
+  const { rows } = await pool.query(CYCLE_BASELINE_SQL);
+  return rows[0]?.max_at ?? null;
 }
 
-function markerValue(marker) {
-  const t1 = marker.maxRowTs ? new Date(marker.maxRowTs).getTime() : 0;
-  const t2 = marker.maxLogTs ? new Date(marker.maxLogTs).getTime() : 0;
-  return Math.max(t1, t2);
+export async function readCyclesSince(pool, since) {
+  const { rows } = await pool.query(CYCLES_SINCE_SQL, [since]);
+  return rows.map((r) => ({ cycleId: r.cycle_id, trigger: r.trigger ?? 'unknown', at: r.at }));
+}
+
+// Only a scheduled wake is the cycle a repair has to survive. A deploy restart
+// or an unlabelled run is checked and printed but never counted, unless the
+// operator passes --allow-restarts (the pre-#698 counting, stated explicitly).
+export function isCountedCycle(trigger, allowRestarts) {
+  return allowRestarts ? true : trigger === 'schedule';
+}
+
+function istText(utcText) {
+  const ms = Date.parse(`${String(utcText).replace(' ', 'T')}Z`);
+  if (Number.isNaN(ms)) return `${utcText} UTC`;
+  return `${new Date(ms + 330 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ')} IST`;
+}
+
+export function formatCycleLine(c, cycles) {
+  const head = c.counted ? `cycle ${c.index}/${cycles} ${c.trigger}` : `${c.trigger} (not counted)`;
+  return `${head} cycle_id=${c.cycleId} at ${istText(c.at)}: count=${c.count}`;
 }
 
 /**
- * Poll until `cycles` distinct scraper cycles have completed (marker advanced
- * by >= cycleGapMin each time), re-running the invariant after each. Returns
- * { held: boolean, cyclesObserved: number, perCycle: Array<{cycle, count, at}>,
- *   unverifiable: boolean, reason?: string }.
+ * Poll until `cycles` counted scraper cycles have completed, re-running the
+ * invariant after every observed cycle (counted or not: a regression after a
+ * deploy restart is still a regression). Returns
+ * { held, unverifiable, cyclesObserved, perCycle, reason? } where perCycle has
+ * one entry per observed cycle: { index, cycleId, trigger, counted, count, at }.
  * `sleepFn` and `nowFn` are injectable for the unit test (no real timers/DB).
  */
 export async function pollForCycles({
   runInvariant,
-  readMarker,
+  readBaseline,
+  readCyclesSince,
   cycles,
   timeoutMs,
-  cycleGapMs,
   pollMs,
+  allowRestarts = false,
   sleepFn = (ms) => new Promise((r) => setTimeout(r, ms)),
   nowFn = () => Date.now(),
   log = () => {},
 }) {
   const startedAt = nowFn();
-  let baseline;
+  let since;
   try {
-    baseline = await readMarker();
+    since = await readBaseline();
   } catch (err) {
     return { held: false, unverifiable: true, cyclesObserved: 0, perCycle: [], reason: `cycle marker read failed: ${err.message}` };
   }
-  let lastCountedValue = markerValue(baseline);
   const perCycle = [];
+  let counted = 0;
 
-  while (perCycle.length < cycles) {
+  while (counted < cycles) {
     if (nowFn() - startedAt > timeoutMs) {
       return {
         held: false,
         unverifiable: true,
-        cyclesObserved: perCycle.length,
+        cyclesObserved: counted,
         perCycle,
-        reason: `timeout after ${Math.round((nowFn() - startedAt) / 60000)}min — cycle marker never advanced enough for ${cycles} distinct cycles (observed ${perCycle.length})`,
+        reason: `timeout after ${Math.round((nowFn() - startedAt) / 60000)}min: observed ${counted} scheduled cycle(s) and ${perCycle.length - counted} not counted, needed ${cycles}`,
       };
     }
     await sleepFn(pollMs);
-    let marker;
+    let fresh;
     try {
-      marker = await readMarker();
+      fresh = await readCyclesSince(since);
     } catch (err) {
       log(`marker read error, will retry: ${err.message}`);
       continue;
     }
-    const value = markerValue(marker);
-    if (value - lastCountedValue >= cycleGapMs) {
-      lastCountedValue = value;
+    for (const row of fresh) {
+      const cycle = { ...row, trigger: row.trigger ?? 'unknown' };
+      since = cycle.at;
       let result;
       try {
         result = await runInvariant();
       } catch (err) {
-        return { held: false, unverifiable: true, cyclesObserved: perCycle.length, perCycle, reason: `invariant crashed mid-poll: ${err.message}` };
+        return { held: false, unverifiable: true, cyclesObserved: counted, perCycle, reason: `invariant crashed mid-poll: ${err.message}` };
       }
-      const cycleNum = perCycle.length + 1;
-      perCycle.push({ cycle: cycleNum, count: result.count, at: new Date(nowFn()).toISOString() });
-      log(`cycle ${cycleNum}/${cycles} observed (marker=${new Date(value).toISOString()}): violation count = ${result.count}`);
+      const isCounted = isCountedCycle(cycle.trigger, allowRestarts);
+      if (isCounted) counted += 1;
+      const entry = { index: isCounted ? counted : null, cycleId: cycle.cycleId, trigger: cycle.trigger, counted: isCounted, count: result.count, at: cycle.at };
+      perCycle.push(entry);
+      log(formatCycleLine(entry, cycles));
       if (result.count > 0) {
-        return { held: false, unverifiable: false, cyclesObserved: cycleNum, perCycle, reason: `REGRESSION on cycle ${cycleNum}: violation count ${result.count} > 0` };
+        const which = `${cycle.trigger} cycle ${cycle.cycleId}${isCounted ? '' : ' (not counted)'}`;
+        return { held: false, unverifiable: false, cyclesObserved: counted, perCycle, reason: `REGRESSION after ${which}: violation count ${result.count} > 0` };
       }
+      if (counted >= cycles) break;
     }
   }
-  return { held: true, unverifiable: false, cyclesObserved: perCycle.length, perCycle };
+  return { held: true, unverifiable: false, cyclesObserved: counted, perCycle };
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.invariant) {
-    console.error('FATAL: usage: node scripts/assert-repair-held.mjs <invariant> [--cycles N] [--timeout-min M] [--cycle-gap-min G] [--poll-sec S]');
+    console.error('FATAL: usage: node scripts/assert-repair-held.mjs <invariant> [--cycles N] [--timeout-min M] [--poll-sec S] [--allow-restarts]');
     process.exit(2);
   }
 
@@ -249,20 +269,24 @@ async function main() {
       process.exit(1);
     }
 
-    console.log(`assert-repair-held: polling for ${args.cycles} distinct scraper cycle(s), timeout ${args.timeoutMin}min, poll every ${args.pollSec}s...`);
+    const counting = args.allowRestarts ? 'every completed cycle (--allow-restarts)' : "only trigger='schedule' cycles";
+    console.log(`assert-repair-held: polling for ${args.cycles} completed scraper cycle(s), counting ${counting}, timeout ${args.timeoutMin}min, poll every ${args.pollSec}s`);
+    console.log(`  baseline SQL: ${CYCLE_BASELINE_SQL}`);
+    console.log(`  cycle SQL:    ${CYCLES_SINCE_SQL}`);
     const result = await pollForCycles({
       runInvariant,
-      readMarker: () => readCycleMarker(pool),
+      readBaseline: () => readCycleBaseline(pool),
+      readCyclesSince: (since) => readCyclesSince(pool, since),
       cycles: args.cycles,
       timeoutMs: args.timeoutMin * 60 * 1000,
-      cycleGapMs: args.cycleGapMin * 60 * 1000,
       pollMs: args.pollSec * 1000,
+      allowRestarts: args.allowRestarts,
       log: (msg) => console.log(`  ${msg}`),
     });
 
     console.log('assert-repair-held: per-cycle results:');
     for (const c of result.perCycle) {
-      console.log(`  cycle ${c.cycle}: count=${c.count} at ${c.at}`);
+      console.log(`  ${formatCycleLine(c, args.cycles)}`);
     }
 
     if (result.unverifiable) {
@@ -273,7 +297,7 @@ async function main() {
       console.error(`FAIL: ${result.reason}`);
       process.exit(1);
     }
-    console.log(`HELD: violation count stayed 0 across ${result.cyclesObserved} distinct scraper cycle(s).`);
+    console.log(`HELD: violation count stayed 0 across ${result.cyclesObserved} counted scraper cycle(s) (${result.perCycle.length - result.cyclesObserved} more observed, not counted).`);
     process.exit(0);
   } finally {
     await pool.end();
