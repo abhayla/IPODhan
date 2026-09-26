@@ -1477,6 +1477,134 @@ else
   pass "case 20c: $DEPLOY_SCRIPT does not invoke redis-cli with the invalid '-t 3' flag"
 fi
 
+# --- Case 21: the lock read authenticates to Redis (#719 round 2) ----------
+# Staging carries REDIS_URL with no password (REDIS_PASSWORD/REDIS_DB are
+# separate keys, same shape ioredis combines in redis-client.ts) so every
+# real TTL read got NOAUTH and fell into the fail-open branch above — 22/22
+# wakes on 2026-09-26. These cases prove the password reaches redis-cli via
+# REDISCLI_AUTH (never -a argv, which `ps` can read) and that REDIS_DB is
+# honored the same way the app does.
+
+# case 21a: REDIS_PASSWORD set — the stub only answers when it receives the
+# password via the REDISCLI_AUTH env var, and fails the case outright if it
+# ever sees a password on argv.
+printf '%s\n' \
+  '#!/bin/sh' \
+  'for a in "$@"; do' \
+  '  case "$a" in' \
+  '    -a|-a*) echo "PASSWORD-ON-ARGV" >&2; exit 2 ;;' \
+  '  esac' \
+  'done' \
+  'if [ "${REDISCLI_AUTH:-}" = "s3cr3t-pw" ]; then' \
+  '  echo 250' \
+  'else' \
+  '  echo "NOAUTH Authentication required." >&2' \
+  '  exit 1' \
+  'fi' \
+  > "$STUBDIR/redis-cli"
+chmod +x "$STUBDIR/redis-cli"
+
+OUT21A="$(PATH="$STUBDIR:$PATH" REDIS_URL="redis://127.0.0.1:6379/1" \
+  REDIS_PASSWORD="s3cr3t-pw" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT21A" | grep -q "wake-skipped:.*lock_ttl=250s remaining"; then
+  pass "case 21a: REDIS_PASSWORD reaches redis-cli (via REDISCLI_AUTH) and the TTL read succeeds"
+else
+  fail "case 21a: expected an authenticated TTL read (lock_ttl=250s remaining), got: $OUT21A"
+fi
+if printf '%s' "$OUT21A" | grep -qi "PASSWORD-ON-ARGV"; then
+  fail "case 21a: the password reached redis-cli as an argv flag (-a), visible in ps — must be REDISCLI_AUTH only"
+fi
+if printf '%s' "$OUT21A" | grep -qi "lock-read-unavailable"; then
+  fail "case 21a: still NOAUTH with REDIS_PASSWORD set — got: $OUT21A"
+fi
+
+# case 21b: no REDIS_PASSWORD configured — behaviour is unchanged from case
+# 20a (REDISCLI_AUTH must not be set at all, not even empty-vs-unset drift).
+printf '%s\n' \
+  '#!/bin/sh' \
+  'if [ -n "${REDISCLI_AUTH+x}" ]; then' \
+  '  echo "REDISCLI_AUTH-SET-WITH-NO-PASSWORD" >&2; exit 2' \
+  'fi' \
+  'echo 300' \
+  > "$STUBDIR/redis-cli"
+chmod +x "$STUBDIR/redis-cli"
+
+OUT21B="$(PATH="$STUBDIR:$PATH" REDIS_URL="redis://127.0.0.1:6379/1" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT21B" | grep -q "wake-skipped:.*lock_ttl=300s remaining"; then
+  pass "case 21b: with no REDIS_PASSWORD, the read still succeeds exactly as before (unchanged)"
+else
+  fail "case 21b: no-password behaviour changed — got: $OUT21B"
+fi
+
+# case 21c: REDIS_DB set — redis-cli must receive `-n <db>` the same way
+# ioredis' explicit `db` option always wins over the URL's own db suffix
+# (redis-client.ts F2/T-264).
+printf '%s\n' \
+  '#!/bin/sh' \
+  'db=""' \
+  'prev=""' \
+  'for a in "$@"; do' \
+  '  if [ "$prev" = "-n" ]; then db="$a"; fi' \
+  '  prev="$a"' \
+  'done' \
+  'if [ "$db" = "7" ]; then echo 120; else echo "NO -n 7 SEEN" >&2; exit 1; fi' \
+  > "$STUBDIR/redis-cli"
+chmod +x "$STUBDIR/redis-cli"
+
+OUT21C="$(PATH="$STUBDIR:$PATH" REDIS_URL="redis://127.0.0.1:6379/1" \
+  REDIS_DB="7" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT21C" | grep -q "wake-skipped:.*lock_ttl=120s remaining"; then
+  pass "case 21c: REDIS_DB is passed to redis-cli as -n, overriding the URL's own db segment"
+else
+  fail "case 21c: expected the -n 7 read to succeed (lock_ttl=120s remaining), got: $OUT21C"
+fi
+
+# case 21d: static guard — neither wake script nor the deploy script's
+# release_scraper_cycle_locks may ever pass a password as -a/--pass on argv
+# (grep excludes comment lines and this suite's own prose).
+if grep -vE '^\s*#' "$WAKE" | grep -qE "redis-cli[^|]*(-a |--pass)"; then
+  fail "case 21d: $WAKE passes a password to redis-cli via argv (-a/--pass) — must use REDISCLI_AUTH"
+else
+  pass "case 21d: $WAKE never passes a password to redis-cli via argv"
+fi
+if grep -vE '^\s*#' "$DEPLOY_SCRIPT" | grep -qE "redis-cli[^|]*(-a |--pass)"; then
+  fail "case 21d: $DEPLOY_SCRIPT passes a password to redis-cli via argv (-a/--pass) — must use REDISCLI_AUTH"
+else
+  pass "case 21d: $DEPLOY_SCRIPT never passes a password to redis-cli via argv"
+fi
+
+# case 21e (Tier A review MINOR): a non-numeric REDIS_DB must NEVER reach
+# redis-cli's argv — unquoted word-splitting on it would turn one config
+# value into extra, attacker-shaped arguments. The stub fails the case
+# outright if it ever sees a `-n` flag at all for this run; the wrapper must
+# fall back to the URL's own db (still succeeding, via the SAME real code
+# path as case 20a) rather than pass the bad value through.
+printf '%s\n' \
+  '#!/bin/sh' \
+  'for a in "$@"; do' \
+  '  case "$a" in -n) echo "SAW -n WITH A NON-NUMERIC REDIS_DB" >&2; exit 2 ;; esac' \
+  'done' \
+  'echo 90' \
+  > "$STUBDIR/redis-cli"
+chmod +x "$STUBDIR/redis-cli"
+
+OUT21E="$(PATH="$STUBDIR:$PATH" REDIS_URL="redis://127.0.0.1:6379/1" \
+  REDIS_DB="3; rm -rf /" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT21E" | grep -q "wake-skipped:.*lock_ttl=90s remaining" \
+   && printf '%s' "$OUT21E" | grep -qi "REDIS_DB='3; rm -rf /' is not a plain non-negative integer"; then
+  pass "case 21e: a non-numeric REDIS_DB is rejected with a named cause and never reaches redis-cli's argv"
+else
+  fail "case 21e: expected the bad REDIS_DB to be ignored (with a named WARN) and the read to still succeed, got: $OUT21E"
+fi
+
 rm -rf "$STUBDIR"
 
 if [ "$FAILED" -ne 0 ]; then

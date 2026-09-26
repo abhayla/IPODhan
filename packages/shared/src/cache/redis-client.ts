@@ -11,6 +11,42 @@ import { CacheError } from '../errors/repository-errors';
 let redisClient: Redis | null = null;
 
 /**
+ * #719 round 3 (Tier A review, parity finding): with a REDIS_URL set, this
+ * client used to pass ONLY `db` alongside the URL — REDIS_PASSWORD was wired
+ * up only on the REDIS_HOST branch below. A URL with no embedded password
+ * (staging: REDIS_URL, REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB kept
+ * as separate keys) then connected with NO password even when REDIS_PASSWORD
+ * was set — the app happened to stay authenticated on staging only because
+ * pm2 supplies a REDIS_URL that already embeds the password there.
+ *
+ * Pure function so the precedence rule is unit-testable without a real
+ * Redis: a password already embedded in the URL ALWAYS wins (same
+ * precedence the shell scripts use — a `redis-cli -u <url-with-password>`
+ * ignores REDISCLI_AUTH the same way). REDIS_PASSWORD is used ONLY to fill a
+ * password the URL does not carry. An unparsable URL falls through to
+ * REDIS_PASSWORD rather than silently dropping it — a malformed URL is
+ * already going to fail to connect, and dropping a configured password on
+ * top of that would trade one failure for a harder-to-diagnose one.
+ */
+export function resolveRedisUrlPassword(
+  redisUrl: string,
+  envPassword: string | undefined
+): string | undefined {
+  if (!envPassword) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(redisUrl);
+    if (parsed.password) {
+      return undefined;
+    }
+  } catch {
+    // Unparsable URL — let REDIS_PASSWORD apply; see comment above.
+  }
+  return envPassword;
+}
+
+/**
  * Initialize Redis client with configuration
  */
 export function getRedisClient(): Redis {
@@ -62,8 +98,15 @@ export function getRedisClient(): Redis {
       );
     }
 
+    const urlPassword = process.env.REDIS_URL
+      ? resolveRedisUrlPassword(process.env.REDIS_URL, process.env.REDIS_PASSWORD)
+      : undefined;
+
     redisClient = process.env.REDIS_URL
-      ? new Redis(process.env.REDIS_URL, sharedOptions)
+      ? new Redis(process.env.REDIS_URL, {
+          ...sharedOptions,
+          ...(urlPassword ? { password: urlPassword } : {}),
+        })
       : new Redis({
           host: process.env.REDIS_HOST || 'localhost',
           port: parseInt(process.env.REDIS_PORT || '6379'),

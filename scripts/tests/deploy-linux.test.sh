@@ -2922,6 +2922,84 @@ FAKERC30
     fail "case 30f: expected exactly 6 calls (GET/TTL/EVAL x2 keys), none carrying -t 3, no stray key/command — got: $RC_LOG_30F"
   fi
 
+  # 30g (#719 round 3, Tier A review MAJOR): the previous case-30 cases all
+  # use an env file with no REDIS_PASSWORD/REDIS_DB, so removing this fix's
+  # auth entirely (dropping REDISCLI_AUTH and the `-n <db>` override) still
+  # passed the whole suite (213 PASS) — the class this fix targets had NO
+  # case that could ever go red. This stub answers ONLY when it receives the
+  # password via REDISCLI_AUTH (never as -a/--pass argv, which `ps` on the
+  # same host can read) AND sees `-n 3` on argv; any other shape (auth
+  # missing, wrong db) it fails the way a real NOAUTH-refusing Redis would.
+  # Mutation-proof: reverting the fix (deleting the REDISCLI_AUTH= prefix or
+  # the $redis_db_opt expansion from any of the three redis-cli call sites)
+  # makes this stub return NOAUTH/"wrong db" on that call, GET/TTL/EVAL come
+  # back empty (the function's own `2>/dev/null || true`), and the case
+  # fails on "cycle locks released: 2" — proven by literally reverting each
+  # site locally and re-running (both go red; restored, both green).
+  ENVDIR30G="$(mktemp -d)"
+  printf 'REDIS_URL=redis://localhost:6379/1\nREDIS_PASSWORD=s3cr3t-pw\nREDIS_DB=3\n' \
+    > "$ENVDIR30G/scraper.env"
+  FAKEBIN30G="$(mktemp -d)"
+  RC_LOG_30G="$(mktemp)"
+  cat > "$FAKEBIN30G/redis-cli" <<'FAKERC30G'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$RC_LOG_30G"
+if [ "${REDISCLI_AUTH:-}" != "s3cr3t-pw" ]; then
+  echo "NOAUTH Authentication required." >&2
+  exit 1
+fi
+db=""; prev=""
+for a in "$@"; do
+  if [ "$prev" = "-n" ]; then db="$a"; fi
+  prev="$a"
+done
+if [ "$db" != "3" ]; then
+  echo "ERR wrong or missing -n <db>" >&2
+  exit 1
+fi
+cmd=""
+for a in "$@"; do
+  case "$a" in
+    GET|TTL|EVAL|DEL) if [ -z "$cmd" ]; then cmd="$a"; fi ;;
+  esac
+done
+case "$cmd" in
+  GET) echo "tok-xyz" ;;
+  TTL) echo "222" ;;
+  EVAL) echo "1" ;;
+  DEL) echo "DEL-CALLED-DIRECTLY" >&2; echo "1" ;;
+esac
+FAKERC30G
+  chmod +x "$FAKEBIN30G/redis-cli"
+
+  OUT30G="$(
+    (
+      log() { echo "LOG: $*"; }
+      warn() { echo "WARN: $*" >&2; }
+      DRY_RUN=0
+      SCRAPER_ENV_FILE="$ENVDIR30G/scraper.env"
+      export RC_LOG_30G="$RC_LOG_30G"
+      PATH="$FAKEBIN30G:$PATH"
+      eval "$RELEASE_LOCKS_FN_30"
+      release_scraper_cycle_locks
+    ) 2>&1
+  )"
+  if emit "$OUT30G" | grep -q 'cycle locks released: 2' \
+     && ! emit "$OUT30G" | grep -qi 'NOAUTH' \
+     && ! emit "$OUT30G" | grep -qi 'wrong or missing'; then
+    pass "case 30g: REDIS_PASSWORD reaches redis-cli via REDISCLI_AUTH and REDIS_DB reaches it as -n 3 (#719 round 3)"
+  else
+    fail "case 30g: expected an authenticated, db-scoped release (cycle locks released: 2), got: $OUT30G"
+  fi
+  RC_LINES_30G="$(grep -c . "$RC_LOG_30G" 2>/dev/null || echo 0)"
+  if [ "$RC_LINES_30G" -eq 6 ] && [ "$(grep -c -- '-n 3' "$RC_LOG_30G")" -eq 6 ]; then
+    pass "case 30g: every one of the 6 redis-cli calls carries -n 3"
+  else
+    fail "case 30g: expected all 6 calls to carry -n 3, got: $(cat "$RC_LOG_30G" 2>/dev/null)"
+  fi
+
+  rm -rf "$FAKEBIN30G" "$ENVDIR30G" "$RC_LOG_30G"
+
   rm -rf "$FAKEBIN30" "$ENVDIR30"
 fi
 
