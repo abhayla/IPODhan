@@ -300,7 +300,14 @@ fi
 # of them. There are two (setsid present / absent); a mutation that stripped the
 # ceiling from just one of them survived a "does a timeout exist anywhere" grep.
 JOB_LAUNCHES="$(grep -vE '^[[:space:]]*#' "$WAKE" | grep -cE 'cd "\$SCRAPER_DIR" && exec ' || true)"
-JOB_BOUNDED="$(grep -vE '^[[:space:]]*#' "$WAKE" | grep -cE 'cd "\$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after=[0-9]+ "\$SCRAPER_CEILING_SECONDS"' || true)"
+JOB_BOUNDED="$(grep -vE '^[[:space:]]*#' "$WAKE" | grep -cE 'cd "\$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after=([0-9]+|"\$SCRAPER_KILL_AFTER_SECONDS") "\$SCRAPER_CEILING_SECONDS"' || true)"
+# #624: the backstop became SCRAPER_KILL_AFTER_SECONDS so case 21e can prove it
+# in seconds; production never sets it, so its DEFAULT is what runs.
+if grep -qE 'SCRAPER_KILL_AFTER_SECONDS="\$\{SCRAPER_KILL_AFTER_SECONDS:-60\}"' "$WAKE"; then
+  pass "case 5b: the SIGKILL backstop defaults to 60s"
+else
+  fail "case 5b: the SIGKILL backstop default is not 60s - the deploy's --kill-timeout 75000 assumes it"
+fi
 if [ "${JOB_LAUNCHES:-0}" -gt 0 ] && [ "${JOB_LAUNCHES:-0}" = "${JOB_BOUNDED:-0}" ]; then
   pass "case 5: every job launch is wrapped in the external timeout ceiling (${JOB_BOUNDED}/${JOB_LAUNCHES})"
 else
@@ -1506,6 +1513,154 @@ else
 fi
 
 rm -rf "$STUBDIR"
+
+# --- Case 21 (#624): a deploy's signal reaches the job, which releases its lock
+# pm2 starts THIS wrapper (interpreter.json maps .sh to bash) and stops it with
+# SIGINT (pm2 5.x KILL_SIGNAL), then SIGKILL after kill_timeout. Before #624 the
+# wrapper ran the job as a FOREGROUND child: bash defers a SIGINT until that
+# child exits and forwards nothing, and `setsid` had already moved the job out
+# of the wrapper's process group, so a signal to the wrapper never reached the
+# job. The job's own release handler never ran; the lock stayed held.
+#
+# The stub job below stands in for node: it takes a fake lock (a file), and on
+# SIGTERM/SIGINT it records the signal and releases the lock before exiting,
+# exactly the contract scraper/src/index.ts's onSignal handlers implement.
+# The wrapper is started under `set -m` so it does NOT inherit SIGINT as
+# ignored (POSIX: a background job of a non-job-control shell starts with
+# SIGINT ignored, and a shell cannot trap a signal ignored on entry). pm2
+# spawns the wrapper from node, where SIGINT is not ignored, so `set -m`
+# reproduces the production disposition rather than masking anything.
+SIGDIR="$(mktemp -d)"
+cat > "$SIGDIR/job-lock.sh" <<'STUB'
+#!/bin/sh
+echo $$ > "$STUB_DIR/job.pid"
+echo held > "$STUB_DIR/lock"
+release() {
+  echo "RELEASED:$1" >> "$STUB_DIR/events"
+  rm -f "$STUB_DIR/lock"
+  exit 130
+}
+trap 'release TERM' TERM
+trap 'release INT' INT
+echo READY >> "$STUB_DIR/events"
+while :; do sleep 1 & wait $!; done
+STUB
+cat > "$SIGDIR/job-deaf.sh" <<'STUB'
+#!/bin/sh
+echo $$ > "$STUB_DIR/job.pid"
+echo held > "$STUB_DIR/lock"
+trap '' TERM INT
+echo READY >> "$STUB_DIR/events"
+while :; do sleep 1; done
+STUB
+chmod +x "$SIGDIR"/job-*.sh
+
+# run_signal_case <label> <job> <signal> <shell> -> sets SIG_OUT, SIG_RC, SIG_SECS
+run_signal_case() {
+  _d="$SIGDIR/$1"; mkdir -p "$_d"; : > "$_d/events"
+  set -m
+  STUB_DIR="$_d" DEPLOY_SLOT=prod SCRAPER_WAKE_FAKE_LOCK_TTL=free \
+    SCRAPER_WAKE_CMD="$SIGDIR/$2" SCRAPER_CEILING_SECONDS=40 SCRAPER_KILL_AFTER_SECONDS=3 \
+    "$4" "$WAKE" data > "$_d/wrapper.log" 2>&1 &
+  _wpid=$!
+  set +m
+  _i=0
+  while [ $_i -lt 100 ] && ! grep -q READY "$_d/events" 2>/dev/null; do sleep 0.1; _i=$((_i + 1)); done
+  _t0=$(date +%s)
+  kill -"$3" "$_wpid" 2>/dev/null
+  # Bound: the kill-after backstop (3 s) plus slack. The old wrapper waits for
+  # the 40 s ceiling instead, so it overruns this and the case goes red.
+  _i=0
+  while [ $_i -lt 100 ] && kill -0 "$_wpid" 2>/dev/null; do sleep 0.1; _i=$((_i + 1)); done
+  SIG_SECS=$(( $(date +%s) - _t0 ))
+  if kill -0 "$_wpid" 2>/dev/null; then
+    SIG_RC=timeout
+    kill -KILL "$_wpid" 2>/dev/null
+  else
+    wait "$_wpid" 2>/dev/null; SIG_RC=$?
+  fi
+  SIG_JOBPID="$(cat "$_d/job.pid" 2>/dev/null)"
+  sleep 1.5  # let the stub's in-flight `sleep 1` finish before the orphan check
+  SIG_JOB_ALIVE=no
+  if [ -n "$SIG_JOBPID" ] && kill -0 "$SIG_JOBPID" 2>/dev/null; then
+    SIG_JOB_ALIVE=yes
+    kill -KILL "$SIG_JOBPID" 2>/dev/null
+  fi
+  SIG_OUT="$(cat "$_d/wrapper.log")"
+  SIG_EVENTS="$(cat "$_d/events")"
+  SIG_LOCK_LEFT=no; [ -f "$_d/lock" ] && SIG_LOCK_LEFT=yes
+}
+
+for _sh in bash sh; do
+  for _sig in INT TERM; do
+    run_signal_case "fwd-$_sh-$_sig" job-lock.sh "$_sig" "$_sh"
+    _lbl="case 21 ($_sh, SIG$_sig to the wrapper, as pm2 stop/delete sends)"
+    if [ "$SIG_RC" = timeout ]; then
+      fail "$_lbl: the wrapper was still running ${SIG_SECS}s after the signal - it did not pass the signal on (#624)"
+    else
+      pass "$_lbl: the wrapper exited ${SIG_SECS}s after the signal (exit $SIG_RC)"
+    fi
+    if printf '%s' "$SIG_EVENTS" | grep -q '^RELEASED:'; then
+      pass "$_lbl: the job received a signal and ran its release ($(printf '%s' "$SIG_EVENTS" | grep '^RELEASED:'))"
+    else
+      fail "$_lbl: the job never ran its release handler - the lock would stay held for its whole TTL. events: $SIG_EVENTS"
+    fi
+    if [ "$SIG_LOCK_LEFT" = no ]; then
+      pass "$_lbl: the fake lock was released"
+    else
+      fail "$_lbl: the fake lock is still held after the wrapper exited"
+    fi
+    if [ "$SIG_JOB_ALIVE" = no ]; then
+      pass "$_lbl: no job process outlived the wrapper"
+    else
+      fail "$_lbl: job pid $SIG_JOBPID outlived the wrapper (orphan)"
+    fi
+    if printf '%s' "$SIG_OUT" | grep -qE "scraper-wake: wake-signalled: job=data .*SIG$_sig" \
+      && printf '%s' "$SIG_OUT" | grep -qE 'scraper-wake: wake-interrupted: job=data .*exit=130'; then
+      pass "$_lbl: the wrapper logged wake-signalled and wake-interrupted with the job's exit"
+    else
+      fail "$_lbl: expected wake-signalled + wake-interrupted lines, got: $SIG_OUT"
+    fi
+    if printf '%s' "$SIG_OUT" | grep -q 'scraper-wake: ceiling-tripped:'; then
+      fail "$_lbl: a deploy signal was reported as a ceiling trip"
+    else
+      pass "$_lbl: a deploy signal is not reported as a ceiling trip"
+    fi
+  done
+done
+
+# case 21e: a job that IGNORES the forwarded signal is still bounded - the
+# kill-after backstop kills it and the wrapper exits (pm2 is never left waiting
+# on a wedged job, and nothing is orphaned).
+run_signal_case deaf job-deaf.sh INT bash
+if [ "$SIG_RC" != timeout ] && [ "$SIG_JOB_ALIVE" = no ]; then
+  pass "case 21e: a job that ignores the signal is killed by the backstop; the wrapper exited ${SIG_SECS}s after SIGINT (exit $SIG_RC)"
+else
+  fail "case 21e: a signal-deaf job was not bounded (wrapper rc=$SIG_RC after ${SIG_SECS}s, job alive=$SIG_JOB_ALIVE). log: $SIG_OUT"
+fi
+if printf '%s' "$SIG_OUT" | grep -q 'scraper-wake: wake-interrupted: job=data'; then
+  pass "case 21e: the backstop kill is logged as wake-interrupted, not as a ceiling trip"
+else
+  fail "case 21e: expected a wake-interrupted line, got: $SIG_OUT"
+fi
+rm -rf "$SIGDIR"
+
+# case 21f: every scraper `pm2 start` in the deploy passes --no-treekill and a
+# --kill-timeout longer than the wrapper's 60 s backstop. Without --no-treekill
+# pm2 signals EVERY process in the tree directly (lib/TreeKill.js): node gets a
+# second copy of the signal via timeout and tsx, and SIGKILL lands on the whole
+# tree after the 1600 ms default - before a 5 s lock release can finish.
+PM2_SCRAPER_STARTS="$(awk '/\\$/ { sub(/\\$/, ""); buf = buf $0; next } { print buf $0; buf = "" }' "$DEPLOY_SCRIPT" \
+  | grep -F 'pm2 start' | grep -F 'scraper-wake.sh' | grep -vE '^\s*#|log "\[dry-run\]')"
+_n_total="$(printf '%s\n' "$PM2_SCRAPER_STARTS" | grep -c 'pm2 start')"
+_n_notree="$(printf '%s\n' "$PM2_SCRAPER_STARTS" | grep -c -- '--no-treekill')"
+_n_kt="$(printf '%s\n' "$PM2_SCRAPER_STARTS" | grep -cE -- '--kill-timeout (6[5-9]|[7-9][0-9])[0-9]{3}\b')"
+if [ "$_n_total" -gt 0 ] && [ "$_n_notree" -eq "$_n_total" ] && [ "$_n_kt" -eq "$_n_total" ]; then
+  pass "case 21f: all $_n_total scraper pm2 start(s) pass --no-treekill and a --kill-timeout above the 60 s backstop"
+else
+  fail "case 21f: of $_n_total scraper pm2 start(s), $_n_notree pass --no-treekill and $_n_kt pass a --kill-timeout of 65000-99999 ms"
+  printf '%s\n' "$PM2_SCRAPER_STARTS"
+fi
 
 if [ "$FAILED" -ne 0 ]; then
   echo "scraper-wake.test.sh: FAILED"

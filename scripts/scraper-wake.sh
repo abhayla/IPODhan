@@ -509,13 +509,65 @@ if command -v timeout >/dev/null 2>&1; then
   # for the documented semantics, not because I reproduced the orphan here.
   # The staging soak is where a real ceiling trip can confirm no python
   # process outlives it.
+  #
+  # A DEPLOY'S SIGNAL IS PASSED ON (#624). pm2 stops this wrapper with SIGINT
+  # (pm2 5.x KILL_SIGNAL) and SIGKILL after its kill_timeout. The job used to
+  # run as a FOREGROUND child here, and a shell defers a trapped-or-default
+  # SIGINT until its foreground child exits and forwards nothing; `setsid` has
+  # also moved the job out of this wrapper's process group, so no group signal
+  # reaches it either. The job's lock-release handler (scraper/src/index.ts
+  # onSignal) therefore never ran on a deploy, and its lock stayed held for
+  # the full TTL, so the next wakes logged wake-skipped.
+  #
+  # So the job runs in the BACKGROUND and the wrapper waits on it with traps
+  # set: on INT/TERM/HUP it sends ONE SIGTERM to `timeout` (the job's direct
+  # parent), which forwards it to the job and arms its own --kill-after
+  # backstop. Exactly one signal: a second copy would find the job's
+  # process.once listener already spent, and tsx's preflight handler exits the
+  # process when a signal arrives with no listener left - mid-release.
+  # The deploy starts this wrapper with pm2 --no-treekill, so pm2 signals this
+  # pid alone and this wrapper is the one place a stop is turned into a signal.
+  SCRAPER_KILL_AFTER_SECONDS="${SCRAPER_KILL_AFTER_SECONDS:-60}"
+  WAKE_SIGNAL=""
+  JOB_PID=""
+  on_wake_signal() {
+    if [ -n "$WAKE_SIGNAL" ]; then
+      return 0
+    fi
+    WAKE_SIGNAL="$1"
+    log "wake-signalled: job=$SCRAPER_JOB received SIG$1 (a pm2 stop/delete or restart) - forwarding ONE SIGTERM to the job so it releases lock_key=$SCRAPER_LOCK_KEY before exit; SIGKILL backstop in ${SCRAPER_KILL_AFTER_SECONDS}s. job_pid=${JOB_PID:-not-started}"
+    if [ -n "$JOB_PID" ]; then
+      kill -TERM "$JOB_PID" 2>/dev/null || true
+    fi
+  }
+  trap 'on_wake_signal INT' INT
+  trap 'on_wake_signal TERM' TERM
+  trap 'on_wake_signal HUP' HUP
   if command -v setsid >/dev/null 2>&1; then
-    ( cd "$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after=60 "$SCRAPER_CEILING_SECONDS" setsid "$@" )
+    ( cd "$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after="$SCRAPER_KILL_AFTER_SECONDS" "$SCRAPER_CEILING_SECONDS" setsid "$@" ) &
   else
     log "WARN no-setsid: setsid not on PATH - the ceiling signals only the direct child, so a python extractor grandchild may outlive a ceiling trip. Check for stray processes after any ceiling-tripped line."
-    ( cd "$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after=60 "$SCRAPER_CEILING_SECONDS" "$@" )
+    ( cd "$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after="$SCRAPER_KILL_AFTER_SECONDS" "$SCRAPER_CEILING_SECONDS" "$@" ) &
   fi
-  STATUS=$?
+  JOB_PID=$!
+  # A signal that landed between the traps and the fork has nothing to forward
+  # to yet; forward it now.
+  if [ -n "$WAKE_SIGNAL" ]; then
+    kill -TERM "$JOB_PID" 2>/dev/null || true
+  fi
+  # `wait` returns early (status > 128) when a trapped signal arrives; keep
+  # waiting until the job has really exited, so its true status is read and
+  # no child is left behind. Bounded: once a signal is forwarded, timeout's
+  # --kill-after ends the job within SCRAPER_KILL_AFTER_SECONDS.
+  while :; do
+    wait "$JOB_PID"
+    STATUS=$?
+    if kill -0 "$JOB_PID" 2>/dev/null; then
+      continue
+    fi
+    break
+  done
+  trap - INT TERM HUP
 else
   # REFUSE, do not run unbounded. An earlier version ran the cycle anyway with
   # a warning, which quietly reintroduced exactly what this slice removes: a
@@ -529,6 +581,15 @@ else
 fi
 
 ELAPSED=$(( $(date -u '+%s') - STARTED_AT ))
+
+if [ -n "$WAKE_SIGNAL" ]; then
+  # A stop from outside, not the ceiling and not a crash: its own token, so
+  # scripts/ops/wake-delta.mjs never counts a deploy as a failed wake. Checked
+  # BEFORE the 124 branch: if the job ignored the forwarded SIGTERM, timeout's
+  # --kill-after SIGKILL makes timeout itself exit 124, which is not a ceiling.
+  log "wake-interrupted: job=$SCRAPER_JOB was stopped by SIG$WAKE_SIGNAL, forwarded as SIGTERM. elapsed=${ELAPSED}s lock_key=$SCRAPER_LOCK_KEY exit=$STATUS"
+  exit "$STATUS"
+fi
 
 if [ "$STATUS" -eq 124 ]; then
   # THE CEILING LINE. Distinguishable from both a clean finish and a crash, by
