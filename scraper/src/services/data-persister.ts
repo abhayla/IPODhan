@@ -2602,6 +2602,10 @@ export async function recordDiscoveredLeadManagers(
         andOp(
           eqOp(fieldSourcesTable.ipoId, ipoId),
           eqOp(fieldSourcesTable.tableName, 'ipos'),
+          // #1074: rowKey defaults to '' for every row-scoped field_sources write (matching
+          // unique_field_source_per_ipo below) — filtered explicitly so this lookup can never
+          // match a future row-keyed provenance row for the same (ipo, table, field).
+          eqOp(fieldSourcesTable.rowKey, ''),
           eqOp(fieldSourcesTable.fieldName, 'leadManagers')
         )
       )
@@ -2623,9 +2627,19 @@ export async function recordDiscoveredLeadManagers(
 
     await tx
       .insert(fieldSourcesTable)
-      .values({ ipoId, tableName: 'ipos', fieldName: 'leadManagers', ...provenanceRow })
+      .values({ ipoId, tableName: 'ipos', rowKey: '', fieldName: 'leadManagers', ...provenanceRow })
       .onConflictDoUpdate({
-        target: [fieldSourcesTable.ipoId, fieldSourcesTable.tableName, fieldSourcesTable.fieldName],
+        // #1074: the only unique index on field_sources is unique_field_source_per_ipo on
+        // (ipo_id, table_name, row_key, field_name) — a 3-column target here (missing rowKey)
+        // has no matching arbiter index, so Postgres raises 42P10 on every write and the whole
+        // transaction (including the ipos.lead_managers update above) rolls back. Same class as
+        // ipo-repository.ts's merge-duplicate-ipo fix and corrigendum-suggestions.ts.
+        target: [
+          fieldSourcesTable.ipoId,
+          fieldSourcesTable.tableName,
+          fieldSourcesTable.rowKey,
+          fieldSourcesTable.fieldName,
+        ],
         set: {
           ...provenanceRow,
           // #1072 round 2 (same class as #755/#753/#1065/#1068): a plain object here REPLACES

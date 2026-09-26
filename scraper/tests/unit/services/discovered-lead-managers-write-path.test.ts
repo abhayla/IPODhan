@@ -51,6 +51,8 @@ function fakeTransactionalDb(opts: {
 }) {
   const fieldSourcesRows: Array<Record<string, unknown>> = [];
   const insertCalls: Array<Record<string, unknown>> = [];
+  const onConflictArgs: Array<{ target: unknown[]; set: Record<string, unknown> }> = [];
+  const selectWhereArgs: unknown[] = [];
 
   const tx = {
     update: () => ({
@@ -66,16 +68,20 @@ function fakeTransactionalDb(opts: {
     }),
     select: () => ({
       from: () => ({
-        where: () => ({
-          limit: async () => (opts.previousSource ? [{ source: opts.previousSource }] : []),
-        }),
+        where: (cond: unknown) => {
+          selectWhereArgs.push(cond);
+          return {
+            limit: async () => (opts.previousSource ? [{ source: opts.previousSource }] : []),
+          };
+        },
       }),
     }),
     insert: () => ({
       values: (v: Record<string, unknown>) => {
         insertCalls.push(v);
         return {
-          onConflictDoUpdate: async (arg: { set: Record<string, unknown> }) => {
+          onConflictDoUpdate: async (arg: { target: unknown[]; set: Record<string, unknown> }) => {
+            onConflictArgs.push(arg);
             fieldSourcesRows.push({ ...v, ...arg.set });
           },
         };
@@ -90,7 +96,7 @@ function fakeTransactionalDb(opts: {
     insert: tx.insert,
   };
 
-  return { dbLike, fieldSourcesRows, insertCalls };
+  return { dbLike, fieldSourcesRows, insertCalls, onConflictArgs, selectWhereArgs };
 }
 
 /**
@@ -279,8 +285,8 @@ describe('T-513 / #419 — recordDiscoveredLeadManagers invalidates the IPO cach
  * returns `null` (this write carries no source-key binding), and in that case the existing column
  * value MUST be kept, never overwritten with NULL.
  *
- * Note: this ON CONFLICT target is 3 columns (ipoId, tableName, fieldName) rather than the
- * 4-column unique index (missing rowKey) — tracked separately as #1074; NOT this fix's target.
+ * Note: the ON CONFLICT target's column count is fixed by #1074 (see the describe block below);
+ * NOT this fix's target.
  */
 describe('recordDiscoveredLeadManagers — field_sources dataLineage MERGE, never replace (MAJOR 2, #1072 round 2)', () => {
   beforeEach(() => {
@@ -333,5 +339,83 @@ describe('recordDiscoveredLeadManagers — field_sources dataLineage MERGE, neve
     expect(lineage).not.toBeNull();
     expect(sqlText(lineage)).toMatch(/"field_sources"\."data_lineage"/i);
     expect(sqlText(lineage)).not.toMatch(/null::jsonb/i);
+  });
+});
+
+/**
+ * #1074 — the only unique index on `field_sources` is `unique_field_source_per_ipo`, on
+ * (ipo_id, table_name, row_key, field_name) (packages/shared/src/db/schema.ts). Postgres 42P10
+ * ("there is no unique or exclusion constraint matching the ON CONFLICT specification") fires
+ * when an `onConflictDoUpdate` target names a column list that does not exactly match an
+ * existing unique index/constraint — a 3-column target (ipoId, tableName, fieldName) is such a
+ * list. Real evidence (ipodhan_staging pm2 logs, 2026-09-26): 18 "Failed to record discovered
+ * lead managers (non-fatal)" warnings for 9 IPOs; 7 of them
+ * (axiom-gas-engineering-ltd, bench-mark-infotech-services-ltd,
+ * coreintegra-consulting-services-ltd, green-asia-impex-ltd, himalayan-solar-ltd,
+ * pooja-logistics-ltd, spectraa-technology-solutions-ltd) have `lead_managers` NULL and no
+ * `field_sources` provenance row — the transaction rolled back on 42P10 every time. The insert
+ * ALSO omitted `rowKey` from `.values()`, which is safe only because the column defaults to ''
+ * (matching every other row-scoped `field_sources` writer, e.g. `corrigendum-suggestions.ts`),
+ * but is asserted explicitly here so a future column-default change cannot silently reintroduce
+ * this class.
+ */
+describe('recordDiscoveredLeadManagers — field_sources ON CONFLICT target matches the unique index (#1074)', () => {
+  function sqlText(expr: unknown): { sql: string; params: unknown[] } {
+    const q = new PgDialect().sqlToQuery(expr as SQL);
+    return { sql: q.sql, params: q.params };
+  }
+
+  it("upserts with an ON CONFLICT target of exactly [ipoId, tableName, rowKey, fieldName] — matching unique_field_source_per_ipo", async () => {
+    const { dbLike, onConflictArgs } = fakeTransactionalDb({ simulatedStoredLeadManagers: null });
+    const ipoRepository = fakeIpoRepository();
+
+    await recordDiscoveredLeadManagers(
+      ipoRepository as never,
+      'ipo-1',
+      ['NSE Broker Securities Limited'],
+      'NSE',
+      dbLike as never
+    );
+
+    expect(onConflictArgs).toHaveLength(1);
+    const target = onConflictArgs[0]!.target as Array<{ name?: string }>;
+    expect(target.map((c) => c.name)).toEqual(['ipo_id', 'table_name', 'row_key', 'field_name']);
+  });
+
+  it("passes rowKey: '' explicitly on the insert values, matching every other row-scoped field_sources writer", async () => {
+    const { dbLike, insertCalls } = fakeTransactionalDb({ simulatedStoredLeadManagers: null });
+    const ipoRepository = fakeIpoRepository();
+
+    await recordDiscoveredLeadManagers(
+      ipoRepository as never,
+      'ipo-1',
+      ['NSE Broker Securities Limited'],
+      'NSE',
+      dbLike as never
+    );
+
+    expect(insertCalls).toHaveLength(1);
+    expect(insertCalls[0]).toMatchObject({ rowKey: '' });
+  });
+
+  it("filters the previous-provenance-row lookup by rowKey = '' (not just ipoId/tableName/fieldName)", async () => {
+    const { dbLike, selectWhereArgs } = fakeTransactionalDb({
+      simulatedStoredLeadManagers: null,
+      previousSource: 'MONEYCONTROL',
+    });
+    const ipoRepository = fakeIpoRepository();
+
+    await recordDiscoveredLeadManagers(
+      ipoRepository as never,
+      'ipo-1',
+      ['NSE Broker Securities Limited'],
+      'NSE',
+      dbLike as never
+    );
+
+    expect(selectWhereArgs).toHaveLength(1);
+    const { sql, params } = sqlText(selectWhereArgs[0]);
+    expect(sql).toMatch(/"row_key"/i);
+    expect(params).toContain('');
   });
 });

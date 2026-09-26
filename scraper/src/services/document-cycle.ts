@@ -25,6 +25,7 @@ import { db, getRedisClient } from '@ipodhan/shared';
 import { DocumentRepository, DocumentFetchStateRepository, IPORepository, IpoPipelineStepsRepository, IpoFieldPlanRepository } from '@ipodhan/shared';
 import { plantFieldPlanForIpo } from './field-plan-planting.js';
 import { recordBseDiscoveryMetadata, recordDocumentSourceHints, recordDiscoveredLeadManagers } from './data-persister.js';
+import { describeDbCause } from '@ipodhan/shared/errors/db-cause';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import logger from '../utils/logger.js';
 import { runStoredZipExpansionPass } from './stored-zip-expansion-pass.js';
@@ -1742,8 +1743,18 @@ export async function runDocumentCycle(
         try {
           await recordDiscoveredLeadManagers(ipoRepository, ipo.id, result.leadManagers, result.leadManagerSource);
         } catch (error) {
+          // #1074 (signal-ownership.md R6): log the Postgres cause, not just the wrapper's
+          // generic "Failed query" message — this catch swallowed a 42P10 on every call for
+          // 18 warnings across 9 IPOs before the cause was visible in any log line.
+          const cause = describeDbCause(error);
           logger.warn(
-            { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+            {
+              ipoId: ipo.id,
+              error: error instanceof Error ? error.message : String(error),
+              pgCode: cause.code,
+              pgConstraint: cause.constraint,
+              pgDetail: cause.detail,
+            },
             'Failed to record discovered lead managers (non-fatal)'
           );
         }
