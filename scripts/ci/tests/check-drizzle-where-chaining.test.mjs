@@ -168,7 +168,6 @@ test('FIXED shapes (current working tree) are clean (GREEN)', () => {
       join('packages', 'shared', 'src', 'repositories', 'registrar-repository.ts'),
       join('web', 'lib', 'repositories', 'registrar-repository.ts'),
       join('packages', 'shared', 'src', 'repositories', 'market-holiday-repository.ts'),
-      join('scraper', 'scripts', 'backfill-ipo-reviews.ts'),
       join('scraper', 'scripts', 'backfill-peer-companies.ts'),
       join('scraper', 'scripts', 'backfill-objectives.ts'),
       join('scraper', 'scripts', 'backfill-anchor-investors.ts'),
