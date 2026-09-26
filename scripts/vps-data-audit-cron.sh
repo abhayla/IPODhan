@@ -33,7 +33,13 @@
 #                                            calendar vs our site -- catches an
 #                                            IPO the market lists that we never
 #                                            created; non-fatal, HTML-scrape dependency)
-# All of 1-3, 5 and 6 are strictly read-only: SELECT-only SQL and GET requests.
+#   7. audit-alert-channel.mjs --gate      (#195 J1: weekly signal:noise on the
+#                                            Notifier's own delivery log --
+#                                            dominant-type/P1-share/self-
+#                                            comparison; non-fatal on merge --
+#                                            see the step's own comment for why)
+# All of 1-3, 5, 6 and 7 are strictly read-only: SELECT-only SQL, GET requests,
+# and a local file read of the Notifier's delivery log.
 # Step 4 WRITES to GitHub (issues) but never to the database, Redis, or the
 # local filesystem outside this script's state dir.
 #
@@ -263,8 +269,23 @@ run_audit() {
   # chittorgarh.com HTML-shape change can never turn a green data-integrity
   # night into a failed cron run; its own exit code (0/1/3/2) is still
   # printed to the log for a human to read.
-  echo "--- [6/6] audit-reverse-sweep --gate (external market calendar vs our site, #187) ---"
+  echo "--- [6/7] audit-reverse-sweep --gate (external market calendar vs our site, #187) ---"
   BASE_URL="https://ipodhan.com" node scripts/audit-reverse-sweep.mjs --gate || echo "NON-FATAL: audit-reverse-sweep exited $? (see docs/reviews/detection-checks.json:g_reverse_sweep)"
+
+  # #195 J1: alert-channel signal:noise, weekly. Reads the Notifier's own
+  # delivery log directly off this box's local disk (this cron already runs
+  # on the SAME host as the Notifier, 72.61.240.224 — no SSH, no copy).
+  # WIRED NON-FATAL: this is a brand-new check running for the first time
+  # against real production alert history, and it is EXPECTED to be red on
+  # night one (the trailing-7-day P1 share measured 2026-09-26 was 32.1%,
+  # over the 20% cap — a real, pre-existing condition, not a bug in the
+  # check). Per the defect-fix contract, a new check must prove itself on
+  # real data before it can turn the nightly audit red; --gate is kept so a
+  # future promotion to fatal is a one-line flip once the P1 share is back
+  # under the cap. `|| true` is deliberate here, same shape as step 6.
+  echo "--- [7/7] audit-alert-channel --gate (#195 J1: alert signal:noise, weekly) ---"
+  DELIVERY_LOG_PATH="${DATA_AUDIT_DELIVERY_LOG:-/root/notifier/state/delivery-log.jsonl}" \
+    node scripts/audit-alert-channel.mjs --gate || echo "NON-FATAL: audit-alert-channel exited $? (see #195)"
 
   echo "=== exit code: $failed ==="
   return "$failed"
