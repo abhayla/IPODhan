@@ -25,12 +25,20 @@ export const ScrapedIPOSchema = z.object({
     (val) => (val === 0 ? undefined : val),
     z.number().positive('Price range max must be positive').optional()
   ),
-  openDate: z.string().refine(
-    (date) => !isNaN(Date.parse(date)),
+  // #963: was required (non-optional) — NSE always had a real date column
+  // until it did not. NSE can list an IPO before its dates are fixed
+  // (issueStartDate/issueEndDate blank); the old code fabricated today's date
+  // to satisfy this required-string constraint, which then read as a real
+  // open/close date downstream. Optional here for the same reason W-116
+  // (Moneycontrol) and W-116b (Chittorgarh) already are below: a source with
+  // no real value for the field must omit it, never invent one to pass
+  // validation (absence-written-as-a-sentinel-value class).
+  openDate: z.string().optional().refine(
+    (date) => !date || !isNaN(Date.parse(date)),
     'Open date must be a valid ISO 8601 date string'
   ),
-  closeDate: z.string().refine(
-    (date) => !isNaN(Date.parse(date)),
+  closeDate: z.string().optional().refine(
+    (date) => !date || !isNaN(Date.parse(date)),
     'Close date must be a valid ISO 8601 date string'
   ),
   // W-145: OPTIONAL. A source that cannot see which board an issue lists on
@@ -97,7 +105,15 @@ export const ScrapedIPOSchema = z.object({
     recordOpenDate: z.string().nullable().optional(),
   })).optional()
 }).refine(
-  (data) => new Date(data.closeDate) >= new Date(data.openDate),
+  (data) => {
+    // #963: openDate/closeDate are now optional (a source can have neither).
+    // Only compare when both are actually present — an absent date is not a
+    // date-ordering violation.
+    if (data.openDate === undefined || data.closeDate === undefined) {
+      return true;
+    }
+    return new Date(data.closeDate) >= new Date(data.openDate);
+  },
   {
     message: 'Close date must be after or equal to open date',
     path: ['closeDate']

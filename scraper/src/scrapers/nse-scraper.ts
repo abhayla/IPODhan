@@ -168,9 +168,16 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
           // as an argument — page.evaluate() cannot import across the
           // browser-context serialization boundary, so the value crosses as
           // a parameter instead of being recomputed inline.
-          const parseNSEDate = (dateStr: string): string => {
+          // #963: a blank/unparseable date used to default to `today`
+          // (fabricating a real-looking open/close date the page never
+          // showed). Returns undefined instead — absent, not invented
+          // (absence-written-as-a-sentinel-value class).
+          const parseNSEDate = (dateStr: string): string | undefined => {
             try {
               const cleaned = dateStr.trim();
+              if (!cleaned) {
+                return undefined;
+              }
 
               // Handle DD-MM-YYYY format
               if (cleaned.match(/^\d{2}-\d{2}-\d{4}$/)) {
@@ -195,10 +202,9 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
                 return date.toISOString().split('T')[0];
               }
 
-              // Default to current date if parsing fails
-              return today;
+              return undefined;
             } catch (error) {
-              return today;
+              return undefined;
             }
           };
 
@@ -259,8 +265,10 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
             } else if (statusUpper.includes('UPCOMING') || statusUpper.includes('FORTHCOMING')) {
               status = 'UPCOMING';
             }
-          } else {
-            // Fallback: determine from dates
+          } else if (openDate !== undefined && closeDate !== undefined) {
+            // Fallback: determine from dates — #963: only when both dates are
+            // real (known) values; a missing date must never be compared as
+            // if it were a real one.
             if (listingDate && today >= listingDate) {
               status = 'LISTED';
             } else if (today >= openDate && today <= closeDate) {
@@ -269,6 +277,8 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
               status = 'CLOSED';
             }
           }
+          // else: no status text AND no known dates — leave the UPCOMING
+          // default rather than asserting a state we cannot see (#963).
 
           // Parse price range (Phase 5 Fix: Ensure price band data is captured)
           const priceRange = parsePriceRange(priceRangeStr);
