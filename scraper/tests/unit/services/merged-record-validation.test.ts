@@ -187,13 +187,20 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     expect(conflict).toMatchObject({
       ipoId: 'ipo-id',
       tableName: 'ipos',
-      fieldName: 'priceBand',
+      // F-181/#818 class: `fieldName` must be a real `ipos` column
+      // (`fieldsToDrop[0]`, the same field `findByField` above was queried
+      // with) - `error.field` ('priceBand') is validateIPOData's own grouping
+      // label, never a column, so the admin queue could not resolve the row.
+      fieldName: 'priceRangeMin',
       source1: 'NSE',
       source2: 'BSE',
       severity: 'CRITICAL',
       resolutionReason: 'MERGED_RECORD_VALIDATION:PRICE_BAND_TOO_WIDE_MAINBOARD',
     });
     expect(conflict.source1).not.toBe(conflict.source2);
+    // value1/value2 carry the owner column's stored-vs-rejected values.
+    expect(JSON.parse(conflict.value1).priceRangeMin).toBe(100);
+    expect(JSON.parse(conflict.value2).priceRangeMin).toBe(100);
   });
 
   it('(b) writes a 35% band on an SME row (within the 40% SME limit)', async () => {
@@ -417,7 +424,7 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
 
     expect(upsertConflictMock).toHaveBeenCalledTimes(1);
     expect(upsertConflictMock.mock.calls[0][0]).toMatchObject({
-      fieldName: 'priceBand',
+      fieldName: 'priceRangeMin',
       severity: 'CRITICAL',
       resolutionReason: 'MERGED_RECORD_VALIDATION:PRICE_BAND_TOO_WIDE_MAINBOARD',
     });
@@ -512,13 +519,18 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     expect(upsertConflictMock).toHaveBeenCalledTimes(1);
     const conflict = upsertConflictMock.mock.calls[0][0];
     expect(conflict).toMatchObject({
-      fieldName: 'lotEconomics',
+      // F-181/#818 class: 'lotEconomics' (error.field, validateIPOData's own
+      // grouping label) is not an `ipos` column - fieldName is the real
+      // owner column (fieldsToDrop[0]) so the admin queue can resolve it.
+      fieldName: 'lotSize',
       source1: 'NSE',
       source2: 'BSE',
       severity: 'CRITICAL',
       resolutionReason: 'MERGED_RECORD_VALIDATION:LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD',
     });
     expect(conflict.source1).not.toBe(conflict.source2);
+    expect(JSON.parse(conflict.value1).lotSize).toBe(84); // stored (existingRow default)
+    expect(JSON.parse(conflict.value2).lotSize).toBe(100); // rejected (incoming)
   });
 
   it('(o) #721: an impossible lot/band pair for a stored SME segment is dropped', async () => {
@@ -551,10 +563,12 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     expect(upsertConflictMock).toHaveBeenCalledTimes(1);
     const conflict = upsertConflictMock.mock.calls[0][0];
     expect(conflict).toMatchObject({
-      fieldName: 'lotEconomics',
+      fieldName: 'lotSize',
       severity: 'CRITICAL',
       resolutionReason: 'MERGED_RECORD_VALIDATION:LOT_ECONOMICS_IMPOSSIBLE_SME',
     });
+    expect(JSON.parse(conflict.value1).lotSize).toBe(1200); // stored
+    expect(JSON.parse(conflict.value2).lotSize).toBe(10); // rejected
   });
 
   it('(m) stored owner equals the incoming source: no conflict written, field still dropped, warn logged', async () => {

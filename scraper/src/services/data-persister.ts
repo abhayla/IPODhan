@@ -480,7 +480,13 @@ async function applyMergedRecordValidation(
         await getDataConflictsRepository().upsertConflict({
           ipoId: existingIPO.id,
           tableName: 'ipos',
-          fieldName: error.field,
+          // F-181/#818 class: `error.field` is validateIPOData's own grouping
+          // label ('lotEconomics', 'priceBand') - never an `ipos` column, so
+          // the admin queue can't resolve the row against a real field. Use
+          // `ownerField` (fieldsToDrop[0], the actual column this rule drops
+          // and the same name `findByField` above was already queried with)
+          // instead; the rule name itself still lives in `resolutionReason`.
+          fieldName: ownerField,
           source1: ownerRecord.source as any,
           value1: JSON.stringify(keptValues),
           source2: source as any,
