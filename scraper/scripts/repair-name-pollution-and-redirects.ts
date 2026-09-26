@@ -117,10 +117,14 @@ export async function mergeLoser(
   repo: MergeRepo,
   canonicalId: string,
   loserId: string,
-  opts: { apply: boolean }
+  opts: { apply: boolean; allowProd?: boolean }
 ): Promise<LoserOutcome> {
   try {
-    await repo.mergeDuplicateInto(canonicalId, loserId, { apply: opts.apply, mergedBy: MERGED_BY });
+    await repo.mergeDuplicateInto(canonicalId, loserId, {
+      apply: opts.apply,
+      mergedBy: MERGED_BY,
+      allowProd: opts.allowProd,
+    });
     return { outcome: opts.apply ? 'merged' : 'planned' };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -165,7 +169,7 @@ export interface RepairCounts {
 export async function runNamePollutionRepair(
   dbx: Db,
   repo: RepairRepo,
-  opts: { apply: boolean; log?: (line: string) => void }
+  opts: { apply: boolean; allowProd?: boolean; log?: (line: string) => void }
 ): Promise<RepairCounts> {
   const log = opts.log ?? ((l: string) => console.log(l));
   const rows = (await dbx
@@ -231,6 +235,18 @@ export async function runNamePollutionRepair(
 
     log(`\ngroup "${key}" | canonical=${canonical.companyName} (${canonical.id}) | losers=${losers.length}`);
 
+    // Order note (#1051 finding 2): the canonical rename below runs BEFORE the loser merges in
+    // this group. An unexpected (non-refusal) throw from a later mergeLoser call in the SAME
+    // group therefore leaves that group half-applied for this run. This is safe by construction,
+    // not by luck: the script is idempotent and re-runnable (see file header) — it recomputes
+    // every group fresh from `ipos` on each run, so a re-run finds the canonical already clean
+    // (folds into `alreadyClean`) and the group still has `bucket.length > 1` (the unmerged
+    // loser is still present), which retries exactly the merge that threw. The only case this
+    // does NOT self-heal is `--allow-prod` reaching `openRepairDb` but not `mergeDuplicateInto`
+    // (the class this round fixes) — with that threaded through consistently, the remaining
+    // "unexpected" throws are real failures (connection loss, a broken merge) that should stop
+    // the whole run regardless of ordering, exactly as every other repair tool in this codebase
+    // behaves on a rethrown error.
     if (canonical.companyName !== cleanName || canonical.slug !== cleanSlug) {
       const oldSlug = canonical.slug;
       log(`  RENAME canonical: "${canonical.companyName}" -> "${cleanName}" | slug ${oldSlug} -> ${cleanSlug}`);
@@ -258,7 +274,7 @@ export async function runNamePollutionRepair(
         c.skippedChildRows++;
         continue;
       }
-      const out = await mergeLoser(repo, canonical.id, loser.id, { apply: opts.apply });
+      const out = await mergeLoser(repo, canonical.id, loser.id, { apply: opts.apply, allowProd: opts.allowProd });
       if (out.outcome === 'refused') {
         log(`  REFUSED loser "${loser.companyName}" (${loser.slug}, ${loser.id}) -> canonical ${canonical.id}: ${out.reason}`);
         c.refused.push({ loserId: loser.id, slug: loser.slug, reason: out.reason });
@@ -277,9 +293,10 @@ async function main() {
   console.log(`NAME-POLLUTION + REDIRECT REPAIR (T-278 P3-1 recreate) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
 
+  const ALLOW_PROD = process.argv.includes('--allow-prod');
   const { dbName } = await openRepairDb(db, {
     apply: APPLY,
-    allowProd: process.argv.includes('--allow-prod'),
+    allowProd: ALLOW_PROD,
     toolName: 'repair-name-pollution-and-redirects',
   });
   // mergeDuplicateInto / renameSlugWithRedirect invalidate cache internally, so the guard decides
@@ -292,7 +309,7 @@ async function main() {
   const redis = guard.blocked ? (createNoopRedisClient() as unknown as ReturnType<typeof getRedisClient>) : getRedisClient();
   const repo = new IPORepository(db, redis);
 
-  const c = await runNamePollutionRepair(db, repo, { apply: APPLY });
+  const c = await runNamePollutionRepair(db, repo, { apply: APPLY, allowProd: ALLOW_PROD });
 
   console.log('\n' + '='.repeat(80));
   console.log(

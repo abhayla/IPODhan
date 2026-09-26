@@ -16,20 +16,30 @@
  *           ALREADY_LISTED_BSE | DEBT_ISSUER_BSE | GENUINE_IPO (CG universe or
  *           fresh NSE listing) | NO_EVIDENCE.
  *
- * The script is READ-ONLY, always (#1051). `--depollute delete|reclass` prints the
- * rows each mode WOULD act on (proven-not-IPO verdicts: ALREADY_LISTED /
- * ALREADY_LISTED_BSE / CORP_ACTION_BSE_* / DEBT_ISSUER_BSE; reclass only where a
- * type is derivable) and writes nothing; `--apply` is refused. Why: spec OD-116
- * says an `ipos` row is never deleted (a wrong row is HIDDEN with a reason
- * through the OD-8/OD-53 freeze, keeping its identifiers so the scraper does
- * not recreate it), and the only sanctioned way to remove a row is the gated,
- * logged, undoable merge `IPORepository.mergeDuplicateInto` (section 2.3.3.3,
- * OD-38, OD-92). The raw `delete` and `update` this script used to run bypassed
- * both. NO_EVIDENCE and GENUINE_IPO* rows are never listed.
+ * The script is READ-ONLY for DELETE, always (#1051). `--depollute delete` prints the
+ * rows that mode WOULD act on (proven-not-IPO verdicts: ALREADY_LISTED /
+ * ALREADY_LISTED_BSE / CORP_ACTION_BSE_* / DEBT_ISSUER_BSE) and writes nothing;
+ * `--apply` is refused for delete. Why: spec OD-116 says an `ipos` row is never
+ * deleted (a wrong row is HIDDEN with a reason through the OD-8/OD-53 freeze,
+ * keeping its identifiers so the scraper does not recreate it), and the only
+ * sanctioned way to remove a row is the gated, logged, undoable merge
+ * `IPORepository.mergeDuplicateInto` (section 2.3.3.3, OD-38, OD-92). The raw
+ * `delete` this script used to run bypassed that.
+ *
+ * `--depollute reclass --apply` DOES write: it is a plain `update ipos set
+ * offering_type = <derived>` for rows where a type is derivable (CORP_ACTION_BSE_*
+ * -> its mapped type, DEBT_ISSUER_BSE -> NCD). This is OUTSIDE the #1051 class (it
+ * never merges or removes an `ipos` row — it corrects one mis-typed column on a row
+ * that stays exactly where it is), and was refused by an earlier, over-broad round
+ * of this fix by mistake. It carries its own production guard (`--allow-prod`,
+ * same convention as every other repair tool) since it still writes `ipos`.
+ * NO_EVIDENCE and GENUINE_IPO* rows are never listed or touched by either mode.
  *
  * Env: DATABASE_HOST/PORT/USER/PASSWORD/NAME (tunnel). Run:
  *   npx tsx scripts/audit/classify-suspect-ipos.ts [--out suspects.tsv]
- *   npx tsx scripts/audit/classify-suspect-ipos.ts --depollute delete|reclass   # report only
+ *   npx tsx scripts/audit/classify-suspect-ipos.ts --depollute delete            # report only, --apply refused
+ *   npx tsx scripts/audit/classify-suspect-ipos.ts --depollute reclass           # report only (dry run)
+ *   npx tsx scripts/audit/classify-suspect-ipos.ts --depollute reclass --apply [--allow-prod]  # writes offering_type
  */
 import { Client } from 'pg';
 import { writeFileSync } from 'fs';
@@ -214,15 +224,17 @@ async function main() {
   for (const [v, n] of Object.entries(tally).sort((a, b) => b[1] - a[1])) console.log(`  ${v.padEnd(30)} ${n}`);
   if (outPath) { writeFileSync(outPath, lines.join('\n')); console.log(`\nTSV written: ${outPath}`); }
 
-  // ---- De-pollution REPORT (read-only; #1051, OD-116) ----
+  // ---- De-pollution: delete is REPORT-ONLY (#1051, OD-116); reclass may --apply (outside the class) ----
   const depArg = process.argv.indexOf('--depollute');
   if (depArg === -1) return;
   const mode = process.argv[depArg + 1];
   if (mode !== 'delete' && mode !== 'reclass') throw new Error(`--depollute needs delete|reclass, got: ${mode}`);
-  if (process.argv.includes('--apply')) {
+  const APPLY = process.argv.includes('--apply');
+  const ALLOW_PROD = process.argv.includes('--allow-prod');
+  if (APPLY && mode === 'delete') {
     throw new Error(
-      '--apply is refused: this audit script never writes ipos (#1051). OD-116: an ipos row is never deleted; ' +
-        'hide a wrong row through the OD-8/OD-53 freeze, and merge a true duplicate with ' +
+      '--apply is refused for --depollute delete: this script never deletes an ipos row (#1051). OD-116: an ipos ' +
+        'row is never deleted; hide a wrong row through the OD-8/OD-53 freeze, and merge a true duplicate with ' +
         'scraper/scripts/repair-merge-duplicate-ipo.ts (the gated, logged, undoable merge).'
     );
   }
@@ -245,9 +257,39 @@ async function main() {
   const targets = verdictRows.filter((r) =>
     mode === 'delete' ? provenNotIpo(r.verdict) : provenNotIpo(r.verdict) && r.reclassTo
   );
+  const willApply = APPLY && mode === 'reclass';
   console.log(`
-=== DEPOLLUTE ${mode.toUpperCase()} — REPORT ONLY (nothing is written) — ${targets.length} rows ===`);
+=== DEPOLLUTE ${mode.toUpperCase()} — ${willApply ? 'APPLYING' : 'REPORT ONLY (nothing is written)'} — ${targets.length} rows ===`);
   for (const t of targets) console.log(`  ${mode === 'delete' ? 'NOT-IPO' : `RECLASS -> ${t.reclassTo}`}  [${t.verdict}] ${t.name} (${t.id})`);
+
+  if (!willApply) return;
+
+  // Reclass write: a plain `update ipos set offering_type = <derived>` on the exact rows just
+  // reported above. Outside the #1051 class (no merge, no row removed) — see file header. Own
+  // prod guard, same convention as every repair tool: refuse --apply against "ipodhan" unless
+  // --allow-prod was also passed.
+  const wc = new Client({
+    host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'),
+    user: process.env.DATABASE_USER, password: process.env.DATABASE_PASSWORD, database: process.env.DATABASE_NAME,
+    ssl: false, connectionTimeoutMillis: 12000,
+  });
+  await wc.connect();
+  try {
+    const { rows: dbRows } = await wc.query('select current_database() as db');
+    const currentDb = String(dbRows?.[0]?.db ?? '');
+    if (currentDb.toLowerCase() === 'ipodhan' && !ALLOW_PROD) {
+      throw new Error(
+        `--apply refused: connected to production database "${currentDb}" — pass --allow-prod to override.`
+      );
+    }
+    console.log(`\napplying ${targets.length} reclass updates against "${currentDb}"...`);
+    for (const t of targets) {
+      await wc.query('update ipos set offering_type = $1 where id = $2', [t.reclassTo, t.id]);
+      console.log(`  APPLIED  ${t.name} (${t.id}) -> offering_type=${t.reclassTo}`);
+    }
+  } finally {
+    await wc.end();
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

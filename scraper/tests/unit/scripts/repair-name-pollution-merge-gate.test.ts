@@ -39,14 +39,33 @@ describe('mergeLoser — the name-pollution loser merge goes through mergeDuplic
     expect(out.outcome).toBe('planned');
   });
 
-  it('never forces the gate: no forceDifferentName, no allowProd, no issue-size acknowledgement', async () => {
+  it('never forces the gate beyond allowProd: no forceDifferentName, no issue-size acknowledgement', async () => {
     const mergeDuplicateInto = vi.fn().mockResolvedValue({ applied: true });
     await mergeLoser({ mergeDuplicateInto } as never, 'k', 'd', { apply: true });
     const opts = mergeDuplicateInto.mock.calls[0][2];
     expect(opts.forceDifferentName ?? false).toBe(false);
-    expect(opts.allowProd ?? false).toBe(false);
     expect(opts.setIssueSize).toBeUndefined();
     expect(opts.issueSizeNote).toBeUndefined();
+  });
+
+  // #1051 finding 2: the prod guard lives INSIDE mergeDuplicateInto (ipo-repository.ts:1548) and
+  // checks its OWN `opts.allowProd`, independent of whatever authorized the CLI run. Before this
+  // fix, `--allow-prod` reached `openRepairDb()` but never reached this call, so the first merge
+  // on prod refused mid-run — after the canonical rename had already been written. This test
+  // pins the fix: `--allow-prod` (mergeLoser's `allowProd: true`) must reach `mergeDuplicateInto`,
+  // and a normal call (no `allowProd`) must NOT claim prod authorization.
+  it('threads allowProd:true through to mergeDuplicateInto when the caller was run with --allow-prod', async () => {
+    const mergeDuplicateInto = vi.fn().mockResolvedValue({ applied: true });
+    await mergeLoser({ mergeDuplicateInto } as never, 'k', 'd', { apply: true, allowProd: true });
+    const opts = mergeDuplicateInto.mock.calls[0][2];
+    expect(opts.allowProd).toBe(true);
+  });
+
+  it('does not claim prod authorization when the caller was not run with --allow-prod', async () => {
+    const mergeDuplicateInto = vi.fn().mockResolvedValue({ applied: true });
+    await mergeLoser({ mergeDuplicateInto } as never, 'k', 'd', { apply: true });
+    const opts = mergeDuplicateInto.mock.calls[0][2];
+    expect(opts.allowProd ?? false).toBe(false);
   });
 
   it('a refusal is returned for that row, with the gate reason verbatim, and is not thrown', async () => {
@@ -75,10 +94,22 @@ describe('#1051 source guards — no raw ipos delete remains in either tool', ()
     expect(src).toMatch(/mergeDuplicateInto\(/);
   });
 
-  it('classify-suspect-ipos.ts is report-only: no raw ipos delete and no raw ipos write', () => {
+  it('classify-suspect-ipos.ts never deletes an ipos row; its only write is the reclass offering_type update', () => {
     const src = readFileSync(resolve(scraperRoot, 'scripts/audit/classify-suspect-ipos.ts'), 'utf8');
     const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     expect(code).not.toMatch(RAW_IPOS_DELETE);
-    expect(code).not.toMatch(RAW_IPOS_WRITE);
+    expect(code).not.toMatch(/\bdelete\s+from\s+ipos\b/i);
+    // #1051 finding 3: reclass mode is outside the class (no merge, no row removed) and is
+    // allowed to write — but ONLY offering_type, and only through this one update statement.
+    const updateMatches = code.match(/update\s+ipos\s+set\s+[a-z_]+\s*=/gi) ?? [];
+    expect(updateMatches.length).toBe(1);
+    expect(updateMatches[0].toLowerCase()).toContain('offering_type');
+  });
+
+  it('classify-suspect-ipos.ts refuses --apply for --depollute delete, and guards reclass --apply behind --allow-prod on prod', () => {
+    const src = readFileSync(resolve(scraperRoot, 'scripts/audit/classify-suspect-ipos.ts'), 'utf8');
+    expect(src).toMatch(/APPLY\s*&&\s*mode\s*===\s*'delete'/);
+    expect(src).toMatch(/--apply is refused for --depollute delete/);
+    expect(src).toMatch(/allow-prod/);
   });
 });
