@@ -124,7 +124,7 @@ export function buildFilingPersistDeps(
     ipoRepository,
     fieldSources,
     new DataConflictsRepository(db, redis),
-    redis as never,
+    redis,
     new ListingPerformanceRepository(db, redis)
   );
 
