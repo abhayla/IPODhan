@@ -9,8 +9,6 @@ import type { IPO } from '@/lib/api-client';
 import type {
   SMESummaryMetrics,
   ReviewWithIPO,
-  PerformanceHighlight,
-  SubscriptionStatusData,
 } from '@/lib/services/sme-landing-service';
 
 // ==================== SME IPO FIXTURES ====================
@@ -368,104 +366,6 @@ export const reviewFixtures: ReviewWithIPO[] = [
   },
 ];
 
-// ==================== PERFORMANCE HIGHLIGHT FIXTURES ====================
-
-export const performanceHighlightFixtures = {
-  topGainers: [
-    {
-      id: 'sme-ipo-7',
-      companyName: 'Auto Parts SME Ltd',
-      slug: 'auto-parts-sme-ltd',
-      issuePrice: 155,
-      currentPrice: 248, // +60% gain
-      gainPercent: 60.0,
-      listingDate: '2025-09-15',
-    },
-    {
-      id: 'sme-ipo-8',
-      companyName: 'Pharma SME Solutions',
-      slug: 'pharma-sme-solutions',
-      issuePrice: 190,
-      currentPrice: 285, // +50% gain
-      gainPercent: 50.0,
-      listingDate: '2025-08-30',
-    },
-    {
-      id: 'sme-ipo-9',
-      companyName: 'Construction SME Group',
-      slug: 'construction-sme-group',
-      issuePrice: 225,
-      currentPrice: 315, // +40% gain
-      gainPercent: 40.0,
-      listingDate: '2025-08-18',
-    },
-  ] as PerformanceHighlight[],
-  topLosers: [
-    {
-      id: 'sme-ipo-12',
-      companyName: 'Food Processing SME',
-      slug: 'food-processing-sme',
-      issuePrice: 62,
-      currentPrice: 47, // -24% loss
-      gainPercent: -24.0,
-      listingDate: '2025-06-30',
-    },
-    {
-      id: 'sme-ipo-11',
-      companyName: 'Telecom SME Network',
-      slug: 'telecom-sme-network',
-      issuePrice: 75,
-      currentPrice: 60, // -20% loss
-      gainPercent: -20.0,
-      listingDate: '2025-07-18',
-    },
-    {
-      id: 'sme-ipo-10',
-      companyName: 'IT Consulting SME',
-      slug: 'it-consulting-sme',
-      issuePrice: 110,
-      currentPrice: 94, // -14.5% loss
-      gainPercent: -14.5,
-      listingDate: '2025-07-25',
-    },
-  ] as PerformanceHighlight[],
-};
-
-// ==================== SUBSCRIPTION STATUS FIXTURES ====================
-
-export const subscriptionStatusFixtures: SubscriptionStatusData[] = [
-  {
-    id: 'sme-ipo-1',
-    companyName: 'SmartTech Innovations Ltd',
-    slug: 'smarttech-innovations-ltd',
-    totalSubscription: 14.3,
-    qibSubscription: 22.5,
-    niiSubscription: 12.8,
-    retailSubscription: 9.4,
-    closeDate: '2025-10-14',
-  },
-  {
-    id: 'sme-ipo-2',
-    companyName: 'Biomedical Devices Co',
-    slug: 'biomedical-devices-co',
-    totalSubscription: 9.7,
-    qibSubscription: 15.2,
-    niiSubscription: 8.3,
-    retailSubscription: 6.1,
-    closeDate: '2025-10-15',
-  },
-  {
-    id: 'sme-ipo-3',
-    companyName: 'Solar Solutions SME',
-    slug: 'solar-solutions-sme',
-    totalSubscription: 18.5,
-    qibSubscription: 26.8,
-    niiSubscription: 16.4,
-    retailSubscription: 13.2,
-    closeDate: '2025-10-18',
-  },
-];
-
 // ==================== HELPER FUNCTIONS ====================
 
 /**
@@ -545,8 +445,6 @@ export function createMockAPIResponse(data: IPO[]) {
 export const emptyFixtures = {
   ipos: [],
   reviews: [],
-  performanceHighlights: { topGainers: [], topLosers: [] },
-  subscriptionStatus: [],
   summaryMetrics: {
     totalIPOs: 0,
     listedInGain: 0,

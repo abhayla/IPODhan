@@ -14,8 +14,6 @@ import {
   getMainboardUpcomingIPOs,
   getMainboardRecentlyListedIPOs,
   getMainboardReviews,
-  getMainboardPerformanceHighlights,
-  getMainboardSubscriptionStatus,
   getMainboardDetailedList,
   clearMainboardLandingCaches,
 } from '@/lib/services/mainboard-landing-service';
@@ -34,9 +32,13 @@ import {
 // Mock dependencies. The service uses the repository layer directly
 // (IPORepository.findAll), NOT the HTTP api-client; mock the repository.
 const mockFindAll = vi.fn();
+const mockFindByIPOIds = vi.fn();
 vi.mock('@/lib/db/index', () => ({ db: {} }));
 vi.mock('@/lib/repositories/ipo-repository', () => ({
   IPORepository: vi.fn().mockImplementation(() => ({ findAll: mockFindAll })),
+}));
+vi.mock('@/lib/repositories/listing-performance-repository', () => ({
+  ListingPerformanceRepository: vi.fn().mockImplementation(() => ({ findByIPOIds: mockFindByIPOIds })),
 }));
 vi.mock('@/lib/cache/redis-client');
 
@@ -45,6 +47,8 @@ describe('Mainboard Landing Service', () => {
     // Do NOT restoreAllMocks — it wipes the IPORepository factory implementation.
     vi.clearAllMocks();
     mockFindAll.mockReset();
+    mockFindByIPOIds.mockReset();
+    mockFindByIPOIds.mockResolvedValue([]);
 
     // Mock Redis cache (always miss for testing fresh data)
     vi.mocked(redisClient.safeGet).mockResolvedValue(null);
@@ -62,6 +66,7 @@ describe('Mainboard Landing Service', () => {
       mockFindAll.mockResolvedValue(
         createMockAPIResponse(mainboardIPOFixtures)
       );
+      mockFindByIPOIds.mockResolvedValue([]);
 
       // Act
       const result = await getMainboardSummaryMetrics();
@@ -70,16 +75,68 @@ describe('Mainboard Landing Service', () => {
       expect(result).toBeDefined();
       expect(result.totalIPOs).toBe(mainboardIPOFixtures.length);
       expect(result.upcomingAndOngoing).toBeGreaterThan(0);
-      // Mocked gain/loss metrics removed — null until real aggregates (#98)
-      expect(result.listedInGain).toBeNull();
-      expect(result.listedInLoss).toBeNull();
-      expect(result.gainAOT).toBeNull();
-      expect(result.lossAOT).toBeNull();
 
       // Verify API called with correct params
       expect(mockFindAll).toHaveBeenCalledWith(
         expect.objectContaining({ segment: ['MAINBOARD'], offeringType: ['IPO'] })
       );
+    });
+
+    it('should compute listedInGain/listedInLoss/gainAOT/lossAOT from real listing_performance rows (#98)', async () => {
+      // Arrange: 4 LISTED IPOs. Real listing_performance rows: two gainers
+      // (+10%, +30%), one loser (-20%), one flat (0.00% — neither gain nor
+      // loss), and one LISTED IPO with NO listing_performance row at all
+      // (excluded, never counted as 0).
+      const listedIPOs = getAllListedIPOs();
+      expect(listedIPOs.length).toBeGreaterThanOrEqual(1);
+      mockFindAll.mockResolvedValue(createMockAPIResponse(mainboardIPOFixtures));
+      mockFindByIPOIds.mockResolvedValue([
+        { ipoId: listedIPOs[0].id, listingGainPercent: '10.00' },
+        { ipoId: listedIPOs[1]?.id ?? 'missing-1', listingGainPercent: '-20.00' },
+      ]);
+
+      // Act
+      const result = await getMainboardSummaryMetrics();
+
+      // Assert: exact counts and averages, not just "not mocked"
+      expect(result.listedInGain).toBe(1);
+      expect(result.listedInLoss).toBe(1);
+      expect(result.gainAOT).toBe(10);
+      expect(result.lossAOT).toBe(-20);
+
+      // The aggregate was computed from the LISTED ids of this segment
+      const listedIds = mockFindByIPOIds.mock.calls[0][0] as string[];
+      for (const ipo of mainboardIPOFixtures.filter((i) => i.status === 'LISTED')) {
+        expect(listedIds).toContain(ipo.id);
+      }
+    });
+
+    it('should exclude a 0.00% listing gain from both gain and loss buckets', async () => {
+      const listedIPOs = getAllListedIPOs();
+      mockFindAll.mockResolvedValue(createMockAPIResponse(mainboardIPOFixtures));
+      mockFindByIPOIds.mockResolvedValue([
+        { ipoId: listedIPOs[0].id, listingGainPercent: '0.00' },
+      ]);
+
+      const result = await getMainboardSummaryMetrics();
+
+      expect(result.listedInGain).toBe(0);
+      expect(result.listedInLoss).toBe(0);
+      expect(result.gainAOT).toBeNull();
+      expect(result.lossAOT).toBeNull();
+    });
+
+    it('should exclude a LISTED IPO with no listing_performance row, never counting it as 0', async () => {
+      mockFindAll.mockResolvedValue(createMockAPIResponse(mainboardIPOFixtures));
+      // No rows returned at all — every LISTED IPO is missing its row.
+      mockFindByIPOIds.mockResolvedValue([]);
+
+      const result = await getMainboardSummaryMetrics();
+
+      expect(result.listedInGain).toBe(0);
+      expect(result.listedInLoss).toBe(0);
+      expect(result.gainAOT).toBeNull();
+      expect(result.lossAOT).toBeNull();
     });
 
     it('should calculate upcomingAndOngoing correctly', async () => {
@@ -402,157 +459,6 @@ describe('Mainboard Landing Service', () => {
     });
   });
 
-  // ==================== TEST: getMainboardPerformanceHighlights ====================
-
-  describe('getMainboardPerformanceHighlights', () => {
-    it('should calculate top gainers and losers', async () => {
-      // Arrange
-      const listedIPOs = getAllListedIPOs();
-      mockFindAll.mockResolvedValue(
-        createMockAPIResponse(listedIPOs)
-      );
-
-      // Act
-      const result = await getMainboardPerformanceHighlights();
-
-      // Assert
-      expect(result).toHaveProperty('topGainers');
-      expect(result).toHaveProperty('topLosers');
-      expect(result.topGainers).toBeInstanceOf(Array);
-      expect(result.topLosers).toBeInstanceOf(Array);
-      expect(result.topGainers.length).toBeLessThanOrEqual(3);
-      expect(result.topLosers.length).toBeLessThanOrEqual(3);
-    });
-
-    it('should include gainPercent in performance highlights', async () => {
-      // Arrange
-      const listedIPOs = getAllListedIPOs();
-      mockFindAll.mockResolvedValue(
-        createMockAPIResponse(listedIPOs)
-      );
-
-      // Act
-      const result = await getMainboardPerformanceHighlights();
-
-      // Assert
-      if (result.topGainers.length > 0) {
-        expect(result.topGainers[0]).toHaveProperty('gainPercent');
-        expect(result.topGainers[0]).toHaveProperty('issuePrice');
-        expect(result.topGainers[0]).toHaveProperty('currentPrice');
-        expect(result.topGainers[0]).toHaveProperty('companyName');
-      }
-    });
-
-    it('should return top gainers sorted by highest gain first', async () => {
-      // Arrange
-      const listedIPOs = getAllListedIPOs();
-      mockFindAll.mockResolvedValue(
-        createMockAPIResponse(listedIPOs)
-      );
-
-      // Act
-      const result = await getMainboardPerformanceHighlights();
-
-      // Assert
-      for (let i = 0; i < result.topGainers.length - 1; i++) {
-        expect(result.topGainers[i].gainPercent).toBeGreaterThanOrEqual(
-          result.topGainers[i + 1].gainPercent
-        );
-      }
-    });
-
-    it('should return empty arrays on error', async () => {
-      // Arrange
-      mockFindAll.mockRejectedValue(new Error('Fetch Error'));
-
-      // Act
-      const result = await getMainboardPerformanceHighlights();
-
-      // Assert
-      expect(result).toEqual({ topGainers: [], topLosers: [] });
-    });
-
-    it('should fetch LISTED IPOs with limit 50', async () => {
-      // Arrange
-      mockFindAll.mockResolvedValue(
-        createMockAPIResponse(getAllListedIPOs())
-      );
-
-      // Act
-      await getMainboardPerformanceHighlights();
-
-      // Assert
-      expect(mockFindAll).toHaveBeenCalledWith(
-        expect.objectContaining({ segment: ['MAINBOARD'], offeringType: ['IPO'], status: ['LISTED'] })
-      );
-    });
-  });
-
-  // ==================== TEST: getMainboardSubscriptionStatus ====================
-
-  describe('getMainboardSubscriptionStatus', () => {
-    it('should fetch OPEN IPOs with subscription data', async () => {
-      // Arrange
-      const currentIPOs = getCurrentIPOs();
-      mockFindAll.mockResolvedValue(
-        createMockAPIResponse(currentIPOs)
-      );
-
-      // Act
-      const result = await getMainboardSubscriptionStatus();
-
-      // Assert
-      expect(result).toBeInstanceOf(Array);
-      expect(result.length).toBeLessThanOrEqual(6);
-      result.forEach((item) => {
-        expect(item).toHaveProperty('companyName');
-        expect(item).toHaveProperty('totalSubscription');
-        expect(item).toHaveProperty('qibSubscription');
-        expect(item).toHaveProperty('niiSubscription');
-        expect(item).toHaveProperty('retailSubscription');
-      });
-
-      // Verify API called with correct params
-      expect(mockFindAll).toHaveBeenCalledWith(
-        expect.objectContaining({ segment: ['MAINBOARD'], offeringType: ['IPO'], status: ['OPEN'] })
-      );
-    });
-
-    it('should include all subscription fields', async () => {
-      // Arrange
-      const currentIPOs = getCurrentIPOs();
-      mockFindAll.mockResolvedValue(
-        createMockAPIResponse(currentIPOs)
-      );
-
-      // Act
-      const result = await getMainboardSubscriptionStatus();
-
-      // Assert
-      if (result.length > 0) {
-        expect(result[0]).toHaveProperty('id');
-        expect(result[0]).toHaveProperty('companyName');
-        expect(result[0]).toHaveProperty('slug');
-        expect(result[0]).toHaveProperty('totalSubscription');
-        expect(result[0]).toHaveProperty('qibSubscription');
-        expect(result[0]).toHaveProperty('niiSubscription');
-        expect(result[0]).toHaveProperty('retailSubscription');
-        expect(result[0]).toHaveProperty('closeDate');
-      }
-    });
-
-    it('should return empty array on error', async () => {
-      // Arrange
-      mockFindAll.mockRejectedValue(new Error('API Down'));
-
-      // Act
-      const result = await getMainboardSubscriptionStatus();
-
-      // Assert
-      expect(result).toEqual([]);
-    });
-  });
-
   // ==================== TEST: getMainboardDetailedList ====================
 
   describe('getMainboardDetailedList', () => {
@@ -704,9 +610,7 @@ describe('Mainboard Landing Service', () => {
         'mainboard:landing:current',
         'mainboard:landing:upcoming',
         'mainboard:landing:recent',
-        'mainboard:landing:reviews',
-        'mainboard:landing:performance',
-        'mainboard:landing:subscription'
+        'mainboard:landing:reviews'
       );
     });
 
@@ -735,8 +639,6 @@ describe('Mainboard Landing Service', () => {
       await expect(getMainboardUpcomingIPOs()).resolves.toEqual([]);
       await expect(getMainboardRecentlyListedIPOs()).resolves.toEqual([]);
       await expect(getMainboardReviews()).resolves.toEqual([]);
-      await expect(getMainboardPerformanceHighlights()).resolves.toBeDefined();
-      await expect(getMainboardSubscriptionStatus()).resolves.toEqual([]);
       await expect(getMainboardDetailedList()).resolves.toBeDefined();
     });
 

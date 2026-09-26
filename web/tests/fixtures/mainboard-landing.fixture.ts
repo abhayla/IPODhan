@@ -9,8 +9,6 @@ import type { IPO } from '@/lib/api-client';
 import type {
   MainboardSummaryMetrics,
   ReviewWithIPO,
-  PerformanceHighlight,
-  SubscriptionStatusData,
 } from '@/lib/services/mainboard-landing-service';
 
 // ==================== MAINBOARD IPO FIXTURES ====================
@@ -368,104 +366,6 @@ export const reviewFixtures: ReviewWithIPO[] = [
   },
 ];
 
-// ==================== PERFORMANCE HIGHLIGHT FIXTURES ====================
-
-export const performanceHighlightFixtures = {
-  topGainers: [
-    {
-      id: 'mb-ipo-7',
-      companyName: 'Auto Components Ltd',
-      slug: 'auto-components-ltd',
-      issuePrice: 750,
-      currentPrice: 1125, // +50% gain
-      gainPercent: 50.0,
-      listingDate: '2025-09-15',
-    },
-    {
-      id: 'mb-ipo-8',
-      companyName: 'Pharma Innovations',
-      slug: 'pharma-innovations',
-      issuePrice: 900,
-      currentPrice: 1260, // +40% gain
-      gainPercent: 40.0,
-      listingDate: '2025-08-30',
-    },
-    {
-      id: 'mb-ipo-9',
-      companyName: 'Infrastructure Builders',
-      slug: 'infrastructure-builders',
-      issuePrice: 1100,
-      currentPrice: 1430, // +30% gain
-      gainPercent: 30.0,
-      listingDate: '2025-08-18',
-    },
-  ] as PerformanceHighlight[],
-  topLosers: [
-    {
-      id: 'mb-ipo-12',
-      companyName: 'Food Processing Ltd',
-      slug: 'food-processing-ltd',
-      issuePrice: 320,
-      currentPrice: 256, // -20% loss
-      gainPercent: -20.0,
-      listingDate: '2025-06-30',
-    },
-    {
-      id: 'mb-ipo-11',
-      companyName: 'Telecom Networks',
-      slug: 'telecom-networks',
-      issuePrice: 360,
-      currentPrice: 306, // -15% loss
-      gainPercent: -15.0,
-      listingDate: '2025-07-18',
-    },
-    {
-      id: 'mb-ipo-10',
-      companyName: 'IT Services Global',
-      slug: 'it-services-global',
-      issuePrice: 550,
-      currentPrice: 495, // -10% loss
-      gainPercent: -10.0,
-      listingDate: '2025-07-25',
-    },
-  ] as PerformanceHighlight[],
-};
-
-// ==================== SUBSCRIPTION STATUS FIXTURES ====================
-
-export const subscriptionStatusFixtures: SubscriptionStatusData[] = [
-  {
-    id: 'mb-ipo-1',
-    companyName: 'Tech Solutions Ltd',
-    slug: 'tech-solutions-ltd',
-    totalSubscription: 12.5,
-    qibSubscription: 18.3,
-    niiSubscription: 10.2,
-    retailSubscription: 8.7,
-    closeDate: '2025-10-14',
-  },
-  {
-    id: 'mb-ipo-2',
-    companyName: 'Healthcare Innovations',
-    slug: 'healthcare-innovations',
-    totalSubscription: 8.2,
-    qibSubscription: 12.5,
-    niiSubscription: 6.8,
-    retailSubscription: 5.3,
-    closeDate: '2025-10-15',
-  },
-  {
-    id: 'mb-ipo-3',
-    companyName: 'Green Energy Corp',
-    slug: 'green-energy-corp',
-    totalSubscription: 15.7,
-    qibSubscription: 22.4,
-    niiSubscription: 14.1,
-    retailSubscription: 11.6,
-    closeDate: '2025-10-18',
-  },
-];
-
 // ==================== HELPER FUNCTIONS ====================
 
 /**
@@ -545,8 +445,6 @@ export function createMockAPIResponse(data: IPO[]) {
 export const emptyFixtures = {
   ipos: [],
   reviews: [],
-  performanceHighlights: { topGainers: [], topLosers: [] },
-  subscriptionStatus: [],
   summaryMetrics: {
     totalIPOs: 0,
     listedInGain: 0,
