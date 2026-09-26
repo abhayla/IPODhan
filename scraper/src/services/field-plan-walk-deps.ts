@@ -107,13 +107,13 @@ function makeIpoDetailsReader(): DocFetcherDeps['ipoDetailsReader'] {
 export function buildFieldPlanWalkOrchestrator(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
 ): FieldPlanWalkOrchestrator {
-  const ipoRepository = new IPORepository(db as never, redis as never);
+  const ipoRepository = new IPORepository(db, redis);
   return new DataConsolidationOrchestrator(
     ipoRepository,
-    new FieldSourcesRepository(db as never, redis as never),
-    new DataConflictsRepository(db as never, redis as never),
-    redis as never,
-    new ListingPerformanceRepository(db as never, redis as never)
+    new FieldSourcesRepository(db, redis),
+    new DataConflictsRepository(db, redis),
+    redis,
+    new ListingPerformanceRepository(db, redis)
   ) as unknown as FieldPlanWalkOrchestrator;
 }
 
