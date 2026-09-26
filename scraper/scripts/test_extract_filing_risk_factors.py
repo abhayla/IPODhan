@@ -166,13 +166,28 @@ def test_accepting_a_factor_closes_the_nested_run():
     assert [(r["n"], r["heading"]) for r in rows][-1] == (4, "Fourth risk heading.")
 
 
-def test_repeated_heading_is_kept_once():
+def test_two_factors_sharing_a_first_sentence_are_both_kept():
+    # Reviewer probe (#1135 round 1): different numbers are different risks.
     rows = run([
         "1. Same risk heading. Body one.",
         "2. Same risk heading. Body two.",
         "3. Other risk heading. Body three.",
     ])
-    assert [r["heading"] for r in rows] == ["Same risk heading.", "Other risk heading."]
+    assert [(r["n"], r["heading"], r["body"]) for r in rows] == [
+        (1, "Same risk heading.", "Body one."),
+        (2, "Same risk heading.", "Body two."),
+        (3, "Other risk heading.", "Body three."),
+    ]
+
+
+def test_reprinted_factor_repeating_its_number_is_one_row():
+    rows = run([
+        "1. First risk heading. Body one.",
+        "2. Second risk heading. Body two.",
+        "2. Second risk heading. Body two.",
+        "3. Third risk heading. Body three.",
+    ])
+    assert [r["n"] for r in rows] == [1, 2, 3]
 
 
 def test_body_drops_page_numbers_and_category_banners():

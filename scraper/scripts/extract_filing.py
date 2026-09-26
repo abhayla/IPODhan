@@ -2165,7 +2165,10 @@ def extract_risk_factors(page_texts, limit=480):
     tables/lists inside a risk factor recognised by their restart at "1.").
     heading = the risk factor's first sentence; body = the rest of its text up
     to the next risk factor (page numbers and category banners dropped). One
-    row per heading: a heading printed twice keeps its first occurrence."""
+    row per NUMBER: `_rf_real_candidates` accepts each number once, so a
+    reprinted factor (same number again) is never a second row, while two
+    genuine factors that share a first sentence (different numbers) are both
+    kept with their own bodies. The heading text is never a dedupe key."""
     lines, first_page, in_section = [], None, False
     for idx, text in page_texts:
         raw = [ln.strip() for ln in (text or "").split("\n")]
@@ -2188,16 +2191,12 @@ def extract_risk_factors(page_texts, limit=480):
         if m:
             cands.append((pos, int(m.group(1))))
     real = [cands[i] for i in _rf_real_candidates(cands)]
-    out, seen = [], set()
+    out = []
     for k, (pos, n) in enumerate(real):
         end = real[k + 1][0] if k + 1 < len(real) else len(lines)
         first = _RF_ITEM_RX.match(lines[pos]).group(2)
         joined = re.sub(r"\s+", " ", " ".join([first] + lines[pos + 1:end])).strip()
         heading, body = _rf_split_heading(joined, limit)
-        key = re.sub(r"[^a-z0-9]+", "", heading.lower())
-        if key in seen:
-            continue
-        seen.add(key)
         out.append({"n": n, "heading": heading, "body": body or None})
     return out, first_page
 
