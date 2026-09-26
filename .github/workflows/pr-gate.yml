@@ -1054,6 +1054,8 @@ jobs:
           tests/integration/identity-matching-od68.integration.test.ts
           tests/integration/source-record-keys-od85.integration.test.ts
           tests/integration/repair-issue-size-od74.integration.test.ts
+          tests/integration/repair-source-trust-batch-t292-stale-guard.integration.test.ts
+          tests/integration/repair-source-trust-batch-t292-stale-guard-proceed.integration.test.ts
           tests/integration/repair-name-pollution-merge-gate.integration.test.ts
           tests/integration/repair-reopen-stale-doc-nay.integration.test.ts
           tests/integration/repair-retire-manifest-removed-fields.integration.test.ts

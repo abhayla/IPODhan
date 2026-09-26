@@ -784,6 +784,160 @@ export async function assertNoSchemaDrift(
   return { refused: false };
 }
 
+/**
+ * #422: every repair tool that carries a hard-coded, dated correction table
+ * (an array of `{ slug/ipoId, field, value, citation/date }` literals typed
+ * from a one-time source read) re-proposes that same correction on EVERY
+ * future run, regardless of whether the row's facts have since changed. A
+ * prod dry run on 2026-09-08 proposed nulling Priority Jewels Limited's real
+ * open/close dates (2026-08-28 / 2026-09-01) from a 2026-08-23 ipowatch
+ * citation written when those dates were still "unannounced" — by the time
+ * the tool ran again, the row had gone LISTED with real, correct dates.
+ *
+ * CLASS: every entry in a hard-coded correction table, in any repair tool,
+ * on both prod and staging, at any run after the cited source's facts
+ * change. This is the one guard every such table is filtered through before
+ * a change is proposed or applied — imported, never retyped, same rationale
+ * as the rest of this module.
+ */
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['LISTED', 'CLOSED']);
+
+export interface StaleCorrectionCheckInput {
+  /** The row's current lifecycle status (`ipos.status`), or null/undefined if not applicable. */
+  status?: string | null;
+  /** ISO `YYYY-MM-DD` date the correction's citation was captured on. */
+  citationDate: string;
+  /**
+   * ISO `YYYY-MM-DD` date of the most recent `field_sources` row for this
+   * exact (ipoId, field) pair, or null when there is none / it is unknown.
+   */
+  latestSourceDate: string | null;
+  /**
+   * The value the correction's author recorded the field as holding AT THE
+   * TIME the citation was captured. `undefined` (never supplied) means the
+   * table entry carries no `from` — treated as "cannot verify", not as "ok".
+   */
+  assumedFromValue?: unknown;
+  /** The row's CURRENT value for this field, read fresh at run time. */
+  currentValue: unknown;
+}
+
+export interface StaleCorrectionDecision {
+  skip: boolean;
+  reason?: string;
+}
+
+/**
+ * Format a value for the `from`-vs-current comparison as CALENDAR TEXT, never
+ * via `toISOString()` (#422 round 2). A hard-coded correction's `from` is
+ * always a plain 'YYYY-MM-DD' string, but the row's live current value can
+ * arrive as a JS `Date` two different ways that both bite the same way: the
+ * raw `pg` driver's own OID-1082 (DATE) type parser (used by every raw
+ * `pool.query()` repair tool) and drizzle's default `date()` column mode
+ * (`PgDateString`, whose `mapFromDriverValue` is a pass-through of that same
+ * raw driver value) BOTH hand back whatever `pg-types` built for OID 1082 —
+ * `new Date(year, month - 1, day)`, constructed from LOCAL date parts, not a
+ * UTC instant. `.toISOString()` then converts that local midnight to UTC:
+ * with the process on IST (UTC+5:30), 2026-02-16 local midnight becomes
+ * `2026-02-15T18:30:00.000Z`, one calendar day EARLY — the exact class this
+ * repo's `.claude/rules/ist-timezone.md` names for naive timestamps, now
+ * shown to hit a plain DATE column too. The correct read of that Date object
+ * is its own LOCAL calendar parts (`getFullYear`/`getMonth`/`getDate`) —
+ * because that is exactly how it was constructed, the round-trip is exact.
+ */
+function toComparableCorrectionText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(value);
+}
+
+/**
+ * Pure decision (unit-testable without a DB): should this ONE field-level
+ * correction from a hard-coded table be skipped as stale? Checks, in the
+ * order given in issue #422:
+ *   (a) the row's status is LISTED or CLOSED — a terminal row's own recorded
+ *       facts outrank a dated citation, however well-corroborated at the time;
+ *   (b) `field_sources` shows a source for this field newer than the
+ *       citation — something has updated the field since the citation was
+ *       captured, whether or not the row itself is terminal;
+ *   (c) the current value differs from the value the citation was taken
+ *       against (`assumedFromValue`) — the row has moved since. A table
+ *       entry carrying no recorded `from` value can never pass this check:
+ *       "unknown" is not evidence the citation still applies.
+ */
+export function decideStaleCorrectionSkip(input: StaleCorrectionCheckInput): StaleCorrectionDecision {
+  const status = (input.status ?? '').toUpperCase();
+  if (status && TERMINAL_STATUSES.has(status)) {
+    return {
+      skip: true,
+      reason:
+        `row status is ${status} — refusing a hard-coded correction citing ${input.citationDate} ` +
+        'against a terminal-status row (#422)',
+    };
+  }
+  if (input.latestSourceDate && input.latestSourceDate > input.citationDate) {
+    return {
+      skip: true,
+      reason:
+        `field_sources shows a newer source (${input.latestSourceDate}) than the correction's ` +
+        `citation (${input.citationDate}) — the correction is stale (#422)`,
+    };
+  }
+  if (input.assumedFromValue === undefined) {
+    return {
+      skip: true,
+      reason:
+        "correction table entry carries no recorded 'from' value to verify against the row's " +
+        'current value — cannot confirm the citation still applies (#422)',
+    };
+  }
+  const assumedText = toComparableCorrectionText(input.assumedFromValue);
+  const currentText = toComparableCorrectionText(input.currentValue);
+  if (assumedText !== currentText) {
+    return {
+      skip: true,
+      reason:
+        `current value (${JSON.stringify(input.currentValue)}) differs from the value ` +
+        `(${JSON.stringify(input.assumedFromValue)}) the citation (${input.citationDate}) was taken ` +
+        'against — the row has changed since (#422)',
+    };
+  }
+  return { skip: false };
+}
+
+/**
+ * The most recent `field_sources.updated_at` for one (ipoId, field), as an
+ * ISO `YYYY-MM-DD` date string, or null when there is no such row. Feeds
+ * `decideStaleCorrectionSkip`'s check (b); never a second implementation of
+ * the `field_sources` lookup shape (`readFieldSource`, above).
+ */
+export async function queryLatestFieldSourceDate(
+  txLike: SelectInsertLike,
+  params: { ipoId: string; tableName?: string; fieldName: string }
+): Promise<string | null> {
+  const rows = await txLike
+    .select({ updatedAt: schema.fieldSources.updatedAt })
+    .from(schema.fieldSources)
+    .where(
+      and(
+        eq(schema.fieldSources.ipoId, params.ipoId),
+        eq(schema.fieldSources.tableName, params.tableName ?? 'ipos'),
+        eq(schema.fieldSources.fieldName, params.fieldName)
+      )
+    )
+    .limit(1);
+  const updatedAt = rows[0]?.updatedAt;
+  if (!updatedAt) return null;
+  const asDate = updatedAt instanceof Date ? updatedAt : new Date(updatedAt as unknown as string);
+  if (Number.isNaN(asDate.getTime())) return null;
+  return asDate.toISOString().slice(0, 10);
+}
+
 /** Stable key for the per-field idempotency set. */
 export function alreadyRepairedKey(ipoId: string, fieldName: string): string {
   return `${ipoId}::${fieldName}`;
