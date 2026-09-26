@@ -71,6 +71,7 @@ vi.mock('@ipodhan/shared/db/schema', () => ({
 
 vi.mock('drizzle-orm', () => ({
   eq: (a: unknown, b: unknown) => ({ a, b }),
+  inArray: (a: unknown, b: unknown) => ({ a, b }),
 }));
 
 const missingRowIpo = {

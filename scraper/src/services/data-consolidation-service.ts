@@ -56,6 +56,7 @@ import {
   type SmeCollapseEvidence,
 } from './listing-exchange-resolution.js';
 import logger from '../utils/logger.js';
+import { istDayIso } from '@ipodhan/shared/utils/ist-day';
 import {
   SOURCE_CHANGED_OWN_VALUE,
   isBehaviourConflict,
@@ -387,6 +388,56 @@ function isDetectedAtStillFresh(detectedAt: unknown, now: number): boolean {
  * from web) to keep the scraper package dependency-free of web.
  */
 export const TERMINAL_IPO_STATUSES: ReadonlySet<string> = new Set<string>(['WITHDRAWN', 'POSTPONED']);
+
+/**
+ * #70: the legal ladder of spec field 8 (`status`). A move to a LOWER rung is a
+ * regression. WITHDRAWN / POSTPONED are not rungs, so neither side of a move
+ * involving them is a regression here.
+ */
+const STATUS_LADDER: readonly string[] = ['UPCOMING', 'OPEN', 'CLOSED', 'LISTED'];
+export function isStatusRegression(from: unknown, to: unknown): boolean {
+  const a = STATUS_LADDER.indexOf(String(from ?? '').toUpperCase());
+  const b = STATUS_LADDER.indexOf(String(to ?? '').toUpperCase());
+  return a !== -1 && b !== -1 && b < a;
+}
+
+/** YYYY-MM-DD of a date column value (string or Date), or null. */
+function ymd(v: unknown): string | null {
+  if (v === null || v === undefined || v === '') return null;
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : istDayIso(v);
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(v));
+  return m ? m[1] : null;
+}
+
+type DateTriple = { openDate: any; closeDate: any; listingDate: any } | undefined;
+
+/**
+ * #70 round 3 (F-131 Dhanwel, OD-83, OD-87): a backward status move IS legal when
+ * it is driven by a newer exchange window — a postponement or relaunch updates
+ * the SAME row with new NSE/BSE dates, and status follows the dates. Newer means
+ * this NSE/BSE write carries an open or close date later than the stored one,
+ * or the stored window itself has not passed yet as of the scrape (the dates
+ * already moved in an earlier write, the status had not). A regression with the
+ * same, passed window (lumino-industries-ltd: NSE LISTED -> CLOSED on
+ * 2026-09-07, close 2026-08-29) is not a relaunch and stays refused.
+ */
+export function isNewerExchangeWindow(
+  incomingSource: string,
+  held: DateTriple,
+  incoming: DateTriple,
+  scrapedAt?: Date
+): boolean {
+  if (incomingSource !== 'NSE' && incomingSource !== 'BSE') return false;
+  const hOpen = ymd(held?.openDate), hClose = ymd(held?.closeDate);
+  const iOpen = ymd(incoming?.openDate), iClose = ymd(incoming?.closeDate);
+  if (iOpen && hOpen && iOpen > hOpen) return true;
+  if (iClose && hClose && iClose > hClose) return true;
+  const window = iClose ?? hClose;
+  if (window && scrapedAt && !ymd(held?.listingDate)) {
+    if (window >= istDayIso(scrapedAt)) return true;
+  }
+  return false;
+}
 
 const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
 
@@ -2569,6 +2620,43 @@ export class DataConsolidationService {
             source: incomingSource,
             value: incomingValue,
             reason: 'TERMINAL_STATUS_KEPT',
+          },
+        ],
+      };
+    }
+
+    // #70: spec field 8 `status` — "must be a legal transition
+    // (UPCOMING->OPEN->CLOSED->LISTED); never regresses without an ADMIN row".
+    // `status` is timeBased (newest wins) and NSE outranks the rest, so a newer
+    // exchange row moved a stored LISTED back to CLOSED (lumino-industries-ltd,
+    // staging, 2026-09-07). A backward move driven by a newer exchange window (an
+    // OD-83 relaunch, F-131 Dhanwel) is allowed — see isNewerExchangeWindow. The
+    // ADMIN exemption is kept though unreachable today (OD-105: status is not
+    // admin-editable); it only restates field 8's "without an ADMIN row". Entering
+    // WITHDRAWN/POSTPONED is not a rung of the ladder and is left to the rules
+    // above and below (spec: "WITHDRAWN / POSTPONED only from the exchange or ADMIN").
+    if (
+      fieldName === 'status' &&
+      incomingSource !== 'ADMIN' &&
+      isStatusRegression(existingValue, incomingValue) &&
+      !isNewerExchangeWindow(incomingSource, params.heldDates, params.incomingDates, scrapedAt)
+    ) {
+      logger.warn(
+        { ipoId, tableName, existingSource, existingValue, incomingSource, incomingValue },
+        'status_regression_kept: a non-ADMIN source tried to move ipos.status backwards (#70)'
+      );
+      return {
+        fieldName,
+        finalValue: existingValue,
+        chosenSource: existingSource,
+        hadConflict: true,
+        conflictSeverity: 'WARNING',
+        conflictReason: 'STATUS_REGRESSION_KEPT',
+        rejectedSources: [
+          {
+            source: incomingSource,
+            value: incomingValue,
+            reason: 'STATUS_REGRESSION_KEPT',
           },
         ],
       };

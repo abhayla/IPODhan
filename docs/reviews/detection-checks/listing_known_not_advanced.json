@@ -1,0 +1,15 @@
+{
+  "id": "listing_known_not_advanced",
+  "findingClass": "an IPO whose listing the system already recorded (a listing_performance row) while ipos.status is not LISTED or ipos.listing_date is NULL -- readers see a listed company as closed and not listed (#70, #36, #72)",
+  "round7Findings": [],
+  "failThreshold": "any listing_performance row whose ipos row has status <> LISTED or listing_date IS NULL; reported by slug with status and both dates",
+  "severity": "P2",
+  "unverifiableWhen": "never -- both tables exist on every slot",
+  "section": "checks",
+  "spec_ref": [
+    "field 7 listing_date",
+    "field 8 status",
+    "fields 176-178 / 224 listing_performance copies of ipos.*"
+  ],
+  "note": "Measured read-only by the supervisor on ipodhan_staging 2026-09-26: 4 rows in this shape, among them glass-wall-systems-india-ltd (lp listing_date 2026-09-16) and lumino-industries-ltd (lp 2026-09-03), both CLOSED with ipos.listing_date NULL. The check itself has not yet been run against staging (builder had no DB access); expected FAIL naming exactly those 4 until the fix lands, then PASS. Causes fixed in #70: listing job read LISTED rows only; web status updater and the consolidation resolver let status regress; the merged-record date sanitizer blanked a stored listing_date. A LISTED row whose listing row carries a DIFFERENT date is a separate class, not checked here."
+}

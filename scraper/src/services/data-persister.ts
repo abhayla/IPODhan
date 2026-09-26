@@ -1305,6 +1305,26 @@ async function upsertIPOInScope(
               updatedAt: new Date(),
             };
 
+            // #70: absence is not a value. A merged record with NO listing date
+            // (consolidation had nothing to say) must not blank the stored one.
+            // A listing date that WAS present and that sanitizeIpoDates REJECTED
+            // (e.g. the kwality branch: close >= listing) is a decision, not an
+            // absence: it is still written as NULL, and the incoherent-sequence
+            // warning above names it (round 3, Tier A review of #1121).
+            if (
+              rawConsolidated.listingDate == null &&
+              finalData.listingDate == null &&
+              existingIPO.listingDate != null
+            ) {
+              if ('listingDate' in finalData) {
+                logger.warn(
+                  { ipoId: existingIPO.id, source, storedListingDate: existingIPO.listingDate },
+                  '[DataPersister] #70 merged record carries no listing date - keeping the stored one'
+                );
+              }
+              delete finalData.listingDate;
+            }
+
             // P3-2: the consolidation path can pick a winning `registrar` value
             // this cycle even when the create path never ran (a name-only
             // update on an existing row) — resolve registrarId here too, same

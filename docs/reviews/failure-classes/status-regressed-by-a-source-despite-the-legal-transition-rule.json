@@ -1,0 +1,12 @@
+{
+  "class_id": "status regressed by a source despite the legal-transition rule",
+  "feature": "ipos.status and ipos.listing_date for every IPO (MAINBOARD and SME, NSE/BSE), written by the scraper consolidation resolver, the web status updater and the consolidation-update write in data-persister.ts",
+  "symptom": "a status field declared as a one-way ladder (UPCOMING->OPEN->CLOSED->LISTED) is resolved as an ordinary newest-wins field, so any newer source row, including the same exchange's own feed, moves it backwards; and a date that decides the status is blanked by a sanitizer that writes NULL for 'no usable value', so a derived-status job reads the absence as a value and demotes the row too. Wider shape: an ordering invariant enforced in the spec but not at the one resolver every write passes lets each writer undo the others' forward progress.",
+  "first_seen": "2026-09-26 -- IPODhan staging (supervisor, read-only): 4 IPOs with a listing_performance row and ipos.status <> LISTED or listing_date NULL; lumino-industries-ltd status provenance NSE -> NSE, previous_value LISTED, 2026-09-07 13:59 UTC; glass-wall-systems-india-ltd and lumino keep listingDate provenance while ipos.listing_date is NULL. F-178.",
+  "fix_prs": "PR #1121 (#70): isStatusRegression guard in scraper/src/services/data-consolidation-service.ts resolveConflict refuses a backward status move unless an NSE/BSE write carries a newer open/close window or the stored window has not passed (OD-83 relaunch, F-131 Dhanwel); web/lib/services/status-updater-service.ts refuses only LISTED -> anything; data-persister.ts keeps a stored listing_date when the merged record has none (a sanitizer rejection is still written); listing job advances CLOSED rows, claiming LISTED only after the listing date is stored.",
+  "detection_check": "docs/reviews/detection-checks/listing_known_not_advanced.json (nightly floor, names offenders by slug). A regression that does not leave a listing_performance row behind (e.g. CLOSED -> OPEN) is not detected by it.",
+  "status": "unguarded",
+  "spec_ref": [
+    "§1.2.1"
+  ]
+}

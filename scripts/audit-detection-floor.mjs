@@ -1677,6 +1677,34 @@ async function checkClosedIpoDoneWithoutWalk() {
       : `0 of ${rows.length} DONE row(s)`);
 }
 
+// ---- #70: a listing the system knows, not carried by ipos ----------------------------------
+// docs/design/data-sourcing-pull-model.md field 8 (`status`, legal transition ... -> CLOSED ->
+// LISTED) and fields 176-178 / 224 (`listing_performance.listing_date` is a copy of
+// `ipos.listing_date`; "a divergence is a defect"). A listing_performance row whose IPO is not
+// LISTED or has no listing_date is a listed company
+// shown to readers as "closed, not listed" (glass-wall-systems-india-ltd / lumino-industries-ltd,
+// staging 2026-09-26: 4 such rows). Names every offending IPO by slug. A date MISMATCH between a
+// LISTED row and its listing row is a separate class, not checked here.
+async function checkListingKnownNotAdvanced() {
+  const name = 'every IPO with a listing_performance row is LISTED with an ipos.listing_date (#70)';
+  const rows = await q(
+    `SELECT i.slug, i.status::text AS status, i.listing_date::text AS "iposListingDate",
+            lp.listing_date::text AS "lpListingDate"
+       FROM listing_performance lp JOIN ipos i ON i.id = lp.ipo_id
+      WHERE i.status::text <> 'LISTED' OR i.listing_date IS NULL
+      ORDER BY i.slug`
+  );
+  const [{ total }] = await q(`SELECT count(*)::int AS total FROM listing_performance`);
+  for (const r of rows) {
+    notify('listing_known_not_advanced', 'P2', r.slug, 'listing known but ipos not advanced',
+      `${r.slug}: status ${r.status}, ipos.listing_date ${r.iposListingDate ?? 'NULL'}, listing_performance.listing_date ${r.lpListingDate}`);
+  }
+  record('listing_known_not_advanced', name, rows.length === 0 ? 'PASS' : 'FAIL',
+    rows.length
+      ? rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug} (${r.status}, ipos ${r.iposListingDate ?? 'NULL'} vs lp ${r.lpListingDate})`).join('; ')
+      : `0 of ${total} listing row(s)`);
+}
+
 // ---- (i): identity — one IPO stored twice, or two offerings folded into ------
 // one company. Step 1 of #903 (S1/S2/S3/S4/S7); implements
 // docs/design/data-sourcing-pull-model.md §2.3.3.1's standing sweep (F-103)
@@ -3431,6 +3459,7 @@ async function main() {
   await runCheck(checkSourceKeyConflicts, ['i_source_key_conflict']);
   await runCheck(checkSettledFieldRewrites, ['s_settled_field_rewritten']);
   await runCheck(checkClosedIpoDoneWithoutWalk, ['closed_ipo_done_without_walk']);
+  await runCheck(checkListingKnownNotAdvanced, ['listing_known_not_advanced']);
   await runCheck(checkK, ['k_step_ledger_silence', 'k_step_consecutive_failures']);
   await runCheck(checkCycleOverrunAudit, ['m_cycle_overrun']);
   await runCheck(checkL, ['l_nse_status_crosscheck']);
