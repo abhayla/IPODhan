@@ -282,12 +282,18 @@ def is_near_memory_ceiling(limit_mb=None, threshold=NEAR_CEILING_THRESHOLD):
 
 
 def _exception_chain(exc, limit=8):
-    """`exc`, then what it was raised from (`__cause__`, else `__context__`),
-    bounded and cycle-safe."""
+    """`exc`, then what it was EXPLICITLY raised from (`raise X from e`, i.e.
+    `__cause__`), bounded and cycle-safe.
+
+    `__context__` is deliberately not followed: it is set on ANY exception
+    raised while another is being handled, so a KeyError thrown inside an
+    `except SystemError:` block would inherit the SystemError and be
+    misclassified as the memory ceiling (PR #1195 review). RapidOCR's wrapper
+    uses `raise ... from e`, which is all #1046 needs."""
     seen = []
     while exc is not None and len(seen) < limit and all(exc is not s for s in seen):
         seen.append(exc)
-        exc = exc.__cause__ or exc.__context__
+        exc = exc.__cause__
     return seen
 
 

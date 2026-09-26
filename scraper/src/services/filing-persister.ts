@@ -86,6 +86,8 @@ export interface FilingExtraction {
   fiscal_years?: number[] | null;
   /** OD-97: page indices whose text came from OCR; [] = all text layer; absent = unknown (older envelope). */
   ocr_pages?: number[] | null;
+  /** #1046: per OCR'd page, the long edge its text was read at; downscaled = read only after a smaller re-render. Informational; the persister does not read it. */
+  ocr_render?: Array<{ page: number; long_edge_px: number | null; full_long_edge_px: number | null; downscaled: boolean }> | null;
   fields: Record<string, ExtractedField>;
 }
 

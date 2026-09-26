@@ -81,6 +81,32 @@ def test_memory_classifier_reads_the_wrapped_cause():
     assert memory_guard.is_memory_exhaustion(exc) is True
 
 
+def _raised_inside_handler(handled, raised):
+    """`raised` thrown while `handled` is being handled: Python sets
+    `raised.__context__ = handled` implicitly (no `from`)."""
+    try:
+        try:
+            raise handled
+        except type(handled):
+            raise raised
+    except type(raised) as exc:
+        return exc
+
+
+def test_a_bug_raised_inside_a_memory_handler_is_not_memory():
+    """PR #1195 review: following `__context__` made a KeyError raised inside
+    an `except SystemError:` (or EAGAIN OSError) block classify as the memory
+    ceiling, sending a healthy document to the hard-failure floor."""
+    import errno
+    for handled in (SystemError("error return without exception set"),
+                    OSError(errno.EAGAIN, "Resource temporarily unavailable"),
+                    MemoryError()):
+        exc = _raised_inside_handler(handled, KeyError("allocation_sums_and_qib_floor"))
+        assert exc.__context__ is handled
+        assert memory_guard.is_memory_exhaustion(exc) is False, handled
+        assert ocr_pages.ocr_page_failure_reason(exc) is None, handled
+
+
 def test_memory_classifier_still_rejects_a_non_memory_onnx_failure():
     assert memory_guard.is_memory_exhaustion(_rapidocr_failure(ORT_OTHER_CAUSE)) is False
 
@@ -117,10 +143,14 @@ def test_fixture_is_a_scanned_page_rendered_large():
 def test_a_page_that_fails_full_size_is_read_at_a_smaller_render():
     calls = []
     [(idx, image, scale)] = list(ocr_pages.render_pages_scaled(FIXTURE, [0]))
-    result, used_scale = ocr_pages.read_page_with_fallback(
-        FIXTURE, idx, image, scale, _reader_failing_above(1600, calls=calls))
+    ref = [image]
+    del image
+    result, used_scale, edge = ocr_pages.read_page_with_fallback(
+        FIXTURE, idx, ref, scale, _reader_failing_above(1600, calls=calls))
     assert calls == [2860, 2400, 1600]
     assert result == "read at 1600 px"
+    assert edge == 1600
+    assert ref == [], "the helper must take the full-size render out of the caller's hands"
     # The scale returned is the one the successful render used, so a caller
     # mapping boxes back to PDF points (ocr_pdf_page_boxes) stays correct.
     assert used_scale == pytest.approx(scale * 1600 / 2860, rel=1e-3)
@@ -129,13 +159,16 @@ def test_a_page_that_fails_full_size_is_read_at_a_smaller_render():
 def test_a_page_unreadable_at_every_size_is_named_with_its_cause():
     [(idx, image, scale)] = list(ocr_pages.render_pages_scaled(FIXTURE, [0]))
     with pytest.raises(ocr_pages.OcrPageUnreadable) as info:
-        ocr_pages.read_page_with_fallback(FIXTURE, idx, image, scale,
+        ocr_pages.read_page_with_fallback(FIXTURE, idx, [image], scale,
                                           _reader_failing_above(100))
     assert info.value.page == 0
     assert info.value.reason == "ocr_out_of_memory"
     assert info.value.sizes == (2860, 2400, 1600)
     # The memory cause survives, so main()'s classifier still sees the ceiling.
     assert memory_guard.is_memory_exhaustion(info.value) is True
+    # ...but no traceback frames (which held the page arrays) are kept alive.
+    for link in memory_guard._exception_chain(info.value.__cause__):
+        assert link.__traceback__ is None
 
 
 def test_a_non_onnx_error_is_not_retried():
@@ -145,7 +178,7 @@ def test_a_non_onnx_error_is_not_retried():
         raise ValueError("a real bug, not an inference failure")
 
     with pytest.raises(ValueError):
-        ocr_pages.read_page_with_fallback(FIXTURE, idx, image, scale, read)
+        ocr_pages.read_page_with_fallback(FIXTURE, idx, [image], scale, read)
 
 
 # --------------------------------------------------------------------------- #
@@ -165,6 +198,7 @@ def test_extract_keeps_going_and_names_the_page_it_could_not_read(monkeypatch):
     assert out["unread_pages"] == [
         {"page": 0, "reason": "ocr_out_of_memory"},
     ]
+    assert out["ocr_render"] == []  # nothing was read, at any size
 
 
 def test_extract_reads_the_page_after_a_smaller_render(monkeypatch):
@@ -179,3 +213,19 @@ def test_extract_reads_the_page_after_a_smaller_render(monkeypatch):
     assert "unread_pages" not in out
     assert out["extraction_status"] != STATUS_INCOMPLETE_PAGES
     assert text.strip()[:40] in dict(out["page_texts"])[0]
+    # OD-55 accuracy first: the envelope says this page was read downscaled.
+    assert out["ocr_render"] == [
+        {"page": 0, "long_edge_px": 1600, "full_long_edge_px": 2860, "downscaled": True},
+    ]
+
+
+def test_extract_marks_a_full_size_read_as_not_downscaled(monkeypatch):
+    monkeypatch.setattr(ocr_pages, "backend_available", lambda backend: True)
+    text = "Kanohar Electricals Limited restated statement of assets " * 10
+    monkeypatch.setattr(ocr_pages, "ocr_image", lambda image, backend: (text, 0.91))
+
+    out = extract_filing.extract(FIXTURE, "PROSPECTUS")
+
+    assert out["ocr_render"] == [
+        {"page": 0, "long_edge_px": 2860, "full_long_edge_px": 2860, "downscaled": False},
+    ]

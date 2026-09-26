@@ -23,6 +23,7 @@ import os
 import re
 import shutil
 import sys
+import traceback
 
 DEFAULT_DPI = 260
 DEFAULT_BACKEND = "rapidocr"
@@ -536,40 +537,72 @@ def ocr_page_failure_reason(exc):
     return "ocr_out_of_memory" if memory_guard.is_memory_exhaustion(exc) else "ocr_inference_failed"
 
 
-def read_page_with_fallback(pdf_path, idx, image, scale, read, dpi=DEFAULT_DPI,
-                            fallback_edges=OCR_FALLBACK_MAX_EDGES):
-    """Run `read(image)` on one rendered page; if OCR inference fails, re-render
-    that page at each smaller long edge in `fallback_edges` and try again.
+def _drop_frames(exc):
+    """Free the locals held by `exc`'s traceback (and its causes') so a failed
+    full-size read does not keep its page arrays alive through the smaller
+    retries (PR #1195 review). The exception objects stay (type + message),
+    which is all the classifiers and `OcrPageUnreadable.__cause__` need."""
+    import memory_guard
+    for link in memory_guard._exception_chain(exc):
+        tb = link.__traceback__
+        if tb is not None:
+            traceback.clear_frames(tb)
+        link.__traceback__ = None
+    exc.__context__ = None
 
-    Returns `(result, scale_used)`. Raises `OcrPageUnreadable` when every size
-    failed. Any other exception propagates untouched: only the failures
-    `ocr_page_failure_reason` names (#1046) are retried.
-    """
+
+def _long_edge(image):
     size = getattr(image, "size", None)
-    tried = [max(size) if isinstance(size, tuple) else None]
+    return max(size) if isinstance(size, tuple) else None
+
+
+def read_page_with_fallback(pdf_path, idx, image_ref, scale, read, dpi=DEFAULT_DPI,
+                            fallback_edges=OCR_FALLBACK_MAX_EDGES):
+    """Run `read(image)` on one rendered page; if the read fails for a reason
+    `ocr_page_failure_reason` names (#1046), re-render that page at each
+    smaller long edge in `fallback_edges` and try again.
+
+    `image_ref` is a ONE-ELEMENT LIST holding the rendered page. It is emptied
+    here, so when the caller keeps no other reference the full-size render is
+    freed before a smaller one is drawn.
+
+    Returns `(result, scale_used, long_edge_used)`; `long_edge_used` is the
+    long side in pixels of the image that was actually read, so a caller can
+    record that a page was read DOWNSCALED (OD-55: accuracy first).
+    Raises `OcrPageUnreadable` when every size failed. Any other exception
+    propagates untouched.
+    """
+    image = image_ref.pop()
+    first_edge = _long_edge(image)
+    tried = [first_edge]
     try:
-        return read(image), scale
-    except Exception as exc:  # noqa: BLE001 — narrowed just below
+        return read(image), scale, first_edge
+    except Exception as exc:  # noqa: BLE001 - narrowed just below
         reason = ocr_page_failure_reason(exc)
         if reason is None:
             raise
+        _drop_frames(exc)
         last = exc
-    del image  # drop this frame's reference; the caller's loop still holds one
+    del image
     for edge in fallback_edges:
-        if tried[0] is not None and edge >= tried[0]:
+        if first_edge is not None and edge >= first_edge:
             continue  # the page was already rendered at or below this size
         tried.append(edge)
-        sys.stderr.write("ocr page %s: inference failed at long edge %s (%s); "
+        sys.stderr.write("ocr page %s: read failed at long edge %s (%s); "
                          "retrying at %s px\n"
                          % (idx, tried[-2], reason, edge))
         for _i, small, small_scale in render_pages_scaled(pdf_path, [idx], dpi, edge):
+            small_edge = _long_edge(small)
             try:
-                return read(small), small_scale
-            except Exception as exc:  # noqa: BLE001 — narrowed just below
+                return read(small), small_scale, small_edge
+            except Exception as exc:  # noqa: BLE001 - narrowed just below
                 reason = ocr_page_failure_reason(exc)
                 if reason is None:
                     raise
+                _drop_frames(exc)
                 last = exc
+            finally:
+                del small
     raise OcrPageUnreadable(idx, reason, tried) from last
 
 
@@ -584,8 +617,9 @@ def ocr_pdf_page_boxes(pdf_path, pages=None, dpi=DEFAULT_DPI, backend=DEFAULT_BA
     """
     out = []
     for idx, image, scale in render_pages_scaled(pdf_path, pages, dpi, max_edge):
-        lines, scale = read_page_with_fallback(
-            pdf_path, idx, image, scale, lambda im: ocr_image_lines(im, backend), dpi)
+        ref, image = [image], None
+        lines, scale, _edge = read_page_with_fallback(
+            pdf_path, idx, ref, scale, lambda im: ocr_image_lines(im, backend), dpi)
         for line in lines:
             line["box"] = [[p[0] / scale, p[1] / scale] for p in line["box"]]
             for word in line["words"]:
@@ -602,8 +636,9 @@ def ocr_pdf_pages(pdf_path, pages=None, dpi=DEFAULT_DPI, backend=DEFAULT_BACKEND
     """OCR the given pages of a PDF. Returns [(page_index, text, confidence)]."""
     out = []
     for idx, image, scale in render_pages_scaled(pdf_path, pages, dpi, MAX_EDGE_PX):
-        (text, conf), _scale = read_page_with_fallback(
-            pdf_path, idx, image, scale, lambda im: ocr_image(im, backend), dpi)
+        ref, image = [image], None
+        (text, conf), _scale, _edge = read_page_with_fallback(
+            pdf_path, idx, ref, scale, lambda im: ocr_image(im, backend), dpi)
         out.append((idx, text, conf))
     return out
 
