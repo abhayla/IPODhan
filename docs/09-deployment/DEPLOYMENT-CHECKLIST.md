@@ -52,7 +52,7 @@ This checklist ensures all critical steps are completed before, during, and afte
 
 ### Deployment Package
 
-- [ ] Deployment package created (`.\scripts\create-deployment-package.ps1`)
+- [ ] Deployment package created (`./scripts/create-deployment-package.sh`; the PowerShell variant was retired with the Windows deploy path — issue #881)
 - [ ] Package size reasonable (<100 MB)
 - [ ] Package contains all required files:
   - [ ] web/.next/ (built Next.js app)

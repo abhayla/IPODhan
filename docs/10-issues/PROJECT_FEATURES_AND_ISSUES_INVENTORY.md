@@ -1014,7 +1014,7 @@ IPODhan is a comprehensive IPO (Initial Public Offering) information platform fo
 **Impact**: Error-prone, slow, no rollback
 
 **Details**:
-- Deployment via PowerShell script (create-deployment-package.ps1)
+- Deployment via a PowerShell script (retired 2026-09 with the Windows deploy path — issue #881)
 - Manual transfer to VPS
 - Manual npm install and PM2 restart
 - No automated testing before deployment

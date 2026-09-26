@@ -439,4 +439,4 @@ echo -e "\nAll tests complete!"
 ---
 
 **For detailed implementation information, see:** `fixes/security-fixes.md`
-**For automated testing, see:** `scripts/verify-security-fixes.sh` (Linux/Mac) or `scripts/verify-security-fixes.ps1` (Windows)
+**For automated testing, see:** `scripts/verify-security-fixes.sh` (the Windows PowerShell variant was retired with the Windows deploy path — issue #881)

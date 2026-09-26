@@ -139,7 +139,7 @@ Story 8.4a has been successfully implemented and validated with **100% completio
    - Builds web and scraper
    - Creates timestamped archive
 
-4. **scripts/create-deployment-package.ps1** (6.9 KB)
+4. **PowerShell deployment variant** (6.9 KB) — retired 2026-09 with the Windows deploy path, issue #881
    - PowerShell deployment script for Windows
    - Same functionality as Bash version
    - Windows-specific commands and formatting

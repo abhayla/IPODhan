@@ -65,7 +65,7 @@ Story 8.4b has **PASSED QA validation** with 100% completion of all acceptance c
 
 #### 4.2 PowerShell Script Syntax Check
 - **Status:** ✅ PASS
-- **Script:** scripts/setup-production-database.ps1 (458 lines)
+- **Script:** scripts/setup-production-database.ps1 (retired, #881) (458 lines)
 - **Syntax errors:** 0
 - **Prerequisite checking:** Implemented
 - **Error handling:** Implemented
@@ -133,7 +133,7 @@ Story 8.4b has **PASSED QA validation** with 100% completion of all acceptance c
 
 #### PowerShell Script Tests
 - **Status:** PASS
-- **Scripts tested:** 1 (setup-production-database.ps1)
+- **Scripts tested:** 1 (setup-production-database.ps1 (retired, #881))
 - **Syntax validation:** PASS
 - **Security checks:** PASS (secure password generation)
 - **Error handling:** PASS
@@ -290,7 +290,7 @@ Story 8.4b has **PASSED QA validation** with 100% completion of all acceptance c
    - Documentation updates
    - Stakeholder notification
 
-8. **scripts/setup-production-database.ps1** (458 lines)
+8. **scripts/setup-production-database.ps1 (retired, #881)** (458 lines)
    - Automated PostgreSQL database setup
    - Secure password generation (32 characters)
    - Database and user creation for shared server
@@ -446,7 +446,7 @@ docs/deployment/phase3-cloudflare-configuration.md (868 lines)
 docs/deployment/phase4-verification-testing.md (1,014 lines)
 docs/deployment/phase5-rollback-testing.md (486 lines)
 docs/deployment/phase6-post-deployment.md (735 lines)
-scripts/setup-production-database.ps1 (458 lines)
+scripts/setup-production-database.ps1 (retired, #881) (458 lines)
 docs/stories/progress-reports/story-8.4b-progress-report.md (682 lines)
 docs/06-qa-reports/sprint-reports/story-8.4b-ac-validation.md (299 lines)
 ```
@@ -460,7 +460,7 @@ e804929 chore: Add deployment infrastructure for VPS setup
 
 ### PowerShell Script Validation
 ```
-Script: scripts/setup-production-database.ps1
+Script: scripts/setup-production-database.ps1 (retired, #881)
 Syntax: VALID (no errors)
 Prerequisite checking: IMPLEMENTED
 Error handling: IMPLEMENTED

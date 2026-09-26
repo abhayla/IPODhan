@@ -1,3 +1,8 @@
+# Kept deliberately: a Windows-native alternative to the now-sanctioned
+# scripts/ops/db-tunnel.sh (docs/ops/prod-ops-recipes.md SS1); retained because past
+# session walk logs (docs/walks/2026-09-02-*, docs/walks/handover-2026-09-05*)
+# document it as delivered work and this housekeeping pass does not rewrite session
+# history. See issue #881.
 <#
 .SYNOPSIS
   Keeps a local SSH port-forward to the VPS PostgreSQL alive for local dev tools.

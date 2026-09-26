@@ -1,4 +1,7 @@
 ###############################################################################
+# Kept deliberately: watches disk space on the still-live Windows PostgreSQL host
+# 103.118.16.189 (see issue #881; CLAUDE.md "Production & Deployment").
+#
 # IPODhan - DB host disk-free heartbeat (Windows PowerShell)
 #
 # Why this exists: the Windows VPS 103.118.16.189 is the ONLY Postgres host for

@@ -404,7 +404,7 @@ Coverage:
 **DO TODAY (15 minutes):**
 ```bash
 # Linux/Mac: ./test-results/phase-5/setup-log-rotation.sh
-# Windows: .\test-results\phase-5\setup-log-rotation.ps1
+# Windows: no PowerShell equivalent was built for this script; run it via Git Bash (issue #881)
 ```
 
 **DO THIS WEEK (2-4 hours):**

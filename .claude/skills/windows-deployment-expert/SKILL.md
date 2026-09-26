@@ -137,12 +137,8 @@ NEXT_PUBLIC_GA_MEASUREMENT_ID=G-XXXXXXXXXX
 
 ### 1. Build Deployment Package
 
-```powershell
-# On local machine
-.\scripts\create-deployment-package.ps1
-
-# Creates: ipodhan-deployment-{timestamp}.zip
-```
+The PowerShell deployment-package script was retired with the Windows deploy path
+(issue #881) — this section is history, not a live procedure.
 
 ### 2. Transfer to VPS
 

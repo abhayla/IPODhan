@@ -89,7 +89,7 @@ Follow these guides in order:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| [../scripts/setup-production-database.ps1](../scripts/setup-production-database.ps1) | 458 | Automated database setup |
+| PowerShell database setup script (retired 2026-09 with the Windows deploy path — issue #881) | 458 | Automated database setup |
 
 **Total:** 5,249 lines of deployment documentation
 
@@ -101,7 +101,7 @@ These files were created in Story 8.4a and are required for deployment:
 
 - `ecosystem.config.js` - PM2 configuration
 - `.env.production.template` - Environment variables template
-- `scripts/create-deployment-package.ps1` - Package creation script (Windows)
+- `scripts/create-deployment-package.sh` - Package creation script (the Windows PowerShell variant was retired with the Windows deploy path — issue #881)
 - Health check endpoint: `web/app/api/health/route.ts`
 
 ---

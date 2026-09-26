@@ -11,7 +11,7 @@
 | `logging-monitoring-tests.md` | **Complete test results** (10,000+ lines) | ✅ Complete |
 | `logging-monitoring-summary.md` | **Executive summary** with action items | ✅ Complete |
 | `setup-log-rotation.sh` | **Bash script** to configure log rotation | ✅ Complete |
-| `setup-log-rotation.ps1` | **PowerShell script** for Windows | ✅ Complete |
+| (no PowerShell variant) | No `.ps1` equivalent was ever built for this script; run the bash script via Git Bash on Windows — see issue #881 | N/A |
 | `load-test.js` | Load testing script (Artillery) | ✅ Existing |
 | `run-load-test.sh` | Load test runner | ✅ Existing |
 
@@ -40,10 +40,7 @@ chmod +x setup-log-rotation.sh
 ./setup-log-rotation.sh
 ```
 
-**Windows:**
-```powershell
-.\setup-log-rotation.ps1
-```
+**Windows:** no PowerShell equivalent was built for this script; run the bash script above via Git Bash, or use the manual alternative below.
 
 **Manual alternative:**
 ```bash
@@ -102,8 +99,7 @@ pm2 logs ipodhan-web --lines 50
 ```bash
 # Run the setup script
 ./setup-log-rotation.sh   # Linux/Mac
-# OR
-.\setup-log-rotation.ps1  # Windows
+# (Windows PowerShell variant retired with the Windows deploy path — issue #881)
 ```
 
 **Verify:**

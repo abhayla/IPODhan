@@ -211,13 +211,11 @@ This is an MVP project under active development. See `docs/stories/` for planned
 
 On your local development machine:
 
-```powershell
-# Using PowerShell (Windows)
-.\scripts\create-deployment-package.ps1
-
-# Or using Bash (Git Bash/WSL)
+```bash
 ./scripts/create-deployment-package.sh
 ```
+
+(The Windows PowerShell variant was retired with the Windows deploy path — issue #881.)
 
 This will create `ipodhan-deployment-{timestamp}.zip` containing:
 - Built Next.js web application
