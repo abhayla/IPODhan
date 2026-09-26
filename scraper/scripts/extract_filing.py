@@ -2917,7 +2917,8 @@ def _normalise_unread_pages(unread_pages):
 
 
 def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=None,
-        issue_size_rupees=None, tables_for_page=None, unread_pages=None):
+        issue_size_rupees=None, tables_for_page=None, unread_pages=None,
+        ocr_render=None):
     """`ocr_confidence` (D6/W-57): {page_index: confidence} for pages whose text
     came from OCR rather than from the PDF's own text layer. `issue_size_rupees`
     (W-129) backs the net_worth_vs_issue_size / unit_matches_magnitude checks —
@@ -2996,6 +2997,14 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
         # missing key (an older envelope) is UNKNOWN. The persister marks each
         # value from this list plus the field's own page.
         "ocr_pages": sorted(int(p) for p in (ocr_confidence or {})),
+        # #1046: per OCR'd page, the long edge (px) its text was read at and
+        # the page's full render long edge. downscaled=True marks a page that
+        # only read after a smaller re-render (lower OCR accuracy).
+        "ocr_render": [
+            {"page": int(p), "long_edge_px": used, "full_long_edge_px": full,
+             "downscaled": bool(used and full and used < full)}
+            for p, (used, full) in sorted((ocr_render or {}).items())
+        ],
         "fields": fields,
     }
 
@@ -3028,6 +3037,10 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
             p.close()
 
     ocr_confidence = {}
+    # #1046: page -> (long edge its text was read at, the page's full render
+    # long edge). A page read smaller than its full render is lower-accuracy
+    # OCR, and the envelope says so per page (OD-55: accuracy first).
+    ocr_render = {}
     unread_pages = []
     if ocr:
         import ocr_pages
@@ -3054,15 +3067,32 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
                 # directly is what makes partial progress reportable.
                 by_page = dict(page_texts)
                 done = set()
+                # #1046: pages OCR could not read at any size, with the cause.
+                # Named in the envelope (OD-55) instead of failing the document.
+                page_failures = {}
                 stop_reason = "ceiling_reached"
+                dpi = ocr_dpi or ocr_pages.DEFAULT_DPI
                 try:
-                    for idx, image, _scale in ocr_pages.render_pages_scaled(
-                        pdf_path, scanned, ocr_dpi or ocr_pages.DEFAULT_DPI,
-                        ocr_pages.MAX_EDGE_PX
+                    for idx, image, scale in ocr_pages.render_pages_scaled(
+                        pdf_path, scanned, dpi, ocr_pages.MAX_EDGE_PX
                     ):
-                        text, conf = ocr_pages.ocr_image(image, backend)
+                        full_edge = ocr_pages._long_edge(image)
+                        # The list hands the render to the helper and drops
+                        # this frame's reference, so a failed full-size render
+                        # is freed before a smaller one is drawn.
+                        ref, image = [image], None
+                        try:
+                            (text, conf), _used, edge = ocr_pages.read_page_with_fallback(
+                                pdf_path, idx, ref, scale,
+                                lambda im: ocr_pages.ocr_image(im, backend), dpi)
+                        except ocr_pages.OcrPageUnreadable as unreadable:
+                            page_failures[idx] = unreadable.reason
+                            sys.stderr.write("%s; page named in the envelope\n"
+                                             % unreadable)
+                            continue
                         by_page[idx] = text
                         ocr_confidence[idx] = conf
+                        ocr_render[idx] = (edge, full_edge)
                         done.add(idx)
                 except _CEILING_INTERRUPTS as exc:
                     # OD-55: the interrupt is SWALLOWED, not propagated, and
@@ -3090,7 +3120,8 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
                     # envelope is shaped from what actually finished rather
                     # than from what was planned.
                     unread_pages = [
-                        (i, stop_reason) for i in scanned if i not in done
+                        (i, page_failures.get(i, stop_reason))
+                        for i in scanned if i not in done
                     ]
                     page_texts = sorted(by_page.items())
 
@@ -3119,7 +3150,8 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
     return run(page_texts, doc_type, os.path.basename(pdf_path), segment,
                ocr_confidence or None, issue_size_rupees=issue_size_rupees,
                tables_for_page=tables_for_page,
-               unread_pages=unread_pages or None)
+               unread_pages=unread_pages or None,
+               ocr_render=ocr_render or None)
 
 
 def main():

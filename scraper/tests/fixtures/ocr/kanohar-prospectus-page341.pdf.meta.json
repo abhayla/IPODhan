@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1789450620758.pdf",
+  "capturedAt": "2026-09-26",
+  "ipoId": "kanohar-electricals-ltd",
+  "company": "Kanohar Electricals",
+  "note": "Page 341 (0-based) only, copied out of the Kanohar Electricals PROSPECTUS (staging document a4922800-7ac5-406a-97d8-89f3cae31de6, sha256 3353fa20...7887480, matches the stored hash). A scanned landscape page with no text layer (3 characters), rendered at 2860x2210 px. Under a 1000 MB process memory cap it reproduces #1046: 'ONNXRuntime inferece failed.' caused by 'bad allocation' at 2860 and 2400 px, and reads at 1600 px."
+}

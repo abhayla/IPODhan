@@ -23,12 +23,21 @@ import os
 import re
 import shutil
 import sys
+import traceback
 
 DEFAULT_DPI = 260
 DEFAULT_BACKEND = "rapidocr"
 CONFIDENCE_FLOOR = 0.6
 # Cap on the rendered image's longest side (see render_pages).
 MAX_EDGE_PX = 3600
+# #1046: smaller long edges a page is re-rendered at when OCR inference fails on
+# it. RapidOCR's detector runs at the image's full size (limit_type "min"), so
+# its working memory grows with the page's pixel area; under the extractor's
+# RLIMIT_AS ceiling a 3600 px page can fail to allocate inside onnxruntime and
+# surface only as "ONNXRuntime inferece failed.". Measured locally under a
+# 1000 MB commit cap on the Runwal price band ad (page 0): 3600 px and 2400 px
+# failed with "bad allocation", 1600 px read 6,696 characters.
+OCR_FALLBACK_MAX_EDGES = (2400, 1600)
 
 # A page with fewer usable alphanumeric characters than this has no text layer
 # worth extracting from — a scanned page yields ~0, a page with a broken font
@@ -487,6 +496,116 @@ def render_pages_scaled(pdf_path, pages=None, dpi=DEFAULT_DPI, max_edge=MAX_EDGE
         doc.close()
 
 
+class OcrPageUnreadable(Exception):
+    """OCR inference failed on one page at every size tried (#1046).
+
+    Carries the page index and a short reason so a caller can NAME the page
+    (OD-55) instead of failing the whole document. `__cause__` is the last
+    underlying failure, so the memory-ceiling classifier still sees it.
+    """
+
+    def __init__(self, page, reason, sizes):
+        super().__init__("page %s unreadable by OCR (%s) at long edges %s"
+                         % (page, reason, list(sizes)))
+        self.page = page
+        self.reason = reason
+        self.sizes = tuple(sizes)
+
+
+def ocr_page_failure_reason(exc):
+    """Why one page's OCR read failed, when it is a failure a smaller render
+    can cure; `None` for anything else (a real bug), which must propagate.
+
+    Two shapes of the same class (#1046), both measured on the Runwal ad under
+    a memory cap: onnxruntime cannot allocate inside the detector (RapidOCR
+    re-raises it as `ONNXRuntimeError('ONNXRuntime inferece failed.')`, the
+    "bad allocation" text only on `__cause__`), or numpy cannot allocate the
+    detector's float32 copy of the page (`_ArrayMemoryError`, a MemoryError).
+
+    Only called on an exception raised by the page's own OCR read: a
+    MemoryError from anywhere else still reaches extract_filing.main() and its
+    exit-3 memory-ceiling contract.
+    """
+    import memory_guard
+    chain = memory_guard._exception_chain(exc)
+    if any(isinstance(link, MemoryError) for link in chain):
+        return "ocr_out_of_memory"
+    onnx = any((type(link).__module__ or "").startswith(("rapidocr_onnxruntime", "onnxruntime"))
+               for link in chain)
+    if not onnx:
+        return None
+    return "ocr_out_of_memory" if memory_guard.is_memory_exhaustion(exc) else "ocr_inference_failed"
+
+
+def _drop_frames(exc):
+    """Free the locals held by `exc`'s traceback (and its causes') so a failed
+    full-size read does not keep its page arrays alive through the smaller
+    retries (PR #1195 review). The exception objects stay (type + message),
+    which is all the classifiers and `OcrPageUnreadable.__cause__` need."""
+    import memory_guard
+    for link in memory_guard._exception_chain(exc):
+        tb = link.__traceback__
+        if tb is not None:
+            traceback.clear_frames(tb)
+        link.__traceback__ = None
+    exc.__context__ = None
+
+
+def _long_edge(image):
+    size = getattr(image, "size", None)
+    return max(size) if isinstance(size, tuple) else None
+
+
+def read_page_with_fallback(pdf_path, idx, image_ref, scale, read, dpi=DEFAULT_DPI,
+                            fallback_edges=OCR_FALLBACK_MAX_EDGES):
+    """Run `read(image)` on one rendered page; if the read fails for a reason
+    `ocr_page_failure_reason` names (#1046), re-render that page at each
+    smaller long edge in `fallback_edges` and try again.
+
+    `image_ref` is a ONE-ELEMENT LIST holding the rendered page. It is emptied
+    here, so when the caller keeps no other reference the full-size render is
+    freed before a smaller one is drawn.
+
+    Returns `(result, scale_used, long_edge_used)`; `long_edge_used` is the
+    long side in pixels of the image that was actually read, so a caller can
+    record that a page was read DOWNSCALED (OD-55: accuracy first).
+    Raises `OcrPageUnreadable` when every size failed. Any other exception
+    propagates untouched.
+    """
+    image = image_ref.pop()
+    first_edge = _long_edge(image)
+    tried = [first_edge]
+    try:
+        return read(image), scale, first_edge
+    except Exception as exc:  # noqa: BLE001 - narrowed just below
+        reason = ocr_page_failure_reason(exc)
+        if reason is None:
+            raise
+        _drop_frames(exc)
+        last = exc
+    del image
+    for edge in fallback_edges:
+        if first_edge is not None and edge >= first_edge:
+            continue  # the page was already rendered at or below this size
+        tried.append(edge)
+        sys.stderr.write("ocr page %s: read failed at long edge %s (%s); "
+                         "retrying at %s px\n"
+                         % (idx, tried[-2], reason, edge))
+        for _i, small, small_scale in render_pages_scaled(pdf_path, [idx], dpi, edge):
+            small_edge = _long_edge(small)
+            try:
+                return read(small), small_scale, small_edge
+            except Exception as exc:  # noqa: BLE001 - narrowed just below
+                reason = ocr_page_failure_reason(exc)
+                if reason is None:
+                    raise
+                _drop_frames(exc)
+                last = exc
+            finally:
+                del small
+    raise OcrPageUnreadable(idx, reason, tried) from last
+
+
 def ocr_pdf_page_boxes(pdf_path, pages=None, dpi=DEFAULT_DPI, backend=DEFAULT_BACKEND,
                        max_edge=MAX_EDGE_PX):
     """OCR pages and return their word boxes in PDF POINTS (W-89).
@@ -498,7 +617,9 @@ def ocr_pdf_page_boxes(pdf_path, pages=None, dpi=DEFAULT_DPI, backend=DEFAULT_BA
     """
     out = []
     for idx, image, scale in render_pages_scaled(pdf_path, pages, dpi, max_edge):
-        lines = ocr_image_lines(image, backend)
+        ref, image = [image], None
+        lines, scale, _edge = read_page_with_fallback(
+            pdf_path, idx, ref, scale, lambda im: ocr_image_lines(im, backend), dpi)
         for line in lines:
             line["box"] = [[p[0] / scale, p[1] / scale] for p in line["box"]]
             for word in line["words"]:
@@ -514,8 +635,10 @@ def ocr_pdf_page_boxes(pdf_path, pages=None, dpi=DEFAULT_DPI, backend=DEFAULT_BA
 def ocr_pdf_pages(pdf_path, pages=None, dpi=DEFAULT_DPI, backend=DEFAULT_BACKEND):
     """OCR the given pages of a PDF. Returns [(page_index, text, confidence)]."""
     out = []
-    for idx, image in render_pages(pdf_path, pages, dpi, MAX_EDGE_PX):
-        text, conf = ocr_image(image, backend)
+    for idx, image, scale in render_pages_scaled(pdf_path, pages, dpi, MAX_EDGE_PX):
+        ref, image = [image], None
+        (text, conf), _scale, _edge = read_page_with_fallback(
+            pdf_path, idx, ref, scale, lambda im: ocr_image(im, backend), dpi)
         out.append((idx, text, conf))
     return out
 
