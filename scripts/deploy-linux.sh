@@ -763,7 +763,7 @@ resume_scraper() {
   # In production SCRAPER_CRON is always set well before this function is
   # ever called, so the fallback here is dead weight on the real deploy path.
   ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" SCRAPER_WAKE_TRIGGER=deploy pm2 start "$target_dir/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
-      --no-autorestart ) \
+      --no-treekill --kill-timeout 75000 --no-autorestart ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
   # CRITICAL (Tier A review): this path had NO cron install. resume_scraper
   # runs from the EXIT trap on every FAILED deploy and every rollback, so the
@@ -1951,7 +1951,7 @@ restart_pm2() {
     log "[dry-run] pm2 delete $PM2_WEB_APP"
     log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
     log "[dry-run] pm2 delete $PM2_SCRAPER_APP"
-    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start scripts/scraper-wake.sh --name $PM2_SCRAPER_APP --no-autorestart (cwd=$release_realpath/scraper, release=$release_realpath)"
+    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start scripts/scraper-wake.sh --name $PM2_SCRAPER_APP --no-treekill --kill-timeout 75000 --no-autorestart (cwd=$release_realpath/scraper, release=$release_realpath)"
     # The scheduled invoker is emitted on the dry-run path too. Without this
     # line a dry-run test can prove the pm2 start's shape but says NOTHING
     # about whether anything ever wakes the wrapper - which is exactly the
@@ -1988,8 +1988,18 @@ restart_pm2() {
   # W-178 round 2: see resume_scraper()'s comment above — default-expand
   # SCRAPER_CRON so this function's own test isolation (case 9b) doesn't
   # abort on an unbound variable under `set -u` before pm2 ever runs.
+  # #624: --no-treekill makes pm2 signal the wrapper pid ONLY; the wrapper
+  # passes one SIGTERM on to the job so it releases its locks, then SIGKILLs
+  # whatever the job left running in its session (python extractors), since
+  # with --no-treekill nothing else would. pm2's default
+  # treekill signals every pid in the tree (node gets duplicate copies, and a
+  # second copy aborts the release) and SIGKILLs the whole tree after 1600 ms.
+  # --kill-timeout 75000 outlasts the wrapper's 60 s --kill-after backstop, so
+  # pm2 never SIGKILLs a wrapper that is still waiting for a lock release.
+  # Both are stored in pm2's app record, so a later `pm2 stop`/`delete` of this
+  # app uses them too. scripts/tests/scraper-wake.test.sh case 22f pins them.
   ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" SCRAPER_WAKE_TRIGGER=deploy pm2 start "$RELEASE_DIR/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
-      --no-autorestart )
+      --no-treekill --kill-timeout 75000 --no-autorestart )
   # The alarm clock. Without this the wrapper above runs once and never again.
   install_scraper_cron
   install_staging_window_cron # no-op for prod; installs/refreshes the staging window line on every successful staging deploy

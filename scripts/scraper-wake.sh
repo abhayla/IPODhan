@@ -492,30 +492,150 @@ else
 fi
 
 if command -v timeout >/dev/null 2>&1; then
-  # MINOR (Tier A review), handled defensively: GNU `timeout` signals only its
-  # DIRECT child unless that child leads its own process group. The scraper
-  # spawns a python PDF/OCR extractor, so on a ceiling trip that grandchild
-  # could outlive the kill and keep burning a 2-vCPU box with nothing watching.
+  # GRANDCHILDREN (#624 round 2, Tier A finding). setsid gives the job its own
+  # session and process group so a deploy/terminal signal to the wrapper's
+  # group never lands on it directly. The consequence the first version of
+  # this comment got wrong: setsid moves the job OUT of timeout's group, so
+  # timeout's TERM and its --kill-after SIGKILL reach only its direct child
+  # (tsx), never node or the python extractors node runs via spawnSync. What
+  # actually guarantees that nothing outlives the wake is sweep_job_group:
+  # after the job exits on ANY path (deploy stop, ceiling, own exit) it
+  # SIGKILLs every pid still in the job's recorded group/session and logs a
+  # wake-swept line naming them. scripts/tests/scraper-wake.test.sh case 22g
+  # proves it with a TERM-deaf grandchild; the no-setsid fallback runs on the
+  # Windows laptop, the setsid branch runs in CI on Ubuntu.
   #
-  # `timeout --foreground` is NOT the fix here (it does the opposite - it
-  # declines to create a new group). The fix is to put the job in its own
-  # process group and signal the GROUP, which is exactly what `setsid` plus
-  # timeout's own `--kill-after` gives: setsid makes the job a session/group
-  # leader, so the signal timeout sends reaches the whole tree.
+  # A DEPLOY'S SIGNAL IS PASSED ON (#624). pm2 stops this wrapper with SIGINT
+  # (pm2 5.x KILL_SIGNAL) and SIGKILL after its kill_timeout. The job used to
+  # run as a FOREGROUND child here, and a shell defers a trapped-or-default
+  # SIGINT until its foreground child exits and forwards nothing; `setsid` has
+  # also moved the job out of this wrapper's process group, so no group signal
+  # reaches it either. The job's lock-release handler (scraper/src/index.ts
+  # onSignal) therefore never ran on a deploy, and its lock stayed held for
+  # the full TTL, so the next wakes logged wake-skipped.
   #
-  # UNVERIFIED ON LINUX: I could only exercise this on MSYS/Windows, where the
-  # grandchild did NOT survive the ceiling - a result that says nothing about
-  # Linux process groups. setsid is used because it is correct-by-construction
-  # for the documented semantics, not because I reproduced the orphan here.
-  # The staging soak is where a real ceiling trip can confirm no python
-  # process outlives it.
+  # So the job runs in the BACKGROUND and the wrapper waits on it with traps
+  # set: on INT/TERM/HUP it sends ONE SIGTERM to `timeout` (the job's direct
+  # parent), which forwards it to the job and arms its own --kill-after
+  # backstop. Exactly one signal: a second copy would find the job's
+  # process.once listener already spent, and tsx's preflight handler exits the
+  # process when a signal arrives with no listener left - mid-release.
+  # The deploy starts this wrapper with pm2 --no-treekill, so pm2 signals this
+  # pid alone and this wrapper is the one place a stop is turned into a signal;
+  # it is therefore also the one place that must clean up the job's session.
+  SCRAPER_KILL_AFTER_SECONDS="${SCRAPER_KILL_AFTER_SECONDS:-60}"
+
+  # --- The session sweep (#624 round 2) -------------------------------------
+  # Once the job has exited - on a deploy stop, the ceiling, or on its own -
+  # anything it started that is STILL running is killed. Why this is needed:
+  # node runs the python extractors through spawnSync, which blocks node's
+  # event loop, so a forwarded SIGTERM never reaches node's handler; tsx then
+  # SIGKILLs node and python is orphaned. setsid also moves the whole job out
+  # of timeout's process group, so timeout's --kill-after SIGKILL reaches only
+  # its direct child. Nothing else would ever stop the orphan.
+  # Targets are built from PIDS only - the job's recorded group/session id -
+  # never from a command-line pattern (owner rule: a pattern can match this
+  # wrapper's own argv). The wrapper's own pid is refused as a target.
+  # list_group_members <id>: pids whose process group or session is <id>.
+  list_group_members() {
+    if ps -e -o pid=,pgid=,sid= >/dev/null 2>&1; then
+      ps -e -o pid=,pgid=,sid= | awk -v g="$1" '$2 == g || $3 == g { print $1 }'
+    else
+      # Cygwin/MSYS ps (the laptop test bench): PID PPID PGID ..., with an
+      # optional one-character status column in front.
+      ps 2>/dev/null | awk -v g="$1" 'NR > 1 { i = 1; if ($1 !~ /^[0-9]+$/) i = 2; if ($(i + 2) == g) print $(i) }'
+    fi
+  }
+  sweep_job_group() {
+    _grp="$(cat "$JOB_GROUP_FILE" 2>/dev/null)"
+    rm -f "$JOB_GROUP_FILE"
+    case "$_grp" in ''|*[!0-9]*) return 0 ;; esac
+    if [ "$_grp" -le 1 ] || [ "$_grp" = "$$" ]; then
+      return 0
+    fi
+    _members="$(list_group_members "$_grp" | tr '
+' ' ')"
+    for _m in $_members; do
+      if [ "$_m" = "$$" ]; then
+        log "WARN wake-sweep-refused: job=$SCRAPER_JOB group=$_grp contains this wrapper (pid $$); nothing was killed"
+        return 0
+      fi
+    done
+    [ -n "${_members% }" ] || return 0
+    for _m in $_members; do
+      kill -KILL "$_m" 2>/dev/null || true
+    done
+    kill -KILL "-$_grp" 2>/dev/null || true
+    log "wake-swept: job=$SCRAPER_JOB left processes running after it exited (exit=$STATUS); sent SIGKILL to group/session $_grp killed=${_members% } lock_key=$SCRAPER_LOCK_KEY"
+  }
+  WAKE_SIGNAL=""
+  JOB_PID=""
+  WAIT_INTERRUPTED=""
+  on_wake_signal() {
+    WAIT_INTERRUPTED=1
+    if [ -n "$WAKE_SIGNAL" ]; then
+      return 0
+    fi
+    WAKE_SIGNAL="$1"
+    log "wake-signalled: job=$SCRAPER_JOB received SIG$1 (a pm2 stop/delete or restart) - forwarding ONE SIGTERM to the job so it releases lock_key=$SCRAPER_LOCK_KEY before exit; SIGKILL backstop in ${SCRAPER_KILL_AFTER_SECONDS}s. job_pid=${JOB_PID:-not-started}"
+    if [ -n "$JOB_PID" ]; then
+      kill -TERM "$JOB_PID" 2>/dev/null || true
+    fi
+  }
+  trap 'on_wake_signal INT' INT
+  trap 'on_wake_signal TERM' TERM
+  trap 'on_wake_signal HUP' HUP
+  # The job's process GROUP, recorded so that everything the job started can be
+  # killed once it has exited (see sweep_job_group below). With setsid the job
+  # leads a new session whose id is its own pid: `sh -c` writes $$ (that pid)
+  # and then execs the real command in place, so the pid does not change.
+  JOB_GROUP_FILE="$(mktemp 2>/dev/null || echo "/tmp/scraper-wake-group.$$")"
+  : > "$JOB_GROUP_FILE"
   if command -v setsid >/dev/null 2>&1; then
-    ( cd "$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after=60 "$SCRAPER_CEILING_SECONDS" setsid "$@" )
+    ( cd "$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after="$SCRAPER_KILL_AFTER_SECONDS" "$SCRAPER_CEILING_SECONDS" setsid sh -c 'echo $$ > "$0"; exec "$@"' "$JOB_GROUP_FILE" "$@" ) &
   else
-    log "WARN no-setsid: setsid not on PATH - the ceiling signals only the direct child, so a python extractor grandchild may outlive a ceiling trip. Check for stray processes after any ceiling-tripped line."
-    ( cd "$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after=60 "$SCRAPER_CEILING_SECONDS" "$@" )
+    log "WARN no-setsid: setsid not on PATH - the job stays in timeout's process group instead of its own session; the post-exit sweep targets that group."
+    ( cd "$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after="$SCRAPER_KILL_AFTER_SECONDS" "$SCRAPER_CEILING_SECONDS" "$@" ) &
   fi
-  STATUS=$?
+  JOB_PID=$!
+  if ! command -v setsid >/dev/null 2>&1; then
+    # No setsid: GNU timeout makes itself a process-group leader (setpgid(0,0),
+    # since --foreground is not passed), so the job and its children sit in
+    # the group whose id is timeout's pid.
+    echo "$JOB_PID" > "$JOB_GROUP_FILE"
+  fi
+  # A signal that landed between the traps and the fork has nothing to forward
+  # to yet; forward it now.
+  if [ -n "$WAKE_SIGNAL" ]; then
+    kill -TERM "$JOB_PID" 2>/dev/null || true
+  fi
+  # `wait` returns early (status > 128) when a trapped signal arrives; keep
+  # waiting until the job has really exited, so its true status is read and
+  # no child is left behind. Bounded: once a signal is forwarded, timeout's
+  # --kill-after ends the job within SCRAPER_KILL_AFTER_SECONDS.
+  # The trap sets WAIT_INTERRUPTED, so an interrupted `wait` is told apart
+  # from the job's own exit by the flag, not by `kill -0`: the old
+  # `kill -0` probe raced - a job that exited between `wait` returning 128+n
+  # and the probe left STATUS at the trap's 128+n instead of the job's exit.
+  # If the signal lands just AFTER a completed wait, the re-wait finds the job
+  # already reaped (dash then returns 127), so the earlier status is kept.
+  _wait_candidate=""
+  while :; do
+    WAIT_INTERRUPTED=""
+    wait "$JOB_PID"
+    _wait_rc=$?
+    if [ -n "$WAIT_INTERRUPTED" ] && [ "$_wait_rc" -gt 128 ]; then
+      _wait_candidate="$_wait_rc"
+      continue
+    fi
+    if [ "$_wait_rc" -eq 127 ] && [ -n "$_wait_candidate" ] && ! kill -0 "$JOB_PID" 2>/dev/null; then
+      _wait_rc="$_wait_candidate"
+    fi
+    STATUS="$_wait_rc"
+    break
+  done
+  sweep_job_group
+  trap - INT TERM HUP
 else
   # REFUSE, do not run unbounded. An earlier version ran the cycle anyway with
   # a warning, which quietly reintroduced exactly what this slice removes: a
@@ -529,6 +649,15 @@ else
 fi
 
 ELAPSED=$(( $(date -u '+%s') - STARTED_AT ))
+
+if [ -n "$WAKE_SIGNAL" ]; then
+  # A stop from outside, not the ceiling and not a crash: its own token, so
+  # scripts/ops/wake-delta.mjs never counts a deploy as a failed wake. Checked
+  # BEFORE the 124 branch: if the job ignored the forwarded SIGTERM, timeout's
+  # --kill-after SIGKILL makes timeout itself exit 124, which is not a ceiling.
+  log "wake-interrupted: job=$SCRAPER_JOB was stopped by SIG$WAKE_SIGNAL, forwarded as SIGTERM. elapsed=${ELAPSED}s lock_key=$SCRAPER_LOCK_KEY exit=$STATUS"
+  exit "$STATUS"
+fi
 
 if [ "$STATUS" -eq 124 ]; then
   # THE CEILING LINE. Distinguishable from both a clean finish and a crash, by
