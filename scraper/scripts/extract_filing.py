@@ -1029,6 +1029,52 @@ PROMOTER_GROUP_TXN_NEGATIVE_RX = re.compile(r"\bhave\s+not\b|\bhas\s+not\b|\bno\
 PROMOTER_GROUP_TXN_MAX = 500
 
 
+OUR_PROMOTERS_RX = re.compile(r"^\s*OUR PROMOTERS?\s*:", re.I)
+
+# A statement line that ends mid-list ("A, B AND") continues on the next line.
+_PROMOTER_LIST_CONTINUES = re.compile(r"(,|\bAND)\s*$", re.I)
+
+# The cover statement sits on the first pages of every SEBI ICDR offer document.
+_COVER_PAGES = 5
+
+
+def promoter_names_from_statement(raw):
+    """Split the text after "OUR PROMOTER(S):" into title-cased names."""
+    raw = (raw or "").strip()
+    raw = re.split(r"\s{2,}|(?<=[a-z])\s+INITIAL PUBLIC", raw)[0]
+    names = []
+    for part in re.split(r",|\bAND\b", raw, flags=re.I):
+        name = part.strip().strip(".").title()
+        if 3 <= len(name) <= 60 and re.match(r"^[A-Za-z][A-Za-z .'\-]+$", name):
+            names.append(name)
+    return names
+
+
+def read_cover_promoters(page_texts):
+    """(names, page) from a prospectus's cover "OUR PROMOTERS: A, B AND C".
+
+    #545. RHP/DRHP covers print the statement on two or three of their first
+    pages, and one of them may wrap the list onto a second line. Each occurrence
+    is read with its continuation joined, and the fullest reading wins, so a
+    wrapped copy can never shorten the list another copy prints whole.
+    """
+    best, best_page = [], None
+    for index, text in page_texts[:_COVER_PAGES]:
+        lines = (text or "").split("\n")
+        for i, line in enumerate(lines):
+            if not OUR_PROMOTERS_RX.match(line):
+                continue
+            statement = line.split(":", 1)[1]
+            j = i
+            while _PROMOTER_LIST_CONTINUES.search(statement) and j + 1 < len(lines):
+                j += 1
+                statement = statement + " " + lines[j]
+            names = promoter_names_from_statement(statement)
+            if len(names) > len(best):
+                best, best_page = names, index
+    return best, best_page
+
+
 def promoter_group_transactions(lines):
     """([{summary}], anchor) — the promoter-group transactions the ad discloses
     since the DRHP. [] when the ad states there were none; (None, None) when the
@@ -1604,14 +1650,9 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     # "OUR PROMOTER: X" and "OUR PROMOTERS: A, B AND C" — the plural form was
     # silently unmatched, which then broke every promoter-row lookup downstream.
     prom, prom_names = None, []
-    pn = _find(lines, re.compile(r"^\s*OUR PROMOTERS?\s*:", re.I))
+    pn = _find(lines, OUR_PROMOTERS_RX)
     if pn >= 0:
-        raw = lines[pn].split(":", 1)[1].strip()
-        raw = re.split(r"\s{2,}|(?<=[a-z])\s+INITIAL PUBLIC", raw)[0]
-        for part in re.split(r",|\bAND\b", raw, flags=re.I):
-            name = part.strip().strip(".").title()
-            if 3 <= len(name) <= 60 and re.match(r"^[A-Za-z][A-Za-z .'\-]+$", name):
-                prom_names.append(name)
+        prom_names = promoter_names_from_statement(lines[pn].split(":", 1)[1])
         prom = prom_names[0] if prom_names else None
     emit.put("promoter_name", prom, page_for(pn), "promoter_name_present", (bool(prom), "%s" % prom))
     emit.put("promoter_names", prom_names or None, page_for(pn), "promoter_names_present",
@@ -2599,6 +2640,20 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     # `unit` (the document-level unit the persister multiplies by) is passed in so
     # the cover's own lakh/crore figures are converted into it exactly.
     extract_offering_headline(page_texts, emit, segment, unit, doc_type=doc_type)
+
+    # #545. The promoters, from the cover statement every offer document prints.
+    # Only the price band ad read it before, so an IPO filed as RHP/DRHP alone
+    # never got a `promoters` row. Same field names as the ad, so the persister's
+    # existing promoters block writes them unchanged.
+    cover_names, cover_page = read_cover_promoters(page_texts)
+    if cover_names:
+        emit.put("promoter_name", cover_names[0], cover_page, "promoter_name_present",
+                 (True, cover_names[0]))
+        emit.put("promoter_names", cover_names, cover_page, "promoter_names_present",
+                 (True, "%s" % cover_names))
+    else:
+        emit.null("promoter_name", "our_promoters_statement_not_on_cover")
+        emit.null("promoter_names", "our_promoters_statement_not_on_cover")
 
     for key, name in (("revenue", "revenue_by_fy"), ("totalIncome", "total_income_by_fy"),
                       ("profit", "pat_by_fy"), ("eps", "eps_basic_by_fy"),
