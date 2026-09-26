@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-25T18:22:12.334Z",
+  "generated_at": "2026-09-26T03:05:26.798Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 200,
+    "live": 201,
     "retired": 44
   },
-  "next_id": 245,
+  "next_id": 246,
   "rules": [
     {
       "id": "R-151",
@@ -1320,6 +1320,15 @@
       "kind": "blockquote",
       "text": "The rules are well written one at a time, and several of them cannot run at all, because the field they key on is empty on production.",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-245",
+      "hash": "5c95d5ae0680",
+      "section": "4.6 Every rule names the field it needs, and what it does when that field is empty",
+      "kind": "prose",
+      "text": "Re-measured 2026-09-26 (pending inventory): sector is empty on 369 of 390 IPO rows though field 13 names DOC then CG (F-175); 8,421 field-plan rows sit in CHECK_FAILED, re-claimed but unexplained (F-177). Contract 1 (2026-09-26): Chittorgarh detail pages carry one numeric industry code that its industry index names (F-179, OD-126); the lead-manager provenance upsert failed with 42P10 on every call while its log dropped the database cause (F-180); same-source unresolved conflicts are still created daily from four code defects (F-181, bears on OD-75 and #818); the nightly floor audits production, which lags main by many migrations, so a check reading a new column must probe for it (F-182).",
+      "first_seen": "2026-09-26",
       "retired": false
     },
     {
