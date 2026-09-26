@@ -164,3 +164,60 @@ describe('DataConflictsRepository.logConflict — same-source refusal (W-79)', (
     expect(insertValues).toHaveLength(1);
   });
 });
+
+describe('DataConflictsRepository — bookkeeping and unnamed fields are never a conflict (#818, F-181)', () => {
+  // Staging 2026-09-23..25: lastScrapedAt / updatedAt DRHP-vs-DRHP rows (moneyview-ltd,
+  // skyways-air-services-ltd, steamhouse-india-ltd, veegaland-developers-ltd).
+  it.each(['lastScrapedAt', 'updatedAt', 'createdAt'])(
+    'upsertConflict refuses %s (even as a cross-source row) and never touches the db',
+    async (fieldName) => {
+      const { repo, db } = makeRepo();
+      const res = await repo.upsertConflict({
+        ...baseInput,
+        fieldName,
+        source1: 'DRHP',
+        source2: 'NSE',
+        value1: '2026-09-23T10:00:00.000Z',
+        value2: '2026-09-24T10:00:00.000Z',
+      });
+      expect(res).toEqual({ skipped: true, reason: 'bookkeeping_field' });
+      expect(db.select).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    }
+  );
+
+  it('logConflict refuses a bookkeeping field under the OD-75 reason too', async () => {
+    const { repo, db } = makeRepo();
+    const res = await repo.logConflict({
+      ...baseInput,
+      fieldName: 'lastScrapedAt',
+      source1: 'DRHP',
+      source2: 'DRHP',
+      resolutionReason: 'SOURCE_CHANGED_OWN_VALUE',
+    });
+    expect(res).toEqual({ skipped: true, reason: 'bookkeeping_field' });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it.each(['unknown', 'UNKNOWN', '', '  '])('refuses an unnamed field %j', async (fieldName) => {
+    const { repo, db } = makeRepo();
+    const res = await repo.upsertConflict({ ...baseInput, fieldName, source1: 'DRHP', source2: 'NSE' });
+    expect(res).toEqual({ skipped: true, reason: 'unnamed_field' });
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('a genuine cross-source disagreement on a named field still inserts exactly one row', async () => {
+    const { repo, db, insertValues } = makeRepo();
+    await repo.upsertConflict({ ...baseInput, source1: 'CHITTORGARH', source2: 'BSE', value1: '428300000.00', value2: '420000000' });
+    expect(db.insert).toHaveBeenCalledTimes(1);
+    expect(insertValues[0]).toMatchObject({
+      fieldName: 'issueSize',
+      source1: 'CHITTORGARH',
+      value1: '428300000.00',
+      source2: 'BSE',
+      value2: '420000000',
+    });
+  });
+});

@@ -221,6 +221,14 @@
       "unverifiableWhen": "data_conflicts table not present"
     },
     {
+      "id": "f_conflict_writer_noise",
+      "findingClass": "the conflict writer records rows no source disagreement produced: a writer-stamped bookkeeping field (lastScrapedAt, updatedAt, ...) or a value with binary-float residue (428400000.00000006), #818 / F-181",
+      "round7Findings": [],
+      "failThreshold": "any data_conflicts row with detected_at in the last 48h whose field_name is in WRITER_BOOKKEEPING_FIELDS, or whose value1/value2 is a plain number with more than two decimals; identities (slug, field, both sides) printed",
+      "severity": "P2",
+      "unverifiableWhen": "data_conflicts table not present"
+    },
+    {
       "id": "fixture_provenance",
       "findingClass": "a committed test fixture (HTML/JSON/TXT/PNG under scraper/tests/fixtures/** or scraper/tests/unit/pipeline-stages/fixtures/**) has no recorded source URL/capture date, or an HTML fixture's own embedded company name (its <title>/<h1>) disagrees with the company its filename claims — so the fixture silently backs a test with the WRONG page and the test still passes",
       "githubIssue": "T-518, 2026-09-08: PR #425 shipped scraper/tests/fixtures/historical/vikran-engineering-cg-detail.html whose own <title> read \"Neochem Bio IPO...\"; a test asserting \"Vikran Engineering -> Specialty Chemicals\" against it PASSED. Nothing in CI could catch it — a human caught it by opening the file.",

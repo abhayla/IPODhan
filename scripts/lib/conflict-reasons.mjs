@@ -77,3 +77,32 @@ export const unresolvedConflictNoiseSql = () =>
 /** Real-dispute rows detected in the last 24h (check g: is the detector inert?). */
 export const conflictsInserted24hSql = () =>
   `SELECT count(*)::int inserted FROM data_conflicts WHERE detected_at > now() - interval '24 hours' AND ${behaviourConflictPredicate()}`;
+
+/**
+ * #818 / F-181: twin of `WRITER_BOOKKEEPING_FIELDS` in packages/shared/src/utils/conflict-reasons.ts
+ * (kept equal by scripts/tests/conflict-reasons-parity.test.mjs). Columns the writer stamps itself
+ * (spec section 1 class I) — a data_conflicts row on one of them is writer noise, never a conflict.
+ */
+export const WRITER_BOOKKEEPING_FIELDS = Object.freeze([
+  'id',
+  'createdAt',
+  'updatedAt',
+  'lastScrapedAt',
+  'scrapedAt',
+  'lastUpdated',
+  'lastVerifiedAt',
+]);
+
+/**
+ * #818 check f_conflict_writer_noise: data_conflicts rows written in the last 48h that the writer
+ * must never produce — a bookkeeping field, or a value carrying binary-float residue (more than two
+ * decimals on a plain number, e.g. 428400000.00000006). Identities, never a bare count. Reads no
+ * document_id, so it runs on a DB that lags main's migrations (F-182).
+ */
+export const conflictWriterNoiseSql = () =>
+  `SELECT i.slug, dc.field_name AS "fieldName", dc.source1, dc.value1, dc.source2, dc.value2
+     FROM data_conflicts dc LEFT JOIN ipos i ON i.id = dc.ipo_id
+    WHERE dc.detected_at > now() - interval '48 hours'
+      AND (dc.field_name IN (${WRITER_BOOKKEEPING_FIELDS.map((f) => `'${f}'`).join(', ')})
+           OR dc.value1 ~ '^-?[0-9]+[.][0-9]{3,}$' OR dc.value2 ~ '^-?[0-9]+[.][0-9]{3,}$')
+    ORDER BY dc.detected_at DESC`;

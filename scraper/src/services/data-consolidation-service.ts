@@ -60,6 +60,7 @@ import {
   SOURCE_CHANGED_OWN_VALUE,
   isBehaviourConflict,
   isCorrigendumSuggestion,
+  isWriterBookkeepingField,
 } from '@ipodhan/shared/utils/conflict-reasons';
 import { toUtcEpochDay, toUtcEpochMs } from '../utils/date-string-parsing.js';
 import { validateFieldValue, type ValidationRule } from './field-extraction-validation.js';
@@ -1158,6 +1159,21 @@ export class DataConsolidationService {
         if (widenBandFields.has(fieldName)) continue;
         if (implausibleIssueSize.fields.has(fieldName)) continue;
         result.fieldsProcessed++;
+
+        // #818 / F-181 (spec §1 class I: "writer named, no ranking"): a column the writer stamps
+        // itself (lastScrapedAt, updatedAt, ...) has no source to rank, so it is never resolved:
+        // the incoming stamp passes through, with no provenance row and no data_conflicts row.
+        // Resolving it made every re-scrape of a document a "source changed its own value"
+        // (OD-75) record and kept the OLD stamp on the row.
+        if (isWriterBookkeepingField(fieldName)) {
+          result.fieldResults.push({
+            fieldName,
+            finalValue: incomingValue,
+            chosenSource: input.source,
+            hadConflict: false,
+          });
+          continue;
+        }
 
         try {
           const fieldResult = await this.consolidateField({

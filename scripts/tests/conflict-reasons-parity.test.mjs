@@ -138,3 +138,25 @@ test('adminQueueSize counts only real disputes (the conflict query carries the p
   assert.ok(conflictSql.includes(behaviourConflictPredicate('dc')), conflictSql);
   _setDocumentIdProbeForTests(undefined);
 });
+
+test('#818: the .mjs bookkeeping-field list equals the TS list (parity)', async () => {
+  const { WRITER_BOOKKEEPING_FIELDS, conflictWriterNoiseSql } = await import('../lib/conflict-reasons.mjs');
+  const ts = readFileSync(join(ROOT, 'packages/shared/src/utils/conflict-reasons.ts'), 'utf8');
+  const list = /WRITER_BOOKKEEPING_FIELDS: readonly string\[\] = \[([^\]]*)\]/.exec(ts);
+  assert.ok(list, 'WRITER_BOOKKEEPING_FIELDS not found in the TS source');
+  const names = list[1].split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
+  assert.deepEqual([...WRITER_BOOKKEEPING_FIELDS], names);
+  const sql = conflictWriterNoiseSql();
+  assert.match(sql, /'lastScrapedAt'/);
+  assert.match(sql, /\[0-9\]\{3,\}/);
+  assert.doesNotMatch(sql, /document_id/);
+});
+
+test('#818: the float-residue pattern flags the two staging values and passes clean ones', () => {
+  const re = /^-?[0-9]+[.][0-9]{3,}$/;
+  assert.ok(re.test('428400000.00000006'));
+  assert.ok(re.test('245799999.99999997'));
+  assert.ok(!re.test('428300000.00'));
+  assert.ok(!re.test('600000000'));
+  assert.ok(!re.test('2026-10-05'));
+});

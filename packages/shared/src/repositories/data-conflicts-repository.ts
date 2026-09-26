@@ -5,7 +5,7 @@
  */
 
 import { eq, and, isNull, isNotNull, lt, desc, sql } from 'drizzle-orm';
-import { SOURCE_CHANGED_OWN_VALUE, isAdminOnlyConflict, isBehaviourConflict } from '../utils/conflict-reasons';
+import { SOURCE_CHANGED_OWN_VALUE, isAdminOnlyConflict, isBehaviourConflict, isWriterBookkeepingField } from '../utils/conflict-reasons';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '../db/schema';
@@ -92,7 +92,22 @@ function isRefusedSameSource(input: LogConflictInput): boolean {
 
 export interface SameSourceSkipResult {
   skipped: true;
-  reason: 'same_source' | 'behaviour_conflict_open';
+  reason: 'same_source' | 'behaviour_conflict_open' | 'bookkeeping_field' | 'unnamed_field';
+}
+
+/**
+ * #818 / F-181: a row this repository never writes, whoever the caller.
+ * - `bookkeeping_field`: a column the writer stamps itself (spec §1 class I, no ranking) — its
+ *   change is the pipeline clock, never a disagreement (staging: lastScrapedAt DRHP-vs-DRHP rows).
+ * - `unnamed_field`: no field name, or the literal 'unknown'. A source-vs-source record must name
+ *   the field it disputes. (The OD-90 corrigendum suggestion's `field = unknown` row is written by
+ *   `recordCorrigendumSuggestions` directly, with its document and quote, and is not affected.)
+ */
+function refusedFieldReason(input: LogConflictInput): 'bookkeeping_field' | 'unnamed_field' | null {
+  const name = (input.fieldName ?? '').trim();
+  if (name === '' || name.toLowerCase() === 'unknown') return 'unnamed_field';
+  if (isWriterBookkeepingField(name)) return 'bookkeeping_field';
+  return null;
 }
 
 export interface ConflictStats {
@@ -121,6 +136,15 @@ export class DataConflictsRepository extends BaseRepository {
   async logConflict(
     input: LogConflictInput
   ): Promise<DataConflictRecord | SameSourceSkipResult> {
+    const refusedField = refusedFieldReason(input);
+    if (refusedField) {
+      logger.warn(
+        { ipoId: input.ipoId, tableName: input.tableName, fieldName: input.fieldName, reason: refusedField },
+        'data_conflicts: refused row for a bookkeeping or unnamed field (#818)'
+      );
+      return { skipped: true, reason: refusedField };
+    }
+
     if (isRefusedSameSource(input)) {
       logger.warn(
         { ipoId: input.ipoId, fieldName: input.fieldName, source: input.source1 },
@@ -175,6 +199,15 @@ export class DataConflictsRepository extends BaseRepository {
   async upsertConflict(
     input: LogConflictInput
   ): Promise<DataConflictRecord | SameSourceSkipResult> {
+    const refusedField = refusedFieldReason(input);
+    if (refusedField) {
+      logger.warn(
+        { ipoId: input.ipoId, tableName: input.tableName, fieldName: input.fieldName, reason: refusedField },
+        'data_conflicts: refused row for a bookkeeping or unnamed field (#818)'
+      );
+      return { skipped: true, reason: refusedField };
+    }
+
     if (isRefusedSameSource(input)) {
       logger.warn(
         { ipoId: input.ipoId, fieldName: input.fieldName, source: input.source1 },
