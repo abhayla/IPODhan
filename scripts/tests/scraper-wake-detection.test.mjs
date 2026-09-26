@@ -17,10 +17,12 @@ import {
   checkScraperWakeCrontabLine,
   checkScraperWakeFreshness,
   checkScraperWakeSkippedRun,
+  checkProvenanceMarkerWriteFailed,
   SCRAPER_WAKE_CADENCE_BY_SLOT,
   SCRAPER_WAKE_CADENCE_MINUTES,
   SCRAPER_WAKE_FRESHNESS_SLACK_MINUTES,
   SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD,
+  PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS,
   expectedWakeScriptFragment,
 } from '../lib/scraper-wake-detection.mjs';
 import { newestWakeTimestamp } from '../ops/wake-delta.mjs';
@@ -204,6 +206,82 @@ test('#707 mutation guard: weakening the threshold to N=10 makes the real 3-in-a
 });
 
 // --- mutation guard: confirms the FAIL fixtures can actually fail ----------
+
+// --- #648: provenance-marker-write-failed events reach a nightly consumer ---
+//
+// Fixture lines below are the EXACT pino JSON shape emitted by
+// scraper/src/services/child-row-unresolved-noter.ts's `logger.error` calls
+// (verified by running pino with the same options as scraper/src/utils/logger.ts
+// against the two real call sites, not typed from memory). Cron redirects the
+// scraper's own stdout into the same slot wake log this check reads
+// (`>> $SCRAPER_WAKE_LOG 2>&1`, scripts/deploy-linux.sh install_scraper_cron),
+// so these lines land in the exact file the m_scraper_wake_* checks above read.
+
+test('#648 FAILs on the no-fieldSources-injected shape and names ipoId/table/rowKey/cause, never a bare count', () => {
+  const raw = '{"level":50,"time":"2026-09-26T11:30:06.018Z","pid":19920,"hostname":"h","event":"provenance-marker-write-failed","ipoId":"abc-123","tableName":"anchor_investors","rowKey":"unresolved:no fieldSources repository injected","cause":"no fieldSources repository injected","msg":"[FilingPersister] no fieldSources repository — could not file the unresolved-row provenance marker"}';
+  const violation = checkProvenanceMarkerWriteFailed('prod', raw, '2026-09-26T12:00:00.000Z');
+  assert.match(violation, /slot prod/);
+  assert.match(violation, /1 provenance-marker-write-failed event/);
+  assert.match(violation, /ipoId=abc-123/);
+  assert.match(violation, /table=anchor_investors/);
+  assert.match(violation, /rowKey=unresolved:no fieldSources repository injected/);
+  assert.match(violation, /cause="no fieldSources repository injected"/);
+});
+
+test('#648 FAILs on the trackFieldUpdate-threw shape and names the wrapped cause message + code', () => {
+  const raw = '{"level":50,"time":"2026-09-26T11:30:06.019Z","pid":19920,"hostname":"h","event":"provenance-marker-write-failed","err":{"type":"Error","message":"insert failed"},"ipoId":"abc-123","tableName":"anchor_investors","rowKey":"unresolved:consolidation threw","causeMessage":"connection terminated","causeCode":"ECONNRESET","msg":"[FilingPersister] could not file the unresolved-row provenance marker"}';
+  const violation = checkProvenanceMarkerWriteFailed('prod', raw, '2026-09-26T12:00:00.000Z');
+  assert.match(violation, /cause="connection terminated"/);
+  assert.match(violation, /code=ECONNRESET/);
+});
+
+test('#648 FAILs on multiple events and lists each identity (population, never a bare count)', () => {
+  const line1 = '{"level":50,"time":"2026-09-26T09:00:00.000Z","event":"provenance-marker-write-failed","ipoId":"ipo-1","tableName":"promoters","rowKey":"unresolved:x","cause":"no fieldSources repository injected"}';
+  const line2 = '{"level":50,"time":"2026-09-26T10:00:00.000Z","event":"provenance-marker-write-failed","ipoId":"ipo-2","tableName":"objects_of_issue","rowKey":"unresolved:y","causeMessage":"timeout","causeCode":"ETIMEDOUT"}';
+  const raw = [line1, line2].join('\n');
+  const violation = checkProvenanceMarkerWriteFailed('staging', raw, '2026-09-26T12:00:00.000Z');
+  assert.match(violation, /2 provenance-marker-write-failed event/);
+  assert.match(violation, /ipoId=ipo-1/);
+  assert.match(violation, /ipoId=ipo-2/);
+});
+
+test('#648 PASSes (returns null) on a clean log with unrelated wake lines and no matching event', () => {
+  const raw = [
+    '2026-09-26T10:00:03Z scraper-wake: wake-starting: job=data, lock is free; starting a cycle',
+    '{"level":30,"time":"2026-09-26T10:00:05.000Z","event":"cycle-summary","markerWriteFailed":0}',
+    '2026-09-26T10:03:10Z scraper-wake: wake-complete: the cycle finished cleanly. elapsed=180s',
+  ].join('\n');
+  assert.equal(checkProvenanceMarkerWriteFailed('prod', raw, '2026-09-26T12:00:00.000Z'), null);
+});
+
+test('#648 PASSes on an empty, undefined or unparseable log — never a false FAIL', () => {
+  assert.equal(checkProvenanceMarkerWriteFailed('prod', '', '2026-09-26T12:00:00.000Z'), null);
+  assert.equal(checkProvenanceMarkerWriteFailed('prod', undefined, '2026-09-26T12:00:00.000Z'), null);
+  assert.equal(checkProvenanceMarkerWriteFailed('prod', 'not json at all\n{broken', '2026-09-26T12:00:00.000Z'), null);
+});
+
+test('#648 events OLDER than the window are excluded (the window is 24h, named)', () => {
+  assert.equal(PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS, 24);
+  const old = '{"level":50,"time":"2026-09-24T11:00:00.000Z","event":"provenance-marker-write-failed","ipoId":"stale-1","tableName":"promoters","rowKey":"unresolved:x","cause":"no fieldSources repository injected"}';
+  // 2026-09-26T12:00:00Z is exactly 49h after the event's time — outside the 24h window.
+  assert.equal(checkProvenanceMarkerWriteFailed('prod', old, '2026-09-26T12:00:00.000Z'), null);
+});
+
+test('#648 an event exactly at the 24h boundary still counts (inclusive ceiling, same convention as freshness\'s <=)', () => {
+  const boundary = '{"level":50,"time":"2026-09-25T12:00:00.000Z","event":"provenance-marker-write-failed","ipoId":"edge-1","tableName":"promoters","rowKey":"unresolved:x","cause":"no fieldSources repository injected"}';
+  assert.match(checkProvenanceMarkerWriteFailed('prod', boundary, '2026-09-26T12:00:00.000Z'), /ipoId=edge-1/);
+});
+
+test('#648 slots are independent labels: the same raw text reads back with whichever slot label the caller passes', () => {
+  const raw = '{"level":50,"time":"2026-09-26T11:00:00.000Z","event":"provenance-marker-write-failed","ipoId":"abc-1","tableName":"promoters","rowKey":"unresolved:x","cause":"no fieldSources repository injected"}';
+  assert.match(checkProvenanceMarkerWriteFailed('staging', raw, '2026-09-26T12:00:00.000Z'), /slot staging/);
+  assert.match(checkProvenanceMarkerWriteFailed('prod', raw, '2026-09-26T12:00:00.000Z'), /slot prod/);
+});
+
+test('#648 mutation guard: filtering on the wrong event name would silently miss every real fixture — confirms the match is on event, not a generic error line', () => {
+  const wrongEvent = '{"level":50,"time":"2026-09-26T11:00:00.000Z","event":"some-other-error","ipoId":"abc-1","tableName":"promoters","rowKey":"unresolved:x","cause":"no fieldSources repository injected"}';
+  assert.equal(checkProvenanceMarkerWriteFailed('prod', wrongEvent, '2026-09-26T12:00:00.000Z'), null);
+});
 
 test('#663 mutation guard: an inverted ceiling comparison would make the red freshness case pass — confirms the test can fail', () => {
   const ageMinutes = 46;

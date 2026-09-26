@@ -652,6 +652,15 @@
       "unverifiableWhen": "document_fetch_state table not present"
     },
     {
+      "id": "m_provenance_marker_write_failed",
+      "findingClass": "for either slot, the last 24h of /var/log/ipodhan-scraper-wake-<slot>.log contain one or more pino JSON lines with event=\"provenance-marker-write-failed\" -- child-row-unresolved-noter.ts's markChildRowsUnresolved catches its OWN write failure (no fieldSources repository injected, or trackFieldUpdate threw) so the persist call can still finish, which means a failed unresolved:<reason> provenance-marker write leaves nothing behind and reads identical to \"the writer never ran\" to q_field_sources_row_key_coverage -- the structured log line was the only record of the failure, and nothing read it (signal-ownership.md R3)",
+      "issue": 648,
+      "sourceTask": "T-648",
+      "failThreshold": "for either slot, one or more provenance-marker-write-failed events in the last 24h",
+      "severity": "P2",
+      "unverifiableWhen": "the wake log files are not reachable on this host (expected on a dev machine or CI; runs for real on the box via cron, same file the m_scraper_wake_* checks read)"
+    },
+    {
       "id": "m_scraper_wake_crontab",
       "findingClass": "the deploying user's crontab has no (or more than one) '# ipodhan-scraper-wake:<slot>' line for a slot, or that line does not invoke the slot's current symlink at its cadence (*/30 prod, 15,45 staging) -- after #660 removed pm2's --cron-restart, cron is the ONLY thing that wakes the scraper, and pm2 status can no longer tell you the wake is alive",
       "issue": 663,

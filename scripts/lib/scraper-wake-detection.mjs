@@ -142,3 +142,47 @@ export function checkScraperWakeFreshness(slot, newestWakeAt, now) {
   if (ageMinutes <= ceilingMinutes) return null;
   return `slot ${slot}: newest wake log line is ${ageMinutes.toFixed(1)} min old, exceeds the ${ceilingMinutes} min ceiling (${SCRAPER_WAKE_CADENCE_MINUTES}min cadence + ${SCRAPER_WAKE_FRESHNESS_SLACK_MINUTES}min slack) — a wake has not actually happened recently even if the crontab line is present`;
 }
+
+/** #648: the 24h window a `provenance-marker-write-failed` event must be reported inside. */
+export const PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS = 24;
+
+/**
+ * FAIL — the last `PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS` hours of this
+ * slot's wake log (the same file the m_scraper_wake_* checks above read: cron
+ * redirects the scraper's own stdout into it via `>> $SCRAPER_WAKE_LOG 2>&1`,
+ * scripts/deploy-linux.sh install_scraper_cron) contain one or more pino JSON
+ * lines with `event: "provenance-marker-write-failed"` — the structured log
+ * `child-row-unresolved-noter.ts`'s `markChildRowsUnresolved` emits when it
+ * could not file the `unresolved:<reason>` provenance marker (no fieldSources
+ * repository injected, or the `trackFieldUpdate` insert threw). Per
+ * signal-ownership.md R1 the violation names each event's identities (slot,
+ * ipoId, tableName, cause) — never a bare count. Returns null (never a false
+ * FAIL) on a clean log or a log with no parseable JSON lines at all; the
+ * caller (audit-detection-floor.mjs) returns UNVERIFIABLE when the log file
+ * itself cannot be read, matching the sibling m_scraper_wake_* checks.
+ */
+export function checkProvenanceMarkerWriteFailed(slot, raw, now) {
+  const nowMs = new Date(now).getTime();
+  const windowMs = PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS * 60 * 60 * 1000;
+  const offenders = [];
+  for (const line of String(raw ?? '').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed[0] !== '{') continue;
+    let obj;
+    try {
+      obj = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (!obj || obj.event !== 'provenance-marker-write-failed') continue;
+    if (Number.isFinite(nowMs)) {
+      const lineMs = new Date(obj.time).getTime();
+      if (Number.isFinite(lineMs) && nowMs - lineMs > windowMs) continue;
+    }
+    const cause = obj.cause ?? obj.causeMessage ?? 'unknown cause';
+    const causeCode = obj.causeCode ? ` code=${obj.causeCode}` : '';
+    offenders.push(`ipoId=${obj.ipoId ?? '?'} table=${obj.tableName ?? '?'} rowKey=${obj.rowKey ?? '?'} cause="${cause}"${causeCode}`);
+  }
+  if (offenders.length === 0) return null;
+  return `slot ${slot}: ${offenders.length} provenance-marker-write-failed event(s) in the last ${PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS}h — ${offenders.join(' | ')}`;
+}

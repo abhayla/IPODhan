@@ -261,6 +261,14 @@ export interface PersistFilingSummary {
    * Optional so existing callers that build a summary literal keep compiling.
    */
   unresolved_child_rows?: string[];
+  /**
+   * #648: how many of THIS call's own `unresolved:<reason>` marker writes
+   * themselves failed to reach `field_sources` (no repository injected, or the
+   * write threw) — the case the row-key-coverage check cannot distinguish
+   * from "the writer never ran" (see `child-row-unresolved-noter.ts`).
+   * Rolled up per cycle by the caller; 0/absent when nothing failed.
+   */
+  marker_write_failed?: number;
   skipped_no_column: string[];
   /** Unit-dependent writes refused because the filing states no usable unit. */
   skipped_no_unit: string[];
@@ -961,7 +969,7 @@ export async function persistFilingExtraction(
    * here is unchanged; `lineage` is passed as a getter because its `const` is
    * declared further down this function.
    */
-  const { markChildRowsUnresolved, noteConsolidationThrew } = createChildRowNoter({
+  const { markChildRowsUnresolved, noteConsolidationThrew, getMarkerWriteFailures } = createChildRowNoter({
     apply,
     ipoId,
     source,
@@ -2986,6 +2994,7 @@ export async function persistFilingExtraction(
     written,
     skipped_failed_check: skippedFailedCheck.sort(),
     unresolved_child_rows: [...unresolvedChildRows].sort(),
+    marker_write_failed: getMarkerWriteFailures(),
     skipped_no_column: [...new Set(skippedNoColumn)].sort(),
     skipped_no_unit: [...new Set(skippedNoUnit)].sort(),
     skipped_lower_priority_source: [...new Set(skippedLowerPriority)].sort(),

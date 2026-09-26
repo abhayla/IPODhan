@@ -40,6 +40,25 @@
 // every pair NOT-YET-KEYED forever, so this check would page P2 nightly rather
 // than FAIL. That is loud, not silent, but it is not a hard gate — the
 // row-key round-trip test in the writer slice is what catches that case.
+//
+// SECOND RESIDUAL LIMIT, NAMED (#648): this check reads what field_sources
+// HOLDS, so it cannot tell "the writer wrote a marker" from "the writer tried
+// to write a marker and that write itself failed" — a failed `unresolved:
+// <reason>` write (no fieldSources repository injected, or the insert threw)
+// leaves nothing behind, and a pair with no other rows still reads NOT-YET-
+// KEYED here, identical to a writer that never ran at all. That case is NOT
+// this check's job: `child-row-unresolved-noter.ts`'s `markChildRowsUnresolved`
+// logs it as a structured `provenance-marker-write-failed` error (ipoId,
+// tableName, cause message + code) and counts it in
+// `PersistFilingSummary.marker_write_failed` / `AnchorPersistSummary.markerWriteFailed`,
+// rolled up into the `markerWriteFailed` field of the "Anchor auto-persist
+// summary for this cycle (W-168)" log line in `document-cycle.ts`. That
+// counter, not this audit check, is the signal for a failed marker write —
+// and the nightly floor check `m_provenance_marker_write_failed`
+// (scripts/lib/scraper-wake-detection.mjs's checkProvenanceMarkerWriteFailed,
+// registered in scripts/audit-detection-floor.mjs) is what actually reads
+// that structured log line and reports it, closing the gap this comment used
+// to leave open.
 import { rowKeyForName } from './normalize-company-name.mjs';
 
 // GUARD (table list): the four multi-row child tables this check sweeps.
