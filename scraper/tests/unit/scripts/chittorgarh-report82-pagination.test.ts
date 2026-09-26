@@ -83,12 +83,19 @@ describe('fetchReport82CurrentYear pagination', () => {
     expect(callCount).toBe(TOTAL_PAGES + 1);
   });
 
-  it('throws instead of looping forever if 200 pages pass with no empty page', async () => {
-    global.fetch = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ reportTableData: [rowFor(1)] }),
-    })) as unknown as typeof fetch;
+  it('throws instead of looping forever if 200 pages pass with no empty page and no no-new-rows page (last-resort ceiling)', async () => {
+    // Every page returns a genuinely NEW row (unique slug), so neither the
+    // empty-page nor the no-new-rows-after-dedupe stop condition can ever
+    // fire — this is the shape the 200-page hard ceiling exists to catch.
+    global.fetch = vi.fn(async (url: string) => {
+      const m = String(url).match(/data-read\/82\/(\d+)\//);
+      const page = m ? Number(m[1]) : 0;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ reportTableData: [rowFor(page)] }),
+      } as Response;
+    });
 
     const promise = fetchReport82CurrentYear('mainboard', 2025);
     const expectation = expect(promise).rejects.toThrow(/200-page hard ceiling/);
@@ -134,6 +141,44 @@ describe('fetchReport82CurrentYear pagination', () => {
     expect(slugs.filter((s) => s === 'company-2-ipo')).toHaveLength(1);
     expect(slugs.filter((s) => s === 'company-3-ipo')).toHaveLength(1);
     expect(rows).toHaveLength(3);
+  });
+
+  it('stops after page 2 when the endpoint serves the SAME full dataset on every page number (#695, FY2026-27 shape)', async () => {
+    // FY2026-27 live shape: report 82 ignores the page number entirely and
+    // serves the identical full page every time, so no page is ever empty
+    // and the old "stop on empty page" condition can never fire. The walk
+    // must instead stop as soon as a page adds ZERO new rows after dedupe —
+    // here that is page 2, whose two rows are both already-seen from page 1.
+    const SAME_PAGE = [rowFor(1), rowFor(2)];
+    let callCount = 0;
+    global.fetch = vi.fn(async () => {
+      callCount++;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ reportTableData: SAME_PAGE }),
+      } as Response;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const promise = fetchReport82CurrentYear('sme', 2026);
+    // Only 2 fetches needed: page 1 (2 new rows), page 2 (0 new rows -> stop).
+    for (let i = 0; i < 2; i++) {
+      await vi.advanceTimersByTimeAsync(300);
+    }
+    const rows = await promise;
+    const slugs = rows.map((r) => (r as Record<string, unknown>)['~URLRewrite_Folder_Name']);
+
+    // Mutation: reverting to "stop only on an empty page" makes this walk
+    // never stop within 2 calls (it would keep fetching the same non-empty
+    // page until the 200-page ceiling), turning callCount and the stop-log
+    // assertions red.
+    expect(callCount).toBe(2);
+    expect(slugs).toEqual(['company-1-ipo', 'company-2-ipo']);
+    expect(rows).toHaveLength(2);
+    const logged = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).toMatch(/no new rows after dedupe/);
+    logSpy.mockRestore();
   });
 
   it('keeps every row missing ~URLRewrite_Folder_Name instead of collapsing them into one', async () => {

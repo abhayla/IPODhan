@@ -218,15 +218,24 @@ export function resolveIssuePrice(
  * Fetch + flatten report 82 across every (year, category) pair into
  * candidates, pure name/price/url extraction.
  *
- * A single (year, category) fetch failure — measured live 2026-09-16:
- * FY2026-27 mainboard returns the SAME 82-row page for every page number
- * (never an empty page), so the reader's own pagination loop hits its
- * 200-page hard ceiling and throws — does not abort the whole class scan.
- * That reader's pagination behavior is out of this tool's scope (owned by
- * `scripts/lib/chittorgarh-report82-discovery.ts`, PR #686); this tool's
- * job is to keep resolving every OTHER (year, category) pair rather than
- * losing all of them to one bucket's upstream oddity. The failure is
- * printed so it is visible, never swallowed silently.
+ * A single (year, category) fetch failure does not abort the whole class
+ * scan — this tool's job is to keep resolving every OTHER (year, category)
+ * pair rather than losing all of them to one bucket's upstream failure. The
+ * failure is printed so it is visible, never swallowed silently.
+ *
+ * This is genuine per-bucket resilience, not a proxy for a single bug: the
+ * reader (`scripts/lib/chittorgarh-report82-discovery.ts`) can still throw
+ * for reasons unrelated to pagination shape (HTTP error, timeout, a shape
+ * neither the empty-page nor the no-new-rows-after-dedupe stop condition
+ * catches), and this catch is what keeps those genuine failures from taking
+ * down the other 5 buckets. (2026-09-16, #692: originally added because
+ * FY2026-27 mainboard returned the SAME 82-row page for every page number —
+ * never an empty page — so the reader hit its 200-page hard ceiling and
+ * threw. #695 fixed that specific cause at the reader itself, stopping the
+ * walk on a page that adds zero new rows after dedupe; this per-bucket catch
+ * is kept because it also guards the reader's remaining genuine failure
+ * modes, per-bucket resilience being wider in scope than the one bug that
+ * first motivated it.)
  */
 export async function collectReport82Candidates(
   fetchYear: (category: 'mainboard' | 'sme', year: number) => Promise<unknown[]>,
