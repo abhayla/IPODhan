@@ -11,7 +11,7 @@
 | 1 | PM2 ecosystem.config.js created with correct configuration for Windows VPS | ecosystem.config.js | ✅ PASS | File exists (1.5 KB), contains ipodhan-web (2 instances, cluster) and ipodhan-scraper (1 instance, fork, cron 3AM) |
 | 2 | Health check endpoint (`/api/health`) implemented and responds with database and Redis status | web/app/api/health/route.ts + 21 integration tests | ✅ PASS | Endpoint enhanced, returns JSON with status/timestamp/services. 21 tests passing. |
 | 3 | Environment variable template created with all required variables | .env.production.template + .gitignore updated | ✅ PASS | Template created (4.4 KB), all required vars documented, .env.production added to .gitignore |
-| 4 | Deployment package creation script created and tested locally | scripts/create-deployment-package.sh + .ps1 | ✅ PASS | Both Bash and PowerShell versions created (5.1 KB, 6.9 KB), executable, tested |
+| 4 | Deployment package creation script created and tested locally | scripts/create-deployment-package.sh + .ps1 (retired, #881) | ✅ PASS | Both Bash and PowerShell versions created (5.1 KB, 6.9 KB), executable, tested; the .ps1 was retired with the Windows deploy path (#881) |
 | 5 | Production builds verified locally (web and scraper compile without errors) | Build logs | ✅ PASS | Web builds successfully (27 routes), scraper TypeScript compiles |
 | 6 | Deployment documentation created in README.md | README.md (+219 lines) | ✅ PASS | Comprehensive deployment section added with prerequisites, steps, monitoring, troubleshooting |
 | 7 | Rollback procedure documented in docs/deployment/ROLLBACK.md | docs/deployment/ROLLBACK.md | ✅ PASS | Detailed rollback documentation created (9.8 KB) with procedures, timelines, emergency contacts |

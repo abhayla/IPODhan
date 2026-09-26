@@ -11,7 +11,7 @@
 | `logging-monitoring-tests.md` | **Complete test results** (10,000+ lines) | ✅ Complete |
 | `logging-monitoring-summary.md` | **Executive summary** with action items | ✅ Complete |
 | `setup-log-rotation.sh` | **Bash script** to configure log rotation | ✅ Complete |
-| (Windows PowerShell variant) | Retired 2026-09 with the Windows deploy path — see issue #881 | Retired |
+| (no PowerShell variant) | No `.ps1` equivalent was ever built for this script; run the bash script via Git Bash on Windows — see issue #881 | N/A |
 | `load-test.js` | Load testing script (Artillery) | ✅ Existing |
 | `run-load-test.sh` | Load test runner | ✅ Existing |
 
@@ -40,7 +40,7 @@ chmod +x setup-log-rotation.sh
 ./setup-log-rotation.sh
 ```
 
-**Windows:** the PowerShell variant was retired with the Windows deploy path (#881); use the bash script above via Git Bash/WSL, or the manual alternative below.
+**Windows:** no PowerShell equivalent was built for this script; run the bash script above via Git Bash, or use the manual alternative below.
 
 **Manual alternative:**
 ```bash
