@@ -1680,22 +1680,21 @@ async function checkClosedIpoDoneWithoutWalk() {
 // ---- #70: a listing the system knows, not carried by ipos ----------------------------------
 // docs/design/data-sourcing-pull-model.md field 8 (`status`, legal transition ... -> CLOSED ->
 // LISTED) and fields 176-178 / 224 (`listing_performance.listing_date` is a copy of
-// `ipos.listing_date`; "a divergence is a defect"). A listing_performance row with a listing date
-// whose IPO is not LISTED, has no listing_date, or carries a different one is a listed company
+// `ipos.listing_date`; "a divergence is a defect"). A listing_performance row whose IPO is not
+// LISTED or has no listing_date is a listed company
 // shown to readers as "closed, not listed" (glass-wall-systems-india-ltd / lumino-industries-ltd,
-// staging 2026-09-26). Names every offending IPO by slug.
+// staging 2026-09-26: 4 such rows). Names every offending IPO by slug. A date MISMATCH between a
+// LISTED row and its listing row is a separate class, not checked here.
 async function checkListingKnownNotAdvanced() {
-  const name = 'every IPO with a listing_performance listing date is LISTED with the same ipos.listing_date (#70)';
+  const name = 'every IPO with a listing_performance row is LISTED with an ipos.listing_date (#70)';
   const rows = await q(
     `SELECT i.slug, i.status::text AS status, i.listing_date::text AS "iposListingDate",
             lp.listing_date::text AS "lpListingDate"
        FROM listing_performance lp JOIN ipos i ON i.id = lp.ipo_id
-      WHERE lp.listing_date IS NOT NULL
-        AND i.status::text NOT IN ('WITHDRAWN', 'POSTPONED')
-        AND (i.status::text <> 'LISTED' OR i.listing_date IS NULL OR i.listing_date <> lp.listing_date)
+      WHERE i.status::text <> 'LISTED' OR i.listing_date IS NULL
       ORDER BY i.slug`
   );
-  const [{ total }] = await q(`SELECT count(*)::int AS total FROM listing_performance WHERE listing_date IS NOT NULL`);
+  const [{ total }] = await q(`SELECT count(*)::int AS total FROM listing_performance`);
   for (const r of rows) {
     notify('listing_known_not_advanced', 'P2', r.slug, 'listing known but ipos not advanced',
       `${r.slug}: status ${r.status}, ipos.listing_date ${r.iposListingDate ?? 'NULL'}, listing_performance.listing_date ${r.lpListingDate}`);

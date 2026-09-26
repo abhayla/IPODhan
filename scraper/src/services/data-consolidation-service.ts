@@ -388,6 +388,18 @@ function isDetectedAtStillFresh(detectedAt: unknown, now: number): boolean {
  */
 export const TERMINAL_IPO_STATUSES: ReadonlySet<string> = new Set<string>(['WITHDRAWN', 'POSTPONED']);
 
+/**
+ * #70: the legal ladder of spec field 8 (`status`). A move to a LOWER rung is a
+ * regression. WITHDRAWN / POSTPONED are not rungs, so neither side of a move
+ * involving them is a regression here.
+ */
+const STATUS_LADDER: readonly string[] = ['UPCOMING', 'OPEN', 'CLOSED', 'LISTED'];
+export function isStatusRegression(from: unknown, to: unknown): boolean {
+  const a = STATUS_LADDER.indexOf(String(from ?? '').toUpperCase());
+  const b = STATUS_LADDER.indexOf(String(to ?? '').toUpperCase());
+  return a !== -1 && b !== -1 && b < a;
+}
+
 const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
 
 /**
@@ -2569,6 +2581,39 @@ export class DataConsolidationService {
             source: incomingSource,
             value: incomingValue,
             reason: 'TERMINAL_STATUS_KEPT',
+          },
+        ],
+      };
+    }
+
+    // #70: spec field 8 `status` — "must be a legal transition
+    // (UPCOMING->OPEN->CLOSED->LISTED); never regresses without an ADMIN row".
+    // `status` is timeBased (newest wins) and NSE outranks the rest, so a newer
+    // exchange row moved a stored LISTED back to CLOSED (lumino-industries-ltd,
+    // staging, 2026-09-07). Only ADMIN may move the ladder backwards. Entering
+    // WITHDRAWN/POSTPONED is not a rung of the ladder and is left to the rules
+    // above and below (spec: "WITHDRAWN / POSTPONED only from the exchange or ADMIN").
+    if (
+      fieldName === 'status' &&
+      incomingSource !== 'ADMIN' &&
+      isStatusRegression(existingValue, incomingValue)
+    ) {
+      logger.warn(
+        { ipoId, tableName, existingSource, existingValue, incomingSource, incomingValue },
+        'status_regression_kept: a non-ADMIN source tried to move ipos.status backwards (#70)'
+      );
+      return {
+        fieldName,
+        finalValue: existingValue,
+        chosenSource: existingSource,
+        hadConflict: true,
+        conflictSeverity: 'WARNING',
+        conflictReason: 'STATUS_REGRESSION_KEPT',
+        rejectedSources: [
+          {
+            source: incomingSource,
+            value: incomingValue,
+            reason: 'STATUS_REGRESSION_KEPT',
           },
         ],
       };

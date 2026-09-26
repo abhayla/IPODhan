@@ -136,6 +136,9 @@ describe('isDateLadderRegression', () => {
     ['OPEN', 'CLOSED', false],
     ['UPCOMING', 'OPEN', false],
     ['listed', 'CLOSED', true],
+    ['CLOSED', 'OPEN', true],
+    ['OPEN', 'UPCOMING', true],
+    ['WITHDRAWN', 'CLOSED', false],
   ])('%s -> %s is a regression: %s', (from, to, expected) => {
     expect(isDateLadderRegression(from, to as never)).toBe(expected);
   });

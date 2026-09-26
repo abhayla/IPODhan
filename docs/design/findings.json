@@ -1761,6 +1761,15 @@
       "phase1": false,
       "title": "8,421 field-plan rows sit in CHECK_FAILED; they are re-claimed, but the failure volume is unexplained",
       "detail": "Measured 2026-09-26 on ipodhan_staging, read-only: ipo_field_plan by state -> NOT_AVAILABLE_YET 8454, CHECK_FAILED 8421, SUPPLIED 340, EXHAUSTED 66. Of the 16,875 waiting rows only 42 were last updated more than 3 days ago (the #762 re-queue path works). CHECK_FAILED by IPO status: LISTED 3790, OPEN 2595, CLOSED 1369, UPCOMING 667. Why this many values fail validation is not measured; bears on item 4 and OD-62 (field_extraction_failures). Open for owner decision only if it implies a rule change."
+    },
+    {
+      "id": "F-178",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "area": "status / listing_date lifecycle (#70)",
+      "phase1": true,
+      "title": "Listed IPOs shown as CLOSED: status regressed by sources and the date ladder, and a stored listing_date blanked without provenance",
+      "detail": "Measured 2026-09-26 on ipodhan_staging, read-only (supervisor): 4 IPOs have a listing_performance row while ipos.status <> 'LISTED' or ipos.listing_date IS NULL, among them glass-wall-systems-india-ltd (lp listing_date 2026-09-16, price 214.85) and lumino-industries-ltd (lp 2026-09-03, price 110.32), both CLOSED with listing_date NULL. lumino field_sources ipos.status: source NSE, previous_source NSE, previous_value LISTED, updated 2026-09-07 13:59 UTC, so NSE's newer row moved LISTED back to CLOSED through consolidation (status is timeBased, newest wins; no ladder guard). Both rows keep listingDate provenance (glass-wall CHITTORGARH 2026-09-03; lumino NSE, previous 2026-09-03) yet ipos.listing_date is NULL: the consolidation-update write (scraper/src/services/data-persister.ts, finalData = sanitizeIpoWriteFields(rawConsolidated)) writes listingDate: null when sanitizeIpoDates rejects the merged date (validators.ts:451/469, written at :607), with no field_sources row. The web status updater then derived CLOSED from the empty listing_date. Contrary to spec field 8 (\"never regresses without an ADMIN row\") and fields 176-178/224 (listing_performance.listing_date is a copy of ipos.listing_date). Fixed in #70: ladder guard in the consolidation resolver and the web updater, no-blank guard in the persister, listing job advances CLOSED rows. Which sanitizer branch fired for each row is not measured."
     }
   ],
   "false_assertions": [
