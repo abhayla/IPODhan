@@ -89,10 +89,31 @@ describe('closedIpoCandidatesQuery — OD-81 FIELDS_PENDING events', () => {
     expect(q.params).toEqual(['v-now', 10]);
   });
 
-  it('event (1) stage change: LISTED now, and listing_date on/after the IST date of the last attempt', () => {
+  it('event (1) stage change (#932): the FORWARD step recorded CLOSED -> LISTED now', () => {
     expect(norm(renderedSelection().sql)).toContain(
-      norm(`(upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)`)
+      norm(`(upper(r.status_at_attempt) = 'CLOSED' AND upper(i.status::text) = 'LISTED')`)
     );
+  });
+
+  it('event (1) never fires on a backward flip or "any difference" (#932 round 1: LISTED -> CLOSED is not a stage change)', () => {
+    const t = norm(renderedSelection().sql);
+    expect(t).not.toMatch(/IS DISTINCT FROM upper\(r\.status_at_attempt\)/);
+    expect(t).not.toMatch(/status_at_attempt\) = 'LISTED'/);
+  });
+
+  it('event (1) legacy rule (#932): a row with NO recorded status (attempted before 0063) falls back to the listing_date inference', () => {
+    expect(norm(renderedSelection().sql)).toContain(
+      norm(
+        `(r.status_at_attempt IS NULL AND upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)`
+      )
+    );
+  });
+
+  it('event (1) never infers from listing_date once a status is recorded (#932 case a/b)', () => {
+    // The only listing_date comparison left is the one guarded by `status_at_attempt IS NULL`.
+    const t = norm(renderedSelection().sql);
+    expect(t.match(/i\.listing_date/g)).toHaveLength(1);
+    expect(t).toMatch(/r\.status_at_attempt IS NULL AND upper\(i\.status::text\) = 'LISTED' AND i\.listing_date/);
   });
 
   it('event (2) new document: a document_fetch_state row first seen after the last attempt (naive UTC column read AT TIME ZONE UTC)', () => {
@@ -179,6 +200,27 @@ describe('runClosedIpoJob — behaviour', () => {
     expect(stub.onConflictDoUpdate).toHaveBeenCalledTimes(1);
     const conflict = stub.onConflictDoUpdate.mock.calls[0][0];
     expect(conflict.set.resourcedAtVersion).toBe('v2');
+  });
+
+  it('(#932) records the status the IPO had when it was selected, on insert AND on update, including an attempt that threw', async () => {
+    const stub = makeStubDb([
+      { id: 'ipo-closed', closeDate: '2026-09-01', status: 'CLOSED' },
+      { id: 'ipo-listed', closeDate: '2026-08-01', status: 'LISTED' },
+    ]);
+    await runClosedIpoJob({
+      db: stub.db,
+      isCycleLockHeld: async () => false,
+      resourceIpo: async (id: string) => {
+        if (id === 'ipo-listed') throw new Error('BSE timed out');
+        return okResult;
+      },
+      resourcedAtVersion: 'v1',
+      snapshotFieldSources: async () => ({ path: 'snap.json', rows: 0 }),
+    });
+    const inserted = Object.fromEntries(stub.values.mock.calls.map((c) => [c[0].ipoId, c[0].statusAtAttempt]));
+    expect(inserted).toEqual({ 'ipo-closed': 'CLOSED', 'ipo-listed': 'LISTED' });
+    const updated = stub.onConflictDoUpdate.mock.calls.map((c) => c[0].set.statusAtAttempt);
+    expect(updated).toEqual(['CLOSED', 'LISTED']);
   });
 
   it('reports a run that found nothing distinctly from one that was locked out', async () => {

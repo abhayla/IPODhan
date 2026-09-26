@@ -122,15 +122,20 @@ export const CLOSED_IPO_JOB_DEFAULT_CAP = 10;
  *
  * OD-81 (owner, 2026-09-23): a PARTIAL IPO whose cause is FIELDS_PENDING is
  * picked again only on an EVENT -- no timer, never nightly without one:
- *   (1) its stage changed since the last attempt (CLOSED -> LISTED). There is no
- *       status-change timestamp on `ipos` (no migration this round), so it is
- *       derived from `listing_date`: the IPO is LISTED now AND its listing_date
- *       is on or after the IST date of `last_attempt_at` -- i.e. the last attempt
- *       was made no later than listing day. `>=`, not `>`: an attempt on the
- *       evening of listing day may have seen the IPO still CLOSED; the cost is at
- *       most ONE extra pick (the next attempt's date is past listing_date), where
- *       `>` would lose that IPO's LISTED event for good. Known gap: a status that
- *       flips to LISTED days after its listing_date passed is not seen as an event.
+ *   (1) its stage changed since the last attempt: the FORWARD step CLOSED -> LISTED.
+ *       #932: every attempt records the status the job selected the IPO with
+ *       (`closed_ipo_resourcing.status_at_attempt`, migration 0063), and the event
+ *       is "recorded CLOSED, LISTED now". A backward flip (LISTED -> CLOSED) is not a
+ *       stage change (OD-56, OD-127): status is newest-wins across sources, so a
+ *       source flip-flop must not re-pick an IPO every night. This
+ *       replaces the #919 inference from `listing_date`, which missed a status
+ *       that flipped to LISTED more than a day after listing_date (while the job
+ *       attempted it in the lag) and a LISTED IPO with no listing_date.
+ *       Legacy rule: a row last attempted BEFORE 0063 has NULL; for it the old
+ *       inference still applies (LISTED now AND listing_date on or after the IST
+ *       date of `last_attempt_at`) -- so no IPO whose LISTED event the old rule
+ *       would have caught is lost at the cut-over -- and that attempt records the
+ *       status, so the inference is used at most once per row.
  *   (2) a new document for it was first seen after the last attempt
  *       (`document_fetch_state.first_seen_at`, a naive UTC column, read AT TIME
  *       ZONE 'UTC' so the comparison does not depend on the session zone).
@@ -156,7 +161,8 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
        OR (
          r.outcome = 'PARTIAL' AND r.cause_class = 'FIELDS_PENDING'
          AND (
-           (upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)
+           (upper(r.status_at_attempt) = 'CLOSED' AND upper(i.status::text) = 'LISTED')
+           OR (r.status_at_attempt IS NULL AND upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)
            OR EXISTS (
              SELECT 1 FROM document_fetch_state d
               WHERE d.ipo_id = i.id AND (d.first_seen_at AT TIME ZONE 'UTC') > r.last_attempt_at
@@ -189,7 +195,8 @@ export function closedIpoCandidatesQuery(resourcedAtVersion: string, cap: number
        OR (
          r.outcome = 'PARTIAL' AND r.cause_class = 'FIELDS_PENDING'
          AND (
-           (upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)
+           (upper(r.status_at_attempt) = 'CLOSED' AND upper(i.status::text) = 'LISTED')
+           OR (r.status_at_attempt IS NULL AND upper(i.status::text) = 'LISTED' AND i.listing_date >= (r.last_attempt_at AT TIME ZONE 'Asia/Kolkata')::date)
            OR EXISTS (
              SELECT 1 FROM document_fetch_state d
               WHERE d.ipo_id = i.id AND (d.first_seen_at AT TIME ZONE 'UTC') > r.last_attempt_at
@@ -290,6 +297,7 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
         fieldsWritten,
         fieldsLeftEmpty,
         resourcedAtVersion: deps.resourcedAtVersion,
+        statusAtAttempt: candidate.status,
       })
       .onConflictDoUpdate({
         target: schema.closedIpoResourcing.ipoId,
@@ -302,6 +310,10 @@ export async function runClosedIpoJob(deps: ClosedIpoJobDeps): Promise<ClosedIpo
           fieldsWritten,
           fieldsLeftEmpty,
           resourcedAtVersion: deps.resourcedAtVersion,
+          // #932: the status as SELECTED, before the walk. If the walk's own writes
+          // flip it, the next night sees a difference and picks it once more: an
+          // extra pick is the cheap mistake, a lost stage change the expensive one.
+          statusAtAttempt: candidate.status,
           updatedAt: now,
         },
       });
