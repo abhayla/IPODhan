@@ -130,7 +130,7 @@ describe('T-236 / a zero price band is unannounced, not invalid', () => {
  * a missing-listingExchange error.
  */
 describe('T-236C / the minimal 3-field "supervisor probe" fails for unrelated reasons', () => {
-  it('fails on missing required fields, NOT on priceRangeMin/priceRangeMax, issueSize (T-329) or closeDate (W-116)', () => {
+  it('fails on missing required fields, NOT on priceRangeMin/priceRangeMax, issueSize (T-329), closeDate (W-116) or openDate (#963)', () => {
     const result = validateChittorgarhIPOData({
       companyName: 'Rays of Belief Ltd.',
       priceRangeMin: 0,
@@ -149,8 +149,16 @@ describe('T-236C / the minimal 3-field "supervisor probe" fails for unrelated re
     // listingExchange is intentionally NOT expected here anymore (W-145) - it
     // is an optional field now, so omitting it produces no validation error.
     expect(paths).not.toContain('listingExchange');
-    expect(paths).toEqual(
-      expect.arrayContaining(['openDate', 'offeringType', 'status', 'dataSource'])
-    );
+    // openDate is intentionally NOT expected here anymore (#963) - same
+    // treatment as W-116's closeDate: NSE can list an IPO before its dates
+    // are fixed, so ScrapedIPOSchema.openDate is now optional too (see
+    // nse-api-client.ts parseNSEDate() and validators.ts). Omitting it
+    // produces no validation error.
+    expect(paths).not.toContain('openDate');
+    // Exact list, not a looser arrayContaining match: this probe exists to
+    // pin exactly which fields stay required as the schema loosens field by
+    // field, so a matcher that only asserts a subset would stop catching the
+    // next unintended-optional regression.
+    expect(paths).toEqual(['offeringType', 'status', 'dataSource']);
   });
 });
