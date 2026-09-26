@@ -62,6 +62,7 @@ export function ListingPerformanceBadge({
       )}
     >
       {showIcon && <Icon className={iconSizeClasses[size]} aria-hidden="true" />}
+      <span className="sr-only">Listing gain </span>
       <span>
         {isPositive ? '+' : ''}
         {listingGainPercent.toFixed(2)}%

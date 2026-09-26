@@ -16,7 +16,19 @@ import { AnimatedScore } from './AnimatedScore';
 import { GMPSparkline } from './GMPSparkline';
 import { CompactSubscriptionBreakdown } from './CompactSubscriptionBreakdown';
 import { QuickStatsGrid } from './QuickStatsGrid';
+import { ListingPerformanceBadge } from './ListingPerformanceBadge';
 import { useMagneticHover } from '@/hooks/use-magnetic-hover';
+
+// OD-124 (#58): listing_gain_percent is a drizzle `numeric` column, so it
+// arrives as a string over JSON/DB reads and as a number in unit-test fixtures.
+// Missing (null/undefined/NaN) MUST render nothing — never a 0% placeholder.
+function parseListingGainPercent(
+  value: number | string | null | undefined
+): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = typeof value === 'string' ? parseFloat(value) : value;
+  return Number.isNaN(parsed) ? null : parsed;
+}
 
 interface IPOCardEnhancedProps {
   ipo: IPO & {
@@ -119,6 +131,13 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
       ? Number(latestSubscription.totalSubscription)
       : null;
 
+  // OD-124 (#58): LISTED cards show the real listing gain (signed, colour-coded);
+  // missing stays blank, never a fabricated 0%.
+  const listingGainPercent =
+    ipo.status === 'LISTED'
+      ? parseListingGainPercent(ipo.listingPerformance?.listingGainPercent)
+      : null;
+
   return (
     <Link
       href={`/ipos/${ipo.slug}`}
@@ -157,6 +176,12 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
                   {statusConfig.label}
                 </span>
               </div>
+              {listingGainPercent !== null && (
+                <ListingPerformanceBadge
+                  listingGainPercent={listingGainPercent}
+                  size="small"
+                />
+              )}
             </div>
           </div>
 
