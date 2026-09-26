@@ -527,7 +527,7 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     expect(one).toEqual({ stored: all.stored, unsettled: 1, unsettledByState: { CHECK_FAILED: 1 } });
   });
 
-  it('(OD-81) a PARTIAL / FIELDS_PENDING IPO is re-picked only on an event: stage change, a new document, or a ranks change; never-walked first', async () => {
+  it('(OD-81, #932) a PARTIAL / FIELDS_PENDING IPO is re-picked only on an event: recorded stage change (legacy NULL: listing_date), a new document, or a ranks change; never-walked first', async () => {
     const id = (n: number) => `00000000-0000-4000-8000-0000000${String(81000 + n).padStart(5, '0')}`;
     const IDS = {
       neverWalked: id(1),
@@ -537,6 +537,11 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
       newDoc: id(5), // event (2): a document first seen after the last attempt
       oldDoc: id(6), // a document first seen BEFORE the last attempt: not an event
       otherCause: id(7), // PARTIAL / SOURCE_UNREACHABLE with a stage change: OD-78 only
+      // #932: rows WITH a recorded status_at_attempt. (1..7 above carry NULL = the legacy rule.)
+      recFlipLate: id(8), // case (a): attempted while CLOSED, listed 5 days BEFORE that attempt -> picked
+      recFlipNoDate: id(9), // case (b): attempted while CLOSED, LISTED now, listing_date NULL -> picked
+      recSameListed: id(10), // recorded LISTED, still LISTED, listing_date = attempt day -> NOT picked
+      recSameClosed: id(11), // recorded CLOSED, still CLOSED -> NOT picked
     };
     const all = Object.values(IDS);
     const cleanup = async () => {
@@ -546,10 +551,10 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
     };
     await cleanup();
     try {
-      const seed = async (ipoId: string, status: string, listing: ReturnType<typeof sql>) => {
+      const seed = async (ipoId: string, status: string, listing: ReturnType<typeof sql> | null) => {
         await db.execute(sql`INSERT INTO ipos (id, company_name, slug, category, segment, listing_exchanges, status, open_date, close_date, listing_date)
           VALUES (${ipoId}::uuid, ${`OD-81 ${ipoId}`}, ${`od81-${ipoId}`}, 'SME', 'SME', '["BSE"]'::jsonb, ${status}::ipo_status,
-                  CURRENT_DATE - 12, CURRENT_DATE - 10, ${listing})`);
+                  CURRENT_DATE - 12, CURRENT_DATE - 10, ${listing ?? sql`NULL`})`);
       };
       // L = the IST date of the last attempt (one day ago).
       const L = sql`((now() - interval '1 day') AT TIME ZONE 'Asia/Kolkata')::date`;
@@ -560,6 +565,10 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
       await seed(IDS.newDoc, 'LISTED', sql`${L} - 2`);
       await seed(IDS.oldDoc, 'LISTED', sql`${L} - 2`);
       await seed(IDS.otherCause, 'LISTED', L);
+      await seed(IDS.recFlipLate, 'LISTED', sql`${L} - 5`);
+      await seed(IDS.recFlipNoDate, 'LISTED', null);
+      await seed(IDS.recSameListed, 'LISTED', L);
+      await seed(IDS.recSameClosed, 'CLOSED', sql`${L} + 5`);
 
       const { loadFieldManifest } = await import('../../src/config/field-manifest-loader.js');
       const { EXTRACTOR_VERSION } = await import('../../src/services/filing-auto-persist.js');
@@ -573,6 +582,18 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
                                              fields_written, fields_left_empty, resourced_at_version)
           VALUES (${ipoId}::uuid, now() - interval '1 day', now() - interval '1 day', 1, 'PARTIAL',
                   ${cause}::closed_ipo_resourcing_cause_class, 0, 5, ${vNow})`);
+      }
+      const recorded: Array<[string, string]> = [
+        [IDS.recFlipLate, 'CLOSED'],
+        [IDS.recFlipNoDate, 'CLOSED'],
+        [IDS.recSameListed, 'LISTED'],
+        [IDS.recSameClosed, 'CLOSED'],
+      ];
+      for (const [ipoId, statusAtAttempt] of recorded) {
+        await db.execute(sql`INSERT INTO closed_ipo_resourcing (ipo_id, first_attempt_at, last_attempt_at, attempts, outcome, cause_class,
+                                             fields_written, fields_left_empty, resourced_at_version, status_at_attempt)
+          VALUES (${ipoId}::uuid, now() - interval '1 day', now() - interval '1 day', 1, 'PARTIAL',
+                  'FIELDS_PENDING'::closed_ipo_resourcing_cause_class, 0, 5, ${vNow}, ${statusAtAttempt})`);
       }
       // first_seen_at is a naive UTC column: write the UTC wall-clock explicitly.
       await db.execute(sql`INSERT INTO document_fetch_state (ipo_id, doc_type, first_seen_at)
@@ -588,7 +609,12 @@ describe.skipIf(!DATABASE_URL)(`OD-76: closed-IPO job plans, then walks (${RUN_L
       console.log(
         `OD-81 PROOF: same ranks -> [${sameRanks.map(nameOf).join(', ')}]; ranks changed -> [${ranksChanged.map(nameOf).join(', ')}]`
       );
-      expect(new Set(sameRanks)).toEqual(new Set([IDS.neverWalked, IDS.listedAfter, IDS.newDoc]));
+      // listedAfter: legacy NULL row, re-picked by the listing_date fallback (#932 legacy rule).
+      // recFlipLate / recFlipNoDate: #932 cases (a) and (b), missed by the listing_date inference.
+      // recSameListed: the inference WOULD pick it (listing_date = attempt day); the recorded status says no change.
+      expect(new Set(sameRanks)).toEqual(
+        new Set([IDS.neverWalked, IDS.listedAfter, IDS.newDoc, IDS.recFlipLate, IDS.recFlipNoDate])
+      );
       // Never-walked leads, even though it closed on the same day as the others.
       expect(sameRanks[0]).toBe(IDS.neverWalked);
       expect(new Set(ranksChanged)).toEqual(new Set(all));
