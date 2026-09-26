@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
+import { resolveDiscreteDbParams } from './lib/pg-connection-params.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 for (const line of readFileSync(join(__dirname, '..', 'web', '.env.local'), 'utf8').split(/\r?\n/)) {
@@ -26,9 +27,8 @@ const EXECUTE = process.argv.includes('--execute');
 installUtcTimestampParsing();
 
 const pool = createUtcPool({
-  host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'),
-  database: process.env.DATABASE_NAME || 'ipodhan', user: process.env.DATABASE_USER,
-  password: process.env.DATABASE_PASSWORD, ssl: false, max: 4,
+  ...resolveDiscreteDbParams(),
+  ssl: false, max: 4,
 });
 const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
 const REAL_IPO = `offering_type = 'IPO'`;

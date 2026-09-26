@@ -5,6 +5,7 @@
  */
 
 import { Client } from 'pg';
+import { resolveDiscreteDbParams } from '../../packages/shared/src/db/index';
 import * as dotenv from 'dotenv';
 import { join } from 'path';
 
@@ -12,11 +13,7 @@ dotenv.config({ path: join(__dirname, '../.env.local') });
 
 async function applyMigration() {
   const client = new Client({
-    host: process.env.DATABASE_HOST || 'localhost',
-    port: parseInt(process.env.DATABASE_PORT || '5432'),
-    database: process.env.DATABASE_NAME || 'ipodhan',
-    user: process.env.DATABASE_USER || 'postgres',
-    password: process.env.DATABASE_PASSWORD,
+    ...resolveDiscreteDbParams(),
   });
 
   try {

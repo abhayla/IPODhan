@@ -33,7 +33,7 @@ import { join } from 'node:path';
 import { sanitizeLeadManagers } from '../src/utils/validators.js';
 import { parseBseParties } from '../src/services/bse-party-parser.js';
 import { recordDiscoveredLeadManagers } from '../src/services/data-persister.js';
-import { db } from '@ipodhan/shared/db';
+import { db, resolveDiscreteDbParams } from '@ipodhan/shared/db';
 import { openRepairDb, writeLedgerFile, type ExecuteLike } from './lib/repair-tool.js';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
@@ -60,11 +60,7 @@ const BSE_HEADERS = {
 
 const pool = new Pool({
   options: '-c timezone=UTC',
-  host: process.env.DATABASE_HOST,
-  port: parseInt(process.env.DATABASE_PORT || '5432'),
-  database: process.env.DATABASE_NAME || 'ipodhan',
-  user: process.env.DATABASE_USER || 'postgres',
-  password: process.env.DATABASE_PASSWORD,
+  ...resolveDiscreteDbParams(),
 });
 
 // `db` (the shared drizzle handle, same DATABASE_HOST/PORT/NAME env as `pool`

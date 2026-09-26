@@ -26,6 +26,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { createUtcPool, installUtcTimestampParsing } from '../pg-utc.mjs';
+import { resolveDiscreteDbParams } from '../pg-connection-params.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -59,11 +60,7 @@ if (isMainModule) {
   const pool = createUtcPool(
     process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
       ? {
-          host: process.env.DATABASE_HOST,
-          port: parseInt(process.env.DATABASE_PORT || '5432'),
-          database: process.env.DATABASE_NAME || 'ipodhan',
-          user: process.env.DATABASE_USER || 'postgres',
-          password: process.env.DATABASE_PASSWORD,
+          ...resolveDiscreteDbParams(),
           ssl: false,
           max: 1,
         }

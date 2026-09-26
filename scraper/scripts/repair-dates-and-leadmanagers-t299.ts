@@ -42,7 +42,7 @@
 import { Pool } from 'pg';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { sanitizeLeadManagers } from '../src/utils/validators.js';
-import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
+import { configureUtcTimestampParsing, resolveDiscreteDbParams } from '@ipodhan/shared/db';
 import { openRepairDb, type ExecuteLike } from './lib/repair-tool.js';
 import { pathToFileURL } from 'node:url';
 
@@ -54,11 +54,7 @@ const LEDGER_PATH = `${LEDGER_DIR}/dates-leadmanagers-repair-ledger.json`;
 
 const pool = new Pool({
   options: '-c timezone=UTC', // GitHub #28: session UTC so `updated_at = now()` writes UTC-naive, matching app writes
-  host: process.env.DATABASE_HOST,
-  port: parseInt(process.env.DATABASE_PORT || '5432'),
-  database: process.env.DATABASE_NAME || 'ipodhan',
-  user: process.env.DATABASE_USER || 'postgres',
-  password: process.env.DATABASE_PASSWORD,
+  ...resolveDiscreteDbParams(),
 });
 
 // repair-tool.ts's openRepairDb() calls dbLike.execute(sql`...`) with a

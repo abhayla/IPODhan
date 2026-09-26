@@ -35,6 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
+import { resolveDiscreteDbParams } from './lib/pg-connection-params.mjs';
 import { istDayIso } from './lib/ist-day.mjs';
 import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isStrandedPendingRow, LIVE_IPO_STATUSES, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
 import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
@@ -171,11 +172,7 @@ installUtcTimestampParsing();
 const pool = createUtcPool(
   process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
     ? {
-        host: process.env.DATABASE_HOST,
-        port: parseInt(process.env.DATABASE_PORT || '5432'),
-        database: process.env.DATABASE_NAME || 'ipodhan',
-        user: process.env.DATABASE_USER || 'postgres',
-        password: process.env.DATABASE_PASSWORD,
+        ...resolveDiscreteDbParams(),
         ssl: false,
         max: 4,
       }

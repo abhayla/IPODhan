@@ -1,0 +1,37 @@
+[
+  {
+    "file": "scripts/assert-merge-log-restores.mjs",
+    "line": 73,
+    "reason": "Defaults DATABASE_NAME to 'ipodhan_test' — a test database, not production. The script also refuses to run against anything outside DEFAULT_ALLOWED_DBS ['ipodhan_test', 'ipodhan_staging'] before it writes, so this default cannot land on prod."
+  },
+  {
+    "file": "scripts/assert-merge-log-restores.mjs",
+    "line": 74,
+    "reason": "DATABASE_USER defaults to 'postgres', but the DATABASE_NAME default (above) and the script's own ALLOWED_DBS refusal keep this pinned to the test database — not the DATABASE_NAME-to-production escalation class #640 covers."
+  },
+  {
+    "file": "scripts/audit/fold-collision-report.mjs",
+    "line": 57,
+    "reason": "DATABASE_USER defaults to 'ipodhan_app' — the least-privilege application role (see CLAUDE.md), not the 'postgres' superuser. The script's DATABASES list is a hardcoded ['ipodhan', 'ipodhan_staging'] read-only audit target, never env-driven, so there is no silent-target-switch risk either."
+  },
+  {
+    "file": "scripts/ops/reassign-test-db-ownership.mjs",
+    "line": 32,
+    "reason": "DATABASE_USER defaults to 'postgres', but `database` is hardcoded to the literal 'ipodhan_test' a few lines below (never env-driven) — this tool cannot connect to production regardless of the DATABASE_USER default."
+  },
+  {
+    "file": "scripts/ops/test-db-lifecycle.mjs",
+    "line": 47,
+    "reason": "DATABASE_USER defaults to 'postgres', which this admin tool needs (CREATE DATABASE / DROP DATABASE require superuser-or-owner privileges on the maintenance 'postgres' database it hardcodes as its target). An explicit DENYLIST (['ipodhan', 'ipodhan_staging']) refuses any real database by name before this tool acts."
+  },
+  {
+    "file": "web/scripts/test-db-connection.ts",
+    "line": 27,
+    "reason": "`|| 'NOT SET'` is a console.log display label for a diagnostic printout, not a value fed into the Pool a few lines below — that Pool reads process.env.DATABASE_NAME with no fallback at all."
+  },
+  {
+    "file": "web/scripts/test-db-connection.ts",
+    "line": 28,
+    "reason": "Same as line 27 — a console.log display label ('NOT SET'), not the value passed to the Pool."
+  }
+]

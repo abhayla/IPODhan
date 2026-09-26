@@ -48,7 +48,7 @@
  */
 import { Pool } from 'pg';
 import { writeFileSync, mkdirSync } from 'node:fs';
-import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
+import { configureUtcTimestampParsing, resolveDiscreteDbParams } from '@ipodhan/shared/db';
 
 configureUtcTimestampParsing();
 
@@ -60,11 +60,7 @@ const NAMED_SELF_HEALED_SLUGS = ['tempsens-instruments-india-ltd', 'augmont-ente
 
 const pool = new Pool({
   options: '-c timezone=UTC', // GitHub #28: session UTC so the naive `timestamp` column reads/compares as UTC, matching app writes
-  host: process.env.DATABASE_HOST,
-  port: parseInt(process.env.DATABASE_PORT || '5432'),
-  database: process.env.DATABASE_NAME || 'ipodhan',
-  user: process.env.DATABASE_USER || 'postgres',
-  password: process.env.DATABASE_PASSWORD,
+  ...resolveDiscreteDbParams(),
 });
 
 async function main() {
