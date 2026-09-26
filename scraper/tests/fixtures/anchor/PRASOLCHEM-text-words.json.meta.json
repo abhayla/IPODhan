@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_PRASOLCHEM.zip",
+  "capturedAt": "2026-09-26",
+  "company": "Prasol Chemicals Limited",
+  "note": "Public NSE archive zip holding the anchor allocation intimation letter (\"Prasol Chemicals Limited-Anchor Initimation Letter 07092026 signed.pdf\"); downloaded 2026-09-26. This file is pdfplumber extract_words(y_tolerance=1, x_tolerance=1.5) for every page, keeping text/x0/x1/top/bottom rounded to 0.01pt; nothing else edited. The PDF is not committed. Captured for #409: the sidecar learned no serial column and rendered every row without a name or share count."
+}

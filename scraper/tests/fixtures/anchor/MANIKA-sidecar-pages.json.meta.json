@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MANIKA.zip",
+  "capturedAt": "2026-09-26",
+  "company": "Manika Plastech Limited",
+  "note": "Public NSE archive zip holding the anchor allocation intimation letter (\"Anchor Intimation Letter.pdf\"); downloaded 2026-09-26 from the laptop. This file is the exact stdout of `python scraper/scripts/anchor_report_text.py <pdf>` after the #409 sidecar fix (serial column not learned); nothing edited. The PDF and zip are not committed (size; NSE's to publish). Captured for #347: the parser refused this real letter."
+}

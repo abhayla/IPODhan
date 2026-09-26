@@ -137,6 +137,63 @@ def column_bands(pages_words):
     return [(b, n) for b, n in scored if n >= max(MIN_NUMERIC_ROWS, 0.5 * best)]
 
 
+SERIAL_BAND_SHARE = 0.5
+
+
+def has_serial_band(pages_words, bands):
+    """Is the leftmost learned band really the serial column (#409)?
+
+    `page_rows` assumes it is. When the serial numbers sit close enough to the
+    name column that digits inside names ("EX-TOP 100", "FUND-1") chain onto
+    them, the serial cluster turns prose-dominant and `column_bands` drops it;
+    the leftmost surviving band is then the SHARE column. Read as a serial,
+    it squeezed the name band to nothing between shares and percent, and every
+    row came out with no name and no share count ("only 0 investor rows",
+    KANOHAR / PRASOLCHEM / RENTOMOJO). A serial cell is a 1-2 digit counter; a
+    share cell never is.
+    """
+    if not bands:
+        return False
+    cells = [w["text"] for words in pages_words
+             for w in _in_band(words, bands[0][0]) if _has_digit(w["text"])]
+    if not cells:
+        return False
+    serial_like = sum(1 for t in cells if SERIAL_RE.match(t))
+    return serial_like / len(cells) >= SERIAL_BAND_SHARE
+
+
+def table_bands(pages_words):
+    """`column_bands`, with a `None` serial slot when no serial was learned.
+
+    #409: every learned band is then a value column, and each page finds its
+    own serials in `page_rows` (or has none).
+    """
+    bands = column_bands(pages_words)
+    if bands and not has_serial_band(pages_words, bands):
+        bands = [(None, 0)] + bands
+    return bands
+
+
+def _page_serial_band(words, centres, first_value_lo):
+    """The serial column of one page when no filing-wide band was learned.
+
+    Only 1-2 digit counters left of the first value column and level with a
+    table row count; the LEFTMOST tight x-cluster of them is the serial column.
+    None when the table prints no serials: the name cell then runs from the
+    left margin (name words still attach only to real row centres).
+    """
+    cands = [
+        w for w in words
+        if SERIAL_RE.match(w["text"])
+        and w["x1"] <= first_value_lo - BAND_PAD_PT
+        and any(abs(w["top"] - c) <= ROW_ATTACH_PT for c in centres)
+    ]
+    if not cands:
+        return None
+    first = _clusters(cands, lambda w: w["x0"], BAND_PAD_PT * 2)[0]
+    return (min(w["x0"] for w in first), max(w["x0"] for w in first))
+
+
 def _cell_groups(words, centres):
     """Split one column into cells, attaching each to its nearest row centre."""
     cells = [[] for _ in centres]
@@ -192,6 +249,8 @@ def page_rows(words, bands):
         return None
 
     serial_band, value_bands = bands[0][0], [b for b, _ in bands[1:]]
+    if not value_bands:
+        return None
     # The row spine is the column with a cell on the most rows - in practice the
     # share count, which is present on every investor row and (unlike the name)
     # never wraps onto a second line. Spining on a wrapping column splits one
@@ -202,7 +261,10 @@ def page_rows(words, bands):
         return None
     centres = [_centre(g) for g in spine]
 
-    name_lo, name_hi = serial_band[1] + BAND_PAD_PT, value_bands[0][0] - BAND_PAD_PT
+    if serial_band is None:
+        serial_band = _page_serial_band(words, centres, value_bands[0][0])
+    name_lo = serial_band[1] + BAND_PAD_PT if serial_band else float("-inf")
+    name_hi = value_bands[0][0] - BAND_PAD_PT
     name_words = [w for w in words if name_lo <= w["x0"] < name_hi]
     name_groups = _cell_groups(name_words, centres)
     top_of_table = min(w["top"] for g in spine for w in g)
@@ -210,7 +272,8 @@ def page_rows(words, bands):
     return {
         "preamble": _plain(preamble) if preamble else "",
         "centres": centres,
-        "serials": _cells(_in_band(words, serial_band), centres, numeric=True),
+        "serials": (_cells(_in_band(words, serial_band), centres, numeric=True)
+                    if serial_band else [""] * len(centres)),
         "names": [_cell_text(g) for g in name_groups],
         "name_groups": name_groups,
         "columns": [_cells(_in_band(words, b), centres, numeric=True) for b in value_bands],
@@ -1270,7 +1333,7 @@ def extract(path, ocr=True):
         for p in pdf.pages:
             pages_words.append(p.extract_words(y_tolerance=1, x_tolerance=1.5))
             p.close()
-    bands = column_bands(pages_words)
+    bands = table_bands(pages_words)
     pages = [page_rows(w, bands) for w in pages_words]
 
     scanned = [

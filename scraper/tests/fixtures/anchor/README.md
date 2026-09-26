@@ -33,3 +33,15 @@ were chosen to span the shapes the rebuild has to survive:
 To refresh one: download the zip, unzip it outside the repo, and run
 `python scraper/scripts/ocr_pages.py <pdf>` / the capture in
 `test_anchor_report_text_437.py`'s docstring. Do not commit the PDFs.
+
+## Text-layer letters (#347, #409)
+
+`<SYMBOL>-sidecar-pages.json` is the exact stdout of
+`python scraper/scripts/anchor_report_text.py <pdf>` (after the #409 fix) for
+TEMPSENS, MANIKA, VARMORA (#347: sub-tables repeating the portion, a header
+word in a percent cell) and KANOHAR, PRASOLCHEM, RENTOMOJO (#409: no serial
+column learned). `<SYMBOL>-text-words.json` (KANOHAR, PRASOLCHEM) is
+pdfplumber's `extract_words(y_tolerance=1, x_tolerance=1.5)` per page, the
+sidecar's own input. All from `https://nsearchives.nseindia.com/content/ipo/ANCHOR_<SYMBOL>.zip`,
+captured 2026-09-26. Tests: `scraper/tests/unit/scrapers/anchor-report-parser-347-409.test.ts`,
+`scraper/scripts/test_anchor_serial_band_409.py`.

@@ -162,7 +162,11 @@ export function normalizeNumeric(cell: string): string {
 export function parsePercent(cell: string): number | null {
   const marked = cell.replace(/[oO0]\s*\/\s*[oO0aA]|Vo/g, '%');
   if (!marked.includes('%')) return null;
-  const digits = marked.slice(0, marked.indexOf('%')).trim();
+  // #347: a header word the sidecar left in the first data row's cell
+  // ("Portion 46.87%", MANIKA) is not part of the value; whole words of three
+  // or more letters ahead of it are dropped. Glyph damage never has a space
+  // after a run of letters ("lOO.OO"), so it is untouched.
+  const digits = marked.slice(0, marked.indexOf('%')).trim().replace(/^(?:[A-Za-z]{3,}\s+)+/, '');
   // A column HEADER also ends in "o/o" ("as a o/o of Anchor Investor Portion"),
   // and a caption normalises to some large nonsense number. A percentage is
   // short and lands in (0, 100] - which is also why the digits are not required
@@ -525,19 +529,46 @@ export function readPrintedCount(text: string): number | null {
   return null;
 }
 
-/** The mode of a set of prices, bucketed to the paise; ties go to the lowest. */
-function modalPrice(prices: number[]): number | null {
+/**
+ * The mode of a set of prices, bucketed to the paise.
+ *
+ * Ties go to a price the letter itself PRINTS (`printed`: the row price cells
+ * and the prose price), then to the lowest. Every row yields two readings of
+ * its amount cell - with the last two digits as paise and without - so the
+ * true price and a decoy exactly 100x apart tie on every row. Lowest-wins is
+ * right for a ".00" letter (the decoy is 100x HIGH) and wrong for a letter
+ * printing whole rupees (the decoy is 100x LOW): KANOHAR's "632.00 |
+ * 24,37,39,648" rows derived 6.32 and every cross-check still agreed, because
+ * shares x 6.32 reproduces the paise-read amount exactly (#409).
+ */
+function modalPrice(prices: number[], printed: Set<string> = new Set()): number | null {
   const counts = new Map<string, number>();
   for (const p of prices) {
     const key = p.toFixed(2);
     counts.set(key, (counts.get(key) || 0) + 1);
   }
+  const rank = (key: string): number => (printed.has(key) ? 1 : 0);
   let best: string | null = null;
   for (const [key, n] of counts) {
-    const bestCount = best === null ? -1 : (counts.get(best) as number);
-    if (n > bestCount || (n === bestCount && Number(key) < Number(best))) best = key;
+    if (best === null) {
+      best = key;
+      continue;
+    }
+    const bestCount = counts.get(best) as number;
+    if (n > bestCount) best = key;
+    else if (n === bestCount) {
+      if (rank(key) > rank(best) || (rank(key) === rank(best) && Number(key) < Number(best))) best = key;
+    }
   }
   return best === null ? null : Number(best);
+}
+
+/** The price cell a row prints ahead of its amount, when the tail holds both. */
+function printedRowPrice(rawTail: string): string | null {
+  const tokens = rawTail.trim().split(/\s+/);
+  if (tokens.length < 2) return null;
+  const v = parseAmount(tokens[0]);
+  return v !== null && v >= MIN_PRICE && v <= MAX_PRICE ? v.toFixed(2) : null;
 }
 
 /**
@@ -568,6 +599,104 @@ function looksLikeTotalRow(rec: RawRecord, noInvestorShapedRowFollows: boolean):
   if (pctCell === undefined) return false;
   const value = parsePercent(pctCell) as number;
   return value >= 99 && value <= 100.5;
+}
+
+/**
+ * #347: index (into `rows`) of the investor row at which the printed
+ * percentages first account for the whole anchor portion, when investor rows
+ * with percentages FOLLOW it as a corroborated repeat block (the first two of
+ * them each repeat a kept row by share count AND name) and the kept rows sum
+ * to the letter's printed allocation when it prints one - the signature of a
+ * mutual-fund / insurance sub-table. Null otherwise, which leaves the table
+ * exactly as it was read.
+ *
+ * Of the positions within PERCENT_SUM_TOLERANCE of 100 (scanned up to and
+ * including the row that overshoots), the closest to 100 wins, the later one on a tie, so
+ * a small last row (0.02%) is never cut off by an earlier position that was
+ * already "within a point".
+ */
+export function mainPortionEnd(
+  rows: RawRecord[],
+  isInvestor: (rec: RawRecord) => boolean,
+  preambleTotal: number | null = null
+): number | null {
+  const pctOf = (rec: RawRecord): number | null => {
+    if (!isInvestor(rec)) return null;
+    const cell = rec.cells.find((c) => parsePercent(c) !== null);
+    return cell === undefined ? null : (parsePercent(cell) as number);
+  };
+  let sum = 0;
+  let at: number | null = null;
+  let atGap = Infinity;
+  for (let i = 0; i < rows.length; i++) {
+    const pct = pctOf(rows[i]);
+    if (pct === null) continue;
+    sum += pct;
+    // Every row's gap is evaluated, the one that oversteps the band included:
+    // a letter whose printed percents run a little over 100 (rounding, a
+    // damaged glyph) must be able to land its cut on its TRUE last row.
+    const gap = Math.abs(sum - 100);
+    if (gap <= PERCENT_SUM_TOLERANCE && gap <= atGap) {
+      at = i;
+      atGap = gap;
+    }
+    if (sum > 100 + PERCENT_SUM_TOLERANCE) break;
+  }
+  if (at === null) return null;
+  const kept = rows
+    .slice(0, at + 1)
+    .filter((r) => pctOf(r) !== null)
+    .map(readRow);
+  const keptRows = kept.filter((c): c is Candidate => c !== null);
+  // The kept portion must reconcile to the letter's own total when it prints
+  // one: every kept row read, and their shares summing to it exactly.
+  if (preambleTotal !== null) {
+    if (keptRows.length !== kept.length) return null;
+    if (keptRows.reduce((s, c) => s + c.shares, 0) !== preambleTotal) return null;
+  }
+  // The discarded remainder must be CORROBORATED as a repeat block: its first
+  // SUB_TABLE_REPEAT_ROWS readable rows each repeat a kept row by share count
+  // AND name. A share count alone is not a repeat - round lots (79,120 on
+  // eight KANOHAR rows) recur among genuine investors. Anything less leaves
+  // the table exactly as read, and the arithmetic refuses it if it is wrong.
+  const beyond = rows
+    .slice(at + 1)
+    .filter((r) => pctOf(r) !== null)
+    .map(readRow)
+    .filter((c): c is Candidate => c !== null)
+    .slice(0, SUB_TABLE_REPEAT_ROWS);
+  if (beyond.length < SUB_TABLE_REPEAT_ROWS) return null;
+  const repeats = (c: Candidate): boolean =>
+    keptRows.some((k) => k.shares === c.shares && namesShareAWord(k.name, c.name));
+  return beyond.every(repeats) ? at : null;
+}
+
+/** Rows after the 100% point that must repeat the portion before it is cut. */
+const SUB_TABLE_REPEAT_ROWS = 2;
+/** Words too common in fund names to identify one. */
+const GENERIC_NAME_WORDS = new Set([
+  'FUND', 'FUNDS', 'MUTUAL', 'LIMITED', 'TRUST', 'TRUSTEE', 'CAPITAL', 'INDIA', 'EQUITY',
+  'SCHEME', 'INSURANCE', 'COMPANY', 'LIFE', 'INVESTMENT', 'INVESTMENTS', 'OPPORTUNITIES',
+]);
+
+/**
+ * Do two printed names share a distinctive word? The sub-table re-wraps a
+ * name ("MUTUAL FUND A/C ICICI PRUDENTIAL HOUSING" in the main table,
+ * "FUND A/C ICICI PRUDENTIAL HOUSING OPPORTUNITIES" in VARMORA's mutual-fund
+ * table), so exact equality is too strict; one shared word of four or more
+ * letters that is not generic fund vocabulary identifies the same investor.
+ */
+export function namesShareAWord(a: string, b: string): boolean {
+  const words = (s: string): Set<string> =>
+    new Set(
+      s
+        .toUpperCase()
+        .split(/[^A-Z0-9]+/)
+        .filter((w) => w.length >= 4 && !GENERIC_NAME_WORDS.has(w))
+    );
+  const wa = words(a);
+  for (const w of words(b)) if (wa.has(w)) return true;
+  return false;
 }
 
 /**
@@ -646,10 +775,37 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   // would silently become an extra "investor" whose amount cell (usually
   // blank/unparseable against `price`) then gets treated as a corrupted row
   // rather than what it actually is - a subtotal artifact.
-  const main = (totalAt === -1 ? all : all.slice(0, totalAt)).filter(
-    (r) => !looksLikeTotalRow(r, true)
+  let mainIdx = (totalAt === -1 ? all : all.slice(0, totalAt))
+    .map((_, i) => i)
+    .filter((i) => !looksLikeTotalRow(all[i], true));
+  let afterStart = totalAt === -1 ? all.length : totalAt + 1;
+  let printedTotalAt = totalAt;
+  // #347: the anchor portion ends where its investor rows' printed
+  // percentages reach 100. A letter whose main-table Total is blank-named
+  // (TEMPSENS) or not printed at all (VARMORA) and is followed by the
+  // mutual-fund / insurance sub-tables that REPEAT those investors had no
+  // recognised end, so the repeats were read as more investors and every
+  // row's share of the portion came out wrong ("ARANDA prints 8.55% but holds
+  // 5.43%"). Everything after that point is sub-table, and its own Total (if
+  // one is printed before the next investor row) is the letter's Total.
+  const portionEnd = mainPortionEnd(
+    mainIdx.map((i) => all[i]),
+    looksInvestorShaped,
+    parsePreambleTotalShares(fullText)
   );
-  const after = totalAt === -1 ? [] : all.slice(totalAt + 1);
+  if (portionEnd !== null) {
+    const lastIdx = mainIdx[portionEnd];
+    const nextInvestorIdx =
+      mainIdx.slice(portionEnd + 1).find((i) => looksInvestorShaped(all[i])) ?? all.length;
+    const totalOffset = all
+      .slice(lastIdx + 1, nextInvestorIdx)
+      .findIndex((r) => looksLikeTotalRow(r, true));
+    printedTotalAt = totalOffset === -1 ? -1 : lastIdx + 1 + totalOffset;
+    mainIdx = mainIdx.slice(0, portionEnd + 1);
+    afterStart = printedTotalAt === -1 ? lastIdx + 1 : printedTotalAt + 1;
+  }
+  const main = mainIdx.map((i) => all[i]);
+  const after = all.slice(afterStart);
 
   // #437 slice 4: a row whose share cell the OCR left EMPTY (never a garbled
   // digit run - that is slice 2/3's territory) is invisible to `readRow`
@@ -759,10 +915,16 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   // yields a derivable price at all does the letter's own prose statement of
   // the price step in (W-170) - never the other way around, because the prose
   // is a single uncorroborated sentence.
-  const rowDerivedPrice = modalPrice(
-    candidates.reduce<number[]>((acc, c) => acc.concat(c.splits.map((s) => s.price)), [])
+  const prosePrice = parsePrintedBidPrice(fullText);
+  const printedPrices = new Set<string>(
+    candidates.map((c) => printedRowPrice(c.rawTail)).filter((p): p is string => p !== null)
   );
-  const price = rowDerivedPrice ?? parsePrintedBidPrice(fullText);
+  if (prosePrice !== null) printedPrices.add(prosePrice.toFixed(2));
+  const rowDerivedPrice = modalPrice(
+    candidates.reduce<number[]>((acc, c) => acc.concat(c.splits.map((s) => s.price)), []),
+    printedPrices
+  );
+  const price = rowDerivedPrice ?? prosePrice;
   if (price === null) {
     return { ok: false, reason: 'no bid price could be derived from the investor rows' };
   }
@@ -891,7 +1053,7 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
     mutualFundShares.push(parsed.shares);
   }
 
-  const printed = readPrintedTotals(totalAt === -1 ? undefined : all[totalAt]);
+  const printed = readPrintedTotals(printedTotalAt === -1 ? undefined : all[printedTotalAt]);
   // A total the scan mangled is MISSING, not contradicting — see
   // isPrintedTotalReadable. Null here becomes `not_checkable` downstream.
   const printedShares = isPrintedTotalReadable(printed.shares, printed.sharesDigits, totalShares)
