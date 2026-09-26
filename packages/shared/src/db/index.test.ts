@@ -1,5 +1,51 @@
 import { describe, it, expect } from 'vitest';
-import { resolvePgConnectionTimeoutMs } from './index';
+import { resolvePgConnectionTimeoutMs, resolveDiscreteDbParams } from './index';
+
+// #640 — DATABASE_HOST + DATABASE_PASSWORD set but DATABASE_NAME/DATABASE_USER
+// missing silently defaulted to the PRODUCTION database name ('ipodhan') and
+// the superuser ('postgres'). A script or env that forgets either variable
+// must fail loudly, naming which one, never connect to prod as postgres.
+describe('resolveDiscreteDbParams (#640)', () => {
+  const base = {
+    DATABASE_HOST: 'db.example.internal',
+    DATABASE_PASSWORD: 'secret',
+  } as unknown as NodeJS.ProcessEnv;
+
+  it('throws naming DATABASE_NAME when it is missing', () => {
+    expect(() => resolveDiscreteDbParams(base)).toThrow(/DATABASE_NAME/);
+  });
+
+  it('throws naming DATABASE_USER when it is missing', () => {
+    expect(() =>
+      resolveDiscreteDbParams({ ...base, DATABASE_NAME: 'ipodhan_staging' } as NodeJS.ProcessEnv)
+    ).toThrow(/DATABASE_USER/);
+  });
+
+  it('returns the params unchanged when everything is set', () => {
+    const params = resolveDiscreteDbParams({
+      ...base,
+      DATABASE_NAME: 'ipodhan_staging',
+      DATABASE_USER: 'ipodhan_app',
+      DATABASE_PORT: '5433',
+    } as NodeJS.ProcessEnv);
+    expect(params).toEqual({
+      host: 'db.example.internal',
+      port: 5433,
+      database: 'ipodhan_staging',
+      user: 'ipodhan_app',
+      password: 'secret',
+    });
+  });
+
+  it('defaults the port to 5432 when unset', () => {
+    const params = resolveDiscreteDbParams({
+      ...base,
+      DATABASE_NAME: 'ipodhan_staging',
+      DATABASE_USER: 'ipodhan_app',
+    } as NodeJS.ProcessEnv);
+    expect(params.port).toBe(5432);
+  });
+});
 
 // W-20 — over the dev SSH tunnel (ipodhan_test) a 52-row insert killed the
 // pool at the 2000ms prod default unless PG_CONNECTION_TIMEOUT_MS=20000 was

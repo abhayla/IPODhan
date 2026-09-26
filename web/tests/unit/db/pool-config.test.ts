@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { resolveWebPoolSize, resolveDatabaseSsl } from '../../../lib/db/index';
-import { resolveSharedPoolSize } from '../../../../packages/shared/src/db/index';
+import { resolveWebPoolSize, resolveDatabaseSsl, resolveDiscreteDbParams } from '../../../lib/db/index';
+import {
+  resolveSharedPoolSize,
+  resolveDiscreteDbParams as resolveSharedDiscreteDbParams,
+} from '../../../../packages/shared/src/db/index';
 
 // T-242 M3 (Linux deploy pipeline) — asserts the pool-cap arithmetic from
 // T-241 17-required-keys.md (POOL-SIZE P1) + 19-handoffs-m3.md (H4):
@@ -64,4 +67,45 @@ describe('pool-cap arithmetic (T-242 M3)', () => {
     expect(grandTotal).toBeLessThan(TARGET_CEILING);
     expect(grandTotal).toBeLessThan(USABLE_CONNECTIONS);
   });
+});
+
+// #640 — DATABASE_HOST + DATABASE_PASSWORD set but DATABASE_NAME/DATABASE_USER
+// missing silently defaulted to the PRODUCTION database name ('ipodhan') and
+// the superuser ('postgres') in both the web and shared pool builders.
+describe('resolveDiscreteDbParams (#640)', () => {
+  const base = {
+    DATABASE_HOST: 'db.example.internal',
+    DATABASE_PASSWORD: 'secret',
+  } as unknown as NodeJS.ProcessEnv;
+
+  for (const [label, resolve] of [
+    ['web', resolveDiscreteDbParams],
+    ['shared', resolveSharedDiscreteDbParams],
+  ] as const) {
+    it(`${label}: throws naming DATABASE_NAME when it is missing`, () => {
+      expect(() => resolve(base)).toThrow(/DATABASE_NAME/);
+    });
+
+    it(`${label}: throws naming DATABASE_USER when it is missing`, () => {
+      expect(() =>
+        resolve({ ...base, DATABASE_NAME: 'ipodhan_staging' } as NodeJS.ProcessEnv)
+      ).toThrow(/DATABASE_USER/);
+    });
+
+    it(`${label}: returns the params unchanged when everything is set`, () => {
+      const params = resolve({
+        ...base,
+        DATABASE_NAME: 'ipodhan_staging',
+        DATABASE_USER: 'ipodhan_app',
+        DATABASE_PORT: '5433',
+      } as NodeJS.ProcessEnv);
+      expect(params).toEqual({
+        host: 'db.example.internal',
+        port: 5433,
+        database: 'ipodhan_staging',
+        user: 'ipodhan_app',
+        password: 'secret',
+      });
+    });
+  }
 });
