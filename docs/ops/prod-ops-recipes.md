@@ -1188,3 +1188,23 @@ KEEP_RELEASES retention and the pre-PR rollback target. Fix: the first time `cle
 ever runs against a slot with NO `.deploy-*` marker anywhere, every correctly-named release dir that is
 not mid-build is stamped `.deploy-complete` once (logged per dir as `backfilled completion marker: <dir>`)
 before any deletion logic runs. `current`'s target is always skipped regardless of marker (case 39f).
+
+## Staging scraper env flag: add, verify, undo (recorded 2026-09-26, ENABLE_VERDICT_WRITER)
+
+The staging scraper reads `/var/www/ipodhan/shared/env/staging/scraper.env` fresh on every cron wake
+(`current-staging/scraper/.env` links to it), so a flag change needs no restart. Staging only; the
+production file is `shared/env/prod/scraper.env` and is changed only on the owner's word.
+
+```bash
+# add (idempotent; dated backup first; prints the key only, never a value)
+ssh rfp-vps 'f=/var/www/ipodhan/shared/env/staging/scraper.env; grep -qE "^FLAG=" "$f" || { cp -p "$f" "$f.bak-$(date +%Y%m%d)-<why>" && printf "\n# <reason, issue>\nFLAG=true\n" >> "$f"; }; grep -oE "^FLAG=[a-z]*" "$f"'
+# verify: the wake log is JSON with UTC "time"; read error-level lines after the change
+ssh rfp-vps 'grep -E "\"level\":(50|60)" /var/log/ipodhan-scraper-wake-staging.log | tail -50'
+# undo: restore the dated backup
+ssh rfp-vps 'cp -p /var/www/ipodhan/shared/env/staging/scraper.env.bak-<date>-<why> /var/www/ipodhan/shared/env/staging/scraper.env'
+```
+
+Gotcha (2026-09-27): the wake log's timestamps are UTC (`"time":"...Z"`), not IST; a window written in
+IST reads the wrong lines. Filter by pino `"level":50|60` for errors: a plain grep for "error"
+matches info lines whose text contains the word.
+
