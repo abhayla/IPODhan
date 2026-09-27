@@ -1333,7 +1333,7 @@ async function checkM() {
       LEFT JOIN document_fetch_state fs ON fs.ipo_id = d.ipo_id AND fs.doc_type = d.type
      WHERE i.${REAL_IPO}
        AND i.status IN ('UPCOMING','OPEN','CLOSED','LISTED')
-       AND (d.type = ANY($1) OR d.retry_count >= $2 OR starts_with(d.extraction_error, 'blocked_after_'))
+       AND (d.type = ANY($1) OR d.retry_count >= $2 OR starts_with(d.extraction_error, 'UNFINISHED_EXHAUSTED:') OR starts_with(d.extraction_error, 'blocked_after_'))
   `, [FILING_EXTRACTOR_STUCK_TYPES, MAX_EXTRACTION_ATTEMPTS]);
   const nowMs = Date.now();
   const extractionStuck = extractionStuckRows

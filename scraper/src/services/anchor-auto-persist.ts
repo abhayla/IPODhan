@@ -42,8 +42,8 @@ import type { FilingPersisterDeps } from './filing-persister.js';
  *                        at the scan; retrying changes nothing). Never FAILED,
  *                        never silent.
  *  - `hard_failure`   -> the W-137 path: FAILED, marked so the second such
- *                        failure widens the backoff to >= 24h.
- *  - `failed`         -> ordinary FAILED with the normal 2^n x 15 min backoff.
+ *                        failure blocks it until a new extractor version (#959).
+ *  - `failed`         -> FAILED, re-read only on a new extractor version or new bytes (#959).
  */
 export type AnchorAutoOutcome =
   | { kind: 'persisted'; reason: null; summary: AnchorPersistSummary }
