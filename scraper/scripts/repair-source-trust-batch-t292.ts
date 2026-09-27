@@ -167,8 +167,17 @@ interface RowRepair {
   companyName: string;
   changes: FieldChange[];
   citation: string;
-  /** ISO `YYYY-MM-DD` the citation above was captured on — every named-row entry in this file cites 2026-08-23. */
-  citationDate: string;
+  /**
+   * ISO `YYYY-MM-DD` the citation above was captured on — every named-row
+   * entry in this file cites 2026-08-23. Optional (#422 round 3, CI
+   * TS2345): the #180 class-derived SME/FPO entries below (pushed AFTER the
+   * stale-correction guard loop, at the class-query block) carry no dated
+   * citation at all — they re-derive their target from the LIVE row on every
+   * run, so there is nothing to go stale. `undefined` here is NOT "ok to
+   * skip the guard" by default; it is a marker that this entry never reaches
+   * `decideStaleCorrectionSkip` in the first place (asserted below).
+   */
+  citationDate?: string;
 }
 
 /** Every named-row citation in this batch was captured on this date (#422). */
@@ -303,6 +312,18 @@ async function main() {
   for (const r of repairs) {
     const row = rowsBySlug[r.slug];
     if (!row) continue;
+    // #422 round 3: this loop runs ONLY over the four named-row entries
+    // above (the #180 class-derived entries are pushed to `repairs` further
+    // below, after this loop has already run). Every named entry sets
+    // `citationDate = CITATION_DATE`, so `undefined` here means a named
+    // entry was added above without one — a real authoring mistake, not a
+    // case the guard should silently pass through. `citationDate` on
+    // `RowRepair` is optional only so the class-derived push (which never
+    // reaches this loop) type-checks; it must never be optional FOR a row
+    // this loop actually processes.
+    if (r.citationDate === undefined) {
+      throw new Error(`#422: named-row entry '${r.slug}' has no citationDate — every row reaching the stale-correction guard must carry one`);
+    }
     const surviving: FieldChange[] = [];
     for (const c of r.changes) {
       const latestSourceDate = await queryLatestFieldSourceDate(db, {
