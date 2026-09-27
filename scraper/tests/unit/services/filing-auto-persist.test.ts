@@ -1116,6 +1116,90 @@ describe('processPendingFilings — W-137 hard-failure marker written end to end
   });
 });
 
+// #1247 r1 review (MAJOR): document-cycle.ts's reservation split (item 1) can
+// offer the SAME IPO to `processPendingFilings` more than once in one cycle —
+// a reservation pre-pass call, then a fresh-pass call. A document a pre-pass
+// re-read call HARD-FAILS is stamped FAILED (not COMPLETED), so `isNeverRead`
+// reads it as never-read again, and — before `attemptedDocumentIds` — the
+// fresh pass spawned the SAME document a second time in the same cycle: a
+// second OOM kill on the 2-vCPU box minutes later. HARD_FAILURE's cap is 2
+// (UNFINISHED_READ_CAPS), so one hard failure (count 1 < cap 2) does not
+// block the gate either — nothing but the new attempted-set stops the second
+// spawn.
+describe('processPendingFilings — #1247 r1 MAJOR: a document already attempted this cycle is never spawned twice', () => {
+  it('a pre-pass re-read that hard-fails is NOT spawned again by a later call sharing attemptedDocumentIds this cycle', async () => {
+    const attemptedDocumentIds = new Set<string>();
+    const makeKilledRunner = () =>
+      vi.fn(() => ({ ok: false as const, error: 'extractor exited null (signal SIGKILL): ', hardFailure: true }));
+
+    // --- call 1 (the reservation pre-pass): fresh PENDING document, hard-fails ---
+    const d1 = deps({
+      runExtractor: makeKilledRunner(),
+      loadDocuments: vi.fn(async () => [doc()]),
+      attemptedDocumentIds,
+    });
+    const r1 = await processPendingFilings(IPO, d1);
+    expect(r1.spawned).toBe(1);
+    expect(attemptedDocumentIds.has('doc-1')).toBe(true);
+    const failed1 = (d1.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(failed1[0].error).toMatch(/^HARD_FAILURE:1@\d+:/);
+
+    // --- call 2 (the fresh pass, same cycle): the document now reads FAILED
+    // with the 1st hard-failure marker — still `isNeverRead` (not COMPLETED)
+    // and NOT blocked by the gate (1 hard failure < cap 2) — but it was
+    // attempted once already THIS CYCLE via the shared `attemptedDocumentIds`.
+    const docAfterHardFailure = doc({
+      extractionStatus: 'FAILED',
+      retryCount: 1,
+      extractionError: failed1[0].error,
+      updatedAt: new Date(),
+    });
+    const d2 = deps({
+      runExtractor: makeKilledRunner(),
+      loadDocuments: vi.fn(async () => [docAfterHardFailure]),
+      attemptedDocumentIds, // SAME shared set — same cycle
+    });
+    const r2 = await processPendingFilings(IPO, d2);
+
+    expect(r2.spawned).toBe(0);
+    expect(d2.runExtractor).not.toHaveBeenCalled();
+  });
+
+  // Mutation: without the `attemptedDocumentIds` filter (simulated here by a
+  // FRESH, empty set per call — i.e. no cross-call memory, the pre-fix
+  // shape), the second call DOES spawn again. Pins the red-on-main baseline.
+  it('(mutation baseline) a fresh attemptedDocumentIds per call does NOT stop the second spawn — proves the shared set is load-bearing', async () => {
+    const makeKilledRunner = () =>
+      vi.fn(() => ({ ok: false as const, error: 'extractor exited null (signal SIGKILL): ', hardFailure: true }));
+    const d1 = deps({
+      runExtractor: makeKilledRunner(),
+      loadDocuments: vi.fn(async () => [doc()]),
+      attemptedDocumentIds: new Set<string>(),
+    });
+    const r1 = await processPendingFilings(IPO, d1);
+    const failed1 = (d1.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    const docAfterHardFailure = doc({
+      extractionStatus: 'FAILED',
+      retryCount: 1,
+      extractionError: failed1[0].error,
+      updatedAt: new Date(),
+    });
+    const d2 = deps({
+      runExtractor: makeKilledRunner(),
+      loadDocuments: vi.fn(async () => [docAfterHardFailure]),
+      attemptedDocumentIds: new Set<string>(), // a DIFFERENT (fresh) set — not shared
+    });
+    const r2 = await processPendingFilings(IPO, d2);
+
+    expect(r1.spawned).toBe(1);
+    expect(r2.spawned).toBe(1); // double-spawned — this is the bug the shared set prevents
+  });
+});
+
 describe('selectPendingFilings — the per-document retry gate (MAJOR-A)', () => {
   const twoStates = [
     { docType: 'RHP', documentId: 'doc-x', extractedAt: null, extractorVersion: null },

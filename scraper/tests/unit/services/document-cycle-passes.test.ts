@@ -1544,4 +1544,49 @@ describe('#1247 item 1 — one reserved spawn slot for re-reads per document cyc
     expect(skipFlagsObserved[0]).toBe(false);
     expect(skipFlagsObserved.slice(1).every(Boolean)).toBe(true);
   });
+
+  // #1247 r1 review (MINOR-1): before this, a busy box only ended the ONE
+  // IPO's own call (inside `processPendingFilings`) — `document-cycle.ts`'s
+  // loop moved on to the NEXT IPO's call, which would just hit the same box
+  // lock again ~90s later. A cycle with many candidate IPOs could wait ~90s
+  // at each one instead of stopping on the first busy signal.
+  it('a busy box ends the WHOLE extraction pass for this cycle, not just the current IPO — no further candidate is offered', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('ipo-1'), candidateRow('ipo-2'), candidateRow('ipo-3')],
+    });
+    processPendingFilingsMock.mockImplementation(async (ipo: { id: string }) => ({
+      ipoId: ipo.id, considered: 0, extracted: 0, persisted: 0, failed: 0, skipped: [], spawned: 0,
+      skippedBudget: 0, anchorsConsidered: 0, anchorsSpawned: 0, anchorsPersisted: 0,
+      anchorsManualReview: 0, anchorsFailed: 0, boxBusy: true,
+    }));
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    // Exactly one call (the reservation pre-pass's first candidate) — every
+    // remaining candidate, in every remaining pass, is left untouched.
+    expect(processPendingFilingsMock).toHaveBeenCalledTimes(1);
+  });
+
+  // #1247 r1 review (MINOR-2): before this, an exception thrown by ONE IPO's
+  // call was swallowed by `callOnce`'s try/catch but its `undefined` return
+  // was then treated IDENTICALLY to "extraction budget tripped" by every
+  // loop — so a single IPO's throw silently cancelled the rest of the cycle,
+  // although the log line claimed "continuing the cycle". The old single-pass
+  // loop caught per IPO and moved on; this restores that.
+  it('an exception in one IPO does not stop the pass — the next IPO in the same pass still gets its call (log says "continuing the cycle")', async () => {
+    dbExecuteMock.mockResolvedValue({ rows: [candidateRow('ipo-1'), candidateRow('ipo-2')] });
+    processPendingFilingsMock.mockImplementation(async (ipo: { id: string }) => {
+      if (ipo.id === 'ipo-1') throw new Error('boom — simulated per-IPO failure');
+      return {
+        ipoId: ipo.id, considered: 0, extracted: 0, persisted: 0, failed: 0, skipped: [], spawned: 0,
+        skippedBudget: 0, anchorsConsidered: 0, anchorsSpawned: 0, anchorsPersisted: 0,
+        anchorsManualReview: 0, anchorsFailed: 0,
+      };
+    });
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    const idsOffered = processPendingFilingsMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsOffered).toContain('ipo-2');
+  });
 });

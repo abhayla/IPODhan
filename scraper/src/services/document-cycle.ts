@@ -81,6 +81,7 @@ import {
   DEFAULT_MAX_SPAWNS_PER_CYCLE,
   anchorMaxSpawnsPerCycle,
   type AutoPersistDeps,
+  type AutoPersistResult,
   type SpawnBudget,
   FILING_EXTRACTION_LOCK_TTL_MS,
   EXTRACTOR_VERSION,
@@ -2005,28 +2006,61 @@ export async function runDocumentCycle(
         const anchorsHandledIpoIds = new Set<string>();
         const rereadIpos: ExtractionOnlyCandidate[] = [];
         let rereadsSpawned = 0;
+        // #1247 r1 review (MAJOR): a document already ATTEMPTED this cycle —
+        // any outcome, filing/anchor/corrigendum, success or failure or box-
+        // busy — is never offered to `processPendingFilings` again, whatever
+        // pass or call re-selects it. Without this, a pre-pass re-read that
+        // hard-fails is stamped FAILED (not COMPLETED), so `isNeverRead`
+        // reads it as fresh again and the fresh pass spawns the SAME document
+        // a second time in the same cycle.
+        const attemptedDocumentIds = new Set<string>();
+        // #1247 r1 review (MINOR-1): once ANY call this cycle reports the box
+        // busy, every remaining pass stops immediately — a busy box is a
+        // signal about the WHOLE box, not one IPO's call, and the old single
+        // pass already ended entirely on the first busy signal (previously
+        // each `processPendingFilings` call only ended ITS OWN candidate
+        // list, so a cycle with many IPOs could still wait ~90s at each one).
+        let boxBusyThisCycle = false;
         /**
          * One `processPendingFilings` call for one IPO, shared by every pass
          * below so the extraction-time-budget check, deadline wiring, cycle
-         * logging and the item-4 anchor guard live in exactly one place.
-         * Returns `undefined` (and sets `extractionExhausted`) when the
-         * wall-clock extraction budget has already tripped — callers treat
-         * that as "stop this pass".
+         * logging and the item-4/MAJOR guards live in exactly one place.
+         * `{ ok: false, reason: 'budget' }` — the wall-clock extraction
+         * budget has already tripped; every caller stops ALL remaining
+         * passes. `{ ok: false, reason: 'error' }` — this ONE IPO's call
+         * threw; callers skip it and continue with the next IPO (matching
+         * the old per-IPO try/catch — a single IPO's throw must not cancel
+         * the rest of the cycle). `{ ok: true, result }` — normal; the
+         * caller also checks `result.boxBusy` (MINOR-1, above).
          */
-        const callOnce = async (ipo: ExtractionOnlyCandidate) => {
+        // #1247 r1 review: `scraper/` runs with `strict: false` (no
+        // strictNullChecks), so a `{ ok: false; reason } | { ok: true;
+        // result }` discriminated union does not narrow through `if
+        // (!outcome.ok)` here the way it would under strict mode — TS keeps
+        // reporting the full union at every access. A single non-discriminated
+        // shape with optional fields (checked directly, non-null-asserted
+        // where a caller has already checked the guard field — the existing
+        // pattern in this file, e.g. `autoPersistDeps!`) sidesteps that.
+        interface CallOnceOutcome {
+          ok: boolean;
+          reason?: 'budget' | 'error';
+          result?: AutoPersistResult;
+        }
+        const callOnce = async (ipo: ExtractionOnlyCandidate): Promise<CallOnceOutcome> => {
           if (now() - extractionStartedAt >= extractionBudgetMs) {
             extractionExhausted = true;
             logger.warn(
               { extractionBudgetMs },
               'Document extraction budget exhausted — remaining candidates resume next cycle (spawn budget/state persisted)'
             );
-            return undefined;
+            return { ok: false, reason: 'budget' };
           }
           try {
             if (!autoPersistDeps) {
               autoPersistDeps = buildAutoPersistDeps();
               autoPersistDeps.spawnBudget = spawnBudget;
               autoPersistDeps.anchorSpawnBudget = anchorSpawnBudget;
+              autoPersistDeps.attemptedDocumentIds = attemptedDocumentIds;
             }
             // F3: same absolute deadline + clock on every call this cycle, so
             // the per-document deadline check inside `processPendingFilings`
@@ -2065,13 +2099,21 @@ export async function runDocumentCycle(
             // one line this cycle already prints below — signal-ownership.md
             // R1 (a count, printed where a human reads the cycle already).
             anchorCycleTotals.markerWriteFailed += autoPersist.markerWriteFailed;
-            return autoPersist;
+            if (autoPersist.boxBusy) {
+              boxBusyThisCycle = true;
+              extractionExhausted = true;
+              logger.warn(
+                { ipoId: ipo.id },
+                'box busy: ending the whole extraction pass for this cycle, not just this IPO (#1247 r1 MINOR-1)'
+              );
+            }
+            return { ok: true, result: autoPersist };
           } catch (error) {
             logger.error(
               { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
               'Filing auto-persist threw (non-fatal) — continuing the cycle'
             );
-            return undefined;
+            return { ok: false, reason: 'error' };
           }
         };
 
@@ -2102,27 +2144,43 @@ export async function runDocumentCycle(
         const budgetBeforeReservation = spawnBudget.remaining;
         spawnBudget.remaining = reservationCap;
         for (const ipo of extractionCandidates) {
-          if (spawnBudget.remaining <= 0) break;
-          const reread = await callOnce(ipo);
-          if (reread === undefined) break; // extraction-time budget tripped
-          rereadsSpawned += reread.spawned;
+          if (boxBusyThisCycle || spawnBudget.remaining <= 0) break;
+          const outcome = await callOnce(ipo);
+          // #1247 r1 review (MINOR-2): an 'error' (this ONE IPO's call threw)
+          // skips just that IPO and continues — it must not read the same as
+          // 'budget' (which correctly stops every remaining pass).
+          if (!outcome.ok) {
+            if (outcome.reason === 'budget') break;
+            continue;
+          }
+          rereadsSpawned += outcome.result!.spawned;
+          if (boxBusyThisCycle) break; // MINOR-1: busy stops this pass too
         }
         const spentOnReservation = reservationCap - spawnBudget.remaining;
         spawnBudget.remaining = budgetBeforeReservation - spentOnReservation;
 
         spawnBudget.phase = 'fresh';
         for (const ipo of extractionCandidates) {
-          const autoPersist = await callOnce(ipo);
-          if (autoPersist === undefined) break; // extraction-time budget tripped
-          if ((autoPersist.rereadsDeferred ?? 0) > 0) rereadIpos.push(ipo);
+          if (boxBusyThisCycle) break;
+          const outcome = await callOnce(ipo);
+          if (!outcome.ok) {
+            if (outcome.reason === 'budget') break;
+            continue;
+          }
+          if ((outcome.result!.rereadsDeferred ?? 0) > 0) rereadIpos.push(ipo);
+          if (boxBusyThisCycle) break;
         }
 
         spawnBudget.phase = 'rereads';
         for (const ipo of rereadIpos) {
-          if (spawnBudget.remaining <= 0) break;
-          const reread = await callOnce(ipo);
-          if (reread === undefined) break; // extraction-time budget tripped
-          rereadsSpawned += reread.spawned;
+          if (boxBusyThisCycle || spawnBudget.remaining <= 0) break;
+          const outcome = await callOnce(ipo);
+          if (!outcome.ok) {
+            if (outcome.reason === 'budget') break;
+            continue;
+          }
+          rereadsSpawned += outcome.result!.spawned;
+          if (boxBusyThisCycle) break;
         }
         spawnBudget.phase = undefined;
         if (rereadIpos.length > 0 || rereadsSpawned > 0) {

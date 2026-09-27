@@ -919,6 +919,16 @@ export interface AutoPersistResult {
    * `unresolved:<reason>` provenance markers themselves failed to write.
    */
   markerWriteFailed: number;
+  /**
+   * #1247 r1 review (MINOR-1): true when this call ended a pass early
+   * because the box lock was busy (filing, anchor, or corrigendum). A busy
+   * box is a signal about the WHOLE box, not this one IPO — the caller
+   * (`document-cycle.ts`) ends the WHOLE extraction pass for this cycle on
+   * this flag, instead of moving on to the next IPO and hitting the same
+   * lock again (a busy IPO previously ended only its own call, so a cycle
+   * with 13 IPOs could wait ~90s at each one).
+   */
+  boxBusy?: boolean;
 }
 
 /**
@@ -1631,6 +1641,19 @@ export interface AutoPersistDeps {
    * (anchors run every call — direct callers/tests are unaffected).
    */
   skipAnchorPass?: boolean;
+  /**
+   * #1247 r1 review (MAJOR): a document ATTEMPTED this cycle, whatever the
+   * outcome (spawned+persisted, spawned+failed/hard-failure, or spawned+box-
+   * busy) — never a document merely CONSIDERED. `document-cycle.ts`'s
+   * reservation split (item 1) can offer the same IPO to
+   * `processPendingFilings` up to three times this cycle; without this set, a
+   * pre-pass re-read that hard-fails (still `isNeverRead` — FAILED, not
+   * COMPLETED) would be spawned AGAIN by the fresh pass minutes later, a
+   * second OOM on the same 2-vCPU box. Shared, mutable, created ONCE per
+   * cycle in `document-cycle.ts` — exactly like `spawnBudget`.
+   * `undefined` = unbounded (existing callers/tests are unaffected).
+   */
+  attemptedDocumentIds?: Set<string>;
 }
 
 /**
@@ -2100,6 +2123,10 @@ async function runCorrigendumPass(
       continue;
     }
     const pdfPath = documentPath(ipo.id, doc.type, doc.sha256 as string, deps.storeDir ?? getStoreDir());
+    // #1247 r1 review (MINOR-3): attempted now — a busy box below leaves the
+    // row PENDING (never marked), so without this it would be re-read again
+    // by a later call this same cycle, up to 3x with the reservation split.
+    deps.attemptedDocumentIds?.add(doc.id);
     try {
       const rec = await deps.runCorrigendumSuggestions({ ipoId: ipo.id, documentId: doc.id, pdfPath });
       result.corrigendaRead++;
@@ -2117,6 +2144,7 @@ async function runCorrigendumPass(
       if (isCorrigendumReaderBusy(error)) {
         result.skipped = [...result.skipped, `${CORRIGENDUM_DOC_TYPE}: another extractor holds the box lock (W-178c)`];
         logger.warn({ ipoId: ipo.id, documentId: doc.id }, 'box busy: ending the corrigendum pass for this cycle (W-178c)');
+        result.boxBusy = true;
         break;
       }
       const cause = error instanceof Error ? error.message : String(error);
@@ -2263,14 +2291,24 @@ export async function processPendingFilings(
   // W-168: the anchor allocation report is split OUT of the filing pending
   // list here, before either budget is applied — it never draws from the
   // filing spawn budget, and a filing document never waits behind an anchor.
-  const corrigendumPending = pending.filter((d) => d.type === CORRIGENDUM_DOC_TYPE);
-  const filingPending = pending.filter((d) => d.type !== ANCHOR_DOC_TYPE && d.type !== CORRIGENDUM_DOC_TYPE);
+  // #1247 r1 review (MAJOR/MINOR-3): a document already ATTEMPTED earlier
+  // this cycle (any outcome — success, failure, hard failure, box-busy) is
+  // never offered again, whatever pass or call re-selects it. Applied here,
+  // before the type split, so it covers filing, anchor AND corrigendum
+  // documents alike.
+  const notAlreadyAttempted = (d: CandidateDocument) => !deps.attemptedDocumentIds?.has(d.id);
+  const corrigendumPending = pending.filter((d) => d.type === CORRIGENDUM_DOC_TYPE && notAlreadyAttempted(d));
+  const filingPending = pending.filter(
+    (d) => d.type !== ANCHOR_DOC_TYPE && d.type !== CORRIGENDUM_DOC_TYPE && notAlreadyAttempted(d)
+  );
   // #1247 item 4: `skipAnchorPass` (set by the caller on every call after the
   // first for a given IPO this cycle) treats the anchor list as empty here —
   // not just budgeted to zero later — so `anchorsConsidered` also reads 0 on
   // a repeat call, instead of re-reporting the same pending anchor as
   // "considered" on every one of this IPO's calls this cycle.
-  const anchorPending = deps.skipAnchorPass ? [] : pending.filter((d) => d.type === ANCHOR_DOC_TYPE);
+  const anchorPending = deps.skipAnchorPass
+    ? []
+    : pending.filter((d) => d.type === ANCHOR_DOC_TYPE && notAlreadyAttempted(d));
   result.anchorsConsidered = anchorPending.length;
 
   // Item 9 (OD-90): the corrigendum pass. Runs first and draws on no spawn budget.
@@ -2431,6 +2469,11 @@ export async function processPendingFilings(
       result.spawned++;
       result.anchorsSpawned++;
       if (deps.anchorSpawnBudget) deps.anchorSpawnBudget.remaining--;
+      // #1247 r1 review (MAJOR): attempted now, whatever the outcome below —
+      // never undone on a busy/failure revert (a busy or failed attempt is
+      // still an attempt this cycle for the purpose of "never spawn a
+      // document twice per cycle").
+      deps.attemptedDocumentIds?.add(doc.id);
 
       const outcome = await runAnchorDocument(ipo, doc, deps, {
         pdfPath,
@@ -2453,6 +2496,7 @@ export async function processPendingFilings(
           { ipoId: ipo.id },
           'box busy: ending the extraction pass for this cycle (W-178c)'
         );
+        result.boxBusy = true;
         break;
       }
     }
@@ -2530,6 +2574,9 @@ export async function processPendingFilings(
 
     result.spawned++;
     if (deps.spawnBudget) deps.spawnBudget.remaining--;
+    // #1247 r1 review (MAJOR): see the matching comment in the anchor loop —
+    // attempted now, never undone on a busy/hard-failure outcome.
+    deps.attemptedDocumentIds?.add(doc.id);
 
     const run = deps.runExtractor({ pdfPath, docType, sme, issueSizeRupees });
 
@@ -2589,6 +2636,7 @@ export async function processPendingFilings(
           { ipoId: ipo.id },
           'box busy: ending the extraction pass for this cycle (W-178c)'
         );
+        result.boxBusy = true;
         break;
       }
       result.failed++;
