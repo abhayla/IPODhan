@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-26T11:52:29.139Z",
+  "generated_at": "2026-09-27T07:21:17.972Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 202,
-    "retired": 44
+    "live": 206,
+    "retired": 45
   },
-  "next_id": 247,
+  "next_id": 252,
   "rules": [
     {
       "id": "R-151",
@@ -693,12 +693,21 @@
       "retired": false
     },
     {
-      "id": "R-246",
-      "hash": "006c0afd50fb",
+      "id": "R-247",
+      "hash": "b89b490bff50",
       "section": "2.3.3.3 Delisting, and undoing a merge that was wrong (OD-38)",
       "kind": "prose",
-      "text": "F-184 (2026-09-26, open for owner decision, owner Q5): real delisted stocks answer NSE 200 \"Permanent Suspended\" / BSE \"Delisted\", never no-such-symbol; the no-such-symbol 404 is byte-identical for a wrong series, a never-existed symbol and a renamed live company (ADANITRANS→ADANIENSOL).",
-      "first_seen": "2026-09-26",
+      "text": "F-184 (2026-09-26, decided by OD-132): real delisted stocks answer NSE 200 \"Permanent Suspended\" / BSE \"Delisted\", never no-such-symbol; the no-such-symbol 404 is byte-identical for a wrong series, a never-existed symbol and a renamed live company (ADANITRANS→ADANIENSOL).",
+      "first_seen": "2026-09-27",
+      "retired": false
+    },
+    {
+      "id": "R-248",
+      "hash": "9bf71c0d6ac6",
+      "section": "2.3.3.3 Delisting, and undoing a merge that was wrong (OD-38)",
+      "kind": "prose",
+      "text": "Amended by OD-132 (2026-09-27), SPEC CHANGE to the paragraph above: only an EXPLICIT delisted answer counts. An IPO becomes DELISTED after three consecutive reads in which an exchange reports the scrip delisted (NSE Permanent Suspended, BSE Delisted), with every other exchange that lists it asked and none in an outage; a no-such-symbol answer never counts toward the three (it is also what a renamed, still-trading company returns).",
+      "first_seen": "2026-09-27",
       "retired": false
     },
     {
@@ -1071,6 +1080,24 @@
       "retired": false
     },
     {
+      "id": "R-249",
+      "hash": "ba473445b05d",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "prose",
+      "text": "Amended by OD-124 (2026-09-26): a LISTED IPO in a listing view shows its listing gain as a signed, colour-coded percent; a missing value shows nothing, never 0% (met by the listing table, see the OD-124 row).",
+      "first_seen": "2026-09-27",
+      "retired": false
+    },
+    {
+      "id": "R-250",
+      "hash": "6bd3cf83f780",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "prose",
+      "text": "Amended by OD-125 (2026-09-26): IPODhan publishes no opinion reviews of IPOs; the review pages and routes and the never-invoked review writer are retired. The IPO score widget stays, on the same scale as the live score API. Anchor investors are facts and stay on the IPO page.",
+      "first_seen": "2026-09-27",
+      "retired": false
+    },
+    {
       "id": "R-081",
       "hash": "b0a292fd3627",
       "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
@@ -1167,6 +1194,15 @@
       "kind": "prose",
       "text": "But a conflict row is only written when a second source arrives and disagrees. Under §2.4 a supplied field is not re-asked, so no second value is produced, so no conflict is written — the first draft's re-read loop could never have fired on exactly the fields it was meant to protect.",
       "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-251",
+      "hash": "ef11476c9586",
+      "section": "3.2 What happens on a disagreement",
+      "kind": "prose",
+      "text": "Amended by OD-131 (2026-09-27), clarifies OD-75: a value the write path refused (sanitizer or validation) was never set. No provenance row is written for it, and an existing provenance row whose value is not stored never makes the source's next valid value a \"changed own value\"; that value is a first write.",
+      "first_seen": "2026-09-27",
       "retired": false
     },
     {
@@ -1825,6 +1861,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-246",
+      "hash": "006c0afd50fb",
+      "section": "2.3.3.3 Delisting, and undoing a merge that was wrong (OD-38)",
+      "kind": "prose",
+      "text": "F-184 (2026-09-26, open for owner decision, owner Q5): real delisted stocks answer NSE 200 \"Permanent Suspended\" / BSE \"Delisted\", never no-such-symbol; the no-such-symbol 404 is byte-identical for a wrong series, a never-existed symbol and a renamed live company (ADANITRANS→ADANIENSOL).",
+      "first_seen": "2026-09-26",
+      "retired": true
     },
     {
       "id": "R-243",
