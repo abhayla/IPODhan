@@ -995,9 +995,15 @@ describe('decideStaleCorrectionSkip (#422)', () => {
     // 2026-02-16, expressed as a Date the way the raw pg OID-1082 parser
     // builds one (local year/month/day components).
     const localMidnight = new Date(2026, 1, 16); // month is 0-indexed: Feb
-    // The forbidden shape the reviewer's round-1 suggestion used.
-    expect(localMidnight.toISOString().slice(0, 10)).not.toBe('2026-02-16');
-
+    // #422 round 5: the `.toISOString().slice(0,10)).not.toBe('2026-02-16')`
+    // demonstration that used to live here only holds when the runner's TZ
+    // is AHEAD of UTC (e.g. IST) — a UTC runner (GitHub Actions' default)
+    // has no shift to demonstrate, so that assertion was TZ-dependent and
+    // flaky by construction. Dropped; the functional assertion below is
+    // what actually proves the guard is TZ-safe (it uses
+    // `toComparableCorrectionText`'s local-calendar-parts read internally,
+    // never `.toISOString()`, regardless of which TZ the process runs
+    // under) — verified green under both TZ=UTC and TZ=Asia/Kolkata.
     const d = decideStaleCorrectionSkip({
       status: 'OPEN',
       citationDate: '2026-08-23',
