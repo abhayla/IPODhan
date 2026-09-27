@@ -1285,7 +1285,7 @@ check_origin_row() {
   check_origin_row accept "token as username"     "$(build_repo_with_raw_origin "https://FAKESECRET@github.com/abhayla/IPODhan")"
   check_origin_row accept "ssh:// userinfo"       "$(build_repo_with_raw_origin "ssh://git:FAKESECRET@github.com/abhayla/IPODhan.git")"
   check_origin_row accept "git+ssh userinfo"      "$(build_repo_with_raw_origin "git+ssh://git:FAKESECRET@github.com/abhayla/IPODhan.git")"
-  check_origin_row accept "scp-like u:S@host"     "$(build_repo_with_raw_origin "u:FAKESECRET@github.com:abhayla/IPODhan")"
+  check_origin_row accept "scp-like token user"  "$(build_repo_with_raw_origin "FAKESECRET@github.com:abhayla/IPODhan.git")"
   check_origin_row accept "mixed-case scheme"     "$(build_repo_with_raw_origin "HtTpS://u:FAKESECRET@GitHub.com/abhayla/ipodhan.git/")"
   check_origin_row accept "percent-encoded @ :"   "$(build_repo_with_raw_origin "https://u%40x%3Ay:FAKESECRET@github.com/abhayla/IPODhan.git")"
   check_origin_row accept "leading/trailing ws"   "$(build_repo_with_raw_origin "  https://u:FAKESECRET@github.com/abhayla/IPODhan.git  ")"
@@ -1303,6 +1303,13 @@ check_origin_row() {
   check_origin_row refuse "plain path"            "$(build_repo_with_raw_origin "/srv/FAKESECRET/abhayla/IPODhan")"
   check_origin_row refuse "embedded newline"      "$(build_repo_with_raw_origin "$(printf 'https://github.com/abhayla/IPODhan.git\nFAKESECRET')")"
   check_origin_row refuse "two origin urls"       "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git" 'git config --add remote.origin.url "https://u:FAKESECRET@evil.example/x.git"')"
+  # Review r1 (2026-09-27): for the scp-like form git takes the host as
+  # everything before the FIRST ':' (probed: 'evil.example:x@github.com:...'
+  # runs ssh to evil.example; 'u:S@github.com:...' runs ssh to host 'u').
+  check_origin_row refuse "scp colon before @"    "$(build_repo_with_raw_origin "evil.example:x@github.com:abhayla/IPODhan.git")"
+  check_origin_row refuse "scp user:pass@host"    "$(build_repo_with_raw_origin "u:FAKESECRET@github.com:abhayla/IPODhan")"
+  check_origin_row refuse "scp foreign host"      "$(build_repo_with_raw_origin "evil.example:github.com/abhayla/IPODhan")"
+  check_origin_row refuse "ssh:// @ in path"      "$(build_repo_with_raw_origin "ssh://evil.example/x@github.com:abhayla/IPODhan")"
   check_origin_row refuse "insteadOf to foreign"  "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git" 'git config url."https://u:FAKESECRET@evil.example/".insteadOf https://github.com/')"
 }
 
@@ -1391,6 +1398,56 @@ STUBEOF
     pass "case26b: real git with every trace var on: accepted, FAKESECRET count 0"
   else
     fail "case26b: rc=$RC, FAKESECRET leaked $LEAKS time(s)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 27
+# #752 review r1 MINORs. (a) git runs with GIT_TERMINAL_PROMPT=0 and
+# GIT_CONFIG_NOSYSTEM=1 and without GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM, as
+# seen by a stub git's fetch. (b) real git: an env-named global config whose
+# insteadOf would rewrite the clean origin to a credentialed foreign host is
+# ignored — the deploy is accepted with the constant, FAKESECRET count 0.
+# (c) no fixed, guessable /tmp/deploy-config-*-$$ temp names remain.
+{
+  REPO="$(build_repo_with_origin "https://github.com/abhayla/IPODhan.git")"
+  SHA="$(cd "$REPO" && git rev-parse HEAD)"
+  EVIL_CFG="$(fresh_dir)/evil.gitconfig"
+  printf '[url "https://u:FAKESECRET@evil.example/"]
+	insteadOf = https://github.com/
+' > "$EVIL_CFG"
+  ROOT="$(fresh_dir)"; STATE="$(fresh_dir)"; O="$(fresh_dir)/out"; E="$(fresh_dir)/err"
+  STUB27="$(fresh_dir)"; ENV27="$STUB27/env"; REAL_GIT27="$(command -v git)"
+  cat > "$STUB27/git" << STUBEOF
+#!/usr/bin/env bash
+if [ "\$1" = "fetch" ]; then
+  echo "prompt=\${GIT_TERMINAL_PROMPT-unset} nosystem=\${GIT_CONFIG_NOSYSTEM-unset} global=\${GIT_CONFIG_GLOBAL-unset} system=\${GIT_CONFIG_SYSTEM-unset}" > "$ENV27"
+  exit 0
+fi
+exec "$REAL_GIT27" "\$@"
+STUBEOF
+  chmod +x "$STUB27/git"
+  PATH="$STUB27:$PATH" env -u DEPLOY_CONFIG_LINEAGE_SKIP_FETCH     GIT_TERMINAL_PROMPT=1 GIT_CONFIG_GLOBAL="$EVIL_CFG" GIT_CONFIG_SYSTEM="$EVIL_CFG"     DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_STATE_DIR="$STATE"     bash "$DEPLOY_CONFIG" --root "$ROOT" --slot staging --sha "$SHA" --reason "case27a git env" >"$O" 2>"$E"
+  RC=$?
+  if [ "$RC" -eq 0 ] && [ "$(cat "$ENV27" 2>/dev/null)" = "prompt=0 nosystem=1 global=unset system=unset" ]; then
+    pass "case27a: git fetch ran with GIT_TERMINAL_PROMPT=0, GIT_CONFIG_NOSYSTEM=1, no GIT_CONFIG_GLOBAL/SYSTEM"
+  else
+    fail "case27a: rc=$RC, fetch saw: $(cat "$ENV27" 2>/dev/null)"
+  fi
+
+  ROOT="$(fresh_dir)"; STATE="$(fresh_dir)"; O="$(fresh_dir)/out"; E="$(fresh_dir)/err"
+  GIT_CONFIG_GLOBAL="$EVIL_CFG" GIT_CONFIG_SYSTEM="$EVIL_CFG"     DEPLOY_CONFIG_STATE_DIR="$STATE" run_deploy "$REPO" "$ROOT" --slot staging --sha "$SHA" --reason "case27b env-named config" >"$O" 2>"$E"
+  RC=$?
+  LEAKS="$(leak_count "$O" "$E" "$ROOT" "$STATE")"
+  if [ "$RC" -eq 0 ] && grep -qF "$ORIGIN_CONST" "$O" && [ "$LEAKS" -eq 0 ]; then
+    pass "case27b: an env-named config's insteadOf is ignored; accepted, FAKESECRET count 0"
+  else
+    fail "case27b: rc=$RC, leaks=$LEAKS (stderr: $(grep -v FAKESECRET "$E"))"
+  fi
+
+  if [ "$(grep -c '/tmp/deploy-config-' "$DEPLOY_CONFIG")" -eq 0 ]; then
+    pass "case27c: no fixed /tmp/deploy-config-* temp file names remain (mktemp only)"
+  else
+    fail "case27c: fixed /tmp/deploy-config-* temp names still in the script"
   fi
 }
 

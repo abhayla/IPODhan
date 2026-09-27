@@ -32,6 +32,12 @@ for _git_trace_var in $(compgen -e | grep -E '^GIT_TRACE' || true); do
   unset "$_git_trace_var"
 done
 unset _git_trace_var GIT_CURL_VERBOSE
+# Review r1 MINORs (#752): never prompt for credentials (a prompt on a tty
+# can echo a token-username), and never read a config file the environment
+# names (GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM could add an insteadOf or a
+# trace2 target). The repo's own config and ~/.gitconfig still apply.
+export GIT_TERMINAL_PROMPT=0 GIT_CONFIG_NOSYSTEM=1
+unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM
 
 # ------------------------------------------------------------------ F5 (#752)
 # A leaked GIT_DIR/GIT_WORK_TREE (from a parent process, a git alias/wrapper,
@@ -82,7 +88,8 @@ ORIGIN_WITHHELD='<origin withheld: not the IPODhan remote>'
 
 # origin_is_ipodhan <raw> — exit 0 iff <raw> names github.com/abhayla/IPODhan.
 # Accepts: https / ssh / git+ssh URLs and the scp-like 'user@host:path' form;
-# any userinfo (everything up to the LAST '@' of the authority) is dropped;
+# userinfo is dropped up to the LAST '@' of the URL authority (between '://'
+# and the next '/'), or of the scp-like host part (before the FIRST ':');
 # scheme, host and path compared case-insensitively; optional '.git' and
 # trailing '/'. Refuses: more than one line (multiple remote.origin.url
 # values), non-printable chars, other schemes (http, file, git), other
@@ -103,11 +110,17 @@ origin_is_ipodhan() {
     case "$scheme" in https|ssh|git+ssh) ;; *) return 1 ;; esac
     host="${authority##*@}"
   else
-    # scp-like: [user[:pass]@]host:path — canonicalise to host + path.
-    v="${v##*@}"
-    [[ "$v" =~ ^([^/:]+):(.*)$ ]] || return 1
+    # scp-like: [user@]host:path. git takes the host as everything before
+    # the FIRST ':' (a ':' inside a would-be password therefore makes the
+    # text before it the host — 'evil.example:x@github.com:...' is ssh to
+    # evil.example), then drops userinfo up to the last '@' of THAT part
+    # only. Cutting the whole value at its last '@' (round 3 r0) accepted
+    # origins that git sends to a foreign host (review 2026-09-27 r1).
+    [[ "$v" =~ ^([^:]+):(.*)$ ]] || return 1
     host="${BASH_REMATCH[1]}"
     path="/${BASH_REMATCH[2]#/}"
+    [[ "$host" == */* ]] && return 1
+    host="${host##*@}"
   fi
   [ "${host,,}" = "github.com" ] || return 1
   [[ "${path,,}" =~ ^/abhayla/ipodhan(\.git)?/?$ ]] || return 1
@@ -312,11 +325,12 @@ fi
 # origin/main, ...) to the full 40-hex commit it names, so CONFIG_SHA and
 # the log line always record a stable commit identity, never a symbolic
 # ref that can move or be ambiguous later.
-RESOLVED_SHA="$(cd "$REPO_ROOT" && git rev-parse --verify "$SHA^{commit}" 2>/tmp/deploy-config-resolve-$$.err)" || {
-  msg="$(cat /tmp/deploy-config-resolve-$$.err 2>/dev/null)"; rm -f /tmp/deploy-config-resolve-$$.err
+RESOLVE_ERR="$(mktemp)"
+RESOLVED_SHA="$(cd "$REPO_ROOT" && git rev-parse --verify "$SHA^{commit}" 2>"$RESOLVE_ERR")" || {
+  msg="$(cat "$RESOLVE_ERR" 2>/dev/null)"; rm -f "$RESOLVE_ERR"
   fatal "lineage: could not resolve '$SHA' to a commit ($msg) (lineage)"
 }
-rm -f /tmp/deploy-config-resolve-$$.err
+rm -f "$RESOLVE_ERR"
 SHA="$RESOLVED_SHA"
 
 log "lineage OK: $SHA is on origin/main"
@@ -350,11 +364,12 @@ fi
 TMP_MANIFEST="$(mktemp)"
 trap 'rm -f "$TMP_MANIFEST"' EXIT
 
-if ! (cd "$REPO_ROOT" && git show "$SHA:$MANIFEST_REL_PATH") >"$TMP_MANIFEST" 2>/tmp/deploy-config-show-$$.err; then
-  msg="$(cat /tmp/deploy-config-show-$$.err 2>/dev/null)"; rm -f /tmp/deploy-config-show-$$.err
+SHOW_ERR="$(mktemp)"
+if ! (cd "$REPO_ROOT" && git show "$SHA:$MANIFEST_REL_PATH") >"$TMP_MANIFEST" 2>"$SHOW_ERR"; then
+  msg="$(cat "$SHOW_ERR" 2>/dev/null)"; rm -f "$SHOW_ERR"
   fatal "hash: could not read $MANIFEST_REL_PATH at $SHA ($msg) (hash)"
 fi
-rm -f /tmp/deploy-config-show-$$.err
+rm -f "$SHOW_ERR"
 
 SHA256="$(sha256sum "$TMP_MANIFEST" | awk '{print $1}')"
 
