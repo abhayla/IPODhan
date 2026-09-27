@@ -284,6 +284,16 @@ test('(r) probe: the same missing-column error with the migration APPLIED is UNV
   assert.match(outcome.reason, /migration applied=true/);
 });
 
+test('(r) probe: a missing-column error when the migration state is UNKNOWN (null) is UNVERIFIABLE, never PASS/not-applicable (#454)', () => {
+  // isMigrationApplied returns null when the journal entry or the drizzle migrations table cannot be
+  // read. "Cannot tell" must never be read as "not applied": that would turn a real read failure
+  // on a migrated database into a silent PASS.
+  const err = { code: '42703', message: 'column fs.row_key does not exist' };
+  const outcome = classifyRowKeyProbeError(err, null);
+  assert.equal(outcome.status, 'UNVERIFIABLE');
+  assert.match(outcome.reason, /migration applied=null/);
+});
+
 test('(r) probe: an unrelated read failure (not a missing-column error) is UNVERIFIABLE, never treated as migration lag', () => {
   const err = { code: '08006', message: 'connection terminated' };
   const outcome = classifyRowKeyProbeError(err, null);

@@ -166,8 +166,10 @@ describe('#938 echo: the filing persister\'s stored-board echo is context under 
       FILING_CONTEXT
     );
 
+    // #454 remainder: a context field is not in the fallback's ipos update at all, so the
+    // stored ['BSE'] is left as it is — the echo is neither merged nor re-written.
     const [, patch] = ipoRepository.update.mock.calls[0];
-    expect(patch.listingExchanges).toEqual(['BSE']);
+    expect(patch).not.toHaveProperty('listingExchanges');
   });
 
   it('without the context declaration a DRHP BOTH is still a real claim and widens (unchanged)', async () => {

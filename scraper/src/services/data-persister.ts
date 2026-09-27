@@ -753,6 +753,39 @@ export function keepTerminalIpoStatus<T extends Record<string, any>>(existingSta
 }
 
 /**
+ * #454 (remainder): the fallback door publishes only this write's CLAIMS, the same set the
+ * consolidation door would resolve. Two kinds of key are not claims and are removed before the
+ * `ipos` update, not merely left out of provenance:
+ *  - a field the caller declared as CONTEXT (OD-66; both `listingExchange` spellings, #938) —
+ *    the consolidator skips these outright (data-consolidation-service.ts, the `contextFields`
+ *    `continue` in `consolidateIPOData`), so they never reach `consolidatedData`;
+ *  - an E-1 exchange-stated field from a document source (§1.2.1: "the document is not a source
+ *    for these fields"; the shared set in field-sources-repository.ts). From an exchange or any
+ *    other non-document source an E-1 field is a claim and stays.
+ * Returns the filtered update and the names it removed (for the log line).
+ */
+export function dropFallbackNonClaims<T extends Record<string, any>>(
+  update: T,
+  source: string,
+  contextFields: readonly string[] | undefined,
+): { update: T; refused: string[] } {
+  const context = new Set(contextFields ?? []);
+  if (context.has('listingExchange')) context.add('listingExchanges');
+  if (context.has('listingExchanges')) context.add('listingExchange');
+  const isDocumentSource = DOCUMENT_PATH_SOURCES.has(source);
+  const kept: Record<string, any> = {};
+  const refused: string[] = [];
+  for (const [key, value] of Object.entries(update)) {
+    if (context.has(key) || (isDocumentSource && E1_EXCHANGE_STATED_FIELDS.has(key))) {
+      refused.push(key);
+      continue;
+    }
+    kept[key] = value;
+  }
+  return { update: kept as T, refused };
+}
+
+/**
  * W-16a: drop every key whose incoming value would replace a stored value with
  * nothing. `undefined` is always dropped; an explicit `null` is dropped only
  * when the row currently holds a value (a deliberate null on an already-empty
@@ -1773,7 +1806,22 @@ async function upsertIPOInScope(
             offeringTypeSource
           );
         }
-        const guardedFallback = keepTerminalIpoStatus((existingIPO as any).status, fallbackData);
+        // #454 remainder: publish only this write's claims — context fields (OD-66) and, for a
+        // document source, E-1 fields (§1.2.1) are removed from the ipos update itself, the same
+        // set the consolidation door never publishes. Previously only their provenance was
+        // skipped, so the value still reached the page with no lineage.
+        const { update: claimsOnlyFallback, refused: fallbackRefused } = dropFallbackNonClaims(
+          fallbackData,
+          source,
+          contextFields,
+        );
+        if (fallbackRefused.length > 0) {
+          logger.warn(
+            { ipoId: existingIPO.id, source, fields: fallbackRefused, reason: 'fallback-non-claim-refused' },
+            '[LEGACY PATH] context / document-path E-1 field(s) not published by the fallback door (OD-66, §1.2.1, #454)'
+          );
+        }
+        const guardedFallback = keepTerminalIpoStatus((existingIPO as any).status, claimsOnlyFallback);
         await ipoRepository.update(existingIPO.id, guardedFallback);
 
         // OD-131 (review round 1): consolidation already decided provenance for this payload and
