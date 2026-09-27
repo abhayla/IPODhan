@@ -1208,3 +1208,20 @@ Gotcha (2026-09-27): the wake log's timestamps are UTC (`"time":"...Z"`), not IS
 IST reads the wrong lines. Filter by pino `"level":50|60` for errors: a plain grep for "error"
 matches info lines whose text contains the word.
 
+
+## 17. The silent alert-drill project on the Notifier (owner-approved 2026-09-27, #195 J2)
+
+**Why:** a script once "ran fine" while its alert code could never fire (T-294C). J2 posts one drill event a week
+and reads it back from the delivery log; the drill must reach no human (#195: "a channel the owner does not see").
+
+**Applied 2026-09-27 on the VPS:** `/root/notifier/config.yaml` gained project `ipodhan-alert-drill` with every severity
+routed to `[]`; its key `NOTIFIER_KEY_IPODHAN_ALERT_DRILL` is in `/root/notifier/.env` (never printed); backups
+`config.yaml.bak-alertdrill-20260927-120815` and `.env.bak-alertdrill-20260927-120815`; `pm2 restart notifier --update-env`.
+`/health` projects 8 -> 9.
+
+**Proof (consumer path):** a real `POST /notify` as that project returned 202 and `state/delivery-log.jsonl` recorded it with
+`"routed":[]`, `"suppressed":false` (dedupeKey `alert-drill-setup-20260927120836`); a wrong key returns 401.
+
+**Read back (read-only):** `ssh -o BatchMode=yes rfp-vps 'grep -n "ipodhan-alert-drill" -A6 /root/notifier/config.yaml; curl -s http://127.0.0.1:3300/health'`
+
+**Undo:** restore both backups and `pm2 restart notifier --update-env`. Note: config.yaml has no trailing newline; append with a leading newline.
