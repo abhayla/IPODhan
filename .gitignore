@@ -398,3 +398,10 @@ docs/design/probes/fixtures/pdf/
 /board-sections.png
 /snap.json
 /--gate
+
+# 2026-09-27 (contract 1): the comments above say these two tool-state folders are ignored, but no
+# pattern ever matched them, so `git check-ignore` printed nothing and a builder committed six
+# ipodhan_test run files from scraper/scripts/state/ into PR #1232. They hold per-run row
+# identities from whichever DB a script targeted: backups, not source.
+/scripts/state/
+/scraper/scripts/state/
