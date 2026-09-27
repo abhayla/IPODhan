@@ -51,7 +51,7 @@ import { CompanyContactSection } from '@/components/ipo-detail/CompanyContactSec
 import { RecommendationSummarySection } from '@/components/ipo-detail/RecommendationSummarySection';
 import { CategoryReservationSection } from '@/components/ipo-detail/CategoryReservationSection';
 import { PendingDataNotice } from '@/components/ipo-detail/PendingDataNotice';
-import { TerminalIpoNotice, isTerminalNoticeStatus } from '@/components/ipo-detail/TerminalIpoNotice';
+import { TerminalIpoNotice } from '@/components/ipo-detail/TerminalIpoNotice';
 import { LotDetailsSection } from '@/components/ipo-detail/LotDetailsSection';
 import { ListingDetailsSection } from '@/components/ipo-detail/ListingDetailsSection';
 import { LeadManagerSection } from '@/components/ipo-detail/LeadManagerSection';
@@ -443,11 +443,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   );
   const hasScore = Boolean(scoreDisplay);
   const hasFinancials = Boolean(financialData);
-  // #975 / OD-8: a frozen (WITHDRAWN/DELISTED) row shows no live price/GMP/
-  // subscription figures — a ticking grey-market premium or bid count on a dead
-  // issue reads as live and is actively misleading (§2.9).
-  const isFrozen = isTerminalNoticeStatus(ipo.status);
-  const hasGmpHistory = (gmpRecords?.length ?? 0) > 0 && !isFrozen;
+  const hasGmpHistory = (gmpRecords?.length ?? 0) > 0;
   const hasBrokerReviews = Boolean(reviewSummary && (reviewSummary.totalReviews ?? 0) > 0);
   const hasObjectives = (ipo.objectives?.length ?? 0) > 0;
   const hasPromoterHolding = Boolean(
@@ -719,8 +715,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             </section>
             )}
 
-            {/* 10. Subscription Dashboard — never on a frozen (WITHDRAWN/DELISTED) row (#975) */}
-            {!isFrozen && (
+            {/* 10. Subscription Dashboard */}
             <section id="subscription" className="scroll-mt-28">
             <SubscriptionDashboard
               subscriptions={subscriptions || []}
@@ -731,7 +726,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             />
             <LiveFigureAsAt label="Subscription" at={latestSubscription?.timestamp ?? null} />
             </section>
-            )}
 
             {/* 11. Broker Recommendations */}
             {hasBrokerReviews && (
