@@ -7,7 +7,8 @@
  * var can no longer bypass the guard.
  */
 import { describe, it, expect } from 'vitest';
-import { decideProdWriteRefusal } from '../../../scripts/repair-source-trust-batch-t292.js';
+import { types as pgTypes } from 'pg';
+import { decideProdWriteRefusal, dateFieldChanged } from '../../../scripts/repair-source-trust-batch-t292.js';
 
 describe('decideProdWriteRefusal', () => {
   it('refuses --apply against the real prod database name without --allow-prod', () => {
@@ -31,5 +32,35 @@ describe('decideProdWriteRefusal', () => {
 
   it('is case-insensitive on the database name', () => {
     expect(decideProdWriteRefusal('IPODHAN', true, false).refuse).toBe(true);
+  });
+});
+
+// #422 round 4 (MAJOR 1): `row.openDate !== 'YYYY-MM-DD'` is always true when
+// the live column arrives as the `Date` object pg's own OID-1082 (DATE)
+// parser hands back -- unaffected by configureUtcTimestampParsing, which only
+// patches OID 1114/1184 timestamps. dateFieldChanged must compare via
+// calendar text, not raw `!==`, or every date field is proposed as "changed"
+// on every run regardless of its real value.
+describe('dateFieldChanged', () => {
+  // The exact parser node-postgres registers for DATE (OID 1082) -- this is
+  // what a real column value looks like at runtime, not a hand-typed Date.
+  const parseDate = pgTypes.getTypeParser(1082) as (value: string) => Date;
+
+  it('is false when the live Date equals the target string (no real change)', () => {
+    const liveValue = parseDate('2026-08-19');
+    expect(dateFieldChanged(liveValue, '2026-08-19')).toBe(false);
+  });
+
+  it('is true when the live Date genuinely differs from the target string', () => {
+    const liveValue = parseDate('2026-08-16');
+    expect(dateFieldChanged(liveValue, '2026-08-19')).toBe(true);
+  });
+
+  it('is false for a plain string value equal to the target (raw pool.query shape)', () => {
+    expect(dateFieldChanged('2026-08-19', '2026-08-19')).toBe(false);
+  });
+
+  it('is true when current is null and target is a real date', () => {
+    expect(dateFieldChanged(null, '2026-08-19')).toBe(true);
   });
 });

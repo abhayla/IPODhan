@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { openRepairDb } from '../../../scripts/lib/repair-tool.js';
+import { decideStaleCorrectionSkip, openRepairDb } from '../../../scripts/lib/repair-tool.js';
 import { mapSqlToPgQuery } from '../../../scripts/repair-dates-and-leadmanagers-t299.js';
 
 /**
@@ -85,5 +85,34 @@ describe('repair-dates-and-leadmanagers-t299.ts — mapSqlToPgQuery() forwards t
     expect(
       mapSqlToPgQuery({ queryChunks: ['select id from ipos where slug = ', { value: 'abc-ipo' }] })
     ).toEqual({ text: 'select id from ipos where slug = $1', params: ['abc-ipo'] });
+  });
+});
+
+describe('repair-dates-and-leadmanagers-t299.ts — stale-correction guard wiring (#422)', () => {
+  it("kwality-walls-india-ltd's listing_date correction is skipped once the row is LISTED (same class as issue #422's Priority Jewels row)", () => {
+    // The header comment records assumedFrom='2026-02-16' (the value cited on
+    // 2026-08-23) for this row; once the row goes LISTED — like Priority
+    // Jewels did between the T-292 citation and the 2026-09-08 prod dry run —
+    // the shared guard refuses regardless of what the current column reads.
+    const decision = decideStaleCorrectionSkip({
+      status: 'LISTED',
+      citationDate: '2026-08-23',
+      latestSourceDate: null,
+      assumedFromValue: '2026-02-16',
+      currentValue: '2026-02-16',
+    });
+    expect(decision.skip).toBe(true);
+    expect(decision.reason).toMatch(/status is LISTED/);
+  });
+
+  it('still proceeds for a non-terminal row whose current value matches the citation-time value', () => {
+    const decision = decideStaleCorrectionSkip({
+      status: 'UPCOMING',
+      citationDate: '2026-08-23',
+      latestSourceDate: null,
+      assumedFromValue: '2025-08-06',
+      currentValue: '2025-08-06',
+    });
+    expect(decision.skip).toBe(false);
   });
 });

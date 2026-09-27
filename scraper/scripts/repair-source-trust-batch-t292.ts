@@ -86,9 +86,28 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 import {
   decideProdWriteRefusal as decideProdWriteRefusalShared,
+  decideStaleCorrectionSkip,
   openRepairDb,
+  queryLatestFieldSourceDate,
+  toComparableCorrectionText,
   writeLedgerFile,
 } from './lib/repair-tool.js';
+
+/**
+ * #422 round 4 (MAJOR 1): a plain `row.openDate !== 'YYYY-MM-DD'` is
+ * ALWAYS true when the live column comes back as a `Date` object (pg's own
+ * OID-1082 parser, unaffected by `configureUtcTimestampParsing` which only
+ * patches OID 1114/1184 timestamps — verified:
+ * `require('pg').types.getTypeParser(1082)('2026-08-19')` returns a Date).
+ * A `Date !== string` compares by reference/type, never by value, so every
+ * date-typed "did this field change" gate below was proposing a change on
+ * EVERY run regardless of the row's real value. Compare via
+ * `toComparableCorrectionText` (LOCAL calendar parts, never
+ * `.toISOString()` — that shifts an IST date back one day) instead.
+ */
+export function dateFieldChanged(current: unknown, target: string | null): boolean {
+  return toComparableCorrectionText(current) !== target;
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -150,6 +169,13 @@ interface FieldChange {
   field: keyof typeof schema.ipos.$inferInsert;
   from: unknown;
   to: unknown;
+  /**
+   * #422: the value this field held when the citation below was captured
+   * (2026-08-23 for every named-row entry in this file). `undefined` when
+   * the original authoring pass did not record it — the stale-correction
+   * guard treats that as "cannot verify" and skips, never as "ok to write".
+   */
+  assumedFrom?: unknown;
 }
 
 interface RowRepair {
@@ -158,7 +184,21 @@ interface RowRepair {
   companyName: string;
   changes: FieldChange[];
   citation: string;
+  /**
+   * ISO `YYYY-MM-DD` the citation above was captured on — every named-row
+   * entry in this file cites 2026-08-23. Optional (#422 round 3, CI
+   * TS2345): the #180 class-derived SME/FPO entries below (pushed AFTER the
+   * stale-correction guard loop, at the class-query block) carry no dated
+   * citation at all — they re-derive their target from the LIVE row on every
+   * run, so there is nothing to go stale. `undefined` here is NOT "ok to
+   * skip the guard" by default; it is a marker that this entry never reaches
+   * `decideStaleCorrectionSkip` in the first place (asserted below).
+   */
+  citationDate?: string;
 }
+
+/** Every named-row citation in this batch was captured on this date (#422). */
+const CITATION_DATE = '2026-08-23';
 
 async function loadRow(slug: string) {
   const rows = await db.select().from(schema.ipos).where(eq(schema.ipos.slug, slug));
@@ -185,16 +225,24 @@ async function main() {
   // --- P1-1: Mopshop Distribution Ltd. ---
   {
     const changes: FieldChange[] = [];
-    if (mopshop.offeringType !== 'IPO') changes.push({ field: 'offeringType', from: mopshop.offeringType, to: 'IPO' });
+    // #422: assumedFrom is the value documented as "DB currently" when this
+    // citation was captured (2026-08-23) — recorded so a future run can tell
+    // whether the row has moved since, rather than trusting today's live
+    // value (which may already differ from what the citation argued against).
+    if (mopshop.offeringType !== 'IPO')
+      changes.push({ field: 'offeringType', from: mopshop.offeringType, to: 'IPO', assumedFrom: 'FPO' });
     const targetOpen = '2026-08-19';
     const targetClose = '2026-08-21';
-    if (mopshop.openDate !== targetOpen) changes.push({ field: 'openDate', from: mopshop.openDate, to: targetOpen });
-    if (mopshop.closeDate !== targetClose) changes.push({ field: 'closeDate', from: mopshop.closeDate, to: targetClose });
-    if (mopshop.lotSize !== 1000) changes.push({ field: 'lotSize', from: mopshop.lotSize, to: 1000 });
+    if (dateFieldChanged(mopshop.openDate, targetOpen))
+      changes.push({ field: 'openDate', from: mopshop.openDate, to: targetOpen, assumedFrom: '2026-08-15' });
+    if (dateFieldChanged(mopshop.closeDate, targetClose))
+      changes.push({ field: 'closeDate', from: mopshop.closeDate, to: targetClose, assumedFrom: '2026-08-22' });
+    if (mopshop.lotSize !== 1000) changes.push({ field: 'lotSize', from: mopshop.lotSize, to: 1000, assumedFrom: null });
     if (changes.length > 0) {
       repairs.push({
         slug: 'mopshop-distribution-ltd', id: mopshop.id, companyName: mopshop.companyName, changes,
         citation: 'chittorgarh.com/ipo/mopshop-distribution-ipo + ipowatch.in/mopshop-distribution-ipo (2026-08-23): BSE SME Fixed Price IPO, 19-21 Aug 2026, lot 1000',
+        citationDate: CITATION_DATE,
       });
     }
   }
@@ -202,12 +250,21 @@ async function main() {
   // --- P2-5: Priority Jewels Ltd. ---
   {
     const changes: FieldChange[] = [];
+    // #422: no `from` recorded here on purpose — the original authoring pass
+    // (2026-08-23) did not capture the exact placeholder values the row held
+    // then, only that they read as "unannounced". The stale-correction guard
+    // treats a missing `from` as "cannot verify" and skips rather than
+    // guessing — this is the Priority Jewels row named in issue #422 (by the
+    // time a prod dry run re-proposed this correction on 2026-09-08, the row
+    // had gone LISTED with real dates, which the status check below also
+    // independently catches).
     if (priorityJewels.openDate !== null) changes.push({ field: 'openDate', from: priorityJewels.openDate, to: null });
     if (priorityJewels.closeDate !== null) changes.push({ field: 'closeDate', from: priorityJewels.closeDate, to: null });
     if (changes.length > 0) {
       repairs.push({
         slug: 'priority-jewels-ltd', id: priorityJewels.id, companyName: priorityJewels.companyName, changes,
         citation: 'ipowatch.in/priority-jewels-ipo (2026-08-23): open/close/listing shown as unannounced; row has zero field_sources provenance — single uncorroborated source, render TBA',
+        citationDate: CITATION_DATE,
       });
     }
   }
@@ -219,9 +276,9 @@ async function main() {
     const targetOpen = '2026-02-19';
     const targetClose = '2026-03-06';
     const targetListing = '2026-03-11';
-    if (suryo.openDate !== targetOpen) changes.push({ field: 'openDate', from: suryo.openDate, to: targetOpen });
-    if (suryo.closeDate !== targetClose) changes.push({ field: 'closeDate', from: suryo.closeDate, to: targetClose });
-    if (suryo.listingDate !== targetListing) changes.push({ field: 'listingDate', from: suryo.listingDate, to: targetListing });
+    if (dateFieldChanged(suryo.openDate, targetOpen)) changes.push({ field: 'openDate', from: suryo.openDate, to: targetOpen });
+    if (dateFieldChanged(suryo.closeDate, targetClose)) changes.push({ field: 'closeDate', from: suryo.closeDate, to: targetClose });
+    if (dateFieldChanged(suryo.listingDate, targetListing)) changes.push({ field: 'listingDate', from: suryo.listingDate, to: targetListing });
     if (suryo.priceRangeMin !== 20) changes.push({ field: 'priceRangeMin', from: suryo.priceRangeMin, to: 20 });
     if (suryo.priceRangeMax !== 20) changes.push({ field: 'priceRangeMax', from: suryo.priceRangeMax, to: 20 });
     if (suryo.issueSize !== '59400000.00') changes.push({ field: 'issueSize', from: suryo.issueSize, to: '59400000.00' });
@@ -230,6 +287,7 @@ async function main() {
       repairs.push({
         slug: 'suryo-foods-industries-ltd', id: suryo.id, companyName: suryo.companyName, changes,
         citation: 'chittorgarh.com/rights-issue/suryo-foods-industries-rights-issue-feb-2026/510/ (2026-08-23): Rights Issue, ratio 3:4, 29,70,000 sh @ Rs 20 = Rs 5.94 Cr, open 19 Feb, close 6 Mar, listing 11 Mar 2026',
+        citationDate: CITATION_DATE,
       });
     }
   }
@@ -241,16 +299,72 @@ async function main() {
     const targetOpen = '2026-02-05';
     const targetClose = '2026-03-06';
     const targetListing = '2026-03-11';
-    if (travels.openDate !== targetOpen) changes.push({ field: 'openDate', from: travels.openDate, to: targetOpen });
-    if (travels.closeDate !== targetClose) changes.push({ field: 'closeDate', from: travels.closeDate, to: targetClose });
-    if (travels.listingDate !== targetListing) changes.push({ field: 'listingDate', from: travels.listingDate, to: targetListing });
+    if (dateFieldChanged(travels.openDate, targetOpen)) changes.push({ field: 'openDate', from: travels.openDate, to: targetOpen });
+    if (dateFieldChanged(travels.closeDate, targetClose)) changes.push({ field: 'closeDate', from: travels.closeDate, to: targetClose });
+    if (dateFieldChanged(travels.listingDate, targetListing)) changes.push({ field: 'listingDate', from: travels.listingDate, to: targetListing });
     if (travels.lotSize !== null) changes.push({ field: 'lotSize', from: travels.lotSize, to: null });
     if (changes.length > 0) {
       repairs.push({
         slug: 'travels-rentals-ltd', id: travels.id, companyName: travels.companyName, changes,
         citation: 'chittorgarh.com/rights-issue/travels-rentals-rights-issue-2026/501/ (2026-08-23): Rights Issue, 1,12,02,685 sh @ Rs 15 = Rs 16.80 Cr (matches existing issue_size exactly), open 5 Feb, close 6 Mar, listing 11 Mar 2026',
+        citationDate: CITATION_DATE,
       });
     }
+  }
+
+  // --- #422: stale-correction guard on the four named-row entries above ---
+  // Every entry above is a hard-coded correction dated CITATION_DATE. Filter
+  // each field-level change through the shared guard BEFORE it is printed,
+  // backed up or applied — this is what stops a Priority-Jewels-shaped row
+  // (LISTED with real dates by the time the tool re-runs) from having its
+  // real facts nulled by a citation that predates them. The #180 class query
+  // below is exempt: it re-derives its target from the LIVE row on every run,
+  // so it carries no dated citation to go stale.
+  const rowsBySlug: Record<string, typeof mopshop> = {
+    'mopshop-distribution-ltd': mopshop,
+    'priority-jewels-ltd': priorityJewels,
+    'suryo-foods-industries-ltd': suryo,
+    'travels-rentals-ltd': travels,
+  };
+  for (const r of repairs) {
+    const row = rowsBySlug[r.slug];
+    if (!row) continue;
+    // #422 round 3: this loop runs ONLY over the four named-row entries
+    // above (the #180 class-derived entries are pushed to `repairs` further
+    // below, after this loop has already run). Every named entry sets
+    // `citationDate = CITATION_DATE`, so `undefined` here means a named
+    // entry was added above without one — a real authoring mistake, not a
+    // case the guard should silently pass through. `citationDate` on
+    // `RowRepair` is optional only so the class-derived push (which never
+    // reaches this loop) type-checks; it must never be optional FOR a row
+    // this loop actually processes.
+    if (r.citationDate === undefined) {
+      throw new Error(`#422: named-row entry '${r.slug}' has no citationDate — every row reaching the stale-correction guard must carry one`);
+    }
+    const surviving: FieldChange[] = [];
+    for (const c of r.changes) {
+      const latestSourceDate = await queryLatestFieldSourceDate(db, {
+        ipoId: row.id,
+        fieldName: c.field as string,
+      });
+      const decision = decideStaleCorrectionSkip({
+        status: row.status,
+        citationDate: r.citationDate,
+        latestSourceDate,
+        assumedFromValue: c.assumedFrom,
+        currentValue: (row as Record<string, unknown>)[c.field as string],
+      });
+      if (decision.skip) {
+        console.log(`  SKIP ${r.slug}.${String(c.field)}: ${decision.reason}`);
+        logger.warn({ slug: r.slug, field: c.field, reason: decision.reason }, 'T-292 correction skipped as stale (#422)');
+        continue;
+      }
+      surviving.push(c);
+    }
+    r.changes = surviving;
+  }
+  for (let i = repairs.length - 1; i >= 0; i--) {
+    if (repairs[i].changes.length === 0) repairs.splice(i, 1);
   }
 
   // --- #180 F1 (T-459 round 3): class-level SME/FPO repair ---
