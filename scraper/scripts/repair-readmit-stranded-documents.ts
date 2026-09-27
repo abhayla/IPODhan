@@ -52,7 +52,14 @@ import { db } from '@ipodhan/shared';
 import { sql } from 'drizzle-orm';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike } from './lib/repair-tool';
+import {
+  openRepairDb,
+  queryCurrentDatabase,
+  updateRowsReturningChanges,
+  writeLedgerFile,
+  type ExecuteLike,
+  type RepairLedgerFieldChange,
+} from './lib/repair-tool';
 import { isExtractableDocType } from '../src/config/document-admission-status.js';
 import { buildExtractionStatePatch } from '../src/services/extraction-state-patch.js';
 
@@ -109,6 +116,29 @@ function parseArgs(argv: readonly string[]): Cli {
   };
 }
 
+/** Every column the readmit UPDATE sets — each is ledgered with its true before/after (#457). */
+export const READMIT_COLUMNS = ['extraction_status', 'extraction_error', 'retry_count', 'updated_at'] as const;
+
+/**
+ * #457 round 3: the readmit write. Only rows STILL in NOT_EXTRACTABLE when
+ * locked are written; every column the UPDATE sets comes back with the value
+ * it replaced, read under the same row lock.
+ */
+export async function readmitStrandedDocuments(
+  dbx: ExecuteLike,
+  ids: readonly string[],
+  now: Date
+): Promise<{ writtenIds: string[]; changes: RepairLedgerFieldChange[] }> {
+  const patch = buildReadmitPatch(now);
+  return updateRowsReturningChanges(dbx, {
+    table: 'documents',
+    ids,
+    guard: sql`extraction_status = ${STRANDED_STATUS}`,
+    set: sql`extraction_status = ${String(patch.extractionStatus)}, extraction_error = NULL, retry_count = 0, updated_at = ${now.toISOString()}`,
+    columns: READMIT_COLUMNS,
+  });
+}
+
 async function main(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2));
   if (!cli.expectDb) {
@@ -148,21 +178,20 @@ async function main(): Promise<void> {
     return;
   }
 
+  // #457 round 3: applied = the columns the guarded UPDATE RETURNED (old under
+  // its row lock, new as written); dry run = the plan's status change.
+  let appliedChanges: RepairLedgerFieldChange[] | null = null;
   if (!cli.apply) {
     console.log(`\n${TOOL}: DRY RUN — nothing written. Re-run with --apply to set these ${selected.length} row(s) to ${READMIT_STATUS}.`);
   } else {
     const now = new Date();
-    const patch = buildReadmitPatch(now);
     const ids = selected.map((r) => r.id);
-    const updated = await db.execute(sql`
-      UPDATE documents
-      SET extraction_status = ${String(patch.extractionStatus)},
-          extraction_error = NULL,
-          retry_count = 0,
-          updated_at = ${now.toISOString()}
-      WHERE id = ANY(${sql.param(ids)}::uuid[])
-    `);
-    const changed = (updated as unknown as { rowCount?: number }).rowCount ?? 0;
+    const written = await readmitStrandedDocuments(db as ExecuteLike, ids, now);
+    appliedChanges = written.changes;
+    const changed = written.writtenIds.length;
+    if (changed < ids.length) {
+      console.log(`${TOOL}: ${ids.length - changed} row(s) left alone — no longer ${STRANDED_STATUS} when locked (changed since the read).`);
+    }
     console.log(`\n${TOOL}: APPLIED — ${changed} row(s) set to ${READMIT_STATUS} on "${actual}".`);
 
     const verify = await db.execute(sql`
@@ -177,6 +206,17 @@ async function main(): Promise<void> {
     path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${cli.apply ? 'applied' : 'dryrun'}-${Date.now()}.json`),
     {
       tool: TOOL,
+      mode: cli.apply ? 'apply' : 'dry-run',
+      generatedAt: new Date().toISOString(),
+      changes:
+        appliedChanges ??
+        selected.map((r) => ({
+          table: 'documents',
+          rowKey: r.id,
+          field: 'extraction_status',
+          before: r.extractionStatus,
+          after: READMIT_STATUS,
+        })),
       database: actual,
       apply: cli.apply,
       at: new Date().toISOString(),

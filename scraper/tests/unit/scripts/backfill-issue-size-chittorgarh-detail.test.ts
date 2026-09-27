@@ -14,7 +14,8 @@ import {
 
 /** Builds a mocked db/tx exposing the exact chain the provenance helpers call. */
 function mockSelectReturning(rows: unknown[]) {
-  const limit = vi.fn().mockResolvedValue(rows);
+  // #457 round 3: upsertFieldSource reads the prior row with .limit(1).for('update')
+  const limit = vi.fn(() => { const r = rows; return Object.assign(Promise.resolve(r), { for: vi.fn().mockResolvedValue(r) }); });
   const where = vi.fn().mockReturnValue({ limit });
   const from = vi.fn().mockReturnValue({ where });
   return { select: vi.fn().mockReturnValue({ from }), from, where, limit };

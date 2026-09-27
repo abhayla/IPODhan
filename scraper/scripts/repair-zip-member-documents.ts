@@ -41,7 +41,8 @@ import { db } from '@ipodhan/shared';
 import { DocumentRepository, DocumentFetchStateRepository } from '@ipodhan/shared/repositories';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike } from './lib/repair-tool';
+import { diffToLedgerEntries, openRepairDb, queryCurrentDatabase, writeLedgerFile, type ExecuteLike, type RepairLedgerFieldChange } from './lib/repair-tool';
+import { sql } from 'drizzle-orm';
 import { DocumentDiscoveryRunner, defaultFetcher } from '../src/services/document-discovery-runner';
 import { NetworkCounter } from '../src/utils/network-counter';
 import type { SeenBySha, StoredZip, StoredZipExpansion } from '../src/services/zip-member-documents';
@@ -63,6 +64,83 @@ export function repairOneZip(
   }
 ): Promise<StoredZipExpansion> {
   return deps.runner.expandStoredZip(zip, { apply: deps.apply, seenBySha: deps.seenBySha });
+}
+
+export type DocumentSnapshot = Map<string, Record<string, unknown>>;
+
+/**
+ * #457 round 2 (CRITICAL): the ledger holds only rows THIS run wrote, never a
+ * row it merely found. A `duplicate` outcome carries the id of a document that
+ * ALREADY existed (found by sha256) — an undo built from a ledger that listed
+ * it as an insert would delete a real, pre-existing document.
+ *
+ * - dry run: the `would_store` outcomes, as planned inserts.
+ * - apply: the `stored` outcomes, classified by the before/after snapshots of
+ *   `documents` taken around the run: an id absent before is an INSERT (its
+ *   full after-row is recorded); an id present before (the upsert matched an
+ *   existing URL) is an UPDATE of only the columns that changed. The zip rows
+ *   themselves (sha256 backfill, checked marker, attempt counters) are
+ *   recorded as updates the same way. `duplicate` / `skipped` never appear.
+ */
+export function zipLedgerChanges(input: {
+  results: readonly StoredZipExpansion[];
+  apply: boolean;
+  before?: DocumentSnapshot;
+  after?: DocumentSnapshot;
+}): RepairLedgerFieldChange[] {
+  if (!input.apply) {
+    return input.results.flatMap((r) =>
+      r.outcomes
+        .filter((o) => o.action === 'would_store')
+        .map((o) => ({
+          table: 'documents',
+          rowKey: `${r.zip.documentId}:${o.member}`,
+          field: '(row)',
+          before: null,
+          after: { member: o.member, sha256: o.sha256, type: o.type ?? null, url: o.url ?? null },
+        }))
+    );
+  }
+  const before = input.before ?? new Map();
+  const after = input.after ?? new Map();
+  const touched = new Set<string>();
+  for (const r of input.results) {
+    touched.add(r.zip.documentId);
+    for (const o of r.outcomes) if (o.action === 'stored' && o.documentId) touched.add(o.documentId);
+  }
+  const changes: RepairLedgerFieldChange[] = [];
+  for (const id of touched) {
+    const b = before.get(id);
+    const a = after.get(id);
+    if (!a) continue;
+    if (!b) {
+      changes.push({ table: 'documents', rowKey: id, field: '(row)', before: null, after: a });
+      continue;
+    }
+    changes.push(...diffToLedgerEntries('documents', id, b, a));
+  }
+  return changes;
+}
+
+/** Read the repairable `documents` columns of every row of the given IPOs, keyed by id (text timestamps: exact restore). */
+export async function snapshotDocuments(
+  dbx: { execute(q: ReturnType<typeof sql>): Promise<unknown> },
+  ipoIds: readonly string[]
+): Promise<DocumentSnapshot> {
+  const out: DocumentSnapshot = new Map();
+  if (ipoIds.length === 0) return out;
+  const res = await dbx.execute(sql`
+    select id::text as id, ipo_id::text as ipo_id, type::text as type, url, sha256, part_number, is_active,
+           extraction_status::text as extraction_status, updated_at::text as updated_at,
+           zip_members_checked_at::text as zip_members_checked_at, zip_expand_attempts, zip_last_attempt_slot,
+           zip_unresolved_reason
+      from documents
+     where ipo_id = any(${sql.param([...ipoIds])}::uuid[])`);
+  for (const row of ((res as { rows?: Array<Record<string, unknown>> }).rows ?? [])) {
+    const { id, ...rest } = row;
+    out.set(String(id), rest);
+  }
+  return out;
 }
 
 /** One printable line per member, and the counts the summary and the ledger use. */
@@ -143,6 +221,8 @@ async function main(): Promise<void> {
     .filter((z): z is StoredZip => z !== null);
   console.log(`${TOOL}: ${zips.length} stored zip(s) whose members were never examined in "${actual}"${cli.slug ? ` (slug ${cli.slug})` : ''}.`);
 
+  const zipIpoIds = [...new Set(zips.map((z) => z.ipoId))];
+  const beforeSnapshot = cli.apply ? await snapshotDocuments(db as never, zipIpoIds) : undefined;
   const results: StoredZipExpansion[] = [];
   let toAdd = 0;
   const seenByIpo = new Map<string, SeenBySha>();
@@ -160,10 +240,14 @@ async function main(): Promise<void> {
     `${TOOL}: ${cli.apply ? 'added' : 'would add'} ${toAdd} member row(s) across ${ipos.size} IPO(s): ${[...ipos].join(', ') || '-'}; refused ${results.filter((r) => r.refused).length} zip(s).`
   );
 
+  const afterSnapshot = cli.apply ? await snapshotDocuments(db as never, zipIpoIds) : undefined;
   const ledgerPath = writeLedgerFile(
     path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${cli.apply ? 'applied' : 'dryrun'}-${Date.now()}.json`),
     {
       tool: TOOL,
+      mode: cli.apply ? 'apply' : 'dry-run',
+      generatedAt: new Date().toISOString(),
+      changes: zipLedgerChanges({ results, apply: cli.apply, before: beforeSnapshot, after: afterSnapshot }),
       database: actual,
       apply: cli.apply,
       at: new Date().toISOString(),

@@ -94,6 +94,8 @@ interface TableResult {
   totalRows: number;
   changed: number;
   changedIds: string[];
+  /** #457: the per-row before/after that made the ledger a rollback artifact. */
+  toWrite: RowToRepair[];
   nullKeyCount: number;
   nullKeyIds: string[];
 }
@@ -146,6 +148,7 @@ function toResult(plan: TablePlan): TableResult {
     totalRows: plan.totalRows,
     changed: plan.toWrite.length,
     changedIds: plan.toWrite.map((r) => r.id),
+    toWrite: plan.toWrite,
     nullKeyCount: plan.nullKeyCount,
     nullKeyIds: plan.nullKeyIds,
   };
@@ -220,6 +223,22 @@ async function main(): Promise<void> {
   const ledgerPath = writeLedgerFile(
     `scripts/state/backfill-normalized-name-${APPLY ? 'apply' : 'dry-run'}-${Date.now()}.json`,
     {
+      tool: 'backfill-normalized-name',
+      mode: APPLY ? 'apply' : 'dry-run',
+      generatedAt: new Date().toISOString(),
+      // #457: before this fix this ledger held only `changedIds` — a list of
+      // rows touched, not a rollback artifact. Every plan carries the row's
+      // prior `normalizedName` (`currentNormalizedName`), so the ledger can
+      // now record before/after per row.
+      changes: results.flatMap((r) =>
+        r.toWrite.map((row) => ({
+          table: r.tableName,
+          rowKey: row.id,
+          field: 'normalizedName',
+          before: row.currentNormalizedName,
+          after: row.recomputedNormalizedName,
+        }))
+      ),
       apply: APPLY,
       allowProd: ALLOW_PROD,
       ranAt: new Date().toISOString(),

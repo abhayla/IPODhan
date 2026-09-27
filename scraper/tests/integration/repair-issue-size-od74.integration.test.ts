@@ -132,6 +132,26 @@ describe.skipIf(!DATABASE_URL)(`OD-74/OD-77 repair on real Postgres (${SKIP_REAS
     for (const slug of ['od74-t-identical', 'od74-t-rounding']) expect(after[slug]).toEqual(before[slug]);
   }, 150_000);
 
+  // #457: the applied ledger's `changes` hold only the row actually written
+  // (never the identical / within-rounding rows the tool left alone), each
+  // changed column with its true prior value, plus the field_sources upsert.
+  it('#457: the applied ledger records only the written row, every changed field with its before-value', () => {
+    const payload = JSON.parse(fs.readFileSync(applyLedger, 'utf8')) as {
+      changes: Array<{ table: string; rowKey: unknown; field: string; before?: unknown; after: unknown }>;
+    };
+    expect(payload.changes.length).toBeGreaterThan(0);
+    for (const c of payload.changes) expect(c).toHaveProperty('before');
+    const ipoRows = payload.changes.filter((c) => c.table === 'ipos');
+    expect(new Set(ipoRows.map((c) => c.rowKey))).toEqual(new Set([ID.write]));
+    const byField = Object.fromEntries(ipoRows.map((c) => [c.field, c]));
+    expect(byField.issue_size).toMatchObject({ before: '1679302840.00', after: '11000000000.00' });
+    expect(byField.updated_at?.before).toBe(STAMP);
+    expect(payload.changes.some((c) => c.table === 'field_sources')).toBe(true);
+    const serialized = JSON.stringify(payload.changes);
+    for (const untouched of [ID.identical, ID.rounding, ID.tender, ID.ofs]) expect(serialized).not.toContain(untouched);
+    console.log(`#457 PROOF od74 ledger: ${serialized}`);
+  });
+
   let zerosLedger = '';
   it('--zeros apply: TENDER 0 -> NULL with no plan row; OFS 0 -> NULL with NOT_SOURCED', async () => {
     const r = run(['--zeros', '--apply', '--ipo', IPO_SCOPE]);

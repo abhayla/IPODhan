@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Pool } from 'pg';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -146,6 +147,28 @@ describe.skipIf(!DATABASE_URL)(`repair-reopen-stale-doc-nay on real Postgres (${
     expect(after['f161-nodoc']).toMatchObject({ state: 'NOT_AVAILABLE_YET' });
     expect(after['f161-nondoc']).toMatchObject({ state: 'NOT_AVAILABLE_YET' });
   }, 60_000);
+
+  // #457: the applied ledger holds exactly the row the guarded UPDATE changed,
+  // one {table,rowKey,field,before,after} entry per changed column, each with
+  // its true prior value -- never an id list, never a row that was not written.
+  it('#457: the applied ledger records only the written row, every changed column with its before-value', () => {
+    const payload = JSON.parse(readFileSync(ledger, 'utf8')) as {
+      tool: string;
+      mode: string;
+      changes: Array<{ table: string; rowKey: unknown; field: string; before?: unknown; after: unknown }>;
+    };
+    expect(payload.mode).toBe('apply');
+    expect(payload.changes.length).toBeGreaterThan(0);
+    for (const c of payload.changes) {
+      expect(c).toHaveProperty('before');
+      expect(c.table).toBe('ipo_field_plan');
+      expect(c.rowKey).toBe(ID.stale);
+    }
+    const byField = Object.fromEntries(payload.changes.map((c) => [c.field, c]));
+    expect(byField.state).toMatchObject({ before: 'NOT_AVAILABLE_YET', after: 'PENDING' });
+    expect(byField.next_due_at?.after).not.toBeNull();
+    console.log(`#457 PROOF reopen-stale-doc-nay ledger: ${JSON.stringify(payload.changes)}`);
+  });
 
   it('re-running --apply is a no-op (already reopened rows no longer match the cause)', () => {
     const r = run(['--expect-db', 'ipodhan_test', '--apply', '--ipo', IDS_SCOPE]);

@@ -155,6 +155,16 @@ async function main(): Promise<void> {
   }
   writeLedgerFile(path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-${cli.apply ? 'applied' : 'dryrun'}-${Date.now()}.json`), {
     tool: TOOL,
+    mode: cli.apply ? 'apply' : 'dry-run',
+    generatedAt: new Date().toISOString(),
+    // Inserts only — `before` is null (no prior row); rollback is deleting the id.
+    changes: plan.insert.map((k, i) => ({
+      table: 'ipo_source_keys',
+      rowKey: insertedIds[i] ?? `pending:${k.ipoId}:${k.source}:${k.keyType}`,
+      field: '(row)',
+      before: null,
+      after: { ipoId: k.ipoId, source: k.source, keyType: k.keyType, keyValue: k.keyValue },
+    })),
     database: actual,
     apply: cli.apply,
     at: new Date().toISOString(),

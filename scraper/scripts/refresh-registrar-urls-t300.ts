@@ -159,23 +159,45 @@ export async function main() {
   });
 
   if (touched.length > 0) {
-    const backupPath = writeLedgerFile(path.join(EVIDENCE_DIR, `registrars-backup-${Date.now()}.json`), current);
+    const backupPath = writeLedgerFile(path.join(EVIDENCE_DIR, `registrars-backup-${Date.now()}.json`), {
+      tool: TOOL,
+      mode: APPLY ? 'apply' : 'dry-run',
+      generatedAt: new Date().toISOString(),
+      changes: touched.map((r) => ({
+        table: 'registrars',
+        rowKey: String(byName.get(r.name)!.id),
+        field: '(row)',
+        before: byName.get(r.name)!,
+        after: null,
+      })),
+      rows: current,
+    });
     console.log(`Backup of all ${current.length} registrar rows written: ${backupPath}`);
   }
 
   let written = 0;
   const applied: { registrarId: string; name: string; changes: string[] }[] = [];
+  const fieldChanges: import('./lib/repair-tool.js').RepairLedgerFieldChange[] = [];
   for (const r of REFRESHES) {
     const row = byName.get(r.name)!;
     const changes: string[] = [];
     if (row.allotmentCheckUrl !== r.allotmentCheckUrl) {
       changes.push(`allotmentCheckUrl: "${row.allotmentCheckUrl}" -> "${r.allotmentCheckUrl}"`);
+      fieldChanges.push({
+        table: 'registrars',
+        rowKey: String(row.id),
+        field: 'allotmentCheckUrl',
+        before: row.allotmentCheckUrl,
+        after: r.allotmentCheckUrl,
+      });
     }
     if (r.website !== undefined && row.website !== r.website) {
       changes.push(`website: "${row.website}" -> "${r.website}"`);
+      fieldChanges.push({ table: 'registrars', rowKey: String(row.id), field: 'website', before: row.website, after: r.website });
     }
     if (r.active !== undefined && row.active !== r.active) {
       changes.push(`active: ${row.active} -> ${r.active}`);
+      fieldChanges.push({ table: 'registrars', rowKey: String(row.id), field: 'active', before: row.active, after: r.active });
     }
     if (changes.length === 0) {
       console.log(`  OK (unchanged): ${r.name}`);
@@ -198,7 +220,13 @@ export async function main() {
     }
   }
   if (applied.length > 0) {
-    const ledgerPath = writeLedgerFile(path.join(EVIDENCE_DIR, `registrars-applied-${Date.now()}.json`), applied);
+    const ledgerPath = writeLedgerFile(path.join(EVIDENCE_DIR, `registrars-applied-${Date.now()}.json`), {
+      tool: TOOL,
+      mode: APPLY ? 'apply' : 'dry-run',
+      generatedAt: new Date().toISOString(),
+      changes: fieldChanges,
+      applied,
+    });
     console.log(`Applied ledger (${applied.length} rows) written: ${ledgerPath}`);
   }
 

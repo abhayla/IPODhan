@@ -162,7 +162,8 @@ describe('countAndFetchBySlug — a COUNT first, never a bare .limit(1) with no 
 
 describe('applyRefresh — the write body extracted from main(), tested against fakes (finding 2); write-ratchet routing (round 4)', () => {
   function mockTx(existingSource: string | null = null) {
-    const limit = vi.fn().mockResolvedValue(existingSource ? [{ source: existingSource }] : []);
+    // #457 round 3: upsertFieldSource reads the prior row with .limit(1).for('update')
+    const limit = vi.fn(() => { const r = existingSource ? [{ source: existingSource }] : []; return Object.assign(Promise.resolve(r), { for: vi.fn().mockResolvedValue(r) }); });
     const where = vi.fn().mockReturnValue({ limit });
     const from = vi.fn().mockReturnValue({ where });
     const select = vi.fn().mockReturnValue({ from });

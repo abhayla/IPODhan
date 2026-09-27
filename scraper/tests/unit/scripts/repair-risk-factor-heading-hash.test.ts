@@ -4,6 +4,8 @@ import {
   planDedupe,
   dedupeExitCode,
   parseFlags,
+  backfillLedgerChanges,
+  dedupeLedgerChanges,
   type DedupeRow,
 } from '../../../scripts/repair-risk-factor-heading-hash.js';
 
@@ -230,5 +232,57 @@ describe('planHashRepair — the backfill decision', () => {
     ]);
     expect(again.toWrite).toEqual([]);
     expect(again.alreadyCorrect).toBe(1);
+  });
+});
+
+describe('#457: ledger entries record only rows actually written, each with its before-value', () => {
+  const toWrite = [
+    { id: 'rf-written', headingHash: 'new-hash-1' },
+    { id: 'rf-raced', headingHash: 'new-hash-2' },
+  ];
+  const beforeById = new Map<string, string | null>([
+    ['rf-written', 'old-hash-1'],
+    ['rf-raced', null],
+  ]);
+
+  it('backfill --apply: a row the UPDATE did not return is absent; the written row carries its prior heading_hash', () => {
+    const changes = backfillLedgerChanges(toWrite, beforeById, true, new Set(['rf-written']));
+    expect(changes).toEqual([
+      { table: 'ipo_risk_factors', rowKey: 'rf-written', field: 'heading_hash', before: 'old-hash-1', after: 'new-hash-1' },
+    ]);
+  });
+
+  it('backfill dry run: every planned row, a NULL prior hash recorded as null (never omitted)', () => {
+    const changes = backfillLedgerChanges(toWrite, beforeById, false, new Set());
+    expect(changes.map((c) => c.rowKey)).toEqual(['rf-written', 'rf-raced']);
+    expect(changes[1]).toHaveProperty('before', null);
+  });
+
+  const victim = (id: string): DedupeRow => ({
+    id,
+    ipoId: 'ipo-1',
+    ipoSlug: 'x-ltd',
+    seq: 2,
+    heading: 'Risk',
+    headingHash: 'h',
+    body: null,
+    kpis: null,
+  });
+
+  it('dedupe --apply: only rows the DELETE returned, each with the full row as its before-image and after = null', () => {
+    const changes = dedupeLedgerChanges([victim('rf-gone'), victim('rf-already-gone')], true, new Set(['rf-gone']));
+    expect(changes).toEqual([
+      {
+        table: 'ipo_risk_factors',
+        rowKey: 'rf-gone',
+        field: '(row)',
+        before: { id: 'rf-gone', ipo_id: 'ipo-1', seq: 2, heading: 'Risk', heading_hash: 'h', body: null, kpis: null },
+        after: null,
+      },
+    ]);
+  });
+
+  it('dedupe dry run: the whole plan', () => {
+    expect(dedupeLedgerChanges([victim('a'), victim('b')], false, new Set()).map((c) => c.rowKey)).toEqual(['a', 'b']);
   });
 });

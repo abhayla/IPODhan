@@ -675,6 +675,17 @@ jobs:
         # Needs node_modules (#694 fix round 1) — see the self-test above.
         run: node scripts/ci/require-repair-tool-module.mjs
 
+      - name: Repair ledger calls lint self-test (#457)
+        # Mutation-proof: imports the real predicate; each of the three measured holes
+        # (tsconfig-excluded caller, `payload: unknown` passthrough, `as unknown as` cast)
+        # has a red case.
+        run: node --test scripts/ci/tests/check-repair-ledger-calls.test.mjs
+
+      - name: Repair ledger calls - every writeLedgerFile payload is a typed RepairLedgerPayload (#457)
+        # tsc alone did not hold: excluded files, `unknown` slots under strict:false and casts
+        # each let an old-shape ledger through. writeLedgerFile also validates at runtime.
+        run: node scripts/ci/check-repair-ledger-calls.mjs
+
       - name: Cache-invalidation guard lint self-test (#715 class sweep)
         # Mutation-proof: scripts/ci/tests/require-cache-invalidation-guard.test.mjs
         # imports the real predicates from the lint below, so weakening the
@@ -1271,6 +1282,8 @@ jobs:
           tests/integration/rhp-promoters-peers-persist.integration.test.ts
           tests/integration/phase-1-e2e.test.ts
           tests/integration/prospectus-ratio-reason-ledger.integration.test.ts
+          tests/integration/repair-ledger-written-rows.integration.test.ts
+          tests/integration/repair-ledger-guarded-requeue.integration.test.ts
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under

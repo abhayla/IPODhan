@@ -51,7 +51,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db } from '@ipodhan/shared';
 import { sql } from 'drizzle-orm';
-import { openRepairDb, writeLedgerFile } from './lib/repair-tool.js';
+import { changesFromReturnedRow, openRepairDb, writeLedgerFile, type RepairLedgerFieldChange } from './lib/repair-tool.js';
 // Round 4 M-2: the ONE "unsettled" predicate (state NOT IN the exported terminal list).
 import { unsettledPlanStatePredicate } from '../src/scheduler/closed-ipo-plan-settlement.js';
 
@@ -59,33 +59,65 @@ export const REPAIR_MARKER = 'repair-717:';
 
 type ExecDb = { execute: (q: ReturnType<typeof sql>) => Promise<unknown> };
 
+/** Every column the reopen UPDATE sets — each is ledgered with its true before/after (#457). */
+export const REOPEN_COLUMNS = ['outcome', 'cause_class', 'cause_detail', 'resourced_at_version', 'updated_at'] as const;
+
 /**
  * Reopen the given DONE rows so the job's selection re-picks them at ANY
  * version, including the one that wrote them DONE. The UPDATE re-checks the
- * unread condition itself. Returns the number of rows changed.
+ * unread condition itself, and RETURNS each changed row's prior and new value
+ * of every column it sets (read under FOR UPDATE in the same statement), so
+ * the ledger holds exactly the rows written — never the planned list (#457).
  */
-export async function reopenFalseDoneRows(dbx: ExecDb, ids: string[]): Promise<number> {
+export async function reopenFalseDoneRowsWithChanges(
+  dbx: ExecDb,
+  ids: string[]
+): Promise<{ changed: number; changedIds: string[]; changes: RepairLedgerFieldChange[] }> {
   // One bound array parameter (see repair-not-extractable-documents.ts for why
   // `${ids}` alone expands into a broken parameter list).
   const res = await dbx.execute(sql`
-    UPDATE closed_ipo_resourcing
+    WITH old AS (
+      SELECT r.ipo_id, r.outcome::text AS outcome, r.cause_class::text AS cause_class, r.cause_detail,
+             r.resourced_at_version, r.updated_at::text AS updated_at
+        FROM closed_ipo_resourcing r
+       WHERE r.ipo_id = ANY(${sql.param(ids)}::uuid[])
+         AND r.outcome = 'DONE'
+         AND (
+           NOT EXISTS (SELECT 1 FROM ipo_field_plan p WHERE p.ipo_id = r.ipo_id)
+           OR EXISTS (SELECT 1 FROM ipo_field_plan p
+                       WHERE p.ipo_id = r.ipo_id
+                         AND ${unsettledPlanStatePredicate(sql.raw('p.state'))})
+         )
+       FOR UPDATE OF r
+    )
+    UPDATE closed_ipo_resourcing c
        SET outcome = 'PARTIAL',
            cause_class = CASE
-             WHEN EXISTS (SELECT 1 FROM ipo_field_plan p WHERE p.ipo_id = closed_ipo_resourcing.ipo_id)
+             WHEN EXISTS (SELECT 1 FROM ipo_field_plan p WHERE p.ipo_id = c.ipo_id)
                THEN 'FIELDS_PENDING'::closed_ipo_resourcing_cause_class
              ELSE 'EXTRACTOR_MISSING'::closed_ipo_resourcing_cause_class END,
            cause_detail = ${REPAIR_MARKER} || ' recorded DONE with no plan rows, or with plan rows still unsettled (OD-76, OD-79)',
-           resourced_at_version = ${REPAIR_MARKER} || COALESCE(resourced_at_version, ''),
+           resourced_at_version = ${REPAIR_MARKER} || COALESCE(c.resourced_at_version, ''),
            updated_at = now()
-     WHERE ipo_id = ANY(${sql.param(ids)}::uuid[])
-       AND outcome = 'DONE'
-       AND (
-         NOT EXISTS (SELECT 1 FROM ipo_field_plan p WHERE p.ipo_id = closed_ipo_resourcing.ipo_id)
-         OR EXISTS (SELECT 1 FROM ipo_field_plan p
-                     WHERE p.ipo_id = closed_ipo_resourcing.ipo_id
-                       AND ${unsettledPlanStatePredicate(sql.raw('p.state'))})
-       )`);
-  return (res as { rowCount?: number }).rowCount ?? 0;
+      FROM old
+     WHERE c.ipo_id = old.ipo_id
+    RETURNING c.ipo_id::text AS ipo_id,
+              old.outcome AS old_outcome, c.outcome::text AS new_outcome,
+              old.cause_class AS old_cause_class, c.cause_class::text AS new_cause_class,
+              old.cause_detail AS old_cause_detail, c.cause_detail AS new_cause_detail,
+              old.resourced_at_version AS old_resourced_at_version, c.resourced_at_version AS new_resourced_at_version,
+              old.updated_at AS old_updated_at, c.updated_at::text AS new_updated_at`);
+  const rows = ((res as { rows?: Array<Record<string, unknown>> }).rows ?? []);
+  return {
+    changed: rows.length,
+    changedIds: rows.map((r) => String(r.ipo_id)),
+    changes: rows.flatMap((r) => changesFromReturnedRow('closed_ipo_resourcing', { ipo_id: String(r.ipo_id) }, r, REOPEN_COLUMNS)),
+  };
+}
+
+/** Count-only wrapper kept for callers that need no ledger. */
+export async function reopenFalseDoneRows(dbx: ExecDb, ids: string[]): Promise<number> {
+  return (await reopenFalseDoneRowsWithChanges(dbx, ids)).changed;
 }
 
 /** The class filter, applied to the dry-run read: DONE, and no plan or a plan row still unsettled (OD-79: walked or not). */
@@ -194,21 +226,26 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const ledger = writeLedgerFile(path.join(here, 'state', `repair-closed-ipo-false-done-${dbName}-${stamp}.json`), {
-    tool: 'repair-closed-ipo-false-done',
-    db: dbName,
-    before: rows,
-  });
-  console.log(`\nbefore-image written: ${ledger}`);
-
   const ids = rows.map((r) => r.ipo_id);
-  const changed = await reopenFalseDoneRows(db as unknown as ExecDb, ids);
+  const { changed, changedIds, changes } = await reopenFalseDoneRowsWithChanges(db as unknown as ExecDb, ids);
   console.log(`reopened ${changed} row(s) as PARTIAL on ${dbName}`);
   if (changed !== rows.length) {
     console.log(`${rows.length - changed} row(s) no longer matched at write time (settled since the read above) and were left as they were`);
   }
+  // #457 round 2: the ledger is written AFTER the single guarded UPDATE, from
+  // what that statement RETURNED — only the rows actually changed, every column.
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const ledger = writeLedgerFile(path.join(here, 'state', `repair-closed-ipo-false-done-${dbName}-${stamp}.json`), {
+    tool: 'repair-closed-ipo-false-done',
+    mode: 'apply',
+    generatedAt: new Date().toISOString(),
+    changes,
+    db: dbName,
+    before: rows.filter((r) => changedIds.includes(r.ipo_id)),
+  });
+  console.log(`
+ledger (exactly the ${changed} changed row(s)) written: ${ledger}`);
   return 0;
 }
 

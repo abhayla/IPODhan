@@ -36,14 +36,16 @@
 import '../../scripts/lib/alias-preflight-auto.mjs';
 import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   openRepairDb,
   queryCurrentDatabase,
+  updateRowsReturningChanges,
   writeLedgerFile,
   type ExecuteLike,
+  type RepairLedgerFieldChange,
 } from './lib/repair-tool';
 
 /** The document type this tool is allowed to touch. Nothing else, ever. */
@@ -169,6 +171,36 @@ export function parseArgs(argv: readonly string[]): Cli {
 
 const TOOL = 'requeue-anchor-zero-rows';
 
+/** Every column the re-queue UPDATE sets — each is ledgered with its true before/after (#457). */
+export const REQUEUE_COLUMNS = ['extraction_status', 'extraction_error'] as const;
+
+/**
+ * #457 round 3: the re-queue write. Only rows still an ANCHOR_ALLOCATION_REPORT
+ * in MANUAL_REVIEW carrying the SAME extraction_error the tool decided on are
+ * written (a row whose error changed since the read is re-decided next run, not
+ * overwritten); every column the UPDATE sets comes back with the value it
+ * replaced, read under the same row lock.
+ */
+export async function requeueAnchorDocuments(
+  dbx: ExecuteLike,
+  docs: ReadonlyArray<{ id: string; extractionError: string | null }>
+): Promise<{ writtenIds: string[]; changes: RepairLedgerFieldChange[] }> {
+  const writtenIds: string[] = [];
+  const changes: RepairLedgerFieldChange[] = [];
+  for (const d of docs) {
+    const r = await updateRowsReturningChanges(dbx, {
+      table: 'documents',
+      ids: [d.id],
+      guard: sql`type = ${ANCHOR_DOCUMENT_TYPE} AND extraction_status = ${BLOCKED_STATUS} AND extraction_error IS NOT DISTINCT FROM ${d.extractionError}`,
+      set: sql`extraction_status = ${REQUEUED_STATUS}, extraction_error = NULL`,
+      columns: REQUEUE_COLUMNS,
+    });
+    writtenIds.push(...r.writtenIds);
+    changes.push(...r.changes);
+  }
+  return { writtenIds, changes };
+}
+
 async function main(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2));
   if (!cli.expectDb) {
@@ -221,14 +253,33 @@ async function main(): Promise<void> {
       `\n${TOOL}: ${requeue.length} to re-queue, ${held.length} held, of ${decisions.length} ${BLOCKED_STATUS} ${ANCHOR_DOCUMENT_TYPE} documents in "${actual}".`
     );
 
+    // #457 round 3: an applied run writes FIRST (guarded, per row) and ledgers
+    // exactly what the UPDATE returned; a dry run ledgers the plan.
+    let written: { writtenIds: string[]; changes: RepairLedgerFieldChange[] } | null = null;
+    if (cli.apply && requeue.length > 0) {
+      // The extractor version is deliberately NOT touched — see the header.
+      written = await requeueAnchorDocuments(
+        db as ExecuteLike,
+        requeue.map((d) => ({ id: d.document.id, extractionError: d.document.extractionError }))
+      );
+    }
+    const writtenSet = new Set(written?.writtenIds ?? []);
     const ledger = {
       tool: TOOL,
+      mode: (cli.apply ? 'apply' : 'dry-run') as 'apply' | 'dry-run',
+      generatedAt: new Date().toISOString(),
+      changes: cli.apply
+        ? written?.changes ?? []
+        : requeue.flatMap((d) => [
+            { table: 'documents', rowKey: d.document.id, field: 'extraction_status', before: d.document.extractionStatus, after: REQUEUED_STATUS },
+            { table: 'documents', rowKey: d.document.id, field: 'extraction_error', before: d.document.extractionError, after: null },
+          ]),
       database: actual,
       apply: cli.apply,
       at: new Date().toISOString(),
       // The BACKUP: each document's prior status and error, so an applied run
       // can be reversed from this file alone.
-      requeued: requeue.map((d) => ({
+      requeued: requeue.filter((d) => !cli.apply || writtenSet.has(d.document.id)).map((d) => ({
         documentId: d.document.id,
         ipoId: d.document.ipoId,
         ipoName: d.document.ipoName,
@@ -262,14 +313,8 @@ async function main(): Promise<void> {
       return;
     }
 
-    // The extractor version is deliberately NOT touched — see the header.
-    await (db as any)
-      .update(schema.documents)
-      .set({ extractionStatus: REQUEUED_STATUS, extractionError: null })
-      .where(inArray(schema.documents.id, requeue.map((d) => d.document.id)));
-
-    console.log(`${TOOL}: reset ${requeue.length} documents to ${REQUEUED_STATUS}:`);
-    for (const d of requeue) console.log(`  ${d.document.ipoName ?? d.document.ipoId} [doc ${d.document.id}]`);
+    console.log(`${TOOL}: reset ${writtenSet.size} of ${requeue.length} documents to ${REQUEUED_STATUS} (a row changed since the read is left alone):`);
+    for (const d of requeue.filter((x) => writtenSet.has(x.document.id))) console.log(`  ${d.document.ipoName ?? d.document.ipoId} [doc ${d.document.id}]`);
   } finally {
     // The shared pool is process-wide; a repair tool that closed it would
     // break any caller importing this module for its pure parts.

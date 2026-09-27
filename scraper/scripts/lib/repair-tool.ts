@@ -631,13 +631,35 @@ export interface UpsertFieldSourceParams {
 export async function upsertFieldSource(
   txLike: SelectInsertLike,
   params: UpsertFieldSourceParams
-): Promise<{ previousSource: string | null }> {
+): Promise<{ previousSource: string | null; changes: RepairLedgerFieldChange[] }> {
   const tableName = params.tableName ?? 'ipos';
-  const previousSource = await readFieldSource(txLike, {
-    ipoId: params.ipoId,
-    tableName,
-    fieldName: params.fieldName,
-  });
+  // #457 round 2: read the WHOLE prior row (same single select as before), so
+  // the upsert can report its true before/after for the repair ledger.
+  const priorRows = await txLike
+    .select({
+      source: schema.fieldSources.source,
+      confidence: schema.fieldSources.confidence,
+      previousValue: schema.fieldSources.previousValue,
+      previousSource: schema.fieldSources.previousSource,
+      dataLineage: schema.fieldSources.dataLineage,
+      updatedAt: schema.fieldSources.updatedAt,
+      updatedBy: schema.fieldSources.updatedBy,
+    })
+    .from(schema.fieldSources)
+    .where(
+      and(
+        eq(schema.fieldSources.ipoId, params.ipoId),
+        eq(schema.fieldSources.tableName, tableName),
+        eq(schema.fieldSources.fieldName, params.fieldName)
+      )
+    )
+    .limit(1)
+    // #457 round 3: the prior row is read under the upsert's own row lock, so the
+    // ledger's `before` is the value the write actually replaced (a caller runs this
+    // inside its write transaction).
+    .for('update');
+  const prior = (priorRows[0] ?? null) as Record<string, unknown> | null;
+  const previousSource = (prior?.source ?? null) as string | null;
   const previousValue = params.previousValue === null ? null : String(params.previousValue);
   const row = {
     source: params.source as never,
@@ -674,7 +696,24 @@ export async function upsertFieldSource(
       set: row,
     });
 
-  return { previousSource };
+  // Column names as in the DB (snake_case), keyed by the unique index, so a
+  // restore needs no mapping: a (row) insert is undone by deleting that key;
+  // an update by writing each `before` back.
+  const rowKey = { ipo_id: params.ipoId, table_name: tableName, row_key: '', field_name: params.fieldName };
+  const toCols = (r: Record<string, unknown>) => ({
+    source: r.source ?? null,
+    confidence: r.confidence ?? null,
+    previous_value: r.previousValue ?? null,
+    previous_source: r.previousSource ?? null,
+    data_lineage: r.dataLineage ?? null,
+    updated_at: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : (r.updatedAt ?? null),
+    updated_by: r.updatedBy ?? null,
+  });
+  const after = toCols(row as unknown as Record<string, unknown>);
+  const changes: RepairLedgerFieldChange[] = prior
+    ? diffToLedgerEntries('field_sources', rowKey, toCols(prior), after)
+    : [{ table: 'field_sources', rowKey, field: '(row)', before: null, after }];
+  return { previousSource, changes };
 }
 
 /**
@@ -958,8 +997,195 @@ export function buildAlreadyRepairedSet<T extends { ipoId: string; fieldName: st
   return new Set(rows.filter(isRepairedByThisTool).map((r) => alreadyRepairedKey(r.ipoId, r.fieldName)));
 }
 
-/** Write an applied-ledger / backup artifact, creating its directory. */
-export function writeLedgerFile(filePath: string, payload: unknown): string {
+/**
+ * #457: one changed FIELD's prior and new value — the unit a repair can be
+ * undone from. A ledger holding only a list of changed row ids (the
+ * `backfill-normalized-name` class before this fix) is not a rollback
+ * artifact: it names WHAT was touched but not what to restore it to.
+ */
+export interface RepairLedgerFieldChange {
+  /** The table the row lives in (e.g. `promoters`, `field_sources`, `drizzle.__drizzle_migrations`). */
+  table: string;
+  /** The row's identity — a uuid/id string, or a composite key for tables with no single-column PK. */
+  rowKey: string | Record<string, string | number>;
+  /** The column name that changed. */
+  field: string;
+  /** The value BEFORE this repair — read from the row in the same read/transaction that decided to change it. */
+  before: unknown;
+  /** The value AFTER this repair (the value written, or that would be written on a dry run). */
+  after: unknown;
+}
+
+/**
+ * The required shape of every repair/backfill ledger or backup artifact
+ * (#457). `changes` is mandatory and MUST carry a `before` for every entry —
+ * that is the type-level detection: a tool that only records changed ids
+ * cannot satisfy this type, so it fails `tsc` before it ever runs. Extra
+ * tool-specific fields (counts, scope, timing) are still allowed alongside
+ * `changes` via the index signature.
+ */
+export interface RepairLedgerPayload {
+  tool: string;
+  mode: 'dry-run' | 'apply';
+  /** ISO-8601 UTC instant this ledger was written — read from the clock, per `.claude/rules/ist-timezone.md`. */
+  generatedAt: string;
+  changes: readonly RepairLedgerFieldChange[];
+  [extra: string]: unknown;
+}
+
+/**
+ * Diff two snapshots of the SAME row into per-field ledger entries — the
+ * mechanical way a repair tool turns a `before` row (read in the same
+ * transaction as the write) and an `after` row (the values it wrote, or
+ * would write on a dry run) into `RepairLedgerPayload['changes']`. Only
+ * fields that actually differ are emitted; a field absent from both objects
+ * is ignored. Comparison is by `JSON.stringify` equality, which is exact for
+ * the primitive/date-as-string/number values these tools repair.
+ */
+export function diffToLedgerEntries(
+  table: string,
+  rowKey: string | Record<string, string | number>,
+  before: Record<string, unknown>,
+  after: Record<string, unknown>
+): RepairLedgerFieldChange[] {
+  const fields = new Set([...Object.keys(before), ...Object.keys(after)]);
+  const entries: RepairLedgerFieldChange[] = [];
+  for (const field of fields) {
+    // #457 round 3: a field in only one snapshot is a mismatched read, not a null —
+    // recording it as undefined would vanish from the JSON ledger.
+    if (!(field in before) || !(field in after)) {
+      throw new Error(`diffToLedgerEntries(${table}): field "${field}" is in only one of the before/after snapshots (#457)`);
+    }
+    const b = before[field];
+    const a = after[field];
+    if (JSON.stringify(b) !== JSON.stringify(a)) {
+      entries.push({ table, rowKey, field, before: b, after: a });
+    }
+  }
+  return entries;
+}
+
+/**
+ * #457 round 2: turn ONE row returned by a guarded
+ * `WITH old AS (SELECT ... FOR UPDATE) UPDATE ... FROM old RETURNING old.<f> AS old_<f>, t.<f> AS new_<f>`
+ * into ledger entries — the before/after of each named column exactly as the
+ * statement that wrote it saw it (no second read, no planned value). Field
+ * names in the ledger are the DB column names, so a restore needs no mapping.
+ */
+export function changesFromReturnedRow(
+  table: string,
+  rowKey: string | Record<string, string | number>,
+  row: Record<string, unknown>,
+  columns: readonly string[]
+): RepairLedgerFieldChange[] {
+  const before: Record<string, unknown> = {};
+  const after: Record<string, unknown> = {};
+  for (const c of columns) {
+    if (!(`old_${c}` in row) || !(`new_${c}` in row)) {
+      throw new Error(`changesFromReturnedRow(${table}): RETURNING is missing old_${c}/new_${c}`);
+    }
+    before[c] = row[`old_${c}`];
+    after[c] = row[`new_${c}`];
+  }
+  return diffToLedgerEntries(table, rowKey, before, after);
+}
+
+/**
+ * #457 round 3: the one guarded write shape for a repair that UPDATEs rows by id.
+ * In ONE statement: lock each row that still satisfies `guard` (SELECT ... FOR
+ * UPDATE), update exactly those, and RETURN every column in `columns` before
+ * (as locked) and after (as written), as text so a restore is exact. A row
+ * that no longer matches `guard` (changed since the tool's read) is neither
+ * written nor ledgered. No `before` is ever typed by the caller.
+ *
+ * `table`, `idColumn` and `columns` are identifiers checked against
+ * /^[a-z_][a-z0-9_]*$/ before use; `guard` and `set` are drizzle `sql`
+ * fragments with bound parameters, written against unqualified column names.
+ */
+export async function updateRowsReturningChanges(
+  dbx: ExecuteLike,
+  args: {
+    table: string;
+    ids: readonly string[];
+    guard: SQL;
+    set: SQL;
+    columns: readonly string[];
+    idColumn?: string;
+  }
+): Promise<{ writtenIds: string[]; changes: RepairLedgerFieldChange[] }> {
+  const idColumn = args.idColumn ?? 'id';
+  for (const ident of [args.table, idColumn, ...args.columns]) {
+    if (!/^[a-z_][a-z0-9_]*$/.test(ident)) throw new Error(`updateRowsReturningChanges: bad identifier ${JSON.stringify(ident)}`);
+  }
+  if (args.columns.length === 0) throw new Error('updateRowsReturningChanges: columns must name every column the SET changes');
+  if (args.ids.length === 0) return { writtenIds: [], changes: [] };
+  const t = sql.raw(args.table);
+  const id = sql.raw(idColumn);
+  const oldCols = sql.raw(args.columns.map((c) => `${c}::text AS ${c}`).join(', '));
+  const returning = sql.raw(
+    args.columns.map((c) => `old.${c} AS old_${c}, t.${c}::text AS new_${c}`).join(', ')
+  );
+  const res = await dbx.execute(sql`
+    WITH old AS (
+      SELECT ${id} AS __id, ${oldCols}
+        FROM ${t}
+       WHERE ${id} = ANY(${sql.param([...args.ids])}::uuid[])
+         AND (${args.guard})
+       FOR UPDATE
+    )
+    UPDATE ${t} t
+       SET ${args.set}
+      FROM old
+     WHERE t.${id} = old.__id
+    RETURNING t.${id}::text AS __id, ${returning}
+  `);
+  const rows = ((res as { rows?: Record<string, unknown>[] }).rows ?? (Array.isArray(res) ? res : [])) as Record<string, unknown>[];
+  const writtenIds: string[] = [];
+  const changes: RepairLedgerFieldChange[] = [];
+  for (const r of rows) {
+    const rowId = String(r.__id);
+    writtenIds.push(rowId);
+    changes.push(...changesFromReturnedRow(args.table, rowId, r, args.columns));
+  }
+  return { writtenIds, changes };
+}
+
+/**
+ * Runtime half of the #457 detection: the type catches a caller that is typed,
+ * this catches one that is not (`payload: unknown` passthrough, `as unknown as`,
+ * a file excluded from tsconfig.scripts.json). Throws before anything is written.
+ */
+export function assertRepairLedgerPayload(payload: unknown): asserts payload is RepairLedgerPayload {
+  const p = payload as Partial<RepairLedgerPayload> | null;
+  if (!p || typeof p !== 'object') throw new Error('repair ledger: payload is not an object (#457)');
+  if (typeof p.tool !== 'string' || p.tool.length === 0) throw new Error('repair ledger: `tool` missing (#457)');
+  if (p.mode !== 'apply' && p.mode !== 'dry-run') throw new Error(`repair ledger (${p.tool}): \`mode\` must be 'apply' or 'dry-run' (#457)`);
+  if (typeof p.generatedAt !== 'string') throw new Error(`repair ledger (${p.tool}): \`generatedAt\` missing (#457)`);
+  if (!Array.isArray(p.changes)) throw new Error(`repair ledger (${p.tool}): \`changes\` array missing (#457)`);
+  p.changes.forEach((c, i) => {
+    const e = c as Partial<RepairLedgerFieldChange> | null;
+    if (!e || typeof e !== 'object') throw new Error(`repair ledger (${p.tool}): changes[${i}] is not an object (#457)`);
+    if (typeof e.table !== 'string' || e.table.length === 0) throw new Error(`repair ledger (${p.tool}): changes[${i}].table missing (#457)`);
+    if (e.rowKey === undefined || e.rowKey === null || e.rowKey === '') throw new Error(`repair ledger (${p.tool}): changes[${i}].rowKey missing (#457)`);
+    if (typeof e.field !== 'string' || e.field.length === 0) throw new Error(`repair ledger (${p.tool}): changes[${i}].field missing (#457)`);
+    // #457 round 3: `before: undefined` is as bad as no `before` — JSON.stringify drops it from the file.
+    if (!('before' in e) || e.before === undefined) throw new Error(`repair ledger (${p.tool}): changes[${i}] has no \`before\` — a repair that cannot say what it overwrote cannot be undone (#457)`);
+    if (!('after' in e) || e.after === undefined) throw new Error(`repair ledger (${p.tool}): changes[${i}] has no \`after\` (#457)`);
+  });
+}
+
+/**
+ * Write an applied-ledger / backup artifact, creating its directory.
+ *
+ * The `payload` type is the compile-time half of the #457 detection; the
+ * runtime `assertRepairLedgerPayload` is the other half (an untyped or cast
+ * caller still throws before the file is written).
+ * `scripts/ci/check-repair-ledger-calls.mjs` is the lint half: it refuses an
+ * `as unknown as` / `: unknown` payload at a call site and a caller excluded
+ * from tsconfig.scripts.json.
+ */
+export function writeLedgerFile(filePath: string, payload: RepairLedgerPayload): string {
+  assertRepairLedgerPayload(payload);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 1));
   return filePath;

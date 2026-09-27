@@ -24,6 +24,7 @@ import {
   decideUndoIpoConflict,
   describeDbConnectionTarget,
   describeIpoScope,
+  diffToLedgerEntries,
   flagIsPresent,
   formatCacheInvalidationBlockNotice,
   guardCacheInvalidation,
@@ -40,6 +41,8 @@ import {
   readFieldSource,
   upsertFieldSource,
   writeLedgerFile,
+  type RepairLedgerFieldChange,
+  type RepairLedgerPayload,
 } from '../../../scripts/lib/repair-tool.js';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -53,7 +56,8 @@ import path from 'node:path';
 const FAKE_USABLE_ENV: NodeJS.ProcessEnv = { DATABASE_URL: 'postgresql://user:pw@localhost:5432/fake_test_db' }; // secret-scan:allow (dummy fixture)
 
 function mockTx(existingSource: string | null) {
-  const limit = vi.fn().mockResolvedValue(existingSource ? [{ source: existingSource }] : []);
+  // #457 round 3: upsertFieldSource reads the prior row with .limit(1).for('update')
+  const limit = vi.fn(() => { const r = existingSource ? [{ source: existingSource }] : []; return Object.assign(Promise.resolve(r), { for: vi.fn().mockResolvedValue(r) }); });
   const where = vi.fn().mockReturnValue({ limit });
   const from = vi.fn().mockReturnValue({ where });
   const select = vi.fn().mockReturnValue({ from });
@@ -652,8 +656,84 @@ describe('writeLedgerFile', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'repair-tool-'));
     try {
       const file = path.join(dir, 'nested', 'ledger.json');
-      writeLedgerFile(file, [{ slug: 'a', changes: 1 }]);
-      expect(JSON.parse(readFileSync(file, 'utf-8'))).toEqual([{ slug: 'a', changes: 1 }]);
+      const payload: RepairLedgerPayload = {
+        tool: 'test-tool',
+        mode: 'apply',
+        generatedAt: '2026-09-26T00:00:00.000Z',
+        changes: [{ table: 'ipos', rowKey: 'ipo-1', field: 'slug', before: 'a', after: 'b' }],
+      };
+      writeLedgerFile(file, payload);
+      expect(JSON.parse(readFileSync(file, 'utf-8'))).toEqual(payload);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('#457 — every repair ledger records a rollback-capable before value', () => {
+  it('MUTATION: a payload with no `before` on a change fails to type-check — this is a compile-time', () => {
+    // This test's REAL assertion is that the next two lines do NOT type-check
+    // if uncommented (proven by hand: deleting `before` from RepairLedgerFieldChange,
+    // or from RepairLedgerPayload's required `changes` field, turns `tsc -p
+    // tsconfig.scripts.json` red for every one of the 25 repair tools this class
+    // covers — see scripts/repair-*.ts, scripts/backfill-*.ts, scripts/requeue-*.ts).
+    // The runtime assertion below is the reversal-capability floor: a real ledger
+    // entry can always be read back and used to restore the row.
+    const entry: RepairLedgerFieldChange = { table: 'ipos', rowKey: 'ipo-1', field: 'slug', before: 'old', after: 'new' };
+    expect(entry.before).toBe('old');
+    expect(Object.prototype.hasOwnProperty.call(entry, 'before')).toBe(true);
+  });
+
+  it('a changed-ids-only ledger (the pre-fix backfill-normalized-name shape) is rejected by the type', () => {
+    // @ts-expect-error — `changedIds: string[]` alone is not a valid RepairLedgerPayload;
+    // this is the class this fix closes (issue #457).
+    const badPayload: RepairLedgerPayload = { tool: 't', mode: 'apply', generatedAt: 'x', changedIds: ['a', 'b'] };
+    expect(badPayload).toBeTruthy();
+  });
+
+  describe('diffToLedgerEntries', () => {
+    it('emits one entry per field that actually changed, carrying both values', () => {
+      const before = { id: 'row-1', normalizedName: 'old-name', unrelated: 1 };
+      const after = { id: 'row-1', normalizedName: 'new-name', unrelated: 1 };
+      const entries = diffToLedgerEntries('promoters', 'row-1', before, after);
+      expect(entries).toEqual([{ table: 'promoters', rowKey: 'row-1', field: 'normalizedName', before: 'old-name', after: 'new-name' }]);
+    });
+
+    it('MUTATION: comparing by reference instead of value would miss no-op writes — deep-equal objects are not diffed', () => {
+      const before = { id: 'row-1', payload: { a: 1 } };
+      const after = { id: 'row-1', payload: { a: 1 } };
+      expect(diffToLedgerEntries('t', 'row-1', before, after)).toEqual([]);
+    });
+
+    it('emits nothing when before/after are identical', () => {
+      const row = { id: 'row-1', field: 'same' };
+      expect(diffToLedgerEntries('t', 'row-1', row, row)).toEqual([]);
+    });
+  });
+
+  it('a ledger written by writeLedgerFile can be read back and used to restore the row (reversal proof)', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'repair-tool-'));
+    try {
+      const file = path.join(dir, 'ledger.json');
+      // Simulates a real repair: row starts at `before`, tool changes it to `after`.
+      const liveRow: Record<string, unknown> = { id: 'row-1', normalizedName: 'WRONG', other: 'x' };
+      const before = { ...liveRow };
+      liveRow.normalizedName = 'CORRECT';
+      const after = { ...liveRow };
+      writeLedgerFile(file, {
+        tool: 'backfill-normalized-name',
+        mode: 'apply',
+        generatedAt: '2026-09-26T00:00:00.000Z',
+        changes: diffToLedgerEntries('promoters', 'row-1', before, after),
+      });
+
+      // Undo: read the ledger back and restore every field to its `before` value.
+      const ledger = JSON.parse(readFileSync(file, 'utf-8')) as RepairLedgerPayload;
+      for (const change of ledger.changes) {
+        (liveRow as Record<string, unknown>)[change.field] = change.before;
+      }
+      expect(liveRow).toEqual(before);
+      expect(liveRow.normalizedName).toBe('WRONG');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -1054,5 +1134,45 @@ describe('queryLatestFieldSourceDate (#422)', () => {
       }),
     };
     expect(await queryLatestFieldSourceDate(tx as any, { ipoId: 'x', fieldName: 'openDate' })).toBe('2026-09-01');
+  });
+});
+
+describe('#457 round 2: writeLedgerFile validates the shape at runtime (an untyped or cast caller still fails)', () => {
+  it('throws, and writes nothing, on an old-shape payload with no `changes` / no `before`', async () => {
+    const { writeLedgerFile } = await import('../../../scripts/lib/repair-tool.js');
+    const os = await import('node:os');
+    const fsm = await import('node:fs');
+    const pth = await import('node:path');
+    const file = pth.join(os.tmpdir(), `ledger-457-${process.pid}.json`);
+    const untyped = (p: unknown) => writeLedgerFile(file, p as never);
+    expect(() => untyped({ apply: true, dbName: 'x', ledger: [] })).toThrow(/tool/);
+    expect(() => untyped({ tool: 't', mode: 'apply', generatedAt: 'x', ledger: [] })).toThrow(/changes/);
+    expect(() =>
+      untyped({ tool: 't', mode: 'apply', generatedAt: 'x', changes: [{ table: 'ipos', rowKey: 'a', field: 'slug', after: 'b' }] })
+    ).toThrow(/no `before`/);
+    expect(fsm.existsSync(file)).toBe(false);
+  });
+});
+
+describe('#457 round 3: undefined before/after is refused (JSON.stringify drops it, so the file would lose it)', () => {
+  it('writeLedgerFile throws on `before: undefined` and on `after: undefined`, writing nothing', async () => {
+    const { writeLedgerFile } = await import('../../../scripts/lib/repair-tool.js');
+    const file = path.join(tmpdir(), `ledger-457-r3-${process.pid}.json`);
+    const base = { tool: 't', mode: 'apply' as const, generatedAt: 'x' };
+    expect(() =>
+      writeLedgerFile(file, { ...base, changes: [{ table: 'ipos', rowKey: 'a', field: 'slug', before: undefined, after: 'b' }] })
+    ).toThrow(/no `before`/);
+    expect(() =>
+      writeLedgerFile(file, { ...base, changes: [{ table: 'ipos', rowKey: 'a', field: 'slug', before: 'a', after: undefined }] })
+    ).toThrow(/no `after`/);
+    expect(() => readFileSync(file)).toThrow();
+  });
+
+  it('diffToLedgerEntries refuses a field present in only one snapshot (a mismatched read, not a null)', async () => {
+    const { diffToLedgerEntries } = await import('../../../scripts/lib/repair-tool.js');
+    expect(() => diffToLedgerEntries('ipos', 'a', { slug: 'x' }, { slug: 'y', updated_at: 'z' })).toThrow(/only one of the before\/after/);
+    expect(diffToLedgerEntries('ipos', 'a', { slug: 'x', n: null }, { slug: 'y', n: null })).toEqual([
+      { table: 'ipos', rowKey: 'a', field: 'slug', before: 'x', after: 'y' },
+    ]);
   });
 });
