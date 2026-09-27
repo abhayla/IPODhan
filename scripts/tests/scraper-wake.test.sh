@@ -1479,7 +1479,7 @@ RC_ARGV_LOG="$(mktemp)"
 OUT20D="$(PATH="$STUBDIR:$PATH" RC_ARGV_LOG="$RC_ARGV_LOG" REDIS_URL="redis://127.0.0.1:6379/1" \
   DEPLOY_SLOT=staging DATABASE_URL="postgresql://u@db:5432/ipodhan_staging" \
   SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" sh "$WAKE" data 2>&1)"
-if grep -qx -- "-u redis://127.0.0.1:6379/1 TTL staging:lock:resource:scraper:cycle" "$RC_ARGV_LOG" \
+if grep -qx -- "-h 127.0.0.1 -p 6379 -n 1 TTL staging:lock:resource:scraper:cycle" "$RC_ARGV_LOG" \
    && printf '%s' "$OUT20D" | grep -q "lock_key=staging:lock:resource:scraper:cycle"; then
   pass "case 20d: a staging wake reads staging:lock:resource:scraper:cycle (#151)"
 else
@@ -1513,6 +1513,64 @@ else
 fi
 rm -rf "$RC_ARGV_LOG" "$EMPTY_SCRAPER_DIR"
 
+# case 20g (#719 round 2): a REDIS_URL of the shape every IPODhan .env uses —
+# password only, no username (`redis://:FAKEPW@host:port/db`) — must never
+# reach redis-cli as `-u URL` (redis-cli parses that userinfo as an EMPTY
+# username and authenticates as ACL user "", which is WRONGPASS/NOAUTH on a
+# real server; redis src/cli_common.c:341-343, cliAuth 1016-1019 at tag
+# 7.0.15). The stub records its own argv AND its REDISCLI_AUTH env var so the
+# test can assert both the shape of the call and that the password only ever
+# travels via the env, never on the command line.
+STUBDIR20G="$(mktemp -d)"
+RC_ARGV_LOG="$(mktemp)"
+printf '%s\n' \
+  '#!/bin/sh' \
+  '{ printf "%s" "$*"; printf "\n"; printf "AUTH_ENV=%s\n" "${REDISCLI_AUTH-<unset>}"; } >> "$RC_ARGV_LOG"' \
+  'echo 300' \
+  > "$STUBDIR20G/redis-cli"
+chmod +x "$STUBDIR20G/redis-cli"
+FAKE_REDIS_URL_20G="redis://:FAKEPW@127.0.0.1:6379/2"  # secret-scan:allow (dummy test password FAKEPW, not a real credential)
+OUT20G="$(PATH="$STUBDIR20G:$PATH" RC_ARGV_LOG="$RC_ARGV_LOG" REDIS_URL="$FAKE_REDIS_URL_20G" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" sh "$WAKE" data 2>&1)"
+if grep -qx -- "-h 127.0.0.1 -p 6379 -n 2 TTL prod:lock:resource:scraper:cycle" "$RC_ARGV_LOG"; then
+  pass "case 20g: an empty-username REDIS_URL reaches redis-cli as -h/-p/-n, never --user or -u"
+else
+  fail "case 20g: expected -h 127.0.0.1 -p 6379 -n 2 TTL ... with no --user/-u, argv: $(cat "$RC_ARGV_LOG")"
+fi
+if grep -qx -- "AUTH_ENV=FAKEPW" "$RC_ARGV_LOG"; then
+  pass "case 20g: the password reaches redis-cli via REDISCLI_AUTH"
+else
+  fail "case 20g: expected AUTH_ENV=FAKEPW in the stub's recorded environment, got: $(cat "$RC_ARGV_LOG")"
+fi
+if printf '%s' "$OUT20G" | grep -q FAKEPW; then
+  fail "case 20g: the password FAKEPW leaked into the wrapper's own log output: $OUT20G"
+else
+  pass "case 20g: FAKEPW never appears in the wrapper's own log output"
+fi
+if printf '%s' "$OUT20G" | grep -q "wake-skipped:.*lock_ttl=300s remaining"; then
+  pass "case 20g: the TTL read still succeeds end to end (wake-skipped, 300s)"
+else
+  fail "case 20g: expected a wake-skipped line with lock_ttl=300s remaining, got: $OUT20G"
+fi
+rm -rf "$STUBDIR20G" "$RC_ARGV_LOG"
+
+# case 20h (#719 round 2): a REAL `user:pw` REDIS_URL still passes --user —
+# the fix must not regress the (currently unused, but supported) named-ACL-
+# user shape.
+STUBDIR20H="$(mktemp -d)"
+RC_ARGV_LOG="$(mktemp)"
+printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$*" >> "$RC_ARGV_LOG"' 'echo 300' > "$STUBDIR20H/redis-cli"
+chmod +x "$STUBDIR20H/redis-cli"
+FAKE_REDIS_URL_20H="redis://scraperuser:FAKEPW@127.0.0.1:6379/2"  # secret-scan:allow (dummy test password FAKEPW, not a real credential)
+OUT20H="$(PATH="$STUBDIR20H:$PATH" RC_ARGV_LOG="$RC_ARGV_LOG" REDIS_URL="$FAKE_REDIS_URL_20H" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" sh "$WAKE" data 2>&1)"
+if grep -qx -- "-h 127.0.0.1 -p 6379 --user scraperuser -n 2 TTL prod:lock:resource:scraper:cycle" "$RC_ARGV_LOG"; then
+  pass "case 20h: a real user:pw REDIS_URL passes --user scraperuser"
+else
+  fail "case 20h: expected --user scraperuser in the redis-cli call, argv: $(cat "$RC_ARGV_LOG")"
+fi
+rm -rf "$STUBDIR20H" "$RC_ARGV_LOG"
+
 # case 20c: the actual committed script never INVOKES redis-cli with -t —
 # a static guard against the defect coming back, independent of the stub
 # cases above (which would also catch a *different* invalid flag). Comment
@@ -1527,6 +1585,27 @@ if grep -vE '^\s*#' "$DEPLOY_SCRIPT" | grep -qE "redis-cli[^|]*-t 3"; then
   fail "case 20c: $DEPLOY_SCRIPT (release_scraper_cycle_locks) still invokes redis-cli with '-t 3' — same #719 class"
 else
   pass "case 20c: $DEPLOY_SCRIPT does not invoke redis-cli with the invalid '-t 3' flag"
+fi
+
+# case 20i (#719 round 2): a static guard, independent of the stub cases
+# above, that no committed script ever hands redis-cli `-u`/`--user` built
+# straight from a REDIS_URL (the empty-username defect class). Comment
+# lines and the shared helper's own doc-comments are excluded so the guard
+# checks executable code, not prose that quotes the old, broken invocation.
+if grep -vE '^\s*#' "$WAKE" | grep -qE "redis-cli[^|]*-u[[:space:]]"; then
+  fail "case 20i: $WAKE still invokes redis-cli with '-u' (#719 round 2 — the empty-username class)"
+else
+  pass "case 20i: $WAKE does not invoke redis-cli with '-u'"
+fi
+if grep -vE '^\s*#' "$DEPLOY_SCRIPT" | grep -qE "redis-cli[^|]*-u[[:space:]]"; then
+  fail "case 20i: $DEPLOY_SCRIPT still invokes redis-cli with '-u' (#719 round 2 — the empty-username class)"
+else
+  pass "case 20i: $DEPLOY_SCRIPT does not invoke redis-cli with '-u'"
+fi
+if grep -vE '^\s*#' "$SCRIPT_DIR/../lib/redis-cli-auth.sh" | grep -qE "redis-cli.*-u[[:space:]]"; then
+  fail "case 20i: scripts/lib/redis-cli-auth.sh itself invokes redis-cli with '-u'"
+else
+  pass "case 20i: scripts/lib/redis-cli-auth.sh does not invoke redis-cli with '-u'"
 fi
 
 # --- Case 21 (#698): the wake records WHAT launched it ------------------------
