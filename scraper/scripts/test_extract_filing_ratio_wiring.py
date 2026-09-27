@@ -34,19 +34,63 @@ def field(envelope, name):
     return envelope.get("fields", {}).get(name)
 
 
-def test_run_emits_the_printed_current_ratio():
-    envelope = run(pages(), "RHP", "prasol-financial-ratios.txt")
+def _with_statement(monkeypatch, years, pnl_text=None):
+    """#771 round 3: the ratio column is chosen by the statement period the
+    stored net worth / EPS belong to, which the shared P&L core reports. The
+    fixture carries only the ratio note, so the core's answer is pinned."""
+    import extract_filing
+
+    real = extract_filing.extract_pnl_from_texts
+
+    def fake(page_texts, **kwargs):
+        out = real(page_texts, **kwargs)
+        out["annualYears"] = list(years)
+        if pnl_text is not None:
+            out["pnlPage"] = 9999
+        return out
+
+    monkeypatch.setattr(extract_filing, "extract_pnl_from_texts", fake)
+    extra = [(9999, pnl_text)] if pnl_text is not None else []
+    return pages() + extra
+
+
+def test_run_emits_the_current_ratio_for_the_statement_period(monkeypatch):
+    envelope = run(_with_statement(monkeypatch, [2026, 2025, 2024]), "RHP", "prasol.txt")
     got = field(envelope, "current_ratio")
-    assert got is not None, "current_ratio never emitted"
     assert got["value"] == 1.54, got
     assert got["page"] == 441, got
+    assert got["ratio_read"]["period"] == "2026-03-31", got
+    assert got["ratio_read"]["latest_statement_period"] == "2026-03-31", got
+    assert got["ratio_read"]["period_label"] == "FY 25-26", got
 
 
-def test_run_emits_the_printed_inventory_turnover():
-    envelope = run(pages(), "RHP", "prasol-financial-ratios.txt")
-    got = field(envelope, "inventory_turnover")
-    assert got is not None, "inventory_turnover never emitted"
-    assert got["value"] == 5.59, got
+def test_run_emits_the_inventory_turnover_for_the_statement_period(monkeypatch):
+    envelope = run(_with_statement(monkeypatch, [2026, 2025, 2024]), "RHP", "prasol.txt")
+    assert field(envelope, "inventory_turnover")["value"] == 5.59
+
+
+def test_an_older_statement_period_takes_that_periods_column(monkeypatch):
+    """Statement FY2025: both FY 24-25 columns (tables 1 and 2) print 1.34."""
+    envelope = run(_with_statement(monkeypatch, [2025, 2024, 2023]), "RHP", "prasol.txt")
+    assert field(envelope, "current_ratio")["value"] == 1.34
+
+
+def test_no_statement_period_writes_nothing_and_says_why():
+    envelope = run(pages(), "RHP", "prasol.txt")
+    got = field(envelope, "current_ratio")
+    assert got["value"] is None, got
+    assert got["check"]["detail"] == "ratio_statement_period_unknown", got
+
+
+def test_a_basis_different_from_the_statement_writes_nothing(monkeypatch):
+    """Prasol's FY 25-26 column is Standalone. Against a consolidated P&L it
+    would sit next to a net worth of another entity set."""
+    envelope = run(_with_statement(monkeypatch, [2026, 2025],
+                                   "Restated Consolidated Statement of Profit and Loss"),
+                   "RHP", "prasol.txt")
+    got = field(envelope, "current_ratio")
+    assert got["value"] is None, got
+    assert got["check"]["detail"] == "ratio_basis_differs_from_statement", got
 
 
 def test_quick_ratio_names_the_balance_sheet_inputs_it_does_not_have():

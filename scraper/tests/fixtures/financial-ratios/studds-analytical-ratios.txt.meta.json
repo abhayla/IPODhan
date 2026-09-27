@@ -1,0 +1,9 @@
+{
+  "sourceUrl": "local DRHP copy D:/Abhay/Ventures/IPODhan/pdf-parser-test/drhps/studds-drhp.pdf (gitignored, not committed)",
+  "sourceSha256": "efa72e61e358b12ec2d447e66b42c632026b6bf6a506720ab0cf2776650fc18f",
+  "capturedAt": "2026-09-27",
+  "ipoId": "studds",
+  "company": "Studds Accessories Limited",
+  "source": "laptop DRHP PDF, text layer by pdfplumber page.extract_text() - the same call the extractor makes",
+  "note": "DRHP PDF page 321, 'Note No:45 Analytical Ratios'. The period header is vertical text that pdfplumber returns scrambled ('30th A Ju s n a e t 2025 As at 3 2 1 0 s 2 t 5 March,'); the row prints four periods (30-Jun-2025 stub, FY25, FY24, FY23) then variance columns with no % sign. Before #771 round 3 the heading was not recognised and the reader claimed ratio_note_not_in_document; the correct outcome is a refusal naming unreadable headings. Mangling preserved; text layer only, the PDF is not committed."
+}

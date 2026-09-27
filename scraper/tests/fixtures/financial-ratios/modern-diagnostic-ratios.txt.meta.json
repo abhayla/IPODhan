@@ -1,0 +1,9 @@
+{
+  "sourceUrl": "local DRHP copy D:/Abhay/Ventures/IPODhan/pdf-parser-test/drhps/modern-diagnostic-drhp.pdf (gitignored, not committed)",
+  "sourceSha256": "ea9cec958c6cfc3427e37f34ded0630311c67980bbd12d5f219bf477e66c3e2c",
+  "capturedAt": "2026-09-27",
+  "ipoId": "modern-diagnostic",
+  "company": "Modern Diagnostic",
+  "source": "laptop DRHP PDF, text layer by pdfplumber page.extract_text() - the same call the extractor makes",
+  "note": "DRHP PDF pages F-28/F-29 (PDF 195-196). Page 196 is the Schedule III ratio table with NO heading on it or the page before; four periods '30/09/2024 31/03/2024 31/03/2023 31/03/2022' (stub first) and no variance column on the value row, variances in a second table below. Page 195 (accounting ratios, NAV) is the preceding page. Mangling preserved; text layer only, the PDF is not committed."
+}

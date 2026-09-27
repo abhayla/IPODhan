@@ -1,0 +1,91 @@
+<<<PAGE 195>>>
+MODERN DIAGNOSTIC & RESEARCH CENTRE LIMITED
+(Formerly also known as MODERN DIAGNOSTIC & RESEARCH CENTRE PRIVATE LIMITED)
+CIN : U85110DL2012PLC234368
+ANNEXURE –VI
+Statement of Accounting & Other Ratios, As Restated
+Particulars 9/30/2024 3/31/2024 3/31/2023 3/31/2022
+Net Profit as Restated (A) 495.53 579.48 (573.20) (145.14)
+Add: Depreciation 212.67 392.29 386.76 366.02
+Add: Interest on Loan 95.20 180.63 141.04 156.32
+Add: Income Tax/ Deferred Tax 197.89 106.93 (21.02) 258.93
+Less: Other Income (35.05) (154.15) (32.36) (37.22)
+EBITDA 966.23 1,105.18 (98.77) 598.92
+EBITDA Margin (%) 24.17% 16.46% -1.75% 9.95%
+Net Worth as Restated (B) 1,671.35 1,175.82 596.33 1,169.53
+Return on Net worth (%) as Restated (A/B) 29.65% 49.28% -96.12% -12.41%
+Equity Share at the end of year (in Nos.) (C) 1,000,000 1,000,000 1,000,000 1,000,000
+Weighted No. of Equity Shares (Pre-Bonus) (D) 1,000,000 1,000,000 1,000,000 1,000,000
+Weighted No. of Equity Shares (Post-Bonus) (E) 11,000,000 11,000,000 11,000,000 11,000,000
+(after considering Bonus Impact with retrospective effect)
+Basic & Diluted Earnings per Equity Share as Restated (A/D) 49.55 57.95 -57.32 -14.51
+Basic & Diluted Earnings per Equity Share as Restated after
+considering Bonus Impact with retrospective effect (A/E) 4.50 5.27 -5.21 -1.32
+Equity Share at the end of year (in Nos.) (F) 1,000,000 1,000,000 1,000,000 1,000,000
+Equity Share at the end of year (in Nos.)
+(after considering Bonus Impact with retrospective effect) (G) 11,000,000 11,000,000 11,000,000 11,000,000
+Net Asset Value per Equity share as Restated (B/C) 167.13 117.58 59.63 116.95
+Net Asset Value per Equity share as Restated after considering
+Bonus Impact with retrospective effect (B/G) 15.19 10.69 5.42 10.63
+Note:-
+EBITDA Margin = EBITDA/Total Revenues
+Earnings per share (₹) = Profit available to equity shareholders / Weighted No. of shares outstanding at the end of the year
+Return on Net worth (%) = Restated Profit after taxation / Net worth x 100
+Net asset value/Book value per share (₹) = Net worth / No. of equity shares
+The Company does not have any revaluation reserves or extra-ordinary items.
+As per Accounting Standard 20 (AS - 20), In case of a bonus issue or a share split, equity shares are issued to existing shareholders for no additional consideration.
+Therefore, the number of equity shares outstanding is increased without an increase in resources.The number of equitiy shares outstanding before the event is
+adjusted for the proportionate change in the number of equities shares outstanding as if the event had occurred at the beginning of the earliest period reported.
+F - 28
+<<<PAGE 196>>>
+MODERN DIAGNOSTIC & RESEARCH CENTRE LIMITED
+(Formerly also known as MODERN DIAGNOSTIC & RESEARCH CENTRE PRIVATE LIMITED)
+CIN : U85110DL2012PLC234368
+Sr. As at As At As At As At
+Ratio
+No. 30/09/2024 31/03/2024 31/03/2023 31/03/2022
+1 Current Ratio 0.87 0.75 0.58 0.87
+2 Debt-Equity Ratio 1.26 1.74 2.57 1.74
+3 Debt Service Coverage Ratio 3.38 2.69 -0.17 1.73
+4 Return on Equity (ROE)(%) 34.81% 65.40% -64.92% -17.24%
+5 Inventory Turnover Ratio 2.73 7.17 10.13 15.62
+6 Trade receivables turnover ratio 3.59 7.29 6.60 6.36
+7 Trade payables turnover ratio 1.26 2.23 1.97 1.91
+8 Net capital turnover ratio -8.57 -9.01 -9.76 -26.55
+9 Net profit ratio(%) 12.40% 8.63% -10.18% -2.41%
+10 Return on capital employed (ROCE)(%) 21.10% 25.58% -17.19% 8.75%
+11 Return on investments(%) 0.87% 5.06% 25.59% 5.70%
+Sr. As At As At
+Ratio Notes Notes
+No. 31/03/2024 31/03/2023
+1 Current Ratio 29.80%Refer A-1 -33.67%Refer B-1
+2 Debt-Equity Ratio -32.23%Refer A-2 47.18%Refer B-2
+3 Debt Service Coverage Ratio -1702.17%Refer A-3 -109.72%Refer B-3
+4 Return on Equity (ROE)(%) -200.74%Refer A-4 276.46%Refer B-4
+5 Inventory Turnover Ratio -29.22%Refer A-5 -35.14%Refer B-5
+6 Trade receivables turnover ratio 10.52% 3.80%
+7 Trade payables turnover ratio 13.10% 3.02%
+8 Net capital turnover ratio -7.67% -63.25%Refer B-6
+9 Net profit ratio(%) -184.76%Refer A-6 322.48%Refer B-7
+10 Return on capital employed (ROCE)(%) -248.80%Refer A-7 -296.47%Refer B-8
+11 Return on investments(%) -80.25%Refer A-8 349.30%Refer B-9
+Note : A Reasons for Variations:
+1Current Ratio : It is increased due to increse in Trade Receivables
+2Debt Equity Ratio: It is due to repayment of debts
+3Debt Service Coverage Ratio : It is decreased due to decrease in debts.
+4Return on Equity (ROE)(%) : The variance is due to increase in retained earnings
+5Inventory Turnover Ratio : It is increased due to decreased in purchase stock in trade
+6Net profit ratio(%) :It is increased as overall operating profit of company is increased
+7Return on capital employed (ROCE)(%) :The variance is due to increase in capital employed
+8Return on investments(%) : It is due to decrease in fixed deposit return on investment
+Note : B Reasons for Variations:
+1Current Ratio : It is decreased due to increse in Trade Payables
+2Debt Equity Ratio: It is increase due to increase in debts
+3DDeebbtt SSeerrvviiccee CCoovveerraaggee RRaattiioo :: IItt iiss ddeeccrreeaasseedd dduuee ttoo ddeeccrreeaassee iinn ddeebbttss. as debt repayment
+4Return on Equity (ROE)(%) : The variance is due to increase in retained earnings
+5Inventory Turnover Ratio : It is increased due to decreased in purchase stock in trade
+6Net capital turnover ratio : It is decreased due to decreased in revenue from operation
+7Net profit ratio(%) :It is increased as overall operating profit of company is increased
+8Return on capital employed (ROCE)(%) :The variance is due to increase in capital employed
+9Return on investments(%) : It is due to decrease in fixed deposit return on investment
+F - 29

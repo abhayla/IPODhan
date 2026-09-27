@@ -1,0 +1,9 @@
+{
+  "sourceUrl": "local DRHP copy D:/Abhay/Ventures/IPODhan/pdf-parser-test/drhps/water-infra-drhp.pdf (gitignored, not committed)",
+  "sourceSha256": "6881585a62883d1b0d2d85dcfcb1bcdbd31119efac77925d299c4688b8d87b8b",
+  "capturedAt": "2026-09-27",
+  "ipoId": "water-infra",
+  "company": "Water Infra",
+  "source": "laptop DRHP PDF, text layer by pdfplumber page.extract_text() - the same call the extractor makes",
+  "note": "DRHP PDF page 427, 'ANNEXURE 62: RATIOS ANALYSIS'. The period headings are split across lines ('31-Mar- 31-Mar- 31-Mar-' over '25 24 22') and interleaved with variance captions ('ending 31-Mar-25 ... and 31- Mar-24'). The label is followed by methodology words ('Current Ratio over Total Current 1.76 1.63 1.57 8.43% 3.40%'). Before round 3 the heading was not recognised (ratio_note_not_in_document). Mangling preserved; text layer only, the PDF is not committed."
+}

@@ -16,7 +16,7 @@ import pytest
 from financial_ratios import (
     derive_quick_ratio,
     find_ratio_note_pages,
-    read_printed_ratios,
+    read_ratio,
 )
 
 FIXTURES = os.path.join(
@@ -41,63 +41,6 @@ def test_the_note_is_located_on_every_page_it_spans():
     periods. Reading only the first would silently drop the older year."""
     found = find_ratio_note_pages(pages())
     assert found == [441, 442], found
-
-
-def test_the_printed_current_ratio_is_read_exactly_as_printed():
-    got = read_printed_ratios(pages())
-    assert got["current_ratio"][:2] == [1.54, 1.34], got["current_ratio"]
-
-
-def test_the_printed_inventory_turnover_is_read_exactly_as_printed():
-    """This is the number that CANNOT be recomputed from the statements.
-
-    Measured on Karamtara, which prints 4.09 and 3.57: cost of material over
-    average inventory gives 4.074 / 3.491, plus the inventory change 3.989 /
-    3.492, over closing stock 4.501 / 3.080. The numerator needed is 99.85
-    higher one year and 481.54 the next - not a constant, so no fixed
-    adjustment exists. Reading the printed figure is the only way to agree with
-    the document.
-    """
-    got = read_printed_ratios(pages())
-    assert got["inventory_turnover"][:2] == [5.59, 5.75], got["inventory_turnover"]
-
-
-def test_the_split_digit_mangling_is_repaired_where_it_actually_occurs():
-    """'1 .54' must come back as 1.54, not as 1 and 0.54, and not as 154.
-
-    The fixture keeps the mangling on purpose. `_normalize_numbers` in the
-    shared extractor does NOT repair these rows - its split-digit rule requires
-    two such tokens on a line and these carry one - so this slice repairs inside
-    the value span it has already identified.
-    """
-    raw = "\n".join(t for _i, t in pages())
-    assert "1 .54" in raw, "the fixture was tidied; the repair is no longer exercised"
-    assert "5 .59" in raw, "the fixture was tidied; the repair is no longer exercised"
-
-    got = read_printed_ratios(pages())
-    for value in got["current_ratio"] + got["inventory_turnover"]:
-        assert 0.01 < value < 1000, "%s looks like a mis-joined number" % value
-
-
-def test_the_second_period_table_is_read_too():
-    """The note prints FY25-26 against FY24-25, then FY24-25 against FY23-24.
-    Both tables are real disclosures and the reader must not stop at the first.
-    """
-    got = read_printed_ratios(pages())
-    assert len(got["current_ratio"]) >= 4, got["current_ratio"]
-    assert 1.19 in got["current_ratio"], got["current_ratio"]
-
-
-def test_a_document_with_no_ratio_note_yields_nothing_rather_than_guessing():
-    assert read_printed_ratios([(0, "A prospectus with no such note at all.")]) == {}
-
-
-def test_only_the_two_ratios_this_item_wants_are_taken():
-    """The note lists ten ratios - debt-equity, return on equity, receivables
-    turnover and more. Reading them all would quietly widen this item's scope
-    into fields nobody has asked for or designed a column for."""
-    got = read_printed_ratios(pages())
-    assert set(got) == {"current_ratio", "inventory_turnover"}, sorted(got)
 
 
 # --------------------------------------------------------------- quick ratio
@@ -153,5 +96,210 @@ def test_a_stray_ratio_row_elsewhere_is_not_swept_in():
         (12, "1 Current Ratio Current Assets Current Liabilities 9 .99 9.99 1.00% stray lookalike"),
     ]
     assert find_ratio_note_pages(stray) == [10]
-    got = read_printed_ratios(stray)
-    assert 9.99 not in got.get("current_ratio", []), got
+    got = read_ratio(stray, "current_ratio", (2026, 3, 31))
+    assert got.get("value") != 9.99, got
+
+
+# --------------------------------------------------------------------- #771
+# Three more real prospectuses, three more layouts. Before #771 the reader was
+# built from Prasol alone (a digit serial, exactly two values, a "Financial
+# Ratios" heading) and returned `ratio_row_not_in_note` for every one of these,
+# although each prints its current ratio. The fixtures are the issuers' own
+# pages; the expected values are read off those pages by eye.
+
+
+def test_a_statement_of_ratios_with_no_financial_ratios_heading_is_found():
+    """Green Asia Impex titles the note 'Statement of Ratios', puts the label
+    on its own line and the values on a later unnumbered line."""
+    found = find_ratio_note_pages(pages("green-asia-impex-statement-of-ratios.txt"))
+    assert 321 in found, found
+
+
+def test_the_accounting_ratios_statement_is_not_the_ratio_note():
+    """Green Asia's page 320 ('Statement of Earnings Per Share and Other
+    Statutory Ratios') carries EPS / RoNW / NAV and no current ratio."""
+    found = find_ratio_note_pages(pages("green-asia-impex-statement-of-ratios.txt"))
+    assert 320 not in found, found
+
+
+# ------------------------------------------------ #771 round 3: by PERIOD
+# The column written is the one whose period heading equals the latest restated
+# statement period (the period of the stored net worth / EPS). Rounds 1-2 chose
+# it by position; the independent review of 2026-09-27 measured five layouts
+# where that published another period's ratio. One row per layout below.
+
+_AMOUNTS = "a) Current Ratio Current Assets 1,234.56 Current Liabilities 987.65 1.25 1.10 13.6%"
+_HEAD = "Ratio Numerator Denominator {} Variance %"
+
+
+def _note(*lines):
+    return [(7, "60 Key Financial Ratios\n" + "\n".join(lines))]
+
+
+FY26 = (2026, 3, 31)
+FY25 = (2025, 3, 31)
+
+LAYOUTS = [
+    # (id, pages, key, latest period, expected value or None, expected reason)
+    ("prasol_two_tables_mixed_basis", pages(), "current_ratio", FY26, 1.54, None),
+    ("prasol_older_statement_year", pages(), "current_ratio", FY25, 1.34, None),
+    ("prasol_inventory_turnover", pages(), "inventory_turnover", FY26, 5.59, None),
+    ("a_one_lettered_glued_variance", pages("a-one-steels-key-financial-ratios.txt"),
+     "current_ratio", FY26, 1.34, None),
+    ("german_green_stranded_header", pages("german-green-steel-ratio-analysis.txt"),
+     "current_ratio", FY26, 0.97, None),
+    ("green_asia_label_then_value_line", pages("green-asia-impex-statement-of-ratios.txt"),
+     "current_ratio", FY26, 1.16, None),
+    ("studds_vertical_header", pages("studds-analytical-ratios.txt"), "current_ratio",
+     (2025, 6, 30), None, "ratio_period_headings_unreadable"),
+    ("studds_vertical_header_fy", pages("studds-analytical-ratios.txt"), "current_ratio",
+     FY25, None, "ratio_period_headings_unreadable"),
+    ("water_infra_split_header", pages("water-infra-ratios-analysis.txt"), "current_ratio",
+     FY25, 1.76, None),
+    ("modern_diagnostic_stub_is_latest", pages("modern-diagnostic-ratios.txt"), "current_ratio",
+     (2024, 9, 30), 0.87, None),
+    ("modern_diagnostic_fy_is_latest", pages("modern-diagnostic-ratios.txt"), "current_ratio",
+     (2024, 3, 31), 0.75, None),
+    # The reviewer's four synthetic probes, as printed (no readable period heading).
+    ("probe_four_years_one_variance", _note(
+        "1 Current Ratio Current Assets Current Liabilities 1.40 1.25 1.10 1.05 12.00%"),
+     "current_ratio", FY26, None, "ratio_period_headings_unreadable"),
+    ("probe_amounts_before_ratios", _note(_AMOUNTS), "current_ratio", FY26, None,
+     "ratio_period_headings_unreadable"),
+    ("probe_difference_before_percent", _note(
+        "1 Current Ratio Current Assets Current Liabilities 1.40 1.25 0.15 12.00%"),
+     "current_ratio", FY26, None, "ratio_period_headings_unreadable"),
+    ("probe_stub_variances_full_years_only", _note(
+        "1 Current Ratio Current Assets Current Liabilities 0.87 0.75 0.58 16.00% 29.30%"),
+     "current_ratio", (2025, 9, 30), None, "ratio_period_headings_unreadable"),
+    # The same shapes WITH a readable header: the right column, or a refusal.
+    ("four_years_one_variance_with_header", _note(
+        _HEAD.format("FY 25-26 FY 24-25 FY 23-24 FY 22-23"),
+        "1 Current Ratio Current Assets Current Liabilities 1.40 1.25 1.10 1.05 12.00%"),
+     "current_ratio", FY26, 1.40, None),
+    ("amounts_before_ratios_with_header", _note(_HEAD.format("31-Mar-26 31-Mar-25"), _AMOUNTS),
+     "current_ratio", FY26, None, "ratio_heading_count_differs_from_value_count"),
+    ("difference_before_percent_with_header", _note(
+        _HEAD.format("FY 25-26 FY 24-25"),
+        "1 Current Ratio Current Assets Current Liabilities 1.40 1.25 0.15 12.00%"),
+     "current_ratio", FY26, None, "ratio_heading_count_differs_from_value_count"),
+    ("stub_first_full_year_latest", _note(
+        _HEAD.format("30/09/2025 31/03/2025 31/03/2024"),
+        "1 Current Ratio Current Assets Current Liabilities 0.87 0.75 0.58 16.00% 29.30%"),
+     "current_ratio", FY25, 0.75, None),
+    ("oldest_first_order", _note(
+        _HEAD.format("FY 23-24 FY 24-25 FY 25-26"),
+        "1 Current Ratio Current Assets Current Liabilities 1.05 1.25 1.40 12.00% 5.00%"),
+     "current_ratio", FY26, 1.40, None),
+    ("latest_period_not_printed", _note(
+        _HEAD.format("FY 24-25 FY 23-24"),
+        "1 Current Ratio Current Assets Current Liabilities 1.25 1.10 12.00%"),
+     "current_ratio", FY26, None, "ratio_latest_period_not_in_headings"),
+    ("value_out_of_range", _note(
+        _HEAD.format("FY 25-26 FY 24-25"),
+        "1 Current Ratio Current Assets Current Liabilities 75.00 1.10 12.00%"),
+     "current_ratio", FY26, None, "ratio_value_out_of_range"),
+    ("qualified_row_is_not_the_ratio", _note(
+        _HEAD.format("FY 25-26 FY 24-25"),
+        "b) Current Ratio excluding inventory Current Assets Current Liabilities 0.80 0.75 6.67%"),
+     "current_ratio", FY26, None, "ratio_row_not_in_note"),
+    ("two_tables_disagree_on_latest", _note(
+        _HEAD.format("FY 25-26 FY 24-25"),
+        "1 Current Ratio Current Assets Current Liabilities 1.40 1.25 12.00%",
+        _HEAD.format("FY 25-26 FY 24-25"),
+        "1 Current Ratio Current Assets Current Liabilities 1.45 1.25 16.00%"),
+     "current_ratio", FY26, None, "ratio_rows_disagree_for_latest_period"),
+    ("no_statement_period", pages(), "current_ratio", None, None,
+     "ratio_statement_period_unknown"),
+]
+
+
+@pytest.mark.parametrize("case", LAYOUTS, ids=[c[0] for c in LAYOUTS])
+def test_each_layout_writes_the_latest_periods_value_or_a_named_refusal(case):
+    _id, page_texts, key, latest, value, reason = case
+    got = read_ratio(page_texts, key, latest)
+    assert got.get("value") == value, got
+    if value is None:
+        assert got["reason"] == reason, got
+    else:
+        assert got["period"] == "%04d-%02d-%02d" % latest, got
+
+
+def test_the_value_page_is_the_page_of_the_row_not_the_heading():
+    text = [(10, "49 Financial Ratios\nsome preamble"),
+            (11, "Ratio FY 25-26 FY 24-25\n"
+                 "1 Current Ratio Current Assets Current Liabilities 1.54 1.34 15.09% x")]
+    assert read_ratio(text, "current_ratio", FY26)["page"] == 11
+
+
+def test_the_split_digit_mangling_is_repaired_not_mis_joined():
+    raw = "\n".join(t for _i, t in pages())
+    assert "1 .54" in raw, "the fixture was tidied; the repair is no longer exercised"
+    assert read_ratio(pages(), "current_ratio", FY26)["value"] == 1.54
+
+
+def test_a_basis_different_from_the_statement_is_refused():
+    """Prasol's FY 25-26 column is Standalone, FY 24-25 Consolidated."""
+    assert read_ratio(pages(), "current_ratio", FY26, "standalone")["value"] == 1.54
+    got = read_ratio(pages(), "current_ratio", FY26, "consolidated")
+    assert got["value"] is None and got["reason"] == "ratio_basis_differs_from_statement", got
+    assert read_ratio(pages(), "current_ratio", FY25, "consolidated")["value"] == 1.34
+
+
+def test_renamed_notes_are_found_not_claimed_absent():
+    """Studds ('Analytical Ratios'), Water Infra ('RATIOS ANALYSIS') and Modern
+    Diagnostic (no heading; the page carries the Schedule III ratio set) were
+    all reported ratio_note_not_in_document while printing the note."""
+    assert 321 in find_ratio_note_pages(pages("studds-analytical-ratios.txt"))
+    assert 427 in find_ratio_note_pages(pages("water-infra-ratios-analysis.txt"))
+    assert find_ratio_note_pages(pages("modern-diagnostic-ratios.txt")) == [196]
+
+
+def test_a_no_note_claim_carries_the_pages_that_print_a_current_ratio_line():
+    kpi = [(41, "Key Performance Indicators\nCurrent Ratio(11) 1.76 1.63 1.57")]
+    got = read_ratio(kpi, "current_ratio", FY25)
+    assert got["reason"] == "ratio_note_not_in_document"
+    assert got["current_ratio_line_pages"] == [41]
+    assert read_ratio([(1, "no ratios")], "current_ratio", FY25)["current_ratio_line_pages"] == []
+
+
+def test_a_mid_month_date_is_not_a_period_heading():
+    """German Green's variance caption '2024-25 March 2025' contains '25 March
+    2025'; a statement period ends on a month's last day."""
+    from financial_ratios import period_tokens
+    # The caption reads as four periods out of order, so it never passes as a header.
+    assert [d for d, _l in period_tokens("2025-26 2024-25 March 2025 to March 2026")] == [
+        (2026, 3, 31), (2025, 3, 31), (2025, 3, 31), (2026, 3, 31)]
+    assert period_tokens("allotted on 25 March 2025") == []
+    assert period_tokens("to March 25") == []
+    got = [d for d, _l in period_tokens("30/09/2024 31/03/2024")]
+    assert got == [(2024, 9, 30), (2024, 3, 31)]
+
+
+@pytest.mark.parametrize("heading,dates", [
+    ("FY25 FY24", [(2025, 3, 31), (2024, 3, 31)]),
+    ("FY'25 FY'24", [(2025, 3, 31), (2024, 3, 31)]),
+    ("Mar-25 Mar-24", [(2025, 3, 31), (2024, 3, 31)]),
+    ("March 2025 March 2024", [(2025, 3, 31), (2024, 3, 31)]),
+    ("2024-25 2023-24", [(2025, 3, 31), (2024, 3, 31)]),
+    ("Sep-24 Mar-24", [(2024, 9, 30), (2024, 3, 31)]),
+])
+def test_short_fiscal_year_headings_map_to_31_march(heading, dates):
+    """#771 r3 review MINOR: Indian fiscal years end 31 March, so FY25,
+    Mar-25, March 2025 and a bare 2024-25 all name 31-Mar-2025."""
+    from financial_ratios import period_tokens
+    assert [d for d, _l in period_tokens(heading)] == dates
+    got = read_ratio(_note(_HEAD.format(heading),
+                           "1 Current Ratio Current Assets Current Liabilities 1.40 1.25 12.00%"),
+                     "current_ratio", dates[0])
+    assert got["value"] == 1.40, got
+
+
+@pytest.mark.parametrize("heading", ["Mar 25 Mar 24", "2024-26 2023-25", "25 March 2025 24 March 2024", "FY 2025 25"])
+def test_ambiguous_short_headings_are_still_refused(heading):
+    """'Mar 25' may be 25 March; 2024-26 is not one fiscal year; a mid-month
+    date is a date, not a period."""
+    got = read_ratio(_note(_HEAD.format(heading),
+                           "1 Current Ratio Current Assets Current Liabilities 1.40 1.25 12.00%"),
+                     "current_ratio", (2025, 3, 31))
+    assert got["value"] is None, got

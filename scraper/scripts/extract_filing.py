@@ -2827,25 +2827,40 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
 
     # Item 8b slice 3a. The issuer's OWN ratio note (Companies Act Schedule III),
     # READ rather than recomputed - see financial_ratios.py's docstring for the
-    # measurement that ruled recomputation out. `read_printed_ratios` returns the
-    # printed values newest period first; the newest is the one the persister
-    # writes, exactly as the by-fy series do.
+    # measurement that ruled recomputation out.
     #
-    # Unlike the peer block above this needs no `tables_for_page`: the note is
-    # line-oriented text, so it runs on every prospectus-family document.
-    ratio_pages = financial_ratios.find_ratio_note_pages(page_texts)
-    printed = financial_ratios.read_printed_ratios(page_texts) if ratio_pages else {}
-    ratio_page = ratio_pages[0] if ratio_pages else None
+    # #771 round 3: the column written is the one whose PERIOD HEADING equals
+    # the latest restated statement period - the fiscal year the stored net
+    # worth and EPS belong to (filing-persister.ts writes those for the latest
+    # annual year) - never a column chosen by position. The basis is compared
+    # too when both the ratio header and the P&L statement state one. Anything
+    # unreadable writes nothing and names why (spec row 82: a fiscal year is
+    # "read from the statement header, never assumed").
+    latest_period = (max(fiscal_years), 3, 31) if fiscal_years else None
+    pnl_page = pnl.get("pnlPage")
+    stored_basis = financial_ratios.statement_basis(
+        next((t for i, t in page_texts if i == pnl_page), "")) if pnl_page is not None else None
     for name in ("current_ratio", "inventory_turnover"):
-        values = printed.get(name) or []
-        if not values:
-            # Named causes, not a bare absence: the note may be missing entirely
-            # or present with only the other ratio in it.
-            emit.null(name, "ratio_note_not_in_document" if not ratio_pages
-                      else "ratio_row_not_in_note")
+        read = financial_ratios.read_ratio(page_texts, name, latest_period, stored_basis)
+        if read.get("value") is None:
+            emit.null(name, read["reason"])
         else:
-            emit.put(name, values[0], ratio_page, "ratio_read_as_printed",
-                     (True, "as printed: %s" % values[0]))
+            emit.put(name, read["value"], read["page"], "ratio_read_as_printed",
+                     (True, "as printed: %s for period %s (%s)" % (
+                         read["value"], read["period"], read["period_label"])))
+        # What the verdict (scripts/lib/ratio-yield-verdict.mjs) judges: the
+        # period the value was read for against the statement period, and the
+        # evidence behind a "no note" claim.
+        emit.fields[name]["ratio_read"] = {
+            "period": read.get("period"),
+            "period_label": read.get("period_label"),
+            "latest_statement_period": (financial_ratios.fmt_period(latest_period)
+                                        if latest_period else None),
+            "basis": read.get("basis"),
+            "statement_basis": stored_basis,
+            "value": read.get("value"),
+            "current_ratio_line_pages": (read.get("current_ratio_line_pages") or [])[:10],
+        }
 
     # QUICK RATIO is the one derived ratio (no issuer prints it - not a Schedule
     # III ratio). Its three balance-sheet inputs are not among the fields this

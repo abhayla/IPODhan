@@ -95,6 +95,8 @@ import {
   CHILD_HUNG_CEILING_MS as CHILD_HUNG_CEILING_MS_REAL,
   ANCHOR_PASS_RESERVE_MS as ANCHOR_PASS_RESERVE_MS_REAL,
   resolveAdmissionExtractionStatus,
+  REREAD_SINCE_DEFAULT,
+  isNeverRead,
   type AutoPersistDeps,
   type CandidateDocument,
 } from '../../../src/services/filing-auto-persist.js';
@@ -2740,5 +2742,72 @@ describe('#583 — spawn failures are classified, and the 10-attempt block keeps
       lastCause: 'anchor: anchor sidecar timed out after 120000ms',
     });
     expect(r.anchorsManualReview).toBe(1);
+  });
+});
+
+
+// ------------------------------------------------ #771 round 3 review (MAJOR)
+// (b) a version bump re-opens only the types whose extraction it changed;
+// (a) never-read documents take the spawn budget before version re-reads.
+describe('#771 r3 — re-read scope and never-read-first order', () => {
+  const OLD = 'extract_filing.py@2026-09-26';
+  const completedAt = (id: string, type: string) =>
+    doc({ id, type, extractionStatus: 'COMPLETED', extractedAt: new Date('2026-09-26T10:00:00Z') as never });
+  const stateAt = (id: string, type: string, v: string) =>
+    ({ id: `s-${id}`, docType: type, documentId: id, extractedAt: null, extractorVersion: v });
+
+  it('a price-band ad read at the previous version is NOT re-opened by this bump', () => {
+    const { pending, skipped } = selectPendingFilings(IPO.id, [completedAt('pba', 'PRICE_BAND_AD')],
+      [stateAt('pba', 'PRICE_BAND_AD', OLD)], { fileExists: () => true, storeDir: 'C:/store' });
+    expect(pending).toHaveLength(0);
+    expect(skipped[0]).toMatch(/already extracted/);
+    expect(REREAD_SINCE_DEFAULT).toBe(OLD);
+  });
+
+  it('an RHP, DRHP or PROSPECTUS read at the previous version IS re-opened (the ratio reader changed)', () => {
+    for (const type of ['RHP', 'DRHP', 'PROSPECTUS']) {
+      const { pending } = selectPendingFilings(IPO.id, [completedAt('d', type)],
+        [stateAt('d', type, OLD)], { fileExists: () => true, storeDir: 'C:/store' });
+      expect(pending.map((d) => d.type)).toEqual([type]);
+    }
+  });
+
+  it('a price-band ad read BEFORE the default floor is still re-opened (older bumps unchanged)', () => {
+    const { pending } = selectPendingFilings(IPO.id, [completedAt('pba', 'PRICE_BAND_AD')],
+      [stateAt('pba', 'PRICE_BAND_AD', 'extract_filing.py@2026-09-03')], { fileExists: () => true, storeDir: 'C:/store' });
+    expect(pending).toHaveLength(1);
+  });
+
+  it('a document never read to COMPLETED is never-read; a COMPLETED one is not', () => {
+    expect(isNeverRead(doc())).toBe(true);
+    expect(isNeverRead(doc({ extractionStatus: 'FAILED' }))).toBe(true);
+    expect(isNeverRead(completedAt('x', 'RHP'))).toBe(false);
+  });
+
+  const twoDocs = () => ({
+    loadDocuments: vi.fn(async () => [completedAt('old-rhp', 'RHP'), doc({ id: 'new-drhp', type: 'DRHP' })]),
+    loadStates: vi.fn(async () => [stateAt('old-rhp', 'RHP', OLD)]),
+  });
+  const spawnedTypes = (d: AutoPersistDeps) =>
+    (d.runExtractor as ReturnType<typeof vi.fn>).mock.calls.map((c) => (c[0] as { docType: string }).docType);
+
+  it("phase 'fresh' spawns only the never-read document and reports the re-read it held back", async () => {
+    const d = deps({ ...twoDocs(), spawnBudget: { remaining: 3, phase: 'fresh' } });
+    const r = await processPendingFilings(IPO, d);
+    expect(spawnedTypes(d)).toEqual(['DRHP']);
+    expect(r.rereadsDeferred).toBe(1);
+  });
+
+  it("phase 'rereads' spawns only the version re-read", async () => {
+    const d = deps({ ...twoDocs(), spawnBudget: { remaining: 3, phase: 'rereads' } });
+    await processPendingFilings(IPO, d);
+    expect(spawnedTypes(d)).toEqual(['RHP']);
+  });
+
+  it('no phase, one slot: the never-read document gets it even when listed second', async () => {
+    const d = deps({ ...twoDocs(), spawnBudget: { remaining: 1 } });
+    const r = await processPendingFilings(IPO, d);
+    expect(spawnedTypes(d)).toEqual(['DRHP']);
+    expect(r.skippedBudget).toBe(1);
   });
 });
