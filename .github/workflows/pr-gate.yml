@@ -1240,6 +1240,7 @@ jobs:
           tests/integration/oracle-parity.test.ts
           tests/integration/opening-day-create.integration.test.ts
           tests/integration/post-listing-price.integration.test.ts
+          tests/integration/delisting-strikes.integration.test.ts
           tests/integration/repair-bse-subscription-ist-shift.integration.test.ts
           tests/integration/rhp-promoters-peers-persist.integration.test.ts
           tests/integration/phase-1-e2e.test.ts
