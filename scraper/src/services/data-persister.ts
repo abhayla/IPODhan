@@ -1262,8 +1262,11 @@ async function upsertIPOInScope(
         openDate: scrapedDateKeys.has('openDate') ? ((safeDates.openDate as Date | undefined) ?? undefined) : undefined,
         closeDate: scrapedDateKeys.has('closeDate') ? ((safeDates.closeDate as Date | undefined) ?? undefined) : undefined,
         // Convert empty strings to undefined for date fields (Story 11.7 - Fix Chittorgarh date handling)
-        allotmentDate: scrapedIPO.allotmentDate || undefined,
-        listingDate: scrapedIPO.listingDate || undefined,
+        // #1229 review r1: the SANITIZED value, like open/close above -- the raw
+        // one was written by the create door and the fallback update (both read
+        // ipoData) even after the check above logged it "rejected".
+        allotmentDate: scrapedDateKeys.has('allotmentDate') ? ((safeDates.allotmentDate as string | undefined) ?? undefined) : undefined,
+        listingDate: scrapedDateKeys.has('listingDate') ? ((safeDates.listingDate as string | undefined) ?? undefined) : undefined,
         companyDescription: scrapedIPO.companyDescription || undefined,
         registrar: sanitizeRegistrar(scrapedIPO.registrar) ?? undefined,
         // P3-2: populate the FK when the sanitized name resolves unambiguously

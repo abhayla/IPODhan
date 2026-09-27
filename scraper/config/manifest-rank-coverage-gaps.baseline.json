@@ -198,6 +198,7 @@
     "ipos.lead_managers CHITTORGARH NO_MAPPING",
     "ipos.lead_managers NSE NO_MAPPING",
     "ipos.listing_date BSE NO_MAPPING",
+    "ipos.listing_date NSE NO_MAPPING",
     "ipos.listing_exchanges BSE NO_MAPPING",
     "ipos.listing_exchanges CHITTORGARH NO_MAPPING",
     "ipos.listing_exchanges NSE NO_MAPPING",

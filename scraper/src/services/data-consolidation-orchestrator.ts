@@ -58,6 +58,8 @@ export interface ConsolidatedUpsertResult {
   locked: boolean;
   skipped: boolean;
   skipReason?: string;
+  /** #1229: date fields this write carried that the merged-record date rule refused (never written). */
+  refusedDateFields?: string[];
 }
 
 /**
@@ -287,26 +289,31 @@ export class DataConsolidationOrchestrator {
       // (OD-131). This door ran no date rule at all, and the field walk writes
       // single dates through it (a listing-only CHITTORGARH write, #1228). An
       // ADMIN write is exempt, as in W-14: a manual override is never dropped.
-      if (existingIPO && source !== 'ADMIN') {
-        const refused = incomingDatesRefusedOnMergedRecord(incomingData, existingIPO as any);
+      // A CREATE (no stored row) is judged on the incoming record alone (review r1).
+      let refusedDateFields: string[] = [];
+      if (source !== 'ADMIN') {
+        const refused = incomingDatesRefusedOnMergedRecord(incomingData, (existingIPO as any) ?? null);
         if (refused.length > 0) {
           logger.warn(
             {
               slug,
-              ipoId: existingIPO.id,
+              ipoId: existingIPO?.id ?? null,
               source,
               refusedFields: refused,
               refusedValues: Object.fromEntries(refused.map((k) => [k, (incomingData as any)[k]])),
-              stored: {
-                openDate: existingIPO.openDate ?? null,
-                closeDate: existingIPO.closeDate ?? null,
-                allotmentDate: (existingIPO as any).allotmentDate ?? null,
-                listingDate: existingIPO.listingDate ?? null,
-              },
+              stored: existingIPO
+                ? {
+                    openDate: existingIPO.openDate ?? null,
+                    closeDate: existingIPO.closeDate ?? null,
+                    allotmentDate: (existingIPO as any).allotmentDate ?? null,
+                    listingDate: existingIPO.listingDate ?? null,
+                  }
+                : null,
             },
             '[DataConsolidation] #1229 date refused on the merged record (stored row + this write) - not written, no provenance'
           );
           for (const key of refused) delete (incomingData as any)[key];
+          refusedDateFields = [...refused];
         }
       }
 
@@ -500,6 +507,7 @@ export class DataConsolidationOrchestrator {
         consolidation: consolidationResult,
         locked: true,
         skipped: false,
+        ...(refusedDateFields.length > 0 ? { refusedDateFields } : {}),
       };
 
       // Item 21 slice 1 (OD-40). This is the single write choke point CLAUDE.md

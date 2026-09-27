@@ -5,27 +5,26 @@
  * pull model.
  *
  * Spec field 7 (`listing_date`, E-1): MAINBOARD NSE > BSE > CG; SME-BSE BSE > CG;
- * SME-NSE NSE > CG. NSE and CHITTORGARH boards carry a listing date and are now
- * mapped. BSE is NOT: its board/detail endpoints carry no listing date
- * (bse-api-scraper.ts, "LISTED needs a listing date this endpoint doesn't
- * carry"), so it stays an honest NO_MAPPING gap rather than an invented value.
+ * SME-NSE NSE > CG. Only CHITTORGARH's payload carries a listing date:
+ *   - NSE: the real ipo-current-issue (13 keys) and all-upcoming-issues (8 keys)
+ *     payloads carry none (docs/design/probes/nse-payload.out.json) -> stays a
+ *     reported NO_MAPPING gap (review r1, MAJOR 1).
+ *   - BSE: its board/detail endpoints carry none (bse-api-scraper.ts) -> gap.
+ * So field 7 comes from CHITTORGARH (and documents).
+ *
+ * The CHITTORGARH case drives the REAL list parser (`scrapeChittorgarhIPOs`,
+ * global fetch stubbed) over a REAL captured report-82 payload:
+ * docs/design/probes/fixtures/chittorgarh/report-82-pricing-method.json
+ * (captured 2026-09-10 from webnodejs.chittorgarh.com report 82). Its row
+ * "Axiom Gas Engineering Ltd." carries `~ListingDate` 2026-09-25T00:00:00.000Z
+ * with an EMPTY display "Listing Date" -- the parser's ISO-metadata path.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const scrapeNSEIPOsMock = vi.fn();
-const scrapeChittorgarhIPOsMock = vi.fn();
-
-vi.mock('../../../src/scrapers/nse-scraper.js', () => ({
-  scrapeNSEIPOs: (...args: unknown[]) => scrapeNSEIPOsMock(...args),
-}));
-vi.mock('../../../src/scrapers/chittorgarh-scraper.js', () => ({
-  scrapeChittorgarhIPOs: (...args: unknown[]) => scrapeChittorgarhIPOsMock(...args),
-}));
-
-import { buildNseFetcher, NseFieldFetcherState, NSE_SERVEABLE_FIELDS } from '../../../src/services/field-plan-walk-nse-fetcher.js';
+import { NSE_SERVEABLE_FIELDS } from '../../../src/services/field-plan-walk-nse-fetcher.js';
 import {
   buildChittorgarhFetcher,
   ChittorgarhFieldFetcherState,
@@ -35,67 +34,59 @@ import { BSE_SERVEABLE_FIELDS } from '../../../src/services/field-plan-walk-bse-
 import { DOC_READABLE_TABLES } from '../../../src/services/field-plan-walk-doc-fetcher.js';
 import { listManifestRankCoverageGaps } from '../../../src/config/manifest-rank-coverage-gaps.js';
 
+const SCRAPER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const REPORT82 = JSON.parse(
+  readFileSync(
+    path.join(SCRAPER_ROOT, '..', 'docs', 'design', 'probes', 'fixtures', 'chittorgarh', 'report-82-pricing-method.json'),
+    'utf8'
+  )
+);
 const IPO_ID = '00000000-0000-4000-8000-000000001228';
-const GLASS_WALL = { companyName: 'Glass Wall Systems India Ltd', symbol: 'GLASSWALL', isin: null };
-const repo = { findById: vi.fn(async () => GLASS_WALL) } as never;
 
-beforeEach(() => {
-  scrapeNSEIPOsMock.mockReset();
-  scrapeChittorgarhIPOsMock.mockReset();
-});
+function stubReport(rows: unknown[]) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ msg: 1, sSearchWhere: '', reportTableData: rows }),
+    })
+  );
+}
 
-describe('#1228: listing_date is served by the field walk', () => {
-  it('CHITTORGARH supplies listing_date from its list row (glass-wall 2026-09-16)', async () => {
-    scrapeChittorgarhIPOsMock.mockResolvedValue({
-      ipos: [{ companyName: 'Glass Wall Systems India Ltd', listingDate: '2026-09-16' }],
-      errors: [],
-    });
-    const fetcher = buildChittorgarhFetcher(
-      { ipoRepository: repo, isChittorgarhCapable: () => true },
-      new ChittorgarhFieldFetcherState()
-    );
-    expect(await fetcher(IPO_ID, 'ipos', '', 'listing_date')).toEqual({ outcome: 'SUPPLIED', value: '2026-09-16' });
+function cgFetcher(companyName: string) {
+  return buildChittorgarhFetcher(
+    { ipoRepository: { findById: vi.fn(async () => ({ companyName })) } as never, isChittorgarhCapable: () => true },
+    new ChittorgarhFieldFetcherState()
+  );
+}
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('#1228: listing_date through the field walk', () => {
+  it('CHITTORGARH supplies listing_date from a REAL report-82 row (Axiom Gas Engineering, ~ListingDate 2026-09-25)', async () => {
+    stubReport(REPORT82.sampleRows);
+    const answer = await cgFetcher('Axiom Gas Engineering Ltd.')(IPO_ID, 'ipos', '', 'listing_date');
+    expect(answer.outcome).toBe('SUPPLIED');
+    expect(String((answer as { value: unknown }).value).slice(0, 10)).toBe('2026-09-25');
   });
 
-  it('CHITTORGARH row without a listing date answers NOT_AVAILABLE_YET (re-asked), never SUPPLIED empty', async () => {
-    scrapeChittorgarhIPOsMock.mockResolvedValue({
-      ipos: [{ companyName: 'Glass Wall Systems India Ltd', listingDate: '' }],
-      errors: [],
-    });
-    const fetcher = buildChittorgarhFetcher(
-      { ipoRepository: repo, isChittorgarhCapable: () => true },
-      new ChittorgarhFieldFetcherState()
-    );
-    expect(await fetcher(IPO_ID, 'ipos', '', 'listing_date')).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
+  it('a REAL row with no listing date at all answers NOT_AVAILABLE_YET (re-asked), never SUPPLIED empty', async () => {
+    const row = { ...REPORT82.sampleRows[0], 'Listing Date': '', '~ListingDate': '' };
+    stubReport([row]);
+    const answer = await cgFetcher('Axiom Gas Engineering Ltd.')(IPO_ID, 'ipos', '', 'listing_date');
+    expect(answer).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
   });
 
-  it('NSE supplies listing_date from its board row', async () => {
-    scrapeNSEIPOsMock.mockResolvedValue({
-      ipos: [{ companyName: 'Glass Wall Systems India Ltd', symbol: 'GLASSWALL', listingDate: '2026-09-16' }],
-      subscriptions: [],
-    });
-    const fetcher = buildNseFetcher({ ipoRepository: repo, isNseCapable: () => true }, new NseFieldFetcherState());
-    expect(await fetcher(IPO_ID, 'ipos', '', 'listing_date')).toEqual({ outcome: 'SUPPLIED', value: '2026-09-16' });
-  });
-
-  it('NSE board row without a listing date (the live current-issue shape) answers NOT_AVAILABLE_YET, so the walk tries the next rank', async () => {
-    scrapeNSEIPOsMock.mockResolvedValue({
-      ipos: [{ companyName: 'Glass Wall Systems India Ltd', symbol: 'GLASSWALL', listingDate: undefined }],
-      subscriptions: [],
-    });
-    const fetcher = buildNseFetcher({ ipoRepository: repo, isNseCapable: () => true }, new NseFieldFetcherState());
-    expect(await fetcher(IPO_ID, 'ipos', '', 'listing_date')).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
-  });
-
-  it('the real manifest: listing_date has no NSE or CHITTORGARH NO_MAPPING gap left; BSE stays a named gap', () => {
-    const scraperRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-    const manifest = JSON.parse(readFileSync(path.join(scraperRoot, 'config', 'field-manifest.json'), 'utf8'));
+  it('the real manifest: CHITTORGARH listing_date gap is closed; NSE and BSE stay reported gaps (no listing date in their payloads)', () => {
+    const manifest = JSON.parse(readFileSync(path.join(SCRAPER_ROOT, 'config', 'field-manifest.json'), 'utf8'));
     const gaps = listManifestRankCoverageGaps(
       manifest,
       ['DOC', 'BSE', 'NSE', 'CHITTORGARH'],
       { BSE: BSE_SERVEABLE_FIELDS, NSE: new Set(NSE_SERVEABLE_FIELDS.keys()), CHITTORGARH: CHITTORGARH_SERVEABLE_FIELDS },
       DOC_READABLE_TABLES
     ).filter((g) => g.startsWith('ipos.listing_date '));
-    expect(gaps).toEqual(['ipos.listing_date BSE NO_MAPPING']);
+    expect(gaps).toEqual(['ipos.listing_date BSE NO_MAPPING', 'ipos.listing_date NSE NO_MAPPING']);
   });
 });

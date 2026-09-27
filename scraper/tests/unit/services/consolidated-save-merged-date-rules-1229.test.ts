@@ -116,7 +116,9 @@ describe('#1229 at the orchestrator door: date rules on the merged record', () =
 
   it('listing-only 2026-09-03 (before stored open 2026-09-08) is refused: not written, no provenance row', async () => {
     const { orchestrator, ipoRepository, fieldSourcesRepository } = harness();
-    await orchestrator.consolidatedUpsertIPO(listingOnly('2026-09-03'), 'CHITTORGARH', 60, glassWallStored(), ['listingDate']);
+    const r = await orchestrator.consolidatedUpsertIPO(listingOnly('2026-09-03'), 'CHITTORGARH', 60, glassWallStored(), ['listingDate']);
+    // The refusal cause reaches the caller (the field walk records it, not "no field result returned").
+    expect(r.refusedDateFields).toEqual(['listingDate']);
 
     const writes = ipoRepository.update.mock.calls.map((c: any[]) => c[1] as Record<string, unknown>);
     for (const w of writes) expect(w).not.toHaveProperty('listingDate');
@@ -129,6 +131,29 @@ describe('#1229 at the orchestrator door: date rules on the merged record', () =
     await orchestrator.consolidatedUpsertIPO(listingOnly('2026-09-03'), 'ADMIN' as any, 100, glassWallStored(), ['listingDate']);
     const payload = ipoRepository.update.mock.calls[0][1] as Record<string, unknown>;
     expect(payload.listingDate).toBe('2026-09-03');
+  });
+});
+
+describe('#1229 review r1: the orchestrator CREATE branch runs the date rule on the incoming record', () => {
+  const full = (listingDate: string) => ({
+    companyName: 'Glass Wall Systems India Ltd', openDate: '2026-09-08', closeDate: '2026-09-10', listingDate,
+  } as any);
+
+  it('create with listing_date 2026-09-03 before open 2026-09-08: listing_date not written, no provenance for it', async () => {
+    const { orchestrator, ipoRepository, fieldSourcesRepository } = harness();
+    await orchestrator.consolidatedUpsertIPO(full('2026-09-03'), 'NSE', 100, null);
+    expect(ipoRepository.create).toHaveBeenCalledTimes(1);
+    const created = ipoRepository.create.mock.calls[0][0] as Record<string, unknown>;
+    expect(created.listingDate ?? null).toBeNull();
+    expect(created.openDate).toBe('2026-09-08');
+    const tracked = fieldSourcesRepository.trackFieldUpdate.mock.calls.map((c: any[]) => c[0].fieldName);
+    expect(tracked).not.toContain('listingDate');
+  });
+
+  it('create with a coherent listing_date (2026-09-16) writes it', async () => {
+    const { orchestrator, ipoRepository } = harness();
+    await orchestrator.consolidatedUpsertIPO(full('2026-09-16'), 'NSE', 100, null);
+    expect((ipoRepository.create.mock.calls[0][0] as Record<string, unknown>).listingDate).toBe('2026-09-16');
   });
 });
 

@@ -231,3 +231,64 @@ describe('#1229: date rules run on the MERGED record (stored row + this update)'
     expect(ipoRepository.update).not.toHaveBeenCalled();
   });
 });
+
+describe('#1229 review r1: the persister CREATE door and FALLBACK update never write a refused date', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resolveRegistrarIdMock.mockReturnValue(null);
+    findByIPOIdMock.mockResolvedValue([]);
+    findByFieldMock.mockResolvedValue(null);
+  });
+
+  function fullScrape(listingDate: string) {
+    return {
+      companyName: 'Glass Wall Systems India Ltd',
+      status: 'CLOSED',
+      offeringType: 'IPO',
+      segment: 'SME',
+      openDate: '2026-09-08',
+      closeDate: '2026-09-10',
+      listingDate,
+      listingExchange: 'NSE',
+    } as any;
+  }
+
+  it('create: listing_date 2026-09-03 before open 2026-09-08 is not written; the coherent dates are', async () => {
+    const ipoRepository = makeIpoRepository();
+    ipoRepository.create.mockResolvedValue({ id: 'ipo-new' });
+
+    await upsertIPO(ipoRepository, fullScrape('2026-09-03'), 'NSE', null);
+
+    expect(ipoRepository.create).toHaveBeenCalledTimes(1);
+    const created = ipoRepository.create.mock.calls[0][0];
+    expect(created.listingDate ?? null).toBeNull();
+    expect(created.openDate).toBe('2026-09-08');
+    expect(created.closeDate).toBe('2026-09-10');
+  });
+
+  it('create: a coherent listing_date (2026-09-16) is written', async () => {
+    const ipoRepository = makeIpoRepository();
+    ipoRepository.create.mockResolvedValue({ id: 'ipo-new' });
+    await upsertIPO(ipoRepository, fullScrape('2026-09-16'), 'NSE', null);
+    expect(ipoRepository.create.mock.calls[0][0].listingDate).toBe('2026-09-16');
+  });
+
+  it('fallback update (consolidation threw): a listing-only 2026-09-03 before the stored open is not written', async () => {
+    consolidateIPODataMock.mockRejectedValue(new Error('consolidation exploded'));
+    const ipoRepository = makeIpoRepository();
+
+    await upsertIPO(ipoRepository, listingOnlyScrape('2026-09-03'), 'CHITTORGARH', glassWallStored());
+
+    const writes = ipoRepository.update.mock.calls.map((c: any[]) => c[1]);
+    expect(writes.length).toBeGreaterThan(0); // the fallback door really ran
+    for (const w of writes) expect(w.listingDate ?? null).not.toBe('2026-09-03');
+  });
+
+  it('fallback update: a coherent listing-only 2026-09-16 IS written (merged with the stored open/close)', async () => {
+    consolidateIPODataMock.mockRejectedValue(new Error('consolidation exploded'));
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(ipoRepository, listingOnlyScrape('2026-09-16'), 'CHITTORGARH', glassWallStored());
+    const writes = ipoRepository.update.mock.calls.map((c: any[]) => c[1]);
+    expect(writes.some((w: any) => w.listingDate === '2026-09-16')).toBe(true);
+  });
+});
