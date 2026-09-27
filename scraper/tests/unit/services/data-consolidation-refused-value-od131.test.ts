@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DataConsolidationService } from '../../../src/services/data-consolidation-service.js';
 import { sanitizeIpoWriteFields } from '../../../src/utils/validators.js';
-import { isProvenanceValueStored } from '../../../src/services/data-persister.js';
+import { isProvenanceValueStored, isProvenanceValueStoredAsDecided } from '../../../src/services/data-persister.js';
 import type { FieldSourcesRepository, DataConflictsRepository } from '@ipodhan/shared';
 
 vi.mock('../../../src/config/feature-flags.js', () => ({
@@ -209,5 +209,41 @@ describe('OD-131: a refused value was never set', () => {
     expect(isProvenanceValueStored(w('listingDate'), { listingDate: null })).toBe(false);
     expect(isProvenanceValueStored(w('listingDate'), {})).toBe(false);
     expect(isProvenanceValueStored(w('revenue', 'financial_data', 'FY2025'), {})).toBe(true);
+  });
+
+  it('(review round 1) two interleaved calls on the SHARED service never mix their pending lists', async () => {
+    // Call A (deferred) is still awaiting its field_sources read when call B (inline) starts.
+    let releaseA!: () => void;
+    vi.mocked(fieldSources.findByIPOId).mockImplementation(((ipoId: string) =>
+      ipoId === 'ipo-a'
+        ? new Promise((resolve) => { releaseA = () => resolve([]); })
+        : Promise.resolve([])) as never);
+
+    const callA = service.consolidateIPOData({
+      ipoId: 'ipo-a', tableName: 'ipos', incomingData: { listingDate: '2026-09-16' },
+      source: 'CHITTORGARH', confidence: 60, existingData: glassWallStored, deferProvenance: true,
+    });
+    const callB = service.consolidateIPOData({
+      ipoId: 'ipo-b', tableName: 'ipos', incomingData: { symbol: 'BBB' },
+      source: 'NSE', confidence: 90, existingData: { status: 'OPEN' },
+    });
+    await callB;
+    releaseA();
+    const resultA = await callA;
+    const resultB = await callB;
+
+    // A's write was held for A only; B's was written inline and never landed in A's list.
+    expect(resultA.deferredProvenance?.map((w) => [w.ipoId, w.fieldName])).toEqual([['ipo-a', 'listingDate']]);
+    expect(resultB.deferredProvenance).toBeUndefined();
+    const inline = vi.mocked(fieldSources.trackFieldUpdate).mock.calls.map((c) => [(c[0] as any).ipoId, (c[0] as any).fieldName]);
+    expect(inline).toEqual([['ipo-b', 'symbol']]);
+  });
+
+  it('(review round 1) fallback filter: only a stored value EQUAL to the decided one counts', () => {
+    const w = (fieldName: string, value: unknown) => ({ fieldName, value, tableName: 'ipos', rowKey: '' });
+    expect(isProvenanceValueStoredAsDecided(w('symbol', 'ACME'), { symbol: 'ACME' })).toBe(true);
+    expect(isProvenanceValueStoredAsDecided(w('symbol', 'ACME'), { symbol: 'OTHER' })).toBe(false);
+    expect(isProvenanceValueStoredAsDecided(w('listingDate', '2026-09-03'), { listingDate: null })).toBe(false);
+    expect(isProvenanceValueStoredAsDecided(w('lotSize', 0), { lotSize: 0 })).toBe(true);
   });
 });

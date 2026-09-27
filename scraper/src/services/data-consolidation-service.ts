@@ -811,8 +811,6 @@ export function collectImplausibleIssueSizeFields(
  */
 export class DataConsolidationService {
   private currentShadowMode: boolean = false;
-  /** OD-131: non-null while a `deferProvenance` call is collecting its provenance writes. */
-  private pendingProvenance: DeferredProvenanceWrite[] | null = null;
 
   constructor(
     private fieldSourcesRepository: any, // FieldSourcesRepository from web
@@ -882,7 +880,9 @@ export class DataConsolidationService {
     // Set shadow mode for this consolidation (defaults to false for production)
     this.currentShadowMode = input.shadowMode ?? false;
     // OD-131: collect instead of write when the caller will refuse values after this call.
-    this.pendingProvenance = input.deferProvenance ? [] : null;
+    // Passed down explicitly (never an instance field), same reason as #993's lineage below:
+    // the service is a shared singleton and one IPO's pending writes must never reach another's.
+    const provenanceSink: DeferredProvenanceWrite[] | undefined = input.deferProvenance ? [] : undefined;
 
     // Item 4 (OD-21): row-level validation context (fork C-2, row-level).
     this.currentValidationContext = {
@@ -1020,6 +1020,7 @@ export class DataConsolidationService {
         result.fieldsProcessed++;
         const existingField = existingSourceMap.get(fieldName);
         await this.trackFieldSource({
+          sink: provenanceSink,
           incoming,
           ipoId: input.ipoId,
           tableName: input.tableName,
@@ -1216,6 +1217,7 @@ export class DataConsolidationService {
         try {
           const fieldResult = await this.consolidateField({
             incoming,
+            provenanceSink,
             ipoId: input.ipoId,
             tableName: input.tableName,
             rowKey: input.rowKey ?? '',
@@ -1336,9 +1338,8 @@ export class DataConsolidationService {
 
     result.performanceMs = Date.now() - startTime;
 
-    if (this.pendingProvenance) {
-      result.deferredProvenance = this.pendingProvenance;
-      this.pendingProvenance = null;
+    if (provenanceSink) {
+      result.deferredProvenance = provenanceSink;
     }
 
     if (FEATURE_FLAGS.DEBUG_DATA_FLOW) {
@@ -1362,6 +1363,8 @@ export class DataConsolidationService {
   private async consolidateField(params: {
     /** #993: the incoming caller's lineage (see `ConsolidateIPODataInput.incomingLineage`). */
     incoming?: IncomingLineage;
+    /** OD-131: collect provenance writes here instead of writing them (`deferProvenance`). */
+    provenanceSink?: DeferredProvenanceWrite[];
     ipoId: string;
     tableName: string;
     /** Natural key of the child row; `''` (default) for singleton tables. */
@@ -1761,6 +1764,7 @@ export class DataConsolidationService {
         // the M-1 keep-rule above can never unfreeze on its own. No previous
         // value/source: nothing changed and the prior origin is unknown.
         await this.trackFieldSource({
+          sink: params.provenanceSink,
           incoming: params.incoming,
           ipoId,
           tableName,
@@ -1802,6 +1806,7 @@ export class DataConsolidationService {
       }
 
       await this.trackFieldSource({
+        sink: params.provenanceSink,
         incoming: params.incoming,
         ipoId,
         tableName,
@@ -1861,6 +1866,7 @@ export class DataConsolidationService {
             );
 
             await this.trackFieldSource({
+              sink: params.provenanceSink,
               incoming: params.incoming,
               ipoId,
               tableName,
@@ -1963,6 +1969,7 @@ export class DataConsolidationService {
           // exactly as scalars did before W-25.
           if (existingSource === undefined) {
             await this.trackFieldSource({
+              sink: params.provenanceSink,
               incoming: params.incoming,
               ipoId,
               tableName,
@@ -2027,6 +2034,7 @@ export class DataConsolidationService {
         }
 
         await this.trackFieldSource({
+          sink: params.provenanceSink,
           incoming: params.incoming,
           ipoId,
           tableName,
@@ -2059,6 +2067,7 @@ export class DataConsolidationService {
     // Case 1: No existing value - accept incoming
     if (normalizedStored === null || normalizedStored === undefined) {
       await this.trackFieldSource({
+        sink: params.provenanceSink,
         incoming: params.incoming,
         ipoId,
         tableName,
@@ -2128,6 +2137,7 @@ export class DataConsolidationService {
     // Case 3: Conflict detected - resolve based on priority
     const conflict = await this.resolveConflict({
       incoming: params.incoming,
+      provenanceSink: params.provenanceSink,
       ipoId,
       tableName,
       rowKey,
@@ -2322,6 +2332,8 @@ export class DataConsolidationService {
   private async resolveConflict(params: {
     /** #993: the incoming caller's lineage (see `ConsolidateIPODataInput.incomingLineage`). */
     incoming?: IncomingLineage;
+    /** OD-131: collect provenance writes here instead of writing them (`deferProvenance`). */
+    provenanceSink?: DeferredProvenanceWrite[];
     ipoId: string;
     tableName: string;
     /** Natural key of the conflicting row; `''` for singleton tables. */
@@ -2796,6 +2808,7 @@ export class DataConsolidationService {
     // Track chosen source
     if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && !this.currentShadowMode && !provenanceUnchanged) {
       await this.trackFieldSource({
+        sink: params.provenanceSink,
         incoming: params.incoming,
         ipoId,
         tableName,
@@ -2848,6 +2861,8 @@ export class DataConsolidationService {
     confirmations?: number;
     previousValue?: any;
     previousSource?: ScraperSource;
+    /** OD-131: when set, the write is collected here instead of written (`deferProvenance`). */
+    sink?: DeferredProvenanceWrite[];
   }): Promise<void> {
     if (!FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
       return;
@@ -2870,8 +2885,9 @@ export class DataConsolidationService {
     }
 
     // OD-131: the caller has not yet decided whether this value is stored — hold the write.
-    if (this.pendingProvenance) {
-      this.pendingProvenance.push({ ...params });
+    if (params.sink) {
+      const { sink, ...write } = params;
+      sink.push(write);
       return;
     }
 
@@ -2921,8 +2937,6 @@ export class DataConsolidationService {
   ): Promise<{ written: number; refused: DeferredProvenanceWrite[] }> {
     const refused: DeferredProvenanceWrite[] = [];
     let written = 0;
-    // A commit is never itself deferred, whatever state a previous call left behind.
-    this.pendingProvenance = null;
     for (const write of writes ?? []) {
       if (!isStored(write)) {
         refused.push(write);
