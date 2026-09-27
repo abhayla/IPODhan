@@ -103,6 +103,27 @@ export function planHashRepair(rows: HashRepairRow[]): {
   return { toWrite, alreadyCorrect, nullKey };
 }
 
+/**
+ * #457: the backfill's ledger entries. Applied: only rows the UPDATE RETURNED
+ * (a row deleted or re-keyed between read and write is absent). Dry run: the plan.
+ */
+export function backfillLedgerChanges(
+  toWrite: readonly { id: string; headingHash: string }[],
+  beforeById: ReadonlyMap<string, string | null>,
+  apply: boolean,
+  writtenIds: ReadonlySet<string>
+): RepairLedgerFieldChange[] {
+  return toWrite
+    .filter((row) => !apply || writtenIds.has(row.id))
+    .map((row) => ({
+      table: 'ipo_risk_factors',
+      rowKey: row.id,
+      field: 'heading_hash',
+      before: beforeById.get(row.id) ?? null,
+      after: row.headingHash,
+    }));
+}
+
 export interface DedupeRow {
   id: string;
   ipoId: string;
@@ -132,6 +153,35 @@ export interface DedupePlan {
   conflicts: DedupeConflict[];
   /** Groups that had a surplus and were safely collapsed. */
   collapsedGroups: number;
+}
+
+/**
+ * #457: the dedupe's ledger entries — each deleted row in full, in DB column
+ * names, so a restore re-inserts it verbatim. Applied: only rows the DELETE
+ * RETURNED. Dry run: the plan.
+ */
+export function dedupeLedgerChanges(
+  deletes: readonly DedupeRow[],
+  apply: boolean,
+  deletedIds: ReadonlySet<string>
+): RepairLedgerFieldChange[] {
+  return deletes
+    .filter((victim) => !apply || deletedIds.has(victim.id))
+    .map((victim) => ({
+      table: 'ipo_risk_factors',
+      rowKey: victim.id,
+      field: '(row)',
+      before: {
+        id: victim.id,
+        ipo_id: victim.ipoId,
+        seq: victim.seq,
+        heading: victim.heading,
+        heading_hash: victim.headingHash,
+        body: victim.body,
+        kpis: victim.kpis,
+      },
+      after: null,
+    }));
 }
 
 function canonicalKpis(value: unknown): string | null {
@@ -322,17 +372,7 @@ async function main(): Promise<void> {
       return { scanned: rows.length, beforeById, writtenIds, ...plan };
     });
     ledger.backfill = { scanned: result.scanned, written: result.toWrite.length, alreadyCorrect: result.alreadyCorrect, nullKey: result.nullKey };
-    changes.push(
-      ...result.toWrite
-        .filter((row) => !APPLY || result.writtenIds.has(row.id))
-        .map((row) => ({
-          table: 'ipo_risk_factors',
-          rowKey: row.id,
-          field: 'heading_hash',
-          before: result.beforeById.get(row.id) ?? null,
-          after: row.headingHash,
-        }))
-    );
+    changes.push(...backfillLedgerChanges(result.toWrite, result.beforeById, APPLY, result.writtenIds));
     console.log(`backfill: scanned=${result.scanned} ${APPLY ? 'written' : 'would write'}=${result.toWrite.length} alreadyCorrect=${result.alreadyCorrect} nullKey=${result.nullKey.length}`);
   }
 
@@ -378,26 +418,7 @@ async function main(): Promise<void> {
       rows: plan.deletes,
       conflicts: plan.conflicts,
     };
-    changes.push(
-      ...plan.deletes
-        .filter((victim) => !APPLY || deletedIds.has(victim.id))
-        .map((victim) => ({
-          table: 'ipo_risk_factors',
-          rowKey: victim.id,
-          field: '(row)',
-          // the full row as read, in DB column names, so a restore re-inserts it verbatim
-          before: {
-            id: victim.id,
-            ipo_id: victim.ipoId,
-            seq: victim.seq,
-            heading: victim.heading,
-            heading_hash: victim.headingHash,
-            body: victim.body,
-            kpis: victim.kpis,
-          },
-          after: null,
-        }))
-    );
+    changes.push(...dedupeLedgerChanges(plan.deletes, APPLY, deletedIds));
     console.log(
       `dedupe: ${APPLY ? 'deleted' : 'would delete'}=${plan.deletes.length} surplus rows ` +
         `across ${plan.collapsedGroups} collapsed group(s); conflicted groups=${plan.conflicts.length}`
