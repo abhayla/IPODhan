@@ -74,7 +74,14 @@ vi.mock('../../../src/services/data-consolidation-service.js', async (importOrig
   })),
 }));
 
+const recordDiscoveryStepsMock = vi.fn().mockResolvedValue(undefined);
+vi.mock('../../../src/services/step-ledger-recorders.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/services/step-ledger-recorders.js')>()),
+  recordDiscoverySteps: (...args: unknown[]) => recordDiscoveryStepsMock(...args),
+}));
+
 const { upsertIPO } = await import('../../../src/services/data-persister.js');
+const { FEATURE_FLAGS } = await import('../../../src/config/feature-flags.js');
 
 function existingRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -301,5 +308,120 @@ describe('#454 round 1 (MAJOR) — the fallback door honours contextFields/linea
     ).resolves.toBe('ipo-454');
 
     expect(ipoRepository.update).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('#454 remainder — the fallback door never PUBLISHES a context field or a document-path E-1 field', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (FEATURE_FLAGS as any).ENABLE_SOURCE_TRACKING = true;
+    bulkTrackFieldUpdatesMock.mockResolvedValue(1);
+    consolidateIPODataMock.mockRejectedValue(new Error('consolidation throws (simulated) - forces the fallback door'));
+  });
+
+  const written = (ipoRepository: any) => ipoRepository.update.mock.calls[0][1] as Record<string, unknown>;
+
+  it('(a) a CHANGED, non-E-1 context field from a feed source is not written to ipos (OD-66)', async () => {
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ segment: 'SME', issueSize: 150000000 }),
+      'CHITTORGARH',
+      existingRow({ segment: 'MAINBOARD', issueSize: 100 }),
+      ['segment'],
+      null
+    );
+    expect(ipoRepository.update).toHaveBeenCalledTimes(1);
+    expect(written(ipoRepository)).not.toHaveProperty('segment');
+    expect(Number(written(ipoRepository).issueSize)).toBe(150000000); // the claim still publishes // the claim still publishes
+  });
+
+  it('(a) a CHANGED context field from a document source is not written either (companyName, listingExchange spelling)', async () => {
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ companyName: 'Manika Plastech Limited', listingExchange: 'NSE', issueSize: 150000000 }),
+      'DRHP',
+      existingRow({ segment: 'MAINBOARD', issueSize: 100, listingExchanges: ['BSE'] }),
+      ['companyName', 'listingExchange'],
+      { method: 'filing', docType: 'RHP', documentId: 'doc-1' }
+    );
+    const w = written(ipoRepository);
+    expect(w).not.toHaveProperty('companyName');
+    expect(w).not.toHaveProperty('listingExchanges');
+    expect(Number(w.issueSize)).toBe(150000000);
+  });
+
+  it('(b) an E-1 field from a DOCUMENT source is not written to ipos even when not declared context (§1.2.1)', async () => {
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ status: 'OPEN', openDate: new Date('2026-10-05T00:00:00Z'), issueSize: 150000000 }),
+      'DRHP',
+      existingRow({ segment: 'MAINBOARD', status: 'UPCOMING', openDate: new Date('2026-10-01T00:00:00Z'), issueSize: 100 }),
+      ['companyName'],
+      null
+    );
+    const w = written(ipoRepository);
+    expect(w).not.toHaveProperty('status');
+    expect(w).not.toHaveProperty('openDate');
+    expect(Number(w.issueSize)).toBe(150000000);
+  });
+
+  it('(b) the same E-1 fields from the EXCHANGE are claims: written to ipos and given provenance', async () => {
+    const ipoRepository = makeIpoRepository();
+    const newOpen = new Date('2026-10-05T00:00:00Z');
+    await upsertIPO(
+      ipoRepository,
+      scrape({ status: 'OPEN', openDate: newOpen, listingExchange: 'NSE' }),
+      'NSE',
+      existingRow({ segment: 'MAINBOARD', status: 'UPCOMING', openDate: new Date('2026-10-01T00:00:00Z'), listingExchanges: ['NSE'] }),
+      undefined,
+      null
+    );
+    const w = written(ipoRepository);
+    expect(w.status).toBe('OPEN');
+    expect(new Date(w.openDate as any).toISOString()).toBe(newOpen.toISOString());
+    const [, , fields] = bulkTrackFieldUpdatesMock.mock.calls[0];
+    const names = fields.map((f: any) => f.fieldName);
+    expect(names).toContain('status');
+    expect(names).toContain('openDate');
+    expect(fields.find((f: any) => f.fieldName === 'status').source).toBe('NSE');
+  });
+
+  it('(c) ledger: fieldSourcesWritten is true after a successful provenance write, and fields name only what was written', async () => {
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ status: 'OPEN', issueSize: 150000000 }),
+      'DRHP',
+      existingRow({ segment: 'MAINBOARD', status: 'UPCOMING', issueSize: 100 }),
+      ['companyName'],
+      null
+    );
+    expect(recordDiscoveryStepsMock).toHaveBeenCalledTimes(1);
+    const facts = recordDiscoveryStepsMock.mock.calls[0][1];
+    expect(facts.consolidated).toBe(false);
+    expect(facts.fieldSourcesWritten).toBe(true);
+    expect(facts.fields).toContain('issueSize');
+    expect(facts.fields).not.toContain('status');
+    expect(facts.fields).not.toContain('companyName');
+  });
+
+  it('(c) ledger: fieldSourcesWritten is false when the provenance write failed after the ipos update', async () => {
+    const ipoRepository = makeIpoRepository();
+    bulkTrackFieldUpdatesMock.mockRejectedValueOnce(new Error('field_sources write failed (simulated)'));
+    await upsertIPO(ipoRepository, scrape({ issueSize: 50000000 }), 'CHITTORGARH', existingRow({ issueSize: 20000000 }));
+    const facts = recordDiscoveryStepsMock.mock.calls[0][1];
+    expect(facts.fieldSourcesWritten).toBe(false);
+  });
+
+  it('(c) ledger: fieldSourcesWritten is false when source tracking is off (nothing was written)', async () => {
+    (FEATURE_FLAGS as any).ENABLE_SOURCE_TRACKING = false;
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(ipoRepository, scrape({ issueSize: 50000000 }), 'CHITTORGARH', existingRow({ issueSize: 20000000 }));
+    expect(bulkTrackFieldUpdatesMock).not.toHaveBeenCalled();
+    const facts = recordDiscoveryStepsMock.mock.calls[0][1];
+    expect(facts.fieldSourcesWritten).toBe(false);
   });
 });
