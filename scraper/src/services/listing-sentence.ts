@@ -42,12 +42,24 @@ const MAX_CLAUSE_CHARS = 400;
  * The clause ends at the first sentence stop (". " followed by a capital or an
  * opening quote/bracket), or at "in terms of" (SME cover pages continue the
  * sentence with the ICDR chapter), whichever comes first. "i.e.," does not
- * end it: its dots are not followed by whitespace.
+ * end it: its dots are not followed by whitespace. Nor does the dot of a
+ * company-name abbreviation ("BSE Ltd. (“BSE”) and National Stock Exchange of
+ * India Ltd."): splitting there would read [BSE] and SHRINK a correct set.
  */
+const ABBREVIATION_BEFORE_DOT = /\b(?:Ltd|Pvt|Co|Corp|Inc|No|Nos)$/i;
+const SENTENCE_STOP = /\.\s+(?=[A-Z“"(‘'])|\.\s*$|\bin\s+terms\s+of\b/g;
+
 function clauseAfter(text: string, start: number): string {
   const tail = text.slice(start, start + MAX_CLAUSE_CHARS);
-  const stop = tail.search(/\.\s+(?=[A-Z“"(‘'])|\.\s*$|\bin\s+terms\s+of\b/);
-  return (stop === -1 ? tail : tail.slice(0, stop)).replace(/\s+/g, ' ').trim();
+  let end = tail.length;
+  SENTENCE_STOP.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = SENTENCE_STOP.exec(tail)) !== null) {
+    if (m[0].startsWith('.') && ABBREVIATION_BEFORE_DOT.test(tail.slice(0, m.index))) continue;
+    end = m.index;
+    break;
+  }
+  return tail.slice(0, end).replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -94,4 +106,25 @@ export function parseListingSentence(
 /** The scraper payload's singular `listingExchange` for a parsed sentence. */
 export function toScrapedListingExchange(exchanges: readonly DocumentListingExchange[]): 'NSE' | 'BSE' | 'BOTH' {
   return exchanges.length > 1 ? 'BOTH' : exchanges[0];
+}
+
+/**
+ * OD-129 / OD-30: Prospectus > RHP > DRHP; the later filing wins. A price band
+ * advertisement is published with the RHP and ranks with it (inferred, not
+ * spec-stated: OD-129 says only that the ad counts when it names the exchanges).
+ * Equal rank = the later extraction wins (an addendum RHP after the RHP).
+ */
+export const OFFER_DOCUMENT_RANK: Readonly<Record<string, number>> = {
+  PROSPECTUS: 3,
+  RHP: 2,
+  PRICE_BAND_AD: 2,
+  DRHP: 1,
+};
+
+/** Document types that outrank `docType` for the listing sentence. Unknown type -> every ranked type. */
+export function higherRankedOfferDocumentTypes(docType: string): string[] {
+  const own = OFFER_DOCUMENT_RANK[docType] ?? 0;
+  return Object.entries(OFFER_DOCUMENT_RANK)
+    .filter(([, rank]) => rank > own)
+    .map(([type]) => type);
 }

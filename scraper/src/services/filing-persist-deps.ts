@@ -36,6 +36,7 @@ import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listi
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { higherRankedOfferDocumentTypes } from './listing-sentence.js';
 import type {
   DocumentFilingDateWriter,
   FilingPersisterDeps,
@@ -161,12 +162,37 @@ export function buildFilingPersistDeps(
     documentFilingDateWriter: makeDocumentFilingDateWriter(new DocumentRepository(db, redis)),
     childRowConsolidator,
     ocrPrecedence: makeOcrPrecedenceReader(),
+    listingPrecedence: makeListingPrecedenceReader(),
     protectionFilter: (
       id: string,
       table: string,
       data: Record<string, unknown>,
       scraperName: string
     ) => filterProtectedFields(id, table, data, scraperName, db, redis),
+  };
+}
+
+/**
+ * OD-129 (#938, G1): has a higher-ranked offer document of this IPO (Prospectus > RHP > DRHP,
+ * `higherRankedOfferDocumentTypes`) already completed extraction? Only then is a lower one's
+ * listing sentence refused. Excludes the document being persisted itself.
+ */
+export function makeListingPrecedenceReader(): NonNullable<import('./filing-persister.js').FilingPersisterDeps['listingPrecedence']> {
+  return {
+    async higherRankedOfferDocumentCompleted(ipoId: string, docType: string, documentId: string | null) {
+      const higher = higherRankedOfferDocumentTypes(docType);
+      if (higher.length === 0) return false;
+      const res = await db.execute(sql`
+        SELECT 1 FROM documents d
+         WHERE d.ipo_id = ${ipoId}::uuid
+           AND d.is_active IS NOT FALSE
+           AND d.extraction_status = 'COMPLETED'
+           AND d.type::text IN (${sql.join(higher.map((t) => sql`${t}`), sql`, `)})
+           AND (${documentId}::uuid IS NULL OR d.id <> ${documentId}::uuid)
+         LIMIT 1`);
+      const rows = ((res as unknown as { rows?: unknown[] }).rows ?? (res as unknown as unknown[])) as unknown[];
+      return rows.length > 0;
+    },
   };
 }
 

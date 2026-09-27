@@ -104,3 +104,91 @@ describe('parseListingSentence on real staging offer documents (F-197 oracle)', 
     expect(readListingClause('on the Stock Exchanges')).toBeNull();
   });
 });
+
+// Every one of the 58 fixture documents pinned (review round 1, MINOR 1): exchanges joined by '+',
+// or null where the document names none. Offer documents equal the stored value on every IPO
+// except national-stock-exchange-of-india-ltd (F-197); price band ads name exchanges only sometimes.
+const PINNED: Array<[string, string, string | null, string | null]> = [
+  ['a-one-steels-india-ltd', 'DRHP', 'BSE+NSE', 'MAINBOARD'],
+  ['a-one-steels-india-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['a-one-steels-india-ltd', 'PRICE_BAND_AD', 'BSE+NSE', 'MAINBOARD'],
+  ['acevector-ltd', 'DRHP', 'BSE+NSE', 'MAINBOARD'],
+  ['acevector-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['acevector-ltd', 'PRICE_BAND_AD', null, null],
+  ['adroit-industries-india-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['armee-infotech-ltd', 'DRHP', 'BSE+NSE', 'MAINBOARD'],
+  ['armee-infotech-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['armee-infotech-ltd', 'PRICE_BAND_AD', null, null],
+  ['axiom-gas-engineering-ltd', 'RHP', 'NSE', 'SME'],
+  ['coreintegra-consulting-services-ltd', 'RHP', 'NSE', 'SME'],
+  ['elevate-campuses-ltd', 'DRHP', 'BSE+NSE', 'MAINBOARD'],
+  ['elevate-campuses-ltd', 'PRICE_BAND_AD', null, null],
+  ['german-green-steel-and-power-ltd', 'DRHP', 'BSE+NSE', 'MAINBOARD'],
+  ['german-green-steel-and-power-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['german-green-steel-and-power-ltd', 'PRICE_BAND_AD', null, null],
+  ['glass-wall-systems-india-ltd', 'PROSPECTUS', 'BSE+NSE', 'MAINBOARD'],
+  ['green-asia-impex-ltd', 'RHP', 'NSE', 'SME'],
+  ['hero-motors-ltd', 'PRICE_BAND_AD', null, null],
+  ['himalayan-solar-ltd', 'RHP', 'NSE', 'SME'],
+  ['jindal-supreme-india-ltd', 'PROSPECTUS', 'BSE+NSE', 'MAINBOARD'],
+  ['jindal-supreme-india-ltd', 'PRICE_BAND_AD', 'BSE+NSE', 'MAINBOARD'],
+  ['kheria-autocomp-ltd', 'RHP', 'NSE', 'SME'],
+  ['lcc-projects-ltd', 'PROSPECTUS', 'BSE+NSE', 'MAINBOARD'],
+  ['lumino-industries-ltd', 'PRICE_BAND_AD', null, null],
+  ['moneyview-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['moneyview-ltd', 'PRICE_BAND_AD', null, null],
+  ['national-stock-exchange-of-india-ltd', 'RHP', 'BSE', 'MAINBOARD'],
+  ['national-stock-exchange-of-india-ltd', 'PRICE_BAND_AD', 'BSE', 'MAINBOARD'],
+  ['nityas-gems-and-jewellery-ltd', 'DRHP', 'BSE+NSE', 'MAINBOARD'],
+  ['orient-cables-india-ltd', 'DRHP', 'BSE+NSE', 'MAINBOARD'],
+  ['orient-cables-india-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['orient-cables-india-ltd', 'PRICE_BAND_AD', null, null],
+  ['panchatv-bharat-ltd', 'DRHP', 'BSE', 'SME'],
+  ['panchatv-bharat-ltd', 'PROSPECTUS', 'BSE', 'SME'],
+  ['papadmalji-agro-foods-ltd', 'DRHP', 'NSE', 'SME'],
+  ['peshwa-wheat-ltd', 'RHP', 'BSE', 'SME'],
+  ['pooja-logistics-ltd', 'RHP', 'NSE', 'SME'],
+  ['roopa-screen-ltd', 'RHP', 'BSE', 'SME'],
+  ['runwal-enterprises-ltd', 'DRHP', 'BSE+NSE', 'MAINBOARD'],
+  ['runwal-enterprises-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['runwal-enterprises-ltd', 'PRICE_BAND_AD', null, null],
+  ['shah-investor-s-home-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['skyways-air-services-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['spectraa-technology-solutions-ltd', 'RHP', 'NSE', 'SME'],
+  ['srit-india-ltd', 'DRHP', 'BSE+NSE', 'MAINBOARD'],
+  ['srit-india-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['srit-india-ltd', 'PRICE_BAND_AD', null, null],
+  ['steamhouse-india-ltd', 'PRICE_BAND_AD', null, null],
+  ['swastika-infra-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['vama-wovenfab-ltd', 'RHP', 'BSE', 'SME'],
+  ['varmora-granito-ltd', 'DRHP', 'BSE+NSE', 'MAINBOARD'],
+  ['varmora-granito-ltd', 'RHP', 'BSE+NSE', 'MAINBOARD'],
+  ['varmora-granito-ltd', 'PRICE_BAND_AD', null, null],
+  ['veegaland-developers-ltd', 'PROSPECTUS', 'BSE+NSE', 'MAINBOARD'],
+  ['veegaland-developers-ltd', 'PRICE_BAND_AD', null, null],
+  ['vinod-texworld-ltd', 'PROSPECTUS', 'NSE', 'SME'],
+];
+
+describe('every fixture document is pinned, not only the best per IPO', () => {
+  it('covers all 58 documents', () => {
+    expect(PINNED).toHaveLength(58);
+    expect(fixture.entries).toHaveLength(58);
+  });
+  for (const [slug, docType, exchanges, board] of PINNED) {
+    it(`${slug} ${docType} -> ${exchanges ?? 'none'}`, () => {
+      const e = fixture.entries.find((x) => x.slug === slug && x.docType === docType)!;
+      const r = parse(e);
+      expect(r ? r.exchanges.join('+') : null).toBe(exchanges);
+      expect(r ? r.board : null).toBe(board);
+    });
+  }
+});
+
+describe('a company-name abbreviation does not end the listing clause', () => {
+  it('"BSE Ltd. (“BSE”) and National Stock Exchange of India Ltd." reads BOTH, never shrinks to [BSE]', () => {
+    const text = 'The Equity Shares offered are proposed to be listed on BSE Ltd. (“BSE”) and National Stock Exchange of India Ltd. (“NSE”). For the purposes of the Offer, NSE is the Designated Stock Exchange.';
+    const r = parseListingSentence([[0, text]])!;
+    expect(r.exchanges).toEqual(['BSE', 'NSE']);
+    expect(r.sentence).not.toMatch(/Designated/);
+  });
+});

@@ -301,6 +301,24 @@ async function getStoredOfferingTypeSource(ipoId: string | undefined): Promise<s
   }
 }
 
+/** `mergeListingExchangesForSource` storedSource when the provenance lookup failed. */
+export const STORED_SOURCE_UNKNOWN = '__UNKNOWN__';
+
+/** OD-129 (#938): the source vouching for the stored `listingExchanges`, for the fallback door. */
+async function getStoredListingExchangesSource(ipoId: string | undefined): Promise<string | null> {
+  if (!ipoId) return null;
+  try {
+    const provenance = await getFieldSourcesRepository().findByField(ipoId, 'ipos', 'listingExchanges');
+    return (provenance as any)?.source ?? null;
+  } catch (e) {
+    logger.warn(
+      { ipoId, error: e instanceof Error ? e.message : String(e) },
+      '[DataPersister] OD-129 stored listingExchanges provenance lookup failed - fallback keeps the stored set'
+    );
+    return STORED_SOURCE_UNKNOWN;
+  }
+}
+
 async function getConsolidationService(): Promise<DataConsolidationService> {
   if (!consolidationServiceInstance) {
     const redis = getRedisClient();
@@ -687,15 +705,29 @@ export function mergeListingExchangesForSource(
   scrapedListingExchange: 'NSE' | 'BSE' | 'BOTH' | undefined,
   // W-145: SME rows list on exactly one board, so the fallback must not widen
   // them either. Omitted (or non-SME) keeps the previous union behaviour.
-  segment?: string | null
+  segment?: string | null,
+  // OD-129 (#938, review MINOR 2): the source vouching for the STORED set
+  // (field_sources). `STORED_SOURCE_UNKNOWN` = the lookup failed: a feed then
+  // keeps the stored set rather than risk widening a document-held one.
+  storedSource?: string | null
 ): ('NSE' | 'BSE')[] {
   const existing = existingExchanges ?? [];
   // W-145: ONE rule for what a source proves — an aggregator's 'BOTH' is
   // unknown, NSE/BSE assert only themselves.
   const incoming = toListingExchangesForSource(scrapedListingExchange, source);
   if (!incoming) return existing;
-  // OD-129 (#938): a document's listing sentence replaces the set, never unions into it.
-  if (DOCUMENT_PATH_SOURCES.has(source)) return incoming;
+  // OD-129 (#938): the same decision the consolidation door makes. A document's
+  // listing sentence replaces the set (never unions into it); a set a document
+  // or the admin holds is never widened by a feed.
+  if (storedSource === STORED_SOURCE_UNKNOWN && !DOCUMENT_PATH_SOURCES.has(source)) return existing;
+  const od129 = decideListingExchangesOd129({
+    stored: existing,
+    storedSource: storedSource ?? undefined,
+    incoming,
+    incomingSource: source,
+  });
+  if (od129.kind === 'DOCUMENT_WRITES') return od129.value as ('NSE' | 'BSE')[];
+  if (od129.kind !== 'NO_DOCUMENT') return existing;
 
   let merged = existing;
   for (const exchange of incoming) {
@@ -756,6 +788,7 @@ import { stripIdentityNameDecoration, stripIdentitySlugSuffix } from '@ipodhan/s
 import {
   toListingExchangesForSource,
   violatesSmeSingleExchange,
+  decideListingExchangesOd129,
 } from './listing-exchange-resolution.js';
 export { normalizeCompanyNameForMatching };
 
@@ -1705,7 +1738,8 @@ async function upsertIPOInScope(
             source,
             // #938 echo: context is never a claim, on this door either.
             listingExchangeIsContext ? undefined : scrapedIPO.listingExchange,
-            ((existingIPO as any).segment ?? scrapedIPO.segment) as string | null | undefined
+            ((existingIPO as any).segment ?? scrapedIPO.segment) as string | null | undefined,
+            listingExchangeIsContext ? null : await getStoredListingExchangesSource((existingIPO as any).id)
           ),
           lastScrapedAt: new Date(),
           updatedAt: new Date(),

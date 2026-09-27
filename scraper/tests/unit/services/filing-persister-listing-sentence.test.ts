@@ -19,6 +19,7 @@ import {
   type FilingExtraction,
   type FilingPersisterDeps,
 } from '../../../src/services/filing-persister';
+import { higherRankedOfferDocumentTypes } from '../../../src/services/listing-sentence.js';
 
 const IPO_ID = 'a2a0f3c6-0f2e-4b9a-9f0c-1d2e3f4a5b6c';
 const STORED_OPEN = new Date('2026-06-10T00:00:00Z');
@@ -61,8 +62,9 @@ function datelessCover(): FilingExtraction {
   };
 }
 
-function makeDeps(): FilingPersisterDeps {
+function makeDeps(listingPrecedence?: FilingPersisterDeps['listingPrecedence']): FilingPersisterDeps {
   return {
+    listingPrecedence,
     ipoRepository: {
       findById: vi.fn(async () => ({
         id: IPO_ID,
@@ -91,6 +93,11 @@ function makeDeps(): FilingPersisterDeps {
 
 
 const STORED_EXCHANGES = ['BSE', 'NSE'];
+/** A precedence reader over an in-memory list of COMPLETED document types, using the real rank rule. */
+const completedDocs = (types: string[]): FilingPersisterDeps['listingPrecedence'] => ({
+  higherRankedOfferDocumentCompleted: async (_ipo, docType) =>
+    types.some((t) => higherRankedOfferDocumentTypes(docType).includes(t)),
+});
 const fixture = JSON.parse(
   readFileSync(join(__dirname, '../../fixtures/listing-sentence/staging-listing-sentences.json'), 'utf8')
 ) as { entries: Array<{ slug: string; docType: string; pageNumber: number; excerpt: string }> };
@@ -102,9 +109,14 @@ const page = (slug: string, docType: string) => {
 describe('OD-129: the listing sentence is the claim of this document on listingExchange', () => {
   beforeEach(() => upsertIPOMock.mockClear());
 
-  const run = async (pageTexts: Array<[number, string]> | undefined) => {
+  const run = async (
+    pageTexts: Array<[number, string]> | undefined,
+    docType: 'RHP' | 'DRHP' | 'PROSPECTUS' | 'PRICE_BAND_AD' = 'RHP',
+    precedence: FilingPersisterDeps['listingPrecedence'] = completedDocs([])
+  ) => {
     const extraction = { ...datelessCover(), page_texts: pageTexts } as FilingExtraction;
-    await persistFilingExtraction(IPO_ID, extraction, { docType: 'RHP', apply: true }, makeDeps());
+    upsertIPOMock.mockClear();
+    await persistFilingExtraction(IPO_ID, extraction, { docType, apply: true }, makeDeps(precedence));
     expect(upsertIPOMock).toHaveBeenCalledTimes(1);
     const call = upsertIPOMock.mock.calls[0] as unknown[];
     return { scraped: call[1] as Record<string, unknown>, contextFields: call[4] as string[] };
@@ -132,5 +144,43 @@ describe('OD-129: the listing sentence is the claim of this document on listingE
   it('no page text at all -> the stored set is only context', async () => {
     const { contextFields } = await run(undefined);
     expect(contextFields).toContain('listingExchange');
+  });
+
+  // G1 (review round 1): Prospectus > RHP > DRHP; the later filing wins, never a lower one extracted later.
+  const nse = () => [page('national-stock-exchange-of-india-ltd', 'RHP')];
+
+  it('a DRHP extracted AFTER the RHP completed does not replace the RHP set (claims nothing)', async () => {
+    const { scraped, contextFields } = await run(nse(), 'DRHP', completedDocs(['RHP', 'DRHP']));
+    expect(scraped.listingExchange).toBe('BOTH'); // the stored echo, as context only
+    expect(contextFields).toContain('listingExchange');
+  });
+
+  it('an RHP after a DRHP DOES replace it', async () => {
+    const { scraped, contextFields } = await run(nse(), 'RHP', completedDocs(['DRHP']));
+    expect(scraped.listingExchange).toBe('BSE');
+    expect(contextFields).not.toContain('listingExchange');
+  });
+
+  it('a Prospectus beats both, even with the RHP and DRHP completed', async () => {
+    const { scraped, contextFields } = await run(nse(), 'PROSPECTUS', completedDocs(['RHP', 'DRHP']));
+    expect(scraped.listingExchange).toBe('BSE');
+    expect(contextFields).not.toContain('listingExchange');
+  });
+
+  it('an RHP after a completed Prospectus claims nothing', async () => {
+    const { contextFields } = await run(nse(), 'RHP', completedDocs(['PROSPECTUS']));
+    expect(contextFields).toContain('listingExchange');
+  });
+
+  it('no precedence reader, or a failing one -> fail closed, claims nothing', async () => {
+    expect((await run(nse(), 'RHP', null as never)).contextFields).toContain('listingExchange');
+    const failing = { higherRankedOfferDocumentCompleted: async () => { throw new Error('db down'); } };
+    expect((await run(nse(), 'RHP', failing)).contextFields).toContain('listingExchange');
+  });
+
+  it('rank rule: PROSPECTUS is outranked by nothing; RHP by PROSPECTUS; DRHP by the rest', () => {
+    expect(higherRankedOfferDocumentTypes('PROSPECTUS')).toEqual([]);
+    expect(higherRankedOfferDocumentTypes('RHP')).toEqual(['PROSPECTUS']);
+    expect(higherRankedOfferDocumentTypes('DRHP').sort()).toEqual(['PRICE_BAND_AD', 'PROSPECTUS', 'RHP']);
   });
 });
