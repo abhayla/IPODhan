@@ -53,6 +53,12 @@ build_fixture_repo() {
     git init -q
     git config user.email "test@example.com"
     git config user.name "Test"
+    # F6 (#752): deploy-config.sh now asserts the resolved repo's origin
+    # is the real IPODhan remote, so every fixture repo needs a real
+    # 'origin' remote matching EXPECTED_REPO_REMOTE_RE — otherwise every
+    # existing case would fail the new identity check, not just the ones
+    # this fixture was built for.
+    git remote add origin "https://github.com/abhayla/IPODhan.git"
     mkdir -p scraper/config
     echo '{"version":1,"fields":{}}' > scraper/config/field-manifest.json
     git add -A
@@ -99,6 +105,27 @@ commit_unmerged() {
   # does, on some git versions' ambiguous-ref resolution).
   (cd "$repo" && git checkout -q "$base") >/dev/null 2>&1
   printf '%s' "$sha"
+}
+
+# A fixture repo whose 'origin' is exactly the given URL (case21/case22) —
+# for probing EXPECTED_REPO_REMOTE_RE and credential redaction against
+# every origin shape the guard must accept or refuse.
+build_repo_with_origin() {
+  local origin_url="$1" repo
+  repo="$(fresh_dir)"
+  (
+    cd "$repo"
+    git init -q
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    git remote add origin "$origin_url"
+    mkdir -p scraper/config
+    echo '{"version":1,"fields":{}}' > scraper/config/field-manifest.json
+    git add -A
+    git commit -q -m "v1"
+    git update-ref refs/remotes/origin/main HEAD
+  ) >/dev/null 2>&1
+  printf '%s' "$repo"
 }
 
 run_deploy() {
@@ -222,6 +249,7 @@ run_deploy() {
     git init -q
     git config user.email "test@example.com"
     git config user.name "Test"
+    git remote add origin "https://github.com/abhayla/IPODhan.git"
     echo "no manifest here" > README.md
     git add -A
     git commit -q -m "no manifest"
@@ -286,11 +314,33 @@ run_deploy() {
     fail "case4: manifest was written despite prod-guard refusal"
   fi
 
-  # With the flag, prod deploy succeeds.
-  OUT2="$(run_deploy "$REPO" "$ROOT" --slot prod --sha "$SHA_V2" --reason "case4 prod with word" --i-have-the-owners-word 2>&1)"
+  # With the flag, prod deploy succeeds. F7 (#752) now refuses
+  # DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 for --slot prod, so this positive
+  # control can no longer use run_deploy() (which always sets that var) —
+  # it must exercise a REAL (unskipped) 'git fetch origin main'. A stub
+  # 'git' ahead of PATH fakes that one subcommand as an instant success
+  # (no real network) while every other git subcommand — including
+  # 'remote get-url origin', which the F6 identity check depends on —
+  # passes straight through to the real git, so this proves prod can still
+  # complete its full, real lineage+identity path end to end.
+  FETCHOK_STUB_DIR="$(fresh_dir)"
+  REAL_GIT_FOR_FETCHOK="$(command -v git)"
+  cat > "$FETCHOK_STUB_DIR/git" << STUBEOF
+#!/usr/bin/env bash
+if [ "\$1" = "fetch" ] && [ "\$2" = "origin" ] && [ "\$3" = "main" ]; then
+  exit 0
+fi
+exec "$REAL_GIT_FOR_FETCHOK" "\$@"
+STUBEOF
+  chmod +x "$FETCHOK_STUB_DIR/git"
+
+  OUT2="$(PATH="$FETCHOK_STUB_DIR:$PATH" env -u DEPLOY_CONFIG_LINEAGE_SKIP_FETCH \
+    DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" \
+    --slot prod --sha "$SHA_V2" --reason "case4 prod with word" --i-have-the-owners-word 2>&1)"
   RC2=$?
   if [ "$RC2" -eq 0 ] && [ -f "$ROOT/shared/config/prod/field-manifest.json" ]; then
-    pass "case4: prod deploy succeeds with --i-have-the-owners-word"
+    pass "case4: prod deploy succeeds with --i-have-the-owners-word and a real (unskipped) fetch"
   else
     fail "case4: prod deploy with the owner flag failed ($OUT2)"
   fi
@@ -520,15 +570,26 @@ run_deploy() {
 {
   MODE="$(cd "$SCRIPT_DIR/.." && git ls-tree HEAD -- ops/deploy-config.sh 2>/dev/null | awk '{print $1}')"
   if [ -z "$MODE" ]; then
-    # MINOR-5: not running inside a git checkout (e.g. a release dir) —
-    # there is no committed mode to consult here. An on-disk '-x' check
-    # is NOT a substitute: a local 'chmod +x' (or core.fileMode=false)
-    # sets the filesystem bit independently of what git actually
-    # committed, so a tree committed 100644 could still pass this
-    # fallback. SKIP explicitly instead of asserting a weaker property —
-    # a skip is not counted as a PASS and does not mask the defect this
-    # case exists to catch.
-    echo "SKIP: case12: no git tree to check the committed mode (on-disk -x is not proof of committed mode)"
+    # MINOR-5, then #752 "also noted": not running inside a git checkout
+    # (e.g. a real release dir, which is exactly the '.git'-free shape a
+    # deployed release has) — there is no committed mode left to consult,
+    # so an unconditional SKIP here means the 100755 property has NO guard
+    # at all on the one artifact that actually matters (the deployed
+    # release). An on-disk '-x' check is a WEAKER property than the
+    # committed-mode check above — a local 'chmod +x' (or
+    # core.fileMode=false) sets the filesystem bit independently of what
+    # git committed, so this cannot catch a tree that was committed 100644
+    # and then chmod'd +x by hand before packaging — but it DOES catch the
+    # actual failure mode #748 named (git archive ships a 100644 blob
+    # non-executable): on a real release, if the committed mode were wrong
+    # the exported file would be non-executable on disk too, and this
+    # check would fail. Asserted explicitly as the weaker property it is,
+    # never silently upgraded to read as "committed mode verified".
+    if [ -x "$DEPLOY_CONFIG" ]; then
+      pass "case12 (weaker, no git tree): deploy-config.sh is executable on disk — does not prove committed mode, only that this release's export is runnable"
+    else
+      fail "case12 (weaker, no git tree): deploy-config.sh is NOT executable on disk ($DEPLOY_CONFIG) — a 'git archive' export of a 100644-mode commit ships exactly like this"
+    fi
   elif [ "$MODE" = "100755" ]; then
     pass "case12: deploy-config.sh is committed with mode 100755 (executable) in git"
   else
@@ -846,6 +907,661 @@ STUBEOF
     fi
   else
     fail "case17b: expected only deploy-config-staging-2026-01-02.json, got: $(ls "$STATE_DIR_B")"
+  fi
+}
+
+# ---------------------------------------------------------------- case 18
+# #752 F5: a leaked GIT_DIR (from a parent process, a git alias/wrapper, or
+# a hook-invoked shell) must NOT defeat the repo-root guard. Reproduces the
+# issue's own repro shape: GIT_DIR pointing at an UNRELATED repo (a "decoy"
+# with a different manifest) while DEPLOY_CONFIG_REPO names a plain
+# directory that is NOT actually a git work tree. Confirmed red on the
+# pre-fix script (deploy-config.sh at HEAD before this change): it exited 0
+# and silently deployed the DECOY's manifest content, because
+# 'git rev-parse --is-inside-work-tree' ignored cwd entirely and answered
+# "true" for the GIT_DIR repo regardless of $REPO_ROOT. The fix (unset
+# GIT_DIR/GIT_WORK_TREE for the script's own git calls) must refuse this
+# invocation via the ordinary "not a usable git working tree" repo-root
+# message, and must not write the decoy's content anywhere.
+{
+  DECOY_REPO="$(fresh_dir)"
+  (
+    cd "$DECOY_REPO"
+    git init -q
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    git remote add origin "https://github.com/abhayla/IPODhan.git"
+    mkdir -p scraper/config
+    echo '{"version":999,"decoy":true}' > scraper/config/field-manifest.json
+    git add -A
+    git commit -q -m "decoy"
+    git update-ref refs/remotes/origin/main HEAD
+  ) >/dev/null 2>&1
+  DECOY_SHA="$(cd "$DECOY_REPO" && git rev-parse HEAD)"
+
+  NOT_A_REPO_DIR="$(fresh_dir)"
+  ROOT="$(fresh_dir)"
+
+  OUT="$(GIT_DIR="$DECOY_REPO/.git" DEPLOY_CONFIG_REPO="$NOT_A_REPO_DIR" \
+    DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" \
+    --slot staging --sha "$DECOY_SHA" --reason "case18 leaked GIT_DIR" 2>&1)"
+  RC=$?
+
+  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -q "repo-root"; then
+    pass "case18: a leaked GIT_DIR pointing at an unrelated repo is refused via repo-root, not silently followed"
+  else
+    fail "case18: expected a repo-root refusal with GIT_DIR leaked at an unrelated repo, got rc=$RC ($OUT)"
+  fi
+
+  if [ ! -e "$ROOT/shared/config/staging/field-manifest.json" ]; then
+    pass "case18: the decoy's manifest was never written"
+  else
+    fail "case18: the decoy repo's manifest (version 999) was written despite the leaked GIT_DIR ($(cat "$ROOT/shared/config/staging/field-manifest.json" 2>&1))"
+  fi
+}
+
+# ---------------------------------------------------------------- case 19
+# #752 F6: the repo-root fallback chain only asked "is this a git work
+# tree", never "is this IPODhan" — a foreign repo (a fork, a mirror, any
+# unrelated origin) that happens to be a real work tree passed silently.
+# Confirmed red on the pre-fix script: DEPLOY_CONFIG_REPO pointed at a repo
+# whose origin is a DIFFERENT GitHub project, and it deployed that repo's
+# manifest with exit 0. The fix must refuse it, naming both the foreign
+# origin URL and 'repo-root', before ever reading the manifest.
+{
+  FOREIGN_REPO="$(fresh_dir)"
+  (
+    cd "$FOREIGN_REPO"
+    git init -q
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    git remote add origin "https://github.com/someoneelse/unrelated-fork.git"
+    mkdir -p scraper/config
+    echo '{"version":1,"fields":{}}' > scraper/config/field-manifest.json
+    git add -A
+    git commit -q -m "v1"
+    git update-ref refs/remotes/origin/main HEAD
+  ) >/dev/null 2>&1
+  FOREIGN_SHA="$(cd "$FOREIGN_REPO" && git rev-parse HEAD)"
+  ROOT="$(fresh_dir)"
+
+  OUT="$(run_deploy "$FOREIGN_REPO" "$ROOT" --slot staging --sha "$FOREIGN_SHA" --reason "case19 foreign origin" 2>&1)"
+  RC=$?
+
+  # Round 3 (#752): the refusal no longer echoes ANY part of the origin
+  # (it is environment-controlled and can carry a credential); it prints a
+  # fixed placeholder instead.
+  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -q "repo-root" && printf '%s' "$OUT" | grep -qF "<origin withheld: not the IPODhan remote>" && ! printf '%s' "$OUT" | grep -q "unrelated-fork"; then
+    pass "case19: a foreign-origin repo is refused by the repo-root identity check, origin withheld"
+  else
+    fail "case19: expected a repo-root refusal with the withheld-origin placeholder, got rc=$RC ($OUT)"
+  fi
+
+  if [ ! -e "$ROOT/shared/config/staging/field-manifest.json" ]; then
+    pass "case19: nothing written when the origin identity check refuses"
+  else
+    fail "case19: manifest was written despite the foreign-origin refusal"
+  fi
+}
+
+# ---------------------------------------------------------------- case 20
+# #752 F7: DEPLOY_CONFIG_LINEAGE_SKIP_FETCH exists only so a test can point
+# the lineage check at a local fixture with no real 'origin' remote — but
+# nothing tied it to a test context, so it also skipped the fetch that
+# keeps origin/main fresh on a REAL prod deploy. Confirmed red on the
+# pre-fix script: --slot prod with the owner's word AND SKIP_FETCH=1
+# deployed successfully (exit 0) instead of being refused. The fix refuses
+# it outright, reason printed first, before any repo-root/lineage work runs.
+{
+  REPO="$(build_fixture_repo)"
+  SHA_V2="$(commit_v2_on_main "$REPO")"
+  ROOT="$(fresh_dir)"
+
+  OUT="$(run_deploy "$REPO" "$ROOT" --slot prod --sha "$SHA_V2" --reason "case20 skip-fetch on prod" --i-have-the-owners-word 2>&1)"
+  RC=$?
+
+  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -q "prod-guard"; then
+    pass "case20: DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 is refused for --slot prod, reason named"
+  else
+    fail "case20: expected a prod-guard refusal with SKIP_FETCH=1 on prod, got rc=$RC ($OUT)"
+  fi
+
+  if printf '%s' "$OUT" | grep -qi "skip_fetch"; then
+    pass "case20: refusal names DEPLOY_CONFIG_LINEAGE_SKIP_FETCH so the operator knows what to unset"
+  else
+    fail "case20: refusal did not name DEPLOY_CONFIG_LINEAGE_SKIP_FETCH ($OUT)"
+  fi
+
+  if [ ! -e "$ROOT/shared/config/prod/field-manifest.json" ]; then
+    pass "case20: nothing written when SKIP_FETCH-on-prod is refused"
+  else
+    fail "case20: manifest was written despite the SKIP_FETCH-on-prod refusal"
+  fi
+
+  # Positive control: staging is UNAFFECTED — SKIP_FETCH=1 stays legal there
+  # (it is how every other case in this suite avoids real network calls).
+  OUT_STAGING="$(run_deploy "$REPO" "$ROOT" --slot staging --sha "$SHA_V2" --reason "case20 staging still allowed" 2>&1)"
+  RC_STAGING=$?
+  if [ "$RC_STAGING" -eq 0 ]; then
+    pass "case20: SKIP_FETCH=1 remains allowed for --slot staging (unaffected by the prod-only refusal)"
+  else
+    fail "case20: expected staging with SKIP_FETCH=1 to still succeed, got rc=$RC_STAGING ($OUT_STAGING)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 21
+# #752 MAJOR: the F6 identity refusal printed the RAW origin URL, which
+# leaks any embedded 'user:pass@' credential (a GitHub Actions installation
+# token, exactly this shape) into the operator's terminal and the deploy
+# log. Confirmed red on the pre-fix script: an ACCEPTED credentialed origin
+# still logged the raw URL (with 'ghs_FAKE' inside it) at the "repo-root:
+# using ..." line, and a REFUSED foreign origin echoed the raw credential
+# straight back in the fatal message.
+#
+# Round 4 (#752, Q11, owner decision 2026-09-27): origin_is_ipodhan is now
+# an EXACT allow-list of the three literal, credential-free forms — a
+# credentialed https origin no longer matches ANY of them (no userinfo
+# stripping happens before the comparison), so it is refused like any
+# other unlisted shape. This case still proves the credential never
+# reaches output, now via the refusal path rather than the accept path.
+{
+  CRED_REPO="$(build_repo_with_origin "https://x-access-token:ghs_FAKE@github.com/abhayla/IPODhan.git")"
+  SHA="$(cd "$CRED_REPO" && git rev-parse HEAD)"
+  ROOT="$(fresh_dir)"
+
+  OUT="$(run_deploy "$CRED_REPO" "$ROOT" --slot staging --sha "$SHA" --reason "case21a credentialed IPODhan origin" 2>&1)"
+  RC=$?
+
+  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF "<origin withheld: not the IPODhan remote>"; then
+    pass "case21a: a credentialed https origin is refused under the exact allow-list (Q11)"
+  else
+    fail "case21a: expected a repo-root refusal for a credentialed origin, got rc=$RC ($OUT)"
+  fi
+
+  if ! printf '%s' "$OUT" | grep -q "ghs_FAKE"; then
+    pass "case21a: no output (stdout/stderr) contains the embedded credential"
+  else
+    fail "case21a: the credential 'ghs_FAKE' leaked into output ($OUT)"
+  fi
+
+  if [ ! -e "$ROOT/shared/config/staging/field-manifest.json" ]; then
+    pass "case21a: nothing written for the refused credentialed origin"
+  else
+    fail "case21a: manifest was written despite the credentialed-origin refusal"
+  fi
+
+  FOREIGN_CRED_REPO="$(build_repo_with_origin "https://x-access-token:ghs_FAKE@github.com/someoneelse/unrelated-fork.git")"
+  FOREIGN_CRED_SHA="$(cd "$FOREIGN_CRED_REPO" && git rev-parse HEAD)"
+  ROOT2="$(fresh_dir)"
+
+  OUT2="$(run_deploy "$FOREIGN_CRED_REPO" "$ROOT2" --slot staging --sha "$FOREIGN_CRED_SHA" --reason "case21b credentialed foreign origin" 2>&1)"
+  RC2=$?
+
+  if [ "$RC2" -ne 0 ] && printf '%s' "$OUT2" | grep -qF "<origin withheld: not the IPODhan remote>"; then
+    pass "case21b: a refused foreign origin is refused with the withheld-origin placeholder"
+  else
+    fail "case21b: expected a repo-root refusal with the withheld-origin placeholder, got rc=$RC2 ($OUT2)"
+  fi
+
+  if ! printf '%s' "$OUT2" | grep -q "ghs_"; then
+    pass "case21b: the refusal's printed URL has its credentials stripped (no 'ghs_' anywhere)"
+  else
+    fail "case21b: the refusal leaked the credential ($OUT2)"
+  fi
+
+  if [ ! -e "$ROOT2/shared/config/staging/field-manifest.json" ]; then
+    pass "case21b: nothing written for the refused credentialed foreign origin"
+  else
+    fail "case21b: manifest was written despite the credentialed foreign-origin refusal"
+  fi
+}
+
+# ---------------------------------------------------------------- case 22
+# #752 MINOR: EXPECTED_REPO_REMOTE_RE was case-sensitive and only accepted
+# 'https://github.com/...' or the 'git@github.com:...' scp-like form with
+# no trailing '.git' variance — refusing real, legitimate origins
+# ('ssh://git@github.com/...', a lowercase 'ipodhan', a trailing '/') that
+# 'git remote get-url origin' can genuinely print. A different owner or
+# repo name must still be refused regardless of case.
+{
+  SSH_REPO="$(build_repo_with_origin "ssh://git@github.com/abhayla/IPODhan.git")"
+  SSH_SHA="$(cd "$SSH_REPO" && git rev-parse HEAD)"
+  OUT_SSH="$(run_deploy "$SSH_REPO" "$(fresh_dir)" --slot staging --sha "$SSH_SHA" --reason "case22 ssh form" 2>&1)"
+  if [ $? -eq 0 ]; then
+    pass "case22: ssh://git@github.com/abhayla/IPODhan.git is accepted"
+  else
+    fail "case22: expected the ssh:// long form to be accepted ($OUT_SSH)"
+  fi
+
+  LOWER_REPO="$(build_repo_with_origin "https://github.com/abhayla/ipodhan")"
+  LOWER_SHA="$(cd "$LOWER_REPO" && git rev-parse HEAD)"
+  OUT_LOWER="$(run_deploy "$LOWER_REPO" "$(fresh_dir)" --slot staging --sha "$LOWER_SHA" --reason "case22 lowercase, no .git" 2>&1)"
+  if [ $? -eq 0 ]; then
+    pass "case22: a lowercase 'ipodhan' origin with no .git suffix is accepted"
+  else
+    fail "case22: expected a lowercase, suffix-less origin to be accepted ($OUT_LOWER)"
+  fi
+
+  SLASH_REPO="$(build_repo_with_origin "https://github.com/abhayla/IPODhan.git/")"
+  SLASH_SHA="$(cd "$SLASH_REPO" && git rev-parse HEAD)"
+  OUT_SLASH="$(run_deploy "$SLASH_REPO" "$(fresh_dir)" --slot staging --sha "$SLASH_SHA" --reason "case22 trailing slash" 2>&1)"
+  if [ $? -eq 0 ]; then
+    pass "case22: a trailing '/' on the origin is accepted"
+  else
+    fail "case22: expected a trailing-slash origin to be accepted ($OUT_SLASH)"
+  fi
+
+  FORK_REPO="$(build_repo_with_origin "https://github.com/abhayla/IPODhan-fork.git")"
+  FORK_SHA="$(cd "$FORK_REPO" && git rev-parse HEAD)"
+  OUT_FORK="$(run_deploy "$FORK_REPO" "$(fresh_dir)" --slot staging --sha "$FORK_SHA" --reason "case22 negative: different repo name" 2>&1)"
+  RC_FORK=$?
+  if [ "$RC_FORK" -ne 0 ] && printf '%s' "$OUT_FORK" | grep -qF "<origin withheld: not the IPODhan remote>"; then
+    pass "case22: a different repo name (IPODhan-fork) is still refused"
+  else
+    fail "case22: expected IPODhan-fork to be refused as a foreign repo, got rc=$RC_FORK ($OUT_FORK)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 23
+# #752 F8: GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR leaked from a parent process
+# (like GIT_DIR/GIT_WORK_TREE, case18) can redirect git's repository
+# discovery for every call this script makes. Confirmed red on the pre-fix
+# script: pointing these two at an unrelated decoy repo's .git dir made
+# 'git rev-parse HEAD' inside the REAL $REPO_ROOT resolve against the
+# decoy's object database, so the real repo's own commit could not be
+# found and a legitimate deploy was falsely refused as a lineage failure.
+{
+  DECOY_REPO="$(fresh_dir)"
+  (
+    cd "$DECOY_REPO"
+    git init -q
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    git remote add origin "https://github.com/abhayla/IPODhan.git"
+    mkdir -p scraper/config
+    echo '{"version":999,"decoy":true}' > scraper/config/field-manifest.json
+    git add -A
+    git commit -q -m "decoy"
+    git update-ref refs/remotes/origin/main HEAD
+  ) >/dev/null 2>&1
+
+  REPO="$(build_fixture_repo)"
+  SHA_V2="$(commit_v2_on_main "$REPO")"
+  ROOT="$(fresh_dir)"
+
+  OUT="$(GIT_OBJECT_DIRECTORY="$DECOY_REPO/.git/objects" GIT_COMMON_DIR="$DECOY_REPO/.git" \
+    DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" \
+    --slot staging --sha "$SHA_V2" --reason "case23 leaked GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR" 2>&1)"
+  RC=$?
+
+  if [ "$RC" -eq 0 ]; then
+    pass "case23: leaked GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR does not block a legitimate deploy"
+  else
+    fail "case23: expected exit 0 with GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR leaked at a decoy, got rc=$RC ($OUT)"
+  fi
+
+  MANIFEST="$ROOT/shared/config/staging/field-manifest.json"
+  if [ -f "$MANIFEST" ] && grep -q '"version":2' "$MANIFEST"; then
+    pass "case23: the real repo's manifest (v2) was deployed, not the decoy's"
+  else
+    fail "case23: wrong/no manifest deployed with GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR leaked ($(cat "$MANIFEST" 2>&1))"
+  fi
+}
+
+# ---------------------------------------------------------------- case 24
+# #752 round 3 (built on the independent review of 2026-09-27): the origin
+# URL is environment-controlled and can carry a credential in many shapes.
+# Rounds 1-2 printed a deny-list-REDACTED copy, which leaked on 4 of 12
+# probes (leading whitespace, scp-like 'u:S@host:path', '?token=S', a '/'
+# in the password). deploy-config.sh now never prints any part of it: a
+# match logs the constant 'github.com/abhayla/IPODhan', anything else the
+# fixed placeholder. Every row below carries the fake secret FAKESECRET and
+# asserts 'grep -c FAKESECRET' = 0 on stdout, stderr, and every file the
+# run wrote under $ROOT (deploy-config.log, CONFIG_SHA, manifest) and the
+# cap state dir. Round 4 (#752, Q11): origin_is_ipodhan is now an EXACT
+# allow-list of the three credential-free forms, so MUST-ACCEPT rows are
+# only the clean forms (no userinfo, no port); every credentialed or
+# otherwise-unlisted shape is MUST-REFUSE.
+ORIGIN_CONST="origin github.com/abhayla/IPODhan)"
+ORIGIN_PLACEHOLDER="<origin withheld: not the IPODhan remote>"
+
+# build_repo_with_raw_origin <url> [extra git-config command...] — sets
+# remote.origin.url via 'git config' (not 'git remote add', which refuses
+# some shapes) so the raw value reaches the script byte for byte.
+build_repo_with_raw_origin() {
+  local url="$1" repo
+  shift
+  repo="$(build_repo_with_origin "https://github.com/abhayla/IPODhan.git")"
+  (
+    cd "$repo"
+    git config --replace-all remote.origin.url "$url"
+    while [ $# -gt 0 ]; do
+      eval "$1"
+      shift
+    done
+  ) >/dev/null 2>&1
+  printf '%s' "$repo"
+}
+
+# leak_count <out> <err> <root> <state> — total FAKESECRET hits on every sink.
+leak_count() {
+  local n=0 c f
+  for f in "$1" "$2"; do
+    c="$(grep -c FAKESECRET "$f" 2>/dev/null || true)"
+    n=$(( n + ${c:-0} ))
+  done
+  for f in "$3" "$4"; do
+    c="$(grep -r FAKESECRET "$f" 2>/dev/null | wc -l)"
+    n=$(( n + c ))
+  done
+  printf '%s' "$n"
+}
+
+# check_origin_row <accept|refuse> <label> <repo>
+check_origin_row() {
+  local expect="$1" label="$2" repo="$3" sha root state out err rc leaks
+  sha="$(cd "$repo" && git rev-parse HEAD)"
+  root="$(fresh_dir)"; state="$(fresh_dir)"; out="$(fresh_dir)/out"; err="$(fresh_dir)/err"
+  DEPLOY_CONFIG_STATE_DIR="$state" run_deploy "$repo" "$root" --slot staging --sha "$sha" --reason "case24 $label" >"$out" 2>"$err"
+  rc=$?
+  leaks="$(leak_count "$out" "$err" "$root" "$state")"
+  if [ "$leaks" -eq 0 ]; then
+    pass "case24 [$label]: FAKESECRET count 0 on stdout, stderr, log and state"
+  else
+    fail "case24 [$label]: FAKESECRET leaked $leaks time(s) (rc=$rc)"
+  fi
+  if [ "$expect" = "accept" ]; then
+    if [ "$rc" -eq 0 ] && grep -qF "$ORIGIN_CONST" "$out" && [ -f "$root/shared/config/staging/field-manifest.json" ]; then
+      pass "case24 [$label]: accepted, logged the constant origin"
+    else
+      fail "case24 [$label]: expected accept + constant origin, got rc=$rc (stderr: $(grep -v FAKESECRET "$err"))"
+    fi
+  else
+    if [ "$rc" -ne 0 ] && grep -qF "$ORIGIN_PLACEHOLDER" "$err" && [ ! -e "$root/shared/config/staging/field-manifest.json" ]; then
+      pass "case24 [$label]: refused with the withheld-origin placeholder, nothing written"
+    else
+      fail "case24 [$label]: expected refusal + placeholder, got rc=$rc (stderr: $(grep -v FAKESECRET "$err"))"
+    fi
+  fi
+}
+
+{
+  # MUST-ACCEPT: legitimate forms, no secret.
+  check_origin_row accept "clean https .git"      "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git")"
+  check_origin_row accept "clean https no .git"   "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan")"
+  check_origin_row accept "clean ssh://"          "$(build_repo_with_raw_origin "ssh://git@github.com/abhayla/IPODhan.git")"
+  check_origin_row accept "clean scp-like"        "$(build_repo_with_raw_origin "git@github.com:abhayla/IPODhan.git")"
+  check_origin_row accept "clean mixed case"      "$(build_repo_with_raw_origin "HTTPS://GitHub.COM/ABHAYLA/IPODHAN.GIT")"
+  # Round 4 (#752, Q11): the exact allow-list has NO userinfo form at all —
+  # every one of these credentialed shapes is now MUST-REFUSE, not accept.
+  # A clean, non-credentialed leading/trailing-whitespace row proves
+  # trimming still works without also accepting a credential.
+  check_origin_row accept "leading/trailing ws, clean" "$(build_repo_with_raw_origin "  https://github.com/abhayla/IPODhan.git  ")"
+  # MUST-REFUSE: every credentialed or otherwise-unlisted shape, each
+  # carrying the secret (or, for the two clean-shape rows, proving the
+  # exact-match still refuses a non-listed clean variant).
+  check_origin_row refuse "https user:pass"       "$(build_repo_with_raw_origin "https://x-access-token:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row refuse "token as username"     "$(build_repo_with_raw_origin "https://FAKESECRET@github.com/abhayla/IPODhan")"
+  check_origin_row refuse "ssh:// userinfo"       "$(build_repo_with_raw_origin "ssh://git:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row refuse "git+ssh userinfo"      "$(build_repo_with_raw_origin "git+ssh://git:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row refuse "scp-like token user"  "$(build_repo_with_raw_origin "FAKESECRET@github.com:abhayla/IPODhan.git")"
+  check_origin_row refuse "mixed-case scheme cred" "$(build_repo_with_raw_origin "HtTpS://u:FAKESECRET@GitHub.com/abhayla/ipodhan.git/")"
+  check_origin_row refuse "percent-encoded @ :"   "$(build_repo_with_raw_origin "https://u%40x%3Ay:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row refuse "leading/trailing ws, cred" "$(build_repo_with_raw_origin "  https://u:FAKESECRET@github.com/abhayla/IPODhan.git  ")"
+  check_origin_row refuse "insteadOf adds cred"   "$(build_repo_with_raw_origin "gh:abhayla/IPODhan.git" 'git config url."https://u:FAKESECRET@github.com/".insteadOf gh:')"
+  check_origin_row refuse "port form"             "$(build_repo_with_raw_origin "https://github.com:443/abhayla/IPODhan.git")"
+  check_origin_row refuse "embedded whitespace"   "$(build_repo_with_raw_origin "https://github.com/abhayla/IPO Dhan.git")"
+  check_origin_row refuse "foreign repo"          "$(build_repo_with_raw_origin "https://u:FAKESECRET@github.com/someoneelse/unrelated-fork.git")"
+  check_origin_row refuse "similar repo name"     "$(build_repo_with_raw_origin "https://u:FAKESECRET@github.com/abhayla/IPODhan-fork")"
+  check_origin_row refuse "slash in password"     "$(build_repo_with_raw_origin "https://u:FAKE/FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row refuse "query token"           "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git?token=FAKESECRET")"
+  check_origin_row refuse "fragment token"        "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git#FAKESECRET")"
+  check_origin_row refuse "http scheme"           "$(build_repo_with_raw_origin "http://u:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row refuse "file scheme"           "$(build_repo_with_raw_origin "file://u:FAKESECRET@localhost/abhayla/IPODhan.git")"
+  check_origin_row refuse "IPv6 host"             "$(build_repo_with_raw_origin "https://u:FAKESECRET@[::1]/abhayla/IPODhan.git")"
+  check_origin_row refuse "lookalike host"        "$(build_repo_with_raw_origin "https://u:FAKESECRET@github.com.evil.example/abhayla/IPODhan.git")"
+  check_origin_row refuse "plain path"            "$(build_repo_with_raw_origin "/srv/FAKESECRET/abhayla/IPODhan")"
+  check_origin_row refuse "embedded newline"      "$(build_repo_with_raw_origin "$(printf 'https://github.com/abhayla/IPODhan.git\nFAKESECRET')")"
+  # Round 4b (#752, review MAJOR): U+0130 'İ' locale-casefolds to ASCII
+  # 'i' under en_US.UTF-8/C.UTF-8 — 'gİthub.com' is a DIFFERENT host and
+  # 'İpodhan' a different repo path; both must be refused, not folded
+  # into a match. Run once under the current locale (below) and once
+  # under LC_ALL=C.UTF-8 explicitly (case24-locale block further down).
+  check_origin_row refuse "unicode dotted I host" "$(build_repo_with_raw_origin "https://gİthub.com/abhayla/IPODhan")"
+  check_origin_row refuse "unicode dotted I path" "$(build_repo_with_raw_origin "https://github.com/abhayla/İpodhan")"
+  # Round 4b (#752, review MINOR): a leading tab must still be refused now
+  # that the guard is a single printable-ASCII regex rather than separate
+  # [[:cntrl:]]/[[:print:]] character-class checks. A bare trailing CR is
+  # covered directly in case28 below, not via this git-config round-trip:
+  # git-for-windows opens .git/config in TEXT mode, so a value ending
+  # '\r' immediately before the file's own line-ending '\n' is silently
+  # normalised to '...\n' (the '\r' never reaches the script) on a
+  # Windows dev box — confirmed by writing the same byte straight into
+  # .git/config and reading it back with 'git remote get-url'. Linux git
+  # (the CI gate, ubuntu-latest) has no such text/binary mode distinction
+  # and would deliver the '\r' intact, but relying on that here would make
+  # this row's result depend on which OS runs the suite. case28 tests
+  # origin_is_ipodhan directly, with no git storage in between, so the
+  # '\r' guard is proven identically on every platform.
+  check_origin_row refuse "leading tab"           "$(build_repo_with_raw_origin "$(printf '\thttps://github.com/abhayla/IPODhan')")"
+  check_origin_row refuse "two origin urls"       "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git" 'git config --add remote.origin.url "https://u:FAKESECRET@evil.example/x.git"')"
+  # Review r1 (2026-09-27): for the scp-like form git takes the host as
+  # everything before the FIRST ':' (probed: 'evil.example:x@github.com:...'
+  # runs ssh to evil.example; 'u:S@github.com:...' runs ssh to host 'u').
+  check_origin_row refuse "scp colon before @"    "$(build_repo_with_raw_origin "evil.example:x@github.com:abhayla/IPODhan.git")"
+  check_origin_row refuse "scp user:pass@host"    "$(build_repo_with_raw_origin "u:FAKESECRET@github.com:abhayla/IPODhan")"
+  check_origin_row refuse "scp foreign host"      "$(build_repo_with_raw_origin "evil.example:github.com/abhayla/IPODhan")"
+  check_origin_row refuse "ssh:// @ in path"      "$(build_repo_with_raw_origin "ssh://evil.example/x@github.com:abhayla/IPODhan")"
+  check_origin_row refuse "insteadOf to foreign"  "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git" 'git config url."https://u:FAKESECRET@evil.example/".insteadOf https://github.com/')"
+}
+
+# ---------------------------------------------------------------- case 25
+# #752 round 3, fetch sink: 'git fetch origin main' failures print the
+# remote URL (with any credential) on stderr, and the refusal used to embed
+# that stderr verbatim. A stub git fails the fetch with FAKESECRET on both
+# streams; the refusal must carry git's exit code and none of its output.
+{
+  REPO="$(build_repo_with_origin "https://github.com/abhayla/IPODhan.git")"
+  SHA="$(cd "$REPO" && git rev-parse HEAD)"
+  ROOT="$(fresh_dir)"; STATE="$(fresh_dir)"; O="$(fresh_dir)/out"; E="$(fresh_dir)/err"
+  STUB25="$(fresh_dir)"; REAL_GIT25="$(command -v git)"
+  cat > "$STUB25/git" << STUBEOF
+#!/usr/bin/env bash
+if [ "\$1" = "fetch" ]; then
+  echo "fatal: unable to access 'https://u:FAKESECRET@github.com/abhayla/IPODhan.git/': auth failed" >&2
+  echo "FAKESECRET on stdout"
+  exit 128
+fi
+exec "$REAL_GIT25" "\$@"
+STUBEOF
+  chmod +x "$STUB25/git"
+  PATH="$STUB25:$PATH" env -u DEPLOY_CONFIG_LINEAGE_SKIP_FETCH \
+    DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_STATE_DIR="$STATE" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" --slot staging --sha "$SHA" --reason "case25 fetch fails" >"$O" 2>"$E"
+  RC=$?
+  if [ "$RC" -ne 0 ] && grep -q "git exit code 128" "$E" && grep -q "(lineage)" "$E"; then
+    pass "case25: a failed fetch is refused with git's exit code"
+  else
+    fail "case25: expected a lineage refusal naming exit code 128, got rc=$RC ($(grep -v FAKESECRET "$E"))"
+  fi
+  LEAKS="$(leak_count "$O" "$E" "$ROOT" "$STATE")"
+  if [ "$LEAKS" -eq 0 ]; then
+    pass "case25: FAKESECRET count 0 after a failed fetch"
+  else
+    fail "case25: git fetch output leaked FAKESECRET $LEAKS time(s)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 26
+# #752 round 3, trace sink: GIT_TRACE* / GIT_CURL_VERBOSE make git print
+# remote-helper argv and HTTP headers (URL + credential). The script must
+# unset them before any git call. (a) a stub git records any trace var it
+# sees and emits FAKESECRET when one is set; (b) real git with every trace
+# var on and a credentialed origin.
+#
+# Round 4 (#752, Q11): the origin used here is still credentialed on
+# purpose — the trace-suppression checks below fire on the repo-root
+# origin check's own git calls (git rev-parse --local-env-vars, git remote
+# get-url), which run before that check refuses the credentialed origin.
+# The refusal itself is now the EXPECTED outcome (rc != 0), not exit 0;
+# the trace-var and zero-leak assertions are what this case actually
+# guards and are unchanged.
+{
+  REPO="$(build_repo_with_origin "https://u:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  SHA="$(cd "$REPO" && git rev-parse HEAD)"
+  ROOT="$(fresh_dir)"; STATE="$(fresh_dir)"; O="$(fresh_dir)/out"; E="$(fresh_dir)/err"
+  STUB26="$(fresh_dir)"; SEEN26="$STUB26/seen"; REAL_GIT26="$(command -v git)"
+  : > "$SEEN26"
+  cat > "$STUB26/git" << STUBEOF
+#!/usr/bin/env bash
+for v in \$(compgen -e | grep -E '^(GIT_TRACE|GIT_CURL_VERBOSE)'); do
+  echo "\$v" >> "$SEEN26"
+  echo "trace: FAKESECRET" >&2
+done
+if [ "\$1" = "fetch" ]; then exit 0; fi
+exec "$REAL_GIT26" "\$@"
+STUBEOF
+  chmod +x "$STUB26/git"
+  PATH="$STUB26:$PATH" env -u DEPLOY_CONFIG_LINEAGE_SKIP_FETCH \
+    GIT_TRACE=1 GIT_TRACE_CURL=1 GIT_CURL_VERBOSE=1 GIT_TRACE_PACKET=1 GIT_TRACE_SETUP=1 GIT_TRACE2=1 \
+    DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_STATE_DIR="$STATE" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" --slot staging --sha "$SHA" --reason "case26 trace env" >"$O" 2>"$E"
+  RC=$?
+  if [ "$RC" -ne 0 ] && [ ! -s "$SEEN26" ]; then
+    pass "case26a: no git call saw a GIT_TRACE*/GIT_CURL_VERBOSE variable"
+  else
+    fail "case26a: rc=$RC, git calls saw trace vars: $(sort -u "$SEEN26" | tr '\n' ' ')"
+  fi
+  LEAKS="$(leak_count "$O" "$E" "$ROOT" "$STATE")"
+  if [ "$LEAKS" -eq 0 ]; then
+    pass "case26a: FAKESECRET count 0 with trace vars set (stub git)"
+  else
+    fail "case26a: FAKESECRET leaked $LEAKS time(s) with trace vars set"
+  fi
+
+  ROOT="$(fresh_dir)"; STATE="$(fresh_dir)"; O="$(fresh_dir)/out"; E="$(fresh_dir)/err"
+  GIT_TRACE=1 GIT_TRACE_CURL=1 GIT_CURL_VERBOSE=1 GIT_TRACE_SETUP=1 GIT_TRACE2=1 GIT_TRACE2_EVENT=1 \
+    DEPLOY_CONFIG_STATE_DIR="$STATE" run_deploy "$REPO" "$ROOT" --slot staging --sha "$SHA" --reason "case26b real git trace" >"$O" 2>"$E"
+  RC=$?
+  LEAKS="$(leak_count "$O" "$E" "$ROOT" "$STATE")"
+  if [ "$RC" -ne 0 ] && [ "$LEAKS" -eq 0 ]; then
+    pass "case26b: real git with every trace var on: credentialed origin refused (Q11), FAKESECRET count 0"
+  else
+    fail "case26b: rc=$RC, FAKESECRET leaked $LEAKS time(s)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 27
+# #752 review r1 MINORs. (a) git runs with GIT_TERMINAL_PROMPT=0 and
+# GIT_CONFIG_NOSYSTEM=1 and without GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM, as
+# seen by a stub git's fetch. (b) real git: an env-named global config whose
+# insteadOf would rewrite the clean origin to a credentialed foreign host is
+# ignored — the deploy is accepted with the constant, FAKESECRET count 0.
+# (c) no fixed, guessable /tmp/deploy-config-*-$$ temp names remain.
+{
+  REPO="$(build_repo_with_origin "https://github.com/abhayla/IPODhan.git")"
+  SHA="$(cd "$REPO" && git rev-parse HEAD)"
+  EVIL_CFG="$(fresh_dir)/evil.gitconfig"
+  printf '[url "https://u:FAKESECRET@evil.example/"]
+	insteadOf = https://github.com/
+' > "$EVIL_CFG"
+  ROOT="$(fresh_dir)"; STATE="$(fresh_dir)"; O="$(fresh_dir)/out"; E="$(fresh_dir)/err"
+  STUB27="$(fresh_dir)"; ENV27="$STUB27/env"; REAL_GIT27="$(command -v git)"
+  cat > "$STUB27/git" << STUBEOF
+#!/usr/bin/env bash
+if [ "\$1" = "fetch" ]; then
+  echo "prompt=\${GIT_TERMINAL_PROMPT-unset} nosystem=\${GIT_CONFIG_NOSYSTEM-unset} global=\${GIT_CONFIG_GLOBAL-unset} system=\${GIT_CONFIG_SYSTEM-unset}" > "$ENV27"
+  exit 0
+fi
+exec "$REAL_GIT27" "\$@"
+STUBEOF
+  chmod +x "$STUB27/git"
+  PATH="$STUB27:$PATH" env -u DEPLOY_CONFIG_LINEAGE_SKIP_FETCH     GIT_TERMINAL_PROMPT=1 GIT_CONFIG_GLOBAL="$EVIL_CFG" GIT_CONFIG_SYSTEM="$EVIL_CFG"     DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_STATE_DIR="$STATE"     bash "$DEPLOY_CONFIG" --root "$ROOT" --slot staging --sha "$SHA" --reason "case27a git env" >"$O" 2>"$E"
+  RC=$?
+  if [ "$RC" -eq 0 ] && [ "$(cat "$ENV27" 2>/dev/null)" = "prompt=0 nosystem=1 global=unset system=unset" ]; then
+    pass "case27a: git fetch ran with GIT_TERMINAL_PROMPT=0, GIT_CONFIG_NOSYSTEM=1, no GIT_CONFIG_GLOBAL/SYSTEM"
+  else
+    fail "case27a: rc=$RC, fetch saw: $(cat "$ENV27" 2>/dev/null)"
+  fi
+
+  ROOT="$(fresh_dir)"; STATE="$(fresh_dir)"; O="$(fresh_dir)/out"; E="$(fresh_dir)/err"
+  GIT_CONFIG_GLOBAL="$EVIL_CFG" GIT_CONFIG_SYSTEM="$EVIL_CFG"     DEPLOY_CONFIG_STATE_DIR="$STATE" run_deploy "$REPO" "$ROOT" --slot staging --sha "$SHA" --reason "case27b env-named config" >"$O" 2>"$E"
+  RC=$?
+  LEAKS="$(leak_count "$O" "$E" "$ROOT" "$STATE")"
+  if [ "$RC" -eq 0 ] && grep -qF "$ORIGIN_CONST" "$O" && [ "$LEAKS" -eq 0 ]; then
+    pass "case27b: an env-named config's insteadOf is ignored; accepted, FAKESECRET count 0"
+  else
+    fail "case27b: rc=$RC, leaks=$LEAKS (stderr: $(grep -v FAKESECRET "$E"))"
+  fi
+
+  if [ "$(grep -c '/tmp/deploy-config-' "$DEPLOY_CONFIG")" -eq 0 ]; then
+    pass "case27c: no fixed /tmp/deploy-config-* temp file names remain (mktemp only)"
+  else
+    fail "case27c: fixed /tmp/deploy-config-* temp names still in the script"
+  fi
+}
+
+# ---------------------------------------------------------------- case 28
+# #752 round 4b, direct unit test of origin_is_ipodhan — no git repo, no
+# git config storage, no run_deploy. Extracts the function's own source
+# (between its 'origin_is_ipodhan() {' line and the matching top-level
+# '}') into a throwaway file, sources it with the same
+# IPODHAN_ORIGIN_ALLOWLIST the real script builds, and calls it directly.
+# This is what proves the printable-ASCII/LC_ALL=C fix and the CR/tab
+# guards identically on every platform: build_repo_with_raw_origin's
+# git-config round-trip is subject to git-for-windows' text-mode config
+# parsing (a bare '\r' immediately before the file's own line terminator
+# is normalised away — proven separately, see the case24 comment above
+# "leading tab"), so it cannot deliver a raw '\r' byte to the function on
+# a Windows dev box even though the real script (via 'git remote get-url'
+# on Linux) would see one. Calling the function directly sidesteps git
+# storage entirely.
+{
+  FN28="$(fresh_dir)/origin_is_ipodhan.sh"
+  awk '/^origin_is_ipodhan\(\) \{/,/^\}$/' "$DEPLOY_CONFIG" > "$FN28"
+  if [ ! -s "$FN28" ]; then
+    fail "case28: could not extract origin_is_ipodhan() from $DEPLOY_CONFIG (setup)"
+  else
+    OUT28="$(
+      # shellcheck disable=SC1090
+      IPODHAN_ORIGIN_ALLOWLIST=(
+        'https://github.com/abhayla/ipodhan'
+        'git@github.com:abhayla/ipodhan'
+        'ssh://git@github.com/abhayla/ipodhan'
+      )
+      source "$FN28"
+
+      check_direct() {
+        local expect="$1" label="$2" val="$3" rc
+        if origin_is_ipodhan "$val"; then rc=0; else rc=1; fi
+        if [ "$expect" = "accept" ]; then
+          [ "$rc" -eq 0 ] && echo "PASS: case28 [$label]: accepted" || echo "FAIL: case28 [$label]: expected accept, got refuse"
+        else
+          [ "$rc" -ne 0 ] && echo "PASS: case28 [$label]: refused" || echo "FAIL: case28 [$label]: expected refuse, got accept"
+        fi
+      }
+
+      check_direct accept "clean https"        "https://github.com/abhayla/IPODhan.git"
+      check_direct accept "clean scp-like"      "git@github.com:abhayla/IPODhan"
+      check_direct accept "clean ssh://"        "ssh://git@github.com/abhayla/IPODhan.git"
+      # Review MAJOR (#752 round 4b): U+0130 'İ' must NOT casefold into a
+      # match under LC_ALL=C — refused, both forms.
+      check_direct refuse "unicode dotted I host" "https://gİthub.com/abhayla/IPODhan"
+      check_direct refuse "unicode dotted I path" "https://github.com/abhayla/İpodhan"
+      # Review MINOR (#752 round 4b): a bare trailing CR and a leading tab
+      # must be refused by the printable-ASCII regex itself.
+      check_direct refuse "trailing CR"         "$(printf 'https://github.com/abhayla/IPODhan\r')"
+      check_direct refuse "leading tab"         "$(printf '\thttps://github.com/abhayla/IPODhan')"
+    )"
+    while IFS= read -r line; do
+      case "$line" in
+        PASS:*) pass "${line#PASS: }" ;;
+        FAIL:*) fail "${line#FAIL: }" ;;
+      esac
+    done <<< "$OUT28"
   fi
 }
 
