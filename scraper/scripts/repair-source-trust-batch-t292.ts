@@ -89,8 +89,25 @@ import {
   decideStaleCorrectionSkip,
   openRepairDb,
   queryLatestFieldSourceDate,
+  toComparableCorrectionText,
   writeLedgerFile,
 } from './lib/repair-tool.js';
+
+/**
+ * #422 round 4 (MAJOR 1): a plain `row.openDate !== 'YYYY-MM-DD'` is
+ * ALWAYS true when the live column comes back as a `Date` object (pg's own
+ * OID-1082 parser, unaffected by `configureUtcTimestampParsing` which only
+ * patches OID 1114/1184 timestamps — verified:
+ * `require('pg').types.getTypeParser(1082)('2026-08-19')` returns a Date).
+ * A `Date !== string` compares by reference/type, never by value, so every
+ * date-typed "did this field change" gate below was proposing a change on
+ * EVERY run regardless of the row's real value. Compare via
+ * `toComparableCorrectionText` (LOCAL calendar parts, never
+ * `.toISOString()` — that shifts an IST date back one day) instead.
+ */
+export function dateFieldChanged(current: unknown, target: string | null): boolean {
+  return toComparableCorrectionText(current) !== target;
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -216,9 +233,9 @@ async function main() {
       changes.push({ field: 'offeringType', from: mopshop.offeringType, to: 'IPO', assumedFrom: 'FPO' });
     const targetOpen = '2026-08-19';
     const targetClose = '2026-08-21';
-    if (mopshop.openDate !== targetOpen)
+    if (dateFieldChanged(mopshop.openDate, targetOpen))
       changes.push({ field: 'openDate', from: mopshop.openDate, to: targetOpen, assumedFrom: '2026-08-15' });
-    if (mopshop.closeDate !== targetClose)
+    if (dateFieldChanged(mopshop.closeDate, targetClose))
       changes.push({ field: 'closeDate', from: mopshop.closeDate, to: targetClose, assumedFrom: '2026-08-22' });
     if (mopshop.lotSize !== 1000) changes.push({ field: 'lotSize', from: mopshop.lotSize, to: 1000, assumedFrom: null });
     if (changes.length > 0) {
@@ -259,9 +276,9 @@ async function main() {
     const targetOpen = '2026-02-19';
     const targetClose = '2026-03-06';
     const targetListing = '2026-03-11';
-    if (suryo.openDate !== targetOpen) changes.push({ field: 'openDate', from: suryo.openDate, to: targetOpen });
-    if (suryo.closeDate !== targetClose) changes.push({ field: 'closeDate', from: suryo.closeDate, to: targetClose });
-    if (suryo.listingDate !== targetListing) changes.push({ field: 'listingDate', from: suryo.listingDate, to: targetListing });
+    if (dateFieldChanged(suryo.openDate, targetOpen)) changes.push({ field: 'openDate', from: suryo.openDate, to: targetOpen });
+    if (dateFieldChanged(suryo.closeDate, targetClose)) changes.push({ field: 'closeDate', from: suryo.closeDate, to: targetClose });
+    if (dateFieldChanged(suryo.listingDate, targetListing)) changes.push({ field: 'listingDate', from: suryo.listingDate, to: targetListing });
     if (suryo.priceRangeMin !== 20) changes.push({ field: 'priceRangeMin', from: suryo.priceRangeMin, to: 20 });
     if (suryo.priceRangeMax !== 20) changes.push({ field: 'priceRangeMax', from: suryo.priceRangeMax, to: 20 });
     if (suryo.issueSize !== '59400000.00') changes.push({ field: 'issueSize', from: suryo.issueSize, to: '59400000.00' });
@@ -282,9 +299,9 @@ async function main() {
     const targetOpen = '2026-02-05';
     const targetClose = '2026-03-06';
     const targetListing = '2026-03-11';
-    if (travels.openDate !== targetOpen) changes.push({ field: 'openDate', from: travels.openDate, to: targetOpen });
-    if (travels.closeDate !== targetClose) changes.push({ field: 'closeDate', from: travels.closeDate, to: targetClose });
-    if (travels.listingDate !== targetListing) changes.push({ field: 'listingDate', from: travels.listingDate, to: targetListing });
+    if (dateFieldChanged(travels.openDate, targetOpen)) changes.push({ field: 'openDate', from: travels.openDate, to: targetOpen });
+    if (dateFieldChanged(travels.closeDate, targetClose)) changes.push({ field: 'closeDate', from: travels.closeDate, to: targetClose });
+    if (dateFieldChanged(travels.listingDate, targetListing)) changes.push({ field: 'listingDate', from: travels.listingDate, to: targetListing });
     if (travels.lotSize !== null) changes.push({ field: 'lotSize', from: travels.lotSize, to: null });
     if (changes.length > 0) {
       repairs.push({

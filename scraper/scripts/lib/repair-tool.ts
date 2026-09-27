@@ -845,7 +845,7 @@ export interface StaleCorrectionDecision {
  * is its own LOCAL calendar parts (`getFullYear`/`getMonth`/`getDate`) —
  * because that is exactly how it was constructed, the round-trip is exact.
  */
-function toComparableCorrectionText(value: unknown): string | null {
+export function toComparableCorrectionText(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) {
     const y = value.getFullYear();
