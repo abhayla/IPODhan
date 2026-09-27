@@ -226,6 +226,33 @@ describe('OD-130: a genuinely separate offering (OD-69/OD-70/OD-71) gets a minte
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toMatch(/OD-130/);
   });
+
+  // Tier A review round 1, MAJOR-1: the null-CIN guard (line 82) is correct
+  // (`inCin && rowCin && ...` short-circuits on either side being null/empty)
+  // but was UNPINNED - nothing failed if a null were ever treated as
+  // "differs". Pin it at the `create()` level: an incoming record with NO
+  // cin, against a holder that HAS one, must fall through OD-69 entirely.
+  it('(MAJOR-1a) incoming has NO cin, holder HAS one -> never reaches OD-69, never mints; falls to the OD-68 catch-all hold', async () => {
+    const { repo, auditInserts, iposInserts } = makeRepo([RAYS_ROW]);
+    const err = await repo
+      .create({
+        companyName: 'Rays of Belief Limited',
+        slug: 'rays-of-belief-ltd',
+        segment: 'MAINBOARD',
+        offeringType: 'IPO',
+        status: 'LISTED',
+        openDate: '2026-09-01',
+        priceRangeMin: '227',
+        cin: null,
+      } as never)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(IdentityHeldForReviewError);
+    expect(iposInserts).toHaveLength(0);
+    expect(auditInserts[0]).toMatchObject({ actionType: 'IDENTITY_HELD_FOR_REVIEW' });
+    const details = auditInserts[0].details as { rule: string };
+    expect(details.rule).not.toBe('OD-69');
+    expect(details.rule).toBe('OD-68');
+  });
 });
 
 describe('slugTakenReason names the rule that refused the bind', () => {
@@ -235,9 +262,16 @@ describe('slugTakenReason names the rule that refused the bind', () => {
     [{ openDate: '2026-09-01' }, { openDate: '2025-12-01' }, 'OD-35', 'slug_taken: open date beyond 180 days (2026-09-01 vs 2025-12-01)'],
     [{ openDate: '2026-09-01' }, { openDate: '2026-08-01' }, 'OD-68', 'slug_taken: identity resolution did not bind the row holding this slug'],
     [{ cin: RAYS_CIN }, { cin: RAYS_CIN, status: 'WITHDRAWN' }, 'OD-71', 'slug_taken: the slug holder is WITHDRAWN (a refiling is a new offering)'],
+    // MAJOR-1b: a one-sided CIN (either direction) must never read as "differs".
+    [{ cin: null }, { cin: RAYS_CIN }, 'OD-68', 'slug_taken: identity resolution did not bind the row holding this slug'],
+    [{ cin: RAYS_CIN }, { cin: null }, 'OD-68', 'slug_taken: identity resolution did not bind the row holding this slug'],
+    // MINOR: a MISSING incoming offering type is unknown, not a guessed 'IPO' -
+    // it must never disagree with a holder's known type.
+    [{ offeringType: null }, { offeringType: 'RIGHTS' }, 'OD-68', 'slug_taken: identity resolution did not bind the row holding this slug'],
   ])('%j vs %j -> %s', (incoming, holder, rule, reason) => {
     expect(slugTakenReason(incoming as never, holder as never)).toEqual({ rule, reason });
   });
+
 
   it('OD-130 mints for exactly OD-69/OD-70/OD-71, never OD-68 or OD-35', () => {
     expect(SEPARATE_OFFERING_SLUG_RULES.has('OD-69')).toBe(true);

@@ -88,8 +88,14 @@ export function slugTakenReason(
   if (incoming.segment && holder.segment && incoming.segment !== holder.segment) {
     return { rule: 'OD-68', reason: `slug_taken: segment differs (${incoming.segment} vs ${holder.segment})` };
   }
-  const inType = incoming.offeringType ?? 'IPO';
-  if (holder.offeringType && inType !== holder.offeringType) {
+  // Tier A review round 1 (MINOR): a MISSING incoming offering type is
+  // unknown, never a guessed 'IPO' — the resolver's own `ofsIdentityConflict`
+  // treats an absent type on either side as "no information" and never a
+  // conflict (ipo-identity.ts). Defaulting to 'IPO' here disagreed with that
+  // and could mint an OD-70 slug for a record whose type was simply not
+  // known yet.
+  const inType = incoming.offeringType ?? null;
+  if (inType && holder.offeringType && inType !== holder.offeringType) {
     return { rule: 'OD-70', reason: `slug_taken: offering type differs (${inType} vs ${holder.offeringType})` };
   }
   const day = (v: unknown): string | null =>
@@ -120,17 +126,36 @@ export function slugTakenReason(
  */
 export const SEPARATE_OFFERING_SLUG_RULES: ReadonlySet<string> = new Set(['OD-69', 'OD-70', 'OD-71']);
 
+/** Minutes IST is ahead of UTC (`ist-timezone.md`: IST is this project's timezone). */
+const IST_OFFSET_MINUTES = 5 * 60 + 30;
+
 /**
  * The open year a slug suffix is minted from — the CALENDAR year of the
- * incoming record's own open date (never the existing holder's), read as a
- * plain date string/Date, never a time-of-day computation (`ist-timezone.md`
- * does not apply: this is a date, not a timestamp).
+ * incoming record's own open date (never the existing holder's), read as an
+ * INDIAN MARKET DATE (`ist-timezone.md`: "every date the platform publishes
+ * is the Indian market date").
+ *
+ * Tier A review round 1 (MINOR): reading `.getUTCFullYear()` off the raw
+ * value is wrong two ways.
+ *   - A plain "YYYY-MM-DD" date-only string has no time-of-day to convert —
+ *     its year IS the IST calendar year already; running it through `Date`
+ *     and a UTC getter is an unnecessary (and here, safe only by accident)
+ *     round-trip.
+ *   - A genuine INSTANT (a `Date` object, e.g. midnight IST arriving as
+ *     `...T18:30:00.000Z` the PREVIOUS UTC day for Jan 1) must be shifted to
+ *     IST wall-clock time before its year is read, or a market date opening
+ *     on the first of January reads back as December of the prior year.
  */
 function openYearOf(value: unknown): number | null {
   if (value == null || value === '') return null;
+  if (typeof value === 'string') {
+    const m = /^(\d{4})-\d{2}-\d{2}/.exec(value.trim());
+    if (m) return Number(m[1]);
+  }
   const d = value instanceof Date ? value : new Date(String(value));
   if (Number.isNaN(d.getTime())) return null;
-  return d.getUTCFullYear();
+  const ist = new Date(d.getTime() + IST_OFFSET_MINUTES * 60_000);
+  return ist.getUTCFullYear();
 }
 
 /**
@@ -584,13 +609,43 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // the matching type" retry), more than one row can share a name AND
       // that type — an explicit ORDER BY makes the pick deterministic
       // instead of relying on Postgres's unspecified row order under LIMIT 1.
+      //
+      // Tier A review round 1 (MAJOR-2): "deterministic" is not "correct".
+      // OD-130 is the first path that can legitimately leave TWO rows with
+      // the same name live (`<slug>` and `<slug>-<open-year>`), so LIMIT 1
+      // — deterministic or not — can bind a caller to the WRONG one of two
+      // real, distinct offerings and silently write one company's data onto
+      // the other's row. Fetch up to 2 with the SAME deterministic ORDER BY
+      // on every path (not only the offeringType-filtered one) and HOLD
+      // instead of picking when more than one comes back.
       const query = offeringType
         ? this.db.select().from(ipos).where(sql`(${nameCondition}) AND ${ipos.offeringType} = ${offeringType}`).orderBy(ipos.id)
-        : this.db.select().from(ipos).where(nameCondition);
-      const [ipo] = await query.limit(1);
+        : this.db.select().from(ipos).where(nameCondition).orderBy(ipos.id);
+      const matches = await query.limit(2);
 
-      return ipo || null;
+      if (matches.length > 1) {
+        const candidates = matches.map((m: IPO) => ({
+          id: m.id, slug: m.slug, companyName: m.companyName, openDate: m.openDate, priceRangeMin: m.priceRangeMin, status: m.status,
+        }));
+        logger.warn(
+          { normalizedName, offeringType, candidateIds: candidates.map((c) => c.id), candidateSlugs: candidates.map((c) => c.slug) },
+          '[OD-130 MAJOR-2] more than one row matches this normalized name - HELD, never binding to one at random'
+        );
+        const incoming = { companyName: normalizedName, slug: normalizedName, openDate: null, priceRangeMin: null };
+        await this.recordIdentityHold(incoming, normalizedName, candidates, {
+          rule: 'OD-130-MAJOR-2',
+          reason: `ambiguous_normalized_name_match: "${normalizedName}" matches ${matches.length} rows (${candidates.map((c) => c.slug).join(', ')})`,
+        });
+        throw new IdentityHeldForReviewError(
+          `IPORepository.findByNormalizedName: "${normalizedName}" matches ${matches.length} rows (${candidates.map((c) => c.slug).join(', ')}) - held, never bound to one at random`,
+          incoming,
+          candidates
+        );
+      }
+
+      return matches[0] || null;
     } catch (error) {
+      if (error instanceof IdentityHeldForReviewError) throw error;
       throw new DatabaseError(
         `Failed to fetch IPO by normalized name: ${normalizedName}`,
         undefined,
