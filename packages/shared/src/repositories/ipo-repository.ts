@@ -61,6 +61,15 @@ import {
 export const IDENTITY_HELD_ACTION = 'IDENTITY_HELD_FOR_REVIEW';
 
 /**
+ * audit_logs.action_type recorded when OD-130 mints a slug for a genuinely
+ * separate offering instead of holding it — the transparency trail for a
+ * decision that used to be silent (or a silent unique-constraint failure).
+ * Not read by `i_identity_held` (that check is scoped to holds); a future
+ * check can sweep this action_type the same way.
+ */
+export const SEPARATE_OFFERING_SLUG_ACTION = 'IDENTITY_SEPARATE_OFFERING_CREATED';
+
+/**
  * #928: why a create whose slug is already held was not bound to that row, named
  * by the spec rule that refused it, so the audit_logs hold says what to decide.
  */
@@ -91,6 +100,56 @@ export function slugTakenReason(
     return { rule: 'OD-35', reason: `slug_taken: open date beyond 180 days (${a} vs ${b})` };
   }
   return { rule: 'OD-68', reason: 'slug_taken: identity resolution did not bind the row holding this slug' };
+}
+
+/**
+ * OD-130 (2026-09-27, `docs/design/data-sourcing-pull-model.md` §0.0.1): a
+ * GENUINELY separate offering whose base slug is already taken gets its own
+ * slug instead of being held forever. Scoped to the three `slugTakenReason`
+ * rules the spec itself states are a NEW ROW, never an ambiguous one:
+ *   - OD-69 (CIN differs)        — a different CIN is definitionally another company
+ *   - OD-70 (offering type differs) — OD-35's table: "offering type changes … new row"
+ *   - OD-71 (WITHDRAWN holder)   — OD-35's lapsed-draft rule: "… create a new row"
+ * Deliberately EXCLUDED: the OD-68 catch-all (segment differs, or "identity
+ * resolution did not bind" with no more specific reason) and OD-35 (open date
+ * beyond 180 days) — §2.3.3.2 calls these AMBIGUOUS and prescribes hold-for-
+ * review, not a new row (S2: "a same-name, same-segment live row with a
+ * differing known date or band … held for review, not a new row"; the OD-35
+ * lapsed-draft rule needs a `sebi_observation_date` field that does not exist
+ * yet, so "no row is ever declared lapsed" purely from a date gap).
+ */
+export const SEPARATE_OFFERING_SLUG_RULES: ReadonlySet<string> = new Set(['OD-69', 'OD-70', 'OD-71']);
+
+/**
+ * The open year a slug suffix is minted from — the CALENDAR year of the
+ * incoming record's own open date (never the existing holder's), read as a
+ * plain date string/Date, never a time-of-day computation (`ist-timezone.md`
+ * does not apply: this is a date, not a timestamp).
+ */
+function openYearOf(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const d = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(d.getTime())) return null;
+  return d.getUTCFullYear();
+}
+
+/**
+ * OD-130's two candidates, in order: `<slug>-<open-year>`, then
+ * `<slug>-<open-year>-<segment>`. Returns `null` when no open date is known
+ * (a draft with no open date cannot derive a year) — the caller then falls
+ * back to the existing hold, per the spec's "no real case … until built" and
+ * "an unknown [date] means not lapsed, never a guess" posture.
+ */
+export function deriveSeparateOfferingSlugCandidates(
+  baseSlug: string,
+  openDate: unknown,
+  segment: string | null | undefined
+): string[] | null {
+  const year = openYearOf(openDate);
+  if (!year) return null;
+  const candidates = [`${baseSlug}-${year}`];
+  if (segment) candidates.push(`${baseSlug}-${year}-${segment.toLowerCase()}`);
+  return candidates;
 }
 import {
   normalizedCompanyNameSql,
@@ -1091,18 +1150,11 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
-   * #928 (OD-69 / OD-71 / OD-35, #903): the record reached create because
-   * `resolveIpoRow` declined the row that already holds its slug (a differing
-   * CIN, a WITHDRAWN holder, another segment or type, a date beyond 180 days).
-   * The insert would fail on `ipos.slug`'s unique constraint on every cycle with
-   * no durable trace. It is HELD instead (OD-68: "held for review instead of
-   * creating a second row"; OD-85 read rule 3: "a failed check writes nothing
-   * and holds the record"), recorded in audit_logs and read nightly by
-   * `i_identity_held`. The slug a genuinely separate second row should take is
-   * not decided by the spec, so no alternative slug is minted here.
+   * Read-only slug-collision lookup, shared by `holdIfSlugTaken` and the
+   * `identityHoldOverride` release path (OD-130 requirement (e)) so both
+   * agree on who holds a slug and why.
    */
-  private async holdIfSlugTaken(data: IPOInsert): Promise<void> {
-    if (!data.slug) return;
+  private async findSlugHolder(slug: string) {
     const rows = await this.db
       .select({
         id: ipos.id,
@@ -1116,8 +1168,46 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         cin: ipos.cin,
       })
       .from(ipos)
-      .where(eq(ipos.slug, data.slug));
-    const holder = rows.find((r) => r.slug === data.slug);
+      .where(eq(ipos.slug, slug));
+    return rows.find((r) => r.slug === slug) ?? null;
+  }
+
+  /**
+   * OD-130: `<slug>-<open-year>`, then `<slug>-<open-year>-<segment>` — the
+   * first of those two DB checks not to come back with a row. `null` means
+   * neither candidate is computable (no open date) or both are already taken
+   * — the caller falls back to holding, as before.
+   */
+  private async mintSeparateOfferingSlug(data: { slug?: string | null; openDate?: unknown; segment?: string | null }): Promise<string | null> {
+    if (!data.slug) return null;
+    const candidates = deriveSeparateOfferingSlugCandidates(data.slug, data.openDate, data.segment ?? null);
+    if (!candidates) return null;
+    for (const candidate of candidates) {
+      const holder = await this.findSlugHolder(candidate);
+      if (!holder) return candidate;
+    }
+    return null;
+  }
+
+  /**
+   * #928 (OD-69 / OD-71 / OD-35, #903): the record reached create because
+   * `resolveIpoRow` declined the row that already holds its slug (a differing
+   * CIN, a WITHDRAWN holder, another segment or type, a date beyond 180 days).
+   * The insert would fail on `ipos.slug`'s unique constraint on every cycle with
+   * no durable trace.
+   *
+   * OD-130 (2026-09-27): when the decline is one of the three rules the spec
+   * calls a genuinely SEPARATE offering (`SEPARATE_OFFERING_SLUG_RULES`), a
+   * fresh slug is minted (`<slug>-<open-year>`, then `<slug>-<open-year>-
+   * <segment>`) and the create proceeds under it — the FIRST row's slug is
+   * never touched. Every other decline (the OD-68 catch-all, OD-35) is still
+   * HELD (OD-68: "held for review instead of creating a second row"; OD-85
+   * read rule 3: "a failed check writes nothing and holds the record"),
+   * recorded in audit_logs and read nightly by `i_identity_held`.
+   */
+  private async holdIfSlugTaken(data: IPOInsert): Promise<void> {
+    if (!data.slug) return;
+    const holder = await this.findSlugHolder(data.slug);
     if (!holder) return;
 
     const why = slugTakenReason(data, holder);
@@ -1130,6 +1220,34 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     const candidate = {
       id: holder.id, slug: holder.slug, companyName: holder.companyName, openDate: holder.openDate, priceRangeMin: holder.priceRangeMin, status: holder.status,
     };
+
+    if (SEPARATE_OFFERING_SLUG_RULES.has(why.rule)) {
+      const minted = await this.mintSeparateOfferingSlug(data);
+      if (minted) {
+        logger.info(
+          { incoming, holder: candidate, rule: why.rule, reason: why.reason, mintedSlug: minted },
+          '[OD-130] separate offering: slug minted instead of holding - the create proceeds'
+        );
+        await this.db.insert(auditLogs).values({
+          adminUser: 'SYSTEM',
+          actionType: SEPARATE_OFFERING_SLUG_ACTION,
+          ipoId: null,
+          tableName: 'ipos',
+          fieldName: 'slug',
+          oldValue: data.slug,
+          newValue: minted,
+          details: { rule: why.rule, reason: why.reason, incoming, holder: candidate, mintedSlug: minted },
+          success: true,
+        });
+        data.slug = minted;
+        return;
+      }
+      logger.warn(
+        { incoming, holder: candidate, rule: why.rule, reason: why.reason },
+        '[OD-130] separate offering declined slug mint (no open date, or both candidates taken) - falling back to a hold'
+      );
+    }
+
     logger.warn(
       { incoming, holder: candidate, rule: why.rule, reason: why.reason },
       'identity_held_for_review: the slug is held by a row identity resolution did not bind - NOT created (#928)'
@@ -1219,6 +1337,29 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       const { by, reason } = options.identityHoldOverride;
       if (!by?.trim() || !reason?.trim()) {
         throw new Error('IPORepository.create: identityHoldOverride needs a non-empty `by` and `reason` (OD-68)');
+      }
+      // OD-130 requirement (e): releasing a held case still needs a free
+      // slug. An admin overriding the hold has decided the record IS a
+      // separate offering; if its slug is still taken (the usual case — it
+      // is the SAME slug the hold recorded), mint one the same way the
+      // automatic path would, rather than let the insert fail on the unique
+      // constraint the override was supposed to get past.
+      if (data.slug) {
+        const stillTaken = await this.findSlugHolder(data.slug);
+        if (stillTaken) {
+          const minted = await this.mintSeparateOfferingSlug(data);
+          if (!minted) {
+            throw new Error(
+              `IPORepository.create: identityHoldOverride cannot release "${data.companyName ?? data.slug}" - ` +
+              `slug "${data.slug}" is taken by ${stillTaken.id} and no open date is known to derive <slug>-<year> (OD-130)`
+            );
+          }
+          logger.info(
+            { companyName: data.companyName, from: data.slug, to: minted, by, reason },
+            '[OD-130] identity hold override: slug minted for the released row'
+          );
+          data.slug = minted;
+        }
       }
       logger.warn({ companyName: data.companyName, slug: data.slug, by, reason }, 'identity hold OVERRIDDEN by a human - creating the row (OD-68)');
       await this.db.insert(auditLogs).values({
