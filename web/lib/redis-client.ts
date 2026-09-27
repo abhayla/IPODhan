@@ -1,4 +1,9 @@
 import Redis from 'ioredis';
+import {
+  applyRedisSlotNamespace,
+  createBuildTimeNoCacheClient,
+  resolveRedisKeyPrefixOrBuildNoCache,
+} from '@ipodhan/shared/cache/redis-slot';
 import { logger } from './logger';
 
 /**
@@ -18,11 +23,21 @@ let redisClient: Redis | null = null;
 export function getRedisClient(): Redis {
   if (!redisClient) {
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    // #151: slot namespace from the connected database (fail closed) - see
+    // packages/shared/src/cache/redis-slot.ts.
+    const keyPrefix = resolveRedisKeyPrefixOrBuildNoCache();
+    if (keyPrefix === null) {
+      // `next build` with no database env (CI): the Redis-down path, no
+      // socket, no key written. Never taken at runtime - see redis-slot.ts.
+      redisClient = createBuildTimeNoCacheClient();
+      return redisClient;
+    }
 
     // F2 (T-264 P2-3): REDIS_DB, when set, always wins as an explicit slot
     // override even if REDIS_URL has no (or a different) db suffix - see the
     // matching comment in lib/cache/redis-client.ts for the full incident.
     redisClient = new Redis(redisUrl, {
+      keyPrefix,
       maxRetriesPerRequest: 3,
       ...(process.env.REDIS_DB !== undefined
         ? { db: parseInt(process.env.REDIS_DB, 10) }
@@ -42,6 +57,7 @@ export function getRedisClient(): Redis {
         return false;
       },
     });
+    applyRedisSlotNamespace(redisClient, keyPrefix);
 
     redisClient.on('connect', () => {
       logger.info('Redis client connected');

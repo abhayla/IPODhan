@@ -35,6 +35,9 @@ set -uo pipefail
 # silently to "prod"). Case 18 (below) is the ONLY case that unsets/varies it
 # on purpose, to test slot resolution itself.
 export DEPLOY_SLOT=prod
+# #151: the lock key carries the Redis slot prefix derived from the scraper's
+# database; a prod DATABASE_URL agrees with DEPLOY_SLOT=prod above.
+export DATABASE_URL="postgresql://ipodhan_app@db:5432/ipodhan"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WAKE="$SCRIPT_DIR/../scraper-wake.sh"
@@ -110,7 +113,7 @@ else
   fail "case 1: no wake-skipped line — a silent skip is indistinguishable from a wake that never fired"
   printf '%s\n' "$OUT1"
 fi
-if printf '%s' "$OUT1" | grep -qF 'lock_key=lock:resource:scraper:cycle'; then
+if printf '%s' "$OUT1" | grep -qF 'lock_key=prod:lock:resource:scraper:cycle'; then
   pass "case 1: the skip line names the OUTER lock the cycle actually takes (the identity)"
 else
   fail "case 1: the skip line does not name the lock key"
@@ -338,17 +341,17 @@ LIVE_LOCK6="$(lock_key_for_job live)"
 CLOSED_LOCK6="$(lock_key_for_job closed)"
 OPENING_LOCK6="$(lock_key_for_job opening)"
 PRICE_LOCK6="$(lock_key_for_job price)"
-if [ "$DATA_LOCK6" = "lock:resource:scraper:cycle" ]; then
+if [ "$DATA_LOCK6" = "prod:lock:resource:scraper:cycle" ]; then
   pass "case 6: a data wake reads scraper:cycle - the lock its --job=data command takes"
 else
   fail "case 6: a data wake reads '$DATA_LOCK6', not scraper:cycle; it would gate on a lock the command it runs does not take"
 fi
-if [ "$CLOSED_LOCK6" = "lock:resource:scraper:cycle" ]; then
+if [ "$CLOSED_LOCK6" = "prod:lock:resource:scraper:cycle" ]; then
   pass "case 6: a closed wake reads scraper:cycle (--job=closed takes the SAME heavy lock as --job=data, item 7 S3)"
 else
   fail "case 6: a closed wake reads '$CLOSED_LOCK6', not scraper:cycle"
 fi
-if [ "$OPENING_LOCK6" = "lock:resource:scraper:cycle" ]; then
+if [ "$OPENING_LOCK6" = "prod:lock:resource:scraper:cycle" ]; then
   pass "case 6: an opening-day wake reads scraper:cycle (--job=opening takes the SAME heavy lock as --job=data/closed, item 7 S4, OD-31)"
 else
   fail "case 6: an opening-day wake reads '$OPENING_LOCK6', not scraper:cycle"
@@ -357,7 +360,7 @@ fi
 # post-listing price fetch in the live class, so the price wake reads the SAME
 # lock the live-figures job takes (scraper:live), never the heavy scraper:cycle
 # (a data job holding it for hours would starve the prices).
-if [ "$PRICE_LOCK6" = "lock:resource:scraper:live" ]; then
+if [ "$PRICE_LOCK6" = "prod:lock:resource:scraper:live" ]; then
   pass "case 6: a price wake reads scraper:live (the section 2.1 live class), never scraper:cycle (item 7 S5)"
 else
   fail "case 6: a price wake reads '$PRICE_LOCK6', not scraper:live"
@@ -365,7 +368,7 @@ fi
 # OD-27: the live wake must read its OWN lock. Reading scraper:cycle would let
 # a data job holding the heavy lock for hours skip every live wake - the exact
 # thing the owner's rule forbids.
-if [ "$LIVE_LOCK6" = "lock:resource:scraper:live" ]; then
+if [ "$LIVE_LOCK6" = "prod:lock:resource:scraper:live" ]; then
   pass "case 6: a live wake reads scraper:live, never the heavy scraper:cycle (OD-27)"
 else
   fail "case 6: a live wake reads '$LIVE_LOCK6', not scraper:live - a data job would block the live figures"
@@ -1462,11 +1465,53 @@ chmod +x "$STUBDIR/redis-cli"
 OUT20B="$(PATH="$STUBDIR:$PATH" REDIS_URL="redis://127.0.0.1:6379/1" \
   SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
   sh "$WAKE" data 2>&1)"
-if printf '%s' "$OUT20B" | grep -q "lock-read-unavailable: TTL for lock:resource:scraper:cycle returned no usable value (redis-cli exit 1: NOAUTH Authentication required.)"; then
+if printf '%s' "$OUT20B" | grep -q "lock-read-unavailable: TTL for prod:lock:resource:scraper:cycle returned no usable value (redis-cli exit 1: NOAUTH Authentication required.)"; then
   pass "case 20b: an error from a REACHABLE redis-cli names its own cause (exit code + stderr), not a bare 'unreadable TTL'"
 else
   fail "case 20b: expected the cause-bearing lock-read-unavailable line, got: $OUT20B"
 fi
+
+# case 20d (#151): the real read path asks redis-cli for the SLOT-PREFIXED key
+# (prod and staging share one Redis; the unprefixed key is nobody's lock).
+printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$*" >> "$RC_ARGV_LOG"' 'echo 300' > "$STUBDIR/redis-cli"
+chmod +x "$STUBDIR/redis-cli"
+RC_ARGV_LOG="$(mktemp)"
+OUT20D="$(PATH="$STUBDIR:$PATH" RC_ARGV_LOG="$RC_ARGV_LOG" REDIS_URL="redis://127.0.0.1:6379/1" \
+  DEPLOY_SLOT=staging DATABASE_URL="postgresql://u@db:5432/ipodhan_staging" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" sh "$WAKE" data 2>&1)"
+if grep -qx -- "-u redis://127.0.0.1:6379/1 TTL staging:lock:resource:scraper:cycle" "$RC_ARGV_LOG" \
+   && printf '%s' "$OUT20D" | grep -q "lock_key=staging:lock:resource:scraper:cycle"; then
+  pass "case 20d: a staging wake reads staging:lock:resource:scraper:cycle (#151)"
+else
+  fail "case 20d: expected TTL on staging:lock:resource:scraper:cycle, argv: $(cat "$RC_ARGV_LOG"); out: $OUT20D"
+fi
+
+# case 20e (#151): no derivable database -> the lock state is unknowable:
+# WARN naming the cause, fail-open, and redis-cli is NEVER asked about the
+# unprefixed key.
+: > "$RC_ARGV_LOG"
+EMPTY_SCRAPER_DIR="$(mktemp -d)"
+OUT20E="$(env -u DATABASE_URL PATH="$STUBDIR:$PATH" RC_ARGV_LOG="$RC_ARGV_LOG" REDIS_URL="redis://127.0.0.1:6379/1" \
+  SCRAPER_DIR="$EMPTY_SCRAPER_DIR" SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT20E" | grep -q "lock-read-unavailable: cannot derive the Redis slot prefix for lock:resource:scraper:cycle (\[redis-slot\] no database name" \
+   && [ ! -s "$RC_ARGV_LOG" ]; then
+  pass "case 20e: no database -> WARN with the cause, fail-open, no redis-cli read of an unprefixed key"
+else
+  fail "case 20e: expected the slot-prefix WARN and zero redis-cli calls, argv: $(cat "$RC_ARGV_LOG"); out: $OUT20E"
+fi
+
+# case 20f (#151): DEPLOY_SLOT and the database disagree -> the same
+# fail-open WARN naming the disagreement, no redis-cli read.
+: > "$RC_ARGV_LOG"
+OUT20F="$(PATH="$STUBDIR:$PATH" RC_ARGV_LOG="$RC_ARGV_LOG" REDIS_URL="redis://127.0.0.1:6379/1" \
+  DEPLOY_SLOT=prod DATABASE_URL="postgresql://u@db:5432/ipodhan_staging" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT20F" | grep -q "DEPLOY_SLOT=prod disagrees" && [ ! -s "$RC_ARGV_LOG" ]; then
+  pass "case 20f: DEPLOY_SLOT=prod with the staging database -> WARN naming the disagreement, no redis-cli read"
+else
+  fail "case 20f: expected the disagreement WARN and zero redis-cli calls, argv: $(cat "$RC_ARGV_LOG"); out: $OUT20F"
+fi
+rm -rf "$RC_ARGV_LOG" "$EMPTY_SCRAPER_DIR"
 
 # case 20c: the actual committed script never INVOKES redis-cli with -t —
 # a static guard against the defect coming back, independent of the stub

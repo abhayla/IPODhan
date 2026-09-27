@@ -11,6 +11,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const RedisMock = vi.fn().mockImplementation(function (this: Record<string, unknown>) {
   this.on = vi.fn();
+  this.keys = vi.fn();
+  this.scan = vi.fn();
+  this.duplicate = vi.fn();
 });
 
 vi.mock('ioredis', () => ({
@@ -28,6 +31,11 @@ describe('web/lib/cache/redis-client — REDIS_URL / REDIS_DB honored (F2)', () 
     delete process.env.REDIS_HOST;
     delete process.env.REDIS_PORT;
     delete process.env.REDIS_PASSWORD;
+    // #151: the factory now derives its key namespace from the database and
+    // fails closed without one.
+    process.env.DATABASE_URL = 'postgresql://u@db:5432/ipodhan_staging';
+    delete process.env.DATABASE_HOST;
+    delete process.env.DEPLOY_SLOT;
   });
 
   afterEach(() => {

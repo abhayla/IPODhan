@@ -11,14 +11,38 @@ confidence, so a suggestion read from it carries the section 2.2.1 OCR mark.
 This script only READS. The mapping of sentences to fields, and every database write, happens in
 `@ipodhan/shared` `corrigendum-suggestions.ts`, and nothing there writes a field without the admin.
 
+The box lock (W-178c, #151 round 3): pdfplumber plus OCR on a scanned corrigendum runs for up to
+15 minutes at full CPU, so it takes the same cross-slot fcntl lock as `extract_filing.py` and
+`anchor_report_text.py` (`box_lock.py`, /var/www/ipodhan/shared/extractor.lock) BEFORE any PDF
+work, waiting up to EXTRACTOR_LOCK_WAIT_S seconds (default 90). Prod and staging share one 2-vCPU
+box; two extractors at once starved nginx/Next into Cloudflare 522s (W-178).
+
 Usage: python read_corrigendum_pages.py <pdf-path> [--no-ocr]
-Exit codes: 0 ok, 2 usage, 5 password-protected (terminal, OD-36).
+Exit codes: 0 ok, 2 usage, 5 password-protected (terminal, OD-36),
+75 busy: another extractor holds the box lock (EXTRACTOR_BUSY_EXIT_CODE in low-priority-spawn.ts).
 """
 import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import box_lock  # noqa: E402 - light, safe to import first (W-178c)
+
+# Same env knob and default as extract_filing.py's _extractor_lock_wait_s.
+DEFAULT_EXTRACTOR_LOCK_WAIT_S = 90
+EXTRACTOR_BUSY_EXIT_CODE = 75
+
+
+def _extractor_lock_wait_s():
+    raw = os.environ.get("EXTRACTOR_LOCK_WAIT_S")
+    if raw is None:
+        return DEFAULT_EXTRACTOR_LOCK_WAIT_S
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_EXTRACTOR_LOCK_WAIT_S
+    return value if value >= 0 else DEFAULT_EXTRACTOR_LOCK_WAIT_S
 
 
 def read_pages(pdf_path, ocr=True):
@@ -49,6 +73,10 @@ def main(argv):
     if len(args) != 1:
         print("usage: read_corrigendum_pages.py <pdf-path> [--no-ocr]", file=sys.stderr)
         return 2
+    # Before any PDF work: the lock is held until this process exits (the kernel releases it).
+    if not box_lock.acquire(box_lock.resolve_lock_path(), _extractor_lock_wait_s()):
+        print("extractor busy: box lock held (W-178c)", file=sys.stderr)
+        return EXTRACTOR_BUSY_EXIT_CODE
     from pdf_password_errors import is_pdf_password_error
     try:
         pages = read_pages(args[0], ocr="--no-ocr" not in argv)

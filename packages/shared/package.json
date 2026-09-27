@@ -15,6 +15,7 @@
     "./cache": "./src/cache/index.ts",
     "./cache/cache-keys": "./src/cache/cache-keys.ts",
     "./cache/redis-client": "./src/cache/redis-client.ts",
+    "./cache/redis-slot": "./src/cache/redis-slot.ts",
     "./types": "./src/types/index.ts",
     "./admin/field-protection-checker": "./src/admin/field-protection-checker.ts",
     "./services/corrigendum-suggestions": "./src/services/corrigendum-suggestions.ts",
