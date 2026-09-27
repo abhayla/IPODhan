@@ -38,6 +38,12 @@ CASES = [
      ["Inamulhaq Shamsulhaq Iraki", "Abdulhaq Shamsulhaq Iraki", "Ibrarulhaq Inamulhaq Iraki"]),
     ("green-asia-impex-ltd-rhp-cover-pages.json", "RHP", "SME",
      ["Pasupuleti Venkata Ramarao", "Pasupuleti Meenakshi"]),
+    # #545 round 3: large-issuer covers print "PROMOTERS OF OUR COMPANY:" and
+    # "THE PROMOTERS OF OUR COMPANY:" (names hand-read off each PDF's cover page).
+    ("moneyview-ltd-rhp-cover-pages.json", "RHP", "MAINBOARD",
+     ["Puneet Agarwal", "Sanjay Aggarwal", "Sushma Abburi"]),
+    ("acevector-ltd-rhp-cover-pages.json", "RHP", "MAINBOARD",
+     ["Kunal Bahl", "Rohit Kumar Bansal", "Starfish I Pte. Ltd."]),
 ]
 
 
@@ -62,3 +68,48 @@ def test_promoter_names_with_ampersand_or_slash_are_kept():
     from extract_filing import promoter_names_from_statement
     assert promoter_names_from_statement("SUNIL JALLAN, JALLAN & SONS AND A/B HOLDINGS") == [
         "Sunil Jallan", "Jallan & Sons", "A/B Holdings"]
+
+
+@pytest.mark.parametrize("line", [
+    "OUR PROMOTERS: PUNEET AGARWAL AND SUSHMA ABBURI",
+    "OUR PROMOTER: PUNEET AGARWAL AND SUSHMA ABBURI",
+    "PROMOTERS OF OUR COMPANY: PUNEET AGARWAL AND SUSHMA ABBURI",
+    "THE PROMOTERS OF OUR COMPANY: PUNEET AGARWAL AND SUSHMA ABBURI",
+    "PROMOTER OF OUR COMPANY: PUNEET AGARWAL AND SUSHMA ABBURI",
+    "PROMOTERS OF THE COMPANY: PUNEET AGARWAL AND SUSHMA ABBURI",
+    "OUR PROMOTERS ARE PUNEET AGARWAL AND SUSHMA ABBURI",
+    "PROMOTERS OF OUR COMPANY - PUNEET AGARWAL AND SUSHMA ABBURI",
+])
+def test_every_cover_wording_of_the_promoter_statement_is_read(line):
+    # #545 round 3: the class is the statement's WORDING, not two strings.
+    from extract_filing import read_cover_promoters
+    cover = "\n".join(["RED HERRING PROSPECTUS", line, "THE OFFER"])
+    names, page = read_cover_promoters([(0, cover)])
+    assert names == ["Puneet Agarwal", "Sushma Abburi"]
+    assert page == 0
+
+
+def test_table_of_contents_heading_is_not_a_promoter_statement():
+    from extract_filing import read_cover_promoters
+    toc = "\n".join(["OUR PROMOTERS AND PROMOTER GROUP ........................ 305",
+                     "DIVIDEND POLICY ...... 308"])
+    assert read_cover_promoters([(0, toc)]) == ([], None)
+
+
+def test_mixed_case_prose_about_promoters_is_not_a_statement():
+    # The "ARE" form is read only off an upper-case cover line; body prose is not a list.
+    from extract_filing import read_cover_promoters
+    prose = "Our Promoters are also Directors"
+    assert read_cover_promoters([(0, prose)]) == ([], None)
+
+
+@pytest.mark.parametrize("line", [
+    "OUR PROMOTER-GROUP ENTITIES",
+    "Our Promoters - also Directors",
+])
+def test_hyphenated_or_mixed_case_dash_line_is_not_a_statement(line):
+    # #545 r1 review: the dash form matched inside "PROMOTER-GROUP" and yielded a
+    # promoter "Group Entities". A separator dash stands apart from the word, and the
+    # dash form, like the ARE/IS form, is read only off an upper-case cover line.
+    from extract_filing import read_cover_promoters
+    assert read_cover_promoters([(0, line)]) == ([], None)

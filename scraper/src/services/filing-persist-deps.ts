@@ -33,6 +33,7 @@ import {
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
+import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
@@ -155,6 +156,8 @@ export function buildFilingPersistDeps(
     intermediaries: new IpoIntermediariesRepository(db, redis),
     brlmTrackRecord: new BrlmTrackRecordRepository(db, redis),
     peerCompanies: new PeerCompanyRepository(db),
+    // #545 (C): an attempted-but-empty promoters/peers section records its reason here (OD-62).
+    fieldExtractionFailures: new FieldExtractionFailuresRepository(db, redis),
     financialData: new FinancialDataRepository(db, redis),
     fieldSources,
     ipoDetailsWriter: makeIpoDetailsWriter(),

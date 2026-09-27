@@ -2369,3 +2369,123 @@ describe('filing-persister — W-82 concentration_kpis -> ipo_risk_factors.kpis'
     expect(summary.written.ipo_risk_factors).toBe(2);
   });
 });
+
+describe('filing-persister — an empty extracted section records its reason (#545 C, OD-62)', () => {
+  const withEmpty = (keys: string[], detail: string): FilingExtraction => {
+    const extraction = extractionFromOracle('RHP');
+    for (const k of keys) {
+      extraction.fields[k] = { value: null, page: null, check: { name: 'not_extractable', passed: true, detail } };
+    }
+    return extraction;
+  };
+  const PROMOTERS_EMPTY = ['promoter_name', 'promoter_names'];
+
+  /** makeDeps plus the failures repository and the two existing-row listers. */
+  const depsWith = (existing: { promoters?: unknown[]; peers?: unknown[] } = {}) => {
+    const s = makeDeps();
+    const recordFailure = vi.fn(async (row: unknown) => row);
+    const markResolved = vi.fn(async () => 1);
+    const d = s.deps as unknown as Record<string, Record<string, unknown>>;
+    d.promoters.listPromotersByIpo = vi.fn(async () => existing.promoters ?? []);
+    d.peerCompanies.findByIPOId = vi.fn(async () => existing.peers ?? []);
+    (s.deps as unknown as Record<string, unknown>).fieldExtractionFailures = { recordFailure, markResolved };
+    return { ...s, recordFailure, markResolved };
+  };
+  const failuresFor = (recordFailure: ReturnType<typeof vi.fn>, table: string) =>
+    recordFailure.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.tableName === table);
+
+  it('records one field_extraction_failures row when the promoters statement was not found', async () => {
+    const s = depsWith();
+    await persistFilingExtraction(
+      IPO_ID,
+      withEmpty(PROMOTERS_EMPTY, 'our_promoters_statement_not_on_cover'),
+      { docType: 'RHP', apply: true, documentId: '11111111-1111-4111-8111-111111111111', sourceSha: 'a'.repeat(64) },
+      s.deps
+    );
+    expect(s.replacePromoters).not.toHaveBeenCalled();
+    const rows = failuresFor(s.recordFailure, 'promoters');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      ipoId: IPO_ID,
+      fieldName: 'name',
+      rowKey: '',
+      ruleId: 'NOT_PRINTED',
+      rankAttempted: 'DRHP',
+      documentId: '11111111-1111-4111-8111-111111111111',
+      documentSha256: 'a'.repeat(64),
+    });
+    expect(rows[0].cause).toContain('our_promoters_statement_not_on_cover');
+    // round 1 wrote a field_sources 'empty_result' row: field_sources records successful writes only.
+    const emptyResult = s.trackField.mock.calls.filter((c) => (c[0] as Record<string, unknown>).fieldName === 'empty_result');
+    expect(emptyResult).toHaveLength(0);
+  });
+
+  it('records the peers reason the same way when the comparison table was not found', async () => {
+    const s = depsWith();
+    await persistFilingExtraction(
+      IPO_ID,
+      withEmpty(['peer_companies'], 'peer_comparison_table_not_in_document'),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    expect(s.peerReplace).not.toHaveBeenCalled();
+    const rows = failuresFor(s.recordFailure, 'peer_companies');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ fieldName: 'companyName', ruleId: 'NOT_PRINTED' });
+    expect(rows[0].cause).toContain('peer_comparison_table_not_in_document');
+  });
+
+  it('records nothing when the table already holds rows for the IPO (an ad re-read beside RHP promoters)', async () => {
+    const s = depsWith({ promoters: [{ name: 'Puneet Agarwal' }], peers: [{ companyName: 'Bajaj Finance' }] });
+    const extraction = withEmpty(PROMOTERS_EMPTY, 'our_promoters_statement_not_on_cover');
+    extraction.fields.peer_companies = {
+      value: null,
+      page: null,
+      check: { name: 'not_extractable', passed: true, detail: 'peer_comparison_table_not_in_document' },
+    };
+    await persistFilingExtraction(IPO_ID, extraction, { docType: 'PRICE_BAND_AD', apply: true }, s.deps);
+    expect(s.recordFailure).not.toHaveBeenCalled();
+  });
+
+  it('resolves the open reason when a later read supplies promoters or peers', async () => {
+    const s = depsWith();
+    const withPromoter = extractionFromOracle('RHP', {
+      promoter_names: { value: ['Puneet Agarwal'], passed: true },
+      peer_companies: { value: [{ name: 'Bajaj Finance Limited' }], passed: true },
+    });
+    await persistFilingExtraction(IPO_ID, withPromoter, { docType: 'RHP', apply: true }, s.deps);
+    expect(s.replacePromoters).toHaveBeenCalled();
+    expect(s.markResolved).toHaveBeenCalledWith(IPO_ID, 'promoters', 'name', '');
+    expect(s.recordFailure).not.toHaveBeenCalledWith(expect.objectContaining({ tableName: 'promoters' }));
+    expect(s.peerReplace).toHaveBeenCalled();
+    expect(s.markResolved).toHaveBeenCalledWith(IPO_ID, 'peer_companies', 'companyName', '');
+  });
+
+  it('records nothing when the section was never attempted, on a dry run, or when rows cannot be listed', async () => {
+    const notAttempted = depsWith();
+    const extraction = extractionFromOracle('RHP');
+    delete extraction.fields.promoter_name;
+    delete extraction.fields.promoter_names;
+    await persistFilingExtraction(IPO_ID, extraction, { docType: 'RHP', apply: true }, notAttempted.deps);
+    expect(failuresFor(notAttempted.recordFailure, 'promoters')).toHaveLength(0);
+
+    const dry = depsWith();
+    await persistFilingExtraction(
+      IPO_ID,
+      withEmpty(PROMOTERS_EMPTY, 'our_promoters_statement_not_on_cover'),
+      { docType: 'RHP', apply: false },
+      dry.deps
+    );
+    expect(dry.recordFailure).not.toHaveBeenCalled();
+
+    const unlistable = depsWith();
+    delete (unlistable.deps as unknown as Record<string, Record<string, unknown>>).promoters.listPromotersByIpo;
+    await persistFilingExtraction(
+      IPO_ID,
+      withEmpty(PROMOTERS_EMPTY, 'our_promoters_statement_not_on_cover'),
+      { docType: 'RHP', apply: true },
+      unlistable.deps
+    );
+    expect(failuresFor(unlistable.recordFailure, 'promoters')).toHaveLength(0);
+  });
+});
