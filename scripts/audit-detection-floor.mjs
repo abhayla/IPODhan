@@ -1459,7 +1459,7 @@ async function checkM() {
   // post-fix behaviour is a FAIL no night can clear (signal-ownership R5).
   const ratioVerdicts = ratioRows.map((r) => ({
     r,
-    ...ratioYieldVerdict({ hasRatio: r.has_ratio, stepEvidence: r.step_evidence, extractorVersion: r.extractor_version }),
+    ...ratioYieldVerdict({ stepEvidence: r.step_evidence, extractorVersion: r.extractor_version }),
   }));
   const ratioSummary = summarizeRatioYield(ratioVerdicts);
   const ratioSilent = ratioVerdicts
@@ -1467,9 +1467,9 @@ async function checkM() {
     .map(({ r, cause }) => `${r.company_name} (${r.doc_type} ${r.document_id.slice(0, 8)} @${r.extractor_version}): ${cause} [#${RATIO_YIELD_TRACKING_ISSUE}]`);
   for (const v of ratioSilent)
     notify('issuer_ratio_yield', 'P2', v, 'A completed filing extraction yielded no issuer ratio and named no cause', v);
-  const ratioCounts = `${ratioSummary.judged} judged at >= ${RATIO_FIXED_EXTRACTOR_VERSION}, ${ratioSummary.pending} pending re-read, ${ratioSummary.fails} FAIL`;
+  const ratioCounts = `${ratioSummary.judged} judged at >= ${RATIO_FIXED_EXTRACTOR_VERSION}, ${ratioSummary.pending} pending re-read, ${ratioSummary.refused} refused with a named reason, ${ratioSummary.fails} FAIL`;
   record('issuer_ratio_yield',
-    `every COMPLETED RHP/DRHP/PROSPECTUS stored at extractor ${RATIO_FIXED_EXTRACTOR_VERSION} or later carries a current_ratio or E9 ratioReasons.current_ratio = ratio_note_not_in_document; older ones are pending re-read (${ratioCounts}; tracking #${RATIO_YIELD_TRACKING_ISSUE})`,
+    `every COMPLETED RHP/DRHP/PROSPECTUS stored at extractor ${RATIO_FIXED_EXTRACTOR_VERSION} or later either read its current ratio FOR the latest statement period (E9 ratioRead period = latest_statement_period, value 0-50), refused with a named reason, or truthfully has no ratio note (no page prints a Current Ratio line); older ones are pending re-read (${ratioCounts}; tracking #${RATIO_YIELD_TRACKING_ISSUE})`,
     ratioSummary.status,
     ratioRows.length === 0
       ? `no prospectus-family document has completed extraction since ${RATIO_WIRING_MERGED_AT}`

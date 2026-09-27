@@ -156,8 +156,13 @@ import { buildExtractionStatePatch, buildExtractionAttemptRow } from './extracti
  * that string cannot mean "ratios read by the fixed reader". The ratio
  * verdict (scripts/lib/ratio-yield-verdict.mjs RATIO_FIXED_EXTRACTOR_VERSION)
  * judges only documents stored at or after this value; a test pins the two.
+ *
+ * #771 round 3 bumped it to '@2026-09-27': the reader now writes the column
+ * whose period heading equals the statement period and records that period
+ * (E9 ratioRead); '@2026-09-26b' documents were read by position and are
+ * pending re-read.
  */
-export const EXTRACTOR_VERSION = 'extract_filing.py@2026-09-26b';
+export const EXTRACTOR_VERSION = 'extract_filing.py@2026-09-27';
 
 /** Doc types `scripts/extract_filing.py` understands. Anything else is skipped. */
 import {

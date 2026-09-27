@@ -575,6 +575,10 @@ export function planExtractionSteps(
     ratioReasons[name] = f.check?.detail || 'ratio_null_without_reason';
   }
   const ratioEmitted = RATIO_FIELDS.some((n) => fields[n] !== undefined);
+  // #771 round 3: the period the current ratio was read for, the statement
+  // period it must equal, and (for a no-note claim) the pages that print a
+  // Current Ratio line anyway. issuer_ratio_yield judges these per document.
+  const ratioRead = (fields.current_ratio as { ratio_read?: unknown } | undefined)?.ratio_read;
 
   writes.push({
     ...common,
@@ -586,6 +590,7 @@ export function planExtractionSteps(
       checksFailed: failed.length,
       failedFields: failed.map(([n]) => n).slice(0, 20),
       ...(ratioEmitted ? { ratioReasons } : {}),
+      ...(ratioRead ? { ratioRead: { current_ratio: ratioRead } } : {}),
     },
   });
 

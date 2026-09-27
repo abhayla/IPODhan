@@ -310,6 +310,20 @@ describe('planExtractionSteps — E1..E10 and D6', () => {
     );
   });
 
+  it('E9: the period a current ratio was read for reaches the ledger (#771 round 3)', () => {
+    const ratioRead = { period: '2026-03-31', period_label: 'FY 25-26', latest_statement_period: '2026-03-31',
+      basis: 'standalone', statement_basis: null, value: 1.54, current_ratio_line_pages: [] };
+    const w = byId(planExtractionSteps(extraction({
+      current_ratio: { value: 1.54, page: 441, check: { name: 'ratio_read_as_printed', passed: true, detail: 'as printed' }, ratio_read: ratioRead },
+    }), opts));
+    expect(w.get('E9').evidence).toMatchObject({ ratioRead: { current_ratio: ratioRead } });
+  });
+
+  it('E9: no ratio_read from the extractor means no ratioRead key', () => {
+    const w = byId(planExtractionSteps(extraction({ current_ratio: nulled('ratio_row_not_in_note') }), opts));
+    expect('ratioRead' in (w.get('E9').evidence as Record<string, unknown>)).toBe(false);
+  });
+
   it('E9: a ratio that WAS read records no reason for it', () => {
     const w = byId(planExtractionSteps(extraction({
       current_ratio: { value: 1.54, page: 441, check: { name: 'ratio_read_as_printed', passed: true, detail: 'as printed: 1.54' } },
