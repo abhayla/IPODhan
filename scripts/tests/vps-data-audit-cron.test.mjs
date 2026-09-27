@@ -63,3 +63,33 @@ test('dry-run branch is untouched (still forces AUDIT_ISSUES_DRY_RUN=1)', () => 
     'the dry-run default path must remain unchanged'
   );
 });
+
+// #195 J2: the synthetic alert-drill step must be wired non-fatal (`|| echo`,
+// never a bare `||` that sets `failed=1`) and gated to one IST weekday, so a
+// still-missing NOTIFIER_KEY_IPODHAN_ALERT_DRILL (an ops step owed to the
+// box, see docs/ops/prod-ops-recipes.md #17) can never fail this cron run.
+test('audit-alert-drill step is invoked, IST-weekday-gated, and wired non-fatal', () => {
+  assert.match(
+    SOURCE,
+    /IST_WEEKDAY="\$\(date -u -d "@\$\(\( \$\(date \+%s\) \+ 19800 \)\)" \+%u\)"/,
+    'expected an IST-weekday computation (fixed +5:30 offset, same technique as DATE_TAG)'
+  );
+  assert.match(
+    SOURCE,
+    /if \[\[ "\$IST_WEEKDAY" == "4" \]\]; then/,
+    'expected the drill to be gated to a single IST weekday'
+  );
+  assert.match(
+    SOURCE,
+    /node scripts\/audit-alert-drill\.mjs \|\| echo "NON-FATAL: audit-alert-drill exited/,
+    'expected a non-fatal invocation of audit-alert-drill.mjs (never a bare `||` that sets failed=1)'
+  );
+});
+
+test('audit-alert-drill step never sets failed=1 on its own exit', () => {
+  const anchorIdx = SOURCE.indexOf('node scripts/audit-alert-drill.mjs');
+  assert.ok(anchorIdx !== -1, 'could not locate the audit-alert-drill invocation');
+  const lineEnd = SOURCE.indexOf('\n', anchorIdx);
+  const line = SOURCE.slice(anchorIdx, lineEnd);
+  assert.doesNotMatch(line, /failed=1/, 'audit-alert-drill must never fail the whole cron run');
+});

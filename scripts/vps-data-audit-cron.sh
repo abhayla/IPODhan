@@ -283,9 +283,31 @@ run_audit() {
   # real data before it can turn the nightly audit red; --gate is kept so a
   # future promotion to fatal is a one-line flip once the P1 share is back
   # under the cap. `|| true` is deliberate here, same shape as step 6.
-  echo "--- [7/7] audit-alert-channel --gate (#195 J1: alert signal:noise, weekly) ---"
+  echo "--- [7/8] audit-alert-channel --gate (#195 J1: alert signal:noise, weekly) ---"
   DELIVERY_LOG_PATH="${DATA_AUDIT_DELIVERY_LOG:-/root/notifier/state/delivery-log.jsonl}" \
     node scripts/audit-alert-channel.mjs --gate || echo "NON-FATAL: audit-alert-channel exited $? (see #195)"
+
+  # #195 J2: synthetic alert drill, weekly, one IST weekday (Thursday — chosen
+  # arbitrarily, away from the Sunday/Monday cadence of J1's 7-day window so
+  # the two never race the same delivery-log tail). WIRED NON-FATAL, same
+  # shape as J1 and step 6: this exercises a real external side effect (a
+  # POST to the Notifier) and reports UNVERIFIABLE, not FAIL, until
+  # NOTIFIER_KEY_IPODHAN_ALERT_DRILL is added to this box's own
+  # $NOTIFIER_ENV — an ops step for the owner (docs/ops/prod-ops-recipes.md
+  # #17), not something this PR can do from a worktree. `|| true` means a
+  # POST rejection or a still-missing key can never turn a green data-
+  # integrity night into a failed cron run; the script's own exit code
+  # (0/1/2/3) is still printed to the log.
+  # IST weekday: fixed +5:30 offset on the epoch second (same technique as
+  # DATE_TAG above), `date +%u` gives 1=Monday..7=Sunday; 4=Thursday.
+  IST_WEEKDAY="$(date -u -d "@$(( $(date +%s) + 19800 ))" +%u)"
+  if [[ "$IST_WEEKDAY" == "4" ]]; then
+    echo "--- [8/8] audit-alert-drill (#195 J2: synthetic notify-path proof, Thursdays IST) ---"
+    DELIVERY_LOG_PATH="${DATA_AUDIT_DELIVERY_LOG:-/root/notifier/state/delivery-log.jsonl}" \
+      node scripts/audit-alert-drill.mjs || echo "NON-FATAL: audit-alert-drill exited $? (see #195; UNVERIFIABLE until NOTIFIER_KEY_IPODHAN_ALERT_DRILL is set in \$NOTIFIER_ENV)"
+  else
+    echo "--- [8/8] audit-alert-drill skipped (#195 J2 runs Thursdays IST only; today is weekday $IST_WEEKDAY) ---"
+  fi
 
   echo "=== exit code: $failed ==="
   return "$failed"
