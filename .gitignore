@@ -398,3 +398,10 @@ docs/design/probes/fixtures/pdf/
 /board-sections.png
 /snap.json
 /--gate
+
+# 2026-09-27 (contract 1): the comments above say scraper/scripts/state/ is ignored, but no pattern
+# ever matched it, so a builder committed six ipodhan_test run files from it into PR #1232. It holds
+# per-run row identities from whichever DB a script targeted: backups, not source.
+# scripts/state/ (repo root) stays NOT ignored on purpose: build cards cite it as an artefact, and
+# scripts/tests/check-build-cards-isignored.test.mjs pins that.
+/scraper/scripts/state/
