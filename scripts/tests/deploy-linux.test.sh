@@ -2783,7 +2783,7 @@ filtered=()
 i=0
 while [ \$i -lt \${#args[@]} ]; do
   case "\${args[\$i]}" in
-    -t|-u) i=\$((i+2)); continue ;;
+    -t|-u|-h|-p|-n|--user) i=\$((i+2)); continue ;;
     *) filtered+=("\${args[\$i]}"); i=\$((i+1)) ;;
   esac
 done
@@ -2831,6 +2831,9 @@ FAKERC30
       if [ -z "${NO_SLOT_LIB30:-}" ]; then
         . "$SCRIPT_DIR/../lib/redis-slot-prefix.sh"
       fi
+      if [ -z "${NO_AUTH_LIB30:-}" ]; then
+        . "$SCRIPT_DIR/../lib/redis-cli-auth.sh"
+      fi
       eval "$RELEASE_LOCKS_FN_30"
       release_scraper_cycle_locks
     ) 2>&1
@@ -2846,10 +2849,10 @@ FAKERC30
   if emit "$OUT30A" | grep -q 'releasing staging:lock:resource:scraper:cycle (held: 111s remaining)' \
      && emit "$OUT30A" | grep -q 'releasing staging:lock:resource:filing-auto-persist:cycle (held: 111s remaining)' \
      && emit "$OUT30A" | grep -q 'cycle locks released: 2' \
-     && emitn "$OUT30A" | grep -q -- '-u redis://localhost:6379/1 GET staging:lock:resource:scraper:cycle' \
-     && emitn "$OUT30A" | grep -q -- '-u redis://localhost:6379/1 GET staging:lock:resource:filing-auto-persist:cycle' \
-     && emitn "$OUT30A" | grep -qE -- '-u redis://localhost:6379/1 EVAL .*staging:lock:resource:scraper:cycle tok-abc$' \
-     && emitn "$OUT30A" | grep -qE -- '-u redis://localhost:6379/1 EVAL .*staging:lock:resource:filing-auto-persist:cycle tok-abc$' \
+     && emitn "$OUT30A" | grep -q -- '-h localhost -p 6379 -n 1 GET staging:lock:resource:scraper:cycle' \
+     && emitn "$OUT30A" | grep -q -- '-h localhost -p 6379 -n 1 GET staging:lock:resource:filing-auto-persist:cycle' \
+     && emitn "$OUT30A" | grep -qE -- '-h localhost -p 6379 -n 1 EVAL .*staging:lock:resource:scraper:cycle tok-abc$' \
+     && emitn "$OUT30A" | grep -qE -- '-h localhost -p 6379 -n 1 EVAL .*staging:lock:resource:filing-auto-persist:cycle tok-abc$' \
      && ! emit "$OUT30A" | grep -q 'DEL-CALLED-DIRECTLY'; then
     pass "case 30a: both cycle locks held -> released via EVAL compare-and-delete on the GET token, DEL never issued directly"
   else
@@ -2882,7 +2885,7 @@ FAKERC30
   # 30d: dry-run -> no redis-cli call at all, only the dry-run log line.
   OUT30D="$(run_release_locks_30 held-both 1)"
   if emit "$OUT30D" | grep -qi '\[dry-run\] skipping scraper cycle-lock release' \
-     && ! emit "$OUT30D" | grep -q -- '-u redis://'; then
+     && ! emit "$OUT30D" | grep -q ' GET '; then
     pass "case 30d: dry-run skips redis-cli entirely, logs the dry-run line only"
   else
     fail "case 30d: expected dry-run to skip redis-cli and log the dry-run line only — got: $OUT30D"
@@ -2919,7 +2922,7 @@ FAKERC30
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' EVAL ')" -eq 2 ] \
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' DEL ')" -eq 0 ] \
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c -- '-t 3')" -eq 0 ] \
-     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -vc -- '^-u ')" -eq 0 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c -- ' -u ')" -eq 0 ] \
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c 'staging:lock:resource:scraper:cycle')" -eq 3 ] \
      && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c 'staging:lock:resource:filing-auto-persist:cycle')" -eq 3 ]; then
     pass "case 30f: argv log is exactly GET/TTL/EVAL for the two known keys, no -t 3 on any call (#719), no other key or command"
@@ -2936,7 +2939,7 @@ FAKERC30
   cp "$ENVDIR30/scraper.env.bak" "$ENVDIR30/scraper.env"
   if emit "$OUT30G" | grep -q 'cannot derive the Redis slot prefix' \
      && emit "$OUT30G" | grep -q 'cycle locks left to expire' \
-     && ! emitn "$OUT30G" | grep -q -- '-u redis://'; then
+     && ! emitn "$OUT30G" | grep -q ' GET '; then
     pass "case 30g: no DATABASE_URL in the scraper env -> no slot prefix -> WARN, no redis-cli call"
   else
     fail "case 30g: expected a WARN and zero redis-cli calls when the slot prefix cannot be derived — got: $OUT30G"
@@ -2946,7 +2949,7 @@ FAKERC30
   # database (a prod deploy reading a staging DATABASE_URL) -> refuse.
   OUT30H="$(SLOT30=prod run_release_locks_30 held-both 0)"
   if emit "$OUT30H" | grep -q 'DEPLOY_SLOT=prod disagrees' \
-     && ! emitn "$OUT30H" | grep -q -- '-u redis://'; then
+     && ! emitn "$OUT30H" | grep -q ' GET '; then
     pass "case 30h: deploy slot prod vs staging database -> WARN naming the disagreement, no redis-cli call"
   else
     fail "case 30h: expected the slot/database disagreement to block the release — got: $OUT30H"
@@ -2954,7 +2957,7 @@ FAKERC30
 
   # 30i (#151): matching slot -> prefixed keys, same as 30a.
   OUT30I="$(SLOT30=staging run_release_locks_30 held-both 0)"
-  if emitn "$OUT30I" | grep -q -- '-u redis://localhost:6379/1 GET staging:lock:resource:scraper:cycle' \
+  if emitn "$OUT30I" | grep -q -- '-h localhost -p 6379 -n 1 GET staging:lock:resource:scraper:cycle' \
      && emit "$OUT30I" | grep -q 'cycle locks released: 2'; then
     pass "case 30i: deploy slot staging + staging database -> staging:-prefixed keys released"
   else
@@ -2964,7 +2967,7 @@ FAKERC30
   # 30j (#151): helper library absent -> WARN, nothing released.
   OUT30J="$(NO_SLOT_LIB30=1 run_release_locks_30 held-both 0)"
   if emit "$OUT30J" | grep -q 'redis-slot-prefix.sh not loaded' \
-     && ! emitn "$OUT30J" | grep -q -- '-u redis://'; then
+     && ! emitn "$OUT30J" | grep -q ' GET '; then
     pass "case 30j: slot helper not loaded -> WARN, no redis-cli call"
   else
     fail "case 30j: expected a WARN and no redis-cli call without the slot helper — got: $OUT30J"
@@ -2996,7 +2999,7 @@ printf '%s\n' "\$*" >> '$RCLOG30K'
 args=("\$@"); f=(); i=0; pattern=""; scan=0
 while [ \$i -lt \${#args[@]} ]; do
   case "\${args[\$i]}" in
-    -u|-n) i=\$((i+2)); continue ;;
+    -u|-n|-h|-p|--user) i=\$((i+2)); continue ;;
     --scan) scan=1; i=\$((i+1)); continue ;;
     --pattern) pattern="\${args[\$((i+1))]}"; i=\$((i+2)); continue ;;
     *) f+=("\${args[\$i]}"); i=\$((i+1)) ;;
@@ -3027,6 +3030,7 @@ FAKERC30K
     WEB_ENV_FILE="$ENVDIR30K/web.env.local"
     SCRAPER_ENV_FILE="$ENVDIR30K/scraper.env"
     PATH="$FAKEBIN30K:$PATH"
+    . "$SCRIPT_DIR/../lib/redis-cli-auth.sh"
     eval "$NS_LINE_30K"; eval "$STATE_LINE_30K"
     eval "$CLEAR_LEGACY_FN_30K"
     clear_legacy_unprefixed_cache_keys
@@ -3036,7 +3040,7 @@ FAKERC30K
   if [ -n "$CLEAR_LEGACY_FN_30K" ] && [ "$LEFT30K" = "$WANT30K" ] \
      && emit "$OUT30K" | grep -q 'legacy unprefixed cache keys cleared: 5' \
      && grep -q -- '--scan --pattern ipo:\*' "$RCLOG30K" \
-     && grep -q -- '-u redis://localhost:6379/0' "$RCLOG30K" \
+     && grep -q -- '-h localhost -p 6379 -n 0' "$RCLOG30K" \
      && ! grep -q 'redis://wrong' "$RCLOG30K" \
      && ! grep -qE '(^| )KEYS( |$)' "$RCLOG30K"; then
     pass "case 30k: rollback clears exactly the 5 unprefixed cache keys (SCAN, web REDIS_URL), never a lock, a state key, or a prod:/staging:/db- key"
@@ -3067,6 +3071,44 @@ FAKERC30K
     fail "case 30k parity: cache-keys.ts namespaces [$NS_TS_30K] != deploy-linux.sh LEGACY_CACHE_KEY_NAMESPACES [$NS_SH_30K]"
   fi
   rm -rf "$STORE30K" "$STORE30K.t" "$RCLOG30K" "$FAKEBIN30K" "$ENVDIR30K"
+
+  # --- Case 30L (#719 round 1 review, MAJOR 2 — secret leak): a REDIS_URL
+  # --- WITH a password must not leave REDISCLI_AUTH exported in the calling
+  # --- shell after clear_legacy_unprefixed_cache_keys returns. That function
+  # --- runs on the AUTO-ROLLBACK path, in the SAME shell that then starts
+  # --- pm2 apps (rollback_start_web, the EXIT trap's resume_scraper) — an
+  # --- exported secret there would show up in `pm2 env <id>`. Checked in
+  # --- the SAME shell the function ran in (not the test's own shell), which
+  # --- is the shell that matters.
+  ENVDIR30L="$(mktemp -d)"
+  FAKEBIN30L="$(mktemp -d)"
+  printf 'REDIS_URL=redis://:FAKEPW@localhost:6379/0\n' > "$ENVDIR30L/web.env.local"  # secret-scan:allow (dummy test password FAKEPW, not a real credential)
+  printf 'REDIS_URL=redis://:FAKEPW@localhost:6379/0\n' > "$ENVDIR30L/scraper.env"  # secret-scan:allow (dummy test password FAKEPW, not a real credential)
+  printf '%s\n' '#!/bin/sh' 'if [ "$1" = "--scan" ] || [ "$1" = "-h" ]; then :; fi' 'exit 0' > "$FAKEBIN30L/redis-cli"
+  chmod +x "$FAKEBIN30L/redis-cli"
+  OUT30L="$(
+    log() { echo "LOG: $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=0
+    WEB_ENV_FILE="$ENVDIR30L/web.env.local"
+    SCRAPER_ENV_FILE="$ENVDIR30L/scraper.env"
+    PATH="$FAKEBIN30L:$PATH"
+    . "$SCRIPT_DIR/../lib/redis-cli-auth.sh"
+    eval "$NS_LINE_30K"; eval "$STATE_LINE_30K"
+    eval "$CLEAR_LEGACY_FN_30K"
+    clear_legacy_unprefixed_cache_keys >/dev/null 2>&1
+    if [ -n "${REDISCLI_AUTH+x}" ]; then
+      echo "LEAKED:REDISCLI_AUTH=$REDISCLI_AUTH"
+    else
+      echo "CLEAN"
+    fi
+  )"
+  if printf '%s' "$OUT30L" | grep -qx "CLEAN"; then
+    pass "case 30L: REDISCLI_AUTH is not exported into the calling shell after clear_legacy_unprefixed_cache_keys"
+  else
+    fail "case 30L: REDISCLI_AUTH leaked into the calling shell — got: $OUT30L"
+  fi
+  rm -rf "$ENVDIR30L" "$FAKEBIN30L"
 fi
 
 

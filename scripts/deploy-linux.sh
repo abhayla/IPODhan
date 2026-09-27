@@ -193,6 +193,13 @@ if [ -f "$SCRIPT_DIR/lib/redis-slot-prefix.sh" ]; then
   # shellcheck source=lib/redis-slot-prefix.sh
   . "$SCRIPT_DIR/lib/redis-slot-prefix.sh"
 fi
+# #719: redis-cli invocation without an empty AUTH username. Guarded the
+# same way — a missing helper only disables the redis-cli calls below, which
+# are already fail-safe (`|| true`, never fails the deploy).
+if [ -f "$SCRIPT_DIR/lib/redis-cli-auth.sh" ]; then
+  # shellcheck source=lib/redis-cli-auth.sh
+  . "$SCRIPT_DIR/lib/redis-cli-auth.sh"
+fi
 
 if (( DRY_RUN )); then
   ROOT="${DEPLOY_ROOT:-${TMPDIR:-/tmp}/ipodhan-deploy-dryrun}"
@@ -667,6 +674,10 @@ release_scraper_cycle_locks() {
     warn "release_scraper_cycle_locks: scripts/lib/redis-slot-prefix.sh not loaded; cycle locks left to expire"
     return 0
   fi
+  if ! command -v redis_cli_run >/dev/null 2>&1; then
+    warn "release_scraper_cycle_locks: scripts/lib/redis-cli-auth.sh not loaded; cycle locks left to expire"
+    return 0
+  fi
   local key_prefix db_url db_host db_password db_name
   db_url="$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_URL)"
   db_host="$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_HOST)"
@@ -684,24 +695,30 @@ release_scraper_cycle_locks() {
   # read, releasing a cycle that is actually still running. EVAL makes the
   # read-then-delete atomic and conditional: only delete if the value is
   # STILL the exact token we just read.
-  # #719: `redis-cli -t 3` is not a real redis-cli flag in ANY version (no
-  # client-side connection timeout by that name exists) - on the box's
-  # actual redis-cli (7.0.15) it is refused before a connection is even
+  # #719 (round 1): `redis-cli -t 3` is not a real redis-cli flag in ANY
+  # version (no client-side connection timeout by that name exists) - on the
+  # box's actual redis-cli (7.0.15) it is refused before a connection is even
   # attempted ("Unrecognized option ... '-t'"), so every GET here always
   # returned empty and this function has silently released 0 locks on
   # every deploy since it was written, regardless of whether a lock was
   # actually held. `timeout` bounds the same 3s window from the outside
   # instead (this script already requires GNU coreutils timeout elsewhere).
+  # #719 (round 2): `-u "$redis_url"` handed redis-cli a URL whose userinfo
+  # is `:<pw>` (password only, no username — every IPODhan REDIS_URL), which
+  # redis-cli parses as an EMPTY username rather than "no username", so it
+  # authenticated as ACL user "" and failed WRONGPASS/NOAUTH on every call.
+  # redis_cli_run (scripts/lib/redis-cli-auth.sh) parses the URL itself and
+  # never passes -u.
   for key in "${key_prefix}lock:resource:scraper:cycle" "${key_prefix}lock:resource:filing-auto-persist:cycle"; do
-    value="$(timeout 3 redis-cli -u "$redis_url" GET "$key" 2>/dev/null || true)"
+    value="$(redis_cli_run 3 "$redis_url" GET "$key" 2>/dev/null || true)"
     if [ -z "$value" ]; then
       log "release_scraper_cycle_locks: $key not held"
       continue
     fi
-    ttl="$(timeout 3 redis-cli -u "$redis_url" TTL "$key" 2>/dev/null || true)"
+    ttl="$(redis_cli_run 3 "$redis_url" TTL "$key" 2>/dev/null || true)"
     log "release_scraper_cycle_locks: releasing $key (held: ${ttl}s remaining)"
     local eval_result
-    eval_result="$(timeout 3 redis-cli -u "$redis_url" EVAL       "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"       1 "$key" "$value" 2>/dev/null || true)"
+    eval_result="$(redis_cli_run 3 "$redis_url" EVAL       "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"       1 "$key" "$value" 2>/dev/null || true)"
     if [ "$eval_result" = "1" ]; then
       released=$((released + 1))
     else
@@ -743,6 +760,10 @@ clear_legacy_unprefixed_cache_keys() {
     warn "clear_legacy_unprefixed_cache_keys: redis-cli not found; the rolled-back release may serve pre-flip cache entries until they expire"
     return 0
   fi
+  if ! command -v redis_cli_prepare_auth >/dev/null 2>&1; then
+    warn "clear_legacy_unprefixed_cache_keys: scripts/lib/redis-cli-auth.sh not loaded; the rolled-back release may serve pre-flip cache entries until they expire"
+    return 0
+  fi
   # The web app is the cache's reader, so its REDIS_URL / REDIS_DB decide
   # which Redis db is cleaned; the scraper env is only a fallback.
   # Same env-file read pattern as release_scraper_cycle_locks (last value,
@@ -762,13 +783,32 @@ clear_legacy_unprefixed_cache_keys() {
     warn "clear_legacy_unprefixed_cache_keys: REDIS_URL not found in $WEB_ENV_FILE or $SCRAPER_ENV_FILE; pre-flip cache entries left to expire"
     return 0
   fi
-  local -a rc=(redis-cli -u "$redis_url")
-  [ -n "$redis_db" ] && rc+=(-n "$redis_db")
+  # #719: never `-u "$redis_url"` — see release_scraper_cycle_locks above for
+  # the empty-username defect this replaces. redis_cli_prepare_auth parses
+  # the URL into REDIS_CLI_HOST/PORT/USER/DB/PASSWORD; an explicit REDIS_DB
+  # env value (read above) still overrides the URL's own db index, same as
+  # before this fix.
+  if ! redis_cli_prepare_auth "$redis_url"; then
+    warn "clear_legacy_unprefixed_cache_keys: could not parse REDIS_URL; pre-flip cache entries left to expire"
+    return 0
+  fi
+  [ -n "$redis_db" ] && REDIS_CLI_DB="$redis_db"
+  local -a rc=(redis-cli -h "$REDIS_CLI_HOST" -p "$REDIS_CLI_PORT")
+  [ -n "$REDIS_CLI_USER" ] && rc+=(--user "$REDIS_CLI_USER")
+  [ -n "$REDIS_CLI_DB" ] && rc+=(-n "$REDIS_CLI_DB")
+  # Round 1 review, MAJOR 2: REDIS_CLI_PASSWORD is NEVER exported (see
+  # redis-cli-auth.sh) — this function runs on the AUTO-ROLLBACK path,
+  # before rollback_start_web and the EXIT trap's resume_scraper start pm2
+  # apps from this SAME shell, and an exported secret would ride into their
+  # environment (`pm2 env <id>`). Pass it only to each redis-cli child via
+  # `env`, never as a shell-wide export.
+  local -a auth_env=()
+  [ -n "$REDIS_CLI_PASSWORD" ] && auth_env=(REDISCLI_AUTH="$REDIS_CLI_PASSWORD")
 
   local ns key scanned=0 skipped=0 cleared=0 batch_out
   local found; found="$(mktemp)"
   for ns in $LEGACY_CACHE_KEY_NAMESPACES; do
-    timeout 120 "${rc[@]}" --scan --pattern "${ns}:*" 2>/dev/null >> "$found" || true
+    timeout 120 env "${auth_env[@]}" "${rc[@]}" --scan --pattern "${ns}:*" 2>/dev/null >> "$found" || true
   done
   local todelete; todelete="$(mktemp)"
   while IFS= read -r key; do
@@ -791,13 +831,13 @@ clear_legacy_unprefixed_cache_keys() {
   while IFS= read -r key; do
     batch+=("$key")
     if [ "${#batch[@]}" -ge 100 ]; then
-      batch_out="$(timeout 10 "${rc[@]}" UNLINK "${batch[@]}" 2>/dev/null || true)"
+      batch_out="$(timeout 10 env "${auth_env[@]}" "${rc[@]}" UNLINK "${batch[@]}" 2>/dev/null || true)"
       [[ "$batch_out" =~ ^[0-9]+$ ]] && cleared=$((cleared + batch_out))
       batch=()
     fi
   done < "$todelete"
   if [ "${#batch[@]}" -gt 0 ]; then
-    batch_out="$(timeout 10 "${rc[@]}" UNLINK "${batch[@]}" 2>/dev/null || true)"
+    batch_out="$(timeout 10 env "${auth_env[@]}" "${rc[@]}" UNLINK "${batch[@]}" 2>/dev/null || true)"
     [[ "$batch_out" =~ ^[0-9]+$ ]] && cleared=$((cleared + batch_out))
   fi
   rm -f "$found" "$todelete"

@@ -74,6 +74,12 @@ SCRAPER_DIR="${SCRAPER_DIR:-$REPO_ROOT/scraper}"
 if [ -f "$SCRIPT_DIR/lib/redis-slot-prefix.sh" ]; then
   . "$SCRIPT_DIR/lib/redis-slot-prefix.sh"
 fi
+# #719: redis-cli invocation without an empty AUTH username. Guarded the same
+# way — a missing helper falls through to the "helper not loaded" branch
+# below (fail-open, logged), never a `-u URL` call.
+if [ -f "$SCRIPT_DIR/lib/redis-cli-auth.sh" ]; then
+  . "$SCRIPT_DIR/lib/redis-cli-auth.sh"
+fi
 # Review round 5, item D: pm2 passes DEPLOY_SLOT; cron does not (#660 --
 # cron-launched staging wakes had NO DEPLOY_SLOT at all, which
 # feature-flags.ts's slotAwareFlagDefault() reads to pick a flag's per-slot
@@ -454,17 +460,29 @@ lock_is_held() {
     return 1
   fi
 
-  # #719: `redis-cli -t 3` (the flag this line used to pass) is not a real
-  # redis-cli option in ANY version - there is no client-side connection
-  # timeout flag by that name. On the staging box's actual redis-cli
-  # (7.0.15) it is refused outright ("Unrecognized option ... '-t'") before
-  # a connection is even attempted, so the command's stdout is always empty
-  # and every wake hit the catch-all "unreadable TTL" branch below,
+  if ! command -v redis_cli_run >/dev/null 2>&1; then
+    log "WARN lock-read-unavailable: scripts/lib/redis-cli-auth.sh not loaded; cannot read $SCRAPER_LOCK_KEY - proceeding (fail-open, see header)"
+    return 1
+  fi
+
+  # #719 (round 1): `redis-cli -t 3` (the flag this line used to pass) is not
+  # a real redis-cli option in ANY version - there is no client-side
+  # connection timeout flag by that name. On the staging box's actual
+  # redis-cli (7.0.15) it is refused outright ("Unrecognized option ... '-t'")
+  # before a connection is even attempted, so the command's stdout is always
+  # empty and every wake hit the catch-all "unreadable TTL" branch below,
   # unconditionally, on a Redis that was reachable the whole time. `timeout`
   # (already a hard dependency of this script - see the no-ceiling check
   # above) bounds the same 3s window from the OUTSIDE instead.
+  # #719 (round 2): `-u "$redis_url"` handed redis-cli a URL whose userinfo
+  # is `:<pw>` (every IPODhan REDIS_URL — password only, no username), which
+  # redis-cli parses as an EMPTY username, not "no username" — so it
+  # authenticated as ACL user "" and got WRONGPASS/NOAUTH on every call, on a
+  # Redis that was reachable and correctly configured the whole time.
+  # redis_cli_run (scripts/lib/redis-cli-auth.sh) parses the URL itself and
+  # never passes -u, so this case can no longer recur here.
   ttl_err_file="/tmp/scraper-wake-ttl-err.$$"
-  ttl="$(timeout 3 redis-cli -u "$redis_url" TTL "$SCRAPER_LOCK_KEY" 2>"$ttl_err_file")"
+  ttl="$(redis_cli_run 3 "$redis_url" TTL "$SCRAPER_LOCK_KEY" 2>"$ttl_err_file")"
   ttl_rc=$?
   ttl_err="$(cat "$ttl_err_file" 2>/dev/null)"
   rm -f "$ttl_err_file"

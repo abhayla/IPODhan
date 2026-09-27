@@ -105,10 +105,11 @@ script must: print `current_database()` first, select by slug, refuse on id/cap 
 `WHERE id AND slug AND issue_size = <old>` and `RETURNING`, dry-run by default. Template used 2026-09-06:
 `docs/ops/templates/repair-row-template.cjs.txt`.
 After any manual ipos row change, drop the web cache on the SLOT's Redis (Linux VPS, auth from the
-slot's scraper.env `REDIS_URL`; prod = db 0, staging = db 1): `redis-cli -n 0 -a <pw> DEL ipo:slug:<slug> ipo:id:<id>`;
+slot's scraper.env `REDIS_URL`; prod = db 0, staging = db 1) via the fixed helper below (never
+`redis-cli -u`/`-a <pw>` typed by hand — see the #719 note two lines down);
 documents rows: `DEL documents:<ipoId>` or use `scraper/scripts/reset-document.ts` (`docs/ops/reset-document.md`).
 Confirm on `/api/ipos/<slug>?cb=<random>` (cache-busted): the API sends `s-maxage=300, stale-while-revalidate=600`, so the plain URL keeps serving the OLD value from the Cloudflare edge for up to 15 min (`cf-cache-status: HIT`, `Age:`). No purge needed for a data fix; wait it out.
-Redis auth on the box: `redis-cli -u "$REDIS_URL"` fails with NOAUTH on this redis-cli; extract the password (`pw=${u#redis://:}; pw=${pw%%@*}`) and use `redis-cli -a "$pw" --no-auth-warning -n <db>`. The web slot has no separate env file (`web.env.local` in the same dir); both slots share one Redis, prod db 0 / staging db 1.
+Redis auth on the box: `redis-cli -u "$REDIS_URL"` fails with WRONGPASS/NOAUTH on this redis-cli — every IPODhan `REDIS_URL` has no username (`redis://:<pw>@host:port/db`), which `-u` parses as an EMPTY username, not "no username", so it authenticates as ACL user `""` (#719). Source the repo's own fixed helper instead of hand-parsing the password: `. scripts/lib/redis-cli-auth.sh; redis_cli_run 3 "$REDIS_URL" DEL ipo:slug:<slug> ipo:id:<id>` (pass `-n <db>` in the URL's own `/db` suffix, or set `REDIS_CLI_DB=<db>` after `redis_cli_prepare_auth "$REDIS_URL"` to override it). The web slot has no separate env file (`web.env.local` in the same dir); both slots share one Redis, prod db 0 / staging db 1.
 
 ## 6. Worktrees (owner lifecycle rule)
 ```bash
@@ -858,7 +859,10 @@ OOM kill, a hard box reboot). A normal crash or a `pm2 stop` releases the lock o
 
 ```bash
 tail -20 /var/log/ipodhan-scraper-wake-prod.log | grep wake-skipped   # is it skipping every time?
-redis-cli -u "$REDIS_URL" TTL lock:resource:scraper:cycle             # seconds left (-2 = free)
+# #719: `redis-cli -u "$REDIS_URL"` fails WRONGPASS/NOAUTH — every IPODhan
+# REDIS_URL has no username, which -u parses as an EMPTY username (not "no
+# username") and authenticates as ACL user "". Use the fixed helper:
+. scripts/lib/redis-cli-auth.sh; redis_cli_run 3 "$REDIS_URL" TTL lock:resource:scraper:cycle   # seconds left (-2 = free)
 pm2 status ipodhan-scraper                                            # is a cycle genuinely running?
 ```
 
@@ -871,9 +875,10 @@ concurrently, which is the thing the lock exists to prevent.
 pm2 status ipodhan-scraper                 # expect 'stopped'/'errored', not 'online'
 pgrep -af 'tsx .*src/index.ts' || echo "no cycle process — safe to clear"
 
-# 2. Then, and only then:
-redis-cli -u "$REDIS_URL" DEL lock:resource:scraper:cycle
-redis-cli -u "$REDIS_URL" DEL lock:resource:filing-auto-persist:cycle   # the inner one, same rule
+# 2. Then, and only then (see the #719 note above — never redis-cli -u):
+. scripts/lib/redis-cli-auth.sh
+redis_cli_run 3 "$REDIS_URL" DEL lock:resource:scraper:cycle
+redis_cli_run 3 "$REDIS_URL" DEL lock:resource:filing-auto-persist:cycle   # the inner one, same rule
 
 # 3. The next cron wake picks it up. Do NOT hand-start a cycle to "catch up" —
 #    a wake is due within 30 minutes and a manual run competes with it.
