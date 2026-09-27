@@ -1,0 +1,10 @@
+{
+  "sourceUrl": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1790052915761.pdf",
+  "sourceUrlFrom": "ipodhan_staging documents.url (read-only, 2026-09-27)",
+  "sha256": "b6465e70c3d404c2d072f1003bf5ecf39ef32cab2a37416783a7098c4e227b42",
+  "sha256Check": "downloaded bytes match documents.sha256 exactly",
+  "capturedAt": "2026-09-27",
+  "ipoId": "acevector-ltd",
+  "company": "Acevector",
+  "note": "#545 round 3 fixture. [pageIndex, text] pairs exactly as extract_filing.py reads them (--no-ocr); 0-based pages 0-2. The cover prints '(THE) PROMOTERS OF OUR COMPANY:' rather than 'OUR PROMOTERS:'."
+}

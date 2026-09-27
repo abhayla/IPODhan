@@ -1029,7 +1029,29 @@ PROMOTER_GROUP_TXN_NEGATIVE_RX = re.compile(r"\bhave\s+not\b|\bhas\s+not\b|\bno\
 PROMOTER_GROUP_TXN_MAX = 500
 
 
-OUR_PROMOTERS_RX = re.compile(r"^\s*OUR PROMOTERS?\s*:", re.I)
+# #545 round 3: the cover statement has several SEBI ICDR wordings, not one.
+# Measured on real RHP covers: "OUR PROMOTERS:" (A-One Steels, Green Asia),
+# "PROMOTERS OF OUR COMPANY:" (Moneyview) and "THE PROMOTERS OF OUR COMPANY:"
+# (Acevector). The lead-in must END in a separator (":" / dash) or "ARE"/"IS", so
+# the table-of-contents heading "OUR PROMOTERS AND PROMOTER GROUP ... 305" is
+# never read as a statement.
+OUR_PROMOTERS_RX = re.compile(
+    r"^\s*(?:THE\s+)?(?:OUR\s+PROMOTERS?|PROMOTERS?\s+OF\s+(?:OUR|THE)\s+(?:COMPANY|ISSUER))"
+    r"\s*(?:(?P<sep>[:\-–—])|\s(?P<verb>ARE|IS)\b)\s*", re.I)
+
+
+def promoter_statement_tail(line):
+    """The text after the promoter statement's lead-in on `line`, or None.
+
+    The "ARE"/"IS" form is accepted only on an upper-case line: the cover prints
+    the statement in capitals, while body prose ("Our Promoters are also
+    interested in ...") is mixed case and must not be split into names."""
+    m = OUR_PROMOTERS_RX.match(line or "")
+    if not m:
+        return None
+    if m.group("verb") and line != line.upper():
+        return None
+    return line[m.end():]
 
 # A statement line that ends mid-list ("A, B AND") continues on the next line.
 _PROMOTER_LIST_CONTINUES = re.compile(r"(,|\bAND)\s*$", re.I)
@@ -1038,13 +1060,20 @@ _PROMOTER_LIST_CONTINUES = re.compile(r"(,|\bAND)\s*$", re.I)
 _PROMOTER_COVER_PAGES = 5
 
 
+_CORPORATE_SUFFIX_RX = re.compile(r"\b(?:Ltd|Pte|Pvt|Inc|Co|Corp|Llp|Llc|Bv|Plc)\.$")
+
+
 def promoter_names_from_statement(raw):
     """Split the text after "OUR PROMOTER(S):" into title-cased names."""
     raw = (raw or "").strip()
     raw = re.split(r"\s{2,}|(?<=[a-z])\s+INITIAL PUBLIC", raw)[0]
     names = []
     for part in re.split(r",|\bAND\b", raw, flags=re.I):
-        name = part.strip().strip(".").title()
+        name = part.strip().title()
+        # A corporate promoter ends in an abbreviation ("Starfish I Pte. Ltd.");
+        # its dot is part of the name. Any other trailing dot is punctuation.
+        if not _CORPORATE_SUFFIX_RX.search(name):
+            name = name.strip(".")
         # "&" and "/" are kept: a promoter can be a firm ("Jallan & Sons") or
         # carry a joint name ("A/B Holdings"); dropping them lost the row (#545).
         if 3 <= len(name) <= 60 and re.match(r"^[A-Za-z][A-Za-z .'&/\-]+$", name):
@@ -1083,9 +1112,9 @@ def read_cover_promoters(page_texts):
     for index, text in page_texts[:_PROMOTER_COVER_PAGES]:
         lines = (text or "").split("\n")
         for i, line in enumerate(lines):
-            if not OUR_PROMOTERS_RX.match(line):
+            statement = promoter_statement_tail(line)
+            if statement is None:
                 continue
-            statement = line.split(":", 1)[1]
             j = i
             while _PROMOTER_LIST_CONTINUES.search(statement) and j + 1 < len(lines):
                 j += 1
@@ -1671,9 +1700,9 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     # "OUR PROMOTER: X" and "OUR PROMOTERS: A, B AND C" — the plural form was
     # silently unmatched, which then broke every promoter-row lookup downstream.
     prom, prom_names = None, []
-    pn = _find(lines, OUR_PROMOTERS_RX)
+    pn = next((i for i, ln in enumerate(lines) if promoter_statement_tail(ln) is not None), -1)
     if pn >= 0:
-        prom_names = promoter_names_from_statement(lines[pn].split(":", 1)[1])
+        prom_names = promoter_names_from_statement(promoter_statement_tail(lines[pn]))
         prom = prom_names[0] if prom_names else None
     emit.put("promoter_name", prom, page_for(pn), "promoter_name_present", (bool(prom), "%s" % prom))
     emit.put("promoter_names", prom_names or None, page_for(pn), "promoter_names_present",

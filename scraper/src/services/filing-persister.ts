@@ -445,6 +445,12 @@ function round2(v: number): number {
  */
 export const FRESH_OFS_TOLERANCE = 0.005;
 
+/**
+ * #545 (C): the `field_sources.field_name` under which a section the extractor attempted and
+ * returned EMPTY records its reason (OD-62). See `recordEmptySection` in persistFilingExtraction.
+ */
+export const EMPTY_RESULT_FIELD = 'empty_result';
+
 export type ReconciliationKind =
   /** Checked and agreed, or nothing to check against. */
   | 'ok'
@@ -1281,6 +1287,58 @@ export async function persistFilingExtraction(
       dataLineage: ocrMark ? { ...lineage, ocr: ocrMark } : lineage,
       updatedBy: 'FILING_PERSISTER',
     });
+  };
+
+  /**
+   * #545 (C). A list section the extractor ATTEMPTED and returned empty (promoters, peers)
+   * wrote nothing at all, so "the RHP was read and has no cover statement" left no trace
+   * anywhere (field_sources, field_extraction_failures, extraction_logs and
+   * document_extraction_attempts all held 0 rows for Moneyview / Acevector on staging,
+   * 2026-09-27). OD-62: an absent value stores a REASON, never a bare null.
+   *
+   * Filed as a `field_sources` row under its own field name `empty_result`, row_key '':
+   *  - NOT under the section's real field (`promoters.name`): the DOC fetcher reads that
+   *    provenance row as "the document supplied this field" and would judge the section
+   *    on it (field-plan-walk-doc-fetcher.ts).
+   *  - NOT under an `unresolved:` row key: any non-empty row_key moves the pair into
+   *    enforcement in row-key-coverage-checks.mjs, which would read a correct empty
+   *    extraction as a failed writer.
+   * `previousValue` is null, so the pull-noblank audit never counts it as a blanking.
+   * Only written when the extractor emitted the field (it tried): a document type whose
+   * extractor never reads the section says nothing about it. Best effort, like every
+   * provenance marker here: a failed write is logged with its cause, never thrown.
+   */
+  const recordEmptySection = async (tableName: string, extractorFields: readonly string[]): Promise<void> => {
+    if (!apply) return;
+    const attempted = extractorFields.map((f) => extraction.fields?.[f]).find((f) => f != null);
+    if (!attempted) return;
+    const cause = attempted.check?.detail ?? attempted.check?.name ?? 'extractor returned no rows';
+    try {
+      await deps.fieldSources.trackFieldUpdate({
+        ipoId,
+        tableName,
+        fieldName: EMPTY_RESULT_FIELD,
+        source,
+        confidence: 0,
+        previousValue: null,
+        previousSource: null,
+        dataLineage: { ...lineage, reasonCode: 'EXTRACTION_FAILED', emptyReason: cause, extractorField: extractorFields[0] },
+        updatedBy: 'FILING_PERSISTER',
+      });
+    } catch (error) {
+      const inner = (error as { cause?: { message?: string; code?: string } } | undefined)?.cause;
+      logger.error(
+        {
+          event: 'empty-section-reason-write-failed',
+          ipoId,
+          tableName,
+          emptyReason: cause,
+          causeMessage: inner?.message ?? (error as Error)?.message ?? 'unknown',
+          causeCode: inner?.code ?? (error as { code?: string } | undefined)?.code ?? null,
+        },
+        '[FilingPersister] could not record why an extracted section was empty'
+      );
+    }
   };
 
   // ---------------------------------------------------------------- 1. ipos
@@ -2447,6 +2505,8 @@ export async function persistFilingExtraction(
       }
       bump(written, 'promoters', rows.length);
     }
+  } else {
+    await recordEmptySection('promoters', ['promoter_names', 'promoter_name']);
   }
 
   // --------------------------- 6. promoter_acquisition_ranges (1Y/18M/3Y)
@@ -2803,6 +2863,7 @@ export async function persistFilingExtraction(
 
   // ------------------------------------------------------ 9. peer_companies
   const peers = list<Record<string, unknown>>(extraction, 'peer_companies');
+  if (peers.length === 0) await recordEmptySection('peer_companies', ['peer_companies']);
   if (peers.length > 0) {
     const peerRows = peers
       .filter((p) => typeof p.name === 'string' && (p.name as string).trim() !== '')

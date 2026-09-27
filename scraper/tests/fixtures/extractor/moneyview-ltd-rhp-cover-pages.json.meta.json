@@ -1,0 +1,10 @@
+{
+  "sourceUrl": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1789975400167.pdf",
+  "sourceUrlFrom": "ipodhan_staging documents.url (read-only, 2026-09-27)",
+  "sha256": "05e3337c5e5079c9fb9626e5dfa56d2f0c6b0d730fc15e5c6842839d10848103",
+  "sha256Check": "downloaded bytes match documents.sha256 exactly",
+  "capturedAt": "2026-09-27",
+  "ipoId": "moneyview-ltd",
+  "company": "Moneyview",
+  "note": "#545 round 3 fixture. [pageIndex, text] pairs exactly as extract_filing.py reads them (--no-ocr); 0-based pages 0-2. The cover prints '(THE) PROMOTERS OF OUR COMPANY:' rather than 'OUR PROMOTERS:'."
+}

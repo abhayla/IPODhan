@@ -2369,3 +2369,78 @@ describe('filing-persister — W-82 concentration_kpis -> ipo_risk_factors.kpis'
     expect(summary.written.ipo_risk_factors).toBe(2);
   });
 });
+
+describe('filing-persister — an empty extracted section records its reason (#545 C, OD-62)', () => {
+  const emptyResultCalls = (trackField: ReturnType<typeof vi.fn>, table: string) =>
+    trackField.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .filter((a) => a.tableName === table && a.fieldName === 'empty_result');
+
+  const withEmpty = (keys: string[], detail: string): FilingExtraction => {
+    const extraction = extractionFromOracle('RHP');
+    for (const k of keys) {
+      extraction.fields[k] = { value: null, page: null, check: { name: 'not_extractable', passed: true, detail } };
+    }
+    return extraction;
+  };
+
+  it('writes one field_sources reason row when the promoters statement was not found', async () => {
+    const s = makeDeps();
+    await persistFilingExtraction(
+      IPO_ID,
+      withEmpty(['promoter_name', 'promoter_names'], 'our_promoters_statement_not_on_cover'),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    expect(s.replacePromoters).not.toHaveBeenCalled();
+    const calls = emptyResultCalls(s.trackField, 'promoters');
+    expect(calls).toHaveLength(1);
+    // row_key '' (never an `unresolved:` key) and no previous value: invisible to the
+    // row-key coverage and pull-noblank audits, readable by a floor check.
+    expect(calls[0].rowKey ?? '').toBe('');
+    expect(calls[0].previousValue).toBeNull();
+    expect(calls[0].confidence).toBe(0);
+    expect(calls[0].dataLineage).toMatchObject({
+      reasonCode: 'EXTRACTION_FAILED',
+      emptyReason: 'our_promoters_statement_not_on_cover',
+      extractorField: 'promoter_names',
+    });
+  });
+
+  it('writes the peers reason the same way when the comparison table was not found', async () => {
+    const s = makeDeps();
+    await persistFilingExtraction(
+      IPO_ID,
+      withEmpty(['peer_companies'], 'peer_comparison_table_not_in_document'),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    expect(s.peerReplace).not.toHaveBeenCalled();
+    const calls = emptyResultCalls(s.trackField, 'peer_companies');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].dataLineage).toMatchObject({ emptyReason: 'peer_comparison_table_not_in_document' });
+  });
+
+  it('writes no reason row when the section was extracted, or never attempted, or on a dry run', async () => {
+    const full = makeDeps();
+    const withPromoter = extractionFromOracle('RHP', { promoter_names: { value: ['Puneet Agarwal'], passed: true } });
+    await persistFilingExtraction(IPO_ID, withPromoter, { docType: 'RHP', apply: true }, full.deps);
+    expect(emptyResultCalls(full.trackField, 'promoters')).toHaveLength(0);
+
+    const notAttempted = makeDeps();
+    const extraction = extractionFromOracle('RHP');
+    delete extraction.fields.promoter_name;
+    delete extraction.fields.promoter_names;
+    await persistFilingExtraction(IPO_ID, extraction, { docType: 'RHP', apply: true }, notAttempted.deps);
+    expect(emptyResultCalls(notAttempted.trackField, 'promoters')).toHaveLength(0);
+
+    const dry = makeDeps();
+    await persistFilingExtraction(
+      IPO_ID,
+      withEmpty(['promoter_name', 'promoter_names'], 'our_promoters_statement_not_on_cover'),
+      { docType: 'RHP', apply: false },
+      dry.deps
+    );
+    expect(emptyResultCalls(dry.trackField, 'promoters')).toHaveLength(0);
+  });
+});
