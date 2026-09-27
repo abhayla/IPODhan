@@ -123,6 +123,31 @@ export interface ConsolidationResult {
   // computes valueActuallyChanged) — undefined on the fallback/degenerate/
   // widen-band paths, which decide writes on different logic entirely.
   noopSuppression?: NoopSuppressionCounts;
+  /**
+   * OD-131: the provenance writes this call decided, held back because the caller passed
+   * `deferProvenance: true`. The caller commits them with `commitDeferredProvenance` AFTER its
+   * own write-path refusals (sanitizers, date guards) have run, so a value the write path
+   * refused never gets a `field_sources` row. Undefined when provenance was written inline.
+   */
+  deferredProvenance?: DeferredProvenanceWrite[];
+}
+
+/**
+ * OD-131: one held-back `field_sources` write (the exact arguments `trackFieldSource` received).
+ * Opaque to callers apart from the key fields they need to decide whether the value was stored.
+ */
+export interface DeferredProvenanceWrite {
+  ipoId: string;
+  tableName: string;
+  rowKey?: string;
+  fieldName: string;
+  value: any;
+  source: ScraperSource;
+  incoming?: IncomingLineage;
+  conflicts?: ConflictSeverity[];
+  confirmations?: number;
+  previousValue?: any;
+  previousSource?: ScraperSource;
 }
 
 /**
@@ -199,6 +224,15 @@ export interface ConsolidateIPODataInput {
    * this document on a value another source owns would name the wrong evidence.
    */
   incomingLineage?: Record<string, unknown> | null;
+  /**
+   * OD-131 ("Rejected = never set", 2026-09-27): hold every `field_sources` write this call
+   * decides and return it in `ConsolidationResult.deferredProvenance` instead of writing it.
+   * For a caller that applies its own refusals AFTER consolidation (data-persister's
+   * `sanitizeIpoWriteFields`, the #180 F2 date guard): it commits only the writes whose value it
+   * actually stored. Without this, a refused value kept a provenance row and the source's next
+   * valid value read as a "changed own value" (OD-75). Default false: inline writes, unchanged.
+   */
+  deferProvenance?: boolean;
 }
 
 /** #993: the incoming caller's lineage, tagged with the source it speaks for. */
@@ -777,6 +811,8 @@ export function collectImplausibleIssueSizeFields(
  */
 export class DataConsolidationService {
   private currentShadowMode: boolean = false;
+  /** OD-131: non-null while a `deferProvenance` call is collecting its provenance writes. */
+  private pendingProvenance: DeferredProvenanceWrite[] | null = null;
 
   constructor(
     private fieldSourcesRepository: any, // FieldSourcesRepository from web
@@ -845,6 +881,8 @@ export class DataConsolidationService {
 
     // Set shadow mode for this consolidation (defaults to false for production)
     this.currentShadowMode = input.shadowMode ?? false;
+    // OD-131: collect instead of write when the caller will refuse values after this call.
+    this.pendingProvenance = input.deferProvenance ? [] : null;
 
     // Item 4 (OD-21): row-level validation context (fork C-2, row-level).
     this.currentValidationContext = {
@@ -1297,6 +1335,11 @@ export class DataConsolidationService {
     }
 
     result.performanceMs = Date.now() - startTime;
+
+    if (this.pendingProvenance) {
+      result.deferredProvenance = this.pendingProvenance;
+      this.pendingProvenance = null;
+    }
 
     if (FEATURE_FLAGS.DEBUG_DATA_FLOW) {
       console.log('[DataConsolidation] Result:', {
@@ -2826,6 +2869,12 @@ export class DataConsolidationService {
       return;
     }
 
+    // OD-131: the caller has not yet decided whether this value is stored — hold the write.
+    if (this.pendingProvenance) {
+      this.pendingProvenance.push({ ...params });
+      return;
+    }
+
     try {
       const policyOrigin = computePolicyOrigin(params.fieldName, params.tableName);
 
@@ -2857,6 +2906,32 @@ export class DataConsolidationService {
     } catch (error) {
       console.error('[DataConsolidation] Failed to track field source:', error);
     }
+  }
+
+  /**
+   * OD-131 ("Rejected = never set"): commit the provenance writes a `deferProvenance` call held
+   * back, skipping every one whose value the write path refused. `isStored` is the caller's
+   * answer to "did this value reach the row?"; a write it answers `false` for is dropped, so a
+   * refused value leaves no `field_sources` row and can never make the same source's next valid
+   * value look like a "changed own value" (OD-75). Returns the dropped writes for the caller's log.
+   */
+  async commitDeferredProvenance(
+    writes: DeferredProvenanceWrite[] | undefined,
+    isStored: (write: DeferredProvenanceWrite) => boolean
+  ): Promise<{ written: number; refused: DeferredProvenanceWrite[] }> {
+    const refused: DeferredProvenanceWrite[] = [];
+    let written = 0;
+    // A commit is never itself deferred, whatever state a previous call left behind.
+    this.pendingProvenance = null;
+    for (const write of writes ?? []) {
+      if (!isStored(write)) {
+        refused.push(write);
+        continue;
+      }
+      await this.trackFieldSource(write);
+      written++;
+    }
+    return { written, refused };
   }
 
   /**

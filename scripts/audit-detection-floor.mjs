@@ -776,6 +776,45 @@ async function checkD_iposDocLineageDocumentId() {
     `${rows.length} row(s)` + (rows.length ? `: ${rows.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}.${r.fieldName}`).join('; ')}` : ''));
 }
 
+// ---- (OD-131, refused-value-keeps-provenance): a value the write path REFUSED
+// (sanitizer or validation) was never set, so it must leave no field_sources row
+// (OD-131, 2026-09-27). A provenance row naming an `ipos` column that is NULL on
+// the row is that class: the stale row then made the source's next valid value
+// read as a "changed own value" (OD-75). Measured on ipodhan_staging 2026-09-27:
+// 37 such rows (issueSize 20, listingDate 13, priceRangeMin/Max 2+2), 2 written
+// in the last 24h. FAIL only on rows written in the last 24h (a write path that
+// still does it); the standing population is the data contract's row repair and
+// is reported in the detail line with identities, never as a bare count.
+// See docs/reviews/failure-classes/refused-value-keeps-provenance.json.
+async function checkR_provenanceWithoutValue() {
+  const rows = await q(
+    `SELECT fs.id, fs.ipo_id AS "ipoId", i.slug, i.status::text AS status, fs.field_name AS "fieldName",
+            fs.source::text AS source, to_char(fs.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS "updatedAt",
+            (fs.updated_at >= now() - interval '24 hours') AS fresh
+       FROM field_sources fs
+       JOIN ipos i ON i.id = fs.ipo_id
+       CROSS JOIN LATERAL (SELECT lower(regexp_replace(fs.field_name, '([A-Z])', '_' || chr(92) || '1', 'g')) AS col) c
+      WHERE fs.table_name = 'ipos'
+        AND fs.row_key = ''
+        AND to_jsonb(i) ? c.col
+        AND to_jsonb(i) -> c.col = 'null'::jsonb
+      ORDER BY i.slug, fs.field_name`
+  );
+  const fresh = rows.filter((r) => r.fresh);
+  for (const r of fresh) {
+    notify(
+      'r_provenance_without_value', 'P2', r.id,
+      `provenance row for a value that is not stored: ${r.slug} ipos.${r.fieldName}`,
+      `slug=${r.slug} ipoId=${r.ipoId} status=${r.status} source=${r.source} written=${r.updatedAt} UTC — a refused value kept its field_sources row (OD-131)`
+    );
+  }
+  const ids = (list) => list.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}.${r.fieldName}(${r.source})`).join('; ');
+  record('r_provenance_without_value', 'no ipos provenance row written in the last 24h names a column that is NULL on the row (OD-131: a refused value was never set)',
+    fresh.length === 0 ? 'PASS' : 'FAIL',
+    `${fresh.length} fresh row(s)` + (fresh.length ? `: ${ids(fresh)}` : '') +
+    ` | standing (data-contract repair population): ${rows.length}` + (rows.length ? `: ${ids(rows)}` : ''));
+}
+
 // ---- (d, stranded readmit): F-158/OD-90 follow-up — a documents row
 // stamped NOT_EXTRACTABLE whose type is NOW on the extractable list is
 // stranded (pre-#989 admission, never revisited by the document cycle once
@@ -3850,6 +3889,7 @@ async function main() {
   await runCheck(checkS_corpusShape, ['corpus_shape']);
   await runCheck(checkT_bseSubscriptionIstShift, ['t_source_local_time_shift']);
   await runCheck(checkD_iposDocLineageDocumentId, ['d_ipos_doc_lineage_document_id']);
+  await runCheck(checkR_provenanceWithoutValue, ['r_provenance_without_value']);
   await runCheck(checkZipMemberRows, ['zip_member_rows']);
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed

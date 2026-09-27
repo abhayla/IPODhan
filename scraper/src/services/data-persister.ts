@@ -242,6 +242,21 @@ function getDataConflictsRepository(): DataConflictsRepository {
  */
 let fieldSourcesRepoInstance: FieldSourcesRepository | null = null;
 
+/**
+ * OD-131: did a held-back provenance write's value reach the `ipos` row this door writes?
+ * Only the singleton `ipos` row is judged here (the only table this door writes); a write for
+ * any other table is not this door's to refuse. Emptiness is `=== null || === undefined`, never
+ * falsiness — 0, false and '' are stored values.
+ */
+export function isProvenanceValueStored(
+  write: { tableName: string; rowKey?: string; fieldName: string },
+  finalData: Record<string, unknown>
+): boolean {
+  if (write.tableName !== 'ipos' || (write.rowKey ?? '') !== '') return true;
+  const stored = finalData[write.fieldName];
+  return stored !== null && stored !== undefined;
+}
+
 function getFieldSourcesRepository(): FieldSourcesRepository {
   if (!fieldSourcesRepoInstance) {
     fieldSourcesRepoInstance = new FieldSourcesRepository(db, getRedisClient());
@@ -1287,6 +1302,10 @@ async function upsertIPOInScope(
               existingData: existingIPO as any,
               shadowMode: false, // Production mode - writes to database
               scrapedAt: new Date(),
+              // OD-131: this door refuses values AFTER consolidation (sanitizeIpoWriteFields,
+              // the #180 F2 date guard, W-14 merged-record drops). Provenance is committed only
+              // for what reaches the row, below — a refused value was never set.
+              deferProvenance: true,
             });
 
             const consolidationDuration = Date.now() - consolidationStartTime;
@@ -1507,6 +1526,24 @@ async function upsertIPOInScope(
             } else {
               // Update IPO with consolidated data
               await ipoRepository.update(existingIPO.id, finalData);
+            }
+
+            // OD-131 ("Rejected = never set"): write provenance only for values this door
+            // actually stored. A value the sanitizer nulled or a guard deleted gets no
+            // `field_sources` row (glass-wall-systems-india-ltd: CG's 2026-09-03 listing date,
+            // before its 2026-09-08 open, was nulled here yet kept a CHITTORGARH row).
+            const provenanceCommit = consolidationResult.deferredProvenance?.length
+              ? await consolidationService.commitDeferredProvenance(
+                consolidationResult.deferredProvenance,
+                (write) => isProvenanceValueStored(write, finalData)
+              )
+              : { written: 0, refused: [] };
+            if (provenanceCommit.refused.length > 0) {
+              logger.info({
+                ipoId: existingIPO.id,
+                source,
+                refusedFields: provenanceCommit.refused.map((w) => w.fieldName),
+              }, '[DataPersister] OD-131 - refused value(s) not stored, so no field_sources row written');
             }
 
             // S-02: the consolidation door is also the F4/F5/F6 evidence — it is
