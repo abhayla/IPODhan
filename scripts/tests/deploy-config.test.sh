@@ -1325,6 +1325,28 @@ check_origin_row() {
   check_origin_row refuse "lookalike host"        "$(build_repo_with_raw_origin "https://u:FAKESECRET@github.com.evil.example/abhayla/IPODhan.git")"
   check_origin_row refuse "plain path"            "$(build_repo_with_raw_origin "/srv/FAKESECRET/abhayla/IPODhan")"
   check_origin_row refuse "embedded newline"      "$(build_repo_with_raw_origin "$(printf 'https://github.com/abhayla/IPODhan.git\nFAKESECRET')")"
+  # Round 4b (#752, review MAJOR): U+0130 'İ' locale-casefolds to ASCII
+  # 'i' under en_US.UTF-8/C.UTF-8 — 'gİthub.com' is a DIFFERENT host and
+  # 'İpodhan' a different repo path; both must be refused, not folded
+  # into a match. Run once under the current locale (below) and once
+  # under LC_ALL=C.UTF-8 explicitly (case24-locale block further down).
+  check_origin_row refuse "unicode dotted I host" "$(build_repo_with_raw_origin "https://gİthub.com/abhayla/IPODhan")"
+  check_origin_row refuse "unicode dotted I path" "$(build_repo_with_raw_origin "https://github.com/abhayla/İpodhan")"
+  # Round 4b (#752, review MINOR): a leading tab must still be refused now
+  # that the guard is a single printable-ASCII regex rather than separate
+  # [[:cntrl:]]/[[:print:]] character-class checks. A bare trailing CR is
+  # covered directly in case28 below, not via this git-config round-trip:
+  # git-for-windows opens .git/config in TEXT mode, so a value ending
+  # '\r' immediately before the file's own line-ending '\n' is silently
+  # normalised to '...\n' (the '\r' never reaches the script) on a
+  # Windows dev box — confirmed by writing the same byte straight into
+  # .git/config and reading it back with 'git remote get-url'. Linux git
+  # (the CI gate, ubuntu-latest) has no such text/binary mode distinction
+  # and would deliver the '\r' intact, but relying on that here would make
+  # this row's result depend on which OS runs the suite. case28 tests
+  # origin_is_ipodhan directly, with no git storage in between, so the
+  # '\r' guard is proven identically on every platform.
+  check_origin_row refuse "leading tab"           "$(build_repo_with_raw_origin "$(printf '\thttps://github.com/abhayla/IPODhan')")"
   check_origin_row refuse "two origin urls"       "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git" 'git config --add remote.origin.url "https://u:FAKESECRET@evil.example/x.git"')"
   # Review r1 (2026-09-27): for the scp-like form git takes the host as
   # everything before the FIRST ':' (probed: 'evil.example:x@github.com:...'
@@ -1479,6 +1501,67 @@ STUBEOF
     pass "case27c: no fixed /tmp/deploy-config-* temp file names remain (mktemp only)"
   else
     fail "case27c: fixed /tmp/deploy-config-* temp names still in the script"
+  fi
+}
+
+# ---------------------------------------------------------------- case 28
+# #752 round 4b, direct unit test of origin_is_ipodhan — no git repo, no
+# git config storage, no run_deploy. Extracts the function's own source
+# (between its 'origin_is_ipodhan() {' line and the matching top-level
+# '}') into a throwaway file, sources it with the same
+# IPODHAN_ORIGIN_ALLOWLIST the real script builds, and calls it directly.
+# This is what proves the printable-ASCII/LC_ALL=C fix and the CR/tab
+# guards identically on every platform: build_repo_with_raw_origin's
+# git-config round-trip is subject to git-for-windows' text-mode config
+# parsing (a bare '\r' immediately before the file's own line terminator
+# is normalised away — proven separately, see the case24 comment above
+# "leading tab"), so it cannot deliver a raw '\r' byte to the function on
+# a Windows dev box even though the real script (via 'git remote get-url'
+# on Linux) would see one. Calling the function directly sidesteps git
+# storage entirely.
+{
+  FN28="$(fresh_dir)/origin_is_ipodhan.sh"
+  awk '/^origin_is_ipodhan\(\) \{/,/^\}$/' "$DEPLOY_CONFIG" > "$FN28"
+  if [ ! -s "$FN28" ]; then
+    fail "case28: could not extract origin_is_ipodhan() from $DEPLOY_CONFIG (setup)"
+  else
+    OUT28="$(
+      # shellcheck disable=SC1090
+      IPODHAN_ORIGIN_ALLOWLIST=(
+        'https://github.com/abhayla/ipodhan'
+        'git@github.com:abhayla/ipodhan'
+        'ssh://git@github.com/abhayla/ipodhan'
+      )
+      source "$FN28"
+
+      check_direct() {
+        local expect="$1" label="$2" val="$3" rc
+        if origin_is_ipodhan "$val"; then rc=0; else rc=1; fi
+        if [ "$expect" = "accept" ]; then
+          [ "$rc" -eq 0 ] && echo "PASS: case28 [$label]: accepted" || echo "FAIL: case28 [$label]: expected accept, got refuse"
+        else
+          [ "$rc" -ne 0 ] && echo "PASS: case28 [$label]: refused" || echo "FAIL: case28 [$label]: expected refuse, got accept"
+        fi
+      }
+
+      check_direct accept "clean https"        "https://github.com/abhayla/IPODhan.git"
+      check_direct accept "clean scp-like"      "git@github.com:abhayla/IPODhan"
+      check_direct accept "clean ssh://"        "ssh://git@github.com/abhayla/IPODhan.git"
+      # Review MAJOR (#752 round 4b): U+0130 'İ' must NOT casefold into a
+      # match under LC_ALL=C — refused, both forms.
+      check_direct refuse "unicode dotted I host" "https://gİthub.com/abhayla/IPODhan"
+      check_direct refuse "unicode dotted I path" "https://github.com/abhayla/İpodhan"
+      # Review MINOR (#752 round 4b): a bare trailing CR and a leading tab
+      # must be refused by the printable-ASCII regex itself.
+      check_direct refuse "trailing CR"         "$(printf 'https://github.com/abhayla/IPODhan\r')"
+      check_direct refuse "leading tab"         "$(printf '\thttps://github.com/abhayla/IPODhan')"
+    )"
+    while IFS= read -r line; do
+      case "$line" in
+        PASS:*) pass "${line#PASS: }" ;;
+        FAIL:*) fail "${line#FAIL: }" ;;
+      esac
+    done <<< "$OUT28"
   fi
 }
 

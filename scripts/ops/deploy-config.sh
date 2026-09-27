@@ -114,11 +114,26 @@ IPODHAN_ORIGIN_ALLOWLIST=(
 # everything else, including more than one line (multiple
 # remote.origin.url values), any other host, any credential prefix, a
 # query or fragment, a port, a fork suffix, embedded whitespace/newlines
-# inside the value. Prints nothing.
+# inside the value, and any byte outside printable ASCII. Prints nothing.
+#
+# Round 4b (#752, review MAJOR): the ORIGINAL '[[:cntrl:]]'/'[[:print:]]'
+# guards and bash's '${v,,}' case-fold are locale-dependent — under
+# en_US.UTF-8 / C.UTF-8 they operate on decoded Unicode characters, so
+# '[[:print:]]' accepts the two-byte character U+0130 ('İ', LATIN CAPITAL
+# LETTER I WITH DOT ABOVE) as printable, and '${v,,}' folds it to ASCII
+# 'i' — making 'https://gİthub.com/abhayla/IPODhan' and
+# 'https://github.com/abhayla/İpodhan' silently equal the allow-listed
+# ASCII form (gİthub.com is a DIFFERENT host; İpodhan is a different repo
+# path). Both were refused only under LC_ALL=C. Fixed by forcing LC_ALL=C
+# for the ENTIRE function body (a function-local shell variable, restored
+# on return) before any pattern match or case-fold runs, and by replacing
+# the character-class guard with an explicit printable-ASCII byte range
+# ('[\ -~]', 0x20-0x7E) so a non-ASCII byte is refused outright rather
+# than classified by locale at all.
 origin_is_ipodhan() {
   local v="$1" candidate form
-  [[ "$v" == *[[:cntrl:]]* ]] && return 1
-  [[ "$v" =~ ^[[:print:]]+$ ]] || return 1
+  local LC_ALL=C
+  [[ "$v" =~ ^[\ -~]+$ ]] || return 1
   v="${v#"${v%%[![:space:]]*}"}"
   v="${v%"${v##*[![:space:]]}"}"
   [ -n "$v" ] || return 1
