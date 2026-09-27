@@ -651,6 +651,8 @@ table.
 | 9 | `ipos.status` | — | 289 | 230 web · 56 exch · 3 doc | named by the owner; position in the timetable |
 | 10 | `ipos.listing_exchanges` | A15 | 208 | 161 web · 23 exch · 24 doc | named by the owner; **24 document values flip** |
 
+Measured 2026-09-27 (F-197): the offer document names the listing exchanges and the board for 33 IPOs; it agrees with the stored value on 32 and is right on the one disagreement (NSE's own IPO lists on BSE only). Open for owner decision (#938).
+
 **Removed from E-1, F-22 (2026-09-08):** `anchor_investors.lock_in_50_percent_date` and
 `lock_in_remaining_date` (contract § not applicable — these have no exchange or document filing of
 their own). They are class **C**, computed as `allotment_date + 30 days` and `allotment_date + 90
