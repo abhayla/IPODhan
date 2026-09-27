@@ -1589,4 +1589,42 @@ describe('#1247 item 1 — one reserved spawn slot for re-reads per document cyc
     const idsOffered = processPendingFilingsMock.mock.calls.map((c) => (c[0] as { id: string }).id);
     expect(idsOffered).toContain('ipo-2');
   });
+
+  // #1247 r2 review: the MAJOR fix (attempted-document dedup) is only real if
+  // the SAME Set instance is threaded through the reservation pre-pass, the
+  // fresh pass AND the re-read top-up pass — a fresh Set per call would defeat
+  // the whole point silently (all other tests stay green if this wiring is
+  // deleted, since none of them assert on the deps object itself).
+  it('every processPendingFilings call this cycle receives the SAME defined attemptedDocumentIds Set (pre-pass, fresh, and top-up)', async () => {
+    dbExecuteMock.mockResolvedValue({ rows: [candidateRow('ipo-1')] });
+    const docs = { fresh: 5, rereads: 5 };
+    processPendingFilingsMock.mockImplementation(
+      async (ipo: { id: string }, deps: { spawnBudget?: { remaining: number; phase?: string } } | undefined) => {
+        const b = deps!.spawnBudget!;
+        const take = (kind: 'fresh' | 'rereads') => {
+          while (docs[kind] > 0 && b.remaining > 0) {
+            docs[kind] -= 1;
+            b.remaining -= 1;
+          }
+        };
+        if (b.phase !== 'rereads') take('fresh');
+        if (b.phase !== 'fresh') take('rereads');
+        return {
+          ipoId: ipo.id, considered: 0, extracted: 0, persisted: 0, failed: 0, skipped: [], spawned: 0,
+          skippedBudget: 0, anchorsConsidered: 0, anchorsSpawned: 0, anchorsPersisted: 0,
+          anchorsManualReview: 0, anchorsFailed: 0,
+          rereadsDeferred: b.phase === 'fresh' ? docs.rereads : 0,
+        };
+      }
+    );
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    const sets = processPendingFilingsMock.mock.calls.map(
+      (c) => (c[1] as { attemptedDocumentIds?: Set<string> }).attemptedDocumentIds
+    );
+    expect(sets.length).toBeGreaterThan(1); // pre-pass + fresh + top-up all ran
+    expect(sets.every((s) => s !== undefined)).toBe(true);
+    expect(sets.every((s) => s === sets[0])).toBe(true);
+  });
 });
