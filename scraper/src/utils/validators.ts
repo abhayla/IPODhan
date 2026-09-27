@@ -405,6 +405,42 @@ function toEpoch(value: Date | string | null | undefined): number | null {
   return Number.isFinite(t) ? t : null;
 }
 
+const IPO_DATE_KEYS = ['openDate', 'closeDate', 'allotmentDate', 'listingDate'] as const;
+
+/**
+ * #1229: the date set a cross-field rule must judge — this write's value where
+ * it carries the key, else the stored row's. Exported so every door that judges
+ * dates builds the merged view the same way.
+ */
+export function mergedDateSet(
+  incoming: Record<string, any>,
+  storedRow?: Record<string, any> | null
+): Required<IpoDateSet> {
+  const merged: Required<IpoDateSet> = { openDate: null, closeDate: null, allotmentDate: null, listingDate: null };
+  for (const key of IPO_DATE_KEYS) {
+    // An undefined key is not a claim (mappers emit `openDate: undefined`); an
+    // explicit null is this write's claim and is kept.
+    merged[key] = incoming[key] !== undefined ? incoming[key] : (storedRow?.[key] ?? null);
+  }
+  return merged;
+}
+
+/**
+ * #1229: the date keys THIS write carries that the merged record (stored row +
+ * this write) really refuses. A stored value the merged verdict blames is never
+ * returned: it is not this write's claim, and repairing a stored row is a repair
+ * tool's job, not a write door's. With no stored row the merged view is the
+ * write alone (the stricter evaluation: it may refuse more, never admit more).
+ */
+export function incomingDatesRefusedOnMergedRecord(
+  incoming: Record<string, any>,
+  storedRow?: Record<string, any> | null
+): Array<(typeof IPO_DATE_KEYS)[number]> {
+  const merged = mergedDateSet(incoming, storedRow);
+  const safe = sanitizeIpoDates(merged);
+  return IPO_DATE_KEYS.filter((key) => incoming[key] !== undefined && merged[key] != null && safe[key] == null);
+}
+
 /**
  * Write-path date-plausibility guard (#41 / #52). A current scrape MUST NOT stomp
  * an IPO's dates. The lifecycle ordering is strict: open < close < allotment <
@@ -587,7 +623,10 @@ export function sanitizeLeadManagers(value: string[] | null | undefined): string
  * substance guarantees. Only fields PRESENT on the record are touched (so a partial
  * update never invents keys); the input is not mutated.
  */
-export function sanitizeIpoWriteFields<T extends Record<string, any>>(record: T): T {
+export function sanitizeIpoWriteFields<T extends Record<string, any>>(
+  record: T,
+  storedRow?: Record<string, any> | null
+): T {
   const out: Record<string, any> = { ...record };
 
   if (typeof out.companyName === 'string' && out.companyName) {
@@ -609,18 +648,18 @@ export function sanitizeIpoWriteFields<T extends Record<string, any>>(record: T)
     (k) => k in out
   );
   if (hasAnyDate) {
-    const safe = sanitizeIpoDates({
-      openDate: out.openDate ?? null,
-      closeDate: out.closeDate ?? null,
-      allotmentDate: out.allotmentDate ?? null,
-      listingDate: out.listingDate ?? null,
-    });
-    // Write back only the keys the record actually carried, so an absent key stays
-    // absent (a partial update must not null a column it never intended to touch).
-    if ('openDate' in out) out.openDate = safe.openDate ?? null;
-    if ('closeDate' in out) out.closeDate = safe.closeDate ?? null;
-    if ('allotmentDate' in out) out.allotmentDate = safe.allotmentDate ?? null;
-    if ('listingDate' in out) out.listingDate = safe.listingDate ?? null;
+    // #1229: every date rule here is cross-field (open<close<allotment<listing,
+    // "listing needs an open or close"), so it MUST be evaluated on the MERGED
+    // record: this update's key when it carries one, else the stored row's value.
+    // Evaluated on the partial update alone, a listing-only write (glass-wall,
+    // stored open/close, incoming listing 2026-09-16) looked like "listing with
+    // no open" and was nulled every cycle. With no stored row (create door, or a
+    // row that could not be read) the merged view IS the record, i.e. the
+    // stricter partial-only evaluation: it may drop, it never admits more.
+    // Only the keys the record actually carried are written back, so an absent
+    // key stays absent (a partial update must not null a column it never
+    // intended to touch).
+    for (const key of incomingDatesRefusedOnMergedRecord(out, storedRow)) out[key] = null;
   }
 
   return out as T;

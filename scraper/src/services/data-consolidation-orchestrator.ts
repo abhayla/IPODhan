@@ -25,6 +25,7 @@ import type {
 import { resolveIpoRow } from '@ipodhan/shared/repositories';
 import logger from '../utils/logger.js';
 import type { ScrapedIPO } from '../utils/validators.js';
+import { incomingDatesRefusedOnMergedRecord } from '../utils/validators.js';
 import { computeIpoIdentitySlug } from './data-persister.js';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { resolveOfferingTypeKeepingClassification, guardSmeOfferingTypeAgainstFpo } from '../utils/detect-offering-type.js';
@@ -278,6 +279,35 @@ export class DataConsolidationOrchestrator {
         incomingData = Object.fromEntries(
           Object.entries(incomingData).filter(([key]) => allowed.has(key))
         );
+      }
+
+      // #1229: the cross-field date rules (open<close<allotment<listing) run on
+      // the MERGED record (stored row + this write) BEFORE consolidation, so a
+      // refused date never reaches consolidation and gets no provenance row
+      // (OD-131). This door ran no date rule at all, and the field walk writes
+      // single dates through it (a listing-only CHITTORGARH write, #1228). An
+      // ADMIN write is exempt, as in W-14: a manual override is never dropped.
+      if (existingIPO && source !== 'ADMIN') {
+        const refused = incomingDatesRefusedOnMergedRecord(incomingData, existingIPO as any);
+        if (refused.length > 0) {
+          logger.warn(
+            {
+              slug,
+              ipoId: existingIPO.id,
+              source,
+              refusedFields: refused,
+              refusedValues: Object.fromEntries(refused.map((k) => [k, (incomingData as any)[k]])),
+              stored: {
+                openDate: existingIPO.openDate ?? null,
+                closeDate: existingIPO.closeDate ?? null,
+                allotmentDate: (existingIPO as any).allotmentDate ?? null,
+                listingDate: existingIPO.listingDate ?? null,
+              },
+            },
+            '[DataConsolidation] #1229 date refused on the merged record (stored row + this write) - not written, no provenance'
+          );
+          for (const key of refused) delete (incomingData as any)[key];
+        }
       }
 
       // Consolidate IPO main table data
