@@ -50,6 +50,11 @@ export const NSE_SERVEABLE_FIELDS: ReadonlyMap<string, keyof NseBoardRow> = new 
   ['ipos.companyName', 'companyName'],
   ['ipos.openDate', 'openDate'],
   ['ipos.closeDate', 'closeDate'],
+  // NOT ipos.listingDate (#1228 review r1): NSE's real ipo-current-issue and
+  // all-upcoming-issues payloads carry no listing date
+  // (docs/design/probes/nse-payload.out.json), so mapping it would only ever
+  // answer NOT_AVAILABLE_YET. Field 7 comes from CHITTORGARH (and documents);
+  // the NSE gap stays in the #884 baseline.
   ['ipos.priceRangeMin', 'priceRangeMin'],
   ['ipos.priceRangeMax', 'priceRangeMax'],
   ['ipos.lotSize', 'lotSize'],

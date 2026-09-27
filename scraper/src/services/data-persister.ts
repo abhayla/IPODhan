@@ -4,7 +4,7 @@ import logger from '../utils/logger.js';
 import { sql as sqlOp } from 'drizzle-orm';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
-import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeLeadManagers, sanitizeIpoWriteFields } from '../utils/validators.js';
+import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeLeadManagers, sanitizeIpoWriteFields, mergedDateSet } from '../utils/validators.js';
 import { isDateSequenceCoherent } from './ipo-date-plausibility.js';
 import { shouldPersistSubscriptionSnapshot, recordSuppressionOutcome, type SuppressionCounterStore } from './subscription-coverage-registry.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
@@ -1146,9 +1146,15 @@ async function upsertIPOInScope(
       // not stomp an old IPO's open/close dates. Anchor on the trustworthy post-IPO
       // dates (this scrape's, else the existing row's allotment/listing) and drop any
       // open/close that contradicts the anchor by years.
+      // #1229: every one of the four is merged with the stored row (open/close
+      // were not, so an incoming listing with stored open/close read as "listing
+      // with no open"). Only a key THIS scrape carried is judged or taken below.
+      const scrapedDateKeys = new Set(
+        (['openDate', 'closeDate', 'allotmentDate', 'listingDate'] as const).filter((k) => !!scrapedIPO[k])
+      );
       const rawDatesForSanitize = {
-        openDate: scrapedIPO.openDate,
-        closeDate: scrapedIPO.closeDate,
+        openDate: scrapedIPO.openDate || (existingIPO?.openDate ?? null),
+        closeDate: scrapedIPO.closeDate || (existingIPO?.closeDate ?? null),
         allotmentDate: scrapedIPO.allotmentDate || (existingIPO?.allotmentDate ?? null),
         listingDate: scrapedIPO.listingDate || (existingIPO?.listingDate ?? null),
       };
@@ -1157,7 +1163,7 @@ async function upsertIPOInScope(
       // the create/legacy-update path's only date-plausibility log (the
       // consolidation-update path logs via isDateSequenceCoherent above).
       (['openDate', 'closeDate', 'allotmentDate', 'listingDate'] as const).forEach((k) => {
-        if (rawDatesForSanitize[k] != null && safeDates[k] == null) {
+        if (scrapedDateKeys.has(k) && rawDatesForSanitize[k] != null && safeDates[k] == null) {
           logger.warn({
             ipoId: existingIPO?.id,
             companyName: scrapedIPO.companyName,
@@ -1253,11 +1259,14 @@ async function upsertIPOInScope(
         lotSize: validateLotSize(scrapedIPO.lotSize, scrapedIPO.segment, scrapedIPO.companyName) ?? undefined, // Validate and reject lot_size = 1
         faceValue: scrapedIPO.faceValue || undefined,
         status: scrapedIPO.status as any,
-        openDate: (safeDates.openDate as Date | undefined) ?? undefined,
-        closeDate: (safeDates.closeDate as Date | undefined) ?? undefined,
+        openDate: scrapedDateKeys.has('openDate') ? ((safeDates.openDate as Date | undefined) ?? undefined) : undefined,
+        closeDate: scrapedDateKeys.has('closeDate') ? ((safeDates.closeDate as Date | undefined) ?? undefined) : undefined,
         // Convert empty strings to undefined for date fields (Story 11.7 - Fix Chittorgarh date handling)
-        allotmentDate: scrapedIPO.allotmentDate || undefined,
-        listingDate: scrapedIPO.listingDate || undefined,
+        // #1229 review r1: the SANITIZED value, like open/close above -- the raw
+        // one was written by the create door and the fallback update (both read
+        // ipoData) even after the check above logged it "rejected".
+        allotmentDate: scrapedDateKeys.has('allotmentDate') ? ((safeDates.allotmentDate as string | undefined) ?? undefined) : undefined,
+        listingDate: scrapedDateKeys.has('listingDate') ? ((safeDates.listingDate as string | undefined) ?? undefined) : undefined,
         companyDescription: scrapedIPO.companyDescription || undefined,
         registrar: sanitizeRegistrar(scrapedIPO.registrar) ?? undefined,
         // P3-2: populate the FK when the sanitized name resolves unambiguously
@@ -1430,25 +1439,21 @@ async function upsertIPOInScope(
             // #52 observability: detect an incoherent merged date sequence BEFORE the
             // sanitizer corrects it, so a consolidation mis-merge recurrence is visible
             // in prod logs/alerting (the sanitize below only silently nulls the offender).
+            // #1229: judged on the MERGED record (stored row + this update), the
+            // same view the sanitizer below uses — the consolidation result holds
+            // only this update's fields, so a listing-only update read as
+            // "listing_date present without open_date".
             const rawConsolidated = consolidationResult.consolidatedData;
-            const dateCoherence = isDateSequenceCoherent({
-              openDate: rawConsolidated.openDate,
-              closeDate: rawConsolidated.closeDate,
-              allotmentDate: rawConsolidated.allotmentDate,
-              listingDate: rawConsolidated.listingDate,
-            });
+            const mergedDates = mergedDateSet(rawConsolidated, existingIPO as any);
+            const dateCoherence = isDateSequenceCoherent(mergedDates);
             if (!dateCoherence.ok) {
               logger.warn({
                 ipoId: existingIPO.id,
                 companyName: scrapedIPO.companyName,
                 source,
                 reason: dateCoherence.reason,
-                dates: {
-                  openDate: rawConsolidated.openDate,
-                  closeDate: rawConsolidated.closeDate,
-                  allotmentDate: rawConsolidated.allotmentDate,
-                  listingDate: rawConsolidated.listingDate,
-                },
+                dates: mergedDates,
+                incomingDateKeys: Object.keys(rawConsolidated).filter((k) => k in mergedDates),
               }, '[DataConsolidation] incoherent merged date sequence — sanitizer will null the offender (#52, T-306: sanitizeIpoDates now covers every isDateSequenceCoherent rule)');
             }
 
@@ -1467,7 +1472,7 @@ async function upsertIPOInScope(
             // guard never ships an absurd value (nulled → "Data Not Available"), it just may
             // drop a recoverable field for that unobserved pre-listing edge.
             const finalData: Record<string, any> = {
-              ...sanitizeIpoWriteFields(rawConsolidated),
+              ...sanitizeIpoWriteFields(rawConsolidated, existingIPO as any),
               listingExchanges: mergedExchanges,
               lastScrapedAt: new Date(),
               updatedAt: new Date(),

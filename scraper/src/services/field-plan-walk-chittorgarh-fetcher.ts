@@ -30,7 +30,14 @@ import { logger } from '../utils/logger.js';
 // ipos.sector (#394/#343/#73, spec field 13 rank 2): read from the IPO's DETAIL
 // page (the list row's verifierUrl), one GET per IPO per cycle, mapped through the
 // fixed sector list (scraper/config/sector-list.json, check F1).
-export const CHITTORGARH_SERVEABLE_FIELDS: ReadonlySet<string> = new Set(['ipos.issueSize', 'ipos.sector']);
+// ipos.listingDate (#1228, spec field 7 rank 3 / SME rank 2): the list row's own
+// listing-date column (chittorgarh-scraper.ts `listingDate`), the same value the
+// CHITTORGARH orchestrator writes.
+export const CHITTORGARH_SERVEABLE_FIELDS: ReadonlySet<string> = new Set([
+  'ipos.issueSize',
+  'ipos.sector',
+  'ipos.listingDate',
+]);
 
 export interface ChittorgarhFetcherDeps {
   ipoRepository: IPORepository;
@@ -154,6 +161,11 @@ export function buildChittorgarhFetcher(
       return { outcome: 'SUPPLIED', value: row.issueSize };
     }
 
+    if (camelFieldName === 'listingDate') {
+      if (!row.listingDate) return { outcome: 'NOT_AVAILABLE_YET' };
+      return { outcome: 'SUPPLIED', value: row.listingDate };
+    }
+
     if (camelFieldName === 'sector') {
       if (!row.verifierUrl) return { outcome: 'NOT_AVAILABLE_YET' };
       let html: string;
@@ -173,7 +185,7 @@ export function buildChittorgarhFetcher(
       return { outcome: 'SUPPLIED', value: sector };
     }
 
-    // Unreachable today (CHITTORGARH_SERVEABLE_FIELDS names only issueSize and sector,
+    // Unreachable today (CHITTORGARH_SERVEABLE_FIELDS names only issueSize, sector and listingDate,
     // and the gate above already answers CHECK_FAILED transient for
     // anything else) — kept as a defensive fallback with the SAME
     // review-round-2 reasoning: a field this fetcher's mapping branch does

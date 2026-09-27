@@ -1081,7 +1081,12 @@ async function attemptOneField(
       });
     }
 
-    if (verdict.accepted === false && reopenedUnder && verdict.reason !== NO_FIELD_RESULT_REASON) {
+    if (
+      verdict.accepted === false &&
+      reopenedUnder &&
+      verdict.reason !== NO_FIELD_RESULT_REASON &&
+      !verdict.reason.startsWith(DATE_REFUSED_REASON) // #1229: a refusal, not a priority loss
+    ) {
       // #968 fix round 1, finding 2: an override-reopened settled row whose higher
       // source answered but LOST to the field-priority matrix. For THIS override
       // that is a definitive no: re-asking every slot changes nothing. The page
@@ -1419,6 +1424,8 @@ export { mapManifestSourceToScraperSource } from '../config/field-source-codes.j
 /** The consolidator returned no result for the field: the write could not be verified. A failed
  *  write (transient CHECK_FAILED), never a priority-matrix loss (#968 final review, MINOR). */
 const NO_FIELD_RESULT_REASON = 'no field result returned';
+/** #1229: the write door's merged-record date rule refused the value (stored row + this write incoherent). */
+export const DATE_REFUSED_REASON = 'date refused on the merged record (#1229)';
 
 function checkConsolidatorAgreed(
   fieldResults: Array<{ fieldName: string; finalValue: unknown; chosenSource: string }> | undefined,
@@ -1501,6 +1508,12 @@ async function runWrite(
         [camelFieldName]
       );
       if (r?.skipped) return { happened: false, skipReason: r.skipReason ?? 'SKIPPED' };
+      // #1229: the orchestrator's merged-record date rule refused this value
+      // (e.g. a listing date before the stored open date). Say so, rather than
+      // the generic "no field result returned" the missing field result implies.
+      if (Array.isArray(r?.refusedDateFields) && r.refusedDateFields.includes(camelFieldName)) {
+        return { happened: true, accepted: false, reason: `${DATE_REFUSED_REASON}: ${camelFieldName}` };
+      }
       const verdict = checkConsolidatorAgreed(
         r?.consolidation?.fieldResults,
         camelFieldName,
