@@ -241,6 +241,10 @@ jobs:
         # its fixture red here rather than silently disarming the audit.
         run: node --test scripts/tests/document-state-checks.test.mjs
 
+      - name: Delisted-row check self-tests (#983)
+        # d_delisted_reads imports its predicate from scripts/lib/delisting-checks.mjs.
+        run: node --test scripts/tests/delisting-checks.test.mjs
+
       - name: Fix-served / deploy-status self-tests (T-425)
         # Mutation-proof: scripts/tests/fix-served-checks.test.mjs imports the
         # real m_fix_merged_not_served predicate from
@@ -1236,6 +1240,7 @@ jobs:
           tests/integration/oracle-parity.test.ts
           tests/integration/opening-day-create.integration.test.ts
           tests/integration/post-listing-price.integration.test.ts
+          tests/integration/delisting-strikes.integration.test.ts
           tests/integration/repair-bse-subscription-ist-shift.integration.test.ts
           tests/integration/rhp-promoters-peers-persist.integration.test.ts
           tests/integration/phase-1-e2e.test.ts

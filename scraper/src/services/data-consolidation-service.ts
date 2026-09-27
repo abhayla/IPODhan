@@ -421,7 +421,9 @@ function isDetectedAtStillFresh(detectedAt: unknown, now: number): boolean {
  * status write via plain source priority. Defined locally (not imported
  * from web) to keep the scraper package dependency-free of web.
  */
-export const TERMINAL_IPO_STATUSES: ReadonlySet<string> = new Set<string>(['WITHDRAWN', 'POSTPONED']);
+// #983 / OD-132: DELISTED (set by the post-listing price job) is terminal too, so an ordinary
+// NSE/BSE status write cannot take it back to LISTED.
+export const TERMINAL_IPO_STATUSES: ReadonlySet<string> = new Set<string>(['WITHDRAWN', 'POSTPONED', 'DELISTED']);
 
 const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
 

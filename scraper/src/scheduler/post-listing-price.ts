@@ -31,7 +31,16 @@ import { and, asc, eq, gt, lte, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
 import { istDayIso } from '@ipodhan/shared/utils/ist-day';
-import { isAsOfTooFarInFuture, type QuoteOutcome } from '../scrapers/post-listing-quote.js';
+import { isAsOfTooFarInFuture, nseSeriesOrder, type QuoteOutcome } from '../scrapers/post-listing-quote.js';
+import {
+  BSE_ACTIVE_LIST_MIN_SCRIPS,
+  classifyRunForDelisting,
+  delistingCanary,
+  nextDelistingState,
+  type DelistingState,
+  type DelistingVerdict,
+  type ExchangeAnswer,
+} from './delisting-strikes.js';
 
 export const POST_LISTING_WINDOW_DAYS = 90;
 export const PRICE_JOB_OPEN_IST_MINUTES = 9 * 60 + 15;
@@ -76,6 +85,9 @@ export interface PriceCandidate {
   currentPriceUpdatedAt: unknown;
   status: string;
   nseSeries: string | null;
+  /** #983: consecutive delisting reports so far, and the reads that make them up. */
+  delistingStrikes?: number;
+  delistingStrikeReads?: Array<{ at: string; exchange: string; detail: string }> | null;
 }
 
 /**
@@ -102,6 +114,8 @@ export async function selectPriceCandidates(
       currentPriceUpdatedAt: t.currentPriceUpdatedAt,
       status: t.status,
       nseSeries: t.priceNseSeries,
+      delistingStrikes: t.delistingStrikes,
+      delistingStrikeReads: t.delistingStrikeReads,
     })
     .from(t)
     .where(and(eq(t.status, 'LISTED'), gt(t.listingDate, from), lte(t.listingDate, today)))
@@ -129,6 +143,8 @@ export interface PriceJobDeps {
   loadBseScrips: () => Promise<Map<string, string>>;
   writePrice: (c: PriceCandidate, q: Extract<QuoteOutcome, { kind: 'price' }>) => Promise<PriceWriteOutcome>;
   writeState: (c: PriceCandidate, patch: PriceStatePatch) => Promise<void>;
+  /** #983: persist the delisting count; `delistAt` set = the third strike, status becomes DELISTED. */
+  writeDelisting?: (c: PriceCandidate, next: DelistingState, delistAt: Date | null) => Promise<void>;
   log: (line: string, fields: Record<string, unknown>) => void;
   /** Epoch ms after which no new IPO is started (keeps the run inside the shared `live` lock's TTL). */
   deadlineAt?: number;
@@ -145,6 +161,8 @@ export interface PriceJobSummary {
   refused: string[];
   notReached: string[];
   calls: { nse: number; bse: number; bseList: number; total: number };
+  /** #983: per-IPO delisting reading this run, by name. */
+  delisting: { strikes: string[]; noSuchSymbol: string[]; voided: string[]; delisted: string[]; reset: string[] };
 }
 
 type Verdict = 'price' | 'no-symbol' | 'refused' | 'unknown';
@@ -197,7 +215,9 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
     updated: [], confirmed: [], unchanged: [], stale: [], noPrice: [],
     refused: [], notReached: [],
     calls: { nse: 0, bse: 0, bseList: 0, total: 0 },
+    delisting: { strikes: [], noSuchSymbol: [], voided: [], delisted: [], reset: [] },
   };
+  const delistingRows: Array<{ c: PriceCandidate; group: string; verdict: DelistingVerdict; nseAsked: boolean; exchange: string; detail: string }> = [];
   let bseScrips: Map<string, string> | null = null;
   let bseListFailed: string | null = null;
   const clock = deps.clock ?? (() => Date.now());
@@ -206,6 +226,10 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
       summary.calls.bseList++;
       try {
         bseScrips = await deps.loadBseScrips();
+        // #983: a short list is a truncated fetch; "not in the list" would then mean nothing.
+        if (bseScrips.size < BSE_ACTIVE_LIST_MIN_SCRIPS) {
+          bseListFailed = `BSE active list truncated: ${bseScrips.size} scrips (< ${BSE_ACTIVE_LIST_MIN_SCRIPS})`;
+        }
       } catch (error) {
         bseListFailed = error instanceof Error ? error.message : String(error);
       }
@@ -224,6 +248,11 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
     // Round 5 (Tier A MINOR 6): one candidate's own bug (a throwing dependency, an
     // unexpected shape) must never abort the rest of the run — it is refused, logged by
     // name and cause, and the loop moves on to the next candidate.
+    let nseAnswer: ExchangeAnswer = 'not-asked';
+    let bseAnswer: ExchangeAnswer = 'not-asked';
+    let priced = false;
+    let reportDetail = '';
+    let reportExchange = '';
     try {
       // NSE first (§1 rank 1), the cached working series asked first.
       let nseVerdict: Verdict = 'unknown';
@@ -232,8 +261,10 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
       if (c.symbol) {
         nse = await deps.readNse(c.symbol, c.segment, c.nseSeries);
         summary.calls.nse += nse.calls;
-        nseVerdict = nse.kind;
+        nseVerdict = nse.kind === 'delisted' ? 'no-symbol' : nse.kind;
         nseDetail = nse.kind === 'price' ? `series ${nse.series}` : nse.detail;
+        nseAnswer = nse.kind;
+        if (nse.kind === 'delisted') { reportExchange = 'NSE'; reportDetail = nse.detail; }
       }
       let winner: Extract<QuoteOutcome, { kind: 'price' }> | null = null;
       let isinNote: string | null = null;
@@ -245,6 +276,7 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
         // explicit `=== false` check narrows correctly either way.
         if (guard.ok === false) {
           nseVerdict = 'refused';
+          nseAnswer = 'refused';
           nseDetail = guard.reason;
           deps.log(`post-listing price: ${name} NSE read refused — ${guard.reason}`, { ipoId: c.id, exchange: 'NSE', reason: guard.reason });
         } else {
@@ -256,23 +288,30 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
       // BSE only when NSE has no price. No ISIN -> no scrip code -> BSE is UNKNOWN for this run.
       let bseVerdict: Verdict = 'unknown';
       let bseDetail = 'no ISIN stored, so no BSE scrip code: BSE unknown';
-      if (!winner && c.isin) {
-        const scrip = await scripFor(c.isin);
+      // #983 (F-160): no stored ISIN, but NSE's own delisting answer carries one, so BSE can be asked.
+      const isin = c.isin ?? (nse?.kind === 'delisted' ? nse.isin ?? null : null);
+      if (!winner && isin) {
+        const scrip = await scripFor(isin);
         if (scrip.failed) {
           bseVerdict = 'refused';
+          bseAnswer = 'refused';
           bseDetail = `BSE active list failed: ${scrip.failed}`;
         } else if (!scrip.code) {
           bseVerdict = 'no-symbol';
-          bseDetail = `ISIN ${c.isin} is not in BSE's active list (not listed on BSE)`;
+          bseAnswer = 'no-symbol';
+          bseDetail = `ISIN ${isin} is not in BSE's active list (not listed on BSE)`;
         } else {
           const bse = await deps.readBse(scrip.code);
           summary.calls.bse += bse.calls;
-          bseVerdict = bse.kind;
+          bseVerdict = bse.kind === 'delisted' ? 'no-symbol' : bse.kind;
+          bseAnswer = bse.kind;
+          if (bse.kind === 'delisted' && !reportExchange) { reportExchange = 'BSE'; reportDetail = `scrip ${scrip.code}: ${bse.detail}`; }
           bseDetail = bse.kind === 'price' ? `scrip ${scrip.code}` : `scrip ${scrip.code}: ${bse.detail}`;
           if (bse.kind === 'price') {
             const guard = guardPriceRead(c, bse, deps.now);
             if (guard.ok === false) {
               bseVerdict = 'refused';
+              bseAnswer = 'refused';
               bseDetail = guard.reason;
               deps.log(`post-listing price: ${name} BSE read refused — ${guard.reason}`, { ipoId: c.id, exchange: 'BSE', reason: guard.reason });
             } else {
@@ -284,6 +323,7 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
       }
 
       if (winner) {
+        priced = true;
         const outcome = await deps.writePrice(c, winner);
         summary[outcome].push(name);
         // The price write already landed and is already counted above (`summary[outcome]`).
@@ -323,8 +363,56 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
       );
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
+      if (!priced) nseAnswer = 'refused';
       summary.refused.push(name);
       deps.log(`post-listing price: ${name} refused — unexpected error, run continues: ${detail}`, { ipoId: c.id, reason: 'unexpected-error', error: detail });
+    } finally {
+      // `finally`, because every branch above ends in `continue`: a price read must still reach the
+      // count (it is the only thing that resets it).
+      delistingRows.push({
+        c,
+        group: nseSeriesOrder(c.segment, c.nseSeries)[0],
+        verdict: classifyRunForDelisting({ priced, nse: nseAnswer, bse: bseAnswer }),
+        nseAsked: nseAnswer !== 'not-asked',
+        exchange: reportExchange,
+        detail: reportDetail,
+      });
+    }
+  }
+
+  // #983: the run canary, then the persisted count. A voided STRIKE is UNKNOWN for this run.
+  const voided = delistingCanary(delistingRows);
+  for (const [group, g] of voided) {
+    deps.log(
+      `post-listing price: delisting canary — series ${group}: ${g.bad} of ${g.asked} asked IPOs answered delisted/no-such-symbol (limit ${g.limit}); every delisting report in this series is voided this run`,
+      { reason: 'delisting-canary', series: group, asked: g.asked, bad: g.bad, limit: g.limit },
+    );
+  }
+  for (const r of delistingRows) {
+    let verdict = r.verdict;
+    if (verdict === 'STRIKE' && voided.has(r.group)) {
+      verdict = 'UNKNOWN';
+      summary.delisting.voided.push(r.c.companyName);
+    }
+    if (verdict === 'NO_SUCH_SYMBOL') summary.delisting.noSuchSymbol.push(r.c.companyName);
+    if (!deps.writeDelisting) continue;
+    const prev: DelistingState = { strikes: r.c.delistingStrikes ?? 0, reads: r.c.delistingStrikeReads ?? [] };
+    const t = nextDelistingState(prev, verdict, { at: deps.now, exchange: r.exchange, detail: r.detail });
+    if (!t.changed) continue;
+    try {
+      await deps.writeDelisting(r.c, t.next, t.delistAt);
+      if (verdict === 'OK') summary.delisting.reset.push(r.c.companyName);
+      if (verdict === 'STRIKE') summary.delisting.strikes.push(r.c.companyName);
+      if (t.delistAt) summary.delisting.delisted.push(r.c.companyName);
+      deps.log(
+        t.delistAt
+          ? `post-listing price: ${r.c.companyName} DELISTED — ${t.next.strikes} consecutive delisting reports (${t.next.reads.map((x) => `${x.exchange} ${x.at}`).join(', ')}); price job stops for it`
+          : `post-listing price: ${r.c.companyName} delisting count ${prev.strikes} -> ${t.next.strikes}${verdict === 'STRIKE' ? ` (${r.exchange}: ${r.detail})` : ' (a price read resets it)'}`,
+        { ipoId: r.c.id, reason: 'delisting', verdict, strikes: t.next.strikes, delisted: Boolean(t.delistAt) },
+      );
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      deps.log(`post-listing price: ${r.c.companyName} delisting-count write failed: ${detail}`, { ipoId: r.c.id, reason: 'delisting-write-failed', error: detail });
     }
   }
   summary.calls.total = summary.calls.nse + summary.calls.bse + summary.calls.bseList;
