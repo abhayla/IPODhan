@@ -1,0 +1,32 @@
+{
+ "dbName": "ipodhan_test",
+ "mode": "repair",
+ "apply": true,
+ "rows": [
+  {
+   "slug": "od74-t-identical",
+   "stored": 267300000,
+   "url": "https://www.chittorgarh.com/ipo/dhanwel-hybrid-seeds-ipo/2846/",
+   "outcome": "REFUSED",
+   "note": "https://www.chittorgarh.com/ipo/dhanwel-hybrid-seeds-ipo/2846/: not pinned and prod mode never fetches (OD-74: one read per IPO, the staging read is the read)"
+  },
+  {
+   "slug": "od74-t-rounding",
+   "stored": 507744000,
+   "url": "https://www.chittorgarh.com/ipo/kwick-forensic-solutions-ipo/2757/",
+   "outcome": "REFUSED",
+   "note": "https://www.chittorgarh.com/ipo/kwick-forensic-solutions-ipo/2757/: not pinned and prod mode never fetches (OD-74: one read per IPO, the staging read is the read)"
+  },
+  {
+   "slug": "od74-t-write",
+   "stored": 1679302840,
+   "url": "https://www.chittorgarh.com/ipo/cms-info-systems-ipo/1203/",
+   "outcome": "REFUSED",
+   "note": "https://www.chittorgarh.com/ipo/cms-info-systems-ipo/1203/: not pinned and prod mode never fetches (OD-74: one read per IPO, the staging read is the read)"
+  },
+  {
+   "outcome": "REFUSED",
+   "error": "3 read(s) not allowed under OD-74's one-read rule — nothing written"
+  }
+ ]
+}

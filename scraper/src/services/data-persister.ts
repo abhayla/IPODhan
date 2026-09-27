@@ -301,9 +301,6 @@ async function getStoredOfferingTypeSource(ipoId: string | undefined): Promise<s
   }
 }
 
-/** `mergeListingExchangesForSource` storedSource when the provenance lookup failed. */
-export const STORED_SOURCE_UNKNOWN = '__UNKNOWN__';
-
 /** OD-129 (#938): the source vouching for the stored `listingExchanges`, for the fallback door. */
 async function getStoredListingExchangesSource(ipoId: string | undefined): Promise<string | null> {
   if (!ipoId) return null;
@@ -313,9 +310,9 @@ async function getStoredListingExchangesSource(ipoId: string | undefined): Promi
   } catch (e) {
     logger.warn(
       { ipoId, error: e instanceof Error ? e.message : String(e) },
-      '[DataPersister] OD-129 stored listingExchanges provenance lookup failed - fallback keeps the stored set'
+      '[DataPersister] OD-129 stored listingExchanges provenance lookup failed - no document claim known, the feed union applies'
     );
-    return STORED_SOURCE_UNKNOWN;
+    return null;
   }
 }
 
@@ -707,8 +704,9 @@ export function mergeListingExchangesForSource(
   // them either. Omitted (or non-SME) keeps the previous union behaviour.
   segment?: string | null,
   // OD-129 (#938, review MINOR 2): the source vouching for the STORED set
-  // (field_sources). `STORED_SOURCE_UNKNOWN` = the lookup failed: a feed then
-  // keeps the stored set rather than risk widening a document-held one.
+  // (field_sources). Only an offer-document (or ADMIN) source holds the set;
+  // null / unknown / a feed source means no document claim, so the feed union
+  // still applies ("Only when no document has been read: the exchange feed").
   storedSource?: string | null
 ): ('NSE' | 'BSE')[] {
   const existing = existingExchanges ?? [];
@@ -719,7 +717,6 @@ export function mergeListingExchangesForSource(
   // OD-129 (#938): the same decision the consolidation door makes. A document's
   // listing sentence replaces the set (never unions into it); a set a document
   // or the admin holds is never widened by a feed.
-  if (storedSource === STORED_SOURCE_UNKNOWN && !DOCUMENT_PATH_SOURCES.has(source)) return existing;
   const od129 = decideListingExchangesOd129({
     stored: existing,
     storedSource: storedSource ?? undefined,

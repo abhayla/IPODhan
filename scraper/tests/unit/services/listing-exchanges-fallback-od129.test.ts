@@ -2,10 +2,10 @@
  * OD-129 (#938), review round 1 MINOR 2 + 3: the consolidation-failure fallback
  * door (`mergeListingExchangesForSource`) makes the SAME document-first decision
  * as the consolidation door: a document replaces the set; a set a document holds
- * is never widened by a feed; an unknown stored provenance keeps the stored set.
+ * is never widened by a feed; a feed-held or unknown-provenance set still takes the feed union.
  */
 import { describe, it, expect } from 'vitest';
-import { mergeListingExchangesForSource, STORED_SOURCE_UNKNOWN } from '../../../src/services/data-persister';
+import { mergeListingExchangesForSource } from '../../../src/services/data-persister';
 
 describe('fallback door: listingExchanges under OD-129', () => {
   it('a document REPLACES the stored set (#938: [BSE, NSE] -> [BSE]), never unions', () => {
@@ -24,8 +24,14 @@ describe('fallback door: listingExchanges under OD-129', () => {
     expect(mergeListingExchangesForSource(['NSE'], 'CHITTORGARH', 'BOTH', 'SME', 'DRHP')).toEqual(['NSE']);
   });
 
-  it('a failed provenance lookup keeps the stored set for a feed', () => {
-    expect(mergeListingExchangesForSource(['BSE'], 'NSE', undefined, 'MAINBOARD', STORED_SOURCE_UNKNOWN)).toEqual(['BSE']);
+  it('unknown provenance (lookup failed / never tracked) is NOT a document claim: the feed union applies', () => {
+    expect(mergeListingExchangesForSource(['NSE'], 'BSE', undefined, 'MAINBOARD', null)).toEqual(['NSE', 'BSE']);
+    expect(mergeListingExchangesForSource(['NSE'], 'BSE', undefined, 'MAINBOARD', undefined)).toEqual(['NSE', 'BSE']);
+  });
+
+  it('a FEED-held set still takes the other feed (only a document-held set blocks the union)', () => {
+    expect(mergeListingExchangesForSource(['NSE'], 'BSE', undefined, 'MAINBOARD', 'NSE')).toEqual(['NSE', 'BSE']);
+    expect(mergeListingExchangesForSource(['NSE'], 'BSE', undefined, 'MAINBOARD', 'CHITTORGARH')).toEqual(['NSE', 'BSE']);
   });
 
   it('with no document read, the feed union still applies (OD-129 fallback order)', () => {
