@@ -17,8 +17,14 @@ describe('keepTerminalIpoStatus (the fallback door)', () => {
     });
   }
 
+  // #983 / OD-132 (review round 1 MAJOR on PR #1170): an ordinary NSE/BSE status write must not
+  // take a DELISTED row back to LISTED.
+  it('a stored DELISTED is not overwritten by a scrape\'s LISTED (#983)', () => {
+    expect(keepTerminalIpoStatus('DELISTED', { status: 'LISTED', companyName: 'X Ltd' })).toEqual({ companyName: 'X Ltd' });
+  });
+
   it('the terminal set is the consolidation path\'s own set (one definition)', () => {
-    expect([...TERMINAL_IPO_STATUSES].sort()).toEqual(['POSTPONED', 'WITHDRAWN']);
+    expect([...TERMINAL_IPO_STATUSES].sort()).toEqual(['DELISTED', 'POSTPONED', 'WITHDRAWN']);
   });
 
   it('a non-terminal stored status moves normally', () => {

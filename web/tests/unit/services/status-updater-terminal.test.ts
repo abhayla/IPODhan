@@ -125,6 +125,19 @@ describe('updateIPOStatuses never downgrades a terminal status', () => {
     expect(result.updatedIPOs).toEqual([]);
   });
 
+  // #983 / OD-132 (review round 1 MAJOR on PR #1170): DELISTED is set by the price job after three
+  // explicit exchange delisted reports. Its listing date is in the past, so without the guard the
+  // next cycle's date ladder writes LISTED back. Named literally so removing DELISTED from
+  // TERMINAL_STATUSES turns this red (the it.each above would silently shrink instead).
+  it('leaves a DELISTED row with a past listing date untouched (#983)', async () => {
+    expect(isTerminalStatus('DELISTED')).toBe(true);
+    queryRows = [row({ id: 'delisted', status: 'DELISTED', listingDate: '2020-01-10' })];
+    const result = await updateIPOStatuses();
+    expect(updatedRows).toEqual([]);
+    expect(result.total).toBe(0);
+    await expect(getOutdatedStatusCount()).resolves.toMatchObject({ total: 0 });
+  });
+
   it('still updates a non-terminal row in the same batch', async () => {
     queryRows = [
       row({ id: 'dead', status: 'WITHDRAWN' }),

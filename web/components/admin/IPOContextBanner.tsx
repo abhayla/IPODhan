@@ -93,7 +93,8 @@ export function IPOContextBanner({
     CLOSED: 'bg-orange-100 text-orange-800',
     LISTED: 'bg-blue-100 text-blue-800',
     CANCELLED: 'bg-red-100 text-red-800',
-    WITHDRAWN: 'bg-gray-100 text-gray-800'
+    WITHDRAWN: 'bg-gray-100 text-gray-800',
+    DELISTED: 'bg-red-100 text-red-800'
   };
 
   const statusColor = statusColors[ipoData.status] || 'bg-gray-100 text-gray-800';

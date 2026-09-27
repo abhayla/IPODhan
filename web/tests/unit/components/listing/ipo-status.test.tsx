@@ -17,7 +17,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import Link from 'next/link';
-import { StatusDot, StatusSrLabel } from '@/components/listing/ipo-status';
+import { StatusDot, StatusSrLabel, getDisplayStatus } from '@/components/listing/ipo-status';
 
 const openIpo = {
   openDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -78,5 +78,19 @@ describe('StatusSrLabel + decorative StatusDot together (round-1 review on #107)
   it('carries md:hidden so it drops out at the breakpoint the visible Status column appears, avoiding a double announcement', () => {
     render(<StatusSrLabel ipo={openIpo} />);
     expect(screen.getByText('Open')).toHaveClass('md:hidden');
+  });
+});
+
+// #983 / OD-132 (review round 1 on PR #1170): a delisted company must not read as 'Closed'.
+describe('DELISTED display (#983)', () => {
+  const delisted = { openDate: '2020-01-01', closeDate: '2020-01-05', status: 'DELISTED' };
+
+  it('derives its own Delisted status and label', () => {
+    expect(getDisplayStatus(delisted)).toEqual({ status: 'delisted', label: 'Delisted' });
+  });
+
+  it("renders Delisted as the dot's accessible name", () => {
+    render(<StatusDot ipo={delisted} />);
+    expect(screen.getByLabelText('Delisted')).toBeTruthy();
   });
 });

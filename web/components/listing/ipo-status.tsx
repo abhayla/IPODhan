@@ -12,7 +12,8 @@ export type DisplayStatus =
   | 'closed'
   | 'listed'
   | 'withdrawn'
-  | 'postponed';
+  | 'postponed'
+  | 'delisted';
 
 /** Minimal shape needed to derive a status — satisfied by both IPO rows and the
  * lighter HomeIPOTableData. */
@@ -48,6 +49,8 @@ export function getDisplayStatus(ipo: StatusInput): StatusMeta {
   const stored = (ipo.status || '').toUpperCase();
   if (stored === 'WITHDRAWN') return { status: 'withdrawn', label: 'Withdrawn' };
   if (stored === 'POSTPONED') return { status: 'postponed', label: 'Postponed' };
+  // #983 / OD-132: a delisted company is no longer traded; never show it as 'Closed' or 'Listed'.
+  if (stored === 'DELISTED') return { status: 'delisted', label: 'Delisted' };
 
   if (ipo.openDate && ipo.closeDate) {
     const open = startOfDay(new Date(ipo.openDate));
@@ -80,6 +83,7 @@ const TONE: Record<DisplayStatus, { chip: string; dot: string }> = {
   // not mistake a dead issue for a completed one.
   withdrawn: { chip: 'bg-red-50 text-red-700', dot: 'bg-red-500' },
   postponed: { chip: 'bg-amber-50 text-amber-800', dot: 'bg-amber-600' },
+  delisted: { chip: 'bg-red-50 text-red-700', dot: 'bg-red-500' },
 };
 
 /** Just the colored status dot — used inside the pinned Company cell on mobile so
