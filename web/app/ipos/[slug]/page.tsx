@@ -51,6 +51,7 @@ import { CompanyContactSection } from '@/components/ipo-detail/CompanyContactSec
 import { RecommendationSummarySection } from '@/components/ipo-detail/RecommendationSummarySection';
 import { CategoryReservationSection } from '@/components/ipo-detail/CategoryReservationSection';
 import { PendingDataNotice } from '@/components/ipo-detail/PendingDataNotice';
+import { TerminalIpoNotice } from '@/components/ipo-detail/TerminalIpoNotice';
 import { LotDetailsSection } from '@/components/ipo-detail/LotDetailsSection';
 import { ListingDetailsSection } from '@/components/ipo-detail/ListingDetailsSection';
 import { LeadManagerSection } from '@/components/ipo-detail/LeadManagerSection';
@@ -578,6 +579,9 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
         {/* Main Content */}
         <div className="container mx-auto px-4 py-8">
           <div className="space-y-5">
+            {/* #975 / OD-8: a WITHDRAWN or DELISTED row is frozen — the notice
+                stays at the top, above every figure it applies to. */}
+            <TerminalIpoNotice status={ipo.status} delistedAt={ipo.delistedAt} />
             {/* 1. IPO Timeline Widget */}
             <IPOTimelineWidget
               ipo={{
