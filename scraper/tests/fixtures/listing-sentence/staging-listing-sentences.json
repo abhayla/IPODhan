@@ -1,0 +1,688 @@
+{
+ "measuredOn": "ipodhan_staging",
+ "query": "document_pages page_number<=6 AND text ~* proposed to be listed; first page per (ipo, document type); excerpt = 300 chars before to 700 after the phrase",
+ "entries": [
+  {
+   "slug": "a-one-steels-india-ltd",
+   "docType": "DRHP",
+   "documentId": "0e249693-057a-46bd-9388-11fe92500edb",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "ed Herring Prospectus, including, inter alia, any of the statements\nmade by or relating to our Company, any other Selling Shareholder or any other person(s) in this Draft Red Herring Prospectus.\nLISTING\nThe Equity Shares of face value of ₹10 each to be offered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges,\nbeing BSE Limited (“BSE”) and National Stock Exchange of India Limited (“NSE”, together with BSE, the “Stock Exchanges”). For the\npurposes of the Offer, [●] is the Designated Stock Exchange."
+  },
+  {
+   "slug": "a-one-steels-india-ltd",
+   "docType": "RHP",
+   "documentId": "f6f9013c-b33f-45c1-8c4c-2c9af4c5752f",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "y, assume no responsibility for any other statements in this Red Herring Prospectus, including, inter alia, any of the statements made by or\nrelating to our Company, any other Selling Shareholder or any other person(s).\nLISTING\nThe Equity Shares, once offered through this Red Herring Prospectus are proposed to be listed on BSE Limited (“BSE”) and the National Stock Exchange of India Limited (“NSE”).\nFor the purpose of the Offer, BSE shall be the Designated Stock Exchange.\nBOOK RUNNING LEAD MANAGERS\nName of the Book Running Lead Managers and Logo Contact Person Telephone and Email\nNarendra Gamini / Vansh Nishar Email: aonesteelsipo@plindia.com\nTelephone: +91 22 6632 2222\nPL Capital Markets Private Limited\nChandan Mishra Email: ipo@khambattasecurities.com\nTelephone: +91 99539 89693; +91 120 441 5469\nKhambatta Securities Limited\nREGISTRAR TO THE OFFER\nName of Registrar Contact Person Telephone and Email\nVinayak Morbale Email: ipo@bigshareonline.com\nTelephone: +91 22 6263 8200\nBigshare Ser"
+  },
+  {
+   "slug": "a-one-steels-india-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "944cd642-938a-44ff-8410-37ee2f080873",
+   "pageNumber": 5,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "y of the\nOffer shall be available forallocation to RIBs in accordance with the SEBI ICDR Regulations, subject to valid Bids being received at forabove the Offer Price. Company. kindly refer \"CapitalStructure\"beginning ion page 1 186 of the RHP.\nLISTING: The Equity Shares offered through the RHP are proposed to be listed on BSE and NSE. Our Company has received in-pninciple approvals from\nBSE and NSE for listing of the Equity Shares pursuant to their letters each dated Apil 1 16. 2025. For the purposes of this Offer, BSE shall! be the Designated\nEmployee Discount The Employee Reservation Portion shall not exceed 5% of our post -Offer paid-up equity share capital subject to valid Bids being Stock Exchange. Asigned copy of the RHP has been filed with the Roc and the Prospectus shall be filed with the RoC in accordance with Section 26(4) and\n32 of the Companies Act. 201 13. For details of the material contracts and documents available for inspection from the date of the RHP up to the Bid/O"
+  },
+  {
+   "slug": "acevector-ltd",
+   "docType": "DRHP",
+   "documentId": "c1a9392d-df45-429e-90e8-863c7478ed62",
+   "pageNumber": 2,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": ", disclosures or undertakings made or confirmed by or in relation to our Company or our Company’s business, or any other\nSelling Shareholders or any other person(s), in this Updated Draft Red Herring Prospectus-I.\nLISTING\nThe Equity Shares that will be offered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges being BSE Limited (“BSE”) and National\nStock Exchange of India Limited (“NSE” and together with BSE, the “Stock Exchanges”). For the purposes of the Offer, the Designated Stock Exchange shall be [●].\nBOOK RUNNING LEAD MANAGERS\nName of Book Running Lead Contact Person Email and Telephone\nManager and Logo\nIIFL Capital Services Limited Mukesh Garg/ Pawan E-mail: acevector.ipo@iiflcap.com\n(formerly known as IIFL Kumar Jain\nTel: +91 22 4646 4728\nSecurities Limited)\nCLSA India Private Limited Siddhant Thakur / Akhil E-mail: acevector.ipo@clsa.com\nViswatmula\nTel: +91 22 6650 5050\nREGISTRAR TO THE OFFER\nNAME OF THE REGISTRAR CONTACT PERSON EMAIL AND TELEP"
+  },
+  {
+   "slug": "acevector-ltd",
+   "docType": "RHP",
+   "documentId": "923301ac-8051-4a04-a43c-abf81058cdd3",
+   "pageNumber": 2,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": " the statements, disclosures or\nundertakings made or confirmed by or in relation to our Company or our Company’s business, or any other Selling Shareholders or any other person(s), in this Red\nHerring Prospectus.\nLISTING\nThe Equity Shares that will be offered through this Red Herring Prospectus are proposed to be listed on the Stock Exchanges being BSE Limited (“BSE”) and National\nStock Exchange of India Limited (“NSE” and together with BSE, the “Stock Exchanges”). For the purposes of the Offer, the Designated Stock Exchange shall be NSE.\nBOOK RUNNING LEAD MANAGERS\nName of Book Running Lead Manager Contact Person Email and Telephone\nand Logo\nIIFL Capital Services Limited Mukesh Garg/ Pawan E-mail: acevector.ipo@iiflcap.com\n(formerly known as IIFL Securities Kumar Jain\nTel: +91 22 4646 4728\nLimited)\nCLSA India Private Limited Prachi Chandgothia / E-mail: acevector.ipo@clsa.com\nAkhil Viswatmula\nTel: +91 22 6650 5050\nSystematix Corporate Services Limited Harsha Panjwani/ E-mail: acevector"
+  },
+  {
+   "slug": "acevector-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "643db9c0-ec79-44cd-82e0-d09dab66b6ce",
+   "pageNumber": 4,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "Capital Structure” on page 92 of the RHP.\nincluding Mutual Funds subject to valid Bids being received at or above the Offer Price. If at least 75% of the Offer cannot be Allotted to QIBs, then the entire Bid Amount (as Listing: The Equity Shares to be Allotted through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges. Our Company has received ‘in-principle’\ndefined hereinafter) will be refunded forthwith. However, if the aggregate demand from Mutual Funds is less than 5% of the QIB Portion, the balance Equity Shares available approvals from BSE and NSE for the listing of the Equity Shares pursuant to their letters each dated October 10, 2025. For the purposes of the Offer, the Designated Stock\nfor allocation in the Mutual Fund Portion will be added to the remaining Net QIB Portion for proportionate allocation to all QIBs. Further, not more than 15% of the Offer shall Exchange shall be NSE. A signed copy of the Red Herring Prospectus and the Prospectus shall be"
+  },
+  {
+   "slug": "adroit-industries-india-ltd",
+   "docType": "RHP",
+   "documentId": "7a72c77d-90ca-4aa7-8df1-b64e7720de6b",
+   "pageNumber": 2,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": " assumes no responsibility for any other statements in this Red Herring\nProspectus, including, inter alia, any of the statements made by or relating to our Company or any other person(s), in this Red\nHerring Prospectus.\nLISTING\nThe Equity Shares, once offered through this Red Herring Prospectus are proposed to be listed on BSE Limited (“BSE”) and the\nNational Stock Exchange of India Limited (“NSE”). For the purpose of the Offer, National Stock Exchange of India Limited\nshall be the Designated Stock Exchange.\nBOOK RUNNING LEAD MANAGER\nName of the Book Running Lead Contact Person(s) Telephone and Email\nManager and Logo\nNimisha Joshi / Aditya Chanani Telephone: +91 22 6707 9999 / 7919\nE-mail: aiil.ipo@choiceindia.com\nChoice Capital Advisors Private\nLimited\nREGISTRAR TO THE OFFER\nName of Registrar and Logo Contact Person Telephone and Email\nBabu Rapheal C Telephone: +91 22 6263 8200\nEmail: ipo@bigshareonline.com\nBigshare Services Private Limited\nBID/ OFFER PERIOD\nANCHOR Tuesday, BID/ OFFER"
+  },
+  {
+   "slug": "armee-infotech-ltd",
+   "docType": "DRHP",
+   "documentId": "0ebd33aa-24de-4782-8965-c1cc9a817079",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": " that there are no other facts, the omission of which makes this Draft Red Herring Prospectus as a\nwhole or any of such information or the expression of any such opinions or intentions misleading in any material respect.\nLISTING\nThe Equity Shares to be offered through the Red Herring Prospectus are proposed to be listed on the stock exchanges being BSE Limited (“BSE”) and National Stock Exchange of India\nLimited (“NSE” together with BSE, the “Stock Exchanges”). For the purposes of the Issue, [●] is the Designated Stock Exchange.\nBOOK RUNNING LEAD MANAGERS\nLOGO OF BOOK RUNNING LEAD NAME OF BOOK RUNNING LEAD CONTACT PERSON TELEPHONE AND EMAIL\nMANAGERS MANAGERS\nKhandwala Securities Limited Alok Desai Tel: + 91 22 4076 7373\nEmail: ipo@kslindia.com\nSaffron Capital Advisors Private Amit Wagle/ Pooja Jain Tel: +91 22 4973 0394\nLimited Email: ipos@saffronadvisor.com\nREGISTRAR TO THE ISSUE\nLOGO OF REGISTRAR NAME OF THE REGISTRAR CONTACT PERSON TELEPHONE AND EMAIL\nCameo Corporate Services Limite"
+  },
+  {
+   "slug": "armee-infotech-ltd",
+   "docType": "RHP",
+   "documentId": "71408ce8-3ebb-4e31-804b-76e8fbe6f3d7",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "ld and that there are no other facts, the omission of which makes this Red Herring Prospectus as a whole or any of\nsuch information or the expression of any such opinions or intentions misleading in any material respect.\nLISTING\nThe Equity Shares to be offered through the Red Herring Prospectus are proposed to be listed on the stock exchanges being BSE Limited (“BSE”) and National Stock Exchange of India\nLimited (“NSE” together with BSE, the “Stock Exchanges”). For the purposes of the Issue, BSE Limited is the Designated Stock Exchange.\nBOOK RUNNING LEAD MANAGERS\nLOGO OF BOOK RUNNING LEAD NAME OF BOOK RUNNING LEAD CONTACT PERSON TELEPHONE AND EMAIL\nMANAGERS MANAGERS\nKhandwala Securities Limited Alok Desai Tel: + 91 22 4076 7373\nEmail: ipo@kslindia.com\nSaffron Capital Advisors Private Pooja Jain/Sayalee Gaikwad Tel: +91 22 4973 0394\nLimited Email: ipos@saffronadvisor.com\nREGISTRAR TO THE ISSUE\nLOGO OF REGISTRAR NAME OF THE REGISTRAR CONTACT PERSON TELEPHONE AND EMAIL\nCameo Corporate Ser"
+  },
+  {
+   "slug": "armee-infotech-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "6ea5d210-52ae-4634-a15d-10e7a0a0ce63",
+   "pageNumber": 4,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "t to valid Bids being received at or above the Issue Price, and page 80 of the RHP.\nthe remainder of the Net QIB Portion shall be available for allocation on a proportionate basis to all QIBs, including Mutual Funds, subject to valid Bids being LISTING: The Equity Shares offered through the RHP are proposed to be listed on the Stock Exchanges. Our Company has received in-principle approvals\nreceived at or above the Issue Price. Further, not less than 22.50% of the Net Issue shall be available for allocation to Non-Institutional Investors (“Non- from BSE and NSE for listing of the Equity Shares pursuant to their letters each dated December 19, 2025 and December 19, 2025 respectively. For the\nInstitutional Category” or “Non-Institutional Portion”) of which one-third of the Non-Institutional Category shall be available for allocation to Bidders purposes of this Issue, BSE Limited shall be the Designated Stock Exchange. A signed copy of the RHP has been filed and a signed copy of the Prosp"
+  },
+  {
+   "slug": "axiom-gas-engineering-ltd",
+   "docType": "RHP",
+   "documentId": "7328a5e2-8397-4a74-8627-3963fa2c7238",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "NSE"
+   ],
+   "excerpt": "ly held and that there are no other facts, the omission of which makes this Red Herring Prospectus as a whole or any of such information or the\nexpression of any such opinions or intentions, misleading in any material respect.\nLISTING\nThe Equity Shares issued through this Red Herring Prospectus are proposed to be listed on the SME Platform of National Stock Exchange of India Limited (“NSE EMERGE”) in terms of Chapter IX\nof the SEBI (ICDR) Regulations, 2018, as amended from time to time. Our Company has received an approval letter dated December 10, 2025 from NSE for using its name in this Red Herring\nProspectus for listing of our Equity Shares on the EMERGE Platform of NSE. For the purpose of this Issue, the Designated Stock Exchange shall be National Stock Exchange of India Limited (“NSE”).\nBOOK RUNNING LEAD MANAGER TO THE ISSUE\nContact\nName Email & Telephone No.\nPersons\nMr. Ghanisht\nEmail: agel@skicapital.net\nNagpal\nTel. No.: +91-011-41189899\nSKI CAPITAL SERVICES LIMITED\nREGISTRAR TO"
+  },
+  {
+   "slug": "coreintegra-consulting-services-ltd",
+   "docType": "RHP",
+   "documentId": "b1a1b736-8c33-4e05-b89b-cc1377465220",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "NSE"
+   ],
+   "excerpt": "ly held and that there are\nno other facts, the omission of which makes this Red Herring Prospectus as a whole or any of such information or the expression of any such opinions or\nintentions, misleading in any material respect.\nLISTING\nThe Equity Shares issued through this Red Herring Prospectus are proposed to be listed on Emerge Platform of National Stock Exchange of India Limited in\nterms of the Chapter IX of the SEBI (ICDR) Regulations, 2018, as amended from time to time. Our Company has received “in-principle” approval letter dated\nDecember 16, 2025 from NSE for using its name in the Red Herring Prospectus / Prospectus for listing of our shares on NSE Emerge. For the purpose of this\nIssue, the Designated Stock Exchange will be NSE Emerge.\nBOOK RUNNING LEAD MANAGER TO THE ISSUE\nNAME AND LOGO CONTACT PERSON EMAIL AND TELEPHONE\nRadhika Maheshwari / Jigar Desai E-mail: mb@marwadichandarana.com\nTelephone: +91 22-69120027\nMarwadi Chandarana Intermediaries Brokers Private Limited\nREGISTRA"
+  },
+  {
+   "slug": "elevate-campuses-ltd",
+   "docType": "DRHP",
+   "documentId": "8b20e252-1571-44ed-8d7b-1c6b300b4f9e",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "d and that there are no other facts, the omission of which makes this Draft Red Herring Prospectus\nas a whole or any of such information or the expression of any such opinions or intentions, misleading in any material respect.\nLISTING\nThe Equity Shares offered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges being BSE Limited (“BSE”)\nand National Stock Exchange of India Limited (“NSE” and together with BSE, the “Stock Exchanges”). For the purposes of the Issue, [●] is\nthe Designated Stock Exchange.\nDETAILS OF BOOK RUNNING LEAD MANAGERS"
+  },
+  {
+   "slug": "elevate-campuses-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "0cb25b6f-1521-4458-8126-8bf7012903a7",
+   "pageNumber": 4,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "lid section titied \"Capital Structure \"on page 1 1 of fthe RHP\nBids being received at or above the Issue Price. The allocation to each Non-Institutional Investor shall not be less than the minimum application size, subject to Listing: The Equity Shares offered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges. Our Company has received in-principle approvals\navailability of Equity Shares in the Non-lnstitutional Portion and the remaining avallable Equity Shares, T any. shall be allocated on a proportionate basis in accordance from BSE and NSE forthe listing Tofthe Equity Shares pursuant fto letters eachdated December 19. 2025 respectively. For the purpose ofthis Issue, NSE isthe Designated Stock\nwith the conditions specified in this regard in Scheduie XI of the SEBI ICDR Regulations. Further. not more than 10% ofthe Issue shall be available for allocation to retail Exchange. Asigned copyofthe Red Herring Prospectus hasbeen filed and a copyofthe Prospect"
+  },
+  {
+   "slug": "german-green-steel-and-power-ltd",
+   "docType": "DRHP",
+   "documentId": "a67f230e-e5cd-4e61-b4bf-7cd3a3952e55",
+   "pageNumber": 2,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "holders assume no responsibility for any other statements,\nincluding, inter-alia, any and all of the statements made by or relating to our Company or its business, or by any other persons\nin this Draft Red Herring Prospectus.\nLISTING\nThe Equity Shares, offered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges, being BSE\nLimited (“BSE”) and National Stock Exchange of India Limited (“NSE”) (NSE, together with BSE, the “Stock Exchanges”).\nFor the purposes of the Offer, the Designated Stock Exchange is [●].\nBOOK RUNNING LEAD MANAGERS\nNAME OF THE BRLM AND LOGO CONTACT PERSON EMAIL AND TELEPHONE\nTelephone: +91 22 6704 8000\nKuldeep Singh /\nEmail: ggspl.ipo@systematixgroup.in\nSagar Purandare\nSystematix Corporate Services Limited\nDeepak Yadav / Telephone: +91 22 6612 1212\nPooja Sarvankar Email: ggsapl.ipo@emkayglobal.com\nEmkay Global Financial Services Limited\nREGISTRAR TO THE OFFER\nNAME OF THE REGISTRAR CONTACT PERSON EMAIL AND TELEPHONE\nTelephone: +91 22 6263"
+  },
+  {
+   "slug": "german-green-steel-and-power-ltd",
+   "docType": "RHP",
+   "documentId": "7a125b50-d3c0-4bde-98ad-e445414fd6a5",
+   "pageNumber": 2,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "ponsibility for any other statements, including, inter-alia,\nany and all of the statements made by or relating to our Company or its business, or by any other persons in this Red Herring\nProspectus.\nLISTING\nThe Equity Shares of face value of ₹10 each, offered through this Red Herring Prospectus are proposed to be listed on the Stock\nExchanges, being BSE Limited (“BSE”) and National Stock Exchange of India Limited (“NSE”) (NSE, together with BSE, the\n“Stock Exchanges”). For the purposes of the Offer, the Designated Stock Exchange is NSE.\nBOOK RUNNING LEAD MANAGERS\nNAME OF THE BRLM AND LOGO CONTACT PERSON EMAIL AND TELEPHONE\nTelephone: +91 22 6704 8000\nKuldeep Singh /\nEmail: ggspl.ipo@systematixgroup.in\nSagar Purandare\nSystematix Corporate Services Limited\nDeepak Yadav / Telephone: +91 22 6612 1212\nPooja Sarvankar Email: ggsapl.ipo@emkayglobal.com\nEmkay Global Financial Services Limited\nTelephone: 1800 889 8711\nKaushal Patwa\nE-mail: german.ipo@pantomathgroup.com\nPantomath Capital Advisor"
+  },
+  {
+   "slug": "german-green-steel-and-power-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "4b12cfcd-5b87-4bc4-bbae-f96fd9b251e6",
+   "pageNumber": 4,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": " 102 of the RHP.\ndemand from Mutual Funds is less than 5% of the Net QIB Portion, the balance Equity Shares available for allocation in the Mutual Fund Portion will be added to the remaining Net QIB Listing: The Equity Shares of face value of `10 each, offered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges. Our Company has received ‘in-\nPortion for proportionate allocation to QIBs. Further, not less than 15% of the Offer shall be available for allocation to Non-Institutional Bidders (“Non-Institutional Portion”), of which principle’ approvals from BSE and NSE for the listing of the Equity Shares pursuant to letters each dated August 22, 2025, respectively. For the purposes of the Offer, the Designated\none-third of the Non-Institutional Portion shall be reserved for Bidders with an application size of more than `2,00,000 and up to `10,00,000 and two-thirds of the Non-Institutional Stock Exchange shall be NSE. A signed copy of the Red Herring Prospect"
+  },
+  {
+   "slug": "glass-wall-systems-india-ltd",
+   "docType": "PROSPECTUS",
+   "documentId": "6a6276cc-129a-4656-b195-fdbd5529a1bb",
+   "pageNumber": 2,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "spectus,\nincluding without limitation, any and all of the statements, disclosures and undertakings made by or in relation to our Company or its business\nor any other Selling Shareholder or any other person.\nLISTING\nThe Equity Shares offered through the Red Herring Prospectus and this Prospectus are proposed to be listed on National Stock Exchange of\nIndia Limited (“NSE”) and BSE Limited (“BSE”, and together with NSE, the “Stock Exchanges”). For the purposes of the Offer, NSE is the\nDesignated Stock Exchange.\nBOOK RUNNING LEAD MANAGERS\nNAME OF BRLMs AND LOGO CONTACT PERSON E-MAIL AND TELEPHONE\nIIFL Capital Services Limited\nGaurav Mittal / Pawan Email: gws.ipo@iiflcap.com\n(formerly known as IIFL\nKumar Jain Telephone: +91 22 4646 4728\nSecurities Limited)\nMotilal Oswal Investment\nAdvisors Limited^ Ronak Shah / Vaibhav Email: gws.ipo@motilaloswal.com\nShah Telephone: +91 22 7193 4380\nREGISTRAR TO THE OFFER\nNAME OF REGISTRAR CONTACT PERSON E-MAIL AND TELEPHONE\nTelephone: +91 810 811 4949\nMUFG"
+  },
+  {
+   "slug": "green-asia-impex-ltd",
+   "docType": "RHP",
+   "documentId": "4d024bfa-22c3-4c22-8dbe-3eab47210552",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "NSE"
+   ],
+   "excerpt": "ly held and that there are no other facts, the omission of which makes this Red Herring Prospectus as\na whole or any of such information or the expression of any such opinions or intentions misleading in any material respect.\nLISTING\nThe Equity Shares offered through this Red Herring Prospectus are proposed to be listed on the Emerge platform of National Stock Exchange of India Limited (\"NSE Emerge\") in\nterms of Chapter IX of the SEBI ICDR Regulations, as amended from time to time. Our Company has received an 'in-principle' approval letter dated June 18, 2026, from NSE for using\nits name in this Offer Document for listing our shares on NSE Emerge. For the purpose of this Offer, the Designated Stock Exchange will be National Stock Exchange of India Limited.\n(\"NSE\"). A signed copy of the Red Herring Prospectus shall be delivered for filing with the RoC in accordance with Section 26(4) and 32 of the Companies Act.\nBOOK RUNNING LEAD MANAGER\nName of Book Running Lead Manager and Logo Contac"
+  },
+  {
+   "slug": "hero-motors-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "d23c7bd0-f83b-4c3a-949a-5c77c25a9a2a",
+   "pageNumber": 4,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "BSE",
+    "NSE"
+   ],
+   "excerpt": " Structure” beginning on page 84 of the RHP.\nPrice, and the remainder of the Net QIB Portion shall be available for allocation on a proportionate basis to QIB Bidders (other than Anchor Investors) including Mutual Funds, subject to\nListing: The Equity Shares that will be offered through the RHP are proposed to be listed on the Stock Exchanges. Our Company has received 'in-principle' approvals from BSE and\nvalid Bids being received at or above the Offer Price. However, if the aggregate demand from Mutual Funds is less than 5% of the Net QIB Portion, the balance Equity Shares available\nfor allocation in the Mutual Fund Portion will be added to the remaining Net QIB Portion for proportionate allocation to all QIBs. Further, not less than 15% of the Offer shall be available NSE for the listing of the Equity Shares pursuant to their letters each dated August 7, 2025. For the purposes of the Offer, the Designated Stock Exchange shall be BSE. A signed copy of\nfor allocation to Non-Institution"
+  },
+  {
+   "slug": "himalayan-solar-ltd",
+   "docType": "RHP",
+   "documentId": "007a78a6-9a06-4558-b4b0-e0a705017983",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "NSE"
+   ],
+   "excerpt": "t there are no other facts, the omission of which makes this Red\nHerring Prospectus as a whole or any of such information or the expression of any such opinions or intentions, misleading in any material respect.\nLISTING\nThe Equity Shares of our company issued through this Red Herring Prospectus are proposed to be listed on the Emerge Platform of National Stock Exchange of India\nLimited (“NSE EMERGE”). For the purpose of this Issue, National Stock Exchange of India Limited (“NSE”) is the Designated Stock Exchange.\nBOOK RUNNING LEAD MANAGER TO THE ISSUE\nName and Logo Contact Person E-mail & Telephone\nEmail: info@finshoregroup.com\nMr. S. Ramakrishna Iyengar\nTelephone: 033 – 2289 5101\nFINSHORE MANAGEMENT SERVICES LIMITED\nREGISTRAR TO THE ISSUE\nName and Logo Contact Person E-mail & Telephone\nEmail: ipo@maashitla.com\nMr Mukul Agrawal Telephone: 011-47581432\nMAASHITLA SECURITIES PRIVATE LIMITED\nISSUE PROGRAMME\nANCHOR\nSEPTEMBER 24, BID/OFFER OPENS BID/ISSUE CLOSES\nINVESTOR SEPTEMBER 25, 2026 S"
+  },
+  {
+   "slug": "jindal-supreme-india-ltd",
+   "docType": "PROSPECTUS",
+   "documentId": "b8fae797-1af2-401f-bdac-f6ab926948cd",
+   "pageNumber": 2,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "BSE",
+    "NSE"
+   ],
+   "excerpt": "n specifically pertain to the Selling Shareholder and the Equity Shares offered by such Selling Shareholder\nunder the Offer for Sale, are true and correct in all material respects and are not misleading in any material respect.\nLISTING\nThe Equity Shares issued through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges being BSE Limited\n(“BSE”) and National Stock Exchange of India Limited (“NSE”). For the purposes of the Offer, the Designated Stock Exchange shall\nbe National Stock Exchange of India Limited.\nBOOK RUNNING LEAD MANAGER\nName & Logo of BRLM Contact Person Telephone & Email\nEmail Id: ipo@sarthiwm.in\nPankaj Chaurasia\nTel No.: +91 22 2652 8671/ 72\nSarthi Capital Advisors Private Limited\nREGISTRAR TO THE OFFER\nName & Logo of Registrar Contact Person Telephone & Email\nEmail: ipo@bigshareonline.com\nBabu Rapheal\nTel No.: 022 - 6263 8200\nBigshare Services Private Limited\nBID/OFFER PERIOD\nANCHOR Friday,\nTuesday, BID/ OFFER Wednesday, BID/ OFFER\nINVESTOR Septe"
+  },
+  {
+   "slug": "jindal-supreme-india-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "85c308c4-195c-48e5-8b72-b92ca45dd4a1",
+   "pageNumber": 4,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "BSE",
+    "NSE"
+   ],
+   "excerpt": " Company, kindly refer “Capital Structure” beginning on page 73 of the RHP.\nallocation on a proportionate basis only to Mutual Funds subject to valid Bids being received at or above the Offer Price, and the remainder of the QIB Portion shall be\nLISTING: The Equity Shares offered through the RHP are proposed to be listed on BSE and NSE. Our Company has received in-principle approvals from BSE and NSE for\navailable for allocation on a proportionate basis to all QIBs, including Mutual Funds, subject to valid Bids being received at or above the Offer Price. However, if the\nlisting of the Equity Shares pursuant to their letters each dated May 14, 2026. For the purposes of this Offer, NSE shall be the Designated Stock Exchange. A signed copy of\naggregate demand from Mutual Funds is less than 5% of the QIB Portion, the balance Equity Shares available for allocation in Mutual Fund Portion will be added to the\nthe RHP has been filed with the RoC and the Prospectus shall be filed with the RoC in"
+  },
+  {
+   "slug": "kheria-autocomp-ltd",
+   "docType": "RHP",
+   "documentId": "b088e042-13f5-470c-958f-887b8eadfbfe",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "NSE"
+   ],
+   "excerpt": "stly held and that there are no other facts, the omission of which makes\nthis Red Herring Prospectus as a whole or any of such information or the expression of any such opinions or intentions misleading in any material respect.\nLISTING\nThe Equity Shares issued through the Red Herring Prospectus are proposed to be listed on the Emerge platform of National Stock Exchange of India Limited i.e., “NSE\nEMERGE” in terms of the Chapter IX of the SEBI (ICDR) Regulations, 2018 as amended from time to time. Our Company has received ‘in-principle’ approval from\nNational Stock Exchange of India Limited (“NSE”) for using its name in the Issue document for the listing of the Equity Shares on NSE EMERGE, pursuant to letter dated\nDecember 22, 2025. For the purpose of the Issue, the Designated Stock Exchange shall be NSE.\nBOOK RUNNING LEAD MANAGER TO THE ISSUE\nNAME OF BOOK RUNNING LEAD MANAGER CONTACT PERSON TELEPHONE AND EMAIL\nAND LOGO\nEmail: kheria.ipo@smccapitals.com\nSUHAS SATARDEKAR\nTel. No:+91 22 6"
+  },
+  {
+   "slug": "lcc-projects-ltd",
+   "docType": "PROSPECTUS",
+   "documentId": "79c94239-bae2-4f9d-8d09-2cd2f0c7beec",
+   "pageNumber": 2,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "tself and the Equity Shares offered by it in the Offer for Sale and assumes responsibility that such statements are true and correct in all\nmaterial respects and are not misleading in any material respect.\nLISTING\nThe Equity Shares, offered through the Red Herring Prospectus and this Prospectus are proposed to be listed on the Stock Exchanges being\nBSE Limited (“BSE”) and National Stock Exchange of India Limited (“NSE”, together with BSE, the “Stock Exchanges”). For the purposes\nof the Offer, the Designated Stock Exchange is BSE.\nBOOK RUNNING LEAD MANAGER\nNAME AND LOGO OF THE BRLM CONTACT PERSON EMAIL AND TELEPHONE\nKunal Thakkar/Sankita Ajinkya E-mail: lccprojects.ipo@motilaloswal.com\nTelephone: +91 22 7193 4380\nMotilal Oswal Investment Advisors Limited\nREGISTRAR TO THE OFFER\nNAME AND LOGO OF THE REGISTRAR CONTACT PERSON EMAIL AND TELEPHONE\nM. Murali Krishna Telephone: +91 40 6716 2222/1800 309 4001\nE-mail: lccpl.ipo@kfintech.com\nKFin Technologies Limited\nBID/OFFER PERIOD\nTuesday, Wedn"
+  },
+  {
+   "slug": "lumino-industries-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "40e96d32-3581-489a-9854-0cb9329cadaf",
+   "pageNumber": 4,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "QIBS. Further, beginningonpage 1 3 ofthe RHP\nnot less than 15% of the Net Offer: shall be available for allocation to Non-Institutional Investors (NIIs) (\"Non-Institutional Category). of which one-third of the Non-Institutional Listing: The Equity Shares offered throughthe Red Herring Prospectusare proposed to be listed lon the Stock Exchanges. Our Companyhas received in-principle approvals from BSE\nCategory shall be available forallocation to Bidders with a Bid size of more than R200.000 and up to天1 000.000 and wo-thirds ofthe Non-Institutional Category shal beavailable for and NSE for listingofthe Equity Shares pursuanttotheir letters each dated March 20 2025. Forthe purposesofthe Offer. NSE iS the Designated Stock Exchange. Asigned copy ofthe\nallocation to Bidders with a Bid size of morethan R1 ,000,000 and under-subscription in eitherofthese two sub-categories ofthe Non-Institutional Category may be allocatedto Bidders\nn the othersub-categoryof the Non-InstitutionalCategory in acco"
+  },
+  {
+   "slug": "moneyview-ltd",
+   "docType": "RHP",
+   "documentId": "ccee48eb-05e2-4f25-90c9-a1f3f28f32b5",
+   "pageNumber": 2,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "or any other statements, disclosure\nand undertakings in this Red Herring Prospectus, made or confirmed by or in relation to our Company or our Company’s business, or by any\nother Selling Shareholder(s) or any other person(s).\nLISTING\nThe Equity Shares offered through this Red Herring Prospectus are proposed to be listed on the Stock Exchanges, being BSE Limited (“BSE”)\nand National Stock Exchange of India Limited (“NSE”, and together with the BSE, the “Stock Exchanges”). For the purposes of the Offer, the\nDesignated Stock Exchange shall be NSE.\nDETAILS OF THE BOOK RUNNING LEAD MANAGERS\nCONTACT\nLOGO NAME TELEPHONE AND E-MAIL\nPERSON(S)\nTel: +91 22 4325 2183\nAxis Capital Limited Devika Kanani E-mail: moneyview.ipo@axiscap.in\nTel: +91 22 6632 8000\nBofA Securities India Sayantan\nE-mail: dg.moneyview_ipo@bofa.com\nLimited Bhattacharyya\nIIFL Capital Services\nLimited (formerly Sagar Mehta/ Tel: +91 22 4646 4728\nknown as IIFL Pawan Kumar Jain E-mail: moneyview.ipo@iiflcap.com\nSecurities Limited)"
+  },
+  {
+   "slug": "moneyview-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "d2fd7c2d-bead-4631-bb16-70561c7f41f3",
+   "pageNumber": 5,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "apital Structure” beginning on page 107 of the RHP. by the SEBI, nor does SEBI guarantee the accuracy or adequacy of the contents of the Red Herring Prospectus. Specific attention of the investors is invited to “Risk Factors”\nListing: The Equity Shares offered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges. Our Company has received in-principle approvals from on page 25 of the RHP.\nBOOK RUNNING LEAD MANAGERS REGISTRAR TO THE OFFER COMPANY SECRETARY AND COMPLIANCE OFFICER\nAnkit Kumar Jain\n17/1, 1st and 2nd Floor, The Address Building,\nOuter Ring Road, Marathahalli, Kadubeesanahalli,\nBengaluru - 560 103, Karnataka, India\nAxis Capital Limited BofA Securities India Limited IIFL Capital Services Limited Kotak Mahindra Capital Company Limited MUFG Intime India Private Limited Tel: +91 80 6765 0903\nAxis House, 1st Floor, Ground Floor, A Wing, One BKC, G Block, (formerly known as IIFL Securities Limited) 1st Floor, 27 BKC, Plot No. C-27, ‘G’ Block (Formerly"
+  },
+  {
+   "slug": "national-stock-exchange-of-india-ltd",
+   "docType": "RHP",
+   "documentId": "3cb0ba27-4ec8-4b65-bb2a-e6ee74492120",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "BSE",
+    "NSE"
+   ],
+   "excerpt": "ectus, including, inter alia, any of the statements, disclosures or undertakings made or confirmed by or relating to our Company or our Company’s business or any\nother person(s) or the other Selling Shareholders.\nLISTING\nThe Equity Shares that will be offered through this Red Herring Prospectus are proposed to be listed on a recognised stock exchange being BSE Limited (“BSE” or the\n“Stock Exchange”). For the purposes of the Offer, the Designated Stock Exchange shall be BSE."
+  },
+  {
+   "slug": "national-stock-exchange-of-india-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "214277c0-d0da-486a-868f-67a6e837f3d8",
+   "pageNumber": 5,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "BSE",
+    "NSE"
+   ],
+   "excerpt": "stors) including Mutual Funds, page 112 of the RHP.\nsubject to valid Bids being received at or above the Offer Price. However, if the aggregate demand from Mutual Funds is less than 5% of the Net QIB Portion, the Listing: The Equity Shares that will be offered through the Red Herring Prospectus are proposed to be listed on BSE. Our Company has received ‘in-principle’\nbalance Equity Shares available for allocation in the Mutual Fund Portion will be added to the remaining QIB Portion for proportionate allocation to QIBs. Further, approval from BSE for the listing of the Equity Shares pursuant to its letter dated July 20, 2026. For the purposes of the Offer, the Designated Stock Exchange\nnot less than 15% of the Net Offer shall be available for allocation to NIBs of which (a) one third portion shall be reserved for NIBs with application size of more shall be BSE. A signed copy of the Red Herring Prospectus has been delivered to the RoC in accordance with Section 32 of the Companies Act, 2"
+  },
+  {
+   "slug": "nityas-gems-and-jewellery-ltd",
+   "docType": "DRHP",
+   "documentId": "0eb608a1-1595-4235-a43f-9f90b0080eda",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": " that there are no other facts, the omission of which makes this Draft Red Herring\nProspectus as a whole or any of such information or the expression of any such opinions or intentions, misleading in any material respect.\nLISTING\nThe Equity Shares, once issued through the Red Herring Prospectus are proposed to be listed on BSE Limited (“BSE”) and the National\nStock Exchange of India Limited (“NSE”). For the purpose of the Issue, [●] shall be the Designated Stock Exchange."
+  },
+  {
+   "slug": "orient-cables-india-ltd",
+   "docType": "DRHP",
+   "documentId": "7b94d07b-7282-415e-b38e-e990c17f58de",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "ation specifically\npertaining to themselves and their respective Offered Shares and assume responsibility that such statements are true and correct in all material respects and\nare not misleading in any material respect.\nLISTING\nThe Equity Shares to be offered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges being BSE Limited (“BSE”) and\nNational Stock Exchange of India Limited (“NSE” together with BSE, the “Stock Exchanges”). For the purposes of the Offer, [●] is the Designated Stock\nExchange.\nBOOK RUNNING LEAD MANAGERS\nLogos of Book Running Name of Book Running Lead Manager Contact Person Email and Telephone\nLead Managers\nIIFL Capital Services Limited Nishita Mody/Pawan Kumar Email:\n(formerly known as IIFL Securities Limited) Jain orientcables.ipo@iiflcap.com\nTel: +91 22 4646 4728"
+  },
+  {
+   "slug": "orient-cables-india-ltd",
+   "docType": "RHP",
+   "documentId": "fbfb3513-1634-45dd-b90e-c306c9a1a103",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "tion specifically pertaining to themselves\nand their respective Offered Shares and assume responsibility that such statements are true and correct in all material respects and are not misleading in any\nmaterial respect.\nLISTING\nThe Equity Shares to be offered through this Red Herring Prospectus are proposed to be listed on the Stock Exchanges being BSE Limited (“BSE”) and\nNational Stock Exchange of India Limited (“NSE” together with BSE, the “Stock Exchanges”). For the purposes of the Offer, NSE is the Designated Stock\nExchange.\nBOOK RUNNING LEAD MANAGERS\nLogos of Book Running Name of Book Running Lead Manager Contact Person Email and Telephone\nLead Managers\nIIFL Capital Services Limited Nishita Mody/Pawan Kumar Email:\n(formerly known as IIFL Securities Limited) Jain orientcables.ipo@iiflcap.com\nTel: +91 22 4646 4728"
+  },
+  {
+   "slug": "orient-cables-india-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "1bf80cdf-680a-4d0a-8230-1f64774dcde5",
+   "pageNumber": 4,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "e “Capital Structure” on page 95 of the RHP.\nthe balance Equity Shares shall be available for allocation to domestic Mutual Funds. In the event of under-subscription or non-allocation in the Anchor Investor Portion, the\nListing: The Equity Shares to be offered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges. Our Company has received in-principle\nbalance Equity Shares shall be added to the QIB Portion (excluding the Anchor Investor Portion) (the “Net QIB Portion”). Further, 5% of the Net QIB Portion shall be available\napprovals from BSE and NSE for listing of the Equity Shares pursuant to their letters each dated September 26, 2025, respectively. For the purposes of the Offer, NSE shall be\nfor allocation on a proportionate basis to Mutual Funds only, and the remainder of the Net QIB Portion shall be available for allocation on a proportionate basis to all QIB Bidders\nthe Designated Stock Exchange. A signed copy of the Red Herring Prospectus and the Pr"
+  },
+  {
+   "slug": "panchatv-bharat-ltd",
+   "docType": "DRHP",
+   "documentId": "1123c053-586b-44d9-8e4c-74538b6e7079",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "BSE"
+   ],
+   "excerpt": " held and that there are no other facts, the omission of which make this\nDraft Prospectus as a whole or any of such information or the expression of any such opinions or intentions misleading in any material respect.\nLISTING\nThe Equity Shares of our Company offered through this Draft Prospectus are proposed to be listed on the SME Platform of BSE Limited (BSE SME) in terms of the Chapter\nIX of the SEBI (ICDR) Regulations, 2018 as amended from time to time. Our Company has received an approval letter dated [●] from BSE Limited for using its name in\nthe Draft Prospectus for listing of our shares on the SME Platform of BSE Limited (BSE SME). For the purpose of this Issue, BSE Limited shall be the Designated Stock\nExchange.\nLEAD MANAGER TO THE ISSUE REGISTRAR TO THE ISSUE\nMARK CORPORATE ADVISORS PRIVATE LIMITED MAASHITLA SECURITIES PRIVATE LIMITED\nAddress: 404/1, The Summit Business Bay, Sant Janabai Road (Service Lane), Off Address: 451, Krishna Apra Business Square, Netaji Subhash Place,"
+  },
+  {
+   "slug": "panchatv-bharat-ltd",
+   "docType": "PROSPECTUS",
+   "documentId": "cd5a88de-9cce-462d-a253-a012faf3ceea",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "BSE"
+   ],
+   "excerpt": " expressed herein are honestly held and that there are no other facts, the omission of which makes\nthis Prospectus as a whole or any of such information or the expression of any such opinions or intentions, misleading in any material respect.\nLISTING\nThe Equity Shares offered through Prospectus are proposed to be listed on the SME Platform of BSE Limited (“BSE SME”) in terms of Chapter IX of the SEBI\nICDR Regulations, as amended from time to time. Our Company has received an approval letter dated April 29, 2026 from BSE Limited (“BSE”) for using its name\nin the Prospectus for listing our shares on BSE. For the purpose of this Issue, the Designated Stock Exchange will be BSE.\nLEAD MANAGER: MARK CORPORATE ADVISORS PRIVATE LIMITED\nNAME AND LOGO CONTACT PERSON E-MAIL ID AND TELEPHONE\nTelephone: +91 022 26123207/08\nMr. Manish Gaur/ Mr Niraj Kothari\nE-mail: smeipo@markcorporateadvisors.com\nMark Corporate Advisors Private\nLimited\nREGISTRAR TO THE ISSUE: MAASHITLA SECURITIES PRIVATE LIMITED\nNA"
+  },
+  {
+   "slug": "papadmalji-agro-foods-ltd",
+   "docType": "DRHP",
+   "documentId": "155205ef-7a02-4a5d-9dc5-c2b5f239533a",
+   "pageNumber": 2,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "NSE"
+   ],
+   "excerpt": " for any other statement in this Draft Red Herring Prospectus,\nincluding, inter alia, any of the statements made by or relating to our Company or our Company’s business or any other person in this Draft Red Herring\nProspectus.\nLISTING\nThe Equity Shares offered through the Red Herring Prospectus are proposed to be listed on the EMERGE Platform of NSE (“NSE EMERGE”) in terms\nof Chapter IX of the SEBI ICDR Regulations, 2018. Our Company has received ‘in-principle’ approval letter dated [●] from National Stock Exchange India\nLimited for using its name in the Draft Red Herring Prospectus for listing of our shares on NSE EMERGE. For the purpose of this Offer, NSE India Limited\nshall be the Designated Stock Exchange. A copy of the Red Herring Prospectus and the Prospectus shall be filed with the RoC in accordance with Sections\n26(4) and 32 of the Companies Act, 2013. For details of the material contracts and documents that will be available for inspection from the date of the Red\nHerring Pros"
+  },
+  {
+   "slug": "peshwa-wheat-ltd",
+   "docType": "RHP",
+   "documentId": "97f7454d-64bc-4928-9094-6cf223324740",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "BSE"
+   ],
+   "excerpt": "onestly held and that there are no other facts, the omission of which makes this Red Herring Prospectus as a whole or any of such information or the expression of any such opinions or intentions,\nmisleading in any material respect.\nLISTING\nThe Equity Shares issued through Red Herring Prospectus are proposed to be listed on the SME Platform of BSE Limited (BSE SME) in terms of the Chapter IX of the SEBI (ICDR) Regulations, 2018 as amended\nfrom time to time. For this Issue, the Designated Stock Exchange will be BSE Limited (“BSE”).\nBOOK RUNNING LEAD MANAGER TO THE ISSUE\nNAME AND LOGO CONTACT PERSON EMAIL & TELEPHONE\nEmail: info@finaaxcapital.com\nMr. Ikshit Shah / Mr. Yash Doshi\nTel. No: +91 94295 50695 / 95375 94321\nFinaax Capital Advisors Private Limited\nREGISTRAR TO THE ISSUE\nNAME AND LOGO CONTACT PERSON EMAIL & TELEPHONE\nEmail: investor.ipo@maashitla.com\nMr. Mukul Agrawal\nTel. No: 011-47581432\nMaashitla Securities Private Limited\nBID/ISSUE PERIOD\nBID/ISSUE OPENS ON: THURSDAY, SEPTEMBE"
+  },
+  {
+   "slug": "pooja-logistics-ltd",
+   "docType": "RHP",
+   "documentId": "3a0a6ed7-9329-4779-99e9-5a0d8d826a35",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "NSE"
+   ],
+   "excerpt": "ly held and that there are no other facts, the omission of which makes this Red Herring Prospectus\nas a whole or any of such information or the expression of any such opinions or intentions, misleading in any material respect.\nLISTING\nThe equity shares Issued through this Red Herring Prospectus are proposed to be listed on SME Platform of NSE (“NSE EMERGE”). Our Company has received “In- Principle”\napproval from the NSE EMERGE for using its name in the Issue document for the listing of the Equity Shares, pursuant to letter dated January 21, 2026. For the purpose of the Issue,\nthe designated stock exchange shall be NSE Emerge.\nBOOK RUNNING LEAD MANAGER TO THE ISSUE\nSHARE INDIA CAPITAL SERVICES PRIVATE LIMITED\nAddress: A-25, Basement, Sector-64, Noida – 201301, Uttar Pradesh, India\nTel. No.: +91-0120-6483000\nEmail: kunal.bansal@shareindia.co.in\nWebsite: www.shareindia.com\nInvestor Grievance Email: mb@shareindia.com\nContact Person: Mr. Kunal Bansal\nSEBI Registration No.: INM000012537\nMAAS"
+  },
+  {
+   "slug": "roopa-screen-ltd",
+   "docType": "RHP",
+   "documentId": "ed6d8f24-0c6e-4fe2-a957-af84c1f38840",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "BSE"
+   ],
+   "excerpt": "onestly held and that there are no other facts, the omission of which makes this Red Herring Prospectus as a whole or any\nof such information or the expression of any such opinions or intentions, misleading in any material respect.\nLISTING\nThe Equity Shares Issued through Red Herring Prospectus are proposed to be listed on the SME Platform of BSE (“BSE SME”). In terms of the\nChapter IX of the SEBI (ICDR) Regulations, 2018 as amended from time to time, our Company has received “in-principle” approval letter\ndated February 09, 2026 from BSE (BSE SME) for using its name in the Offer Document. For the purpose of this Issue, the Designated Stock\nExchange will be the BSE Limited (“BSE”).\nBOOK RUNNING LEAD MANAGER TO THE ISSUE\nName and Logo Contact Person Email & Telephone\nEmail: info@serencapital.in\nAkshita Agarwal/Venil Mehta\nTel. No.: +91- 22- 46011058\nSeren Capital Private Limited\nREGISTRAR TO THE ISSUE\nName and Logo Contact Person Email & Telephone\nSagar Pathare Email: ipo@bigshareonline"
+  },
+  {
+   "slug": "runwal-enterprises-ltd",
+   "docType": "DRHP",
+   "documentId": "301a334f-3495-4dac-a512-9600269214a5",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "ere are no other facts, the omission of which makes this\nDraft Red Herring Prospectus as a whole or any of such information or the expression of any such opinions or intentions, misleading in\nany material respect.\nLISTING\nThe Equity Shares that will be offered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges being BSE\nLimited (“BSE”) and National Stock Exchange of India Limited (“NSE” and together with BSE, the “Stock Exchanges”). For the\npurposes of the Issue, the Designated Stock Exchange shall be [●].\nBOOK RUNNING LEAD MANAGERS"
+  },
+  {
+   "slug": "runwal-enterprises-ltd",
+   "docType": "RHP",
+   "documentId": "1c5401de-a4d1-46b5-b159-c01345058261",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "at there are no other facts, the omission of which makes this Red Herring\nProspectus as a whole or any of such information or the expression of any such opinions or intentions, misleading in any material\nrespect.\nLISTING\nThe Equity Shares that will be offered through this Red Herring Prospectus are proposed to be listed on the Stock Exchanges being\nBSE Limited (“BSE”) and National Stock Exchange of India Limited (“NSE” and together with BSE, the “Stock Exchanges”). For\nthe purposes of the Issue, the Designated Stock Exchange shall be NSE."
+  },
+  {
+   "slug": "runwal-enterprises-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "e4f521b0-6923-49c8-a151-c1e0478aec2e",
+   "pageNumber": 4,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "Investor Portion, the balance\nEquity Shares shall be added Ito the QIB Portion (other than the Anchor Investor Portion) (the \"Net QIB Portion\"). Further, 5% of the Net QIB Portion shall be available for allocation ion Listing: The Equity Shares to be offered I through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges. Our Company has received in-principle approvals\na proportionate basis only to Mutual Funds and I the remainder of the net QIB Portion shall be available for allocation on a proportionate basis to all 1QIB Bidders (other than Anchor from BSE and NSE for the listing of the Equity Shares pursuant to their letters dated June 9, 2025. For the purpose of the Issue, National Stock Exchange of India Limited is the\nDesignated Stock Exchange. A signed copy of the Red Herring Prospectus and Ithe Prospectus will lbe filed with the RoC in accordance with Sections 26(4) and 32 of the Companies\nAct, 201 13. For details of the material Icontracts and documents t"
+  },
+  {
+   "slug": "shah-investor-s-home-ltd",
+   "docType": "RHP",
+   "documentId": "bf258517-5194-4107-b726-2d051e83ad5d",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "tly held and that there are no other\nfacts, the omission of which makes this Red Herring Prospectus as a whole or any of such information or the expression of any such opinions or intentions,\nmisleading in any material respect.\nLISTING\nThe Equity Shares issued through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges being BSE Limited and National Stock Exchange\nof India Limited. For the purposes of the Issue, the Designated Stock Exchange is NSE.\nBOOK RUNNING LEAD MANAGER\nName of Book Running Lead Manager Contact Person Email and Telephone\nBEELINE CAPITAL ADVISORS Telephone: +91 7949185784\nNikhil Shah\nPRIVATE LIMITED Email: mb@beelinemb.com\nREGISTRAR TO THE ISSUE\nName of Registrar Contact Person Email and Telephone\nMUFG INTIME INDIA PRIVATE Telephone: +91 8108114949\nLIMITED (FORMERLY LINK Shanti Gopalkrishnan Email:\nINTIME INDIA PRIVATE LIMITED) shahInvestors.ipo@in.mpms.mufg.com\nBID/ISSUE PERIOD\nANCHOR INVESTOR BID/ISSUE FRIDAY, BID/ISSUE OPENS ON MONDAY, BI"
+  },
+  {
+   "slug": "skyways-air-services-ltd",
+   "docType": "RHP",
+   "documentId": "d543dbd6-52ac-4a3c-927a-b30fd88e7037",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "e no responsibility for any other statement, including, inter-alia, any of the statements\nmade by or relating to our Company or its business or any of the Promoter and other Selling Shareholders in this Red Herring Prospectus.\nLISTING\nThe Equity Shares offered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges being BSE Limited (“BSE”) and National Stock Exchange of India Limited (“NSE”\ntogether with BSE, the “Stock Exchanges”) in terms of the Chapter II of the SEBI (ICDR) Regulations, 2018 as amended from time to time. For the purpose of this Offer, the Designated Stock\nExchange will be BSE Limited.\nDETAILS OF THE BOOK RUNNING LEAD MANAGERS TO THE OFFER\nName and Logo Contact Person Email and Telephone\nEmail: ipo@holaniconsultants.co.in\nHolani Consultants Private Limited Mrs. Payal Jain\nTel.: +91 0141 – 2203996\nEmail: pavan@shannon.co.in\nShannon Advisors Private Limited Mr. Pavan Kumar Agrawal Tel.: +91 011 42758011\nEmail: skyways.ipo@dolatfinserv.com\nD"
+  },
+  {
+   "slug": "spectraa-technology-solutions-ltd",
+   "docType": "RHP",
+   "documentId": "90a9e128-1ee9-4924-9253-eecc8c5881aa",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "NSE"
+   ],
+   "excerpt": "rtakings, including without limitation, any and\nall of the statements, disclosures or undertakings made by or in relation to our Company, its business, or any other Promoter Selling Shareholder, in this Red Herring Prospectus.\nLISTING\nThe Equity Shares issued through this Red Herring Prospectus are proposed to be listed on the EMERGE Platform of the National Stock Exchange of India Limited (NSE EMERGE) in terms\nof the Chapter IX of the SEBI (ICDR) Regulations, 2018 as amended from time to time. Our Company has received an ‘in-principle’ approval letter dated June 08, 2026 from NSE for using\nits name in this Offer Document for listing our shares on the NSE EMERGE. For this Offer, the Designated Stock Exchange will be the National Stock Exchange of India Limited (NSE).\nBOOK RUNNING LEAD MANAGER TO THE OFFER CONTACT PERSON EMAIL & TELEPHONE\nINDCAP ADVISORS PRIVATE Email: smeipo@indcap.in\nRavi Prakash Mundhra\nLIMITED Tel. No: 033-4069 8001\nDETAILS REGISTRAR TO THE OFFER\nNAME AND LOGO OF TH"
+  },
+  {
+   "slug": "srit-india-ltd",
+   "docType": "DRHP",
+   "documentId": "a6abfd34-26dc-4deb-a35f-2f35ec9ee5ca",
+   "pageNumber": 2,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "LISTING\nThe Equity Shares, once offered through the Red Herring Prospectus, are proposed to be listed on National Stock Exchange of India\nLimited (“NSE”) and BSE Limited (“BSE” and together with NSE, the “Stock Exchanges”). For the purposes of the Issue, [●] is the\nDesignated Stock Exchange. A copy of the Red Herring Prospectus and the Prospectus shall be filed with the RoC in accordance with\nSections 26(4) and 32 of the Companies Act, 2013.\nBOOK RUNNING LEAD MANAGER\nNAME AND LOGO OF BRLM CONTACT PERSON EMAIL AND TELEPHONE\nNimisha Joshi/ Anuj Killa E-mail: sil.ipo@choiceindia.com\nTel: +91 22 6706 9999 (7919)\nChoice Capital Advisors Private Limited\nREGISTRAR TO THE ISSUE\nNAME AND LOGO OF THE REGISTRAR CONTACT PERSON EMAIL AND TELEPHONE\nM Murali Krishna E-mail: compliance"
+  },
+  {
+   "slug": "srit-india-ltd",
+   "docType": "RHP",
+   "documentId": "9127a692-a6b1-4f44-b9be-e9b76d1b2be6",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": " there are no other facts, the omission of which makes this Red Herring Prospectus\nas a whole or any of such information or the expression of any such opinions or intentions, misleading in any material respect.\nLISTING\nThe Equity Shares, that will be offered through this Red Herring Prospectus, are proposed to be listed on National Stock Exchange of\nIndia Limited (“NSE”) and BSE Limited (“BSE” and together with NSE, the “Stock Exchanges”). For the purposes of the Issue, NSE is\nthe Designated Stock Exchange. Our Company has received ‘in-principle’ approvals from BSE and NSE for the listing of the Equity\nShares pursuant to their letters each dated April 29, 2026. A signed copy of this Red Herring Prospectus and Prospectus shall be filed\nwith the RoC in accordance with Sections 26(4) and 32 of the Companies Act, 2013. For details of the material contracts and documents\ni"
+  },
+  {
+   "slug": "srit-india-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "fce0e72d-bb91-4924-b2f4-4e26d45954ae",
+   "pageNumber": 5,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "all be available for allocation RHP\non a proportionate basis to all QIBs, including Mutuai Funds. Further, not Hless than 15% of the Issue shall be available for allocation to Non-institutional Bidders and not less than Listing: The Equity Shares being offered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges. Our Company has received \"in-principle\"\n35% ofthe issue shall be available forallocation to Retail Individual Bidders ('Retail Portion') in accordancewith the SEBI ICDR Regulations, subject to valid Bidsbeing received approvals from BSE and NSE forthe listing ofthe Equity Sharespursuant to thein letters each datedApril 29 2026, Forthe purposes ofthe Issue, the Designated Stock Exchange\nshal be NSE A signed copy of the Red Herring Prospectus has been filed and the Prospectus shall be filed with the RoC in accordance with Sections 26(4) and 32 of the\nto 1 1.00 million and two-thirds of the Non-Institutional Portion shall! be available for allocatio"
+  },
+  {
+   "slug": "steamhouse-india-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "94510fb3-185d-449c-b6b9-e57790bc490b",
+   "pageNumber": 4,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "QIB Portion. Further, 5% ofthe\nNet QIB Portion sham be available for allocation on a proportionate basis only to Mutual Funds and the remainder of the Net QIB Portion shall be available for allocation on a Listing: The Equity Shares, offace value 2 each ffered through the Red Herring Prospectus are proposed to be listed on the Stock Exchanges. Our Companyhas received\nin-principle approvals from the BSE and the NSE for listing the Equity Shares of face value 买2 each pursuant to lelters each dated September 10. 2025 For the purposes of\naggregate demand from Mutual Funds Is less than 5% of the Net QIB Portion, the balance Equity Shares of face value of 专 2 each available for allocation i the Mutual Fund the Offer the Designated Stock Exchange shall be BSE Acopyofthe Red Herring Prospectus and theProspectus shall be filed with the RoC in accordancewith Sections 26(4)\nand 32 of the CompaniesAct 201 3. For further details of the material contracts and documents available forinspection from t"
+  },
+  {
+   "slug": "swastika-infra-ltd",
+   "docType": "RHP",
+   "documentId": "2dbcaed7-1e14-4749-bfe4-5323bb7aea5b",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "y for any other statements, including, inter alia, any and all of the statements made\nby or relating to our Company or its business or any other Selling Shareholder or any other person(s) in this Red Herring Prospectus.\nLISTING\nThe Equity Shares, once offered through this Red Herring Prospectus are proposed to be listed on BSE Limited (“BSE”) and the National Stock Exchange of India Limited (“NSE”). For the purpose of the Offer,\nBSE Limited shall be the Designated Stock Exchange.\nBOOK RUNNING LEAD MANAGERS\nSRUJAN ALPHA CAPITAL ADVISORS LLP Contact Person Telephone and Email\nJinesh Doshi Telephone No+91 22 4014 3173\nEmail: projectinfra@srujanalpha.com\nPHILLIPCAPITAL (INDIA) PRIVATE LIMITED Contact Person Telephone and Email\nSudhir Salian Telephone: +91 22 2483 1919\nEmail: projectinfra-pc@phillipcapital.in\nREGISTRAR TO THE OFFER\nMUFG INTIME INDIA PRIVATE LIMITED Contact Person Telephone and Email\n(formerly known as Link Intime India Private Limited)\nShanti Gopalkrishnan Telephone: +91 81"
+  },
+  {
+   "slug": "vama-wovenfab-ltd",
+   "docType": "RHP",
+   "documentId": "8c36d5a6-36b7-40de-bfea-39b8afe856af",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "BSE"
+   ],
+   "excerpt": "tly held and that there are no other facts, the omission of which makes this Red Herring Prospectus as a whole or any of such information\nor the expression of any such opinions or intentions misleading in any material respect.\nLISTING\nThe Equity Shares offered through the Red Herring Prospectus are proposed to be listed on the SME Platform of BSE Limited (“BSE SME”) in terms of the Chapter IX of the SEBI (ICDR)\nRegulations, 2018 as amended from time to time. Our Company has received “In-Principle” approval from the BSE Limited (“BSE”) for using its name in the Offer document for the listing of\nthe Equity Shares, pursuant to letter dated January 05, 2026 letter no LO/SME-IPO/NP/IP/638/2025-26. For the purpose of this Issue, the Designated Stock Exchange will be the BSE Limited\n(“BSE”).\nBOOK RUNNING LEAD MANAGER TO THE OFFER\nName and Logo Contact Person Email & Contact No.\nEmail: info@gretexgroup.com\nMr. Pradip Agarwal\nContact No.: +91 93319 26937\nGRETEX CORPORATE SERVICES LIMITED\nREGIST"
+  },
+  {
+   "slug": "varmora-granito-ltd",
+   "docType": "DRHP",
+   "documentId": "05c6884b-837d-48eb-9429-4b4dc3a44b1f",
+   "pageNumber": 2,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "ncluded\nin this Draft Red Herring Prospectus, including, inter alia, any and all of the statements and undertakings made by or relating to our Company or\nits business or any other Selling Shareholders or any other person(s).\nLISTING\nThe Equity Shares, offered through the Red Herring Prospectus, are proposed to be listed on the Stock Exchanges being BSE Limited (“BSE”)\nand National Stock Exchange of India Limited (“NSE”, together with BSE, the “Stock Exchanges”). For the purposes of the Offer, the Designated\nStock Exchange is [●].\nBOOK RUNNING LEAD MANAGERS\nNAME OF THE BRLM AND LOGO CONTACT PERSON EMAIL AND TELEPHONE\nJM Financial Limited Prachee Dhuri E-mail: vgl.ipo@jmfl.com\nTelephone: +91 22 6630 3030\nGoldman Sachs (India) Suchismita Ghosh E-mail: varmoraipo@gs.com\nSecurities Private Limited Telephone: +91 22 6616 9000\nSBI Capital Markets Limited Kristina Dias E-mail: varmora.ipo@sbicaps.com\nTelephone: +91 22 4006 9807\nREGISTRAR TO THE OFFER\nKFin Technologies Limited M. Murali Krishna"
+  },
+  {
+   "slug": "varmora-granito-ltd",
+   "docType": "RHP",
+   "documentId": "ded0c702-0e0f-45b7-b2cd-b228ac4a7e24",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "any other statements and undertakings included in this Red Herring Prospectus, including, inter alia,\nany and all of the statements and undertakings made by or relating to our Company or its business or any other person(s).\nLISTING\nThe Equity Shares, offered through this Red Herring Prospectus, are proposed to be listed on the Stock Exchanges being BSE Limited (“BSE”)\nand National Stock Exchange of India Limited (“NSE”, together with BSE, the “Stock Exchanges”). For the purposes of the Offer, the Designated\nStock Exchange is NSE."
+  },
+  {
+   "slug": "varmora-granito-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "e8472d18-a0f5-40cd-9a4b-32cd2c1d9316",
+   "pageNumber": 5,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "l Structure\"beginning Lon page 85 of the RHP\ndemand from Mutual Funds iS less than 5% of the Net QB Portion, the balance Equity Shares available for allocation in the Mutual Fund Portion will be added to the remaining Listing: The Equity Shares, to be offered through the Red Herring Prospectus, are proposed to be listed on the Stock Exchanges. Our Company has received \"in-principle'\nNet QIB Portion for proportionate allocation to QIBS. Further, not less than 15% of the Offer shall be avaitable for allocation to Non-Institutional Investors (\"Non-Institutional approvals from BSE and NSE for the isting of the Equity Shares pursuant to Vetters each dated November 12, 2025 For the purposes of the Offer, the Designated Stock\nPortion' of which one-third of the Non-Institutional Portion shall be avallable for allocation to Bidders with an appication size of more than 专 0.20 million and up to 专 1.00 million Exchange shall be NSE Acopy of the Red Herring Prospectus and the Prospectus shall be fi"
+  },
+  {
+   "slug": "veegaland-developers-ltd",
+   "docType": "PROSPECTUS",
+   "documentId": "66192dc8-1400-43bb-a3f2-543ed32d5df9",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "that there are no other facts, the omission of which makes this Prospectus as a whole or any of such information or the expression of any such opinions or\nintentions misleading in any material respect.\nLISTING\nThe Equity Shares, once issued through the Red Herring Prospectus and this Prospectus are proposed to be listed on the Stock Exchanges being BSE Limited (“BSE”) and the National Stock Exchange\nof India Limited (“NSE”). For the purpose of the Issue, BSE Limited shall be the Designated Stock Exchange.\nBOOK RUNNING LEAD MANAGER\nName of Book Running Lead Manager and Logo Contact Person Telephone and Email\nTelephone: +91 9819 662 664 / +91 98709 24935\nSwapnilsagar Vithalani / Hetal Gajra E-mail: veegaland.ipo@cumulativecapital.group\nCumulative Capital Private Limited\nREGISTRAR TO THE ISSUE\nName of Registrar and Logo Contact Person Telephone and Email\nTelephone: +91 810 811 4949\nShanti Gopalkrishnan\nE-mail: veegalanddevelopers.ipo@in.mpms.mufg.com\nMUFG Intime India Private Limited\n(for"
+  },
+  {
+   "slug": "veegaland-developers-ltd",
+   "docType": "PRICE_BAND_AD",
+   "documentId": "3bb03b69-6900-498f-9193-d922c624d5a5",
+   "pageNumber": 1,
+   "storedSegment": "MAINBOARD",
+   "storedListingExchanges": [
+    "NSE",
+    "BSE"
+   ],
+   "excerpt": "d \"Capital Structure\"beginning on page 102ofthe RHP\nabove the Issue Price, and the remainder of the Net QIB Porlion shall be available for allocation on a proportionate basis t0 alf QIBs (other than Anchor Investors) including Listing: The Equity Shares issued through the Red Herring Prospectus are proposed to be listed lon the Stock Exchanges. Our Company has received in-principle'approvals from\nMutual Funds, subject t0 valid Bids being received at or above the Issue Price. However, 市 the aggregate demand from Mutual Funds is less than 5% of the Net QIB Portion, the BSE and the NSE forthe fisting oftheEquityShares pursuantto letters each dated March 18 2026. For the purposes ofthe Issue, the Designated Stock Exchange shall be BSE\nthe balance Equity Shares each available for allocation in the Mutual Fund Portion will be added to the remaining Net QIB Portion for proportionate allocation to all QIBS. Limited. Asigned copy ofthe Red Herring Prospectus has been filed and the Prospectus sh"
+  },
+  {
+   "slug": "vinod-texworld-ltd",
+   "docType": "PROSPECTUS",
+   "documentId": "431244b9-f856-4a34-804c-10a141dabda5",
+   "pageNumber": 1,
+   "storedSegment": "SME",
+   "storedListingExchanges": [
+    "NSE"
+   ],
+   "excerpt": "re honestly held and that there are no other facts, the omission of which makes this Prospectus as a whole or any of such information or\nthe expression of any such opinions or intentions misleading in any material respect.\nLISTING\nThe Equity Shares of our Company offered through this Prospectus are proposed to be listed on the SME Platform of National Stock Exchange of India Limited (“NSE Emerge”) in\nterms of the Chapter IX of the SEBI (ICDR) Regulations, 2018, read with SEBI ICDR (Amendment) Regulations, 2025, as amended from time to time. Our Company has received an\nIn-Principal approval letter dated June 23, 2026 from National Stock Exchange of India Limited (“NSE Emerge”) for using its name in the Prospectus for listing of our shares on the\nSME Platform of National Stock Exchange of India Limited (“NSE”). For the purpose of this Issue, National Stock Exchange of India Limited (“NSE Emerge”) shall be the Designated\nStock Exchange.\nLEAD MANAGER TO THE ISSUE REGISTRAR TO THE ISSUE\nKFI"
+  }
+ ]
+}

@@ -171,15 +171,13 @@ describe('#951: an update writes only the fields its caller claimed', () => {
 });
 
 describe('#938 provenance: a widened set is recorded under the source that ADDED the member', () => {
-  it('an NSE [NSE] widening a DRHP [BSE] is recorded as NSE, with DRHP as the previous source', async () => {
-    // Before this fix the row read {source DRHP, value [BSE,NSE], previous
-    // '["BSE"]', previous_source DRHP} -- the staging row for the NSE IPO, byte
-    // for byte: data-consolidation-service Case 2b stamped the union with
-    // `existingSource || incomingSource`, crediting DRHP with a board it never
-    // named. Whether NSE's feed may add a board it only runs bidding for is an
-    // open owner question (F-135, #938) and is NOT changed here.
+  it('an NSE [NSE] widening a BSE [BSE] (no document read) is recorded as NSE, with BSE as the previous source', async () => {
+    // Before the #938 provenance fix, Case 2b stamped the union with
+    // `existingSource || incomingSource`, crediting the stored source with a
+    // board it never named. The union still applies while no document has been
+    // read (OD-129: "only when no document has been read: the exchange feed").
     const { orchestrator, fieldSourcesRepository } = harness([
-      provenanceRow('listingExchanges', 'DRHP', ['BSE']),
+      provenanceRow('listingExchanges', 'BSE', ['BSE']),
     ]);
     const service = (orchestrator as any).consolidationService;
     const result = await service.consolidateIPOData({
@@ -200,7 +198,31 @@ describe('#938 provenance: a widened set is recorded under the source that ADDED
       source: 'NSE',
       value: ['BSE', 'NSE'],
       previousValue: '["BSE"]', // serialised, as field_sources.previous_value stores it
-      previousSource: 'DRHP',
+      previousSource: 'BSE',
     });
   });
+
+  it('OD-129: an NSE [NSE] against a DRHP-held [BSE] is NOT a widening — the document set is kept and no provenance is rewritten', async () => {
+    // The staging row for the NSE IPO: {source DRHP, value [BSE]} widened to
+    // [BSE, NSE] by NSE running the bidding (F-135). OD-129 answered #938: the
+    // document decides; the feed's extra board goes to the admin queue.
+    const { orchestrator, fieldSourcesRepository } = harness([
+      provenanceRow('listingExchanges', 'DRHP', ['BSE']),
+    ]);
+    const service = (orchestrator as any).consolidationService;
+    const result = await service.consolidateIPOData({
+      ipoId: IPO_ID,
+      tableName: 'ipos',
+      incomingData: { listingExchanges: ['NSE'] },
+      source: 'NSE',
+      existingData: { listingExchanges: ['BSE'], segment: 'MAINBOARD' },
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['BSE']);
+    const tracked = fieldSourcesRepository.trackFieldUpdate.mock.calls
+      .map((c: any[]) => c[0])
+      .filter((row: any) => row.fieldName === 'listingExchanges');
+    expect(tracked).toHaveLength(0);
+  });
 });
+

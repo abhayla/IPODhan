@@ -51,6 +51,8 @@ import type { ConflictSeverity } from '../config/source-confidence';
 import { FEATURE_FLAGS, shouldUseFeature } from '../config/feature-flags';
 import {
   violatesSmeSingleExchange,
+  decideListingExchangesOd129,
+  OD129_DOCUMENT_DISAGREES_REASON,
   collapseSmeExchanges,
   SME_SINGLE_EXCHANGE_CONFLICT_REASON,
   type SmeCollapseEvidence,
@@ -1846,6 +1848,63 @@ export class DataConsolidationService {
       // cycle with no conflict row. Only genuinely set-valued fields merge;
       // every other array falls through to normal priority resolution.
       if (SET_VALUED_FIELDS.has(fieldName)) {
+        // OD-129 (#938): listingExchanges is document-first. Decided BEFORE the
+        // union and the SME repair, because a document's set REPLACES the stored
+        // one (it can shrink it), and a stored document set is never widened by a
+        // feed — a feed naming another board is queued for the admin instead.
+        if (fieldName === 'listingExchanges') {
+          const od129 = decideListingExchangesOd129({
+            stored: normalizedStored as string[],
+            storedSource: existingSource,
+            incoming: normalizedIncoming as string[],
+            incomingSource,
+          });
+          if (od129.kind === 'DOCUMENT_WRITES' || (od129.kind === 'DOCUMENT_CONFIRMS' && existingSource !== incomingSource)) {
+            await this.trackFieldSource({
+              incoming: params.incoming,
+              ipoId,
+              tableName,
+              rowKey,
+              fieldName,
+              value: od129.value,
+              source: incomingSource,
+              previousValue: storedValue,
+              previousSource: existingSource,
+            });
+          }
+          if (od129.kind === 'DOCUMENT_DISAGREES' && FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+            await this.logConflict({
+              ipoId,
+              tableName,
+              rowKey,
+              fieldName,
+              existingValue: storedValue,
+              existingSource: existingSource || incomingSource,
+              incomingValue,
+              incomingSource,
+              normalizedExisting: normalizedStored,
+              normalizedIncoming,
+              severity: 'WARNING',
+              reason: OD129_DOCUMENT_DISAGREES_REASON,
+              chosenSource: existingSource || incomingSource,
+            });
+          }
+          if (od129.kind !== 'NO_DOCUMENT') {
+            const docWins = od129.kind === 'DOCUMENT_WRITES' || od129.kind === 'DOCUMENT_CONFIRMS';
+            return {
+              fieldName,
+              finalValue: od129.kind === 'DOCUMENT_WRITES' ? od129.value : storedValue,
+              chosenSource: docWins ? incomingSource : existingSource || incomingSource,
+              hadConflict: od129.kind === 'DOCUMENT_DISAGREES',
+              ...(od129.kind === 'DOCUMENT_DISAGREES' ? { conflictSeverity: 'WARNING' as const } : {}),
+              conflictReason: od129.reason,
+              ...(docWins
+                ? {}
+                : { rejectedSources: [{ source: incomingSource, value: incomingValue, reason: od129.reason }] }),
+            };
+          }
+        }
+
         // W-145 round 2: repair BEFORE the merge branches. An SME row already
         // stored with two exchanges is wrong (an SME issue lists on exactly one
         // board) and the union can never shrink it, so every later branch would

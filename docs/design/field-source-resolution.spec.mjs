@@ -45,7 +45,7 @@ add('ipos','sector','D',['DOC','CG'],{doc:'F1',note:'Moneycontrol retired 2026-0
 add('ipos','price_range_min','D',['DOC','NSE','BSE'],{doc:'A1',na:['NCD','TENDER','BUYBACK']});
 add('ipos','price_range_max','D',['DOC','NSE','BSE'],{doc:'A1',na:['NCD','TENDER','BUYBACK']});
 add('ipos','last_scraped_at','I',['—','—','—'],{});
-add('ipos','listing_exchanges','T',['NSE','BSE','CG'],{e1:1});
+add('ipos','listing_exchanges','D',['DOC','NSE','BSE','CG'],{doc:'A15',note:'OD-129 (#938, F-197): left E-1. The offer document listing sentence ("proposed to be listed on ...") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union.'});
 add('ipos','face_value','D',['DOC','BSE','NSE'],{doc:'A2',na:['INVITS','REITS']});
 add('ipos','allotment_date','T',['NSE','BSE','CG'],{e1:1});
 add('ipos','company_description','D',['DOC','CG'],{doc:'F1',note:'Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source'});

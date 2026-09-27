@@ -301,6 +301,21 @@ async function getStoredOfferingTypeSource(ipoId: string | undefined): Promise<s
   }
 }
 
+/** OD-129 (#938): the source vouching for the stored `listingExchanges`, for the fallback door. */
+async function getStoredListingExchangesSource(ipoId: string | undefined): Promise<string | null> {
+  if (!ipoId) return null;
+  try {
+    const provenance = await getFieldSourcesRepository().findByField(ipoId, 'ipos', 'listingExchanges');
+    return (provenance as any)?.source ?? null;
+  } catch (e) {
+    logger.warn(
+      { ipoId, error: e instanceof Error ? e.message : String(e) },
+      '[DataPersister] OD-129 stored listingExchanges provenance lookup failed - no document claim known, the feed union applies'
+    );
+    return null;
+  }
+}
+
 async function getConsolidationService(): Promise<DataConsolidationService> {
   if (!consolidationServiceInstance) {
     const redis = getRedisClient();
@@ -687,13 +702,29 @@ export function mergeListingExchangesForSource(
   scrapedListingExchange: 'NSE' | 'BSE' | 'BOTH' | undefined,
   // W-145: SME rows list on exactly one board, so the fallback must not widen
   // them either. Omitted (or non-SME) keeps the previous union behaviour.
-  segment?: string | null
+  segment?: string | null,
+  // OD-129 (#938, review MINOR 2): the source vouching for the STORED set
+  // (field_sources). Only an offer-document (or ADMIN) source holds the set;
+  // null / unknown / a feed source means no document claim, so the feed union
+  // still applies ("Only when no document has been read: the exchange feed").
+  storedSource?: string | null
 ): ('NSE' | 'BSE')[] {
   const existing = existingExchanges ?? [];
   // W-145: ONE rule for what a source proves — an aggregator's 'BOTH' is
   // unknown, NSE/BSE assert only themselves.
   const incoming = toListingExchangesForSource(scrapedListingExchange, source);
   if (!incoming) return existing;
+  // OD-129 (#938): the same decision the consolidation door makes. A document's
+  // listing sentence replaces the set (never unions into it); a set a document
+  // or the admin holds is never widened by a feed.
+  const od129 = decideListingExchangesOd129({
+    stored: existing,
+    storedSource: storedSource ?? undefined,
+    incoming,
+    incomingSource: source,
+  });
+  if (od129.kind === 'DOCUMENT_WRITES') return od129.value as ('NSE' | 'BSE')[];
+  if (od129.kind !== 'NO_DOCUMENT') return existing;
 
   let merged = existing;
   for (const exchange of incoming) {
@@ -754,6 +785,7 @@ import { stripIdentityNameDecoration, stripIdentitySlugSuffix } from '@ipodhan/s
 import {
   toListingExchangesForSource,
   violatesSmeSingleExchange,
+  decideListingExchangesOd129,
 } from './listing-exchange-resolution.js';
 export { normalizeCompanyNameForMatching };
 
@@ -1367,9 +1399,19 @@ async function upsertIPOInScope(
             // (the consolidation service logs the conflict row).
             let mergedExchanges = existingIPO.listingExchanges as ('NSE' | 'BSE')[];
             const segment = (existingIPO.segment ?? scrapedIPO.segment) as string | null | undefined;
-            const incomingExchanges = listingExchangeIsContext
+            // OD-129 (#938): when the consolidation decided the set document-first
+            // (a document replaced or confirmed it, or a stored document set held
+            // against a feed), its decision IS the value — re-running the union
+            // here would re-add the very board the document ruled out.
+            const od129Result = consolidationResult.fieldResults.find(
+              (f) => f.fieldName === 'listingExchanges' && String(f.conflictReason ?? '').startsWith('OD129_')
+            );
+            const incomingExchanges = listingExchangeIsContext || od129Result
               ? undefined
               : toListingExchangesForSource(scrapedIPO.listingExchange, source);
+            if (od129Result && Array.isArray(od129Result.finalValue)) {
+              mergedExchanges = od129Result.finalValue as ('NSE' | 'BSE')[];
+            }
             if (incomingExchanges) {
               const widened = [...(mergedExchanges ?? [])];
               for (const exchange of incomingExchanges) {
@@ -1693,7 +1735,8 @@ async function upsertIPOInScope(
             source,
             // #938 echo: context is never a claim, on this door either.
             listingExchangeIsContext ? undefined : scrapedIPO.listingExchange,
-            ((existingIPO as any).segment ?? scrapedIPO.segment) as string | null | undefined
+            ((existingIPO as any).segment ?? scrapedIPO.segment) as string | null | undefined,
+            listingExchangeIsContext ? null : await getStoredListingExchangesSource((existingIPO as any).id)
           ),
           lastScrapedAt: new Date(),
           updatedAt: new Date(),

@@ -24,6 +24,8 @@
 
 import type { IPORepository } from '@ipodhan/shared';
 import { E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories/field-sources-repository';
+import { parseListingSentence, toScrapedListingExchange, type DocumentListingExchange } from './listing-sentence.js';
+import type { PageTextCarrier } from './document-page-text.js';
 import { isFixedPriceIssue, normalizeReceiptValue, type RuleDocumentRef } from '../../config/plan-supersession-rule.mjs';
 import {
   columnMark,
@@ -219,6 +221,15 @@ export interface FilingPersisterDeps {
    * OD-97: reads the rule "an OCR-only value never wins a disagreement against a
    * text page" needs. Absent = the rule cannot see a text read, so it never fires.
    */
+  /**
+   * OD-129 (#938, review round 1 G1): may THIS document's listing sentence write
+   * `listing_exchanges`? Only when no higher-ranked offer document of the IPO
+   * (Prospectus > RHP > DRHP) has already completed extraction. Absent = the
+   * persister cannot tell, so it claims nothing (fail closed).
+   */
+  listingPrecedence?: {
+    higherRankedOfferDocumentCompleted(ipoId: string, docType: FilingDocType, documentId: string | null): Promise<boolean>;
+  };
   ocrPrecedence?: {
     /**
      * The text-layer receipts this IPO's active documents wrote for one field, each with its
@@ -1438,6 +1449,33 @@ export async function persistFilingExtraction(
   if (listingDate) iposCandidate.listingDate = listingDate;
   if (description) iposCandidate.companyDescription = description;
   if (cinForWrite !== null) iposCandidate.cin = cinForWrite;
+  // OD-129 (#938): the listing sentence on the cover pages decides the exchanges.
+  // A price band ad that says only "the Stock Exchanges" names none -> nothing claimed.
+  // G1: an older or lower-ranked filing extracted AFTER a better one must not
+  // replace its set (6 of 59 staging IPOs had an older filing extracted later).
+  const listingSentence = parseListingSentence((extraction as FilingExtraction & PageTextCarrier).page_texts);
+  if (listingSentence) {
+    let outranked = true;
+    let why = 'no listing-precedence reader (fail closed)';
+    if (deps.listingPrecedence) {
+      try {
+        outranked = await deps.listingPrecedence.higherRankedOfferDocumentCompleted(
+          ipoId,
+          options.docType,
+          options.documentId ?? null
+        );
+        why = 'a higher-ranked offer document of this IPO has completed (OD-129: Prospectus > RHP > DRHP)';
+      } catch (e) {
+        why = `listing-precedence read failed (fail closed): ${e instanceof Error ? e.message : String(e)}`;
+      }
+    }
+    if (outranked) {
+      skippedLowerPriority.push(`ipos.listingExchanges (${options.docType}: ${why})`);
+      logger.info({ ipoId, docType: options.docType, documentId: options.documentId ?? null, why }, 'OD-129 listing sentence not claimed');
+    } else {
+      iposCandidate.listingExchanges = listingSentence.exchanges;
+    }
+  }
 
   // W-147: drop any headline column a price band advertisement already owns,
   // BEFORE the admin-protection gate and the write.
@@ -1461,6 +1499,13 @@ export async function persistFilingExtraction(
   const iposWritable =
     Object.keys(iposCandidate).length > 0 ? await filterFields('ipos', iposCandidate) : {};
   for (const [col, v] of Object.entries(iposWritable)) {
+    if (col === 'listingExchanges') {
+      // The write path's payload key is the singular `listingExchange`; claiming it
+      // here also takes it out of the context set, so it is this document's claim.
+      scraped.listingExchange = toScrapedListingExchange(v as DocumentListingExchange[]);
+      iposFields.push('listingExchange');
+      continue;
+    }
     scraped[col] = v;
     iposFields.push(col);
   }

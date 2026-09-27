@@ -586,7 +586,7 @@ where that contract already names the section; new rows extend it in the same sh
 | 14 | `price_range_min` | 300 | D | DOC | NSE | BSE | keep | A1 | **book-built only**: `floor < cap` AND `1.05 × floor ≤ cap ≤ 1.20 × floor`, both segments. ICDR Reg 30(2) caps the band at 120% of the floor; a December 2021 amendment set a 5% minimum spread; Chapter IX applies both to SME, so the `≤ 1.4 ×` SME carve-out an earlier draft carried **does not exist** and would have passed an illegal 40% band. **`issue_type = FIXED_PRICE` skips all three** — floor = cap, so the strict inequality AND the new lower bound both fail on a legal fixed-price issue; the first version of this fix exempted only the upper bound and would have failed every one of the 50 single-price SME rows. `floor ≥ face_value` always | NSE, BSE, CG. Disagreement = re-read the PBA cover. | Fixed-price issues: floor = cap; the ratio check is skipped |
 | 15 | `price_range_max` | 300 | D | DOC | NSE | BSE | keep | A1 | as 14 | as 14 | as 14 |
 | 16 | `last_scraped_at` | 327 | **I** | — | — | — | keep | — | pipeline clock, UTC | — | — |
-| 17 | `listing_exchanges` | 327 | **T** | **NSE** | **BSE** | CG | keep | A15 | non-empty subset of {NSE, BSE}; an SME row may not claim both unless both confirm | the other exchange | **Named exception E-1.** Also **the only field that distinguishes SME-on-NSE from SME-on-BSE** — `ipos.exchange` is NULL on all 327 rows and `bse_scrip_code` on 0 of 327 |
+| 17 | `listing_exchanges` | 327 | D | DOC | NSE | BSE | keep | A15 | non-empty subset of {NSE, BSE}; an SME row may not claim both unless both confirm | CG, and the exchange feed once a document has been read: a board the document does not name goes to the admin queue (OD-129) | **Left E-1 by OD-129** (the offer document's listing sentence; the feeds only before a document is read). Also **the only field that distinguishes SME-on-NSE from SME-on-BSE** — `ipos.exchange` is NULL on all 327 rows and `bse_scrip_code` on 0 of 327 |
 | 18 | `face_value` | 327 | D | DOC | BSE | NSE | keep | A2 | one of {1,2,5,10}; `floor ≥ face_value` | CG. | — |
 | 19 | `allotment_date` | 239 | **T** | **NSE** | **BSE** | CG | keep | B3 | `> close`, `< listing` | as 5 | **Named exception E-1** — it moves whenever the window moves |
 | 20 | `company_description` | 159 | D | DOC | CG | MC | keep | F1 | ≤ 1,200 chars; no boilerplate ("The company was incorporated…" alone fails) | CG. | — |
@@ -603,7 +603,7 @@ where that contract already names the section; new rows extend it in the same sh
 | 31 | `verifier_url` | 213 | **I** | — | — | — | keep | — | our own audit pointer | — | — |
 | 32 | `cin` | 27 | D | DOC | — | — | keep | E7 | `^[UL]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6}$` | MCA lookup (not built). No second source exists — a document-only field. | — |
 
-**Amended by OD-129 (2026-09-27), SPEC CHANGE, row 17:** `listing_exchanges` is sourced from the offer document's listing sentence (Prospectus > RHP > DRHP; a price band advertisement only when it names the exchanges), which also gives the board (main board, BSE SME, NSE Emerge) and the designated exchange (row 48 of §1.3). Only when no document has been read: the exchange feed, then CG. CG always cross-checks; a disagreement goes to the admin queue. The row's class and source columns change with the #938 code change (§1.2.1 amendment).
+**Amended by OD-129 (2026-09-27), SPEC CHANGE, row 17:** `listing_exchanges` is sourced from the offer document's listing sentence (Prospectus > RHP > DRHP; a price band advertisement only when it names the exchanges), which also gives the board (main board, BSE SME, NSE Emerge) and the designated exchange (row 48 of §1.3). Only when no document has been read: the exchange feed, then CG. CG always cross-checks; a disagreement goes to the admin queue. The row's class and source columns were changed with the #938 code change (§1.2.1 amendment).
 
 **Amended by OD-130 (2026-09-27), row 12:** when the base slug is already taken by a genuinely separate offering (OD-35), the new row's slug is `<slug>-<open-year>`, then `<slug>-<open-year>-<segment>`; the first row's slug never changes, and the identity matcher never strips a year or segment suffix.
 
@@ -636,7 +636,7 @@ reissued when a company extends its bidding window.** NSE and BSE update the sam
 not. Sourcing these from the document would publish a stale close date on a live IPO — the single
 most damaging error this site can make, and the reason the W-117 rule exists.
 
-**The fields in E-1 — ten.** The owner named five and then directed (2026-09-08): *"list the
+**The fields in E-1 — nine.** The owner named five and then directed (2026-09-08): *"list the
 full timetable family for me to see and understand. Apply the same rule to all the timetable
 fields."* The full family, established by walking every date- and schedule-like field among the 194
 fields known at the time and testing each against one question — **does this value change when the
@@ -657,9 +657,8 @@ table.
 | 7 | `ipo_details.credit_of_shares_date` | B5 | 3 | 3 doc (100%) | **flips** |
 | 8 | `ipos.listing_date` | B6 | 289 | 238 web · 51 exch · 0 doc | already exchange-first |
 | 9 | `ipos.status` | — | 289 | 230 web · 56 exch · 3 doc | named by the owner; position in the timetable |
-| 10 | `ipos.listing_exchanges` | A15 | 208 | 161 web · 23 exch · 24 doc | named by the owner; **24 document values flip** |
 
-**Amended by OD-129 (2026-09-27), SPEC CHANGE:** `ipos.listing_exchanges` (row 10 above) leaves E-1. Changing where an IPO lists forces a new filing, so under this section's own test the document wins: the offer document's listing sentence ("proposed to be listed on ...") decides the exchanges and the board, Prospectus > RHP > DRHP. F-197 measured it: 33 IPOs' documents name them; 32 agree with the stored value; the one disagreement is NSE's own IPO (BSE only), a stored error. The table above, the E-1 count ("ten"), design check D3, the `E1-SOURCE` check and Appendix A row 17 still describe the pre-OD-129 state. They change together with the #938 code change, because the check code and this count must move in one change.
+**Amended by OD-129 (2026-09-27), SPEC CHANGE:** `ipos.listing_exchanges` (formerly row 10 of the table above) leaves E-1. Changing where an IPO lists forces a new filing, so under this section's own test the document wins: the offer document's listing sentence ("proposed to be listed on ...") decides the exchanges and the board, Prospectus > RHP > DRHP. F-197 measured it: 33 IPOs' documents name them; 32 agree with the stored value; the one disagreement is NSE's own IPO (BSE only), a stored error. The table above (10 -> 9 rows), the E-1 count ("ten" -> "nine"), design check D3, the `E1-SOURCE` check and Appendix A row 17 were changed together with the #938 code change, because the check code and this count must move in one change.
 
 **Removed from E-1, F-22 (2026-09-08):** `anchor_investors.lock_in_50_percent_date` and
 `lock_in_remaining_date` (contract § not applicable — these have no exchange or document filing of
@@ -703,7 +702,7 @@ disagreements and bury the real ones. Verification for E-1 is the other exchange
 arithmetic (`open ≤ close < allotment < refund ≤ credit < listing`, and `listing ≤ close + 3`
 working days).
 
-**E-1 is counted, not hidden.** Check 4.3b reports the ten E-1 fields as a fixed, named exclusion
+**E-1 is counted, not hidden.** Check 4.3b reports the nine E-1 fields as a fixed, named exclusion
 alongside the round-1 yield, so "100% of document-owned fields" is always read against a visible
 list of what was excluded and why. If that list ever grows without a decision recorded here, check
 4.6 alarms.
@@ -2777,7 +2776,7 @@ So every check below obeys four rules:
 | `PULL-FROZEN` | `SUPPLIED` rows whose `chosen_document_id` has been superseded | **0** | any non-zero — the guard on §2.5 |
 | `PULL-ADMIN` | fields skipped for admin reasons with no live protection row | **0** | any non-zero — the guard on §2.7 |
 | `PULL-TYPE` | plan rows whose resolved ranks do not match the IPO's current type; IPOs with a null segment | 0 / 0 | any non-zero |
-| `E1-SOURCE` | for the ten E-1 fields, `field_sources.source` is never `DRHP` | true | any E-1 field written by the document path — **asserts the outcome, not the declared intent** |
+| `E1-SOURCE` | for the nine E-1 fields, `field_sources.source` is never `DRHP` | true | any E-1 field written by the document path — **asserts the outcome, not the declared intent** |
 | ~~`REREAD-RECEIPT`~~ | **RETIRED 2026-09-21 by OD-65** — measured a re-read loop that is now explicitly not wanted ("one IPO, one round of document read"), was never built (zero `reread` hits in `scraper/src`), and whose §3.2 receipt premise contradicts OD-32's 7-day file purge (#853). No replacement: the behaviour is withdrawn, not moved | n/a | n/a |
 | ~~`REREAD-VERDICT`~~ | **RETIRED 2026-09-21 by OD-65** — same reason as `REREAD-RECEIPT` | n/a | n/a |
 | ~~`REREAD-LATENCY`~~ | **RETIRED 2026-09-21 by OD-65** — same reason as `REREAD-RECEIPT`. Also mis-sized from the start: scoped from "578 leadManagers conflicts"; the real count after removing same-source rows, null-on-one-side rows and byte-identical values is **1 on staging, 2 on prod** | n/a | n/a |
@@ -4360,7 +4359,7 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 14 | `ipos.price_range_min` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A1 |  |
 | 15 | `ipos.price_range_max` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A1 |  |
 | 16 | `ipos.last_scraped_at` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 17 | `ipos.listing_exchanges` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
+| 17 | `ipos.listing_exchanges` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A15 | OD-129 (#938, F-197): left E-1. The offer document listing sentence ("proposed to be listed on ...") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union. |
 | 18 | `ipos.face_value` | D | DOC | BSE | NSE | DOC · BSE · CG | DOC · NSE · CG | A2 |  |
 | 19 | `ipos.allotment_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 20 | `ipos.company_description` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source |

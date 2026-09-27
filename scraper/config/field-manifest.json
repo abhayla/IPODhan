@@ -483,34 +483,41 @@
       "comparisonFamily": "MONEY"
     },
     "ipos.listing_exchanges": {
-      "class": "T",
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
       "rank": {
         "MAINBOARD": [
+          "DOC",
           "NSE",
-          "BSE",
-          "CHITTORGARH"
+          "BSE"
         ],
         "SME_BSE": [
+          "DOC",
           "BSE",
           "CHITTORGARH"
         ],
         "SME_NSE": [
+          "DOC",
           "NSE",
           "CHITTORGARH"
         ]
       },
       "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "OD-129 (#938, F-197): left E-1. The offer document listing sentence (\"proposed to be listed on ...\") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union."
+        },
         "NSE": {
           "capable": true,
-          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+          "reason": "OD-129 (#938, F-197): left E-1. The offer document listing sentence (\"proposed to be listed on ...\") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union."
         },
         "BSE": {
           "capable": true,
-          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+          "reason": "OD-129 (#938, F-197): left E-1. The offer document listing sentence (\"proposed to be listed on ...\") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union."
         },
         "CHITTORGARH": {
           "capable": true,
-          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+          "reason": "OD-129 (#938, F-197): left E-1. The offer document listing sentence (\"proposed to be listed on ...\") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union."
         }
       },
       "na": [],

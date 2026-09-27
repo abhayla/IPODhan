@@ -91,7 +91,7 @@ of defect — a cron script committed without the execute bit).
 | `PULL-FROZEN` | `SUPPLIED` rows whose `chosen_document_id` has been superseded | 0 | nightly, same script | P1 — guard on §2.5 |
 | `PULL-ADMIN` | fields skipped for admin reasons with no live protection row | 0 | nightly, same script | P1 — guard on §2.7 |
 | `PULL-TYPE` | resolved ranks match the IPO's current offering type; IPOs with a null segment | 0 / 0 | nightly, same script | P1 |
-| `E1-SOURCE` | for the ten E-1 timetable fields, `field_sources.source` is never `DRHP` | true | nightly (`audit-pull-writes.mjs`) | P0 — a document overwriting a timetable field is a direct violation of an owner decision (OD-2/E-1), not a data-quality nit |
+| `E1-SOURCE` | for the nine E-1 timetable fields, `field_sources.source` is never `DRHP` | true | nightly (`audit-pull-writes.mjs`) | P0 — a document overwriting a timetable field is a direct violation of an owner decision (OD-2/E-1), not a data-quality nit |
 | `REREAD-RECEIPT` | re-reads with a receipt hashed this cycle ÷ re-reads recorded | 1.0 | nightly (`audit-reread-loop.mjs`), depends on item 9 | P0 below 1.0 — this is the exact "confirming a wrong value forever" failure mode §3.2 names |
 | `REREAD-VERDICT` | share of re-reads ending `verified_against_document` over 7 days | below 0.95 | nightly, same script | P2 digest at/above 0.95 (a source "never wrong" is a source never actually consulted — worth watching, not paging) |
 | `REREAD-LATENCY` | oldest actionable disagreement with no re-read attempt | under 48h | nightly, same script | P1 over 48h, listed by IPO and field (never a bare count, per signal-ownership.md R1) |
@@ -171,7 +171,7 @@ cannot happen until they do.
 | Design section | Rule ids |
 |---|---|
 | §2.5.3 | R-064, R-065 |
-| §4 | R-092, R-093, R-094, R-096, R-190 |
+| §4 | R-092, R-093, R-252, R-096, R-190 |
 | §4.5 | R-097, R-099, R-145, R-149, R-150 |
 | §4.6 | R-171, R-172, R-173, R-174, R-175, R-176, R-245 |
 
