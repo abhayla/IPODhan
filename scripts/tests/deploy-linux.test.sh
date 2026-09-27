@@ -3071,6 +3071,44 @@ FAKERC30K
     fail "case 30k parity: cache-keys.ts namespaces [$NS_TS_30K] != deploy-linux.sh LEGACY_CACHE_KEY_NAMESPACES [$NS_SH_30K]"
   fi
   rm -rf "$STORE30K" "$STORE30K.t" "$RCLOG30K" "$FAKEBIN30K" "$ENVDIR30K"
+
+  # --- Case 30L (#719 round 1 review, MAJOR 2 — secret leak): a REDIS_URL
+  # --- WITH a password must not leave REDISCLI_AUTH exported in the calling
+  # --- shell after clear_legacy_unprefixed_cache_keys returns. That function
+  # --- runs on the AUTO-ROLLBACK path, in the SAME shell that then starts
+  # --- pm2 apps (rollback_start_web, the EXIT trap's resume_scraper) — an
+  # --- exported secret there would show up in `pm2 env <id>`. Checked in
+  # --- the SAME shell the function ran in (not the test's own shell), which
+  # --- is the shell that matters.
+  ENVDIR30L="$(mktemp -d)"
+  FAKEBIN30L="$(mktemp -d)"
+  printf 'REDIS_URL=redis://:FAKEPW@localhost:6379/0\n' > "$ENVDIR30L/web.env.local"  # secret-scan:allow (dummy test password FAKEPW, not a real credential)
+  printf 'REDIS_URL=redis://:FAKEPW@localhost:6379/0\n' > "$ENVDIR30L/scraper.env"  # secret-scan:allow (dummy test password FAKEPW, not a real credential)
+  printf '%s\n' '#!/bin/sh' 'if [ "$1" = "--scan" ] || [ "$1" = "-h" ]; then :; fi' 'exit 0' > "$FAKEBIN30L/redis-cli"
+  chmod +x "$FAKEBIN30L/redis-cli"
+  OUT30L="$(
+    log() { echo "LOG: $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=0
+    WEB_ENV_FILE="$ENVDIR30L/web.env.local"
+    SCRAPER_ENV_FILE="$ENVDIR30L/scraper.env"
+    PATH="$FAKEBIN30L:$PATH"
+    . "$SCRIPT_DIR/../lib/redis-cli-auth.sh"
+    eval "$NS_LINE_30K"; eval "$STATE_LINE_30K"
+    eval "$CLEAR_LEGACY_FN_30K"
+    clear_legacy_unprefixed_cache_keys >/dev/null 2>&1
+    if [ -n "${REDISCLI_AUTH+x}" ]; then
+      echo "LEAKED:REDISCLI_AUTH=$REDISCLI_AUTH"
+    else
+      echo "CLEAN"
+    fi
+  )"
+  if printf '%s' "$OUT30L" | grep -qx "CLEAN"; then
+    pass "case 30L: REDISCLI_AUTH is not exported into the calling shell after clear_legacy_unprefixed_cache_keys"
+  else
+    fail "case 30L: REDISCLI_AUTH leaked into the calling shell — got: $OUT30L"
+  fi
+  rm -rf "$ENVDIR30L" "$FAKEBIN30L"
 fi
 
 

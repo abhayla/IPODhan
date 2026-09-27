@@ -1571,6 +1571,28 @@ else
 fi
 rm -rf "$STUBDIR20H" "$RC_ARGV_LOG"
 
+# case 20j (#719 round 1 review, MAJOR 1): a password containing a literal
+# '@' (`redis://:FA@KEPW@host`) must split at the LAST '@', keeping the
+# WHOLE password. Splitting at the FIRST '@' (the round-1 bug) silently
+# truncated the password to the text before it.
+STUBDIR20J="$(mktemp -d)"
+RC_ARGV_LOG="$(mktemp)"
+printf '%s\n' \
+  '#!/bin/sh' \
+  '{ printf "%s" "$*"; printf "\n"; printf "AUTH_ENV=%s\n" "${REDISCLI_AUTH-<unset>}"; } >> "$RC_ARGV_LOG"' \
+  'echo 300' \
+  > "$STUBDIR20J/redis-cli"
+chmod +x "$STUBDIR20J/redis-cli"
+FAKE_REDIS_URL_20J="redis://:FA@KEPW@127.0.0.1:6379/2"  # secret-scan:allow (dummy test password FA@KEPW, not a real credential)
+OUT20J="$(PATH="$STUBDIR20J:$PATH" RC_ARGV_LOG="$RC_ARGV_LOG" REDIS_URL="$FAKE_REDIS_URL_20J" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" sh "$WAKE" data 2>&1)"
+if grep -qx -- "AUTH_ENV=FA@KEPW" "$RC_ARGV_LOG"; then
+  pass "case 20j: a password containing '@' splits at the LAST '@', keeping the whole password"
+else
+  fail "case 20j: expected AUTH_ENV=FA@KEPW (password split at the last '@'), got: $(cat "$RC_ARGV_LOG")"
+fi
+rm -rf "$STUBDIR20J" "$RC_ARGV_LOG"
+
 # case 20c: the actual committed script never INVOKES redis-cli with -t —
 # a static guard against the defect coming back, independent of the stub
 # cases above (which would also catch a *different* invalid flag). Comment

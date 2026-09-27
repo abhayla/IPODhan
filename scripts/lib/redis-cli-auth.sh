@@ -18,19 +18,28 @@
 #
 # THE FIX: never hand `-u URL` to redis-cli. Parse the URL ourselves, pass
 # --user only when the URL names a REAL (non-empty) username, and pass the
-# password via the REDISCLI_AUTH environment variable — never on the command
-# line, where it would show in a process listing and in the
-# "Using a password with '-a' or '-u'..." warning redis-cli prints for that
-# reason.
+# password to redis-cli via a REDISCLI_AUTH prefix on that ONE invocation
+# only (`REDISCLI_AUTH="$pw" redis-cli ...`) — never on the command line
+# (where it would show in a process listing and in the "Using a password
+# with '-a' or '-u'..." warning redis-cli prints for that reason), and never
+# `export`ed into the calling shell (round 1 review, MAJOR 2: an exported
+# REDISCLI_AUTH survives in that shell's environment for every process it
+# spawns afterwards — e.g. deploy-linux.sh's clear_legacy_unprefixed_cache_keys
+# runs on the AUTO-ROLLBACK path, before rollback_start_web and the
+# EXIT-trap's resume_scraper start pm2 apps from the SAME shell — and a
+# secret in a live process's env is visible to anyone who can run
+# `pm2 env <id>`).
 #
 # redis_cli_prepare_auth REDIS_URL parses the URL and sets, in the CALLING
 # shell (a plain sourced function call, not a subshell — the values must
 # survive the call):
 #   REDIS_CLI_HOST, REDIS_CLI_PORT (defaults 6379), REDIS_CLI_DB (may be
 #   empty — no `-n`), REDIS_CLI_USER (empty unless the URL names a real,
-#   non-empty user), and exports REDISCLI_AUTH (only when the URL carries a
-#   password — an unconditionally-exported empty REDISCLI_AUTH would itself
-#   make redis-cli send `AUTH ""`, the exact defect this file removes).
+#   non-empty user), REDIS_CLI_PASSWORD (may be empty — NEVER exported here;
+#   a caller that runs redis-cli directly, rather than through
+#   redis_cli_run, MUST pass it as a same-command prefix,
+#   `REDISCLI_AUTH="$REDIS_CLI_PASSWORD" redis-cli ...`, and MUST NOT export
+#   it or leave it set after the call).
 # Returns 0 on success. On a URL this cannot safely parse, prints the reason
 # on stderr (never the URL or password itself) and returns 1 — callers keep
 # their existing fail-open behaviour for that case.
@@ -40,30 +49,52 @@ redis_cli_prepare_auth() {
   REDIS_CLI_PORT="6379"
   REDIS_CLI_DB=""
   REDIS_CLI_USER=""
-  unset REDISCLI_AUTH 2>/dev/null
+  REDIS_CLI_PASSWORD=""
+
+  # Round 1 review, MINOR: a trailing (or leading) newline/space on the URL
+  # — e.g. from a `.env` line read with a trailing CRLF — would otherwise
+  # ride along into the last field parsed (the db number), producing
+  # `-n "1 "`, which redis-cli rejects. Trim leading/trailing whitespace
+  # (space/tab/CR/LF, [:space:]) before anything else.
+  _rca_url="${_rca_url#"${_rca_url%%[![:space:]]*}"}"
+  _rca_url="${_rca_url%"${_rca_url##*[![:space:]]}"}"
 
   if [ -z "$_rca_url" ]; then
     echo "[redis-cli-auth] empty REDIS_URL" >&2
     return 1
   fi
 
-  _rca_rest="${_rca_url#*://}"
-  if [ "$_rca_rest" = "$_rca_url" ]; then
-    echo "[redis-cli-auth] REDIS_URL has no scheme (redis:// or rediss://)" >&2
-    return 1
-  fi
+  case "$_rca_url" in
+    redis://*) _rca_rest="${_rca_url#redis://}" ;;
+    rediss://*)
+      # MINOR: `rediss://` (TLS) parsed the same as `redis://` would silently
+      # connect in PLAINTEXT — redis-cli needs an explicit `--tls` (and
+      # usually `-p 6380`) to actually use TLS. Every IPODhan REDIS_URL is
+      # `redis://` (no TLS), so refuse rather than guess at --tls/cert flags
+      # we have never had to support.
+      echo "[redis-cli-auth] REDIS_URL uses rediss:// (TLS); this helper only supports plain redis:// (refusing rather than silently connecting without TLS)" >&2
+      return 1
+      ;;
+    *)
+      echo "[redis-cli-auth] REDIS_URL has no scheme (redis:// or rediss://)" >&2
+      return 1
+      ;;
+  esac
 
   case "$_rca_rest" in
     */*) _rca_authority="${_rca_rest%%/*}"; _rca_path="/${_rca_rest#*/}" ;;
     *)   _rca_authority="$_rca_rest"; _rca_path="" ;;
   esac
 
-  # First '@' splits userinfo from host; a password containing a literal '@'
-  # (never our own case — the deployed passwords have none — but a real URL
-  # could) still resolves correctly because the LAST '@' is used for the
-  # host split below and the FIRST for userinfo — the standard two-pass trick.
+  # Round 1 review, MAJOR 1: split userinfo/host at the LAST '@', not the
+  # first — a password containing a literal '@' (e.g. `redis://:FA@KEPW@host`)
+  # must keep the whole `FA@KEPW` as the password. `${x%@*}` (single %,
+  # shortest suffix removed) cuts at the LAST '@'; `${x##*@}` (longest
+  # prefix removed) leaves whatever is after that SAME last '@'. Using the
+  # first '@' for userinfo previously silently dropped everything between
+  # the first and last '@' (REDISCLI_AUTH=FA instead of FA@KEPW).
   case "$_rca_authority" in
-    *@*) _rca_userinfo="${_rca_authority%%@*}"; _rca_hostport="${_rca_authority##*@}" ;;
+    *@*) _rca_userinfo="${_rca_authority%@*}"; _rca_hostport="${_rca_authority##*@}" ;;
     *)   _rca_userinfo=""; _rca_hostport="$_rca_authority" ;;
   esac
 
@@ -75,6 +106,14 @@ redis_cli_prepare_auth() {
   esac
 
   case "$_rca_hostport" in
+    "["*)
+      # MINOR: a bracketed IPv6 literal (`[::1]:6379`) needs the brackets
+      # stripped before -h, or redis-cli gets a host of literally `[::1]`.
+      # No IPODhan REDIS_URL uses IPv6, so refuse rather than parse it
+      # untested.
+      echo "[redis-cli-auth] REDIS_URL host is a bracketed IPv6 literal, which this helper does not parse; refusing rather than pass a malformed -h" >&2
+      return 1
+      ;;
     *:*) REDIS_CLI_HOST="${_rca_hostport%%:*}"; REDIS_CLI_PORT="${_rca_hostport##*:}" ;;
     *)   REDIS_CLI_HOST="$_rca_hostport" ;;
   esac
@@ -98,10 +137,7 @@ redis_cli_prepare_auth() {
   if [ -n "$_rca_user" ]; then
     REDIS_CLI_USER="$_rca_user"
   fi
-  if [ -n "$_rca_pw" ]; then
-    REDISCLI_AUTH="$_rca_pw"
-    export REDISCLI_AUTH
-  fi
+  REDIS_CLI_PASSWORD="$_rca_pw"
 
   _rca_db="${_rca_path#/}"
   _rca_db="${_rca_db%%\?*}"
@@ -114,12 +150,15 @@ redis_cli_prepare_auth() {
 # redis_cli_run TIMEOUT_SECONDS REDIS_URL CMD... — parses REDIS_URL via
 # redis_cli_prepare_auth above and runs `timeout TIMEOUT_SECONDS redis-cli
 # ... CMD...` with the resulting host/port/user/db/auth. Never passes -u or
-# the password on the command line. Returns 2 (outside redis-cli's own exit
-# codes, which are 0/1/124-from-timeout) when REDIS_URL itself could not be
-# parsed, so a caller can tell "redis-cli ran and failed" (a real Redis-side
-# defect, signal-ownership.md R6) apart from "the URL was unusable" (this
-# file's own defect) — mirroring how callers already distinguish
-# "redis-cli missing" from "TTL returned no usable value".
+# the password on the command line, and the password reaches redis-cli only
+# as a same-command REDISCLI_AUTH prefix — it is never exported, so it never
+# outlives this one call in the shell's own environment. Returns 2 (outside
+# redis-cli's own exit codes, which are 0/1/124-from-timeout) when REDIS_URL
+# itself could not be parsed, so a caller can tell "redis-cli ran and
+# failed" (a real Redis-side defect, signal-ownership.md R6) apart from
+# "the URL was unusable" (this file's own defect) — mirroring how callers
+# already distinguish "redis-cli missing" from "TTL returned no usable
+# value".
 redis_cli_run() {
   _rcr_timeout="$1"; _rcr_url="$2"; shift 2
   if ! redis_cli_prepare_auth "$_rcr_url"; then
@@ -138,5 +177,9 @@ redis_cli_run() {
       set -- -h "$REDIS_CLI_HOST" -p "$REDIS_CLI_PORT" "$@"
     fi
   fi
-  timeout "$_rcr_timeout" redis-cli "$@"
+  if [ -n "$REDIS_CLI_PASSWORD" ]; then
+    REDISCLI_AUTH="$REDIS_CLI_PASSWORD" timeout "$_rcr_timeout" redis-cli "$@"
+  else
+    timeout "$_rcr_timeout" redis-cli "$@"
+  fi
 }

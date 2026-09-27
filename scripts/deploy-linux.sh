@@ -785,9 +785,9 @@ clear_legacy_unprefixed_cache_keys() {
   fi
   # #719: never `-u "$redis_url"` — see release_scraper_cycle_locks above for
   # the empty-username defect this replaces. redis_cli_prepare_auth parses
-  # the URL into REDIS_CLI_HOST/PORT/USER/DB and exports REDISCLI_AUTH; an
-  # explicit REDIS_DB env value (read above) still overrides the URL's own
-  # db index, same as before this fix.
+  # the URL into REDIS_CLI_HOST/PORT/USER/DB/PASSWORD; an explicit REDIS_DB
+  # env value (read above) still overrides the URL's own db index, same as
+  # before this fix.
   if ! redis_cli_prepare_auth "$redis_url"; then
     warn "clear_legacy_unprefixed_cache_keys: could not parse REDIS_URL; pre-flip cache entries left to expire"
     return 0
@@ -796,11 +796,19 @@ clear_legacy_unprefixed_cache_keys() {
   local -a rc=(redis-cli -h "$REDIS_CLI_HOST" -p "$REDIS_CLI_PORT")
   [ -n "$REDIS_CLI_USER" ] && rc+=(--user "$REDIS_CLI_USER")
   [ -n "$REDIS_CLI_DB" ] && rc+=(-n "$REDIS_CLI_DB")
+  # Round 1 review, MAJOR 2: REDIS_CLI_PASSWORD is NEVER exported (see
+  # redis-cli-auth.sh) — this function runs on the AUTO-ROLLBACK path,
+  # before rollback_start_web and the EXIT trap's resume_scraper start pm2
+  # apps from this SAME shell, and an exported secret would ride into their
+  # environment (`pm2 env <id>`). Pass it only to each redis-cli child via
+  # `env`, never as a shell-wide export.
+  local -a auth_env=()
+  [ -n "$REDIS_CLI_PASSWORD" ] && auth_env=(REDISCLI_AUTH="$REDIS_CLI_PASSWORD")
 
   local ns key scanned=0 skipped=0 cleared=0 batch_out
   local found; found="$(mktemp)"
   for ns in $LEGACY_CACHE_KEY_NAMESPACES; do
-    timeout 120 "${rc[@]}" --scan --pattern "${ns}:*" 2>/dev/null >> "$found" || true
+    timeout 120 env "${auth_env[@]}" "${rc[@]}" --scan --pattern "${ns}:*" 2>/dev/null >> "$found" || true
   done
   local todelete; todelete="$(mktemp)"
   while IFS= read -r key; do
@@ -823,13 +831,13 @@ clear_legacy_unprefixed_cache_keys() {
   while IFS= read -r key; do
     batch+=("$key")
     if [ "${#batch[@]}" -ge 100 ]; then
-      batch_out="$(timeout 10 "${rc[@]}" UNLINK "${batch[@]}" 2>/dev/null || true)"
+      batch_out="$(timeout 10 env "${auth_env[@]}" "${rc[@]}" UNLINK "${batch[@]}" 2>/dev/null || true)"
       [[ "$batch_out" =~ ^[0-9]+$ ]] && cleared=$((cleared + batch_out))
       batch=()
     fi
   done < "$todelete"
   if [ "${#batch[@]}" -gt 0 ]; then
-    batch_out="$(timeout 10 "${rc[@]}" UNLINK "${batch[@]}" 2>/dev/null || true)"
+    batch_out="$(timeout 10 env "${auth_env[@]}" "${rc[@]}" UNLINK "${batch[@]}" 2>/dev/null || true)"
     [[ "$batch_out" =~ ^[0-9]+$ ]] && cleared=$((cleared + batch_out))
   fi
   rm -f "$found" "$todelete"
