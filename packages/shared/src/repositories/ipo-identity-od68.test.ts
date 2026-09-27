@@ -44,6 +44,12 @@ describe('identity decoration (OD-68 S1/S3)', () => {
     expect(stripIdentitySlugSuffix('acme-ofs-2026')).toBe('acme-ofs-2026');
   });
 
+  it('(d) OD-130: never strips an <open-year> or <open-year>-<segment> slug suffix either', () => {
+    expect(stripIdentitySlugSuffix('acme-industries-ltd-2027')).toBe('acme-industries-ltd-2027');
+    expect(stripIdentitySlugSuffix('acme-industries-ltd-2027-sme')).toBe('acme-industries-ltd-2027-sme');
+    expect(stripIdentitySlugSuffix('acme-industries-ltd-2027-mainboard')).toBe('acme-industries-ltd-2027-mainboard');
+  });
+
   it('strips page-title text and status tokens from a name, keeping real hyphens', () => {
     expect(stripIdentityNameDecoration('Rays of Belief Limited- For Profit Social Enterprise')).toBe('Rays of Belief Limited');
     expect(stripIdentityNameDecoration('Rays of Belief Ltd. O')).toBe('Rays of Belief Ltd.');
