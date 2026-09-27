@@ -46,14 +46,16 @@
 import '../../scripts/lib/alias-preflight-auto.mjs';
 import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   openRepairDb,
   queryCurrentDatabase,
+  updateRowsReturningChanges,
   writeLedgerFile,
   type ExecuteLike,
+  type RepairLedgerFieldChange,
 } from './lib/repair-tool';
 import { mapManifestSourceToScraperSource } from '../src/services/field-plan-walk.js';
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
@@ -133,6 +135,8 @@ export interface SuppliedPlanRow {
   fieldName: string;
   /** The manifest word the plan row recorded ('DOC' | 'BSE' | 'CHITTORGARH' | ...). */
   chosenSource: string;
+  /** The plan row's state as read (the read selects SUPPLIED only). */
+  state: string;
   /** `field_sources.source` for this exact (ipoId, tableName, rowKey, fieldName) — the enum value, or null if no provenance row exists at all. */
   provenanceSource: string | null;
 }
@@ -207,6 +211,64 @@ const SCRAPER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
  * forward: `chosen_source` disagreeing with what the consolidator actually
  * wrote provenance for.
  */
+/** Every column both re-queue UPDATEs set — each is ledgered with its true before/after (#457). */
+export const REQUEUE_COLUMNS = ['state', 'next_due_at', 'updated_at'] as const;
+const requeueSet = () => sql`state = ${REQUEUED_STATE}, next_due_at = now(), updated_at = now()`;
+
+/**
+ * #457 round 3: the EXHAUSTED re-queue write. Only rows that STILL have the
+ * absence-bug shape when locked (EXHAUSTED, no chosen_source, attempts <= 1 —
+ * the same test `decideRequeue` applied to the read) are written; every column
+ * the UPDATE sets comes back with the value it replaced, read under the lock.
+ */
+export async function requeueExhaustedPlanRows(
+  dbx: ExecuteLike,
+  ids: readonly string[]
+): Promise<{ writtenIds: string[]; changes: RepairLedgerFieldChange[] }> {
+  return updateRowsReturningChanges(dbx, {
+    table: 'ipo_field_plan',
+    ids,
+    guard: sql`state::text = ${RETIRED_STATE} AND chosen_source IS NULL AND attempts <= 1`,
+    set: requeueSet(),
+    columns: REQUEUE_COLUMNS,
+  });
+}
+
+/**
+ * #457 round 3: the --false-supplied write, per row. Written only while the row
+ * is STILL SUPPLIED with the same chosen_source AND its field_sources row still
+ * carries the provenance source the decision compared against; anything else
+ * changed since the read and is left for the next run to re-decide.
+ */
+export async function requeueFalseSuppliedPlanRows(
+  dbx: ExecuteLike,
+  rows: ReadonlyArray<Pick<SuppliedPlanRow, 'id' | 'chosenSource' | 'provenanceSource' | 'fieldName'>>
+): Promise<{ writtenIds: string[]; changes: RepairLedgerFieldChange[] }> {
+  const writtenIds: string[] = [];
+  const changes: RepairLedgerFieldChange[] = [];
+  for (const r of rows) {
+    const out = await updateRowsReturningChanges(dbx, {
+      table: 'ipo_field_plan',
+      ids: [r.id],
+      guard: sql`state::text = 'SUPPLIED'
+        AND chosen_source IS NOT DISTINCT FROM ${r.chosenSource}
+        AND EXISTS (
+          SELECT 1 FROM field_sources fs
+           WHERE fs.ipo_id = ipo_field_plan.ipo_id
+             AND fs.table_name = ipo_field_plan.table_name
+             AND fs.row_key = ipo_field_plan.row_key
+             AND fs.field_name = ${columnToCamelCase(r.fieldName)}
+             AND fs.source::text IS NOT DISTINCT FROM ${r.provenanceSource}
+        )`,
+      set: requeueSet(),
+      columns: REQUEUE_COLUMNS,
+    });
+    writtenIds.push(...out.writtenIds);
+    changes.push(...out.changes);
+  }
+  return { writtenIds, changes };
+}
+
 async function runFalseSupplied(cli: Cli, actual: string): Promise<void> {
   // Two-step, never a single SQL join on field_name: `ipo_field_plan.field_name`
   // is the manifest's raw SNAKE_CASE key (`issue_size`); `field_sources.field_name`
@@ -226,6 +288,7 @@ async function runFalseSupplied(cli: Cli, actual: string): Promise<void> {
       rowKey: schema.ipoFieldPlan.rowKey,
       fieldName: schema.ipoFieldPlan.fieldName,
       chosenSource: schema.ipoFieldPlan.chosenSource,
+      state: schema.ipoFieldPlan.state,
     })
     .from(schema.ipoFieldPlan)
     .leftJoin(schema.ipos, eq(schema.ipos.id, schema.ipoFieldPlan.ipoId))
@@ -257,15 +320,25 @@ async function runFalseSupplied(cli: Cli, actual: string): Promise<void> {
     `\n${TOOL} --false-supplied: ${requeue.length} to re-queue, ${held.length} held, of ${decisions.length} SUPPLIED plan rows in "${actual}".`
   );
 
+  // #457 round 3: an applied run writes FIRST (guarded, per row) and ledgers
+  // exactly what the UPDATE returned; a dry run ledgers the plan (state as read).
+  // next_due_at -> now(); state -> PENDING. attempts, chosen_source and every
+  // other chosen_* column are DELIBERATELY left as-is: they are the audit trail
+  // of what the walk wrongly recorded, and the row is about to be re-walked.
+  const written =
+    cli.apply && requeue.length > 0 ? await requeueFalseSuppliedPlanRows(db as ExecuteLike, requeue.map((d) => d.row)) : null;
+  const writtenSet = new Set(written?.writtenIds ?? []);
   const ledger = {
     tool: `${TOOL}--false-supplied`,
     mode: (cli.apply ? 'apply' : 'dry-run') as 'apply' | 'dry-run',
     generatedAt: new Date().toISOString(),
-    changes: requeue.map((d) => ({ table: 'ipo_field_plan', rowKey: d.row.id, field: 'state', before: 'SUPPLIED', after: REQUEUED_STATE })),
+    changes: cli.apply
+      ? written?.changes ?? []
+      : requeue.map((d) => ({ table: 'ipo_field_plan', rowKey: d.row.id, field: 'state', before: d.row.state, after: REQUEUED_STATE })),
     database: actual,
     apply: cli.apply,
     at: new Date().toISOString(),
-    requeued: requeue.map((d) => ({
+    requeued: requeue.filter((d) => !cli.apply || writtenSet.has(d.row.id)).map((d) => ({
       planRowId: d.row.id,
       ipoId: d.row.ipoId,
       ipoSlug: d.row.ipoSlug,
@@ -300,18 +373,8 @@ async function runFalseSupplied(cli: Cli, actual: string): Promise<void> {
     return;
   }
 
-  // next_due_at -> now(); state -> PENDING. attempts, chosen_source and every
-  // other chosen_* column are DELIBERATELY left as-is here: they are the
-  // audit trail of what the walk wrongly recorded, and the row is about to
-  // be re-walked, which will overwrite chosen_source on its own next SUPPLIED
-  // (or leave it stale-but-harmless if the next attempt lands CHECK_FAILED).
-  await (db as any)
-    .update(schema.ipoFieldPlan)
-    .set({ state: REQUEUED_STATE, nextDueAt: sql`now()`, updatedAt: sql`now()` })
-    .where(inArray(schema.ipoFieldPlan.id, requeue.map((d) => d.row.id)));
-
-  console.log(`${TOOL} --false-supplied: reset ${requeue.length} plan rows to ${REQUEUED_STATE}:`);
-  for (const d of requeue) {
+  console.log(`${TOOL} --false-supplied: reset ${writtenSet.size} of ${requeue.length} plan rows to ${REQUEUED_STATE} (a row changed since the read is left alone):`);
+  for (const d of requeue.filter((x) => writtenSet.has(x.row.id))) {
     console.log(`  ${d.row.ipoSlug ?? d.row.ipoId} :: ${d.row.tableName}.${d.row.fieldName}`);
   }
 }
@@ -371,17 +434,25 @@ async function main(): Promise<void> {
       `\n${TOOL}: ${requeue.length} to re-queue, ${held.length} held, of ${decisions.length} ${RETIRED_STATE} plan rows in "${actual}".`
     );
 
+    // #457 round 3: an applied run writes FIRST (guarded) and ledgers exactly
+    // what the UPDATE returned; a dry run ledgers the plan. attempts is
+    // deliberately NOT touched — see the header.
+    const written =
+      cli.apply && requeue.length > 0 ? await requeueExhaustedPlanRows(db as ExecuteLike, requeue.map((d) => d.row.id)) : null;
+    const writtenSet = new Set(written?.writtenIds ?? []);
     const ledger = {
       tool: TOOL,
       mode: (cli.apply ? 'apply' : 'dry-run') as 'apply' | 'dry-run',
       generatedAt: new Date().toISOString(),
-      changes: requeue.map((d) => ({ table: 'ipo_field_plan', rowKey: d.row.id, field: 'state', before: d.row.state, after: REQUEUED_STATE })),
+      changes: cli.apply
+        ? written?.changes ?? []
+        : requeue.map((d) => ({ table: 'ipo_field_plan', rowKey: d.row.id, field: 'state', before: d.row.state, after: REQUEUED_STATE })),
       database: actual,
       apply: cli.apply,
       at: new Date().toISOString(),
       // The BACKUP: each row's prior state, so an applied run can be
       // reversed from this file alone.
-      requeued: requeue.map((d) => ({
+      requeued: requeue.filter((d) => !cli.apply || writtenSet.has(d.row.id)).map((d) => ({
         planRowId: d.row.id,
         ipoId: d.row.ipoId,
         ipoSlug: d.row.ipoSlug,
@@ -416,15 +487,8 @@ async function main(): Promise<void> {
       return;
     }
 
-    // attempts is deliberately NOT touched — see the header. chosen_* columns
-    // are already null for every row this filter selects.
-    await (db as any)
-      .update(schema.ipoFieldPlan)
-      .set({ state: REQUEUED_STATE, nextDueAt: sql`now()`, updatedAt: sql`now()` })
-      .where(inArray(schema.ipoFieldPlan.id, requeue.map((d) => d.row.id)));
-
-    console.log(`${TOOL}: reset ${requeue.length} plan rows to ${REQUEUED_STATE}:`);
-    for (const d of requeue) {
+    console.log(`${TOOL}: reset ${writtenSet.size} of ${requeue.length} plan rows to ${REQUEUED_STATE} (a row changed since the read is left alone):`);
+    for (const d of requeue.filter((x) => writtenSet.has(x.row.id))) {
       console.log(`  ${d.row.ipoSlug ?? d.row.ipoId} :: ${d.row.tableName}.${d.row.fieldName}`);
     }
   } finally {

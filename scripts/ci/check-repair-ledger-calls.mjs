@@ -13,7 +13,7 @@
 // AST (never-hand-roll-a-lexer, #694).
 //
 // Rules, over scraper/scripts/**/*.ts:
-//   R1 an `as unknown` / `as any` anywhere inside a writeLedgerFile(...) argument;
+//   R1 an `as unknown` / `as any` / `as never` anywhere inside a writeLedgerFile(...) argument;
 //   R2 in a file that references writeLedgerFile, a parameter named `payload`
 //      typed `unknown` or `any` (the passthrough hole);
 //   R3 a file excluded from tsconfig.scripts.json that calls writeLedgerFile
@@ -52,7 +52,8 @@ export function checkSource(fileName, source, { excludedFromTsc = false } = {}) 
   const at = (node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
 
   const visitArg = (node) => {
-    if (ts.isAsExpression(node) && isLooseType(node.type)) {
+    // #457 round 3: `as never` is assignable to every parameter type, so it hides the shape too.
+    if (ts.isAsExpression(node) && (isLooseType(node.type) || node.type.kind === ts.SyntaxKind.NeverKeyword)) {
       out.push({ line: at(node), rule: 'R1', message: `\`as ${node.type.getText(sf)}\` inside a ${CALLEE}() argument hides the payload's shape from tsc` });
     }
     ts.forEachChild(node, visitArg);

@@ -56,7 +56,8 @@ import path from 'node:path';
 const FAKE_USABLE_ENV: NodeJS.ProcessEnv = { DATABASE_URL: 'postgresql://user:pw@localhost:5432/fake_test_db' }; // secret-scan:allow (dummy fixture)
 
 function mockTx(existingSource: string | null) {
-  const limit = vi.fn().mockResolvedValue(existingSource ? [{ source: existingSource }] : []);
+  // #457 round 3: upsertFieldSource reads the prior row with .limit(1).for('update')
+  const limit = vi.fn(() => { const r = existingSource ? [{ source: existingSource }] : []; return Object.assign(Promise.resolve(r), { for: vi.fn().mockResolvedValue(r) }); });
   const where = vi.fn().mockReturnValue({ limit });
   const from = vi.fn().mockReturnValue({ where });
   const select = vi.fn().mockReturnValue({ from });
@@ -1150,5 +1151,28 @@ describe('#457 round 2: writeLedgerFile validates the shape at runtime (an untyp
       untyped({ tool: 't', mode: 'apply', generatedAt: 'x', changes: [{ table: 'ipos', rowKey: 'a', field: 'slug', after: 'b' }] })
     ).toThrow(/no `before`/);
     expect(fsm.existsSync(file)).toBe(false);
+  });
+});
+
+describe('#457 round 3: undefined before/after is refused (JSON.stringify drops it, so the file would lose it)', () => {
+  it('writeLedgerFile throws on `before: undefined` and on `after: undefined`, writing nothing', async () => {
+    const { writeLedgerFile } = await import('../../../scripts/lib/repair-tool.js');
+    const file = path.join(tmpdir(), `ledger-457-r3-${process.pid}.json`);
+    const base = { tool: 't', mode: 'apply' as const, generatedAt: 'x' };
+    expect(() =>
+      writeLedgerFile(file, { ...base, changes: [{ table: 'ipos', rowKey: 'a', field: 'slug', before: undefined, after: 'b' }] })
+    ).toThrow(/no `before`/);
+    expect(() =>
+      writeLedgerFile(file, { ...base, changes: [{ table: 'ipos', rowKey: 'a', field: 'slug', before: 'a', after: undefined }] })
+    ).toThrow(/no `after`/);
+    expect(() => readFileSync(file)).toThrow();
+  });
+
+  it('diffToLedgerEntries refuses a field present in only one snapshot (a mismatched read, not a null)', async () => {
+    const { diffToLedgerEntries } = await import('../../../scripts/lib/repair-tool.js');
+    expect(() => diffToLedgerEntries('ipos', 'a', { slug: 'x' }, { slug: 'y', updated_at: 'z' })).toThrow(/only one of the before\/after/);
+    expect(diffToLedgerEntries('ipos', 'a', { slug: 'x', n: null }, { slug: 'y', n: null })).toEqual([
+      { table: 'ipos', rowKey: 'a', field: 'slug', before: 'x', after: 'y' },
+    ]);
   });
 });

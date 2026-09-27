@@ -28,6 +28,8 @@ test('R2: a passthrough slot typed `payload: unknown` is refused', () => {
 test('R1: an `as unknown as` cast inside the call is refused', () => {
   assert.deepEqual(rules(`writeLedgerFile(p, ledger as unknown as RepairLedgerPayload);`), ['R1']);
   assert.deepEqual(rules(`writeLedgerFile(p, ledger as any);`), ['R1']);
+  assert.deepEqual(rules(`writeLedgerFile(p, ledger as never);`), ['R1']);
+  assert.deepEqual(rules(`writeLedgerFile(p, { tool: 't', mode: 'apply', generatedAt: 'x', changes: rows as never });`), ['R1']);
   assert.deepEqual(rules(`writeLedgerFile(p, ledger);`), []);
 });
 

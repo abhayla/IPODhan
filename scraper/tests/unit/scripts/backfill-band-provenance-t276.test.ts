@@ -138,7 +138,8 @@ describe('buildDataLineage (#165)', () => {
  */
 describe('upsertBandFieldSourceProvenance (#165 F1 — red-then-green)', () => {
   function mockTx(existingSource: string | null) {
-    const limit = vi.fn().mockResolvedValue(existingSource ? [{ source: existingSource }] : []);
+    // #457 round 3: upsertFieldSource reads the prior row with .limit(1).for('update')
+    const limit = vi.fn(() => { const r = existingSource ? [{ source: existingSource }] : []; return Object.assign(Promise.resolve(r), { for: vi.fn().mockResolvedValue(r) }); });
     const where = vi.fn().mockReturnValue({ limit });
     const from = vi.fn().mockReturnValue({ where });
     const select = vi.fn().mockReturnValue({ from });

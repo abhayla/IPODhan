@@ -32,7 +32,8 @@ import { Pool } from 'pg';
 import { join } from 'node:path';
 import { sanitizeLeadManagers } from '../src/utils/validators.js';
 import { parseBseParties } from '../src/services/bse-party-parser.js';
-import { recordDiscoveredLeadManagers } from '../src/services/data-persister.js';
+import { recordDiscoveredLeadManagers, type TransactionalIposWriter } from '../src/services/data-persister.js';
+import { sql } from 'drizzle-orm';
 import { db, resolveDiscreteDbParams } from '@ipodhan/shared/db';
 import { getRedisClient, IPORepository } from '@ipodhan/shared';
 import {
@@ -125,25 +126,47 @@ function getIpoRepository(dbName: string): IPORepository {
 const repairDbGuard: ExecuteLike = db;
 
 /**
- * #457 round 2: the two rows `recordDiscoveredLeadManagers` writes — the
- * `ipos` row (lead_managers, updated_at) and its `field_sources` provenance
- * row (inserted, or upserted over an existing one) — read as text/json so a
- * restore is exact. Taken immediately before and after the write; the ledger is
- * their diff, so it holds only what actually changed.
+ * #457: the two rows `recordDiscoveredLeadManagers` writes — the `ipos` row
+ * (lead_managers, updated_at) and its `field_sources` provenance row (inserted,
+ * or upserted over an existing one) — read as text/json so a restore is exact.
+ * Round 3: read INSIDE the write's own transaction, the `before` read under
+ * FOR UPDATE, so the ledger's before is the value the write actually replaced.
  */
-async function snapshotLeadManagerRows(ipoId: string): Promise<{ ipo: Record<string, unknown> | null; fs: Record<string, unknown> | null }> {
-  const ipo = await pool.query(
-    `select lead_managers, updated_at::text as updated_at from ipos where id = $1`,
-    [ipoId]
-  );
-  const fs = await pool.query(
-    `select id::text as id, source::text as source, confidence, previous_value, previous_source::text as previous_source,
-            data_lineage, updated_at::text as updated_at, updated_by
-       from field_sources
-      where ipo_id = $1 and table_name = 'ipos' and row_key = '' and field_name = 'leadManagers'`,
-    [ipoId]
-  );
-  return { ipo: ipo.rows[0] ?? null, fs: fs.rows[0] ?? null };
+type Snapshot = { ipo: Record<string, unknown> | null; fs: Record<string, unknown> | null };
+async function snapshotLeadManagerRows(q: ExecuteLike, ipoId: string, lock: boolean): Promise<Snapshot> {
+  const forUpdate = lock ? sql` for update` : sql``;
+  const rows = (r: unknown) => ((r as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<string, unknown>[];
+  const ipo = await q.execute(sql`select lead_managers, updated_at::text as updated_at from ipos where id = ${ipoId}${forUpdate}`);
+  const fs = await q.execute(sql`
+    select id::text as id, source::text as source, confidence, previous_value, previous_source::text as previous_source,
+           data_lineage, updated_at::text as updated_at, updated_by
+      from field_sources
+     where ipo_id = ${ipoId} and table_name = 'ipos' and row_key = '' and field_name = 'leadManagers'${forUpdate}`);
+  return { ipo: rows(ipo)[0] ?? null, fs: rows(fs)[0] ?? null };
+}
+
+/**
+ * Wraps the shared drizzle handle so `recordDiscoveredLeadManagers`'s own
+ * transaction takes the before-snapshot (locked) first and the after-snapshot
+ * last — both on the write's connection, inside the write's transaction.
+ */
+export function snapshottingWriter(
+  base: TransactionalIposWriter,
+  ipoId: string,
+  sink: { before?: Snapshot; after?: Snapshot }
+): TransactionalIposWriter {
+  return {
+    update: base.update.bind(base),
+    select: base.select.bind(base),
+    insert: base.insert.bind(base),
+    transaction: <T>(fn: (tx: TransactionalIposWriter) => Promise<T>) =>
+      base.transaction(async (tx) => {
+        sink.before = await snapshotLeadManagerRows(tx as unknown as ExecuteLike, ipoId, true);
+        const out = await fn(tx);
+        sink.after = await snapshotLeadManagerRows(tx as unknown as ExecuteLike, ipoId, false);
+        return out;
+      }),
+  };
 }
 
 export function leadManagerLedgerEntries(
@@ -244,16 +267,17 @@ async function main() {
       // guard is evaluated by Postgres inside the UPDATE, so a concurrent
       // scraper cycle's write always wins over this repair — no separate
       // pre-read needed here.
-      const before = await snapshotLeadManagerRows(row.id as string);
+      const snap: { before?: Snapshot; after?: Snapshot } = {};
       const { written: didWrite } = await recordDiscoveredLeadManagers(
         getIpoRepository(dbName),
         row.id as string,
         rawNames,
-        'BSE'
+        'BSE',
+        snapshottingWriter(db as unknown as TransactionalIposWriter, row.id as string, snap)
       );
       if (didWrite) {
         written++;
-        changes.push(...leadManagerLedgerEntries(row.id as string, before, await snapshotLeadManagerRows(row.id as string)));
+        changes.push(...leadManagerLedgerEntries(row.id as string, snap.before!, snap.after!));
       }
       else console.log(`    (no-op: ${row.slug}.lead_managers was filled concurrently — write-once guard held)`);
     }
