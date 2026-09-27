@@ -5,7 +5,7 @@
  *   - scraper-log-repository.ts findAll (paginated createdAt)
  *   - gmp-repository.ts findByIPO (timestamp + limit)
  *   - subscription-repository.ts findByIPO (timestamp + limit)
- *   - review-repository.ts findByIpoId (publishedDate + limit)
+ *   - the review repository's findByIpoId (retired by OD-125/#167)
  *   - data-conflicts-repository.ts findUnresolved (detectedAt + optional limit)
  *
  * Each asserts the built orderBy() call carries a secondary, unique column

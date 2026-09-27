@@ -27,7 +27,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // fixing it — lane C's open slice — must not have its file touched by this
 // PR. Remove an entry the same day its PR lands; a stale entry here hides a
 // real regression the next time someone edits that file.
-//   (2026-09-26, OD-125/#167: scraper/src/jobs/ipo-reviews-job.ts was
+//   (2026-09-26, OD-125/#167: the review scraper job was
 //   retired, not fixed — the file no longer exists, so its exemption is
 //   removed rather than left dangling.)
 const KNOWN_PENDING_EXEMPTIONS = new Set([]);

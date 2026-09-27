@@ -1,7 +1,7 @@
 // #488 self-test: mutation-proof — drives the real check-drizzle-where-chaining.mjs
 // binary against fixture files copied verbatim from the four known-defect
 // files' PRE-FIX shape (registrar-repository.ts x2 copies, market-holiday-
-// repository.ts, backfill-ipo-reviews.ts) so a weakened or deleted rule turns
+// repository.ts, the retired review backfill shape) so a weakened or deleted rule turns
 // this test red before the gate itself can silently stop catching it. Also
 // proves the FIXED shape (current working tree) is clean, and that the two
 // known-safe shapes (an if/else with no base filter, and the lane-C-pending
@@ -148,14 +148,14 @@ test('PRE-FIX fixtures: all four known-defect shapes are flagged (RED)', () => {
     writeFile(root, join('packages', 'shared', 'src', 'repositories', 'registrar-repository.ts'), REGISTRAR_PRE_FIX);
     writeFile(root, join('web', 'lib', 'repositories', 'registrar-repository.ts'), REGISTRAR_PRE_FIX);
     writeFile(root, join('packages', 'shared', 'src', 'repositories', 'market-holiday-repository.ts'), MARKET_HOLIDAY_PRE_FIX);
-    writeFile(root, join('scraper', 'scripts', 'backfill-ipo-reviews.ts'), BACKFILL_IPO_REVIEWS_PRE_FIX);
+    writeFile(root, join('scraper', 'scripts', 'backfill-where-chain-fixture.ts'), BACKFILL_IPO_REVIEWS_PRE_FIX);
 
     const result = runCheck(root);
     assert.equal(result.status, 1, `expected exit 1, got ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
     const out = result.stdout + result.stderr;
     assert.match(out, /registrar-repository\.ts/);
     assert.match(out, /market-holiday-repository\.ts/);
-    assert.match(out, /backfill-ipo-reviews\.ts/);
+    assert.match(out, /backfill-where-chain-fixture\.ts/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

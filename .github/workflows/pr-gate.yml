@@ -414,7 +414,7 @@ jobs:
         # drives the real check-drizzle-where-chaining.mjs binary against
         # fixtures copied from the pre-fix shape of the known-defect files
         # (registrar-repository.ts, market-holiday-repository.ts,
-        # backfill-ipo-reviews.ts), so a weakened or deleted rule turns this
+        # the retired review backfill shape), so a weakened or deleted rule turns this
         # red before the gate below can silently stop catching it.
         run: node --test scripts/ci/tests/check-drizzle-where-chaining.test.mjs
 
