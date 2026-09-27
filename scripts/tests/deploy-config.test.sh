@@ -989,10 +989,13 @@ STUBEOF
   OUT="$(run_deploy "$FOREIGN_REPO" "$ROOT" --slot staging --sha "$FOREIGN_SHA" --reason "case19 foreign origin" 2>&1)"
   RC=$?
 
-  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -q "repo-root" && printf '%s' "$OUT" | grep -q "unrelated-fork"; then
-    pass "case19: a foreign-origin repo is refused by the repo-root identity check, naming the wrong origin"
+  # Round 3 (#752): the refusal no longer echoes ANY part of the origin
+  # (it is environment-controlled and can carry a credential); it prints a
+  # fixed placeholder instead.
+  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -q "repo-root" && printf '%s' "$OUT" | grep -qF "<origin withheld: not the IPODhan remote>" && ! printf '%s' "$OUT" | grep -q "unrelated-fork"; then
+    pass "case19: a foreign-origin repo is refused by the repo-root identity check, origin withheld"
   else
-    fail "case19: expected a repo-root refusal naming the foreign origin, got rc=$RC ($OUT)"
+    fail "case19: expected a repo-root refusal with the withheld-origin placeholder, got rc=$RC ($OUT)"
   fi
 
   if [ ! -e "$ROOT/shared/config/staging/field-manifest.json" ]; then
@@ -1082,10 +1085,10 @@ STUBEOF
   OUT2="$(run_deploy "$FOREIGN_CRED_REPO" "$ROOT2" --slot staging --sha "$FOREIGN_CRED_SHA" --reason "case21b credentialed foreign origin" 2>&1)"
   RC2=$?
 
-  if [ "$RC2" -ne 0 ] && printf '%s' "$OUT2" | grep -q "unrelated-fork"; then
-    pass "case21b: a refused foreign origin still names the repo in the refusal"
+  if [ "$RC2" -ne 0 ] && printf '%s' "$OUT2" | grep -qF "<origin withheld: not the IPODhan remote>"; then
+    pass "case21b: a refused foreign origin is refused with the withheld-origin placeholder"
   else
-    fail "case21b: expected a repo-root refusal naming the foreign repo, got rc=$RC2 ($OUT2)"
+    fail "case21b: expected a repo-root refusal with the withheld-origin placeholder, got rc=$RC2 ($OUT2)"
   fi
 
   if ! printf '%s' "$OUT2" | grep -q "ghs_"; then
@@ -1140,7 +1143,7 @@ STUBEOF
   FORK_SHA="$(cd "$FORK_REPO" && git rev-parse HEAD)"
   OUT_FORK="$(run_deploy "$FORK_REPO" "$(fresh_dir)" --slot staging --sha "$FORK_SHA" --reason "case22 negative: different repo name" 2>&1)"
   RC_FORK=$?
-  if [ "$RC_FORK" -ne 0 ] && printf '%s' "$OUT_FORK" | grep -q "IPODhan-fork"; then
+  if [ "$RC_FORK" -ne 0 ] && printf '%s' "$OUT_FORK" | grep -qF "<origin withheld: not the IPODhan remote>"; then
     pass "case22: a different repo name (IPODhan-fork) is still refused"
   else
     fail "case22: expected IPODhan-fork to be refused as a foreign repo, got rc=$RC_FORK ($OUT_FORK)"
@@ -1192,6 +1195,202 @@ STUBEOF
     pass "case23: the real repo's manifest (v2) was deployed, not the decoy's"
   else
     fail "case23: wrong/no manifest deployed with GIT_OBJECT_DIRECTORY/GIT_COMMON_DIR leaked ($(cat "$MANIFEST" 2>&1))"
+  fi
+}
+
+# ---------------------------------------------------------------- case 24
+# #752 round 3 (built on the independent review of 2026-09-27): the origin
+# URL is environment-controlled and can carry a credential in many shapes.
+# Rounds 1-2 printed a deny-list-REDACTED copy, which leaked on 4 of 12
+# probes (leading whitespace, scp-like 'u:S@host:path', '?token=S', a '/'
+# in the password). deploy-config.sh now never prints any part of it: a
+# match logs the constant 'github.com/abhayla/IPODhan', anything else the
+# fixed placeholder. Every row below carries the fake secret FAKESECRET and
+# asserts 'grep -c FAKESECRET' = 0 on stdout, stderr, and every file the
+# run wrote under $ROOT (deploy-config.log, CONFIG_SHA, manifest) and the
+# cap state dir. MUST-ACCEPT rows (legit forms, some with no secret at all)
+# stop the guard from passing by refusing everything.
+ORIGIN_CONST="origin github.com/abhayla/IPODhan)"
+ORIGIN_PLACEHOLDER="<origin withheld: not the IPODhan remote>"
+
+# build_repo_with_raw_origin <url> [extra git-config command...] — sets
+# remote.origin.url via 'git config' (not 'git remote add', which refuses
+# some shapes) so the raw value reaches the script byte for byte.
+build_repo_with_raw_origin() {
+  local url="$1" repo
+  shift
+  repo="$(build_repo_with_origin "https://github.com/abhayla/IPODhan.git")"
+  (
+    cd "$repo"
+    git config --replace-all remote.origin.url "$url"
+    while [ $# -gt 0 ]; do
+      eval "$1"
+      shift
+    done
+  ) >/dev/null 2>&1
+  printf '%s' "$repo"
+}
+
+# leak_count <out> <err> <root> <state> — total FAKESECRET hits on every sink.
+leak_count() {
+  local n=0 c f
+  for f in "$1" "$2"; do
+    c="$(grep -c FAKESECRET "$f" 2>/dev/null || true)"
+    n=$(( n + ${c:-0} ))
+  done
+  for f in "$3" "$4"; do
+    c="$(grep -r FAKESECRET "$f" 2>/dev/null | wc -l)"
+    n=$(( n + c ))
+  done
+  printf '%s' "$n"
+}
+
+# check_origin_row <accept|refuse> <label> <repo>
+check_origin_row() {
+  local expect="$1" label="$2" repo="$3" sha root state out err rc leaks
+  sha="$(cd "$repo" && git rev-parse HEAD)"
+  root="$(fresh_dir)"; state="$(fresh_dir)"; out="$(fresh_dir)/out"; err="$(fresh_dir)/err"
+  DEPLOY_CONFIG_STATE_DIR="$state" run_deploy "$repo" "$root" --slot staging --sha "$sha" --reason "case24 $label" >"$out" 2>"$err"
+  rc=$?
+  leaks="$(leak_count "$out" "$err" "$root" "$state")"
+  if [ "$leaks" -eq 0 ]; then
+    pass "case24 [$label]: FAKESECRET count 0 on stdout, stderr, log and state"
+  else
+    fail "case24 [$label]: FAKESECRET leaked $leaks time(s) (rc=$rc)"
+  fi
+  if [ "$expect" = "accept" ]; then
+    if [ "$rc" -eq 0 ] && grep -qF "$ORIGIN_CONST" "$out" && [ -f "$root/shared/config/staging/field-manifest.json" ]; then
+      pass "case24 [$label]: accepted, logged the constant origin"
+    else
+      fail "case24 [$label]: expected accept + constant origin, got rc=$rc (stderr: $(grep -v FAKESECRET "$err"))"
+    fi
+  else
+    if [ "$rc" -ne 0 ] && grep -qF "$ORIGIN_PLACEHOLDER" "$err" && [ ! -e "$root/shared/config/staging/field-manifest.json" ]; then
+      pass "case24 [$label]: refused with the withheld-origin placeholder, nothing written"
+    else
+      fail "case24 [$label]: expected refusal + placeholder, got rc=$rc (stderr: $(grep -v FAKESECRET "$err"))"
+    fi
+  fi
+}
+
+{
+  # MUST-ACCEPT: legitimate forms, no secret.
+  check_origin_row accept "clean https .git"      "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git")"
+  check_origin_row accept "clean https no .git"   "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan")"
+  check_origin_row accept "clean ssh://"          "$(build_repo_with_raw_origin "ssh://git@github.com/abhayla/IPODhan.git")"
+  check_origin_row accept "clean scp-like"        "$(build_repo_with_raw_origin "git@github.com:abhayla/IPODhan.git")"
+  check_origin_row accept "clean mixed case"      "$(build_repo_with_raw_origin "HTTPS://GitHub.COM/ABHAYLA/IPODHAN.GIT")"
+  # MUST-ACCEPT carrying the secret: accepted, constant logged, secret never printed.
+  check_origin_row accept "https user:pass"       "$(build_repo_with_raw_origin "https://x-access-token:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row accept "token as username"     "$(build_repo_with_raw_origin "https://FAKESECRET@github.com/abhayla/IPODhan")"
+  check_origin_row accept "ssh:// userinfo"       "$(build_repo_with_raw_origin "ssh://git:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row accept "git+ssh userinfo"      "$(build_repo_with_raw_origin "git+ssh://git:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row accept "scp-like u:S@host"     "$(build_repo_with_raw_origin "u:FAKESECRET@github.com:abhayla/IPODhan")"
+  check_origin_row accept "mixed-case scheme"     "$(build_repo_with_raw_origin "HtTpS://u:FAKESECRET@GitHub.com/abhayla/ipodhan.git/")"
+  check_origin_row accept "percent-encoded @ :"   "$(build_repo_with_raw_origin "https://u%40x%3Ay:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row accept "leading/trailing ws"   "$(build_repo_with_raw_origin "  https://u:FAKESECRET@github.com/abhayla/IPODhan.git  ")"
+  check_origin_row accept "insteadOf adds cred"   "$(build_repo_with_raw_origin "gh:abhayla/IPODhan.git" 'git config url."https://u:FAKESECRET@github.com/".insteadOf gh:')"
+  # MUST-REFUSE: every other shape, each carrying the secret.
+  check_origin_row refuse "foreign repo"          "$(build_repo_with_raw_origin "https://u:FAKESECRET@github.com/someoneelse/unrelated-fork.git")"
+  check_origin_row refuse "similar repo name"     "$(build_repo_with_raw_origin "https://u:FAKESECRET@github.com/abhayla/IPODhan-fork")"
+  check_origin_row refuse "slash in password"     "$(build_repo_with_raw_origin "https://u:FAKE/FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row refuse "query token"           "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git?token=FAKESECRET")"
+  check_origin_row refuse "fragment token"        "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git#FAKESECRET")"
+  check_origin_row refuse "http scheme"           "$(build_repo_with_raw_origin "http://u:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row refuse "file scheme"           "$(build_repo_with_raw_origin "file://u:FAKESECRET@localhost/abhayla/IPODhan.git")"
+  check_origin_row refuse "IPv6 host"             "$(build_repo_with_raw_origin "https://u:FAKESECRET@[::1]/abhayla/IPODhan.git")"
+  check_origin_row refuse "lookalike host"        "$(build_repo_with_raw_origin "https://u:FAKESECRET@github.com.evil.example/abhayla/IPODhan.git")"
+  check_origin_row refuse "plain path"            "$(build_repo_with_raw_origin "/srv/FAKESECRET/abhayla/IPODhan")"
+  check_origin_row refuse "embedded newline"      "$(build_repo_with_raw_origin "$(printf 'https://github.com/abhayla/IPODhan.git\nFAKESECRET')")"
+  check_origin_row refuse "two origin urls"       "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git" 'git config --add remote.origin.url "https://u:FAKESECRET@evil.example/x.git"')"
+  check_origin_row refuse "insteadOf to foreign"  "$(build_repo_with_raw_origin "https://github.com/abhayla/IPODhan.git" 'git config url."https://u:FAKESECRET@evil.example/".insteadOf https://github.com/')"
+}
+
+# ---------------------------------------------------------------- case 25
+# #752 round 3, fetch sink: 'git fetch origin main' failures print the
+# remote URL (with any credential) on stderr, and the refusal used to embed
+# that stderr verbatim. A stub git fails the fetch with FAKESECRET on both
+# streams; the refusal must carry git's exit code and none of its output.
+{
+  REPO="$(build_repo_with_origin "https://github.com/abhayla/IPODhan.git")"
+  SHA="$(cd "$REPO" && git rev-parse HEAD)"
+  ROOT="$(fresh_dir)"; STATE="$(fresh_dir)"; O="$(fresh_dir)/out"; E="$(fresh_dir)/err"
+  STUB25="$(fresh_dir)"; REAL_GIT25="$(command -v git)"
+  cat > "$STUB25/git" << STUBEOF
+#!/usr/bin/env bash
+if [ "\$1" = "fetch" ]; then
+  echo "fatal: unable to access 'https://u:FAKESECRET@github.com/abhayla/IPODhan.git/': auth failed" >&2
+  echo "FAKESECRET on stdout"
+  exit 128
+fi
+exec "$REAL_GIT25" "\$@"
+STUBEOF
+  chmod +x "$STUB25/git"
+  PATH="$STUB25:$PATH" env -u DEPLOY_CONFIG_LINEAGE_SKIP_FETCH \
+    DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_STATE_DIR="$STATE" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" --slot staging --sha "$SHA" --reason "case25 fetch fails" >"$O" 2>"$E"
+  RC=$?
+  if [ "$RC" -ne 0 ] && grep -q "git exit code 128" "$E" && grep -q "(lineage)" "$E"; then
+    pass "case25: a failed fetch is refused with git's exit code"
+  else
+    fail "case25: expected a lineage refusal naming exit code 128, got rc=$RC ($(grep -v FAKESECRET "$E"))"
+  fi
+  LEAKS="$(leak_count "$O" "$E" "$ROOT" "$STATE")"
+  if [ "$LEAKS" -eq 0 ]; then
+    pass "case25: FAKESECRET count 0 after a failed fetch"
+  else
+    fail "case25: git fetch output leaked FAKESECRET $LEAKS time(s)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 26
+# #752 round 3, trace sink: GIT_TRACE* / GIT_CURL_VERBOSE make git print
+# remote-helper argv and HTTP headers (URL + credential). The script must
+# unset them before any git call. (a) a stub git records any trace var it
+# sees and emits FAKESECRET when one is set; (b) real git with every trace
+# var on and a credentialed origin.
+{
+  REPO="$(build_repo_with_origin "https://u:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  SHA="$(cd "$REPO" && git rev-parse HEAD)"
+  ROOT="$(fresh_dir)"; STATE="$(fresh_dir)"; O="$(fresh_dir)/out"; E="$(fresh_dir)/err"
+  STUB26="$(fresh_dir)"; SEEN26="$STUB26/seen"; REAL_GIT26="$(command -v git)"
+  : > "$SEEN26"
+  cat > "$STUB26/git" << STUBEOF
+#!/usr/bin/env bash
+for v in \$(compgen -e | grep -E '^(GIT_TRACE|GIT_CURL_VERBOSE)'); do
+  echo "\$v" >> "$SEEN26"
+  echo "trace: FAKESECRET" >&2
+done
+if [ "\$1" = "fetch" ]; then exit 0; fi
+exec "$REAL_GIT26" "\$@"
+STUBEOF
+  chmod +x "$STUB26/git"
+  PATH="$STUB26:$PATH" env -u DEPLOY_CONFIG_LINEAGE_SKIP_FETCH \
+    GIT_TRACE=1 GIT_TRACE_CURL=1 GIT_CURL_VERBOSE=1 GIT_TRACE_PACKET=1 GIT_TRACE_SETUP=1 GIT_TRACE2=1 \
+    DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_STATE_DIR="$STATE" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" --slot staging --sha "$SHA" --reason "case26 trace env" >"$O" 2>"$E"
+  RC=$?
+  if [ "$RC" -eq 0 ] && [ ! -s "$SEEN26" ]; then
+    pass "case26a: no git call saw a GIT_TRACE*/GIT_CURL_VERBOSE variable"
+  else
+    fail "case26a: rc=$RC, git calls saw trace vars: $(sort -u "$SEEN26" | tr '\n' ' ')"
+  fi
+  LEAKS="$(leak_count "$O" "$E" "$ROOT" "$STATE")"
+  if [ "$LEAKS" -eq 0 ]; then
+    pass "case26a: FAKESECRET count 0 with trace vars set (stub git)"
+  else
+    fail "case26a: FAKESECRET leaked $LEAKS time(s) with trace vars set"
+  fi
+
+  ROOT="$(fresh_dir)"; STATE="$(fresh_dir)"; O="$(fresh_dir)/out"; E="$(fresh_dir)/err"
+  GIT_TRACE=1 GIT_TRACE_CURL=1 GIT_CURL_VERBOSE=1 GIT_TRACE_SETUP=1 GIT_TRACE2=1 GIT_TRACE2_EVENT=1 \
+    DEPLOY_CONFIG_STATE_DIR="$STATE" run_deploy "$REPO" "$ROOT" --slot staging --sha "$SHA" --reason "case26b real git trace" >"$O" 2>"$E"
+  RC=$?
+  LEAKS="$(leak_count "$O" "$E" "$ROOT" "$STATE")"
+  if [ "$RC" -eq 0 ] && [ "$LEAKS" -eq 0 ]; then
+    pass "case26b: real git with every trace var on: accepted, FAKESECRET count 0"
+  else
+    fail "case26b: rc=$RC, FAKESECRET leaked $LEAKS time(s)"
   fi
 }
 
