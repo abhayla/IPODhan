@@ -100,7 +100,7 @@ import { extractShape, compareShape, partitionFixtures, loadHtmlFixtureEntries, 
 import { findFixtureFiles } from './lib/fixture-provenance-checks.mjs';
 import {
   checkScraperWakeCrontabLine, checkScraperWakeFreshness, checkScraperWakeSkippedRun,
-  checkProvenanceMarkerWriteFailed,
+  checkProvenanceMarkerWriteFailed, aggregateWakeLogSlotResults,
   SCRAPER_WAKE_CADENCE_BY_SLOT, SCRAPER_WAKE_CADENCE_MINUTES, SCRAPER_WAKE_FRESHNESS_SLACK_MINUTES,
   SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD, PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS,
 } from './lib/scraper-wake-detection.mjs';
@@ -1582,14 +1582,33 @@ function scraperWakeFreshnessViolation(slot) {
 // SAME log file the same way, just judging the tail instead of the newest
 // line's age, so a stale lock (or a hung run, or any other cause holding it)
 // is caught even while the freshness check still sees a "recent enough" line.
-function scraperWakeSkippedRunViolation(slot) {
+// #707/#648: an absent log FILE means the predicate never ran — it is
+// UNVERIFIABLE, not a clean read and not an offense. checkScraperWakeSkippedRun
+// and checkProvenanceMarkerWriteFailed already return null (no violation) for
+// empty/unreadable text by design ("an unreadable/empty log returns null,
+// never a false FAIL — freshness already covers 'no wake at all'"); this
+// wrapper used to short-circuit past that contract by returning the
+// "not present" string as if it WERE a violation, which folded straight into
+// FAIL below. It now returns { violation, unverifiable } so the caller can
+// tell "verified clean" apart from "never verified" (aggregateWakeLogSlotResults).
+// m_scraper_wake_freshness is deliberately NOT changed this way: its own
+// predicate treats "no wake at all" as the FAIL it exists to catch, so an
+// absent log there is correctly reported as freshness's real signal.
+function scraperWakeLogSlotResult(slot, checkFn) {
   const logPath = SCRAPER_WAKE_LOG_PATH_BY_SLOT[slot];
-  try {
-    if (!existsSync(logPath)) return `slot ${slot}: log file not present at ${logPath}`;
-    return checkScraperWakeSkippedRun(slot, readFileSync(logPath, 'utf8'));
-  } catch (e) {
-    return `slot ${slot}: could not read the wake log: ${e.message}`;
+  if (!existsSync(logPath)) {
+    return { violation: null, unverifiable: true, detail: `slot ${slot}: log file not present at ${logPath}` };
   }
+  try {
+    const violation = checkFn(readFileSync(logPath, 'utf8'));
+    return { violation, unverifiable: false, detail: null };
+  } catch (e) {
+    return { violation: null, unverifiable: true, detail: `slot ${slot}: could not read the wake log: ${e.message}` };
+  }
+}
+
+function scraperWakeSkippedRunResult(slot) {
+  return scraperWakeLogSlotResult(slot, (raw) => checkScraperWakeSkippedRun(slot, raw));
 }
 
 // #648: same log file, same "runs for real on the box, UNVERIFIABLE
@@ -1598,14 +1617,9 @@ function scraperWakeSkippedRunViolation(slot) {
 // read (scripts/deploy-linux.sh install_scraper_cron: `>> $SCRAPER_WAKE_LOG
 // 2>&1`). See scripts/lib/scraper-wake-detection.mjs's
 // checkProvenanceMarkerWriteFailed for the class this closes.
-function scraperMarkerWriteFailedViolation(slot) {
-  const logPath = SCRAPER_WAKE_LOG_PATH_BY_SLOT[slot];
-  try {
-    if (!existsSync(logPath)) return `slot ${slot}: log file not present at ${logPath}`;
-    return checkProvenanceMarkerWriteFailed(slot, readFileSync(logPath, 'utf8'), new Date().toISOString());
-  } catch (e) {
-    return `slot ${slot}: could not read the wake log: ${e.message}`;
-  }
+function scraperMarkerWriteFailedResult(slot) {
+  const now = new Date().toISOString();
+  return scraperWakeLogSlotResult(slot, (raw) => checkProvenanceMarkerWriteFailed(slot, raw, now));
 }
 
 // #663: two invariants over BOTH slots, one record() id each (same
@@ -1642,23 +1656,31 @@ async function checkScraperWake() {
   record('m_scraper_wake_freshness', `newest wake log line per slot is within ${SCRAPER_WAKE_FRESHNESS_CEILING_MINUTES} minutes (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
     freshOffenders.length === 0 ? 'PASS' : 'FAIL', freshOffenders.join('; ') || 'fresh for every slot');
 
-  const skippedRunOffenders = SCRAPER_WAKE_SLOTS
-    .map((slot) => scraperWakeSkippedRunViolation(slot))
-    .filter(Boolean);
-  for (const v of skippedRunOffenders) notify('m_scraper_wake_skipped_run', 'P1', v, 'a scraper slot has printed a run of consecutive wake-skipped lines', v);
-  record('m_scraper_wake_skipped_run', `newest ${SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD} wake log lines per slot are not all wake-skipped (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
-    skippedRunOffenders.length === 0 ? 'PASS' : 'FAIL', skippedRunOffenders.join('; ') || 'no stuck-lock run on any slot');
+  // #707: absent log file -> unverifiable, never a false FAIL (see
+  // scraperWakeLogSlotResult / aggregateWakeLogSlotResults above).
+  const skippedRunResults = SCRAPER_WAKE_SLOTS.map((slot) => ({ slot, ...scraperWakeSkippedRunResult(slot) }));
+  for (const r of skippedRunResults) if (r.violation) notify('m_scraper_wake_skipped_run', 'P1', r.violation, 'a scraper slot has printed a run of consecutive wake-skipped lines', r.violation);
+  {
+    const agg = aggregateWakeLogSlotResults(skippedRunResults);
+    const unverifiableDetails = skippedRunResults.filter((r) => r.unverifiable).map((r) => r.detail);
+    const detail = agg.offenders.join('; ') || unverifiableDetails.join('; ') || 'no stuck-lock run on any slot';
+    record('m_scraper_wake_skipped_run', `newest ${SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD} wake log lines per slot are not all wake-skipped (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
+      agg.status, detail);
+  }
 
   // #648: F-101/#615 made a failed provenance-marker write catchable-and-silent
   // (child-row-unresolved-noter.ts logs it as event `provenance-marker-write-failed`
   // but nothing read that log until now — signal-ownership.md R3, "every nightly
-  // signal has a consumer that diffs").
-  const markerWriteOffenders = SCRAPER_WAKE_SLOTS
-    .map((slot) => scraperMarkerWriteFailedViolation(slot))
-    .filter(Boolean);
-  for (const v of markerWriteOffenders) notify('m_provenance_marker_write_failed', 'P2', v, 'a scraper slot logged a failed provenance-marker write', v);
-  record('m_provenance_marker_write_failed', `no provenance-marker-write-failed event in the last ${PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS}h per slot (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
-    markerWriteOffenders.length === 0 ? 'PASS' : 'FAIL', markerWriteOffenders.join('; ') || 'no failed marker writes on any slot');
+  // signal has a consumer that diffs"). Same absent-log-is-unverifiable fix as #707.
+  const markerWriteResults = SCRAPER_WAKE_SLOTS.map((slot) => ({ slot, ...scraperMarkerWriteFailedResult(slot) }));
+  for (const r of markerWriteResults) if (r.violation) notify('m_provenance_marker_write_failed', 'P2', r.violation, 'a scraper slot logged a failed provenance-marker write', r.violation);
+  {
+    const agg = aggregateWakeLogSlotResults(markerWriteResults);
+    const unverifiableDetails = markerWriteResults.filter((r) => r.unverifiable).map((r) => r.detail);
+    const detail = agg.offenders.join('; ') || unverifiableDetails.join('; ') || 'no failed marker writes on any slot';
+    record('m_provenance_marker_write_failed', `no provenance-marker-write-failed event in the last ${PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS}h per slot (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
+      agg.status, detail);
+  }
 }
 
 // ---- (i): wire-or-retire — scheduler tree reachable from the prod entrypoint --

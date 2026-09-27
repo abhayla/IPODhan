@@ -186,3 +186,28 @@ export function checkProvenanceMarkerWriteFailed(slot, raw, now) {
   if (offenders.length === 0) return null;
   return `slot ${slot}: ${offenders.length} provenance-marker-write-failed event(s) in the last ${PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS}h — ${offenders.join(' | ')}`;
 }
+
+/**
+ * #707/#648: aggregates one log-backed check's independent per-slot results
+ * into a single overall status. Each result is { violation: string|null,
+ * unverifiable: boolean } — `violation` set means the predicate ran on real
+ * log text and found an offense; `unverifiable` set (with violation null)
+ * means the slot's log could not be read at all (missing file, permission
+ * error) so the predicate never ran.
+ *
+ * A missing log is NOT the same as a clean read: checkScraperWakeSkippedRun
+ * and checkProvenanceMarkerWriteFailed both return null (no violation) when
+ * handed an empty/unreadable string, by design (their own contract: "an
+ * unreadable/empty log returns null, never a false FAIL — freshness already
+ * covers 'no wake at all'"). Folding a missing FILE into that same null
+ * silently reports PASS on a check that never ran. This aggregator keeps the
+ * distinction: any real violation dominates (an unreadable OTHER slot cannot
+ * excuse a broken one), but with zero violations, any unverifiable slot makes
+ * the whole check UNVERIFIABLE, never a false PASS.
+ */
+export function aggregateWakeLogSlotResults(results) {
+  const offenders = results.filter((r) => r.violation).map((r) => r.violation);
+  const unverifiableCount = results.filter((r) => !r.violation && r.unverifiable).length;
+  const status = offenders.length > 0 ? 'FAIL' : unverifiableCount > 0 ? 'UNVERIFIABLE' : 'PASS';
+  return { status, offenders, unverifiableCount };
+}

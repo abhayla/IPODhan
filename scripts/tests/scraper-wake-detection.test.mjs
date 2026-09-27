@@ -18,6 +18,7 @@ import {
   checkScraperWakeFreshness,
   checkScraperWakeSkippedRun,
   checkProvenanceMarkerWriteFailed,
+  aggregateWakeLogSlotResults,
   SCRAPER_WAKE_CADENCE_BY_SLOT,
   SCRAPER_WAKE_CADENCE_MINUTES,
   SCRAPER_WAKE_FRESHNESS_SLACK_MINUTES,
@@ -281,6 +282,70 @@ test('#648 slots are independent labels: the same raw text reads back with which
 test('#648 mutation guard: filtering on the wrong event name would silently miss every real fixture — confirms the match is on event, not a generic error line', () => {
   const wrongEvent = '{"level":50,"time":"2026-09-26T11:00:00.000Z","event":"some-other-error","ipoId":"abc-1","tableName":"promoters","rowKey":"unresolved:x","cause":"no fieldSources repository injected"}';
   assert.equal(checkProvenanceMarkerWriteFailed('prod', wrongEvent, '2026-09-26T12:00:00.000Z'), null);
+});
+
+// --- #707/#648: absent log FILE is UNVERIFIABLE, never folded into PASS ----
+//
+// Real 2026-09-27 prod floor output (docs/reviews/... proof, T-id 707/648):
+// prod has no wake cron at all yet (m_scraper_wake_crontab FAILs first), so
+// its wake log file has never been created. m_scraper_wake_skipped_run and
+// m_provenance_marker_write_failed each read
+// "slot prod: log file not present at /var/log/ipodhan-scraper-wake-prod.log"
+// as a VIOLATION and reported [FAIL] — but both checks' own predicates
+// (above) return null, never a violation, for an unreadable/empty log. The
+// caller folding "file absent" into the violation list is the defect;
+// aggregateWakeLogSlotResults is the fix — the caller marks an absent file
+// `unverifiable: true, violation: null` and this aggregator must read that
+// as UNVERIFIABLE, never FAIL, when no OTHER slot has a real violation.
+
+test('#707/#648 aggregator: a missing log file alone (no real violation on any slot) is UNVERIFIABLE, never FAIL — the exact prod shape', () => {
+  const results = [
+    { violation: null, unverifiable: true }, // prod: log file not present
+    { violation: null, unverifiable: false }, // staging: log exists, clean
+  ];
+  const agg = aggregateWakeLogSlotResults(results);
+  assert.equal(agg.status, 'UNVERIFIABLE');
+  assert.deepEqual(agg.offenders, []);
+  assert.equal(agg.unverifiableCount, 1);
+});
+
+test('#707/#648 aggregator: both slots missing is UNVERIFIABLE, never FAIL', () => {
+  const results = [
+    { violation: null, unverifiable: true },
+    { violation: null, unverifiable: true },
+  ];
+  const agg = aggregateWakeLogSlotResults(results);
+  assert.equal(agg.status, 'UNVERIFIABLE');
+  assert.equal(agg.unverifiableCount, 2);
+});
+
+test('#707/#648 aggregator: both slots readable with no offense is PASS', () => {
+  const results = [
+    { violation: null, unverifiable: false },
+    { violation: null, unverifiable: false },
+  ];
+  const agg = aggregateWakeLogSlotResults(results);
+  assert.equal(agg.status, 'PASS');
+  assert.equal(agg.unverifiableCount, 0);
+});
+
+test('#707/#648 aggregator: a real violation on one slot FAILs even when the other is unverifiable — absence never excuses a real offense', () => {
+  const results = [
+    { violation: 'slot prod: 3 consecutive wake-skipped lines', unverifiable: false },
+    { violation: null, unverifiable: true },
+  ];
+  const agg = aggregateWakeLogSlotResults(results);
+  assert.equal(agg.status, 'FAIL');
+  assert.deepEqual(agg.offenders, ['slot prod: 3 consecutive wake-skipped lines']);
+  assert.equal(agg.unverifiableCount, 1);
+});
+
+test('#707/#648 mutation guard: folding an unverifiable slot into "clean" (the bug this fixes) would silently produce PASS instead of UNVERIFIABLE — confirms the test can fail', () => {
+  const results = [{ violation: null, unverifiable: true }];
+  const buggyStatus = results.filter((r) => r.violation).length > 0 ? 'FAIL' : 'PASS'; // the old shape
+  const fixedStatus = aggregateWakeLogSlotResults(results).status;
+  assert.equal(buggyStatus, 'PASS', 'the old (buggy) shape reads a missing file as a clean PASS');
+  assert.equal(fixedStatus, 'UNVERIFIABLE', 'the fixed aggregator reads the same input as UNVERIFIABLE');
 });
 
 test('#663 mutation guard: an inverted ceiling comparison would make the red freshness case pass — confirms the test can fail', () => {
