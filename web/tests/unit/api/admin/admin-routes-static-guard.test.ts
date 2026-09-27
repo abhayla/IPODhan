@@ -30,11 +30,48 @@ function listRouteFiles(dir: string): string[] {
   return out;
 }
 
+// The exact set of admin route files. A count floor (`>= N`) went red on a
+// legitimate deletion (#1189, OD-125) and would stay green if a route were
+// swapped for another; an exact list fails on any add, remove or rename, so
+// every change to the admin API surface is a deliberate edit reviewed here.
+const EXPECTED_ADMIN_ROUTES = [
+  'anchor-investors/route.ts',
+  'audit/export/route.ts',
+  'audit/route.ts',
+  'cache/clear/route.ts',
+  'conflicts/auto-resolve/route.ts',
+  'conflicts/bulk-resolve/route.ts',
+  'conflicts/resolve/route.ts',
+  'conflicts/route.ts',
+  'conflicts/stats/route.ts',
+  'drhp/ipo/[ipoId]/route.ts',
+  'dynamic/[table]/[id]/route.ts',
+  'dynamic/[table]/list/route.ts',
+  'dynamic/[table]/route.ts',
+  'gmp/[ipoId]/route.ts',
+  'ipos/[id]/route.ts',
+  'ipos/route.ts',
+  'metrics/data-pipeline/route.ts',
+  'notifications/test/route.ts',
+  'protection/fields/[ipoId]/route.ts',
+  'protection/fields/bulk/route.ts',
+  'protection/ipo/[ipoId]/route.ts',
+  'protection/notifications/route.ts',
+  'revalidate/route.ts',
+  'scraper/logs/route.ts',
+  'scraper/status/route.ts',
+  'settings/notifications/route.ts',
+  'status/update/route.ts',
+  'update-field-record/route.ts',
+  'update-field/route.ts',
+];
+
 describe('every admin API route requires admin auth', () => {
   const files = listRouteFiles(ADMIN_ROOT);
 
-  it('finds the admin route files', () => {
-    expect(files.length).toBeGreaterThanOrEqual(31);
+  it('finds exactly the expected admin route files', () => {
+    const actual = files.map((f) => path.relative(ADMIN_ROOT, f).split(path.sep).join('/')).sort();
+    expect(actual).toEqual([...EXPECTED_ADMIN_ROUTES].sort());
   });
 
   it('has no exported handler without withAdminAuth or requireAdminAuth', () => {

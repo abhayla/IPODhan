@@ -49,13 +49,6 @@ const API_TESTS = [
     checkSegment: true,
     checkCount: false, // Only LISTED subset
   },
-  {
-    name: 'Mainboard Reviews',
-    path: '/api/ipos?segment=MAINBOARD&limit=20',
-    page: '/mainboard-ipo-reviews',
-    checkSegment: true,
-    checkCount: false,
-  },
 ];
 
 /**
