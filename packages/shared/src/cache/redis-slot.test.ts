@@ -10,7 +10,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Redis from 'ioredis';
 import { InMemoryRedisBackend } from '../testing/in-memory-redis-backend';
 import {
-  BOX_WIDE_KEY_PREFIX,
   applyRedisSlotNamespace,
   createBuildTimeNoCacheClient,
   redisSlotNamespaceOf,
@@ -205,12 +204,5 @@ describe('duplicate() keeps the slot namespace (round-1 minor)', () => {
     opened2.push(base);
     expect(() => base.duplicate({ keyPrefix: '' })).toThrow(/keyPrefix/);
     expect(() => base.duplicate({ keyPrefix: 'staging:' })).toThrow(/keyPrefix/);
-  });
-});
-
-describe('the box-wide key space is explicit and never a slot', () => {
-  it('BOX_WIDE_KEY_PREFIX is "box:", which no database name can produce', () => {
-    expect(BOX_WIDE_KEY_PREFIX).toBe('box:');
-    for (const c of fixture.cases) if (c.prefix) expect(c.prefix).not.toBe(BOX_WIDE_KEY_PREFIX);
   });
 });

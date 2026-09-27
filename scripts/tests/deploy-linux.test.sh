@@ -2988,7 +2988,7 @@ FAKERC30
   printf '%s\n' \
     'ipo:slug:acme' 'ipo:list:all' 'gmp:latest:12' 'subscription:latest:12' 'calendar:2026-09' \
     'lock:resource:scraper:cycle' 'lock:resource:ipo:acme' 'lock:resource:filing-auto-persist:cycle' \
-    'prod:ipo:slug:acme' 'staging:gmp:latest:12' 'box:lock:resource:extractor' 'db-ipodhan_test:ipo:x' \
+    'prod:ipo:slug:acme' 'staging:gmp:latest:12' 'db-ipodhan_test:ipo:x' \
     'subscription:suppressed-cycles:12' 'unrelated:key' > "$STORE30K"
   cat > "$FAKEBIN30K/redis-cli" <<FAKERC30K
 #!/usr/bin/env bash
@@ -3032,14 +3032,14 @@ FAKERC30K
     clear_legacy_unprefixed_cache_keys
   2>&1)"
   LEFT30K="$(sort "$STORE30K" | tr '\n' ' ')"
-  WANT30K="$(printf '%s\n' 'box:lock:resource:extractor' 'db-ipodhan_test:ipo:x' 'lock:resource:filing-auto-persist:cycle' 'lock:resource:ipo:acme' 'lock:resource:scraper:cycle' 'prod:ipo:slug:acme' 'staging:gmp:latest:12' 'subscription:suppressed-cycles:12' 'unrelated:key' | sort | tr '\n' ' ')"
+  WANT30K="$(printf '%s\n' 'db-ipodhan_test:ipo:x' 'lock:resource:filing-auto-persist:cycle' 'lock:resource:ipo:acme' 'lock:resource:scraper:cycle' 'prod:ipo:slug:acme' 'staging:gmp:latest:12' 'subscription:suppressed-cycles:12' 'unrelated:key' | sort | tr '\n' ' ')"
   if [ -n "$CLEAR_LEGACY_FN_30K" ] && [ "$LEFT30K" = "$WANT30K" ] \
      && emit "$OUT30K" | grep -q 'legacy unprefixed cache keys cleared: 5' \
      && grep -q -- '--scan --pattern ipo:\*' "$RCLOG30K" \
      && grep -q -- '-u redis://localhost:6379/0' "$RCLOG30K" \
      && ! grep -q 'redis://wrong' "$RCLOG30K" \
      && ! grep -qE '(^| )KEYS( |$)' "$RCLOG30K"; then
-    pass "case 30k: rollback clears exactly the 5 unprefixed cache keys (SCAN, web REDIS_URL), never a lock, a state key, or a prod:/staging:/box:/db- key"
+    pass "case 30k: rollback clears exactly the 5 unprefixed cache keys (SCAN, web REDIS_URL), never a lock, a state key, or a prod:/staging:/db- key"
   else
     fail "case 30k: expected only the unprefixed cache keys removed. left=[$LEFT30K] want=[$WANT30K] out=$OUT30K log=$(cat "$RCLOG30K")"
   fi

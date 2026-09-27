@@ -23,11 +23,10 @@
  * It never writes anywhere, and the runtime (next start, the scraper, every
  * script) never takes it: at runtime a missing database still throws.
  *
- * The ONLY deliberately cross-slot key space is BOX_WIDE_KEY_PREFIX ("box:"),
- * reached through getBoxWideRedisClient() (packages/shared/src/cache/
- * redis-client.ts). It exists for box-wide resources such as the extractor
- * lock (two slots' python extractors on one 2-vCPU box starved the site into
- * Cloudflare 522s, W-178), and no database name can derive it.
+ * There is NO cross-slot key space. The one box-wide resource the slots share,
+ * the CPU the python extractors run on (W-178), is guarded by the fcntl file
+ * lock /var/www/ipodhan/shared/extractor.lock (scraper/scripts/box_lock.py),
+ * not by Redis.
  *
  * The shell twin of this derivation is scripts/lib/redis-slot-prefix.sh; both
  * are pinned to scripts/tests/fixtures/redis-slot-cases.json.
@@ -105,13 +104,6 @@ export function resolveRedisSlot(env: Env = process.env): string {
 export function resolveRedisKeyPrefix(env: Env = process.env): string {
   return `${resolveRedisSlot(env)}:`;
 }
-
-/**
- * The deliberately shared key space for box-wide resources (see header). A
- * database-derived prefix is always `prod:`, `staging:` or `db-<name>:`, so it
- * can never collide with this one.
- */
-export const BOX_WIDE_KEY_PREFIX = 'box:';
 
 /** Next.js sets NEXT_PHASE=phase-production-build in `next build` and its workers. */
 export function isNextProductionBuild(env: Env = process.env): boolean {
@@ -229,7 +221,7 @@ export function applyRedisSlotNamespace<T extends Redis>(client: T, prefix: stri
   // round-1 minor: ioredis duplicate() copies options (so the keyPrefix
   // survives) but not these instance patches. Re-apply them, and refuse a
   // keyPrefix override: a duplicate must stay in its parent's key space
-  // (the one cross-slot space goes through getBoxWideRedisClient()).
+  // (there is no cross-slot key space).
   if (typeof client.duplicate === 'function') {
     const originalDuplicate = client.duplicate.bind(client) as (override?: Record<string, unknown>) => T;
     (client as unknown as { duplicate: (override?: Record<string, unknown>) => T }).duplicate = (

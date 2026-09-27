@@ -617,11 +617,10 @@ fi
 # `<slot>:lock:resource:filing-auto-persist:cycle` (slot = prod | staging).
 # Before #151 both slots shared the unprefixed keys on ONE Redis, so a staging
 # deploy here could delete a lock a live PROD cycle held.
-# The box-wide extractor lock `box:lock:resource:extractor` (#151 round 1,
-# scraper/src/services/extraction-locks.ts) is deliberately NOT released here:
-# its holder may be the OTHER slot's live extractor, and this function cannot
-# tell whose token it reads. The stopped scraper releases its own copy on the
-# signal path (releaseHeldLocks); failing that, the lock expires via its TTL.
+# The cross-slot extractor exclusion is NOT a Redis key and is not touched
+# here: it is the fcntl file lock /var/www/ipodhan/shared/extractor.lock
+# (scraper/scripts/box_lock.py, W-178c), which the kernel releases when the
+# holding python process exits.
 # The next 1-2 cycles then log "previous cycle still running" / "lock
 # already held by another cycle" and exit without doing any work, losing up
 # to 45 minutes of staging evidence per deploy.
@@ -728,7 +727,7 @@ release_scraper_cycle_locks || true
 #     case 30k parity, so a new namespace there fails CI until listed here);
 #   - SCAN (`redis-cli --scan --pattern`), never KEYS, which blocks Redis;
 #   - never a `lock:` key, never a slot-prefixed (`prod:`, `staging:`,
-#     `db-*:`) or box-wide (`box:`) key, and never a non-cache STATE key that
+#     `db-*:`) key, and never a non-cache STATE key that
 #     happens to share a cache namespace (LEGACY_NON_CACHE_KEY_PATTERNS).
 # Deleting a cache key can only cause a cache miss (the reader falls back to
 # the database), so this is safe even while the other slot is live.
@@ -776,7 +775,7 @@ clear_legacy_unprefixed_cache_keys() {
     [ -n "$key" ] || continue
     scanned=$((scanned + 1))
     case "$key" in
-      lock:*|prod:*|staging:*|box:*|db-*) skipped=$((skipped + 1)); continue ;;
+      lock:*|prod:*|staging:*|db-*) skipped=$((skipped + 1)); continue ;;
     esac
     # shellcheck disable=SC2254
     local state_pat is_state=0
@@ -802,7 +801,7 @@ clear_legacy_unprefixed_cache_keys() {
     [[ "$batch_out" =~ ^[0-9]+$ ]] && cleared=$((cleared + batch_out))
   fi
   rm -f "$found" "$todelete"
-  log "clear_legacy_unprefixed_cache_keys: scanned $scanned, skipped $skipped (lock/slot/box/state), legacy unprefixed cache keys cleared: $cleared"
+  log "clear_legacy_unprefixed_cache_keys: scanned $scanned, skipped $skipped (lock/slot/state), legacy unprefixed cache keys cleared: $cleared"
   return 0
 }
 

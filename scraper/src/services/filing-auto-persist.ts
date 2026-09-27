@@ -133,6 +133,7 @@ import { runAnchorAutoPersist, type AnchorAutoOutcome } from './anchor-auto-pers
 import {
   CORRIGENDUM_DOC_TYPE,
   buildCorrigendumSuggestionRunner,
+  isCorrigendumReaderBusy,
   type CorrigendumSuggestionRunner,
 } from './corrigendum-reader.js';
 import { SIDECAR_TIMEOUT_MS } from '../scrapers/anchor-investors-scraper.js';
@@ -1725,6 +1726,15 @@ async function runCorrigendumPass(
         '[OD-90] corrigendum read: suggestions recorded for admin review'
       );
     } catch (error) {
+      // #151 round 3 (W-178c): a busy box is not a failure of this corrigendum. Leave the row
+      // exactly as it was (no FAILED, no retry count, no stamp) and end the pass for this cycle,
+      // the same as the filing loop's busy branch: every remaining reader would wait and hit the
+      // same lock.
+      if (isCorrigendumReaderBusy(error)) {
+        result.skipped = [...result.skipped, `${CORRIGENDUM_DOC_TYPE}: another extractor holds the box lock (W-178c)`];
+        logger.warn({ ipoId: ipo.id, documentId: doc.id }, 'box busy: ending the corrigendum pass for this cycle (W-178c)');
+        break;
+      }
       const cause = error instanceof Error ? error.message : String(error);
       result.failed++;
       try {

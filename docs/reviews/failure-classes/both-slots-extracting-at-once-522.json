@@ -1,10 +1,10 @@
 {
   "class_id": "both slots extracting at once (522)",
-  "feature": "scraper cron cadence / nginx",
-  "symptom": "both staging cron slots (:00/:30) run extraction simultaneously on 2 vCPUs, starving nginx and producing Cloudflare 522s",
+  "feature": "scraper cron cadence / nginx; every heavy python script the scraper spawns (scraper/scripts/extract_filing.py, anchor_report_text.py, read_corrigendum_pages.py) on either slot (prod and staging share one 2-vCPU box)",
+  "symptom": "two heavy python extractors (pdfplumber/OCR at ~100% CPU each) run at once on the shared 2-vCPU box, from either slot or both, starving nginx/Next and producing Cloudflare 522s. Wider shape: a box-wide resource guard only holds if EVERY process that consumes the resource takes it; a new spawn target added later without the guard silently reopens the class.",
   "first_seen": "walk W-178",
-  "fix_prs": "`7300e0aa`, `ea40e3c3`, `6039504a`, `252cd9d0` (cron offset to :15/:45, nice priority, TZ restore)",
-  "detection_check": "none in `substance-checks.mjs`/`audit-*.mjs` (an ops/cadence class, not a DB-row check)",
-  "status": "unguarded",
+  "fix_prs": "`7300e0aa`, `ea40e3c3`, `6039504a`, `252cd9d0` (cron offset to :15/:45, nice priority, TZ restore); W-178c: the fcntl file lock /var/www/ipodhan/shared/extractor.lock taken inside extract_filing.py and anchor_report_text.py via scraper/scripts/box_lock.py (exit 75 when busy; the guard, on prod since prod-2026-09-07); #1155 (#151 round 3): read_corrigendum_pages.py (pdfplumber + OCR, up to 15 min) took no box lock and no nice wrap - it now takes box_lock and is spawned via withLowPriority, busy exit leaves the corrigendum untouched. The cross-slot exclusion is the file lock, not a Redis key (a round-2 Redis box: lock was removed).",
+  "detection_check": "scripts/ci/check-python-spawn-box-lock.mjs (pr-gate.yml python-tests job, step 'Every spawned python extractor takes the cross-slot box lock'): lists every python script scraper/src spawns and fails when one does not import box_lock and call box_lock.acquire(; self-test scripts/ci/tests/check-python-spawn-box-lock.test.mjs runs it against the live tree. Per-script contract tests: scraper/scripts/test_box_lock.py and test_corrigendum_box_lock.py (busy -> waits, exits 75, no PDF work). Known gap: nothing reads the live box to confirm two extractors never overlap (would need an ops read of the lock holder, not a CI check).",
+  "status": "guarded",
   "spec_ref": []
 }

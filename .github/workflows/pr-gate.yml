@@ -1012,6 +1012,16 @@ jobs:
           EXTRACTOR_MEMORY_CEILING: 'off'
         run: python -m pytest scraper/scripts -q -rs -p no:cacheprovider
 
+      - name: Every spawned python extractor takes the cross-slot box lock (#151, W-178c)
+        # Prod and staging share one 2-vCPU box; the cross-slot extractor exclusion is the fcntl
+        # file lock scraper/scripts/box_lock.py takes INSIDE each extractor (not a Redis key).
+        # Lists every python script scraper/src spawns and fails when one does not import
+        # box_lock and call box_lock.acquire( (read_corrigendum_pages.py ran unguarded until
+        # #151 round 3). Node builtins only; node is preinstalled on ubuntu-latest.
+        run: |
+          node --test scripts/ci/tests/check-python-spawn-box-lock.test.mjs
+          node scripts/ci/check-python-spawn-box-lock.mjs
+
       - name: Board-owed-guard hook self-tests (project-level, 2026-09-25)
         # .claude/hooks/board-owed-guard.py moved from user level to project
         # level; this stdlib-only unittest suite (46 cases, ~8s) is its only

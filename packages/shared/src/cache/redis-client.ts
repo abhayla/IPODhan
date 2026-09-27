@@ -7,7 +7,6 @@
 
 import Redis from 'ioredis';
 import {
-  BOX_WIDE_KEY_PREFIX,
   applyRedisSlotNamespace,
   createBuildTimeNoCacheClient,
   resolveRedisKeyPrefixOrBuildNoCache,
@@ -18,8 +17,7 @@ let redisClient: Redis | null = null;
 
 /**
  * One connection, built from the process's REDIS_* env, carrying `keyPrefix`.
- * Only the two exported getters below call it, each with a prefix it has
- * decided (the slot, or the one deliberate box-wide space).
+ * Only getRedisClient() below calls it, with the slot prefix it has decided.
  */
 function openRedisConnection(keyPrefix: string): Redis {
   // F2 (T-264 P2-3): this client used to build its connection from
@@ -121,37 +119,6 @@ export function getRedisClient(): Redis {
   }
 
   return redisClient;
-}
-
-let boxWideClient: Redis | null = null;
-
-/**
- * THE deliberate escape hatch from the slot namespace (#151 round 1): a client
- * whose keys live under BOX_WIDE_KEY_PREFIX ("box:"), shared by prod and
- * staging because the RESOURCE it guards is shared - the one 2-vCPU box.
- * Its only caller is the box-wide extractor lock
- * (scraper/src/services/extraction-locks.ts): two slots' python extractors at
- * once starved nginx/Next into Cloudflare 522s (W-178), and the old unprefixed
- * `scraper:cycle` lock used to prevent that by accident. Never cache data
- * here - a cached value mirrors ONE slot's database. The CI grep
- * scripts/ci/check-redis-client-factories.mjs pins the caller list.
- */
-export function getBoxWideRedisClient(): Redis {
-  if (!boxWideClient) {
-    boxWideClient = applyRedisSlotNamespace(openRedisConnection(BOX_WIDE_KEY_PREFIX), BOX_WIDE_KEY_PREFIX);
-    boxWideClient.on('error', (error) => {
-      console.error('[Redis box-wide] Connection error:', error);
-    });
-  }
-  return boxWideClient;
-}
-
-/** Close the box-wide client (tests, graceful shutdown). */
-export async function closeBoxWideRedisClient(): Promise<void> {
-  if (boxWideClient) {
-    await boxWideClient.quit();
-    boxWideClient = null;
-  }
 }
 
 /**

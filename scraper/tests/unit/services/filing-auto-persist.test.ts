@@ -102,6 +102,7 @@ import type { FilingExtraction, PersistFilingSummary } from '../../../src/servic
 import logger from '../../../src/utils/logger.js';
 import { documentPath } from '../../../src/services/document-store.js';
 import { EXTRACTOR_BUSY_EXIT_CODE } from '../../../src/utils/low-priority-spawn.js';
+import { CorrigendumReaderBusyError } from '../../../src/services/corrigendum-reader.js';
 
 const SHA = 'a'.repeat(64);
 const IPO = { id: 'ipo-1', companyName: 'Rays Of Belief Ltd', slug: 'rays-of-belief-ltd', segment: 'MAINBOARD' };
@@ -2593,6 +2594,19 @@ describe('item 9 (OD-90) — a stored corrigendum is read into admin suggestions
     expect(stateCalls(d)).toContainEqual(
       expect.objectContaining({ documentId: 'corr-1', status: 'FAILED', error: expect.stringContaining('PDF_PASSWORD_PROTECTED') })
     );
+  });
+
+  it('#151 round 3: a busy box (reader exit 75) leaves the corrigendum untouched and ends the pass - never FAILED', async () => {
+    const d = corrDeps({
+      loadDocuments: vi.fn(async () => [corrDoc(), corrDoc({ id: 'corr-2', sha256: 'd'.repeat(64) })]),
+      runCorrigendumSuggestions: vi.fn(async () => { throw new CorrigendumReaderBusyError(); }),
+    });
+    const r = await processPendingFilings(IPO, d);
+    expect(r.failed).toBe(0);
+    expect(r.corrigendaRead).toBe(0);
+    expect(d.runCorrigendumSuggestions).toHaveBeenCalledTimes(1);
+    expect(stateCalls(d).filter((c) => String(c.documentId).startsWith('corr-'))).toEqual([]);
+    expect(r.skipped).toContain('CORRIGENDUM: another extractor holds the box lock (W-178c)');
   });
 
   it('still reads an SME corrigendum while the SME extraction flag is off (suggestions write nothing)', async () => {

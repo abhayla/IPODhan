@@ -50,7 +50,7 @@ vi.mock('../../../src/services/step-ledger.js', () => ({
   recordStep: (...args: unknown[]) => recordStepMock(...args),
 }));
 
-vi.mock('@ipodhan/shared', () => ({ db: {}, getRedisClient: () => ({}), getBoxWideRedisClient: () => ({}) }));
+vi.mock('@ipodhan/shared', () => ({ db: {}, getRedisClient: () => ({}) }));
 vi.mock('@ipodhan/shared/db/schema', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@ipodhan/shared/db/schema')>()),
   ipoDemandGraph: {},
@@ -249,8 +249,7 @@ describe('HOOK F — the document cycle', () => {
     // A throw anywhere between acquire() and the end of the cycle body must
     // still release the lock — a release call that is NOT inside `finally`
     // leaks the lock for its full TTL on any such throw.
-    // #151 round 1: the slot and box-wide extraction locks release together.
-    expect(cycle).toMatch(/\}\s*finally\s*\{[\s\S]*?releaseExtractionLocks\(distributedLock, boxLock,/);
+    expect(cycle).toMatch(/\}\s*finally\s*\{[\s\S]*?distributedLock\.release\(/);
   });
 
   it('MINOR-D: DEFAULT_MAX_SPAWNS_PER_CYCLE is referenced', () => {
