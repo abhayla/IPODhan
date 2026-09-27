@@ -101,3 +101,15 @@ def test_mixed_case_prose_about_promoters_is_not_a_statement():
     from extract_filing import read_cover_promoters
     prose = "Our Promoters are also Directors"
     assert read_cover_promoters([(0, prose)]) == ([], None)
+
+
+@pytest.mark.parametrize("line", [
+    "OUR PROMOTER-GROUP ENTITIES",
+    "Our Promoters - also Directors",
+])
+def test_hyphenated_or_mixed_case_dash_line_is_not_a_statement(line):
+    # #545 r1 review: the dash form matched inside "PROMOTER-GROUP" and yielded a
+    # promoter "Group Entities". A separator dash stands apart from the word, and the
+    # dash form, like the ARE/IS form, is read only off an upper-case cover line.
+    from extract_filing import read_cover_promoters
+    assert read_cover_promoters([(0, line)]) == ([], None)

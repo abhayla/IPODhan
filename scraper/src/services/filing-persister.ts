@@ -50,6 +50,7 @@ import type {
   PromoterAcquisitionRangeInsert,
 } from '@ipodhan/shared';
 import type { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
+import type { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { PEER_VALUE_COLUMNS } from '../repositories/peer-company-repository.js';
 import { upsertIPO } from './data-persister.js';
 import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
@@ -178,7 +179,13 @@ export interface FilingPersisterDeps {
   promoters: PromotersRepository;
   intermediaries: IpoIntermediariesRepository;
   brlmTrackRecord: BrlmTrackRecordRepository;
-  peerCompanies: Pick<PeerCompanyRepository, 'replaceForIpo'>;
+  peerCompanies: Pick<PeerCompanyRepository, 'replaceForIpo'> & Partial<Pick<PeerCompanyRepository, 'findByIPOId'>>;
+  /**
+   * #545 (C): where an attempted-but-empty list section records its reason (OD-62), and
+   * where a later read that supplies rows resolves it. Optional: absent means no reason
+   * row is written (the pre-#545 behaviour), never a thrown persist.
+   */
+  fieldExtractionFailures?: Pick<FieldExtractionFailuresRepository, 'recordFailure' | 'markResolved'>;
   financialData: FinancialDataRepository;
   fieldSources: FieldSourcesRepository;
   ipoDetailsWriter: IpoDetailsWriter;
@@ -446,10 +453,12 @@ function round2(v: number): number {
 export const FRESH_OFS_TOLERANCE = 0.005;
 
 /**
- * #545 (C): the `field_sources.field_name` under which a section the extractor attempted and
- * returned EMPTY records its reason (OD-62). See `recordEmptySection` in persistFilingExtraction.
+ * #545 (C): `field_extraction_failures.rule_id` for a list section the extractor attempted
+ * and returned EMPTY. The extractor's `emit.null` means "this document does not print it"
+ * (a PASSING not-extractable check), so the walk's own outcome name for that answer is
+ * reused (`NOT_PRINTED`, field-plan-walk.ts FetchAnswer) rather than EXTRACTION_FAILED.
  */
-export const EMPTY_RESULT_FIELD = 'empty_result';
+export const EMPTY_SECTION_RULE_ID = 'NOT_PRINTED';
 
 export type ReconciliationKind =
   /** Checked and agreed, or nothing to check against. */
@@ -1292,38 +1301,54 @@ export async function persistFilingExtraction(
   /**
    * #545 (C). A list section the extractor ATTEMPTED and returned empty (promoters, peers)
    * wrote nothing at all, so "the RHP was read and has no cover statement" left no trace
-   * anywhere (field_sources, field_extraction_failures, extraction_logs and
-   * document_extraction_attempts all held 0 rows for Moneyview / Acevector on staging,
-   * 2026-09-27). OD-62: an absent value stores a REASON, never a bare null.
+   * (staging 2026-09-27: 0 rows in field_sources, field_extraction_failures, extraction_logs
+   * and document_extraction_attempts for Moneyview / Acevector). OD-62: an absence stores a
+   * reason, and OD-62 names `field_extraction_failures` as the table built to carry it.
    *
-   * Filed as a `field_sources` row under its own field name `empty_result`, row_key '':
-   *  - NOT under the section's real field (`promoters.name`): the DOC fetcher reads that
-   *    provenance row as "the document supplied this field" and would judge the section
-   *    on it (field-plan-walk-doc-fetcher.ts).
-   *  - NOT under an `unresolved:` row key: any non-empty row_key moves the pair into
-   *    enforcement in row-key-coverage-checks.mjs, which would read a correct empty
-   *    extraction as a failed writer.
-   * `previousValue` is null, so the pull-noblank audit never counts it as a blanking.
-   * Only written when the extractor emitted the field (it tried): a document type whose
-   * extractor never reads the section says nothing about it. Best effort, like every
-   * provenance marker here: a failed write is logged with its cause, never thrown.
+   * Recorded only when (1) the extractor emitted the field (it tried: a document type whose
+   * extractor never reads the section says nothing about it), and (2) the table holds NO
+   * rows for this IPO (an ad re-read beside 3 promoters from the RHP is not an absence).
+   * If the existing rows cannot be listed, nothing is recorded (an absence that cannot be
+   * shown is not claimed). A later read that supplies rows resolves it (`resolveEmptySection`).
+   * Best effort, like every provenance write here: a failure is logged with its cause.
    */
+  const EMPTY_SECTIONS: Record<string, { fieldName: string; listExisting?: () => Promise<unknown[]> }> = {
+    promoters: {
+      fieldName: 'name',
+      listExisting: deps.promoters.listPromotersByIpo
+        ? () => deps.promoters.listPromotersByIpo(ipoId)
+        : undefined,
+    },
+    peer_companies: {
+      fieldName: 'companyName',
+      listExisting: deps.peerCompanies.findByIPOId ? () => deps.peerCompanies.findByIPOId!(ipoId) : undefined,
+    },
+  };
+
   const recordEmptySection = async (tableName: string, extractorFields: readonly string[]): Promise<void> => {
-    if (!apply) return;
+    if (!apply || !deps.fieldExtractionFailures) return;
     const attempted = extractorFields.map((f) => extraction.fields?.[f]).find((f) => f != null);
     if (!attempted) return;
-    const cause = attempted.check?.detail ?? attempted.check?.name ?? 'extractor returned no rows';
+    const section = EMPTY_SECTIONS[tableName];
+    const detail = attempted.check?.detail ?? attempted.check?.name ?? 'extractor returned no rows';
     try {
-      await deps.fieldSources.trackFieldUpdate({
+      if (!section.listExisting) {
+        logger.warn({ ipoId, tableName }, '[FilingPersister] cannot list existing rows; empty-section reason not recorded');
+        return;
+      }
+      if ((await section.listExisting()).length > 0) return;
+      const sha = options.sourceSha && /^[0-9a-f]{64}$/i.test(options.sourceSha) ? options.sourceSha : null;
+      await deps.fieldExtractionFailures.recordFailure({
         ipoId,
         tableName,
-        fieldName: EMPTY_RESULT_FIELD,
-        source,
-        confidence: 0,
-        previousValue: null,
-        previousSource: null,
-        dataLineage: { ...lineage, reasonCode: 'EXTRACTION_FAILED', emptyReason: cause, extractorField: extractorFields[0] },
-        updatedBy: 'FILING_PERSISTER',
+        fieldName: section.fieldName,
+        rowKey: '',
+        documentId: options.documentId ?? null,
+        documentSha256: sha,
+        ruleId: EMPTY_SECTION_RULE_ID,
+        rankAttempted: source,
+        extractedValue: null,
+        cause: `${options.docType} ${extractorFields[0]}: ${detail}`,
       });
     } catch (error) {
       const inner = (error as { cause?: { message?: string; code?: string } } | undefined)?.cause;
@@ -1332,11 +1357,23 @@ export async function persistFilingExtraction(
           event: 'empty-section-reason-write-failed',
           ipoId,
           tableName,
-          emptyReason: cause,
+          detail,
           causeMessage: inner?.message ?? (error as Error)?.message ?? 'unknown',
           causeCode: inner?.code ?? (error as { code?: string } | undefined)?.code ?? null,
         },
         '[FilingPersister] could not record why an extracted section was empty'
+      );
+    }
+  };
+
+  const resolveEmptySection = async (tableName: string): Promise<void> => {
+    if (!apply || !deps.fieldExtractionFailures) return;
+    try {
+      await deps.fieldExtractionFailures.markResolved(ipoId, tableName, EMPTY_SECTIONS[tableName].fieldName, '');
+    } catch (error) {
+      logger.error(
+        { event: 'empty-section-resolve-failed', ipoId, tableName, causeMessage: (error as Error)?.message ?? 'unknown' },
+        '[FilingPersister] could not resolve an earlier empty-section reason'
       );
     }
   };
@@ -2502,6 +2539,7 @@ export async function persistFilingExtraction(
         );
         await deps.promoters.replacePromoters(ipoId, rows);
         await trackField('promoters', 'rows');
+        await resolveEmptySection('promoters');
       }
       bump(written, 'promoters', rows.length);
     }
@@ -2960,6 +2998,7 @@ export async function persistFilingExtraction(
             fillGapsOnly: nameOnly,
           });
           await trackField('peer_companies', 'rows');
+          await resolveEmptySection('peer_companies');
         }
         bump(written, 'peer_companies', peerRows.length);
       }

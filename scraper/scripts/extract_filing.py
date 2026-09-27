@@ -1037,19 +1037,21 @@ PROMOTER_GROUP_TXN_MAX = 500
 # never read as a statement.
 OUR_PROMOTERS_RX = re.compile(
     r"^\s*(?:THE\s+)?(?:OUR\s+PROMOTERS?|PROMOTERS?\s+OF\s+(?:OUR|THE)\s+(?:COMPANY|ISSUER))"
-    r"\s*(?:(?P<sep>[:\-–—])|\s(?P<verb>ARE|IS)\b)\s*", re.I)
+    r"\s*(?:(?P<sep>:)|(?P<dash>[\-–—])(?=\s)|\s(?P<verb>ARE|IS)\b)\s*", re.I)
 
 
 def promoter_statement_tail(line):
     """The text after the promoter statement's lead-in on `line`, or None.
 
-    The "ARE"/"IS" form is accepted only on an upper-case line: the cover prints
-    the statement in capitals, while body prose ("Our Promoters are also
-    interested in ...") is mixed case and must not be split into names."""
+    A separator dash must stand apart ("COMPANY - A, B"), never sit inside a word
+    ("PROMOTER-GROUP ENTITIES", #545 r1). The dash and "ARE"/"IS" forms are
+    accepted only on an upper-case line: the cover prints the statement in
+    capitals, while body prose ("Our Promoters are also interested in ...") is
+    mixed case and must not be split into names."""
     m = OUR_PROMOTERS_RX.match(line or "")
     if not m:
         return None
-    if m.group("verb") and line != line.upper():
+    if (m.group("verb") or m.group("dash")) and line != line.upper():
         return None
     return line[m.end():]
 
