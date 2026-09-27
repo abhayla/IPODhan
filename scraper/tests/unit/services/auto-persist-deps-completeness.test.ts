@@ -88,6 +88,8 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   fileExists: 'test-only seam; production code calls existsSync directly when this is unset',
   storeDir: 'test-only seam; production code calls getStoreDir() when this is unset',
   version: 'test-only seam for the extractor version string; no production default needed here',
+  skipAnchorPass: '#1247 item 4: undefined/false = existing behaviour (anchors run every call) by design; document-cycle.ts sets this per-call, per-IPO (true on every call after the first for a given IPO this cycle), same shape as spawnBudget/anchorSpawnBudget/deadlineMs above',
+  attemptedDocumentIds: '#1247 r1 review (MAJOR): undefined = unbounded/no cross-call memory by design (existing callers/tests unaffected); document-cycle.ts creates ONE Set per cycle and threads it through every processPendingFilings call, same shape as spawnBudget/anchorSpawnBudget above',
 };
 
 describe('buildAutoPersistDeps supplies every declared dependency (or the gap is reviewed)', () => {

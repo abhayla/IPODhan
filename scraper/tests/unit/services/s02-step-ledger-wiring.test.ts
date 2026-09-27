@@ -229,12 +229,15 @@ describe('HOOK F — the document cycle', () => {
   it('gates the automatic extract+persist on ENABLE_FILING_AUTO_PERSIST', () => {
     const guarded = /if \(FEATURE_FLAGS\.ENABLE_FILING_AUTO_PERSIST\) \{[\s\S]*?processPendingFilings\(/;
     expect(cycle).toMatch(guarded);
-    // #771 r3 review: two call sites now (the never-read pass and the re-read
-    // pass), and BOTH sit inside the guarded block — no unguarded path.
+    // #1247 item 1: the reservation pre-pass, the fresh pass and the re-read
+    // top-up pass now share ONE `callOnce` helper (so the item-4 anchor guard
+    // lives in exactly one place) instead of two separate call expressions —
+    // one call site, invoked up to three times per cycle, still entirely
+    // inside the guarded block — no unguarded path.
     const guardIdx = cycle.search(/if \(FEATURE_FLAGS\.ENABLE_FILING_AUTO_PERSIST\) \{/);
     const blockEnd = cycle.indexOf('// PASS 2.5', guardIdx);
     const calls = [...cycle.matchAll(/processPendingFilings\(/g)].map((m) => m.index!);
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(1);
     for (const at of calls) {
       expect(at).toBeGreaterThan(guardIdx);
       expect(at).toBeLessThan(blockEnd);
