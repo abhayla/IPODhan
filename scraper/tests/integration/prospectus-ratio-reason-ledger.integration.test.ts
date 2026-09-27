@@ -58,8 +58,22 @@ const FIXTURES = path.join(__dirname, '..', 'fixtures');
 // `<<<PAGE n>>>` text fixtures (financial-ratios/) or [[n, text], ...] JSON (extractor/).
 const EXTRACT_PY = [
   'import io, json, sys',
+  'import extract_filing',
   'from extract_filing import run',
   'p = sys.argv[1]',
+  // #771 r3: the ratio column is chosen by the statement period of the stored
+  // net worth / EPS, which run() takes from the SAME document's P&L earlier in
+  // the same call (extract_filing.py extract_rhp: pnl at ~2672, ratio at ~2844).
+  // A ratio-note-only fixture has no P&L page, so the test pins what the full
+  // document's P&L core reports (argv[2] = its annual years, newest first).
+  'if len(sys.argv) > 2:',
+  '    years = [int(y) for y in sys.argv[2].split(",")]',
+  '    real = extract_filing.extract_pnl_from_texts',
+  '    def pinned(texts, **kw):',
+  '        out = real(texts, **kw)',
+  '        out["annualYears"] = years',
+  '        return out',
+  '    extract_filing.extract_pnl_from_texts = pinned',
   "raw = io.open(p, encoding='utf-8').read()",
   "if p.endswith('.json'):",
   '    pages = [tuple(x) for x in json.loads(raw)]',
@@ -72,8 +86,9 @@ const EXTRACT_PY = [
   "sys.stdout.write(json.dumps(run(pages, 'RHP', 'fixture', 'MAINBOARD')))",
 ].join('\n');
 
-function realExtraction(fixture: string): FilingExtraction {
-  const res = spawnSync(PYTHON as string, ['-c', EXTRACT_PY, path.join(FIXTURES, fixture)], {
+function realExtraction(fixture: string, statementYears?: number[]): FilingExtraction {
+  const args = ['-c', EXTRACT_PY, path.join(FIXTURES, fixture), ...(statementYears ? [statementYears.join(',')] : [])];
+  const res = spawnSync(PYTHON as string, args, {
     cwd: SCRIPTS_DIR,
     encoding: 'utf-8',
     env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
@@ -162,9 +177,16 @@ describe.skipIf(!DATABASE_URL || !PYTHON)('#771 prospectus ratio: a value or a r
   });
 
   it('a real ratio note in a non-Prasol layout is READ, so no reason is recorded for it', async () => {
-    const extraction = realExtraction('financial-ratios/a-one-steels-key-financial-ratios.txt');
+    // A-One's restated statements run to 31-Mar-2026 (the note: "year ended
+    // March 31, 2026"); the full RHP's P&L core reports FY2026 first.
+    const extraction = realExtraction('financial-ratios/a-one-steels-key-financial-ratios.txt', [2026, 2025, 2024]);
+    // Diagnostic: the reader's named cause if it wrote nothing.
+    const cr = extraction.fields?.current_ratio as { value?: number; check?: { detail?: string }; ratio_read?: { period?: string; latest_statement_period?: string } } | undefined;
+    if (cr?.value == null) console.error('#771 current_ratio refused:', cr?.check?.detail);
     // The issuer prints "a) Current ratio (in times) ... 1.34 1.27 5.67%Less than 25%".
     expect(extraction.fields?.current_ratio?.value).toBe(1.34);
+    expect(cr?.ratio_read?.period).toBe('2026-03-31');
+    expect(cr?.ratio_read?.latest_statement_period).toBe('2026-03-31');
     // The page the row was READ from (fixture page 555), not the note's first page.
     expect((extraction.fields?.current_ratio as { page?: number } | undefined)?.page).toBe(555);
     await landSteps(extraction);
@@ -173,5 +195,12 @@ describe.skipIf(!DATABASE_URL || !PYTHON)('#771 prospectus ratio: a value or a r
     expect('current_ratio' in reasons).toBe(false);
     // quick_ratio is never printed; its cause still reaches the ledger.
     expect(reasons.quick_ratio).toMatch(/^balance_sheet_inputs_absent:/);
+    expect(ratioYieldVerdict({ stepEvidence: v.evidence, extractorVersion: RATIO_FIXED_EXTRACTOR_VERSION }).status).toBe('PASS');
+  });
+
+  it('the same note with no readable statement period writes nothing and names why', async () => {
+    const extraction = realExtraction('financial-ratios/a-one-steels-key-financial-ratios.txt');
+    expect(extraction.fields?.current_ratio?.value ?? null).toBeNull();
+    expect(extraction.fields?.current_ratio?.check?.detail).toBe('ratio_statement_period_unknown');
   });
 });
