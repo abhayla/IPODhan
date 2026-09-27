@@ -164,6 +164,53 @@ import { buildExtractionStatePatch, buildExtractionAttemptRow } from './extracti
  */
 export const EXTRACTOR_VERSION = 'extract_filing.py@2026-09-27';
 
+/**
+ * #771 round 3 review (MAJOR): a version bump re-opens a COMPLETED document
+ * only for the document types whose extraction that bump changed. Spec
+ * section 2.5 "One download, one read" (OD-33): "The one allowed
+ * re-extraction is an extractor-version change, and only for the fields that
+ * failed". The '@2026-09-27' change is the issuer-ratio reader, which runs on
+ * the prospectus family only, so a price-band ad or anchor report read at
+ * '@2026-09-26' is NOT re-opened by it (staging: 33 of 97 re-opened
+ * documents were price-band ads, carrying no ratio). A COMPLETED document is
+ * done when its recorded version is at or after its type's floor here.
+ * Bumping EXTRACTOR_VERSION for a change that affects another type means
+ * raising that type's floor in the same change.
+ */
+export const REREAD_SINCE_DEFAULT = 'extract_filing.py@2026-09-26';
+export const REREAD_SINCE_BY_TYPE: Readonly<Record<string, string>> = {
+  RHP: EXTRACTOR_VERSION,
+  DRHP: EXTRACTOR_VERSION,
+  PROSPECTUS: EXTRACTOR_VERSION,
+};
+
+const EXTRACTOR_VERSION_PREFIX = 'extract_filing.py@';
+
+/** The oldest recorded version at which a COMPLETED document of `type` counts as read. */
+export function rereadSinceFor(type: string, version: string = EXTRACTOR_VERSION): string {
+  // A caller passing its own version (tests, a pinned run) keeps exact-match semantics.
+  if (version !== EXTRACTOR_VERSION) return version;
+  return REREAD_SINCE_BY_TYPE[type.toUpperCase()] ?? REREAD_SINCE_DEFAULT;
+}
+
+/** true when `recorded` is an extract_filing.py version at or after `floor` (the '@' suffix orders as a string). */
+export function versionAtLeast(recorded: string | null | undefined, floor: string): boolean {
+  if (!recorded || !recorded.startsWith(EXTRACTOR_VERSION_PREFIX) || !floor.startsWith(EXTRACTOR_VERSION_PREFIX)) {
+    return recorded === floor;
+  }
+  return recorded.slice(EXTRACTOR_VERSION_PREFIX.length) >= floor.slice(EXTRACTOR_VERSION_PREFIX.length);
+}
+
+/**
+ * #771 round 3 review (MAJOR): a document that has never been read to
+ * COMPLETED. It is spawned before any version re-read, whatever its IPO's
+ * lifecycle rank: a new RHP for an UPCOMING IPO must not wait behind re-reads
+ * of already-published documents of OPEN IPOs.
+ */
+export function isNeverRead(doc: Pick<CandidateDocument, 'extractionStatus' | 'extractedAt'>): boolean {
+  return !(doc.extractionStatus === 'COMPLETED' && doc.extractedAt);
+}
+
 /** Doc types `scripts/extract_filing.py` understands. Anything else is skipped. */
 import {
   AUTO_PERSIST_DOC_TYPES,
@@ -849,6 +896,8 @@ export interface AutoPersistResult {
   spawned: number;
   /** MAJOR-1: pending docs left unextracted this cycle because the spawn budget ran out. */
   skippedBudget: number;
+  /** #771 r3 review: version re-reads held back by the 'fresh' pass, for the cycle's second pass. */
+  rereadsDeferred?: number;
   /**
    * W-168: anchor allocation report counts for this call, kept separate from
    * the filing-doc-type counters above (`extracted`/`persisted`/`failed`
@@ -887,6 +936,13 @@ export interface AutoPersistResult {
  */
 export interface SpawnBudget {
   remaining: number;
+  /**
+   * #771 round 3 review (MAJOR): which filing documents this pass may spawn.
+   * 'fresh' - only never-read documents (the cycle's first pass over every
+   * candidate); 'rereads' - only version re-reads (a second pass, run only
+   * with budget left). Unset = both, never-read first (direct callers/tests).
+   */
+  phase?: 'fresh' | 'rereads';
 }
 
 /** Default cap on python spawns per document cycle, across every IPO. */
@@ -1068,7 +1124,9 @@ export function selectPendingFilings(
     const alreadyDone =
       doc.extractionStatus === 'COMPLETED' &&
       doc.extractedAt &&
-      (recordedVersion === version || type === CORRIGENDUM_DOC_TYPE);
+      (recordedVersion === version ||
+        versionAtLeast(recordedVersion, rereadSinceFor(type, version)) ||
+        type === CORRIGENDUM_DOC_TYPE);
     if (alreadyDone) {
       skipped.push(`${type}: already extracted by ${version}`);
       continue;
@@ -2206,12 +2264,24 @@ export async function processPendingFilings(
   // as skipped_budget — they are simply next cycle's (or a later IPO's, since
   // the same counter is shared) work, exactly like the wall-clock budget in
   // `runDocumentCycle` already treats unprocessed IPOs.
-  let filingBudgeted = filingPending;
+  // #771 round 3 review (MAJOR): never-read documents first; a version
+  // re-read never takes a slot a never-read document could use this cycle.
+  const phase = deps.spawnBudget?.phase;
+  const freshPending = filingPending.filter((d) => isNeverRead(d));
+  const rereadPending = filingPending.filter((d) => !isNeverRead(d));
+  let filingOrdered = [...freshPending, ...rereadPending];
+  if (phase === 'fresh') {
+    filingOrdered = freshPending;
+    result.rereadsDeferred = rereadPending.length;
+  } else if (phase === 'rereads') {
+    filingOrdered = rereadPending;
+  }
+  let filingBudgeted = filingOrdered;
   if (deps.spawnBudget) {
     const allowed = Math.max(0, deps.spawnBudget.remaining);
-    if (filingPending.length > allowed) {
-      filingBudgeted = filingPending.slice(0, allowed);
-      result.skippedBudget = filingPending.length - allowed;
+    if (filingOrdered.length > allowed) {
+      filingBudgeted = filingOrdered.slice(0, allowed);
+      result.skippedBudget = filingOrdered.length - allowed;
       result.skipped = [
         ...result.skipped,
         `${result.skippedBudget} document(s) left PENDING — spawn budget exhausted this cycle`,

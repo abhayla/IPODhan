@@ -1996,6 +1996,13 @@ export async function runDocumentCycle(
         // the live evidence needed: three failing anchors in a row was only
         // visible by reading every per-IPO log line by hand).
         const anchorCycleTotals = { considered: 0, spawned: 0, persisted: 0, manualReview: 0, failed: 0, markerWriteFailed: 0 };
+        // #771 round 3 review (MAJOR): two passes over the same spawn budget.
+        // The first spawns only NEVER-READ documents, in lifecycle order; the
+        // second spends what is left on extractor-version re-reads. A re-read
+        // (a document already published once) never takes a slot from a new
+        // document of a later-ranked IPO (an UPCOMING IPO's first RHP).
+        spawnBudget.phase = 'fresh';
+        const rereadIpos: ExtractionOnlyCandidate[] = [];
         for (const ipo of extractionCandidates) {
           if (now() - extractionStartedAt >= extractionBudgetMs) {
             extractionExhausted = true;
@@ -2037,6 +2044,7 @@ export async function runDocumentCycle(
                 'Extraction-only candidate (F-158/OD-98) skipped by processPendingFilings — see reasons'
               );
             }
+            if ((autoPersist.rereadsDeferred ?? 0) > 0) rereadIpos.push(ipo);
             anchorCycleTotals.considered += autoPersist.anchorsConsidered;
             anchorCycleTotals.spawned += autoPersist.anchorsSpawned;
             anchorCycleTotals.persisted += autoPersist.anchorsPersisted;
@@ -2052,6 +2060,30 @@ export async function runDocumentCycle(
               'Filing auto-persist threw (non-fatal) — continuing the cycle'
             );
           }
+        }
+        spawnBudget.phase = 'rereads';
+        let rereadsSpawned = 0;
+        for (const ipo of rereadIpos) {
+          if (spawnBudget.remaining <= 0 || now() - extractionStartedAt >= extractionBudgetMs) break;
+          try {
+            const reread = await processPendingFilings(
+              { id: ipo.id, companyName: ipo.companyName, slug: ipo.slug ?? null, segment: ipo.segment ?? null },
+              autoPersistDeps!
+            );
+            rereadsSpawned += reread.spawned;
+          } catch (error) {
+            logger.error(
+              { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+              'Filing re-read pass threw (non-fatal) — continuing the cycle'
+            );
+          }
+        }
+        spawnBudget.phase = undefined;
+        if (rereadIpos.length > 0) {
+          logger.info(
+            { rereadIpos: rereadIpos.length, rereadsSpawned, spawnBudgetRemaining: spawnBudget.remaining },
+            'Extractor-version re-read pass (after every never-read document had its slot)'
+          );
         }
         // W-168: log even when everything was zero — a silent cycle IS the
         // evidence that nothing starved anything, and its absence would be

@@ -168,6 +168,15 @@ _PERIOD_RXS = [
     re.compile(r"\b(?:FY|Fiscal)\s*[:\-]?\s*(?P<fs>\d{2,4})\s*[-/]\s*(?P<fe>\d{2})(?!\d)", re.I),
     # FY 2026, FY2026, Fiscal 2026
     re.compile(r"\b(?:FY|Fiscal)\s*(?P<y>20\d{2})(?!\s*[-/]\s*\d)(?!\d)", re.I),
+    # #771 r3 review MINOR (Indian FY convention: the year ENDS 31 March):
+    # FY25, FY'25 -> 31-Mar-2025
+    re.compile(r"\bFY\s*'?(?P<y2>\d{2})(?![\d/-])", re.I),
+    # 2024-25 with no prefix -> 31-Mar-2025 (the end year must be start + 1)
+    re.compile(r"(?<![\d/.-])(?P<fs>20\d{2})\s*-\s*(?P<fe>\d{2})(?![\d/.-])"),
+    # Mar-25, Mar'25, March 2025, Sep-24 -> that month's last day. A two-digit
+    # year only when joined by '-' or an apostrophe ("Mar 25" could be 25 March:
+    # ambiguous, refused); a four-digit one after a space.
+    re.compile(r"\b" + _MON + r"(?:[-'](?P<y2>\d{2})(?![\d,/-])|\s+(?P<y>20\d{2})(?!\d))", re.I),
 ]
 # A day+month whose year is printed on a later line (a wrapped or vertical cell).
 _STRANDED_RXS = [
@@ -227,7 +236,7 @@ def _schedule_iii_page(text):
 def period_tokens(line):
     """Every full period heading in `line`, in reading order: [(date, label)],
     date = (year, month, day)."""
-    found = []
+    found, dated_days = [], []
     for rx in _PERIOD_RXS:
         for m in rx.finditer(line):
             g = m.groupdict()
@@ -242,12 +251,21 @@ def period_tokens(line):
                         continue
                     date = (end, 3, 31)
                 elif g.get("d") is None:
-                    date = (int(g["y"]), 3, 31)
+                    year = int(g["y"]) if g.get("y") else 2000 + int(g["y2"])
+                    if g.get("mon"):
+                        month = _MONTHS[g["mon"][:3].lower()]
+                        leap = month == 2 and year % 4 == 0
+                        date = (year, month, 29 if leap else _MONTH_END[month])
+                    else:
+                        date = (year, 3, 31)
                 else:
                     month = int(g["m"]) if g.get("m") else _MONTHS[g["mon"][:3].lower()]
                     year = int(g["y"]) if g.get("y") else 2000 + int(g["y2"])
                     date = (year, month, int(g["d"]))
                     if not _month_end(date):
+                        # A dated day ('25 March 2025') is a date, not a
+                        # period: no shorter reading of it may stand either.
+                        dated_days.append((m.start(), m.end()))
                         continue
             except (TypeError, ValueError, KeyError):
                 continue
@@ -255,7 +273,7 @@ def period_tokens(line):
     found.sort(key=lambda f: (f[0], -f[1]))
     kept, last_end = [], -1
     for start, end, date, label in found:
-        if start < last_end:
+        if start < last_end or any(s < end and start < e for s, e in dated_days):
             continue
         kept.append((date, label))
         last_end = end

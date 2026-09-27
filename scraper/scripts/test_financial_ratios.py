@@ -267,8 +267,39 @@ def test_a_mid_month_date_is_not_a_period_heading():
     """German Green's variance caption '2024-25 March 2025' contains '25 March
     2025'; a statement period ends on a month's last day."""
     from financial_ratios import period_tokens
-    assert period_tokens("2025-26 2024-25 March 2025 to March 2026") == []
+    # The caption reads as four periods out of order, so it never passes as a header.
+    assert [d for d, _l in period_tokens("2025-26 2024-25 March 2025 to March 2026")] == [
+        (2026, 3, 31), (2025, 3, 31), (2025, 3, 31), (2026, 3, 31)]
     assert period_tokens("allotted on 25 March 2025") == []
     assert period_tokens("to March 25") == []
     got = [d for d, _l in period_tokens("30/09/2024 31/03/2024")]
     assert got == [(2024, 9, 30), (2024, 3, 31)]
+
+
+@pytest.mark.parametrize("heading,dates", [
+    ("FY25 FY24", [(2025, 3, 31), (2024, 3, 31)]),
+    ("FY'25 FY'24", [(2025, 3, 31), (2024, 3, 31)]),
+    ("Mar-25 Mar-24", [(2025, 3, 31), (2024, 3, 31)]),
+    ("March 2025 March 2024", [(2025, 3, 31), (2024, 3, 31)]),
+    ("2024-25 2023-24", [(2025, 3, 31), (2024, 3, 31)]),
+    ("Sep-24 Mar-24", [(2024, 9, 30), (2024, 3, 31)]),
+])
+def test_short_fiscal_year_headings_map_to_31_march(heading, dates):
+    """#771 r3 review MINOR: Indian fiscal years end 31 March, so FY25,
+    Mar-25, March 2025 and a bare 2024-25 all name 31-Mar-2025."""
+    from financial_ratios import period_tokens
+    assert [d for d, _l in period_tokens(heading)] == dates
+    got = read_ratio(_note(_HEAD.format(heading),
+                           "1 Current Ratio Current Assets Current Liabilities 1.40 1.25 12.00%"),
+                     "current_ratio", dates[0])
+    assert got["value"] == 1.40, got
+
+
+@pytest.mark.parametrize("heading", ["Mar 25 Mar 24", "2024-26 2023-25", "25 March 2025 24 March 2024", "FY 2025 25"])
+def test_ambiguous_short_headings_are_still_refused(heading):
+    """'Mar 25' may be 25 March; 2024-26 is not one fiscal year; a mid-month
+    date is a date, not a period."""
+    got = read_ratio(_note(_HEAD.format(heading),
+                           "1 Current Ratio Current Assets Current Liabilities 1.40 1.25 12.00%"),
+                     "current_ratio", (2025, 3, 31))
+    assert got["value"] is None, got

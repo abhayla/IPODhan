@@ -1302,3 +1302,55 @@ describe('Item 5 slice s4 — field-plan generation pass gated by ENABLE_FIELD_P
     );
   });
 });
+
+// #771 round 3 review (MAJOR): an extractor-version bump re-opened ~91 COMPLETED
+// staging documents; the 3-slot budget went to them in lifecycle order, so a
+// NEW RHP of a later-ranked (UPCOMING) IPO waited days behind re-reads.
+describe('#771 r3 — never-read documents take the spawn budget before version re-reads', () => {
+  it('ipo-1 holds 5 re-reads, ipo-2 one new RHP; budget 3 -> the new RHP is spawned in the first cycle', async () => {
+    const docs: Record<string, { fresh: number; rereads: number }> = {
+      'ipo-1': { fresh: 0, rereads: 5 },
+      'ipo-2': { fresh: 1, rereads: 0 },
+    };
+    const spawnedBy: Record<string, { fresh: number; rereads: number }> = {
+      'ipo-1': { fresh: 0, rereads: 0 },
+      'ipo-2': { fresh: 0, rereads: 0 },
+    };
+    // Mirrors processPendingFilings' phase contract (pinned by its own unit
+    // tests in filing-auto-persist.test.ts): 'fresh' spawns never-read
+    // documents only and reports the re-reads it held back; 'rereads' spawns
+    // re-reads only; both draw on the one shared counter.
+    processPendingFilingsMock.mockImplementation(
+      async (ipo: { id: string }, deps: { spawnBudget?: { remaining: number; phase?: string } } | undefined) => {
+        const b = deps!.spawnBudget!;
+        const d = docs[ipo.id];
+        let spawned = 0;
+        const take = (kind: 'fresh' | 'rereads') => {
+          while (d[kind] > 0 && b.remaining > 0) {
+            d[kind] -= 1;
+            b.remaining -= 1;
+            spawnedBy[ipo.id][kind] += 1;
+            spawned += 1;
+          }
+        };
+        if (b.phase !== 'rereads') take('fresh');
+        if (b.phase !== 'fresh') take('rereads');
+        return {
+          ipoId: ipo.id, considered: 0, extracted: 0, persisted: 0, failed: 0, skipped: [], spawned,
+          skippedBudget: 0, anchorsConsidered: 0, anchorsSpawned: 0, anchorsPersisted: 0,
+          anchorsManualReview: 0, anchorsFailed: 0,
+          rereadsDeferred: b.phase === 'fresh' ? d.rereads : 0,
+        };
+      }
+    );
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(spawnedBy['ipo-2'].fresh).toBe(1);
+    expect(spawnedBy['ipo-1'].rereads).toBe(2);
+    const phases = processPendingFilingsMock.mock.calls.map(
+      (c) => `${(c[0] as { id: string }).id}`
+    );
+    expect(phases).toEqual(['ipo-1', 'ipo-2', 'ipo-1']);
+  });
+});
