@@ -67,21 +67,21 @@ test('flags a deleted file still imported by a test (red)', () => {
 test('a hardcoded basename reference (no extension) is caught', () => {
   const root = makeRepo();
   try {
-    writeFile(root, 'scraper/scripts/backfill-ipo-reviews.ts', 'export {};\n');
+    writeFile(root, 'scraper/scripts/retired-backfill-fixture.ts', 'export {};\n');
     writeFile(
       root,
       'scripts/ci/tests/consumer.test.mjs',
-      "const target = 'scraper/scripts/backfill-ipo-reviews.ts';\nconsole.log(target);\n"
+      "const target = 'scraper/scripts/retired-backfill-fixture.ts';\nconsole.log(target);\n"
     );
     commitAll(root, 'base');
     sh(root, ['git', 'branch', '--quiet', 'base']);
 
-    rmSync(join(root, 'scraper', 'scripts', 'backfill-ipo-reviews.ts'));
-    commitAll(root, 'delete backfill-ipo-reviews.ts');
+    rmSync(join(root, 'scraper', 'scripts', 'retired-backfill-fixture.ts'));
+    commitAll(root, 'delete retired-backfill-fixture.ts');
 
     const result = runCheck(root, 'base', 'HEAD');
     assert.equal(result.status, 1, `expected exit 1, got ${result.status}: ${result.stderr}`);
-    assert.match(result.stderr, /backfill-ipo-reviews\.ts/);
+    assert.match(result.stderr, /retired-backfill-fixture\.ts/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

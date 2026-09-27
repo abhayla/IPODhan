@@ -2585,45 +2585,6 @@ export async function createAnchorInvestors(
   return result;
 }
 
-// ==================== IPO REVIEWS ====================
-
-/**
- * Create or update IPO reviews with retry logic
- * @param reviewRepository - Review repository instance
- * @param ipoId - IPO ID to associate reviews with
- * @param segment - IPO segment (MAINBOARD/SME)
- * @param scrapedReviews - Array of scraped reviews
- * @returns Number of reviews created/updated
- */
-export async function createIPOReviews(
-  reviewRepository: any, // ReviewRepository type
-  ipoId: string,
-  segment: 'MAINBOARD' | 'SME',
-  scrapedReviews: Array<{
-    source: string;
-    author: string;
-    reviewTitle: string;
-    recommendation: 'Subscribe' | 'May apply' | 'Avoid' | 'Not Recommended';
-    publishedDate: Date;
-    reviewContent: string;
-    reviewUrl?: string;
-  }>
-): Promise<number> {
-  // OD-125 (2026-09-26): "IPODhan publishes no opinion reviews of IPOs" —
-  // the review scraper/repository path is being retired (#167; #1189,
-  // parked, deletes this function entirely). #434 fixed this function's
-  // type errors (the `retryWithExponentialBackoff` call was passing a
-  // string label into its `retries: number` param, so the loop below never
-  // ran — see PR #1198). Fixing that bug would have made the upsert body
-  // start running again, reviving retired functionality from a type-only
-  // PR. Kept as a documented, type-correct no-op instead: #1189 removes it
-  // for real. Do not restore the body here.
-  void reviewRepository;
-  void segment;
-  logger.debug({ ipoId, reviewCount: scrapedReviews.length }, 'createIPOReviews: no-op (OD-125/#167, reviews retired)');
-  return 0;
-}
-
 // ==================== IPO OBJECTIVES ====================
 
 /**

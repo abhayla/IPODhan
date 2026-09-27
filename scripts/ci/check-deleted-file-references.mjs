@@ -147,7 +147,7 @@ function parseGrepLine(line, head) {
 // Filenames so generic (Next.js route-file conventions, or otherwise reused
 // dozens of times per repo with no relation to each other) that a bare
 // basename match is pure noise without directory context. Tuned against real
-// history (#1189): deleting web/app/admin/reviews/page.tsx made a basename
+// history (#1189): deleting the admin reviews page.tsx made a basename
 // search for "page" hit ~28,000 unrelated lines (every other page.tsx import,
 // every CSV/doc row that happens to contain the English word "page"). The
 // exact-path check (a) still catches a real reference to one of these; this

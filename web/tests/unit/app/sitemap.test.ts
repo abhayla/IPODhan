@@ -3,7 +3,6 @@
  *
  * P3-14: a retired/redirected slug (an `ipo_slug_redirects.old_slug`) must
  * never be published in the sitemap — crawling it just bounces through a 308.
- * P3-16: the "coming soon" review placeholder pages must not be indexed.
  * F2 (T-302C checker finding): the `old_slug` filter alone is a no-op against
  * the reported bug, because a build-time-cached sitemap (no `revalidate`)
  * kept serving a stale snapshot from BEFORE the retirement, and the filter
@@ -39,8 +38,6 @@ vi.mock('@/lib/seo/route-discovery', () => ({
     '/',
     '/mainboard-ipos',
     '/sme-ipos',
-    '/mainboard-ipo-reviews',
-    '/sme-ipo-reviews',
     '/market-holidays',
   ],
 }));
@@ -66,17 +63,6 @@ describe('sitemap', () => {
     const urls = entries.map((e) => e.url);
     expect(urls.some((u) => u.includes('/ipos/ic-electricals-co-ltd'))).toBe(false);
     expect(urls.some((u) => u.includes('/ipos/good-company-ltd'))).toBe(true);
-  });
-
-  it('P3-16: excludes the "coming soon" review placeholder pages', async () => {
-    const sitemap = (await import('@/app/sitemap')).default;
-    const entries = await sitemap();
-
-    const urls = entries.map((e) => e.url);
-    expect(urls.some((u) => u.endsWith('/mainboard-ipo-reviews'))).toBe(false);
-    expect(urls.some((u) => u.endsWith('/sme-ipo-reviews'))).toBe(false);
-    // Sanity: real static routes still get through
-    expect(urls.some((u) => u.endsWith('/mainboard-ipos'))).toBe(true);
   });
 
   it('F2: revalidates on the IPO-list cache cadence instead of only at build time', async () => {

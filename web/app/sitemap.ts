@@ -55,13 +55,6 @@ const DEFAULT_WEIGHT: { changeFrequency: MetadataRoute.Sitemap[number]['changeFr
   priority: 0.6,
 };
 
-// P3-16: these static pages are intentional "coming soon" placeholders
-// (ipo_reviews/ipo_scores have zero production rows — see the pages'
-// own doc comments) — real, crawlable 200s, but nothing worth indexing yet.
-// discoverStaticRoutes finds every page.tsx by design (P2-4); exclude these
-// explicitly rather than making discovery itself content-aware.
-const PLACEHOLDER_ROUTES = new Set(['/mainboard-ipo-reviews', '/sme-ipo-reviews']);
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://ipodhan.com';
 
@@ -99,9 +92,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   allIPOs = allIPOs.filter((ipo) => !redirectedOldSlugs.has(ipo.slug));
 
   const now = new Date();
-  const staticRoutes = discoverStaticRoutes(path.join(process.cwd(), 'app')).filter(
-    (route) => !PLACEHOLDER_ROUTES.has(route)
-  );
+  const staticRoutes = discoverStaticRoutes(path.join(process.cwd(), 'app'));
   const staticPages: MetadataRoute.Sitemap = staticRoutes.map((route) => {
     const weight = ROUTE_OVERRIDES[route] ?? DEFAULT_WEIGHT;
     return {
