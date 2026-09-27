@@ -573,6 +573,8 @@ export function checkExtractionStuck(row) {
   if (!LIVE_EXTRACTION_STATUSES.has(ipoStatus)) return null;
   const ceiling = checkRetryCeiling(row);
   if (ceiling) return ceiling;
+  const unfinishedPark = checkUnfinishedParked(row);
+  if (unfinishedPark) return unfinishedPark;
   const docType = String(row.docType ?? '').toUpperCase();
   if (!REQUIRED_EXTRACTION_DOC_TYPES.has(docType)) return null;
 
@@ -593,7 +595,26 @@ export function checkExtractionStuck(row) {
     retryCount >= NEVER_ESCALATES_MIN_RETRIES &&
     retryCount < MAX_EXTRACTION_ATTEMPTS;
 
-  if (!isManualReview && !isFetchStateFailed && !isHardFailure && !isNeverEscalating) return null;
+  // 5th shape (#959): with the extraction backoff timer removed, a FAILED row
+  // is re-read only on a new extractor version or new bytes (an unfinished
+  // read is re-read each pass inside the OD-32 window, which keeps its
+  // updated_at moving, then parked FAILED as UNFINISHED_EXHAUSTED). So a
+  // FAILED row whose updated_at is past the floor is waiting on a trigger that
+  // may never come without a human (an extractor fix) — surface it.
+  const isParkedFailed = extractionStatus === 'FAILED' && !isHardFailure && !isNeverEscalating;
+  // 6th shape (#959 round 1): an IN_PROGRESS row not written for 48h — no pass
+  // has resumed or parked it, so it would otherwise sit with no signal at all.
+  const isStaleInProgress = extractionStatus === 'IN_PROGRESS';
+
+  if (
+    !isManualReview &&
+    !isFetchStateFailed &&
+    !isHardFailure &&
+    !isNeverEscalating &&
+    !isParkedFailed &&
+    !isStaleInProgress
+  )
+    return null;
 
   const hours = row.hoursSinceUpdate === null || row.hoursSinceUpdate === undefined ? null : Number(row.hoursSinceUpdate);
   if (hours === null || !Number.isFinite(hours) || hours <= EXTRACTION_STUCK_MAX_HOURS) return null;
@@ -604,9 +625,33 @@ export function checkExtractionStuck(row) {
       ? 'EXTRACT_FAILED'
       : isHardFailure
         ? `FAILED (${HARD_FAILURE_MARKER})`
-        : `FAILED (never-escalates, retryCount=${retryCount})`;
+        : isNeverEscalating
+          ? `FAILED (never-escalates, retryCount=${retryCount})`
+          : isStaleInProgress
+            ? 'IN_PROGRESS (interrupted and never resumed or parked, #959)'
+            : 'FAILED (waits for a new extractor version or a new document, #959)';
   const label = row.companyName ?? row.slug ?? row.ipoId ?? 'unknown IPO';
   return `${label}: ${docType} stuck ${shape} for ${hours.toFixed(1)}h (> ${EXTRACTION_STUCK_MAX_HOURS}h) — needs-decision`;
+}
+
+/** Mirror of `UNFINISHED_EXHAUSTED_MARKER` in filing-auto-persist.ts (#959). */
+export const UNFINISHED_EXHAUSTED_PREFIX = 'UNFINISHED_EXHAUSTED:';
+
+/**
+ * m_extraction_stuck, 7th shape (#959 round 3): a document parked because its unfinished reads
+ * (killed / memory ceiling / hang / pages unread / save failure / interrupted) reached their count
+ * cap - `extraction_error` = `UNFINISHED_EXHAUSTED: <count>/<cap> <cause>: <last error>`. Reported
+ * at ANY age and for EVERY document type, for the same reasons as the retry-ceiling shape: a park is
+ * terminal until a new extractor version or new bytes, and anchor/price-band documents park too.
+ */
+export function checkUnfinishedParked(row) {
+  const error = String(row.extractionError ?? '');
+  if (row.extractionStatus !== 'FAILED' || !error.startsWith(UNFINISHED_EXHAUSTED_PREFIX)) return null;
+  const m = /^UNFINISHED_EXHAUSTED: (\d+)\/(\d+) (\S+): (.*?)(?: @failed-at:\S+)?$/s.exec(error);
+  const facts = m ? `count=${m[1]}/${m[2]} cause=${m[3]} last=${m[4].slice(0, 160)}` : `last=${error.slice(0, 160)}`;
+  const label = row.companyName ?? row.slug ?? row.ipoId ?? 'unknown IPO';
+  const docType = String(row.docType ?? '').toUpperCase();
+  return `${label} (ipo ${row.ipoId ?? 'unknown'}, doc ${row.documentId ?? 'unknown'} ${docType}): unfinished extraction parked (#959) ${facts} — waits for a new extractor version or new bytes; needs-decision`;
 }
 
 /** Mirror of `EXTRACTION_BLOCKED_ERROR` in filing-auto-persist.ts. */

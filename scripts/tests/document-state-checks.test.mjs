@@ -732,8 +732,41 @@ test('m_extraction_stuck FAILs on FAILED with a HARD_FAILURE marker past 48h', (
   assert.match(v, /HARD_FAILURE/);
 });
 
-test('m_extraction_stuck PASSes on FAILED WITHOUT a HARD_FAILURE marker (ordinary retryable failure)', () => {
+test('#959 m_extraction_stuck FAILs a FAILED row with no marker past the floor — parked until a new extractor version', () => {
   const v = checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'FAILED', extractionError: 'timeout', hoursSinceUpdate: 96 });
+  assert.notEqual(v, null);
+  assert.match(v, /waits for a new extractor version or a new document, #959/);
+});
+
+test('#959 round 1 m_extraction_stuck FAILs an IN_PROGRESS row not written for 48h; PASSes it under the floor', () => {
+  const v = checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'IN_PROGRESS', extractionError: null, hoursSinceUpdate: 72 });
+  assert.match(v, /IN_PROGRESS \(interrupted and never resumed or parked, #959\)/);
+  assert.equal(checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'IN_PROGRESS', hoursSinceUpdate: 47 }), null);
+});
+
+test('#959 round 3 m_extraction_stuck FAILs a row parked as UNFINISHED_EXHAUSTED at ANY age and ANY type, naming count and cause', () => {
+  const parked =
+    'UNFINISHED_EXHAUSTED: 3/3 INTERRUPTED: INTERRUPTED:2@1790000000000:stopped @failed-at:extract_filing.py@2026-09-26#bbbbbbbbbbbbbbbb';
+  for (const docType of ['RHP', 'ANCHOR_ALLOCATION_REPORT', 'PRICE_BAND_AD']) {
+    const v = checkExtractionStuck({ ...STUCK_BASE, docType, documentId: 'doc-9', extractionStatus: 'FAILED', extractionError: parked, retryCount: 3, hoursSinceUpdate: 1 });
+    assert.match(v, /unfinished extraction parked \(#959\) count=3\/3 cause=INTERRUPTED/);
+    assert.match(v, new RegExp(`doc doc-9 ${docType}`));
+  }
+});
+
+test('#959 round 3 the parked shape does not fire on an un-parked unfinished row (HARD_FAILURE:1) or on a WITHDRAWN IPO', () => {
+  assert.equal(
+    checkExtractionStuck({ ...STUCK_BASE, docType: 'ANCHOR_ALLOCATION_REPORT', extractionStatus: 'FAILED', extractionError: 'HARD_FAILURE:1@1:killed', retryCount: 1, hoursSinceUpdate: 1 }),
+    null
+  );
+  assert.equal(
+    checkExtractionStuck({ ...STUCK_BASE, ipoStatus: 'WITHDRAWN', extractionStatus: 'FAILED', extractionError: 'UNFINISHED_EXHAUSTED: 2/2 HARD_FAILURE: x', hoursSinceUpdate: 1 }),
+    null
+  );
+});
+
+test('#959 m_extraction_stuck PASSes the same parked FAILED row under the 48h floor', () => {
+  const v = checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'FAILED', extractionError: 'timeout', hoursSinceUpdate: 47 });
   assert.equal(v, null);
 });
 
@@ -800,7 +833,7 @@ test('396 PASSes the SAME shape under the 48h floor (not yet stuck long enough)'
   assert.equal(v, null);
 });
 
-test('396 PASSes below NEVER_ESCALATES_MIN_RETRIES (2 retries — still ordinary backoff)', () => {
+test('396/#959 below NEVER_ESCALATES_MIN_RETRIES is not never-escalates, but IS the parked-FAILED shape', () => {
   const v = checkExtractionStuck({
     ...STUCK_BASE,
     extractionStatus: 'FAILED',
@@ -808,7 +841,8 @@ test('396 PASSes below NEVER_ESCALATES_MIN_RETRIES (2 retries — still ordinary
     retryCount: NEVER_ESCALATES_MIN_RETRIES - 1,
     hoursSinceUpdate: 96,
   });
-  assert.equal(v, null);
+  assert.doesNotMatch(v, /never-escalates/);
+  assert.match(v, /#959/);
 });
 
 test('396 never-escalates does not claim a row at MAX_EXTRACTION_ATTEMPTS (the retry-ceiling shape reports it instead)', () => {
