@@ -694,6 +694,8 @@ export function mergeListingExchangesForSource(
   // unknown, NSE/BSE assert only themselves.
   const incoming = toListingExchangesForSource(scrapedListingExchange, source);
   if (!incoming) return existing;
+  // OD-129 (#938): a document's listing sentence replaces the set, never unions into it.
+  if (DOCUMENT_PATH_SOURCES.has(source)) return incoming;
 
   let merged = existing;
   for (const exchange of incoming) {
@@ -1367,9 +1369,19 @@ async function upsertIPOInScope(
             // (the consolidation service logs the conflict row).
             let mergedExchanges = existingIPO.listingExchanges as ('NSE' | 'BSE')[];
             const segment = (existingIPO.segment ?? scrapedIPO.segment) as string | null | undefined;
-            const incomingExchanges = listingExchangeIsContext
+            // OD-129 (#938): when the consolidation decided the set document-first
+            // (a document replaced or confirmed it, or a stored document set held
+            // against a feed), its decision IS the value — re-running the union
+            // here would re-add the very board the document ruled out.
+            const od129Result = consolidationResult.fieldResults.find(
+              (f) => f.fieldName === 'listingExchanges' && String(f.conflictReason ?? '').startsWith('OD129_')
+            );
+            const incomingExchanges = listingExchangeIsContext || od129Result
               ? undefined
               : toListingExchangesForSource(scrapedIPO.listingExchange, source);
+            if (od129Result && Array.isArray(od129Result.finalValue)) {
+              mergedExchanges = od129Result.finalValue as ('NSE' | 'BSE')[];
+            }
             if (incomingExchanges) {
               const widened = [...(mergedExchanges ?? [])];
               for (const exchange of incomingExchanges) {

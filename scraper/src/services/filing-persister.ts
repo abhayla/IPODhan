@@ -24,6 +24,8 @@
 
 import type { IPORepository } from '@ipodhan/shared';
 import { E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories/field-sources-repository';
+import { parseListingSentence, toScrapedListingExchange, type DocumentListingExchange } from './listing-sentence.js';
+import type { PageTextCarrier } from './document-page-text.js';
 import { isFixedPriceIssue, normalizeReceiptValue, type RuleDocumentRef } from '../../config/plan-supersession-rule.mjs';
 import {
   columnMark,
@@ -1438,6 +1440,10 @@ export async function persistFilingExtraction(
   if (listingDate) iposCandidate.listingDate = listingDate;
   if (description) iposCandidate.companyDescription = description;
   if (cinForWrite !== null) iposCandidate.cin = cinForWrite;
+  // OD-129 (#938): the listing sentence on the cover pages decides the exchanges.
+  // A price band ad that says only "the Stock Exchanges" names none -> nothing claimed.
+  const listingSentence = parseListingSentence((extraction as FilingExtraction & PageTextCarrier).page_texts);
+  if (listingSentence) iposCandidate.listingExchanges = listingSentence.exchanges;
 
   // W-147: drop any headline column a price band advertisement already owns,
   // BEFORE the admin-protection gate and the write.
@@ -1461,6 +1467,13 @@ export async function persistFilingExtraction(
   const iposWritable =
     Object.keys(iposCandidate).length > 0 ? await filterFields('ipos', iposCandidate) : {};
   for (const [col, v] of Object.entries(iposWritable)) {
+    if (col === 'listingExchanges') {
+      // The write path's payload key is the singular `listingExchange`; claiming it
+      // here also takes it out of the context set, so it is this document's claim.
+      scraped.listingExchange = toScrapedListingExchange(v as DocumentListingExchange[]);
+      iposFields.push('listingExchange');
+      continue;
+    }
     scraped[col] = v;
     iposFields.push(col);
   }

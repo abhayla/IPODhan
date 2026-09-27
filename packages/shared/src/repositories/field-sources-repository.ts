@@ -65,9 +65,11 @@ export interface FieldSourceSummary {
  * Provides audit trail for data flow from scrapers to database
  */
 /**
- * The ten E-1 fields (field-manifest class `T`) are the EXCHANGE's to state:
- * the timetable, the status, and where the shares list. A document may PRINT an
- * intended date; only the exchange's own page says what it IS.
+ * The nine E-1 fields (field-manifest class `T`) are the EXCHANGE's to state:
+ * the timetable and the status. A document may PRINT an intended date; only the
+ * exchange's own page says what it IS. `listingExchanges` left E-1 with OD-129
+ * (#938): changing where an IPO lists forces a new filing, so the offer
+ * document's listing sentence decides it (listing-sentence.ts in the scraper).
  *
  * #862 measured 79 writes that broke this on staging — 41 listingExchanges, 22
  * timetable dates and 8 statuses, every one from DRHP. A DRAFT prospectus is
@@ -90,7 +92,6 @@ export const E1_EXCHANGE_STATED_FIELDS: ReadonlySet<string> = new Set([
   'closeDate',
   'listingDate',
   'status',
-  'listingExchanges',
   'allotmentDate',
   'basisOfAllotmentDate',
   'initiationOfRefundsDate',

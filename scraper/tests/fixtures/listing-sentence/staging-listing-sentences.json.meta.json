@@ -1,0 +1,6 @@
+{
+  "sourceUrl": "postgres://localhost:15432/ipodhan_staging (tunnel, read-only) table document_pages joined to documents and ipos; each entry names its documents.id and page_number",
+  "capturedAt": "2026-09-27",
+  "pageType": true,
+  "note": "Real extractor page text (document_pages) of offer documents already stored on staging, excerpted around the cover-page listing sentence. Oracle for OD-129 / F-197 / #938."
+}

@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-27T07:21:17.972Z",
+  "generated_at": "2026-09-27T07:38:31.865Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 206,
-    "retired": 45
+    "retired": 46
   },
-  "next_id": 252,
+  "next_id": 253,
   "rules": [
     {
       "id": "R-151",
@@ -1287,12 +1287,12 @@
       "retired": false
     },
     {
-      "id": "R-094",
-      "hash": "ebfcb146d62e",
+      "id": "R-252",
+      "hash": "2478056db39f",
       "section": "4. How we would know it worked",
       "kind": "table-normative",
-      "text": "E1-SOURCE — for the ten E-1 fields, field_sources.source is never DRHP — true — any E-1 field written by the document path — asserts the outcome, not the declared intent",
-      "first_seen": "2026-09-09",
+      "text": "E1-SOURCE — for the nine E-1 fields, field_sources.source is never DRHP — true — any E-1 field written by the document path — asserts the outcome, not the declared intent",
+      "first_seen": "2026-09-27",
       "retired": false
     },
     {
@@ -1861,6 +1861,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-094",
+      "hash": "ebfcb146d62e",
+      "section": "4. How we would know it worked",
+      "kind": "table-normative",
+      "text": "E1-SOURCE — for the ten E-1 fields, field_sources.source is never DRHP — true — any E-1 field written by the document path — asserts the outcome, not the declared intent",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-246",

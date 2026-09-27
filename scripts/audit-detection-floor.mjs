@@ -3183,7 +3183,7 @@ async function checkS_pullNoop() {
 }
 
 
-// E1-SOURCE: the ten E-1 (class T) fields are the exchange's to state -- open,
+// E1-SOURCE: the nine E-1 (class T) fields are the exchange's to state -- open,
 // close, listing, allotment, refund and credit dates, status, exchanges. A
 // document may PRINT an intended date; only the exchange's own page says what
 // it IS. So no E-1 field may ever carry a document-path source.

@@ -3,10 +3,11 @@
  * 22 timetable dates and 8 IPO statuses, from a DRAFT prospectus that cannot
  * contain final dates at all.
  *
- * The ten E-1 fields (manifest class `T`) are the exchange's to state: open,
- * close, listing, allotment, refund and credit dates, plus status and
- * listing_exchanges. A document may PRINT an intended date; only the exchange's
- * own page says what it IS.
+ * The nine E-1 fields (manifest class `T`) are the exchange's to state: open,
+ * close, listing, allotment, refund and credit dates, plus status. A document
+ * may PRINT an intended date; only the exchange's own page says what it IS.
+ * `listing_exchanges` left E-1 with OD-129 (#938): the offer document's listing
+ * sentence decides it, so a document write to it is ALLOWED (asserted below).
  *
  * The rule existed only as manifest capability metadata and as a validator on
  * ADMIN OVERRIDES (field-source-override-validation.ts:80). Nothing guarded the
@@ -39,7 +40,7 @@ describe('FieldSourcesRepository.trackFieldUpdate — E-1 fields reject document
   // The eight field/source pairs measured on staging, plus the two E-1 fields
   // that happened not to be hit. The class is every E-1 field, not the sample.
   const E1_CAMEL = [
-    'openDate', 'closeDate', 'listingDate', 'status', 'listingExchanges',
+    'openDate', 'closeDate', 'listingDate', 'status',
     'allotmentDate', 'basisOfAllotmentDate', 'initiationOfRefundsDate',
     'creditOfSharesDate', 'bidDate',
   ];
@@ -62,6 +63,13 @@ describe('FieldSourcesRepository.trackFieldUpdate — E-1 fields reject document
       repo.trackFieldUpdate({ ...base, fieldName: 'openDate', source: 'DOC' as never })
     ).rejects.toThrow(/E-1/);
     expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('ALLOWS a document to write listingExchanges — OD-129 moved it out of E-1 (#938)', async () => {
+    const { db, insert } = makeStubDb();
+    const repo = new FieldSourcesRepository(db, stubRedis);
+    await repo.trackFieldUpdate({ ...base, fieldName: 'listingExchanges', source: 'DRHP' as never });
+    expect(insert).toHaveBeenCalled();
   });
 
   it('ALLOWS the exchange to write an E-1 field — the guard must not break the legitimate path', async () => {

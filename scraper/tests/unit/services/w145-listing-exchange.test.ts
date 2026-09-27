@@ -13,6 +13,8 @@ import {
   toListingExchangesForSource,
   violatesSmeSingleExchange,
   SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+  OD129_DOCUMENT_WRITES_REASON,
+  OD129_DOCUMENT_DISAGREES_REASON,
 } from '../../../src/services/listing-exchange-resolution.js';
 import { getFieldRules, getSourcePriority } from '../../../src/config/field-priority-matrix.js';
 import type { FieldSourcesRepository, DataConflictsRepository } from '@ipodhan/shared';
@@ -472,5 +474,108 @@ describe('W-145 round 3: tier-2 evidence quality, conflict cleanup, missing repo
 
     expect(result.consolidatedData.listingExchanges).toEqual(['NSE', 'BSE']);
     expect(listingRepo.findByIPO).not.toHaveBeenCalled();
+  });
+});
+
+describe('OD-129 (#938): the offer document decides listingExchanges; the feeds only fill in before a document is read', () => {
+  let service: DataConsolidationService;
+
+  beforeEach(() => {
+    service = new DataConsolidationService(mockFieldSourcesRepo, mockConflictsRepo);
+    vi.clearAllMocks();
+  });
+
+  it('#938 shape: stored [BSE, NSE] from the exchange feed, the RHP says BSE only -> the document REPLACES (never unions)', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow('listingExchanges', 'NSE', ['BSE', 'NSE']),
+    ]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'w145',
+      tableName: 'ipos',
+      incomingData: { listingExchanges: toListingExchangesForSource('BSE', 'DRHP') },
+      source: 'DRHP',
+      existingData: { listingExchanges: ['BSE', 'NSE'], segment: 'MAINBOARD' } as any,
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['BSE']);
+    const fr = result.fieldResults.find((f) => f.fieldName === 'listingExchanges');
+    expect(fr?.chosenSource).toBe('DRHP');
+    expect(fr?.conflictReason).toBe(OD129_DOCUMENT_WRITES_REASON);
+    const tracked = vi.mocked(mockFieldSourcesRepo.trackFieldUpdate).mock.calls.map((c) => c[0] as any)
+      .find((r) => r.fieldName === 'listingExchanges');
+    expect(tracked).toMatchObject({ source: 'DRHP', value: ['BSE'] });
+  });
+
+  it('after the document, an NSE self-assertion does NOT re-add NSE: kept, and the disagreement goes to the admin queue', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow('listingExchanges', 'DRHP', ['BSE']),
+    ]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'w145',
+      tableName: 'ipos',
+      incomingData: { listingExchanges: toListingExchangesForSource(undefined, 'NSE') },
+      source: 'NSE',
+      existingData: { listingExchanges: ['BSE'], segment: 'MAINBOARD' } as any,
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['BSE']);
+    expect(result.conflictsDetected).toBe(1);
+    const conflictRow = vi.mocked(mockConflictsRepo.upsertConflict as any).mock.calls.at(-1)?.[0];
+    expect(conflictRow).toMatchObject({ fieldName: 'listingExchanges', resolutionReason: OD129_DOCUMENT_DISAGREES_REASON });
+  });
+
+  it('Chittorgarh naming a board the document does not -> admin queue, never a silent overwrite', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow('listingExchanges', 'DRHP', ['NSE']),
+    ]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'w145',
+      tableName: 'ipos',
+      incomingData: { listingExchanges: toListingExchangesForSource('BOTH', 'CHITTORGARH') },
+      source: 'CHITTORGARH',
+      existingData: { listingExchanges: ['NSE'], segment: 'SME' } as any,
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['NSE']);
+    expect(result.conflictsDetected).toBe(1);
+  });
+
+  it('a feed CONFIRMING the document (subset) is no conflict and keeps the document provenance', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow('listingExchanges', 'DRHP', ['BSE', 'NSE']),
+    ]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'w145',
+      tableName: 'ipos',
+      incomingData: { listingExchanges: toListingExchangesForSource(undefined, 'NSE') },
+      source: 'NSE',
+      existingData: { listingExchanges: ['BSE', 'NSE'], segment: 'MAINBOARD' } as any,
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['BSE', 'NSE']);
+    expect(result.conflictsDetected).toBe(0);
+  });
+
+  it('a document agreeing with an exchange-sourced value moves the provenance to the document', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow('listingExchanges', 'NSE', ['NSE']),
+    ]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'w145',
+      tableName: 'ipos',
+      incomingData: { listingExchanges: ['NSE'] },
+      source: 'DRHP',
+      existingData: { listingExchanges: ['NSE'], segment: 'SME' } as any,
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['NSE']);
+    const tracked = vi.mocked(mockFieldSourcesRepo.trackFieldUpdate).mock.calls.map((c) => c[0] as any)
+      .find((r) => r.fieldName === 'listingExchanges');
+    expect(tracked).toMatchObject({ source: 'DRHP' });
   });
 });

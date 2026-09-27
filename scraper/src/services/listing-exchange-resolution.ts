@@ -24,6 +24,7 @@
  */
 
 import type { ScraperSource } from '../config/field-priority-matrix.js';
+import { DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories/field-sources-repository';
 
 export type ListingExchange = 'NSE' | 'BSE';
 export type ScrapedListingExchange = ListingExchange | 'BOTH';
@@ -193,4 +194,69 @@ export function collapseSmeExchanges(
   }
 
   return null;
+}
+
+/**
+ * OD-129 (#938, F-197): `listingExchanges` is DOCUMENT-first. The offer
+ * document's listing sentence (Prospectus > RHP > DRHP; a price band ad only
+ * when it names the exchanges) decides the set. The exchange feed and then
+ * Chittorgarh fill it only while no document has been read. After a document
+ * has, a feed or Chittorgarh naming a board the document does not is a
+ * disagreement for the admin queue, never a union and never a silent overwrite.
+ *
+ * Why the union rule above cannot stand once a document exists: NSE runs the
+ * bidding for NSE's own IPO, so NSE's self-assertion re-added NSE to an issue
+ * whose RHP lists it on BSE only (stored [BSE, NSE]; F-135, F-197).
+ */
+export const OD129_DOCUMENT_WRITES_REASON = 'OD129_DOCUMENT_LISTING_WRITES';
+export const OD129_DOCUMENT_CONFIRMS_REASON = 'OD129_DOCUMENT_LISTING_CONFIRMS';
+export const OD129_DOCUMENT_HOLDS_REASON = 'OD129_DOCUMENT_LISTING_HOLDS';
+export const OD129_DOCUMENT_DISAGREES_REASON = 'OD129_DOCUMENT_LISTING_DISAGREES';
+
+/** Sources whose stored listing set a feed may not widen: the document path and the admin. */
+function holdsListingSet(source: string | undefined): boolean {
+  return source === 'ADMIN' || (source !== undefined && DOCUMENT_PATH_SOURCES.has(source));
+}
+
+export type ListingExchangesOd129Decision =
+  | { kind: 'DOCUMENT_WRITES'; value: string[]; reason: typeof OD129_DOCUMENT_WRITES_REASON }
+  | { kind: 'DOCUMENT_CONFIRMS'; value: string[]; reason: typeof OD129_DOCUMENT_CONFIRMS_REASON }
+  | { kind: 'DOCUMENT_HOLDS'; value: string[]; reason: typeof OD129_DOCUMENT_HOLDS_REASON }
+  | { kind: 'DOCUMENT_DISAGREES'; value: string[]; reason: typeof OD129_DOCUMENT_DISAGREES_REASON }
+  | { kind: 'NO_DOCUMENT' };
+
+/**
+ * Decide an incoming `listingExchanges` set against a stored one under OD-129.
+ * `NO_DOCUMENT` means OD-129 does not decide it and the pre-existing rules
+ * (union of exchange self-assertions, SME invariant) apply.
+ */
+export function decideListingExchangesOd129(input: {
+  stored: readonly string[];
+  storedSource: string | undefined;
+  incoming: readonly string[];
+  incomingSource: string;
+}): ListingExchangesOd129Decision {
+  const stored = [...new Set(input.stored)].sort();
+  const incoming = [...new Set(input.incoming)].sort();
+  if (incoming.length === 0) return { kind: 'NO_DOCUMENT' };
+  const same = stored.length === incoming.length && stored.every((x, i) => x === incoming[i]);
+
+  if (DOCUMENT_PATH_SOURCES.has(input.incomingSource)) {
+    // The admin's set is never replaced by a document; a disagreement is queued.
+    if (input.storedSource === 'ADMIN' && !same) {
+      return { kind: 'DOCUMENT_DISAGREES', value: stored, reason: OD129_DOCUMENT_DISAGREES_REASON };
+    }
+    return same
+      ? { kind: 'DOCUMENT_CONFIRMS', value: stored, reason: OD129_DOCUMENT_CONFIRMS_REASON }
+      : { kind: 'DOCUMENT_WRITES', value: incoming, reason: OD129_DOCUMENT_WRITES_REASON };
+  }
+
+  if (input.incomingSource !== 'ADMIN' && holdsListingSet(input.storedSource)) {
+    const subset = incoming.every((x) => stored.includes(x));
+    return subset
+      ? { kind: 'DOCUMENT_HOLDS', value: stored, reason: OD129_DOCUMENT_HOLDS_REASON }
+      : { kind: 'DOCUMENT_DISAGREES', value: stored, reason: OD129_DOCUMENT_DISAGREES_REASON };
+  }
+
+  return { kind: 'NO_DOCUMENT' };
 }
