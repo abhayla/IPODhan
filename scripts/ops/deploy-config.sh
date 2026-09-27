@@ -72,59 +72,63 @@ unset $(git rev-parse --local-env-vars) 2>/dev/null || true
 # directory) would pass silently and the manifest would be read from the
 # wrong repo. origin_is_ipodhan (below) answers that yes/no.
 #
-# ------------------------------------------------------ F9, round 3 (#752)
+# ------------------------------------------------------ F9, round 4 (#752)
+# Q11 (owner decision, 2026-09-27): rounds 1-3's parsing (strip userinfo,
+# extract host, extract path) kept producing new false-accepts as each
+# parsing edge case was found — the class was "parse and validate", and
+# every fix added another rule to the parser rather than removing the
+# parser. Round 4 removes parsing entirely: origin_is_ipodhan is now an
+# EXACT allow-list of the three literal forms git can hand this script for
+# a real IPODhan origin. No userinfo stripping, no host/path extraction —
+# a value either equals one of the three canonical forms (after trimming
+# whitespace, case-folding, and stripping one optional '.git' and one
+# optional trailing '/'), or it is refused outright. There is no longer a
+# code path that can accept a URL this list does not name character-for-
+# character, so a new credential/host-confusion shape cannot slip through
+# a parsing rule nobody has thought of yet.
+#
 # The origin URL is environment-controlled and can carry a credential in
-# many shapes (userinfo, token-as-username, a query token, an scp-like
-# 'user:pass@host:path', an insteadOf rewrite, a second remote.origin.url
-# value). Rounds 1-2 printed a REDACTED copy of it; a deny-list redactor
-# printed verbatim every shape it did not recognise (4 of 12 probes leaked,
-# independent review 2026-09-27). So the origin is now NEVER printed, in any
-# form: it is normalised only to decide a yes/no match, and the output is
-# built from constants — IPODHAN_ORIGIN_LABEL on a match, ORIGIN_WITHHELD
-# otherwise. Nothing derived from the raw value reaches stdout, stderr or
-# the log.
+# many shapes; it is never printed, in any form. origin_is_ipodhan
+# normalises only to decide a yes/no match against the allow-list below,
+# and the output is built from constants — IPODHAN_ORIGIN_LABEL on a
+# match, ORIGIN_WITHHELD otherwise. Nothing derived from the raw value
+# reaches stdout, stderr or the log.
 IPODHAN_ORIGIN_LABEL='github.com/abhayla/IPODhan'
 ORIGIN_WITHHELD='<origin withheld: not the IPODhan remote>'
 
-# origin_is_ipodhan <raw> — exit 0 iff <raw> names github.com/abhayla/IPODhan.
-# Accepts: https / ssh / git+ssh URLs and the scp-like 'user@host:path' form;
-# userinfo is dropped up to the LAST '@' of the URL authority (between '://'
-# and the next '/'), or of the scp-like host part (before the FIRST ':');
-# scheme, host and path compared case-insensitively; optional '.git' and
-# trailing '/'. Refuses: more than one line (multiple remote.origin.url
-# values), non-printable chars, other schemes (http, file, git), other
-# hosts (incl. IPv6 literals, ports), a query or fragment, any other path.
-# Prints nothing.
+# The exact forms git can produce for this repo's real origin. Userinfo
+# (a token, a username, a password) is NEVER part of an accepted form —
+# 'https://token@github.com/abhayla/IPODhan' is REFUSED, not stripped and
+# retried. See the round-4 PR body for why that is safe here (this repo's
+# CI checkout does not embed a token in the origin URL).
+IPODHAN_ORIGIN_ALLOWLIST=(
+  'https://github.com/abhayla/ipodhan'
+  'git@github.com:abhayla/ipodhan'
+  'ssh://git@github.com/abhayla/ipodhan'
+)
+
+# origin_is_ipodhan <raw> — exit 0 iff <raw>, after trimming surrounding
+# whitespace and case-folding, equals one of IPODHAN_ORIGIN_ALLOWLIST with
+# an optional trailing '.git' and/or an optional trailing '/' removed
+# first. No parsing: no userinfo strip, no scheme/host/path split. Refuses
+# everything else, including more than one line (multiple
+# remote.origin.url values), any other host, any credential prefix, a
+# query or fragment, a port, a fork suffix, embedded whitespace/newlines
+# inside the value. Prints nothing.
 origin_is_ipodhan() {
-  local v="$1" scheme authority host path
+  local v="$1" candidate form
   [[ "$v" == *[[:cntrl:]]* ]] && return 1
   [[ "$v" =~ ^[[:print:]]+$ ]] || return 1
   v="${v#"${v%%[![:space:]]*}"}"
   v="${v%"${v##*[![:space:]]}"}"
   [ -n "$v" ] || return 1
-  if [[ "$v" == *://* ]]; then
-    [[ "$v" =~ ^([A-Za-z][A-Za-z0-9+.-]*)://([^/]*)(/.*)?$ ]] || return 1
-    scheme="${BASH_REMATCH[1],,}"
-    authority="${BASH_REMATCH[2]}"
-    path="${BASH_REMATCH[3]}"
-    case "$scheme" in https|ssh|git+ssh) ;; *) return 1 ;; esac
-    host="${authority##*@}"
-  else
-    # scp-like: [user@]host:path. git takes the host as everything before
-    # the FIRST ':' (a ':' inside a would-be password therefore makes the
-    # text before it the host — 'evil.example:x@github.com:...' is ssh to
-    # evil.example), then drops userinfo up to the last '@' of THAT part
-    # only. Cutting the whole value at its last '@' (round 3 r0) accepted
-    # origins that git sends to a foreign host (review 2026-09-27 r1).
-    [[ "$v" =~ ^([^:]+):(.*)$ ]] || return 1
-    host="${BASH_REMATCH[1]}"
-    path="/${BASH_REMATCH[2]#/}"
-    [[ "$host" == */* ]] && return 1
-    host="${host##*@}"
-  fi
-  [ "${host,,}" = "github.com" ] || return 1
-  [[ "${path,,}" =~ ^/abhayla/ipodhan(\.git)?/?$ ]] || return 1
-  return 0
+  candidate="${v,,}"
+  candidate="${candidate%/}"
+  candidate="${candidate%.git}"
+  for form in "${IPODHAN_ORIGIN_ALLOWLIST[@]}"; do
+    [ "$candidate" = "$form" ] && return 0
+  done
+  return 1
 }
 
 # The on-box checkout that a deployed release (a git-free 'git archive |

@@ -1058,6 +1058,13 @@ STUBEOF
 # still logged the raw URL (with 'ghs_FAKE' inside it) at the "repo-root:
 # using ..." line, and a REFUSED foreign origin echoed the raw credential
 # straight back in the fatal message.
+#
+# Round 4 (#752, Q11, owner decision 2026-09-27): origin_is_ipodhan is now
+# an EXACT allow-list of the three literal, credential-free forms — a
+# credentialed https origin no longer matches ANY of them (no userinfo
+# stripping happens before the comparison), so it is refused like any
+# other unlisted shape. This case still proves the credential never
+# reaches output, now via the refusal path rather than the accept path.
 {
   CRED_REPO="$(build_repo_with_origin "https://x-access-token:ghs_FAKE@github.com/abhayla/IPODhan.git")"
   SHA="$(cd "$CRED_REPO" && git rev-parse HEAD)"
@@ -1066,16 +1073,22 @@ STUBEOF
   OUT="$(run_deploy "$CRED_REPO" "$ROOT" --slot staging --sha "$SHA" --reason "case21a credentialed IPODhan origin" 2>&1)"
   RC=$?
 
-  if [ "$RC" -eq 0 ]; then
-    pass "case21a: a credentialed https origin for the real IPODhan remote is accepted"
+  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF "<origin withheld: not the IPODhan remote>"; then
+    pass "case21a: a credentialed https origin is refused under the exact allow-list (Q11)"
   else
-    fail "case21a: expected exit 0 for a credentialed IPODhan origin, got rc=$RC ($OUT)"
+    fail "case21a: expected a repo-root refusal for a credentialed origin, got rc=$RC ($OUT)"
   fi
 
   if ! printf '%s' "$OUT" | grep -q "ghs_FAKE"; then
     pass "case21a: no output (stdout/stderr) contains the embedded credential"
   else
     fail "case21a: the credential 'ghs_FAKE' leaked into output ($OUT)"
+  fi
+
+  if [ ! -e "$ROOT/shared/config/staging/field-manifest.json" ]; then
+    pass "case21a: nothing written for the refused credentialed origin"
+  else
+    fail "case21a: manifest was written despite the credentialed-origin refusal"
   fi
 
   FOREIGN_CRED_REPO="$(build_repo_with_origin "https://x-access-token:ghs_FAKE@github.com/someoneelse/unrelated-fork.git")"
@@ -1208,8 +1221,10 @@ STUBEOF
 # fixed placeholder. Every row below carries the fake secret FAKESECRET and
 # asserts 'grep -c FAKESECRET' = 0 on stdout, stderr, and every file the
 # run wrote under $ROOT (deploy-config.log, CONFIG_SHA, manifest) and the
-# cap state dir. MUST-ACCEPT rows (legit forms, some with no secret at all)
-# stop the guard from passing by refusing everything.
+# cap state dir. Round 4 (#752, Q11): origin_is_ipodhan is now an EXACT
+# allow-list of the three credential-free forms, so MUST-ACCEPT rows are
+# only the clean forms (no userinfo, no port); every credentialed or
+# otherwise-unlisted shape is MUST-REFUSE.
 ORIGIN_CONST="origin github.com/abhayla/IPODhan)"
 ORIGIN_PLACEHOLDER="<origin withheld: not the IPODhan remote>"
 
@@ -1280,17 +1295,25 @@ check_origin_row() {
   check_origin_row accept "clean ssh://"          "$(build_repo_with_raw_origin "ssh://git@github.com/abhayla/IPODhan.git")"
   check_origin_row accept "clean scp-like"        "$(build_repo_with_raw_origin "git@github.com:abhayla/IPODhan.git")"
   check_origin_row accept "clean mixed case"      "$(build_repo_with_raw_origin "HTTPS://GitHub.COM/ABHAYLA/IPODHAN.GIT")"
-  # MUST-ACCEPT carrying the secret: accepted, constant logged, secret never printed.
-  check_origin_row accept "https user:pass"       "$(build_repo_with_raw_origin "https://x-access-token:FAKESECRET@github.com/abhayla/IPODhan.git")"
-  check_origin_row accept "token as username"     "$(build_repo_with_raw_origin "https://FAKESECRET@github.com/abhayla/IPODhan")"
-  check_origin_row accept "ssh:// userinfo"       "$(build_repo_with_raw_origin "ssh://git:FAKESECRET@github.com/abhayla/IPODhan.git")"
-  check_origin_row accept "git+ssh userinfo"      "$(build_repo_with_raw_origin "git+ssh://git:FAKESECRET@github.com/abhayla/IPODhan.git")"
-  check_origin_row accept "scp-like token user"  "$(build_repo_with_raw_origin "FAKESECRET@github.com:abhayla/IPODhan.git")"
-  check_origin_row accept "mixed-case scheme"     "$(build_repo_with_raw_origin "HtTpS://u:FAKESECRET@GitHub.com/abhayla/ipodhan.git/")"
-  check_origin_row accept "percent-encoded @ :"   "$(build_repo_with_raw_origin "https://u%40x%3Ay:FAKESECRET@github.com/abhayla/IPODhan.git")"
-  check_origin_row accept "leading/trailing ws"   "$(build_repo_with_raw_origin "  https://u:FAKESECRET@github.com/abhayla/IPODhan.git  ")"
-  check_origin_row accept "insteadOf adds cred"   "$(build_repo_with_raw_origin "gh:abhayla/IPODhan.git" 'git config url."https://u:FAKESECRET@github.com/".insteadOf gh:')"
-  # MUST-REFUSE: every other shape, each carrying the secret.
+  # Round 4 (#752, Q11): the exact allow-list has NO userinfo form at all —
+  # every one of these credentialed shapes is now MUST-REFUSE, not accept.
+  # A clean, non-credentialed leading/trailing-whitespace row proves
+  # trimming still works without also accepting a credential.
+  check_origin_row accept "leading/trailing ws, clean" "$(build_repo_with_raw_origin "  https://github.com/abhayla/IPODhan.git  ")"
+  # MUST-REFUSE: every credentialed or otherwise-unlisted shape, each
+  # carrying the secret (or, for the two clean-shape rows, proving the
+  # exact-match still refuses a non-listed clean variant).
+  check_origin_row refuse "https user:pass"       "$(build_repo_with_raw_origin "https://x-access-token:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row refuse "token as username"     "$(build_repo_with_raw_origin "https://FAKESECRET@github.com/abhayla/IPODhan")"
+  check_origin_row refuse "ssh:// userinfo"       "$(build_repo_with_raw_origin "ssh://git:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row refuse "git+ssh userinfo"      "$(build_repo_with_raw_origin "git+ssh://git:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row refuse "scp-like token user"  "$(build_repo_with_raw_origin "FAKESECRET@github.com:abhayla/IPODhan.git")"
+  check_origin_row refuse "mixed-case scheme cred" "$(build_repo_with_raw_origin "HtTpS://u:FAKESECRET@GitHub.com/abhayla/ipodhan.git/")"
+  check_origin_row refuse "percent-encoded @ :"   "$(build_repo_with_raw_origin "https://u%40x%3Ay:FAKESECRET@github.com/abhayla/IPODhan.git")"
+  check_origin_row refuse "leading/trailing ws, cred" "$(build_repo_with_raw_origin "  https://u:FAKESECRET@github.com/abhayla/IPODhan.git  ")"
+  check_origin_row refuse "insteadOf adds cred"   "$(build_repo_with_raw_origin "gh:abhayla/IPODhan.git" 'git config url."https://u:FAKESECRET@github.com/".insteadOf gh:')"
+  check_origin_row refuse "port form"             "$(build_repo_with_raw_origin "https://github.com:443/abhayla/IPODhan.git")"
+  check_origin_row refuse "embedded whitespace"   "$(build_repo_with_raw_origin "https://github.com/abhayla/IPO Dhan.git")"
   check_origin_row refuse "foreign repo"          "$(build_repo_with_raw_origin "https://u:FAKESECRET@github.com/someoneelse/unrelated-fork.git")"
   check_origin_row refuse "similar repo name"     "$(build_repo_with_raw_origin "https://u:FAKESECRET@github.com/abhayla/IPODhan-fork")"
   check_origin_row refuse "slash in password"     "$(build_repo_with_raw_origin "https://u:FAKE/FAKESECRET@github.com/abhayla/IPODhan.git")"
@@ -1356,6 +1379,14 @@ STUBEOF
 # unset them before any git call. (a) a stub git records any trace var it
 # sees and emits FAKESECRET when one is set; (b) real git with every trace
 # var on and a credentialed origin.
+#
+# Round 4 (#752, Q11): the origin used here is still credentialed on
+# purpose — the trace-suppression checks below fire on the repo-root
+# origin check's own git calls (git rev-parse --local-env-vars, git remote
+# get-url), which run before that check refuses the credentialed origin.
+# The refusal itself is now the EXPECTED outcome (rc != 0), not exit 0;
+# the trace-var and zero-leak assertions are what this case actually
+# guards and are unchanged.
 {
   REPO="$(build_repo_with_origin "https://u:FAKESECRET@github.com/abhayla/IPODhan.git")"
   SHA="$(cd "$REPO" && git rev-parse HEAD)"
@@ -1377,7 +1408,7 @@ STUBEOF
     DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_STATE_DIR="$STATE" \
     bash "$DEPLOY_CONFIG" --root "$ROOT" --slot staging --sha "$SHA" --reason "case26 trace env" >"$O" 2>"$E"
   RC=$?
-  if [ "$RC" -eq 0 ] && [ ! -s "$SEEN26" ]; then
+  if [ "$RC" -ne 0 ] && [ ! -s "$SEEN26" ]; then
     pass "case26a: no git call saw a GIT_TRACE*/GIT_CURL_VERBOSE variable"
   else
     fail "case26a: rc=$RC, git calls saw trace vars: $(sort -u "$SEEN26" | tr '\n' ' ')"
@@ -1394,8 +1425,8 @@ STUBEOF
     DEPLOY_CONFIG_STATE_DIR="$STATE" run_deploy "$REPO" "$ROOT" --slot staging --sha "$SHA" --reason "case26b real git trace" >"$O" 2>"$E"
   RC=$?
   LEAKS="$(leak_count "$O" "$E" "$ROOT" "$STATE")"
-  if [ "$RC" -eq 0 ] && [ "$LEAKS" -eq 0 ]; then
-    pass "case26b: real git with every trace var on: accepted, FAKESECRET count 0"
+  if [ "$RC" -ne 0 ] && [ "$LEAKS" -eq 0 ]; then
+    pass "case26b: real git with every trace var on: credentialed origin refused (Q11), FAKESECRET count 0"
   else
     fail "case26b: rc=$RC, FAKESECRET leaked $LEAKS time(s)"
   fi
