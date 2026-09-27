@@ -18,7 +18,7 @@ import type { ScrapedFinancialData } from '../scrapers/financial-data-scraper.js
 import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 // Phase 2: Shadow Mode - Data Consolidation Service
-import { DataConsolidationService, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
+import { DataConsolidationService, type DeferredProvenanceWrite, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo, withSourceKeyLineage, sourceKeyLineageFor, E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
@@ -241,6 +241,35 @@ function getDataConflictsRepository(): DataConflictsRepository {
  * repository above — one repo/Redis handle per process, not per write).
  */
 let fieldSourcesRepoInstance: FieldSourcesRepository | null = null;
+
+/**
+ * OD-131: did a held-back provenance write's value reach the `ipos` row this door writes?
+ * Only the singleton `ipos` row is judged here (the only table this door writes); a write for
+ * any other table is not this door's to refuse. Emptiness is `=== null || === undefined`, never
+ * falsiness — 0, false and '' are stored values.
+ */
+export function isProvenanceValueStored(
+  write: { tableName: string; rowKey?: string; fieldName: string },
+  finalData: Record<string, unknown>
+): boolean {
+  if (write.tableName !== 'ipos' || (write.rowKey ?? '') !== '') return true;
+  const stored = finalData[write.fieldName];
+  return stored !== null && stored !== undefined;
+}
+
+/**
+ * OD-131 (review round 1): the fallback door's filter. It stores the raw merged payload, not
+ * consolidation's winners, so a decided provenance write counts only when its value was stored
+ * AND is the value stored (a decided value the fallback overwrote must not be claimed).
+ */
+export function isProvenanceValueStoredAsDecided(
+  write: { tableName: string; rowKey?: string; fieldName: string; value: unknown },
+  storedData: Record<string, unknown>
+): boolean {
+  if (!isProvenanceValueStored(write, storedData)) return false;
+  if (write.tableName !== 'ipos' || (write.rowKey ?? '') !== '') return true;
+  return valuesEqualForWrite(write.value, storedData[write.fieldName], write.fieldName);
+}
 
 function getFieldSourcesRepository(): FieldSourcesRepository {
   if (!fieldSourcesRepoInstance) {
@@ -1253,6 +1282,15 @@ async function upsertIPOInScope(
       }
 
       if (existingIPO) {
+        // OD-131: provenance the consolidation door decided but has not committed yet. Held
+        // OUTSIDE its try so that, when a step after consolidation throws, the non-destructive
+        // fallback below commits it for the values the fallback actually stores (before OD-131
+        // these rows were written inline, so dropping them on the fallback would lose lineage).
+        // Cleared the moment it is committed, so it is never written twice.
+        let uncommittedProvenance:
+          | { service: { commitDeferredProvenance: DataConsolidationService['commitDeferredProvenance'] }; writes: DeferredProvenanceWrite[] }
+          | undefined;
+
         // W-14: run the merged-record rule set ONCE, before EITHER write door, on
         // the merged view of the stored row + this scrape. See
         // `applyMergedRecordValidation` for why it cannot run after consolidation
@@ -1287,7 +1325,14 @@ async function upsertIPOInScope(
               existingData: existingIPO as any,
               shadowMode: false, // Production mode - writes to database
               scrapedAt: new Date(),
+              // OD-131: this door refuses values AFTER consolidation (sanitizeIpoWriteFields,
+              // the #180 F2 date guard, W-14 merged-record drops). Provenance is committed only
+              // for what reaches the row, below — a refused value was never set.
+              deferProvenance: true,
             });
+            if (consolidationResult.deferredProvenance?.length) {
+              uncommittedProvenance = { service: consolidationService, writes: consolidationResult.deferredProvenance };
+            }
 
             const consolidationDuration = Date.now() - consolidationStartTime;
 
@@ -1509,6 +1554,26 @@ async function upsertIPOInScope(
               await ipoRepository.update(existingIPO.id, finalData);
             }
 
+            // OD-131 ("Rejected = never set"): write provenance only for values this door
+            // actually stored. A value the sanitizer nulled or a guard deleted gets no
+            // `field_sources` row (glass-wall-systems-india-ltd: CG's 2026-09-03 listing date,
+            // before its 2026-09-08 open, was nulled here yet kept a CHITTORGARH row).
+            const pendingWrites = uncommittedProvenance?.writes;
+            uncommittedProvenance = undefined;
+            const provenanceCommit = pendingWrites
+              ? await consolidationService.commitDeferredProvenance(
+                pendingWrites,
+                (write) => isProvenanceValueStored(write, finalData)
+              )
+              : { written: 0, refused: [] };
+            if (provenanceCommit.refused.length > 0) {
+              logger.info({
+                ipoId: existingIPO.id,
+                source,
+                refusedFields: provenanceCommit.refused.map((w) => w.fieldName),
+              }, '[DataPersister] OD-131 - refused value(s) not stored, so no field_sources row written');
+            }
+
             // S-02: the consolidation door is also the F4/F5/F6 evidence — it is
             // the thing that compared sources and wrote the conflict + provenance
             // rows, so its own result is what the ledger records.
@@ -1638,6 +1703,27 @@ async function upsertIPOInScope(
         }
         const guardedFallback = keepTerminalIpoStatus((existingIPO as any).status, fallbackData);
         await ipoRepository.update(existingIPO.id, guardedFallback);
+
+        // OD-131 (review round 1): consolidation already decided provenance for this payload and
+        // a later step threw before it was committed. Commit it for exactly the values this door
+        // stored: stored-only (same filter as the consolidation door) AND equal to what was
+        // stored, because this door merges the raw payload rather than consolidation's winners,
+        // so a decided value this door did not write must not be claimed. The #454 block below
+        // then records this door's own changed values, as before.
+        if (uncommittedProvenance) {
+          const { service, writes } = uncommittedProvenance;
+          uncommittedProvenance = undefined;
+          try {
+            await service.commitDeferredProvenance(writes, (write) =>
+              isProvenanceValueStoredAsDecided(write, guardedFallback)
+            );
+          } catch (e: any) {
+            logger.error(
+              { ipoId: existingIPO.id, source, error: e?.message, cause: e?.cause instanceof Error ? e.cause.message : e?.cause },
+              '[DataPersister] OD-131 fallback-door deferred provenance commit failed after the ipos update committed'
+            );
+          }
+        }
 
         // #454: this door writes published `ipos` values with zero
         // cross-source comparison (that is what "fallback" means), but a

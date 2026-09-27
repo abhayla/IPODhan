@@ -18,6 +18,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import logger from '../../../src/utils/logger.js';
 
 const consolidateIPODataMock = vi.fn();
+const commitDeferredProvenanceMock = vi.fn();
 const upsertConflictMock = vi.fn().mockResolvedValue({});
 /**
  * One shared field_sources double so a test can assert on the provenance the
@@ -72,6 +73,7 @@ vi.mock('../../../src/services/data-consolidation-service.js', async (importOrig
   ...(await importOriginal<typeof import('../../../src/services/data-consolidation-service.js')>()),
   DataConsolidationService: vi.fn().mockImplementation(() => ({
     consolidateIPOData: consolidateIPODataMock,
+    commitDeferredProvenance: commitDeferredProvenanceMock,
   })),
 }));
 
@@ -345,6 +347,7 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
       { upsertConflict: upsertConflictMock, logConflict: vi.fn(), autoResolveConverged: vi.fn(), findUnresolvedForIPO: vi.fn() } as any
     );
     consolidateIPODataMock.mockImplementation((input: any) => realService.consolidateIPOData(input));
+    commitDeferredProvenanceMock.mockImplementation((w: any, f: any) => realService.commitDeferredProvenance(w, f));
 
     const ipoRepository = makeIpoRepository();
     await upsertIPO(
@@ -358,6 +361,88 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     expect(trackedFields).not.toContain('priceRangeMax');
     expect(trackedFields).not.toContain('priceRangeMin');
     expect(trackedFields).toContain('symbol');
+  });
+
+  it('(i) OD-131: a listing date the write-field sanitizer nulls (before the open date) leaves NO field_sources row; an accepted field still does', async () => {
+    // glass-wall-systems-india-ltd shape (staging, 2026-09-27): open 2026-09-08, close 2026-09-10,
+    // allotment 2026-09-11, listing NULL; CG 2026-09-03 was nulled here yet kept a provenance row.
+    const realService = new RealDataConsolidationService(
+      fieldSourcesMock as any,
+      { upsertConflict: upsertConflictMock, logConflict: vi.fn(), autoResolveConverged: vi.fn(), findUnresolvedForIPO: vi.fn() } as any
+    );
+    consolidateIPODataMock.mockImplementation((input: any) => realService.consolidateIPOData(input));
+    commitDeferredProvenanceMock.mockImplementation((w: any, f: any) => realService.commitDeferredProvenance(w, f));
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ listingDate: '2026-09-03', symbol: 'GLASSWALL' }),
+      'BSE',
+      existingRow({ openDate: '2026-09-08', closeDate: '2026-09-10', allotmentDate: '2026-09-11', listingDate: null })
+    );
+
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch.listingDate ?? null).toBeNull();
+    const trackedFields = fieldSourcesMock.trackFieldUpdate.mock.calls.map((c: any[]) => c[0]?.fieldName);
+    expect(trackedFields).not.toContain('listingDate');
+    expect(trackedFields).toContain('symbol');
+  });
+
+  it('(j) OD-131 review round 1: a step after consolidation throws -> the fallback commits the decided provenance for the values it stores', async () => {
+    // symbol ACME is stored with NO provenance row; BSE confirms it (CONFIRMED_UNTRACKED), which
+    // consolidation decides as a provenance write. The consolidation door's ipos update then
+    // throws, so the non-destructive fallback stores the row. #454's own block skips an
+    // unchanged value, so only the committed decision gives the stored symbol its row.
+    const realService = new RealDataConsolidationService(
+      fieldSourcesMock as any,
+      { upsertConflict: upsertConflictMock, logConflict: vi.fn(), autoResolveConverged: vi.fn(), findUnresolvedForIPO: vi.fn() } as any
+    );
+    consolidateIPODataMock.mockImplementation((input: any) => realService.consolidateIPOData(input));
+    commitDeferredProvenanceMock.mockImplementation((w: any, f: any) => realService.commitDeferredProvenance(w, f));
+
+    const ipoRepository = makeIpoRepository();
+    ipoRepository.update.mockRejectedValueOnce(new Error('consolidation-door update failed'));
+    await upsertIPO(
+      ipoRepository,
+      scrape({ symbol: 'ACME', registrar: 'Bigshare Services Pvt Ltd' }),
+      'BSE',
+      existingRow({ symbol: 'ACME' })
+    );
+
+    expect(ipoRepository.update).toHaveBeenCalledTimes(2);
+    const [, fallbackPatch] = ipoRepository.update.mock.calls[1];
+    expect(fallbackPatch.symbol).toBe('ACME');
+    const tracked = fieldSourcesMock.trackFieldUpdate.mock.calls.map((c: any[]) => c[0]);
+    expect(tracked.filter((t: any) => t.fieldName === 'symbol')).toEqual([
+      expect.objectContaining({ fieldName: 'symbol', source: 'BSE', tableName: 'ipos', ipoId: 'ipo-id' }),
+    ]);
+  });
+
+  it('(k) OD-131 review round 1: a throw AFTER the commit reaches the fallback without committing the same provenance twice', async () => {
+    const realService = new RealDataConsolidationService(
+      fieldSourcesMock as any,
+      { upsertConflict: upsertConflictMock, logConflict: vi.fn(), autoResolveConverged: vi.fn(), findUnresolvedForIPO: vi.fn() } as any
+    );
+    consolidateIPODataMock.mockImplementation((input: any) => realService.consolidateIPOData(input));
+    commitDeferredProvenanceMock.mockImplementation((w: any, f: any) => realService.commitDeferredProvenance(w, f));
+    const realInfo = logger.info.bind(logger);
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(((...args: any[]) => {
+      if (args[1] === '[DataConsolidation] Updated IPO with consolidated data') throw new Error('log sink down');
+      return (realInfo as any)(...args);
+    }) as any);
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ symbol: 'ACME', registrar: 'Bigshare Services Pvt Ltd' }),
+      'BSE',
+      existingRow({ symbol: 'ACME' })
+    );
+    infoSpy.mockRestore();
+
+    expect(ipoRepository.update).toHaveBeenCalledTimes(2); // consolidation door, then fallback
+    const symbolWrites = fieldSourcesMock.trackFieldUpdate.mock.calls.filter((c: any[]) => c[0]?.fieldName === 'symbol');
+    expect(symbolWrites).toHaveLength(1);
   });
 
   it('(h) the legacy fallback door (consolidation threw) never writes the 25% band either', async () => {

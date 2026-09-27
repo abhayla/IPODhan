@@ -1,0 +1,10 @@
+{
+  "id": "r_provenance_without_value",
+  "findingClass": "an ipos field_sources row (row_key '') naming a column that is NULL on the ipos row: provenance for a value that is not stored. OD-131 (2026-09-27): a value the write path refused (sanitizer or validation) was never set and leaves no provenance row; a stale row made the same source's next valid value read as a \"changed own value\" (OD-75).",
+  "round7Findings": [],
+  "failThreshold": "any such row with updated_at within the last 24 hours (a write path that still keeps provenance for a refused value). Rows older than 24h are the standing population (the data contract's row repair); they are listed with identities in the detail line but do not FAIL the check.",
+  "severity": "P2",
+  "unverifiableWhen": "never — always runs against field_sources and ipos",
+  "note": "Detection upgrade for refused-value-keeps-provenance (#70, OD-131). Column name is derived from field_sources.field_name (camelCase -> snake_case) and judged only when that column exists on ipos (to_jsonb(i) ? col). Measured on ipodhan_staging 2026-09-27 (read-only): 37 standing rows (issueSize 20 CLOSED; listingDate 13 = OD-131's list; priceRangeMin 2, priceRangeMax 2), 2 of them written in the last 24h by the pre-fix code, so it FAILS on staging until this fix is deployed there. Covers a refusal in the SAME write pass (fixed by deferred provenance in data-persister) AND a stored value later nulled by the sanitizer on another field's write (NOT fixed by #70's PR: that write path still leaves the row).",
+  "section": "checks"
+}
