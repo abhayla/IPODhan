@@ -1619,6 +1619,18 @@ export interface AutoPersistDeps {
   deadlineMs?: number;
   /** Clock used against `deadlineMs`. Defaults to `Date.now`. */
   now?: () => number;
+  /**
+   * #1247 item 4: `document-cycle.ts`'s reservation split (item 1) can call
+   * `processPendingFilings` for the SAME IPO more than once in one cycle (a
+   * reads-reservation pre-pass, the fresh pass, a re-read top-up pass) — the
+   * anchor allocation report's pending list is NOT phase-filtered like
+   * `filingPending` is, so without this flag a pending anchor already tried
+   * on an earlier call this cycle would be tried again on every later call
+   * for the same IPO. The caller sets this true on every call after the
+   * first for a given IPO in a cycle; `undefined`/false = existing behaviour
+   * (anchors run every call — direct callers/tests are unaffected).
+   */
+  skipAnchorPass?: boolean;
 }
 
 /**
@@ -2253,7 +2265,12 @@ export async function processPendingFilings(
   // filing spawn budget, and a filing document never waits behind an anchor.
   const corrigendumPending = pending.filter((d) => d.type === CORRIGENDUM_DOC_TYPE);
   const filingPending = pending.filter((d) => d.type !== ANCHOR_DOC_TYPE && d.type !== CORRIGENDUM_DOC_TYPE);
-  const anchorPending = pending.filter((d) => d.type === ANCHOR_DOC_TYPE);
+  // #1247 item 4: `skipAnchorPass` (set by the caller on every call after the
+  // first for a given IPO this cycle) treats the anchor list as empty here —
+  // not just budgeted to zero later — so `anchorsConsidered` also reads 0 on
+  // a repeat call, instead of re-reporting the same pending anchor as
+  // "considered" on every one of this IPO's calls this cycle.
+  const anchorPending = deps.skipAnchorPass ? [] : pending.filter((d) => d.type === ANCHOR_DOC_TYPE);
   result.anchorsConsidered = anchorPending.length;
 
   // Item 9 (OD-90): the corrigendum pass. Runs first and draws on no spawn budget.

@@ -1996,21 +1996,31 @@ export async function runDocumentCycle(
         // the live evidence needed: three failing anchors in a row was only
         // visible by reading every per-IPO log line by hand).
         const anchorCycleTotals = { considered: 0, spawned: 0, persisted: 0, manualReview: 0, failed: 0, markerWriteFailed: 0 };
-        // #771 round 3 review (MAJOR): two passes over the same spawn budget.
-        // The first spawns only NEVER-READ documents, in lifecycle order; the
-        // second spends what is left on extractor-version re-reads. A re-read
-        // (a document already published once) never takes a slot from a new
-        // document of a later-ranked IPO (an UPCOMING IPO's first RHP).
-        spawnBudget.phase = 'fresh';
+        // #1247 item 4: a pending anchor is NOT phase-filtered inside
+        // `processPendingFilings` the way filing documents are, so calling it
+        // more than once for the same IPO this cycle (the reservation split
+        // below can do that) would try the same pending anchor again on every
+        // repeat call. Every call after an IPO's first this cycle sets
+        // `skipAnchorPass: true`.
+        const anchorsHandledIpoIds = new Set<string>();
         const rereadIpos: ExtractionOnlyCandidate[] = [];
-        for (const ipo of extractionCandidates) {
+        let rereadsSpawned = 0;
+        /**
+         * One `processPendingFilings` call for one IPO, shared by every pass
+         * below so the extraction-time-budget check, deadline wiring, cycle
+         * logging and the item-4 anchor guard live in exactly one place.
+         * Returns `undefined` (and sets `extractionExhausted`) when the
+         * wall-clock extraction budget has already tripped — callers treat
+         * that as "stop this pass".
+         */
+        const callOnce = async (ipo: ExtractionOnlyCandidate) => {
           if (now() - extractionStartedAt >= extractionBudgetMs) {
             extractionExhausted = true;
             logger.warn(
               { extractionBudgetMs },
               'Document extraction budget exhausted — remaining candidates resume next cycle (spawn budget/state persisted)'
             );
-            break;
+            return undefined;
           }
           try {
             if (!autoPersistDeps) {
@@ -2023,6 +2033,7 @@ export async function runDocumentCycle(
             // reads consistently with this loop's own extraction-budget check.
             autoPersistDeps.deadlineMs = extractionStartedAt + extractionBudgetMs;
             autoPersistDeps.now = now;
+            autoPersistDeps.skipAnchorPass = anchorsHandledIpoIds.has(ipo.id);
             const autoPersist = await processPendingFilings(
               {
                 id: ipo.id,
@@ -2032,6 +2043,7 @@ export async function runDocumentCycle(
               },
               autoPersistDeps
             );
+            anchorsHandledIpoIds.add(ipo.id);
             if (autoPersist.spawned > 0 || autoPersist.failed > 0 || autoPersist.skippedBudget > 0) {
               logger.info(
                 { ipoId: ipo.id, company: ipo.companyName, ...autoPersist },
@@ -2044,7 +2056,6 @@ export async function runDocumentCycle(
                 'Extraction-only candidate (F-158/OD-98) skipped by processPendingFilings — see reasons'
               );
             }
-            if ((autoPersist.rereadsDeferred ?? 0) > 0) rereadIpos.push(ipo);
             anchorCycleTotals.considered += autoPersist.anchorsConsidered;
             anchorCycleTotals.spawned += autoPersist.anchorsSpawned;
             anchorCycleTotals.persisted += autoPersist.anchorsPersisted;
@@ -2054,35 +2065,70 @@ export async function runDocumentCycle(
             // one line this cycle already prints below — signal-ownership.md
             // R1 (a count, printed where a human reads the cycle already).
             anchorCycleTotals.markerWriteFailed += autoPersist.markerWriteFailed;
+            return autoPersist;
           } catch (error) {
             logger.error(
               { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
               'Filing auto-persist threw (non-fatal) — continuing the cycle'
             );
+            return undefined;
           }
-        }
+        };
+
+        // #1247 item 1: never-read documents no longer get first call on the
+        // WHOLE budget — a busy week of new filings could starve extractor-
+        // version re-reads for weeks (measured: ~7.4 new docs/day against 9
+        // slots/day leaves re-reads ~1.6/day; 22 re-opened RHP/DRHP docs took
+        // ~2 weeks to drain, zero in a busy week). Fix, in three short passes
+        // over the SAME shared `spawnBudget`:
+        //   1. a reservation pre-pass, capped to `RESERVED_REREAD_SLOTS`,
+        //      offered to re-reads FIRST — it spends a slot only when a
+        //      re-read is actually pending, in candidate order (live IPOs,
+        //      OPEN -> CLOSED -> UPCOMING, first);
+        //   2. the never-read ("fresh") pass gets whatever the reservation
+        //      pre-pass did NOT spend — unchanged full budget when nothing
+        //      was pending to reserve for (spec silent on the exact split;
+        //      this follows the "detection floor" style of every other
+        //      reservation in this file — a fixed, small, always-checked
+        //      slot rather than a percentage);
+        //   3. a re-read top-up pass spends whatever is left after (1) and
+        //      (2) on any IPO the fresh pass found still holding re-reads
+        //      (`rereadsDeferred`) — so a light day (few/no fresh documents)
+        //      still lets re-reads use the rest of the budget, exactly as
+        //      before this fix.
+        const RESERVED_REREAD_SLOTS = 1;
         spawnBudget.phase = 'rereads';
-        let rereadsSpawned = 0;
+        const reservationCap = Math.min(RESERVED_REREAD_SLOTS, spawnBudget.remaining);
+        const budgetBeforeReservation = spawnBudget.remaining;
+        spawnBudget.remaining = reservationCap;
+        for (const ipo of extractionCandidates) {
+          if (spawnBudget.remaining <= 0) break;
+          const reread = await callOnce(ipo);
+          if (reread === undefined) break; // extraction-time budget tripped
+          rereadsSpawned += reread.spawned;
+        }
+        const spentOnReservation = reservationCap - spawnBudget.remaining;
+        spawnBudget.remaining = budgetBeforeReservation - spentOnReservation;
+
+        spawnBudget.phase = 'fresh';
+        for (const ipo of extractionCandidates) {
+          const autoPersist = await callOnce(ipo);
+          if (autoPersist === undefined) break; // extraction-time budget tripped
+          if ((autoPersist.rereadsDeferred ?? 0) > 0) rereadIpos.push(ipo);
+        }
+
+        spawnBudget.phase = 'rereads';
         for (const ipo of rereadIpos) {
-          if (spawnBudget.remaining <= 0 || now() - extractionStartedAt >= extractionBudgetMs) break;
-          try {
-            const reread = await processPendingFilings(
-              { id: ipo.id, companyName: ipo.companyName, slug: ipo.slug ?? null, segment: ipo.segment ?? null },
-              autoPersistDeps!
-            );
-            rereadsSpawned += reread.spawned;
-          } catch (error) {
-            logger.error(
-              { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
-              'Filing re-read pass threw (non-fatal) — continuing the cycle'
-            );
-          }
+          if (spawnBudget.remaining <= 0) break;
+          const reread = await callOnce(ipo);
+          if (reread === undefined) break; // extraction-time budget tripped
+          rereadsSpawned += reread.spawned;
         }
         spawnBudget.phase = undefined;
-        if (rereadIpos.length > 0) {
+        if (rereadIpos.length > 0 || rereadsSpawned > 0) {
           logger.info(
             { rereadIpos: rereadIpos.length, rereadsSpawned, spawnBudgetRemaining: spawnBudget.remaining },
-            'Extractor-version re-read pass (after every never-read document had its slot)'
+            'Extractor-version re-read pass (reservation pre-pass + top-up, #1247 item 1)'
           );
         }
         // W-168: log even when everything was zero — a silent cycle IS the

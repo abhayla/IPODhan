@@ -291,9 +291,13 @@ describe('W-102 — pass 2 offers EVERY candidate to processPendingFilings, not 
   it('with the flag on and a discovery budget of 0 (pass 1 processes nothing), pass 2 still calls processPendingFilings for BOTH candidates', async () => {
     await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
 
-    expect(processPendingFilingsMock).toHaveBeenCalledTimes(2);
+    // #1247 item 1: the default mock spends the shared budget on ANY call
+    // regardless of phase, so the reservation pre-pass (phase 'rereads',
+    // capped to 1 slot) spends its slot on ipo-1 and stops before ipo-2 —
+    // one extra leading call to ipo-1 ahead of the fresh pass over both.
+    expect(processPendingFilingsMock).toHaveBeenCalledTimes(3);
     const idsOffered = processPendingFilingsMock.mock.calls.map((c) => (c[0] as { id: string }).id);
-    expect(idsOffered).toEqual(['ipo-1', 'ipo-2']);
+    expect(idsOffered).toEqual(['ipo-1', 'ipo-1', 'ipo-2']);
   });
 
   it('flag off — processPendingFilings is never called (regression guard)', async () => {
@@ -310,7 +314,9 @@ describe('W-102 — the spawn budget object is the SAME instance across both can
     await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
 
     expect(buildAutoPersistDepsMock).toHaveBeenCalledTimes(1);
-    expect(processPendingFilingsMock).toHaveBeenCalledTimes(2);
+    // #1247 item 1: one extra leading call (the reservation pre-pass) — see
+    // the test above for why.
+    expect(processPendingFilingsMock).toHaveBeenCalledTimes(3);
     const deps1 = processPendingFilingsMock.mock.calls[0][1];
     const deps2 = processPendingFilingsMock.mock.calls[1][1];
     expect(deps1).toBe(deps2);
@@ -348,8 +354,11 @@ describe('W-102 — the spawn budget object is the SAME instance across both can
     await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
 
     // DEFAULT_MAX_SPAWNS_PER_CYCLE is mocked to 3 (line above) — the SAME
-    // value real production uses today.
-    expect(observedRemaining).toEqual([3, 2]);
+    // value real production uses today. #1247 item 1: the reservation
+    // pre-pass (capped to 1) runs first — this mock spends on ANY call
+    // regardless of phase, so it sees remaining=1, spends it, and the loop
+    // stops before ipo-2; the fresh pass then sees the restored 2, then 1.
+    expect(observedRemaining).toEqual([1, 2, 1]);
   });
 });
 
@@ -1348,9 +1357,191 @@ describe('#771 r3 — never-read documents take the spawn budget before version 
 
     expect(spawnedBy['ipo-2'].fresh).toBe(1);
     expect(spawnedBy['ipo-1'].rereads).toBe(2);
+    // #1247 item 1: an extra leading call to ipo-1 (the reservation pre-pass,
+    // phase 'rereads', capped to 1 slot) now comes before the fresh pass —
+    // see the '#1247 item 1' describe block below for the reservation math.
     const phases = processPendingFilingsMock.mock.calls.map(
       (c) => `${(c[0] as { id: string }).id}`
     );
-    expect(phases).toEqual(['ipo-1', 'ipo-2', 'ipo-1']);
+    expect(phases).toEqual(['ipo-1', 'ipo-1', 'ipo-2', 'ipo-1']);
+  });
+});
+
+// #1247 item 1 (owner-approved 2026-09-28): never-read documents took the
+// WHOLE cycle budget before re-reads got anything, so a busy week of new
+// filings (~7.4/day against 9 slots/day) starved the 22 re-opened RHP/DRHP
+// re-reads for weeks. Fix: reserve exactly 1 spawn slot per cycle for
+// re-reads whenever at least one is pending; never-read documents still get
+// first call on the rest, and either side gets the whole budget when the
+// other has nothing pending.
+//
+// Spec basis: `docs/design/data-sourcing-pull-model.md` lines 370-372 name
+// `DEFAULT_MAX_SPAWNS_PER_CYCLE = 3` filings + `DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE
+// = 1` anchor per cycle; OD-19 names three data-job runs a day (00:00, 08:00,
+// 14:00 IST) — 3 cycles/day x 3 slots/cycle = 9 filing slots/day, matching
+// the brief's measured 9 slots/day. OD-33 ("never rescrape the same
+// document... only a new document") and OD-65/OD-91 (no re-read of a settled
+// field) govern WHETHER a document is re-read, not how the cycle's spawn
+// budget is split between never-read and re-read candidates once both are
+// pending — the spec is silent on that split. This reservation is therefore
+// a best-practice implementation choice (a fixed floor, not a percentage),
+// not a spec requirement.
+describe('#1247 item 1 — one reserved spawn slot for re-reads per document cycle', () => {
+  it('budget 3, 5 never-read + 5 re-reads pending -> 2 never-read + 1 re-read spawned (red on main: 3 + 0)', async () => {
+    dbExecuteMock.mockResolvedValue({ rows: [candidateRow('ipo-1'), candidateRow('ipo-2')] });
+    const docs: Record<string, { fresh: number; rereads: number }> = {
+      'ipo-1': { fresh: 5, rereads: 0 },
+      'ipo-2': { fresh: 0, rereads: 5 },
+    };
+    const spawnedBy: Record<string, { fresh: number; rereads: number }> = {
+      'ipo-1': { fresh: 0, rereads: 0 },
+      'ipo-2': { fresh: 0, rereads: 0 },
+    };
+    processPendingFilingsMock.mockImplementation(
+      async (ipo: { id: string }, deps: { spawnBudget?: { remaining: number; phase?: string } } | undefined) => {
+        const b = deps!.spawnBudget!;
+        const d = docs[ipo.id];
+        let spawned = 0;
+        const take = (kind: 'fresh' | 'rereads') => {
+          while (d[kind] > 0 && b.remaining > 0) {
+            d[kind] -= 1;
+            b.remaining -= 1;
+            spawnedBy[ipo.id][kind] += 1;
+            spawned += 1;
+          }
+        };
+        if (b.phase !== 'rereads') take('fresh');
+        if (b.phase !== 'fresh') take('rereads');
+        return {
+          ipoId: ipo.id, considered: 0, extracted: 0, persisted: 0, failed: 0, skipped: [], spawned,
+          skippedBudget: 0, anchorsConsidered: 0, anchorsSpawned: 0, anchorsPersisted: 0,
+          anchorsManualReview: 0, anchorsFailed: 0,
+          rereadsDeferred: b.phase === 'fresh' ? d.rereads : 0,
+        };
+      }
+    );
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    const totalFresh = spawnedBy['ipo-1'].fresh + spawnedBy['ipo-2'].fresh;
+    const totalRereads = spawnedBy['ipo-1'].rereads + spawnedBy['ipo-2'].rereads;
+    expect(totalFresh).toBe(2);
+    expect(totalRereads).toBe(1);
+  });
+
+  it('budget 3, 0 never-read + 5 re-reads pending -> 3 re-reads spawned (all slots, nothing to reserve them from)', async () => {
+    dbExecuteMock.mockResolvedValue({ rows: [candidateRow('ipo-1')] });
+    const docs: Record<string, { fresh: number; rereads: number }> = { 'ipo-1': { fresh: 0, rereads: 5 } };
+    const spawnedBy: Record<string, { fresh: number; rereads: number }> = { 'ipo-1': { fresh: 0, rereads: 0 } };
+    processPendingFilingsMock.mockImplementation(
+      async (ipo: { id: string }, deps: { spawnBudget?: { remaining: number; phase?: string } } | undefined) => {
+        const b = deps!.spawnBudget!;
+        const d = docs[ipo.id];
+        let spawned = 0;
+        const take = (kind: 'fresh' | 'rereads') => {
+          while (d[kind] > 0 && b.remaining > 0) {
+            d[kind] -= 1;
+            b.remaining -= 1;
+            spawnedBy[ipo.id][kind] += 1;
+            spawned += 1;
+          }
+        };
+        if (b.phase !== 'rereads') take('fresh');
+        if (b.phase !== 'fresh') take('rereads');
+        return {
+          ipoId: ipo.id, considered: 0, extracted: 0, persisted: 0, failed: 0, skipped: [], spawned,
+          skippedBudget: 0, anchorsConsidered: 0, anchorsSpawned: 0, anchorsPersisted: 0,
+          anchorsManualReview: 0, anchorsFailed: 0,
+          rereadsDeferred: b.phase === 'fresh' ? d.rereads : 0,
+        };
+      }
+    );
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(spawnedBy['ipo-1'].rereads).toBe(3);
+    expect(spawnedBy['ipo-1'].fresh).toBe(0);
+  });
+
+  it('budget 3, 5 never-read + 0 re-reads pending -> 3 never-read spawned (all slots, nothing pending to reserve for)', async () => {
+    dbExecuteMock.mockResolvedValue({ rows: [candidateRow('ipo-1')] });
+    const docs: Record<string, { fresh: number; rereads: number }> = { 'ipo-1': { fresh: 5, rereads: 0 } };
+    const spawnedBy: Record<string, { fresh: number; rereads: number }> = { 'ipo-1': { fresh: 0, rereads: 0 } };
+    processPendingFilingsMock.mockImplementation(
+      async (ipo: { id: string }, deps: { spawnBudget?: { remaining: number; phase?: string } } | undefined) => {
+        const b = deps!.spawnBudget!;
+        const d = docs[ipo.id];
+        let spawned = 0;
+        const take = (kind: 'fresh' | 'rereads') => {
+          while (d[kind] > 0 && b.remaining > 0) {
+            d[kind] -= 1;
+            b.remaining -= 1;
+            spawnedBy[ipo.id][kind] += 1;
+            spawned += 1;
+          }
+        };
+        if (b.phase !== 'rereads') take('fresh');
+        if (b.phase !== 'fresh') take('rereads');
+        return {
+          ipoId: ipo.id, considered: 0, extracted: 0, persisted: 0, failed: 0, skipped: [], spawned,
+          skippedBudget: 0, anchorsConsidered: 0, anchorsSpawned: 0, anchorsPersisted: 0,
+          anchorsManualReview: 0, anchorsFailed: 0,
+          rereadsDeferred: b.phase === 'fresh' ? d.rereads : 0,
+        };
+      }
+    );
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(spawnedBy['ipo-1'].fresh).toBe(3);
+    expect(spawnedBy['ipo-1'].rereads).toBe(0);
+  });
+
+  // #1247 item 4: the reservation split above calls `processPendingFilings`
+  // for the SAME IPO up to three times in one cycle (reservation pre-pass,
+  // fresh pass, re-read top-up) when it holds both a pending anchor and a
+  // pending re-read — without a guard, its anchor (not phase-filtered like
+  // filing documents) would be tried on every one of those calls.
+  it('an IPO with a pending anchor AND a pending re-read has its anchor tried at most once this cycle', async () => {
+    dbExecuteMock.mockResolvedValue({ rows: [candidateRow('ipo-1')] });
+    let anchorAttempts = 0;
+    // `deps` (autoPersistDeps) is ONE shared mutable object reused across every
+    // call this cycle (like `spawnBudget`) — `mock.calls[i][1]` would all read
+    // back the SAME final `skipAnchorPass` value if inspected after the fact,
+    // so the flag actually observed by each call is captured here instead.
+    const skipFlagsObserved: boolean[] = [];
+    processPendingFilingsMock.mockImplementation(
+      async (
+        ipo: { id: string },
+        deps: { spawnBudget?: { remaining: number; phase?: string }; skipAnchorPass?: boolean } | undefined
+      ) => {
+        const b = deps!.spawnBudget!;
+        skipFlagsObserved.push(Boolean(deps!.skipAnchorPass));
+        let spawned = 0;
+        if (b.phase !== 'fresh' && b.remaining > 0) {
+          b.remaining -= 1;
+          spawned = 1;
+        }
+        let anchorsSpawned = 0;
+        if (!deps!.skipAnchorPass) {
+          anchorAttempts += 1;
+          anchorsSpawned = 1;
+        }
+        return {
+          ipoId: ipo.id, considered: 0, extracted: 0, persisted: 0, failed: 0, skipped: [], spawned,
+          skippedBudget: 0,
+          anchorsConsidered: deps!.skipAnchorPass ? 0 : 1,
+          anchorsSpawned, anchorsPersisted: 0, anchorsManualReview: 0, anchorsFailed: 0,
+          rereadsDeferred: b.phase === 'fresh' ? 1 : 0,
+        };
+      }
+    );
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(skipFlagsObserved.length).toBeGreaterThan(1);
+    expect(anchorAttempts).toBe(1);
+    expect(skipFlagsObserved[0]).toBe(false);
+    expect(skipFlagsObserved.slice(1).every(Boolean)).toBe(true);
   });
 });
