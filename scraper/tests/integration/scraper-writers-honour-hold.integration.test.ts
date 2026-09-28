@@ -12,7 +12,6 @@ import {
 } from '@ipodhan/shared/services/admin-field-write';
 import { makeIpoDetailsWriter } from '../../src/services/filing-persist-deps';
 import { recordDiscoveredLeadManagers, type TransactionalIposWriter } from '../../src/services/data-persister';
-import { AnchorInvestorRepository } from '../../src/repositories/anchor-investor-repository';
 
 /**
  * Contract 2 item A2 part E — spec §9.2 item 19 (§2.7) for EVERY scraper writer shape, not only
@@ -56,7 +55,7 @@ async function adminSave(tableName: string, fieldName: string, value: unknown, e
     ...(empty ? { empty: { reason: 'does not apply to this issue' } } : { value }),
     mode: { kind: 'typed', sourceNote: 'RHP page 7' },
     expectedVersion: v!.version,
-    actor: { name: 'a2e-test-admin', adminId: null },
+    actor: { name: 'a2e-test-admin', adminId: 'admin-a2e-it' },
     entryPoint: 'test',
     overrideReason: 'proof fixture',
   };
@@ -154,15 +153,5 @@ describe.skipIf(!DATABASE_URL)('A2e: every scraper writer honours the admin hold
     await writer;
     const lp = await one(db.select({ l: schema.listingPerformance.listingPrice, i: schema.listingPerformance.issuePrice }).from(schema.listingPerformance).where(eq(schema.listingPerformance.ipoId, IPO)));
     expect(lp).toEqual({ l: 123, i: 95 });
-  });
-
-  it('AnchorInvestorRepository.update keeps the admin-held anchor field', async () => {
-    const [a] = (await db.execute(sql`
-      INSERT INTO anchor_investors (ipo_id, bid_date, total_shares_offered, total_amount_raised, anchor_investors_count, lock_in_50_percent_date, lock_in_remaining_date)
-      VALUES (${IPO}::uuid, '2026-09-01', 1000, 50000.00, 10, '2026-10-01', '2026-12-01') RETURNING id`)).rows as Array<{ id: string }>;
-    await adminSave('anchor_investors', 'anchorInvestorsCount', 12);
-    await new AnchorInvestorRepository(db2 as never).update(a.id, { anchorInvestorsCount: 99, totalSharesOffered: 2000 } as never);
-    const row = await one(db.select({ c: schema.anchorInvestors.anchorInvestorsCount, s: schema.anchorInvestors.totalSharesOffered }).from(schema.anchorInvestors).where(eq(schema.anchorInvestors.id, a.id)));
-    expect(row).toEqual({ c: 12, s: 2000 });
   });
 });

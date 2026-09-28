@@ -213,7 +213,7 @@ describe.skipIf(!DATABASE_URL)('A2 admin field write (ipodhan_test)', () => {
   // WRITER is item 19 (another builder); this case is expected to fail until then, and turns red —
   // telling that builder to make it a plain it() — the moment replaceForIpo honours
   // protectionTableName('peer_companies', rowKey).
-  it.fails('CORE row key (GAP until item 19): the admin peer value survives the scraper peer writer (PeerCompanyRepository.replaceForIpo)', async () => {
+  it('CORE row key (item 19): the admin peer value survives the scraper peer writer (PeerCompanyRepository.replaceForIpo)', async () => {
     const peer = await seedPeer();
     const v = await readAdminFieldVersion(db as never, IPO, 'peer_companies', 'peRatio', { recordId: peer.id });
     await writeAdminFieldValue(db as never, base({ tableName: 'peer_companies', row: { recordId: peer.id }, fieldName: 'peRatio', value: '22.5', expectedVersion: v!.version }));

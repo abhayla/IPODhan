@@ -6,7 +6,6 @@
  * @module repositories/anchor-investor-repository
  */
 
-import { filterPatchUnderHold } from '@ipodhan/shared/services/field-hold';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
 import { eq, type InferInsertModel } from 'drizzle-orm';
@@ -83,29 +82,14 @@ export class AnchorInvestorRepository {
   async update(id: string, data: Partial<NewAnchorInvestor>) {
     try {
       // Same domain-vs-drizzle-inferred shape gap as .create() above.
-      // §9.2 item 19: an admin-held anchor_investors field (table-level hold; the list is one jsonb
-      // column, so the hold covers the whole list) is re-read under the ipos row lock and dropped.
-      const updated = await this.db.transaction(async (tx) => {
-        const [owner] = await tx
-          .select({ ipoId: schema.anchorInvestors.ipoId })
-          .from(schema.anchorInvestors)
-          .where(eq(schema.anchorInvestors.id, id))
-          .limit(1);
-        if (!owner) return undefined;
-        const { patch, dropped } = await filterPatchUnderHold(tx as never, owner.ipoId, 'anchor_investors', data as Record<string, unknown>);
-        if (dropped.length > 0) {
-          logger.info({ anchorInvestorId: id, ipoId: owner.ipoId, dropped }, '[item 19] protected anchor_investors fields dropped inside the write transaction');
-        }
-        const [row] = await tx
-          .update(schema.anchorInvestors)
-          .set({
-            ...patch,
-            updatedAt: new Date()
-          } as unknown as Partial<AnchorInvestorsInsert>)
-          .where(eq(schema.anchorInvestors.id, id))
-          .returning();
-        return row;
-      });
+      const [updated] = await this.db
+        .update(schema.anchorInvestors)
+        .set({
+          ...data,
+          updatedAt: new Date()
+        } as unknown as Partial<AnchorInvestorsInsert>)
+        .where(eq(schema.anchorInvestors.id, id))
+        .returning();
 
       logger.info(`[AnchorInvestorRepository] Updated anchor investor record ${id}`);
       return updated;

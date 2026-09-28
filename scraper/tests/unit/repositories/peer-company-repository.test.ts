@@ -21,6 +21,9 @@ function makeMockTx(insertedRows: unknown[]) {
     calls,
     getInsertedValues: () => insertedValues,
     tx: {
+      // §9.2 item 19: the replace locks the ipos row and reads per-row holds (none held here).
+      execute: vi.fn(async (q: { queryChunks: unknown[] }) =>
+        /FOR NO KEY UPDATE/.test(JSON.stringify(q.queryChunks)) ? { rows: [{ id: 'ipo-1', scraper_locked: false }] } : { rows: [] }),
       delete: vi.fn().mockReturnValue({
         where: vi.fn(() => {
           calls.push('delete');

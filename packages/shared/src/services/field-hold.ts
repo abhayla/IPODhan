@@ -91,3 +91,70 @@ export async function filterPatchUnderHold<T extends Record<string, unknown>>(
 export function onlyBookkeeping(patch: Record<string, unknown>): boolean {
   return Object.keys(patch).every((k) => NEVER_HELD_KEYS.has(k));
 }
+
+/**
+ * Row-keyed tables (several rows per IPO, e.g. peer_companies keyed by normalized_name): an admin
+ * hold is stored under `<table>:<rowKey>` (`protectionTableName` in admin-field-write.ts). Inside
+ * the caller's transaction: lock the IPO's `ipos` row (the admin's lock), then read every row hold
+ * for the table in ONE query. Returns rowKey -> held field names; `exists` is false when the IPO
+ * row does not exist.
+ */
+export async function lockAndReadRowHolds(
+  tx: HoldExecutor,
+  ipoId: string,
+  tableName: string
+): Promise<{ exists: boolean; scraperLocked: boolean; rows: Map<string, Set<string>> }> {
+  const rows = new Map<string, Set<string>>();
+  const locked = await tx.execute(sql`SELECT id, scraper_locked FROM ipos WHERE id = ${ipoId}::uuid FOR NO KEY UPDATE`);
+  const lockRow = locked.rows[0] as { scraper_locked?: boolean | null } | undefined;
+  if (!lockRow) return { exists: false, scraperLocked: false, rows };
+  const prefix = `${tableName}:`;
+  const prot = await tx.execute(sql`
+    SELECT table_name, field_name FROM field_protection_metadata
+    WHERE ipo_id = ${ipoId}::uuid AND starts_with(table_name, ${prefix}) AND is_protected = true`);
+  for (const r of prot.rows as Array<{ table_name: string; field_name: string }>) {
+    const key = r.table_name.slice(prefix.length);
+    if (!rows.has(key)) rows.set(key, new Set());
+    rows.get(key)!.add(r.field_name);
+  }
+  return { exists: true, scraperLocked: lockRow.scraper_locked === true, rows };
+}
+
+/**
+ * Pure: the rows a delete-and-reinsert writer may write when some stored rows carry admin holds.
+ * An incoming row keeps the STORED value of every held field; a stored row with any hold that the
+ * incoming list omits is kept whole (held rows survive a replace). Rows without holds are untouched.
+ */
+export function applyRowHolds<T extends Record<string, unknown>>(
+  incoming: readonly T[],
+  stored: readonly T[],
+  holds: ReadonlyMap<string, ReadonlySet<string>>,
+  keyField: string
+): { rows: T[]; keptFields: Array<{ rowKey: string; field: string }>; keptRows: string[] } {
+  const storedByKey = new Map(stored.map((r) => [String(r[keyField]), r]));
+  const keptFields: Array<{ rowKey: string; field: string }> = [];
+  const seen = new Set<string>();
+  const rows = incoming.map((row) => {
+    const key = String(row[keyField]);
+    seen.add(key);
+    const held = holds.get(key);
+    const prior = storedByKey.get(key);
+    if (!held || !prior) return row;
+    const out: Record<string, unknown> = { ...row };
+    for (const f of held) {
+      if (NEVER_HELD_KEYS.has(f) || f === keyField) continue;
+      out[f] = prior[f];
+      keptFields.push({ rowKey: key, field: f });
+    }
+    return out as T;
+  });
+  const keptRows: string[] = [];
+  for (const [key, fields] of holds) {
+    if (seen.has(key) || fields.size === 0) continue;
+    const prior = storedByKey.get(key);
+    if (!prior) continue;
+    rows.push(prior);
+    keptRows.push(key);
+  }
+  return { rows, keptFields, keptRows };
+}

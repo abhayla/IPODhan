@@ -5,6 +5,8 @@
  * Simplified version without caching (caching handled by web layer)
  */
 
+import { lockAndReadRowHolds, applyRowHolds, type HoldExecutor } from '@ipodhan/shared/services/field-hold';
+import { logger } from '../utils/logger';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { eq } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -143,8 +145,9 @@ export class PeerCompanyRepository {
 
     if (!options.nullNeverOverwrites && !options.fillGapsOnly) {
       return this.db.transaction(async (tx) => {
+        const rowsToWrite = await this.honourRowHolds(tx, ipoId, deduped);
         await tx.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, ipoId));
-        return tx.insert(schema.peerCompanies).values(deduped).returning();
+        return tx.insert(schema.peerCompanies).values(rowsToWrite).returning();
       });
     }
 
@@ -174,8 +177,32 @@ export class PeerCompanyRepository {
         if (typeof out.isListed !== 'boolean') out.isListed = prior ? prior.isListed : true;
         return out as PeerCompanyInsert;
       });
+      const rowsToWrite = await this.honourRowHolds(tx, ipoId, merged, stored);
       await tx.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, ipoId));
-      return tx.insert(schema.peerCompanies).values(merged).returning();
+      return tx.insert(schema.peerCompanies).values(rowsToWrite).returning();
     });
+  }
+
+  /**
+   * Spec §9.2 item 19 (§2.7) for a delete-and-reinsert writer: inside the replace transaction, lock
+   * the IPO's ipos row (the admin's lock) and read the per-row holds (`peer_companies:<normalized
+   * name>`); a held field keeps its stored value and a held row the new list omits is kept. The
+   * list-level hold (whole list admin-owned, §9.2 item 8) is Phase B.
+   */
+  private async honourRowHolds(
+    tx: unknown,
+    ipoId: string,
+    rows: PeerCompanyInsert[],
+    storedRows?: PeerCompany[]
+  ): Promise<PeerCompanyInsert[]> {
+    const t = tx as NodePgDatabase<typeof schema> & HoldExecutor;
+    const holds = await lockAndReadRowHolds(t, ipoId, 'peer_companies');
+    if (holds.rows.size === 0) return rows;
+    const stored = storedRows ?? (await t.select().from(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, ipoId)));
+    const out = applyRowHolds(rows as Record<string, unknown>[], stored as Record<string, unknown>[], holds.rows, 'normalizedName');
+    if (out.keptFields.length > 0 || out.keptRows.length > 0) {
+      logger.info({ ipoId, keptFields: out.keptFields, keptRows: out.keptRows }, '[item 19] admin-held peer values kept inside the replace transaction');
+    }
+    return out.rows as PeerCompanyInsert[];
   }
 }

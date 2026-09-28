@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
-import { dropHeldFields, lockAndReadFieldHolds, filterPatchUnderHold, NO_HOLD } from './field-hold';
+import { dropHeldFields, lockAndReadFieldHolds, filterPatchUnderHold, NO_HOLD, lockAndReadRowHolds, applyRowHolds } from './field-hold';
 
 const dialect = new PgDialect();
 const A = '00000000-0000-4000-8000-00000000000a';
@@ -79,5 +79,41 @@ describe('lockAndReadFieldHolds', () => {
     const tx = recordingTx([], []);
     expect((await lockAndReadFieldHolds(tx, [], 'ipos')).size).toBe(0);
     expect(tx.queries).toHaveLength(0);
+  });
+});
+
+describe('row-keyed holds (peer_companies:<normalized name>)', () => {
+  it('the row-hold prefix matches protectionTableName (the admin write)', async () => {
+    const { protectionTableName } = await import('./admin-field-write');
+    const tx = recordingTx([{ id: A, scraper_locked: false }], [{ table_name: protectionTableName('peer_companies', 'acme'), field_name: 'peRatio' }]);
+    const r = await lockAndReadRowHolds(tx, A, 'peer_companies');
+    expect(tx.queries).toHaveLength(2);
+    expect(tx.queries[0].sql).toMatch(/FOR NO KEY UPDATE/);
+    expect(tx.queries[1].params).toEqual([A, 'peer_companies:']);
+    expect([...r.rows.get('acme')!]).toEqual(['peRatio']);
+  });
+
+  it('applyRowHolds keeps exactly the held stored values and keeps a held row the new list omits', () => {
+    const stored = [
+      { id: 's1', normalizedName: 'acme', peRatio: '22.50', eps: '1.00' },
+      { id: 's2', normalizedName: 'beta', peRatio: '10.00', eps: '2.00' },
+      { id: 's3', normalizedName: 'gone', peRatio: '5.00', eps: '3.00' },
+    ];
+    const incoming = [
+      { normalizedName: 'acme', peRatio: '99.00', eps: '9.00' },
+      { normalizedName: 'beta', peRatio: '11.00', eps: '2.50' },
+    ];
+    const holds = new Map([['acme', new Set(['peRatio'])], ['dead', new Set(['eps'])]]);
+    const out = applyRowHolds(incoming, stored, holds, 'normalizedName');
+    expect(out.rows).toEqual([
+      { normalizedName: 'acme', peRatio: '22.50', eps: '9.00' },
+      { normalizedName: 'beta', peRatio: '11.00', eps: '2.50' },
+    ]);
+    expect(out.keptFields).toEqual([{ rowKey: 'acme', field: 'peRatio' }]);
+    expect(out.keptRows).toEqual([]);
+    const out2 = applyRowHolds(incoming, stored, new Map([['gone', new Set(['eps'])]]), 'normalizedName');
+    expect(out2.rows).toHaveLength(3);
+    expect(out2.rows[2]).toBe(stored[2]);
+    expect(out2.keptRows).toEqual(['gone']);
   });
 });
