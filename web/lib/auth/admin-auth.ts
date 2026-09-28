@@ -35,6 +35,7 @@
 
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { readCookie, resolveAdminSessionToken } from '@/lib/admin-accounts/admin-session';
 import crypto from 'crypto';
 
 /**
@@ -86,6 +87,16 @@ function constantTimeCompare(a: string, b: string): boolean {
  * @throws Never throws - returns error responses instead
  */
 export async function requireAdminAuth(): Promise<NextResponse | null> {
+  // A named admin's session cookie (spec §9.2 item 6, OD-104) is accepted first; the Bearer
+  // ADMIN_API_TOKEN below stays for non-human callers only. A session lookup error falls through to
+  // the Bearer check, so it can never grant access by itself.
+  try {
+    const cookieHeader = (await headers()).get('cookie');
+    if (cookieHeader && (await resolveAdminSessionToken(readCookie(cookieHeader)))) return null;
+  } catch {
+    // fall through to the Bearer check
+  }
+
   const ADMIN_TOKEN = process.env.ADMIN_API_TOKEN;
 
   // Check if admin token is configured

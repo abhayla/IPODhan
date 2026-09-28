@@ -114,7 +114,7 @@ function getRateLimitKey(ip: string, endpoint: string): string {
 /**
  * Check rate limit using Redis sliding window algorithm
  */
-async function checkRateLimit(
+export async function checkRateLimit(
   ip: string,
   endpoint: string,
   config: RateLimitConfig
