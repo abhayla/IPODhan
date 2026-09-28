@@ -11,9 +11,22 @@
  * of creating duplicates, and removes any other broker row left over from
  * the old multi-broker seed.
  *
+ * Prod guard: `--apply` is refused when the connection's own
+ * `current_database()` (never an env var) is `ipodhan`, unless `--allow-prod`
+ * is also passed (`decideProdWriteRefusal`, web/scripts/lib/prod-write-guard.ts,
+ * ported from scraper/scripts/lib/repair-tool.ts — see that file's header for
+ * why it is a small duplicated port rather than a cross-package import).
+ *
+ * Ledger: before any delete/update, the full prior `broker_affiliates` rows
+ * are written to a timestamped JSON file (default under
+ * web/scripts/state/, override with --ledger-dir=<path>; that directory is
+ * gitignored, so a ledger is never committed).
+ *
  * Usage:
- *   npm run seed:broker-affiliates          # Dry run - prints what it would write
- *   npm run seed:broker-affiliates -- --apply  # Actually write to the DB
+ *   npm run seed:broker-affiliates                          # Dry run - prints what it would write
+ *   npm run seed:broker-affiliates -- --apply                # Write (refused against prod)
+ *   npm run seed:broker-affiliates -- --apply --allow-prod   # Write against prod, on purpose
+ *   npm run seed:broker-affiliates -- --apply --ledger-dir=./tmp-ledgers
  */
 
 // Load environment variables FIRST
@@ -37,9 +50,32 @@ if (!process.env.DATABASE_URL && !process.env.DATABASE_HOST) {
 console.log('✓ Environment variables loaded successfully\n');
 
 import { db, closePool, brokerAffiliates } from '../lib/db';
-import { eq, ne } from 'drizzle-orm';
+import { eq, ne, sql } from 'drizzle-orm';
+import fs from 'node:fs';
+import path from 'node:path';
+import { decideProdWriteRefusal } from './lib/prod-write-guard';
 
 const BROKER_NAME = 'Zerodha';
+const TOOL_NAME = 'seed-broker-affiliates';
+
+function parseFlagValue(flag: string): string | null {
+  const withEquals = process.argv.find((a) => a.startsWith(`--${flag}=`));
+  if (withEquals) return withEquals.slice(`--${flag}=`.length);
+  return null;
+}
+
+/** Writes the full prior rows to a JSON ledger BEFORE any delete/update. */
+function writeLedgerFile(rows: unknown[]): string {
+  const ledgerDir = parseFlagValue('ledger-dir') ?? path.resolve(__dirname, 'state');
+  fs.mkdirSync(ledgerDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filePath = path.join(ledgerDir, `broker-affiliates-${stamp}.json`);
+  fs.writeFileSync(
+    filePath,
+    JSON.stringify({ tool: TOOL_NAME, writtenAt: new Date().toISOString(), priorRows: rows }, null, 1)
+  );
+  return filePath;
+}
 
 function resolveAffiliateUrl(): string {
   const url = process.env.ZERODHA_AFFILIATE_URL;
@@ -60,11 +96,29 @@ function resolveAffiliateUrl(): string {
 async function seedBrokerAffiliates() {
   const startTime = Date.now();
   const apply = process.argv.includes('--apply');
+  const allowProd = process.argv.includes('--allow-prod');
 
   console.log('='.repeat(70));
   console.log('BROKER AFFILIATES SEEDING (Zerodha only, #97)');
   console.log('='.repeat(70));
   console.log(`Mode: ${apply ? 'APPLY (will write to the database)' : 'DRY RUN (no writes)'}\n`);
+
+  // The SAME connection that will do the writing, asked what it actually is
+  // — never trusted from DATABASE_URL/DATABASE_NAME (signal-ownership R6:
+  // the env can say "staging" while the socket is on prod).
+  const dbNameResult = await db.execute(sql`SELECT current_database() AS name`);
+  const dbNameRows = Array.isArray(dbNameResult)
+    ? dbNameResult
+    : ((dbNameResult as unknown as { rows?: { name: string }[] })?.rows ?? []);
+  const dbName = (dbNameRows[0] as { name?: string } | undefined)?.name ?? '';
+  console.log(`current_database(): ${dbName}`);
+
+  const refusal = decideProdWriteRefusal({ apply, dbName, allowProd, toolName: TOOL_NAME });
+  if (refusal.refuse) {
+    console.error(`\nERROR: ${refusal.reason}`);
+    await closePool();
+    process.exit(1);
+  }
 
   const affiliateUrl = resolveAffiliateUrl();
 
@@ -102,6 +156,11 @@ async function seedBrokerAffiliates() {
 
     console.log('\n[2/2] Applying changes...');
     const now = new Date();
+
+    if (existing.length > 0) {
+      const ledgerPath = writeLedgerFile(existing);
+      console.log(`✓ Wrote ledger of ${existing.length} prior row(s) to ${ledgerPath}`);
+    }
 
     if (otherBrokers.length > 0) {
       await db.delete(brokerAffiliates).where(ne(brokerAffiliates.brokerName, BROKER_NAME));
