@@ -17,6 +17,10 @@
  * OD-125 (#1243), is refused and never reaches the admin write.
  */
 import { describe, it, expect, vi } from 'vitest';
+
+// Each file's first test dynamically imports a route module (its whole graph); on a loaded
+// machine that alone can pass 5 s, so these files get a longer per-test limit.
+vi.setConfig({ testTimeout: 30_000 });
 import { NextRequest } from 'next/server';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';

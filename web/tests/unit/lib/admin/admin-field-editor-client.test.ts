@@ -70,3 +70,40 @@ describe('M2: the editors are wired to the helpers (source check)', () => {
     expect(src).toMatch(/sourceNote,/);
   });
 });
+
+describe('A2 round-2 MAJOR-2: a field whose shown value is not the stored value keeps no token', () => {
+  it('omits the token and reports the field when the page shows an older value', async () => {
+    const { loadFieldVersions: load } = await import('@/lib/admin/admin-field-editor-client');
+    const get = vi.fn(async () => ({ data: { version: 'tok-1', currentValue: 150 } }));
+    const stale: string[] = [];
+    const out = await load(get, 'ipo-1', [{ tableName: 'ipos', fieldName: 'lotSize', shown: 100 }], (k) => stale.push(k));
+    expect(out).toEqual({});
+    expect(stale).toEqual(['ipos.lotSize']);
+  });
+
+  it('keeps the token when the shown value matches (numeric text vs number, blank vs null)', async () => {
+    const { loadFieldVersions: load } = await import('@/lib/admin/admin-field-editor-client');
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { version: 'tok-a', currentValue: '100.00' } })
+      .mockResolvedValueOnce({ data: { version: 'tok-b', currentValue: null } });
+    const stale: string[] = [];
+    const out = await load(
+      get,
+      'ipo-1',
+      [
+        { tableName: 'ipos', fieldName: 'lotSize', shown: 100 },
+        { tableName: 'ipos', fieldName: 'registrar', shown: '' },
+      ],
+      (k) => stale.push(k)
+    );
+    expect(stale).toEqual([]);
+    expect(Object.keys(out).sort()).toEqual(['ipos.lotSize', 'ipos.registrar']);
+  });
+
+  it('keeps the old behaviour when no shown value is passed', async () => {
+    const { loadFieldVersions: load } = await import('@/lib/admin/admin-field-editor-client');
+    const get = vi.fn(async () => ({ data: { version: 'tok-1', currentValue: 150 } }));
+    expect(await load(get, 'ipo-1', [{ tableName: 'ipos', fieldName: 'lotSize' }])).toEqual({ 'ipos.lotSize': 'tok-1' });
+  });
+});

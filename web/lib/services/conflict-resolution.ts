@@ -253,6 +253,16 @@ export class ConflictResolutionService {
         };
       }
 
+      // The reader line names the picked source (OD-109), so a pick must name one of the two
+      // sources this conflict row actually holds; any other label would be a false source.
+      if (
+        options.applyToDatabase &&
+        options.resolvedSource !== conflict.source1 &&
+        options.resolvedSource !== conflict.source2
+      ) {
+        return this.unknownSource(conflictId, conflict, options.resolvedSource);
+      }
+
       // Determine which value to apply based on resolved source
       const appliedValue = options.resolvedSource === conflict.source1
         ? conflict.value1
@@ -273,7 +283,12 @@ export class ConflictResolutionService {
           value: appliedValue,
           empty: appliedValue === null ? { reason: options.adminNote || `Conflict resolved to ${options.resolvedSource}, which has no value` } : undefined,
           // The value is the stored data_conflicts row's, chosen server-side by resolvedSource.
-          mode: { kind: 'storedPick', sourceLabel: options.resolvedSource, readDate: null, value: appliedValue },
+          mode: {
+            kind: 'storedPick',
+            sourceLabel: options.resolvedSource,
+            readDate: conflict.detectedAt ? new Date(conflict.detectedAt).toISOString() : null,
+            value: appliedValue,
+          },
           expectedVersion,
           actor: { name: options.resolvedBy, adminId: options.adminId ?? '' },
           row: conflict.rowKey ? { rowKey: conflict.rowKey } : undefined,
@@ -351,6 +366,20 @@ export class ConflictResolutionService {
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  private unknownSource(conflictId: string, conflict: DataConflictRecord, source: string): ResolutionResult {
+    const reason = `resolvedSource "${source}" is neither of this conflict's sources (${conflict.source1}, ${conflict.source2})`;
+    return {
+      success: false,
+      conflictId,
+      ipoId: conflict.ipoId,
+      fieldName: conflict.fieldName,
+      appliedValue: null,
+      fieldProtected: false,
+      error: reason,
+      writeResult: { kind: 'INVALID', reason },
+    };
   }
 
   private staleEditor(conflictId: string, conflict: DataConflictRecord): ResolutionResult {

@@ -7,6 +7,10 @@
  * ipodhan_test integration test, which renames a peer and reads provenance + hold under the new key).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Each file's first test dynamically imports a route module (its whole graph); on a loaded
+// machine that alone can pass 5 s, so these files get a longer per-test limit.
+vi.setConfig({ testTimeout: 30_000 });
 import { NextRequest } from 'next/server';
 import { getPeerCompaniesKey } from '@/lib/cache/cache-keys';
 

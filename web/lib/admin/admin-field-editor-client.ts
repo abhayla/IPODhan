@@ -33,17 +33,26 @@ export const versionKey = (tableName: string, fieldName: string) => `${sqlTableF
 export async function loadFieldVersions(
   get: Get,
   ipoId: string,
-  fields: Array<{ tableName: string; fieldName: string }>
+  fields: Array<{ tableName: string; fieldName: string; shown?: unknown }>,
+  onStale?: (key: string) => void
 ): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   await Promise.all(
-    fields.map(async ({ tableName, fieldName }) => {
+    fields.map(async (field) => {
+      const { tableName, fieldName } = field;
       const table = sqlTableForEditor(tableName);
       try {
         const r = await get(
           `/api/admin/update-field?ipoId=${encodeURIComponent(ipoId)}&tableName=${encodeURIComponent(table)}&fieldName=${encodeURIComponent(fieldName)}`
         );
         const v = r?.data?.version;
+        // The page's values come from the cached public API; the token is read fresh. When the
+        // two disagree the admin is looking at an old value, so no token is kept and the server
+        // refuses the save as a stale editor (item 20) instead of overwriting the newer value.
+        if ('shown' in field && !sameShownValue(field.shown, r?.data?.currentValue)) {
+          onStale?.(versionKey(table, fieldName));
+          return;
+        }
         if (typeof v === 'string' && v !== '') out[versionKey(table, fieldName)] = v;
       } catch {
         // not admin-writable, or the read failed: no token, the save will be refused
@@ -51,6 +60,26 @@ export async function loadFieldVersions(
     })
   );
   return out;
+}
+
+/**
+ * Whether the value an editor shows is the value the database holds. Empty forms (null,
+ * undefined, '') are equal; numbers compare numerically ("100.00" == 100); dates compare by
+ * instant; everything else by trimmed text.
+ */
+export function sameShownValue(shown: unknown, stored: unknown): boolean {
+  const blank = (x: unknown) => x === null || x === undefined || (typeof x === 'string' && x.trim() === '');
+  if (blank(shown) || blank(stored)) return blank(shown) && blank(stored);
+  const a = String(shown).trim();
+  const b = String(stored).trim();
+  if (a === b) return true;
+  const na = Number(a);
+  const nb = Number(b);
+  if (a !== '' && b !== '' && Number.isFinite(na) && Number.isFinite(nb)) return na === nb;
+  const da = Date.parse(a);
+  const db = Date.parse(b);
+  if (!Number.isNaN(da) && !Number.isNaN(db) && /\d{4}-\d{2}-\d{2}/.test(a) && /\d{4}-\d{2}-\d{2}/.test(b)) return da === db || a.slice(0, 10) === b.slice(0, 10);
+  return false;
 }
 
 /** A typed save with the opened token and the admin's source note. Returns the new token. */

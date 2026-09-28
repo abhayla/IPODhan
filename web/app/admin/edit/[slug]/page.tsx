@@ -280,11 +280,26 @@ export default function AdminEditIPOPage() {
 
   useEffect(() => {
     if (!ipo?.id) return;
-    loadFieldVersions(adminGet, ipo.id, [
-      ...EDITABLE_IPO_FIELDS.map((fieldName) => ({ tableName: 'ipos', fieldName })),
-      ...EDITABLE_FINANCIAL_FIELDS.map((fieldName) => ({ tableName: 'financialData', fieldName })),
-    ]).then(setFieldVersions);
-  }, [ipo]);
+    const stale: string[] = [];
+    loadFieldVersions(
+      adminGet,
+      ipo.id,
+      [
+        ...EDITABLE_IPO_FIELDS.map((fieldName) => ({ tableName: 'ipos', fieldName, shown: (ipo as unknown as Record<string, unknown>)[fieldName] })),
+        ...EDITABLE_FINANCIAL_FIELDS.map((fieldName) => ({
+          tableName: 'financialData',
+          fieldName,
+          ...(financialData ? { shown: (financialData as unknown as Record<string, unknown>)[fieldName] } : {}),
+        })),
+      ],
+      (key) => stale.push(key)
+    ).then((versions) => {
+      setFieldVersions(versions);
+      if (stale.length > 0) {
+        setSuccessMessage(`Error: ${stale.length} field(s) changed since this page loaded (${stale.join(', ')}). Reload the page before saving them.`);
+      }
+    });
+  }, [ipo, financialData]);
 
   useEffect(() => {
     console.log('[AdminEditIPOPage] useEffect triggered for slug:', slug);

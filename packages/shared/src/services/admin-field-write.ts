@@ -524,6 +524,9 @@ export async function writeAdminFieldValue(
   if (mode.kind === 'holdShown' && input.empty) {
     return { kind: 'INVALID', reason: 'a hold of the shown value cannot also delete it' };
   }
+  if (mode.kind === 'pick' && input.empty) {
+    return { kind: 'INVALID', reason: 'a delete (empty value with a reason) cannot also be a pick from a source — OD-121' };
+  }
   if (input.empty && !input.empty.reason?.trim()) {
     return { kind: 'INVALID', reason: 'deleting a value needs a reason — OD-121' };
   }
@@ -599,7 +602,12 @@ export async function writeAdminFieldValue(
         if (refusal) throw new Refusal(refusal);
         effectiveMode = { kind: 'pick', sourceLabel: mode.sourceLabel, readDate: answer.readDate };
       } else if (mode.kind === 'pick') {
-        effectiveMode = { kind: 'pick', sourceLabel: mode.sourceLabel, readDate: null };
+        // An admin-empty is a delete with a reason (OD-121), never a source's pick; recording it
+        // as "picked from <label>" would put a client-chosen source on the record.
+        throw new Refusal({
+          kind: 'INVALID',
+          reason: `${tableName}.${fieldName}: a delete (empty value with a reason) cannot also be a pick from ${mode.sourceLabel}`,
+        });
       } else if (mode.kind === 'storedPick') {
         effectiveMode = { kind: 'pick', sourceLabel: mode.sourceLabel, readDate: mode.readDate };
       } else if (mode.kind === 'holdShown') {
