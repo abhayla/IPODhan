@@ -26,6 +26,7 @@ import {
   getIPOScoreKey,
   getPeerCompaniesKey,
   getDocumentsKey,
+  adminQueueCacheKeys,
 } from '@/lib/cache/cache-keys';
 import { invalidateIPOCaches } from '@/lib/cache/ipo-cache-invalidation';
 import { revalidateForSlugs } from '@/lib/services/page-revalidation-service';
@@ -48,8 +49,12 @@ export const TABLE_CACHE_KEYS: Record<string, (ipoId: string) => string[]> = {
   documents: (id) => [getDocumentsKey(id)],
 };
 
+/**
+ * The table's own keys plus the admin queue's keys (OD-136): any admin save can resolve a queue item
+ * (a value supplied, a hold added, a flagged value corrected), so the queue never shows it for the TTL.
+ */
 export function tableCacheKeys(tableName: string, ipoId: string): string[] {
-  return TABLE_CACHE_KEYS[tableName]?.(ipoId) ?? [];
+  return [...(TABLE_CACHE_KEYS[tableName]?.(ipoId) ?? []), ...adminQueueCacheKeys()];
 }
 
 export interface AdminFieldSaveDeps {

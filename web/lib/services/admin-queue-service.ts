@@ -290,6 +290,13 @@ export interface QueueResponse {
   entries: Array<QueueEntry | { type: 'item'; group: QueueGroup; item: QueueItem }>;
 }
 
+/** The cached setup of one queue request: SQL inputs, the flagged items and every IPO. */
+export interface QueueSetup {
+  inputs: QueueSqlInputs;
+  flagged: QueueItem[];
+  ipos: QueueIpo[];
+}
+
 export class AdminQueueService {
   private sources: QueueSource[];
   private rows: AdminQueueStoredRowsRepository;
@@ -341,7 +348,7 @@ export class AdminQueueService {
     const { inputs, flaggedByKey, ipoById } = await this.sqlInputs();
     const sqlView = toSqlView(view);
     const [countRows, first] = await Promise.all([
-      this.pages.counts(inputs),
+      this.pages.cachedCounts(inputs),
       this.pages.page(inputs, sqlView, (Math.max(1, req.page) - 1) * req.pageSize, req.pageSize),
     ]);
     const totalEntries = totalOf(first);
@@ -353,8 +360,18 @@ export class AdminQueueService {
     return { counts: countsFromRows(countRows), view, page: pageNo, pageSize: req.pageSize, totalEntries, totalPages, entries };
   }
 
-  /** The JS-side inputs of the SQL queue, each from its one implementation. */
+  /** The JS-side inputs of the SQL queue (cached, CacheTTL.ADMIN_QUEUE; an admin save drops the key). */
   async sqlInputs(): Promise<{ inputs: QueueSqlInputs; flaggedByKey: Map<string, QueueItem>; ipoById: Map<string, QueueIpo> }> {
+    const setup = await this.pages.cachedSetup(() => this.loadSetup());
+    return {
+      inputs: setup.inputs,
+      flaggedByKey: new Map(setup.flagged.map((f) => [`${f.ipo.id}|${f.fieldName}`, f])),
+      ipoById: new Map(setup.ipos.map((i) => [i.id, i])),
+    };
+  }
+
+  /** The setup data, each part from its one implementation; plain JSON so it can be cached. */
+  async loadSetup(): Promise<QueueSetup> {
     const families = loadComparisonFamilies();
     const [candidates, holds, iposRows] = await Promise.all([
       this.pages.listCandidateConflicts(ADMIN_ONLY_CONFLICT_REASONS, WRITER_BOOKKEEPING_FIELDS),
@@ -385,8 +402,8 @@ export class AdminQueueService {
         publicFields,
         flagged: flagged.map((f) => [f.ipo.id, f.fieldName]),
       },
-      flaggedByKey: new Map(flagged.map((f) => [`${f.ipo.id}|${f.fieldName}`, f])),
-      ipoById: new Map(iposRows.map((r) => [String(r.id), ipoOfRow(r)])),
+      flagged,
+      ipos: iposRows.map(ipoOfRow),
     };
   }
 

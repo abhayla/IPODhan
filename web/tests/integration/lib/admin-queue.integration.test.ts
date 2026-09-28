@@ -9,7 +9,9 @@ import { randomUUID } from 'node:crypto';
 import { db } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { AdminQueueService } from '@/lib/services/admin-queue-service';
-import { orderQueue, type QueueEntry } from '@/lib/admin/queue/queue-order';
+import { orderQueue, NO_REASON_RECORDED, type QueueEntry, type QueueView } from '@/lib/admin/queue/queue-order';
+import { adminQueueCacheKeys } from '@/lib/cache/cache-keys';
+import type { QueueResponse } from '@/lib/services/admin-queue-service';
 
 const tag = `a4q-${Date.now().toString(36)}`;
 const ids = { up: randomUUID(), cl: randomUUID(), l1: randomUUID(), l2: randomUUID(), l3: randomUUID() };
@@ -34,6 +36,27 @@ const label = (e: QueueEntry) =>
   e.type === 'item'
     ? `${e.group}:${e.item.ipo.slug.slice(tag.length + 1)}:${e.item.kind}:${e.item.fieldName}:${e.item.reason.slice(0, 18)}`
     : `3:${e.summary.ipo.slug.slice(tag.length + 1)}:${e.summary.conflicts}/${e.summary.missing}/${e.summary.flagged}/${e.summary.ruled}`;
+
+async function dropQueueCache(): Promise<void> {
+  try {
+    await getRedisClient().del(...adminQueueCacheKeys());
+  } catch {
+    // No Redis in this environment: the cache helpers fall back to the database.
+  }
+}
+
+const entryKey = (e: QueueResponse['entries'][number]) => (e.type === 'item' ? e.item.id : `ipo:${e.summary.ipo.id}`);
+
+/** Every page of one view, walked with page numbers exactly as the UI does. */
+async function walk(service: AdminQueueService, view: QueueView, pageSize: number) {
+  const pages: QueueResponse[] = [];
+  for (let page = 1; ; page++) {
+    const r = await service.getQueue({ ...view, page, pageSize });
+    pages.push(r);
+    if (page >= r.totalPages) break;
+  }
+  return pages;
+}
 
 describe('admin queue on ipodhan_test (OD-136 order)', () => {
   beforeAll(async () => {
@@ -64,6 +87,8 @@ describe('admin queue on ipodhan_test (OD-136 order)', () => {
 
     await db.execute(sql`INSERT INTO field_protection_metadata (table_name, field_name, ipo_id, is_protected, auto_protected, manually_edited_at, manually_edited_by)
       VALUES ('ipos', 'faceValue', ${ids.up}, true, true, now(), 'test-admin')`);
+    // A cached setup/counts from an earlier run would predate these fixtures.
+    await dropQueueCache();
   });
 
   afterAll(async () => {
@@ -105,5 +130,50 @@ describe('admin queue on ipodhan_test (OD-136 order)', () => {
       '3:conflict:faceValue',
     ]);
     expect(r.counts.total).toBeGreaterThanOrEqual(10);
+  });
+
+  const views: Array<[string, QueueView]> = [
+    ['default', {}],
+    ['group 1', { group: 1 }],
+    ['group 2', { group: 2 }],
+    ['group 3', { group: 3 }],
+    ['reason NOT_PUBLISHED_YET', { reason: 'NOT_PUBLISHED_YET' }],
+    ['reason no reason recorded', { reason: NO_REASON_RECORDED }],
+    ['kind missing', { kind: 'missing' }],
+  ];
+
+  it.each(views)('%s: page N+1 continues page N exactly (no overlap, no gap, same order as one page)', async (_name, view) => {
+    const service = new AdminQueueService(db as never, getRedisClient());
+    const whole = await service.getQueue({ ...view, page: 1, pageSize: 100000 });
+    expect(whole.totalPages).toBe(1);
+    const pageSize = Math.max(2, Math.ceil(whole.totalEntries / 4));
+    const pages = await walk(service, view, pageSize);
+    const walked = pages.flatMap((p) => p.entries.map(entryKey));
+    expect(new Set(walked).size).toBe(walked.length); // no overlap
+    expect(walked).toEqual(whole.entries.map(entryKey)); // no gap, same order
+    expect(walked.length).toBe(whole.totalEntries);
+    for (const p of pages.slice(0, -1)) expect(p.entries.length).toBe(pageSize);
+  });
+
+  it('group counts equal the items listed across every page of that group', async () => {
+    const service = new AdminQueueService(db as never, getRedisClient());
+    await dropQueueCache();
+    for (const group of [1, 2, 3] as const) {
+      const pages = await walk(service, { group }, 7);
+      const counts = pages[0].counts.byGroup[group];
+      const entries = pages.flatMap((p) => p.entries);
+      if (group === 3) {
+        // Group 3 lists one collapsed row per IPO; its per-IPO counts add up to the group's items.
+        expect(entries.length).toBe(counts.ipos);
+        const items = entries.reduce(
+          (n, e) => n + (e.type === 'ipo' ? e.summary.conflicts + e.summary.missing + e.summary.flagged + e.summary.ruled : 0),
+          0
+        );
+        expect(items).toBe(counts.items);
+      } else {
+        expect(entries.length).toBe(counts.items);
+        expect(new Set(entries.map((e) => (e.type === 'item' ? e.item.ipo.id : ''))).size).toBe(counts.ipos);
+      }
+    }
   });
 });

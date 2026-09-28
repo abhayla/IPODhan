@@ -28,7 +28,7 @@
  * value), while still treating the local-getter reads (`getFullYear`/
  * `getMonth`/`getDate`) as SAFE, same as the bound form.
  *
- * KNOWN RESIDUAL (8 entries — see BASELINE below, cross-referenced in
+ * KNOWN RESIDUAL (7 entries — see BASELINE below, cross-referenced in
  * D:\Abhay\GetWorkDone\evidence\2026-08-26-T-327\06-class-sweep.md and
  * class-sweep-item3.md): six files keep a last-resort
  * `new Date(cleaned).toISOString()` fallback for date STRINGS that don't
@@ -92,7 +92,8 @@ const BASELINE: Record<string, number> = {
   'scrapers/nse-api-client.ts': 1,
   'scrapers/nse-scraper.ts': 1,
   'utils/transform-past-ipo.ts': 1,
-  'services/normalization-engine.ts': 1,
+  // services/normalization-engine.ts's one site moved with the value-equivalence code (A4, OD-59) to
+  // packages/shared/src/utils/value-equivalence.ts, which this ratchet (scraper/src only) does not walk.
   'utils/scraper-utils.ts': 1,
   // T-327F (checker T-327C remediation item 4): INLINE_RISKY_CHAIN surfaced
   // two more real, already-reviewed-safe sites documented in

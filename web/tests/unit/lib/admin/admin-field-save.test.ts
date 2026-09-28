@@ -7,6 +7,7 @@ vi.mock('@/lib/cache/redis-client', () => ({ getRedisClient: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 import { saveAdminFieldValue, adminWriteResponse, TABLE_CACHE_KEYS, type AdminFieldSaveDeps } from '@/lib/admin/admin-field-save';
+import { getAdminQueueCountsKey, getAdminQueueSetupKey } from '@/lib/cache/cache-keys';
 import { ADMIN_WRITABLE_TABLES, ADMIN_ROW_TABLES, type AdminFieldWriteInput, type AdminFieldWriteResult } from '@ipodhan/shared/services/admin-field-write';
 
 const input: AdminFieldWriteInput = {
@@ -36,7 +37,14 @@ describe('saveAdminFieldValue — F-171 cache drop after commit', () => {
     await saveAdminFieldValue(input, d);
     expect(write).toHaveBeenCalledWith({}, input, undefined);
     const keys = del.mock.calls.map((c) => c[0]).sort();
-    expect(keys).toEqual(['ipo:detail:acme-ltd', 'ipo:fieldplan:provenance:acme-ltd', 'ipo:id:ipo-1', 'ipo:slug:acme-ltd']);
+    expect(keys).toEqual([
+      'admin:queue:counts',
+      'admin:queue:setup',
+      'ipo:detail:acme-ltd',
+      'ipo:fieldplan:provenance:acme-ltd',
+      'ipo:id:ipo-1',
+      'ipo:slug:acme-ltd',
+    ]);
     expect(keys.some((k) => k.includes('*'))).toBe(false);
     expect(revalidatePath).toHaveBeenCalledWith('/ipos/acme-ltd');
   });
@@ -65,6 +73,16 @@ describe('saveAdminFieldValue — F-171 cache drop after commit', () => {
     const { d, del } = deps({ ...OK, tableName } as AdminFieldWriteResult);
     await saveAdminFieldValue({ ...input, tableName }, d);
     expect(del.mock.calls.map((c) => c[0])).toContain(key);
+  });
+
+  it('OD-136: a save in ANY admin-writable table drops the admin queue keys (the fixed item leaves the queue at once)', async () => {
+    for (const tableName of [...ADMIN_WRITABLE_TABLES, ...ADMIN_ROW_TABLES]) {
+      const { d, del } = deps({ ...OK, tableName } as AdminFieldWriteResult);
+      await saveAdminFieldValue({ ...input, tableName }, d);
+      const deleted = del.mock.calls.map((c) => c[0]);
+      expect(deleted, tableName).toContain(getAdminQueueSetupKey());
+      expect(deleted, tableName).toContain(getAdminQueueCountsKey());
+    }
   });
 
   it('M3: every admin-writable table has a cache-key entry', () => {
