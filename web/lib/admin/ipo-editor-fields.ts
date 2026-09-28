@@ -5,7 +5,7 @@
  * The §1 class and the ranked sources come from `scraper/config/field-manifest.json`, the generated
  * implementable form of Appendix A (classes D, T, M; X/W fields are job-owned and carry no row). The
  * manifest has no row for the calculated (C) or bookkeeping (I) fields, so the ones in the editor's
- * tables are listed below; `tests/unit/lib/admin/ipo-editor-fields.test.ts` checks both lists
+ * tables are listed below; `tests/unit/lib/admin/ipo-editor.test.ts:62` checks both lists
  * against the spec's own table (docs/design/field-source-resolution.spec.mjs), so a field added
  * there cannot silently go missing here.
  */

@@ -741,7 +741,10 @@ export async function writeAdminFieldValue(
             confidence: 100,
             previousValue: stringify(oldValue),
             previousSource,
-            dataLineage: sql`COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) || ${JSON.stringify(lineage)}::jsonb`,
+            // REPLACE (never merge) the lineage on an admin write — a merge lets stale keys from an
+            // earlier save (adminEmpty/emptyReason, sourceNote, sourceLabel/readDate, scraper keys)
+            // survive into a save that no longer means them. History is kept on the audit row, not here.
+            dataLineage: lineage,
             updatedBy: actor.name,
             updatedAt: now,
           } as never,

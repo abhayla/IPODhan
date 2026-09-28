@@ -113,6 +113,8 @@ interface PageProps {
     tab?: string;
     /** `<table>.<field>` from the admin queue (§9.4): opens the admin editor at that field. */
     edit?: string;
+    /** The row key for a row-shaped table (Phase B); paired with `edit`. Empty/absent = the single row. */
+    row?: string;
   }>;
 }
 
@@ -230,7 +232,7 @@ export const revalidate = 300;
 
 export default async function IPODetailPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
-  const { tab, edit } = await searchParams;
+  const { tab, edit, row } = await searchParams;
 
   // Initialize repositories (Server Components use repositories directly)
   const redis = getRedisClient();
@@ -585,7 +587,11 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             {admin && (
               <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="admin-edit-bar">
                 <AdminEditButton section="all" label="Edit this IPO" />
-                <IpoPageEditor ipoId={ipo.id} editTarget={typeof edit === 'string' ? edit : null} />
+                <IpoPageEditor
+                  ipoId={ipo.id}
+                  editTarget={typeof edit === 'string' ? edit : null}
+                  editRowKey={typeof row === 'string' ? row : null}
+                />
               </div>
             )}
             {/* 1. IPO Timeline Widget */}

@@ -124,6 +124,36 @@ function FieldEditor({ ipoId, field, onSaved }: { ipoId: string; field: EditorFi
     return <p className="text-sm text-gray-600">{field.readonlyReason ?? 'Not edited here: this value is read many times a day or kept by the system.'}</p>;
   }
 
+  if (field.mode === 'setting' && field.column === 'rating_override') {
+    // §9.2 item 7: a plain on/off control, not the source panel — saved through the same ONE admin
+    // write as a typed value, with a note (spec requires `sourceNote` on every typed save).
+    const on = field.currentValue === true;
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-gray-700">Rating override is {on ? 'on' : 'off'}.</p>
+        <label className="block text-sm font-medium">
+          Source note (why)
+          <input
+            className="mt-1 block min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base"
+            value={note}
+            required
+            onChange={(e) => setNote(e.target.value)}
+            name="source-note"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={busy || !note.trim()}
+          className="min-h-[44px] rounded-md border border-gray-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
+          onClick={() => run({ mode: 'typed', value: !on, sourceNote: note.trim() })}
+        >
+          Turn the override {on ? 'off' : 'on'}
+        </button>
+        {message && <p className="text-sm text-red-700">{message}</p>}
+      </div>
+    );
+  }
+
   if (field.mode === 'setting' && field.column === 'scraper_locked') {
     const locked = field.currentValue === true;
     return (
@@ -321,15 +351,28 @@ export interface IpoPageEditorProps {
   ipoId: string;
   /** `?edit=<table>.<field>` from the admin queue: open the editor at that field. */
   editTarget?: string | null;
+  /** `?row=<rowKey>` (Phase B, row-shaped tables): the row `editTarget` refers to. Never built into a selector — matched by strict equality against the editor's own field keys once the payload loads. */
+  editRowKey?: string | null;
 }
 
-export function IpoPageEditor({ ipoId, editTarget }: IpoPageEditorProps) {
+export function IpoPageEditor({ ipoId, editTarget, editRowKey = null }: IpoPageEditorProps) {
   const router = useRouter();
   const [open, setOpen] = useState<string | null>(editTarget ? 'all' : null);
   const [payload, setPayload] = useState<EditorPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openField, setOpenField] = useState<string | null>(editTarget ?? null);
   const [filter, setFilter] = useState('');
+
+  // MINOR 1: `edit` alone can be ambiguous once row-shaped tables (Phase B) exist. Once the payload
+  // is in, re-resolve the target against the editor's OWN field keys and rowKey — never against a
+  // string built from the raw query params — so `?edit=<table>.<field>&row=<rowKey>` opens the right row.
+  useEffect(() => {
+    if (!payload || !editTarget) return;
+    const match = payload.fields.find(
+      (f) => (f.key === editTarget || `${f.tableName}.${f.fieldName}` === editTarget) && (!editRowKey || f.rowKey === editRowKey)
+    );
+    if (match) setOpenField(`${match.tableName}.${match.fieldName}`);
+  }, [payload, editTarget, editRowKey]);
 
   const load = useCallback(async () => {
     setError(null);
