@@ -1307,14 +1307,19 @@ async function attemptOneField(
           ? 'PASS 3: every rank failed with a STRUCTURAL gap but no gap key could be computed — CHECK_FAILED, re-asked next data slot (NOT retired)'
           : 'PASS 3: every rank failed for this field, at least one TRANSIENTLY — CHECK_FAILED, re-asked next data slot (NOT retired)'
     );
+    // `classified` is null only when `classifyWalkFailures` saw no failures
+    // at all, which cannot happen on this branch (`sawTransientFailure` is
+    // only set from a pushed failure) — but the fallback stays UNCLASSIFIED,
+    // never a bare null, per A1/OD-62: a no-value plan write always carries
+    // a reason code.
     return recordAndClassify(deps, result, {
       planRowId: plan.id,
       claimToken: plan.claimToken,
       policyOrigin,
       writeHappened: true,
       state: 'CHECK_FAILED',
-      reasonCode: classified?.reasonCode ?? null,
-      cause: classified?.cause ?? null,
+      reasonCode: classified?.reasonCode ?? 'UNCLASSIFIED',
+      cause: classified?.cause ?? 'CHECK_FAILED with no classifiable cause (defensive fallback)',
       ...(gapKey ? { gapKey } : {}),
       ...planRowAnswers(answers),
     });
@@ -1330,17 +1335,24 @@ async function attemptOneField(
     'PASS 3: every rank gave a DEFINITIVE no for this field — EXHAUSTED (the stored value is kept, never blanked)'
   );
   // `failures` may be empty here (every rank answered NOT_PRINTED, which
-  // pushes nothing) or may hold a definitive CHECK_FAILED cause — either
-  // way `classifyFailure` returns the right thing: null, or EXTRACTION_FAILED.
+  // pushes nothing) or may hold a definitive CHECK_FAILED cause. When it is
+  // empty, `classifyFailure` returns null — but "every ranked source
+  // answered NOT_PRINTED" is exactly OD-77's NOT_SOURCED definition ("no
+  // source we read supplies this field for this offering"), so that case is
+  // classified explicitly rather than left as a bare null (A1, OD-62: a
+  // field no source could supply stores a REASON CODE, never a bare null).
   const exhaustedCause = classifyFailure(failures);
+  const { reasonCode, cause } = exhaustedCause
+    ? { reasonCode: exhaustedCause.reasonCode, cause: exhaustedCause.cause }
+    : { reasonCode: 'NOT_SOURCED' as const, cause: 'all ranked sources: NOT_PRINTED' };
   return recordAndClassify(deps, result, {
     planRowId: plan.id,
     claimToken: plan.claimToken,
     policyOrigin,
     writeHappened: true,
     state: 'EXHAUSTED',
-    reasonCode: exhaustedCause?.reasonCode ?? null,
-    cause: exhaustedCause?.cause ?? null,
+    reasonCode,
+    cause,
     ...planRowAnswers(answers),
   });
 }
@@ -1853,7 +1865,9 @@ export const FIELD_PLAN_REASON_CODES = [
   'COVERAGE_GAP',
   'UNCLASSIFIED',
   // OD-77 (OD-62's fifth code): no source we read supplies this field for this offering.
-  // Written by the one-time repair (scripts/lib/od77-issue-size-zeros.ts), never by the walk.
+  // Written by the one-time repair (scripts/lib/od77-issue-size-zeros.ts) AND (A1, #1108) by
+  // the walk itself on the EXHAUSTED fallthrough when every ranked source answered
+  // NOT_PRINTED -- that is exactly this definition, not a bare null.
   'NOT_SOURCED',
 ] as const;
 export type FieldPlanReasonCode = (typeof FIELD_PLAN_REASON_CODES)[number];

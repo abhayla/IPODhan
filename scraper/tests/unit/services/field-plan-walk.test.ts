@@ -1647,7 +1647,7 @@ describe('field-plan walk -- S3a behaviour-neutrality (A3, table-driven over out
     name: string;
     rank1: Outcome;
     rank2: Outcome;
-    expect: { state: string; fieldsSupplied: number; fieldsCheckFailed: number; fieldsExhausted: number; chosenSource?: string };
+    expect: { state: string; fieldsSupplied: number; fieldsCheckFailed: number; fieldsExhausted: number; chosenSource?: string; reasonCode?: string };
   }> = [
     {
       name: 'rank1 SUPPLIED, rank2 SUPPLIED -> rank1 wins, SUPPLIED',
@@ -1689,10 +1689,14 @@ describe('field-plan walk -- S3a behaviour-neutrality (A3, table-driven over out
       expect: { state: 'SUPPLIED', fieldsSupplied: 1, fieldsCheckFailed: 0, fieldsExhausted: 0, chosenSource: 'BSE' },
     },
     {
-      name: 'rank1 NOT_PRINTED, rank2 NOT_PRINTED -> EXHAUSTED',
+      // A1 (OD-62/OD-77, #1108): every ranked source answered NOT_PRINTED --
+      // "no source we read supplies this field" is exactly OD-77's NOT_SOURCED
+      // definition, so the EXHAUSTED write must carry that code, never null
+      // (classifyFailure([]) returns null on this empty-failures fallthrough).
+      name: 'rank1 NOT_PRINTED, rank2 NOT_PRINTED -> EXHAUSTED, reasonCode NOT_SOURCED (never null)',
       rank1: { kind: 'NOT_PRINTED' },
       rank2: { kind: 'NOT_PRINTED' },
-      expect: { state: 'EXHAUSTED', fieldsSupplied: 0, fieldsCheckFailed: 0, fieldsExhausted: 1 },
+      expect: { state: 'EXHAUSTED', fieldsSupplied: 0, fieldsCheckFailed: 0, fieldsExhausted: 1, reasonCode: 'NOT_SOURCED' },
     },
     {
       name: 'rank1 THROW, rank2 NOT_PRINTED -> CHECK_FAILED (transient present)',
@@ -1727,6 +1731,9 @@ describe('field-plan walk -- S3a behaviour-neutrality (A3, table-driven over out
       expect(repo.recorded[0].state).toBe(tc.expect.state);
       if (tc.expect.chosenSource) {
         expect(repo.recorded[0].chosen.source).toBe(tc.expect.chosenSource);
+      }
+      if (tc.expect.reasonCode) {
+        expect(repo.recorded[0].reasonCode).toBe(tc.expect.reasonCode);
       }
     });
   }
