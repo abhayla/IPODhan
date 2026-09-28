@@ -232,7 +232,9 @@ export class FieldSourcesRepository extends BaseRepository {
                     sql`COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) || ${JSON.stringify(input.dataLineage)}::jsonb`
                   )
                 : sql`${fieldSources.dataLineage}`,
-              updatedAt: new Date(),
+              // An ADMIN row keeps its time: it starts the editor's version token and is shown
+              // as when the admin set the value (the witnesses above may still refresh).
+              updatedAt: keepAdmin(fieldSources.updatedAt, sql`now()`),
               updatedBy: keepAdmin(fieldSources.updatedBy, sql`${input.updatedBy || 'SYSTEM'}`),
             },
           })

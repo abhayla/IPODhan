@@ -253,6 +253,7 @@ describe.skipIf(!DATABASE_URL)('A2e: every scraper writer honours the admin hold
           c: schema.fieldSources.confidence,
           by: schema.fieldSources.updatedBy,
           w: schema.fieldSources.witnesses,
+          t: schema.fieldSources.updatedAt,
         })
         .from(schema.fieldSources)
         .where(sql`${schema.fieldSources.ipoId} = ${IPO}::uuid AND ${schema.fieldSources.tableName} = 'ipos' AND ${schema.fieldSources.fieldName} = 'registrar'`);
@@ -276,13 +277,15 @@ describe.skipIf(!DATABASE_URL)('A2e: every scraper writer honours the admin hold
     } as never);
 
     const [after] = await sel();
-    expect({ src: after.src, v: after.v, ps: after.ps, l: after.l, c: after.c, by: after.by }).toEqual({
+    // The time too: it starts the editor's version token and is shown as when the admin set it.
+    expect({ src: after.src, v: after.v, ps: after.ps, l: after.l, c: after.c, by: after.by, t: after.t }).toEqual({
       src: before.src,
       v: before.v,
       ps: before.ps,
       l: before.l,
       c: before.c,
       by: before.by,
+      t: before.t,
     });
     expect(after.w).toEqual(witnesses);
   });

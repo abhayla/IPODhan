@@ -671,7 +671,8 @@ export async function upsertFieldSource(
     updatedBy: params.updatedBy,
   };
 
-  await txLike
+  const keepsAdmin = params.source !== 'ADMIN';
+  const written = await txLike
     .insert(schema.fieldSources)
     .values({
       ipoId: params.ipoId,
@@ -693,10 +694,13 @@ export async function upsertFieldSource(
         schema.fieldSources.rowKey,
         schema.fieldSources.fieldName,
       ],
+      set: row,
       // §9.2 item 19 / OD-131: a repair from a non-ADMIN source never relabels an ADMIN
-      // provenance row (the prior row is locked FOR UPDATE above, so this is race-free).
-      set: prior?.source === 'ADMIN' && params.source !== 'ADMIN' ? { updatedAt: sql`${schema.fieldSources.updatedAt}` } : row,
-    });
+      // provenance row. The WHERE is evaluated on the locked, latest-committed row, so it also
+      // holds when no prior row existed at the FOR UPDATE read and an admin inserted one since.
+      ...(keepsAdmin ? { setWhere: sql`${schema.fieldSources.source} <> 'ADMIN'` } : {}),
+    })
+    .returning({ id: schema.fieldSources.id });
 
   // Column names as in the DB (snake_case), keyed by the unique index, so a
   // restore needs no mapping: a (row) insert is undone by deleting that key;
@@ -712,6 +716,8 @@ export async function upsertFieldSource(
     updated_by: r.updatedBy ?? null,
   });
   const after = toCols(row as unknown as Record<string, unknown>);
+  // Nothing written (an ADMIN row kept its provenance): the ledger records no change.
+  if (written.length === 0) return { previousSource, changes: [] };
   const changes: RepairLedgerFieldChange[] = prior
     ? diffToLedgerEntries('field_sources', rowKey, toCols(prior), after)
     : [{ table: 'field_sources', rowKey, field: '(row)', before: null, after }];
