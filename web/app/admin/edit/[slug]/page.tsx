@@ -199,7 +199,7 @@ export default function AdminEditIPOPage() {
             </h3>
             <p className="mt-2 text-sm text-yellow-700">
               Values are now edited on the{' '}
-              <Link href={`/ipo/${ipo.slug}`} className="font-semibold underline hover:text-yellow-900">
+              <Link href={`/ipos/${ipo.slug}`} className="font-semibold underline hover:text-yellow-900">
                 IPO page
               </Link>{' '}
               (Edit control, admin only). This screen shows the current data, protection state and

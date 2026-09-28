@@ -159,7 +159,7 @@ export default function IPOObjectivesPage() {
           <h3 className="text-sm font-medium text-yellow-800">Read-only screen</h3>
           <p className="mt-1 text-sm text-yellow-700">
             Values are now edited on the{' '}
-            <Link href={`/ipo/${ipo.slug}`} className="font-semibold underline hover:text-yellow-900">
+            <Link href={`/ipos/${ipo.slug}`} className="font-semibold underline hover:text-yellow-900">
               IPO page
             </Link>{' '}
             (Edit control, admin only). This screen is read-only.
