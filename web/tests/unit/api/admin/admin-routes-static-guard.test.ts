@@ -63,6 +63,7 @@ const EXPECTED_ADMIN_ROUTES = [
   'protection/fields/bulk/route.ts',
   'protection/ipo/[ipoId]/route.ts',
   'protection/notifications/route.ts',
+  'queue/route.ts',
   'revalidate/route.ts',
   'scraper/logs/route.ts',
   'scraper/status/route.ts',

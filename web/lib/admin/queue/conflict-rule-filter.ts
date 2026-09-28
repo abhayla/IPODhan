@@ -1,0 +1,100 @@
+/**
+ * Which unresolved data_conflicts rows are NOT disagreements under the spec's own definitions
+ * (spec §9.4, F-173). Such a row is never deleted and never hidden: it stays in the admin queue
+ * with the rule that took it off the disagreement list, so an admin can still see it.
+ *
+ *   OD-75  a source changing a value IT set earlier (source1 = source2, or the named
+ *          SOURCE_CHANGED_OWN_VALUE / OVERRIDE_SOURCE_LOST_TO_PRIORITY reasons) — its own reason.
+ *   OD-60  one side returned zero, null or an empty value — an abstention, not a vote.
+ *   OD-59  the two values are equal in MEANING (same number written differently, same calendar
+ *          day, same company name after folding corporate forms).
+ *   F-181  a column the writer stamps itself (lastScrapedAt …) can never be a disagreement.
+ *
+ * Reuse, not re-implementation: the OD-75 reasons and the F-181 bookkeeping list come from
+ * `@ipodhan/shared/utils/conflict-reasons`; names fold through `foldCompanyIdentity` and dates read
+ * through `isoDay` (`@ipodhan/shared/utils/company-identity-fold`). The scraper's family-aware
+ * comparator (`areEquivalent`, scraper/src/services/normalization-engine.ts) cannot be imported by
+ * the web app, and its per-field family lives in the scraper's manifest, so this check is the
+ * narrow subset that needs no family: it applies NO 0.5% money tolerance. A pair within 0.5% is
+ * therefore left on the disagreement list (shown, never hidden) — the safe direction.
+ */
+import {
+  ADMIN_ONLY_CONFLICT_REASONS,
+  isWriterBookkeepingField,
+} from '@ipodhan/shared/utils/conflict-reasons';
+import { foldCompanyIdentity, isoDay } from '@ipodhan/shared/utils/company-identity-fold';
+
+export type RuleFilter = 'OD-75' | 'OD-60' | 'OD-59' | 'F-181';
+
+/** Plain-words label shown to the admin for each rule. */
+export const RULE_FILTER_LABELS: Record<RuleFilter, string> = {
+  'OD-75': 'a source changed its own earlier value (OD-75) — not a disagreement',
+  'OD-60': 'one source gave no value (OD-60) — an abstention, not a disagreement',
+  'OD-59': 'the values mean the same (OD-59) — not a disagreement',
+  'F-181': 'a column the pipeline stamps itself (F-181) — never a disagreement',
+};
+
+/** OD-59: identifiers must match EXACTLY — there is no close-enough for an identifier. */
+const IDENTIFIER_FIELDS = new Set(['isin', 'cin', 'symbol', 'pan', 'sebiRegNo', 'nseSymbol', 'bseCode']);
+
+/** OD-59: names compare after folding corporate forms ("Pvt Ltd" = "Private Limited"). */
+const NAME_FIELDS = new Set(['companyName', 'registrar', 'name', 'brlmName', 'shortName']);
+
+export interface ConflictForRules {
+  fieldName: string;
+  source1: string;
+  source2: string;
+  value1: string | null;
+  value2: string | null;
+  resolutionReason: string | null;
+}
+
+function isAbstention(v: string | null): boolean {
+  if (v === null) return true;
+  const t = v.trim();
+  if (t === '' || t === 'null' || t === '""' || t === '[]' || t === '{}') return true;
+  const n = asNumber(t);
+  return n === 0;
+}
+
+function asNumber(v: string): number | null {
+  const cleaned = v.replace(/^"|"$/g, '').replace(/[₹,\s]/g, '').replace(/^rs\.?/i, '');
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
+  return Number(cleaned);
+}
+
+function lettersAndDigits(v: string): string {
+  return v.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** OD-59 without a comparison family: equal in meaning, or null when not provably equal. */
+export function equalInMeaning(fieldName: string, a: string, b: string): boolean {
+  if (a === b) return true;
+  if (IDENTIFIER_FIELDS.has(fieldName)) return false;
+  const na = asNumber(a.trim());
+  const nb = asNumber(b.trim());
+  if (na !== null && nb !== null) return na === nb;
+  const da = /^"?\d{4}-\d{2}-\d{2}/.test(a) ? isoDay(a.replace(/^"/, '')) : null;
+  const db = /^"?\d{4}-\d{2}-\d{2}/.test(b) ? isoDay(b.replace(/^"/, '')) : null;
+  if (da !== null && db !== null) return da === db;
+  if (NAME_FIELDS.has(fieldName)) {
+    const fa = foldCompanyIdentity(a);
+    return fa !== '' && fa === foldCompanyIdentity(b);
+  }
+  const la = lettersAndDigits(a);
+  return la !== '' && la === lettersAndDigits(b);
+}
+
+/**
+ * The rule that takes this conflict off the disagreement list, or null when it is a real
+ * disagreement an admin must decide. Order matters only for the label: OD-75 first (a row can be a
+ * self-change AND carry an empty side; the self-change is the more specific reason).
+ */
+export function ruleFilterFor(c: ConflictForRules): RuleFilter | null {
+  if (c.source1 === c.source2) return 'OD-75';
+  if (c.resolutionReason !== null && ADMIN_ONLY_CONFLICT_REASONS.includes(c.resolutionReason)) return 'OD-75';
+  if (isWriterBookkeepingField(c.fieldName)) return 'F-181';
+  if (isAbstention(c.value1) || isAbstention(c.value2)) return 'OD-60';
+  if (equalInMeaning(c.fieldName, c.value1 as string, c.value2 as string)) return 'OD-59';
+  return null;
+}
