@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import { ShieldCheck, TrendingUp, Zap, Trophy, BarChart } from 'lucide-react';
+import { ShieldCheck, TrendingUp, Zap, BarChart } from 'lucide-react';
 import { getActiveBrokers } from '@/lib/services/broker-affiliate-service';
 import { BrokerGrid, type BrokerCard } from '@/components/affiliate/BrokerGrid';
 
@@ -35,11 +35,6 @@ export default async function AffiliatesPage() {
       icon: TrendingUp,
       title: 'IPO Applications',
       description: 'Apply for IPOs directly through your demat account',
-    },
-    {
-      icon: Trophy,
-      title: 'Special Offers',
-      description: 'Exclusive benefits for IPODhan users',
     },
   ];
 
