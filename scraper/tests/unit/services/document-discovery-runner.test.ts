@@ -422,3 +422,88 @@ describe('SEBI search + paging beyond page 1 (W-27, wired via trySebi)', () => {
     expect(methodsByUrl.length).toBeGreaterThan(before);
   }, 30_000);
 });
+
+describe('#620: SEBI walk requests that do not depend on the company are made once per cycle', () => {
+  // Staging 2026-09-27T20:08Z: one discovery cycle spent 176 of its 200 calls on
+  // www.sebi.gov.in and found 0 documents. The walk re-fetched the SAME page-1
+  // GET and the SAME six paged POSTs (search '' , nextValue n) for every IPO,
+  // because the only cache was keyed per company. Only the search POST carries
+  // the company; everything else is one request per listing per cycle.
+  const SEBI_FIXTURES = join(__dirname, '../../fixtures/sebi');
+  const PAGE1_HTML = readFileSync(join(SEBI_FIXTURES, 'sebi-drhp-page1-with-form.html'), 'utf8');
+
+  it('59 unlisted UPCOMING IPOs cost 1 GET + 6 paged POSTs + 59 search POSTs on SEBI, not 8 per IPO', async () => {
+    const sebiRequests: string[] = [];
+    const fetcher: HttpFetcher = async (url, init) => {
+      if (url.includes('sebi.gov.in')) {
+        sebiRequests.push(`${init.method ?? 'GET'} ${url} ${String(init.body ?? '')}`);
+        // Real page 1 (with the search form) for every SEBI request: none of the
+        // synthetic companies below is on it, so every walk searches and pages.
+        return { status: 200, contentType: 'text/html', body: Buffer.from(PAGE1_HTML), url };
+      }
+      return { status: 404, contentType: 'text/html', body: Buffer.from('nope'), url };
+    };
+    const documents = {
+      async upsertDocument() {
+        return { id: 'doc-x' };
+      },
+    };
+    const runner = new DocumentDiscoveryRunner({
+      fetcher,
+      store: new InMemoryDocumentFetchStateStore(),
+      documents,
+      counter: new NetworkCounter(),
+      now: () => NOW,
+      sleep: async () => {},
+      skipDownload: false,
+    });
+
+    const ipos: DiscoveryIpo[] = Array.from({ length: 59 }, (_, i) => ({
+      id: `ipo-${i}`,
+      // SEBI's search term is the first two normalized words, so the second
+      // word differs per company (identical searches are one request, rightly).
+      companyName: `Zqxv ${String.fromCharCode(65 + Math.floor(i / 26), 65 + (i % 26))}qq Holdings Limited`,
+      symbol: null,
+      segment: 'MAINBOARD',
+      stage: 'UPCOMING', // DRHP only
+    }));
+    for (const ipo of ipos) await runner.runIpo(ipo, []);
+
+    const gets = sebiRequests.filter((r) => r.startsWith('GET '));
+    const searches = sebiRequests.filter((r) => r.startsWith('POST ') && /search=[^&\s]/.test(r));
+    const pages = sebiRequests.filter((r) => r.startsWith('POST ') && !/search=[^&\s]/.test(r));
+    expect(gets.length).toBe(1);
+    expect(pages.length).toBe(6);
+    expect(searches.length).toBe(59);
+    expect(sebiRequests.length).toBe(66);
+  }, 60_000);
+
+  it('two companies whose search term is the same share ONE search POST, and each is still matched on its own name', async () => {
+    const sebiRequests: string[] = [];
+    const fetcher: HttpFetcher = async (url, init) => {
+      if (url.includes('sebi.gov.in')) {
+        sebiRequests.push(`${init.method ?? 'GET'} ${String(init.body ?? '')}`);
+        return { status: 200, contentType: 'text/html', body: Buffer.from(PAGE1_HTML), url };
+      }
+      return { status: 404, contentType: 'text/html', body: Buffer.from('nope'), url };
+    };
+    const runner = new DocumentDiscoveryRunner({
+      fetcher,
+      store: new InMemoryDocumentFetchStateStore(),
+      documents: { async upsertDocument() { return { id: 'doc-x' }; } },
+      counter: new NetworkCounter(),
+      now: () => NOW,
+      sleep: async () => {},
+      skipDownload: false,
+    });
+    const base = { symbol: null, segment: 'MAINBOARD', stage: 'UPCOMING' } as const;
+    const a = await runner.runIpo({ ...base, id: 'a', companyName: 'Zqxv Abqq Holdings Limited' }, []);
+    const b = await runner.runIpo({ ...base, id: 'b', companyName: 'Zqxv Abqq Textiles Limited' }, []);
+    expect(sebiRequests.filter((r) => /search=[^&\s]/.test(r)).length).toBe(1);
+    // Each IPO still records its own walk and its own not_listed verdict.
+    for (const r of [a, b]) {
+      const chain = r.attempts.find((x) => x.source === 'CHAIN' && x.outcome.includes('rungs[DRHP]'));
+      expect(chain!.outcome).toContain('SEBI:not_listed');
+    }
+  }, 30_000);
+});

@@ -903,6 +903,18 @@ export class DocumentDiscoveryRunner {
     string,
     { status: number; html: string; evidence: AnsweredResponse | null }
   >();
+  /**
+   * #620: SEBI responses already answered 200 this cycle, keyed by the exact
+   * request (method + URL + body). The listing page-1 GET and the six paged
+   * POSTs (`search=''`, `nextValue=<n>`) carry no company, so they are the same
+   * request for every IPO; `sebiListings` above is keyed per company and so
+   * never shared them. Staging 2026-09-27T20:08Z: 176 of 200 calls went to
+   * www.sebi.gov.in, 8 per IPO walk, and the cycle ran past its time budget.
+   * The search POST carries the company's name in its body, so it stays one
+   * request per company. Failures are NOT stored here: they keep the H-3 /
+   * W-72 handling in `trySebi`.
+   */
+  private readonly sebiResponses = new Map<string, { body: string; answered: AnsweredResponse }>();
   /** Escalation GETs spent per IPO this cycle (M-d). */
   private readonly escalationGets = new Map<string, number>();
   /**
@@ -1733,6 +1745,14 @@ export class DocumentDiscoveryRunner {
       let lastEvidence: AnsweredResponse | null = null;
       let budgetExhausted = false;
       const sebiFetch: SebiFetcher = async (url, init) => {
+        const requestKey = `${init.method} ${url} ${init.body ?? ''}`;
+        const reused = this.sebiResponses.get(requestKey);
+        if (reused) {
+          // No network and no escalation GET: the identical request already
+          // answered this cycle. Its 200 still backs this IPO's evidence.
+          lastEvidence = reused.answered;
+          return { status: 200, body: reused.body };
+        }
         if (!this.spendEscalationGet(ipo.id)) {
           budgetExhausted = true;
           return { status: 0, body: '' };
@@ -1754,7 +1774,9 @@ export class DocumentDiscoveryRunner {
         });
         const answered = answeredFrom(res, url);
         if (answered) lastEvidence = answered;
-        return { status: res.status, body: res.body.toString('utf8') };
+        const body = res.body.toString('utf8');
+        if (res.status === 200 && answered) this.sebiResponses.set(requestKey, { body, answered });
+        return { status: res.status, body };
       };
 
       const result = await fetchSebiListingRows(docType, {
