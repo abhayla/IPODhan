@@ -10,6 +10,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireAdminAuth } from '@/lib/auth/admin-auth';
+import { withAdminAuth, type AdminAuthContext } from '@/lib/middleware/admin-auth';
+import { auditAdminWrite } from '@/lib/admin/admin-write-audit';
+import { AuditActionTypes } from '@/lib/services/audit-log-service';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { AnchorInvestorRepository } from '@/lib/repositories/anchor-investor-repository';
@@ -214,11 +217,8 @@ export async function GET(request: NextRequest) {
  * POST /api/admin/anchor-investors
  * Create or update anchor investor data
  */
-export async function POST(request: NextRequest) {
-  // MUST check admin auth first
-  const authError = await requireAdminAuth();
-  if (authError) return authError;
-
+// Writes take the admin from withAdminAuth's context and record it (OD-104, OD-113).
+export const POST = withAdminAuth(async (request: NextRequest, adminContext: AdminAuthContext) => {
   const requestId = generateRequestId();
   const startTime = Date.now();
   const requestLogger = logger.child({ requestId });
@@ -293,6 +293,16 @@ export async function POST(request: NextRequest) {
     // Upsert anchor data (create or update)
     const result = await repository.upsert(anchorData);
 
+    await auditAdminWrite(adminContext, request, {
+      actionType: AuditActionTypes.FIELD_UPDATED,
+      action: 'ANCHOR_INVESTORS_SAVED',
+      entryPoint: 'api/admin/anchor-investors POST',
+      ipoId: validatedData.ipoId,
+      tableName: 'anchor_investors',
+      fieldName: '*',
+      newValue: String(result.id),
+    });
+
     const duration = Date.now() - startTime;
     requestLogger.info(
       {
@@ -332,7 +342,7 @@ export async function POST(request: NextRequest) {
         : undefined
     );
   }
-}
+});
 
 // ==================== DELETE HANDLER ====================
 
@@ -340,11 +350,7 @@ export async function POST(request: NextRequest) {
  * DELETE /api/admin/anchor-investors?ipoId={id}
  * Delete anchor investor data
  */
-export async function DELETE(request: NextRequest) {
-  // MUST check admin auth first
-  const authError = await requireAdminAuth();
-  if (authError) return authError;
-
+export const DELETE = withAdminAuth(async (request: NextRequest, adminContext: AdminAuthContext) => {
   const requestId = generateRequestId();
   const startTime = Date.now();
   const requestLogger = logger.child({ requestId });
@@ -383,6 +389,15 @@ export async function DELETE(request: NextRequest) {
     // Delete anchor data
     await repository.delete(ipoId);
 
+    await auditAdminWrite(adminContext, request, {
+      actionType: AuditActionTypes.FIELD_UPDATED,
+      action: 'ANCHOR_INVESTORS_DELETED',
+      entryPoint: 'api/admin/anchor-investors DELETE',
+      ipoId,
+      tableName: 'anchor_investors',
+      fieldName: '*',
+    });
+
     const duration = Date.now() - startTime;
     requestLogger.info(
       { duration, ipoId },
@@ -417,4 +432,4 @@ export async function DELETE(request: NextRequest) {
         : undefined
     );
   }
-}
+});

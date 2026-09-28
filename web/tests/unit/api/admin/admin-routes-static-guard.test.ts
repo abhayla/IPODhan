@@ -76,6 +76,41 @@ const EXPECTED_ADMIN_ROUTES = [
 // section 9.2 item 6, OD-104). Adding a route here is a security decision, reviewed in this file.
 const PUBLIC_ADMIN_ROUTES = ['auth/login/route.ts'];
 
+// Write handlers still on requireAdminAuth, which yields no identity. Only machine callers remain:
+// the scraper calls both with ADMIN_API_TOKEN, which requireAdminAuth checks and withAdminAuth does
+// not (it checks ADMIN_AUTH_TOKEN), so moving them would 401 the scraper's status and revalidation
+// calls. Adding a route here is a security decision, reviewed in this file (Tier A round 2 M2).
+const MACHINE_ONLY_WRITES = ['revalidate/route.ts:POST', 'status/update/route.ts:POST'];
+
+/** Exported write handlers NOT declared as `export const X = withAdminAuth(...)`. */
+function writesWithoutIdentity(source: string): string[] {
+  const out: string[] = [];
+  const re = /export\s+(?:async\s+function\s+(POST|PUT|PATCH|DELETE)\b|const\s+(POST|PUT|PATCH|DELETE)\s*=\s*([A-Za-z_$][\w$]*))/g;
+  for (let m = re.exec(source); m; m = re.exec(source)) {
+    if (m[1]) out.push(m[1]);
+    else if (m[3] !== 'withAdminAuth') out.push(m[2]);
+  }
+  return out;
+}
+
+describe('every admin write handler carries the admin identity (withAdminAuth)', () => {
+  it('no write handler outside the machine-only list uses an identity-less guard', () => {
+    const offenders = listRouteFiles(ADMIN_ROOT)
+      .map((f) => path.relative(ADMIN_ROOT, f).split(path.sep).join('/'))
+      .filter((rel) => !PUBLIC_ADMIN_ROUTES.includes(rel))
+      .flatMap((rel) => writesWithoutIdentity(fs.readFileSync(path.join(ADMIN_ROOT, rel), 'utf8')).map((m) => `${rel}:${m}`))
+      .filter((id) => !MACHINE_ONLY_WRITES.includes(id));
+    expect(offenders).toEqual([]);
+  });
+
+  it('detector self-test', () => {
+    expect(writesWithoutIdentity('export async function POST(req) { await requireAdminAuth(); }')).toEqual(['POST']);
+    expect(writesWithoutIdentity('export const DELETE = withAdminAuth(async () => ok());')).toEqual([]);
+    expect(writesWithoutIdentity('export const PATCH = someOtherWrapper(async () => ok());')).toEqual(['PATCH']);
+    expect(writesWithoutIdentity('export async function GET(req) { await requireAdminAuth(); }')).toEqual([]);
+  });
+});
+
 describe('every admin API route requires admin auth', () => {
   const files = listRouteFiles(ADMIN_ROOT);
 

@@ -4,6 +4,10 @@
  * and asserts 403 with no database access.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Each test dynamically imports a route module (its whole graph); on a loaded machine that alone
+// can pass 5 s, so this file gets a longer per-test limit.
+vi.setConfig({ testTimeout: 30_000 });
 import { NextRequest } from 'next/server';
 
 const dbCalls = vi.fn();

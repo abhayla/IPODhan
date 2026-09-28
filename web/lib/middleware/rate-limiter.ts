@@ -152,7 +152,38 @@ function getRateLimitKey(ip: string, endpoint: string): string {
 }
 
 /**
- * Check rate limit using Redis sliding window algorithm
+ * The whole sliding-window step as ONE Redis script, so it is atomic across every web process
+ * (Tier A round 2, MAJOR 1). Counting and adding in separate calls let N concurrent callers all
+ * read the same count before any of them added, so all N were allowed. Inside EVAL no other command
+ * runs between the steps: drop entries older than the window, count, and add this attempt only when
+ * the count is below the limit. A refused attempt is not added, so a flood cannot extend the lockout
+ * past one window for the account's real owner.
+ *
+ * KEYS[1] = counter key; ARGV = now (ms), window (ms), limit, unique member.
+ * Returns { allowed (1|0), count after this call, oldest score in the window (ms) }.
+ */
+export const SLIDING_WINDOW_SCRIPT = `
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local windowMs = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+redis.call('ZREMRANGEBYSCORE', key, 0, now - windowMs)
+local count = redis.call('ZCARD', key)
+local allowed = 0
+if count < limit then
+  allowed = 1
+  redis.call('ZADD', key, now, ARGV[4])
+  redis.call('PEXPIRE', key, windowMs)
+  count = count + 1
+end
+local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+local oldestScore = now
+if oldest[2] then oldestScore = tonumber(oldest[2]) end
+return {allowed, count, oldestScore}
+`;
+
+/**
+ * Check rate limit using Redis sliding window algorithm (one atomic EVAL).
  */
 export async function checkRateLimit(
   ip: string,
@@ -167,62 +198,52 @@ export async function checkRateLimit(
   const redis = getRedisClient();
   const key = getRateLimitKey(ip, endpoint);
   const now = Date.now();
-  const windowStart = now - (config.windowSeconds * 1000);
+  const windowMs = config.windowSeconds * 1000;
 
   try {
-    // Use Redis sorted set for sliding window
-    // Score is timestamp, member is unique request ID
+    const requestId = `${now}:${Math.random()}`;
+    const raw = (await redis.eval(
+      SLIDING_WINDOW_SCRIPT,
+      1,
+      key,
+      String(now),
+      String(windowMs),
+      String(config.maxRequests),
+      requestId
+    )) as [number | string, number | string, number | string];
+    const allowed = Number(raw[0]) === 1;
+    const count = Number(raw[1]);
+    const oldest = Number(raw[2]);
 
-    // Remove old entries outside the window
-    await redis.zremrangebyscore(key, 0, windowStart);
-
-    // Count requests in current window
-    const count = await redis.zcard(key);
-
-    // Check if limit exceeded
-    if (count >= config.maxRequests) {
-      // Get oldest entry to calculate reset time
-      const oldestEntries = await redis.zrange(key, 0, 0, 'WITHSCORES');
-      const resetTimestamp = oldestEntries.length > 0
-        ? parseInt(oldestEntries[1] as string) + (config.windowSeconds * 1000)
-        : now + (config.windowSeconds * 1000);
-
+    if (!allowed) {
       return {
         allowed: false,
         limit: config.maxRequests,
         remaining: 0,
-        reset: Math.ceil(resetTimestamp / 1000),
+        reset: Math.ceil(((Number.isFinite(oldest) ? oldest : now) + windowMs) / 1000),
       };
     }
-
-    // Add current request
-    const requestId = `${now}:${Math.random()}`;
-    await redis.zadd(key, now, requestId);
-
-    // Set expiry on the key (cleanup)
-    await redis.expire(key, config.windowSeconds);
-
     return {
       allowed: true,
       limit: config.maxRequests,
-      remaining: config.maxRequests - count - 1,
-      reset: Math.ceil((now + (config.windowSeconds * 1000)) / 1000),
+      remaining: Math.max(0, config.maxRequests - count),
+      reset: Math.ceil((now + windowMs) / 1000),
     };
   } catch (error) {
-    logger.error({ error, ip, endpoint }, 'Rate limit check failed');
+    // The endpoint (not the key) is logged: callers keying on personal data pass a hash, never the
+    // raw value, so nothing here can carry an email address.
+    logger.error({ err: error instanceof Error ? error.message : 'unknown', endpoint }, 'Rate limit check failed');
 
     if (config.onStoreError === 'local') {
       return checkLocalRateLimit(key, config, now);
     }
 
-    // Default: fail open.
-
-    // Return permissive response on Redis failure
+    // Default: fail open (public endpoints).
     return {
       allowed: true,
       limit: config.maxRequests,
       remaining: config.maxRequests - 1,
-      reset: Math.ceil((now + (config.windowSeconds * 1000)) / 1000),
+      reset: Math.ceil((now + windowMs) / 1000),
     };
   }
 }

@@ -9,9 +9,16 @@
  *   per email ALONE (rotating the IP, or forging a header, cannot buy more guesses at one account). The IP is CF-Connecting-IP or
  *   nginx's X-Real-IP, never the caller-written first X-Forwarded-For entry. When Redis is down both
  *   limits fall back to an in-process counter with the same limit instead of failing open.
+ * - Both limits are one atomic Redis step (Tier A round 2 M1), so concurrent attempts cannot all
+ *   read the count before any is added. The per-email key carries a SHA-256 of the email, never the
+ *   address, so neither Redis nor a limiter error log holds it. The IP key stays on
+ *   CF-Connecting-IP / X-Real-IP as is: the per-email limit is the guard an IP change cannot move.
+ * - Session rotation: a browser that signs in while carrying an earlier session cookie has that
+ *   earlier session row deleted, so a planted or stale token does not survive a fresh sign-in.
  * - Sets an httpOnly, SameSite=Lax (Secure in production) cookie holding a random token; only its
  *   SHA-256 is stored.
  */
+import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/index';
 import { logger } from '@/lib/logger';
@@ -25,6 +32,7 @@ import {
   ADMIN_SESSION_COOKIE,
   generateSessionToken,
   hashSessionToken,
+  isWellFormedSessionToken,
   sessionCookieOptions,
 } from '@/lib/admin-accounts/session-token';
 
@@ -66,7 +74,8 @@ export async function POST(request: NextRequest) {
     ...LOGIN_IP_LIMIT,
     message: 'Too many sign-in attempts',
   });
-  const emailLimit = await checkRateLimit('any-ip', `admin-login-email:${normalized}`, {
+  const emailKey = createHash('sha256').update(normalized).digest('hex').slice(0, 32);
+  const emailLimit = await checkRateLimit('any-ip', `admin-login-email:${emailKey}`, {
     ...LOGIN_EMAIL_LIMIT,
     message: 'Too many sign-in attempts',
   });
@@ -85,6 +94,11 @@ export async function POST(request: NextRequest) {
     if (!account || account.disabledAt !== null || !passwordOk) {
       logger.warn({ outcome: 'refused' }, 'Admin sign-in refused');
       return genericRefusal();
+    }
+
+    const previousToken = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
+    if (isWellFormedSessionToken(previousToken)) {
+      await repo.deleteSession(hashSessionToken(previousToken));
     }
 
     const token = generateSessionToken();

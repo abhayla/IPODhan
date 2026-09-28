@@ -19,6 +19,8 @@ import { desc, asc, like, and, or, sql, eq, getTableColumns } from 'drizzle-orm'
 import { PgTable } from 'drizzle-orm/pg-core';
 import { validateRecord } from '@/lib/admin/dynamic-validation-rules';
 import { logger } from '@/lib/logger';
+import { auditAdminWrite } from '@/lib/admin/admin-write-audit';
+import { AuditActionTypes } from '@/lib/services/audit-log-service';
 import { resolveDynamicTable } from '@/lib/admin/dynamic-table-allow-list';
 import { holdsIpoFieldValues, IPO_FIELD_TABLE_REFUSAL } from '@/lib/admin/ipo-field-tables';
 
@@ -33,7 +35,7 @@ function getTableFromSchema(tableName: string, mode: 'read' | 'write'): PgTable 
 /**
  * POST - Create new record
  */
-export const POST = withAdminAuth(async (request: NextRequest, _adminContext: AdminAuthContext, { params }: { params: Promise<{ table: string }> }) => {
+export const POST = withAdminAuth(async (request: NextRequest, adminContext: AdminAuthContext, { params }: { params: Promise<{ table: string }> }) => {
   try {
 
     const { table: tableName } = await params;
@@ -101,8 +103,17 @@ export const POST = withAdminAuth(async (request: NextRequest, _adminContext: Ad
       throw new Error('Failed to create record');
     }
 
-    // Log the creation
-    console.log(`[Dynamic Admin] Created record in ${tableName}:`, result[0]);
+    // OD-104/OD-113: the creating admin is recorded (name + account id).
+    const created = result[0] as Record<string, unknown>;
+    await auditAdminWrite(adminContext, request, {
+      actionType: AuditActionTypes.FIELD_UPDATED,
+      action: 'ROW_CREATED',
+      entryPoint: 'api/admin/dynamic/[table] POST',
+      tableName,
+      fieldName: '*',
+      newValue: created.id !== undefined ? String(created.id) : undefined,
+    });
+    console.log(`[Dynamic Admin] Created record in ${tableName}:`, created.id);
 
     return NextResponse.json({
       success: true,

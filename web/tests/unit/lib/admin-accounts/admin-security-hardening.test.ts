@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 
@@ -241,8 +242,11 @@ describe('M2: login rate limits', () => {
       })
     );
     expect(res.status).toBe(429);
-    const emailCall = rateCalls.find((c) => c.endpoint === 'admin-login-email:owner@example.com');
+    // Keyed on a hash of the normalised email: the address never reaches Redis or a limiter log line.
+    const emailHash = createHash('sha256').update('owner@example.com').digest('hex').slice(0, 32);
+    const emailCall = rateCalls.find((c) => c.endpoint === `admin-login-email:${emailHash}`);
     expect(emailCall).toBeDefined();
+    expect(rateCalls.some((c) => c.endpoint.includes('@'))).toBe(false);
     expect(emailCall?.ip).not.toContain('6.6.6.6');
     const ipCall = rateCalls.find((c) => c.endpoint === 'admin-login-ip');
     expect(ipCall?.ip).toBe('198.51.100.7');

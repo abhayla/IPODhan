@@ -36,12 +36,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ConflictResolutionService } from '@/lib/services/conflict-resolution';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
+import { auditAdminWrite } from '@/lib/admin/admin-write-audit';
+import { AuditActionTypes } from '@/lib/services/audit-log-service';
 
 /**
  * POST /api/admin/conflicts/auto-resolve
  * Auto-resolve obvious conflicts
  */
-export const POST = withAdminAuth(async (request: NextRequest, _adminContext) => {
+export const POST = withAdminAuth(async (request: NextRequest, adminContext) => {
   try {
     const body = await request.json().catch(() => ({}));
 
@@ -63,6 +65,17 @@ export const POST = withAdminAuth(async (request: NextRequest, _adminContext) =>
       maxConflicts,
       dryRun,
     });
+
+    // A bulk, system-style action: the admin who TRIGGERED it is recorded (name + account id).
+    // A dry run changes nothing and writes no row.
+    if (!dryRun) {
+      await auditAdminWrite(adminContext, request, {
+        actionType: AuditActionTypes.CONFLICT_RESOLVED,
+        action: 'CONFLICTS_AUTO_RESOLVED',
+        entryPoint: 'api/admin/conflicts/auto-resolve POST',
+        details: { resolved: result.resolved, skipped: result.skipped, maxConflicts: maxConflicts ?? null },
+      });
+    }
 
     // Add dry run message if applicable
     const message = dryRun
