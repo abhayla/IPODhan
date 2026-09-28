@@ -1,7 +1,7 @@
 {
   "_comment": "The hand-owned half of the board. Everything here is a judgement a human makes; everything NOT here is derived by render-board.mjs from source files or scripts. Keep it small: if a value can be computed, compute it instead of typing it. Measured facts (served sha, since, migration counts, the stamp) are REFUSED here: they live in measured-facts.json, written by collect-board-facts.mjs; prose cites them as {{prod.sha}}-style tokens.",
   "stage": "Stage 3 — one source table, then prevention",
-  "headline": "Finish line set (OD-133, 2026-09-28): build the admin fix-a-value core, prove it on staging, then ONE production release carrying every fix on main. Production has not moved since {{prod.since_date}} ({{prod.migrations_behind}} migrations behind). Step 1 now: store every source's answer per field (F-196). Staging serves {{staging.sha}}.",
+  "headline": "Finish line set (OD-133, 2026-09-28): build the admin fix-a-value core, prove it on staging, then ONE production release carrying every fix on main. Production has not moved since {{prod.since_date}} ({{prod.migrations_behind}} migrations behind). Staging serves {{staging.sha}}; step 1 now: store every source's answer per field (F-196).",
   "waiting_on_owner": [
     {
       "id": "D-3",

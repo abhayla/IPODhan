@@ -74,7 +74,19 @@ jobs:
       - name: Design consistency gate
         # The check that #537 skipped past. 23 rules over the design document,
         # the build cards, the owner decisions and the code citations.
-        run: node docs/design/check-design-consistency.mjs
+        # --gate so a [FAIL] exits 1: without it a docs-only PR merged a stale
+        # rules.json (D19) that then turned every code PR red (2026-09-28, #1261).
+        run: node docs/design/check-design-consistency.mjs --gate
+
+      - name: Plan board parses every owner decision
+        # A malformed OD row (fewer than 5 cells) or a stale expected count made
+        # build-plan-board refuse on every code PR while docs-gate passed (#1261).
+        run: node scripts/ops/build-plan-board.mjs --check && node --test scripts/tests/build-plan-board.test.mjs
+
+      - name: Board renders from its data
+        # board-data.json is docs, but only pr-gate ran this test: #1262 merged a
+        # headline the test refuses, and #1264 went red on it (2026-09-28).
+        run: node scripts/tests/render-board.test.mjs && node scripts/ops/render-board.mjs --check
 
       - name: Detection registry matches its per-entry sources
         # Same argument: its input is docs/reviews/**, so a docs-only change is
