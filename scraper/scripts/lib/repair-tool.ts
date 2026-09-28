@@ -693,7 +693,9 @@ export async function upsertFieldSource(
         schema.fieldSources.rowKey,
         schema.fieldSources.fieldName,
       ],
-      set: row,
+      // §9.2 item 19 / OD-131: a repair from a non-ADMIN source never relabels an ADMIN
+      // provenance row (the prior row is locked FOR UPDATE above, so this is race-free).
+      set: prior?.source === 'ADMIN' && params.source !== 'ADMIN' ? { updatedAt: sql`${schema.fieldSources.updatedAt}` } : row,
     });
 
   // Column names as in the DB (snake_case), keyed by the unique index, so a

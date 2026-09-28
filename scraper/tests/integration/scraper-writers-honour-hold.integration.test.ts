@@ -241,6 +241,52 @@ describe.skipIf(!DATABASE_URL)('A2e: every scraper writer honours the admin hold
     expect(row.r).toBe('Admin Registrar Pvt Ltd');
   });
 
+  it('OD-131 at the write point: a non-ADMIN provenance upsert on an admin-held field keeps source, value, lineage and author ADMIN, but still refreshes the witnesses', async () => {
+    await adminSave('ipos', 'registrar', 'Admin Registrar Pvt Ltd');
+    const sel = () =>
+      db
+        .select({
+          src: schema.fieldSources.source,
+          v: schema.fieldSources.previousValue,
+          ps: schema.fieldSources.previousSource,
+          l: schema.fieldSources.dataLineage,
+          c: schema.fieldSources.confidence,
+          by: schema.fieldSources.updatedBy,
+          w: schema.fieldSources.witnesses,
+        })
+        .from(schema.fieldSources)
+        .where(sql`${schema.fieldSources.ipoId} = ${IPO}::uuid AND ${schema.fieldSources.tableName} = 'ipos' AND ${schema.fieldSources.fieldName} = 'registrar'`);
+    const [before] = await sel();
+    expect(before.src).toBe('ADMIN');
+
+    // The opening-day decision call, a no-op consolidation commit and the issue-type fill all
+    // reach provenance through this one upsert (A2-E round-2 review gaps 2, 3, 5).
+    const witnesses = [{ source: 'NSE', status: 'SUPPLIED', value: 'NSE Registrar Overwrite', at: '2026-09-29T02:00:00.000Z' }];
+    await new FieldSourcesRepository(db2 as never, noRedis).trackFieldUpdate({
+      ipoId: IPO,
+      tableName: 'ipos',
+      fieldName: 'registrar',
+      source: 'NSE',
+      confidence: 90,
+      previousValue: 'NSE Registrar Overwrite',
+      previousSource: 'CHITTORGARH',
+      dataLineage: { tool: 'a2e-proof', note: 'scraper provenance write' },
+      updatedBy: 'scraper:NSE',
+      witnesses: witnesses as never,
+    } as never);
+
+    const [after] = await sel();
+    expect({ src: after.src, v: after.v, ps: after.ps, l: after.l, c: after.c, by: after.by }).toEqual({
+      src: before.src,
+      v: before.v,
+      ps: before.ps,
+      l: before.l,
+      c: before.c,
+      by: before.by,
+    });
+    expect(after.w).toEqual(witnesses);
+  });
+
   it('applyIssueSizeRepair --undo (restoreUpdatedAt) does not put back a before-image over an admin-held issueSize, and reports it', async () => {
     await adminSave('ipos', 'issueSize', '5000000000');
     const r = await new IPORepository(db2 as never, noRedis).applyIssueSizeRepair(IPO, '1', '2026-09-01 00:00:00');

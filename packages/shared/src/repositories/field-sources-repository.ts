@@ -5,7 +5,7 @@
  */
 
 import { sourceKeyLineageFor } from './source-key-lineage';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '../db/schema';
@@ -221,6 +221,11 @@ export class FieldSourcesRepository extends BaseRepository {
    * Records which source provided the field value
    */
   async trackFieldUpdate(input: TrackFieldUpdateInput): Promise<FieldSourceRecord> {
+    // A write from any non-ADMIN source keeps a stored ADMIN row's attribution columns.
+    const keepAdmin = (column: unknown, incoming: SQL) =>
+      input.source === 'ADMIN'
+        ? incoming
+        : sql`CASE WHEN ${fieldSources.source} = 'ADMIN' THEN ${column} ELSE ${incoming} END`;
     // #862: refuse before the insert, not after. Throwing here means the
     // caller's transaction fails loudly rather than the row landing and a
     // nightly check finding it tomorrow.
@@ -278,10 +283,15 @@ export class FieldSourcesRepository extends BaseRepository {
             ],
             set: {
               rowKey,
-              source: input.source,
-              confidence: input.confidence ?? 100,
-              previousValue: input.previousValue || null,
-              previousSource: input.previousSource || null,
+              // §9.2 item 19 / OD-131: a non-ADMIN write never takes over an ADMIN provenance row.
+              // ON CONFLICT DO UPDATE evaluates these CASEs against the latest committed (locked)
+              // row, so an admin save that commits mid-cycle is seen here. Witnesses and verdict
+              // below still refresh: a source's newer answer is what the editor panel and the
+              // suggestion queue read (§9.3, §9.2 item 9).
+              source: keepAdmin(fieldSources.source, sql`${input.source}`),
+              confidence: keepAdmin(fieldSources.confidence, sql`${input.confidence ?? 100}`),
+              previousValue: keepAdmin(fieldSources.previousValue, sql`${input.previousValue || null}`),
+              previousSource: keepAdmin(fieldSources.previousSource, sql`${input.previousSource || null}`),
               // MAJOR-4 (Tier A review, PR #753): MERGE, never replace. A plain object here
               // (the old code: `input.dataLineage ?? null`) REPLACES the whole jsonb column on
               // conflict, so a provenance-only write (`{policyOrigin}`) silently destroyed
@@ -296,7 +306,10 @@ export class FieldSourcesRepository extends BaseRepository {
               // every other existing key survives — the same semantics as
               // `{...existing, ...incoming}` in JS.
               dataLineage: input.dataLineage
-                ? sql`COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) || ${JSON.stringify(input.dataLineage)}::jsonb`
+                ? keepAdmin(
+                    fieldSources.dataLineage,
+                    sql`COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) || ${JSON.stringify(input.dataLineage)}::jsonb`
+                  )
                 : sql`${fieldSources.dataLineage}`,
               // S3b-2: REPLACE (never merge — witnesses is a fresh snapshot of THIS pass's
               // answers, not an accumulating log), but only when the caller actually computed
@@ -309,7 +322,7 @@ export class FieldSourcesRepository extends BaseRepository {
               witnesses: input.witnesses ? (input.witnesses as unknown) : sql`${fieldSources.witnesses}`,
               verdict: input.verdict !== undefined ? input.verdict : sql`${fieldSources.verdict}`,
               updatedAt: new Date(),
-              updatedBy: input.updatedBy || 'SYSTEM',
+              updatedBy: keepAdmin(fieldSources.updatedBy, sql`${input.updatedBy || 'SYSTEM'}`),
             },
           })
           .returning();

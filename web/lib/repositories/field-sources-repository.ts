@@ -4,7 +4,7 @@
  * Tracks which scraper source provided each field value
  */
 
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -167,6 +167,10 @@ export class FieldSourcesRepository extends BaseRepository {
    * Records which source provided the field value
    */
   async trackFieldUpdate(input: TrackFieldUpdateInput): Promise<FieldSourceRecord> {
+    const keepAdmin = (column: unknown, incoming: SQL) =>
+      input.source === 'ADMIN'
+        ? incoming
+        : sql`CASE WHEN ${fieldSources.source} = 'ADMIN' THEN ${column} ELSE ${incoming} END`;
     const rowKey = input.rowKey ?? '';
 
     // rowKey is part of the ON CONFLICT target below (item 1 slice s18), so an
@@ -206,10 +210,12 @@ export class FieldSourcesRepository extends BaseRepository {
             ],
             set: {
               rowKey,
-              source: input.source,
-              confidence: input.confidence ?? 100,
-              previousValue: input.previousValue || null,
-              previousSource: input.previousSource || null,
+              // §9.2 item 19 / OD-131: a non-ADMIN write never takes over an ADMIN provenance row
+              // (same rule as packages/shared's trackFieldUpdate).
+              source: keepAdmin(fieldSources.source, sql`${input.source}`),
+              confidence: keepAdmin(fieldSources.confidence, sql`${input.confidence ?? 100}`),
+              previousValue: keepAdmin(fieldSources.previousValue, sql`${input.previousValue || null}`),
+              previousSource: keepAdmin(fieldSources.previousSource, sql`${input.previousSource || null}`),
               // #755 (mirrors packages/shared's PR #753 MAJOR-4 fix): MERGE, never replace. A
               // plain object here REPLACES the whole jsonb column on conflict, so a
               // provenance-only write (e.g. `{policyOrigin}`) silently destroyed whatever
@@ -221,10 +227,13 @@ export class FieldSourcesRepository extends BaseRepository {
               // Postgres jsonb concatenation: keys in the incoming value win on overlap, every
               // other existing key survives — the same semantics as `{...existing, ...incoming}`.
               dataLineage: input.dataLineage
-                ? sql`COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) || ${JSON.stringify(input.dataLineage)}::jsonb`
+                ? keepAdmin(
+                    fieldSources.dataLineage,
+                    sql`COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) || ${JSON.stringify(input.dataLineage)}::jsonb`
+                  )
                 : sql`${fieldSources.dataLineage}`,
               updatedAt: new Date(),
-              updatedBy: input.updatedBy || 'SYSTEM',
+              updatedBy: keepAdmin(fieldSources.updatedBy, sql`${input.updatedBy || 'SYSTEM'}`),
             },
           })
           .returning();
