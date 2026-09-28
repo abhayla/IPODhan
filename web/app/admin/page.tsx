@@ -17,7 +17,7 @@ interface IPO {
 }
 
 export default function AdminDashboardPage() {
-  const { token } = useAdminAuth();
+  const { isAuthenticated } = useAdminAuth();
   const [ipos, setIpos] = useState<IPO[]>([]);
   const [filteredIpos, setFilteredIpos] = useState<IPO[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -27,10 +27,10 @@ export default function AdminDashboardPage() {
   const [lockFilter, setLockFilter] = useState('ALL');
 
   useEffect(() => {
-    if (token) {
+    if (isAuthenticated) {
       fetchIPOs();
     }
-  }, [token]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     applyFilters();
@@ -40,16 +40,9 @@ export default function AdminDashboardPage() {
     try {
       setIsLoading(true);
 
-      if (!token) {
-        console.error('No admin token available');
-        return;
-      }
-
       const response = await fetch('/api/admin/ipos?limit=100', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
       });
 
       const data = await response.json();

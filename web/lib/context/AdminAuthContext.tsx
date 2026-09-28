@@ -1,47 +1,70 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+/**
+ * Client view of the signed-in admin (spec §9.2 item 6). The session itself is an httpOnly cookie the
+ * browser cannot read; this context asks the server who the caller is (/api/admin/auth/me).
+ */
+import React, { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
+
+export interface SignedInAdmin {
+  adminId: string;
+  adminName: string;
+  isOwner: boolean;
+}
 
 interface AdminAuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (token: string) => void;
-  logout: () => void;
+  admin: SignedInAdmin | null;
+  /** Re-reads the session after a successful sign-in. */
+  refresh: () => Promise<void>;
+  logout: () => Promise<void>;
+  /** Always null: kept so older admin pages that spread it into a header keep compiling. */
   token: string | null;
 }
 
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
 
-export function AdminAuthProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [token, setToken] = useState<string | null>(null);
+async function fetchMe(): Promise<SignedInAdmin | null> {
+  try {
+    const res = await fetch('/api/admin/auth/me', { credentials: 'same-origin', cache: 'no-store' });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return body?.data ?? null;
+  } catch {
+    return null;
+  }
+}
 
-  useEffect(() => {
-    // Check for existing token in localStorage
-    const storedToken = localStorage.getItem('admin_token');
-    if (storedToken) {
-      setToken(storedToken);
-      setIsAuthenticated(true);
-    }
-    setIsLoading(false);
+export function AdminAuthProvider({ children }: { children: ReactNode }) {
+  const [admin, setAdmin] = useState<SignedInAdmin | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setAdmin(await fetchMe());
   }, []);
 
-  const login = (newToken: string) => {
-    localStorage.setItem('admin_token', newToken);
-    setToken(newToken);
-    setIsAuthenticated(true);
-  };
+  useEffect(() => {
+    // Sessions used to be a bearer token in localStorage; drop any leftover copy.
+    try {
+      localStorage.removeItem('admin_token');
+    } catch {
+      // storage unavailable
+    }
+    refresh().finally(() => setIsLoading(false));
+  }, [refresh]);
 
-  const logout = () => {
-    localStorage.removeItem('admin_token');
-    setToken(null);
-    setIsAuthenticated(false);
-  };
+  const logout = useCallback(async () => {
+    try {
+      await fetch('/api/admin/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    } finally {
+      setAdmin(null);
+    }
+  }, []);
 
   return (
     <AdminAuthContext.Provider
-      value={{ isAuthenticated, isLoading, login, logout, token }}
+      value={{ isAuthenticated: admin !== null, isLoading, admin, refresh, logout, token: null }}
     >
       {children}
     </AdminAuthContext.Provider>

@@ -35,9 +35,15 @@ function listRouteFiles(dir: string): string[] {
 // swapped for another; an exact list fails on any add, remove or rename, so
 // every change to the admin API surface is a deliberate edit reviewed here.
 const EXPECTED_ADMIN_ROUTES = [
+  'accounts/[id]/password/route.ts',
+  'accounts/[id]/route.ts',
+  'accounts/route.ts',
   'anchor-investors/route.ts',
   'audit/export/route.ts',
   'audit/route.ts',
+  'auth/login/route.ts',
+  'auth/logout/route.ts',
+  'auth/me/route.ts',
   'cache/clear/route.ts',
   'conflicts/auto-resolve/route.ts',
   'conflicts/bulk-resolve/route.ts',
@@ -66,6 +72,10 @@ const EXPECTED_ADMIN_ROUTES = [
   'update-field/route.ts',
 ];
 
+// The ONE admin route that must answer an anonymous caller: it is how a session is obtained (spec
+// section 9.2 item 6, OD-104). Adding a route here is a security decision, reviewed in this file.
+const PUBLIC_ADMIN_ROUTES = ['auth/login/route.ts'];
+
 describe('every admin API route requires admin auth', () => {
   const files = listRouteFiles(ADMIN_ROOT);
 
@@ -76,6 +86,7 @@ describe('every admin API route requires admin auth', () => {
 
   it('has no exported handler without withAdminAuth or requireAdminAuth', () => {
     const offenders = files
+      .filter((f) => !PUBLIC_ADMIN_ROUTES.includes(path.relative(ADMIN_ROOT, f).split(path.sep).join('/')))
       .map((f) => ({ file: path.relative(ADMIN_ROOT, f), missing: unguardedMethods(fs.readFileSync(f, 'utf8')) }))
       .filter((r) => r.missing.length > 0)
       .map((r) => `${r.file}: ${r.missing.join(', ')}`);
