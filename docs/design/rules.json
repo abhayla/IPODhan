@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-28T16:12:56.049Z",
+  "generated_at": "2026-09-28T16:26:42.905Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 206,
-    "retired": 46
+    "retired": 47
   },
-  "next_id": 253,
+  "next_id": 254,
   "rules": [
     {
       "id": "R-151",
@@ -783,12 +783,12 @@
       "retired": false
     },
     {
-      "id": "R-240",
-      "hash": "610cc95bb738",
+      "id": "R-253",
+      "hash": "b620f7cf3ce7",
       "section": "2.4 What the loop does, per field",
       "kind": "prose",
-      "text": "Amended by OD-103 (2026-09-25): in the first read of each stage for an IPO (OD-56) the loop does not stop at the first SUPPLIED rank. At the draft-document stage the exchanges usually have nothing yet; they are asked again at the open stage, when they publish. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168.",
-      "first_seen": "2026-09-25",
+      "text": "Amended by OD-103 (2026-09-25): in the first read of each stage for an IPO (OD-56) the loop does not stop at the first SUPPLIED rank. At the draft-document stage the exchanges usually have nothing yet; they are asked again at the open stage, when they publish. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168. Each witness carries its outcome (SUPPLIED, NOT_PRINTED, NOT_AVAILABLE_YET, CHECK_FAILED or FAILED) and, when it is not SUPPLIED, a null value and its cause; only SUPPLIED witnesses count as agreeing or disagreeing answers (OD-60), and a witness stored before this wording has no outcome and is read as SUPPLIED. The witnesses are stored whenever the pass stores a value: the SUPPLIED winner, or a provisional value under NOT_AVAILABLE_YET. A field with no stored value has no field_sources row (a row there means a source supplied the stored value, failure class #684); per OD-137 its per-rank answers of that pass are stored on the plan row instead, in ipo_field_plan.answers, in the same shape as a witness. Measured after the first change: F-196.",
+      "first_seen": "2026-09-28",
       "retired": false
     },
     {
@@ -1861,6 +1861,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-240",
+      "hash": "610cc95bb738",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "Amended by OD-103 (2026-09-25): in the first read of each stage for an IPO (OD-56) the loop does not stop at the first SUPPLIED rank. At the draft-document stage the exchanges usually have nothing yet; they are asked again at the open stage, when they publish. It asks every rank Appendix A lists for the field once and stores each answer (value, abstention per OD-60, or failure cause) as a witness in field_sources.witnesses; the value written for the page is still the highest-ranked SUPPLIED answer (OD-73). A settled field is never re-asked later to collect witnesses (OD-65). The witnesses are what the admin edit view shows per source (§9.3). Measured before the change: F-168.",
+      "first_seen": "2026-09-25",
+      "retired": true
     },
     {
       "id": "R-094",

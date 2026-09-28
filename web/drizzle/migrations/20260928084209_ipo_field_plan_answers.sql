@@ -1,0 +1,1 @@
+ALTER TABLE "ipo_field_plan" ADD COLUMN "answers" jsonb;

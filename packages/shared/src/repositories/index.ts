@@ -37,6 +37,7 @@ export {
 } from './ipo-field-plan-repository';
 export type {
   IpoFieldPlanRow,
+  FieldPlanAnswer,
   FieldPlanState,
   ChosenEvidence,
   RecordOutcomeParams,

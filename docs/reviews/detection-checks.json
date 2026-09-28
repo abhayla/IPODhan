@@ -1057,7 +1057,7 @@
       "scope": "every field_sources row across all three segments (MAINBOARD, SME_BSE, SME_NSE), all IPO statuses, both slots (prod/staging), rows written before AND after this check exists. ABSTAIN fields (14 in the manifest) are excluded by design -- a null verdict there is correct.",
       "consumer": "operator-run pre-flip gate (this check is the reason ENABLE_VERDICT_WRITER is safe to turn on); not yet wired into the nightly cron -- same posture as assert-row-key-constraints.ts (a hand-run verification script, not (yet) a scheduled gate)",
       "consumerReason": "the verdict column is empty on every slot today (ENABLE_VERDICT_WRITER is set nowhere) -- there is nothing for a nightly cadence to accumulate yet; this check exists so that WHEN the flag flips, its first real-data run is not the first time anyone looked",
-      "status": "built and self-tested this session (8/8 unit tests, RED-then-GREEN proof on ipodhan_test, mutation-tested); not yet wired into scripts/audit-detection-floor.mjs's nightly run -- follow-up once ENABLE_VERDICT_WRITER actually flips",
+      "status": "built and self-tested this session (8/8 unit tests, RED-then-GREEN proof on ipodhan_test, mutation-tested); not yet wired into scripts/audit-detection-floor.mjs's nightly run -- follow-up once ENABLE_VERDICT_WRITER actually flips; 2026-09-28 (OD-103, F-196): re-derivation passes each witness's `outcome` through to computeVerdict, so a stored non-SUPPLIED witness (abstention/failure, value null) is never re-derived as a disagreeing vote (a false DISPUTED) -- self-tests 11-12 pin both directions",
       "auditScript": "scripts/audit-consensus-verdict.ts",
       "selfTest": "scripts/tests/audit-consensus-verdict.test.ts"
     },

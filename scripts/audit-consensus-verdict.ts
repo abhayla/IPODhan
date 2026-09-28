@@ -45,7 +45,7 @@
 import './lib/alias-preflight-auto.mjs';
 import { Client } from 'pg';
 import { resolveDiscreteDbParams } from '@ipodhan/shared/db';
-import { computeVerdict, type Verdict } from '../scraper/src/services/witness-verdict.ts';
+import { computeVerdict, type Verdict, type WitnessOutcome } from '../scraper/src/services/witness-verdict.ts';
 import { loadFieldManifest } from '../scraper/src/config/field-manifest-loader.ts';
 import { resolveIpoTypeKey, type IpoTypeKey } from '../scraper/src/services/field-plan-generator.ts';
 import type { ComparisonFamily } from '../scraper/src/services/normalization-engine.ts';
@@ -72,6 +72,8 @@ export interface Mismatch {
   expectedVerdict: Verdict;
   reason: string;
 }
+
+const WITNESS_OUTCOMES = new Set<WitnessOutcome>(['SUPPLIED', 'NOT_PRINTED', 'NOT_AVAILABLE_YET', 'CHECK_FAILED', 'FAILED']);
 
 const COMPARABLE_FAMILIES = new Set<ComparisonFamily>([
   'MONEY',
@@ -119,6 +121,11 @@ export function expectedVerdictForRow(
     value: w.value,
     at: String(w.at ?? ''),
     docType: typeof w.docType === 'string' ? w.docType : undefined,
+    // OD-103: a non-SUPPLIED witness (abstention / failure, value null) is stored but is never a
+    // vote. Without passing `outcome` through, re-derivation would compare that null against a real
+    // value and report a false DISPUTED against the writer's correct UNCONFIRMED. A witness with no
+    // outcome (written before OD-103) stays undefined and is read as SUPPLIED by computeVerdict.
+    outcome: WITNESS_OUTCOMES.has(w.outcome as WitnessOutcome) ? (w.outcome as WitnessOutcome) : undefined,
   }));
 
   const family = entry.comparisonFamily as ComparisonFamily;

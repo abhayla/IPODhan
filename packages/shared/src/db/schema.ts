@@ -1960,6 +1960,10 @@ export const ipoFieldPlan = pgTable(
     // override ended. NULL on every row no override has reopened.
     reopenedUnderPolicy: varchar('reopened_under_policy', { length: 64 }),
 
+    // OD-137: each ranked source's answer of the last pass that stored NO value (witness shape);
+    // NULL when the last pass stored one (field_sources.witnesses holds it) or on rows never walked since.
+    answers: jsonb('answers'),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
