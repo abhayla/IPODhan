@@ -134,7 +134,7 @@ describe.skipIf(!DATABASE_URL)('A2 admin field write (ipodhan_test)', () => {
 
   it('F-169: a child-table field (ipo_details) is written with provenance, protection and audit', async () => {
     const v = await readAdminFieldVersion(db as never, IPO, 'ipo_details', 'designatedExchange');
-    const r = await writeAdminFieldValue(db as never, base({ tableName: 'ipo_details', fieldName: 'designatedExchange', value: 'NSE', mode: { kind: 'pick', sourceLabel: 'NSE', readDate: '2026-09-28' }, expectedVersion: v!.version }));
+    const r = await writeAdminFieldValue(db as never, base({ tableName: 'ipo_details', fieldName: 'designatedExchange', value: 'NSE', mode: { kind: 'storedPick', sourceLabel: 'NSE', readDate: '2026-09-28', value: 'NSE' }, expectedVersion: v!.version }));
     expect(r.kind).toBe('OK');
     const [d] = await db.select({ v: schema.ipoDetails.designatedExchange }).from(schema.ipoDetails).where(eq(schema.ipoDetails.ipoId, IPO));
     expect(d.v).toBe('NSE');
@@ -238,5 +238,93 @@ describe.skipIf(!DATABASE_URL)('A2 admin field write (ipodhan_test)', () => {
     const empty = await writeAdminFieldValue(db as never, base({ fieldName: 'sector', mode: { kind: 'holdShown' }, expectedVersion: vs!.version }));
     expect(empty.kind).toBe('INVALID');
     expect(await db.select().from(schema.fieldProtectionMetadata).where(and(eq(schema.fieldProtectionMetadata.ipoId, IPO), eq(schema.fieldProtectionMetadata.fieldName, 'sector')))).toHaveLength(0);
+  });
+
+  const seedRegistrarWitnesses = () =>
+    db.insert(schema.fieldSources).values({
+      ipoId: IPO,
+      tableName: 'ipos',
+      rowKey: '',
+      fieldName: 'registrar',
+      source: 'CHITTORGARH',
+      confidence: 80,
+      witnesses: [
+        { source: 'CHITTORGARH', value: 'Scraper Registrar Ltd', at: '2026-09-21T04:00:00.000Z', outcome: 'SUPPLIED' },
+        { source: 'NSE', value: 'NSE Registrar Ltd', at: '2026-09-20T10:00:00.000Z', outcome: 'SUPPLIED' },
+        { source: 'BSE', value: null, at: '2026-09-20T10:05:00.000Z', outcome: 'NOT_PRINTED', cause: 'not printed' },
+      ],
+    } as never);
+  const rowsWritten = async () => ({
+    audit: (await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.ipoId, IPO))).length,
+    holds: (await db.select().from(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO))).length,
+    adminProv: (await db.select().from(schema.fieldSources).where(and(eq(schema.fieldSources.ipoId, IPO), eq(schema.fieldSources.source, 'ADMIN')))).length,
+  });
+
+  it('M1 / OD-109: a pick stores the source STORED answer and read date; a forged client value is ignored', async () => {
+    await seedRegistrarWitnesses();
+    const v = await readAdminFieldVersion(db as never, IPO, 'ipos', 'registrar');
+    const r = await writeAdminFieldValue(db as never, base({ value: 'FORGED 1', mode: { kind: 'pick', sourceLabel: 'NSE' }, expectedVersion: v!.version }));
+    expect(r).toMatchObject({ kind: 'OK', newValue: 'NSE Registrar Ltd' });
+    expect(await registrar()).toBe('NSE Registrar Ltd');
+    const [prot] = await db.select().from(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO));
+    expect(prot.editNote).toBe('Picked from NSE, read 2026-09-20T10:00:00.000Z');
+    const [audit] = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.ipoId, IPO));
+    expect(audit.details).toMatchObject({ mode: 'pick', sourceLabel: 'NSE', readDate: '2026-09-20T10:00:00.000Z' });
+  });
+
+  it('M1: a pick of a source with no stored answer (abstained or absent) is refused and writes nothing', async () => {
+    await seedRegistrarWitnesses();
+    const v = await readAdminFieldVersion(db as never, IPO, 'ipos', 'registrar');
+    for (const label of ['BSE', 'MONEYCONTROL']) {
+      const r = await writeAdminFieldValue(db as never, base({ value: 1, mode: { kind: 'pick', sourceLabel: label }, expectedVersion: v!.version }));
+      expect(r.kind).toBe('INVALID');
+      expect((r as { reason: string }).reason).toMatch(/has no stored answer/);
+    }
+    expect(await registrar()).toBe('Scraper Registrar Ltd');
+    expect(await rowsWritten()).toEqual({ audit: 0, holds: 0, adminProv: 0 });
+  });
+
+  it('M1 / OD-137: a field with no stored value is picked from the plan row answers', async () => {
+    await db.insert(schema.ipoFieldPlan).values({
+      ipoId: IPO,
+      tableName: 'ipos',
+      rowKey: '',
+      fieldName: 'sector',
+      manifestVersion: 1,
+      answers: [{ source: 'BSE', value: 'Financial Services', at: '2026-09-22T06:30:00.000Z', outcome: 'SUPPLIED' }],
+    } as never);
+    const v = await readAdminFieldVersion(db as never, IPO, 'ipos', 'sector');
+    const r = await writeAdminFieldValue(db as never, base({ fieldName: 'sector', value: 'FORGED', mode: { kind: 'pick', sourceLabel: 'bse' }, expectedVersion: v!.version }));
+    expect(r).toMatchObject({ kind: 'OK', newValue: 'Financial Services' });
+    const [prot] = await db.select().from(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO));
+    expect(prot.editNote).toBe('Picked from bse, read 2026-09-22T06:30:00.000Z');
+  });
+
+  it('m4: a scraper rewrite of a child row that records no provenance still changes the token', async () => {
+    await db.insert(schema.ipoDetails).values({ ipoId: IPO, designatedExchange: 'BSE', dataSource: 'NSE' } as never);
+    const opened = await readAdminFieldVersion(db as never, IPO, 'ipo_details', 'designatedExchange');
+    await db.execute(sql`UPDATE ipo_details SET designated_exchange = 'NSE', updated_at = updated_at + interval '1 second' WHERE ipo_id = ${IPO}::uuid`);
+    const later = await readAdminFieldVersion(db as never, IPO, 'ipo_details', 'designatedExchange');
+    expect(later!.version).not.toBe(opened!.version);
+    const r = await writeAdminFieldValue(db as never, base({ tableName: 'ipo_details', fieldName: 'designatedExchange', value: 'BSE', expectedVersion: opened!.version }));
+    expect(r).toMatchObject({ kind: 'CONFLICT', currentValue: 'NSE' });
+  });
+
+  it('m10: a value that passes coercion but Postgres refuses (int4 overflow) maps to INVALID via the SQLSTATE and writes nothing', async () => {
+    const v = await readAdminFieldVersion(db as never, IPO, 'ipos', 'lotSize');
+    const r = await writeAdminFieldValue(db as never, base({ fieldName: 'lotSize', value: 3000000000, overrideReason: 'test overflow', expectedVersion: v!.version }));
+    expect(r.kind).toBe('INVALID');
+    expect((r as { reason: string }).reason).toMatch(/the database refused the value \(22003\)/);
+    expect(await rowsWritten()).toEqual({ audit: 0, holds: 0, adminProv: 0 });
+  });
+
+  it('m10: a failure AFTER the value write rolls the whole transaction back (value, provenance, hold, audit)', async () => {
+    const v = await readAdminFieldVersion(db as never, IPO, 'ipos', 'registrar');
+    // jsonb refuses a NUL escape (22P05) at the provenance insert, which runs after the value update.
+    const r = await writeAdminFieldValue(db as never, base({ value: 'Rolled Back Registrar', detail: { note: 'bad\u0000byte' }, expectedVersion: v!.version }));
+    expect(r.kind).toBe('INVALID');
+    expect((r as { reason: string }).reason).toMatch(/the database refused the value \(22/);
+    expect(await registrar()).toBe('Scraper Registrar Ltd');
+    expect(await rowsWritten()).toEqual({ audit: 0, holds: 0, adminProv: 0 });
   });
 });

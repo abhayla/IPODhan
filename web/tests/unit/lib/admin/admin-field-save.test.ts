@@ -6,8 +6,8 @@ vi.mock('@/lib/db', () => ({ getDb: vi.fn(async () => ({})) }));
 vi.mock('@/lib/cache/redis-client', () => ({ getRedisClient: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-import { saveAdminFieldValue, adminWriteResponse, type AdminFieldSaveDeps } from '@/lib/admin/admin-field-save';
-import type { AdminFieldWriteInput, AdminFieldWriteResult } from '@ipodhan/shared/services/admin-field-write';
+import { saveAdminFieldValue, adminWriteResponse, TABLE_CACHE_KEYS, type AdminFieldSaveDeps } from '@/lib/admin/admin-field-save';
+import { ADMIN_WRITABLE_TABLES, ADMIN_ROW_TABLES, type AdminFieldWriteInput, type AdminFieldWriteResult } from '@ipodhan/shared/services/admin-field-write';
 
 const input: AdminFieldWriteInput = {
   ipoId: 'ipo-1',
@@ -39,6 +39,36 @@ describe('saveAdminFieldValue — F-171 cache drop after commit', () => {
     expect(keys).toEqual(['ipo:detail:acme-ltd', 'ipo:fieldplan:provenance:acme-ltd', 'ipo:id:ipo-1', 'ipo:slug:acme-ltd']);
     expect(keys.some((k) => k.includes('*'))).toBe(false);
     expect(revalidatePath).toHaveBeenCalledWith('/ipos/acme-ltd');
+  });
+
+  it('M3: an ipos save also clears the list/search keys, resolving each pattern to real names before DEL', async () => {
+    const del = vi.fn(async () => 1);
+    const keys = vi.fn(async (p: string) => (p === 'ipo:list:*' ? ['ipo:list:abc'] : []));
+    const d: AdminFieldSaveDeps = { write: (async () => OK) as never, getDb: (async () => ({})) as never, redis: () => ({ del, keys }), revalidatePath: vi.fn() };
+    await saveAdminFieldValue(input, d);
+    const deleted = del.mock.calls.flat() as string[];
+    expect(keys).toHaveBeenCalledWith('ipo:list:*');
+    expect(keys).toHaveBeenCalledWith('ipo:search:*');
+    expect(deleted).toContain('ipo:list:abc');
+    expect(deleted.some((k) => k.includes('*'))).toBe(false);
+  });
+
+  it.each([
+    ['ipo_details', 'details:ipo-1'],
+    ['financial_data', 'financial:ipo-1'],
+    ['ipo_financials', 'financials:enhanced:ipo-1'],
+    ['listing_performance', 'listing:ipo-1'],
+    ['ipo_scores', 'score:ipo-1'],
+    ['peer_companies', 'peers:ipo-1'],
+    ['documents', 'documents:ipo-1'],
+  ])('M3: a save in %s drops the table own key %s', async (tableName, key) => {
+    const { d, del } = deps({ ...OK, tableName } as AdminFieldWriteResult);
+    await saveAdminFieldValue({ ...input, tableName }, d);
+    expect(del.mock.calls.map((c) => c[0])).toContain(key);
+  });
+
+  it('M3: every admin-writable table has a cache-key entry', () => {
+    for (const t of [...ADMIN_WRITABLE_TABLES, ...ADMIN_ROW_TABLES]) expect(Object.keys(TABLE_CACHE_KEYS)).toContain(t);
   });
 
   it('drops nothing when the write refused', async () => {

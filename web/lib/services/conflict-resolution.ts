@@ -199,8 +199,10 @@ export class ConflictResolutionService {
   }
 
   /** The token the queue row opens with (null for a table the admin write does not cover). */
-  private async versionOf(conflict: DataConflictRecord): Promise<string | null> {
-    return (await readAdminFieldVersion(db as never, conflict.ipoId, conflict.tableName, conflict.fieldName))?.version ?? null;
+  /** m8: a row table's conflict names its row (rowKey); the token is per row, not per table. */
+  async versionOf(conflict: Pick<DataConflictRecord, 'ipoId' | 'tableName' | 'fieldName' | 'rowKey'>): Promise<string | null> {
+    const row = conflict.rowKey ? { rowKey: conflict.rowKey } : undefined;
+    return (await readAdminFieldVersion(db as never, conflict.ipoId, conflict.tableName, conflict.fieldName, row))?.version ?? null;
   }
 
   /**
@@ -270,7 +272,8 @@ export class ConflictResolutionService {
           fieldName: conflict.fieldName,
           value: appliedValue,
           empty: appliedValue === null ? { reason: options.adminNote || `Conflict resolved to ${options.resolvedSource}, which has no value` } : undefined,
-          mode: { kind: 'pick', sourceLabel: options.resolvedSource, readDate: null },
+          // The value is the stored data_conflicts row's, chosen server-side by resolvedSource.
+          mode: { kind: 'storedPick', sourceLabel: options.resolvedSource, readDate: null, value: appliedValue },
           expectedVersion,
           actor: { name: options.resolvedBy, adminId: options.adminId ?? '' },
           row: conflict.rowKey ? { rowKey: conflict.rowKey } : undefined,

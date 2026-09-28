@@ -126,7 +126,20 @@ export interface AdminActor {
 }
 
 export type AdminWriteMode =
-  | { kind: 'pick'; sourceLabel: string; readDate: string | null }
+  /**
+   * §9.2 items 2, 3; §9.3; OD-109: the admin picks ONE source's stored answer. The client names only
+   * the source; the value and its read date are loaded INSIDE the transaction from that source's
+   * stored answer (field_sources.witnesses, OD-103; else ipo_field_plan.answers for a field with no
+   * stored value, OD-137; else the stored value when that source supplied it). `input.value` is
+   * ignored, so a forged value can never be stored as "From <source>". No stored answer -> INVALID.
+   */
+  | { kind: 'pick'; sourceLabel: string }
+  /**
+   * A pick whose value a SERVER caller has already read from its own stored row (the OD-90
+   * corrigendum suggestion's document value, a data_conflicts row's value). Never built from a
+   * request body.
+   */
+  | { kind: 'storedPick'; sourceLabel: string; readDate: string | null; value: unknown }
   | { kind: 'typed'; sourceNote: string }
   /**
    * OD-121, §9.2 item 11: "protect this field" with no value. It is an admin PICK of the value the
@@ -192,6 +205,9 @@ export interface AdminFieldVersion {
   setBy: string | null;
   setAt: string | null;
 }
+
+/** The mode as recorded: every pick carries the label and read date it was resolved with. */
+type ResolvedMode = { kind: 'pick'; sourceLabel: string; readDate: string | null } | { kind: 'typed'; sourceNote: string };
 
 class Refusal extends Error {
   constructor(public readonly result: AdminFieldWriteResult) {
@@ -282,13 +298,34 @@ function stringify(v: unknown): string | null {
   return typeof v === 'object' ? JSON.stringify(v) : String(v);
 }
 
+/**
+ * m4: the target row's own updated_at, for a child/row table that has one, so a scraper rewrite of
+ * the row that records no field_sources provenance still changes the token. `ipos` is excluded: its
+ * updated_at moves on every scraper cycle for every field, which would make every save a CONFLICT.
+ */
+async function readRowStamp(tx: Db, ipoId: string, tableName: string, target: RowTarget | null): Promise<string> {
+  if (tableName === 'ipos' || !target) return '-';
+  const t = tableOf(tableName);
+  if (!t) return '-';
+  const cols = getTableColumns(t) as unknown as Record<string, never>;
+  if (!('updatedAt' in cols)) return '-';
+  const rows = (await tx
+    .select({ at: sql<string>`${cols.updatedAt}::text` })
+    .from(t as never)
+    .where(rowWhere(tableName, ipoId, target))
+    .limit(1)) as Array<{ at: string | null }>;
+  return rows[0]?.at ?? '-';
+}
+
 async function readVersion(
   tx: Db,
   ipoId: string,
   tableName: string,
   fieldName: string,
-  rowKey = ''
+  rowKey = '',
+  target: RowTarget | null = null
 ): Promise<{ version: string; setBy: string | null; setAt: string | null; source: string | null }> {
+  const rowStamp = await readRowStamp(tx, ipoId, tableName, target);
   const prov = await tx
     .select({
       updatedAt: sql<string>`${fieldSources.updatedAt}::text`,
@@ -323,7 +360,7 @@ async function readVersion(
   const p = prov[0];
   const a = audit[0];
   return {
-    version: `${p?.updatedAt ?? '-'}|${a?.id ?? '-'}`,
+    version: `${p?.updatedAt ?? '-'}|${a?.id ?? '-'}|${rowStamp}`,
     setBy: p ? (p.source === 'ADMIN' ? p.updatedBy ?? a?.adminUser ?? 'admin' : p.source) : a?.adminUser ?? null,
     setAt: p?.updatedAt ?? a?.at ?? null,
     source: p?.source ?? null,
@@ -352,8 +389,71 @@ export async function readAdminFieldVersion(
   if (!cols || !cols[fieldName]) return null;
   const target = await resolveRow(db, ipoId, tableName, row);
   if (!target) return null;
-  const { source: _source, ...v } = await readVersion(db, ipoId, tableName, fieldName, target.rowKey);
+  const { source: _source, ...v } = await readVersion(db, ipoId, tableName, fieldName, target.rowKey, target);
   return { ...v, rowKey: target.rowKey, currentValue: await readCurrentValue(db, ipoId, tableName, fieldName, target) };
+}
+
+interface StoredAnswer {
+  source?: unknown;
+  value?: unknown;
+  at?: unknown;
+  outcome?: unknown;
+}
+
+const sameSource = (a: unknown, b: string) => typeof a === 'string' && a.trim().toUpperCase() === b.trim().toUpperCase();
+
+/** A witness with no outcome predates OD-103 and was always SUPPLIED (witness-verdict.ts isSuppliedWitness). */
+function suppliedAnswerOf(list: unknown, label: string): { value: unknown; readDate: string | null } | null {
+  if (!Array.isArray(list)) return null;
+  for (const w of list as StoredAnswer[]) {
+    if (!w || !sameSource(w.source, label)) continue;
+    if (w.outcome !== undefined && w.outcome !== 'SUPPLIED') continue;
+    if (w.value === null || w.value === undefined) continue;
+    return { value: w.value, readDate: typeof w.at === 'string' ? w.at : null };
+  }
+  return null;
+}
+
+/**
+ * §9.3 / OD-103 / OD-137: the named source's stored answer for this field, read inside the write's
+ * transaction. Order: the field_sources witnesses; then the stored value itself when that source
+ * supplied it (a row written before witnesses existed); then the plan row's answers (a field whose
+ * last pass stored no value). Null when the source has no stored answer.
+ */
+export async function loadStoredSourceAnswer(
+  tx: Db,
+  args: { ipoId: string; tableName: string; rowKey: string; fieldName: string; sqlFieldName: string; sourceLabel: string; currentValue: unknown }
+): Promise<{ value: unknown; readDate: string | null } | null> {
+  const [fs] = await tx
+    .select({ source: fieldSources.source, witnesses: fieldSources.witnesses, at: sql<string>`${fieldSources.updatedAt}::text` })
+    .from(fieldSources)
+    .where(
+      and(
+        eq(fieldSources.ipoId, args.ipoId),
+        eq(fieldSources.tableName, args.tableName),
+        eq(fieldSources.rowKey, args.rowKey),
+        eq(fieldSources.fieldName, args.fieldName)
+      )
+    )
+    .limit(1);
+  const fromWitness = suppliedAnswerOf(fs?.witnesses, args.sourceLabel);
+  if (fromWitness) return fromWitness;
+  if (fs && fs.source !== 'ADMIN' && sameSource(fs.source, args.sourceLabel) && args.currentValue !== null && args.currentValue !== undefined) {
+    return { value: args.currentValue, readDate: fs.at ?? null };
+  }
+  const [plan] = await tx
+    .select({ answers: schema.ipoFieldPlan.answers })
+    .from(schema.ipoFieldPlan)
+    .where(
+      and(
+        eq(schema.ipoFieldPlan.ipoId, args.ipoId),
+        eq(schema.ipoFieldPlan.tableName, args.tableName),
+        eq(schema.ipoFieldPlan.rowKey, args.rowKey),
+        eq(schema.ipoFieldPlan.fieldName, args.sqlFieldName)
+      )
+    )
+    .limit(1);
+  return suppliedAnswerOf(plan?.answers, args.sourceLabel);
 }
 
 const NUMERIC_CHECK_FIELDS = new Set(['lotSize', 'priceRangeMin', 'priceRangeMax']);
@@ -418,7 +518,7 @@ export async function writeAdminFieldValue(
   if (mode.kind === 'typed' && !mode.sourceNote?.trim() && !input.empty) {
     return { kind: 'INVALID', reason: 'a typed value needs a short source note (document and page, or a URL) — OD-108' };
   }
-  if (mode.kind === 'pick' && !mode.sourceLabel?.trim()) {
+  if ((mode.kind === 'pick' || mode.kind === 'storedPick') && !mode.sourceLabel?.trim()) {
     return { kind: 'INVALID', reason: 'a picked value needs the source label it was picked from' };
   }
   if (mode.kind === 'holdShown' && input.empty) {
@@ -431,8 +531,9 @@ export async function writeAdminFieldValue(
   let newValue: unknown = null;
   let checkFailure: string | null = null;
   let derivedPatch: Record<string, string> = {};
-  if (!input.empty && mode.kind !== 'holdShown') {
-    const coerced = coerceForColumn(column.columnType, input.value ?? null);
+  // A 'pick' value is loaded inside the transaction (M1); 'holdShown' holds the stored value.
+  if (!input.empty && mode.kind !== 'holdShown' && mode.kind !== 'pick') {
+    const coerced = coerceForColumn(column.columnType, mode.kind === 'storedPick' ? mode.value ?? null : input.value ?? null);
     if (coerced.ok === false) return { kind: 'INVALID', reason: `${tableName}.${fieldName}: ${coerced.reason}` };
     newValue = coerced.value;
     if (mode.kind === 'typed' && checkTypedValue) {
@@ -442,13 +543,19 @@ export async function writeAdminFieldValue(
       }
     }
   }
-  if (rowSpec?.derived && rowSpec.derived.sourceField === fieldName && mode.kind !== 'holdShown') {
+  const deriveKey = (): AdminFieldWriteResult | null => {
+    if (!(rowSpec?.derived && rowSpec.derived.sourceField === fieldName && mode.kind !== 'holdShown')) return null;
     // R-158: the row key is derived from this field; a value with no identity is refused.
     const derived = input.empty ? null : rowSpec.derived.derive(newValue);
     if (derived === null) {
       return { kind: 'INVALID', reason: `${tableName}.${fieldName} needs a value with an identity (not empty or whitespace); it keys the row` };
     }
     derivedPatch = { [rowSpec.derived.derivedField]: derived };
+    return null;
+  };
+  if (mode.kind !== 'pick') {
+    const refusal = deriveKey();
+    if (refusal) return refusal;
   }
 
   try {
@@ -461,14 +568,41 @@ export async function writeAdminFieldValue(
       const target = await resolveRow(tx, ipoId, tableName, input.row);
       if (!target) throw new Refusal({ kind: 'NOT_FOUND', reason: `${tableName} has no such row for IPO ${ipoId}` });
 
-      const current = await readVersion(tx, ipoId, tableName, fieldName, target.rowKey);
+      const current = await readVersion(tx, ipoId, tableName, fieldName, target.rowKey, target);
       const oldValue = await readCurrentValue(tx, ipoId, tableName, fieldName, target);
       if (current.version !== input.expectedVersion) {
         throw new Refusal({ kind: 'CONFLICT', currentValue: oldValue, setBy: current.setBy, setAt: current.setAt, currentVersion: current.version });
       }
 
-      let effectiveMode: Exclude<AdminWriteMode, { kind: 'holdShown' }>;
-      if (mode.kind === 'holdShown') {
+      let effectiveMode: ResolvedMode;
+      if (mode.kind === 'pick' && !input.empty) {
+        // M1 / OD-109: the value is the source's STORED answer, never the client's.
+        const answer = await loadStoredSourceAnswer(tx, {
+          ipoId,
+          tableName,
+          rowKey: target.rowKey,
+          fieldName,
+          sqlFieldName: column.name,
+          sourceLabel: mode.sourceLabel,
+          currentValue: oldValue,
+        });
+        if (!answer) {
+          throw new Refusal({
+            kind: 'INVALID',
+            reason: `${mode.sourceLabel} has no stored answer for ${tableName}.${fieldName}; pick a source that answered, or type the value with a source note`,
+          });
+        }
+        const coerced = coerceForColumn(column.columnType, answer.value);
+        if (coerced.ok === false) throw new Refusal({ kind: 'INVALID', reason: `${tableName}.${fieldName}: ${mode.sourceLabel}'s stored answer ${coerced.reason}` });
+        newValue = coerced.value;
+        const refusal = deriveKey();
+        if (refusal) throw new Refusal(refusal);
+        effectiveMode = { kind: 'pick', sourceLabel: mode.sourceLabel, readDate: answer.readDate };
+      } else if (mode.kind === 'pick') {
+        effectiveMode = { kind: 'pick', sourceLabel: mode.sourceLabel, readDate: null };
+      } else if (mode.kind === 'storedPick') {
+        effectiveMode = { kind: 'pick', sourceLabel: mode.sourceLabel, readDate: mode.readDate };
+      } else if (mode.kind === 'holdShown') {
         if (oldValue === null || oldValue === undefined) {
           throw new Refusal({
             kind: 'INVALID',
@@ -631,7 +765,7 @@ export async function writeAdminFieldValue(
         createdAt: now,
       });
 
-      const after = await readVersion(tx, ipoId, tableName, fieldName, rowKey);
+      const after = await readVersion(tx, ipoId, tableName, fieldName, rowKey, { rowKey, recordId: target.recordId });
       return { kind: 'OK' as const, ipoId, slug, tableName, fieldName, rowKey, oldValue, newValue, version: after.version };
     });
   } catch (error) {

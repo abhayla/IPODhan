@@ -20,7 +20,8 @@ interface ResolveConflictRequest {
     tableName: string;
     fieldName: string;
     resolution: 'keep_manual' | 'accept_scraper' | 'unprotect';
-    scraperValue?: any; // Value to apply if accepting scraper data
+    /** Ignored (OD-109): accepting loads the scraper source's STORED answer server-side. */
+    scraperValue?: unknown;
     scraperSource?: string; // The source label of the accepted value (provenance)
     expectedVersion?: string; // §9.2 item 20: version token when the row was opened
   }>;
@@ -63,7 +64,7 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
     // Process each conflict resolution
     for (const conflict of body.conflicts) {
       try {
-        const { ipoId, tableName, fieldName, resolution, scraperValue } = conflict;
+        const { ipoId, tableName, fieldName, resolution } = conflict;
 
         if (resolution === 'keep_manual') {
           // Keep the manual value - already protected, just log the resolution
@@ -85,17 +86,7 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
           response.resolved++;
 
         } else if (resolution === 'accept_scraper') {
-          // Accept scraper value - update field and remove protection
-          if (scraperValue === undefined) {
-            response.failed.push({
-              ipoId,
-              tableName,
-              fieldName,
-              error: 'scraperValue is required when accepting scraper data',
-            });
-            continue;
-          }
-
+          // Accept the scraper source's stored answer (any scraperValue sent is ignored, OD-109).
           // §9.2 items 3, 11 (OD-121): accepting the scraper's value is an admin PICK of it. It goes
           // through the ONE admin write (ADMIN provenance, protection kept, audit row, version
           // check, cache drop); there is no "return to the loop".
@@ -110,8 +101,9 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
             ipoId,
             tableName,
             fieldName,
-            value: scraperValue,
-            mode: { kind: 'pick', sourceLabel: conflict.scraperSource ?? 'scraper', readDate: null },
+            // M1 / OD-109: the value is the scraper source's STORED answer, loaded in the write's
+            // transaction; the client's scraperValue is never stored as that source's value.
+            mode: { kind: 'pick', sourceLabel: conflict.scraperSource ?? 'scraper' },
             expectedVersion,
             actor: { name: adminContext.adminName, adminId: adminContext.adminId },
             entryPoint: 'api/admin/conflicts/resolve',

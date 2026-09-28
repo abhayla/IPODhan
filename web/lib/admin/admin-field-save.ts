@@ -17,13 +17,45 @@ import {
 } from '@ipodhan/shared/services/admin-field-write';
 import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
-import { getIPOByIdKey } from '@/lib/cache/cache-keys';
+import {
+  getIPOByIdKey,
+  getIpoDetailsKey,
+  getFinancialDataKey,
+  getIpoFinancialsKey,
+  getListingPerformanceKey,
+  getIPOScoreKey,
+  getPeerCompaniesKey,
+  getDocumentsKey,
+} from '@/lib/cache/cache-keys';
+import { invalidateIPOCaches } from '@/lib/cache/ipo-cache-invalidation';
 import { revalidateForSlugs } from '@/lib/services/page-revalidation-service';
+
+/**
+ * M3 (F-171): the exact cache keys a save in each admin-writable table leaves stale, beyond the IPO's
+ * id/slug/detail/provenance keys every save drops. Each is the key the table's repository reads
+ * (web/lib/cache/cache-keys.ts). `ipos` also clears the list/search keys via invalidateIPOCaches.
+ * A table missing here is a table whose readers keep serving the old value for the TTL — the unit
+ * test asserts every admin-writable table has an entry.
+ */
+export const TABLE_CACHE_KEYS: Record<string, (ipoId: string) => string[]> = {
+  ipos: () => [],
+  ipo_details: (id) => [getIpoDetailsKey(id)],
+  financial_data: (id) => [getFinancialDataKey(id)],
+  ipo_financials: (id) => [getIpoFinancialsKey(id)],
+  listing_performance: (id) => [getListingPerformanceKey(id)],
+  ipo_scores: (id) => [getIPOScoreKey(id)],
+  peer_companies: (id) => [getPeerCompaniesKey(id)],
+  documents: (id) => [getDocumentsKey(id)],
+};
+
+export function tableCacheKeys(tableName: string, ipoId: string): string[] {
+  return TABLE_CACHE_KEYS[tableName]?.(ipoId) ?? [];
+}
 
 export interface AdminFieldSaveDeps {
   write: typeof writeAdminFieldValue;
   getDb: typeof getDb;
-  redis: () => { del(key: string): Promise<unknown> };
+  redis: () => { del(...keys: string[]): Promise<unknown>; keys?(pattern: string): Promise<string[]> };
   revalidatePath: (path: string) => void;
   checkTypedValue?: TypedValueCheck;
 }
@@ -45,6 +77,11 @@ export async function saveAdminFieldValue(
     try {
       const redis = deps.redis();
       await redis.del(getIPOByIdKey(result.ipoId));
+      for (const key of tableCacheKeys(result.tableName, result.ipoId)) await redis.del(key);
+      if (result.tableName === 'ipos' && typeof redis.keys === 'function') {
+        // The PATCH /api/admin/ipos/[id] path used to call this; every ipos save now does (list/search pages).
+        await invalidateIPOCaches(redis as never, result.ipoId, result.slug);
+      }
       // Drops getIPOBySlugKey, getIPODetailKey and getIPOProvenanceKey for the slug and
       // revalidates /ipos/<slug> (the same path the authenticated revalidate endpoint runs).
       await revalidateForSlugs([result.slug], { redis, revalidatePath: deps.revalidatePath });

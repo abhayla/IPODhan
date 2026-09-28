@@ -6,6 +6,18 @@ import { useAdminAuth } from '@/lib/context/AdminAuthContext';
 import Link from 'next/link';
 import { adminGet, adminPost, adminPatch, adminDelete } from '@/lib/admin/admin-api-client';
 import ExtractionResultsViewer from '@/components/admin/ExtractionResultsViewer';
+import {
+  loadFieldVersions,
+  saveTypedField,
+  holdShownField,
+  bulkHoldFields,
+  bulkHoldMessage,
+  versionKey,
+} from '@/lib/admin/admin-field-editor-client';
+
+/** The fields this editor shows with a save button; their version tokens load with their values (§9.2 item 20). */
+const EDITABLE_IPO_FIELDS = ['companyName', 'status', 'lotSize', 'priceRangeMin', 'priceRangeMax', 'openDate', 'closeDate', 'listingDate', 'issueSize', 'faceValue', 'objectives'];
+const EDITABLE_FINANCIAL_FIELDS = ['revenueFy2022', 'revenueFy2023', 'profitFy2022', 'profitFy2023', 'peRatio', 'roe', 'debtToEquity', 'netWorth'];
 import type {
   IPO,
   FinancialData,
@@ -262,6 +274,17 @@ export default function AdminEditIPOPage() {
   const [isEditingSubscription, setIsEditingSubscription] = useState(false);
   const [editedSubscription, setEditedSubscription] = useState<Partial<Subscription>>({});
   const [autoProtectSubscription, setAutoProtectSubscription] = useState(true);
+  // §9.2 item 20: the version token each field was opened with; OD-108: a typed value needs a source note.
+  const [fieldVersions, setFieldVersions] = useState<Record<string, string>>({});
+  const [sourceNote, setSourceNote] = useState('');
+
+  useEffect(() => {
+    if (!ipo?.id) return;
+    loadFieldVersions(adminGet, ipo.id, [
+      ...EDITABLE_IPO_FIELDS.map((fieldName) => ({ tableName: 'ipos', fieldName })),
+      ...EDITABLE_FINANCIAL_FIELDS.map((fieldName) => ({ tableName: 'financialData', fieldName })),
+    ]).then(setFieldVersions);
+  }, [ipo]);
 
   useEffect(() => {
     console.log('[AdminEditIPOPage] useEffect triggered for slug:', slug);
@@ -372,12 +395,12 @@ export default function AdminEditIPOPage() {
 
     try {
       setIsSaving(true);
-      await adminPost(`/api/admin/protection/fields/${ipo.id}`, {
-        tableName,
-        fieldName,
-        isProtected: !currentlyProtected,
-        editNote: !currentlyProtected ? 'Manually protected via admin panel' : 'Protection removed via admin panel'
-      });
+      if (currentlyProtected) {
+        // §9.2 item 11 (OD-121): an admin hold is never released; delete the value in the field editor instead.
+        throw new Error('An admin hold cannot be removed; to remove the value, save the field empty with a reason.');
+      }
+      await holdShownField(adminPost, { ipoId: ipo.id, tableName, fieldName, expectedVersion: fieldVersions[versionKey(tableName, fieldName)] });
+      setFieldVersions(await loadFieldVersions(adminGet, ipo.id, [{ tableName, fieldName }]).then((v) => ({ ...fieldVersions, ...v })));
 
       setSuccessMessage(`Field ${fieldName} ${!currentlyProtected ? 'protected' : 'unprotected'} successfully`);
       setTimeout(() => setSuccessMessage(''), 3000);
@@ -462,15 +485,15 @@ export default function AdminEditIPOPage() {
 
     try {
       setIsSaving(true);
-      await adminPost(`/api/admin/protection/fields/bulk`, {
-        ipoId: ipo.id,
-        tableName: 'ipos',
-        fieldNames: selectedFields,
-        isProtected: protect
-      });
-
-      setSuccessMessage(`${selectedFields.length} fields ${protect ? 'protected' : 'unprotected'} successfully`);
-      setTimeout(() => setSuccessMessage(''), 3000);
+      if (!protect) {
+        // §9.2 item 11 (OD-121): holds are never released in bulk either.
+        throw new Error('Admin holds cannot be removed; to remove a value, save it empty with a reason.');
+      }
+      const result = await bulkHoldFields(adminPost, { ipoId: ipo.id, tableName: 'ipos', fieldNames: selectedFields, versions: fieldVersions });
+      // Never "N succeeded" when some were refused: the refused fields are named with their reason.
+      setSuccessMessage(bulkHoldMessage(result));
+      setTimeout(() => setSuccessMessage(''), result.refused.length ? 10000 : 3000);
+      setFieldVersions({ ...fieldVersions, ...(await loadFieldVersions(adminGet, ipo.id, selectedFields.map((fieldName) => ({ tableName: 'ipos', fieldName })))) });
       setSelectedFields([]);
       await fetchProtectedFields(); // Refresh protections
     } catch (error) {
@@ -504,15 +527,17 @@ export default function AdminEditIPOPage() {
 
     try {
       setIsSaving(true);
-      await adminPatch('/api/admin/update-field', {
+      void autoProtect; // every admin save holds the field (§9.2 item 11)
+      if (recordId) throw new Error(`${tableName} rows are not admin-writable through this editor`);
+      const saved = await saveTypedField(adminPatch, {
         ipoId: ipo.id,
         tableName,
         fieldName,
         value,
-        recordId, // For subscription records
-        autoProtect,
-        editNote: `Updated via admin panel`
+        sourceNote,
+        expectedVersion: fieldVersions[versionKey(tableName, fieldName)],
       });
+      if (saved.version) setFieldVersions((prev) => ({ ...prev, [versionKey(tableName, fieldName)]: saved.version! }));
 
       setSuccessMessage(`Field ${fieldName} updated successfully`);
       setTimeout(() => setSuccessMessage(''), 3000);
@@ -953,6 +978,20 @@ export default function AdminEditIPOPage() {
       </div>
 
       {/* Success Message */}
+      <div className="mb-4">
+        <label htmlFor="admin-source-note" className="block text-sm font-medium text-gray-300">
+          Source note for typed values (required: document and page, or a URL)
+        </label>
+        <input
+          id="admin-source-note"
+          data-testid="admin-source-note"
+          type="text"
+          value={sourceNote}
+          onChange={(e) => setSourceNote(e.target.value)}
+          placeholder="e.g. RHP page 12"
+          className="mt-1 block w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm text-gray-100"
+        />
+      </div>
       {successMessage && (
         <div className="bg-green-500/10 border border-green-500 text-green-500 px-4 py-3 rounded-lg">
           {successMessage}

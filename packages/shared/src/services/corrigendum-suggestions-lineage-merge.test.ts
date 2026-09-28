@@ -94,7 +94,7 @@ describe('acceptCorrigendumSuggestion — field_sources dataLineage MERGE, never
     };
     const { db, fieldSourcesOnConflict } = makeStubDb(openRow);
 
-    const decision = await acceptCorrigendumSuggestion(db, 'conflict-1', 'tester@ipodhan.com', 'note', '-|-', 'admin-t1');
+    const decision = await acceptCorrigendumSuggestion(db, 'conflict-1', 'tester@ipodhan.com', 'note', '-|-|-', 'admin-t1');
     expect(decision.ok).toBe(true);
     // The accept is an admin PICK through the ONE admin write, carrying the editor's token.
     expect(writeSpy).toHaveBeenCalledTimes(1);
@@ -102,9 +102,9 @@ describe('acceptCorrigendumSuggestion — field_sources dataLineage MERGE, never
       ipoId: openRow.ipoId,
       tableName: 'ipos',
       fieldName: 'closeDate',
-      value: '2026-10-05',
-      mode: { kind: 'pick', sourceLabel: 'DOC' },
-      expectedVersion: '-|-',
+      // M1: the document value travels as a server-read storedPick, never as a client value.
+      mode: { kind: 'storedPick', sourceLabel: 'DOC', value: '2026-10-05' },
+      expectedVersion: '-|-|-',
       entryPoint: 'corrigendum-accept',
       detail: { documentId: 'doc-1', conflictId: 'conflict-1' },
     });

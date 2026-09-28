@@ -228,6 +228,8 @@ export default function IPOObjectivesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [objectivesVersion, setObjectivesVersion] = useState<string | undefined>(undefined);
+  const [sourceNote, setSourceNote] = useState('');
 
   useEffect(() => {
     loadIPO();
@@ -242,6 +244,8 @@ export default function IPOObjectivesPage() {
 
       if (response.success && response.data) {
         setIpo(response.data);
+        // §9.2 item 20: the token the objectives field opened with, sent back with the save.
+        setObjectivesVersion((response as { versions?: Record<string, string> }).versions?.objectives);
       } else {
         throw new Error(response.error || 'Failed to load IPO');
       }
@@ -257,8 +261,11 @@ export default function IPOObjectivesPage() {
     try {
       setIsSaving(true);
 
+      if (!sourceNote.trim()) throw new Error('A source note is required (document and page, or a URL).');
       const response = await adminPatch(`/api/admin/dynamic/ipos/${ipoId}`, {
-        objectives
+        objectives,
+        versions: objectivesVersion ? { objectives: objectivesVersion } : {},
+        sourceNote,
       });
 
       if (response.success) {
@@ -392,6 +399,21 @@ export default function IPOObjectivesPage() {
             <p className="text-sm text-gray-600 mt-1">
               Define how the funds raised from this IPO will be utilized
             </p>
+          </div>
+
+          <div className="mb-4">
+            <label htmlFor="objectives-source-note" className="block text-sm font-medium text-gray-700">
+              Source note (required: document and page, or a URL)
+            </label>
+            <input
+              id="objectives-source-note"
+              data-testid="objectives-source-note"
+              type="text"
+              value={sourceNote}
+              onChange={(e) => setSourceNote(e.target.value)}
+              placeholder="e.g. RHP page 45, Objects of the Issue"
+              className="mt-1 block w-full rounded border border-gray-300 px-3 py-2 text-sm"
+            />
           </div>
 
           <ObjectivesEditor

@@ -23,10 +23,13 @@ interface UpdateFieldRequest {
   value?: unknown;
   /** OD-121: delete the value; the reason is required. */
   emptyReason?: string;
-  /** 'pick' (with sourceLabel + readDate) or 'typed' (with sourceNote). Defaults to 'typed'. */
+  /**
+   * 'pick' names a source (sourceLabel) whose STORED answer is saved — the value and read date are
+   * loaded server-side and any `value` sent with a pick is ignored (OD-109). 'typed' (the default)
+   * saves `value` with a source note and runs the §1 check.
+   */
   mode?: 'pick' | 'typed';
   sourceLabel?: string;
-  readDate?: string | null;
   sourceNote?: string;
   /** Legacy name for the typed source note. */
   editNote?: string;
@@ -65,7 +68,7 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
 
   const mode: AdminWriteMode =
     body.mode === 'pick'
-      ? { kind: 'pick', sourceLabel: body.sourceLabel ?? '', readDate: body.readDate ?? null }
+      ? { kind: 'pick', sourceLabel: body.sourceLabel ?? '' }
       : { kind: 'typed', sourceNote: body.sourceNote ?? body.editNote ?? '' };
 
   try {
@@ -73,7 +76,7 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
       ipoId: body.ipoId,
       tableName: body.tableName,
       fieldName: body.fieldName,
-      value: body.value,
+      value: mode.kind === 'pick' ? undefined : body.value,
       empty: body.emptyReason !== undefined ? { reason: body.emptyReason } : undefined,
       mode,
       overrideReason: body.overrideReason,

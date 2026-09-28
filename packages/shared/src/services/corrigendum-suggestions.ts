@@ -339,8 +339,8 @@ export async function acceptCorrigendumSuggestion(
         ipoId: row.ipoId,
         tableName: target.table,
         fieldName: row.fieldName,
-        value,
-        mode: { kind: 'pick', sourceLabel: 'DOC', readDate: null },
+        // The document's value from the suggestion's own stored row, never from the request.
+        mode: { kind: 'storedPick', sourceLabel: 'DOC', readDate: null, value },
         expectedVersion,
         actor: { name: adminName, adminId },
         entryPoint: 'corrigendum-accept',

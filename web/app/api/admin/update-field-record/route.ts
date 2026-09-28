@@ -28,9 +28,9 @@ interface UpdateFieldRecordRequest {
   value?: unknown;
   /** OD-121: delete the value; the reason is required. */
   emptyReason?: string;
+  /** 'pick' saves the named source's STORED answer (value sent with a pick is ignored, OD-109). */
   mode?: 'pick' | 'typed';
   sourceLabel?: string;
-  readDate?: string | null;
   sourceNote?: string;
   /** Legacy name for the typed source note. */
   editNote?: string;
@@ -88,14 +88,14 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
 
     const mode =
       body.mode === 'pick'
-        ? { kind: 'pick' as const, sourceLabel: body.sourceLabel ?? '', readDate: body.readDate ?? null }
+        ? { kind: 'pick' as const, sourceLabel: body.sourceLabel ?? '' }
         : { kind: 'typed' as const, sourceNote: body.sourceNote ?? body.editNote ?? '' };
     const result = await saveAdminFieldValue({
       ipoId,
       tableName,
       row: { recordId },
       fieldName,
-      value: body.value,
+      value: mode.kind === 'pick' ? undefined : body.value,
       empty: typeof body.emptyReason === 'string' ? { reason: body.emptyReason } : undefined,
       mode,
       overrideReason: body.overrideReason,
