@@ -32,6 +32,7 @@ import { triggerPageRevalidation } from './services/page-revalidation-trigger.js
 import { configureTouchedSlugStore } from './services/touched-ipos-tracker.js';
 import { checkLiveSlotMisses, dbCoverageLoader, redisClaims } from './services/live-slot-miss-monitor.js';
 import { sendOwnerAlert } from './services/owner-notify.js';
+import { runAdminDigest, dbQueueCountsLoader, dbAuditEventsLoader, redisDigestStore } from './services/admin-alerts.js';
 import { CLI_SOURCE_ARGS } from './config/runnable-sources.js';
 import {
   runDocumentCycle,
@@ -159,6 +160,7 @@ export const STEP_NAMES = [
   'pruneDataConflicts',
   'dataQualityWatchdog',
   'pageRevalidation',
+  'adminDigest',
   'heartbeat',
 ] as const;
 export type StepName = typeof STEP_NAMES[number];
@@ -1778,6 +1780,10 @@ export async function main() {
       // (First draft put it second in the chain while its own comment claimed
       // it was last; the comment was right and the placement was wrong.)
       await runStep(cycleId, 'pageRevalidation', triggerPageRevalidation);
+      // §9.2 item 16 (OD-112): the 09:00 IST admin digest rides this data wake (no new cron). Sends
+      // once per IST day, at the first data wake at or after 09:00; every other wake records 'ok' with
+      // the reason it did not send. Reads only; after every writing step so its counts are this cycle's.
+      await runStep(cycleId, 'adminDigest', triggerAdminDigest);
 
       // T-194: job-completion heartbeat -- proves this cron cycle reached the
       // end of the pipeline (not that every source succeeded; source-level
@@ -2361,6 +2367,32 @@ async function triggerDataQualityWatchdog(): Promise<StepResult> {
   }
 
   return failures.length === 0 ? { status: 'ok' } : { status: 'failed', reason: failures.join('; ') };
+}
+
+/**
+ * §9.2 item 16 (OD-112): the daily admin digest, at the first data wake at or after 09:00 IST. A
+ * monitor, not a fetch: an unsent digest is a 'failed' step with the Notifier's reason (so the step
+ * ledger's consecutive-failure check sees a digest that never leaves), and the next wake retries it.
+ */
+async function triggerAdminDigest(): Promise<StepResult> {
+  const env = process.env.DEPLOY_SLOT ?? 'unknown-env';
+  const redis = getRedisClient() as unknown as Parameters<typeof redisDigestStore>[0];
+  const claims = redisClaims(redis);
+  const store = redisDigestStore(redis, env);
+  const loadAudit = dbAuditEventsLoader(db as unknown as Parameters<typeof dbAuditEventsLoader>[0]);
+  const r = await runAdminDigest({
+    env,
+    isClaimed: claims.isClaimed,
+    claim: claims.claim,
+    send: sendOwnerAlert,
+    loadQueueCounts: dbQueueCountsLoader(db as unknown as Parameters<typeof dbQueueCountsLoader>[0]),
+    loadEvents: async (since) => [...(await store.readSince(since)), ...(await loadAudit(since))],
+  });
+  logger.info(r, 'Admin digest step');
+  if (!r.due) return { status: 'ok', reason: `not due before 09:00 IST (${r.day})` };
+  if (r.alreadySent) return { status: 'ok', reason: `already sent for ${r.day}` };
+  if (r.sent) return { status: 'ok' };
+  return { status: 'failed', reason: `admin digest not sent: ${r.reason ?? 'unknown'}` };
 }
 
 /**
