@@ -505,5 +505,104 @@ describe('#620: SEBI walk requests that do not depend on the company are made on
       const chain = r.attempts.find((x) => x.source === 'CHAIN' && x.outcome.includes('rungs[DRHP]'));
       expect(chain!.outcome).toContain('SEBI:not_listed');
     }
+    // The audit trail tells a reused answer from a fetched one.
+    const chainB = b.attempts.find((x) => x.source === 'CHAIN' && x.outcome.includes('rungs[DRHP]'));
+    expect(chainB!.outcome).toMatch(/SEBI:reused:\d+/);
+    expect(b.attempts.some((x) => x.source === 'SEBI' && x.outcome.startsWith('reused:'))).toBe(true);
+  }, 30_000);
+
+  // B7 fix round: SEBI answers a dead session / rejected form with a 200
+  // HOMEPAGE (no table#sample_1). That walk never looked for the company.
+  const NOT_A_LISTING_HTML =
+    '<!DOCTYPE html><html><head><title>Securities and Exchange Board of India</title></head>' +
+    '<body><div class="home">Welcome</div></body></html>';
+
+  function runnerWith(fetcher: HttpFetcher) {
+    return new DocumentDiscoveryRunner({
+      fetcher,
+      store: new InMemoryDocumentFetchStateStore(),
+      documents: { async upsertDocument() { return { id: 'doc-x' }; } },
+      counter: new NetworkCounter(),
+      now: () => NOW,
+      sleep: async () => {},
+      skipDownload: false,
+    });
+  }
+  const chainOf = (r: { attempts: { source: string; outcome: string }[] }) =>
+    r.attempts.find((x) => x.source === 'CHAIN' && x.outcome.includes('rungs[DRHP]'))!.outcome;
+  const base = { symbol: null, segment: 'MAINBOARD', stage: 'UPCOMING' } as const;
+
+  it("a table-less 200 search is SEBI:failed (not not_listed), and the next IPO opens a fresh session", async () => {
+    const sebiRequests: string[] = [];
+    const fetcher: HttpFetcher = async (url, init) => {
+      if (url.includes('sebi.gov.in')) {
+        const body = String(init.body ?? '');
+        sebiRequests.push(`${init.method ?? 'GET'} ${body}`);
+        // IPO #2's search hits a dead session: SEBI answers its homepage.
+        if (/search=zqxv\+beqq/.test(body)) {
+          return { status: 200, contentType: 'text/html', body: Buffer.from(NOT_A_LISTING_HTML), url };
+        }
+        return { status: 200, contentType: 'text/html', body: Buffer.from(PAGE1_HTML), url };
+      }
+      return { status: 404, contentType: 'text/html', body: Buffer.from('nope'), url };
+    };
+    const runner = runnerWith(fetcher);
+    const r1 = await runner.runIpo({ ...base, id: 'i1', companyName: 'Zqxv Aaqq Holdings Limited' }, []);
+    const r2 = await runner.runIpo({ ...base, id: 'i2', companyName: 'Zqxv Beqq Holdings Limited' }, []);
+    const getsAfter2 = sebiRequests.filter((r) => r.startsWith('GET ')).length;
+    const r3 = await runner.runIpo({ ...base, id: 'i3', companyName: 'Zqxv Ceqq Holdings Limited' }, []);
+
+    expect(chainOf(r1)).toContain('SEBI:not_listed');
+    expect(chainOf(r2)).toContain('SEBI:searched:not_a_listing');
+    expect(chainOf(r2)).toContain('SEBI:failed:search');
+    expect(chainOf(r2)).not.toContain('SEBI:not_listed');
+    // Page 1 was reused by IPO #2, then dropped when its session proved dead.
+    expect(getsAfter2).toBe(1);
+    expect(sebiRequests.filter((r) => r.startsWith('GET ')).length).toBe(2);
+    // IPO #3 is not poisoned by IPO #2's failure: it walks and answers.
+    expect(chainOf(r3)).toContain('SEBI:not_listed');
+  }, 30_000);
+
+  it('a table-less 200 search is never memoised: a later IPO with the same search term re-POSTs it', async () => {
+    const searches: string[] = [];
+    const fetcher: HttpFetcher = async (url, init) => {
+      if (url.includes('sebi.gov.in')) {
+        const body = String(init.body ?? '');
+        if (/search=[^&\s]/.test(body)) {
+          searches.push(body);
+          // Only the FIRST search hits the dead session.
+          if (searches.length === 1) {
+            return { status: 200, contentType: 'text/html', body: Buffer.from(NOT_A_LISTING_HTML), url };
+          }
+        }
+        return { status: 200, contentType: 'text/html', body: Buffer.from(PAGE1_HTML), url };
+      }
+      return { status: 404, contentType: 'text/html', body: Buffer.from('nope'), url };
+    };
+    const runner = runnerWith(fetcher);
+    const a = await runner.runIpo({ ...base, id: 'k1', companyName: 'Zqxv Abqq Holdings Limited' }, []);
+    const b = await runner.runIpo({ ...base, id: 'k2', companyName: 'Zqxv Abqq Textiles Limited' }, []);
+    expect(chainOf(a)).toContain('SEBI:failed:search');
+    expect(searches.length).toBe(2);
+    expect(chainOf(b)).toContain('SEBI:not_listed');
+  }, 30_000);
+
+  it('a table-less 200 page-1 GET is never reused: each IPO re-fetches it and none says not_listed', async () => {
+    const sebiRequests: string[] = [];
+    const fetcher: HttpFetcher = async (url, init) => {
+      if (url.includes('sebi.gov.in')) {
+        sebiRequests.push(`${init.method ?? 'GET'} ${String(init.body ?? '')}`);
+        return { status: 200, contentType: 'text/html', body: Buffer.from(NOT_A_LISTING_HTML), url };
+      }
+      return { status: 404, contentType: 'text/html', body: Buffer.from('nope'), url };
+    };
+    const runner = runnerWith(fetcher);
+    const r1 = await runner.runIpo({ ...base, id: 'j1', companyName: 'Zqxv Aaqq Holdings Limited' }, []);
+    const r2 = await runner.runIpo({ ...base, id: 'j2', companyName: 'Zqxv Beqq Holdings Limited' }, []);
+    for (const r of [r1, r2]) {
+      expect(chainOf(r)).toContain('SEBI:page1:not_a_listing');
+      expect(chainOf(r)).not.toContain('SEBI:not_listed');
+    }
+    expect(sebiRequests.filter((r) => r.startsWith('GET ')).length).toBe(2);
   }, 30_000);
 });

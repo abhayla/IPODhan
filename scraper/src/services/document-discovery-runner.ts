@@ -55,6 +55,8 @@ import {
   parseSebiDetailPdfUrl,
   sebiListingUrlFor,
   fetchSebiListingRows,
+  isSebiListingPage,
+  extractSebiSearchForm,
   type SebiListingRow,
   type SebiFetcher,
 } from './sebi-source.js';
@@ -1738,12 +1740,16 @@ export class DocumentDiscoveryRunner {
 
     if (cached) {
       rungs.push('SEBI:cached');
+      // B7: an attempt marker, so the ledger can tell a walk answered from this
+      // cycle's memo from a run that had nothing to fetch (D5).
+      attempts.push({ source: 'SEBI', http: 200, ms: 0, outcome: 'reused:listing_cached', url: listingUrl });
       rows = cached.rows;
       row = cached.matched;
       listingEvidence = cached.evidence;
     } else {
       let lastEvidence: AnsweredResponse | null = null;
       let budgetExhausted = false;
+      let reusedCount = 0;
       const sebiFetch: SebiFetcher = async (url, init) => {
         const requestKey = `${init.method} ${url} ${init.body ?? ''}`;
         const reused = this.sebiResponses.get(requestKey);
@@ -1751,6 +1757,8 @@ export class DocumentDiscoveryRunner {
           // No network and no escalation GET: the identical request already
           // answered this cycle. Its 200 still backs this IPO's evidence.
           lastEvidence = reused.answered;
+          reusedCount += 1;
+          attempts.push({ source: 'SEBI', http: 200, ms: 0, outcome: `reused:listing_rows:${init.method}`, url });
           return { status: 200, body: reused.body };
         }
         if (!this.spendEscalationGet(ipo.id)) {
@@ -1775,7 +1783,13 @@ export class DocumentDiscoveryRunner {
         const answered = answeredFrom(res, url);
         if (answered) lastEvidence = answered;
         const body = res.body.toString('utf8');
-        if (res.status === 200 && answered) this.sebiResponses.set(requestKey, { body, answered });
+        // B7: only a real listing is shared with later IPOs. A dead session or a
+        // rejected form answers 200 with SEBI's homepage (no table); memoising
+        // that spread one IPO's failure to every IPO after it as not_listed. A
+        // page-1 GET must also carry the search form, or nobody can search off it.
+        const isListing =
+          isSebiListingPage(body) && (init.method !== 'GET' || extractSebiSearchForm(body) !== null);
+        if (res.status === 200 && answered && isListing) this.sebiResponses.set(requestKey, { body, answered });
         return { status: res.status, body };
       };
 
@@ -1785,6 +1799,7 @@ export class DocumentDiscoveryRunner {
         maxPages: SEBI_MAX_SEARCH_PAGES,
       });
       rungs.push(...result.rungs);
+      if (reusedCount > 0) rungs.push(`SEBI:reused:${reusedCount}`);
       rows = result.rows;
       row = result.matched;
       listingEvidence = lastEvidence;
@@ -1805,6 +1820,12 @@ export class DocumentDiscoveryRunner {
         // (H-3). A 4xx answers THIS company's search POST and is cached only
         // against this company's key.
         const { step, status } = result.aborted;
+        if (status === 200) {
+          // B7: a 200 that is not a listing means this walk's SEBI session is
+          // dead (or its form was rejected). Drop the shared page 1 so the next
+          // IPO opens a fresh session instead of searching off the dead one.
+          this.sebiResponses.delete(`GET ${listingUrl} `);
+        }
         const companyIndependent = status === 0 || status >= 500;
         this.sebiListings.set(companyIndependent ? listingUrl : cacheKey, 'failed');
         rungs.push(`SEBI:failed:${step}`);

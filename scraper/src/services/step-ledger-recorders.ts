@@ -359,7 +359,10 @@ export function planDocumentRunSteps(
   }
   // D5 — the zero-call short circuit. Only claimable when the run genuinely made
   // no network calls; a run that fetched and found nothing is not a short circuit.
-  if (result.networkCalls === 0) {
+  // B7 (#620): nor is a run answered wholly from responses reused this cycle —
+  // it made zero calls but DID look (the `reused:` attempt markers say so).
+  const answeredFromReuse = attempts.some((a) => a.outcome.startsWith('reused:'));
+  if (result.networkCalls === 0 && !answeredFromReuse) {
     writes.push({
       stepId: 'D5',
       status: 'DONE',
