@@ -59,10 +59,12 @@ export const PATCH = withAdminAuth(
 ## CSRF: cookie mutations must come from the site's own origin
 
 The cookie is `SameSite=Lax`, which is not enough on its own. For a cookie-authenticated
-POST/PUT/PATCH/DELETE, `withAdminAuth` (and the cookie branch of `requireAdminAuth`) require an
-`Origin` header in the allowed set — `NEXT_PUBLIC_BASE_URL`, `NEXT_PUBLIC_APP_URL`,
-`NEXT_PUBLIC_SITE_URL` and the comma-separated `ADMIN_ALLOWED_ORIGINS` — else 403. A missing
-`Origin` on a cookie mutation is 403; with no origin configured, every cookie mutation is 403.
+POST/PUT/PATCH/DELETE, `withAdminAuth` (and the cookie branch of `requireAdminAuth`) allow the
+request only when it is same-origin BY CONSTRUCTION: the `Origin` header's host equals the request's
+own host (`Host`, or the `X-Forwarded-Host` nginx passes on). No env var is needed — staging and prod
+set neither `NEXT_PUBLIC_BASE_URL` nor `ADMIN_ALLOWED_ORIGINS`, and an env-only allow-list refused
+every browser mutation there. `ADMIN_ALLOWED_ORIGINS` (comma-separated) and the public-URL env vars
+can still add origins. With no `Origin`, only `Sec-Fetch-Site: same-origin` passes; anything else is 403.
 Bearer (machine) calls carry no cookie and are exempt. Logic: `web/lib/admin-accounts/request-origin.ts`.
 
 ## Owner-only account routes

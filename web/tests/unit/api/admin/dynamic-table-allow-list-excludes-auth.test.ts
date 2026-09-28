@@ -1,38 +1,36 @@
 /**
- * Tier A review C1 regression guard, written on the admin-accounts branch: the dynamic admin editor
- * must never resolve the auth tables (admin_users, admin_sessions) by name.
- *
- * ENABLE AT REBASE: web/lib/admin/dynamic-table-allow-list.ts lands with feat/a2-admin-write-path.
- * Until this branch is rebased onto it, the module is absent and this suite is skipped (runIf); after
- * the rebase it runs with no edit. If it still reports "skipped" after the rebase, the module moved:
- * fix the path, never delete the test.
+ * Tier A review C1 regression guard (admin-accounts branch, spec §9.2 item 6): the dynamic admin
+ * editor must never resolve the auth tables (admin_users, admin_sessions) — not by their own names,
+ * and not under any alias key. The second case checks every table the allow-list can hand out by
+ * its real Postgres name, so listing `accounts: schema.adminUsers` fails too.
  */
 import { describe, it, expect } from 'vitest';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { getTableConfig } from 'drizzle-orm/pg-core';
+import { DYNAMIC_TABLE_NAMES, resolveDynamicTable } from '@/lib/admin/dynamic-table-allow-list';
 
-const MODULE_FILE = path.resolve(__dirname, '../../../../lib/admin/dynamic-table-allow-list.ts');
 const AUTH_TABLE_NAMES = ['adminUsers', 'admin_users', 'adminSessions', 'admin_sessions', 'AdminUsers', 'adminUsers '];
+const AUTH_PG_TABLES = new Set(['admin_users', 'admin_sessions']);
 
-describe.runIf(existsSync(MODULE_FILE))('dynamic table allow-list never reaches the auth tables', () => {
-  it('resolves no auth table name, for read or write', async () => {
-    const mod = await import(/* @vite-ignore */ pathToFileURL(MODULE_FILE).href);
+describe('dynamic table allow-list never reaches the auth tables', () => {
+  it('resolves no auth table name, for read or write', () => {
     for (const name of AUTH_TABLE_NAMES) {
-      expect(mod.resolveDynamicTable(name, 'read')).toBeNull();
-      expect(mod.resolveDynamicTable(name, 'write')).toBeNull();
-    }
-    for (const listed of mod.DYNAMIC_TABLE_NAMES as string[]) {
-      expect(listed.toLowerCase()).not.toContain('admin_user');
-      expect(listed.toLowerCase()).not.toContain('adminuser');
-      expect(listed.toLowerCase()).not.toContain('session');
+      expect(resolveDynamicTable(name, 'read')).toBeNull();
+      expect(resolveDynamicTable(name, 'write')).toBeNull();
     }
   });
 
-  it('refuses prototype keys', async () => {
-    const mod = await import(/* @vite-ignore */ pathToFileURL(MODULE_FILE).href);
+  it('hands out no auth table under any listed key (checked by the real Postgres table name)', () => {
+    expect(DYNAMIC_TABLE_NAMES.length).toBeGreaterThan(0);
+    for (const key of DYNAMIC_TABLE_NAMES) {
+      const table = resolveDynamicTable(key, 'read');
+      expect(table, key).not.toBeNull();
+      expect(AUTH_PG_TABLES.has(getTableConfig(table!).name), `${key} -> ${getTableConfig(table!).name}`).toBe(false);
+    }
+  });
+
+  it('refuses prototype keys', () => {
     for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
-      expect(mod.resolveDynamicTable(name, 'read')).toBeNull();
+      expect(resolveDynamicTable(name, 'read')).toBeNull();
     }
   });
 });

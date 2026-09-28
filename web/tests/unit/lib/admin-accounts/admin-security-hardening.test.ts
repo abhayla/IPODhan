@@ -109,11 +109,83 @@ describe('m4: cookie-authenticated mutations must come from the site origin', ()
     expect((await withAdminAuth(handler)(req)).status).toBe(200);
   });
 
-  it('fails closed for a mutation when no site origin is configured', () => {
-    const headers = new Headers({ origin: SITE });
+  it('fails closed for a mutation from an origin that is neither the request host nor configured', () => {
+    const headers = new Headers({ origin: SITE, host: 'other.example' });
     expect(cookieRequestOriginAllowed(headers, 'POST', {} as NodeJS.ProcessEnv)).toBe(false);
   });
+});
 
+describe('m4 by construction: same host passes with NO origin env (staging/prod set none)', () => {
+  const NO_ENV = {} as NodeJS.ProcessEnv;
+  function hostRequest(method: string, headers: Record<string, string>): NextRequest {
+    return new NextRequest('http://127.0.0.1:3012/api/admin/update-field', {
+      method,
+      headers: { cookie: `${ADMIN_SESSION_COOKIE}=${generateSessionToken()}`, ...headers },
+    });
+  }
+  beforeEach(() => {
+    vi.stubEnv('NEXT_PUBLIC_BASE_URL', '');
+    vi.stubEnv('ADMIN_ALLOWED_ORIGINS', '');
+  });
+
+  it('allows a cookie POST whose Origin host equals the Host header, with no env configured', async () => {
+    const handler = vi.fn(async () => new Response(null, { status: 200 }));
+    const req = hostRequest('POST', { host: 'staging.ipodhan.com', origin: 'https://staging.ipodhan.com' });
+    expect((await withAdminAuth(handler)(req)).status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows the Origin host when it equals X-Forwarded-Host (nginx passes the public host on)', () => {
+    const headers = new Headers({
+      host: '127.0.0.1:3012',
+      'x-forwarded-host': 'staging.ipodhan.com',
+      origin: 'https://staging.ipodhan.com',
+    });
+    expect(cookieRequestOriginAllowed(headers, 'PATCH', NO_ENV)).toBe(true);
+  });
+
+  it('answers 403 when the Origin host differs from the request host', async () => {
+    const handler = vi.fn();
+    const req = hostRequest('POST', { host: 'staging.ipodhan.com', origin: 'https://evil.example' });
+    expect((await withAdminAuth(handler)(req)).status).toBe(403);
+    const sibling = hostRequest('DELETE', { host: 'ipodhan.com', origin: 'https://staging.ipodhan.com' });
+    expect((await withAdminAuth(handler)(sibling)).status).toBe(403);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('with no Origin: Sec-Fetch-Site same-origin is allowed, anything else or nothing is 403', async () => {
+    const ok = vi.fn(async () => new Response(null, { status: 200 }));
+    const same = hostRequest('POST', { host: 'staging.ipodhan.com', 'sec-fetch-site': 'same-origin' });
+    expect((await withAdminAuth(ok)(same)).status).toBe(200);
+    const denied = vi.fn();
+    for (const site of ['cross-site', 'same-site', 'none']) {
+      const req = hostRequest('POST', { host: 'staging.ipodhan.com', 'sec-fetch-site': site });
+      expect((await withAdminAuth(denied)(req)).status).toBe(403);
+    }
+    expect((await withAdminAuth(denied)(hostRequest('POST', { host: 'staging.ipodhan.com' }))).status).toBe(403);
+    expect(denied).not.toHaveBeenCalled();
+  });
+
+  it('still exempts the Bearer machine token from the origin check', async () => {
+    sessionIdentity.mockResolvedValue(null);
+    const handler = vi.fn(async () => new Response(null, { status: 200 }));
+    const req = new NextRequest('http://127.0.0.1:3012/api/admin/status/update', {
+      method: 'POST',
+      headers: { authorization: 'Bearer machine-secret-value', host: 'x.example', origin: 'https://evil.example' },
+    });
+    expect((await withAdminAuth(handler)(req)).status).toBe(200);
+  });
+
+  it('ADMIN_ALLOWED_ORIGINS still adds an extra origin', () => {
+    const headers = new Headers({ host: 'ipodhan.com', origin: 'https://admin.ipodhan.com' });
+    expect(cookieRequestOriginAllowed(headers, 'POST', NO_ENV)).toBe(false);
+    expect(
+      cookieRequestOriginAllowed(headers, 'POST', { ADMIN_ALLOWED_ORIGINS: 'https://admin.ipodhan.com' } as NodeJS.ProcessEnv)
+    ).toBe(true);
+  });
+});
+
+describe('m4: requireAdminAuth callers', () => {
   it('requireAdminAuth (no request): cookie session needs a matching Origin or same-origin Sec-Fetch-Site', async () => {
     const cookie = `${ADMIN_SESSION_COOKIE}=${generateSessionToken()}`;
     requestHeaders.current = new Headers({ cookie, origin: 'https://evil.example' });

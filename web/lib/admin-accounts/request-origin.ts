@@ -2,9 +2,14 @@
  * Request-origin decisions for the admin session cookie (spec §9.2 item 6; Tier A review m4, M2).
  *
  * CSRF (m4): the session cookie is SameSite=Lax, which still lets a same-SITE page (any subdomain) or
- * an old browser send it on a cross-origin POST. So a cookie-authenticated mutation must also carry
- * an Origin header naming one of the site's own origins. Bearer-token (machine) calls carry no
- * cookie and are exempt.
+ * an old browser send it on a cross-origin POST. So a cookie-authenticated mutation must come from
+ * the site's own origin. "Own origin" is decided BY CONSTRUCTION: the Origin header's host equals the
+ * host this request was addressed to (the Host header, or the X-Forwarded-Host nginx passes on).
+ * No env var is needed; staging and prod set neither NEXT_PUBLIC_BASE_URL nor ADMIN_ALLOWED_ORIGINS,
+ * and an env-only allow-list refused every browser mutation there. A cross-origin page cannot forge
+ * either header: Host is a forbidden request header, and a custom X-Forwarded-Host forces a CORS
+ * preflight that this app never answers. ADMIN_ALLOWED_ORIGINS (and the public-URL env vars) can
+ * still add origins. Bearer-token (machine) calls carry no cookie and are exempt.
  *
  * Client IP (M2): the first X-Forwarded-For entry is whatever the caller wrote, so it is never used.
  * CF-Connecting-IP is set by Cloudflare, and X-Real-IP by nginx from the socket address.
@@ -43,16 +48,37 @@ export interface OriginHeaders {
   get(name: string): string | null;
 }
 
+/** The hosts (host[:port], lower-case) this request was addressed to: Host and X-Forwarded-Host. */
+export function requestOwnHosts(headers: OriginHeaders): Set<string> {
+  const hosts = new Set<string>();
+  const host = headers.get('host')?.trim().toLowerCase();
+  if (host) hosts.add(host);
+  const forwarded = headers.get('x-forwarded-host')?.split(',')[0]?.trim().toLowerCase();
+  if (forwarded) hosts.add(forwarded);
+  return hosts;
+}
+
+function originHost(origin: string): string | null {
+  try {
+    const url = new URL(origin.trim());
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    return url.host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * May a request authenticated by the session COOKIE proceed?
  *
  * - A known safe method (GET/HEAD/OPTIONS) proceeds: reads never mutate.
- * - Otherwise the Origin header must be present and in allowedAdminOrigins(). A missing Origin on a
- *   known mutation is refused: every current browser sends Origin on POST/PUT/PATCH/DELETE.
- * - method === null (a caller that cannot see the method, e.g. requireAdminAuth() with no request):
- *   an Origin, if sent, must match; with no Origin the browser's own Sec-Fetch-Site must say
- *   same-origin or none (a typed URL). Anything else is refused.
- * - No configured origin at all fails closed for mutations.
+ * - With an Origin header: allowed when its host equals the request's own host (Host or
+ *   X-Forwarded-Host), or when the origin is listed in allowedAdminOrigins(). Anything else,
+ *   including Origin "null", is refused.
+ * - With no Origin header: allowed only when the browser's own Sec-Fetch-Site says same-origin
+ *   (or "none", a typed URL, when the method is unknown). Anything else is refused.
+ * - method === null (a caller that cannot see the method, e.g. requireAdminAuth() with no request)
+ *   is treated as a possible mutation.
  */
 export function cookieRequestOriginAllowed(
   headers: OriginHeaders,
@@ -64,12 +90,15 @@ export function cookieRequestOriginAllowed(
 
   const origin = headers.get('origin');
   if (origin) {
+    const host = originHost(origin);
+    if (host === null) return false;
+    if (requestOwnHosts(headers).has(host)) return true;
     const normalized = toOrigin(origin);
     return normalized !== null && allowedAdminOrigins(env).has(normalized);
   }
-  if (upper) return false;
   const fetchSite = headers.get('sec-fetch-site');
-  return fetchSite === 'same-origin' || fetchSite === 'none';
+  if (fetchSite === 'same-origin') return true;
+  return upper === null && fetchSite === 'none';
 }
 
 /** The client IP for rate limiting. Never the first X-Forwarded-For entry (caller-controlled). */
