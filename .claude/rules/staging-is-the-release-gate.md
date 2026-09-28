@@ -26,6 +26,11 @@ The live inventory of those items — built / partial / not built, with the evid
 `docs/design/pull-model-completion-state.md`. That document is the work list; this rule is the policy.
 When an item lands, the document changes; this rule does not.
 
+**Narrowed by OD-133 (owner, 2026-09-28):** the first release after 2026-09-07 needs every fix on `main`,
+the admin-route auth fix, and the admin fix-a-value core plus queue (OD-135, OD-136), built and proven on
+staging. The remainders of items 6, 7 and 19 and every proof that waits on a real-world event do NOT block
+it; their fields reach the admin through the queue. Plan: `docs/contracts/plans/2026-09-28-finish-line-plan.md`.
+
 ## R3 — Verification before correctness fixes
 
 When a correctness defect and the verification that would prove it fixed are both outstanding, **build
@@ -74,7 +79,7 @@ a build item.
 ## CRITICAL RULES
 
 - MUST NOT plan, schedule or recommend a production deploy while `docs/design/pull-model-completion-state.md`
-  lists any item as partial or not built.
+  lists any item as partial or not built, except the remainders OD-133 releases from the gate.
 - MUST treat "staging is final" as feature-complete per R2, never as "CI is green".
 - MUST build the verification before the correctness fix when both are outstanding, except for an
   actively-losing defect per R3.
