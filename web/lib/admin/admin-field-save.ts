@@ -13,6 +13,7 @@ import {
   type AdminFieldWriteInput,
   type AdminFieldWriteResult,
   type TypedValueCheck,
+  STALE_EDITOR_REASON,
 } from '@ipodhan/shared/services/admin-field-write';
 import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
@@ -53,6 +54,88 @@ export async function saveAdminFieldValue(
     }
   }
   return result;
+}
+
+export interface AdminFieldsSaveRequest {
+  ipoId: string;
+  /** SQL table name (`ipos` or a one-row-per-IPO child table). */
+  tableName: string;
+  /** field name (camelCase) -> typed value */
+  values: Record<string, unknown>;
+  /** field name -> the version token the editor opened that field with (§9.2 item 20). */
+  versions: Record<string, string | undefined> | undefined;
+  sourceNote: string | undefined;
+  overrideReason?: string;
+  actor: AdminFieldWriteInput['actor'];
+  entryPoint: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}
+
+export interface AdminFieldsSaveOutcome {
+  saved: string[];
+  refused: { fieldName: string; result: Exclude<AdminFieldWriteResult, { kind: 'OK' }> } | null;
+}
+
+/**
+ * A multi-field admin form save: every field goes through the ONE admin write, one by one, each
+ * with its own token. A missing token refuses the whole save before anything is written; the first
+ * refusal stops the rest (fields already saved stay saved and are listed).
+ */
+export async function saveAdminFieldValues(
+  req: AdminFieldsSaveRequest,
+  deps: AdminFieldSaveDeps = defaultDeps
+): Promise<AdminFieldsSaveOutcome> {
+  const fields = Object.keys(req.values);
+  const missing = fields.find((f) => typeof req.versions?.[f] !== 'string' || req.versions?.[f] === '');
+  if (missing) {
+    return { saved: [], refused: { fieldName: missing, result: { kind: 'INVALID', reason: `${missing}: ${STALE_EDITOR_REASON}` } } };
+  }
+  const saved: string[] = [];
+  for (const fieldName of fields) {
+    const result = await saveAdminFieldValue(
+      {
+        ipoId: req.ipoId,
+        tableName: req.tableName,
+        fieldName,
+        value: req.values[fieldName],
+        mode: { kind: 'typed', sourceNote: req.sourceNote ?? '' },
+        overrideReason: req.overrideReason,
+        expectedVersion: req.versions![fieldName]!,
+        actor: req.actor,
+        entryPoint: req.entryPoint,
+        ipAddress: req.ipAddress ?? null,
+        userAgent: req.userAgent ?? null,
+      },
+      deps
+    );
+    if (result.kind !== 'OK') return { saved, refused: { fieldName, result } };
+    saved.push(fieldName);
+  }
+  return { saved, refused: null };
+}
+
+/** HTTP answer for a multi-field save: the first refusal's status (400/404/409), else 200. */
+export function adminFieldsSaveResponse(outcome: AdminFieldsSaveOutcome): NextResponse {
+  if (outcome.refused) {
+    const r = adminWriteResponse(outcome.refused.result);
+    return NextResponse.json(
+      { ...(outcome.refused.result as object), success: false, error: outcome.refused.result.kind, fieldName: outcome.refused.fieldName, saved: outcome.saved },
+      { status: r.status }
+    );
+  }
+  return NextResponse.json({ success: true, saved: outcome.saved });
+}
+
+/**
+ * §9.2 item 11 (OD-121): there is no "return to the loop". An admin hold is never released by an
+ * unprotect action; to remove a value the admin saves the field empty through the editor.
+ */
+export const UNPROTECT_GONE_MESSAGE =
+  'unprotect is gone (spec §9.2 item 11, OD-121): an admin value is never handed back to the sources; to remove it, save the field empty in the field editor';
+
+export function unprotectGoneResponse(): NextResponse {
+  return NextResponse.json({ success: false, error: 'GONE', reason: UNPROTECT_GONE_MESSAGE }, { status: 410 });
 }
 
 /** Map a write result to the HTTP answer every admin route gives: 400 / 404 / 409 / 200 (#1159). */

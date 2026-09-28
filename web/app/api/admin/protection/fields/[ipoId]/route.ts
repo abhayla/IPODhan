@@ -14,6 +14,7 @@ import { sendNotification } from '@/lib/services/notification-service';
 import { invalidateProtectionCache } from '@/lib/admin/field-protection-checker';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { eq } from 'drizzle-orm';
+import { unprotectGoneResponse } from '@/lib/admin/admin-field-save';
 
 interface RouteParams {
   params: Promise<{ ipoId: string }>;
@@ -96,6 +97,10 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext, { p
       );
     }
 
+    // §9.2 item 11 (OD-121): an admin hold is never released here; a delete is an admin-empty save
+    // through the field editor. Protecting (isProtected: true) still works.
+    if (!isProtected) return unprotectGoneResponse();
+
     const db = await getDb();
     const redis = getRedisClient();
     const repository = new FieldProtectionRepository(db, redis);
@@ -160,51 +165,7 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext, { p
 
 /**
  * DELETE /api/admin/protection/fields/[ipoId]
- * Delete field protection record
+ * Gone (410): deleting a protection record released an admin hold, which §9.2 item 11 (OD-121)
+ * forbids. To remove a value, save the field empty through the field editor.
  */
-export const DELETE = withAdminAuth(async (request: NextRequest, adminContext, { params }: RouteParams) => {
-  try {
-    const { ipoId } = await params;
-    const { searchParams } = new URL(request.url);
-    const tableName = searchParams.get('tableName');
-    const fieldName = searchParams.get('fieldName');
-
-    if (!tableName || !fieldName) {
-      return NextResponse.json(
-        { error: 'tableName and fieldName are required' },
-        { status: 400 }
-      );
-    }
-
-    const db = await getDb();
-    const redis = getRedisClient();
-    const repository = new FieldProtectionRepository(db, redis);
-
-    const deleted = await repository.delete(ipoId, tableName, fieldName);
-
-    if (!deleted) {
-      return NextResponse.json(
-        { error: 'Field protection not found' },
-        { status: 404 }
-      );
-    }
-
-    // Belt-and-braces cache invalidation (W-58) — see POST handler above.
-    await invalidateProtectionCache(ipoId, tableName, fieldName);
-
-    console.log(
-      `[Admin API] Field protection deleted for ${tableName}.${fieldName} by ${adminContext.adminName}`
-    );
-
-    return NextResponse.json({
-      success: true,
-      message: 'Field protection deleted successfully',
-    });
-  } catch (error) {
-    console.error('[Admin API] Failed to delete field protection:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete field protection' },
-      { status: 500 }
-    );
-  }
-});
+export const DELETE = withAdminAuth(async () => unprotectGoneResponse());

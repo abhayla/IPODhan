@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
+import { unprotectGoneResponse } from '@/lib/admin/admin-field-save';
 import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { FieldProtectionRepository } from '@/lib/repositories/field-protection-repository';
@@ -36,6 +37,10 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
         { status: 400 }
       );
     }
+
+    // §9.2 item 11 (OD-121): an admin hold is never released here; a delete is an admin-empty save
+    // through the field editor. Protecting (isProtected: true) still works.
+    if (!isProtected) return unprotectGoneResponse();
 
     const db = await getDb();
     const redis = getRedisClient();

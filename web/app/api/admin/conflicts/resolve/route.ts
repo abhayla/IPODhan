@@ -7,13 +7,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
-import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
-import { fieldProtectionMetadata } from '@ipodhan/shared/db/schema';
-import { readAdminFieldVersion } from '@ipodhan/shared/services/admin-field-write';
-import { saveAdminFieldValue, adminWriteResponse } from '@/lib/admin/admin-field-save';
-import { eq, and } from 'drizzle-orm';
-import { invalidateProtectionCache } from '@/lib/admin/field-protection-checker';
+import { STALE_EDITOR_REASON } from '@ipodhan/shared/services/admin-field-write';
+import { saveAdminFieldValue, adminWriteResponse, unprotectGoneResponse, UNPROTECT_GONE_MESSAGE } from '@/lib/admin/admin-field-save';
 import { logAudit, AuditActionTypes, getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
 import { logger } from '@/lib/logger';
@@ -56,7 +52,6 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
       );
     }
 
-    const db = await getDb();
     const redis = getRedisClient();
 
     const response: ResolveConflictResponse = {
@@ -104,10 +99,13 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
           // §9.2 items 3, 11 (OD-121): accepting the scraper's value is an admin PICK of it. It goes
           // through the ONE admin write (ADMIN provenance, protection kept, audit row, version
           // check, cache drop); there is no "return to the loop".
-          const expectedVersion =
-            conflict.expectedVersion ??
-            (await readAdminFieldVersion(db as never, ipoId, tableName, fieldName))?.version ??
-            '';
+          // §9.2 item 20: the token comes from the client that opened the row; never read here.
+          if (!conflict.expectedVersion) {
+            if (body.conflicts.length === 1) return adminWriteResponse({ kind: 'INVALID', reason: STALE_EDITOR_REASON });
+            response.failed.push({ ipoId, tableName, fieldName, error: STALE_EDITOR_REASON });
+            continue;
+          }
+          const expectedVersion = conflict.expectedVersion;
           const write = await saveAdminFieldValue({
             ipoId,
             tableName,
@@ -129,36 +127,11 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
           response.resolved++;
 
         } else if (resolution === 'unprotect') {
-          // Remove protection but keep current value
-          await db
-            .delete(fieldProtectionMetadata)
-            .where(
-              and(
-                eq(fieldProtectionMetadata.ipoId, ipoId),
-                eq(fieldProtectionMetadata.tableName, tableName),
-                eq(fieldProtectionMetadata.fieldName, fieldName)
-              )
-            );
-
-          // Invalidate cache
-          await invalidateProtectionCache(ipoId, tableName, fieldName);
-
-          // Log audit
-          await logAudit({
-            adminUser: adminContext.adminName,
-            actionType: AuditActionTypes.PROTECTION_REMOVED,
-            ipoId,
-            tableName,
-            fieldName,
-            details: {
-              reason: 'Unprotected field to allow future scraper updates',
-            },
-            ipAddress: getClientIP(request),
-            userAgent: getUserAgent(request),
-            success: true,
-          });
-
-          response.resolved++;
+          // §9.2 item 11 (OD-121): there is no "return to the loop". An admin hold is never
+          // released; to remove a value, save it empty through the field editor.
+          if (body.conflicts.length === 1) return unprotectGoneResponse();
+          response.failed.push({ ipoId, tableName, fieldName, error: UNPROTECT_GONE_MESSAGE });
+          continue;
 
         } else {
           response.failed.push({

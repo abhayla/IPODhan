@@ -1819,13 +1819,8 @@ export default function AdminEditIPOPage() {
                         >
                           Protect Selected
                         </button>
-                        <button
-                          onClick={() => handleBulkProtect(false)}
-                          disabled={isSaving || selectedFields.length === 0}
-                          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          Unprotect Selected
-                        </button>
+                        {/* §9.2 item 11 (OD-121): no "Unprotect" — an admin value is never handed back to
+                            the sources; to remove one, save the field empty in the field editor. */}
                       </div>
                     </div>
 
@@ -1873,7 +1868,9 @@ export default function AdminEditIPOPage() {
                             {/* Individual toggle switch */}
                             <button
                               onClick={() => handleToggleFieldProtection('ipos', fieldName, isProtected)}
-                              disabled={isSaving}
+                              // §9.2 item 11 (OD-121): a hold is never released here; only protecting is offered.
+                              disabled={isSaving || isProtected}
+                              title={isProtected ? 'Protected. To remove the value, save the field empty in the editor.' : 'Protect this field'}
                               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                                 isProtected ? 'bg-green-600' : 'bg-gray-600'
                               } ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}

@@ -1284,6 +1284,7 @@ jobs:
           tests/integration/prospectus-ratio-reason-ledger.integration.test.ts
           tests/integration/repair-ledger-written-rows.integration.test.ts
           tests/integration/repair-ledger-guarded-requeue.integration.test.ts
+          tests/integration/admin-field-write.integration.test.ts
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under

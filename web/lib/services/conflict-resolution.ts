@@ -35,7 +35,11 @@ import { ipos } from '@/lib/db';
 import { DataConflictsRepository, type DataConflictRecord, type ConflictStats } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import { FieldProtectionRepository } from '@/lib/repositories/field-protection-repository';
 import { saveAdminFieldValue } from '@/lib/admin/admin-field-save';
-import { readAdminFieldVersion, type AdminFieldWriteResult } from '@ipodhan/shared/services/admin-field-write';
+import {
+  readAdminFieldVersion,
+  STALE_EDITOR_REASON,
+  type AdminFieldWriteResult,
+} from '@ipodhan/shared/services/admin-field-write';
 import type { ScraperSource } from '@ipodhan/shared/db/types';
 import {
   acceptCorrigendumSuggestion,
@@ -76,6 +80,8 @@ export interface EnrichedConflict extends DataConflictRecord {
   ipoName: string;
   ipoSlug: string;
   ipoStatus: string;
+  /** §9.2 item 20: the field's version token as the queue shows it; the resolve call sends it back. */
+  version: string | null;
 }
 
 /**
@@ -146,6 +152,7 @@ export class ConflictResolutionService {
           ipoName: ipo.companyName,
           ipoSlug: ipo.slug,
           ipoStatus: ipo.status,
+          version: await this.versionOf(conflict),
         });
       }
     }
@@ -173,12 +180,22 @@ export class ConflictResolutionService {
       return [];
     }
 
-    return conflicts.map(conflict => ({
-      ...conflict,
-      ipoName: ipo.companyName,
-      ipoSlug: ipo.slug,
-      ipoStatus: ipo.status,
-    }));
+    const out: EnrichedConflict[] = [];
+    for (const conflict of conflicts) {
+      out.push({
+        ...conflict,
+        ipoName: ipo.companyName,
+        ipoSlug: ipo.slug,
+        ipoStatus: ipo.status,
+        version: await this.versionOf(conflict),
+      });
+    }
+    return out;
+  }
+
+  /** The token the queue row opens with (null for a table the admin write does not cover). */
+  private async versionOf(conflict: DataConflictRecord): Promise<string | null> {
+    return (await readAdminFieldVersion(db as never, conflict.ipoId, conflict.tableName, conflict.fieldName))?.version ?? null;
   }
 
   /**
@@ -211,9 +228,10 @@ export class ConflictResolutionService {
       // Any other choice dismisses it and writes nothing. It never takes the generic path below,
       // which writes only `ipos` columns and records no ADMIN provenance.
       if (isCorrigendumSuggestion(conflict)) {
+        if (options.resolvedSource === 'ADMIN' && !options.expectedVersion) return this.staleEditor(conflictId, conflict);
         const decision =
           options.resolvedSource === 'ADMIN'
-            ? await acceptCorrigendumSuggestion(db as never, conflictId, options.resolvedBy, options.adminNote)
+            ? await acceptCorrigendumSuggestion(db as never, conflictId, options.resolvedBy, options.adminNote, options.expectedVersion!)
             : await dismissCorrigendumSuggestion(db as never, conflictId, options.resolvedBy, options.adminNote);
         await this.clearCachesAfterSuggestionDecision(conflict.ipoId);
         return {
@@ -224,6 +242,7 @@ export class ConflictResolutionService {
           appliedValue: decision.appliedValue ?? null,
           fieldProtected: decision.ok && options.resolvedSource === 'ADMIN',
           error: decision.error,
+          writeResult: decision.writeResult,
         };
       }
 
@@ -237,10 +256,9 @@ export class ConflictResolutionService {
       // audit row and the version check, then the cache drop.
       let fieldProtected = false;
       if (options.applyToDatabase) {
-        const expectedVersion =
-          options.expectedVersion ??
-          (await readAdminFieldVersion(db as never, conflict.ipoId, conflict.tableName, conflict.fieldName))?.version ??
-          '';
+        // §9.2 item 20: the token comes from the client that opened the row, never read here.
+        if (!options.expectedVersion) return this.staleEditor(conflictId, conflict);
+        const expectedVersion = options.expectedVersion;
         const write = await saveAdminFieldValue({
           ipoId: conflict.ipoId,
           tableName: conflict.tableName,
@@ -307,12 +325,27 @@ export class ConflictResolutionService {
     }
   }
 
+  private staleEditor(conflictId: string, conflict: DataConflictRecord): ResolutionResult {
+    return {
+      success: false,
+      conflictId,
+      ipoId: conflict.ipoId,
+      fieldName: conflict.fieldName,
+      appliedValue: null,
+      fieldProtected: false,
+      error: STALE_EDITOR_REASON,
+      writeResult: { kind: 'INVALID', reason: STALE_EDITOR_REASON },
+    };
+  }
+
   /**
-   * Bulk resolve conflicts (choose one source for multiple conflicts)
+   * Bulk resolve conflicts (choose one source for multiple conflicts). Each item carries the token
+   * its queue row was opened with (§9.2 item 20): `versions[conflictId]`.
    */
   async bulkResolve(
     conflictIds: string[],
-    options: Omit<ResolveConflictOptions, 'adminNote'>
+    options: Omit<ResolveConflictOptions, 'adminNote' | 'expectedVersion'>,
+    versions: Record<string, string | undefined> = {}
   ): Promise<{
     successful: number;
     failed: number;
@@ -324,6 +357,7 @@ export class ConflictResolutionService {
       const result = await this.resolveConflict(id, {
         ...options,
         adminNote: undefined,
+        expectedVersion: versions[id],
       });
       results.push(result);
     }
@@ -407,8 +441,10 @@ export class ConflictResolutionService {
             resolvedSource: 'ADMIN',
             resolutionReason: 'Auto-resolved: ADMIN source always wins',
             resolvedBy: 'system',
-            applyToDatabase: true,
-            protectField: true,
+            // A SYSTEM action never writes an admin value or a hold (§9.2 items 3, 11): the ADMIN
+            // side is already the stored, protected value, so auto-resolve only closes the queue row.
+            applyToDatabase: false,
+            protectField: false,
           });
         }
 
@@ -428,8 +464,10 @@ export class ConflictResolutionService {
             resolvedSource: 'ADMIN',
             resolutionReason: 'Auto-resolved: ADMIN source always wins',
             resolvedBy: 'system',
-            applyToDatabase: true,
-            protectField: true,
+            // A SYSTEM action never writes an admin value or a hold (§9.2 items 3, 11): the ADMIN
+            // side is already the stored, protected value, so auto-resolve only closes the queue row.
+            applyToDatabase: false,
+            protectField: false,
           });
         }
 

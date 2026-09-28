@@ -38,6 +38,7 @@ import {
   listingPerformance,
 } from '../db/schema';
 import { IPORepository } from '../repositories/ipo-repository';
+import { validateIPOData } from '../utils/ipo-field-checks';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -66,6 +67,9 @@ const NON_EDITABLE_FIELDS = new Set([
 
 export const ADMIN_FIELD_AUDIT_ACTION = 'Field Updated';
 
+/** §9.2 item 20: a save without the token the editor opened with is refused, never filled in server-side. */
+export const STALE_EDITOR_REASON = 'stale editor, reload: the save carries no version token (expectedVersion); reopen the field and save again';
+
 export interface AdminActor {
   name: string;
   adminId: string | null;
@@ -91,6 +95,8 @@ export interface AdminFieldWriteInput {
   actor: AdminActor;
   /** Which entry point called (audit detail only). */
   entryPoint: string;
+  /** Extra provenance for the lineage and audit detail (e.g. the corrigendum's documentId, conflictId). */
+  detail?: Record<string, unknown>;
   ipAddress?: string | null;
   userAgent?: string | null;
 }
@@ -239,6 +245,24 @@ export async function readAdminFieldVersion(db: Db, ipoId: string, tableName: st
   return { ...v, currentValue: await readCurrentValue(db, ipoId, tableName, fieldName) };
 }
 
+const NUMERIC_CHECK_FIELDS = new Set(['lotSize', 'priceRangeMin', 'priceRangeMax']);
+
+/**
+ * §1 check for a typed `ipos` value (spec §9.2 item 12, OD-108): the SAME `validateIPOData` the
+ * scraper runs on every write, over the stored row with the typed value in place. Only errors on
+ * the edited field refuse the save; the rest of the row is not the admin's edit.
+ */
+export function ipoFieldCheckFailure(row: Record<string, unknown>, fieldName: string, value: unknown): string | null {
+  const merged: Record<string, unknown> = { ...row, [fieldName]: value };
+  for (const f of NUMERIC_CHECK_FIELDS) {
+    const v = merged[f];
+    if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) merged[f] = Number(v);
+  }
+  const result = validateIPOData(merged as never, 'ADMIN');
+  const own = result.errors.filter((e) => e.field === fieldName);
+  return own.length ? own.map((e) => e.message).join('; ') : null;
+}
+
 /** Postgres data exceptions (class 22) and integrity violations (class 23) are a bad value, not a server fault (#1159). */
 function badValueReason(error: unknown): string | null {
   const e = error as { code?: unknown; message?: unknown; cause?: { code?: unknown; message?: unknown } };
@@ -264,7 +288,7 @@ export async function writeAdminFieldValue(
   if (NON_EDITABLE_FIELDS.has(fieldName)) return { kind: 'INVALID', reason: `${tableName}.${fieldName} is not editable` };
   if (!actor?.name?.trim()) return { kind: 'INVALID', reason: 'the admin name is required' };
   if (typeof input.expectedVersion !== 'string' || input.expectedVersion === '') {
-    return { kind: 'INVALID', reason: 'expectedVersion is required: read it with GET /api/admin/update-field before saving' };
+    return { kind: 'INVALID', reason: STALE_EDITOR_REASON };
   }
   if (mode.kind === 'typed' && !mode.sourceNote?.trim() && !input.empty) {
     return { kind: 'INVALID', reason: 'a typed value needs a short source note (document and page, or a URL) — OD-108' };
@@ -303,6 +327,17 @@ export async function writeAdminFieldValue(
         throw new Refusal({ kind: 'CONFLICT', currentValue: oldValue, setBy: current.setBy, setAt: current.setAt, currentVersion: current.version });
       }
 
+      if (tableName === 'ipos' && mode.kind === 'typed' && !input.empty && !checkFailure) {
+        const [row] = (await tx.select().from(schema.ipos).where(eq(schema.ipos.id, ipoId)).limit(1)) as Array<Record<string, unknown>>;
+        checkFailure = ipoFieldCheckFailure(row ?? {}, fieldName, newValue);
+        if (checkFailure && !input.overrideReason?.trim()) {
+          throw new Refusal({
+            kind: 'INVALID',
+            reason: `${tableName}.${fieldName} fails its check: ${checkFailure}. Save again with a written reason to keep it.`,
+          });
+        }
+      }
+
       const now = new Date();
       if (tableName === 'ipos') {
         await IPORepository.applyAdminCorrigendumValue(tx, ipoId, fieldName, newValue);
@@ -328,6 +363,7 @@ export async function writeAdminFieldValue(
         ...(input.empty ? { adminEmpty: true, emptyReason: input.empty.reason } : {}),
         by: actor.name,
         adminId: actor.adminId,
+        ...(input.detail ?? {}),
       };
       const prevSourceRow = await tx
         .select({ source: fieldSources.source })

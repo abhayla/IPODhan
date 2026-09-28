@@ -30,6 +30,8 @@ const EXEMPT_GLOBS = [
   /^scripts\/lib\/substance-checks\.mjs$/,
   /^scripts\/audit-.*\.mjs$/,
   /^scraper\/src\/utils\/data-validation\.ts$/,
+  // Contract 2 item A2 (OD-108): the scraper's field checks moved here; data-validation.ts re-exports them.
+  /^packages\/shared\/src\/utils\/ipo-field-checks\.ts$/,
   // T-487: a new/changed per-entry file counts as a detection change on its
   // own — no need to wait for the generated aggregate to be regenerated too.
   /^docs\/reviews\/detection-checks\/[^/]+\.json$/,

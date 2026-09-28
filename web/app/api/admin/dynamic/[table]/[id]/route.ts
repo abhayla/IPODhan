@@ -19,16 +19,24 @@ import { eq, getTableColumns } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
 import { validateRecord } from '@/lib/admin/dynamic-validation-rules';
 import { logger } from '@/lib/logger';
+import { resolveDynamicTable } from '@/lib/admin/dynamic-table-allow-list';
+import { getAdminIdentity } from '@/lib/middleware/admin-auth';
+import { readAdminFieldVersion } from '@ipodhan/shared/services/admin-field-write';
+import { saveAdminFieldValues, adminFieldsSaveResponse } from '@/lib/admin/admin-field-save';
+import {
+  holdsIpoFieldValues,
+  isAdminWritableTable,
+  sqlTableName,
+  IPO_FIELD_TABLE_REFUSAL,
+  SAVE_META_KEYS,
+} from '@/lib/admin/ipo-field-tables';
 
 /**
  * Get the table object from schema by name
  */
-function getTableFromSchema(tableName: string): PgTable | null {
-  const table = (schema as any)[tableName];
-  if (!table || typeof table !== 'object') {
-    return null;
-  }
-  return table as PgTable;
+function getTableFromSchema(tableName: string, mode: 'read' | 'write'): PgTable | null {
+  // Explicit allow-list (C1): never `schema[tableName]`; admin/auth tables resolve to null -> 404.
+  return resolveDynamicTable(tableName, mode);
 }
 
 /**
@@ -71,7 +79,7 @@ export async function GET(
     if (authError) return authError;
 
     const { table: tableName, id } = await params;
-    const table = getTableFromSchema(tableName);
+    const table = getTableFromSchema(tableName, 'read');
 
     if (!table) {
       return NextResponse.json(
@@ -115,9 +123,22 @@ export async function GET(
       snakeCaseRecord[snakeKey] = value;
     }
 
+    // §9.2 item 20: the editor saves each field with the token it loaded here.
+    let versions: Record<string, string> | undefined;
+    if (isAdminWritableTable(table)) {
+      const sqlName = sqlTableName(table);
+      const ipoId = String(sqlName === 'ipos' ? (record as any).id : (record as any).ipoId);
+      versions = {};
+      for (const field of Object.keys(getTableColumns(table))) {
+        const v = await readAdminFieldVersion(db as never, ipoId, sqlName, field);
+        if (v) versions[field] = v.version;
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: snakeCaseRecord,
+      versions,
       message: 'Record retrieved successfully'
     });
   } catch (error) {
@@ -148,13 +169,45 @@ export async function PATCH(
     if (authError) return authError;
 
     const { table: tableName, id } = await params;
-    const table = getTableFromSchema(tableName);
+    const table = getTableFromSchema(tableName, 'write');
 
     if (!table) {
       return NextResponse.json(
         { success: false, error: `Table "${tableName}" not found` },
         { status: 404 }
       );
+    }
+
+    // §9.2 items 3, 11, 20 (F-170): a one-row-per-IPO table saves each CHANGED field through the ONE
+    // admin write with the token the editor loaded (GET returns them as `versions`); any other
+    // table holding IPO data is refused. Only non-IPO reference tables take the direct path below.
+    if (isAdminWritableTable(table)) {
+      const body = (await request.json()) as Record<string, unknown>;
+      const camel: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(body)) camel[key.replace(/_([a-z])/g, (_, l) => l.toUpperCase())] = value;
+      const meta = { versions: camel.versions, sourceNote: camel.sourceNote, overrideReason: camel.overrideReason };
+      for (const k of [...SAVE_META_KEYS, 'id', 'ipoId', 'createdAt', 'updatedAt', 'dataSource']) delete camel[k];
+      const sqlName = sqlTableName(table);
+      const pk = (table as any)[getPrimaryKeyColumn(table)];
+      const [row] = (await db.select().from(table).where(eq(pk, id)).limit(1)) as Array<Record<string, unknown>>;
+      if (!row) return NextResponse.json({ success: false, error: 'Record not found' }, { status: 404 });
+      const ipoId = sqlName === 'ipos' ? String(row.id) : String(row.ipoId);
+      const outcome = await saveAdminFieldValues({
+        ipoId,
+        tableName: sqlName,
+        values: camel,
+        versions: meta.versions as Record<string, string | undefined> | undefined,
+        sourceNote: typeof meta.sourceNote === 'string' ? meta.sourceNote : undefined,
+        overrideReason: typeof meta.overrideReason === 'string' ? meta.overrideReason : undefined,
+        actor: { name: getAdminIdentity(request), adminId: null },
+        entryPoint: 'api/admin/dynamic/[table]/[id]',
+        ipAddress: request.headers.get('x-forwarded-for'),
+        userAgent: request.headers.get('user-agent'),
+      });
+      return adminFieldsSaveResponse(outcome);
+    }
+    if (holdsIpoFieldValues(table)) {
+      return NextResponse.json({ success: false, error: 'USE_FIELD_EDITOR', reason: IPO_FIELD_TABLE_REFUSAL }, { status: 400 });
     }
 
     // Parse request body
@@ -291,13 +344,18 @@ export async function DELETE(
     if (authError) return authError;
 
     const { table: tableName, id } = await params;
-    const table = getTableFromSchema(tableName);
+    const table = getTableFromSchema(tableName, 'write');
 
     if (!table) {
       return NextResponse.json(
         { success: false, error: `Table "${tableName}" not found` },
         { status: 404 }
       );
+    }
+
+    // §9.2 items 3, 11 (F-170): IPO field values are never written by a direct row write.
+    if (holdsIpoFieldValues(table)) {
+      return NextResponse.json({ success: false, error: 'USE_FIELD_EDITOR', reason: IPO_FIELD_TABLE_REFUSAL }, { status: 400 });
     }
 
     // Get primary key column

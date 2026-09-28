@@ -147,4 +147,17 @@ describe.skipIf(!DATABASE_URL)('A2 admin field write (ipodhan_test)', () => {
     expect(await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.ipoId, IPO))).toHaveLength(0);
     expect(await db.select().from(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO))).toHaveLength(0);
   });
+
+  it('item 12 / OD-108: a typed value runs the SAME check the scraper runs (validateIPOData); refused unless a reason is written', async () => {
+    const v = await readAdminFieldVersion(db as never, IPO, 'ipos', 'lotSize');
+    const refused = await writeAdminFieldValue(db as never, base({ fieldName: 'lotSize', value: 1, expectedVersion: v!.version }));
+    expect(refused.kind).toBe('INVALID');
+    expect((refused as { reason: string }).reason).toMatch(/lot_size = 1 is NEVER valid/);
+    expect(await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.ipoId, IPO))).toHaveLength(0);
+
+    const kept = await writeAdminFieldValue(db as never, base({ fieldName: 'lotSize', value: 1, overrideReason: 'RHP p.4 really says 1', expectedVersion: v!.version }));
+    expect(kept.kind).toBe('OK');
+    const [audit] = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.ipoId, IPO));
+    expect(audit.details).toMatchObject({ overrideReason: 'RHP p.4 really says 1', checkFailure: expect.stringMatching(/NEVER valid/) });
+  });
 });

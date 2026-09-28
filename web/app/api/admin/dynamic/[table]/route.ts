@@ -19,16 +19,15 @@ import { desc, asc, like, and, or, sql, eq, getTableColumns } from 'drizzle-orm'
 import { PgTable } from 'drizzle-orm/pg-core';
 import { validateRecord } from '@/lib/admin/dynamic-validation-rules';
 import { logger } from '@/lib/logger';
+import { resolveDynamicTable } from '@/lib/admin/dynamic-table-allow-list';
+import { holdsIpoFieldValues, IPO_FIELD_TABLE_REFUSAL } from '@/lib/admin/ipo-field-tables';
 
 /**
  * Get the table object from schema by name
  */
-function getTableFromSchema(tableName: string): PgTable | null {
-  const table = (schema as any)[tableName];
-  if (!table || typeof table !== 'object') {
-    return null;
-  }
-  return table as PgTable;
+function getTableFromSchema(tableName: string, mode: 'read' | 'write'): PgTable | null {
+  // Explicit allow-list (C1): never `schema[tableName]`; admin/auth tables resolve to null -> 404.
+  return resolveDynamicTable(tableName, mode);
 }
 
 /**
@@ -44,13 +43,18 @@ export async function POST(
     if (authError) return authError;
 
     const { table: tableName } = await params;
-    const table = getTableFromSchema(tableName);
+    const table = getTableFromSchema(tableName, 'write');
 
     if (!table) {
       return NextResponse.json(
         { success: false, error: `Table "${tableName}" not found` },
         { status: 404 }
       );
+    }
+
+    // §9.2 items 3, 11 (F-170): IPO field values are never written by a direct row write.
+    if (holdsIpoFieldValues(table)) {
+      return NextResponse.json({ success: false, error: 'USE_FIELD_EDITOR', reason: IPO_FIELD_TABLE_REFUSAL }, { status: 400 });
     }
 
     // Parse request body

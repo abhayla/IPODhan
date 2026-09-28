@@ -12,7 +12,7 @@ describe('writeAdminFieldValue refuses before opening a transaction', () => {
     [{ tableName: 'subscriptions' }, 'not admin-writable'],
     [{ fieldName: 'nope' }, 'has no field nope'],
     [{ fieldName: 'scraperLocked' }, 'not editable'],
-    [{ expectedVersion: '' }, 'expectedVersion is required'],
+    [{ expectedVersion: '' }, 'stale editor, reload'],
     [{ mode: { kind: 'typed', sourceNote: '' } }, 'source note'],
     [{ mode: { kind: 'pick', sourceLabel: '', readDate: null } }, 'source label'],
     [{ empty: { reason: '' } }, 'needs a reason'],

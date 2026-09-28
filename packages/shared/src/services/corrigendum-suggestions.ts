@@ -14,8 +14,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '../db/schema';
 import { dataConflicts, fieldSources, ipoDetails, ipos } from '../db/schema';
-import { createFieldProtectionService } from '../admin/field-protection-checker';
-import { IPORepository } from '../repositories/ipo-repository';
+import { writeAdminFieldValue, type AdminFieldWriteResult } from './admin-field-write';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -273,6 +272,8 @@ export interface SuggestionDecision {
   fieldName?: string;
   appliedValue?: string | null;
   error?: string;
+  /** Set when the shared admin write refused (INVALID / NOT_FOUND / CONFLICT). */
+  writeResult?: AdminFieldWriteResult;
 }
 
 async function loadOpenSuggestion(db: Db, conflictId: string) {
@@ -298,7 +299,9 @@ export async function acceptCorrigendumSuggestion(
   db: Db,
   conflictId: string,
   adminName: string,
-  note?: string
+  note: string | undefined,
+  /** §9.2 item 20: the field's version token when the admin opened the queue row. Never read here. */
+  expectedVersion: string
 ): Promise<SuggestionDecision> {
   const row = await loadOpenSuggestion(db, conflictId);
   if (!row) return { ok: false, conflictId, error: 'not an open corrigendum suggestion' };
@@ -308,6 +311,7 @@ export async function acceptCorrigendumSuggestion(
   }
   const value = row.value2;
   const alreadyDecided = new Error('corrigendum suggestion already decided');
+  let refused: AdminFieldWriteResult | null = null;
   try {
     await db.transaction(async (tx) => {
       const t = tx as unknown as Db;
@@ -326,74 +330,36 @@ export async function acceptCorrigendumSuggestion(
         .where(and(eq(dataConflicts.id, conflictId), isNull(dataConflicts.resolvedAt)))
         .returning({ id: dataConflicts.id });
       if (claimed.length === 0) throw alreadyDecided;
-      if (target.table === 'ipo_details') {
-        const updated = await t
-          .update(ipoDetails)
-          .set({ designatedExchange: value, updatedAt: new Date() } as never)
-          .where(eq(ipoDetails.ipoId, row.ipoId))
-          .returning({ id: ipoDetails.id });
-        if (updated.length === 0) {
-          await t.insert(ipoDetails).values({ ipoId: row.ipoId, designatedExchange: value, dataSource: 'MANUAL' } as never);
-        }
-      } else {
-        // Sanctioned write path (T-316 ratchet): routes through IPORepository so this file never
-        // becomes a direct `ipos` writer. Static call + the caller's own `tx` keeps the claim,
-        // this write and the field_sources insert below in the ONE transaction.
-        await IPORepository.applyAdminCorrigendumValue(t, row.ipoId, row.fieldName, value);
+      // §9.2 item 11: an accept is an admin PICK of the document's value. It goes through the ONE
+      // admin write (row lock, version check, value, ADMIN provenance merged into data_lineage,
+      // protection, audit row) inside this transaction, so the claim and the write commit together.
+      const write = await writeAdminFieldValue(t, {
+        ipoId: row.ipoId,
+        tableName: target.table,
+        fieldName: row.fieldName,
+        value,
+        mode: { kind: 'pick', sourceLabel: 'DOC', readDate: null },
+        expectedVersion,
+        actor: { name: adminName, adminId: null },
+        entryPoint: 'corrigendum-accept',
+        detail: { method: 'ADMIN_CORRIGENDUM_ACCEPT', documentId: row.documentId, conflictId, note: note ?? null },
+      });
+      if (write.kind !== 'OK') {
+        refused = write;
+        throw alreadyDecided;
       }
-      // #1033 (ist-timezone.md): `updatedAt`/`createdAt` are bound explicitly here as JS `Date`
-      // objects (drizzle's PgTimestamp.mapToDriverValue always converts a Date via
-      // `.toISOString()` before it reaches Postgres, so this is timezone-independent). Left
-      // unset, a first-ever INSERT for this (ipo, table, row, field) falls through to the
-      // column's `defaultNow()` -- Postgres's own server-side `now()`, which writes the
-      // SESSION's timezone-dependent wall clock instead of a value this code controls. The
-      // `onConflictDoUpdate` branch below already set `updatedAt` explicitly; this closes the
-      // same gap on the INSERT branch so both paths use the identical, proven-safe mechanism.
-      await t
-        .insert(fieldSources)
-        .values({
-          ipoId: row.ipoId,
-          tableName: target.table,
-          rowKey: '',
-          fieldName: row.fieldName,
-          source: 'ADMIN',
-          confidence: 100,
-          previousValue: row.value1,
-          previousSource: (row.evidence as { storedSource?: string | null } | null)?.storedSource as never,
-          dataLineage: { method: 'ADMIN_CORRIGENDUM_ACCEPT', documentId: row.documentId, conflictId, by: adminName },
-          updatedAt: new Date(),
-          createdAt: new Date(),
-        } as never)
-        .onConflictDoUpdate({
-          target: [fieldSources.ipoId, fieldSources.tableName, fieldSources.rowKey, fieldSources.fieldName],
-          set: {
-            source: 'ADMIN',
-            confidence: 100,
-            previousValue: row.value1,
-            previousSource: (row.evidence as { storedSource?: string | null } | null)?.storedSource ?? null,
-            // #1068 (same class as #755/#753/#1065): MERGE, never replace. A plain object here
-            // REPLACES the whole jsonb column on conflict, destroying whatever docType/other
-            // keys an earlier write on this SAME (ipo, table, row, field) had set. Same
-            // coalesce-and-concat merge as field-sources-repository.ts's fix.
-            dataLineage: sql`COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) || ${JSON.stringify({
-              method: 'ADMIN_CORRIGENDUM_ACCEPT',
-              documentId: row.documentId,
-              conflictId,
-              by: adminName,
-            })}::jsonb`,
-            updatedAt: new Date(),
-          } as never,
-        });
-      await createFieldProtectionService(t, null).markFieldAsManuallyEdited(
-        row.ipoId,
-        target.table,
-        row.fieldName,
-        adminName,
-        note ?? `Corrigendum accepted (document ${row.documentId})`,
-        true
-      );
     });
   } catch (error) {
+    if (refused) {
+      const r = refused as AdminFieldWriteResult;
+      return {
+        ok: false,
+        conflictId,
+        fieldName: row.fieldName,
+        error: r.kind === 'CONFLICT' ? 'CONFLICT: the field changed after the queue was opened' : `${r.kind}: ${(r as { reason: string }).reason}`,
+        writeResult: r,
+      };
+    }
     if (error === alreadyDecided) {
       return { ok: false, conflictId, fieldName: row.fieldName, error: 'not an open corrigendum suggestion' };
     }
