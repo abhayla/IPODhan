@@ -204,8 +204,24 @@ export interface IpoFieldPlanRow {
   chosenConfirmedAt: Date | null;
   /** #968 (OD-95): the override that reopened this settled row; NULL when none did. */
   reopenedUnderPolicy: string | null;
+  /** OD-137: each ranked source's answer of the last pass that stored no value; NULL otherwise. */
+  answers: FieldPlanAnswer[] | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * OD-137: one ranked source's answer of a pass, in the SAME shape as a field_sources witness
+ * (OD-103), stored in rank order on `ipo_field_plan.answers` when that pass stored no value.
+ */
+export interface FieldPlanAnswer {
+  source: string;
+  outcome: 'SUPPLIED' | 'NOT_PRINTED' | 'NOT_AVAILABLE_YET' | 'CHECK_FAILED' | 'FAILED';
+  /** Non-null only for SUPPLIED. */
+  value: unknown;
+  at: string;
+  docType?: string;
+  cause?: string;
 }
 
 /** One generated row's incoming order, as `reconcileSettledToOverrides` reads it. */
@@ -307,6 +323,11 @@ export interface RecordOutcomeParams {
    * changes. Ignored for any other state.
    */
   gapKey?: string | null;
+  /**
+   * OD-137: omitted (undefined) leaves `answers` as it is; provided replaces it -- an array on a
+   * pass that stored no value, `null` on a pass that stored one. Ignored by the skipped branch.
+   */
+  answers?: FieldPlanAnswer[] | null;
   now?: Date;
 }
 
@@ -1235,6 +1256,10 @@ export class IpoFieldPlanRepository extends BaseRepository {
       const countsAsAttempt = !isGap;
       const recordedCause = isGap ? stampFieldPlanGapCause(params.gapKey as string, params.cause ?? null) : params.cause ?? null;
       const writeCause = hasCause || isGap;
+      const hasAnswers = params.answers !== undefined;
+      // Bound as TEXT and cast: a JS array interpolated into drizzle's `sql` is spread into a
+      // parameter list, never sent as one jsonb value.
+      const answersJson = params.answers == null ? null : JSON.stringify(params.answers);
 
       // A real attempt: count it, stamp it, and name the slot it is next due
       // in (F-152: never an elapsed-time backoff; NULL for terminal and gap
@@ -1265,6 +1290,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
             chosen_page = CASE WHEN ${hasChosen} THEN ${chosen.page ?? null} ELSE chosen_page END,
             chosen_confirmed_at = CASE WHEN ${stampRead} THEN ${utc(now)}::timestamptz ELSE chosen_confirmed_at END,
             reopened_under_policy = CASE WHEN ${state === 'SUPPLIED'} THEN NULL ELSE reopened_under_policy END,
+            answers = CASE WHEN ${hasAnswers} THEN ${answersJson}::jsonb ELSE answers END,
             claimed_at = NULL,
             claim_token = NULL,
             updated_at = ${utc(now)}::timestamptz
@@ -1345,6 +1371,7 @@ function mapRow(raw: Record<string, unknown>): IpoFieldPlanRow {
     cause: (raw.cause as string) ?? null,
     chosenConfirmedAt: date(raw.chosen_confirmed_at),
     reopenedUnderPolicy: (raw.reopened_under_policy as string) ?? null,
+    answers: (raw.answers as FieldPlanAnswer[]) ?? null,
     createdAt: date(raw.created_at) as Date,
     updatedAt: date(raw.updated_at) as Date,
   };

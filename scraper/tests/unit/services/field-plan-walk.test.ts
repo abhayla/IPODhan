@@ -2089,6 +2089,244 @@ describe('field-plan walk -- OD-103: every ranked answer is a witness, not only 
   });
 });
 
+describe('field-plan walk -- OD-137: a pass that stores NO value records every ranked answer on the plan row', () => {
+  afterEach(() => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = false;
+  });
+
+  const threeRanks = async () => ({
+    ranks: ['NSE', 'BSE', 'CHITTORGARH'],
+    documentType: undefined,
+    origin: { kind: 'registry' as const, version: 2 },
+    na: false,
+  });
+  const nay: FieldFetcher = async () => ({ outcome: 'NOT_AVAILABLE_YET' });
+  const thrown: FieldFetcher = async () => {
+    throw new Error('ECONNRESET');
+  };
+  const suppliedValue =
+    (value: unknown): FieldFetcher =>
+    async () => ({ outcome: 'SUPPLIED', value });
+  const threeRankRow = () =>
+    planRow({ fieldName: 'issue_size', rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: 'CHITTORGARH' });
+  const shape = (answers: any[]) => answers.map((a) => [a.source, a.outcome, a.value]);
+
+  it('rank1 CHECK_FAILED, rank2 NOT_PRINTED, rank3 THROWN, flag ON -> the ONE outcome write carries all three answers; no witness write', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const row = threeRankRow();
+    const repo = makeRepo([row]);
+    const orchestrator = makeOrchestrator();
+    const trackWitnessVerdict = vi.fn(async () => undefined);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: orchestrator as any,
+      sourceFetchers: { NSE: checkFailed, BSE: notPrinted, CHITTORGARH: thrown } as any,
+      resolvePolicy: threeRanks as any,
+      trackWitnessVerdict,
+    });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    // The answers ride on the claim-token-guarded outcome write itself, never a second UPDATE.
+    expect(repo.recordOutcome).toHaveBeenCalledTimes(1);
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+    expect(repo.recorded[0].claimToken).toBe(row.claimToken);
+    const answers = repo.recorded[0].answers;
+    expect(shape(answers)).toEqual([
+      ['NSE', 'CHECK_FAILED', null],
+      ['BSE', 'NOT_PRINTED', null],
+      ['CHITTORGARH', 'FAILED', null],
+    ]);
+    expect(answers[0].cause).toBe('rank1:NSE:CHECK_FAILED:regex did not match');
+    expect(answers[1].cause).toBeUndefined();
+    expect(answers[2].cause).toBe('rank3:CHITTORGARH:THROWN:ECONNRESET');
+    expect(answers.every((a: any) => typeof a.at === 'string' && !Number.isNaN(Date.parse(a.at)))).toBe(true);
+    // Witness shape: no `rank` key leaks onto the stored row (order IS the rank).
+    expect(answers.every((a: any) => !('rank' in a))).toBe(true);
+    expect(trackWitnessVerdict).not.toHaveBeenCalled();
+    expect(orchestrator.consolidatedUpsertIPO).not.toHaveBeenCalled();
+  });
+
+  it('rank1 NOT_AVAILABLE_YET, no lower rank supplies -> answers stored on NOT_AVAILABLE_YET; no field_sources write', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const repo = makeRepo([threeRankRow()]);
+    const orchestrator = makeOrchestrator();
+    const trackWitnessVerdict = vi.fn(async () => undefined);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: orchestrator as any,
+      sourceFetchers: { NSE: nay, BSE: notPrinted, CHITTORGARH: checkFailed } as any,
+      resolvePolicy: threeRanks as any,
+      trackWitnessVerdict,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsProvisional).toBe(0);
+    expect(repo.recordOutcome).toHaveBeenCalledTimes(1);
+    expect(repo.recorded[0].state).toBe('NOT_AVAILABLE_YET');
+    expect(shape(repo.recorded[0].answers)).toEqual([
+      ['NSE', 'NOT_AVAILABLE_YET', null],
+      ['BSE', 'NOT_PRINTED', null],
+      ['CHITTORGARH', 'CHECK_FAILED', null],
+    ]);
+    expect(repo.recorded[0].answers[2].cause).toBe('provisional-rank3:CHITTORGARH:CHECK_FAILED:regex did not match');
+    expect(orchestrator.consolidatedUpsertIPO).not.toHaveBeenCalled();
+    expect(trackWitnessVerdict).not.toHaveBeenCalled();
+  });
+
+  it('every rank NOT_PRINTED -> EXHAUSTED carries three NOT_PRINTED answers', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const repo = makeRepo([threeRankRow()]);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { NSE: notPrinted, BSE: notPrinted, CHITTORGARH: notPrinted } as any,
+      resolvePolicy: threeRanks as any,
+    });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(repo.recorded[0].state).toBe('EXHAUSTED');
+    expect(shape(repo.recorded[0].answers)).toEqual([
+      ['NSE', 'NOT_PRINTED', null],
+      ['BSE', 'NOT_PRINTED', null],
+      ['CHITTORGARH', 'NOT_PRINTED', null],
+    ]);
+  });
+
+  it('the winner LOST to a higher-priority stored value -> CHECK_FAILED carries the answers (nothing stored this pass)', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const repo = makeRepo([threeRankRow()]);
+    const orch = {
+      consolidatedUpsertIPO: vi.fn(async () => ({
+        ipoId: IPO_ID,
+        isNew: false,
+        locked: true,
+        skipped: false,
+        consolidation: { fieldResults: [{ fieldName: 'issueSize', finalValue: 999, chosenSource: 'CHITTORGARH', hadConflict: true }] },
+      })),
+      consolidatedUpsertChildRows: vi.fn(),
+    };
+    const trackWitnessVerdict = vi.fn(async () => undefined);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: orch as any,
+      sourceFetchers: { NSE: suppliedValue(10), BSE: notPrinted, CHITTORGARH: notPrinted } as any,
+      resolvePolicy: threeRanks as any,
+      trackWitnessVerdict,
+    });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+    expect(shape(repo.recorded[0].answers)).toEqual([
+      ['NSE', 'SUPPLIED', 10],
+      ['BSE', 'NOT_PRINTED', null],
+      ['CHITTORGARH', 'NOT_PRINTED', null],
+    ]);
+    expect(trackWitnessVerdict).not.toHaveBeenCalled();
+  });
+
+  it('a pass that STORES a value (SUPPLIED winner) -> answers written as null, witnesses written as today', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const repo = makeRepo([threeRankRow()]);
+    const orchestrator = makeOrchestrator();
+    const trackWitnessVerdict = vi.fn(async () => undefined);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: orchestrator as any,
+      sourceFetchers: { NSE: suppliedValue(10), BSE: notPrinted, CHITTORGARH: checkFailed } as any,
+      resolvePolicy: threeRanks as any,
+      trackWitnessVerdict,
+    });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(repo.recorded[0].state).toBe('SUPPLIED');
+    expect('answers' in repo.recorded[0]).toBe(true);
+    expect(repo.recorded[0].answers).toBeNull();
+    expect(trackWitnessVerdict).toHaveBeenCalledTimes(1);
+    expect((trackWitnessVerdict.mock.calls[0] as any)[0].witnesses.map((w: any) => w.outcome)).toEqual([
+      'SUPPLIED',
+      'NOT_PRINTED',
+      'CHECK_FAILED',
+    ]);
+  });
+
+  it('a pass that STORES a provisional value under NOT_AVAILABLE_YET -> answers written as null', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const repo = makeRepo([threeRankRow()]);
+    const orchestrator = makeOrchestrator();
+    const trackWitnessVerdict = vi.fn(async () => undefined);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: orchestrator as any,
+      sourceFetchers: { NSE: nay, BSE: suppliedValue(1000000), CHITTORGARH: notPrinted } as any,
+      resolvePolicy: threeRanks as any,
+      trackWitnessVerdict,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsProvisional).toBe(1);
+    expect(repo.recorded[0].state).toBe('NOT_AVAILABLE_YET');
+    expect('answers' in repo.recorded[0]).toBe(true);
+    expect(repo.recorded[0].answers).toBeNull();
+    expect(trackWitnessVerdict).toHaveBeenCalledTimes(1);
+  });
+
+  it('a DROPPED write (writeHappened false) never carries answers -- the skipped branch changes nothing about the ask', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const repo = makeRepo([threeRankRow()]);
+    const orch = {
+      consolidatedUpsertIPO: vi.fn(async () => ({ ipoId: IPO_ID, isNew: false, locked: false, skipped: true, skipReason: 'LOCK_NOT_ACQUIRED' })),
+      consolidatedUpsertChildRows: vi.fn(),
+    };
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: orch as any,
+      sourceFetchers: { NSE: suppliedValue(10), BSE: notPrinted, CHITTORGARH: notPrinted } as any,
+      resolvePolicy: threeRanks as any,
+    });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(repo.recorded[0].writeHappened).toBe(false);
+    expect('answers' in repo.recorded[0]).toBe(false);
+  });
+
+  it('flag OFF -> answers is never present on a no-value outcome write', async () => {
+    expect(FEATURE_FLAGS.ENABLE_VERDICT_WRITER).toBe(false);
+    const repo = makeRepo([threeRankRow()]);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { NSE: checkFailed, BSE: notPrinted, CHITTORGARH: thrown } as any,
+      resolvePolicy: threeRanks as any,
+    });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+    expect('answers' in repo.recorded[0]).toBe(false);
+  });
+
+  it('flag OFF -> answers is never present on a value-storing outcome write', async () => {
+    expect(FEATURE_FLAGS.ENABLE_VERDICT_WRITER).toBe(false);
+    const repo = makeRepo([threeRankRow()]);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: makeOrchestrator() as any,
+      sourceFetchers: { NSE: suppliedValue(10), BSE: notPrinted, CHITTORGARH: notPrinted } as any,
+      resolvePolicy: threeRanks as any,
+    });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(repo.recorded[0].state).toBe('SUPPLIED');
+    expect('answers' in repo.recorded[0]).toBe(false);
+  });
+});
+
 // #785: classifyFailure's reason-code remap, unit-tested directly on the exported classifier.
 // Every real push site in field-plan-walk.ts now tags its cause (:NO_FETCHER_REGISTERED,
 // :THROWN:, :CHECK_FAILED:) -- these unit tests exercise the classifier's own boundaries,

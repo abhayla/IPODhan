@@ -83,7 +83,8 @@ import { computeVerdict, type Witness, type Verdict, type WitnessOutcome } from 
 /**
  * OD-103 (F-196): one ranked source's answer in this pass -- SUPPLIED or not -- in rank order.
  * Stored as a witness only when this pass also stored a value on the field (see
- * `writeWitnessVerdict`); a field with no stored value has no field_sources row (#684).
+ * `writeWitnessVerdict`); a field with no stored value has no field_sources row (#684), so its
+ * answers go onto its plan row instead (OD-137, `planRowAnswers`).
  */
 interface RankAnswer {
   rank: number;
@@ -107,6 +108,29 @@ function rankAnswer(
   extra: Partial<Pick<RankAnswer, 'value' | 'docType' | 'cause'>> = {}
 ): RankAnswer {
   return { rank, source, outcome, value: null, at: new Date().toISOString(), ...extra };
+}
+
+/**
+ * OD-137: the `answers` part of an outcome write, riding on the SAME claim-token-guarded
+ * `recordOutcome` UPDATE (never a second write). `answers` = this pass's per-rank answers when it
+ * stored NO value (witness shape, rank order; the order is the rank, so no `rank` key); `null` when
+ * it stored one (field_sources.witnesses holds them, so the plan row never shows stale answers next
+ * to a stored value). Flag OFF (ENABLE_VERDICT_WRITER, same gate as the witnesses) returns `{}`, so
+ * the column is never touched and the write is byte-identical to before OD-137.
+ */
+function planRowAnswers(answers: readonly RankAnswer[] | null): { answers?: Witness[] | null } {
+  if (!FEATURE_FLAGS.ENABLE_VERDICT_WRITER) return {};
+  if (answers === null) return { answers: null };
+  return {
+    answers: answers.map((a) => ({
+      source: a.source,
+      outcome: a.outcome,
+      value: a.outcome === 'SUPPLIED' ? a.value : null,
+      at: a.at,
+      ...(a.docType !== undefined ? { docType: a.docType } : {}),
+      ...(a.cause !== undefined ? { cause: a.cause } : {}),
+    })),
+  };
 }
 
 /**
@@ -263,6 +287,8 @@ export interface RecordOutcomeCallParams {
   cause?: string | null;
   /** #884: set only when every rank failed with a structured gap code (see RecordOutcomeParams.gapKey). */
   gapKey?: string | null;
+  /** OD-137: this pass's per-rank answers (no value stored) or null (a value stored) -- see `planRowAnswers`. */
+  answers?: Witness[] | null;
 }
 
 /** The slice of item 5's repository the walk uses. */
@@ -1012,8 +1038,8 @@ async function attemptOneField(
           'PASS 3: authoritative source has not published this field yet — wrote a PROVISIONAL value from a lower rank; the ask stays open'
         );
       } else {
-        // No value stored, so no field_sources row and no witness write (#684): this log line is
-        // the only record of the per-rank answers until a value is stored (§2.4, OD-103).
+        // No value stored, so no field_sources row and no witness write (#684): the answers go onto
+        // the plan row with the outcome below (OD-137) and into this log line.
         logger.info(
           { ipoId, table: plan.tableName, field: plan.fieldName, authoritativeSource: source, answers: answerLog(answers) },
           'PASS 3: authoritative source has not published this field yet and no lower rank supplied a provisional value; the ask stays open'
@@ -1027,6 +1053,8 @@ async function attemptOneField(
         state: 'NOT_AVAILABLE_YET',
         reasonCode: 'NOT_PUBLISHED_YET',
         cause: `rank${rank}:${source}:NOT_AVAILABLE_YET`,
+        // A provisional value was stored -> its witnesses hold the answers; none -> the plan row does.
+        ...planRowAnswers(provisional ? null : answers),
       });
     }
 
@@ -1102,6 +1130,7 @@ async function attemptOneField(
         reasonCode: 'COVERAGE_GAP',
         cause,
         gapKey,
+        ...planRowAnswers(answers),
       });
     }
 
@@ -1208,6 +1237,7 @@ async function attemptOneField(
         state: 'CHECK_FAILED',
         reasonCode: rejection.reasonCode,
         cause: rejection.cause,
+        ...planRowAnswers(answers),
       });
     }
 
@@ -1221,6 +1251,7 @@ async function attemptOneField(
       writeHappened: true,
       state: 'SUPPLIED',
       chosen: evidenceFor(source, rank, answer),
+      ...planRowAnswers(null),
     });
   }
 
@@ -1285,6 +1316,7 @@ async function attemptOneField(
       reasonCode: classified?.reasonCode ?? null,
       cause: classified?.cause ?? null,
       ...(gapKey ? { gapKey } : {}),
+      ...planRowAnswers(answers),
     });
   }
 
@@ -1309,6 +1341,7 @@ async function attemptOneField(
     state: 'EXHAUSTED',
     reasonCode: exhaustedCause?.reasonCode ?? null,
     cause: exhaustedCause?.cause ?? null,
+    ...planRowAnswers(answers),
   });
 }
 
