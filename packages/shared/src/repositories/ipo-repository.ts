@@ -1478,7 +1478,14 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   /**
    * Update IPO by ID
    */
-  async update(id: string, data: Partial<IPOInsert>): Promise<IPO> {
+  async update(
+    id: string,
+    data: Partial<IPOInsert>,
+    options?: { honourProtection?: { source: string } }
+  ): Promise<IPO> {
+    if (options?.honourProtection) {
+      return this.updateHonouringProtection(id, data, options.honourProtection.source);
+    }
     try {
       // Same choke point on the update/consolidation path: if a write carries a
       // company name (a re-scrape, a consolidated winning value, or an admin
@@ -1523,6 +1530,56 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         error
       );
     }
+  }
+
+  /**
+   * Spec §9.2 item 19 (§2.7): a SCRAPER write re-checks admin protection INSIDE its own transaction.
+   * The orchestrators filter protected fields before they get here, but that read is outside any
+   * transaction (and Redis-cached), so an admin save landing between that filter and this write was
+   * overwritten. Here: lock the `ipos` row FOR NO KEY UPDATE (the same lock
+   * `writeAdminFieldValue` takes first), then read `scraper_locked` and every protected `ipos`
+   * field, drop them from the patch, and write the rest — all in one transaction. An admin save
+   * that committed while this waited on the lock is seen by the protection read (READ COMMITTED
+   * takes a new snapshot per statement) and survives.
+   */
+  private async updateHonouringProtection(id: string, data: Partial<IPOInsert>, source: string): Promise<IPO> {
+    const dropped: string[] = [];
+    const ipo = await this.db.transaction(async (txRaw) => {
+      const tx = txRaw as unknown as NodePgDatabase<typeof schema>;
+      const lock = await tx.execute(sql`SELECT scraper_locked FROM ipos WHERE id = ${id}::uuid FOR NO KEY UPDATE`);
+      const row = lock.rows[0] as { scraper_locked?: boolean } | undefined;
+      if (!row) throw new EntityNotFoundError('IPO', id);
+      const protectedRows = await tx.execute(sql`
+        SELECT field_name FROM field_protection_metadata
+        WHERE ipo_id = ${id}::uuid AND table_name = 'ipos' AND is_protected = true`);
+      const protectedFields = new Set((protectedRows.rows as Array<{ field_name: string }>).map((r) => r.field_name));
+      const patch: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(data)) {
+        if (k === 'updatedAt') continue;
+        if (row.scraper_locked === true || protectedFields.has(k)) dropped.push(k);
+        else patch[k] = v;
+      }
+      if (Object.keys(patch).length === 0) {
+        const [current] = await tx.select().from(ipos).where(eq(ipos.id, id)).limit(1);
+        return current as IPO;
+      }
+      if (typeof patch.companyName === 'string') patch.companyName = sanitizeDisplayCompanyName(patch.companyName);
+      if (patch.symbol !== undefined) {
+        const keySymbol = await activeNseIssueSymbol(tx as never, id);
+        if (keySymbol && keySymbol !== patch.symbol) patch.symbol = keySymbol;
+      }
+      const [written] = await tx
+        .update(ipos)
+        .set({ ...(patch as Partial<IPOInsert>), updatedAt: new Date() })
+        .where(eq(ipos.id, id))
+        .returning();
+      return written as IPO;
+    });
+    if (dropped.length > 0) {
+      logger.info({ ipoId: id, source, dropped }, '[item 19] protected fields dropped inside the write transaction');
+    }
+    await this.invalidateCache([getIPOByIdKey(id), getIPOBySlugKey(ipo.slug)], ['ipo:list:*', 'ipo:search:*']);
+    return ipo;
   }
 
   /**
@@ -1683,7 +1740,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     tx: NodePgDatabase<typeof schema>,
     id: string,
     fieldName: string,
-    value: string
+    value: unknown
   ): Promise<void> {
     await tx
       .update(ipos)
