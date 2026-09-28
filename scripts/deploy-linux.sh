@@ -568,18 +568,92 @@ fi
 # cycles, the expected steady state). Stop it for the whole build+flip window so
 # cron_restart cannot fire a new cycle against a half-built release; resumed in
 # step 6 against whichever release ends up live.
+# #1241: scheduled scraper runs are NOT the pm2 app. install_scraper_cron puts
+# every data/live/closed/opening/price wake in crontab as
+# `$CURRENT_LINK/scripts/scraper-wake.sh <job>`, so neither pm2_app_status nor
+# `pm2 stop` below ever sees one. Before #1241 the idle wait only asked pm2, and
+# release_scraper_cycle_locks then deleted the cycle locks of a cron-launched run
+# that was still working, letting a new-code cycle start beside it.
+# The lock VALUE cannot name its owner: DistributedLock stores a random UUID
+# (scraper/src/utils/distributed-lock.ts), no pid and no host. So the owner test
+# is a process test on this host: is any cron-launched wake of THIS slot alive?
+# The pattern is built here, at run time, and bracketed ([s]craper-wake) so it
+# never matches the argv of the shell running this deploy or of pgrep itself
+# (owner rule: a process match never matches its own command line). Prod's
+# path (/current/scripts/...) and staging's (/current-staging/scripts/...) are
+# distinct, so one slot's deploy never waits on, or trusts, the other slot's wake.
+cron_wake_pattern() {
+  printf '%s/scripts/[s]craper-wake[.]sh' "$CURRENT_LINK"
+}
+
+# Prints the pids (space-separated, possibly empty) of live cron-launched wakes
+# of this slot. Returns 2 when pgrep is missing or errors: the state is then
+# UNKNOWABLE and every caller treats it as "maybe alive" (keeping a lock costs
+# at most its TTL of idle wakes; deleting a live run's lock runs two cycles).
+live_cron_wake_pids() {
+  if (( DRY_RUN )); then
+    printf '%s' "${DEPLOY_DRYRUN_CRON_WAKE_PIDS:-}"
+    return 0
+  fi
+  # DEPLOY_PGREP_BIN: test seam only (deploy-linux.test.sh case 30p points it
+  # at a missing path); the box always uses pgrep from PATH (procps).
+  local pgrep_bin="${DEPLOY_PGREP_BIN:-pgrep}"
+  if ! command -v "$pgrep_bin" >/dev/null 2>&1; then
+    return 2
+  fi
+  local pattern raw rc=0 pid out=""
+  pattern="$(cron_wake_pattern)"
+  raw="$("$pgrep_bin" -f "$pattern" 2>/dev/null)" || rc=$?
+  if [ "$rc" -gt 1 ]; then
+    return 2
+  fi
+  for pid in $raw; do
+    if [ "$pid" != "$$" ] && [ "$pid" != "${BASHPID:-$$}" ]; then
+      out="${out:+$out }$pid"
+    fi
+  done
+  printf '%s' "$out"
+  return 0
+}
+
 wait_for_scraper_idle() {
   local waited=0 status
   while true; do
     status="$(pm2_app_status "$PM2_SCRAPER_APP")"
     if [ "$status" != "online" ]; then
       log "Scraper ($PM2_SCRAPER_APP) status='$status' — not mid-cycle, safe to build."
-      return 0
+      break
     fi
     if [ "$waited" -ge "$MUTEX_MAX_WAIT" ]; then
       fatal "scraper ($PM2_SCRAPER_APP) still 'online' (mid-cycle) after ${MUTEX_MAX_WAIT}s — refusing to build."
     fi
     log "Scraper cycle in flight (status=online) — waiting ${MUTEX_POLL}s (${waited}/${MUTEX_MAX_WAIT}s elapsed)..."
+    sleep "$MUTEX_POLL"
+    waited=$((waited + MUTEX_POLL))
+  done
+
+  # #1241: then the cron-launched wakes of this slot, on the same bounded
+  # budget. Unlike the pm2 case this does NOT refuse the deploy at the bound: a
+  # data cycle may legitimately run up to its 2-hour ceiling, and failing every
+  # window for it is worse than the alternative, which is safe because
+  # release_scraper_cycle_locks re-checks at release time and keeps a live run's
+  # locks. The old run finishes on its old release dir (retention keeps it), and
+  # every new-code wake lock-skips until that run releases its own lock.
+  local pids
+  while true; do
+    if ! pids="$(live_cron_wake_pids)"; then
+      warn "cannot list cron-launched scraper wakes of slot $SLOT (pgrep missing or failed) — proceeding; release_scraper_cycle_locks will keep this slot's cycle locks"
+      return 0
+    fi
+    if [ -z "$pids" ]; then
+      log "No cron-launched scraper wake of slot $SLOT running ($(cron_wake_pattern)) — safe to build."
+      return 0
+    fi
+    if [ "$waited" -ge "$MUTEX_MAX_WAIT" ]; then
+      warn "cron-launched scraper wake of slot $SLOT still running after ${MUTEX_MAX_WAIT}s (pids: $pids) — proceeding with the deploy; its cycle locks will NOT be released (the run keeps them until it exits, and new-code wakes lock-skip meanwhile)"
+      return 0
+    fi
+    log "Cron-launched scraper wake of slot $SLOT in flight (pids: $pids) — waiting ${MUTEX_POLL}s (${waited}/${MUTEX_MAX_WAIT}s elapsed)..."
     sleep "$MUTEX_POLL"
     waited=$((waited + MUTEX_POLL))
   done
@@ -632,11 +706,17 @@ fi
 # already held by another cycle" and exit without doing any work, losing up
 # to 45 minutes of staging evidence per deploy.
 #
-# Safety: the ONLY process that ever holds these two keys is the scraper
-# process this deploy just stopped, immediately above — the web app never
-# touches them — so deleting them here cannot steal a lock from a still-live
-# holder. Called AFTER the real `pm2 stop` so the holder is actually gone by
-# the time we delete its locks.
+# Safety: the web app never touches these keys; their holders are scraper
+# runs of this slot. The pm2 app is one of them and is stopped immediately
+# above (this is called AFTER the real `pm2 stop`). But #1241: scheduled runs
+# are cron-launched wakes ($CURRENT_LINK/scripts/scraper-wake.sh), which pm2
+# never sees, and the lock value is a UUID that cannot name its owner. So,
+# right before touching any key, this asks live_cron_wake_pids: a live wake
+# of this slot means its cycle may hold the lock -> release NOTHING (the run
+# frees its own locks on exit; a crashed one's expire on TTL). Only with no
+# live scraper process of this slot is a held lock stale, and then it is
+# released with a line naming the stale owner token. An unknowable answer
+# (no pgrep) keeps the locks too.
 #
 # Fail-safe throughout: this must never fail the deploy. Every redis-cli
 # call is `|| true`, a missing redis-cli or REDIS_URL just warns and
@@ -688,6 +768,17 @@ release_scraper_cycle_locks() {
     return 0
   fi
 
+  # #1241: never release a lock a live cron-launched run of this slot holds.
+  local live_pids
+  if ! live_pids="$(live_cron_wake_pids)"; then
+    warn "release_scraper_cycle_locks: cannot list cron-launched scraper wakes of slot ${SLOT:-?} (pgrep missing or failed); a live run may hold them, so cycle locks left to expire"
+    return 0
+  fi
+  if [ -n "$live_pids" ]; then
+    log "release_scraper_cycle_locks: cron-launched scraper wake of slot ${SLOT:-?} still running (pids: $live_pids; $(cron_wake_pattern)); its cycle may hold the locks, so none released (the run frees them on exit)"
+    return 0
+  fi
+
   local key value ttl released=0
   # The scraper runs under pm2 with --cron-restart=$SCRAPER_CRON -- a fresh cycle can
   # start (and take a NEW lock with a NEW token) in the window between our
@@ -716,6 +807,7 @@ release_scraper_cycle_locks() {
       continue
     fi
     ttl="$(redis_cli_run 3 "$redis_url" TTL "$key" 2>/dev/null || true)"
+    log "release_scraper_cycle_locks: $key stale: owner token=$value has no live scraper process in slot ${SLOT:-?} (pm2 app stopped, no cron-launched wake running)"
     log "release_scraper_cycle_locks: releasing $key (held: ${ttl}s remaining)"
     local eval_result
     eval_result="$(redis_cli_run 3 "$redis_url" EVAL       "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"       1 "$key" "$value" 2>/dev/null || true)"

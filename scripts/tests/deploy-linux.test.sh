@@ -2739,6 +2739,9 @@ fi
 # --- extracts the REAL function body and runs it against a fake          --
 # --- `redis-cli` that records every invocation and answers GET/TTL/DEL.  --
 RELEASE_LOCKS_FN_30="$(awk '/^release_scraper_cycle_locks\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
+# #1241: the release asks live_cron_wake_pids (and its pattern helper) first.
+CRON_WAKE_FNS_30="$(awk '/^cron_wake_pattern\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^live_cron_wake_pids\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
 if [ -z "$RELEASE_LOCKS_FN_30" ]; then
   fail "case 30 setup: could not extract release_scraper_cycle_locks() body from $DEPLOY_SCRIPT"
 else
@@ -2817,6 +2820,24 @@ FAKERC30
     else
       rm -f "$FAKEBIN30/redis-cli"
     fi
+    # #1241: fake pgrep. PGREP30=none (default: no live wake, exit 1),
+    # live (one live cron wake, pid 4242), broken (pgrep errors, exit 3),
+    # absent (no pgrep on PATH). Its argv is printed as PGREP-ARGV lines
+    # BEFORE the rc-log marker, so 30f's exact redis-cli call count holds.
+    local pg_mode="${PGREP30:-none}"
+    rm -f "$FAKEBIN30/pgrep"
+    if [ "$pg_mode" != "absent" ]; then
+      cat > "$FAKEBIN30/pgrep" <<FAKEPG30
+#!/usr/bin/env bash
+echo "PGREP-ARGV: \$*" >> '$rc_log.pg'
+case "$pg_mode" in
+  live) echo 4242; exit 0 ;;
+  broken) exit 3 ;;
+  *) exit 1 ;;
+esac
+FAKEPG30
+      chmod +x "$FAKEBIN30/pgrep"
+    fi
     (
       log() { echo "LOG: $*"; }
       warn() { echo "WARN: $*" >&2; }
@@ -2824,22 +2845,29 @@ FAKERC30
       SCRAPER_ENV_FILE="$ENVDIR30/scraper.env"
       if [ "$scenario" = "no-redis-cli" ]; then
         PATH="/usr/bin:/bin"
+      elif [ "$pg_mode" = "absent" ]; then
+        # No pgrep: the seam points at a path that does not exist.
+        PATH="$FAKEBIN30:$PATH"
+        DEPLOY_PGREP_BIN="$FAKEBIN30/no-such-pgrep"
       else
         PATH="$FAKEBIN30:$PATH"
       fi
       SLOT="${SLOT30:-}"
+      CURRENT_LINK="/var/www/ipodhan/current-staging"
       if [ -z "${NO_SLOT_LIB30:-}" ]; then
         . "$SCRIPT_DIR/../lib/redis-slot-prefix.sh"
       fi
       if [ -z "${NO_AUTH_LIB30:-}" ]; then
         . "$SCRIPT_DIR/../lib/redis-cli-auth.sh"
       fi
-      eval "$RELEASE_LOCKS_FN_30"
+      eval "$CRON_WAKE_FNS_30"
+      eval "${RELEASE_FN_OVERRIDE30:-$RELEASE_LOCKS_FN_30}"
       release_scraper_cycle_locks
     ) 2>&1
+    cat "$rc_log.pg" 2>/dev/null || true
     echo "--- rc-log ---"
     cat "$rc_log" 2>/dev/null || true
-    rm -f "$rc_log"
+    rm -f "$rc_log" "$rc_log.pg"
   }
 
   # 30a: both keys held -> both released, correct GET/TTL/DEL sequence per
@@ -2971,6 +2999,133 @@ FAKERC30
     pass "case 30j: slot helper not loaded -> WARN, no redis-cli call"
   else
     fail "case 30j: expected a WARN and no redis-cli call without the slot helper — got: $OUT30J"
+  fi
+
+  # --- Case 30m-30t (#1241): scheduled runs are cron-launched wakes
+  # ($CURRENT_LINK/scripts/scraper-wake.sh), invisible to pm2. The lock value
+  # is a UUID, so the owner test is a process test: a live wake of this slot
+  # -> release NOTHING; no live scraper process -> the held lock is stale and
+  # released with a line naming the owner token; unknowable -> keep.
+  # 30m (a): a live cron wake of the slot -> no key read, none released.
+  OUT30M="$(PGREP30=live run_release_locks_30 held-both 0)"
+  if emit "$OUT30M" | grep -q 'cron-launched scraper wake of slot .* still running (pids: 4242' \
+     && emit "$OUT30M" | grep -q 'none released' \
+     && emitn "$OUT30M" | grep -qF 'PGREP-ARGV: -f /var/www/ipodhan/current-staging/scripts/[s]craper-wake[.]sh' \
+     && ! emitn "$OUT30M" | grep -q ' EVAL ' \
+     && ! emitn "$OUT30M" | grep -q ' GET ' \
+     && ! emit "$OUT30M" | grep -q 'released: '; then
+    pass "case 30m: a live cron-launched wake of the slot -> its cycle locks are never read or released"
+  else
+    fail "case 30m: expected no GET/EVAL and a 'still running (pids: 4242)' line while a cron wake is alive — got: $OUT30M"
+  fi
+
+  # 30n (b): no live wake -> released as before, and pgrep WAS asked first.
+  OUT30N="$(PGREP30=none run_release_locks_30 held-both 0)"
+  if emitn "$OUT30N" | grep -q 'PGREP-ARGV: ' \
+     && emit "$OUT30N" | grep -q 'cycle locks released: 2'; then
+    pass "case 30n: no live cron wake -> pgrep consulted, both locks released as today"
+  else
+    fail "case 30n: expected a pgrep consult and 'cycle locks released: 2' — got: $OUT30N"
+  fi
+
+  # 30o (c): a held lock with no live owner is stale -> released, and the log
+  # names the stale owner token for each key.
+  if emit "$OUT30N" | grep -q 'staging:lock:resource:scraper:cycle stale: owner token=tok-abc has no live scraper process' \
+     && emit "$OUT30N" | grep -q 'staging:lock:resource:filing-auto-persist:cycle stale: owner token=tok-abc has no live scraper process'; then
+    pass "case 30o: a stale lock (owner process gone) is released with a line naming the owner token"
+  else
+    fail "case 30o: expected a 'stale: owner token=tok-abc' line per released key — got: $OUT30N"
+  fi
+
+  # 30p/30q: pgrep absent or erroring -> unknowable -> keep the locks.
+  OUT30P="$(PGREP30=absent run_release_locks_30 held-both 0)"
+  OUT30Q="$(PGREP30=broken run_release_locks_30 held-both 0)"
+  if emit "$OUT30P" | grep -q 'cannot list cron-launched scraper wakes' \
+     && ! emitn "$OUT30P" | grep -q ' GET ' \
+     && emit "$OUT30Q" | grep -q 'cannot list cron-launched scraper wakes' \
+     && ! emitn "$OUT30Q" | grep -q ' GET '; then
+    pass "case 30p/30q: pgrep missing or failing -> WARN, no key read, locks left to expire"
+  else
+    fail "case 30p/30q: expected a WARN and no GET when liveness is unknowable — absent: $OUT30P / broken: $OUT30Q"
+  fi
+
+  # 30r: the pattern matches this slot's cron command lines only, and never
+  # its own text (built at run time, bracketed; owner rule).
+  PAT30R="$( CURRENT_LINK=/var/www/ipodhan/current; eval "$CRON_WAKE_FNS_30"; cron_wake_pattern )"
+  if printf '%s\n' '/bin/sh -c SCRAPER_WAKE_TRIGGER=schedule /var/www/ipodhan/current/scripts/scraper-wake.sh data >> /var/log/ipodhan-scraper-wake-prod.log 2>&1' | grep -qE "$PAT30R" \
+     && printf '%s\n' '/bin/sh /var/www/ipodhan/current/scripts/scraper-wake.sh live' | grep -qE "$PAT30R" \
+     && ! printf '%s\n' '/bin/sh /var/www/ipodhan/current-staging/scripts/scraper-wake.sh data' | grep -qE "$PAT30R" \
+     && ! printf '%s\n' "pgrep -f $PAT30R" | grep -qE "$PAT30R"; then
+    pass "case 30r: the wake pattern ($PAT30R) matches this slot's cron wakes, not the other slot's, not its own argv"
+  else
+    fail "case 30r: wake pattern '$PAT30R' matched wrongly (own slot / other slot / its own argv)"
+  fi
+
+  # 30s: the idle wait also waits (bounded) on a live cron wake, then
+  # proceeds without refusing; with none it says so. Real function, stubs.
+  WAIT_FN_30S="$(awk '/^wait_for_scraper_idle\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
+  run_wait_30s() {
+    ( log() { echo "LOG: $*"; }; warn() { echo "WARN: $*"; }; fatal() { echo "FATAL: $*"; exit 1; }
+      sleep() { :; }; pm2_app_status() { printf 'stopped'; }
+      DRY_RUN=1; SLOT=prod; CURRENT_LINK=/var/www/ipodhan/current; PM2_SCRAPER_APP=ipodhan-scraper
+      MUTEX_MAX_WAIT=2; MUTEX_POLL=1; DEPLOY_DRYRUN_CRON_WAKE_PIDS="$1"
+      eval "$CRON_WAKE_FNS_30"; eval "${2:-$WAIT_FN_30S}"; wait_for_scraper_idle; echo "RC=$?" ) 2>&1
+  }
+  OUT30S_LIVE="$(run_wait_30s 4242)"
+  OUT30S_NONE="$(run_wait_30s '')"
+  if [ "$(emitn "$OUT30S_LIVE" | grep -c 'Cron-launched scraper wake of slot prod in flight (pids: 4242)')" -eq 2 ] \
+     && emit "$OUT30S_LIVE" | grep -q 'still running after 2s (pids: 4242) — proceeding' \
+     && emit "$OUT30S_LIVE" | grep -q 'will NOT be released' \
+     && emit "$OUT30S_LIVE" | grep -q 'RC=0' \
+     && emit "$OUT30S_NONE" | grep -q 'No cron-launched scraper wake of slot prod running' \
+     && ! emit "$OUT30S_NONE" | grep -q 'in flight'; then
+    pass "case 30s: idle wait polls a live cron wake for the bounded window, then proceeds (locks kept); none -> no wait"
+  else
+    fail "case 30s: expected two bounded wait polls then a proceed line, and no wait with no wake — live: $OUT30S_LIVE / none: $OUT30S_NONE"
+  fi
+
+  # 30t: mutation proofs, each on an in-memory copy of the extracted text
+  # (sed on a string, never the file).
+  M30_NOGUARD="$(printf '%s\n' "$RELEASE_LOCKS_FN_30" | sed 's/\[ -n "\$live_pids" \]/false/')"
+  M30_ALWAYS="$(printf '%s\n' "$RELEASE_LOCKS_FN_30" | sed 's/\[ -n "\$live_pids" \]/true/')"
+  M30_NOUNKNOWN="$(printf '%s\n' "$RELEASE_LOCKS_FN_30" | sed 's/if ! live_pids="\$(live_cron_wake_pids)"; then/live_pids="$(live_cron_wake_pids)" || true; if false; then/')"
+  M30_NOSTALE="$(printf '%s\n' "$RELEASE_LOCKS_FN_30" | grep -v 'stale: owner token=')"
+  M30S_NOWAIT="$(printf '%s\n' "$WAIT_FN_30S" | sed 's/if \[ -z "\$pids" \]; then/if true; then/')"
+  if [ "$M30_NOGUARD" = "$RELEASE_LOCKS_FN_30" ] || [ "$M30_ALWAYS" = "$RELEASE_LOCKS_FN_30" ] \
+     || [ "$M30_NOUNKNOWN" = "$RELEASE_LOCKS_FN_30" ] || [ "$M30_NOSTALE" = "$RELEASE_LOCKS_FN_30" ] \
+     || [ "$M30S_NOWAIT" = "$WAIT_FN_30S" ]; then
+    fail "case 30t: a mutation did not apply (pattern drifted) — every mutant must change the text"
+  else
+    MO_A="$(RELEASE_FN_OVERRIDE30="$M30_NOGUARD" PGREP30=live run_release_locks_30 held-both 0)"
+    MO_B="$(RELEASE_FN_OVERRIDE30="$M30_ALWAYS" PGREP30=none run_release_locks_30 held-both 0)"
+    MO_P="$(RELEASE_FN_OVERRIDE30="$M30_NOUNKNOWN" PGREP30=broken run_release_locks_30 held-both 0)"
+    MO_C="$(RELEASE_FN_OVERRIDE30="$M30_NOSTALE" PGREP30=none run_release_locks_30 held-both 0)"
+    MO_W="$(run_wait_30s 4242 "$M30S_NOWAIT")"
+    if emit "$MO_A" | grep -q 'cycle locks released: 2'; then
+      pass "case 30t mutation (a): without the live-wake guard a live cron run's locks ARE released — 30m's guard is load-bearing"
+    else
+      fail "case 30t mutation (a): removing the guard should release the live run's locks — got: $MO_A"
+    fi
+    if ! emit "$MO_B" | grep -q 'cycle locks released: 2'; then
+      pass "case 30t mutation (b): a guard that always fires releases nothing with no live wake — 30n tells them apart"
+    else
+      fail "case 30t mutation (b): an always-true guard should block the no-live-wake release — got: $MO_B"
+    fi
+    if emit "$MO_P" | grep -q 'cycle locks released: 2'; then
+      pass "case 30t mutation (unknowable): without the pgrep-failure fallback the locks are released blind — 30q is load-bearing"
+    else
+      fail "case 30t mutation (unknowable): dropping the fallback should release blind — got: $MO_P"
+    fi
+    if ! emit "$MO_C" | grep -q 'stale: owner token='; then
+      pass "case 30t mutation (c): dropping the stale-owner line is caught by 30o's assertion"
+    else
+      fail "case 30t mutation (c): the stale line survived its own removal — got: $MO_C"
+    fi
+    if ! emit "$MO_W" | grep -q 'in flight (pids: 4242)'; then
+      pass "case 30t mutation (wait): an idle wait that ignores cron wakes never polls — 30s is load-bearing"
+    else
+      fail "case 30t mutation (wait): the mutant still waited — got: $MO_W"
+    fi
   fi
 
   rm -rf "$FAKEBIN30" "$ENVDIR30"
