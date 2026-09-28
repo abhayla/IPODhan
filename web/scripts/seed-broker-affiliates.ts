@@ -1,13 +1,19 @@
 /**
  * Broker Affiliates Seeding Script
- * Story 5.7: Broker Affiliates DB Migration
  *
- * Seeds the broker_affiliates table with 6 major Indian brokers.
- * Idempotent: Skips seeding if data already exists.
+ * Seeds the broker_affiliates table with exactly ONE broker (Zerodha), the
+ * only broker IPODhan has a real partner link for (owner decision 2026-09-28,
+ * issue #97). The affiliate URL is never hard-coded: it comes only from the
+ * required env var ZERODHA_AFFILIATE_URL so the real value never lands in
+ * the repo.
+ *
+ * Idempotent: upserts by brokerName, so re-running updates the URL instead
+ * of creating duplicates, and removes any other broker row left over from
+ * the old multi-broker seed.
  *
  * Usage:
- *   npm run seed:broker-affiliates       # Seed if table is empty
- *   npm run seed:broker-affiliates:force # Force re-seed (clears existing data)
+ *   npm run seed:broker-affiliates          # Dry run - prints what it would write
+ *   npm run seed:broker-affiliates -- --apply  # Actually write to the DB
  */
 
 // Load environment variables FIRST
@@ -31,138 +37,96 @@ if (!process.env.DATABASE_URL && !process.env.DATABASE_HOST) {
 console.log('✓ Environment variables loaded successfully\n');
 
 import { db, closePool, brokerAffiliates } from '../lib/db';
-import { count } from 'drizzle-orm';
+import { eq, ne } from 'drizzle-orm';
 
-// ==================== BROKER DATA ====================
+const BROKER_NAME = 'Zerodha';
 
-const BROKER_AFFILIATES = [
-  {
-    brokerName: 'Zerodha',
-    brokerLogo: 'https://zerodha.com/static/images/logo.svg',
-    affiliateUrl: 'https://zerodha.com/open-account?c=IPODHAN',
-    displayText: 'Open Free Demat Account',
-    active: true,
-    displayOrder: 1,
-  },
-  {
-    brokerName: 'Groww',
-    brokerLogo: 'https://assets-netstorage.groww.in/web-assets/billion_groww_desktop/prod/_next/static/media/logo.png',
-    affiliateUrl: 'https://groww.in/open-demat-account?utm_source=ipodhan',
-    displayText: 'Start Investing Today',
-    active: true,
-    displayOrder: 2,
-  },
-  {
-    brokerName: 'Angel One',
-    brokerLogo: 'https://www.angelone.in/assets/images/angel-one-logo.svg',
-    affiliateUrl: 'https://angelone.in/open-account?ref=IPODHAN',
-    displayText: 'Open Demat Account',
-    active: true,
-    displayOrder: 3,
-  },
-  {
-    brokerName: 'Upstox',
-    brokerLogo: 'https://upstox.com/app/themes/upstox/dist/img/logo/upstox-logo.svg',
-    affiliateUrl: 'https://upstox.com/open-account/?f=IPODHAN',
-    displayText: 'Open Account Now',
-    active: true,
-    displayOrder: 4,
-  },
-  {
-    brokerName: '5paisa',
-    brokerLogo: 'https://www.5paisa.com/Content/Images/5paisa-logo.svg',
-    affiliateUrl: 'https://5paisa.com/open-demat-account?source=IPODHAN',
-    displayText: 'Start Trading',
-    active: true,
-    displayOrder: 5,
-  },
-  {
-    brokerName: 'ICICI Direct',
-    brokerLogo: 'https://www.icicidirect.com/content/dam/icicisecurities/images/logo-icicidirect.svg',
-    affiliateUrl: 'https://www.icicidirect.com/open-demat-account?ref=IPODHAN',
-    displayText: 'Apply for Demat',
-    active: true,
-    displayOrder: 6,
-  },
-];
-
-// ==================== MAIN SEED FUNCTION ====================
+function resolveAffiliateUrl(): string {
+  const url = process.env.ZERODHA_AFFILIATE_URL;
+  if (!url) {
+    console.error('ERROR: ZERODHA_AFFILIATE_URL is not set.');
+    console.error('Set ZERODHA_AFFILIATE_URL to the real PIFS Zerodha partner link');
+    console.error('(in web/.env.local or the environment) before running this script.');
+    process.exit(1);
+  }
+  if (!url.startsWith('https://signup.zerodha.com/')) {
+    console.error('ERROR: ZERODHA_AFFILIATE_URL does not look like a Zerodha signup link.');
+    console.error(`Expected it to start with "https://signup.zerodha.com/", got: ${url}`);
+    process.exit(1);
+  }
+  return url;
+}
 
 async function seedBrokerAffiliates() {
   const startTime = Date.now();
-  const forceFlag = process.argv.includes('--force');
+  const apply = process.argv.includes('--apply');
 
   console.log('='.repeat(70));
-  console.log('BROKER AFFILIATES SEEDING');
-  console.log('Story 5.7: Broker Affiliates DB Migration');
+  console.log('BROKER AFFILIATES SEEDING (Zerodha only, #97)');
   console.log('='.repeat(70));
-  console.log(`Target: ${BROKER_AFFILIATES.length} Broker Affiliates`);
-  console.log(`Force mode: ${forceFlag ? 'YES (will clear existing data)' : 'NO'}\n`);
+  console.log(`Mode: ${apply ? 'APPLY (will write to the database)' : 'DRY RUN (no writes)'}\n`);
+
+  const affiliateUrl = resolveAffiliateUrl();
+
+  // Zerodha's own logo already ships under web/public/logos/; no new asset added.
+  const brokerLogo = '/logos/zerodha.svg';
+
+  const zerodhaRow = {
+    brokerName: BROKER_NAME,
+    brokerLogo,
+    affiliateUrl,
+    displayText: 'Open Zerodha account',
+    active: true,
+    displayOrder: 1,
+  };
 
   try {
-    // Check existing data (Idempotency)
-    console.log('[1/3] Checking existing data...');
-    const existingResult = await db.select({ count: count() }).from(brokerAffiliates);
-    const existingCount = Number(existingResult[0]?.count || 0);
+    console.log('[1/2] Checking existing broker_affiliates rows...');
+    const existing = await db.select().from(brokerAffiliates);
+    const otherBrokers = existing.filter((row) => row.brokerName !== BROKER_NAME);
+    const existingZerodha = existing.find((row) => row.brokerName === BROKER_NAME);
 
-    if (existingCount > 0 && !forceFlag) {
-      console.log(`\n⚠️  Database already contains ${existingCount} broker affiliates`);
-      console.log('Seed script is idempotent - skipping to avoid duplicates');
-      console.log('\nTo force re-seed, run: node web/scripts/seed-broker-affiliates.ts --force');
-      console.log('This will DELETE all existing broker affiliate data and re-seed.\n');
+    console.log(`  Found ${existing.length} row(s): ${existingZerodha ? '1 Zerodha' : '0 Zerodha'}, ${otherBrokers.length} other broker(s) to remove`);
+    console.log('\nWould write:');
+    console.log(`  ${zerodhaRow.brokerName} -> ${zerodhaRow.affiliateUrl} (logo: ${zerodhaRow.brokerLogo})`);
+    if (otherBrokers.length > 0) {
+      console.log('\nWould remove:');
+      otherBrokers.forEach((row) => console.log(`  ${row.brokerName} (${row.affiliateUrl})`));
+    }
+
+    if (!apply) {
+      console.log('\nDry run complete. Re-run with --apply to write these changes.\n');
       await closePool();
       return;
     }
 
-    if (existingCount > 0 && forceFlag) {
-      console.log(`\n⚠️  Force mode enabled - clearing ${existingCount} existing broker affiliates`);
-      await db.delete(brokerAffiliates);
-      console.log('✓ Existing data cleared\n');
-    } else {
-      console.log('✓ Table is empty, ready for seeding\n');
-    }
-
-    // Insert broker affiliates
-    console.log('[2/3] Inserting broker affiliates...');
+    console.log('\n[2/2] Applying changes...');
     const now = new Date();
 
-    const brokersWithTimestamps = BROKER_AFFILIATES.map((broker) => ({
-      ...broker,
-      createdAt: now,
-      updatedAt: now,
-    }));
+    if (otherBrokers.length > 0) {
+      await db.delete(brokerAffiliates).where(ne(brokerAffiliates.brokerName, BROKER_NAME));
+      console.log(`✓ Removed ${otherBrokers.length} non-Zerodha row(s)`);
+    }
 
-    await db.insert(brokerAffiliates).values(brokersWithTimestamps);
-
-    console.log(`✓ Inserted ${BROKER_AFFILIATES.length} broker affiliates\n`);
-
-    // Verify insertion
-    console.log('[3/3] Verifying insertion...');
-    const finalResult = await db.select({ count: count() }).from(brokerAffiliates);
-    const finalCount = Number(finalResult[0]?.count || 0);
+    if (existingZerodha) {
+      await db
+        .update(brokerAffiliates)
+        .set({ ...zerodhaRow, updatedAt: now })
+        .where(eq(brokerAffiliates.brokerName, BROKER_NAME));
+      console.log('✓ Updated existing Zerodha row');
+    } else {
+      await db.insert(brokerAffiliates).values({ ...zerodhaRow, createdAt: now, updatedAt: now });
+      console.log('✓ Inserted Zerodha row');
+    }
 
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-
     console.log('='.repeat(70));
     console.log('SEEDING COMPLETED SUCCESSFULLY');
+    console.log(`Execution Time: ${elapsedTime}s`);
     console.log('='.repeat(70));
-    console.log('\nFinal Statistics:');
-    console.log(`  Total Broker Affiliates: ${finalCount}`);
-    console.log(`  Execution Time: ${elapsedTime}s`);
-    console.log('\n' + '='.repeat(70));
-    console.log('\nBrokers Seeded:');
-    BROKER_AFFILIATES.forEach((broker, index) => {
-      console.log(`  ${index + 1}. ${broker.brokerName} (Display Order: ${broker.displayOrder})`);
-    });
-    console.log('\n' + '='.repeat(70));
-    console.log('\nNext Steps:');
-    console.log('  1. View data: npm run db:studio');
-    console.log('  2. Test affiliates page: npm run dev -> http://localhost:3000/affiliates');
-    console.log('');
-
   } catch (error) {
     console.error('\n' + '='.repeat(70));
-    console.error('❌ SEEDING FAILED');
+    console.error('SEEDING FAILED');
     console.error('='.repeat(70));
     console.error('\nError details:');
     console.error(error);
@@ -172,7 +136,5 @@ async function seedBrokerAffiliates() {
     await closePool();
   }
 }
-
-// ==================== EXECUTION ====================
 
 seedBrokerAffiliates();
