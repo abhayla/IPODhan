@@ -197,6 +197,23 @@ describe('planDocumentRunSteps — C, D, I3, I4 from the attempt log', () => {
     expect(byId(planDocumentRunSteps(runResult({ networkCalls: 4 }))).has('D5')).toBe(false);
   });
 
+  it('D5 is NOT claimed when the walk answered from responses reused this cycle (zero calls, real work)', () => {
+    // B7 (#620): a SEBI walk served wholly from the per-cycle memo makes no
+    // network call, but it DID look (and may have said not_listed). That is not
+    // "nothing to fetch".
+    const w = byId(
+      planDocumentRunSteps(
+        runResult({
+          networkCalls: 0,
+          attempts: [
+            { source: 'SEBI', http: 200, ms: 0, outcome: 'reused:listing_rows:GET', url: 'https://www.sebi.gov.in/x' },
+          ] as never,
+        })
+      )
+    );
+    expect(w.has('D5')).toBe(false);
+  });
+
   it('never downgrades a DONE rung when a later cycle cannot reach the source', () => {
     const failingRun = runResult({
       networkCalls: 1,

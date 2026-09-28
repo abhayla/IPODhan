@@ -168,9 +168,16 @@ describe('H-2 an escalation rung that FAILS must not mint NOT_YET_FILED', () => 
   it('SEBI answering and simply not listing the filing IS an absence', async () => {
     // The other direction, so the fix cannot degenerate into "call everything a
     // failure": an empty SEBI list is real evidence the draft is not filed yet.
+    // B7 (#620): the evidence is a COMPLETED walk: page 1, the search and every
+    // page answer a real (empty) listing table, and page 1 carries the search
+    // form. A page 1 with no form cannot be searched, so it is an abort now.
+    const emptyListing = html(
+      '<form name="homeForm" action="/sebiweb/home/HomeAction.do?doListing=yes">' +
+        '<input type="hidden" name="sid" value="3"></form><table id="sample_1"></table>'
+    );
     const { runner } = makeRunner({
       ...CLEAN_EXCHANGES,
-      'smid=10': html('<table id="sample_1"></table>'),
+      'HomeAction.do': emptyListing,
     });
 
     const result = await runner.runIpo(upcoming(), []);

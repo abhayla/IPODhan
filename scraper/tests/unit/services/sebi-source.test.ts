@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  isSebiNoRecordsPage,
   parseSebiListing,
   matchSebiRow,
   parseSebiDetailPdfUrl,
@@ -271,6 +272,32 @@ describe('fetchSebiListingRows — search then page beyond page 1', () => {
     ]);
   });
 
+  it('(e) #620 B7: a no-records page while paging is the end of the listing — not listed, not a failure, no further pages', async () => {
+    const NO_RECORDS_HTML = readFileSync(join(__dirname, '../../fixtures/sebi/sebi-drhp-search-page.html'), 'utf8');
+    const posts: string[] = [];
+    const fetchImpl: SebiFetcher = async (_url, init) => {
+      if (init.method === 'GET') return { status: 200, body: PAGE1_HTML };
+      posts.push(String(init.body ?? ''));
+      // 1st POST = the search (live zero-result page), 2nd = page 1 (real listing), 3rd = page 2 (no records).
+      if (posts.length === 1) return { status: 200, body: NO_RECORDS_HTML };
+      if (posts.length === 2) return { status: 200, body: PAGE1_HTML };
+      return { status: 200, body: NO_RECORDS_HTML };
+    };
+
+    const result = await fetchSebiListingRows('DRHP', { companyName: SEARCH_ONLY_COMPANY, fetchImpl, maxPages: 6 });
+
+    expect(posts.length).toBe(3);
+    expect(result.aborted).toBeNull();
+    expect(result.matched).toBeNull();
+    expect(result.rungs).toEqual([
+      'SEBI:page1',
+      'SEBI:searched:no_records',
+      'SEBI:paged:1',
+      'SEBI:paged:2:no_records',
+      'SEBI:paged:end',
+    ]);
+  });
+
   it('page 1 HTTP failure is recorded and never followed by a search attempt', async () => {
     const calls: string[] = [];
     const fetchImpl: SebiFetcher = async (url) => {
@@ -285,11 +312,73 @@ describe('fetchSebiListingRows — search then page beyond page 1', () => {
     expect(result.matched).toBeNull();
   });
 
+  // B7 (#620 fix round): a SEBI answer that is not a listing (a dead session or
+  // a rejected form comes back as a 200 homepage with no table#sample_1) never
+  // looked for the company, so it must ABORT the walk, never read as not listed.
+  const NOT_A_LISTING_HTML =
+    '<!DOCTYPE html><html><head><title>Securities and Exchange Board of India</title></head>' +
+    '<body><div class="home">Welcome</div></body></html>';
+
+  it('a search POST that answers 200 without the listing table aborts the walk (not_a_listing)', async () => {
+    const fetchImpl: SebiFetcher = async (_url, init) =>
+      init.method === 'GET' ? { status: 200, body: PAGE1_HTML } : { status: 200, body: NOT_A_LISTING_HTML };
+    const result = await fetchSebiListingRows('DRHP', { companyName: SEARCH_ONLY_COMPANY, fetchImpl });
+    expect(result.rungs).toEqual(['SEBI:page1', 'SEBI:searched:not_a_listing']);
+    expect(result.aborted).toEqual({ step: 'search', status: 200 });
+    expect(result.matched).toBeNull();
+  });
+
+  it('a paged POST that answers 200 without the listing table aborts at that page', async () => {
+    let posts = 0;
+    const fetchImpl: SebiFetcher = async (_url, init) => {
+      if (init.method === 'GET') return { status: 200, body: PAGE1_HTML };
+      posts += 1;
+      return { status: 200, body: posts === 1 ? PAGE1_HTML : NOT_A_LISTING_HTML };
+    };
+    const result = await fetchSebiListingRows('DRHP', { companyName: SEARCH_ONLY_COMPANY, fetchImpl, maxPages: 3 });
+    expect(result.rungs).toEqual(['SEBI:page1', 'SEBI:searched', 'SEBI:paged:1:not_a_listing']);
+    expect(result.aborted).toEqual({ step: 'page:1', status: 200 });
+  });
+
+  it('a page-1 GET that answers 200 without the listing table aborts before any search', async () => {
+    const calls: string[] = [];
+    const fetchImpl: SebiFetcher = async (_url, init) => {
+      calls.push(init.method);
+      return { status: 200, body: NOT_A_LISTING_HTML };
+    };
+    const result = await fetchSebiListingRows('DRHP', { companyName: SEARCH_ONLY_COMPANY, fetchImpl });
+    expect(calls).toEqual(['GET']);
+    expect(result.rungs).toEqual(['SEBI:page1:not_a_listing']);
+    expect(result.aborted).toEqual({ step: 'page1', status: 200 });
+  });
+
+  it('a page-1 GET with the table but no search form aborts (cannot search), not an exhausted walk', async () => {
+    const noForm = PAGE1_HTML.replace(/name="homeForm"/g, 'name="otherForm"');
+    const fetchImpl: SebiFetcher = async () => ({ status: 200, body: noForm });
+    const result = await fetchSebiListingRows('DRHP', { companyName: SEARCH_ONLY_COMPANY, fetchImpl });
+    expect(result.rungs).toEqual(['SEBI:page1', 'SEBI:search:no_form_found']);
+    expect(result.aborted).toEqual({ step: 'page1', status: 200 });
+  });
+
   it('a docType SEBI does not serve is skipped without any request', async () => {
     const fetchImpl: SebiFetcher = async () => {
       throw new Error('must not be called');
     };
     const result = await fetchSebiListingRows('PRICE_BAND_AD' as never, { fetchImpl });
     expect(result.rungs).toEqual(['SEBI:skipped:not_served_by_sebi']);
+  });
+});
+
+describe('isSebiNoRecordsPage (#620 B7, live capture 2026-09-29)', () => {
+  const dir = join(__dirname, '../../fixtures/sebi');
+  const read = (f: string) => readFileSync(join(dir, f), 'utf8');
+  it('recognises the real zero-result search page', () => {
+    expect(isSebiNoRecordsPage(read('sebi-drhp-search-page.html'))).toBe(true);
+  });
+  it('a real listing page is not a zero-result page', () => {
+    expect(isSebiNoRecordsPage(read('sebi-drhp-page1-with-form.html'))).toBe(false);
+  });
+  it('a homepage-like page without the form is not a zero-result page, even with the marker text', () => {
+    expect(isSebiNoRecordsPage('<html><body><div class="pagination_inner"><p>No record(s) available.</p></div></body></html>')).toBe(false);
   });
 });

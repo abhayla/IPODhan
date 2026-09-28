@@ -80,6 +80,35 @@ function absolute(href: string): string {
  * part before the nested Abridged-Prospectus anchor — because that anchor makes
  * naive "first link / whole title" parsing pick the summary document.
  */
+/**
+ * B7 (#620): whether a 200 from SEBI is actually a filing listing. A dead
+ * session or a rejected form answers 200 with SEBI's HOMEPAGE (no
+ * `table#sample_1`); parsing that yields zero rows, which used to read as
+ * "SEBI does not list this company" when the walk had never looked.
+ */
+export function isSebiListingPage(html: string): boolean {
+  if (!html || typeof html !== 'string') return false;
+  return cheerio.load(html)('table#sample_1').length > 0;
+}
+
+/**
+ * B7 (#620, measured on the live site 2026-09-29): a search or page that finds
+ * nothing is NOT a table-less homepage. SEBI answers it with the listing page
+ * itself — the search form (`homeForm`) and, instead of `table#sample_1`, the
+ * marker "No record(s) available." inside `.pagination_inner`. That is a real
+ * listing with zero rows (the company is not there), unlike a dead session,
+ * which answers with a page that has neither. Fixture:
+ * tests/fixtures/sebi/sebi-drhp-search-page.html (captured live).
+ */
+export function isSebiNoRecordsPage(html: string): boolean {
+  if (!html || typeof html !== 'string') return false;
+  const $ = cheerio.load(html);
+  if ($('form[name="homeForm"]').length === 0) return false;
+  return $('.pagination_inner p')
+    .toArray()
+    .some((el) => $(el).text().replace(/\s+/g, ' ').trim() === 'No record(s) available.');
+}
+
 export function parseSebiListing(html: string): SebiListingRow[] {
   if (!html || typeof html !== 'string') return [];
   const $ = cheerio.load(html);
@@ -305,9 +334,14 @@ export interface FetchSebiListingRowsOptions {
  * HTTP status, or 0 when the request threw / never left the caller.
  *
  * The distinction this exists for: an aborted walk has NOT looked for the
- * company, so its empty `matched` is not evidence of absence. Page 1 is
- * deliberately NOT reported here — a failed page 1 returns no evidence at all,
- * which the caller already treats as a failure.
+ * company, so its empty `matched` is not evidence of absence. A NON-200 page 1
+ * is deliberately NOT reported here — it returns no evidence at all, which the
+ * caller already treats as a failure.
+ *
+ * B7 (#620): a step that answered 200 but is not a listing (no
+ * `table#sample_1`, or a page 1 with no search form) is ALSO an abort, with
+ * `status: 200` and step `page1` / `search` / `page:<n>`. `status === 200` is
+ * how the caller tells "this session is dead" from "the server is down".
  */
 export interface SebiWalkAbort {
   /** `search` or `page:<n>`. */
@@ -321,7 +355,7 @@ export interface FetchSebiListingRowsResult {
   /** The matched row for `companyName` + the wanted `docType`, or null. */
   matched: SebiListingRow | null;
   /** What this call did, in order — `SEBI:page1`, `SEBI:searched`,
-   * `SEBI:paged:<n>`, or an `:http_error:<status>` / `:no_form_found` /
+   * `SEBI:paged:<n>`, or an `:http_error:<status>` / `:not_a_listing` / `:no_form_found` /
    * `:exhausted` suffix on any step that did not proceed further. */
   rungs: string[];
   /** Set when the walk stopped because a step FAILED (W-72), null when it ran
@@ -394,6 +428,10 @@ export async function fetchSebiListingRows(
     rungs.push(`SEBI:page1:http_error:${page1.status}`);
     return { rows: [], matched: null, rungs, aborted: null };
   }
+  if (!isSebiListingPage(page1.body)) {
+    rungs.push('SEBI:page1:not_a_listing');
+    return { rows: [], matched: null, rungs, aborted: { step: 'page1', status: 200 } };
+  }
   rungs.push('SEBI:page1');
 
   let rows = parseSebiListing(page1.body);
@@ -404,8 +442,10 @@ export async function fetchSebiListingRows(
 
   const form = extractSebiSearchForm(page1.body);
   if (!form) {
+    // Page 1 did not match and cannot be searched: the walk stopped short of
+    // looking, so this is an abort, not an exhausted search.
     rungs.push('SEBI:search:no_form_found');
-    return { rows, matched: null, rungs, aborted: null };
+    return { rows, matched: null, rungs, aborted: { step: 'page1', status: 200 } };
   }
 
   const requestHeaders = { ...SEBI_FORM_HEADERS, Referer: listingUrl, Origin: SEBI_BASE };
@@ -425,10 +465,19 @@ export async function fetchSebiListingRows(
     rungs.push(`SEBI:searched:http_error:${searchRes.status}`);
     return { rows, matched: null, rungs, aborted: { step: 'search', status: searchRes.status } };
   }
-  rungs.push('SEBI:searched');
-  rows = parseSebiListing(searchRes.body);
-  matched = matchAnyKindRow(rows, companyName, docType);
-  if (matched) return { rows, matched, rungs, aborted: null };
+  if (isSebiNoRecordsPage(searchRes.body)) {
+    // The search looked and found nothing; SEBI's search can still miss a
+    // listed company, so the paging fallback below still runs.
+    rungs.push('SEBI:searched:no_records');
+  } else if (!isSebiListingPage(searchRes.body)) {
+    rungs.push('SEBI:searched:not_a_listing');
+    return { rows, matched: null, rungs, aborted: { step: 'search', status: 200 } };
+  } else {
+    rungs.push('SEBI:searched');
+    rows = parseSebiListing(searchRes.body);
+    matched = matchAnyKindRow(rows, companyName, docType);
+    if (matched) return { rows, matched, rungs, aborted: null };
+  }
 
   // The search ran but did not surface the row (SEBI's search can be title-only
   // or otherwise miss a valid company) — fall back to paging.
@@ -441,6 +490,16 @@ export async function fetchSebiListingRows(
     if (pageRes.status !== 200) {
       rungs.push(`SEBI:paged:${page}:http_error:${pageRes.status}`);
       return { rows, matched: null, rungs, aborted: { step: `page:${page}`, status: pageRes.status } };
+    }
+    if (isSebiNoRecordsPage(pageRes.body)) {
+      // Past the last page of the listing: nothing further to page through.
+      rungs.push(`SEBI:paged:${page}:no_records`);
+      rungs.push('SEBI:paged:end');
+      return { rows, matched: null, rungs, aborted: null };
+    }
+    if (!isSebiListingPage(pageRes.body)) {
+      rungs.push(`SEBI:paged:${page}:not_a_listing`);
+      return { rows, matched: null, rungs, aborted: { step: `page:${page}`, status: 200 } };
     }
     rungs.push(`SEBI:paged:${page}`);
     rows = parseSebiListing(pageRes.body);
