@@ -403,7 +403,8 @@ export interface FieldPlanWalkDeps {
   /**
    * §2.4 clarification / §9.2 item 9: refreshes ONLY witnesses + verdict on a held field's existing
    * field_sources row (`FieldSourcesRepository.updateWitnessesOnly`): never inserts, never touches
-   * the ADMIN row's source, value lineage, author or time. Absent, a held field's answers are
+   * the ADMIN row's source, value lineage, author or time. The stored witnesses are merged per
+   * source (`mergeHeldWitnesses`), read and written under one row lock. Absent, a held field's answers are
    * logged and handed to `onHeldFieldAnswers` only.
    */
   trackHeldFieldWitnesses?: (input: {
@@ -411,8 +412,8 @@ export interface FieldPlanWalkDeps {
     tableName: string;
     rowKey: string;
     fieldName: string;
-    witnesses: Witness[];
-    verdict: Verdict;
+    /** Given the row's stored witnesses, the merged witnesses + verdict to store, or null to write nothing. */
+    merge: (existing: unknown) => { witnesses: Witness[]; verdict: Verdict } | null;
   }) => Promise<{ updated: boolean }>;
   /** Overrides the exported no-op `onHeldFieldAnswers` seam (items 9, OD-106 plug in here). */
   onHeldFieldAnswers?: typeof onHeldFieldAnswers;
@@ -757,7 +758,27 @@ export async function walkFieldPlanForIPO(
         result.fieldsSkippedProtected += 1;
         // A gate that could not answer is not a known hold: nothing is asked (the read only exists
         // to serve a real hold), and the claim is released unrecorded exactly as before.
-        const heldRead = protectionCheckFailed ? false : await readHeldField(ipoId, plan, deps, resolveIpoType);
+        // A throw from the read itself (policy resolution, the witness merge) releases the claim
+        // on the way out, as every other settle path does, so the row is not stranded claimed.
+        let heldRead = false;
+        if (!protectionCheckFailed) {
+          try {
+            heldRead = await readHeldField(ipoId, plan, deps, resolveIpoType);
+          } catch (error) {
+            result.outcomesFailed += 1;
+            result.fieldsSkippedProtected -= 1;
+            logger.error(
+              { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, error: causeOf(error) },
+              'PASS 3: reading an admin-held field THREW; the claim is released and the error propagated'
+            );
+            await releaseQuietly(
+              deps,
+              { planRowId: plan.id, claimToken: plan.claimToken } as RecordOutcomeCallParams,
+              'held-field read threw'
+            );
+            throw error;
+          }
+        }
         // F4: this release IS this branch's settle, so a throw here strands
         // the claim exactly as a throwing `recordOutcome` would. There is no
         // second repair to attempt (the repair and the settle are the same
@@ -855,28 +876,30 @@ async function readHeldField(
   try {
     const family = loadFieldManifest().fields[`${plan.tableName}.${plan.fieldName}`]?.comparisonFamily;
     if (FEATURE_FLAGS.ENABLE_VERDICT_WRITER && deps.trackHeldFieldWitnesses && family && family !== 'ABSTAIN') {
-      const computed = computeVerdict(
-        answers.map((a) => ({
-          rank: a.rank,
-          source: a.source,
-          value: a.outcome === 'SUPPLIED' ? a.value : null,
-          at: a.at,
-          docType: a.docType,
-          outcome: a.outcome,
-          cause: a.cause,
-        })),
-        policy.ranks.length,
-        family
-      );
-      const stored = await deps.trackHeldFieldWitnesses({
-        ipoId,
-        tableName: plan.tableName,
-        rowKey: plan.rowKey ?? '',
-        // field_sources.fieldName is camelCase (lesson field-sources-field-name-is-camelCase).
-        fieldName: columnToCamelCase(plan.fieldName),
-        witnesses: computed.witnesses,
-        verdict: computed.verdict,
-      });
+      const incoming = witnessShape(answers);
+      const capable = policy.ranks.length;
+      const rankOrder: string[] = policy.ranks.flatMap((s) => (s ? [String(s)] : []));
+      // No rank answered (every ask FAILED or CHECK_FAILED): nothing new is known, so the stored
+      // witnesses -- what the admin picks from -- are left exactly as they were.
+      const stored = heldReadAnsweredAny(incoming)
+        ? await deps.trackHeldFieldWitnesses({
+            ipoId,
+            tableName: plan.tableName,
+            rowKey: plan.rowKey ?? '',
+            // field_sources.fieldName is camelCase (lesson field-sources-field-name-is-camelCase).
+            fieldName: columnToCamelCase(plan.fieldName),
+            merge: (existing) => {
+              const merged = mergeHeldWitnesses(existing, incoming, rankOrder);
+              if (merged === null) return null;
+              const computed = computeVerdict(
+                merged.map((w) => ({ ...w, rank: rankOrder.indexOf(w.source) + 1 })),
+                capable,
+                family
+              );
+              return { witnesses: computed.witnesses, verdict: computed.verdict };
+            },
+          })
+        : { updated: false };
       witnessesStored = stored.updated;
     }
   } catch (error) {
@@ -907,6 +930,64 @@ async function readHeldField(
       : 'PASS 3: admin-held field read, nothing written (§2.4 clarification: never WRITE, not never read)'
   );
   return true;
+}
+
+/**
+ * MAJOR-2 (Tier A review): how strong one source's answer is, for merging a held field's witnesses.
+ * A witness with no `outcome` (written before OD-103) was always SUPPLIED.
+ */
+const HELD_WITNESS_STRENGTH: Record<WitnessOutcome, number> = {
+  SUPPLIED: 4,
+  NOT_PRINTED: 3,
+  NOT_AVAILABLE_YET: 2,
+  CHECK_FAILED: 1,
+  FAILED: 0,
+};
+
+function heldWitnessStrength(w: { outcome?: WitnessOutcome }): number {
+  return HELD_WITNESS_STRENGTH[w.outcome ?? 'SUPPLIED'] ?? 0;
+}
+
+/** True when at least one source gave a real answer (not a failure) at this held read. */
+export function heldReadAnsweredAny(incoming: readonly Witness[]): boolean {
+  return incoming.some((w) => heldWitnessStrength(w) >= HELD_WITNESS_STRENGTH.NOT_AVAILABLE_YET);
+}
+
+/**
+ * MAJOR-2 (Tier A review): merge a held field's witnesses PER SOURCE. The admin picks a value from
+ * these witnesses (§9.3), so a read where a source failed must not erase what that source said
+ * before: a source's stored entry is replaced only by a newer answer of the same kind or a
+ * stronger one (SUPPLIED > NOT_PRINTED > NOT_AVAILABLE_YET > CHECK_FAILED > FAILED). A source with
+ * no stored entry takes whatever it answered now. Stored entries for sources no longer ranked are
+ * kept after the ranked ones. Returns null when nothing would change (the caller skips the write).
+ */
+export function mergeHeldWitnesses(
+  existing: unknown,
+  incoming: readonly Witness[],
+  rankOrder: readonly string[]
+): Witness[] | null {
+  const prior = Array.isArray(existing)
+    ? (existing.filter((w) => w && typeof w === 'object' && typeof (w as Witness).source === 'string') as Witness[])
+    : [];
+  const bySource = new Map<string, Witness>(prior.map((w) => [w.source, w]));
+  let changed = false;
+  for (const w of incoming) {
+    const old = bySource.get(w.source);
+    if (!old || heldWitnessStrength(w) >= heldWitnessStrength(old)) {
+      bySource.set(w.source, w);
+      changed = true;
+    }
+  }
+  if (!changed) return null;
+  const ordered: Witness[] = [];
+  for (const source of rankOrder) {
+    const w = bySource.get(source);
+    if (w) {
+      ordered.push(w);
+      bySource.delete(source);
+    }
+  }
+  return [...ordered, ...bySource.values()];
 }
 
 /** The witness shape of a pass's answers (rank order), independent of the verdict-writer flag. */

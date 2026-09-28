@@ -50,6 +50,7 @@ describe.skipIf(!DATABASE_URL)('an admin-held field is read, never written (§2.
     await db.delete(schema.auditLogs).where(inArray(schema.auditLogs.ipoId, [IPO_ID]));
     await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
     await db.delete(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO_ID));
+    await db.execute(sql`DELETE FROM documents WHERE ipo_id = ${IPO_ID}::uuid`);
     await db.execute(sql`DELETE FROM ipos WHERE id = ${IPO_ID}::uuid`);
     const keys = await redis.keys(`*${IPO_ID}*`);
     if (keys.length > 0) await redis.del(...keys);
@@ -102,6 +103,7 @@ describe.skipIf(!DATABASE_URL)('an admin-held field is read, never written (§2.
       .from(schema.fieldSources)
       .where(and(eq(schema.fieldSources.ipoId, IPO_ID), eq(schema.fieldSources.fieldName, 'issueSize')));
     expect(adminRowBefore?.source).toBe('ADMIN');
+    const tokenBefore = (await readAdminFieldVersion(db as never, IPO_ID, 'ipos', 'issueSize'))!.version;
 
     // 2. A due plan row for the held field.
     const [plan] = await db
@@ -183,6 +185,10 @@ describe.skipIf(!DATABASE_URL)('an admin-held field is read, never written (§2.
       ['DOC', 'SUPPLIED', DOC_VALUE],
       ['CHITTORGARH', 'NOT_PRINTED', null],
     ]);
+    // Tier A MINOR-1: the walk refreshed the witnesses without moving updated_at, and the admin
+    // version token still changes, so a pick made from the witnesses shown before is refused as stale.
+    const tokenAfter = (await readAdminFieldVersion(db as never, IPO_ID, 'ipos', 'issueSize'))!.version;
+    expect(tokenAfter).not.toBe(tokenBefore);
     const fsCount = await db.select({ id: schema.fieldSources.id }).from(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
     expect(fsCount).toHaveLength(1);
 
@@ -193,11 +199,51 @@ describe.skipIf(!DATABASE_URL)('an admin-held field is read, never written (§2.
     expect(row.chosenSource).toBeNull();
     expect(row.claimedAt).toBeNull();
     expect(row.lastAttemptAt).not.toBeNull();
-    expect(row.nextDueAt).not.toBeNull();
+    // Tier A MAJOR-1: the row LEAVES the slot cadence (no next-slot due): the stamp carries the
+    // IPO's read context (stage | completed documents), and only a change of it makes the row due.
+    expect(row.nextDueAt).toBeNull();
+    expect(row.cause).toBe('[held-read:UPCOMING|0]');
 
     // 4. The next wake (same slot) does not ask the held field again.
     await walkFieldPlanForIPO(IPO_ID, deps, openBudget());
     expect(docCalls).toBe(1);
     expect(cgCalls).toBe(1);
+
+    // 5. Several slots later (the read backdated three days; a next-slot due would be long past):
+    //    still not asked. §2.4: "No extra read is scheduled for a held field (OD-65)".
+    const backdate = async () =>
+      db.execute(sql`
+        UPDATE ipo_field_plan
+           SET last_attempt_at = now() - interval '3 days',
+               next_due_at = CASE WHEN next_due_at IS NULL THEN NULL ELSE now() - interval '2 days' END
+         WHERE id = ${plan.id}::uuid`);
+    await backdate();
+    await walkFieldPlanForIPO(IPO_ID, deps, openBudget());
+    await walkFieldPlanForIPO(IPO_ID, deps, openBudget());
+    expect(docCalls).toBe(1);
+
+    // 6. A stage change (OD-56) reopens it: asked exactly once more, then quiet again.
+    await db.execute(sql`UPDATE ipos SET status = 'OPEN' WHERE id = ${IPO_ID}::uuid`);
+    await walkFieldPlanForIPO(IPO_ID, deps, openBudget());
+    await walkFieldPlanForIPO(IPO_ID, deps, openBudget());
+    expect(docCalls).toBe(2);
+    const [afterStage] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, plan.id));
+    expect(afterStage.cause).toBe('[held-read:OPEN|0]');
+    expect(afterStage.state).toBe('PENDING');
+    expect(afterStage.attempts).toBe(0);
+    await backdate();
+    await walkFieldPlanForIPO(IPO_ID, deps, openBudget());
+    expect(docCalls).toBe(2);
+
+    // 7. A new COMPLETED document (OD-66) reopens it: asked exactly once more.
+    await db.execute(sql`
+      INSERT INTO documents (ipo_id, type, title, url, extraction_status)
+      VALUES (${IPO_ID}::uuid, 'RHP', 'Held read proof RHP', 'https://example.invalid/rhp.pdf', 'COMPLETED')`);
+    await walkFieldPlanForIPO(IPO_ID, deps, openBudget());
+    await walkFieldPlanForIPO(IPO_ID, deps, openBudget());
+    expect(docCalls).toBe(3);
+    const [afterDoc] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, plan.id));
+    expect(afterDoc.cause).toBe('[held-read:OPEN|1]');
+    expect(cgCalls).toBe(3);
   }, 60000);
 });

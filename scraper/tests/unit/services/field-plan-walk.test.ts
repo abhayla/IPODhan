@@ -9,6 +9,8 @@ import {
   type FieldFetcher,
   type FieldPlanWalkDeps,
   onHeldFieldAnswers,
+  mergeHeldWitnesses,
+  heldReadAnsweredAny,
 } from '../../../src/services/field-plan-walk.js';
 import { logger } from '../../../src/utils/logger.js';
 import { FEATURE_FLAGS } from '../../../src/config/feature-flags.js';
@@ -2609,6 +2611,7 @@ describe('field-plan walk -- an admin-held field is READ, never written (§2.4 c
     });
     const orch = makeOrchestrator();
     const witnessWrites: any[] = [];
+    const storedWitnesses: { current: unknown } = { current: null };
     const hook = vi.fn(async () => undefined);
     const protectionCalls: any[] = [];
     const d = deps({
@@ -2620,13 +2623,15 @@ describe('field-plan walk -- an admin-held field is READ, never written (§2.4 c
         return true;
       },
       trackHeldFieldWitnesses: async (input) => {
-        witnessWrites.push(input);
-        return { updated: true };
+        const merged = input.merge(storedWitnesses.current);
+        witnessWrites.push({ ...input, ...(merged ?? {}), merged });
+        if (merged) storedWitnesses.current = merged.witnesses;
+        return { updated: merged !== null };
       },
       onHeldFieldAnswers: hook,
       ...over,
     });
-    return { repo, heldReads, nse, bse, cg, orch, witnessWrites, hook, protectionCalls, d };
+    return { repo, heldReads, nse, bse, cg, orch, witnessWrites, storedWitnesses, hook, protectionCalls, d };
   }
 
   it('asks every ranked source once, writes NO value, records NO plan state, stamps the read', async () => {
@@ -2715,6 +2720,47 @@ describe('field-plan walk -- an admin-held field is READ, never written (§2.4 c
     expect(s.orch.consolidatedUpsertIPO).not.toHaveBeenCalled();
   });
 
+  it('Tier A MINOR-2: a held read that THROWS releases the claim and propagates', async () => {
+    const s = heldSetup({
+      resolvePolicy: (async () => {
+        throw new Error('manifest unreadable');
+      }) as never,
+    });
+    await expect(walkFieldPlanForIPO(IPO_ID, s.d, openBudget())).rejects.toThrow('manifest unreadable');
+    expect(s.repo.released).toHaveLength(1);
+    expect(s.heldReads).toHaveLength(0);
+    expect(s.orch.consolidatedUpsertIPO).not.toHaveBeenCalled();
+  });
+
+  it('Tier A MAJOR-2: every rank FAILED -> no witness write at all (the stored witnesses are untouched)', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const boom = vi.fn<FieldFetcher>(async () => {
+      throw new Error('down');
+    });
+    const s = heldSetup({ sourceFetchers: { NSE: boom, BSE: boom, CHITTORGARH: boom } as any });
+    s.storedWitnesses.current = [{ source: 'NSE', outcome: 'SUPPLIED', value: 999, at: 'x' }];
+    await walkFieldPlanForIPO(IPO_ID, s.d, openBudget());
+    expect(boom).toHaveBeenCalledTimes(3);
+    expect(s.witnessWrites).toHaveLength(0);
+    expect(s.storedWitnesses.current).toEqual([{ source: 'NSE', outcome: 'SUPPLIED', value: 999, at: 'x' }]);
+    expect(s.heldReads).toHaveLength(1);
+  });
+
+  it('Tier A MAJOR-2: a newer answer from one source changes only that source entry', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const s = heldSetup();
+    const oldCg = { source: 'CHITTORGARH', outcome: 'SUPPLIED', value: 1000, at: 'x' };
+    s.storedWitnesses.current = [{ source: 'NSE', outcome: 'SUPPLIED', value: 5, at: 'x' }, { source: 'BSE', outcome: 'NOT_PRINTED', value: null, at: 'x' }, oldCg];
+    await walkFieldPlanForIPO(IPO_ID, s.d, openBudget());
+    const w = s.storedWitnesses.current as any[];
+    expect(w.map((x) => [x.source, x.outcome, x.value])).toEqual([
+      ['NSE', 'SUPPLIED', 999],
+      ['BSE', 'NOT_PRINTED', null],
+      ['CHITTORGARH', 'SUPPLIED', 1000],
+    ]);
+    expect(w[2]).toEqual(oldCg);
+  });
+
   it('a row-keyed held field passes its row key to the gate, the fetchers and the witness write', async () => {
     FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
     const s = heldSetup();
@@ -2733,5 +2779,45 @@ describe('field-plan walk -- an admin-held field is READ, never written (§2.4 c
 
   it('the exported onHeldFieldAnswers seam is a no-op by default', async () => {
     await expect(onHeldFieldAnswers(IPO_ID, 'ipos', '', 'issue_size', [])).resolves.toBeUndefined();
+  });
+});
+
+describe('held-field witnesses merge per source (Tier A MAJOR-2)', () => {
+  const at = '2026-09-29T00:00:00.000Z';
+  const later = '2026-09-30T00:00:00.000Z';
+  const stored = [
+    { source: 'NSE', outcome: 'SUPPLIED', value: 999, at },
+    { source: 'BSE', outcome: 'NOT_PRINTED', value: null, at },
+    { source: 'CHITTORGARH', outcome: 'SUPPLIED', value: 1000, at },
+  ];
+  const ranks = ['NSE', 'BSE', 'CHITTORGARH'];
+
+  it('every rank FAILED: nothing answered, nothing to merge (the stored witnesses stay)', () => {
+    const failed = ranks.map((source) => ({ source, outcome: 'FAILED' as const, value: null, at: later, cause: 'x' }));
+    expect(heldReadAnsweredAny(failed)).toBe(false);
+    expect(mergeHeldWitnesses(stored, failed, ranks)).toBeNull();
+  });
+
+  it('a FAILED answer never overwrites a SUPPLIED one; a newer answer of the same kind replaces only that source', () => {
+    const incoming = [
+      { source: 'NSE', outcome: 'SUPPLIED' as const, value: 1111, at: later },
+      { source: 'BSE', outcome: 'FAILED' as const, value: null, at: later, cause: 'THROWN' },
+      { source: 'CHITTORGARH', outcome: 'CHECK_FAILED' as const, value: null, at: later, cause: 'CF' },
+    ];
+    const merged = mergeHeldWitnesses(stored, incoming, ranks)!;
+    expect(merged).toEqual([{ source: 'NSE', outcome: 'SUPPLIED', value: 1111, at: later }, stored[1], stored[2]]);
+  });
+
+  it('a legacy witness with no outcome counts as SUPPLIED; a source with no entry takes its answer', () => {
+    const legacy = [{ source: 'NSE', value: 5, at }];
+    const merged = mergeHeldWitnesses(
+      legacy,
+      [
+        { source: 'NSE', outcome: 'NOT_PRINTED', value: null, at: later },
+        { source: 'BSE', outcome: 'FAILED', value: null, at: later, cause: 'x' },
+      ],
+      ranks
+    )!;
+    expect(merged).toEqual([legacy[0], { source: 'BSE', outcome: 'FAILED', value: null, at: later, cause: 'x' }]);
   });
 });

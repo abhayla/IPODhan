@@ -389,8 +389,7 @@ export function buildFieldPlanWalkHoldDeps(
         tableName: input.tableName,
         rowKey: input.rowKey,
         fieldName: input.fieldName,
-        witnesses: input.witnesses,
-        verdict: input.verdict,
+        merge: input.merge,
       }),
   };
 }

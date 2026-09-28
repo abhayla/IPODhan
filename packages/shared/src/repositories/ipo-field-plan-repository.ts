@@ -141,6 +141,37 @@ function gapStampedSql() {
 }
 
 /**
+ * MAJOR-1 (Tier A review of the held-field read; spec §2.4 clarification: "No extra read is
+ * scheduled for a held field (OD-65)"; OD-56 "once per STAGE CHANGE"; OD-66 a new document).
+ *
+ * A held field's read stamps its cause `[held-read:<key>] <previous cause>`, where the key is the
+ * IPO's read context: its status (the stage) and the number of its COMPLETED documents. Every
+ * claim leg skips a row whose stamp still equals the IPO's CURRENT key, so the row leaves the slot
+ * cadence entirely; a stage change or a newly completed document changes the key, and that change
+ * IS the event that makes the row claimable again (the same shape as the gap-key stamp above: the
+ * key change is the event, no timer). No column is added.
+ */
+export const FIELD_PLAN_HELD_READ_PREFIX = '[held-read:';
+/** Strips a previous held-read stamp so repeated reads never stack stamps (bound as a parameter). */
+const HELD_READ_STAMP_RE = String.raw`^\[held-read:[^\]]*\] ?`;
+
+/** The IPO's read context for `ipo_field_plan.ipo_id`: `<status>|<completed document count>`. Fresh fragment per call. */
+function heldReadKeySql() {
+  return sql`(SELECT coalesce(i.status::text, '') || '|' || (
+                SELECT count(*) FROM documents d
+                 WHERE d.ipo_id = ipo_field_plan.ipo_id AND d.extraction_status = 'COMPLETED'
+              )::text
+              FROM ipos i WHERE i.id = ipo_field_plan.ipo_id)`;
+}
+
+/** True while the row's held-read stamp matches the IPO's current key (so the row is NOT due). */
+function heldReadCurrentSql() {
+  return sql`(CASE WHEN cause IS NOT NULL AND left(cause, ${FIELD_PLAN_HELD_READ_PREFIX.length}) = ${FIELD_PLAN_HELD_READ_PREFIX}
+               THEN left(cause, strpos(cause, ']')) = ${FIELD_PLAN_HELD_READ_PREFIX}::text || coalesce(${heldReadKeySql()}, '') || ']'
+               ELSE false END)`;
+}
+
+/**
  * #762 (S8): the claim query's reclaim keys on the data job's slot boundary
  * ("has a NEW slot begun since X"), never on elapsed time — the OD-33 /
  * design-doc D12 rule governs this claim query exactly as it governs the
@@ -770,7 +801,8 @@ export class IpoFieldPlanRepository extends BaseRepository {
     const legFilter = () => sql`
                  AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
                  AND (claimed_at IS NULL OR claimed_at <= ${utc(staleBefore)}::timestamp)
-                 AND NOT (id = ANY(${excludeIdsSql()}))`;
+                 AND NOT (id = ANY(${excludeIdsSql()}))
+                 AND NOT ${heldReadCurrentSql()}`;
 
     // Common filter every leg applies (ipoId scope, stale-claim reclaim,
     // excludeIds) — built ONCE and composed via `sql.join` into each leg's
@@ -1006,13 +1038,16 @@ export class IpoFieldPlanRepository extends BaseRepository {
   }
 
   /**
-   * §2.4 clarification ("'skip' means never WRITE, not never read"): the walk ASKED the sources for
-   * an admin-held field and wrote nothing. The row keeps its state, attempts, evidence and answers
-   * (§2.7: a held field stores no state and is never recorded as supplied by a source), and only
-   * the read is stamped: `last_attempt_at` = now and `next_due_at` = the next data slot, so the
-   * claim query offers the row again at the next slot (the same cadence as any unsettled row),
-   * never on every wake. Without the stamp, a released held row stays due and is re-read every
-   * wake. Conditional on the claim token, like `releaseClaimUnrecorded`.
+   * §2.4 clarification ("'skip' means never WRITE, not never read"; "No extra read is scheduled
+   * for a held field (OD-65)"): the walk ASKED the sources for an admin-held field and wrote
+   * nothing. The row keeps its state, attempts, evidence and answers (§2.7). The read is stamped:
+   * `last_attempt_at` = now, a PENDING row's `next_due_at` = NULL, and the cause carries the
+   * held-read stamp (`FIELD_PLAN_HELD_READ_PREFIX`, the IPO's current stage + completed-document
+   * key, the previous cause kept after it). Every claim leg skips the row while that key is current,
+   * so it is not offered again at the next slot (Tier A MAJOR-1: next-slot due kept the row read
+   * every slot forever, and a CHECK_FAILED row never reached the attempts cap because a held read
+   * charges no attempt). A stage change or a new COMPLETED document changes the key and the row is
+   * read once more. Conditional on the claim token, like `releaseClaimUnrecorded`.
    */
   async recordHeldFieldRead(params: {
     planRowId: string;
@@ -1020,13 +1055,14 @@ export class IpoFieldPlanRepository extends BaseRepository {
     now?: Date;
   }): Promise<{ released: boolean; reason?: 'CLAIM_SUPERSEDED' }> {
     const now = params.now ?? new Date();
-    const nextDueAt = fieldPlanNextDueAt({ terminal: false, isGap: false, now });
     try {
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
         SET claimed_at = NULL, claim_token = NULL,
             last_attempt_at = ${utc(now)}::timestamptz,
-            next_due_at = CASE WHEN state = 'PENDING' THEN ${nextDueAt === null ? null : utc(nextDueAt)}::timestamptz ELSE next_due_at END,
+            next_due_at = CASE WHEN state = 'PENDING' THEN NULL ELSE next_due_at END,
+            cause = rtrim(${FIELD_PLAN_HELD_READ_PREFIX}::text || coalesce(${heldReadKeySql()}, '') || '] ' ||
+                          regexp_replace(coalesce(cause, ''), ${HELD_READ_STAMP_RE}::text, '')),
             updated_at = ${utc(now)}::timestamptz
         WHERE id = ${params.planRowId}::uuid
           AND claim_token = ${params.claimToken}

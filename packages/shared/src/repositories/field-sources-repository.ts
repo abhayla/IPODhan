@@ -526,29 +526,43 @@ export class FieldSourcesRepository extends BaseRepository {
     tableName: string;
     rowKey?: string;
     fieldName: string;
-    witnesses: unknown;
-    verdict: string | null;
+    /**
+     * Given the row's stored witnesses, what to store (merged per source by the caller), or null to
+     * write nothing. Read and written under one row lock, so two reads never lose each other's entry.
+     */
+    merge: (existing: unknown) => { witnesses: unknown; verdict: string | null } | null;
   }): Promise<{ updated: boolean }> {
     const rowKey = input.rowKey ?? '';
-    const rows = await this.executeQuery(
+    const where = () =>
+      and(
+        eq(fieldSources.ipoId, input.ipoId),
+        eq(fieldSources.tableName, input.tableName),
+        eq(fieldSources.rowKey, rowKey),
+        eq(fieldSources.fieldName, input.fieldName)
+      );
+    const updated = await this.executeQuery(
       'updateWitnessesOnly',
       async () =>
-        this.db
-          .update(fieldSources)
-          .set({ witnesses: input.witnesses as never, verdict: input.verdict })
-          .where(
-            and(
-              eq(fieldSources.ipoId, input.ipoId),
-              eq(fieldSources.tableName, input.tableName),
-              eq(fieldSources.rowKey, rowKey),
-              eq(fieldSources.fieldName, input.fieldName)
-            )
-          )
-          .returning({ id: fieldSources.id }),
-      input as unknown as Record<string, unknown>
+        this.db.transaction(async (tx) => {
+          const current = await tx
+            .select({ id: fieldSources.id, witnesses: fieldSources.witnesses })
+            .from(fieldSources)
+            .where(where())
+            .limit(1)
+            .for('update');
+          if (current.length === 0) return false;
+          const next = input.merge(current[0].witnesses);
+          if (next === null) return false;
+          await tx
+            .update(fieldSources)
+            .set({ witnesses: next.witnesses as never, verdict: next.verdict })
+            .where(eq(fieldSources.id, current[0].id));
+          return true;
+        }),
+      { ipoId: input.ipoId, tableName: input.tableName, rowKey, fieldName: input.fieldName }
     );
-    if (rows.length > 0) await this.invalidateFieldSourceCaches(input.ipoId, input.tableName, input.fieldName, rowKey);
-    return { updated: rows.length > 0 };
+    if (updated) await this.invalidateFieldSourceCaches(input.ipoId, input.tableName, input.fieldName, rowKey);
+    return { updated };
   }
 
   /**
