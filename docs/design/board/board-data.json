@@ -1,7 +1,7 @@
 {
   "_comment": "The hand-owned half of the board. Everything here is a judgement a human makes; everything NOT here is derived by render-board.mjs from source files or scripts. Keep it small: if a value can be computed, compute it instead of typing it. Measured facts (served sha, since, migration counts, the stamp) are REFUSED here: they live in measured-facts.json, written by collect-board-facts.mjs; prose cites them as {{prod.sha}}-style tokens.",
   "stage": "Stage 3 — one source table, then prevention",
-  "headline": "Stage 3's slices are merged and staging is the release gate. Production has not moved since {{prod.since_date}} ({{prod.migrations_behind}} migrations behind) and is not scheduled to. Staging serves {{staging.sha}}; the 13:30 IST window brings the merge log and NOT_EXTRACTABLE admission.",
+  "headline": "Finish line set (OD-133, 2026-09-28): build the admin fix-a-value core, prove it on staging, then ONE production release carrying every fix on main. Production has not moved since {{prod.since_date}} ({{prod.migrations_behind}} migrations behind). Step 1 now: store every source's answer per field (F-196). Staging serves {{staging.sha}}.",
   "waiting_on_owner": [
     {
       "id": "D-3",
@@ -46,7 +46,7 @@
   "release": {
     "window": "One production window per day, ~21:00–23:30 IST, owner-worded only.",
     "branch": "Prod deploys only from a frozen <code>release/prod-&lt;date&gt;</code> branch, never from main.",
-    "contents": "Not cut. The next release must carry the 16 pending migrations first, then the stage 3 slices.",
+    "contents": "Not cut. Per OD-133/OD-135 it carries every fix on main, the admin-route auth fix, and the admin fix-a-value core plus queue, once proven on staging. Plan: docs/contracts/plans/2026-09-28-finish-line-plan.md.",
     "rollback": "<code>gh workflow run deploy-linux.yml --ref release/prod-&lt;previous&gt; -f slot=prod</code>; config-only changes roll back with <code>deploy-config.sh</code> and the previous sha.",
     "scheduled": false
   },
@@ -97,7 +97,7 @@
       "plain": "Fix and feature commits on main are not on the live site (217 counted on 2026-09-23), because production has not deployed since {{prod.since_date}}.",
       "issue": "—",
       "state": "bad",
-      "status": "By design — the owner's bar is feature-complete staging before a prod window."
+      "status": "Ends at the OD-133 release: admin core proven on staging, then one prod deploy on the owner's word."
     }
   ],
   "chain": [
