@@ -974,8 +974,17 @@ export function mergeHeldWitnesses(
   for (const w of incoming) {
     const old = bySource.get(w.source);
     if (!old || heldWitnessStrength(w) >= heldWitnessStrength(old)) {
-      bySource.set(w.source, w);
-      changed = true;
+      // The same answer again (only its time moved) is not a change: writing it would move the
+      // admin editor's version token and refuse an open editor's save for no new information.
+      const sameAnswer =
+        !!old &&
+        (old.outcome ?? 'SUPPLIED') === (w.outcome ?? 'SUPPLIED') &&
+        JSON.stringify(old.value ?? null) === JSON.stringify(w.value ?? null) &&
+        ((old as { cause?: unknown }).cause ?? null) === ((w as { cause?: unknown }).cause ?? null);
+      if (!sameAnswer) {
+        bySource.set(w.source, w);
+        changed = true;
+      }
     }
   }
   if (!changed) return null;

@@ -2808,6 +2808,11 @@ describe('held-field witnesses merge per source (Tier A MAJOR-2)', () => {
     expect(merged).toEqual([{ source: 'NSE', outcome: 'SUPPLIED', value: 1111, at: later }, stored[1], stored[2]]);
   });
 
+  it('the same answers again (only their time moved) are not a change: no write, so an open editor is not refused', () => {
+    const again = stored.map((w) => ({ ...w, at: later }));
+    expect(mergeHeldWitnesses(stored, again as never, ranks)).toBeNull();
+  });
+
   it('a legacy witness with no outcome counts as SUPPLIED; a source with no entry takes its answer', () => {
     const legacy = [{ source: 'NSE', value: 5, at }];
     const merged = mergeHeldWitnesses(
