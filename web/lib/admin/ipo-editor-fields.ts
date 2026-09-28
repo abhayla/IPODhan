@@ -10,6 +10,7 @@
  * there cannot silently go missing here.
  */
 import manifestJson from '../../../scraper/config/field-manifest.json';
+import { IPO_FIELDS_AWAITING_PHASE_B } from '@ipodhan/shared/services/admin-field-write';
 
 export type FieldClass = 'D' | 'T' | 'X' | 'W' | 'M' | 'C' | 'I';
 
@@ -56,19 +57,15 @@ export const DERIVED_FIELDS: Readonly<Record<string, string>> = {
 export const ADMIN_SETTING_FIELDS = ['ipos.rating_override', 'ipos.scraper_locked'] as const;
 
 /**
- * Release 1: fields the ONE write refuses until Phase B (an identifier edit needs the alias of item 26;
- * a type/segment/exchange edit needs the plan rebuild of item 18). Shown read-only with this reason.
- * TODO(#1275): replace with IPO_FIELDS_AWAITING_PHASE_B from
- * @ipodhan/shared/services/admin-field-write once #1275 is on main; this is the one mirror of it.
+ * Release 1: the `ipos` fields the ONE write refuses until Phase B (identifier alias, item 26; plan
+ * rebuild, item 18), keyed `ipos.<sql column>`, with the write's own reason. Shown read-only.
  */
-export const AWAITING_PHASE_B: Readonly<Record<string, string>> = {
-  'ipos.cin': 'Editing an identifier keeps the old one as an alias (§9.2 item 26); that arrives in Phase B.',
-  'ipos.isin': 'Editing an identifier keeps the old one as an alias (§9.2 item 26); that arrives in Phase B.',
-  'ipos.symbol': 'Editing an identifier keeps the old one as an alias (§9.2 item 26); that arrives in Phase B.',
-  'ipos.offering_type': "Saving it rebuilds the IPO's plan (§9.2 item 18); that arrives in Phase B.",
-  'ipos.segment': "Saving it rebuilds the IPO's plan (§9.2 item 18); that arrives in Phase B.",
-  'ipos.listing_exchanges': "Saving it rebuilds the IPO's plan (§9.2 item 18); that arrives in Phase B.",
-};
+export const AWAITING_PHASE_B: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(IPO_FIELDS_AWAITING_PHASE_B).map(([camel, reason]) => [
+    `ipos.${camel.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)}`,
+    `Not editable yet: ${reason}.`,
+  ])
+);
 
 /** OD-106, shown to the admin on every class T (E-1 timetable) field the editor offers. */
 export const E1_RULE_TEXT =
