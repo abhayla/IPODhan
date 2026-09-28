@@ -23,6 +23,17 @@ export const NEVER_HELD_KEYS: ReadonlySet<string> = new Set(['id', 'ipoId', 'cre
 
 export const NO_HOLD: FieldHold = { scraperLocked: false, protectedFields: new Set() };
 
+/**
+ * `field_protection_metadata` has no row_key column (its unique key is table, field, ipo), so a
+ * row's hold is recorded under `<table>:<rowKey>` — the convention the old update-field-record
+ * route used (with the record id). No migration. Every writer and reader of a hold (the admin write
+ * path, the row-aware writers, the field-plan walk) uses this one function; a singleton table's
+ * hold stays under the bare table name.
+ */
+export function protectionTableName(tableName: string, rowKey: string): string {
+  return rowKey === '' ? tableName : `${tableName}:${rowKey}`;
+}
+
 export interface HoldExecutor {
   execute(query: SQL): Promise<{ rows: unknown[] }>;
 }

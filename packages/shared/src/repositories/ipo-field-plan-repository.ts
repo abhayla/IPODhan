@@ -1006,6 +1006,45 @@ export class IpoFieldPlanRepository extends BaseRepository {
   }
 
   /**
+   * §2.4 clarification ("'skip' means never WRITE, not never read"): the walk ASKED the sources for
+   * an admin-held field and wrote nothing. The row keeps its state, attempts, evidence and answers
+   * (§2.7: a held field stores no state and is never recorded as supplied by a source), and only
+   * the read is stamped: `last_attempt_at` = now and `next_due_at` = the next data slot, so the
+   * claim query offers the row again at the next slot (the same cadence as any unsettled row),
+   * never on every wake. Without the stamp, a released held row stays due and is re-read every
+   * wake. Conditional on the claim token, like `releaseClaimUnrecorded`.
+   */
+  async recordHeldFieldRead(params: {
+    planRowId: string;
+    claimToken: string;
+    now?: Date;
+  }): Promise<{ released: boolean; reason?: 'CLAIM_SUPERSEDED' }> {
+    const now = params.now ?? new Date();
+    const nextDueAt = fieldPlanNextDueAt({ terminal: false, isGap: false, now });
+    try {
+      const result = await this.db.execute(sql`
+        UPDATE ipo_field_plan
+        SET claimed_at = NULL, claim_token = NULL,
+            last_attempt_at = ${utc(now)}::timestamptz,
+            next_due_at = CASE WHEN state = 'PENDING' THEN ${nextDueAt === null ? null : utc(nextDueAt)}::timestamptz ELSE next_due_at END,
+            updated_at = ${utc(now)}::timestamptz
+        WHERE id = ${params.planRowId}::uuid
+          AND claim_token = ${params.claimToken}
+        RETURNING id
+      `);
+      const rows = (result as unknown as { rows: Record<string, unknown>[] }).rows ?? [];
+      if (rows.length === 0) return { released: false, reason: 'CLAIM_SUPERSEDED' };
+      return { released: true };
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to record the held-field read for plan row ${params.planRowId}`,
+        undefined,
+        error instanceof Error ? error : undefined
+      );
+    }
+  }
+
+  /**
    * Item 6 (spec §2.5, OD-91): reopen plan rows a better document supersedes.
    * SUPPLIED -> PENDING with `superseded_by` set and the next ask due now,
    * guarded on the row STILL being SUPPLIED on the same chosen document, so a

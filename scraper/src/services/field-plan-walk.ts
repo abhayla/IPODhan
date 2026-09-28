@@ -250,14 +250,37 @@ export type FieldFetcher = (
 ) => Promise<FieldFetcherAnswer>;
 
 /**
- * True when the admin field-protection gate withholds this field, in which
- * case §2.7 says skip it and store NO state.
+ * True when an admin holds this field (§2.7). A held field is still ASKED at the reads the walk
+ * already schedules and its answers are stored as witnesses, but it is never WRITTEN and stores no
+ * plan state (§2.4 clarification: "'skip' ... means 'never WRITE', not 'never read'"). `rowKey` is
+ * the plan row's key ('' on a one-row table), so a row-keyed hold is found too.
  */
 export type ProtectionFilter = (
   ipoId: string,
   tableName: string,
-  fieldName: string
+  fieldName: string,
+  rowKey?: string
 ) => Promise<boolean>;
+
+/** One ranked answer for an admin-held field, in the witness shape (rank order). */
+export type HeldFieldAnswers = Witness[];
+
+/**
+ * The seam for §9.2 item 9 (a newer source value becomes a suggestion in the admin queue) and
+ * OD-106/OD-117 (a newer, different exchange date on an E-1 field replaces the admin value).
+ * Called once per held field the walk read, after its witnesses were recorded, with this pass's
+ * ranked answers. The default does nothing: those items plug in through
+ * `FieldPlanWalkDeps.onHeldFieldAnswers` without touching the walk again.
+ */
+export async function onHeldFieldAnswers(
+  _ipoId: string,
+  _tableName: string,
+  _rowKey: string,
+  _fieldName: string,
+  _answers: HeldFieldAnswers
+): Promise<void> {
+  // Deliberately empty: see the doc comment.
+}
 
 /**
  * A real interface, not `Record<string, unknown>` (S1a review CRITICAL-1):
@@ -302,6 +325,12 @@ export interface FieldPlanWalkRepository {
     params: RecordOutcomeCallParams
   ): Promise<{ written: boolean; reason?: string; skipped?: boolean }>;
   releaseClaimUnrecorded(params: {
+    planRowId: string;
+    claimToken: string;
+  }): Promise<{ released: boolean; reason?: string }>;
+  /** §2.4 clarification: settle a held field's read -- stamp the read, keep the state (optional;
+   *  absent, the claim is released unrecorded as before). */
+  recordHeldFieldRead?(params: {
     planRowId: string;
     claimToken: string;
   }): Promise<{ released: boolean; reason?: string }>;
@@ -371,6 +400,22 @@ export interface FieldPlanWalkDeps {
    */
   gapKeys?: FieldPlanGapKeySource;
   protectionFilter?: ProtectionFilter;
+  /**
+   * §2.4 clarification / §9.2 item 9: refreshes ONLY witnesses + verdict on a held field's existing
+   * field_sources row (`FieldSourcesRepository.updateWitnessesOnly`): never inserts, never touches
+   * the ADMIN row's source, value lineage, author or time. Absent, a held field's answers are
+   * logged and handed to `onHeldFieldAnswers` only.
+   */
+  trackHeldFieldWitnesses?: (input: {
+    ipoId: string;
+    tableName: string;
+    rowKey: string;
+    fieldName: string;
+    witnesses: Witness[];
+    verdict: Verdict;
+  }) => Promise<{ updated: boolean }>;
+  /** Overrides the exported no-op `onHeldFieldAnswers` seam (items 9, OD-106 plug in here). */
+  onHeldFieldAnswers?: typeof onHeldFieldAnswers;
   /**
    * Review round 2, RCA1: the walk's own write path needs the SAME existing
    * row the DOC fetcher already reads (findById is Redis-cached, so this is
@@ -688,18 +733,21 @@ export async function walkFieldPlanForIPO(
     }
     settledThisWalk.add(plan.id);
 
-    // §2.7 — an admin-protected field is SKIPPED and stores NO state. The
-    // claim is released without an attempt being charged, so the field's
-    // attempt budget is not spent on work that was never done.
+    // §2.7 + the §2.4 clarification: an admin-held field is never WRITTEN and stores NO plan
+    // state, but it is still ASKED at this (already scheduled) read: its sources' answers become
+    // witnesses and reach `onHeldFieldAnswers` (§9.2 item 9, OD-106). No attempt is charged: the
+    // read is stamped (`recordHeldFieldRead`) so the row comes back at the next slot, not every wake.
     if (deps.protectionFilter) {
       let isProtected = false;
+      let protectionCheckFailed = false;
       try {
-        isProtected = await deps.protectionFilter(ipoId, plan.tableName, plan.fieldName);
+        isProtected = await deps.protectionFilter(ipoId, plan.tableName, plan.fieldName, plan.rowKey ?? '');
       } catch (error) {
         // A protection gate that cannot answer must not be read as "not
         // protected" — that would let the walk overwrite an admin value.
         // Treat it as protected and skip.
         isProtected = true;
+        protectionCheckFailed = true;
         logger.warn(
           { ipoId, field: plan.fieldName, error: causeOf(error) },
           'PASS 3: field-protection check failed — skipping the field rather than risking an admin overwrite'
@@ -707,6 +755,9 @@ export async function walkFieldPlanForIPO(
       }
       if (isProtected) {
         result.fieldsSkippedProtected += 1;
+        // A gate that could not answer is not a known hold: nothing is asked (the read only exists
+        // to serve a real hold), and the claim is released unrecorded exactly as before.
+        const heldRead = protectionCheckFailed ? false : await readHeldField(ipoId, plan, deps, resolveIpoType);
         // F4: this release IS this branch's settle, so a throw here strands
         // the claim exactly as a throwing `recordOutcome` would. There is no
         // second repair to attempt (the repair and the settle are the same
@@ -714,10 +765,13 @@ export async function walkFieldPlanForIPO(
         // never swallowed into a walk that looks like it skipped cleanly.
         let released: { released: boolean; reason?: string };
         try {
-          released = await deps.fieldPlanRepository.releaseClaimUnrecorded({
-            planRowId: plan.id,
-            claimToken: plan.claimToken,
-          });
+          released =
+            heldRead && deps.fieldPlanRepository.recordHeldFieldRead
+              ? await deps.fieldPlanRepository.recordHeldFieldRead({ planRowId: plan.id, claimToken: plan.claimToken })
+              : await deps.fieldPlanRepository.releaseClaimUnrecorded({
+                  planRowId: plan.id,
+                  claimToken: plan.claimToken,
+                });
         } catch (error) {
           result.outcomesFailed += 1;
           result.fieldsSkippedProtected -= 1;
@@ -747,6 +801,124 @@ export async function walkFieldPlanForIPO(
       return result;
     }
   }
+}
+
+/**
+ * §2.4 clarification ("'skip' ... means 'never WRITE', not 'never read'"), §9.2 items 9 and 19,
+ * OD-103, OD-106: ask every ranked source of an admin-held field ONCE, as `attemptOneField` would
+ * at this read, and write NOTHING -- no value, no plan state, no evidence. Each answer is a
+ * witness; they refresh ONLY witnesses + verdict on the field's existing field_sources row (the
+ * ADMIN row keeps its source, value lineage, author and time), then go to `onHeldFieldAnswers`.
+ *
+ * Returns true when the sources were asked (the caller stamps the read), false when nothing was
+ * asked (IPO row unreadable). A throwing fetcher is a FAILED witness, never a walk failure. The
+ * witness and hook writes are best-effort: a failure there is logged with its cause and the read
+ * is still settled, because the hold itself (what protects the reader) is unaffected.
+ */
+async function readHeldField(
+  ipoId: string,
+  plan: any,
+  deps: FieldPlanWalkDeps,
+  resolveIpoType: () => Promise<ReturnType<typeof resolveIpoTypeKey> | null>
+): Promise<boolean> {
+  const resolution = await resolvePolicyForPlan(plan, deps, resolveIpoType);
+  if (resolution.outcome === 'IPO_ROW_NOT_FOUND') return false;
+  const policy = resolution.policy;
+  const answers: RankAnswer[] = [];
+  for (const [i, source] of policy.ranks.entries()) {
+    if (!source) continue;
+    const rank = i + 1;
+    const fetcher = deps.sourceFetchers[source];
+    if (!fetcher) {
+      answers.push(
+        rankAnswer(rank, source, 'FAILED', { cause: `rank${rank}:${source}:NO_FETCHER_REGISTERED ${fieldPlanGapToken('NO_FETCHER')}` })
+      );
+      continue;
+    }
+    let answer: FieldFetcherAnswer;
+    try {
+      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName);
+    } catch (error) {
+      answers.push(rankAnswer(rank, source, 'FAILED', { cause: `rank${rank}:${source}:THROWN:${causeOf(error)}` }));
+      continue;
+    }
+    if (answer.outcome === 'SUPPLIED') {
+      answers.push(rankAnswer(rank, source, 'SUPPLIED', { value: answer.value, docType: answer.documentType }));
+    } else if (answer.outcome === 'CHECK_FAILED') {
+      answers.push(rankAnswer(rank, source, 'CHECK_FAILED', { cause: `rank${rank}:${source}:CHECK_FAILED:${answer.reason}` }));
+    } else {
+      answers.push(rankAnswer(rank, source, answer.outcome));
+    }
+  }
+
+  let witnessesStored: boolean | 'not-attempted' = 'not-attempted';
+  try {
+    const family = loadFieldManifest().fields[`${plan.tableName}.${plan.fieldName}`]?.comparisonFamily;
+    if (FEATURE_FLAGS.ENABLE_VERDICT_WRITER && deps.trackHeldFieldWitnesses && family && family !== 'ABSTAIN') {
+      const computed = computeVerdict(
+        answers.map((a) => ({
+          rank: a.rank,
+          source: a.source,
+          value: a.outcome === 'SUPPLIED' ? a.value : null,
+          at: a.at,
+          docType: a.docType,
+          outcome: a.outcome,
+          cause: a.cause,
+        })),
+        policy.ranks.length,
+        family
+      );
+      const stored = await deps.trackHeldFieldWitnesses({
+        ipoId,
+        tableName: plan.tableName,
+        rowKey: plan.rowKey ?? '',
+        // field_sources.fieldName is camelCase (lesson field-sources-field-name-is-camelCase).
+        fieldName: columnToCamelCase(plan.fieldName),
+        witnesses: computed.witnesses,
+        verdict: computed.verdict,
+      });
+      witnessesStored = stored.updated;
+    }
+  } catch (error) {
+    witnessesStored = false;
+    logger.warn(
+      { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, error: causeOf(error) },
+      'PASS 3: storing an admin-held field witnesses FAILED; the hold is unaffected, the answers are in this line'
+    );
+  }
+  try {
+    await (deps.onHeldFieldAnswers ?? onHeldFieldAnswers)(
+      ipoId,
+      plan.tableName,
+      plan.rowKey ?? '',
+      plan.fieldName,
+      witnessShape(answers)
+    );
+  } catch (error) {
+    logger.warn(
+      { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, error: causeOf(error) },
+      'PASS 3: the held-field answers hook threw; the hold is unaffected'
+    );
+  }
+  logger.info(
+    { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, witnessesStored, answers: answerLog(answers) },
+    witnessesStored === false
+      ? 'PASS 3: admin-held field read, nothing written; its witnesses were NOT stored (no field_sources row, or the write failed)'
+      : 'PASS 3: admin-held field read, nothing written (§2.4 clarification: never WRITE, not never read)'
+  );
+  return true;
+}
+
+/** The witness shape of a pass's answers (rank order), independent of the verdict-writer flag. */
+function witnessShape(answers: readonly RankAnswer[]): Witness[] {
+  return answers.map((a) => ({
+    source: a.source,
+    outcome: a.outcome,
+    value: a.outcome === 'SUPPLIED' ? a.value : null,
+    at: a.at,
+    ...(a.docType !== undefined ? { docType: a.docType } : {}),
+    ...(a.cause !== undefined ? { cause: a.cause } : {}),
+  })) as Witness[];
 }
 
 /**
