@@ -20,6 +20,7 @@
     "./admin/field-protection-checker": "./src/admin/field-protection-checker.ts",
     "./services/corrigendum-suggestions": "./src/services/corrigendum-suggestions.ts",
     "./services/admin-field-write": "./src/services/admin-field-write.ts",
+    "./services/field-hold": "./src/services/field-hold.ts",
     "./utils/slug": "./src/utils/slug.ts",
     "./utils/ist-day": "./src/utils/ist-day.ts",
     "./utils/registrar-display": "./src/utils/registrar-display.ts",

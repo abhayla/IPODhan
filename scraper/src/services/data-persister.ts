@@ -1,4 +1,5 @@
 import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDataRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert, FinancialDataInsert, IPO } from '@ipodhan/shared';
+import { filterPatchUnderHold, type HoldExecutor } from '@ipodhan/shared/services/field-hold';
 import { normalizeCompanyUrl, isVerifierUrl } from './company-host-source.js';
 import logger from '../utils/logger.js';
 import { sql as sqlOp } from 'drizzle-orm';
@@ -2772,6 +2773,7 @@ export interface TransactionalIposWriter {
   update: typeof db.update;
   select: typeof db.select;
   insert: typeof db.insert;
+  execute: HoldExecutor['execute'];
 }
 
 /**
@@ -2847,6 +2849,10 @@ export async function recordDiscoveredLeadManagers(
   let writtenSlug: string | null = null;
 
   const written = await dbLike.transaction(async (tx) => {
+    // §9.2 item 19: an admin who set or cleared leadManagers (OD-121: delete = keep empty) holds it;
+    // the empty-array guard below alone would refill it. Re-read under the ipos row lock.
+    const { dropped } = await filterPatchUnderHold(tx, ipoId, 'ipos', { leadManagers: sanitized }, { honourScraperLock: true });
+    if (dropped.length > 0) return false;
     const updated = await tx
       .update(iposTable)
       .set({ leadManagers: sanitized, updatedAt: new Date() })

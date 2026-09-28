@@ -14,6 +14,7 @@
  * field-protection filter.
  */
 
+import { filterPatchUnderHold } from '@ipodhan/shared/services/field-hold';
 import {
   db,
   filterProtectedFields,
@@ -48,13 +49,18 @@ import type {
 export function makeIpoDetailsWriter(): IpoDetailsWriter {
   return {
     async upsert(ipoId, values) {
-      await db
-        .insert(schema.ipoDetails)
-        .values({ ipoId, ...values, updatedAt: new Date() } as never)
-        .onConflictDoUpdate({
-          target: schema.ipoDetails.ipoId,
-          set: { ...values, updatedAt: new Date() } as never,
-        });
+      // §9.2 item 19: the conflict-update never replaces an admin-held ipo_details field; the hold
+      // is re-read under the ipos row lock inside this transaction (field-hold.ts).
+      await db.transaction(async (tx) => {
+        const { patch } = await filterPatchUnderHold(tx as never, ipoId, 'ipo_details', values as Record<string, unknown>);
+        await tx
+          .insert(schema.ipoDetails)
+          .values({ ipoId, ...values, updatedAt: new Date() } as never)
+          .onConflictDoUpdate({
+            target: schema.ipoDetails.ipoId,
+            set: { ...patch, updatedAt: new Date() } as never,
+          });
+      });
     },
     async insertIfMissing(ipoId, values) {
       const result = await db
@@ -76,13 +82,19 @@ export function makeIpoDetailsWriter(): IpoDetailsWriter {
       // and no rank runs for its writes. The `isNull` predicate is still the
       // whole ordering argument HERE - remove it and a DRHP value is clobbered,
       // which is exactly what this method's mutation test asserts.
-      const result = await db
-        .update(schema.ipoDetails)
-        .set({ issueType: issueType as never, updatedAt: new Date() })
-        .where(
-          and(eq(schema.ipoDetails.ipoId, ipoId), isNull(schema.ipoDetails.issueType))
-        );
-      return (result.rowCount ?? 0) > 0;
+      // §9.2 item 19: an admin who cleared issueType (OD-121: delete = keep empty) holds it; the
+      // isNull predicate alone would refill it, so the hold is re-read under the ipos row lock.
+      return db.transaction(async (tx) => {
+        const { dropped } = await filterPatchUnderHold(tx as never, ipoId, 'ipo_details', { issueType });
+        if (dropped.length > 0) return false;
+        const result = await tx
+          .update(schema.ipoDetails)
+          .set({ issueType: issueType as never, updatedAt: new Date() })
+          .where(
+            and(eq(schema.ipoDetails.ipoId, ipoId), isNull(schema.ipoDetails.issueType))
+          );
+        return (result.rowCount ?? 0) > 0;
+      });
     },
   };
 }

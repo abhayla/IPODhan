@@ -5,6 +5,7 @@
  * Implements caching for frequently accessed financial metrics.
  */
 
+import { filterPatchUnderHold } from '../services/field-hold';
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
@@ -61,14 +62,20 @@ export class FinancialDataRepository
    */
   async upsert(data: FinancialDataInsert): Promise<FinancialData> {
     try {
-      const [result] = await this.db
-        .insert(financialData)
-        .values(data)
-        .onConflictDoUpdate({
-          target: financialData.ipoId,
-          set: data,
-        })
-        .returning();
+      // §9.2 item 19: the conflict-update never replaces an admin-held financial_data field; the
+      // hold is re-read under the ipos row lock inside this transaction (field-hold.ts).
+      const result = await this.db.transaction(async (tx) => {
+        const { patch } = await filterPatchUnderHold(tx as never, data.ipoId, 'financial_data', data as Record<string, unknown>);
+        const [row] = await tx
+          .insert(financialData)
+          .values(data)
+          .onConflictDoUpdate({
+            target: financialData.ipoId,
+            set: patch as Partial<FinancialDataInsert>,
+          })
+          .returning();
+        return row;
+      });
 
       // Invalidate cache
       await this.deleteCache(getFinancialDataKey(data.ipoId));

@@ -25,6 +25,7 @@ describe('snapshottingWriter', () => {
       update: () => undefined,
       select: () => undefined,
       insert: () => undefined,
+      execute: async () => ({ rows: [] }),
     };
     const sink: { before?: any; after?: any } = {};
     const out = await snapshottingWriter(base as never, 'ipo-1', sink).transaction(async (t) => {

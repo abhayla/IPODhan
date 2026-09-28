@@ -18,6 +18,7 @@
  * no side effect, so an unrecognized registrar name is silently left for a
  * human/future registrar-table update rather than wrongly linked.
  */
+import { filterPatchUnderHold } from '@ipodhan/shared/services/field-hold';
 import { db } from '@ipodhan/shared/db';
 import * as schema from '@ipodhan/shared/db/schema';
 import { resolveRegistrarId } from '@ipodhan/shared/utils/registrar-matcher';
@@ -61,7 +62,17 @@ export async function reresolveRegistrarIds(
     }
     matched++;
     if (!dryRun) {
-      await db.update(schema.ipos).set({ registrarId }).where(eq(schema.ipos.id, row.id));
+      // §9.2 item 19: an admin-held registrarId is re-read under the ipos row lock and never replaced.
+      const held = await db.transaction(async (tx) => {
+        const { dropped } = await filterPatchUnderHold(tx as never, row.id, 'ipos', { registrarId }, { honourScraperLock: true });
+        if (dropped.length > 0) return true;
+        await tx.update(schema.ipos).set({ registrarId }).where(eq(schema.ipos.id, row.id));
+        return false;
+      });
+      if (held) {
+        logger.info({ ipoId: row.id, registrarId }, '[item 19] registrar_id held by an admin; not backfilled');
+        continue;
+      }
       logger.info(
         { ipoId: row.id, company: row.companyName, registrar: row.registrar, registrarId },
         '[registrar-reresolve] registrar_id backfilled'
