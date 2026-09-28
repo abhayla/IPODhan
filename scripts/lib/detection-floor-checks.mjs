@@ -1512,3 +1512,41 @@ export function classifyRowKeyProbeError(err, migrationApplied) {
   }
   return { status: 'UNVERIFIABLE', reason: `ipos/field_sources not readable: ${err.message}` };
 }
+
+// ---- PULL-NULL-REASON-CODE / PULL-PLAN-RANKLESS (A1 fix round 2, #1108) ----
+//
+// Two row-level predicates behind `checkS_pullNullReasonCode` in
+// scripts/audit-detection-floor.mjs. Pulled out here (rather than left as
+// inline SQL WHERE clauses only) so a mutation to either rule has a fixture
+// that turns red, matching `checkPublishedWithoutProvenance`'s reasoning
+// above: a predicate that lives only inside a SQL string cannot be shown red.
+
+/**
+ * A terminal no-value plan row (NOT_AVAILABLE_YET, CHECK_FAILED, EXHAUSTED)
+ * must always carry a reason_code (A1/OD-62/OD-77). Mirrors the SQL
+ * `state IN (...) AND reason_code IS NULL` in checkS_pullNullReasonCode.
+ *
+ * @param {{ state: string, reasonCode: string | null }} row
+ */
+export function isNullReasonCodeTerminalRow(row) {
+  const TERMINAL_NO_VALUE_STATES = new Set(['NOT_AVAILABLE_YET', 'CHECK_FAILED', 'EXHAUSTED']);
+  return TERMINAL_NO_VALUE_STATES.has(row.state) && row.reasonCode == null;
+}
+
+/**
+ * A plan row with no ranked source at all, in ANY state — the pre-#865
+ * phantom class `repair-null-reason-codes.ts` deletes (#865: "the honest
+ * repair is deletion"). Mirrors the SQL
+ * `(rank1_source IS NULL OR rank1_source = 'NONE') AND ...` in
+ * checkS_pullNullReasonCode. Same predicate scraper/scripts/repair-null-reason-codes.ts
+ * exports as `isRanklessRow` — duplicated here (not imported) because this
+ * lib is read by scripts outside the scraper workspace and the two files
+ * are tested independently; a drift between them would itself be a defect
+ * this pair's fixtures make visible if either definition is weakened.
+ *
+ * @param {{ rank1Source: string | null, rank2Source: string | null, rank3Source: string | null }} row
+ */
+export function isRanklessPlanRow(row) {
+  const isEmpty = (v) => v === null || v === undefined || v === 'NONE';
+  return isEmpty(row.rank1Source) && isEmpty(row.rank2Source) && isEmpty(row.rank3Source);
+}

@@ -1,0 +1,14 @@
+{
+  "id": "pull_plan_rankless",
+  "designId": "PULL-PLAN-RANKLESS",
+  "findingClass": "ipo_field_plan row with no ranked source at all (rank1_source, rank2_source, rank3_source all NULL or 'NONE'), in any state — a pre-#865 phantom row for a field the manifest ranks no source for on that IPO's type; #865 said the honest repair is deletion, so a fresh one means the generation-time (field-plan-generator.ts) or walk-time (field-plan-walk.ts) guard against planning/classifying such a row has regressed",
+  "whatItAsks": "any plan row with no ranked source at all",
+  "healthy": "zero",
+  "alarmsWhen": "any row found",
+  "scope": "every ipo_field_plan row, prod + staging slots",
+  "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
+  "consumerReason": "the class repair-null-reason-codes.ts deletes; a NEW one after that repair ran is the generator's or the walk's own guard breaking, not a data quirk",
+  "status": "built 2026-09-28 (A1 fix round 2, #1108): record() call lands in scripts/audit-detection-floor.mjs (checkS_pullNullReasonCode)",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §2.3.5 (ipo_field_plan, capability by type), issue #865",
+  "section": "checks"
+}

@@ -3725,6 +3725,72 @@ async function checkS_pullExhaust() {
       : `${rows.length} EXHAUSTED row(s) on live IPOs: ${ids.join('; ')}${rows.length > MAX_OFFENDERS ? ` (+${rows.length - MAX_OFFENDERS} more)` : ''}`);
 }
 
+/**
+ * A1 fix round 2 (#1108, RCA corrected 2026-09-28): detection for the two
+ * classes `repair-null-reason-codes.ts` repairs, so the NEXT occurrence of
+ * either is caught rather than sitting unnoticed for weeks like the 36 rows
+ * that founded this fix. Two independent readings, both must PASS:
+ *   (1) any plan row in a terminal no-value state (NOT_AVAILABLE_YET,
+ *       CHECK_FAILED, EXHAUSTED) with reason_code IS NULL;
+ *   (2) any plan row with no ranked source at all (rank1/2/3_source all
+ *       NULL or 'NONE'), in ANY state -- the class #865 already said "the
+ *       honest repair is deletion" for; a fresh one appearing means either
+ *       `generateFieldPlan`'s `ranks.length === 0 -> continue` guard or
+ *       `field-plan-walk.ts`'s matching walk-time guard has regressed.
+ */
+async function checkS_pullNullReasonCode() {
+  let nullCoded;
+  try {
+    nullCoded = await q(
+      `SELECT i.slug, p.table_name AS "tableName", p.field_name AS "fieldName", p.state
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.state IN ('NOT_AVAILABLE_YET', 'CHECK_FAILED', 'EXHAUSTED')
+          AND p.reason_code IS NULL
+        ORDER BY i.slug, p.table_name, p.field_name`
+    );
+  } catch (e) {
+    record('pull_null_reason_code', 'terminal no-value plan rows with reason_code IS NULL', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  let rankless;
+  try {
+    rankless = await q(
+      `SELECT i.slug, p.table_name AS "tableName", p.field_name AS "fieldName", p.state
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE (p.rank1_source IS NULL OR p.rank1_source = 'NONE')
+          AND (p.rank2_source IS NULL OR p.rank2_source = 'NONE')
+          AND (p.rank3_source IS NULL OR p.rank3_source = 'NONE')
+        ORDER BY i.slug, p.table_name, p.field_name`
+    );
+  } catch (e) {
+    record('pull_plan_rankless', 'plan rows with no ranked source at all (any state)', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  for (const r of nullCoded.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {
+    notify('pull_null_reason_code', 'P1', `${r.slug}:${r.tableName}.${r.fieldName}`,
+      'terminal no-value plan row with no reason_code', `state=${r.state}`);
+  }
+  const nullCodedIds = nullCoded.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}(${r.state})`);
+  record('pull_null_reason_code', 'terminal no-value plan rows with reason_code IS NULL',
+    nullCoded.length === 0 ? 'PASS' : 'FAIL',
+    nullCoded.length === 0 ? '0 null-coded terminal plan rows'
+      : `${nullCoded.length} null-coded terminal plan row(s): ${nullCodedIds.join('; ')}${nullCoded.length > MAX_OFFENDERS ? ` (+${nullCoded.length - MAX_OFFENDERS} more)` : ''}`);
+
+  for (const r of rankless.slice(0, FINDINGS_MAX_ROWS_PER_CHECK)) {
+    notify('pull_plan_rankless', 'P1', `${r.slug}:${r.tableName}.${r.fieldName}`,
+      'plan row has no ranked source at all', `state=${r.state}`);
+  }
+  const ranklessIds = rankless.slice(0, MAX_OFFENDERS).map((r) => `${r.slug}:${r.tableName}.${r.fieldName}(${r.state})`);
+  record('pull_plan_rankless', 'plan rows with no ranked source at all (any state)',
+    rankless.length === 0 ? 'PASS' : 'FAIL',
+    rankless.length === 0 ? '0 rank-less plan rows'
+      : `${rankless.length} rank-less plan row(s): ${ranklessIds.join('; ')}${rankless.length > MAX_OFFENDERS ? ` (+${rankless.length - MAX_OFFENDERS} more)` : ''}`);
+}
+
 async function checkS_pullExcused() {
   let rows;
   try {
@@ -3925,6 +3991,7 @@ async function main() {
   await runCheck(checkS_pullOverrides, ['pull_overrides']);
   await runCheck(checkS_pullYield, ['pull_yield']);
   await runCheck(checkS_pullExhaust, ['pull_exhaust']);
+  await runCheck(checkS_pullNullReasonCode, ['pull_null_reason_code', 'pull_plan_rankless']);
   await runCheck(checkS_pullExcused, ['pull_excused']);
   await runCheck(checkS_pullWalk, ['pull_walk']);
   await runCheck(checkS_pullType, ['pull_type']);

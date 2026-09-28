@@ -203,6 +203,18 @@ export interface FieldPlanWalkResult {
   }>;
   /** Identities behind `fieldsExhausted` — the exact class RCA2's 13 wrongly-retired rows sat in. */
   exhaustedFields: Array<{ tableName: string; rowKey: string; fieldName: string }>;
+  /**
+   * A1 fix round 2 (RCA, #1108): the manifest ranks NO source at all for this field on this
+   * IPO's type (e.g. `current_price_nse` for a BSE-only SME) — never asked, so it is NOT the
+   * "every ranked source answered NOT_PRINTED" fact EXHAUSTED+NOT_SOURCED records.
+   * `generateFieldPlan` already never plans such a row (`ranks.length === 0 → continue`, #865);
+   * a row that still reaches the walk in this shape is a pre-#865 phantom the repair tool
+   * retires. The walk itself writes NOTHING for it (no state, no reason code) and releases the
+   * claim unrecorded, same contract as `fieldsSkippedProtected` — never a false EXHAUSTED write.
+   */
+  fieldsNoRankedSource: number;
+  /** Identities behind `fieldsNoRankedSource`. */
+  noRankedSourceFields: Array<{ tableName: string; rowKey: string; fieldName: string }>;
 }
 
 export type FieldFetcherAnswer =
@@ -601,6 +613,8 @@ export async function walkFieldPlanForIPO(
     stoppedReason: 'NO_DUE_FIELDS',
     droppedWrites: [],
     exhaustedFields: [],
+    fieldsNoRankedSource: 0,
+    noRankedSourceFields: [],
   };
 
   /**
@@ -861,6 +875,29 @@ async function attemptOneField(
     policy = { ...policy, ranks: narrowed as typeof policy.ranks };
   }
   const ranks: [number, string | null][] = policy.ranks.map((source, i) => [i + 1, source]);
+
+  // A1 fix round 2 (RCA, #1108): no source is ranked for this field on this IPO's type at all
+  // -- `ranks` is empty, or every entry is null (a resolver that does not trim trailing nulls).
+  // The loop below would then push nothing to `failures` and fall through to the SAME branch as
+  // "every ranked source answered NOT_PRINTED", writing EXHAUSTED+NOT_SOURCED with a cause that
+  // is simply false: no rank was ever asked. `generateFieldPlan` never plans such a row going
+  // forward (`ranks.length === 0 -> continue`, #865, "the honest repair is deletion"); a row that
+  // still reaches the walk in this shape is a pre-#865 phantom for the repair tool to retire, not
+  // a fact this pass may record. Write nothing and release the claim unrecorded -- same contract
+  // `fieldsSkippedProtected` already uses -- so the row is re-claimable, never falsely terminal.
+  if (ranks.length === 0 || ranks.every(([, source]) => !source)) {
+    result.fieldsNoRankedSource += 1;
+    result.noRankedSourceFields.push({ tableName: plan.tableName, rowKey: plan.rowKey, fieldName: plan.fieldName });
+    logger.warn(
+      { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, policyOrigin },
+      'PASS 3: no source is ranked for this field on this IPO type -- not EXHAUSTED, releasing the claim unrecorded (pre-#865 phantom row, awaiting repair)'
+    );
+    const { released } = await deps.fieldPlanRepository.releaseClaimUnrecorded({
+      planRowId: plan.id,
+      claimToken: plan.claimToken,
+    });
+    return released ? 'SETTLED' : 'SUPERSEDED';
+  }
 
   const planRanks = [plan.rank1Source, plan.rank2Source, plan.rank3Source].filter(Boolean);
   const policyRanksDiffer =

@@ -61,6 +61,8 @@ import {
   DIGEST_MAX_ROWS,
   computeSummaryCounts,
   evaluateSourceKeyConflicts,
+  isNullReasonCodeTerminalRow,
+  isRanklessPlanRow,
 } from '../lib/detection-floor-checks.mjs';
 import { resolveColumn, isBlankCurrentValue, hadPreviousValue, isSafeTableName, toSnake, evaluatePullNoblank } from '../lib/pull-noblank-checks.mjs';
 
@@ -2421,3 +2423,33 @@ test('(upcoming_source_drift) mutation guard: inverting the diff>tolerance check
 // Item 10 zip_member_rows: its tests live in their own file; imported here so
 // they run in the pr-gate detection-floor step, which names only this file.
 import './zip-member-rows.test.mjs';
+
+// ---- PULL-NULL-REASON-CODE / PULL-PLAN-RANKLESS (A1 fix round 2, #1108) ----
+
+test('(pull_null_reason_code) FAILS on an EXHAUSTED row with reason_code NULL (the pre-fix fallthrough)', () => {
+  assert.equal(isNullReasonCodeTerminalRow({ state: 'EXHAUSTED', reasonCode: null }), true);
+});
+
+test('(pull_null_reason_code) FAILS on a CHECK_FAILED row with reason_code NULL', () => {
+  assert.equal(isNullReasonCodeTerminalRow({ state: 'CHECK_FAILED', reasonCode: null }), true);
+});
+
+test('(pull_null_reason_code) PASSES an EXHAUSTED row with a real reason_code', () => {
+  assert.equal(isNullReasonCodeTerminalRow({ state: 'EXHAUSTED', reasonCode: 'NOT_SOURCED' }), false);
+});
+
+test('(pull_null_reason_code) PASSES a SUPPLIED row with no reason_code (not a terminal no-value state)', () => {
+  assert.equal(isNullReasonCodeTerminalRow({ state: 'SUPPLIED', reasonCode: null }), false);
+});
+
+test('(pull_plan_rankless) FAILS on the measured 36-row shape: all three ranks NULL', () => {
+  assert.equal(isRanklessPlanRow({ rank1Source: null, rank2Source: null, rank3Source: null }), true);
+});
+
+test('(pull_plan_rankless) FAILS on the NONE sentinel across all three ranks', () => {
+  assert.equal(isRanklessPlanRow({ rank1Source: 'NONE', rank2Source: 'NONE', rank3Source: 'NONE' }), true);
+});
+
+test('(pull_plan_rankless) PASSES a row with at least one real ranked source', () => {
+  assert.equal(isRanklessPlanRow({ rank1Source: 'NSE', rank2Source: null, rank3Source: null }), false);
+});
