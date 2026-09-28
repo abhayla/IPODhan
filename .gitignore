@@ -405,3 +405,8 @@ docs/design/probes/fixtures/pdf/
 # scripts/state/ (repo root) stays NOT ignored on purpose: build cards cite it as an artefact, and
 # scripts/tests/check-build-cards-isignored.test.mjs pins that.
 /scraper/scripts/state/
+
+# web/scripts/seed-broker-affiliates.ts's prod-write-guard ledger (#97, class B4): backups of the
+# prior broker_affiliates rows before a delete/update, same "backup, not source" convention as
+# scraper/scripts/state/ above — never committed.
+/web/scripts/state/
