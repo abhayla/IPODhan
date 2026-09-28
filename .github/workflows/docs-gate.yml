@@ -83,6 +83,11 @@ jobs:
         # build-plan-board refuse on every code PR while docs-gate passed (#1261).
         run: node scripts/ops/build-plan-board.mjs --check && node --test scripts/tests/build-plan-board.test.mjs
 
+      - name: Board renders from its data
+        # board-data.json is docs, but only pr-gate ran this test: #1262 merged a
+        # headline the test refuses, and #1264 went red on it (2026-09-28).
+        run: node scripts/tests/render-board.test.mjs && node scripts/ops/render-board.mjs --check
+
       - name: Detection registry matches its per-entry sources
         # Same argument: its input is docs/reviews/**, so a docs-only change is
         # exactly when it matters and exactly when pr-gate would not run it.
