@@ -1,0 +1,10 @@
+{
+  "class_id": "test-fixtures-leaked-to-live-tables",
+  "feature": "any integration-test suite that seeds fixture rows through the app's own `db` client (wired to `DATABASE_URL`) rather than a dedicated test database",
+  "symptom": "a suite's hard-coded fixture rows (name/email/etc. literals in the test file) end up committed to a shared live database — staging or prod — because `DATABASE_URL` was pointed there when the suite ran (a tunnelled `.env.local`, a misconfigured CI job, a developer running the suite against the wrong env). The rows then render on the live site or pollute counts an audit or admin screen reads, and nothing in the normal write paths (field-priority matrix, scraper orchestrators) ever produced or would remove them, so they persist until someone notices the fixture-shaped names by eye.",
+  "first_seen": "2025-11-07 -- `web/tests/integration/api/registrars.integration.test.ts` (Story 5.3) seeded 'Alpha Registrar Services Ltd' / 'Beta Registrar Technologies' / 'Gamma Corporate Services' into the production `ipodhan` database; measured on `ipodhan_staging` 2026-09-28 via the sanctioned tunnel: 54 registrar rows total, 39 exact fixture matches (13 of each of the 3 tuples), 0 referenced by `ipos.registrar_id`. `web/tests/helpers/db-safety-guard.ts` (`assertNotProductionDatabase`) now stops a NEW run from writing to prod, but does not remove the historical rows.",
+  "fix_prs": "#94 (this PR) -- scraper/scripts/repair-remove-registrar-fixtures.ts, a re-runnable repair tool selecting by exact (name, email) tuple only, refusing any row referenced by ipos.registrar_id, dry-run by default",
+  "detection_check": "no nightly-audit path reaches `registrars` cheaply today (audit-substance-plausibility.mjs walks per-IPO rows, not reference tables) -- the tool itself carries the check: `repair-remove-registrar-fixtures.ts --check` exits 1 when any of the three fixture tuples is present on the connected database, exit 0 when clean. Not yet wired into a cron; the repair tool's own `--check` mode is the detection surface for now.",
+  "status": "unguarded",
+  "spec_ref": []
+}
