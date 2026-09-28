@@ -19,7 +19,7 @@ unit of work. Every defect fix (worker brief, PR body, ledger line) MUST carry t
 4. **Fix at class level** — the code path that serves the whole class; existing bad rows are repaired by a
    productized, source-backed, re-runnable tool (dry-run default, prod guard), never by hand arithmetic or a
    one-off SQL.
-5. **Retest + one REAL-DATA proof** — the failing test green PLUS one run against real data before merge: a
+5. **Retest + one REAL-DATA proof** (narrowed by OD-138, 2026-09-28: the proof is read when available and never waited for; an owed proof is listed in the pre-release brief) — the failing test green PLUS one run against real data before merge: a
    staging cycle whose log line names the counter that moved, a real page/PDF fixture, or the audit script run
    against the staging DB via the tunnel. A unit-tested predicate proves nothing about the SQL, markup or budget
    around it (2026-09-06: an audit crashed for three nights; a parser sourced 0 of 4 rows; a counter that could
