@@ -1932,6 +1932,96 @@
       "phase1": false,
       "title": "The offer document names the listing exchanges and the board in one sentence; it agrees with our stored value on 32 of 33 IPOs and is right on the one disagreement",
       "detail": "Measured 2026-09-27 on ipodhan_staging, read-only, over document_pages (74 documents with text): 36 IPOs carry the cover-page sentence 'The Equity Shares ... are proposed to be listed on ...' in pages 1-6. In 33 of them a PROSPECTUS (6), RHP (24) or DRHP (3) names the exchanges and the board: main board BSE+NSE 19, main board BSE only 1, SME on NSE Emerge 9, SME on BSE SME 4 (e.g. axiom-gas-engineering-ltd RHP 'SME Platform of National Stock Exchange of India Limited (NSE EMERGE)'; a-one-steels-india-ltd RHP 'listed on BSE Limited and the National Stock Exchange ... BSE shall be the Designated Stock Exchange'). The price band ad alone says only 'the Stock Exchanges' (hero-motors-ltd, lumino-industries-ltd, steamhouse-india-ltd). Against ipos.listing_exchanges and ipos.segment: 32 agree; 1 disagrees, national-stock-exchange-of-india-ltd (RHP: 'proposed to be listed on a recognised stock exchange being BSE Limited'; stored [BSE, NSE]) where the document is right and the stored value came from NSE running the bidding (F-135). Bearing: E-1 (section 1.2.1) keeps listing_exchanges exchange-first 'named by the owner', but its own test is 'the filing wins wherever a change to the fact forces a new filing'; a change of listing exchange forces a new filing. Coverage limit: only IPOs whose offer document has been read (36 of 344 IPO rows on staging). Open for owner decision (#938, Q1)."
+    },
+    {
+      "id": "F-198",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "document discovery -- SEBI DRHP search",
+      "title": "SEBI's DRHP search page answers a zero-result query with HTTP 200 and a real page, not an error -- a dead or rejected session looks identical unless the marker is read",
+      "detail": "Live capture 2026-09-29, www.sebi.gov.in DRHP-listing search. A search for a nonexistent filer (\"zzqx nonexistent\") returns HTTP 200, the same listing page (form[name=\"homeForm\"]), no table#sample_1, and the marker `<p>No record(s) available.</p>` inside `.pagination_inner`. A real filer search (\"deepa jewellers\") returns HTTP 200 with table#sample_1 holding 1 row. Both a genuine zero-result answer and a dead/rejected session (expired form token, blocked request) return 200 with the listing page's own form -- the only way to tell them apart is the presence of table#sample_1 or the no-records marker, never the status code alone. Fixture captured live: scraper/tests/fixtures/sebi/sebi-drhp-search-no-records.html (branch fix/620-document-budget-drain, PR #1276). Bears on the document-discovery mechanics this section's SEBI probing relies on.",
+      "phase1": true
+    },
+    {
+      "id": "F-199",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "discovery budget -- SEBI request reuse (#620)",
+      "title": "The SEBI listing page is company-independent but was fetched once PER IPO and PER document type, draining the 60-second discovery budget before company-specific document search ran",
+      "detail": "Root cause measured on a staging cycle, 2026-09-27T20:08Z: networkCalls 200/200 (the request cap), 176 of those 200 to www.sebi.gov.in, found 0 documents. The SEBI listing page 1 and its 6 paged continuations are the same page regardless of which IPO or document type is being searched, but the discovery walk re-fetched them per IPO and per document type -- roughly 8 SEBI requests per IPO. This is the mechanism behind F-151/F-152's \"60-second discovery budget runs out each time\": a company-independent page consumed the request budget that company-specific search needed. Fixed by per-cycle reuse of the listing page fetch: 66 requests served 59 IPOs on the fix branch. PR #1276.",
+      "phase1": true
+    },
+    {
+      "id": "F-200",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "pull walk -- admin-held fields skipped, not read",
+      "title": "The pull walk's per-field loop skips an admin-held field entirely, contrary to §2.4's own clarification that skip means never write, not never read",
+      "detail": "Measured 2026-09-28 on `main`, scraper/src/services/field-plan-walk.ts lines ~691-697: when an admin protection row exists for a field, the walk returns/continues before asking any source -- it does not read the field at all. §2.4's 2026-09-25 clarification (following OD-106, OD-107 and §9.2 item 9) states explicitly: \"the 'skip' above means 'never WRITE', not 'never read'. A field an admin holds is still asked at the reads that OD-56 and OD-66 already schedule ... the answer is stored as a witness and, when it differs from the admin value, becomes a suggestion in the admin queue.\" Consequence: with the code as measured, no witness is ever stored for a held field, so §9.2 item 9 (\"a newer document after an admin save\" becomes a suggestion) and OD-106 (an E-1 field's newer exchange value alerts the admin) can never fire for any admin-held field -- the admin queue's suggestion mechanism for held fields is silently dead. Fix in progress, branch fix/walk-reads-held-fields.",
+      "phase1": true
+    },
+    {
+      "id": "F-201",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "public detail page -- non-IPO offering types",
+      "title": "Only offering type IPO renders a public detail page; OFS/NCD/RIGHTS/BUYBACK/TENDER/REIT rows 404, so the §9.2 editor has no page to host their Edit control on",
+      "detail": "Measured 2026-09-28 on `main`: `REAL_IPO_OFFERING_TYPES = ['IPO']` (packages/shared/.../offering-type.ts:21) and web/app/ipos/[slug]/page.tsx:258-262 calls notFound() for any row whose offering_type is not in that list. §9.2 item 1 puts the Edit control \"on the public IPO detail page\" and item 4 says editing applies to \"Every IPO\", explicitly including the 19 OD-119 OFS rows, whose page nonetheless \"keeps the OD-53 non-IPO notice\" -- which requires a page to exist. As measured, it does not, for OFS or for any of NCD/RIGHTS/BUYBACK/TENDER/REIT. This conflicts with item 4's stated scope: a row the admin is meant to edit through its detail page has no detail page to edit it on. Open for owner decision: either build a detail page for every offering type (even a minimal OD-53-style notice page), or narrow item 4's \"every IPO\" to the types that already render.",
+      "phase1": true
+    },
+    {
+      "id": "F-202",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "staging -- field-plan coverage and admin queue size",
+      "title": "160 of the IPOs on staging have no ipo_field_plan rows at all; the admin queue already holds 48,907 items split across three groups",
+      "detail": "Measured 2026-09-28, read-only on ipodhan_staging. 160 IPOs (155 LISTED, 5 CLOSED) have zero ipo_field_plan rows. Separately, 46 issue_size and 8 lot_size rows carry SUPPLIED values that fail their §1 check. No-value plan rows by state: NOT_AVAILABLE_YET 15,919 (all coded NOT_PUBLISHED_YET), CHECK_FAILED 12,551 (COVERAGE_GAP 12,421 / FAILED_VALIDATION 66 / LOST_TO_HIGHER_PRIORITY 64), EXHAUSTED 66 (NOT_SOURCED 30, NULL 36 -- see F-203). The admin queue on staging totals 48,907 items across three groups: group 1 (9,229 items on 103 IPOs), group 2 (3,302 items on 73 IPOs), group 3 (36,376 items on 245 IPOs). This is the baseline the §9.1 \"what exists today\" section and the OD-63/OD-134 queue design should be measured against going forward.",
+      "phase1": true
+    },
+    {
+      "id": "F-203",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "ipo_field_plan -- phantom EXHAUSTED rows with no reason",
+      "title": "36 EXHAUSTED plan rows on staging carry reason_code NULL and no rank1/2/3_source, all on two listing_performance price fields, left over from before a fix landed",
+      "detail": "Measured 2026-09-28 on ipodhan_staging: 36 EXHAUSTED ipo_field_plan rows have reason_code NULL (current_price_nse 26, current_price_bse 10), and every one of the 36 also has rank1_source, rank2_source and rank3_source all NULL -- meaning no rank was ever actually tried before the row was marked EXHAUSTED. These read as phantom, rank-less rows written before a fix (#865) that is already merged; they are not being newly produced. Parked in #1268 pending a one-time cleanup, per the defect-fix-contract's distinction between a live write-path defect and historical residue needing repair (see the same shape in the abstention-recorded-as-disagreement failure class).",
+      "phase1": true
+    },
+    {
+      "id": "F-204",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "OD-134 two-test rule -- applied to the 16 named issues",
+      "title": "Applying OD-134's scraper-vs-admin test to the 16 OD-134 issues: most are already covered by the admin queue via plan state, six are code defects the test does not route to admin at all",
+      "detail": "Research 2026-09-28, independent design review, applying OD-134's two-test rule field by field to the 16 named issues. Most wrong values are already reachable through the admin queue by their existing plan state -- e.g. stanbik-agro's lot_size=100 defect is a NOT_AVAILABLE_YET plan row, which the queue already surfaces. Six are not admin-field-edit candidates at all under OD-134's own test (the value IS plainly present on a fetched source, so the test names them scraper work, not admin work): #963 (the NSE parser writes today's date into a blank date field instead of leaving it absent), #598 and #1196 (missing provenance rows -- nothing for an admin to pick between), #1116 (documents.type miscategorisation), #903 and #356 (row-identity/duplicate issues, not a field value at all). Owner question Q2 filed (#963-area cluster). Open for owner decision: whether these six stay scraper-owned under OD-134 as measured, or the two-test rule needs a fourth case for identity/provenance-shaped defects.",
+      "phase1": true
+    },
+    {
+      "id": "F-205",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "document_field_receipts -- no page column",
+      "title": "The extractor emits a page number per field, but document_field_receipts has no page column to store it, although §9.2 item 9 promises the admin queue a suggestion with \"the document and page\"",
+      "detail": "Measured 2026-09-28 on `main`: scraper/src/services/ocr-value-mark.ts's fieldsMark reads f.page from the extractor's own output, so a page number is available at write time. document_field_receipts (the table §9.2 item 9 relies on to show \"the document and page\" for a suggestion) has no page column to persist it into. As things stand, item 9's suggestion can name the document but not the page a reader or admin would need to verify it against.",
+      "phase1": true
+    },
+    {
+      "id": "F-206",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "E1_EXCHANGE_STATED_FIELDS manifest -- listing_exchanges gap",
+      "title": "The code's E1_EXCHANGE_STATED_FIELDS constant lists 8 fields plus status; the manifest lists 9 class-T fields including status, and listing_exchanges is class D -- OD-117 states every E-1 field follows OD-106, so the two lists need to agree on what counts",
+      "detail": "Measured 2026-09-28: packages/shared/.../field-sources-repository.ts:90 defines E1_EXCHANGE_STATED_FIELDS as 8 named fields plus status (9 total). Appendix A's manifest independently lists 9 class-T fields including status. OD-129 (2026-09-27) already moved listing_exchanges out of E-1 into class D (the offer document's listing sentence decides it), so a constant that does NOT include listingExchanges is consistent with the post-OD-129 E-1 membership (9 remaining fields, per §1.2.1's own \"ten -> nine\" note) -- but nothing in the code or the manifest asserts that the two lists are meant to be the same 9 fields, so the agreement is coincidental rather than checked. OD-117 (\"every E-1 field follows OD-106 the same way\") depends on E1_EXCHANGE_STATED_FIELDS being exactly the E-1 set; an untested constant is one future E-1 membership change away from silently diverging from the manifest again.",
+      "phase1": true
+    },
+    {
+      "id": "F-207",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "prod admin auth env vars -- only ADMIN_API_TOKEN present",
+      "title": "Prod's web environment carries only ADMIN_API_TOKEN; ADMIN_AUTH_TOKEN and ADMIN_PANEL_ENABLED, which OD-104's personal-login admin auth depends on, are present on staging but not on prod",
+      "detail": "Read 2026-09-28, env var NAMES only (no values read or logged) on both slots. Prod web: ADMIN_API_TOKEN present; ADMIN_AUTH_TOKEN absent; ADMIN_PANEL_ENABLED absent. Staging web: all three present. nginx on both slots sets Host $host and X-Forwarded-Host $host identically, so the gap is env-only, not a proxy difference. OD-104 (2026-09-25) says today's build runs on \"one shared ADMIN_AUTH_TOKEN and a free-typed admin name\" per `.claude/rules/admin-route-auth.md`, moving to personal logins; whichever admin-auth mechanism ships needs its env vars present on prod before that release, or the admin-route auth fix OD-133/OD-135 requires for the next release will not function there.",
+      "phase1": true
     }
   ],
   "false_assertions": [
