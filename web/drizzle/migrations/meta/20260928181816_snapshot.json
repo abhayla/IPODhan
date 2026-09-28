@@ -1,5 +1,5 @@
 {
-  "id": "a850ee3d-c524-4503-9692-e3e0036da93a",
+  "id": "8b4bf77f-43f8-437e-8332-809c5c71aac1",
   "prevId": "e8ab33f0-622e-4478-9aef-97f9084777d6",
   "version": "7",
   "dialect": "postgresql",
@@ -218,7 +218,24 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "uq_admin_users_single_owner": {
+          "name": "uq_admin_users_single_owner",
+          "columns": [
+            {
+              "expression": "is_owner",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"admin_users\".\"is_owner\"",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {

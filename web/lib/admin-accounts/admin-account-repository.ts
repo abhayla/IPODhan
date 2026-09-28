@@ -29,6 +29,7 @@ export interface AdminAccountView {
 /** One admin_sessions row joined to its account, as the session decision reads it. */
 export interface SessionWithAccount {
   sessionId: string;
+  createdAt: Date;
   expiresAt: Date;
   lastSeenAt: Date;
   adminUserId: string;
@@ -142,6 +143,7 @@ export class AdminAccountRepository {
     const [row] = await this.db
       .select({
         sessionId: adminSessions.id,
+        createdAt: adminSessions.createdAt,
         expiresAt: adminSessions.expiresAt,
         lastSeenAt: adminSessions.lastSeenAt,
         adminUserId: adminUsers.id,
@@ -156,10 +158,10 @@ export class AdminAccountRepository {
     return row ?? null;
   }
 
-  async touchSession(tokenHash: string, now: Date = new Date()): Promise<void> {
+  async touchSession(tokenHash: string, now: Date, expiresAt: Date): Promise<void> {
     await this.db
       .update(adminSessions)
-      .set({ lastSeenAt: now, expiresAt: new Date(now.getTime() + SESSION_TTL_MS) })
+      .set({ lastSeenAt: now, expiresAt })
       .where(eq(adminSessions.id, tokenHash));
   }
 

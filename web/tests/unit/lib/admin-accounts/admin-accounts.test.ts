@@ -34,6 +34,7 @@ const NOW = new Date('2026-09-28T12:00:00.000Z');
 function row(over: Partial<SessionWithAccount> = {}): SessionWithAccount {
   return {
     sessionId: 'h',
+    createdAt: new Date(NOW.getTime() - 60 * 60_000),
     expiresAt: new Date(NOW.getTime() + 60_000),
     lastSeenAt: NOW,
     adminUserId: 'u-1',
@@ -172,11 +173,11 @@ describe('session cookie', () => {
 
 describe('owner-only guard', () => {
   it('answers a non-owner admin with 403', async () => {
-    const res = requireOwner({ adminId: 'u-2', adminName: 'B', isOwner: false, isAuthenticated: true });
+    const res = requireOwner({ adminId: 'u-2', adminName: 'B', isOwner: false, isAuthenticated: true, authMethod: 'session' });
     expect(res?.status).toBe(403);
   });
   it('lets the owner through', () => {
-    expect(requireOwner({ adminId: 'u-1', adminName: 'O', isOwner: true, isAuthenticated: true })).toBeNull();
+    expect(requireOwner({ adminId: 'u-1', adminName: 'O', isOwner: true, isAuthenticated: true, authMethod: 'session' })).toBeNull();
   });
 });
 
@@ -193,6 +194,7 @@ describe('machine token path', () => {
       adminName: MACHINE_TOKEN_IDENTITY,
       isOwner: false,
       isAuthenticated: true,
+      authMethod: 'token',
     });
     expect(await verifyAdminAuth(bearer('wrong'))).toBeNull();
   });
@@ -242,5 +244,14 @@ describe('owner bootstrap decision', () => {
   it('dry-runs by default and creates on a non-prod --apply', () => {
     expect(decideOwnerBootstrap({ apply: false, dbName: 'ipodhan', allowProd: false, ownerExists: false }).action).toBe('dry-run');
     expect(decideOwnerBootstrap({ apply: true, dbName: 'ipodhan_staging', allowProd: false, ownerExists: false }).action).toBe('create');
+    expect(decideOwnerBootstrap({ apply: true, dbName: 'ipodhan_test', allowProd: false, ownerExists: false }).action).toBe('create');
+  });
+  it('refuses --apply on any database outside the allow-list, blank included (M3)', () => {
+    for (const dbName of ['', 'postgres', 'ipodhan_prod', 'ipodhan_staging2', 'IPODHAN', 'template1']) {
+      expect(decideOwnerBootstrap({ apply: true, dbName, allowProd: true, ownerExists: false }).action).toBe('refuse');
+    }
+    expect(
+      decideOwnerBootstrap({ apply: true, dbName: undefined as unknown as string, allowProd: true, ownerExists: false }).action
+    ).toBe('refuse');
   });
 });

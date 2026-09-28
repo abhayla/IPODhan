@@ -21,4 +21,5 @@ CREATE TABLE "admin_users" (
 );
 --> statement-breakpoint
 ALTER TABLE "admin_sessions" ADD CONSTRAINT "admin_sessions_admin_user_id_admin_users_id_fk" FOREIGN KEY ("admin_user_id") REFERENCES "public"."admin_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "idx_admin_sessions_admin_user" ON "admin_sessions" USING btree ("admin_user_id");
+CREATE INDEX "idx_admin_sessions_admin_user" ON "admin_sessions" USING btree ("admin_user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_admin_users_single_owner" ON "admin_users" USING btree ("is_owner") WHERE "admin_users"."is_owner";

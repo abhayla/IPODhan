@@ -34,6 +34,46 @@ export interface RateLimitConfig {
    * Optional message to return when rate limit is exceeded
    */
   message?: string;
+
+  /**
+   * What to do when Redis cannot be reached. 'allow' (the default) fails open. 'local' counts in
+   * this process's memory with the same limit instead, so a Redis outage cannot turn a brute-force
+   * guard (admin sign-in) into no guard at all.
+   */
+  onStoreError?: 'allow' | 'local';
+}
+
+// Fallback counters for onStoreError: 'local'. Bounded so a flood of distinct keys cannot grow the
+// process's memory without limit; the oldest key is evicted first.
+const LOCAL_COUNTER_MAX_KEYS = 10_000;
+const localCounters = new Map<string, number[]>();
+
+export function checkLocalRateLimit(
+  key: string,
+  config: RateLimitConfig,
+  now: number = Date.now()
+): { allowed: boolean; limit: number; remaining: number; reset: number } {
+  const windowMs = config.windowSeconds * 1000;
+  const hits = (localCounters.get(key) ?? []).filter((t) => t > now - windowMs);
+  const reset = Math.ceil(((hits[0] ?? now) + windowMs) / 1000);
+  if (hits.length >= config.maxRequests) {
+    localCounters.set(key, hits);
+    return { allowed: false, limit: config.maxRequests, remaining: 0, reset };
+  }
+  hits.push(now);
+  localCounters.delete(key);
+  localCounters.set(key, hits);
+  while (localCounters.size > LOCAL_COUNTER_MAX_KEYS) {
+    const oldest = localCounters.keys().next().value;
+    if (oldest === undefined) break;
+    localCounters.delete(oldest);
+  }
+  return { allowed: true, limit: config.maxRequests, remaining: config.maxRequests - hits.length, reset };
+}
+
+/** Test seam: forget every local fallback counter. */
+export function resetLocalRateLimitCounters(): void {
+  localCounters.clear();
 }
 
 /**
@@ -169,8 +209,13 @@ export async function checkRateLimit(
       reset: Math.ceil((now + (config.windowSeconds * 1000)) / 1000),
     };
   } catch (error) {
-    // If Redis fails, log error and allow request (fail open)
     logger.error({ error, ip, endpoint }, 'Rate limit check failed');
+
+    if (config.onStoreError === 'local') {
+      return checkLocalRateLimit(key, config, now);
+    }
+
+    // Default: fail open.
 
     // Return permissive response on Redis failure
     return {

@@ -2,14 +2,16 @@
  * Resolves an admin session cookie to the admin it belongs to (spec §9.2 item 6).
  *
  * `evaluateSession` is the single decision every path goes through: an unknown, expired or disabled
- * session is refused. The database is read on every call (no cache), so a removed admin loses access
+ * session is refused, and so is one older than SESSION_ABSOLUTE_MAX_MS (30 days) however active. The database is read on every call (no cache), so a removed admin loses access
  * on the next request (OD-113).
  */
 import {
   ADMIN_SESSION_COOKIE,
+  SESSION_ABSOLUTE_MAX_MS,
   SESSION_TOUCH_INTERVAL_MS,
   hashSessionToken,
   isWellFormedSessionToken,
+  slidingSessionExpiry,
 } from './session-token';
 import type { AdminAccountRepository, SessionWithAccount } from './admin-account-repository';
 
@@ -30,6 +32,7 @@ export function evaluateSession(row: SessionWithAccount | null, now: Date): Admi
   if (!row) return null;
   if (row.disabledAt !== null) return null;
   if (row.expiresAt.getTime() <= now.getTime()) return null;
+  if (now.getTime() - row.createdAt.getTime() >= SESSION_ABSOLUTE_MAX_MS) return null;
   return { adminId: row.adminUserId, adminName: row.name, isOwner: row.isOwner };
 }
 
@@ -58,7 +61,7 @@ export async function resolveAdminSessionToken(
   const identity = evaluateSession(row, now);
   if (!identity || !row) return null;
   if (now.getTime() - row.lastSeenAt.getTime() > SESSION_TOUCH_INTERVAL_MS) {
-    await r.touchSession(tokenHash, now);
+    await r.touchSession(tokenHash, now, slidingSessionExpiry(row.createdAt, now));
   }
   return identity;
 }

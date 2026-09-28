@@ -13,6 +13,7 @@ import {
   bigint,
   bigserial,
   index,
+  uniqueIndex,
   pgEnum,
   unique,
   check,
@@ -2889,6 +2890,9 @@ export const adminUsers = pgTable(
   },
   (table) => ({
     emailUnique: unique('uq_admin_users_email').on(table.email),
+    // At most ONE owner, enforced by the database (OD-113; Tier A review m1): a partial unique index
+    // over is_owner for the rows where it is true, so a second owner row fails to insert.
+    singleOwner: uniqueIndex('uq_admin_users_single_owner').on(table.isOwner).where(sql`${table.isOwner}`),
   })
 );
 

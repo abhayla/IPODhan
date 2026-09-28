@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createHash, randomBytes } from 'node:crypto';
 import { NextRequest } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 vi.mock('@/lib/middleware/rate-limiter', () => ({
   checkRateLimit: vi.fn(async () => ({ allowed: true, limit: 10, remaining: 9, reset: 0 })),
@@ -100,5 +100,32 @@ describe('admin accounts: login -> attributed admin request -> removal (ipodhan_
 
     const after = await me(meRequest(token));
     expect(after.status).toBe(401);
+  });
+
+  it('the database refuses a second owner (partial unique index, Tier A review m1)', async () => {
+    const owners: string[] = [];
+    try {
+      const first = await repo.createAccount({
+        name: `A3 Owner One ${suffix}`,
+        email: `a3-owner1-${suffix}@example.test`,
+        phone: '+919800000001',
+        password,
+        isOwner: true,
+      });
+      owners.push(first.id);
+      await expect(
+        repo.createAccount({
+          name: `A3 Owner Two ${suffix}`,
+          email: `a3-owner2-${suffix}@example.test`,
+          phone: '+919800000002',
+          password,
+          isOwner: true,
+        })
+      ).rejects.toThrow();
+      const [{ count }] = (await db.execute(sql`SELECT count(*)::int AS count FROM admin_users WHERE is_owner`)).rows as Array<{ count: number }>;
+      expect(count).toBe(1);
+    } finally {
+      for (const id of owners) await db.delete(adminUsers).where(eq(adminUsers.id, id));
+    }
   });
 });

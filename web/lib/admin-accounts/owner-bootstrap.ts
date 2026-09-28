@@ -2,10 +2,13 @@
  * The pure decision behind web/scripts/create-owner-admin.ts (spec §9.2 item 6, OD-113): the first
  * and only owner account is created by a CLI run on the server, never through a web route.
  *
- * Mirrors scraper/scripts/lib/repair-tool.ts decideProdWriteRefusal: an --apply against the
- * production database `ipodhan` is refused without --allow-prod. A second owner is always refused.
+ * Mirrors scraper/scripts/lib/repair-tool.ts decideProdWriteRefusal, but as an ALLOW-list (Tier A
+ * review M3): --apply writes only to ipodhan_staging, ipodhan_test, or the production database
+ * `ipodhan` with --allow-prod. Any other name, including a blank one, is refused, so a typo or a
+ * stray DATABASE_URL can never create an owner somewhere unexpected. A second owner is always refused.
  */
 export const PRODUCTION_DATABASE_NAME = 'ipodhan';
+export const NON_PRODUCTION_DATABASE_NAMES: readonly string[] = ['ipodhan_staging', 'ipodhan_test'];
 
 export type OwnerBootstrapDecision =
   | { action: 'refuse'; reason: string }
@@ -25,11 +28,18 @@ export function decideOwnerBootstrap(input: {
     };
   }
   if (!input.apply) return { action: 'dry-run' };
-  if ((input.dbName ?? '').toLowerCase() === PRODUCTION_DATABASE_NAME && !input.allowProd) {
+  // Exact match: Postgres database names are case-sensitive when quoted, so "IPODHAN" is not ipodhan.
+  const dbName = typeof input.dbName === 'string' ? input.dbName : '';
+  if (dbName === PRODUCTION_DATABASE_NAME) {
+    if (input.allowProd) return { action: 'create' };
     return {
       action: 'refuse',
-      reason: `refusing to create an owner in the production database "${PRODUCTION_DATABASE_NAME}" (current_database() = "${input.dbName}") without --allow-prod`,
+      reason: `refusing to create an owner in the production database "${PRODUCTION_DATABASE_NAME}" (current_database() = "${dbName}") without --allow-prod`,
     };
   }
-  return { action: 'create' };
+  if (NON_PRODUCTION_DATABASE_NAMES.includes(dbName)) return { action: 'create' };
+  return {
+    action: 'refuse',
+    reason: `refusing to create an owner in database "${dbName}": only ${[...NON_PRODUCTION_DATABASE_NAMES, `${PRODUCTION_DATABASE_NAME} (with --allow-prod)`].join(', ')} are allowed`,
+  };
 }

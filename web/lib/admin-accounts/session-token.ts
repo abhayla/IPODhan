@@ -8,6 +8,13 @@ export const ADMIN_SESSION_COOKIE = 'ipodhan_admin_session';
 export const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 // Sliding expiry: extend at most once an hour so a busy admin does not write on every request.
 export const SESSION_TOUCH_INTERVAL_MS = 60 * 60 * 1000;
+// Absolute cap (Tier A review m3): however active, a session ends 30 days after sign-in.
+export const SESSION_ABSOLUTE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** The sliding expiry for a session touched at `now`, never past createdAt + SESSION_ABSOLUTE_MAX_MS. */
+export function slidingSessionExpiry(createdAt: Date, now: Date): Date {
+  return new Date(Math.min(now.getTime() + SESSION_TTL_MS, createdAt.getTime() + SESSION_ABSOLUTE_MAX_MS));
+}
 
 export function generateSessionToken(): string {
   return randomBytes(32).toString('base64url');

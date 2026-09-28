@@ -17,14 +17,18 @@ import {
   readCookie,
   resolveAdminSessionToken,
 } from '@/lib/admin-accounts/admin-session';
+import { cookieRequestOriginAllowed } from '@/lib/admin-accounts/request-origin';
 
 export const MACHINE_TOKEN_IDENTITY = 'system:token';
 
 export interface AdminAuthContext {
+  /** admin_users.id for a session; MACHINE_TOKEN_IDENTITY for the Bearer token. Always set. */
   adminId: string;
   adminName: string;
   isOwner: boolean;
   isAuthenticated: boolean;
+  /** How the caller proved itself: only 'session' (the browser cookie) is subject to the Origin check. */
+  authMethod: 'session' | 'token';
 }
 
 function machineTokenMatches(token: string, expected: string): boolean {
@@ -50,7 +54,7 @@ export async function verifyAdminAuth(request: NextRequest): Promise<AdminAuthCo
 
   const session = await resolveAdminSessionToken(sessionTokenFrom(request));
   if (session) {
-    return { ...session, isAuthenticated: true };
+    return { ...session, isAuthenticated: true, authMethod: 'session' };
   }
 
   const authHeader = request.headers.get('authorization');
@@ -62,6 +66,7 @@ export async function verifyAdminAuth(request: NextRequest): Promise<AdminAuthCo
         adminName: MACHINE_TOKEN_IDENTITY,
         isOwner: false,
         isAuthenticated: true,
+        authMethod: 'token',
       };
     }
   }
@@ -76,6 +81,13 @@ export function unauthorizedResponse(): NextResponse {
       message: 'Admin authentication required',
     },
     { status: 401 }
+  );
+}
+
+export function forbiddenOriginResponse(): NextResponse {
+  return NextResponse.json(
+    { error: 'Forbidden', message: 'Request origin not allowed' },
+    { status: 403 }
   );
 }
 
@@ -99,6 +111,11 @@ export function withAdminAuth(
 
     if (!adminContext) {
       return unauthorizedResponse();
+    }
+
+    // CSRF (Tier A review m4): a cookie-authenticated mutation must come from the site's own origin.
+    if (adminContext.authMethod === 'session' && !cookieRequestOriginAllowed(request.headers, request.method)) {
+      return forbiddenOriginResponse();
     }
 
     return handler(request, adminContext, ...args);

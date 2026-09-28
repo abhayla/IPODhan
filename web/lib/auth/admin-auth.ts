@@ -35,7 +35,8 @@
 
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { readCookie, resolveAdminSessionToken } from '@/lib/admin-accounts/admin-session';
+import { adminPanelEnabled, readCookie, resolveAdminSessionToken } from '@/lib/admin-accounts/admin-session';
+import { cookieRequestOriginAllowed } from '@/lib/admin-accounts/request-origin';
 import crypto from 'crypto';
 
 /**
@@ -86,15 +87,38 @@ function constantTimeCompare(a: string, b: string): boolean {
  *
  * @throws Never throws - returns error responses instead
  */
-export async function requireAdminAuth(): Promise<NextResponse | null> {
+export async function requireAdminAuth(request?: Request): Promise<NextResponse | null> {
+  // The ADMIN_PANEL_ENABLED kill switch closes BOTH ways in, the Bearer token included (Tier A review
+  // m5): with the panel off, no admin route answers anyone.
+  if (!adminPanelEnabled()) {
+    return NextResponse.json(
+      { error: 'Unauthorized', message: 'Admin authentication required' },
+      { status: 401 }
+    );
+  }
+
   // A named admin's session cookie (spec §9.2 item 6, OD-104) is accepted first; the Bearer
   // ADMIN_API_TOKEN below stays for non-human callers only. A session lookup error falls through to
   // the Bearer check, so it can never grant access by itself.
+  let sessionOk = false;
   try {
     const cookieHeader = (await headers()).get('cookie');
-    if (cookieHeader && (await resolveAdminSessionToken(readCookie(cookieHeader)))) return null;
+    sessionOk = Boolean(cookieHeader && (await resolveAdminSessionToken(readCookie(cookieHeader))));
   } catch {
     // fall through to the Bearer check
+  }
+  if (sessionOk) {
+    // CSRF (Tier A review m4): a cookie-authenticated mutation must come from the site's own origin.
+    // Without the request the method is unknown, and cookieRequestOriginAllowed decides on
+    // Origin / Sec-Fetch-Site alone.
+    const requestHeaders = request?.headers ?? (await headers());
+    if (!cookieRequestOriginAllowed(requestHeaders, request?.method ?? null)) {
+      return NextResponse.json(
+        { error: 'Forbidden', message: 'Request origin not allowed' },
+        { status: 403 }
+      );
+    }
+    return null;
   }
 
   const ADMIN_TOKEN = process.env.ADMIN_API_TOKEN;

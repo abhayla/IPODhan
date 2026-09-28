@@ -5,7 +5,10 @@
  *
  * - Every refusal (unknown email, wrong password, removed admin, malformed input) returns the same
  *   generic 401 so the response never reveals which emails are admin accounts.
- * - Rate-limited per client IP + email through the existing Redis limiter.
+ * - Rate-limited twice (Tier A review M2): per client IP (stops one caller spraying many emails), and
+ *   per email ALONE (rotating the IP, or forging a header, cannot buy more guesses at one account). The IP is CF-Connecting-IP or
+ *   nginx's X-Real-IP, never the caller-written first X-Forwarded-For entry. When Redis is down both
+ *   limits fall back to an in-process counter with the same limit instead of failing open.
  * - Sets an httpOnly, SameSite=Lax (Secure in production) cookie holding a random token; only its
  *   SHA-256 is stored.
  */
@@ -15,6 +18,7 @@ import { logger } from '@/lib/logger';
 import { checkRateLimit } from '@/lib/middleware/rate-limiter';
 import { AdminAccountRepository } from '@/lib/admin-accounts/admin-account-repository';
 import { adminPanelEnabled } from '@/lib/admin-accounts/admin-session';
+import { trustedClientIp } from '@/lib/admin-accounts/request-origin';
 import { dummyPasswordHash, verifyPassword } from '@/lib/admin-accounts/password-hash';
 import { normalizeEmail, PASSWORD_MAX } from '@/lib/admin-accounts/admin-account-validation';
 import {
@@ -24,19 +28,16 @@ import {
   sessionCookieOptions,
 } from '@/lib/admin-accounts/session-token';
 
-const LOGIN_LIMIT = { maxRequests: 10, windowSeconds: 15 * 60 };
+// One caller, any accounts: 30 attempts per 15 minutes.
+const LOGIN_IP_LIMIT = { maxRequests: 30, windowSeconds: 15 * 60, onStoreError: 'local' as const };
+// One account, from anywhere: 10 guesses per 15 minutes in total.
+const LOGIN_EMAIL_LIMIT = { maxRequests: 10, windowSeconds: 15 * 60, onStoreError: 'local' as const };
 
 function genericRefusal(): NextResponse {
   return NextResponse.json(
     { error: 'Unauthorized', message: 'Invalid email or password' },
     { status: 401 }
   );
-}
-
-function clientIp(request: NextRequest): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return request.headers.get('x-real-ip') || 'unknown';
 }
 
 export async function POST(request: NextRequest) {
@@ -61,11 +62,15 @@ export async function POST(request: NextRequest) {
   }
   const normalized = normalizeEmail(email);
 
-  const limit = await checkRateLimit(clientIp(request), `admin-login:${normalized}`, {
-    ...LOGIN_LIMIT,
+  const limit = await checkRateLimit(trustedClientIp(request.headers), 'admin-login-ip', {
+    ...LOGIN_IP_LIMIT,
     message: 'Too many sign-in attempts',
   });
-  if (!limit.allowed) {
+  const emailLimit = await checkRateLimit('any-ip', `admin-login-email:${normalized}`, {
+    ...LOGIN_EMAIL_LIMIT,
+    message: 'Too many sign-in attempts',
+  });
+  if (!limit.allowed || !emailLimit.allowed) {
     return NextResponse.json(
       { error: 'Too Many Requests', message: 'Too many sign-in attempts. Try again later.' },
       { status: 429 }
