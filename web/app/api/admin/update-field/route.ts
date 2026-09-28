@@ -1,377 +1,90 @@
 /**
  * API Route: Update Field Value
- * PATCH /api/admin/update-field
+ * GET   /api/admin/update-field?ipoId&tableName&fieldName  -> current value + version token
+ * PATCH /api/admin/update-field                             -> save through the ONE admin write
  *
- * Updates a field value in any table and automatically protects it
+ * Every save goes through `saveAdminFieldValue` (spec §9.2 item 11): value, ADMIN provenance,
+ * protection, audit row and version check in one transaction, then the cache drop. This route only
+ * parses the request and maps the result: INVALID -> 400, NOT_FOUND -> 404, CONFLICT -> 409.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth, getAdminIdentity } from '@/lib/middleware/admin-auth';
+import { withAdminAuth } from '@/lib/middleware/admin-auth';
 import { getDb } from '@/lib/db';
-import { getRedisClient } from '@/lib/cache/redis-client';
-import { getIPOByIdKey } from '@/lib/cache/cache-keys';
-import {
-  ipos,
-  financialData,
-  listingPerformance,
-  subscriptions,
-  gmpRecords,
-  documents,
-  peerCompanies,
-  ipoReviews,
-  ipoScores,
-  ipoFinancials,
-  ipoDetails,
-  anchorInvestors,
-  ipoDemandGraph
-} from '@ipodhan/shared/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
-import { markFieldAsManuallyEdited } from '@/lib/admin/field-protection-checker';
-import { sql } from 'drizzle-orm';
-import { logAudit, AuditActionTypes, getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
+import { getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
-import { getTableConfig, TableCategory } from '@/lib/admin/table-map-generator';
+import { saveAdminFieldValue, adminWriteResponse } from '@/lib/admin/admin-field-save';
+import { readAdminFieldVersion, type AdminWriteMode } from '@ipodhan/shared/services/admin-field-write';
 
 interface UpdateFieldRequest {
   ipoId: string;
   tableName: string;
   fieldName: string;
-  value: any;
-  autoProtect?: boolean; // Default: true (auto-lock after edit)
+  value?: unknown;
+  /** OD-121: delete the value; the reason is required. */
+  emptyReason?: string;
+  /** 'pick' (with sourceLabel + readDate) or 'typed' (with sourceNote). Defaults to 'typed'. */
+  mode?: 'pick' | 'typed';
+  sourceLabel?: string;
+  readDate?: string | null;
+  sourceNote?: string;
+  /** Legacy name for the typed source note. */
   editNote?: string;
+  overrideReason?: string;
+  expectedVersion: string;
 }
 
-// Table name to Drizzle table mapping
-const TABLE_MAP: Record<string, any> = {
-  ipos,
-  financial_data: financialData,
-  listing_performance: listingPerformance,
-  subscriptions,
-  gmp_records: gmpRecords,
-  documents,
-  peer_companies: peerCompanies,
-  ipo_reviews: ipoReviews,
-  ipo_scores: ipoScores,
-  ipo_financials: ipoFinancials,
-  ipo_details: ipoDetails,
-  anchor_investors: anchorInvestors,
-  ipo_demand_graph: ipoDemandGraph,
-};
+export const GET = withAdminAuth(async (request: NextRequest) => {
+  try {
+    const url = new URL(request.url);
+    const ipoId = url.searchParams.get('ipoId');
+    const tableName = url.searchParams.get('tableName');
+    const fieldName = url.searchParams.get('fieldName');
+    if (!ipoId || !tableName || !fieldName) {
+      return NextResponse.json({ error: 'ipoId, tableName and fieldName are required' }, { status: 400 });
+    }
+    const db = await getDb();
+    const version = await readAdminFieldVersion(db as never, ipoId, tableName, fieldName);
+    if (!version) return NextResponse.json({ error: `${tableName}.${fieldName} is not admin-writable` }, { status: 400 });
+    return NextResponse.json({ success: true, data: version });
+  } catch (error) {
+    return apiErrorResponse(error, '/api/admin/update-field');
+  }
+});
 
-// Fields that should not be editable
-const NON_EDITABLE_FIELDS = new Set([
-  'id',
-  'created_at',
-  'updated_at',
-  'ipo_id', // Foreign keys
-  'scraper_locked', // Use dedicated endpoint
-  'last_manual_edit_at', // Auto-managed
-]);
-
-/**
- * PATCH /api/admin/update-field
- * Update a field value and auto-protect it
- */
 export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) => {
-  let oldValue: any = null;
-  let body: UpdateFieldRequest | null = null;
-
+  let body: UpdateFieldRequest;
   try {
     body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Request body must be JSON' }, { status: 400 });
+  }
+  if (!body || !body.ipoId || !body.tableName || !body.fieldName) {
+    return NextResponse.json({ error: 'ipoId, tableName, and fieldName are required' }, { status: 400 });
+  }
 
-    if (!body) {
-      return NextResponse.json(
-        { error: 'Request body is required' },
-        { status: 400 }
-      );
-    }
+  const mode: AdminWriteMode =
+    body.mode === 'pick'
+      ? { kind: 'pick', sourceLabel: body.sourceLabel ?? '', readDate: body.readDate ?? null }
+      : { kind: 'typed', sourceNote: body.sourceNote ?? body.editNote ?? '' };
 
-    const { ipoId, tableName, fieldName, value, autoProtect = true, editNote } = body;
-
-    // Validation
-    if (!ipoId || !tableName || !fieldName) {
-      return NextResponse.json(
-        { error: 'ipoId, tableName, and fieldName are required' },
-        { status: 400 }
-      );
-    }
-
-    // Check if table exists and is editable
-    const tableConfig = getTableConfig(tableName);
-    if (!tableConfig) {
-      return NextResponse.json(
-        { error: `Unknown table: ${tableName}` },
-        { status: 400 }
-      );
-    }
-
-    if (!tableConfig.editable) {
-      return NextResponse.json(
-        { error: `Table ${tableName} is not editable` },
-        { status: 400 }
-      );
-    }
-
-    const table = tableConfig.table;
-
-    // Check if field is editable
-    if (NON_EDITABLE_FIELDS.has(fieldName)) {
-      return NextResponse.json(
-        { error: `Field ${fieldName} is not editable` },
-        { status: 400 }
-      );
-    }
-
-    const db = await getDb();
-
-    // Get old value before update (for audit log)
-    try {
-      if (tableName === 'ipos') {
-        const existing = await db.select().from(ipos).where(eq(ipos.id, ipoId)).limit(1);
-        oldValue = existing[0]?.[fieldName as keyof typeof existing[0]];
-      }
-    } catch (err) {
-      console.warn('[Audit] Failed to get old value:', err);
-    }
-
-    // Special handling for different tables
-    let updateResult;
-
-    if (tableName === 'ipos') {
-      // Update ipos table
-      updateResult = await db
-        .update(ipos)
-        .set({
-          [fieldName]: value,
-          lastManualEditAt: new Date(),
-        } as any)
-        .where(eq(ipos.id, ipoId))
-        .returning();
-
-    } else if (tableName === 'financial_data') {
-      // Update financial_data (one-to-one)
-      updateResult = await db
-        .update(financialData)
-        .set({ [fieldName]: value } as any)
-        .where(eq(financialData.ipoId, ipoId))
-        .returning();
-
-    } else if (tableName === 'listing_performance') {
-      // Update listing_performance (one-to-one)
-      updateResult = await db
-        .update(listingPerformance)
-        .set({
-          [fieldName]: value,
-          updatedAt: new Date(),
-        } as any)
-        .where(eq(listingPerformance.ipoId, ipoId))
-        .returning();
-
-    } else if (tableName === 'ipo_financials') {
-      // Update ipo_financials (one-to-one)
-      updateResult = await db
-        .update(ipoFinancials)
-        .set({
-          [fieldName]: value,
-          updatedAt: new Date(),
-        } as any)
-        .where(eq(ipoFinancials.ipoId, ipoId))
-        .returning();
-
-    } else if (tableName === 'ipo_details') {
-      // Update ipo_details (one-to-one)
-      updateResult = await db
-        .update(ipoDetails)
-        .set({
-          [fieldName]: value,
-          updatedAt: new Date(),
-        } as any)
-        .where(eq(ipoDetails.ipoId, ipoId))
-        .returning();
-
-    } else if (tableName === 'ipo_scores') {
-      // Update ipo_scores (one-to-one)
-      updateResult = await db
-        .update(ipoScores)
-        .set({
-          [fieldName]: value,
-          updatedAt: new Date(),
-        } as any)
-        .where(eq(ipoScores.ipoId, ipoId))
-        .returning();
-
-    } else if (tableName === 'subscriptions') {
-      // Update latest subscription record (time-series)
-      const latestSubscription = await db
-        .select()
-        .from(subscriptions)
-        .where(eq(subscriptions.ipoId, ipoId))
-        .orderBy(desc(subscriptions.timestamp))
-        .limit(1);
-
-      if (latestSubscription.length === 0) {
-        return NextResponse.json(
-          { error: 'No subscription record found for this IPO' },
-          { status: 404 }
-        );
-      }
-
-      updateResult = await db
-        .update(subscriptions)
-        .set({ [fieldName]: value } as any)
-        .where(eq(subscriptions.id, latestSubscription[0].id))
-        .returning();
-
-    } else if (tableName === 'gmp_records') {
-      // Update latest GMP record (time-series)
-      const latestGMP = await db
-        .select()
-        .from(gmpRecords)
-        .where(eq(gmpRecords.ipoId, ipoId))
-        .orderBy(desc(gmpRecords.timestamp))
-        .limit(1);
-
-      if (latestGMP.length === 0) {
-        return NextResponse.json(
-          { error: 'No GMP record found for this IPO' },
-          { status: 404 }
-        );
-      }
-
-      updateResult = await db
-        .update(gmpRecords)
-        .set({ [fieldName]: value } as any)
-        .where(eq(gmpRecords.id, latestGMP[0].id))
-        .returning();
-
-    } else if (tableName === 'anchor_investors') {
-      // Update anchor_investors (one-to-one with jsonb)
-      updateResult = await db
-        .update(anchorInvestors)
-        .set({
-          [fieldName]: value,
-          updatedAt: new Date(),
-        } as any)
-        .where(eq(anchorInvestors.ipoId, ipoId))
-        .returning();
-
-    } else if (tableName === 'ipo_demand_graph') {
-      // Update latest demand graph record (time-series)
-      const latestDemand = await db
-        .select()
-        .from(ipoDemandGraph)
-        .where(eq(ipoDemandGraph.ipoId, ipoId))
-        .orderBy(desc(ipoDemandGraph.timestamp))
-        .limit(1);
-
-      if (latestDemand.length === 0) {
-        return NextResponse.json(
-          { error: 'No demand graph record found for this IPO' },
-          { status: 404 }
-        );
-      }
-
-      updateResult = await db
-        .update(ipoDemandGraph)
-        .set({ [fieldName]: value } as any)
-        .where(eq(ipoDemandGraph.id, latestDemand[0].id))
-        .returning();
-
-    } else {
-      // Generic update (not recommended - use specific handlers above)
-      return NextResponse.json(
-        { error: `Table ${tableName} requires specific update handler` },
-        { status: 400 }
-      );
-    }
-
-    // Check if update was successful
-    if (!updateResult || updateResult.length === 0) {
-      return NextResponse.json(
-        { error: 'Record not found or update failed' },
-        { status: 404 }
-      );
-    }
-
-    // Mark field as manually edited and auto-protect
-    await markFieldAsManuallyEdited(
-      ipoId,
-      tableName,
-      fieldName,
-      adminContext.adminName,
-      editNote,
-      autoProtect
-    );
-
-    // Invalidate relevant caches
-    const redis = getRedisClient();
-    try {
-      // Invalidate IPO detail cache
-      await redis.del(getIPOByIdKey(ipoId), `ipo:slug:*`);
-
-      // Invalidate list caches (IPO might appear in lists)
-      const listKeys = await redis.keys('ipo:list:*');
-      if (listKeys.length > 0) {
-        await redis.del(...listKeys);
-      }
-    } catch (error) {
-      console.warn('[Admin API] Cache invalidation failed:', error);
-      // Non-fatal - caches will expire naturally
-    }
-
-    console.log(
-      `[Admin API] Field updated: ${tableName}.${fieldName} = ${value} for IPO ${ipoId} by ${adminContext.adminName}`
-    );
-
-    // Log audit entry
-    logAudit({
-      adminUser: adminContext.adminName,
-      actionType: AuditActionTypes.FIELD_UPDATED,
-      ipoId,
-      tableName,
-      fieldName,
-      oldValue,
-      newValue: value,
-      details: {
-        autoProtected: autoProtect,
-        editNote: editNote || null,
-      },
-      ipAddress: getClientIP(request),
-      userAgent: getUserAgent(request),
-      success: true,
+  try {
+    const result = await saveAdminFieldValue({
+      ipoId: body.ipoId,
+      tableName: body.tableName,
+      fieldName: body.fieldName,
+      value: body.value,
+      empty: body.emptyReason !== undefined ? { reason: body.emptyReason } : undefined,
+      mode,
+      overrideReason: body.overrideReason,
+      expectedVersion: body.expectedVersion,
+      actor: { name: adminContext.adminName, adminId: adminContext.adminId ?? null },
+      entryPoint: 'api/admin/update-field',
+      ipAddress: getClientIP(request) ?? null,
+      userAgent: getUserAgent(request) ?? null,
     });
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        ipoId,
-        tableName,
-        fieldName,
-        value,
-        autoProtected: autoProtect,
-        updatedRecord: updateResult[0],
-      },
-      message: `Field ${fieldName} updated successfully${autoProtect ? ' and protected' : ''}`,
-    });
-
+    return adminWriteResponse(result);
   } catch (error) {
-    console.error('[Admin API] Failed to update field:', error);
-
-    // Log failed audit entry
-    logAudit({
-      adminUser: adminContext.adminName,
-      actionType: AuditActionTypes.FIELD_UPDATED,
-      ipoId: body?.ipoId,
-      tableName: body?.tableName,
-      fieldName: body?.fieldName,
-      oldValue,
-      newValue: body?.value,
-      ipAddress: getClientIP(request),
-      userAgent: getUserAgent(request),
-      success: false,
-      errorMessage: error instanceof Error ? error.message : 'Unknown error',
-    });
-
     return apiErrorResponse(error, '/api/admin/update-field');
   }
 });

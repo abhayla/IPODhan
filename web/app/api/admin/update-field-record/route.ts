@@ -2,7 +2,7 @@
  * API Route: Update Field Value for One-to-Many Records
  * PATCH /api/admin/update-field-record
  *
- * Updates a field value in one-to-many tables (documents, peer_companies, ipo_reviews)
+ * Updates a field value in one-to-many tables (documents, peer_companies; ipo_reviews retired by OD-125, #1243)
  * and automatically protects it at the record level
  */
 
@@ -10,11 +10,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
 import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
-import { getDocumentsKey, getPeerCompaniesKey, getIPOByIdKey, getReviewInvalidationKeys } from '@/lib/cache/cache-keys';
+import { getDocumentsKey, getPeerCompaniesKey, getIPOByIdKey } from '@/lib/cache/cache-keys';
 import {
   documents,
   peerCompanies,
-  ipoReviews,
   fieldProtectionMetadata
 } from '@ipodhan/shared/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -26,7 +25,7 @@ import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 interface UpdateFieldRecordRequest {
   recordId: string;      // Specific record ID (document, peer, review)
   ipoId: string;         // IPO ID for context
-  tableName: string;     // documents, peer_companies, ipo_reviews
+  tableName: string;     // documents, peer_companies (ipo_reviews retired by OD-125)
   fieldName: string;
   value: any;
   autoProtect?: boolean;
@@ -37,7 +36,6 @@ interface UpdateFieldRecordRequest {
 const RECORD_TABLE_MAP: Record<string, any> = {
   documents,
   peer_companies: peerCompanies,
-  ipo_reviews: ipoReviews,
 };
 
 // Fields that should not be editable
@@ -187,15 +185,6 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
         .where(eq(peerCompanies.id, recordId))
         .returning();
 
-    } else if (tableName === 'ipo_reviews') {
-      updateResult = await db
-        .update(ipoReviews)
-        .set({
-          [fieldName]: value,
-          updatedAt: new Date(),
-        } as any)
-        .where(eq(ipoReviews.id, recordId))
-        .returning();
     }
 
     // Check if update was successful
@@ -258,14 +247,6 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
         entityKeys.push(getDocumentsKey(ipoId));
       } else if (tableName === 'peer_companies') {
         entityKeys.push(getPeerCompaniesKey(ipoId));
-      } else if (tableName === 'ipo_reviews') {
-        for (const key of getReviewInvalidationKeys(ipoId)) {
-          if (key.includes('*')) {
-            wildcardPatterns.push(key);
-          } else {
-            entityKeys.push(key);
-          }
-        }
       } else {
         console.warn(
           `[Admin API] No cache-key mapping for table "${tableName}" — skipping entity-level invalidation`

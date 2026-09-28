@@ -34,6 +34,8 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { ipos } from '@/lib/db';
 import { DataConflictsRepository, type DataConflictRecord, type ConflictStats } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import { FieldProtectionRepository } from '@/lib/repositories/field-protection-repository';
+import { saveAdminFieldValue } from '@/lib/admin/admin-field-save';
+import { readAdminFieldVersion, type AdminFieldWriteResult } from '@ipodhan/shared/services/admin-field-write';
 import type { ScraperSource } from '@ipodhan/shared/db/types';
 import {
   acceptCorrigendumSuggestion,
@@ -62,6 +64,9 @@ export interface ResolveConflictOptions {
 
   /** Whether to protect field from future overwrites */
   protectField?: boolean;
+
+  /** §9.2 item 20: the field's version token when the admin opened the queue row. */
+  expectedVersion?: string;
 }
 
 /**
@@ -84,6 +89,8 @@ export interface ResolutionResult {
   appliedValue: string | null;
   fieldProtected: boolean;
   error?: string;
+  /** Set when the shared admin write refused (INVALID / NOT_FOUND / CONFLICT) — routes map it to 400/404/409. */
+  writeResult?: AdminFieldWriteResult;
 }
 
 /**
@@ -225,18 +232,40 @@ export class ConflictResolutionService {
         ? conflict.value1
         : conflict.value2;
 
-      // Apply value to database if requested
-      if (options.applyToDatabase && conflict.tableName === 'ipos') {
-        await this.applyValueToIPO(
-          conflict.ipoId,
-          conflict.fieldName,
-          appliedValue
-        );
-      }
-
-      // Protect field if requested
+      // Apply value to database if requested — through the ONE admin write (spec §9.2 item 11):
+      // any admin-writable table, not only `ipos` (F-169), with ADMIN provenance, protection,
+      // audit row and the version check, then the cache drop.
       let fieldProtected = false;
-      if (options.protectField) {
+      if (options.applyToDatabase) {
+        const expectedVersion =
+          options.expectedVersion ??
+          (await readAdminFieldVersion(db as never, conflict.ipoId, conflict.tableName, conflict.fieldName))?.version ??
+          '';
+        const write = await saveAdminFieldValue({
+          ipoId: conflict.ipoId,
+          tableName: conflict.tableName,
+          fieldName: conflict.fieldName,
+          value: appliedValue,
+          empty: appliedValue === null ? { reason: options.adminNote || `Conflict resolved to ${options.resolvedSource}, which has no value` } : undefined,
+          mode: { kind: 'pick', sourceLabel: options.resolvedSource, readDate: null },
+          expectedVersion,
+          actor: { name: options.resolvedBy, adminId: null },
+          entryPoint: 'api/admin/conflicts/resolve',
+        });
+        if (write.kind !== 'OK') {
+          return {
+            success: false,
+            conflictId,
+            ipoId: conflict.ipoId,
+            fieldName: conflict.fieldName,
+            appliedValue: null,
+            fieldProtected: false,
+            error: write.kind === 'CONFLICT' ? 'CONFLICT: the field changed after the queue was opened' : `${write.kind}: ${write.reason}`,
+            writeResult: write,
+          };
+        }
+        fieldProtected = true;
+      } else if (options.protectField) {
         await this.protectionRepo.upsert({
           ipoId: conflict.ipoId,
           tableName: conflict.tableName,
@@ -332,83 +361,6 @@ export class ConflictResolutionService {
     conflictCount: number;
   }>> {
     return await this.conflictsRepo.getMostProblematicFields(limit);
-  }
-
-  /**
-   * Apply a value to IPO field
-   * Private helper for database updates
-   */
-  private async applyValueToIPO(
-    ipoId: string,
-    fieldName: string,
-    value: string | null
-  ): Promise<void> {
-    // Parse value to appropriate type
-    const parsedValue = this.parseFieldValue(fieldName, value);
-
-    // Build update object dynamically
-    const updateData: Record<string, any> = {
-      [fieldName]: parsedValue,
-      updatedAt: new Date(),
-    };
-
-    // Update IPO
-    await db
-      .update(ipos)
-      .set(updateData)
-      .where(eq(ipos.id, ipoId));
-  }
-
-  /**
-   * Parse field value to appropriate type
-   */
-  private parseFieldValue(fieldName: string, value: string | null): any {
-    if (value === null || value === 'null') {
-      return null;
-    }
-
-    // Number fields
-    const numberFields = [
-      'issueSize',
-      'lotSize',
-      'minInvestment',
-      'employeeDiscount',
-      'employeeReservation',
-      'shareholderReservation',
-      'revenueFy2024',
-      'profitFy2024',
-      'roce',
-      'roe',
-    ];
-
-    if (numberFields.includes(fieldName)) {
-      const num = parseFloat(value);
-      return isNaN(num) ? null : num;
-    }
-
-    // Date fields
-    const dateFields = [
-      'openDate',
-      'closeDate',
-      'listingDate',
-      'allotmentDate',
-      'refundDate',
-    ];
-
-    if (dateFields.includes(fieldName)) {
-      const date = new Date(value);
-      return isNaN(date.getTime()) ? null : date;
-    }
-
-    // Boolean fields
-    const booleanFields = ['isListed'];
-
-    if (booleanFields.includes(fieldName)) {
-      return value === 'true' || value === '1';
-    }
-
-    // String fields (default)
-    return value;
   }
 
   /**
