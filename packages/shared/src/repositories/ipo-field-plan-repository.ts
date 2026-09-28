@@ -1171,6 +1171,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
                superseded_by = CASE WHEN ${toSupersession} THEN ${toSupersession ? params.supersededBy : null}::uuid ELSE superseded_by END,
                next_due_at = CASE WHEN ${toSupersession} THEN ${utc(now)}::timestamptz ELSE NULL END,
                reopened_under_policy = NULL, reason_code = NULL,
+               answers = CASE WHEN ${toSupersession} THEN answers ELSE NULL END,
                policy_origin = ${params.tried.policyOrigin},
                rank1_source = ${params.tried.rank1Source},
                rank2_source = ${params.tried.rank2Source},

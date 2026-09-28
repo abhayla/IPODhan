@@ -115,3 +115,27 @@ describe('IpoFieldPlanRepository.recordOutcome -- OD-137 answers column', () => 
     expect(res.row?.answers).toEqual(ANSWERS);
   });
 });
+
+/**
+ * OD-137: a row `restoreSettledAfterReopen` puts back to SUPPLIED must clear `answers`, exactly
+ * like every other SUPPLIED write (`recordOutcome`'s `answers: null` path above) -- otherwise a
+ * stored value sits next to a stale "no value" answers array from the pass that was later
+ * outranked or superseded and then reopened.
+ */
+describe('IpoFieldPlanRepository.restoreSettledAfterReopen -- OD-137 answers column', () => {
+  it('restoring to SUPPLIED clears answers to NULL in the same UPDATE', async () => {
+    const { repo, db, executed } = makeRepo();
+    const res = await repo.restoreSettledAfterReopen({
+      planRowId: PLAN_ROW_ID,
+      claimToken: TOKEN,
+      cause: 'restored:tried',
+      tried: { policyOrigin: 'registry:v1', rank1Source: 'NSE', rank2Source: null, rank3Source: null },
+    });
+
+    expect(res.restored).toBe(true);
+    expect(db.execute).toHaveBeenCalledTimes(1);
+    const q = rendered(executed[0]);
+    expect(q.sql).toMatch(/^\s*UPDATE ipo_field_plan/);
+    expect(q.sql).toMatch(/answers = CASE WHEN \$\d+ THEN answers ELSE NULL END/);
+  });
+});
