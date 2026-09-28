@@ -28,7 +28,7 @@
  * value), while still treating the local-getter reads (`getFullYear`/
  * `getMonth`/`getDate`) as SAFE, same as the bound form.
  *
- * KNOWN RESIDUAL (8 entries — see BASELINE below, cross-referenced in
+ * KNOWN RESIDUAL (7 entries — see BASELINE below, cross-referenced in
  * D:\Abhay\GetWorkDone\evidence\2026-08-26-T-327\06-class-sweep.md and
  * class-sweep-item3.md): six files keep a last-resort
  * `new Date(cleaned).toISOString()` fallback for date STRINGS that don't
@@ -54,6 +54,16 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const SRC_ROOT = join(__dirname, '..', '..', '..', 'src');
+
+// A4 review item 3: this ratchet only ever walked scraper/src, so when the OD-59 equivalence
+// check's one reviewed site moved to packages/shared/src (shared by web AND scraper), it fell out
+// of coverage entirely — a NEW risky chain there would pass silently. A second root, prefixed
+// `shared/` in `found`/BASELINE so its keys never collide with a same-named scraper/src file.
+const SHARED_SRC_ROOT = join(__dirname, '..', '..', '..', '..', 'packages', 'shared', 'src');
+const ROOTS: Array<{ root: string; prefix: string }> = [
+  { root: SRC_ROOT, prefix: '' },
+  { root: SHARED_SRC_ROOT, prefix: 'shared/' },
+];
 
 // Scoped to PARSING a raw source string, not date ARITHMETIC or an epoch
 // number — both of those are different (and, in this codebase, already
@@ -92,7 +102,8 @@ const BASELINE: Record<string, number> = {
   'scrapers/nse-api-client.ts': 1,
   'scrapers/nse-scraper.ts': 1,
   'utils/transform-past-ipo.ts': 1,
-  'services/normalization-engine.ts': 1,
+  // services/normalization-engine.ts's one site moved with the value-equivalence code (A4, OD-59) to
+  // packages/shared/src/utils/value-equivalence.ts — now covered below as 'shared/utils/value-equivalence.ts'.
   'utils/scraper-utils.ts': 1,
   // T-327F (checker T-327C remediation item 4): INLINE_RISKY_CHAIN surfaced
   // two more real, already-reviewed-safe sites documented in
@@ -109,6 +120,16 @@ const BASELINE: Record<string, number> = {
   // grace-period diff. An explicit-offset string parses identically in
   // every process TZ, so no local-midnight shift is possible.
   'services/deploy-drift-monitor.ts': 1,
+  // A4 review item 3: moved here from services/normalization-engine.ts (A4, OD-59) — see the
+  // comment above; this ratchet now walks packages/shared/src too (ROOTS), so this site is covered.
+  'shared/utils/value-equivalence.ts': 1,
+  // A4 review item 3: real, previously-unwalked instance the packages/shared/src root surfaced.
+  // `ipo.openDate`/`ipo.closeDate` are drizzle `date('open_date')` columns with no `{mode:'date'}`
+  // override (packages/shared/src/db/schema.ts), so the runtime value is ALWAYS a plain
+  // 'YYYY-MM-DD' string, never a raw scraped/ambiguous format. `new Date('YYYY-MM-DD')` parses as
+  // UTC midnight per ECMA-262 (date-only ISO 8601 form), so `.toISOString()` is TZ-safe by
+  // construction — not the local-midnight-then-UTC-read shift this ratchet exists to catch.
+  'shared/seo/structured-data.ts': 2,
 };
 
 /**
@@ -193,15 +214,16 @@ function countRiskyChains(rawContent: string): number {
 }
 
 describe('date-tz-parse ratchet — no NEW local-TZ Date().toISOString() chain on a raw date string', () => {
-  it('every risky chain in scraper/src is an already-baselined, reviewed instance', () => {
-    const files = walk(SRC_ROOT);
+  it('every risky chain in scraper/src or packages/shared/src is an already-baselined, reviewed instance', () => {
     const found: Record<string, number> = {};
 
-    for (const file of files) {
-      const relPath = relative(SRC_ROOT, file).split(sep).join('/');
-      const content = readFileSync(file, 'utf-8');
-      const count = countRiskyChains(content);
-      if (count > 0) found[relPath] = count;
+    for (const { root, prefix } of ROOTS) {
+      for (const file of walk(root)) {
+        const relPath = prefix + relative(root, file).split(sep).join('/');
+        const content = readFileSync(file, 'utf-8');
+        const count = countRiskyChains(content);
+        if (count > 0) found[relPath] = count;
+      }
     }
 
     const newFiles = Object.keys(found).filter((f) => !(f in BASELINE));
@@ -234,7 +256,8 @@ describe('date-tz-parse ratchet — no NEW local-TZ Date().toISOString() chain o
     // landing without shrinking BASELINE) — same "no phantom baseline entry"
     // discipline as the write ratchet's --update requirement.
     for (const [relPath, expectedCount] of Object.entries(BASELINE)) {
-      const full = join(SRC_ROOT, ...relPath.split('/'));
+      const { root, prefix } = relPath.startsWith('shared/') ? ROOTS[1] : ROOTS[0];
+      const full = join(root, ...relPath.slice(prefix.length).split('/'));
       const content = readFileSync(full, 'utf-8');
       const actual = countRiskyChains(content);
       expect(

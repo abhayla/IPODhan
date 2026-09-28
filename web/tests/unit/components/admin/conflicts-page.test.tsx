@@ -1,135 +1,95 @@
+/**
+ * /admin/conflicts is the admin queue (OD-63, OD-136, §9.4): it reads the queue API, shows counts per
+ * group and per reason, links each item to the IPO-page editor, and never writes (no POST at all).
+ */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-// Mock next/link — the component only needs it to render an anchor-like element.
 vi.mock('next/link', () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => (
-    <a href={href}>{children}</a>
-  ),
+  default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
 }));
 
 const adminGetMock = vi.fn();
 const adminPostMock = vi.fn();
-
 vi.mock('@/lib/admin/admin-api-client', () => ({
   adminGet: (...args: unknown[]) => adminGetMock(...args),
   adminPost: (...args: unknown[]) => adminPostMock(...args),
 }));
 
-import ConflictsPage from '@/app/admin/conflicts/page';
+import AdminQueuePage from '@/app/admin/conflicts/page';
 
-describe('ConflictsPage', () => {
+const ipo = { id: 'i1', slug: 'abc-ltd', companyName: 'ABC Ltd', status: 'UPCOMING', openDate: '2026-10-05', closeDate: null, listingDate: null };
+const listed = { ...ipo, id: 'i2', slug: 'old-ltd', companyName: 'Old Ltd', status: 'LISTED', listingDate: '2025-01-01' };
+
+const response = {
+  success: true,
+  counts: {
+    total: 3,
+    byGroup: { 1: { items: 2, ipos: 1 }, 2: { items: 0, ipos: 0 }, 3: { items: 1, ipos: 1 } },
+    byKind: { disagreement: 1, missing: 2, flagged: 0, ruled: 0 },
+    byReason: { disagreement: 1, 'no reason recorded': 2 },
+  },
+  view: {},
+  page: 1,
+  pageSize: 50,
+  totalEntries: 3,
+  totalPages: 1,
+  entries: [
+    {
+      type: 'item',
+      group: 1,
+      item: {
+        id: 'conflict:c1', kind: 'conflict', ipo, tableName: 'ipos', fieldName: 'issueSize', rowKey: '', ruleFilter: null,
+        reason: 'disagreement', reasons: ['disagreement'], sources: [{ source: 'CHITTORGARH', value: '3000000000' }, { source: 'BSE', value: '2600624600' }],
+        editorHref: '/ipos/abc-ltd?edit=ipos.issueSize',
+      },
+    },
+    {
+      type: 'item',
+      group: 1,
+      item: {
+        id: 'plan:p1', kind: 'missing', ipo, tableName: 'ipos', fieldName: 'priceRangeMax', rowKey: '', ruleFilter: null,
+        reason: 'no reason recorded', reasons: ['no reason recorded'], storedValue: '100', planState: 'CHECK_FAILED', editorHref: '/ipos/abc-ltd?edit=ipos.priceRangeMax',
+      },
+    },
+    { type: 'ipo', group: 3, summary: { ipo: listed, conflicts: 0, missing: 1, flagged: 0, ruled: 0, editorHref: '/ipos/old-ltd' } },
+  ],
+};
+
+describe('AdminQueuePage', () => {
   beforeEach(() => {
     adminGetMock.mockReset();
     adminPostMock.mockReset();
+    adminGetMock.mockResolvedValue(response);
   });
 
-  it('W-43: renders the four counters with 0 fallbacks and does not throw when stats has no byIPO and no bySeverity', async () => {
-    adminGetMock.mockImplementation(async (url: string) => {
-      if (url.startsWith('/api/admin/conflicts?')) {
-        return { conflicts: [] };
-      }
-      // Real backend shape: no `byIPO`, and here also no `bySeverity` — the
-      // page must fall back to 0 instead of crashing on undefined access.
-      return {
-        stats: {
-          total: 0,
-          unresolved: 0,
-          resolved: 0,
-          bySource: {},
-        },
-        problematicFields: [],
-      };
-    });
-
-    render(<ConflictsPage />);
-
-    await screen.findByText('Critical');
-
-    // Four counters render, each falling back to 0 — proves no throw on
-    // `stats.byIPO` (never existed) or `stats.bySeverity.*` (missing here).
-    const zeros = screen.getAllByText('0');
-    expect(zeros.length).toBeGreaterThanOrEqual(4);
-    expect(screen.getByText('Total Conflicts')).toBeInTheDocument();
-    // "Warning"/"Info" also appear as filter <option> text — the stat card
-    // labels are additional occurrences, not the only ones.
-    expect(screen.getAllByText('Warning').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('Info').length).toBeGreaterThanOrEqual(1);
+  it('loads everything by default and shows counts per group and per reason', async () => {
+    render(<AdminQueuePage />);
+    expect(await screen.findByTestId('group-count-1')).toHaveTextContent('2');
+    expect(adminGetMock).toHaveBeenCalledWith('/api/admin/queue?page=1&pageSize=50');
+    expect(screen.getByText('no reason recorded (2)')).toBeInTheDocument();
   });
 
-  it('renders the empty state when conflicts is empty', async () => {
-    adminGetMock.mockImplementation(async (url: string) => {
-      if (url.startsWith('/api/admin/conflicts?')) {
-        return { conflicts: [] };
-      }
-      return {
-        stats: { total: 0, unresolved: 0, resolved: 0, bySource: {}, bySeverity: {} },
-        problematicFields: [],
-      };
-    });
-
-    render(<ConflictsPage />);
-
-    expect(await screen.findByText(/No unresolved conflicts!/i)).toBeInTheDocument();
+  it('links every item to the IPO-page editor at its field, and shows the source values', async () => {
+    render(<AdminQueuePage />);
+    const links = await screen.findAllByText('Fix in editor');
+    expect(links.map((a) => a.getAttribute('href'))).toEqual([
+      '/ipos/abc-ltd?edit=ipos.issueSize',
+      '/ipos/abc-ltd?edit=ipos.priceRangeMax',
+    ]);
+    expect(screen.getByText('3000000000')).toBeInTheDocument();
   });
 
-  it('renders a CRITICAL conflict row with field, sources, values, and severity badge', async () => {
-    adminGetMock.mockImplementation(async (url: string) => {
-      if (url.startsWith('/api/admin/conflicts?')) {
-        return {
-          conflicts: [
-            {
-              id: 'c1',
-              ipoId: 'ipo-1',
-              ipoName: 'Acme Ltd',
-              ipoSlug: 'acme-ltd',
-              ipoStatus: 'OPEN',
-              tableName: 'ipos',
-              fieldName: 'issuePrice',
-              source1: 'NSE',
-              value1: '120',
-              source2: 'BSE',
-              value2: '125',
-              conflictReason: 'Price mismatch',
-              severity: 'CRITICAL',
-              detectedAt: '2026-08-01T00:00:00.000Z',
-            },
-          ],
-        };
-      }
-      return {
-        stats: { total: 1, unresolved: 1, resolved: 0, bySource: {}, bySeverity: { CRITICAL: 1 } },
-        problematicFields: [],
-      };
-    });
-
-    render(<ConflictsPage />);
-
-    expect(await screen.findByText('issuePrice')).toBeInTheDocument();
-    expect(screen.getByText('120')).toBeInTheDocument();
-    expect(screen.getByText('125')).toBeInTheDocument();
-    expect(screen.getAllByText('NSE').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('BSE').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('CRITICAL').length).toBeGreaterThan(0);
+  it('opens a collapsed listed IPO item by item', async () => {
+    render(<AdminQueuePage />);
+    fireEvent.click(await screen.findByText('Show items'));
+    await waitFor(() => expect(adminGetMock).toHaveBeenLastCalledWith('/api/admin/queue?page=1&pageSize=50&ipo=old-ltd'));
   });
 
-  it('renders problematicFields chips when present', async () => {
-    adminGetMock.mockImplementation(async (url: string) => {
-      if (url.startsWith('/api/admin/conflicts?')) {
-        return { conflicts: [] };
-      }
-      return {
-        stats: { total: 0, unresolved: 0, resolved: 0, bySource: {}, bySeverity: {} },
-        problematicFields: [
-          { fieldName: 'issuePrice', conflictCount: 5 },
-          { fieldName: 'lotSize', conflictCount: 2 },
-        ],
-      };
-    });
-
-    render(<ConflictsPage />);
-
-    expect(await screen.findByText('issuePrice (5)')).toBeInTheDocument();
-    expect(screen.getByText('lotSize (2)')).toBeInTheDocument();
+  it('never writes: no POST and no resolve control', async () => {
+    render(<AdminQueuePage />);
+    await screen.findAllByText('Fix in editor');
+    expect(screen.queryByText(/resolve/i)).toBeNull();
+    expect(adminPostMock).not.toHaveBeenCalled();
   });
 });

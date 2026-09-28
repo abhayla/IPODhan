@@ -841,7 +841,7 @@ release_scraper_cycle_locks || true
 # Deleting a cache key can only cause a cache miss (the reader falls back to
 # the database), so this is safe even while the other slot is live.
 # Fail-safe like release_scraper_cycle_locks: never fails the rollback.
-LEGACY_CACHE_KEY_NAMESPACES="anchor calendar details documents financial financials gmp ipo ipos listing peers pipeline reference registrar registrars review reviews score subscription"
+LEGACY_CACHE_KEY_NAMESPACES="admin anchor calendar details documents financial financials gmp ipo ipos listing peers pipeline reference registrar registrars review reviews score subscription"
 LEGACY_NON_CACHE_KEY_PATTERNS="subscription:suppressed-cycles:*"
 clear_legacy_unprefixed_cache_keys() {
   if (( DRY_RUN )); then

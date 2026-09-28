@@ -38,6 +38,18 @@ import { apiErrorResponse } from '@/lib/errors/api-error-response';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
 import { auditAdminWrite } from '@/lib/admin/admin-write-audit';
 import { AuditActionTypes } from '@/lib/services/audit-log-service';
+import { getRedisClient } from '@/lib/cache/redis-client';
+import { adminQueueCacheKeys } from '@/lib/cache/cache-keys';
+
+/** See app/api/admin/conflicts/route.ts's dropQueueCache: a resolve with no field value applied
+ * never drops the admin queue cache on its own (item 2, A4 review). Best-effort. */
+async function dropQueueCache(): Promise<void> {
+  try {
+    await getRedisClient().del(...adminQueueCacheKeys());
+  } catch (error) {
+    console.warn('[Conflicts] failed to drop the admin queue cache after an auto-resolve:', error);
+  }
+}
 
 /**
  * POST /api/admin/conflicts/auto-resolve
@@ -76,6 +88,7 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
         details: { resolved: result.resolved, skipped: result.skipped, maxConflicts: maxConflicts ?? null },
       });
     }
+    if (!dryRun && result.resolved > 0) await dropQueueCache();
 
     // Add dry run message if applicable
     const message = dryRun
