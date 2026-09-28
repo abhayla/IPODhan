@@ -433,7 +433,7 @@ describe('#620: SEBI walk requests that do not depend on the company are made on
   const PAGE1_HTML = readFileSync(join(SEBI_FIXTURES, 'sebi-drhp-page1-with-form.html'), 'utf8');
   // Captured live 2026-09-29: SEBI's answer to a search that finds nothing (form +
   // "No record(s) available.", no table#sample_1).
-  const NO_RECORDS_HTML = readFileSync(join(SEBI_FIXTURES, 'sebi-drhp-search-no-records.html'), 'utf8');
+  const NO_RECORDS_HTML = readFileSync(join(SEBI_FIXTURES, 'sebi-drhp-search-page.html'), 'utf8');
 
   it('59 unlisted UPCOMING IPOs cost 1 GET + 6 paged POSTs + 59 search POSTs on SEBI, not 8 per IPO, and each is not_listed', async () => {
     const sebiRequests: string[] = [];

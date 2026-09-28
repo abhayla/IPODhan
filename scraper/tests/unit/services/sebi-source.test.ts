@@ -273,7 +273,7 @@ describe('fetchSebiListingRows — search then page beyond page 1', () => {
   });
 
   it('(e) #620 B7: a no-records page while paging is the end of the listing — not listed, not a failure, no further pages', async () => {
-    const NO_RECORDS_HTML = readFileSync(join(__dirname, '../../fixtures/sebi/sebi-drhp-search-no-records.html'), 'utf8');
+    const NO_RECORDS_HTML = readFileSync(join(__dirname, '../../fixtures/sebi/sebi-drhp-search-page.html'), 'utf8');
     const posts: string[] = [];
     const fetchImpl: SebiFetcher = async (_url, init) => {
       if (init.method === 'GET') return { status: 200, body: PAGE1_HTML };
@@ -373,7 +373,7 @@ describe('isSebiNoRecordsPage (#620 B7, live capture 2026-09-29)', () => {
   const dir = join(__dirname, '../../fixtures/sebi');
   const read = (f: string) => readFileSync(join(dir, f), 'utf8');
   it('recognises the real zero-result search page', () => {
-    expect(isSebiNoRecordsPage(read('sebi-drhp-search-no-records.html'))).toBe(true);
+    expect(isSebiNoRecordsPage(read('sebi-drhp-search-page.html'))).toBe(true);
   });
   it('a real listing page is not a zero-result page', () => {
     expect(isSebiNoRecordsPage(read('sebi-drhp-page1-with-form.html'))).toBe(false);

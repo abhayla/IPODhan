@@ -98,7 +98,7 @@ export function isSebiListingPage(html: string): boolean {
  * marker "No record(s) available." inside `.pagination_inner`. That is a real
  * listing with zero rows (the company is not there), unlike a dead session,
  * which answers with a page that has neither. Fixture:
- * tests/fixtures/sebi/sebi-drhp-search-no-records.html (captured live).
+ * tests/fixtures/sebi/sebi-drhp-search-page.html (captured live).
  */
 export function isSebiNoRecordsPage(html: string): boolean {
   if (!html || typeof html !== 'string') return false;
