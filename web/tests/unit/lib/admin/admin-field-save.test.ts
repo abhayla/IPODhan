@@ -16,7 +16,7 @@ const input: AdminFieldWriteInput = {
   value: 'X',
   mode: { kind: 'typed', sourceNote: 'RHP p1' },
   expectedVersion: 'v1',
-  actor: { name: 'admin', adminId: null },
+  actor: { name: 'admin', adminId: 'admin-t1' },
   entryPoint: 'test',
 };
 

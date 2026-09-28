@@ -301,7 +301,9 @@ export async function acceptCorrigendumSuggestion(
   adminName: string,
   note: string | undefined,
   /** §9.2 item 20: the field's version token when the admin opened the queue row. Never read here. */
-  expectedVersion: string
+  expectedVersion: string,
+  /** OD-104/OD-113: the accepting admin's account id, stored with the write. */
+  adminId: string
 ): Promise<SuggestionDecision> {
   const row = await loadOpenSuggestion(db, conflictId);
   if (!row) return { ok: false, conflictId, error: 'not an open corrigendum suggestion' };
@@ -340,7 +342,7 @@ export async function acceptCorrigendumSuggestion(
         value,
         mode: { kind: 'pick', sourceLabel: 'DOC', readDate: null },
         expectedVersion,
-        actor: { name: adminName, adminId: null },
+        actor: { name: adminName, adminId },
         entryPoint: 'corrigendum-accept',
         detail: { method: 'ADMIN_CORRIGENDUM_ACCEPT', documentId: row.documentId, conflictId, note: note ?? null },
       });

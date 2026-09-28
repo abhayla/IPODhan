@@ -8,6 +8,10 @@ import { getTableName } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 
 vi.mock('@/lib/auth/admin-auth', () => ({ requireAdminAuth: async () => null }));
+vi.mock('@/lib/middleware/admin-auth', () => ({
+  withAdminAuth: (handler: any) => (request: any, ...args: any[]) =>
+    handler(request, { adminId: 'admin-1', adminName: 'Admin', isAuthenticated: true }, ...args),
+}));
 vi.mock('@/lib/db', () => ({ db: {}, getDb: async () => ({}) }));
 vi.mock('@/lib/cache/redis-client', () => ({ getRedisClient: () => ({}) }));
 

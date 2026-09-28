@@ -13,10 +13,11 @@
  * gmp/review/peer cache key — static prefix OR a dynamic template literal
  * whose interpolated pieces still spell one of those entity names — instead
  * of calling the shared cache-keys helper; (2) the documents write path
- * specifically invalidates via `getDocumentsKey`; (3) the ipo_reviews branch
- * specifically invalidates via `getReviewInvalidationKeys`.
+ * specifically invalidates via `getDocumentsKey`; (3) ipo_reviews, retired by
+ * OD-125 (#1243), is refused and never reaches the admin write.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { NextRequest } from 'next/server';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { getDocumentsKey } from '@/lib/cache/cache-keys';
@@ -88,12 +89,24 @@ describe('admin cache-key parity', () => {
     expect(getDocumentsKey(ipoId)).toBe(`documents:${ipoId}`);
   });
 
-  it('update-field-record route invalidates ipo_reviews via getReviewInvalidationKeys, not a generic fallback', () => {
-    const routeSrc = readFileSync(
-      join(ADMIN_API_DIR, 'update-field-record/route.ts'),
-      'utf-8'
+  it('update-field-record route refuses ipo_reviews (retired by OD-125, #1243) with a 400', async () => {
+    vi.resetModules();
+    vi.doMock('@/lib/middleware/admin-auth', () => ({
+      withAdminAuth: (handler: any) => (request: any, ...args: any[]) =>
+        handler(request, { adminId: 'admin-1', adminName: 'Admin', isAuthenticated: true }, ...args),
+    }));
+    const save = vi.fn();
+    vi.doMock('@/lib/admin/admin-field-save', async (orig) => ({ ...(await orig<object>()), saveAdminFieldValue: save }));
+    const { PATCH } = await import('@/app/api/admin/update-field-record/route');
+    const res = await PATCH(
+      new NextRequest('http://localhost/api/admin/update-field-record', {
+        method: 'PATCH',
+        body: JSON.stringify({ recordId: 'r1', ipoId: 'ipo-1', tableName: 'ipo_reviews', fieldName: 'title', value: 'x', expectedVersion: 'v' }),
+      })
     );
-
-    expect(routeSrc).toContain('getReviewInvalidationKeys');
+    expect([400, 404]).toContain(res.status);
+    expect(save).not.toHaveBeenCalled();
+    vi.doUnmock('@/lib/middleware/admin-auth');
+    vi.doUnmock('@/lib/admin/admin-field-save');
   });
 });

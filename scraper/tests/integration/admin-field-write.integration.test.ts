@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql, inArray, eq, and } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { IPORepository } from '@ipodhan/shared/repositories';
+import { PeerCompanyRepository } from '../../src/repositories/peer-company-repository';
 import {
   writeAdminFieldValue,
   readAdminFieldVersion,
@@ -34,6 +35,7 @@ async function cleanup() {
   await db.delete(schema.fieldSources).where(inArray(schema.fieldSources.ipoId, [IPO]));
   await db.delete(schema.fieldProtectionMetadata).where(inArray(schema.fieldProtectionMetadata.ipoId, [IPO]));
   await db.delete(schema.ipoDetails).where(inArray(schema.ipoDetails.ipoId, [IPO]));
+  await db.delete(schema.peerCompanies).where(inArray(schema.peerCompanies.ipoId, [IPO]));
   await db.execute(sql`DELETE FROM ipos WHERE id = ${IPO}::uuid`);
 }
 
@@ -44,7 +46,7 @@ const base = (over: Partial<AdminFieldWriteInput> = {}): AdminFieldWriteInput =>
   value: 'Admin Registrar Pvt Ltd',
   mode: { kind: 'typed', sourceNote: 'RHP page 12' },
   expectedVersion: '',
-  actor: { name: 'a2-test-admin', adminId: null },
+  actor: { name: 'a2-test-admin', adminId: 'admin-it' },
   entryPoint: 'test',
   ...over,
 });
@@ -120,9 +122,9 @@ describe.skipIf(!DATABASE_URL)('A2 admin field write (ipodhan_test)', () => {
 
   it('item 20: a save with a stale version is refused with CONFLICT naming the newer value and setter, even after change-and-back', async () => {
     const opened = await readAdminFieldVersion(db as never, IPO, 'ipos', 'registrar');
-    const a = await writeAdminFieldValue(db as never, base({ value: 'Other Admin Value', expectedVersion: opened!.version, actor: { name: 'other-admin', adminId: null } }));
+    const a = await writeAdminFieldValue(db as never, base({ value: 'Other Admin Value', expectedVersion: opened!.version, actor: { name: 'other-admin', adminId: 'admin-it' } }));
     expect(a.kind).toBe('OK');
-    const back = await writeAdminFieldValue(db as never, base({ value: 'Scraper Registrar Ltd', expectedVersion: (a as { version: string }).version, actor: { name: 'other-admin', adminId: null } }));
+    const back = await writeAdminFieldValue(db as never, base({ value: 'Scraper Registrar Ltd', expectedVersion: (a as { version: string }).version, actor: { name: 'other-admin', adminId: 'admin-it' } }));
     expect(back.kind).toBe('OK');
     expect(await registrar()).toBe('Scraper Registrar Ltd'); // same value as when "opened"
     const stale = await writeAdminFieldValue(db as never, base({ expectedVersion: opened!.version }));
@@ -159,5 +161,82 @@ describe.skipIf(!DATABASE_URL)('A2 admin field write (ipodhan_test)', () => {
     expect(kept.kind).toBe('OK');
     const [audit] = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.ipoId, IPO));
     expect(audit.details).toMatchObject({ overrideReason: 'RHP p.4 really says 1', checkFailure: expect.stringMatching(/NEVER valid/) });
+  });
+
+  const seedPeer = async () =>
+    (await db.insert(schema.peerCompanies).values({ ipoId: IPO, companyName: 'Acme Ltd', normalizedName: 'acme', isListed: true, peRatio: '10.00', dataSource: 'DRHP' }).returning())[0];
+  const peerRow = async (key: string) =>
+    (await db.select().from(schema.peerCompanies).where(and(eq(schema.peerCompanies.ipoId, IPO), eq(schema.peerCompanies.normalizedName, key))))[0];
+
+  it('OD-104: the admin id is stored with the write (audit details and provenance lineage)', async () => {
+    const v = await readAdminFieldVersion(db as never, IPO, 'ipos', 'registrar');
+    expect((await writeAdminFieldValue(db as never, base({ expectedVersion: v!.version }))).kind).toBe('OK');
+    const [audit] = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.ipoId, IPO));
+    expect(audit.details).toMatchObject({ adminId: 'admin-it', by: 'a2-test-admin' });
+    const [prov] = await db.select().from(schema.fieldSources).where(and(eq(schema.fieldSources.ipoId, IPO), eq(schema.fieldSources.fieldName, 'registrar')));
+    expect(prov.dataLineage).toMatchObject({ adminId: 'admin-it' });
+    const noId = await writeAdminFieldValue(db as never, base({ expectedVersion: 'x', actor: { name: 'a2-test-admin', adminId: '' } }));
+    expect(noId.kind).toBe('INVALID');
+  });
+
+  it('row key: a peer_companies field is saved under the row key (provenance, hold, audit, version)', async () => {
+    const peer = await seedPeer();
+    const v = await readAdminFieldVersion(db as never, IPO, 'peer_companies', 'peRatio', { recordId: peer.id });
+    expect(v).toMatchObject({ rowKey: 'acme', currentValue: '10.00' });
+    const r = await writeAdminFieldValue(db as never, base({ tableName: 'peer_companies', row: { recordId: peer.id }, fieldName: 'peRatio', value: '22.5', expectedVersion: v!.version }));
+    expect(r).toMatchObject({ kind: 'OK', rowKey: 'acme' });
+    expect((await peerRow('acme')).peRatio).toBe('22.50');
+    const [prov] = await db.select().from(schema.fieldSources).where(and(eq(schema.fieldSources.ipoId, IPO), eq(schema.fieldSources.tableName, 'peer_companies')));
+    expect(prov).toMatchObject({ rowKey: 'acme', fieldName: 'peRatio', source: 'ADMIN' });
+    const [prot] = await db.select().from(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO));
+    expect(prot).toMatchObject({ tableName: 'peer_companies:acme', fieldName: 'peRatio', isProtected: true });
+    // a stale token for the ROW is refused (the version is per row, not per table)
+    const stale = await writeAdminFieldValue(db as never, base({ tableName: 'peer_companies', row: { rowKey: 'acme' }, fieldName: 'peRatio', value: '1', expectedVersion: v!.version }));
+    expect(stale.kind).toBe('CONFLICT');
+  });
+
+  it('row key: a company_name rename re-derives the row key and moves the row\'s provenance and holds', async () => {
+    const peer = await seedPeer();
+    const v1 = await readAdminFieldVersion(db as never, IPO, 'peer_companies', 'peRatio', { recordId: peer.id });
+    await writeAdminFieldValue(db as never, base({ tableName: 'peer_companies', row: { recordId: peer.id }, fieldName: 'peRatio', value: '22.5', expectedVersion: v1!.version }));
+    const v2 = await readAdminFieldVersion(db as never, IPO, 'peer_companies', 'companyName', { recordId: peer.id });
+    const r = await writeAdminFieldValue(db as never, base({ tableName: 'peer_companies', row: { recordId: peer.id }, fieldName: 'companyName', value: 'Beta Industries Ltd', expectedVersion: v2!.version }));
+    expect(r.kind).toBe('OK');
+    const newKey = (r as { rowKey: string }).rowKey;
+    expect(newKey).not.toBe('acme');
+    const holds = await db.select().from(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO));
+    expect(holds.map((h) => `${h.tableName}.${h.fieldName}`).sort()).toEqual([`peer_companies:${newKey}.companyName`, `peer_companies:${newKey}.peRatio`]);
+  });
+
+  // MEASURED GAP (2026-09-28, round 3): the scraper peer writer deletes and re-inserts the list and
+  // reads no hold, so it overwrites the admin row value ('99.00' read back, not '22.50'). Fixing the
+  // WRITER is item 19 (another builder); this case is expected to fail until then, and turns red —
+  // telling that builder to make it a plain it() — the moment replaceForIpo honours
+  // protectionTableName('peer_companies', rowKey).
+  it.fails('CORE row key (GAP until item 19): the admin peer value survives the scraper peer writer (PeerCompanyRepository.replaceForIpo)', async () => {
+    const peer = await seedPeer();
+    const v = await readAdminFieldVersion(db as never, IPO, 'peer_companies', 'peRatio', { recordId: peer.id });
+    await writeAdminFieldValue(db as never, base({ tableName: 'peer_companies', row: { recordId: peer.id }, fieldName: 'peRatio', value: '22.5', expectedVersion: v!.version }));
+    // The document path's call (filing-persister): nullNeverOverwrites merge of a new peer table.
+    await new PeerCompanyRepository(db as never).replaceForIpo(
+      IPO,
+      [{ ipoId: IPO, companyName: 'Acme Ltd', normalizedName: 'acme', isListed: true, peRatio: '99.00', dataSource: 'DRHP' } as never],
+      { nullNeverOverwrites: true }
+    );
+    expect((await peerRow('acme')).peRatio).toBe('22.50');
+  });
+
+  it('OD-121: holdShown holds the shown value as a PICK from its source; a field showing nothing is refused', async () => {
+    await db.insert(schema.fieldSources).values({ ipoId: IPO, tableName: 'ipos', rowKey: '', fieldName: 'registrar', source: 'NSE', confidence: 90 } as never);
+    const v = await readAdminFieldVersion(db as never, IPO, 'ipos', 'registrar');
+    const r = await writeAdminFieldValue(db as never, base({ value: undefined, mode: { kind: 'holdShown' }, expectedVersion: v!.version }));
+    expect(r).toMatchObject({ kind: 'OK', newValue: 'Scraper Registrar Ltd' });
+    expect(await registrar()).toBe('Scraper Registrar Ltd');
+    const [prot] = await db.select().from(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO));
+    expect(prot.editNote).toMatch(/^Picked from NSE/);
+    const vs = await readAdminFieldVersion(db as never, IPO, 'ipos', 'sector');
+    const empty = await writeAdminFieldValue(db as never, base({ fieldName: 'sector', mode: { kind: 'holdShown' }, expectedVersion: vs!.version }));
+    expect(empty.kind).toBe('INVALID');
+    expect(await db.select().from(schema.fieldProtectionMetadata).where(and(eq(schema.fieldProtectionMetadata.ipoId, IPO), eq(schema.fieldProtectionMetadata.fieldName, 'sector')))).toHaveLength(0);
   });
 });

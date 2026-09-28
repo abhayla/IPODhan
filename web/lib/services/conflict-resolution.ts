@@ -59,6 +59,11 @@ export interface ResolveConflictOptions {
 
   /** Admin user who resolved (email or ID) */
   resolvedBy: string;
+  /**
+   * OD-104: the resolving admin's account id (withAdminAuth context), stored with every admin write.
+   * Absent only on a SYSTEM action that writes no admin value; the ONE write refuses a write without it.
+   */
+  adminId?: string;
 
   /** Optional admin notes */
   adminNote?: string;
@@ -231,7 +236,7 @@ export class ConflictResolutionService {
         if (options.resolvedSource === 'ADMIN' && !options.expectedVersion) return this.staleEditor(conflictId, conflict);
         const decision =
           options.resolvedSource === 'ADMIN'
-            ? await acceptCorrigendumSuggestion(db as never, conflictId, options.resolvedBy, options.adminNote, options.expectedVersion!)
+            ? await acceptCorrigendumSuggestion(db as never, conflictId, options.resolvedBy, options.adminNote, options.expectedVersion!, options.adminId ?? '')
             : await dismissCorrigendumSuggestion(db as never, conflictId, options.resolvedBy, options.adminNote);
         await this.clearCachesAfterSuggestionDecision(conflict.ipoId);
         return {
@@ -267,7 +272,8 @@ export class ConflictResolutionService {
           empty: appliedValue === null ? { reason: options.adminNote || `Conflict resolved to ${options.resolvedSource}, which has no value` } : undefined,
           mode: { kind: 'pick', sourceLabel: options.resolvedSource, readDate: null },
           expectedVersion,
-          actor: { name: options.resolvedBy, adminId: null },
+          actor: { name: options.resolvedBy, adminId: options.adminId ?? '' },
+          row: conflict.rowKey ? { rowKey: conflict.rowKey } : undefined,
           entryPoint: 'api/admin/conflicts/resolve',
         });
         if (write.kind !== 'OK') {
@@ -284,15 +290,34 @@ export class ConflictResolutionService {
         }
         fieldProtected = true;
       } else if (options.protectField) {
-        await this.protectionRepo.upsert({
+        // OD-121, §9.2 item 11: "protect without applying" used to set a hold with no value. A hold
+        // is always an admin value, so it is now an admin PICK of the value the queue row showed,
+        // from the source that supplied it, through the ONE write (value, ADMIN provenance, hold,
+        // audit, version check). Nothing shown -> refused, the admin uses the editor.
+        if (!options.expectedVersion) return this.staleEditor(conflictId, conflict);
+        const hold = await saveAdminFieldValue({
           ipoId: conflict.ipoId,
           tableName: conflict.tableName,
+          row: conflict.rowKey ? { rowKey: conflict.rowKey } : undefined,
           fieldName: conflict.fieldName,
-          isProtected: true,
-          autoProtected: false,
-          manuallyEditedBy: options.resolvedBy,
-          editNote: `Admin resolution: ${options.resolutionReason}`,
+          mode: { kind: 'holdShown' },
+          expectedVersion: options.expectedVersion,
+          actor: { name: options.resolvedBy, adminId: options.adminId ?? '' },
+          entryPoint: 'api/admin/conflicts (protect without applying)',
+          detail: { conflictId, resolutionReason: options.resolutionReason },
         });
+        if (hold.kind !== 'OK') {
+          return {
+            success: false,
+            conflictId,
+            ipoId: conflict.ipoId,
+            fieldName: conflict.fieldName,
+            appliedValue: null,
+            fieldProtected: false,
+            error: hold.kind === 'CONFLICT' ? 'CONFLICT: the field changed after the queue was opened' : `${hold.kind}: ${hold.reason}`,
+            writeResult: hold,
+          };
+        }
         fieldProtected = true;
       }
 

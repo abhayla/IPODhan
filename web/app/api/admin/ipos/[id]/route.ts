@@ -20,7 +20,7 @@ import { getIPOBySlugKey, getIPOByIdKey, getIPODetailKey } from '@/lib/cache/cac
 import { invalidateIPOCaches } from '@/lib/cache/ipo-cache-invalidation';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { logger } from '@/lib/logger';
-import { getAdminIdentity } from '@/lib/middleware/admin-auth';
+import { withAdminAuth, type AdminAuthContext } from '@/lib/middleware/admin-auth';
 import { saveAdminFieldValues, adminFieldsSaveResponse } from '@/lib/admin/admin-field-save';
 
 /**
@@ -180,13 +180,8 @@ export async function GET(
 /**
  * PATCH /api/admin/ipos/[id] - Update existing IPO
  */
-export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
-  // MUST check admin auth first
-  const authError = await requireAdminAuth();
-  if (authError) return authError;
+export const PATCH = withAdminAuth(async (request: NextRequest, adminContext: AdminAuthContext, context: { params: Promise<{ id: string }> }) => {
+
 
   const requestId = generateRequestId();
   const startTime = Date.now();
@@ -286,7 +281,6 @@ export async function PATCH(
 
     // §9.2 items 3, 11: every field goes through the ONE admin write (value + ADMIN provenance +
     // protection + audit + version check + cache drop). No direct repository update here.
-    const adminName = getAdminIdentity(request);
     const outcome = await saveAdminFieldValues({
       ipoId: id,
       tableName: 'ipos',
@@ -294,7 +288,7 @@ export async function PATCH(
       versions: versions as Record<string, string | undefined> | undefined,
       sourceNote: typeof sourceNote === 'string' ? sourceNote : undefined,
       overrideReason: typeof overrideReason === 'string' ? overrideReason : undefined,
-      actor: { name: adminName, adminId: null },
+      actor: { name: adminContext.adminName, adminId: adminContext.adminId },
       entryPoint: 'api/admin/ipos/[id]',
       ipAddress: request.headers.get('x-forwarded-for'),
       userAgent: request.headers.get('user-agent'),
@@ -345,4 +339,4 @@ export async function PATCH(
         : undefined
     );
   }
-}
+});

@@ -90,6 +90,7 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
       resolutionReason: body.resolutionReason,
       // The actor is the authenticated admin, never a client-supplied name.
       resolvedBy: adminContext.adminName,
+      adminId: adminContext.adminId,
       adminNote: body.adminNote,
       applyToDatabase: body.applyToDatabase ?? true,
       protectField: body.protectField ?? false,

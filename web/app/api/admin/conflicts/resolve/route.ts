@@ -113,7 +113,7 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
             value: scraperValue,
             mode: { kind: 'pick', sourceLabel: conflict.scraperSource ?? 'scraper', readDate: null },
             expectedVersion,
-            actor: { name: adminContext.adminName, adminId: adminContext.adminId ?? null },
+            actor: { name: adminContext.adminName, adminId: adminContext.adminId },
             entryPoint: 'api/admin/conflicts/resolve',
             ipAddress: getClientIP(request) ?? null,
             userAgent: getUserAgent(request) ?? null,

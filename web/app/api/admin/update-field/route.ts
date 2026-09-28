@@ -78,7 +78,7 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
       mode,
       overrideReason: body.overrideReason,
       expectedVersion: body.expectedVersion,
-      actor: { name: adminContext.adminName, adminId: adminContext.adminId ?? null },
+      actor: { name: adminContext.adminName, adminId: adminContext.adminId },
       entryPoint: 'api/admin/update-field',
       ipAddress: getClientIP(request) ?? null,
       userAgent: getUserAgent(request) ?? null,

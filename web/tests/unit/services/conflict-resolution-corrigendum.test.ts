@@ -38,7 +38,7 @@ const suggestion = {
   source1: 'DRHP', value1: 'BSE', source2: 'DRHP', value2: 'NSE', documentId: 'doc-1',
 };
 const opts = (resolvedSource: string) => ({
-  resolvedSource: resolvedSource as never, resolutionReason: 'r', resolvedBy: 'admin', applyToDatabase: true, expectedVersion: 'tok-1',
+  resolvedSource: resolvedSource as never, resolutionReason: 'r', resolvedBy: 'admin', adminId: 'admin-1', applyToDatabase: true, expectedVersion: 'tok-1',
 });
 
 beforeEach(() => {
@@ -49,7 +49,7 @@ beforeEach(() => {
 describe('ConflictResolutionService — corrigendum suggestions (OD-90)', () => {
   it('ADMIN accepts: routes to the ADMIN write, not the generic apply or plain resolve', async () => {
     const r = await new ConflictResolutionService().resolveConflict('s-1', opts('ADMIN'));
-    expect(h.accept).toHaveBeenCalledWith(expect.anything(), 's-1', 'admin', undefined, 'tok-1');
+    expect(h.accept).toHaveBeenCalledWith(expect.anything(), 's-1', 'admin', undefined, 'tok-1', 'admin-1');
     expect(h.dismiss).not.toHaveBeenCalled();
     expect(h.dbUpdate).not.toHaveBeenCalled();
     expect(h.repoResolve).not.toHaveBeenCalled();
@@ -94,5 +94,27 @@ describe('ConflictResolutionService — corrigendum suggestions (OD-90)', () => 
     expect(r.resolved).toBe(1);
     expect(h.save).not.toHaveBeenCalled();
     expect(h.repoResolve).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ConflictResolutionService — protect without applying (OD-121, round 3)', () => {
+  const plain = { id: 'c-9', ipoId: 'ipo-1', tableName: 'peer_companies', rowKey: 'acme', fieldName: 'peRatio', source1: 'NSE', value1: '10', source2: 'BSE', value2: '11', documentId: null };
+
+  it('is a holdShown write through the ONE write (row key, admin id), never a bare protection row', async () => {
+    h.rows = [plain];
+    const r = await new ConflictResolutionService().resolveConflict('c-9', { ...opts('NSE'), applyToDatabase: false, protectField: true });
+    expect(r.success).toBe(true);
+    expect(h.save).toHaveBeenCalledTimes(1);
+    expect((h.save.mock.calls[0] as unknown[])[0]).toMatchObject({
+      tableName: 'peer_companies', row: { rowKey: 'acme' }, fieldName: 'peRatio', mode: { kind: 'holdShown' },
+      expectedVersion: 'tok-1', actor: { name: 'admin', adminId: 'admin-1' },
+    });
+  });
+
+  it('without the editor token it is refused and writes nothing', async () => {
+    h.rows = [plain];
+    const r = await new ConflictResolutionService().resolveConflict('c-9', { ...opts('NSE'), applyToDatabase: false, protectField: true, expectedVersion: undefined });
+    expect(r.success).toBe(false);
+    expect(h.save).not.toHaveBeenCalled();
   });
 });

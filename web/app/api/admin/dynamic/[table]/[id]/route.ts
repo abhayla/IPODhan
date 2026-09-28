@@ -20,7 +20,7 @@ import { PgTable } from 'drizzle-orm/pg-core';
 import { validateRecord } from '@/lib/admin/dynamic-validation-rules';
 import { logger } from '@/lib/logger';
 import { resolveDynamicTable } from '@/lib/admin/dynamic-table-allow-list';
-import { getAdminIdentity } from '@/lib/middleware/admin-auth';
+import { withAdminAuth, type AdminAuthContext } from '@/lib/middleware/admin-auth';
 import { readAdminFieldVersion } from '@ipodhan/shared/services/admin-field-write';
 import { saveAdminFieldValues, adminFieldsSaveResponse } from '@/lib/admin/admin-field-save';
 import {
@@ -159,14 +159,8 @@ export async function GET(
 /**
  * PATCH - Update record
  */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ table: string; id: string }> }
-) {
+export const PATCH = withAdminAuth(async (request: NextRequest, adminContext: AdminAuthContext, { params }: { params: Promise<{ table: string; id: string }> }) => {
   try {
-    // Verify admin token
-    const authError = await requireAdminAuth();
-    if (authError) return authError;
 
     const { table: tableName, id } = await params;
     const table = getTableFromSchema(tableName, 'write');
@@ -199,7 +193,7 @@ export async function PATCH(
         versions: meta.versions as Record<string, string | undefined> | undefined,
         sourceNote: typeof meta.sourceNote === 'string' ? meta.sourceNote : undefined,
         overrideReason: typeof meta.overrideReason === 'string' ? meta.overrideReason : undefined,
-        actor: { name: getAdminIdentity(request), adminId: null },
+        actor: { name: adminContext.adminName, adminId: adminContext.adminId },
         entryPoint: 'api/admin/dynamic/[table]/[id]',
         ipAddress: request.headers.get('x-forwarded-for'),
         userAgent: request.headers.get('user-agent'),
@@ -329,19 +323,13 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+});
 
 /**
  * DELETE - Delete record
  */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ table: string; id: string }> }
-) {
+export const DELETE = withAdminAuth(async (request: NextRequest, _adminContext: AdminAuthContext, { params }: { params: Promise<{ table: string; id: string }> }) => {
   try {
-    // Verify admin token
-    const authError = await requireAdminAuth();
-    if (authError) return authError;
 
     const { table: tableName, id } = await params;
     const table = getTableFromSchema(tableName, 'write');
@@ -403,4 +391,4 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+});

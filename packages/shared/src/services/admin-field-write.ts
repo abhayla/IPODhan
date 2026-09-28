@@ -27,8 +27,8 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import * as schema from '../db/schema';
 import {
-  anchorInvestors,
   auditLogs,
+  documents,
   fieldProtectionMetadata,
   fieldSources,
   financialData,
@@ -36,23 +36,72 @@ import {
   ipoFinancials,
   ipoScores,
   listingPerformance,
+  peerCompanies,
 } from '../db/schema';
 import { IPORepository } from '../repositories/ipo-repository';
 import { validateIPOData } from '../utils/ipo-field-checks';
+import { rowKeyForName } from '../utils/company-name-normalizer';
 
 type Db = NodePgDatabase<typeof schema>;
 
-/** The table an admin value lands in, keyed by its SQL name. `ipos` itself is written through IPORepository. */
+/**
+ * The ONE-ROW-PER-IPO child tables an admin value lands in, keyed by SQL name. `ipos` itself is
+ * written through IPORepository. anchor_investors is NOT here: it is a LIST (§9.2 item 8, OD-107,
+ * Phase B), and a one-row write would edit whichever anchor row came first.
+ */
 const CHILD_TABLES: Record<string, PgTable & { ipoId: unknown }> = {
   ipo_details: ipoDetails as never,
   financial_data: financialData as never,
   listing_performance: listingPerformance as never,
   ipo_financials: ipoFinancials as never,
   ipo_scores: ipoScores as never,
-  anchor_investors: anchorInvestors as never,
 };
 
 export const ADMIN_WRITABLE_TABLES = ['ipos', ...Object.keys(CHILD_TABLES)] as const;
+
+/**
+ * Tables with several rows per IPO whose single fields an admin may edit, row by row. Each row is
+ * addressed by its natural row key — the SAME key `field_sources.row_key` records for it — so a
+ * provenance row, a hold and an audit row all name the same row even after the scraper re-inserts
+ * it under a new id (peer_companies' writer deletes and re-inserts the list).
+ *   peer_companies: row key = normalized_name; editing company_name re-derives it (R-158).
+ *   documents:      row key = the document id (a document row is never re-inserted).
+ */
+interface RowTableSpec {
+  table: PgTable & { ipoId: unknown };
+  keyField: string;
+  derived?: { sourceField: string; derivedField: string; derive: (value: unknown) => string | null };
+}
+const ROW_TABLES: Record<string, RowTableSpec> = {
+  peer_companies: {
+    table: peerCompanies as never,
+    keyField: 'normalizedName',
+    derived: {
+      sourceField: 'companyName',
+      derivedField: 'normalizedName',
+      derive: (v) => rowKeyForName(typeof v === 'string' ? v : String(v ?? '')),
+    },
+  },
+  documents: { table: documents as never, keyField: 'id' },
+};
+
+export const ADMIN_ROW_TABLES = Object.keys(ROW_TABLES) as readonly string[];
+
+/** The column a row table's row key is derived into (R-158), or null when the key is not derived. */
+export function rowTableDerivedKey(tableName: string): { sourceField: string; derivedField: string } | null {
+  const d = ROW_TABLES[tableName]?.derived;
+  return d ? { sourceField: d.sourceField, derivedField: d.derivedField } : null;
+}
+
+/**
+ * `field_protection_metadata` has no row_key column (its unique key is table, field, ipo), so a
+ * row's hold is recorded under `<table>:<rowKey>` — the convention the old update-field-record
+ * route used (with the record id). No migration. A row-aware writer (item 19) reads the hold with
+ * this same function; a singleton table's hold stays under the bare table name.
+ */
+export function protectionTableName(tableName: string, rowKey: string): string {
+  return rowKey === '' ? tableName : `${tableName}:${rowKey}`;
+}
 
 /** Bookkeeping columns no admin value may replace (keys, timestamps, the dedicated lock flag, the slug). */
 const NON_EDITABLE_FIELDS = new Set([
@@ -72,16 +121,28 @@ export const STALE_EDITOR_REASON = 'stale editor, reload: the save carries no ve
 
 export interface AdminActor {
   name: string;
-  adminId: string | null;
+  /** OD-104/OD-113: the admin's account id. Required — a write nobody can be traced to is refused. */
+  adminId: string;
 }
 
 export type AdminWriteMode =
   | { kind: 'pick'; sourceLabel: string; readDate: string | null }
-  | { kind: 'typed'; sourceNote: string };
+  | { kind: 'typed'; sourceNote: string }
+  /**
+   * OD-121, §9.2 item 11: "protect this field" with no value. It is an admin PICK of the value the
+   * editor showed, from the source that supplied it, read inside the transaction; the version token
+   * proves it is still the value the admin saw. A field showing nothing cannot be held this way.
+   */
+  | { kind: 'holdShown' };
 
 export interface AdminFieldWriteInput {
   ipoId: string;
   tableName: string;
+  /**
+   * The row of a several-rows-per-IPO table (`ADMIN_ROW_TABLES`): its natural row key (as
+   * field_sources/data_conflicts record it) or its record id. Refused on a one-row table.
+   */
+  row?: { rowKey?: string; recordId?: string };
   fieldName: string;
   /** The new value. Ignored when `empty` is set. */
   value?: unknown;
@@ -115,6 +176,8 @@ export type AdminFieldWriteResult =
       slug: string;
       tableName: string;
       fieldName: string;
+      /** '' for a one-row table; the row's (possibly re-derived) natural key for a row table. */
+      rowKey: string;
       oldValue: unknown;
       newValue: unknown;
       version: string;
@@ -136,10 +199,43 @@ class Refusal extends Error {
   }
 }
 
+function tableOf(tableName: string): PgTable | null {
+  if (tableName === 'ipos') return schema.ipos;
+  return CHILD_TABLES[tableName] ?? ROW_TABLES[tableName]?.table ?? null;
+}
+
 function columnsOf(tableName: string): Record<string, { columnType: string; name: string }> | null {
-  if (tableName === 'ipos') return getTableColumns(schema.ipos) as never;
-  const t = CHILD_TABLES[tableName];
+  const t = tableOf(tableName);
   return t ? (getTableColumns(t) as never) : null;
+}
+
+/** The row an admin value addresses: '' for a one-row table, the natural key for a row table. */
+interface RowTarget {
+  rowKey: string;
+  recordId: string | null;
+}
+
+/** Resolve a row table's row (by row key or record id) within the IPO, or null when it is not there. */
+async function resolveRow(tx: Db, ipoId: string, tableName: string, row: AdminFieldWriteInput['row']): Promise<RowTarget | null> {
+  const spec = ROW_TABLES[tableName];
+  if (!spec) return { rowKey: '', recordId: null };
+  const cols = getTableColumns(spec.table) as unknown as Record<string, never>;
+  const where = row?.rowKey
+    ? and(eq(cols.ipoId, ipoId), eq(cols[spec.keyField], row.rowKey))
+    : and(eq(cols.ipoId, ipoId), eq(cols.id, row?.recordId ?? ''));
+  const found = (await tx.select({ id: cols.id, key: cols[spec.keyField] }).from(spec.table as never).where(where).limit(1)) as Array<{
+    id: string;
+    key: string;
+  }>;
+  return found[0] ? { rowKey: String(found[0].key), recordId: String(found[0].id) } : null;
+}
+
+function rowWhere(tableName: string, ipoId: string, target: RowTarget) {
+  const t = tableOf(tableName)!;
+  const cols = getTableColumns(t) as unknown as Record<string, never>;
+  if (tableName === 'ipos') return eq(cols.id, ipoId);
+  const spec = ROW_TABLES[tableName];
+  return spec ? and(eq(cols.ipoId, ipoId), eq(cols.id, target.recordId ?? '')) : eq(cols.ipoId, ipoId);
 }
 
 /**
@@ -186,7 +282,13 @@ function stringify(v: unknown): string | null {
   return typeof v === 'object' ? JSON.stringify(v) : String(v);
 }
 
-async function readVersion(tx: Db, ipoId: string, tableName: string, fieldName: string): Promise<{ version: string; setBy: string | null; setAt: string | null }> {
+async function readVersion(
+  tx: Db,
+  ipoId: string,
+  tableName: string,
+  fieldName: string,
+  rowKey = ''
+): Promise<{ version: string; setBy: string | null; setAt: string | null; source: string | null }> {
   const prov = await tx
     .select({
       updatedAt: sql<string>`${fieldSources.updatedAt}::text`,
@@ -198,7 +300,7 @@ async function readVersion(tx: Db, ipoId: string, tableName: string, fieldName: 
       and(
         eq(fieldSources.ipoId, ipoId),
         eq(fieldSources.tableName, tableName),
-        eq(fieldSources.rowKey, ''),
+        eq(fieldSources.rowKey, rowKey),
         eq(fieldSources.fieldName, fieldName)
       )
     )
@@ -211,7 +313,9 @@ async function readVersion(tx: Db, ipoId: string, tableName: string, fieldName: 
         eq(auditLogs.ipoId, ipoId),
         eq(auditLogs.tableName, tableName),
         eq(auditLogs.fieldName, fieldName),
-        eq(auditLogs.success, true)
+        eq(auditLogs.success, true),
+        // audit_logs has no row_key column; a row table's audit rows carry it in details.
+        rowKey === '' ? undefined : sql`${auditLogs.details}->>'rowKey' = ${rowKey}`
       )
     )
     .orderBy(desc(auditLogs.timestamp), desc(auditLogs.id))
@@ -222,27 +326,34 @@ async function readVersion(tx: Db, ipoId: string, tableName: string, fieldName: 
     version: `${p?.updatedAt ?? '-'}|${a?.id ?? '-'}`,
     setBy: p ? (p.source === 'ADMIN' ? p.updatedBy ?? a?.adminUser ?? 'admin' : p.source) : a?.adminUser ?? null,
     setAt: p?.updatedAt ?? a?.at ?? null,
+    source: p?.source ?? null,
   };
 }
 
-async function readCurrentValue(tx: Db, ipoId: string, tableName: string, fieldName: string): Promise<unknown> {
-  if (tableName === 'ipos') {
-    const cols = getTableColumns(schema.ipos) as unknown as Record<string, never>;
-    const rows = (await tx.select({ v: cols[fieldName] }).from(schema.ipos).where(eq(schema.ipos.id, ipoId)).limit(1)) as Array<{ v: unknown }>;
-    return rows[0]?.v ?? null;
-  }
-  const t = CHILD_TABLES[tableName];
+async function readCurrentValue(tx: Db, ipoId: string, tableName: string, fieldName: string, target: RowTarget): Promise<unknown> {
+  const t = tableOf(tableName)!;
   const cols = getTableColumns(t) as unknown as Record<string, never>;
-  const rows = (await tx.select({ v: cols[fieldName] }).from(t as never).where(eq(cols.ipoId, ipoId)).limit(1)) as Array<{ v: unknown }>;
+  const rows = (await tx.select({ v: cols[fieldName] }).from(t as never).where(rowWhere(tableName, ipoId, target)).limit(1)) as Array<{ v: unknown }>;
   return rows[0]?.v ?? null;
 }
 
-/** What the editor opens with: the field's current value and its version token. */
-export async function readAdminFieldVersion(db: Db, ipoId: string, tableName: string, fieldName: string): Promise<AdminFieldVersion | null> {
+/**
+ * What the editor opens with: the field's current value and its version token. A row table needs
+ * `row` (row key or record id); null when the table, field or row does not exist.
+ */
+export async function readAdminFieldVersion(
+  db: Db,
+  ipoId: string,
+  tableName: string,
+  fieldName: string,
+  row?: AdminFieldWriteInput['row']
+): Promise<(AdminFieldVersion & { rowKey: string }) | null> {
   const cols = columnsOf(tableName);
   if (!cols || !cols[fieldName]) return null;
-  const v = await readVersion(db, ipoId, tableName, fieldName);
-  return { ...v, currentValue: await readCurrentValue(db, ipoId, tableName, fieldName) };
+  const target = await resolveRow(db, ipoId, tableName, row);
+  if (!target) return null;
+  const { source: _source, ...v } = await readVersion(db, ipoId, tableName, fieldName, target.rowKey);
+  return { ...v, rowKey: target.rowKey, currentValue: await readCurrentValue(db, ipoId, tableName, fieldName, target) };
 }
 
 const NUMERIC_CHECK_FIELDS = new Set(['lotSize', 'priceRangeMin', 'priceRangeMax']);
@@ -282,11 +393,25 @@ export async function writeAdminFieldValue(
   const { ipoId, tableName, fieldName, actor, mode } = input;
 
   const cols = columnsOf(tableName);
-  if (!cols) return { kind: 'INVALID', reason: `table ${tableName} is not admin-writable (allowed: ${ADMIN_WRITABLE_TABLES.join(', ')})` };
+  if (!cols) {
+    return { kind: 'INVALID', reason: `table ${tableName} is not admin-writable (allowed: ${[...ADMIN_WRITABLE_TABLES, ...ADMIN_ROW_TABLES].join(', ')})` };
+  }
   const column = cols[fieldName];
   if (!column) return { kind: 'INVALID', reason: `${tableName} has no field ${fieldName}` };
-  if (NON_EDITABLE_FIELDS.has(fieldName)) return { kind: 'INVALID', reason: `${tableName}.${fieldName} is not editable` };
+  const rowSpec = ROW_TABLES[tableName];
+  if (NON_EDITABLE_FIELDS.has(fieldName) || (rowSpec && rowSpec.derived?.derivedField === fieldName)) {
+    return { kind: 'INVALID', reason: `${tableName}.${fieldName} is not editable` };
+  }
+  if (rowSpec && !input.row?.rowKey && !input.row?.recordId) {
+    return { kind: 'INVALID', reason: `${tableName} has several rows per IPO; name the row (rowKey or recordId)` };
+  }
+  if (!rowSpec && (input.row?.rowKey || input.row?.recordId)) {
+    return { kind: 'INVALID', reason: `${tableName} has one row per IPO; a row reference is not accepted` };
+  }
   if (!actor?.name?.trim()) return { kind: 'INVALID', reason: 'the admin name is required' };
+  if (typeof actor.adminId !== 'string' || actor.adminId.trim() === '') {
+    return { kind: 'INVALID', reason: 'the admin id is required: every admin write is attributed to an account (OD-104, OD-113)' };
+  }
   if (typeof input.expectedVersion !== 'string' || input.expectedVersion === '') {
     return { kind: 'INVALID', reason: STALE_EDITOR_REASON };
   }
@@ -296,13 +421,17 @@ export async function writeAdminFieldValue(
   if (mode.kind === 'pick' && !mode.sourceLabel?.trim()) {
     return { kind: 'INVALID', reason: 'a picked value needs the source label it was picked from' };
   }
+  if (mode.kind === 'holdShown' && input.empty) {
+    return { kind: 'INVALID', reason: 'a hold of the shown value cannot also delete it' };
+  }
   if (input.empty && !input.empty.reason?.trim()) {
     return { kind: 'INVALID', reason: 'deleting a value needs a reason — OD-121' };
   }
 
   let newValue: unknown = null;
   let checkFailure: string | null = null;
-  if (!input.empty) {
+  let derivedPatch: Record<string, string> = {};
+  if (!input.empty && mode.kind !== 'holdShown') {
     const coerced = coerceForColumn(column.columnType, input.value ?? null);
     if (coerced.ok === false) return { kind: 'INVALID', reason: `${tableName}.${fieldName}: ${coerced.reason}` };
     newValue = coerced.value;
@@ -313,6 +442,14 @@ export async function writeAdminFieldValue(
       }
     }
   }
+  if (rowSpec?.derived && rowSpec.derived.sourceField === fieldName && mode.kind !== 'holdShown') {
+    // R-158: the row key is derived from this field; a value with no identity is refused.
+    const derived = input.empty ? null : rowSpec.derived.derive(newValue);
+    if (derived === null) {
+      return { kind: 'INVALID', reason: `${tableName}.${fieldName} needs a value with an identity (not empty or whitespace); it keys the row` };
+    }
+    derivedPatch = { [rowSpec.derived.derivedField]: derived };
+  }
 
   try {
     return await db.transaction(async (txRaw) => {
@@ -321,13 +458,30 @@ export async function writeAdminFieldValue(
       const slug = (locked.rows[0] as { slug?: string } | undefined)?.slug;
       if (!slug) throw new Refusal({ kind: 'NOT_FOUND', reason: `IPO ${ipoId} not found` });
 
-      const current = await readVersion(tx, ipoId, tableName, fieldName);
-      const oldValue = await readCurrentValue(tx, ipoId, tableName, fieldName);
+      const target = await resolveRow(tx, ipoId, tableName, input.row);
+      if (!target) throw new Refusal({ kind: 'NOT_FOUND', reason: `${tableName} has no such row for IPO ${ipoId}` });
+
+      const current = await readVersion(tx, ipoId, tableName, fieldName, target.rowKey);
+      const oldValue = await readCurrentValue(tx, ipoId, tableName, fieldName, target);
       if (current.version !== input.expectedVersion) {
         throw new Refusal({ kind: 'CONFLICT', currentValue: oldValue, setBy: current.setBy, setAt: current.setAt, currentVersion: current.version });
       }
 
-      if (tableName === 'ipos' && mode.kind === 'typed' && !input.empty && !checkFailure) {
+      let effectiveMode: Exclude<AdminWriteMode, { kind: 'holdShown' }>;
+      if (mode.kind === 'holdShown') {
+        if (oldValue === null || oldValue === undefined) {
+          throw new Refusal({
+            kind: 'INVALID',
+            reason: `${tableName}.${fieldName} shows no value to hold; save a value (or delete it with a reason) in the field editor — OD-121`,
+          });
+        }
+        newValue = oldValue;
+        effectiveMode = { kind: 'pick', sourceLabel: current.source ?? 'STORED (source not recorded)', readDate: current.setAt };
+      } else {
+        effectiveMode = mode;
+      }
+
+      if (tableName === 'ipos' && effectiveMode.kind === 'typed' && !input.empty && !checkFailure) {
         const [row] = (await tx.select().from(schema.ipos).where(eq(schema.ipos.id, ipoId)).limit(1)) as Array<Record<string, unknown>>;
         checkFailure = ipoFieldCheckFailure(row ?? {}, fieldName, newValue);
         if (checkFailure && !input.overrideReason?.trim()) {
@@ -339,8 +493,36 @@ export async function writeAdminFieldValue(
       }
 
       const now = new Date();
+      let rowKey = target.rowKey;
       if (tableName === 'ipos') {
         await IPORepository.applyAdminCorrigendumValue(tx, ipoId, fieldName, newValue);
+      } else if (rowSpec) {
+        const tcols = getTableColumns(rowSpec.table) as unknown as Record<string, never>;
+        const newKey: string | undefined = rowSpec.derived ? derivedPatch[rowSpec.derived.derivedField] : undefined;
+        if (newKey !== undefined && newKey !== rowKey) {
+          const clash = await tx
+            .select({ id: tcols.id })
+            .from(rowSpec.table as never)
+            .where(and(eq(tcols.ipoId, ipoId), eq(tcols[rowSpec.keyField], newKey)))
+            .limit(1);
+          if (clash.length > 0) throw new Refusal({ kind: 'INVALID', reason: `another ${tableName} row of this IPO already has the key ${newKey}` });
+        }
+        const setPatch: Record<string, unknown> = { [fieldName]: newValue, ...derivedPatch };
+        if ('updatedAt' in tcols) setPatch.updatedAt = now;
+        const updated = await tx.update(rowSpec.table).set(setPatch as never).where(rowWhere(tableName, ipoId, target)).returning();
+        if (updated.length === 0) throw new Refusal({ kind: 'NOT_FOUND', reason: `${tableName} row ${target.recordId} is gone` });
+        if (newKey !== undefined && newKey !== rowKey) {
+          // The row's identity moved: its provenance and holds move with it, so no hold is orphaned.
+          await tx
+            .update(fieldSources)
+            .set({ rowKey: newKey } as never)
+            .where(and(eq(fieldSources.ipoId, ipoId), eq(fieldSources.tableName, tableName), eq(fieldSources.rowKey, rowKey)));
+          await tx
+            .update(fieldProtectionMetadata)
+            .set({ tableName: protectionTableName(tableName, newKey) } as never)
+            .where(and(eq(fieldProtectionMetadata.ipoId, ipoId), eq(fieldProtectionMetadata.tableName, protectionTableName(tableName, rowKey))));
+          rowKey = newKey;
+        }
       } else {
         const t = CHILD_TABLES[tableName];
         const tcols = getTableColumns(t) as unknown as Record<string, never>;
@@ -358,9 +540,13 @@ export async function writeAdminFieldValue(
       const lineage = {
         method: 'ADMIN_FIELD_WRITE',
         entryPoint: input.entryPoint,
-        mode: mode.kind,
-        ...(mode.kind === 'pick' ? { sourceLabel: mode.sourceLabel, readDate: mode.readDate } : { sourceNote: mode.sourceNote }),
+        mode: effectiveMode.kind,
+        ...(mode.kind === 'holdShown' ? { heldShownValue: true } : {}),
+        ...(effectiveMode.kind === 'pick'
+          ? { sourceLabel: effectiveMode.sourceLabel, readDate: effectiveMode.readDate }
+          : { sourceNote: effectiveMode.sourceNote }),
         ...(input.empty ? { adminEmpty: true, emptyReason: input.empty.reason } : {}),
+        ...(rowSpec ? { rowKey, recordId: target.recordId } : {}),
         by: actor.name,
         adminId: actor.adminId,
         ...(input.detail ?? {}),
@@ -368,7 +554,7 @@ export async function writeAdminFieldValue(
       const prevSourceRow = await tx
         .select({ source: fieldSources.source })
         .from(fieldSources)
-        .where(and(eq(fieldSources.ipoId, ipoId), eq(fieldSources.tableName, tableName), eq(fieldSources.rowKey, ''), eq(fieldSources.fieldName, fieldName)))
+        .where(and(eq(fieldSources.ipoId, ipoId), eq(fieldSources.tableName, tableName), eq(fieldSources.rowKey, rowKey), eq(fieldSources.fieldName, fieldName)))
         .limit(1);
       const previousSource = prevSourceRow[0]?.source ?? null;
       await tx
@@ -376,7 +562,7 @@ export async function writeAdminFieldValue(
         .values({
           ipoId,
           tableName,
-          rowKey: '',
+          rowKey,
           fieldName,
           source: 'ADMIN',
           confidence: 100,
@@ -402,14 +588,15 @@ export async function writeAdminFieldValue(
 
       const editNote = input.empty
         ? `Deleted: ${input.empty.reason}`
-        : mode.kind === 'typed'
-          ? `Typed: ${mode.sourceNote}`
-          : `Picked from ${mode.sourceLabel}${mode.readDate ? `, read ${mode.readDate}` : ''}`;
+        : effectiveMode.kind === 'typed'
+          ? `Typed: ${effectiveMode.sourceNote}`
+          : `Picked from ${effectiveMode.sourceLabel}${effectiveMode.readDate ? `, read ${effectiveMode.readDate}` : ''}`;
+      const holdTable = protectionTableName(tableName, rowKey);
       await tx
         .insert(fieldProtectionMetadata)
         .values({
           ipoId,
-          tableName,
+          tableName: holdTable,
           fieldName,
           isProtected: true,
           autoProtected: true,
@@ -444,8 +631,8 @@ export async function writeAdminFieldValue(
         createdAt: now,
       });
 
-      const after = await readVersion(tx, ipoId, tableName, fieldName);
-      return { kind: 'OK' as const, ipoId, slug, tableName, fieldName, oldValue, newValue, version: after.version };
+      const after = await readVersion(tx, ipoId, tableName, fieldName, rowKey);
+      return { kind: 'OK' as const, ipoId, slug, tableName, fieldName, rowKey, oldValue, newValue, version: after.version };
     });
   } catch (error) {
     if (error instanceof Refusal) return error.result;

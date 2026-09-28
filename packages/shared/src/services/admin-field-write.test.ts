@@ -4,7 +4,7 @@ import { writeAdminFieldValue, coerceForColumn, type AdminFieldWriteInput } from
 const untouchable = new Proxy({}, { get: () => { throw new Error('db touched before validation finished'); } }) as never;
 const base: AdminFieldWriteInput = {
   ipoId: 'i', tableName: 'ipos', fieldName: 'registrar', value: 'X',
-  mode: { kind: 'typed', sourceNote: 'RHP p1' }, expectedVersion: 'v', actor: { name: 'a', adminId: null }, entryPoint: 't',
+  mode: { kind: 'typed', sourceNote: 'RHP p1' }, expectedVersion: 'v', actor: { name: 'a', adminId: 'admin-t1' }, entryPoint: 't',
 };
 
 describe('writeAdminFieldValue refuses before opening a transaction', () => {
@@ -17,6 +17,13 @@ describe('writeAdminFieldValue refuses before opening a transaction', () => {
     [{ mode: { kind: 'pick', sourceLabel: '', readDate: null } }, 'source label'],
     [{ empty: { reason: '' } }, 'needs a reason'],
     [{ fieldName: 'lotSize', value: 'twelve' }, 'expected a whole number'],
+    [{ actor: { name: 'a', adminId: '' } }, 'admin id is required'],
+    [{ actor: { name: 'a', adminId: null } }, 'admin id is required'],
+    [{ tableName: 'anchor_investors', fieldName: 'investorName' }, 'not admin-writable'],
+    [{ tableName: 'peer_companies', fieldName: 'peRatio' }, 'name the row'],
+    [{ row: { recordId: 'r' } }, 'one row per IPO'],
+    [{ tableName: 'peer_companies', row: { recordId: 'r' }, fieldName: 'normalizedName' }, 'not editable'],
+    [{ mode: { kind: 'holdShown' }, empty: { reason: 'x' } }, 'cannot also delete'],
   ] as const)('%o -> INVALID (%s)', async (over, text) => {
     const r = await writeAdminFieldValue(untouchable, { ...base, ...(over as object) } as AdminFieldWriteInput);
     expect(r.kind).toBe('INVALID');

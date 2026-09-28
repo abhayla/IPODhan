@@ -94,7 +94,7 @@ describe('acceptCorrigendumSuggestion — field_sources dataLineage MERGE, never
     };
     const { db, fieldSourcesOnConflict } = makeStubDb(openRow);
 
-    const decision = await acceptCorrigendumSuggestion(db, 'conflict-1', 'tester@ipodhan.com', 'note', '-|-');
+    const decision = await acceptCorrigendumSuggestion(db, 'conflict-1', 'tester@ipodhan.com', 'note', '-|-', 'admin-t1');
     expect(decision.ok).toBe(true);
     // The accept is an admin PICK through the ONE admin write, carrying the editor's token.
     expect(writeSpy).toHaveBeenCalledTimes(1);
