@@ -191,6 +191,10 @@
       "module": "extraction"
     },
     {
+      "glob": "packages/shared/src/utils/value-equivalence.ts",
+      "module": "extraction"
+    },
+    {
       "glob": "scraper/src/utils/document-type-mapper.ts",
       "module": "extraction"
     },

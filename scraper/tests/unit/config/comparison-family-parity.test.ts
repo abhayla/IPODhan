@@ -24,9 +24,9 @@ function manifestFamilies(): Set<string> {
 }
 
 function comparatorFamilies(): Set<string> {
-  const src = readFileSync(join(ROOT, 'src', 'services', 'normalization-engine.ts'), 'utf8');
+  const src = readFileSync(join(ROOT, '..', 'packages', 'shared', 'src', 'utils', 'value-equivalence.ts'), 'utf8');
   const m = src.match(/export type ComparisonFamily =([^;]+);/);
-  if (!m) throw new Error('could not find the ComparisonFamily union in normalization-engine.ts');
+  if (!m) throw new Error('could not find the ComparisonFamily union in packages/shared/src/utils/value-equivalence.ts');
   return new Set([...m[1].matchAll(/'([A-Z_]+)'/g)].map((x) => x[1]));
 }
 

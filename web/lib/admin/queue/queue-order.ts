@@ -111,6 +111,14 @@ export function nearestDate(ipo: QueueIpo): string | null {
   return null;
 }
 
+/**
+ * Code-unit order, identical to PostgreSQL `COLLATE "C"` — the SQL page query
+ * (admin-queue-repository.ts) sorts with the same keys, so the JS order and the SQL order are one.
+ */
+export function cmpStr(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function cmpNullsLast(a: string | null, b: string | null, dir: 1 | -1): number {
   if (a === b) return 0;
   if (a === null) return 1;
@@ -137,21 +145,21 @@ function kindRank(i: QueueItem): number {
 }
 
 function cmpIpoLive(a: QueueIpo, b: QueueIpo): number {
-  return cmpNullsLast(nearestDate(a), nearestDate(b), 1) || a.slug.localeCompare(b.slug);
+  return cmpNullsLast(nearestDate(a), nearestDate(b), 1) || cmpStr(a.slug, b.slug);
 }
 
 function cmpIpoListed(a: QueueIpo, b: QueueIpo): number {
-  return cmpNullsLast(a.listingDate, b.listingDate, -1) || a.slug.localeCompare(b.slug);
+  return cmpNullsLast(a.listingDate, b.listingDate, -1) || cmpStr(a.slug, b.slug);
 }
 
 export function compareItems(a: QueueItem, b: QueueItem): number {
   return (
     cmpIpoLive(a.ipo, b.ipo) ||
     kindRank(a) - kindRank(b) ||
-    a.fieldName.localeCompare(b.fieldName) ||
-    a.tableName.localeCompare(b.tableName) ||
-    a.rowKey.localeCompare(b.rowKey) ||
-    a.id.localeCompare(b.id)
+    cmpStr(a.fieldName, b.fieldName) ||
+    cmpStr(a.tableName, b.tableName) ||
+    cmpStr(a.rowKey, b.rowKey) ||
+    cmpStr(a.id, b.id)
   );
 }
 

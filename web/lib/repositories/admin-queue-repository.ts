@@ -52,7 +52,7 @@ export interface HoldRow {
   field_name: string;
 }
 
-const IPO_COLUMNS = sql`i.id AS ipo_id, i.slug, i.company_name, i.status::text AS status,
+export const IPO_COLUMNS = sql`i.id AS ipo_id, i.slug, i.company_name, i.status::text AS status,
   i.open_date::text AS open_date, i.close_date::text AS close_date, i.listing_date::text AS listing_date`;
 
 export class AdminQueueRepository extends BaseRepository {

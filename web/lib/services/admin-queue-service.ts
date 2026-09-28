@@ -24,10 +24,22 @@ import {
 } from '@/lib/repositories/admin-queue-repository';
 import { validateIPOData } from '@ipodhan/shared/utils/ipo-field-checks';
 import { isoDay } from '@ipodhan/shared/utils/company-identity-fold';
-import { ruleFilterFor } from '@/lib/admin/queue/conflict-rule-filter';
+import { ruleFilterFor, RULE_FILTER_LABELS, type RuleFilter } from '@/lib/admin/queue/conflict-rule-filter';
+import { familyFor, loadComparisonFamilies } from '@/lib/admin/queue/comparison-families';
+import { PUBLIC_PAGE_FIELDS } from '@/lib/admin/queue/public-page-fields';
+import { ADMIN_ONLY_CONFLICT_REASONS, WRITER_BOOKKEEPING_FIELDS } from '@ipodhan/shared/utils/conflict-reasons';
+import {
+  AdminQueuePageRepository,
+  type QueueCountRow,
+  type QueuePageRow,
+  type QueueSqlInputs,
+  type QueueSqlView,
+} from '@/lib/repositories/admin-queue-page-repository';
 import {
   applyView,
   countQueue,
+  DISAGREEMENT_REASON,
+  NO_REASON_RECORDED,
   editorHref,
   groupOf,
   orderIpoItems,
@@ -64,8 +76,9 @@ function holdKey(ipoId: string, holdTable: string, fieldName: string): string {
   return `${ipoId}|${holdTable}|${fieldName}`;
 }
 
-export function conflictToItem(r: ConflictRow): QueueItem {
+export function conflictToItem(r: ConflictRow, family?: string): QueueItem {
   const ruleFilter = ruleFilterFor({
+    family,
     fieldName: r.field_name,
     source1: r.source1,
     source2: r.source2,
@@ -223,7 +236,7 @@ export function mergeFieldItems(items: QueueItem[]): QueueItem[] {
 
 /** Populations (a) and (b) merged from raw rows. */
 export function buildQueueItems(conflicts: ConflictRow[], plans: PlanRow[], holds: HoldRow[]): QueueItem[] {
-  return [...conflicts.map(conflictToItem), ...missingItems(plans, holds)];
+  return [...conflicts.map((c) => conflictToItem(c)), ...missingItems(plans, holds)];
 }
 
 /**
@@ -238,7 +251,12 @@ export interface QueueSource {
 
 /** Population (a): unresolved data_conflicts; F-173 rule-filtered rows kept with their label. */
 export function conflictSource(repo: AdminQueueRepository): QueueSource {
-  return { name: 'conflict', load: async (slug) => (await repo.listUnresolvedConflicts(slug)).map(conflictToItem) };
+  const families = loadComparisonFamilies();
+  return {
+    name: 'conflict',
+    load: async (slug) =>
+      (await repo.listUnresolvedConflicts(slug)).map((r) => conflictToItem(r, familyFor(families, r.table_name, r.field_name))),
+  };
 }
 
 /** Population (c): stored `ipos` values the shared field check refuses. */
@@ -275,9 +293,13 @@ export interface QueueResponse {
 export class AdminQueueService {
   private sources: QueueSource[];
   private rows: AdminQueueStoredRowsRepository;
+  private repo: AdminQueueRepository;
+  private pages: AdminQueuePageRepository;
 
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis, sources?: QueueSource[]) {
     const repo = new AdminQueueRepository(db, redis);
+    this.repo = repo;
+    this.pages = new AdminQueuePageRepository(db, redis);
     this.rows = new AdminQueueStoredRowsRepository(db, redis);
     this.sources = sources ?? [conflictSource(repo), missingValueSource(repo), flaggedValueSource(this.rows)];
   }
@@ -314,11 +336,192 @@ export class AdminQueueService {
    * (`view.ipo`) is listed item by item even when it is a collapsed group-3 IPO.
    */
   async getQueue(req: QueueRequest): Promise<QueueResponse> {
-    const all = await this.loadItems();
-    const shaped = shapeQueue(all, req);
-    await this.attachStoredValues(shaped.entries);
-    return shaped;
+    // Computed in SQL (admin-queue-page-repository.ts): only the requested page leaves the database.
+    const view: QueueView = { group: req.group, reason: req.reason, kind: req.kind, ipo: req.ipo };
+    const { inputs, flaggedByKey, ipoById } = await this.sqlInputs();
+    const sqlView = toSqlView(view);
+    const [countRows, first] = await Promise.all([
+      this.pages.counts(inputs),
+      this.pages.page(inputs, sqlView, (Math.max(1, req.page) - 1) * req.pageSize, req.pageSize),
+    ]);
+    const totalEntries = totalOf(first);
+    const totalPages = Math.max(1, Math.ceil(totalEntries / req.pageSize));
+    const pageNo = Math.min(Math.max(1, req.page), totalPages);
+    const rows = pageNo === req.page ? first : await this.pages.page(inputs, sqlView, (pageNo - 1) * req.pageSize, req.pageSize);
+    const entries = await this.entriesFromRows(rows.filter((r) => r.ord > 0), flaggedByKey, ipoById);
+    await this.attachStoredValues(entries);
+    return { counts: countsFromRows(countRows), view, page: pageNo, pageSize: req.pageSize, totalEntries, totalPages, entries };
   }
+
+  /** The JS-side inputs of the SQL queue, each from its one implementation. */
+  async sqlInputs(): Promise<{ inputs: QueueSqlInputs; flaggedByKey: Map<string, QueueItem>; ipoById: Map<string, QueueIpo> }> {
+    const families = loadComparisonFamilies();
+    const [candidates, holds, iposRows] = await Promise.all([
+      this.pages.listCandidateConflicts(ADMIN_ONLY_CONFLICT_REASONS, WRITER_BOOKKEEPING_FIELDS),
+      this.repo.listAdminHolds(),
+      this.rows.listIposRows(),
+    ]);
+    const classified: Array<[string, string]> = [];
+    for (const c of candidates) {
+      const rule = ruleFilterFor({
+        family: familyFor(families, c.table_name, c.field_name),
+        fieldName: c.field_name,
+        source1: c.source1,
+        source2: c.source2,
+        value1: c.value1,
+        value2: c.value2,
+        resolutionReason: c.resolution_reason,
+      });
+      if (rule !== null) classified.push([c.id, rule]);
+    }
+    const flagged = flaggedItems(iposRows);
+    const publicFields = Object.entries(PUBLIC_PAGE_FIELDS).flatMap(([t, fs]) => fs.map((f) => `${t}.${f}`));
+    return {
+      inputs: {
+        od75Reasons: ADMIN_ONLY_CONFLICT_REASONS,
+        bookkeepingFields: WRITER_BOOKKEEPING_FIELDS,
+        classified,
+        heldKeys: holds.map((h) => holdKey(h.ipo_id, h.table_name, h.field_name)),
+        publicFields,
+        flagged: flagged.map((f) => [f.ipo.id, f.fieldName]),
+      },
+      flaggedByKey: new Map(flagged.map((f) => [`${f.ipo.id}|${f.fieldName}`, f])),
+      ipoById: new Map(iposRows.map((r) => [String(r.id), ipoOfRow(r)])),
+    };
+  }
+
+  /** Page rows -> entries: conflict values and plan states are read for the page's rows only. */
+  async entriesFromRows(
+    rows: QueuePageRow[],
+    flaggedByKey: Map<string, QueueItem>,
+    ipoById: Map<string, QueueIpo>
+  ): Promise<QueueResponse['entries']> {
+    const idsWith = (prefix: string) =>
+      rows.filter((r) => r.id?.startsWith(prefix)).map((r) => (r.id as string).slice(prefix.length));
+    const [conflicts, plans] = await Promise.all([
+      this.pages.conflictDetails(idsWith('conflict:')),
+      this.pages.planDetails(idsWith('plan:')),
+    ]);
+    const conflictById = new Map(conflicts.map((c) => [`conflict:${c.id}`, c]));
+    const planById = new Map(plans.map((p) => [`plan:${p.id}`, p]));
+    const entries: QueueResponse['entries'] = [];
+    for (const r of rows) {
+      const ipo = ipoById.get(r.ipo_id);
+      if (!ipo) continue;
+      if (r.entry === 'ipo') {
+        entries.push({
+          type: 'ipo',
+          group: 3,
+          summary: {
+            ipo,
+            conflicts: r.disagreements ?? 0,
+            missing: r.missing ?? 0,
+            flagged: r.flagged ?? 0,
+            ruled: r.ruled ?? 0,
+            editorHref: `/ipos/${encodeURIComponent(ipo.slug)}`,
+          },
+        });
+        continue;
+      }
+      const item = itemFromRow(r, conflictById, planById, flaggedByKey);
+      if (item) entries.push({ type: 'item', group: Number(r.grp) as QueueGroup, item });
+    }
+    return entries;
+  }
+}
+
+/** The page query's sentinel row (ord 0) carries the filtered queue's length. */
+function totalOf(rows: QueuePageRow[]): number {
+  return Number(rows.find((r) => r.ord === 0)?.total ?? 0);
+}
+
+const RULE_BY_LABEL = new Map<string, RuleFilter>(
+  (Object.entries(RULE_FILTER_LABELS) as Array<[RuleFilter, string]>).map(([rule, label]) => [label, rule])
+);
+
+/** A reason label (as shown in counts.byReason) -> the SQL condition that selects it. */
+export function toSqlView(view: QueueView): QueueSqlView {
+  const out: QueueSqlView = { group: view.group, kind: view.kind, ipoSlug: view.ipo };
+  if (view.reason !== undefined) {
+    const rule = RULE_BY_LABEL.get(view.reason);
+    if (rule) out.reason = { cat: rule };
+    else if (view.reason === DISAGREEMENT_REASON) out.reason = { cat: 'disagreement' };
+    else if (view.reason === FAILED_VALIDATION) out.reason = { failedValidation: true };
+    else if (view.reason === NO_REASON_RECORDED) out.reason = { reasonCode: null };
+    else out.reason = { reasonCode: view.reason };
+  }
+  return out;
+}
+
+function reasonOfCat(cat: string, reasonCode: string | null): string {
+  if (cat === 'missing') return reasonForMissing(reasonCode);
+  if (cat === 'flagged') return FAILED_VALIDATION;
+  return reasonForConflict(cat === 'disagreement' ? null : (cat as RuleFilter));
+}
+
+/** SQL count rows -> QueueCounts (the shape countQueue returns). */
+export function countsFromRows(rows: QueueCountRow[]): QueueCounts {
+  const counts: QueueCounts = {
+    total: 0,
+    byGroup: { 1: { items: 0, ipos: 0 }, 2: { items: 0, ipos: 0 }, 3: { items: 0, ipos: 0 } },
+    byKind: { disagreement: 0, missing: 0, flagged: 0, ruled: 0 },
+    byReason: {},
+  };
+  for (const r of rows) {
+    const n = Number(r.n);
+    if (r.tag === 'group') {
+      counts.byGroup[Number(r.grp) as QueueGroup] = { items: n, ipos: Number(r.ipos ?? 0) };
+      counts.total += n;
+      continue;
+    }
+    const cat = r.cat as string;
+    const kind = cat === 'disagreement' || cat === 'missing' || cat === 'flagged' ? cat : 'ruled';
+    counts.byKind[kind] += n;
+    const reason = reasonOfCat(cat, r.reason_code);
+    counts.byReason[reason] = (counts.byReason[reason] ?? 0) + n;
+    if (r.has_flag) counts.byReason[FAILED_VALIDATION] = (counts.byReason[FAILED_VALIDATION] ?? 0) + n;
+  }
+  return counts;
+}
+
+function itemFromRow(
+  r: QueuePageRow,
+  conflictById: Map<string, ConflictRow>,
+  planById: Map<string, PlanRow>,
+  flaggedByKey: Map<string, QueueItem>
+): QueueItem | null {
+  const id = r.id as string;
+  if (id.startsWith('conflict:')) {
+    const c = conflictById.get(id);
+    if (!c) return null;
+    const ruleFilter = r.cat === 'disagreement' ? null : (r.cat as RuleFilter);
+    const reason = reasonForConflict(ruleFilter);
+    return {
+      id,
+      kind: 'conflict',
+      ipo: toIpo(c),
+      tableName: c.table_name,
+      fieldName: c.field_name,
+      rowKey: c.row_key ?? '',
+      ruleFilter,
+      reason,
+      reasons: [reason],
+      sources: [
+        { source: c.source1, value: c.value1 },
+        { source: c.source2, value: c.value2 },
+      ],
+      editorHref: editorHref(c.slug, c.table_name, c.field_name, c.row_key ?? ''),
+    };
+  }
+  if (id.startsWith('plan:')) {
+    const p = planById.get(id);
+    if (!p) return null;
+    const item = planToItem(p);
+    const flag = r.has_flag ? flaggedByKey.get(`${p.ipo_id}|${item.fieldName}`) : undefined;
+    if (!flag) return item;
+    return { ...item, reasons: [...new Set([...item.reasons, ...flag.reasons])], messages: flag.messages, storedValue: flag.storedValue };
+  }
+  return flaggedByKey.get(`${r.ipo_id}|${r.field_name}`) ?? null;
 }
 
 export function shapeQueue(all: QueueItem[], req: QueueRequest): QueueResponse {

@@ -12,17 +12,18 @@
  *
  * Reuse, not re-implementation: the OD-75 reasons and the F-181 bookkeeping list come from
  * `@ipodhan/shared/utils/conflict-reasons`; names fold through `foldCompanyIdentity` and dates read
- * through `isoDay` (`@ipodhan/shared/utils/company-identity-fold`). The scraper's family-aware
- * comparator (`areEquivalent`, scraper/src/services/normalization-engine.ts) cannot be imported by
- * the web app, and its per-field family lives in the scraper's manifest, so this check is the
- * narrow subset that needs no family: it applies NO 0.5% money tolerance. A pair within 0.5% is
- * therefore left on the disagreement list (shown, never hidden) — the safe direction.
+ * through `isoDay` (`@ipodhan/shared/utils/company-identity-fold`). OD-59 itself is the scraper's
+ * own family-aware comparator (`areEquivalent`, now in `@ipodhan/shared/utils/value-equivalence`,
+ * one implementation), given the field's family from the field manifest (comparison-families.ts):
+ * money within 0.5% agrees. With no family known, only the narrow family-free checks below apply
+ * and a pair within 0.5% stays on the disagreement list (shown, never hidden) — the safe direction.
  */
 import {
   ADMIN_ONLY_CONFLICT_REASONS,
   isWriterBookkeepingField,
 } from '@ipodhan/shared/utils/conflict-reasons';
 import { foldCompanyIdentity, isoDay } from '@ipodhan/shared/utils/company-identity-fold';
+import { areEquivalent, type ComparisonFamily } from '@ipodhan/shared/utils/value-equivalence';
 
 export type RuleFilter = 'OD-75' | 'OD-60' | 'OD-59' | 'F-181';
 
@@ -47,6 +48,8 @@ export interface ConflictForRules {
   value1: string | null;
   value2: string | null;
   resolutionReason: string | null;
+  /** The field's OD-59 comparison family (field manifest); undefined = unknown. */
+  family?: string;
 }
 
 function isAbstention(v: string | null): boolean {
@@ -67,10 +70,28 @@ function lettersAndDigits(v: string): string {
   return v.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/** OD-59 without a comparison family: equal in meaning, or null when not provably equal. */
-export function equalInMeaning(fieldName: string, a: string, b: string): boolean {
+/** A stored conflict value as the comparator reads it: a number, a JSON array or string, or the text. */
+function comparable(v: string): unknown {
+  const t = v.trim();
+  const n = asNumber(t);
+  if (n !== null) return n;
+  if (t.startsWith('[') || t.startsWith('"')) {
+    try {
+      return JSON.parse(t);
+    } catch {
+      return t;
+    }
+  }
+  return t;
+}
+
+/** OD-59: equal in meaning. With a family, the shared comparator decides (money within 0.5%). */
+export function equalInMeaning(fieldName: string, a: string, b: string, family?: string): boolean {
   if (a === b) return true;
-  if (IDENTIFIER_FIELDS.has(fieldName)) return false;
+  if (IDENTIFIER_FIELDS.has(fieldName) || family === 'IDENTIFIER') return false;
+  if (family && family !== 'ABSTAIN' && areEquivalent(comparable(a), comparable(b), { family: family as ComparisonFamily })) {
+    return true;
+  }
   const na = asNumber(a.trim());
   const nb = asNumber(b.trim());
   if (na !== null && nb !== null) return na === nb;
@@ -95,6 +116,6 @@ export function ruleFilterFor(c: ConflictForRules): RuleFilter | null {
   if (c.resolutionReason !== null && ADMIN_ONLY_CONFLICT_REASONS.includes(c.resolutionReason)) return 'OD-75';
   if (isWriterBookkeepingField(c.fieldName)) return 'F-181';
   if (isAbstention(c.value1) || isAbstention(c.value2)) return 'OD-60';
-  if (equalInMeaning(c.fieldName, c.value1 as string, c.value2 as string)) return 'OD-59';
+  if (equalInMeaning(c.fieldName, c.value1 as string, c.value2 as string, c.family)) return 'OD-59';
   return null;
 }

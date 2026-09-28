@@ -100,7 +100,7 @@ export const NUMERIC_FAMILY_DECISIONS = {
 // ---- (a) plain text/varchar fields: IDENTITY vs IDENTIFIER (42 fields) ----
 export const TEXT_FAMILY_DECISIONS = {
   // IDENTIFIER — exact match, case-sensitive codes/contact identifiers. There
-  // is no close-enough for an identifier (normalization-engine.ts comment).
+  // is no close-enough for an identifier (value-equivalence.ts comment, packages/shared/src/utils).
   'ipos.symbol': { family: 'IDENTIFIER', reason: 'exchange trading symbol — exact match, no fuzzy equivalence' },
   'ipos.isin': { family: 'IDENTIFIER', reason: 'ISIN — exact match, no fuzzy equivalence' },
   'ipo_details.isin': { family: 'IDENTIFIER', reason: 'ISIN — exact match, no fuzzy equivalence' },

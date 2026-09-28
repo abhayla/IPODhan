@@ -40,3 +40,16 @@ describe('conflict rule filter (F-173)', () => {
     expect(c({ fieldName: 'symbol', value1: 'ABC', value2: 'abc' })).toBeNull();
   });
 });
+
+describe('OD-59 through the shared comparator (areEquivalent, one implementation)', () => {
+  const base = { fieldName: 'issueSize', source1: 'NSE', source2: 'BSE', resolutionReason: null, family: 'MONEY' };
+  it('a 0.4% money difference is the same value (OD-59), not a disagreement', () => {
+    expect(ruleFilterFor({ ...base, value1: '1000000', value2: '1004000' })).toBe('OD-59');
+  });
+  it('a 0.6% money difference stays a real disagreement', () => {
+    expect(ruleFilterFor({ ...base, value1: '1000000', value2: '1006000' })).toBeNull();
+  });
+  it('with no family known the 0.4% pair stays on the disagreement list (safe direction)', () => {
+    expect(ruleFilterFor({ ...base, family: undefined, value1: '1000000', value2: '1004000' })).toBeNull();
+  });
+});

@@ -90,7 +90,7 @@ describe('AdminQueueService population sources', () => {
       { name: 'missing', load: async () => b },
       { name: 'conflict', load: async () => a },
     ]);
-    const r = await svc.getQueue({ page: 1, pageSize: 50 });
+    const r = shapeQueue(await svc.loadItems(), { page: 1, pageSize: 50 });
     expect(r.entries.map((e) => (e.type === 'item' ? e.item.id : 'ipo'))).toEqual(['conflict:c1', 'plan:p1']);
   });
 });
