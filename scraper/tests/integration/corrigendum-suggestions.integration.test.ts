@@ -15,6 +15,7 @@ import {
   CORRIGENDUM_DISMISSED,
   type CorrigendumPage,
 } from '@ipodhan/shared/services/corrigendum-suggestions';
+import { readAdminFieldVersion } from '@ipodhan/shared/services/admin-field-write';
 // @ts-expect-error -- plain .mjs module with no type declarations
 import { behaviourConflictPredicate } from '../../../scripts/lib/conflict-reasons.mjs';
 
@@ -156,7 +157,7 @@ describe.skipIf(!DATABASE_URL)('item 9 (OD-90) — corrigendum suggestions in th
 
   it('ACCEPT writes the proposed value as an ADMIN value (provenance + protection) and closes the suggestion', async () => {
     const [row] = await suggestionsFor(IPO_A);
-    const out = await acceptCorrigendumSuggestion(db as never, row.id, 'item9-test-admin');
+    const out = await acceptCorrigendumSuggestion(db as never, row.id, 'item9-test-admin', undefined, (await readAdminFieldVersion(db as never, row.ipoId, row.tableName, row.fieldName))!.version, 'admin-it');
     expect(out).toMatchObject({ ok: true, fieldName: 'designatedExchange', appliedValue: 'NSE' });
 
     expect(await designated(IPO_A)).toBe('NSE');
@@ -192,8 +193,8 @@ describe.skipIf(!DATABASE_URL)('item 9 (OD-90) — corrigendum suggestions in th
     await recordCorrigendumSuggestions(db as never, { ipoId: IPO_B, documentId: DOC_C, pages: PAGES });
     const open = (await suggestionsFor(IPO_B)).find((x) => x.documentId === DOC_C && x.resolvedAt === null)!;
     const [a, b] = await Promise.all([
-      acceptCorrigendumSuggestion(db as never, open.id, 'item9-admin-a'),
-      acceptCorrigendumSuggestion(db as never, open.id, 'item9-admin-b'),
+      acceptCorrigendumSuggestion(db as never, open.id, 'item9-admin-a', undefined, (await readAdminFieldVersion(db as never, open.ipoId, open.tableName, open.fieldName))!.version, 'admin-it'),
+      acceptCorrigendumSuggestion(db as never, open.id, 'item9-admin-b', undefined, (await readAdminFieldVersion(db as never, open.ipoId, open.tableName, open.fieldName))!.version, 'admin-it'),
     ]);
     expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
     const [closed] = (await suggestionsFor(IPO_B)).filter((x) => x.documentId === DOC_C);
@@ -230,7 +231,7 @@ describe.skipIf(!DATABASE_URL)('item 9 (OD-90) — corrigendum suggestions in th
     expect(row).toMatchObject({ fieldName: 'closeDate', tableName: 'ipos', value1: '2026-08-26', value2: '2026-08-27' });
 
     const before = new Date();
-    const out = await acceptCorrigendumSuggestion(db as never, row.id, 'item9-test-admin');
+    const out = await acceptCorrigendumSuggestion(db as never, row.id, 'item9-test-admin', undefined, (await readAdminFieldVersion(db as never, row.ipoId, row.tableName, row.fieldName))!.version, 'admin-it');
     expect(out).toMatchObject({ ok: true, fieldName: 'closeDate', appliedValue: '2026-08-27' });
 
     const [ipoRow] = await db.select({ v: schema.ipos.closeDate, editedAt: schema.ipos.lastManualEditAt })

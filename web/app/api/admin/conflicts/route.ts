@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ConflictResolutionService } from '@/lib/services/conflict-resolution';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
+import { adminWriteResponse } from '@/lib/admin/admin-field-save';
 
 /**
  * GET /api/admin/conflicts
@@ -66,7 +67,8 @@ export const GET = withAdminAuth(async (request: NextRequest, _adminContext) => 
  *   resolutionReason: string,
  *   adminNote?: string,
  *   applyToDatabase: boolean,
- *   protectField?: boolean
+ *   protectField?: boolean,
+ *   expectedVersion: string   // the conflict's `version` from GET; missing -> 400 stale editor
  * }
  */
 export const POST = withAdminAuth(async (request: NextRequest, adminContext) => {
@@ -88,11 +90,15 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
       resolutionReason: body.resolutionReason,
       // The actor is the authenticated admin, never a client-supplied name.
       resolvedBy: adminContext.adminName,
+      adminId: adminContext.adminId,
       adminNote: body.adminNote,
       applyToDatabase: body.applyToDatabase ?? true,
       protectField: body.protectField ?? false,
+      // §9.2 item 20: the token the queue row was opened with (GET returns it as `version`).
+      expectedVersion: typeof body.expectedVersion === 'string' ? body.expectedVersion : undefined,
     });
 
+    if (result.writeResult && result.writeResult.kind !== 'OK') return adminWriteResponse(result.writeResult);
     if (!result.success) {
       return NextResponse.json({
         success: false,

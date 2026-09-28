@@ -38,32 +38,48 @@ vi.mock('../repositories/ipo-repository', () => ({
 }));
 
 import { acceptCorrigendumSuggestion } from './corrigendum-suggestions';
+import * as adminFieldWrite from './admin-field-write';
+import { fieldSources } from '../db/schema';
+
+const writeSpy = vi.spyOn(adminFieldWrite, 'writeAdminFieldValue');
+
+// Contract 2 item A2 (§9.2 item 11): the accept now writes through the ONE admin write
+// (`writeAdminFieldValue`) inside its transaction. This stub drives that REAL function too, so the
+// field_sources assertions below still bind to the insert the accept actually performs.
+function chain(result: unknown) {
+  const c: Record<string, unknown> = {};
+  for (const m of ['from', 'where', 'limit', 'orderBy', 'returning', 'set']) c[m] = vi.fn(() => c);
+  c.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => Promise.resolve(result).then(res, rej);
+  return c;
+}
 
 function makeStubDb(openRow: Record<string, unknown>) {
-  const selectWhere = { limit: vi.fn().mockResolvedValue([openRow]) };
-  const selectFrom = { where: vi.fn().mockReturnValue(selectWhere) };
-  const select = vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue(selectFrom) });
-
-  const dataConflictsUpdateReturning = vi.fn().mockResolvedValue([{ id: openRow.id }]);
-  const dataConflictsUpdateWhere = vi.fn().mockReturnValue({ returning: dataConflictsUpdateReturning });
-  const dataConflictsUpdateSet = vi.fn().mockReturnValue({ where: dataConflictsUpdateWhere });
+  let selects = 0;
+  // First select is loadOpenSuggestion; the shared write's version / value reads find nothing yet.
+  const select = vi.fn(() => chain(selects++ === 0 ? [openRow] : []));
+  const update = vi.fn(() => chain([{ id: openRow.id }]));
 
   const fieldSourcesOnConflict = vi.fn().mockResolvedValue(undefined);
   const fieldSourcesValues = vi.fn().mockReturnValue({ onConflictDoUpdate: fieldSourcesOnConflict });
+  const insert = vi.fn((table: unknown) => {
+    if (table === fieldSources) return { values: fieldSourcesValues };
+    const values = vi.fn(() => ({ onConflictDoUpdate: vi.fn().mockResolvedValue(undefined), then: (r: (v: unknown) => unknown) => Promise.resolve(undefined).then(r) }));
+    return { values };
+  });
+  const execute = vi.fn().mockResolvedValue({ rows: [{ slug: 'stub-ipo' }] });
 
-  const update = vi.fn().mockReturnValue({ set: dataConflictsUpdateSet });
-  const insert = vi.fn().mockReturnValue({ values: fieldSourcesValues });
-
-  const tx = { select, update, insert };
-  const transaction = vi.fn().mockImplementation(async (cb: (tx: unknown) => Promise<void>) => cb(tx));
+  const tx: Record<string, unknown> = { select, update, insert, execute };
+  const transaction = vi.fn().mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb(tx));
+  tx.transaction = transaction;
 
   const db = { select, transaction } as unknown as never;
-  return { db, fieldSourcesOnConflict };
+  return { db, fieldSourcesOnConflict, fieldSourcesValues, writeSpy };
 }
 
 describe('acceptCorrigendumSuggestion — field_sources dataLineage MERGE, never replace (#1068)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    writeSpy.mockClear();
   });
 
   it('the onConflictDoUpdate set.dataLineage is not a plain replacing object — it merges via SQL, preserving prior keys', async () => {
@@ -78,7 +94,20 @@ describe('acceptCorrigendumSuggestion — field_sources dataLineage MERGE, never
     };
     const { db, fieldSourcesOnConflict } = makeStubDb(openRow);
 
-    await acceptCorrigendumSuggestion(db, 'conflict-1', 'tester@ipodhan.com', 'note');
+    const decision = await acceptCorrigendumSuggestion(db, 'conflict-1', 'tester@ipodhan.com', 'note', '-|-|-', 'admin-t1');
+    expect(decision.ok).toBe(true);
+    // The accept is an admin PICK through the ONE admin write, carrying the editor's token.
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    expect(writeSpy.mock.calls[0][1]).toMatchObject({
+      ipoId: openRow.ipoId,
+      tableName: 'ipos',
+      fieldName: 'closeDate',
+      // M1: the document value travels as a server-read storedPick, never as a client value.
+      mode: { kind: 'storedPick', sourceLabel: 'DOC', value: '2026-10-05' },
+      expectedVersion: '-|-|-',
+      entryPoint: 'corrigendum-accept',
+      detail: { documentId: 'doc-1', conflictId: 'conflict-1' },
+    });
 
     expect(fieldSourcesOnConflict).toHaveBeenCalledTimes(1);
     const setClause = fieldSourcesOnConflict.mock.calls[0][0].set as Record<string, unknown>;

@@ -5,9 +5,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
+import { unprotectGoneResponse, saveAdminFieldValue } from '@/lib/admin/admin-field-save';
 import { getDb } from '@/lib/db';
-import { getRedisClient } from '@/lib/cache/redis-client';
-import { FieldProtectionRepository } from '@/lib/repositories/field-protection-repository';
 import { sendNotification } from '@/lib/services/notification-service';
 import { invalidateProtectionCacheForIpo } from '@/lib/admin/field-protection-checker';
 import { ipos } from '@ipodhan/shared/db/schema';
@@ -37,17 +36,31 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
       );
     }
 
-    const db = await getDb();
-    const redis = getRedisClient();
-    const repository = new FieldProtectionRepository(db, redis);
+    // §9.2 item 11 (OD-121): an admin hold is never released here; a delete is an admin-empty save
+    // through the field editor. Protecting (isProtected: true) still works.
+    if (!isProtected) return unprotectGoneResponse();
 
-    // Bulk update
-    const updatedCount = await repository.bulkUpdateProtectionStatus(
-      ipoId,
-      tableName,
-      fieldNames,
-      isProtected
-    );
+    // OD-121: each hold is an admin PICK of the shown value through the ONE write, with the token
+    // that field was opened with (`versions[fieldName]`); a missing token or an empty field refuses
+    // that field. Nothing sets a bare protection row any more.
+    const versions: Record<string, unknown> = body.versions && typeof body.versions === 'object' ? body.versions : {};
+    const refused: Array<{ fieldName: string; kind: string; reason: string }> = [];
+    let updatedCount = 0;
+    for (const fieldName of fieldNames as string[]) {
+      const token = versions[fieldName];
+      const hold = await saveAdminFieldValue({
+        ipoId,
+        tableName,
+        fieldName,
+        mode: { kind: 'holdShown' },
+        expectedVersion: typeof token === 'string' ? token : '',
+        actor: { name: adminContext.adminName, adminId: adminContext.adminId },
+        entryPoint: 'api/admin/protection/fields/bulk',
+      });
+      if (hold.kind === 'OK') updatedCount++;
+      else refused.push({ fieldName, kind: hold.kind, reason: hold.kind === 'CONFLICT' ? 'the field changed after the editor opened' : hold.reason });
+    }
+    const db = await getDb();
 
     // Belt-and-braces: the repository invalidates each field's cache key on
     // write, but a bulk toggle can affect (ipoId, table, field) triples the
@@ -87,6 +100,7 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
         fieldNames,
         isProtected,
         updatedCount,
+        refused,
       },
       message: `${updatedCount} fields ${isProtected ? 'protected' : 'unprotected'} successfully`,
     });

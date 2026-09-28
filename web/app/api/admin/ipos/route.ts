@@ -12,12 +12,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireAdminAuth } from '@/lib/auth/admin-auth';
+import { withAdminAuth, type AdminAuthContext } from '@/lib/middleware/admin-auth';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { invalidateIPOCaches } from '@/lib/cache/ipo-cache-invalidation';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
 import { logger } from '@/lib/logger';
+import { logAudit, AuditActionTypes } from '@/lib/services/audit-log-service';
 
 /**
  * IPO Creation Request Schema
@@ -173,10 +175,8 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/admin/ipos - Create new IPO
  */
-export async function POST(request: NextRequest) {
-  // MUST check admin auth first
-  const authError = await requireAdminAuth();
-  if (authError) return authError;
+export const POST = withAdminAuth(async (request: NextRequest, adminContext: AdminAuthContext) => {
+
 
   const requestId = generateRequestId();
   const startTime = Date.now();
@@ -267,6 +267,22 @@ export async function POST(request: NextRequest) {
     // Create IPO using repository
     const createdIPO = await ipoRepository.create(ipoData);
 
+    // OD-104/OD-113: the creating admin is recorded (name + account id). Creating an IPO by hand is
+    // spec §9.2 item 15 (OD-111, Phase B); until that lands, this row write is outside the ONE field
+    // write and carries no ADMIN provenance or holds — only this attributed audit row.
+    await logAudit({
+      adminUser: adminContext.adminName,
+      actionType: AuditActionTypes.FIELD_UPDATED,
+      ipoId: createdIPO.id,
+      tableName: 'ipos',
+      fieldName: '*',
+      newValue: slug,
+      details: { action: 'IPO_CREATED', adminId: adminContext.adminId, entryPoint: 'api/admin/ipos POST', phaseB: '§9.2 item 15' },
+      ipAddress: request.headers.get('x-forwarded-for') ?? undefined,
+      userAgent: request.headers.get('user-agent') ?? undefined,
+      success: true,
+    });
+
     // Invalidate cache patterns. NOT `redis.del('ipo:list:*')` - DEL matches key
     // names literally, so that deleted a key nothing creates while every real
     // `ipo:list:<filterHash>` survived (#538).
@@ -315,4 +331,4 @@ export async function POST(request: NextRequest) {
         : undefined
     );
   }
-}
+});

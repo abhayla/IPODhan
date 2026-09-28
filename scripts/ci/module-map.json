@@ -63,6 +63,10 @@
       "module": "validation"
     },
     {
+      "glob": "packages/shared/src/utils/ipo-field-checks.ts",
+      "module": "validation"
+    },
+    {
       "glob": "scraper/src/utils/lot-size-validator.ts",
       "module": "validation"
     },

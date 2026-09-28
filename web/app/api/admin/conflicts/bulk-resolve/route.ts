@@ -11,7 +11,8 @@
  *   resolvedSource: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | etc.,
  *   resolutionReason: string,
  *   applyToDatabase: boolean,
- *   protectField?: boolean
+ *   protectField?: boolean,
+ *   versions: Record<conflictId, string>  // each row's `version` from GET /api/admin/conflicts
  * }
  *
  * Response:
@@ -68,9 +69,12 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
       resolutionReason: body.resolutionReason,
       // The actor is the authenticated admin, never a client-supplied name.
       resolvedBy: adminContext.adminName,
+      adminId: adminContext.adminId,
       applyToDatabase: body.applyToDatabase ?? true,
       protectField: body.protectField ?? false,
-    });
+    },
+    // §9.2 item 20: one token per item, as each queue row was opened; a missing one refuses that item.
+    body.versions && typeof body.versions === 'object' ? body.versions : {});
 
     return NextResponse.json({
       success: result.successful > 0,

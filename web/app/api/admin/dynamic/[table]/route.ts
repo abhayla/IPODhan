@@ -13,44 +13,42 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireAdminAuth } from '@/lib/auth/admin-auth';
+import { withAdminAuth, type AdminAuthContext } from '@/lib/middleware/admin-auth';
 import * as schema from '@ipodhan/shared/db/schema';
 import { desc, asc, like, and, or, sql, eq, getTableColumns } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
 import { validateRecord } from '@/lib/admin/dynamic-validation-rules';
 import { logger } from '@/lib/logger';
+import { resolveDynamicTable } from '@/lib/admin/dynamic-table-allow-list';
+import { holdsIpoFieldValues, IPO_FIELD_TABLE_REFUSAL } from '@/lib/admin/ipo-field-tables';
 
 /**
  * Get the table object from schema by name
  */
-function getTableFromSchema(tableName: string): PgTable | null {
-  const table = (schema as any)[tableName];
-  if (!table || typeof table !== 'object') {
-    return null;
-  }
-  return table as PgTable;
+function getTableFromSchema(tableName: string, mode: 'read' | 'write'): PgTable | null {
+  // Explicit allow-list (C1): never `schema[tableName]`; admin/auth tables resolve to null -> 404.
+  return resolveDynamicTable(tableName, mode);
 }
 
 /**
  * POST - Create new record
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ table: string }> }
-) {
+export const POST = withAdminAuth(async (request: NextRequest, _adminContext: AdminAuthContext, { params }: { params: Promise<{ table: string }> }) => {
   try {
-    // Verify admin token
-    const authError = await requireAdminAuth();
-    if (authError) return authError;
 
     const { table: tableName } = await params;
-    const table = getTableFromSchema(tableName);
+    const table = getTableFromSchema(tableName, 'write');
 
     if (!table) {
       return NextResponse.json(
         { success: false, error: `Table "${tableName}" not found` },
         { status: 404 }
       );
+    }
+
+    // §9.2 items 3, 11 (F-170): IPO field values are never written by a direct row write.
+    if (holdsIpoFieldValues(table)) {
+      return NextResponse.json({ success: false, error: 'USE_FIELD_EDITOR', reason: IPO_FIELD_TABLE_REFUSAL }, { status: 400 });
     }
 
     // Parse request body
@@ -126,7 +124,7 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+});
 
 /**
  * DELETE - DISABLED for bulk operations
@@ -137,9 +135,8 @@ export async function POST(
  * This endpoint exists to explicitly reject bulk delete attempts and
  * provide clear error messaging to admins.
  */
-export async function DELETE(request: NextRequest) {
-  const authError = await requireAdminAuth();
-  if (authError) return authError;
+export const DELETE = withAdminAuth(async (request: NextRequest, _adminContext: AdminAuthContext) => {
+
 
   return NextResponse.json(
     {
@@ -150,4 +147,4 @@ export async function DELETE(request: NextRequest) {
     },
     { status: 405 } // Method Not Allowed
   );
-}
+});

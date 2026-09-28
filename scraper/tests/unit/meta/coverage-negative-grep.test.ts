@@ -26,7 +26,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const SCRAPER_ROOT = join(__dirname, '..', '..', '..');
 const REPO_ROOT = join(SCRAPER_ROOT, '..');
-const VALIDATION_FILE = join(SCRAPER_ROOT, 'src', 'utils', 'data-validation.ts');
+// The rules moved to the shared package (contract 2 item A2, OD-108); scraper/src/utils/data-validation.ts re-exports them.
+const VALIDATION_FILE = join(SCRAPER_ROOT, '..', 'packages', 'shared', 'src', 'utils', 'ipo-field-checks.ts');
 const MATRIX_FILE = join(SCRAPER_ROOT, 'src', 'config', 'field-priority-matrix.ts');
 const TESTS_DIR = join(SCRAPER_ROOT, 'tests');
 const ALLOWLIST_PATH = join(REPO_ROOT, 'config', 'coverage-negative-grep-allowlist.json');

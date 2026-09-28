@@ -1,364 +1,124 @@
 /**
- * API Route: Update Field Value for One-to-Many Records
- * PATCH /api/admin/update-field-record
+ * API Route: Update one field of one row in a several-rows-per-IPO table
+ * GET   /api/admin/update-field-record?ipoId&tableName&fieldName&recordId -> current value + version token
+ * PATCH /api/admin/update-field-record                                  -> save through the ONE admin write
  *
- * Updates a field value in one-to-many tables (documents, peer_companies, ipo_reviews)
- * and automatically protects it at the record level
+ * Tables: documents, peer_companies (`ADMIN_ROW_TABLES`). ipo_reviews is retired (OD-125, #1243)
+ * and refused. Every save goes through `saveAdminFieldValue` (spec §9.2 items 3, 11, 20): the row
+ * is addressed by its natural row key (peer_companies: normalized_name, re-derived when company_name
+ * is edited, R-158; documents: the id), and the value, ADMIN provenance under that row key, the
+ * row's hold, the audit row (with the admin id) and the version check commit together.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
 import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
-import { getDocumentsKey, getPeerCompaniesKey, getIPOByIdKey, getReviewInvalidationKeys } from '@/lib/cache/cache-keys';
-import {
-  documents,
-  peerCompanies,
-  ipoReviews,
-  fieldProtectionMetadata
-} from '@ipodhan/shared/db/schema';
-import { eq, and } from 'drizzle-orm';
-import { createFieldProtectionService } from '@ipodhan/shared/admin/field-protection-checker';
-import { logAudit, AuditActionTypes, getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
+import { getDocumentsKey, getPeerCompaniesKey } from '@/lib/cache/cache-keys';
+import { getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
-import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
+import { saveAdminFieldValue, adminWriteResponse } from '@/lib/admin/admin-field-save';
+import { ADMIN_ROW_TABLES, readAdminFieldVersion } from '@ipodhan/shared/services/admin-field-write';
 
 interface UpdateFieldRecordRequest {
-  recordId: string;      // Specific record ID (document, peer, review)
-  ipoId: string;         // IPO ID for context
-  tableName: string;     // documents, peer_companies, ipo_reviews
+  recordId: string;
+  ipoId: string;
+  tableName: string;
   fieldName: string;
-  value: any;
-  autoProtect?: boolean;
+  value?: unknown;
+  /** OD-121: delete the value; the reason is required. */
+  emptyReason?: string;
+  /** 'pick' saves the named source's STORED answer (value sent with a pick is ignored, OD-109). */
+  mode?: 'pick' | 'typed';
+  sourceLabel?: string;
+  sourceNote?: string;
+  /** Legacy name for the typed source note. */
   editNote?: string;
+  overrideReason?: string;
+  expectedVersion: string;
 }
 
-// Table name to Drizzle table mapping for one-to-many tables
-const RECORD_TABLE_MAP: Record<string, any> = {
-  documents,
-  peer_companies: peerCompanies,
-  ipo_reviews: ipoReviews,
-};
+function refuseTable(tableName: string): NextResponse {
+  return NextResponse.json(
+    { error: `Unknown table: ${tableName}. Supported: ${ADMIN_ROW_TABLES.join(', ')}` },
+    { status: 400 }
+  );
+}
 
-// Fields that should not be editable
-const NON_EDITABLE_FIELDS = new Set([
-  'id',
-  'created_at',
-  'updated_at',
-  'ipo_id',
-]);
+/** The read-side cache key each row table's repository reads (shared helpers, never hand-typed). */
+function entityCacheKey(tableName: string, ipoId: string): string | null {
+  if (tableName === 'documents') return getDocumentsKey(ipoId);
+  if (tableName === 'peer_companies') return getPeerCompaniesKey(ipoId);
+  return null;
+}
 
-// Item 01 slice s1b (R-158): a table whose row identity is DERIVED from one
-// of its editable fields (peer_companies.normalizedName from companyName)
-// must recompute the derived field in the SAME update, never leave it
-// stale. Kept a denylist (not converted to an allowlist) because
-// `NON_EDITABLE_FIELDS` covers three tables with different editable-field
-// shapes — an allowlist rewrite is out of scope here. `web/tests/unit/api/
-// admin/update-field-record-derived-key-registry.test.ts` guards this
-// registry two ways: (1) it fails if a NEW `normalized_name` DB column
-// (any Drizzle helper) is added to any of the three tables in
-// `packages/shared/src/db/schema.ts` with no matching entry here, and
-// (2) it fails if an entry here has no matching `...derivedFieldUpdate`
-// spread in that table's branch below. What it still does NOT cover: a
-// table added to `RECORD_TABLE_MAP` without also being added to
-// `ADMIN_WRITABLE_TABLES` in the test file, and any derived-key bug in a
-// table this route cannot write at all. This is a registry-vs-wiring
-// guard, not a proof that every future editable field is safe by
-// construction.
-const DERIVED_KEY_FIELDS: Record<
-  string,
-  { sourceField: string; derivedField: string; derive: (value: unknown) => string | null }
-> = {
-  peer_companies: {
-    sourceField: 'companyName',
-    derivedField: 'normalizedName',
-    derive: (value: unknown) => rowKeyForName(typeof value === 'string' ? value : String(value ?? '')),
-  },
-};
+export const GET = withAdminAuth(async (request: NextRequest) => {
+  try {
+    const url = new URL(request.url);
+    const ipoId = url.searchParams.get('ipoId');
+    const tableName = url.searchParams.get('tableName');
+    const fieldName = url.searchParams.get('fieldName');
+    const recordId = url.searchParams.get('recordId');
+    if (!ipoId || !tableName || !fieldName || !recordId) {
+      return NextResponse.json({ error: 'ipoId, tableName, fieldName and recordId are required' }, { status: 400 });
+    }
+    if (!ADMIN_ROW_TABLES.includes(tableName)) return refuseTable(tableName);
+    const db = await getDb();
+    const version = await readAdminFieldVersion(db as never, ipoId, tableName, fieldName, { recordId });
+    if (!version) return NextResponse.json({ error: `${tableName}.${fieldName} row ${recordId} not found` }, { status: 404 });
+    return NextResponse.json({ success: true, data: version });
+  } catch (error) {
+    return apiErrorResponse(error, '/api/admin/update-field-record');
+  }
+});
 
-/**
- * PATCH /api/admin/update-field-record
- * Update a field value in a specific record (one-to-many relationship)
- */
 export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) => {
-  let oldValue: any = null;
-  let body: UpdateFieldRecordRequest | null = null;
-
+  let body: UpdateFieldRecordRequest;
   try {
     body = await request.json();
-
-    if (!body) {
-      return NextResponse.json(
-        { error: 'Request body is required' },
-        { status: 400 }
-      );
-    }
-
-    const { recordId, ipoId, tableName, fieldName, value, autoProtect = true, editNote } = body;
-
-    // Validation
+  } catch {
+    return NextResponse.json({ error: 'Request body must be JSON' }, { status: 400 });
+  }
+  try {
+    const { recordId, ipoId, tableName, fieldName } = body ?? ({} as UpdateFieldRecordRequest);
     if (!recordId || !ipoId || !tableName || !fieldName) {
-      return NextResponse.json(
-        { error: 'recordId, ipoId, tableName, and fieldName are required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'recordId, ipoId, tableName, and fieldName are required' }, { status: 400 });
     }
+    if (!ADMIN_ROW_TABLES.includes(tableName)) return refuseTable(tableName);
 
-    // Check if table exists
-    const table = RECORD_TABLE_MAP[tableName];
-    if (!table) {
-      return NextResponse.json(
-        { error: `Unknown table: ${tableName}. Supported: ${Object.keys(RECORD_TABLE_MAP).join(', ')}` },
-        { status: 400 }
-      );
-    }
-
-    // Check if field is editable
-    if (NON_EDITABLE_FIELDS.has(fieldName)) {
-      return NextResponse.json(
-        { error: `Field ${fieldName} is not editable` },
-        { status: 400 }
-      );
-    }
-
-    // Item 01 slice s1b (R-158): editing a field that another column's
-    // value is DERIVED from must recompute the derived column in the same
-    // update — never leave it stale. An admin renaming a peer's
-    // companyName to a name with no identity (blank/whitespace) is
-    // rejected outright: a row with no key is a mistake, not data, and
-    // writing it would either violate slice s2's
-    // `UNIQUE (ipo_id, normalized_name)` constraint or silently collide
-    // with another junk-named row.
-    let derivedFieldUpdate: Record<string, string> | undefined;
-    const derivedKeyRule = DERIVED_KEY_FIELDS[tableName];
-    if (derivedKeyRule && fieldName === derivedKeyRule.sourceField) {
-      const derivedValue = derivedKeyRule.derive(value);
-      if (derivedValue === null) {
-        return NextResponse.json(
-          {
-            error: `Cannot rename ${tableName}.${derivedKeyRule.sourceField} to a value with no identity (empty or whitespace-only)`,
-          },
-          { status: 400 }
-        );
-      }
-      derivedFieldUpdate = { [derivedKeyRule.derivedField]: derivedValue };
-    }
-
-    const db = await getDb();
-    const redis = getRedisClient();
-
-    // Get old value before update (for audit log)
-    try {
-      const existing = await db.select().from(table).where(eq(table.id, recordId)).limit(1);
-      oldValue = existing[0] ? (existing[0] as any)[fieldName] : undefined;
-
-      // Verify the record belongs to the specified IPO
-      if (existing[0] && existing[0].ipoId !== ipoId) {
-        return NextResponse.json(
-          { error: 'Record does not belong to the specified IPO' },
-          { status: 400 }
-        );
-      }
-    } catch (err) {
-      console.warn('[Audit] Failed to get old value:', err);
-    }
-
-    // Update the specific record
-    let updateResult;
-
-    if (tableName === 'documents') {
-      updateResult = await db
-        .update(documents)
-        .set({
-          [fieldName]: value,
-          updatedAt: new Date(),
-        } as any)
-        .where(eq(documents.id, recordId))
-        .returning();
-
-    } else if (tableName === 'peer_companies') {
-      updateResult = await db
-        .update(peerCompanies)
-        .set({
-          [fieldName]: value,
-          ...derivedFieldUpdate,
-          updatedAt: new Date(),
-        } as any)
-        .where(eq(peerCompanies.id, recordId))
-        .returning();
-
-    } else if (tableName === 'ipo_reviews') {
-      updateResult = await db
-        .update(ipoReviews)
-        .set({
-          [fieldName]: value,
-          updatedAt: new Date(),
-        } as any)
-        .where(eq(ipoReviews.id, recordId))
-        .returning();
-    }
-
-    // Check if update was successful
-    if (!updateResult || updateResult.length === 0) {
-      return NextResponse.json(
-        { error: 'Record not found or update failed' },
-        { status: 404 }
-      );
-    }
-
-    // Mark field as manually edited and auto-protect at record level
-    // For one-to-many tables, we need to track the specific record ID
-    const fieldProtectionService = createFieldProtectionService(db, redis);
-
-    // Create a composite key for the protection metadata
-    const compositeTableName = `${tableName}:${recordId}`;
-
-    await db
-      .insert(fieldProtectionMetadata)
-      .values({
-        ipoId,
-        tableName: compositeTableName,  // Store as "documents:record-id"
-        fieldName,
-        isProtected: autoProtect,
-        autoProtected: autoProtect,
-        manuallyEditedAt: new Date(),
-        manuallyEditedBy: adminContext.adminName,
-        editNote,
-      })
-      .onConflictDoUpdate({
-        target: [
-          fieldProtectionMetadata.tableName,
-          fieldProtectionMetadata.fieldName,
-          fieldProtectionMetadata.ipoId,
-        ],
-        set: {
-          isProtected: autoProtect,
-          autoProtected: autoProtect,
-          manuallyEditedAt: new Date(),
-          manuallyEditedBy: adminContext.adminName,
-          editNote,
-          updatedAt: new Date(),
-        },
-      });
-
-    // Invalidate relevant caches
-    try {
-      // The real read-side cache key for each one-to-many table comes from
-      // its own shared key helper — there is no single generic
-      // `<table>:ipo:<id>` shape that every repository reads. Before this
-      // fix, a hand-typed fallback invented a key nothing ever consumed
-      // (e.g. documents' real key is getDocumentsKey(ipoId), not a
-      // table-prefixed ipo-id string), leaving stale rows cached for up to
-      // 1h after an admin edit. Each table is branched explicitly; an
-      // unrecognized table logs instead of inventing a key.
-      const entityKeys: string[] = [];
-      const wildcardPatterns: string[] = [];
-
-      if (tableName === 'documents') {
-        entityKeys.push(getDocumentsKey(ipoId));
-      } else if (tableName === 'peer_companies') {
-        entityKeys.push(getPeerCompaniesKey(ipoId));
-      } else if (tableName === 'ipo_reviews') {
-        for (const key of getReviewInvalidationKeys(ipoId)) {
-          if (key.includes('*')) {
-            wildcardPatterns.push(key);
-          } else {
-            entityKeys.push(key);
-          }
-        }
-      } else {
-        console.warn(
-          `[Admin API] No cache-key mapping for table "${tableName}" — skipping entity-level invalidation`
-        );
-      }
-
-      await redis.del(
-        getIPOByIdKey(ipoId),
-        ...entityKeys,
-        `${tableName}:record:${recordId}`
-      );
-
-      for (const pattern of wildcardPatterns) {
-        const matchingKeys = await redis.keys(pattern);
-        if (matchingKeys.length > 0) {
-          await redis.del(...matchingKeys);
-        }
-      }
-
-      // Invalidate list caches
-      const listKeys = await redis.keys(`${tableName}:list:*`);
-      if (listKeys.length > 0) {
-        await redis.del(...listKeys);
-      }
-    } catch (error) {
-      console.warn('[Admin API] Cache invalidation failed:', error);
-    }
-
-    // Invalidate the field-protection cache the scraper write path reads
-    // (W-58) — the keys above never covered `protection:field:...`, so a
-    // scraper run within PROTECTION_CACHE_TTL kept reading a stale
-    // isProtected:false and overwrote this edit.
-    await fieldProtectionService.invalidateProtectionCache(ipoId, compositeTableName, fieldName);
-
-    console.log(
-      `[Admin API] Record field updated: ${tableName}.${fieldName} = ${value} for record ${recordId} (IPO ${ipoId}) by ${adminContext.adminName}`
-    );
-
-    // Log audit entry
-    await logAudit({
-      adminUser: adminContext.adminName,
-      actionType: AuditActionTypes.FIELD_UPDATED,
+    const mode =
+      body.mode === 'pick'
+        ? { kind: 'pick' as const, sourceLabel: body.sourceLabel ?? '' }
+        : { kind: 'typed' as const, sourceNote: body.sourceNote ?? body.editNote ?? '' };
+    const result = await saveAdminFieldValue({
       ipoId,
       tableName,
+      row: { recordId },
       fieldName,
-      oldValue,
-      newValue: value,
-      details: {
-        recordId,
-        autoProtected: autoProtect,
-        editNote: editNote || null,
-      },
-      ipAddress: getClientIP(request),
-      userAgent: getUserAgent(request),
-      success: true,
+      value: mode.kind === 'pick' ? undefined : body.value,
+      empty: typeof body.emptyReason === 'string' ? { reason: body.emptyReason } : undefined,
+      mode,
+      overrideReason: body.overrideReason,
+      expectedVersion: body.expectedVersion,
+      actor: { name: adminContext.adminName, adminId: adminContext.adminId },
+      entryPoint: 'api/admin/update-field-record',
+      detail: { recordId },
+      ipAddress: getClientIP(request) ?? null,
+      userAgent: getUserAgent(request) ?? null,
     });
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        recordId,
-        ipoId,
-        tableName,
-        fieldName,
-        value,
-        protected: autoProtect,
-      },
-    });
-
-  } catch (error) {
-    console.error('[Admin API] Update field record error:', error);
-
-    // Log failed audit entry
-    if (body) {
-      await logAudit({
-        adminUser: adminContext.adminName,
-        actionType: AuditActionTypes.FIELD_UPDATED,
-        ipoId: body.ipoId,
-        tableName: body.tableName || '',
-        fieldName: body.fieldName || '',
-        oldValue,
-        newValue: body.value,
-        details: {
-          recordId: body.recordId,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        },
-        ipAddress: getClientIP(request),
-        userAgent: getUserAgent(request),
-        success: false,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-      });
+    if (result.kind === 'OK') {
+      const key = entityCacheKey(tableName, ipoId);
+      if (key) {
+        try {
+          await getRedisClient().del(key);
+        } catch (error) {
+          console.warn('[Admin API] row cache drop after commit failed:', error instanceof Error ? error.message : error);
+        }
+      }
     }
-
+    return adminWriteResponse(result, result.kind === 'OK' ? { recordId, rowKey: result.rowKey } : undefined);
+  } catch (error) {
     return apiErrorResponse(error, '/api/admin/update-field-record');
   }
 });

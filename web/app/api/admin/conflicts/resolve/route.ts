@@ -7,18 +7,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
-import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
-import {
-  ipos,
-  fieldProtectionMetadata,
-  financialData,
-  listingPerformance,
-  subscriptions,
-  gmpRecords
-} from '@ipodhan/shared/db/schema';
-import { eq, and } from 'drizzle-orm';
-import { invalidateProtectionCache } from '@/lib/admin/field-protection-checker';
+import { STALE_EDITOR_REASON } from '@ipodhan/shared/services/admin-field-write';
+import { saveAdminFieldValue, adminWriteResponse, unprotectGoneResponse, UNPROTECT_GONE_MESSAGE } from '@/lib/admin/admin-field-save';
 import { logAudit, AuditActionTypes, getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
 import { logger } from '@/lib/logger';
@@ -29,7 +20,10 @@ interface ResolveConflictRequest {
     tableName: string;
     fieldName: string;
     resolution: 'keep_manual' | 'accept_scraper' | 'unprotect';
-    scraperValue?: any; // Value to apply if accepting scraper data
+    /** Ignored (OD-109): accepting loads the scraper source's STORED answer server-side. */
+    scraperValue?: unknown;
+    scraperSource?: string; // The source label of the accepted value (provenance)
+    expectedVersion?: string; // §9.2 item 20: version token when the row was opened
   }>;
 }
 
@@ -59,7 +53,6 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
       );
     }
 
-    const db = await getDb();
     const redis = getRedisClient();
 
     const response: ResolveConflictResponse = {
@@ -71,7 +64,7 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
     // Process each conflict resolution
     for (const conflict of body.conflicts) {
       try {
-        const { ipoId, tableName, fieldName, resolution, scraperValue } = conflict;
+        const { ipoId, tableName, fieldName, resolution } = conflict;
 
         if (resolution === 'keep_manual') {
           // Keep the manual value - already protected, just log the resolution
@@ -93,84 +86,44 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
           response.resolved++;
 
         } else if (resolution === 'accept_scraper') {
-          // Accept scraper value - update field and remove protection
-          if (scraperValue === undefined) {
-            response.failed.push({
-              ipoId,
-              tableName,
-              fieldName,
-              error: 'scraperValue is required when accepting scraper data',
-            });
+          // Accept the scraper source's stored answer (any scraperValue sent is ignored, OD-109).
+          // §9.2 items 3, 11 (OD-121): accepting the scraper's value is an admin PICK of it. It goes
+          // through the ONE admin write (ADMIN provenance, protection kept, audit row, version
+          // check, cache drop); there is no "return to the loop".
+          // §9.2 item 20: the token comes from the client that opened the row; never read here.
+          if (!conflict.expectedVersion) {
+            if (body.conflicts.length === 1) return adminWriteResponse({ kind: 'INVALID', reason: STALE_EDITOR_REASON });
+            response.failed.push({ ipoId, tableName, fieldName, error: STALE_EDITOR_REASON });
             continue;
           }
-
-          // Update the field with scraper value
-          await updateFieldValue(db, ipoId, tableName, fieldName, scraperValue);
-
-          // Remove field protection
-          await db
-            .delete(fieldProtectionMetadata)
-            .where(
-              and(
-                eq(fieldProtectionMetadata.ipoId, ipoId),
-                eq(fieldProtectionMetadata.tableName, tableName),
-                eq(fieldProtectionMetadata.fieldName, fieldName)
-              )
-            );
-
-          // Invalidate cache
-          await invalidateProtectionCache(ipoId, tableName, fieldName);
-
-          // Log audit
-          await logAudit({
-            adminUser: adminContext.adminName,
-            actionType: AuditActionTypes.CONFLICT_RESOLVED,
+          const expectedVersion = conflict.expectedVersion;
+          const write = await saveAdminFieldValue({
             ipoId,
             tableName,
             fieldName,
-            newValue: scraperValue,
-            details: {
-              resolution: 'accept_scraper',
-              reason: 'Admin accepted scraper data over manual value',
-            },
-            ipAddress: getClientIP(request),
-            userAgent: getUserAgent(request),
-            success: true,
+            // M1 / OD-109: the value is the scraper source's STORED answer, loaded in the write's
+            // transaction; the client's scraperValue is never stored as that source's value.
+            mode: { kind: 'pick', sourceLabel: conflict.scraperSource ?? 'scraper' },
+            expectedVersion,
+            actor: { name: adminContext.adminName, adminId: adminContext.adminId },
+            entryPoint: 'api/admin/conflicts/resolve',
+            ipAddress: getClientIP(request) ?? null,
+            userAgent: getUserAgent(request) ?? null,
           });
+          if (write.kind !== 'OK') {
+            if (body.conflicts.length === 1) return adminWriteResponse(write);
+            response.failed.push({ ipoId, tableName, fieldName, error: write.kind === 'CONFLICT' ? 'CONFLICT' : `${write.kind}: ${write.reason}` });
+            continue;
+          }
 
           response.resolved++;
 
         } else if (resolution === 'unprotect') {
-          // Remove protection but keep current value
-          await db
-            .delete(fieldProtectionMetadata)
-            .where(
-              and(
-                eq(fieldProtectionMetadata.ipoId, ipoId),
-                eq(fieldProtectionMetadata.tableName, tableName),
-                eq(fieldProtectionMetadata.fieldName, fieldName)
-              )
-            );
-
-          // Invalidate cache
-          await invalidateProtectionCache(ipoId, tableName, fieldName);
-
-          // Log audit
-          await logAudit({
-            adminUser: adminContext.adminName,
-            actionType: AuditActionTypes.PROTECTION_REMOVED,
-            ipoId,
-            tableName,
-            fieldName,
-            details: {
-              reason: 'Unprotected field to allow future scraper updates',
-            },
-            ipAddress: getClientIP(request),
-            userAgent: getUserAgent(request),
-            success: true,
-          });
-
-          response.resolved++;
+          // §9.2 item 11 (OD-121): there is no "return to the loop". An admin hold is never
+          // released; to remove a value, save it empty through the field editor.
+          if (body.conflicts.length === 1) return unprotectGoneResponse();
+          response.failed.push({ ipoId, tableName, fieldName, error: UNPROTECT_GONE_MESSAGE });
+          continue;
 
         } else {
           response.failed.push({
@@ -218,59 +171,3 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
     return apiErrorResponse(error, '/api/admin/conflicts/resolve');
   }
 });
-
-/**
- * Helper function to update field value in database
- */
-async function updateFieldValue(
-  db: any,
-  ipoId: string,
-  tableName: string,
-  fieldName: string,
-  value: any
-): Promise<void> {
-  // Handle different table types
-  if (tableName === 'ipos') {
-    await db
-      .update(ipos)
-      .set({ [fieldName]: value })
-      .where(eq(ipos.id, ipoId));
-    return;
-  }
-
-  if (tableName === 'financial_data') {
-    await db
-      .update(financialData)
-      .set({ [fieldName]: value })
-      .where(eq(financialData.ipoId, ipoId));
-    return;
-  }
-
-  if (tableName === 'listing_performance') {
-    await db
-      .update(listingPerformance)
-      .set({ [fieldName]: value })
-      .where(eq(listingPerformance.ipoId, ipoId));
-    return;
-  }
-
-  // Note: For time-series tables, this updates ALL records
-  // In practice, you might want to update only the latest
-  if (tableName === 'subscriptions') {
-    await db
-      .update(subscriptions)
-      .set({ [fieldName]: value })
-      .where(eq(subscriptions.ipoId, ipoId));
-    return;
-  }
-
-  if (tableName === 'gmp_records') {
-    await db
-      .update(gmpRecords)
-      .set({ [fieldName]: value })
-      .where(eq(gmpRecords.ipoId, ipoId));
-    return;
-  }
-
-  throw new Error(`Unsupported table for field update: ${tableName}`);
-}

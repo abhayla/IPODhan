@@ -29,6 +29,8 @@ import { adminGet, adminPost } from '@/lib/admin/admin-api-client';
 
 interface Conflict {
   id: string;
+  /** §9.2 item 20: the field's version token as this list was loaded; every resolve sends it back. */
+  version: string | null;
   ipoId: string;
   ipoName: string;
   ipoSlug: string;
@@ -238,9 +240,9 @@ export default function ConflictsPage() {
         conflictId: resolvingConflict.id,
         resolvedSource: chosenSource,
         resolutionReason: resolutionReason,
-        resolvedBy: 'admin', // TODO: Get from auth context
         applyToDatabase,
         protectField,
+        expectedVersion: resolvingConflict.version ?? undefined,
       });
 
       closeResolutionModal();
@@ -274,9 +276,11 @@ export default function ConflictsPage() {
         conflictIds: Array.from(selectedConflicts),
         resolvedSource: source,
         resolutionReason: reason,
-        resolvedBy: 'admin', // TODO: Get from auth context
         applyToDatabase: true,
         protectField: false,
+        versions: Object.fromEntries(
+          conflicts.filter((c) => selectedConflicts.has(c.id)).map((c) => [c.id, c.version ?? undefined])
+        ),
       });
 
       alert(`Resolved ${result.successful} of ${selectedConflicts.size} conflicts`);

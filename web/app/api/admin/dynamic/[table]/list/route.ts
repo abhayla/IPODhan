@@ -13,16 +13,14 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { desc, asc, like, and, or, sql, getTableColumns } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
 import { logger } from '@/lib/logger';
+import { resolveDynamicTable } from '@/lib/admin/dynamic-table-allow-list';
 
 /**
  * Get the table object from schema by name
  */
-function getTableFromSchema(tableName: string): PgTable | null {
-  const table = (schema as any)[tableName];
-  if (!table || typeof table !== 'object') {
-    return null;
-  }
-  return table as PgTable;
+function getTableFromSchema(tableName: string, mode: 'read' | 'write'): PgTable | null {
+  // Explicit allow-list (C1): never `schema[tableName]`; admin/auth tables resolve to null -> 404.
+  return resolveDynamicTable(tableName, mode);
 }
 
 /**
@@ -38,7 +36,7 @@ export async function GET(
     if (authError) return authError;
 
     const { table: tableName } = await params;
-    const table = getTableFromSchema(tableName);
+    const table = getTableFromSchema(tableName, 'read');
 
     if (!table) {
       return NextResponse.json(

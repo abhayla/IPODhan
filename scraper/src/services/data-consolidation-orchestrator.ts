@@ -433,11 +433,17 @@ export class DataConsolidationOrchestrator {
           '[DataConsolidation] Created new IPO with consolidated data'
         );
       } else {
-        // Update existing IPO
-        await this.ipoRepository.update(existingIPO.id, {
-          ...consolidatedIPOData,
-          updatedAt: new Date(),
-        });
+        // Update existing IPO. §9.2 item 19: the protection re-check runs INSIDE the write
+        // transaction (IPORepository.updateHonouringProtection), so an admin save that lands after
+        // the orchestrator's filterProtectedFields read is never overwritten by this cycle.
+        await this.ipoRepository.update(
+          existingIPO.id,
+          {
+            ...consolidatedIPOData,
+            updatedAt: new Date(),
+          },
+          { honourProtection: { source } }
+        );
 
         ipoId = existingIPO.id;
 

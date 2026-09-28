@@ -20,6 +20,8 @@ import { getIPOBySlugKey, getIPOByIdKey, getIPODetailKey } from '@/lib/cache/cac
 import { invalidateIPOCaches } from '@/lib/cache/ipo-cache-invalidation';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { logger } from '@/lib/logger';
+import { withAdminAuth, type AdminAuthContext } from '@/lib/middleware/admin-auth';
+import { saveAdminFieldValues, adminFieldsSaveResponse } from '@/lib/admin/admin-field-save';
 
 /**
  * IPO Update Request Schema (all fields optional)
@@ -178,13 +180,8 @@ export async function GET(
 /**
  * PATCH /api/admin/ipos/[id] - Update existing IPO
  */
-export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
-  // MUST check admin auth first
-  const authError = await requireAdminAuth();
-  if (authError) return authError;
+export const PATCH = withAdminAuth(async (request: NextRequest, adminContext: AdminAuthContext, context: { params: Promise<{ id: string }> }) => {
+
 
   const requestId = generateRequestId();
   const startTime = Date.now();
@@ -219,10 +216,14 @@ export async function PATCH(
       );
     }
 
+    // §9.2 items 3, 20: the save carries a version token per field and a source note (OD-108);
+    // they are not IPO fields, so they are taken off the body before the schema check.
+    const { versions, sourceNote, overrideReason, ...fieldBody } = (body ?? {}) as Record<string, unknown>;
+
     // Validate request body
     let validatedData: IPOUpdateRequest;
     try {
-      validatedData = IPOUpdateSchema.parse(body);
+      validatedData = IPOUpdateSchema.parse(fieldBody);
     } catch (error) {
       if (error instanceof z.ZodError) {
         requestLogger.warn(
@@ -278,28 +279,22 @@ export async function PATCH(
       );
     }
 
-    // Convert date strings to Date objects
-    const updateData: any = { ...validatedData };
-    if (updateData.openDate) {
-      updateData.openDate = new Date(updateData.openDate);
-    }
-    if (updateData.closeDate) {
-      updateData.closeDate = new Date(updateData.closeDate);
-    }
-    if (updateData.listingDate) {
-      updateData.listingDate = new Date(updateData.listingDate);
-    }
-
-    // Update IPO using repository
-    const updatedIPO = await ipoRepository.update(id, updateData);
-
-    // Invalidate cache
-    // One helper for both the exact-name keys and the pattern-matched ones.
-    // The previous last line was `redis.del('ipo:list:*')`, and DEL matches key
-    // names literally - it deleted a key nothing creates and returned 0, while
-    // every real `ipo:list:<filterHash>` key survived the edit (#538).
-    await redis.del(getIPODetailKey(existingIPO.slug));
-    await invalidateIPOCaches(redis, id, existingIPO.slug);
+    // §9.2 items 3, 11: every field goes through the ONE admin write (value + ADMIN provenance +
+    // protection + audit + version check + cache drop). No direct repository update here.
+    const outcome = await saveAdminFieldValues({
+      ipoId: id,
+      tableName: 'ipos',
+      values: validatedData as Record<string, unknown>,
+      versions: versions as Record<string, string | undefined> | undefined,
+      sourceNote: typeof sourceNote === 'string' ? sourceNote : undefined,
+      overrideReason: typeof overrideReason === 'string' ? overrideReason : undefined,
+      actor: { name: adminContext.adminName, adminId: adminContext.adminId },
+      entryPoint: 'api/admin/ipos/[id]',
+      ipAddress: request.headers.get('x-forwarded-for'),
+      userAgent: request.headers.get('user-agent'),
+    });
+    if (outcome.refused) return adminFieldsSaveResponse(outcome);
+    const updatedIPO = await ipoRepository.findById(id);
 
     const duration = Date.now() - startTime;
     requestLogger.info(
@@ -344,4 +339,4 @@ export async function PATCH(
         : undefined
     );
   }
-}
+});

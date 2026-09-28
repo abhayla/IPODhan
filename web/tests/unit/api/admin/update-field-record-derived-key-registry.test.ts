@@ -1,48 +1,29 @@
 // implements: R-158
 /**
- * Guard for the `DERIVED_KEY_FIELDS` registry in
- * `web/app/api/admin/update-field-record/route.ts` (item 01 slice s1b).
+ * Guard for the row-key derivation registry of the ONE admin write
+ * (`packages/shared/src/services/admin-field-write.ts`, `ROW_TABLES[*].derived`, read through
+ * `rowTableDerivedKey`). Round 3 of contract 2 item A2 moved update-field-record onto that
+ * function, so the registry the route used to keep (`DERIVED_KEY_FIELDS`) now lives there.
  *
- * The route kept `NON_EDITABLE_FIELDS` as a denylist rather than becoming a
- * full allowlist (that table covers three tables with different editable
- * shapes — out of scope for this slice). The blind spot a denylist has is
- * silent: a future editable column whose value another column is DERIVED
- * from (the way `peer_companies.normalizedName` is derived from
- * `companyName`) can be added without anyone updating the recompute logic,
- * quietly reintroducing the stale-key bug this slice fixes.
- *
- * This test closes that blind spot two ways for every table the admin route
- * can write to (`documents`, `peer_companies`, `ipo_reviews` — the
- * `RECORD_TABLE_MAP` keys):
- *
- * 1. Registry presence: any of those tables that gains a `normalized_name`
- *    DB column in `packages/shared/src/db/schema.ts` — under ANY Drizzle
- *    column helper (`varchar`, `text`, or a future one), matched by the
- *    quoted DB column name rather than by helper name so a new helper can't
- *    reopen this hole — MUST have a matching entry in `DERIVED_KEY_FIELDS`.
- * 2. Wiring: every entry that IS in `DERIVED_KEY_FIELDS` must actually be
- *    applied by that table's branch in the route's update `.set({...})`
- *    call (spreading `...derivedFieldUpdate`). A registry entry with no
- *    schema column, or a registry entry whose branch never spreads the
- *    derived update, proves nothing about correctness — the PATCH handler
- *    is what has to apply it. Checked by reading the route source and
- *    verifying the `if (tableName === '<table>')` branch text contains the
- *    spread; a behavioural test per table is the alternative but would
- *    require seeding real rows for all three record tables through
- *    `withAdminAuth`, which is materially heavier for the same guarantee.
- *
- * Today only `peer_companies` has a `normalized_name` column, it has a
- * registry entry, and that entry is wired into the `peer_companies` branch.
+ * Two checks for every table the admin may edit row by row (`ADMIN_ROW_TABLES`) and for the
+ * retired ipo_reviews table:
+ * 1. Registry presence: a table with a `normalized_name` DB column in schema.ts (any Drizzle
+ *    helper, matched by the quoted DB column name) MUST derive it (`derivedField: normalizedName`).
+ * 2. Wiring: the derivation is applied by the function itself — a rename of the source field to a
+ *    name with no identity is refused before any database access (behavioural, not a text match),
+ *    and the derived column itself is not editable.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import {
+  ADMIN_ROW_TABLES,
+  rowTableDerivedKey,
+  writeAdminFieldValue,
+} from '@ipodhan/shared/services/admin-field-write';
 
 const SCHEMA_PATH = join(__dirname, '../../../../../packages/shared/src/db/schema.ts');
-const ROUTE_PATH = join(__dirname, '../../../../app/api/admin/update-field-record/route.ts');
-
-// RECORD_TABLE_MAP keys (route DB-table name -> schema.ts export name).
-const ADMIN_WRITABLE_TABLES: Record<string, string> = {
+const SCHEMA_EXPORT: Record<string, string> = {
   documents: 'documents',
   peer_companies: 'peerCompanies',
   ipo_reviews: 'ipoReviews',
@@ -51,120 +32,57 @@ const ADMIN_WRITABLE_TABLES: Record<string, string> = {
 function tableDefinitionSource(schemaSrc: string, exportName: string): string {
   const start = schemaSrc.indexOf(`export const ${exportName} = pgTable(`);
   expect(start, `schema.ts export "${exportName}" not found`).toBeGreaterThan(-1);
-  // The next `export const ... = pgTable(` (or EOF) bounds this table's block.
-  const nextExportMatch = schemaSrc.slice(start + 1).search(/export const \w+ = pgTable\(/);
-  const end = nextExportMatch === -1 ? schemaSrc.length : start + 1 + nextExportMatch;
-  return schemaSrc.slice(start, end);
+  const next = schemaSrc.slice(start + 1).search(/export const \w+ = pgTable\(/);
+  return schemaSrc.slice(start, next === -1 ? schemaSrc.length : start + 1 + next);
 }
 
-// Matches a `normalized_name` DB column regardless of the Drizzle column
-// helper used to declare it (varchar, text, or any future helper) — keys
-// on the quoted DB column name, which is what the migration and the DB
-// actually see, not on the TypeScript helper name.
-function hasNormalizedNameDbColumn(tableSrc: string): boolean {
-  return /:\s*\w+\(\s*['"]normalized_name['"]/.test(tableSrc);
-}
+const hasNormalizedNameDbColumn = (src: string) => /:\s*\w+\(\s*['"]normalized_name['"]/.test(src);
 
-// Extracts the top-level table keys of the `DERIVED_KEY_FIELDS` object
-// literal (2-space-indented `tableName: {` lines) — independent of the
-// hardcoded ADMIN_WRITABLE_TABLES list, so an entry for any table is found.
-function derivedKeyFieldsTables(routeSrc: string): string[] {
-  const marker = '> = {';
-  const declStart = routeSrc.indexOf('const DERIVED_KEY_FIELDS');
-  expect(declStart, 'route.ts has no DERIVED_KEY_FIELDS declaration').toBeGreaterThan(-1);
-  const literalStart = routeSrc.indexOf(marker, declStart);
-  expect(literalStart, 'DERIVED_KEY_FIELDS object literal start not found').toBeGreaterThan(-1);
-  const braceStart = literalStart + marker.length - 1; // index of the `{`
+const untouchable = new Proxy({}, {
+  get: () => {
+    throw new Error('db touched before validation finished');
+  },
+}) as never;
 
-  let depth = 0;
-  let i = braceStart;
-  for (; i < routeSrc.length; i++) {
-    if (routeSrc[i] === '{') depth++;
-    else if (routeSrc[i] === '}') {
-      depth--;
-      if (depth === 0) break;
-    }
-  }
-  const body = routeSrc.slice(braceStart + 1, i);
-
-  const tables: string[] = [];
-  const keyRe = /^\s{2}(\w+):\s*\{/gm;
-  let m: RegExpExecArray | null;
-  while ((m = keyRe.exec(body)) !== null) {
-    tables.push(m[1]);
-  }
-  return tables;
-}
-
-// Bounds the `if (tableName === '<dbTableName>') { ... }` (or `else if`)
-// branch text in the route's update block, by brace-matching from the
-// first `{` after the condition.
-function routeBranchSource(routeSrc: string, dbTableName: string): string {
-  const marker = `tableName === '${dbTableName}'`;
-  const condIdx = routeSrc.indexOf(marker);
-  expect(condIdx, `route.ts has no "${marker}" branch condition`).toBeGreaterThan(-1);
-  const braceStart = routeSrc.indexOf('{', condIdx);
-  expect(braceStart, `no branch body found after "${marker}"`).toBeGreaterThan(-1);
-
-  let depth = 0;
-  let i = braceStart;
-  for (; i < routeSrc.length; i++) {
-    if (routeSrc[i] === '{') depth++;
-    else if (routeSrc[i] === '}') {
-      depth--;
-      if (depth === 0) break;
-    }
-  }
-  return routeSrc.slice(braceStart, i + 1);
-}
-
-describe('admin update-field-record DERIVED_KEY_FIELDS registry stays in lock-step with schema.ts', () => {
+describe('admin row-table key derivation registry stays in lock-step with schema.ts', () => {
   const schemaSrc = readFileSync(SCHEMA_PATH, 'utf-8');
-  const routeSrc = readFileSync(ROUTE_PATH, 'utf-8');
 
-  it.each(Object.entries(ADMIN_WRITABLE_TABLES))(
-    'table "%s" (schema export %s): a normalized_name column requires a DERIVED_KEY_FIELDS entry',
-    (dbTableName, schemaExportName) => {
-      const tableSrc = tableDefinitionSource(schemaSrc, schemaExportName);
+  it('ADMIN_ROW_TABLES is exactly documents + peer_companies (ipo_reviews retired, OD-125)', () => {
+    expect([...ADMIN_ROW_TABLES].sort()).toEqual(['documents', 'peer_companies']);
+  });
 
-      if (!hasNormalizedNameDbColumn(tableSrc)) {
-        // Nothing to guard for this table today.
-        return;
-      }
-
-      const registryHasEntry = new RegExp(
-        `DERIVED_KEY_FIELDS[\\s\\S]*?\\b${dbTableName}\\s*:\\s*\\{`
-      ).test(routeSrc);
-      expect(
-        registryHasEntry,
-        `schema.ts added a normalized_name column to "${dbTableName}" but ` +
-          `web/app/api/admin/update-field-record/route.ts DERIVED_KEY_FIELDS has no entry for it`
-      ).toBe(true);
+  it.each(Object.entries(SCHEMA_EXPORT))(
+    'table "%s" (schema export %s): a normalized_name column requires a derivation entry',
+    (dbTableName, exportName) => {
+      const has = hasNormalizedNameDbColumn(tableDefinitionSource(schemaSrc, exportName));
+      if (!has || !ADMIN_ROW_TABLES.includes(dbTableName)) return;
+      expect(rowTableDerivedKey(dbTableName)).toEqual(expect.objectContaining({ derivedField: 'normalizedName' }));
     }
   );
 
-  const registeredTables = derivedKeyFieldsTables(routeSrc);
-
-  it('DERIVED_KEY_FIELDS has at least one entry to check wiring for', () => {
-    // Sanity check that extraction itself works — if this goes empty while
-    // peer_companies still has a real entry, the extractor regressed and
-    // the wiring test below would silently check nothing.
-    expect(registeredTables.length).toBeGreaterThan(0);
+  it('peer_companies has a normalized_name column and derives it (the guard is not vacuous)', () => {
+    expect(hasNormalizedNameDbColumn(tableDefinitionSource(schemaSrc, 'peerCompanies'))).toBe(true);
+    expect(rowTableDerivedKey('peer_companies')).toEqual({ sourceField: 'companyName', derivedField: 'normalizedName' });
   });
 
-  it.each(registeredTables)(
-    'DERIVED_KEY_FIELDS entry for table "%s" is applied by its route branch (spreads ...derivedFieldUpdate)',
-    (dbTableName) => {
-      const branchSrc = routeBranchSource(routeSrc, dbTableName);
-      const appliesDerivedUpdate = /\.\.\.derivedFieldUpdate/.test(branchSrc);
-      expect(
-        appliesDerivedUpdate,
-        `DERIVED_KEY_FIELDS has an entry for "${dbTableName}" but the ` +
-          `tableName === '${dbTableName}' branch in ` +
-          `web/app/api/admin/update-field-record/route.ts never spreads ` +
-          `...derivedFieldUpdate into its .set({...}) call — the derived ` +
-          `column would go stale`
-      ).toBe(true);
+  it.each(ADMIN_ROW_TABLES.filter((t) => rowTableDerivedKey(t)))(
+    'the derivation for "%s" is applied: a no-identity rename is refused before any db access',
+    async (tableName) => {
+      const { sourceField, derivedField } = rowTableDerivedKey(tableName)!;
+      const common = {
+        ipoId: 'i',
+        tableName,
+        row: { recordId: 'r' },
+        mode: { kind: 'typed' as const, sourceNote: 'RHP p1' },
+        expectedVersion: 'v',
+        actor: { name: 'a', adminId: 'admin-t1' },
+        entryPoint: 't',
+      };
+      const r = await writeAdminFieldValue(untouchable, { ...common, fieldName: sourceField, value: '   ' });
+      expect(r.kind).toBe('INVALID');
+      expect((r as { reason: string }).reason).toContain('identity');
+      const direct = await writeAdminFieldValue(untouchable, { ...common, fieldName: derivedField, value: 'x' });
+      expect((direct as { reason: string }).reason).toContain('not editable');
     }
   );
 });

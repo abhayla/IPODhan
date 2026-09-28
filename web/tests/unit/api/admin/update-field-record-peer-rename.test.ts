@@ -1,165 +1,82 @@
 // implements: R-158
 /**
- * Admin field-edit route — peer_companies rename recomputes the row key.
- *
- * RCA (item 01 slice s1b): PATCH /api/admin/update-field-record sets
- * `[fieldName]: value` on peer_companies with no awareness of
- * `normalized_name`. An admin correcting "Acme Ltd" to "Beta Industries
- * Ltd" left the row keyed `acme` — provenance names the wrong company, and
- * slice s2's `UNIQUE (ipo_id, normalized_name)` constraint guards nothing
- * for a renamed row. This pins: (1) editing `companyName` recomputes
- * `normalizedName` via the SAME shared `rowKeyForName` function in the same
- * update; (2) a rename to a name with no identity (blank/whitespace) is
- * REJECTED — the edit never reaches the database.
+ * PATCH /api/admin/update-field-record (round 3, contract 2 item A2): the route is a thin entry
+ * point into the ONE admin write. It addresses the row by its record id, passes the authenticated
+ * admin (name AND id) as the actor, and maps the result. The peer rename -> row-key re-derivation
+ * itself lives in the shared function (update-field-record-derived-key-registry.test.ts, and the
+ * ipodhan_test integration test, which renames a peer and reads provenance + hold under the new key).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Each file's first test dynamically imports a route module (its whole graph); on a loaded
+// machine that alone can pass 5 s, so these files get a longer per-test limit.
+vi.setConfig({ testTimeout: 30_000 });
 import { NextRequest } from 'next/server';
-import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
+import { getPeerCompaniesKey } from '@/lib/cache/cache-keys';
 
 vi.mock('@/lib/middleware/admin-auth', () => ({
   withAdminAuth: (handler: any) => (request: any, ...args: any[]) =>
-    handler(request, { adminId: 'admin-1', adminName: 'Admin', isAuthenticated: true }, ...args),
+    handler(request, { adminId: 'admin-7', adminName: 'Asha', isAuthenticated: true }, ...args),
 }));
 
-vi.mock('@/lib/services/audit-log-service', () => ({
-  logAudit: vi.fn().mockResolvedValue(undefined),
-  AuditActionTypes: { FIELD_UPDATED: 'FIELD_UPDATED' },
-  getClientIP: vi.fn().mockReturnValue('127.0.0.1'),
-  getUserAgent: vi.fn().mockReturnValue('vitest'),
+const del = vi.fn().mockResolvedValue(1);
+vi.mock('@/lib/cache/redis-client', () => ({ getRedisClient: vi.fn(() => ({ del })) }));
+
+const save = vi.fn();
+vi.mock('@/lib/admin/admin-field-save', async (orig) => ({
+  ...(await orig<object>()),
+  saveAdminFieldValue: (...a: unknown[]) => save(...a),
 }));
 
-vi.mock('@ipodhan/shared/admin/field-protection-checker', () => ({
-  createFieldProtectionService: vi.fn(() => ({
-    invalidateProtectionCache: vi.fn().mockResolvedValue(undefined),
-  })),
-}));
+const req = (body: object) =>
+  new NextRequest('http://localhost/api/admin/update-field-record', { method: 'PATCH', body: JSON.stringify(body) });
 
-const mockRedis = {
-  del: vi.fn().mockResolvedValue(undefined),
-  keys: vi.fn().mockResolvedValue([]),
-};
-vi.mock('@/lib/cache/redis-client', () => ({
-  getRedisClient: vi.fn(() => mockRedis),
-}));
-
-// Chainable query-builder mock. `select().from().where().limit()` resolves
-// the "existing row" lookup; `update().set().where().returning()` resolves
-// the update; `insert().values().onConflictDoUpdate()` resolves the
-// field-protection-metadata upsert.
-const existingRow = {
-  id: 'peer-1',
-  ipoId: 'ipo-1',
-  companyName: 'Acme Ltd',
-  normalizedName: 'acme',
-};
-
-let lastUpdateSet: Record<string, unknown> | null = null;
-
-function buildMockDb() {
-  lastUpdateSet = null;
-  return {
-    select: vi.fn(() => ({
-      from: vi.fn(() => ({
-        where: vi.fn(() => ({
-          limit: vi.fn().mockResolvedValue([existingRow]),
-        })),
-      })),
-    })),
-    update: vi.fn(() => ({
-      set: vi.fn((setObj: Record<string, unknown>) => {
-        lastUpdateSet = setObj;
-        return {
-          where: vi.fn(() => ({
-            returning: vi.fn().mockResolvedValue([{ ...existingRow, ...setObj }]),
-          })),
-        };
-      }),
-    })),
-    insert: vi.fn(() => ({
-      values: vi.fn(() => ({
-        onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
-      })),
-    })),
-  };
-}
-
-let mockDb = buildMockDb();
-vi.mock('@/lib/db', () => ({
-  getDb: vi.fn(() => Promise.resolve(mockDb)),
-}));
-
-describe('PATCH /api/admin/update-field-record — peer_companies rename', () => {
-  beforeEach(async () => {
+describe('PATCH /api/admin/update-field-record goes through the ONE admin write', () => {
+  beforeEach(() => {
     vi.clearAllMocks();
-    mockDb = buildMockDb();
-    const dbModule: any = await import('@/lib/db');
-    dbModule.getDb.mockImplementation(() => Promise.resolve(mockDb));
   });
 
-  it('recomputes normalizedName via rowKeyForName when companyName is renamed', async () => {
-    const { PATCH } = await import('@/app/api/admin/update-field-record/route');
-
-    const request = new NextRequest('http://localhost/api/admin/update-field-record', {
-      method: 'PATCH',
-      body: JSON.stringify({
-        recordId: 'peer-1',
-        ipoId: 'ipo-1',
-        tableName: 'peer_companies',
-        fieldName: 'companyName',
-        value: 'Beta Industries Ltd',
-      }),
+  it('passes the row, the value and the authenticated admin (name + id); drops the peer cache key', async () => {
+    save.mockResolvedValue({
+      kind: 'OK', ipoId: 'ipo-1', slug: 's', tableName: 'peer_companies', fieldName: 'companyName',
+      rowKey: 'beta industries', oldValue: 'Acme Ltd', newValue: 'Beta Industries Ltd', version: 'v2',
     });
-
-    const response = await PATCH(request);
-    const json = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(lastUpdateSet).not.toBeNull();
-    expect(lastUpdateSet!.companyName).toBe('Beta Industries Ltd');
-    expect(lastUpdateSet!.normalizedName).toBe(rowKeyForName('Beta Industries Ltd'));
-    expect(lastUpdateSet!.normalizedName).not.toBe('acme');
-    expect(json.success).toBe(true);
+    const { PATCH } = await import('@/app/api/admin/update-field-record/route');
+    const res = await PATCH(req({
+      recordId: 'peer-1', ipoId: 'ipo-1', tableName: 'peer_companies', fieldName: 'companyName',
+      value: 'Beta Industries Ltd', sourceNote: 'RHP p.212', expectedVersion: 'v1',
+    }));
+    expect(res.status).toBe(200);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0][0]).toMatchObject({
+      ipoId: 'ipo-1',
+      tableName: 'peer_companies',
+      row: { recordId: 'peer-1' },
+      fieldName: 'companyName',
+      value: 'Beta Industries Ltd',
+      expectedVersion: 'v1',
+      actor: { name: 'Asha', adminId: 'admin-7' },
+      mode: { kind: 'typed', sourceNote: 'RHP p.212' },
+    });
+    expect((await res.json()).data).toMatchObject({ rowKey: 'beta industries', recordId: 'peer-1' });
+    expect(del).toHaveBeenCalledWith(getPeerCompaniesKey('ipo-1'));
   });
 
-  it('rejects a rename that yields no identity (whitespace-only name)', async () => {
+  it('maps a refusal (e.g. a no-identity rename) to 400 and drops no cache', async () => {
+    save.mockResolvedValue({ kind: 'INVALID', reason: 'peer_companies.companyName needs a value with an identity' });
     const { PATCH } = await import('@/app/api/admin/update-field-record/route');
-
-    const request = new NextRequest('http://localhost/api/admin/update-field-record', {
-      method: 'PATCH',
-      body: JSON.stringify({
-        recordId: 'peer-1',
-        ipoId: 'ipo-1',
-        tableName: 'peer_companies',
-        fieldName: 'companyName',
-        value: '   ',
-      }),
-    });
-
-    const response = await PATCH(request);
-
-    expect(response.status).toBe(400);
-    expect(lastUpdateSet).toBeNull();
+    const res = await PATCH(req({
+      recordId: 'peer-1', ipoId: 'ipo-1', tableName: 'peer_companies', fieldName: 'companyName',
+      value: '   ', sourceNote: 'x', expectedVersion: 'v1',
+    }));
+    expect(res.status).toBe(400);
+    expect(del).not.toHaveBeenCalled();
   });
 
-  it('leaves normalizedName untouched when a different field is edited', async () => {
+  it('a table outside ADMIN_ROW_TABLES never reaches the write', async () => {
     const { PATCH } = await import('@/app/api/admin/update-field-record/route');
-
-    const request = new NextRequest('http://localhost/api/admin/update-field-record', {
-      method: 'PATCH',
-      body: JSON.stringify({
-        recordId: 'peer-1',
-        ipoId: 'ipo-1',
-        tableName: 'peer_companies',
-        fieldName: 'peRatio',
-        value: '42.5',
-      }),
-    });
-
-    const response = await PATCH(request);
-
-    expect(response.status).toBe(200);
-    expect(lastUpdateSet).not.toBeNull();
-    expect(lastUpdateSet!.peRatio).toBe('42.5');
-    expect('normalizedName' in lastUpdateSet!).toBe(false);
+    const res = await PATCH(req({ recordId: 'a', ipoId: 'ipo-1', tableName: 'admin_users', fieldName: 'isOwner', value: true, expectedVersion: 'v' }));
+    expect(res.status).toBe(400);
+    expect(save).not.toHaveBeenCalled();
   });
 });

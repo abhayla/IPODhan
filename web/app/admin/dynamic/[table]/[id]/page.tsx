@@ -37,6 +37,8 @@ export default function DynamicAdminPage() {
 
   const [tableMetadata, setTableMetadata] = useState<TableMetadata | null>(null);
   const [recordData, setRecordData] = useState<Record<string, any> | null>(null);
+  // §9.2 item 20: per-field version tokens as loaded; an IPO-field save sends them back.
+  const [fieldVersions, setFieldVersions] = useState<Record<string, string> | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [availableTables, setAvailableTables] = useState<string[]>([]);
@@ -94,6 +96,7 @@ export default function DynamicAdminPage() {
           // see web/lib/admin/field-labels.ts and dynamic-validation-rules.ts for the rupee-scale
           // label/validation on issue_size.
           setRecordData(response.data);
+          setFieldVersions(response.versions);
         } else {
           throw new Error(response.error || 'Failed to load record');
         }
@@ -143,7 +146,27 @@ export default function DynamicAdminPage() {
     try {
       let response;
       // F-156 round 2: saved as-is, in the same raw rupees the form displayed (no conversion).
-      const toSave = data;
+      let toSave: Record<string, any> = data;
+      if (!isCreateMode && fieldVersions) {
+        // §9.2 items 3, 20 (OD-108): an IPO-field table saves only the CHANGED fields, each with the
+        // token it was loaded with, and a short source note for the typed values.
+        const changed: Record<string, any> = {};
+        for (const [k, v] of Object.entries(data)) {
+          if (JSON.stringify(v ?? null) !== JSON.stringify((recordData as Record<string, any> | null)?.[k] ?? null)) changed[k] = v;
+        }
+        if (Object.keys(changed).length === 0) {
+          alert('Nothing changed.');
+          return;
+        }
+        const sourceNote = prompt('Source of the typed value(s) (document and page, or a URL):');
+        if (!sourceNote || !sourceNote.trim()) return;
+        const versions: Record<string, string> = {};
+        for (const k of Object.keys(changed)) {
+          const camel = k.replace(/_([a-z])/g, (_, l: string) => l.toUpperCase());
+          if (fieldVersions[camel]) versions[camel] = fieldVersions[camel];
+        }
+        toSave = { ...changed, versions, sourceNote };
+      }
 
       if (isCreateMode) {
         // Create new record
@@ -190,6 +213,11 @@ export default function DynamicAdminPage() {
 
   // Handle field protection toggle
   const handleProtectField = async (fieldName: string, isProtected: boolean) => {
+    if (!isProtected) {
+      // §9.2 item 11 (OD-121): the API answers 410; an admin hold is never released from here.
+      alert('Unprotect is not available. To remove a value, save the field empty in the field editor.');
+      return;
+    }
     if (!computedIpoId) {
       alert('Cannot protect fields: IPO ID not found');
       return;
