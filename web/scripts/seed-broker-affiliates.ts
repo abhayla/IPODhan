@@ -54,6 +54,8 @@ import { eq, ne, sql } from 'drizzle-orm';
 import fs from 'node:fs';
 import path from 'node:path';
 import { decideProdWriteRefusal } from './lib/prod-write-guard';
+import { getRedisClient } from '../lib/cache/redis-client';
+import { BrokerAffiliateRepository } from '../lib/repositories/broker-affiliate-repository';
 
 const BROKER_NAME = 'Zerodha';
 const TOOL_NAME = 'seed-broker-affiliates';
@@ -162,20 +164,36 @@ async function seedBrokerAffiliates() {
       console.log(`✓ Wrote ledger of ${existing.length} prior row(s) to ${ledgerPath}`);
     }
 
-    if (otherBrokers.length > 0) {
-      await db.delete(brokerAffiliates).where(ne(brokerAffiliates.brokerName, BROKER_NAME));
-      console.log(`✓ Removed ${otherBrokers.length} non-Zerodha row(s)`);
-    }
+    await db.transaction(async (tx) => {
+      if (otherBrokers.length > 0) {
+        await tx.delete(brokerAffiliates).where(ne(brokerAffiliates.brokerName, BROKER_NAME));
+        console.log(`✓ Removed ${otherBrokers.length} non-Zerodha row(s)`);
+      }
 
-    if (existingZerodha) {
-      await db
-        .update(brokerAffiliates)
-        .set({ ...zerodhaRow, updatedAt: now })
-        .where(eq(brokerAffiliates.brokerName, BROKER_NAME));
-      console.log('✓ Updated existing Zerodha row');
-    } else {
-      await db.insert(brokerAffiliates).values({ ...zerodhaRow, createdAt: now, updatedAt: now });
-      console.log('✓ Inserted Zerodha row');
+      if (existingZerodha) {
+        await tx
+          .update(brokerAffiliates)
+          .set({ ...zerodhaRow, updatedAt: now })
+          .where(eq(brokerAffiliates.brokerName, BROKER_NAME));
+        console.log('✓ Updated existing Zerodha row');
+      } else {
+        await tx.insert(brokerAffiliates).values({ ...zerodhaRow, createdAt: now, updatedAt: now });
+        console.log('✓ Inserted Zerodha row');
+      }
+    });
+
+    // Drop the exact cache key the repository owns (never a DEL pattern) so the
+    // next /affiliates read is not served a stale pre-seed list from Redis.
+    try {
+      const redis = getRedisClient();
+      await redis.del(BrokerAffiliateRepository.ACTIVE_CACHE_KEY);
+      console.log(`✓ Dropped cache key ${BrokerAffiliateRepository.ACTIVE_CACHE_KEY}`);
+    } catch (cacheError) {
+      console.warn(
+        `WARNING: could not drop cache key ${BrokerAffiliateRepository.ACTIVE_CACHE_KEY} ` +
+          `(Redis unreachable) — it will expire on its own in 30 minutes (TTL). Cause:`,
+        cacheError
+      );
     }
 
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);

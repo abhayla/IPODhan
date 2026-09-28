@@ -57,4 +57,24 @@ describe('decideProdWriteRefusal', () => {
     });
     expect(result.refuse).toBe(true);
   });
+
+  it('refuses an empty dbName even without --allow-prod (Tier A finding 1)', () => {
+    const result = decideProdWriteRefusal({
+      apply: true,
+      dbName: '',
+      allowProd: false,
+    });
+    expect(result.refuse).toBe(true);
+    expect(result.reason).toContain('could not determine current_database()');
+  });
+
+  it('refuses a whitespace-only dbName even WITH --allow-prod (Tier A finding 1)', () => {
+    const result = decideProdWriteRefusal({
+      apply: true,
+      dbName: '  ',
+      allowProd: true,
+    });
+    expect(result.refuse).toBe(true);
+    expect(result.reason).toContain('could not determine current_database()');
+  });
 });

@@ -10,6 +10,13 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import * as drizzleOrm from 'drizzle-orm';
+
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('drizzle-orm')>();
+  return { ...actual, ilike: vi.fn(actual.ilike) };
+});
+
 import { BrokerAffiliateRepository } from '@/lib/repositories/broker-affiliate-repository';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
@@ -249,6 +256,16 @@ describe('BrokerAffiliateRepository', () => {
       // Assert: Should still return data from DB
       expect(result).toHaveLength(1);
       expect(result[0].brokerName).toBe('Zerodha');
+    });
+  });
+
+  describe('#97 class B4 finding 2: Zerodha-only filter', () => {
+    it('filters to brokerName ILIKE Zerodha on cache miss (every reader path)', async () => {
+      mockRedis.get.mockResolvedValue(null);
+
+      await repository.findAllActive();
+
+      expect(drizzleOrm.ilike).toHaveBeenCalledWith(schema.brokerAffiliates.brokerName, 'Zerodha');
     });
   });
 

@@ -8,10 +8,20 @@
 
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, and, ilike } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { BaseRepository } from './base-repository';
 import { CacheTTL } from '../cache/cache-keys';
+
+/**
+ * IPODhan has a real partner link only for Zerodha (owner decision
+ * 2026-09-28, issue #97). Every reader path (this repository, via
+ * `getActiveBrokers` / `/affiliates`) filters to Zerodha here so that a row
+ * left over from the old multi-broker seed — or a release that deploys
+ * before `seed-broker-affiliates.ts --apply` runs — can never render on the
+ * live page (#97 class B4 finding 2).
+ */
+const AFFILIATE_BROKER_NAME = 'Zerodha';
 
 /**
  * BrokerAffiliate type (inferred from database schema)
@@ -22,6 +32,9 @@ export type BrokerAffiliate = typeof schema.brokerAffiliates.$inferSelect;
  * Repository for managing broker affiliate data
  */
 export class BrokerAffiliateRepository extends BaseRepository {
+  /** The exact cache key this repository reads/writes — never a DEL pattern. */
+  static readonly ACTIVE_CACHE_KEY = 'broker:affiliates:active';
+
   constructor(
     protected db: NodePgDatabase<typeof schema>,
     protected redis: Redis
@@ -30,18 +43,16 @@ export class BrokerAffiliateRepository extends BaseRepository {
   }
 
   /**
-   * Find all active broker affiliates, sorted by display order
+   * Find all active, Zerodha-only broker affiliates, sorted by display order
    *
    * Uses cache with 30-minute TTL.
    * Cache key: `broker:affiliates:active`
    *
-   * @returns Array of active broker affiliates sorted by display_order ASC
+   * @returns Array of active Zerodha broker-affiliate rows sorted by display_order ASC
    */
   async findAllActive(): Promise<BrokerAffiliate[]> {
-    const cacheKey = 'broker:affiliates:active';
-
     return this.getFromCache(
-      cacheKey,
+      BrokerAffiliateRepository.ACTIVE_CACHE_KEY,
       async () => {
         return this.executeQuery(
           'BrokerAffiliateRepository.findAllActive',
@@ -49,7 +60,12 @@ export class BrokerAffiliateRepository extends BaseRepository {
             const results = await this.db
               .select()
               .from(schema.brokerAffiliates)
-              .where(eq(schema.brokerAffiliates.active, true))
+              .where(
+                and(
+                  eq(schema.brokerAffiliates.active, true),
+                  ilike(schema.brokerAffiliates.brokerName, AFFILIATE_BROKER_NAME)
+                )
+              )
               .orderBy(asc(schema.brokerAffiliates.displayOrder));
 
             return results;
@@ -67,6 +83,6 @@ export class BrokerAffiliateRepository extends BaseRepository {
    * Should be called when broker data is updated in the database.
    */
   async invalidateCache(): Promise<void> {
-    await this.deleteCache('broker:affiliates:active');
+    await this.deleteCache(BrokerAffiliateRepository.ACTIVE_CACHE_KEY);
   }
 }

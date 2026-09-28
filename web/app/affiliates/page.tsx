@@ -129,7 +129,7 @@ export default async function AffiliatesPage() {
                   Are there any charges for IPO applications?
                 </h3>
                 <p className="text-gray-600 dark:text-gray-400">
-                  Most brokers don't charge for IPO applications; you only pay if you get allotment. Some brokers may charge nominal processing fees -- check with your broker.
+                  Check your broker's charges for IPO applications before you apply -- fees vary by broker.
                 </p>
               </div>
             </div>

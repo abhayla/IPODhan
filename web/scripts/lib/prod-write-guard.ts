@@ -25,9 +25,18 @@ export function decideProdWriteRefusal(input: {
   toolName?: string;
 }): { refuse: boolean; reason?: string } {
   if (!input.apply) return { refuse: false }; // a dry run writes nothing — nothing to refuse
-  const isProdDb = (input.dbName ?? '').toLowerCase() === PRODUCTION_DATABASE_NAME;
+  const prefix = input.toolName ? `${input.toolName}: ` : '';
+  const trimmedDbName = (input.dbName ?? '').trim();
+  if (trimmedDbName === '') {
+    // An unknown current_database() is refused even with --allow-prod: --allow-prod
+    // authorizes writing to a KNOWN production database, never to an unidentified one.
+    return {
+      refuse: true,
+      reason: `${prefix}refusing to APPLY writes — could not determine current_database() (got "${input.dbName ?? ''}").`,
+    };
+  }
+  const isProdDb = trimmedDbName.toLowerCase() === PRODUCTION_DATABASE_NAME;
   if (isProdDb && !input.allowProd) {
-    const prefix = input.toolName ? `${input.toolName}: ` : '';
     return {
       refuse: true,
       reason:
