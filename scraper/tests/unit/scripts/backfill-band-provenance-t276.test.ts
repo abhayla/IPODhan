@@ -143,7 +143,7 @@ describe('upsertBandFieldSourceProvenance (#165 F1 — red-then-green)', () => {
     const where = vi.fn().mockReturnValue({ limit });
     const from = vi.fn().mockReturnValue({ where });
     const select = vi.fn().mockReturnValue({ from });
-    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const onConflictDoUpdate = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'fs-1' }]) }); // upsertFieldSource reads the written id
     const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
     const insert = vi.fn().mockReturnValue({ values });
     return { select, insert, values, onConflictDoUpdate };

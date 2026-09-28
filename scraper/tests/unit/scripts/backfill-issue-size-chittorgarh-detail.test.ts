@@ -355,7 +355,7 @@ describe('parseSlugArg (T-452: --slug as the LAST argv token used to crash)', ()
 describe('upsertIssueSizeProvenance (T-452: RCA — every WRITE now upserts field_sources in the same transaction)', () => {
   it('inserts with previousSource=null when no field_sources row exists yet (never fabricated), source ADMIN, lineage set', async () => {
     const sel = mockSelectReturning([]); // no existing row
-    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const onConflictDoUpdate = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'fs-1' }]) }); // upsertFieldSource reads the written id
     const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
     const insert = vi.fn().mockReturnValue({ values });
     const txLike = { select: sel.select, insert } as any;
@@ -384,7 +384,7 @@ describe('upsertIssueSizeProvenance (T-452: RCA — every WRITE now upserts fiel
 
   it('carries the EXISTING row source as previousSource, never overwriting it with a guess (still writes ADMIN)', async () => {
     const sel = mockSelectReturning([{ source: 'NSE' }]);
-    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const onConflictDoUpdate = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'fs-1' }]) }); // upsertFieldSource reads the written id
     const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
     const insert = vi.fn().mockReturnValue({ values });
     const txLike = { select: sel.select, insert } as any;
@@ -415,7 +415,7 @@ describe('upsertIssueSizeProvenance (T-452: RCA — every WRITE now upserts fiel
 describe('stampExactMatchProvenance (T-452 round 2, item 1: exact-match ADMIN stamp regardless of existing provenance)', () => {
   it('(a) upgrades an existing CHITTORGARH row to ADMIN when the stored value is exactly the source figure', async () => {
     const sel = mockSelectReturning([{ source: 'CHITTORGARH' }]);
-    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const onConflictDoUpdate = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'fs-1' }]) }); // upsertFieldSource reads the written id
     const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
     const insert = vi.fn().mockReturnValue({ values });
     const txLike = { select: sel.select, insert } as any;
@@ -442,7 +442,7 @@ describe('stampExactMatchProvenance (T-452 round 2, item 1: exact-match ADMIN st
 
   it('(a) upgrades an existing BSE row (Phychem-shaped, live) to ADMIN', async () => {
     const sel = mockSelectReturning([{ source: 'BSE' }]);
-    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const onConflictDoUpdate = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'fs-1' }]) }); // upsertFieldSource reads the written id
     const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
     const insert = vi.fn().mockReturnValue({ values });
     const txLike = { select: sel.select, insert } as any;
@@ -487,7 +487,7 @@ describe('stampExactMatchProvenance (T-452 round 2, item 1: exact-match ADMIN st
 describe('(e) below-floor write path also writes ADMIN (round 2, item 2)', () => {
   it('the ipos-update transaction upserts provenance without a source override — upsertIssueSizeProvenance itself always writes ADMIN', async () => {
     const sel = mockSelectReturning([]);
-    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const onConflictDoUpdate = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'fs-1' }]) }); // upsertFieldSource reads the written id
     const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
     const insert = vi.fn().mockReturnValue({ values });
     const txLike = { select: sel.select, insert } as any;

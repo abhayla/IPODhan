@@ -31,7 +31,7 @@ function renderedSelection() {
 const norm = (t: string) => t.replace(/\s+/g, ' ').trim();
 
 function makeStubDb(rows: Array<{ id: string; closeDate: string; status: string }> = []) {
-  const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+  const onConflictDoUpdate = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'fs-1' }]) }); // upsertFieldSource reads the written id
   const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
   const insert = vi.fn().mockReturnValue({ values });
   const execute = vi.fn().mockResolvedValue({ rows });
