@@ -3077,10 +3077,10 @@ $(awk '/^wait_for_no_live_cron_wake\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
       MUTEX_MAX_WAIT=2; MUTEX_POLL=1; DEPLOY_DRYRUN_CRON_WAKE_PIDS="$1"
       eval "$CRON_WAKE_FNS_30"; eval "${2:-$WAIT_FN_30S}"; wait_for_scraper_idle; echo "RC=$?" ) 2>&1
   }
-  OUT30S_LIVE="$(run_wait_30s 4242)"
-  OUT30S_NONE="$(run_wait_30s '')"
-  OUT30S_OVR="$(DEPLOY_ALLOW_LIVE_RUN=1 run_wait_30s 4242)"
-  OUT30S_UNK="$(run_wait_30s UNKNOWABLE)"
+  OUT30S_LIVE="$(run_wait_30s 4242)" || true
+  OUT30S_NONE="$(run_wait_30s '')" || true
+  OUT30S_OVR="$(DEPLOY_ALLOW_LIVE_RUN=1 run_wait_30s 4242)" || true
+  OUT30S_UNK="$(run_wait_30s UNKNOWABLE)" || true
   # #1259: at the bound the wait now REFUSES (fatal) unless the explicit override.
   if [ "$(emitn "$OUT30S_LIVE" | grep -c 'Cron-launched scraper wake of slot prod in flight (pids: 4242)')" -eq 2 ] \
      && emit "$OUT30S_LIVE" | grep -q "FATAL: refusing to deploy slot prod: a cron-launched scraper run of this slot is live before step 'build' (pids: 4242, still running after 2s" \
@@ -3116,7 +3116,7 @@ $(awk '/^wait_for_no_live_cron_wake\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
     MO_B="$(RELEASE_FN_OVERRIDE30="$M30_ALWAYS" PGREP30=none run_release_locks_30 held-both 0)"
     MO_P="$(RELEASE_FN_OVERRIDE30="$M30_NOUNKNOWN" PGREP30=broken run_release_locks_30 held-both 0)"
     MO_C="$(RELEASE_FN_OVERRIDE30="$M30_NOSTALE" PGREP30=none run_release_locks_30 held-both 0)"
-    MO_W="$(run_wait_30s 4242 "$M30S_NOWAIT")"
+    MO_W="$(run_wait_30s 4242 "$M30S_NOWAIT")" || true
     if emit "$MO_A" | grep -q 'cycle locks released: 2'; then
       pass "case 30t mutation (a): without the live-wake guard a live cron run's locks ARE released — 30m's guard is load-bearing"
     else
@@ -3142,8 +3142,8 @@ $(awk '/^wait_for_no_live_cron_wake\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
     else
       fail "case 30t mutation (wait): the mutant still waited — got: $MO_W"
     fi
-    MO_OVR="$(run_wait_30s 4242 "$M30S_ALWAYSOVR")"
-    MO_UNK="$(run_wait_30s UNKNOWABLE "$M30S_UNKPASS")"
+    MO_OVR="$(run_wait_30s 4242 "$M30S_ALWAYSOVR")" || true
+    MO_UNK="$(run_wait_30s UNKNOWABLE "$M30S_UNKPASS")" || true
     if emit "$MO_OVR" | grep -q 'RC=0' && ! emit "$MO_OVR" | grep -q 'FATAL: refusing'; then
       pass "case 30t mutation (#1259 refuse): an override check that always passes lets a live run through — 30s's refusal assertion is load-bearing"
     else
@@ -4389,8 +4389,7 @@ N40="$(count_releases "$ROOT40/releases")"
 # 40a: a live wake past MAX_WAIT at step 2 -> refuse before pm2 stop, the
 # venv swap, the migrations, the flip and the prune; nothing on disk changes.
 sleep 1.1
-DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40a.log 2>&1
-RC40A=$?
+DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40a.log 2>&1 && RC40A=0 || RC40A=$?
 if [ "$RC40A" -ne 0 ] \
    && grep -q "^FATAL: refusing to deploy slot prod: a cron-launched scraper run of this slot is live before step 'build'" /tmp/deploy-test-40a.log \
    && grep -q 'pids: 4242' /tmp/deploy-test-40a.log \
@@ -4409,8 +4408,7 @@ else
 fi
 
 # 40b: liveness unknowable (pgrep missing/failing) -> refuse the same way.
-DEPLOY_DRYRUN_CRON_WAKE_PIDS=UNKNOWABLE bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40b.log 2>&1
-RC40B=$?
+DEPLOY_DRYRUN_CRON_WAKE_PIDS=UNKNOWABLE bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40b.log 2>&1 && RC40B=0 || RC40B=$?
 if [ "$RC40B" -ne 0 ] \
    && grep -q "^FATAL: refusing to deploy slot prod: .*before step 'build' (liveness unknowable" /tmp/deploy-test-40b.log \
    && ! grep -q 'Setting up scraper Python venv' /tmp/deploy-test-40b.log \
@@ -4428,8 +4426,7 @@ fi
 for STEP40 in venv migrations; do
   sleep 1.1
   DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 DEPLOY_DRYRUN_CRON_WAKE_AT="$STEP40" \
-    bash "$DEPLOY_SCRIPT" prod --dry-run --force >"/tmp/deploy-test-40c-$STEP40.log" 2>&1
-  RC40C=$?
+    bash "$DEPLOY_SCRIPT" prod --dry-run --force >"/tmp/deploy-test-40c-$STEP40.log" 2>&1 && RC40C=0 || RC40C=$?
   L40="/tmp/deploy-test-40c-$STEP40.log"
   VENV_SEEN=0; grep -q 'Setting up scraper Python venv' "$L40" && VENV_SEEN=1
   EXPECT_VENV=0; [ "$STEP40" = "migrations" ] && EXPECT_VENV=1
@@ -4450,8 +4447,7 @@ done
 
 # 40d: the explicit override proceeds, and says so loudly at every checkpoint.
 sleep 1.1
-DEPLOY_ALLOW_LIVE_RUN=1 DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40d.log 2>&1
-RC40D=$?
+DEPLOY_ALLOW_LIVE_RUN=1 DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40d.log 2>&1 && RC40D=0 || RC40D=$?
 if [ "$RC40D" -eq 0 ] \
    && [ "$(grep -c '^WARN: DEPLOY_ALLOW_LIVE_RUN=1: PROCEEDING' /tmp/deploy-test-40d.log)" -eq 3 ] \
    && grep -q '^==> Flipping' /tmp/deploy-test-40d.log; then
@@ -4467,17 +4463,16 @@ fi
 # (DEPLOY_PROC_ROOT; the box reads the real symlink). R1 kept, R2 pruned.
 ROOT40E="$(fresh_root)"
 PROC40E="$(mktemp -d)"
-DEPLOY_ROOT="$ROOT40E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40e-1.log 2>&1
+DEPLOY_ROOT="$ROOT40E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40e-1.log 2>&1 || fail "case 40e: seed deploy 1 failed"
 R1_40E="$(current_target "$ROOT40E/current")"
 sleep 1.1
-DEPLOY_ROOT="$ROOT40E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40e-2.log 2>&1
+DEPLOY_ROOT="$ROOT40E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40e-2.log 2>&1 || fail "case 40e: seed deploy 2 failed"
 R2_40E="$(current_target "$ROOT40E/current")"
 mkdir -p "$PROC40E/4242"
 printf '%s\n' "$R1_40E/scraper" > "$PROC40E/4242/cwd"
 sleep 1.1
 DEPLOY_ROOT="$ROOT40E" DEPLOY_KEEP_RELEASES=1 DEPLOY_ALLOW_LIVE_RUN=1 DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 \
-  DEPLOY_PROC_ROOT="$PROC40E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40e-3.log 2>&1
-RC40E=$?
+  DEPLOY_PROC_ROOT="$PROC40E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40e-3.log 2>&1 && RC40E=0 || RC40E=$?
 if [ "$RC40E" -eq 0 ] && [ -n "$R1_40E" ] && [ "$R1_40E" != "$R2_40E" ] \
    && [ -d "$R1_40E" ] && [ ! -d "$R2_40E" ] \
    && grep -q "keeping $(basename "$R1_40E") (a live cron-launched scraper wake of slot prod runs from it" /tmp/deploy-test-40e-3.log; then
@@ -4492,8 +4487,7 @@ fi
 N40F_BEFORE="$(count_releases "$ROOT40E/releases")"
 sleep 1.1
 DEPLOY_ROOT="$ROOT40E" DEPLOY_KEEP_RELEASES=1 DEPLOY_ALLOW_LIVE_RUN=1 DEPLOY_DRYRUN_CRON_WAKE_PIDS=UNKNOWABLE \
-  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40f.log 2>&1
-RC40F=$?
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40f.log 2>&1 && RC40F=0 || RC40F=$?
 if [ "$RC40F" -eq 0 ] \
    && grep -q '^WARN: prune skipped' /tmp/deploy-test-40f.log \
    && [ "$(count_releases "$ROOT40E/releases")" -eq "$((N40F_BEFORE + 1))" ]; then
