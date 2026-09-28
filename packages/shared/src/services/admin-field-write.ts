@@ -114,6 +114,22 @@ const NON_EDITABLE_FIELDS = new Set([
   'lastManualEditAt',
 ]);
 
+/**
+ * Release 1 (OD-135 scope): `ipos` fields whose edit needs a Phase B mechanism are refused, not
+ * written half-way. An identifier edit must keep the old value as an alias binding still matches
+ * (§9.2 item 26), and a type/segment/venue edit must rebuild the plan's source ranks (§9.2 item 18,
+ * §2.8). Without those, an edit would silently unbind the row or leave stale ranks. Items 26 and 18
+ * remove the matching entries.
+ */
+export const IPO_FIELDS_AWAITING_PHASE_B: Readonly<Record<string, string>> = {
+  cin: 'identifier edits keep the old value as an alias (spec §9.2 item 26, next release)',
+  isin: 'identifier edits keep the old value as an alias (spec §9.2 item 26, next release)',
+  symbol: 'identifier edits keep the old value as an alias (spec §9.2 item 26, next release)',
+  offeringType: 'a type change rebuilds the source plan (spec §9.2 item 18 / §2.8, next release)',
+  segment: 'a segment change rebuilds the source plan (spec §9.2 item 18 / §2.8, next release)',
+  listingExchanges: 'a listing-venue change rebuilds the source plan (spec §9.2 item 18 / §2.8, next release)',
+};
+
 export const ADMIN_FIELD_AUDIT_ACTION = 'Field Updated';
 
 /** §9.2 item 20: a save without the token the editor opened with is refused, never filled in server-side. */
@@ -501,6 +517,9 @@ export async function writeAdminFieldValue(
   const rowSpec = ROW_TABLES[tableName];
   if (NON_EDITABLE_FIELDS.has(fieldName) || (rowSpec && rowSpec.derived?.derivedField === fieldName)) {
     return { kind: 'INVALID', reason: `${tableName}.${fieldName} is not editable` };
+  }
+  if (tableName === 'ipos' && Object.prototype.hasOwnProperty.call(IPO_FIELDS_AWAITING_PHASE_B, fieldName)) {
+    return { kind: 'INVALID', reason: `ipos.${fieldName} is not editable yet: ${IPO_FIELDS_AWAITING_PHASE_B[fieldName]}` };
   }
   if (rowSpec && !input.row?.rowKey && !input.row?.recordId) {
     return { kind: 'INVALID', reason: `${tableName} has several rows per IPO; name the row (rowKey or recordId)` };

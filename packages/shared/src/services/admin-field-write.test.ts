@@ -26,6 +26,12 @@ describe('writeAdminFieldValue refuses before opening a transaction', () => {
     [{ row: { recordId: 'r' } }, 'one row per IPO'],
     [{ tableName: 'peer_companies', row: { recordId: 'r' }, fieldName: 'normalizedName' }, 'not editable'],
     [{ mode: { kind: 'holdShown' }, empty: { reason: 'x' } }, 'cannot also delete'],
+    [{ fieldName: 'cin' }, 'not editable yet'],
+    [{ fieldName: 'isin' }, 'not editable yet'],
+    [{ fieldName: 'symbol' }, 'not editable yet'],
+    [{ fieldName: 'offeringType' }, 'not editable yet'],
+    [{ fieldName: 'segment' }, 'not editable yet'],
+    [{ fieldName: 'listingExchanges' }, 'not editable yet'],
     [{ mode: { kind: 'pick', sourceLabel: 'NSE' }, empty: { reason: 'x' } }, 'cannot also be a pick'],
   ] as const)('%o -> INVALID (%s)', async (over, text) => {
     const r = await writeAdminFieldValue(untouchable, { ...base, ...(over as object) } as AdminFieldWriteInput);
