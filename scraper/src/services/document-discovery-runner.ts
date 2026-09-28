@@ -56,6 +56,7 @@ import {
   sebiListingUrlFor,
   fetchSebiListingRows,
   isSebiListingPage,
+  isSebiNoRecordsPage,
   extractSebiSearchForm,
   type SebiListingRow,
   type SebiFetcher,
@@ -1787,8 +1788,10 @@ export class DocumentDiscoveryRunner {
         // rejected form answers 200 with SEBI's homepage (no table); memoising
         // that spread one IPO's failure to every IPO after it as not_listed. A
         // page-1 GET must also carry the search form, or nobody can search off it.
+        // A zero-result page (form + "No record(s) available.") is a real, shareable answer too.
         const isListing =
-          isSebiListingPage(body) && (init.method !== 'GET' || extractSebiSearchForm(body) !== null);
+          (isSebiListingPage(body) || isSebiNoRecordsPage(body)) &&
+          (init.method !== 'GET' || extractSebiSearchForm(body) !== null);
         if (res.status === 200 && answered && isListing) this.sebiResponses.set(requestKey, { body, answered });
         return { status: res.status, body };
       };

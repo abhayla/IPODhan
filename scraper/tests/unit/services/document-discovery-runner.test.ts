@@ -431,15 +431,20 @@ describe('#620: SEBI walk requests that do not depend on the company are made on
   // the company; everything else is one request per listing per cycle.
   const SEBI_FIXTURES = join(__dirname, '../../fixtures/sebi');
   const PAGE1_HTML = readFileSync(join(SEBI_FIXTURES, 'sebi-drhp-page1-with-form.html'), 'utf8');
+  // Captured live 2026-09-29: SEBI's answer to a search that finds nothing (form +
+  // "No record(s) available.", no table#sample_1).
+  const NO_RECORDS_HTML = readFileSync(join(SEBI_FIXTURES, 'sebi-drhp-search-no-records.html'), 'utf8');
 
-  it('59 unlisted UPCOMING IPOs cost 1 GET + 6 paged POSTs + 59 search POSTs on SEBI, not 8 per IPO', async () => {
+  it('59 unlisted UPCOMING IPOs cost 1 GET + 6 paged POSTs + 59 search POSTs on SEBI, not 8 per IPO, and each is not_listed', async () => {
     const sebiRequests: string[] = [];
     const fetcher: HttpFetcher = async (url, init) => {
       if (url.includes('sebi.gov.in')) {
-        sebiRequests.push(`${init.method ?? 'GET'} ${url} ${String(init.body ?? '')}`);
-        // Real page 1 (with the search form) for every SEBI request: none of the
-        // synthetic companies below is on it, so every walk searches and pages.
-        return { status: 200, contentType: 'text/html', body: Buffer.from(PAGE1_HTML), url };
+        const body = String(init.body ?? '');
+        sebiRequests.push(`${init.method ?? 'GET'} ${url} ${body}`);
+        // A company search answers as the live site does for an unknown name; page 1
+        // and the paged listing answer with the real page 1 (none of the companies is on it).
+        const isSearch = (init.method ?? 'GET') === 'POST' && /search=[^&\s]/.test(body);
+        return { status: 200, contentType: 'text/html', body: Buffer.from(isSearch ? NO_RECORDS_HTML : PAGE1_HTML), url };
       }
       return { status: 404, contentType: 'text/html', body: Buffer.from('nope'), url };
     };
@@ -467,7 +472,16 @@ describe('#620: SEBI walk requests that do not depend on the company are made on
       segment: 'MAINBOARD',
       stage: 'UPCOMING', // DRHP only
     }));
-    for (const ipo of ipos) await runner.runIpo(ipo, []);
+    const results = [];
+    for (const ipo of ipos) results.push(await runner.runIpo(ipo, []));
+
+    // A zero-result search is a real answer: every IPO reads not_listed, none failed.
+    for (const r of results) {
+      const chain = r.attempts.find((x) => x.source === 'CHAIN' && x.outcome.includes('rungs[DRHP]'));
+      expect(chain!.outcome).toContain('SEBI:searched:no_records');
+      expect(chain!.outcome).toContain('SEBI:not_listed');
+      expect(chain!.outcome).not.toContain('not_a_listing');
+    }
 
     const gets = sebiRequests.filter((r) => r.startsWith('GET '));
     const searches = sebiRequests.filter((r) => r.startsWith('POST ') && /search=[^&\s]/.test(r));

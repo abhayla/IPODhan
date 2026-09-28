@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  isSebiNoRecordsPage,
   parseSebiListing,
   matchSebiRow,
   parseSebiDetailPdfUrl,
@@ -339,5 +340,19 @@ describe('fetchSebiListingRows — search then page beyond page 1', () => {
     };
     const result = await fetchSebiListingRows('PRICE_BAND_AD' as never, { fetchImpl });
     expect(result.rungs).toEqual(['SEBI:skipped:not_served_by_sebi']);
+  });
+});
+
+describe('isSebiNoRecordsPage (#620 B7, live capture 2026-09-29)', () => {
+  const dir = join(__dirname, '../../fixtures/sebi');
+  const read = (f: string) => readFileSync(join(dir, f), 'utf8');
+  it('recognises the real zero-result search page', () => {
+    expect(isSebiNoRecordsPage(read('sebi-drhp-search-no-records.html'))).toBe(true);
+  });
+  it('a real listing page is not a zero-result page', () => {
+    expect(isSebiNoRecordsPage(read('sebi-drhp-page1-with-form.html'))).toBe(false);
+  });
+  it('a homepage-like page without the form is not a zero-result page, even with the marker text', () => {
+    expect(isSebiNoRecordsPage('<html><body><div class="pagination_inner"><p>No record(s) available.</p></div></body></html>')).toBe(false);
   });
 });
