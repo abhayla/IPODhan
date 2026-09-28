@@ -42,6 +42,7 @@ import { IPORepository } from '../repositories/ipo-repository';
 import { validateIPOData } from '../utils/ipo-field-checks';
 import { rowKeyForName } from '../utils/company-name-normalizer';
 import { protectionTableName } from './field-hold';
+import { EXCHANGE_OVERRIDE_SOURCES, isExchangeOverrideField, type ExchangeAtSave } from './exchange-override-rule';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -705,6 +706,25 @@ export async function writeAdminFieldValue(
         }
       }
 
+      // OD-106/OD-117: on an E-1 field, record what each exchange said at this save, so a later
+      // exchange answer counts as "newer" only when it differs from this (exchange-override-rule.ts).
+      let exchangeAtSave: ExchangeAtSave | null = null;
+      if (isExchangeOverrideField(tableName, fieldName)) {
+        exchangeAtSave = { NSE: null, BSE: null };
+        for (const source of EXCHANGE_OVERRIDE_SOURCES) {
+          const said = await loadStoredSourceAnswer(tx, {
+            ipoId,
+            tableName,
+            rowKey,
+            fieldName,
+            sqlFieldName: column.name,
+            sourceLabel: source,
+            currentValue: oldValue,
+          });
+          exchangeAtSave[source] = said?.value ?? null;
+        }
+      }
+
       const adminLineage: Record<string, unknown> = {
         method: 'ADMIN_FIELD_WRITE',
         entryPoint: input.entryPoint,
@@ -715,6 +735,7 @@ export async function writeAdminFieldValue(
           : { sourceNote: effectiveMode.sourceNote }),
         ...(input.empty ? { adminEmpty: true, emptyReason: input.empty.reason } : {}),
         ...(rowSpec ? { rowKey, recordId: target.recordId } : {}),
+        ...(exchangeAtSave ? { exchangeAtSave } : {}),
         by: actor.name,
         adminId: actor.adminId,
         ...(input.detail ?? {}),

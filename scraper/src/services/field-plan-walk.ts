@@ -266,6 +266,14 @@ export type ProtectionFilter = (
 export type HeldFieldAnswers = Witness[];
 
 /**
+ * What a held-field hook did. `holdReleased: true` (OD-106: a newer exchange value replaced the
+ * admin value and released the hold) makes the walk release the claim WITHOUT stamping the held
+ * read, so the now-unheld row is walked normally on its next claim instead of waiting for the next
+ * stage change or document.
+ */
+export type HeldFieldHookOutcome = { holdReleased: boolean } | void;
+
+/**
  * The seam for §9.2 item 9 (a newer source value becomes a suggestion in the admin queue) and
  * OD-106/OD-117 (a newer, different exchange date on an E-1 field replaces the admin value).
  * Called once per held field the walk read, after its witnesses were recorded, with this pass's
@@ -278,7 +286,7 @@ export async function onHeldFieldAnswers(
   _rowKey: string,
   _fieldName: string,
   _answers: HeldFieldAnswers
-): Promise<void> {
+): Promise<HeldFieldHookOutcome> {
   // Deliberately empty: see the doc comment.
 }
 
@@ -760,7 +768,7 @@ export async function walkFieldPlanForIPO(
         // to serve a real hold), and the claim is released unrecorded exactly as before.
         // A throw from the read itself (policy resolution, the witness merge) releases the claim
         // on the way out, as every other settle path does, so the row is not stranded claimed.
-        let heldRead = false;
+        let heldRead: false | 'READ' | 'HOLD_RELEASED' = false;
         if (!protectionCheckFailed) {
           try {
             heldRead = await readHeldField(ipoId, plan, deps, resolveIpoType);
@@ -787,7 +795,8 @@ export async function walkFieldPlanForIPO(
         let released: { released: boolean; reason?: string };
         try {
           released =
-            heldRead && deps.fieldPlanRepository.recordHeldFieldRead
+            // OD-106 released the hold: no held-read stamp, so the row is walked normally next time.
+            heldRead === 'READ' && deps.fieldPlanRepository.recordHeldFieldRead
               ? await deps.fieldPlanRepository.recordHeldFieldRead({ planRowId: plan.id, claimToken: plan.claimToken })
               : await deps.fieldPlanRepository.releaseClaimUnrecorded({
                   planRowId: plan.id,
@@ -841,7 +850,7 @@ async function readHeldField(
   plan: any,
   deps: FieldPlanWalkDeps,
   resolveIpoType: () => Promise<ReturnType<typeof resolveIpoTypeKey> | null>
-): Promise<boolean> {
+): Promise<false | 'READ' | 'HOLD_RELEASED'> {
   const resolution = await resolvePolicyForPlan(plan, deps, resolveIpoType);
   if (resolution.outcome === 'IPO_ROW_NOT_FOUND') return false;
   const policy = resolution.policy;
@@ -909,14 +918,16 @@ async function readHeldField(
       'PASS 3: storing an admin-held field witnesses FAILED; the hold is unaffected, the answers are in this line'
     );
   }
+  let holdReleased = false;
   try {
-    await (deps.onHeldFieldAnswers ?? onHeldFieldAnswers)(
+    const outcome = await (deps.onHeldFieldAnswers ?? onHeldFieldAnswers)(
       ipoId,
       plan.tableName,
       plan.rowKey ?? '',
       plan.fieldName,
       witnessShape(answers)
     );
+    holdReleased = typeof outcome === 'object' && outcome !== null && outcome.holdReleased === true;
   } catch (error) {
     logger.warn(
       { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, error: causeOf(error) },
@@ -929,7 +940,7 @@ async function readHeldField(
       ? 'PASS 3: admin-held field read, nothing written; its witnesses were NOT stored (no field_sources row, or the write failed)'
       : 'PASS 3: admin-held field read, nothing written (§2.4 clarification: never WRITE, not never read)'
   );
-  return true;
+  return holdReleased ? 'HOLD_RELEASED' : 'READ';
 }
 
 /**

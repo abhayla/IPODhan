@@ -54,6 +54,10 @@ import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/fie
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { and, eq } from 'drizzle-orm';
 import { protectionTableName } from '@ipodhan/shared/services/field-hold';
+import { applyExchangeOverride } from '@ipodhan/shared/services/exchange-override';
+import { buildExchangeOverrideHook } from './exchange-override-hook.js';
+import { sendOwnerAlert } from './owner-notify.js';
+import { redisClaims } from './live-slot-miss-monitor.js';
 import * as schema from '@ipodhan/shared/db/schema';
 // Deep import, matching `filing-persist-deps.ts`: the barrel exports only the
 // INTERFACE (`IListingPerformanceRepository`), not the class.
@@ -364,8 +368,15 @@ export function buildFieldPlanGapKeySource(params: {
  */
 export function buildFieldPlanWalkHoldDeps(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
-): Pick<FieldPlanWalkDeps, 'protectionFilter' | 'trackHeldFieldWitnesses'> {
+): Pick<FieldPlanWalkDeps, 'protectionFilter' | 'trackHeldFieldWitnesses' | 'onHeldFieldAnswers'> {
   const fieldSources = new FieldSourcesRepository(db as never, redis as never);
+  // OD-106/OD-117: a newer, different NSE/BSE answer on an E-1 field replaces the admin value,
+  // releases the hold and alerts (exchange-override-hook.ts).
+  const onHeldFieldAnswers = buildExchangeOverrideHook({
+    apply: (input) => applyExchangeOverride(db as never, input),
+    send: sendOwnerAlert,
+    ...redisClaims(redis as never),
+  });
   const fpm = schema.fieldProtectionMetadata;
   return {
     protectionFilter: async (ipoId, tableName, fieldName, rowKey = '') => {
@@ -391,6 +402,7 @@ export function buildFieldPlanWalkHoldDeps(
         fieldName: input.fieldName,
         merge: input.merge,
       }),
+    onHeldFieldAnswers,
   };
 }
 

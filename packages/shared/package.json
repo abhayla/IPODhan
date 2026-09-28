@@ -20,6 +20,8 @@
     "./admin/field-protection-checker": "./src/admin/field-protection-checker.ts",
     "./services/corrigendum-suggestions": "./src/services/corrigendum-suggestions.ts",
     "./services/admin-field-write": "./src/services/admin-field-write.ts",
+    "./services/exchange-override": "./src/services/exchange-override.ts",
+    "./services/exchange-override-rule": "./src/services/exchange-override-rule.ts",
     "./services/field-hold": "./src/services/field-hold.ts",
     "./utils/slug": "./src/utils/slug.ts",
     "./utils/ist-day": "./src/utils/ist-day.ts",
