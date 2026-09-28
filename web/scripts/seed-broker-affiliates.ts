@@ -152,8 +152,8 @@ async function seedBrokerAffiliates() {
 
     if (!apply) {
       console.log('\nDry run complete. Re-run with --apply to write these changes.\n');
-      await closePool();
-      return;
+      return; // the finally block closes the pool; closing here too crashed the dry run
+
     }
 
     console.log('\n[2/2] Applying changes...');
