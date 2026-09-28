@@ -130,6 +130,15 @@ export const IPO_FIELDS_AWAITING_PHASE_B: Readonly<Record<string, string>> = {
   listingExchanges: 'a listing-venue change rebuilds the source plan (spec §9.2 item 18 / §2.8, next release)',
 };
 
+/**
+ * The lineage keys an admin write owned before `adminKeys` was recorded on each write. An ADMIN row
+ * written earlier has no `adminKeys`; these are stripped from it on the next admin save instead.
+ */
+const LEGACY_ADMIN_LINEAGE_KEYS = [
+  'method', 'entryPoint', 'mode', 'heldShownValue', 'sourceLabel', 'readDate', 'sourceNote',
+  'adminEmpty', 'emptyReason', 'recordId', 'by', 'adminId',
+];
+
 export const ADMIN_FIELD_AUDIT_ACTION = 'Field Updated';
 
 /** §9.2 item 20: a save without the token the editor opened with is refused, never filled in server-side. */
@@ -698,7 +707,7 @@ export async function writeAdminFieldValue(
         }
       }
 
-      const lineage = {
+      const adminLineage: Record<string, unknown> = {
         method: 'ADMIN_FIELD_WRITE',
         entryPoint: input.entryPoint,
         mode: effectiveMode.kind,
@@ -712,6 +721,9 @@ export async function writeAdminFieldValue(
         adminId: actor.adminId,
         ...(input.detail ?? {}),
       };
+      // `adminKeys` names what THIS admin write owns, so the next admin write can strip exactly those
+      // keys (and nothing a source wrote, e.g. the `docType` filing-persister reads back, #1068).
+      const lineage = { ...adminLineage, adminKeys: Object.keys(adminLineage) };
       const prevSourceRow = await tx
         .select({ source: fieldSources.source })
         .from(fieldSources)
@@ -741,10 +753,11 @@ export async function writeAdminFieldValue(
             confidence: 100,
             previousValue: stringify(oldValue),
             previousSource,
-            // REPLACE (never merge) the lineage on an admin write — a merge lets stale keys from an
-            // earlier save (adminEmpty/emptyReason, sourceNote, sourceLabel/readDate, scraper keys)
-            // survive into a save that no longer means them. History is kept on the audit row, not here.
-            dataLineage: lineage,
+            // Strip the keys the PREVIOUS admin write owned (its `adminKeys`), keep everything a
+            // source wrote (#1068: filing-persister reads `docType` back), then add this write's keys.
+            // So stale admin keys (adminEmpty/emptyReason after a later save, sourceNote after a pick)
+            // never survive, and source provenance is never lost. History is on the audit row.
+            dataLineage: sql`(COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) - COALESCE(ARRAY(SELECT jsonb_array_elements_text(COALESCE(${fieldSources.dataLineage} -> 'adminKeys', ${JSON.stringify(LEGACY_ADMIN_LINEAGE_KEYS)}::jsonb))), '{}'::text[])) || ${JSON.stringify(lineage)}::jsonb`,
             updatedBy: actor.name,
             updatedAt: now,
           } as never,

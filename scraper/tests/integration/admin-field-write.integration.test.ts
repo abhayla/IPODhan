@@ -215,6 +215,34 @@ describe.skipIf(!DATABASE_URL)('A2 admin field write (ipodhan_test)', () => {
     expect(lineage).not.toHaveProperty('readDate');
   });
 
+  it('#1068 + A3: source provenance keys (docType) survive admin saves; the previous admin write\'s own keys do not', async () => {
+    await db.insert(schema.fieldSources).values({
+      ipoId: IPO,
+      tableName: 'ipos',
+      rowKey: '',
+      fieldName: 'registrar',
+      source: 'DRHP',
+      confidence: 90,
+      dataLineage: { docType: 'RHP', method: 'FILING_PERSIST' },
+      updatedBy: 'test',
+    } as never).onConflictDoUpdate({
+      target: [schema.fieldSources.ipoId, schema.fieldSources.tableName, schema.fieldSources.rowKey, schema.fieldSources.fieldName],
+      set: { source: 'DRHP', dataLineage: { docType: 'RHP', method: 'FILING_PERSIST' } } as never,
+    });
+    const v0 = await readAdminFieldVersion(db as never, IPO, 'ipos', 'registrar');
+    const del = await writeAdminFieldValue(db as never, base({ value: undefined, empty: { reason: 'does not apply' }, expectedVersion: v0!.version }));
+    expect(del.kind).toBe('OK');
+    expect(await lineageOf()).toMatchObject({ docType: 'RHP', method: 'ADMIN_FIELD_WRITE', adminEmpty: true });
+
+    const v1 = await readAdminFieldVersion(db as never, IPO, 'ipos', 'registrar');
+    const typed = await writeAdminFieldValue(db as never, base({ value: 'Checked Registrar Ltd', mode: { kind: 'typed', sourceNote: 'RHP p.12' }, expectedVersion: v1!.version }));
+    expect(typed.kind).toBe('OK');
+    const lineage = await lineageOf();
+    expect(lineage).toMatchObject({ docType: 'RHP', mode: 'typed', sourceNote: 'RHP p.12' });
+    expect(lineage).not.toHaveProperty('adminEmpty');
+    expect(lineage).not.toHaveProperty('emptyReason');
+  });
+
   it('row key: a peer_companies field is saved under the row key (provenance, hold, audit, version)', async () => {
     const peer = await seedPeer();
     const v = await readAdminFieldVersion(db as never, IPO, 'peer_companies', 'peRatio', { recordId: peer.id });
