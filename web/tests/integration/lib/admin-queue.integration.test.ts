@@ -176,4 +176,32 @@ describe('admin queue on ipodhan_test (OD-136 order)', () => {
       }
     }
   });
+
+  it('a brand-new IPO created AFTER the setup cache warms is never dropped from the page (A4 review item 1)', async () => {
+    const service = new AdminQueueService(db as never, getRedisClient());
+    await dropQueueCache();
+    // Warm the CacheTTL.ADMIN_QUEUE setup/counts cache with the fixtures that exist right now.
+    await service.getQueue({ page: 1, pageSize: 5 });
+
+    const freshId = randomUUID();
+    const freshSlug = slug('fresh');
+    try {
+      await ipo(freshId, 'fresh', 'UPCOMING', '2026-11-01', '2026-11-05', null);
+      await conflict(freshId, 'issueSize', 'NSE', '1000000', 'BSE', '2000000');
+
+      // The setup cache is still warm (no dropQueueCache() call) — this is exactly the up-to-2-minute
+      // window in which the old code silently dropped the row via `if (!ipo) continue`.
+      const r = await service.getQueue({ page: 1, pageSize: 1000, ipo: freshSlug });
+      const item = r.entries.find((e) => e.type === 'item');
+      expect(item?.type).toBe('item');
+      if (item?.type === 'item') {
+        expect(item.item.ipo.slug).toBe(freshSlug);
+        expect(item.item.ipo.companyName).toBe(`${tag} fresh Ltd`);
+        expect(item.item.ipo.status).toBe('UPCOMING');
+      }
+    } finally {
+      await db.execute(sql`DELETE FROM data_conflicts WHERE ipo_id = ${freshId}`);
+      await db.execute(sql`DELETE FROM ipos WHERE id = ${freshId}`);
+    }
+  });
 });

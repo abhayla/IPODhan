@@ -30,6 +30,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ConflictResolutionService } from '@/lib/services/conflict-resolution';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
+import { getRedisClient } from '@/lib/cache/redis-client';
+import { adminQueueCacheKeys } from '@/lib/cache/cache-keys';
+
+/** See app/api/admin/conflicts/route.ts's dropQueueCache: a resolve with no field value applied
+ * never drops the admin queue cache on its own (item 2, A4 review). Best-effort. */
+async function dropQueueCache(): Promise<void> {
+  try {
+    await getRedisClient().del(...adminQueueCacheKeys());
+  } catch (error) {
+    console.warn('[Conflicts] failed to drop the admin queue cache after a bulk resolve:', error);
+  }
+}
 
 /**
  * POST /api/admin/conflicts/bulk-resolve
@@ -75,6 +87,8 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
     },
     // §9.2 item 20: one token per item, as each queue row was opened; a missing one refuses that item.
     body.versions && typeof body.versions === 'object' ? body.versions : {});
+
+    if (result.successful > 0) await dropQueueCache();
 
     return NextResponse.json({
       success: result.successful > 0,

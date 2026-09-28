@@ -74,6 +74,13 @@ export interface QueuePageRow {
   reason_code: string | null;
   has_flag: boolean | null;
   grp: number;
+  /** The item's/summary's own IPO, carried live on every row (A4 fix: never read from a cached setup). */
+  slug: string | null;
+  company_name: string | null;
+  status: string | null;
+  open_date: string | null;
+  close_date: string | null;
+  listing_date: string | null;
   disagreements: number | null;
   missing: number | null;
   flagged: number | null;
@@ -122,13 +129,13 @@ function queueCte(inp: QueueSqlInputs): SQL {
                   WHEN c.field_name = ANY(${textArray(inp.bookkeepingFields)}) THEN 'F-181'
                   ELSE coalesce(cls.cat, 'disagreement') END AS cat,
              NULL::text AS reason_code, false AS has_flag,
-             i.slug, i.status::text AS status, i.open_date, i.close_date, i.listing_date
+             i.slug, i.company_name, i.status::text AS status, i.open_date, i.close_date, i.listing_date
         FROM data_conflicts c JOIN ipos i ON i.id = c.ipo_id LEFT JOIN cls ON cls.id = c.id::text
        WHERE c.resolved_at IS NULL),
     pl AS (
       SELECT p.id::text AS pid, p.ipo_id::text AS ipo_id, p.table_name, ${camel(sql`p.field_name`)} AS field_name,
              coalesce(p.row_key, '') AS row_key, p.reason_code,
-             i.slug, i.status::text AS status, i.open_date, i.close_date, i.listing_date
+             i.slug, i.company_name, i.status::text AS status, i.open_date, i.close_date, i.listing_date
         FROM ipo_field_plan p JOIN ipos i ON i.id = p.ipo_id
        WHERE p.state IN ('NOT_AVAILABLE_YET', 'CHECK_FAILED', 'EXHAUSTED')),
     plk AS (
@@ -137,22 +144,23 @@ function queueCte(inp: QueueSqlInputs): SQL {
                            AND h.hold_table = CASE WHEN pl.row_key = '' THEN pl.table_name ELSE pl.table_name || ':' || pl.row_key END)),
     items AS (
       SELECT id, ipo_id, table_name, field_name, row_key, cat, reason_code, has_flag,
-             slug, status, open_date, close_date, listing_date FROM conf
+             slug, company_name, status, open_date, close_date, listing_date FROM conf
       UNION ALL
       SELECT 'plan:' || plk.pid, plk.ipo_id, plk.table_name, plk.field_name, plk.row_key, 'missing', plk.reason_code,
              (plk.table_name = 'ipos' AND plk.row_key = ''
               AND EXISTS (SELECT 1 FROM fl WHERE fl.ipo_id = plk.ipo_id AND fl.field_name = plk.field_name)),
-             plk.slug, plk.status, plk.open_date, plk.close_date, plk.listing_date
+             plk.slug, plk.company_name, plk.status, plk.open_date, plk.close_date, plk.listing_date
         FROM plk
       UNION ALL
       SELECT 'flag:' || fl.ipo_id || ':' || fl.field_name, fl.ipo_id, 'ipos', fl.field_name, '', 'flagged', NULL, false,
-             i.slug, i.status::text, i.open_date, i.close_date, i.listing_date
+             i.slug, i.company_name, i.status::text, i.open_date, i.close_date, i.listing_date
         FROM fl JOIN ipos i ON i.id::text = fl.ipo_id
        WHERE NOT EXISTS (SELECT 1 FROM plk WHERE plk.ipo_id = fl.ipo_id AND plk.table_name = 'ipos'
                            AND plk.row_key = '' AND plk.field_name = fl.field_name)),
     q AS (
       SELECT it.id, it.ipo_id, it.table_name, it.field_name, it.row_key, it.cat, it.reason_code, it.has_flag,
-             it.slug, it.listing_date::text AS listing_date,
+             it.slug, it.company_name, it.status, it.open_date::text AS open_date, it.close_date::text AS close_date,
+             it.listing_date::text AS listing_date,
              CASE WHEN it.status NOT IN ('UPCOMING', 'OPEN', 'CLOSED') THEN 3
                   WHEN split_part(it.table_name, ':', 1) || '.' || it.field_name = ANY(${textArray(inp.publicFields)}) THEN 1
                   ELSE 2 END AS grp,
@@ -201,6 +209,20 @@ export class AdminQueuePageRepository extends BaseRepository {
     return this.getFromCache(getAdminQueueSetupKey(), load, CacheTTL.ADMIN_QUEUE);
   }
 
+  /**
+   * A4 fix: the cached setup (flagged values, rule classifications) can be up to
+   * CacheTTL.ADMIN_QUEUE seconds behind a page whose SQL runs live. When a page row names a flag or
+   * rule this cache does not yet know, the caller drops this key so the next `cachedSetup` reloads
+   * fresh, rather than serving a stale reason for the whole TTL.
+   */
+  async dropSetupCache(): Promise<void> {
+    try {
+      await this.redis.del(getAdminQueueSetupKey());
+    } catch (error) {
+      console.warn('[AdminQueue] failed to drop the stale setup cache key:', error);
+    }
+  }
+
   /** counts(), cached for CacheTTL.ADMIN_QUEUE (view-independent); every admin save drops the key. */
   async cachedCounts(inp: QueueSqlInputs): Promise<QueueCountRow[]> {
     return this.getFromCache(getAdminQueueCountsKey(), () => this.counts(inp), CacheTTL.ADMIN_QUEUE);
@@ -227,26 +249,29 @@ export class AdminQueuePageRepository extends BaseRepository {
       ? sql`
       e AS (SELECT 'item' AS entry, row_number() OVER (ORDER BY ${IPO_ITEM_ORDER})::int AS ord, count(*) OVER ()::int AS total,
                    id, ipo_id, table_name, field_name, row_key, cat, reason_code, has_flag, grp,
+                   slug, company_name, status, open_date, close_date, listing_date,
                    NULL::int AS disagreements, NULL::int AS missing, NULL::int AS flagged, NULL::int AS ruled
               FROM f)`
       : sql`
       it AS (SELECT row_number() OVER (ORDER BY ${ITEM_ORDER})::int AS o, f.* FROM f WHERE grp < 3),
-      g3 AS (SELECT ipo_id, slug, listing_date,
+      g3 AS (SELECT ipo_id, slug, company_name, status, open_date, close_date, listing_date,
                     count(*) FILTER (WHERE kind = 'disagreement')::int AS disagreements,
                     count(*) FILTER (WHERE kind = 'missing')::int AS missing,
                     count(*) FILTER (WHERE kind = 'flagged')::int AS flagged,
                     count(*) FILTER (WHERE kind = 'ruled')::int AS ruled
-               FROM f WHERE grp = 3 GROUP BY ipo_id, slug, listing_date),
+               FROM f WHERE grp = 3 GROUP BY ipo_id, slug, company_name, status, open_date, close_date, listing_date),
       g3o AS (SELECT row_number() OVER (ORDER BY listing_date DESC NULLS LAST, slug COLLATE "C")::int AS o, g3.* FROM g3),
       n AS (SELECT (SELECT count(*) FROM it)::int AS items, (SELECT count(*) FROM g3)::int AS ipos),
       e AS (
         SELECT 'item' AS entry, it.o AS ord, (SELECT items + ipos FROM n) AS total,
                id, ipo_id, table_name, field_name, row_key, cat, reason_code, has_flag, grp,
+               slug, company_name, status, open_date, close_date, listing_date,
                NULL::int AS disagreements, NULL::int AS missing, NULL::int AS flagged, NULL::int AS ruled
           FROM it
         UNION ALL
         SELECT 'ipo', (SELECT items FROM n) + g3o.o, (SELECT items + ipos FROM n),
                NULL, ipo_id, NULL, NULL, NULL, NULL, NULL, NULL, 3,
+               slug, company_name, status, open_date, close_date, listing_date,
                disagreements, missing, flagged, ruled
           FROM g3o)`;
     const r = await this.db.execute(sql`${queueCte(inp)},
@@ -254,7 +279,8 @@ export class AdminQueuePageRepository extends BaseRepository {
       ${body}
       SELECT * FROM e WHERE ord > ${offset} AND ord <= ${offset + limit}
       UNION ALL
-      SELECT 'total', 0, (SELECT max(total) FROM e), NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL
+      SELECT 'total', 0, (SELECT max(total) FROM e), NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, 0,
+             NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
       ORDER BY 2`);
     return (r.rows ?? []) as unknown as QueuePageRow[];
   }

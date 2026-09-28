@@ -345,7 +345,7 @@ export class AdminQueueService {
   async getQueue(req: QueueRequest): Promise<QueueResponse> {
     // Computed in SQL (admin-queue-page-repository.ts): only the requested page leaves the database.
     const view: QueueView = { group: req.group, reason: req.reason, kind: req.kind, ipo: req.ipo };
-    const { inputs, flaggedByKey, ipoById } = await this.sqlInputs();
+    const { inputs, flaggedByKey } = await this.sqlInputs();
     const sqlView = toSqlView(view);
     const [countRows, first] = await Promise.all([
       this.pages.cachedCounts(inputs),
@@ -355,18 +355,26 @@ export class AdminQueueService {
     const totalPages = Math.max(1, Math.ceil(totalEntries / req.pageSize));
     const pageNo = Math.min(Math.max(1, req.page), totalPages);
     const rows = pageNo === req.page ? first : await this.pages.page(inputs, sqlView, (pageNo - 1) * req.pageSize, req.pageSize);
-    const entries = await this.entriesFromRows(rows.filter((r) => r.ord > 0), flaggedByKey, ipoById);
-    await this.attachStoredValues(entries);
-    return { counts: countsFromRows(countRows), view, page: pageNo, pageSize: req.pageSize, totalEntries, totalPages, entries };
+    const pageRows = rows.filter((r) => r.ord > 0);
+    let built = await this.entriesFromRows(pageRows, flaggedByKey);
+    if (built.flagMiss) {
+      // A row named a flagged value or rule class the cached setup (up to CacheTTL.ADMIN_QUEUE
+      // seconds old) does not carry: drop the stale key and rebuild the JS-side lookups ONCE,
+      // rather than showing a wrong or missing reason for the rest of the TTL.
+      await this.pages.dropSetupCache();
+      const fresh = await this.sqlInputs();
+      built = await this.entriesFromRows(pageRows, fresh.flaggedByKey);
+    }
+    await this.attachStoredValues(built.entries);
+    return { counts: countsFromRows(countRows), view, page: pageNo, pageSize: req.pageSize, totalEntries, totalPages, entries: built.entries };
   }
 
   /** The JS-side inputs of the SQL queue (cached, CacheTTL.ADMIN_QUEUE; an admin save drops the key). */
-  async sqlInputs(): Promise<{ inputs: QueueSqlInputs; flaggedByKey: Map<string, QueueItem>; ipoById: Map<string, QueueIpo> }> {
+  async sqlInputs(): Promise<{ inputs: QueueSqlInputs; flaggedByKey: Map<string, QueueItem> }> {
     const setup = await this.pages.cachedSetup(() => this.loadSetup());
     return {
       inputs: setup.inputs,
       flaggedByKey: new Map(setup.flagged.map((f) => [`${f.ipo.id}|${f.fieldName}`, f])),
-      ipoById: new Map(setup.ipos.map((i) => [i.id, i])),
     };
   }
 
@@ -407,12 +415,16 @@ export class AdminQueueService {
     };
   }
 
-  /** Page rows -> entries: conflict values and plan states are read for the page's rows only. */
+  /**
+   * Page rows -> entries: conflict values and plan states are read for the page's rows only. The
+   * IPO comes from the row itself (the page SQL runs live, item 1 of the A4 review) — never from
+   * the up-to-CacheTTL.ADMIN_QUEUE-seconds-old setup cache, so a brand-new IPO or a newly flagged
+   * value the cache has not seen yet is never silently dropped from the page.
+   */
   async entriesFromRows(
     rows: QueuePageRow[],
-    flaggedByKey: Map<string, QueueItem>,
-    ipoById: Map<string, QueueIpo>
-  ): Promise<QueueResponse['entries']> {
+    flaggedByKey: Map<string, QueueItem>
+  ): Promise<{ entries: QueueResponse['entries']; flagMiss: boolean }> {
     const idsWith = (prefix: string) =>
       rows.filter((r) => r.id?.startsWith(prefix)).map((r) => (r.id as string).slice(prefix.length));
     const [conflicts, plans] = await Promise.all([
@@ -422,9 +434,10 @@ export class AdminQueueService {
     const conflictById = new Map(conflicts.map((c) => [`conflict:${c.id}`, c]));
     const planById = new Map(plans.map((p) => [`plan:${p.id}`, p]));
     const entries: QueueResponse['entries'] = [];
+    let flagMiss = false;
     for (const r of rows) {
-      const ipo = ipoById.get(r.ipo_id);
-      if (!ipo) continue;
+      const ipo = ipoFromQueueRow(r);
+      if (!ipo) continue; // defensive only: the page SQL always carries the row's own IPO columns
       if (r.entry === 'ipo') {
         entries.push({
           type: 'ipo',
@@ -440,11 +453,26 @@ export class AdminQueueService {
         });
         continue;
       }
-      const item = itemFromRow(r, conflictById, planById, flaggedByKey);
-      if (item) entries.push({ type: 'item', group: Number(r.grp) as QueueGroup, item });
+      const built = itemFromRow(r, ipo, conflictById, planById, flaggedByKey);
+      if (built.flagMiss) flagMiss = true;
+      if (built.item) entries.push({ type: 'item', group: Number(r.grp) as QueueGroup, item: built.item });
     }
-    return entries;
+    return { entries, flagMiss };
   }
+}
+
+/** The page query's own IPO columns (A4 fix: read live, never from the cached setup's IPO list). */
+function ipoFromQueueRow(r: QueuePageRow): QueueIpo | null {
+  if (!r.slug) return null;
+  return {
+    id: r.ipo_id,
+    slug: r.slug,
+    companyName: r.company_name ?? r.slug,
+    status: r.status ?? '',
+    openDate: r.open_date,
+    closeDate: r.close_date,
+    listingDate: r.listing_date,
+  };
 }
 
 /** The page query's sentinel row (ord 0) carries the filtered queue's length. */
@@ -501,44 +529,61 @@ export function countsFromRows(rows: QueueCountRow[]): QueueCounts {
   return counts;
 }
 
+/**
+ * One page row -> its QueueItem. `flagMiss` is true when the row names a flagged value (`has_flag`,
+ * or the bare `flag:` id) that `flaggedByKey` (built from the cached setup) does not carry — the
+ * caller drops the setup cache and retries once (item 1 of the A4 review) rather than silently
+ * showing "no reason recorded" or dropping the row outright.
+ */
 function itemFromRow(
   r: QueuePageRow,
+  ipo: QueueIpo,
   conflictById: Map<string, ConflictRow>,
   planById: Map<string, PlanRow>,
   flaggedByKey: Map<string, QueueItem>
-): QueueItem | null {
+): { item: QueueItem | null; flagMiss: boolean } {
   const id = r.id as string;
   if (id.startsWith('conflict:')) {
     const c = conflictById.get(id);
-    if (!c) return null;
+    if (!c) return { item: null, flagMiss: false };
     const ruleFilter = r.cat === 'disagreement' ? null : (r.cat as RuleFilter);
     const reason = reasonForConflict(ruleFilter);
     return {
-      id,
-      kind: 'conflict',
-      ipo: toIpo(c),
-      tableName: c.table_name,
-      fieldName: c.field_name,
-      rowKey: c.row_key ?? '',
-      ruleFilter,
-      reason,
-      reasons: [reason],
-      sources: [
-        { source: c.source1, value: c.value1 },
-        { source: c.source2, value: c.value2 },
-      ],
-      editorHref: editorHref(c.slug, c.table_name, c.field_name, c.row_key ?? ''),
+      item: {
+        id,
+        kind: 'conflict',
+        ipo: toIpo(c),
+        tableName: c.table_name,
+        fieldName: c.field_name,
+        rowKey: c.row_key ?? '',
+        ruleFilter,
+        reason,
+        reasons: [reason],
+        sources: [
+          { source: c.source1, value: c.value1 },
+          { source: c.source2, value: c.value2 },
+        ],
+        editorHref: editorHref(c.slug, c.table_name, c.field_name, c.row_key ?? ''),
+      },
+      flagMiss: false,
     };
   }
   if (id.startsWith('plan:')) {
     const p = planById.get(id);
-    if (!p) return null;
+    if (!p) return { item: null, flagMiss: false };
     const item = planToItem(p);
-    const flag = r.has_flag ? flaggedByKey.get(`${p.ipo_id}|${item.fieldName}`) : undefined;
-    if (!flag) return item;
-    return { ...item, reasons: [...new Set([...item.reasons, ...flag.reasons])], messages: flag.messages, storedValue: flag.storedValue };
+    if (!r.has_flag) return { item, flagMiss: false };
+    const flag = flaggedByKey.get(`${p.ipo_id}|${item.fieldName}`);
+    if (!flag) return { item, flagMiss: true };
+    return {
+      item: { ...item, reasons: [...new Set([...item.reasons, ...flag.reasons])], messages: flag.messages, storedValue: flag.storedValue },
+      flagMiss: false,
+    };
   }
-  return flaggedByKey.get(`${r.ipo_id}|${r.field_name}`) ?? null;
+  // The bare 'flag:' id: population (c), entirely sourced from the cached setup's flagged list.
+  const flag = flaggedByKey.get(`${r.ipo_id}|${r.field_name}`);
+  if (!flag) return { item: null, flagMiss: true };
+  return { item: { ...flag, ipo }, flagMiss: false };
 }
 
 export function shapeQueue(all: QueueItem[], req: QueueRequest): QueueResponse {

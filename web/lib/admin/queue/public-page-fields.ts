@@ -11,7 +11,11 @@
  * a listed field is no longer rendered, so this list cannot silently go stale.
  */
 export const PUBLIC_PAGE_FIELDS: Readonly<Record<string, readonly string[]>> = {
-  anchor_investors: ['anchorInvestorsCount', 'bidDate', 'investorList', 'totalAmountRaised', 'totalSharesOffered'],
+  // lockIn50PercentDate/lockInRemainingDate and the listing_performance/registrars additions below
+  // were found genuinely rendered but untracked by the A4 review's two-way drift check (item 4):
+  // the original derivation (ipo_field_plan pairs only) missed fields the page shows that never
+  // went through a plan row.
+  anchor_investors: ['anchorInvestorsCount', 'bidDate', 'investorList', 'lockIn50PercentDate', 'lockInRemainingDate', 'totalAmountRaised', 'totalSharesOffered'],
   brlm_track_record: ['brlmName', 'closedBelowIssuePrice', 'issues3y'],
   documents: ['filingDate'],
   financial_data: ['eps', 'marketCap', 'netWorth', 'peRatio', 'postIpoEps', 'preIpoEps', 'promoterHoldingPostIssue', 'promoterHoldingPreIssue', 'roe', 'ronw'],
@@ -20,12 +24,12 @@ export const PUBLIC_PAGE_FIELDS: Readonly<Record<string, readonly string[]>> = {
   ipo_intermediaries: ['name', 'role', 'sebiRegNo'],
   ipo_risk_factors: ['body', 'heading', 'kpis', 'seq'],
   ipo_valuation: ['freshSharesAtCap', 'freshSharesAtFloor', 'mcapAtCap', 'mcapAtFloor', 'ofsShares', 'peAtCap', 'peAtFloor', 'peNotAscertainableReason', 'priceCap', 'priceFloor', 'ronwWeighted3y', 'sharesAtCap', 'sharesAtFloor', 'totalSharesAtCap', 'totalSharesAtFloor'],
-  ipos: ['allotmentDate', 'cin', 'closeDate', 'companyDescription', 'companyName', 'faceValue', 'isin', 'issueSize', 'leadManagers', 'listingDate', 'listingExchanges', 'lotSize', 'objectives', 'offeringType', 'openDate', 'priceRangeMax', 'priceRangeMin', 'registrar', 'sector', 'segment', 'status', 'symbol'],
-  listing_performance: ['currentPrice', 'listingPrice'],
+  ipos: ['allotmentDate', 'cin', 'closeDate', 'companyDescription', 'companyName', 'delistedAt', 'faceValue', 'isin', 'issueSize', 'leadManagers', 'listingDate', 'listingExchanges', 'lotSize', 'objectives', 'offeringType', 'openDate', 'priceRangeMax', 'priceRangeMin', 'registrar', 'sector', 'segment', 'status', 'symbol'],
+  listing_performance: ['currentPrice', 'issuePrice', 'lastTradedPrice', 'listingClosePrice', 'listingGainPercent', 'listingHighPrice', 'listingLowPrice', 'listingOpenPrice', 'listingPrice'],
   peer_companies: ['companyName', 'eps', 'isListed', 'nav', 'pbvRatio', 'peRatio', 'ronw'],
   promoter_acquisition_ranges: ['capMultiple', 'period', 'priceHigh', 'priceLow', 'waca'],
   promoters: ['isPromoterGroup', 'name', 'sharesHeld', 'waca'],
-  registrars: ['name', 'shortName', 'website'],
+  registrars: ['allotmentCheckUrl', 'name', 'shortName', 'website'],
 };
 
 /** Row tables store a hold under `<table>:<rowKey>`; the page list is keyed by the bare table. */

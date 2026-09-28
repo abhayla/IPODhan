@@ -2,8 +2,12 @@
  * Reads the two populations of the admin queue (OD-63, spec §9.4): unresolved data_conflicts and
  * ipo_field_plan rows that hold no value, plus the admin holds that mark a field as handled.
  *
- * Deliberately NOT cached (BaseRepository.getFromCache is not used): the queue is the admin's to-do
- * list, and an item the admin just fixed in the IPO-page editor must leave it on the next load.
+ * This repository's own reads are NOT cached (BaseRepository.getFromCache is not used here): the
+ * queue is the admin's to-do list, and an item the admin just fixed in the IPO-page editor must
+ * leave it on the next load. The paged queue built on top of it (admin-queue-page-repository.ts)
+ * DOES cache its JS-side setup and whole-queue counts for CacheTTL.ADMIN_QUEUE seconds — every
+ * admin save drops that cache at once (adminQueueCacheKeys) — but the page's own SQL always runs
+ * live, so a brand-new IPO or a resolved conflict is never delayed by that cache (item 1, A4 review).
  * Dates are selected as ::text so no pool timezone can shift a calendar day (ist-timezone.md).
  */
 import { eq, sql } from 'drizzle-orm';

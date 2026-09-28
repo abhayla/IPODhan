@@ -19,6 +19,22 @@ import { ConflictResolutionService } from '@/lib/services/conflict-resolution';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
 import { adminWriteResponse } from '@/lib/admin/admin-field-save';
+import { getRedisClient } from '@/lib/cache/redis-client';
+import { adminQueueCacheKeys } from '@/lib/cache/cache-keys';
+
+/**
+ * A conflict resolved with no field value applied (no `applyToDatabase`, no `protectField`) never
+ * goes through `saveAdminFieldValue`, so nothing else drops the admin queue cache (item 2, A4
+ * review) — the resolved conflict would otherwise still show in the queue for CacheTTL.ADMIN_QUEUE
+ * seconds. Best-effort: a Redis failure here must not fail an otherwise-successful resolution.
+ */
+async function dropQueueCache(): Promise<void> {
+  try {
+    await getRedisClient().del(...adminQueueCacheKeys());
+  } catch (error) {
+    console.warn('[Conflicts] failed to drop the admin queue cache after a resolve:', error);
+  }
+}
 
 /**
  * GET /api/admin/conflicts
@@ -105,6 +121,8 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
         error: result.error || 'Failed to resolve conflict',
       }, { status: 400 });
     }
+
+    await dropQueueCache();
 
     return NextResponse.json({
       success: true,

@@ -123,6 +123,92 @@ describe('population (c): stored values the shared field check refuses (OD-62 FA
   });
 });
 
+describe('entriesFromRows (A4 review item 1): the IPO comes from the row, never a cache map', () => {
+  const dummyDb = { execute: async () => ({ rows: [] }) } as never;
+  const dummyRedis = {} as never;
+
+  const pageRow = (o: Partial<import('@/lib/repositories/admin-queue-page-repository').QueuePageRow> = {}) => ({
+    entry: 'item' as const,
+    ord: 1,
+    total: 1,
+    id: 'flag:i9:lotSize',
+    ipo_id: 'i9',
+    table_name: null,
+    field_name: 'lotSize',
+    row_key: null,
+    cat: 'flagged',
+    reason_code: null,
+    has_flag: false,
+    grp: 2,
+    slug: 'fresh-ltd',
+    company_name: 'Fresh Ltd',
+    status: 'UPCOMING',
+    open_date: '2026-11-01',
+    close_date: '2026-11-05',
+    listing_date: null,
+    disagreements: null,
+    missing: null,
+    flagged: null,
+    ruled: null,
+    ...o,
+  });
+
+  it('builds the item and IPO straight from the row when the flagged value IS in the cached setup', async () => {
+    const { AdminQueueService } = await import('@/lib/services/admin-queue-service');
+    const svc = new AdminQueueService(dummyDb, dummyRedis, []);
+    const flaggedByKey = new Map([
+      ['i9|lotSize', { ...flaggedItem('lotSize'), ipo: staleIpo() }],
+    ]);
+    const { entries, flagMiss } = await svc.entriesFromRows([pageRow()], flaggedByKey);
+    expect(flagMiss).toBe(false);
+    expect(entries).toHaveLength(1);
+    const [e] = entries;
+    // The item's IPO is the ROW's (live) IPO, not the flagged cache entry's stale one (A4 item 1).
+    expect(e.type === 'item' && e.item.ipo).toEqual({
+      id: 'i9', slug: 'fresh-ltd', companyName: 'Fresh Ltd', status: 'UPCOMING',
+      openDate: '2026-11-01', closeDate: '2026-11-05', listingDate: null,
+    });
+  });
+
+  it('a row naming a flagged value the cached setup does not carry signals flagMiss instead of dropping it', async () => {
+    const { AdminQueueService } = await import('@/lib/services/admin-queue-service');
+    const svc = new AdminQueueService(dummyDb, dummyRedis, []);
+    const { entries, flagMiss } = await svc.entriesFromRows([pageRow()], new Map());
+    expect(flagMiss).toBe(true);
+    expect(entries).toHaveLength(0); // nothing to render yet — the caller reloads and retries once
+  });
+
+  it('a brand-new IPO row (not in any cache) still yields its "ipo" summary entry, not a silent drop', async () => {
+    const { AdminQueueService } = await import('@/lib/services/admin-queue-service');
+    const svc = new AdminQueueService(dummyDb, dummyRedis, []);
+    const row = pageRow({ entry: 'ipo', id: null, cat: null, field_name: null, grp: 3, disagreements: 0, missing: 0, flagged: 1, ruled: 0 });
+    const { entries, flagMiss } = await svc.entriesFromRows([row], new Map());
+    expect(flagMiss).toBe(false);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ type: 'ipo', summary: { ipo: { slug: 'fresh-ltd', companyName: 'Fresh Ltd' }, flagged: 1 } });
+  });
+});
+
+function flaggedItem(fieldName: string) {
+  return {
+    id: `flag:i9:${fieldName}`,
+    kind: 'flagged' as const,
+    ipo: staleIpo(),
+    tableName: 'ipos',
+    fieldName,
+    rowKey: '',
+    ruleFilter: null,
+    reason: 'FAILED_VALIDATION',
+    reasons: ['FAILED_VALIDATION'],
+    editorHref: '/ipos/fresh-ltd?edit=ipos.lotSize',
+  };
+}
+
+/** A deliberately STALE ipo (as the cached setup could carry) — the row's own IPO must win instead. */
+function staleIpo() {
+  return { id: 'i9', slug: 'fresh-ltd', companyName: 'Stale Cached Name Ltd', status: 'UPCOMING', openDate: null, closeDate: null, listingDate: null };
+}
+
 describe('population (c) derived rules', () => {
   it('a check on a derived rule (not a column) opens the IPO page, with no stored value', async () => {
     const { flaggedItems } = await import('@/lib/services/admin-queue-service');
