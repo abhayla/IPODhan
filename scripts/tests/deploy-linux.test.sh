@@ -3010,7 +3010,7 @@ FAKEPG30
   OUT30M="$(PGREP30=live run_release_locks_30 held-both 0)"
   if emit "$OUT30M" | grep -q 'cron-launched scraper wake of slot .* still running (pids: 4242' \
      && emit "$OUT30M" | grep -q 'none released' \
-     && emitn "$OUT30M" | grep -qF 'PGREP-ARGV: -f /var/www/ipodhan/current-staging/scripts/[s]craper-wake[.]sh' \
+     && emitn "$OUT30M" | grep -qF 'PGREP-ARGV: -f /var/www/ipodhan/current-staging/(scripts/[s]craper-wake[.]sh|[^ ]*node_modules/[t]sx/dist/)' \
      && ! emitn "$OUT30M" | grep -q ' EVAL ' \
      && ! emitn "$OUT30M" | grep -q ' GET ' \
      && ! emit "$OUT30M" | grep -q 'released: '; then
@@ -3055,15 +3055,21 @@ FAKEPG30
   if printf '%s\n' '/bin/sh -c SCRAPER_WAKE_TRIGGER=schedule /var/www/ipodhan/current/scripts/scraper-wake.sh data >> /var/log/ipodhan-scraper-wake-prod.log 2>&1' | grep -qE "$PAT30R" \
      && printf '%s\n' '/bin/sh /var/www/ipodhan/current/scripts/scraper-wake.sh live' | grep -qE "$PAT30R" \
      && ! printf '%s\n' '/bin/sh /var/www/ipodhan/current-staging/scripts/scraper-wake.sh data' | grep -qE "$PAT30R" \
-     && ! printf '%s\n' "pgrep -f $PAT30R" | grep -qE "$PAT30R"; then
-    pass "case 30r: the wake pattern ($PAT30R) matches this slot's cron wakes, not the other slot's, not its own argv"
+     && ! printf '%s\n' "pgrep -f $PAT30R" | grep -qE "$PAT30R" \
+     && printf '%s\n' '/usr/bin/node /var/www/ipodhan/current/scraper/node_modules/tsx/dist/cli.mjs src/index.ts --source=all data' | grep -qE "$PAT30R" \
+     && printf '%s\n' 'timeout --signal=TERM --kill-after=60 7200 setsid sh -c echo $$ > "$0"; exec "$@" /tmp/g /usr/bin/node /var/www/ipodhan/current/node_modules/tsx/dist/cli.mjs src/index.ts' | grep -qE "$PAT30R" \
+     && ! printf '%s\n' '/usr/bin/node /var/www/ipodhan/current-staging/scraper/node_modules/tsx/dist/cli.mjs src/index.ts' | grep -qE "$PAT30R" \
+     && ! printf '%s\n' '/usr/bin/node /var/www/ipodhan/releases/20260929-1-abc/scraper/node_modules/tsx/dist/cli.mjs src/index.ts' | grep -qE "$PAT30R"; then
+    pass "case 30r: the wake pattern ($PAT30R) matches this slot's cron wakes AND their timeout/tsx children (#1259 item 2: a SIGKILLed wake shell's child is still seen), not the other slot's, not pm2's releases/ path, not its own argv"
   else
     fail "case 30r: wake pattern '$PAT30R' matched wrongly (own slot / other slot / its own argv)"
   fi
 
   # 30s: the idle wait also waits (bounded) on a live cron wake, then
   # proceeds without refusing; with none it says so. Real function, stubs.
-  WAIT_FN_30S="$(awk '/^wait_for_scraper_idle\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
+  WAIT_FN_30S="$(awk '/^wait_for_scraper_idle\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^refuse_or_override_live_run\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^wait_for_no_live_cron_wake\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
   run_wait_30s() {
     ( log() { echo "LOG: $*"; }; warn() { echo "WARN: $*"; }; fatal() { echo "FATAL: $*"; exit 1; }
       sleep() { :; }; pm2_app_status() { printf 'stopped'; }
@@ -3073,15 +3079,22 @@ FAKEPG30
   }
   OUT30S_LIVE="$(run_wait_30s 4242)"
   OUT30S_NONE="$(run_wait_30s '')"
+  OUT30S_OVR="$(DEPLOY_ALLOW_LIVE_RUN=1 run_wait_30s 4242)"
+  OUT30S_UNK="$(run_wait_30s UNKNOWABLE)"
+  # #1259: at the bound the wait now REFUSES (fatal) unless the explicit override.
   if [ "$(emitn "$OUT30S_LIVE" | grep -c 'Cron-launched scraper wake of slot prod in flight (pids: 4242)')" -eq 2 ] \
-     && emit "$OUT30S_LIVE" | grep -q 'still running after 2s (pids: 4242) — proceeding' \
-     && emit "$OUT30S_LIVE" | grep -q 'will NOT be released' \
-     && emit "$OUT30S_LIVE" | grep -q 'RC=0' \
+     && emit "$OUT30S_LIVE" | grep -q "FATAL: refusing to deploy slot prod: a cron-launched scraper run of this slot is live before step 'build' (pids: 4242, still running after 2s" \
+     && ! emit "$OUT30S_LIVE" | grep -q 'RC=' \
+     && emit "$OUT30S_OVR" | grep -q "WARN: DEPLOY_ALLOW_LIVE_RUN=1: PROCEEDING to step 'build'" \
+     && emit "$OUT30S_OVR" | grep -q 'RC=0' \
+     && emit "$OUT30S_UNK" | grep -q 'FATAL: refusing .*liveness unknowable' \
+     && ! emit "$OUT30S_UNK" | grep -q 'RC=' \
      && emit "$OUT30S_NONE" | grep -q 'No cron-launched scraper wake of slot prod running' \
+     && emit "$OUT30S_NONE" | grep -q 'RC=0' \
      && ! emit "$OUT30S_NONE" | grep -q 'in flight'; then
-    pass "case 30s: idle wait polls a live cron wake for the bounded window, then proceeds (locks kept); none -> no wait"
+    pass "case 30s: idle wait polls a live cron wake for the bounded window, then REFUSES (override proceeds with a WARN; unknowable refuses); none -> no wait"
   else
-    fail "case 30s: expected two bounded wait polls then a proceed line, and no wait with no wake — live: $OUT30S_LIVE / none: $OUT30S_NONE"
+    fail "case 30s: expected two bounded polls then a refusal, override -> WARN + RC=0, unknowable -> refusal, none -> no wait — live: $OUT30S_LIVE / override: $OUT30S_OVR / unknowable: $OUT30S_UNK / none: $OUT30S_NONE"
   fi
 
   # 30t: mutation proofs, each on an in-memory copy of the extracted text
@@ -3091,9 +3104,12 @@ FAKEPG30
   M30_NOUNKNOWN="$(printf '%s\n' "$RELEASE_LOCKS_FN_30" | sed 's/if ! live_pids="\$(live_cron_wake_pids)"; then/live_pids="$(live_cron_wake_pids)" || true; if false; then/')"
   M30_NOSTALE="$(printf '%s\n' "$RELEASE_LOCKS_FN_30" | grep -v 'stale: owner token=')"
   M30S_NOWAIT="$(printf '%s\n' "$WAIT_FN_30S" | sed 's/if \[ -z "\$pids" \]; then/if true; then/')"
+  M30S_ALWAYSOVR="$(printf '%s\n' "$WAIT_FN_30S" | sed 's/if \[ "\${DEPLOY_ALLOW_LIVE_RUN:-0}" = "1" \]; then/if true; then/')"
+  M30S_UNKPASS="$(printf '%s\n' "$WAIT_FN_30S" | sed 's/refuse_or_override_live_run "\$step" "liveness unknowable: pgrep missing or failed"/:/')"
   if [ "$M30_NOGUARD" = "$RELEASE_LOCKS_FN_30" ] || [ "$M30_ALWAYS" = "$RELEASE_LOCKS_FN_30" ] \
      || [ "$M30_NOUNKNOWN" = "$RELEASE_LOCKS_FN_30" ] || [ "$M30_NOSTALE" = "$RELEASE_LOCKS_FN_30" ] \
-     || [ "$M30S_NOWAIT" = "$WAIT_FN_30S" ]; then
+     || [ "$M30S_NOWAIT" = "$WAIT_FN_30S" ] || [ "$M30S_ALWAYSOVR" = "$WAIT_FN_30S" ] \
+     || [ "$M30S_UNKPASS" = "$WAIT_FN_30S" ]; then
     fail "case 30t: a mutation did not apply (pattern drifted) — every mutant must change the text"
   else
     MO_A="$(RELEASE_FN_OVERRIDE30="$M30_NOGUARD" PGREP30=live run_release_locks_30 held-both 0)"
@@ -3125,6 +3141,18 @@ FAKEPG30
       pass "case 30t mutation (wait): an idle wait that ignores cron wakes never polls — 30s is load-bearing"
     else
       fail "case 30t mutation (wait): the mutant still waited — got: $MO_W"
+    fi
+    MO_OVR="$(run_wait_30s 4242 "$M30S_ALWAYSOVR")"
+    MO_UNK="$(run_wait_30s UNKNOWABLE "$M30S_UNKPASS")"
+    if emit "$MO_OVR" | grep -q 'RC=0' && ! emit "$MO_OVR" | grep -q 'FATAL: refusing'; then
+      pass "case 30t mutation (#1259 refuse): an override check that always passes lets a live run through — 30s's refusal assertion is load-bearing"
+    else
+      fail "case 30t mutation (#1259 refuse): the always-override mutant still refused — got: $MO_OVR"
+    fi
+    if emit "$MO_UNK" | grep -q 'RC=0' && ! emit "$MO_UNK" | grep -q 'FATAL: refusing'; then
+      pass "case 30t mutation (#1259 unknowable): dropping the unknowable refusal proceeds blind — 30s's unknowable assertion is load-bearing"
+    else
+      fail "case 30t mutation (#1259 unknowable): the mutant still refused — got: $MO_UNK"
     fi
   fi
 
@@ -4334,6 +4362,148 @@ if [ -n "$CLEANUP_ORPHAN_FN" ] && [ -n "$RESOLVE_LINK_FN" ] && [ -n "$COLLECT_LI
 else
   fail "case 39: could not extract cleanup_orphan_release_dirs()/resolve_link_target()/collect_live_release_dirs() from $DEPLOY_SCRIPT - renamed?"
 fi
+
+# --- Case 40 (#1259): a deploy never mutates what a LIVE old scraper run ----
+# --- depends on. Scheduled runs are cron-launched wakes of the slot         --
+# --- ($CURRENT_LINK/scripts/scraper-wake.sh), invisible to pm2. Before       --
+# --- #1259 the idle wait only WARNED after MUTEX_MAX_WAIT and went on to    --
+# --- swap the shared per-slot venv and run migrations under the old run,    --
+# --- and a keep-N prune could delete the release dir the old run executes  --
+# --- from. Now: refuse (exit non-zero, reason line naming pids and the      --
+# --- override) before ANY mutation; re-check right before the venv swap and --
+# --- the migrations; never prune a release a live wake's cwd is inside.     --
+# --- DEPLOY_ALLOW_LIVE_RUN=1 is the only way past, and it is logged loudly. --
+unset DEPLOY_ROOT DEPLOY_KEEP_RELEASES DEPLOY_FAIL_BUILD DEPLOY_FAIL_PREFLIGHT DEPLOY_DRYRUN_SCRAPER_STATUS \
+  DEPLOY_DRYRUN_CRON_WAKE_PIDS DEPLOY_DRYRUN_CRON_WAKE_AT DEPLOY_ALLOW_LIVE_RUN DEPLOY_PROC_ROOT 2>/dev/null || true
+ROOT40="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT40"
+export DEPLOY_MUTEX_MAX_WAIT_SECONDS=2
+export DEPLOY_MUTEX_POLL_SECONDS=1
+if ! bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40-seed.log 2>&1; then
+  fail "case 40: seed deploy failed"
+  cat /tmp/deploy-test-40-seed.log
+fi
+CUR40="$(current_target "$ROOT40/current")"
+N40="$(count_releases "$ROOT40/releases")"
+
+# 40a: a live wake past MAX_WAIT at step 2 -> refuse before pm2 stop, the
+# venv swap, the migrations, the flip and the prune; nothing on disk changes.
+sleep 1.1
+DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40a.log 2>&1
+RC40A=$?
+if [ "$RC40A" -ne 0 ] \
+   && grep -q "^FATAL: refusing to deploy slot prod: a cron-launched scraper run of this slot is live before step 'build'" /tmp/deploy-test-40a.log \
+   && grep -q 'pids: 4242' /tmp/deploy-test-40a.log \
+   && grep -q 'DEPLOY_ALLOW_LIVE_RUN=1' /tmp/deploy-test-40a.log \
+   && ! grep -q "skipping real 'pm2 stop" /tmp/deploy-test-40a.log \
+   && ! grep -q 'Setting up scraper Python venv' /tmp/deploy-test-40a.log \
+   && ! grep -q "skipping real 'drizzle-kit migrate'" /tmp/deploy-test-40a.log \
+   && ! grep -q '^==> Flipping' /tmp/deploy-test-40a.log \
+   && ! grep -q '^==> Pruning old releases' /tmp/deploy-test-40a.log \
+   && [ "$(current_target "$ROOT40/current")" = "$CUR40" ] \
+   && [ "$(count_releases "$ROOT40/releases")" = "$N40" ]; then
+  pass "case 40a: a live cron wake past MAX_WAIT -> deploy REFUSES (rc=$RC40A) before pm2 stop/venv/migrations/flip/prune, reason names pids + override, disk untouched"
+else
+  fail "case 40a: expected a refusal before any mutation (rc=$RC40A) - log:"
+  cat /tmp/deploy-test-40a.log
+fi
+
+# 40b: liveness unknowable (pgrep missing/failing) -> refuse the same way.
+DEPLOY_DRYRUN_CRON_WAKE_PIDS=UNKNOWABLE bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40b.log 2>&1
+RC40B=$?
+if [ "$RC40B" -ne 0 ] \
+   && grep -q "^FATAL: refusing to deploy slot prod: .*before step 'build' (liveness unknowable" /tmp/deploy-test-40b.log \
+   && ! grep -q 'Setting up scraper Python venv' /tmp/deploy-test-40b.log \
+   && [ "$(current_target "$ROOT40/current")" = "$CUR40" ]; then
+  pass "case 40b: pgrep unknowable -> deploy refuses (fail closed), nothing mutated"
+else
+  fail "case 40b: expected a fail-closed refusal when liveness is unknowable (rc=$RC40B) - log:"
+  cat /tmp/deploy-test-40b.log
+fi
+
+# 40c: a wake that STARTS mid-build (cron fires every 30 min; a build takes
+# ~15) is caught by the re-check right before the venv swap and right before
+# the migrations. DEPLOY_DRYRUN_CRON_WAKE_AT makes the dry-run wake visible
+# only at that one checkpoint.
+for STEP40 in venv migrations; do
+  sleep 1.1
+  DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 DEPLOY_DRYRUN_CRON_WAKE_AT="$STEP40" \
+    bash "$DEPLOY_SCRIPT" prod --dry-run --force >"/tmp/deploy-test-40c-$STEP40.log" 2>&1
+  RC40C=$?
+  L40="/tmp/deploy-test-40c-$STEP40.log"
+  VENV_SEEN=0; grep -q 'Setting up scraper Python venv' "$L40" && VENV_SEEN=1
+  EXPECT_VENV=0; [ "$STEP40" = "migrations" ] && EXPECT_VENV=1
+  if [ "$RC40C" -ne 0 ] \
+     && grep -q "No cron-launched scraper wake of slot prod running .* safe to proceed to: build" "$L40" \
+     && grep -q "^FATAL: refusing to deploy slot prod: .*live before step '$STEP40'" "$L40" \
+     && [ "$VENV_SEEN" -eq "$EXPECT_VENV" ] \
+     && ! grep -q "skipping real 'drizzle-kit migrate'" "$L40" \
+     && ! grep -q '^==> Flipping' "$L40" \
+     && [ "$(current_target "$ROOT40/current")" = "$CUR40" ] \
+     && [ "$(count_releases "$ROOT40/releases")" = "$N40" ]; then
+    pass "case 40c ($STEP40): a wake that starts mid-build is refused right before the $STEP40 step; current untouched, the new release dir cleaned up"
+  else
+    fail "case 40c ($STEP40): expected a refusal at the $STEP40 checkpoint (rc=$RC40C, venv seen=$VENV_SEEN) - log:"
+    cat "$L40"
+  fi
+done
+
+# 40d: the explicit override proceeds, and says so loudly at every checkpoint.
+sleep 1.1
+DEPLOY_ALLOW_LIVE_RUN=1 DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40d.log 2>&1
+RC40D=$?
+if [ "$RC40D" -eq 0 ] \
+   && [ "$(grep -c '^WARN: DEPLOY_ALLOW_LIVE_RUN=1: PROCEEDING' /tmp/deploy-test-40d.log)" -eq 3 ] \
+   && grep -q '^==> Flipping' /tmp/deploy-test-40d.log; then
+  pass "case 40d: DEPLOY_ALLOW_LIVE_RUN=1 proceeds, with a WARN at each of the 3 checkpoints (build, venv, migrations)"
+else
+  fail "case 40d: expected rc 0 and 3 override WARN lines (rc=$RC40D) - log:"
+  cat /tmp/deploy-test-40d.log
+fi
+
+# 40e: the prune never deletes a release a live wake's cwd is inside. Seed
+# R1, R2 (current), then deploy R3 with keep 1 under the override while a
+# wake (pid 4242) runs from R1. /proc/<pid>/cwd is emulated by a plain file
+# (DEPLOY_PROC_ROOT; the box reads the real symlink). R1 kept, R2 pruned.
+ROOT40E="$(fresh_root)"
+PROC40E="$(mktemp -d)"
+DEPLOY_ROOT="$ROOT40E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40e-1.log 2>&1
+R1_40E="$(current_target "$ROOT40E/current")"
+sleep 1.1
+DEPLOY_ROOT="$ROOT40E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40e-2.log 2>&1
+R2_40E="$(current_target "$ROOT40E/current")"
+mkdir -p "$PROC40E/4242"
+printf '%s\n' "$R1_40E/scraper" > "$PROC40E/4242/cwd"
+sleep 1.1
+DEPLOY_ROOT="$ROOT40E" DEPLOY_KEEP_RELEASES=1 DEPLOY_ALLOW_LIVE_RUN=1 DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 \
+  DEPLOY_PROC_ROOT="$PROC40E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40e-3.log 2>&1
+RC40E=$?
+if [ "$RC40E" -eq 0 ] && [ -n "$R1_40E" ] && [ "$R1_40E" != "$R2_40E" ] \
+   && [ -d "$R1_40E" ] && [ ! -d "$R2_40E" ] \
+   && grep -q "keeping $(basename "$R1_40E") (a live cron-launched scraper wake of slot prod runs from it" /tmp/deploy-test-40e-3.log; then
+  pass "case 40e: the prune keeps the release a live wake runs from ($(basename "$R1_40E")) and still prunes the idle one"
+else
+  fail "case 40e: expected R1 kept (live wake cwd) and R2 pruned (rc=$RC40E, R1=$R1_40E R2=$R2_40E) - log:"
+  cat /tmp/deploy-test-40e-3.log
+fi
+
+# 40f: liveness unknowable at prune time (override set) -> skip the prune
+# entirely rather than prune blind; every release survives.
+N40F_BEFORE="$(count_releases "$ROOT40E/releases")"
+sleep 1.1
+DEPLOY_ROOT="$ROOT40E" DEPLOY_KEEP_RELEASES=1 DEPLOY_ALLOW_LIVE_RUN=1 DEPLOY_DRYRUN_CRON_WAKE_PIDS=UNKNOWABLE \
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40f.log 2>&1
+RC40F=$?
+if [ "$RC40F" -eq 0 ] \
+   && grep -q '^WARN: prune skipped' /tmp/deploy-test-40f.log \
+   && [ "$(count_releases "$ROOT40E/releases")" -eq "$((N40F_BEFORE + 1))" ]; then
+  pass "case 40f: wake liveness unknowable at prune time -> prune skipped, no release deleted"
+else
+  fail "case 40f: expected 'prune skipped' and no deletion (rc=$RC40F, before=$N40F_BEFORE after=$(count_releases "$ROOT40E/releases")) - log:"
+  cat /tmp/deploy-test-40f.log
+fi
+rm -rf "$ROOT40" "$ROOT40E" "$PROC40E"
+unset DEPLOY_ROOT 2>/dev/null || true
 
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"

@@ -582,16 +582,38 @@ fi
 # (owner rule: a process match never matches its own command line). Prod's
 # path (/current/scripts/...) and staging's (/current-staging/scripts/...) are
 # distinct, so one slot's deploy never waits on, or trusts, the other slot's wake.
+# #1259 item 2: the wake SHELL is not the only process of a run. It launches
+# `timeout ... setsid sh -c ... <node> <tsx cli.mjs> src/index.ts` from
+# $CURRENT_LINK/scraper, with the tsx path resolved under the LOGICAL
+# $CURRENT_LINK (dash's `cd && pwd` keeps the link, scraper-wake.sh:68-70). If
+# the wake shell is SIGKILLed, that timeout and the tsx/node child (the lock
+# holder) live on with no scraper-wake.sh in any argv, so the pattern also
+# matches "<CURRENT_LINK>/<any>node_modules/tsx/dist/" in an argv. Bracketed
+# ([t]sx) for the same own-argv reason. pm2's scraper app runs the wrapper
+# from the physical releases/<name>/ path, so it never matches here (pm2 is
+# asked separately, above).
 cron_wake_pattern() {
-  printf '%s/scripts/[s]craper-wake[.]sh' "$CURRENT_LINK"
+  printf '%s/(scripts/[s]craper-wake[.]sh|[^ ]*node_modules/[t]sx/dist/)' "$CURRENT_LINK"
 }
 
 # Prints the pids (space-separated, possibly empty) of live cron-launched wakes
 # of this slot. Returns 2 when pgrep is missing or errors: the state is then
 # UNKNOWABLE and every caller treats it as "maybe alive" (keeping a lock costs
 # at most its TTL of idle wakes; deleting a live run's lock runs two cycles).
+# #1259: which re-check is asking (build | venv | migrations); set by
+# wait_for_no_live_cron_wake. Only the dry-run seam below reads it.
+LIVE_RUN_CHECKPOINT=""
 live_cron_wake_pids() {
   if (( DRY_RUN )); then
+    # Test seams (dry-run only): UNKNOWABLE simulates pgrep missing/failing;
+    # DEPLOY_DRYRUN_CRON_WAKE_AT=<checkpoint> makes the wake visible only at
+    # that one checkpoint (a wake that STARTS mid-build).
+    if [ "${DEPLOY_DRYRUN_CRON_WAKE_PIDS:-}" = "UNKNOWABLE" ]; then
+      return 2
+    fi
+    if [ -n "${DEPLOY_DRYRUN_CRON_WAKE_AT:-}" ] && [ "$DEPLOY_DRYRUN_CRON_WAKE_AT" != "$LIVE_RUN_CHECKPOINT" ]; then
+      return 0
+    fi
     printf '%s' "${DEPLOY_DRYRUN_CRON_WAKE_PIDS:-}"
     return 0
   fi
@@ -632,28 +654,48 @@ wait_for_scraper_idle() {
     waited=$((waited + MUTEX_POLL))
   done
 
-  # #1241: then the cron-launched wakes of this slot, on the same bounded
-  # budget. Unlike the pm2 case this does NOT refuse the deploy at the bound: a
-  # data cycle may legitimately run up to its 2-hour ceiling, and failing every
-  # window for it is worse than the alternative, which is safe because
-  # release_scraper_cycle_locks re-checks at release time and keeps a live run's
-  # locks. The old run finishes on its old release dir (retention keeps it), and
-  # every new-code wake lock-skips until that run releases its own lock.
-  local pids
+  # #1241/#1259: then the cron-launched wakes of this slot, on the same bounded
+  # budget, and at the bound the deploy REFUSES (see wait_for_no_live_cron_wake).
+  wait_for_no_live_cron_wake build
+}
+
+# #1259: a deploy never mutates what a LIVE old run of the slot depends on.
+# Before #1259 the wait above only WARNED at the bound and went on to swap the
+# shared per-slot venv under the old run (6.5), run migrations under old code
+# still writing (7 — a rename or drop breaks it), and a keep-N prune could
+# delete the release dir it runs from (12). Failing closed is cheap: a staging
+# window simply runs again at its next slot and a manual re-dispatch is one
+# command; prod is owner-run and a corrupted live run is not cheap. It is
+# called at step 2 (before pm2 stop and ANY mutation) and re-checked right
+# before the venv swap and the migrations, because cron fires a new wake every
+# 30 min and a build takes ~15. Unknowable liveness (pgrep missing/failing)
+# refuses too. DEPLOY_ALLOW_LIVE_RUN=1 is the only way past, logged loudly.
+refuse_or_override_live_run() {
+  local step="$1" why="$2"
+  if [ "${DEPLOY_ALLOW_LIVE_RUN:-0}" = "1" ]; then
+    warn "DEPLOY_ALLOW_LIVE_RUN=1: PROCEEDING to step '$step' of slot $SLOT although a cron-launched scraper run may be live ($why). It may see the venv swapped, the schema migrated and its cycle locks kept; its release dir is still never pruned."
+    return 0
+  fi
+  fatal "refusing to deploy slot $SLOT: a cron-launched scraper run of this slot is live before step '$step' ($why; match: pgrep -af '$(cron_wake_pattern)'). Nothing for this step was touched: no venv swap, no migration, no flip, no prune ('current' still serves the old release). Re-run the deploy once that run exits (a staging window retries at its next slot), or set DEPLOY_ALLOW_LIVE_RUN=1 to proceed anyway."
+}
+
+wait_for_no_live_cron_wake() {
+  local step="$1" waited=0 pids
+  LIVE_RUN_CHECKPOINT="$step"
   while true; do
     if ! pids="$(live_cron_wake_pids)"; then
-      warn "cannot list cron-launched scraper wakes of slot $SLOT (pgrep missing or failed) — proceeding; release_scraper_cycle_locks will keep this slot's cycle locks"
+      refuse_or_override_live_run "$step" "liveness unknowable: pgrep missing or failed"
       return 0
     fi
     if [ -z "$pids" ]; then
-      log "No cron-launched scraper wake of slot $SLOT running ($(cron_wake_pattern)) — safe to build."
+      log "No cron-launched scraper wake of slot $SLOT running ($(cron_wake_pattern)) — safe to proceed to: $step."
       return 0
     fi
     if [ "$waited" -ge "$MUTEX_MAX_WAIT" ]; then
-      warn "cron-launched scraper wake of slot $SLOT still running after ${MUTEX_MAX_WAIT}s (pids: $pids) — proceeding with the deploy; its cycle locks will NOT be released (the run keeps them until it exits, and new-code wakes lock-skip meanwhile)"
+      refuse_or_override_live_run "$step" "pids: $pids, still running after ${MUTEX_MAX_WAIT}s"
       return 0
     fi
-    log "Cron-launched scraper wake of slot $SLOT in flight (pids: $pids) — waiting ${MUTEX_POLL}s (${waited}/${MUTEX_MAX_WAIT}s elapsed)..."
+    log "Cron-launched scraper wake of slot $SLOT in flight (pids: $pids) — waiting ${MUTEX_POLL}s before step '$step' (${waited}/${MUTEX_MAX_WAIT}s elapsed)..."
     sleep "$MUTEX_POLL"
     waited=$((waited + MUTEX_POLL))
   done
@@ -1144,6 +1186,47 @@ collect_live_release_dirs() {
       dirname "$cwd"
     fi
   done || true
+}
+
+# #1259: the release dirs live cron-launched wakes of this slot run from.
+# pm2 never sees a cron wake, so collect_live_release_dirs cannot either, and a
+# cron wake's argv carries $CURRENT_LINK (a link), not the release. The kernel's
+# /proc/<pid>/cwd does: the wake's timeout/tsx/node processes run in
+# releases/<name>/scraper. Returns 2 (UNKNOWABLE: the caller must not prune)
+# when pgrep fails or a live pid's cwd cannot be read. DEPLOY_PROC_ROOT is a
+# test seam (default /proc); a plain file in place of the cwd link is read as
+# its content, the same emulation atomic_flip_current uses where a filesystem
+# has no symlinks.
+live_wake_release_dirs() {
+  local pids pid cwd_link cwd rel prefix
+  local proc_root="${DEPLOY_PROC_ROOT:-/proc}"
+  local physical
+  # The kernel reports a PHYSICAL cwd; compare against both spellings.
+  physical="$(cd "$RELEASES_DIR" 2>/dev/null && pwd -P)" || physical=""
+  pids="$(live_cron_wake_pids)" || return 2
+  for pid in $pids; do
+    cwd_link="$proc_root/$pid/cwd"
+    if [ -L "$cwd_link" ]; then
+      cwd="$(readlink "$cwd_link" 2>/dev/null)" || return 2
+    elif [ -f "$cwd_link" ]; then
+      cwd="$(cat "$cwd_link")"
+    elif [ -e "$proc_root/$pid" ]; then
+      return 2
+    else
+      continue
+    fi
+    for prefix in "$RELEASES_DIR" "$physical"; do
+      [ -n "$prefix" ] || continue
+      case "$cwd" in
+        "$prefix"/*)
+          rel="${cwd#"$prefix"/}"
+          printf '%s\n' "$RELEASES_DIR/${rel%%/*}"
+          break
+          ;;
+      esac
+    done
+  done
+  return 0
 }
 
 # --------------------------------------- 2.9 failed-deploy release-dir cleanup
@@ -1924,6 +2007,9 @@ for attr in (
   return 0
 }
 
+# #1259: re-check right before swapping the shared per-slot venv a live wake
+# spawns python from (refuses unless DEPLOY_ALLOW_LIVE_RUN=1).
+wait_for_no_live_cron_wake venv
 log "Setting up scraper Python venv (W-111/W-112) at $PYTHON_VENV_DIR"
 if ! setup_python_venv; then
   fatal "python venv setup failed for $RELEASE_NAME — 'current' was NOT touched; $CURRENT_LINK still serves the old release."
@@ -1970,6 +2056,8 @@ apply_migrations() {
   fi
 }
 
+# #1259: re-check right before migrating the schema old code may still write.
+wait_for_no_live_cron_wake migrations
 if ! apply_migrations; then
   fatal "migration step failed for $RELEASE_NAME — 'current' was NOT touched; $CURRENT_LINK still serves the old release."
 fi
@@ -3112,7 +3200,19 @@ fi
 log "Pruning old releases (keeping the newest $KEEP_RELEASES)"
 CUR="$(read_current_link || true)"
 mapfile -t LIVE_REFS < <(collect_live_release_dirs)
-if [ -d "$RELEASES_DIR" ]; then
+# #1259: plus every release a live cron-launched wake of this slot runs from
+# (reachable only under DEPLOY_ALLOW_LIVE_RUN=1 or a wake that started after the
+# last re-check). Unknowable -> skip the prune: a missed prune costs disk until
+# the next deploy, a blind one deletes a running release.
+PRUNE_BLIND=0
+if WAKE_REFS="$(live_wake_release_dirs)"; then
+  mapfile -t WAKE_LIVE_REFS <<< "$WAKE_REFS"
+else
+  PRUNE_BLIND=1
+  WAKE_LIVE_REFS=()
+  warn "prune skipped: cannot tell which release dirs live cron-launched scraper wakes of slot $SLOT run from (pgrep failed or a /proc/<pid>/cwd was unreadable); no release deleted this deploy, the next one prunes."
+fi
+if (( ! PRUNE_BLIND )) && [ -d "$RELEASES_DIR" ]; then
   # shellcheck disable=SC2012  # release dir names are timestamp_sha, plain alphanumeric — ls is safe
   TOTAL="$(cd "$RELEASES_DIR" && ls -1 | LC_ALL=C sort | wc -l)"
   if [ "$TOTAL" -gt "$KEEP_RELEASES" ]; then
@@ -3134,6 +3234,17 @@ if [ -d "$RELEASES_DIR" ]; then
       done
       if [ "$referenced" -eq 1 ]; then
         log "keeping $old (still referenced by a live current-link or pm2 process — T-262 slot-safe prune)"
+        continue
+      fi
+      for ref in "${WAKE_LIVE_REFS[@]}"; do
+        [ -n "$ref" ] || continue
+        if [ "$ref" = "$old_path" ]; then
+          referenced=1
+          break
+        fi
+      done
+      if [ "$referenced" -eq 1 ]; then
+        log "keeping $old (a live cron-launched scraper wake of slot $SLOT runs from it — #1259)"
         continue
       fi
       log "removing $old"
