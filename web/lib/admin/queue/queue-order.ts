@@ -21,7 +21,12 @@ import { RULE_FILTER_LABELS, type RuleFilter } from './conflict-rule-filter';
 
 export const LIVE_STATUSES = ['UPCOMING', 'OPEN', 'CLOSED'] as const;
 export type QueueGroup = 1 | 2 | 3;
-export type QueueKind = 'conflict' | 'missing';
+/**
+ * conflict = (a) an unresolved data_conflicts row; missing = (b) a plan row in a no-value state;
+ * flagged = (c) a stored value the shared field check (validateIPOData) refuses. A field that is
+ * both missing and flagged is ONE item (kind 'missing') carrying both reasons.
+ */
+export type QueueKind = 'conflict' | 'missing' | 'flagged';
 
 /** OD-62 absence with no code (rows settled before S4, #779; repair parked in #1268). */
 export const NO_REASON_RECORDED = 'no reason recorded';
@@ -47,6 +52,12 @@ export interface QueueItem {
   ruleFilter: RuleFilter | null;
   /** Plain reason: OD-62 code / 'no reason recorded' for missing, the rule label or 'disagreement' for a conflict. */
   reason: string;
+  /** Every reason this field is in the queue (the primary first); a merged missing+flagged field has two. */
+  reasons: string[];
+  /** The field check's message(s), for a flagged field. */
+  messages?: string[];
+  /** The value stored in the column now (missing/flagged), shown next to the state; undefined = not loaded. */
+  storedValue?: string | null;
   /** Missing only: the plan state (NOT_AVAILABLE_YET | CHECK_FAILED | EXHAUSTED). */
   planState?: string;
   /** Conflict only — admin-only (item 24), never in a public payload. */
@@ -58,6 +69,7 @@ export interface QueueIpoSummary {
   ipo: QueueIpo;
   conflicts: number;
   missing: number;
+  flagged: number;
   ruled: number;
   editorHref: string;
 }
@@ -111,11 +123,12 @@ function cmpNullsLast(a: string | null, b: string | null, dir: 1 | -1): number {
  * disagreement list. A new population (e.g. a value a detection check flagged) adds its category
  * and rank here; the rest of the ordering is unchanged.
  */
-export const CATEGORY_RANK = { disagreement: 0, missing: 1, ruled: 2 } as const;
+export const CATEGORY_RANK = { disagreement: 0, missing: 1, flagged: 2, ruled: 3 } as const;
 export type QueueCategory = keyof typeof CATEGORY_RANK;
 
 export function categoryOf(i: Pick<QueueItem, 'kind' | 'ruleFilter'>): QueueCategory {
   if (i.kind === 'missing') return 'missing';
+  if (i.kind === 'flagged') return 'flagged';
   return i.ruleFilter === null ? 'disagreement' : 'ruled';
 }
 
@@ -154,12 +167,12 @@ export function orderQueue(items: QueueItem[]): QueueEntry[] {
     else {
       let s = listed.get(item.ipo.id);
       if (!s) {
-        s = { ipo: item.ipo, conflicts: 0, missing: 0, ruled: 0, editorHref: `/ipos/${encodeURIComponent(item.ipo.slug)}` };
+        s = { ipo: item.ipo, conflicts: 0, missing: 0, flagged: 0, ruled: 0, editorHref: `/ipos/${encodeURIComponent(item.ipo.slug)}` };
         listed.set(item.ipo.id, s);
       }
-      if (item.kind === 'missing') s.missing++;
-      else if (item.ruleFilter === null) s.conflicts++;
-      else s.ruled++;
+      const cat = categoryOf(item);
+      if (cat === 'disagreement') s.conflicts++;
+      else s[cat]++;
     }
   }
   g1.sort(compareItems);
@@ -180,23 +193,21 @@ export function orderIpoItems(items: QueueItem[]): QueueItem[] {
 export interface QueueCounts {
   total: number;
   byGroup: Record<QueueGroup, { items: number; ipos: number }>;
-  byKind: Record<'disagreement' | 'missing' | 'ruled', number>;
+  byKind: Record<QueueCategory, number>;
   byReason: Record<string, number>;
 }
 
 export function countQueue(items: QueueItem[]): QueueCounts {
   const byGroup: QueueCounts['byGroup'] = { 1: { items: 0, ipos: 0 }, 2: { items: 0, ipos: 0 }, 3: { items: 0, ipos: 0 } };
   const iposPerGroup: Record<QueueGroup, Set<string>> = { 1: new Set(), 2: new Set(), 3: new Set() };
-  const byKind = { disagreement: 0, missing: 0, ruled: 0 };
+  const byKind: Record<QueueCategory, number> = { disagreement: 0, missing: 0, flagged: 0, ruled: 0 };
   const byReason: Record<string, number> = {};
   for (const item of items) {
     const g = groupOf(item);
     byGroup[g].items++;
     iposPerGroup[g].add(item.ipo.id);
-    if (item.kind === 'missing') byKind.missing++;
-    else if (item.ruleFilter === null) byKind.disagreement++;
-    else byKind.ruled++;
-    byReason[item.reason] = (byReason[item.reason] ?? 0) + 1;
+    byKind[categoryOf(item)]++;
+    for (const r of item.reasons) byReason[r] = (byReason[r] ?? 0) + 1;
   }
   for (const g of [1, 2, 3] as const) byGroup[g].ipos = iposPerGroup[g].size;
   return { total: items.length, byGroup, byKind, byReason };
@@ -205,7 +216,7 @@ export function countQueue(items: QueueItem[]): QueueCounts {
 export interface QueueView {
   group?: QueueGroup;
   reason?: string;
-  kind?: 'disagreement' | 'missing' | 'ruled';
+  kind?: QueueCategory;
   ipo?: string;
 }
 
@@ -214,11 +225,8 @@ export function applyView(items: QueueItem[], view: QueueView): QueueItem[] {
   return items.filter((i) => {
     if (view.ipo && i.ipo.slug !== view.ipo) return false;
     if (view.group && groupOf(i) !== view.group) return false;
-    if (view.reason && i.reason !== view.reason) return false;
-    if (view.kind) {
-      const k = i.kind === 'missing' ? 'missing' : i.ruleFilter === null ? 'disagreement' : 'ruled';
-      if (k !== view.kind) return false;
-    }
+    if (view.reason && !i.reasons.includes(view.reason)) return false;
+    if (view.kind && categoryOf(i) !== view.kind) return false;
     return true;
   });
 }

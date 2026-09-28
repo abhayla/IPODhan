@@ -26,7 +26,7 @@ const response = {
   counts: {
     total: 3,
     byGroup: { 1: { items: 2, ipos: 1 }, 2: { items: 0, ipos: 0 }, 3: { items: 1, ipos: 1 } },
-    byKind: { disagreement: 1, missing: 2, ruled: 0 },
+    byKind: { disagreement: 1, missing: 2, flagged: 0, ruled: 0 },
     byReason: { disagreement: 1, 'no reason recorded': 2 },
   },
   view: {},
@@ -40,7 +40,7 @@ const response = {
       group: 1,
       item: {
         id: 'conflict:c1', kind: 'conflict', ipo, tableName: 'ipos', fieldName: 'issueSize', rowKey: '', ruleFilter: null,
-        reason: 'disagreement', sources: [{ source: 'CHITTORGARH', value: '3000000000' }, { source: 'BSE', value: '2600624600' }],
+        reason: 'disagreement', reasons: ['disagreement'], sources: [{ source: 'CHITTORGARH', value: '3000000000' }, { source: 'BSE', value: '2600624600' }],
         editorHref: '/ipos/abc-ltd?edit=ipos.issueSize',
       },
     },
@@ -49,10 +49,10 @@ const response = {
       group: 1,
       item: {
         id: 'plan:p1', kind: 'missing', ipo, tableName: 'ipos', fieldName: 'priceRangeMax', rowKey: '', ruleFilter: null,
-        reason: 'no reason recorded', planState: 'CHECK_FAILED', editorHref: '/ipos/abc-ltd?edit=ipos.priceRangeMax',
+        reason: 'no reason recorded', reasons: ['no reason recorded'], storedValue: '100', planState: 'CHECK_FAILED', editorHref: '/ipos/abc-ltd?edit=ipos.priceRangeMax',
       },
     },
-    { type: 'ipo', group: 3, summary: { ipo: listed, conflicts: 0, missing: 1, ruled: 0, editorHref: '/ipos/old-ltd' } },
+    { type: 'ipo', group: 3, summary: { ipo: listed, conflicts: 0, missing: 1, flagged: 0, ruled: 0, editorHref: '/ipos/old-ltd' } },
   ],
 };
 

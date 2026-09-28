@@ -86,11 +86,55 @@ describe('AdminQueueService population sources', () => {
     const { AdminQueueService } = await import('@/lib/services/admin-queue-service');
     const a = buildQueueItems([conflict()], [], []);
     const b = buildQueueItems([], [plan()], []);
-    const svc = new AdminQueueService({} as never, {} as never, [
+    const svc = new AdminQueueService({ execute: async () => ({ rows: [] }) } as never, {} as never, [
       { name: 'missing', load: async () => b },
       { name: 'conflict', load: async () => a },
     ]);
     const r = await svc.getQueue({ page: 1, pageSize: 50 });
     expect(r.entries.map((e) => (e.type === 'item' ? e.item.id : 'ipo'))).toEqual(['conflict:c1', 'plan:p1']);
+  });
+});
+
+describe('population (c): stored values the shared field check refuses (OD-62 FAILED_VALIDATION, §2.6)', () => {
+  it('flags an IPO that has no plan rows at all, with the check message and the stored value', async () => {
+    const { flaggedItems } = await import('@/lib/services/admin-queue-service');
+    const items = flaggedItems([
+      { id: 'i9', slug: 'no-plan-ltd', companyName: 'No Plan Ltd', status: 'LISTED', lotSize: 1, openDate: '2024-01-02', closeDate: null, listingDate: '2024-01-09' },
+    ]);
+    expect(items.map((i) => [i.kind, i.fieldName, i.reason, i.storedValue])).toEqual([['flagged', 'lotSize', 'FAILED_VALIDATION', '1']]);
+    expect(items[0].messages?.[0]).toMatch(/lot_size = 1/);
+    expect(items[0].ipo.listingDate).toBe('2024-01-09');
+  });
+
+  it('a NOT_AVAILABLE_YET field whose column still holds a value appears ONCE with both reasons (stanbik-like)', async () => {
+    const { flaggedItems, mergeFieldItems, missingItems } = await import('@/lib/services/admin-queue-service');
+    const b = missingItems([plan({ field_name: 'lot_size', state: 'NOT_AVAILABLE_YET', reason_code: 'NOT_PUBLISHED_YET' })], []);
+    const c = flaggedItems([{ id: 'i1', slug: 'abc-ltd', companyName: 'ABC Ltd', status: 'UPCOMING', lotSize: 1, openDate: '2026-10-05' }]);
+    const merged = mergeFieldItems([...b, ...c]);
+    expect(merged.length).toBe(1);
+    expect(merged[0]).toMatchObject({ kind: 'missing', fieldName: 'lotSize', reasons: ['NOT_PUBLISHED_YET', 'FAILED_VALIDATION'], storedValue: '1', planState: 'NOT_AVAILABLE_YET' });
+  });
+
+  it('missing is defined by the plan STATE, not a NULL column: a stored value does not remove the item', async () => {
+    const { missingItems } = await import('@/lib/services/admin-queue-service');
+    const [i] = missingItems([plan({ field_name: 'lot_size', state: 'NOT_AVAILABLE_YET' })], []);
+    expect(i.kind).toBe('missing');
+    expect(i.planState).toBe('NOT_AVAILABLE_YET');
+  });
+});
+
+describe('population (c) derived rules', () => {
+  it('a check on a derived rule (not a column) opens the IPO page, with no stored value', async () => {
+    const { flaggedItems } = await import('@/lib/services/admin-queue-service');
+    const items = flaggedItems([
+      { id: 'i8', slug: 'x-ltd', companyName: 'X Ltd', status: 'UPCOMING', segment: 'MAINBOARD', lotSize: 100, priceRangeMin: 10, priceRangeMax: 10, openDate: '2026-10-05' },
+    ]);
+    for (const i of items) {
+      if (!(i.fieldName in { id: 1, slug: 1, companyName: 1, status: 1, segment: 1, lotSize: 1, priceRangeMin: 1, priceRangeMax: 1, openDate: 1 })) {
+        expect(i.editorHref).toBe('/ipos/x-ltd');
+        expect(i.storedValue).toBeUndefined();
+      }
+    }
+    expect(items.map((i) => i.fieldName)).toContain('lotEconomics');
   });
 });

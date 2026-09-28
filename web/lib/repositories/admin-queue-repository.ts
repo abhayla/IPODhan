@@ -6,7 +6,9 @@
  * list, and an item the admin just fixed in the IPO-page editor must leave it on the next load.
  * Dates are selected as ::text so no pool timezone can shift a calendar day (ist-timezone.md).
  */
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
+import { ipos } from '@ipodhan/shared/db/schema';
+import { ADMIN_WRITABLE_TABLES } from '@ipodhan/shared/services/admin-field-write';
 import { BaseRepository } from './base-repository';
 
 /** OD-62 / S4: the plan states that mean "no source supplied a value". */
@@ -82,5 +84,36 @@ export class AdminQueueRepository extends BaseRepository {
       SELECT ipo_id, table_name, field_name FROM field_protection_metadata
        WHERE is_protected = true AND manually_edited_at IS NOT NULL`);
     return (r.rows ?? []) as unknown as HoldRow[];
+  }
+}
+
+/** One-row-per-IPO tables whose stored value the queue may show next to a plan state (admin write's list). */
+export const STORED_VALUE_TABLES: readonly string[] = ADMIN_WRITABLE_TABLES;
+
+export class AdminQueueStoredRowsRepository extends BaseRepository {
+  /**
+   * Every IPO's stored `ipos` row, as drizzle maps it (the shape validateIPOData checks on every
+   * write). ~400 rows on staging: one indexless scan, measured in the A4 report.
+   */
+  async listIposRows(ipoSlug?: string): Promise<Array<Record<string, unknown>>> {
+    const q = this.db.select().from(ipos);
+    const rows = ipoSlug ? await q.where(eq(ipos.slug, ipoSlug)) : await q;
+    return rows as unknown as Array<Record<string, unknown>>;
+  }
+
+  /** The stored rows of one one-row-per-IPO table for the given IPOs, keys in camelCase. */
+  async storedRows(tableName: string, ipoIds: string[]): Promise<Map<string, Record<string, unknown>>> {
+    const out = new Map<string, Record<string, unknown>>();
+    if (!STORED_VALUE_TABLES.includes(tableName) || ipoIds.length === 0) return out;
+    const idCol = tableName === 'ipos' ? sql`t.id` : sql`t.ipo_id`;
+    const r = await this.db.execute(sql`
+      SELECT ${idCol}::text AS ipo_id, to_jsonb(t) AS row FROM ${sql.identifier(tableName)} t
+       WHERE ${idCol} IN (${sql.join(ipoIds.map((id) => sql`${id}::uuid`), sql`, `)})`);
+    for (const row of (r.rows ?? []) as Array<{ ipo_id: string; row: Record<string, unknown> }>) {
+      const camel: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(row.row)) camel[k.replace(/_([a-z0-9])/g, (_m, c: string) => c.toUpperCase())] = v;
+      out.set(row.ipo_id, camel);
+    }
+    return out;
   }
 }

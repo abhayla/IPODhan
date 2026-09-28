@@ -30,7 +30,7 @@ const ipo = (slug: string, status: string, d: Partial<QueueIpo> = {}): QueueIpo 
 });
 
 let n = 0;
-const item = (i: QueueIpo, fieldName: string, kind: 'conflict' | 'missing', o: Partial<QueueItem> = {}): QueueItem => ({
+const item = (i: QueueIpo, fieldName: string, kind: 'conflict' | 'missing', o: Partial<QueueItem> = {}): QueueItem => withReasons({
   id: `x${String(++n).padStart(3, '0')}`,
   kind,
   ipo: i,
@@ -42,6 +42,10 @@ const item = (i: QueueIpo, fieldName: string, kind: 'conflict' | 'missing', o: P
   editorHref: editorHref(i.slug, 'ipos', fieldName, ''),
   ...o,
 });
+
+function withReasons(x: Omit<QueueItem, 'reasons'> & { reasons?: string[] }): QueueItem {
+  return { ...x, reasons: x.reasons ?? [x.reason] };
+}
 
 const label = (e: QueueEntry) =>
   e.type === 'item' ? `${e.group}:${e.item.ipo.slug}:${e.item.kind}:${e.item.fieldName}` : `3:${e.summary.ipo.slug}`;
@@ -117,7 +121,7 @@ describe('admin queue order (OD-136)', () => {
     const c = countQueue(items);
     expect(c.total).toBe(11);
     expect(c.byGroup).toEqual({ 1: { items: 6, ipos: 3 }, 2: { items: 1, ipos: 1 }, 3: { items: 4, ipos: 3 } });
-    expect(c.byKind).toEqual({ disagreement: 2, missing: 7, ruled: 2 });
+    expect(c.byKind).toEqual({ disagreement: 2, missing: 7, flagged: 0, ruled: 2 });
     expect(c.byReason[NO_REASON_RECORDED]).toBe(6);
     expect(c.byReason.NOT_PUBLISHED_YET).toBe(1);
   });

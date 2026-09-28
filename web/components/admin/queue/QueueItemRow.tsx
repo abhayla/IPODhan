@@ -8,6 +8,7 @@ import type { QueueItem } from '@/lib/admin/queue/queue-order';
 
 function kindLabel(item: QueueItem): string {
   if (item.kind === 'missing') return 'Missing';
+  if (item.kind === 'flagged') return 'Refused by the field check';
   return item.ruleFilter === null ? 'Disagreement' : 'Not a disagreement';
 }
 
@@ -29,8 +30,15 @@ export function QueueItemRow({ item, group }: { item: QueueItem; group: 1 | 2 | 
       </td>
       <td className="px-3 py-2 text-sm text-gray-200">{kindLabel(item)}</td>
       <td className="px-3 py-2 text-sm text-gray-300">
-        <div>{item.reason}</div>
+        {item.reasons.map((r) => (
+          <div key={r}>{r}</div>
+        ))}
         {item.planState ? <div className="text-xs text-gray-400">{item.planState}</div> : null}
+        {item.messages?.map((m, i) => (
+          <div key={i} className="text-xs text-amber-300">
+            {m}
+          </div>
+        ))}
       </td>
       <td className="px-3 py-2 text-xs text-gray-300">
         {item.sources?.map((s, i) => (
@@ -38,6 +46,11 @@ export function QueueItemRow({ item, group }: { item: QueueItem; group: 1 | 2 | 
             <span className="text-gray-400">{s.source}:</span> {s.value ?? '(empty)'}
           </div>
         ))}
+        {item.storedValue !== undefined ? (
+          <div data-testid="stored-value">
+            <span className="text-gray-400">stored now:</span> {item.storedValue ?? '(empty)'}
+          </div>
+        ) : null}
       </td>
       <td className="px-3 py-2 text-sm">
         <Link href={item.editorHref} className="text-blue-400 hover:underline">

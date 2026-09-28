@@ -12,7 +12,7 @@ import { AdminQueueService } from '@/lib/services/admin-queue-service';
 import { orderQueue, type QueueEntry } from '@/lib/admin/queue/queue-order';
 
 const tag = `a4q-${Date.now().toString(36)}`;
-const ids = { up: randomUUID(), cl: randomUUID(), l1: randomUUID(), l2: randomUUID() };
+const ids = { up: randomUUID(), cl: randomUUID(), l1: randomUUID(), l2: randomUUID(), l3: randomUUID() };
 const slug = (k: string) => `${tag}-${k}`;
 
 async function ipo(id: string, k: string, status: string, open: string | null, close: string | null, listing: string | null) {
@@ -33,7 +33,7 @@ async function conflict(ipoId: string, field: string, s1: string, v1: string | n
 const label = (e: QueueEntry) =>
   e.type === 'item'
     ? `${e.group}:${e.item.ipo.slug.slice(tag.length + 1)}:${e.item.kind}:${e.item.fieldName}:${e.item.reason.slice(0, 18)}`
-    : `3:${e.summary.ipo.slug.slice(tag.length + 1)}:${e.summary.conflicts}/${e.summary.missing}/${e.summary.ruled}`;
+    : `3:${e.summary.ipo.slug.slice(tag.length + 1)}:${e.summary.conflicts}/${e.summary.missing}/${e.summary.flagged}/${e.summary.ruled}`;
 
 describe('admin queue on ipodhan_test (OD-136 order)', () => {
   beforeAll(async () => {
@@ -41,6 +41,10 @@ describe('admin queue on ipodhan_test (OD-136 order)', () => {
     await ipo(ids.cl, 'cl', 'CLOSED', '2026-09-20', '2026-09-24', '2026-09-29');
     await ipo(ids.l1, 'l1', 'LISTED', '2025-01-01', '2025-01-03', '2025-01-08');
     await ipo(ids.l2, 'l2', 'LISTED', '2026-08-01', '2026-08-03', '2026-08-08');
+    await ipo(ids.l3, 'l3', 'LISTED', '2024-04-20', '2024-04-24', '2024-05-01'); // no plan rows at all
+    // population (c): a stored lot_size of 1 is refused by validateIPOData. On 'up' the plan row
+    // for lot_size is also missing (stanbik-like), so that field must appear ONCE with both reasons.
+    await db.execute(sql`UPDATE ipos SET lot_size = 1 WHERE id IN (${ids.up}, ${ids.l3})`);
 
     // group 1 (shown fields) and group 2 (other fields) for the two live IPOs
     await plan(ids.up, 'ipos', 'price_range_max', 'NOT_AVAILABLE_YET', 'NOT_PUBLISHED_YET');
@@ -83,9 +87,12 @@ describe('admin queue on ipodhan_test (OD-136 order)', () => {
       '1:up:missing:priceRangeMax:NOT_PUBLISHED_YET',
       '1:up:conflict:lotSize:a source changed i',
       '2:up:missing:companyWebsite:no reason recorded',
-      '3:l2:0/1/1',
-      '3:l1:0/1/0',
+      '3:l2:0/1/0/1',
+      '3:l1:0/1/0/0',
+      '3:l3:0/0/1/0', // no plan rows: reached only through the field check (population c)
     ]);
+    const lot = mine.filter((i) => i.ipo.id === ids.up && i.fieldName === 'lotSize' && i.kind !== 'conflict');
+    expect(lot.map((i) => [i.kind, i.reasons, i.storedValue])).toEqual([['missing', ['no reason recorded', 'FAILED_VALIDATION'], '1']]);
     const peer = mine.find((i) => i.tableName === 'peer_companies');
     expect(peer?.editorHref).toBe(`/ipos/${slug('l2')}?edit=peer_companies.peRatio&row=xyz%20ltd`);
   });

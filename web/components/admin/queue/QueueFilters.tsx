@@ -29,6 +29,7 @@ export function QueueFilters({ view, onChange }: { view: QueueView; onChange: (v
           <option value="">All kinds</option>
           <option value="disagreement">Disagreements</option>
           <option value="missing">Missing values</option>
+          <option value="flagged">Refused by the field check</option>
           <option value="ruled">Not disagreements by rule</option>
         </select>
       </label>

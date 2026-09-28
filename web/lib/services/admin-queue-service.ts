@@ -13,7 +13,17 @@
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import type * as schema from '@ipodhan/shared/db/schema';
-import { AdminQueueRepository, type ConflictRow, type IpoRow, type PlanRow, type HoldRow } from '@/lib/repositories/admin-queue-repository';
+import {
+  AdminQueueRepository,
+  AdminQueueStoredRowsRepository,
+  STORED_VALUE_TABLES,
+  type ConflictRow,
+  type IpoRow,
+  type PlanRow,
+  type HoldRow,
+} from '@/lib/repositories/admin-queue-repository';
+import { validateIPOData } from '@ipodhan/shared/utils/ipo-field-checks';
+import { isoDay } from '@ipodhan/shared/utils/company-identity-fold';
 import { ruleFilterFor } from '@/lib/admin/queue/conflict-rule-filter';
 import {
   applyView,
@@ -72,6 +82,7 @@ export function conflictToItem(r: ConflictRow): QueueItem {
     rowKey: r.row_key ?? '',
     ruleFilter,
     reason: reasonForConflict(ruleFilter),
+    reasons: [reasonForConflict(ruleFilter)],
     sources: [
       { source: r.source1, value: r.value1 },
       { source: r.source2, value: r.value2 },
@@ -91,6 +102,7 @@ export function planToItem(r: PlanRow): QueueItem {
     rowKey: r.row_key ?? '',
     ruleFilter: null,
     reason: reasonForMissing(r.reason_code),
+    reasons: [reasonForMissing(r.reason_code)],
     planState: r.state,
     editorHref: editorHref(r.slug, r.table_name, fieldName, r.row_key ?? ''),
   };
@@ -107,6 +119,106 @@ export function missingItems(plans: PlanRow[], holds: HoldRow[]): QueueItem[] {
     items.push(item);
   }
   return items;
+}
+
+/** OD-62's code for a value read but refused by its shape check. */
+export const FAILED_VALIDATION = 'FAILED_VALIDATION';
+
+/** Same numeric coercion the admin write applies before validateIPOData (admin-field-write.ts ipoFieldCheckFailure). */
+const NUMERIC_CHECK_FIELDS = ['lotSize', 'priceRangeMin', 'priceRangeMax'];
+
+function displayValue(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  if (v instanceof Date) return isoDay(v);
+  return typeof v === 'object' ? JSON.stringify(v) : String(v);
+}
+
+function ipoOfRow(row: Record<string, unknown>): QueueIpo {
+  return {
+    id: String(row.id),
+    slug: String(row.slug),
+    companyName: String(row.companyName ?? row.slug),
+    status: String(row.status),
+    openDate: isoDay(row.openDate),
+    closeDate: isoDay(row.closeDate),
+    listingDate: isoDay(row.listingDate),
+  };
+}
+
+/**
+ * Population (c): a stored `ipos` value refused by the SAME shared field check the admin write and
+ * every scraper write run (validateIPOData, packages/shared/src/utils/ipo-field-checks.ts). OD-62: a
+ * value that failed its shape check is FAILED_VALIDATION; §2.6: the queue must make a gap visible
+ * even when the plan row says nothing — a wrong value can sit in a SUPPLIED field, or on an IPO with
+ * no plan rows at all. So this runs over every IPO's stored row, not only IPOs with plan rows.
+ */
+export function flaggedItems(rows: Array<Record<string, unknown>>): QueueItem[] {
+  const items: QueueItem[] = [];
+  for (const row of rows) {
+    const checked: Record<string, unknown> = { ...row };
+    for (const k of NUMERIC_CHECK_FIELDS) {
+      const v = checked[k];
+      if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) checked[k] = Number(v);
+    }
+    const byField = new Map<string, string[]>();
+    for (const e of validateIPOData(checked as never, 'STORED').errors) {
+      byField.set(e.field, [...(byField.get(e.field) ?? []), e.message]);
+    }
+    const ipo = ipoOfRow(row);
+    for (const [fieldName, messages] of byField) {
+      // A check can name a derived rule rather than a column (measured on staging: `lotEconomics`,
+      // lot size x price band). There is no single editor field for it, so the item opens the IPO
+      // page itself and shows no stored value, rather than pointing at a column that does not exist.
+      const isColumn = Object.prototype.hasOwnProperty.call(row, fieldName);
+      items.push({
+        id: `flag:${ipo.id}:${fieldName}`,
+        kind: 'flagged',
+        ipo,
+        tableName: 'ipos',
+        fieldName,
+        rowKey: '',
+        ruleFilter: null,
+        reason: FAILED_VALIDATION,
+        reasons: [FAILED_VALIDATION],
+        messages,
+        storedValue: isColumn ? displayValue(row[fieldName]) : undefined,
+        editorHref: isColumn ? editorHref(ipo.slug, 'ipos', fieldName, '') : `/ipos/${encodeURIComponent(ipo.slug)}`,
+      });
+    }
+  }
+  return items;
+}
+
+/**
+ * One field appears once with all its reasons: a missing (b) and a flagged (c) item on the same
+ * (IPO, table, field, row) become one 'missing' item carrying both. Conflicts stay separate items.
+ */
+export function mergeFieldItems(items: QueueItem[]): QueueItem[] {
+  const out: QueueItem[] = [];
+  const byField = new Map<string, QueueItem>();
+  for (const item of items) {
+    if (item.kind === 'conflict') {
+      out.push(item);
+      continue;
+    }
+    const key = `${item.ipo.id}|${item.tableName}|${item.fieldName}|${item.rowKey}`;
+    const seen = byField.get(key);
+    if (!seen) {
+      const copy = { ...item, reasons: [...item.reasons] };
+      byField.set(key, copy);
+      out.push(copy);
+      continue;
+    }
+    const [missing, flagged] = seen.kind === 'missing' ? [seen, item] : [item, seen];
+    Object.assign(seen, {
+      ...missing,
+      kind: 'missing' as const,
+      reasons: [...new Set([...missing.reasons, ...flagged.reasons])],
+      messages: [...(missing.messages ?? []), ...(flagged.messages ?? [])],
+      storedValue: flagged.storedValue !== undefined ? flagged.storedValue : missing.storedValue,
+    });
+  }
+  return out;
 }
 
 /** Populations (a) and (b) merged from raw rows. */
@@ -127,6 +239,11 @@ export interface QueueSource {
 /** Population (a): unresolved data_conflicts; F-173 rule-filtered rows kept with their label. */
 export function conflictSource(repo: AdminQueueRepository): QueueSource {
   return { name: 'conflict', load: async (slug) => (await repo.listUnresolvedConflicts(slug)).map(conflictToItem) };
+}
+
+/** Population (c): stored `ipos` values the shared field check refuses. */
+export function flaggedValueSource(rows: AdminQueueStoredRowsRepository): QueueSource {
+  return { name: 'flagged', load: async (slug) => flaggedItems(await rows.listIposRows(slug)) };
 }
 
 /** Population (b): ipo_field_plan rows with no value, minus admin-held fields. */
@@ -157,15 +274,39 @@ export interface QueueResponse {
 
 export class AdminQueueService {
   private sources: QueueSource[];
+  private rows: AdminQueueStoredRowsRepository;
 
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis, sources?: QueueSource[]) {
     const repo = new AdminQueueRepository(db, redis);
-    this.sources = sources ?? [conflictSource(repo), missingValueSource(repo)];
+    this.rows = new AdminQueueStoredRowsRepository(db, redis);
+    this.sources = sources ?? [conflictSource(repo), missingValueSource(repo), flaggedValueSource(this.rows)];
   }
 
   async loadItems(ipoSlug?: string): Promise<QueueItem[]> {
     const loaded = await Promise.all(this.sources.map((s) => s.load(ipoSlug)));
-    return loaded.flat();
+    return mergeFieldItems(loaded.flat());
+  }
+
+  /**
+   * The stored value next to a missing item's plan state (a NOT_AVAILABLE_YET field often still
+   * holds an old, wrong value — the plan STATE defines "missing", never a NULL column). Loaded for the
+   * listed page only, from one-row-per-IPO tables; a row table's value stays undefined (not loaded).
+   */
+  async attachStoredValues(entries: QueueResponse['entries']): Promise<void> {
+    const need = new Map<string, QueueItem[]>();
+    for (const e of entries) {
+      if (e.type !== 'item' || e.item.kind === 'conflict' || e.item.storedValue !== undefined || e.item.rowKey !== '') continue;
+      if (!STORED_VALUE_TABLES.includes(e.item.tableName)) continue;
+      need.set(e.item.tableName, [...(need.get(e.item.tableName) ?? []), e.item]);
+    }
+    for (const [table, items] of need) {
+      const stored = await this.rows.storedRows(table, [...new Set(items.map((i) => i.ipo.id))]);
+      for (const i of items) {
+        // No row for this IPO in a one-row table means nothing is stored: shown as empty, not unknown.
+        const row = stored.get(i.ipo.id);
+        i.storedValue = row ? displayValue(row[i.fieldName]) : null;
+      }
+    }
   }
 
   /**
@@ -174,7 +315,9 @@ export class AdminQueueService {
    */
   async getQueue(req: QueueRequest): Promise<QueueResponse> {
     const all = await this.loadItems();
-    return shapeQueue(all, req);
+    const shaped = shapeQueue(all, req);
+    await this.attachStoredValues(shaped.entries);
+    return shaped;
   }
 }
 

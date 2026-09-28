@@ -14,7 +14,8 @@ export function QueueIpoRow({ summary, onOpen }: { summary: QueueIpoSummary; onO
         </div>
       </td>
       <td className="px-3 py-2 text-sm text-gray-300" colSpan={4}>
-        {summary.conflicts} disagreements · {summary.missing} missing · {summary.ruled} not disagreements by rule
+        {summary.conflicts} disagreements · {summary.missing} missing · {summary.flagged} refused by the field check ·{' '}
+        {summary.ruled} not disagreements by rule
       </td>
       <td className="px-3 py-2 text-sm space-x-3">
         <button type="button" className="text-blue-400 hover:underline" onClick={() => onOpen(ipo.slug)}>

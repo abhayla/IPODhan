@@ -16,7 +16,7 @@ export function QueueCountsPanel({ counts, onReason }: { counts: QueueCounts; on
           <div className="text-gray-400 text-sm">Everything to review</div>
           <div className="text-3xl font-bold text-white mt-1">{counts.total}</div>
           <div className="text-xs text-gray-400 mt-1">
-            {counts.byKind.disagreement} disagreements · {counts.byKind.missing} missing · {counts.byKind.ruled} not
+            {counts.byKind.disagreement} disagreements · {counts.byKind.missing} missing · {counts.byKind.flagged} refused by the field check · {counts.byKind.ruled} not
             disagreements by rule
           </div>
         </div>
