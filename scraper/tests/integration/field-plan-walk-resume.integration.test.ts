@@ -511,7 +511,7 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     expect(row.attempts).toBe(0);
   });
 
-  it('an admin-protected field is released UNRECORDED: no state, no attempt, no claim', async () => {
+  it('an admin-protected field is READ but never written (§2.4 clarification): no state change, no attempt, not due again, no claim', async () => {
     const id = await seedRow({ fieldName: 'issuePrice' });
 
     const result = await walkFieldPlanForIPO(
@@ -526,7 +526,10 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
     expect(row.state).toBe('PENDING');
     expect(row.attempts).toBe(0);
-    expect(row.lastAttemptAt).toBeNull();
+    // The read is stamped (its time and the held-read key), so the field is asked again only at a
+    // stage change or a new document (OD-65: no extra read is scheduled for a held field).
+    expect(row.lastAttemptAt).not.toBeNull();
+    expect(String(row.cause ?? '')).toMatch(/^\[held-read:/);
     expect(row.nextDueAt).toBeNull();
     expect(row.claimedAt).toBeNull();
     expect(row.claimToken).toBeNull();
