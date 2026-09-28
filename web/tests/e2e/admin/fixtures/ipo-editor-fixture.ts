@@ -12,7 +12,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Client } from 'pg';
 
-export const FIXTURE_SLUG = 'a3-editor-fixture-motors-limited';
+/** Slug prefix; each seed adds a run suffix so no page or Redis entry cached by an earlier run is reused. */
+export const FIXTURE_SLUG_PREFIX = 'a3-editor-fixture-motors-';
 export const FIXTURE_EMAIL = 'a3-editor-fixture@ipodhan.test';
 export const SESSION_COOKIE = 'ipodhan_admin_session';
 export const DOC_ISSUE_SIZE = '10000000000';
@@ -64,12 +65,13 @@ export async function seedEditorFixture(): Promise<EditorFixture> {
   const c = await connect();
   try {
     await cleanup(c);
+    const slug = `${FIXTURE_SLUG_PREFIX}${randomBytes(4).toString('hex')}`;
     const readAt = '2026-09-16 08:30:00';
     const ipo = await c.query<{ id: string }>(
       `INSERT INTO ipos (company_name, slug, status, offering_type, segment, listing_exchanges, issue_size, lot_size, price_range_min, price_range_max, open_date, close_date)
        VALUES ('A3 Editor Fixture Motors Limited', $1, 'UPCOMING', 'IPO', 'MAINBOARD', '["NSE","BSE"]'::jsonb, $2, 30, 480, 505, '2026-10-06', '2026-10-08')
        RETURNING id`,
-      [FIXTURE_SLUG, BSE_ISSUE_SIZE]
+      [slug, BSE_ISSUE_SIZE]
     );
     const ipoId = ipo.rows[0].id;
     const witnesses = [
@@ -91,14 +93,14 @@ export async function seedEditorFixture(): Promise<EditorFixture> {
       `INSERT INTO admin_sessions (id, admin_user_id, created_at, last_seen_at, expires_at) VALUES ($1, $2, now(), now(), now() + interval '1 day')`,
       [hash, user.rows[0].id]
     );
-    return { ipoId, slug: FIXTURE_SLUG, sessionToken: token };
+    return { ipoId, slug, sessionToken: token };
   } finally {
     await c.end();
   }
 }
 
 async function cleanup(c: Client) {
-  const ids = (await c.query<{ id: string }>(`SELECT id FROM ipos WHERE slug = $1`, [FIXTURE_SLUG])).rows.map((r) => r.id);
+  const ids = (await c.query<{ id: string }>(`SELECT id FROM ipos WHERE slug LIKE $1`, [`${FIXTURE_SLUG_PREFIX}%`])).rows.map((r) => r.id);
   for (const id of ids) {
     for (const t of ['audit_logs', 'field_protection_metadata', 'field_sources', 'ipo_field_plan', 'ipo_details']) {
       await c.query(`DELETE FROM ${t} WHERE ipo_id = $1`, [id]);

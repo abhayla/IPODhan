@@ -26,11 +26,11 @@
  * which carries slugs, drops it with the page's own key.
  */
 
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '@ipodhan/shared/db/schema';
-import { ipoFieldPlan } from '@ipodhan/shared/db/schema';
+import { fieldSources, ipoFieldPlan } from '@ipodhan/shared/db/schema';
 import { BaseRepository } from './base-repository';
 import { getIPOProvenanceKey } from '@/lib/cache/cache-keys';
 
@@ -54,6 +54,62 @@ export interface FieldProvenance {
 /** Set by summariseFieldGroup when a block's fields do not share one source. */
 export const MULTIPLE_SOURCES = 'MULTIPLE';
 
+/** chosenSource of a TYPED admin value: the reader line says "Checked by the IPODhan team, <date>" (OD-109). */
+export const ADMIN_TYPED_SOURCE = 'ADMIN';
+
+/** camelCase property (field_sources.field_name) -> SQL column (the plan's and the manifest's key). */
+function toSnake(name: string): string {
+  return name.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+}
+
+/** A stored text timestamp (UTC, no zone) as a Date. */
+function utcDate(text: unknown): Date | null {
+  if (typeof text !== 'string' || text.trim() === '') return null;
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : `${text.replace(' ', 'T')}Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export interface AdminProvenanceRow {
+  tableName: string;
+  fieldName: string;
+  lineage: unknown;
+  updatedAt: string | null;
+}
+
+/**
+ * §9.2 item 13 (OD-109): an admin value's reader line. A PICK names the source it was picked from and
+ * that source's read date ("From NSE, read 25 Sep 2026"); a TYPED value is "Checked by the IPODhan
+ * team, <date of the save>". Never the admin's name, never the word "correction". An admin-empty
+ * value (OD-121) has no value to attribute, so it has no entry. Returns null for a row it cannot read.
+ */
+export function adminProvenanceFor(row: AdminProvenanceRow): FieldProvenance | { key: string; empty: true } | null {
+  const lineage = row.lineage && typeof row.lineage === 'object' ? (row.lineage as Record<string, unknown>) : {};
+  const key = `${row.tableName}.${toSnake(row.fieldName)}`;
+  const note = typeof lineage.sourceNote === 'string' ? lineage.sourceNote.trim() : '';
+  if (lineage.mode === 'typed' && lineage.adminEmpty === true && note === '') return { key, empty: true };
+  if (lineage.mode === 'pick' && typeof lineage.sourceLabel === 'string') {
+    return {
+      key,
+      tableName: row.tableName,
+      fieldName: toSnake(row.fieldName),
+      chosenSource: lineage.sourceLabel.trim().toUpperCase(),
+      chosenDocumentType: null,
+      confirmedAt: utcDate(lineage.readDate),
+    };
+  }
+  if (lineage.mode === 'typed') {
+    return {
+      key,
+      tableName: row.tableName,
+      fieldName: toSnake(row.fieldName),
+      chosenSource: ADMIN_TYPED_SOURCE,
+      chosenDocumentType: null,
+      confirmedAt: utcDate(row.updatedAt),
+    };
+  }
+  return null;
+}
+
 export class IpoFieldPlanRepository extends BaseRepository {
   constructor(
     protected db: NodePgDatabase<typeof schema>,
@@ -70,23 +126,40 @@ export class IpoFieldPlanRepository extends BaseRepository {
    * null source would reach the page as a line that names no source.
    */
   async getIPOProvenanceMap(ipoId: string, slug: string): Promise<Record<string, FieldProvenance>> {
-    const rows = await this.getFromCache(
+    const cached = await this.getFromCache(
       getIPOProvenanceKey(slug),
-      async () =>
-        this.db
-          .select({
-            tableName: ipoFieldPlan.tableName,
-            rowKey: ipoFieldPlan.rowKey,
-            fieldName: ipoFieldPlan.fieldName,
-            state: ipoFieldPlan.state,
-            chosenSource: ipoFieldPlan.chosenSource,
-            chosenDocumentType: ipoFieldPlan.chosenDocumentType,
-            chosenConfirmedAt: ipoFieldPlan.chosenConfirmedAt,
-          })
-          .from(ipoFieldPlan)
-          .where(eq(ipoFieldPlan.ipoId, ipoId)),
+      async () => {
+        const [planRows, adminRows] = await Promise.all([
+          this.db
+            .select({
+              tableName: ipoFieldPlan.tableName,
+              rowKey: ipoFieldPlan.rowKey,
+              fieldName: ipoFieldPlan.fieldName,
+              state: ipoFieldPlan.state,
+              chosenSource: ipoFieldPlan.chosenSource,
+              chosenDocumentType: ipoFieldPlan.chosenDocumentType,
+              chosenConfirmedAt: ipoFieldPlan.chosenConfirmedAt,
+            })
+            .from(ipoFieldPlan)
+            .where(eq(ipoFieldPlan.ipoId, ipoId)),
+          // An admin value is recorded in field_sources, never in the plan (the ONE admin write).
+          this.db
+            .select({
+              tableName: fieldSources.tableName,
+              fieldName: fieldSources.fieldName,
+              lineage: fieldSources.dataLineage,
+              updatedAt: sql<string>`${fieldSources.updatedAt}::text`,
+            })
+            .from(fieldSources)
+            .where(and(eq(fieldSources.ipoId, ipoId), eq(fieldSources.rowKey, ''), eq(fieldSources.source, 'ADMIN'))),
+        ]);
+        return { planRows, adminRows };
+      },
       900
     );
+    // A value cached before this shape existed is a bare plan-row array.
+    const rows = Array.isArray(cached) ? cached : cached?.planRows;
+    const adminRows: AdminProvenanceRow[] = Array.isArray(cached) ? [] : (cached?.adminRows ?? []);
 
     const out: Record<string, FieldProvenance> = {};
     for (const row of rows ?? []) {
@@ -107,6 +180,12 @@ export class IpoFieldPlanRepository extends BaseRepository {
         chosenDocumentType: row.chosenDocumentType ?? null,
         confirmedAt: row.chosenConfirmedAt ? new Date(row.chosenConfirmedAt) : null,
       };
+    }
+    for (const row of adminRows) {
+      const p = adminProvenanceFor(row);
+      if (!p) continue;
+      if ('empty' in p) delete out[p.key];
+      else out[p.key] = p;
     }
     return out;
   }

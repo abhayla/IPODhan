@@ -79,6 +79,8 @@ import {
   summariseFieldGroup,
 } from '@/lib/repositories/ipo-field-plan-repository';
 import { PROVENANCE_FIELD_GROUPS } from '@/lib/services/provenance-field-groups';
+import { getAdminSessionFromCookies } from '@/lib/admin-accounts/admin-session';
+import { IpoPageEditor, AdminEditButton } from '@/components/admin/ipo-editor/IpoPageEditor';
 import { isRealIPO } from '@ipodhan/shared/utils/offering-type';
 import type { IPODetailResponse } from '@/lib/db/types';
 import {
@@ -109,6 +111,8 @@ interface PageProps {
   }>;
   searchParams: Promise<{
     tab?: string;
+    /** `<table>.<field>` from the admin queue (§9.4): opens the admin editor at that field. */
+    edit?: string;
   }>;
 }
 
@@ -226,7 +230,7 @@ export const revalidate = 300;
 
 export default async function IPODetailPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
-  const { tab } = await searchParams;
+  const { tab, edit } = await searchParams;
 
   // Initialize repositories (Server Components use repositories directly)
   const redis = getRedisClient();
@@ -260,6 +264,11 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   if (!isRealIPO(ipoWithRelations.offeringType)) {
     notFound();
   }
+
+  // §9.2 item 1 (OD-102, OD-104): a logged-in admin gets the Edit controls; a reader gets nothing,
+  // not even a hidden control. Never throws: a reader, a bad cookie or a database error is null.
+  // Item 24: the editor fetches the per-source values itself; nothing here adds them to the page.
+  const admin = await getAdminSessionFromCookies();
 
   // T-489: one score display model regardless of source (stored editorial
   // row vs. realtime financial-data score) — see getScoreDisplayModel above.
@@ -573,6 +582,12 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             {/* #975 / OD-8: a WITHDRAWN or DELISTED row is frozen — the notice
                 stays at the top, above every figure it applies to. */}
             <TerminalIpoNotice status={ipo.status} delistedAt={ipo.delistedAt} />
+            {admin && (
+              <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="admin-edit-bar">
+                <AdminEditButton section="all" label="Edit this IPO" />
+                <IpoPageEditor ipoId={ipo.id} editTarget={typeof edit === 'string' ? edit : null} />
+              </div>
+            )}
             {/* 1. IPO Timeline Widget */}
             <IPOTimelineWidget
               ipo={{
@@ -610,6 +625,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* 2a. IPO Details Table */}
             <section id="details" className="scroll-mt-28">
+            {admin && <div className="mb-2 flex justify-end"><AdminEditButton section="details" label="Edit details" /></div>}
             <IPODetailsTable
               issueSize={ipo.issueSize ? Number(ipo.issueSize) : null}
               issueType={ipoDetails?.issueType ?? null}
@@ -697,6 +713,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             {/* 9. Financial Performance Charts */}
             {(hasFinancials || financialStatementRows.length > 0) && (
             <section id="financials" className="scroll-mt-28">
+            {admin && <div className="mb-2 flex justify-end"><AdminEditButton section="financials" label="Edit financials" /></div>}
             <FinancialPerformanceCharts
               financialData={financialData}
               companyName={ipo.companyName}
@@ -823,6 +840,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
              listingPerformance.listingGainPercent !== null && (
               /* 16a. Listing Details Section */
               <>
+              {admin && <div className="mb-2 flex justify-end"><AdminEditButton section="listing" label="Edit listing" /></div>}
               <ListingDetailsSection
                 listingDate={ipo.listingDate}
                 symbol={ipo.symbol}
