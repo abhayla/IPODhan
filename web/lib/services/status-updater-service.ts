@@ -10,8 +10,8 @@
  */
 
 import { getDb } from '@/lib/db';
-import { ipos } from '@/lib/db';
-import { eq } from 'drizzle-orm';
+import { ipos, fieldSources } from '@/lib/db';
+import { and, eq, inArray } from 'drizzle-orm';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { getIPOBySlugKey, getIPOByIdKey } from '@/lib/cache/cache-keys';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
@@ -78,11 +78,126 @@ export function isTransitionHeld(
   return unresolvedConflicts.some((c) => c.fieldName === drivingField && isBehaviourConflict(c));
 }
 
+/**
+ * #1256 — the date ladder is forward-only. Spec row 8 (`status`, data-sourcing-pull-model.md):
+ * "must be a legal transition (UPCOMING→OPEN→CLOSED→LISTED); never regresses without an ADMIN
+ * row". The one sanctioned way back is an exchange relaunch (OD-83, F-131, §2.9 "POSTPONED — not
+ * terminal, it comes back"): the exchange publishes a NEWER window for the same row.
+ *
+ * Measured on staging 2026-09-28 before this existed: every dated backward move the ladder wrote
+ * was a regression, none a relaunch — 10 CLOSED→OPEN on the IPO's own close day after the source
+ * reported bidding closed (close_date never moved), and 4 LISTED→CLOSED while listing_date was
+ * still null.
+ */
+export const LADDER_RANK: Readonly<Record<string, number>> = { UPCOMING: 0, OPEN: 1, CLOSED: 2, LISTED: 3 };
+
+/** Pure: does `from` → `to` go down the ladder? A status off the ladder is never "backward". */
+export function isBackwardMove(from: string, to: string): boolean {
+  const a = LADDER_RANK[String(from).toUpperCase()];
+  const b = LADDER_RANK[String(to).toUpperCase()];
+  return a !== undefined && b !== undefined && b < a;
+}
+
+/** The date that makes a backward target true: UPCOMING needs open_date ahead, OPEN needs
+ *  close_date ahead, CLOSED (from LISTED) needs listing_date ahead or gone. */
+const BACKWARD_DRIVING_FIELD: Readonly<Record<string, 'openDate' | 'closeDate' | 'listingDate'>> = {
+  UPCOMING: 'openDate',
+  OPEN: 'closeDate',
+  CLOSED: 'listingDate',
+};
+
+const EXCHANGE_SOURCES: ReadonlySet<string> = new Set(['NSE', 'BSE']);
+
+/** One `field_sources` row of this IPO's `ipos` record (status or a ladder date). */
+export interface StatusEvidence {
+  fieldName: string;
+  source: string;
+  previousValue: string | null;
+  updatedAt: Date;
+}
+
+export type BackwardDecision = { allowed: true; reason: string } | { allowed: false; cause: string };
+
+/**
+ * Pure decision for a backward ladder move. Allowed only when:
+ *  - ADMIN: the driving date's field_sources row is ADMIN and was written after the status; or
+ *  - relaunch (never from LISTED): the driving date's row is from NSE or BSE, its previous value is
+ *    an EARLIER date than the stored one (the exchange moved the window later), and it was written
+ *    after the status's own field_sources row (the newer window arrived after the status it
+ *    contradicts). No status row means the ladder itself set the status.
+ * Everything else — a weaker source, an unchanged date, a null date — is refused.
+ */
+export function decideBackwardMove(
+  from: string,
+  to: string,
+  dates: { openDate: string | null; closeDate: string | null; listingDate: string | null },
+  evidence: StatusEvidence[]
+): BackwardDecision {
+  const field = BACKWARD_DRIVING_FIELD[String(to).toUpperCase()];
+  if (!field) return { allowed: false, cause: `no driving date for target ${to}` };
+  const driving = evidence.find((e) => e.fieldName === field);
+  const statusRow = evidence.find((e) => e.fieldName === 'status');
+  if (!driving) return { allowed: false, cause: `${field} has no source row` };
+  const newerThanStatus = !statusRow || driving.updatedAt.getTime() > statusRow.updatedAt.getTime();
+
+  if (driving.source === 'ADMIN') {
+    return newerThanStatus
+      ? { allowed: true, reason: `ADMIN set ${field}` }
+      : { allowed: false, cause: `the ADMIN ${field} predates the status (${statusRow?.source})` };
+  }
+  if (String(from).toUpperCase() === 'LISTED') {
+    return { allowed: false, cause: 'LISTED never regresses without an ADMIN row' };
+  }
+  if (!EXCHANGE_SOURCES.has(driving.source)) {
+    return { allowed: false, cause: `${field} is from ${driving.source}, not an exchange` };
+  }
+  const current = dates[field]?.slice(0, 10) ?? null;
+  const previous = driving.previousValue?.slice(0, 10) ?? null;
+  if (!current || !previous || !(previous < current)) {
+    return {
+      allowed: false,
+      cause: `the exchange did not move ${field} later (previous=${previous ?? 'none'}, now=${current ?? 'none'})`,
+    };
+  }
+  if (!newerThanStatus) {
+    return { allowed: false, cause: `the new ${field} predates the status (${statusRow?.source})` };
+  }
+  return { allowed: true, reason: `relaunch: ${driving.source} moved ${field} ${previous} -> ${current}` };
+}
+
+const LADDER_EVIDENCE_FIELDS = ['status', 'openDate', 'closeDate', 'listingDate'];
+
+export type StatusEvidenceLoader = (ipoId: string) => Promise<StatusEvidence[]>;
+
+function dbEvidenceLoader(db: Awaited<ReturnType<typeof getDb>>): StatusEvidenceLoader {
+  return async (ipoId) => {
+    const rows = await db
+      .select({
+        fieldName: fieldSources.fieldName,
+        source: fieldSources.source,
+        previousValue: fieldSources.previousValue,
+        updatedAt: fieldSources.updatedAt,
+      })
+      .from(fieldSources)
+      .where(
+        and(
+          eq(fieldSources.ipoId, ipoId),
+          eq(fieldSources.tableName, 'ipos'),
+          eq(fieldSources.rowKey, ''),
+          inArray(fieldSources.fieldName, LADDER_EVIDENCE_FIELDS)
+        )
+      );
+    return rows.map((r) => ({ ...r, source: String(r.source) }));
+  };
+}
+
 export interface StatusUpdateResult {
   upcomingToOpen: number;
   openToClosed: number;
   closedToListed: number;
   total: number;
+  /** #1256: backward moves the ladder computed but refused (no newer exchange window, no ADMIN). */
+  refusedBackward: number;
   /**
    * Pages actually refreshed for this batch of transitions.
    *
@@ -161,7 +276,7 @@ export async function revalidateAfterStatusChange(
 }
 
 export async function updateIPOStatuses(
-  deps?: { revalidatePath?: (path: string) => void; now?: Date }
+  deps?: { revalidatePath?: (path: string) => void; now?: Date; loadEvidence?: StatusEvidenceLoader }
 ): Promise<StatusUpdateResult> {
   console.log('[Status Updater] Starting status update...');
 
@@ -172,6 +287,7 @@ export async function updateIPOStatuses(
   // GitHub #682: open_date/close_date/listing_date are IST calendar dates;
   // the UTC calendar day was wrong for up to 5h30m a day (00:00-05:30 IST).
   const today = istDateIso(now);
+  const loadEvidence = deps?.loadEvidence ?? dbEvidenceLoader(db);
 
   const rows = await db
     .select({
@@ -189,6 +305,7 @@ export async function updateIPOStatuses(
   const updatedIPOs: StatusUpdateResult['updatedIPOs'] = [];
   const changedSlugs: { slug: string; id: string }[] = [];
   let pagesRevalidated = 0;
+  let refusedBackward = 0;
 
   for (const r of rows) {
     if (r.scraperLocked) continue; // respect manual lock
@@ -198,6 +315,26 @@ export async function updateIPOStatuses(
       today
     );
     if (!target || target === r.status) continue;
+
+    // #1256: spec row 8 — never regress without a newer exchange window (OD-83) or an ADMIN row.
+    if (isBackwardMove(r.status, target)) {
+      const decision = decideBackwardMove(
+        r.status,
+        target,
+        { openDate: r.openDate, closeDate: r.closeDate, listingDate: r.listingDate },
+        await loadEvidence(r.id)
+      );
+      if (!decision.allowed) {
+        refusedBackward++;
+        console.warn(
+          `[Status Updater] refuse_backward_transition: ${r.companyName} (${r.id}) ${r.status} -> ${target} refused — ${decision.cause}`
+        );
+        continue;
+      }
+      console.log(
+        `[Status Updater] backward_transition_allowed: ${r.companyName} (${r.id}) ${r.status} -> ${target} — ${decision.reason}`
+      );
+    }
 
     // T-328: refuse to flip status when the field driving this transition
     // has an unresolved HIGH_VALUE dispute for this IPO — belt-and-suspenders
@@ -269,11 +406,12 @@ export async function updateIPOStatuses(
     openToClosed: countTransition('OPEN', 'CLOSED'),
     closedToListed: countTransition('CLOSED', 'LISTED'),
     total: updatedIPOs.length,
+    refusedBackward,
     pagesRevalidated,
     updatedIPOs,
   };
 
-  console.log('[Status Updater] Completed:', { total: result.total, istDay: today });
+  console.log('[Status Updater] Completed:', { total: result.total, refusedBackward, istDay: today });
   return result;
 }
 
