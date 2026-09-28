@@ -1,0 +1,10 @@
+{
+  "class_id": "a hand-written test fake stopped matching a shared helper's real call chain after the helper changed",
+  "feature": "any unit test that hand-rolls a fake/mock of a shared DB helper's call chain (e.g. `.where().returning()`) instead of using a shared test double that is generated from, or type-checked against, the real helper",
+  "symptom": "a shared DB-access helper's call chain changes (here: a `.returning()` call was added to a chain that previously ended at `.where()`). Every hand-written fake across the test suite that mimics the OLD chain shape breaks, because the fake's mimicked method chain no longer matches what the real code calls. The break is real and CI catches it -- the class is not a silent-failure class -- but the cost is N independent hand-written fakes drifting from one shared implementation, each needing its own fix, because nothing keeps a fake's shape tied to the helper it fakes.",
+  "first_seen": "2026-09-2x -- IPODhan, a shared DB-call-chain helper gained a `.returning()` call; 11 tests across 3 files with hand-written fakes of that chain broke in the same PR cycle that changed the helper",
+  "fix_prs": "fixed inline as part of the change that added `.returning()` (11 call sites updated across 3 test files); no shared-fake refactor landed yet",
+  "detection_check": "CI's own test run is the only check today -- it caught all 11 breaks, which is why this is recorded as guarded rather than unguarded. No check exists for the wider shape: a repeat of a shared-helper signature change breaking N hand-written fakes elsewhere in the suite would again read as N individual test failures rather than one root cause, and nothing measures how many fakes exist per shared helper today",
+  "status": "guarded by CI's normal test run (11/11 breaks caught and fixed in one cycle); unguarded against the CLASS -- no shared test-double factory ties a fake's shape to its real helper, so the same drift-and-break cycle recurs on the next call-chain change to any shared DB helper",
+  "spec_ref": []
+}
