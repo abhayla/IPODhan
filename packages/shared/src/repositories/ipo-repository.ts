@@ -23,6 +23,7 @@ import {
   ipoMergeLog,
   auditLogs,
   ipoSourceKeys,
+  ipoIdentifierAliases,
   type ipoStatusEnum,
   type segmentEnum,
   type offeringTypeEnum,
@@ -326,6 +327,11 @@ export interface UnmergeResult {
   restoredRows: { table: string; count: number }[];
   repointedBack: { table: string; count: number; logged: number }[];
   applied: boolean;
+}
+
+/** §9.2 item 26: the row remembers `value` as a replaced identifier of this kind. */
+function identifierAliasMatch(kind: 'CIN' | 'ISIN' | 'SYMBOL', value: string) {
+  return sql`${ipos.id} IN (SELECT a.ipo_id FROM ${ipoIdentifierAliases} a WHERE a.kind = ${kind} AND a.value = ${value})`;
 }
 
 export class IPORepository extends BaseRepository implements IIPORepository {
@@ -727,10 +733,15 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     try {
       // T-478 round 3 (item 2): see findByNormalizedName's doc comment —
       // same offering_type-filtered retry + deterministic ORDER BY.
+      // §9.2 item 26: an admin-replaced symbol is kept as an alias and still matches; a row
+      // carrying the symbol live is preferred over one that only remembers it. The caller
+      // (resolveIpoRow) re-checks an alias match against OD-35, since symbols are reused.
+      const live = sql`upper(trim(${ipos.symbol})) = ${normalized}`;
+      const matches = sql`(${live} OR ${identifierAliasMatch('SYMBOL', normalized)})`;
       const query = offeringType
-        ? this.db.select().from(ipos).where(sql`upper(trim(${ipos.symbol})) = ${normalized} AND ${ipos.offeringType} = ${offeringType}`).orderBy(ipos.id)
-        : this.db.select().from(ipos).where(sql`upper(trim(${ipos.symbol})) = ${normalized}`);
-      const [ipo] = await query.limit(1);
+        ? this.db.select().from(ipos).where(sql`${matches} AND ${ipos.offeringType} = ${offeringType}`)
+        : this.db.select().from(ipos).where(matches);
+      const [ipo] = await query.orderBy(sql`(${live}) DESC`, ipos.id).limit(1);
 
       return ipo || null;
     } catch (error) {
@@ -764,10 +775,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
 
     try {
       // T-478 round 3 (item 2): same offering_type-filtered retry pattern.
+      // §9.2 item 26: an admin-replaced ISIN is kept as an alias and still matches (live first).
+      const live = sql`upper(trim(${ipos.isin})) = ${normalized}`;
+      const matches = sql`(${live} OR ${identifierAliasMatch('ISIN', normalized)})`;
       const query = offeringType
-        ? this.db.select().from(ipos).where(sql`upper(trim(${ipos.isin})) = ${normalized} AND ${ipos.offeringType} = ${offeringType}`).orderBy(ipos.id)
-        : this.db.select().from(ipos).where(sql`upper(trim(${ipos.isin})) = ${normalized}`);
-      const [ipo] = await query.limit(1);
+        ? this.db.select().from(ipos).where(sql`${matches} AND ${ipos.offeringType} = ${offeringType}`)
+        : this.db.select().from(ipos).where(matches);
+      const [ipo] = await query.orderBy(sql`(${live}) DESC`, ipos.id).limit(1);
 
       return ipo || null;
     } catch (error) {
@@ -816,7 +830,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       return await this.db
         .select()
         .from(ipos)
-        .where(sql`upper(trim(${ipos.cin})) = ${normalized}`)
+        // §9.2 item 26: a row whose CIN an admin replaced still carries the old one as an alias;
+        // resolveByCin applies the same OD-35 eligibility to it as to a live CIN.
+        .where(sql`(upper(trim(${ipos.cin})) = ${normalized} OR ${identifierAliasMatch('CIN', normalized)})`)
         .orderBy(ipos.id);
     } catch (error) {
       throw new DatabaseError(`Failed to fetch IPOs by CIN: ${cin}`, undefined, error as Error);

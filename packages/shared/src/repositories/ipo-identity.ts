@@ -407,6 +407,41 @@ function nameMatchContradiction(
 }
 
 /**
+ * §9.2 item 26 + OD-35: may a row found only through an ALIAS (an identifier an admin replaced,
+ * `ipo_identifier_aliases`) bind this record? A remembered symbol or ISIN is weaker than a live one
+ * (symbols are reused across years), so the alias binds only a row that can be the same offering:
+ * not WITHDRAWN (OD-71), same segment, same offering type (OD-35 "offering type changes -> new
+ * row") and open dates within OD-35's 180 days. The CIN contradiction (OD-69) is checked for every
+ * ISIN/symbol match by the caller; a CIN alias goes through `resolveByCin`'s own eligibility.
+ * Returns the refusal reason, or null when the alias may bind.
+ */
+function aliasBindRefusal(
+  identity: Pick<IpoIdentity, 'openDate' | 'segment' | 'offeringType'>,
+  candidate: { openDate?: unknown; segment?: unknown; status?: unknown; offeringType?: unknown }
+): string | null {
+  if (candidate.status === 'WITHDRAWN') return 'candidate is WITHDRAWN (OD-71)';
+  if (segmentsConflict(identity.segment, (candidate.segment as string | null | undefined) ?? null)) {
+    return `segment differs (${String(identity.segment)} vs ${String(candidate.segment)})`;
+  }
+  if (separateOffering(identity.offeringType, (candidate.offeringType as string | null | undefined) ?? null)) {
+    return `offering type differs (${String(identity.offeringType)} vs ${String(candidate.offeringType)})`;
+  }
+  const incomingDay = toCalendarDateString(identity.openDate ?? null);
+  const candidateDay = toCalendarDateString((candidate.openDate as string | Date | null | undefined) ?? null);
+  if (incomingDay && candidateDay && daysApart(incomingDay, candidateDay) > SAME_OFFERING_WINDOW_DAYS) {
+    return `open date ${Math.round(daysApart(incomingDay, candidateDay))} days away (${incomingDay} vs ${candidateDay}) - beyond OD-35's ${SAME_OFFERING_WINDOW_DAYS}-day window`;
+  }
+  return null;
+}
+
+/** True when `candidate` carries `value` in `column` live (not only as a remembered alias). */
+function carriesLive(candidate: { [k: string]: unknown }, column: 'isin' | 'symbol', value: string | null | undefined): boolean {
+  const v = value?.trim().toUpperCase();
+  const c = candidate[column];
+  return !!v && typeof c === 'string' && c.trim().toUpperCase() === v;
+}
+
+/**
  * OD-68 S1/S3: strip page-status suffixes and page-title text from the
  * incoming name and slug BEFORE any tier runs. The caller's `normalizedName`
  * and `slug` were computed from the raw name, so both are recomputed from the
@@ -639,6 +674,14 @@ async function resolveIpoRowByOrder(
     }
     keyMatch = retried;
   }
+  if (keyMatch && !carriesLive(keyMatch as never, 'isin', isin)) {
+    const refusal = aliasBindRefusal(identity, keyMatch);
+    if (refusal) {
+      logger.warn({ companyName, isin, candidateId: keyMatch.id, candidateSlug: keyMatch.slug, reason: refusal },
+        '[§9.2 item 26] ISIN alias match declined - ' + refusal);
+      keyMatch = null;
+    }
+  }
 
   // Tier 2: NSE/BSE ticker symbol (exact, normalized). Same NULL-safety
   // guarantee as ISIN. Deliberately queries ONLY the `symbol` column, never
@@ -660,6 +703,14 @@ async function resolveIpoRowByOrder(
         }, '[T-478] Tier 2 symbol match declined - OFS/IPO identity conflict');
       }
       keyMatch = retried;
+    }
+    if (keyMatch && !carriesLive(keyMatch as never, 'symbol', symbol)) {
+      const refusal = aliasBindRefusal(identity, keyMatch);
+      if (refusal) {
+        logger.warn({ companyName, symbol, candidateId: keyMatch.id, candidateSlug: keyMatch.slug, reason: refusal },
+          '[§9.2 item 26] symbol alias match declined - ' + refusal);
+        keyMatch = null;
+      }
     }
   }
 

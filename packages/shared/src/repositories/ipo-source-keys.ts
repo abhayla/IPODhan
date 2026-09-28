@@ -34,7 +34,9 @@ export type SourceKeyBoundVia =
   | 'CIN' | 'ISIN' | 'SYMBOL' | 'NAME' | 'HOLD_RESOLUTION' | 'BACKFILL'
   // Two values the spec's list does not name, both needed to record HOW a key arrived:
   // KEY = the record bound by another of its own keys; CREATE = the record created the row.
-  | 'KEY' | 'CREATE';
+  | 'KEY' | 'CREATE'
+  // §9.2 item 26: an admin changed the row's source record number (the old key is SUPERSEDED).
+  | 'ADMIN_EDIT';
 
 /** What the source record said when its key was read — the OD-83 / OD-86 tests read these. */
 export interface SourceKeyAttrs {

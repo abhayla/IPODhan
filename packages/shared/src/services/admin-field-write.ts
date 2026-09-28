@@ -42,6 +42,7 @@ import { IPORepository } from '../repositories/ipo-repository';
 import { validateIPOData } from '../utils/ipo-field-checks';
 import { rowKeyForName } from '../utils/company-name-normalizer';
 import { protectionTableName } from './field-hold';
+import { isIdentifierAliasField, keepReplacedIdentifier } from './admin-identifier-alias';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -111,15 +112,12 @@ const NON_EDITABLE_FIELDS = new Set([
 
 /**
  * Release 1 (OD-135 scope): `ipos` fields whose edit needs a Phase B mechanism are refused, not
- * written half-way. An identifier edit must keep the old value as an alias binding still matches
- * (§9.2 item 26), and a type/segment/venue edit must rebuild the plan's source ranks (§9.2 item 18,
- * §2.8). Without those, an edit would silently unbind the row or leave stale ranks. Items 26 and 18
- * remove the matching entries.
+ * written half-way. A type/segment/venue edit must rebuild the plan's source ranks (§9.2 item 18,
+ * §2.8); without that, an edit would leave stale ranks. Item 18 removes these entries. Identifier
+ * edits (cin, isin, symbol, bseIpoNo) are written and keep the old value as an alias binding still
+ * matches (§9.2 item 26, `keepReplacedIdentifier`).
  */
 export const IPO_FIELDS_AWAITING_PHASE_B: Readonly<Record<string, string>> = {
-  cin: 'identifier edits keep the old value as an alias (spec §9.2 item 26, next release)',
-  isin: 'identifier edits keep the old value as an alias (spec §9.2 item 26, next release)',
-  symbol: 'identifier edits keep the old value as an alias (spec §9.2 item 26, next release)',
   offeringType: 'a type change rebuilds the source plan (spec §9.2 item 18 / §2.8, next release)',
   segment: 'a segment change rebuilds the source plan (spec §9.2 item 18 / §2.8, next release)',
   listingExchanges: 'a listing-venue change rebuilds the source plan (spec §9.2 item 18 / §2.8, next release)',
@@ -663,6 +661,13 @@ export async function writeAdminFieldValue(
       const now = new Date();
       let rowKey = target.rowKey;
       if (tableName === 'ipos') {
+        if (isIdentifierAliasField(fieldName)) {
+          // §9.2 item 26: the old identifier stays matchable, in this same transaction.
+          const kept = await keepReplacedIdentifier(tx, {
+            ipoId, fieldName, oldValue, newValue: input.empty ? null : newValue, adminId: actor.adminId, adminName: actor.name,
+          });
+          if (kept.ok === false) throw new Refusal({ kind: 'INVALID', reason: kept.reason });
+        }
         await IPORepository.applyAdminCorrigendumValue(tx, ipoId, fieldName, newValue);
       } else if (rowSpec) {
         const tcols = getTableColumns(rowSpec.table) as unknown as Record<string, never>;

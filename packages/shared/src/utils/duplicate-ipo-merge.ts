@@ -57,6 +57,10 @@ export const REPOINT_TABLES: ReadonlySet<string> = new Set([
   // Its unique index is plain (source, key_type, binding_value) — no ipo_id in it, so a repoint
   // never conflicts; a partial/expression unique index would make the repoint predicate refuse (#900).
   'ipo_source_keys',
+  // §9.2 item 26: identifiers an admin replaced (old CIN / ISIN / symbol) belong to the offering, so
+  // a merge moves them to the survivor and logs their ids (OD-92), and the unmerge moves them back.
+  // Its (kind, value) index is not unique, so a repoint never conflicts.
+  'ipo_identifier_aliases',
   // #996: `ipo_merge_log.keep_ipo_id` is a real FK to `ipos` (ON DELETE SET NULL, migration 0051/
   // 0058) so a chain merge (A into B, then B into C) reaches it as a direct child of `ipos` when
   // dropId = B. Before this entry, the sweep DELETEd that row (B was not in REPOINT_TABLES),
