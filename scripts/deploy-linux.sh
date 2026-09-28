@@ -592,6 +592,15 @@ fi
 # ([t]sx) for the same own-argv reason. pm2's scraper app runs the wrapper
 # from the physical releases/<name>/ path, so it never matches here (pm2 is
 # asked separately, above).
+# #1259 round 2: this pgrep is now the SECONDARY signal. tsx re-execs its real
+# node child from the PHYSICAL releases/<name>/ path, so the tsx branch of the
+# pattern matches only while the tsx parent is alive; a run whose tsx parent
+# died is invisible here. The PRIMARY guard is the slot's scraper locks the
+# deploy itself takes with SET NX right after the step-2 check
+# (acquire_deploy_scraper_locks): a wake that starts during the deploy
+# lock-skips on its own, whatever its argv looks like. Matching on the wake's
+# /proc/<pid>/environ was considered and not added: the lock already covers
+# the case, and environ is unreadable for other users' processes.
 cron_wake_pattern() {
   printf '%s/(scripts/[s]craper-wake[.]sh|[^ ]*node_modules/[t]sx/dist/)' "$CURRENT_LINK"
 }
@@ -676,7 +685,23 @@ refuse_or_override_live_run() {
     warn "DEPLOY_ALLOW_LIVE_RUN=1: PROCEEDING to step '$step' of slot $SLOT although a cron-launched scraper run may be live ($why). It may see the venv swapped, the schema migrated and its cycle locks kept; its release dir is still never pruned."
     return 0
   fi
-  fatal "refusing to deploy slot $SLOT: a cron-launched scraper run of this slot is live before step '$step' ($why; match: pgrep -af '$(cron_wake_pattern)'). Nothing for this step was touched: no venv swap, no migration, no flip, no prune ('current' still serves the old release). Re-run the deploy once that run exits (a staging window retries at its next slot), or set DEPLOY_ALLOW_LIVE_RUN=1 to proceed anyway."
+  # Round 2 (MINOR): what has already been touched depends on the step. At
+  # 'build' and 'cycle-lock' nothing shared has changed; at 'venv' the new
+  # release is built but the shared venv is not yet swapped; at 'migrations'
+  # the per-slot venv HAS already been swapped (step 6.5) under the live run.
+  local done_so_far
+  case "$step" in
+    migrations)
+      done_so_far="The shared per-slot venv $PYTHON_VENV_DIR HAS ALREADY been swapped for this release (step 6.5); no migration ran, no flip, no prune ('current' still serves the old release). The live run spawns python from the swapped venv until it exits."
+      ;;
+    venv)
+      done_so_far="The new release was built but nothing shared was touched: no venv swap, no migration, no flip, no prune ('current' still serves the old release)."
+      ;;
+    *)
+      done_so_far="Nothing shared was touched: no venv swap, no migration, no flip, no prune ('current' still serves the old release)."
+      ;;
+  esac
+  fatal "refusing to deploy slot $SLOT: a cron-launched scraper run of this slot is live before step '$step' ($why; match: pgrep -af '$(cron_wake_pattern)'). $done_so_far Re-run the deploy once that run exits (a staging window retries at its next slot), or set DEPLOY_ALLOW_LIVE_RUN=1 to proceed anyway."
 }
 
 wait_for_no_live_cron_wake() {
@@ -848,6 +873,11 @@ release_scraper_cycle_locks() {
       log "release_scraper_cycle_locks: $key not held"
       continue
     fi
+    # #1259 round 2: never the deploy's own lock (acquire_deploy_scraper_locks).
+    if [ -n "${DEPLOY_LOCK_TOKEN:-}" ] && [ "$value" = "$DEPLOY_LOCK_TOKEN" ]; then
+      log "release_scraper_cycle_locks: $key is held by this deploy (token=$value); kept"
+      continue
+    fi
     ttl="$(redis_cli_run 3 "$redis_url" TTL "$key" 2>/dev/null || true)"
     log "release_scraper_cycle_locks: $key stale: owner token=$value has no live scraper process in slot ${SLOT:-?} (pm2 app stopped, no cron-launched wake running)"
     log "release_scraper_cycle_locks: releasing $key (held: ${ttl}s remaining)"
@@ -863,6 +893,109 @@ release_scraper_cycle_locks() {
   return 0
 }
 release_scraper_cycle_locks || true
+
+# #1259 round 2 (Tier A review): the deploy HOLDS the slot's scraper locks for
+# its whole mutation window. The pgrep re-checks alone left a seconds-wide race
+# (a wake that starts right after a check) and did not cover the venv install
+# or the migrations while they ran. So, right after the step-2 "no live wake"
+# check, pm2 stop and the stale-lock release above, the deploy takes the SAME
+# Redis keys the wake reads and the scraper takes (DistributedLock's
+# `lock:resource:<resource>`, slot-prefixed per #151; scraper-wake.sh reads
+# scraper:cycle for data/closed/opening and scraper:live for live/price) with
+# SET NX, a deploy-owned token and a TTL longer than a deploy. A wake that
+# starts during the deploy then logs "wake-skipped" and exits on its own; a
+# scraper that got past the wake's GET loses its own SET NX and exits.
+# SET NX failing means a run of this slot holds the lock right now: that is
+# the refuse path (DEPLOY_ALLOW_LIVE_RUN=1 proceeds without that key). Redis
+# answering neither OK nor nil is unknowable and refuses too. Missing
+# configuration (no redis-cli, no REDIS_URL, no slot prefix) takes no lock and
+# says so; the pgrep re-checks are then the only guard, as before round 2.
+# Released by compare-and-delete on the token: before restart_pm2 on the
+# success path (so the post-deploy wake is not skipped) and first thing in the
+# EXIT trap otherwise. A key whose value is no longer our token (expired and
+# retaken) is left alone.
+DEPLOY_SCRAPER_LOCK_RESOURCES=("scraper:cycle" "scraper:live")
+DEPLOY_LOCK_TTL_SECONDS="${DEPLOY_SCRAPER_LOCK_TTL_SECONDS:-2700}"
+DEPLOY_LOCK_TOKEN=""
+DEPLOY_LOCK_REDIS_URL=""
+DEPLOY_HELD_LOCK_KEYS=()
+
+acquire_deploy_scraper_locks() {
+  if (( DRY_RUN )); then
+    # Test seam (dry-run only): DEPLOY_DRYRUN_SCRAPER_LOCK=held models a run
+    # that took scraper:cycle after the step-2 check.
+    if [ "${DEPLOY_DRYRUN_SCRAPER_LOCK:-}" = "held" ]; then
+      refuse_or_override_live_run cycle-lock "lock ${SLOT}:lock:resource:scraper:cycle held by token=dryrun-run (dry-run seam)"
+      return 0
+    fi
+    log "[dry-run] would take this slot's scraper locks (${DEPLOY_SCRAPER_LOCK_RESOURCES[*]}) with SET NX EX ${DEPLOY_LOCK_TTL_SECONDS} for the deploy"
+    DEPLOY_HELD_LOCK_KEYS=("dry-run")
+    return 0
+  fi
+  local no_lock="no deploy lock taken; the pgrep re-checks before the venv swap and the migrations are the only guard"
+  if ! command -v redis-cli >/dev/null 2>&1; then
+    warn "acquire_deploy_scraper_locks: redis-cli not found; $no_lock"
+    return 0
+  fi
+  if ! command -v redis_slot_prefix >/dev/null 2>&1 || ! command -v redis_cli_run >/dev/null 2>&1; then
+    warn "acquire_deploy_scraper_locks: redis helper libs not loaded; $no_lock"
+    return 0
+  fi
+  local redis_url key_prefix
+  redis_url="$(redis_slot_env_value "$SCRAPER_ENV_FILE" REDIS_URL)"
+  if [ -z "$redis_url" ]; then
+    warn "acquire_deploy_scraper_locks: REDIS_URL not found in $SCRAPER_ENV_FILE; $no_lock"
+    return 0
+  fi
+  if ! key_prefix="$(redis_slot_prefix "$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_URL)" \
+      "$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_HOST)" \
+      "$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_PASSWORD)" \
+      "$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_NAME)" "${SLOT:-}" 2>&1)"; then
+    warn "acquire_deploy_scraper_locks: cannot derive the Redis slot prefix ($key_prefix); $no_lock"
+    return 0
+  fi
+  DEPLOY_LOCK_REDIS_URL="$redis_url"
+  DEPLOY_LOCK_TOKEN="deploy:${SLOT:-?}:${RELEASE_NAME:-?}:$$"
+  local res key out holder ttl
+  for res in "${DEPLOY_SCRAPER_LOCK_RESOURCES[@]}"; do
+    key="${key_prefix}lock:resource:$res"
+    if ! out="$(redis_cli_run 5 "$redis_url" SET "$key" "$DEPLOY_LOCK_TOKEN" NX EX "$DEPLOY_LOCK_TTL_SECONDS" 2>&1)"; then
+      refuse_or_override_live_run cycle-lock "cannot take $key, lock state unknowable: redis-cli failed: ${out:-no output}"
+      continue
+    fi
+    if [ "$out" = "OK" ]; then
+      DEPLOY_HELD_LOCK_KEYS+=("$key")
+      log "Took $key for this deploy (token=$DEPLOY_LOCK_TOKEN, TTL ${DEPLOY_LOCK_TTL_SECONDS}s): a wake of slot ${SLOT:-?} that starts now lock-skips until the deploy releases it."
+    elif [ -z "$out" ]; then
+      holder="$(redis_cli_run 3 "$redis_url" GET "$key" 2>/dev/null || true)"
+      ttl="$(redis_cli_run 3 "$redis_url" TTL "$key" 2>/dev/null || true)"
+      refuse_or_override_live_run cycle-lock "lock $key held by token=${holder:-?} (${ttl:-?}s left): a scraper run of this slot holds it"
+    else
+      refuse_or_override_live_run cycle-lock "cannot take $key, lock state unknowable: redis-cli said: $out"
+    fi
+  done
+  return 0
+}
+
+release_deploy_scraper_locks() {
+  [ "${#DEPLOY_HELD_LOCK_KEYS[@]}" -gt 0 ] || return 0
+  if (( DRY_RUN )); then
+    log "[dry-run] would release this deploy's scraper locks (compare-and-delete on the deploy token)"
+    DEPLOY_HELD_LOCK_KEYS=()
+    return 0
+  fi
+  local key result
+  for key in "${DEPLOY_HELD_LOCK_KEYS[@]}"; do
+    result="$(redis_cli_run 3 "$DEPLOY_LOCK_REDIS_URL" EVAL "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end" 1 "$key" "$DEPLOY_LOCK_TOKEN" 2>/dev/null || true)"
+    if [ "$result" = "1" ]; then
+      log "Released $key (deploy token $DEPLOY_LOCK_TOKEN)"
+    else
+      warn "release_deploy_scraper_locks: $key no longer holds this deploy's token (expired or retaken); left alone"
+    fi
+  done
+  DEPLOY_HELD_LOCK_KEYS=()
+  return 0
+}
 
 # #151 round 1 (finding 3): the slot namespace moved every cache key from
 # `ipo:slug:x` to `prod:ipo:slug:x` / `staging:ipo:slug:x`. An AUTO-ROLLBACK
@@ -1101,11 +1234,16 @@ resume_scraper() {
 # script (T-321's named-failure line and its exit code are untouched).
 on_deploy_exit() {
   local ec=$?
+  release_deploy_scraper_locks || true
   resume_scraper || true
   cleanup_failed_release_dir || true
   exit "$ec"
 }
 trap on_deploy_exit EXIT
+# #1259 round 2: taken here, right after the EXIT trap is armed (and after the
+# step-2 check, pm2 stop and the stale-lock release above), so every exit path
+# - a refusal below included - releases what was taken and resumes the scraper.
+acquire_deploy_scraper_locks
 
 # T-262: factored out of read_current_link() so collect_live_release_dirs()
 # can resolve ANY slot's current-link, not just this invocation's own.
@@ -3129,6 +3267,9 @@ report_wired_jobs() {
   done
 }
 
+# #1259 round 2: the deploy's scraper locks go BEFORE restart_pm2 starts the
+# post-deploy wake, which would otherwise lock-skip on them.
+release_deploy_scraper_locks || true
 log "Restarting PM2 apps"
 restart_pm2
 assert_pm2_logrotate_installed

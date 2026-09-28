@@ -2898,6 +2898,20 @@ FAKEPG30
     fail "case 30b: expected both keys reported not held and released 0 — got: $OUT30B"
   fi
 
+  # 30u (#1259 round 2): a key whose value IS this deploy's own lock token
+  # (acquire_deploy_scraper_locks) is never released as stale - it is kept
+  # and logged, and no EVAL is issued for it. The fake GET answers tok-abc,
+  # so a deploy token of tok-abc models "the deploy holds both keys".
+  OUT30U="$(DEPLOY_LOCK_TOKEN=tok-abc run_release_locks_30 held-both 0)"
+  if emit "$OUT30U" | grep -q 'staging:lock:resource:scraper:cycle is held by this deploy (token=tok-abc); kept' \
+     && emit "$OUT30U" | grep -q 'cycle locks released: 0' \
+     && ! emitn "$OUT30U" | grep -q -- ' EVAL ' \
+     && ! emit "$OUT30U" | grep -q 'releasing staging:lock:resource:scraper:cycle'; then
+    pass "case 30u: release_scraper_cycle_locks keeps a key held by this deploy's own token (no EVAL, released 0)"
+  else
+    fail "case 30u: expected the deploy's own lock kept, never released - got: $OUT30U"
+  fi
+
   # 30c: redis-cli absent from PATH -> WARN + return 0, deploy continues
   # (no GET/TTL/DEL attempted, nothing fatal).
   OUT30C="$(run_release_locks_30 no-redis-cli 0)"
@@ -4430,9 +4444,20 @@ for STEP40 in venv migrations; do
   L40="/tmp/deploy-test-40c-$STEP40.log"
   VENV_SEEN=0; grep -q 'Setting up scraper Python venv' "$L40" && VENV_SEEN=1
   EXPECT_VENV=0; [ "$STEP40" = "migrations" ] && EXPECT_VENV=1
+  # #1259 round 2: the refusal says what was already touched at THIS step
+  # (at 'migrations' the shared venv HAS been swapped; at 'venv' nothing
+  # shared was), and the EXIT trap still resumes the scraper.
+  if [ "$STEP40" = "migrations" ]; then
+    STEPMSG40="^FATAL: refusing .*live before step 'migrations'.* HAS ALREADY been swapped for this release (step 6.5); no migration ran"
+  else
+    STEPMSG40="^FATAL: refusing .*live before step 'venv'.* The new release was built but nothing shared was touched: no venv swap"
+  fi
   if [ "$RC40C" -ne 0 ] \
      && grep -q "No cron-launched scraper wake of slot prod running .* safe to proceed to: build" "$L40" \
      && grep -q "^FATAL: refusing to deploy slot prod: .*live before step '$STEP40'" "$L40" \
+     && grep -q "$STEPMSG40" "$L40" \
+     && grep -q 'would resume scraper' "$L40" \
+     && grep -q "would release this deploy's scraper locks" "$L40" \
      && [ "$VENV_SEEN" -eq "$EXPECT_VENV" ] \
      && ! grep -q "skipping real 'drizzle-kit migrate'" "$L40" \
      && ! grep -q '^==> Flipping' "$L40" \
@@ -4496,8 +4521,231 @@ else
   fail "case 40f: expected 'prune skipped' and no deletion (rc=$RC40F, before=$N40F_BEFORE after=$(count_releases "$ROOT40E/releases")) - log:"
   cat /tmp/deploy-test-40f.log
 fi
+# 40g (#1259 round 2): a run that took the slot's scraper:cycle lock after the
+# step-2 check makes the deploy's own SET NX fail -> refuse at 'cycle-lock',
+# before the venv swap / migrations / flip, and the scraper is resumed.
+CUR40G="$(current_target "$ROOT40/current")"  # 40d flipped it: compare to now
+sleep 1.1
+DEPLOY_ROOT="$ROOT40" DEPLOY_DRYRUN_SCRAPER_LOCK=held \
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40g.log 2>&1 && RC40G=0 || RC40G=$?
+if [ "$RC40G" -ne 0 ] \
+   && grep -q "^FATAL: refusing to deploy slot prod: .*live before step 'cycle-lock' (lock prod:lock:resource:scraper:cycle held" /tmp/deploy-test-40g.log \
+   && grep -q 'Nothing shared was touched' /tmp/deploy-test-40g.log \
+   && grep -q 'would resume scraper' /tmp/deploy-test-40g.log \
+   && ! grep -q 'Setting up scraper Python venv' /tmp/deploy-test-40g.log \
+   && ! grep -q "skipping real 'drizzle-kit migrate'" /tmp/deploy-test-40g.log \
+   && ! grep -q '^==> Flipping' /tmp/deploy-test-40g.log \
+   && [ -n "$CUR40G" ] && [ "$(current_target "$ROOT40/current")" = "$CUR40G" ]; then
+  pass "case 40g: the slot's scraper:cycle lock held when the deploy takes it -> refuse at 'cycle-lock' before venv/migrations/flip, scraper resumed"
+else
+  fail "case 40g: expected a 'cycle-lock' refusal before any shared mutation (rc=$RC40G) - log:"
+  cat /tmp/deploy-test-40g.log
+fi
 rm -rf "$ROOT40" "$ROOT40E" "$PROC40E"
 unset DEPLOY_ROOT 2>/dev/null || true
+
+# --- Case 41 (#1259 round 2): the deploy HOLDS the slot's scraper locks ----
+# --- (`<slot>:lock:resource:scraper:cycle` / `scraper:live`, the exact keys --
+# --- scraper-wake.sh GETs and DistributedLock SETs) from right after the     --
+# --- step-2 check until just before restart_pm2 / the EXIT trap. Driven at   --
+# --- function level: the REAL acquire/release/refuse/on_deploy_exit bodies   --
+# --- run in a child bash against a stateful file-backed fake redis-cli.      --
+set +e
+ACQ_FNS_41="$(awk '/^DEPLOY_SCRAPER_LOCK_RESOURCES=/,/^DEPLOY_HELD_LOCK_KEYS=\(\)$/' "$DEPLOY_SCRIPT")
+$(awk '/^acquire_deploy_scraper_locks\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^release_deploy_scraper_locks\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^refuse_or_override_live_run\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^cron_wake_pattern\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^on_deploy_exit\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
+if ! printf '%s' "$ACQ_FNS_41" | grep -q '^acquire_deploy_scraper_locks() {' \
+   || ! printf '%s' "$ACQ_FNS_41" | grep -q '^release_deploy_scraper_locks() {' \
+   || ! printf '%s' "$ACQ_FNS_41" | grep -q '^on_deploy_exit() {'; then
+  fail "case 41 setup: could not extract acquire/release_deploy_scraper_locks / on_deploy_exit from $DEPLOY_SCRIPT"
+else
+  # Static order: taken after the EXIT trap is armed (so every exit path
+  # releases it); released before restart_pm2 (so the post-deploy wake is
+  # not lock-skipped by the deploy's own key).
+  TRAP_L41="$(grep -n '^trap on_deploy_exit EXIT$' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  ACQ_L41="$(grep -n '^acquire_deploy_scraper_locks$' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  REL_L41="$(grep -n '^release_deploy_scraper_locks || true$' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  PM2_L41="$(grep -n '^restart_pm2$' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  STEP2_L41="$(grep -n '^  wait_for_no_live_cron_wake build$' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  if [ -n "$TRAP_L41" ] && [ -n "$ACQ_L41" ] && [ -n "$REL_L41" ] && [ -n "$PM2_L41" ] && [ -n "$STEP2_L41" ] \
+     && [ "$ACQ_L41" -gt "$TRAP_L41" ] && [ "$ACQ_L41" -gt "$STEP2_L41" ] && [ "$REL_L41" -lt "$PM2_L41" ] && [ "$REL_L41" -gt "$ACQ_L41" ]; then
+    pass "case 41 static: locks taken after the step-2 check and the EXIT trap (line $ACQ_L41), released before restart_pm2 (line $REL_L41 < $PM2_L41)"
+  else
+    fail "case 41 static: order wrong (step2=$STEP2_L41 trap=$TRAP_L41 acquire=$ACQ_L41 release=$REL_L41 restart_pm2=$PM2_L41)"
+  fi
+
+  FAKEBIN41="$(mktemp -d)"
+  ENVDIR41="$(mktemp -d)"
+  printf 'REDIS_URL=redis://localhost:6379/1\n' > "$ENVDIR41/scraper.env"
+  printf 'DATABASE_URL=postgresql://ipodhan_app@db:5432/ipodhan_staging\n' >> "$ENVDIR41/scraper.env"
+  # Stateful fake: one file per key under $STORE41 (the name with ':' -> '_').
+  # SET k v NX ... -> OK and stores v when k is absent, empty line (redis-cli's
+  # non-tty nil) when present. GET/TTL/EVAL(compare-and-delete). FAIL41=set
+  # makes SET exit 1 (connection refused shape).
+  cat > "$FAKEBIN41/redis-cli" <<'FAKERC41'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STORE41/argv.log"
+args=("$@"); f=(); i=0
+while [ $i -lt ${#args[@]} ]; do
+  case "${args[$i]}" in
+    -t|-u|-h|-p|-n|--user) i=$((i+2)); continue ;;
+    *) f+=("${args[$i]}"); i=$((i+1)) ;;
+  esac
+done
+kf() { printf '%s/k_%s' "$STORE41" "$(printf '%s' "$1" | tr ':' '_')"; }
+case "${f[0]}" in
+  SET)
+    if [ "${FAIL41:-}" = "set" ]; then echo "Could not connect to Redis at localhost:6379: Connection refused" >&2; exit 1; fi
+    nx=0; for a in "${f[@]:3}"; do [ "$a" = "NX" ] && nx=1; done
+    if [ "$nx" = 1 ] && [ -f "$(kf "${f[1]}")" ]; then echo ""; else printf '%s' "${f[2]}" > "$(kf "${f[1]}")"; echo OK; fi ;;
+  GET) [ -f "$(kf "${f[1]}")" ] && cat "$(kf "${f[1]}")"; echo ;;
+  TTL) echo 1234 ;;
+  EVAL)
+    # Honour the script: compare-and-delete only if it compares to ARGV[1].
+    k="${f[3]}"; tok="${f[4]}"
+    case "${f[1]}" in
+      *"==ARGV[1]"*) if [ -f "$(kf "$k")" ] && [ "$(cat "$(kf "$k")")" = "$tok" ]; then rm -f "$(kf "$k")"; echo 1; else echo 0; fi ;;
+      *) if [ -f "$(kf "$k")" ]; then rm -f "$(kf "$k")"; echo 1; else echo 0; fi ;;
+    esac ;;
+  *) echo "UNEXPECTED ${f[0]}" >&2; exit 9 ;;
+esac
+FAKERC41
+  chmod +x "$FAKEBIN41/redis-cli"
+
+  # run_41 <body>: a child bash with the real functions, log/warn/fatal as in
+  # the script, stubbed resume/cleanup, the EXIT trap armed exactly as the
+  # script arms it, then <body>. Prints output; the caller reads $?.
+  run_41() {
+    STORE41="$STORE41" FAIL41="${FAIL41:-}" PATH="$FAKEBIN41:$PATH" \
+    SCRIPT_DIR41="$SCRIPT_DIR" ENVFILE41="${ENVFILE41:-$ENVDIR41/scraper.env}" FNS41="$ACQ_FNS_41" BODY41="$1" \
+      bash -c '
+        log() { echo "==> $*"; }
+        warn() { echo "WARN: $*" >&2; }
+        fatal() { echo "FATAL: $*" >&2; exit 1; }
+        resume_scraper() { echo "==> would resume scraper (stub)"; }
+        cleanup_failed_release_dir() { :; }
+        DRY_RUN=0; SLOT=staging; RELEASE_NAME=R41; CURRENT_LINK=/var/www/ipodhan/current-staging
+        PYTHON_VENV_DIR=/var/www/ipodhan/venv-staging
+        SCRAPER_ENV_FILE="$ENVFILE41"
+        . "$SCRIPT_DIR41/../lib/redis-slot-prefix.sh"
+        . "$SCRIPT_DIR41/../lib/redis-cli-auth.sh"
+        eval "$FNS41"
+        trap on_deploy_exit EXIT
+        eval "$BODY41"
+      ' 2>&1
+  }
+  k41() { printf '%s/k_%s' "$STORE41" "$(printf '%s' "$1" | tr ':' '_')"; }
+  CYC41="staging:lock:resource:scraper:cycle"
+  LIV41="staging:lock:resource:scraper:live"
+
+  # 41a+b: empty store -> both keys taken with SET NX EX 2700 and the deploy
+  # token; a wake/scraper-style SET NX on the held key then FAILS (the key
+  # keeps the deploy token); the success-path release deletes both.
+  STORE41="$(mktemp -d)"
+  OUT41A="$(run_41 '
+    acquire_deploy_scraper_locks
+    echo "HOLD-CYCLE=$(redis-cli -h localhost -p 6379 -n 1 GET '"$CYC41"')"
+    echo "WAKE-SET=[$(redis-cli -h localhost -p 6379 -n 1 SET '"$CYC41"' scraper-uuid NX PX 10000)]"
+    echo "AFTER-WAKE=$(redis-cli -h localhost -p 6379 -n 1 GET '"$CYC41"')"
+    release_deploy_scraper_locks
+    trap - EXIT
+  ')"; RC41A=$?
+  if [ "$RC41A" -eq 0 ] \
+     && grep -qE -- "-n 1 SET $CYC41 deploy:staging:R41:[0-9]+ NX EX 2700$" "$STORE41/argv.log" \
+     && grep -qE -- "-n 1 SET $LIV41 deploy:staging:R41:[0-9]+ NX EX 2700$" "$STORE41/argv.log" \
+     && emit "$OUT41A" | grep -q "Took $CYC41 for this deploy (token=deploy:staging:R41:" \
+     && emit "$OUT41A" | grep -qE '^HOLD-CYCLE=deploy:staging:R41:[0-9]+$' \
+     && emit "$OUT41A" | grep -q '^WAKE-SET=\[\]$' \
+     && emit "$OUT41A" | grep -qE '^AFTER-WAKE=deploy:staging:R41:[0-9]+$' \
+     && emit "$OUT41A" | grep -q "Released $CYC41" \
+     && emit "$OUT41A" | grep -q "Released $LIV41" \
+     && [ ! -f "$(k41 "$CYC41")" ] && [ ! -f "$(k41 "$LIV41")" ]; then
+    pass "case 41a/b: both slot keys taken with SET NX EX 2700 + deploy token; a wake-style SET NX during the deploy fails and the key keeps the deploy token; released on success"
+  else
+    fail "case 41a/b: expected both keys taken, a concurrent SET NX refused, both released (rc=$RC41A) - got: $OUT41A / argv: $(cat "$STORE41/argv.log" 2>/dev/null)"
+  fi
+  rm -rf "$STORE41"
+
+  # 41c+d: scraper:live already held by a foreign token -> SET NX fails ->
+  # refuse (rc!=0, reason names key+holder); the EXIT trap releases ONLY the
+  # deploy's own scraper:cycle; the foreign scraper:live survives untouched.
+  STORE41="$(mktemp -d)"
+  printf '%s' 'scraper-uuid-live' > "$(k41 "$LIV41")"
+  OUT41C="$(run_41 'acquire_deploy_scraper_locks; echo SHOULD-NOT-REACH')"; RC41C=$?
+  if [ "$RC41C" -ne 0 ] \
+     && emit "$OUT41C" | grep -q "^FATAL: refusing to deploy slot staging: .*live before step 'cycle-lock' (lock $LIV41 held by token=scraper-uuid-live (1234s left)" \
+     && ! emit "$OUT41C" | grep -q 'SHOULD-NOT-REACH' \
+     && emit "$OUT41C" | grep -q "Released $CYC41" \
+     && emit "$OUT41C" | grep -q 'would resume scraper' \
+     && [ ! -f "$(k41 "$CYC41")" ] \
+     && [ "$(cat "$(k41 "$LIV41")")" = "scraper-uuid-live" ]; then
+    pass "case 41c/d: a held slot lock -> SET NX fails -> refuse (rc=$RC41C, names key+holder); the EXIT trap deletes only the deploy's own key, the foreign token survives"
+  else
+    fail "case 41c/d: expected refusal + own-key-only release (rc=$RC41C) - got: $OUT41C"
+  fi
+  rm -rf "$STORE41"
+
+  # 41c2: the deploy's key expired and was retaken by a scraper before a
+  # failure exit -> the EXIT trap's compare-and-delete leaves the new owner.
+  STORE41="$(mktemp -d)"
+  OUT41C2="$(run_41 '
+    acquire_deploy_scraper_locks
+    printf "%s" scraper-uuid-new > "$STORE41/k_staging_lock_resource_scraper_cycle"
+    fatal "simulated build failure"
+  ')"; RC41C2=$?
+  if [ "$RC41C2" -ne 0 ] \
+     && [ "$(cat "$(k41 "$CYC41")" 2>/dev/null)" = "scraper-uuid-new" ] \
+     && [ ! -f "$(k41 "$LIV41")" ] \
+     && emit "$OUT41C2" | grep -q "$CYC41 no longer holds this deploy's token (expired or retaken); left alone"; then
+    pass "case 41c2: on a failure exit the trap deletes only keys still holding the deploy token; a retaken key keeps its new owner"
+  else
+    fail "case 41c2: expected the retaken key left alone and ours released (rc=$RC41C2) - got: $OUT41C2"
+  fi
+  rm -rf "$STORE41"
+
+  # 41d2: redis-cli fails on SET (lock state unknowable) -> refuse.
+  STORE41="$(mktemp -d)"
+  OUT41D2="$(FAIL41=set run_41 'acquire_deploy_scraper_locks; echo SHOULD-NOT-REACH')"; RC41D2=$?
+  if [ "$RC41D2" -ne 0 ] \
+     && emit "$OUT41D2" | grep -q "^FATAL: refusing .*before step 'cycle-lock' (cannot take $CYC41, lock state unknowable: redis-cli failed" \
+     && ! emit "$OUT41D2" | grep -q 'SHOULD-NOT-REACH'; then
+    pass "case 41d2: redis-cli failing on SET NX (lock state unknowable) -> refuse, fail closed"
+  else
+    fail "case 41d2: expected a fail-closed refusal (rc=$RC41D2) - got: $OUT41D2"
+  fi
+  rm -rf "$STORE41"
+
+  # 41e: DEPLOY_ALLOW_LIVE_RUN=1 with scraper:live held -> proceeds (rc 0),
+  # WARN at 'cycle-lock', still takes the free scraper:cycle.
+  STORE41="$(mktemp -d)"
+  printf '%s' 'scraper-uuid-live' > "$(k41 "$LIV41")"
+  OUT41E="$(DEPLOY_ALLOW_LIVE_RUN=1 run_41 'acquire_deploy_scraper_locks; echo REACHED; release_deploy_scraper_locks; trap - EXIT')"; RC41E=$?
+  if [ "$RC41E" -eq 0 ] \
+     && emit "$OUT41E" | grep -q "^WARN: DEPLOY_ALLOW_LIVE_RUN=1: PROCEEDING to step 'cycle-lock' of slot staging" \
+     && emit "$OUT41E" | grep -q '^REACHED$' \
+     && emit "$OUT41E" | grep -q "Took $CYC41 for this deploy" \
+     && [ "$(cat "$(k41 "$LIV41")")" = "scraper-uuid-live" ]; then
+    pass "case 41e: DEPLOY_ALLOW_LIVE_RUN=1 proceeds past a held slot lock with a WARN, never touching the foreign key"
+  else
+    fail "case 41e: expected the override to proceed (rc=$RC41E) - got: $OUT41E"
+  fi
+  rm -rf "$STORE41"
+
+  # 41m: missing configuration (no REDIS_URL) -> no lock, says so, rc 0.
+  STORE41="$(mktemp -d)"
+  printf 'DATABASE_URL=postgresql://ipodhan_app@db:5432/ipodhan_staging\n' > "$ENVDIR41/noredis.env"
+  OUT41M="$(ENVFILE41="$ENVDIR41/noredis.env" run_41 'acquire_deploy_scraper_locks; echo REACHED; trap - EXIT')"; RC41M=$?
+  if [ "$RC41M" -eq 0 ] && emit "$OUT41M" | grep -q 'REDIS_URL not found .*no deploy lock taken' \
+     && [ ! -s "$STORE41/argv.log" ]; then
+    pass "case 41m: no REDIS_URL -> no deploy lock, logged, no redis-cli call, deploy continues"
+  else
+    fail "case 41m: expected a logged no-lock path (rc=$RC41M) - got: $OUT41M"
+  fi
+  rm -rf "$STORE41" "$FAKEBIN41" "$ENVDIR41"
+fi
 
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
