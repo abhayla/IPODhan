@@ -5,6 +5,7 @@
  * Implements caching for frequently accessed listing metrics.
  */
 
+import { filterPatchUnderHold } from '../services/field-hold';
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
@@ -62,17 +63,23 @@ export class ListingPerformanceRepository
    */
   async upsert(data: ListingPerformanceInsert): Promise<ListingPerformance> {
     try {
-      const [result] = await this.db
-        .insert(listingPerformance)
-        .values(data)
-        .onConflictDoUpdate({
-          target: listingPerformance.ipoId,
-          set: {
-            ...data,
-            lastUpdated: new Date(),
-          },
-        })
-        .returning();
+      // §9.2 item 19: the conflict-update never replaces an admin-held listing_performance field;
+      // the hold is re-read under the ipos row lock inside this transaction (field-hold.ts).
+      const result = await this.db.transaction(async (tx) => {
+        const { patch } = await filterPatchUnderHold(tx as never, data.ipoId, 'listing_performance', data as Record<string, unknown>);
+        const [row] = await tx
+          .insert(listingPerformance)
+          .values(data)
+          .onConflictDoUpdate({
+            target: listingPerformance.ipoId,
+            set: {
+              ...(patch as Partial<ListingPerformanceInsert>),
+              lastUpdated: new Date(),
+            },
+          })
+          .returning();
+        return row;
+      });
 
       // Invalidate cache
       await this.deleteCache(getListingPerformanceKey(data.ipoId));

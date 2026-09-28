@@ -1,0 +1,11 @@
+{
+  "id": "admin_hold_overwritten_by_source",
+  "findingClass": "A field an admin holds (field_protection_metadata.is_protected = true for the IPO, table and field) whose provenance row (field_sources, same ipo_id, table_name, field_name) names a NON-ADMIN source updated AFTER the protection's manually_edited_at - a scraper or job write that landed on an admin-held value, which spec 9.2 item 19 (section 2.7) forbids. The write-time guard is the in-transaction hold re-check (packages/shared/src/services/field-hold.ts, used by the scraper writers of ipos, ipo_details, financial_data, listing_performance and peer_companies; anchor_investors has no admin hold yet - its list-level hold is Phase B, spec 9.2 item 8 -; ipo_scores IS admin-editable (admin-field-write.ts table map) but its writers in web/lib/repositories/ipo-score-repository.ts do not re-check the hold yet - an open gap this check would catch); provenance is skipped for every field the hold dropped (OD-131, IPORepository.updateReportingHolds). This check catches the NEXT writer that bypasses either.",
+  "round7Findings": [],
+  "failThreshold": "For every protected (ipo_id, table_name, field_name): FAIL when a field_sources row for the same triple has source <> 'ADMIN' and updated_at > the protection row's manually_edited_at (or updated_at when manually_edited_at is null). Reported per IPO by name and slug with the table, field, offending source and both timestamps - never as a bare count (signal-ownership.md R1).",
+  "severity": "P1",
+  "unverifiableWhen": "The writer does not record provenance for the field (ENABLE_SOURCE_TRACKING off, or a write path with no field_sources row), so an overwrite leaves no source trail; the stored value would then have to be compared with the audit_logs new_value instead.",
+  "note": "SPEC ONLY - this check is NOT implemented. It has no record('admin_hold_overwritten_by_source') call in scripts/audit-detection-floor.mjs, so it stays in notCoveredByThisManifest rather than being counted as floor coverage (scripts/tests/audit-detection-floor.test.mjs case 79). Specified by contract 2 item A2 part E (feat/a2e-scraper-writers-honour-hold) alongside the write-time guard; building it is owed to the admin-editing verification slice.",
+  "owner": "contract 2 item A2 (admin editing, spec section 9)",
+  "section": "notCoveredByThisManifest"
+}

@@ -13,7 +13,11 @@ const IPO_ID = '33333333-3333-3333-3333-333333333333';
 function buildFakeDb() {
   const setCalls: Record<string, unknown>[] = [];
   const row = { id: IPO_ID, slug: 'stanbik-agro-ltd', faceValue: 10 };
-  const db = {
+  const db: Record<string, unknown> = {
+    // §9.2 item 19: update() runs in a transaction that locks the row and re-reads the hold (none here).
+    transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
+    execute: async (q: { queryChunks: unknown[] }) =>
+      /FOR NO KEY UPDATE/.test(JSON.stringify(q.queryChunks)) ? { rows: [{ id: IPO_ID, scraper_locked: false }] } : { rows: [] },
     update: () => ({
       set: (data: Record<string, unknown>) => {
         setCalls.push(data);
@@ -40,6 +44,7 @@ describe('IPORepository.applyFaceValue', () => {
     const keys = Object.keys(written).sort();
     expect(keys).toEqual(['faceValue', 'updatedAt'].sort());
     expect(written.faceValue).toBe(10);
-    expect(result.faceValue).toBe(10);
+    expect(result.ipo.faceValue).toBe(10);
+    expect(result.dropped).toEqual([]);
   });
 });

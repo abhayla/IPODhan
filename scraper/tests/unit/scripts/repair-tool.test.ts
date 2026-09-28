@@ -61,10 +61,12 @@ function mockTx(existingSource: string | null) {
   const where = vi.fn().mockReturnValue({ limit });
   const from = vi.fn().mockReturnValue({ where });
   const select = vi.fn().mockReturnValue({ from });
-  const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+  // The upsert returns the written row id; an empty result means the ADMIN guard skipped it.
+  const returning = vi.fn().mockResolvedValue([{ id: 'fs-1' }]);
+  const onConflictDoUpdate = vi.fn().mockReturnValue({ returning });
   const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
   const insert = vi.fn().mockReturnValue({ values });
-  return { select, insert, values, onConflictDoUpdate };
+  return { select, insert, values, onConflictDoUpdate, returning };
 }
 
 describe('MUTATION 1 — the production write refusal', () => {
@@ -1174,5 +1176,28 @@ describe('#457 round 3: undefined before/after is refused (JSON.stringify drops 
     expect(diffToLedgerEntries('ipos', 'a', { slug: 'x', n: null }, { slug: 'y', n: null })).toEqual([
       { table: 'ipos', rowKey: 'a', field: 'slug', before: 'x', after: 'y' },
     ]);
+  });
+});
+
+describe('OD-131: a non-ADMIN repair never relabels an ADMIN provenance row (item 19)', () => {
+  it('a non-ADMIN repair upsert carries the ADMIN guard in its conflict WHERE', async () => {
+    const tx = mockTx('CHITTORGARH');
+    await upsertFieldSource(tx as never, { ipoId: 'ipo-9', fieldName: 'faceValue', source: 'CHITTORGARH', previousValue: '10', dataLineage: { note: 'x' }, updatedBy: 'tool' });
+    const arg = tx.onConflictDoUpdate.mock.calls[0][0] as { setWhere?: unknown };
+    expect(arg.setWhere).toBeDefined();
+  });
+
+  it('an ADMIN repair upsert has no such guard', async () => {
+    const tx = mockTx('CHITTORGARH');
+    await upsertFieldSource(tx as never, { ipoId: 'ipo-9', fieldName: 'faceValue', source: 'ADMIN', previousValue: '10', dataLineage: { note: 'x' }, updatedBy: 'tool' });
+    const arg = tx.onConflictDoUpdate.mock.calls[0][0] as { setWhere?: unknown };
+    expect(arg.setWhere).toBeUndefined();
+  });
+
+  it('when the guard skipped the write (no row returned) the ledger records no change', async () => {
+    const tx = mockTx('ADMIN');
+    tx.returning.mockResolvedValueOnce([]);
+    const r = await upsertFieldSource(tx as never, { ipoId: 'ipo-9', fieldName: 'faceValue', source: 'CHITTORGARH', previousValue: '10', dataLineage: { note: 'x' }, updatedBy: 'tool' });
+    expect(r.changes).toEqual([]);
   });
 });

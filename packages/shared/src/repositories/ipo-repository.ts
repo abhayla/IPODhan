@@ -183,6 +183,7 @@ import {
   normalizeCompanyNameForMatching,
 } from '../utils/company-name-normalizer';
 import { findMostSimilarName } from '../utils/company-name-similarity';
+import { filterPatchUnderHold } from '../services/field-hold';
 import {
   checkMergeEligibility,
   assessRelaunch,
@@ -1483,103 +1484,78 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     data: Partial<IPOInsert>,
     options?: { honourProtection?: { source: string } }
   ): Promise<IPO> {
-    if (options?.honourProtection) {
-      return this.updateHonouringProtection(id, data, options.honourProtection.source);
-    }
-    try {
-      // Same choke point on the update/consolidation path: if a write carries a
-      // company name (a re-scrape, a consolidated winning value, or an admin
-      // edit), persist the sanitized form so a raw token can never re-pollute. #42
-      if (data.companyName) {
-        data = { ...data, companyName: sanitizeDisplayCompanyName(data.companyName) };
-      }
-      // F-145 class (OD-85): with an ACTIVE NSE_ISSUE key, `symbol` is that key's symbol — never
-      // the value of whichever record was read last (IC Electricals ICEL/ICELCO flip).
-      if (data.symbol !== undefined) {
-        const keySymbol = await activeNseIssueSymbol(this.db, id);
-        if (keySymbol && keySymbol !== data.symbol) {
-          logger.info({ ipoId: id, incoming: data.symbol, active: keySymbol }, '[OD-85] ipos.symbol follows the ACTIVE NSE_ISSUE key');
-          data = { ...data, symbol: keySymbol };
-        }
-      }
-
-      const [ipo] = await this.db
-        .update(ipos)
-        .set({ ...data, updatedAt: new Date() })
-        .where(eq(ipos.id, id))
-        .returning();
-
-      if (!ipo) {
-        throw new EntityNotFoundError('IPO', id);
-      }
-
-      // Invalidate cache
-      await this.invalidateCache(
-        [getIPOByIdKey(id), getIPOBySlugKey(ipo.slug)],
-        ['ipo:list:*', 'ipo:search:*']
-      );
-
-      return ipo;
-    } catch (error) {
-      if (error instanceof EntityNotFoundError) {
-        throw error;
-      }
-      throw new DatabaseError(
-        `Failed to update IPO: ${id}`,
-        undefined,
-        error
-      );
-    }
+    // §9.2 item 19: EVERY update() honours the admin hold inside its own transaction — scraper,
+    // repair tool or job alike (ADMIN outranks every source, §2.7). The admin path itself writes
+    // through `applyAdminCorrigendumValue`, never here. `source` only names the writer in the log.
+    return (await this.updateHonouringProtection(id, data, options?.honourProtection?.source ?? 'update()')).ipo;
   }
 
   /**
-   * Spec §9.2 item 19 (§2.7): a SCRAPER write re-checks admin protection INSIDE its own transaction.
-   * The orchestrators filter protected fields before they get here, but that read is outside any
-   * transaction (and Redis-cached), so an admin save landing between that filter and this write was
-   * overwritten. Here: lock the `ipos` row FOR NO KEY UPDATE (the same lock
-   * `writeAdminFieldValue` takes first), then read `scraper_locked` and every protected `ipos`
-   * field, drop them from the patch, and write the rest — all in one transaction. An admin save
-   * that committed while this waited on the lock is seen by the protection read (READ COMMITTED
-   * takes a new snapshot per statement) and survives.
+   * `update()` that also reports which requested fields an admin hold dropped (§9.2 item 19, OD-131).
+   * A sibling rather than a new `update()` return shape: `update()` has dozens of callers that read the
+   * returned IPO, and only the writers that record provenance or count repairs need the dropped list.
+   * Such a caller MUST NOT write a `field_sources` row (or count a repair) for a dropped field — the
+   * ADMIN row stays the field's source.
    */
-  private async updateHonouringProtection(id: string, data: Partial<IPOInsert>, source: string): Promise<IPO> {
-    const dropped: string[] = [];
-    const ipo = await this.db.transaction(async (txRaw) => {
-      const tx = txRaw as unknown as NodePgDatabase<typeof schema>;
-      const lock = await tx.execute(sql`SELECT scraper_locked FROM ipos WHERE id = ${id}::uuid FOR NO KEY UPDATE`);
-      const row = lock.rows[0] as { scraper_locked?: boolean } | undefined;
-      if (!row) throw new EntityNotFoundError('IPO', id);
-      const protectedRows = await tx.execute(sql`
-        SELECT field_name FROM field_protection_metadata
-        WHERE ipo_id = ${id}::uuid AND table_name = 'ipos' AND is_protected = true`);
-      const protectedFields = new Set((protectedRows.rows as Array<{ field_name: string }>).map((r) => r.field_name));
-      const patch: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(data)) {
-        if (k === 'updatedAt') continue;
-        if (row.scraper_locked === true || protectedFields.has(k)) dropped.push(k);
-        else patch[k] = v;
-      }
-      if (Object.keys(patch).length === 0) {
-        const [current] = await tx.select().from(ipos).where(eq(ipos.id, id)).limit(1);
-        return current as IPO;
-      }
-      if (typeof patch.companyName === 'string') patch.companyName = sanitizeDisplayCompanyName(patch.companyName);
-      if (patch.symbol !== undefined) {
-        const keySymbol = await activeNseIssueSymbol(tx as never, id);
-        if (keySymbol && keySymbol !== patch.symbol) patch.symbol = keySymbol;
-      }
-      const [written] = await tx
-        .update(ipos)
-        .set({ ...(patch as Partial<IPOInsert>), updatedAt: new Date() })
-        .where(eq(ipos.id, id))
-        .returning();
-      return written as IPO;
-    });
+  async updateReportingHolds(
+    id: string,
+    data: Partial<IPOInsert>,
+    options?: { honourProtection?: { source: string } }
+  ): Promise<{ ipo: IPO; dropped: string[] }> {
+    return this.updateHonouringProtection(id, data, options?.honourProtection?.source ?? 'update()');
+  }
+
+  /**
+   * Spec §9.2 item 19 (§2.7): the write re-checks admin protection INSIDE its own transaction.
+   * Orchestrators filter protected fields before they get here, but that read is outside any
+   * transaction (and Redis-cached), so an admin save landing between that filter and this write was
+   * overwritten. Here (`field-hold.ts`): lock the `ipos` row FOR NO KEY UPDATE (the lock
+   * `writeAdminFieldValue` takes first), read `scraper_locked` and every protected `ipos` field,
+   * drop them from the patch, and write the rest — one transaction. An admin save that committed
+   * while this waited on the lock is seen by the protection read (READ COMMITTED takes a new
+   * snapshot per statement) and survives.
+   */
+  private async updateHonouringProtection(id: string, data: Partial<IPOInsert>, source: string): Promise<{ ipo: IPO; dropped: string[] }> {
+    let dropped: string[] = [];
+    let ipo: IPO;
+    try {
+      ipo = await this.db.transaction(async (txRaw) => {
+        const tx = txRaw as unknown as NodePgDatabase<typeof schema>;
+        const { updatedAt: _ignored, ...incoming } = data as Record<string, unknown>;
+        const filtered = await filterPatchUnderHold(tx, id, 'ipos', incoming, { honourScraperLock: true });
+        if (!filtered.hold) throw new EntityNotFoundError('IPO', id);
+        dropped = filtered.dropped;
+        const patch = filtered.patch as Record<string, unknown>;
+        if (Object.keys(patch).length === 0) {
+          const [current] = await tx.select().from(ipos).where(eq(ipos.id, id)).limit(1);
+          return current as IPO;
+        }
+        // Same choke point for every write carrying a company name (#42): persist the sanitized form.
+        if (typeof patch.companyName === 'string' && patch.companyName) patch.companyName = sanitizeDisplayCompanyName(patch.companyName);
+        // F-145 class (OD-85): with an ACTIVE NSE_ISSUE key, `symbol` is that key's symbol.
+        if (patch.symbol !== undefined) {
+          const keySymbol = await activeNseIssueSymbol(tx as never, id);
+          if (keySymbol && keySymbol !== patch.symbol) {
+            logger.info({ ipoId: id, incoming: patch.symbol, active: keySymbol }, '[OD-85] ipos.symbol follows the ACTIVE NSE_ISSUE key');
+            patch.symbol = keySymbol;
+          }
+        }
+        const [written] = await tx
+          .update(ipos)
+          .set({ ...(patch as Partial<IPOInsert>), updatedAt: new Date() })
+          .where(eq(ipos.id, id))
+          .returning();
+        return written as IPO;
+      });
+    } catch (error) {
+      if (error instanceof EntityNotFoundError) throw error;
+      throw new DatabaseError(`Failed to update IPO: ${id}`, undefined, error);
+    }
     if (dropped.length > 0) {
       logger.info({ ipoId: id, source, dropped }, '[item 19] protected fields dropped inside the write transaction');
     }
     await this.invalidateCache([getIPOByIdKey(id), getIPOBySlugKey(ipo.slug)], ['ipo:list:*', 'ipo:search:*']);
-    return ipo;
+    return { ipo, dropped };
   }
 
   /**
@@ -1596,8 +1572,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   async applyOfferTerms(
     id: string,
     data: Pick<Partial<IPOInsert>, 'priceRangeMin' | 'priceRangeMax' | 'lotSize' | 'issueSize'>
-  ): Promise<IPO> {
-    return this.update(id, data);
+  ): Promise<{ ipo: IPO; dropped: string[] }> {
+    return this.updateReportingHolds(id, data);
   }
 
   /**
@@ -1612,8 +1588,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * already-baselined write path a new repair script routes through,
    * instead of a direct `db.update(ipos)`.
    */
-  async applyFaceValue(id: string, faceValue: number): Promise<IPO> {
-    return this.update(id, { faceValue });
+  async applyFaceValue(id: string, faceValue: number): Promise<{ ipo: IPO; dropped: string[] }> {
+    return this.updateReportingHolds(id, { faceValue });
   }
 
   /**
@@ -1622,8 +1598,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * the write lives in this already-baselined file, never re-typed as a direct `db.update(ipos)`
    * in a script (`scripts/check-write-ratchet.mjs`, T-316).
    */
-  async applySanitizedCompanyName(id: string, companyName: string): Promise<IPO> {
-    return this.update(id, { companyName });
+  async applySanitizedCompanyName(id: string, companyName: string): Promise<{ ipo: IPO; dropped: string[] }> {
+    return this.updateReportingHolds(id, { companyName });
   }
 
   /**
@@ -1633,16 +1609,34 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * write lives in this already-baselined file, never re-typed as a direct `db.update(ipos)` in a
    * new script (`scripts/check-write-ratchet.mjs`, T-316).
    */
-  async applyIssueSizeRepair(id: string, issueSize: string | null, restoreUpdatedAt?: string): Promise<IPO> {
-    if (restoreUpdatedAt === undefined) return this.update(id, { issueSize });
-    const [ipo] = await this.db
-      .update(ipos)
-      .set({ issueSize, updatedAt: sql`${restoreUpdatedAt}::timestamp` })
-      .where(eq(ipos.id, id))
-      .returning();
-    if (!ipo) throw new EntityNotFoundError('IPO', id);
+  async applyIssueSizeRepair(
+    id: string,
+    issueSize: string | null,
+    restoreUpdatedAt?: string
+  ): Promise<{ ipo: IPO; dropped: string[] }> {
+    if (restoreUpdatedAt === undefined) return this.updateReportingHolds(id, { issueSize });
+    // --undo: the same hold as every other write (§9.2 item 19) — an admin value set since the repair
+    // is never put back to the before-image. Lock + hold read + write in ONE transaction.
+    let dropped: string[] = [];
+    const ipo = await this.db.transaction(async (txRaw) => {
+      const tx = txRaw as unknown as NodePgDatabase<typeof schema>;
+      const filtered = await filterPatchUnderHold(tx, id, 'ipos', { issueSize }, { honourScraperLock: true });
+      if (!filtered.hold) throw new EntityNotFoundError('IPO', id);
+      dropped = filtered.dropped;
+      if (dropped.length > 0) {
+        const [current] = await tx.select().from(ipos).where(eq(ipos.id, id)).limit(1);
+        return current as IPO;
+      }
+      const [row] = await tx
+        .update(ipos)
+        .set({ issueSize, updatedAt: sql`${restoreUpdatedAt}::timestamp` })
+        .where(eq(ipos.id, id))
+        .returning();
+      return row as IPO;
+    });
+    if (dropped.length > 0) logger.info({ ipoId: id, dropped }, '[item 19] issue-size undo skipped: held by admin');
     await this.invalidateCache([getIPOByIdKey(id), getIPOBySlugKey(ipo.slug)], ['ipo:list:*', 'ipo:search:*']);
-    return ipo;
+    return { ipo, dropped };
   }
 
   /**
@@ -2828,23 +2822,20 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     ipoId: string,
     hints: { companyWebsite?: string; verifierUrl?: string }
   ): Promise<{ id: string; slug: string } | null> {
-    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    const patch: Partial<IPOInsert> = {};
     if (hints.companyWebsite !== undefined) patch.companyWebsite = hints.companyWebsite;
     if (hints.verifierUrl !== undefined) patch.verifierUrl = hints.verifierUrl;
 
-    const [row] = await this.db
-      .update(ipos)
-      .set(patch as never)
-      .where(eq(ipos.id, ipoId))
-      .returning({ id: ipos.id, slug: ipos.slug });
-
-    if (!row) return null;
-
-    await this.invalidateCache(
-      [getIPOByIdKey(ipoId), getIPOBySlugKey(row.slug)],
-      ['ipo:list:*', 'ipo:search:*', `ipo:detail:${row.slug}`]
-    );
-    return row;
+    // §9.2 item 19: an admin-held website / verifier URL is never replaced by a discovered hint.
+    let row: IPO;
+    try {
+      row = (await this.updateHonouringProtection(ipoId, patch, 'updateDocumentSourceHints')).ipo;
+    } catch (error) {
+      if (error instanceof EntityNotFoundError) return null;
+      throw error;
+    }
+    await this.invalidateCache([], [`ipo:detail:${row.slug}`]);
+    return { id: row.id, slug: row.slug };
   }
 
   /**
@@ -2872,25 +2863,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     rationale: string
   ): Promise<IPO> {
     try {
-      const [ipo] = await this.db
-        .update(ipos)
-        .set({
-          rating,
-          ratingRationale: rationale,
-          updatedAt: new Date(),
-        })
-        .where(eq(ipos.id, ipoId))
-        .returning();
-
-      if (!ipo) {
-        throw new EntityNotFoundError('IPO', ipoId);
-      }
-
-      // Invalidate cache for this IPO
-      await this.invalidateCache(
-        [getIPOByIdKey(ipoId), getIPOBySlugKey(ipo.slug)],
-        ['ipo:list:*', 'ipo:search:*', `ipo:detail:${ipo.slug}`]
-      );
+      // §9.2 item 19: an admin-held rating / rationale is never replaced by a computed one.
+      const { ipo } = await this.updateHonouringProtection(ipoId, { rating, ratingRationale: rationale }, 'updateRating');
+      await this.invalidateCache([], [`ipo:detail:${ipo.slug}`]);
 
       return ipo;
     } catch (error) {

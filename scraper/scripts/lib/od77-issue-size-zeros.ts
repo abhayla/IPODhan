@@ -14,6 +14,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { generateFieldPlan } from '../../src/services/field-plan-generator.js';
 import type { IPORepository } from '@ipodhan/shared';
+import { assertNotHeld } from '@ipodhan/shared/services/field-hold';
 
 export type ZeroAction = 'REMOVE_NOT_APPLICABLE' | 'NOT_SOURCED';
 
@@ -91,7 +92,7 @@ export async function applyZeroRow(tx: Tx, r: ZeroRow, repo: (tx: Tx) => IPORepo
   }
   const cur = await tx.execute(sql`SELECT issue_size = 0 AS zero FROM ipos WHERE id = ${r.id} FOR UPDATE`);
   if (!((cur.rows ?? cur)[0]?.zero)) throw new Error(`row changed since selection (issue_size no longer 0) — transaction rolled back`);
-  await repo(tx).applyIssueSizeRepair(r.id, null);
+  assertNotHeld(await repo(tx).applyIssueSizeRepair(r.id, null), r.id);
   return {
     slug: r.slug,
     offeringType: r.offeringType,
@@ -108,7 +109,7 @@ export async function undoZeroRow(tx: Tx, o: ZeroOutcome, repo: (tx: Tx) => IPOR
   if (!b) return false;
   const cur = await tx.execute(sql`SELECT issue_size IS NULL AS unset FROM ipos WHERE id = ${b.ipoId} FOR UPDATE`);
   if (!((cur.rows ?? cur)[0]?.unset)) return false;
-  await repo(tx).applyIssueSizeRepair(b.ipoId, b.issueSize, b.updatedAt);
+  assertNotHeld(await repo(tx).applyIssueSizeRepair(b.ipoId, b.issueSize, b.updatedAt), b.ipoId);
   if (b.planInsertedId) await tx.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, b.planInsertedId));
   else if (b.plan)
     await tx

@@ -159,6 +159,7 @@ export function snapshottingWriter(
     update: base.update.bind(base),
     select: base.select.bind(base),
     insert: base.insert.bind(base),
+    execute: base.execute.bind(base),
     transaction: <T>(fn: (tx: TransactionalIposWriter) => Promise<T>) =>
       base.transaction(async (tx) => {
         sink.before = await snapshotLeadManagerRows(tx as unknown as ExecuteLike, ipoId, true);

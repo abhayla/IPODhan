@@ -205,7 +205,7 @@ describe('writePostListingPrice (the narrow write)', () => {
     const updates: Array<Record<string, unknown>> = [];
     const tracked: string[] = [];
     const res = await writePostListingPrice({
-      ipoRepository: { update: async (_id, data) => { updates.push(data); } },
+      ipoRepository: { update: async () => undefined, updateReportingHolds: async (_id, data) => { updates.push(data); return { dropped: [] }; } },
       fieldSources: { trackFieldUpdate: async (i) => { tracked.push(`${i.fieldName}:${i.source}`); } },
       sourceTrackingEnabled: true,
       ipoId: 'ipo-1',

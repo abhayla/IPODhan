@@ -8,6 +8,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as schema from '@ipodhan/shared/db/schema';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 
 const REGISTRARS = [
   { id: 'r-kfin', name: 'KFin Technologies Limited', shortName: 'KFin' },
@@ -22,6 +24,9 @@ const NULL_ROWS = [
 
 const updateSetMock = vi.fn().mockReturnThis();
 const updateWhereMock = vi.fn().mockResolvedValue(undefined);
+// §9.2 item 19: ipo ids whose registrarId an admin holds (field_protection_metadata rows).
+const HELD = new Set<string>();
+const holdDialect = new PgDialect();
 
 vi.mock('@ipodhan/shared/db', () => ({
   db: {
@@ -44,6 +49,19 @@ vi.mock('@ipodhan/shared/db', () => ({
         return { where: updateWhereMock };
       },
     })),
+    // item 19: the write runs in a transaction that locks the ipos row and re-reads the hold.
+    async transaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
+      const tx = {
+        update: (this as unknown as { update: unknown }).update,
+        execute: async (q: SQL) => {
+          const { sql: text, params } = holdDialect.sqlToQuery(q);
+          const id = params[0] as string;
+          if (/FOR NO KEY UPDATE/.test(text)) return { rows: [{ id, scraper_locked: false }] };
+          return { rows: HELD.has(id) ? [{ ipo_id: id, field_name: 'registrarId' }] : [] };
+        },
+      };
+      return fn(tx);
+    },
   },
 }));
 
@@ -72,6 +90,18 @@ describe('reresolveRegistrarIds', () => {
     expect(updateWhereMock).toHaveBeenCalledTimes(2);
     expect(updateSetMock).toHaveBeenCalledWith({ registrarId: 'r-kfin' });
     expect(updateSetMock).toHaveBeenCalledWith({ registrarId: 'r-maashitla' });
+  });
+
+  it('item 19: an admin-held registrarId is not backfilled (re-read inside the write transaction)', async () => {
+    HELD.add('ipo-1');
+    try {
+      const result = await reresolveRegistrarIds({ dryRun: false });
+      expect(result.written).toBe(1);
+      expect(updateSetMock).toHaveBeenCalledTimes(1);
+      expect(updateSetMock).toHaveBeenCalledWith({ registrarId: 'r-maashitla' });
+    } finally {
+      HELD.clear();
+    }
   });
 
   it('defaults to dry-run when no options are passed', async () => {

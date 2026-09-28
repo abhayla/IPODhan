@@ -5,6 +5,8 @@
  * Simplified version without caching (caching handled by web layer)
  */
 
+import { lockAndReadRowHolds, applyRowHolds, type HoldExecutor } from '@ipodhan/shared/services/field-hold';
+import { logger } from '../utils/logger';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { eq } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -141,16 +143,13 @@ export class PeerCompanyRepository {
     }
     const deduped = [...byRowKey.values()];
 
-    if (!options.nullNeverOverwrites && !options.fillGapsOnly) {
-      return this.db.transaction(async (tx) => {
-        await tx.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, ipoId));
-        return tx.insert(schema.peerCompanies).values(deduped).returning();
-      });
-    }
-
-    // Read, merge and write in ONE transaction, so the stored rows the merge
-    // reads are the rows it replaces.
+    // §9.2 item 19 (§2.7): every branch takes the admin's lock (the IPO's ipos row, FOR NO KEY
+    // UPDATE) and reads the per-row holds FIRST, and only then reads the stored rows, all in one
+    // transaction. Reading `stored` before the lock let an admin save commit in between, and the
+    // held field was then "kept" at its stale pre-admin value (Tier A CRITICAL, round 1).
     return this.db.transaction(async (tx) => {
+      const t = tx as unknown as NodePgDatabase<typeof schema> & HoldExecutor;
+      const holds = await lockAndReadRowHolds(t, ipoId, 'peer_companies');
       const stored = await tx
         .select()
         .from(schema.peerCompanies)
@@ -158,24 +157,52 @@ export class PeerCompanyRepository {
       const storedByKey = new Map(stored.map((row) => [row.normalizedName, row]));
 
       if (options.fillGapsOnly) {
+        // Insert-only: a stored row is never touched. A row the admin removed leaves a hold under
+        // its key with no stored row — it stays removed (OD-121: delete = keep empty), never refilled.
         const fresh = deduped
           .filter((row) => !storedByKey.has(row.normalizedName))
+          .filter((row) => !holds.rows.has(row.normalizedName))
           .map((row) => ({ ...row, isListed: row.isListed ?? true }));
         if (fresh.length === 0) return [];
         return tx.insert(schema.peerCompanies).values(fresh).returning();
       }
 
-      const merged = deduped.map((row) => {
-        const prior = storedByKey.get(row.normalizedName);
-        const out: Record<string, unknown> = { ...row };
-        for (const col of PEER_VALUE_COLUMNS) {
-          if (out[col] === null || out[col] === undefined) out[col] = prior ? prior[col] : null;
-        }
-        if (typeof out.isListed !== 'boolean') out.isListed = prior ? prior.isListed : true;
-        return out as PeerCompanyInsert;
-      });
+      let incoming: PeerCompanyInsert[] = deduped;
+      if (options.nullNeverOverwrites) {
+        incoming = deduped.map((row) => {
+          const prior = storedByKey.get(row.normalizedName);
+          const out: Record<string, unknown> = { ...row };
+          for (const col of PEER_VALUE_COLUMNS) {
+            if (out[col] === null || out[col] === undefined) out[col] = prior ? prior[col] : null;
+          }
+          if (typeof out.isListed !== 'boolean') out.isListed = prior ? prior.isListed : true;
+          return out as PeerCompanyInsert;
+        });
+      }
+      const rowsToWrite = this.honourRowHolds(ipoId, incoming, stored, holds.rows);
       await tx.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, ipoId));
-      return tx.insert(schema.peerCompanies).values(merged).returning();
+      if (rowsToWrite.length === 0) return [];
+      return tx.insert(schema.peerCompanies).values(rowsToWrite).returning();
     });
+  }
+
+  /**
+   * Spec §9.2 item 19 (§2.7) for a delete-and-reinsert writer: inside the replace transaction, lock
+   * the IPO's ipos row (the admin's lock) and read the per-row holds (`peer_companies:<normalized
+   * name>`); a held field keeps its stored value and a held row the new list omits is kept. The
+   * list-level hold (whole list admin-owned, §9.2 item 8) is Phase B.
+   */
+  private honourRowHolds(
+    ipoId: string,
+    rows: PeerCompanyInsert[],
+    stored: PeerCompany[],
+    holds: ReadonlyMap<string, ReadonlySet<string>>
+  ): PeerCompanyInsert[] {
+    if (holds.size === 0) return rows;
+    const out = applyRowHolds(rows as Record<string, unknown>[], stored as Record<string, unknown>[], holds, 'normalizedName');
+    if (out.keptFields.length > 0 || out.keptRows.length > 0) {
+      logger.info({ ipoId, keptFields: out.keptFields, keptRows: out.keptRows }, '[item 19] admin-held peer values kept inside the replace transaction');
+    }
+    return out.rows as PeerCompanyInsert[];
   }
 }

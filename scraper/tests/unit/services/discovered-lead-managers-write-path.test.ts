@@ -55,6 +55,9 @@ function fakeTransactionalDb(opts: {
   const selectWhereArgs: unknown[] = [];
 
   const tx = {
+    // item 19 hold read: the IPO row exists, unlocked, no protection rows.
+    execute: async (q: { queryChunks?: unknown[] }) =>
+      /FOR NO KEY UPDATE/.test(JSON.stringify(q)) ? { rows: [{ id: 'ipo-1', scraper_locked: false }] } : { rows: [] },
     update: () => ({
       set: () => ({
         where: () => ({
@@ -94,6 +97,7 @@ function fakeTransactionalDb(opts: {
     update: tx.update,
     select: tx.select,
     insert: tx.insert,
+    execute: tx.execute,
   };
 
   return { dbLike, fieldSourcesRows, insertCalls, onConflictArgs, selectWhereArgs };

@@ -38,6 +38,6 @@ describe('keepTerminalIpoStatus (the fallback door)', () => {
 
   it('the fallback door writes through the guard (wiring)', () => {
     const src = readFileSync(join(__dirname, '..', '..', '..', 'src', 'services', 'data-persister.ts'), 'utf8');
-    expect(src).toMatch(/const guardedFallback = keepTerminalIpoStatus\(\(existingIPO as any\)\.status, claimsOnlyFallback\);\s*await ipoRepository\.update\(existingIPO\.id, guardedFallback\);/);
+    expect(src).toMatch(/const guardedFallback = keepTerminalIpoStatus\(\(existingIPO as any\)\.status, claimsOnlyFallback\);\s*const fallbackHeld = await updateReportingHolds\(ipoRepository as never, existingIPO\.id, guardedFallback\);/);
   });
 });

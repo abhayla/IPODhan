@@ -80,6 +80,11 @@ function harness(initial: Record<string, any> | null) {
       row = { ...row!, ...data, id };
       return row;
     }),
+    updateReportingHolds: vi.fn(async (id: string, data: Record<string, any>) => {
+      sets.push({ ...data });
+      row = { ...row!, ...data, id };
+      return { ipo: row, dropped: [] as string[] };
+    }),
     create: vi.fn(async (values: Record<string, any>) => {
       sets.push({ ...values });
       row = { ...values, id: 'new-row' };
