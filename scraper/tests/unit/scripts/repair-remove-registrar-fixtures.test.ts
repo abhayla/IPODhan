@@ -3,7 +3,12 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   FIXTURE_REGISTRARS,
+  parseFixtureTuplesFromSource,
   selectFixtureRowsForDeletion,
+  EXIT_OK,
+  EXIT_CHECK_FOUND_FIXTURES,
+  EXIT_CRASH_OR_VERIFY_FAIL,
+  EXIT_PROD_GUARD_REFUSED,
   type CandidateRegistrarRow,
 } from '../../../scripts/repair-remove-registrar-fixtures.js';
 
@@ -15,18 +20,58 @@ describe('repair-remove-registrar-fixtures', () => {
         '../../../../web/tests/integration/api/registrars.integration.test.ts'
       );
       const source = readFileSync(testFilePath, 'utf-8');
+      const parsedTuples = parseFixtureTuplesFromSource(source);
 
-      // Pull every `name: '...'` / `email: '...'` pair inside the testRegistrars
-      // array literal, in source order — a lightweight parse, not a lexer, but
-      // sufficient for a flat array-of-object-literals with quoted strings.
-      const nameMatches = [...source.matchAll(/name:\s*'([^']+)'/g)].map((m) => m[1]);
-      const emailMatches = [...source.matchAll(/email:\s*'([^']+)'/g)].map((m) => m[1]);
-
-      expect(nameMatches.length).toBe(FIXTURE_REGISTRARS.length);
-      expect(emailMatches.length).toBe(FIXTURE_REGISTRARS.length);
-
-      const parsedTuples = nameMatches.map((name, i) => ({ name, email: emailMatches[i] }));
+      expect(parsedTuples.length).toBe(FIXTURE_REGISTRARS.length);
       expect(parsedTuples).toEqual(FIXTURE_REGISTRARS.map((f) => ({ name: f.name, email: f.email })));
+    });
+  });
+
+  describe('parseFixtureTuplesFromSource — quote-style robustness', () => {
+    it('parses single-quoted name/email pairs', () => {
+      const src = `const x = [{ name: 'Alpha', email: 'a@example.com' }];`;
+      expect(parseFixtureTuplesFromSource(src)).toEqual([{ name: 'Alpha', email: 'a@example.com' }]);
+    });
+
+    it('parses double-quoted name/email pairs', () => {
+      const src = `const x = [{ name: "Beta", email: "b@example.com" }];`;
+      expect(parseFixtureTuplesFromSource(src)).toEqual([{ name: 'Beta', email: 'b@example.com' }]);
+    });
+
+    it('parses template-literal name/email pairs', () => {
+      const src = 'const x = [{ name: `Gamma`, email: `c@example.com` }];';
+      expect(parseFixtureTuplesFromSource(src)).toEqual([{ name: 'Gamma', email: 'c@example.com' }]);
+    });
+
+    it('parses a mix of all three quote styles across multiple entries, in source order', () => {
+      const src = `
+        const x = [
+          { name: 'Alpha', email: "a@example.com" },
+          { name: "Beta", email: \`b@example.com\` },
+          { name: \`Gamma\`, email: 'c@example.com' },
+        ];`;
+      expect(parseFixtureTuplesFromSource(src)).toEqual([
+        { name: 'Alpha', email: 'a@example.com' },
+        { name: 'Beta', email: 'b@example.com' },
+        { name: 'Gamma', email: 'c@example.com' },
+      ]);
+    });
+
+    it('does not match `shortName:` as `name:`', () => {
+      const src = `const x = [{ shortName: 'Not This', name: 'Alpha', email: 'a@example.com' }];`;
+      expect(parseFixtureTuplesFromSource(src)).toEqual([{ name: 'Alpha', email: 'a@example.com' }]);
+    });
+
+    it('throws when name/email counts disagree rather than silently zipping to the shorter list', () => {
+      const src = `const x = [{ name: 'Alpha', email: 'a@example.com' }, { name: 'Beta' }];`;
+      expect(() => parseFixtureTuplesFromSource(src)).toThrow(/cannot pair/);
+    });
+  });
+
+  describe('exit codes are distinct', () => {
+    it('OK / CHECK-found-fixtures / crash-or-verify-fail / prod-guard-refused are four different codes', () => {
+      const codes = new Set([EXIT_OK, EXIT_CHECK_FOUND_FIXTURES, EXIT_CRASH_OR_VERIFY_FAIL, EXIT_PROD_GUARD_REFUSED]);
+      expect(codes.size).toBe(4);
     });
   });
 
