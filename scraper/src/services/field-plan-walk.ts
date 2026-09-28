@@ -78,7 +78,36 @@ import {
   type FieldPlanGapKeySource,
   type FieldPlanIpoGapKeys,
 } from './field-plan-gap-keys.js';
-import { computeVerdict, type Witness, type Verdict } from './witness-verdict.js';
+import { computeVerdict, type Witness, type Verdict, type WitnessOutcome } from './witness-verdict.js';
+
+/**
+ * OD-103 (F-196): one ranked source's answer in this pass -- SUPPLIED or not -- in rank order.
+ * Stored as a witness only when this pass also stored a value on the field (see
+ * `writeWitnessVerdict`); a field with no stored value has no field_sources row (#684).
+ */
+interface RankAnswer {
+  rank: number;
+  source: string;
+  outcome: WitnessOutcome;
+  value: unknown;
+  at: string;
+  docType?: string;
+  cause?: string;
+}
+
+/** `rank<N>:<source>=<outcome>` per answer -- the per-rank record for a pass that stored no value. */
+function answerLog(answers: readonly RankAnswer[]): string[] {
+  return answers.map((a) => `rank${a.rank}:${a.source}=${a.outcome}${a.cause ? ` (${a.cause})` : ''}`);
+}
+
+function rankAnswer(
+  rank: number,
+  source: string,
+  outcome: WitnessOutcome,
+  extra: Partial<Pick<RankAnswer, 'value' | 'docType' | 'cause'>> = {}
+): RankAnswer {
+  return { rank, source, outcome, value: null, at: new Date().toISOString(), ...extra };
+}
 
 /**
  * `plan.fieldName` is the manifest's raw snake_case key
@@ -870,6 +899,8 @@ async function attemptOneField(
   }> = [];
   let winner: { rank: number; source: string; answer: Extract<FieldFetcherAnswer, { outcome: 'SUPPLIED' }> } | null =
     null;
+  /** OD-103: EVERY ranked answer this pass (value, abstention or failure), in rank order. */
+  const answers: RankAnswer[] = [];
 
   for (const [rank, source] of ranks) {
     // No source at this rank for this IPO's type (§2.3.5 capability) — not a
@@ -887,6 +918,7 @@ async function attemptOneField(
       // must be enough to make the field askable again -- retiring it
       // terminally would mean a config gap silently outlived its own fix.
       failures.push(`rank${rank}:${source}:NO_FETCHER_REGISTERED ${fieldPlanGapToken('NO_FETCHER')}`);
+      answers.push(rankAnswer(rank, source, 'FAILED', { cause: failures[failures.length - 1] }));
       sawTransientFailure = true;
       continue;
     }
@@ -903,12 +935,14 @@ async function attemptOneField(
       // shares the same `rank<N>:<source>:...` shape but means something
       // different (the source WAS reached and answered).
       failures.push(`rank${rank}:${source}:THROWN:${causeOf(error)}`);
+      answers.push(rankAnswer(rank, source, 'FAILED', { cause: failures[failures.length - 1] }));
       sawTransientFailure = true;
       continue;
     }
 
     if (answer.outcome === 'NOT_PRINTED') {
       // §2.4: no retry, no error — this source never carries this field.
+      answers.push(rankAnswer(rank, source, 'NOT_PRINTED'));
       continue;
     }
 
@@ -924,7 +958,17 @@ async function attemptOneField(
           answer.gap ? ` ${fieldPlanGapToken(answer.gap)}` : ''
         }`
       );
+      answers.push(rankAnswer(rank, source, 'CHECK_FAILED', { cause: failures[failures.length - 1] }));
       if (isTransient) sawTransientFailure = true;
+      continue;
+    }
+
+    if (answer.outcome === 'NOT_AVAILABLE_YET' && winner) {
+      // A LOWER rank than the winner has not published yet: an abstention witness (OD-60), never a
+      // provisional ask. Before S3a's collect-all the loop had already returned at the winner, so
+      // this rank was never reached; without this branch the walk dropped the winner's value and
+      // recorded NOT_AVAILABLE_YET against a field a higher rank had just supplied.
+      answers.push(rankAnswer(rank, source, 'NOT_AVAILABLE_YET'));
       continue;
     }
 
@@ -948,9 +992,13 @@ async function attemptOneField(
       // here would close the ask against a value we already know is
       // second-best.
       result.fieldsNotAvailableYet += 1;
-      const provisional = await tryProvisional(ipoId, plan, rank, deps, failures, policy);
+      answers.push(rankAnswer(rank, source, 'NOT_AVAILABLE_YET'));
+      const provisional = await tryProvisional(ipoId, plan, rank, deps, failures, policy, answers);
       if (provisional) {
         result.fieldsProvisional += 1;
+        // OD-103: the provisional write created/updated the field_sources row, so this pass's
+        // answers (the authoritative NOT_AVAILABLE_YET plus every lower rank) are its witnesses.
+        await writeWitnessVerdict(ipoId, plan, provisional.source, answers, policy, deps);
         logger.info(
           {
             ipoId,
@@ -959,8 +1007,16 @@ async function attemptOneField(
             authoritativeSource: source,
             provisionalSource: provisional.source,
             provisionalRank: provisional.rank,
+            answers: answerLog(answers),
           },
           'PASS 3: authoritative source has not published this field yet — wrote a PROVISIONAL value from a lower rank; the ask stays open'
+        );
+      } else {
+        // No value stored, so no field_sources row and no witness write (#684): this log line is
+        // the only record of the per-rank answers until a value is stored (§2.4, OD-103).
+        logger.info(
+          { ipoId, table: plan.tableName, field: plan.fieldName, authoritativeSource: source, answers: answerLog(answers) },
+          'PASS 3: authoritative source has not published this field yet and no lower rank supplied a provisional value; the ask stays open'
         );
       }
       return recordAndClassify(deps, result, {
@@ -986,6 +1042,7 @@ async function attemptOneField(
     // winner is already known are new: they are logged, never written
     // (S2's `witnesses` column is S3b's job).
     suppliedAnswers.push({ rank, source, answer });
+    answers.push(rankAnswer(rank, source, 'SUPPLIED', { value: answer.value, docType: answer.documentType }));
     if (!winner) {
       winner = { rank, source, answer };
     }
@@ -1154,49 +1211,7 @@ async function attemptOneField(
       });
     }
 
-    // S3b-2: the verdict write is a SECOND call onto the same field_sources row `runWrite` just
-    // wrote (never a second writer — trackWitnessVerdict defaults to the same
-    // FieldSourcesRepository.trackFieldUpdate as everything else). Flag OFF (default) skips this
-    // block entirely — no manifest read, no computeVerdict call, no trackWitnessVerdict call — so
-    // behaviour is byte-identical to before this slice.
-    if (FEATURE_FLAGS.ENABLE_VERDICT_WRITER && deps.trackWitnessVerdict) {
-      const manifestEntry = loadFieldManifest().fields[`${plan.tableName}.${plan.fieldName}`];
-      const family = manifestEntry?.comparisonFamily;
-      // ABSTAIN is filtered out HERE, before computeVerdict — never passed through. ABSTAIN is
-      // deliberately absent from areEquivalent's ComparisonFamily union (#786); a field with no
-      // manifest entry at all (row-less field, matrix-shim path) has no family to filter on
-      // either, so it is treated the same as ABSTAIN: no verdict computed.
-      if (family && family !== 'ABSTAIN') {
-        const witnessAnswers = suppliedAnswers.map((a) => ({
-          rank: a.rank,
-          source: a.source,
-          value: a.answer.value,
-          at: new Date().toISOString(),
-          docType: a.answer.documentType,
-        }));
-        const { verdict: computedVerdict, witnesses } = computeVerdict(
-          witnessAnswers,
-          policy.ranks.length,
-          family
-        );
-        await deps.trackWitnessVerdict({
-          ipoId,
-          tableName: plan.tableName,
-          rowKey: plan.rowKey,
-          // field_sources.fieldName is camelCase (lesson field-sources-field-name-is-camelCase)
-          // — same conversion `runWrite` applies independently for its own write below.
-          fieldName: columnToCamelCase(plan.fieldName),
-          // field_sources.source (the TOP-LEVEL column, distinct from witnesses[].source below)
-          // is the scraper_source Postgres enum, which has no 'DOC' member — same mapping
-          // `runWrite` now applies to its own orchestrator call, for the same reason. Each
-          // WITNESS's own `source` field stays the raw manifest code (a jsonb value, not enum
-          // constrained) — that is what identifies WHICH ranked source answered.
-          source: mapManifestSourceToScraperSource(source),
-          witnesses,
-          verdict: computedVerdict,
-        });
-      }
-    }
+    await writeWitnessVerdict(ipoId, plan, source, answers, policy, deps);
 
     result.fieldsSupplied += 1;
     return recordAndClassify(deps, result, {
@@ -1254,7 +1269,7 @@ async function attemptOneField(
     // recorded under a key; it takes the charged next-slot path like a
     // transient one, so it must not be logged as "re-asked only when the key changes".
     logger.warn(
-      { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures, gapKey },
+      { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures, gapKey, answers: answerLog(answers) },
       structural && gapKey
         ? 'PASS 3: every rank failed with a STRUCTURAL gap — CHECK_FAILED recorded as definitive under its gap key, re-asked only when the key changes (NOT transient, NOT retired)'
         : structural
@@ -1279,7 +1294,7 @@ async function attemptOneField(
   result.fieldsExhausted += 1;
   result.exhaustedFields.push({ tableName: plan.tableName, rowKey: plan.rowKey, fieldName: plan.fieldName });
   logger.warn(
-    { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures },
+    { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures, answers: answerLog(answers) },
     'PASS 3: every rank gave a DEFINITIVE no for this field — EXHAUSTED (the stored value is kept, never blanked)'
   );
   // `failures` may be empty here (every rank answered NOT_PRINTED, which
@@ -1294,6 +1309,58 @@ async function attemptOneField(
     state: 'EXHAUSTED',
     reasonCode: exhaustedCause?.reasonCode ?? null,
     cause: exhaustedCause?.cause ?? null,
+  });
+}
+
+/**
+ * S3b-2 + OD-103: writes the computed verdict + EVERY ranked answer of this pass (in rank order) as
+ * witnesses onto the SAME field_sources row the value write just created/updated -- a second CALL,
+ * never a second writer (trackWitnessVerdict defaults to FieldSourcesRepository.trackFieldUpdate).
+ *
+ * Called ONLY after this pass stored a value on the field (the SUPPLIED winner, or a PROVISIONAL
+ * value under NOT_AVAILABLE_YET). A field with no stored value gets no call at all: a field_sources
+ * row asserts a source supplied a stored value, and one without a value is the
+ * r_provenance_parent_not_null class (#684).
+ *
+ * Flag OFF (default) returns before any manifest read, computeVerdict or trackWitnessVerdict call,
+ * so behaviour is byte-identical. ABSTAIN fields (and fields with no manifest entry) are filtered
+ * here, never passed to computeVerdict -- ABSTAIN is absent from areEquivalent's family union (#786).
+ */
+async function writeWitnessVerdict(
+  ipoId: string,
+  plan: any,
+  source: string,
+  answers: readonly RankAnswer[],
+  policy: FieldSourcePolicy,
+  deps: FieldPlanWalkDeps
+): Promise<void> {
+  if (!FEATURE_FLAGS.ENABLE_VERDICT_WRITER || !deps.trackWitnessVerdict) return;
+  const family = loadFieldManifest().fields[`${plan.tableName}.${plan.fieldName}`]?.comparisonFamily;
+  if (!family || family === 'ABSTAIN') return;
+  const { verdict, witnesses } = computeVerdict(
+    answers.map((a) => ({
+      rank: a.rank,
+      source: a.source,
+      value: a.outcome === 'SUPPLIED' ? a.value : null,
+      at: a.at,
+      docType: a.docType,
+      outcome: a.outcome,
+      cause: a.cause,
+    })),
+    policy.ranks.length,
+    family
+  );
+  await deps.trackWitnessVerdict({
+    ipoId,
+    tableName: plan.tableName,
+    rowKey: plan.rowKey,
+    // field_sources.fieldName is camelCase (lesson field-sources-field-name-is-camelCase).
+    fieldName: columnToCamelCase(plan.fieldName),
+    // The TOP-LEVEL field_sources.source is the scraper_source enum (no 'DOC' member); each
+    // witness's own `source` stays the raw manifest code (jsonb, not enum constrained).
+    source: mapManifestSourceToScraperSource(source),
+    witnesses,
+    verdict,
   });
 }
 
@@ -1314,7 +1381,8 @@ async function tryProvisional(
   authoritativeRank: number,
   deps: FieldPlanWalkDeps,
   failures: string[],
-  policy: FieldSourcePolicy
+  policy: FieldSourcePolicy,
+  answers: RankAnswer[]
 ): Promise<{ source: string; rank: number } | null> {
   // Same resolver call `attemptOneField` already made for this field this walk — passed in
   // rather than re-resolved, so this stays ONE `resolvePolicy` call per field per walk.
@@ -1322,13 +1390,43 @@ async function tryProvisional(
     .map((source, i): [number, string | null] => [i + 1, source])
     .filter(([r]) => r > authoritativeRank);
 
+  // OD-103: EVERY lower rank is asked once and its answer recorded as a witness. Only the FIRST
+  // SUPPLIED answer whose write lands becomes the provisional value -- the same value the old
+  // stop-at-first loop wrote; ranks after it are asked for their answer and never written.
+  let provisional: { source: string; rank: number } | null = null;
   for (const [rank, source] of lowerRanks) {
     if (!source) continue;
     const fetcher = deps.sourceFetchers[source];
-    if (!fetcher) continue;
+    if (!fetcher) {
+      answers.push(rankAnswer(rank, source, 'FAILED', { cause: `provisional-rank${rank}:${source}:NO_FETCHER_REGISTERED` }));
+      continue;
+    }
+    let answer: FieldFetcherAnswer;
     try {
-      const answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName);
-      if (answer.outcome !== 'SUPPLIED') continue;
+      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName);
+    } catch (error) {
+      // TAGGED `:THROWN:` like the main loop's catch (#785 review): a throw here
+      // is the same socket/timeout/5xx fact. Untagged, a genuine network failure
+      // on the provisional path recorded UNCLASSIFIED instead of
+      // SOURCE_UNREACHABLE — a regression against the pre-#785 behaviour.
+      failures.push(`provisional-rank${rank}:${source}:THROWN:${causeOf(error)}`);
+      answers.push(rankAnswer(rank, source, 'FAILED', { cause: failures[failures.length - 1] }));
+      continue;
+    }
+    if (answer.outcome === 'NOT_PRINTED' || answer.outcome === 'NOT_AVAILABLE_YET') {
+      answers.push(rankAnswer(rank, source, answer.outcome));
+      continue;
+    }
+    if (answer.outcome === 'CHECK_FAILED') {
+      answers.push(
+        rankAnswer(rank, source, 'CHECK_FAILED', { cause: `provisional-rank${rank}:${source}:CHECK_FAILED:${answer.reason}` })
+      );
+      continue;
+    }
+    // SUPPLIED: always a witness; written only while no provisional value has landed yet.
+    answers.push(rankAnswer(rank, source, 'SUPPLIED', { value: answer.value, docType: answer.documentType }));
+    if (provisional) continue;
+    try {
       const verdict = await runWrite(ipoId, plan, source, answer, deps);
       if (verdict.happened === false) {
         // The provisional write was dropped. The field is re-asked anyway, so
@@ -1351,17 +1449,15 @@ async function tryProvisional(
         failures.push(`provisional-rank${rank}:${source}:LOST_TO_PRIORITY:${verdict.reason}`);
         continue;
       }
-      return { source, rank };
+      provisional = { source, rank };
     } catch (error) {
-      // TAGGED `:THROWN:` like the main loop's catch (#785 review): a throw here
-      // is the same socket/timeout/5xx fact. Untagged, a genuine network failure
-      // on the provisional path recorded UNCLASSIFIED instead of
-      // SOURCE_UNREACHABLE — a regression against the pre-#785 behaviour.
+      // A throw from the WRITE (not the fetch): same best-effort contract as before this slice --
+      // the provisional value is lost, the ask stays open.
       failures.push(`provisional-rank${rank}:${source}:THROWN:${causeOf(error)}`);
       continue;
     }
   }
-  return null;
+  return provisional;
 }
 
 /**

@@ -61,6 +61,7 @@ import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator
 import type { FieldFetcher, FieldPlanWalkDeps, FieldPlanWalkOrchestrator } from './field-plan-walk.js';
 import { fieldPlanWriterCapability } from './field-plan-walk.js';
 import { findSupersessorForReopenedRow } from './plan-supersession.js';
+import type { Witness } from './witness-verdict.js';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import { createHash } from 'node:crypto';
 import {
@@ -133,7 +134,7 @@ export function buildFieldPlanWalkWitnessVerdictWriter(
   rowKey: string;
   fieldName: string;
   source: string;
-  witnesses: Array<{ source: string; value: unknown; at: string; docType?: string }>;
+  witnesses: Witness[];
   verdict: string;
 }) => Promise<unknown> {
   const fieldSources = new FieldSourcesRepository(db as never, redis as never);

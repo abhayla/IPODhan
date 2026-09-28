@@ -160,3 +160,66 @@ describe('computeVerdict', () => {
     expect(computeVerdict(answers, 3, 'MONEY').verdict).toBe('CONFIRMED');
   });
 });
+
+// OD-103 / F-196: every ranked source's answer is a witness, not only the SUPPLIED ones. A
+// non-SUPPLIED witness (abstention or failure) is stored for the admin view but is NEVER a vote.
+describe('computeVerdict -- non-SUPPLIED witnesses are stored, never counted (OD-103, OD-60)', () => {
+  const at = '2026-09-28T10:00:00.000Z';
+
+  it('1 SUPPLIED + NOT_PRINTED + CHECK_FAILED on a 3-capable field -> UNCONFIRMED, all 3 witnesses kept in order', () => {
+    const result = computeVerdict(
+      [
+        { rank: 1, source: 'NSE', value: '1000000', at, outcome: 'SUPPLIED' },
+        { rank: 2, source: 'BSE', value: null, at, outcome: 'NOT_PRINTED' },
+        { rank: 3, source: 'CHITTORGARH', value: null, at, outcome: 'CHECK_FAILED', cause: 'rank3:CHITTORGARH:CHECK_FAILED:timeout' },
+      ],
+      3,
+      'MONEY'
+    );
+    expect(result.verdict).toBe('UNCONFIRMED');
+    expect(result.witnesses).toEqual([
+      { source: 'NSE', value: '1000000', at, outcome: 'SUPPLIED' },
+      { source: 'BSE', value: null, at, outcome: 'NOT_PRINTED' },
+      { source: 'CHITTORGARH', value: null, at, outcome: 'CHECK_FAILED', cause: 'rank3:CHITTORGARH:CHECK_FAILED:timeout' },
+    ]);
+  });
+
+  it('2 agreeing SUPPLIED + 1 NOT_PRINTED -> CONFIRMED (the null-valued abstention is not a dissent)', () => {
+    const result = computeVerdict(
+      [
+        { rank: 1, source: 'NSE', value: '1000000', at, outcome: 'SUPPLIED' },
+        { rank: 2, source: 'BSE', value: null, at, outcome: 'NOT_PRINTED' },
+        { rank: 3, source: 'CHITTORGARH', value: '1000000', at, outcome: 'SUPPLIED' },
+      ],
+      3,
+      'MONEY'
+    );
+    expect(result.verdict).toBe('CONFIRMED');
+    expect(result.witnesses.map((w) => w.outcome)).toEqual(['SUPPLIED', 'NOT_PRINTED', 'SUPPLIED']);
+  });
+
+  it('a legacy witness with no outcome (rows written before OD-103) counts as SUPPLIED', () => {
+    const result = computeVerdict(
+      [
+        { rank: 1, source: 'DOC', value: '1000000', at },
+        { rank: 2, source: 'CHITTORGARH', value: '2000000', at },
+      ],
+      2,
+      'MONEY'
+    );
+    expect(result.verdict).toBe('DISPUTED');
+    expect(result.witnesses[0]).toEqual({ source: 'DOC', value: '1000000', at });
+  });
+
+  it('0 SUPPLIED (all abstained/failed) on a 2-capable field -> UNCONFIRMED, never CONFIRMED on two nulls', () => {
+    const result = computeVerdict(
+      [
+        { rank: 1, source: 'NSE', value: null, at, outcome: 'NOT_AVAILABLE_YET' },
+        { rank: 2, source: 'BSE', value: null, at, outcome: 'NOT_PRINTED' },
+      ],
+      2,
+      'MONEY'
+    );
+    expect(result.verdict).toBe('UNCONFIRMED');
+  });
+});

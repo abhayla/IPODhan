@@ -188,3 +188,31 @@ test('#794 the FATAL path still fires when verdicts ARE written and one is wrong
   assert.equal(decision.code, 1, 'a real wrong verdict must still be FATAL');
   assert.equal(decision.status, 'FAIL');
 });
+
+// OD-103 (F-196): the walk now stores EVERY ranked answer as a witness, with an `outcome`. A
+// non-SUPPLIED witness carries value null and must not be re-derived as a disagreeing vote.
+test('OD-103: a stored UNCONFIRMED over [SUPPLIED, NOT_PRINTED(null)] is NOT a mismatch (no false DISPUTED)', () => {
+  const row = mainboardRow({
+    verdict: 'UNCONFIRMED',
+    witnesses: [
+      { source: 'DOC', value: 100_000_000, at: '2026-09-28T00:00:00.000Z', outcome: 'SUPPLIED' },
+      { source: 'NSE', value: null, at: '2026-09-28T00:00:00.000Z', outcome: 'NOT_PRINTED' },
+    ],
+  });
+  const derived = expectedVerdictForRow(row, manifest);
+  assert.equal(derived?.expected, 'UNCONFIRMED');
+  assert.equal(auditRows([row], manifest).mismatches.length, 0);
+});
+
+test('OD-103: a false CONFIRMED over [SUPPLIED, CHECK_FAILED(null)] is still caught (re-derived UNCONFIRMED)', () => {
+  const row = mainboardRow({
+    verdict: 'CONFIRMED',
+    witnesses: [
+      { source: 'DOC', value: 100_000_000, at: '2026-09-28T00:00:00.000Z', outcome: 'SUPPLIED' },
+      { source: 'NSE', value: null, at: '2026-09-28T00:00:00.000Z', outcome: 'CHECK_FAILED', cause: 'rank2:NSE:CHECK_FAILED:timeout' },
+    ],
+  });
+  const { mismatches } = auditRows([row], manifest);
+  assert.equal(mismatches.length, 1);
+  assert.equal(mismatches[0].expectedVerdict, 'UNCONFIRMED');
+});

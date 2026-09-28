@@ -28,11 +28,27 @@ import { areEquivalent, type ComparisonFamily } from './normalization-engine.js'
 
 export type Verdict = 'CONFIRMED' | 'DISPUTED' | 'UNCONFIRMED' | 'SINGLE_SOURCE' | 'NO_WITNESS';
 
+/**
+ * OD-103 (F-196): what ONE ranked source answered this pass. Only SUPPLIED carries a value; the
+ * others are stored so the admin view (§9.3) can show each source's answer, and are never a vote
+ * (OD-60). THROWN / NO_FETCHER_REGISTERED / a dropped or losing provisional write are FAILED.
+ */
+export type WitnessOutcome = 'SUPPLIED' | 'NOT_PRINTED' | 'NOT_AVAILABLE_YET' | 'CHECK_FAILED' | 'FAILED';
+
 export interface Witness {
   source: string;
   value: unknown;
   at: string;
   docType?: string;
+  /** Absent on every witness written before OD-103; such a witness was always SUPPLIED. */
+  outcome?: WitnessOutcome;
+  /** Short cause token for a non-SUPPLIED answer (the same string the walk pushes to `failures`). */
+  cause?: string;
+}
+
+/** A witness with no `outcome` (written before OD-103) is read as SUPPLIED. */
+export function isSuppliedWitness(w: { outcome?: WitnessOutcome }): boolean {
+  return w.outcome === undefined || w.outcome === 'SUPPLIED';
 }
 
 export interface VerdictResult {
@@ -42,14 +58,22 @@ export interface VerdictResult {
 }
 
 /**
- * `answers` — every SUPPLIED answer `attemptOneField` collected this pass (S3a's
- * `suppliedAnswers`), already filtered to fields whose `comparisonFamily !== 'ABSTAIN'` by the
+ * `answers` — every ranked answer `attemptOneField` collected this pass, in rank order (OD-103:
+ * SUPPLIED and non-SUPPLIED alike; only SUPPLIED ones are compared), already filtered to fields whose `comparisonFamily !== 'ABSTAIN'` by the
  * caller. `capableSourceCount` — `policy.ranks.length` for THIS IPO's segment (0 for NO_WITNESS,
  * 1 for SINGLE_SOURCE, unrelated to how many of those ranks actually answered this pass — a
  * capable source that timed out or hasn't been asked yet is still a capable source, not a vote).
  */
 export function computeVerdict(
-  answers: Array<{ rank: number; source: string; value: unknown; at: string; docType?: string }>,
+  answers: Array<{
+    rank: number;
+    source: string;
+    value: unknown;
+    at: string;
+    docType?: string;
+    outcome?: WitnessOutcome;
+    cause?: string;
+  }>,
   capableSourceCount: number,
   family: ComparisonFamily
 ): VerdictResult {
@@ -58,7 +82,12 @@ export function computeVerdict(
     value: a.value,
     at: a.at,
     ...(a.docType ? { docType: a.docType } : {}),
+    ...(a.outcome ? { outcome: a.outcome } : {}),
+    ...(a.cause ? { cause: a.cause } : {}),
   }));
+  // OD-103: every ranked answer is a witness, but only a SUPPLIED one is a vote (OD-60). An
+  // abstention or failure carries value null and must never be compared as a disagreeing value.
+  const real = answers.filter(isSuppliedWitness);
 
   if (capableSourceCount === 0) {
     return { verdict: 'NO_WITNESS', witnesses };
@@ -66,7 +95,7 @@ export function computeVerdict(
   if (capableSourceCount === 1) {
     return { verdict: 'SINGLE_SOURCE', witnesses };
   }
-  if (answers.length <= 1) {
+  if (real.length <= 1) {
     // capableSourceCount >= 2 but this pass only ever collected 0 or 1 real answers — the other
     // ranked source(s) abstained (NOT_PRINTED / never answered this pass), which is never a
     // disagreeing vote (OD-60).
@@ -90,9 +119,9 @@ export function computeVerdict(
   // most 3 -- the reason a pivot might have been chosen does not exist at this size.
   //
   // A single dissenting PAIR is enough: this is agreement, not a majority vote.
-  for (let i = 0; i < answers.length - 1; i += 1) {
-    for (let j = i + 1; j < answers.length; j += 1) {
-      if (!areEquivalent(answers[i].value, answers[j].value, { family })) {
+  for (let i = 0; i < real.length - 1; i += 1) {
+    for (let j = i + 1; j < real.length; j += 1) {
+      if (!areEquivalent(real[i].value, real[j].value, { family })) {
         return { verdict: 'DISPUTED', witnesses };
       }
     }
