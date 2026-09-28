@@ -2,7 +2,7 @@
  * Admin API Client
  *
  * Centralized utility for making authenticated API calls from admin pages.
- * Automatically includes Authorization header with Bearer token from localStorage.
+ * Sends the admin session cookie (httpOnly, set by /api/admin/auth/login) with every call.
  */
 
 interface ApiOptions extends RequestInit {
@@ -17,13 +17,6 @@ interface ApiResponse<T = any> {
   [key: string]: any;
 }
 
-/**
- * Get admin token from localStorage
- */
-function getAdminToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('admin_token');
-}
 
 /**
  * Make an authenticated API call to admin endpoints
@@ -37,21 +30,14 @@ export async function adminApiCall<T = any>(
   url: string,
   options: ApiOptions = {}
 ): Promise<ApiResponse<T>> {
-  const token = getAdminToken();
-
-  if (!token) {
-    throw new Error('Admin token not found. Please login again.');
-  }
-
-  // Merge headers with Authorization
   const headers = {
-    'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json',
     ...options.headers,
   };
 
   try {
     const response = await fetch(url, {
+      credentials: 'same-origin',
       ...options,
       headers,
     });
@@ -121,18 +107,12 @@ export async function adminDelete<T = any>(url: string): Promise<ApiResponse<T>>
  * @returns Fetch Response object
  */
 export async function adminFetch(url: string, options: ApiOptions = {}): Promise<Response> {
-  const token = getAdminToken();
-
-  if (!token) {
-    throw new Error('Admin token not found. Please login again.');
-  }
-
   const headers = {
-    'Authorization': `Bearer ${token}`,
     ...options.headers,
   };
 
   return fetch(url, {
+    credentials: 'same-origin',
     ...options,
     headers,
   });

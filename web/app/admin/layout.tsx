@@ -8,7 +8,7 @@ import { AdminAuthProvider, useAdminAuth } from '@/lib/context/AdminAuthContext'
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, isLoading, logout } = useAdminAuth();
+  const { isAuthenticated, isLoading, logout, admin } = useAdminAuth();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && pathname !== '/admin/login') {
@@ -44,6 +44,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     { name: 'Notifications', href: '/admin/notifications', icon: '🔔' },
     { name: 'Settings', href: '/admin/settings', icon: '⚙️' },
     { name: 'Audit Log', href: '/admin/audit', icon: '📜' },
+    // Owner-only (OD-113); the API refuses non-owners with 403 regardless of this link.
+    ...(admin?.isOwner ? [{ name: 'Accounts', href: '/admin/accounts', icon: '👤' }] : []),
   ];
 
   return (
@@ -81,6 +83,11 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
             {/* User Actions */}
             <div className="flex items-center space-x-4">
+              {admin && (
+                <span className="text-gray-300 text-sm" data-testid="admin-signed-in-as">
+                  {admin.adminName}
+                </span>
+              )}
               <a
                 href="/"
                 target="_blank"
@@ -92,7 +99,10 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
               </a>
 
               <button
-                onClick={logout}
+                onClick={async () => {
+                  await logout();
+                  router.push('/admin/login');
+                }}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition-colors"
               >
                 Logout

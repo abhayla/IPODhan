@@ -19,6 +19,8 @@ import { eq, getTableColumns } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
 import { validateRecord } from '@/lib/admin/dynamic-validation-rules';
 import { logger } from '@/lib/logger';
+import { auditAdminWrite } from '@/lib/admin/admin-write-audit';
+import { AuditActionTypes } from '@/lib/services/audit-log-service';
 import { resolveDynamicTable } from '@/lib/admin/dynamic-table-allow-list';
 import { withAdminAuth, type AdminAuthContext } from '@/lib/middleware/admin-auth';
 import { readAdminFieldVersion } from '@ipodhan/shared/services/admin-field-write';
@@ -328,7 +330,7 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext: Ad
 /**
  * DELETE - Delete record
  */
-export const DELETE = withAdminAuth(async (request: NextRequest, _adminContext: AdminAuthContext, { params }: { params: Promise<{ table: string; id: string }> }) => {
+export const DELETE = withAdminAuth(async (request: NextRequest, adminContext: AdminAuthContext, { params }: { params: Promise<{ table: string; id: string }> }) => {
   try {
 
     const { table: tableName, id } = await params;
@@ -370,7 +372,16 @@ export const DELETE = withAdminAuth(async (request: NextRequest, _adminContext: 
       );
     }
 
-    // Log the deletion
+    // OD-104/OD-113: the deleting admin is recorded (name + account id), with the removed row.
+    await auditAdminWrite(adminContext, request, {
+      actionType: AuditActionTypes.FIELD_UPDATED,
+      action: 'ROW_DELETED',
+      entryPoint: 'api/admin/dynamic/[table]/[id] DELETE',
+      tableName,
+      fieldName: '*',
+      oldValue: JSON.stringify(result[0]),
+      details: { rowId: id },
+    });
     console.log(`[Dynamic Admin] Deleted record from ${tableName}:`, id);
 
     return NextResponse.json({

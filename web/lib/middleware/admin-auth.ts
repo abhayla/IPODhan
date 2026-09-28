@@ -1,51 +1,94 @@
 /**
- * Admin Authentication Middleware
- * Protects admin-only routes from unauthorized access
+ * Admin Authentication Middleware (spec §9.2 item 6; OD-104, OD-113, OD-114)
  *
- * Phase 1: Simple token-based authentication
- * Phase 2: Can be upgraded to NextAuth.js or similar
+ * Two ways in, both behind the ADMIN_PANEL_ENABLED kill switch:
+ *  1. A personal admin session cookie (a named admin who logged in with email + password). This is
+ *     the only way a HUMAN is identified; the context carries that admin's own id and name.
+ *  2. The Bearer ADMIN_AUTH_TOKEN, kept ONLY for non-human callers (the scraper's
+ *     /api/admin/status/update and /api/admin/revalidate calls, scripts/audit-prod.mjs). Its identity
+ *     is the fixed machine name "system:token", never a person, and it is never an owner.
  */
 
+import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  ADMIN_SESSION_COOKIE,
+  adminPanelEnabled,
+  readCookie,
+  resolveAdminSessionToken,
+} from '@/lib/admin-accounts/admin-session';
+import { cookieRequestOriginAllowed } from '@/lib/admin-accounts/request-origin';
 
-// Environment configuration
-const ADMIN_TOKEN = process.env.ADMIN_AUTH_TOKEN || '';
-const ADMIN_ENABLED = process.env.ADMIN_PANEL_ENABLED === 'true';
+export const MACHINE_TOKEN_IDENTITY = 'system:token';
 
 export interface AdminAuthContext {
+  /** admin_users.id for a session; MACHINE_TOKEN_IDENTITY for the Bearer token. Always set. */
   adminId: string;
   adminName: string;
+  isOwner: boolean;
   isAuthenticated: boolean;
+  /** How the caller proved itself: only 'session' (the browser cookie) is subject to the Origin check. */
+  authMethod: 'session' | 'token';
+}
+
+function machineTokenMatches(token: string, expected: string): boolean {
+  if (!expected) return false;
+  const a = Buffer.from(token, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function sessionTokenFrom(request: NextRequest): string | null {
+  const fromCookies = request.cookies?.get?.(ADMIN_SESSION_COOKIE)?.value;
+  return fromCookies ?? readCookie(request.headers.get('cookie'));
 }
 
 /**
- * Verify admin authentication from request headers
+ * Verify admin authentication. A valid session cookie wins over any Authorization header, so an
+ * admin page that still sends a stale header is identified by its session.
  */
-export function verifyAdminAuth(request: NextRequest): AdminAuthContext | null {
-  // Check if admin panel is enabled
-  if (!ADMIN_ENABLED) {
+export async function verifyAdminAuth(request: NextRequest): Promise<AdminAuthContext | null> {
+  if (!adminPanelEnabled()) {
     return null;
   }
 
-  // Get token from Authorization header
+  const session = await resolveAdminSessionToken(sessionTokenFrom(request));
+  if (session) {
+    return { ...session, isAuthenticated: true, authMethod: 'session' };
+  }
+
   const authHeader = request.headers.get('authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    if (machineTokenMatches(token, process.env.ADMIN_AUTH_TOKEN || '')) {
+      return {
+        adminId: MACHINE_TOKEN_IDENTITY,
+        adminName: MACHINE_TOKEN_IDENTITY,
+        isOwner: false,
+        isAuthenticated: true,
+        authMethod: 'token',
+      };
+    }
   }
 
-  const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+  return null;
+}
 
-  // Verify token
-  if (token !== ADMIN_TOKEN || !ADMIN_TOKEN) {
-    return null;
-  }
+export function unauthorizedResponse(): NextResponse {
+  return NextResponse.json(
+    {
+      error: 'Unauthorized',
+      message: 'Admin authentication required',
+    },
+    { status: 401 }
+  );
+}
 
-  // Return admin context
-  return {
-    adminId: 'admin-1', // Phase 1: Single admin
-    adminName: 'Admin',
-    isAuthenticated: true,
-  };
+export function forbiddenOriginResponse(): NextResponse {
+  return NextResponse.json(
+    { error: 'Forbidden', message: 'Request origin not allowed' },
+    { status: 403 }
+  );
 }
 
 /**
@@ -58,37 +101,55 @@ export function withAdminAuth(
   handler: (request: NextRequest, adminContext: AdminAuthContext, ...args: any[]) => Promise<any>
 ): (request: NextRequest, ...args: any[]) => Promise<any> {
   return async (request: NextRequest, ...args: any[]): Promise<any> => {
-    // Verify authentication
-    const adminContext = verifyAdminAuth(request);
-
-    if (!adminContext) {
-      return NextResponse.json(
-        {
-          error: 'Unauthorized',
-          message: 'Admin authentication required',
-        },
-        { status: 401 }
-      );
+    let adminContext: AdminAuthContext | null;
+    try {
+      adminContext = await verifyAdminAuth(request);
+    } catch {
+      // A database error while reading the session fails closed.
+      adminContext = null;
     }
 
-    // Call the handler with admin context
+    if (!adminContext) {
+      return unauthorizedResponse();
+    }
+
+    // CSRF (Tier A review m4): a cookie-authenticated mutation must come from the site's own origin.
+    if (adminContext.authMethod === 'session' && !cookieRequestOriginAllowed(request.headers, request.method)) {
+      return forbiddenOriginResponse();
+    }
+
     return handler(request, adminContext, ...args);
   };
+}
+
+/** Owner-only guard for account management (OD-113). Returns a 403 response, or null to proceed. */
+export function requireOwner(adminContext: AdminAuthContext): NextResponse | null {
+  if (adminContext.isOwner !== true) {
+    return NextResponse.json(
+      { error: 'Forbidden', message: 'Only the owner can manage admin accounts' },
+      { status: 403 }
+    );
+  }
+  return null;
 }
 
 /**
  * Get admin identity from request (for logging/audit trail)
  */
-export function getAdminIdentity(request: NextRequest): string {
-  const adminContext = verifyAdminAuth(request);
-  return adminContext?.adminName || 'Anonymous';
+export async function getAdminIdentity(request: NextRequest): Promise<string> {
+  try {
+    const adminContext = await verifyAdminAuth(request);
+    return adminContext?.adminName || 'Anonymous';
+  } catch {
+    return 'Anonymous';
+  }
 }
 
 /**
  * Middleware for checking if admin panel is enabled
  */
 export function checkAdminPanelEnabled(): boolean {
-  return ADMIN_ENABLED;
+  return adminPanelEnabled();
 }
 
 /**

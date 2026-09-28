@@ -35,9 +35,15 @@ function listRouteFiles(dir: string): string[] {
 // swapped for another; an exact list fails on any add, remove or rename, so
 // every change to the admin API surface is a deliberate edit reviewed here.
 const EXPECTED_ADMIN_ROUTES = [
+  'accounts/[id]/password/route.ts',
+  'accounts/[id]/route.ts',
+  'accounts/route.ts',
   'anchor-investors/route.ts',
   'audit/export/route.ts',
   'audit/route.ts',
+  'auth/login/route.ts',
+  'auth/logout/route.ts',
+  'auth/me/route.ts',
   'cache/clear/route.ts',
   'conflicts/auto-resolve/route.ts',
   'conflicts/bulk-resolve/route.ts',
@@ -66,6 +72,45 @@ const EXPECTED_ADMIN_ROUTES = [
   'update-field/route.ts',
 ];
 
+// The ONE admin route that must answer an anonymous caller: it is how a session is obtained (spec
+// section 9.2 item 6, OD-104). Adding a route here is a security decision, reviewed in this file.
+const PUBLIC_ADMIN_ROUTES = ['auth/login/route.ts'];
+
+// Write handlers still on requireAdminAuth, which yields no identity. Only machine callers remain:
+// the scraper calls both with ADMIN_API_TOKEN, which requireAdminAuth checks and withAdminAuth does
+// not (it checks ADMIN_AUTH_TOKEN), so moving them would 401 the scraper's status and revalidation
+// calls. Adding a route here is a security decision, reviewed in this file (Tier A round 2 M2).
+const MACHINE_ONLY_WRITES = ['revalidate/route.ts:POST', 'status/update/route.ts:POST'];
+
+/** Exported write handlers NOT declared as `export const X = withAdminAuth(...)`. */
+function writesWithoutIdentity(source: string): string[] {
+  const out: string[] = [];
+  const re = /export\s+(?:async\s+function\s+(POST|PUT|PATCH|DELETE)\b|const\s+(POST|PUT|PATCH|DELETE)\s*=\s*([A-Za-z_$][\w$]*))/g;
+  for (let m = re.exec(source); m; m = re.exec(source)) {
+    if (m[1]) out.push(m[1]);
+    else if (m[3] !== 'withAdminAuth') out.push(m[2]);
+  }
+  return out;
+}
+
+describe('every admin write handler carries the admin identity (withAdminAuth)', () => {
+  it('no write handler outside the machine-only list uses an identity-less guard', () => {
+    const offenders = listRouteFiles(ADMIN_ROOT)
+      .map((f) => path.relative(ADMIN_ROOT, f).split(path.sep).join('/'))
+      .filter((rel) => !PUBLIC_ADMIN_ROUTES.includes(rel))
+      .flatMap((rel) => writesWithoutIdentity(fs.readFileSync(path.join(ADMIN_ROOT, rel), 'utf8')).map((m) => `${rel}:${m}`))
+      .filter((id) => !MACHINE_ONLY_WRITES.includes(id));
+    expect(offenders).toEqual([]);
+  });
+
+  it('detector self-test', () => {
+    expect(writesWithoutIdentity('export async function POST(req) { await requireAdminAuth(); }')).toEqual(['POST']);
+    expect(writesWithoutIdentity('export const DELETE = withAdminAuth(async () => ok());')).toEqual([]);
+    expect(writesWithoutIdentity('export const PATCH = someOtherWrapper(async () => ok());')).toEqual(['PATCH']);
+    expect(writesWithoutIdentity('export async function GET(req) { await requireAdminAuth(); }')).toEqual([]);
+  });
+});
+
 describe('every admin API route requires admin auth', () => {
   const files = listRouteFiles(ADMIN_ROOT);
 
@@ -76,6 +121,7 @@ describe('every admin API route requires admin auth', () => {
 
   it('has no exported handler without withAdminAuth or requireAdminAuth', () => {
     const offenders = files
+      .filter((f) => !PUBLIC_ADMIN_ROUTES.includes(path.relative(ADMIN_ROOT, f).split(path.sep).join('/')))
       .map((f) => ({ file: path.relative(ADMIN_ROOT, f), missing: unguardedMethods(fs.readFileSync(f, 'utf8')) }))
       .filter((r) => r.missing.length > 0)
       .map((r) => `${r.file}: ${r.missing.join(', ')}`);

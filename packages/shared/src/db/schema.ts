@@ -13,6 +13,7 @@ import {
   bigint,
   bigserial,
   index,
+  uniqueIndex,
   pgEnum,
   unique,
   check,
@@ -2866,3 +2867,55 @@ export const ipoSourceKeys = pgTable(
 
 export type IpoSourceKey = typeof ipoSourceKeys.$inferSelect;
 export type NewIpoSourceKey = typeof ipoSourceKeys.$inferInsert;
+
+// ==================== ADMIN ACCOUNTS + SESSIONS (spec §9.2 item 6; OD-104, OD-113, OD-114) ====================
+// A personal login per admin. The account holds only name, email, phone and an optional Telegram ID
+// (OD-114); only the owner adds, removes (disabled_at) or resets an admin (OD-113). A removed admin is
+// disabled, never deleted, so every edit they made stays attributed to them.
+export const adminUsers = pgTable(
+  'admin_users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: varchar('name', { length: 100 }).notNull(),
+    // Stored lowercased by the repository; the unique index is on the stored value.
+    email: varchar('email', { length: 254 }).notNull(),
+    phone: varchar('phone', { length: 20 }).notNull(),
+    telegramId: varchar('telegram_id', { length: 64 }),
+    // scrypt$N$r$p$salt$hash (web/lib/admin-accounts/password-hash.ts); never returned by any route.
+    passwordHash: text('password_hash').notNull(),
+    isOwner: boolean('is_owner').notNull().default(false),
+    disabledAt: timestamp('disabled_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    emailUnique: unique('uq_admin_users_email').on(table.email),
+    // At most ONE owner, enforced by the database (OD-113; Tier A review m1): a partial unique index
+    // over is_owner for the rows where it is true, so a second owner row fails to insert.
+    singleOwner: uniqueIndex('uq_admin_users_single_owner').on(table.isOwner).where(sql`${table.isOwner}`),
+  })
+);
+
+export type AdminUser = typeof adminUsers.$inferSelect;
+export type NewAdminUser = typeof adminUsers.$inferInsert;
+
+// One row per signed-in browser. `id` is the SHA-256 hex of the random cookie token: the token itself
+// is never stored, so a leaked table row cannot be replayed as a cookie.
+export const adminSessions = pgTable(
+  'admin_sessions',
+  {
+    id: varchar('id', { length: 64 }).primaryKey(),
+    adminUserId: uuid('admin_user_id')
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    adminUserIdx: index('idx_admin_sessions_admin_user').on(table.adminUserId),
+  })
+);
+
+export type AdminSession = typeof adminSessions.$inferSelect;
+export type NewAdminSession = typeof adminSessions.$inferInsert;

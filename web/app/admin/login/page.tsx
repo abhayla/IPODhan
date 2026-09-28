@@ -6,8 +6,9 @@ import { useAdminAuth } from '@/lib/context/AdminAuthContext';
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const { login } = useAdminAuth();
-  const [token, setToken] = useState('');
+  const { refresh } = useAdminAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -17,22 +18,24 @@ export default function AdminLoginPage() {
     setIsLoading(true);
 
     try {
-      // Validate token by making a test API call
-      const response = await fetch('/api/admin/protection/notifications?limit=1', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const response = await fetch('/api/admin/auth/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
       });
 
       if (response.ok) {
-        // Token is valid, store it
-        login(token);
+        setPassword('');
+        await refresh();
         router.push('/admin');
+      } else if (response.status === 429) {
+        setError('Too many sign-in attempts. Please wait and try again.');
       } else {
-        setError('Invalid admin token');
+        setError('Invalid email or password');
       }
-    } catch (err) {
-      setError('Failed to authenticate. Please try again.');
+    } catch {
+      setError('Failed to sign in. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -43,60 +46,61 @@ export default function AdminLoginPage() {
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-white mb-2">IPODhan Admin</h1>
-          <p className="text-gray-400">Enter your admin token to continue</p>
+          <p className="text-gray-400">Sign in with your admin email and password</p>
         </div>
 
-        <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-8 border border-gray-700">
+        <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-6 sm:p-8 border border-gray-700">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="token" className="block text-sm font-medium text-gray-300 mb-2">
-                Admin Token
+              <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
+                Email
               </label>
               <input
-                id="token"
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="Enter your secure admin token"
+                id="email"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="you@example.com"
                 required
                 autoFocus
               />
             </div>
 
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+              />
+            </div>
+
             {error && (
-              <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg text-sm">
+              <div role="alert" className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg text-sm">
                 {error}
               </div>
             )}
 
             <button
               type="submit"
-              disabled={isLoading || !token}
-              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center"
+              disabled={isLoading || !email || !password}
+              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors"
             >
-              {isLoading ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Authenticating...
-                </>
-              ) : (
-                'Sign In'
-              )}
+              {isLoading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-gray-700">
-            <p className="text-center text-sm text-gray-400">
-              Token stored in environment variable:{' '}
-              <code className="bg-gray-900 px-2 py-1 rounded text-gray-300">
-                ADMIN_AUTH_TOKEN
-              </code>
-            </p>
-          </div>
+          <p className="mt-6 pt-6 border-t border-gray-700 text-center text-sm text-gray-400">
+            Forgot your password? Ask the owner to reset it.
+          </p>
         </div>
       </div>
     </div>

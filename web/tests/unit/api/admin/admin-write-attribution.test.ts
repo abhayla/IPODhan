@@ -33,10 +33,39 @@ vi.mock('@/lib/admin/field-protection-checker', () => ({
   invalidateProtectionCache: vi.fn(async () => undefined),
   invalidateProtectionCacheForIpo: vi.fn(async () => undefined),
 }));
+const audit = vi.fn();
+vi.mock('@/lib/services/audit-log-service', async (orig) => ({
+  ...(await orig<object>()),
+  logAudit: (...a: unknown[]) => audit(...a),
+}));
+const autoResolve = vi.fn();
+vi.mock('@/lib/services/conflict-resolution', () => ({
+  ConflictResolutionService: class {
+    autoResolve(...a: unknown[]) {
+      return autoResolve(...a);
+    }
+  },
+}));
+const anchorUpsert = vi.fn();
+const anchorDelete = vi.fn();
+vi.mock('@/lib/repositories/anchor-investor-repository', () => ({
+  AnchorInvestorRepository: class {
+    upsert(...a: unknown[]) {
+      return anchorUpsert(...a);
+    }
+    delete(...a: unknown[]) {
+      return anchorDelete(...a);
+    }
+  },
+}));
 vi.mock('@/lib/services/notification-service', () => ({ sendNotification: vi.fn(async () => undefined) }));
 
 const rows = [{ companyName: 'X Ltd', id: 'ipo-1', ipoId: 'ipo-1', slug: 's' }];
 const builder: any = {
+  insert: () => builder,
+  values: () => builder,
+  delete: () => builder,
+  returning: async () => [{ id: 'row-9', name: 'r' }],
   select: () => builder,
   from: () => builder,
   where: () => builder,
@@ -133,5 +162,75 @@ describe('admin write routes attribute every write to the authenticated admin (n
     );
     expect(saveMany).toHaveBeenCalledTimes(1);
     expect(saveMany.mock.calls[0][0].actor).toEqual({ name: 'Ravi', adminId: 'admin-42' });
+  });
+});
+
+describe('non-field admin writes record the admin (name + id) in audit_logs (Tier A round 2 M2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    autoResolve.mockResolvedValue({ resolved: 3, skipped: 1, details: [] });
+    anchorUpsert.mockResolvedValue({ id: 'anchor-1' });
+    anchorDelete.mockResolvedValue(undefined);
+  });
+
+  const expectAttributed = (action: string) => {
+    expect(audit).toHaveBeenCalledTimes(1);
+    expect(audit.mock.calls[0][0]).toMatchObject({ adminUser: 'Ravi', details: { adminId: 'admin-42', action } });
+  };
+
+  it('dynamic/[table] POST (create a row)', async () => {
+    const { POST } = await import('@/app/api/admin/dynamic/[table]/route');
+    const res = await POST(json('http://l/api/admin/dynamic/registrars', 'POST', { name: 'r' }), {
+      params: Promise.resolve({ table: 'registrars' }),
+    });
+    expect(res.status).toBe(200);
+    expectAttributed('ROW_CREATED');
+  });
+
+  it('dynamic/[table] DELETE (bulk) is refused and writes nothing', async () => {
+    const { DELETE } = await import('@/app/api/admin/dynamic/[table]/route');
+    const res = await DELETE(json('http://l/api/admin/dynamic/registrars', 'DELETE', {}));
+    expect(res.status).toBe(405);
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it('dynamic/[table]/[id] DELETE', async () => {
+    const { DELETE } = await import('@/app/api/admin/dynamic/[table]/[id]/route');
+    const res = await DELETE(json('http://l/api/admin/dynamic/registrars/row-9', 'DELETE', {}), {
+      params: Promise.resolve({ table: 'registrars', id: 'row-9' }),
+    });
+    expect(res.status).toBe(200);
+    expectAttributed('ROW_DELETED');
+  });
+
+  it('conflicts/auto-resolve POST records the admin who triggered it; a dry run records nothing', async () => {
+    const { POST } = await import('@/app/api/admin/conflicts/auto-resolve/route');
+    expect((await POST(json('http://l/api/admin/conflicts/auto-resolve', 'POST', {}))).status).toBe(200);
+    expectAttributed('CONFLICTS_AUTO_RESOLVED');
+    audit.mockClear();
+    expect((await POST(json('http://l/api/admin/conflicts/auto-resolve', 'POST', { dryRun: true }))).status).toBe(200);
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it('anchor-investors POST', async () => {
+    const { POST } = await import('@/app/api/admin/anchor-investors/route');
+    const res = await POST(
+      json('http://l/api/admin/anchor-investors', 'POST', {
+        ipoId: '00000000-0000-4000-8000-000000000001',
+        bidDate: '2026-09-01',
+        totalSharesOffered: 1000,
+        totalAmountRaised: '50000',
+        anchorInvestorsCount: 2,
+      })
+    );
+    expect(res.status).toBe(200);
+    expectAttributed('ANCHOR_INVESTORS_SAVED');
+  });
+
+  it('anchor-investors DELETE', async () => {
+    const { DELETE } = await import('@/app/api/admin/anchor-investors/route');
+    const res = await DELETE(json('http://l/api/admin/anchor-investors?ipoId=ipo-1', 'DELETE', {}));
+    expect(res.status).toBe(200);
+    expectAttributed('ANCHOR_INVESTORS_DELETED');
   });
 });
