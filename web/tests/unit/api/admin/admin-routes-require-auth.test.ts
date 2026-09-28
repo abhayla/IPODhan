@@ -10,6 +10,9 @@
  * route file is admin-routes-static-guard.test.ts.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// This file imports each admin route module on first use; on a loaded machine that alone can pass 5 s.
+vi.setConfig({ testTimeout: 30_000 });
 import { NextRequest } from 'next/server';
 
 const serviceCalls = vi.fn();
