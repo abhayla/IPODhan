@@ -69,6 +69,7 @@ import {
 } from './lib/repair-tool.js';
 import { decidePageRead, PageStore } from './lib/od74-page-store.js';
 import { applyZeroRow, classifyZeroAction, undoZeroRow, type ZeroOutcome, type ZeroRow } from './lib/od77-issue-size-zeros.js';
+import { HeldByAdminError, assertNotHeld } from '@ipodhan/shared/services/field-hold';
 
 export const TOOL_NAME = 'repair-issue-size-chittorgarh-once-od74';
 const CRORE = 10_000_000;
@@ -262,7 +263,7 @@ async function lookupPage(
 }
 
 interface Od74Before { issueSize: string; updatedAt: string; fieldSource: Record<string, unknown> | null }
-type Counts = { writes: number; failures: number };
+type Counts = { writes: number; failures: number; heldByAdmin?: number };
 
 /**
  * #1054 (sweep of #1045/#1053's class): the `runRepair` candidate query, ANDed
@@ -400,7 +401,7 @@ async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[], ipoIds
                  data_lineage AS "dataLineage", updated_at::text AS "updatedAt", updated_by AS "updatedBy"
             FROM field_sources WHERE ipo_id = ${r.id} AND table_name = 'ipos' AND field_name = 'issueSize' AND row_key = ''`))[0] ?? null;
         if (!cur || cur.issueSize !== r.issueSize) return null;
-        await ipoRepo(tx).applyIssueSizeRepair(r.id, String(printed.rupees));
+        assertNotHeld(await ipoRepo(tx).applyIssueSizeRepair(r.id, String(printed.rupees)), r.id);
         const now = rowsOf<{ issueSize: string; updatedAt: string }>(
           await tx.execute(sql`SELECT issue_size::text AS "issueSize", updated_at::text AS "updatedAt" FROM ipos WHERE id = ${r.id}`)
         )[0];
@@ -432,6 +433,11 @@ async function runRepair(APPLY: boolean, ctx: ReadCtx, ledger: unknown[], ipoIds
       ledger.push({ undo: 'od74', id: r.id, slug: r.slug, wrote: String(printed.rupees), before });
       await dropCache(r.slug, r.id);
     } catch (e) {
+      if (e instanceof HeldByAdminError) {
+        counts.heldByAdmin = (counts.heldByAdmin ?? 0) + 1;
+        console.log(`    HELD BY ADMIN, skipped ${r.slug} (${e.dropped.join(', ')})`);
+        continue;
+      }
       counts.failures++;
       console.error(`    WRITE FAILED ${r.slug}: ${e instanceof Error ? e.message : e}`);
     }
@@ -463,6 +469,11 @@ async function runZeros(APPLY: boolean, ledger: unknown[], ipoIds: readonly stri
         await dropCache(r.slug, r.id);
       }
     } catch (e) {
+      if (e instanceof HeldByAdminError) {
+        counts.heldByAdmin = (counts.heldByAdmin ?? 0) + 1;
+        console.log(`    HELD BY ADMIN, skipped ${r.slug} (${e.dropped.join(', ')})`);
+        continue;
+      }
       counts.failures++;
       console.error(`    WRITE FAILED ${r.slug}: ${e instanceof Error ? e.message : e}`);
     }
@@ -487,7 +498,7 @@ async function runUndo(file: string, ledger: unknown[]): Promise<Counts> {
           await tx.execute(sql`SELECT issue_size = ${e.wrote}::numeric AS same FROM ipos WHERE id = ${e.id} FOR UPDATE`)
         )[0];
         if (!cur?.same) return false;
-        await ipoRepo(tx).applyIssueSizeRepair(e.id, b.issueSize, b.updatedAt);
+        assertNotHeld(await ipoRepo(tx).applyIssueSizeRepair(e.id, b.issueSize, b.updatedAt), e.id);
         const f = b.fieldSource;
         if (f === null) {
           await tx.delete(schema.fieldSources).where(fsKey(e.id));
@@ -516,6 +527,11 @@ async function runUndo(file: string, ledger: unknown[]): Promise<Counts> {
         await dropCache(e.slug, e.id ?? e.before?.ipoId ?? '');
       }
     } catch (err) {
+      if (err instanceof HeldByAdminError) {
+        counts.heldByAdmin = (counts.heldByAdmin ?? 0) + 1;
+        console.log(`    HELD BY ADMIN, skipped ${e.slug} (${err.dropped.join(', ')})`);
+        continue;
+      }
       counts.failures++;
       console.error(`    UNDO FAILED ${e.slug}: ${err instanceof Error ? err.message : err}`);
     }
@@ -612,7 +628,7 @@ async function main(): Promise<number> {
       apply: APPLY,
       rows: ledger,
     });
-    console.log(`ledger ${file}; written ${counts.writes}; failures ${counts.failures}${APPLY ? '' : ' — DRY-RUN, re-run with --apply to write'}`);
+    console.log(`ledger ${file}; written ${counts.writes}; held by admin, skipped ${counts.heldByAdmin ?? 0}; failures ${counts.failures}${APPLY ? '' : ' — DRY-RUN, re-run with --apply to write'}`);
   }
   return exitCode;
 }

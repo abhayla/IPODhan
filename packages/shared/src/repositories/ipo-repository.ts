@@ -1487,6 +1487,21 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     // §9.2 item 19: EVERY update() honours the admin hold inside its own transaction — scraper,
     // repair tool or job alike (ADMIN outranks every source, §2.7). The admin path itself writes
     // through `applyAdminCorrigendumValue`, never here. `source` only names the writer in the log.
+    return (await this.updateHonouringProtection(id, data, options?.honourProtection?.source ?? 'update()')).ipo;
+  }
+
+  /**
+   * `update()` that also reports which requested fields an admin hold dropped (§9.2 item 19, OD-131).
+   * A sibling rather than a new `update()` return shape: `update()` has dozens of callers that read the
+   * returned IPO, and only the writers that record provenance or count repairs need the dropped list.
+   * Such a caller MUST NOT write a `field_sources` row (or count a repair) for a dropped field — the
+   * ADMIN row stays the field's source.
+   */
+  async updateReportingHolds(
+    id: string,
+    data: Partial<IPOInsert>,
+    options?: { honourProtection?: { source: string } }
+  ): Promise<{ ipo: IPO; dropped: string[] }> {
     return this.updateHonouringProtection(id, data, options?.honourProtection?.source ?? 'update()');
   }
 
@@ -1500,7 +1515,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * while this waited on the lock is seen by the protection read (READ COMMITTED takes a new
    * snapshot per statement) and survives.
    */
-  private async updateHonouringProtection(id: string, data: Partial<IPOInsert>, source: string): Promise<IPO> {
+  private async updateHonouringProtection(id: string, data: Partial<IPOInsert>, source: string): Promise<{ ipo: IPO; dropped: string[] }> {
     let dropped: string[] = [];
     let ipo: IPO;
     try {
@@ -1540,7 +1555,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       logger.info({ ipoId: id, source, dropped }, '[item 19] protected fields dropped inside the write transaction');
     }
     await this.invalidateCache([getIPOByIdKey(id), getIPOBySlugKey(ipo.slug)], ['ipo:list:*', 'ipo:search:*']);
-    return ipo;
+    return { ipo, dropped };
   }
 
   /**
@@ -1557,8 +1572,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   async applyOfferTerms(
     id: string,
     data: Pick<Partial<IPOInsert>, 'priceRangeMin' | 'priceRangeMax' | 'lotSize' | 'issueSize'>
-  ): Promise<IPO> {
-    return this.update(id, data);
+  ): Promise<{ ipo: IPO; dropped: string[] }> {
+    return this.updateReportingHolds(id, data);
   }
 
   /**
@@ -1573,8 +1588,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * already-baselined write path a new repair script routes through,
    * instead of a direct `db.update(ipos)`.
    */
-  async applyFaceValue(id: string, faceValue: number): Promise<IPO> {
-    return this.update(id, { faceValue });
+  async applyFaceValue(id: string, faceValue: number): Promise<{ ipo: IPO; dropped: string[] }> {
+    return this.updateReportingHolds(id, { faceValue });
   }
 
   /**
@@ -1583,8 +1598,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * the write lives in this already-baselined file, never re-typed as a direct `db.update(ipos)`
    * in a script (`scripts/check-write-ratchet.mjs`, T-316).
    */
-  async applySanitizedCompanyName(id: string, companyName: string): Promise<IPO> {
-    return this.update(id, { companyName });
+  async applySanitizedCompanyName(id: string, companyName: string): Promise<{ ipo: IPO; dropped: string[] }> {
+    return this.updateReportingHolds(id, { companyName });
   }
 
   /**
@@ -1594,16 +1609,34 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * write lives in this already-baselined file, never re-typed as a direct `db.update(ipos)` in a
    * new script (`scripts/check-write-ratchet.mjs`, T-316).
    */
-  async applyIssueSizeRepair(id: string, issueSize: string | null, restoreUpdatedAt?: string): Promise<IPO> {
-    if (restoreUpdatedAt === undefined) return this.update(id, { issueSize });
-    const [ipo] = await this.db
-      .update(ipos)
-      .set({ issueSize, updatedAt: sql`${restoreUpdatedAt}::timestamp` })
-      .where(eq(ipos.id, id))
-      .returning();
-    if (!ipo) throw new EntityNotFoundError('IPO', id);
+  async applyIssueSizeRepair(
+    id: string,
+    issueSize: string | null,
+    restoreUpdatedAt?: string
+  ): Promise<{ ipo: IPO; dropped: string[] }> {
+    if (restoreUpdatedAt === undefined) return this.updateReportingHolds(id, { issueSize });
+    // --undo: the same hold as every other write (§9.2 item 19) — an admin value set since the repair
+    // is never put back to the before-image. Lock + hold read + write in ONE transaction.
+    let dropped: string[] = [];
+    const ipo = await this.db.transaction(async (txRaw) => {
+      const tx = txRaw as unknown as NodePgDatabase<typeof schema>;
+      const filtered = await filterPatchUnderHold(tx, id, 'ipos', { issueSize }, { honourScraperLock: true });
+      if (!filtered.hold) throw new EntityNotFoundError('IPO', id);
+      dropped = filtered.dropped;
+      if (dropped.length > 0) {
+        const [current] = await tx.select().from(ipos).where(eq(ipos.id, id)).limit(1);
+        return current as IPO;
+      }
+      const [row] = await tx
+        .update(ipos)
+        .set({ issueSize, updatedAt: sql`${restoreUpdatedAt}::timestamp` })
+        .where(eq(ipos.id, id))
+        .returning();
+      return row as IPO;
+    });
+    if (dropped.length > 0) logger.info({ ipoId: id, dropped }, '[item 19] issue-size undo skipped: held by admin');
     await this.invalidateCache([getIPOByIdKey(id), getIPOBySlugKey(ipo.slug)], ['ipo:list:*', 'ipo:search:*']);
-    return ipo;
+    return { ipo, dropped };
   }
 
   /**
@@ -2796,7 +2829,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     // §9.2 item 19: an admin-held website / verifier URL is never replaced by a discovered hint.
     let row: IPO;
     try {
-      row = await this.updateHonouringProtection(ipoId, patch, 'updateDocumentSourceHints');
+      row = (await this.updateHonouringProtection(ipoId, patch, 'updateDocumentSourceHints')).ipo;
     } catch (error) {
       if (error instanceof EntityNotFoundError) return null;
       throw error;
@@ -2831,7 +2864,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   ): Promise<IPO> {
     try {
       // §9.2 item 19: an admin-held rating / rationale is never replaced by a computed one.
-      const ipo = await this.updateHonouringProtection(ipoId, { rating, ratingRationale: rationale }, 'updateRating');
+      const { ipo } = await this.updateHonouringProtection(ipoId, { rating, ratingRationale: rationale }, 'updateRating');
       await this.invalidateCache([], [`ipo:detail:${ipo.slug}`]);
 
       return ipo;

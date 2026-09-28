@@ -105,6 +105,19 @@ describe('applyRepairAtomically — provenance and the ipos update share one tra
     expect(fakeDb.committed).toHaveLength(0);
   });
 
+  it('§9.2 item 19: a field held by admin rolls back the provenance too — never counted as repaired', async () => {
+    const fakeDb = makeFakeDb();
+    const upsertFieldSourceFn = (async (tx: any, params: any) => {
+      tx.pending.push({ kind: 'field_source', payload: params });
+      return { previousSource: null };
+    }) as any;
+    const makeRepo = () => ({ applyOfferTerms: async () => ({ dropped: ['lotSize'] }) });
+    await expect(
+      applyRepairAtomically(fakeDb, { ipoId: 'ipo-1', targets, updatedBy: 'TEST', reason: 'test', updatePayload: { lotSize: 348 }, upsertFieldSourceFn, makeRepo })
+    ).rejects.toThrow('held by admin, skipped: ipo-1 (lotSize)');
+    expect(fakeDb.committed).toHaveLength(0);
+  });
+
   it('GREEN case: provenance and the offer-terms update commit together on success', async () => {
     const fakeDb = makeFakeDb();
     const upsertFieldSourceFn = (async (tx: any, params: any) => {
@@ -116,6 +129,7 @@ describe('applyRepairAtomically — provenance and the ipos update share one tra
       applyOfferTerms: async (id: string, data: any) => {
         tx.pending.push({ kind: 'offer_terms', payload: { id, data } });
         applied.push({ id, data });
+        return { dropped: [] };
       },
     });
 

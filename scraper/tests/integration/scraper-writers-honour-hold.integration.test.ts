@@ -10,8 +10,14 @@ import {
   readAdminFieldVersion,
   type AdminFieldWriteInput,
 } from '@ipodhan/shared/services/admin-field-write';
+import { FieldSourcesRepository } from '@ipodhan/shared';
 import { makeIpoDetailsWriter } from '../../src/services/filing-persist-deps';
-import { recordDiscoveredLeadManagers, type TransactionalIposWriter } from '../../src/services/data-persister';
+import {
+  recordDiscoveredLeadManagers,
+  writeOpeningDayIpoFields,
+  type TransactionalIposWriter,
+} from '../../src/services/data-persister';
+import { PeerCompanyRepository } from '../../src/repositories/peer-company-repository';
 
 /**
  * Contract 2 item A2 part E — spec §9.2 item 19 (§2.7) for EVERY scraper writer shape, not only
@@ -153,5 +159,93 @@ describe.skipIf(!DATABASE_URL)('A2e: every scraper writer honours the admin hold
     await writer;
     const lp = await one(db.select({ l: schema.listingPerformance.listingPrice, i: schema.listingPerformance.issuePrice }).from(schema.listingPerformance).where(eq(schema.listingPerformance.ipoId, IPO)));
     expect(lp).toEqual({ l: 123, i: 95 });
+  });
+  it('peer replace (nullNeverOverwrites) waits on an OPEN admin peer save, then writes the ADMIN value, not a pre-lock snapshot', async () => {
+    await db.execute(sql`
+      INSERT INTO peer_companies (ipo_id, company_name, normalized_name, pe_ratio, eps, is_listed)
+      VALUES (${IPO}::uuid, 'Peer One Ltd', 'peer one', 10.00, 1.00, true)`);
+    // Admin transaction on connection 1, in writeAdminFieldValue's order: ipos lock, value, hold. Held open.
+    const c1 = await pool.connect();
+    await c1.query('BEGIN');
+    await c1.query(`SELECT 1 FROM ipos WHERE id = $1 FOR NO KEY UPDATE`, [IPO]);
+    await c1.query(`UPDATE peer_companies SET pe_ratio = 42.42 WHERE ipo_id = $1 AND normalized_name = 'peer one'`, [IPO]);
+    await c1.query(
+      `INSERT INTO field_protection_metadata (table_name, field_name, ipo_id, is_protected) VALUES ('peer_companies:peer one','peRatio',$1,true)`,
+      [IPO]
+    );
+    let done = false;
+    const writer = new PeerCompanyRepository(db2 as never)
+      .replaceForIpo(IPO, [{ ipoId: IPO, companyName: 'Peer One Ltd', normalizedName: 'peer one', peRatio: '15.00', eps: '2.00' } as never], {
+        nullNeverOverwrites: true,
+      })
+      .then(() => { done = true; });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(done).toBe(false);
+    await c1.query('COMMIT');
+    c1.release();
+    await writer;
+    const rows = await db.select({ pe: schema.peerCompanies.peRatio, eps: schema.peerCompanies.eps }).from(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, IPO));
+    expect(rows).toEqual([{ pe: '42.42', eps: '2.00' }]);
+  });
+
+  it('peer fillGapsOnly never re-inserts under a key the admin holds with no stored row', async () => {
+    await db.execute(sql`
+      INSERT INTO field_protection_metadata (table_name, field_name, ipo_id, is_protected)
+      VALUES ('peer_companies:gone peer', 'peRatio', ${IPO}::uuid, true)`);
+    await new PeerCompanyRepository(db2 as never).replaceForIpo(
+      IPO,
+      [
+        { ipoId: IPO, companyName: 'Gone Peer Ltd', normalizedName: 'gone peer', peRatio: '9.00' } as never,
+        { ipoId: IPO, companyName: 'New Peer Ltd', normalizedName: 'new peer', peRatio: '8.00' } as never,
+      ],
+      { fillGapsOnly: true }
+    );
+    const rows = await db.select({ k: schema.peerCompanies.normalizedName }).from(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, IPO));
+    expect(rows.map((r) => r.k)).toEqual(['new peer']);
+  });
+
+  it('OD-131: a scraper write that an admin hold dropped writes NO provenance; field_sources still says ADMIN with the admin value', async () => {
+    await adminSave('ipos', 'registrar', 'Admin Registrar Pvt Ltd');
+    const before = await db
+      .select({ src: schema.fieldSources.source, v: schema.fieldSources.previousValue, l: schema.fieldSources.dataLineage, c: schema.fieldSources.confidence })
+      .from(schema.fieldSources)
+      .where(sql`${schema.fieldSources.ipoId} = ${IPO}::uuid AND ${schema.fieldSources.tableName} = 'ipos' AND ${schema.fieldSources.fieldName} = 'registrar'`);
+    expect(before.map((r) => r.src)).toEqual(['ADMIN']);
+
+    const repo = new IPORepository(db2 as never, noRedis);
+    const existing = await one(db.select().from(schema.ipos).where(eq(schema.ipos.id, IPO)));
+    const res = await writeOpeningDayIpoFields({
+      ipoRepository: repo as never,
+      fieldSources: new FieldSourcesRepository(db2 as never, noRedis) as never,
+      sourceTrackingEnabled: true,
+      source: 'NSE',
+      existing: existing as never,
+      set: { registrar: 'NSE Registrar Overwrite', sector: 'NSE Sector' },
+      slug: SLUG,
+      segment: 'MAINBOARD',
+      sourceKeys: null,
+      boundBy: 'scraper:NSE',
+      confidence: 90,
+      alreadyTracked: [],
+    });
+    expect(res.written).toEqual({ sector: 'NSE Sector' });
+    expect(res.fieldSources).toEqual(['sector']);
+    const after = await db
+      .select({ f: schema.fieldSources.fieldName, src: schema.fieldSources.source, v: schema.fieldSources.previousValue, l: schema.fieldSources.dataLineage, c: schema.fieldSources.confidence })
+      .from(schema.fieldSources)
+      .where(sql`${schema.fieldSources.ipoId} = ${IPO}::uuid AND ${schema.fieldSources.tableName} = 'ipos' AND ${schema.fieldSources.fieldName} IN ('registrar','sector')`);
+    const byField = Object.fromEntries(after.map((r) => [r.f, r]));
+    expect(byField.registrar).toEqual({ f: 'registrar', ...before[0] });
+    expect(byField.sector?.src).toBe('NSE');
+    const row = await one(db.select({ r: schema.ipos.registrar }).from(schema.ipos).where(eq(schema.ipos.id, IPO)));
+    expect(row.r).toBe('Admin Registrar Pvt Ltd');
+  });
+
+  it('applyIssueSizeRepair --undo (restoreUpdatedAt) does not put back a before-image over an admin-held issueSize, and reports it', async () => {
+    await adminSave('ipos', 'issueSize', '5000000000');
+    const r = await new IPORepository(db2 as never, noRedis).applyIssueSizeRepair(IPO, '1', '2026-09-01 00:00:00');
+    expect(r.dropped).toEqual(['issueSize']);
+    const row = await one(db.select({ s: schema.ipos.issueSize }).from(schema.ipos).where(eq(schema.ipos.id, IPO)));
+    expect(Number(row.s)).toBe(5000000000);
   });
 });

@@ -44,6 +44,7 @@ describe('IPORepository.applyFaceValue', () => {
     const keys = Object.keys(written).sort();
     expect(keys).toEqual(['faceValue', 'updatedAt'].sort());
     expect(written.faceValue).toBe(10);
-    expect(result.faceValue).toBe(10);
+    expect(result.ipo.faceValue).toBe(10);
+    expect(result.dropped).toEqual([]);
   });
 });

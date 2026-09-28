@@ -41,12 +41,14 @@ import { eq } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 import { createNoopRedisClient, guardCacheInvalidation, openRepairDb, upsertFieldSource, writeLedgerFile } from './lib/repair-tool.js';
+import { assertNotHeld } from '@ipodhan/shared/services/field-hold';
 
 type OfferTermsUpdate = Pick<Partial<IPOInsert>, 'priceRangeMin' | 'priceRangeMax' | 'lotSize' | 'issueSize'>;
 
 /** Minimal shape this tool needs from a transaction-scoped repository. */
 interface OfferTermsRepo {
-  applyOfferTerms(id: string, data: OfferTermsUpdate): Promise<unknown>;
+  /** Reports the fields an admin hold dropped (§9.2 item 19); a held row rolls the whole repair back. */
+  applyOfferTerms(id: string, data: OfferTermsUpdate): Promise<{ dropped: readonly string[] }>;
 }
 
 const APPLY = process.argv.includes('--apply');
@@ -129,7 +131,8 @@ export async function applyRepairAtomically(
     }
 
     const repo = params.makeRepo(tx);
-    await repo.applyOfferTerms(params.ipoId, params.updatePayload);
+    // OD-131: the provenance rows above are in this transaction; a held field throws and rolls them back.
+    assertNotHeld(await repo.applyOfferTerms(params.ipoId, params.updatePayload), params.ipoId);
   });
 }
 

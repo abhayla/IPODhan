@@ -191,8 +191,8 @@ export async function runOpeningDayDiscovery(deps: OpeningDayDeps, now: Date = n
 export interface OpeningDayWriterCollaborators {
   ipoRepository: {
     bindSourceKeys: (ipoId: string, keys: any[], opts: { boundVia: any; boundBy: string }) => Promise<unknown>;
-    /** `IPORepository.update`: SET exactly the given keys (plus its own updatedAt). */
-    update: (ipoId: string, data: Record<string, unknown>) => Promise<unknown>;
+    /** `IPORepository.updateReportingHolds`: SET exactly the given keys (plus its own updatedAt), minus any admin-held one, which it reports. */
+    updateReportingHolds: (ipoId: string, data: Record<string, unknown>) => Promise<{ dropped: string[] }>;
     /** `IPORepository.create`: the row and its OD-85 keys in one transaction. */
     create: (values: any, opts: { sourceKeys: any[] | null; boundBy: string }) => Promise<{ id: string }>;
   };

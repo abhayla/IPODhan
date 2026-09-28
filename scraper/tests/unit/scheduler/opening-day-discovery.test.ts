@@ -134,7 +134,7 @@ describe('opening-day writer — identity path + field-priority decision, four f
     const c = {
       ipoRepository: {
         bindSourceKeys: vi.fn().mockResolvedValue(undefined),
-        update: vi.fn().mockResolvedValue(undefined),
+        updateReportingHolds: vi.fn().mockResolvedValue({ dropped: [] }),
         create: vi.fn().mockResolvedValue({ id: 'ipo-new' }),
       },
       resolveIpoRow: vi.fn().mockResolvedValue(existing),
@@ -179,7 +179,7 @@ describe('opening-day writer — identity path + field-priority decision, four f
     const c = collaborators({ id: 'ipo-1', companyName: 'Moneyview Limited', status: 'OPEN', openDate: null, closeDate: '2026-09-28', segment: 'MAINBOARD', offeringType: 'IPO' });
     expect(await createOpeningDayWriter(c)('NSE', payload)).toBe('updated');
     expect(c.ipoRepository.bindSourceKeys).toHaveBeenCalledWith('ipo-1', payload.sourceKeys, { boundVia: 'KEY', boundBy: 'scraper:NSE' });
-    expect(c.ipoRepository.update).toHaveBeenCalledWith('ipo-1', { openDate: '2026-09-24' });
+    expect(c.ipoRepository.updateReportingHolds).toHaveBeenCalledWith('ipo-1', { openDate: '2026-09-24' });
   });
 
   it('(e3) stored with an old (postponed) open date: the matrix sees both values; its pick is written', async () => {
@@ -188,7 +188,7 @@ describe('opening-day writer — identity path + field-priority decision, four f
     const input = c.consolidateFields.mock.calls[0][0];
     expect(input.incomingData.openDate).toBe('2026-09-24');
     expect(input.existingData.openDate).toBe('2026-08-10');
-    expect(c.ipoRepository.update).toHaveBeenCalledWith('ipo-1', { openDate: '2026-09-24' });
+    expect(c.ipoRepository.updateReportingHolds).toHaveBeenCalledWith('ipo-1', { openDate: '2026-09-24' });
   });
 
   it('protected fields are dropped from the claim; a locked IPO is skipped', async () => {
@@ -210,7 +210,7 @@ describe('opening-day writer — identity path + field-priority decision, four f
   it('update: one field_sources row per SET column, and the ledger is told exactly those rows', async () => {
     const c = collaborators({ id: 'ipo-1', companyName: 'Moneyview Limited', status: 'UPCOMING', openDate: null, closeDate: '2026-09-28', segment: 'MAINBOARD', offeringType: 'IPO' });
     expect(await createOpeningDayWriter(c)('NSE', payload)).toBe('updated');
-    expect(c.ipoRepository.update).toHaveBeenCalledWith('ipo-1', { status: 'OPEN', openDate: '2026-09-24' });
+    expect(c.ipoRepository.updateReportingHolds).toHaveBeenCalledWith('ipo-1', { status: 'OPEN', openDate: '2026-09-24' });
     const rows = c.fieldSources.trackFieldUpdate.mock.calls.map(([r]: any[]) => r);
     expect(rows).toEqual([
       { ipoId: 'ipo-1', tableName: 'ipos', fieldName: 'status', source: 'NSE', confidence: 95, previousValue: 'UPCOMING' },
@@ -275,7 +275,7 @@ describe('opening-day writer — identity path + field-priority decision, four f
     const c = collaborators({ id: 'ipo-1', companyName: 'PESHWA WHEAT LIMITED', status: 'UPCOMING', openDate: '2026-09-24', closeDate: '2026-09-28', segment: 'SME', offeringType: 'IPO' });
     const bsePayload = selectOpeningToday([], BSE_ROWS, '2026-09-24')[0].payload;
     expect(await createOpeningDayWriter(c)('BSE', bsePayload)).toBe('updated');
-    expect(c.ipoRepository.update).toHaveBeenCalledWith('ipo-1', { status: 'OPEN' });
+    expect(c.ipoRepository.updateReportingHolds).toHaveBeenCalledWith('ipo-1', { status: 'OPEN' });
     expect(c.fieldSources.trackFieldUpdate.mock.calls.map(([r]: any[]) => [r.fieldName, r.source])).toEqual([['status', 'BSE']]);
   });
 

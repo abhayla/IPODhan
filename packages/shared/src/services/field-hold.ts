@@ -158,3 +158,23 @@ export function applyRowHolds<T extends Record<string, unknown>>(
   }
   return { rows, keptFields, keptRows };
 }
+
+/**
+ * A repair tool's write that an admin hold dropped (§9.2 item 19). Thrown inside the repair's own
+ * transaction so the whole row rolls back — value, provenance and plan rows together — and the tool
+ * counts the row as "held by admin, skipped", never as repaired (OD-131: the ADMIN row stays).
+ */
+export class HeldByAdminError extends Error {
+  constructor(
+    readonly ipoId: string,
+    readonly dropped: readonly string[]
+  ) {
+    super(`held by admin, skipped: ${ipoId} (${dropped.join(', ')})`);
+    this.name = 'HeldByAdminError';
+  }
+}
+
+/** Throws `HeldByAdminError` when a repair helper reports any dropped field. */
+export function assertNotHeld(result: { dropped: readonly string[] }, ipoId: string): void {
+  if (result.dropped.length > 0) throw new HeldByAdminError(ipoId, result.dropped);
+}

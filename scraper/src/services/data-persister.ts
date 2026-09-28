@@ -258,6 +258,12 @@ export function isProvenanceValueStored(
   return stored !== null && stored !== undefined;
 }
 
+/** The payload minus the fields an admin hold dropped inside the write (what was actually stored). */
+export function withoutHeld<T extends Record<string, unknown>>(data: T, dropped: readonly string[]): T {
+  if (dropped.length === 0) return data;
+  return Object.fromEntries(Object.entries(data).filter(([k]) => !dropped.includes(k))) as T;
+}
+
 /**
  * OD-131 (review round 1): the fallback door's filter. It stores the raw merged payload, not
  * consolidation's winners, so a decided provenance write counts only when its value was stored
@@ -825,7 +831,8 @@ export { normalizeCompanyNameForMatching };
 
 /** Minimal repository surface `writeOpeningDayIpoFields` needs. */
 export interface OpeningDayWriteRepo {
-  update: (ipoId: string, data: Record<string, unknown>) => Promise<unknown>;
+  /** `IPORepository.updateReportingHolds`: the write, plus the fields an admin hold dropped (§9.2 item 19). */
+  updateReportingHolds: (ipoId: string, data: Record<string, unknown>) => Promise<{ dropped: string[] }>;
   create: (values: any, opts: { sourceKeys: any[] | null; boundBy: string }) => Promise<{ id: string }>;
 }
 
@@ -879,9 +886,12 @@ export async function writeOpeningDayIpoFields(params: {
   let written: Record<string, unknown>;
   if (existing) {
     if (Object.keys(set).length === 0) return { outcome: 'unchanged', ipoId: existing.id, written: {}, fieldSources: [] };
-    await ipoRepository.update(existing.id, set);
+    // OD-131 + §9.2 item 19: a field an admin hold dropped was NOT written, so it is not in
+    // `written` and gets no provenance row — the ADMIN row stays that field's source.
+    const { dropped } = await ipoRepository.updateReportingHolds(existing.id, set);
     ipoId = existing.id;
-    written = set;
+    written = Object.fromEntries(Object.entries(set).filter(([k]) => !dropped.includes(k)));
+    if (Object.keys(written).length === 0) return { outcome: 'unchanged', ipoId, written: {}, fieldSources: [] };
   } else {
     if (!set.companyName || !set.status) return { outcome: 'skipped', ipoId: null, written: {}, fieldSources: [] };
     written = { ...set, segment, offeringType: 'IPO' };
@@ -918,6 +928,25 @@ export interface PostListingPriceWriteRepo {
   update: (ipoId: string, data: Record<string, unknown>) => Promise<unknown>;
 }
 
+/** The price write also needs the dropped-field report (§9.2 item 19, OD-131). */
+export interface PostListingPriceHoldRepo extends PostListingPriceWriteRepo {
+  updateReportingHolds: (ipoId: string, data: Record<string, unknown>) => Promise<{ dropped: string[] }>;
+}
+
+/**
+ * `IPORepository.updateReportingHolds` where the repository has it (always, in production — the
+ * `upsertIPO` doors are typed `IPORepository`); an untyped test fake with only `update` reports none.
+ */
+async function updateReportingHolds(
+  repo: { update: (id: string, data: any) => Promise<unknown>; updateReportingHolds?: (id: string, data: any) => Promise<{ dropped: string[] }> },
+  id: string,
+  data: Record<string, unknown>
+): Promise<string[]> {
+  if (typeof repo.updateReportingHolds === 'function') return (await repo.updateReportingHolds(id, data)).dropped;
+  await repo.update(id, data);
+  return [];
+}
+
 /** The exact `ipos` columns the post-listing price write may SET (OD-29: the price and its as-of stamp). */
 export const POST_LISTING_PRICE_COLUMNS = ['currentPrice', 'currentPriceUpdatedAt'] as const;
 
@@ -950,7 +979,7 @@ export function storedAsOfInstant(value: unknown): Date | null {
  *   updated   — a new price: both columns, one provenance row each.
  */
 export async function writePostListingPrice(params: {
-  ipoRepository: PostListingPriceWriteRepo;
+  ipoRepository: PostListingPriceHoldRepo;
   fieldSources: OpeningDayFieldSourcesWriter;
   sourceTrackingEnabled: boolean;
   ipoId: string;
@@ -974,19 +1003,22 @@ export async function writePostListingPrice(params: {
     return { outcome: 'unchanged', written: [], fieldSources: [] };
   }
   const set: Record<string, unknown> = samePrice ? { currentPriceUpdatedAt: asOf } : { currentPrice: rounded, currentPriceUpdatedAt: asOf };
-  await ipoRepository.update(ipoId, set);
+  // OD-131 + §9.2 item 19: an admin-held price column was not written; it gets no NSE/BSE provenance row.
+  const { dropped } = await ipoRepository.updateReportingHolds(ipoId, set);
+  const writtenFields = Object.keys(set).filter((f) => !dropped.includes(f));
+  if (writtenFields.length === 0) return { outcome: 'unchanged', written: [], fieldSources: [] };
   const tracked: string[] = [];
   if (sourceTrackingEnabled) {
     const previous: Record<string, string | null> = {
       currentPrice: prior === null ? null : prior.toFixed(2),
       currentPriceUpdatedAt: storedAsOf ? storedAsOf.toISOString() : null,
     };
-    for (const fieldName of Object.keys(set)) {
+    for (const fieldName of writtenFields) {
       await fieldSources.trackFieldUpdate({ ipoId, tableName: 'ipos', fieldName, source, confidence: 1, previousValue: previous[fieldName] });
       tracked.push(fieldName);
     }
   }
-  return { outcome: samePrice ? 'confirmed' : 'updated', written: Object.keys(set), fieldSources: tracked };
+  return { outcome: samePrice || !writtenFields.includes('currentPrice') ? 'confirmed' : 'updated', written: writtenFields, fieldSources: tracked };
 }
 
 /** The `ipos` column the post-listing state write may SET (the cached working NSE series). */
@@ -1646,6 +1678,7 @@ async function upsertIPOInScope(
             }
             const changedFields = diffFieldsForWrite(finalData, diffAgainst);
             const isNoopUpdate = changedFields.length === 0;
+            let heldDropped: string[] = [];
             if (isNoopUpdate) {
               logger.debug({
                 ipoId: existingIPO.id,
@@ -1655,8 +1688,9 @@ async function upsertIPOInScope(
                 fieldsUpdated: consolidationResult.fieldsUpdated ?? 0,
               }, '[DataConsolidation] No field actually changed — skipping ipos row update + cache invalidation');
             } else {
-              // Update IPO with consolidated data
-              await ipoRepository.update(existingIPO.id, finalData);
+              // Update IPO with consolidated data. §9.2 item 19: the fields an admin hold dropped
+              // inside the write transaction are reported back so no provenance claims them (OD-131).
+              heldDropped = await updateReportingHolds(ipoRepository as never, existingIPO.id, finalData);
             }
 
             // OD-131 ("Rejected = never set"): write provenance only for values this door
@@ -1668,7 +1702,7 @@ async function upsertIPOInScope(
             const provenanceCommit = pendingWrites
               ? await consolidationService.commitDeferredProvenance(
                 pendingWrites,
-                (write) => isProvenanceValueStored(write, finalData)
+                (write) => isProvenanceValueStored(write, withoutHeld(finalData, heldDropped))
               )
               : { written: 0, refused: [] };
             if (provenanceCommit.refused.length > 0) {
@@ -1823,7 +1857,9 @@ async function upsertIPOInScope(
           );
         }
         const guardedFallback = keepTerminalIpoStatus((existingIPO as any).status, claimsOnlyFallback);
-        await ipoRepository.update(existingIPO.id, guardedFallback);
+        const fallbackHeld = await updateReportingHolds(ipoRepository as never, existingIPO.id, guardedFallback);
+        // OD-131 + §9.2 item 19: what the admin hold dropped was not stored; nothing below claims it.
+        const storedFallback = withoutHeld(guardedFallback, fallbackHeld);
 
         // OD-131 (review round 1): consolidation already decided provenance for this payload and
         // a later step threw before it was committed. Commit it for exactly the values this door
@@ -1836,7 +1872,7 @@ async function upsertIPOInScope(
           uncommittedProvenance = undefined;
           try {
             await service.commitDeferredProvenance(writes, (write) =>
-              isProvenanceValueStoredAsDecided(write, guardedFallback)
+              isProvenanceValueStoredAsDecided(write, storedFallback)
             );
           } catch (e: any) {
             logger.error(
@@ -1886,7 +1922,7 @@ async function upsertIPOInScope(
             ...(listingExchangeIsContext ? ['listingExchanges'] : []),
           ]);
           const isDocumentSource = DOCUMENT_PATH_SOURCES.has(source);
-          const fieldsToTrack = Object.entries(guardedFallback)
+          const fieldsToTrack = Object.entries(storedFallback)
             .filter(([fieldName, value]) => {
               if (FALLBACK_BOOKKEEPING_FIELDS.has(fieldName)) return false;
               if (value === undefined || value === null) return false;
@@ -1943,7 +1979,7 @@ async function upsertIPOInScope(
         ledgerFacts = {
           source,
           created: false,
-          fields: Object.keys(guardedFallback),
+          fields: Object.keys(storedFallback),
           offeringType: fallbackData.offeringType ?? null,
           consolidated: false,
           fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && !fallbackProvenanceWriteFailed,
