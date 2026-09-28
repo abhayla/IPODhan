@@ -272,6 +272,32 @@ describe('fetchSebiListingRows — search then page beyond page 1', () => {
     ]);
   });
 
+  it('(e) #620 B7: a no-records page while paging is the end of the listing — not listed, not a failure, no further pages', async () => {
+    const NO_RECORDS_HTML = readFileSync(join(__dirname, '../../fixtures/sebi/sebi-drhp-search-no-records.html'), 'utf8');
+    const posts: string[] = [];
+    const fetchImpl: SebiFetcher = async (_url, init) => {
+      if (init.method === 'GET') return { status: 200, body: PAGE1_HTML };
+      posts.push(String(init.body ?? ''));
+      // 1st POST = the search (live zero-result page), 2nd = page 1 (real listing), 3rd = page 2 (no records).
+      if (posts.length === 1) return { status: 200, body: NO_RECORDS_HTML };
+      if (posts.length === 2) return { status: 200, body: PAGE1_HTML };
+      return { status: 200, body: NO_RECORDS_HTML };
+    };
+
+    const result = await fetchSebiListingRows('DRHP', { companyName: SEARCH_ONLY_COMPANY, fetchImpl, maxPages: 6 });
+
+    expect(posts.length).toBe(3);
+    expect(result.aborted).toBeNull();
+    expect(result.matched).toBeNull();
+    expect(result.rungs).toEqual([
+      'SEBI:page1',
+      'SEBI:searched:no_records',
+      'SEBI:paged:1',
+      'SEBI:paged:2:no_records',
+      'SEBI:paged:end',
+    ]);
+  });
+
   it('page 1 HTTP failure is recorded and never followed by a search attempt', async () => {
     const calls: string[] = [];
     const fetchImpl: SebiFetcher = async (url) => {

@@ -494,7 +494,8 @@ export async function fetchSebiListingRows(
     if (isSebiNoRecordsPage(pageRes.body)) {
       // Past the last page of the listing: nothing further to page through.
       rungs.push(`SEBI:paged:${page}:no_records`);
-      break;
+      rungs.push('SEBI:paged:end');
+      return { rows, matched: null, rungs, aborted: null };
     }
     if (!isSebiListingPage(pageRes.body)) {
       rungs.push(`SEBI:paged:${page}:not_a_listing`);
