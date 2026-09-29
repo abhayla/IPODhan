@@ -19,6 +19,7 @@
  * runs every 30 minutes; the first data wake at or after 09:00 IST whose claim `admin-digest:<env>:<day>`
  * is absent sends it.
  */
+import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { istDayIso } from '@ipodhan/shared/utils/ist-day';
 import { ADMIN_ONLY_CONFLICT_REASONS, WRITER_BOOKKEEPING_FIELDS } from '@ipodhan/shared/utils/conflict-reasons';
@@ -214,7 +215,11 @@ async function defaultDeps(): Promise<AdminAlertDeps> {
  * UPCOMING/OPEN -> one instant alert per IPO, type and IST day; any other status -> the digest store.
  * Never throws: a failure is logged with its cause and returned as `unsent`.
  */
-export async function sendAdminInstant(event: AdminInstantEvent, deps?: AdminAlertDeps): Promise<AdminInstantOutcome> {
+export async function sendAdminInstant(
+  event: AdminInstantEvent,
+  deps?: AdminAlertDeps,
+  opts: { digestIfAlreadySent?: boolean } = {}
+): Promise<AdminInstantOutcome> {
   let d: AdminAlertDeps;
   try {
     d = deps ?? (await defaultDeps());
@@ -231,7 +236,12 @@ export async function sendAdminInstant(event: AdminInstantEvent, deps?: AdminAle
       return { outcome: 'digest' };
     }
     const key = instantKey(event.type, env, event.ipoId, istDayIso(now));
-    if (await d.isClaimed(key)) return { outcome: 'already-sent', key };
+    if (await d.isClaimed(key)) {
+      // The day's instant for this IPO and type is used. A caller whose event is a DIFFERENT fact (a
+      // changed disagreement) asks for it to reach the owner through the digest instead of vanishing.
+      if (opts.digestIfAlreadySent) await d.record({ ...event, at: now.toISOString() });
+      return { outcome: 'already-sent', key };
+    }
     const budget = d.budget ?? wakeBudget;
     const cap = d.cap ?? ADMIN_INSTANT_CAP_PER_WAKE;
     if (budget.sent >= cap) {
@@ -540,43 +550,101 @@ export interface NewConflictRow {
   value2: string | null;
   /** Set on an OD-90 corrigendum suggestion: the newer document the value was read from. */
   documentId: string | null;
+  /** detected_at as naive UTC text (reset by every upsertConflict refresh); informational. */
+  detectedAt?: string;
 }
 
-/** The first scan ever (no mark yet) looks back this far: two data wakes. */
+/** No mark and no digest send on record: look back this far (two data wakes). */
 export const NEW_CONFLICT_FIRST_LOOKBACK_MS = 60 * 60_000;
+
+/**
+ * The scan rereads this far BEFORE its mark. A writer stamps detected_at from its own clock when its
+ * statement runs, and commits later; a row stamped just before a mark but committed after that scan
+ * would otherwise never be read. The per-conflict pair hash absorbs every repeat the overlap causes.
+ */
+export const NEW_CONFLICT_OVERLAP_MS = 15 * 60_000;
+
+/**
+ * The identity of a disagreement: the two sources and their two values (plus the document for an OD-90
+ * suggestion). A row refreshed in place with the same pair is the same disagreement; any change is new.
+ * null and '' hash differently (an empty value and a missing one are different facts).
+ */
+export function conflictPairHash(r: Pick<NewConflictRow, 'source1' | 'value1' | 'source2' | 'value2' | 'documentId'>): string {
+  return createHash('sha256')
+    .update(JSON.stringify([r.source1, r.value1, r.source2, r.value2, r.documentId]))
+    .digest('hex')
+    .slice(0, 16);
+}
 
 export interface NewDisagreementScanDeps {
   now?: Date;
+  /** Open real-disagreement rows whose detected_at is at or after `since`. */
   loadNewConflicts(since: Date): Promise<NewConflictRow[]>;
-  /** The scan's high-water mark: rows created at or after it are new to the owner. */
+  /** The scan's high-water mark (never expires). */
   getMark(): Promise<Date | null>;
   setMark(at: Date): Promise<void>;
+  /** The value-pair hash last alerted for a conflict row (null: never alerted). */
+  getPairHash(conflictId: string): Promise<string | null>;
+  setPairHash(conflictId: string, hash: string): Promise<void>;
+  /** Fallback start when the mark is missing: the last digest the Notifier accepted. */
+  getLastDigestAt?(): Promise<Date | null>;
   /** Passed through to sendAdminInstant (tests); production uses its default deps. */
   alert?: AdminAlertDeps;
 }
 
 export interface NewDisagreementScanResult {
   scanned: number;
+  /** Rows re-read (refresh or overlap) whose value pair was already alerted: nothing sent. */
+  unchanged: number;
   outcomes: Record<AdminInstantOutcome['outcome'], number>;
   markAdvanced: boolean;
 }
 
 /**
  * The instant emitter for §9.2 item 16's "a new real disagreement" and "a newer document disagrees
- * with an admin value". It reads data_conflicts rows CREATED since its mark, i.e. rows every writer
- * path has already committed (consolidation, persister, walk, corrigendum reader), so it runs outside
- * every write transaction by construction, and a rolled-back write can never alert. A corrigendum
- * suggestion (document_id set) whose stored value is ADMIN is `newer-document-disagrees`; every
- * other new row is `new-disagreement`. The mark advances only when no send came back `unsent`, so a
- * Notifier outage is retried on the next wake (the per-IPO/type/day claim stops a repeat).
+ * with an admin value".
+ *
+ * A NEW DISAGREEMENT IS A NEW VALUE PAIR, NOT A NEW ROW. Most disagreements arrive through
+ * DataConflictsRepository.upsertConflict, which updates the open row for the field IN PLACE (new
+ * sources and values, detected_at reset) and never moves created_at; logConflict inserts with
+ * detected_at, and the OD-90 corrigendum insert takes detected_at's default. So the scan reads rows by
+ * detected_at (from the mark minus NEW_CONFLICT_OVERLAP_MS), and each row is compared with the pair
+ * hash last alerted for that conflict id: a changed or first-seen pair is one event, an unchanged
+ * refresh is nothing.
+ *
+ * An event goes through sendAdminInstant: UPCOMING/OPEN within the wake cap -> one instant alert (one
+ * per IPO, type and IST day, item 25); over the cap, not live, or the day's instant already used -> one
+ * digest entry. The pair hash is stored only after the event reached the owner or the digest store, so
+ * a Notifier outage leaves it unstored and the mark unadvanced, and the next wake retries.
+ *
+ * It reads rows every writer path has already committed, so it runs outside every write transaction
+ * and a rolled-back write can never alert. A corrigendum suggestion (document_id set) whose stored
+ * value is ADMIN is `newer-document-disagrees`; every other row is `new-disagreement`.
  */
 export async function scanNewDisagreements(deps: NewDisagreementScanDeps): Promise<NewDisagreementScanResult> {
   const now = deps.now ?? new Date();
   const mark = await deps.getMark();
-  const since = mark ?? new Date(now.getTime() - NEW_CONFLICT_FIRST_LOOKBACK_MS);
+  let since: Date;
+  if (mark) {
+    since = new Date(mark.getTime() - NEW_CONFLICT_OVERLAP_MS);
+  } else {
+    let last: Date | null = null;
+    try {
+      last = deps.getLastDigestAt ? await deps.getLastDigestAt() : null;
+    } catch (err) {
+      logger.warn({ reason: err instanceof Error ? err.message : String(err) }, 'Admin instant scan: last-digest read failed - using 60 min');
+    }
+    since = last && last.getTime() < now.getTime() ? last : new Date(now.getTime() - NEW_CONFLICT_FIRST_LOOKBACK_MS);
+  }
   const rows = await deps.loadNewConflicts(since);
   const outcomes: Record<AdminInstantOutcome['outcome'], number> = { sent: 0, 'already-sent': 0, unsent: 0, capped: 0, digest: 0 };
+  let unchanged = 0;
   for (const r of rows) {
+    const hash = conflictPairHash(r);
+    if ((await deps.getPairHash(r.conflictId)) === hash) {
+      unchanged++;
+      continue;
+    }
     const newerDocument = r.documentId !== null && r.source1 === 'ADMIN';
     const event: AdminInstantEvent = {
       type: newerDocument ? 'newer-document-disagrees' : 'new-disagreement',
@@ -589,16 +657,45 @@ export async function scanNewDisagreements(deps: NewDisagreementScanDeps): Promi
         : `${r.source1} ${r.value1 ?? '(empty)'} vs ${r.source2} ${r.value2 ?? '(empty)'}`,
       companyName: r.companyName ?? undefined,
     };
-    const out = await sendAdminInstant(event, deps.alert);
+    const out = await sendAdminInstant(event, deps.alert, { digestIfAlreadySent: true });
     outcomes[out.outcome]++;
+    if (out.outcome === 'unsent') continue;
+    try {
+      await deps.setPairHash(r.conflictId, hash);
+    } catch (err) {
+      // The event reached the owner or the digest; a lost hash only risks one repeat next wake.
+      logger.warn({ conflictId: r.conflictId, reason: err instanceof Error ? err.message : String(err) }, 'Admin instant scan: pair-hash write FAILED');
+    }
   }
   const markAdvanced = outcomes.unsent === 0;
   if (markAdvanced) await deps.setMark(now);
-  return { scanned: rows.length, outcomes, markAdvanced };
+  return { scanned: rows.length, unchanged, outcomes, markAdvanced };
 }
 
-/** Redis-backed timestamps (the scan mark, the last digest send), one key each, a week of life. */
-export function redisTimestamp(redis: { get(key: string): Promise<string | null>; set(...args: unknown[]): Promise<unknown> }, key: string) {
+/** A conflict's last alerted pair lives this long (data_conflicts rows are pruned well before). */
+export const CONFLICT_PAIR_TTL_SECONDS = 90 * 86_400;
+
+export const conflictPairKey = (env: string, conflictId: string): string => `admin-conflict-pair:${env}:${conflictId}`;
+
+/** Redis-backed per-conflict pair hashes. */
+export function redisConflictPairs(redis: { get(key: string): Promise<string | null>; set(...args: unknown[]): Promise<unknown> }, env: string) {
+  return {
+    get: async (conflictId: string): Promise<string | null> => redis.get(conflictPairKey(env, conflictId)),
+    set: async (conflictId: string, hash: string): Promise<void> => {
+      await redis.set(conflictPairKey(env, conflictId), hash, 'EX', CONFLICT_PAIR_TTL_SECONDS);
+    },
+  };
+}
+
+/**
+ * Redis-backed timestamps (the scan mark, the last digest send), one key each. `ttlSeconds` null writes
+ * no expiry: the scan mark must never lapse (a lapsed mark silently narrows the next scan).
+ */
+export function redisTimestamp(
+  redis: { get(key: string): Promise<string | null>; set(...args: unknown[]): Promise<unknown> },
+  key: string,
+  ttlSeconds: number | null = 7 * 86_400
+) {
   return {
     get: async (): Promise<Date | null> => {
       const v = await redis.get(key);
@@ -606,7 +703,8 @@ export function redisTimestamp(redis: { get(key: string): Promise<string | null>
       return Number.isNaN(ms) ? null : new Date(ms);
     },
     set: async (at: Date): Promise<void> => {
-      await redis.set(key, at.toISOString(), 'EX', 7 * 86_400);
+      if (ttlSeconds === null) await redis.set(key, at.toISOString());
+      else await redis.set(key, at.toISOString(), 'EX', ttlSeconds);
     },
   };
 }
@@ -615,10 +713,12 @@ export const newConflictMarkKey = (env: string): string => `admin-new-conflict-m
 export const digestLastSentKey = (env: string): string => `admin-digest-last-sent:${env}`;
 
 /**
- * data_conflicts rows created since `since` that are real disagreements the admin must see: open,
+ * data_conflicts rows DETECTED since `since` that are real disagreements the admin must see: open,
  * two different sources (or an OD-90 corrigendum suggestion, which may carry the same label twice),
- * not an OD-75 admin-only record, not a writer bookkeeping field (F-181). created_at is naive UTC,
- * so `since` is bound as an ISO string (ist-timezone rule).
+ * not an OD-75 admin-only record, not a writer bookkeeping field (F-181). detected_at, not created_at:
+ * upsertConflict refreshes an open row in place and resets only detected_at. detected_at is a naive
+ * `timestamp` holding UTC (drizzle writes new Date() as an ISO string; the pool runs timezone=UTC), and
+ * this raw sql template binds `since` as an ISO string (ist-timezone rule: raw parameters take strings).
  */
 export function dbNewConflictsLoader(db: Db) {
   return async (since: Date): Promise<NewConflictRow[]> => {
@@ -627,14 +727,14 @@ export function dbNewConflictsLoader(db: Db) {
     const result = await db.execute(sql`
       SELECT c.id::text AS conflict_id, c.ipo_id::text AS ipo_id, i.slug, i.company_name, i.status::text AS status,
              c.table_name, c.field_name, c.source1::text AS source1, c.value1, c.source2::text AS source2, c.value2,
-             c.document_id::text AS document_id
+             c.document_id::text AS document_id, c.detected_at::text AS detected_at
         FROM data_conflicts c JOIN ipos i ON i.id = c.ipo_id
        WHERE c.resolved_at IS NULL
-         AND c.created_at >= ${since.toISOString()}::timestamp
+         AND c.detected_at >= ${since.toISOString()}::timestamp
          AND (c.source1::text <> c.source2::text OR c.document_id IS NOT NULL)
          AND (c.resolution_reason IS NULL OR NOT (c.resolution_reason = ANY(${od75}::text[])))
          AND NOT (c.field_name = ANY(${bookkeeping}::text[]))
-       ORDER BY c.created_at, c.id
+       ORDER BY c.detected_at, c.id
     `);
     return rowsOf(result).map((r) => ({
       conflictId: String(r.conflict_id),
@@ -649,6 +749,7 @@ export function dbNewConflictsLoader(db: Db) {
       source2: String(r.source2),
       value2: (r.value2 as string | null) ?? null,
       documentId: (r.document_id as string | null) ?? null,
+      detectedAt: String(r.detected_at),
     }));
   };
 }

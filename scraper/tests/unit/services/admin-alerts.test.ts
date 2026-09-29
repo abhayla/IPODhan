@@ -17,6 +17,9 @@ import {
   ADMIN_INSTANT_CAP_PER_WAKE,
   beginAdminAlertWake,
   scanNewDisagreements,
+  conflictPairHash,
+  redisTimestamp,
+  NEW_CONFLICT_OVERLAP_MS,
   publicBaseUrl,
   editorLink,
   type NewConflictRow,
@@ -309,11 +312,17 @@ function conflictRow(i: number, over: Partial<NewConflictRow> = {}): NewConflict
   };
 }
 
-function scanDeps(rows: NewConflictRow[], alert: AdminAlertDeps, mark: { at: Date | null } = { at: null }) {
+function scanDeps(
+  rows: NewConflictRow[],
+  alert: AdminAlertDeps,
+  mark: { at: Date | null } = { at: null },
+  pairs: Map<string, string> = new Map()
+) {
   const sinceSeen: Date[] = [];
   return {
     mark,
     sinceSeen,
+    pairs,
     deps: {
       now: NOON_IST,
       loadNewConflicts: async (since: Date) => {
@@ -323,6 +332,10 @@ function scanDeps(rows: NewConflictRow[], alert: AdminAlertDeps, mark: { at: Dat
       getMark: async () => mark.at,
       setMark: async (at: Date) => {
         mark.at = at;
+      },
+      getPairHash: async (id: string) => pairs.get(id) ?? null,
+      setPairHash: async (id: string, h: string) => {
+        pairs.set(id, h);
       },
       alert,
     },
@@ -381,7 +394,8 @@ describe('scanNewDisagreements (the real instant emitter, MAJOR)', () => {
     const r = await scanNewDisagreements(s.deps);
     expect(r.markAdvanced).toBe(false);
     expect(s.mark.at?.toISOString()).toBe('2026-09-29T08:00:00.000Z');
-    expect(s.sinceSeen[0].toISOString()).toBe('2026-09-29T08:00:00.000Z');
+    // Round 3 (MINOR 2): the scan rereads 15 minutes before its mark.
+    expect(s.sinceSeen[0].toISOString()).toBe('2026-09-29T07:45:00.000Z');
   });
 });
 
@@ -463,5 +477,171 @@ describe('absolute links per slot (MINOR 5)', () => {
     process.env.DEPLOY_SLOT = 'prod';
     expect(editorLink('anand-seamless-ltd', 'ipos.closeDate')).toBe('https://ipodhan.com/ipos/anand-seamless-ltd?edit=ipos.closeDate');
     expect(editorLink('x')).toMatch(/^https:\/\//);
+  });
+});
+
+// ------------------------------------------------ round 3: a disagreement is its VALUE PAIR, not its row
+
+/**
+ * A fake data_conflicts table with the REAL write semantics of DataConflictsRepository.upsertConflict
+ * (data-conflicts-repository.ts): an open row for the same field is updated in place (new values,
+ * detected_at reset to the writer's clock) and its created_at never moves. The loader filters on
+ * detected_at, as dbNewConflictsLoader does.
+ */
+function fakeConflictTable() {
+  const rows = new Map<string, NewConflictRow & { createdAt: string }>();
+  return {
+    rows,
+    upsert(id: string, at: Date, over: Partial<NewConflictRow>) {
+      const prev = rows.get(id);
+      const base = prev ?? { ...conflictRow(7, { conflictId: id }), createdAt: at.toISOString() };
+      rows.set(id, { ...base, ...over, conflictId: id, detectedAt: at.toISOString() });
+    },
+    load: async (since: Date) => [...rows.values()].filter((r) => Date.parse(r.detectedAt!) >= since.getTime()),
+  };
+}
+
+function tableScanDeps(
+  table: ReturnType<typeof fakeConflictTable>,
+  now: Date,
+  alert: AdminAlertDeps,
+  state: { mark: Date | null; pairs: Map<string, string> }
+) {
+  return {
+    now,
+    loadNewConflicts: table.load,
+    getMark: async () => state.mark,
+    setMark: async (at: Date) => {
+      state.mark = at;
+    },
+    getPairHash: async (id: string) => state.pairs.get(id) ?? null,
+    setPairHash: async (id: string, h: string) => {
+      state.pairs.set(id, h);
+    },
+    alert,
+  };
+}
+
+const DAY1 = new Date('2026-09-29T08:30:00Z'); // 14:00 IST
+const DAY2 = new Date('2026-09-30T08:30:00Z'); // 14:00 IST next day
+
+describe('round 3: every new or changed disagreement alerts once, however it arrives', () => {
+  it('(1) an open row REFRESHED in place by upsertConflict with a NEW value pair alerts (created_at untouched)', async () => {
+    const table = fakeConflictTable();
+    const state = { mark: null as Date | null, pairs: new Map<string, string>() };
+    table.upsert('c-refresh', new Date(DAY1.getTime() - 10 * 60_000), { value1: '100', value2: '120' });
+    await scanNewDisagreements(tableScanDeps(table, DAY1, memoryDeps(DAY1), state));
+    expect(received).toHaveLength(1);
+    const created = table.rows.get('c-refresh')!.createdAt;
+    // Next day, the same open row is refreshed with a different pair.
+    beginAdminAlertWake();
+    table.upsert('c-refresh', new Date(DAY2.getTime() - 5 * 60_000), { value1: '100', value2: '150' });
+    expect(table.rows.get('c-refresh')!.createdAt).toBe(created);
+    const r = await scanNewDisagreements(tableScanDeps(table, DAY2, memoryDeps(DAY2), state));
+    expect(received).toHaveLength(2);
+    expect(String(received[1].body.body)).toContain('NSE 100 vs BSE 150');
+    expect(r.outcomes.sent).toBe(1);
+  });
+
+  it('(1b) a changed pair the same IST day (instant already used) reaches the digest store exactly once', async () => {
+    const table = fakeConflictTable();
+    const state = { mark: null as Date | null, pairs: new Map<string, string>() };
+    const recorded: RecordedAdminEvent[] = [];
+    const claims = new Set<string>();
+    table.upsert('c-sameday', new Date(DAY1.getTime() - 10 * 60_000), { value2: '120' });
+    await scanNewDisagreements(tableScanDeps(table, DAY1, memoryDeps(DAY1, recorded, claims), state));
+    const later = new Date(DAY1.getTime() + 30 * 60_000);
+    table.upsert('c-sameday', new Date(later.getTime() - 60_000), { value2: '175' });
+    beginAdminAlertWake();
+    await scanNewDisagreements(tableScanDeps(table, later, memoryDeps(later, recorded, claims), state));
+    // A third wake with nothing new: the pair is unchanged, nothing more is recorded.
+    beginAdminAlertWake();
+    const third = new Date(later.getTime() + 30 * 60_000);
+    await scanNewDisagreements(tableScanDeps(table, third, memoryDeps(third, recorded, claims), state));
+    expect(received).toHaveLength(1);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0].detail).toContain('BSE 175');
+  });
+
+  it('(2) the same row refreshed with the SAME pair produces nothing (no send, no digest entry)', async () => {
+    const table = fakeConflictTable();
+    const state = { mark: null as Date | null, pairs: new Map<string, string>() };
+    table.upsert('c-same', new Date(DAY1.getTime() - 10 * 60_000), { value1: '100', value2: '120' });
+    await scanNewDisagreements(tableScanDeps(table, DAY1, memoryDeps(DAY1), state));
+    expect(received).toHaveLength(1);
+    beginAdminAlertWake();
+    const recorded: RecordedAdminEvent[] = [];
+    table.upsert('c-same', new Date(DAY2.getTime() - 5 * 60_000), { value1: '100', value2: '120' });
+    const r = await scanNewDisagreements(tableScanDeps(table, DAY2, memoryDeps(DAY2, recorded), state));
+    expect(received).toHaveLength(1);
+    expect(recorded).toHaveLength(0);
+    expect(r.unchanged).toBe(1);
+    expect(r.outcomes.sent).toBe(0);
+  });
+
+  it('(3) a row stamped before the mark but committed after it is still caught (overlap window)', async () => {
+    const table = fakeConflictTable();
+    const state = { mark: null as Date | null, pairs: new Map<string, string>() };
+    // Scan 1 at DAY1 sees nothing: the writer's transaction has not committed yet.
+    await scanNewDisagreements(tableScanDeps(table, DAY1, memoryDeps(DAY1), state));
+    expect(state.mark?.toISOString()).toBe(DAY1.toISOString());
+    // The writer stamped detected_at 5 minutes BEFORE the mark and committed after the scan.
+    table.upsert('c-late', new Date(DAY1.getTime() - 5 * 60_000), { value2: '130' });
+    const next = new Date(DAY1.getTime() + 30 * 60_000);
+    beginAdminAlertWake();
+    const r = await scanNewDisagreements(tableScanDeps(table, next, memoryDeps(next), state));
+    expect(r.outcomes.sent).toBe(1);
+    expect(received).toHaveLength(1);
+    expect(NEW_CONFLICT_OVERLAP_MS).toBe(15 * 60_000);
+  });
+
+  it('an unsent alert does not store the pair, so the next wake retries it', async () => {
+    nextStatus = 500;
+    const table = fakeConflictTable();
+    const state = { mark: null as Date | null, pairs: new Map<string, string>() };
+    table.upsert('c-retry', new Date(DAY1.getTime() - 60_000), {});
+    const r = await scanNewDisagreements(tableScanDeps(table, DAY1, memoryDeps(DAY1), state));
+    expect(r.outcomes.unsent).toBe(1);
+    expect(state.pairs.size).toBe(0);
+    nextStatus = 200;
+    beginAdminAlertWake();
+    const r2 = await scanNewDisagreements(tableScanDeps(table, DAY1, memoryDeps(DAY1), state));
+    expect(r2.outcomes.sent).toBe(1);
+  });
+
+  it('conflictPairHash changes with any source or value and is stable otherwise', () => {
+    const a = conflictRow(1);
+    expect(conflictPairHash(a)).toBe(conflictPairHash({ ...a, slug: 'other', status: 'CLOSED' }));
+    expect(conflictPairHash(a)).not.toBe(conflictPairHash({ ...a, value2: '121' }));
+    expect(conflictPairHash(a)).not.toBe(conflictPairHash({ ...a, source2: 'CHITTORGARH' }));
+    expect(conflictPairHash({ ...a, value1: null })).not.toBe(conflictPairHash({ ...a, value1: '' }));
+  });
+});
+
+describe('round 3 MINOR 3: the scan mark never expires; a missing mark falls back to the last digest', () => {
+  it('redisTimestamp with ttl null writes no EX', async () => {
+    const calls: unknown[][] = [];
+    const store = redisTimestamp(
+      {
+        get: async () => null,
+        set: async (...a: unknown[]) => {
+          calls.push(a);
+        },
+      },
+      'k',
+      null
+    );
+    await store.set(DAY1);
+    expect(calls[0]).toEqual(['k', DAY1.toISOString()]);
+  });
+
+  it('no mark: the scan starts at the last digest send; neither: 60 minutes back', async () => {
+    const last = new Date('2026-09-29T03:30:00Z');
+    const s = scanDeps([], memoryDeps(NOON_IST));
+    await scanNewDisagreements({ ...s.deps, getLastDigestAt: async () => last });
+    expect(s.sinceSeen[0].toISOString()).toBe(last.toISOString());
+    const s2 = scanDeps([], memoryDeps(NOON_IST));
+    await scanNewDisagreements({ ...s2.deps, getLastDigestAt: async () => null });
+    expect(s2.sinceSeen[0].toISOString()).toBe(new Date(NOON_IST.getTime() - 3_600_000).toISOString());
   });
 });

@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
+import { DataConflictsRepository } from '@ipodhan/shared/repositories';
 import { dbQueueCountsLoader, dbAuditEventsLoader, dbNewConflictsLoader } from '../../src/services/admin-alerts.js';
 
 /**
@@ -41,15 +42,15 @@ beforeAll(async () => {
   // A real cross-source disagreement, a same-source row (never counted), a bookkeeping field (F-181),
   // an old row created before the scan window, and a corrigendum suggestion on an ADMIN value.
   await db.execute(sql`
-    INSERT INTO data_conflicts (ipo_id, table_name, row_key, field_name, source1, value1, source2, value2, severity, created_at)
-    VALUES (${IPO_OPEN}::uuid, 'ipos', '', 'issueSize', 'NSE', '100', 'BSE', '120', 'WARNING', '2026-09-29 08:00:00'),
-           (${IPO_OPEN}::uuid, 'ipos', '', 'lotSize', 'NSE', '10', 'NSE', '12', 'INFO', '2026-09-29 08:00:00'),
-           (${IPO_OPEN}::uuid, 'ipos', '', 'lastScrapedAt', 'NSE', 'a', 'BSE', 'b', 'INFO', '2026-09-29 08:00:00'),
-           (${IPO_LISTED}::uuid, 'ipos', '', 'priceRangeMax', 'NSE', '50', 'BSE', '51', 'WARNING', '2026-09-20 08:00:00')
+    INSERT INTO data_conflicts (ipo_id, table_name, row_key, field_name, source1, value1, source2, value2, severity, created_at, detected_at)
+    VALUES (${IPO_OPEN}::uuid, 'ipos', '', 'issueSize', 'NSE', '100', 'BSE', '120', 'WARNING', '2026-09-29 08:00:00', '2026-09-29 08:00:00'),
+           (${IPO_OPEN}::uuid, 'ipos', '', 'lotSize', 'NSE', '10', 'NSE', '12', 'INFO', '2026-09-29 08:00:00', '2026-09-29 08:00:00'),
+           (${IPO_OPEN}::uuid, 'ipos', '', 'lastScrapedAt', 'NSE', 'a', 'BSE', 'b', 'INFO', '2026-09-29 08:00:00', '2026-09-29 08:00:00'),
+           (${IPO_LISTED}::uuid, 'ipos', '', 'priceRangeMax', 'NSE', '50', 'BSE', '51', 'WARNING', '2026-09-20 08:00:00', '2026-09-20 08:00:00')
   `);
   await db.execute(sql`
-    INSERT INTO data_conflicts (ipo_id, table_name, row_key, field_name, source1, value1, source2, value2, severity, document_id, suggestion_key, created_at)
-    VALUES (${IPO_OPEN}::uuid, 'ipos', '', 'closeDate', 'ADMIN', '2026-09-30', 'DRHP', '2026-10-02', 'WARNING', NULL, 'item16-it-suggestion', '2026-09-29 08:05:00')
+    INSERT INTO data_conflicts (ipo_id, table_name, row_key, field_name, source1, value1, source2, value2, severity, document_id, suggestion_key, created_at, detected_at)
+    VALUES (${IPO_OPEN}::uuid, 'ipos', '', 'closeDate', 'ADMIN', '2026-09-30', 'DRHP', '2026-10-02', 'WARNING', NULL, 'item16-it-suggestion', '2026-09-29 08:05:00', '2026-09-29 08:05:00')
   `);
   await db.execute(sql`
     INSERT INTO audit_logs (timestamp, admin_user, action_type, ipo_id, table_name, field_name, old_value, new_value)
@@ -83,11 +84,45 @@ describe.skipIf(!DATABASE_URL)('admin-alert loaders on a real database', () => {
     expect(mine[0].at.startsWith('2026-09-29 07:00:00')).toBe(true);
   });
 
-  it('dbNewConflictsLoader returns only rows created since the mark that are real disagreements', async () => {
-    const rows = (await dbNewConflictsLoader(db as never)(new Date('2026-09-29T07:59:00Z'))).filter((r) => IDS.includes(r.ipoId));
+  it('dbNewConflictsLoader returns only rows detected since the mark that are real disagreements', async () => {
+    const rows = (await dbNewConflictsLoader(db as never)(new Date('2026-09-29T07:59:00Z')))
+      .filter((r) => IDS.includes(r.ipoId))
+      .filter((r) => r.detectedAt!.startsWith('2026-09-29'));
     expect(rows.map((r) => r.fieldName)).toEqual(['issueSize', 'closeDate']);
     expect(rows[1]).toMatchObject({ source1: 'ADMIN', value1: '2026-09-30', source2: 'DRHP', value2: '2026-10-02', status: 'OPEN' });
-    const later = (await dbNewConflictsLoader(db as never)(new Date('2026-09-29T08:01:00Z'))).filter((r) => IDS.includes(r.ipoId));
+    const later = (await dbNewConflictsLoader(db as never)(new Date('2026-09-29T08:01:00Z')))
+      .filter((r) => IDS.includes(r.ipoId))
+      .filter((r) => r.detectedAt!.startsWith('2026-09-29'));
     expect(later.map((r) => r.fieldName)).toEqual(['closeDate']);
+  });
+
+  it('round 3: an OLD open row refreshed in place by the REAL upsertConflict is returned with its new pair', async () => {
+    // Created 2026-09-20: created_at is days before any mark, as for most live disagreements.
+    await db!.execute(sql`
+      INSERT INTO data_conflicts (ipo_id, table_name, row_key, field_name, source1, value1, source2, value2, severity, created_at, detected_at)
+      VALUES (${IPO_LISTED}::uuid, 'ipos', '', 'priceRangeMin', 'NSE', '40', 'BSE', '41', 'WARNING', '2026-09-20 08:00:00', '2026-09-20 08:00:00')
+    `);
+    const since = new Date(Date.now() - 60_000);
+    const before = (await dbNewConflictsLoader(db as never)(since)).filter((r) => r.ipoId === IPO_LISTED);
+    expect(before.map((r) => r.fieldName)).toEqual([]);
+    const redisStub = { del: async () => 0, keys: async () => [] as string[] };
+    const repo = new DataConflictsRepository(db as never, redisStub as never);
+    await repo.upsertConflict({
+      ipoId: IPO_LISTED,
+      tableName: 'ipos',
+      fieldName: 'priceRangeMin',
+      source1: 'NSE',
+      value1: '40',
+      source2: 'BSE',
+      value2: '44',
+      severity: 'WARNING',
+    } as never);
+    const after = (await dbNewConflictsLoader(db as never)(since)).filter((r) => r.ipoId === IPO_LISTED);
+    expect(after.map((r) => r.fieldName)).toEqual(['priceRangeMin']);
+    expect(after[0]).toMatchObject({ source1: 'NSE', value1: '40', source2: 'BSE', value2: '44', status: 'LISTED' });
+    const created = await db!.execute(sql`
+      SELECT created_at::text AS c FROM data_conflicts WHERE ipo_id = ${IPO_LISTED}::uuid AND field_name = 'priceRangeMin'
+    `);
+    expect(String((created as { rows: Array<{ c: string }> }).rows[0].c)).toBe('2026-09-20 08:00:00');
   });
 });

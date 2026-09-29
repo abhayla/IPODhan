@@ -43,6 +43,7 @@ import {
   redisTimestamp,
   newConflictMarkKey,
   digestLastSentKey,
+  redisConflictPairs,
 } from './services/admin-alerts.js';
 import { CLI_SOURCE_ARGS } from './config/runnable-sources.js';
 import {
@@ -2416,19 +2417,25 @@ async function triggerAdminDigest(): Promise<StepResult> {
 }
 
 /**
- * §9.2 item 16 (OD-112) instant level: every data_conflicts row created since the last scan that is a
- * real disagreement goes through sendAdminInstant (UPCOMING/OPEN: instant, capped per wake; others:
+ * §9.2 item 16 (OD-112) instant level: every data_conflicts row whose value pair is new or changed since
+ * it was last alerted (inserted, or refreshed in place by upsertConflict) goes through sendAdminInstant (UPCOMING/OPEN: instant, capped per wake; others:
  * the digest store). A Notifier failure never fails a data write: this step runs after them, reads
  * only, and an unsent alert is retried next wake (the mark does not advance).
  */
 async function triggerAdminInstantAlerts(): Promise<StepResult> {
   const env = process.env.DEPLOY_SLOT ?? 'unknown-env';
   const redis = getRedisClient() as unknown as Parameters<typeof redisTimestamp>[0];
-  const mark = redisTimestamp(redis, newConflictMarkKey(env));
+  // The mark never expires (null TTL); a missing mark falls back to the last digest send, then 60 min.
+  const mark = redisTimestamp(redis, newConflictMarkKey(env), null);
+  const lastDigest = redisTimestamp(redis, digestLastSentKey(env));
+  const pairs = redisConflictPairs(redis, env);
   const r = await scanNewDisagreements({
     loadNewConflicts: dbNewConflictsLoader(db as unknown as Parameters<typeof dbNewConflictsLoader>[0]),
     getMark: mark.get,
     setMark: mark.set,
+    getPairHash: pairs.get,
+    setPairHash: pairs.set,
+    getLastDigestAt: lastDigest.get,
   });
   logger.info(r, 'Admin instant alerts step');
   if (!r.markAdvanced) return { status: 'failed', reason: `admin instant alerts: ${r.outcomes.unsent} unsent, retried next wake` };
