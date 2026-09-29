@@ -9,7 +9,7 @@ import { withAdminAuth, getAdminIdentity } from '@/lib/middleware/admin-auth';
 import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { ipos } from '@ipodhan/shared/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { invalidateProtectionCache } from '@/lib/admin/field-protection-checker';
 import { sendNotification } from '@/lib/services/notification-service';
 import { logAudit, AuditActionTypes, getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
@@ -100,7 +100,7 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext, { 
       .set({
         scraperLocked,
         scraperLockNote: scraperLockNote || null,
-        lastManualEditAt: new Date(),
+        lastManualEditAt: sql`now()`,
       })
       .where(eq(ipos.id, ipoId))
       .returning({

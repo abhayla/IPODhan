@@ -352,7 +352,7 @@ export async function acceptCorrigendumSuggestion(
           resolvedSource: 'ADMIN',
           resolutionReason: CORRIGENDUM_ACCEPTED,
           resolvedBy: adminName,
-          resolvedAt: new Date(),
+          resolvedAt: sql`now()`,
           adminNote: note ?? null,
         })
         .where(and(eq(dataConflicts.id, conflictId), isNull(dataConflicts.resolvedAt)))
@@ -417,7 +417,7 @@ export async function dismissCorrigendumSuggestion(
       resolvedSource: row.source1,
       resolutionReason: CORRIGENDUM_DISMISSED,
       resolvedBy: adminName,
-      resolvedAt: new Date(),
+      resolvedAt: sql`now()`,
       adminNote: note ?? null,
     })
     // Re-check it is still open: a dismiss racing an accept must not overwrite the accept.

@@ -317,7 +317,7 @@ export async function setSourceKeyState(
   if (keyIds.length === 0) return 0;
   const res = await db
     .update(ipoSourceKeys)
-    .set({ state, bindingValue: null, stateReason: reason, stateChangedAt: new Date() })
+    .set({ state, bindingValue: null, stateReason: reason, stateChangedAt: sql`now()` })
     .where(and(inArray(ipoSourceKeys.id, [...keyIds]), inArray(ipoSourceKeys.state, ['ACTIVE', 'SUPERSEDED'])))
     .returning({ id: ipoSourceKeys.id });
   return res.length;
@@ -517,7 +517,7 @@ export async function recordSourceKeys(
         .set({
           state: 'SUPERSEDED',
           supersededBy: inserted.id,
-          stateChangedAt: new Date(),
+          stateChangedAt: sql`now()`,
           stateReason: `OD-83 relaunch: superseded by ${ref.keyValue} (${od83Supersedes(old, ref).reason})`,
         })
         .where(eq(ipoSourceKeys.id, old.id));
@@ -613,7 +613,7 @@ export async function supersedeOlderKeysOnRelaunchMerge(
     if (!newer) continue;
     await tx
       .update(ipoSourceKeys)
-      .set({ state: 'SUPERSEDED', supersededBy: newer.id, stateChangedAt: new Date(), stateReason: `OD-86 relaunch merge: superseded by ${newer.keyValue} (${reason})` })
+      .set({ state: 'SUPERSEDED', supersededBy: newer.id, stateChangedAt: sql`now()`, stateReason: `OD-86 relaunch merge: superseded by ${newer.keyValue} (${reason})` })
       .where(and(eq(ipoSourceKeys.id, old.id), eq(ipoSourceKeys.state, 'ACTIVE')));
     superseded.push(old.id);
     logger.info({ older: old.keyValue, newer: newer.keyValue }, '[OD-86] relaunch merge - older source key SUPERSEDED');

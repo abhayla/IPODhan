@@ -26,6 +26,7 @@
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '../db/schema';
+import { readDatabaseNow } from '../db/database-clock';
 import { ipoIdentifierAliases, ipoSourceKeys, ipos } from '../db/schema';
 import { normalizeCin } from '../utils/cin';
 import { ADMIN_EDIT_REASON_PREFIX, ENDED_STATUSES } from '../repositories/ipo-source-keys';
@@ -176,7 +177,7 @@ async function moveNseKeys(
     .from(ipoSourceKeys)
     .where(and(eq(ipoSourceKeys.ipoId, ipoId), eq(ipoSourceKeys.keyType, 'NSE_ISSUE')));
   const moved: string[] = [];
-  const now = new Date();
+  const now = await readDatabaseNow(tx);
   for (const k of mine) {
     if (k.state !== 'ACTIVE') continue;
     const [sym, ...rest] = k.keyValue.split('|');
@@ -249,7 +250,7 @@ export async function keepReplacedIdentifier(tx: Db, input: IdentifierEditInput)
   const reason = `${ADMIN_EDIT_REASON_PREFIX} ${fieldName} ${oldNorm ?? '(empty)'} -> ${newNorm ?? '(empty)'} by ${adminName}`;
 
   if (fieldName === 'bseIpoNo') {
-    const now = new Date();
+    const now = await readDatabaseNow(tx);
     const mine = await tx
       .select()
       .from(ipoSourceKeys)

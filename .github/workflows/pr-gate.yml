@@ -307,6 +307,16 @@ jobs:
           node --test scripts/tests/check-drizzle-iso-string.test.mjs
           node scripts/ci/check-drizzle-iso-string.mjs
 
+      - name: App-clock timestamp ratchet (mixed-clock-ordering, F-210)
+        # A time ordered against a database-stamped time (documents.created_at, data_conflicts.detected_at)
+        # must come from the database clock. Fails on a NEW `fooAt: new Date()` / `timestamp: new Date()`
+        # in packages/shared/src/{services,repositories,admin} or web/app/api/admin that is neither in
+        # scripts/ci/app-clock-timestamps-baseline.json (with a reason) nor marked `// app-clock-ok: <reason>`.
+        # Self-test is mutation-proof: red on a planted detectedAt: new Date(), green on sql`now()`.
+        run: |
+          node --test scripts/ci/tests/check-app-clock-timestamps.test.mjs
+          node scripts/ci/check-app-clock-timestamps.mjs
+
       - name: Deleted-file-still-referenced gate (#1193, deleted-file-still-referenced-by-ci)
         # A PR that deletes a file but leaves a test, a fixture list or a baseline JSON still
         # naming it goes red one reference per round (#1189: a stale count in
@@ -1291,6 +1301,7 @@ jobs:
           tests/integration/scraper-writers-honour-hold.integration.test.ts
           tests/integration/field-plan-walk-held-field-read.integration.test.ts
           tests/integration/newer-document-suggestions.integration.test.ts
+          tests/integration/admin-write-database-clock.integration.test.ts
           tests/integration/admin-alerts-loaders.integration.test.ts
           tests/integration/identifier-aliases-item26.integration.test.ts
           tests/integration/status-forward-only.integration.test.ts

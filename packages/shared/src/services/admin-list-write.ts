@@ -19,6 +19,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import * as schema from '../db/schema';
+import { readDatabaseNow } from '../db/database-clock';
 import {
   anchorInvestors,
   auditLogs,
@@ -213,7 +214,7 @@ export async function writeAdminListChange(db: Db, input: AdminListChangeInput):
       }
       const next = applyListOp(list, before, op);
       if ('invalid' in next) throw new Refusal({ kind: 'INVALID', reason: next.invalid });
-      const now = new Date();
+      const now = await readDatabaseNow(tx);
       await writeList(tx, ipoId, list, before, next.rows, now);
 
       const labels = (rows: readonly Row[]) => rows.map((r) => spec.label(r));

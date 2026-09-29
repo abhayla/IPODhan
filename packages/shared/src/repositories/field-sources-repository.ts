@@ -267,7 +267,7 @@ export class FieldSourcesRepository extends BaseRepository {
             // for them").
             witnesses: input.witnesses ? (input.witnesses as unknown) : null,
             verdict: input.verdict ?? null,
-            updatedAt: new Date(),
+            updatedAt: sql`now()`,
             updatedBy: input.updatedBy || 'SYSTEM',
           })
           .onConflictDoUpdate({

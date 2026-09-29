@@ -10,7 +10,7 @@
  * - Dependency injection for database and Redis
  */
 
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { ipos, fieldProtectionMetadata } from '../db/schema';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '../db/schema';
@@ -409,7 +409,7 @@ export class FieldProtectionService {
         fieldName,
         isProtected: autoProtect,
         autoProtected: autoProtect,
-        manuallyEditedAt: new Date(),
+        manuallyEditedAt: sql`now()`,
         manuallyEditedBy: editedBy,
         editNote,
       })
@@ -422,17 +422,17 @@ export class FieldProtectionService {
         set: {
           isProtected: autoProtect,
           autoProtected: autoProtect,
-          manuallyEditedAt: new Date(),
+          manuallyEditedAt: sql`now()`,
           manuallyEditedBy: editedBy,
           editNote,
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         },
       });
 
     // Update IPO last_manual_edit_at
     await this.db
       .update(ipos)
-      .set({ lastManualEditAt: new Date() })
+      .set({ lastManualEditAt: sql`now()` })
       .where(eq(ipos.id, ipoId));
 
     // Invalidate cache

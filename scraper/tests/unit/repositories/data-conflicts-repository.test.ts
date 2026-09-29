@@ -17,6 +17,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
+import { SQL } from 'drizzle-orm';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories';
 import { dataConflicts } from '@shared/db/schema';
 import type Redis from 'ioredis';
@@ -257,7 +258,8 @@ describe('DataConflictsRepository (T-286F direct tests)', () => {
         resolutionReason: 'AUTO_RESOLVED_VALUES_CONVERGED',
         resolvedBy: 'SYSTEM',
       });
-      expect(capturedSet?.resolvedAt).toBeInstanceOf(Date);
+      // F-210: stamped by the database clock (sql now()), never the app host clock.
+      expect(capturedSet?.resolvedAt).toBeInstanceOf(SQL);
 
       // Only an OPEN (resolved_at IS NULL) conflict for this exact field can match.
       // Item 1 slice s3: the query is now row_key-scoped too -- the 3-arg call shape
