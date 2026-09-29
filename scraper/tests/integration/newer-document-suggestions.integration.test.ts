@@ -6,11 +6,13 @@ import { Redis } from 'ioredis';
 import * as schema from '../../../packages/shared/src/db/schema';
 import { IpoFieldPlanRepository } from '../../../packages/shared/src/repositories/ipo-field-plan-repository';
 import { writeAdminFieldValue, readAdminFieldVersion } from '../../../packages/shared/src/services/admin-field-write';
+import { rowKeyForName } from '../../../packages/shared/src/utils/company-name-normalizer';
 import {
   acceptCorrigendumSuggestion,
   dismissCorrigendumSuggestion,
   NEWER_DOCUMENT_ORIGIN,
 } from '../../../packages/shared/src/services/corrigendum-suggestions';
+import { recordNewerDocumentSuggestions } from '../../src/services/newer-document-suggestions.js';
 import type { FieldPlanWalkOrchestrator } from '../../src/services/field-plan-walk.js';
 
 /**
@@ -244,5 +246,152 @@ describe.skipIf(!DATABASE_URL)('a newer document after an admin save becomes a q
     const [row] = await db.select().from(schema.dataConflicts).where(eq(schema.dataConflicts.id, s.id));
     expect(row.resolvedAt).not.toBeNull();
     expect(row.resolutionReason).toBe('CORRIGENDUM_ACCEPTED');
+  }, 90000);
+});
+
+/**
+ * Core proof: `recordNewerDocumentSuggestions` (the walk's `onHeldFieldAnswers` seam, see the
+ * module docstring) works on a ROW TABLE — several rows per IPO, addressed by a row key — exactly
+ * as it does for `ipos`. Calls the seam function directly (it IS the newer-document suggestion
+ * path; the walk only invokes it after every held-field read) against a REAL admin-held
+ * `peer_companies.peRatio` value and a REAL newer-document receipt, both through the production
+ * `writeAdminFieldValue` / `readAdminFieldVersion` and the real `document_field_receipts` table.
+ */
+describe.skipIf(!DATABASE_URL)('a newer document creates a suggestion for an admin-held field on a row table (§9.2 item 9, peer_companies, ipodhan_test)', () => {
+  let pool: Pool;
+  let db: ReturnType<typeof drizzle<typeof schema>>;
+  const IPO = '00000000-0000-4000-8000-0000000009e1';
+  const SLUG = 'newer-document-suggestion-row-table-proof-ipo';
+  const COMPANY_NAME = 'Item9 Row Table Peer Ltd';
+  const ROW_KEY = rowKeyForName(COMPANY_NAME)!;
+  const ADMIN_PE = '21.50';
+  const DIFFERENT_PE = '18.75';
+  // The receipt's raw value is compared against normalizeReceiptValue(adminValue) verbatim (the
+  // service does not re-normalize the receipt side) — peer_companies.pe_ratio is numeric(10,2), so
+  // a read-back of '21.50' normalizes to '21.5'; the "equal" receipt must be written already in
+  // that normalized form to prove the equality path, not a formatting mismatch.
+  const EQUAL_PE = '21.5';
+  const actor = { name: 'item9-row-table-test-admin', adminId: 'admin-item9-row-it' };
+
+  async function cleanup() {
+    await db.execute(sql`DELETE FROM data_conflicts WHERE ipo_id = ${IPO}::uuid`);
+    await db.execute(sql`DELETE FROM audit_logs WHERE ipo_id = ${IPO}::uuid`);
+    await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO));
+    await db.delete(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO));
+    await db.execute(sql`DELETE FROM documents WHERE ipo_id = ${IPO}::uuid`);
+    await db.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, IPO));
+    await db.execute(sql`DELETE FROM ipos WHERE id = ${IPO}::uuid`);
+  }
+
+  async function addDocument(title: string, value: string, filingDate: string): Promise<string> {
+    const r = await db.execute(sql`
+      INSERT INTO documents (ipo_id, type, title, url, extraction_status, filing_date, created_at, uploaded_at)
+      VALUES (${IPO}::uuid, 'RHP', ${title}, ${`https://example.invalid/${encodeURIComponent(title)}.pdf`}, 'COMPLETED', ${filingDate}::date, now(), now())
+      RETURNING id::text AS id`);
+    const id = String((r.rows[0] as { id: string }).id);
+    await db.execute(sql`
+      INSERT INTO document_field_receipts (document_id, table_name, row_key, field_name, value)
+      VALUES (${id}::uuid, 'peer_companies', ${ROW_KEY}, 'peRatio', ${value})`);
+    return id;
+  }
+
+  async function suggestions() {
+    const rows = await db.select().from(schema.dataConflicts).where(eq(schema.dataConflicts.ipoId, IPO));
+    return rows.filter((r) => (r.evidence as { origin?: string } | null)?.origin === NEWER_DOCUMENT_ORIGIN);
+  }
+
+  async function adminSavePeRatio(value: string) {
+    const v = await readAdminFieldVersion(db as never, IPO, 'peer_companies', 'peRatio', { rowKey: ROW_KEY });
+    expect(v, 'readAdminFieldVersion must resolve the peer_companies row before the admin can save it').not.toBeNull();
+    const saved = await writeAdminFieldValue(db as never, {
+      ipoId: IPO,
+      tableName: 'peer_companies',
+      fieldName: 'peRatio',
+      value,
+      row: { rowKey: ROW_KEY },
+      mode: { kind: 'typed', sourceNote: 'RHP page 120' },
+      expectedVersion: v!.version,
+      actor,
+      entryPoint: 'test',
+      overrideReason: 'proof fixture',
+    });
+    expect(saved.kind, JSON.stringify(saved)).toBe('OK');
+  }
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' });
+    const current = (await pool.query('select current_database()')).rows[0].current_database as string;
+    if (current !== 'ipodhan_test') throw new Error(`Refusing to run: connected to '${current}', not 'ipodhan_test'.`);
+    db = drizzle(pool, { schema });
+    await cleanup();
+  }, 60000);
+
+  afterAll(async () => {
+    if (db) await cleanup();
+    await pool?.end();
+  }, 60000);
+
+  beforeEach(async () => {
+    await cleanup();
+    await db.execute(sql`
+      INSERT INTO ipos (id, company_name, slug, category, status, registrar, sector)
+      VALUES (${IPO}::uuid, 'Row Table Proof Limited', ${SLUG}, 'MAINBOARD', 'UPCOMING', 'Proof Registrar Ltd', 'Proof Sector')`);
+    await db.insert(schema.peerCompanies).values({
+      ipoId: IPO,
+      companyName: COMPANY_NAME,
+      normalizedName: ROW_KEY,
+      isListed: true,
+      peRatio: '15.00',
+    } as never);
+  });
+
+  it('a newer document with a DIFFERENT value inserts exactly one suggestion naming the document; an EQUAL value inserts none', async () => {
+    await adminSavePeRatio(ADMIN_PE);
+
+    const equalDoc = await addDocument('Item9 row-table equal RHP', EQUAL_PE, '2026-09-20');
+    const resultEqual = await recordNewerDocumentSuggestions(db as never, {
+      ipoId: IPO,
+      tableName: 'peer_companies',
+      rowKey: ROW_KEY,
+      fieldName: 'pe_ratio',
+    });
+    expect(resultEqual.newerDocuments).toBe(1);
+    expect(resultEqual.equal).toBe(1);
+    expect(resultEqual.inserted).toBe(0);
+    expect(await suggestions()).toHaveLength(0);
+
+    const newerDoc = await addDocument('Item9 row-table newer RHP', DIFFERENT_PE, '2026-09-21');
+    const resultDifferent = await recordNewerDocumentSuggestions(db as never, {
+      ipoId: IPO,
+      tableName: 'peer_companies',
+      rowKey: ROW_KEY,
+      fieldName: 'pe_ratio',
+    });
+    expect(resultDifferent.newerDocuments).toBe(2); // both the equal and the different doc are newer than the save
+    expect(resultDifferent.equal).toBe(1);
+    expect(resultDifferent.inserted).toBe(1);
+
+    const open = await suggestions();
+    expect(open.map((s) => s.documentId), JSON.stringify(open)).toEqual([newerDoc]);
+    expect(open.map((s) => s.documentId)).not.toContain(equalDoc);
+    const s1 = open[0];
+    expect(s1.tableName).toBe('peer_companies');
+    expect(s1.rowKey).toBe(ROW_KEY);
+    expect(s1.fieldName).toBe('peRatio');
+    expect(s1.source1).toBe('ADMIN');
+    expect(Number(s1.value1)).toBe(Number(ADMIN_PE));
+    expect(Number(s1.value2)).toBe(Number(DIFFERENT_PE));
+    expect(s1.resolvedAt).toBeNull();
+
+    // A repeat run raises no duplicate for the already-suggested document (item 25).
+    const resultAgain = await recordNewerDocumentSuggestions(db as never, {
+      ipoId: IPO,
+      tableName: 'peer_companies',
+      rowKey: ROW_KEY,
+      fieldName: 'pe_ratio',
+    });
+    expect(resultAgain.inserted).toBe(0);
+    expect(resultAgain.duplicates).toBe(1);
+    expect(await suggestions()).toHaveLength(1);
   }, 90000);
 });
