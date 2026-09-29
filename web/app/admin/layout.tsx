@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { AdminAuthProvider, useAdminAuth } from '@/lib/context/AdminAuthContext';
+import { AdminMobileNavToggle } from '@/components/admin/AdminMobileNavToggle';
 
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -53,17 +54,17 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       {/* Top Navigation Bar */}
       <nav className="bg-gray-800 border-b border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
+          <div className="flex justify-between items-center h-16">
             {/* Logo and Navigation */}
-            <div className="flex items-center space-x-8">
-              <Link href="/admin" className="flex items-center space-x-2">
+            <div className="flex items-center space-x-4 md:space-x-8 min-w-0">
+              <Link href="/admin" className="flex items-center space-x-2 shrink-0">
                 <span className="text-2xl font-bold text-white">IPODhan</span>
                 <span className="px-2 py-1 bg-blue-600 text-xs font-semibold rounded text-white">
                   ADMIN
                 </span>
               </Link>
 
-              <div className="flex space-x-4">
+              <div className="hidden md:flex space-x-4">
                 {navigation.map((item) => (
                   <Link
                     key={item.name}
@@ -81,8 +82,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            {/* User Actions */}
-            <div className="flex items-center space-x-4">
+            {/* User Actions (desktop) */}
+            <div className="hidden md:flex items-center space-x-4">
               {admin && (
                 <span className="text-gray-300 text-sm" data-testid="admin-signed-in-as">
                   {admin.adminName}
@@ -108,6 +109,38 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                 Logout
               </button>
             </div>
+
+            {/* Phone toggle (§9.2 item 21, OD-115) */}
+            <AdminMobileNavToggle navigation={navigation} pathname={pathname} />
+          </div>
+        </div>
+
+        {/* Phone-only user actions, shown under the collapsed menu's own list */}
+        <div className="md:hidden border-t border-gray-700 px-4 py-3 flex items-center justify-between">
+          {admin && (
+            <span className="text-gray-300 text-sm truncate" data-testid="admin-signed-in-as-mobile">
+              {admin.adminName}
+            </span>
+          )}
+          <div className="flex items-center space-x-3 shrink-0">
+            <a
+              href="/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center h-11 w-11 rounded-md text-gray-300 hover:bg-gray-700 hover:text-white"
+              aria-label="View site"
+            >
+              🌐
+            </a>
+            <button
+              onClick={async () => {
+                await logout();
+                router.push('/admin/login');
+              }}
+              className="px-3 py-2 min-h-[44px] bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition-colors"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </nav>
