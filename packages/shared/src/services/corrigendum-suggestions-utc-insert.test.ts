@@ -58,7 +58,7 @@ function makeStubDb(openRow: Record<string, unknown>) {
     const values = vi.fn(() => ({ onConflictDoUpdate: vi.fn().mockResolvedValue(undefined), then: (r: (v: unknown) => unknown) => Promise.resolve(undefined).then(r) }));
     return { values };
   });
-  const execute = vi.fn().mockResolvedValue({ rows: [{ slug: 'stub-ipo' }] });
+  const execute = vi.fn().mockResolvedValue({ rows: [{ slug: 'stub-ipo', db_now: '2026-09-29T00:00:00.000Z' }] });
 
   const tx: Record<string, unknown> = { select, update, insert, execute };
   const transaction = vi.fn().mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb(tx));

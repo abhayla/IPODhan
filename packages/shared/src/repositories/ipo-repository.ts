@@ -1852,7 +1852,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   ): Promise<void> {
     await tx
       .update(ipos)
-      .set({ [fieldName]: value, lastManualEditAt: new Date() } as never)
+      .set({ [fieldName]: value, lastManualEditAt: sql`now()` } as never)
       .where(eq(ipos.id, id));
   }
 

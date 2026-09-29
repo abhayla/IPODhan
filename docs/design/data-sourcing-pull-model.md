@@ -4034,6 +4034,10 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
    source, is marked as updated by admin, and no scraper or job replaces it for that IPO. Deleting
    a value keeps the field empty (OD-121): an admin empty value with a reason, which holds the same
    way; the reader sees the field as not available. A source's value comes back only by picking it.
+   Every time the save stores (provenance, hold, audit) is read from the database clock, once per
+   save, so ordering the save against a document or a conflict (items 9 and 27) uses one clock
+   (F-210: the app host's clock differs from the database's by about 0.3 s and nothing keeps them
+   in step).
 4. **Scope.** Every IPO. This includes the 19 OFS rows (OD-119): the scraper still skips them (OD-53),
    so every value is typed under item 12, and their page keeps the OD-53 non-IPO notice. **F-201
    (2026-09-28, open for owner decision):** as measured on `main`, only offering type IPO renders a

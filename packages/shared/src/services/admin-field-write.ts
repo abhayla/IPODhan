@@ -26,6 +26,7 @@ import { and, desc, eq, getTableColumns, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import * as schema from '../db/schema';
+import { readDatabaseNow } from '../db/database-clock';
 import {
   auditLogs,
   documents,
@@ -693,7 +694,7 @@ export async function writeAdminFieldValue(
         }
       }
 
-      const now = new Date();
+      const now = await readDatabaseNow(tx);
       let rowKey = target.rowKey;
       let identifierAlias: { aliasId: string | null; supersededKeyIds: string[]; activeKeyId: string | null } | null = null;
       let planRebuild: PlanRebuildSummary | undefined;

@@ -1291,6 +1291,7 @@ jobs:
           tests/integration/scraper-writers-honour-hold.integration.test.ts
           tests/integration/field-plan-walk-held-field-read.integration.test.ts
           tests/integration/newer-document-suggestions.integration.test.ts
+          tests/integration/admin-write-database-clock.integration.test.ts
           tests/integration/admin-alerts-loaders.integration.test.ts
           tests/integration/identifier-aliases-item26.integration.test.ts
           tests/integration/status-forward-only.integration.test.ts

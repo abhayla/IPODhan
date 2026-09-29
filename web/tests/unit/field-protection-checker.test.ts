@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Redis } from 'ioredis';
+import { SQL } from 'drizzle-orm';
 
 // Mock dependencies. The web adapter imports from '../db' and
 // '../cache/redis-client' (→ @/lib/db, @/lib/cache/redis-client) — mock THOSE
@@ -528,7 +529,8 @@ describe('Field Protection Checker', () => {
       expect(mockDb.update).toHaveBeenCalled();
       expect(mockDb.set).toHaveBeenCalledWith(
         expect.objectContaining({
-          lastManualEditAt: expect.any(Date),
+          // F-210: stamped by the database clock (sql now()), never the app's Date.
+          lastManualEditAt: expect.any(SQL),
         })
       );
     });
