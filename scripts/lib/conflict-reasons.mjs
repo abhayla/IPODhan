@@ -19,7 +19,9 @@ export const SOURCE_CHANGED_OWN_VALUE = 'SOURCE_CHANGED_OWN_VALUE';
 // #968 (OD-95): an override's higher source answered and the priority matrix kept the settled value.
 export const OVERRIDE_SOURCE_LOST_TO_PRIORITY = 'OVERRIDE_SOURCE_LOST_TO_PRIORITY';
 export const ADMIN_LIST_SUGGESTION = 'ADMIN_LIST_SUGGESTION';
-export const ADMIN_ONLY_CONFLICT_REASONS = Object.freeze([SOURCE_CHANGED_OWN_VALUE, OVERRIDE_SOURCE_LOST_TO_PRIORITY, ADMIN_LIST_SUGGESTION]);
+// OD-142: a type correction's "source no longer first" queue item (admin list only).
+export const SOURCE_NO_LONGER_FIRST = 'SOURCE_NO_LONGER_FIRST';
+export const ADMIN_ONLY_CONFLICT_REASONS = Object.freeze([SOURCE_CHANGED_OWN_VALUE, OVERRIDE_SOURCE_LOST_TO_PRIORITY, ADMIN_LIST_SUGGESTION, SOURCE_NO_LONGER_FIRST]);
 
 // Cached probe result for this process: undefined = not yet probed (treated as "present" —
 // the pre-probe/legacy-safe default, matching behaviour before this fix), true/false once probed.

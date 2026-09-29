@@ -32,10 +32,18 @@ export const OVERRIDE_SOURCE_LOST_TO_PRIORITY = 'OVERRIDE_SOURCE_LOST_TO_PRIORIT
  */
 export const ADMIN_LIST_SUGGESTION = 'ADMIN_LIST_SUGGESTION';
 
+/**
+ * OD-142 (§2.8, §9.2 item 18): a type/segment/exchange correction changed a still-applicable
+ * field's rank-1 source; the stored value is KEPT and this row lists it in the admin queue as
+ * "source no longer first" until the new rank-1 source answers. Never a dispute, never an alert.
+ */
+export const SOURCE_NO_LONGER_FIRST = 'SOURCE_NO_LONGER_FIRST';
+
 export const ADMIN_ONLY_CONFLICT_REASONS: readonly string[] = [
   SOURCE_CHANGED_OWN_VALUE,
   OVERRIDE_SOURCE_LOST_TO_PRIORITY,
   ADMIN_LIST_SUGGESTION,
+  SOURCE_NO_LONGER_FIRST,
 ];
 
 /** True for a row that exists only for the admin list and must not affect behaviour or counts. */

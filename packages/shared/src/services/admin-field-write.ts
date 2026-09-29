@@ -45,6 +45,7 @@ import { rowKeyForName } from '../utils/company-name-normalizer';
 import { protectionTableName } from './field-hold';
 import { isIdentifierAliasField, keepReplacedIdentifier } from './admin-identifier-alias';
 import { upsertListHold } from './admin-list-hold';
+import { clearSourceNoLongerFirstOnAdminSave } from './source-no-longer-first';
 import { isPlanInvalidatingField, normalizeListingExchanges, rebuildIpoPlanInTx, type PlanManifest, type PlanRebuildSummary } from './plan-invalidating-rebuild';
 
 type Db = NodePgDatabase<typeof schema>;
@@ -837,6 +838,9 @@ export async function writeAdminFieldValue(
           target: [fieldProtectionMetadata.tableName, fieldProtectionMetadata.fieldName, fieldProtectionMetadata.ipoId],
           set: { isProtected: true, autoProtected: true, manuallyEditedAt: now, manuallyEditedBy: actor.name, editNote, updatedAt: now },
         });
+
+      // OD-142: the field is the admin's now (§2.7), so a "source no longer first" item on it is moot.
+      await clearSourceNoLongerFirstOnAdminSave(tx as never, { ipoId, tableName, rowKey, fieldName });
 
       // §9.2 item 8 (OD-107): a field edit on a peer row changes the peer LIST, so the whole list is
       // admin-owned from here on, exactly as after a list edit (the same hold row the list write sets).

@@ -21,6 +21,7 @@
     "./services/corrigendum-suggestions": "./src/services/corrigendum-suggestions.ts",
     "./services/admin-field-write": "./src/services/admin-field-write.ts",
     "./services/plan-invalidating-rebuild": "./src/services/plan-invalidating-rebuild.ts",
+    "./services/source-no-longer-first": "./src/services/source-no-longer-first.ts",
     "./services/field-plan-generator": "./src/services/field-plan-generator.ts",
     "./services/admin-ipo-create": "./src/services/admin-ipo-create.ts",
     "./services/field-hold": "./src/services/field-hold.ts",

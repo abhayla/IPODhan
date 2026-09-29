@@ -94,6 +94,29 @@ export function registryRanksFor(entry: { rank: Partial<Record<string, readonly 
   return Array.isArray(ranks) ? [...ranks] : null;
 }
 
+/** The slice of a manifest entry that decides applicability: its per-type ranks and its §1.11 `na` list. */
+export interface ApplicabilityEntry {
+  rank: Partial<Record<string, readonly string[]>>;
+  na?: readonly string[];
+}
+
+/**
+ * Does this field apply to this IPO at all (§1.11 per-type exceptions, §2.8, §9.2 item 18)? The ONE
+ * rule, read from the manifest entry the plan already uses: not applicable when the manifest ranks
+ * nothing for the IPO's type key (the plan's own N/A, `registryRanksFor` null) or when the IPO's
+ * offering type is in the entry's `na` list (§1.11, e.g. lot size on a BUYBACK). An empty rank list
+ * is NOT "not applicable" (#858: no source can serve it, a gap, not a type rule). The page, the API
+ * payload and the admin editor all ask this function; there is no second table of rules.
+ */
+export function isFieldApplicable(
+  entry: ApplicabilityEntry,
+  ipo: Pick<PlanIpo, 'segment' | 'listingExchanges'> & { offeringType?: string | null }
+): boolean {
+  if (registryRanksFor(entry, resolveIpoTypeKey(ipo)) === null) return false;
+  const type = ipo.offeringType ?? null;
+  return !(type !== null && (entry.na ?? []).includes(type));
+}
+
 /**
  * One planned row per manifest field that declares a rank for THIS IPO's type. A field with no
  * entry for the type is not planned; a field whose list is empty (no source can serve it for this

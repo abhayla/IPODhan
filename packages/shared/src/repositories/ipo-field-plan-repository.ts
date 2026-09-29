@@ -68,6 +68,7 @@ import { DatabaseError } from '../errors/repository-errors';
 import { FIELD_PLAN_GAP_KEY_PREFIX, stampFieldPlanGapCause } from '../utils/field-plan-config-gap';
 import { mostRecentDataJobSlotBoundary, nextDataJobSlotBoundary } from '../scheduler/data-job-slots';
 import { decideSettledOverride } from '../utils/settled-field-override-reopen';
+import { clearSourceNoLongerFirstOnRankOneAnswer } from '../services/source-no-longer-first';
 
 /**
  * Bind a JS `Date` to a NAIVE `timestamp` column as the instant it actually is.
@@ -1383,7 +1384,19 @@ export class IpoFieldPlanRepository extends BaseRepository {
         // its own result as recorded.
         return { written: false, reason: 'CLAIM_SUPERSEDED' };
       }
-      return { written: true, row: mapRow(rows[0]) };
+      const raw = rows[0];
+      // OD-142: the field's rank-1 source answered, so its "source no longer first" queue item (a
+      // type correction moved rank 1 here) leaves the queue. Only an answer from rank 1 itself.
+      if (state === 'SUPPLIED' && hasChosen && typeof chosen.source === 'string' && chosen.source === raw.rank1_source) {
+        await clearSourceNoLongerFirstOnRankOneAnswer(this.db as never, {
+          ipoId: raw.ipo_id as string,
+          tableName: raw.table_name as string,
+          rowKey: (raw.row_key as string) ?? '',
+          fieldName: raw.field_name as string,
+          answeredBy: chosen.source,
+        });
+      }
+      return { written: true, row: mapRow(raw) };
     } catch (error) {
       throw new DatabaseError(
         `Failed to record field plan outcome for row ${params.planRowId}`,

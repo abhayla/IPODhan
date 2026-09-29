@@ -21,16 +21,18 @@
 import {
   ADMIN_LIST_SUGGESTION,
   ADMIN_ONLY_CONFLICT_REASONS,
+  SOURCE_NO_LONGER_FIRST,
   isWriterBookkeepingField,
 } from '@ipodhan/shared/utils/conflict-reasons';
 import { foldCompanyIdentity, isoDay } from '@ipodhan/shared/utils/company-identity-fold';
 import { areEquivalent, type ComparisonFamily } from '@ipodhan/shared/utils/value-equivalence';
 
-export type RuleFilter = 'OD-107' | 'OD-75' | 'OD-60' | 'OD-59' | 'F-181';
+export type RuleFilter = 'OD-107' | 'OD-142' | 'OD-75' | 'OD-60' | 'OD-59' | 'F-181';
 
 /** Plain-words label shown to the admin for each rule. */
 export const RULE_FILTER_LABELS: Record<RuleFilter, string> = {
   'OD-107': 'a document brought a different list for a list you own (OD-107) — a suggestion of rows to add or remove, not a disagreement',
+  'OD-142': 'source no longer first (OD-142) — a type correction moved this field to a new first source; the value shown is kept until that source answers',
   'OD-75': 'a source changed its own earlier value (OD-75) — not a disagreement',
   'OD-60': 'one source gave no value (OD-60) — an abstention, not a disagreement',
   'OD-59': 'the values mean the same (OD-59) — not a disagreement',
@@ -116,6 +118,8 @@ export function equalInMeaning(fieldName: string, a: string, b: string, family?:
 export function ruleFilterFor(c: ConflictForRules): RuleFilter | null {
   // §9.2 items 8, 9 (OD-107): a list suggestion is never a dispute; it is its own queue item.
   if (c.resolutionReason === ADMIN_LIST_SUGGESTION) return 'OD-107';
+  // OD-142 (§2.8, §9.2 item 18): a type correction's kept value, waiting for its new rank-1 source.
+  if (c.resolutionReason === SOURCE_NO_LONGER_FIRST) return 'OD-142';
   if (c.source1 === c.source2) return 'OD-75';
   if (c.resolutionReason !== null && ADMIN_ONLY_CONFLICT_REASONS.includes(c.resolutionReason)) return 'OD-75';
   if (isWriterBookkeepingField(c.fieldName)) return 'F-181';

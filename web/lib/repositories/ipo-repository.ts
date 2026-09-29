@@ -5,6 +5,7 @@
  * Implements cache-aside pattern with Redis for optimized performance.
  */
 
+import { hideNotApplicableFields } from '@/lib/ipo-field-applicability';
 import { eq, and, or, gte, lte, sql, desc, asc, inArray, like } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
@@ -490,7 +491,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               .orderBy(asc(ipoDemandGraph.exchange), asc(ipoDemandGraph.pricePoint)),
           ]);
 
-          return {
+          // §9.2 item 18 / §1.11: a field the IPO's (possibly corrected) type makes not applicable
+          // never reaches a reader; its stored value stays in the column and the audit row.
+          return hideNotApplicableFields({
             ...ipo,
             financialData: financials,
             ipoFinancials: enhancedFinancials, // Story 4.10
@@ -507,7 +510,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             ipoScore: ipoScore, // Story 4.7
             anchorInvestor: anchorInvestor, // Story 11.10
             ipoDemandGraph: demandGraph, // Phase 3B: DemandGraph component
-          };
+          });
         } catch (error) {
           throw new DatabaseError(
             `Failed to fetch IPO by slug: ${slug}`,

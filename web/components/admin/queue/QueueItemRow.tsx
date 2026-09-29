@@ -10,6 +10,7 @@ function kindLabel(item: QueueItem): string {
   if (item.kind === 'missing') return 'Missing';
   if (item.kind === 'flagged') return 'Refused by the field check';
   if (item.document?.origin === 'NEWER_DOCUMENT') return 'Suggestion from a newer document';
+  if (item.ruleFilter === 'OD-142') return 'Source no longer first';
   return item.ruleFilter === null ? 'Disagreement' : 'Not a disagreement';
 }
 

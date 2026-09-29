@@ -22,6 +22,10 @@
  *   - planned with no existing row: planted PENDING (row_key '', as the cycle plants).
  * Stored field values are never touched here: the walk replaces a value when its new rank-1 source
  * answers, and an admin hold keeps its value (§2.7).
+ *
+ * OD-142: a re-planted row whose field still holds a (non-admin) value is listed in the admin queue
+ * as "source no longer first" until the new rank-1 source answers (`source-no-longer-first.ts`); a
+ * dropped row's open item leaves the queue (the field no longer applies, item 18).
  */
 import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -37,6 +41,7 @@ import {
   type PlannedFieldRow,
   type PlanOverridesReader,
 } from './field-plan-generator';
+import { clearSourceNoLongerFirstForDropped, queueSourceNoLongerFirstInTx, type RankOneChange } from './source-no-longer-first';
 
 export type { PlanManifest };
 
@@ -142,6 +147,8 @@ export interface PlanRebuildSummary {
   replanted: number;
   dropped: number;
   added: number;
+  /** OD-142: "source no longer first" queue items opened (re-planted fields that keep a value). */
+  queued: number;
   /** false when the type key did not change: no plan row was touched. */
   rebuilt: boolean;
 }
@@ -176,7 +183,7 @@ export async function rebuildIpoPlanInTx(
   const typeKeyAfter = resolveIpoTypeKey(after);
   if (typeKeyBefore === typeKeyAfter) {
     // The plan is a function of the type key alone: nothing to rebuild, nothing re-versioned.
-    return { typeKeyBefore, typeKeyAfter, planned: 0, kept: 0, replanted: 0, dropped: 0, added: 0, rebuilt: false };
+    return { typeKeyBefore, typeKeyAfter, planned: 0, kept: 0, replanted: 0, dropped: 0, added: 0, queued: 0, rebuilt: false };
   }
 
   const planned = await generateFieldPlanAsync(after, { overrides: await txOverridesReader(tx, ipoId) }, manifest);
@@ -192,6 +199,8 @@ export async function rebuildIpoPlanInTx(
   const toPlant: Array<PlannedFieldRow & { rowKey: string; heldReadCause: string | null; heldReadAt: string | null }> = [];
   const toRerank: Array<{ id: string; plan: PlannedFieldRow }> = [];
   const coveredKeys = new Set<string>();
+  const rankOneChanges: RankOneChange[] = [];
+  const droppedKeys: Array<{ tableName: string; rowKey: string; fieldName: string }> = [];
   let kept = 0;
   let replanted = 0;
   let dropped = 0;
@@ -201,6 +210,7 @@ export async function rebuildIpoPlanInTx(
     const plan = plannedByKey.get(k);
     if (!plan) {
       toDelete.push(row.id);
+      droppedKeys.push({ tableName: row.table_name, rowKey: row.row_key, fieldName: row.field_name });
       dropped++;
       continue;
     }
@@ -211,6 +221,15 @@ export async function rebuildIpoPlanInTx(
       continue;
     }
     toDelete.push(row.id);
+    if (plan.rank1Source !== null) {
+      rankOneChanges.push({
+        tableName: row.table_name,
+        fieldName: row.field_name,
+        rowKey: row.row_key,
+        oldRank1: row.rank1_source,
+        newRank1: plan.rank1Source,
+      });
+    }
     // A held field's walk-read stamp (`[held-read:<key>]`, OD-65: no extra read of a held field)
     // moves to the re-planted row, so the new rank-1 source does not read it again until the key
     // (stage, completed documents) changes.
@@ -273,6 +292,9 @@ export async function rebuildIpoPlanInTx(
          AND left(coalesce(cause, ''), ${FIELD_PLAN_HELD_READ_PREFIX.length}) = ${FIELD_PLAN_HELD_READ_PREFIX}`);
   }
 
+  await clearSourceNoLongerFirstForDropped(tx, ipoId, droppedKeys);
+  const queue = await queueSourceNoLongerFirstInTx(tx, ipoId, rankOneChanges);
+
   return {
     typeKeyBefore,
     typeKeyAfter,
@@ -281,6 +303,7 @@ export async function rebuildIpoPlanInTx(
     replanted,
     dropped,
     added,
+    queued: queue.queued,
     rebuilt: true,
   };
 }
