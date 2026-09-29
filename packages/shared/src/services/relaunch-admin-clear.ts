@@ -27,6 +27,7 @@
 import { sql, getTableColumns } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import * as schema from '../db/schema';
+import { readDatabaseNow } from '../db/database-clock';
 import { E1_EXCHANGE_STATED_FIELDS } from '../repositories/field-sources-repository';
 import { ADMIN_LISTS, ADMIN_LIST_SPECS, LIST_HOLD_FIELD, type AdminListName } from './admin-list-hold';
 
@@ -185,7 +186,7 @@ export async function clearAdminValuesOnRelaunch(
   trigger: RelaunchTrigger,
   receipt: ReadonlyArray<{ tableName: string; rowKey: string; fieldName: string; value?: string | null }>,
   isDocumentField: (tableName: string, fieldName: string) => boolean,
-  now: Date = new Date()
+  nowOverride?: Date
 ): Promise<RelaunchClearSummary | null> {
   // The same row lock the admin write and every scraper writer take (field-hold.ts).
   const ipo = rowsOf(
@@ -203,6 +204,10 @@ export async function clearAdminValuesOnRelaunch(
   );
   const point = await relaunchPoint(tx, ipoId, trigger, receipt, postponedAt);
   if (!point) return null;
+  // F-210 (mixed-clock-ordering): the clear's audit and plan stamps are ordered against database-stamped
+  // times (documents.created_at, field_sources.updated_at), so they come from the database clock. Read
+  // only once a relaunch is confirmed, so a non-relaunch filing costs no extra query.
+  const now = nowOverride ?? (await readDatabaseNow(tx));
 
   /**
    * The start of THIS relaunch: the earliest relaunch event after the latest postponement (this one, an
