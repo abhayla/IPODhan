@@ -11,6 +11,7 @@ import {
   isPriceJobWindowIST,
   isCloseReadIST,
   istDateDaysBefore,
+  decidePriceJobExit,
   type PriceCandidate,
   type PriceJobDeps,
   type PriceStatePatch,
@@ -186,6 +187,18 @@ describe('#1310: an attempt stamp on every outcome, not only a successful price'
     const s = await runPostListingPriceJob(h.deps);
     expect(s.refused).toEqual(['Refused']);
     expect(h.attempts.map((a) => a.id)).toEqual(['refused-1']);
+  });
+
+  // #1310 round 2, MINOR-2: the candidate's own bug/unexpected-throw path (Round 5 Tier A
+  // MINOR 6's catch-and-continue) must ALSO stamp, or a stock whose dependency happens to throw
+  // this run pins the front forever exactly like a never-priceable one did before this fix.
+  it('a candidate whose read throws an unexpected error is also stamped (Round 5 MINOR 6 path)', async () => {
+    const c = cand({ id: 'exploded-1', companyName: 'Exploded', symbol: 'BOOM' });
+    const h = harness([c], {}, {});
+    h.deps.readNse = async () => { throw new Error('nse client exploded'); };
+    const s = await runPostListingPriceJob(h.deps);
+    expect(s.refused).toEqual(['Exploded']);
+    expect(h.attempts.map((a) => a.id)).toEqual(['exploded-1']);
   });
 
   it('a candidate the run never reaches (past the deadline) is NOT stamped — mutation guard: a\n     stamp on notReached would wrongly let a never-reached row skip the front of the next run', async () => {
@@ -462,5 +475,35 @@ describe('round 5 (Tier A MAJOR 1 + MAJOR 2): a price answer is validated before
     expect(s.updated).toEqual(['Good']);
     expect(h.prices).toEqual([{ id: 'id-Good', exchange: 'NSE', price: 42 }]);
     expect(logs.join(' | ')).toMatch(/Bad refused — unexpected error, run continues: boom: unexpected shape/);
+  });
+});
+
+// #1310 round 2, MINOR-3: the wake's exit-code rule as a pure, unit-tested function.
+describe('decidePriceJobExit (#1310 round 2, MINOR-3)', () => {
+  it('an outage with no deadline hit (refused>0, priced=0, notReached=0) exits 1', () => {
+    expect(decidePriceJobExit({ refused: 3, priced: 0, notReached: 0 }).code).toBe(1);
+  });
+
+  it('the deadline hit with 0 priced (notReached>0) exits 0, never 1', () => {
+    expect(decidePriceJobExit({ refused: 5, priced: 0, notReached: 10 }).code).toBe(0);
+  });
+
+  it('refused>0 with priced>0 (some rows priced this run) exits 0', () => {
+    expect(decidePriceJobExit({ refused: 4, priced: 2, notReached: 0 }).code).toBe(0);
+  });
+
+  it('a clean run (no refused, no notReached) exits 0', () => {
+    expect(decidePriceJobExit({ refused: 0, priced: 12, notReached: 0 }).code).toBe(0);
+  });
+
+  it('every decision carries a non-empty reason string', () => {
+    for (const params of [
+      { refused: 3, priced: 0, notReached: 0 },
+      { refused: 5, priced: 0, notReached: 10 },
+      { refused: 4, priced: 2, notReached: 0 },
+      { refused: 0, priced: 0, notReached: 0 },
+    ]) {
+      expect(decidePriceJobExit(params).reason.length).toBeGreaterThan(0);
+    }
   });
 });

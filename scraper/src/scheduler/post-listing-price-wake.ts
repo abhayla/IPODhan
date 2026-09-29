@@ -34,7 +34,7 @@ import {
 } from '../scrapers/post-listing-quote.js';
 import { fetchNseSymbolQuoteRaw } from '../scrapers/nse-api-client.js';
 import { fetchBseScripMaster } from '../scrapers/bse-scrip-master.js';
-import { isCloseReadIST, isPriceJobWindowIST, runPostListingPriceJob, selectPriceCandidates } from './post-listing-price.js';
+import { decidePriceJobExit, isCloseReadIST, isPriceJobWindowIST, runPostListingPriceJob, selectPriceCandidates } from './post-listing-price.js';
 
 /** §2.1 lock table: the `live` class — the live-figures job's own resource and TTL (index.ts LIVE_LOCK_*). */
 export const PRICE_LOCK_RESOURCE = 'scraper:live';
@@ -141,11 +141,10 @@ export async function runPostListingPriceWake(now: Date = new Date()): Promise<n
         });
       },
       writeAttempt: async (c, at) => {
-        await writePostListingAttempt({
-          ipoRepository: ipoRepository as any,
-          ipoId: c.id,
-          at,
-        });
+        // #1310 round 2 (MAJOR-2): straight through drizzle (`db`), never `ipoRepository` — see
+        // writePostListingAttempt's own comment for why: the repository's hold check would drop
+        // this bookkeeping stamp on every scraper_locked row.
+        await writePostListingAttempt({ db, ipoId: c.id, at });
       },
       writeDelisting: async (c, next, delistAt) => {
         await writeDelistingState({ ipoRepository: ipoRepository as any, ipoId: c.id, next, delistAt });
@@ -175,26 +174,19 @@ export async function runPostListingPriceWake(now: Date = new Date()): Promise<n
       `Post-listing price job: run complete — ${summary.calls.total} exchange calls (NSE ${summary.calls.nse}, BSE ${summary.calls.bse}, BSE list ${summary.calls.bseList}) for ${summary.candidates} IPOs`
     );
     const priced = summary.updated.length + summary.confirmed.length + summary.unchanged.length + summary.stale.length;
-    // #1310: the deadline is EXPECTED to be hit on a full rotation and is never itself a
-    // failure signal (every row will be reached over successive runs, per #1310's own
-    // last-attempt ordering fix). Exit 1 only when the run actually walked every candidate it
-    // could reach this run and still refused all of them with zero priced — a real outage, not
-    // rotation. A non-zero exit always names its reason (signal-ownership.md R6).
-    const hitDeadline = summary.notReached.length > 0;
-    if (summary.refused.length > 0 && priced === 0 && !hitDeadline) {
+    const decision = decidePriceJobExit({ refused: summary.refused.length, priced, notReached: summary.notReached.length });
+    if (decision.code === 1) {
       logger.warn(
-        { refused: summary.refused.length, candidates: summary.candidates },
-        `Post-listing price job: exiting 1 — every reached candidate this run (${summary.candidates}) was refused (outage) and none priced`
+        { refused: summary.refused.length, candidates: summary.candidates, reason: decision.reason },
+        `Post-listing price job: exiting 1 — ${decision.reason}`
       );
-      return 1;
-    }
-    if (hitDeadline) {
+    } else if (summary.notReached.length > 0) {
       logger.warn(
-        { notReached: summary.notReached.length, candidates: summary.candidates, priced },
-        `Post-listing price job: deadline reached with ${summary.notReached.length} of ${summary.candidates} candidates not attempted this run — exit 0, they lead next run via priceLastAttemptAt`
+        { notReached: summary.notReached.length, candidates: summary.candidates, priced, reason: decision.reason },
+        `Post-listing price job: ${decision.reason}`
       );
     }
-    return 0;
+    return decision.code;
   } catch (error) {
     logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Post-listing price job failed');
     return 1;

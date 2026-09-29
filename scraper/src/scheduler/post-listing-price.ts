@@ -215,6 +215,32 @@ function guardPriceRead(
   return { ok: true, isinNote: null };
 }
 
+export interface PriceJobExitDecision {
+  code: 0 | 1;
+  reason: string;
+}
+
+/**
+ * #1310 round 2 (MINOR-3): the wake's exit-code rule, pulled out of `runPostListingPriceWake`
+ * as a pure function so it is unit-testable without a lock/DB/redis wire-up. Exit 1 ONLY when
+ * the run walked every candidate it could reach this run (notReached === 0 — no deadline hit)
+ * and still refused all of them with zero priced: a real outage. A deadline hit is EXPECTED on
+ * a full rotation and is never itself a failure signal — every row is reached over successive
+ * runs via `priceLastAttemptAt` ordering. A non-zero exit always carries its own reason
+ * (signal-ownership.md R6); a zero exit still carries a `reason` string so a caller can log it
+ * unconditionally.
+ */
+export function decidePriceJobExit(params: { refused: number; priced: number; notReached: number }): PriceJobExitDecision {
+  const { refused, priced, notReached } = params;
+  if (refused > 0 && priced === 0 && notReached === 0) {
+    return { code: 1, reason: `every reached candidate this run was refused (outage) and none priced` };
+  }
+  if (notReached > 0) {
+    return { code: 0, reason: `deadline reached with ${notReached} candidate(s) not attempted this run — they lead next run via priceLastAttemptAt` };
+  }
+  return { code: 0, reason: 'no zero-priced outage and no deadline hit this run' };
+}
+
 export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJobSummary> {
   const summary: PriceJobSummary = {
     candidates: deps.candidates.length,
