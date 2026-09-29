@@ -12,8 +12,7 @@ import { BaseRepository } from './base-repository';
 import { peerCompanies } from '../db';
 import * as schema from '@ipodhan/shared/db/schema';
 import { CacheTTL } from '../cache/cache-keys';
-import { DatabaseError, InvalidDataError } from '../errors/repository-errors';
-import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
+import { DatabaseError } from '../errors/repository-errors';
 
 export interface PeerCompany {
   id: string;
@@ -89,86 +88,8 @@ export class PeerCompanyRepository extends BaseRepository {
     );
   }
 
-  /**
-   * Create a new peer company record
-   */
-  async create(data: PeerCompanyInsert): Promise<PeerCompany> {
-    // Item 01 slice s1b (R-158): the row key depends only on the name, via
-    // the SAME `rowKeyForName` function every scraper write path uses. A
-    // name with no identity (empty/whitespace-only) is refused rather than
-    // written with the schema's blank default — slice s2's
-    // `UNIQUE (ipo_id, normalized_name)` constraint would otherwise collide
-    // silently on the next such row.
-    const normalizedName = rowKeyForName(data.companyName);
-    if (normalizedName === null) {
-      throw new InvalidDataError(
-        `Cannot create peer company: name has no identity (empty/whitespace-only): "${data.companyName}"`,
-        'companyName'
-      );
-    }
-
-    try {
-      const [peerCompany] = await this.db
-        .insert(peerCompanies)
-        .values({ ...data, normalizedName })
-        .returning();
-
-      // Invalidate cache
-      await this.deleteCache(this.getPeerCompaniesKey(data.ipoId));
-
-      return peerCompany;
-    } catch (error) {
-      throw new DatabaseError(
-        'Failed to create peer company',
-        undefined,
-        error
-      );
-    }
-  }
-
-  /**
-   * Delete all peer companies for an IPO
-   */
-  async deleteByIPO(ipoId: string): Promise<void> {
-    try {
-      await this.db
-        .delete(peerCompanies)
-        .where(eq(peerCompanies.ipoId, ipoId));
-
-      // Invalidate cache
-      await this.deleteCache(this.getPeerCompaniesKey(ipoId));
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to delete peer companies for IPO: ${ipoId}`,
-        undefined,
-        error
-      );
-    }
-  }
-
-  /**
-   * Batch upsert peer companies
-   * Returns success and failure counts
-   */
-  async upsertPeers(
-    peers: PeerCompanyInsert[]
-  ): Promise<{ success: number; failed: number; errors: string[] }> {
-    let success = 0;
-    let failed = 0;
-    const errors: string[] = [];
-
-    for (const peer of peers) {
-      try {
-        await this.create(peer);
-        success++;
-      } catch (error) {
-        failed++;
-        const errorMsg =
-          error instanceof Error ? error.message : String(error);
-        errors.push(`${peer.companyName}: ${errorMsg}`);
-      }
-    }
-
-    return { success, failed, errors };
-  }
+  // §9.2 item 8 (OD-107): no write method here. An admin changes the peer list only through the one
+  // list write (writeAdminListChange, @ipodhan/shared/services/admin-list-write); the scraper through
+  // its own PeerCompanyRepository.replaceForIpo, which honours the list hold. The create / deleteByIPO /
+  // upsertPeers writers that lived here had no caller and bypassed the hold; removed.
 }

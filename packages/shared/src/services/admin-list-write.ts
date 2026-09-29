@@ -14,6 +14,7 @@
  * Lead managers also get the `field_sources` ADMIN provenance row, as any `ipos` field does (§2.7).
  * Cache keys are dropped AFTER commit by the web wrapper, as for a field save (F-171).
  */
+import { createHash } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { PgTable } from 'drizzle-orm/pg-core';
@@ -32,7 +33,7 @@ import {
 } from '../db/schema';
 import { rowKeyForName } from '../utils/company-name-normalizer';
 import { headingHashForRiskFactor } from '../utils/risk-factor-heading-key';
-import { ADMIN_LIST_SPECS, lockAndReadListOwnership, type AdminListName } from './admin-list-hold';
+import { ADMIN_LIST_SPECS, lockAndReadListOwnership, upsertListHold, type AdminListName } from './admin-list-hold';
 import type { AdminActor } from './admin-field-write';
 
 export { ADMIN_LIST_SUGGESTION_REASON, ADMIN_LISTS, listRowKey, type AdminListName } from './admin-list-hold';
@@ -41,6 +42,10 @@ type Db = NodePgDatabase<typeof schema>;
 type Row = Record<string, unknown>;
 
 export const ADMIN_LIST_AUDIT_ACTION = 'List Updated';
+
+/** §9.2 item 20: a list save without the token the editor opened with is refused, never filled in. */
+export const STALE_LIST_EDITOR_REASON = 'stale editor, reload: the list save carries no version token (expectedVersion); reopen the list and save again';
+export const LIST_CONFLICT_REASON = 'someone else changed this list after you opened it; reload to see the current list, then make your change again';
 
 /** A removal reason shorter than this is refused (item 28(b): "takes a short reason"). */
 const MIN_REASON = 3;
@@ -56,12 +61,19 @@ export interface AdminListChangeInput {
   op: AdminListOp;
   actor: AdminActor;
   entryPoint: string;
+  /**
+   * §9.2 item 20: the list's version token the editor opened with (`readAdminList().version`). A save
+   * whose token no longer matches (another admin, or a writer, changed the list meanwhile) is refused
+   * with CONFLICT, never merged.
+   */
+  expectedVersion: string;
   ipAddress?: string | null;
   userAgent?: string | null;
 }
 
 export type AdminListChangeResult =
-  | { kind: 'OK'; ipoId: string; slug: string; list: AdminListName; before: string[]; after: string[] }
+  | { kind: 'OK'; ipoId: string; slug: string; list: AdminListName; before: string[]; after: string[]; version: string }
+  | { kind: 'CONFLICT'; reason: string; current: string[]; currentVersion: string }
   | { kind: 'INVALID'; reason: string }
   | { kind: 'NOT_FOUND'; reason: string };
 
@@ -132,6 +144,22 @@ async function readList(tx: Db, ipoId: string, list: AdminListName): Promise<Row
   return (await tx.select().from(t).where(eq(t.ipoId as never, ipoId))) as Row[];
 }
 
+/**
+ * The list's version token: a digest of every row as stored (bookkeeping columns included, so any
+ * writer's change moves it) plus the hold's `updated_at` (so an admin save that leaves the same rows
+ * — e.g. removing then re-adding — still moves it).
+ */
+async function listVersion(tx: Db, ipoId: string, list: AdminListName, rows: readonly Row[]): Promise<string> {
+  const spec = ADMIN_LIST_SPECS[list];
+  const [hold] = await tx
+    .select({ at: fieldProtectionMetadata.updatedAt })
+    .from(fieldProtectionMetadata)
+    .where(and(eq(fieldProtectionMetadata.ipoId, ipoId), eq(fieldProtectionMetadata.tableName, spec.holdTable), eq(fieldProtectionMetadata.fieldName, spec.holdField)));
+  const keyed = rows.map((r) => [spec.key(r), r] as const).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const body = JSON.stringify({ rows: keyed, hold: hold?.at instanceof Date ? hold.at.toISOString() : (hold?.at ?? null) });
+  return createHash('sha256').update(body).digest('hex').slice(0, 32);
+}
+
 async function writeList(tx: Db, ipoId: string, list: AdminListName, before: readonly Row[], after: readonly Row[], now: Date): Promise<void> {
   if (list === 'lead_managers') {
     await tx.update(ipos).set({ leadManagers: after.map((r) => String(r.name)), updatedAt: now }).where(eq(ipos.id, ipoId));
@@ -166,6 +194,7 @@ export async function writeAdminListChange(db: Db, input: AdminListChangeInput):
   const { ipoId, list, op, actor } = input;
   if (!(list in ADMIN_LIST_SPECS)) return { kind: 'INVALID', reason: `unknown list "${list}"` };
   if (!actor?.adminId || !actor?.name) return { kind: 'INVALID', reason: 'an admin list write needs the admin (OD-104)' };
+  if (typeof input.expectedVersion !== 'string' || input.expectedVersion === '') return { kind: 'INVALID', reason: STALE_LIST_EDITOR_REASON };
   const spec = ADMIN_LIST_SPECS[list];
   try {
     return await db.transaction(async (txRaw) => {
@@ -174,6 +203,10 @@ export async function writeAdminListChange(db: Db, input: AdminListChangeInput):
       if (!exists) throw new Refusal({ kind: 'NOT_FOUND', reason: `IPO ${ipoId} does not exist` });
       const [{ slug }] = await tx.select({ slug: ipos.slug }).from(ipos).where(eq(ipos.id, ipoId));
       const before = await readList(tx, ipoId, list);
+      const currentVersion = await listVersion(tx, ipoId, list, before);
+      if (currentVersion !== input.expectedVersion) {
+        throw new Refusal({ kind: 'CONFLICT', reason: LIST_CONFLICT_REASON, current: before.map((r) => spec.label(r)), currentVersion });
+      }
       const next = applyListOp(list, before, op);
       if ('invalid' in next) throw new Refusal({ kind: 'INVALID', reason: next.invalid });
       const now = new Date();
@@ -186,24 +219,7 @@ export async function writeAdminListChange(db: Db, input: AdminListChangeInput):
           : op.kind === 'add'
             ? `List row added: ${spec.label(next.rows[next.rows.length - 1])}`
             : `List row edited: ${op.rowKey}`;
-      await tx
-        .insert(fieldProtectionMetadata)
-        .values({
-          ipoId,
-          tableName: spec.holdTable,
-          fieldName: spec.holdField,
-          isProtected: true,
-          autoProtected: true,
-          manuallyEditedAt: now,
-          manuallyEditedBy: actor.name,
-          editNote,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [fieldProtectionMetadata.tableName, fieldProtectionMetadata.fieldName, fieldProtectionMetadata.ipoId],
-          set: { isProtected: true, autoProtected: true, manuallyEditedAt: now, manuallyEditedBy: actor.name, editNote, updatedAt: now },
-        });
+      await upsertListHold(tx as never, { ipoId, list, by: actor.name, editNote, at: now });
 
       if (list === 'lead_managers') {
         const lineage = { method: 'ADMIN_LIST', entryPoint: input.entryPoint, by: actor.name, adminId: actor.adminId };
@@ -239,7 +255,8 @@ export async function writeAdminListChange(db: Db, input: AdminListChangeInput):
         success: true,
         createdAt: now,
       });
-      return { kind: 'OK' as const, ipoId, slug, list, before: labels(before), after: labels(next.rows) };
+      const version = await listVersion(tx, ipoId, list, await readList(tx, ipoId, list));
+      return { kind: 'OK' as const, ipoId, slug, list, before: labels(before), after: labels(next.rows), version };
     });
   } catch (error) {
     if (error instanceof Refusal) return error.result;
@@ -247,14 +264,18 @@ export async function writeAdminListChange(db: Db, input: AdminListChangeInput):
   }
 }
 
-/** Read one list for the editor (labels + row keys), outside any write. */
-export async function readAdminList(db: Db, ipoId: string, list: AdminListName): Promise<{ owned: boolean; rows: Array<{ key: string; label: string; row: Row }> }> {
+/** Read one list for the editor (labels + row keys + the version token a save must carry), outside any write. */
+export async function readAdminList(
+  db: Db,
+  ipoId: string,
+  list: AdminListName
+): Promise<{ owned: boolean; version: string; rows: Array<{ key: string; label: string; row: Row }> }> {
   const spec = ADMIN_LIST_SPECS[list];
   const rows = await readList(db, ipoId, list);
   const prot = await db
     .select({ p: fieldProtectionMetadata.isProtected })
     .from(fieldProtectionMetadata)
     .where(and(eq(fieldProtectionMetadata.ipoId, ipoId), eq(fieldProtectionMetadata.tableName, spec.holdTable), eq(fieldProtectionMetadata.fieldName, spec.holdField)));
-  return { owned: prot.some((p) => p.p === true), rows: rows.map((row) => ({ key: spec.key(row), label: spec.label(row), row })) };
+  const version = await listVersion(db, ipoId, list, rows);
+  return { owned: prot.some((p) => p.p === true), version, rows: rows.map((row) => ({ key: spec.key(row), label: spec.label(row), row })) };
 }
-

@@ -43,6 +43,7 @@ import { validateIPOData } from '../utils/ipo-field-checks';
 import { rowKeyForName } from '../utils/company-name-normalizer';
 import { protectionTableName } from './field-hold';
 import { isIdentifierAliasField, keepReplacedIdentifier } from './admin-identifier-alias';
+import { upsertListHold } from './admin-list-hold';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -133,6 +134,13 @@ const LEGACY_ADMIN_LINEAGE_KEYS = [
 ];
 
 export const ADMIN_FIELD_AUDIT_ACTION = 'Field Updated';
+
+/**
+ * §9.2 item 8 (OD-107): lead managers are a LIST; rows are added, edited and removed through the one
+ * list write (`writeAdminListChange`), never saved as one field value.
+ */
+export const LIST_FIELD_REFUSAL =
+  'ipos.leadManagers is a list: add, edit or remove its rows in the list editor (spec §9.2 item 8, OD-107), not as one field value';
 
 /** §9.2 item 20: a save without the token the editor opened with is refused, never filled in server-side. */
 export const STALE_EDITOR_REASON = 'stale editor, reload: the save carries no version token (expectedVersion); reopen the field and save again';
@@ -523,6 +531,9 @@ export async function writeAdminFieldValue(
   if (NON_EDITABLE_FIELDS.has(fieldName) || (rowSpec && rowSpec.derived?.derivedField === fieldName)) {
     return { kind: 'INVALID', reason: `${tableName}.${fieldName} is not editable` };
   }
+  if (tableName === 'ipos' && fieldName === 'leadManagers') {
+    return { kind: 'INVALID', reason: LIST_FIELD_REFUSAL };
+  }
   if (tableName === 'ipos' && Object.prototype.hasOwnProperty.call(IPO_FIELDS_AWAITING_PHASE_B, fieldName)) {
     return { kind: 'INVALID', reason: `ipos.${fieldName} is not editable yet: ${IPO_FIELDS_AWAITING_PHASE_B[fieldName]}` };
   }
@@ -792,6 +803,10 @@ export async function writeAdminFieldValue(
           target: [fieldProtectionMetadata.tableName, fieldProtectionMetadata.fieldName, fieldProtectionMetadata.ipoId],
           set: { isProtected: true, autoProtected: true, manuallyEditedAt: now, manuallyEditedBy: actor.name, editNote, updatedAt: now },
         });
+
+      // §9.2 item 8 (OD-107): a field edit on a peer row changes the peer LIST, so the whole list is
+      // admin-owned from here on, exactly as after a list edit (the same hold row the list write sets).
+      if (tableName === 'peer_companies') await upsertListHold(tx as never, { ipoId, list: 'peer_companies', by: actor.name, editNote: `Row field edited: ${rowKey}.${fieldName}`, at: now });
 
       await tx.insert(auditLogs).values({
         timestamp: now,

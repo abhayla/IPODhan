@@ -88,15 +88,18 @@ export class FinancialStatementsRepository extends BaseRepository {
     try {
       const [result] = await this.db.transaction(async (tx) => {
         // §9.2 item 8 (OD-107): the admin owns the whole list of years. A row the admin's list lacks
-        // becomes a suggestion (the admin's list plus this row); a row it has is left as the admin set it.
+        // becomes a suggestion (the admin's list plus this row); a year the admin has with DIFFERENT
+        // values becomes a suggestion too (the admin's list with this year replaced). Nothing is written.
         const { owned } = await lockAndReadListOwnership(tx as never, row.ipoId, 'financial_statements');
         if (owned) {
           const stored = await tx.select().from(financialStatements).where(eq(financialStatements.ipoId, row.ipoId));
           const k = listRowKey('financial_statements', row as never);
           const same = stored.find((s) => listRowKey('financial_statements', s as never) === k);
-          if (same) return [same];
-          await recordListSuggestion(tx as never, { ipoId: row.ipoId, list: 'financial_statements', source, stored, incoming: [...stored, row] as never });
-          return [row as never];
+          const incoming = same
+            ? stored.map((s) => (s === same ? { ...s, ...(row as Record<string, unknown>) } : s))
+            : [...stored, row];
+          await recordListSuggestion(tx as never, { ipoId: row.ipoId, list: 'financial_statements', source, stored, incoming: incoming as never });
+          return [(same ?? row) as never];
         }
         return tx
         .insert(financialStatements)

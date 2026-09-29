@@ -15,8 +15,12 @@ import {
   ADMIN_LIST_AUDIT_ACTION,
   ADMIN_LIST_SUGGESTION_REASON,
   listRowKey,
+  readAdminList,
   type AdminListChangeInput,
 } from '@ipodhan/shared/services/admin-list-write';
+import { recordDiscoveredLeadManagers } from '../../src/services/data-persister';
+import { deleteDedupeVictimUnlessHeld } from '../../scripts/repair-risk-factor-heading-hash';
+import { writeAdminFieldValue, readAdminFieldVersion } from '@ipodhan/shared/services/admin-field-write';
 
 /**
  * Spec §9.2 item 8 (OD-107), item 28(b), item 9, item 19; F-174. Core proof for Phase B item 8:
@@ -45,8 +49,10 @@ async function cleanup() {
   await db.execute(sql`DELETE FROM ipos WHERE id = ${IPO}::uuid`);
 }
 
-async function admin(input: Omit<AdminListChangeInput, 'ipoId' | 'actor' | 'entryPoint'>) {
-  return writeAdminListChange(db as never, { ipoId: IPO, actor, entryPoint: 'test', ...input } as AdminListChangeInput);
+/** An admin save as the editor makes it: open the list (its version token), then save with that token. */
+async function admin(input: Omit<AdminListChangeInput, 'ipoId' | 'actor' | 'entryPoint' | 'expectedVersion'>) {
+  const { version } = await readAdminList(db as never, IPO, input.list);
+  return writeAdminListChange(db as never, { ipoId: IPO, actor, entryPoint: 'test', expectedVersion: version, ...input } as AdminListChangeInput);
 }
 
 async function suggestions(tableName: string) {
@@ -169,6 +175,8 @@ describe.skipIf(!DATABASE_URL)('item 8 (OD-107): an admin-changed list is admin-
     expectStored: string[];
     expectAdd: string[];
     expectRemove: string[];
+    /** When the writer brings more than one different list: every suggestion's evidence. */
+    expectEvidence?: Array<Record<string, unknown>>;
   }> = [
     {
       list: 'peer_companies',
@@ -208,6 +216,11 @@ describe.skipIf(!DATABASE_URL)('item 8 (OD-107): an admin-changed list is admin-
       expectStored: ['2023:100.00', '2025:300.00'],
       expectAdd: ['FY2022 RESTATED'],
       expectRemove: [],
+      // item 4: a year the admin has, with a different value, is a suggestion too (change), not dropped.
+      expectEvidence: [
+        { add: [], remove: [], change: ['FY2023 RESTATED'] },
+        { add: ['FY2022 RESTATED'], remove: [], change: [] },
+      ],
     },
     {
       list: 'ipo_risk_factors',
@@ -267,9 +280,83 @@ describe.skipIf(!DATABASE_URL)('item 8 (OD-107): an admin-changed list is admin-
     await c.write();
     expect((await c.stored()).sort()).toEqual(c.expectStored);
     const sug = await suggestions(c.list);
-    expect(sug).toHaveLength(1);
-    expect(sug[0].evidence).toMatchObject({ add: c.expectAdd, remove: c.expectRemove });
+    if (c.expectEvidence) {
+      const ev = sug.map((r) => r.evidence as { add: string[]; remove: string[]; change: string[] });
+      expect(ev.map(({ add, remove, change }) => ({ add, remove, change })).sort((x, y) => x.add.length - y.add.length)).toEqual(c.expectEvidence);
+    } else {
+      expect(sug).toHaveLength(1);
+      expect(sug[0].evidence).toMatchObject({ add: c.expectAdd, remove: c.expectRemove });
+    }
     expect(await audits(c.list)).toHaveLength(2);
+  });
+
+  it('item 20: two admins open the same list; the second save carries a stale token and is refused, the list keeps the first save', async () => {
+    const opened = await readAdminList(db as never, IPO, 'promoters');
+    const first = await writeAdminListChange(db as never, { ipoId: IPO, actor, entryPoint: 'test', expectedVersion: opened.version, list: 'promoters', op: { kind: 'add', row: { name: 'First Admin Kumar' } } });
+    expect(first.kind, JSON.stringify(first)).toBe('OK');
+    const second = await writeAdminListChange(db as never, {
+      ipoId: IPO,
+      actor: { name: 'b08-second-admin', adminId: 'admin-b08-2' },
+      entryPoint: 'test',
+      expectedVersion: opened.version,
+      list: 'promoters',
+      op: { kind: 'remove', rowKeys: [listRowKey('promoters', { normalizedName: 'ramesh kumar' })], reason: 'second admin, stale view' },
+    });
+    expect(second.kind).toBe('CONFLICT');
+    expect(second).toMatchObject({ current: expect.arrayContaining(['First Admin Kumar', 'Ramesh Kumar']) });
+    const names = (await db.select({ n: schema.promoters.name }).from(schema.promoters).where(eq(schema.promoters.ipoId, IPO))).map((r) => r.n).sort();
+    expect(names).toEqual(['First Admin Kumar', 'Ramesh Kumar', 'Suresh Kumar']);
+    const noToken = await writeAdminListChange(db as never, { ipoId: IPO, actor, entryPoint: 'test', expectedVersion: '', list: 'promoters', op: { kind: 'add', row: { name: 'X' } } });
+    expect(noToken.kind).toBe('INVALID');
+    // a scraper write to an UNOWNED list also moves the token (the editor's view is stale)
+    const lm = await readAdminList(db as never, IPO, 'lead_managers');
+    await new IPORepository(db as never, noRedis).update(IPO, { leadManagers: ['Axis Capital Limited'] }, { honourProtection: { source: 'BSE' } });
+    expect((await readAdminList(db as never, IPO, 'lead_managers')).version).not.toBe(lm.version);
+  });
+
+  it('item 3: recordDiscoveredLeadManagers keeps an admin-owned list and records the discovered list as a suggestion', async () => {
+    expect((await admin({ list: 'lead_managers', op: { kind: 'remove', rowKeys: [listRowKey('lead_managers', { name: 'ICICI Securities Limited' })], reason: 'not on the RHP' } })).kind).toBe('OK');
+    const out = await recordDiscoveredLeadManagers({ invalidateIpoCache: async () => undefined } as never, IPO, ['Axis Capital Limited', 'Motilal Oswal Investment Advisors Limited'], 'BSE', db as never);
+    expect(out.written).toBe(false);
+    const [row] = await db.select({ lm: schema.ipos.leadManagers }).from(schema.ipos).where(eq(schema.ipos.id, IPO));
+    expect(row.lm).toEqual(['Axis Capital Limited']);
+    const sug = await suggestions('ipos');
+    expect(sug).toHaveLength(1);
+    expect(sug[0].source2).toBe('BSE');
+    expect(sug[0].evidence).toMatchObject({ add: ['Motilal Oswal Investment Advisors Limited'], remove: [] });
+  });
+
+  it('item 2: the risk-factor dedupe repair never deletes a row of an admin-owned list', async () => {
+    await new IpoRiskFactorsRepository(db as never, noRedis).replaceForIpo(IPO, [risk(1, 'We depend on one customer'), risk(2, 'Our promoters have pledged shares')] as never);
+    const [victim] = await db.select({ id: schema.ipoRiskFactors.id }).from(schema.ipoRiskFactors).where(eq(schema.ipoRiskFactors.ipoId, IPO)).limit(1);
+    expect((await admin({ list: 'ipo_risk_factors', op: { kind: 'add', row: { seq: 3, heading: 'We have negative operating cash flow' } } })).kind).toBe('OK');
+    expect(await deleteDedupeVictimUnlessHeld(db as never, { id: victim.id, ipoId: IPO })).toBe('held');
+    expect(await db.select().from(schema.ipoRiskFactors).where(eq(schema.ipoRiskFactors.ipoId, IPO))).toHaveLength(3);
+    // with the hold released the same call deletes (the guard is the hold, not a no-op)
+    await db.delete(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO));
+    expect(await deleteDedupeVictimUnlessHeld(db as never, { id: victim.id, ipoId: IPO })).toBe('deleted');
+  });
+
+  it('a field edit on a peer row makes the whole peer list admin-owned; ipos.leadManagers is refused as one field value', async () => {
+    await db.insert(schema.peerCompanies).values([peerRow('Alpha Peer Ltd')] as never);
+    const lmField = await writeAdminFieldValue(db as never, { ipoId: IPO, tableName: 'ipos', fieldName: 'leadManagers', value: ['X'], actor, entryPoint: 'test', expectedVersion: 'v' } as never);
+    expect(lmField.kind).toBe('INVALID');
+    expect((await readAdminList(db as never, IPO, 'peer_companies')).owned).toBe(false);
+    const rowKey = listRowKey('peer_companies', { companyName: 'Alpha Peer Ltd' });
+    const v = await readAdminFieldVersion(db as never, IPO, 'peer_companies', 'peRatio', { rowKey } as never);
+    const edited = await writeAdminFieldValue(db as never, {
+      ipoId: IPO,
+      tableName: 'peer_companies',
+      fieldName: 'peRatio',
+      value: '21.5',
+      row: { rowKey },
+      mode: { kind: 'typed', sourceNote: 'RHP p.120' },
+      actor,
+      entryPoint: 'test',
+      expectedVersion: v!.version,
+    } as never);
+    expect(edited.kind, JSON.stringify(edited)).toBe('OK');
+    expect((await readAdminList(db as never, IPO, 'peer_companies')).owned).toBe(true);
   });
 
   it('an unowned list is still written by the scraper (no hold, no suggestion)', async () => {

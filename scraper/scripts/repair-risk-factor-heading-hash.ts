@@ -39,6 +39,7 @@ import { db } from '@ipodhan/shared';
 import { ipoRiskFactors } from '@ipodhan/shared/db/schema';
 import { headingHashForRiskFactor } from '@ipodhan/shared/utils/risk-factor-heading-key';
 import { eq, sql } from 'drizzle-orm';
+import { lockAndReadListOwnership, LIST_HOLD_FIELD } from '@ipodhan/shared/services/admin-list-hold';
 import { pathToFileURL } from 'node:url';
 import { openRepairDb, writeLedgerFile, type RepairLedgerFieldChange, type RepairLedgerPayload } from './lib/repair-tool.js';
 
@@ -319,6 +320,30 @@ export function dedupeExitCode(plan: DedupePlan): number {
   return plan.conflicts.length > 0 ? 1 : 0;
 }
 
+/**
+ * §9.2 item 8 (OD-107): an admin-owned risk-factor list is never rewritten by this tool. The SQL
+ * predicate that keeps every held IPO's rows out of both phases' reads.
+ */
+export const NOT_ADMIN_HELD_RISK_FACTORS = sql`NOT EXISTS (
+  SELECT 1 FROM field_protection_metadata fpm
+  WHERE fpm.ipo_id = ipo_risk_factors.ipo_id AND fpm.table_name = 'ipo_risk_factors'
+    AND fpm.field_name = ${LIST_HOLD_FIELD} AND fpm.is_protected = true)`;
+
+type RepairDb = Pick<typeof db, 'transaction'>;
+
+/**
+ * Delete one dedupe victim, unless its IPO's risk-factor list became admin-owned after the plan was
+ * read: the hold is re-read under the IPO row lock (the lock `writeAdminListChange` takes), so an
+ * admin save and this delete never interleave.
+ */
+export async function deleteDedupeVictimUnlessHeld(dbLike: RepairDb, victim: { id: string; ipoId: string }): Promise<'deleted' | 'held' | 'gone'> {
+  return dbLike.transaction(async (tx) => {
+    if ((await lockAndReadListOwnership(tx as never, victim.ipoId, 'ipo_risk_factors')).owned) return 'held' as const;
+    const gone = await tx.delete(ipoRiskFactors).where(eq(ipoRiskFactors.id, victim.id)).returning({ id: ipoRiskFactors.id });
+    return gone.length === 1 ? ('deleted' as const) : ('gone' as const);
+  });
+}
+
 async function main(): Promise<void> {
   if (!DO_BACKFILL && !DO_DEDUPE) {
     console.error('Pick a phase: --backfill or --dedupe (see this file\'s header).');
@@ -355,7 +380,8 @@ async function main(): Promise<void> {
     const result = await db.transaction(async (tx) => {
       const rows = await tx
         .select({ id: ipoRiskFactors.id, heading: ipoRiskFactors.heading, currentHash: ipoRiskFactors.headingHash })
-        .from(ipoRiskFactors);
+        .from(ipoRiskFactors)
+        .where(NOT_ADMIN_HELD_RISK_FACTORS);
       const plan = planHashRepair(rows as HashRepairRow[]);
       const writtenIds = new Set<string>();
       if (APPLY) {
@@ -386,6 +412,10 @@ async function main(): Promise<void> {
       FROM ipo_risk_factors rf
       JOIN ipos i ON i.id = rf.ipo_id
       WHERE rf.heading_hash <> ''
+        AND NOT EXISTS (
+          SELECT 1 FROM field_protection_metadata fpm
+          WHERE fpm.ipo_id = rf.ipo_id AND fpm.table_name = 'ipo_risk_factors'
+            AND fpm.field_name = ${LIST_HOLD_FIELD} AND fpm.is_protected = true)
         AND (rf.ipo_id, rf.heading_hash) IN (
           SELECT ipo_id, heading_hash FROM ipo_risk_factors
           WHERE heading_hash <> ''
@@ -408,8 +438,9 @@ async function main(): Promise<void> {
     const deletedIds = new Set<string>();
     if (APPLY) {
       for (const victim of plan.deletes) {
-        const gone = await db.delete(ipoRiskFactors).where(eq(ipoRiskFactors.id, victim.id)).returning({ id: ipoRiskFactors.id });
-        if (gone.length === 1) deletedIds.add(victim.id);
+        const outcome = await deleteDedupeVictimUnlessHeld(db, victim);
+        if (outcome === 'deleted') deletedIds.add(victim.id);
+        if (outcome === 'held') console.log(`  held by admin, not deleted: ipo=${victim.ipoSlug} seq=${victim.seq}`);
       }
     }
     ledger.dedupe = {

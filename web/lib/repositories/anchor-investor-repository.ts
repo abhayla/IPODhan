@@ -17,6 +17,15 @@ import {
   getAnchorInvestorInvalidationKeys,
 } from '../cache/cache-keys';
 import { DatabaseError } from '../errors/repository-errors';
+import { lockAndReadListOwnership } from '@ipodhan/shared/services/admin-list-hold';
+
+/** The anchor row's investor list is admin-owned or non-empty: edit it in the list editor instead. */
+export class AnchorListHeldError extends Error {
+  constructor(readonly ipoId: string) {
+    super('the anchor investor list is edited row by row in the list editor (spec §9.2 item 8, OD-107); remove investors there, with a reason');
+    this.name = 'AnchorListHeldError';
+  }
+}
 import type { InferSelectModel, InferInsertModel } from 'drizzle-orm';
 
 // Type definitions
@@ -145,19 +154,25 @@ export class AnchorInvestorRepository
    * Delete anchor investor data for an IPO
    */
   async delete(ipoId: string): Promise<void> {
+    // §9.2 item 8 (OD-107), item 28(b): deleting the anchor row deletes its investor LIST. Investors
+    // are removed row by row, with a reason, through the list editor (writeAdminListChange); this
+    // whole-row delete is refused while the list has investors or is admin-owned. Re-read under the
+    // IPO row lock the list write takes, so an admin list save and this delete never interleave.
+    let refused = false;
     try {
-      await this.db
-        .delete(anchorInvestors)
-        .where(eq(anchorInvestors.ipoId, ipoId));
-
-      // Invalidate cache
-      await this.deleteCache(getAnchorInvestorInvalidationKeys(ipoId));
+      await this.db.transaction(async (tx) => {
+        const { owned } = await lockAndReadListOwnership(tx as never, ipoId, 'anchor_investors');
+        const [row] = await tx.select({ l: anchorInvestors.investorList }).from(anchorInvestors).where(eq(anchorInvestors.ipoId, ipoId)).limit(1);
+        if (owned || (Array.isArray(row?.l) && row.l.length > 0)) {
+          refused = true;
+          return;
+        }
+        await tx.delete(anchorInvestors).where(eq(anchorInvestors.ipoId, ipoId));
+      });
     } catch (error) {
-      throw new DatabaseError(
-        `Failed to delete anchor investor data for IPO: ${ipoId}`,
-        undefined,
-        error
-      );
+      throw new DatabaseError(`Failed to delete anchor investor data for IPO: ${ipoId}`, undefined, error);
     }
+    if (refused) throw new AnchorListHeldError(ipoId);
+    await this.deleteCache(getAnchorInvestorInvalidationKeys(ipoId));
   }
 }

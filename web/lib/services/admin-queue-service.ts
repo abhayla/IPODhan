@@ -41,6 +41,8 @@ import {
   DISAGREEMENT_REASON,
   NO_REASON_RECORDED,
   editorHref,
+  listEditorHref,
+  listSuggestionOf,
   groupOf,
   orderIpoItems,
   orderQueue,
@@ -100,8 +102,17 @@ export function conflictToItem(r: ConflictRow, family?: string): QueueItem {
       { source: r.source1, value: r.value1 },
       { source: r.source2, value: r.value2 },
     ],
-    editorHref: editorHref(r.slug, r.table_name, r.field_name, r.row_key ?? ''),
+    ...listSuggestionFields(ruleFilter, r),
   };
+}
+
+/** OD-107: a list suggestion links to the list editor and carries its rows; any other conflict links to the field. */
+function listSuggestionFields(ruleFilter: RuleFilter | null, r: ConflictRow): Pick<QueueItem, 'editorHref' | 'suggestion'> {
+  if (ruleFilter === 'OD-107') {
+    const suggestion = listSuggestionOf(r.evidence, r.table_name);
+    if (suggestion) return { editorHref: listEditorHref(r.slug, suggestion.list), suggestion };
+  }
+  return { editorHref: editorHref(r.slug, r.table_name, r.field_name, r.row_key ?? '') };
 }
 
 export function planToItem(r: PlanRow): QueueItem {
@@ -563,7 +574,7 @@ function itemFromRow(
           { source: c.source1, value: c.value1 },
           { source: c.source2, value: c.value2 },
         ],
-        editorHref: editorHref(c.slug, c.table_name, c.field_name, c.row_key ?? ''),
+        ...listSuggestionFields(ruleFilter, c),
       },
       flagMiss: false,
     };

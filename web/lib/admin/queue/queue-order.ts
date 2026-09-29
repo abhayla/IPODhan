@@ -62,7 +62,17 @@ export interface QueueItem {
   planState?: string;
   /** Conflict only — admin-only (item 24), never in a public payload. */
   sources?: { source: string; value: string | null }[];
+  /** OD-107 list suggestion only: the list and the writer's rows to add, remove and change. */
+  suggestion?: ListSuggestion;
   editorHref: string;
+}
+
+export interface ListSuggestion {
+  list: string;
+  writer: string | null;
+  add: string[];
+  remove: string[];
+  change: string[];
 }
 
 export interface QueueIpoSummary {
@@ -84,6 +94,28 @@ export const DISAGREEMENT_REASON = 'disagreement';
 export function editorHref(slug: string, tableName: string, fieldName: string, rowKey: string): string {
   const base = `/ipos/${encodeURIComponent(slug)}?edit=${encodeURIComponent(`${tableName}.${fieldName}`)}`;
   return rowKey === '' ? base : `${base}&row=${encodeURIComponent(rowKey)}`;
+}
+
+/** The list editor on the IPO page (§9.2 item 8): `/ipos/<slug>?edit=<list>`. */
+export function listEditorHref(slug: string, list: string): string {
+  return `/ipos/${encodeURIComponent(slug)}?edit=${encodeURIComponent(list)}`;
+}
+
+/** A list suggestion's evidence (`recordListSuggestion`) as the queue shows it; null when it is not one. */
+export function listSuggestionOf(evidence: unknown, tableName: string): ListSuggestion | null {
+  const e = (typeof evidence === 'string' ? safeJson(evidence) : evidence) as Record<string, unknown> | null;
+  if (!e || typeof e !== 'object') return null;
+  const arr = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
+  const list = typeof e.list === 'string' ? e.list : tableName === 'ipos' ? 'lead_managers' : tableName;
+  return { list, writer: typeof e.writer === 'string' ? e.writer : null, add: arr(e.add), remove: arr(e.remove), change: arr(e.change) };
+}
+
+function safeJson(s: string): unknown {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
 }
 
 export function reasonForConflict(ruleFilter: RuleFilter | null): string {

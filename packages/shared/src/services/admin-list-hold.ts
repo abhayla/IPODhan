@@ -52,10 +52,21 @@ export interface AdminListSpec {
   key(row: Row): string;
   /** What the admin reads for the row in a suggestion. */
   label(row: Row): string;
+  /**
+   * The row's values, when a different value under the SAME key is itself a change the admin must
+   * see (financial statements: a year the admin already has, with other numbers). Lists without it
+   * compare by key only (a renamed promoter is a remove plus an add).
+   */
+  values?(row: Row): string;
 }
 
 const s = (v: unknown) => (v == null ? '' : String(v));
 const nameKey = (normalized: unknown, name: unknown) => (s(normalized) !== '' ? s(normalized) : rowKeyForName(s(name)) ?? s(name).trim().toLowerCase());
+
+/** The value columns of a financial-statement year (schema `financial_statements`). */
+export const FINANCIAL_VALUE_COLUMNS = ['revenue', 'totalIncome', 'ebitda', 'pat', 'netWorth', 'epsBasic', 'epsDiluted', 'opCashFlow', 'dscr', 'rentExpense'] as const;
+/** numeric columns read back as '123.00'; a writer hands 123 — compare the number, not the text. */
+const num = (v: unknown) => (v == null || v === '' ? '' : Number.isFinite(Number(v)) ? String(Number(v)) : String(v));
 
 export const ADMIN_LIST_SPECS: Readonly<Record<AdminListName, AdminListSpec>> = {
   // ipos.lead_managers is a jsonb string array; a "row" is { name }.
@@ -81,6 +92,7 @@ export const ADMIN_LIST_SPECS: Readonly<Record<AdminListName, AdminListSpec>> = 
     holdField: LIST_HOLD_FIELD,
     key: (r) => `${s(r.fiscalYear)}|${s(r.basis)}`,
     label: (r) => `FY${s(r.fiscalYear)} ${s(r.basis)}`,
+    values: (r) => [s(r.unit), ...FINANCIAL_VALUE_COLUMNS.map((c) => num(r[c]))].join('|'),
   },
   ipo_risk_factors: {
     holdTable: 'ipo_risk_factors',
@@ -110,14 +122,46 @@ export async function lockAndReadListOwnership(tx: HoldExecutor, ipoId: string, 
   return { exists: true, owned: prot.rows.length > 0 };
 }
 
-/** Pure: the rows a writer's list would add to, and remove from, the admin's list (by row key). */
-export function diffList(list: AdminListName, stored: readonly Row[], incoming: readonly Row[]): { add: string[]; remove: string[]; incomingKeys: string[] } {
+/**
+ * Inside an admin write's transaction: make the list admin-owned (OD-107). The ONE hold upsert every
+ * admin list change uses — `writeAdminListChange`, and a field edit on a list row (a peer row).
+ */
+export async function upsertListHold(
+  tx: HoldExecutor,
+  args: { ipoId: string; list: AdminListName; by: string; editNote: string; at: Date }
+): Promise<void> {
+  const spec = ADMIN_LIST_SPECS[args.list];
+  const at = args.at.toISOString();
+  await tx.execute(sql`
+    INSERT INTO field_protection_metadata (ipo_id, table_name, field_name, is_protected, auto_protected,
+                                           manually_edited_at, manually_edited_by, edit_note, created_at, updated_at)
+    VALUES (${args.ipoId}::uuid, ${spec.holdTable}, ${spec.holdField}, true, true, ${at}, ${args.by}, ${args.editNote}, ${at}, ${at})
+    ON CONFLICT (table_name, field_name, ipo_id) DO UPDATE
+      SET is_protected = true, auto_protected = true, manually_edited_at = EXCLUDED.manually_edited_at,
+          manually_edited_by = EXCLUDED.manually_edited_by, edit_note = EXCLUDED.edit_note, updated_at = EXCLUDED.updated_at`);
+}
+
+/**
+ * Pure: the rows a writer's list would add to, remove from, and (for a list with `values`) change in
+ * the admin's list, by row key.
+ */
+export function diffList(
+  list: AdminListName,
+  stored: readonly Row[],
+  incoming: readonly Row[]
+): { add: string[]; remove: string[]; change: string[]; incomingKeys: string[] } {
   const spec = ADMIN_LIST_SPECS[list];
-  const storedKeys = new Set(stored.map((r) => spec.key(r)));
+  const storedByKey = new Map(stored.map((r) => [spec.key(r), r]));
   const incomingByKey = new Map(incoming.map((r) => [spec.key(r), r]));
-  const add = [...incomingByKey].filter(([k]) => !storedKeys.has(k)).map(([, r]) => spec.label(r));
+  const add = [...incomingByKey].filter(([k]) => !storedByKey.has(k)).map(([, r]) => spec.label(r));
   const remove = stored.filter((r) => !incomingByKey.has(spec.key(r))).map((r) => spec.label(r));
-  return { add: add.sort(), remove: remove.sort(), incomingKeys: [...incomingByKey.keys()].sort() };
+  const change = spec.values
+    ? [...incomingByKey].filter(([k, r]) => storedByKey.has(k) && spec.values!(storedByKey.get(k)!) !== spec.values!(r)).map(([, r]) => spec.label(r))
+    : [];
+  const incomingKeys = [...incomingByKey]
+    .map(([k, r]) => (spec.values ? `${k}=${spec.values(r)}` : k))
+    .sort();
+  return { add: add.sort(), remove: remove.sort(), change: change.sort(), incomingKeys };
 }
 
 const SOURCES = new Set(['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH', 'INVESTORGAIN_GMP', 'API_FALLBACK']);
@@ -125,20 +169,20 @@ const SOURCES = new Set(['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTOR
 /**
  * Inside the writer's transaction, when the list is admin-owned: record the writer's different list
  * as ONE suggestion row in `data_conflicts` (value1 = the admin's list, value2 = the writer's), with
- * the rows to add and remove in `evidence`. Nothing is written to the list. The same writer list for
+ * the rows to add, remove and change in `evidence`. Nothing is written to the list. The same writer list for
  * the same IPO is one row forever (`suggestion_key`), so a re-read never repeats a suggestion the
  * admin already saw or dismissed (item 25). A list equal to the admin's records nothing.
  */
 export async function recordListSuggestion(
   tx: HoldExecutor,
   args: { ipoId: string; list: AdminListName; source: string; stored: readonly Row[]; incoming: readonly Row[]; documentId?: string | null }
-): Promise<{ recorded: boolean; add: string[]; remove: string[] }> {
+): Promise<{ recorded: boolean; add: string[]; remove: string[]; change: string[] }> {
   const spec = ADMIN_LIST_SPECS[args.list];
-  const { add, remove, incomingKeys } = diffList(args.list, args.stored, args.incoming);
-  if (add.length === 0 && remove.length === 0) return { recorded: false, add, remove };
+  const { add, remove, change, incomingKeys } = diffList(args.list, args.stored, args.incoming);
+  if (add.length === 0 && remove.length === 0 && change.length === 0) return { recorded: false, add, remove, change };
   const source = SOURCES.has(args.source.toUpperCase()) ? args.source.toUpperCase() : 'DRHP';
   const key = createHash('sha256').update(`list|${args.ipoId}|${args.list}|${incomingKeys.join('\u0001')}`).digest('hex');
-  const evidence = { origin: ADMIN_LIST_SUGGESTION_REASON, list: args.list, writer: args.source, add, remove };
+  const evidence = { origin: ADMIN_LIST_SUGGESTION_REASON, list: args.list, writer: args.source, add, remove, change };
   const labels = (rows: readonly Row[]) => JSON.stringify(rows.map((r) => spec.label(r)));
   const res = await tx.execute(sql`
     INSERT INTO data_conflicts (ipo_id, table_name, row_key, field_name, source1, value1, source2, value2,
@@ -148,5 +192,5 @@ export async function recordListSuggestion(
             ${args.documentId ?? null}::uuid, ${JSON.stringify(evidence)}::jsonb, ${key})
     ON CONFLICT (suggestion_key) DO NOTHING
     RETURNING id`);
-  return { recorded: res.rows.length > 0, add, remove };
+  return { recorded: res.rows.length > 0, add, remove, change };
 }

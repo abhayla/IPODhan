@@ -1,5 +1,6 @@
 import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDataRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert, FinancialDataInsert, IPO } from '@ipodhan/shared';
 import { filterPatchUnderHold, type HoldExecutor } from '@ipodhan/shared/services/field-hold';
+import { recordListSuggestion } from '@ipodhan/shared/services/admin-list-hold';
 import { normalizeCompanyUrl, isVerifierUrl } from './company-host-source.js';
 import logger from '../utils/logger.js';
 import { sql as sqlOp } from 'drizzle-orm';
@@ -2888,8 +2889,22 @@ export async function recordDiscoveredLeadManagers(
   const written = await dbLike.transaction(async (tx) => {
     // §9.2 item 19: an admin who set or cleared leadManagers (OD-121: delete = keep empty) holds it;
     // the empty-array guard below alone would refill it. Re-read under the ipos row lock.
-    const { dropped } = await filterPatchUnderHold(tx, ipoId, 'ipos', { leadManagers: sanitized }, { honourScraperLock: true });
-    if (dropped.length > 0) return false;
+    const { dropped, hold } = await filterPatchUnderHold(tx, ipoId, 'ipos', { leadManagers: sanitized }, { honourScraperLock: true });
+    if (dropped.length > 0) {
+      // §9.2 items 8, 9 (OD-107): an admin-owned list is kept, and this source's different list is
+      // recorded as a suggestion for the admin queue (same as IPORepository.update's lead managers).
+      if (hold?.protectedFields.has('leadManagers')) {
+        const [cur] = await tx.select({ lm: iposTable.leadManagers }).from(iposTable).where(eqOp(iposTable.id, ipoId));
+        await recordListSuggestion(tx as never, {
+          ipoId,
+          list: 'lead_managers',
+          source,
+          stored: (Array.isArray(cur?.lm) ? (cur.lm as unknown[]) : []).map((name) => ({ name })),
+          incoming: sanitized.map((name) => ({ name })),
+        });
+      }
+      return false;
+    }
     const updated = await tx
       .update(iposTable)
       .set({ leadManagers: sanitized, updatedAt: new Date() })

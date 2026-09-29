@@ -15,7 +15,7 @@ import { auditAdminWrite } from '@/lib/admin/admin-write-audit';
 import { AuditActionTypes } from '@/lib/services/audit-log-service';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
-import { AnchorInvestorRepository } from '@/lib/repositories/anchor-investor-repository';
+import { AnchorInvestorRepository, AnchorListHeldError } from '@/lib/repositories/anchor-investor-repository';
 import { logger } from '@/lib/logger';
 
 // ==================== ZOD SCHEMAS ====================
@@ -260,6 +260,13 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext: Adm
       throw error;
     }
 
+    // §9.2 item 8 (OD-107): the investor LIST is edited row by row through the one list write
+    // (writeAdminListChange, the IPO page's list editor), which makes it admin-owned. This route
+    // saves the allocation's totals and bid date only; a list in the body is refused, never applied.
+    if (validatedData.investorList != null) {
+      return createErrorResponse('USE_LIST_EDITOR', new AnchorListHeldError(validatedData.ipoId).message, requestId, 400);
+    }
+
     // Calculate lock-in dates
     const lockInDates = calculateLockInDates(validatedData.bidDate);
 
@@ -287,7 +294,6 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext: Adm
       anchorInvestorsCount: validatedData.anchorInvestorsCount,
       lockIn50PercentDate: lockInDates.lockIn50PercentDate,
       lockInRemainingDate: lockInDates.lockInRemainingDate,
-      investorList: validatedData.investorList || null,
     };
 
     // Upsert anchor data (create or update)
@@ -386,8 +392,13 @@ export const DELETE = withAdminAuth(async (request: NextRequest, adminContext: A
 
     const repository = new AnchorInvestorRepository(db, redis);
 
-    // Delete anchor data
-    await repository.delete(ipoId);
+    // Delete anchor data (refused while its investor list is non-empty or admin-owned, OD-107)
+    try {
+      await repository.delete(ipoId);
+    } catch (error) {
+      if (error instanceof AnchorListHeldError) return createErrorResponse('USE_LIST_EDITOR', error.message, requestId, 400);
+      throw error;
+    }
 
     await auditAdminWrite(adminContext, request, {
       actionType: AuditActionTypes.FIELD_UPDATED,
