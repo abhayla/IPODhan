@@ -12,6 +12,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { BaseRepository } from './base-repository';
 import { CacheTTL, getAdminQueueCountsKey, getAdminQueueSetupKey } from '@/lib/cache/cache-keys';
+import { ADMIN_LIST_SUGGESTION } from '@ipodhan/shared/utils/conflict-reasons';
 import { IPO_COLUMNS, type ConflictRow, type PlanRow } from './admin-queue-repository';
 
 /** An unresolved conflict the SQL cannot classify alone (not OD-75 by source/reason, not F-181). */
@@ -125,7 +126,8 @@ function queueCte(inp: QueueSqlInputs): SQL {
     conf AS (
       SELECT 'conflict:' || c.id::text AS id, c.ipo_id::text AS ipo_id, c.table_name, c.field_name,
              coalesce(c.row_key, '') AS row_key,
-             CASE WHEN c.source1::text = c.source2::text OR c.resolution_reason = ANY(${textArray(inp.od75Reasons)}) THEN 'OD-75'
+             CASE WHEN c.resolution_reason = ${ADMIN_LIST_SUGGESTION} THEN 'OD-107'
+                  WHEN c.source1::text = c.source2::text OR c.resolution_reason = ANY(${textArray(inp.od75Reasons)}) THEN 'OD-75'
                   WHEN c.field_name = ANY(${textArray(inp.bookkeepingFields)}) THEN 'F-181'
                   ELSE coalesce(cls.cat, 'disagreement') END AS cat,
              NULL::text AS reason_code, false AS has_flag,
@@ -290,7 +292,7 @@ export class AdminQueuePageRepository extends BaseRepository {
     if (ids.length === 0) return [];
     const r = await this.db.execute(sql`
       SELECT c.id::text AS id, c.table_name, c.row_key, c.field_name, c.source1::text AS source1, c.value1,
-             c.source2::text AS source2, c.value2, c.resolution_reason, c.document_id, ${IPO_COLUMNS}
+             c.source2::text AS source2, c.value2, c.resolution_reason, c.document_id, c.evidence, ${IPO_COLUMNS}
         FROM data_conflicts c JOIN ipos i ON i.id = c.ipo_id
        WHERE c.id::text IN (${idList(ids)})`);
     return (r.rows ?? []) as unknown as ConflictRow[];

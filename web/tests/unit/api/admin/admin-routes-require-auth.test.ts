@@ -83,6 +83,11 @@ const cases: Array<{ name: string; method: string; path: string; load: () => Pro
   // §9.2 item 24: the per-source values reach only a logged-in admin.
   { name: 'ipos/[id]/editor GET', method: 'GET', path: '/api/admin/ipos/00000000-0000-4000-8000-000000000001/editor',
     load: () => import('@/app/api/admin/ipos/[id]/editor/route') },
+  // §9.2 item 8: the list editor reads and writes only for a logged-in admin.
+  { name: 'ipos/[id]/lists/[list] GET', method: 'GET', path: '/api/admin/ipos/00000000-0000-4000-8000-000000000001/lists/promoters',
+    load: () => import('@/app/api/admin/ipos/[id]/lists/[list]/route') },
+  { name: 'ipos/[id]/lists/[list] POST', method: 'POST', path: '/api/admin/ipos/00000000-0000-4000-8000-000000000001/lists/promoters',
+    load: () => import('@/app/api/admin/ipos/[id]/lists/[list]/route') },
 ];
 
 describe('admin API routes reject unauthenticated requests', () => {

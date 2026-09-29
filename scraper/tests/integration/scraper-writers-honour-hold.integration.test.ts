@@ -11,6 +11,7 @@ import {
   type AdminFieldWriteInput,
 } from '@ipodhan/shared/services/admin-field-write';
 import { FieldSourcesRepository } from '@ipodhan/shared';
+import { writeAdminListChange, readAdminList, listRowKey } from '@ipodhan/shared/services/admin-list-write';
 import { makeIpoDetailsWriter } from '../../src/services/filing-persist-deps';
 import {
   recordDiscoveredLeadManagers,
@@ -105,7 +106,20 @@ describe.skipIf(!DATABASE_URL)('A2e: every scraper writer honours the admin hold
   });
 
   it('recordDiscoveredLeadManagers (raw ipos transaction, write-once guard) does not refill a list the admin cleared (OD-121)', async () => {
-    await adminSave('ipos', 'leadManagers', null, true);
+    // §9.2 item 8 (OD-107, OD-121): lead managers are a list; the admin clears it through the list write
+    // (add then remove every row), which leaves it admin-EMPTY and held.
+    const opened = await readAdminList(db as never, IPO, 'lead_managers');
+    const add = await writeAdminListChange(db as never, { ipoId: IPO, list: 'lead_managers', op: { kind: 'add', row: { name: 'Temp Capital Limited' } }, actor: { name: 'a2e-admin', adminId: 'admin-a2e' }, entryPoint: 'test', expectedVersion: opened.version });
+    expect(add.kind, JSON.stringify(add)).toBe('OK');
+    const cleared = await writeAdminListChange(db as never, {
+      ipoId: IPO,
+      list: 'lead_managers',
+      op: { kind: 'remove', rowKeys: [listRowKey('lead_managers', { name: 'Temp Capital Limited' })], reason: 'no BRLM named yet' },
+      actor: { name: 'a2e-admin', adminId: 'admin-a2e' },
+      entryPoint: 'test',
+      expectedVersion: add.kind === 'OK' ? add.version : '',
+    });
+    expect(cleared.kind, JSON.stringify(cleared)).toBe('OK');
     const r = await recordDiscoveredLeadManagers(
       { invalidateIpoCache: async () => undefined },
       IPO,

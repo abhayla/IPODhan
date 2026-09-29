@@ -185,6 +185,7 @@ import {
 } from '../utils/company-name-normalizer';
 import { findMostSimilarName } from '../utils/company-name-similarity';
 import { filterPatchUnderHold } from '../services/field-hold';
+import { recordListSuggestion } from '../services/admin-list-hold';
 import {
   checkMergeEligibility,
   assessRelaunch,
@@ -1588,6 +1589,18 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         const filtered = await filterPatchUnderHold(tx, id, 'ipos', incoming, { honourScraperLock: true });
         if (!filtered.hold) throw new EntityNotFoundError('IPO', id);
         dropped = filtered.dropped;
+        // §9.2 items 8 and 9 (OD-107): lead managers the admin owns are never replaced; a writer's
+        // different list becomes a suggestion (rows to add / remove) for the admin queue.
+        if (Array.isArray(incoming.leadManagers) && filtered.hold.protectedFields.has('leadManagers')) {
+          const [cur] = await tx.select({ lm: ipos.leadManagers }).from(ipos).where(eq(ipos.id, id));
+          await recordListSuggestion(tx as never, {
+            ipoId: id,
+            list: 'lead_managers',
+            source,
+            stored: (Array.isArray(cur?.lm) ? cur.lm : []).map((name) => ({ name })),
+            incoming: (incoming.leadManagers as unknown[]).map((name) => ({ name })),
+          });
+        }
         const patch = filtered.patch as Record<string, unknown>;
         if (Object.keys(patch).length === 0) {
           const [current] = await tx.select().from(ipos).where(eq(ipos.id, id)).limit(1);

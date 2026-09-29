@@ -269,7 +269,8 @@ describe.skipIf(!DATABASE_URL)('A2 admin field write (ipodhan_test)', () => {
     const newKey = (r as { rowKey: string }).rowKey;
     expect(newKey).not.toBe('acme');
     const holds = await db.select().from(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO));
-    expect(holds.map((h) => `${h.tableName}.${h.fieldName}`).sort()).toEqual([`peer_companies:${newKey}.companyName`, `peer_companies:${newKey}.peRatio`]);
+    // OD-107 (§9.2 item 8): a field edit on a peer row also makes the whole peer list admin-owned (`peer_companies.*`).
+    expect(holds.map((h) => `${h.tableName}.${h.fieldName}`).sort()).toEqual(['peer_companies.*', `peer_companies:${newKey}.companyName`, `peer_companies:${newKey}.peRatio`]);
   });
 
   // MEASURED GAP (2026-09-28, round 3): the scraper peer writer deletes and re-inserts the list and

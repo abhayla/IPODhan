@@ -21,6 +21,8 @@ function makeMockTx(insertedRows: unknown[]) {
   return {
     calls,
     tx: {
+      // §9.2 item 8: the list-ownership read (lock + hold) finds no IPO row, so the list is not owned.
+      execute: vi.fn().mockResolvedValue({ rows: [] }),
       delete: vi.fn().mockReturnValue({
         where: vi.fn(() => {
           calls.push('delete');

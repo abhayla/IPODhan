@@ -56,6 +56,7 @@ const EXPECTED_ADMIN_ROUTES = [
   'dynamic/[table]/route.ts',
   'gmp/[ipoId]/route.ts',
   'ipos/[id]/editor/route.ts',
+  'ipos/[id]/lists/[list]/route.ts',
   'ipos/[id]/route.ts',
   'ipos/route.ts',
   'metrics/data-pipeline/route.ts',

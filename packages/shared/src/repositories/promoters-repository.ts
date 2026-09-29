@@ -22,6 +22,7 @@ import { promoters, promoterAcquisitionRanges } from '../db/schema';
 import type * as schema from '../db/schema';
 import { CacheTTL } from '../cache/cache-keys';
 import { DatabaseError } from '../errors/repository-errors';
+import { lockAndReadListOwnership, recordListSuggestion } from '../services/admin-list-hold';
 
 export interface PromoterRow {
   id: string;
@@ -89,10 +90,20 @@ export class PromotersRepository extends BaseRepository {
     );
   }
 
-  /** Replace the full promoter list for one IPO inside a transaction. */
-  async replacePromoters(ipoId: string, rows: PromoterInsert[]): Promise<PromoterRow[]> {
+  /**
+   * Replace the full promoter list for one IPO inside a transaction. An admin-owned list (§9.2
+   * item 8, OD-107) is never touched: the writer's different list is recorded as a suggestion and
+   * the stored rows are returned. `source` names the writer on that suggestion.
+   */
+  async replacePromoters(ipoId: string, rows: PromoterInsert[], source = 'DRHP'): Promise<PromoterRow[]> {
     try {
       const result = await this.db.transaction(async (tx) => {
+        const { owned } = await lockAndReadListOwnership(tx as never, ipoId, 'promoters');
+        if (owned) {
+          const stored = await tx.select().from(promoters).where(eq(promoters.ipoId, ipoId));
+          await recordListSuggestion(tx as never, { ipoId, list: 'promoters', source, stored, incoming: rows as never });
+          return stored;
+        }
         await tx.delete(promoters).where(eq(promoters.ipoId, ipoId));
         if (rows.length === 0) return [];
         return tx.insert(promoters).values(rows as never[]).returning();

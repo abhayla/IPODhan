@@ -49,6 +49,7 @@ vi.mock('@/lib/services/conflict-resolution', () => ({
 const anchorUpsert = vi.fn();
 const anchorDelete = vi.fn();
 vi.mock('@/lib/repositories/anchor-investor-repository', () => ({
+  AnchorListHeldError: class extends Error {},
   AnchorInvestorRepository: class {
     upsert(...a: unknown[]) {
       return anchorUpsert(...a);
@@ -225,6 +226,23 @@ describe('non-field admin writes record the admin (name + id) in audit_logs (Tie
     );
     expect(res.status).toBe(200);
     expectAttributed('ANCHOR_INVESTORS_SAVED');
+  });
+
+  it('anchor-investors POST refuses an investor list: the list is edited through the list editor (OD-107)', async () => {
+    const { POST } = await import('@/app/api/admin/anchor-investors/route');
+    const res = await POST(
+      json('http://l/api/admin/anchor-investors', 'POST', {
+        ipoId: '00000000-0000-4000-8000-000000000001',
+        bidDate: '2026-09-01',
+        totalSharesOffered: 1000,
+        totalAmountRaised: '50000',
+        anchorInvestorsCount: 1,
+        investorList: [{ name: 'Some Fund', type: 'Mutual Fund', shares: 10, amount: 100, percentOfIssue: 1 }],
+      })
+    );
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error?: { code?: string } }).error?.code ?? '').toBe('USE_LIST_EDITOR');
+    expect(anchorUpsert).not.toHaveBeenCalled();
   });
 
   it('anchor-investors DELETE', async () => {

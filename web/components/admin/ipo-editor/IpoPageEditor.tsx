@@ -9,6 +9,7 @@
  * (item 11). There is deliberately no "re-scrape" action (item 22, OD-65, OD-56).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ListEditor, LIST_COLUMNS, type ListName } from './ListEditor';
 import { useRouter } from 'next/navigation';
 import type { EditorField, EditorPayload, SourceWitness } from '@/lib/admin/ipo-editor-data';
 import { previewTyped, showStoredValue } from '@/lib/admin/editor-value-units';
@@ -437,6 +438,17 @@ export function IpoPageEditor({ ipoId, editTarget, editRowKey = null }: IpoPageE
               return <FieldRow key={f.key} ipoId={ipoId} field={f} open={isOpen} onToggle={() => setOpenField(isOpen ? null : id)} onSaved={onSaved} />;
             })}
           </ul>
+          {/* §9.2 item 8 (OD-107): the seven lists, each with add / edit / remove (remove asks a reason). */}
+          {!filter.trim() && (
+            <div className="mt-4 space-y-2 border-t border-gray-200 pt-3" data-testid="list-editors">
+              {(Object.keys(LIST_COLUMNS) as ListName[]).map((list) => (
+                <details key={list} open={editTarget === list} className="rounded-md border border-gray-200 p-3">
+                  <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-medium">{LIST_COLUMNS[list].title}</summary>
+                  <ListEditor ipoId={ipoId} list={list} onSaved={() => router.refresh()} />
+                </details>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

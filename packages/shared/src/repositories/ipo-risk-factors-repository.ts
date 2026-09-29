@@ -23,6 +23,7 @@ import type * as schema from '../db/schema';
 import { CacheTTL } from '../cache/cache-keys';
 import { DatabaseError } from '../errors/repository-errors';
 import { logger } from '../logger';
+import { lockAndReadListOwnership, recordListSuggestion } from '../services/admin-list-hold';
 
 export interface IpoRiskFactorRow {
   id: string;
@@ -130,7 +131,7 @@ export class IpoRiskFactorsRepository extends BaseRepository {
    * heading), the IPO would be left showing ZERO risk factors on a live page.
    * `ipo-risk-factors-repository.test.ts` mutation-tests exactly this.
    */
-  async replaceForIpo(ipoId: string, rows: IpoRiskFactorInsert[]): Promise<IpoRiskFactorRow[]> {
+  async replaceForIpo(ipoId: string, rows: IpoRiskFactorInsert[], source = 'DRHP'): Promise<IpoRiskFactorRow[]> {
     const prepared = prepareRiskFactorRows(rows);
 
     // A dropped row is a risk factor that will NOT appear on the live page.
@@ -156,6 +157,13 @@ export class IpoRiskFactorsRepository extends BaseRepository {
 
     try {
       const result = await this.db.transaction(async (tx) => {
+        // §9.2 item 8 (OD-107): an admin-owned list is never replaced; the writer's list is a suggestion.
+        const { owned } = await lockAndReadListOwnership(tx as never, ipoId, 'ipo_risk_factors');
+        if (owned) {
+          const stored = await tx.select().from(ipoRiskFactors).where(eq(ipoRiskFactors.ipoId, ipoId));
+          await recordListSuggestion(tx as never, { ipoId, list: 'ipo_risk_factors', source, stored, incoming: prepared.rows as never });
+          return stored;
+        }
         await tx.delete(ipoRiskFactors).where(eq(ipoRiskFactors.ipoId, ipoId));
         if (prepared.rows.length === 0) return [];
         return tx.insert(ipoRiskFactors).values(prepared.rows as never[]).returning();

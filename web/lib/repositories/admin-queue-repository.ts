@@ -39,6 +39,8 @@ export interface ConflictRow extends IpoRow {
   value2: string | null;
   resolution_reason: string | null;
   document_id: string | null;
+  /** The row's evidence (a list suggestion carries its rows to add / remove / change, OD-107). */
+  evidence?: unknown;
 }
 
 export interface PlanRow extends IpoRow {
@@ -63,7 +65,7 @@ export class AdminQueueRepository extends BaseRepository {
   async listUnresolvedConflicts(ipoSlug?: string): Promise<ConflictRow[]> {
     const r = await this.db.execute(sql`
       SELECT c.id, c.table_name, c.row_key, c.field_name, c.source1::text AS source1, c.value1,
-             c.source2::text AS source2, c.value2, c.resolution_reason, c.document_id, ${IPO_COLUMNS}
+             c.source2::text AS source2, c.value2, c.resolution_reason, c.document_id, c.evidence, ${IPO_COLUMNS}
         FROM data_conflicts c JOIN ipos i ON i.id = c.ipo_id
        WHERE c.resolved_at IS NULL ${ipoSlug ? sql`AND i.slug = ${ipoSlug}` : sql``}`);
     return (r.rows ?? []) as unknown as ConflictRow[];

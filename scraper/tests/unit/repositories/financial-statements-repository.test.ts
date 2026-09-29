@@ -51,6 +51,9 @@ describe('FinancialStatementsRepository', () => {
     it('targets the (ipoId, fiscalYear, basis) composite key on conflict', async () => {
       let capturedTarget: unknown;
       const mockDb = {
+        // §9.2 item 8: upsert runs in a transaction that first reads list ownership (none here).
+        execute: vi.fn().mockResolvedValue({ rows: [] }),
+        transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(mockDb)),
         insert: vi.fn().mockReturnValue({
           values: vi.fn().mockReturnValue({
             onConflictDoUpdate: vi.fn((opts) => {
@@ -75,6 +78,9 @@ describe('FinancialStatementsRepository', () => {
 
     it('invalidates the per-IPO cache after a successful upsert', async () => {
       const mockDb = {
+        // §9.2 item 8: upsert runs in a transaction that first reads list ownership (none here).
+        execute: vi.fn().mockResolvedValue({ rows: [] }),
+        transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(mockDb)),
         insert: vi.fn().mockReturnValue({
           values: vi.fn().mockReturnValue({
             onConflictDoUpdate: vi.fn().mockReturnValue({
@@ -93,6 +99,9 @@ describe('FinancialStatementsRepository', () => {
 
     it('wraps a db failure in a DatabaseError', async () => {
       const mockDb = {
+        // §9.2 item 8: upsert runs in a transaction that first reads list ownership (none here).
+        execute: vi.fn().mockResolvedValue({ rows: [] }),
+        transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(mockDb)),
         insert: vi.fn().mockReturnValue({
           values: vi.fn().mockReturnValue({
             onConflictDoUpdate: vi.fn().mockReturnValue({
