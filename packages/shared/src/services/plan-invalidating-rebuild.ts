@@ -26,6 +26,7 @@
 import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '../db/schema';
+import { parseNaiveTimestampAsUtc } from '../db/timezone-config';
 import { FIELD_PLAN_HELD_READ_PREFIX } from '../repositories/ipo-field-plan-repository';
 import {
   generateFieldPlanAsync,
@@ -107,11 +108,30 @@ async function txOverridesReader(tx: Db, ipoId: string): Promise<PlanOverridesRe
         .map((o) => ({
           id: o.id,
           ranks: [o.rank1_source, o.rank2_source, o.rank3_source].filter((x): x is string => x !== null),
-          expiresAt: new Date(o.expires_at).toISOString(),
+          expiresAt: expiresAtToIso(o.expires_at),
           ipoScoped: o.ipo_id !== null,
         }));
     },
   };
+}
+
+/**
+ * `expires_at` comes back from a raw `tx.execute(sql\`...\`)` read, so it is whatever the pg
+ * driver's type parser for this column's OID produced — a `Date` when node-postgres's own
+ * `timestamptz` parser (or `configureUtcTimestampParsing`) already ran, or naive wall-clock TEXT
+ * otherwise. A `Date` is re-serialised directly (it already carries the correct instant); text is
+ * parsed as UTC via `parseNaiveTimestampAsUtc`, never via a bare `new Date(<string>)`, which would
+ * read a naive value at the PROCESS's local offset (`.claude/rules/ist-timezone.md`).
+ */
+export function expiresAtToIso(value: string | Date): string {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  const parsed = parseNaiveTimestampAsUtc(value);
+  if (parsed === null) {
+    throw new Error(`field_source_overrides.expires_at: could not parse ${JSON.stringify(value)}`);
+  }
+  return parsed.toISOString();
 }
 
 export interface PlanRebuildSummary {
