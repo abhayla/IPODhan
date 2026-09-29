@@ -80,6 +80,9 @@ const cases: Array<{ name: string; method: string; path: string; load: () => Pro
     load: () => import('@/app/api/admin/drhp/ipo/[ipoId]/route') },
   { name: 'metrics/data-pipeline GET', method: 'GET', path: '/api/admin/metrics/data-pipeline',
     load: () => import('@/app/api/admin/metrics/data-pipeline/route') },
+  // §9.2 item 24: the per-source values reach only a logged-in admin.
+  { name: 'ipos/[id]/editor GET', method: 'GET', path: '/api/admin/ipos/00000000-0000-4000-8000-000000000001/editor',
+    load: () => import('@/app/api/admin/ipos/[id]/editor/route') },
 ];
 
 describe('admin API routes reject unauthenticated requests', () => {

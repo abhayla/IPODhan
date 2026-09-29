@@ -122,6 +122,9 @@ describe('acceptCorrigendumSuggestion — field_sources dataLineage MERGE, never
     // MAJOR 1: "not a plain object" is not enough (M3) -- assert the compiled SQL actually
     // merges over the EXISTING column rather than just wrapping the replacement in `sql`.
     const compiled = new PgDialect().sqlToQuery(setClause.dataLineage as SQL);
-    expect(compiled.sql).toMatch(/COALESCE\("field_sources"\."data_lineage",\s*'\{\}'::jsonb\)\s*\|\|/i);
+    // Merge over the EXISTING column: coalesce it, subtract only the previous admin write's own keys
+    // (`adminKeys`), then concatenate this write's keys — source keys such as docType survive.
+    expect(compiled.sql).toMatch(/COALESCE\("field_sources"\."data_lineage",\s*'\{\}'::jsonb\)[\s\S]*\|\|/i);
+    expect(compiled.sql).toMatch(/adminKeys/);
   });
 });

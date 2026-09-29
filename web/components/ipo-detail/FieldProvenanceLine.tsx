@@ -13,7 +13,7 @@
  */
 
 import type { FieldProvenance } from '@/lib/repositories/ipo-field-plan-repository';
-import { MULTIPLE_SOURCES } from '@/lib/repositories/ipo-field-plan-repository';
+import { ADMIN_TYPED_SOURCE, MULTIPLE_SOURCES } from '@/lib/repositories/ipo-field-plan-repository';
 
 export interface FieldProvenanceLineProps {
   /** null, or a row with no source, renders nothing — see the file header. */
@@ -37,7 +37,9 @@ const SOURCE_WORDS: Readonly<Record<string, string>> = {
   BSE: 'BSE',
   CHITTORGARH: 'Chittorgarh',
   API_FALLBACK: 'the exchange API',
-  ADMIN: 'a manual correction',
+  PROSPECTUS: 'the offer document',
+  CORRIGENDUM: 'the offer document',
+  PRICE_BAND_AD: 'the offer document',
   [MULTIPLE_SOURCES]: 'more than one source',
 };
 
@@ -87,6 +89,14 @@ export function figureTimeIst(at: Date): string {
  */
 export function FieldProvenanceLine({ provenance }: FieldProvenanceLineProps) {
   if (!provenance || !provenance.chosenSource) return null;
+
+  // OD-109: a typed admin value. No admin name and never the word "correction".
+  if (provenance.chosenSource === ADMIN_TYPED_SOURCE) {
+    const text = provenance.confirmedAt
+      ? `Checked by the IPODhan team, ${readDateIst(provenance.confirmedAt)}`
+      : 'Checked by the IPODhan team';
+    return <p className="mt-1 text-xs text-gray-600">{text}</p>;
+  }
 
   const words = sourceWords(provenance.chosenSource);
   const text = provenance.confirmedAt
