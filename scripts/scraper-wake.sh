@@ -567,16 +567,44 @@ notify_no_expiry_lock() {
     log "WARN lock-leaked-no-expiry-alert-skipped: could not compute the IST calendar day for the dedupe marker"
     return 0
   fi
-  alert_marker_dir="${SCRAPER_WAKE_ALERT_STATE_DIR:-/tmp}"
+  # Not /tmp: world-writable, shared by every user on the box, and a local
+  # user could pre-plant a symlink at the marker's predictable path (marker
+  # name is derived from public values - slot, lock key, calendar day - so it
+  # is guessable). $REPO_ROOT/../shared is the SAME release-independent state
+  # dir deploy-linux.sh already owns (shared/env, shared/venv, shared/certs,
+  # shared/next-cache - see that script's header); scraper-wake-state/<slot>
+  # is created here, mode 700, owned by whichever user runs the wake (root's
+  # cron per the deploy runbook).
+  alert_marker_dir="${SCRAPER_WAKE_ALERT_STATE_DIR:-$REPO_ROOT/../shared/scraper-wake-state/${DEPLOY_SLOT_NAME:-unknown-slot}}"
+  if [ -L "$alert_marker_dir" ]; then
+    log "WARN lock-leaked-no-expiry-alert-skipped: $alert_marker_dir is a symlink, refusing to follow it for the dedupe marker"
+    return 0
+  fi
+  if ! mkdir -p "$alert_marker_dir" 2>/dev/null; then
+    log "WARN lock-leaked-no-expiry-alert-skipped: could not create $alert_marker_dir for the dedupe marker"
+    return 0
+  fi
+  chmod 700 "$alert_marker_dir" 2>/dev/null || true
   # Scoped per slot AND lock key, never per job: data, closed and opening all
   # read the same scraper:cycle lock, so a per-job marker would page three
-  # times a day for one leaked lock; prod and staging share /tmp on one box,
-  # so a marker without the slot would let one slot's alert mute the other's.
+  # times a day for one leaked lock; the marker dir is already slot-scoped
+  # above, so prod and staging can never mute each other's alert.
   alert_slot="${DEPLOY_SLOT_NAME:-unknown-slot}"
   alert_lock_id="$(printf '%s' "$SCRAPER_LOCK_KEY" | tr -c 'A-Za-z0-9._-' '_')"
   alert_marker="$alert_marker_dir/.scraper-wake-no-expiry-alerted.$alert_slot.$alert_lock_id.$alert_ist_day"
+  if [ -L "$alert_marker" ]; then
+    log "WARN lock-leaked-no-expiry-alert-skipped: $alert_marker is a symlink, refusing to follow it for the dedupe marker"
+    return 0
+  fi
   if [ -f "$alert_marker" ]; then
-    log "lock-leaked-no-expiry-alert-already-sent: slot=$alert_slot lock=$SCRAPER_LOCK_KEY already alerted today ($alert_ist_day, marker=$alert_marker) - not sending a second Notifier POST"
+    # INFO-prefixed (not "lock-leaked-...:") so it does NOT match wake-delta.mjs's
+    # LINE_RE kind group ([a-z-]+:) the way every other WARN/FATAL line here
+    # already avoids it. A leaked lock repeats this line every wake alongside
+    # wake-skipped, and checkScraperWakeSkippedRun's tail-of-N check requires the
+    # newest N lines to ALL parse as kind==="wake-skipped" - an unprefixed line
+    # here would parse as its own kind, break the run, and make the check return
+    # null (no detection) on exactly the day it exists to catch (#1255 review).
+    log "INFO lock-leaked-no-expiry-alert-already-sent: slot=$alert_slot lock=$SCRAPER_LOCK_KEY already alerted today ($alert_ist_day, marker=$alert_marker) - not sending a second Notifier POST"
     return 0
   fi
 
@@ -627,13 +655,19 @@ print(json.dumps({
     : > "$alert_marker" 2>/dev/null || true
 
     curl_cfg="$(mktemp)"
+    # A kill between here and the `rm -f` below (SIGTERM forwarded per the
+    # wake-signalled handler above, or an operator's own kill -9 on this
+    # subshell) must not leave the key file behind.
+    trap 'rm -f "$curl_cfg"' EXIT
     chmod 600 "$curl_cfg"
-    printf 'header = "X-Api-Key: %s"\n' "$NOTIFIER_KEY_IPODHAN" > "$curl_cfg"
+    # Escape backslash then double-quote (order matters) so a key containing
+    # either cannot break out of the `-K` config file's quoted value.
+    notifier_key_escaped="$(printf '%s' "$NOTIFIER_KEY_IPODHAN" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+    printf 'header = "X-Api-Key: %s"\n' "$notifier_key_escaped" > "$curl_cfg"
     curl -s -m 15 -X POST "${SCRAPER_WAKE_NOTIFIER_URL:-http://127.0.0.1:3300/notify}" \
       -K "$curl_cfg" -H "Content-Type: application/json" \
       -d "$payload" >/dev/null 2>&1 \
       || log "WARN lock-leaked-no-expiry-alert-failed: Notifier POST failed for $SCRAPER_LOCK_KEY (non-fatal)"
-    rm -f "$curl_cfg"
   )
 }
 
