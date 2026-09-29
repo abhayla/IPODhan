@@ -91,7 +91,7 @@ import { recordDiscoverySteps } from './services/step-ledger-recorders.js';
 import { normalizeCompanyNameForMatching, computeIpoIdentitySlug } from './services/data-persister.js';
 import type { ClosedIpoResourceResult } from './scheduler/closed-ipo-job.js';
 import { readPlanSettlement } from './scheduler/closed-ipo-plan-settlement.js';
-import { plantFieldPlanForIpo } from './services/field-plan-planting.js';
+import { plantFieldPlanForIpo, createIpoTypeShareLock } from './services/field-plan-planting.js';
 import { walkFieldPlanForIPO } from './services/field-plan-walk.js';
 import { fieldManifestFingerprint } from '@ipodhan/shared/utils/field-manifest-fingerprint';
 import {
@@ -2512,7 +2512,12 @@ async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceRe
           segment: (ipo.segment as 'MAINBOARD' | 'SME' | null) ?? null,
           listingExchanges: (ipo.listingExchanges as ('NSE' | 'BSE')[] | null) ?? null,
         },
-        { overrides, fieldPlanRepository: fieldPlanRepository as never }
+        {
+          overrides,
+          fieldPlanRepository: fieldPlanRepository as never,
+          // Tier A MAJOR-1 (§2.8): the type is re-read under the ipos lock inside the plant.
+          lockIpoType: createIpoTypeShareLock(db as never, (tx) => new IpoFieldPlanRepository(tx as never, redis as never)),
+        }
       );
     },
     // Round 4 M-2: the ONE settlement query (stored + unsettled, state NOT IN the

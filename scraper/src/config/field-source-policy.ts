@@ -14,7 +14,7 @@
  */
 import { loadFieldManifest } from './field-manifest-loader.js';
 import type { FieldManifest, FieldManifestEntry, SourceCode } from './field-manifest-schema.js';
-import type { IpoTypeKey } from '../services/field-plan-generator.js';
+import { registryRanksFor, type IpoTypeKey } from '@ipodhan/shared/services/field-plan-generator';
 
 export interface PolicyQuery {
   table: string;
@@ -95,8 +95,9 @@ export function resolveFieldSourcePolicy(query: PolicyQuery, deps: PolicyDeps = 
     if (capability.capable === false) incapable[code] = capability.reason;
   }
 
-  const ranks = entry.rank[query.ipoType];
-  if (!Array.isArray(ranks)) {
+  // The ONE reader of rank[typeKey], shared with the plan generator (packages/shared).
+  const ranks = registryRanksFor(entry, query.ipoType) as SourceCode[] | null;
+  if (ranks === null) {
     // The manifest has no rank entry for this IPO type — not "source it the MAINBOARD way"
     // (field-plan-generator.ts's generateFieldPlan makes the same call for the same reason).
     // An N/A field still has a capability map — a source that cannot produce this field is
@@ -104,7 +105,7 @@ export function resolveFieldSourcePolicy(query: PolicyQuery, deps: PolicyDeps = 
     return { ranks: [], documentType: entry.documentType, origin, na: true, incapable };
   }
 
-  return { ranks: [...ranks], documentType: entry.documentType, origin, na: false, incapable };
+  return { ranks, documentType: entry.documentType, origin, na: false, incapable };
 }
 
 export function policyOriginString(origin: PolicyOrigin): string {

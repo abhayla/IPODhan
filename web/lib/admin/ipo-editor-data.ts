@@ -17,6 +17,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { readAdminFieldVersion } from '@ipodhan/shared/services/admin-field-write';
 import {
   E1_RULE_TEXT,
+  PLAN_REBUILD_NOTICE,
   editorFieldCatalog,
   ipoTypeKey,
   type EditorFieldSpec,
@@ -82,6 +83,8 @@ export interface EditorField extends Omit<EditorFieldSpec, 'tableName'> {
   admin: { mode: 'pick' | 'typed' | null; sourceLabel: string | null; empty: boolean } | null;
   witnesses: SourceWitness[];
   e1Rule: string | null;
+  /** §2.8 / §9.2 item 18: the notice shown before saving a plan-invalidating field, else null. */
+  planRebuildNotice: string | null;
   notApplicable: boolean;
 }
 
@@ -284,6 +287,7 @@ export async function loadIpoEditor(db: Db, ipoId: string): Promise<EditorPayloa
             })
           : [],
       e1Rule: spec.e1 && spec.mode === 'panel' ? E1_RULE_TEXT : null,
+      planRebuildNotice: spec.planRebuild ? PLAN_REBUILD_NOTICE : null,
       notApplicable: !!ipo.offeringType && spec.na.includes(String(ipo.offeringType)),
     });
   }

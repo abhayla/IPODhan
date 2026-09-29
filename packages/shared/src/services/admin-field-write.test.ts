@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { writeAdminFieldValue, coerceForColumn, type AdminFieldWriteInput } from './admin-field-write';
+import { normalizeListingExchanges } from './plan-invalidating-rebuild';
 
 const untouchable = new Proxy({}, { get: () => { throw new Error('db touched before validation finished'); } }) as never;
 const base: AdminFieldWriteInput = {
@@ -26,9 +27,10 @@ describe('writeAdminFieldValue refuses before opening a transaction', () => {
     [{ row: { recordId: 'r' } }, 'one row per IPO'],
     [{ tableName: 'peer_companies', row: { recordId: 'r' }, fieldName: 'normalizedName' }, 'not editable'],
     [{ mode: { kind: 'holdShown' }, empty: { reason: 'x' } }, 'cannot also delete'],
-    [{ fieldName: 'offeringType' }, 'not editable yet'],
-    [{ fieldName: 'segment' }, 'not editable yet'],
-    [{ fieldName: 'listingExchanges' }, 'not editable yet'],
+    // §2.8 / §9.2 item 18: plan-invalidating fields are editable, but only with the manifest to rebuild the plan.
+    [{ fieldName: 'offeringType' }, 'source plan (spec §2.8)'],
+    [{ fieldName: 'segment' }, 'source plan (spec §2.8)'],
+    [{ fieldName: 'listingExchanges' }, 'source plan (spec §2.8)'],
     [{ mode: { kind: 'pick', sourceLabel: 'NSE' }, empty: { reason: 'x' } }, 'cannot also be a pick'],
   ] as const)('%o -> INVALID (%s)', async (over, text) => {
     const r = await writeAdminFieldValue(untouchable, { ...base, ...(over as object) } as AdminFieldWriteInput);
@@ -41,6 +43,21 @@ describe('writeAdminFieldValue refuses before opening a transaction', () => {
   it.each(['cin', 'isin', 'symbol', 'bseIpoNo'])('%s is no longer refused before the transaction (item 26)', async (fieldName) => {
     const value = fieldName === 'bseIpoNo' ? '7900' : 'NEWVALUE';
     await expect(writeAdminFieldValue(untouchable, { ...base, fieldName, value })).rejects.toThrow('db touched before validation finished');
+  });
+
+  it('item 18: a typed listing venue other than NSE/BSE is refused before any transaction', async () => {
+    const opts = { planManifest: { version: 2, fields: {} } };
+    for (const value of ['NSE, XYZ', '', 42, ['NSE', 7]]) {
+      const r = await writeAdminFieldValue(untouchable, { ...base, fieldName: 'listingExchanges', value } as AdminFieldWriteInput, undefined, opts);
+      expect(r.kind, JSON.stringify(value)).toBe('INVALID');
+    }
+  });
+
+  it('item 18: normalizeListingExchanges stores a list of NSE/BSE only', () => {
+    expect(normalizeListingExchanges('nse, BSE nse')).toEqual({ ok: true, value: ['NSE', 'BSE'] });
+    expect(normalizeListingExchanges(['BSE'])).toEqual({ ok: true, value: ['BSE'] });
+    expect(normalizeListingExchanges(null)).toEqual({ ok: true, value: null });
+    expect(normalizeListingExchanges('MCX').ok).toBe(false);
   });
 
   it('OD-108: a typed value failing the check is refused without an override reason', async () => {

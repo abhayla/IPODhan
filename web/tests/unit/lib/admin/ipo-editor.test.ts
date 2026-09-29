@@ -31,17 +31,25 @@ describe('item 7 / OD-105: which fields are editable, by §1 class', () => {
     expect(editorModeFor('I', 'ipos.last_scraped_at')).toBe('readonly');
   });
 
-  it('release 1 shows the three Phase-B fields read-only with the reason the write gives (#1275, item 26)', () => {
-    expect(Object.keys(AWAITING_PHASE_B).sort()).toEqual(
-      ['ipos.listing_exchanges', 'ipos.offering_type', 'ipos.segment']
-    );
+  it('no Phase-B fields remain read-only after items 26 and 18 (#1275): identifiers (item 26) and type/segment/venue (item 18) are both editable now', () => {
+    expect(Object.keys(AWAITING_PHASE_B)).toEqual([]);
     const cat = editorFieldCatalog('MAINBOARD');
-    for (const key of Object.keys(AWAITING_PHASE_B)) {
+    for (const key of ['ipos.cin', 'ipos.isin', 'ipos.symbol', 'ipos.offering_type', 'ipos.segment', 'ipos.listing_exchanges']) {
       const f = cat.find((x) => x.key === key);
       expect(f, key).toBeDefined();
-      expect(f!.mode).toBe('readonly');
-      expect(f!.readonlyReason).toMatch(/next release/);
+      expect(f!.mode).not.toBe('readonly');
     }
+  });
+
+  it('item 18 / §2.8: offering type, segment and listing exchanges are editable and flagged to rebuild the plan', () => {
+    const cat = editorFieldCatalog('MAINBOARD');
+    for (const key of ['ipos.offering_type', 'ipos.segment', 'ipos.listing_exchanges']) {
+      const f = cat.find((x) => x.key === key)!;
+      expect(f, key).toBeDefined();
+      expect(f.mode).not.toBe('readonly');
+      expect(f.planRebuild).toBe(true);
+    }
+    expect(cat.filter((f) => f.planRebuild).map((f) => f.key).sort()).toEqual(['ipos.listing_exchanges', 'ipos.offering_type', 'ipos.segment']);
   });
 
   it('panel fields list the Appendix A ranks for the IPO type, at most three', () => {

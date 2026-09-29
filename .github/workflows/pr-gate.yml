@@ -1286,6 +1286,7 @@ jobs:
           tests/integration/repair-ledger-written-rows.integration.test.ts
           tests/integration/repair-ledger-guarded-requeue.integration.test.ts
           tests/integration/admin-field-write.integration.test.ts
+          tests/integration/admin-plan-invalidating-rebuild.integration.test.ts
           tests/integration/scraper-writers-honour-hold.integration.test.ts
           tests/integration/field-plan-walk-held-field-read.integration.test.ts
           tests/integration/admin-alerts-loaders.integration.test.ts

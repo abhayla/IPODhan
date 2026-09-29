@@ -1,61 +1,25 @@
 /**
- * Field-plan generator - pull model, design §2.3.
- *
- * `field_sources` records successful writes only, so a field never attempted and a field
- * attempted and failed are indistinguishable in it (both absent). `ipo_field_plan` is the row
- * that separates them. This module produces those rows for one IPO, and applies the RESULT of a
- * write back onto a row.
- *
- * It builds nothing else: no pull walk (item 6), no re-read loop (item 9), no scheduling, and no
- * database access at all - every function here is pure.
+ * Field-plan generator - pull model, design §2.3. The generator itself lives in
+ * `packages/shared/src/services/field-plan-generator.ts` (ONE definition, used by this scraper AND
+ * the admin plan rebuild, spec §2.8 / §9.2 item 18). This module binds the scraper's loaded
+ * manifest as the default and keeps `applyWriteResult`, which only the scraper uses.
  */
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import type { FieldManifest } from '../config/field-manifest-schema.js';
-import { resolveFieldSourcePolicy, policyOriginString } from '../config/field-source-policy.js';
+import {
+  generateFieldPlan as generateSharedFieldPlan,
+  generateFieldPlanAsync as generateSharedFieldPlanAsync,
+  resolveIpoTypeKey,
+  type IpoTypeKey,
+  type FieldPlanState,
+  type PlanIpo,
+  type PlannedFieldRow,
+  type PlanOverridesReader,
+  type PlanManifest,
+} from '@ipodhan/shared/services/field-plan-generator';
 
-/**
- * The manifest keys its rank arrays by IPO type, not by the DB `segment` enum. `segment` is only
- * MAINBOARD | SME, so SME_BSE vs SME_NSE is decided by the listing exchanges - the same rule the
- * design's own walkthrough probe uses (docs/design/probes/walkthrough.mjs:55-57).
- */
-export type IpoTypeKey = 'MAINBOARD' | 'SME_BSE' | 'SME_NSE' | string;
-
-export type FieldPlanState =
-  | 'PENDING'
-  | 'SUPPLIED'
-  | 'NOT_PRINTED'
-  | 'NOT_AVAILABLE_YET'
-  | 'CHECK_FAILED'
-  | 'EXHAUSTED';
-
-/** The slice of an `ipos` row the plan needs. */
-export interface PlanIpo {
-  id: string;
-  segment: 'MAINBOARD' | 'SME' | null;
-  listingExchanges?: ('NSE' | 'BSE')[] | null;
-}
-
-/** One planned (IPO, table, field) row, shaped like the `ipo_field_plan` columns it inserts into. */
-export interface PlannedFieldRow {
-  ipoId: string;
-  tableName: string;
-  fieldName: string;
-  rank1Source: string | null;
-  rank2Source: string | null;
-  rank3Source: string | null;
-  state: FieldPlanState;
-  chosenSource: string | null;
-  chosenRank: number | null;
-  chosenDocumentId: string | null;
-  chosenDocumentType: string | null;
-  chosenSha256: string | null;
-  chosenPage: number | null;
-  attempts: number;
-  lastAttemptAt: Date | null;
-  manifestVersion: number;
-  /** 'registry:<version>' | 'override:<id>' — which configuration produced this row's ranks. */
-  policyOrigin: string;
-}
+export { resolveIpoTypeKey };
+export type { IpoTypeKey, FieldPlanState, PlanIpo, PlannedFieldRow };
 
 /**
  * What came back from the write attempt. `skipped` mirrors
@@ -75,150 +39,22 @@ export interface WriteOutcome {
   at?: Date;
 }
 
-/** How many rank columns `ipo_field_plan` has. A longer rank list is refused, never truncated. */
-const RANK_COLUMNS = 3;
-
-export function resolveIpoTypeKey(ipo: PlanIpo): IpoTypeKey {
-  if (ipo.segment !== 'SME') return 'MAINBOARD';
-  // An SME issue listing on NSE Emerge is SME_NSE; everything else SME is SME_BSE. A missing
-  // listing_exchanges is NOT evidence of NSE, so it falls to SME_BSE - and it must never fall
-  // back to MAINBOARD, which would plan NSE-first ranks for a BSE-only SME issue.
-  return (ipo.listingExchanges ?? []).includes('NSE') ? 'SME_NSE' : 'SME_BSE';
-}
-
 /**
- * One planned row per manifest field that declares a rank for THIS IPO's type.
- *
- * A field whose rank map has no entry for this type is NOT planned. field-manifest-schema.ts
- * makes MAINBOARD the only required key and deliberately does not default a missing key to `[]`,
- * so "no entry" means the manifest has not said how to source this field for this type - which
- * is not the same as "source it the MAINBOARD way". Falling back to MAINBOARD would plan NSE as
- * rank 1 for an SME-on-BSE issue.
+ * The zod schema REQUIRES `version` (1 | 2); it infers as optional only because the scraper
+ * compiles with strict:false. A validated manifest is therefore a PlanManifest.
  */
-export function generateFieldPlan(
+const asPlanManifest = (manifest: FieldManifest): PlanManifest => manifest as PlanManifest;
+
+/** The shared generator with the scraper's loaded manifest as the default. */
+export const generateFieldPlan = (ipo: PlanIpo, manifest: FieldManifest = loadFieldManifest()): PlannedFieldRow[] =>
+  generateSharedFieldPlan(ipo, asPlanManifest(manifest));
+
+/** The shared override-aware generator with the scraper's loaded manifest as the default. */
+export const generateFieldPlanAsync = (
   ipo: PlanIpo,
+  deps: { overrides?: PlanOverridesReader },
   manifest: FieldManifest = loadFieldManifest()
-): PlannedFieldRow[] {
-  const typeKey = resolveIpoTypeKey(ipo);
-  const rows: PlannedFieldRow[] = [];
-
-  for (const [fieldKey, entry] of Object.entries(manifest.fields)) {
-    const dot = fieldKey.indexOf('.');
-    if (dot <= 0 || dot === fieldKey.length - 1 || fieldKey.indexOf('.', dot + 1) !== -1) {
-      throw new Error(
-        `generateFieldPlan: manifest field key "${fieldKey}" is not of the form table.field - ` +
-          `the plan row's key is (ipo_id, table_name, field_name) and cannot be derived from it.`
-      );
-    }
-    const tableName = fieldKey.slice(0, dot);
-    const fieldName = fieldKey.slice(dot + 1);
-
-    // The resolver is the ONE place rank[typeKey] is read (S1a) — the generator no longer reads
-    // entry.rank directly, so it and the walk can never disagree on "no entry for this type".
-    const policy = resolveFieldSourcePolicy({ table: tableName, column: fieldName, ipoType: typeKey }, { manifest });
-    if (policy.na) continue;
-
-    const ranks = policy.ranks;
-    // #858: a field the manifest ranks NO source for, for THIS ipo type, must
-    // not be planned. `listing_performance.current_price_nse` has rank list []
-    // for SME_BSE -- an SME IPO listing only on BSE has no NSE quote, and that
-    // is correct. But a planned row with no source has every rank answer "not
-    // here" vacuously, and the walk reads that as EXHAUSTED: terminal,
-    // next_due_at nulled, never asked again. 36 rows sat in exactly that state
-    // on staging with rank1_source = NONE.
-    //
-    // `policy.na` above already skips a field that does not APPLY to this
-    // offering type. This is the other shape: the field applies, but no source
-    // we have can serve it for this type. Both mean "do not plan it"; only the
-    // first was handled.
-    if (ranks.length === 0) continue;
-    if (ranks.length > RANK_COLUMNS) {
-      throw new Error(
-        `generateFieldPlan: field "${fieldKey}" ranks ${ranks.length} sources for ${typeKey} ` +
-          `(${ranks.join(', ')}) but ipo_field_plan has only ${RANK_COLUMNS} rank columns - ` +
-          `refusing rather than silently dropping rank ${RANK_COLUMNS + 1}.`
-      );
-    }
-
-    rows.push({
-      ipoId: ipo.id,
-      tableName,
-      fieldName,
-      rank1Source: ranks[0] ?? null,
-      rank2Source: ranks[1] ?? null,
-      rank3Source: ranks[2] ?? null,
-      state: 'PENDING',
-      chosenSource: null,
-      chosenRank: null,
-      chosenDocumentId: null,
-      chosenDocumentType: null,
-      chosenSha256: null,
-      chosenPage: null,
-      attempts: 0,
-      lastAttemptAt: null,
-      // Stamped so the plan is RECONCILED when the manifest changes, never regenerated per cycle.
-      manifestVersion: manifest.version,
-      policyOrigin: policyOriginString(policy.origin),
-    });
-  }
-
-  return rows;
-}
-
-/**
- * CRITICAL-1 fix (S4 review round 2): the async, override-aware entry point for the PRODUCTION
- * write path (`document-cycle.ts`). `generateFieldPlan` above stays pure and synchronous -- its
- * own header says "no database access at all" and ~20 existing unit/integration tests call it with
- * the old 2-arg signature, so it is never converted. This wrapper calls it unchanged, then --
- * ONLY for rows where `deps.overrides` returns an active row -- overwrites `rank1Source` /
- * `rank2Source` / `rank3Source` / `policyOrigin` with the override's ranks/origin, exactly mirroring
- * what `resolveFieldSourcePolicyAsync` does inside the resolver for the walk's read path.
- *
- * Cost: ONE `overrides.resolve` call per (table, field) the pure generator already produced for
- * this IPO -- not one query per field globally, and never repeated per cycle for IPOs with no
- * candidate fields (rows.length === 0 short-circuits before this runs). This is the SAME
- * per-generate-call granularity the card's cost note requires ("resolve once per walk run/per
- * generate call, not a DB read per field") -- resolving is not memoized further because unlike the
- * walk's per-field loop (which asks up to 3x per field across retries), generate runs once per IPO
- * per cycle and the manifest field count here (a page's worth) is the loop already paid for.
- */
-export async function generateFieldPlanAsync(
-  ipo: PlanIpo,
-  deps: { overrides?: { resolve(query: { table: string; column: string; ipoType: string; ipoId?: string }): Promise<{ id: string; ranks: string[]; expiresAt: string; ipoScoped: boolean }[]> } },
-  manifest: FieldManifest = loadFieldManifest()
-): Promise<PlannedFieldRow[]> {
-  const rows = generateFieldPlan(ipo, manifest);
-  if (rows.length === 0 || !deps.overrides) return rows;
-  const typeKey = resolveIpoTypeKey(ipo);
-
-  const resolved = await Promise.all(
-    rows.map(async (row) => {
-      const active = await deps.overrides!.resolve({
-        table: row.tableName,
-        column: row.fieldName,
-        ipoType: typeKey,
-        ipoId: ipo.id,
-      });
-      if (active.length === 0) return row;
-      const winner = active.find((r) => r.ipoScoped) ?? active[0];
-      const ranks = winner.ranks as PlannedFieldRow['rank1Source'][];
-      if (ranks.length > RANK_COLUMNS) {
-        throw new Error(
-          `generateFieldPlanAsync: override "${winner.id}" ranks ${ranks.length} sources for ` +
-            `${row.tableName}.${row.fieldName} but ipo_field_plan has only ${RANK_COLUMNS} rank columns.`
-        );
-      }
-      return {
-        ...row,
-        rank1Source: ranks[0] ?? null,
-        rank2Source: ranks[1] ?? null,
-        rank3Source: ranks[2] ?? null,
-        policyOrigin: `override:${winner.id}`,
-      };
-    })
-  );
-  return resolved;
-}
+): Promise<PlannedFieldRow[]> => generateSharedFieldPlanAsync(ipo, deps, asPlanManifest(manifest));
 
 /**
  * Apply the RESULT of a write to a plan row. Returns a new row; never mutates its argument.
