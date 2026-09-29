@@ -44,6 +44,7 @@ import { rowKeyForName } from '../utils/company-name-normalizer';
 import { protectionTableName } from './field-hold';
 import { isIdentifierAliasField, keepReplacedIdentifier } from './admin-identifier-alias';
 import { upsertListHold } from './admin-list-hold';
+import { isPlanInvalidatingField, normalizeListingExchanges, rebuildIpoPlanInTx, type PlanManifest, type PlanRebuildSummary } from './plan-invalidating-rebuild';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -113,16 +114,13 @@ const NON_EDITABLE_FIELDS = new Set([
 
 /**
  * Release 1 (OD-135 scope): `ipos` fields whose edit needs a Phase B mechanism are refused, not
- * written half-way. A type/segment/venue edit must rebuild the plan's source ranks (§9.2 item 18,
- * §2.8); without that, an edit would leave stale ranks. Item 18 removes these entries. Identifier
- * edits (cin, isin, symbol, bseIpoNo) are written and keep the old value as an alias binding still
- * matches (§9.2 item 26, `keepReplacedIdentifier`).
+ * written half-way. Identifier edits (cin, isin, symbol) left this list with item 26: they are
+ * written and keep the old value as an alias binding still matches (§9.2 item 26,
+ * `keepReplacedIdentifier`). The type/segment/venue fields left this list with item 18: their save
+ * rebuilds the plan's source ranks in the same transaction (`plan-invalidating-rebuild.ts`, §2.8;
+ * without that rebuild, an edit would leave stale ranks). No field currently awaits Phase B.
  */
-export const IPO_FIELDS_AWAITING_PHASE_B: Readonly<Record<string, string>> = {
-  offeringType: 'a type change rebuilds the source plan (spec §9.2 item 18 / §2.8, next release)',
-  segment: 'a segment change rebuilds the source plan (spec §9.2 item 18 / §2.8, next release)',
-  listingExchanges: 'a listing-venue change rebuilds the source plan (spec §9.2 item 18 / §2.8, next release)',
-};
+export const IPO_FIELDS_AWAITING_PHASE_B: Readonly<Record<string, string>> = {};
 
 /**
  * The lineage keys an admin write owned before `adminKeys` was recorded on each write. An ADMIN row
@@ -220,6 +218,8 @@ export type AdminFieldWriteResult =
       oldValue: unknown;
       newValue: unknown;
       version: string;
+      /** §2.8 / §9.2 item 18: set when the save rebuilt the IPO's plan (offering type, segment, venue). */
+      planRebuild?: PlanRebuildSummary;
     }
   | { kind: 'INVALID'; reason: string }
   | { kind: 'NOT_FOUND'; reason: string }
@@ -514,12 +514,23 @@ function badValueReason(error: unknown): string | null {
   return null;
 }
 
+export interface AdminFieldWriteOptions {
+  /**
+   * The field manifest (`scraper/config/field-manifest.json`) the plan is rebuilt from when the save
+   * is to a plan-invalidating field (§2.8). Such a save without it is refused, never written with
+   * stale ranks.
+   */
+  planManifest?: PlanManifest;
+}
+
 export async function writeAdminFieldValue(
   db: Db,
   input: AdminFieldWriteInput,
-  checkTypedValue?: TypedValueCheck
+  checkTypedValue?: TypedValueCheck,
+  options: AdminFieldWriteOptions = {}
 ): Promise<AdminFieldWriteResult> {
   const { ipoId, tableName, fieldName, actor, mode } = input;
+  const rebuildsPlan = isPlanInvalidatingField(tableName, fieldName);
 
   const cols = columnsOf(tableName);
   if (!cols) {
@@ -536,6 +547,9 @@ export async function writeAdminFieldValue(
   }
   if (tableName === 'ipos' && Object.prototype.hasOwnProperty.call(IPO_FIELDS_AWAITING_PHASE_B, fieldName)) {
     return { kind: 'INVALID', reason: `ipos.${fieldName} is not editable yet: ${IPO_FIELDS_AWAITING_PHASE_B[fieldName]}` };
+  }
+  if (rebuildsPlan && !options.planManifest) {
+    return { kind: 'INVALID', reason: `ipos.${fieldName} rebuilds the IPO's source plan (spec §2.8); the save was called without the field manifest` };
   }
   if (rowSpec && !input.row?.rowKey && !input.row?.recordId) {
     return { kind: 'INVALID', reason: `${tableName} has several rows per IPO; name the row (rowKey or recordId)` };
@@ -574,6 +588,11 @@ export async function writeAdminFieldValue(
     const coerced = coerceForColumn(column.columnType, mode.kind === 'storedPick' ? mode.value ?? null : input.value ?? null);
     if (coerced.ok === false) return { kind: 'INVALID', reason: `${tableName}.${fieldName}: ${coerced.reason}` };
     newValue = coerced.value;
+    if (tableName === 'ipos' && fieldName === 'listingExchanges') {
+      const venues = normalizeListingExchanges(newValue);
+      if (venues.ok === false) return { kind: 'INVALID', reason: `ipos.listingExchanges: ${venues.reason}` };
+      newValue = venues.value;
+    }
     if (mode.kind === 'typed' && checkTypedValue) {
       checkFailure = checkTypedValue({ tableName, fieldName, value: newValue });
       if (checkFailure && !input.overrideReason?.trim()) {
@@ -633,6 +652,11 @@ export async function writeAdminFieldValue(
         const coerced = coerceForColumn(column.columnType, answer.value);
         if (coerced.ok === false) throw new Refusal({ kind: 'INVALID', reason: `${tableName}.${fieldName}: ${mode.sourceLabel}'s stored answer ${coerced.reason}` });
         newValue = coerced.value;
+        if (tableName === 'ipos' && fieldName === 'listingExchanges') {
+          const venues = normalizeListingExchanges(newValue);
+          if (venues.ok === false) throw new Refusal({ kind: 'INVALID', reason: `ipos.listingExchanges: ${mode.sourceLabel}'s stored answer: ${venues.reason}` });
+          newValue = venues.value;
+        }
         const refusal = deriveKey();
         if (refusal) throw new Refusal(refusal);
         effectiveMode = { kind: 'pick', sourceLabel: mode.sourceLabel, readDate: answer.readDate };
@@ -672,6 +696,7 @@ export async function writeAdminFieldValue(
       const now = new Date();
       let rowKey = target.rowKey;
       let identifierAlias: { aliasId: string | null; supersededKeyIds: string[]; activeKeyId: string | null } | null = null;
+      let planRebuild: PlanRebuildSummary | undefined;
       if (tableName === 'ipos') {
         if (isIdentifierAliasField(fieldName)) {
           // §9.2 item 26: the old identifier stays matchable, in this same transaction.
@@ -681,7 +706,15 @@ export async function writeAdminFieldValue(
           if (kept.ok === false) throw new Refusal({ kind: 'INVALID', reason: kept.reason });
           identifierAlias = { aliasId: kept.aliasId, supersededKeyIds: kept.supersededKeyIds, activeKeyId: kept.activeKeyId };
         }
+        const [typeBefore] = rebuildsPlan
+          ? await tx.select({ segment: schema.ipos.segment, listingExchanges: schema.ipos.listingExchanges }).from(schema.ipos).where(eq(schema.ipos.id, ipoId)).limit(1)
+          : [];
         await IPORepository.applyAdminCorrigendumValue(tx, ipoId, fieldName, newValue);
+        if (rebuildsPlan) {
+          // §2.8 / §9.2 item 18: the SAME row is corrected (OD-35's new-row rule is for a new offering),
+          // and its plan is rebuilt before commit so no walk ever reads ranks for the old type.
+          planRebuild = await rebuildIpoPlanInTx(tx, ipoId, options.planManifest!, typeBefore ?? { segment: null, listingExchanges: null });
+        }
       } else if (rowSpec) {
         const tcols = getTableColumns(rowSpec.table) as unknown as Record<string, never>;
         const newKey: string | undefined = rowSpec.derived ? derivedPatch[rowSpec.derived.derivedField] : undefined;
@@ -823,6 +856,7 @@ export async function writeAdminFieldValue(
           checkFailure,
           // §9.2 item 26: what the edit kept, so an audit reader (and the merge tool) can find it
           ...(identifierAlias ? { identifierAlias } : {}),
+          ...(planRebuild ? { planRebuild } : {}),
         },
         ipAddress: input.ipAddress ?? null,
         userAgent: input.userAgent ?? null,
@@ -831,7 +865,7 @@ export async function writeAdminFieldValue(
       });
 
       const after = await readVersion(tx, ipoId, tableName, fieldName, rowKey, { rowKey, recordId: target.recordId });
-      return { kind: 'OK' as const, ipoId, slug, tableName, fieldName, rowKey, oldValue, newValue, version: after.version };
+      return { kind: 'OK' as const, ipoId, slug, tableName, fieldName, rowKey, oldValue, newValue, version: after.version, ...(planRebuild ? { planRebuild } : {}) };
     });
   } catch (error) {
     if (error instanceof Refusal) return error.result;

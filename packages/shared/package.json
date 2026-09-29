@@ -20,6 +20,7 @@
     "./admin/field-protection-checker": "./src/admin/field-protection-checker.ts",
     "./services/corrigendum-suggestions": "./src/services/corrigendum-suggestions.ts",
     "./services/admin-field-write": "./src/services/admin-field-write.ts",
+    "./services/plan-invalidating-rebuild": "./src/services/plan-invalidating-rebuild.ts",
     "./services/field-hold": "./src/services/field-hold.ts",
     "./services/admin-list-write": "./src/services/admin-list-write.ts",
     "./services/admin-list-hold": "./src/services/admin-list-hold.ts",

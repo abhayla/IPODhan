@@ -81,7 +81,7 @@ async function saveField(ipoId: string, field: EditorField, version: string, bod
   return { kind: 'error', reason: String(json.reason ?? json.error ?? `HTTP ${res.status}`) };
 }
 
-function FieldEditor({ ipoId, field, onSaved }: { ipoId: string; field: EditorField; onSaved: (f: EditorField) => void }) {
+export function FieldEditor({ ipoId, field, onSaved }: { ipoId: string; field: EditorField; onSaved: (f: EditorField) => void }) {
   const [version, setVersion] = useState(field.version ?? '');
   const [typed, setTyped] = useState('');
   const [note, setNote] = useState('');
@@ -186,6 +186,11 @@ function FieldEditor({ ipoId, field, onSaved }: { ipoId: string; field: EditorFi
 
   return (
     <div className="space-y-4">
+      {field.planRebuildNotice && (
+        <p role="note" data-testid="plan-rebuild-notice" className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">
+          {field.planRebuildNotice}
+        </p>
+      )}
       {field.e1Rule && <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">{field.e1Rule}</p>}
       {field.notApplicable && <p className="text-xs text-gray-600">This field does not apply to this offering type (§1.11).</p>}
 

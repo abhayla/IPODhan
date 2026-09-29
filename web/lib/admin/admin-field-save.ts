@@ -15,6 +15,8 @@ import {
   type TypedValueCheck,
   STALE_EDITOR_REASON,
 } from '@ipodhan/shared/services/admin-field-write';
+import type { PlanManifest } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import fieldManifestJson from '../../../scraper/config/field-manifest.json';
 import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import {
@@ -63,7 +65,14 @@ export interface AdminFieldSaveDeps {
   redis: () => { del(...keys: string[]): Promise<unknown>; keys?(pattern: string): Promise<string[]> };
   revalidatePath: (path: string) => void;
   checkTypedValue?: TypedValueCheck;
+  /**
+   * §2.8 / §9.2 item 18: the manifest a type/segment/venue save rebuilds the IPO's plan from, inside
+   * the write's transaction. Defaults to the deployed `scraper/config/field-manifest.json`.
+   */
+  planManifest?: PlanManifest;
 }
+
+const FIELD_MANIFEST = fieldManifestJson as unknown as PlanManifest;
 
 const defaultDeps: AdminFieldSaveDeps = {
   write: writeAdminFieldValue,
@@ -77,7 +86,7 @@ export async function saveAdminFieldValue(
   deps: AdminFieldSaveDeps = defaultDeps
 ): Promise<AdminFieldWriteResult> {
   const db = await deps.getDb();
-  const result = await deps.write(db as never, input, deps.checkTypedValue);
+  const result = await deps.write(db as never, input, deps.checkTypedValue, { planManifest: deps.planManifest ?? FIELD_MANIFEST });
   if (result.kind === 'OK') {
     try {
       const redis = deps.redis();

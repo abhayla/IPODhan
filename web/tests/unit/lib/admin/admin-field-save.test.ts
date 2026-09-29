@@ -35,7 +35,8 @@ describe('saveAdminFieldValue — F-171 cache drop after commit', () => {
   it('drops the real named keys (never a pattern) and revalidates the IPO page on OK', async () => {
     const { d, del, revalidatePath, write } = deps(OK);
     await saveAdminFieldValue(input, d);
-    expect(write).toHaveBeenCalledWith({}, input, undefined);
+    // §2.8 / item 18: the deployed field manifest rides every save so a type/segment/venue save can rebuild the plan.
+    expect(write).toHaveBeenCalledWith({}, input, undefined, { planManifest: expect.objectContaining({ version: expect.any(Number), fields: expect.objectContaining({ 'ipos.segment': expect.anything() }) }) });
     const keys = del.mock.calls.map((c) => c[0]).sort();
     expect(keys).toEqual([
       'admin:queue:counts',

@@ -11,6 +11,7 @@
  */
 import manifestJson from '../../../scraper/config/field-manifest.json';
 import { IPO_FIELDS_AWAITING_PHASE_B } from '@ipodhan/shared/services/admin-field-write';
+import { PLAN_INVALIDATING_IPO_FIELDS } from '@ipodhan/shared/services/plan-invalidating-rebuild';
 
 export type FieldClass = 'D' | 'T' | 'X' | 'W' | 'M' | 'C' | 'I';
 
@@ -67,6 +68,16 @@ export const AWAITING_PHASE_B: Readonly<Record<string, string>> = Object.fromEnt
   ])
 );
 
+/**
+ * §2.8 / §9.2 item 18: shown before the save on the three plan-invalidating fields (offering type,
+ * segment, listing exchanges), keyed like the manifest (`ipos.offering_type`).
+ */
+export const PLAN_REBUILD_KEYS: ReadonlySet<string> = new Set(
+  PLAN_INVALIDATING_IPO_FIELDS.map((camel) => `ipos.${camel.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)}`)
+);
+export const PLAN_REBUILD_NOTICE =
+  "Saving this rebuilds this IPO's source plan (§2.8): which sources are asked for each field, and in which order, change with the offering type, segment and listing exchanges. The IPO stays the same row. Fields the new type does not use disappear from the page; any admin value on them stays in the audit history.";
+
 /** OD-106, shown to the admin on every class T (E-1 timetable) field the editor offers. */
 export const E1_RULE_TEXT =
   'Exchange timetable date (E-1, OD-106): if NSE or BSE later publishes a newer, different date, it replaces your value and you are alerted.';
@@ -94,6 +105,8 @@ export interface EditorFieldSpec {
   derivedFrom?: string;
   /** Set when release 1 shows the field read-only although its class is editable (AWAITING_PHASE_B). */
   readonlyReason: string | null;
+  /** §2.8 / §9.2 item 18: a save of this field rebuilds the IPO's plan; the editor says so first. */
+  planRebuild: boolean;
   e1: boolean;
   croreInput: boolean;
 }
@@ -135,6 +148,7 @@ export function editorFieldCatalog(typeKey: string): EditorFieldSpec[] {
       comparisonFamily: row.comparisonFamily,
       na: row.na ?? [],
       readonlyReason: AWAITING_PHASE_B[key] ?? null,
+      planRebuild: PLAN_REBUILD_KEYS.has(key),
       e1: row.class === 'T',
       croreInput: CRORE_INPUT_FIELDS.has(key),
     });
@@ -153,6 +167,7 @@ export function editorFieldCatalog(typeKey: string): EditorFieldSpec[] {
       na: [],
       derivedFrom: from,
       readonlyReason: null,
+      planRebuild: false,
       e1: false,
       croreInput: false,
     });
@@ -170,6 +185,7 @@ export function editorFieldCatalog(typeKey: string): EditorFieldSpec[] {
       comparisonFamily: null,
       na: [],
       readonlyReason: null,
+      planRebuild: false,
       e1: false,
       croreInput: false,
     });
