@@ -386,3 +386,46 @@ describe('DOC fetcher — best available offer document (item 6, F-161)', () => 
     expect(answer).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
   });
 });
+
+// §9.2 item 9: on an admin-held field the column holds the ADMIN value and field_sources says ADMIN,
+// so only the held read ({ held: true }) answers from what the document itself printed (its receipt).
+describe('DOC fetcher — held read answers from the document receipt (§9.2 item 9)', () => {
+  const KEY = 'ipos||issueSize';
+  const docs = [
+    { id: 'doc-old', type: 'RHP', extractionStatus: 'COMPLETED', isActive: true, sha256: null, filingDate: '2026-09-01' },
+    { id: 'doc-new', type: 'RHP', extractionStatus: 'COMPLETED', isActive: true, sha256: 'abc', filingDate: '2026-09-21' },
+    { id: 'doc-blank', type: 'RHP', extractionStatus: 'COMPLETED', isActive: true, sha256: null, filingDate: '2026-09-25' },
+  ];
+  function heldDeps() {
+    return makeDeps({
+      fieldSources: { findByField: vi.fn().mockResolvedValue({ source: 'ADMIN', dataLineage: {} }) } as any,
+      ipoRepository: { findById: vi.fn().mockResolvedValue({ id: IPO_ID, issueSize: '1230000000' }) } as any,
+      documentRepository: { findByIPO: vi.fn().mockResolvedValue(docs) } as any,
+      receiptReader: vi.fn().mockResolvedValue(
+        new Map([
+          ['doc-old', new Map([[KEY, '999000000']])],
+          ['doc-new', new Map([[KEY, '300000000']])],
+          // A receipt that printed nothing is not a value (never the chosen document).
+          ['doc-blank', new Map([[KEY, null]])],
+        ])
+      ),
+    });
+  }
+
+  it('held: SUPPLIED with the best receipted document value and that document id, never the admin column', async () => {
+    const answer = await buildDocFetcher(heldDeps())(IPO_ID, 'ipos', '', 'issue_size', { held: true });
+    expect(answer).toEqual({ outcome: 'SUPPLIED', value: '300000000', documentId: 'doc-new', documentType: 'RHP', sha256: 'abc' });
+  });
+
+  it('not held: the same state answers exactly as before (ADMIN provenance is not a document answer)', async () => {
+    const answer = await buildDocFetcher(heldDeps())(IPO_ID, 'ipos', '', 'issue_size');
+    expect(answer.outcome).toBe('CHECK_FAILED');
+  });
+
+  it('held with no receipt that printed a value: falls through to the unchanged path', async () => {
+    const deps = heldDeps();
+    deps.receiptReader = vi.fn().mockResolvedValue(new Map([['doc-blank', new Map([[KEY, null]])]]));
+    const answer = await buildDocFetcher(deps)(IPO_ID, 'ipos', '', 'issue_size', { held: true });
+    expect(answer.outcome).toBe('CHECK_FAILED');
+  });
+});

@@ -2644,7 +2644,7 @@ describe('field-plan walk -- an admin-held field is READ, never written (§2.4 c
     expect(s.nse).toHaveBeenCalledTimes(1);
     expect(s.bse).toHaveBeenCalledTimes(1);
     expect(s.cg).toHaveBeenCalledTimes(1);
-    expect(s.nse).toHaveBeenCalledWith(IPO_ID, 'ipos', '', 'issue_size');
+    expect(s.nse).toHaveBeenCalledWith(IPO_ID, 'ipos', '', 'issue_size', { held: true });
     // Never written, never recorded.
     expect(s.orch.consolidatedUpsertIPO).not.toHaveBeenCalled();
     expect(s.orch.consolidatedUpsertChildRows).not.toHaveBeenCalled();
@@ -2773,7 +2773,7 @@ describe('field-plan walk -- an admin-held field is READ, never written (§2.4 c
     });
     await walkFieldPlanForIPO(IPO_ID, s.d, openBudget());
     expect(s.protectionCalls[0]).toEqual([IPO_ID, 'financial_statements', 'revenue', 'FY2025']);
-    expect(s.nse).toHaveBeenCalledWith(IPO_ID, 'financial_statements', 'FY2025', 'revenue');
+    expect(s.nse).toHaveBeenCalledWith(IPO_ID, 'financial_statements', 'FY2025', 'revenue', { held: true });
     expect(s.orch.consolidatedUpsertChildRows).not.toHaveBeenCalled();
   });
 

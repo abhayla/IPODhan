@@ -103,6 +103,23 @@ export function conflictToItem(r: ConflictRow, family?: string): QueueItem {
       { source: r.source2, value: r.value2 },
     ],
     ...listSuggestionFields(ruleFilter, r),
+    ...documentFields(r),
+  };
+}
+
+/** A suggestion read from one document names that document (and its page when known). */
+function documentFields(r: ConflictRow): Pick<QueueItem, 'document'> {
+  if (!r.document_id) return {};
+  const e = (r.evidence ?? {}) as Record<string, unknown>;
+  const text = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
+  return {
+    document: {
+      id: r.document_id,
+      type: text(e.documentType),
+      title: text(e.documentTitle),
+      page: typeof e.page === 'number' ? e.page : null,
+      origin: text(e.origin),
+    },
   };
 }
 
@@ -575,6 +592,7 @@ function itemFromRow(
           { source: c.source2, value: c.value2 },
         ],
         ...listSuggestionFields(ruleFilter, c),
+        ...documentFields(c),
       },
       flagMiss: false,
     };

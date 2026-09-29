@@ -33,7 +33,7 @@
  *     second copy of it.
  */
 
-import type { FieldFetcher, FieldFetcherAnswer } from './field-plan-walk.js';
+import type { FieldFetcher, FieldFetcherAnswer, FieldFetcherContext } from './field-plan-walk.js';
 import type { FieldSourcesRepository } from '@ipodhan/shared';
 import type { IPORepository } from '@ipodhan/shared';
 import type { DocumentRepository } from '@ipodhan/shared';
@@ -210,12 +210,27 @@ async function readColumnValue(
   return { status: 'not_implemented' };
 }
 
+/**
+ * §2.5.5 Rule 3's fixed-price test reads ipo_details.issue_type for EVERY table, the same as the
+ * write path (plan-supersession.loadSupersessionInputs).
+ */
+async function isFixedPriceFor(deps: DocFetcherDeps, ipoId: string): Promise<boolean> {
+  const ipoRow = (await deps.ipoRepository.findById(ipoId)) as unknown as Record<string, unknown> | null;
+  const detailsRow = await deps.ipoDetailsReader.findByIpoId(ipoId).catch(() => null);
+  return isFixedPriceIssue(
+    (detailsRow?.issueType as string | null | undefined) ?? null,
+    ipoRow?.priceRangeMin == null ? null : Number(ipoRow.priceRangeMin),
+    ipoRow?.priceRangeMax == null ? null : Number(ipoRow.priceRangeMax)
+  );
+}
+
 export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
   return async function docFetcher(
     ipoId: string,
     tableName: string,
     rowKey: string,
-    fieldName: string
+    fieldName: string,
+    context?: FieldFetcherContext
   ): Promise<FieldFetcherAnswer> {
     if (!deps.isDocCapable(tableName, fieldName)) {
       return { outcome: 'NOT_PRINTED' };
@@ -256,6 +271,36 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
     const completedDoc = hasCompletedDocument(docs, family);
     if (!completedDoc) {
       return { outcome: 'NOT_AVAILABLE_YET' };
+    }
+
+    // §9.2 item 9, §2.4 clarification: on an admin-held field the column holds the ADMIN value
+    // and field_sources says ADMIN, so the provenance path below can never report what a
+    // document printed. The held read answers from the documents' own receipts instead: the
+    // best receipted document (same comparator as OD-91) that printed a value. No such receipt
+    // falls through to the unchanged path.
+    if (context?.held && deps.receiptReader) {
+      let receipts: Map<string, ReadonlyMap<string, string | null>>;
+      try {
+        receipts = await deps.receiptReader(ipoId);
+      } catch (error) {
+        return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error) };
+      }
+      const key = `${tableName}|${rowKey || ''}|${camelFieldName}`;
+      const printed = new Map<string, ReadonlyMap<string, string | null>>();
+      for (const [docId, byKey] of receipts) {
+        const v = byKey.get(key);
+        if (v !== null && v !== undefined) printed.set(docId, new Map([[key, v]]));
+      }
+      const best = bestReceiptedDocument(docs, family, printed, key, await isFixedPriceFor(deps, ipoId));
+      if (best) {
+        return {
+          outcome: 'SUPPLIED',
+          value: printed.get(best.id)!.get(key),
+          documentId: best.id,
+          documentType: best.type,
+          sha256: best.sha256 ?? undefined,
+        };
+      }
     }
 
     let provenance;
@@ -351,15 +396,7 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
       } catch (error) {
         return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error) };
       }
-      // §2.5.5 Rule 3's fixed-price test reads ipo_details.issue_type for EVERY table, the same as
-      // the write path (plan-supersession.loadSupersessionInputs).
-      const ipoRow = (await deps.ipoRepository.findById(ipoId)) as unknown as Record<string, unknown> | null;
-      const detailsRow = await deps.ipoDetailsReader.findByIpoId(ipoId).catch(() => null);
-      const fixedPrice = isFixedPriceIssue(
-        (detailsRow?.issueType as string | null | undefined) ?? null,
-        ipoRow?.priceRangeMin == null ? null : Number(ipoRow.priceRangeMin),
-        ipoRow?.priceRangeMax == null ? null : Number(ipoRow.priceRangeMax)
-      );
+      const fixedPrice = await isFixedPriceFor(deps, ipoId);
       const key = `${tableName}|${rowKey || ''}|${camelFieldName}`;
       const best = bestReceiptedDocument(docs, family, receipts, key, fixedPrice);
       if (best) {
