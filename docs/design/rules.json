@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-29T06:18:11.432Z",
+  "generated_at": "2026-09-29T06:22:40.522Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 208,
-    "retired": 49
+    "retired": 50
   },
-  "next_id": 258,
+  "next_id": 259,
   "rules": [
     {
       "id": "R-151",
@@ -801,11 +801,11 @@
       "retired": false
     },
     {
-      "id": "R-256",
-      "hash": "12ea202c7aa7",
+      "id": "R-258",
+      "hash": "0869d88fc3bd",
       "section": "2.4 What the loop does, per field",
       "kind": "prose",
-      "text": "F-209 (2026-09-29): the fix in #1280 makes the walk READ a held field again, but the DOC fetcher answering that read still resolves it from field_sources, which on a held field IS the ADMIN row (OD-106's own protection wrote it there) — so a held field's read can only ever echo the admin's own value back, never a document's. Proved red in the item 9 integration test 2026-09-29. Fix on branch feat/item9-document-suggestions: held reads answer from document_field_receipts (OD-91's best document) instead of field_sources. See the failure class held-read-answered-by-own-admin-provenance.",
+      "text": "F-209 (2026-09-29): the fix in #1280 makes the walk READ a held field again, but the DOC fetcher answering that read still resolves it from field_sources, which on a held field IS the ADMIN row (the admin save writes that row, §9.2 item 3) — so a held field's read can only ever echo the admin's own value back, never a document's. Proved red in the item 9 integration test 2026-09-29. Fix on branch feat/item9-document-suggestions: held reads answer from document_field_receipts (OD-91's best document) instead of field_sources. See the failure class held-read-answered-by-own-admin-provenance.",
       "first_seen": "2026-09-29",
       "retired": false
     },
@@ -1879,6 +1879,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-256",
+      "hash": "12ea202c7aa7",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "F-209 (2026-09-29): the fix in #1280 makes the walk READ a held field again, but the DOC fetcher answering that read still resolves it from field_sources, which on a held field IS the ADMIN row (OD-106's own protection wrote it there) — so a held field's read can only ever echo the admin's own value back, never a document's. Proved red in the item 9 integration test 2026-09-29. Fix on branch feat/item9-document-suggestions: held reads answer from document_field_receipts (OD-91's best document) instead of field_sources. See the failure class held-read-answered-by-own-admin-provenance.",
+      "first_seen": "2026-09-29",
+      "retired": true
     },
     {
       "id": "R-254",

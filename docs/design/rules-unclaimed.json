@@ -17,7 +17,7 @@
     "R-139": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
     "R-140": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
     "R-141": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
-    "R-256": "2.4 — F-209's held-read fix (document_field_receipts instead of field_sources) is on branch feat/item9-document-suggestions with no merged build card yet. Declared unclaimed until the item 9 build card lands.",
+    "R-258": "2.4 — F-209's held-read fix (document_field_receipts instead of field_sources) is on branch feat/item9-document-suggestions with no merged build card yet. Declared unclaimed until the item 9 build card lands.",
     "R-257": "2.9 — F-208's relaunch-invalidation code path for POSTPONED does not exist yet and no build card owns it (0 live POSTPONED rows, issue #1298). Declared unclaimed per OD-52 until a card is created."
   }
 }

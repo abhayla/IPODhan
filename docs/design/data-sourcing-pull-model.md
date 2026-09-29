@@ -2125,7 +2125,7 @@ main and staging): the walk now reads admin-held fields.
 
 **F-209 (2026-09-29):** the fix in #1280 makes the walk READ a held field again, but the DOC
 fetcher answering that read still resolves it from `field_sources`, which on a held field IS the
-ADMIN row (OD-106's own protection wrote it there) — so a held field's read can only ever echo the
+ADMIN row (the admin save writes that row, §9.2 item 3) — so a held field's read can only ever echo the
 admin's own value back, never a document's. Proved red in the item 9 integration test 2026-09-29.
 Fix on branch `feat/item9-document-suggestions`: held reads answer from
 `document_field_receipts` (OD-91's best document) instead of `field_sources`. See the failure
