@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { Pool } from 'pg';
+import { Pool, Client } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql, inArray, eq, and } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -32,6 +32,7 @@ let pool: Pool;
 let db: ReturnType<typeof drizzle<typeof schema>>;
 
 async function cleanup() {
+  await db.execute(sql`DELETE FROM field_source_overrides WHERE ipo_id = ${IPO}::uuid`);
   await db.delete(schema.ipoFieldPlan).where(inArray(schema.ipoFieldPlan.ipoId, [IPO]));
   await db.delete(schema.auditLogs).where(inArray(schema.auditLogs.ipoId, [IPO]));
   await db.delete(schema.fieldSources).where(inArray(schema.fieldSources.ipoId, [IPO]));
@@ -253,5 +254,92 @@ describe.skipIf(!DATABASE_URL)('item 18: plan-invalidating admin saves rebuild t
     expect(String(row.cause)).toMatch(/^\[held-read:UPCOMING\|0\]/);
     expect(row.last_attempt_at).toBe('2026-09-21 05:00:00');
     expect(row.next_due_at).toBeNull();
+  });
+
+  it('MAJOR-1 concurrency: a plant that starts while a segment save holds the ipos row WAITS, then plants only the new type', async () => {
+    // Two dedicated connections (not the pool): A plays the admin save, B runs the production plant.
+    const a = new Client({ connectionString: DATABASE_URL, options: '-c timezone=UTC' });
+    const b = new Client({ connectionString: DATABASE_URL, options: '-c timezone=UTC' });
+    await a.connect();
+    await b.connect();
+    const events: string[] = [];
+    let plant: Promise<Awaited<ReturnType<typeof plantFieldPlanForIpo>>> | undefined;
+    let lockWait: unknown;
+    try {
+      const bPid = Number(((await b.query('SELECT pg_backend_pid() AS pid')).rows[0] as { pid: number }).pid);
+      // A: the admin save's lock and its uncommitted segment change, held open.
+      await a.query('BEGIN');
+      await a.query('SELECT id FROM ipos WHERE id = $1::uuid FOR NO KEY UPDATE', [IPO]);
+      await a.query(`UPDATE ipos SET segment = 'SME' WHERE id = $1::uuid`, [IPO]);
+      events.push('A-locked');
+
+      // B: the cycle plants with the MAINBOARD snapshot it read before the save.
+      const dbB = drizzle(b, { schema });
+      const lock = createIpoTypeShareLock(dbB as never, (tx) => new IpoFieldPlanRepository(tx as never, undefined as never));
+      const stale = { id: IPO, segment: 'MAINBOARD' as const, listingExchanges: ['BSE' as const] };
+      events.push('plant-started');
+      plant = plantFieldPlanForIpo(stale, {
+        fieldPlanRepository: new IpoFieldPlanRepository(dbB as never, undefined as never),
+        lockIpoType: lock,
+        manifest,
+      }).then((r) => {
+        events.push('plant-finished');
+        return r;
+      });
+
+      // Waiting ON A LOCK, not merely slow: poll (up to 5 s) until B's backend reports a Lock wait on
+      // its FOR SHARE read while A is open. A plant that never locks finishes instead and never waits.
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline && !events.includes('plant-finished')) {
+        const row = (await db.execute(sql`SELECT wait_event_type, query FROM pg_stat_activity WHERE pid = ${bPid}`)).rows[0] as
+          | { wait_event_type: string | null; query: string }
+          | undefined;
+        if (row?.wait_event_type === 'Lock') {
+          lockWait = { wait_event_type: row.wait_event_type, forShare: /FOR SHARE/.test(row.query) };
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      // Still blocked 300 ms later: the wait is on A, not a transient.
+      await new Promise((r) => setTimeout(r, 300));
+      if (!events.includes('plant-finished')) events.push('plant-still-pending@300ms');
+
+      await a.query('COMMIT');
+      events.push('A-committed');
+      const result = await plant;
+
+      expect(events).toEqual(['A-locked', 'plant-started', 'plant-still-pending@300ms', 'A-committed', 'plant-finished']);
+      expect(lockWait).toEqual({ wait_event_type: 'Lock', forShare: true });
+      const sme = generateFieldPlan({ id: IPO, segment: 'SME', listingExchanges: ['BSE'] }, manifest);
+      expect(result.inserted).toBe(sme.length);
+      const after = await planRows();
+      expect(after.map(key).sort()).toEqual(sme.map(key).sort());
+      const smeRank1 = new Map(sme.map((r) => [key(r), r.rank1Source]));
+      for (const r of after) expect(r.rank1Source).toBe(smeRank1.get(key(r)));
+      // The old type's plan differs, so the check above could have failed.
+      const mainboard = generateFieldPlan(stale, manifest);
+      expect(mainboard.map(key).sort()).not.toEqual(sme.map(key).sort());
+    } finally {
+      await a.query('ROLLBACK').catch(() => undefined);
+      if (plant) await plant.catch(() => undefined);
+      await a.end();
+      await b.end();
+    }
+  });
+
+  it('m1: an override with a rank gap [r1, null, r3] is planned as [r1, r3] by the admin rebuild', async () => {
+    await plantSupplied({ id: IPO, segment: 'MAINBOARD', listingExchanges: ['BSE'] });
+    const mbOpen = generateFieldPlan({ id: IPO, segment: 'MAINBOARD', listingExchanges: ['BSE'] }, manifest).find((r) => key(r) === 'ipos.open_date')!;
+    const [r1, r3] = ['CHITTORGARH', 'NSE'];
+    expect(mbOpen.rank1Source).not.toBe(r1);
+    await db.execute(sql`
+      INSERT INTO field_source_overrides (table_name, field_name, ipo_id, rank1_source, rank2_source, rank3_source, reason, set_by, expires_at)
+      VALUES ('ipos', 'open_date', ${IPO}::uuid, ${r1}, NULL, ${r3}, 'item18 rank-gap test', 'item18-admin', now() + interval '1 day')`);
+    expect((await save('segment', 'SME')).kind).toBe('OK');
+    const [row] = (await db.execute(sql`
+      SELECT rank1_source, rank2_source, rank3_source, policy_origin FROM ipo_field_plan
+       WHERE ipo_id = ${IPO}::uuid AND table_name = 'ipos' AND field_name = 'open_date'`)).rows as Array<Record<string, unknown>>;
+    expect(row).toMatchObject({ rank1_source: r1, rank2_source: r3, rank3_source: null });
+    expect(String(row.policy_origin)).toMatch(/^override:/);
   });
 });
