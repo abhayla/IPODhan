@@ -73,7 +73,7 @@ import {
   checkIssueSizeSourceCapability,
   checkLotBandSebiWindow, checkCorporateActionShape,
   classifyRouteResponse, classifyVerdictLeak, classifyConflictNoiseRatio, checkFreshnessPerType,
-  checkPm2EnvHasTz, checkPm2LogSize, findUnreferencedDefinitions,
+  checkPm2EnvHasTz, checkPm2LogSize, pm2ProcessInTzScope, findUnreferencedDefinitions,
   checkSectorPopulatedPct, checkCronScriptExecutable, checkDeadSourceHasRetireBy,
   checkSegmentPopulatedForIpo, checkSegmentHasProvenance, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
   findLiveCrossSourceDisagreements, ORACLE_COMPARABLE_FIELDS, normalizeCompanyKey,
@@ -1649,11 +1649,16 @@ async function checkH() {
   }
   const tzOffenders = [];
   const sizeOffenders = [];
+  const skipped = [];
   for (const proc of list) {
     const name = proc.name;
     const env = proc.pm2_env?.env || {};
-    const v1 = checkPm2EnvHasTz(name, env);
-    if (v1) { tzOffenders.push(v1); notify('h_pm2_env_tz', 'P1', name, `pm2 process "${name}" has no TZ`, v1); }
+    if (pm2ProcessInTzScope(name)) {
+      const v1 = checkPm2EnvHasTz(name, env);
+      if (v1) { tzOffenders.push(v1); notify('h_pm2_env_tz', 'P1', name, `pm2 process "${name}" has no TZ`, v1); }
+    } else {
+      skipped.push(name);
+    }
     for (const [label, p] of [['out', proc.pm2_env?.pm_out_log_path], ['err', proc.pm2_env?.pm_err_log_path]]) {
       if (!p || !existsSync(p)) continue;
       const size = statSync(p).size;
@@ -1661,7 +1666,9 @@ async function checkH() {
       if (v2) { sizeOffenders.push(v2); notify('h_pm2_log_size', 'P2', `${name}-${label}`, `pm2 log oversized for "${name}"`, v2); }
     }
   }
-  record('h_pm2_env_tz', 'every pm2 process has TZ in its environment', tzOffenders.length === 0 ? 'PASS' : 'FAIL', tzOffenders.join('; ') || 'all set');
+  const skippedNote = skipped.length ? ` (skipped, out of scope: ${skipped.join(', ')})` : '';
+  record('h_pm2_env_tz', 'every ipodhan-* / notifier pm2 process has TZ in its environment (owner decision 2026-09-29, #1115)',
+    tzOffenders.length === 0 ? 'PASS' : 'FAIL', (tzOffenders.join('; ') || 'all set') + skippedNote);
   record('h_pm2_log_size', 'every pm2 log file is under 100MB', sizeOffenders.length === 0 ? 'PASS' : 'FAIL', sizeOffenders.join('; ') || 'all under ceiling');
 }
 

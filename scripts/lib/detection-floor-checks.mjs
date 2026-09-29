@@ -379,6 +379,16 @@ export function checkStatusClosedBeforeCloseDate(row) {
 }
 
 // ---- (h): pm2 env TZ + log size ---------------------------------------------
+//
+// Scope (owner decision 2026-09-29, closes #1115's scope question): h_pm2_env_tz
+// checks TZ only on THIS project's own pm2 processes — the ones whose behaviour
+// is actually ours to fix. A shared VPS also runs other apps' processes
+// (firekaro-api) and infra modules (pm2-logrotate) under the same `pm2 jlist`;
+// neither is IPODhan's to change, so a missing TZ on either is noise that
+// buries a real IPODhan/notifier miss in the same FAIL line.
+export function pm2ProcessInTzScope(processName) {
+  return processName === 'notifier' || processName.startsWith('ipodhan-');
+}
 
 export function checkPm2EnvHasTz(processName, envMap) {
   if (!envMap || !envMap.TZ) {

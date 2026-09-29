@@ -332,7 +332,8 @@
         "P2-7",
         "P1-1 (enabling gap)"
       ],
-      "failThreshold": "any pm2 process's env lacks a TZ key",
+      "failThreshold": "any IN-SCOPE pm2 process's env lacks a TZ key",
+      "scope": "IPODhan's own pm2 processes only: process name starts with 'ipodhan-', plus 'notifier' — narrowed from all pm2 processes by owner decision 2026-09-29 (closes #1115's scope question), since the shared VPS also runs other apps' processes (firekaro-api) and infra modules (pm2-logrotate) that are not ours to fix and whose missing TZ was noise burying a real IPODhan/notifier miss",
       "severity": "P1",
       "unverifiableWhen": "pm2 not reachable on the host running the audit (expected off the production box)"
     },
