@@ -660,6 +660,7 @@ export async function writeAdminFieldValue(
 
       const now = new Date();
       let rowKey = target.rowKey;
+      let identifierAlias: { aliasId: string | null; supersededKeyIds: string[]; activeKeyId: string | null } | null = null;
       if (tableName === 'ipos') {
         if (isIdentifierAliasField(fieldName)) {
           // §9.2 item 26: the old identifier stays matchable, in this same transaction.
@@ -667,6 +668,7 @@ export async function writeAdminFieldValue(
             ipoId, fieldName, oldValue, newValue: input.empty ? null : newValue, adminId: actor.adminId, adminName: actor.name,
           });
           if (kept.ok === false) throw new Refusal({ kind: 'INVALID', reason: kept.reason });
+          identifierAlias = { aliasId: kept.aliasId, supersededKeyIds: kept.supersededKeyIds, activeKeyId: kept.activeKeyId };
         }
         await IPORepository.applyAdminCorrigendumValue(tx, ipoId, fieldName, newValue);
       } else if (rowSpec) {
@@ -804,6 +806,8 @@ export async function writeAdminFieldValue(
           ...lineage,
           overrideReason: input.overrideReason ?? null,
           checkFailure,
+          // §9.2 item 26: what the edit kept, so an audit reader (and the merge tool) can find it
+          ...(identifierAlias ? { identifierAlias } : {}),
         },
         ipAddress: input.ipAddress ?? null,
         userAgent: input.userAgent ?? null,

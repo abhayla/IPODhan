@@ -724,6 +724,36 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     }
   }
 
+  /**
+   * §9.2 item 26 (Tier A review MINOR-2): EVERY row carrying the symbol live or as a kept alias,
+   * live holders first, then by id. `resolveIpoRow` walks the whole list, so a refused first
+   * candidate never hides a valid second one.
+   */
+  async findAllBySymbol(symbol: string | null | undefined): Promise<IPO[]> {
+    return this.findAllByIdentifier('SYMBOL', symbol);
+  }
+
+  /** §9.2 item 26: every row carrying the ISIN live or as a kept alias, live first (see findAllBySymbol). */
+  async findAllByIsin(isin: string | null | undefined): Promise<IPO[]> {
+    return this.findAllByIdentifier('ISIN', isin);
+  }
+
+  private async findAllByIdentifier(kind: 'SYMBOL' | 'ISIN', value: string | null | undefined): Promise<IPO[]> {
+    const normalized = value?.trim().toUpperCase();
+    if (!normalized) return [];
+    const column = kind === 'SYMBOL' ? ipos.symbol : ipos.isin;
+    try {
+      const live = sql`upper(trim(${column})) = ${normalized}`;
+      return await this.db
+        .select()
+        .from(ipos)
+        .where(sql`(${live} OR ${identifierAliasMatch(kind, normalized)})`)
+        .orderBy(sql`(${live}) DESC`, ipos.id);
+    } catch (error) {
+      throw new DatabaseError(`Failed to fetch IPOs by ${kind}: ${value}`, undefined, error as Error);
+    }
+  }
+
   async findBySymbol(symbol: string | null | undefined, offeringType?: string): Promise<IPO | null> {
     const normalized = symbol?.trim().toUpperCase();
     if (!normalized) {
@@ -1338,6 +1368,22 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * log. A failure here never turns a hold into a create - the caller throws
    * regardless - and is logged at error level.
    */
+  /**
+   * §9.2 item 26 (Tier A review CRITICAL-1): the durable half of an alias-only hold. `resolveIpoRow`
+   * refused to bind a record reached only through a kept identifier and throws; this records it on
+   * the OD-68 hold path (audit_logs IDENTITY_HELD_FOR_REVIEW, read nightly by `i_identity_held`).
+   */
+  async recordAliasIdentityHold(
+    incoming: { companyName: string; slug: string; openDate: string | null; priceRangeMin: unknown },
+    candidates: { id: string; slug: string; companyName: string; openDate: unknown; priceRangeMin: unknown; status: unknown }[],
+    reason: string
+  ): Promise<void> {
+    await this.recordIdentityHold(incoming, strictIdentityCompanyName(incoming.companyName) ?? '', candidates, {
+      rule: 'OD-68 / spec §9.2 item 26',
+      reason,
+    });
+  }
+
   private async recordIdentityHold(
     incoming: { companyName: string; slug: string; openDate: string | null; priceRangeMin: unknown },
     fold: string,
