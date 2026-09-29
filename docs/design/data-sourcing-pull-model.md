@@ -4038,9 +4038,7 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
    save; the times it is ordered against are database-stamped too (documents.created_at by default,
    and a conflict's detected_at and resolved_at by now() on every write path), so items 9 and 27
    order the save against a document or a conflict on one clock (F-210: the app host's clock
-   differs from the database's by about 0.3 s and nothing keeps them in step). The daily admin
-   digest's window starts at the app-clock time of the last send, so it reads 5 minutes earlier
-   and skips audit rows the last digest already reported. A CI ratchet
+   differs from the database's by about 0.3 s and nothing keeps them in step). A CI ratchet
    (scripts/ci/check-app-clock-timestamps.mjs) fails on a new `new Date()` timestamp in the shared
    admin, repository and service code and the admin API routes.
 4. **Scope.** Every IPO. This includes the 19 OFS rows (OD-119): the scraper still skips them (OD-53),

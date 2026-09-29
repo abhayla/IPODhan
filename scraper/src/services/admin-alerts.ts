@@ -115,8 +115,6 @@ export interface RecordedAdminEvent {
   field: string;
   detail: string;
   companyName?: string;
-  /** audit_logs.id when the event came from the audit trail: the digest's cross-window dedupe key. */
-  auditId?: string;
 }
 
 type Send = (
@@ -306,18 +304,7 @@ export interface AdminDigestDeps {
   /** When the last digest was accepted by the Notifier (null: never). The window starts there. */
   lastSentAt?(): Promise<Date | null>;
   markSent?(at: Date): Promise<void>;
-  /** audit ids the last accepted digest reported (the overlap below re-reads them; they are skipped). */
-  lastSentAuditIds?(): Promise<string[]>;
-  markSentAuditIds?(ids: string[]): Promise<void>;
 }
-
-/**
- * The digest window's start is the app host's clock (the last send time), while audit_logs.timestamp is
- * the DATABASE clock (F-210). Any drift between the two would silently drop the audit rows stamped just
- * before the last send; so the window reaches back this much further, and rows the last digest already
- * reported are skipped by audit id (class `mixed-clock-ordering`).
- */
-export const DIGEST_SINCE_OVERLAP_MS = 5 * 60_000;
 
 export interface AdminDigestResult {
   due: boolean;
@@ -374,12 +361,7 @@ export function buildAdminDigest(
     b.missing += c.missing;
   }
   const seen = new Set<string>();
-  const seenAuditIds = new Set<string>();
   for (const e of events) {
-    if (e.auditId) {
-      if (seenAuditIds.has(e.auditId)) continue;
-      seenAuditIds.add(e.auditId);
-    }
     // One IPO + type + field (+ IST day) is one event even when both the digest store and the audit
     // trail hold it; the two name a field as `table.field` or bare, so only the field part is compared.
     const k = `${e.ipoId}|${e.type}|${e.field.split('.').pop()}|${eventDay(e.at)}`;
@@ -453,17 +435,7 @@ export async function runAdminDigest(deps: AdminDigestDeps): Promise<AdminDigest
     logger.warn({ reason: err instanceof Error ? err.message : String(err) }, 'Admin digest: last-sent read failed - using 24 h');
   }
   const since = last && last.getTime() < now.getTime() ? last : new Date(now.getTime() - DAY_MS);
-  let alreadyReported = new Set<string>();
-  try {
-    alreadyReported = new Set(deps.lastSentAuditIds ? await deps.lastSentAuditIds() : []);
-  } catch (err) {
-    logger.warn({ reason: err instanceof Error ? err.message : String(err) }, 'Admin digest: last-sent audit ids read failed - the overlap may repeat an event');
-  }
-  const [counts, loaded] = await Promise.all([
-    deps.loadQueueCounts(),
-    deps.loadEvents(new Date(since.getTime() - DIGEST_SINCE_OVERLAP_MS)),
-  ]);
-  const events = loaded.filter((e) => !e.auditId || !alreadyReported.has(e.auditId));
+  const [counts, events] = await Promise.all([deps.loadQueueCounts(), deps.loadEvents(since)]);
   const digest = buildAdminDigest(counts, events, {
     env,
     day,
@@ -477,7 +449,6 @@ export async function runAdminDigest(deps: AdminDigestDeps): Promise<AdminDigest
   try {
     await deps.claim(key);
     if (deps.markSent) await deps.markSent(now);
-    if (deps.markSentAuditIds) await deps.markSentAuditIds([...new Set(events.flatMap((e) => (e.auditId ? [e.auditId] : [])))]);
   } catch (err) {
     logger.warn({ key, reason: err instanceof Error ? err.message : String(err) }, 'Admin digest sent, but its claim / last-sent write FAILED - the Notifier dedupeKey guards a repeat');
   }
@@ -544,7 +515,7 @@ export function dbAuditEventsLoader(db: Db) {
     if (actions.length === 0) return [];
     const list = `{${actions.map((x) => `"${x}"`).join(',')}}`;
     const result = await db.execute(sql`
-      SELECT a.id::text AS audit_id, a.timestamp::text AS at, a.action_type, a.ipo_id::text AS ipo_id, a.table_name, a.field_name,
+      SELECT a.timestamp::text AS at, a.action_type, a.ipo_id::text AS ipo_id, a.table_name, a.field_name,
              a.old_value, a.new_value, i.slug, i.company_name, i.status::text AS status
         FROM audit_logs a JOIN ipos i ON i.id = a.ipo_id
        WHERE a.action_type = ANY(${list}::text[]) AND a.timestamp >= ${since.toISOString()}::timestamp
@@ -558,7 +529,6 @@ export function dbAuditEventsLoader(db: Db) {
       field: r.table_name ? `${String(r.table_name)}.${String(r.field_name ?? '')}` : String(r.field_name ?? ''),
       detail: `${String(r.old_value ?? '')} -> ${String(r.new_value ?? '')}`,
       companyName: (r.company_name as string | null) ?? undefined,
-      auditId: String(r.audit_id),
     }));
   };
 }
@@ -738,27 +708,6 @@ export function redisTimestamp(
     },
   };
 }
-
-/** The audit ids one accepted digest reported, so the next digest's overlap does not repeat them. */
-export function redisIdList(
-  redis: { get(key: string): Promise<string | null>; set(...args: unknown[]): Promise<unknown> },
-  key: string,
-  ttlSeconds = 7 * 86_400
-) {
-  return {
-    get: async (): Promise<string[]> => {
-      const v = await redis.get(key);
-      if (!v) return [];
-      const parsed: unknown = JSON.parse(v);
-      return Array.isArray(parsed) ? parsed.map(String) : [];
-    },
-    set: async (ids: string[]): Promise<void> => {
-      await redis.set(key, JSON.stringify(ids), 'EX', ttlSeconds);
-    },
-  };
-}
-
-export const digestAuditIdsKey = (env: string): string => `admin-digest-audit-ids:${env}`;
 
 export const newConflictMarkKey = (env: string): string => `admin-new-conflict-mark:${env}`;
 export const digestLastSentKey = (env: string): string => `admin-digest-last-sent:${env}`;
