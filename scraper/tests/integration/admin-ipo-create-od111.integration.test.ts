@@ -10,6 +10,7 @@ import {
   type SourceKeyRef,
 } from '@ipodhan/shared';
 import { createIpoByAdmin, type AdminIdentifierKind } from '@ipodhan/shared/services/admin-ipo-create';
+import { writeAdminFieldValue, readAdminFieldVersion } from '@ipodhan/shared/services/admin-field-write';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
 
@@ -52,6 +53,8 @@ async function cleanup() {
   if (ids.length === 0) return;
   await db!.delete(schema.auditLogs).where(inArray(schema.auditLogs.ipoId, ids));
   await db!.delete(schema.ipoSourceKeys).where(inArray(schema.ipoSourceKeys.ipoId, ids));
+  await db!.delete(schema.ipoIdentifierAliases).where(inArray(schema.ipoIdentifierAliases.ipoId, ids));
+  await db!.delete(schema.fieldProtectionMetadata).where(inArray(schema.fieldProtectionMetadata.ipoId, ids));
   await db!.delete(schema.fieldSources).where(inArray(schema.fieldSources.ipoId, ids));
   await db!.delete(schema.ipoSlugRedirects).where(inArray(schema.ipoSlugRedirects.ipoId, ids));
   await db!.delete(schema.ipos).where(inArray(schema.ipos.id, ids));
@@ -217,6 +220,92 @@ describe.skipIf(!DATABASE_URL)('OD-111 admin-created row: the scraper binds by i
       identifiers: [{ kind: 'BSE_IPO_NO', value: '97113' }], actor: ACTOR,
     });
     expect(made).toMatchObject({ kind: 'CREATED', editorPath: null });
+  });
+
+  describe('item 26 interaction: the hold follows the tier the resolver bound on, never a re-comparison of current values', () => {
+    const name = `${PREFIX} Alias Ltd`;
+    async function createThenEditSymbol(): Promise<string> {
+      const made = await createIpoByAdmin(db as never, {
+        companyName: name, offeringType: 'IPO', segment: 'MAINBOARD',
+        identifiers: [{ kind: 'NSE_SYMBOL', value: 'OD111ALX' }], actor: ACTOR,
+      });
+      expect(made.kind).toBe('CREATED');
+      if (made.kind !== 'CREATED') throw new Error('not created');
+      const v = await readAdminFieldVersion(db as never, made.ipoId, 'ipos', 'symbol');
+      const edit = await writeAdminFieldValue(db as never, {
+        ipoId: made.ipoId, tableName: 'ipos', fieldName: 'symbol', value: 'OD111ALY',
+        mode: { kind: 'typed', sourceNote: 'RHP cover page' }, expectedVersion: v!.version,
+        actor: ACTOR, entryPoint: 'test',
+      });
+      expect(edit.kind).toBe('OK');
+      const aliases = await db!.select().from(schema.ipoIdentifierAliases).where(eq(schema.ipoIdentifierAliases.ipoId, made.ipoId));
+      expect(aliases.map((a) => [a.kind, a.value])).toEqual([['SYMBOL', 'OD111ALX']]);
+      return made.ipoId;
+    }
+
+    it('a record carrying the OLD symbol (a kept alias) with a corroborating name binds the admin row, not held', async () => {
+      const id = await createThenEditSymbol();
+      const res = await ingest({ companyName: name, segment: 'MAINBOARD', openDate: '2026-10-20', priceRangeMin: 94, symbol: 'OD111ALX' });
+      expect(res).toEqual({ outcome: 'bound', id });
+      const holds = await db!.select({ id: schema.auditLogs.id }).from(schema.auditLogs)
+        .where(and(eq(schema.auditLogs.actionType, 'IDENTITY_HELD_FOR_REVIEW'), eq(schema.auditLogs.ipoId, id)));
+      expect(holds.length).toBe(0);
+    });
+
+    it('a record carrying the NEW symbol binds; a record with only the same name is still held', async () => {
+      const id = await createThenEditSymbol();
+      expect(await ingest({ companyName: name, segment: 'MAINBOARD', openDate: '2026-10-20', priceRangeMin: 94, symbol: 'OD111ALY' }))
+        .toEqual({ outcome: 'bound', id });
+      expect((await ingest({ companyName: name, segment: 'MAINBOARD', openDate: '2026-10-20', priceRangeMin: 94 })).outcome).toBe('held');
+      expect((await rowsNamed(name)).map((r) => r.id)).toEqual([id]);
+    });
+  });
+
+  describe('concurrent creates (Tier A MINOR 2): one wins, the other is refused naming it', () => {
+    for (const [label, ident] of [
+      ['CIN', { kind: 'CIN' as const, value: 'U31909DL2005PLC139499' }],
+      ['symbol', { kind: 'NSE_SYMBOL' as const, value: 'OD111RACE' }],
+    ] as const) {
+      it(`two admins create the same ${label} at the same moment -> one CREATED, one EXISTS naming it, one row`, async () => {
+        const names = [`${PREFIX} Race ${label} One Ltd`, `${PREFIX} Race ${label} Two Ltd`];
+        const results = await Promise.all(names.map((companyName) => createIpoByAdmin(db as never, {
+          companyName, offeringType: 'IPO', segment: 'MAINBOARD', identifiers: [ident], actor: ACTOR,
+        })));
+        const created = results.filter((r) => r.kind === 'CREATED');
+        const refused = results.filter((r) => r.kind === 'EXISTS');
+        expect(created.length).toBe(1);
+        expect(refused.length).toBe(1);
+        if (created[0].kind !== 'CREATED' || refused[0].kind !== 'EXISTS') return;
+        expect(refused[0].ipoId).toBe(created[0].ipoId);
+        expect(refused[0].reason).toContain(created[0].slug);
+        const rows = [...(await rowsNamed(names[0])), ...(await rowsNamed(names[1]))];
+        expect(rows.map((r) => r.id)).toEqual([created[0].ipoId]);
+      });
+    }
+  });
+
+  describe('the create-time slug check (Tier A MINOR 3): a taken slug is a refusal naming the row, never a hold', () => {
+    it('a relaunch whose old WITHDRAWN row holds the slug -> SLUG_TAKEN naming that row, nothing created, no hold', async () => {
+      const name = `${PREFIX} Relaunch Ltd`;
+      const oldSlug = generateIPOSlug(name);
+      const [old] = await db!.insert(schema.ipos).values({
+        companyName: name, slug: oldSlug, category: 'MAINBOARD', status: 'WITHDRAWN', offeringType: 'IPO', segment: 'MAINBOARD',
+        openDate: '2025-03-10', cin: 'U31909DL2005PLC139401',
+      } as never).returning({ id: schema.ipos.id });
+      const r = await createIpoByAdmin(db as never, {
+        companyName: name, offeringType: 'IPO', segment: 'MAINBOARD',
+        identifiers: [{ kind: 'CIN', value: 'U31909DL2005PLC139402' }], actor: ACTOR,
+      });
+      expect(r).toMatchObject({ kind: 'SLUG_TAKEN', ipoId: old.id, slug: oldSlug, companyName: name });
+      if (r.kind === 'SLUG_TAKEN') {
+        expect(r.reason).toContain(oldSlug);
+        expect(r.reason).toMatch(/merge/i);
+      }
+      expect((await rowsNamed(name)).map((x) => x.id)).toEqual([old.id]);
+      const holds = await db!.select({ id: schema.auditLogs.id }).from(schema.auditLogs)
+        .where(and(eq(schema.auditLogs.actionType, 'IDENTITY_HELD_FOR_REVIEW'), eq(schema.auditLogs.newValue, oldSlug)));
+      expect(holds.length).toBe(0);
+    });
   });
 
   describe('refusals', () => {

@@ -204,6 +204,7 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext: Adm
       case 'INVALID':
         return createErrorResponse('VALIDATION_ERROR', result.reason, requestId, 400);
       case 'EXISTS':
+      case 'SLUG_TAKEN':
         return createErrorResponse('CONFLICT', result.reason, requestId, 409, { existingId: result.ipoId, existingSlug: result.slug });
       case 'HELD':
         return createErrorResponse('IDENTITY_HELD', result.reason, requestId, 409, { candidates: result.candidates });

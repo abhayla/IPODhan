@@ -22,8 +22,9 @@
  * without one, OD-76); the other values are typed in the editor under item 12 (OD-108).
  */
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { auditLogs, offeringTypeEnum } from '../db/schema';
+import { auditLogs, ipos, offeringTypeEnum } from '../db/schema';
 import { IPORepository, IPO_CREATED_BY_ADMIN_ACTION } from '../repositories/ipo-repository';
 import { resolveIpoRow } from '../repositories/ipo-identity';
 import {
@@ -86,6 +87,8 @@ export type AdminIpoCreateResult =
   | { kind: 'CREATED'; ipoId: string; slug: string; offeringType: string; editorPath: string | null }
   | { kind: 'INVALID'; reason: string }
   | { kind: 'EXISTS'; reason: string; ipoId: string; slug: string; companyName: string }
+  /** Another row holds this name's page address and no identifier given binds it (Tier A MINOR 3). */
+  | { kind: 'SLUG_TAKEN'; reason: string; ipoId: string; slug: string; companyName: string }
   | { kind: 'HELD'; reason: string; candidates: { id: string; slug: string; companyName: string }[] };
 
 interface ParsedIdentity {
@@ -196,41 +199,28 @@ export async function createIpoByAdmin(db: Db, input: AdminIpoCreateInput, redis
   const repo = new IPORepository(db as never, (redis ?? noRedis) as never);
   const slug = generateIPOSlug(companyName);
 
-  // The real resolver, exactly as a scraper record carrying these identifiers would run it.
-  let existing;
-  try {
-    existing = await resolveIpoRow(repo, {
-      companyName,
-      normalizedName: normalizeCompanyNameForMatching(companyName),
-      slug,
-      cin,
-      symbol,
-      segment,
-      offeringType: input.offeringType,
-      sourceKeys: keys,
-    });
-  } catch (e) {
-    if (e instanceof IdentityHeldForReviewError) {
-      return { kind: 'HELD', reason: e.message, candidates: e.candidates.map((c) => ({ id: c.id, slug: c.slug, companyName: c.companyName })) };
-    }
-    if (e instanceof SourceKeySupersededError) return existsResult(repo, e.ipoId, 'this record number is an older, superseded number of that row');
-    if (e instanceof SourceKeyDuplicateError) return existsResult(repo, e.ipoIds[0], 'these record numbers already belong to existing rows');
-    if (e instanceof SourceKeyHeldError) return { kind: 'HELD', reason: e.message, candidates: [] };
-    throw e;
-  }
-  if (existing) return existsResult(repo, existing.id, 'an identifier you gave already binds to it');
+  // Tier A MINOR 2: the uniqueness checks and the insert run in ONE transaction that first takes a
+  // transaction-scoped advisory lock on every identifier given, so two admins creating the same CIN,
+  // symbol or record number at once are serialised: the second reads the first's committed row and
+  // is refused naming it. Locks are taken in sorted order so two creates never deadlock.
+  const lockKeys = [
+    cin ? `cin:${cin}` : null,
+    symbol ? `symbol:${symbol}` : null,
+    ...keys.map((k) => `key:${k.source}:${k.keyType}:${k.keyValue}`),
+  ].filter((k): k is string => k !== null).sort();
 
-  // A symbol the resolver declined (another type or company) would still make two rows answer one
-  // symbol, and the scraper could bind to either: refused the same way.
-  if (symbol) {
-    const holder = await repo.findBySymbol(symbol);
-    if (holder) return existsResult(repo, holder.id, `symbol ${symbol} is already on it`);
-  }
-
-  let created;
+  let outcome: { created?: Awaited<ReturnType<IPORepository['create']>>; refusal?: AdminIpoCreateResult };
   try {
-    created = await db.transaction(async (tx) => {
+    outcome = await db.transaction(async (tx) => {
+      for (const k of lockKeys) {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('admin-ipo-create'), hashtext(${k}))`);
+      }
       const txRepo = new IPORepository(tx as never, noRedis);
+      // A refusal RETURNS (the transaction commits), so a hold the resolver records stays recorded.
+      const refusal = await refuseIfAlreadyThere(tx as never, txRepo, {
+        companyName, slug, cin, symbol, segment, offeringType: input.offeringType, keys,
+      });
+      if (refusal) return { refusal };
       const row = await txRepo.create(
         { companyName, slug, offeringType: input.offeringType, segment, status: 'UPCOMING', cin, symbol } as never,
         { sourceKeys: keys, boundBy: `admin:${input.actor.adminId}`.slice(0, 64) }
@@ -255,9 +245,12 @@ export async function createIpoByAdmin(db: Db, input: AdminIpoCreateInput, redis
         userAgent: input.userAgent ?? null,
         success: true,
       });
-      return row;
+      return { created: row };
     });
   } catch (e) {
+    // Not reached by an admin create today: `create`'s own OD-68 fold hold needs a known open date or
+    // price band, which an admin create never carries, and a taken slug is refused above. Kept so a
+    // future hold still reaches the form as a refusal naming the candidates, never an error.
     if (e instanceof IdentityHeldForReviewError) {
       return { kind: 'HELD', reason: e.message, candidates: e.candidates.map((c) => ({ id: c.id, slug: c.slug, companyName: c.companyName })) };
     }
@@ -266,6 +259,8 @@ export async function createIpoByAdmin(db: Db, input: AdminIpoCreateInput, redis
     if (code === '23505') return { kind: 'INVALID', reason: 'Another row took this name or identifier at the same moment; reload and check before creating again.' };
     throw e;
   }
+  if (outcome.refusal) return outcome.refusal;
+  const created = outcome.created;
 
   // List/search cache entries are dropped after commit by the web wrapper (a rolled-back create must not drop them).
   logger.info({ ipoId: created.id, slug: created.slug, by: input.actor.name, cin, symbol, keys: keys.length }, '[OD-111] IPO row created by an admin');
@@ -276,6 +271,70 @@ export async function createIpoByAdmin(db: Db, input: AdminIpoCreateInput, redis
     offeringType: created.offeringType,
     editorPath: TYPES_WITH_DETAIL_PAGE.has(created.offeringType) ? `/ipos/${created.slug}?edit=` : null,
   };
+}
+
+/**
+ * Every reason the admin's create must not insert, checked inside the locked transaction:
+ *   1. the REAL resolver, exactly as a scraper record carrying these identifiers would run it, binds
+ *      an existing row (or holds / reports a key conflict);
+ *   2. a symbol the resolver declined (another type or company) is still on a row: two rows would
+ *      answer one symbol and the scraper could bind to either;
+ *   3. (Tier A MINOR 3) another row already holds this name's slug. `IPORepository.create` would HOLD
+ *      the create (#928 / OD-130: an admin create carries no open date, so no separate-offering slug
+ *      can be minted), and a hold is a scraper-side review queue, not an answer an admin can act on.
+ *      The admin is told which row holds it instead: edit that row, or use the merge tool.
+ */
+async function refuseIfAlreadyThere(
+  tx: Db,
+  txRepo: IPORepository,
+  id: { companyName: string; slug: string; cin: string | null; symbol: string | null; segment: 'MAINBOARD' | 'SME' | null; offeringType: string; keys: SourceKeyRef[] }
+): Promise<AdminIpoCreateResult | null> {
+  let existing;
+  try {
+    existing = await resolveIpoRow(txRepo, {
+      companyName: id.companyName,
+      normalizedName: normalizeCompanyNameForMatching(id.companyName),
+      slug: id.slug,
+      cin: id.cin,
+      symbol: id.symbol,
+      segment: id.segment,
+      offeringType: id.offeringType,
+      sourceKeys: id.keys,
+    });
+  } catch (e) {
+    if (e instanceof IdentityHeldForReviewError) {
+      return { kind: 'HELD', reason: e.message, candidates: e.candidates.map((c) => ({ id: c.id, slug: c.slug, companyName: c.companyName })) };
+    }
+    if (e instanceof SourceKeySupersededError) return existsResult(txRepo, e.ipoId, 'this record number is an older, superseded number of that row');
+    if (e instanceof SourceKeyDuplicateError) return existsResult(txRepo, e.ipoIds[0], 'these record numbers already belong to existing rows');
+    if (e instanceof SourceKeyHeldError) return { kind: 'HELD', reason: e.message, candidates: [] };
+    throw e;
+  }
+  if (existing) return existsResult(txRepo, existing.id, 'an identifier you gave already binds to it');
+
+  if (id.symbol) {
+    const holder = await txRepo.findBySymbol(id.symbol);
+    if (holder) return existsResult(txRepo, holder.id, `symbol ${id.symbol} is already on it`);
+  }
+
+  const [slugHolder] = await tx
+    .select({ id: ipos.id, slug: ipos.slug, companyName: ipos.companyName, status: ipos.status, offeringType: ipos.offeringType })
+    .from(ipos)
+    .where(eq(ipos.slug, id.slug))
+    .limit(1);
+  if (slugHolder) {
+    return {
+      kind: 'SLUG_TAKEN',
+      ipoId: slugHolder.id,
+      slug: slugHolder.slug,
+      companyName: slugHolder.companyName,
+      reason: `Not created: the page address "${slugHolder.slug}" already belongs to "${slugHolder.companyName}" ` +
+        `(${slugHolder.offeringType}, ${slugHolder.status}), which none of your identifiers binds. ` +
+        'If it is this offering, open that row and edit it (add the identifier there). If it is the same offering stored twice, use the merge tool. ' +
+        'If it is a different offering of the same company (a relaunch), open that row first to confirm, then create this one with the name as the exchange lists it for the new offering.',
+    };
+  }
+  return null;
 }
 
 async function existsResult(repo: IPORepository, ipoId: string, why: string): Promise<AdminIpoCreateResult> {

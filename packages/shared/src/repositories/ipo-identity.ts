@@ -614,7 +614,7 @@ async function resolveByCin(
   ipoRepository: IPORepository,
   identity: IpoIdentity,
   cin: string
-): Promise<{ row: IPO | null; hold: AliasHold | null }> {
+): Promise<{ row: IPO | null; hold: AliasHold | null; viaAlias?: true }> {
   const finder = (ipoRepository as { findByCin?: (c: string) => Promise<IPO[]> }).findByCin;
   if (typeof finder !== 'function') return { row: null, hold: null };
   const all = (await finder.call(ipoRepository, cin)) ?? [];
@@ -640,7 +640,7 @@ async function resolveByCin(
     if (bindable.length === 1) {
       logger.info({ companyName: identity.companyName, cin, boundId: bindable[0].id, boundSlug: bindable[0].slug },
         '[OD-34 / §9.2 item 26] bound on a kept CIN alias (corroborated)');
-      return { row: bindable[0], hold: null };
+      return { row: bindable[0], hold: null, viaAlias: true };
     }
     if (bindable.length > 1) {
       logger.warn({ companyName: identity.companyName, cin, eligibleSlugs: bindable.map((r) => r.slug) },
@@ -710,7 +710,7 @@ export async function resolveIpoRow(
 ): Promise<IPO | IPOWithRelations | null> {
   const keys = normalizeSourceKeyRefs(rawIdentity.sourceKeys ?? []);
   const db = keys.length > 0 ? sourceKeyDb(ipoRepository) : null;
-  if (!db) return refuseNameOnlyBindToAdminRow(ipoRepository, rawIdentity, await resolveIpoRowByOrder(ipoRepository, rawIdentity));
+  if (!db) return refuseNameOnlyBindToAdminRow(ipoRepository, rawIdentity, await resolveIpoRowByOrderWithTier(ipoRepository, rawIdentity));
 
   const byKey = await resolveBySourceKeys(db, rawIdentity, keys);
   switch (byKey.kind) {
@@ -758,7 +758,8 @@ export async function resolveIpoRow(
       break;
   }
 
-  const row = await resolveIpoRowByOrder(ipoRepository, rawIdentity);
+  const bound = await resolveIpoRowByOrderWithTier(ipoRepository, rawIdentity);
+  const row = bound.row;
   if (row) {
     // A key this record carries is DISPUTED on the row the fallback picked: that row was already
     // proved wrong for this key (CIN/ISIN contradiction). Refuse it until an admin resolves it.
@@ -784,35 +785,36 @@ export async function resolveIpoRow(
       throw heldError(rawIdentity, row, plan.reason);
     }
   }
-  return refuseNameOnlyBindToAdminRow(ipoRepository, rawIdentity, row);
+  return refuseNameOnlyBindToAdminRow(ipoRepository, rawIdentity, bound);
 }
 
 /**
- * Did the fallback order bind this row through an IDENTIFIER the record carries (CIN, ISIN or
- * symbol equal on both sides), rather than through a name tier?
+ * The tier of the fallback order that bound the row: an identifier the record carries live on the
+ * row (CIN, ISIN, symbol), a kept identifier alias that passed §9.2 item 26's corroboration, or a
+ * name tier (3, 3b, 4 slug, 5 fuzzy, 6 identity fold). A source-key bind returns before the order.
  */
-function boundByIdentifier(identity: IpoIdentity, row: IPO | IPOWithRelations): boolean {
-  const r = row as { cin?: unknown; isin?: unknown; symbol?: unknown };
-  const inCin = normalizeCin(identity.cin ?? null);
-  if (inCin && inCin === normalizeCin(typeof r.cin === 'string' ? r.cin : null)) return true;
-  const inIsin = normalizeSourceKeyValue(identity.isin);
-  if (inIsin && inIsin === normalizeSourceKeyValue(r.isin)) return true;
-  const inSymbol = normalizeSourceKeyValue(identity.symbol);
-  return Boolean(inSymbol && inSymbol === normalizeSourceKeyValue(r.symbol));
+export type IpoBindTier = 'cin' | 'isin' | 'symbol' | 'alias' | 'name';
+
+interface OrderResolution {
+  row: IPO | IPOWithRelations | null;
+  tier: IpoBindTier | null;
 }
 
 /**
  * §9.2 item 15 (OD-111): an admin-created row binds a scraped record only through one of its
- * identifiers (OD-34 / OD-85). A record the fallback order bound to it on the NAME alone is held
- * for review (OD-68), never bound. A key bind returns before this; a repository without
+ * identifiers (OD-34 / OD-85, and a kept alias per item 26). A record the fallback order bound to it
+ * through a NAME tier is held for review (OD-68), never bound. The decision reads the tier the order
+ * itself reported - never a re-comparison of the row's current identifier values, which an admin edit
+ * may have changed (item 26). The audit lookup runs only on a name-tier bind. A repository without
  * `isAdminCreated` (a test double) is treated as "no admin-created rows".
  */
 async function refuseNameOnlyBindToAdminRow(
   ipoRepository: IPORepository,
   identity: IpoIdentity,
-  row: IPO | IPOWithRelations | null
+  bound: OrderResolution
 ): Promise<IPO | IPOWithRelations | null> {
-  if (!row || boundByIdentifier(identity, row)) return row;
+  const { row, tier } = bound;
+  if (!row || tier !== 'name') return row;
   const repo = ipoRepository as {
     isAdminCreated?: (id: string) => Promise<boolean>;
     holdNameOnlyBindToAdminRow?: (incoming: unknown, candidate: unknown) => Promise<never>;
@@ -826,10 +828,10 @@ async function refuseNameOnlyBindToAdminRow(
   );
 }
 
-async function resolveIpoRowByOrder(
+async function resolveIpoRowByOrderWithTier(
   ipoRepository: IPORepository,
   rawIdentity: IpoIdentity
-): Promise<IPO | IPOWithRelations | null> {
+): Promise<OrderResolution> {
   const identity = stripIncomingDecoration(rawIdentity);
   const { companyName, normalizedName, slug, isin, symbol, openDate, priceRangeMin, segment, offeringType } = identity;
 
@@ -852,7 +854,7 @@ async function resolveIpoRowByOrder(
   let aliasHold: AliasHold | null = null;
   if (cin) {
     const cinResult = await resolveByCin(ipoRepository, identity, cin);
-    if (cinResult.row) return cinResult.row;
+    if (cinResult.row) return { row: cinResult.row, tier: cinResult.viaAlias ? 'alias' : 'cin' };
     aliasHold = cinResult.hold;
   }
 
@@ -873,6 +875,9 @@ async function resolveIpoRowByOrder(
   // ISIN (both null() calls short-circuit before querying).
   // §9.2 item 26 (Tier A review MINOR-2): every candidate is walked, live holders first; a row
   // matched only through a kept alias must pass judgeAliasMatch (OD-35 window, OD-68 corroboration).
+  // The tier that bound `keyMatch`: the identifier itself when the row carries it live, 'alias' when
+  // only a kept alias matched and judgeAliasMatch let it bind.
+  let keyTier: IpoBindTier | null = null;
   const pickKeyMatch = (kind: 'isin' | 'symbol', value: string, candidates: IPO[]): IPO | null => {
     const tier = kind === 'isin' ? 'Tier 1 ISIN' : 'Tier 2 symbol';
     for (const candidate of candidates) {
@@ -883,9 +888,15 @@ async function resolveIpoRowByOrder(
         }, `[T-478] ${tier} match declined - OFS/IPO identity conflict`);
         continue;
       }
-      if (carriesLive(candidate as never, kind, value)) return candidate;
+      if (carriesLive(candidate as never, kind, value)) {
+        keyTier = kind;
+        return candidate;
+      }
       const verdict = judgeAliasMatch(identity, candidate as never, kind === 'isin' ? 'ISIN' : 'SYMBOL', currentIdentifier(candidate as never, kind));
-      if (verdict.kind === 'bind') return candidate;
+      if (verdict.kind === 'bind') {
+        keyTier = 'alias';
+        return candidate;
+      }
       logger.warn({ companyName, [kind]: value, candidateId: candidate.id, candidateSlug: candidate.slug, reason: verdict.reason },
         `[§9.2 item 26] ${kind === 'isin' ? 'ISIN' : 'symbol'} alias match ${verdict.kind === 'hold' ? 'held' : 'declined'} - ${verdict.reason}`);
       if (verdict.kind === 'hold' && !aliasHold) aliasHold = { candidate, reason: verdict.reason };
@@ -1204,14 +1215,14 @@ async function resolveIpoRowByOrder(
     // No natural key present or no key hit at all — the pre-T-318 name-based
     // result is authoritative (this is also the path every keyless row, and
     // every existing caller/test, takes).
-    return nameMatch;
+    return { row: nameMatch, tier: nameMatch ? 'name' : null };
   }
 
   if (!nameMatch || nameMatch.id === keyMatch.id) {
     // Either the name tier found nothing (key tier wins outright), or both
     // tiers agree on the same row (no conflict) — the key match is strictly
     // higher-confidence, so prefer it.
-    return keyMatch;
+    return { row: keyMatch, tier: keyTier };
   }
 
   // T-318 conflict: the key tier (isin/symbol) resolved to a DIFFERENT row
@@ -1240,5 +1251,5 @@ async function resolveIpoRowByOrder(
     resolution: nameMatchIsTier3b ? 'key-match' : 'name-match',
   }, 'identity_conflict: natural-key match and name match disagree on which row this is — falling back to the higher-confidence tier');
 
-  return resolution;
+  return { row: resolution, tier: nameMatchIsTier3b ? keyTier : 'name' };
 }
