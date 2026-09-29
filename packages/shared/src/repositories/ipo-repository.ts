@@ -840,11 +840,24 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   async bindSourceKeys(
     ipoId: string,
     refs: SourceKeyRef[] | null | undefined,
-    opts: { boundVia: SourceKeyBoundVia; boundBy: string }
+    opts: {
+      boundVia: SourceKeyBoundVia;
+      boundBy: string;
+      /**
+       * OD-83 + OD-120: runs in the SAME transaction when the bind superseded an older key (a relaunch),
+       * so the relaunch's admin-value clear commits or rolls back with the key change.
+       */
+      onSupersede?: (tx: { execute: (q: any) => Promise<any> }, ipoId: string, supersededIds: string[]) => Promise<unknown>;
+    }
   ): Promise<Awaited<ReturnType<typeof recordSourceKeys>> | null> {
     const keys = normalizeSourceKeyRefs(refs ?? []);
     if (keys.length === 0) return null;
-    const res = await this.db.transaction((tx) => recordSourceKeys(tx, ipoId, keys, opts));
+    const { onSupersede, ...recordOpts } = opts;
+    const res = await this.db.transaction(async (tx) => {
+      const out = await recordSourceKeys(tx, ipoId, keys, recordOpts);
+      if (onSupersede && out.supersededIds.length > 0) await onSupersede(tx as never, ipoId, out.supersededIds);
+      return out;
+    });
     noteSourceKeyBind(ipoId, [...res.insertedIds, ...res.keptIds]);
     return res;
   }

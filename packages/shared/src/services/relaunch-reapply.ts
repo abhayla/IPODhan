@@ -1,7 +1,7 @@
 /**
  * §9.2 item 27 (OD-120): the one-click re-apply of an admin value a relaunch cleared. The handle is
  * the relaunch-clear audit row (relaunch-admin-clear.ts); the value goes back through the ONE admin
- * write (`writeAdminFieldValue`) with a version token read now, so it lands with ADMIN provenance, a
+ * write (`writeAdminFieldValue`) with the version token the confirm page showed, so it lands with ADMIN provenance, a
  * hold and its own audit row like any admin save. An EMPTY value re-applies as an admin empty with its
  * original reason (OD-121). A value already re-applied is refused.
  */
@@ -24,8 +24,27 @@ function rowsOf(r: unknown): Record<string, unknown>[] {
   return ((r as { rows?: Record<string, unknown>[] }).rows ?? (r as Record<string, unknown>[])) ?? [];
 }
 
-export async function buildRelaunchReapplyInput(db: Db, auditId: string, actor: AdminActor): Promise<RelaunchReapplyBuild> {
+/**
+ * The version token the confirm page embeds (MINOR 4): the field as the admin SAW it on the page. The
+ * POST writes with that token, so a newer admin save made after the page was opened answers CONFLICT
+ * instead of being silently overwritten by an old link.
+ */
+export async function readRelaunchReapplyVersion(db: Db, auditId: string): Promise<string | null> {
+  if (typeof auditId !== 'string' || !UUID.test(auditId)) return null;
+  const row = rowsOf(
+    await db.execute(sql`
+      SELECT ipo_id, table_name, field_name FROM audit_logs
+       WHERE id = ${auditId}::uuid AND action_type = ${RELAUNCH_CLEARED_AUDIT_ACTION} AND success = true`)
+  )[0] as { ipo_id: string | null; table_name: string; field_name: string } | undefined;
+  if (!row?.ipo_id) return null;
+  return (await readAdminFieldVersion(db, row.ipo_id, row.table_name, row.field_name))?.version ?? null;
+}
+
+export async function buildRelaunchReapplyInput(db: Db, auditId: string, actor: AdminActor, expectedVersion: string): Promise<RelaunchReapplyBuild> {
   if (typeof auditId !== 'string' || !UUID.test(auditId)) return { ok: false, status: 400, reason: 'audit must be a relaunch-clear audit row id' };
+  if (typeof expectedVersion !== 'string' || expectedVersion === '') {
+    return { ok: false, status: 400, reason: 'the re-apply carries no version token; open the re-apply link again' };
+  }
   const row = rowsOf(
     await db.execute(sql`
       SELECT id, ipo_id, table_name, field_name, old_value, details FROM audit_logs
@@ -49,7 +68,7 @@ export async function buildRelaunchReapplyInput(db: Db, auditId: string, actor: 
     ipoId: row.ipo_id,
     tableName: row.table_name,
     fieldName: row.field_name,
-    expectedVersion: version.version,
+    expectedVersion,
     actor,
     entryPoint: RELAUNCH_REAPPLY_ENTRY_POINT,
     detail,

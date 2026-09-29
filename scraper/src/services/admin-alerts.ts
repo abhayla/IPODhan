@@ -771,6 +771,17 @@ export function relaunchClearedKey(env: string, ipoId: string, documentId: strin
 export function buildRelaunchClearedAlert(summary: RelaunchClearSummary, opts: { env: string; baseUrl?: string }): { title: string; body: string } {
   const base = opts.baseUrl ?? publicBaseUrl();
   const lines = summary.cleared.map((c) => {
+    if (c.list) {
+      const rows = (() => {
+        try {
+          return (JSON.parse(c.oldValue ?? '[]') as unknown[]).length;
+        } catch {
+          return 0;
+        }
+      })();
+      return `- your list ${c.list} (${rows} row(s)) is no longer held; the new filing's list will replace it
+  Edit the list: ${editorLink(summary.slug, undefined, base)}`;
+    }
     const field = `${c.tableName}.${c.fieldName}`;
     const says = c.newFilingValue ?? 'nothing for it (not stated)';
     const what = c.adminEmpty ? `you had blanked ${field}; the new filing says ${says}` : `${field}: you had ${c.oldValue ?? '(empty)'}; the new filing says ${says}`;

@@ -551,7 +551,9 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     // OD-85 write rule: a record that bound to an existing row records its keys now, in one
     // transaction, BEFORE the row is written — the bind is what the key records.
     if (existingIPO && sourceKeys && sourceKeys.length > 0) {
-      await this.ipoRepository.bindSourceKeys(existingIPO.id, sourceKeys, {
+      // OD-83 + OD-120: a bind that supersedes an older key is a relaunch; it clears admin values.
+      const { bindSourceKeysClearingOnRelaunch } = await import('../services/relaunch-clear.js');
+      await bindSourceKeysClearingOnRelaunch(this.ipoRepository as never, existingIPO.id, sourceKeys, {
         boundVia: inferBoundVia(validatedIPO as any, existingIPO as any),
         boundBy: `scraper:${scraperName}`,
       });

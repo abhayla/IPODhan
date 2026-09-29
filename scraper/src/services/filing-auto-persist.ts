@@ -1807,16 +1807,6 @@ export function buildAutoPersistDeps(
             .set(patch as never)
             .where(eq(documentsTable.id, documentId))
             .returning({ ipoId: documentsTable.ipoId });
-      // OD-120: the ONE alert for a relaunch clear goes out AFTER commit (a rolled-back clear alerts nothing).
-      if (relaunchCleared && relaunchCleared.cleared.length > 0) {
-        const { sendRelaunchClearedAlert } = await import('./admin-alerts.js');
-        await sendRelaunchClearedAlert(relaunchCleared);
-        try {
-          await invalidator.invalidateAfterScrape('ALL', [relaunchCleared.slug]);
-        } catch (cacheError) {
-          logger.warn({ slug: relaunchCleared.slug, error: cacheError instanceof Error ? cacheError.message : String(cacheError) }, 'Could not drop caches after a relaunch clear (non-fatal)');
-        }
-      }
       const ipoId = rows[0]?.ipoId;
       if (ipoId) {
         try {
@@ -1826,6 +1816,16 @@ export function buildAutoPersistDeps(
             { documentId, ipoId, error: cacheError instanceof Error ? cacheError.message : String(cacheError) },
             'Could not invalidate documents cache after a status write (non-fatal)'
           );
+        }
+      }
+      // OD-120: the ONE alert for a relaunch clear goes out AFTER commit (a rolled-back clear alerts nothing).
+      if (relaunchCleared && relaunchCleared.cleared.length > 0) {
+        const { sendRelaunchClearedAlert } = await import('./admin-alerts.js');
+        await sendRelaunchClearedAlert(relaunchCleared);
+        try {
+          await invalidator.invalidateAfterScrape('ALL', [relaunchCleared.slug]);
+        } catch (cacheError) {
+          logger.warn({ slug: relaunchCleared.slug, error: cacheError instanceof Error ? cacheError.message : String(cacheError) }, 'Could not drop caches after a relaunch clear (non-fatal)');
         }
       }
     },
