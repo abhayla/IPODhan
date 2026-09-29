@@ -426,12 +426,34 @@ fi
 # quietly never running - precisely the silent-skip class this wrapper exists
 # to eliminate). It is logged loudly either way.
 LOCK_TTL=""
+# Set to 1 by lock_is_held() when the held lock has NO expiry (TTL -1): a
+# leaked lock, manually or foreignly written, that will never self-clear -
+# every wake from here on skips silently unless a human deletes it. See the
+# WARN + Notifier alert right after the wake-skipped log line below.
+LOCK_NO_EXPIRY=""
+# The value stored under a no-expiry lock (the holder's token: a scraper run
+# id, a deploy token, or whatever a manual/foreign write put there), read
+# with GET only on the TTL -1 branch so the WARN and the alert name WHO is
+# holding it. Sanitised to [A-Za-z0-9:._-] and capped at 80 chars before it
+# reaches a log line (it is an opaque token, never a secret, but it is data
+# from Redis and never goes into a log unfiltered).
+LOCK_HOLDER=""
+sanitize_lock_holder() {
+  printf '%s' "$1" | tr -c 'A-Za-z0-9:._-' '_' | cut -c1-80
+}
 lock_is_held() {
   if [ -n "${SCRAPER_WAKE_FAKE_LOCK_TTL:-}" ]; then
     # Test seam ONLY. Production never sets this; it lets the shell suite
     # drive both branches without a Redis.
     if [ "$SCRAPER_WAKE_FAKE_LOCK_TTL" = "free" ]; then
       return 1
+    fi
+    if [ "$SCRAPER_WAKE_FAKE_LOCK_TTL" = "-1" ]; then
+      LOCK_TTL="-1 (no expiry set - leaked lock, will not self-clear)"
+      LOCK_NO_EXPIRY=1
+      LOCK_HOLDER="$(sanitize_lock_holder "${SCRAPER_WAKE_FAKE_LOCK_HOLDER:-}")"
+      LOCK_HOLDER="${LOCK_HOLDER:-unknown}"
+      return 0
     fi
     LOCK_TTL="${SCRAPER_WAKE_FAKE_LOCK_TTL}s remaining"
     return 0
@@ -492,7 +514,16 @@ lock_is_held() {
   # and says so - treating it as free is how two cycles end up overlapping.
   case "$ttl" in
     -2) return 1 ;;
-    -1) LOCK_TTL="-1 (no expiry set - leaked lock, will not self-clear)"; return 0 ;;
+    -1)
+      LOCK_TTL="-1 (no expiry set - leaked lock, will not self-clear)"
+      LOCK_NO_EXPIRY=1
+      # Name the holder. A failed GET never changes the held verdict; it only
+      # makes the holder read "unknown (GET failed)".
+      holder_raw="$(redis_cli_run 3 "$redis_url" GET "$SCRAPER_LOCK_KEY" 2>/dev/null)" || holder_raw=""
+      LOCK_HOLDER="$(sanitize_lock_holder "$holder_raw")"
+      LOCK_HOLDER="${LOCK_HOLDER:-unknown (GET failed or empty)}"
+      return 0
+      ;;
     0) return 1 ;;
     ''|*[!0-9-]*)
       if [ "$ttl_rc" -ne 0 ] && [ -n "$ttl_err" ]; then
@@ -512,11 +543,109 @@ lock_is_held() {
   esac
 }
 
+# Alerts once per IST calendar day that a lock has no expiry (TTL -1) and is
+# therefore silently stopping EVERY wake for this job until a human deletes
+# it (scraper cycles themselves always set an expiry - distributed-lock PX,
+# job-lock EX - so -1 means a manual or foreign write). Reuses the exact
+# mechanism deploy-linux.sh's notify_unmerged_deploy() already uses to page
+# the owner from this repo's shell scripts: NOTIFIER_ENV (falling back to
+# GLOBAL.env) sourced in a subshell so the key never leaks into this
+# process's own env, NOTIFIER_KEY_IPODHAN, a python3-built JSON payload, and
+# a curl -K config file so the API key never appears in argv/`ps`. Fail-open
+# throughout (signal-ownership.md, decision-authority.md): a missing env, a
+# missing python3 or a failed POST only logs and never blocks or fails the
+# wake.
+notify_no_expiry_lock() {
+  # ONE alert per IST day per lock key: a local marker file, checked BEFORE
+  # touching the Notifier env at all, so a lock that stays leaked for days
+  # (the whole point of the class - nothing self-clears it) does not page
+  # every 30 minutes. Notifier's own dedupeKey (same value below) is a
+  # second, independent backstop, not a substitute for this - the marker is
+  # what makes "no second POST today" true from THIS script's side.
+  alert_ist_day="$(date -u -d '+330 minutes' '+%Y-%m-%d' 2>/dev/null)"
+  if [ -z "$alert_ist_day" ]; then
+    log "WARN lock-leaked-no-expiry-alert-skipped: could not compute the IST calendar day for the dedupe marker"
+    return 0
+  fi
+  alert_marker_dir="${SCRAPER_WAKE_ALERT_STATE_DIR:-/tmp}"
+  # Scoped per slot AND lock key, never per job: data, closed and opening all
+  # read the same scraper:cycle lock, so a per-job marker would page three
+  # times a day for one leaked lock; prod and staging share /tmp on one box,
+  # so a marker without the slot would let one slot's alert mute the other's.
+  alert_slot="${DEPLOY_SLOT_NAME:-unknown-slot}"
+  alert_lock_id="$(printf '%s' "$SCRAPER_LOCK_KEY" | tr -c 'A-Za-z0-9._-' '_')"
+  alert_marker="$alert_marker_dir/.scraper-wake-no-expiry-alerted.$alert_slot.$alert_lock_id.$alert_ist_day"
+  if [ -f "$alert_marker" ]; then
+    log "lock-leaked-no-expiry-alert-already-sent: slot=$alert_slot lock=$SCRAPER_LOCK_KEY already alerted today ($alert_ist_day, marker=$alert_marker) - not sending a second Notifier POST"
+    return 0
+  fi
+
+  (
+    notifier_env="${NOTIFIER_ENV:-/root/notifier/.env}"
+    global_env="${DEPLOY_GLOBAL_ENV:-/root/Abhay/GLOBAL.env}"
+    set -a
+    if [ -f "$notifier_env" ]; then
+      # shellcheck disable=SC1090
+      . "$notifier_env"
+    elif [ -f "$global_env" ]; then
+      # shellcheck disable=SC1090
+      . "$global_env"
+    fi
+    set +a
+
+    if [ -z "${NOTIFIER_KEY_IPODHAN:-}" ]; then
+      log "WARN lock-leaked-no-expiry-alert-skipped: NOTIFIER_KEY_IPODHAN not set - cannot page the owner about $SCRAPER_LOCK_KEY (see runner .env setup in GLOBAL.md section 2)"
+      exit 0
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+      log "WARN lock-leaked-no-expiry-alert-skipped: python3 not on PATH - cannot build the Notifier payload for $SCRAPER_LOCK_KEY"
+      exit 0
+    fi
+
+    body="[$alert_slot] $SCRAPER_LOCK_KEY has no TTL (leaked lock, holder=$LOCK_HOLDER) - every wake that reads this lock (job=$SCRAPER_JOB and any job sharing it) will skip until it is deleted (redis-cli via scripts/lib/redis-cli-auth.sh: DEL $SCRAPER_LOCK_KEY)."
+    payload="$(python3 -c "
+import json, sys
+print(json.dumps({
+  'project': 'ipodhan',
+  'severity': 'warning',
+  'title': 'Scraper lock leaked (no expiry)',
+  'body': sys.argv[1],
+  'type': 'scraper-lock',
+  'dedupeKey': 'scraper-wake-no-expiry-lock-' + sys.argv[4] + '-' + sys.argv[2] + '-' + sys.argv[3],
+}))
+" "$body" "$SCRAPER_LOCK_KEY" "$alert_ist_day" "$alert_slot" 2>/dev/null || true)"
+    if [ -z "$payload" ]; then
+      log "WARN lock-leaked-no-expiry-alert-skipped: could not build the Notifier payload for $SCRAPER_LOCK_KEY (python3 failed)"
+      exit 0
+    fi
+
+    # Marked as sent BEFORE the POST: the daily cap (rather than delivery
+    # confirmation) is the contract here (spec: "ONE owner alert per IST
+    # day"), and a marker written only on success would retry every 30 min
+    # against a Notifier that is reachably down all day.
+    : > "$alert_marker" 2>/dev/null || true
+
+    curl_cfg="$(mktemp)"
+    chmod 600 "$curl_cfg"
+    printf 'header = "X-Api-Key: %s"\n' "$NOTIFIER_KEY_IPODHAN" > "$curl_cfg"
+    curl -s -m 15 -X POST "${SCRAPER_WAKE_NOTIFIER_URL:-http://127.0.0.1:3300/notify}" \
+      -K "$curl_cfg" -H "Content-Type: application/json" \
+      -d "$payload" >/dev/null 2>&1 \
+      || log "WARN lock-leaked-no-expiry-alert-failed: Notifier POST failed for $SCRAPER_LOCK_KEY (non-fatal)"
+    rm -f "$curl_cfg"
+  )
+}
+
 if lock_is_held; then
   # THE SKIP LINE. Greppable on a stable token ("wake-skipped"), and carrying
   # the identity (the lock key) and the number (remaining TTL) rather than a
   # bare "skipped" - signal-ownership.md R1.
   log "wake-skipped: job=$SCRAPER_JOB - a cycle is already running and holds the lock; this occurrence is skipped, not queued and not killed. lock_key=$SCRAPER_LOCK_KEY lock_ttl=$LOCK_TTL"
+  if [ "$LOCK_NO_EXPIRY" = "1" ]; then
+    log "WARN lock-leaked-no-expiry: slot=${DEPLOY_SLOT_NAME:-unknown-slot} lock=$SCRAPER_LOCK_KEY holder=$LOCK_HOLDER has no TTL; every wake will skip until it is deleted (redis-cli via scripts/lib/redis-cli-auth.sh: DEL $SCRAPER_LOCK_KEY)"
+    notify_no_expiry_lock
+  fi
   exit 0
 fi
 
