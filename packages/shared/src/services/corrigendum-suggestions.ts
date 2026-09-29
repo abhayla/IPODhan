@@ -31,6 +31,29 @@ export const CORRIGENDUM_ORIGIN = 'CORRIGENDUM';
 export const CORRIGENDUM_ACCEPTED = 'CORRIGENDUM_ACCEPTED';
 export const CORRIGENDUM_DISMISSED = 'CORRIGENDUM_DISMISSED';
 
+/**
+ * §9.2 item 9 (OD-102, OD-66): a document read AFTER an admin save printed a different value for
+ * the admin-held field. Same row shape as a corrigendum suggestion (document_id set, value1 = the
+ * admin value under source ADMIN, value2 = the document's value), so the queue, the item 16
+ * `newer-document-disagrees` alert and this file's accept / dismiss all apply unchanged. The row's
+ * table / row key / field are the held field's own; `evidence.origin` marks it.
+ */
+export const NEWER_DOCUMENT_ORIGIN = 'NEWER_DOCUMENT';
+
+/**
+ * §9.2 item 25: one suggestion per (document, field, row), ever. The key has no value in it, so a
+ * dismissed suggestion never returns for the same document, and a different document gets its own.
+ */
+export function newerDocumentSuggestionKey(documentId: string, tableName: string, rowKey: string, fieldName: string): string {
+  return createHash('sha256').update(`${NEWER_DOCUMENT_ORIGIN}|${documentId}|${tableName}|${rowKey}|${fieldName}`).digest('hex');
+}
+
+/** True for an item 9 row (evidence.origin NEWER_DOCUMENT). */
+export function isNewerDocumentSuggestion(row: { evidence?: unknown } | null | undefined): boolean {
+  const e = row?.evidence as { origin?: unknown } | null | undefined;
+  return !!e && e.origin === NEWER_DOCUMENT_ORIGIN;
+}
+
 /** Where each mappable field lives, and whether it is exchange-owned (E-1, section 1.2.1). */
 export const CORRIGENDUM_FIELD_TARGETS: Record<string, { table: 'ipos' | 'ipo_details'; exchangeOwned: boolean }> = {
   designatedExchange: { table: 'ipo_details', exchangeOwned: false },
@@ -307,7 +330,10 @@ export async function acceptCorrigendumSuggestion(
 ): Promise<SuggestionDecision> {
   const row = await loadOpenSuggestion(db, conflictId);
   if (!row) return { ok: false, conflictId, error: 'not an open corrigendum suggestion' };
-  const target = CORRIGENDUM_FIELD_TARGETS[row.fieldName];
+  // Item 9: the suggestion names its own held field (any table, any row); a corrigendum maps to
+  // the three fields CORRIGENDUM_FIELD_TARGETS knows.
+  const newerDocument = isNewerDocumentSuggestion(row);
+  const target = newerDocument ? { table: row.tableName, exchangeOwned: false } : CORRIGENDUM_FIELD_TARGETS[row.fieldName];
   if (!target || row.value2 == null) {
     return { ok: false, conflictId, fieldName: row.fieldName, error: 'suggestion names no writable field; dismiss it or edit the field by hand' };
   }
@@ -338,13 +364,19 @@ export async function acceptCorrigendumSuggestion(
       const write = await writeAdminFieldValue(t, {
         ipoId: row.ipoId,
         tableName: target.table,
+        ...(newerDocument && row.rowKey ? { row: { rowKey: row.rowKey } } : {}),
         fieldName: row.fieldName,
         // The document's value from the suggestion's own stored row, never from the request.
         mode: { kind: 'storedPick', sourceLabel: 'DOC', readDate: null, value },
         expectedVersion,
         actor: { name: adminName, adminId },
         entryPoint: 'corrigendum-accept',
-        detail: { method: 'ADMIN_CORRIGENDUM_ACCEPT', documentId: row.documentId, conflictId, note: note ?? null },
+        detail: {
+          method: newerDocument ? 'ADMIN_NEWER_DOCUMENT_ACCEPT' : 'ADMIN_CORRIGENDUM_ACCEPT',
+          documentId: row.documentId,
+          conflictId,
+          note: note ?? null,
+        },
       });
       if (write.kind !== 'OK') {
         refused = write;

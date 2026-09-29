@@ -73,6 +73,7 @@ import {
   type GapKeyOverride,
 } from './field-plan-gap-keys.js';
 import { buildDocFetcher, DOC_READABLE_TABLES, type DocFetcherDeps } from './field-plan-walk-doc-fetcher.js';
+import { logger } from '../utils/logger.js';
 import { buildBseFetcher, BseFieldFetcherState, BSE_SERVEABLE_FIELDS } from './field-plan-walk-bse-fetcher.js';
 import { buildNseFetcher, NseFieldFetcherState, NSE_SERVEABLE_FIELDS } from './field-plan-walk-nse-fetcher.js';
 import {
@@ -364,7 +365,7 @@ export function buildFieldPlanGapKeySource(params: {
  */
 export function buildFieldPlanWalkHoldDeps(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
-): Pick<FieldPlanWalkDeps, 'protectionFilter' | 'trackHeldFieldWitnesses'> {
+): Pick<FieldPlanWalkDeps, 'protectionFilter' | 'trackHeldFieldWitnesses' | 'onHeldFieldAnswers'> {
   const fieldSources = new FieldSourcesRepository(db as never, redis as never);
   const fpm = schema.fieldProtectionMetadata;
   return {
@@ -391,6 +392,18 @@ export function buildFieldPlanWalkHoldDeps(
         fieldName: input.fieldName,
         merge: input.merge,
       }),
+    // §9.2 item 9: a document first seen after the admin's save that printed a different value
+    // becomes one admin-queue suggestion (never a write). Independent of ENABLE_VERDICT_WRITER.
+    onHeldFieldAnswers: async (ipoId, tableName, rowKey, fieldName) => {
+      const { recordNewerDocumentSuggestions } = await import('./newer-document-suggestions.js');
+      const r = await recordNewerDocumentSuggestions(db as never, { ipoId, tableName, rowKey, fieldName });
+      if (r.inserted > 0) {
+        logger.info(
+          { ipoId, table: tableName, rowKey, field: fieldName, inserted: r.inserted, ids: r.ids, equal: r.equal, duplicates: r.duplicates },
+          'PASS 3: a newer document disagrees with an admin-held field; suggestion(s) added to the admin queue (§9.2 item 9)'
+        );
+      }
+    },
   };
 }
 

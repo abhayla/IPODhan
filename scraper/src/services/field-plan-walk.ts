@@ -242,11 +242,22 @@ export type FieldFetcherAnswer =
       gap?: FieldPlanGapCode;
     };
 
+/**
+ * §9.2 item 9: what the walk tells a fetcher about THIS ask. `held` is set only on the read of an
+ * admin-held field (`readHeldField`): the column then holds the admin's value, so a source that
+ * answers from our own stored rows (DOC) must answer with what the document itself printed
+ * (its receipt), never the column. Every other ask passes nothing and is unchanged.
+ */
+export interface FieldFetcherContext {
+  held?: boolean;
+}
+
 export type FieldFetcher = (
   ipoId: string,
   tableName: string,
   rowKey: string,
-  fieldName: string
+  fieldName: string,
+  context?: FieldFetcherContext
 ) => Promise<FieldFetcherAnswer>;
 
 /**
@@ -266,11 +277,11 @@ export type ProtectionFilter = (
 export type HeldFieldAnswers = Witness[];
 
 /**
- * The seam for §9.2 item 9 (a newer source value becomes a suggestion in the admin queue) and
+ * The seam for §9.2 item 9 (a newer document's value becomes a suggestion in the admin queue) and
  * OD-106/OD-117 (a newer, different exchange date on an E-1 field replaces the admin value).
  * Called once per held field the walk read, after its witnesses were recorded, with this pass's
- * ranked answers. The default does nothing: those items plug in through
- * `FieldPlanWalkDeps.onHeldFieldAnswers` without touching the walk again.
+ * ranked answers. The default does nothing; production wires item 9 here
+ * (`buildFieldPlanWalkHoldDeps` -> `recordNewerDocumentSuggestions`).
  */
 export async function onHeldFieldAnswers(
   _ipoId: string,
@@ -858,7 +869,7 @@ async function readHeldField(
     }
     let answer: FieldFetcherAnswer;
     try {
-      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName);
+      answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName, { held: true });
     } catch (error) {
       answers.push(rankAnswer(rank, source, 'FAILED', { cause: `rank${rank}:${source}:THROWN:${causeOf(error)}` }));
       continue;

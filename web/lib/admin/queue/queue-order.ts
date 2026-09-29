@@ -64,7 +64,21 @@ export interface QueueItem {
   sources?: { source: string; value: string | null }[];
   /** OD-107 list suggestion only: the list and the writer's rows to add, remove and change. */
   suggestion?: ListSuggestion;
+  /**
+   * A suggestion read from one document (OD-90 corrigendum, §9.2 item 9 newer document): the
+   * document it came from, and its page when known (null: F-205, receipts carry no page).
+   */
+  document?: QueueDocumentRef;
   editorHref: string;
+}
+
+export interface QueueDocumentRef {
+  id: string;
+  type: string | null;
+  title: string | null;
+  page: number | null;
+  /** 'NEWER_DOCUMENT' (item 9) or 'CORRIGENDUM' (OD-90), from the row's evidence. */
+  origin: string | null;
 }
 
 export interface ListSuggestion {

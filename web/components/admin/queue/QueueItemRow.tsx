@@ -9,6 +9,7 @@ import type { QueueItem } from '@/lib/admin/queue/queue-order';
 function kindLabel(item: QueueItem): string {
   if (item.kind === 'missing') return 'Missing';
   if (item.kind === 'flagged') return 'Refused by the field check';
+  if (item.document?.origin === 'NEWER_DOCUMENT') return 'Suggestion from a newer document';
   return item.ruleFilter === null ? 'Disagreement' : 'Not a disagreement';
 }
 
@@ -46,6 +47,13 @@ export function QueueItemRow({ item, group }: { item: QueueItem; group: 1 | 2 | 
             <span className="text-gray-400">{s.source}:</span> {s.value ?? '(empty)'}
           </div>
         ))}
+        {item.document ? (
+          <div data-testid="suggestion-document">
+            <span className="text-gray-400">from:</span> {item.document.type ?? 'document'}
+            {item.document.title ? ` "${item.document.title}"` : ''}
+            {item.document.page !== null ? `, page ${item.document.page}` : ', page not recorded'}
+          </div>
+        ) : null}
         {item.storedValue !== undefined ? (
           <div data-testid="stored-value">
             <span className="text-gray-400">stored now:</span> {item.storedValue ?? '(empty)'}
