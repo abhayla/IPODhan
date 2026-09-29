@@ -359,6 +359,25 @@ export function checkFreshnessPerType(offeringType, newestRowAgeDays) {
   return null;
 }
 
+// ---- (#1256): CLOSED status stuck past its own close_date --------------------
+//
+// #1256's core: status is forward-only on every writer, so a real extension
+// (close_date pushed out by NSE/BSE) is the only thing that can legitimately
+// move an IPO that a scraper already wrote CLOSED back out of that state — and
+// if the walk misses that extension cycle, the row is left reading CLOSED
+// while close_date says the offer is still open today or later. Caller passes
+// `todayIst` as a 'YYYY-MM-DD' string (IST calendar day, read once per audit
+// run per .claude/rules/ist-timezone.md) so this predicate stays pure — no
+// clock read inside the check itself.
+export function checkStatusClosedBeforeCloseDate(row) {
+  if (!row || row.status !== 'CLOSED') return null;
+  if (!row.closeDate || !row.todayIst) return null;
+  if (row.closeDate >= row.todayIst) {
+    return `status is CLOSED but close_date (${row.closeDate}) is today or later (today IST: ${row.todayIst}) — a missed extension leaves the row stuck`;
+  }
+  return null;
+}
+
 // ---- (h): pm2 env TZ + log size ---------------------------------------------
 
 export function checkPm2EnvHasTz(processName, envMap) {

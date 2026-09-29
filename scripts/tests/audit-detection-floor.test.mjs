@@ -27,6 +27,7 @@ import {
   classifyVerdictLeak,
   classifyConflictNoiseRatio,
   checkFreshnessPerType,
+  checkStatusClosedBeforeCloseDate,
   checkPm2EnvHasTz,
   checkPm2LogSize,
   findUnreferencedDefinitions,
@@ -426,6 +427,32 @@ test('(g) FAILS on an OFS-shaped 78-day-frozen calendar', () => {
 
 test('(g) PASSES a fresh OFS row', () => {
   assert.equal(checkFreshnessPerType('OFS', 5), null);
+});
+
+// ---- (#1256) CLOSED status stuck past its own close_date ----------------------
+
+test('(#1256) FAILS a CLOSED row whose close_date is today IST — a missed extension', () => {
+  const v = checkStatusClosedBeforeCloseDate({ status: 'CLOSED', closeDate: '2026-09-29', todayIst: '2026-09-29' });
+  assert.ok(v !== null);
+  assert.match(v, /missed extension/);
+});
+
+test('(#1256) FAILS a CLOSED row whose close_date is in the future', () => {
+  const v = checkStatusClosedBeforeCloseDate({ status: 'CLOSED', closeDate: '2026-10-02', todayIst: '2026-09-29' });
+  assert.ok(v !== null);
+});
+
+test('(#1256) PASSES a CLOSED row whose close_date is yesterday IST', () => {
+  assert.equal(checkStatusClosedBeforeCloseDate({ status: 'CLOSED', closeDate: '2026-09-28', todayIst: '2026-09-29' }), null);
+});
+
+test('(#1256) PASSES a non-CLOSED row regardless of close_date', () => {
+  assert.equal(checkStatusClosedBeforeCloseDate({ status: 'LISTED', closeDate: '2026-09-29', todayIst: '2026-09-29' }), null);
+});
+
+test('(#1256) PASSES/no-op when closeDate or todayIst is missing (UNVERIFIABLE upstream, not a false FAIL)', () => {
+  assert.equal(checkStatusClosedBeforeCloseDate({ status: 'CLOSED', closeDate: null, todayIst: '2026-09-29' }), null);
+  assert.equal(checkStatusClosedBeforeCloseDate({ status: 'CLOSED', closeDate: '2026-09-29', todayIst: null }), null);
 });
 
 // ---- (h) pm2 env TZ + log size -------------------------------------------------
