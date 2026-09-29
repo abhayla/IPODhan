@@ -64,6 +64,15 @@ import {
   isCorrigendumSuggestion,
   isWriterBookkeepingField,
 } from '@ipodhan/shared/utils/conflict-reasons';
+import {
+  isBackwardMove,
+  decideBackwardMove,
+  ladderDay,
+  BACKWARD_DRIVING_FIELD,
+  EXCHANGE_SOURCES as LADDER_EXCHANGE_SOURCES,
+  LADDER_EVIDENCE_FIELDS,
+  type StatusEvidence,
+} from '@ipodhan/shared/utils/ipo-status-ladder';
 import { toUtcEpochDay, toUtcEpochMs } from '../utils/date-string-parsing.js';
 import { validateFieldValue, type ValidationRule } from './field-extraction-validation.js';
 import { loadValidationRules } from '../config/validation-rules-loader.js';
@@ -425,6 +434,9 @@ function isDetectedAtStillFresh(detectedAt: unknown, now: number): boolean {
  */
 // #983 / OD-132: DELISTED (set by the post-listing price job) is terminal too, so an ordinary
 // NSE/BSE status write cannot take it back to LISTED.
+/** #1256: a scraped `ipos.status` that would move down the ladder without an exchange relaunch. */
+export const BACKWARD_STATUS_KEPT = 'BACKWARD_STATUS_KEPT';
+
 export const TERMINAL_IPO_STATUSES: ReadonlySet<string> = new Set<string>(['WITHDRAWN', 'POSTPONED', 'DELISTED']);
 
 const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
@@ -1187,6 +1199,25 @@ export class DataConsolidationService {
         segment: heldDates.segment,
       };
 
+      // #1256: the field_sources rows the forward-only status rule reads (spec row 8, OD-83),
+      // collected once per call from the rows already loaded above — `ipos` singleton row only.
+      const ladderEvidence: StatusEvidence[] =
+        input.tableName === 'ipos' && (input.rowKey ?? '') === ''
+          ? existingFieldSources
+              .filter(
+                (row: any) =>
+                  row.tableName === 'ipos' && (row.rowKey ?? '') === '' && LADDER_EVIDENCE_FIELDS.includes(row.fieldName)
+              )
+              .map((row: any) => ({
+                fieldName: String(row.fieldName),
+                source: String(row.source),
+                previousValue: row.previousValue === null || row.previousValue === undefined ? null : String(row.previousValue),
+                previousSource: row.previousSource === null || row.previousSource === undefined ? null : String(row.previousSource),
+                // findByIPOId is cache-backed: a cached row's timestamp comes back as a string.
+                updatedAt: new Date(row.updatedAt),
+              }))
+          : [];
+
       // OD-66: a field the caller declared as CONTEXT is not this write's
       // claim, so it is never resolved, never re-stamped with this source's
       // provenance, and never allowed to auto-resolve an open conflict. It
@@ -1252,6 +1283,7 @@ export class DataConsolidationService {
             // computation deadlocked.
             heldDates,
             incomingDates,
+            ladderEvidence,
             segment: smeSegment,
             smeCollapseEvidence,
             ipoType: ipoTypeForPolicy,
@@ -1386,6 +1418,8 @@ export class DataConsolidationService {
     ipoStatus?: string;
     heldDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
     incomingDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
+    /** #1256: this IPO's status/date `field_sources` rows, for the forward-only status rule. */
+    ladderEvidence?: StatusEvidence[];
     // W-145: the row's segment, for the SME single-exchange invariant. The
     // STORED segment leads (it is the classified row); the incoming one is
     // only a fallback for a row that has none yet.
@@ -2195,6 +2229,24 @@ export class DataConsolidationService {
       };
     }
 
+    // #1256 (spec row 8, OD-83): `ipos.status` never moves down the ladder from a scraped
+    // source unless an exchange moved the driving date later, or an admin set it. Checked
+    // against the STORED value (with or without a provenance row), before any priority or
+    // time-based resolution, so no source ordering can re-open a closed or listed IPO.
+    if (fieldName === 'status' && tableName === 'ipos' && rowKey === '') {
+      const refused = await this.refuseBackwardStatus({
+        ipoId,
+        storedValue,
+        existingSource,
+        incomingValue,
+        incomingSource,
+        heldDates: params.heldDates,
+        incomingDates: params.incomingDates,
+        evidence: params.ladderEvidence ?? [],
+      });
+      if (refused) return refused;
+    }
+
     // Case 3: Conflict detected - resolve based on priority
     const conflict = await this.resolveConflict({
       incoming: params.incoming,
@@ -2222,6 +2274,111 @@ export class DataConsolidationService {
     });
 
     return conflict;
+  }
+
+  /**
+   * #1256: the scraper side of the forward-only status ladder — the same rule, the same code
+   * (`decideBackwardMove`, packages/shared/src/utils/ipo-status-ladder.ts), the web ladder uses.
+   * Returns the kept-existing result when a backward move is refused; null when the move is not
+   * backward, comes from ADMIN, or is justified by an exchange moving the driving date later.
+   *
+   * The exchange's date change may arrive in THIS payload (NSE sends the extended close date and
+   * "Open" together): when the incoming source is NSE/BSE and its driving date is later than the
+   * stored one, that pair is the evidence, with the stored date's owner as `previousSource` —
+   * so an exchange taking over a website's date is still not a relaunch.
+   */
+  private async refuseBackwardStatus(params: {
+    ipoId: string;
+    storedValue: unknown;
+    existingSource: ScraperSource | undefined;
+    incomingValue: unknown;
+    incomingSource: ScraperSource;
+    heldDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
+    incomingDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
+    evidence: StatusEvidence[];
+  }): Promise<FieldConsolidationResult | null> {
+    const { ipoId, storedValue, existingSource, incomingValue, incomingSource } = params;
+    if (incomingSource === 'ADMIN' || !isBackwardMove(storedValue, incomingValue)) return null;
+
+    const field = BACKWARD_DRIVING_FIELD[String(incomingValue).toUpperCase()];
+    const held = {
+      openDate: params.heldDates?.openDate,
+      closeDate: params.heldDates?.closeDate,
+      listingDate: params.heldDates?.listingDate,
+    };
+    const dates: { openDate: unknown; closeDate: unknown; listingDate: unknown } = { ...held };
+    let evidence = params.evidence;
+    if (field && params.incomingDates) {
+      const incomingDay = ladderDay(params.incomingDates[field]);
+      const heldDay = ladderDay(held[field]);
+      const storedRow = evidence.find((e) => e.fieldName === field);
+      if (
+        LADDER_EXCHANGE_SOURCES.has(incomingSource) &&
+        storedRow?.source !== 'ADMIN' &&
+        incomingDay &&
+        heldDay &&
+        incomingDay > heldDay
+      ) {
+        dates[field] = incomingDay;
+        evidence = [
+          ...evidence.filter((e) => e.fieldName !== field),
+          {
+            fieldName: field,
+            source: incomingSource,
+            previousValue: heldDay,
+            previousSource: storedRow?.source ?? null,
+            updatedAt: new Date(),
+          },
+        ];
+      }
+    }
+
+    const decision = decideBackwardMove(storedValue, incomingValue, dates, evidence);
+    if (decision.allowed === true) {
+      logger.info(
+        { ipoId, from: storedValue, to: incomingValue, source: incomingSource, reason: decision.reason },
+        'backward_status_allowed'
+      );
+      return null;
+    }
+    // `=== false` narrows under scraper/tsconfig.json (no strictNullChecks), where `!allowed` does not.
+    const cause = decision.allowed === false ? decision.cause : '';
+
+    logger.warn(
+      { ipoId, from: storedValue, to: incomingValue, source: incomingSource, cause },
+      'refuse_backward_status'
+    );
+    const keptSource = existingSource ?? incomingSource;
+    // T-286: a source contradicting itself is not a cross-source dispute (the repository refuses
+    // source1 === source2); the refusal is still logged above.
+    if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode && keptSource !== incomingSource) {
+      try {
+        await this.dataConflictsRepository.upsertConflict({
+          ipoId,
+          tableName: 'ipos',
+          rowKey: '',
+          fieldName: 'status',
+          source1: keptSource,
+          value1: storedValue === null || storedValue === undefined ? null : String(storedValue),
+          source2: incomingSource,
+          value2: incomingValue === null || incomingValue === undefined ? null : String(incomingValue),
+          resolvedSource: keptSource,
+          resolutionReason: BACKWARD_STATUS_KEPT,
+          severity: 'WARNING',
+        });
+      } catch (error) {
+        console.error('[DataConsolidation] Failed to record BACKWARD_STATUS_KEPT conflict (non-fatal):', error);
+      }
+    }
+    return {
+      fieldName: 'status',
+      finalValue: storedValue,
+      chosenSource: keptSource,
+      hadConflict: true,
+      conflictSeverity: 'WARNING',
+      conflictReason: BACKWARD_STATUS_KEPT,
+      rejectedSources: [{ source: incomingSource, value: incomingValue, reason: BACKWARD_STATUS_KEPT }],
+    };
   }
 
   /**
@@ -2881,8 +3038,12 @@ export class DataConsolidationService {
         // F6 (W-37): the chosen value had to win a real disagreement — that
         // costs confidence (CRITICAL -10, WARNING -5, floor 20).
         conflicts: [severity],
-        previousValue: chosenSource !== existingSource ? existingValue : undefined,
-        previousSource: chosenSource !== existingSource ? existingSource : undefined,
+        // #1256 (MAJOR 1): `provenanceUnchanged` is false here, so the owner or the value changed.
+        // When the SAME source changed its own value (NSE extending its close date,
+        // SAME_SOURCE_REFRESH) the old value is recorded too: `undefined` made the repository
+        // write NULL over it, so the forward-only ladder could never see a relaunch.
+        previousValue: existingValue,
+        previousSource: existingSource,
       });
     }
 

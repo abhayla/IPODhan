@@ -69,10 +69,18 @@ import {
 } from '@/lib/services/status-updater-service';
 
 const ist = (d: string, hhmm: string) => new Date(`${d}T${hhmm}:00+05:30`);
-const ev = (fieldName: string, source: string, previousValue: string | null, at: Date): StatusEvidence => ({
+// previousSource defaults to the same source: the source changed its own value (MAJOR 1 records it).
+const ev = (
+  fieldName: string,
+  source: string,
+  previousValue: string | null,
+  at: Date,
+  previousSource: string | null = previousValue === null ? null : source
+): StatusEvidence => ({
   fieldName,
   source,
   previousValue,
+  previousSource,
   updatedAt: at,
 });
 const row = (over: Partial<Row>): Row => ({
@@ -190,6 +198,21 @@ describe('updateIPOStatuses refuses a regression with no newer exchange window (
       }
     );
     expect(updatedRows).toEqual([]);
+  });
+
+  it('an exchange TAKING OVER a website close date (previous_source CHITTORGARH) is not a relaunch', async () => {
+    const result = await run(
+      [row({ id: 'takeover', status: 'CLOSED', openDate: '2026-09-17', closeDate: '2026-09-23' })],
+      ist('2026-09-22', '10:00'),
+      {
+        takeover: [
+          ev('status', 'CHITTORGARH', null, ist('2026-09-21', '18:00')),
+          ev('closeDate', 'NSE', '2026-09-21', ist('2026-09-21', '20:00'), 'CHITTORGARH'),
+        ],
+      }
+    );
+    expect(updatedRows).toEqual([]);
+    expect(result.refusedBackward).toBe(1);
   });
 
   it('an exchange window that moved later BEFORE the status was set does not undo that status', async () => {
