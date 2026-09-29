@@ -1,41 +1,41 @@
 {
   "_comment": "Written ONLY by scripts/ops/collect-board-facts.mjs. Never hand-edit: a typed value here is the drift this file exists to stop. A null value carries the error that prevented measuring it.",
-  "collected_at": "2026-09-28T08:04:34.627Z",
+  "collected_at": "2026-09-29T02:23:12.525Z",
   "facts": {
     "prod.sha": {
       "value": "f0c66b6b",
-      "measured_at": "2026-09-28T08:04:34.146Z",
+      "measured_at": "2026-09-29T02:23:11.886Z",
       "command": "ssh -o BatchMode=yes -o ConnectTimeout=15 rfp-vps 'echo \"prod $(readlink -f /var/www/ipodhan/current) $(stat -c %Y /var/www/ipodhan/current) $(cat /var/www/ipodhan/DEPLOYED_SHA-prod 2>/dev/null | tr -d '[:space:]')\"; echo \"staging $(readlink -f /var/www/ipodhan/current-staging) $(stat -c %Y /var/www/ipodhan/current-staging) $(cat /var/www/ipodhan/DEPLOYED_SHA-staging 2>/dev/null | tr -d '[:space:]')\"'"
     },
     "prod.since": {
       "value": "2026-09-07T17:05:54.000Z",
-      "measured_at": "2026-09-28T08:04:34.147Z",
+      "measured_at": "2026-09-29T02:23:11.888Z",
       "command": "ssh -o BatchMode=yes -o ConnectTimeout=15 rfp-vps 'echo \"prod $(readlink -f /var/www/ipodhan/current) $(stat -c %Y /var/www/ipodhan/current) $(cat /var/www/ipodhan/DEPLOYED_SHA-prod 2>/dev/null | tr -d '[:space:]')\"; echo \"staging $(readlink -f /var/www/ipodhan/current-staging) $(stat -c %Y /var/www/ipodhan/current-staging) $(cat /var/www/ipodhan/DEPLOYED_SHA-staging 2>/dev/null | tr -d '[:space:]')\"'  # mtime of the slot symlink = when it switched"
     },
     "staging.sha": {
-      "value": "71c00e55",
-      "measured_at": "2026-09-28T08:04:34.147Z",
+      "value": "3f1cc6d7",
+      "measured_at": "2026-09-29T02:23:11.888Z",
       "command": "ssh -o BatchMode=yes -o ConnectTimeout=15 rfp-vps 'echo \"prod $(readlink -f /var/www/ipodhan/current) $(stat -c %Y /var/www/ipodhan/current) $(cat /var/www/ipodhan/DEPLOYED_SHA-prod 2>/dev/null | tr -d '[:space:]')\"; echo \"staging $(readlink -f /var/www/ipodhan/current-staging) $(stat -c %Y /var/www/ipodhan/current-staging) $(cat /var/www/ipodhan/DEPLOYED_SHA-staging 2>/dev/null | tr -d '[:space:]')\"'"
     },
     "staging.since": {
-      "value": "2026-09-27T20:02:30.000Z",
-      "measured_at": "2026-09-28T08:04:34.147Z",
+      "value": "2026-09-29T02:17:32.000Z",
+      "measured_at": "2026-09-29T02:23:11.888Z",
       "command": "ssh -o BatchMode=yes -o ConnectTimeout=15 rfp-vps 'echo \"prod $(readlink -f /var/www/ipodhan/current) $(stat -c %Y /var/www/ipodhan/current) $(cat /var/www/ipodhan/DEPLOYED_SHA-prod 2>/dev/null | tr -d '[:space:]')\"; echo \"staging $(readlink -f /var/www/ipodhan/current-staging) $(stat -c %Y /var/www/ipodhan/current-staging) $(cat /var/www/ipodhan/DEPLOYED_SHA-staging 2>/dev/null | tr -d '[:space:]')\"'  # mtime of the slot symlink = when it switched"
     },
     "prod.migrations_applied": {
       "value": 34,
-      "measured_at": "2026-09-28T08:04:34.421Z",
+      "measured_at": "2026-09-29T02:23:12.221Z",
       "command": "psql -h localhost -p 15432 -U ipodhan_app -d ipodhan (read-only session): select count(*)::int as n from drizzle.__drizzle_migrations"
     },
     "staging.migrations_applied": {
-      "value": 67,
-      "measured_at": "2026-09-28T08:04:34.550Z",
+      "value": 69,
+      "measured_at": "2026-09-29T02:23:12.365Z",
       "command": "psql -h localhost -p 15432 -U ipodhan_app -d ipodhan_staging (read-only session): select count(*)::int as n from drizzle.__drizzle_migrations"
     },
     "main.migrations": {
-      "value": 67,
-      "measured_at": "2026-09-28T08:04:34.627Z",
-      "command": "git show refs/remotes/origin/main:web/drizzle/migrations/meta/_journal.json  # count entries (origin/main at 9e0c430e)"
+      "value": 69,
+      "measured_at": "2026-09-29T02:23:12.525Z",
+      "command": "git show refs/remotes/origin/main:web/drizzle/migrations/meta/_journal.json  # count entries (origin/main at 3f1cc6d7)"
     }
   }
 }
