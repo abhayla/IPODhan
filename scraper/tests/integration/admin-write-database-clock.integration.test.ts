@@ -6,6 +6,7 @@ import * as schema from '../../../packages/shared/src/db/schema';
 import { writeAdminFieldValue, readAdminFieldVersion } from '../../../packages/shared/src/services/admin-field-write';
 import { writeAdminListChange, readAdminList } from '../../../packages/shared/src/services/admin-list-write';
 import { FieldSourcesRepository } from '../../../packages/shared/src/repositories/field-sources-repository';
+import { DataConflictsRepository } from '../../../packages/shared/src/repositories/data-conflicts-repository';
 import { recordNewerDocumentSuggestions } from '../../src/services/newer-document-suggestions.js';
 
 const noRedis = {
@@ -199,5 +200,29 @@ describe.skipIf(!DATABASE_URL)('admin writes stamp from the database clock (F-21
       expect(at, `${name}=${text}`).toBeGreaterThanOrEqual(beforeSave - 1);
       expect(at, `${name}=${text}`).toBeLessThanOrEqual(afterSave);
     }
+  }, 60000);
+
+  it('a conflict detected and resolved while the app clock is 5 min behind is stamped by the database (detected_at, resolved_at)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(Date.now() - SKEW_MS));
+    const repo = new DataConflictsRepository(db as never, noRedis);
+    const read = async (col: 'detected_at' | 'resolved_at') =>
+      utc(((await db.execute(sql`SELECT ${sql.raw(col)}::text AS t FROM data_conflicts WHERE ipo_id = ${IPO_ID}::uuid AND field_name = 'registrar'`)).rows[0] as { t: string }).t);
+
+    const beforeLog = await dbNowMs();
+    const logged = await repo.logConflict({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'registrar', source1: 'NSE', value1: 'A Ltd', source2: 'BSE', value2: 'B Ltd' });
+    const afterLog = await dbNowMs();
+    const detected = await read('detected_at');
+    expect(detected, 'detected_at').toBeGreaterThanOrEqual(beforeLog - 1);
+    expect(detected, 'detected_at').toBeLessThanOrEqual(afterLog);
+
+    await pause(30);
+    const beforeResolve = await dbNowMs();
+    await repo.resolveConflict((logged as { id: string }).id, { resolvedSource: 'NSE', resolutionReason: 'proof', resolvedBy: 'dbclock-test-admin' });
+    const afterResolve = await dbNowMs();
+    const resolved = await read('resolved_at');
+    expect(resolved, 'resolved_at').toBeGreaterThanOrEqual(beforeResolve - 1);
+    expect(resolved, 'resolved_at').toBeLessThanOrEqual(afterResolve);
+    expect(resolved, 'resolved after detected on one clock').toBeGreaterThan(detected);
   }, 60000);
 });

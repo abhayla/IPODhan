@@ -43,6 +43,8 @@ import {
   redisTimestamp,
   newConflictMarkKey,
   digestLastSentKey,
+  digestAuditIdsKey,
+  redisIdList,
   redisConflictPairs,
 } from './services/admin-alerts.js';
 import { CLI_SOURCE_ARGS } from './config/runnable-sources.js';
@@ -2399,9 +2401,12 @@ async function triggerAdminDigest(): Promise<StepResult> {
   const store = redisDigestStore(redis, env);
   const loadAudit = dbAuditEventsLoader(db as unknown as Parameters<typeof dbAuditEventsLoader>[0]);
   const lastSent = redisTimestamp(redis as unknown as Parameters<typeof redisTimestamp>[0], digestLastSentKey(env));
+  const sentIds = redisIdList(redis as unknown as Parameters<typeof redisIdList>[0], digestAuditIdsKey(env));
   const r = await runAdminDigest({
     lastSentAt: lastSent.get,
     markSent: lastSent.set,
+    lastSentAuditIds: sentIds.get,
+    markSentAuditIds: sentIds.set,
     env,
     isClaimed: claims.isClaimed,
     claim: claims.claim,

@@ -20,6 +20,7 @@ import {
   conflictPairHash,
   redisTimestamp,
   NEW_CONFLICT_OVERLAP_MS,
+  DIGEST_SINCE_OVERLAP_MS,
   publicBaseUrl,
   editorLink,
   type NewConflictRow,
@@ -276,6 +277,46 @@ describe('runAdminDigest (OD-112 digest at 09:00 IST, no new cron)', () => {
     expect(d.ipos).toBe(DIGEST_MAX_IPOS + 3);
   });
 
+  it('the window reaches back DIGEST_SINCE_OVERLAP_MS for database-clock audit rows, and skips ids the last digest reported (F-210)', async () => {
+    const audit = (id: string, at: string, field: string): RecordedAdminEvent => ({
+      at, type: 'od106-exchange-replaced', ipoId: 'l1', slug: 'old-listed-ltd', companyName: 'Old Listed Ltd', status: 'LISTED', field, detail: 'x', auditId: id,
+    });
+    const day1 = new Date('2026-09-29T03:30:00Z');
+    const day2 = new Date('2026-09-30T03:30:00Z');
+    let sentIds: string[] = [];
+    let lastSent: Date | null = null;
+    const asked: Date[] = [];
+    const deps = (now: Date, events: RecordedAdminEvent[]) => ({
+      ...digestDeps(now, new Set(), events),
+      loadEvents: async (since: Date) => {
+        asked.push(since);
+        return events;
+      },
+      lastSentAt: async () => lastSent,
+      markSent: async (at: Date) => {
+        lastSent = at;
+      },
+      lastSentAuditIds: async () => sentIds,
+      markSentAuditIds: async (ids: string[]) => {
+        sentIds = ids;
+      },
+    });
+    // Day 1: a1 is reported; the same audit row twice is counted once.
+    const a1 = audit('a1', '2026-09-29 03:29:00', 'ipos.closeDate');
+    await runAdminDigest(deps(day1, [a1, a1]));
+    expect(String(received[0].body.body)).toContain('(ipos.closeDate) x1');
+    expect(sentIds).toEqual(['a1']);
+    // Day 2: the database stamped a2 two minutes BEFORE the app-clock send time of day 1 (drift); the
+    // overlap reads it, and a1 (re-read by the same overlap) is not repeated.
+    const a2 = audit('a2', '2026-09-29 03:28:00', 'ipos.openDate');
+    await runAdminDigest(deps(day2, [a1, a2]));
+    expect(asked[1].getTime()).toBe(day1.getTime() - DIGEST_SINCE_OVERLAP_MS);
+    const body2 = String(received[1].body.body);
+    expect(body2).toContain('(ipos.openDate) x1');
+    expect(body2).not.toContain('closeDate');
+    expect(sentIds).toEqual(['a2']);
+  });
+
   it('an empty day still sends a digest, so silence never looks like a broken digest', async () => {
     const r = await runAdminDigest({ ...digestDeps(new Date('2026-09-29T03:30:00Z')), loadQueueCounts: async () => [] });
     expect(r.sent).toBe(true);
@@ -444,7 +485,8 @@ describe('digest window starts at the last successful digest (MINOR 4)', () => {
     const d = digestDeps(last);
     const r = await runAdminDigest(d.deps);
     expect(r.sent).toBe(true);
-    expect(d.seen[0].toISOString()).toBe(last.toISOString());
+    // F-210: the query reaches back DIGEST_SINCE_OVERLAP_MS for database-clock audit rows.
+    expect(d.seen[0].toISOString()).toBe(new Date(last.getTime() - DIGEST_SINCE_OVERLAP_MS).toISOString());
     expect(String(received[0].body.body)).toContain(`since the last digest (${last.toISOString()})`);
     expect(d.marks.map((x) => x.toISOString())).toEqual([NINE_THIRTY_IST.toISOString()]);
   });
@@ -452,7 +494,7 @@ describe('digest window starts at the last successful digest (MINOR 4)', () => {
   it('the first digest ever looks back 24 h', async () => {
     const d = digestDeps(null);
     await runAdminDigest(d.deps);
-    expect(d.seen[0].toISOString()).toBe(new Date(NINE_THIRTY_IST.getTime() - 86_400_000).toISOString());
+    expect(d.seen[0].toISOString()).toBe(new Date(NINE_THIRTY_IST.getTime() - 86_400_000 - DIGEST_SINCE_OVERLAP_MS).toISOString());
   });
 
   it('a failed send does not move the last-sent mark', async () => {

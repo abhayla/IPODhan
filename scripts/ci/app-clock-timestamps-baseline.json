@@ -1,0 +1,102 @@
+[
+  {
+    "key": "packages/shared/src/admin/field-protection-checker.ts :: timestamp: new Date(),",
+    "count": 2,
+    "reason": "Redis sorted-set score of a blocked-update notification; never stored in a table or compared with a database time."
+  },
+  {
+    "key": "packages/shared/src/repositories/brlm-track-record-repository.ts :: .set({ ...(row as Record<string, unknown>), updatedAt: new Date() } as never)",
+    "count": 1,
+    "reason": "Row bookkeeping updated_at; its only readers are hours-wide freshness windows, no ordering decision against a DB-stamped time."
+  },
+  {
+    "key": "packages/shared/src/repositories/document-fetch-state-repository.ts :: set: { updatedAt: new Date() },",
+    "count": 1,
+    "reason": "Row bookkeeping updated_at on document_fetch_state; no reader orders it against another DB-stamped time (grep lt/gt on updatedAt, 2026-09-29)."
+  },
+  {
+    "key": "packages/shared/src/repositories/document-fetch-state-repository.ts :: .set({ ...(patch as Record<string, unknown>), updatedAt: new Date() } as never)",
+    "count": 1,
+    "reason": "Row bookkeeping updated_at on document_fetch_state; no reader orders it against another DB-stamped time (grep lt/gt on updatedAt, 2026-09-29)."
+  },
+  {
+    "key": "packages/shared/src/repositories/document-fetch-state-repository.ts :: .set({ state: 'SUPERSEDED', updatedAt: new Date() })",
+    "count": 1,
+    "reason": "Row bookkeeping updated_at on document_fetch_state; no reader orders it against another DB-stamped time (grep lt/gt on updatedAt, 2026-09-29)."
+  },
+  {
+    "key": "packages/shared/src/repositories/document-repository.ts :: updatedAt: new Date(),",
+    "count": 2,
+    "reason": "documents.updated_at bookkeeping; item 9 orders by documents.created_at (DB default now()), never updated_at."
+  },
+  {
+    "key": "packages/shared/src/repositories/document-repository.ts :: .set({ filingDate, updatedAt: new Date() })",
+    "count": 1,
+    "reason": "documents.updated_at bookkeeping; item 9 orders by documents.created_at (DB default now()), never updated_at."
+  },
+  {
+    "key": "packages/shared/src/repositories/field-extraction-failures-repository.ts :: .set({ resolvedAt: new Date() })",
+    "count": 1,
+    "reason": "resolved_at of an extraction-failure row; read only for display and retention, never ordered against a DB time."
+  },
+  {
+    "key": "packages/shared/src/repositories/financial-statements-repository.ts :: set: { ...(row as Record<string, unknown>), updatedAt: new Date() } as never,",
+    "count": 1,
+    "reason": "Row bookkeeping updated_at; read only in hours-wide freshness windows."
+  },
+  {
+    "key": "packages/shared/src/repositories/ipo-repository.ts :: .set({ ...(patch as Partial<IPOInsert>), updatedAt: new Date() })",
+    "count": 1,
+    "reason": "ipos.updated_at bookkeeping; readers use 6 h / 24 h freshness windows (audit-detection-floor, analyze-data-gaps), where a clock drift of minutes decides nothing."
+  },
+  {
+    "key": "packages/shared/src/repositories/ipo-repository.ts :: .set({ slug: newSlug, updatedAt: new Date() })",
+    "count": 1,
+    "reason": "ipos.updated_at bookkeeping; readers use 6 h / 24 h freshness windows (audit-detection-floor, analyze-data-gaps), where a clock drift of minutes decides nothing."
+  },
+  {
+    "key": "packages/shared/src/repositories/ipo-repository.ts :: .set({ [jsKey]: p.value, updatedAt: new Date() } as Partial<typeof ipos.$inferInsert>)",
+    "count": 1,
+    "reason": "ipos.updated_at bookkeeping; readers use 6 h / 24 h freshness windows (audit-detection-floor, analyze-data-gaps), where a clock drift of minutes decides nothing."
+  },
+  {
+    "key": "packages/shared/src/repositories/ipo-repository.ts :: updatedAt: new Date(),",
+    "count": 1,
+    "reason": "ipos.updated_at bookkeeping; readers use 6 h / 24 h freshness windows (audit-detection-floor, analyze-data-gaps), where a clock drift of minutes decides nothing."
+  },
+  {
+    "key": "packages/shared/src/repositories/ipo-valuation-repository.ts :: set: { ...(row as Record<string, unknown>), updatedAt: new Date() } as never,",
+    "count": 1,
+    "reason": "Row bookkeeping updated_at; read only in hours-wide freshness windows."
+  },
+  {
+    "key": "web/app/api/admin/anchor-investors/route.ts :: timestamp: new Date().toISOString(),",
+    "count": 1,
+    "reason": "API response metadata (error envelope / payload time); never stored, never compared with a database time."
+  },
+  {
+    "key": "web/app/api/admin/ipos/[id]/route.ts :: timestamp: new Date().toISOString(),",
+    "count": 1,
+    "reason": "API response metadata (error envelope / payload time); never stored, never compared with a database time."
+  },
+  {
+    "key": "web/app/api/admin/ipos/[id]/route.ts :: updatedAt: new Date().toISOString(),",
+    "count": 1,
+    "reason": "API response metadata (error envelope / payload time); never stored, never compared with a database time."
+  },
+  {
+    "key": "web/app/api/admin/ipos/route.ts :: timestamp: new Date().toISOString(),",
+    "count": 1,
+    "reason": "API response metadata (error envelope / payload time); never stored, never compared with a database time."
+  },
+  {
+    "key": "web/app/api/admin/metrics/data-pipeline/route.ts :: timestamp: new Date().toISOString(),",
+    "count": 1,
+    "reason": "API response metadata (error envelope / payload time); never stored, never compared with a database time."
+  },
+  {
+    "key": "web/app/api/admin/scraper/status/route.ts :: timestamp: new Date().toISOString(),",
+    "count": 1,
+    "reason": "API response metadata (error envelope / payload time); never stored, never compared with a database time."
+  }
+]

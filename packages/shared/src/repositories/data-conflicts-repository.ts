@@ -172,7 +172,7 @@ export class DataConflictsRepository extends BaseRepository {
             resolvedSource: input.resolvedSource || null,
             resolutionReason: input.resolutionReason || null,
             severity: input.severity || 'INFO',
-            detectedAt: new Date(),
+            detectedAt: sql`now()`,
           })
           .returning();
       },
@@ -277,7 +277,7 @@ export class DataConflictsRepository extends BaseRepository {
             resolutionReason: input.resolutionReason || null,
             severity: input.severity || 'INFO',
             rowKey: upsertRowKey,
-            detectedAt: new Date(),
+            detectedAt: sql`now()`,
           })
           .where(eq(dataConflicts.id, existing[0].id))
           .returning();
@@ -333,7 +333,7 @@ export class DataConflictsRepository extends BaseRepository {
           .set({
             resolutionReason: 'AUTO_RESOLVED_VALUES_CONVERGED',
             resolvedBy: 'SYSTEM',
-            resolvedAt: new Date(),
+            resolvedAt: sql`now()`,
           })
           .where(
             and(
@@ -543,7 +543,7 @@ export class DataConflictsRepository extends BaseRepository {
             resolvedSource: resolution.resolvedSource,
             resolutionReason: resolution.resolutionReason,
             resolvedBy: resolution.resolvedBy,
-            resolvedAt: new Date(),
+            resolvedAt: sql`now()`,
             adminNote: resolution.adminNote || null,
           })
           .where(eq(dataConflicts.id, conflictId))
@@ -580,7 +580,7 @@ export class DataConflictsRepository extends BaseRepository {
             resolvedSource,
             resolutionReason,
             resolvedBy,
-            resolvedAt: new Date(),
+            resolvedAt: sql`now()`,
           })
           .where(
             and(
