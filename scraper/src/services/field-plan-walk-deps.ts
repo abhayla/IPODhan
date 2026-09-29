@@ -52,7 +52,8 @@ import {
 } from '@ipodhan/shared';
 import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/field-source-overrides-repository';
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import { protectionTableName } from '@ipodhan/shared/services/field-hold';
 import * as schema from '@ipodhan/shared/db/schema';
 // Deep import, matching `filing-persist-deps.ts`: the barrel exports only the
 // INTERFACE (`IListingPerformanceRepository`), not the class.
@@ -347,6 +348,52 @@ export function buildFieldPlanGapKeySource(params: {
  * shared rule via plan-supersession.ts, never a copy), and the admin conflicts
  * list writer (the SAME DataConflictsRepository.upsertConflict every writer uses).
  */
+/**
+ * §2.7 + the §2.4 clarification ("'skip' ... means 'never WRITE', not 'never read'"), §9.2 items 9
+ * and 19: the walk's admin-hold deps.
+ *
+ * `protectionFilter` reads the SAME `field_protection_metadata` row the admin write path stores
+ * (`writeAdminFieldValue`: table name via `protectionTableName`, so a row-keyed hold is
+ * `<table>:<rowKey>`; field name camelCase), so the walk asks a held field's sources but never
+ * writes it. The writers' own in-transaction hold (`field-hold.ts`, #1273) stays the backstop for
+ * a hold saved mid-cycle.
+ *
+ * `trackHeldFieldWitnesses` refreshes ONLY witnesses + verdict on the field's existing
+ * field_sources row (`FieldSourcesRepository.updateWitnessesOnly`): never an insert, never the
+ * ADMIN row's attribution.
+ */
+export function buildFieldPlanWalkHoldDeps(
+  redis: ReturnType<typeof getRedisClient> = getRedisClient()
+): Pick<FieldPlanWalkDeps, 'protectionFilter' | 'trackHeldFieldWitnesses'> {
+  const fieldSources = new FieldSourcesRepository(db as never, redis as never);
+  const fpm = schema.fieldProtectionMetadata;
+  return {
+    protectionFilter: async (ipoId, tableName, fieldName, rowKey = '') => {
+      const rows = await (db as any)
+        .select({ id: fpm.id })
+        .from(fpm)
+        .where(
+          and(
+            eq(fpm.ipoId, ipoId),
+            eq(fpm.tableName, protectionTableName(tableName, rowKey)),
+            eq(fpm.fieldName, columnToCamelCase(fieldName)),
+            eq(fpm.isProtected, true)
+          )
+        )
+        .limit(1);
+      return rows.length > 0;
+    },
+    trackHeldFieldWitnesses: (input) =>
+      fieldSources.updateWitnessesOnly({
+        ipoId: input.ipoId,
+        tableName: input.tableName,
+        rowKey: input.rowKey,
+        fieldName: input.fieldName,
+        merge: input.merge,
+      }),
+  };
+}
+
 export function buildFieldPlanWalkReopenDeps(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
 ): Pick<FieldPlanWalkDeps, 'supersessionForReopened' | 'logAdminConflict'> {

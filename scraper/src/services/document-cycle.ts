@@ -71,6 +71,7 @@ import {
   buildFieldPlanWalkOrchestrator,
   buildFieldPlanWalkWitnessVerdictWriter,
   buildFieldPlanWalkReopenDeps,
+  buildFieldPlanWalkHoldDeps,
   fieldPlanWalkHasFetchers,
 } from './field-plan-walk-deps.js';
 import { initStepLedger } from './step-ledger.js';
@@ -2397,6 +2398,8 @@ export async function runDocumentCycle(
         const fieldPlanWitnessVerdictWriter = buildFieldPlanWalkWitnessVerdictWriter();
         // #968 fix round 1: supersession check + admin conflicts writer for override-reopened rows.
         const fieldPlanReopenDeps = buildFieldPlanWalkReopenDeps();
+        // §2.4 clarification: an admin-held field is asked (witnesses) and never written.
+        const fieldPlanHoldDeps = buildFieldPlanWalkHoldDeps();
         for (const ipo of candidates) {
           if (now() >= fieldPlanDeadlineMs) {
             fieldPlanWalkExhausted = true;
@@ -2426,6 +2429,7 @@ export async function runDocumentCycle(
                 overrides: fieldSourceOverridesReader,
                 trackWitnessVerdict: fieldPlanWitnessVerdictWriter,
                 ...fieldPlanReopenDeps,
+                ...fieldPlanHoldDeps,
               },
               { deadlineMs: fieldPlanDeadlineMs, now }
             );

@@ -87,6 +87,7 @@ import {
   buildFieldPlanGapKeySource,
   buildFieldPlanWalkWitnessVerdictWriter,
   buildFieldPlanWalkReopenDeps,
+  buildFieldPlanWalkHoldDeps,
 } from './services/field-plan-walk-deps.js';
 import { createFieldSourceOverridesReader } from './config/field-source-overrides-reader.js';
 import { IPORepository, IpoFieldPlanRepository } from '@ipodhan/shared';
@@ -2453,6 +2454,8 @@ async function resourceClosedIpoLive(ipoId: string): Promise<ClosedIpoResourceRe
           overrides,
           trackWitnessVerdict: buildFieldPlanWalkWitnessVerdictWriter(),
           ...buildFieldPlanWalkReopenDeps(),
+          // §2.4 clarification: an admin-held field is asked (witnesses) and never written.
+          ...buildFieldPlanWalkHoldDeps(),
         },
         { deadlineMs: startedAt + CLOSED_IPO_WALK_BUDGET_MS, now: () => Date.now() }
       );

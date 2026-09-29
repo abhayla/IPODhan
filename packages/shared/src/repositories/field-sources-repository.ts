@@ -516,6 +516,56 @@ export class FieldSourcesRepository extends BaseRepository {
   }
 
   /**
+   * §2.4 clarification / §9.2 item 9: refresh ONLY `witnesses` and `verdict` on the field's EXISTING
+   * row, for a field an admin holds. Never inserts (a field_sources row asserts a source supplied
+   * the stored value, #684) and never touches source, value lineage, author or time (the admin
+   * editor's version token starts from `updated_at`). Returns whether a row was there to update.
+   */
+  async updateWitnessesOnly(input: {
+    ipoId: string;
+    tableName: string;
+    rowKey?: string;
+    fieldName: string;
+    /**
+     * Given the row's stored witnesses, what to store (merged per source by the caller), or null to
+     * write nothing. Read and written under one row lock, so two reads never lose each other's entry.
+     */
+    merge: (existing: unknown) => { witnesses: unknown; verdict: string | null } | null;
+  }): Promise<{ updated: boolean }> {
+    const rowKey = input.rowKey ?? '';
+    const where = () =>
+      and(
+        eq(fieldSources.ipoId, input.ipoId),
+        eq(fieldSources.tableName, input.tableName),
+        eq(fieldSources.rowKey, rowKey),
+        eq(fieldSources.fieldName, input.fieldName)
+      );
+    const updated = await this.executeQuery(
+      'updateWitnessesOnly',
+      async () =>
+        this.db.transaction(async (tx) => {
+          const current = await tx
+            .select({ id: fieldSources.id, witnesses: fieldSources.witnesses })
+            .from(fieldSources)
+            .where(where())
+            .limit(1)
+            .for('update');
+          if (current.length === 0) return false;
+          const next = input.merge(current[0].witnesses);
+          if (next === null) return false;
+          await tx
+            .update(fieldSources)
+            .set({ witnesses: next.witnesses as never, verdict: next.verdict })
+            .where(eq(fieldSources.id, current[0].id));
+          return true;
+        }),
+      { ipoId: input.ipoId, tableName: input.tableName, rowKey, fieldName: input.fieldName }
+    );
+    if (updated) await this.invalidateFieldSourceCaches(input.ipoId, input.tableName, input.fieldName, rowKey);
+    return { updated };
+  }
+
+  /**
    * Invalidate caches related to field sources
    */
   private async invalidateFieldSourceCaches(

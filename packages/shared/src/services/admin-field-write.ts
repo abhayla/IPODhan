@@ -41,6 +41,7 @@ import {
 import { IPORepository } from '../repositories/ipo-repository';
 import { validateIPOData } from '../utils/ipo-field-checks';
 import { rowKeyForName } from '../utils/company-name-normalizer';
+import { protectionTableName } from './field-hold';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -93,15 +94,9 @@ export function rowTableDerivedKey(tableName: string): { sourceField: string; de
   return d ? { sourceField: d.sourceField, derivedField: d.derivedField } : null;
 }
 
-/**
- * `field_protection_metadata` has no row_key column (its unique key is table, field, ipo), so a
- * row's hold is recorded under `<table>:<rowKey>` — the convention the old update-field-record
- * route used (with the record id). No migration. A row-aware writer (item 19) reads the hold with
- * this same function; a singleton table's hold stays under the bare table name.
- */
-export function protectionTableName(tableName: string, rowKey: string): string {
-  return rowKey === '' ? tableName : `${tableName}:${rowKey}`;
-}
+// `protectionTableName` lives in field-hold.ts (no schema import), so a reader of holds -- the
+// field-plan walk's protection gate -- can use the one definition without loading this module.
+export { protectionTableName };
 
 /** Bookkeeping columns no admin value may replace (keys, timestamps, the dedicated lock flag, the slug). */
 const NON_EDITABLE_FIELDS = new Set([
@@ -356,6 +351,9 @@ async function readVersion(
       updatedAt: sql<string>`${fieldSources.updatedAt}::text`,
       updatedBy: fieldSources.updatedBy,
       source: fieldSources.source,
+      // A walk refreshes a held field's witnesses without moving updated_at, so the token carries a
+      // short digest of them: a pick made from witnesses the admin never saw is refused as stale.
+      witnessDigest: sql<string>`left(md5(coalesce(${fieldSources.witnesses}::text, '')), 12)`,
     })
     .from(fieldSources)
     .where(
@@ -385,7 +383,7 @@ async function readVersion(
   const p = prov[0];
   const a = audit[0];
   return {
-    version: `${p?.updatedAt ?? '-'}|${a?.id ?? '-'}|${rowStamp}`,
+    version: `${p?.updatedAt ?? '-'}|${a?.id ?? '-'}|${rowStamp}|${p?.witnessDigest ?? '-'}`,
     setBy: p ? (p.source === 'ADMIN' ? p.updatedBy ?? a?.adminUser ?? 'admin' : p.source) : a?.adminUser ?? null,
     setAt: p?.updatedAt ?? a?.at ?? null,
     source: p?.source ?? null,
