@@ -17,6 +17,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DataTable, ColumnDef, renderFunctions } from '@/components/shared/DataTable';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { AdminRowEditLink } from '@/components/admin/AdminRowEditLink';
+import { useAdminSession } from '@/hooks/useAdminSession';
 
 // ==================== TYPES ====================
 
@@ -44,9 +46,11 @@ export interface PerformanceData {
  */
 function ExpandableCompanyCell({ companyName, slug }: { companyName: string; slug: string }) {
   const [expanded, setExpanded] = useState(false);
+  const { isAdmin } = useAdminSession();
 
   return (
     <div className="space-y-1">
+      <div className="flex items-center gap-1">
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1 text-left hover:text-primary transition-colors font-medium"
@@ -60,6 +64,8 @@ function ExpandableCompanyCell({ companyName, slug }: { companyName: string; slu
           <ChevronRight className="h-4 w-4 flex-shrink-0" />
         )}
       </button>
+      <AdminRowEditLink slug={slug} isAdmin={isAdmin} className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100" />
+      </div>
       {expanded && (
         <div className="pl-5 space-y-1 text-sm">
           <Link

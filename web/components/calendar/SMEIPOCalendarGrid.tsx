@@ -10,7 +10,12 @@
  * - Empty state and loading skeleton
  *
  * Story 9.13: SME IPO Calendar Page
+ *
+ * 'use client' (§9.2 item 14, OD-110): `useAdminSession` is called ONCE here, at the grid
+ * level, and `isAdmin` is passed down to every `CalendarEvent` leaf — never called inside
+ * the per-event loop, which would fire one `/api/admin/auth/me` request per rendered event.
  */
+'use client';
 
 import { cn } from '@/lib/utils';
 import { CalendarEvent } from './CalendarEvent';
@@ -18,6 +23,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { CalendarDay } from '@/lib/services/sme-calendar-service';
 import { getMonthName } from '@/lib/services/sme-calendar-service';
+import { useAdminSession } from '@/hooks/useAdminSession';
 
 // ==================== TYPES ====================
 
@@ -59,6 +65,8 @@ export function SMEIPOCalendarGrid({
   currentYear,
   loading = false,
 }: SMEIPOCalendarGridProps) {
+  const { isAdmin } = useAdminSession();
+
   // Loading skeleton
   if (loading) {
     return (
@@ -145,7 +153,7 @@ export function SMEIPOCalendarGrid({
               {/* Events List */}
               <div className="space-y-1 overflow-y-auto max-h-20">
                 {day.events.map((event, eventIndex) => (
-                  <CalendarEvent key={eventIndex} event={event} />
+                  <CalendarEvent key={eventIndex} event={event} isAdmin={isAdmin} />
                 ))}
               </div>
 
@@ -178,7 +186,7 @@ export function SMEIPOCalendarGrid({
               </CardHeader>
               <CardContent className="space-y-2">
                 {day.events.map((event, eventIndex) => (
-                  <CalendarEvent key={eventIndex} event={event} />
+                  <CalendarEvent key={eventIndex} event={event} isAdmin={isAdmin} />
                 ))}
               </CardContent>
             </Card>

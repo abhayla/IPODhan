@@ -12,6 +12,8 @@
 import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { DataTable, type ColumnDef, renderFunctions, getAvailableYears, getLatestYearWithData } from '@/components/shared/DataTable';
+import { AdminRowEditLink } from '@/components/admin/AdminRowEditLink';
+import { useAdminSession } from '@/hooks/useAdminSession';
 import type { OFSData } from '@/lib/services/ofs-service';
 
 // ==================== TYPES ====================
@@ -28,7 +30,8 @@ export interface OFSTableProps {
  *
  * AC#2: Table displays correct columns
  */
-const ofsColumns: ColumnDef<OFSData>[] = [
+function buildOfsColumns(isAdmin: boolean): ColumnDef<OFSData>[] {
+  return [
   {
     key: 'companyName',
     header: 'Issuer Company',
@@ -37,12 +40,15 @@ const ofsColumns: ColumnDef<OFSData>[] = [
     className: 'font-semibold',
     minWidth: '250px',
     render: (value, row) => (
-      <Link
-        href={`/ipos/${row.slug}`}
-        className="text-primary hover:underline font-semibold"
-      >
-        {value}
-      </Link>
+      <>
+        <Link
+          href={`/ipos/${row.slug}`}
+          className="text-primary hover:underline font-semibold"
+        >
+          {value}
+        </Link>
+        <AdminRowEditLink slug={row.slug} isAdmin={isAdmin} className="ml-2 inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100" />
+      </>
     ),
   },
   {
@@ -61,7 +67,8 @@ const ofsColumns: ColumnDef<OFSData>[] = [
     align: 'center',
     render: (value) => renderFunctions.date(value, 'MMM dd, yyyy'),
   },
-];
+  ];
+}
 
 // ==================== COMPONENT ====================
 
@@ -79,6 +86,8 @@ const ofsColumns: ColumnDef<OFSData>[] = [
  * AC#7: Empty state handled by DataTable
  */
 export function OFSTable({ ofsIssues }: OFSTableProps) {
+  const { isAdmin } = useAdminSession();
+  const ofsColumns = buildOfsColumns(isAdmin);
   // State management for DataTable features
   const [searches, setSearches] = useState<Record<string, string>>({});
   // T-286 (P2-1): derived from the data (latest year with rows), not a

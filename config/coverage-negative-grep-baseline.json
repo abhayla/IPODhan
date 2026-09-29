@@ -3,18 +3,13 @@
   "generatedOn": "2026-09-07",
   "generatedBy": "T-470",
   "web": [
-    "MainboardIPOCalendarGrid",
-    "SMEIPOCalendarGrid",
     "EBITDAChart",
     "FinancialRatiosGrid",
     "ProfitabilityChart",
     "RevenueChart",
     "QuickStatsGrid",
-    "IPOListingsTable",
     "ListingCategoryTabs",
-    "ZoomableChart",
-    "MainboardProspectusTable",
-    "SMEProspectusTable"
+    "ZoomableChart"
   ],
   "scraperValidationRules": [
     "LOT_SIZE_UNUSUAL_SME",

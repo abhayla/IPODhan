@@ -15,6 +15,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { RightsIssuesTabs } from '@/components/rights/RightsIssuesTabs';
 import type { RightsIssueData } from '@/lib/services/rights-service';
 
+vi.mock('@/hooks/useAdminSession', () => ({ useAdminSession: () => ({ isAdmin: false, loading: false }) }));
+
 vi.mock('next/navigation', () => ({
   useRouter: vi.fn(),
   useSearchParams: vi.fn(),

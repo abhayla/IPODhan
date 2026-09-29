@@ -21,6 +21,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import type { IPOListingData } from '@/lib/services/ipo-listings-service';
+import { AdminRowEditLink } from '@/components/admin/AdminRowEditLink';
+import { useAdminSession } from '@/hooks/useAdminSession';
 
 interface IPOListingsTableProps {
   data: IPOListingData[];
@@ -29,6 +31,7 @@ interface IPOListingsTableProps {
 }
 
 export function IPOListingsTable({ data, onSort, currentSort }: IPOListingsTableProps) {
+  const { isAdmin } = useAdminSession();
   const [sortField, setSortField] = useState(currentSort?.field || 'listingDate');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(currentSort?.order || 'desc');
 
@@ -193,6 +196,7 @@ export function IPOListingsTable({ data, onSort, currentSort }: IPOListingsTable
                   <Badge variant="outline" className="ml-2 text-xs">
                     {ipo.segment}
                   </Badge>
+                  <AdminRowEditLink slug={ipo.slug} isAdmin={isAdmin} className="ml-2 inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100 align-middle" />
                 </TableCell>
                 <TableCell>{formatDate(ipo.openDate)}</TableCell>
                 <TableCell>{formatDate(ipo.closeDate)}</TableCell>

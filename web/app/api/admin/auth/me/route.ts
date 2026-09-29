@@ -6,8 +6,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth, type AdminAuthContext } from '@/lib/middleware/admin-auth';
 
 export const GET = withAdminAuth(async (_request: NextRequest, admin: AdminAuthContext) => {
-  return NextResponse.json({
-    success: true,
-    data: { adminId: admin.adminId, adminName: admin.adminName, isOwner: admin.isOwner },
-  });
+  return NextResponse.json(
+    {
+      success: true,
+      data: { adminId: admin.adminId, adminName: admin.adminName, isOwner: admin.isOwner },
+    },
+    { headers: { 'Cache-Control': 'no-store' } }
+  );
 });

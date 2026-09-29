@@ -1,7 +1,6 @@
 /**
  * Mainboard IPO Calendar Grid Component
  *
- * Server component that displays monthly calendar with IPO events.
  * Features:
  * - 7-column grid layout for desktop (Sun-Sat)
  * - List view for mobile devices
@@ -11,13 +10,19 @@
  * - Event count limiting to prevent excessive cell heights (Story 15.4)
  *
  * Responsive behavior: Uses CSS media queries to ensure only one view shows at a time
+ *
+ * 'use client' (§9.2 item 14, OD-110): `useAdminSession` is called ONCE here, at the grid
+ * level, and `isAdmin` is passed down to every `CalendarEventGroup` — never called inside a
+ * per-event loop, which would fire one `/api/admin/auth/me` request per rendered event.
  */
+'use client';
 
 import Link from 'next/link';
 import { format, getDay } from 'date-fns';
 import type { CalendarDateEvents, CalendarEventType } from '@/lib/services/mainboard-calendar-types';
 import { CalendarEventType as EventType } from '@/lib/services/mainboard-calendar-types';
 import CalendarEventGroup from './CalendarEventGroup';
+import { useAdminSession } from '@/hooks/useAdminSession';
 import styles from './MainboardIPOCalendarGrid.module.css';
 
 // ==================== CONSTANTS ====================
@@ -82,9 +87,11 @@ function getEventDisplay(type: CalendarEventType): {
 function CalendarCell({
   dateEvents,
   currentDate,
+  isAdmin,
 }: {
   dateEvents: CalendarDateEvents;
   currentDate: string;
+  isAdmin: boolean;
 }) {
   const dayNumber = format(dateEvents.date, 'd');
   const isToday = currentDate === dateEvents.dateString;
@@ -119,6 +126,7 @@ function CalendarCell({
               dateString={dateEvents.dateString}
               maxEvents={MAX_EVENTS_PER_GROUP}
               size="compact"
+              isAdmin={isAdmin}
             />
           ))}
         </div>
@@ -141,6 +149,8 @@ export default function MainboardIPOCalendarGrid({
   monthName,
   currentDate,
 }: MainboardIPOCalendarGridProps) {
+  const { isAdmin } = useAdminSession();
+
   // Organize dates into weeks for grid layout
   const weeks: CalendarDateEvents[][] = [];
   let currentWeek: CalendarDateEvents[] = [];
@@ -204,6 +214,7 @@ export default function MainboardIPOCalendarGrid({
                     key={dateEvents.dateString}
                     dateEvents={dateEvents}
                     currentDate={currentDate}
+                    isAdmin={isAdmin}
                   />
                 );
               })}
@@ -244,6 +255,7 @@ export default function MainboardIPOCalendarGrid({
                       dateString={dateEvents.dateString}
                       maxEvents={MAX_EVENTS_PER_GROUP}
                       size="normal"
+                      isAdmin={isAdmin}
                     />
                   ))}
                 </div>
