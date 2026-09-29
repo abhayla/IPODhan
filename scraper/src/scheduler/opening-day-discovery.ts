@@ -341,7 +341,9 @@ export function createOpeningDayWriter(c: OpeningDayWriterCollaborators) {
         if (existing) {
           if (await c.fieldProtection.isIPOLocked(existing.id)) return 'skipped';
           if (keys) {
-            await c.ipoRepository.bindSourceKeys(existing.id, keys, {
+            // OD-83 + OD-120: a bind that supersedes an older key is a relaunch; it clears admin values.
+            const { bindSourceKeysClearingOnRelaunch } = await import('../services/relaunch-clear.js');
+            await bindSourceKeysClearingOnRelaunch(c.ipoRepository as never, existing.id, keys, {
               boundVia: c.inferBoundVia(payload, existing),
               boundBy: `scraper:${source}`,
             });

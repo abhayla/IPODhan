@@ -4164,7 +4164,13 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
     OD-68 during the 2026-09-29 unattended run; a spec-conformant decision, not a spec change).
 27. **A relaunched IPO (OD-120).** When a POSTPONED IPO's relaunch filing arrives, admin values on
     its document fields are cleared with the rest (§2.9). They stay in the audit trail, and one
-    alert lists each cleared value with a one-click re-apply for those still true.
+    alert lists each cleared value with a one-click re-apply for those still true. A "relaunch filing" is
+    exactly (a) an exchange record that supersedes the IPO's older source key under OD-83, or an OD-86
+    relaunch merge, or (b) an RHP, PROSPECTUS or PRICE_BAND_AD first discovered after the IPO became
+    POSTPONED whose own open/close date or price band differs from the stored one; a postponement notice,
+    an addendum or corrigendum of the old offer, a re-extraction of an old document or a side document
+    clears nothing, and a value set after the relaunch began (a re-apply) is kept until the IPO is
+    postponed again (defined 2026-09-29, spec-conformant decision while the owner was away).
 28. **Round-2 review clarifications** (independent review, 2026-09-25; each follows from the decisions
     named). (a) An admin EMPTY value on an E-1 field is replaced by a newer exchange value with an
     alert, like any admin value there (OD-106, OD-117 "every E-1 field follows OD-106 the same way");

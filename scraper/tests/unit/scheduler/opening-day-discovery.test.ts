@@ -178,7 +178,7 @@ describe('opening-day writer — identity path + field-priority decision, four f
   it('(e2) stored with a NULL open date: binds the key and SETs the open date', async () => {
     const c = collaborators({ id: 'ipo-1', companyName: 'Moneyview Limited', status: 'OPEN', openDate: null, closeDate: '2026-09-28', segment: 'MAINBOARD', offeringType: 'IPO' });
     expect(await createOpeningDayWriter(c)('NSE', payload)).toBe('updated');
-    expect(c.ipoRepository.bindSourceKeys).toHaveBeenCalledWith('ipo-1', payload.sourceKeys, { boundVia: 'KEY', boundBy: 'scraper:NSE' });
+    expect(c.ipoRepository.bindSourceKeys).toHaveBeenCalledWith('ipo-1', payload.sourceKeys, expect.objectContaining({ boundVia: 'KEY', boundBy: 'scraper:NSE' }));
     expect(c.ipoRepository.updateReportingHolds).toHaveBeenCalledWith('ipo-1', { openDate: '2026-09-24' });
   });
 
