@@ -1,12 +1,7 @@
 /**
  * POST /api/admin/ipos API Route
  *
- * Create new IPO entry (admin only)
- *
- * @route POST /api/admin/ipos
- * @requires Authorization: Bearer <ADMIN_API_TOKEN>
- * @body {IPOCreateRequest} IPO data
- * @returns {IPOCreateResponse} Created IPO
+ * GET lists IPOs; POST creates one by hand (spec §9.2 item 15, OD-111). Admin only.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -17,32 +12,17 @@ import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { invalidateIPOCaches } from '@/lib/cache/ipo-cache-invalidation';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
-import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
+import { createIpoByAdmin, type AdminIpoCreateInput } from '@ipodhan/shared/services/admin-ipo-create';
 import { logger } from '@/lib/logger';
-import { logAudit, AuditActionTypes } from '@/lib/services/audit-log-service';
 
-/**
- * IPO Creation Request Schema
- */
-const IPOCreateSchema = z.object({
+/** §9.2 item 15 (OD-111): what the create form sends. Values are checked again by the shared service. */
+const AdminIpoCreateSchema = z.object({
   companyName: z.string().min(1).max(255),
-  category: z.enum(['MAINBOARD', 'SME']),
-  status: z.enum(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED']),
+  offeringType: z.string().min(1).max(20),
   segment: z.enum(['MAINBOARD', 'SME']).nullable().optional(),
-  offeringType: z.string().optional(),
-  openDate: z.string().datetime().nullable().optional(),
-  closeDate: z.string().datetime().nullable().optional(),
-  listingDate: z.string().datetime().nullable().optional(),
-  issuePrice: z.number().int().positive().nullable().optional(),
-  minPrice: z.number().int().positive().nullable().optional(),
-  maxPrice: z.number().int().positive().nullable().optional(),
-  lotSize: z.number().int().positive().nullable().optional(),
-  issueSize: z.number().positive().nullable().optional(),
-  sector: z.string().nullable().optional(),
-  registrarId: z.string().uuid().nullable().optional(),
+  identifiers: z.array(z.object({ kind: z.string().min(1).max(20), value: z.string().max(200) })).max(10),
+  sourceNote: z.string().max(500).nullable().optional(),
 });
-
-type IPOCreateRequest = z.infer<typeof IPOCreateSchema>;
 
 /**
  * Generate unique request ID for tracing
@@ -173,162 +153,63 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/admin/ipos - Create new IPO
+ * POST /api/admin/ipos - an admin creates an IPO row by hand (spec §9.2 item 15, OD-111).
+ *
+ * Needs the company name, the offering type and at least one identifier binding uses (OD-89: CIN,
+ * an exchange or aggregator record number per OD-85, or the NSE or BSE symbol). The shared service
+ * runs the real identity resolver first: an identifier that already binds a row is refused with that
+ * row named (409), so the admin edits it instead of creating a duplicate. Admin session + same-origin
+ * check (CSRF) via withAdminAuth.
  */
 export const POST = withAdminAuth(async (request: NextRequest, adminContext: AdminAuthContext) => {
-
-
   const requestId = generateRequestId();
-  const startTime = Date.now();
-
   const requestLogger = logger.child({ requestId });
 
+  let body: unknown;
   try {
-    requestLogger.info('Processing IPO creation request');
+    body = await request.json();
+  } catch {
+    return createErrorResponse('VALIDATION_ERROR', 'Invalid JSON in request body', requestId, 400);
+  }
+  const parsed = AdminIpoCreateSchema.safeParse(body);
+  if (!parsed.success) {
+    return createErrorResponse('VALIDATION_ERROR', 'Invalid IPO data', requestId, 400, { errors: parsed.error.issues });
+  }
 
-    // Parse request body
-    let body: any;
-    try {
-      body = await request.json();
-    } catch (error) {
-      return createErrorResponse(
-        'VALIDATION_ERROR',
-        'Invalid JSON in request body',
-        requestId,
-        400
-      );
-    }
+  let redis;
+  try {
+    redis = getRedisClient();
+  } catch {
+    redis = null;
+  }
 
-    // Validate request body
-    let validatedData: IPOCreateRequest;
-    try {
-      validatedData = IPOCreateSchema.parse(body);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        requestLogger.warn(
-          { validationErrors: error.issues },
-          'IPO creation validation failed'
-        );
-        return createErrorResponse(
-          'VALIDATION_ERROR',
-          'Invalid IPO data',
-          requestId,
-          400,
-          { errors: error.issues }
-        );
-      }
-      throw error;
-    }
-
-    // Initialize Redis client with fallback
-    let redis;
-    try {
-      redis = getRedisClient();
-    } catch {
-      requestLogger.warn('Redis unavailable - continuing without cache');
-      redis = {
-        get: async () => null,
-        set: async () => 'OK',
-        del: async () => 1,
-        flushdb: async () => 'OK',
-      } as any;
-    }
-
-    const ipoRepository = new IPORepository(db, redis);
-
-    // Auto-generate slug using canonical utility
-    const slug = generateIPOSlug(validatedData.companyName);
-
-    // Check if slug already exists
-    const existingIPO = await ipoRepository.findBySlug(slug);
-    if (existingIPO) {
-      requestLogger.warn(
-        { slug, existingId: existingIPO.id },
-        'IPO with generated slug already exists'
-      );
-      return createErrorResponse(
-        'CONFLICT',
-        `IPO with similar name already exists: ${existingIPO.companyName}`,
-        requestId,
-        409,
-        { existingSlug: slug, existingId: existingIPO.id }
-      );
-    }
-
-    // Convert date strings to Date objects
-    const ipoData: any = {
-      ...validatedData,
-      slug,
-      openDate: validatedData.openDate ? new Date(validatedData.openDate) : null,
-      closeDate: validatedData.closeDate ? new Date(validatedData.closeDate) : null,
-      listingDate: validatedData.listingDate ? new Date(validatedData.listingDate) : null,
-    };
-
-    // Create IPO using repository
-    const createdIPO = await ipoRepository.create(ipoData);
-
-    // OD-104/OD-113: the creating admin is recorded (name + account id). Creating an IPO by hand is
-    // spec §9.2 item 15 (OD-111, Phase B); until that lands, this row write is outside the ONE field
-    // write and carries no ADMIN provenance or holds — only this attributed audit row.
-    await logAudit({
-      adminUser: adminContext.adminName,
-      actionType: AuditActionTypes.FIELD_UPDATED,
-      ipoId: createdIPO.id,
-      tableName: 'ipos',
-      fieldName: '*',
-      newValue: slug,
-      details: { action: 'IPO_CREATED', adminId: adminContext.adminId, entryPoint: 'api/admin/ipos POST', phaseB: '§9.2 item 15' },
-      ipAddress: request.headers.get('x-forwarded-for') ?? undefined,
-      userAgent: request.headers.get('user-agent') ?? undefined,
-      success: true,
+  try {
+    const result = await createIpoByAdmin(db as never, {
+      companyName: parsed.data.companyName,
+      offeringType: parsed.data.offeringType,
+      segment: parsed.data.segment ?? null,
+      // An unknown kind is refused by the service with its own reason (and a SEBI number with OD-89's).
+      identifiers: parsed.data.identifiers as AdminIpoCreateInput['identifiers'],
+      sourceNote: parsed.data.sourceNote ?? null,
+      actor: { name: adminContext.adminName, adminId: adminContext.adminId },
+      ipAddress: request.headers.get('x-forwarded-for'),
+      userAgent: request.headers.get('user-agent'),
     });
 
-    // Invalidate cache patterns. NOT `redis.del('ipo:list:*')` - DEL matches key
-    // names literally, so that deleted a key nothing creates while every real
-    // `ipo:list:<filterHash>` survived (#538).
-    await invalidateIPOCaches(redis, createdIPO.id, createdIPO.slug);
-
-    const duration = Date.now() - startTime;
-    requestLogger.info(
-      {
-        duration,
-        ipoId: createdIPO.id,
-        slug,
-        companyName: validatedData.companyName,
-      },
-      'IPO created successfully'
-    );
-
-    return NextResponse.json(
-      {
-        success: true,
-        data: createdIPO,
-        metadata: {
-          generatedSlug: slug,
-          createdAt: new Date().toISOString(),
-        },
-      },
-      { status: 201 }
-    );
+    switch (result.kind) {
+      case 'CREATED':
+        if (redis) await invalidateIPOCaches(redis, result.ipoId, result.slug);
+        requestLogger.info({ ipoId: result.ipoId, slug: result.slug, by: adminContext.adminName }, 'IPO created by admin (OD-111)');
+        return NextResponse.json({ success: true, data: result }, { status: 201 });
+      case 'INVALID':
+        return createErrorResponse('VALIDATION_ERROR', result.reason, requestId, 400);
+      case 'EXISTS':
+        return createErrorResponse('CONFLICT', result.reason, requestId, 409, { existingId: result.ipoId, existingSlug: result.slug });
+      case 'HELD':
+        return createErrorResponse('IDENTITY_HELD', result.reason, requestId, 409, { candidates: result.candidates });
+    }
   } catch (error) {
-    const duration = Date.now() - startTime;
-    requestLogger.error(
-      {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-        duration,
-      },
-      'Failed to create IPO'
-    );
-
-    return createErrorResponse(
-      'INTERNAL_ERROR',
-      'Failed to create IPO',
-      requestId,
-      500,
-      process.env.NODE_ENV === 'development'
-        ? { error: error instanceof Error ? error.message : String(error) }
-        : undefined
-    );
+    requestLogger.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to create IPO');
+    return createErrorResponse('INTERNAL_ERROR', 'Failed to create IPO', requestId, 500);
   }
 });

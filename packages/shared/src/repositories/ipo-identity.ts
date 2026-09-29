@@ -710,7 +710,7 @@ export async function resolveIpoRow(
 ): Promise<IPO | IPOWithRelations | null> {
   const keys = normalizeSourceKeyRefs(rawIdentity.sourceKeys ?? []);
   const db = keys.length > 0 ? sourceKeyDb(ipoRepository) : null;
-  if (!db) return resolveIpoRowByOrder(ipoRepository, rawIdentity);
+  if (!db) return refuseNameOnlyBindToAdminRow(ipoRepository, rawIdentity, await resolveIpoRowByOrder(ipoRepository, rawIdentity));
 
   const byKey = await resolveBySourceKeys(db, rawIdentity, keys);
   switch (byKey.kind) {
@@ -784,7 +784,46 @@ export async function resolveIpoRow(
       throw heldError(rawIdentity, row, plan.reason);
     }
   }
-  return row;
+  return refuseNameOnlyBindToAdminRow(ipoRepository, rawIdentity, row);
+}
+
+/**
+ * Did the fallback order bind this row through an IDENTIFIER the record carries (CIN, ISIN or
+ * symbol equal on both sides), rather than through a name tier?
+ */
+function boundByIdentifier(identity: IpoIdentity, row: IPO | IPOWithRelations): boolean {
+  const r = row as { cin?: unknown; isin?: unknown; symbol?: unknown };
+  const inCin = normalizeCin(identity.cin ?? null);
+  if (inCin && inCin === normalizeCin(typeof r.cin === 'string' ? r.cin : null)) return true;
+  const inIsin = normalizeSourceKeyValue(identity.isin);
+  if (inIsin && inIsin === normalizeSourceKeyValue(r.isin)) return true;
+  const inSymbol = normalizeSourceKeyValue(identity.symbol);
+  return Boolean(inSymbol && inSymbol === normalizeSourceKeyValue(r.symbol));
+}
+
+/**
+ * §9.2 item 15 (OD-111): an admin-created row binds a scraped record only through one of its
+ * identifiers (OD-34 / OD-85). A record the fallback order bound to it on the NAME alone is held
+ * for review (OD-68), never bound. A key bind returns before this; a repository without
+ * `isAdminCreated` (a test double) is treated as "no admin-created rows".
+ */
+async function refuseNameOnlyBindToAdminRow(
+  ipoRepository: IPORepository,
+  identity: IpoIdentity,
+  row: IPO | IPOWithRelations | null
+): Promise<IPO | IPOWithRelations | null> {
+  if (!row || boundByIdentifier(identity, row)) return row;
+  const repo = ipoRepository as {
+    isAdminCreated?: (id: string) => Promise<boolean>;
+    holdNameOnlyBindToAdminRow?: (incoming: unknown, candidate: unknown) => Promise<never>;
+  };
+  if (typeof repo.isAdminCreated !== 'function' || typeof repo.holdNameOnlyBindToAdminRow !== 'function') return row;
+  if (!(await repo.isAdminCreated.call(ipoRepository, row.id))) return row;
+  return repo.holdNameOnlyBindToAdminRow.call(
+    ipoRepository,
+    { companyName: identity.companyName, slug: identity.slug, openDate: identity.openDate ?? null, priceRangeMin: identity.priceRangeMin ?? null },
+    { id: row.id, slug: row.slug, companyName: row.companyName, openDate: row.openDate, priceRangeMin: row.priceRangeMin, status: row.status }
+  );
 }
 
 async function resolveIpoRowByOrder(
