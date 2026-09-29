@@ -324,7 +324,9 @@ export async function updateIPOStatuses(
         { openDate: r.openDate, closeDate: r.closeDate, listingDate: r.listingDate },
         await loadEvidence(r.id)
       );
-      if (!decision.allowed) {
+      // `=== false`, not `!allowed`: scraper/tsconfig.json compiles this file without strictNullChecks,
+      // where truthiness does not narrow the union and `.cause` fails to type-check (PR #1260 CI).
+      if (decision.allowed === false) {
         refusedBackward++;
         console.warn(
           `[Status Updater] refuse_backward_transition: ${r.companyName} (${r.id}) ${r.status} -> ${target} refused — ${decision.cause}`

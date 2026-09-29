@@ -276,3 +276,19 @@ describe('forward steps are unchanged and never consult the guard', () => {
     expect(loadEvidence).not.toHaveBeenCalled();
   });
 });
+
+// #1298 interaction: POSTPONED is terminal in both writers today (web TERMINAL_STATUSES, scraper
+// TERMINAL_IPO_STATUSES), so the ladder skips it BEFORE this guard. The guard only ranks the four
+// ladder statuses; it neither blocks nor enables a POSTPONED -> ladder return. When #1298 lets a
+// relaunch filing (OD-139) move a POSTPONED row back onto the ladder, that is not a ladder regression.
+describe('terminal statuses never reach the backward guard (#1298 interaction, §2.9, OD-139)', () => {
+  it.each(['POSTPONED', 'WITHDRAWN', 'DELISTED'])('%s with dates computing OPEN is left alone', async (status) => {
+    const loadEvidence = vi.fn(async () => [] as StatusEvidence[]);
+    queryRows = [row({ id: 't', status, openDate: '2026-09-17', closeDate: '2026-09-21' })];
+    const result = await updateIPOStatuses({ now: ist('2026-09-18', '10:00'), loadEvidence });
+    expect(updatedRows).toEqual([]);
+    expect(result.refusedBackward).toBe(0);
+    expect(loadEvidence).not.toHaveBeenCalled();
+    expect(isBackwardMove(status, 'OPEN')).toBe(false);
+  });
+});
