@@ -366,6 +366,12 @@ export const ipos = pgTable(
     currentGainPercentage: numeric('current_gain_percentage', { precision: 5, scale: 2 }), // Current gain %
     currentGainAmount: numeric('current_gain_amount', { precision: 10, scale: 2 }), // Current gain amount
     currentPriceUpdatedAt: timestamp('current_price_updated_at'), // Last current price update
+    // #1310 (listed-rotation-stall, 2nd write path): stamped on EVERY post-listing price
+    // attempt for this row -- priced, no-price, refused, or an unexpected error -- never only
+    // on a successful price write. `selectPriceCandidates` orders by THIS column (ASC NULLS
+    // FIRST), not `currentPriceUpdatedAt`: a row that never prices (no symbol, a delisted
+    // read, a timeout) still gets stamped, so it stops pinning the front of the queue forever.
+    priceLastAttemptAt: timestamp('price_last_attempt_at'),
     // Item 7 S5 (spec §2.1 "Post-listing price"): the stock's working NSE trading series
     // (EQ/BE/SM/ST), asked first so a run costs one call per stock.
     priceNseSeries: varchar('price_nse_series', { length: 4 }),

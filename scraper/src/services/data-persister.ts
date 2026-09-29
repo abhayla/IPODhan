@@ -1026,6 +1026,22 @@ export async function writePostListingPrice(params: {
 export const POST_LISTING_STATE_COLUMNS = ['priceNseSeries'] as const;
 
 /**
+ * #1310 (listed-rotation-stall, 2nd write path): stamps `priceLastAttemptAt` on the row —
+ * called for EVERY candidate the job actually attempted this run (priced, no-price, refused,
+ * or an unexpected error), never only on a successful price write. This is the ONLY thing that
+ * stops a never-priceable row from pinning the front of `selectPriceCandidates`'s
+ * ASC-NULLS-FIRST order forever. A failure here is logged and swallowed by the caller — it must
+ * never crash the run (the cached series has the same non-fatal contract above).
+ */
+export async function writePostListingAttempt(params: {
+  ipoRepository: PostListingPriceWriteRepo;
+  ipoId: string;
+  at: Date;
+}): Promise<void> {
+  await params.ipoRepository.update(params.ipoId, { priceLastAttemptAt: params.at });
+}
+
+/**
  * Item 7 S5 (spec §2.1 job row "Post-listing price"): the job's row state. SETs only
  * `priceNseSeries` (the stock's working NSE series, asked first next time).
  */

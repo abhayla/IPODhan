@@ -1429,6 +1429,14 @@ jobs:
       - name: Run scraper-wake nightly-floor detection test suite (#663)
         run: node --test scripts/tests/scraper-wake-detection.test.mjs
 
+      # #1310 (listed-rotation-stall, 2nd write path): the same per-slot wake log, read for the
+      # post-listing price job's own "run complete" pino lines this time — a starved rotation
+      # (candidates>0, priced=0 for 3 consecutive runs) is the class the write-time fix in
+      # scraper/src/scheduler/post-listing-price.ts closes on ONE write path; this is the
+      # independent audit for the next one (recurrence-detection-gate.md).
+      - name: Run post-listing price rotation-stall detection test suite (#1310)
+        run: node --test scripts/tests/post-listing-price-checks.test.mjs
+
       # #793 M3: the lineage check that runs OUTSIDE the scraper. The in-cycle
       # copy cannot fire on this incident - it lives in main(), which the config
       # refusal kills before it is reached.

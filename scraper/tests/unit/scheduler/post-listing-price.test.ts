@@ -51,6 +51,7 @@ function harness(candidates: PriceCandidate[], nse: Record<string, QuoteOutcome>
   const calls = { nse: [] as Array<[string, string | null]>, bse: [] as string[], bseList: 0 };
   const prices: Array<{ id: string; exchange: string; price: number }> = [];
   const states: Array<{ id: string } & PriceStatePatch> = [];
+  const attempts: Array<{ id: string; at: number }> = [];
   const deps: PriceJobDeps = {
     now: NOW,
     candidates,
@@ -60,9 +61,10 @@ function harness(candidates: PriceCandidate[], nse: Record<string, QuoteOutcome>
     loadBseScrips: async () => { calls.bseList++; return new Map([...Object.entries(scrips), ...Array.from({ length: 5047 }, (_, i) => [`PAD${i}`, `P${i}`] as [string, string])]); },
     writePrice: async (c, q) => { prices.push({ id: c.id, exchange: q.exchange, price: q.price }); return 'updated'; },
     writeState: async (c, patch) => { states.push({ id: c.id, ...patch }); },
+    writeAttempt: async (c, at) => { attempts.push({ id: c.id, at: at.getTime() }); },
     log: () => {},
   };
-  return { deps, calls, prices, states };
+  return { deps, calls, prices, states, attempts };
 }
 
 describe('runPostListingPriceJob', () => {
@@ -158,6 +160,76 @@ describe('runPostListingPriceJob', () => {
     const s = await runPostListingPriceJob({ ...h.deps, deadlineAt: 100, clock: () => (t += 60) });
     expect(h.calls.nse.map(([sym]) => sym)).toEqual(['F1']);
     expect(s.notReached).toEqual(['Second']);
+  });
+});
+
+// #1310 (listed-rotation-stall, 2nd write path). RCA: `selectPriceCandidates` ordered by
+// `currentPriceUpdatedAt`, which a never-priceable row NEVER gets, so it pinned the front of
+// the ASC-NULLS-FIRST queue forever and starved every priceable row behind it inside the
+// job's 3-minute deadline. The fix stamps `priceLastAttemptAt` on EVERY outcome this run
+// actually attempts (priced, no-price, refused, unexpected error) and orders by THAT column
+// instead — an attempted row, whatever its outcome, always moves behind an unattempted one.
+describe('#1310: an attempt stamp on every outcome, not only a successful price', () => {
+  it('a row that never prices this run is still stamped, exactly like a priced row', async () => {
+    const stuck = cand({ id: 'stuck-1', companyName: 'NeverPrices', symbol: 'NOSYM' });
+    const priceable = cand({ id: 'priceable-1', companyName: 'PricesFine', symbol: 'FINE' });
+    const h = harness([stuck, priceable], { NOSYM: none('NSE', 4), FINE: price('NSE', 10, 1, 'EQ') }, {});
+    const s = await runPostListingPriceJob(h.deps);
+    expect(s.noPrice).toEqual(['NeverPrices']);
+    expect(s.updated).toEqual(['PricesFine']);
+    expect(h.attempts.map((a) => a.id).sort()).toEqual(['priceable-1', 'stuck-1']);
+  });
+
+  it('a refused (outage) row is also stamped', async () => {
+    const c = cand({ id: 'refused-1', companyName: 'Refused', symbol: 'REF' });
+    const h = harness([c], { REF: refused('NSE') }, {});
+    const s = await runPostListingPriceJob(h.deps);
+    expect(s.refused).toEqual(['Refused']);
+    expect(h.attempts.map((a) => a.id)).toEqual(['refused-1']);
+  });
+
+  it('a candidate the run never reaches (past the deadline) is NOT stamped — mutation guard: a\n     stamp on notReached would wrongly let a never-reached row skip the front of the next run', async () => {
+    const cs = [cand({ id: 'reached-1', companyName: 'Reached', symbol: 'R1' }), cand({ id: 'not-reached-1', companyName: 'NotReached', symbol: 'R2' })];
+    const h = harness(cs, { R1: price('NSE', 1, 1, 'EQ'), R2: price('NSE', 2, 1, 'EQ') }, {});
+    let t = 0;
+    const s = await runPostListingPriceJob({ ...h.deps, deadlineAt: 100, clock: () => (t += 60) });
+    expect(s.notReached).toEqual(['NotReached']);
+    expect(h.attempts.map((a) => a.id)).toEqual(['reached-1']);
+  });
+
+  it('the real starvation shape: 60 never-priceable rows sorted ahead of 3 priceable ones no ' +
+    'longer starve them forever across bounded runs — reproduces `selectPriceCandidates`\'s own ' +
+    'ORDER BY (`priceLastAttemptAt asc nulls first, id asc`) in memory, since that query itself ' +
+    'needs a live DB; RED before this fix (an unstamped noPrice row never leaves the front, so ' +
+    'the loop below would still show 0 priced after 5 runs), GREEN after it', async () => {
+    type Row = { id: string; companyName: string; symbol: string; lastAttempt: number | null };
+    // 'a...' ids sort before 'z...' ids on every tie, mirroring #1310's measured shape where the
+    // never-priceable rows (alphabetically-first company names in the real staging list) pin the
+    // front of the id-tiebroken order.
+    const stuckRows: Row[] = Array.from({ length: 60 }, (_, i) => ({ id: `a-stuck-${String(i).padStart(2, '0')}`, companyName: `Stuck${i}`, symbol: `S${i}`, lastAttempt: null }));
+    const okRows: Row[] = Array.from({ length: 3 }, (_, i) => ({ id: `z-ok-${i}`, companyName: `Ok${i}`, symbol: `O${i}`, lastAttempt: null }));
+    let rows = [...stuckRows, ...okRows];
+    const REACH_PER_RUN = 20; // simulates the 3-minute deadline only reaching a slice per run
+    let anyOkPricedEver = false;
+    for (let run = 1; run <= 5 && !anyOkPricedEver; run++) {
+      rows = [...rows].sort((a, b) => {
+        if (a.lastAttempt === null && b.lastAttempt !== null) return -1;
+        if (a.lastAttempt !== null && b.lastAttempt === null) return 1;
+        if (a.lastAttempt !== null && b.lastAttempt !== null && a.lastAttempt !== b.lastAttempt) return a.lastAttempt - b.lastAttempt;
+        return a.id.localeCompare(b.id);
+      });
+      const walked = rows.slice(0, REACH_PER_RUN);
+      const nse: Record<string, QuoteOutcome> = {};
+      for (const r of walked) nse[r.symbol] = r.id.startsWith('z-ok-') ? price('NSE', 10, 1, 'EQ') : none('NSE', 4);
+      const h = harness(walked.map((r) => cand({ id: r.id, companyName: r.companyName, symbol: r.symbol })), nse, {});
+      const s = await runPostListingPriceJob(h.deps);
+      if (s.updated.length > 0) anyOkPricedEver = true;
+      for (const a of h.attempts) {
+        const row = rows.find((r) => r.id === a.id)!;
+        row.lastAttempt = run;
+      }
+    }
+    expect(anyOkPricedEver).toBe(true);
   });
 });
 
