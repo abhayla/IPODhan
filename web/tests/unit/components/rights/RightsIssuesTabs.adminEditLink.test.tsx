@@ -39,7 +39,8 @@ describe('RightsIssuesTabs — admin edit link', () => {
   it('renders the Edit link for an admin session', () => {
     vi.mocked(useAdminSession).mockReturnValue({ isAdmin: true, loading: false });
     render(<RightsIssuesTabs upcomingRights={[]} liveRights={liveRights} initialTab="live" />);
-    expect(screen.getByTestId('admin-row-edit-link')).toHaveAttribute('href', '/ipos/acme-rights-co?edit=');
+    // OD-140: RIGHTS has no public detail page, so the row's Edit link opens the admin-only route.
+    expect(screen.getByTestId('admin-row-edit-link')).toHaveAttribute('href', '/admin/ipos/acme-rights-co/edit');
   });
 
   it('renders no Edit link for a reader session', () => {

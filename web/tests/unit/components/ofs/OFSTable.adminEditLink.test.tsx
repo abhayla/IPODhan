@@ -32,7 +32,8 @@ describe('OFSTable — admin edit link', () => {
   it('renders the Edit link for an admin session', () => {
     vi.mocked(useAdminSession).mockReturnValue({ isAdmin: true, loading: false });
     render(<OFSTable ofsIssues={ofsIssues} />);
-    expect(screen.getByTestId('admin-row-edit-link')).toHaveAttribute('href', '/ipos/acme-ofs-co?edit=');
+    // OD-140: OFS has no public detail page, so the row's Edit link opens the admin-only route.
+    expect(screen.getByTestId('admin-row-edit-link')).toHaveAttribute('href', '/admin/ipos/acme-ofs-co/edit');
   });
 
   it('renders no Edit link for a reader session', () => {

@@ -98,6 +98,59 @@ describe('saveAdminFieldValue — F-171 cache drop after commit', () => {
   });
 });
 
+// OD-140 (§9.2 items 4, 14): the admin-only non-IPO route saves through this SAME wrapper — there
+// is no second write path for OFS/NCD/RIGHTS/BUYBACK/TENDER/REIT rows (item 11, OD-119 "the OFS
+// rows are admin-editable like any IPO in the same editor, under the same rules").
+describe('saveAdminFieldValue on a non-IPO (OFS) row — OD-140', () => {
+  const ofsInput: AdminFieldWriteInput = {
+    ipoId: 'ofs-ipo-1',
+    tableName: 'ipos',
+    fieldName: 'registrar',
+    value: 'KFin Technologies',
+    mode: { kind: 'typed', sourceNote: 'typed by admin' },
+    expectedVersion: 'v1',
+    actor: { name: 'admin', adminId: 'admin-t1' },
+    entryPoint: 'admin-ipos-edit-non-ipo-page',
+  };
+
+  it('passes an OFS row straight through to the shared write — nothing in the wrapper gates on offering type', async () => {
+    const OFS_OK: AdminFieldWriteResult = {
+      kind: 'OK',
+      ipoId: 'ofs-ipo-1',
+      slug: 'acme-ofs',
+      tableName: 'ipos',
+      fieldName: 'registrar',
+      oldValue: null,
+      newValue: 'KFin Technologies',
+      version: 'v2',
+    };
+    const { d, write } = deps(OFS_OK);
+    const result = await saveAdminFieldValue(ofsInput, d);
+
+    // Read back: the OK result IS the saved value returned by the one write function — the same
+    // shape the update-field route hands the editor to render immediately (item 10, no re-fetch).
+    expect(result).toEqual(OFS_OK);
+    expect(write).toHaveBeenCalledWith({}, ofsInput, undefined, expect.objectContaining({ planManifest: expect.anything() }));
+  });
+
+  it('drops the same cache keys and revalidates the same slug path for an OFS row as for an IPO row', async () => {
+    const OFS_OK: AdminFieldWriteResult = {
+      kind: 'OK',
+      ipoId: 'ofs-ipo-1',
+      slug: 'acme-ofs',
+      tableName: 'ipos',
+      fieldName: 'registrar',
+      oldValue: null,
+      newValue: 'KFin Technologies',
+      version: 'v2',
+    };
+    const { d, del, revalidatePath } = deps(OFS_OK);
+    await saveAdminFieldValue(ofsInput, d);
+    expect(del).toHaveBeenCalled();
+    expect(revalidatePath).toHaveBeenCalledWith('/ipos/acme-ofs');
+  });
+});
+
 describe('adminWriteResponse — #1159 status mapping', () => {
   it('INVALID -> 400 with the reason', async () => {
     const r = adminWriteResponse({ kind: 'INVALID', reason: 'ipos.lotSize: expected a whole number' });
