@@ -1891,6 +1891,367 @@ else
   printf '%s\n' "$PM2_SCRAPER_STARTS"
 fi
 
+# --- case 23: a no-expiry lock (TTL -1) warns and alerts (#1255 item 1) ----
+#
+# A held lock with no TTL is a leaked lock (manual or foreign write - the
+# scraper itself always sets an expiry) that will never self-clear, so every
+# wake from here on skips silently unless a human deletes it. These cases
+# pin: (a) the WARN line + exactly one Notifier POST with the expected
+# dedupeKey; (b) a second wake the same IST day sends no second POST
+# (the local per-day marker); (c) a normal TTL>0 lock never warns or alerts;
+# (d) a missing Notifier env logs the skip and never touches the wake's own
+# exit status.
+#
+# The Notifier POST is stubbed with a fake `curl` on PATH (never a real
+# network call) that appends its full argv to CURL_LOG_FILE and a marker
+# byte to CURL_CALLS_FILE, so each case can assert both the call COUNT and
+# the payload SUBSTANCE (the dedupeKey), never just "curl ran".
+STUBDIR23="$(mktemp -d)"
+cat > "$STUBDIR23/curl" <<'EOF'
+#!/bin/sh
+echo "CALL $*" >> "${CURL_LOG_FILE:-/dev/null}"
+printf 'x' >> "${CURL_CALLS_FILE:-/dev/null}"
+exit 0
+EOF
+chmod +x "$STUBDIR23/curl"
+
+NOTIFIER_ENV_23="$(mktemp)"
+printf 'NOTIFIER_KEY_IPODHAN=testkey-1255\n' > "$NOTIFIER_ENV_23"
+
+IST_DAY_23="$(date -u -d '+330 minutes' '+%Y-%m-%d')"
+
+# case 23a: TTL -1 -> the WARN line + exactly one Notifier POST carrying the
+# expected dedupeKey (lock key + today's IST calendar day).
+ALERT_STATE_23A="$(mktemp -d)"
+CURL_LOG_23A="$(mktemp)"
+CURL_CALLS_23A="$(mktemp)"
+: > "$CURL_CALLS_23A"
+OUT23A="$(PATH="$STUBDIR23:$PATH" \
+  NOTIFIER_ENV="$NOTIFIER_ENV_23" SCRAPER_WAKE_ALERT_STATE_DIR="$ALERT_STATE_23A" \
+  CURL_LOG_FILE="$CURL_LOG_23A" CURL_CALLS_FILE="$CURL_CALLS_23A" \
+  SCRAPER_WAKE_FAKE_LOCK_TTL="-1" SCRAPER_WAKE_FAKE_LOCK_HOLDER="manual-set-by-hand" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT23A" | grep -q "WARN lock-leaked-no-expiry: slot=prod lock=prod:lock:resource:scraper:cycle holder=manual-set-by-hand has no TTL"; then
+  pass "case 23a: TTL -1 logs the WARN lock-leaked-no-expiry line"
+else
+  fail "case 23a: expected a WARN lock-leaked-no-expiry line, got: $OUT23A"
+fi
+CALLS_23A="$(wc -c < "$CURL_CALLS_23A" | tr -d ' ')"
+if [ "$CALLS_23A" = "1" ]; then
+  pass "case 23a: exactly one Notifier POST was made"
+else
+  fail "case 23a: expected exactly one Notifier POST, got $CALLS_23A. log: $(cat "$CURL_LOG_23A")"
+fi
+if grep -q "scraper-wake-no-expiry-lock-prod-prod:lock:resource:scraper:cycle-$IST_DAY_23" "$CURL_LOG_23A"; then
+  pass "case 23a: the POST body carries the expected dedupeKey (slot + lock key + IST day)"
+else
+  fail "case 23a: dedupeKey missing/wrong in the POST body: $(cat "$CURL_LOG_23A")"
+fi
+if grep -q "holder=manual-set-by-hand" "$CURL_LOG_23A"; then
+  pass "case 23a: the alert body names the lock holder"
+else
+  fail "case 23a: the alert body does not name the holder: $(cat "$CURL_LOG_23A")"
+fi
+if grep -q "testkey-1255" "$CURL_LOG_23A" || printf '%s' "$OUT23A" | grep -q "testkey-1255"; then
+  fail "case 23a: the Notifier key leaked into curl argv or the wake log"
+else
+  pass "case 23a: the Notifier key appears in neither curl argv nor the wake log"
+fi
+
+# case 23b: a second wake the SAME IST day (same alert-state dir) -> the WARN
+# line still fires (the lock is still leaked and still worth logging), but no
+# second Notifier POST.
+CURL_LOG_23B="$(mktemp)"
+CURL_CALLS_23B="$(mktemp)"
+: > "$CURL_CALLS_23B"
+OUT23B="$(PATH="$STUBDIR23:$PATH" \
+  NOTIFIER_ENV="$NOTIFIER_ENV_23" SCRAPER_WAKE_ALERT_STATE_DIR="$ALERT_STATE_23A" \
+  CURL_LOG_FILE="$CURL_LOG_23B" CURL_CALLS_FILE="$CURL_CALLS_23B" \
+  SCRAPER_WAKE_FAKE_LOCK_TTL="-1" SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT23B" | grep -q "WARN lock-leaked-no-expiry:"; then
+  pass "case 23b: a second same-day wake still logs the WARN line"
+else
+  fail "case 23b: expected the WARN line on the second wake too, got: $OUT23B"
+fi
+if printf '%s' "$OUT23B" | grep -q "lock-leaked-no-expiry-alert-already-sent"; then
+  pass "case 23b: the second same-day wake records that it already alerted today"
+else
+  fail "case 23b: expected an already-alerted line, got: $OUT23B"
+fi
+CALLS_23B="$(wc -c < "$CURL_CALLS_23B" | tr -d ' ')"
+if [ "$CALLS_23B" = "0" ]; then
+  pass "case 23b: no second Notifier POST was made the same IST day (per-day marker)"
+else
+  fail "case 23b: expected zero POSTs on the second same-day wake, got $CALLS_23B"
+fi
+
+# case 23c: an ordinary held lock (TTL > 0) never warns or alerts.
+ALERT_STATE_23C="$(mktemp -d)"
+CURL_LOG_23C="$(mktemp)"
+CURL_CALLS_23C="$(mktemp)"
+: > "$CURL_CALLS_23C"
+OUT23C="$(PATH="$STUBDIR23:$PATH" \
+  NOTIFIER_ENV="$NOTIFIER_ENV_23" SCRAPER_WAKE_ALERT_STATE_DIR="$ALERT_STATE_23C" \
+  CURL_LOG_FILE="$CURL_LOG_23C" CURL_CALLS_FILE="$CURL_CALLS_23C" \
+  SCRAPER_WAKE_FAKE_LOCK_TTL="900" SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" data 2>&1)"
+if printf '%s' "$OUT23C" | grep -q "wake-skipped:.*lock_ttl=900s remaining" \
+  && ! printf '%s' "$OUT23C" | grep -q "lock-leaked-no-expiry"; then
+  pass "case 23c: TTL 900 skips normally with no leaked-lock WARN"
+else
+  fail "case 23c: expected a plain wake-skipped with no leaked-lock WARN, got: $OUT23C"
+fi
+CALLS_23C="$(wc -c < "$CURL_CALLS_23C" | tr -d ' ')"
+if [ "$CALLS_23C" = "0" ]; then
+  pass "case 23c: no Notifier POST for an ordinary TTL"
+else
+  fail "case 23c: expected zero POSTs for an ordinary TTL, got $CALLS_23C"
+fi
+
+# case 23d: the Notifier env is entirely missing -> the WARN line still
+# fires, the alert is explicitly logged as skipped, and the wrapper's own
+# exit status is unaffected (a wake-skip is still exit 0, per the header's
+# exit-code contract - a missing alert channel must never turn a correct
+# skip into a reported failure).
+ALERT_STATE_23D="$(mktemp -d)"
+CURL_LOG_23D="$(mktemp)"
+CURL_CALLS_23D="$(mktemp)"
+: > "$CURL_CALLS_23D"
+OUT23D="$(PATH="$STUBDIR23:$PATH" \
+  env -u NOTIFIER_ENV -u DEPLOY_GLOBAL_ENV SCRAPER_WAKE_ALERT_STATE_DIR="$ALERT_STATE_23D" \
+  CURL_LOG_FILE="$CURL_LOG_23D" CURL_CALLS_FILE="$CURL_CALLS_23D" \
+  SCRAPER_WAKE_FAKE_LOCK_TTL="-1" SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" data 2>&1)"
+RC23D=$?
+if printf '%s' "$OUT23D" | grep -q "WARN lock-leaked-no-expiry:"; then
+  pass "case 23d: the WARN line still fires with no Notifier env"
+else
+  fail "case 23d: expected the WARN line even with no Notifier env, got: $OUT23D"
+fi
+if printf '%s' "$OUT23D" | grep -q "lock-leaked-no-expiry-alert-skipped:.*NOTIFIER_KEY_IPODHAN not set"; then
+  pass "case 23d: the alert-skipped reason names the missing NOTIFIER_KEY_IPODHAN"
+else
+  fail "case 23d: expected an alert-skipped/NOTIFIER_KEY_IPODHAN line, got: $OUT23D"
+fi
+if [ "$RC23D" -eq 0 ]; then
+  pass "case 23d: the wake's own exit status (0, a correct skip) is unaffected"
+else
+  fail "case 23d: expected exit 0 (a lock-held skip is not a wrapper failure), got $RC23D"
+fi
+CALLS_23D="$(wc -c < "$CURL_CALLS_23D" | tr -d ' ')"
+if [ "$CALLS_23D" = "0" ]; then
+  pass "case 23d: no Notifier POST was attempted with no NOTIFIER_KEY_IPODHAN"
+else
+  fail "case 23d: expected zero POSTs, got $CALLS_23D"
+fi
+
+# case 23e: the dedupe is per slot + LOCK, not per job. `closed` reads the
+# same scraper:cycle lock `data` already alerted on today -> no second POST;
+# `live` reads scraper:live, a different lock -> its own POST.
+CURL_CALLS_23E="$(mktemp)"
+: > "$CURL_CALLS_23E"
+PATH="$STUBDIR23:$PATH" NOTIFIER_ENV="$NOTIFIER_ENV_23" SCRAPER_WAKE_ALERT_STATE_DIR="$ALERT_STATE_23A" \
+  CURL_CALLS_FILE="$CURL_CALLS_23E" SCRAPER_WAKE_FAKE_LOCK_TTL="-1" SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" closed >/dev/null 2>&1
+CALLS_23E1="$(wc -c < "$CURL_CALLS_23E" | tr -d ' ')"
+if [ "$CALLS_23E1" = "0" ]; then
+  pass "case 23e: closed shares scraper:cycle with data -> no second POST the same day"
+else
+  fail "case 23e: closed re-alerted on a lock data already alerted on today ($CALLS_23E1 POSTs)"
+fi
+PATH="$STUBDIR23:$PATH" NOTIFIER_ENV="$NOTIFIER_ENV_23" SCRAPER_WAKE_ALERT_STATE_DIR="$ALERT_STATE_23A" \
+  CURL_CALLS_FILE="$CURL_CALLS_23E" SCRAPER_WAKE_FAKE_LOCK_TTL="-1" SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" live >/dev/null 2>&1
+CALLS_23E2="$(wc -c < "$CURL_CALLS_23E" | tr -d ' ')"
+if [ "$CALLS_23E2" = "1" ]; then
+  pass "case 23e: live's scraper:live lock is a different lock -> exactly one POST of its own"
+else
+  fail "case 23e: expected one POST for the scraper:live lock, got $CALLS_23E2"
+fi
+
+# case 23f: a deploy-held lock (#1259's SET NX EX: a token WITH a TTL) is an
+# ordinary held lock -> the plain wake-skipped line, no WARN, no POST.
+ALERT_STATE_23F="$(mktemp -d)"
+CURL_CALLS_23F="$(mktemp)"
+: > "$CURL_CALLS_23F"
+OUT23F="$(PATH="$STUBDIR23:$PATH" \
+  NOTIFIER_ENV="$NOTIFIER_ENV_23" SCRAPER_WAKE_ALERT_STATE_DIR="$ALERT_STATE_23F" \
+  CURL_CALLS_FILE="$CURL_CALLS_23F" SCRAPER_WAKE_FAKE_LOCK_TTL="1800" \
+  SCRAPER_WAKE_FAKE_LOCK_HOLDER="deploy-token-1259" SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$WAKE" data 2>&1)"
+CALLS_23F="$(wc -c < "$CURL_CALLS_23F" | tr -d ' ')"
+if printf '%s' "$OUT23F" | grep -q "wake-skipped:.*lock_ttl=1800s remaining" \
+  && ! printf '%s' "$OUT23F" | grep -q "lock-leaked-no-expiry" && [ "$CALLS_23F" = "0" ]; then
+  pass "case 23f: a deploy-held lock (TTL 1800) is a plain wake-skipped, no WARN, no POST"
+else
+  fail "case 23f: deploy-held lock changed behaviour (POSTs=$CALLS_23F): $OUT23F"
+fi
+
+# case 23g: the REAL redis-cli path (no TTL seam), staging slot. The stub
+# answers TTL with -1 and GET with a holder carrying unsafe characters: the
+# wake must GET the same slot-prefixed key, name a SANITISED holder, and
+# alert once under the staging slot's dedupeKey.
+STUBDIR23G="$(mktemp -d)"
+cp "$STUBDIR23/curl" "$STUBDIR23G/curl"
+printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$*" >> "$RC_ARGV_LOG"' \
+  'case "$*" in *" TTL "*) echo -1 ;; *" GET "*) echo "foreign run;id \$x" ;; *) exit 1 ;; esac' \
+  > "$STUBDIR23G/redis-cli"
+chmod +x "$STUBDIR23G/redis-cli"
+RC_ARGV_LOG_23G="$(mktemp)"
+ALERT_STATE_23G="$(mktemp -d)"
+CURL_LOG_23G="$(mktemp)"
+CURL_CALLS_23G="$(mktemp)"
+: > "$CURL_CALLS_23G"
+OUT23G="$(PATH="$STUBDIR23G:$PATH" RC_ARGV_LOG="$RC_ARGV_LOG_23G" REDIS_URL="redis://127.0.0.1:6379/1" \
+  DEPLOY_SLOT=staging DATABASE_URL="postgresql://u@db:5432/ipodhan_staging" \
+  NOTIFIER_ENV="$NOTIFIER_ENV_23" SCRAPER_WAKE_ALERT_STATE_DIR="$ALERT_STATE_23G" \
+  CURL_LOG_FILE="$CURL_LOG_23G" CURL_CALLS_FILE="$CURL_CALLS_23G" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" sh "$WAKE" data 2>&1)"
+CALLS_23G="$(wc -c < "$CURL_CALLS_23G" | tr -d ' ')"
+if grep -qx -- "-h 127.0.0.1 -p 6379 -n 1 GET staging:lock:resource:scraper:cycle" "$RC_ARGV_LOG_23G" \
+  && printf '%s' "$OUT23G" | grep -q "WARN lock-leaked-no-expiry: slot=staging lock=staging:lock:resource:scraper:cycle holder=foreign_run_id__x has no TTL" \
+  && [ "$CALLS_23G" = "1" ] \
+  && grep -q "scraper-wake-no-expiry-lock-staging-staging:lock:resource:scraper:cycle-$IST_DAY_23" "$CURL_LOG_23G"; then
+  pass "case 23g: real redis-cli path: TTL -1 -> GET the holder, sanitised WARN, one staging-scoped alert"
+else
+  fail "case 23g: real-path no-expiry lock mishandled (POSTs=$CALLS_23G). argv: $(cat "$RC_ARGV_LOG_23G"); out: $OUT23G; curl: $(cat "$CURL_LOG_23G")"
+fi
+rm -rf "$STUBDIR23G" "$ALERT_STATE_23G"
+rm -f "$RC_ARGV_LOG_23G" "$CURL_LOG_23G" "$CURL_CALLS_23G"
+
+rm -rf "$ALERT_STATE_23F"
+rm -f "$CURL_CALLS_23E" "$CURL_CALLS_23F"
+rm -rf "$STUBDIR23" "$ALERT_STATE_23A" "$ALERT_STATE_23C" "$ALERT_STATE_23D"
+rm -f "$NOTIFIER_ENV_23" "$CURL_LOG_23A" "$CURL_CALLS_23A" "$CURL_LOG_23B" "$CURL_CALLS_23B" \
+  "$CURL_LOG_23C" "$CURL_CALLS_23C" "$CURL_LOG_23D" "$CURL_CALLS_23D"
+
+# --- Case 23h-23j (#1255 review): the no-expiry marker lives under the REAL
+# shared/ dir, found the same way the PYTHON_BIN venv lookup already finds
+# it, and the script never invents a new `shared` directory. These run with
+# NO SCRAPER_WAKE_ALERT_STATE_DIR override, so they exercise
+# resolve_shared_state_dir() itself, not the test seam.
+STUBDIR23H="$(mktemp -d)"
+cp "$STUBDIR23"/curl "$STUBDIR23H/curl" 2>/dev/null || cat > "$STUBDIR23H/curl" <<'EOF'
+#!/bin/sh
+echo "CALL $*" >> "${CURL_LOG_FILE:-/dev/null}"
+printf 'x' >> "${CURL_CALLS_FILE:-/dev/null}"
+exit 0
+EOF
+chmod +x "$STUBDIR23H/curl"
+NOTIFIER_ENV_23H="$(mktemp)"
+printf 'NOTIFIER_KEY_IPODHAN=testkey-1255h\n' > "$NOTIFIER_ENV_23H"
+
+# case 23h: a bare releases/<release> checkout (no current-staging symlink in
+# the picture at all) — REPO_ROOT is base/releases-staging/REL1, so only the
+# SECOND candidate (REPO_ROOT/../../shared) can find base/shared. Same shape
+# the venv lookup's second candidate already covers.
+BASE23H="$(mktemp -d)"
+mkdir -p "$BASE23H/releases-staging/REL1/scripts" "$BASE23H/shared"
+cp "$WAKE" "$BASE23H/releases-staging/REL1/scripts/scraper-wake.sh"
+chmod +x "$BASE23H/releases-staging/REL1/scripts/scraper-wake.sh"
+CURL_LOG_23H="$(mktemp)"
+CURL_CALLS_23H="$(mktemp)"
+: > "$CURL_CALLS_23H"
+OUT23H="$(env -u SCRAPER_WAKE_ALERT_STATE_DIR DEPLOY_SLOT=prod \
+  PATH="$STUBDIR23H:$PATH" NOTIFIER_ENV="$NOTIFIER_ENV_23H" \
+  CURL_LOG_FILE="$CURL_LOG_23H" CURL_CALLS_FILE="$CURL_CALLS_23H" \
+  SCRAPER_WAKE_FAKE_LOCK_TTL="-1" SCRAPER_WAKE_FAKE_LOCK_HOLDER="h-holder" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$BASE23H/releases-staging/REL1/scripts/scraper-wake.sh" data 2>&1)"
+MARKERDIR23H="$BASE23H/shared/scraper-wake-state/prod"
+if [ -d "$MARKERDIR23H" ] && find "$MARKERDIR23H" -name '.scraper-wake-no-expiry-alerted.*' | grep -q .; then
+  pass "case 23h: bare releases/<release> checkout — marker created under the REAL base/shared (via the ../../shared candidate), no override needed"
+else
+  fail "case 23h: no marker found under $MARKERDIR23H. out: $OUT23H"
+fi
+if find "$BASE23H/releases-staging" -maxdepth 1 -type d -name shared | grep -q .; then
+  fail "case 23h: a stray 'shared' dir was created inside releases-staging/ (the class this fix removes)"
+else
+  pass "case 23h: no stray 'shared' dir was created inside releases-staging/"
+fi
+CALLS_23H="$(wc -c < "$CURL_CALLS_23H" | tr -d ' ')"
+if [ "$CALLS_23H" = "1" ]; then
+  pass "case 23h: exactly one Notifier POST was made"
+else
+  fail "case 23h: expected exactly one Notifier POST, got $CALLS_23H"
+fi
+
+# case 23i: the SAME release layout, but via a real `current-staging` ->
+# releases-staging/REL2 SYMLINK, one directory level deeper than a plain
+# `current-staging` dir would be — the exact prod shape (#1255 review). A
+# path string built as "$REPO_ROOT/../shared" resolves PHYSICALLY through
+# the symlink's target, landing in releases-staging/shared (which must NOT
+# get created); only the second candidate (one more ..) lands back on
+# base/shared. Skipped when this filesystem/shell cannot make symlinks.
+BASE23I="$(mktemp -d)"
+mkdir -p "$BASE23I/releases-staging/REL2/scripts" "$BASE23I/shared"
+cp "$WAKE" "$BASE23I/releases-staging/REL2/scripts/scraper-wake.sh"
+chmod +x "$BASE23I/releases-staging/REL2/scripts/scraper-wake.sh"
+if ln -s "$BASE23I/releases-staging/REL2" "$BASE23I/current-staging" 2>/dev/null; then
+  CURL_LOG_23I="$(mktemp)"
+  CURL_CALLS_23I="$(mktemp)"
+  : > "$CURL_CALLS_23I"
+  OUT23I="$(env -u SCRAPER_WAKE_ALERT_STATE_DIR -u DEPLOY_SLOT \
+    PATH="$STUBDIR23H:$PATH" NOTIFIER_ENV="$NOTIFIER_ENV_23H" \
+    CURL_LOG_FILE="$CURL_LOG_23I" CURL_CALLS_FILE="$CURL_CALLS_23I" \
+    SCRAPER_WAKE_FAKE_LOCK_TTL="-1" SCRAPER_WAKE_FAKE_LOCK_HOLDER="i-holder" \
+    SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+    sh "$BASE23I/current-staging/scripts/scraper-wake.sh" data 2>&1)"
+  MARKERDIR23I="$BASE23I/shared/scraper-wake-state/staging"
+  if [ -d "$MARKERDIR23I" ] && find "$MARKERDIR23I" -name '.scraper-wake-no-expiry-alerted.*' | grep -q .; then
+    pass "case 23i: real current-staging -> releases-staging/REL2 symlink — marker still lands under base/shared, not releases-staging/shared"
+  else
+    fail "case 23i: no marker found under $MARKERDIR23I. out: $OUT23I"
+  fi
+  if find "$BASE23I/releases-staging" -maxdepth 1 -type d -name shared | grep -q .; then
+    fail "case 23i: the symlink layout created a stray 'shared' dir inside releases-staging/ (the exact prod bug)"
+  else
+    pass "case 23i: the symlink layout created no stray 'shared' dir inside releases-staging/"
+  fi
+  rm -f "$CURL_LOG_23I" "$CURL_CALLS_23I"
+else
+  echo "case 23i: SKIPPED (this filesystem/shell cannot create symlinks)"
+fi
+
+# case 23j: no shared/ dir exists ANYWHERE the two candidates look — the wake
+# still exits 0, still logs the leaked-lock WARN, skips the marker/alert with
+# its own WARN, and creates no directory named 'shared' anywhere.
+BASE23J="$(mktemp -d)"
+mkdir -p "$BASE23J/releases-staging/REL3/scripts"
+cp "$WAKE" "$BASE23J/releases-staging/REL3/scripts/scraper-wake.sh"
+chmod +x "$BASE23J/releases-staging/REL3/scripts/scraper-wake.sh"
+ST23J=0
+OUT23J="$(env -u SCRAPER_WAKE_ALERT_STATE_DIR DEPLOY_SLOT=prod \
+  PATH="$STUBDIR23H:$PATH" NOTIFIER_ENV="$NOTIFIER_ENV_23H" \
+  SCRAPER_WAKE_FAKE_LOCK_TTL="-1" SCRAPER_WAKE_FAKE_LOCK_HOLDER="j-holder" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$BASE23J/releases-staging/REL3/scripts/scraper-wake.sh" data 2>&1)" || ST23J=$?
+if [ "$ST23J" -eq 0 ]; then
+  pass "case 23j: no shared/ dir anywhere still exits 0"
+else
+  fail "case 23j: expected exit 0, got $ST23J. out: $OUT23J"
+fi
+if printf '%s' "$OUT23J" | grep -q "WARN lock-leaked-no-expiry:"; then
+  pass "case 23j: the leaked-lock WARN still fires with no shared/ dir"
+else
+  fail "case 23j: expected the leaked-lock WARN line, got: $OUT23J"
+fi
+if printf '%s' "$OUT23J" | grep -q "WARN lock-leaked-no-expiry-alert-skipped: no shared/ dir exists"; then
+  pass "case 23j: the alert-skipped WARN names the missing shared/ dir"
+else
+  fail "case 23j: expected an alert-skipped WARN naming the missing shared dir, got: $OUT23J"
+fi
+if find "$BASE23J" -type d -name shared | grep -q .; then
+  fail "case 23j: a 'shared' dir was created somewhere under $BASE23J even though none existed"
+else
+  pass "case 23j: no 'shared' dir was created anywhere"
+fi
+
+rm -rf "$STUBDIR23H" "$BASE23H" "$BASE23I" "$BASE23J"
+rm -f "$NOTIFIER_ENV_23H" "$CURL_LOG_23H" "$CURL_CALLS_23H"
+
 if [ "$FAILED" -ne 0 ]; then
   echo "scraper-wake.test.sh: FAILED"
   exit 1

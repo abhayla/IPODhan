@@ -206,6 +206,38 @@ test('#707 mutation guard: weakening the threshold to N=10 makes the real 3-in-a
   assert.equal(lines.length >= weakenedThreshold, false, 'a weakened threshold must PASS the same fixture — proves the assertion is not vacuous');
 });
 
+// #1255 review: scraper-wake.sh's notify_no_expiry_lock() used to log
+// "lock-leaked-no-expiry-alert-already-sent: ..." on every wake AFTER the
+// first one on a leaked-lock day (the day's dedupe marker already exists).
+// That line's kind is lowercase-hyphen, so it matched WAKE_LOG_LINE_RE just
+// like a real wake-* line, landed in checkScraperWakeSkippedRun's `lines`
+// array as its own non-"wake-skipped" kind, and broke the tail-of-N
+// contiguous-run check on exactly the days the check exists to catch. Fixed
+// by prefixing the line "INFO " (scripts/scraper-wake.sh), matching every
+// other WARN/FATAL line in that script, so it no longer parses as a kind at
+// all. This fixture is two same-day wake outputs: the FIRST alert day (one
+// skip, the WARN, the alert) followed by a LATER wake on the same day where
+// the marker is already present (another skip, then the "already-sent"
+// line) — the exact shape the review named.
+test('#1255 a leaked-lock day (first alert, then a later already-sent wake) still trips the skipped-run check', () => {
+  const raw = [
+    // First wake of the day: lock held, no expiry, alert fires.
+    '2026-09-29T10:00:01Z scraper-wake: wake-skipped: job=data - a cycle is already running and holds the lock; lock_key=scraper:lock:data lock_ttl=-1 (no expiry)',
+    '2026-09-29T10:00:01Z scraper-wake: WARN lock-leaked-no-expiry: slot=prod lock=scraper:lock:data holder=abc has no TTL; every wake will skip until it is deleted',
+    // Later same-day wake: marker already present, the dedupe line fires
+    // INSTEAD of a second POST. Real production shape: it interleaves with
+    // more wake-skipped lines as the lock stays leaked.
+    '2026-09-29T10:30:02Z scraper-wake: wake-skipped: job=data - a cycle is already running and holds the lock; lock_key=scraper:lock:data lock_ttl=-1 (no expiry)',
+    '2026-09-29T10:30:02Z scraper-wake: INFO lock-leaked-no-expiry-alert-already-sent: slot=prod lock=scraper:lock:data already alerted today (2026-09-29, marker=/var/www/ipodhan/shared/scraper-wake-state/prod/.scraper-wake-no-expiry-alerted.prod.x.2026-09-29) - not sending a second Notifier POST',
+    '2026-09-29T11:00:01Z scraper-wake: wake-skipped: job=data - a cycle is already running and holds the lock; lock_key=scraper:lock:data lock_ttl=-1 (no expiry)',
+    '2026-09-29T11:00:01Z scraper-wake: INFO lock-leaked-no-expiry-alert-already-sent: slot=prod lock=scraper:lock:data already alerted today (2026-09-29, marker=/var/www/ipodhan/shared/scraper-wake-state/prod/.scraper-wake-no-expiry-alerted.prod.x.2026-09-29) - not sending a second Notifier POST',
+  ].join('\n');
+  const violation = checkScraperWakeSkippedRun('prod', raw);
+  assert.notEqual(violation, null, 'a leaked-lock day must still trip the skipped-run check even with the dedupe line interleaved');
+  assert.match(violation, /slot prod/);
+  assert.match(violation, /3 consecutive/);
+});
+
 // --- mutation guard: confirms the FAIL fixtures can actually fail ----------
 
 // --- #648: provenance-marker-write-failed events reach a nightly consumer ---
