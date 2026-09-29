@@ -117,7 +117,8 @@ export async function GET(request: NextRequest) {
 
     // Build query filters (convert offset to page for repository)
     const page = Math.floor(offset / limit) + 1;
-    const filters: any = { page, limit };
+    // §9.2 item 23: the admin list shows hidden rows too (data stays for admins).
+    const filters: any = { page, limit, includeHidden: true };
     if (status) filters.status = status;
     if (segment) filters.segment = segment;
     if (search) filters.search = search;

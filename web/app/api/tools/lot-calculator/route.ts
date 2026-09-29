@@ -11,7 +11,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/index';
 import { ipos } from '@/lib/db';
-import { eq, or, ilike, desc } from 'drizzle-orm';
+import { eq, or, ilike, desc, and } from 'drizzle-orm';
+import { publicIpoVisible } from '@/lib/repositories/public-ipo-visibility';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 // ==================== TYPES ====================
@@ -63,18 +64,24 @@ export async function GET(request: NextRequest) {
     // Apply search filter if provided
     if (search && search.trim() !== '') {
       query = query.where(
-        or(
-          ilike(ipos.companyName, `%${search}%`),
-          ilike(ipos.slug, `%${search}%`)
+        and(
+          or(
+            ilike(ipos.companyName, `%${search}%`),
+            ilike(ipos.slug, `%${search}%`)
+          ),
+          publicIpoVisible()
         )
       );
     } else {
       // If no search, only return active IPOs (OPEN, UPCOMING, CLOSED)
       query = query.where(
-        or(
-          eq(ipos.status, 'OPEN'),
-          eq(ipos.status, 'UPCOMING'),
-          eq(ipos.status, 'CLOSED')
+        and(
+          or(
+            eq(ipos.status, 'OPEN'),
+            eq(ipos.status, 'UPCOMING'),
+            eq(ipos.status, 'CLOSED')
+          ),
+          publicIpoVisible()
         )
       );
     }

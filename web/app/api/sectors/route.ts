@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/index';
 import { ipos } from '@/lib/db';
-import { sql } from 'drizzle-orm';
+import { sql, and } from 'drizzle-orm';
+import { publicIpoVisible } from '@/lib/repositories/public-ipo-visibility';
 import { getRedisClient } from '@/lib/cache/redis-client';
 
 /**
@@ -47,7 +48,7 @@ export async function GET() {
     const result = await db
       .selectDistinct({ sector: ipos.sector })
       .from(ipos)
-      .where(sql`${ipos.sector} IS NOT NULL AND ${ipos.sector} != ''`)
+      .where(and(sql`${ipos.sector} IS NOT NULL AND ${ipos.sector} != ''`, publicIpoVisible()))
       .orderBy(ipos.sector);
 
     // Extract sector strings from result

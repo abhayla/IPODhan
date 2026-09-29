@@ -18,10 +18,45 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { isHiddenIpoSlug } from '@/lib/ipo-visibility/hidden-ipo-slugs';
 
-export function middleware(request: NextRequest) {
-  const response = NextResponse.next();
+/** An IPO detail address: /ipos/<slug> (no deeper segment). */
+const IPO_DETAIL_PATH = /^\/ipos\/([^/]+)\/?$/;
 
+/**
+ * §9.2 item 23 (OD-116/OD-118): a hidden IPO's address answers 410 Gone. Decided here because an
+ * App Router page cannot set a 410 status, and because the page's fuzzy slug fallback must never
+ * get the chance to send a hidden address to a neighbouring IPO.
+ */
+function goneResponse(): NextResponse {
+  const response = new NextResponse(
+    '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Page removed | IPODhan</title>' +
+      '<meta name="robots" content="noindex"></head><body><h1>This IPO page has been removed</h1>' +
+      '<p><a href="/">Go to the IPODhan home page</a></p></body></html>',
+    { status: 410, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  );
+  response.headers.set('Cache-Control', 'no-store');
+  response.headers.set('X-Robots-Tag', 'noindex');
+  return response;
+}
+
+export async function middleware(request: NextRequest) {
+  const match = IPO_DETAIL_PATH.exec(request.nextUrl.pathname);
+  if (match) {
+    let slug = match[1];
+    try {
+      slug = decodeURIComponent(slug);
+    } catch {
+      // a malformed escape is simply not a hidden slug
+    }
+    if (await isHiddenIpoSlug(slug)) {
+      return applySecurityHeaders(goneResponse());
+    }
+  }
+  return applySecurityHeaders(NextResponse.next());
+}
+
+function applySecurityHeaders(response: NextResponse): NextResponse {
   // Prevent MIME type sniffing
   // Ensures browsers respect Content-Type header
   response.headers.set('X-Content-Type-Options', 'nosniff');
@@ -83,6 +118,8 @@ export function middleware(request: NextRequest) {
 // Apply middleware to all routes except static files
 // Excludes: Next.js internals, static assets, and favicon
 export const config = {
+  // §9.2 item 23: Node.js runtime (stable in Next 15.5) so the hidden-slug check can read the database.
+  runtime: 'nodejs',
   matcher: [
     /*
      * Match all request paths except for the ones starting with:

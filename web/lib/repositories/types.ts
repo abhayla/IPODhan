@@ -125,6 +125,8 @@ export interface IPOFilters {
   limit?: number;
   sortBy?: 'openDate' | 'closeDate' | 'listingDate' | 'issueSize' | 'createdAt';
   sortOrder?: 'asc' | 'desc';
+  /** §9.2 item 23: admin lists only — include rows an admin hid. Readers never set this. */
+  includeHidden?: boolean;
 }
 
 /**
@@ -192,8 +194,8 @@ export type IPOPeer = IPO & {
  */
 export interface IIPORepository {
   findAll(filters?: IPOFilters): Promise<PaginatedResponse<IPO>>;
-  findBySlug(slug: string): Promise<IPOWithRelations | null>;
-  findById(id: string): Promise<IPO | null>;
+  findBySlug(slug: string, options?: { includeHidden?: boolean }): Promise<IPOWithRelations | null>;
+  findById(id: string, options?: { includeHidden?: boolean }): Promise<IPO | null>;
   search(query: string, limit?: number): Promise<IPO[]>;
   create(ipo: IPOInsert): Promise<IPO>;
   update(id: string, data: Partial<IPOInsert>): Promise<IPO>;

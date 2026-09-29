@@ -802,7 +802,8 @@ export class IpoFieldPlanRepository extends BaseRepository {
                  AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
                  AND (claimed_at IS NULL OR claimed_at <= ${utc(staleBefore)}::timestamp)
                  AND NOT (id = ANY(${excludeIdsSql()}))
-                 AND NOT ${heldReadCurrentSql()}`;
+                 AND NOT ${heldReadCurrentSql()}
+                 AND NOT EXISTS (SELECT 1 FROM ipos hid WHERE hid.id = ipo_id AND hid.hidden_at IS NOT NULL)`;
 
     // Common filter every leg applies (ipoId scope, stale-claim reclaim,
     // excludeIds) — built ONCE and composed via `sql.join` into each leg's

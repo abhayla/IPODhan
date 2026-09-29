@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db/index';
 import { ipos, listingPerformance, subscriptions, gmpRecords } from '@/lib/db';
 import { eq, and, gte, lte, desc, asc, sql, inArray } from 'drizzle-orm';
+import { publicIpoVisible } from '@/lib/repositories/public-ipo-visibility';
 
 // Validation schemas
 // Note: Category accepts both segments (MAINBOARD, SME) and offering types (FPO, RIGHTS, NCD)
@@ -106,6 +107,8 @@ export async function GET(request: NextRequest) {
 
     // Only include listed IPOs
     whereConditions.push(eq(ipos.status, 'LISTED'));
+    // §9.2 item 23: a hidden row is in no reader list.
+    whereConditions.push(publicIpoVisible());
 
     // Combine conditions
     const whereClause = whereConditions.length > 0

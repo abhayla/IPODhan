@@ -125,7 +125,7 @@ export async function GET(
     const ipoRepository = new IPORepository(db, redis);
 
     // Fetch IPO by ID
-    const ipo = await ipoRepository.findById(id);
+    const ipo = await ipoRepository.findById(id, { includeHidden: true });
     if (!ipo) {
       requestLogger.warn({ ipoId: id }, 'IPO not found');
       return createErrorResponse(
@@ -268,7 +268,7 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext: Ad
     const ipoRepository = new IPORepository(db, redis);
 
     // Check if IPO exists
-    const existingIPO = await ipoRepository.findById(id);
+    const existingIPO = await ipoRepository.findById(id, { includeHidden: true });
     if (!existingIPO) {
       requestLogger.warn({ ipoId: id }, 'IPO not found');
       return createErrorResponse(
@@ -294,7 +294,7 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext: Ad
       userAgent: request.headers.get('user-agent'),
     });
     if (outcome.refused) return adminFieldsSaveResponse(outcome);
-    const updatedIPO = await ipoRepository.findById(id);
+    const updatedIPO = await ipoRepository.findById(id, { includeHidden: true });
 
     const duration = Date.now() - startTime;
     requestLogger.info(

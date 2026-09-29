@@ -6,6 +6,7 @@
  */
 
 import { sql } from 'drizzle-orm';
+import { publicIpoVisible } from '@/lib/repositories/public-ipo-visibility';
 import { db, ipos, listingPerformance } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 
@@ -75,7 +76,7 @@ export async function getSectorAverage(sector: string | null): Promise<number> {
       .from(ipos)
       .innerJoin(listingPerformance, sql`${ipos.id} = ${listingPerformance.ipoId}`)
       .where(
-        sql`${ipos.status} = 'LISTED' AND ${ipos.sector} = ${sector} AND ${ipos.listingDate} IS NOT NULL`
+        sql`${ipos.status} = 'LISTED' AND ${ipos.sector} = ${sector} AND ${ipos.listingDate} IS NOT NULL AND ${publicIpoVisible()}`
       );
 
     // Extract average value (handle null case)
