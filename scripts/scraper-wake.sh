@@ -685,10 +685,20 @@ print(json.dumps({
     : > "$alert_marker" 2>/dev/null || true
 
     curl_cfg="$(mktemp)"
-    # A kill between here and the `rm -f` below (SIGTERM forwarded per the
-    # wake-signalled handler above, or an operator's own kill -9 on this
-    # subshell) must not leave the key file behind.
+    # This file holds the Notifier API key (chmod 600 below, root-only) for
+    # the life of this subshell. It is removed when the subshell exits
+    # normally (EXIT trap) AND when it is terminated by TERM, INT or HUP
+    # (the wake-signalled handler above forwards TERM; an operator may send
+    # any of the three) - each of those traps runs the same cleanup, then
+    # exits with the signal's conventional code so the subshell's exit
+    # status still reflects the kill. A `kill -9` (SIGKILL) CANNOT be
+    # trapped by any shell - nothing here or anywhere else in POSIX sh can
+    # remove the file in that case; the file is 0600 root-only for the
+    # short window it can be left behind.
     trap 'rm -f "$curl_cfg"' EXIT
+    trap 'rm -f "$curl_cfg"; exit 143' TERM
+    trap 'rm -f "$curl_cfg"; exit 130' INT
+    trap 'rm -f "$curl_cfg"; exit 129' HUP
     chmod 600 "$curl_cfg"
     # Escape backslash then double-quote (order matters) so a key containing
     # either cannot break out of the `-K` config file's quoted value.
