@@ -365,7 +365,7 @@ immediately alongside item 1.
 
 | Design section | Rule ids |
 |---|---|
-| §2.9 | R-242 |
+| §2.9 | R-242, R-257 |
 | §5.4 | R-116, R-117 |
 | §6.1 | R-122, R-212, R-213 |
 | §6.2 | R-124 |
