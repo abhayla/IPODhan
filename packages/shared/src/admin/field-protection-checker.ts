@@ -91,13 +91,20 @@ export class FieldProtectionService {
     }
 
     // Query database
+    // §9.2 item 23 (OD-116/OD-118): a hidden row is locked for every scraper writer that asks,
+    // however it found the row (the GMP orchestrator finds by dates / name, not by identity).
+    // The DB trigger `refuse_write_to_hidden_ipo` is the backstop for writers that never ask.
     const result = await this.db
-      .select({ scraperLocked: ipos.scraperLocked })
+      .select({ scraperLocked: ipos.scraperLocked, hiddenAt: ipos.hiddenAt, slug: ipos.slug })
       .from(ipos)
       .where(eq(ipos.id, ipoId))
       .limit(1);
 
-    const isLocked = result[0]?.scraperLocked ?? false;
+    const isHidden = result[0]?.hiddenAt != null;
+    if (isHidden) {
+      console.info(`[FieldProtection] scraper write refused: IPO is hidden (id=${ipoId}, slug=${result[0]?.slug})`);
+    }
+    const isLocked = (result[0]?.scraperLocked ?? false) || isHidden;
 
     // Cache result if Redis available
     if (this.redis) {

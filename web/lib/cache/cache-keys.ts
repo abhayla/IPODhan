@@ -223,6 +223,13 @@ export function getIPOInvalidationKeys(ipoId: string, slug?: string): string[] {
     `ipo:id:${ipoId}`,
     `ipo:list:*`,
     `ipo:search:*`,
+    // §9.2 item 23: every other reader cache that holds IPO rows (history 24 h, listings,
+    // the fuzzy slug fallback), so a hide or an edit reaches every list at once.
+    `ipos:history:*`,
+    `ipo:listings:*`,
+    `ipo:fuzzy:*`,
+    // The scraper's lock cache (FieldProtectionService.isIPOLocked, 1 h): a hidden row is locked.
+    `protection:ipo_locked:${ipoId}`,
   ];
 
   if (slug) {

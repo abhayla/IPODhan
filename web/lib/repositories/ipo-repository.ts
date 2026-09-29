@@ -405,6 +405,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         try {
           const [ipo] = await this.db
             .select()
+            // visibility: raw fetch for the cache, findBySlug drops a hidden row after the cache
             .from(ipos)
             .where(eq(ipos.slug, slug))
             .limit(1);
@@ -549,6 +550,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         try {
           const [ipo] = await this.db
             .select()
+            // visibility: raw fetch for the cache, findById drops a hidden row after the cache
             .from(ipos)
             .where(eq(ipos.id, id))
             .limit(1);
@@ -1280,6 +1282,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       () =>
         this.db
           .select({ id: ipos.id })
+          // visibility: slug-redirect holder lookup, a hidden row still owns its slug
           .from(ipos)
           .where(eq(ipos.slug, oldSlug))
           .limit(1),

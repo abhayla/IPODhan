@@ -21,7 +21,9 @@ import type { NextRequest } from 'next/server';
 import { isHiddenIpoSlug } from '@/lib/ipo-visibility/hidden-ipo-slugs';
 
 /** An IPO detail address: /ipos/<slug> (no deeper segment). */
-const IPO_DETAIL_PATH = /^\/ipos\/([^/]+)\/?$/;
+// The page AND every slug-keyed API under it (/api/ipos/<slug>/gmp/latest, /documents, ...): the
+// API's findBySlugWithFallback would otherwise answer a hidden address with a neighbour's data.
+export const IPO_DETAIL_PATH = /^\/(?:api\/)?ipos\/([^/]+)(?:\/.*)?$/;
 
 /**
  * §9.2 item 23 (OD-116/OD-118): a hidden IPO's address answers 410 Gone. Decided here because an

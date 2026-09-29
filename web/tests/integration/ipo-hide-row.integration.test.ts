@@ -26,7 +26,9 @@ import {
   IpoFieldPlanRepository,
   resolveIpoRow,
   IpoHiddenError,
+  GMPRepository as SharedGMPRepository,
 } from '@ipodhan/shared';
+import { FieldProtectionService } from '@ipodhan/shared/admin/field-protection-checker';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { hideIpo, unhideIpo, IPO_HIDDEN_ACTION, IPO_UNHIDDEN_ACTION } from '@/lib/services/ipo-visibility-service';
 import { isHiddenIpoSlug, resetHiddenIpoSlugCache } from '@/lib/ipo-visibility/hidden-ipo-slugs';
@@ -62,6 +64,9 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 23: hide a row (410, out of lists, st
 
   async function cleanup() {
     const ids = [HIDDEN_ID, NEIGHBOUR_ID];
+    await db.delete(schema.gmpRecords).where(inArray(schema.gmpRecords.ipoId, ids));
+    await db.delete(schema.subscriptions).where(inArray(schema.subscriptions.ipoId, ids));
+    await db.delete(schema.fieldSources).where(inArray(schema.fieldSources.ipoId, ids));
     await db.delete(schema.ipoFieldPlan).where(inArray(schema.ipoFieldPlan.ipoId, ids));
     await db.delete(schema.auditLogs).where(inArray(schema.auditLogs.ipoId, ids));
     await db.delete(schema.ipos).where(inArray(schema.ipos.id, ids));
@@ -197,6 +202,37 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 23: hide a row (410, out of lists, st
     expect(audit).toHaveLength(1);
     expect(audit[0].newValue).toBe('Not an IPO: a listed PSU stored as a CLOSED IPO (F-174)');
     expect(audit[0].adminUser).toBe('item23-test');
+  });
+
+  it('hidden row: every scraper writer is refused, however it found the row (class guard)', async () => {
+    // (1) The gate the GMP orchestrator and every lock-checking writer asks (it finds rows by
+    // dates / name, never through identity): a hidden row is locked, a visible one is not.
+    const protection = new FieldProtectionService(db as never, null);
+    expect(await protection.isIPOLocked(HIDDEN_ID)).toBe(true);
+    expect(await protection.isIPOLocked(NEIGHBOUR_ID)).toBe(false);
+
+    // (2) The backstop for a writer that never asks: the shared GMPRepository.create (the call
+    // createGMPRecord makes) and a raw subscriptions insert both fail with the row's identity.
+    const gmpRepo = new SharedGMPRepository(db as never, noRedis);
+    const gmpWrite = gmpRepo.create({ ipoId: HIDDEN_ID, timestamp: new Date(), gmp: 12, source: 'INVESTORGAIN_GMP' } as never);
+    await expect(gmpWrite).rejects.toThrow();
+    const subWrite = pool.query('INSERT INTO subscriptions (ipo_id, timestamp) VALUES ($1, now())', [HIDDEN_ID]);
+    await expect(subWrite).rejects.toMatchObject({ code: 'IH001', message: expect.stringContaining(`id=${HIDDEN_ID} slug=${HIDDEN_SLUG}`) });
+    const gmpRaw = pool.query(`INSERT INTO gmp_records (ipo_id, timestamp, gmp, source) VALUES ($1, now(), 12, 'INVESTORGAIN_GMP')`, [HIDDEN_ID]);
+    await expect(gmpRaw).rejects.toMatchObject({ code: 'IH001' });
+    const written = await db.select({ id: schema.gmpRecords.id }).from(schema.gmpRecords).where(eq(schema.gmpRecords.ipoId, HIDDEN_ID));
+    expect(written).toEqual([]);
+
+    // It discriminates: the same write to the visible neighbour lands.
+    await gmpRepo.create({ ipoId: NEIGHBOUR_ID, timestamp: new Date(), gmp: 12, source: 'INVESTORGAIN_GMP' } as never);
+    const neighbour = await db.select({ id: schema.gmpRecords.id }).from(schema.gmpRecords).where(eq(schema.gmpRecords.ipoId, NEIGHBOUR_ID));
+    expect(neighbour).toHaveLength(1);
+
+    // An admin-sourced provenance row still passes (admins keep the row's data, OD-118).
+    await pool.query(
+      `INSERT INTO field_sources (ipo_id, table_name, row_key, field_name, source, confidence) VALUES ($1::uuid, 'ipos', $2, 'lotSize', 'ADMIN', 100)`,
+      [HIDDEN_ID, HIDDEN_ID]
+    );
   });
 
   it('unhide restores every surface and is audited', async () => {
