@@ -107,6 +107,7 @@ import {
   SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD, PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS,
 } from './lib/scraper-wake-detection.mjs';
 import { newestWakeTimestamp } from './ops/wake-delta.mjs';
+import { checkPriceJobZeroPricedStreak, PRICE_JOB_ZERO_PRICED_STREAK_THRESHOLD } from './lib/post-listing-price-checks.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
 import { adminQueueSize, formatAdminQueueBlock } from './ops/admin-queue-size.mjs';
 import { ratioYieldVerdict, summarizeRatioYield, RATIO_FIXED_EXTRACTOR_VERSION, RATIO_YIELD_TRACKING_ISSUE } from './lib/ratio-yield-verdict.mjs';
@@ -1761,6 +1762,7 @@ async function checkScraperWake() {
     record('m_scraper_wake_freshness', `newest wake log line per slot is within ${SCRAPER_WAKE_FRESHNESS_CEILING_MINUTES} minutes`, 'UNVERIFIABLE', detail);
     record('m_scraper_wake_skipped_run', `newest ${SCRAPER_WAKE_SKIPPED_RUN_THRESHOLD} wake log lines per slot are not all wake-skipped`, 'UNVERIFIABLE', detail);
     record('m_provenance_marker_write_failed', `no provenance-marker-write-failed event in the last ${PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS}h per slot`, 'UNVERIFIABLE', detail);
+    record('m_price_job_zero_priced_streak', `the newest ${PRICE_JOB_ZERO_PRICED_STREAK_THRESHOLD} post-listing price run-complete lines per slot are not all candidates>0 with priced=0`, 'UNVERIFIABLE', detail);
     return;
   }
 
@@ -1801,6 +1803,20 @@ async function checkScraperWake() {
     const unverifiableDetails = markerWriteResults.filter((r) => r.unverifiable).map((r) => r.detail);
     const detail = agg.offenders.join('; ') || unverifiableDetails.join('; ') || 'no failed marker writes on any slot';
     record('m_provenance_marker_write_failed', `no provenance-marker-write-failed event in the last ${PROVENANCE_MARKER_WRITE_FAILED_WINDOW_HOURS}h per slot (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
+      agg.status, detail);
+  }
+
+  // #1310 (listed-rotation-stall, 2nd write path): same per-slot log, read for the price job's
+  // OWN pino "run complete" lines this time — a starved rotation (candidates>0, priced=0 for
+  // PRICE_JOB_ZERO_PRICED_STREAK_THRESHOLD consecutive runs) is exactly the shape staging showed
+  // before the write-time fix. Same absent-log-is-unverifiable, never-a-false-FAIL contract.
+  const priceZeroPricedResults = SCRAPER_WAKE_SLOTS.map((slot) => ({ slot, ...scraperWakeLogSlotResult(slot, checkPriceJobZeroPricedStreak) }));
+  for (const r of priceZeroPricedResults) if (r.violation) notify('m_price_job_zero_priced_streak', 'P1', r.violation, 'the post-listing price job has walked candidates with zero priced across consecutive runs', r.violation);
+  {
+    const agg = aggregateWakeLogSlotResults(priceZeroPricedResults);
+    const unverifiableDetails = priceZeroPricedResults.filter((r) => r.unverifiable).map((r) => r.detail);
+    const detail = agg.offenders.join('; ') || unverifiableDetails.join('; ') || 'no zero-priced streak on any slot';
+    record('m_price_job_zero_priced_streak', `the newest ${PRICE_JOB_ZERO_PRICED_STREAK_THRESHOLD} post-listing price run-complete lines per slot are not all candidates>0 with priced=0 (${SCRAPER_WAKE_SLOTS.length} slot(s) checked)`,
       agg.status, detail);
   }
 }
@@ -3930,7 +3946,7 @@ async function main() {
   await runCheck(checkG3_inertDetector, ['g_inert_detector']);
   await runCheck(checkG, ['g_freshness_per_type']);
   await runCheck(checkH, ['h_pm2_env_tz', 'h_pm2_log_size']);
-  await runCheck(checkScraperWake, ['m_scraper_wake_crontab', 'm_scraper_wake_freshness', 'm_scraper_wake_skipped_run', 'm_provenance_marker_write_failed']);
+  await runCheck(checkScraperWake, ['m_scraper_wake_crontab', 'm_scraper_wake_freshness', 'm_scraper_wake_skipped_run', 'm_provenance_marker_write_failed', 'm_price_job_zero_priced_streak']);
   await runCheck(checkI, ['i_wire_or_retire']);
   await runCheck(checkIdentity, ['i_same_ipo_two_rows', 'i_ipo_title_in_name', 'i_company_two_live_rows', 'i_name_bound_live', 'i_identity_held']);
   await runCheck(checkSourceKeyConflicts, ['i_source_key_conflict']);

@@ -5,7 +5,7 @@ import { eq, sql } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { IPORepository, FieldSourcesRepository } from '@ipodhan/shared';
 import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
-import { writePostListingPrice, writePostListingState } from '../../src/services/data-persister';
+import { writePostListingPrice, writePostListingState, writePostListingAttempt } from '../../src/services/data-persister';
 import { selectPriceCandidates } from '../../src/scheduler/post-listing-price';
 
 /**
@@ -170,5 +170,65 @@ describe.skipIf(!DATABASE_URL)('post-listing price: the narrow write on Postgres
     expect((await selectPriceCandidates(db as any, NOW)).some((c) => c.id === id)).toBe(false);
     await repo.update(id, { listingDate: '2026-06-27' }); // day 90 counting the listing day as day 1
     expect((await selectPriceCandidates(db as any, NOW)).some((c) => c.id === id)).toBe(true);
+  });
+
+  // #1310 round 2, MAJOR-1: selectPriceCandidates orders by `price_last_attempt_at`, NOT
+  // `current_price_updated_at` — the whole point of the fix. `current_price_updated_at` is
+  // seeded in the OPPOSITE order on purpose: if the mutation under test (reverting the
+  // ORDER BY to `current_price_updated_at`) landed, this assertion would read NEW, OLD, NULL
+  // instead of NULL, OLD, NEW and fail.
+  it('orders LISTED rows by price_last_attempt_at asc nulls first — NOT current_price_updated_at (#1310)', async () => {
+    const mk = async (suffix: string, attempt: Date | null, priceUpdated: Date) => {
+      const [row] = await db!
+        .insert(schema.ipos)
+        .values({
+          companyName: `${NAME} ${suffix}`,
+          slug: `s5-rotation-${suffix.toLowerCase()}`,
+          status: 'LISTED',
+          segment: 'MAINBOARD',
+          offeringType: 'IPO',
+          symbol: `ROT${suffix}`,
+          listingDate: '2026-09-17',
+          currentPrice: '10.00',
+          currentPriceUpdatedAt: priceUpdated,
+          priceLastAttemptAt: attempt,
+        } as any)
+        .returning({ id: schema.ipos.id });
+      return row.id;
+    };
+    // currentPriceUpdatedAt is deliberately the OPPOSITE order of priceLastAttemptAt:
+    // "New" has the OLDEST price stamp, "Old" the newest, "Null" none at all.
+    const idNull = await mk('Null', null, new Date('2026-09-24T06:00:00Z'));
+    const idOld = await mk('Old', new Date('2026-09-24T05:00:00Z'), new Date('2026-09-24T07:00:00Z'));
+    const idNew = await mk('New', new Date('2026-09-24T06:00:00Z'), new Date('2026-09-24T04:00:00Z'));
+    try {
+      const rows = (await selectPriceCandidates(db as any, NOW)).filter((c) => [idNull, idOld, idNew].includes(c.id));
+      expect(rows.map((r) => r.id)).toEqual([idNull, idOld, idNew]);
+    } finally {
+      for (const id of [idNull, idOld, idNew]) {
+        await db!.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, id));
+        await db!.delete(schema.ipos).where(eq(schema.ipos.id, id));
+      }
+    }
+  });
+
+  // #1310 round 2, MAJOR-2: writePostListingAttempt bypasses IPORepository.update() (and
+  // therefore field-hold.ts's `honourScraperLock` filter) on purpose — a scraper_locked row
+  // must still get its rotation stamp, or a locked LISTED row pins the front forever exactly
+  // like an un-stamped never-priceable one did before this fix. Also proves MINOR-1: no other
+  // column (updated_at included) moves.
+  it('stamps price_last_attempt_at on a scraper_locked row, and touches NO other column (MINOR-1)', async () => {
+    const id = await seed();
+    const repo = new IPORepository(db as any, noRedis);
+    await repo.update(id, { scraperLocked: true, scraperLockNote: 'owner hold, #1310 test' } as any);
+    const before = await rowAsText(id);
+    const at = new Date('2026-09-24T08:00:00Z');
+
+    await writePostListingAttempt({ db: db as any, ipoId: id, at });
+
+    const after = await rowAsText(id);
+    expect(Object.keys(after).filter((k) => after[k] !== before[k])).toEqual(['price_last_attempt_at']);
+    const t = await pool!.query(`SELECT price_last_attempt_at::text AS a FROM ipos WHERE id = $1`, [id]);
+    expect(t.rows[0].a).toBe('2026-09-24 08:00:00');
   });
 });

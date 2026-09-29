@@ -22,7 +22,7 @@ import logger from '../utils/logger.js';
 import { DistributedLock } from '../utils/distributed-lock.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { defaultHolidayLookup } from '../services/document-cycle-calendar-gate.js';
-import { writeDelistingState, writePostListingPrice, writePostListingState } from '../services/data-persister.js';
+import { writeDelistingState, writePostListingAttempt, writePostListingPrice, writePostListingState } from '../services/data-persister.js';
 import { recordLiveStep } from '../services/step-ledger-recorders.js';
 import {
   createPacer,
@@ -34,7 +34,7 @@ import {
 } from '../scrapers/post-listing-quote.js';
 import { fetchNseSymbolQuoteRaw } from '../scrapers/nse-api-client.js';
 import { fetchBseScripMaster } from '../scrapers/bse-scrip-master.js';
-import { isCloseReadIST, isPriceJobWindowIST, runPostListingPriceJob, selectPriceCandidates } from './post-listing-price.js';
+import { decidePriceJobExit, isCloseReadIST, isPriceJobWindowIST, runPostListingPriceJob, selectPriceCandidates } from './post-listing-price.js';
 
 /** §2.1 lock table: the `live` class — the live-figures job's own resource and TTL (index.ts LIVE_LOCK_*). */
 export const PRICE_LOCK_RESOURCE = 'scraper:live';
@@ -140,6 +140,12 @@ export async function runPostListingPriceWake(now: Date = new Date()): Promise<n
           patch,
         });
       },
+      writeAttempt: async (c, at) => {
+        // #1310 round 2 (MAJOR-2): straight through drizzle (`db`), never `ipoRepository` — see
+        // writePostListingAttempt's own comment for why: the repository's hold check would drop
+        // this bookkeeping stamp on every scraper_locked row.
+        await writePostListingAttempt({ db, ipoId: c.id, at });
+      },
       writeDelisting: async (c, next, delistAt) => {
         await writeDelistingState({ ipoRepository: ipoRepository as any, ipoId: c.id, next, delistAt });
       },
@@ -152,7 +158,12 @@ export async function runPostListingPriceWake(now: Date = new Date()): Promise<n
         updated: summary.updated.length,
         confirmed: summary.confirmed.length,
         unchanged: summary.unchanged.length,
-        stale: summary.stale,
+        // #1310: was `summary.stale` (the array) — inconsistent with the three siblings above
+        // (which log `.length`) and undercounted to 0 whenever a stale read landed, because
+        // `Number([...])` on a non-empty array is `NaN`. The new detection check
+        // (checkPriceJobZeroPricedStreak) reads this field as a count of priced rows, so the
+        // undercount would have made a genuinely priced run look like a zero-priced one.
+        stale: summary.stale.length,
         noPrice: summary.noPrice,
         refused: summary.refused,
         notReached: summary.notReached,
@@ -163,7 +174,19 @@ export async function runPostListingPriceWake(now: Date = new Date()): Promise<n
       `Post-listing price job: run complete — ${summary.calls.total} exchange calls (NSE ${summary.calls.nse}, BSE ${summary.calls.bse}, BSE list ${summary.calls.bseList}) for ${summary.candidates} IPOs`
     );
     const priced = summary.updated.length + summary.confirmed.length + summary.unchanged.length + summary.stale.length;
-    return summary.refused.length > 0 && priced === 0 ? 1 : 0;
+    const decision = decidePriceJobExit({ refused: summary.refused.length, priced, notReached: summary.notReached.length });
+    if (decision.code === 1) {
+      logger.warn(
+        { refused: summary.refused.length, candidates: summary.candidates, reason: decision.reason },
+        `Post-listing price job: exiting 1 — ${decision.reason}`
+      );
+    } else if (summary.notReached.length > 0) {
+      logger.warn(
+        { notReached: summary.notReached.length, candidates: summary.candidates, priced, reason: decision.reason },
+        `Post-listing price job: ${decision.reason}`
+      );
+    }
+    return decision.code;
   } catch (error) {
     logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Post-listing price job failed');
     return 1;

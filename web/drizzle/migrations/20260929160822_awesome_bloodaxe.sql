@@ -1,0 +1,1 @@
+ALTER TABLE "ipos" ADD COLUMN "price_last_attempt_at" timestamp;

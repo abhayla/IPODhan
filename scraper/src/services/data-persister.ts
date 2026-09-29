@@ -1026,6 +1026,41 @@ export async function writePostListingPrice(params: {
 export const POST_LISTING_STATE_COLUMNS = ['priceNseSeries'] as const;
 
 /**
+ * Minimal shape `writePostListingAttempt` needs — matches the one drizzle call it makes,
+ * injectable so a unit test can assert the exact SET without a live database.
+ */
+export interface PriceAttemptWriter {
+  update: typeof db.update;
+}
+
+/**
+ * #1310 round 2 (MAJOR-2, listed-rotation-stall, 2nd write path): stamps `priceLastAttemptAt`
+ * on the row — called for EVERY candidate the job actually attempted this run (priced,
+ * no-price, refused, or an unexpected error), never only on a successful price write. This is
+ * the ONLY thing that stops a never-priceable row from pinning the front of
+ * `selectPriceCandidates`'s ASC-NULLS-FIRST order forever.
+ *
+ * Deliberately bypasses `IPORepository.update()`: that path re-checks admin/scraper-lock
+ * protection inside its own transaction (`filterPatchUnderHold(..., { honourScraperLock: true
+ * })`, field-hold.ts:53) and drops EVERY key of the patch for a `scraper_locked` row — this
+ * stamp included, which would leave a locked LISTED row pinning the front forever, exactly the
+ * starvation this fix exists to stop. `price_last_attempt_at` is job bookkeeping, not a
+ * published field: no admin ever holds it, so the hold check has nothing to protect here.
+ * Writing straight through drizzle also fixes MINOR-1 as a side effect — no `updatedAt` bump
+ * (which would churn the sitemap's lastmod) and no repository cache flush (`ipo:list`/`search`)
+ * on every walked row, priced or not. A Date object is bound (never a `.toISOString()` string)
+ * per ist-timezone.md: drizzle's own mapper calls `.toISOString()` on whatever it is handed.
+ * A failure here is logged and swallowed by the caller — it must never crash the run.
+ */
+export async function writePostListingAttempt(params: {
+  db: PriceAttemptWriter;
+  ipoId: string;
+  at: Date;
+}): Promise<void> {
+  await params.db.update(iposTable).set({ priceLastAttemptAt: params.at }).where(eqOp(iposTable.id, params.ipoId));
+}
+
+/**
  * Item 7 S5 (spec §2.1 job row "Post-listing price"): the job's row state. SETs only
  * `priceNseSeries` (the stock's working NSE series, asked first next time).
  */

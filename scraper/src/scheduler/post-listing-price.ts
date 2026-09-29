@@ -119,7 +119,11 @@ export async function selectPriceCandidates(
     })
     .from(t)
     .where(and(eq(t.status, 'LISTED'), gt(t.listingDate, from), lte(t.listingDate, today)))
-    .orderBy(sql`${t.currentPriceUpdatedAt} asc nulls first`, asc(t.id));
+    // #1310: ordered by the LAST ATTEMPT, not the last successful price. A row that never
+    // prices (no symbol, delisted read, timeout) still gets a `priceLastAttemptAt` stamp every
+    // run it is walked, so it moves to the BACK of the queue like any other attempted row —
+    // it no longer pins the front forever and starves the priceable rows behind it.
+    .orderBy(sql`${t.priceLastAttemptAt} asc nulls first`, asc(t.id));
   return rows.map((r) => ({
     ...r,
     listingDate: r.listingDate == null ? null : String(r.listingDate),
@@ -143,6 +147,8 @@ export interface PriceJobDeps {
   loadBseScrips: () => Promise<Map<string, string>>;
   writePrice: (c: PriceCandidate, q: Extract<QuoteOutcome, { kind: 'price' }>) => Promise<PriceWriteOutcome>;
   writeState: (c: PriceCandidate, patch: PriceStatePatch) => Promise<void>;
+  /** #1310: stamps `priceLastAttemptAt` on EVERY candidate this run actually attempted. */
+  writeAttempt: (c: PriceCandidate, at: Date) => Promise<void>;
   /** #983: persist the delisting count; `delistAt` set = the third strike, status becomes DELISTED. */
   writeDelisting?: (c: PriceCandidate, next: DelistingState, delistAt: Date | null) => Promise<void>;
   log: (line: string, fields: Record<string, unknown>) => void;
@@ -209,6 +215,32 @@ function guardPriceRead(
   return { ok: true, isinNote: null };
 }
 
+export interface PriceJobExitDecision {
+  code: 0 | 1;
+  reason: string;
+}
+
+/**
+ * #1310 round 2 (MINOR-3): the wake's exit-code rule, pulled out of `runPostListingPriceWake`
+ * as a pure function so it is unit-testable without a lock/DB/redis wire-up. Exit 1 ONLY when
+ * the run walked every candidate it could reach this run (notReached === 0 — no deadline hit)
+ * and still refused all of them with zero priced: a real outage. A deadline hit is EXPECTED on
+ * a full rotation and is never itself a failure signal — every row is reached over successive
+ * runs via `priceLastAttemptAt` ordering. A non-zero exit always carries its own reason
+ * (signal-ownership.md R6); a zero exit still carries a `reason` string so a caller can log it
+ * unconditionally.
+ */
+export function decidePriceJobExit(params: { refused: number; priced: number; notReached: number }): PriceJobExitDecision {
+  const { refused, priced, notReached } = params;
+  if (refused > 0 && priced === 0 && notReached === 0) {
+    return { code: 1, reason: `every reached candidate this run was refused (outage) and none priced` };
+  }
+  if (notReached > 0) {
+    return { code: 0, reason: `deadline reached with ${notReached} candidate(s) not attempted this run — they lead next run via priceLastAttemptAt` };
+  }
+  return { code: 0, reason: 'no zero-priced outage and no deadline hit this run' };
+}
+
 export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJobSummary> {
   const summary: PriceJobSummary = {
     candidates: deps.candidates.length,
@@ -253,6 +285,21 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
     let priced = false;
     let reportDetail = '';
     let reportExchange = '';
+    // #1310: called on every branch this candidate actually reaches (priced, no-price,
+    // refused, unexpected error) — never on the deadline branch above, which never touched
+    // this row. Best-effort: a stamp failure is logged and swallowed, never allowed to
+    // surface as this candidate's own outcome (same non-fatal contract as the series-state
+    // write below).
+    const stampAttempt = async () => {
+      try {
+        await deps.writeAttempt(c, deps.now);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        deps.log(`post-listing price: ${name} attempt-stamp write failed (non-fatal): ${detail}`, {
+          ipoId: c.id, reason: 'attempt-stamp-failed', error: detail,
+        });
+      }
+    };
     try {
       // NSE first (§1 rank 1), the cached working series asked first.
       let nseVerdict: Verdict = 'unknown';
@@ -346,6 +393,7 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
           `post-listing price: ${name} ${outcome} ${winner.exchange} ${winner.price} as of ${winner.asOfText}${isinNote ? ` (${isinNote})` : ''}`,
           { ipoId: c.id, exchange: winner.exchange, price: winner.price, asOf: winner.asOf.toISOString(), outcome, series: winner.series ?? null, isinNote },
         );
+        await stampAttempt();
         continue;
       }
 
@@ -354,6 +402,7 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
         deps.log(`post-listing price: ${name} no price (outage) — NSE ${nseVerdict}: ${nseDetail}; BSE ${bseVerdict}: ${bseDetail}`, {
           ipoId: c.id, reason: 'refused', nse: nseDetail, bse: bseDetail,
         });
+        await stampAttempt();
         continue;
       }
       summary.noPrice.push(name);
@@ -361,11 +410,13 @@ export async function runPostListingPriceJob(deps: PriceJobDeps): Promise<PriceJ
         `post-listing price: ${name} no price this run — NSE ${nseVerdict}: ${nseDetail}; BSE ${bseVerdict}: ${bseDetail}`,
         { ipoId: c.id, reason: 'no-price', nse: nseVerdict, bse: bseVerdict },
       );
+      await stampAttempt();
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       if (!priced) nseAnswer = 'refused';
       summary.refused.push(name);
       deps.log(`post-listing price: ${name} refused — unexpected error, run continues: ${detail}`, { ipoId: c.id, reason: 'unexpected-error', error: detail });
+      await stampAttempt();
     } finally {
       // `finally`, because every branch above ends in `continue`: a price read must still reach the
       // count (it is the only thing that resets it).

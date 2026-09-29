@@ -1,0 +1,11 @@
+{
+  "id": "m_price_job_zero_priced_streak",
+  "findingClass": "the post-listing price job's own 'run complete' log line shows candidates > 0 and priced (updated+confirmed+unchanged+stale) === 0 for 3 consecutive runs on a slot -- the starved-rotation shape (listed-rotation-stall) where a front-pinned block of never-priceable rows exhausts the job's deadline before any priceable row is reached",
+  "issue": 1310,
+  "sourceTask": "C1-contract-3",
+  "failThreshold": "the newest PRICE_JOB_ZERO_PRICED_STREAK_THRESHOLD (3) run-complete lines per slot all have candidates>0 and priced===0",
+  "severity": "P1",
+  "unverifiableWhen": "the slot's wake log file is not present or unreadable on this host (expected on a dev machine or CI; the same per-slot log the scraper-wake checks read, populated by cron redirecting the scraper's own stdout)",
+  "knownFalsePositive": "#1310 round 2 MINOR-4: if EVERY LISTED row in the 90-day window is genuinely unpriceable this run (e.g. every one delisted mid-window with no live symbol, or an exchange-wide outage) this check FAILs correctly-shaped but non-actionable -- there is no priceable row anywhere for the rotation fix to reach. Distinguish from a real starved rotation by reading the same 3 run-complete lines' noPrice/refused breakdown: a starved rotation shows the SAME small set of company names in noPrice every run (the front-pinned block) with candidates >> that set's size, while a genuinely-all-unpriceable population shows noPrice/refused covering the FULL candidates count each run.",
+  "section": "checks"
+}
