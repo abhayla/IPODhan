@@ -14,6 +14,12 @@ import {
   eventDay,
   instantKey,
   DIGEST_MAX_IPOS,
+  ADMIN_INSTANT_CAP_PER_WAKE,
+  beginAdminAlertWake,
+  scanNewDisagreements,
+  publicBaseUrl,
+  editorLink,
+  type NewConflictRow,
   type AdminAlertDeps,
   type AdminInstantEvent,
   type QueueCountRow,
@@ -48,12 +54,13 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  beginAdminAlertWake();
   received = [];
   nextStatus = 200;
   process.env.NOTIFIER_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   process.env.NOTIFIER_KEY = 'test-key';
   process.env.NOTIFIER_PROJECT = 'ipodhan';
-  process.env.NEXT_PUBLIC_APP_URL = 'https://staging.example.test';
+  process.env.ADMIN_ALERT_BASE_URL = 'https://staging.example.test';
 });
 
 afterEach(() => {
@@ -278,5 +285,183 @@ describe('eventDay (ist-timezone rule)', () => {
     expect(eventDay('2026-09-29 18:29:00')).toBe('2026-09-29'); // 23:59 IST
     expect(eventDay('2026-09-29 18:31:00')).toBe('2026-09-30'); // 00:01 IST
     expect(eventDay('2026-09-29T18:31:00.000Z')).toBe('2026-09-30');
+  });
+});
+
+// ------------------------------------------------ review fix round (PR #1284)
+
+function conflictRow(i: number, over: Partial<NewConflictRow> = {}): NewConflictRow {
+  const id = `22222222-2222-2222-2222-${String(i).padStart(12, '0')}`;
+  return {
+    conflictId: `c-${i}`,
+    ipoId: id,
+    slug: `ipo-${i}`,
+    companyName: `IPO ${i} Ltd`,
+    status: 'OPEN',
+    tableName: 'ipos',
+    fieldName: 'issueSize',
+    source1: 'NSE',
+    value1: '100',
+    source2: 'BSE',
+    value2: '120',
+    documentId: null,
+    ...over,
+  };
+}
+
+function scanDeps(rows: NewConflictRow[], alert: AdminAlertDeps, mark: { at: Date | null } = { at: null }) {
+  const sinceSeen: Date[] = [];
+  return {
+    mark,
+    sinceSeen,
+    deps: {
+      now: NOON_IST,
+      loadNewConflicts: async (since: Date) => {
+        sinceSeen.push(since);
+        return rows;
+      },
+      getMark: async () => mark.at,
+      setMark: async (at: Date) => {
+        mark.at = at;
+      },
+      alert,
+    },
+  };
+}
+
+describe('scanNewDisagreements (the real instant emitter, MAJOR)', () => {
+  it('a new cross-source disagreement on an OPEN IPO sends exactly one POST of type admin-new-disagreement', async () => {
+    const s = scanDeps([conflictRow(1)], memoryDeps(NOON_IST));
+    const r = await scanNewDisagreements(s.deps);
+    expect(received).toHaveLength(1);
+    expect(received[0].body.type).toBe('admin-new-disagreement');
+    expect(String(received[0].body.body)).toContain('NSE 100 vs BSE 120');
+    expect(String(received[0].body.body)).toContain('https://staging.example.test/ipos/ipo-1?edit=ipos.issueSize');
+    expect(r).toMatchObject({ scanned: 1, markAdvanced: true });
+    expect(r.outcomes.sent).toBe(1);
+    expect(s.mark.at?.toISOString()).toBe(NOON_IST.toISOString());
+    // The first scan ever looks back one hour.
+    expect(s.sinceSeen[0].toISOString()).toBe(new Date(NOON_IST.getTime() - 3_600_000).toISOString());
+  });
+
+  it('a newer document (corrigendum) disagreeing with an ADMIN value sends one admin-newer-document-disagrees', async () => {
+    const row = conflictRow(2, {
+      source1: 'ADMIN',
+      value1: '2026-10-01',
+      source2: 'DRHP',
+      value2: '2026-10-03',
+      fieldName: 'closeDate',
+      documentId: 'doc-1',
+    });
+    const s = scanDeps([row], memoryDeps(NOON_IST));
+    await scanNewDisagreements(s.deps);
+    expect(received).toHaveLength(1);
+    expect(received[0].body.type).toBe('admin-newer-document-disagrees');
+    expect(String(received[0].body.body)).toContain('admin value 2026-10-01; a newer document says 2026-10-03');
+  });
+
+  it(`caps instant sends per wake at ${ADMIN_INSTANT_CAP_PER_WAKE}; the rest go to the digest store`, async () => {
+    const recorded: RecordedAdminEvent[] = [];
+    const rows = Array.from({ length: 50 }, (_, i) => conflictRow(i + 1));
+    const s = scanDeps(rows, memoryDeps(NOON_IST, recorded));
+    const r = await scanNewDisagreements(s.deps);
+    expect(received).toHaveLength(ADMIN_INSTANT_CAP_PER_WAKE);
+    expect(r.outcomes).toMatchObject({ sent: ADMIN_INSTANT_CAP_PER_WAKE, capped: 50 - ADMIN_INSTANT_CAP_PER_WAKE });
+    expect(recorded).toHaveLength(50 - ADMIN_INSTANT_CAP_PER_WAKE);
+    expect(recorded[0].type).toBe('new-disagreement');
+    // A new wake gets a fresh cap.
+    beginAdminAlertWake();
+    await scanNewDisagreements(scanDeps([conflictRow(99)], memoryDeps(NOON_IST)).deps);
+    expect(received).toHaveLength(ADMIN_INSTANT_CAP_PER_WAKE + 1);
+  });
+
+  it('a Notifier 500 keeps the mark, so the next wake retries the row', async () => {
+    nextStatus = 500;
+    const s = scanDeps([conflictRow(3)], memoryDeps(NOON_IST), { at: new Date('2026-09-29T08:00:00Z') });
+    const r = await scanNewDisagreements(s.deps);
+    expect(r.markAdvanced).toBe(false);
+    expect(s.mark.at?.toISOString()).toBe('2026-09-29T08:00:00.000Z');
+    expect(s.sinceSeen[0].toISOString()).toBe('2026-09-29T08:00:00.000Z');
+  });
+});
+
+describe('claim write failure after a successful send (MINOR 3)', () => {
+  it('reports sent, never throws, and sends once', async () => {
+    const deps = memoryDeps(NOON_IST);
+    deps.claim = async () => {
+      throw new Error('redis down');
+    };
+    const out = await sendAdminInstant(openEvent, deps);
+    expect(out.outcome).toBe('sent');
+    expect(received).toHaveLength(1);
+    expect(received[0].body.dedupeKey).toBe(instantKey(openEvent.type, 'staging', openEvent.ipoId, '2026-09-29'));
+  });
+});
+
+describe('digest window starts at the last successful digest (MINOR 4)', () => {
+  const NINE_THIRTY_IST = new Date('2026-09-29T04:00:00Z');
+  function digestDeps(last: Date | null) {
+    const seen: Date[] = [];
+    const marks: Date[] = [];
+    return {
+      seen,
+      marks,
+      deps: {
+        now: NINE_THIRTY_IST,
+        env: 'staging',
+        isClaimed: async () => false,
+        claim: async () => {},
+        send: sendOwnerAlert,
+        loadQueueCounts: async () => [],
+        loadEvents: async (since: Date) => {
+          seen.push(since);
+          return [];
+        },
+        lastSentAt: async () => last,
+        markSent: async (at: Date) => {
+          marks.push(at);
+        },
+      },
+    };
+  }
+
+  it('a late send (last digest 30 h ago) reads events since that send, not now - 24 h', async () => {
+    const last = new Date(NINE_THIRTY_IST.getTime() - 30 * 3_600_000);
+    const d = digestDeps(last);
+    const r = await runAdminDigest(d.deps);
+    expect(r.sent).toBe(true);
+    expect(d.seen[0].toISOString()).toBe(last.toISOString());
+    expect(String(received[0].body.body)).toContain(`since the last digest (${last.toISOString()})`);
+    expect(d.marks.map((x) => x.toISOString())).toEqual([NINE_THIRTY_IST.toISOString()]);
+  });
+
+  it('the first digest ever looks back 24 h', async () => {
+    const d = digestDeps(null);
+    await runAdminDigest(d.deps);
+    expect(d.seen[0].toISOString()).toBe(new Date(NINE_THIRTY_IST.getTime() - 86_400_000).toISOString());
+  });
+
+  it('a failed send does not move the last-sent mark', async () => {
+    nextStatus = 500;
+    const d = digestDeps(null);
+    const r = await runAdminDigest(d.deps);
+    expect(r.sent).toBe(false);
+    expect(d.marks).toHaveLength(0);
+  });
+});
+
+describe('absolute links per slot (MINOR 5)', () => {
+  it('maps prod and staging to their public domains, and the override wins', () => {
+    expect(publicBaseUrl({ DEPLOY_SLOT: 'prod' } as NodeJS.ProcessEnv)).toBe('https://ipodhan.com');
+    expect(publicBaseUrl({ DEPLOY_SLOT: 'staging' } as NodeJS.ProcessEnv)).toBe('https://staging.ipodhan.com');
+    expect(publicBaseUrl({ DEPLOY_SLOT: 'prod', ADMIN_ALERT_BASE_URL: 'https://x.test/' } as NodeJS.ProcessEnv)).toBe('https://x.test');
+  });
+
+  it('an alert link is absolute with no URL key in the env (the real scraper.env shape)', () => {
+    delete process.env.ADMIN_ALERT_BASE_URL;
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    process.env.DEPLOY_SLOT = 'prod';
+    expect(editorLink('anand-seamless-ltd', 'ipos.closeDate')).toBe('https://ipodhan.com/ipos/anand-seamless-ltd?edit=ipos.closeDate');
+    expect(editorLink('x')).toMatch(/^https:\/\//);
   });
 });

@@ -62,8 +62,27 @@ export function isLiveForDigest(status: string): boolean {
   return status === 'UPCOMING' || status === 'OPEN' || status === 'CLOSED';
 }
 
-/** The IPO page editor link (queue-order.ts editorHref convention); absolute when NEXT_PUBLIC_APP_URL is set. */
-export function editorLink(slug: string, field?: string, baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''): string {
+/**
+ * The public site per slot, so every link in an alert is absolute (a bare `/ipos/...` is not clickable
+ * in Telegram). The scraper knows its slot from DEPLOY_SLOT, which scripts/deploy-linux.sh sets on every
+ * pm2 start (`DEPLOY_SLOT="$SLOT"`, slot = staging | prod). Neither slot's scraper.env carries a site URL
+ * (verified on the box 2026-09-29), so the domains live here: prod = the site's canonical base
+ * (web/lib/seo/metadata.ts), staging = the host deploy-linux.yml probes for the served version.
+ * `ADMIN_ALERT_BASE_URL` overrides both (release runbook note, PR #1284).
+ */
+export const PUBLIC_BASE_URL_BY_SLOT: Readonly<Record<string, string>> = {
+  prod: 'https://ipodhan.com',
+  staging: 'https://staging.ipodhan.com',
+};
+
+export function publicBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const override = env.ADMIN_ALERT_BASE_URL?.trim();
+  if (override) return override.replace(/\/$/, '');
+  return PUBLIC_BASE_URL_BY_SLOT[env.DEPLOY_SLOT?.trim() ?? ''] ?? '';
+}
+
+/** The IPO page editor link (queue-order.ts editorHref convention), absolute for a known slot. */
+export function editorLink(slug: string, field?: string, baseUrl = publicBaseUrl()): string {
   const path = `/ipos/${encodeURIComponent(slug)}?edit=${field ? encodeURIComponent(field) : ''}`;
   return `${baseUrl.replace(/\/$/, '')}${path}`;
 }
@@ -111,14 +130,33 @@ export interface AdminAlertDeps {
   /** Written only after the alert it records was accepted. */
   claim(key: string): Promise<void>;
   send: Send;
-  /** The digest store for events that are not instant. */
+  /** The digest store for events that are not instant, and for instant events over the wake cap. */
   record(event: RecordedAdminEvent): Promise<void>;
+  /** Instant sends attempted this wake; defaults to the module's wake budget (beginAdminAlertWake). */
+  budget?: { sent: number };
+  /** Defaults to ADMIN_INSTANT_CAP_PER_WAKE. */
+  cap?: number;
+}
+
+/**
+ * At most this many instant sends per data wake (every emitter together: the disagreement scan and the
+ * OD-106 override). A burst (a source reshaping 50 live IPOs at once) must not flood the one owner
+ * chat; the rest go to the digest store and reach the owner in the 09:00 IST digest, never dropped.
+ */
+export const ADMIN_INSTANT_CAP_PER_WAKE = 10;
+
+const wakeBudget = { sent: 0 };
+
+/** Called once at the start of every scraper wake (index.ts main) to reset the instant cap. */
+export function beginAdminAlertWake(): void {
+  wakeBudget.sent = 0;
 }
 
 export type AdminInstantOutcome =
   | { outcome: 'sent'; key: string }
   | { outcome: 'already-sent'; key: string }
   | { outcome: 'unsent'; key: string; reason: string }
+  | { outcome: 'capped'; key: string }
   | { outcome: 'digest' };
 
 export function instantKey(type: AdminInstantType, env: string, ipoId: string, day: string): string {
@@ -194,6 +232,14 @@ export async function sendAdminInstant(event: AdminInstantEvent, deps?: AdminAle
     }
     const key = instantKey(event.type, env, event.ipoId, istDayIso(now));
     if (await d.isClaimed(key)) return { outcome: 'already-sent', key };
+    const budget = d.budget ?? wakeBudget;
+    const cap = d.cap ?? ADMIN_INSTANT_CAP_PER_WAKE;
+    if (budget.sent >= cap) {
+      await d.record({ ...event, at: now.toISOString() });
+      logger.warn({ key, cap }, 'Admin alert over the per-wake cap - recorded for the digest instead');
+      return { outcome: 'capped', key };
+    }
+    budget.sent++;
     const name = event.companyName ?? event.slug;
     const out = await d.send('P2', `[${env}] ${ADMIN_EVENT_LABELS[event.type]}: ${name} (${event.status})`, {
       body: `${name} (${event.slug}), field ${event.field}: ${event.detail}\nEdit: ${editorLink(event.slug, event.field)}`,
@@ -205,7 +251,14 @@ export async function sendAdminInstant(event: AdminInstantEvent, deps?: AdminAle
       logger.warn({ key, reason }, 'Admin alert NOT sent - will retry on the next event or wake');
       return { outcome: 'unsent', key, reason };
     }
-    await d.claim(key);
+    // The Notifier accepted it: a claim write that fails now must not turn a delivered alert into
+    // 'unsent' (the caller would think the owner never heard). The Notifier's dedupeKey is the
+    // backstop against a repeat on the next event or wake.
+    try {
+      await d.claim(key);
+    } catch (err) {
+      logger.warn({ key, reason: err instanceof Error ? err.message : String(err) }, 'Admin alert sent, but its claim write FAILED - the Notifier dedupeKey guards a repeat');
+    }
     logger.info({ key }, 'Admin alert sent (OD-112)');
     return { outcome: 'sent', key };
   } catch (err) {
@@ -238,6 +291,9 @@ export interface AdminDigestDeps {
   loadQueueCounts(): Promise<QueueCountRow[]>;
   /** admin-relevant audit rows and digest-store events since `since`, as RecordedAdminEvent. */
   loadEvents(since: Date): Promise<RecordedAdminEvent[]>;
+  /** When the last digest was accepted by the Notifier (null: never). The window starts there. */
+  lastSentAt?(): Promise<Date | null>;
+  markSent?(at: Date): Promise<void>;
 }
 
 export interface AdminDigestResult {
@@ -277,7 +333,7 @@ export function eventDay(at: string): string {
 export function buildAdminDigest(
   counts: QueueCountRow[],
   events: RecordedAdminEvent[],
-  opts: { env: string; day: string }
+  opts: { env: string; day: string; windowLabel?: string }
 ): { title: string; body: string; ipos: number } {
   const blocks = new Map<string, IpoBlock>();
   const blockFor = (slug: string, companyName: string, status: string, nearest: string | null): IpoBlock => {
@@ -327,7 +383,7 @@ export function buildAdminDigest(
   const totalEvents = ordered.reduce((s, b) => s + [...b.events.values()].reduce((x, y) => x + y, 0), 0);
   const liveCount = ordered.filter((b) => isLiveForDigest(b.status)).length;
   const lines: string[] = [
-    `${ordered.length} IPO(s) need attention (${liveCount} live): ${totalDis} disagreement(s), ${totalMiss} missing value(s), ${totalEvents} event(s) in the last 24 h.`,
+    `${ordered.length} IPO(s) need attention (${liveCount} live): ${totalDis} disagreement(s), ${totalMiss} missing value(s), ${totalEvents} event(s) ${opts.windowLabel ?? 'in the last 24 h'}.`,
   ];
   for (const b of ordered.slice(0, DIGEST_MAX_IPOS)) {
     const parts: string[] = [];
@@ -338,7 +394,7 @@ export function buildAdminDigest(
   }
   if (ordered.length > DIGEST_MAX_IPOS) {
     const rest = ordered.slice(DIGEST_MAX_IPOS);
-    lines.push(`... and ${rest.length} more IPO(s); full list: ${(process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')}/admin/conflicts`);
+    lines.push(`... and ${rest.length} more IPO(s); full list: ${publicBaseUrl()}/admin/conflicts`);
   }
   return {
     title: `[${opts.env}] Admin digest ${opts.day}: ${ordered.length} IPO(s), ${liveCount} live`,
@@ -360,17 +416,32 @@ export async function runAdminDigest(deps: AdminDigestDeps): Promise<AdminDigest
   const base = { day, key, sent: false, alreadySent: false, ipos: 0 };
   if (istMinuteOfDay(now) < ADMIN_DIGEST_TIME_IST_MINUTES) return { ...base, due: false };
   if (await deps.isClaimed(key)) return { ...base, due: true, alreadySent: true };
-  const [counts, events] = await Promise.all([
-    deps.loadQueueCounts(),
-    deps.loadEvents(new Date(now.getTime() - DAY_MS)),
-  ]);
-  const digest = buildAdminDigest(counts, events, { env, day });
+  // The window starts at the last digest the Notifier accepted, so a late send (a Notifier outage, a
+  // missed wake) never drops the events between the two; the first digest ever looks back 24 h.
+  let last: Date | null = null;
+  try {
+    last = deps.lastSentAt ? await deps.lastSentAt() : null;
+  } catch (err) {
+    logger.warn({ reason: err instanceof Error ? err.message : String(err) }, 'Admin digest: last-sent read failed - using 24 h');
+  }
+  const since = last && last.getTime() < now.getTime() ? last : new Date(now.getTime() - DAY_MS);
+  const [counts, events] = await Promise.all([deps.loadQueueCounts(), deps.loadEvents(since)]);
+  const digest = buildAdminDigest(counts, events, {
+    env,
+    day,
+    windowLabel: last ? `since the last digest (${since.toISOString()})` : undefined,
+  });
   const out = await deps.send('P2', digest.title, { body: digest.body, type: 'admin-digest', dedupeKey: key });
   if (!out.sent) {
     logger.warn({ key, reason: out.reason }, 'Admin digest NOT sent - will retry on the next data wake');
     return { ...base, due: true, ipos: digest.ipos, reason: out.reason ?? 'unknown' };
   }
-  await deps.claim(key);
+  try {
+    await deps.claim(key);
+    if (deps.markSent) await deps.markSent(now);
+  } catch (err) {
+    logger.warn({ key, reason: err instanceof Error ? err.message : String(err) }, 'Admin digest sent, but its claim / last-sent write FAILED - the Notifier dedupeKey guards a repeat');
+  }
   logger.info({ key, ipos: digest.ipos }, 'Admin digest sent (OD-112)');
   return { ...base, due: true, sent: true, ipos: digest.ipos };
 }
@@ -448,6 +519,136 @@ export function dbAuditEventsLoader(db: Db) {
       field: r.table_name ? `${String(r.table_name)}.${String(r.field_name ?? '')}` : String(r.field_name ?? ''),
       detail: `${String(r.old_value ?? '')} -> ${String(r.new_value ?? '')}`,
       companyName: (r.company_name as string | null) ?? undefined,
+    }));
+  };
+}
+
+// ------------------------------------------------ instant emitter: new disagreements
+
+/** One data_conflicts row created since the last scan, joined to its IPO. */
+export interface NewConflictRow {
+  conflictId: string;
+  ipoId: string;
+  slug: string;
+  companyName: string | null;
+  status: string;
+  tableName: string;
+  fieldName: string;
+  source1: string;
+  value1: string | null;
+  source2: string;
+  value2: string | null;
+  /** Set on an OD-90 corrigendum suggestion: the newer document the value was read from. */
+  documentId: string | null;
+}
+
+/** The first scan ever (no mark yet) looks back this far: two data wakes. */
+export const NEW_CONFLICT_FIRST_LOOKBACK_MS = 60 * 60_000;
+
+export interface NewDisagreementScanDeps {
+  now?: Date;
+  loadNewConflicts(since: Date): Promise<NewConflictRow[]>;
+  /** The scan's high-water mark: rows created at or after it are new to the owner. */
+  getMark(): Promise<Date | null>;
+  setMark(at: Date): Promise<void>;
+  /** Passed through to sendAdminInstant (tests); production uses its default deps. */
+  alert?: AdminAlertDeps;
+}
+
+export interface NewDisagreementScanResult {
+  scanned: number;
+  outcomes: Record<AdminInstantOutcome['outcome'], number>;
+  markAdvanced: boolean;
+}
+
+/**
+ * The instant emitter for §9.2 item 16's "a new real disagreement" and "a newer document disagrees
+ * with an admin value". It reads data_conflicts rows CREATED since its mark, i.e. rows every writer
+ * path has already committed (consolidation, persister, walk, corrigendum reader), so it runs outside
+ * every write transaction by construction, and a rolled-back write can never alert. A corrigendum
+ * suggestion (document_id set) whose stored value is ADMIN is `newer-document-disagrees`; every
+ * other new row is `new-disagreement`. The mark advances only when no send came back `unsent`, so a
+ * Notifier outage is retried on the next wake (the per-IPO/type/day claim stops a repeat).
+ */
+export async function scanNewDisagreements(deps: NewDisagreementScanDeps): Promise<NewDisagreementScanResult> {
+  const now = deps.now ?? new Date();
+  const mark = await deps.getMark();
+  const since = mark ?? new Date(now.getTime() - NEW_CONFLICT_FIRST_LOOKBACK_MS);
+  const rows = await deps.loadNewConflicts(since);
+  const outcomes: Record<AdminInstantOutcome['outcome'], number> = { sent: 0, 'already-sent': 0, unsent: 0, capped: 0, digest: 0 };
+  for (const r of rows) {
+    const newerDocument = r.documentId !== null && r.source1 === 'ADMIN';
+    const event: AdminInstantEvent = {
+      type: newerDocument ? 'newer-document-disagrees' : 'new-disagreement',
+      ipoId: r.ipoId,
+      slug: r.slug,
+      status: r.status,
+      field: `${r.tableName}.${r.fieldName}`,
+      detail: newerDocument
+        ? `admin value ${r.value1 ?? '(empty)'}; a newer document says ${r.value2 ?? '(no value, see its quote)'}`
+        : `${r.source1} ${r.value1 ?? '(empty)'} vs ${r.source2} ${r.value2 ?? '(empty)'}`,
+      companyName: r.companyName ?? undefined,
+    };
+    const out = await sendAdminInstant(event, deps.alert);
+    outcomes[out.outcome]++;
+  }
+  const markAdvanced = outcomes.unsent === 0;
+  if (markAdvanced) await deps.setMark(now);
+  return { scanned: rows.length, outcomes, markAdvanced };
+}
+
+/** Redis-backed timestamps (the scan mark, the last digest send), one key each, a week of life. */
+export function redisTimestamp(redis: { get(key: string): Promise<string | null>; set(...args: unknown[]): Promise<unknown> }, key: string) {
+  return {
+    get: async (): Promise<Date | null> => {
+      const v = await redis.get(key);
+      const ms = v ? Date.parse(v) : NaN;
+      return Number.isNaN(ms) ? null : new Date(ms);
+    },
+    set: async (at: Date): Promise<void> => {
+      await redis.set(key, at.toISOString(), 'EX', 7 * 86_400);
+    },
+  };
+}
+
+export const newConflictMarkKey = (env: string): string => `admin-new-conflict-mark:${env}`;
+export const digestLastSentKey = (env: string): string => `admin-digest-last-sent:${env}`;
+
+/**
+ * data_conflicts rows created since `since` that are real disagreements the admin must see: open,
+ * two different sources (or an OD-90 corrigendum suggestion, which may carry the same label twice),
+ * not an OD-75 admin-only record, not a writer bookkeeping field (F-181). created_at is naive UTC,
+ * so `since` is bound as an ISO string (ist-timezone rule).
+ */
+export function dbNewConflictsLoader(db: Db) {
+  return async (since: Date): Promise<NewConflictRow[]> => {
+    const od75 = `{${ADMIN_ONLY_CONFLICT_REASONS.map((x) => `"${x}"`).join(',')}}`;
+    const bookkeeping = `{${WRITER_BOOKKEEPING_FIELDS.map((x) => `"${x}"`).join(',')}}`;
+    const result = await db.execute(sql`
+      SELECT c.id::text AS conflict_id, c.ipo_id::text AS ipo_id, i.slug, i.company_name, i.status::text AS status,
+             c.table_name, c.field_name, c.source1::text AS source1, c.value1, c.source2::text AS source2, c.value2,
+             c.document_id::text AS document_id
+        FROM data_conflicts c JOIN ipos i ON i.id = c.ipo_id
+       WHERE c.resolved_at IS NULL
+         AND c.created_at >= ${since.toISOString()}::timestamp
+         AND (c.source1::text <> c.source2::text OR c.document_id IS NOT NULL)
+         AND (c.resolution_reason IS NULL OR NOT (c.resolution_reason = ANY(${od75}::text[])))
+         AND NOT (c.field_name = ANY(${bookkeeping}::text[]))
+       ORDER BY c.created_at, c.id
+    `);
+    return rowsOf(result).map((r) => ({
+      conflictId: String(r.conflict_id),
+      ipoId: String(r.ipo_id),
+      slug: String(r.slug),
+      companyName: (r.company_name as string | null) ?? null,
+      status: String(r.status),
+      tableName: String(r.table_name),
+      fieldName: String(r.field_name),
+      source1: String(r.source1),
+      value1: (r.value1 as string | null) ?? null,
+      source2: String(r.source2),
+      value2: (r.value2 as string | null) ?? null,
+      documentId: (r.document_id as string | null) ?? null,
     }));
   };
 }
