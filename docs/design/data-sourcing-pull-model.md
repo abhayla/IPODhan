@@ -4128,9 +4128,16 @@ answer about admin editing lands here as an OD row plus text, in the turn it is 
     new one, judged on its own fields. An instant alert is sent once per IPO, event type and IST day,
     using the gateway's `dedupeKey`, the same shape as OD-93's missed-slot alert.
 26. **Editing an identifier keeps the old one** (follows from OD-68 "that should never happen" and
-    OD-85). When an admin changes a CIN, symbol, ISIN or source record number, the old value is kept
-    as an alias that binding still matches, so the next scrape binds to this row instead of creating
-    a second one.
+    OD-85). When an admin changes or clears a CIN, symbol, ISIN or source record number, the old
+    value is kept (an alias, or a source key kept as SUPERSEDED by the admin edit) that binding still
+    matches, so the next scrape binds to this row instead of creating a second one. Because an admin
+    often removes an identifier that was wrong (it can belong to another company or offering), a
+    record that matches a row ONLY through a value an admin removed, while the row now carries a
+    different value or none, binds only when corroborated by the OD-68 name fold or by the same open
+    date and the same known price band (both bounds when both are known); a source key superseded by
+    the OD-83 relaunch path is not an admin-removed value and keeps binding as before. Otherwise the
+    record is held for review on the OD-68 hold path, never bound and never created (decided under
+    OD-68 during the 2026-09-29 unattended run; a spec-conformant decision, not a spec change).
 27. **A relaunched IPO (OD-120).** When a POSTPONED IPO's relaunch filing arrives, admin values on
     its document fields are cleared with the rest (§2.9). They stay in the audit trail, and one
     alert lists each cleared value with a one-click re-apply for those still true.

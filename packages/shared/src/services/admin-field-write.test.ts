@@ -26,9 +26,6 @@ describe('writeAdminFieldValue refuses before opening a transaction', () => {
     [{ row: { recordId: 'r' } }, 'one row per IPO'],
     [{ tableName: 'peer_companies', row: { recordId: 'r' }, fieldName: 'normalizedName' }, 'not editable'],
     [{ mode: { kind: 'holdShown' }, empty: { reason: 'x' } }, 'cannot also delete'],
-    [{ fieldName: 'cin' }, 'not editable yet'],
-    [{ fieldName: 'isin' }, 'not editable yet'],
-    [{ fieldName: 'symbol' }, 'not editable yet'],
     [{ fieldName: 'offeringType' }, 'not editable yet'],
     [{ fieldName: 'segment' }, 'not editable yet'],
     [{ fieldName: 'listingExchanges' }, 'not editable yet'],
@@ -37,6 +34,13 @@ describe('writeAdminFieldValue refuses before opening a transaction', () => {
     const r = await writeAdminFieldValue(untouchable, { ...base, ...(over as object) } as AdminFieldWriteInput);
     expect(r.kind).toBe('INVALID');
     expect((r as { reason: string }).reason).toContain(text);
+  });
+
+  // §9.2 item 26: identifier edits are written (the old value is kept as an alias inside the
+  // transaction), so validation passes and the write reaches the database.
+  it.each(['cin', 'isin', 'symbol', 'bseIpoNo'])('%s is no longer refused before the transaction (item 26)', async (fieldName) => {
+    const value = fieldName === 'bseIpoNo' ? '7900' : 'NEWVALUE';
+    await expect(writeAdminFieldValue(untouchable, { ...base, fieldName, value })).rejects.toThrow('db touched before validation finished');
   });
 
   it('OD-108: a typed value failing the check is refused without an override reason', async () => {

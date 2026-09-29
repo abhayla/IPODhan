@@ -2868,6 +2868,37 @@ export const ipoSourceKeys = pgTable(
 export type IpoSourceKey = typeof ipoSourceKeys.$inferSelect;
 export type NewIpoSourceKey = typeof ipoSourceKeys.$inferInsert;
 
+// ==================== IDENTIFIER ALIASES (spec §9.2 item 26; OD-68, OD-85, OD-35) ====================
+// When an admin changes a company- or share-level identifier on `ipos` (CIN, ISIN, symbol), the old
+// value is kept here and identity binding still matches it, so the next scrape carrying the old value
+// binds to this row instead of creating a second one. Offering-level source record numbers keep their
+// old value in `ipo_source_keys` as SUPERSEDED instead (OD-85). `value` is normalised (trimmed,
+// upper-cased). The (kind, value) index is deliberately NOT unique: a symbol is reused across years,
+// and the merge tool repoints these rows (REPOINT_TABLES), which a unique index could make conflict.
+export const ipoIdentifierAliasKindEnum = pgEnum('ipo_identifier_alias_kind', ['CIN', 'ISIN', 'SYMBOL']);
+
+export const ipoIdentifierAliases = pgTable(
+  'ipo_identifier_aliases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    kind: ipoIdentifierAliasKindEnum('kind').notNull(),
+    value: varchar('value', { length: 64 }).notNull(),
+    replacedAt: timestamp('replaced_at').defaultNow().notNull(),
+    // the admin account id (OD-104, OD-113); text, not a FK, so a disabled admin never blocks history
+    replacedByAdminId: varchar('replaced_by_admin_id', { length: 64 }),
+    reason: text('reason'),
+  },
+  (table) => ({
+    kindValueIdx: index('idx_ipo_identifier_aliases_kind_value').on(table.kind, table.value),
+    ipoIdx: index('idx_ipo_identifier_aliases_ipo').on(table.ipoId),
+  })
+);
+
+export type IpoIdentifierAlias = typeof ipoIdentifierAliases.$inferSelect;
+
 // ==================== ADMIN ACCOUNTS + SESSIONS (spec §9.2 item 6; OD-104, OD-113, OD-114) ====================
 // A personal login per admin. The account holds only name, email, phone and an optional Telegram ID
 // (OD-114); only the owner adds, removes (disabled_at) or resets an admin (OD-113). A removed admin is

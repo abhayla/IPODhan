@@ -248,6 +248,7 @@ export class DataConsolidationOrchestrator {
             symbol: scrapedIPO.symbol,
             openDate: scrapedIPO.openDate ?? null,
             priceRangeMin: scrapedIPO.priceRangeMin ?? null,
+            priceRangeMax: scrapedIPO.priceRangeMax ?? null,
             segment: scrapedIPO.segment ?? null,
             // T-478 round 3: only an EXPLICITLY classified offeringType
             // guards identity — see BaseScraperOrchestrator.ts for the

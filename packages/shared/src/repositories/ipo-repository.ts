@@ -23,6 +23,7 @@ import {
   ipoMergeLog,
   auditLogs,
   ipoSourceKeys,
+  ipoIdentifierAliases,
   type ipoStatusEnum,
   type segmentEnum,
   type offeringTypeEnum,
@@ -326,6 +327,11 @@ export interface UnmergeResult {
   restoredRows: { table: string; count: number }[];
   repointedBack: { table: string; count: number; logged: number }[];
   applied: boolean;
+}
+
+/** §9.2 item 26: the row remembers `value` as a replaced identifier of this kind. */
+function identifierAliasMatch(kind: 'CIN' | 'ISIN' | 'SYMBOL', value: string) {
+  return sql`${ipos.id} IN (SELECT a.ipo_id FROM ${ipoIdentifierAliases} a WHERE a.kind = ${kind} AND a.value = ${value})`;
 }
 
 export class IPORepository extends BaseRepository implements IIPORepository {
@@ -718,6 +724,36 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     }
   }
 
+  /**
+   * §9.2 item 26 (Tier A review MINOR-2): EVERY row carrying the symbol live or as a kept alias,
+   * live holders first, then by id. `resolveIpoRow` walks the whole list, so a refused first
+   * candidate never hides a valid second one.
+   */
+  async findAllBySymbol(symbol: string | null | undefined): Promise<IPO[]> {
+    return this.findAllByIdentifier('SYMBOL', symbol);
+  }
+
+  /** §9.2 item 26: every row carrying the ISIN live or as a kept alias, live first (see findAllBySymbol). */
+  async findAllByIsin(isin: string | null | undefined): Promise<IPO[]> {
+    return this.findAllByIdentifier('ISIN', isin);
+  }
+
+  private async findAllByIdentifier(kind: 'SYMBOL' | 'ISIN', value: string | null | undefined): Promise<IPO[]> {
+    const normalized = value?.trim().toUpperCase();
+    if (!normalized) return [];
+    const column = kind === 'SYMBOL' ? ipos.symbol : ipos.isin;
+    try {
+      const live = sql`upper(trim(${column})) = ${normalized}`;
+      return await this.db
+        .select()
+        .from(ipos)
+        .where(sql`(${live} OR ${identifierAliasMatch(kind, normalized)})`)
+        .orderBy(sql`(${live}) DESC`, ipos.id);
+    } catch (error) {
+      throw new DatabaseError(`Failed to fetch IPOs by ${kind}: ${value}`, undefined, error as Error);
+    }
+  }
+
   async findBySymbol(symbol: string | null | undefined, offeringType?: string): Promise<IPO | null> {
     const normalized = symbol?.trim().toUpperCase();
     if (!normalized) {
@@ -727,10 +763,15 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     try {
       // T-478 round 3 (item 2): see findByNormalizedName's doc comment —
       // same offering_type-filtered retry + deterministic ORDER BY.
+      // §9.2 item 26: an admin-replaced symbol is kept as an alias and still matches; a row
+      // carrying the symbol live is preferred over one that only remembers it. The caller
+      // (resolveIpoRow) re-checks an alias match against OD-35, since symbols are reused.
+      const live = sql`upper(trim(${ipos.symbol})) = ${normalized}`;
+      const matches = sql`(${live} OR ${identifierAliasMatch('SYMBOL', normalized)})`;
       const query = offeringType
-        ? this.db.select().from(ipos).where(sql`upper(trim(${ipos.symbol})) = ${normalized} AND ${ipos.offeringType} = ${offeringType}`).orderBy(ipos.id)
-        : this.db.select().from(ipos).where(sql`upper(trim(${ipos.symbol})) = ${normalized}`);
-      const [ipo] = await query.limit(1);
+        ? this.db.select().from(ipos).where(sql`${matches} AND ${ipos.offeringType} = ${offeringType}`)
+        : this.db.select().from(ipos).where(matches);
+      const [ipo] = await query.orderBy(sql`(${live}) DESC`, ipos.id).limit(1);
 
       return ipo || null;
     } catch (error) {
@@ -764,10 +805,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
 
     try {
       // T-478 round 3 (item 2): same offering_type-filtered retry pattern.
+      // §9.2 item 26: an admin-replaced ISIN is kept as an alias and still matches (live first).
+      const live = sql`upper(trim(${ipos.isin})) = ${normalized}`;
+      const matches = sql`(${live} OR ${identifierAliasMatch('ISIN', normalized)})`;
       const query = offeringType
-        ? this.db.select().from(ipos).where(sql`upper(trim(${ipos.isin})) = ${normalized} AND ${ipos.offeringType} = ${offeringType}`).orderBy(ipos.id)
-        : this.db.select().from(ipos).where(sql`upper(trim(${ipos.isin})) = ${normalized}`);
-      const [ipo] = await query.limit(1);
+        ? this.db.select().from(ipos).where(sql`${matches} AND ${ipos.offeringType} = ${offeringType}`)
+        : this.db.select().from(ipos).where(matches);
+      const [ipo] = await query.orderBy(sql`(${live}) DESC`, ipos.id).limit(1);
 
       return ipo || null;
     } catch (error) {
@@ -816,7 +860,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       return await this.db
         .select()
         .from(ipos)
-        .where(sql`upper(trim(${ipos.cin})) = ${normalized}`)
+        // §9.2 item 26: a row whose CIN an admin replaced still carries the old one as an alias;
+        // resolveByCin applies the same OD-35 eligibility to it as to a live CIN.
+        .where(sql`(upper(trim(${ipos.cin})) = ${normalized} OR ${identifierAliasMatch('CIN', normalized)})`)
         .orderBy(ipos.id);
     } catch (error) {
       throw new DatabaseError(`Failed to fetch IPOs by CIN: ${cin}`, undefined, error as Error);
@@ -1314,6 +1360,23 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       incoming,
       [{ ...candidate }]
     );
+  }
+
+  /**
+   * §9.2 item 26 (Tier A review CRITICAL-1, round 2): the durable half of an admin-removed-value hold.
+   * `resolveIpoRow` refused to bind a record reached only through an identifier an admin removed (a
+   * kept alias or an admin-SUPERSEDED source key) and throws; this records it on
+   * the OD-68 hold path (audit_logs IDENTITY_HELD_FOR_REVIEW, read nightly by `i_identity_held`).
+   */
+  async recordAliasIdentityHold(
+    incoming: { companyName: string; slug: string; openDate: string | null; priceRangeMin: unknown },
+    candidates: { id: string; slug: string; companyName: string; openDate: unknown; priceRangeMin: unknown; status: unknown }[],
+    reason: string
+  ): Promise<void> {
+    await this.recordIdentityHold(incoming, strictIdentityCompanyName(incoming.companyName) ?? '', candidates, {
+      rule: 'OD-68 / spec §9.2 item 26',
+      reason,
+    });
   }
 
   /**

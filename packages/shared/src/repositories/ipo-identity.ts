@@ -150,6 +150,11 @@ export interface IpoIdentity {
    */
   priceRangeMin?: number | null;
   /**
+   * Incoming price_range_max, when the caller has one. Used only by the §9.2 item 26 corroboration
+   * of an admin-removed identifier: when both sides know both bounds, both must match (MINOR-C).
+   */
+  priceRangeMax?: number | null;
+  /**
    * Incoming exchange segment ('MAINBOARD' | 'SME'), when the caller has
    * one. T-403 Tier-A review (item 3): name/prefix/fuzzy matching alone
    * cannot tell an SME and a mainboard offering of the same name apart — two
@@ -407,6 +412,167 @@ function nameMatchContradiction(
 }
 
 /**
+ * §9.2 item 26 + OD-35: may a row found only through an ALIAS (an identifier an admin replaced,
+ * `ipo_identifier_aliases`) bind this record? A remembered symbol or ISIN is weaker than a live one
+ * (symbols are reused across years), so the alias binds only a row that can be the same offering:
+ * not WITHDRAWN (OD-71), same segment, same offering type (OD-35 "offering type changes -> new
+ * row") and open dates within OD-35's 180 days. The CIN contradiction (OD-69) is checked for every
+ * ISIN/symbol match by the caller.
+ * Returns null when the alias may bind; otherwise the reason, and whether the record must be HELD
+ * (the alias cannot be placed: the incoming open date is unknown, Tier A review MINOR-1) or only
+ * declined (the row is provably another offering, so the record may be a new one).
+ */
+function aliasBindRefusal(
+  identity: Pick<IpoIdentity, 'openDate' | 'segment' | 'offeringType'>,
+  candidate: { openDate?: unknown; segment?: unknown; status?: unknown; offeringType?: unknown }
+): { reason: string; hold: boolean } | null {
+  const refusal = aliasOfferingRefusal(identity, candidate);
+  if (refusal) return { reason: refusal, hold: false };
+  if (!toCalendarDateString(identity.openDate ?? null)) {
+    return { reason: "incoming open date unknown - a kept alias alone cannot place the record in OD-35's 180-day window", hold: true };
+  }
+  return null;
+}
+
+function aliasOfferingRefusal(
+  identity: Pick<IpoIdentity, 'openDate' | 'segment' | 'offeringType'>,
+  candidate: { openDate?: unknown; segment?: unknown; status?: unknown; offeringType?: unknown }
+): string | null {
+  if (candidate.status === 'WITHDRAWN') return 'candidate is WITHDRAWN (OD-71)';
+  if (segmentsConflict(identity.segment, (candidate.segment as string | null | undefined) ?? null)) {
+    return `segment differs (${String(identity.segment)} vs ${String(candidate.segment)})`;
+  }
+  if (separateOffering(identity.offeringType, (candidate.offeringType as string | null | undefined) ?? null)) {
+    return `offering type differs (${String(identity.offeringType)} vs ${String(candidate.offeringType)})`;
+  }
+  const incomingDay = toCalendarDateString(identity.openDate ?? null);
+  const candidateDay = toCalendarDateString((candidate.openDate as string | Date | null | undefined) ?? null);
+  if (incomingDay && candidateDay && daysApart(incomingDay, candidateDay) > SAME_OFFERING_WINDOW_DAYS) {
+    return `open date ${Math.round(daysApart(incomingDay, candidateDay))} days away (${incomingDay} vs ${candidateDay}) - beyond OD-35's ${SAME_OFFERING_WINDOW_DAYS}-day window`;
+  }
+  return null;
+}
+
+/**
+ * §9.2 item 26, Tier A review CRITICAL-1 and round 2 MAJOR-A/B (OD-68): an admin removes an
+ * identifier (replaces OR clears it) often because it was WRONG (a promoter's CIN, a mis-keyed ISIN,
+ * another offering's BSE IPO number), so the removed value can belong to another company. A match
+ * reached ONLY through an admin-removed value (a kept alias in `ipo_identifier_aliases`, or a source
+ * key an admin edit SUPERSEDED, `isAdminRemovedSourceKey`) binds only when the record is
+ * corroborated: its OD-68 identity fold equals the row's, or it has the same open date AND the same
+ * known price band (both bounds when both sides know both, MINOR-C). This holds whatever the row
+ * carries now: a different value, or none. Otherwise the record is held (OD-68 hold path:
+ * audit_logs IDENTITY_HELD_FOR_REVIEW, nightly i_identity_held), never bound, never created.
+ */
+function adminRemovedMatchCorroborated(
+  identity: Pick<IpoIdentity, 'companyName' | 'openDate' | 'priceRangeMin' | 'priceRangeMax'>,
+  candidate: { companyName?: unknown; openDate?: unknown; priceRangeMin?: unknown; priceRangeMax?: unknown }
+): boolean {
+  const fold = strictIdentityCompanyName(identity.companyName ?? '');
+  if (fold && typeof candidate.companyName === 'string' && strictIdentityCompanyName(candidate.companyName) === fold) return true;
+  const inDay = toCalendarDateString(identity.openDate ?? null);
+  const rowDay = toCalendarDateString((candidate.openDate as string | Date | null | undefined) ?? null);
+  const inMin = knownPrice(identity.priceRangeMin);
+  if (!inDay || inDay !== rowDay || inMin == null || inMin !== knownPrice(candidate.priceRangeMin)) return false;
+  const inMax = knownPrice(identity.priceRangeMax);
+  const rowMax = knownPrice(candidate.priceRangeMax);
+  return inMax == null || rowMax == null || inMax === rowMax;
+}
+
+type AliasVerdict = { kind: 'bind' } | { kind: 'decline'; reason: string } | { kind: 'hold'; reason: string };
+
+/** The full item 26 rule for a row matched only through a kept alias of `kind`. */
+function judgeAliasMatch(
+  identity: IpoIdentity,
+  candidate: { [k: string]: unknown },
+  kind: 'CIN' | 'ISIN' | 'SYMBOL',
+  currentValue: string | null
+): AliasVerdict {
+  if (kind !== 'CIN') {
+    // OD-69: a known CIN that differs proves another company - declined (it may be a new row), not held.
+    const conflict = cinContradiction(normalizeCin(identity.cin), candidate.cin);
+    if (conflict) return { kind: 'decline', reason: `${conflict} (OD-69)` };
+  }
+  const refusal = aliasBindRefusal(identity, candidate);
+  if (refusal) return refusal.hold ? { kind: 'hold', reason: refusal.reason } : { kind: 'decline', reason: refusal.reason };
+  if (!adminRemovedMatchCorroborated(identity, candidate)) {
+    return {
+      kind: 'hold',
+      reason: `matched only through a kept ${kind} alias (§9.2 item 26) while the row now carries ${currentValue ? `${kind} ${currentValue}` : `no ${kind}`}; ` +
+        'not corroborated by the OD-68 name fold nor by the same open date and known price band',
+    };
+  }
+  return { kind: 'bind' };
+}
+
+function currentIdentifier(candidate: { [k: string]: unknown }, column: 'cin' | 'isin' | 'symbol'): string | null {
+  const c = candidate[column];
+  if (typeof c !== 'string') return null;
+  const v = column === 'cin' ? normalizeCin(c) : c.trim().toUpperCase();
+  return v ? v : null;
+}
+
+/** An alias-only match the rule refused to bind: the record is held for review (OD-68). */
+interface AliasHold { candidate: IPO; reason: string }
+
+async function holdAliasOnlyMatch(ipoRepository: IPORepository, identity: IpoIdentity, hold: AliasHold): Promise<never> {
+  const c = hold.candidate;
+  const incoming = {
+    companyName: identity.companyName,
+    slug: identity.slug,
+    openDate: toCalendarDateString(identity.openDate ?? null),
+    priceRangeMin: identity.priceRangeMin ?? null,
+  };
+  const candidates = [{
+    id: c.id, slug: c.slug ?? '', companyName: c.companyName ?? '', openDate: c.openDate ?? null,
+    priceRangeMin: (c as { priceRangeMin?: unknown }).priceRangeMin ?? null, status: c.status ?? null,
+  }];
+  logger.warn({ incoming, candidateId: c.id, candidateSlug: c.slug, reason: hold.reason },
+    'identity_held_for_review: [§9.2 item 26] alias-only match not corroborated - NOT bound, NOT created (OD-68)');
+  const recorder = (ipoRepository as { recordAliasIdentityHold?: (...a: unknown[]) => Promise<void> }).recordAliasIdentityHold;
+  if (typeof recorder === 'function') await recorder.call(ipoRepository, incoming, candidates, hold.reason);
+  throw new IdentityHeldForReviewError(
+    `resolveIpoRow: "${identity.companyName}" held for review (OD-68, §9.2 item 26) - ${hold.reason}; candidate ${c.slug}; nothing written`,
+    incoming,
+    candidates
+  );
+}
+
+/**
+ * Every row carrying `value` live or as a kept alias (live first). Tier A review MINOR-2: the whole
+ * list is walked so a refused first match cannot hide a valid second one. A repository without the
+ * list finder (an older test double) falls back to the single-row finder and its T-478 retry.
+ */
+async function keyTierCandidates(
+  ipoRepository: IPORepository,
+  kind: 'isin' | 'symbol',
+  value: string,
+  offeringType: IpoIdentity['offeringType']
+): Promise<IPO[]> {
+  const listName = kind === 'isin' ? 'findAllByIsin' : 'findAllBySymbol';
+  const list = (ipoRepository as unknown as Record<string, unknown>)[listName];
+  if (typeof list === 'function') return ((await list.call(ipoRepository, value)) as IPO[] | null) ?? [];
+  const one = (v: string, t?: string) => {
+    const find = kind === 'isin' ? ipoRepository.findByIsin.bind(ipoRepository) : ipoRepository.findBySymbol.bind(ipoRepository);
+    return t === undefined ? find(v) : find(v, t);
+  };
+  const first = await one(value);
+  if (!first) return [];
+  if (offeringType && ofsIdentityConflict(offeringType, first.offeringType)) {
+    const retried = await one(value, offeringType);
+    return retried ? [first, retried] : [first];
+  }
+  return [first];
+}
+
+/** True when `candidate` carries `value` in `column` live (not only as a remembered alias). */
+function carriesLive(candidate: { [k: string]: unknown }, column: 'isin' | 'symbol', value: string | null | undefined): boolean {
+  const v = value?.trim().toUpperCase();
+  const c = candidate[column];
+  return !!v && typeof c === 'string' && c.trim().toUpperCase() === v;
+}
+
+/**
  * OD-68 S1/S3: strip page-status suffixes and page-title text from the
  * incoming name and slug BEFORE any tier runs. The caller's `normalizedName`
  * and `slug` were computed from the raw name, so both are recomputed from the
@@ -448,11 +614,42 @@ async function resolveByCin(
   ipoRepository: IPORepository,
   identity: IpoIdentity,
   cin: string
-): Promise<IPO | null> {
+): Promise<{ row: IPO | null; hold: AliasHold | null }> {
   const finder = (ipoRepository as { findByCin?: (c: string) => Promise<IPO[]> }).findByCin;
-  if (typeof finder !== 'function') return null;
-  const rows = (await finder.call(ipoRepository, cin)) ?? [];
-  if (rows.length === 0) return null;
+  if (typeof finder !== 'function') return { row: null, hold: null };
+  const all = (await finder.call(ipoRepository, cin)) ?? [];
+  if (all.length === 0) return { row: null, hold: null };
+
+  // §9.2 item 26 (Tier A review CRITICAL-1, MINOR-2): a row whose live CIN differs was reached only
+  // through a kept alias. A live holder always wins over a remembered one; the alias rows are judged
+  // only when no row carries the CIN live, and each must pass judgeAliasMatch (OD-68 corroboration).
+  const live = all.filter((r) => normalizeCin((r as { cin?: string | null }).cin ?? null) === cin);
+  const aliasOnly = all.filter((r) => !live.includes(r));
+  if (live.length === 0 && aliasOnly.length > 0) {
+    const bindable: IPO[] = [];
+    let hold: AliasHold | null = null;
+    for (const r of aliasOnly) {
+      const v = judgeAliasMatch(identity, r as never, 'CIN', currentIdentifier(r as never, 'cin'));
+      if (v.kind === 'bind') bindable.push(r);
+      else {
+        logger.warn({ companyName: identity.companyName, cin, candidateId: r.id, candidateSlug: r.slug, reason: v.reason },
+          `[§9.2 item 26] CIN alias match ${v.kind === 'hold' ? 'held' : 'declined'} - ${v.reason}`);
+        if (v.kind === 'hold' && !hold) hold = { candidate: r, reason: v.reason };
+      }
+    }
+    if (bindable.length === 1) {
+      logger.info({ companyName: identity.companyName, cin, boundId: bindable[0].id, boundSlug: bindable[0].slug },
+        '[OD-34 / §9.2 item 26] bound on a kept CIN alias (corroborated)');
+      return { row: bindable[0], hold: null };
+    }
+    if (bindable.length > 1) {
+      logger.warn({ companyName: identity.companyName, cin, eligibleSlugs: bindable.map((r) => r.slug) },
+        '[OD-34] several rows keep this CIN as an alias and could be this offering - ambiguous, not bound on CIN');
+      return { row: null, hold: null };
+    }
+    return { row: null, hold };
+  }
+  const rows = live;
 
   const incomingDay = toCalendarDateString(identity.openDate ?? null);
   const eligible = rows.filter((row) => {
@@ -468,7 +665,7 @@ async function resolveByCin(
     logger.info({
       companyName: identity.companyName, cin, boundId: eligible[0].id, boundSlug: eligible[0].slug,
     }, '[OD-34] bound on CIN');
-    return eligible[0];
+    return { row: eligible[0], hold: null };
   }
   logger.warn({
     companyName: identity.companyName,
@@ -478,7 +675,7 @@ async function resolveByCin(
   }, eligible.length === 0
     ? '[OD-34] rows carry this CIN but none can be this offering (withdrawn, other type/segment, or beyond 180 days) - not bound on CIN'
     : '[OD-34] several rows carry this CIN and could be this offering - ambiguous, not bound on CIN; later steps decide');
-  return null;
+  return { row: null, hold: null };
 }
 
 /** The repository's database handle for the key table, or null for a test double without one. */
@@ -525,6 +722,23 @@ export async function resolveIpoRow(
         return row;
       }
       break;
+    }
+    case 'admin_removed': {
+      // §9.2 item 26 (round 2 MAJOR-B): every key hit was removed from the row by an admin edit.
+      const row = await ipoRepository.findByIdUncached(byKey.ipoId);
+      if (!row) break;
+      if (!adminRemovedMatchCorroborated(stripIncomingDecoration(rawIdentity), row as never)) {
+        await holdAliasOnlyMatch(ipoRepository, rawIdentity, {
+          candidate: row as IPO,
+          reason: 'matched only through a source key an admin edit removed from the row (§9.2 item 26); ' +
+            'not corroborated by the OD-68 name fold nor by the same open date and known price band',
+        });
+      }
+      throw new SourceKeySupersededError(
+        `resolveIpoRow: "${rawIdentity.companyName}" carries a source key an admin edit SUPERSEDED (§9.2 item 26, corroborated) - binds ${byKey.ipoId}, writes nothing`,
+        byKey.ipoId,
+        byKey.keyIds
+      );
     }
     case 'superseded':
       throw new SourceKeySupersededError(
@@ -594,9 +808,13 @@ async function resolveIpoRowByOrder(
   // here. A CIN names the COMPANY, not the offering, so only a row that can be
   // the same offering is eligible (OD-35 window, OD-70 type, OD-71 withdrawn).
   const cin = normalizeCin(identity.cin);
+  // §9.2 item 26: an alias-only match the rule refused to bind. It holds the record only when no
+  // later tier binds it (a later identifier or name that binds a row is itself the corroboration).
+  let aliasHold: AliasHold | null = null;
   if (cin) {
-    const cinBound = await resolveByCin(ipoRepository, identity, cin);
-    if (cinBound) return cinBound;
+    const cinResult = await resolveByCin(ipoRepository, identity, cin);
+    if (cinResult.row) return cinResult.row;
+    aliasHold = cinResult.hold;
   }
 
   // T-403 Tier-A review (item 4): tracks whether the accepted `nameMatch`
@@ -614,53 +832,41 @@ async function resolveIpoRowByOrder(
   // null immediately for an absent/whitespace-only input, so an incoming
   // row with no ISIN can never "match" an existing row that also has no
   // ISIN (both null() calls short-circuit before querying).
-  let keyMatch: IPO | null = isin ? await ipoRepository.findByIsin(isin) : null;
-  if (keyMatch && ofsIdentityConflict(offeringType, keyMatch.offeringType)) {
-    // T-478 round 3 (item 2): the declined candidate is the WRONG type, but
-    // a row of the RIGHT type may still exist under the same ISIN (e.g. a
-    // repeat explicit-OFS scrape whose only match is the isin tier) —
-    // re-query filtered to the incoming record's own offering_type before
-    // giving up, so a genuine refresh does not fall through to a colliding
-    // create.
-    let retried = offeringType ? await ipoRepository.findByIsin(isin, offeringType) : null;
-    // Defensive: never trust a repository call site that ignores the
-    // offeringType filter (e.g. an under-specified test double) — verify
-    // the retried candidate is actually the right type before accepting it.
-    if (retried && ofsIdentityConflict(offeringType, retried.offeringType)) retried = null;
-    if (retried) {
-      logger.info({
-        companyName, isin, offeringType, candidateId: retried.id,
-      }, '[T-478] Tier 1 ISIN match declined but a same-type row was found on retry');
-    } else {
-      logger.warn({
-        companyName, isin, identityOfferingType: offeringType, candidateId: keyMatch.id,
-        candidateOfferingType: keyMatch.offeringType,
-      }, '[T-478] Tier 1 ISIN match declined - OFS/IPO identity conflict');
+  // §9.2 item 26 (Tier A review MINOR-2): every candidate is walked, live holders first; a row
+  // matched only through a kept alias must pass judgeAliasMatch (OD-35 window, OD-68 corroboration).
+  const pickKeyMatch = (kind: 'isin' | 'symbol', value: string, candidates: IPO[]): IPO | null => {
+    const tier = kind === 'isin' ? 'Tier 1 ISIN' : 'Tier 2 symbol';
+    for (const candidate of candidates) {
+      if (ofsIdentityConflict(offeringType, candidate.offeringType)) {
+        logger.warn({
+          companyName, [kind]: value, identityOfferingType: offeringType, candidateId: candidate.id,
+          candidateOfferingType: candidate.offeringType,
+        }, `[T-478] ${tier} match declined - OFS/IPO identity conflict`);
+        continue;
+      }
+      if (carriesLive(candidate as never, kind, value)) return candidate;
+      const verdict = judgeAliasMatch(identity, candidate as never, kind === 'isin' ? 'ISIN' : 'SYMBOL', currentIdentifier(candidate as never, kind));
+      if (verdict.kind === 'bind') return candidate;
+      logger.warn({ companyName, [kind]: value, candidateId: candidate.id, candidateSlug: candidate.slug, reason: verdict.reason },
+        `[§9.2 item 26] ${kind === 'isin' ? 'ISIN' : 'symbol'} alias match ${verdict.kind === 'hold' ? 'held' : 'declined'} - ${verdict.reason}`);
+      if (verdict.kind === 'hold' && !aliasHold) aliasHold = { candidate, reason: verdict.reason };
     }
-    keyMatch = retried;
-  }
+    return null;
+  };
+
+  // Tier 1: ISIN (exact, normalized). Highest-confidence natural key — a
+  // 12-character code unique to the security. NULL-safe: an absent ISIN never
+  // queries, so a row with no ISIN can never "match" another with none.
+  // T-478 round 3 (item 2): a candidate of the WRONG offering type is skipped,
+  // not the end of the tier — a row of the right type may share the ISIN.
+  let keyMatch: IPO | null = isin ? pickKeyMatch('isin', isin, await keyTierCandidates(ipoRepository, 'isin', isin, offeringType)) : null;
 
   // Tier 2: NSE/BSE ticker symbol (exact, normalized). Same NULL-safety
   // guarantee as ISIN. Deliberately queries ONLY the `symbol` column, never
   // `bseScripCode` — the two are separate keyspaces per the module doc
   // comment, and findBySymbol's implementation enforces this by construction.
   if (!keyMatch && symbol) {
-    keyMatch = await ipoRepository.findBySymbol(symbol);
-    if (keyMatch && ofsIdentityConflict(offeringType, keyMatch.offeringType)) {
-      let retried = offeringType ? await ipoRepository.findBySymbol(symbol, offeringType) : null;
-      if (retried && ofsIdentityConflict(offeringType, retried.offeringType)) retried = null;
-      if (retried) {
-        logger.info({
-          companyName, symbol, offeringType, candidateId: retried.id,
-        }, '[T-478] Tier 2 symbol match declined but a same-type row was found on retry');
-      } else {
-        logger.warn({
-          companyName, symbol, identityOfferingType: offeringType, candidateId: keyMatch.id,
-          candidateOfferingType: keyMatch.offeringType,
-        }, '[T-478] Tier 2 symbol match declined - OFS/IPO identity conflict');
-      }
-      keyMatch = retried;
-    }
+    keyMatch = pickKeyMatch('symbol', symbol, await keyTierCandidates(ipoRepository, 'symbol', symbol, offeringType));
   }
 
   // OD-69: a symbol is reused across time and an ISIN can be mis-keyed; a key
@@ -953,6 +1159,9 @@ async function resolveIpoRowByOrder(
   }
 
   if (!keyMatch) {
+    // §9.2 item 26 (Tier A review CRITICAL-1): an alias-only match was refused and nothing else
+    // bound the record - hold it (OD-68), never create a second row from a kept identifier.
+    if (!nameMatch && aliasHold) await holdAliasOnlyMatch(ipoRepository, identity, aliasHold);
     // No natural key present or no key hit at all — the pre-T-318 name-based
     // result is authoritative (this is also the path every keyless row, and
     // every existing caller/test, takes).

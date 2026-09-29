@@ -31,9 +31,9 @@ describe('item 7 / OD-105: which fields are editable, by §1 class', () => {
     expect(editorModeFor('I', 'ipos.last_scraped_at')).toBe('readonly');
   });
 
-  it('release 1 shows the six Phase-B fields read-only with the reason the write gives (#1275)', () => {
+  it('release 1 shows the three Phase-B fields read-only with the reason the write gives (#1275, item 26)', () => {
     expect(Object.keys(AWAITING_PHASE_B).sort()).toEqual(
-      ['ipos.cin', 'ipos.isin', 'ipos.listing_exchanges', 'ipos.offering_type', 'ipos.segment', 'ipos.symbol']
+      ['ipos.listing_exchanges', 'ipos.offering_type', 'ipos.segment']
     );
     const cat = editorFieldCatalog('MAINBOARD');
     for (const key of Object.keys(AWAITING_PHASE_B)) {

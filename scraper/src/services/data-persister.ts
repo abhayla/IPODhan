@@ -1177,6 +1177,7 @@ async function upsertIPOInScope(
             symbol: scrapedIPO.symbol,
             openDate: scrapedIPO.openDate ?? null,
             priceRangeMin: scrapedIPO.priceRangeMin ?? null,
+            priceRangeMax: scrapedIPO.priceRangeMax ?? null,
             segment: scrapedIPO.segment ?? null,
             // T-478 round 3: explicit-only, same rationale as
             // BaseScraperOrchestrator.ts.
