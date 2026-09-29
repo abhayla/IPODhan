@@ -35,6 +35,7 @@ import { rowKeyForName } from '../utils/company-name-normalizer';
 import { headingHashForRiskFactor } from '../utils/risk-factor-heading-key';
 import { ADMIN_LIST_SPECS, lockAndReadListOwnership, upsertListHold, type AdminListName } from './admin-list-hold';
 import type { AdminActor } from './admin-field-write';
+import { IPORepository } from '../repositories/ipo-repository';
 
 export { ADMIN_LIST_SUGGESTION_REASON, ADMIN_LISTS, listRowKey, type AdminListName } from './admin-list-hold';
 
@@ -162,7 +163,10 @@ async function listVersion(tx: Db, ipoId: string, list: AdminListName, rows: rea
 
 async function writeList(tx: Db, ipoId: string, list: AdminListName, before: readonly Row[], after: readonly Row[], now: Date): Promise<void> {
   if (list === 'lead_managers') {
-    await tx.update(ipos).set({ leadManagers: after.map((r) => String(r.name)), updatedAt: now }).where(eq(ipos.id, ipoId));
+    // `ipos` is written ONLY through the shared write path (write-ratchet-baseline.json,
+    // docs/architecture/write-path-hardening.md) — the same helper admin-field-write.ts uses for
+    // every other `ipos` field, so this list write is not a second, ungated call site.
+    await IPORepository.applyAdminCorrigendumValue(tx, ipoId, 'leadManagers', after.map((r) => String(r.name)));
     return;
   }
   if (list === 'anchor_investors') {
