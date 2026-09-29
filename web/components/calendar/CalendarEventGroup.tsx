@@ -12,6 +12,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import type { CalendarEventGroup as EventGroup } from '@/lib/services/mainboard-calendar-types';
 import { CalendarEventType } from '@/lib/services/mainboard-calendar-types';
+import { AdminRowEditLink } from '@/components/admin/AdminRowEditLink';
 
 // ==================== TYPES ====================
 
@@ -20,6 +21,8 @@ interface CalendarEventGroupProps {
   dateString: string;
   maxEvents: number;
   size: 'compact' | 'normal'; // compact for desktop grid, normal for mobile list
+  /** Admin session state, checked ONCE by the calendar grid and passed down (§9.2 item 14, OD-110). */
+  isAdmin: boolean;
 }
 
 // ==================== EVENT STYLING ====================
@@ -65,6 +68,7 @@ export default function CalendarEventGroup({
   dateString,
   maxEvents,
   size,
+  isAdmin,
 }: CalendarEventGroupProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -100,14 +104,22 @@ export default function CalendarEventGroup({
 
             // IPO event (with link)
             return (
-              <Link
-                key={event.id}
-                href={`/ipos/${event.slug}`}
-                className={`text-xs ${display.color} hover:underline flex items-start gap-1 block`}
-              >
-                <span>{display.icon}</span>
-                <span className="line-clamp-2">{event.companyName}</span>
-              </Link>
+              <div key={event.id} className="flex items-start gap-1">
+                <Link
+                  href={`/ipos/${event.slug}`}
+                  className={`min-w-0 flex-1 text-xs ${display.color} hover:underline flex items-start gap-1`}
+                >
+                  <span>{display.icon}</span>
+                  <span className="line-clamp-2">{event.companyName}</span>
+                </Link>
+                {event.slug && (
+                  <AdminRowEditLink
+                    slug={event.slug}
+                    isAdmin={isAdmin}
+                    className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1 py-0.5 text-[10px] font-medium text-amber-800 hover:bg-amber-100"
+                  />
+                )}
+              </div>
             );
           })}
 
@@ -156,14 +168,22 @@ export default function CalendarEventGroup({
 
           // IPO event (with link)
           return (
-            <Link
-              key={event.id}
-              href={`/ipos/${event.slug}`}
-              className={`text-sm ${display.color} hover:underline flex items-center gap-2`}
-            >
-              <span>{display.icon}</span>
-              <span>{event.companyName}</span>
-            </Link>
+            <div key={event.id} className="flex items-center gap-1">
+              <Link
+                href={`/ipos/${event.slug}`}
+                className={`min-w-0 flex-1 text-sm ${display.color} hover:underline flex items-center gap-2`}
+              >
+                <span>{display.icon}</span>
+                <span>{event.companyName}</span>
+              </Link>
+              {event.slug && (
+                <AdminRowEditLink
+                  slug={event.slug}
+                  isAdmin={isAdmin}
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                />
+              )}
+            </div>
           );
         })}
 

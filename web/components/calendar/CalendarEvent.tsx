@@ -7,20 +7,22 @@
  * Story 9.13: SME IPO Calendar Page
  *
  * 'use client' (§9.2 item 14, OD-110): the admin-only Edit link needs the browser's own
- * client-side admin check (useAdminSession) so the server-rendered calendar page itself
- * stays static for readers — only this leaf component hydrates and calls the admin API.
+ * client-side admin check. The check itself (`useAdminSession`) is called ONCE by the
+ * calendar grid that renders this component in a loop, and `isAdmin` is passed down as a
+ * prop — calling the hook here would fire one `/api/admin/auth/me` request per rendered
+ * event instead of one per page load (Tier B review, PR #1286).
  */
 'use client';
 
 import Link from 'next/link';
 import type { CalendarEvent } from '@/lib/services/sme-calendar-service';
 import { AdminRowEditLink } from '@/components/admin/AdminRowEditLink';
-import { useAdminSession } from '@/hooks/useAdminSession';
 
 // ==================== TYPES ====================
 
 export interface CalendarEventProps {
   event: CalendarEvent;
+  isAdmin: boolean;
 }
 
 // ==================== COMPONENT ====================
@@ -35,9 +37,7 @@ export interface CalendarEventProps {
  *
  * @param event - Calendar event data
  */
-export function CalendarEvent({ event }: CalendarEventProps) {
-  const { isAdmin } = useAdminSession();
-
+export function CalendarEvent({ event, isAdmin }: CalendarEventProps) {
   // Holiday events: Display as plain text (no link)
   if (event.eventType === 'HOLIDAY') {
     return (
