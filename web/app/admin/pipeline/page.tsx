@@ -9,11 +9,19 @@
  *
  * Server component: reads the repository directly, never an HTTP API
  * (CLAUDE.md — services and server components use repositories directly).
+ *
+ * The route's own SERVER-SIDE session check (getAdminSessionFromCookies) is what keeps an
+ * anonymous request out — independent of app/admin/layout.tsx's client-only redirect, which is
+ * the 2026-09-24 admin-route auth-hole class (any admin route whose server entry point does not
+ * itself verify the session). An unauthenticated request never reaches the repository read below;
+ * it is redirected to /admin/login before it runs.
  */
 
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
+import { getAdminSessionFromCookies } from '@/lib/admin-accounts/admin-session';
 import {
   IpoPipelineStepsRepository,
   PIPELINE_STAGES,
@@ -64,6 +72,13 @@ export default async function PipelinePage({
 }: {
   searchParams: Promise<{ stage?: string }>;
 }) {
+  // Server-side session check at the route entry. A reader or an anonymous curl request never
+  // reaches the repository read below.
+  const admin = await getAdminSessionFromCookies();
+  if (!admin) {
+    redirect('/admin/login');
+  }
+
   const { stage } = await searchParams;
   const validStage = resolveStageFilter(stage);
   // A stage that was asked for but is not a real ipo_status must say so --
