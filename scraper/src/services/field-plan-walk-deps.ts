@@ -54,6 +54,11 @@ import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/fie
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { and, eq } from 'drizzle-orm';
 import { protectionTableName } from '@ipodhan/shared/services/field-hold';
+import { applyExchangeOverride } from '@ipodhan/shared/services/exchange-override';
+import { buildExchangeOverrideHook } from './exchange-override-hook.js';
+import { invalidateIPOCaches } from './cache-invalidator.js';
+import { sendOwnerAlert } from './owner-notify.js';
+import { redisClaims } from './live-slot-miss-monitor.js';
 import * as schema from '@ipodhan/shared/db/schema';
 // Deep import, matching `filing-persist-deps.ts`: the barrel exports only the
 // INTERFACE (`IListingPerformanceRepository`), not the class.
@@ -367,6 +372,14 @@ export function buildFieldPlanWalkHoldDeps(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
 ): Pick<FieldPlanWalkDeps, 'protectionFilter' | 'trackHeldFieldWitnesses' | 'onHeldFieldAnswers'> {
   const fieldSources = new FieldSourcesRepository(db as never, redis as never);
+  // OD-106/OD-117: a newer, different NSE/BSE answer on an E-1 field replaces the admin value,
+  // releases the hold and alerts (exchange-override-hook.ts).
+  const onHeldFieldAnswersOd106 = buildExchangeOverrideHook({
+    apply: (input) => applyExchangeOverride(db as never, input),
+    send: sendOwnerAlert,
+    ...redisClaims(redis as never),
+    invalidateCaches: (ipoId, slug, field) => invalidateIPOCaches(redis as never, ipoId, slug, field),
+  });
   const fpm = schema.fieldProtectionMetadata;
   return {
     protectionFilter: async (ipoId, tableName, fieldName, rowKey = '') => {
@@ -392,9 +405,12 @@ export function buildFieldPlanWalkHoldDeps(
         fieldName: input.fieldName,
         merge: input.merge,
       }),
-    // §9.2 item 9: a document first seen after the admin's save that printed a different value
-    // becomes one admin-queue suggestion (never a write). Independent of ENABLE_VERDICT_WRITER.
-    onHeldFieldAnswers: async (ipoId, tableName, rowKey, fieldName) => {
+    // §9.2 item 9 (a newer document disagreeing becomes a queue suggestion) and OD-106/OD-141 (the
+    // top-ranked stating exchange's newer value replaces the admin value) share the held-field seam.
+    // The exchange hook runs first; when it released the hold, item 9 has nothing left to suggest.
+    onHeldFieldAnswers: async (ipoId, tableName, rowKey, fieldName, answers) => {
+      const outcome = await onHeldFieldAnswersOd106(ipoId, tableName, rowKey, fieldName, answers);
+      if (outcome && outcome.holdReleased) return outcome;
       const { recordNewerDocumentSuggestions } = await import('./newer-document-suggestions.js');
       const r = await recordNewerDocumentSuggestions(db as never, { ipoId, tableName, rowKey, fieldName });
       if (r.inserted > 0) {
@@ -403,6 +419,7 @@ export function buildFieldPlanWalkHoldDeps(
           'PASS 3: a newer document disagrees with an admin-held field; suggestion(s) added to the admin queue (§9.2 item 9)'
         );
       }
+      return outcome;
     },
   };
 }

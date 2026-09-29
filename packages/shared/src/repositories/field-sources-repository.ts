@@ -574,12 +574,18 @@ export class FieldSourcesRepository extends BaseRepository {
     fieldName: string,
     rowKey: string = ''
   ): Promise<void> {
-    const keys = [
-      `field-sources:ipo:${ipoId}:all`,
-      `field-sources:table:${ipoId}:${tableName}`,
-      `field-source:${ipoId}:${tableName}:${rowKey}:${fieldName}`,
-    ];
-
-    await this.deleteCache(keys);
+    await this.deleteCache(fieldSourceCacheKeys(ipoId, tableName, fieldName, rowKey));
   }
+}
+
+/**
+ * The cache keys that hold one field's provenance (the three readers above cache under exactly these).
+ * Exported so a writer outside this repository (the OD-106 exchange override) drops the same keys.
+ */
+export function fieldSourceCacheKeys(ipoId: string, tableName: string, fieldName: string, rowKey: string = ''): string[] {
+  return [
+    `field-sources:ipo:${ipoId}:all`,
+    `field-sources:table:${ipoId}:${tableName}`,
+    `field-source:${ipoId}:${tableName}:${rowKey}:${fieldName}`,
+  ];
 }
