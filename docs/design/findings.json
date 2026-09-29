@@ -2022,6 +2022,24 @@
       "title": "Prod's web environment carries only ADMIN_API_TOKEN; ADMIN_AUTH_TOKEN and ADMIN_PANEL_ENABLED, which OD-104's personal-login admin auth depends on, are present on staging but not on prod",
       "detail": "Read 2026-09-28, env var NAMES only (no values read or logged) on both slots. Prod web: ADMIN_API_TOKEN present; ADMIN_AUTH_TOKEN absent; ADMIN_PANEL_ENABLED absent. Staging web: all three present. nginx on both slots sets Host $host and X-Forwarded-Host $host identically, so the gap is env-only, not a proxy difference. OD-104 (2026-09-25) says today's build runs on \"one shared ADMIN_AUTH_TOKEN and a free-typed admin name\" per `.claude/rules/admin-route-auth.md`, moving to personal logins; whichever admin-auth mechanism ships needs its env vars present on prod before that release, or the admin-route auth fix OD-133/OD-135 requires for the next release will not function there.",
       "phase1": true
+    },
+    {
+      "id": "F-208",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "POSTPONED relaunch invalidation not built (§2.9)",
+      "title": "POSTPONED is terminal in code and no relaunch invalidation exists, so §2.9's \"invalidated the moment the relaunch filing arrives\" rule has no code path",
+      "detail": "Read 2026-09-29. TERMINAL_IPO_STATUSES (scraper/src/services/data-consolidation-service.ts:428) = {WITHDRAWN, POSTPONED, DELISTED}: a stored terminal status is never overwritten by an ordinary scrape; data-persister.ts:750-757 (keepTerminalIpoStatus, the legacy fallback path) honours the same set. Neither path, nor any other code searched, clears a POSTPONED IPO's document-sourced fields when a relaunch filing arrives. Measured 2026-09-29 on ipodhan_staging, read-only: 0 POSTPONED rows (77 CLOSED, 289 LISTED, 21 OPEN, 10 UPCOMING) -- no live case today. Issue #1298. Cited in §2.9.",
+      "phase1": true
+    },
+    {
+      "id": "F-209",
+      "sev": "MAJOR",
+      "status": "CARDED",
+      "area": "held-field walk read answered from the admin's own provenance row (§2.4)",
+      "title": "The held-field walk read could never see a document's value: the DOC fetcher answers a held read from field_sources, which on a held field IS the admin row, so it can only echo the protected value back",
+      "detail": "F-200 (2026-09-28) found the walk skipped a held field before asking any source; fixed in #1280 (3f1cc6d7, main and staging) -- the walk now reads held fields. This finding (2026-09-29) is the next layer: even after that fix, the DOC fetcher resolves a held read from field_sources, and on a held field field_sources IS the ADMIN row (OD-106's own protection wrote it there), so the walk's read of a document can never surface a value different from what the admin already holds. Proved red in the item 9 integration test, 2026-09-29. Fix on branch feat/item9-document-suggestions: held reads answer from document_field_receipts (OD-91's best document) instead of field_sources. Failure class held-read-answered-by-own-admin-provenance. Status CARDED: owned by the item 9 build card (docs/design/pull-model-completion-state.md item 9), not yet merged.",
+      "phase1": true
     }
   ],
   "false_assertions": [
