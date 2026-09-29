@@ -536,6 +536,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       symbol: validatedIPO.symbol,
       openDate: validatedIPO.openDate ?? null,
       priceRangeMin: validatedIPO.priceRangeMin ?? null,
+      priceRangeMax: validatedIPO.priceRangeMax ?? null,
       segment: validatedIPO.segment ?? null,
       // T-478 round 3: the OFS/IPO identity guard applies ONLY when the
       // source explicitly classified this row (offeringTypeExplicit) — a

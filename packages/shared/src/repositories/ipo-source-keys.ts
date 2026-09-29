@@ -116,6 +116,18 @@ export class SourceKeyDuplicateError extends RepositoryError {
   }
 }
 
+/**
+ * §9.2 item 26: the reason prefix every admin identifier edit writes on the keys it supersedes.
+ * It is what tells an ADMIN-removed key from one superseded by the OD-83 relaunch path (which keeps
+ * binding without corroboration): only `keepReplacedIdentifier` writes it.
+ */
+export const ADMIN_EDIT_REASON_PREFIX = 'admin_edit:';
+
+/** A key an admin removed from its row (replaced or cleared): SUPERSEDED with the admin-edit reason. */
+export function isAdminRemovedSourceKey(key: Pick<SourceKeyRow, 'state' | 'stateReason'>): boolean {
+  return key.state === 'SUPERSEDED' && typeof key.stateReason === 'string' && key.stateReason.startsWith(ADMIN_EDIT_REASON_PREFIX);
+}
+
 /** A record whose key is SUPERSEDED binds its row but writes nothing (OD-85). Not a failure. */
 export class SourceKeySupersededError extends RepositoryError {
   constructor(message: string, public readonly ipoId: string, public readonly keyIds: string[]) {
@@ -315,6 +327,9 @@ export type SourceKeyResolution =
   | { kind: 'miss' }
   | { kind: 'bound'; ipoId: string; keyIds: string[] }
   | { kind: 'superseded'; ipoId: string; keyIds: string[] }
+  // §9.2 item 26: every hit is a key an ADMIN removed from the row. The caller must corroborate
+  // the record against the row (OD-68) before it binds; otherwise it is held.
+  | { kind: 'admin_removed'; ipoId: string; keyIds: string[] }
   | { kind: 'held'; ipoId: string; reason: string; disputedKeyIds: string[] }
   | { kind: 'duplicate'; ipoIds: string[]; keyIds: string[] };
 
@@ -378,6 +393,9 @@ export async function resolveBySourceKeys(
     return { kind: 'held', ipoId: row.id, reason: check.reason ?? 'key re-check failed (no reason recorded)', disputedKeyIds: disputed };
   }
 
+  if (liveHits.every(isAdminRemovedSourceKey)) {
+    return { kind: 'admin_removed', ipoId: row.id, keyIds: liveHits.map((h) => h.id) };
+  }
   if (liveHits.some((h) => h.state === 'SUPERSEDED')) {
     return { kind: 'superseded', ipoId: row.id, keyIds: liveHits.map((h) => h.id) };
   }

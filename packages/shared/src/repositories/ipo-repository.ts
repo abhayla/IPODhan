@@ -1363,14 +1363,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
-   * The durable half of a hold: one audit_logs row per (incoming slug, first
-   * candidate) per day, so a record re-scraped every cycle does not flood the
-   * log. A failure here never turns a hold into a create - the caller throws
-   * regardless - and is logged at error level.
-   */
-  /**
-   * §9.2 item 26 (Tier A review CRITICAL-1): the durable half of an alias-only hold. `resolveIpoRow`
-   * refused to bind a record reached only through a kept identifier and throws; this records it on
+   * §9.2 item 26 (Tier A review CRITICAL-1, round 2): the durable half of an admin-removed-value hold.
+   * `resolveIpoRow` refused to bind a record reached only through an identifier an admin removed (a
+   * kept alias or an admin-SUPERSEDED source key) and throws; this records it on
    * the OD-68 hold path (audit_logs IDENTITY_HELD_FOR_REVIEW, read nightly by `i_identity_held`).
    */
   async recordAliasIdentityHold(
@@ -1384,6 +1379,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     });
   }
 
+  /**
+   * The durable half of a hold: one audit_logs row per (incoming slug, first
+   * candidate) per day, so a record re-scraped every cycle does not flood the
+   * log. A failure here never turns a hold into a create - the caller throws
+   * regardless - and is logged at error level.
+   */
   private async recordIdentityHold(
     incoming: { companyName: string; slug: string; openDate: string | null; priceRangeMin: unknown },
     fold: string,

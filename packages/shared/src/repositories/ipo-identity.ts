@@ -150,6 +150,11 @@ export interface IpoIdentity {
    */
   priceRangeMin?: number | null;
   /**
+   * Incoming price_range_max, when the caller has one. Used only by the §9.2 item 26 corroboration
+   * of an admin-removed identifier: when both sides know both bounds, both must match (MINOR-C).
+   */
+  priceRangeMax?: number | null;
+  /**
    * Incoming exchange segment ('MAINBOARD' | 'SME'), when the caller has
    * one. T-403 Tier-A review (item 3): name/prefix/fuzzy matching alone
    * cannot tell an SME and a mainboard offering of the same name apart — two
@@ -449,23 +454,29 @@ function aliasOfferingRefusal(
 }
 
 /**
- * §9.2 item 26, Tier A review CRITICAL-1 (OD-68): an admin often replaces an identifier because the
- * old one was WRONG (a promoter's CIN, a mis-keyed ISIN), so the old value can belong to another
- * company. A row reached ONLY through a kept alias, while it now carries a DIFFERENT value of that
- * kind, binds only when the record is corroborated: its OD-68 identity fold equals the row's, or it
- * has the same open date AND the same known price band. Otherwise the record is held (OD-68 hold
- * path: audit_logs IDENTITY_HELD_FOR_REVIEW, nightly i_identity_held), never bound, never created.
+ * §9.2 item 26, Tier A review CRITICAL-1 and round 2 MAJOR-A/B (OD-68): an admin removes an
+ * identifier (replaces OR clears it) often because it was WRONG (a promoter's CIN, a mis-keyed ISIN,
+ * another offering's BSE IPO number), so the removed value can belong to another company. A match
+ * reached ONLY through an admin-removed value (a kept alias in `ipo_identifier_aliases`, or a source
+ * key an admin edit SUPERSEDED, `isAdminRemovedSourceKey`) binds only when the record is
+ * corroborated: its OD-68 identity fold equals the row's, or it has the same open date AND the same
+ * known price band (both bounds when both sides know both, MINOR-C). This holds whatever the row
+ * carries now: a different value, or none. Otherwise the record is held (OD-68 hold path:
+ * audit_logs IDENTITY_HELD_FOR_REVIEW, nightly i_identity_held), never bound, never created.
  */
-function aliasCorroborated(
-  identity: Pick<IpoIdentity, 'companyName' | 'openDate' | 'priceRangeMin'>,
-  candidate: { companyName?: unknown; openDate?: unknown; priceRangeMin?: unknown }
+function adminRemovedMatchCorroborated(
+  identity: Pick<IpoIdentity, 'companyName' | 'openDate' | 'priceRangeMin' | 'priceRangeMax'>,
+  candidate: { companyName?: unknown; openDate?: unknown; priceRangeMin?: unknown; priceRangeMax?: unknown }
 ): boolean {
   const fold = strictIdentityCompanyName(identity.companyName ?? '');
   if (fold && typeof candidate.companyName === 'string' && strictIdentityCompanyName(candidate.companyName) === fold) return true;
   const inDay = toCalendarDateString(identity.openDate ?? null);
   const rowDay = toCalendarDateString((candidate.openDate as string | Date | null | undefined) ?? null);
-  const inPrice = knownPrice(identity.priceRangeMin);
-  return !!inDay && inDay === rowDay && inPrice != null && inPrice === knownPrice(candidate.priceRangeMin);
+  const inMin = knownPrice(identity.priceRangeMin);
+  if (!inDay || inDay !== rowDay || inMin == null || inMin !== knownPrice(candidate.priceRangeMin)) return false;
+  const inMax = knownPrice(identity.priceRangeMax);
+  const rowMax = knownPrice(candidate.priceRangeMax);
+  return inMax == null || rowMax == null || inMax === rowMax;
 }
 
 type AliasVerdict = { kind: 'bind' } | { kind: 'decline'; reason: string } | { kind: 'hold'; reason: string };
@@ -484,10 +495,10 @@ function judgeAliasMatch(
   }
   const refusal = aliasBindRefusal(identity, candidate);
   if (refusal) return refusal.hold ? { kind: 'hold', reason: refusal.reason } : { kind: 'decline', reason: refusal.reason };
-  if (currentValue && !aliasCorroborated(identity, candidate)) {
+  if (!adminRemovedMatchCorroborated(identity, candidate)) {
     return {
       kind: 'hold',
-      reason: `matched only through a kept ${kind} alias (§9.2 item 26) while the row now carries ${kind} ${currentValue}; ` +
+      reason: `matched only through a kept ${kind} alias (§9.2 item 26) while the row now carries ${currentValue ? `${kind} ${currentValue}` : `no ${kind}`}; ` +
         'not corroborated by the OD-68 name fold nor by the same open date and known price band',
     };
   }
@@ -711,6 +722,23 @@ export async function resolveIpoRow(
         return row;
       }
       break;
+    }
+    case 'admin_removed': {
+      // §9.2 item 26 (round 2 MAJOR-B): every key hit was removed from the row by an admin edit.
+      const row = await ipoRepository.findByIdUncached(byKey.ipoId);
+      if (!row) break;
+      if (!adminRemovedMatchCorroborated(stripIncomingDecoration(rawIdentity), row as never)) {
+        await holdAliasOnlyMatch(ipoRepository, rawIdentity, {
+          candidate: row as IPO,
+          reason: 'matched only through a source key an admin edit removed from the row (§9.2 item 26); ' +
+            'not corroborated by the OD-68 name fold nor by the same open date and known price band',
+        });
+      }
+      throw new SourceKeySupersededError(
+        `resolveIpoRow: "${rawIdentity.companyName}" carries a source key an admin edit SUPERSEDED (§9.2 item 26, corroborated) - binds ${byKey.ipoId}, writes nothing`,
+        byKey.ipoId,
+        byKey.keyIds
+      );
     }
     case 'superseded':
       throw new SourceKeySupersededError(

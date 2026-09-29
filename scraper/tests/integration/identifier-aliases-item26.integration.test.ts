@@ -61,7 +61,7 @@ async function adminSet(fieldName: string, value: unknown) {
  */
 function record(over: {
   symbol?: string; cin?: string; isin?: string; openDate?: string | null; offeringType?: string; sourceKeys?: SourceKeyRef[];
-  companyName?: string; priceRangeMin?: number | null;
+  companyName?: string; priceRangeMin?: number | null; priceRangeMax?: number | null;
 }) {
   const companyName = over.companyName ?? 'Zqx Unrelated Item Twentysix Probe Limited';
   return resolveIpoRow(repo, {
@@ -73,6 +73,7 @@ function record(over: {
     cin: over.cin ?? null,
     openDate: 'openDate' in over ? over.openDate : '2026-09-12',
     priceRangeMin: over.priceRangeMin ?? null,
+    priceRangeMax: over.priceRangeMax ?? null,
     segment: 'MAINBOARD',
     offeringType: over.offeringType ?? 'IPO',
     sourceKeys: over.sourceKeys ?? [],
@@ -164,7 +165,8 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 26: an edited identifier keeps the ol
     expect(old).toMatchObject({ state: 'SUPERSEDED', bindingValue: '99026', supersededBy: now?.id });
     expect(old?.stateReason).toContain('admin_edit');
     expect(now).toMatchObject({ state: 'ACTIVE', boundVia: 'ADMIN_EDIT' });
-    const err = await record({ sourceKeys: [{ source: 'BSE', keyType: 'BSE_IPO_NO', keyValue: '99026' }] }).catch((e) => e);
+    // Corroborated by the OD-68 name fold: the same company's record still binds A and writes nothing.
+    const err = await record({ companyName: A_NAME, sourceKeys: [{ source: 'BSE', keyType: 'BSE_IPO_NO', keyValue: '99026' }] }).catch((e) => e);
     expect(err).toBeInstanceOf(SourceKeySupersededError);
     expect((err as SourceKeySupersededError).message).toContain(A);
     expect((await record({ sourceKeys: [{ source: 'BSE', keyType: 'BSE_IPO_NO', keyValue: '99027' }] }))?.id).toBe(A);
@@ -274,5 +276,76 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 26: an edited identifier keeps the ol
     const back = await db.select().from(schema.ipoIdentifierAliases).where(eq(schema.ipoIdentifierAliases.id, alias.id));
     expect(back[0]?.ipoId).toBe(A);
     await db.delete(schema.ipoMergeLog).where(eq(schema.ipoMergeLog.id, log.id));
+  });
+
+  // ---- Tier A review round 2 (MAJOR-A / MAJOR-B / MINOR-C): "an admin-removed value" is one concept ----
+
+  const BSE_OLD: SourceKeyRef[] = [{ source: 'BSE', keyType: 'BSE_IPO_NO', keyValue: '99026' }];
+
+  it('MAJOR-A: the admin CLEARS a wrong CIN; company B arriving with it (other name, no date match) is HELD, not bound', async () => {
+    expect((await adminSet('cin', null)).kind).toBe('OK');
+    const before = await ipoCount();
+    await expect(record({ cin: CIN_OLD })).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+    await expect(record({ cin: CIN_OLD, openDate: '2026-09-10' })).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+    expect(await ipoCount()).toBe(before);
+    expect((await heldRows(A)).length).toBeGreaterThanOrEqual(1);
+    // the same company, by name or by date + band, still binds
+    expect((await record({ cin: CIN_OLD, companyName: A_NAME }))?.id).toBe(A);
+    expect((await record({ cin: CIN_OLD, openDate: '2026-09-10', priceRangeMin: 100 }))?.id).toBe(A);
+  });
+
+  it('MAJOR-A: a cleared ISIN / symbol alias is held the same way', async () => {
+    expect((await adminSet('isin', null)).kind).toBe('OK');
+    await expect(record({ isin: 'INE926A01011' })).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+    expect((await record({ isin: 'INE926A01011', companyName: A_NAME }))?.id).toBe(A);
+    expect((await adminSet('symbol', null)).kind).toBe('OK');
+    await expect(record({ symbol: 'I26OLD' })).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+  });
+
+  it('MAJOR-B: the admin REPLACES a BSE IPO number; the other offering arriving with the old number is HELD, not bound-and-dropped', async () => {
+    expect((await adminSet('bseIpoNo', 99027)).kind).toBe('OK');
+    const before = await ipoCount();
+    const err = await record({ sourceKeys: BSE_OLD }).catch((e) => e);
+    expect(err).toBeInstanceOf(IdentityHeldForReviewError);
+    expect(await ipoCount()).toBe(before);
+    expect((await heldRows(A)).some((h) => String(h.errorMessage).includes('item 26'))).toBe(true);
+    // the key is not DISPUTED by a hold: it stays SUPERSEDED for the admin to judge
+    const [old] = await db.select().from(schema.ipoSourceKeys).where(and(eq(schema.ipoSourceKeys.ipoId, A), eq(schema.ipoSourceKeys.keyValue, '99026')));
+    expect(old.state).toBe('SUPERSEDED');
+    // corroborated by date + band: binds A, writes nothing
+    await expect(record({ sourceKeys: BSE_OLD, openDate: '2026-09-10', priceRangeMin: 100 })).rejects.toBeInstanceOf(SourceKeySupersededError);
+  });
+
+  it('MAJOR-B: the admin CLEARS the BSE IPO number; a record with the old number is held unless corroborated', async () => {
+    expect((await adminSet('bseIpoNo', null)).kind).toBe('OK');
+    await expect(record({ sourceKeys: BSE_OLD })).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+    await expect(record({ sourceKeys: BSE_OLD, companyName: A_NAME })).rejects.toBeInstanceOf(SourceKeySupersededError);
+  });
+
+  it('MAJOR-B: an NSE key superseded by a symbol edit binds only when corroborated', async () => {
+    await db.insert(schema.ipoSourceKeys).values({
+      ipoId: A, source: 'NSE', keyType: 'NSE_ISSUE', keyValue: 'I26OLD|EQ', bindingValue: 'I26OLD|EQ', state: 'ACTIVE',
+      boundVia: 'BACKFILL', boundBy: 'test', recordOpenDate: '2026-09-10',
+    });
+    expect((await adminSet('symbol', 'I26NEW')).kind).toBe('OK');
+    const nseOld: SourceKeyRef[] = [{ source: 'NSE', keyType: 'NSE_ISSUE', keyValue: 'I26OLD|EQ' }];
+    await expect(record({ sourceKeys: nseOld })).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+    await expect(record({ sourceKeys: nseOld, companyName: A_NAME })).rejects.toBeInstanceOf(SourceKeySupersededError);
+  });
+
+  it('control: a key SUPERSEDED by the OD-83 relaunch path (not an admin edit) keeps binding without corroboration', async () => {
+    await db.update(schema.ipoSourceKeys).set({ state: 'SUPERSEDED', stateReason: 'OD-83 relaunch: new IPO_NO 99028' })
+      .where(and(eq(schema.ipoSourceKeys.ipoId, A), eq(schema.ipoSourceKeys.keyValue, '99026')));
+    await expect(record({ sourceKeys: BSE_OLD })).rejects.toBeInstanceOf(SourceKeySupersededError);
+  });
+
+  it('MINOR-C: both price-band bounds are compared when both are known', async () => {
+    await db.execute(sql`UPDATE ipos SET price_range_max = 110 WHERE id = ${A}::uuid`);
+    expect((await adminSet('symbol', 'I26NEW')).kind).toBe('OK');
+    await expect(record({ symbol: 'I26OLD', openDate: '2026-09-10', priceRangeMin: 100, priceRangeMax: 120 }))
+      .rejects.toBeInstanceOf(IdentityHeldForReviewError);
+    expect((await record({ symbol: 'I26OLD', openDate: '2026-09-10', priceRangeMin: 100, priceRangeMax: 110 }))?.id).toBe(A);
+    // an upper bound unknown on the record: the lower bound alone decides, as before
+    expect((await record({ symbol: 'I26OLD', openDate: '2026-09-10', priceRangeMin: 100 }))?.id).toBe(A);
   });
 });

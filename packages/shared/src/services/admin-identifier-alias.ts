@@ -28,7 +28,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '../db/schema';
 import { ipoIdentifierAliases, ipoSourceKeys, ipos } from '../db/schema';
 import { normalizeCin } from '../utils/cin';
-import { ENDED_STATUSES } from '../repositories/ipo-source-keys';
+import { ADMIN_EDIT_REASON_PREFIX, ENDED_STATUSES } from '../repositories/ipo-source-keys';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -246,7 +246,7 @@ export async function keepReplacedIdentifier(tx: Db, input: IdentifierEditInput)
       return { ok: false, reason: `ipos.${fieldName} ${newNorm} is already carried by another IPO: ${holder.label}; ${advice}` };
     }
   }
-  const reason = `admin_edit: ${fieldName} ${oldNorm ?? '(empty)'} -> ${newNorm ?? '(empty)'} by ${adminName}`;
+  const reason = `${ADMIN_EDIT_REASON_PREFIX} ${fieldName} ${oldNorm ?? '(empty)'} -> ${newNorm ?? '(empty)'} by ${adminName}`;
 
   if (fieldName === 'bseIpoNo') {
     const now = new Date();

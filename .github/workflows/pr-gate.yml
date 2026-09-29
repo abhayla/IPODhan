@@ -1287,11 +1287,8 @@ jobs:
           tests/integration/admin-field-write.integration.test.ts
           tests/integration/scraper-writers-honour-hold.integration.test.ts
           tests/integration/field-plan-walk-held-field-read.integration.test.ts
-<<<<<<< HEAD
           tests/integration/admin-alerts-loaders.integration.test.ts
-=======
           tests/integration/identifier-aliases-item26.integration.test.ts
->>>>>>> 3e8f6e8da (ci(pr-gate): run the item 26 identifier-alias integration test in CI)
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under
