@@ -10,6 +10,8 @@ import {
 } from '@ipodhan/shared/services/admin-field-write';
 import { generateFieldPlan, type PlanIpo } from '../../src/services/field-plan-generator';
 import { loadFieldManifest } from '../../src/config/field-manifest-loader';
+import { plantFieldPlanForIpo, createIpoTypeShareLock } from '../../src/services/field-plan-planting';
+import { IpoFieldPlanRepository } from '@ipodhan/shared/repositories';
 
 /**
  * Contract 2 Phase B item 18 core proof (spec §9.2 item 18, §2.8, §1.11, OD-35):
@@ -200,5 +202,56 @@ describe.skipIf(!DATABASE_URL)('item 18: plan-invalidating admin saves rebuild t
     expect(r.kind).toBe('INVALID');
     const [row] = await db.select({ segment: schema.ipos.segment }).from(schema.ipos).where(eq(schema.ipos.id, IPO));
     expect(row.segment).toBe('MAINBOARD');
+  });
+  it('MAJOR-1: a cycle that read the IPO BEFORE the admin save never re-plants the old type (plant under the ipos lock)', async () => {
+    // The cycle's normal plant for the MAINBOARD IPO it selected at the start of the wake.
+    const stale = { id: IPO, segment: 'MAINBOARD' as const, listingExchanges: ['BSE' as const] };
+    const lock = createIpoTypeShareLock(db as never, (tx) => new IpoFieldPlanRepository(tx as never, undefined as never));
+    const deps = (m = manifest) => ({ fieldPlanRepository: new IpoFieldPlanRepository(db as never, undefined as never), lockIpoType: lock, manifest: m });
+    await plantFieldPlanForIpo(stale, deps());
+
+    // The admin corrects the segment while the wake is still running; the plan is rebuilt to SME_BSE.
+    expect((await save('segment', 'SME')).kind).toBe('OK');
+
+    // The same wake now reaches its plant step with the snapshot it read before the save.
+    await plantFieldPlanForIpo(stale, deps());
+
+    const sme = generateFieldPlan({ id: IPO, segment: 'SME', listingExchanges: ['BSE'] }, manifest);
+    const smeRank1 = new Map(sme.map((r) => [key(r), r.rank1Source]));
+    const after = await planRows();
+    // No row of the old type appears ...
+    expect(after.map(key).sort()).toEqual(sme.map(key).sort());
+    // ... and no PENDING row moved back to the old type's rank-1 source.
+    for (const r of after.filter((x) => x.state === 'PENDING')) expect(r.rank1Source).toBe(smeRank1.get(key(r)));
+  });
+
+  it('MINOR: an offering_type save alone (type key unchanged) re-versions and deletes nothing', async () => {
+    const planted = await plantSupplied({ id: IPO, segment: 'MAINBOARD', listingExchanges: ['BSE'] });
+    const oldVersion = planted[0].manifestVersion - 1;
+    await db.execute(sql`UPDATE ipo_field_plan SET manifest_version = ${oldVersion} WHERE ipo_id = ${IPO}::uuid`);
+    const ids = async () => (await db.select({ id: schema.ipoFieldPlan.id, v: schema.ipoFieldPlan.manifestVersion }).from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO))).map((r) => `${r.id}|${r.v}`).sort();
+    const before = await ids();
+    expect((await save('offeringType', 'IPO')).kind).toBe('OK');
+    expect(await ids()).toEqual(before);
+    const audit = (await db.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.ipoId, IPO), eq(schema.auditLogs.fieldName, 'offeringType'))))[0];
+    expect((audit.details as Record<string, unknown>).planRebuild).toMatchObject({ rebuilt: false });
+  });
+
+  it("MINOR: a held field's walk-read stamp survives its row being re-planted", async () => {
+    await plantSupplied({ id: IPO, segment: 'MAINBOARD', listingExchanges: ['BSE'] });
+    const readAt = new Date('2026-09-21T05:00:00Z');
+    await db.execute(sql`
+      UPDATE ipo_field_plan SET state = 'PENDING', chosen_source = NULL, cause = '[held-read:UPCOMING|0] earlier cause',
+             last_attempt_at = ${readAt.toISOString()}::timestamp, next_due_at = NULL
+       WHERE ipo_id = ${IPO}::uuid AND table_name = 'ipos' AND field_name = 'open_date'`);
+    expect((await save('segment', 'SME')).kind).toBe('OK');
+    const [row] = (await db.execute(sql`
+      SELECT rank1_source, cause, last_attempt_at::text AS last_attempt_at, next_due_at FROM ipo_field_plan
+       WHERE ipo_id = ${IPO}::uuid AND table_name = 'ipos' AND field_name = 'open_date'`)).rows as Array<Record<string, unknown>>;
+    const sme = generateFieldPlan({ id: IPO, segment: 'SME', listingExchanges: ['BSE'] }, manifest).find((r) => key(r) === 'ipos.open_date')!;
+    expect(row.rank1_source).toBe(sme.rank1Source);
+    expect(String(row.cause)).toMatch(/^\[held-read:UPCOMING\|0\]/);
+    expect(row.last_attempt_at).toBe('2026-09-21 05:00:00');
+    expect(row.next_due_at).toBeNull();
   });
 });

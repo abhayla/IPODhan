@@ -23,7 +23,7 @@
 import { sql } from 'drizzle-orm';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { DocumentRepository, DocumentFetchStateRepository, IPORepository, IpoPipelineStepsRepository, IpoFieldPlanRepository } from '@ipodhan/shared';
-import { plantFieldPlanForIpo } from './field-plan-planting.js';
+import { plantFieldPlanForIpo, createIpoTypeShareLock } from './field-plan-planting.js';
 import { recordBseDiscoveryMetadata, recordDocumentSourceHints, recordDiscoveredLeadManagers } from './data-persister.js';
 import { describeDbCause } from '@ipodhan/shared/errors/db-cause';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
@@ -1481,6 +1481,9 @@ export async function runDocumentCycle(
   const ipoRepository = new IPORepository(db as never, redis as never);
   const stepsRepository = new IpoPipelineStepsRepository(db as never, redis as never);
   const fieldPlanRepository = new IpoFieldPlanRepository(db as never, redis as never);
+  // Tier A MAJOR-1 (§2.8): PASS 2.5 plants from the type read under the ipos lock, never from the
+  // start-of-wake `candidates` snapshot, so an admin type save mid-wake can never be undone.
+  const plantLock = createIpoTypeShareLock(db as never, (tx) => new IpoFieldPlanRepository(tx as never, redis as never));
   // CRITICAL-1 fix (S4 review round 2): built once per cycle, same reason every other repository
   // above is (ruling 33 / F-101) -- resolved ONCE per walk run inside the walk itself
   // (`resolvePolicyForPlan`'s per-field call), never a DB read per field.
@@ -2277,7 +2280,7 @@ export async function runDocumentCycle(
                 segment: (ipo.segment as 'MAINBOARD' | 'SME' | null) ?? null,
                 listingExchanges: ipo.listingExchanges ?? null,
               },
-              { overrides: fieldSourceOverridesReader, fieldPlanRepository }
+              { overrides: fieldSourceOverridesReader, fieldPlanRepository, lockIpoType: plantLock }
             );
             if (planted.rowsGenerated === 0) continue;
             fieldPlanTotals.ipos++;

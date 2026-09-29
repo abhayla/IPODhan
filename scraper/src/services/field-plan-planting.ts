@@ -14,7 +14,15 @@
  * (ipo, table, row_key, field) keys and re-ranks a non-SUPPLIED row only when
  * the manifest version is higher, so calling this on an already-planned IPO
  * writes nothing.
+ *
+ * PLANTED UNDER THE IPOS LOCK (§2.8, §9.2 item 18, Tier A MAJOR-1): the type key a plan is built
+ * from (segment + listing exchanges) is re-read INSIDE the planting transaction with
+ * `SELECT ... FOR SHARE`, never taken from a snapshot the caller read earlier. An admin save of a
+ * plan-invalidating field holds `FOR NO KEY UPDATE` on the same row while it writes the value and
+ * rebuilds the plan, so the two serialise: a plant that started first finishes before the save
+ * rebuilds; a plant that arrives during the save waits and then plants the NEW type.
  */
+import { sql } from 'drizzle-orm';
 import { generateFieldPlanAsync, type PlanIpo } from './field-plan-generator.js';
 import type { FieldManifest } from '../config/field-manifest-schema.js';
 
@@ -32,16 +40,52 @@ export interface GeneratedPlanRowInput {
   policyOrigin: string;
 }
 
+export interface PlanRowWriter {
+  upsertGeneratedRows(rows: GeneratedPlanRowInput[]): Promise<{ inserted: number; updated?: number }>;
+  /** #968 (OD-95): reopen / restore SETTLED rows when an override changes the effective order.
+   *  Optional so a caller or mock without it plants exactly as before. */
+  reconcileSettledToOverrides?(
+    rows: GeneratedPlanRowInput[]
+  ): Promise<{ reopened: number; retargeted: number; restoreDue: number }>;
+}
+
+/**
+ * Runs `fn` inside one transaction holding `FOR SHARE` on the IPO's row, with the row's CURRENT
+ * type slice and a plan-row writer bound to that transaction. `null` = the IPO no longer exists.
+ */
+export type IpoTypeLock = <R>(
+  ipoId: string,
+  fn: (current: PlanIpo | null, fieldPlanRepository: PlanRowWriter) => Promise<R>
+) => Promise<R>;
+
+interface TxCapableDb {
+  transaction<R>(fn: (tx: { execute(q: ReturnType<typeof sql>): Promise<{ rows: unknown[] }> }) => Promise<R>): Promise<R>;
+}
+
+/** The production lock: a drizzle transaction, `FOR SHARE` on `ipos`, a writer made from the tx. */
+export function createIpoTypeShareLock(db: TxCapableDb, writerFor: (tx: unknown) => PlanRowWriter): IpoTypeLock {
+  return (ipoId, fn) =>
+    db.transaction(async (tx) => {
+      const res = await tx.execute(
+        sql`SELECT id, segment, listing_exchanges FROM ipos WHERE id = ${ipoId}::uuid FOR SHARE`
+      );
+      const row = res.rows[0] as { id: string; segment: string | null; listing_exchanges: string[] | null } | undefined;
+      const current: PlanIpo | null = row
+        ? { id: row.id, segment: row.segment, listingExchanges: row.listing_exchanges }
+        : null;
+      return fn(current, writerFor(tx));
+    });
+}
+
 export interface FieldPlanPlantingDeps {
   overrides?: OverridesReader;
-  fieldPlanRepository: {
-    upsertGeneratedRows(rows: GeneratedPlanRowInput[]): Promise<{ inserted: number; updated?: number }>;
-    /** #968 (OD-95): reopen / restore SETTLED rows when an override changes the effective order.
-     *  Optional so a caller or mock without it plants exactly as before. */
-    reconcileSettledToOverrides?(
-      rows: GeneratedPlanRowInput[]
-    ): Promise<{ reopened: number; retargeted: number; restoreDue: number }>;
-  };
+  fieldPlanRepository: PlanRowWriter;
+  /**
+   * Production callers pass this (document cycle, closed-IPO job): the plan is then built from the
+   * type slice read under the ipos lock, and `ipo`'s segment/exchanges are ignored. Without it
+   * (unit tests with in-memory writers) the given `ipo` is planted as is.
+   */
+  lockIpoType?: IpoTypeLock;
   /** Test seam only: production always plants from the loaded manifest (the generator's default). */
   manifest?: FieldManifest;
 }
@@ -57,23 +101,30 @@ export interface FieldPlanPlantingResult {
   settledRestoreDue: number;
 }
 
+const NOTHING_PLANTED: FieldPlanPlantingResult = {
+  rowsGenerated: 0,
+  inserted: 0,
+  updated: 0,
+  settledReopened: 0,
+  settledRetargeted: 0,
+  settledRestoreDue: 0,
+};
+
 export async function plantFieldPlanForIpo(
   ipo: PlanIpo,
   deps: FieldPlanPlantingDeps
 ): Promise<FieldPlanPlantingResult> {
+  if (!deps.lockIpoType) return plantRows(ipo, deps);
+  return deps.lockIpoType(ipo.id, (current, fieldPlanRepository) =>
+    current ? plantRows(current, { ...deps, fieldPlanRepository }) : Promise.resolve({ ...NOTHING_PLANTED })
+  );
+}
+
+async function plantRows(ipo: PlanIpo, deps: FieldPlanPlantingDeps): Promise<FieldPlanPlantingResult> {
   const rows = deps.manifest
     ? await generateFieldPlanAsync(ipo, { overrides: deps.overrides }, deps.manifest)
     : await generateFieldPlanAsync(ipo, { overrides: deps.overrides });
-  if (rows.length === 0) {
-    return {
-      rowsGenerated: 0,
-      inserted: 0,
-      updated: 0,
-      settledReopened: 0,
-      settledRetargeted: 0,
-      settledRestoreDue: 0,
-    };
-  }
+  if (rows.length === 0) return { ...NOTHING_PLANTED };
   const planned: GeneratedPlanRowInput[] = rows.map((r) => ({
     ipoId: r.ipoId,
     tableName: r.tableName,

@@ -52,6 +52,14 @@ vi.mock('@ipodhan/shared', () => ({
     execute: (...args: unknown[]) => dbExecuteMock(...args),
     insert: (...args: unknown[]) => dbInsertMock(...args),
     select: (...args: unknown[]) => dbSelectMock(...args),
+    // PASS 2.5 plants under the ipos FOR SHARE lock (Tier A MAJOR-1): the tx re-reads the IPO's
+    // type slice; this stub answers with the id the query binds and a MAINBOARD type.
+    transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({
+        execute: async (q: { queryChunks?: unknown[] }) => ({
+          rows: [{ id: (q.queryChunks ?? []).find((c) => typeof c === 'string'), segment: 'MAINBOARD', listing_exchanges: null }],
+        }),
+      }),
   },
   getRedisClient: () => ({}),
   DocumentRepository: vi.fn().mockImplementation(() => ({

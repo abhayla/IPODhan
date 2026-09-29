@@ -12,6 +12,7 @@
 import manifestJson from '../../../scraper/config/field-manifest.json';
 import { IPO_FIELDS_AWAITING_PHASE_B } from '@ipodhan/shared/services/admin-field-write';
 import { PLAN_INVALIDATING_IPO_FIELDS } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import { resolveIpoTypeKey } from '@ipodhan/shared/services/field-plan-generator';
 
 export type FieldClass = 'D' | 'T' | 'X' | 'W' | 'M' | 'C' | 'I';
 
@@ -111,10 +112,9 @@ export interface EditorFieldSpec {
   croreInput: boolean;
 }
 
-/** The Appendix A type column for an IPO (same rule as resolveIpoTypeKey in field-plan-generator.ts). */
+/** The Appendix A type column for an IPO: the plan generator's own rule (packages/shared). */
 export function ipoTypeKey(ipo: { segment?: string | null; listingExchanges?: string[] | null }): string {
-  if (ipo.segment !== 'SME') return 'MAINBOARD';
-  return (ipo.listingExchanges ?? []).includes('NSE') ? 'SME_NSE' : 'SME_BSE';
+  return resolveIpoTypeKey({ segment: ipo.segment ?? null, listingExchanges: ipo.listingExchanges ?? null });
 }
 
 /** §9.2 item 7 as a function of the class and the key. */

@@ -4,12 +4,13 @@
  * rank-1 source is unchanged. Called by the ONE admin write (`admin-field-write.ts`) inside its
  * transaction, after the value is written and while the `ipos` row is locked.
  *
- * The planned rows are built from the field manifest by the SAME rules as the scraper's generator
- * (`scraper/src/services/field-plan-generator.ts` generateFieldPlan + generateFieldPlanAsync's
- * override precedence). The generator lives in the scraper workspace, which neither this package
- * nor `web/` can import, so `planRowsFromManifest` is its data-level twin;
- * `scraper/tests/unit/services/plan-rows-from-manifest-parity.test.ts` asserts the two produce the
- * same rows for every IPO type the manifest keys, so they cannot drift silently.
+ * The planned rows come from THE generator (`field-plan-generator.ts` in this package, the same
+ * function the scraper's plant step calls), with active `field_source_overrides` read inside the
+ * transaction and applied by the generator's own precedence. There is no second copy of the rules.
+ *
+ * No plan change = no rebuild: the plan depends only on the IPO's type key (segment + listing
+ * exchanges). A save that leaves the type key as it was (an `offering_type` correction alone)
+ * touches no plan row.
  *
  * What the rebuild does, per (table, field):
  *   - planned, existing row with the SAME rank-1 source: kept (state, chosen value and evidence
@@ -25,6 +26,18 @@
 import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '../db/schema';
+import { FIELD_PLAN_HELD_READ_PREFIX } from '../repositories/ipo-field-plan-repository';
+import {
+  generateFieldPlanAsync,
+  resolveIpoTypeKey,
+  type ActiveOverride,
+  type PlanIpo,
+  type PlanManifest,
+  type PlannedFieldRow,
+  type PlanOverridesReader,
+} from './field-plan-generator';
+
+export type { PlanManifest };
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -57,64 +70,6 @@ export function normalizeListingExchanges(value: unknown): { ok: true; value: ('
   return { ok: true, value: out };
 }
 
-/** The slice of `scraper/config/field-manifest.json` the plan needs. */
-export interface PlanManifest {
-  version: number;
-  fields: Record<string, { rank: Record<string, readonly string[] | undefined> }>;
-}
-
-export interface PlanTypeIpo {
-  id: string;
-  segment: string | null;
-  listingExchanges?: readonly string[] | null;
-}
-
-/** Same rule as `resolveIpoTypeKey` (field-plan-generator.ts). */
-export function planTypeKey(ipo: Pick<PlanTypeIpo, 'segment' | 'listingExchanges'>): string {
-  if (ipo.segment !== 'SME') return 'MAINBOARD';
-  return (ipo.listingExchanges ?? []).includes('NSE') ? 'SME_NSE' : 'SME_BSE';
-}
-
-export interface PlannedRow {
-  tableName: string;
-  fieldName: string;
-  rank1Source: string | null;
-  rank2Source: string | null;
-  rank3Source: string | null;
-  manifestVersion: number;
-  policyOrigin: string;
-}
-
-const RANK_COLUMNS = 3;
-
-/** Registry-only plan rows for one IPO (generateFieldPlan's rules). */
-export function planRowsFromManifest(manifest: PlanManifest, ipo: PlanTypeIpo): PlannedRow[] {
-  const typeKey = planTypeKey(ipo);
-  const out: PlannedRow[] = [];
-  for (const [fieldKey, entry] of Object.entries(manifest.fields)) {
-    const dot = fieldKey.indexOf('.');
-    if (dot <= 0 || dot === fieldKey.length - 1 || fieldKey.indexOf('.', dot + 1) !== -1) {
-      throw new Error(`planRowsFromManifest: manifest field key "${fieldKey}" is not of the form table.field`);
-    }
-    const ranks = entry.rank?.[typeKey];
-    // No entry for this type = not planned; an empty list = no source can serve it (#858).
-    if (!Array.isArray(ranks) || ranks.length === 0) continue;
-    if (ranks.length > RANK_COLUMNS) {
-      throw new Error(`planRowsFromManifest: field "${fieldKey}" ranks ${ranks.length} sources for ${typeKey}; ipo_field_plan has ${RANK_COLUMNS} rank columns`);
-    }
-    out.push({
-      tableName: fieldKey.slice(0, dot),
-      fieldName: fieldKey.slice(dot + 1),
-      rank1Source: ranks[0] ?? null,
-      rank2Source: ranks[1] ?? null,
-      rank3Source: ranks[2] ?? null,
-      manifestVersion: manifest.version,
-      policyOrigin: `registry:${manifest.version}`,
-    });
-  }
-  return out;
-}
-
 interface OverrideRow {
   id: string;
   table_name: string;
@@ -123,40 +78,40 @@ interface OverrideRow {
   rank1_source: string;
   rank2_source: string | null;
   rank3_source: string | null;
+  expires_at: string | Date;
 }
 
 /**
- * Active `field_source_overrides` rows for this IPO (its own and global), newest first. Layer 2 of
- * the policy: an ipo-scoped row beats a global one (generateFieldPlanAsync). A database without the
- * table has no layer 2; checked with to_regclass so a missing table never aborts the transaction.
+ * Layer 2 read inside the admin transaction, as the generator's reader: active rows for this IPO
+ * (its own and global), newest first, null ranks dropped (the scraper's reader does the same,
+ * `field-source-overrides-reader.ts`). A database without the table has no layer 2; checked with
+ * to_regclass so a missing table never aborts the transaction.
  */
-async function activeOverrides(tx: Db, ipoId: string): Promise<OverrideRow[]> {
+async function txOverridesReader(tx: Db, ipoId: string): Promise<PlanOverridesReader> {
   const exists = await tx.execute(sql`SELECT to_regclass('public.field_source_overrides') IS NOT NULL AS present`);
-  if (!(exists.rows[0] as { present?: boolean } | undefined)?.present) return [];
-  const res = await tx.execute(sql`
-    SELECT id, table_name, field_name, ipo_id, rank1_source, rank2_source, rank3_source
-      FROM field_source_overrides
-     WHERE expired_at IS NULL
-       AND expires_at > now()
-       AND (ipo_id IS NULL OR ipo_id = ${ipoId}::uuid)
-     ORDER BY set_at DESC, id DESC`);
-  return res.rows as unknown as OverrideRow[];
-}
-
-function applyOverrides(rows: PlannedRow[], overrides: OverrideRow[]): PlannedRow[] {
-  if (overrides.length === 0) return rows;
-  return rows.map((row) => {
-    const active = overrides.filter((o) => o.table_name === row.tableName && o.field_name === row.fieldName);
-    if (active.length === 0) return row;
-    const winner = active.find((o) => o.ipo_id !== null) ?? active[0];
-    return {
-      ...row,
-      rank1Source: winner.rank1_source,
-      rank2Source: winner.rank2_source,
-      rank3Source: winner.rank3_source,
-      policyOrigin: `override:${winner.id}`,
-    };
-  });
+  let rows: OverrideRow[] = [];
+  if ((exists.rows[0] as { present?: boolean } | undefined)?.present) {
+    const res = await tx.execute(sql`
+      SELECT id, table_name, field_name, ipo_id, rank1_source, rank2_source, rank3_source, expires_at
+        FROM field_source_overrides
+       WHERE expired_at IS NULL
+         AND expires_at > now()
+         AND (ipo_id IS NULL OR ipo_id = ${ipoId}::uuid)
+       ORDER BY set_at DESC, id DESC`);
+    rows = res.rows as unknown as OverrideRow[];
+  }
+  return {
+    async resolve(q): Promise<ActiveOverride[]> {
+      return rows
+        .filter((o) => o.table_name === q.table && o.field_name === q.column)
+        .map((o) => ({
+          id: o.id,
+          ranks: [o.rank1_source, o.rank2_source, o.rank3_source].filter((x): x is string => x !== null),
+          expiresAt: new Date(o.expires_at).toISOString(),
+          ipoScoped: o.ipo_id !== null,
+        }));
+    },
+  };
 }
 
 export interface PlanRebuildSummary {
@@ -167,6 +122,8 @@ export interface PlanRebuildSummary {
   replanted: number;
   dropped: number;
   added: number;
+  /** false when the type key did not change: no plan row was touched. */
+  rebuilt: boolean;
 }
 
 interface ExistingRow {
@@ -176,6 +133,9 @@ interface ExistingRow {
   field_name: string;
   rank1_source: string | null;
   reopened_under_policy: string | null;
+  cause: string | null;
+  /** Naive timestamp as its own text, never through a JS Date (ist-timezone rule). */
+  last_attempt_at: string | null;
 }
 
 /**
@@ -186,25 +146,31 @@ export async function rebuildIpoPlanInTx(
   tx: Db,
   ipoId: string,
   manifest: PlanManifest,
-  before: Pick<PlanTypeIpo, 'segment' | 'listingExchanges'>
+  before: Pick<PlanIpo, 'segment' | 'listingExchanges'>
 ): Promise<PlanRebuildSummary> {
   const cur = await tx.execute(sql`SELECT segment, listing_exchanges FROM ipos WHERE id = ${ipoId}::uuid`);
   const ipoRow = cur.rows[0] as { segment: string | null; listing_exchanges: string[] | null } | undefined;
   if (!ipoRow) throw new Error(`rebuildIpoPlanInTx: IPO ${ipoId} not found`);
-  const after: PlanTypeIpo = { id: ipoId, segment: ipoRow.segment, listingExchanges: ipoRow.listing_exchanges };
+  const after: PlanIpo = { id: ipoId, segment: ipoRow.segment, listingExchanges: ipoRow.listing_exchanges };
+  const typeKeyBefore = resolveIpoTypeKey(before);
+  const typeKeyAfter = resolveIpoTypeKey(after);
+  if (typeKeyBefore === typeKeyAfter) {
+    // The plan is a function of the type key alone: nothing to rebuild, nothing re-versioned.
+    return { typeKeyBefore, typeKeyAfter, planned: 0, kept: 0, replanted: 0, dropped: 0, added: 0, rebuilt: false };
+  }
 
-  const planned = applyOverrides(planRowsFromManifest(manifest, after), await activeOverrides(tx, ipoId));
+  const planned = await generateFieldPlanAsync(after, { overrides: await txOverridesReader(tx, ipoId) }, manifest);
   const plannedByKey = new Map(planned.map((p) => [`${p.tableName}.${p.fieldName}`, p]));
 
   const existingRes = await tx.execute(sql`
-    SELECT id, table_name, row_key, field_name, rank1_source, reopened_under_policy
+    SELECT id, table_name, row_key, field_name, rank1_source, reopened_under_policy, cause, last_attempt_at::text AS last_attempt_at
       FROM ipo_field_plan
      WHERE ipo_id = ${ipoId}::uuid`);
   const existing = existingRes.rows as unknown as ExistingRow[];
 
   const toDelete: string[] = [];
-  const toPlant: Array<PlannedRow & { rowKey: string }> = [];
-  const toRerank: Array<{ id: string; plan: PlannedRow }> = [];
+  const toPlant: Array<PlannedFieldRow & { rowKey: string; heldReadCause: string | null; heldReadAt: string | null }> = [];
+  const toRerank: Array<{ id: string; plan: PlannedFieldRow }> = [];
   const coveredKeys = new Set<string>();
   let kept = 0;
   let replanted = 0;
@@ -225,13 +191,23 @@ export async function rebuildIpoPlanInTx(
       continue;
     }
     toDelete.push(row.id);
-    toPlant.push({ ...plan, rowKey: row.row_key });
+    // A held field's walk-read stamp (`[held-read:<key>]`, OD-65: no extra read of a held field)
+    // moves to the re-planted row, so the new rank-1 source does not read it again until the key
+    // (stage, completed documents) changes.
+    const cause = row.cause;
+    const held = cause !== null && cause.startsWith(FIELD_PLAN_HELD_READ_PREFIX);
+    toPlant.push({
+      ...plan,
+      rowKey: row.row_key,
+      heldReadCause: held ? cause.slice(0, cause.indexOf(']') + 1) : null,
+      heldReadAt: held ? row.last_attempt_at : null,
+    });
     replanted++;
   }
   let added = 0;
   for (const plan of planned) {
     if (coveredKeys.has(`${plan.tableName}.${plan.fieldName}`)) continue;
-    toPlant.push({ ...plan, rowKey: '' });
+    toPlant.push({ ...plan, rowKey: '', heldReadCause: null, heldReadAt: null });
     added++;
   }
 
@@ -259,24 +235,32 @@ export async function rebuildIpoPlanInTx(
     const values = sql.join(
       toPlant.map(
         (p) =>
-          sql`(${ipoId}::uuid, ${p.tableName}, ${p.rowKey}, ${p.fieldName}, ${p.rank1Source}, ${p.rank2Source}, ${p.rank3Source}, ${p.manifestVersion}, ${p.policyOrigin})`
+          sql`(${ipoId}::uuid, ${p.tableName}, ${p.rowKey}, ${p.fieldName}, ${p.rank1Source}, ${p.rank2Source}, ${p.rank3Source}, ${p.manifestVersion}, ${p.policyOrigin}, ${p.heldReadCause}::text, ${p.heldReadAt}::timestamp)`
       ),
       sql`, `
     );
     await tx.execute(sql`
       INSERT INTO ipo_field_plan (
         ipo_id, table_name, row_key, field_name,
-        rank1_source, rank2_source, rank3_source, manifest_version, policy_origin
+        rank1_source, rank2_source, rank3_source, manifest_version, policy_origin,
+        cause, last_attempt_at
       ) VALUES ${values}`);
+    // A carried held-read stamp means "read at this key": not due by the slot cadence (as
+    // recordHeldFieldRead leaves a PENDING row).
+    await tx.execute(sql`
+      UPDATE ipo_field_plan SET next_due_at = NULL
+       WHERE ipo_id = ${ipoId}::uuid AND state = 'PENDING'
+         AND left(coalesce(cause, ''), ${FIELD_PLAN_HELD_READ_PREFIX.length}) = ${FIELD_PLAN_HELD_READ_PREFIX}`);
   }
 
   return {
-    typeKeyBefore: planTypeKey(before),
-    typeKeyAfter: planTypeKey(after),
+    typeKeyBefore,
+    typeKeyAfter,
     planned: planned.length,
     kept,
     replanted,
     dropped,
     added,
+    rebuilt: true,
   };
 }
