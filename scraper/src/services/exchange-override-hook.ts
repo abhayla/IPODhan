@@ -30,9 +30,11 @@ export interface ExchangeOverrideHookDeps {
   claim: (key: string) => Promise<void>;
   /**
    * Drops the IPO's cached reads after a committed replacement, as every other IPO write does
-   * (production: `invalidateIPOCaches` in cache-invalidator.ts, keys from `getIPOInvalidationKeys`).
+   * (production: `invalidateIPOCaches` in cache-invalidator.ts, keys from `getIPOInvalidationKeys`),
+   * plus the replaced field's provenance keys (`fieldSourceCacheKeys`): the override writes
+   * field_sources directly, past the repository that normally drops them.
    */
-  invalidateCaches?: (ipoId: string, slug: string) => Promise<void>;
+  invalidateCaches?: (ipoId: string, slug: string, field: { tableName: string; fieldName: string; rowKey: string }) => Promise<void>;
   /** DEPLOY_SLOT ('staging' | 'prod'); named in every title and key. */
   env?: string;
   now?: () => Date;
@@ -65,7 +67,7 @@ export function buildExchangeOverrideHook(deps: ExchangeOverrideHookDeps) {
     }
     if (deps.invalidateCaches) {
       try {
-        await deps.invalidateCaches(ipoId, result.slug);
+        await deps.invalidateCaches(ipoId, result.slug, { tableName, fieldName: field, rowKey: rowKey ?? '' });
       } catch (error) {
         logger.warn(
           { ipoId, slug: result.slug, error: error instanceof Error ? error.message : String(error) },

@@ -7,6 +7,7 @@ import * as schema from '../../../packages/shared/src/db/schema';
 import { IpoFieldPlanRepository } from '../../../packages/shared/src/repositories/ipo-field-plan-repository';
 import { writeAdminFieldValue, readAdminFieldVersion } from '../../../packages/shared/src/services/admin-field-write';
 import { applyExchangeOverride } from '../../../packages/shared/src/services/exchange-override';
+import { fieldSourceCacheKeys } from '../../../packages/shared/src/repositories/field-sources-repository';
 import type { FieldFetcher, FieldPlanWalkOrchestrator } from '../../src/services/field-plan-walk.js';
 
 /**
@@ -79,7 +80,7 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
   }, 60000);
 
   /** The IPO as NSE first published it: close date + NSE provenance with NSE's witness. */
-  async function seed(nseAtSave: string) {
+  async function seed(nseAtSave: string, bseAtSave?: string) {
     await cleanup();
     await db.execute(sql`
       INSERT INTO ipos (id, company_name, slug, category, status, registrar, sector, close_date)
@@ -93,20 +94,23 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
       fieldName: 'closeDate',
       source: 'NSE',
       confidence: 100,
-      witnesses: [{ source: 'NSE', value: nseAtSave, at: at.toISOString(), outcome: 'SUPPLIED' }],
+      witnesses: [
+        { source: 'NSE', value: nseAtSave, at: at.toISOString(), outcome: 'SUPPLIED' },
+        ...(bseAtSave ? [{ source: 'BSE', value: bseAtSave, at: at.toISOString(), outcome: 'SUPPLIED' }] : []),
+      ],
       updatedAt: at,
       createdAt: at,
     } as never);
   }
 
-  async function adminHolds(value: string) {
+  async function adminHolds(value: string, typed = true) {
     const v = await readAdminFieldVersion(db as never, IPO_ID, 'ipos', 'closeDate');
     const saved = await writeAdminFieldValue(db as never, {
       ipoId: IPO_ID,
       tableName: 'ipos',
       fieldName: 'closeDate',
       value,
-      mode: { kind: 'typed', sourceNote: 'exchange circular, page 1' },
+      mode: typed ? { kind: 'typed', sourceNote: 'exchange circular, page 1' } : { kind: 'typed', sourceNote: 're-save' },
       expectedVersion: v!.version,
       actor: { name: 'od106-test-admin', adminId: 'admin-od106-it' },
       entryPoint: 'test',
@@ -127,7 +131,7 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
        WHERE ipo_id = ${IPO_ID}::uuid AND field_name = 'closeDate'`);
   }
 
-  async function walkOnce(nseSays: string) {
+  async function walkOnce(nseSays: string, bseSays?: string) {
     await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
     const [plan] = await db
       .insert(schema.ipoFieldPlan)
@@ -145,7 +149,7 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
       } as never)
       .returning({ id: schema.ipoFieldPlan.id });
     const nse: FieldFetcher = async () => ({ outcome: 'SUPPLIED', value: nseSays });
-    const bse: FieldFetcher = async () => ({ outcome: 'NOT_AVAILABLE_YET' });
+    const bse: FieldFetcher = async () => (bseSays ? { outcome: 'SUPPLIED', value: bseSays } : { outcome: 'NOT_AVAILABLE_YET' });
     const cg: FieldFetcher = async () => ({ outcome: 'NOT_PRINTED' });
     const orchestrator = {
       consolidatedUpsertIPO: async () => {
@@ -180,7 +184,7 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
           return { sent: true };
         },
         ...redisClaims(redis as never),
-        invalidateCaches: (id, slug) => invalidateIPOCaches(redis as never, id, slug),
+        invalidateCaches: (id, slug, field) => invalidateIPOCaches(redis as never, id, slug, field),
         env: 'it',
       }),
     };
@@ -210,15 +214,19 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
     await seed(HELD);
     await adminHolds(HELD);
     const before = await state();
-    expect((before.fs.dataLineage as any).exchangeAtSave).toEqual({ NSE: HELD, BSE: null });
+    expect((before.fs.dataLineage as any).exchangeAtSave).toEqual({ NSE: HELD });
     expect(before.hold.isProtected).toBe(true);
     // MINOR: the override clears the IPO's cached reads (the same SSOT keys every IPO write drops).
     await redis.set(`ipo:id:${IPO_ID}`, 'stale');
     await redis.set(`ipo:slug:${SLUG}`, 'stale');
+    // MINOR-4: and the field-source cache keys (FieldSourcesRepository's key builder).
+    const fsKeys = fieldSourceCacheKeys(IPO_ID, 'ipos', 'closeDate', '');
+    for (const k of fsKeys) await redis.set(k, 'stale');
 
     const { plan, alerts, result } = await walkOnce(NSE_NEW);
     expect(await redis.exists(`ipo:id:${IPO_ID}`)).toBe(0);
     expect(await redis.exists(`ipo:slug:${SLUG}`)).toBe(0);
+    for (const k of fsKeys) expect(await redis.exists(k)).toBe(0);
     expect(result.fieldsSkippedProtected).toBe(1);
 
     const after = await state();
@@ -253,7 +261,7 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
     await seed(NSE_NEW);
     await adminHolds(HELD);
     const before = await state();
-    expect((before.fs.dataLineage as any).exchangeAtSave).toEqual({ NSE: NSE_NEW, BSE: null });
+    expect((before.fs.dataLineage as any).exchangeAtSave).toEqual({ NSE: NSE_NEW });
 
     const { plan, alerts } = await walkOnce(NSE_NEW);
 
@@ -321,6 +329,50 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
     const { alerts } = await walkOnce(NSE_OLD);
     const after = await state();
     expect(after.ipo.closeDate).toBe(HELD);
+    expect(after.hold.isProtected).toBe(true);
+    expect(alerts).toHaveLength(0);
+  });
+
+  it('ROUND 3 probe: a legacy hold re-saved with no stored NSE witness keeps the rejected NSE value as its baseline', async () => {
+    // NSE said 10-05, the admin set 10-06 (a legacy hold: no exchangeAtSave, previous_source NSE).
+    await seed('2026-10-05');
+    await adminHolds('2026-10-06');
+    await makeLegacyHold('NSE');
+    // No stored NSE witness at the re-save: absence of evidence is "unknown", never "stated nothing".
+    await db.execute(sql`UPDATE field_sources SET witnesses = NULL WHERE ipo_id = ${IPO_ID}::uuid AND field_name = 'closeDate'`);
+    await adminHolds('2026-10-07', false);
+    const saved = await state();
+    expect(saved.ipo.closeDate).toBe('2026-10-07');
+    // Carried forward from the prior hold's known baseline (previous_value, NSE); BSE unknown.
+    expect((saved.fs.dataLineage as any).exchangeAtSave).toEqual({ NSE: '2026-10-05' });
+
+    // NSE still says the value the admin rejected: the admin value stays.
+    const still = await walkOnce('2026-10-05');
+    const mid = await state();
+    expect(mid.ipo.closeDate).toBe('2026-10-07');
+    expect(mid.hold.isProtected).toBe(true);
+    expect(still.alerts).toHaveLength(0);
+    expect(mid.audits.filter((a) => a.actionType === 'Exchange Override')).toHaveLength(0);
+
+    // NSE later states a new date: it replaces the admin value.
+    const moved = await walkOnce('2026-10-09');
+    const after = await state();
+    expect(after.ipo.closeDate).toBe('2026-10-09');
+    expect(after.fs.source).toBe('NSE');
+    expect(after.hold.isProtected).toBe(false);
+    expect(moved.alerts).toHaveLength(1);
+  });
+
+  it('ROUND 3 MINOR: NSE (rank 1) still states the rejected value and BSE changes: the hold is NOT released', async () => {
+    await seed('2026-10-05', '2026-10-05');
+    await adminHolds('2026-10-06');
+    const saved = await state();
+    expect((saved.fs.dataLineage as any).exchangeAtSave).toEqual({ NSE: '2026-10-05', BSE: '2026-10-05' });
+
+    const { alerts } = await walkOnce('2026-10-05', '2026-10-08');
+    const after = await state();
+    // Releasing here would let the walk write NSE's 10-05, the value the admin rejected.
+    expect(after.ipo.closeDate).toBe('2026-10-06');
     expect(after.hold.isProtected).toBe(true);
     expect(alerts).toHaveLength(0);
   });

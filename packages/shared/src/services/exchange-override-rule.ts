@@ -105,6 +105,73 @@ export type ExchangeOverrideDecision =
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
+ * ONE rule for what a piece of stored evidence says about an exchange's baseline, used at EVERY
+ * site that writes one (admin save, admin re-save, held read; the legacy rebuild from
+ * `previous_value` is the only other source): a SUPPLIED answer with a value -> that value; a
+ * NOT_PRINTED / NOT_AVAILABLE_YET answer -> null (the exchange was asked and stated nothing);
+ * anything else (no answer stored, CHECK_FAILED, FAILED, SUPPLIED with no value) -> unknown.
+ * Absence of evidence is never "stated nothing".
+ */
+export type BaselineEvidence = { known: true; value: string | null; at: string | null } | { known: false };
+
+export function baselineEvidenceFromAnswer(a: { value?: unknown; outcome?: unknown; at?: unknown }): BaselineEvidence {
+  const at = typeof a.at === 'string' ? a.at : null;
+  if (a.outcome === undefined || a.outcome === 'SUPPLIED') {
+    const value = normalizeExchangeValue(a.value);
+    return value === null ? { known: false } : { known: true, value, at };
+  }
+  if (STATED_NOTHING_OUTCOMES.has(String(a.outcome))) return { known: true, value: null, at };
+  return { known: false };
+}
+
+/** The strongest evidence a stored answer list (witnesses or plan answers) holds for one exchange. */
+export function baselineEvidenceFromWitnesses(list: unknown, source: ExchangeOverrideSource): BaselineEvidence {
+  if (!Array.isArray(list)) return { known: false };
+  let nothing: BaselineEvidence = { known: false };
+  for (const w of list as Array<{ source?: unknown; value?: unknown; outcome?: unknown; at?: unknown } | null>) {
+    if (!w || String(w.source ?? '').trim().toUpperCase() !== source) continue;
+    const ev = baselineEvidenceFromAnswer(w);
+    if (ev.known && ev.value !== null) return ev;
+    if (ev.known && !nothing.known) nothing = ev;
+  }
+  return nothing;
+}
+
+/**
+ * The baseline an admin save stores. On a re-save of an existing hold the prior ADMIN row's KNOWN
+ * entries (recorded, rebuilt from `previous_value`, or first-held-read) are carried forward, because
+ * the re-save does not change what the exchange said; a stored answer replaces a carried entry only
+ * when it is NEWER than that baseline (`at` later than `priorSince`). A source with neither stays
+ * absent (unknown), and the first held read records it.
+ */
+export function baselineForAdminSave(args: {
+  prior: { baseline: ExchangeBaseline; origin: Partial<Record<ExchangeOverrideSource, ExchangeBaselineOrigin>>; since: string | null } | null;
+  evidence: Partial<Record<ExchangeOverrideSource, BaselineEvidence>>;
+}): { baseline: ExchangeBaseline; origin: Partial<Record<ExchangeOverrideSource, ExchangeBaselineOrigin>> } {
+  const baseline: ExchangeBaseline = {};
+  const origin: Partial<Record<ExchangeOverrideSource, ExchangeBaselineOrigin>> = {};
+  const sinceMs = args.prior?.since ? Date.parse(args.prior.since) : NaN;
+  for (const src of EXCHANGE_OVERRIDE_SOURCES) {
+    const ev = args.evidence[src];
+    const carried = args.prior && hasKnownBaseline(args.prior.baseline, src);
+    if (carried) {
+      const evMs = ev?.known && ev.at ? Date.parse(ev.at) : NaN;
+      const newer = ev?.known === true && Number.isFinite(evMs) && (!Number.isFinite(sinceMs) || evMs > sinceMs);
+      if (!newer) {
+        baseline[src] = args.prior!.baseline[src] ?? null;
+        origin[src] = args.prior!.origin[src] ?? 'SAVE';
+        continue;
+      }
+    }
+    if (ev?.known) {
+      baseline[src] = ev.value;
+      origin[src] = 'SAVE';
+    }
+  }
+  return { baseline, origin };
+}
+
+/**
  * Rebuild the baseline an ADMIN provenance row carries. `exchangeAtSave` recorded at save is used
  * as is; for a source it lacks, the row's `previous_value` is that source's baseline when
  * `previous_source` is that exchange (the value the admin replaced). Returns null for a row that is
@@ -134,10 +201,11 @@ export function resolveExchangeBaseline(row: {
 }
 
 /**
- * Decide from this pass's answers (rank order). The first SUPPLIED NSE/BSE date that is newer
- * (differs from the admin value AND from that exchange's known baseline) replaces the admin value.
- * A higher-ranked exchange that agrees with the admin stops the search: the admin is confirmed.
- * A non-date answer is skipped and the scan continues. A source whose baseline is unknown never
+ * Decide from this pass's answers (rank order). The first NSE/BSE answer that states a date decides:
+ * it replaces the admin value only when it is newer (differs from the admin value AND from that
+ * exchange's known baseline); agreeing, unchanged or unknown-baseline keeps the admin value, and no
+ * lower-ranked answer is consulted (the walk writes the top-ranked answer after a release). A
+ * non-date answer is skipped and the scan continues. A source whose baseline is unknown never
  * replaces on this read: what it says now (or null when it stated nothing) is returned as the
  * baseline to store; a failed check leaves it unknown.
  */
@@ -155,21 +223,27 @@ export function decideExchangeOverride(args: {
   let agrees = false;
   let replace: { source: ExchangeOverrideSource; value: unknown } | null = null;
 
+  // The FIRST exchange (in rank order) that states a date decides: after a release the walk writes
+  // the top-ranked answer, so a lower-ranked change must never release a hold while a higher-ranked
+  // exchange still states the value the admin rejected (or an unknown-baseline value). Every later
+  // answer only records its own unknown baseline.
+  let decided = false;
   for (const a of args.answers) {
     const source = String(a.source ?? '').trim().toUpperCase();
     if (!isOverrideSource(source)) continue;
-    const supplied = a.outcome === undefined || a.outcome === 'SUPPLIED';
-    const now = supplied ? normalizeExchangeValue(a.value) : null;
+    const ev = baselineEvidenceFromAnswer(a);
+    const now = ev.known ? ev.value : null;
     const isDate = now !== null && ISO_DAY.test(now);
 
+    if (!hasKnownBaseline(known, source) && !Object.prototype.hasOwnProperty.call(toRecord, source)) {
+      if (ev.known && (ev.value === null || isDate)) toRecord[source] = ev.value;
+    }
+    if (!isDate || decided) continue;
+    decided = true;
     if (!hasKnownBaseline(known, source)) {
-      if (Object.prototype.hasOwnProperty.call(toRecord, source)) continue;
-      if (isDate) toRecord[source] = now;
-      else if (!supplied && STATED_NOTHING_OUTCOMES.has(String(a.outcome))) toRecord[source] = null;
-      if (isDate && now === admin && !replace) agrees = true;
+      if (now === admin) agrees = true;
       continue;
     }
-    if (!isDate || replace || agrees) continue;
     sawExchange = true;
     if (now === admin) {
       agrees = true;

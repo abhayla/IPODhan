@@ -377,7 +377,7 @@ export function buildFieldPlanWalkHoldDeps(
     apply: (input) => applyExchangeOverride(db as never, input),
     send: sendOwnerAlert,
     ...redisClaims(redis as never),
-    invalidateCaches: (ipoId, slug) => invalidateIPOCaches(redis as never, ipoId, slug),
+    invalidateCaches: (ipoId, slug, field) => invalidateIPOCaches(redis as never, ipoId, slug, field),
   });
   const fpm = schema.fieldProtectionMetadata;
   return {

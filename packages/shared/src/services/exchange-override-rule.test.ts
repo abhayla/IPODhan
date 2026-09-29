@@ -8,6 +8,8 @@ import {
   isInstantAlertStatus,
   normalizeExchangeValue,
   resolveExchangeBaseline,
+  baselineEvidenceFromWitnesses,
+  baselineForAdminSave,
 } from './exchange-override-rule';
 
 // Real-shaped values from F-131 (Dhanwel): the admin held the June close date; NSE's relaunch
@@ -104,9 +106,19 @@ describe('OD-106 "newer": differs from the admin value AND from what that exchan
     });
   });
 
-  it('BSE newer replaces when NSE is unchanged since save; NSE agreeing with the admin stops the search', () => {
+  it('ROUND 3: NSE (rank 1) unchanged since save stops the scan, so a BSE change never releases the hold; NSE agreeing stops it too', () => {
+    // After a release the walk writes the top-ranked answer: releasing on BSE would restore NSE's
+    // rejected 2026-07-01.
     expect(
       decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { NSE: '2026-07-01', BSE: '2026-07-01' }, answers: [nse('2026-07-01'), bse(NSE_NEW)] })
+    ).toEqual({ kind: 'KEEP', reason: 'EXCHANGE_UNCHANGED_SINCE_SAVE' });
+    // An unknown-baseline rank-1 date also decides (records, keeps); BSE's unknown baseline is recorded too.
+    expect(
+      decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { BSE: '2026-07-01' }, answers: [nse('2026-07-01'), bse(NSE_NEW)] })
+    ).toEqual({ kind: 'KEEP', reason: 'BASELINE_RECORDED', baseline: { NSE: '2026-07-01' } });
+    // NSE stating nothing leaves BSE to decide.
+    expect(
+      decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { NSE: null, BSE: '2026-07-01' }, answers: [nse(null, 'NOT_PRINTED'), bse(NSE_NEW)] })
     ).toMatchObject({ kind: 'REPLACE', source: 'BSE' });
     expect(
       decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { NSE: null, BSE: null }, answers: [nse(HELD), bse(NSE_NEW)] }).kind
@@ -181,5 +193,39 @@ describe('the OD-106 alert', () => {
     const next = new Date('2026-08-20T18:31:00Z'); // 00:01 IST on 08-21
     expect(exchangeOverrideDedupeKey('staging', 'ipo-1', 'closeDate', late)).toBe('admin-od106:staging:ipo-1:closeDate:2026-08-20');
     expect(exchangeOverrideDedupeKey('staging', 'ipo-1', 'closeDate', next)).toBe('admin-od106:staging:ipo-1:closeDate:2026-08-21');
+  });
+});
+
+describe('ROUND 3: one evidence rule for every baseline write site', () => {
+  it('stored SUPPLIED -> value; NOT_PRINTED / NOT_AVAILABLE_YET -> null; nothing, CHECK_FAILED, FAILED -> unknown', () => {
+    const at = '2026-09-01T05:00:00.000Z';
+    expect(baselineEvidenceFromWitnesses([{ source: 'NSE', value: '2026-10-05', outcome: 'SUPPLIED', at }], 'NSE')).toEqual({ known: true, value: '2026-10-05', at });
+    expect(baselineEvidenceFromWitnesses([{ source: 'NSE', value: '2026-10-05' }], 'NSE')).toMatchObject({ known: true, value: '2026-10-05' });
+    expect(baselineEvidenceFromWitnesses([{ source: 'NSE', outcome: 'NOT_PRINTED' }], 'NSE')).toMatchObject({ known: true, value: null });
+    expect(baselineEvidenceFromWitnesses([{ source: 'BSE', outcome: 'NOT_AVAILABLE_YET' }], 'BSE')).toMatchObject({ known: true, value: null });
+    expect(baselineEvidenceFromWitnesses(null, 'NSE')).toEqual({ known: false });
+    expect(baselineEvidenceFromWitnesses([{ source: 'BSE', value: '2026-10-05' }], 'NSE')).toEqual({ known: false });
+    expect(baselineEvidenceFromWitnesses([{ source: 'NSE', outcome: 'CHECK_FAILED' }], 'NSE')).toEqual({ known: false });
+    expect(baselineEvidenceFromWitnesses([{ source: 'NSE', outcome: 'FAILED' }], 'NSE')).toEqual({ known: false });
+    expect(baselineEvidenceFromWitnesses([{ source: 'NSE', value: null, outcome: 'SUPPLIED' }], 'NSE')).toEqual({ known: false });
+  });
+
+  it('a fresh save with no stored evidence leaves every exchange absent (unknown), never null', () => {
+    expect(baselineForAdminSave({ prior: null, evidence: { NSE: { known: false }, BSE: { known: false } } })).toEqual({ baseline: {}, origin: {} });
+  });
+
+  it('a re-save carries the prior known baseline forward; only NEWER stored evidence replaces an entry', () => {
+    const prior = { baseline: { NSE: '2026-10-05' }, origin: { NSE: 'PREVIOUS_VALUE' as const }, since: '2026-09-20T00:00:00.000Z' };
+    expect(baselineForAdminSave({ prior, evidence: { NSE: { known: false }, BSE: { known: false } } })).toEqual({
+      baseline: { NSE: '2026-10-05' },
+      origin: { NSE: 'PREVIOUS_VALUE' },
+    });
+    // Older evidence does not replace the carried entry; newer evidence does.
+    expect(
+      baselineForAdminSave({ prior, evidence: { NSE: { known: true, value: null, at: '2026-09-01T00:00:00.000Z' } } }).baseline
+    ).toEqual({ NSE: '2026-10-05' });
+    expect(
+      baselineForAdminSave({ prior, evidence: { NSE: { known: true, value: '2026-10-09', at: '2026-09-25T00:00:00.000Z' } } })
+    ).toEqual({ baseline: { NSE: '2026-10-09' }, origin: { NSE: 'SAVE' } });
   });
 });

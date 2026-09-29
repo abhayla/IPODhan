@@ -42,7 +42,17 @@ import { IPORepository } from '../repositories/ipo-repository';
 import { validateIPOData } from '../utils/ipo-field-checks';
 import { rowKeyForName } from '../utils/company-name-normalizer';
 import { protectionTableName } from './field-hold';
-import { EXCHANGE_OVERRIDE_SOURCES, isExchangeOverrideField, type ExchangeAtSave } from './exchange-override-rule';
+import {
+  EXCHANGE_OVERRIDE_SOURCES,
+  baselineEvidenceFromWitnesses,
+  baselineForAdminSave,
+  isExchangeOverrideField,
+  normalizeExchangeValue,
+  resolveExchangeBaseline,
+  type BaselineEvidence,
+  type ExchangeBaselineOrigin,
+  type ExchangeOverrideSource,
+} from './exchange-override-rule';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -480,6 +490,49 @@ export async function loadStoredSourceAnswer(
   return suppliedAnswerOf(plan?.answers, args.sourceLabel);
 }
 
+/**
+ * OD-106: what the stored answers say about one exchange for this field, as baseline EVIDENCE
+ * (`baselineEvidenceFromWitnesses`): the field_sources witnesses, then the stored value when that
+ * exchange wrote it, then the plan row's answers. Unlike `loadStoredSourceAnswer` it keeps a stored
+ * "stated nothing" (NOT_PRINTED / NOT_AVAILABLE_YET), and it returns unknown when nothing is stored.
+ */
+/** A naive `timestamp::text` read on a UTC session (ist-timezone.md) as an ISO instant. */
+function utcTextToIso(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const d = new Date(`${text.trim().replace(' ', 'T')}Z`);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+async function loadStoredExchangeEvidence(
+  tx: Db,
+  args: { ipoId: string; tableName: string; rowKey: string; fieldName: string; sqlFieldName: string; source: ExchangeOverrideSource; currentValue: unknown }
+): Promise<BaselineEvidence> {
+  const [fs] = await tx
+    .select({ source: fieldSources.source, witnesses: fieldSources.witnesses, at: sql<string>`${fieldSources.updatedAt}::text` })
+    .from(fieldSources)
+    .where(and(eq(fieldSources.ipoId, args.ipoId), eq(fieldSources.tableName, args.tableName), eq(fieldSources.rowKey, args.rowKey), eq(fieldSources.fieldName, args.fieldName)))
+    .limit(1);
+  const fromWitness = baselineEvidenceFromWitnesses(fs?.witnesses, args.source);
+  if (fromWitness.known) return fromWitness;
+  if (fs && fs.source !== 'ADMIN' && sameSource(fs.source, args.source)) {
+    const value = normalizeExchangeValue(args.currentValue);
+    if (value !== null) return { known: true, value, at: utcTextToIso(fs.at) };
+  }
+  const [plan] = await tx
+    .select({ answers: schema.ipoFieldPlan.answers })
+    .from(schema.ipoFieldPlan)
+    .where(
+      and(
+        eq(schema.ipoFieldPlan.ipoId, args.ipoId),
+        eq(schema.ipoFieldPlan.tableName, args.tableName),
+        eq(schema.ipoFieldPlan.rowKey, args.rowKey),
+        eq(schema.ipoFieldPlan.fieldName, args.sqlFieldName)
+      )
+    )
+    .limit(1);
+  return baselineEvidenceFromWitnesses(plan?.answers, args.source);
+}
+
 const NUMERIC_CHECK_FIELDS = new Set(['lotSize', 'priceRangeMin', 'priceRangeMax']);
 
 /**
@@ -708,21 +761,44 @@ export async function writeAdminFieldValue(
 
       // OD-106/OD-117: on an E-1 field, record what each exchange said at this save, so a later
       // exchange answer counts as "newer" only when it differs from this (exchange-override-rule.ts).
-      let exchangeAtSave: ExchangeAtSave | null = null;
+      // Only stored EVIDENCE sets an entry (`baselineEvidenceFromWitnesses`); no stored answer leaves
+      // it absent (unknown), never null ("stated nothing"). A re-save carries the prior hold's known
+      // baseline forward (`baselineForAdminSave`).
+      let exchangeBaseline: ReturnType<typeof baselineForAdminSave> | null = null;
       if (isExchangeOverrideField(tableName, fieldName)) {
-        exchangeAtSave = { NSE: null, BSE: null };
+        const evidence: Partial<Record<ExchangeOverrideSource, BaselineEvidence>> = {};
         for (const source of EXCHANGE_OVERRIDE_SOURCES) {
-          const said = await loadStoredSourceAnswer(tx, {
+          evidence[source] = await loadStoredExchangeEvidence(tx, {
             ipoId,
             tableName,
             rowKey,
             fieldName,
             sqlFieldName: column.name,
-            sourceLabel: source,
+            source,
             currentValue: oldValue,
           });
-          exchangeAtSave[source] = said?.value ?? null;
         }
+        const [priorRow] = await tx
+          .select({
+            source: fieldSources.source,
+            lineage: fieldSources.dataLineage,
+            previousSource: fieldSources.previousSource,
+            previousValue: fieldSources.previousValue,
+            at: sql<string>`${fieldSources.updatedAt}::text`,
+          })
+          .from(fieldSources)
+          .where(and(eq(fieldSources.ipoId, ipoId), eq(fieldSources.tableName, tableName), eq(fieldSources.rowKey, rowKey), eq(fieldSources.fieldName, fieldName)))
+          .limit(1);
+        const resolvedPrior = priorRow ? resolveExchangeBaseline(priorRow) : null;
+        const priorLineage = (priorRow?.lineage ?? {}) as { exchangeBaselineOrigin?: Record<string, ExchangeBaselineOrigin>; exchangeBaselineAt?: string };
+        const priorOrigin: Partial<Record<ExchangeOverrideSource, ExchangeBaselineOrigin>> = { ...(priorLineage.exchangeBaselineOrigin ?? {}) };
+        for (const src of resolvedPrior?.rebuilt ?? []) priorOrigin[src] = 'PREVIOUS_VALUE';
+        exchangeBaseline = baselineForAdminSave({
+          prior: resolvedPrior
+            ? { baseline: resolvedPrior.baseline, origin: priorOrigin, since: priorLineage.exchangeBaselineAt ?? utcTextToIso(priorRow?.at) }
+            : null,
+          evidence,
+        });
       }
 
       const adminLineage: Record<string, unknown> = {
@@ -736,7 +812,7 @@ export async function writeAdminFieldValue(
         ...(input.empty ? { adminEmpty: true, emptyReason: input.empty.reason } : {}),
         ...(rowSpec ? { rowKey, recordId: target.recordId } : {}),
         // Replaces any baseline an OD-106 held read stored (rebuilt / first-read) on an earlier save.
-        ...(exchangeAtSave ? { exchangeAtSave, exchangeBaselineOrigin: { NSE: 'SAVE', BSE: 'SAVE' } } : {}),
+        ...(exchangeBaseline ? { exchangeAtSave: exchangeBaseline.baseline, exchangeBaselineOrigin: exchangeBaseline.origin } : {}),
         by: actor.name,
         adminId: actor.adminId,
         ...(input.detail ?? {}),

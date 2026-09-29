@@ -85,7 +85,7 @@ describe('OD-106 hook: alert and dedupe (OD-112, §9.2 items 16 and 25)', () => 
     const invalidateCaches = vi.fn(async () => {});
     const d = deps({ invalidateCaches });
     await buildExchangeOverrideHook(d)('ipo-1', 'ipos', '', 'close_date', answers);
-    expect(invalidateCaches).toHaveBeenCalledWith('ipo-1', 'dhanwel-proof');
+    expect(invalidateCaches).toHaveBeenCalledWith('ipo-1', 'dhanwel-proof', { tableName: 'ipos', fieldName: 'closeDate', rowKey: '' });
 
     const kept = vi.fn(async () => {});
     await buildExchangeOverrideHook(
