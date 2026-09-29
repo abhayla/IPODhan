@@ -164,6 +164,14 @@
       "note": "Closes the detection gap left after scripts/repair-segment-provenance.ts repaired the existing 41-62 rows: that tool clears segment ONLY for non-IPO offering types (segment is meaningless there) and REPORTS-only for unsourced IPO rows (clearing a probably-correct label would destroy real information the missing provenance row already expresses). This check is what stops the gap from reopening on the next write path that skips field_sources — measured missing on 2026-09-10: no existing check asserts provenance PRESENCE (checkSegmentPopulatedForIpo measures SHARE; g_provenance_lineage in audit-ipo-coverage.mjs measures a declining-ceiling ratchet on lineage generally, not this specific field/table pair)."
     },
     {
+      "id": "d_status_closed_before_close_date",
+      "findingClass": "status is CLOSED while close_date is today or later (IST) — a real extension the walk missed leaves the row stuck",
+      "round7Findings": [],
+      "failThreshold": "any ipos row with status='CLOSED', offering_type='IPO', and close_date >= today (IST calendar day)",
+      "severity": "P1",
+      "unverifiableWhen": "never — always runs against the ipos table"
+    },
+    {
       "id": "d_stranded_readmit",
       "findingClass": "documents.extraction_status = NOT_EXTRACTABLE while its type is now on AUTO_PERSIST_DOC_TYPES (F-158/OD-90: a row admitted NOT_EXTRACTABLE before #989 widened the extractable list, never re-admitted, and never revisited by the document cycle once its IPO leaves the live window)",
       "round7Findings": [],

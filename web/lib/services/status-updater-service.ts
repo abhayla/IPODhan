@@ -10,11 +10,19 @@
  */
 
 import { getDb } from '@/lib/db';
-import { ipos } from '@/lib/db';
-import { eq } from 'drizzle-orm';
+import { ipos, fieldSources } from '@/lib/db';
+import { and, eq, inArray } from 'drizzle-orm';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { getIPOBySlugKey, getIPOByIdKey } from '@/lib/cache/cache-keys';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
+import {
+  LADDER_RANK,
+  LADDER_EVIDENCE_FIELDS,
+  isBackwardMove,
+  decideBackwardMove,
+  type StatusEvidence,
+  type BackwardDecision,
+} from '@ipodhan/shared/utils/ipo-status-ladder';
 import { isBehaviourConflict } from '@ipodhan/shared/utils/conflict-reasons';
 import { revalidateForSlugs } from './page-revalidation-service';
 import { istDateIso } from '@/lib/utils/ist-date';
@@ -78,11 +86,47 @@ export function isTransitionHeld(
   return unresolvedConflicts.some((c) => c.fieldName === drivingField && isBehaviourConflict(c));
 }
 
+// #1256: the forward-only rule (spec row 8, OD-83) lives in ONE place shared with the scraper's
+// consolidation status write: @ipodhan/shared/utils/ipo-status-ladder.
+export { LADDER_RANK, isBackwardMove, decideBackwardMove };
+export type { StatusEvidence, BackwardDecision };
+
+export type StatusEvidenceLoader = (ipoId: string) => Promise<StatusEvidence[]>;
+
+function dbEvidenceLoader(db: Awaited<ReturnType<typeof getDb>>): StatusEvidenceLoader {
+  return async (ipoId) => {
+    const rows = await db
+      .select({
+        fieldName: fieldSources.fieldName,
+        source: fieldSources.source,
+        previousValue: fieldSources.previousValue,
+        previousSource: fieldSources.previousSource,
+        updatedAt: fieldSources.updatedAt,
+      })
+      .from(fieldSources)
+      .where(
+        and(
+          eq(fieldSources.ipoId, ipoId),
+          eq(fieldSources.tableName, 'ipos'),
+          eq(fieldSources.rowKey, ''),
+          inArray(fieldSources.fieldName, [...LADDER_EVIDENCE_FIELDS])
+        )
+      );
+    return rows.map((r) => ({
+      ...r,
+      source: String(r.source),
+      previousSource: r.previousSource === null ? null : String(r.previousSource),
+    }));
+  };
+}
+
 export interface StatusUpdateResult {
   upcomingToOpen: number;
   openToClosed: number;
   closedToListed: number;
   total: number;
+  /** #1256: backward moves the ladder computed but refused (no newer exchange window, no ADMIN). */
+  refusedBackward: number;
   /**
    * Pages actually refreshed for this batch of transitions.
    *
@@ -161,7 +205,7 @@ export async function revalidateAfterStatusChange(
 }
 
 export async function updateIPOStatuses(
-  deps?: { revalidatePath?: (path: string) => void; now?: Date }
+  deps?: { revalidatePath?: (path: string) => void; now?: Date; loadEvidence?: StatusEvidenceLoader }
 ): Promise<StatusUpdateResult> {
   console.log('[Status Updater] Starting status update...');
 
@@ -172,6 +216,7 @@ export async function updateIPOStatuses(
   // GitHub #682: open_date/close_date/listing_date are IST calendar dates;
   // the UTC calendar day was wrong for up to 5h30m a day (00:00-05:30 IST).
   const today = istDateIso(now);
+  const loadEvidence = deps?.loadEvidence ?? dbEvidenceLoader(db);
 
   const rows = await db
     .select({
@@ -189,6 +234,7 @@ export async function updateIPOStatuses(
   const updatedIPOs: StatusUpdateResult['updatedIPOs'] = [];
   const changedSlugs: { slug: string; id: string }[] = [];
   let pagesRevalidated = 0;
+  let refusedBackward = 0;
 
   for (const r of rows) {
     if (r.scraperLocked) continue; // respect manual lock
@@ -198,6 +244,28 @@ export async function updateIPOStatuses(
       today
     );
     if (!target || target === r.status) continue;
+
+    // #1256: spec row 8 — never regress without a newer exchange window (OD-83) or an ADMIN row.
+    if (isBackwardMove(r.status, target)) {
+      const decision = decideBackwardMove(
+        r.status,
+        target,
+        { openDate: r.openDate, closeDate: r.closeDate, listingDate: r.listingDate },
+        await loadEvidence(r.id)
+      );
+      // `=== false`, not `!allowed`: scraper/tsconfig.json compiles this file without strictNullChecks,
+      // where truthiness does not narrow the union and `.cause` fails to type-check (PR #1260 CI).
+      if (decision.allowed === false) {
+        refusedBackward++;
+        console.warn(
+          `[Status Updater] refuse_backward_transition: ${r.companyName} (${r.id}) ${r.status} -> ${target} refused — ${decision.cause}`
+        );
+        continue;
+      }
+      console.log(
+        `[Status Updater] backward_transition_allowed: ${r.companyName} (${r.id}) ${r.status} -> ${target} — ${decision.reason}`
+      );
+    }
 
     // T-328: refuse to flip status when the field driving this transition
     // has an unresolved HIGH_VALUE dispute for this IPO — belt-and-suspenders
@@ -269,11 +337,12 @@ export async function updateIPOStatuses(
     openToClosed: countTransition('OPEN', 'CLOSED'),
     closedToListed: countTransition('CLOSED', 'LISTED'),
     total: updatedIPOs.length,
+    refusedBackward,
     pagesRevalidated,
     updatedIPOs,
   };
 
-  console.log('[Status Updater] Completed:', { total: result.total, istDay: today });
+  console.log('[Status Updater] Completed:', { total: result.total, refusedBackward, istDay: today });
   return result;
 }
 

@@ -1,0 +1,9 @@
+{
+  "id": "d_status_closed_before_close_date",
+  "findingClass": "status is CLOSED while close_date is today or later (IST) — a real extension the walk missed leaves the row stuck",
+  "round7Findings": [],
+  "failThreshold": "any ipos row with status='CLOSED', offering_type='IPO', and close_date >= today (IST calendar day)",
+  "severity": "P1",
+  "unverifiableWhen": "never — always runs against the ipos table",
+  "section": "checks"
+}

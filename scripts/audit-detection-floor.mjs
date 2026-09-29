@@ -88,6 +88,7 @@ import {
   findSettledFieldRewrites, SETTLED_FIELD_COLUMNS, policyWriterOnFromEnv, settledCurrentValueSql,
   findClosedIpoDoneWithoutWalk,
   checkPublishedWithoutProvenance, classifyRowKeyProbeError,
+  checkStatusClosedBeforeCloseDate,
 } from './lib/detection-floor-checks.mjs';
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
@@ -709,6 +710,32 @@ async function checkD() {
     `${lotOffenders.length} violation(s)` + (lotOffenders.length ? `: ${lotOffenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
   record('d_corporate_action_shape', 'no offering_type=IPO row matches the corporate-action shape', shapeOffenders.length === 0 ? 'PASS' : 'FAIL',
     `${shapeOffenders.length} violation(s)` + (shapeOffenders.length ? `: ${shapeOffenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
+// #1256's core: status is forward-only on every writer (0a8b3ff8), so the ONLY
+// legitimate way a row already written CLOSED moves out of that state is a real
+// close_date extension from a source, applied on the next walk cycle. If the
+// walk misses that cycle, the row is stuck CLOSED while close_date says the
+// offer is still open today or later — this check is the next-morning catch for
+// exactly that miss. Names each offending IPO (slug, status, close_date) per
+// signal-ownership.md R1 — never a bare count.
+async function checkD_statusClosedBeforeCloseDate() {
+  const rows = await q(
+    `SELECT i.id, i.company_name, i.slug, i.status,
+            to_char(i.close_date, 'YYYY-MM-DD') AS "closeDate"
+       FROM ipos i
+      WHERE i.status = 'CLOSED' AND i.close_date IS NOT NULL AND ${REAL_IPO}`
+  );
+  const offenders = [];
+  for (const r of rows) {
+    const v = checkStatusClosedBeforeCloseDate({ status: r.status, closeDate: r.closeDate, todayIst: RUN_DATE });
+    if (v) {
+      offenders.push(`"${r.company_name}" (${r.slug}, status=${r.status}, close_date=${r.closeDate}) — ${v}`);
+      notify('d_status_closed_before_close_date', 'P1', r.id, `CLOSED with close_date today/future: ${r.company_name}`, v);
+    }
+  }
+  record('d_status_closed_before_close_date', 'no CLOSED IPO has a close_date that is today or later (IST) — a missed extension', offenders.length === 0 ? 'PASS' : 'FAIL',
+    `${offenders.length} violation(s)` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
 // ---- (d, segment provenance): a non-NULL ipos.segment with no field_sources
@@ -3883,6 +3910,7 @@ async function main() {
   await runCheck(checkC_issueSizeSourceCapability, ['c_issue_size_noncapable_source']);
   await runCheck(checkUpcomingSourceDrift, ['c_upcoming_source_drift']);
   await runCheck(checkD, ['d_lot_band_window', 'd_corporate_action_shape']);
+  await runCheck(checkD_statusClosedBeforeCloseDate, ['d_status_closed_before_close_date']);
   await runCheck(checkD_strandedReadmit, ['d_stranded_readmit']);
   await runCheck(checkD_extractionStatusDeclared, ['d_extraction_status_declared']);
   await runCheck(checkD_delistedReads, ['d_delisted_reads']);

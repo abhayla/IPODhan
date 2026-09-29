@@ -1293,6 +1293,7 @@ jobs:
           tests/integration/newer-document-suggestions.integration.test.ts
           tests/integration/admin-alerts-loaders.integration.test.ts
           tests/integration/identifier-aliases-item26.integration.test.ts
+          tests/integration/status-forward-only.integration.test.ts
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under
