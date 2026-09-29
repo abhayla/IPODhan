@@ -555,6 +555,28 @@ lock_is_held() {
 # throughout (signal-ownership.md, decision-authority.md): a missing env, a
 # missing python3 or a failed POST only logs and never blocks or fails the
 # wake.
+# resolve_shared_state_dir: prints the first EXISTING shared/ dir of the two
+# candidates deploy-linux.sh's layout can put REPO_ROOT under - same two
+# candidates, same order, as the PYTHON_BIN venv lookup above
+# ($REPO_ROOT/../shared for a `current`/`current-staging` symlink target,
+# $REPO_ROOT/../../shared for a bare releases/<release> checkout). Neither
+# candidate is ever CREATED here - only used if it already exists - so this
+# function can never itself invent a new `shared` directory (#1255 review:
+# the prior version always built its path from $REPO_ROOT/../shared and, on
+# the real prod/staging layout where REPO_ROOT is .../current-staging (a
+# symlink into releases-staging/<release>), that physically resolved to
+# releases-staging/shared, which does not exist and was never meant to).
+# Returns 1 and prints nothing when neither candidate exists.
+resolve_shared_state_dir() {
+  for _cand in "$REPO_ROOT/../shared" "$REPO_ROOT/../../shared"; do
+    if [ -d "$_cand" ]; then
+      printf '%s\n' "$_cand"
+      return 0
+    fi
+  done
+  return 1
+}
+
 notify_no_expiry_lock() {
   # ONE alert per IST day per lock key: a local marker file, checked BEFORE
   # touching the Notifier env at all, so a lock that stays leaked for days
@@ -575,7 +597,15 @@ notify_no_expiry_lock() {
   # shared/next-cache - see that script's header); scraper-wake-state/<slot>
   # is created here, mode 700, owned by whichever user runs the wake (root's
   # cron per the deploy runbook).
-  alert_marker_dir="${SCRAPER_WAKE_ALERT_STATE_DIR:-$REPO_ROOT/../shared/scraper-wake-state/${DEPLOY_SLOT_NAME:-unknown-slot}}"
+  if [ -n "${SCRAPER_WAKE_ALERT_STATE_DIR:-}" ]; then
+    alert_marker_dir="$SCRAPER_WAKE_ALERT_STATE_DIR"
+  else
+    _shared_dir="$(resolve_shared_state_dir)" || {
+      log "WARN lock-leaked-no-expiry-alert-skipped: no shared/ dir exists under $REPO_ROOT/.. or $REPO_ROOT/../.. - refusing to invent a new one; the leaked lock itself is still logged above"
+      return 0
+    }
+    alert_marker_dir="$_shared_dir/scraper-wake-state/${DEPLOY_SLOT_NAME:-unknown-slot}"
+  fi
   if [ -L "$alert_marker_dir" ]; then
     log "WARN lock-leaked-no-expiry-alert-skipped: $alert_marker_dir is a symlink, refusing to follow it for the dedupe marker"
     return 0

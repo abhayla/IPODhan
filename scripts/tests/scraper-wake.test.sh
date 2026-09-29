@@ -2127,6 +2127,131 @@ rm -rf "$STUBDIR23" "$ALERT_STATE_23A" "$ALERT_STATE_23C" "$ALERT_STATE_23D"
 rm -f "$NOTIFIER_ENV_23" "$CURL_LOG_23A" "$CURL_CALLS_23A" "$CURL_LOG_23B" "$CURL_CALLS_23B" \
   "$CURL_LOG_23C" "$CURL_CALLS_23C" "$CURL_LOG_23D" "$CURL_CALLS_23D"
 
+# --- Case 23h-23j (#1255 review): the no-expiry marker lives under the REAL
+# shared/ dir, found the same way the PYTHON_BIN venv lookup already finds
+# it, and the script never invents a new `shared` directory. These run with
+# NO SCRAPER_WAKE_ALERT_STATE_DIR override, so they exercise
+# resolve_shared_state_dir() itself, not the test seam.
+STUBDIR23H="$(mktemp -d)"
+cp "$STUBDIR23"/curl "$STUBDIR23H/curl" 2>/dev/null || cat > "$STUBDIR23H/curl" <<'EOF'
+#!/bin/sh
+echo "CALL $*" >> "${CURL_LOG_FILE:-/dev/null}"
+printf 'x' >> "${CURL_CALLS_FILE:-/dev/null}"
+exit 0
+EOF
+chmod +x "$STUBDIR23H/curl"
+NOTIFIER_ENV_23H="$(mktemp)"
+printf 'NOTIFIER_KEY_IPODHAN=testkey-1255h\n' > "$NOTIFIER_ENV_23H"
+
+# case 23h: a bare releases/<release> checkout (no current-staging symlink in
+# the picture at all) — REPO_ROOT is base/releases-staging/REL1, so only the
+# SECOND candidate (REPO_ROOT/../../shared) can find base/shared. Same shape
+# the venv lookup's second candidate already covers.
+BASE23H="$(mktemp -d)"
+mkdir -p "$BASE23H/releases-staging/REL1/scripts" "$BASE23H/shared"
+cp "$WAKE" "$BASE23H/releases-staging/REL1/scripts/scraper-wake.sh"
+chmod +x "$BASE23H/releases-staging/REL1/scripts/scraper-wake.sh"
+CURL_LOG_23H="$(mktemp)"
+CURL_CALLS_23H="$(mktemp)"
+: > "$CURL_CALLS_23H"
+OUT23H="$(env -u SCRAPER_WAKE_ALERT_STATE_DIR DEPLOY_SLOT=prod \
+  PATH="$STUBDIR23H:$PATH" NOTIFIER_ENV="$NOTIFIER_ENV_23H" \
+  CURL_LOG_FILE="$CURL_LOG_23H" CURL_CALLS_FILE="$CURL_CALLS_23H" \
+  SCRAPER_WAKE_FAKE_LOCK_TTL="-1" SCRAPER_WAKE_FAKE_LOCK_HOLDER="h-holder" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$BASE23H/releases-staging/REL1/scripts/scraper-wake.sh" data 2>&1)"
+MARKERDIR23H="$BASE23H/shared/scraper-wake-state/prod"
+if [ -d "$MARKERDIR23H" ] && find "$MARKERDIR23H" -name '.scraper-wake-no-expiry-alerted.*' | grep -q .; then
+  pass "case 23h: bare releases/<release> checkout — marker created under the REAL base/shared (via the ../../shared candidate), no override needed"
+else
+  fail "case 23h: no marker found under $MARKERDIR23H. out: $OUT23H"
+fi
+if find "$BASE23H/releases-staging" -maxdepth 1 -type d -name shared | grep -q .; then
+  fail "case 23h: a stray 'shared' dir was created inside releases-staging/ (the class this fix removes)"
+else
+  pass "case 23h: no stray 'shared' dir was created inside releases-staging/"
+fi
+CALLS_23H="$(wc -c < "$CURL_CALLS_23H" | tr -d ' ')"
+if [ "$CALLS_23H" = "1" ]; then
+  pass "case 23h: exactly one Notifier POST was made"
+else
+  fail "case 23h: expected exactly one Notifier POST, got $CALLS_23H"
+fi
+
+# case 23i: the SAME release layout, but via a real `current-staging` ->
+# releases-staging/REL2 SYMLINK, one directory level deeper than a plain
+# `current-staging` dir would be — the exact prod shape (#1255 review). A
+# path string built as "$REPO_ROOT/../shared" resolves PHYSICALLY through
+# the symlink's target, landing in releases-staging/shared (which must NOT
+# get created); only the second candidate (one more ..) lands back on
+# base/shared. Skipped when this filesystem/shell cannot make symlinks.
+BASE23I="$(mktemp -d)"
+mkdir -p "$BASE23I/releases-staging/REL2/scripts" "$BASE23I/shared"
+cp "$WAKE" "$BASE23I/releases-staging/REL2/scripts/scraper-wake.sh"
+chmod +x "$BASE23I/releases-staging/REL2/scripts/scraper-wake.sh"
+if ln -s "$BASE23I/releases-staging/REL2" "$BASE23I/current-staging" 2>/dev/null; then
+  CURL_LOG_23I="$(mktemp)"
+  CURL_CALLS_23I="$(mktemp)"
+  : > "$CURL_CALLS_23I"
+  OUT23I="$(env -u SCRAPER_WAKE_ALERT_STATE_DIR -u DEPLOY_SLOT \
+    PATH="$STUBDIR23H:$PATH" NOTIFIER_ENV="$NOTIFIER_ENV_23H" \
+    CURL_LOG_FILE="$CURL_LOG_23I" CURL_CALLS_FILE="$CURL_CALLS_23I" \
+    SCRAPER_WAKE_FAKE_LOCK_TTL="-1" SCRAPER_WAKE_FAKE_LOCK_HOLDER="i-holder" \
+    SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+    sh "$BASE23I/current-staging/scripts/scraper-wake.sh" data 2>&1)"
+  MARKERDIR23I="$BASE23I/shared/scraper-wake-state/staging"
+  if [ -d "$MARKERDIR23I" ] && find "$MARKERDIR23I" -name '.scraper-wake-no-expiry-alerted.*' | grep -q .; then
+    pass "case 23i: real current-staging -> releases-staging/REL2 symlink — marker still lands under base/shared, not releases-staging/shared"
+  else
+    fail "case 23i: no marker found under $MARKERDIR23I. out: $OUT23I"
+  fi
+  if find "$BASE23I/releases-staging" -maxdepth 1 -type d -name shared | grep -q .; then
+    fail "case 23i: the symlink layout created a stray 'shared' dir inside releases-staging/ (the exact prod bug)"
+  else
+    pass "case 23i: the symlink layout created no stray 'shared' dir inside releases-staging/"
+  fi
+  rm -f "$CURL_LOG_23I" "$CURL_CALLS_23I"
+else
+  echo "case 23i: SKIPPED (this filesystem/shell cannot create symlinks)"
+fi
+
+# case 23j: no shared/ dir exists ANYWHERE the two candidates look — the wake
+# still exits 0, still logs the leaked-lock WARN, skips the marker/alert with
+# its own WARN, and creates no directory named 'shared' anywhere.
+BASE23J="$(mktemp -d)"
+mkdir -p "$BASE23J/releases-staging/REL3/scripts"
+cp "$WAKE" "$BASE23J/releases-staging/REL3/scripts/scraper-wake.sh"
+chmod +x "$BASE23J/releases-staging/REL3/scripts/scraper-wake.sh"
+ST23J=0
+OUT23J="$(env -u SCRAPER_WAKE_ALERT_STATE_DIR DEPLOY_SLOT=prod \
+  PATH="$STUBDIR23H:$PATH" NOTIFIER_ENV="$NOTIFIER_ENV_23H" \
+  SCRAPER_WAKE_FAKE_LOCK_TTL="-1" SCRAPER_WAKE_FAKE_LOCK_HOLDER="j-holder" \
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+  sh "$BASE23J/releases-staging/REL3/scripts/scraper-wake.sh" data 2>&1)" || ST23J=$?
+if [ "$ST23J" -eq 0 ]; then
+  pass "case 23j: no shared/ dir anywhere still exits 0"
+else
+  fail "case 23j: expected exit 0, got $ST23J. out: $OUT23J"
+fi
+if printf '%s' "$OUT23J" | grep -q "WARN lock-leaked-no-expiry:"; then
+  pass "case 23j: the leaked-lock WARN still fires with no shared/ dir"
+else
+  fail "case 23j: expected the leaked-lock WARN line, got: $OUT23J"
+fi
+if printf '%s' "$OUT23J" | grep -q "WARN lock-leaked-no-expiry-alert-skipped: no shared/ dir exists"; then
+  pass "case 23j: the alert-skipped WARN names the missing shared/ dir"
+else
+  fail "case 23j: expected an alert-skipped WARN naming the missing shared dir, got: $OUT23J"
+fi
+if find "$BASE23J" -type d -name shared | grep -q .; then
+  fail "case 23j: a 'shared' dir was created somewhere under $BASE23J even though none existed"
+else
+  pass "case 23j: no 'shared' dir was created anywhere"
+fi
+
+rm -rf "$STUBDIR23H" "$BASE23H" "$BASE23I" "$BASE23J"
+rm -f "$NOTIFIER_ENV_23H" "$CURL_LOG_23H" "$CURL_CALLS_23H"
+
 if [ "$FAILED" -ne 0 ]; then
   echo "scraper-wake.test.sh: FAILED"
   exit 1
