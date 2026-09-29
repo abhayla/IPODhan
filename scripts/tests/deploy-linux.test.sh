@@ -2898,6 +2898,20 @@ FAKEPG30
     fail "case 30b: expected both keys reported not held and released 0 — got: $OUT30B"
   fi
 
+  # 30u (#1259 round 2): a key whose value IS this deploy's own lock token
+  # (acquire_deploy_scraper_locks) is never released as stale - it is kept
+  # and logged, and no EVAL is issued for it. The fake GET answers tok-abc,
+  # so a deploy token of tok-abc models "the deploy holds both keys".
+  OUT30U="$(DEPLOY_LOCK_TOKEN=tok-abc run_release_locks_30 held-both 0)"
+  if emit "$OUT30U" | grep -q 'staging:lock:resource:scraper:cycle is held by this deploy (token=tok-abc); kept' \
+     && emit "$OUT30U" | grep -q 'cycle locks released: 0' \
+     && ! emitn "$OUT30U" | grep -q -- ' EVAL ' \
+     && ! emit "$OUT30U" | grep -q 'releasing staging:lock:resource:scraper:cycle'; then
+    pass "case 30u: release_scraper_cycle_locks keeps a key held by this deploy's own token (no EVAL, released 0)"
+  else
+    fail "case 30u: expected the deploy's own lock kept, never released - got: $OUT30U"
+  fi
+
   # 30c: redis-cli absent from PATH -> WARN + return 0, deploy continues
   # (no GET/TTL/DEL attempted, nothing fatal).
   OUT30C="$(run_release_locks_30 no-redis-cli 0)"
@@ -3010,7 +3024,7 @@ FAKEPG30
   OUT30M="$(PGREP30=live run_release_locks_30 held-both 0)"
   if emit "$OUT30M" | grep -q 'cron-launched scraper wake of slot .* still running (pids: 4242' \
      && emit "$OUT30M" | grep -q 'none released' \
-     && emitn "$OUT30M" | grep -qF 'PGREP-ARGV: -f /var/www/ipodhan/current-staging/scripts/[s]craper-wake[.]sh' \
+     && emitn "$OUT30M" | grep -qF 'PGREP-ARGV: -f /var/www/ipodhan/current-staging/(scripts/[s]craper-wake[.]sh|[^ ]*node_modules/[t]sx/dist/)' \
      && ! emitn "$OUT30M" | grep -q ' EVAL ' \
      && ! emitn "$OUT30M" | grep -q ' GET ' \
      && ! emit "$OUT30M" | grep -q 'released: '; then
@@ -3055,15 +3069,21 @@ FAKEPG30
   if printf '%s\n' '/bin/sh -c SCRAPER_WAKE_TRIGGER=schedule /var/www/ipodhan/current/scripts/scraper-wake.sh data >> /var/log/ipodhan-scraper-wake-prod.log 2>&1' | grep -qE "$PAT30R" \
      && printf '%s\n' '/bin/sh /var/www/ipodhan/current/scripts/scraper-wake.sh live' | grep -qE "$PAT30R" \
      && ! printf '%s\n' '/bin/sh /var/www/ipodhan/current-staging/scripts/scraper-wake.sh data' | grep -qE "$PAT30R" \
-     && ! printf '%s\n' "pgrep -f $PAT30R" | grep -qE "$PAT30R"; then
-    pass "case 30r: the wake pattern ($PAT30R) matches this slot's cron wakes, not the other slot's, not its own argv"
+     && ! printf '%s\n' "pgrep -f $PAT30R" | grep -qE "$PAT30R" \
+     && printf '%s\n' '/usr/bin/node /var/www/ipodhan/current/scraper/node_modules/tsx/dist/cli.mjs src/index.ts --source=all data' | grep -qE "$PAT30R" \
+     && printf '%s\n' 'timeout --signal=TERM --kill-after=60 7200 setsid sh -c echo $$ > "$0"; exec "$@" /tmp/g /usr/bin/node /var/www/ipodhan/current/node_modules/tsx/dist/cli.mjs src/index.ts' | grep -qE "$PAT30R" \
+     && ! printf '%s\n' '/usr/bin/node /var/www/ipodhan/current-staging/scraper/node_modules/tsx/dist/cli.mjs src/index.ts' | grep -qE "$PAT30R" \
+     && ! printf '%s\n' '/usr/bin/node /var/www/ipodhan/releases/20260929-1-abc/scraper/node_modules/tsx/dist/cli.mjs src/index.ts' | grep -qE "$PAT30R"; then
+    pass "case 30r: the wake pattern ($PAT30R) matches this slot's cron wakes AND their timeout/tsx children (#1259 item 2: a SIGKILLed wake shell's child is still seen), not the other slot's, not pm2's releases/ path, not its own argv"
   else
     fail "case 30r: wake pattern '$PAT30R' matched wrongly (own slot / other slot / its own argv)"
   fi
 
   # 30s: the idle wait also waits (bounded) on a live cron wake, then
   # proceeds without refusing; with none it says so. Real function, stubs.
-  WAIT_FN_30S="$(awk '/^wait_for_scraper_idle\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
+  WAIT_FN_30S="$(awk '/^wait_for_scraper_idle\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^refuse_or_override_live_run\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^wait_for_no_live_cron_wake\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
   run_wait_30s() {
     ( log() { echo "LOG: $*"; }; warn() { echo "WARN: $*"; }; fatal() { echo "FATAL: $*"; exit 1; }
       sleep() { :; }; pm2_app_status() { printf 'stopped'; }
@@ -3071,17 +3091,24 @@ FAKEPG30
       MUTEX_MAX_WAIT=2; MUTEX_POLL=1; DEPLOY_DRYRUN_CRON_WAKE_PIDS="$1"
       eval "$CRON_WAKE_FNS_30"; eval "${2:-$WAIT_FN_30S}"; wait_for_scraper_idle; echo "RC=$?" ) 2>&1
   }
-  OUT30S_LIVE="$(run_wait_30s 4242)"
-  OUT30S_NONE="$(run_wait_30s '')"
+  OUT30S_LIVE="$(run_wait_30s 4242)" || true
+  OUT30S_NONE="$(run_wait_30s '')" || true
+  OUT30S_OVR="$(DEPLOY_ALLOW_LIVE_RUN=1 run_wait_30s 4242)" || true
+  OUT30S_UNK="$(run_wait_30s UNKNOWABLE)" || true
+  # #1259: at the bound the wait now REFUSES (fatal) unless the explicit override.
   if [ "$(emitn "$OUT30S_LIVE" | grep -c 'Cron-launched scraper wake of slot prod in flight (pids: 4242)')" -eq 2 ] \
-     && emit "$OUT30S_LIVE" | grep -q 'still running after 2s (pids: 4242) — proceeding' \
-     && emit "$OUT30S_LIVE" | grep -q 'will NOT be released' \
-     && emit "$OUT30S_LIVE" | grep -q 'RC=0' \
+     && emit "$OUT30S_LIVE" | grep -q "FATAL: refusing to deploy slot prod: a cron-launched scraper run of this slot is live before step 'build' (pids: 4242, still running after 2s" \
+     && ! emit "$OUT30S_LIVE" | grep -q 'RC=' \
+     && emit "$OUT30S_OVR" | grep -q "WARN: DEPLOY_ALLOW_LIVE_RUN=1: PROCEEDING to step 'build'" \
+     && emit "$OUT30S_OVR" | grep -q 'RC=0' \
+     && emit "$OUT30S_UNK" | grep -q 'FATAL: refusing .*liveness unknowable' \
+     && ! emit "$OUT30S_UNK" | grep -q 'RC=' \
      && emit "$OUT30S_NONE" | grep -q 'No cron-launched scraper wake of slot prod running' \
+     && emit "$OUT30S_NONE" | grep -q 'RC=0' \
      && ! emit "$OUT30S_NONE" | grep -q 'in flight'; then
-    pass "case 30s: idle wait polls a live cron wake for the bounded window, then proceeds (locks kept); none -> no wait"
+    pass "case 30s: idle wait polls a live cron wake for the bounded window, then REFUSES (override proceeds with a WARN; unknowable refuses); none -> no wait"
   else
-    fail "case 30s: expected two bounded wait polls then a proceed line, and no wait with no wake — live: $OUT30S_LIVE / none: $OUT30S_NONE"
+    fail "case 30s: expected two bounded polls then a refusal, override -> WARN + RC=0, unknowable -> refusal, none -> no wait — live: $OUT30S_LIVE / override: $OUT30S_OVR / unknowable: $OUT30S_UNK / none: $OUT30S_NONE"
   fi
 
   # 30t: mutation proofs, each on an in-memory copy of the extracted text
@@ -3091,16 +3118,19 @@ FAKEPG30
   M30_NOUNKNOWN="$(printf '%s\n' "$RELEASE_LOCKS_FN_30" | sed 's/if ! live_pids="\$(live_cron_wake_pids)"; then/live_pids="$(live_cron_wake_pids)" || true; if false; then/')"
   M30_NOSTALE="$(printf '%s\n' "$RELEASE_LOCKS_FN_30" | grep -v 'stale: owner token=')"
   M30S_NOWAIT="$(printf '%s\n' "$WAIT_FN_30S" | sed 's/if \[ -z "\$pids" \]; then/if true; then/')"
+  M30S_ALWAYSOVR="$(printf '%s\n' "$WAIT_FN_30S" | sed 's/if \[ "\${DEPLOY_ALLOW_LIVE_RUN:-0}" = "1" \]; then/if true; then/')"
+  M30S_UNKPASS="$(printf '%s\n' "$WAIT_FN_30S" | sed 's/refuse_or_override_live_run "\$step" "liveness unknowable: pgrep missing or failed"/:/')"
   if [ "$M30_NOGUARD" = "$RELEASE_LOCKS_FN_30" ] || [ "$M30_ALWAYS" = "$RELEASE_LOCKS_FN_30" ] \
      || [ "$M30_NOUNKNOWN" = "$RELEASE_LOCKS_FN_30" ] || [ "$M30_NOSTALE" = "$RELEASE_LOCKS_FN_30" ] \
-     || [ "$M30S_NOWAIT" = "$WAIT_FN_30S" ]; then
+     || [ "$M30S_NOWAIT" = "$WAIT_FN_30S" ] || [ "$M30S_ALWAYSOVR" = "$WAIT_FN_30S" ] \
+     || [ "$M30S_UNKPASS" = "$WAIT_FN_30S" ]; then
     fail "case 30t: a mutation did not apply (pattern drifted) — every mutant must change the text"
   else
     MO_A="$(RELEASE_FN_OVERRIDE30="$M30_NOGUARD" PGREP30=live run_release_locks_30 held-both 0)"
     MO_B="$(RELEASE_FN_OVERRIDE30="$M30_ALWAYS" PGREP30=none run_release_locks_30 held-both 0)"
     MO_P="$(RELEASE_FN_OVERRIDE30="$M30_NOUNKNOWN" PGREP30=broken run_release_locks_30 held-both 0)"
     MO_C="$(RELEASE_FN_OVERRIDE30="$M30_NOSTALE" PGREP30=none run_release_locks_30 held-both 0)"
-    MO_W="$(run_wait_30s 4242 "$M30S_NOWAIT")"
+    MO_W="$(run_wait_30s 4242 "$M30S_NOWAIT")" || true
     if emit "$MO_A" | grep -q 'cycle locks released: 2'; then
       pass "case 30t mutation (a): without the live-wake guard a live cron run's locks ARE released — 30m's guard is load-bearing"
     else
@@ -3125,6 +3155,18 @@ FAKEPG30
       pass "case 30t mutation (wait): an idle wait that ignores cron wakes never polls — 30s is load-bearing"
     else
       fail "case 30t mutation (wait): the mutant still waited — got: $MO_W"
+    fi
+    MO_OVR="$(run_wait_30s 4242 "$M30S_ALWAYSOVR")" || true
+    MO_UNK="$(run_wait_30s UNKNOWABLE "$M30S_UNKPASS")" || true
+    if emit "$MO_OVR" | grep -q 'RC=0' && ! emit "$MO_OVR" | grep -q 'FATAL: refusing'; then
+      pass "case 30t mutation (#1259 refuse): an override check that always passes lets a live run through — 30s's refusal assertion is load-bearing"
+    else
+      fail "case 30t mutation (#1259 refuse): the always-override mutant still refused — got: $MO_OVR"
+    fi
+    if emit "$MO_UNK" | grep -q 'RC=0' && ! emit "$MO_UNK" | grep -q 'FATAL: refusing'; then
+      pass "case 30t mutation (#1259 unknowable): dropping the unknowable refusal proceeds blind — 30s's unknowable assertion is load-bearing"
+    else
+      fail "case 30t mutation (#1259 unknowable): the mutant still refused — got: $MO_UNK"
     fi
   fi
 
@@ -4333,6 +4375,376 @@ if [ -n "$CLEANUP_ORPHAN_FN" ] && [ -n "$RESOLVE_LINK_FN" ] && [ -n "$COLLECT_LI
   fi
 else
   fail "case 39: could not extract cleanup_orphan_release_dirs()/resolve_link_target()/collect_live_release_dirs() from $DEPLOY_SCRIPT - renamed?"
+fi
+
+# --- Case 40 (#1259): a deploy never mutates what a LIVE old scraper run ----
+# --- depends on. Scheduled runs are cron-launched wakes of the slot         --
+# --- ($CURRENT_LINK/scripts/scraper-wake.sh), invisible to pm2. Before       --
+# --- #1259 the idle wait only WARNED after MUTEX_MAX_WAIT and went on to    --
+# --- swap the shared per-slot venv and run migrations under the old run,    --
+# --- and a keep-N prune could delete the release dir the old run executes  --
+# --- from. Now: refuse (exit non-zero, reason line naming pids and the      --
+# --- override) before ANY mutation; re-check right before the venv swap and --
+# --- the migrations; never prune a release a live wake's cwd is inside.     --
+# --- DEPLOY_ALLOW_LIVE_RUN=1 is the only way past, and it is logged loudly. --
+unset DEPLOY_ROOT DEPLOY_KEEP_RELEASES DEPLOY_FAIL_BUILD DEPLOY_FAIL_PREFLIGHT DEPLOY_DRYRUN_SCRAPER_STATUS \
+  DEPLOY_DRYRUN_CRON_WAKE_PIDS DEPLOY_DRYRUN_CRON_WAKE_AT DEPLOY_ALLOW_LIVE_RUN DEPLOY_PROC_ROOT 2>/dev/null || true
+ROOT40="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT40"
+export DEPLOY_MUTEX_MAX_WAIT_SECONDS=2
+export DEPLOY_MUTEX_POLL_SECONDS=1
+if ! bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40-seed.log 2>&1; then
+  fail "case 40: seed deploy failed"
+  cat /tmp/deploy-test-40-seed.log
+fi
+CUR40="$(current_target "$ROOT40/current")"
+N40="$(count_releases "$ROOT40/releases")"
+
+# 40a: a live wake past MAX_WAIT at step 2 -> refuse before pm2 stop, the
+# venv swap, the migrations, the flip and the prune; nothing on disk changes.
+sleep 1.1
+DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40a.log 2>&1 && RC40A=0 || RC40A=$?
+if [ "$RC40A" -ne 0 ] \
+   && grep -q "^FATAL: refusing to deploy slot prod: a cron-launched scraper run of this slot is live before step 'build'" /tmp/deploy-test-40a.log \
+   && grep -q 'pids: 4242' /tmp/deploy-test-40a.log \
+   && grep -q 'DEPLOY_ALLOW_LIVE_RUN=1' /tmp/deploy-test-40a.log \
+   && ! grep -q "skipping real 'pm2 stop" /tmp/deploy-test-40a.log \
+   && ! grep -q 'Setting up scraper Python venv' /tmp/deploy-test-40a.log \
+   && ! grep -q "skipping real 'drizzle-kit migrate'" /tmp/deploy-test-40a.log \
+   && ! grep -q '^==> Flipping' /tmp/deploy-test-40a.log \
+   && ! grep -q '^==> Pruning old releases' /tmp/deploy-test-40a.log \
+   && [ "$(current_target "$ROOT40/current")" = "$CUR40" ] \
+   && [ "$(count_releases "$ROOT40/releases")" = "$N40" ]; then
+  pass "case 40a: a live cron wake past MAX_WAIT -> deploy REFUSES (rc=$RC40A) before pm2 stop/venv/migrations/flip/prune, reason names pids + override, disk untouched"
+else
+  fail "case 40a: expected a refusal before any mutation (rc=$RC40A) - log:"
+  cat /tmp/deploy-test-40a.log
+fi
+
+# 40b: liveness unknowable (pgrep missing/failing) -> refuse the same way.
+DEPLOY_DRYRUN_CRON_WAKE_PIDS=UNKNOWABLE bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40b.log 2>&1 && RC40B=0 || RC40B=$?
+if [ "$RC40B" -ne 0 ] \
+   && grep -q "^FATAL: refusing to deploy slot prod: .*before step 'build' (liveness unknowable" /tmp/deploy-test-40b.log \
+   && ! grep -q 'Setting up scraper Python venv' /tmp/deploy-test-40b.log \
+   && [ "$(current_target "$ROOT40/current")" = "$CUR40" ]; then
+  pass "case 40b: pgrep unknowable -> deploy refuses (fail closed), nothing mutated"
+else
+  fail "case 40b: expected a fail-closed refusal when liveness is unknowable (rc=$RC40B) - log:"
+  cat /tmp/deploy-test-40b.log
+fi
+
+# 40c: a wake that STARTS mid-build (cron fires every 30 min; a build takes
+# ~15) is caught by the re-check right before the venv swap and right before
+# the migrations. DEPLOY_DRYRUN_CRON_WAKE_AT makes the dry-run wake visible
+# only at that one checkpoint.
+for STEP40 in venv migrations; do
+  sleep 1.1
+  DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 DEPLOY_DRYRUN_CRON_WAKE_AT="$STEP40" \
+    bash "$DEPLOY_SCRIPT" prod --dry-run --force >"/tmp/deploy-test-40c-$STEP40.log" 2>&1 && RC40C=0 || RC40C=$?
+  L40="/tmp/deploy-test-40c-$STEP40.log"
+  VENV_SEEN=0; grep -q 'Setting up scraper Python venv' "$L40" && VENV_SEEN=1
+  EXPECT_VENV=0; [ "$STEP40" = "migrations" ] && EXPECT_VENV=1
+  # #1259 round 2: the refusal says what was already touched at THIS step
+  # (at 'migrations' the shared venv HAS been swapped; at 'venv' nothing
+  # shared was), and the EXIT trap still resumes the scraper.
+  if [ "$STEP40" = "migrations" ]; then
+    STEPMSG40="^FATAL: refusing .*live before step 'migrations'.* HAS ALREADY been swapped for this release (step 6.5); no migration ran"
+  else
+    STEPMSG40="^FATAL: refusing .*live before step 'venv'.* The new release was built but nothing shared was touched: no venv swap"
+  fi
+  if [ "$RC40C" -ne 0 ] \
+     && grep -q "No cron-launched scraper wake of slot prod running .* safe to proceed to: build" "$L40" \
+     && grep -q "^FATAL: refusing to deploy slot prod: .*live before step '$STEP40'" "$L40" \
+     && grep -q "$STEPMSG40" "$L40" \
+     && grep -q 'would resume scraper' "$L40" \
+     && grep -q "would release this deploy's scraper locks" "$L40" \
+     && [ "$VENV_SEEN" -eq "$EXPECT_VENV" ] \
+     && ! grep -q "skipping real 'drizzle-kit migrate'" "$L40" \
+     && ! grep -q '^==> Flipping' "$L40" \
+     && [ "$(current_target "$ROOT40/current")" = "$CUR40" ] \
+     && [ "$(count_releases "$ROOT40/releases")" = "$N40" ]; then
+    pass "case 40c ($STEP40): a wake that starts mid-build is refused right before the $STEP40 step; current untouched, the new release dir cleaned up"
+  else
+    fail "case 40c ($STEP40): expected a refusal at the $STEP40 checkpoint (rc=$RC40C, venv seen=$VENV_SEEN) - log:"
+    cat "$L40"
+  fi
+done
+
+# 40d: the explicit override proceeds, and says so loudly at every checkpoint.
+sleep 1.1
+DEPLOY_ALLOW_LIVE_RUN=1 DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40d.log 2>&1 && RC40D=0 || RC40D=$?
+if [ "$RC40D" -eq 0 ] \
+   && [ "$(grep -c '^WARN: DEPLOY_ALLOW_LIVE_RUN=1: PROCEEDING' /tmp/deploy-test-40d.log)" -eq 3 ] \
+   && grep -q '^==> Flipping' /tmp/deploy-test-40d.log; then
+  pass "case 40d: DEPLOY_ALLOW_LIVE_RUN=1 proceeds, with a WARN at each of the 3 checkpoints (build, venv, migrations)"
+else
+  fail "case 40d: expected rc 0 and 3 override WARN lines (rc=$RC40D) - log:"
+  cat /tmp/deploy-test-40d.log
+fi
+
+# 40e: the prune never deletes a release a live wake's cwd is inside. Seed
+# R1, R2 (current), then deploy R3 with keep 1 under the override while a
+# wake (pid 4242) runs from R1. /proc/<pid>/cwd is emulated by a plain file
+# (DEPLOY_PROC_ROOT; the box reads the real symlink). R1 kept, R2 pruned.
+ROOT40E="$(fresh_root)"
+PROC40E="$(mktemp -d)"
+DEPLOY_ROOT="$ROOT40E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40e-1.log 2>&1 || fail "case 40e: seed deploy 1 failed"
+R1_40E="$(current_target "$ROOT40E/current")"
+sleep 1.1
+DEPLOY_ROOT="$ROOT40E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40e-2.log 2>&1 || fail "case 40e: seed deploy 2 failed"
+R2_40E="$(current_target "$ROOT40E/current")"
+mkdir -p "$PROC40E/4242"
+printf '%s\n' "$R1_40E/scraper" > "$PROC40E/4242/cwd"
+sleep 1.1
+DEPLOY_ROOT="$ROOT40E" DEPLOY_KEEP_RELEASES=1 DEPLOY_ALLOW_LIVE_RUN=1 DEPLOY_DRYRUN_CRON_WAKE_PIDS=4242 \
+  DEPLOY_PROC_ROOT="$PROC40E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40e-3.log 2>&1 && RC40E=0 || RC40E=$?
+if [ "$RC40E" -eq 0 ] && [ -n "$R1_40E" ] && [ "$R1_40E" != "$R2_40E" ] \
+   && [ -d "$R1_40E" ] && [ ! -d "$R2_40E" ] \
+   && grep -q "keeping $(basename "$R1_40E") (a live cron-launched scraper wake of slot prod runs from it" /tmp/deploy-test-40e-3.log; then
+  pass "case 40e: the prune keeps the release a live wake runs from ($(basename "$R1_40E")) and still prunes the idle one"
+else
+  fail "case 40e: expected R1 kept (live wake cwd) and R2 pruned (rc=$RC40E, R1=$R1_40E R2=$R2_40E) - log:"
+  cat /tmp/deploy-test-40e-3.log
+fi
+
+# 40f: liveness unknowable at prune time (override set) -> skip the prune
+# entirely rather than prune blind; every release survives.
+N40F_BEFORE="$(count_releases "$ROOT40E/releases")"
+sleep 1.1
+DEPLOY_ROOT="$ROOT40E" DEPLOY_KEEP_RELEASES=1 DEPLOY_ALLOW_LIVE_RUN=1 DEPLOY_DRYRUN_CRON_WAKE_PIDS=UNKNOWABLE \
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40f.log 2>&1 && RC40F=0 || RC40F=$?
+if [ "$RC40F" -eq 0 ] \
+   && grep -q '^WARN: prune skipped' /tmp/deploy-test-40f.log \
+   && [ "$(count_releases "$ROOT40E/releases")" -eq "$((N40F_BEFORE + 1))" ]; then
+  pass "case 40f: wake liveness unknowable at prune time -> prune skipped, no release deleted"
+else
+  fail "case 40f: expected 'prune skipped' and no deletion (rc=$RC40F, before=$N40F_BEFORE after=$(count_releases "$ROOT40E/releases")) - log:"
+  cat /tmp/deploy-test-40f.log
+fi
+# 40g (#1259 round 2): a run that took the slot's scraper:cycle lock after the
+# step-2 check makes the deploy's own SET NX fail -> refuse at 'cycle-lock',
+# before the venv swap / migrations / flip, and the scraper is resumed.
+CUR40G="$(current_target "$ROOT40/current")"  # 40d flipped it: compare to now
+sleep 1.1
+DEPLOY_ROOT="$ROOT40" DEPLOY_DRYRUN_SCRAPER_LOCK=held \
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-40g.log 2>&1 && RC40G=0 || RC40G=$?
+if [ "$RC40G" -ne 0 ] \
+   && grep -q "^FATAL: refusing to deploy slot prod: .*live before step 'cycle-lock' (lock prod:lock:resource:scraper:cycle held" /tmp/deploy-test-40g.log \
+   && grep -q 'Nothing shared was touched' /tmp/deploy-test-40g.log \
+   && grep -q 'would resume scraper' /tmp/deploy-test-40g.log \
+   && ! grep -q 'Setting up scraper Python venv' /tmp/deploy-test-40g.log \
+   && ! grep -q "skipping real 'drizzle-kit migrate'" /tmp/deploy-test-40g.log \
+   && ! grep -q '^==> Flipping' /tmp/deploy-test-40g.log \
+   && [ -n "$CUR40G" ] && [ "$(current_target "$ROOT40/current")" = "$CUR40G" ]; then
+  pass "case 40g: the slot's scraper:cycle lock held when the deploy takes it -> refuse at 'cycle-lock' before venv/migrations/flip, scraper resumed"
+else
+  fail "case 40g: expected a 'cycle-lock' refusal before any shared mutation (rc=$RC40G) - log:"
+  cat /tmp/deploy-test-40g.log
+fi
+rm -rf "$ROOT40" "$ROOT40E" "$PROC40E"
+unset DEPLOY_ROOT 2>/dev/null || true
+
+# --- Case 41 (#1259 round 2): the deploy HOLDS the slot's scraper locks ----
+# --- (`<slot>:lock:resource:scraper:cycle` / `scraper:live`, the exact keys --
+# --- scraper-wake.sh GETs and DistributedLock SETs) from right after the     --
+# --- step-2 check until just before restart_pm2 / the EXIT trap. Driven at   --
+# --- function level: the REAL acquire/release/refuse/on_deploy_exit bodies   --
+# --- run in a child bash against a stateful file-backed fake redis-cli.      --
+set +e
+ACQ_FNS_41="$(awk '/^DEPLOY_SCRAPER_LOCK_RESOURCES=/,/^DEPLOY_HELD_LOCK_KEYS=\(\)$/' "$DEPLOY_SCRIPT")
+$(awk '/^acquire_deploy_scraper_locks\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^release_deploy_scraper_locks\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^refuse_or_override_live_run\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^cron_wake_pattern\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")
+$(awk '/^on_deploy_exit\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
+if ! printf '%s' "$ACQ_FNS_41" | grep -q '^acquire_deploy_scraper_locks() {' \
+   || ! printf '%s' "$ACQ_FNS_41" | grep -q '^release_deploy_scraper_locks() {' \
+   || ! printf '%s' "$ACQ_FNS_41" | grep -q '^on_deploy_exit() {'; then
+  fail "case 41 setup: could not extract acquire/release_deploy_scraper_locks / on_deploy_exit from $DEPLOY_SCRIPT"
+else
+  # Static order: taken after the EXIT trap is armed (so every exit path
+  # releases it); released before restart_pm2 (so the post-deploy wake is
+  # not lock-skipped by the deploy's own key).
+  TRAP_L41="$(grep -n '^trap on_deploy_exit EXIT$' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  ACQ_L41="$(grep -n '^acquire_deploy_scraper_locks$' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  REL_L41="$(grep -n '^release_deploy_scraper_locks || true$' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  PM2_L41="$(grep -n '^restart_pm2$' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  STEP2_L41="$(grep -n '^  wait_for_no_live_cron_wake build$' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  if [ -n "$TRAP_L41" ] && [ -n "$ACQ_L41" ] && [ -n "$REL_L41" ] && [ -n "$PM2_L41" ] && [ -n "$STEP2_L41" ] \
+     && [ "$ACQ_L41" -gt "$TRAP_L41" ] && [ "$ACQ_L41" -gt "$STEP2_L41" ] && [ "$REL_L41" -lt "$PM2_L41" ] && [ "$REL_L41" -gt "$ACQ_L41" ]; then
+    pass "case 41 static: locks taken after the step-2 check and the EXIT trap (line $ACQ_L41), released before restart_pm2 (line $REL_L41 < $PM2_L41)"
+  else
+    fail "case 41 static: order wrong (step2=$STEP2_L41 trap=$TRAP_L41 acquire=$ACQ_L41 release=$REL_L41 restart_pm2=$PM2_L41)"
+  fi
+
+  FAKEBIN41="$(mktemp -d)"
+  ENVDIR41="$(mktemp -d)"
+  printf 'REDIS_URL=redis://localhost:6379/1\n' > "$ENVDIR41/scraper.env"
+  printf 'DATABASE_URL=postgresql://ipodhan_app@db:5432/ipodhan_staging\n' >> "$ENVDIR41/scraper.env"
+  # Stateful fake: one file per key under $STORE41 (the name with ':' -> '_').
+  # SET k v NX ... -> OK and stores v when k is absent, empty line (redis-cli's
+  # non-tty nil) when present. GET/TTL/EVAL(compare-and-delete). FAIL41=set
+  # makes SET exit 1 (connection refused shape).
+  cat > "$FAKEBIN41/redis-cli" <<'FAKERC41'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STORE41/argv.log"
+args=("$@"); f=(); i=0
+while [ $i -lt ${#args[@]} ]; do
+  case "${args[$i]}" in
+    -t|-u|-h|-p|-n|--user) i=$((i+2)); continue ;;
+    *) f+=("${args[$i]}"); i=$((i+1)) ;;
+  esac
+done
+kf() { printf '%s/k_%s' "$STORE41" "$(printf '%s' "$1" | tr ':' '_')"; }
+case "${f[0]}" in
+  SET)
+    if [ "${FAIL41:-}" = "set" ]; then echo "Could not connect to Redis at localhost:6379: Connection refused" >&2; exit 1; fi
+    nx=0; for a in "${f[@]:3}"; do [ "$a" = "NX" ] && nx=1; done
+    if [ "$nx" = 1 ] && [ -f "$(kf "${f[1]}")" ]; then echo ""; else printf '%s' "${f[2]}" > "$(kf "${f[1]}")"; echo OK; fi ;;
+  GET) [ -f "$(kf "${f[1]}")" ] && cat "$(kf "${f[1]}")"; echo ;;
+  TTL) echo 1234 ;;
+  EVAL)
+    # Honour the script: compare-and-delete only if it compares to ARGV[1].
+    k="${f[3]}"; tok="${f[4]}"
+    case "${f[1]}" in
+      *"==ARGV[1]"*) if [ -f "$(kf "$k")" ] && [ "$(cat "$(kf "$k")")" = "$tok" ]; then rm -f "$(kf "$k")"; echo 1; else echo 0; fi ;;
+      *) if [ -f "$(kf "$k")" ]; then rm -f "$(kf "$k")"; echo 1; else echo 0; fi ;;
+    esac ;;
+  *) echo "UNEXPECTED ${f[0]}" >&2; exit 9 ;;
+esac
+FAKERC41
+  chmod +x "$FAKEBIN41/redis-cli"
+
+  # run_41 <body>: a child bash with the real functions, log/warn/fatal as in
+  # the script, stubbed resume/cleanup, the EXIT trap armed exactly as the
+  # script arms it, then <body>. Prints output; the caller reads $?.
+  run_41() {
+    STORE41="$STORE41" FAIL41="${FAIL41:-}" PATH="$FAKEBIN41:$PATH" \
+    SCRIPT_DIR41="$SCRIPT_DIR" ENVFILE41="${ENVFILE41:-$ENVDIR41/scraper.env}" FNS41="$ACQ_FNS_41" BODY41="$1" \
+      bash -c '
+        log() { echo "==> $*"; }
+        warn() { echo "WARN: $*" >&2; }
+        fatal() { echo "FATAL: $*" >&2; exit 1; }
+        resume_scraper() { echo "==> would resume scraper (stub)"; }
+        cleanup_failed_release_dir() { :; }
+        DRY_RUN=0; SLOT=staging; RELEASE_NAME=R41; CURRENT_LINK=/var/www/ipodhan/current-staging
+        PYTHON_VENV_DIR=/var/www/ipodhan/venv-staging
+        SCRAPER_ENV_FILE="$ENVFILE41"
+        . "$SCRIPT_DIR41/../lib/redis-slot-prefix.sh"
+        . "$SCRIPT_DIR41/../lib/redis-cli-auth.sh"
+        eval "$FNS41"
+        trap on_deploy_exit EXIT
+        eval "$BODY41"
+      ' 2>&1
+  }
+  k41() { printf '%s/k_%s' "$STORE41" "$(printf '%s' "$1" | tr ':' '_')"; }
+  CYC41="staging:lock:resource:scraper:cycle"
+  LIV41="staging:lock:resource:scraper:live"
+
+  # 41a+b: empty store -> both keys taken with SET NX EX 2700 and the deploy
+  # token; a wake/scraper-style SET NX on the held key then FAILS (the key
+  # keeps the deploy token); the success-path release deletes both.
+  STORE41="$(mktemp -d)"
+  OUT41A="$(run_41 '
+    acquire_deploy_scraper_locks
+    echo "HOLD-CYCLE=$(redis-cli -h localhost -p 6379 -n 1 GET '"$CYC41"')"
+    echo "WAKE-SET=[$(redis-cli -h localhost -p 6379 -n 1 SET '"$CYC41"' scraper-uuid NX PX 10000)]"
+    echo "AFTER-WAKE=$(redis-cli -h localhost -p 6379 -n 1 GET '"$CYC41"')"
+    release_deploy_scraper_locks
+    trap - EXIT
+  ')"; RC41A=$?
+  if [ "$RC41A" -eq 0 ] \
+     && grep -qE -- "-n 1 SET $CYC41 deploy:staging:R41:[0-9]+ NX EX 2700$" "$STORE41/argv.log" \
+     && grep -qE -- "-n 1 SET $LIV41 deploy:staging:R41:[0-9]+ NX EX 2700$" "$STORE41/argv.log" \
+     && emit "$OUT41A" | grep -q "Took $CYC41 for this deploy (token=deploy:staging:R41:" \
+     && emit "$OUT41A" | grep -qE '^HOLD-CYCLE=deploy:staging:R41:[0-9]+$' \
+     && emit "$OUT41A" | grep -q '^WAKE-SET=\[\]$' \
+     && emit "$OUT41A" | grep -qE '^AFTER-WAKE=deploy:staging:R41:[0-9]+$' \
+     && emit "$OUT41A" | grep -q "Released $CYC41" \
+     && emit "$OUT41A" | grep -q "Released $LIV41" \
+     && [ ! -f "$(k41 "$CYC41")" ] && [ ! -f "$(k41 "$LIV41")" ]; then
+    pass "case 41a/b: both slot keys taken with SET NX EX 2700 + deploy token; a wake-style SET NX during the deploy fails and the key keeps the deploy token; released on success"
+  else
+    fail "case 41a/b: expected both keys taken, a concurrent SET NX refused, both released (rc=$RC41A) - got: $OUT41A / argv: $(cat "$STORE41/argv.log" 2>/dev/null)"
+  fi
+  rm -rf "$STORE41"
+
+  # 41c+d: scraper:live already held by a foreign token -> SET NX fails ->
+  # refuse (rc!=0, reason names key+holder); the EXIT trap releases ONLY the
+  # deploy's own scraper:cycle; the foreign scraper:live survives untouched.
+  STORE41="$(mktemp -d)"
+  printf '%s' 'scraper-uuid-live' > "$(k41 "$LIV41")"
+  OUT41C="$(run_41 'acquire_deploy_scraper_locks; echo SHOULD-NOT-REACH')"; RC41C=$?
+  if [ "$RC41C" -ne 0 ] \
+     && emit "$OUT41C" | grep -q "^FATAL: refusing to deploy slot staging: .*live before step 'cycle-lock' (lock $LIV41 held by token=scraper-uuid-live (1234s left)" \
+     && ! emit "$OUT41C" | grep -q 'SHOULD-NOT-REACH' \
+     && emit "$OUT41C" | grep -q "Released $CYC41" \
+     && emit "$OUT41C" | grep -q 'would resume scraper' \
+     && [ ! -f "$(k41 "$CYC41")" ] \
+     && [ "$(cat "$(k41 "$LIV41")")" = "scraper-uuid-live" ]; then
+    pass "case 41c/d: a held slot lock -> SET NX fails -> refuse (rc=$RC41C, names key+holder); the EXIT trap deletes only the deploy's own key, the foreign token survives"
+  else
+    fail "case 41c/d: expected refusal + own-key-only release (rc=$RC41C) - got: $OUT41C"
+  fi
+  rm -rf "$STORE41"
+
+  # 41c2: the deploy's key expired and was retaken by a scraper before a
+  # failure exit -> the EXIT trap's compare-and-delete leaves the new owner.
+  STORE41="$(mktemp -d)"
+  OUT41C2="$(run_41 '
+    acquire_deploy_scraper_locks
+    printf "%s" scraper-uuid-new > "$STORE41/k_staging_lock_resource_scraper_cycle"
+    fatal "simulated build failure"
+  ')"; RC41C2=$?
+  if [ "$RC41C2" -ne 0 ] \
+     && [ "$(cat "$(k41 "$CYC41")" 2>/dev/null)" = "scraper-uuid-new" ] \
+     && [ ! -f "$(k41 "$LIV41")" ] \
+     && emit "$OUT41C2" | grep -q "$CYC41 no longer holds this deploy's token (expired or retaken); left alone"; then
+    pass "case 41c2: on a failure exit the trap deletes only keys still holding the deploy token; a retaken key keeps its new owner"
+  else
+    fail "case 41c2: expected the retaken key left alone and ours released (rc=$RC41C2) - got: $OUT41C2"
+  fi
+  rm -rf "$STORE41"
+
+  # 41d2: redis-cli fails on SET (lock state unknowable) -> refuse.
+  STORE41="$(mktemp -d)"
+  OUT41D2="$(FAIL41=set run_41 'acquire_deploy_scraper_locks; echo SHOULD-NOT-REACH')"; RC41D2=$?
+  if [ "$RC41D2" -ne 0 ] \
+     && emit "$OUT41D2" | grep -q "^FATAL: refusing .*before step 'cycle-lock' (cannot take $CYC41, lock state unknowable: redis-cli failed" \
+     && ! emit "$OUT41D2" | grep -q 'SHOULD-NOT-REACH'; then
+    pass "case 41d2: redis-cli failing on SET NX (lock state unknowable) -> refuse, fail closed"
+  else
+    fail "case 41d2: expected a fail-closed refusal (rc=$RC41D2) - got: $OUT41D2"
+  fi
+  rm -rf "$STORE41"
+
+  # 41e: DEPLOY_ALLOW_LIVE_RUN=1 with scraper:live held -> proceeds (rc 0),
+  # WARN at 'cycle-lock', still takes the free scraper:cycle.
+  STORE41="$(mktemp -d)"
+  printf '%s' 'scraper-uuid-live' > "$(k41 "$LIV41")"
+  OUT41E="$(DEPLOY_ALLOW_LIVE_RUN=1 run_41 'acquire_deploy_scraper_locks; echo REACHED; release_deploy_scraper_locks; trap - EXIT')"; RC41E=$?
+  if [ "$RC41E" -eq 0 ] \
+     && emit "$OUT41E" | grep -q "^WARN: DEPLOY_ALLOW_LIVE_RUN=1: PROCEEDING to step 'cycle-lock' of slot staging" \
+     && emit "$OUT41E" | grep -q '^REACHED$' \
+     && emit "$OUT41E" | grep -q "Took $CYC41 for this deploy" \
+     && [ "$(cat "$(k41 "$LIV41")")" = "scraper-uuid-live" ]; then
+    pass "case 41e: DEPLOY_ALLOW_LIVE_RUN=1 proceeds past a held slot lock with a WARN, never touching the foreign key"
+  else
+    fail "case 41e: expected the override to proceed (rc=$RC41E) - got: $OUT41E"
+  fi
+  rm -rf "$STORE41"
+
+  # 41m: missing configuration (no REDIS_URL) -> no lock, says so, rc 0.
+  STORE41="$(mktemp -d)"
+  printf 'DATABASE_URL=postgresql://ipodhan_app@db:5432/ipodhan_staging\n' > "$ENVDIR41/noredis.env"
+  OUT41M="$(ENVFILE41="$ENVDIR41/noredis.env" run_41 'acquire_deploy_scraper_locks; echo REACHED; trap - EXIT')"; RC41M=$?
+  if [ "$RC41M" -eq 0 ] && emit "$OUT41M" | grep -q 'REDIS_URL not found .*no deploy lock taken' \
+     && [ ! -s "$STORE41/argv.log" ]; then
+    pass "case 41m: no REDIS_URL -> no deploy lock, logged, no redis-cli call, deploy continues"
+  else
+    fail "case 41m: expected a logged no-lock path (rc=$RC41M) - got: $OUT41M"
+  fi
+  rm -rf "$STORE41" "$FAKEBIN41" "$ENVDIR41"
 fi
 
 if [ "$FAILED" -ne 0 ]; then
