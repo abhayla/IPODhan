@@ -32,6 +32,7 @@ import { readAdminFieldVersion, protectionTableName } from '@ipodhan/shared/serv
 import { NEWER_DOCUMENT_ORIGIN, newerDocumentSuggestionKey } from '@ipodhan/shared/services/corrigendum-suggestions';
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { normalizeReceiptValue } from '../../config/plan-supersession-rule.mjs';
+import logger from '../utils/logger.js';
 
 type Db = {
   execute: (q: ReturnType<typeof sql>) => Promise<unknown>;
@@ -91,7 +92,18 @@ export async function recordNewerDocumentSuggestions(
   if (docs.length === 0) return result;
 
   const current = await readAdminFieldVersion(db as never, args.ipoId, args.tableName, field, rowKey ? { rowKey } : undefined);
-  const adminValue = normalizeReceiptValue(current?.currentValue ?? null);
+  if (current === null) {
+    // readAdminFieldVersion returns null when the table/field is unknown or the row cannot be
+    // resolved (a row table whose row key no longer matches). Treating that as "admin value is
+    // empty" would suggest every newer document's value as a correction, even one that agrees
+    // with the (unreadable) admin value. Skip instead — no suggestion is inserted.
+    logger.warn(
+      { ipoId: args.ipoId, tableName: args.tableName, fieldName: field, rowKey },
+      'newer-document-suggestions: could not read the admin current value — skipping, no suggestion inserted'
+    );
+    return result;
+  }
+  const adminValue = normalizeReceiptValue(current.currentValue ?? null);
 
   for (const d of docs) {
     const documentValue = String(d.value);
