@@ -19,7 +19,9 @@ describe('§9.2 item 26 identifier alias helpers', () => {
       expect(isIdentifierAliasField(f)).toBe(true);
       expect(Object.prototype.hasOwnProperty.call(IPO_FIELDS_AWAITING_PHASE_B, f)).toBe(false);
     }
-    expect(Object.keys(IPO_FIELDS_AWAITING_PHASE_B).sort()).toEqual(['listingExchanges', 'offeringType', 'segment']);
+    // item 18 removed offeringType/segment/listingExchanges too (their save rebuilds the plan);
+    // no field currently awaits Phase B.
+    expect(Object.keys(IPO_FIELDS_AWAITING_PHASE_B)).toEqual([]);
     expect(isIdentifierAliasField('companyName')).toBe(false);
   });
 
