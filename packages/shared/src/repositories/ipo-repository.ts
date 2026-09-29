@@ -60,6 +60,8 @@ import {
 
 /** audit_logs.action_type of an OD-68 hold; read by the nightly `i_identity_held` check. */
 export const IDENTITY_HELD_ACTION = 'IDENTITY_HELD_FOR_REVIEW';
+/** §9.2 item 15 (OD-111): the audit action that marks a row an admin created by hand. */
+export const IPO_CREATED_BY_ADMIN_ACTION = 'IPO_CREATED_BY_ADMIN';
 
 /**
  * audit_logs.action_type recorded when OD-130 mints a slug for a genuinely
@@ -850,6 +852,42 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   /** OD-85: the handle `resolveIpoRow` reads `ipo_source_keys` through. */
   sourceKeyDb(): NodePgDatabase<typeof schema> {
     return this.db;
+  }
+
+  /**
+   * §9.2 item 15 (OD-111): was this row created by hand by an admin? Read from the creation's own
+   * audit row (`IPO_CREATED_BY_ADMIN`), which `createIpoByAdmin` writes in the create transaction.
+   * `resolveIpoRow` asks only after a NAME tier picked the row, never on an identifier bind.
+   */
+  async isAdminCreated(ipoId: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: auditLogs.id })
+      .from(auditLogs)
+      .where(sql`${auditLogs.ipoId} = ${ipoId} AND ${auditLogs.actionType} = ${IPO_CREATED_BY_ADMIN_ACTION}`)
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  /**
+   * OD-111 / OD-68: a record that reached an admin-created row on its NAME alone is held for review,
+   * never bound: the admin gave that row an identifier, and a record that does not carry it is not
+   * proven to be the same offering. Records the hold (IDENTITY_HELD_FOR_REVIEW, rule OD-111, read by
+   * the nightly `i_identity_held` check) and throws.
+   */
+  async holdNameOnlyBindToAdminRow(
+    incoming: { companyName: string; slug: string; openDate: unknown; priceRangeMin: unknown },
+    row: { id: string; slug: string; companyName: string; openDate: unknown; priceRangeMin: unknown; status: unknown }
+  ): Promise<never> {
+    const day = incoming.openDate == null ? null : String(incoming.openDate instanceof Date ? incoming.openDate.toISOString() : incoming.openDate).slice(0, 10);
+    const view = { companyName: incoming.companyName, slug: incoming.slug, openDate: day, priceRangeMin: incoming.priceRangeMin };
+    const reason = `name-only match to admin-created row ${row.slug}: the record carries none of that row's identifiers (OD-111)`;
+    logger.warn({ incoming: view, ipoId: row.id, slug: row.slug }, '[OD-111] name-only match to an admin-created row - held for review, not bound');
+    await this.recordIdentityHold(view, incoming.companyName, [row], { rule: 'OD-111', reason });
+    throw new IdentityHeldForReviewError(
+      `resolveIpoRow: "${incoming.companyName}" held for review (OD-111) - ${reason}; nothing written`,
+      view,
+      [row]
+    );
   }
 
   async findByCin(cin: string | null | undefined): Promise<IPO[]> {

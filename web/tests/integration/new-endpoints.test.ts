@@ -319,12 +319,12 @@ describe('Phase 5 New API Endpoints - Integration Tests', () => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${ADMIN_TOKEN}`,
           },
+          // §9.2 item 15 (OD-111): name, offering type, segment and at least one binding identifier.
           body: JSON.stringify({
             companyName: 'New Test IPO',
-            category: 'MAINBOARD',
-            status: 'UPCOMING',
-            issuePrice: 200,
-            lotSize: 100,
+            offeringType: 'IPO',
+            segment: 'MAINBOARD',
+            identifiers: [{ kind: 'NSE_SYMBOL', value: 'NEWTESTIPO' }],
           }),
         });
 
@@ -332,8 +332,17 @@ describe('Phase 5 New API Endpoints - Integration Tests', () => {
 
         const data = await response.json();
         expect(data.success).toBe(true);
-        expect(data.data.companyName).toBe('New Test IPO');
-        expect(data.metadata.generatedSlug).toBeDefined();
+        expect(data.data.kind).toBe('CREATED');
+        expect(data.data.slug).toBeDefined();
+      });
+
+      it('should refuse a create with no identifier (OD-111)', async () => {
+        const response = await fetch(`${BASE_URL}/api/admin/ipos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ADMIN_TOKEN}` },
+          body: JSON.stringify({ companyName: 'No Id Test IPO', offeringType: 'IPO', segment: 'SME', identifiers: [] }),
+        });
+        expect(response.status).toBe(400);
       });
 
       it('should reject without admin auth', async () => {
@@ -361,7 +370,7 @@ describe('Phase 5 New API Endpoints - Integration Tests', () => {
           },
           body: JSON.stringify({
             companyName: 'Test',
-            // Missing category and status
+            // Missing offeringType and identifiers
           }),
         });
 
