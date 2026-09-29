@@ -118,6 +118,7 @@ import {
   type PersistFilingSummary,
 } from './filing-persister.js';
 import { buildFilingPersistDeps } from './filing-persist-deps.js';
+import type { RelaunchClearSummary } from '@ipodhan/shared/services/relaunch-admin-clear';
 import {
   checkCrossDocumentAgreement,
   comparableSeries,
@@ -1673,7 +1674,7 @@ export async function writeReceiptAndReopen(
     sourceText?: string | null;
     ocrConfidence?: number | null;
   }>
-): Promise<{ reopenedIds: string[] }> {
+): Promise<{ reopenedIds: string[]; relaunchCleared?: RelaunchClearSummary | null }> {
   const { sql } = await import('drizzle-orm');
   for (const f of receiptFields) {
     // OD-97: source_text / ocr_confidence say where this document read the value.
@@ -1686,14 +1687,19 @@ export async function writeReceiptAndReopen(
         SET value = EXCLUDED.value, source_text = EXCLUDED.source_text, ocr_confidence = EXCLUDED.ocr_confidence
     `);
   }
+  // §2.9 + OD-120: on a POSTPONED IPO this document is the relaunch filing; admin values on its
+  // document fields are cleared in this same transaction, before the supersession reopen below.
+  const { clearAdminValuesForRelaunchFiling } = await import('./relaunch-clear.js');
+  const relaunchCleared = await clearAdminValuesForRelaunchFiling(tx, { id: doc.id, ipoId: doc.ipoId, type: doc.type }, receiptFields);
   const { reopenPlanRowsForCompletedDocument } = await import('./plan-supersession.js');
   const filing =
     doc.filingDate == null ? null : doc.filingDate instanceof Date ? doc.filingDate.toISOString().slice(0, 10) : String(doc.filingDate).slice(0, 10);
-  return reopenPlanRowsForCompletedDocument(
+  const reopened = await reopenPlanRowsForCompletedDocument(
     tx,
     { id: doc.id, ipoId: doc.ipoId, docType: doc.type, filingDate: filing, sha256: doc.sha256 },
     receiptFields
   );
+  return { ...reopened, relaunchCleared };
 }
 
 /** The real dependency set, wired to the database and the filesystem. */
@@ -1783,13 +1789,17 @@ export function buildAutoPersistDeps(
       // `extraction_error` no longer erases it. The attempt number is the row's own retry_count
       // after the write (counted at the IN_PROGRESS stamp), read back with RETURNING.
       const recordsAttempt = buildExtractionAttemptRow(documentId, status as ExtractionStatus, error, 0) !== null;
+      let relaunchCleared: RelaunchClearSummary | null = null;
       const rows = recordsAttempt
         ? await writeStatusWithAttempt(db as never, documentId, status as ExtractionStatus, error, patch)
         : withReceipt
         ? await db.transaction(async (tx) => {
             const updated = await tx.update(documentsTable).set(patch as never).where(eq(documentsTable.id, documentId))
               .returning({ ipoId: documentsTable.ipoId, type: documentsTable.type, filingDate: documentsTable.filingDate, sha256: documentsTable.sha256 });
-            if (updated[0]) await writeReceiptAndReopen(tx as never, { id: documentId, ...updated[0] }, receiptFields);
+            if (updated[0]) {
+              const written = await writeReceiptAndReopen(tx as never, { id: documentId, ...updated[0] }, receiptFields);
+              relaunchCleared = written.relaunchCleared ?? null;
+            }
             return updated;
           })
         : await db
@@ -1797,6 +1807,16 @@ export function buildAutoPersistDeps(
             .set(patch as never)
             .where(eq(documentsTable.id, documentId))
             .returning({ ipoId: documentsTable.ipoId });
+      // OD-120: the ONE alert for a relaunch clear goes out AFTER commit (a rolled-back clear alerts nothing).
+      if (relaunchCleared && relaunchCleared.cleared.length > 0) {
+        const { sendRelaunchClearedAlert } = await import('./admin-alerts.js');
+        await sendRelaunchClearedAlert(relaunchCleared);
+        try {
+          await invalidator.invalidateAfterScrape('ALL', [relaunchCleared.slug]);
+        } catch (cacheError) {
+          logger.warn({ slug: relaunchCleared.slug, error: cacheError instanceof Error ? cacheError.message : String(cacheError) }, 'Could not drop caches after a relaunch clear (non-fatal)');
+        }
+      }
       const ipoId = rows[0]?.ipoId;
       if (ipoId) {
         try {

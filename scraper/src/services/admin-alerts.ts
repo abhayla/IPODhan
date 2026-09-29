@@ -24,6 +24,7 @@ import { sql } from 'drizzle-orm';
 import { istDayIso } from '@ipodhan/shared/utils/ist-day';
 import { ADMIN_ONLY_CONFLICT_REASONS, WRITER_BOOKKEEPING_FIELDS } from '@ipodhan/shared/utils/conflict-reasons';
 import { logger } from '../utils/logger.js';
+import { RELAUNCH_CLEARED_AUDIT_ACTION, type RelaunchClearSummary } from '@ipodhan/shared/services/relaunch-admin-clear';
 import { sendOwnerAlert, type OwnerAlertResult } from './owner-notify.js';
 import { redisClaims } from './live-slot-miss-monitor.js';
 
@@ -46,11 +47,12 @@ export const ADMIN_EVENT_LABELS: Record<AdminEventType, string> = {
 /**
  * audit_logs.action_type values the digest reads as admin-relevant events. 'Exchange Override' is the
  * OD-106 builder's EXCHANGE_OVERRIDE_AUDIT_ACTION (branch feat/od106-exchange-replaces-admin-date, not on
- * main when this was written). Nothing writes a relaunch-clear audit row yet (OD-120 unbuilt); when it
- * lands, add its action here.
+ * main when this was written). The relaunch clear (OD-120, relaunch-admin-clear.ts) writes
+ * 'Relaunch Cleared' rows; the digest counts them beside the one alert that lists each value.
  */
 export const DIGEST_AUDIT_ACTIONS: Readonly<Record<string, AdminEventType>> = {
   'Exchange Override': 'od106-exchange-replaced',
+  [RELAUNCH_CLEARED_AUDIT_ACTION]: 'relaunch-cleared',
 };
 
 /** UPCOMING or OPEN: the only statuses that get an instant alert (OD-112). */
@@ -752,4 +754,85 @@ export function dbNewConflictsLoader(db: Db) {
       detectedAt: String(r.detected_at),
     }));
   };
+}
+
+// ---------------------------------------------------------------- relaunch clear (OD-120, §9.2 item 27)
+
+/** The re-apply link for one cleared value: an admin-only page that re-applies it after one confirm. */
+export function relaunchReapplyLink(auditId: string, baseUrl = publicBaseUrl()): string {
+  return `${baseUrl.replace(/\/$/, '')}/api/admin/relaunch-reapply?audit=${encodeURIComponent(auditId)}`;
+}
+
+export function relaunchClearedKey(env: string, ipoId: string, documentId: string): string {
+  return `admin-relaunch-cleared:${env}:${ipoId}:${documentId}`;
+}
+
+/** Pure: the ONE alert for a relaunch clear, listing each cleared value with its re-apply link (item 28(c) wording). */
+export function buildRelaunchClearedAlert(summary: RelaunchClearSummary, opts: { env: string; baseUrl?: string }): { title: string; body: string } {
+  const base = opts.baseUrl ?? publicBaseUrl();
+  const lines = summary.cleared.map((c) => {
+    const field = `${c.tableName}.${c.fieldName}`;
+    const says = c.newFilingValue ?? 'nothing for it (not stated)';
+    const what = c.adminEmpty ? `you had blanked ${field}; the new filing says ${says}` : `${field}: you had ${c.oldValue ?? '(empty)'}; the new filing says ${says}`;
+    return `- ${what}\n  Re-apply: ${relaunchReapplyLink(c.auditId, base)}`;
+  });
+  return {
+    title: `[${opts.env}] ${ADMIN_EVENT_LABELS['relaunch-cleared']}: ${summary.companyName} (${summary.cleared.length})`,
+    body:
+      `${summary.companyName} (${summary.slug}) was POSTPONED and its relaunch filing (${summary.documentType}) arrived, so ` +
+      `${summary.cleared.length} admin value(s) on document fields were cleared (OD-120). Re-apply any that are still true:\n` +
+      `${lines.join('\n')}\nEdit: ${editorLink(summary.slug, undefined, base)}`,
+  };
+}
+
+export type RelaunchAlertDeps = Pick<AdminAlertDeps, 'env' | 'isClaimed' | 'claim' | 'send' | 'record'> & { baseUrl?: string; now?: Date };
+
+/**
+ * Sends the relaunch-clear alert once per IPO and relaunch document (claim after the Notifier accepts,
+ * OD-93). Never throws. A failed send is recorded for the 09:00 IST digest so it is never lost; the
+ * audit rows also reach the digest through DIGEST_AUDIT_ACTIONS.
+ */
+export async function sendRelaunchClearedAlert(summary: RelaunchClearSummary, deps?: RelaunchAlertDeps): Promise<AdminInstantOutcome> {
+  if (summary.cleared.length === 0) return { outcome: 'digest' };
+  let d: RelaunchAlertDeps;
+  try {
+    d = deps ?? (await defaultDeps());
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn({ slug: summary.slug, reason }, 'Relaunch-clear alert: dependencies unavailable - not sent (audit rows reach the digest)');
+    return { outcome: 'unsent', key: '', reason };
+  }
+  const env = d.env ?? process.env.DEPLOY_SLOT ?? 'unknown-env';
+  const key = relaunchClearedKey(env, summary.ipoId, summary.documentId);
+  try {
+    if (await d.isClaimed(key)) return { outcome: 'already-sent', key };
+    const { title, body } = buildRelaunchClearedAlert(summary, { env, baseUrl: d.baseUrl });
+    const out = await d.send('P2', title, { body, type: 'admin-relaunch-cleared', dedupeKey: key });
+    if (!out.sent) {
+      const reason = out.reason ?? 'unknown';
+      await d.record({
+        at: (d.now ?? new Date()).toISOString(),
+        type: 'relaunch-cleared',
+        ipoId: summary.ipoId,
+        slug: summary.slug,
+        status: summary.status,
+        field: summary.cleared.map((c) => `${c.tableName}.${c.fieldName}`).join(', '),
+        detail: body,
+        companyName: summary.companyName,
+      });
+      logger.warn({ key, reason }, 'Relaunch-clear alert NOT sent - recorded for the digest');
+      return { outcome: 'unsent', key, reason };
+    }
+    try {
+      await d.claim(key);
+    } catch (err) {
+      logger.warn({ key, reason: err instanceof Error ? err.message : String(err) }, 'Relaunch-clear alert sent, but its claim write FAILED - the Notifier dedupeKey guards a repeat');
+    }
+    logger.info({ key, cleared: summary.cleared.length }, 'Relaunch-clear alert sent (OD-120)');
+    return { outcome: 'sent', key };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn({ key, reason }, 'Relaunch-clear alert failed (non-fatal)');
+    return { outcome: 'unsent', key, reason };
+  }
 }

@@ -26,6 +26,8 @@
     "./services/field-hold": "./src/services/field-hold.ts",
     "./services/admin-list-write": "./src/services/admin-list-write.ts",
     "./services/admin-list-hold": "./src/services/admin-list-hold.ts",
+    "./services/relaunch-admin-clear": "./src/services/relaunch-admin-clear.ts",
+    "./services/relaunch-reapply": "./src/services/relaunch-reapply.ts",
     "./utils/slug": "./src/utils/slug.ts",
     "./utils/ist-day": "./src/utils/ist-day.ts",
     "./utils/registrar-display": "./src/utils/registrar-display.ts",
