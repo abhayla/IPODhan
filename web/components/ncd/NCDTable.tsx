@@ -12,6 +12,8 @@
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { DataTable, type ColumnDef, renderFunctions, getAvailableYears, getLatestYearWithData } from '@/components/shared/DataTable';
+import { AdminRowEditLink } from '@/components/admin/AdminRowEditLink';
+import { useAdminSession } from '@/hooks/useAdminSession';
 import type { NCDData } from '@/lib/services/ncd-service';
 
 // ==================== TYPES ====================
@@ -28,7 +30,8 @@ export interface NCDTableProps {
  *
  * AC#2: Table displays correct columns
  */
-const ncdColumns: ColumnDef<NCDData>[] = [
+function buildNcdColumns(isAdmin: boolean): ColumnDef<NCDData>[] {
+  return [
   {
     key: 'companyName',
     header: 'Issuer Company',
@@ -37,12 +40,15 @@ const ncdColumns: ColumnDef<NCDData>[] = [
     className: 'font-semibold',
     minWidth: '250px',
     render: (value, row) => (
-      <Link
-        href={`/ipos/${row.slug}`}
-        className="text-primary hover:underline font-semibold"
-      >
-        {value}
-      </Link>
+      <>
+        <Link
+          href={`/ipos/${row.slug}`}
+          className="text-primary hover:underline font-semibold"
+        >
+          {value}
+        </Link>
+        <AdminRowEditLink slug={row.slug} isAdmin={isAdmin} className="ml-2 inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100" />
+      </>
     ),
   },
   {
@@ -61,7 +67,8 @@ const ncdColumns: ColumnDef<NCDData>[] = [
     align: 'center',
     render: (value) => renderFunctions.date(value, 'MMM dd, yyyy'),
   },
-];
+  ];
+}
 
 // ==================== COMPONENT ====================
 
@@ -80,6 +87,8 @@ const ncdColumns: ColumnDef<NCDData>[] = [
  * AC#9: Empty state handled by DataTable
  */
 export function NCDTable({ ncdIssues }: NCDTableProps) {
+  const { isAdmin } = useAdminSession();
+  const ncdColumns = buildNcdColumns(isAdmin);
   // State management for DataTable features
   const [searches, setSearches] = useState<Record<string, string>>({});
   // T-286 (P1-1): derived from the data (latest year with rows), not a

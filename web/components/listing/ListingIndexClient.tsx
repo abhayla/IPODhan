@@ -33,6 +33,8 @@ import type { LiveMetricsMap } from '@/lib/services/live-metrics-service';
 import { formatIssueSizeCrores, formatIssueSizeCroresBare } from '@/lib/utils';
 import { formatIPODate, getAccessibleDate } from '@/lib/utils/date-formatter';
 import { formatPriceBand } from '@/lib/utils/kpi-formatters';
+import { AdminRowEditLink } from '@/components/admin/AdminRowEditLink';
+import { useAdminSession } from '@/hooks/useAdminSession';
 import { IpoStatusChip, StatusDot, StatusSrLabel, getDisplayStatus } from './ipo-status';
 import { ListingKpiRibbon, type RibbonCell } from './ListingKpiRibbon';
 
@@ -108,7 +110,7 @@ export function companySubline(ipo: IPO): string {
   return '—';
 }
 
-function companyCol(): ColumnDef<IPO> {
+function companyCol(isAdmin: boolean): ColumnDef<IPO> {
   return {
     key: 'companyName',
     header: 'Company',
@@ -145,6 +147,8 @@ function companyCol(): ColumnDef<IPO> {
           </span>
         </span>
         </Link>
+        {/* §9.2 item 14 (OD-110): admin-only Edit link into the IPO detail page's editor. */}
+        <AdminRowEditLink slug={row.slug} isAdmin={isAdmin} className="ml-1 inline-flex shrink-0 items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100" />
       </>
     ),
   };
@@ -229,6 +233,7 @@ export function ListingIndexClient({
 }: ListingIndexClientProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { isAdmin } = useAdminSession();
   // Default to "All" — the data-dense full table (Screener/Levels.fyi parity) is
   // the strongest first impression and surfaces the real listing-gain column;
   // Open/Upcoming are one click away with count badges.
@@ -363,7 +368,7 @@ export function ListingIndexClient({
   // scrolls under the pinned Company column) — not buried last off-screen.
   // Open IPOs are live → GMP + subscription are the decision data.
   const openColumns: ColumnDef<IPO>[] = [
-    companyCol(),
+    companyCol(isAdmin),
     statusCol,
     gmpColumn,
     subColumn,
@@ -374,7 +379,7 @@ export function ListingIndexClient({
   ];
   // Upcoming IPOs are not open yet — the open date + price band are what matters.
   const upcomingColumns: ColumnDef<IPO>[] = [
-    companyCol(),
+    companyCol(isAdmin),
     statusCol,
     openCol,
     priceBandCol,
@@ -384,7 +389,7 @@ export function ListingIndexClient({
   ];
   // Listed → the listing gain is the headline; lead with it.
   const listedColumns: ColumnDef<IPO>[] = [
-    companyCol(),
+    companyCol(isAdmin),
     gainColumn,
     listingDateCol,
     priceBandCol,
@@ -394,7 +399,7 @@ export function ListingIndexClient({
   // ALWAYS populated (Listing gain is em-dash for every not-yet-listed row, so
   // leading with it left the first scroll column mostly empty — R34 #1).
   const allColumns: ColumnDef<IPO>[] = [
-    companyCol(),
+    companyCol(isAdmin),
     statusCol,
     priceBandCol,
     gainColumn,

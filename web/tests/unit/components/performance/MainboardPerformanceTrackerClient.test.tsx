@@ -4,6 +4,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { useRouter } from 'next/navigation';
 import { MainboardPerformanceTrackerClient } from '@/components/performance/MainboardPerformanceTrackerClient';
+import { useAdminSession } from '@/hooks/useAdminSession';
 
 // T-265: regression coverage — this page used to render a hardcoded
 // generateMockPerformanceData() fallback (fictional companies, future listing
@@ -13,6 +14,13 @@ import { MainboardPerformanceTrackerClient } from '@/components/performance/Main
 vi.mock('next/navigation', () => ({
   useRouter: vi.fn(),
 }));
+
+// §9.2 item 14 (OD-110): the admin Edit link's session check is orthogonal to
+// this file's fetch-count assertions and has its own coverage in
+// MainboardPerformanceTrackerClient.adminEditLink.test.tsx — mocked here so
+// it never issues its own /api/admin/auth/me call against the same
+// global.fetch mock these tests assert call counts on.
+vi.mock('@/hooks/useAdminSession');
 
 const FAKE_COMPANY_NAMES = [
   'Tech Innovations Ltd',
@@ -26,6 +34,7 @@ const FAKE_COMPANY_NAMES = [
 describe('MainboardPerformanceTrackerClient', () => {
   beforeEach(() => {
     (useRouter as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ push: vi.fn() });
+    vi.mocked(useAdminSession).mockReturnValue({ isAdmin: false, loading: false });
     global.fetch = vi.fn();
   });
 

@@ -16,6 +16,8 @@ import { DataTable, type ColumnDef, getAvailableYears, getLatestYearWithData } f
 import type { RightsIssueData } from '@/lib/services/rights-service';
 import { renderFunctions } from '@/components/shared/DataTable';
 import Link from 'next/link';
+import { AdminRowEditLink } from '@/components/admin/AdminRowEditLink';
+import { useAdminSession } from '@/hooks/useAdminSession';
 
 // ==================== TYPES ====================
 
@@ -35,7 +37,8 @@ export interface RightsIssuesTabsProps {
  * hold those fields, and rendering openDate/closeDate under those labels
  * would misrepresent the actual record date, which decides eligibility.
  */
-const rightsIssueColumns: ColumnDef<RightsIssueData>[] = [
+function buildRightsIssueColumns(isAdmin: boolean): ColumnDef<RightsIssueData>[] {
+  return [
   {
     key: 'companyName',
     header: 'Issuer Company',
@@ -44,12 +47,15 @@ const rightsIssueColumns: ColumnDef<RightsIssueData>[] = [
     className: 'font-semibold',
     minWidth: '250px',
     render: (value, row) => (
-      <Link
-        href={`/ipos/${row.slug}`}
-        className="text-primary hover:underline font-semibold"
-      >
-        {value}
-      </Link>
+      <>
+        <Link
+          href={`/ipos/${row.slug}`}
+          className="text-primary hover:underline font-semibold"
+        >
+          {value}
+        </Link>
+        <AdminRowEditLink slug={row.slug} isAdmin={isAdmin} className="ml-2 inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100" />
+      </>
     ),
   },
   {
@@ -68,7 +74,8 @@ const rightsIssueColumns: ColumnDef<RightsIssueData>[] = [
     align: 'center',
     render: (value) => renderFunctions.date(value, 'MMM dd, yyyy'),
   },
-];
+  ];
+}
 
 // ==================== COMPONENT ====================
 
@@ -95,6 +102,8 @@ export function RightsIssuesTabs({
 }: RightsIssuesTabsProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isAdmin } = useAdminSession();
+  const rightsIssueColumns = buildRightsIssueColumns(isAdmin);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'live'>(initialTab);
   const [isInitialized, setIsInitialized] = useState(false);
 

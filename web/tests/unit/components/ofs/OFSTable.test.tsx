@@ -8,6 +8,8 @@ import { render, screen } from '@testing-library/react';
 import { OFSTable } from '@/components/ofs/OFSTable';
 import type { OFSData } from '@/lib/services/ofs-service';
 
+vi.mock('@/hooks/useAdminSession', () => ({ useAdminSession: () => ({ isAdmin: false, loading: false }) }));
+
 function makeOFS(overrides: Partial<OFSData>): OFSData {
   return {
     id: 'ofs-1',

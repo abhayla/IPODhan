@@ -16,6 +16,8 @@
 
 import Link from 'next/link';
 import { ExternalLink, ArrowUp, ArrowDown } from 'lucide-react';
+import { AdminRowEditLink } from '@/components/admin/AdminRowEditLink';
+import { useAdminSession } from '@/hooks/useAdminSession';
 import {
   Table,
   TableBody,
@@ -67,6 +69,8 @@ export function MainboardProspectusTable({
   sortColumn,
   sortDirection = 'asc',
 }: MainboardProspectusTableProps) {
+  const { isAdmin } = useAdminSession();
+
   // Loading State (AC#10)
   if (loading) {
     return (
@@ -183,6 +187,7 @@ export function MainboardProspectusTable({
                   >
                     {data.ipo.companyName}
                   </Link>
+                  <AdminRowEditLink slug={data.ipo.slug} isAdmin={isAdmin} className="ml-2 inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100" />
                 </TableCell>
 
                 {/* Exchange */}
@@ -239,6 +244,7 @@ export function MainboardProspectusTable({
                 >
                   {data.ipo.companyName}
                 </Link>
+                <AdminRowEditLink slug={data.ipo.slug} isAdmin={isAdmin} className="ml-2 inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100" />
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">

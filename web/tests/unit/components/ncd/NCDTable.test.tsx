@@ -8,6 +8,8 @@ import { render, screen } from '@testing-library/react';
 import { NCDTable } from '@/components/ncd/NCDTable';
 import type { NCDData } from '@/lib/services/ncd-service';
 
+vi.mock('@/hooks/useAdminSession', () => ({ useAdminSession: () => ({ isAdmin: false, loading: false }) }));
+
 function makeNCD(overrides: Partial<NCDData>): NCDData {
   return {
     id: 'ncd-1',
