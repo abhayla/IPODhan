@@ -1,0 +1,10 @@
+{
+  "class_id": "slot-default-flag-off-on-prod",
+  "feature": "scraper/src/config/feature-flags.ts flags whose default comes from slotAwareFlagDefault(envVarName) (ON on staging, OFF on prod, when the env var is unset)",
+  "symptom": "a flag is built, proven on staging, and never explicitly set in the prod env because slotAwareFlagDefault already makes it behave correctly on staging by default. Nobody notices the prod env was never told the same thing, because 'proven on staging' reads as done. The feature then ships permanently off on prod with no error, no red gate and no alert -- prod simply behaves as if the flag does not exist. The tell: a release-readiness check that reads 'built and proven on staging' (staging-is-the-release-gate.md R2) without a companion check of the PROD env's actual value for every slot-aware flag.",
+  "first_seen": "2026-09-29, IPODhan, issue #1316 (prod floor 2026-09-28->09-29 NEW): 4 UPCOMING IPOs on prod carry ZERO document_fetch_state rows against 0 such rows on staging the same day -- consistent with ENABLE_UPCOMING_DISCOVERY_RESERVATION (feature-flags.ts:440, one of four flags using slotAwareFlagDefault: also ENABLE_RESOLVED_ADDRESS_REFUSAL:477, ENABLE_CHILD_TABLE_CONSOLIDATION:497, ENABLE_POLICY_WRITER:511) defaulting OFF on prod while defaulting ON on staging.",
+  "fix_prs": "none yet -- registered as a finding (F-213, docs/design/findings.json) bearing on OD-133's release gate; the fix is a pre-release check, not a code change to the flags themselves.",
+  "detection_check": "none yet. Proposed: a pre-release check that enumerates every slotAwareFlagDefault-defaulted flag name (grep feature-flags.ts for the helper's call sites) and prints, for the prod env actually being deployed to, whether each is set and what it evaluates to -- so a release brief cannot claim 'proven on staging' without also stating the prod flag state.",
+  "status": "unguarded",
+  "spec_ref": []
+}

@@ -2049,6 +2049,42 @@
       "title": "Admin saves stamped their times from the app host clock while the documents and conflicts they are ordered against are stamped by the database clock, so any drift misorders a document against the save",
       "detail": "Measured 2026-09-29 by the supervisor: laptop vs database about +0.28 s (an earlier crude measurement said 1.47 s); production app host (Linux VPS) vs laptop about +0.58 s, so app host vs database about 0.3 s today and uncontrolled (nothing keeps them in step). writeAdminFieldValue stamped field_sources.updated_at, field_protection_metadata.manually_edited_at/updated_at and audit_logs.timestamp from new Date() (admin-field-write.ts:696 on main 7ae8c3cf); item 9 (newer-document-suggestions.ts) orders documents.created_at (database defaultNow) against that stamp, and item 27 relaunch-admin-clear.ts orders the same pair; its integration case (d) failed 2 of 3 runs on the laptop. Proved red 2026-09-29 in scraper/tests/integration/admin-write-database-clock.integration.test.ts with the app clock faked 5 min behind (a document first seen BEFORE the save was suggested, 2 suggestions instead of 1) and 5 min ahead (the document first seen AFTER the save was never suggested, 0 instead of 1). Same shape found in field-sources-repository.ts: first INSERT stamped updated_at from new Date(), later UPDATE from now(), so one column mixed two clocks (B1 Tier A review, status ladder guard PR #1260). Fix in PR #1309 (branch fix/admin-write-db-clock): every admin write reads the database clock once per transaction (readDatabaseNow, packages/shared/src/db/database-clock.ts) or stamps sql now(); data_conflicts.detected_at (logConflict, upsertConflict) and resolved_at (autoResolveConverged, resolveConflict, bulkResolveForIPO), ipo_source_keys.state_changed_at and ipos.last_manual_edit_at also stamp sql now() (Tier A review round 2). Proved: with the app clock faked 5 min behind, a conflict's detected_at was 300 s before the database now() before the fix and equals it after. Guarded by scripts/ci/check-app-clock-timestamps.mjs (22 remaining app-clock stamps baselined with reasons: hours-wide freshness bookkeeping, a Redis score, API response metadata). Failure class mixed-clock-ordering.",
       "phase1": true
+    },
+    {
+      "id": "F-211",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "Notifier digest timing (§9.2 item 16, OD-112)",
+      "title": "The Notifier's daily digest and every alert timestamp it prints run in the app HOST's local time, not IST, so a host without TZ=Asia/Kolkata silently moves the promised 09:00 IST digest and mislabels every alert time",
+      "detail": "Read 2026-09-29 23:45 IST: `/root/notifier/src/digest.ts:71` compares `now.getHours()` against the configured daily time `\"09:00\"` (`config.ts:139`) using the process's local hour, and `src/format.ts:17-20` prints alert times with `getHours()`/`getMinutes()`, both local. The box's system TZ is `Asia/Kolkata`, but the notifier's pm2 process env carried no `TZ` variable (read 2026-09-29 23:45 IST) — so today the local hour happens to equal IST only because the OS default matches; nothing pins it. Setting `TZ=UTC` on that pm2 process (a plausible \"make it explicit\" fix) would move the 09:00 IST digest to fire at 14:30 IST and print every alert time in UTC on an India-only alert channel (OD-112, §9.2 item 16: \"the 09:00 IST digest\"). Open for owner decision (Q-C3-2): pin `TZ=Asia/Kolkata` explicitly on the notifier's pm2 env (belt-and-braces over the current OS-default reliance) so a future host move or pm2 env reset cannot silently shift the digest.",
+      "phase1": false
+    },
+    {
+      "id": "F-212",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "E-1 exchange-release coverage (OD-106, OD-141, §9.2 item 28)",
+      "title": "NSE and BSE together serve only 2 of the 6 E-1 timetable fields OD-106/OD-141 promise an exchange release for; the other 4 can never be released by an exchange the way the spec describes",
+      "detail": "`NSE_SERVEABLE_FIELDS` (`scraper/src/services/field-plan-walk-nse-fetcher.ts:48`, confirmed via its only import at `field-plan-walk-deps.ts:78,256`) serves `openDate`/`closeDate` only; every other E-1 date the NSE fetcher is asked for (listing, allotment, basis, refund, credit) answers `CHECK_FAILED`. The BSE fetcher (`scraper/src/scrapers/field-plan-walk-bse-fetcher.ts`) serves `issueSize` only among the fields this class covers — no grep hit for `CHECK_FAILED` inside it returning any E-1 date. So an OD-106/OD-141 exchange-release event, as coded today, can only ever fire for `open_date`/`close_date`; the four other E-1 fields (listing, allotment, basis-of-allotment, refund/credit dates) have no exchange source able to release an admin value the way §9.2 item 28 describes, and any admin correction on those four is effectively permanent until an admin clears it. Open for owner decision (Q-C3-3): either narrow OD-106/OD-141's promise to the two exchange-serveable fields, or name the source (a document re-read trigger) that is meant to release the other four.",
+      "phase1": false
+    },
+    {
+      "id": "F-213",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "release readiness — slot-defaulted scraper flags (OD-133)",
+      "title": "Four scraper flags default OFF on prod unless the prod env explicitly sets them, because their default is keyed to DEPLOY_SLOT rather than a fixed value; a feature proven on staging can ship silently disabled",
+      "detail": "`scraper/src/config/feature-flags.ts`: `ENABLE_UPCOMING_DISCOVERY_RESERVATION` (line 440), `ENABLE_RESOLVED_ADDRESS_REFUSAL` (477), `ENABLE_CHILD_TABLE_CONSOLIDATION` (497) and `ENABLE_POLICY_WRITER` (511) each default via `slotAwareFlagDefault(name)` (defined at feature-flags.ts:64), which returns `DEPLOY_SLOT === 'staging'` when the env var is unset — so an unset flag is ON on staging and OFF on prod, invisibly, unless the prod env sets it explicitly. Measured effect (#1316, prod floor 2026-09-29): 4 UPCOMING IPOs on prod have zero `document_fetch_state` rows against 0 on staging the same day — consistent with a reservation/discovery flag from this set being off on prod. Bears on OD-133's release gate: \"every fix merged to main... built and proven on staging\" does not by itself mean the equivalent prod env carries the same flag values.",
+      "phase1": false
+    },
+    {
+      "id": "F-214",
+      "sev": "MINOR",
+      "status": "OPEN",
+      "area": "field manifest N/A list (§1.11, OD-77)",
+      "title": "The field manifest has no not-applicable entry for ipos.issue_size on TENDER/BUYBACK although §1.11 and OD-77 say issue size does not apply to them",
+      "detail": "Confirmed 2026-09-30: `scraper/config/field-manifest.json`'s `ipos.issue_size` entry (`fields[\"ipos.issue_size\"].na`) is `[]` — no TENDER or BUYBACK entry — although §1.11 and OD-77 classify issue size as not applicable to those two offering types. Found by the #1327 builder (PR #1327, open spec question 4) while wiring `isFieldApplicable`: the detail page already 404s non-IPO types, but before #1327 `/api/ipos/[slug]` still returned the field for those rows since the code path had no `na` entry to consult. #1327's fix covers the reader payload; the manifest's own `na` list (`docs/design/data-sourcing-pull-model.md` Appendix A / spec table, `scraper/config/field-manifest.json`) is unchanged and still lacks the entry.",
+      "phase1": false
     }
   ],
   "false_assertions": [
