@@ -30,6 +30,7 @@ import {
   checkStatusClosedBeforeCloseDate,
   checkPm2EnvHasTz,
   checkPm2LogSize,
+  pm2ProcessInTzScope,
   findUnreferencedDefinitions,
   checkSectorPopulatedPct,
   checkCronScriptExecutable,
@@ -471,6 +472,24 @@ test('(h) FAILS on a 240 MB pm2 log (round-7 shape)', () => {
 
 test('(h) PASSES a small rotated pm2 log', () => {
   assert.equal(checkPm2LogSize('ipodhan-scraper', 'out.log', 5 * 1024 * 1024), null);
+});
+
+// ---- (h) pm2ProcessInTzScope — scope narrowed by owner decision 2026-09-29 (#1115) ----
+
+test('(h) pm2ProcessInTzScope checks the exact set: ipodhan-* and notifier only', () => {
+  const sample = ['ipodhan-web', 'ipodhan-web-staging', 'ipodhan-scraper', 'notifier', 'firekaro-api', 'pm2-logrotate'];
+  const checked = sample.filter(pm2ProcessInTzScope);
+  assert.deepEqual(checked, ['ipodhan-web', 'ipodhan-web-staging', 'ipodhan-scraper', 'notifier']);
+});
+
+test('(h) pm2ProcessInTzScope excludes another project\'s app and infra modules', () => {
+  assert.equal(pm2ProcessInTzScope('firekaro-api'), false);
+  assert.equal(pm2ProcessInTzScope('pm2-logrotate'), false);
+});
+
+test('(h) a notifier process with no TZ still FAILS (in-scope, not silenced)', () => {
+  assert.ok(pm2ProcessInTzScope('notifier'));
+  assert.ok(checkPm2EnvHasTz('notifier', {}) !== null);
 });
 
 // ---- (i) wire-or-retire --------------------------------------------------------
