@@ -6,6 +6,7 @@
  */
 
 import { lockAndReadRowHolds, applyRowHolds, type HoldExecutor } from '@ipodhan/shared/services/field-hold';
+import { lockAndReadListOwnership, recordListSuggestion } from '@ipodhan/shared/services/admin-list-hold';
 import { logger } from '../utils/logger';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { eq } from 'drizzle-orm';
@@ -38,6 +39,8 @@ export interface PeerReplaceOptions {
    * key is kept. `isListed` falls back to the stored value, then to true.
    */
   nullNeverOverwrites?: boolean;
+  /** The writer, named on a suggestion when the admin owns the list (§9.2 item 8). */
+  source?: string;
   /**
    * The incoming set is NOT a complete replacement (it carries names only):
    * rows it does not name are kept untouched, rows it names that already
@@ -155,6 +158,13 @@ export class PeerCompanyRepository {
         .from(schema.peerCompanies)
         .where(eq(schema.peerCompanies.ipoId, ipoId));
       const storedByKey = new Map(stored.map((row) => [row.normalizedName, row]));
+
+      // §9.2 item 8 (OD-107): an admin-owned list is never replaced, extended or trimmed, in any
+      // branch; the writer's list becomes a suggestion (rows to add / remove) for the admin queue.
+      if ((await lockAndReadListOwnership(t, ipoId, 'peer_companies')).owned) {
+        await recordListSuggestion(t, { ipoId, list: 'peer_companies', source: options.source ?? 'DRHP', stored, incoming: deduped as never });
+        return options.fillGapsOnly ? [] : stored;
+      }
 
       if (options.fillGapsOnly) {
         // Insert-only: a stored row is never touched. A row the admin removed leaves a hold under

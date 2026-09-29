@@ -18,6 +18,7 @@ import { ipoIntermediaries } from '../db/schema';
 import type * as schema from '../db/schema';
 import { CacheTTL } from '../cache/cache-keys';
 import { DatabaseError } from '../errors/repository-errors';
+import { lockAndReadListOwnership, recordListSuggestion } from '../services/admin-list-hold';
 
 export type IntermediaryRole =
   | 'BRLM'
@@ -96,13 +97,23 @@ export class IpoIntermediariesRepository extends BaseRepository {
     }
   }
 
-  /** Replace the full intermediary list for one IPO inside a transaction. */
+  /**
+   * Replace the full intermediary list for one IPO inside a transaction. An admin-owned list (§9.2
+   * item 8, OD-107) is never touched: the writer's list becomes a suggestion, stored rows returned.
+   */
   async replaceForIpo(
     ipoId: string,
-    rows: IpoIntermediaryInsert[]
+    rows: IpoIntermediaryInsert[],
+    source = 'DRHP'
   ): Promise<IpoIntermediaryRow[]> {
     try {
       const result = await this.db.transaction(async (tx) => {
+        const { owned } = await lockAndReadListOwnership(tx as never, ipoId, 'ipo_intermediaries');
+        if (owned) {
+          const stored = await tx.select().from(ipoIntermediaries).where(eq(ipoIntermediaries.ipoId, ipoId));
+          await recordListSuggestion(tx as never, { ipoId, list: 'ipo_intermediaries', source, stored, incoming: rows as never });
+          return stored;
+        }
         await tx.delete(ipoIntermediaries).where(eq(ipoIntermediaries.ipoId, ipoId));
         if (rows.length === 0) return [];
         return tx.insert(ipoIntermediaries).values(rows as never[]).returning();

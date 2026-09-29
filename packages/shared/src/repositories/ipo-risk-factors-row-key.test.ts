@@ -132,6 +132,7 @@ describe('replaceForIpo — delete and insert stay in ONE transaction', () => {
     const deletes: ('in-transaction' | 'direct')[] = [];
     let committedDeletes = 0;
     const arm = (where: 'in-transaction' | 'direct') => ({
+      execute: async () => ({ rows: [] as unknown[] }), // §9.2 item 8 list-ownership read: no IPO row, not owned
       delete: () => ({
         where: async () => {
           deletes.push(where);

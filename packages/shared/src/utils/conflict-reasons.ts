@@ -25,9 +25,17 @@ export const OVERRIDE_SOURCE_LOST_TO_PRIORITY = 'OVERRIDE_SOURCE_LOST_TO_PRIORIT
  * The SQL twin for the `.mjs` scripts is `scripts/lib/conflict-reasons.mjs`, kept equal to this
  * list by `scripts/tests/conflict-reasons-parity.test.mjs`.
  */
+/**
+ * §9.2 items 8 and 9 (OD-107): a writer brought a different list for an admin-owned list; the row
+ * holds the rows to add and remove as a suggestion for the admin queue. Never a dispute, never an
+ * alert. Same string as `ADMIN_LIST_SUGGESTION_REASON` in services/admin-list-hold.ts.
+ */
+export const ADMIN_LIST_SUGGESTION = 'ADMIN_LIST_SUGGESTION';
+
 export const ADMIN_ONLY_CONFLICT_REASONS: readonly string[] = [
   SOURCE_CHANGED_OWN_VALUE,
   OVERRIDE_SOURCE_LOST_TO_PRIORITY,
+  ADMIN_LIST_SUGGESTION,
 ];
 
 /** True for a row that exists only for the admin list and must not affect behaviour or counts. */

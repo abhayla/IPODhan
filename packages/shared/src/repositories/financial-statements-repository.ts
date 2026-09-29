@@ -17,6 +17,7 @@ import { financialStatements } from '../db/schema';
 import type * as schema from '../db/schema';
 import { CacheTTL } from '../cache/cache-keys';
 import { DatabaseError } from '../errors/repository-errors';
+import { lockAndReadListOwnership, recordListSuggestion, listRowKey } from '../services/admin-list-hold';
 
 export type FinancialStatementBasis = 'RESTATED' | 'STANDALONE';
 export type FinancialUnit = 'MILLION' | 'LAKH' | 'CRORE';
@@ -83,9 +84,21 @@ export class FinancialStatementsRepository extends BaseRepository {
    * (e.g. Prospectus superseding a Price Band Ad) overwrites the earlier row
    * for the same year+basis rather than accumulating duplicates.
    */
-  async upsert(row: FinancialStatementUpsert): Promise<FinancialStatementRow> {
+  async upsert(row: FinancialStatementUpsert, source = 'DRHP'): Promise<FinancialStatementRow> {
     try {
-      const [result] = await this.db
+      const [result] = await this.db.transaction(async (tx) => {
+        // §9.2 item 8 (OD-107): the admin owns the whole list of years. A row the admin's list lacks
+        // becomes a suggestion (the admin's list plus this row); a row it has is left as the admin set it.
+        const { owned } = await lockAndReadListOwnership(tx as never, row.ipoId, 'financial_statements');
+        if (owned) {
+          const stored = await tx.select().from(financialStatements).where(eq(financialStatements.ipoId, row.ipoId));
+          const k = listRowKey('financial_statements', row as never);
+          const same = stored.find((s) => listRowKey('financial_statements', s as never) === k);
+          if (same) return [same];
+          await recordListSuggestion(tx as never, { ipoId: row.ipoId, list: 'financial_statements', source, stored, incoming: [...stored, row] as never });
+          return [row as never];
+        }
+        return tx
         .insert(financialStatements)
         .values(row as never)
         .onConflictDoUpdate({
@@ -97,6 +110,7 @@ export class FinancialStatementsRepository extends BaseRepository {
           set: { ...(row as Record<string, unknown>), updatedAt: new Date() } as never,
         })
         .returning();
+      });
 
       await this.deleteCache(getFinancialStatementsKey(row.ipoId));
       return result as unknown as FinancialStatementRow;
