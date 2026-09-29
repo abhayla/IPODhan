@@ -8,7 +8,11 @@
  *   1. re-reads the hold and the admin's provenance row (a hold released or re-saved since the walk
  *      read the sources is judged on what is stored NOW);
  *   2. decides with `decideExchangeOverride` (exchange-override-rule.ts): the exchange's answer
- *      must differ from the admin value AND from what that exchange said at the admin's save;
+ *      must differ from the admin value AND from what that exchange said at the admin's save. A
+ *      hold saved before `exchangeAtSave` was recorded has an UNKNOWN baseline: it is rebuilt from
+ *      the ADMIN row's `previous_value` when `previous_source` is that exchange, otherwise this
+ *      held read's answer is stored as the baseline (no replacement on this read). Either is
+ *      written to the ADMIN row's lineage in THIS transaction, so the next read compares with it;
  *   3. writes the exchange value, with the exchange as its `field_sources` source (the keep-ADMIN
  *      rule of FieldSourcesRepository is bypassed deliberately, for this path only); the admin's
  *      value stays as `previous_value` and in the audit row;
@@ -27,8 +31,10 @@ import {
   decideExchangeOverride,
   isExchangeOverrideField,
   normalizeExchangeValue,
+  resolveExchangeBaseline,
   type ExchangeAnswer,
-  type ExchangeAtSave,
+  type ExchangeBaseline,
+  type ExchangeBaselineOrigin,
   type ExchangeOverrideSource,
 } from './exchange-override-rule';
 
@@ -61,10 +67,10 @@ export type ExchangeOverrideResult =
       source: ExchangeOverrideSource;
       adminValue: unknown;
       exchangeValue: unknown;
-      exchangeAtSave: Partial<ExchangeAtSave> | null;
+      exchangeAtSave: ExchangeBaseline | null;
       auditId: string;
     }
-  | { kind: 'SKIPPED'; reason: string };
+  | { kind: 'SKIPPED'; reason: string; baselineRecorded?: ExchangeBaseline };
 
 function stringify(v: unknown): string | null {
   if (v === null || v === undefined) return null;
@@ -114,7 +120,13 @@ export async function applyExchangeOverride(db: Db, input: ExchangeOverrideInput
     if (!hold) return { kind: 'SKIPPED', reason: 'no admin hold on the field any more' } as const;
 
     const [provenance] = await tx
-      .select({ source: fieldSources.source, lineage: fieldSources.dataLineage })
+      .select({
+        id: fieldSources.id,
+        source: fieldSources.source,
+        lineage: fieldSources.dataLineage,
+        previousSource: fieldSources.previousSource,
+        previousValue: fieldSources.previousValue,
+      })
       .from(fieldSources)
       .where(
         and(
@@ -125,16 +137,45 @@ export async function applyExchangeOverride(db: Db, input: ExchangeOverrideInput
         )
       )
       .limit(1);
-    const lineage = (provenance?.lineage ?? null) as { exchangeAtSave?: Partial<ExchangeAtSave> } | null;
-    const exchangeAtSave = provenance?.source === 'ADMIN' ? lineage?.exchangeAtSave ?? null : null;
+    const resolved = provenance ? resolveExchangeBaseline(provenance) : null;
+    if (!resolved) return { kind: 'SKIPPED', reason: 'NO_ADMIN_PROVENANCE' } as const;
+    const priorOrigin = ((provenance!.lineage ?? {}) as { exchangeBaselineOrigin?: Record<string, ExchangeBaselineOrigin> })
+      .exchangeBaselineOrigin;
 
     const rowWhere = tableName === 'ipos' ? eq((cols as never as { id: never }).id, ipoId as never) : eq((cols as never as { ipoId: never }).ipoId, ipoId as never);
     const current = (await tx.select({ v: cols[fieldName] as never }).from(table as never).where(rowWhere).limit(1)) as Array<{ v: unknown }>;
     if (current.length === 0) return { kind: 'SKIPPED', reason: `${tableName} has no row for IPO ${ipoId}` } as const;
     const adminValue = current[0].v ?? null;
 
-    const decision = decideExchangeOverride({ adminValue, exchangeAtSave, answers: input.answers });
-    if (decision.kind === 'KEEP') return { kind: 'SKIPPED', reason: decision.reason } as const;
+    const decision = decideExchangeOverride({ adminValue, exchangeAtSave: resolved.baseline, answers: input.answers });
+    const recorded = decision.kind === 'KEEP' ? decision.baseline ?? {} : {};
+    const exchangeAtSave: ExchangeBaseline = { ...resolved.baseline, ...recorded };
+    const origin: Record<string, ExchangeBaselineOrigin> = { ...(priorOrigin ?? {}) };
+    for (const src of resolved.rebuilt) origin[src] = 'PREVIOUS_VALUE';
+    for (const src of Object.keys(recorded)) origin[src] = 'FIRST_HELD_READ';
+
+    if (decision.kind === 'KEEP') {
+      // A baseline that was unknown and is now known (rebuilt or first-read) is stored on the ADMIN
+      // row in this transaction, under the same lock as the read, so the next held read compares
+      // with it. `exchangeAtSave` is replaced whole by the admin's next save (jsonb ||).
+      if (resolved.rebuilt.length > 0 || Object.keys(recorded).length > 0) {
+        await tx
+          .update(fieldSources)
+          .set({
+            dataLineage: sql`COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) || ${JSON.stringify({
+              exchangeAtSave,
+              exchangeBaselineOrigin: origin,
+              exchangeBaselineAt: now.toISOString(),
+            })}::jsonb`,
+          })
+          .where(and(eq(fieldSources.id, provenance!.id), eq(fieldSources.source, 'ADMIN')));
+      }
+      return {
+        kind: 'SKIPPED',
+        reason: decision.reason,
+        ...(Object.keys(recorded).length > 0 ? { baselineRecorded: recorded } : {}),
+      } as const;
+    }
 
     // Every OD-106 field is a date column; it takes the IST day as YYYY-MM-DD (a Date's own
     // .toISOString() day is the UTC one, ist-timezone.md). Not imported from admin-field-write so
@@ -160,6 +201,7 @@ export async function applyExchangeOverride(db: Db, input: ExchangeOverrideInput
       exchangeValue: stringify(exchangeValue),
       adminValue: stringify(adminValue),
       exchangeAtSave,
+      ...(resolved.rebuilt.length > 0 ? { exchangeBaselineOrigin: origin } : {}),
       releasedHoldAt: now.toISOString(),
     };
     // Deliberately a direct upsert: FieldSourcesRepository keeps an ADMIN row's attribution against

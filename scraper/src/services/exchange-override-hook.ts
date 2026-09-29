@@ -28,6 +28,11 @@ export interface ExchangeOverrideHookDeps {
   isClaimed: (key: string) => Promise<boolean>;
   /** Written only after the alert it records was accepted. */
   claim: (key: string) => Promise<void>;
+  /**
+   * Drops the IPO's cached reads after a committed replacement, as every other IPO write does
+   * (production: `invalidateIPOCaches` in cache-invalidator.ts, keys from `getIPOInvalidationKeys`).
+   */
+  invalidateCaches?: (ipoId: string, slug: string) => Promise<void>;
   /** DEPLOY_SLOT ('staging' | 'prod'); named in every title and key. */
   env?: string;
   now?: () => Date;
@@ -48,8 +53,25 @@ export function buildExchangeOverrideHook(deps: ExchangeOverrideHookDeps) {
     const now = deps.now?.() ?? new Date();
     const result = await deps.apply({ ipoId, tableName, rowKey: rowKey ?? '', fieldName: field, answers, now });
     if (result.kind !== 'REPLACED') {
-      logger.debug({ ipoId, table: tableName, field, reason: result.reason }, 'OD-106: admin-held E-1 field kept');
+      if (result.baselineRecorded) {
+        logger.info(
+          { ipoId, table: tableName, field, baseline: result.baselineRecorded },
+          'OD-106: hold saved without an exchange baseline; this held read recorded it (no replacement on this read)'
+        );
+      } else {
+        logger.debug({ ipoId, table: tableName, field, reason: result.reason }, 'OD-106: admin-held E-1 field kept');
+      }
       return { holdReleased: false };
+    }
+    if (deps.invalidateCaches) {
+      try {
+        await deps.invalidateCaches(ipoId, result.slug);
+      } catch (error) {
+        logger.warn(
+          { ipoId, slug: result.slug, error: error instanceof Error ? error.message : String(error) },
+          'OD-106: cache drop after the committed replacement failed; readers catch up at the TTL'
+        );
+      }
     }
 
     const env = deps.env ?? process.env.DEPLOY_SLOT ?? 'unknown-env';

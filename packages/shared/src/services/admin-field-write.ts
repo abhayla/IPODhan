@@ -735,7 +735,8 @@ export async function writeAdminFieldValue(
           : { sourceNote: effectiveMode.sourceNote }),
         ...(input.empty ? { adminEmpty: true, emptyReason: input.empty.reason } : {}),
         ...(rowSpec ? { rowKey, recordId: target.recordId } : {}),
-        ...(exchangeAtSave ? { exchangeAtSave } : {}),
+        // Replaces any baseline an OD-106 held read stored (rebuilt / first-read) on an earlier save.
+        ...(exchangeAtSave ? { exchangeAtSave, exchangeBaselineOrigin: { NSE: 'SAVE', BSE: 'SAVE' } } : {}),
         by: actor.name,
         adminId: actor.adminId,
         ...(input.detail ?? {}),

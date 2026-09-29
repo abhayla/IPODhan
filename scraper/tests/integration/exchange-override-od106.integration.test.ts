@@ -28,6 +28,8 @@ const IPO_ID = '00000000-0000-4000-8000-0000000d1061';
 const SLUG = 'od106-exchange-override-proof-ipo';
 const HELD = '2026-06-29';
 const NSE_NEW = '2026-08-21';
+/** What NSE said before the admin saved, on a hold saved before exchangeAtSave existed. */
+const NSE_OLD = '2026-07-10';
 
 function openBudget() {
   return { deadlineMs: Number.MAX_SAFE_INTEGER, now: () => 0 };
@@ -42,6 +44,7 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
   let buildFieldPlanWalkHoldDeps: typeof import('../../src/services/field-plan-walk-deps.js').buildFieldPlanWalkHoldDeps;
   let buildExchangeOverrideHook: typeof import('../../src/services/exchange-override-hook.js').buildExchangeOverrideHook;
   let redisClaims: typeof import('../../src/services/live-slot-miss-monitor.js').redisClaims;
+  let invalidateIPOCaches: typeof import('../../src/services/cache-invalidator.js').invalidateIPOCaches;
 
   async function cleanup() {
     await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
@@ -64,6 +67,7 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
     ({ buildFieldPlanWalkHoldDeps } = await import('../../src/services/field-plan-walk-deps.js'));
     ({ buildExchangeOverrideHook } = await import('../../src/services/exchange-override-hook.js'));
     ({ redisClaims } = await import('../../src/services/live-slot-miss-monitor.js'));
+    ({ invalidateIPOCaches } = await import('../../src/services/cache-invalidator.js'));
     planRepo = new IpoFieldPlanRepository(db as never, redis as never);
     await cleanup();
   }, 60000);
@@ -111,7 +115,20 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
     expect(saved.kind, JSON.stringify(saved)).toBe('OK');
   }
 
+  /**
+   * MAJOR-1: turn the admin's save into one saved BEFORE this change: no exchangeAtSave in the
+   * lineage. `previousSource` is what the ADMIN row says the value came from before the save.
+   */
+  async function makeLegacyHold(previousSource: string) {
+    await db.execute(sql`
+      UPDATE field_sources
+         SET data_lineage = data_lineage - 'exchangeAtSave' - 'exchangeBaselineOrigin',
+             previous_source = ${previousSource}
+       WHERE ipo_id = ${IPO_ID}::uuid AND field_name = 'closeDate'`);
+  }
+
   async function walkOnce(nseSays: string) {
+    await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
     const [plan] = await db
       .insert(schema.ipoFieldPlan)
       .values({
@@ -163,6 +180,7 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
           return { sent: true };
         },
         ...redisClaims(redis as never),
+        invalidateCaches: (id, slug) => invalidateIPOCaches(redis as never, id, slug),
         env: 'it',
       }),
     };
@@ -194,8 +212,13 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
     const before = await state();
     expect((before.fs.dataLineage as any).exchangeAtSave).toEqual({ NSE: HELD, BSE: null });
     expect(before.hold.isProtected).toBe(true);
+    // MINOR: the override clears the IPO's cached reads (the same SSOT keys every IPO write drops).
+    await redis.set(`ipo:id:${IPO_ID}`, 'stale');
+    await redis.set(`ipo:slug:${SLUG}`, 'stale');
 
     const { plan, alerts, result } = await walkOnce(NSE_NEW);
+    expect(await redis.exists(`ipo:id:${IPO_ID}`)).toBe(0);
+    expect(await redis.exists(`ipo:slug:${SLUG}`)).toBe(0);
     expect(result.fieldsSkippedProtected).toBe(1);
 
     const after = await state();
@@ -243,5 +266,62 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
     expect(alerts).toHaveLength(0);
     const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, plan.id));
     expect(String(row.cause ?? '')).toContain('[held-read:');
+  });
+
+  it('MAJOR-1: a hold saved before exchangeAtSave: the first held read records the baseline and keeps; a later different read replaces', async () => {
+    await seed(NSE_OLD);
+    await adminHolds(HELD);
+    await makeLegacyHold('CHITTORGARH');
+    const before = await state();
+    expect((before.fs.dataLineage as any).exchangeAtSave).toBeUndefined();
+
+    // First held read: NSE says what it said before the admin saved (unknown to us). No override.
+    const first = await walkOnce(NSE_OLD);
+    const mid = await state();
+    expect(mid.ipo.closeDate).toBe(HELD);
+    expect(mid.fs.source).toBe('ADMIN');
+    expect(mid.hold.isProtected).toBe(true);
+    expect(mid.audits.filter((a) => a.actionType === 'Exchange Override')).toHaveLength(0);
+    expect(first.alerts).toHaveLength(0);
+    // Recorded in the same transaction as the held read: NSE's answer, BSE stated nothing yet.
+    expect((mid.fs.dataLineage as any).exchangeAtSave).toEqual({ NSE: NSE_OLD, BSE: null });
+    expect((mid.fs.dataLineage as any).exchangeBaselineOrigin).toEqual({ NSE: 'FIRST_HELD_READ', BSE: 'FIRST_HELD_READ' });
+
+    // A later read where NSE says something different from that baseline replaces the admin date.
+    const second = await walkOnce(NSE_NEW);
+    const after = await state();
+    expect(after.ipo.closeDate).toBe(NSE_NEW);
+    expect(after.fs.source).toBe('NSE');
+    expect(after.hold.isProtected).toBe(false);
+    expect(after.audits.filter((a) => a.actionType === 'Exchange Override')).toHaveLength(1);
+    expect(second.alerts).toHaveLength(1);
+  });
+
+  it('MAJOR-1: a hold saved before exchangeAtSave whose ADMIN row says previous_source NSE rebuilds the baseline and replaces at the first read', async () => {
+    await seed(NSE_OLD);
+    await adminHolds(HELD);
+    await makeLegacyHold('NSE');
+    const before = await state();
+    expect(before.fs.previousValue).toBe(NSE_OLD);
+
+    const { alerts } = await walkOnce(NSE_NEW);
+    const after = await state();
+    expect(after.ipo.closeDate).toBe(NSE_NEW);
+    expect(after.hold.isProtected).toBe(false);
+    const [override] = after.audits.filter((a) => a.actionType === 'Exchange Override');
+    expect((override.details as any).exchangeAtSave).toMatchObject({ NSE: NSE_OLD });
+    expect(alerts).toHaveLength(1);
+  });
+
+  it('MAJOR-1: rebuilt from previous_value, NSE still saying that value keeps the admin date', async () => {
+    await seed(NSE_OLD);
+    await adminHolds(HELD);
+    await makeLegacyHold('NSE');
+
+    const { alerts } = await walkOnce(NSE_OLD);
+    const after = await state();
+    expect(after.ipo.closeDate).toBe(HELD);
+    expect(after.hold.isProtected).toBe(true);
+    expect(alerts).toHaveLength(0);
   });
 });

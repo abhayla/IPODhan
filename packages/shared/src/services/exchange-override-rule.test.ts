@@ -7,6 +7,7 @@ import {
   isExchangeOverrideField,
   isInstantAlertStatus,
   normalizeExchangeValue,
+  resolveExchangeBaseline,
 } from './exchange-override-rule';
 
 // Real-shaped values from F-131 (Dhanwel): the admin held the June close date; NSE's relaunch
@@ -52,11 +53,47 @@ describe('OD-106 "newer": differs from the admin value AND from what that exchan
     );
   });
 
-  it('keeps a hold saved before exchangeAtSave was recorded (newer cannot be told apart)', () => {
+  it('MAJOR-1: an UNKNOWN baseline (hold saved before exchangeAtSave) records the first held answer and does not replace on it', () => {
     expect(decideExchangeOverride({ adminValue: HELD, exchangeAtSave: undefined, answers: [nse(NSE_NEW)] })).toEqual({
       kind: 'KEEP',
-      reason: 'NO_EXCHANGE_AT_SAVE',
+      reason: 'BASELINE_RECORDED',
+      baseline: { NSE: NSE_NEW },
     });
+  });
+
+  it('MAJOR-1: a later read that differs from the recorded first-read baseline replaces', () => {
+    expect(decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { NSE: NSE_NEW }, answers: [nse('2026-09-04')] })).toEqual({
+      kind: 'REPLACE',
+      source: 'NSE',
+      value: '2026-09-04',
+    });
+  });
+
+  it('MAJOR-1: unknown is not "answered nothing": a known-null exchange replaces at once, an unknown one only records', () => {
+    expect(decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { NSE: null }, answers: [nse(NSE_NEW)] }).kind).toBe('REPLACE');
+    expect(decideExchangeOverride({ adminValue: HELD, exchangeAtSave: {}, answers: [nse(NSE_NEW)] }).kind).toBe('KEEP');
+  });
+
+  it('MAJOR-1: per source: BSE unknown is recorded while a known NSE baseline still decides', () => {
+    expect(
+      decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { NSE: '2026-07-01' }, answers: [nse('2026-07-01'), bse(NSE_NEW)] })
+    ).toEqual({ kind: 'KEEP', reason: 'BASELINE_RECORDED', baseline: { BSE: NSE_NEW } });
+  });
+
+  it('MAJOR-1: an unknown source that stated nothing records null; one whose check FAILED stays unknown', () => {
+    expect(
+      decideExchangeOverride({ adminValue: HELD, exchangeAtSave: undefined, answers: [nse(null, 'NOT_PRINTED'), bse(null, 'FAILED')] })
+    ).toEqual({ kind: 'KEEP', reason: 'BASELINE_RECORDED', baseline: { NSE: null } });
+    expect(decideExchangeOverride({ adminValue: HELD, exchangeAtSave: undefined, answers: [bse(null, 'CHECK_FAILED')] })).toEqual({
+      kind: 'KEEP',
+      reason: 'NO_EXCHANGE_ANSWER',
+    });
+  });
+
+  it('MINOR: a non-date exchange answer is skipped and the scan keeps looking', () => {
+    expect(
+      decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { NSE: null, BSE: null }, answers: [nse('To be announced'), bse(NSE_NEW)] })
+    ).toEqual({ kind: 'REPLACE', source: 'BSE', value: NSE_NEW });
   });
 
   it('ignores non-exchange sources and non-SUPPLIED exchange answers', () => {
@@ -87,10 +124,37 @@ describe('OD-106 "newer": differs from the admin value AND from what that exchan
   });
 });
 
+describe('MAJOR-1: rebuilding an unknown baseline from the ADMIN row', () => {
+  it('a legacy ADMIN row whose previous_source is NSE rebuilds NSE from previous_value; BSE stays unknown', () => {
+    expect(
+      resolveExchangeBaseline({ lineage: { method: 'ADMIN_FIELD_WRITE' }, source: 'ADMIN', previousSource: 'NSE', previousValue: '2026-08-21' })
+    ).toEqual({ baseline: { NSE: '2026-08-21' }, rebuilt: ['NSE'] });
+  });
+
+  it('a recorded exchangeAtSave is used as is; previous_value never overrides it', () => {
+    expect(
+      resolveExchangeBaseline({ lineage: { exchangeAtSave: { NSE: HELD, BSE: null } }, source: 'ADMIN', previousSource: 'NSE', previousValue: '2026-01-01' })
+    ).toEqual({ baseline: { NSE: HELD, BSE: null }, rebuilt: [] });
+  });
+
+  it('previous_source that is not an exchange (or a re-save by ADMIN) rebuilds nothing', () => {
+    expect(resolveExchangeBaseline({ lineage: null, source: 'ADMIN', previousSource: 'ADMIN', previousValue: HELD })).toEqual({ baseline: {}, rebuilt: [] });
+    expect(resolveExchangeBaseline({ lineage: null, source: 'ADMIN', previousSource: 'CHITTORGARH', previousValue: HELD })).toEqual({ baseline: {}, rebuilt: [] });
+  });
+
+  it('a non-ADMIN provenance row has no admin baseline at all', () => {
+    expect(resolveExchangeBaseline({ lineage: { exchangeAtSave: { NSE: HELD } }, source: 'NSE', previousSource: 'NSE', previousValue: HELD })).toBeNull();
+  });
+});
+
 describe('the OD-106 field set', () => {
-  it('is the E-1 set minus status; listingExchanges is not in it (OD-129 moved it out of E-1)', () => {
-    expect([...EXCHANGE_OVERRIDE_FIELDS].sort()).toEqual([...E1_EXCHANGE_STATED_FIELDS].filter((f) => f !== 'status').sort());
+  it('is the E-1 set minus status and bidDate; listingExchanges is not in it (OD-129 moved it out of E-1)', () => {
+    expect([...EXCHANGE_OVERRIDE_FIELDS].sort()).toEqual(
+      [...E1_EXCHANGE_STATED_FIELDS].filter((f) => f !== 'status' && f !== 'bidDate').sort()
+    );
     expect(EXCHANGE_OVERRIDE_FIELDS.has('status')).toBe(false);
+    // MAJOR-2: anchor_investors.bidDate is row-keyed; admins cannot hold anchor rows until Phase B item 8 (#1281).
+    expect(EXCHANGE_OVERRIDE_FIELDS.has('bidDate')).toBe(false);
     expect(EXCHANGE_OVERRIDE_FIELDS.has('listingExchanges')).toBe(false);
     expect(EXCHANGE_OVERRIDE_FIELDS.has('closeDate')).toBe(true);
   });

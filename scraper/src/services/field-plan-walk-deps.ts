@@ -56,6 +56,7 @@ import { and, eq } from 'drizzle-orm';
 import { protectionTableName } from '@ipodhan/shared/services/field-hold';
 import { applyExchangeOverride } from '@ipodhan/shared/services/exchange-override';
 import { buildExchangeOverrideHook } from './exchange-override-hook.js';
+import { invalidateIPOCaches } from './cache-invalidator.js';
 import { sendOwnerAlert } from './owner-notify.js';
 import { redisClaims } from './live-slot-miss-monitor.js';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -376,6 +377,7 @@ export function buildFieldPlanWalkHoldDeps(
     apply: (input) => applyExchangeOverride(db as never, input),
     send: sendOwnerAlert,
     ...redisClaims(redis as never),
+    invalidateCaches: (ipoId, slug) => invalidateIPOCaches(redis as never, ipoId, slug),
   });
   const fpm = schema.fieldProtectionMetadata;
   return {

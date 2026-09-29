@@ -80,4 +80,27 @@ describe('OD-106 hook: alert and dedupe (OD-112, §9.2 items 16 and 25)', () => 
     expect(await hook('ipo-1', 'anchor_investors', 'row-a', 'bid_date', answers)).toEqual({ holdReleased: false });
     expect(d.apply).not.toHaveBeenCalled();
   });
+
+  it('clears the IPO caches after a committed replacement, never on a kept hold; a cache failure does not undo the release', async () => {
+    const invalidateCaches = vi.fn(async () => {});
+    const d = deps({ invalidateCaches });
+    await buildExchangeOverrideHook(d)('ipo-1', 'ipos', '', 'close_date', answers);
+    expect(invalidateCaches).toHaveBeenCalledWith('ipo-1', 'dhanwel-proof');
+
+    const kept = vi.fn(async () => {});
+    await buildExchangeOverrideHook(
+      deps({ invalidateCaches: kept, apply: vi.fn(async () => ({ kind: 'SKIPPED' as const, reason: 'BASELINE_RECORDED', baselineRecorded: { NSE: '2026-07-10' } })) })
+    )('ipo-1', 'ipos', '', 'close_date', answers);
+    expect(kept).not.toHaveBeenCalled();
+
+    const failing = deps({ invalidateCaches: vi.fn(async () => { throw new Error('redis down'); }) });
+    expect(await buildExchangeOverrideHook(failing)('ipo-1', 'ipos', '', 'close_date', answers)).toEqual({ holdReleased: true });
+    expect(failing.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('MAJOR-2: anchor_investors.bid_date never reaches the override, even with no row key', async () => {
+    const d = deps();
+    expect(await buildExchangeOverrideHook(d)('ipo-1', 'anchor_investors', '', 'bid_date', answers)).toEqual({ holdReleased: false });
+    expect(d.apply).not.toHaveBeenCalled();
+  });
 });
