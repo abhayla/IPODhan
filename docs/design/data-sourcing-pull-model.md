@@ -191,6 +191,7 @@ it by assuming.
 | OD-136 | *"A: Live IPOs first (Recommended)"* -- 2026-09-28, chosen over (B) everything in one flat list and (C) live IPOs only (Spec basis: OD-63; #818, 28,120 open items across 268 IPOs; 12,701 plan rows with no value). **The OD-63 admin queue is ORDERED, never filtered: first, IPOs that are UPCOMING, OPEN, or CLOSED and not yet listed, for the fields the public IPO page shows; then those IPOs' other fields; then LISTED IPOs, collapsed, newest listing first. Nothing is hidden.** Why (owner, 2026-09-28): readers decide on live IPOs, so a missing price band days before open outranks a missing row on an old listing. | 2026-09-28 | OD-63, §9.4 | the admin queue build (finish-line plan step 3) orders live IPOs first |
 | OD-137 | *"A: Store per-source answers (Recommended)"* -- 2026-09-28, chosen over (B) field-level reason only (Spec basis: OD-103; §9.3; OD-62; OD-63; failure class #684 r_provenance_parent_not_null). **SPEC CHANGE (schema): a field no source could supply stores each ranked source's answer of the pass (value, abstention, or failure cause, same shape as a witness) on its plan row, in a new nullable column `ipo_field_plan.answers`; `field_sources.witnesses` stays for fields that have a stored value. The admin panel (§9.3) reads `field_sources.witnesses` when the field has a stored value, and `ipo_field_plan.answers` only when it has none (a pass that lost to a higher-priority stored value, e.g. ADMIN, leaves answers on the plan row, but the panel still reads the witnesses).** Why (owner, 2026-09-28): an admin opening an empty field needs to know which source to chase ("NSE: not published yet, BSE: failed, Chittorgarh: not printed"), which a single field-level reason cannot tell. Real case: vishal-nirmiti-ltd (staging, UPCOMING), price band NOT_AVAILABLE_YET. | 2026-09-28 | §2.4, §9.3, OD-103 | `ipo_field_plan.answers` (migration 20260928084209); §2.4 OD-103 paragraph names it |
 | OD-138 | *"fix the code and test but don't wait for the actual data"* -- 2026-09-28 (owner, while scoping contract 2) (Spec basis: `.claude/rules/defect-fix-contract.md` item 5; `.claude/rules/staging-is-the-release-gate.md` R2; OD-133). **SPEC CHANGE to the proof order: an item is DONE when its code is merged with its tests green, its review passed and it is deployed to staging. A staging real-data reading is recorded when one is available and never waited for (no waiting on a new IPO, a new document or a data slot). Every proof still owed is listed in the pre-release brief, and the owner decides the production release with that list in front of him.** Why (owner, 2026-09-28): waiting on real-world events kept work open for days; the owner takes the remaining proof risk at release time, knowingly. | 2026-09-28 | defect-fix contract item 5, release gate R2, OD-133 | `docs/contracts/2026-09-28-contract-2-finish-line-and-admin.md` decision 3; defect-fix-contract item 5 carries the pointer |
+| OD-139 | Decided by the run, owner to confirm -- 2026-09-29 (spec-conformant default, run-discipline A2, the owner away; spec basis: none on "relaunch filing" itself -- searched relaunch, POSTPONED, filing, §2.9, OD-83, OD-86, OD-120; §2.9 says only "the relaunch filing arrives" without defining the term OD-120's admin-clear rule and §9.2 item 27's alert depend on). **A relaunch filing is the OD-83 relaunch event (a new exchange source record superseding the IPO's old source key, or the OD-86 relaunch merge), or an offer document (RHP, PROSPECTUS, PRICE_BAND_AD) first discovered after the IPO became POSTPONED whose own fields show a different window or price band than the stored ones. A postponement notice, an addendum or corrigendum of the old offer, a re-extraction of an old document, or a side document is not a relaunch filing.** Why: §2.9's invalidation rule and OD-120's admin-clear-with-alert rule both fire "the moment the relaunch filing arrives", and §9.2 item 27 needs the same trigger to build the alert; without a definition, the trigger cannot be coded. No live POSTPONED row exists to test it against (F-208, 0 rows on staging 2026-09-29). | 2026-09-29 | §2.9, OD-83, OD-86, OD-120, §9.2 item 27 | §9.2 item 27's own text states this definition (added by the item 27 build) |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -2119,8 +2120,16 @@ OD-106 could never fire, because the loop would never see the newer value.
 
 **F-200 (2026-09-28):** as measured on `main`, the walk's code does the opposite of this
 clarification — an admin-held field is skipped before any source is asked, so no witness is ever
-stored for it and items 8/9 and OD-106 cannot fire for any held field. Fix in progress, branch
-fix/walk-reads-held-fields.
+stored for it and items 8/9 and OD-106 cannot fire for any held field. Fixed in #1280 (3f1cc6d7,
+main and staging): the walk now reads admin-held fields.
+
+**F-209 (2026-09-29):** the fix in #1280 makes the walk READ a held field again, but the DOC
+fetcher answering that read still resolves it from `field_sources`, which on a held field IS the
+ADMIN row (the admin save writes that row, §9.2 item 3) — so a held field's read can only ever echo the
+admin's own value back, never a document's. Proved red in the item 9 integration test 2026-09-29.
+Fix on branch `feat/item9-document-suggestions`: held reads answer from
+`document_field_receipts` (OD-91's best document) instead of `field_sources`. See the failure
+class `held-read-answered-by-own-admin-provenance`.
 
 ### 2.5 When a supplied value is asked for again
 
@@ -2538,6 +2547,14 @@ two at any time:
 
 Neither status appears on production today, but `document-cycle.ts` reserves a slot every cycle for
 the withdrawal purge path, so both occur.
+
+**Not built as of 2026-09-29 (F-208, #1298):** POSTPONED is terminal in code and no relaunch
+invalidation exists. `TERMINAL_IPO_STATUSES` (`scraper/src/services/data-consolidation-service.ts:428`)
+treats POSTPONED the same as WITHDRAWN and DELISTED — a stored terminal status is never overwritten,
+and `data-persister.ts:750-757`'s legacy fallback honours the same set — but nothing clears a
+POSTPONED IPO's document-sourced fields when a relaunch filing arrives, so the "invalidated the
+moment the relaunch filing arrives" rule above has no code path yet. No live case today: 0 POSTPONED
+rows measured on `ipodhan_staging` 2026-09-29 (77 CLOSED, 289 LISTED, 21 OPEN, 10 UPCOMING).
 
 ### 2.10 What this needs that does not exist yet
 

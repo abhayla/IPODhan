@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-28T20:26:09.919Z",
+  "generated_at": "2026-09-29T06:22:40.522Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 206,
-    "retired": 49
+    "live": 208,
+    "retired": 50
   },
-  "next_id": 256,
+  "next_id": 259,
   "rules": [
     {
       "id": "R-151",
@@ -801,6 +801,15 @@
       "retired": false
     },
     {
+      "id": "R-258",
+      "hash": "0869d88fc3bd",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "F-209 (2026-09-29): the fix in #1280 makes the walk READ a held field again, but the DOC fetcher answering that read still resolves it from field_sources, which on a held field IS the ADMIN row (the admin save writes that row, §9.2 item 3) — so a held field's read can only ever echo the admin's own value back, never a document's. Proved red in the item 9 integration test 2026-09-29. Fix on branch feat/item9-document-suggestions: held reads answer from document_field_receipts (OD-91's best document) instead of field_sources. See the failure class held-read-answered-by-own-admin-provenance.",
+      "first_seen": "2026-09-29",
+      "retired": false
+    },
+    {
       "id": "R-057",
       "hash": "321ea5324792",
       "section": "2.5 When a supplied value is asked for again",
@@ -1068,6 +1077,15 @@
       "kind": "prose",
       "text": "- POSTPONED — not terminal, it comes back. Stays in scope at the normal four-slot cadence. A relaunched issue almost always carries a revised price band and a new window, so its document-sourced fields are invalidated the moment the relaunch filing arrives (§2.5 trigger 3) — the old terms must not survive the relaunch. This includes admin values (OD-120): they are cleared with the rest, kept in the audit trail, and listed in one alert with a re-apply option. - WITHDRAWN — terminal. The walk stops. Existing values are kept as a record, because someone who applied wants to see what they applied to. The page stays at its URL with a clear withdrawal notice rather than redirecting — people who applied will search for it. GMP and subscription polling stop, because a withdrawn issue with a ticking grey-market premium reads as live and is actively misleading. And the IPO leaves the §4 denominators, so a dead issue does not drag the coverage numbers of the live ones.",
       "first_seen": "2026-09-25",
+      "retired": false
+    },
+    {
+      "id": "R-257",
+      "hash": "e5002ec8b0f2",
+      "section": "2.9 Statuses outside the three the first draft named",
+      "kind": "prose",
+      "text": "Not built as of 2026-09-29 (F-208, #1298): POSTPONED is terminal in code and no relaunch invalidation exists. TERMINAL_IPO_STATUSES (scraper/src/services/data-consolidation-service.ts:428) treats POSTPONED the same as WITHDRAWN and DELISTED — a stored terminal status is never overwritten, and data-persister.ts:750-757's legacy fallback honours the same set — but nothing clears a POSTPONED IPO's document-sourced fields when a relaunch filing arrives, so the \"invalidated the moment the relaunch filing arrives\" rule above has no code path yet. No live case today: 0 POSTPONED rows measured on ipodhan_staging 2026-09-29 (77 CLOSED, 289 LISTED, 21 OPEN, 10 UPCOMING).",
+      "first_seen": "2026-09-29",
       "retired": false
     },
     {
@@ -1861,6 +1879,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-256",
+      "hash": "12ea202c7aa7",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "F-209 (2026-09-29): the fix in #1280 makes the walk READ a held field again, but the DOC fetcher answering that read still resolves it from field_sources, which on a held field IS the ADMIN row (OD-106's own protection wrote it there) — so a held field's read can only ever echo the admin's own value back, never a document's. Proved red in the item 9 integration test 2026-09-29. Fix on branch feat/item9-document-suggestions: held reads answer from document_field_receipts (OD-91's best document) instead of field_sources. See the failure class held-read-answered-by-own-admin-provenance.",
+      "first_seen": "2026-09-29",
+      "retired": true
     },
     {
       "id": "R-254",
