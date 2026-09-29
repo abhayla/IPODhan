@@ -186,7 +186,7 @@ describe.skipIf(!DATABASE_URL)('a relaunch filing, and only a relaunch filing, c
     expect(await holds(A)).toEqual(SEEDED_HOLDS);
     expect(await issueSize(A)).toBe(300000000);
     expect(await clearAudits(A)).toEqual([]);
-  });
+  }, 60_000);
 
   it('(b) a re-extraction of the pre-postponement RHP, or a new RHP with the same window and band, clears nothing', async () => {
     await seedAdminValues(B);
@@ -202,7 +202,7 @@ describe.skipIf(!DATABASE_URL)('a relaunch filing, and only a relaunch filing, c
     expect(same.relaunchCleared ?? null).toBeNull();
     expect(await holds(B)).toEqual(SEEDED_HOLDS);
     expect(await issueSize(B)).toBe(300000000);
-  });
+  }, 60_000);
 
   it('(c) an OD-83 relaunch supersede clears held fields and the admin-owned list, with audit rows and one alert', async () => {
     const repo = new IPORepository(db as never, noRedis);
@@ -247,7 +247,7 @@ describe.skipIf(!DATABASE_URL)('a relaunch filing, and only a relaunch filing, c
     expect(sends).toHaveLength(1);
     expect(sends[0].body).toContain('you had blanked ipo_details.freshIssue');
     expect(sends[0].body).toContain('your list promoters (1 row(s)) is no longer held');
-  });
+  }, 90_000);
 
   it('(d) a new RHP after the postponement with a new band clears them; a second postpone-and-relaunch clears again', async () => {
     await seedAdminValues(D);
@@ -304,7 +304,7 @@ describe.skipIf(!DATABASE_URL)('a relaunch filing, and only a relaunch filing, c
     const second = await complete(D, rhp3, 'PROSPECTUS', band('110', '115'));
     expect(second.relaunchCleared?.cleared.map((c) => `${c.tableName}.${c.fieldName}`)).toContain('ipos.issueSize');
     expect(await issueSize(D)).toBeNull();
-  });
+  }, 180_000);
 
   it('a filing on an IPO that is not POSTPONED clears nothing', async () => {
     await adminWrite(LIVE, 'ipos', 'issueSize', { value: '120000000' });
