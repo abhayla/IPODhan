@@ -260,6 +260,7 @@ export async function createIpoByAdmin(db: Db, input: AdminIpoCreateInput, redis
     throw e;
   }
   if (outcome.refusal) return outcome.refusal;
+  if (!outcome.created) throw new Error('admin-ipo-create: transaction returned neither created nor refusal');
   const created = outcome.created;
 
   // List/search cache entries are dropped after commit by the web wrapper (a rolled-back create must not drop them).

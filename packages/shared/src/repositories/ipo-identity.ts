@@ -782,7 +782,7 @@ export async function resolveIpoRow(
     const plan = await planSourceKeyWrite(db, row.id, keys);
     if (!plan.ok) {
       logger.warn({ companyName: rawIdentity.companyName, ipoId: row.id, reason: plan.reason }, '[OD-85] key_contradiction on a fallback bind - held');
-      throw heldError(rawIdentity, row, plan.reason);
+      throw heldError(rawIdentity, row, plan.reason ?? 'key_contradiction on a fallback bind');
     }
   }
   return refuseNameOnlyBindToAdminRow(ipoRepository, rawIdentity, bound);
