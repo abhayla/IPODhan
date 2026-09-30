@@ -572,8 +572,14 @@ export const NEW_CONFLICT_OVERLAP_MS = 15 * 60_000;
  * null and '' hash differently (an empty value and a missing one are different facts).
  */
 export function conflictPairHash(r: Pick<NewConflictRow, 'source1' | 'value1' | 'source2' | 'value2' | 'documentId'>): string {
+  // Order-independent: consolidation writes the INCOMING source as source2, so three sources taking turns
+  // refreshing one row would flip the order every wake and record a new event each time (#1288).
+  const sides = [
+    [r.source1, r.value1],
+    [r.source2, r.value2],
+  ].sort((x, y) => JSON.stringify(x).localeCompare(JSON.stringify(y)));
   return createHash('sha256')
-    .update(JSON.stringify([r.source1, r.value1, r.source2, r.value2, r.documentId]))
+    .update(JSON.stringify([sides, r.documentId]))
     .digest('hex')
     .slice(0, 16);
 }
@@ -645,6 +651,12 @@ export async function scanNewDisagreements(deps: NewDisagreementScanDeps): Promi
     const hash = conflictPairHash(r);
     if ((await deps.getPairHash(r.conflictId)) === hash) {
       unchanged++;
+      // Restart the stored hash's TTL: an unchanged long-standing pair must not re-alert when it lapses (#1288).
+      try {
+        await deps.setPairHash(r.conflictId, hash);
+      } catch (err) {
+        logger.warn({ conflictId: r.conflictId, reason: err instanceof Error ? err.message : String(err) }, 'Admin instant scan: pair-hash TTL refresh FAILED');
+      }
       continue;
     }
     const newerDocument = r.documentId !== null && r.source1 === 'ADMIN';
