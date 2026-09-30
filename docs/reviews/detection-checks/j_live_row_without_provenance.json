@@ -1,0 +1,10 @@
+{
+  "id": "j_live_row_without_provenance",
+  "findingClass": "a live (UPCOMING/OPEN) ipos row with zero field_sources rows at all — created outside consolidation, invisible to every per-field provenance check, never repaired",
+  "round7Findings": [],
+  "sourceTask": "#735",
+  "failThreshold": "any UPCOMING/OPEN offering_type=IPO row with zero field_sources rows. This is the row-level sibling of m_live_ipo_has_state (document_fetch_state) — the only check that notices the machine wrote NOTHING for a row's provenance, ever",
+  "severity": "P2",
+  "unverifiableWhen": "field_sources table not present",
+  "section": "checks"
+}

@@ -634,6 +634,24 @@ export function checkSegmentHasProvenance(row) {
   return `"${row.companyName}" [${row.offeringType}] carries segment=${row.segment} with no field_sources row for segment — a value with no record of who said it`;
 }
 
+// ---- (j_live_row_without_provenance, #735 RCA): a live IPO row with ZERO
+// field_sources rows AT ALL — not one field missing provenance (that's
+// checkSegmentHasProvenance above, per-field), the WHOLE ROW never went
+// through consolidation. #735 found ADVENZYMES on staging: last scraped
+// 2026-08-21, 0 field_sources rows, invisible to every per-field check
+// because every per-field check only fires when the field HAS a value with
+// no source — a row created directly (seed/manual/legacy insert bypassing
+// the consolidation write path) that was never subsequently re-walked has
+// no field_sources rows to be missing FROM, so it reads as "nothing to
+// check" rather than "never checked". This is the row-level sibling of
+// `checkLiveIpoHasStateRows` (document_fetch_state) — same shape, different
+// table: the machine wrote NOTHING for this row, ever.
+export function checkLiveRowWithoutProvenance(row) {
+  if (!LIVE_STATUSES.includes(row.status)) return null;
+  if ((row.fieldSourcesCount ?? 0) > 0) return null;
+  return `"${row.companyName}" (${row.slug}) [${row.status}] has ZERO field_sources rows — created outside consolidation, never repaired, invisible to every per-field provenance check`;
+}
+
 // ---- T-335 fix round 1 (checker T-335C blockers) ------------------------------
 // Everything below is still PURE (no DB/IO/clock/network beyond an injected
 // `now`) so each behaviour has a fixture in
