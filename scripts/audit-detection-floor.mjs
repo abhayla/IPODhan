@@ -948,7 +948,7 @@ async function checkD_hiddenIpoChildWrites() {
   const text = 'no child row of a hidden IPO was written after its hidden_at (#1289, OD-150)';
   const cols = await q(`SELECT 1 FROM information_schema.columns WHERE table_name = 'ipos' AND column_name = 'hidden_at'`);
   if (cols.length === 0) {
-    record(id, text, 'UNVERIFIABLE', 'ipos.hidden_at not present on this database (item 23 migration not applied)');
+    record('d_hidden_ipo_child_writes', text, 'UNVERIFIABLE', 'ipos.hidden_at not present on this database (item 23 migration not applied)');
     return;
   }
   const hidden = await q(`SELECT count(*)::int AS n FROM ipos WHERE hidden_at IS NOT NULL`);
@@ -962,7 +962,7 @@ async function checkD_hiddenIpoChildWrites() {
     }
   }
   const v = summariseHiddenChildWrites({ hiddenCount: hidden[0].n, plans, unmeasured, staleExemptions, offenders });
-  record(id, text, v.status, v.detail);
+  record('d_hidden_ipo_child_writes', text, v.status, v.detail);
 }
 
 async function checkD_segmentProvenance() {

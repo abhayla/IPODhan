@@ -574,7 +574,7 @@ jobs:
             scripts/tests/seo-surface-checks.test.mjs \
             scripts/tests/vps-data-audit-cron.test.mjs \
             scripts/tests/zip-member-rows.test.mjs \
-            scripts/tests/hidden-ipo-child-writes.test.mjs 
+            scripts/tests/hidden-ipo-child-writes.test.mjs \
             scripts/tests/require-scripts-test-coverage.test.mjs
 
       - name: "main-gate.yml structural self-test (#616/#681)"
@@ -1329,6 +1329,7 @@ jobs:
           tests/integration/admin-alerts-loaders.integration.test.ts
           tests/integration/identifier-aliases-item26.integration.test.ts
           tests/integration/status-forward-only.integration.test.ts
+          tests/integration/hide-row-scraper-writes.integration.test.ts
           tests/integration/exchange-override-od106.integration.test.ts
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
