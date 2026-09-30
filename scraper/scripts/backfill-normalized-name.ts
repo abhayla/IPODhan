@@ -34,6 +34,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 import { eq } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
+import { lockAndReadListOwnership } from '@ipodhan/shared/services/admin-list-hold';
 import { openRepairDb, writeLedgerFile } from './lib/repair-tool.js';
 
 /** A minimal query surface both `db` and a `db.transaction` callback's `tx`
@@ -62,6 +63,7 @@ const TABLE_SPECS: TableSpec[] = [
 
 export interface RowToRepair {
   id: string;
+  ipoId: string;
   currentNormalizedName: string;
   recomputedNormalizedName: string;
 }
@@ -96,11 +98,14 @@ interface TableResult {
   changedIds: string[];
   /** #457: the per-row before/after that made the ledger a rollback artifact. */
   toWrite: RowToRepair[];
+  skippedHeld: number;
   nullKeyCount: number;
   nullKeyIds: string[];
 }
 
 interface TablePlan {
+  /** Rows left alone because their IPO's list is admin-owned (#1294 item 5). */
+  skippedHeld: number;
   spec: TableSpec;
   toWrite: RowToRepair[];
   totalRows: number;
@@ -133,13 +138,14 @@ async function planTable(queryable: Queryable, spec: TableSpec): Promise<TablePl
     if (write && recomputed !== null) {
       toWrite.push({
         id,
+        ipoId: row.ipoId as string,
         currentNormalizedName,
         recomputedNormalizedName: recomputed,
       });
     }
   }
 
-  return { spec, toWrite, totalRows: rows.length, nullKeyCount, nullKeyIds };
+  return { spec, toWrite, totalRows: rows.length, nullKeyCount, nullKeyIds, skippedHeld: 0 };
 }
 
 function toResult(plan: TablePlan): TableResult {
@@ -149,6 +155,7 @@ function toResult(plan: TablePlan): TableResult {
     changed: plan.toWrite.length,
     changedIds: plan.toWrite.map((r) => r.id),
     toWrite: plan.toWrite,
+    skippedHeld: plan.skippedHeld,
     nullKeyCount: plan.nullKeyCount,
     nullKeyIds: plan.nullKeyIds,
   };
@@ -174,6 +181,26 @@ function toResult(plan: TablePlan): TableResult {
  * does not currently handle — not adopted here. The next scheduled backfill
  * run picks up any row missed this way.
  */
+/**
+ * Write one key repair unless the IPO's list is admin-owned. `normalized_name` is part of the row key
+ * the list version token is built from, so rewriting it under an admin's open editor makes the admin's
+ * save a false CONFLICT; and an admin-owned list is never changed by a scraper-side tool (OD-107). The
+ * hold is read under the IPO row lock `writeAdminListChange` takes (#1294 item 5).
+ */
+export async function writeNormalizedNameUnlessHeld(
+  tx: { execute: unknown; update: typeof db.update },
+  tableName: TableSpec['tableName'],
+  table: TableSpec['table'],
+  row: RowToRepair
+): Promise<'written' | 'held'> {
+  if ((await lockAndReadListOwnership(tx as never, row.ipoId, tableName)).owned) return 'held';
+  await tx
+    .update(table as never)
+    .set({ normalizedName: row.recomputedNormalizedName } as never)
+    .where(eq((table as never as { id: unknown }).id as never, row.id as never));
+  return 'written';
+}
+
 async function backfillAllTables(specs: TableSpec[], apply: boolean): Promise<TableResult[]> {
   return db.transaction(async (tx) => {
     const plans = await Promise.all(specs.map((spec) => planTable(tx as unknown as Queryable, spec)));
@@ -181,12 +208,13 @@ async function backfillAllTables(specs: TableSpec[], apply: boolean): Promise<Ta
     if (apply) {
       const plansToWrite = plans.filter((p) => p.toWrite.length > 0);
       for (const plan of plansToWrite) {
+        const written: RowToRepair[] = [];
         for (const r of plan.toWrite) {
-          await tx
-            .update(plan.spec.table as never)
-            .set({ normalizedName: r.recomputedNormalizedName } as never)
-            .where(eq((plan.spec.table as never as { id: unknown }).id as never, r.id as never));
+          const outcome = await writeNormalizedNameUnlessHeld(tx as never, plan.spec.tableName, plan.spec.table, r);
+          if (outcome === 'written') written.push(r);
+          else plan.skippedHeld += 1;
         }
+        plan.toWrite = written;
       }
     }
 
@@ -210,6 +238,9 @@ async function main(): Promise<void> {
       `${r.tableName.padEnd(19)} ${String(r.totalRows).padEnd(11)} ${String(r.changed).padEnd(13)} ${r.nullKeyCount}`
     );
   }
+  const totalHeld = results.reduce((sum, r) => sum + r.skippedHeld, 0);
+  if (totalHeld > 0) console.log(`
+left alone (admin-owned list, OD-107): ${totalHeld} row(s)`);
   const totalNullKey = results.reduce((sum, r) => sum + r.nullKeyCount, 0);
   if (totalNullKey > 0) {
     console.log(
@@ -244,6 +275,7 @@ async function main(): Promise<void> {
       ranAt: new Date().toISOString(),
       results: results.map((r) => ({
         tableName: r.tableName,
+        skippedHeld: r.skippedHeld,
         totalRows: r.totalRows,
         changed: r.changed,
         changedIds: r.changedIds,

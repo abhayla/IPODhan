@@ -2402,7 +2402,10 @@ export async function persistFilingExtraction(
             }
           }
         }
-        await deps.financialStatements.upsert(statementRow as never);
+        // null = the admin owns the list of years and it lacks this year (#1294 item 6): nothing was
+        // stored, so it is a suggestion only and is not counted as written.
+        const stored = await deps.financialStatements.upsert(statementRow as never);
+        if (stored === null) continue;
       }
       n += 1;
     }

@@ -138,7 +138,7 @@ export async function runAnchorInvestorsJob(): Promise<{
         }
 
         // Persist to database
-        await createAnchorInvestors(anchorInvestorRepository, ipo.ipoId, anchorData);
+        await createAnchorInvestors(anchorInvestorRepository, ipo.ipoId, anchorData, 'NSE');
 
         if (existing) {
           result.updated++;
@@ -227,7 +227,7 @@ export async function backfillAnchorInvestorForIPO(ipoId: string): Promise<boole
     }
 
     // Persist to database
-    await createAnchorInvestors(anchorInvestorRepository, ipoId, anchorData);
+    await createAnchorInvestors(anchorInvestorRepository, ipoId, anchorData, 'NSE');
 
     logger.info(`[Anchor Investors Job] ✓ Successfully backfilled anchor data for ${ipo.companyName}`);
     return true;

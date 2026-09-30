@@ -106,34 +106,50 @@ export class AnchorInvestorRepository
    */
   async upsert(data: AnchorInvestorInsert): Promise<AnchorInvestor> {
     try {
-      // Check if record exists
-      const [existing] = await this.db
-        .select()
-        .from(anchorInvestors)
-        .where(eq(anchorInvestors.ipoId, data.ipoId))
-        .limit(1);
-
-      let result: AnchorInvestor;
-
-      if (existing) {
-        // Update existing record
-        const [updated] = await this.db
-          .update(anchorInvestors)
-          .set({
-            ...data,
-            updatedAt: new Date(),
-          })
+      // #1294 item 1: one transaction under the IPO row lock the list editor takes, so a totals save
+      // and a list save never interleave; and the count is derived, never typed (spec row 134:
+      // anchor_investors_count = len(investor_list)). While the list is admin-owned, or has entries,
+      // the stored count is the list's length whatever the body says. With no list there is nothing
+      // to derive from and the typed count is kept.
+      const result = await this.db.transaction(async (tx) => {
+        const { owned } = await lockAndReadListOwnership(tx as never, data.ipoId, 'anchor_investors');
+        const [existing] = await tx
+          .select()
+          .from(anchorInvestors)
           .where(eq(anchorInvestors.ipoId, data.ipoId))
-          .returning();
-        result = updated;
-      } else {
-        // Insert new record
-        const [inserted] = await this.db
+          .limit(1);
+
+        // A list stored as TEXT (the W-52 shape: a JSON string in the jsonb column) is read as the list it
+        // holds; one that cannot be read as a list fails closed (nothing is written, the count is not guessed).
+        const storedList = readInvestorList(existing?.investorList, 'stored');
+        let values: AnchorInvestorInsert;
+        if (owned) {
+          // Admin-owned: the body never replaces the admin's list (only the bid date and totals follow the
+          // exchange, OD-106/OD-117); the count is the stored list's length.
+          const { investorList: _bodyList, ...rest } = data;
+          values = { ...rest, anchorInvestorsCount: storedList?.length ?? 0 };
+        } else {
+          const list = readInvestorList(data.investorList, 'supplied') ?? storedList;
+          values = list && list.length > 0 ? { ...data, anchorInvestorsCount: list.length } : data;
+        }
+
+        if (existing) {
+          const [updated] = await tx
+            .update(anchorInvestors)
+            .set({
+              ...values,
+              updatedAt: new Date(),
+            })
+            .where(eq(anchorInvestors.ipoId, data.ipoId))
+            .returning();
+          return updated;
+        }
+        const [inserted] = await tx
           .insert(anchorInvestors)
-          .values(data)
+          .values(values)
           .returning();
-        result = inserted;
-      }
+        return inserted;
+      });
 
       // Invalidate cache
       await this.deleteCache(
@@ -175,4 +191,23 @@ export class AnchorInvestorRepository
     if (refused) throw new AnchorListHeldError(ipoId);
     await this.deleteCache(getAnchorInvestorInvalidationKeys(ipoId));
   }
+}
+
+/**
+ * The investor list as an array, whatever shape it is stored in: an array, or a JSON string holding one
+ * (W-52). null/undefined = no list. Anything else throws, so a save never derives a count from a value
+ * it could not read.
+ */
+function readInvestorList(value: unknown, which: string): unknown[] | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // falls through to the refusal below
+    }
+  }
+  throw new Error(`anchor_investors: the ${which} investor list is not a list (${typeof value}); refusing to derive the count from it`);
 }

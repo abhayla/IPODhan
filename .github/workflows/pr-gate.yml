@@ -1267,6 +1267,7 @@ jobs:
           tests/integration/repair-ipos-lineage-document-id.integration.test.ts
           tests/integration/peer-company-replace-atomicity.integration.test.ts
           tests/integration/admin-owned-lists.integration.test.ts
+          tests/integration/admin-list-followups-1294.integration.test.ts
           tests/integration/field-sources-row-key-provenance.integration.test.ts
           tests/integration/field-sources-row-key-unique.integration.test.ts
           tests/integration/ipo-field-plan-row-key-unique.integration.test.ts

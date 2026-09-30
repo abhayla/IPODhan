@@ -344,6 +344,25 @@ export async function deleteDedupeVictimUnlessHeld(dbLike: RepairDb, victim: { i
   });
 }
 
+/**
+ * Write one heading-hash repair, unless its IPO's risk-factor list is admin-owned. The hold is read
+ * under the IPO row lock `writeAdminListChange` takes, so an admin save and this write never
+ * interleave and a repair never moves the version token of a list an admin is editing (#1294 item 5).
+ * The plan's read already excludes held lists; this closes the window between that read and the write.
+ */
+export async function writeHashRepairUnlessHeld(
+  tx: Parameters<Parameters<RepairDb['transaction']>[0]>[0],
+  row: { id: string; ipoId: string; headingHash: string }
+): Promise<'written' | 'held' | 'gone'> {
+  if ((await lockAndReadListOwnership(tx as never, row.ipoId, 'ipo_risk_factors')).owned) return 'held';
+  const hit = await tx
+    .update(ipoRiskFactors)
+    .set({ headingHash: row.headingHash })
+    .where(eq(ipoRiskFactors.id, row.id))
+    .returning({ id: ipoRiskFactors.id });
+  return hit.length === 1 ? 'written' : 'gone';
+}
+
 async function main(): Promise<void> {
   if (!DO_BACKFILL && !DO_DEDUPE) {
     console.error('Pick a phase: --backfill or --dedupe (see this file\'s header).');
@@ -379,19 +398,16 @@ async function main(): Promise<void> {
     // the ledger still reported full coverage (E1 backfill, Tier A finding).
     const result = await db.transaction(async (tx) => {
       const rows = await tx
-        .select({ id: ipoRiskFactors.id, heading: ipoRiskFactors.heading, currentHash: ipoRiskFactors.headingHash })
+        .select({ id: ipoRiskFactors.id, ipoId: ipoRiskFactors.ipoId, heading: ipoRiskFactors.heading, currentHash: ipoRiskFactors.headingHash })
         .from(ipoRiskFactors)
         .where(NOT_ADMIN_HELD_RISK_FACTORS);
-      const plan = planHashRepair(rows as HashRepairRow[]);
+      const plan = planHashRepair(rows.map((r) => ({ id: r.id, heading: r.heading, currentHash: r.currentHash })) as HashRepairRow[]);
       const writtenIds = new Set<string>();
       if (APPLY) {
+        const ipoByRow = new Map(rows.map((r) => [r.id, r.ipoId]));
         for (const row of plan.toWrite) {
-          const hit = await tx
-            .update(ipoRiskFactors)
-            .set({ headingHash: row.headingHash })
-            .where(eq(ipoRiskFactors.id, row.id))
-            .returning({ id: ipoRiskFactors.id });
-          if (hit.length === 1) writtenIds.add(row.id);
+          const outcome = await writeHashRepairUnlessHeld(tx, { ...row, ipoId: ipoByRow.get(row.id)! });
+          if (outcome === 'written') writtenIds.add(row.id);
         }
       }
       const beforeById = new Map(rows.map((r) => [r.id, r.currentHash]));
