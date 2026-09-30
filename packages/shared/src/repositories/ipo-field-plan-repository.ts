@@ -1344,7 +1344,12 @@ export class IpoFieldPlanRepository extends BaseRepository {
       // was asked under; claimNextDueField offers it again only under a
       // different key. `last_attempt_at` is still stamped.
       const isGap = state === 'CHECK_FAILED' && typeof params.gapKey === 'string' && params.gapKey.length > 0;
-      const countsAsAttempt = !isGap;
+      // #884 (reopened): `attempts` is read ONLY by the CHECK_FAILED claim filter, so it
+      // counts CHECK_FAILED outcomes and nothing else. PENDING / NOT_AVAILABLE_YET /
+      // SUPPLIED asks used to add to it, which spent the budget before the first real
+      // failure (staging: gap rows at attempts 5-29). No reset on entry: a row flapping
+      // CHECK_FAILED <-> NOT_AVAILABLE_YET must still reach the cap.
+      const countsAsAttempt = state === 'CHECK_FAILED' && !isGap;
       const recordedCause = isGap ? stampFieldPlanGapCause(params.gapKey as string, params.cause ?? null) : params.cause ?? null;
       const writeCause = hasCause || isGap;
       const hasAnswers = params.answers !== undefined;
