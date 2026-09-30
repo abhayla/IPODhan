@@ -2053,7 +2053,7 @@
     {
       "id": "F-211",
       "sev": "MAJOR",
-      "status": "OPEN",
+      "status": "FIXED",
       "area": "Notifier digest timing (§9.2 item 16, OD-112)",
       "title": "The Notifier's daily digest and every alert timestamp it prints run in the app HOST's local time, not IST, so a host without TZ=Asia/Kolkata silently moves the promised 09:00 IST digest and mislabels every alert time",
       "detail": "Read 2026-09-29 23:45 IST: `/root/notifier/src/digest.ts:71` compares `now.getHours()` against the configured daily time `\"09:00\"` (`config.ts:139`) using the process's local hour, and `src/format.ts:17-20` prints alert times with `getHours()`/`getMinutes()`, both local. The box's system TZ is `Asia/Kolkata`, but the notifier's pm2 process env carried no `TZ` variable (read 2026-09-29 23:45 IST) — so today the local hour happens to equal IST only because the OS default matches; nothing pins it. Setting `TZ=UTC` on that pm2 process (a plausible \"make it explicit\" fix) would move the 09:00 IST digest to fire at 14:30 IST and print every alert time in UTC on an India-only alert channel (OD-112, §9.2 item 16: \"the 09:00 IST digest\"). Open for owner decision (Q-C3-2): pin `TZ=Asia/Kolkata` explicitly on the notifier's pm2 env (belt-and-braces over the current OS-default reliance) so a future host move or pm2 env reset cannot silently shift the digest.",
