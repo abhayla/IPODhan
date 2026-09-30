@@ -655,18 +655,24 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       let matches = rawMatches;
 
       if (rawMatches.length > 1 && narrowing) {
-        // An ISIN / symbol / alias bind (OD-34 / OD-89 order) is stronger than the name: the name
-        // gives no competing signal, so it neither holds nor binds (the caller keeps the key row).
+        // An ISIN / symbol / alias bind (OD-34 / OD-89: key before name) that is one of the same-name
+        // rows IS the answer: the name gives no competing signal, so the caller keeps the key row.
+        // A key row OUTSIDE the same-name set proves nothing about which of the pair this record is,
+        // and returning null here would let the slug tier bind one row of the pair and the resolver's
+        // key-vs-name branch then prefers that name row over the key row. So we fail closed: the
+        // pair is HELD exactly as it was before #1235 (no narrowing by segment/type either, because
+        // the record is already bound to a third row by a stronger signal).
         if (narrowing.keyBoundId) {
           const keyRow = rawMatches.find((m: IPO) => m.id === narrowing.keyBoundId);
-          return keyRow ?? null;
+          if (keyRow) return keyRow;
+        } else {
+          const narrowed = rawMatches.filter(
+            (m: IPO) => !segmentsConflict(narrowing.segment, m.segment) && !ofsIdentityConflict(narrowing.offeringType, m.offeringType)
+          );
+          // Every row separated from the record: return the first so the resolver declines it with
+          // its own segment / OFS log lines (identical outcome to a single conflicting row).
+          matches = narrowed.length === 0 ? rawMatches.slice(0, 1) : narrowed;
         }
-        const narrowed = rawMatches.filter(
-          (m: IPO) => !segmentsConflict(narrowing.segment, m.segment) && !ofsIdentityConflict(narrowing.offeringType, m.offeringType)
-        );
-        // Every row separated from the record: return the first so the resolver declines it with
-        // its own segment / OFS log lines (identical outcome to a single conflicting row).
-        matches = narrowed.length === 0 ? rawMatches.slice(0, 1) : narrowed;
       }
 
       if (matches.length > 1) {

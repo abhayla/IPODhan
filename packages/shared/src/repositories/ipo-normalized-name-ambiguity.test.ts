@@ -23,6 +23,7 @@ import { IPORepository } from './ipo-repository';
 import { resolveIpoRow, type IpoIdentity } from './ipo-identity';
 import { IdentityHeldForReviewError } from '../errors/repository-errors';
 import { ipos, auditLogs } from '../db/schema';
+import { logger } from '../logger';
 
 type Row = Record<string, unknown>;
 
@@ -192,10 +193,71 @@ describe('#1235: same-name hold runs AFTER narrowing, and only holds what is sti
     expect(auditInserts).toHaveLength(0);
   });
 
-  it('a key-bound row that is NOT in the pair -> no name signal (null), no hold', async () => {
+  it('a key-bound row that is NOT in the pair -> the pair is still HELD (fail closed, MAJOR-1)', async () => {
     const { repo, auditInserts } = makeRepo([SME_ROW, MAIN_ROW]);
-    expect(await repo.findByNormalizedName('acme industries', undefined, { keyBoundId: 'someone-else' })).toBeNull();
-    expect(auditInserts).toHaveLength(0);
+    const err = await repo.findByNormalizedName('acme industries', undefined, { keyBoundId: 'someone-else', segment: 'SME' }).catch((e) => e);
+    expect(err).toBeInstanceOf(IdentityHeldForReviewError);
+    expect(auditInserts).toHaveLength(1);
+  });
+
+  it('resolveIpoRow: ISIN binds a row OUTSIDE the same-name pair -> HOLD, never a row of the pair (MAJOR-1, OD-34/OD-89)', async () => {
+    // a1 and a2 share the name; K carries the record's ISIN but is a third row. The slug tier would
+    // bind a1; the key-vs-name branch would then prefer a1 over K. The resolver must hold instead.
+    const A1 = { ...SME_ROW, id: 'a1', slug: 'acme-industries-ltd' };
+    const A2 = { ...SME_ROW, id: 'a2', slug: 'acme-industries-ltd-2027' };
+    const K = { ...SME_ROW, id: 'k', slug: 'acme-holdings', companyName: 'Acme Holdings', isin: 'INE000A01010' };
+    const { repo } = makeRepo([A1, A2]);
+    Object.assign(repo, {
+      findByIsin: vi.fn().mockResolvedValue(K), findAllByIsin: vi.fn().mockResolvedValue([K]), findBySymbol: vi.fn().mockResolvedValue(null),
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([]), findBySlug: vi.fn().mockResolvedValue(A1),
+      findByFuzzyName: vi.fn().mockResolvedValue(null),
+    });
+    const got = await resolveIpoRow(repo, {
+      companyName: 'Acme Industries Ltd', normalizedName: 'acme industries', slug: 'acme-industries-ltd', cin: null,
+      segment: 'SME', isin: 'INE000A01010',
+    }).catch((e) => e);
+    expect(got).toBeInstanceOf(IdentityHeldForReviewError);
+  });
+
+  it('same, with a SYMBOL-bound key row outside the pair -> HOLD', async () => {
+    const A1 = { ...SME_ROW, id: 'a1', slug: 'acme-industries-ltd' };
+    const A2 = { ...SME_ROW, id: 'a2', slug: 'acme-industries-ltd-2027' };
+    const K = { ...SME_ROW, id: 'k', slug: 'acme-holdings', companyName: 'Acme Holdings', symbol: 'ACMEH' };
+    const { repo } = makeRepo([A1, A2]);
+    Object.assign(repo, {
+      findByIsin: vi.fn().mockResolvedValue(null), findBySymbol: vi.fn().mockResolvedValue(K), findAllBySymbol: vi.fn().mockResolvedValue([K]),
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([]), findBySlug: vi.fn().mockResolvedValue(A1),
+      findByFuzzyName: vi.fn().mockResolvedValue(null),
+    });
+    const got = await resolveIpoRow(repo, {
+      companyName: 'Acme Industries Ltd', normalizedName: 'acme industries', slug: 'acme-industries-ltd', cin: null,
+      segment: 'SME', symbol: 'ACMEH',
+    }).catch((e) => e);
+    expect(got).toBeInstanceOf(IdentityHeldForReviewError);
+  });
+
+  it('offering-type retry returns a row of the WRONG segment -> declined, not bound (MINOR-1)', async () => {
+    // incoming SME IPO; name tier finds an SME OFS row; the type-filtered retry returns a lone MAINBOARD IPO row.
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => undefined as never);
+    const OFS_SME = { ...SME_ROW, id: 'ofs-sme', slug: 'acme-ofs-sme', offeringType: 'OFS' };
+    const MAIN_IPO = { ...MAIN_ROW, id: 'main-ipo', slug: 'acme-main-ipo', offeringType: 'IPO' };
+    const { repo } = makeRepo([]);
+    Object.assign(repo, {
+      findByIsin: vi.fn().mockResolvedValue(null), findBySymbol: vi.fn().mockResolvedValue(null),
+      findAllByIsin: vi.fn().mockResolvedValue([]), findAllBySymbol: vi.fn().mockResolvedValue([]),
+      findByNormalizedName: vi.fn().mockImplementation((_n: string, type?: string) => Promise.resolve(type ? MAIN_IPO : OFS_SME)),
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([]), findBySlug: vi.fn().mockResolvedValue(null),
+      findByFuzzyName: vi.fn().mockResolvedValue(null),
+    });
+    const got = await resolveIpoRow(repo, {
+      companyName: 'Acme Industries Ltd', normalizedName: 'acme industries', slug: 'acme-industries-ltd', cin: null,
+      segment: 'SME', offeringType: 'IPO',
+    });
+    expect(got?.id).not.toBe('main-ipo');
+    // The retry itself must refuse the cross-segment row (OD-68 would catch it later, but a
+    // second guard is the point): the "found on retry" line must never fire for it.
+    expect(infoSpy.mock.calls.some((c) => String(c[1] ?? c[0]).includes('found on retry'))).toBe(false);
+    infoSpy.mockRestore();
   });
 
   it('every row conflicts with the record -> first row returned so the resolver declines it itself', async () => {

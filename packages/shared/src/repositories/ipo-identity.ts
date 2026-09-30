@@ -947,7 +947,10 @@ async function resolveIpoRowByOrderWithTier(
     let retried = offeringType && normalizedName
       ? await ipoRepository.findByNormalizedName(normalizedName, offeringType, { segment, offeringType, keyBoundId: keyMatch?.id ?? null })
       : null;
-    if (retried && ofsIdentityConflict(offeringType, retried.offeringType)) retried = null;
+    // The type-filtered re-query returns a row of the right TYPE but knows nothing about segment
+    // (narrowing only separates a same-name SET of 2+; a lone row comes back unexamined), so the
+    // segment guard is applied again here. Without it only OD-68 stops a cross-segment bind.
+    if (retried && (ofsIdentityConflict(offeringType, retried.offeringType) || segmentsConflict(segment, retried.segment))) retried = null;
     if (retried) {
       logger.info({
         companyName, normalizedName, offeringType, candidateId: retried.id,

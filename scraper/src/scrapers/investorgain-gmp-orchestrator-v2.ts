@@ -410,8 +410,13 @@ export async function runInvestorgainGMPScraper(): Promise<InvestorgainGMPResult
         // IPOs that exact date-matching misses, #6/#8), fall back to date match.
         let ipoId: string | null = null;
         if (FEATURE_FLAGS.ENABLE_GMP_NAME_MATCH) {
+          // #1235: the GMP feed carries no segment, offering type or ISIN/symbol, so nothing
+          // separates a same-name pair here. Say so explicitly (the pair is HELD, fail closed,
+          // and the per-GMP catch below records the error) instead of leaving it implicit.
           const byName = await ipoRepository.findByNormalizedName(
-            normalizeCompanyNameForMatching(scrapedGMP.companyName)
+            normalizeCompanyNameForMatching(scrapedGMP.companyName),
+            undefined,
+            { segment: null, offeringType: null, keyBoundId: null }
           );
           if (byName) ipoId = byName.id;
         }
