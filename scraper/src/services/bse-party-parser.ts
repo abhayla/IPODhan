@@ -40,6 +40,15 @@ const PARTY_SEPARATOR = '#';
 /** Separates the NAME from the packed address/email/contact tail. */
 const NAME_TAIL_SEPARATOR = '^';
 
+/**
+ * What BSE writes in a party field that has no party ("NA^||||||||" in the
+ * Co_Book_Running_Lead_Manager of an issue with a single BRLM; #772, Nityas
+ * Gems IPO_NO 8022). It is a blank, not a lead manager: counting it made the
+ * recorded payload count 2 while only the 1 real name could ever be stored.
+ * Matched on the WHOLE name, so "Nalanda Securities" is untouched.
+ */
+const NO_PARTY_PLACEHOLDER_RE = /^(?:n\.?\/?a\.?|nil|none|null|-+)$/i;
+
 /** Looks like an email address — used to pick the email out of the packed tail. */
 const EMAIL_RE = /[^\s|,;]+@[^\s|,;]+\.[^\s|,;]+/;
 
@@ -54,7 +63,7 @@ function parseOneParty(raw: string): BseParty | null {
   const [namePart, ...tailParts] = trimmed.split(NAME_TAIL_SEPARATOR);
   // A name may still carry a newline (BSE occasionally wraps); keep the first line.
   const name = namePart.split('\n')[0].trim();
-  if (name === '') return null;
+  if (name === '' || NO_PARTY_PLACEHOLDER_RE.test(name)) return null;
 
   const tail = tailParts.join(NAME_TAIL_SEPARATOR);
   const segments = tail.split('|').map((s) => s.trim());

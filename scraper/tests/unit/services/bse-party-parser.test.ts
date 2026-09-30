@@ -73,3 +73,43 @@ describe('parseBseParties — the F17 co-BRLM defect, on the REAL Skyways payloa
     expect(parseBseParties(skywaysRow).sponsorBanks).toEqual(['AXIS BANK', 'HDFC BANK']);
   });
 });
+
+describe('parseBseParties — #772: a BSE "NA" placeholder is not a lead manager, on the REAL Nityas Gems payload', () => {
+  const nityasRow = extractBseCoreRow(
+    JSON.parse(readFileSync(join(FIXTURES, 'bse-core-nityas-gems-live-2026-09-30.json'), 'utf8'))
+  ) as Record<string, string>;
+
+  it('the real payload carries the placeholder BSE writes when there is no co-BRLM', () => {
+    expect(nityasRow.Co_Book_Running_Lead_Manager).toMatch(/^NA\^/);
+  });
+
+  it('returns exactly ONE lead manager (was 2: the count the nightly m_brlm_count compares against)', () => {
+    expect(parseBseParties(nityasRow).leadManagers).toEqual(['Choice Capital Advisors Private Limited']);
+  });
+
+  it.each(['NA', 'N/A', 'n.a.', 'NIL', 'None', '-', '--'])('drops the placeholder %s in any party field', (placeholder) => {
+    expect(parseBsePartyNames(`${placeholder}^||||||||`)).toEqual([]);
+    expect(parseBsePartyNames(placeholder)).toEqual([]);
+    expect(
+      parseBseParties({
+        Book_Running_Lead_Manager: 'Acme Capital Limited^||x@y.com',
+        Co_Book_Running_Lead_Manager: `${placeholder}^||||||||`,
+        Registrar: `${placeholder}^||`,
+        Sponsor_Bank: placeholder,
+      })
+    ).toEqual({ leadManagers: ['Acme Capital Limited'], registrar: null, sponsorBanks: [] });
+  });
+
+  it('keeps a real co-BRLM that follows a placeholder', () => {
+    expect(
+      parseBseParties({
+        Book_Running_Lead_Manager: 'Acme Capital Limited^||x@y.com',
+        Co_Book_Running_Lead_Manager: 'NA^||#Beta Advisors Limited^||b@y.com',
+      }).leadManagers
+    ).toEqual(['Acme Capital Limited', 'Beta Advisors Limited']);
+  });
+
+  it('does not drop a real name that merely starts with "Na"', () => {
+    expect(parseBsePartyNames('Nalanda Securities Limited^||')).toEqual(['Nalanda Securities Limited']);
+  });
+});
