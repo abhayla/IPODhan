@@ -1,0 +1,704 @@
+{
+  "title": "Road to Production",
+  "rule": "Owner rule OD-146 (2026-09-30): finish all implementation work, deploy everything to staging and test it there, then deploy production once with everything together.",
+  "sources": "Typed rows: tracker of 2026-09-30 and triage inventory 2026-09-30. Rows with a pr or issue are re-read from GitHub by scripts/ops/collect-road-status.mjs.",
+  "streams": [
+    {
+      "id": "merge",
+      "name": "1. Merge every finished PR to main",
+      "why": "All reviewed, green work goes to main now; nothing is held back (OD-146).",
+      "items": [
+        {
+          "label": "Everything-first rule into spec, rule file and CLAUDE.md",
+          "pr": 1340,
+          "status": "done",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "PR #1340 merged"
+        },
+        {
+          "label": "Write ratchet sees aliased table writes (#1323)",
+          "pr": 1332,
+          "status": "running",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "PR #1332 open, checks not failing"
+        },
+        {
+          "label": "Nightly check: live rows no source ever supplied (#735)",
+          "pr": 1333,
+          "status": "running",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "PR #1333 open, checks not failing"
+        },
+        {
+          "label": "Admin server-file detector on the TypeScript AST (#1325)",
+          "pr": 1334,
+          "status": "running",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "PR #1334 open, checks not failing"
+        },
+        {
+          "label": "Admin edit route for non-IPO rows (OD-140, P3)",
+          "pr": 1321,
+          "status": "running",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "PR #1321 open, checks not failing"
+        },
+        {
+          "label": "Document job visits brand-new live IPOs first (#1316)",
+          "pr": 1331,
+          "status": "running",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "PR #1331 open, checks not failing"
+        },
+        {
+          "label": "Values after a type correction (OD-142/144, P2)",
+          "pr": 1327,
+          "status": "failed",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "PR #1327 open, CONFLICTING (needs a rebase)"
+        },
+        {
+          "label": "Only the top exchange releases an admin value (OD-141/145, P1)",
+          "pr": 1320,
+          "status": "running",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "PR #1320 open, checks not failing"
+        },
+        {
+          "label": "Admin guard: middleware + server layout (3 layers)",
+          "pr": 1339,
+          "status": "running",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "PR #1339 open, checks not failing"
+        }
+      ]
+    },
+    {
+      "id": "staging",
+      "name": "2. Deploy everything to staging and prove each piece",
+      "why": "Each change is proven on staging with real data before production is considered.",
+      "items": [
+        {
+          "label": "Staging deploy of main after the merge train",
+          "status": "todo",
+          "note": "manual button (1 of 2 left today) or the 21:30 IST window"
+        },
+        {
+          "label": "Price job no longer stalls (#1310)",
+          "status": "done",
+          "note": "12 of 12 staging runs priced 31-48 rows on 2026-09-30; before the fix 0"
+        },
+        {
+          "label": "Admin save proof: login, save, reload, audit, restore",
+          "status": "done",
+          "note": "test owner on staging, 2026-09-29"
+        },
+        {
+          "label": "Admin save proof: list edit (add + remove a lead manager)",
+          "status": "todo",
+          "note": "owed"
+        },
+        {
+          "label": "Admin save proof: value survives a scraper walk of that IPO",
+          "status": "todo",
+          "note": "owed"
+        },
+        {
+          "label": "First-touch pass visits new IPOs, OPEN tier still walked (#1331)",
+          "status": "todo",
+          "note": "read one wake log after deploy"
+        },
+        {
+          "label": "Type correction on a real IPO: fields hidden, queue item clears (P2)",
+          "status": "todo"
+        },
+        {
+          "label": "Admin-held open/close date survives 2-3 real NSE reads (P1)",
+          "status": "todo"
+        },
+        {
+          "label": "Anonymous /admin pages redirect, /api/admin answers 401 (admin guard)",
+          "status": "todo"
+        },
+        {
+          "label": "Nightly TZ check line after notifier TZ change (C2/C4)",
+          "status": "todo",
+          "note": "next nightly run"
+        }
+      ]
+    },
+    {
+      "id": "triage",
+      "name": "3. Sort all remaining open work",
+      "why": "157 open issues, 4 partial spec items and 3 other PRs: classify each as code to build, data, event-wait, already fixed, not in spec, or owner decision.",
+      "items": [
+        {
+          "label": "Triage inventory of all open work",
+          "status": "done",
+          "note": "157 issues + 3 PRs sorted into classes A-G, 2026-09-30",
+          "group": "Triage"
+        },
+        {
+          "label": "#365 keep NSE OFS discovery off and close?",
+          "issue": 365,
+          "group": "Your decisions from the triage (class F)",
+          "status": "waiting",
+          "note": "recommended: yes, keep off (OD-53)",
+          "declared_status": "waiting",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #365 open"
+        },
+        {
+          "label": "#1114 exempt OFS/RIGHTS/NCD from the freshness ceiling?",
+          "issue": 1114,
+          "group": "Your decisions from the triage (class F)",
+          "status": "waiting",
+          "note": "recommended: exempt types the spec does not walk (OD-53)",
+          "declared_status": "waiting",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1114 open"
+        },
+        {
+          "label": "#1223 retire MONEYCONTROL and DOCUMENTS sources, or restore?",
+          "issue": 1223,
+          "group": "Your decisions from the triage (class F)",
+          "status": "waiting",
+          "note": "recommended: retire MONEYCONTROL; document DOCUMENTS as a job label",
+          "declared_status": "waiting",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1223 open"
+        },
+        {
+          "label": "#1313 rotate the postgres superuser password (leaked to a transcript)",
+          "issue": 1313,
+          "group": "Your decisions from the triage (class F)",
+          "status": "waiting",
+          "note": "owner action, production step",
+          "declared_status": "waiting",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1313 open"
+        },
+        {
+          "label": "PR #1285 (+9280/-52, CONFLICTING) item 23 hide row; 2 Tier A rounds failed: new trigger breaks all brlm_track_record writes. Rebase + redesign trigger. Areas: schema migration, publicIpoVisible reads, walk claim, admin API",
+          "group": "Wave 1 - item 23 hide row + spec 2.9 POSTPONED",
+          "size": "L",
+          "status": "todo",
+          "issue": 1289,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1289 open"
+        },
+        {
+          "label": "spec 2.9 POSTPONED not terminal + relaunch invalidates doc fields. Areas: data-consolidation-service.ts, data-persister.ts:750, relaunch-admin-clear.ts",
+          "group": "Wave 1 - item 23 hide row + spec 2.9 POSTPONED",
+          "size": "M",
+          "status": "todo",
+          "issue": 1298,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1298 open"
+        },
+        {
+          "label": "branch fix/a1-exhausted-reason-code cb3c29a2d unmerged; fix MAJOR-1 (claim/release loop when current manifest ranks empty) + test. Areas: field-plan-walk.ts:888, repair-null-reason-codes.ts, audit floor",
+          "group": "Wave 2 - rank-less plan rows + SME BSE documents",
+          "size": "M",
+          "status": "todo",
+          "issue": 1268,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1268 open"
+        },
+        {
+          "label": "SME BSE-only listings never asked BSE; 29 of 44 blocked SME symbols. Area: document-discovery-runner.ts",
+          "group": "Wave 2 - rank-less plan rows + SME BSE documents",
+          "size": "M",
+          "status": "todo",
+          "issue": 1201,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1201 open"
+        },
+        {
+          "label": "spec 2.8: scraper write of segment/listing_exchanges must rebuild plan. After PR #1327",
+          "group": "Wave 3 - plan rebuild on write + extractor/peers",
+          "size": "M",
+          "status": "todo",
+          "issue": 1296,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1296 open"
+        },
+        {
+          "label": "SME covers parse almost nothing (3 named IPOs); NOT_PRINTED used for reader misses. Area: extractor + filing-persister",
+          "group": "Wave 3 - plan rebuild on write + extractor/peers",
+          "size": "M",
+          "status": "todo",
+          "issue": 1246,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1246 open"
+        },
+        {
+          "label": "peer-table figures never persisted (numOrNull takes numbers only). Area: filing-persister.ts; bundle with #1166",
+          "group": "Wave 3 - plan rebuild on write + extractor/peers",
+          "size": "M",
+          "status": "todo",
+          "issue": 1165,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1165 open"
+        },
+        {
+          "label": "names-only peer sets can add but not remove; bundle with #1165",
+          "group": "Wave 3 - plan rebuild on write + extractor/peers",
+          "size": "S",
+          "status": "todo",
+          "issue": 1166,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1166 open"
+        },
+        {
+          "label": "admin alert pair hash depends on source order; 90-day TTL re-alerts (item 25: once per IPO/type/IST day)",
+          "group": "Wave 4a - admin follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1288,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1288 open"
+        },
+        {
+          "label": "admin-superseded source key holds real owner's records until hold released (item 26)",
+          "group": "Wave 4a - admin follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1290,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1290 open"
+        },
+        {
+          "label": "admin-owned lists: 6 follow-ups; #1 route still writes anchorInvestorsCount while list admin-owned (item 8)",
+          "group": "Wave 4a - admin follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1294,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1294 open"
+        },
+        {
+          "label": "admin IPO create: 3 follow-ups",
+          "group": "Wave 4a - admin follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1299,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1299 open"
+        },
+        {
+          "label": "newer-document suggestions: stale open suggestions, latent double row (item 9)",
+          "group": "Wave 4a - admin follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1300,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1300 open"
+        },
+        {
+          "label": "relaunch clears: postponement time source, OD-86 merge path (item 27)",
+          "group": "Wave 4a - admin follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1304,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1304 open"
+        },
+        {
+          "label": "status ladder: identical restamps can erase relaunch evidence",
+          "group": "Wave 4a - admin follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1311,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1311 open"
+        },
+        {
+          "label": "admin digest boundary: app clock vs DB clock (F-210 class)",
+          "group": "Wave 4a - admin follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1312,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1312 open"
+        },
+        {
+          "label": "OD-117 anchor bid_date override; unblocked now item 8 (#1295) is merged",
+          "group": "Wave 4a - admin follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1281,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1281 open"
+        },
+        {
+          "label": "repair-segment-provenance writes ipos.segment with no assertNotHeld (admin-hold bypass)",
+          "group": "Wave 4a - admin follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1272,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1272 open"
+        },
+        {
+          "label": "OD-129 board half: listing sentence should decide ipos.segment",
+          "group": "Wave 4b - persistence follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1233,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1233 open"
+        },
+        {
+          "label": "identity multi-match HOLD fires before segment/type filter",
+          "group": "Wave 4b - persistence follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1235,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1235 open"
+        },
+        {
+          "label": "OD-129 fallback door widens a document-held listing set when provenance lookup fails",
+          "group": "Wave 4b - persistence follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1236,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1236 open"
+        },
+        {
+          "label": "walk-level test that refusedDateFields becomes DATE_REFUSED_REASON",
+          "group": "Wave 4b - persistence follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1240,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1240 open"
+        },
+        {
+          "label": "fallback door: 3 copies of E-1 rule, ledger flag after failed provenance commit",
+          "group": "Wave 4b - persistence follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1253,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1253 open"
+        },
+        {
+          "label": "#959: uncounted attempt when IN_PROGRESS stamp write fails",
+          "group": "Wave 4b - persistence follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1245,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1245 open"
+        },
+        {
+          "label": "extraction status writes swallow failures; bad admin value not answered 400",
+          "group": "Wave 4b - persistence follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1159,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1159 open"
+        },
+        {
+          "label": "name-pollution repair: dry-run/apply eligibility can differ",
+          "group": "Wave 4b - persistence follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1154,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1154 open"
+        },
+        {
+          "label": "companyName lacks field_sources on 47/396 staging IPOs (OD-88 every written column has provenance); find the writer path",
+          "group": "Wave 4b - persistence follow-ups bundle",
+          "size": "M",
+          "status": "todo",
+          "issue": 1196,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1196 open"
+        },
+        {
+          "label": "13 dead snake_case matrix keys never looked up; delete/rename; shrink KNOWN_DEAD_KEYS",
+          "group": "Wave 4b - persistence follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1186,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1186 open"
+        },
+        {
+          "label": "manifest ipos.issue_size lists no not-applicable types (spec 1.11 BUYBACK/TENDER); after PR #1327",
+          "group": "Wave 4b - persistence follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 1293,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1293 open"
+        },
+        {
+          "label": "lot-size Rule 9 never fires when payload has no segment (nightly d_lot_band_window catches within a day)",
+          "group": "Wave 4b - persistence follow-ups bundle",
+          "size": "S",
+          "status": "todo",
+          "issue": 721,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #721 open"
+        },
+        {
+          "label": "PR #1137 (DRAFT, CONFLICTING, +382/-5): wake lock read + deploy lock release lack Redis auth (22/22 staging wakes NOAUTH). Rebase; Tier A. Same file as #1308",
+          "group": "Wave 5 - deploy scripts + schema",
+          "size": "M",
+          "status": "todo",
+          "pr": 1137,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "PR #1137 open, draft"
+        },
+        {
+          "label": "deploy-linux.sh build_release exports web env (REDIS_URL with password) into the deploy shell; sequence after PR #1137",
+          "group": "Wave 5 - deploy scripts + schema",
+          "size": "S",
+          "status": "todo",
+          "issue": 1308,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1308 open"
+        },
+        {
+          "label": "assert-migrations-applied test fails 2 cases (deploy gate test)",
+          "group": "Wave 5 - deploy scripts + schema",
+          "size": "S",
+          "status": "todo",
+          "issue": 1177,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1177 open"
+        },
+        {
+          "label": "migrations build gmp_records numeric(32,0) vs schema.ts; schema-drift release gate. Tier A (migration) - check prod state first",
+          "group": "Wave 5 - deploy scripts + schema",
+          "size": "S",
+          "status": "todo",
+          "issue": 1176,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1176 open"
+        },
+        {
+          "label": "ipo_reviews.category NOT NULL live column, migration 0015 not journaled; sequence with #1243 (OD-125)",
+          "group": "Wave 5 - deploy scripts + schema",
+          "size": "M",
+          "status": "todo",
+          "issue": 1215,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1215 open"
+        },
+        {
+          "label": "OD-125 leftover: two admin paths still touch ipo_reviews",
+          "group": "Wave 5 - deploy scripts + schema",
+          "size": "S",
+          "status": "todo",
+          "issue": 1243,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1243 open"
+        },
+        {
+          "label": "registrar-fixture tool 5 MINORs; must land BEFORE the prod --apply of #94",
+          "group": "Wave 6 - repair tools + parser fixtures",
+          "size": "S",
+          "status": "todo",
+          "issue": 1270,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1270 open"
+        },
+        {
+          "label": "repair tools write cached tables with no cache invalidation",
+          "group": "Wave 6 - repair tools + parser fixtures",
+          "size": "S",
+          "status": "todo",
+          "issue": 1249,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1249 open"
+        },
+        {
+          "label": "30 row-changing repair tools write no ledger (defect-fix contract item 4)",
+          "group": "Wave 6 - repair tools + parser fixtures",
+          "size": "M",
+          "status": "todo",
+          "issue": 1250,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1250 open"
+        },
+        {
+          "label": "Chittorgarh detail layout drift vs Runwal fixture (corpus_shape); re-capture fixture, fix parser if a keyed label moved",
+          "group": "Wave 6 - repair tools + parser fixtures",
+          "size": "S",
+          "status": "todo",
+          "issue": 1336,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1336 open"
+        },
+        {
+          "label": "2 docs stored RHP classify as PROSPECTUS; unverified whether writer or classifier is wrong (issue asked triage)",
+          "group": "Wave 6 - repair tools + parser fixtures",
+          "size": "S",
+          "status": "todo",
+          "issue": 1116,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1116 open"
+        },
+        {
+          "label": "12 web-integration failure signatures each needing its own RCA (unverified: some may be test-only)",
+          "group": "Wave 7 - web-integration baseline (last)",
+          "size": "L",
+          "status": "todo",
+          "issue": 1217,
+          "declared_status": "todo",
+          "measured_at": "2026-09-30T10:54:09Z",
+          "measured_from": "issue #1217 open"
+        },
+        {
+          "label": "Class D: 76 issues already fixed (9 are production steps)",
+          "group": "Everything else the triage found",
+          "status": "todo",
+          "count": 76,
+          "note": "verify each on staging, then close (triage inventory 2026-09-30)"
+        },
+        {
+          "label": "Class E: 23 issues not in the spec",
+          "group": "Everything else the triage found",
+          "status": "waiting",
+          "count": 23,
+          "note": "your call: build, reject or park each (triage inventory 2026-09-30)"
+        },
+        {
+          "label": "Class G: 2 duplicates (#1108, PR #1285)",
+          "group": "Everything else the triage found",
+          "status": "todo",
+          "count": 2,
+          "note": "close when item 23 (#1289) lands (triage inventory 2026-09-30)"
+        },
+        {
+          "label": "Contract 4: build the 42 class A items above, same review tiers",
+          "status": "todo",
+          "note": "sizes S/M/L per row; waves run at most 2 in parallel",
+          "group": "Build"
+        }
+      ]
+    },
+    {
+      "id": "decisions",
+      "name": "4. Decisions and production steps that need you",
+      "why": "Only you can give these.",
+      "items": [
+        {
+          "label": "Q-C3-1: prod scraper flags (ENABLE_UPCOMING_DISCOVERY_RESERVATION and 3 more)",
+          "status": "waiting",
+          "note": "recommended: set true as proven on staging"
+        },
+        {
+          "label": "Your real admin account on production (create-owner-admin, you run it)",
+          "status": "waiting",
+          "note": "at deploy time"
+        },
+        {
+          "label": "Final pre-deploy brief, then your deploy word",
+          "status": "todo",
+          "note": "only after streams 1-3 are complete"
+        }
+      ]
+    },
+    {
+      "id": "parked",
+      "name": "5. Parked by your rule (not blocking)",
+      "why": "Data issues are parked; event-waits are read when the event happens (OD-138).",
+      "items": [
+        {
+          "label": "SME issue sizes vs ipowatch; Green Asia close date (#1318)",
+          "status": "parked",
+          "note": "data"
+        },
+        {
+          "label": "ADVENZYMES orphan row with no sources (#735)",
+          "status": "parked",
+          "note": "data"
+        },
+        {
+          "label": "Merge-tool unmerge proof needs a real duplicate (#1032)",
+          "status": "parked",
+          "note": "event-wait"
+        },
+        {
+          "label": "Reopened prospectus proof needs a real re-filing (#1034)",
+          "status": "parked",
+          "note": "event-wait"
+        },
+        {
+          "label": "Class B: 7 data issues",
+          "status": "parked",
+          "count": 7,
+          "note": "data; fixed through the admin queue, not code (triage inventory 2026-09-30)"
+        },
+        {
+          "label": "Class C: 6 issues waiting on a real-world event",
+          "status": "parked",
+          "count": 6,
+          "note": "read when the event happens (OD-138) (triage inventory 2026-09-30)"
+        }
+      ]
+    },
+    {
+      "id": "prod",
+      "name": "6. Production",
+      "why": "One deploy, everything together.",
+      "items": [
+        {
+          "label": "Production deploy (prod serves f0c66b6b from 2026-09-07; 37 migrations behind)",
+          "status": "todo",
+          "note": "after your word"
+        }
+      ]
+    }
+  ]
+}
