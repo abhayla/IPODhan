@@ -1858,7 +1858,7 @@
       "status": "FIXED",
       "area": "document discovery / SME sourcing",
       "phase1": true,
-      "title": "SME document discovery asks NSE only; BSE is never consulted, although the spec's stated SME order is NSE then BSE, so a BSE-only-listed SME IPO has no exchange document source at all (open for owner decision: whether this is a build gap or needs a scoped fix contract)",
+      "title": "SME document discovery asked NSE only and never consulted BSE, although the spec's stated SME order is NSE then BSE, so a BSE-only-listed SME IPO had no exchange document source at all; fixed in #1201, the SME path now asks BSE second",
       "detail": "Measured 2026-09-26 (#1201), found while reading the #632 cause data (read-only on ipodhan_staging). Of the 44 SME IPOs with BLOCKED_ALL rows and an NSE-only chain, 29 return an empty `issueInfo: {}` when checked live against NSE (e.g. PESHWA, ROBOKIDZ) -- meaning those 29 are BSE-only listings for which NSE was the only exchange source ever asked, because the SME document-discovery code path does not call BSE at all. Spec basis: 'On SME. The order is NSE then BSE as instructed.' This is a build gap against a stated spec order (deferred per run-discipline B7 -- found outside the contract-1 done list). Distinct from #632/F-188: that finding is about misreading NSE's reply once asked; this finding is that BSE is never asked in the first place. No existing failure-class file covered this mechanism; added `sme-document-discovery-never-asks-bse` (status: unguarded). Built 2026-09-30 (#1201): the SME path now asks BSE second, per the spec order; F-215 records that BSE's board and core payload do carry SME issues, which the runner's old comment denied."
     },
     {
