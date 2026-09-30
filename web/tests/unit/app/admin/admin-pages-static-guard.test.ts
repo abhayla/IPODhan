@@ -58,6 +58,7 @@ const EXPECTED_CANDIDATE_FILES = [
   'dynamic/[table]/page.tsx',
   'dynamic/ipos/[id]/objectives/page.tsx',
   'edit/[slug]/page.tsx',
+  'ipos/[slug]/edit/page.tsx',
   'ipos/new/page.tsx',
   'layout.tsx',
   'login/page.tsx',

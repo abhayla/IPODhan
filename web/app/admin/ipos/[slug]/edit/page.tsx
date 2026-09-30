@@ -33,14 +33,14 @@ interface AdminEditNonIpoPageProps {
 }
 
 export default async function AdminEditNonIpoPage({ params }: AdminEditNonIpoPageProps) {
-  const { slug } = await params;
-
-  // Server-side session check at the route entry (OD-140). A reader or an anonymous curl request
-  // never reaches the row lookup or the editor below.
+  // Server-side session check FIRST, before `await params` or any other work (OD-140, detector
+  // #1325). A reader or an anonymous curl request never reaches the row lookup or the editor.
   const admin = await getAdminSessionFromCookies();
   if (!admin) {
     redirect('/admin/login');
   }
+
+  const { slug } = await params;
 
   const redis = getRedisClient();
   const ipoRepository = new IPORepository(db, redis);
