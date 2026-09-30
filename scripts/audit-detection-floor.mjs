@@ -87,7 +87,7 @@ import {
   evaluateSourceKeyConflicts,
   findSettledFieldRewrites, SETTLED_FIELD_COLUMNS, policyWriterOnFromEnv, settledCurrentValueSql,
   findClosedIpoDoneWithoutWalk,
-  checkPublishedWithoutProvenance, classifyRowKeyProbeError,
+  checkPublishedWithoutProvenance, classifyRowKeyProbeError, checkLiveRowWithoutProvenance,
   checkStatusClosedBeforeCloseDate,
 } from './lib/detection-floor-checks.mjs';
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
@@ -1399,6 +1399,26 @@ async function checkM() {
   for (const v of forgotten) notify('m_live_ipo_has_state', 'P2', v, 'Live IPO has no document state rows', v);
   record('m_live_ipo_has_state', 'every UPCOMING/OPEN/CLOSED IPO has document_fetch_state rows',
     forgotten.length === 0 ? 'PASS' : 'FAIL', forgotten.slice(0, MAX_OFFENDERS).join('; '));
+
+  // j_live_row_without_provenance (#735 RCA, 2026-09-30): the row-level
+  // sibling of m_live_ipo_has_state above, for field_sources instead of
+  // document_fetch_state. ADVENZYMES on staging had 0 field_sources rows
+  // and was invisible to every per-field provenance check (e.g.
+  // checkSegmentHasProvenance) because those checks only fire when a FIELD
+  // has a value with no source — a row that never went through
+  // consolidation at all has no fields to be missing provenance FROM.
+  const liveRowsProvenance = await q(`
+    SELECT i.company_name, i.slug, i.status, count(fs.id)::int AS field_sources_count
+      FROM ipos i LEFT JOIN field_sources fs ON fs.ipo_id = i.id
+     WHERE i.${REAL_IPO} AND i.status IN ('UPCOMING','OPEN')
+     GROUP BY i.id, i.company_name, i.slug, i.status
+  `);
+  const orphaned = liveRowsProvenance
+    .map((r) => checkLiveRowWithoutProvenance({ companyName: r.company_name, slug: r.slug, status: r.status, fieldSourcesCount: r.field_sources_count }))
+    .filter(Boolean);
+  for (const v of orphaned) notify('j_live_row_without_provenance', 'P2', v, 'Live IPO row has zero field_sources rows — never consolidated', v);
+  record('j_live_row_without_provenance', 'every UPCOMING/OPEN IPO has at least one field_sources row',
+    orphaned.length === 0 ? 'PASS' : 'FAIL', orphaned.slice(0, MAX_OFFENDERS).join('; '));
 
   // listed_rotation_stall (2026-09-06): the check above deliberately excludes
   // LISTED (STAGE_DOCUMENT_TYPES.LISTED === [] — nothing NEW becomes due), but
@@ -3956,7 +3976,7 @@ async function main() {
   await runCheck(checkCycleOverrunAudit, ['m_cycle_overrun']);
   await runCheck(checkL, ['l_nse_status_crosscheck']);
   await runCheck(checkJ, ['j_sector_populated', 'j_segment_not_null', 'j_cron_executable', 'j_dead_source_retire_by']);
-  await runCheck(checkM, ['m_document_state', 'm_blocked_all_age', 'm_found_not_extracted', 'm_not_yet_filed_age', 'm_upcoming_missing_price_band_tracking', 'm_absence_without_evidence', 'm_extract_failed', 'm_extraction_stuck', 'm_live_ipo_has_state', 'listed_rotation_stall', 'issuer_ratio_yield', 'prospectus_promoters_peers_yield', 'm_brlm_count', 'm_brlm_nse_provenance', 'm_document_type_classifier']);
+  await runCheck(checkM, ['m_document_state', 'm_blocked_all_age', 'm_found_not_extracted', 'm_not_yet_filed_age', 'm_upcoming_missing_price_band_tracking', 'm_absence_without_evidence', 'm_extract_failed', 'm_extraction_stuck', 'm_live_ipo_has_state', 'j_live_row_without_provenance', 'listed_rotation_stall', 'issuer_ratio_yield', 'prospectus_promoters_peers_yield', 'm_brlm_count', 'm_brlm_nse_provenance', 'm_document_type_classifier']);
   await runCheck(checkN, ['m_fix_merged_not_served']);
   await runCheck(checkO, ['m_deploy_failure_open']);
   await runCheck(checkP, ['p_document_provenance_share']);

@@ -21,6 +21,7 @@ import {
   checkLotBandSebiWindow,
   checkCorporateActionShape,
   checkSegmentHasProvenance,
+  checkLiveRowWithoutProvenance,
   checkPublishedWithoutProvenance,
   classifyRowKeyProbeError,
   classifyRouteResponse,
@@ -248,6 +249,41 @@ test('(d) PASSES a non-NULL segment that carries a field_sources row', () => {
 test('(d) PASSES a NULL segment regardless of provenance (nothing to source)', () => {
   const row = { companyName: 'Example Co', offeringType: 'RIGHTS', segment: null, hasSegmentProvenance: false };
   assert.equal(checkSegmentHasProvenance(row), null);
+});
+
+// ---- (j_live_row_without_provenance) live row with ZERO field_sources rows (#735 RCA) --
+
+test('(j) FAILS on a live (OPEN) row with 0 field_sources rows and names it', () => {
+  const row = { companyName: 'Advenzymes', slug: 'advenzymes', status: 'OPEN', fieldSourcesCount: 0 };
+  const violation = checkLiveRowWithoutProvenance(row);
+  assert.ok(violation !== null);
+  assert.match(violation, /Advenzymes/);
+  assert.match(violation, /advenzymes/);
+});
+
+test('(j) FAILS on a live (UPCOMING) row with 0 field_sources rows', () => {
+  const row = { companyName: 'Example Co', slug: 'example-co', status: 'UPCOMING', fieldSourcesCount: 0 };
+  assert.ok(checkLiveRowWithoutProvenance(row) !== null);
+});
+
+test('(j) PASSES a live row with >= 1 field_sources row', () => {
+  const row = { companyName: 'Example Co', slug: 'example-co', status: 'OPEN', fieldSourcesCount: 1 };
+  assert.equal(checkLiveRowWithoutProvenance(row), null);
+});
+
+test('(j) IGNORES a LISTED row with 0 field_sources rows (not in scope)', () => {
+  const row = { companyName: 'Example Co', slug: 'example-co', status: 'LISTED', fieldSourcesCount: 0 };
+  assert.equal(checkLiveRowWithoutProvenance(row), null);
+});
+
+test('(j) IGNORES a CLOSED row with 0 field_sources rows (not in scope)', () => {
+  const row = { companyName: 'Example Co', slug: 'example-co', status: 'CLOSED', fieldSourcesCount: 0 };
+  assert.equal(checkLiveRowWithoutProvenance(row), null);
+});
+
+test('(j) IGNORES a WITHDRAWN row with 0 field_sources rows (not in scope)', () => {
+  const row = { companyName: 'Example Co', slug: 'example-co', status: 'WITHDRAWN', fieldSourcesCount: 0 };
+  assert.equal(checkLiveRowWithoutProvenance(row), null);
 });
 
 // ---- (r) published value with no field_sources row at all (#454) ------------
