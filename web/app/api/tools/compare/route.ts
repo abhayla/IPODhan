@@ -37,6 +37,7 @@ import {
   type IPOComparison,
 } from '@/lib/types/comparison';
 import type { FinancialData } from '@/lib/repositories/types';
+import { hideNotApplicableRows } from '@/lib/ipo-field-applicability';
 
 // ==================== ERROR RESPONSE TYPE ====================
 
@@ -99,12 +100,15 @@ async function fetchIPOComparisonData(
   }
 
   // Fetch related data in parallel (Story 4.10: Added ipoFinancials)
-  const [latestSubscription, gmpRecords, financialData, ipoFinancialsData] = await Promise.all([
+  const [latestSubscription, gmpRecords, rawFinancialData, rawIpoFinancials] = await Promise.all([
     subscriptionRepo.findLatest(ipo.id).catch(() => null),
     gmpRepo.findByIPO({ ipoId: ipo.id, limit: 1 }).catch(() => []),
     financialRepo.findByIPO(ipo.id).catch(() => null),
     ipoFinancialsRepo.findByIPO(ipo.id).catch(() => null),
   ]);
+  // §9.2 item 18 / §1.11: a field the IPO's type makes not applicable never reaches a reader.
+  const financialData = hideNotApplicableRows(ipo, 'financial_data', rawFinancialData);
+  const ipoFinancialsData = hideNotApplicableRows(ipo, 'ipo_financials', rawIpoFinancials);
 
   // Extract GMP value
   const latestGMP = gmpRecords.length > 0 ? gmpRecords[0].gmp : null;

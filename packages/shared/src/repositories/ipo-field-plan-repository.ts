@@ -68,7 +68,8 @@ import { DatabaseError } from '../errors/repository-errors';
 import { FIELD_PLAN_GAP_KEY_PREFIX, stampFieldPlanGapCause } from '../utils/field-plan-config-gap';
 import { mostRecentDataJobSlotBoundary, nextDataJobSlotBoundary } from '../scheduler/data-job-slots';
 import { decideSettledOverride } from '../utils/settled-field-override-reopen';
-import { clearSourceNoLongerFirstOnRankOneAnswer } from '../services/source-no-longer-first';
+import { clearSourceNoLongerFirstOnRankOneAnswer, openSourceNoLongerFirstNewRank1 } from '../services/source-no-longer-first';
+import { ADMIN_QUEUE_CACHE_KEYS } from '../utils/admin-queue-cache-keys';
 
 /**
  * Bind a JS `Date` to a NAIVE `timestamp` column as the instant it actually is.
@@ -1271,6 +1272,19 @@ export class IpoFieldPlanRepository extends BaseRepository {
   }
 
   /**
+   * OD-142/OD-144: the new rank-1 plan code of this field's open "source no longer first" queue
+   * item, or null. The walk reads it before writing a rank-1 answer (field-plan-walk.ts).
+   */
+  async openSourceNoLongerFirstNewRank1(params: {
+    ipoId: string;
+    tableName: string;
+    rowKey: string;
+    fieldName: string;
+  }): Promise<string | null> {
+    return openSourceNoLongerFirstNewRank1(this.db as never, params);
+  }
+
+  /**
    * Write an attempt's result back onto the plan row.
    *
    * Every path is conditional on `claim_token` still matching: a superseded
@@ -1388,13 +1402,15 @@ export class IpoFieldPlanRepository extends BaseRepository {
       // OD-142: the field's rank-1 source answered, so its "source no longer first" queue item (a
       // type correction moved rank 1 here) leaves the queue. Only an answer from rank 1 itself.
       if (state === 'SUPPLIED' && hasChosen && typeof chosen.source === 'string' && chosen.source === raw.rank1_source) {
-        await clearSourceNoLongerFirstOnRankOneAnswer(this.db as never, {
+        const cleared = await clearSourceNoLongerFirstOnRankOneAnswer(this.db as never, {
           ipoId: raw.ipo_id as string,
           tableName: raw.table_name as string,
           rowKey: (raw.row_key as string) ?? '',
           fieldName: raw.field_name as string,
           answeredBy: chosen.source,
         });
+        // The admin queue caches its counts and setup (OD-136); a cleared item must leave it now.
+        if (cleared > 0) await this.deleteCache([...ADMIN_QUEUE_CACHE_KEYS]);
       }
       return { written: true, row: mapRow(raw) };
     } catch (error) {

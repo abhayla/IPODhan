@@ -31,7 +31,7 @@ import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
 import { dataConflicts, ipos } from '@ipodhan/shared/db/schema';
-import { isCorrigendumSuggestion } from '@ipodhan/shared/utils/conflict-reasons';
+import { isBehaviourConflict } from '@ipodhan/shared/utils/conflict-reasons';
 import { notifyOwner } from './owner-notify.js';
 import logger from '../utils/logger.js';
 import { istDateIso } from '../scheduler/due-step-cycle.js';
@@ -154,8 +154,10 @@ export async function checkCrossSourceDisagreements(
     );
 
   // OD-90: a corrigendum suggestion (document_id set) is admin review work, not a disagreement
-  // between sources — it never pages.
-  const disagreements: DisagreementRecord[] = conflictRows.filter((row) => !isCorrigendumSuggestion(row)).map((row) => ({
+  // between sources — it never pages. OD-75/OD-95/OD-107/OD-142: neither does an admin-only row
+  // (e.g. SOURCE_NO_LONGER_FIRST, whose source1 and source2 differ by construction) — the one
+  // predicate every behaviour reader uses, never a second list here.
+  const disagreements: DisagreementRecord[] = conflictRows.filter((row) => isBehaviourConflict(row)).map((row) => ({
     ipoId: row.ipoId,
     companyName: nameById.get(row.ipoId) ?? row.ipoId,
     fieldName: row.fieldName,

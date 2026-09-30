@@ -321,3 +321,28 @@ describe('generateFieldPlan - fields with no ranked source are not planned (#858
     expect(rows.length).toBeGreaterThan(100);
   });
 });
+
+describe('generateFieldPlan - §1.11 offering-type na (PR #1327 round 1: an offering-type correction re-plans)', () => {
+  const manifest = loadFieldManifest();
+  const has = (rows: ReturnType<typeof generateFieldPlan>, t: string, f: string) =>
+    rows.some((r) => r.tableName === t && r.fieldName === f);
+
+  it('a BUYBACK does not plan the fields the manifest rules not applicable to it; an IPO plans them; unknown plans all', () => {
+    const ipo = { id: 'i', segment: 'MAINBOARD', listingExchanges: ['NSE', 'BSE'] };
+    const asIpo = generateFieldPlan({ ...ipo, offeringType: 'IPO' }, manifest);
+    const asBuyback = generateFieldPlan({ ...ipo, offeringType: 'BUYBACK' }, manifest);
+    const unknown = generateFieldPlan(ipo, manifest);
+    for (const [t, f] of [['ipos', 'lot_size'], ['ipos', 'issue_size'], ['ipos', 'price_range_max'], ['financial_data', 'eps']]) {
+      expect(has(asIpo, t, f), `${t}.${f} IPO`).toBe(true);
+      expect(has(asBuyback, t, f), `${t}.${f} BUYBACK`).toBe(false);
+    }
+    // Still-applicable fields stay (open date applies to every type).
+    expect(has(asBuyback, 'ipos', 'open_date')).toBe(true);
+    expect(unknown.length).toBe(asIpo.length);
+    // Exactly the manifest's BUYBACK na entries that the type key ranks leave the plan.
+    const naForBuyback = Object.entries(manifest.fields).filter(
+      ([, e]) => ((e as { na?: string[] }).na ?? []).includes('BUYBACK') && ((e as { rank: Record<string, string[]> }).rank.MAINBOARD ?? []).length > 0
+    ).length;
+    expect(asIpo.length - asBuyback.length).toBe(naForBuyback);
+  });
+});

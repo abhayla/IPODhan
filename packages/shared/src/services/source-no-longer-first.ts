@@ -62,6 +62,30 @@ export interface QueueResult {
   skippedFromNewRank1: number;
 }
 
+/**
+ * The ONE row of `tableName` a plan row's (ipo, rowKey) names, as a WHERE fragment (PR #1327 Tier A
+ * minor: a multi-row table read without its row key returned whichever row came first). Keys match
+ * the consolidated writer's natural keys (`scraper/src/services/child-row-keys.ts`):
+ *   - `ipos`, and the tables with exactly one row per IPO: by the IPO alone, row key `''`;
+ *   - `financial_statements`: `<fiscal_year>:<basis>`; `ipo_valuation`: `<pricing_event>`.
+ * Any other shape throws: a row this module cannot name is never guessed at.
+ */
+const ONE_ROW_PER_IPO_TABLES = new Set(['ipo_details', 'anchor_investors', 'listing_performance']);
+
+export function storedRowWhere(tableName: string, ipoId: string, rowKey: string) {
+  if (tableName === 'ipos') {
+    if (rowKey !== '') throw new Error(`storedRowWhere: ipos has no row key, got ${JSON.stringify(rowKey)}`);
+    return sql`id = ${ipoId}::uuid`;
+  }
+  if (ONE_ROW_PER_IPO_TABLES.has(tableName) && rowKey === '') return sql`ipo_id = ${ipoId}::uuid`;
+  if (tableName === 'financial_statements') {
+    const m = /^(\d{4}):(.+)$/.exec(rowKey);
+    if (m) return sql`ipo_id = ${ipoId}::uuid AND fiscal_year = ${Number(m[1])} AND basis::text = ${m[2]}`;
+  }
+  if (tableName === 'ipo_valuation' && rowKey !== '') return sql`ipo_id = ${ipoId}::uuid AND pricing_event::text = ${rowKey}`;
+  throw new Error(`storedRowWhere: cannot name one row of ${tableName} by row key ${JSON.stringify(rowKey)}`);
+}
+
 function rowsOf(r: unknown): Array<Record<string, unknown>> {
   return ((r as { rows?: unknown[] }).rows ?? []) as Array<Record<string, unknown>>;
 }
@@ -143,8 +167,11 @@ export async function queueSourceNoLongerFirstInTx(tx: Db, ipoId: string, change
     }
     const valRes = await tx.execute(sql`
       SELECT ${sql.identifier(ch.fieldName)}::text AS v FROM ${sql.identifier(ch.tableName)}
-       WHERE ${sql.identifier(ch.tableName === 'ipos' ? 'id' : 'ipo_id')} = ${ipoId}::uuid
-         AND ${sql.identifier(ch.fieldName)} IS NOT NULL LIMIT 1`);
+       WHERE ${storedRowWhere(ch.tableName, ipoId, ch.rowKey)}
+         AND ${sql.identifier(ch.fieldName)} IS NOT NULL`);
+    if (rowsOf(valRes).length > 1) {
+      throw new Error(`queueSourceNoLongerFirstInTx: ${ch.tableName} row key ${JSON.stringify(ch.rowKey)} names ${rowsOf(valRes).length} rows`);
+    }
     const stored = rowsOf(valRes)[0]?.v;
     if (stored === undefined || stored === null) {
       // Nothing is kept, so nothing is "no longer first": the re-planted PENDING row is the
@@ -202,4 +229,24 @@ export async function clearSourceNoLongerFirstOnAdminSave(
   args: { ipoId: string; tableName: string; rowKey: string; fieldName: string }
 ): Promise<number> {
   return clearOpen(tx, args.ipoId, [args], 'ADMIN_SAVED');
+}
+
+/**
+ * OD-144: the new rank-1 plan code of this field's OPEN "source no longer first" item, or null when
+ * none is open. The walk asks it before writing a rank-1 answer: while the item is open, the plan's
+ * rank for the IPO's current type decides that write, not the global write-priority matrix.
+ */
+export async function openSourceNoLongerFirstNewRank1(
+  db: Db,
+  args: { ipoId: string; tableName: string; rowKey: string; fieldName: string }
+): Promise<string | null> {
+  const res = await db.execute(sql`
+    SELECT c.evidence->>'newRank1' AS new_rank1 FROM data_conflicts c
+     WHERE c.ipo_id = ${args.ipoId}::uuid AND c.resolved_at IS NULL
+       AND c.resolution_reason = ${SOURCE_NO_LONGER_FIRST}
+       AND c.table_name = ${args.tableName} AND c.row_key = ${args.rowKey}
+       AND c.field_name = ${columnToCamel(args.fieldName)}
+     ORDER BY c.created_at DESC LIMIT 1`);
+  const v = rowsOf(res)[0]?.new_rank1;
+  return typeof v === 'string' ? v : null;
 }

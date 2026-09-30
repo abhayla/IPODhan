@@ -9,8 +9,9 @@
  * transaction and applied by the generator's own precedence. There is no second copy of the rules.
  *
  * No plan change = no rebuild: the plan depends only on the IPO's type key (segment + listing
- * exchanges). A save that leaves the type key as it was (an `offering_type` correction alone)
- * touches no plan row.
+ * exchanges) and its offering type (the manifest's §1.11 `na` lists). A save that leaves both as
+ * they were touches no plan row; an `offering_type` correction alone rebuilds, so a field the new
+ * type makes not applicable stops being planned and walked (PR #1327 round 1).
  *
  * What the rebuild does, per (table, field):
  *   - planned, existing row with the SAME rank-1 source: kept (state, chosen value and evidence
@@ -173,15 +174,15 @@ export async function rebuildIpoPlanInTx(
   tx: Db,
   ipoId: string,
   manifest: PlanManifest,
-  before: Pick<PlanIpo, 'segment' | 'listingExchanges'>
+  before: Pick<PlanIpo, 'segment' | 'listingExchanges' | 'offeringType'>
 ): Promise<PlanRebuildSummary> {
-  const cur = await tx.execute(sql`SELECT segment, listing_exchanges FROM ipos WHERE id = ${ipoId}::uuid`);
-  const ipoRow = cur.rows[0] as { segment: string | null; listing_exchanges: string[] | null } | undefined;
+  const cur = await tx.execute(sql`SELECT segment, listing_exchanges, offering_type::text AS offering_type FROM ipos WHERE id = ${ipoId}::uuid`);
+  const ipoRow = cur.rows[0] as { segment: string | null; listing_exchanges: string[] | null; offering_type: string | null } | undefined;
   if (!ipoRow) throw new Error(`rebuildIpoPlanInTx: IPO ${ipoId} not found`);
-  const after: PlanIpo = { id: ipoId, segment: ipoRow.segment, listingExchanges: ipoRow.listing_exchanges };
+  const after: PlanIpo = { id: ipoId, segment: ipoRow.segment, listingExchanges: ipoRow.listing_exchanges, offeringType: ipoRow.offering_type };
   const typeKeyBefore = resolveIpoTypeKey(before);
   const typeKeyAfter = resolveIpoTypeKey(after);
-  if (typeKeyBefore === typeKeyAfter) {
+  if (typeKeyBefore === typeKeyAfter && (before.offeringType ?? null) === (after.offeringType ?? null)) {
     // The plan is a function of the type key alone: nothing to rebuild, nothing re-versioned.
     return { typeKeyBefore, typeKeyAfter, planned: 0, kept: 0, replanted: 0, dropped: 0, added: 0, queued: 0, rebuilt: false };
   }

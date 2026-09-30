@@ -183,7 +183,9 @@ export class DataConsolidationOrchestrator {
     // field. `undefined` (every existing caller) is BYTE-IDENTICAL to
     // today's unfiltered behaviour — the filter is applied only when present,
     // camelCase keys matching mapScrapedIPOToConsolidationInput's output.
-    onlyFields?: string[]
+    onlyFields?: string[],
+    // OD-144: see ConsolidateIPODataInput.planRankWinnerFields. Only the field-plan walk passes it.
+    options?: { planRankWinnerFields?: readonly string[] }
   ): Promise<ConsolidatedUpsertResult> {
     const startTime = Date.now();
     // T-478 round 3 (item 3): OFS-aware slug (see computeIpoIdentitySlug's
@@ -327,6 +329,7 @@ export class DataConsolidationOrchestrator {
           source,
           existingData: existingIPO ? this.mapIPOToRecord(existingIPO) : undefined,
           confidence,
+          planRankWinnerFields: options?.planRankWinnerFields,
         });
 
       if (FEATURE_FLAGS.DEBUG_DATA_FLOW) {
@@ -810,7 +813,9 @@ export class DataConsolidationOrchestrator {
     rows: ChildRowInput[],
     source: ScraperSource,
     docType?: string,
-    confidence: number = 100
+    confidence: number = 100,
+    // OD-144: see ConsolidateIPODataInput.planRankWinnerFields. Only the field-plan walk passes it.
+    options?: { planRankWinnerFields?: readonly string[] }
   ): Promise<ConsolidatedChildRowsResult> {
     const result: ConsolidatedChildRowsResult = {
       rowsProcessed: 0,
@@ -878,6 +883,7 @@ export class DataConsolidationOrchestrator {
         existingData: row.existingData,
         confidence,
         docType,
+        planRankWinnerFields: options?.planRankWinnerFields,
       });
 
       result.rowsProcessed += 1;

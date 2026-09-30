@@ -14,6 +14,7 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { ListingPerformanceRepository } from '@/lib/repositories/listing-performance-repository';
 import { logger } from '@/lib/logger';
+import { hideNotApplicableRows } from '@/lib/ipo-field-applicability';
 
 /**
  * Generate unique request ID for tracing
@@ -102,7 +103,8 @@ export async function GET(
     }
 
     // Fetch listing performance
-    const listingPerformance = await listingPerformanceRepository.findByIPO(ipo.id);
+    // §9.2 item 18 / §1.11: a field the IPO's type makes not applicable never reaches a reader.
+    const listingPerformance = hideNotApplicableRows(ipo, 'listing_performance', await listingPerformanceRepository.findByIPO(ipo.id));
 
     if (!listingPerformance) {
       requestLogger.warn({ slug, ipoId: ipo.id }, 'Listing performance not found');

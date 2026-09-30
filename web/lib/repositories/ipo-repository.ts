@@ -352,13 +352,16 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           const liveMetrics = await this.fetchLiveMetricsFor(results.map(row => row.ipo.id));
 
           // Transform results to include ipoScore as a property
+          // §9.2 item 18 / §1.11: the list shows each row's applicable fields only, like the detail.
           const data = results.map(row =>
-            mergeLiveMetrics(
-              {
-                ...row.ipo,
-                ipoScore: row.ipoScore || null,
-              },
-              liveMetrics.get(row.ipo.id)
+            hideNotApplicableFields(
+              mergeLiveMetrics(
+                {
+                  ...row.ipo,
+                  ipoScore: row.ipoScore || null,
+                },
+                liveMetrics.get(row.ipo.id)
+              )
             )
           );
 

@@ -709,13 +709,13 @@ export async function writeAdminFieldValue(
           identifierAlias = { aliasId: kept.aliasId, supersededKeyIds: kept.supersededKeyIds, activeKeyId: kept.activeKeyId };
         }
         const [typeBefore] = rebuildsPlan
-          ? await tx.select({ segment: schema.ipos.segment, listingExchanges: schema.ipos.listingExchanges }).from(schema.ipos).where(eq(schema.ipos.id, ipoId)).limit(1)
+          ? await tx.select({ segment: schema.ipos.segment, listingExchanges: schema.ipos.listingExchanges, offeringType: schema.ipos.offeringType }).from(schema.ipos).where(eq(schema.ipos.id, ipoId)).limit(1)
           : [];
         await IPORepository.applyAdminCorrigendumValue(tx, ipoId, fieldName, newValue);
         if (rebuildsPlan) {
           // §2.8 / §9.2 item 18: the SAME row is corrected (OD-35's new-row rule is for a new offering),
           // and its plan is rebuilt before commit so no walk ever reads ranks for the old type.
-          planRebuild = await rebuildIpoPlanInTx(tx, ipoId, options.planManifest!, typeBefore ?? { segment: null, listingExchanges: null });
+          planRebuild = await rebuildIpoPlanInTx(tx, ipoId, options.planManifest!, typeBefore ?? { segment: null, listingExchanges: null, offeringType: null });
         }
       } else if (rowSpec) {
         const tcols = getTableColumns(rowSpec.table) as unknown as Record<string, never>;

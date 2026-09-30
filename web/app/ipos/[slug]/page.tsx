@@ -93,6 +93,7 @@ import {
   generateIPODetailBreadcrumbs,
   toJsonLdScript,
 } from '@/lib/seo/structured-data';
+import { hideNotApplicableRows } from '@/lib/ipo-field-applicability';
 
 // ==================== CONSTANTS ====================
 
@@ -363,13 +364,15 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     brlmTrackRecordRows,
     fieldProvenance,
   ] = await Promise.all([
-    safeLoad(() => new IpoValuationRepository(db, redis).listByIpo(ipo.id), []),
-    safeLoad(() => new PromotersRepository(db, redis).listPromotersByIpo(ipo.id), []),
-    safeLoad(() => new PromotersRepository(db, redis).listAcquisitionRangesByIpo(ipo.id), []),
-    safeLoad(() => new IpoIntermediariesRepository(db, redis).listByIpo(ipo.id), []),
-    safeLoad(() => new IpoRiskFactorsRepository(db, redis).listByIpo(ipo.id), []),
-    safeLoad(() => new FinancialStatementsRepository(db, redis).listByIpo(ipo.id), []),
-    safeLoad(() => new BrlmTrackRecordRepository(db, redis).listBySourceIpo(ipo.id), []),
+    // §9.2 item 18 / §1.11: every child table the page reads directly hides the fields the IPO's
+    // type makes not applicable, like the detail payload does (one helper, ipo-field-applicability).
+    safeLoad(async () => hideNotApplicableRows(ipo, 'ipo_valuation', await new IpoValuationRepository(db, redis).listByIpo(ipo.id)), []),
+    safeLoad(async () => hideNotApplicableRows(ipo, 'promoters', await new PromotersRepository(db, redis).listPromotersByIpo(ipo.id)), []),
+    safeLoad(async () => hideNotApplicableRows(ipo, 'promoter_acquisition_ranges', await new PromotersRepository(db, redis).listAcquisitionRangesByIpo(ipo.id)), []),
+    safeLoad(async () => hideNotApplicableRows(ipo, 'ipo_intermediaries', await new IpoIntermediariesRepository(db, redis).listByIpo(ipo.id)), []),
+    safeLoad(async () => hideNotApplicableRows(ipo, 'ipo_risk_factors', await new IpoRiskFactorsRepository(db, redis).listByIpo(ipo.id)), []),
+    safeLoad(async () => hideNotApplicableRows(ipo, 'financial_statements', await new FinancialStatementsRepository(db, redis).listByIpo(ipo.id)), []),
+    safeLoad(async () => hideNotApplicableRows(ipo, 'brlm_track_record', await new BrlmTrackRecordRepository(db, redis).listBySourceIpo(ipo.id)), []),
     // Empty on any failure: a page that cannot say where a number came from
     // still shows the number. The provenance line is a caveat on the facts, not
     // a gate on them (safeLoad, same as every other block above).

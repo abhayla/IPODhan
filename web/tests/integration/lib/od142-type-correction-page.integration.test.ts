@@ -27,7 +27,7 @@ const slug = `${tag}-ipo`;
 const noRedis = new Proxy({}, { get: () => async () => null }) as never;
 
 async function cleanup(): Promise<void> {
-  for (const t of ['audit_logs', 'data_conflicts', 'field_sources', 'field_protection_metadata', 'ipo_field_plan']) {
+  for (const t of ['audit_logs', 'data_conflicts', 'field_sources', 'field_protection_metadata', 'ipo_field_plan', 'ipo_financials']) {
     await db.execute(sql`DELETE FROM ${sql.raw(t)} WHERE ipo_id = ${ipoId}`);
   }
   await db.execute(sql`DELETE FROM ipos WHERE id = ${ipoId}`);
@@ -130,5 +130,22 @@ describe('OD-142 / item 18 on the reader payload and the admin queue (ipodhan_te
     expect(String(page!.openDate)).toContain('2026-10-20');
     const stored = await db.execute(sql`SELECT lot_size, price_range_max::text AS pmax FROM ipos WHERE id = ${ipoId}`);
     expect(stored.rows).toEqual([{ lot_size: 1200, pmax: '100' }]);
+  });
+
+  it('(c) PR #1327 round 1, MAJOR-2: the list (findAll) and the detail ipoFinancials hide them too; Medium: the offering-type-only save rebuilt the plan', async () => {
+    // Still BUYBACK from (b). The list row is the same rule as the detail.
+    const list = await new IPORepository(db as never, noRedis).findAll({ search: tag, offeringType: 'BUYBACK', limit: 10 } as never);
+    const row = list.data.find((r) => r.id === ipoId);
+    expect(row, JSON.stringify(list.data.map((r) => r.slug))).toBeDefined();
+    expect(row!.lotSize).toBeNull();
+    expect(row!.priceRangeMax).toBeNull();
+    expect(String(row!.openDate)).toContain('2026-10-20');
+    // ipo_financials follows financial_data as a whole (not applicable to a BUYBACK).
+    await db.execute(sql`INSERT INTO ipo_financials (ipo_id, revenue_fy1, profit_fy1) VALUES (${ipoId}, 100, 10)`);
+    const page = await new IPORepository(db as never, noRedis).findBySlug(slug);
+    expect(page!.ipoFinancials).toBeNull();
+    // (b)'s save changed only offering_type: the plan no longer carries lot_size (na for BUYBACK).
+    const plan = await db.execute(sql`SELECT field_name FROM ipo_field_plan WHERE ipo_id = ${ipoId} AND table_name = 'ipos' AND field_name IN ('lot_size', 'open_date')`);
+    expect(plan.rows.map((r) => (r as { field_name: string }).field_name).sort()).toEqual(['open_date']);
   });
 });
