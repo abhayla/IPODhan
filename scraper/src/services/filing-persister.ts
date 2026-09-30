@@ -238,6 +238,16 @@ export interface FilingPersisterDeps {
   listingPrecedence?: {
     higherRankedOfferDocumentCompleted(ipoId: string, docType: FilingDocType, documentId: string | null): Promise<boolean>;
   };
+  /**
+   * #1233 (§2.8, §9.2 item 18, OD-142): a document that claimed a plan-invalidating field
+   * (`segment` or `listingExchanges`) rebuilds the IPO's plan through THE rebuild the admin save
+   * uses (`rebuildIpoPlanInTx`), after its write. `before` is the type slice read before the
+   * write. Absent = no rebuild (tests, dry tooling); the next plant reconciles missing rows only.
+   */
+  planRebuild?: (
+    ipoId: string,
+    before: { segment: string | null; listingExchanges: string[] | null; offeringType: string | null }
+  ) => Promise<{ rebuilt: boolean; typeKeyBefore?: string; typeKeyAfter?: string; queued?: number }>;
   ocrPrecedence?: {
     /**
      * The text-layer receipts this IPO's active documents wrote for one field, each with its
@@ -299,6 +309,12 @@ export interface PersistFilingSummary {
    * summary literal keep compiling.
    */
   skipped_lower_priority_source?: string[];
+  /**
+   * #1233: the plan rebuild this document's board / exchange claim triggered: `rebuilt <before> -> <after>`,
+   * `unchanged`, or `plan rebuild failed: <cause>` (the write stands; the next plant reconciles).
+   * Absent when nothing plan-invalidating was claimed.
+   */
+  plan_rebuild?: string;
   /** Statement rows refused because a stored row is in a different unit. */
   skipped_unit_mismatch: string[];
   /**
@@ -1546,6 +1562,9 @@ export async function persistFilingExtraction(
   if (description) iposCandidate.companyDescription = description;
   if (cinForWrite !== null) iposCandidate.cin = cinForWrite;
   // OD-129 (#938): the listing sentence on the cover pages decides the exchanges.
+  // #1233 (OD-129, row 23): it decides the BOARD too — `ipos.segment` is this document's claim,
+  // under the same precedence gate, the same protection gate (an admin hold drops it, §9) and
+  // the matrix's DRHP rank above the feeds.
   // A price band ad that says only "the Stock Exchanges" names none -> nothing claimed.
   // G1: an older or lower-ranked filing extracted AFTER a better one must not
   // replace its set (6 of 59 staging IPOs had an older filing extracted later).
@@ -1567,9 +1586,11 @@ export async function persistFilingExtraction(
     }
     if (outranked) {
       skippedLowerPriority.push(`ipos.listingExchanges (${options.docType}: ${why})`);
+      skippedLowerPriority.push(`ipos.segment (${options.docType}: ${why})`);
       logger.info({ ipoId, docType: options.docType, documentId: options.documentId ?? null, why }, 'OD-129 listing sentence not claimed');
     } else {
       iposCandidate.listingExchanges = listingSentence.exchanges;
+      iposCandidate.segment = listingSentence.board;
     }
   }
 
@@ -1628,6 +1649,7 @@ export async function persistFilingExtraction(
     }
   }
 
+  let planRebuildNote: string | undefined;
   if (iposFields.length > 0) {
     if (apply) {
       // OD-66 (owner, 2026-09-21): "you should only care about the new set of
@@ -1659,6 +1681,23 @@ export async function persistFilingExtraction(
         contextFields,
         lineage
       );
+      // #1233: a claimed board or exchange set changes which sources rank first for this IPO's
+      // fields; rebuild through the one path (§2.8, OD-142 keeps + queues changed rank-1 values).
+      if (deps.planRebuild && (claimed.has('segment') || claimed.has('listingExchange'))) {
+        const before = {
+          segment: (existing.segment as string | null | undefined) ?? null,
+          listingExchanges: (existing.listingExchanges as string[] | null | undefined) ?? null,
+          offeringType: (existing.offeringType as string | null | undefined) ?? null,
+        };
+        try {
+          const r = await deps.planRebuild(ipoId, before);
+          planRebuildNote = r.rebuilt ? `rebuilt ${r.typeKeyBefore ?? '?'} -> ${r.typeKeyAfter ?? '?'} (queued ${r.queued ?? 0})` : 'unchanged';
+          logger.info({ ipoId, docType: options.docType, planRebuild: planRebuildNote }, '#1233 plan rebuild after a document board/exchange claim');
+        } catch (e) {
+          planRebuildNote = `plan rebuild failed: ${e instanceof Error ? e.message : String(e)}`;
+          logger.warn({ ipoId, docType: options.docType, err: planRebuildNote }, '#1233 plan rebuild after a document board/exchange claim FAILED; the write stands');
+        }
+      }
     }
     bump(written, 'ipos', 1);
   }
@@ -3161,6 +3200,7 @@ export async function persistFilingExtraction(
     skipped_out_of_family: [...new Set(skippedOutOfFamily)].sort(),
     skipped_cross_document_disagreement: [...new Set(skippedCrossDoc)].sort(),
     ipos_fields: iposFields,
+    ...(planRebuildNote !== undefined ? { plan_rebuild: planRebuildNote } : {}),
     receipt_fields: receiptFields,
     fresh_ofs_reconciliation: {
       ok: reconciliation.ok,

@@ -21,6 +21,8 @@ import {
   checkLotBandSebiWindow,
   checkCorporateActionShape,
   checkSegmentHasProvenance,
+  checkSegmentMatchesDocumentBoard,
+  pickDecidingBoardReceipt,
   checkLiveRowWithoutProvenance,
   checkPublishedWithoutProvenance,
   classifyRowKeyProbeError,
@@ -232,6 +234,36 @@ test('(d) FAILS on a KWALITY-WALLS-shaped corporate-action typed as IPO', () => 
 test('(d) PASSES a genuine fixed-price SME IPO outside the corporate-action window shape', () => {
   const row = { offeringType: 'IPO', priceRangeMin: 100, priceRangeMax: 100, lotSize: 1200, windowDays: 3 };
   assert.equal(checkCorporateActionShape(row), null);
+});
+
+// ---- (d_segment_document_board) #1233 / OD-129: the document decides the board ----------------
+
+const boardRow = (segment, segmentSource, receipts) => ({ companyName: 'Board Co', segment, segmentSource, receipts });
+
+test('(d_segment_document_board) FAILS when a feed-set segment disagrees with the RHP board', () => {
+  const v = checkSegmentMatchesDocumentBoard(boardRow('MAINBOARD', 'NSE', [{ docType: 'RHP', value: 'SME', extractedAt: '2026-09-20 10:00:00' }]));
+  assert.ok(v && v.includes('RHP') && v.includes('SME'));
+});
+
+test('(d_segment_document_board) FAILS on a NULL segment when a document read the board', () => {
+  assert.ok(checkSegmentMatchesDocumentBoard(boardRow(null, null, [{ docType: 'DRHP', value: 'MAINBOARD', extractedAt: 'x' }])) !== null);
+});
+
+test('(d_segment_document_board) PASSES an agreeing row, an ADMIN hold, and a row no document read', () => {
+  assert.equal(checkSegmentMatchesDocumentBoard(boardRow('SME', 'DRHP', [{ docType: 'RHP', value: 'SME', extractedAt: 'x' }])), null);
+  assert.equal(checkSegmentMatchesDocumentBoard(boardRow('MAINBOARD', 'ADMIN', [{ docType: 'RHP', value: 'SME', extractedAt: 'x' }])), null);
+  assert.equal(checkSegmentMatchesDocumentBoard(boardRow('MAINBOARD', 'NSE', [])), null);
+});
+
+test('(d_segment_document_board) the best-ranked document decides (Prospectus > RHP > DRHP; later wins a tie)', () => {
+  const receipts = [
+    { docType: 'DRHP', value: 'MAINBOARD', extractedAt: '2026-09-25 00:00:00' },
+    { docType: 'RHP', value: 'SME', extractedAt: '2026-09-10 00:00:00' },
+    { docType: 'RHP', value: 'MAINBOARD', extractedAt: '2026-09-01 00:00:00' },
+  ];
+  assert.equal(pickDecidingBoardReceipt(receipts).value, 'SME');
+  assert.equal(pickDecidingBoardReceipt([...receipts, { docType: 'PROSPECTUS', value: 'MAINBOARD', extractedAt: '2026-08-01' }]).value, 'MAINBOARD');
+  assert.equal(pickDecidingBoardReceipt([{ docType: 'CORRIGENDUM', value: 'SME' }, { docType: 'RHP', value: 'junk' }]), null);
 });
 
 // ---- (d) segment provenance (lane C item 2 slice 3b) ------------------------

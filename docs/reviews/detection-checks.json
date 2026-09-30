@@ -165,6 +165,15 @@
       "unverifiableWhen": "never — always runs against the ipos table"
     },
     {
+      "id": "d_segment_document_board",
+      "findingClass": "ipos.segment disagrees with the board the IPO's best-ranked offer document reads (Prospectus > RHP = price band ad > DRHP; the later extraction wins a tie, OD-30) and the segment is not ADMIN-held (spec §9) - the document-first rule of OD-129 / spec row 23 not reaching the row (a feed overwrote it, or the document's claim never landed)",
+      "issue": 1233,
+      "sourceTask": "#1233",
+      "failThreshold": "EXISTS an IPO with a document_field_receipts row for ipos.segment on an active document whose deciding receipt value differs from ipos.segment, where the field_sources source for ipos.segment is not ADMIN",
+      "severity": "P2",
+      "unverifiableWhen": "never emitted UNVERIFIABLE - an IPO with no segment receipt is not a candidate (documents extracted before #1233 carry none and are not re-read, OD-65/OD-91); zero candidates is a clean PASS"
+    },
+    {
       "id": "d_segment_provenance",
       "findingClass": "ipos.segment is non-NULL with NO field_sources row for the segment field — a value with no record of who said it (the binary-test write bug, lane C item 2 slice 3b: 'not detected as SME' was asserted as MAINBOARD with no source)",
       "round7Findings": [],

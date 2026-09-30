@@ -39,6 +39,8 @@ import { PeerCompanyRepository } from '../repositories/peer-company-repository.j
 import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { higherRankedOfferDocumentTypes } from './listing-sentence.js';
+import { rebuildIpoPlanInTx, type PlanManifest } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import type {
   DocumentFilingDateWriter,
   FilingPersisterDeps,
@@ -179,6 +181,7 @@ export function buildFilingPersistDeps(
     childRowConsolidator,
     ocrPrecedence: makeOcrPrecedenceReader(),
     listingPrecedence: makeListingPrecedenceReader(),
+    planRebuild: makePlanRebuilder(),
     protectionFilter: (
       id: string,
       table: string,
@@ -186,6 +189,23 @@ export function buildFilingPersistDeps(
       scraperName: string
     ) => filterProtectedFields(id, table, data, scraperName, db, redis),
   };
+}
+
+/**
+ * #1233 (§2.8, §9.2 item 18, OD-142): after a document claimed the board or the exchange set,
+ * rebuild the IPO's plan through THE rebuild the admin save uses, under the same `ipos` row lock
+ * (FOR NO KEY UPDATE) so a concurrent plant serialises with it (field-plan-planting.ts). The
+ * rebuild re-reads the row inside the lock and touches nothing when the plan inputs are unchanged.
+ */
+export function makePlanRebuilder(
+  manifest: PlanManifest = loadFieldManifest() as unknown as PlanManifest,
+  database: Pick<typeof db, 'transaction'> = db
+): NonNullable<import('./filing-persister.js').FilingPersisterDeps['planRebuild']> {
+  return async (ipoId, before) =>
+    database.transaction(async (tx) => {
+      await tx.execute(sql`SELECT 1 FROM ipos WHERE id = ${ipoId}::uuid FOR NO KEY UPDATE`);
+      return rebuildIpoPlanInTx(tx as never, ipoId, manifest, before as never);
+    });
 }
 
 /**

@@ -263,11 +263,18 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // value-vs-value conflict case (e.g. NSE says MAINBOARD, a stale
   // Moneycontrol scrape says SME) with NSE/BSE (authoritative exchange data)
   // outranking Chittorgarh/Moneycontrol.
+  // #1233 (OD-129, spec row 23 "DOC, NSE, BSE"): the offer document's listing sentence decides
+  // the board, so DRHP (the writer source of every document) ranks above the feeds. Before
+  // #1233 DRHP was absent here (rank -1), so no document could ever write the board. A later,
+  // higher-ranked filing replaces an earlier document's board (OD-30): the same-source refresh
+  // compares the two documents by type. ADMIN still outranks every document (§9).
   segment: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL', 'API_FALLBACK'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL', 'API_FALLBACK'],
     normalization: 'none',
     confidenceThreshold: 70,
-    description: 'MAINBOARD/SME exchange segment (null for InvIT/REIT business trusts). NSE/BSE are authoritative.',
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
+    description: 'MAINBOARD/SME board (null for InvIT/REIT business trusts). The offer document decides (OD-129); the exchange feeds, then Chittorgarh, only before a document is read.',
   },
 
   // ==================== DESCRIPTIVE FIELDS (#69) ====================
