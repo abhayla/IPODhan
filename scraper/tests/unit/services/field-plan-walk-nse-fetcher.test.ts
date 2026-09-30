@@ -71,7 +71,7 @@ describe('NSE fetcher — outcome contract (item 6)', () => {
     expect((answer as { value?: unknown }).value).toBe('2026-10-01');
   });
 
-  it('refuses to guess when two board rows share the symbol — NOT_AVAILABLE_YET, not a wrong SUPPLIED', async () => {
+  it('refuses to guess when two board rows share the symbol — CHECK_FAILED (UNKNOWN, OD-145), not a wrong SUPPLIED', async () => {
     const nse = await import('../../../src/scrapers/nse-scraper.js');
     (nse.scrapeNSEIPOs as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ipos: [
@@ -85,7 +85,35 @@ describe('NSE fetcher — outcome contract (item 6)', () => {
       new NseFieldFetcherState()
     );
     const answer = await fetcher(IPO_ID, 'ipos', '', 'open_date');
-    expect(answer.outcome).toBe('NOT_AVAILABLE_YET');
+    expect(answer.outcome).toBe('CHECK_FAILED');
+    expect((answer as { transient?: boolean }).transient).toBe(true);
+    expect((answer as { reason?: string }).reason).toMatch(/ambiguous NSE match: 2 NSE rows share symbol DUP/);
+  });
+
+  it('OD-145 proof 4: an EMPTY board (scrapeNSEIPOs swallowed a total failure) answers CHECK_FAILED, never "not found"', async () => {
+    const nse = await import('../../../src/scrapers/nse-scraper.js');
+    (nse.scrapeNSEIPOs as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ipos: [], subscriptions: [], source: undefined });
+    const state = new NseFieldFetcherState();
+    const fetcher = buildNseFetcher(depsWith(true, { id: IPO_ID, symbol: 'ACME', companyName: 'Acme Ltd', isin: null }), state);
+    const answer = await fetcher(IPO_ID, 'ipos', '', 'close_date');
+    expect(answer.outcome).toBe('CHECK_FAILED');
+    expect((answer as { transient?: boolean }).transient).not.toBe(false);
+    expect((answer as { reason?: string }).reason).toMatch(/NSE board empty/);
+    // Memoised for the cycle: a second field of the same cycle is CHECK_FAILED too, never NOT_AVAILABLE_YET.
+    expect((await fetcher(IPO_ID, 'ipos', '', 'open_date')).outcome).toBe('CHECK_FAILED');
+  });
+
+  it('a non-empty board without this IPO is NOT_AVAILABLE_YET (re-askable; the override rule reads it as UNKNOWN)', async () => {
+    const nse = await import('../../../src/scrapers/nse-scraper.js');
+    (nse.scrapeNSEIPOs as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ipos: [{ symbol: 'OTHER', companyName: 'Other Ltd', openDate: '2026-10-01' }],
+      subscriptions: [],
+    });
+    const fetcher = buildNseFetcher(
+      depsWith(true, { id: IPO_ID, symbol: 'ACME', companyName: 'Acme Ltd', isin: null }),
+      new NseFieldFetcherState()
+    );
+    expect((await fetcher(IPO_ID, 'ipos', '', 'close_date')).outcome).toBe('NOT_AVAILABLE_YET');
   });
 
   it('fetches the board AT MOST ONCE per state instance (ruling 33)', async () => {

@@ -1,6 +1,7 @@
 import type Redis from 'ioredis';
 import logger from '../utils/logger.js';
 import { getIPOInvalidationKeys } from '@ipodhan/shared/cache/cache-keys';
+import { fieldSourceCacheKeys } from '@ipodhan/shared/repositories/field-sources-repository';
 
 /**
  * Invalidate IPO-related cache keys.
@@ -19,17 +20,21 @@ import { getIPOInvalidationKeys } from '@ipodhan/shared/cache/cache-keys';
  * @param redis - Redis client instance
  * @param ipoId - IPO id for targeted invalidation (required — see above)
  * @param slug - IPO slug for targeted invalidation
+ * @param field - when a write bypassed FieldSourcesRepository (OD-106 override), that field's
+ *   provenance keys are dropped too (`fieldSourceCacheKeys`, the repository's own key builder)
  */
 export async function invalidateIPOCaches(
   redis: Redis,
   ipoId: string,
-  slug: string
+  slug: string,
+  field?: { tableName: string; fieldName: string; rowKey?: string }
 ): Promise<void> {
   try {
     logger.debug({ ipoId, slug }, 'Invalidating IPO caches');
 
     const entries = getIPOInvalidationKeys(ipoId, slug);
     const exact = entries.filter((k) => !k.includes('*'));
+    if (field) exact.push(...fieldSourceCacheKeys(ipoId, field.tableName, field.fieldName, field.rowKey ?? ''));
     const patterns = entries.filter((k) => k.includes('*'));
 
     // Delete specific keys

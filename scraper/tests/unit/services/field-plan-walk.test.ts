@@ -2661,6 +2661,29 @@ describe('field-plan walk -- an admin-held field is READ, never written (§2.4 c
     expect(s.protectionCalls[0]).toEqual([IPO_ID, 'ipos', 'issue_size', '']);
   });
 
+  it('OD-106: a hook that released the hold makes the walk release the claim WITHOUT stamping the held read', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const s = heldSetup({ onHeldFieldAnswers: vi.fn(async () => ({ holdReleased: true })) });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, s.d, openBudget());
+
+    expect(s.heldReads).toHaveLength(0);
+    expect(s.repo.released).toHaveLength(1);
+    expect(s.orch.consolidatedUpsertIPO).not.toHaveBeenCalled();
+    expect(s.repo.recordOutcome).not.toHaveBeenCalled();
+    expect(result.fieldsSkippedProtected).toBe(1);
+  });
+
+  it('OD-106: a hook that kept the hold stamps the read as before', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const s = heldSetup({ onHeldFieldAnswers: vi.fn(async () => ({ holdReleased: false })) });
+
+    await walkFieldPlanForIPO(IPO_ID, s.d, openBudget());
+
+    expect(s.heldReads).toEqual([{ planRowId: 'plan-1', claimToken: 'token-1' }]);
+    expect(s.repo.released).toHaveLength(0);
+  });
+
   it('records each source answer as a witness (camelCase field, rank order) and hands them to the hook', async () => {
     FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
     const s = heldSetup();
