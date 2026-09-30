@@ -2283,11 +2283,13 @@ async function checkIdentity() {
     `SELECT action_type AS "actionType", new_value AS slug,
             details->'incoming'->>'companyName' AS "companyName",
             details->>'reason' AS reason,
+            details->>'origin' AS origin,
             old_value AS candidates, "timestamp"::text AS at
        FROM audit_logs
       WHERE action_type IN ('IDENTITY_HELD_FOR_REVIEW', 'IDENTITY_HOLD_OVERRIDDEN')
         AND "timestamp" > now() - interval '30 days'`
   );
+  // origin is read here and excluded inside findUndecidedIdentityHolds (#1299), so one tested function owns the exclusion
   const toIso = (r) => ({ ...r, at: `${String(r.at).replace(' ', 'T').slice(0, 19)}Z` });
   const undecided = findUndecidedIdentityHolds(
     heldRows.filter((r) => r.actionType === 'IDENTITY_HELD_FOR_REVIEW').map(toIso),

@@ -158,6 +158,11 @@ export interface IpoIdentity {
    */
   priceRangeMax?: number | null;
   /**
+   * Set by the admin create form only: any hold this resolution records was started by an admin, not a
+   * scraper, and is tagged `details.origin` so the nightly `i_identity_held` count leaves it out (#1299 M1).
+   */
+  holdOrigin?: 'admin-create';
+  /**
    * Incoming exchange segment ('MAINBOARD' | 'SME'), when the caller has
    * one. T-403 Tier-A review (item 3): name/prefix/fuzzy matching alone
    * cannot tell an SME and a mainboard offering of the same name apart — two
@@ -509,7 +514,7 @@ async function holdAliasOnlyMatch(ipoRepository: IPORepository, identity: IpoIde
   logger.warn({ incoming: { ...incoming, priceRangeMax: bounds.incomingPriceRangeMax }, candidateId: c.id, candidateSlug: c.slug, ...bounds, reason: hold.reason },
     'identity_held_for_review: [§9.2 item 26] alias-only match not corroborated - NOT bound, NOT created (OD-68)');
   const recorder = (ipoRepository as { recordAliasIdentityHold?: (...a: unknown[]) => Promise<void> }).recordAliasIdentityHold;
-  if (typeof recorder === 'function') await recorder.call(ipoRepository, incoming, candidates, hold.reason);
+  if (typeof recorder === 'function') await recorder.call(ipoRepository, incoming, candidates, hold.reason, identity.holdOrigin);
   throw new IdentityHeldForReviewError(
     `resolveIpoRow: "${identity.companyName}" held for review (OD-68, §9.2 item 26) - ${hold.reason}; candidate ${c.slug}; nothing written`,
     incoming,
@@ -813,14 +818,15 @@ async function refuseNameOnlyBindToAdminRow(
   if (!row || tier !== 'name') return row;
   const repo = ipoRepository as {
     isAdminCreated?: (id: string) => Promise<boolean>;
-    holdNameOnlyBindToAdminRow?: (incoming: unknown, candidate: unknown) => Promise<never>;
+    holdNameOnlyBindToAdminRow?: (incoming: unknown, candidate: unknown, origin?: 'admin-create') => Promise<never>;
   };
   if (typeof repo.isAdminCreated !== 'function' || typeof repo.holdNameOnlyBindToAdminRow !== 'function') return row;
   if (!(await repo.isAdminCreated.call(ipoRepository, row.id))) return row;
   return repo.holdNameOnlyBindToAdminRow.call(
     ipoRepository,
     { companyName: identity.companyName, slug: identity.slug, openDate: identity.openDate ?? null, priceRangeMin: identity.priceRangeMin ?? null },
-    { id: row.id, slug: row.slug, companyName: row.companyName, openDate: row.openDate, priceRangeMin: row.priceRangeMin, status: row.status }
+    { id: row.id, slug: row.slug, companyName: row.companyName, openDate: row.openDate, priceRangeMin: row.priceRangeMin, status: row.status },
+    identity.holdOrigin
   );
 }
 

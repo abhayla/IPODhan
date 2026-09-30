@@ -1228,6 +1228,9 @@ export function findNameBoundLiveRows(rows = []) {
 // it — reported by name, never as a count (signal-ownership.md R1).
 // `holds`/`overrides`: [{ slug, companyName?, candidates?, at }] with `at` an
 // ISO timestamp; `now` injectable for tests.
+// #1299: a hold the admin create form started (`origin` = details->>'origin' = 'admin-create') was refused
+// to that admin on the spot - it is not a scraper record waiting for a decision, so it is left out here.
+export const ADMIN_CREATE_HOLD_ORIGIN = 'admin-create';
 export function findUndecidedIdentityHolds(holds = [], overrides = [], now = new Date(), recentDays = 2) {
   const cutoff = now.getTime() - recentDays * 86_400_000;
   const lastOverride = new Map();
@@ -1237,6 +1240,7 @@ export function findUndecidedIdentityHolds(holds = [], overrides = [], now = new
   }
   const bySlug = new Map();
   for (const h of holds) {
+    if (h.origin === ADMIN_CREATE_HOLD_ORIGIN) continue;
     const t = Date.parse(h.at);
     if (!(t >= cutoff)) continue;
     const ov = lastOverride.get(h.slug);
