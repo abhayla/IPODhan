@@ -1,3 +1,4 @@
+import { pickListingSentenceDocument } from '../../scraper/config/listing-sentence-precedence.mjs';
 // Pure predicates for the T-335 "detection floor" — the round-7 fresh-review
 // coverage floor promoted into FAIL-level nightly-audit checks (see
 // docs/reviews/round-7-detection-rca.md and evidence/2026-08-26-T-322/DETECTION-RCA.md).
@@ -636,31 +637,26 @@ export function checkSegmentHasProvenance(row) {
 
 // ---- (d_segment_document_board, #1233 / OD-129 / spec row 23): the offer document's listing
 // sentence decides the board. The filing persister writes each document's board into
-// document_field_receipts (ipos.segment); the best-ranked document that read one (Prospectus >
-// RHP = price band ad > DRHP, the later extraction winning a tie, OD-30) is the board the row must
-// carry. A stored segment that differs, with no ADMIN hold on it (§9), is the write path failing to
-// apply the document: a feed overwrote it, or the document never reached the row.
-export const OFFER_DOCUMENT_BOARD_RANK = Object.freeze({ PROSPECTUS: 3, RHP: 2, PRICE_BAND_AD: 2, DRHP: 1 });
+// document_field_receipts (ipos.segment); the deciding document among those is picked by THE order
+// the persister's write gate uses (scraper/config/listing-sentence-precedence.mjs: Prospectus > RHP >
+// price band ad > DRHP, then the later FILING date, OD-30, then the later extraction). A stored
+// segment that differs, with no ADMIN hold on it (section 9), is the write path failing to apply the
+// document: a feed overwrote it, or the document never reached the row.
 
-/** Receipts of ONE IPO: [{docType, value, extractedAt}] -> the deciding receipt, or null. */
+/** Receipts of ONE IPO: [{docType, filingDate, value, extractedAt}] -> { receipt, unordered }. */
 export function pickDecidingBoardReceipt(receipts) {
-  let best = null;
-  for (const r of receipts ?? []) {
-    const rank = OFFER_DOCUMENT_BOARD_RANK[r.docType];
-    if (rank === undefined || (r.value !== 'MAINBOARD' && r.value !== 'SME')) continue;
-    const at = String(r.extractedAt ?? '');
-    if (!best || rank > best.rank || (rank === best.rank && at > best.at)) best = { rank, at, receipt: r };
-  }
-  return best ? best.receipt : null;
+  const valid = (receipts ?? []).filter((r) => r && (r.value === 'MAINBOARD' || r.value === 'SME'));
+  const { doc, unordered } = pickListingSentenceDocument(valid);
+  return { receipt: doc ?? null, unordered: unordered === true };
 }
 
 /** row: {companyName, segment, segmentSource, receipts}. Violation string or null. */
 export function checkSegmentMatchesDocumentBoard(row) {
-  const deciding = pickDecidingBoardReceipt(row.receipts);
+  const { receipt: deciding } = pickDecidingBoardReceipt(row.receipts);
   if (!deciding) return null;
   if (row.segmentSource === 'ADMIN') return null;
   if (row.segment === deciding.value) return null;
-  return `"${row.companyName}" stores segment=${row.segment ?? 'NULL'} (source ${row.segmentSource ?? 'none'}) but its ${deciding.docType} (extracted ${deciding.extractedAt ?? '?'}) reads the board ${deciding.value}`;
+  return `"${row.companyName}" stores segment=${row.segment ?? 'NULL'} (source ${row.segmentSource ?? 'none'}) but its ${deciding.docType} (filed ${deciding.filingDate ?? '?'}, extracted ${deciding.extractedAt ?? '?'}) reads the board ${deciding.value}`;
 }
 
 // ---- (j_live_row_without_provenance, #735 RCA): a live IPO row with ZERO

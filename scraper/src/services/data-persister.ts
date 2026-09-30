@@ -941,12 +941,35 @@ export interface PostListingPriceHoldRepo extends PostListingPriceWriteRepo {
  * `IPORepository.updateReportingHolds` where the repository has it (always, in production — the
  * `upsertIPO` doors are typed `IPORepository`); an untyped test fake with only `update` reports none.
  */
+/**
+ * #1233 round 2 (MAJOR-3): options for `upsertIPO`.
+ * `inIposWriteTx` runs INSIDE the `ipos` update's own transaction (`IPORepository.updateReportingHolds`
+ * option `inTx`), after the update and under the row lock that write takes, with the type slice
+ * (`segment`, `listingExchanges`, `offeringType`) read in that transaction before the update. A throw
+ * rolls the `ipos` write back. Not run when the write is a no-op (nothing changed, so the plan inputs
+ * did not change either) or when the row is created.
+ */
+export interface UpsertIpoOptions {
+  inIposWriteTx?: (
+    tx: unknown,
+    before: { segment: string | null; listingExchanges: string[] | null; offeringType: string | null }
+  ) => Promise<void>;
+}
+
 async function updateReportingHolds(
-  repo: { update: (id: string, data: any) => Promise<unknown>; updateReportingHolds?: (id: string, data: any) => Promise<{ dropped: string[] }> },
+  repo: {
+    update: (id: string, data: any) => Promise<unknown>;
+    updateReportingHolds?: (id: string, data: any, options?: { inTx?: UpsertIpoOptions['inIposWriteTx'] }) => Promise<{ dropped: string[] }>;
+  },
   id: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  inTx?: UpsertIpoOptions['inIposWriteTx']
 ): Promise<string[]> {
-  if (typeof repo.updateReportingHolds === 'function') return (await repo.updateReportingHolds(id, data)).dropped;
+  if (typeof repo.updateReportingHolds === 'function') {
+    return (await repo.updateReportingHolds(id, data, inTx ? { inTx } : undefined)).dropped;
+  }
+  // Fail closed: a caller that needs work inside the write transaction must never get a write without it.
+  if (inTx) throw new Error('upsertIPO: inIposWriteTx needs a repository with updateReportingHolds (no transactional write available)');
   await repo.update(id, data);
   return [];
 }
@@ -1144,11 +1167,13 @@ export async function upsertIPO(
    * merges it into a provenance row ONLY when the value written came from this caller's source
    * (never onto a row another source owns). Omitted = unchanged behaviour.
    */
-  lineage?: Record<string, unknown> | null
+  lineage?: Record<string, unknown> | null,
+  /** #1233 round 2: see `UpsertIpoOptions`. Omitted = unchanged behaviour. */
+  options?: UpsertIpoOptions
 ): Promise<string> {
   // OD-85: one record = one source-key lineage scope, so its field_sources rows carry the key ids
   // that bound it (reuses the caller's scope when BaseScraperOrchestrator already opened one).
-  return withSourceKeyLineage(() => upsertIPOInScope(ipoRepository, scrapedIPO, source, preResolvedIPO, contextFields, lineage));
+  return withSourceKeyLineage(() => upsertIPOInScope(ipoRepository, scrapedIPO, source, preResolvedIPO, contextFields, lineage, options));
 }
 
 async function upsertIPOInScope(
@@ -1157,7 +1182,8 @@ async function upsertIPOInScope(
   source: ScraperSource,
   preResolvedIPO: IPO | null | undefined,
   contextFields: string[] | undefined,
-  lineage?: Record<string, unknown> | null
+  lineage?: Record<string, unknown> | null,
+  options?: UpsertIpoOptions
 ): Promise<string> {
   const startTime = Date.now();
   // T-478 round 3 (issue #225 follow-up, CRITICAL fix): the -ofs-<year> slug
@@ -1735,7 +1761,7 @@ async function upsertIPOInScope(
             } else {
               // Update IPO with consolidated data. §9.2 item 19: the fields an admin hold dropped
               // inside the write transaction are reported back so no provenance claims them (OD-131).
-              heldDropped = await updateReportingHolds(ipoRepository as never, existingIPO.id, finalData);
+              heldDropped = await updateReportingHolds(ipoRepository as never, existingIPO.id, finalData, options?.inIposWriteTx);
             }
 
             // OD-131 ("Rejected = never set"): write provenance only for values this door
@@ -1902,7 +1928,7 @@ async function upsertIPOInScope(
           );
         }
         const guardedFallback = keepTerminalIpoStatus((existingIPO as any).status, claimsOnlyFallback);
-        const fallbackHeld = await updateReportingHolds(ipoRepository as never, existingIPO.id, guardedFallback);
+        const fallbackHeld = await updateReportingHolds(ipoRepository as never, existingIPO.id, guardedFallback, options?.inIposWriteTx);
         // OD-131 + §9.2 item 19: what the admin hold dropped was not stored; nothing below claims it.
         const storedFallback = withoutHeld(guardedFallback, fallbackHeld);
 

@@ -74,7 +74,12 @@ async function seed(segment: string | null, segmentSource: string | null, lineag
   }
 }
 
-async function write(source: string, segment: string, lineage: Record<string, unknown> | null = null) {
+async function write(
+  source: string,
+  segment: string,
+  lineage: Record<string, unknown> | null = null,
+  options?: { inIposWriteTx?: (tx: unknown, before: never) => Promise<void> }
+) {
   const { upsertIPO } = await import('../../src/services/data-persister.js');
   const repo = new IPORepository(drizzle(pool!, { schema }) as never, noRedis);
   const stored = await repo.findById(IPO_ID);
@@ -91,7 +96,8 @@ async function write(source: string, segment: string, lineage: Record<string, un
     source as never,
     stored as never,
     CONTEXT,
-    lineage
+    lineage,
+    options as never
   );
 }
 
@@ -184,10 +190,11 @@ describe.skipIf(!DATABASE_URL)('#1233 the offer document decides ipos.segment (i
     expect((await state()).seg).toBe('SME');
   });
 
-  // OD-30, the other direction (an older DRHP extracted after the RHP): stopped BEFORE this door by
-  // the filing persister's listing-precedence gate, which claims no board for an outranked document
-  // (unit: filing-persister-document-board-1233.test.ts). `upsertIPO` passes no docType to
-  // consolidation, so this door alone would let the newer write win (deferred, PR body).
+  // OD-30, the other direction (an older filing extracted after a newer one, or an ad after the
+  // RHP): stopped BEFORE this door by the filing persister's listing-sentence gate
+  // (scraper/config/listing-sentence-precedence.mjs; unit: listing-sentence-precedence-1233.test.ts
+  // and filing-persister-listing-sentence.test.ts). This door gets no document type and lets the
+  // newest write win, which is the one the gate let through.
 
   it('§9: an ADMIN-held segment is never overwritten by a document', async () => {
     await seed('MAINBOARD', 'ADMIN');
@@ -197,13 +204,37 @@ describe.skipIf(!DATABASE_URL)('#1233 the offer document decides ipos.segment (i
     expect(s.src).toBe('ADMIN');
   });
 
-  it('§2.8: the plan rebuilder (the one rebuild path, under the row lock) rebuilds MAINBOARD -> SME_NSE', async () => {
-    await seed('SME', 'DRHP', RHP);
+  it('MAJOR-3: the board write and the plan rebuild commit together (in the ipos write transaction)', async () => {
+    await seed('MAINBOARD', 'CHITTORGARH');
     const { makePlanRebuilder } = await import('../../src/services/filing-persist-deps.js');
-    const rebuild = makePlanRebuilder(undefined, drizzle(pool!, { schema }) as never);
-    const r = await rebuild(IPO_ID, { segment: 'MAINBOARD', listingExchanges: ['NSE'], offeringType: 'IPO' });
-    expect(r).toMatchObject({ rebuilt: true, typeKeyBefore: 'MAINBOARD', typeKeyAfter: 'SME_NSE' });
+    const rebuild = makePlanRebuilder();
+    let seen: unknown = null;
+    await write('DRHP', 'SME', RHP, {
+      inIposWriteTx: async (tx, before) => {
+        seen = before;
+        const r = await rebuild(tx, IPO_ID, before);
+        expect(r).toMatchObject({ rebuilt: true, typeKeyBefore: 'MAINBOARD', typeKeyAfter: 'SME_NSE' });
+      },
+    });
+    expect(seen).toMatchObject({ segment: 'MAINBOARD', listingExchanges: ['NSE'] });
+    expect((await state()).seg).toBe('SME');
     const planned = (await pool!.query('SELECT count(*)::int AS n FROM ipo_field_plan WHERE ipo_id = $1', [IPO_ID])).rows[0].n;
     expect(planned).toBeGreaterThan(0);
-  });
+  }, 60000);
+
+  it('MAJOR-3: a failed rebuild rolls the board back (never a new board with the old ranks)', async () => {
+    await seed('MAINBOARD', 'CHITTORGARH');
+    await expect(
+      write('DRHP', 'SME', RHP, {
+        inIposWriteTx: async () => {
+          throw new Error('rebuild failed on purpose');
+        },
+      })
+    ).rejects.toThrow();
+    const s = await state();
+    expect(s.seg).toBe('MAINBOARD');
+    expect(s.src).toBe('CHITTORGARH');
+    const planned = (await pool!.query('SELECT count(*)::int AS n FROM ipo_field_plan WHERE ipo_id = $1', [IPO_ID])).rows[0].n;
+    expect(planned).toBe(0);
+  }, 120000);
 });

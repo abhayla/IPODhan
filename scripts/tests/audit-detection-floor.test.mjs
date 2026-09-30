@@ -255,15 +255,45 @@ test('(d_segment_document_board) PASSES an agreeing row, an ADMIN hold, and a ro
   assert.equal(checkSegmentMatchesDocumentBoard(boardRow('MAINBOARD', 'NSE', [])), null);
 });
 
-test('(d_segment_document_board) the best-ranked document decides (Prospectus > RHP > DRHP; later wins a tie)', () => {
+test('(d_segment_document_board) the deciding document follows the WRITE GATE order (Prospectus > RHP > ad > DRHP; later FILING date; then later extraction)', () => {
   const receipts = [
-    { docType: 'DRHP', value: 'MAINBOARD', extractedAt: '2026-09-25 00:00:00' },
-    { docType: 'RHP', value: 'SME', extractedAt: '2026-09-10 00:00:00' },
-    { docType: 'RHP', value: 'MAINBOARD', extractedAt: '2026-09-01 00:00:00' },
+    { docType: 'DRHP', value: 'MAINBOARD', filingDate: '2026-01-01', extractedAt: '2026-09-25 00:00:00' },
+    { docType: 'RHP', value: 'SME', filingDate: '2026-09-10', extractedAt: '2026-09-10 00:00:00' },
+    // MAJOR-1: an OLDER RHP filing extracted LATER never decides
+    { docType: 'RHP', value: 'MAINBOARD', filingDate: '2026-08-01', extractedAt: '2026-09-29 00:00:00' },
+    // MAJOR-1: a price band ad ranks below the RHP
+    { docType: 'PRICE_BAND_AD', value: 'MAINBOARD', filingDate: '2026-09-20', extractedAt: '2026-09-30 00:00:00' },
   ];
-  assert.equal(pickDecidingBoardReceipt(receipts).value, 'SME');
-  assert.equal(pickDecidingBoardReceipt([...receipts, { docType: 'PROSPECTUS', value: 'MAINBOARD', extractedAt: '2026-08-01' }]).value, 'MAINBOARD');
-  assert.equal(pickDecidingBoardReceipt([{ docType: 'CORRIGENDUM', value: 'SME' }, { docType: 'RHP', value: 'junk' }]), null);
+  assert.equal(pickDecidingBoardReceipt(receipts).receipt.value, 'SME');
+  assert.equal(pickDecidingBoardReceipt([...receipts, { docType: 'PROSPECTUS', value: 'MAINBOARD', filingDate: '2026-09-25', extractedAt: '2026-08-01' }]).receipt.value, 'MAINBOARD');
+  assert.equal(pickDecidingBoardReceipt([{ docType: 'CORRIGENDUM', value: 'SME' }, { docType: 'RHP', value: 'junk' }]).receipt, null);
+  // same filing date: the later extraction decides, as at the gate
+  assert.equal(pickDecidingBoardReceipt([
+    { docType: 'RHP', value: 'SME', filingDate: '2026-09-10', extractedAt: '2026-09-11' },
+    { docType: 'RHP', value: 'MAINBOARD', filingDate: '2026-09-10', extractedAt: '2026-09-12' },
+  ]).receipt.value, 'MAINBOARD');
+});
+
+test('(d_segment_document_board) best documents that cannot be ordered are not judged (no guess)', () => {
+  const r = pickDecidingBoardReceipt([
+    { docType: 'RHP', value: 'SME', filingDate: null, extractedAt: 'b' },
+    { docType: 'RHP', value: 'MAINBOARD', filingDate: '2026-09-10', extractedAt: 'a' },
+  ]);
+  assert.equal(r.receipt, null);
+  assert.equal(r.unordered, true);
+  assert.equal(checkSegmentMatchesDocumentBoard(boardRow('MAINBOARD', 'NSE', [
+    { docType: 'RHP', value: 'SME', filingDate: null },
+    { docType: 'RHP', value: 'SME', filingDate: '2026-09-10' },
+  ])), null);
+});
+
+test('(d_segment_document_board) MINOR-2: the check reads documents with is_active IS NOT FALSE, the same filter as the write gate, and passes the filing date', () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'audit-detection-floor.mjs'), 'utf8');
+  const body = src.slice(src.indexOf('async function checkD_segmentDocumentBoard'), src.indexOf('async function runCheck('));
+  assert.ok(body.length > 0);
+  assert.match(body, /d\.is_active IS NOT FALSE/);
+  assert.doesNotMatch(body, /d\.is_active = true/);
+  assert.match(body, /'filingDate', d\.filing_date::text/);
 });
 
 // ---- (d) segment provenance (lane C item 2 slice 3b) ------------------------

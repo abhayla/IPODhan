@@ -166,12 +166,12 @@
     },
     {
       "id": "d_segment_document_board",
-      "findingClass": "ipos.segment disagrees with the board the IPO's best-ranked offer document reads (Prospectus > RHP = price band ad > DRHP; the later extraction wins a tie, OD-30) and the segment is not ADMIN-held (spec §9) - the document-first rule of OD-129 / spec row 23 not reaching the row (a feed overwrote it, or the document's claim never landed)",
+      "findingClass": "ipos.segment disagrees with the board the IPO's deciding offer document reads (the write gate's own order, scraper/config/listing-sentence-precedence.mjs: Prospectus > RHP > price band ad > DRHP, then the later filing date (OD-30), then the later extraction) and the segment is not ADMIN-held (spec §9) - the document-first rule of OD-129 / spec row 23 not reaching the row (a feed overwrote it, or the document's claim never landed)",
       "issue": 1233,
       "sourceTask": "#1233",
-      "failThreshold": "EXISTS an IPO with a document_field_receipts row for ipos.segment on an active document whose deciding receipt value differs from ipos.segment, where the field_sources source for ipos.segment is not ADMIN",
+      "failThreshold": "EXISTS an IPO with a document_field_receipts row for ipos.segment on an active (is_active IS NOT FALSE) document whose deciding receipt value differs from ipos.segment, where the field_sources source for ipos.segment is not ADMIN",
       "severity": "P2",
-      "unverifiableWhen": "never emitted UNVERIFIABLE - an IPO with no segment receipt is not a candidate (documents extracted before #1233 carry none and are not re-read, OD-65/OD-91); zero candidates is a clean PASS"
+      "unverifiableWhen": "never emitted UNVERIFIABLE - an IPO with no segment receipt is not a candidate (documents extracted before #1233 carry none and are not re-read, OD-65/OD-91); an IPO whose best documents cannot be ordered (same type, missing filing date) is listed in the detail as not judged; zero candidates is a clean PASS"
     },
     {
       "id": "d_segment_provenance",

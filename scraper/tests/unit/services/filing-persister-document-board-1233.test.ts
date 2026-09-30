@@ -24,7 +24,6 @@ import {
   type FilingExtraction,
   type FilingPersisterDeps,
 } from '../../../src/services/filing-persister';
-import { higherRankedOfferDocumentTypes } from '../../../src/services/listing-sentence.js';
 
 const IPO_ID = 'b3b0f3c6-0f2e-4b9a-9f0c-1d2e3f4a5b6d';
 
@@ -56,9 +55,21 @@ const page = (slug: string, docType: string) => {
 const SME_NSE_RHP = () => [page('axiom-gas-engineering-ltd', 'RHP')];
 const MAINBOARD_DRHP = () => [page('a-one-steels-india-ltd', 'DRHP')];
 
-const completedDocs = (types: string[]): FilingPersisterDeps['listingPrecedence'] => ({
-  higherRankedOfferDocumentCompleted: async (_ipo, docType) =>
-    types.some((t) => higherRankedOfferDocumentTypes(docType).includes(t)),
+/**
+ * #1233 round 2: a precedence reader over an in-memory list of COMPLETED documents, [type, filing date].
+ * The persister applies the real shared order (scraper/config/listing-sentence-precedence.mjs).
+ */
+const completedDocs = (
+  docs: Array<string | [string, string | null]>,
+  selfFilingDate: string | null = '2026-09-15'
+): FilingPersisterDeps['listingPrecedence'] => ({
+  listingDocuments: async () => ({
+    selfFilingDate,
+    others: docs.map((d, i) => {
+      const [docType, filingDate] = Array.isArray(d) ? d : [d, '2026-09-01'];
+      return { id: `doc-${i}`, docType, filingDate };
+    }),
+  }),
 });
 
 interface Stored {
@@ -171,36 +182,97 @@ describe('#1233 OD-129: the listing sentence claims the board (ipos.segment)', (
   });
 });
 
-describe('#1233 §2.8 / OD-142: a claimed board or exchange set rebuilds the plan through the one rebuild path', () => {
-  it('calls planRebuild with the type slice read BEFORE the write', async () => {
-    const planRebuild = vi.fn(async () => ({ rebuilt: true }));
-    await run(SME_NSE_RHP(), { segment: 'MAINBOARD', listingExchanges: ['NSE'] }, { extra: { planRebuild } as never });
-    expect(planRebuild).toHaveBeenCalledTimes(1);
-    expect(planRebuild).toHaveBeenCalledWith(IPO_ID, {
-      segment: 'MAINBOARD',
-      listingExchanges: ['NSE'],
-      offeringType: 'IPO',
-    });
+/** The upsertIPO mock runs the write-transaction hook the way IPORepository does: fake tx, the stored slice. */
+const TX = { fake: 'tx' };
+function runHookLikeTheRepository(before: Stored) {
+  upsertIPOMock.mockImplementationOnce(async (...args: unknown[]) => {
+    const options = args[6] as { inIposWriteTx?: (tx: unknown, b: unknown) => Promise<void> } | undefined;
+    if (options?.inIposWriteTx) {
+      await options.inIposWriteTx(TX, {
+        segment: before.segment,
+        listingExchanges: before.listingExchanges,
+        offeringType: before.offeringType ?? 'IPO',
+      });
+    }
+    return 'ipo-id';
+  });
+}
+
+describe('#1233 round 2 MAJOR-3: the plan rebuild runs INSIDE the ipos write transaction', () => {
+  const stored: Stored = { segment: 'MAINBOARD', listingExchanges: ['NSE'] };
+
+  it('hands upsertIPO an in-transaction hook that calls planRebuildInTx with that tx and the locked slice', async () => {
+    runHookLikeTheRepository(stored);
+    const planRebuildInTx = vi.fn(async () => ({ rebuilt: true, typeKeyBefore: 'MAINBOARD', typeKeyAfter: 'SME_NSE', queued: 2 }));
+    const { result } = await run(SME_NSE_RHP(), stored, { extra: { planRebuildInTx } as never });
+    expect(planRebuildInTx).toHaveBeenCalledTimes(1);
+    expect(planRebuildInTx).toHaveBeenCalledWith(TX, IPO_ID, { segment: 'MAINBOARD', listingExchanges: ['NSE'], offeringType: 'IPO' });
+    expect((result as { plan_rebuild?: string }).plan_rebuild).toBe('rebuilt MAINBOARD -> SME_NSE (queued 2)');
   });
 
-  it('does not call it when the document claims no plan-invalidating field', async () => {
-    const planRebuild = vi.fn(async () => ({ rebuilt: true }));
-    await run(undefined, { segment: 'MAINBOARD', listingExchanges: ['NSE'] }, { extra: { planRebuild } as never });
-    expect(planRebuild).not.toHaveBeenCalled();
-  });
-
-  it('does not call it on a dry run', async () => {
-    const planRebuild = vi.fn(async () => ({ rebuilt: true }));
-    await run(SME_NSE_RHP(), { segment: 'MAINBOARD', listingExchanges: ['NSE'] }, { apply: false, extra: { planRebuild } as never });
-    expect(planRebuild).not.toHaveBeenCalled();
-  });
-
-  it('a failing rebuild is reported, not swallowed silently, and does not undo the write', async () => {
-    const planRebuild = vi.fn(async () => {
+  it('a failing rebuild fails the whole write: persistFilingExtraction throws, nothing reports success', async () => {
+    runHookLikeTheRepository(stored);
+    const planRebuildInTx = vi.fn(async () => {
       throw new Error('lock timeout');
     });
-    const { result } = await run(SME_NSE_RHP(), { segment: 'MAINBOARD', listingExchanges: ['NSE'] }, { extra: { planRebuild } as never });
-    expect(upsertIPOMock).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(result)).toContain('plan rebuild failed');
+    await expect(run(SME_NSE_RHP(), stored, { extra: { planRebuildInTx } as never })).rejects.toThrow('lock timeout');
+  });
+
+  it('MINOR-1: exchanges ADMIN-held, only the board claimed -> the rebuild still runs (claimed.has(segment))', async () => {
+    runHookLikeTheRepository(stored);
+    const protectionFilter = vi.fn(async (_id: string, _t: string, data: Record<string, unknown>) => {
+      const filtered = { ...data };
+      delete filtered.listingExchanges;
+      return { filtered };
+    });
+    const planRebuildInTx = vi.fn(async () => ({ rebuilt: true }));
+    const { scraped, contextFields } = await run(SME_NSE_RHP(), stored, { extra: { planRebuildInTx, protectionFilter } as never });
+    expect(scraped.segment).toBe('SME');
+    expect(contextFields).toContain('listingExchange');
+    expect(planRebuildInTx).toHaveBeenCalledTimes(1);
+  });
+
+  it('no hook when the document claims no plan-invalidating field, and none on a dry run', async () => {
+    const planRebuildInTx = vi.fn(async () => ({ rebuilt: true }));
+    await run(undefined, stored, { extra: { planRebuildInTx } as never });
+    expect(upsertIPOMock.mock.calls[0]?.[6]).toBeUndefined();
+    await run(SME_NSE_RHP(), stored, { apply: false, extra: { planRebuildInTx } as never });
+    expect(planRebuildInTx).not.toHaveBeenCalled();
+  });
+});
+
+describe('#1233 round 2 MAJOR-2: segment is never claimed where section 1.11 says it does not apply (manifest na)', () => {
+  it.each(['INVITS', 'REITS'])('a %s row keeps segment NULL: the board is not claimed, the exchanges are', async (offeringType) => {
+    const { scraped, contextFields, result } = await run(SME_NSE_RHP(), { segment: null, listingExchanges: null, offeringType });
+    expect(contextFields).toContain('segment');
+    expect(scraped.segment ?? null).toBeNull();
+    expect(contextFields).not.toContain('listingExchange');
+    expect(JSON.stringify(result)).toContain(`segment is not applicable for ${offeringType}`);
+  });
+
+  it('reads the manifest, not a hand list: a manifest marking IPO not-applicable refuses an IPO board', async () => {
+    const fieldManifest = { fields: { 'ipos.segment': { na: ['IPO'] } } };
+    const { contextFields } = await run(SME_NSE_RHP(), { segment: 'MAINBOARD', listingExchanges: ['NSE'] }, { extra: { fieldManifest } as never });
+    expect(contextFields).toContain('segment');
+  });
+
+  it('(a) an unknown offering type fails closed (no board claim)', async () => {
+    const { contextFields } = await run(SME_NSE_RHP(), { segment: 'MAINBOARD', listingExchanges: ['NSE'], offeringType: '' });
+    expect(contextFields).toContain('segment');
+  });
+});
+
+describe('#1233 round 2 (b): answer states of the listing sentence', () => {
+  it('UNREADABLE (phrase present, no exchange named) claims nothing and logs the clause with the document', async () => {
+    const { default: logger } = await import('../../../src/utils/logger.js');
+    (logger.info as ReturnType<typeof vi.fn>).mockClear();
+    const { contextFields } = await run(
+      [[0, 'The Equity Shares offered are proposed to be listed on the Stock Exchanges. Next sentence.']],
+      { segment: 'MAINBOARD', listingExchanges: ['NSE'] }
+    );
+    expect(contextFields).toContain('segment');
+    expect(contextFields).toContain('listingExchange');
+    const logged = (logger.info as ReturnType<typeof vi.fn>).mock.calls.find((c) => String(c[1]).includes('names no exchange'));
+    expect(logged?.[0]).toMatchObject({ clause: expect.stringContaining('Stock Exchanges') });
   });
 });
