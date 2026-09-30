@@ -19,6 +19,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { ADMIN_SESSION_COOKIE } from '@/lib/admin-accounts/session-cookie-name';
+import { applyPrivateResponseHeaders } from '@/lib/security/private-response-headers';
 
 /**
  * Admin gate, the FIRST layer (runs before any admin page or admin API route renders).
@@ -60,8 +61,19 @@ export function adminGate(request: NextRequest): NextResponse | null {
   return NextResponse.redirect(new URL(ADMIN_LOGIN_PAGE, request.url));
 }
 
+export function isAdminPath(pathname: string): boolean {
+  const p = stripTrailingSlash(pathname);
+  return p === '/admin' || p.startsWith('/admin/') || p === '/api/admin' || p.startsWith('/api/admin/');
+}
+
 export function middleware(request: NextRequest) {
   const response = adminGate(request) ?? NextResponse.next();
+
+  // #1346: an admin page/API response, and ANY response to a request carrying an admin session
+  // cookie (e.g. /ipos/<slug> rendering the editor controls), is never stored by the CDN.
+  if (isAdminPath(request.nextUrl.pathname) || request.cookies.get(ADMIN_SESSION_COOKIE)?.value) {
+    applyPrivateResponseHeaders(response.headers);
+  }
 
   // Prevent MIME type sniffing
   // Ensures browsers respect Content-Type header
