@@ -57,6 +57,7 @@ import type { IPO, IPOWithRelations } from './types';
 
 export { IdentityHeldForReviewError } from '../errors/repository-errors';
 import { IdentityHeldForReviewError } from '../errors/repository-errors';
+import { ofsIdentityConflict, segmentsConflict } from './ipo-identity-conflicts';
 import {
   resolveBySourceKeys,
   planSourceKeyWrite,
@@ -226,36 +227,6 @@ function separateOffering(
     return false;
   }
   return identityOfferingType !== candidateOfferingType;
-}
-
-/**
- * True when exactly one side of the match is OFS — an OFS record identifies
- * a DIFFERENT calendar entry than the company's IPO row and must never
- * resolve to it (or vice versa). Deliberately narrower than "any offering
- * type mismatch": IPO<->FPO reclassification (a real, existing use of this
- * resolver — see `guardSmeOfferingTypeAgainstFpo`) must keep resolving to
- * the same row. Either side unset means "no information", never a conflict.
- */
-function ofsIdentityConflict(
-  identityOfferingType: string | null | undefined,
-  candidateOfferingType: string | null | undefined
-): boolean {
-  if (!identityOfferingType || !candidateOfferingType) {
-    return false;
-  }
-  return (identityOfferingType === 'OFS') !== (candidateOfferingType === 'OFS');
-}
-
-/**
- * True when `identitySegment` and `candidateSegment` are both set and
- * disagree — the segment guard (T-403 item 3). Either side unset means "no
- * information", which is never treated as a mismatch.
- */
-function segmentsConflict(
-  identitySegment: 'MAINBOARD' | 'SME' | null | undefined,
-  candidateSegment: string | null | undefined
-): boolean {
-  return identitySegment != null && candidateSegment != null && identitySegment !== candidateSegment;
 }
 
 /**
@@ -961,7 +932,7 @@ async function resolveIpoRowByOrderWithTier(
   // the candidate row means they cannot be the same listing even with an
   // identical name — drop the candidate rather than merge across segments.
   let nameMatch: IPO | IPOWithRelations | null = normalizedName
-    ? await ipoRepository.findByNormalizedName(normalizedName)
+    ? await ipoRepository.findByNormalizedName(normalizedName, undefined, { segment, offeringType, keyBoundId: keyMatch?.id ?? null })
     : null;
   if (nameMatch && segmentsConflict(segment, nameMatch.segment)) {
     logger.warn({
@@ -974,7 +945,7 @@ async function resolveIpoRowByOrderWithTier(
     nameMatch = null;
   } else if (nameMatch && ofsIdentityConflict(offeringType, nameMatch.offeringType)) {
     let retried = offeringType && normalizedName
-      ? await ipoRepository.findByNormalizedName(normalizedName, offeringType)
+      ? await ipoRepository.findByNormalizedName(normalizedName, offeringType, { segment, offeringType, keyBoundId: keyMatch?.id ?? null })
       : null;
     if (retried && ofsIdentityConflict(offeringType, retried.offeringType)) retried = null;
     if (retried) {

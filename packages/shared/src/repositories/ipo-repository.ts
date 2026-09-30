@@ -50,6 +50,7 @@ import {
   type SourceKeyBoundVia,
 } from './ipo-source-keys';
 import { noteSourceKeyBind } from './source-key-lineage';
+import { ofsIdentityConflict, segmentsConflict } from './ipo-identity-conflicts';
 import {
   captureMergeDeletions,
   missingForUnmerge,
@@ -278,6 +279,17 @@ export function isWordBoundaryPrefixMatch(normalizedA: string, normalizedB: stri
 }
 
 /** The merge plan `mergeDuplicateInto` computes and, when `apply` is true, executes. */
+/** What the caller already knows about the record, so same-name rows it separates are not "ambiguous" (#1235). */
+export interface NormalizedNameNarrowing {
+  segment?: 'MAINBOARD' | 'SME' | null;
+  offeringType?: string | null;
+  /** The row an ISIN / symbol / alias tier already bound; a stronger signal than the name. */
+  keyBoundId?: string | null;
+}
+
+/** Bounded fetch for the same-name set: enough to narrow, never an unbounded scan. */
+const NORMALIZED_NAME_FETCH_LIMIT = 10;
+
 export interface MergeDuplicatePlan {
   keep: IPO;
   drop: IPO;
@@ -600,7 +612,11 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * // "Midwest Ltd" and "Midwest Limited" both normalize to "midwest"
    * const ipo = await repository.findByNormalizedName('midwest');
    */
-  async findByNormalizedName(normalizedName: string, offeringType?: string): Promise<IPO | null> {
+  async findByNormalizedName(
+    normalizedName: string,
+    offeringType?: string,
+    narrowing?: NormalizedNameNarrowing
+  ): Promise<IPO | null> {
     if (!normalizedName) {
       return null;
     }
@@ -633,7 +649,25 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       const query = offeringType
         ? this.db.select().from(ipos).where(sql`(${nameCondition}) AND ${ipos.offeringType} = ${offeringType}`).orderBy(ipos.id)
         : this.db.select().from(ipos).where(nameCondition).orderBy(ipos.id);
-      const matches = await query.limit(2);
+      // #1235: fetch every same-name row (bounded), then narrow BEFORE deciding to hold. Two rows
+      // that share a name are only ambiguous when nothing the caller already knows separates them.
+      const rawMatches = await query.limit(NORMALIZED_NAME_FETCH_LIMIT);
+      let matches = rawMatches;
+
+      if (rawMatches.length > 1 && narrowing) {
+        // An ISIN / symbol / alias bind (OD-34 / OD-89 order) is stronger than the name: the name
+        // gives no competing signal, so it neither holds nor binds (the caller keeps the key row).
+        if (narrowing.keyBoundId) {
+          const keyRow = rawMatches.find((m: IPO) => m.id === narrowing.keyBoundId);
+          return keyRow ?? null;
+        }
+        const narrowed = rawMatches.filter(
+          (m: IPO) => !segmentsConflict(narrowing.segment, m.segment) && !ofsIdentityConflict(narrowing.offeringType, m.offeringType)
+        );
+        // Every row separated from the record: return the first so the resolver declines it with
+        // its own segment / OFS log lines (identical outcome to a single conflicting row).
+        matches = narrowed.length === 0 ? rawMatches.slice(0, 1) : narrowed;
+      }
 
       if (matches.length > 1) {
         const candidates = matches.map((m: IPO) => ({

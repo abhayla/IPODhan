@@ -139,3 +139,81 @@ describe('resolveIpoRow: an ambiguous Tier 3 name match is never silently bound 
     expect((result as IdentityHeldForReviewError).candidates).toHaveLength(2);
   });
 });
+
+/**
+ * #1235: the hold used to fire BEFORE the resolver narrowed by segment / offering type and even
+ * when an ISIN or symbol had already bound the record. Class: any same-name pair the record can
+ * tell apart (SME + MAINBOARD, IPO + OFS) or an identifier binds. Detectors fail closed: with no
+ * separating signal the pair is still HELD.
+ */
+describe('#1235: same-name hold runs AFTER narrowing, and only holds what is still ambiguous', () => {
+  const SME_ROW = { ...BASE_ROW, id: 'acme-sme', slug: 'acme-industries-sme', segment: 'SME', offeringType: 'IPO' };
+  const MAIN_ROW = { ...YEAR_ROW, id: 'acme-main', slug: 'acme-industries-main', segment: 'MAINBOARD', offeringType: 'IPO' };
+  const IPO_ROW = { ...BASE_ROW, id: 'acme-ipo', slug: 'acme-ipo', segment: 'MAINBOARD', offeringType: 'IPO' };
+  const OFS_ROW = { ...YEAR_ROW, id: 'acme-ofs', slug: 'acme-ofs', segment: 'MAINBOARD', offeringType: 'OFS' };
+
+  it('SME + MAINBOARD pair, incoming SME -> the SME row, no hold recorded', async () => {
+    const { repo, auditInserts } = makeRepo([SME_ROW, MAIN_ROW]);
+    const got = await repo.findByNormalizedName('acme industries', undefined, { segment: 'SME' });
+    expect(got?.id).toBe('acme-sme');
+    expect(auditInserts).toHaveLength(0);
+  });
+
+  it('SME + MAINBOARD pair, incoming MAINBOARD -> the MAINBOARD row', async () => {
+    const { repo } = makeRepo([SME_ROW, MAIN_ROW]);
+    expect((await repo.findByNormalizedName('acme industries', undefined, { segment: 'MAINBOARD' }))?.id).toBe('acme-main');
+  });
+
+  it('IPO + OFS pair, incoming IPO -> the IPO row; incoming OFS -> the OFS row', async () => {
+    const { repo } = makeRepo([IPO_ROW, OFS_ROW]);
+    expect((await repo.findByNormalizedName('acme industries', undefined, { offeringType: 'IPO' }))?.id).toBe('acme-ipo');
+    expect((await repo.findByNormalizedName('acme industries', undefined, { offeringType: 'OFS' }))?.id).toBe('acme-ofs');
+  });
+
+  it('fail closed: incoming carries no segment / type -> the pair is still HELD', async () => {
+    const { repo, auditInserts } = makeRepo([SME_ROW, MAIN_ROW]);
+    const err = await repo.findByNormalizedName('acme industries', undefined, { segment: null, offeringType: null }).catch((e) => e);
+    expect(err).toBeInstanceOf(IdentityHeldForReviewError);
+    expect(auditInserts).toHaveLength(1);
+  });
+
+  it('fail closed: two rows of the SAME segment and type stay HELD after narrowing', async () => {
+    const twin = { ...SME_ROW, id: 'acme-sme-2', slug: 'acme-industries-sme-2027' };
+    const { repo } = makeRepo([SME_ROW, twin]);
+    const err = await repo.findByNormalizedName('acme industries', undefined, { segment: 'SME', offeringType: 'IPO' }).catch((e) => e);
+    expect(err).toBeInstanceOf(IdentityHeldForReviewError);
+    expect((err as IdentityHeldForReviewError).candidates).toHaveLength(2);
+  });
+
+  it('an ISIN/symbol-bound row that is one of the pair -> that row, no hold', async () => {
+    const { repo, auditInserts } = makeRepo([SME_ROW, MAIN_ROW]);
+    const got = await repo.findByNormalizedName('acme industries', undefined, { keyBoundId: 'acme-main' });
+    expect(got?.id).toBe('acme-main');
+    expect(auditInserts).toHaveLength(0);
+  });
+
+  it('a key-bound row that is NOT in the pair -> no name signal (null), no hold', async () => {
+    const { repo, auditInserts } = makeRepo([SME_ROW, MAIN_ROW]);
+    expect(await repo.findByNormalizedName('acme industries', undefined, { keyBoundId: 'someone-else' })).toBeNull();
+    expect(auditInserts).toHaveLength(0);
+  });
+
+  it('every row conflicts with the record -> first row returned so the resolver declines it itself', async () => {
+    const { repo } = makeRepo([SME_ROW, { ...SME_ROW, id: 'acme-sme-2' }]);
+    const got = await repo.findByNormalizedName('acme industries', undefined, { segment: 'MAINBOARD' });
+    expect(got?.id).toBe('acme-sme');
+  });
+
+  it('resolveIpoRow through the REAL repository: SME record binds the SME row of an SME/MAINBOARD pair', async () => {
+    const { repo } = makeRepo([SME_ROW, MAIN_ROW]);
+    Object.assign(repo, {
+      findByIsin: vi.fn().mockResolvedValue(null), findBySymbol: vi.fn().mockResolvedValue(null),
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([]), findBySlug: vi.fn().mockResolvedValue(null),
+      findByFuzzyName: vi.fn().mockResolvedValue(null),
+    });
+    const got = await resolveIpoRow(repo, {
+      companyName: 'Acme Industries Ltd', normalizedName: 'acme industries', slug: 'acme-industries-ltd', cin: null, segment: 'SME',
+    });
+    expect(got?.id).toBe('acme-sme');
+  });
+});
