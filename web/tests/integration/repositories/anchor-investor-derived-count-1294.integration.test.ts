@@ -13,6 +13,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql, eq, inArray } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { AnchorInvestorRepository } from '@/lib/repositories/anchor-investor-repository';
+import { upsertListHold } from '@ipodhan/shared/services/admin-list-hold';
 import { writeAdminListChange, readAdminList, type AdminListChangeInput } from '@ipodhan/shared/services/admin-list-write';
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -85,5 +86,55 @@ describe.skipIf(!DATABASE_URL)('#1294 item 1: the anchor count follows the list 
     const repo = new AnchorInvestorRepository(db as never, noRedis);
     await repo.upsert(totals(7) as never);
     expect(await storedCount()).toBe(7);
+  });
+
+  async function ownList(): Promise<void> {
+    await upsertListHold(db as never, { ipoId: IPO, list: 'anchor_investors', by: actor.name, editNote: 'test', at: new Date() });
+  }
+  async function storedNames(): Promise<string[]> {
+    const r = await db.execute(sql`SELECT jsonb_path_query_array(investor_list, '$[*].name') AS n FROM anchor_investors WHERE ipo_id = ${IPO}::uuid`);
+    return (r.rows[0] as { n: string[] }).n;
+  }
+
+  it('#1294 round 2 MAJOR-2/MINOR-4: an admin-owned list stays unchanged when the body carries another list, and the count follows the stored list', async () => {
+    await db.insert(schema.anchorInvestors).values({ ...totals(2), investorList: [inv('Alpha Fund'), inv('Beta Fund')] } as never);
+    await adminAdd(inv('Gamma Fund'));
+    const repo = new AnchorInvestorRepository(db as never, noRedis);
+    await repo.upsert({ ...totals(99), investorList: [inv('Intruder Fund')] } as never);
+    expect(await storedNames()).toEqual(['Alpha Fund', 'Beta Fund', 'Gamma Fund']);
+    expect(await storedCount()).toBe(3);
+  });
+
+  it('#1294 round 2 MAJOR-2: an admin-owned list the admin emptied stays empty and the count is 0, not the typed 99', async () => {
+    await db.insert(schema.anchorInvestors).values({ ...totals(2), investorList: [] } as never);
+    await ownList();
+    const repo = new AnchorInvestorRepository(db as never, noRedis);
+    await repo.upsert({ ...totals(99), investorList: [inv('Intruder Fund')] } as never);
+    expect(await storedNames()).toEqual([]);
+    expect(await storedCount()).toBe(0);
+  });
+
+  it('#1294 round 2 MINOR-5: a list stored as TEXT (W-52 shape) still drives the count', async () => {
+    await db.execute(sql`INSERT INTO anchor_investors (ipo_id, bid_date, total_shares_offered, total_amount_raised, anchor_investors_count, lock_in_50_percent_date, lock_in_remaining_date, investor_list)
+      VALUES (${IPO}::uuid, '2026-09-20', 100, 10, 2, '2026-10-20', '2026-12-20', to_jsonb(${JSON.stringify([inv('Alpha Fund'), inv('Beta Fund'), inv('Gamma Fund')])}::text))`);
+    const typed = await db.execute(sql`SELECT jsonb_typeof(investor_list) AS t FROM anchor_investors WHERE ipo_id = ${IPO}::uuid`);
+    expect((typed.rows[0] as { t: string }).t).toBe('string');
+    const repo = new AnchorInvestorRepository(db as never, noRedis);
+    await repo.upsert(totals(50) as never);
+    expect(await storedCount()).toBe(3);
+  });
+
+  it('#1294 round 2 MINOR-5: a list SUPPLIED as JSON text (what createAnchorInvestors sends) drives the count, not the typed one', async () => {
+    const repo = new AnchorInvestorRepository(db as never, noRedis);
+    await repo.upsert({ ...totals(50), investorList: JSON.stringify([inv('Alpha Fund'), inv('Beta Fund')]) } as never);
+    expect(await storedCount()).toBe(2);
+  });
+
+  it('#1294 round 2 MINOR-5: a stored list that is not readable as a list fails closed: nothing is written', async () => {
+    await db.execute(sql`INSERT INTO anchor_investors (ipo_id, bid_date, total_shares_offered, total_amount_raised, anchor_investors_count, lock_in_50_percent_date, lock_in_remaining_date, investor_list)
+      VALUES (${IPO}::uuid, '2026-09-20', 100, 10, 2, '2026-10-20', '2026-12-20', to_jsonb('not a list'::text))`);
+    const repo = new AnchorInvestorRepository(db as never, noRedis);
+    await expect(repo.upsert(totals(50) as never)).rejects.toThrow(/Failed to upsert anchor investor data/);
+    expect(await storedCount()).toBe(2);
   });
 });

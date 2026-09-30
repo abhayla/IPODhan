@@ -119,10 +119,19 @@ export class AnchorInvestorRepository
           .where(eq(anchorInvestors.ipoId, data.ipoId))
           .limit(1);
 
-        const list = owned ? existing?.investorList : (data.investorList ?? existing?.investorList);
-        const values = Array.isArray(list) && (owned || list.length > 0)
-          ? { ...data, anchorInvestorsCount: list.length }
-          : data;
+        // A list stored as TEXT (the W-52 shape: a JSON string in the jsonb column) is read as the list it
+        // holds; one that cannot be read as a list fails closed (nothing is written, the count is not guessed).
+        const storedList = readInvestorList(existing?.investorList, 'stored');
+        let values: AnchorInvestorInsert;
+        if (owned) {
+          // Admin-owned: the body never replaces the admin's list (only the bid date and totals follow the
+          // exchange, OD-106/OD-117); the count is the stored list's length.
+          const { investorList: _bodyList, ...rest } = data;
+          values = { ...rest, anchorInvestorsCount: storedList?.length ?? 0 };
+        } else {
+          const list = readInvestorList(data.investorList, 'supplied') ?? storedList;
+          values = list && list.length > 0 ? { ...data, anchorInvestorsCount: list.length } : data;
+        }
 
         if (existing) {
           const [updated] = await tx
@@ -182,4 +191,23 @@ export class AnchorInvestorRepository
     if (refused) throw new AnchorListHeldError(ipoId);
     await this.deleteCache(getAnchorInvestorInvalidationKeys(ipoId));
   }
+}
+
+/**
+ * The investor list as an array, whatever shape it is stored in: an array, or a JSON string holding one
+ * (W-52). null/undefined = no list. Anything else throws, so a save never derives a count from a value
+ * it could not read.
+ */
+function readInvestorList(value: unknown, which: string): unknown[] | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // falls through to the refusal below
+    }
+  }
+  throw new Error(`anchor_investors: the ${which} investor list is not a list (${typeof value}); refusing to derive the count from it`);
 }

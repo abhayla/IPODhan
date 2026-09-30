@@ -264,6 +264,19 @@ describe('filing-persister — PRICE_BAND_AD mapping (DEEPA oracle)', () => {
     expect(Number(values.freshIssue) + Number(values.ofsIssue)).toBe(4_597_160_000);
   });
 
+  it('#1294 item 6: a year the repository did not store (admin-owned list without it) is not counted as written', async () => {
+    const s = makeDeps();
+    s.finStmt.mockImplementation(async (row: unknown) => ((row as { fiscalYear: number }).fiscalYear === 2026 ? null : row));
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    expect(s.finStmt.mock.calls.length).toBe(3);
+    expect(summary.written.financial_statements).toBe(2);
+  });
+
   it('writes one financial_statements row per fiscal year with the oracle figures', async () => {
     const s = makeDeps();
     const summary = await persistFilingExtraction(
