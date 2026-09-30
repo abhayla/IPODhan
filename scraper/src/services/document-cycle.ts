@@ -344,6 +344,27 @@ export interface DocumentCycleSummary {
    */
   upcomingProcessedAfterBudget: number;
   /**
+   * #1316: rank-2 (UPCOMING/PRE_OPEN) candidates with ZERO
+   * `document_fetch_state` rows this cycle (`lastActivityAt === null` after
+   * `enrichRotatingCandidates`) — i.e. never visited by `runIpo` at all.
+   * Unlike `upcomingReserved` (a fixed 1-slot reservation that only fires
+   * when the discovery budget trips), the first-touch pass runs BEFORE the
+   * ranked walk and is bounded by the COUNT of such rows, not a slot number,
+   * so N zero-row rows all get their first visit in ONE cycle instead of
+   * roughly N cycles. See the first-touch pass, right before PASS 1's main
+   * loop.
+   */
+  firstTouchReserved: number;
+  /** #1316: first-touch candidates actually visited this cycle (subset of `firstTouchReserved`). */
+  firstTouchProcessed: number;
+  /**
+   * #1316: first-touch candidates NOT reached because the pass's own
+   * deadline (the wake's remaining time, `startedAt + wakeBudgetMs -
+   * PURGE_RESERVE_MS`) was hit first — logged with identities
+   * (signal-ownership.md R1/R6), resumed next cycle (state persisted).
+   */
+  firstTouchSkippedByDeadline: number;
+  /**
    * Cadence D-13: CLOSED/LISTED/WITHDRAWN candidates skipped this cycle
    * because a calendar gate (Sunday/Saturday/NSE holiday) made only
    * UPCOMING/PRE_OPEN/OPEN candidates eligible for network work. 0 on an
@@ -526,6 +547,17 @@ export function summarize(
     fieldPlanGenExhausted?: boolean;
     fieldPlanWalkSkippedNoBudget?: boolean;
     fieldPlanWalkExhausted?: boolean;
+  } = {},
+  /**
+   * #1316: first-touch pass counters — see `DocumentCycleSummary.firstTouchReserved`.
+   * Added LAST (not inserted before `slotInfo`) so existing positional callers
+   * of `summarize()` (document-cycle-slot-complete.test.ts et al.) keep
+   * binding their 8th argument to `slotInfo`, not to this one.
+   */
+  firstTouchInfo: {
+    reserved?: number;
+    processed?: number;
+    skippedByDeadline?: number;
   } = {}
 ): DocumentCycleSummary {
   const incompletePasses: string[] = [];
@@ -543,6 +575,10 @@ export function summarize(
   // No other job fetches LISTED documents: the 22:00 closed-IPO job runs only
   // the §2.4 field-plan walk, which never reads a document (§6.1).
   if ((listedInfo.deferred ?? 0) > 0) incompletePasses.push('listed_deferred');
+  // #1316: a first-touch row not reached before the pass's own deadline is a
+  // live candidate still deferred this wake — the same completion signal
+  // `listed_deferred` gives above.
+  if ((firstTouchInfo.skippedByDeadline ?? 0) > 0) incompletePasses.push('first_touch_deferred');
   return {
     ipos: results.length,
     skipped: results.filter((r) => r.skipped).length,
@@ -565,6 +601,9 @@ export function summarize(
     upcomingReserved: upcomingInfo.reserved ?? 0,
     upcomingProcessedAfterBudget: upcomingInfo.processedAfterBudget ?? 0,
     upcomingReservedSkippedByDeadline: upcomingInfo.reservedSkippedByDeadline ?? 0,
+    firstTouchReserved: firstTouchInfo.reserved ?? 0,
+    firstTouchProcessed: firstTouchInfo.processed ?? 0,
+    firstTouchSkippedByDeadline: firstTouchInfo.skippedByDeadline ?? 0,
     calendarSkipped: calendarInfo.skipped,
     calendarGateReason: calendarInfo.reason,
     slotComplete: incompletePasses.length === 0,
@@ -1776,6 +1815,96 @@ export async function runDocumentCycle(
     }
     };
 
+    const processedIds = new Set<string>();
+
+    // #1316 — first-touch pass: every rank-2 (UPCOMING/PRE_OPEN) candidate
+    // with ZERO `document_fetch_state` rows (`lastActivityAt === null`,
+    // computed by `enrichRotatingCandidates` above — see that function's
+    // doc comment for why null, not a proxy, means "never touched") gets its
+    // FIRST `runIpo` visit HERE, before the ranked walk below, in ONE pass —
+    // bounded by the COUNT of such rows, never by a fixed slot number.
+    //
+    // Independent review (contract 3, issue #1316): the existing rank-2
+    // reservation below (`UPCOMING_RESERVE_SLOTS`, gated behind
+    // `ENABLE_UPCOMING_DISCOVERY_RESERVATION`) only fires when the discovery
+    // budget trips and reserves exactly ONE slot — so N never-touched
+    // UPCOMING rows behind a full OPEN+CLOSED backlog take roughly N cycles
+    // to all get a first visit (proven: document-cycle-passes.test.ts's
+    // "N=4 starved UPCOMING rows ... across 4 cycles"). Spec §5.4: "The live
+    // tier keeps absolute priority, so a live IPO can never queue behind
+    // history." A brand-new live IPO with no fetch-state row at all is the
+    // sharpest form of that: it has had NO visit yet, not merely a stale one.
+    //
+    // Deliberately UNCONDITIONAL (not gated behind
+    // ENABLE_UPCOMING_DISCOVERY_RESERVATION): a first visit is baseline
+    // correctness the spec states as a "never", not a tunable reservation
+    // knob — and the smaller change here is adding this pass alongside the
+    // existing reservation (which still guards an ALREADY-touched rank-2 row
+    // from starving when the budget trips) rather than redesigning the flag.
+    //
+    // Cheap by construction: a first visit only creates the
+    // `document_fetch_state` rows for document types already due
+    // (`runIpo` -> `planIpoCycle`); it does not itself download anything a
+    // later, budgeted pass would not also fetch. Still, a live host can be
+    // slow, so this pass has its own deadline (the wake's remaining time,
+    // same ceiling the purge/LISTED reservations use) rather than an
+    // unbounded loop — a row not reached by the deadline is logged with its
+    // id (signal-ownership.md R1/R6: a count alone is not a reading) and
+    // resumes next cycle, same as any other deferred candidate.
+    //
+    // Cadence check (owner decision 2026-09-03,
+    // scraper/src/scheduler/due-step-cycle.ts): this pass adds no wake and
+    // changes no wake-budget constant — it only reorders WHICH candidates
+    // `runIpo` visits first inside the SAME `DOCUMENT_CYCLE_WAKE_BUDGET_MS`
+    // wake the ranked walk already runs under.
+    //
+    // Round 1 reviewer fix (MAJOR): `startedAt + wakeBudgetMs - PURGE_RESERVE_MS`
+    // alone left this pass free to run for basically the WHOLE wake (~18 of
+    // 20 minutes) before the OPEN/CLOSED ranked walk below ever got a turn —
+    // a large batch of zero-row UPCOMING rows could starve OPEN/CLOSED for
+    // one wake, exactly backwards from spec §5.4 ("the live tier keeps
+    // absolute priority"). Bounded by `RESERVATION_CEILING_MS` (3 min) from
+    // the cycle start (this pass runs first, so no extra clock read), same constant and same reasoning the
+    // post-budget-trip purge/LISTED/UPCOMING reservations already use
+    // (line ~215) — never let an unbounded reserved pass outrun the wake.
+    // Rows left unvisited past the cap are logged by id below and lead the
+    // NEXT wake's first-touch pass (`orderAndCapCandidates`'s rank-2
+    // rotation key already sorts a never-touched row first).
+    const firstTouchDeadline = Math.min(startedAt + wakeBudgetMs - PURGE_RESERVE_MS, startedAt + RESERVATION_CEILING_MS);
+    // MAJOR-1 mirror (see `orderAndCapCandidates`'s rank-2 `alreadyComplete`
+    // drop): `lastActivityAt === null` alone is not the same test as "zero
+    // document_fetch_state rows" — a row that HAS a persisted row but was
+    // never attempted (e.g. an admin-set FOUND with no `last_attempt_at`)
+    // also reads `lastActivityAt === null`. `alreadyComplete === true` means
+    // `planIpoCycle` found nothing due, so a first visit would cost a call
+    // for zero benefit — excluded here exactly like the existing reservation
+    // excludes it from holding its slot.
+    const firstTouchCandidates = candidates.filter(
+      (c) => RANK2_STAGES.has(c.stage) && c.lastActivityAt == null && c.alreadyComplete !== true
+    );
+    let firstTouchProcessed = 0;
+    let firstTouchSkippedByDeadline = 0;
+    for (const ipo of firstTouchCandidates) {
+      if (now() >= firstTouchDeadline) {
+        firstTouchSkippedByDeadline++;
+        continue;
+      }
+      await processCandidate(ipo);
+      processedIds.add(ipo.id);
+      firstTouchProcessed++;
+    }
+    if (firstTouchSkippedByDeadline > 0) {
+      logger.warn(
+        {
+          skipped: firstTouchSkippedByDeadline,
+          remainingIds: firstTouchCandidates
+            .filter((c) => !processedIds.has(c.id))
+            .map((c) => c.id),
+        },
+        '#1316: first-touch pass ran out of wake time before every zero-row live candidate got its first visit this cycle — the rest resume next cycle (document_fetch_state has no row for them yet)'
+      );
+    }
+
     // W-124: reserve one slot per cycle for the WITHDRAWN/POSTPONED purge path
     // (rank 4 — `deriveIssueShape(...).withdrawn`), regardless of the discovery
     // budget. Before this, a full live backlog (OPEN/CLOSED/UPCOMING/LISTED)
@@ -1788,7 +1917,6 @@ export async function runDocumentCycle(
     // other exhausted-budget candidate still resumes next cycle as before.
     const purgeReserved = candidates.some((c) => c.issue?.withdrawn === true);
     let purgeProcessed = false;
-    const processedIds = new Set<string>();
     let listedReserved = 0;
     let listedProcessedAfterBudget = 0;
     let listedReservedSkippedByDeadline = 0;
@@ -1799,6 +1927,12 @@ export async function runDocumentCycle(
     for (let i = 0; i < candidates.length; i++) {
       const ipo = candidates[i];
       const isPurgeCandidate = ipo.issue?.withdrawn === true;
+
+      // #1316: a candidate the first-touch pass above already visited this
+      // cycle is neither re-walked nor allowed to consume a rank-4/3/2
+      // reservation slot below — `results`/`document_fetch_state` already
+      // reflect its (only) visit for this cycle.
+      if (processedIds.has(ipo.id)) continue;
 
       if (now() - startedAt >= budgetMs) {
         // Round 3 reviewer fix: the reservation pass below (purge slot + up to
@@ -2562,6 +2696,11 @@ export async function runDocumentCycle(
         fieldPlanGenExhausted,
         fieldPlanWalkSkippedNoBudget,
         fieldPlanWalkExhausted,
+      },
+      {
+        reserved: firstTouchCandidates.length,
+        processed: firstTouchProcessed,
+        skippedByDeadline: firstTouchSkippedByDeadline,
       }
     );
 
