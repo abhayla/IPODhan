@@ -708,9 +708,11 @@ rather they be included for consistency, it is a two-row change here.
 **On SME.** The order is NSE then BSE as instructed. For a single-exchange IPO the absent exchange
 simply has no payload and answers `NOT_PRINTED` at zero cost — an SME-on-BSE IPO therefore resolves
 on BSE in round 2, and an SME-on-NSE IPO on NSE in round 1. No separate rule is needed; the existing
-**Related: F-189** (2026-09-26) measures this order not being followed in the SME document-discovery
-code path today: BSE is never called for an SME IPO, only NSE, so a BSE-only-listed SME IPO (29 of 44
-measured) never resolves — open for owner decision (#1201, deferred as found outside contract 1).
+**Related: F-189** (2026-09-26) measured this order not being followed in the SME document-discovery
+code path: BSE was never called for an SME IPO, only NSE, so a BSE-only-listed SME IPO (29 of 44
+measured) never resolved. **Built in #1201 (2026-09-30), no owner decision needed:** the SME path asks NSE first
+and BSE second (only when NSE left a due type without a link or a download failed; never for an SME IPO whose
+`listing_exchanges` are known to exclude BSE). BSE's board and core payload carry SME issues (F-215).
 per-type source resolution in §2.2 handles it. Measured population: 106 SME-on-BSE, 61 SME-on-NSE.
 
 **The document is deliberately NOT a verification source for E-1 fields.** A printed date and an

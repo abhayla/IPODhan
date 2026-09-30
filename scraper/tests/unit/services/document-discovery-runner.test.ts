@@ -150,11 +150,11 @@ describe('DocumentDiscoveryRunner — BSE-first discovery on REAL payloads', () 
     expect(seen.some((u) => u.includes('IPO_NO=7903'))).toBe(true);
   });
 
-  it('an SME IPO never touches the BSE board or core API (F13, not F4)', async () => {
+  it('an SME IPO known to list on NSE only never touches the BSE board or core API (zero cost, #1201)', async () => {
     const { fetcher, seen } = fixtureFetcher();
     const { runner, counter } = makeRunner(fetcher);
 
-    const result = await runner.runIpo(MADHUR, []);
+    const result = await runner.runIpo({ ...MADHUR, listingExchanges: ['NSE'] }, []);
 
     expect(seen.some((u) => u.includes('bseindia'))).toBe(false);
     expect(seen.every((u) => u.includes('nseindia'))).toBe(true);

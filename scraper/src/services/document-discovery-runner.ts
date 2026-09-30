@@ -10,7 +10,13 @@
  * live rung is a stub). Mainboard order is BSE core API -> NSE ipo-detail ->
  * SEBI's filing lists -> the issuer's own investor page, with Chittorgarh
  * consulted last as a link VERIFIER only (never a document source).
- * SME order is NSE first, because BSE's mainboard board does not carry SME.
+ * SME order is NSE then BSE (spec §1.2.1 "On SME", #1201): the same two calls,
+ * NSE first. BSE's board (`IPO_HomePageDetail`) and core payload
+ * (`GetMkt_ISSUE_BBS_IPO`) DO carry SME issues -- verified live 2026-09-30 on
+ * PIND HOSPITALITY (IPO_NO 8012) and Shivchem Agro (8008); the old header's
+ * "the board does not carry SME" was never measured. BSE is asked for an SME
+ * issue only when NSE left a due type without a link (or a download failed),
+ * and never for an SME issue whose listing exchanges are known to exclude BSE.
  * NSE is fetched on demand: when BSE covered every due type and one of those
  * downloads then fails, the NSE copy is fetched at that point rather than the
  * type going BLOCKED_ALL with an untried source in reach (matrix F2).
@@ -576,7 +582,9 @@ export interface DiscoveryIpo {
    * Item 5 slice s4: `ipos.listing_exchanges`, carried ONLY so the field-plan
    * generator can resolve this IPO's OWN type key (`resolveIpoTypeKey` —
    * SME_BSE vs SME_NSE is decided by listing exchange, never by segment
-   * alone). The runner itself never reads this field.
+   * alone). The runner reads it in ONE place: an SME issue whose known
+   * exchanges exclude BSE is never sent to BSE (#1201). Null or empty = unknown,
+   * which asks.
    */
   listingExchanges?: ('NSE' | 'BSE')[] | null;
   /**
@@ -2473,18 +2481,39 @@ export class DocumentDiscoveryRunner {
       return result;
     }
 
-    if (!isSme) {
+    // Idempotent, like the NSE twin below. Mainboard asks BSE first; an SME issue
+    // asks it SECOND (spec "On SME": NSE then BSE), only when NSE left a due type
+    // without a link or a download failed. `smeBseExcluded`: the spec's "the absent
+    // exchange simply has no payload ... at zero cost" -- an SME issue whose known
+    // listing exchanges exclude BSE is never sent to BSE, so a BSE outage cannot
+    // turn a NSE-only issue's clean `no_link` into a failure.
+    let bseConsulted = false;
+    const smeBseExcluded =
+      isSme &&
+      Array.isArray(ipo.listingExchanges) &&
+      ipo.listingExchanges.length > 0 &&
+      !ipo.listingExchanges.includes('BSE');
+    const ensureBseCandidates = async (): Promise<boolean> => {
+      if (bseConsulted || smeBseExcluded) return false;
+      bseConsulted = true;
       const bse = await this.fetchBseCore(ipo, attempts);
-      if (bse) {
-        takeAll(parseBSEDocuments(bse.row));
-        result.leadManagers = parseBseParties(bse.row as never).leadManagers;
-        if (result.leadManagers.length > 0) result.leadManagerSource = 'BSE';
-        if (ipo.bseIpoNo == null) result.resolvedBseIpoNo = bse.ipoNo;
-        if (bse.boardRow?.isFixedPrice) ipo.issue = { ...ipo.issue, isFixedPrice: true };
+      if (!bse) return false;
+      takeAll(parseBSEDocuments(bse.row));
+      if (result.leadManagers.length === 0) {
+        const fromBse = parseBseParties(bse.row as never).leadManagers;
+        if (fromBse.length > 0) {
+          result.leadManagers = fromBse;
+          result.leadManagerSource = 'BSE';
+        }
       }
-    }
+      if (ipo.bseIpoNo == null) result.resolvedBseIpoNo = bse.ipoNo;
+      if (bse.boardRow?.isFixedPrice) ipo.issue = { ...ipo.issue, isFixedPrice: true };
+      return true;
+    };
 
-    // NSE second for mainboard, FIRST-and-only-exchange for SME.
+    if (!isSme) await ensureBseCandidates();
+
+    // NSE second for mainboard, FIRST for SME (BSE follows it for SME, below).
     //
     // Idempotent, and callable again LATER in this cycle. The first cut fetched
     // NSE only when BSE had left a due type without a link, which meant that if
@@ -2514,6 +2543,8 @@ export class DocumentDiscoveryRunner {
     };
 
     if (!allDueCovered()) await ensureNseCandidates();
+    // #1201: the SME leg the spec names and the code never made.
+    if (isSme && !allDueCovered()) await ensureBseCandidates();
 
     // F3 vs F6, and the distinction is NOT 'did any exchange answer'.
     //
@@ -2542,8 +2573,12 @@ export class DocumentDiscoveryRunner {
     // as proof that a Prospectus does not exist. Same for an IPO with no NSE
     // symbol. Coverage is complete only when each applicable exchange said 'ok'.
     const bseApplicable = !isSme;
-    const nseApplicable = Boolean(ipo.symbol);
     const bseOk = consulted.some((a) => a.source === 'BSE' && a.outcome === 'ok');
+    // OD-60 (abstention): NSE answering `not_carried` for an SME issue that BSE
+    // answered `ok` for is an exchange that does not list it, not one that
+    // failed to cover it -- it must not veto BSE's coverage (#1201).
+    const nseNotCarried = consulted.some((a) => a.source === 'NSE' && a.outcome === 'not_carried');
+    const nseApplicable = Boolean(ipo.symbol) && !(isSme && nseNotCarried && bseOk);
     const nseOk = consulted.some((a) => a.source === 'NSE' && a.outcome === 'ok');
     // #632: and at least one exchange must actually have answered for the issue —
     // an SME with no NSE symbol has no applicable exchange, which is no coverage.
@@ -2640,6 +2675,12 @@ export class DocumentDiscoveryRunner {
         // (BSE covered every due type, so the cheap path skipped it).
         if (!stored && !nseConsulted && !isSme) {
           const gained = await ensureNseCandidates();
+          if (gained) await attemptCandidates(discovered.get(docType) ?? []);
+        }
+        // Same rescue for SME, mirrored: NSE was asked first, so the untried
+        // exchange is BSE (#1201).
+        if (!stored && isSme && !bseConsulted) {
+          const gained = await ensureBseCandidates();
           if (gained) await attemptCandidates(discovered.get(docType) ?? []);
         }
 
