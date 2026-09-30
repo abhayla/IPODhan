@@ -53,8 +53,13 @@ export type ExchangeBaseline = Partial<ExchangeAtSave>;
 /** Where each source's baseline came from (kept beside `exchangeAtSave` in the lineage). */
 export type ExchangeBaselineOrigin = 'SAVE' | 'PREVIOUS_VALUE' | 'FIRST_HELD_READ';
 
-/** Witness outcomes that mean the exchange was asked and stated nothing (not a failed check). */
-const STATED_NOTHING_OUTCOMES: ReadonlySet<string> = new Set(['NOT_PRINTED', 'NOT_AVAILABLE_YET']);
+/**
+ * OD-145 (owner 2026-09-30): the ONLY outcome that means an exchange does not state a field is an
+ * explicit "not printed". NOT_AVAILABLE_YET is what a fetcher answers for a not-found IPO or (before
+ * OD-145) an ambiguous match or an empty board after a failed scrape, so it is UNKNOWN, never
+ * "stated nothing" (round-4 Tier A CRITICAL-1, #1287).
+ */
+const STATED_NOTHING_OUTCOMES: ReadonlySet<string> = new Set(['NOT_PRINTED']);
 
 function isOverrideSource(s: string): s is ExchangeOverrideSource {
   return (EXCHANGE_OVERRIDE_SOURCES as readonly string[]).includes(s);
@@ -102,7 +107,7 @@ export type ExchangeKeepReason =
   | 'NO_EXCHANGE_ANSWER'
   | 'EXCHANGE_AGREES_WITH_ADMIN'
   | 'EXCHANGE_UNCHANGED_SINCE_SAVE'
-  /** OD-141: the top-ranked exchange's read failed, was CHECK_FAILED, or gave a non-date. */
+  /** OD-141/OD-145: the top-ranked exchange's read failed, was CHECK_FAILED or NOT_AVAILABLE_YET, or gave a non-date. */
   | 'TOP_EXCHANGE_UNKNOWN'
   /** OD-141: the top-ranked exchange stated a date at save and now states nothing. */
   | 'TOP_EXCHANGE_WITHDREW';
@@ -127,10 +132,10 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * ONE rule for what a piece of stored evidence says about an exchange's baseline, used at EVERY
  * site that writes one (admin save, admin re-save, held read; the legacy rebuild from
- * `previous_value` is the only other source): a SUPPLIED answer with a value -> that value; a
- * NOT_PRINTED / NOT_AVAILABLE_YET answer -> null (the exchange was asked and stated nothing);
- * anything else (no answer stored, CHECK_FAILED, FAILED, SUPPLIED with no value) -> unknown.
- * Absence of evidence is never "stated nothing".
+ * `previous_value` is the only other source): a SUPPLIED answer with a value -> that value; an
+ * explicit NOT_PRINTED -> null (the exchange does not print the field); anything else
+ * (NOT_AVAILABLE_YET, no answer stored, CHECK_FAILED, FAILED, SUPPLIED with no value) -> unknown
+ * (OD-145). Absence of evidence is never "stated nothing".
  */
 export type BaselineEvidence = { known: true; value: string | null; at: string | null } | { known: false };
 
@@ -233,13 +238,14 @@ export function resolveExchangeBaseline(row: {
  * - The top exchange states a date: it alone decides. REPLACE only when that date differs from the
  *   admin value AND from its own known baseline (`exchangeAtSave`); an unknown baseline is recorded
  *   and keeps the admin value on this read.
- * - The top exchange's read is UNKNOWN (FAILED, CHECK_FAILED, no answer, a non-date): KEEP. A failed
- *   rank-1 read is not "rank 1 moved", and the next walk would ask rank 1 first and could write the
- *   very date the admin rejected (round-3 finding, #1287).
- * - The top exchange states NOTHING (NOT_PRINTED / NOT_AVAILABLE_YET): it does not state the field
- *   only when its known baseline is ALSO nothing; then the next exchange is the top stating one and
- *   is judged the same way. A baseline that was a date means rank 1 withdrew the value: KEEP. An
- *   unknown baseline is recorded as nothing and keeps the admin value on this read.
+ * - The top exchange's read is UNKNOWN (FAILED, CHECK_FAILED, NOT_AVAILABLE_YET, no answer, a
+ *   non-date): KEEP, record no baseline for it, and never hand the decision down the ranking
+ *   (OD-145). A failed rank-1 read is not "rank 1 moved", and the next walk would ask rank 1 first
+ *   and could write the very date the admin rejected (round-3 and round-4 findings, #1287).
+ * - The top exchange answers an explicit NOT_PRINTED (the only "does not state", OD-145): it does
+ *   not state the field unless its known baseline is a date (then rank 1 withdrew the value: KEEP).
+ *   With a null or unknown baseline the next exchange is the top stating one and is judged the same
+ *   way; an unknown baseline is recorded as null.
  *
  * A lower-ranked exchange never releases. When it published a newer value (differs from the admin
  * value and from its own known baseline) and the hold is kept, the decision carries it as
@@ -294,10 +300,10 @@ export function decideExchangeOverride(args: {
     if (!x.ev.known) return keep('TOP_EXCHANGE_UNKNOWN', i, x.source);
     const now = x.ev.value;
     if (now === null) {
-      // Stated nothing now. Only "nothing at save too" means this exchange does not state the field.
-      if (baselineKnown && baselineValue === null) continue;
-      if (!baselineKnown) return keep('BASELINE_RECORDED', i, x.source);
-      return keep('TOP_EXCHANGE_WITHDREW', i, x.source);
+      // An explicit NOT_PRINTED (the only "stated nothing", OD-145). A date at save means rank 1
+      // withdrew it; otherwise this exchange does not state the field and the next one decides.
+      if (baselineKnown && baselineValue !== null) return keep('TOP_EXCHANGE_WITHDREW', i, x.source);
+      continue;
     }
     if (!ISO_DAY.test(now)) return keep('TOP_EXCHANGE_UNKNOWN', i, x.source);
 

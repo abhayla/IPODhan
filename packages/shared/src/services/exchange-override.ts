@@ -22,7 +22,7 @@
  *   5. writes an audit row, actor SYSTEM, reason OD-106/OD-141, with the admin and exchange values.
  * When the hold is KEPT but a lower-ranked exchange published a newer value, that value is added to
  * the admin queue as ONE disagreement row (OD-141, OD-63; `data_conflicts`, deduped per source and
- * value by `suggestion_key`), in the same transaction. Every stamp is the database clock (F-210).
+ * admin value and value by `suggestion_key`), in the same transaction. Every stamp is the database clock (F-210).
  * The alert is NOT sent here: a rolled-back release must not alert. The caller sends it after
  * commit from the returned facts (`scraper/src/services/exchange-override-hook.ts`).
  */
@@ -66,17 +66,25 @@ export interface ExchangeOverrideInput {
 /** OD-141: the evidence origin of a lower-ranked exchange's newer value in the admin queue. */
 export const LOWER_RANK_EXCHANGE_ORIGIN = 'OD141_LOWER_RANK_EXCHANGE';
 
-/** One queue row per (IPO, field, exchange, value), ever: a dismissed value does not come back. */
+/**
+ * One queue row per (IPO, field, admin value, exchange, value): the same exchange value against the
+ * same admin value is never queued twice (a dismissed value does not come back), but after the
+ * admin saves a DIFFERENT value the same exchange value disagrees with a new decision and is queued
+ * again (round-4 MINOR, #1287).
+ */
 export function lowerRankDisagreementKey(
   ipoId: string,
   tableName: string,
   rowKey: string,
   fieldName: string,
+  adminValue: string | null,
   source: string,
   value: string | null
 ): string {
   return createHash('sha256')
-    .update(`${LOWER_RANK_EXCHANGE_ORIGIN}|${ipoId}|${tableName}|${rowKey}|${fieldName}|${source}|${value ?? ''}`)
+    .update(
+      `${LOWER_RANK_EXCHANGE_ORIGIN}|${ipoId}|${tableName}|${rowKey}|${fieldName}|admin=${adminValue ?? ''}|${source}|${value ?? ''}`
+    )
     .digest('hex');
 }
 
@@ -206,6 +214,7 @@ export async function applyExchangeOverride(db: Db, input: ExchangeOverrideInput
       if (lower) {
         // OD-141: a lower-ranked exchange's newer value is a disagreement for the admin, never a release.
         const value = normalizeExchangeValue(lower.value);
+        const admin = normalizeExchangeValue(adminValue);
         const inserted = await tx
           .insert(schema.dataConflicts)
           .values({
@@ -214,12 +223,12 @@ export async function applyExchangeOverride(db: Db, input: ExchangeOverrideInput
             rowKey,
             fieldName,
             source1: 'ADMIN',
-            value1: stringify(normalizeExchangeValue(adminValue)),
+            value1: admin,
             source2: lower.source,
             value2: value,
             severity: 'WARNING',
             resolutionReason: null,
-            suggestionKey: lowerRankDisagreementKey(ipoId, tableName, rowKey, fieldName, lower.source, value),
+            suggestionKey: lowerRankDisagreementKey(ipoId, tableName, rowKey, fieldName, admin, lower.source, value),
             evidence: {
               origin: LOWER_RANK_EXCHANGE_ORIGIN,
               rule: 'OD-141',

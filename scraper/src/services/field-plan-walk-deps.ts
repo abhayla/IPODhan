@@ -55,7 +55,7 @@ import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { and, eq } from 'drizzle-orm';
 import { protectionTableName } from '@ipodhan/shared/services/field-hold';
 import { applyExchangeOverride } from '@ipodhan/shared/services/exchange-override';
-import { buildExchangeOverrideHook } from './exchange-override-hook.js';
+import { buildExchangeOverrideHook, composeHeldFieldHooks } from './exchange-override-hook.js';
 import { invalidateIPOCaches } from './cache-invalidator.js';
 import { sendOwnerAlert } from './owner-notify.js';
 import { redisClaims } from './live-slot-miss-monitor.js';
@@ -408,9 +408,7 @@ export function buildFieldPlanWalkHoldDeps(
     // §9.2 item 9 (a newer document disagreeing becomes a queue suggestion) and OD-106/OD-141 (the
     // top-ranked stating exchange's newer value replaces the admin value) share the held-field seam.
     // The exchange hook runs first; when it released the hold, item 9 has nothing left to suggest.
-    onHeldFieldAnswers: async (ipoId, tableName, rowKey, fieldName, answers) => {
-      const outcome = await onHeldFieldAnswersOd106(ipoId, tableName, rowKey, fieldName, answers);
-      if (outcome && outcome.holdReleased) return outcome;
+    onHeldFieldAnswers: composeHeldFieldHooks(onHeldFieldAnswersOd106, async (ipoId, tableName, rowKey, fieldName) => {
       const { recordNewerDocumentSuggestions } = await import('./newer-document-suggestions.js');
       const r = await recordNewerDocumentSuggestions(db as never, { ipoId, tableName, rowKey, fieldName });
       if (r.inserted > 0) {
@@ -419,8 +417,7 @@ export function buildFieldPlanWalkHoldDeps(
           'PASS 3: a newer document disagrees with an admin-held field; suggestion(s) added to the admin queue (§9.2 item 9)'
         );
       }
-      return outcome;
-    },
+    }),
   };
 }
 

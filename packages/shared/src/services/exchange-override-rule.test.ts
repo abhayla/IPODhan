@@ -11,6 +11,7 @@ import {
   baselineEvidenceFromWitnesses,
   baselineForAdminSave,
 } from './exchange-override-rule';
+import { lowerRankDisagreementKey } from './exchange-override';
 
 // Real-shaped values from F-131 (Dhanwel): the admin held the June close date; NSE's relaunch
 // board states the August one.
@@ -82,10 +83,11 @@ describe('OD-106 "newer": differs from the admin value AND from what that exchan
     ).toEqual({ kind: 'KEEP', reason: 'EXCHANGE_UNCHANGED_SINCE_SAVE', baseline: { BSE: NSE_NEW } });
   });
 
-  it('MAJOR-1: an unknown source that stated nothing records null; one whose check FAILED stays unknown', () => {
+  it('MAJOR-1: an unknown source that explicitly does not print records null; one whose check FAILED stays unknown', () => {
+    // NSE NOT_PRINTED hands the decision to BSE (OD-145); BSE's read FAILED, so BSE is unknown: KEEP.
     expect(
       decideExchangeOverride({ adminValue: HELD, exchangeAtSave: undefined, answers: [nse(null, 'NOT_PRINTED'), bse(null, 'FAILED')] })
-    ).toEqual({ kind: 'KEEP', reason: 'BASELINE_RECORDED', baseline: { NSE: null } });
+    ).toEqual({ kind: 'KEEP', reason: 'TOP_EXCHANGE_UNKNOWN', baseline: { NSE: null } });
     expect(decideExchangeOverride({ adminValue: HELD, exchangeAtSave: undefined, answers: [bse(null, 'CHECK_FAILED')] })).toEqual({
       kind: 'KEEP',
       reason: 'TOP_EXCHANGE_UNKNOWN',
@@ -104,7 +106,12 @@ describe('OD-106 "newer": differs from the admin value AND from what that exchan
 
   it('ignores non-exchange sources and non-SUPPLIED exchange answers', () => {
     const answers = [nse(null, 'NOT_AVAILABLE_YET'), { source: 'CHITTORGARH', value: NSE_NEW, outcome: 'SUPPLIED' }];
+    // OD-145: NSE NOT_AVAILABLE_YET is UNKNOWN, so the top exchange is unknown (not "no answer").
     expect(decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { NSE: null, BSE: null }, answers })).toEqual({
+      kind: 'KEEP',
+      reason: 'TOP_EXCHANGE_UNKNOWN',
+    });
+    expect(decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { NSE: null, BSE: null }, answers: answers.slice(1) })).toEqual({
       kind: 'KEEP',
       reason: 'NO_EXCHANGE_ANSWER',
     });
@@ -210,12 +217,12 @@ describe('the OD-106 alert', () => {
 });
 
 describe('ROUND 3: one evidence rule for every baseline write site', () => {
-  it('stored SUPPLIED -> value; NOT_PRINTED / NOT_AVAILABLE_YET -> null; nothing, CHECK_FAILED, FAILED -> unknown', () => {
+  it('stored SUPPLIED -> value; NOT_PRINTED -> null; NOT_AVAILABLE_YET, nothing, CHECK_FAILED, FAILED -> unknown (OD-145)', () => {
     const at = '2026-09-01T05:00:00.000Z';
     expect(baselineEvidenceFromWitnesses([{ source: 'NSE', value: '2026-10-05', outcome: 'SUPPLIED', at }], 'NSE')).toEqual({ known: true, value: '2026-10-05', at });
     expect(baselineEvidenceFromWitnesses([{ source: 'NSE', value: '2026-10-05' }], 'NSE')).toMatchObject({ known: true, value: '2026-10-05' });
     expect(baselineEvidenceFromWitnesses([{ source: 'NSE', outcome: 'NOT_PRINTED' }], 'NSE')).toMatchObject({ known: true, value: null });
-    expect(baselineEvidenceFromWitnesses([{ source: 'BSE', outcome: 'NOT_AVAILABLE_YET' }], 'BSE')).toMatchObject({ known: true, value: null });
+    expect(baselineEvidenceFromWitnesses([{ source: 'BSE', outcome: 'NOT_AVAILABLE_YET' }], 'BSE')).toEqual({ known: false });
     expect(baselineEvidenceFromWitnesses(null, 'NSE')).toEqual({ known: false });
     expect(baselineEvidenceFromWitnesses([{ source: 'BSE', value: '2026-10-05' }], 'NSE')).toEqual({ known: false });
     expect(baselineEvidenceFromWitnesses([{ source: 'NSE', outcome: 'CHECK_FAILED' }], 'NSE')).toEqual({ known: false });
@@ -251,7 +258,7 @@ describe('OD-141: only the top-ranked stating exchange releases an admin value',
   const BSE_MOVED = '2026-10-05';
   const saved = { NSE: REJECTED, BSE: REJECTED };
 
-  for (const outcome of ['FAILED', 'CHECK_FAILED'] as const) {
+  for (const outcome of ['FAILED', 'CHECK_FAILED', 'NOT_AVAILABLE_YET'] as const) {
     it(`NSE ${outcome} + BSE moves -> KEEP, BSE value queued, never REPLACE`, () => {
       expect(
         decideExchangeOverride({ adminValue: HELD, exchangeAtSave: saved, answers: [nse(null, outcome), bse(BSE_MOVED)] })
@@ -299,21 +306,32 @@ describe('OD-141: only the top-ranked stating exchange releases an admin value',
     });
   });
 
-  it('NSE unknown baseline and states nothing now -> records null, KEEP on this read (BSE waits a read)', () => {
+  it('OD-145 proof 3: an explicit NOT_PRINTED from NSE (baseline unknown) lets BSE decide: BSE newer -> REPLACE from BSE', () => {
     expect(
       decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { BSE: REJECTED }, answers: [nse(null, 'NOT_PRINTED'), bse(BSE_MOVED)] })
-    ).toEqual({
-      kind: 'KEEP',
-      reason: 'BASELINE_RECORDED',
-      baseline: { NSE: null },
-      lowerRankDisagreement: { source: 'BSE', value: BSE_MOVED, topSource: 'NSE' },
-    });
+    ).toEqual({ kind: 'REPLACE', source: 'BSE', value: BSE_MOVED });
+    // ... and BSE judged the same way: unchanged since save keeps, with NSE's null recorded.
+    expect(
+      decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { BSE: REJECTED }, answers: [nse(null, 'NOT_PRINTED'), bse(REJECTED)] })
+    ).toEqual({ kind: 'KEEP', reason: 'EXCHANGE_UNCHANGED_SINCE_SAVE', baseline: { NSE: null } });
   });
 
-  it('NSE stated nothing at save and still states nothing -> NSE does not state the field; BSE is the top stating exchange', () => {
+  it('NSE stated nothing at save and still explicitly does not print -> BSE is the top stating exchange', () => {
+    expect(
+      decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { NSE: null, BSE: REJECTED }, answers: [nse(null, 'NOT_PRINTED'), bse(BSE_MOVED)] })
+    ).toEqual({ kind: 'REPLACE', source: 'BSE', value: BSE_MOVED });
+  });
+
+  it('OD-145: NSE NOT_AVAILABLE_YET never hands down, even with a null baseline, and never records a baseline', () => {
     expect(
       decideExchangeOverride({ adminValue: HELD, exchangeAtSave: { NSE: null, BSE: REJECTED }, answers: [nse(null, 'NOT_AVAILABLE_YET'), bse(BSE_MOVED)] })
-    ).toEqual({ kind: 'REPLACE', source: 'BSE', value: BSE_MOVED });
+    ).toEqual({ kind: 'KEEP', reason: 'TOP_EXCHANGE_UNKNOWN', lowerRankDisagreement: { source: 'BSE', value: BSE_MOVED, topSource: 'NSE' } });
+    // The round-4 reproduction as a unit: a legacy hold (no baseline), NSE unknown on walk 1 ...
+    const walk1 = decideExchangeOverride({ adminValue: HELD, exchangeAtSave: {}, answers: [nse(null, 'NOT_AVAILABLE_YET'), bse(null, 'NOT_AVAILABLE_YET')] });
+    expect(walk1).toEqual({ kind: 'KEEP', reason: 'TOP_EXCHANGE_UNKNOWN' });
+    // ... then NSE states its pre-save date on walk 2: recorded as the baseline, NOT a release.
+    const walk2 = decideExchangeOverride({ adminValue: HELD, exchangeAtSave: {}, answers: [nse('2026-07-10')] });
+    expect(walk2).toEqual({ kind: 'KEEP', reason: 'BASELINE_RECORDED', baseline: { NSE: '2026-07-10' } });
   });
 
   it('a lower-rank value that is NOT newer (equals the admin value or its own baseline, or baseline unknown) is not queued', () => {
@@ -363,5 +381,14 @@ describe('OD-141: only the top-ranked stating exchange releases an admin value',
     expect(
       resolveExchangeBaseline({ lineage: {}, source: 'ADMIN', previousSource: 'NSE', previousValue: REJECTED })
     ).toEqual({ baseline: { NSE: REJECTED }, rebuilt: ['NSE'] });
+  });
+});
+
+describe('round-4 MINOR: the queue dedupe key includes the admin value', () => {
+  it('the same exchange value against a DIFFERENT admin value is a new key; against the same admin value, the same key', () => {
+    const k = (admin: string | null) => lowerRankDisagreementKey('ipo-1', 'ipos', '', 'closeDate', admin, 'BSE', '2026-10-05');
+    expect(k('2026-10-03')).toBe(k('2026-10-03'));
+    expect(k('2026-10-04')).not.toBe(k('2026-10-03'));
+    expect(k(null)).not.toBe(k('2026-10-03'));
   });
 });

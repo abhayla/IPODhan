@@ -77,7 +77,15 @@ export class NseFieldFetcherState {
 
   private getBoard(): Promise<NseBoardRow[]> {
     if (!this.board) {
-      this.board = scrapeNSEIPOs().then((r) => r.ipos);
+      // OD-145: `scrapeNSEIPOs` returns `ipos: []` when both the API and the browser fail (it
+      // catches and logs). An empty board is therefore UNKNOWN, never "this IPO is not on NSE":
+      // it throws here, so every field this cycle answers CHECK_FAILED (transient, re-asked).
+      this.board = scrapeNSEIPOs().then((r) => {
+        if (!Array.isArray(r?.ipos) || r.ipos.length === 0) {
+          throw new Error(`NSE board empty (source=${r?.source ?? 'none'}): scrape failed or returned no rows`);
+        }
+        return r.ipos;
+      });
     }
     return this.board;
   }
@@ -168,11 +176,10 @@ export function buildNseFetcher(deps: NseFetcherDeps, state: NseFieldFetcherStat
       return { outcome: 'NOT_AVAILABLE_YET' };
     }
     if (resolved.status === 'ambiguous') {
-      // Never guess. NOT_AVAILABLE_YET carries no reason field (its shape is
-      // fixed across every fetcher), so the cause is logged here instead
-      // (signal-ownership R6: every failure carries its cause).
+      // Never guess. An ambiguous match is UNKNOWN (OD-145), not "not published yet": CHECK_FAILED
+      // (transient, re-asked) with the cause, so no rule downstream reads it as a stated absence.
       logger.warn({ ipoId, tableName, fieldName, cause: resolved.cause }, 'PASS 3 NSE fetcher: refusing to guess');
-      return { outcome: 'NOT_AVAILABLE_YET' };
+      return { outcome: 'CHECK_FAILED', reason: `ambiguous NSE match: ${resolved.cause}`, transient: true };
     }
 
     const value = resolved.row[boardKey];

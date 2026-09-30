@@ -501,8 +501,9 @@ export async function loadStoredSourceAnswer(
 /**
  * OD-106: what the stored answers say about one exchange for this field, as baseline EVIDENCE
  * (`baselineEvidenceFromWitnesses`): the field_sources witnesses, then the stored value when that
- * exchange wrote it, then the plan row's answers. Unlike `loadStoredSourceAnswer` it keeps a stored
- * "stated nothing" (NOT_PRINTED / NOT_AVAILABLE_YET), and it returns unknown when nothing is stored.
+ * exchange wrote it, then a stored explicit "not printed", then the plan row's answers. Unlike
+ * `loadStoredSourceAnswer` it keeps a stored NOT_PRINTED as "stated nothing"; NOT_AVAILABLE_YET and
+ * no stored answer are unknown (OD-145).
  */
 /** A naive `timestamp::text` read on a UTC session (ist-timezone.md) as an ISO instant. */
 function utcTextToIso(text: string | null | undefined): string | null {
@@ -521,11 +522,14 @@ async function loadStoredExchangeEvidence(
     .where(and(eq(fieldSources.ipoId, args.ipoId), eq(fieldSources.tableName, args.tableName), eq(fieldSources.rowKey, args.rowKey), eq(fieldSources.fieldName, args.fieldName)))
     .limit(1);
   const fromWitness = baselineEvidenceFromWitnesses(fs?.witnesses, args.source);
-  if (fromWitness.known) return fromWitness;
+  if (fromWitness.known && fromWitness.value !== null) return fromWitness;
+  // A value this exchange wrote is stronger evidence than a stored "stated nothing" (round-4 review:
+  // a stored nothing used to win over the exchange's own current value).
   if (fs && fs.source !== 'ADMIN' && sameSource(fs.source, args.source)) {
     const value = normalizeExchangeValue(args.currentValue);
     if (value !== null) return { known: true, value, at: utcTextToIso(fs.at) };
   }
+  if (fromWitness.known) return fromWitness;
   const [plan] = await tx
     .select({ answers: schema.ipoFieldPlan.answers })
     .from(schema.ipoFieldPlan)

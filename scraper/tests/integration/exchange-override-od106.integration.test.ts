@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq, and, sql } from 'drizzle-orm';
@@ -22,6 +22,13 @@ import type { FieldFetcher, FieldFetcherAnswer, FieldPlanWalkOrchestrator } from
  * Runs only against `ipodhan_test` (refuses any other database).
  */
 process.env.ENABLE_VERDICT_WRITER = 'true';
+
+// OD-145 proof 1 drives the REAL NSE fetcher; only the network call under it is replaced, so a test
+// can make `scrapeNSEIPOs` return what it returns in production on a total failure (`ipos: []`).
+const nseBoard = vi.hoisted(() => ({ rows: [] as Array<Record<string, unknown>> }));
+vi.mock('../../src/scrapers/nse-scraper.js', () => ({
+  scrapeNSEIPOs: async () => ({ ipos: nseBoard.rows, subscriptions: [], source: nseBoard.rows.length ? 'api' : undefined }),
+}));
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const REDIS_URL = process.env.REDIS_URL;
@@ -134,8 +141,9 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
   }
 
   /** 'THROW' = the fetcher throws (a FAILED witness); an object = that exact fetcher answer. */
-  type Says = string | 'THROW' | FieldFetcherAnswer;
+  type Says = string | 'THROW' | FieldFetcherAnswer | FieldFetcher;
   function fetcherFor(says: Says | undefined, whenAbsent: FieldFetcherAnswer): FieldFetcher {
+    if (typeof says === 'function') return says;
     return async () => {
       if (says === 'THROW') throw new Error('ECONNRESET reading the exchange (integration fixture)');
       if (says === undefined) return whenAbsent;
@@ -307,9 +315,10 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
     expect(mid.hold.isProtected).toBe(true);
     expect(mid.audits.filter((a) => a.actionType === 'Exchange Override')).toHaveLength(0);
     expect(first.alerts).toHaveLength(0);
-    // Recorded in the same transaction as the held read: NSE's answer, BSE stated nothing yet.
-    expect((mid.fs.dataLineage as any).exchangeAtSave).toEqual({ NSE: NSE_OLD, BSE: null });
-    expect((mid.fs.dataLineage as any).exchangeBaselineOrigin).toEqual({ NSE: 'FIRST_HELD_READ', BSE: 'FIRST_HELD_READ' });
+    // Recorded in the same transaction as the held read: NSE's answer. BSE answered NOT_AVAILABLE_YET,
+    // which is UNKNOWN (OD-145), so no BSE baseline is recorded.
+    expect((mid.fs.dataLineage as any).exchangeAtSave).toEqual({ NSE: NSE_OLD });
+    expect((mid.fs.dataLineage as any).exchangeBaselineOrigin).toEqual({ NSE: 'FIRST_HELD_READ' });
 
     // A later read where NSE says something different from that baseline replaces the admin date.
     const second = await walkOnce(NSE_NEW);
@@ -416,6 +425,7 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
 
     for (const [label, nseRead] of [
       ['NSE CHECK_FAILED', { outcome: 'CHECK_FAILED', reason: 'close date before open date' } as FieldFetcherAnswer],
+      ['NSE NOT_AVAILABLE_YET (OD-145: unknown)', { outcome: 'NOT_AVAILABLE_YET' } as FieldFetcherAnswer],
       ['NSE read FAILED (fetcher threw)', 'THROW' as const],
       ['NSE states the rejected date', REJECTED],
       ['NSE stated a date at save and now prints nothing', { outcome: 'NOT_PRINTED' } as FieldFetcherAnswer],
@@ -487,6 +497,139 @@ describe.skipIf(!DATABASE_URL)('OD-106: a newer exchange date replaces an admin-
       expect(after.hold.isProtected).toBe(false);
       expect(after.queue).toHaveLength(0);
       expect(alerts).toHaveLength(1);
+    });
+  });
+
+  // OD-145 (owner 2026-09-30): an exchange answer that is not an explicit "not printed" is UNKNOWN;
+  // UNKNOWN keeps the admin value, records no baseline and never hands the decision down the ranking.
+  // Round-4 Tier A reproduction (CRITICAL-1): a legacy hold, walk 1 NSE NOT_AVAILABLE_YET was recorded
+  // as NSE "stated nothing", and walk 2 NSE stating its pre-save date released the hold (the admin's
+  // 2026-06-29 replaced by 2026-07-10).
+  describe('OD-145: an unknown exchange answer keeps the admin value', () => {
+    const REJECTED = '2026-10-01';
+    const ADMIN_DATE = '2026-10-03';
+    const BSE_MOVED = '2026-10-05';
+
+    async function realNseFetcher(): Promise<FieldFetcher> {
+      const { buildNseFetcher, NseFieldFetcherState } = await import('../../src/services/field-plan-walk-nse-fetcher.js');
+      return buildNseFetcher(
+        {
+          ipoRepository: {
+            findById: async (id: string) => (await db.select().from(schema.ipos).where(eq(schema.ipos.id, id)))[0] ?? null,
+          } as never,
+          isNseCapable: () => true,
+        },
+        new NseFieldFetcherState()
+      );
+    }
+
+    const walk1Variants: Array<[string, () => Promise<Says>]> = [
+      ['NSE not found (NOT_AVAILABLE_YET)', async () => ({ outcome: 'NOT_AVAILABLE_YET' }) as FieldFetcherAnswer],
+      [
+        'NSE board is not empty but lacks the IPO (real fetcher)',
+        async () => {
+          nseBoard.rows = [{ symbol: 'OTHER', companyName: 'Some Other Company Limited', closeDate: '2026-07-01' }];
+          return realNseFetcher();
+        },
+      ],
+      [
+        'NSE match is ambiguous (real fetcher)',
+        async () => {
+          nseBoard.rows = [
+            { companyName: 'OD106 Exchange Override Proof Limited', closeDate: '2026-07-01' },
+            { companyName: 'OD106 Exchange Override Proof Ltd', closeDate: '2026-07-02' },
+          ];
+          return realNseFetcher();
+        },
+      ],
+      [
+        'NSE board is EMPTY after a swallowed total failure (real fetcher)',
+        async () => {
+          nseBoard.rows = [];
+          return realNseFetcher();
+        },
+      ],
+    ];
+
+    for (const [label, makeWalk1] of walk1Variants) {
+      it(`proof 1: legacy hold, walk 1 ${label}, walk 2 NSE states its pre-save date -> hold KEPT`, async () => {
+        await seed(NSE_OLD);
+        await adminHolds(HELD);
+        await makeLegacyHold('CHITTORGARH');
+        expect(((await state()).fs.dataLineage as any).exchangeAtSave).toBeUndefined();
+
+        const first = await walkOnce(await makeWalk1());
+        const mid = await state();
+        expect(mid.ipo.closeDate).toBe(HELD);
+        expect(mid.hold.isProtected).toBe(true);
+        // UNKNOWN records NO baseline for NSE (the round-4 defect recorded NSE: null here).
+        expect((mid.fs.dataLineage as any).exchangeAtSave?.NSE).toBeUndefined();
+        expect(first.alerts).toHaveLength(0);
+
+        const second = await walkOnce(NSE_OLD);
+        const after = await state();
+        expect(after.ipo.closeDate).toBe(HELD);
+        expect(after.fs.source).toBe('ADMIN');
+        expect(after.hold.isProtected).toBe(true);
+        expect(after.audits.filter((a) => a.actionType === 'Exchange Override')).toHaveLength(0);
+        expect(second.alerts).toHaveLength(0);
+        // NSE's first KNOWN answer is its baseline.
+        expect((after.fs.dataLineage as any).exchangeAtSave).toMatchObject({ NSE: NSE_OLD });
+        expect((after.fs.dataLineage as any).exchangeBaselineOrigin).toMatchObject({ NSE: 'FIRST_HELD_READ' });
+      });
+    }
+
+    it('proof 2: a non-empty admin value, NSE unknown/failing while BSE moves, then NSE returns the rejected date -> KEPT', async () => {
+      await seed(REJECTED, REJECTED);
+      await adminHolds(ADMIN_DATE);
+      await makeLegacyHold('CHITTORGARH');
+
+      const w1 = await walkOnce({ outcome: 'NOT_AVAILABLE_YET' }, BSE_MOVED);
+      const s1 = await state();
+      expect(s1.ipo.closeDate).toBe(ADMIN_DATE);
+      expect(s1.hold.isProtected).toBe(true);
+      expect((s1.fs.dataLineage as any).exchangeAtSave?.NSE).toBeUndefined();
+      expect(w1.alerts).toHaveLength(0);
+
+      const w2 = await walkOnce('THROW', BSE_MOVED);
+      const s2 = await state();
+      expect(s2.ipo.closeDate).toBe(ADMIN_DATE);
+      expect(s2.hold.isProtected).toBe(true);
+      expect(w2.alerts).toHaveLength(0);
+
+      // NSE comes back with the date the admin rejected: recorded as NSE's baseline, never a release.
+      const w3 = await walkOnce(REJECTED, BSE_MOVED);
+      const after = await state();
+      expect(after.ipo.closeDate).toBe(ADMIN_DATE);
+      expect(after.fs.source).toBe('ADMIN');
+      expect(after.hold.isProtected).toBe(true);
+      expect(after.audits.filter((a) => a.actionType === 'Exchange Override')).toHaveLength(0);
+      expect(w3.alerts).toHaveLength(0);
+      expect((after.fs.dataLineage as any).exchangeAtSave).toMatchObject({ NSE: REJECTED });
+    });
+
+    it('round-4 MINOR: after the admin saves a different value, the same BSE value is queued again (dedupe key has the admin value)', async () => {
+      await seed(REJECTED, REJECTED);
+      await adminHolds(ADMIN_DATE);
+      await walkOnce({ outcome: 'CHECK_FAILED', reason: 'unparseable' }, BSE_MOVED);
+      expect((await state()).queue).toHaveLength(1);
+      await walkOnce({ outcome: 'CHECK_FAILED', reason: 'unparseable' }, BSE_MOVED);
+      expect((await state()).queue).toHaveLength(1);
+
+      await adminHolds('2026-10-04', false);
+      // A re-save whose stored BSE answer is newer than the hold absorbs it as BSE's baseline (then it
+      // is not newer and nothing is queued). The key matters when the re-save's BSE baseline is still
+      // the earlier one (older or no stored evidence); set that case explicitly.
+      await db.execute(sql`
+        UPDATE field_sources
+           SET data_lineage = jsonb_set(data_lineage, '{exchangeAtSave}', ${JSON.stringify({ NSE: REJECTED, BSE: REJECTED })}::jsonb)
+         WHERE ipo_id = ${IPO_ID}::uuid AND field_name = 'closeDate'`);
+      await walkOnce({ outcome: 'CHECK_FAILED', reason: 'unparseable' }, BSE_MOVED);
+      const after = await state();
+      expect(after.ipo.closeDate).toBe('2026-10-04');
+      expect(after.hold.isProtected).toBe(true);
+      expect(after.queue).toHaveLength(2);
+      expect(after.queue.map((q) => q.value1).sort()).toEqual([ADMIN_DATE, '2026-10-04']);
     });
   });
 });

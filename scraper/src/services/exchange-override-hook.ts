@@ -132,3 +132,27 @@ export function buildExchangeOverrideHook(deps: ExchangeOverrideHookDeps) {
     return { holdReleased: true };
   };
 }
+
+/**
+ * The production held-field seam: OD-106/OD-141 (the exchange hook) runs FIRST, and §9.2 item 9 (a
+ * newer document's value becomes a queue suggestion) runs only when the hold is still in place. A
+ * released hold is no longer an admin value, so a suggestion against it would ask the admin to
+ * judge a value the exchange has already replaced (round-4 MINOR: this ordering was untested).
+ */
+export function composeHeldFieldHooks(
+  exchange: (ipoId: string, tableName: string, rowKey: string, fieldName: string, answers: HeldFieldAnswers) => Promise<HeldFieldHookOutcome>,
+  newerDocument: (ipoId: string, tableName: string, rowKey: string, fieldName: string) => Promise<void>
+) {
+  return async function onHeldFieldAnswers(
+    ipoId: string,
+    tableName: string,
+    rowKey: string,
+    fieldName: string,
+    answers: HeldFieldAnswers
+  ): Promise<HeldFieldHookOutcome> {
+    const outcome = await exchange(ipoId, tableName, rowKey, fieldName, answers);
+    if (outcome && outcome.holdReleased) return outcome;
+    await newerDocument(ipoId, tableName, rowKey, fieldName);
+    return outcome;
+  };
+}

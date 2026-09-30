@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildExchangeOverrideHook, type ExchangeOverrideHookDeps } from '../../../src/services/exchange-override-hook.js';
+import { buildExchangeOverrideHook, composeHeldFieldHooks, type ExchangeOverrideHookDeps } from '../../../src/services/exchange-override-hook.js';
 
 const NOW = new Date('2026-08-21T05:00:00Z'); // 10:30 IST
 const replaced = (status: string) => ({
@@ -102,5 +102,34 @@ describe('OD-106 hook: alert and dedupe (OD-112, §9.2 items 16 and 25)', () => 
     const d = deps();
     expect(await buildExchangeOverrideHook(d)('ipo-1', 'anchor_investors', '', 'bid_date', answers)).toEqual({ holdReleased: false });
     expect(d.apply).not.toHaveBeenCalled();
+  });
+});
+
+describe('round-4 MINOR: item 9 runs only while the hold is still in place', () => {
+  it('a released hold skips item 9 (the value is no longer an admin value); a kept hold runs it', async () => {
+    const item9 = vi.fn(async () => undefined);
+    const released = composeHeldFieldHooks(async () => ({ holdReleased: true }), item9);
+    expect(await released('ipo', 'ipos', '', 'close_date', [])).toEqual({ holdReleased: true });
+    expect(item9).not.toHaveBeenCalled();
+
+    const kept = composeHeldFieldHooks(async () => ({ holdReleased: false }), item9);
+    expect(await kept('ipo', 'ipos', '', 'close_date', [])).toEqual({ holdReleased: false });
+    expect(item9).toHaveBeenCalledTimes(1);
+    expect(item9).toHaveBeenCalledWith('ipo', 'ipos', '', 'close_date');
+  });
+
+  it('the exchange hook runs BEFORE item 9', async () => {
+    const order: string[] = [];
+    const hook = composeHeldFieldHooks(
+      async () => {
+        order.push('exchange');
+        return { holdReleased: false };
+      },
+      async () => {
+        order.push('item9');
+      }
+    );
+    await hook('ipo', 'ipos', '', 'close_date', []);
+    expect(order).toEqual(['exchange', 'item9']);
   });
 });
