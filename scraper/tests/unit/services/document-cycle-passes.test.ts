@@ -964,6 +964,91 @@ describe('#1316 — first-touch pass: every zero-row live IPO is visited before 
   });
 });
 
+/**
+ * Round 1 reviewer fix (MAJOR, Tier B review of PR #1331): the first-touch
+ * pass's original deadline (`startedAt + wakeBudgetMs - PURGE_RESERVE_MS`,
+ * ~18 of a 20-minute wake) left it free to run for nearly the WHOLE wake —
+ * a large, slow batch of zero-row UPCOMING rows could burn that time and
+ * starve the OPEN/CLOSED ranked walk below it for one wake, backwards from
+ * spec §5.4 ("the live tier keeps absolute priority"). The pass is now
+ * capped at `RESERVATION_CEILING_MS` (3 min) from its own start, the same
+ * constant the purge/LISTED/UPCOMING post-budget-trip reservations already
+ * use. RED if that cap is reverted to the old 18-minute bound (the 20
+ * zero-row rows below, at 30s each, cost 600s — inside the old ~1080s bound
+ * but outside the new 180s one).
+ */
+describe('#1316 round 1 fix — the first-touch pass is capped at RESERVATION_CEILING_MS, not the whole wake', () => {
+  it('20 zero-row UPCOMING rows at 30s each (600s total) exceed the 3-min cap -> the pass stops at 6 rows, and OPEN/CLOSED still run in the SAME wake', async () => {
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+
+    const zeroRowIds = Array.from({ length: 20 }, (_, i) => `zero-${i}`);
+    const rows = [
+      candidateRow('open-1', 'OPEN'),
+      candidateRow('closed-1', 'CLOSED'),
+      ...zeroRowIds.map((id, i) => ({ ...candidateRow(id, 'UPCOMING'), open_date: daysAgo(-(i + 1)) })),
+    ];
+    dbExecuteMock.mockResolvedValue({ rows });
+
+    // Fake clock: each zero-row visit costs 30s; OPEN/CLOSED visits are free
+    // (isolates the assertion to the first-touch pass's own cap, not the
+    // ranked walk's budget arithmetic).
+    let clock = 0;
+    const now = () => clock;
+    runIpoMock.mockImplementation((ipo: { id: string }) => {
+      if (ipo.id.startsWith('zero-')) clock += 30_000;
+      return {
+        ipoId: ipo.id,
+        companyName: 'Test Co',
+        stage: 'PRE_OPEN',
+        skipped: false,
+        skipReason: '',
+        due: [],
+        found: [],
+        notYetFiled: [],
+        notFound: [],
+        blocked: [],
+        notApplicable: [],
+        superseded: [],
+        leadManagers: [],
+        attempts: [],
+        networkCalls: 0,
+      };
+    });
+
+    // Default wakeBudgetMs (20 min): the wake-based term of the deadline
+    // (wakeBudgetMs - PURGE_RESERVE_MS = 18 min = 1,080,000ms) is far larger
+    // than RESERVATION_CEILING_MS (180,000ms), so the ceiling is the binding
+    // constraint being tested here. budgetMs (300,000ms = 5 min) sits
+    // between the new cap's total spend (180,000ms, 6 rows) and the old
+    // bound's total spend (600,000ms, all 20 rows) — the discriminator: post
+    // fix, OPEN/CLOSED is reached inside budgetMs; pre-fix (18-min bound),
+    // first-touch alone would burn past budgetMs before the ranked walk ever
+    // starts, and OPEN/CLOSED would fall into the budget-trip/reservation
+    // path instead of a normal visit.
+    const summary = await runDocumentCycle({ budgetMs: 300_000, extractionBudgetMs: 999_999, now });
+
+    // The first-touch pass's OWN counters prove it stopped at the cap,
+    // independent of anything the ranked walk does afterward (the walk may
+    // legitimately pick up a few more zero-row rows with its OWN remaining
+    // budget — that is not what this test is about).
+    expect(summary.firstTouchProcessed).toBe(6);
+    expect(summary.firstTouchSkippedByDeadline).toBe(14);
+
+    // The core assertion (the reviewer's actual concern): OPEN/CLOSED still
+    // get a normal visit in THIS wake. Pre-fix (18-min bound), first-touch
+    // alone would process all 20 zero-row rows (600,000ms, under the old
+    // ~1,080,000ms bound) BEFORE the ranked walk starts, so by the time the
+    // walk reaches open-1 at i=0 the clock (600,000ms) is already past
+    // budgetMs (300,000ms) — the walk trips immediately and open-1/closed-1
+    // fall into the budget-exhausted/reservation path (which does not cover
+    // OPEN/CLOSED) instead of a normal visit. RED on the 18-min bound: this
+    // assertion fails because idsProcessed never contains them.
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed).toContain('open-1');
+    expect(idsProcessed).toContain('closed-1');
+  });
+});
+
 describe('W-124 round 2 — MAJOR-1: a complete LISTED row is excluded from every pass', () => {
   function listedRow(id: string, listingDate: string) {
     return { ...candidateRow(id, 'LISTED'), listing_date: listingDate };

@@ -1857,7 +1857,20 @@ export async function runDocumentCycle(
     // changes no wake-budget constant — it only reorders WHICH candidates
     // `runIpo` visits first inside the SAME `DOCUMENT_CYCLE_WAKE_BUDGET_MS`
     // wake the ranked walk already runs under.
-    const firstTouchDeadline = startedAt + wakeBudgetMs - PURGE_RESERVE_MS;
+    //
+    // Round 1 reviewer fix (MAJOR): `startedAt + wakeBudgetMs - PURGE_RESERVE_MS`
+    // alone left this pass free to run for basically the WHOLE wake (~18 of
+    // 20 minutes) before the OPEN/CLOSED ranked walk below ever got a turn —
+    // a large batch of zero-row UPCOMING rows could starve OPEN/CLOSED for
+    // one wake, exactly backwards from spec §5.4 ("the live tier keeps
+    // absolute priority"). Bounded by `RESERVATION_CEILING_MS` (3 min) from
+    // the cycle start (this pass runs first, so no extra clock read), same constant and same reasoning the
+    // post-budget-trip purge/LISTED/UPCOMING reservations already use
+    // (line ~215) — never let an unbounded reserved pass outrun the wake.
+    // Rows left unvisited past the cap are logged by id below and lead the
+    // NEXT wake's first-touch pass (`orderAndCapCandidates`'s rank-2
+    // rotation key already sorts a never-touched row first).
+    const firstTouchDeadline = Math.min(startedAt + wakeBudgetMs - PURGE_RESERVE_MS, startedAt + RESERVATION_CEILING_MS);
     // MAJOR-1 mirror (see `orderAndCapCandidates`'s rank-2 `alreadyComplete`
     // drop): `lastActivityAt === null` alone is not the same test as "zero
     // document_fetch_state rows" — a row that HAS a persisted row but was
