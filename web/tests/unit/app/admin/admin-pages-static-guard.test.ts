@@ -18,7 +18,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { evaluateAdminServerFile } from './admin-page-guard-detector';
+import { evaluateAdminServerFile, fileHasUseServerDirective, fileHasNoDataAccess } from './admin-page-guard-detector';
 
 const ADMIN_ROOT = path.resolve(__dirname, '../../../../app/admin');
 
@@ -37,8 +37,10 @@ function listCandidateFiles(dir: string): string[] {
       continue;
     }
     // Any other file is a candidate ONLY if it itself carries a 'use server' directive — a plain
-    // component/helper imported by a page is not itself a Next.js server entry point.
-    if (/^\s*['"]use server['"]/.test(fs.readFileSync(full, 'utf8'))) out.push(full);
+    // component/helper imported by a page is not itself a Next.js server entry point. Decided by
+    // the PARSER (fileHasUseServerDirective), never a byte-anchored regex — a leading doc comment
+    // is trivia to the parser but hid the file from a `^`-anchored text match (round-2 finding 1).
+    if (fileHasUseServerDirective(fs.readFileSync(full, 'utf8'))) out.push(full);
   }
   return out;
 }
@@ -80,6 +82,14 @@ describe('every non-client admin server file guards its entry points, or is revi
   it('finds exactly the expected candidate files', () => {
     const actual = files.map((f) => path.relative(ADMIN_ROOT, f).split(path.sep).join('/')).sort();
     expect(actual).toEqual([...EXPECTED_CANDIDATE_FILES].sort());
+  });
+
+  it('every reviewed no-data allowlist entry is actually data-free BY CONTENT, not just by path (round-2 finding 4)', () => {
+    const notDataFree = Object.keys(ADMIN_SERVER_FILES_WITHOUT_DATA)
+      .map((rel) => ({ rel, src: fs.readFileSync(path.join(ADMIN_ROOT, rel), 'utf8') }))
+      .filter(({ src }) => !fileHasNoDataAccess(src))
+      .map(({ rel }) => rel);
+    expect(notDataFree).toEqual([]);
   });
 
   it('has no unguarded entry point outside the reviewed no-data allowlist', () => {
@@ -190,6 +200,89 @@ describe('every non-client admin server file guards its entry points, or is revi
         'use server';
         export async function updateThing() {
           const rows = await db.update(ipos).set({});
+          return rows;
+        }
+      `;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+  });
+
+  describe('round-2 self-test: the four review findings plus the fifth listed shape all fail unguarded', () => {
+    it("1. a 'use server' file whose directive follows a leading doc comment is still found unguarded", () => {
+      const src = `
+        /**
+         * File header comment before the directive.
+         */
+        'use server';
+        export async function updateThing() {
+          const rows = await db.update(ipos).set({});
+          return rows;
+        }
+      `;
+      expect(fileHasUseServerDirective(src)).toBe(true);
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('2. an inline server action nested inside an otherwise-guarded page must itself be guarded', () => {
+      const src = `
+        export default async function Page() {
+          const admin = await getAdminSessionFromCookies();
+          if (!admin) { redirect('/admin/login'); }
+          async function saveIt(formData) {
+            'use server';
+            const rows = await db.update(ipos).set({});
+            return rows;
+          }
+          return null;
+        }
+      `;
+      const verdict = evaluateAdminServerFile(src);
+      expect(verdict.status).toBe('unguarded');
+      expect((verdict as { reason: string }).reason).toContain('inline server action');
+    });
+
+    it('3. the guard wrapped in try/catch (swallowing the redirect) is not accepted', () => {
+      const src = `
+        export default async function Page() {
+          try {
+            const admin = await getAdminSessionFromCookies();
+            if (!admin) { redirect('/admin/login'); }
+          } catch (e) {
+            // swallowed — execution continues below with no session
+          }
+          const repo = new IPORepository(db, redis);
+          return null;
+        }
+      `;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('4. an allowlisted-shape file that gains a data read is caught by fileHasNoDataAccess', () => {
+      const redirectOnly = `
+        import { redirect } from 'next/navigation';
+        export default async function Page({ params }) {
+          const { table } = await params;
+          redirect('/admin/dynamic/' + table + '/list');
+        }
+      `;
+      expect(fileHasNoDataAccess(redirectOnly)).toBe(true);
+
+      const withDataReadAdded = `
+        import { redirect } from 'next/navigation';
+        export default async function Page({ params }) {
+          const { table } = await params;
+          const rows = await db.select().from(ipos);
+          redirect('/admin/dynamic/' + table + '/list');
+        }
+      `;
+      expect(fileHasNoDataAccess(withDataReadAdded)).toBe(false);
+    });
+
+    it('5. a default parameter that reads data runs before the guard and is unguarded', () => {
+      const src = `
+        export default async function Page(_p, rows = loadAll()) {
+          const admin = await getAdminSessionFromCookies();
+          if (!admin) { redirect('/admin/login'); }
           return rows;
         }
       `;
