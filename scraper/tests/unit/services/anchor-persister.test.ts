@@ -575,10 +575,22 @@ describe('anchor-persister — ipos.scraper_locked (CRITICAL-2)', () => {
     expect(scrape).not.toHaveBeenCalled();
     expect(summary.written).toBe(0);
     expect(summary.investorsWritten).toBe(0);
-    expect(summary.refusedReason).toContain('scraper_locked');
+    expect(summary.refusedReason).toContain('scraper-write-blocked');
     // Same refusal shape as every other refusal on this path — the CLI turns a
     // non-null refusedReason into exit code 1.
     expect(summary.refusedReason).toContain(IPO_ID);
+  });
+
+  it('refuses a HIDDEN IPO the same way (§9.2 item 23: scraperWriteBlocked = locked OR hidden)', async () => {
+    const { deps, persist, scrape } = makeDeps(deepaAnchorFixture(), {
+      companyName: COMPANY,
+      scraperLocked: false,
+      hiddenAt: new Date('2026-09-30T08:00:00Z'),
+    } as never);
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+    expect(persist).not.toHaveBeenCalled();
+    expect(scrape).not.toHaveBeenCalled();
+    expect(summary.refusedKind).toBe('scraper_write_blocked');
   });
 
   it('refuses when the IPO row does not exist', async () => {

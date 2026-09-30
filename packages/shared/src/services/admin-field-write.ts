@@ -22,6 +22,7 @@
  * still detected; the provenance timestamp changes on every scraper write that records provenance.
  * Neither depends on the value, and no migration is needed.
  */
+import { isHiddenIpo, IPO_HIDDEN_ADMIN_REASON } from './scraper-write-block';
 import { and, desc, eq, getTableColumns, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { PgTable } from 'drizzle-orm/pg-core';
@@ -236,6 +237,8 @@ export type AdminFieldWriteResult =
     }
   | { kind: 'INVALID'; reason: string }
   | { kind: 'NOT_FOUND'; reason: string }
+  /** OD-150: the IPO is hidden; a hidden row is view-only until unhidden. */
+  | { kind: 'HIDDEN'; reason: string }
   | { kind: 'CONFLICT'; currentValue: unknown; setBy: string | null; setAt: string | null; currentVersion: string };
 
 export interface AdminFieldVersion {
@@ -678,9 +681,12 @@ export async function writeAdminFieldValue(
   try {
     return await db.transaction(async (txRaw) => {
       const tx = txRaw as unknown as Db;
-      const locked = await tx.execute(sql`SELECT slug FROM ipos WHERE id = ${ipoId}::uuid FOR NO KEY UPDATE`);
-      const slug = (locked.rows[0] as { slug?: string } | undefined)?.slug;
+      const locked = await tx.execute(sql`SELECT slug, hidden_at FROM ipos WHERE id = ${ipoId}::uuid FOR NO KEY UPDATE`);
+      const lockedRow = locked.rows[0] as { slug?: string; hidden_at?: Date | string | null } | undefined;
+      const slug = lockedRow?.slug;
       if (!slug) throw new Refusal({ kind: 'NOT_FOUND', reason: `IPO ${ipoId} not found` });
+      // OD-150: read under the same row lock the hide takes, so a hide and an edit never interleave.
+      if (isHiddenIpo({ hiddenAt: lockedRow?.hidden_at ?? null })) throw new Refusal({ kind: 'HIDDEN', reason: IPO_HIDDEN_ADMIN_REASON });
 
       const target = await resolveRow(tx, ipoId, tableName, input.row);
       if (!target) throw new Refusal({ kind: 'NOT_FOUND', reason: `${tableName} has no such row for IPO ${ipoId}` });

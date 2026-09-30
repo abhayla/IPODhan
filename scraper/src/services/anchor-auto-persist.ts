@@ -174,7 +174,7 @@ export function classifyAnchorAutoOutcome(input: {
   // time on the same file/DB row, so they earn the "2nd identical refusal ->
   // MANUAL_REVIEW" treatment, same as a scraper parse failure.
   //
-  // `scraper_locked` (the extraction lock is transiently held), `ipo_missing`
+  // `scraper_write_blocked` (the extraction lock is transiently held), `ipo_missing`
   // (the IPO row may simply not exist YET), and `no_report` (a report may be
   // uploaded later) are NOT content verdicts — they can clear themselves with
   // no change to the document at all, so they MUST stay retryable FAILED.

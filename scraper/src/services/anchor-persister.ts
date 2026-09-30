@@ -23,6 +23,7 @@
  * which is worse for a reader than an absent anchor table.
  */
 
+import { scraperWriteBlocked, type ScraperWriteBlockFacts } from '@ipodhan/shared/services/scraper-write-block';
 import type { AnchorInvestorData } from '../scrapers/anchor-investors-scraper.js';
 import { createAnchorInvestors } from './data-persister.js';
 import { recordLiveStep } from './step-ledger-recorders.js';
@@ -68,7 +69,7 @@ export interface AnchorPersisterDeps {
    * simply forgetting a dependency.
    */
   ipoRepository: {
-    findById(id: string): Promise<{ companyName?: string; scraperLocked?: boolean } | null>;
+    findById(id: string): Promise<({ companyName?: string } & ScraperWriteBlockFacts) | null>;
   };
   /** Overridable only so a test can assert the payload without a database. */
   persist?: typeof createAnchorInvestors;
@@ -125,7 +126,7 @@ export interface AnchorPersisterDeps {
  */
 export type AnchorRefusalKind =
   | 'ipo_missing'
-  | 'scraper_locked'
+  | 'scraper_write_blocked'
   | 'no_report'
   | 'arithmetic'
   | 'blank_names'
@@ -468,12 +469,12 @@ export async function persistAnchorReport(
       refusedKind: 'ipo_missing',
     };
   }
-  if (existing.scraperLocked === true) {
+  if (scraperWriteBlocked(existing)) {
     const reason =
-      `IPO ${ipoId} (${existing.companyName ?? 'unknown'}) is scraper_locked — ` +
-      'refusing the entire anchor write. Clear the lock in admin to allow it.';
-    logger.warn({ ipoId }, '[AnchorPersister] IPO is scraper_locked — writing NOTHING');
-    return { ...empty, refusedReason: reason, refusedKind: 'scraper_locked' };
+      `IPO ${ipoId} (${existing.companyName ?? 'unknown'}) is scraper-write-blocked (locked or hidden) — ` +
+      'refusing the entire anchor write. Clear the lock / unhide in admin to allow it.';
+    logger.warn({ ipoId }, '[AnchorPersister] IPO is scraper-write-blocked — writing NOTHING');
+    return { ...empty, refusedReason: reason, refusedKind: 'scraper_write_blocked' };
   }
 
   const data = await deps.scrapeAnchorReport(ipoId, options.companyName);

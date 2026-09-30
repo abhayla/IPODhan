@@ -10,6 +10,7 @@
 import { db } from '@/lib/db';
 import { ipos, documents } from '@/lib/db';
 import { eq, and, ilike, sql, inArray } from 'drizzle-orm';
+import { publicIpoVisible } from '@/lib/repositories/public-ipo-visibility';
 import { REAL_IPO_OFFERING_TYPES } from '@ipodhan/shared/utils/offering-type';
 
 // ==================== TYPES ====================
@@ -87,6 +88,7 @@ export async function getMainboardProspectusDocuments(
     const conditions = [
       eq(ipos.segment, 'MAINBOARD'),
       inArray(ipos.offeringType, [...REAL_IPO_OFFERING_TYPES]),
+      publicIpoVisible(), // §9.2 item 23
     ];
 
     // Add company name filter (case-insensitive partial match)

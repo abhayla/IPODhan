@@ -18,7 +18,8 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPOScoreRealtimeRepository } from '@/lib/repositories/ipo-score-realtime-repository';
 import { IPOScoringService } from '@/lib/services/ipo-scoring-realtime';
 import { ipos } from '@/lib/db';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
+import { publicIpoVisible } from '@/lib/repositories/public-ipo-visibility';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 export async function GET(
@@ -44,7 +45,7 @@ export async function GET(
     const [ipo] = await db
       .select()
       .from(ipos)
-      .where(eq(ipos.slug, slug))
+      .where(and(eq(ipos.slug, slug), publicIpoVisible()))
       .limit(1);
 
     if (!ipo) {

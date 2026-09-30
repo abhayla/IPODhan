@@ -1101,6 +1101,7 @@ export const CANDIDATE_IPOS_SQL = `
          GROUP BY ipo_id
       ) dfs ON dfs.ipo_id = i.id
      WHERE i.offering_type = 'IPO'
+       AND i.hidden_at IS NULL -- §9.2 item 23: the scraper stops walking a hidden row
        AND i.status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED')
      ORDER BY
        CASE
@@ -2824,6 +2825,7 @@ export const PURGE_CANDIDATES_SQL = `
       LEFT JOIN document_fetch_state s ON s.ipo_id = i.id
       LEFT JOIN documents d ON d.ipo_id = i.id
      WHERE i.offering_type = 'IPO'
+       AND i.hidden_at IS NULL -- §9.2 item 23: a hidden row's documents stay for admins
        AND (
          (i.close_date IS NOT NULL AND i.close_date < now() - make_interval(days => {{RETENTION_DAYS}}))
          OR upper(i.status::text) = 'WITHDRAWN'

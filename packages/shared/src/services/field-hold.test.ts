@@ -23,14 +23,14 @@ describe('dropHeldFields (spec §9.2 item 19)', () => {
   it('drops exactly the protected keys and keeps the rest', () => {
     const r = dropHeldFields(
       { registrar: 'S', sector: 'X', lotSize: 10, updatedAt: new Date(0) },
-      { scraperLocked: false, protectedFields: new Set(['registrar', 'lotSize']) }
+      { writeBlocked: false, hidden: false, protectedFields: new Set(['registrar', 'lotSize']) }
     );
     expect(r.dropped).toEqual(['registrar', 'lotSize']);
     expect(Object.keys(r.patch)).toEqual(['sector', 'updatedAt']);
   });
 
   it('scraper_locked drops every non-bookkeeping key only when honourScraperLock is set', () => {
-    const hold = { scraperLocked: true, protectedFields: new Set<string>() };
+    const hold = { writeBlocked: true, hidden: false, protectedFields: new Set<string>() };
     const patch = { ipoId: A, issueType: 'BOOK', updatedAt: 1 };
     expect(dropHeldFields(patch, hold, { honourScraperLock: true }).dropped).toEqual(['issueType']);
     expect(dropHeldFields(patch, hold).dropped).toEqual([]);
@@ -39,10 +39,17 @@ describe('dropHeldFields (spec §9.2 item 19)', () => {
   it('never drops identity/bookkeeping keys even if a protection row names them', () => {
     const r = dropHeldFields(
       { id: 'x', ipoId: A, createdAt: 1, updatedAt: 2, lastUpdated: 3, v: 1 },
-      { scraperLocked: true, protectedFields: new Set(['ipoId', 'id', 'v']) },
+      { writeBlocked: true, hidden: false, protectedFields: new Set(['ipoId', 'id', 'v']) },
       { honourScraperLock: true }
     );
     expect(r.dropped).toEqual(['v']);
+  });
+
+  it('a HIDDEN row drops every non-bookkeeping key on every table, with or without honourScraperLock (§9.2 item 23)', () => {
+    const hold = { writeBlocked: true, hidden: true, protectedFields: new Set<string>() };
+    const patch = { ipoId: A, issueType: 'BOOK', updatedAt: 1 };
+    expect(dropHeldFields(patch, hold).dropped).toEqual(['issueType']);
+    expect(dropHeldFields(patch, hold, { honourScraperLock: true }).dropped).toEqual(['issueType']);
   });
 
   it('no hold keeps the patch byte-identical (no behaviour change for unprotected fields)', () => {
@@ -64,7 +71,8 @@ describe('lockAndReadFieldHolds', () => {
     expect(tx.queries[1].sql).toMatch(/field_protection_metadata/);
     expect(tx.queries[1].params).toEqual([A, B, 'listing_performance']);
     expect([...holds.get(A)!.protectedFields]).toEqual(['openPrice']);
-    expect(holds.get(B)).toMatchObject({ scraperLocked: true });
+    expect(holds.get(B)).toMatchObject({ writeBlocked: true, hidden: false });
+    expect(holds.get(A)).toMatchObject({ writeBlocked: false, hidden: false });
     expect([...holds.get(B)!.protectedFields]).toEqual(['listingPrice']);
   });
 
@@ -79,6 +87,25 @@ describe('lockAndReadFieldHolds', () => {
     const tx = recordingTx([], []);
     expect((await lockAndReadFieldHolds(tx, [], 'ipos')).size).toBe(0);
     expect(tx.queries).toHaveLength(0);
+  });
+});
+
+describe('hidden row (§9.2 item 23, OD-150): the single-row and row-keyed forms refuse the write', () => {
+  const hiddenAt = new Date('2026-09-30T08:00:00Z');
+  it('filterPatchUnderHold throws IpoHiddenError inside the lock (an upsert would otherwise insert values whole)', async () => {
+    const tx = recordingTx([{ id: A, scraper_locked: false, hidden_at: hiddenAt }], []);
+    await expect(filterPatchUnderHold(tx, A, 'financial_data', { ipoId: A, revenue: 1 })).rejects.toMatchObject({ name: 'IpoHiddenError', ipoId: A });
+    expect(tx.queries[0].sql).toMatch(/SELECT id, scraper_locked, hidden_at FROM ipos/);
+  });
+  it('lockAndReadRowHolds throws IpoHiddenError', async () => {
+    const tx = recordingTx([{ id: A, scraper_locked: false, hidden_at: hiddenAt }], []);
+    await expect(lockAndReadRowHolds(tx, A, 'peer_companies')).rejects.toMatchObject({ name: 'IpoHiddenError' });
+  });
+  it('discriminates: a visible (and a locked-only) row is not refused', async () => {
+    const tx = recordingTx([{ id: A, scraper_locked: true, hidden_at: null }], []);
+    const r = await filterPatchUnderHold(tx, A, 'financial_data', { ipoId: A, revenue: 1 });
+    expect(r.hold).toMatchObject({ writeBlocked: true, hidden: false });
+    expect(r.patch).toEqual({ ipoId: A, revenue: 1 });
   });
 });
 

@@ -3255,3 +3255,22 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     );
   }
 }
+
+/**
+ * §9.2 item 23 (OD-116, OD-118, OD-150): the one writer of `ipos.hidden_*` (admin hide / unhide),
+ * kept on the shared write path (config/write-ratchet-baseline.json). `state` null unhides. The
+ * WHERE makes it idempotent against a concurrent hide/unhide: returns true only when this call
+ * changed the row.
+ */
+export async function writeIpoHiddenState(
+  tx: Pick<NodePgDatabase<typeof schema>, 'update'>,
+  ipoId: string,
+  state: { hiddenAt: Date; hiddenReason: string; hiddenBy: string; hiddenByAdminId: string | null } | null
+): Promise<boolean> {
+  const updated = await tx
+    .update(ipos)
+    .set(state ?? { hiddenAt: null, hiddenReason: null, hiddenBy: null, hiddenByAdminId: null })
+    .where(and(eq(ipos.id, ipoId), state ? sql`${ipos.hiddenAt} IS NULL` : sql`${ipos.hiddenAt} IS NOT NULL`))
+    .returning({ id: ipos.id });
+  return updated.length === 1;
+}

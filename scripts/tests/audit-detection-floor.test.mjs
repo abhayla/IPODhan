@@ -2503,3 +2503,4 @@ test('(upcoming_source_drift) mutation guard: inverting the diff>tolerance check
 // Item 10 zip_member_rows: its tests live in their own file; imported here so
 // they run in the pr-gate detection-floor step, which names only this file.
 import './zip-member-rows.test.mjs';
+import './hidden-ipo-child-writes.test.mjs';

@@ -155,6 +155,7 @@ export const CLOSED_IPO_CANDIDATES_SQL = `
     LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
    WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
      AND i.close_date < CURRENT_DATE
+     AND i.hidden_at IS NULL
      AND (
        r.ipo_id IS NULL
        OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM $1)
@@ -189,6 +190,7 @@ export function closedIpoCandidatesQuery(resourcedAtVersion: string, cap: number
     LEFT JOIN closed_ipo_resourcing r ON r.ipo_id = i.id
    WHERE upper(i.status::text) IN ('LISTED', 'CLOSED')
      AND i.close_date < CURRENT_DATE
+     AND i.hidden_at IS NULL
      AND (
        r.ipo_id IS NULL
        OR (r.outcome IN ('PARTIAL', 'FAILED') AND r.resourced_at_version IS DISTINCT FROM ${resourcedAtVersion})

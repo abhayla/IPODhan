@@ -574,6 +574,7 @@ jobs:
             scripts/tests/seo-surface-checks.test.mjs \
             scripts/tests/vps-data-audit-cron.test.mjs \
             scripts/tests/zip-member-rows.test.mjs \
+            scripts/tests/hidden-ipo-child-writes.test.mjs 
             scripts/tests/require-scripts-test-coverage.test.mjs
 
       - name: "main-gate.yml structural self-test (#616/#681)"

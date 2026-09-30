@@ -27,6 +27,7 @@
     "./services/exchange-override": "./src/services/exchange-override.ts",
     "./services/exchange-override-rule": "./src/services/exchange-override-rule.ts",
     "./services/field-hold": "./src/services/field-hold.ts",
+    "./services/scraper-write-block": "./src/services/scraper-write-block.ts",
     "./services/admin-list-write": "./src/services/admin-list-write.ts",
     "./services/admin-list-hold": "./src/services/admin-list-hold.ts",
     "./services/relaunch-admin-clear": "./src/services/relaunch-admin-clear.ts",

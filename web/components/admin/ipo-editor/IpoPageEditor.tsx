@@ -71,6 +71,8 @@ async function saveField(ipoId: string, field: EditorField, version: string, bod
   });
   const json = await res.json().catch(() => ({}));
   if (res.ok && json.success) return { kind: 'ok', value: json.data?.value ?? null, version: json.data?.version };
+  // OD-150: a hidden row is view-only; the server refuses the save with IPO_HIDDEN.
+  if (json.error === 'IPO_HIDDEN') return { kind: 'error', reason: String(json.reason ?? 'This IPO is hidden. Unhide it to edit.') };
   if (res.status === 409) {
     return { kind: 'conflict', currentValue: json.currentValue, setBy: json.setBy ?? null, setAt: json.setAt ?? null, currentVersion: json.currentVersion };
   }
@@ -79,6 +81,40 @@ async function saveField(ipoId: string, field: EditorField, version: string, bod
     return { kind: 'invalid', reason, checkFailed: /fails its check/.test(reason) };
   }
   return { kind: 'error', reason: String(json.reason ?? json.error ?? `HTTP ${res.status}`) };
+}
+
+/** OD-150: a hidden row is view-only. One action: unhide (POST /api/admin/ipos/[id]/visibility). */
+function HiddenBanner({ ipoId, hidden, onUnhidden }: { ipoId: string; hidden: { at: string; reason: string | null }; onUnhidden: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const unhide = async () => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      const res = await fetch(`/api/admin/ipos/${ipoId}/visibility`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unhide' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success) onUnhidden();
+      else setFailed(String(json.message ?? json.error ?? `HTTP ${res.status}`));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const at = new Date(hidden.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
+  return (
+    <div role="status" data-testid="hidden-banner" className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+      <p className="font-medium">This IPO is hidden (since {at} IST). It is view-only.</p>
+      {hidden.reason ? <p className="mt-1">Reason: {hidden.reason}</p> : null}
+      <button type="button" onClick={unhide} disabled={busy} className="mt-2 min-h-[44px] rounded-md border border-amber-400 bg-white px-3 font-medium">
+        {busy ? 'Unhiding...' : 'Unhide to edit'}
+      </button>
+      {failed ? <p className="mt-1 text-red-700">{failed}</p> : null}
+    </div>
+  );
 }
 
 export function FieldEditor({ ipoId, field, onSaved }: { ipoId: string; field: EditorField; onSaved: (f: EditorField) => void }) {
@@ -435,16 +471,19 @@ export function IpoPageEditor({ ipoId, editTarget, editRowKey = null }: IpoPageE
         </div>
         <div className="flex-1 overflow-y-auto p-3">
           {error && <p className="text-sm text-red-700">{error}</p>}
+          {payload?.hidden && <HiddenBanner ipoId={ipoId} hidden={payload.hidden} onUnhidden={() => { setPayload(null); router.refresh(); }} />}
           {!payload && !error && <p className="text-sm text-gray-600">Loading what each source said...</p>}
           <ul>
             {fields.map((f) => {
               const id = `${f.tableName}.${f.fieldName}`;
               const isOpen = openField === id || openField === f.key;
-              return <FieldRow key={f.key} ipoId={ipoId} field={f} open={isOpen} onToggle={() => setOpenField(isOpen ? null : id)} onSaved={onSaved} />;
+              // OD-150: a hidden row shows its values but opens no editor.
+              const readOnly = payload?.hidden != null;
+              return <FieldRow key={f.key} ipoId={ipoId} field={f} open={isOpen && !readOnly} onToggle={() => { if (!readOnly) setOpenField(isOpen ? null : id); }} onSaved={onSaved} />;
             })}
           </ul>
           {/* §9.2 item 8 (OD-107): the seven lists, each with add / edit / remove (remove asks a reason). */}
-          {!filter.trim() && (
+          {!filter.trim() && !payload?.hidden && (
             <div className="mt-4 space-y-2 border-t border-gray-200 pt-3" data-testid="list-editors">
               {(Object.keys(LIST_COLUMNS) as ListName[]).map((list) => (
                 <details key={list} open={editTarget === list} className="rounded-md border border-gray-200 p-3">

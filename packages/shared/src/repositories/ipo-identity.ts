@@ -40,6 +40,7 @@
  *     back to the pre-T-318 name-based result, so no data silently moves
  *     rows. See `resolveIpoRow`'s conflict-detection step below.
  */
+import { isHiddenIpo, type ScraperWriteBlockFacts } from '../services/scraper-write-block';
 import { logger } from '../logger';
 import { foldCompanyIdentity } from '../utils/company-identity-fold.js';
 import {
@@ -64,6 +65,7 @@ import {
   normalizeSourceKeyRefs,
   SourceKeyDuplicateError,
   SourceKeySupersededError,
+  IpoHiddenError,
   type SourceKeyRef,
 } from './ipo-source-keys';
 import { noteSourceKeyBind } from './source-key-lineage';
@@ -705,6 +707,23 @@ function heldError(identity: IpoIdentity, candidate: { id: string; slug?: string
  * order exactly as before.
  */
 export async function resolveIpoRow(
+  ipoRepository: IPORepository,
+  rawIdentity: IpoIdentity
+): Promise<IPO | IPOWithRelations | null> {
+  const row = await resolveIpoRowVisibleOrHidden(ipoRepository, rawIdentity);
+  // §9.2 item 23 (OD-116/OD-118): a hidden row is still BOUND (every tier above can find it, so
+  // the record is never recreated as a duplicate) but the record writes nothing to it.
+  if (row && isHiddenIpo(row as ScraperWriteBlockFacts)) {
+    logger.info({ companyName: rawIdentity.companyName, ipoId: row.id, slug: row.slug }, '[item 23] bound a hidden row - writes nothing');
+    throw new IpoHiddenError(
+      `resolveIpoRow: "${rawIdentity.companyName}" binds ${row.id}, which an admin hid (IPO hidden) - writes nothing`,
+      row.id
+    );
+  }
+  return row;
+}
+
+async function resolveIpoRowVisibleOrHidden(
   ipoRepository: IPORepository,
   rawIdentity: IpoIdentity
 ): Promise<IPO | IPOWithRelations | null> {

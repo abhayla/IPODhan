@@ -9,6 +9,7 @@
  * @module web/lib/services/status-updater-service
  */
 
+import { scraperWriteBlockColumns, scraperWriteBlocked } from '@ipodhan/shared/services/scraper-write-block';
 import { getDb } from '@/lib/db';
 import { ipos, fieldSources } from '@/lib/db';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -227,7 +228,7 @@ export async function updateIPOStatuses(
       openDate: ipos.openDate,
       closeDate: ipos.closeDate,
       listingDate: ipos.listingDate,
-      scraperLocked: ipos.scraperLocked,
+      ...scraperWriteBlockColumns(ipos),
     })
     .from(ipos);
 
@@ -237,7 +238,7 @@ export async function updateIPOStatuses(
   let refusedBackward = 0;
 
   for (const r of rows) {
-    if (r.scraperLocked) continue; // respect manual lock
+    if (scraperWriteBlocked(r)) continue; // respect manual lock and a hidden row (§9.2 item 23)
     if (isTerminalStatus(r.status)) continue; // W-41: never downgrade WITHDRAWN/POSTPONED
     const target = computeTargetStatus(
       { openDate: r.openDate, closeDate: r.closeDate, listingDate: r.listingDate },
@@ -367,7 +368,7 @@ export async function getOutdatedStatusCount(now: Date = new Date()): Promise<{
       openDate: ipos.openDate,
       closeDate: ipos.closeDate,
       listingDate: ipos.listingDate,
-      scraperLocked: ipos.scraperLocked,
+      ...scraperWriteBlockColumns(ipos),
     })
     .from(ipos);
 
@@ -377,7 +378,7 @@ export async function getOutdatedStatusCount(now: Date = new Date()): Promise<{
   let total = 0;
 
   for (const r of rows) {
-    if (r.scraperLocked) continue;
+    if (scraperWriteBlocked(r)) continue;
     if (isTerminalStatus(r.status)) continue; // W-41: terminal rows are not "outdated"
     const target = computeTargetStatus(
       { openDate: r.openDate, closeDate: r.closeDate, listingDate: r.listingDate },
