@@ -394,4 +394,38 @@ describe.skipIf(!DATABASE_URL)('a newer document creates a suggestion for an adm
     expect(resultAgain.duplicates).toBe(1);
     expect(await suggestions()).toHaveLength(1);
   }, 90000);
+
+  it('#1300: while a suggestion is OPEN, a re-extraction of the same document that prints a different value updates it; a decided one is never touched', async () => {
+    await adminSavePeRatio(ADMIN_PE);
+    const doc = await addDocument('Item9 refresh RHP', DIFFERENT_PE, '2026-09-21');
+    const args = { ipoId: IPO, tableName: 'peer_companies', rowKey: ROW_KEY, fieldName: 'pe_ratio' };
+    expect((await recordNewerDocumentSuggestions(db as never, args)).inserted).toBe(1);
+    const [first] = await suggestions();
+    expect(Number(first.value2)).toBe(Number(DIFFERENT_PE));
+
+    // The same document is re-extracted and now prints another value.
+    const REPRINTED = '77.7';
+    await db.execute(sql`UPDATE document_field_receipts SET value = ${REPRINTED} WHERE document_id = ${doc}::uuid`);
+    const again = await recordNewerDocumentSuggestions(db as never, args);
+    expect(again.inserted).toBe(0);
+    const open = await suggestions();
+    expect(open, 'still exactly one row for the document').toHaveLength(1);
+    expect(open[0].id).toBe(first.id);
+    expect(Number(open[0].value2), 'the open suggestion carries the current value of the document').toBe(Number(REPRINTED));
+    expect(open[0].resolvedAt).toBeNull();
+
+    // An unchanged re-run refreshes nothing (detected_at does not move, so no repeat alert).
+    const before = await db.execute(sql`SELECT detected_at::text AS at FROM data_conflicts WHERE id = ${first.id}::uuid`);
+    await recordNewerDocumentSuggestions(db as never, args);
+    const after = await db.execute(sql`SELECT detected_at::text AS at FROM data_conflicts WHERE id = ${first.id}::uuid`);
+    expect((after.rows[0] as { at: string }).at).toBe((before.rows[0] as { at: string }).at);
+
+    // Once decided (dismissed), the row is final: a later reprint changes nothing and raises nothing.
+    await db.execute(sql`UPDATE data_conflicts SET resolved_at = now(), resolved_by = 'test', resolution_reason = 'CORRIGENDUM_DISMISSED', resolved_source = 'ADMIN' WHERE id = ${first.id}::uuid`);
+    await db.execute(sql`UPDATE document_field_receipts SET value = '88.8' WHERE document_id = ${doc}::uuid`);
+    await recordNewerDocumentSuggestions(db as never, args);
+    const final = await suggestions();
+    expect(final).toHaveLength(1);
+    expect(Number(final[0].value2)).toBe(Number(REPRINTED));
+  }, 90000);
 });

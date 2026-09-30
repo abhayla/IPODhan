@@ -45,7 +45,9 @@ export interface NewerDocumentSuggestionResult {
   /** Of those, how many printed the admin value (no suggestion). */
   equal: number;
   inserted: number;
-  /** Already suggested (open, accepted or dismissed) for that document. */
+  /** An OPEN suggestion whose stored value was updated from the document's current receipt (#1300). */
+  refreshed: number;
+  /** Already suggested and nothing to change (open and unchanged, accepted or dismissed). */
   duplicates: number;
   ids: string[];
 }
@@ -61,7 +63,7 @@ export async function recordNewerDocumentSuggestions(
 ): Promise<NewerDocumentSuggestionResult> {
   const field = columnToCamelCase(args.fieldName);
   const rowKey = args.rowKey ?? '';
-  const result: NewerDocumentSuggestionResult = { newerDocuments: 0, equal: 0, inserted: 0, duplicates: 0, ids: [] };
+  const result: NewerDocumentSuggestionResult = { newerDocuments: 0, equal: 0, inserted: 0, refreshed: 0, duplicates: 0, ids: [] };
 
   const docs = rowsOf(
     await db.execute(sql`
@@ -138,10 +140,21 @@ export async function recordNewerDocumentSuggestions(
           pageUnknownReason: 'F-205: document_field_receipts has no page column',
         },
       })
-      .onConflictDoNothing({ target: schema.dataConflicts.suggestionKey })
-      .returning({ id: schema.dataConflicts.id });
-    if (rows.length > 0) {
+      // #1300: a suggestion still OPEN follows what its document prints now. The key has no value in it
+      // (item 25), so a re-extraction that prints another value would otherwise leave the old value on the
+      // row and an accept would write it. A decided row (resolved_at set) is final and never touched; an
+      // unchanged re-read touches nothing, so detected_at (which the item 16 alert scan reads) does not move.
+      .onConflictDoUpdate({
+        target: schema.dataConflicts.suggestionKey,
+        set: { value1: adminValue, value2: documentValue, detectedAt: sql`now()` },
+        setWhere: sql`${schema.dataConflicts.resolvedAt} IS NULL AND (${schema.dataConflicts.value2} IS DISTINCT FROM ${documentValue} OR ${schema.dataConflicts.value1} IS DISTINCT FROM ${adminValue})`,
+      })
+      .returning({ id: schema.dataConflicts.id, inserted: sql<boolean>`(xmax = 0)` });
+    if (rows.length > 0 && rows[0].inserted) {
       result.inserted++;
+      result.ids.push(rows[0].id);
+    } else if (rows.length > 0) {
+      result.refreshed++;
       result.ids.push(rows[0].id);
     } else {
       result.duplicates++;
