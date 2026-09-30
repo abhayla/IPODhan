@@ -433,6 +433,16 @@ describe('F4 — extraction_blocked/extraction_failed tally covers pass 2, over 
 });
 
 describe('W-124 — one purge (WITHDRAWN/POSTPONED) slot is reserved regardless of the discovery budget', () => {
+  beforeEach(() => {
+    // #1316: this file's global default stage mock always returns 'PRE_OPEN'
+    // regardless of the row's real status, which (post-#1316) makes every
+    // OPEN candidateRow here look like a zero-row rank-2 first-touch
+    // candidate too. These tests are about the PURGE reservation only, so
+    // map status straight through (matching the #468 block's own pattern
+    // below) so 'OPEN' rows stay rank 0, not rank 2.
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+  });
+
   it('with budgetMs=0 (the live backlog would normally get zero slots), the WITHDRAWN candidate is still processed', async () => {
     dbExecuteMock.mockResolvedValue({
       rows: [candidateRow('ipo-1', 'OPEN'), candidateRow('ipo-2', 'OPEN'), candidateRow('withdrawn-1', 'WITHDRAWN')],
@@ -605,10 +615,15 @@ describe('#468 — one UPCOMING/PRE_OPEN slot is reserved when the budget trips,
 
     const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
 
+    // #1316: upcoming-1 has zero document_fetch_state rows, so the
+    // UNCONDITIONAL first-touch pass reaches it before the ranked walk even
+    // starts — the old 1-slot post-budget-trip reservation no longer needs
+    // to fire for it (upcomingReserved/upcomingProcessedAfterBudget stay 0).
     const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
     expect(idsProcessed).toContain('upcoming-1');
-    expect(summary.upcomingReserved).toBe(1);
-    expect(summary.upcomingProcessedAfterBudget).toBe(1);
+    expect(summary.firstTouchProcessed).toBe(1);
+    expect(summary.upcomingReserved).toBe(0);
+    expect(summary.upcomingProcessedAfterBudget).toBe(0);
   });
 
   it('with no UPCOMING candidate present, the reservation makes no extra call (no regression to the purge/LISTED reservations)', async () => {
@@ -650,7 +665,7 @@ describe('#468 — one UPCOMING/PRE_OPEN slot is reserved when the budget trips,
     expect(summary.upcomingProcessedAfterBudget).toBe(0);
   });
 
-  it('flag OFF — the UPCOMING candidate is NOT reserved (regression guard: a flag left off does not fix the class)', async () => {
+  it('flag OFF — the OLD 1-slot reservation does not fire, but #1316\'s first-touch pass still gives the zero-row UPCOMING candidate its first visit (correctness, not a tunable reservation)', async () => {
     FEATURE_FLAGS.ENABLE_UPCOMING_DISCOVERY_RESERVATION = false;
     dbExecuteMock.mockResolvedValue({
       rows: [candidateRow('open-1', 'OPEN'), candidateRow('upcoming-1', 'UPCOMING')],
@@ -659,32 +674,27 @@ describe('#468 — one UPCOMING/PRE_OPEN slot is reserved when the budget trips,
     const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
 
     const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
-    expect(idsProcessed).not.toContain('upcoming-1');
+    expect(idsProcessed).toContain('upcoming-1');
+    expect(summary.firstTouchProcessed).toBe(1);
     expect(summary.upcomingReserved).toBe(0);
   });
 
   /**
-   * MAJOR-1 (#468 round 2, Tier A review): this test USED TO assert
-   * `upcoming-far` is never processed — that assertion described the bug
-   * (the same soonest-opening row wins the single reserved slot on EVERY
-   * cycle, forever, because rank 2 had no rotation key). It now asserts the
-   * fix: the soonest-opening row wins cycle 1 (unchanged — walk order still
-   * favors urgency when nothing has rotated yet), but once that row has been
-   * touched (`document_fetch_state` gets a real `last_attempt_at` for it),
-   * cycle 2 rotates the reserved slot to the row that has NEVER been
-   * touched, even though it opens later. `upcoming-far` is no longer starved
-   * indefinitely — it gets its turn on the very next cycle its rival is busy.
+   * MAJOR-1 (#468 round 2, Tier A review) established the ROTATION key for
+   * the old 1-slot reservation, for the case where a row has genuinely
+   * already been visited (has a real `last_attempt_at`) and is merely
+   * waiting its turn again behind a busy rival. #1316 changes the ZERO-ROW
+   * case this test used to exercise: both `upcoming-far` and `upcoming-soon`
+   * start with NO document_fetch_state rows at all, so #1316's first-touch
+   * pass gives BOTH their first visit in cycle 1 — there is no rotation to
+   * prove for a row that has never been attempted even once, because
+   * neither one is starved past cycle 1 any more.
    */
-  it('multiple UPCOMING candidates present -> the soonest-opening one wins cycle 1, then rotates behind its rival on cycle 2 (not starved forever)', async () => {
-    const touched = new Set<string>();
+  it('#1316: two UPCOMING candidates with ZERO document_fetch_state rows both get their first visit in cycle 1 (no rotation needed — neither is starved)', async () => {
     vi.mocked(DocumentFetchStateRepository).mockImplementation(
       () =>
         ({
-          listForIpo: vi.fn((ipoId: string) =>
-            touched.has(ipoId)
-              ? [{ id: `${ipoId}-r1`, docType: 'DRHP', state: 'WANTED', lastAttemptAt: new Date('2026-09-01') }]
-              : []
-          ),
+          listForIpo: vi.fn(() => []),
           update: vi.fn().mockResolvedValue(undefined),
         }) as never
     );
@@ -695,21 +705,59 @@ describe('#468 — one UPCOMING/PRE_OPEN slot is reserved when the budget trips,
     ];
     dbExecuteMock.mockResolvedValue({ rows });
 
-    // Cycle 1: neither UPCOMING row has ever been touched -> tie on rotation,
-    // the open_date tie-break picks the soonest-opening one.
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+    const ids = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(ids).toContain('upcoming-soon');
+    expect(ids).toContain('upcoming-far');
+    expect(summary.firstTouchProcessed).toBe(2);
+    // The old 1-slot reservation never needs to fire — first-touch already
+    // covered both zero-row rows.
+    expect(summary.upcomingReserved).toBe(0);
+  });
+
+  /**
+   * MAJOR-1's rotation key still matters for a row that HAS a real
+   * `last_attempt_at` (genuinely touched, not first-touch's target) and is
+   * merely waiting its turn behind a busy rival — the old 1-slot reservation
+   * path, unchanged by #1316.
+   */
+  it('an already-touched UPCOMING candidate rotates behind its rival across cycles (MAJOR-1, unchanged by #1316)', async () => {
+    const touched = new Map<string, Date>([
+      ['upcoming-far', new Date('2026-08-01')],
+      ['upcoming-soon', new Date('2026-08-01')],
+    ]);
+    vi.mocked(DocumentFetchStateRepository).mockImplementation(
+      () =>
+        ({
+          listForIpo: vi.fn((ipoId: string) => {
+            const at = touched.get(ipoId);
+            return at ? [{ id: `${ipoId}-r1`, docType: 'DRHP', state: 'WANTED', lastAttemptAt: at }] : [];
+          }),
+          update: vi.fn().mockResolvedValue(undefined),
+        }) as never
+    );
+    const rows = [
+      candidateRow('open-1', 'OPEN'),
+      { ...candidateRow('upcoming-far', 'UPCOMING'), open_date: daysAgo(-30) },
+      { ...candidateRow('upcoming-soon', 'UPCOMING'), open_date: daysAgo(-2) },
+    ];
+    dbExecuteMock.mockResolvedValue({ rows });
+
+    // Cycle 1: both already touched at the SAME timestamp -> tie, open_date
+    // tie-break picks the soonest-opening one for the single reserved slot.
     const summary1 = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
     const ids1 = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
     expect(ids1).toContain('upcoming-soon');
     expect(ids1).not.toContain('upcoming-far');
     expect(summary1.upcomingReserved).toBe(1);
+    expect(summary1.firstTouchProcessed).toBe(0);
 
-    // Simulate what cycle 1 actually did: `upcoming-soon` now has a real
-    // fetch-state attempt row; `upcoming-far` still has none.
-    touched.add('upcoming-soon');
+    // Simulate what cycle 1 actually did: `upcoming-soon` rotates to now.
+    touched.set('upcoming-soon', new Date('2026-09-01'));
     runIpoMock.mockClear();
 
-    // Cycle 2: `upcoming-far` (never touched) now sorts ahead of
-    // `upcoming-soon` (touched) in the rank-2 rotation, so it wins the slot.
+    // Cycle 2: `upcoming-far` (touched further in the past) now sorts ahead
+    // of `upcoming-soon` in the rank-2 rotation, so it wins the slot.
     const summary2 = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
     const ids2 = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
     expect(ids2).toContain('upcoming-far');
@@ -718,14 +766,16 @@ describe('#468 — one UPCOMING/PRE_OPEN slot is reserved when the budget trips,
   });
 
   /**
-   * MAJOR-1 core class proof: N >= 3 starved UPCOMING rows, all permanently
-   * behind an OPEN+CLOSED backlog that exhausts the discovery budget every
-   * cycle (budgetMs: 0). Across N cycles, EVERY one of the N rows must be
-   * reached exactly once — not the same soonest-opening row N times (the
-   * pre-fix defect). RED before the rotation key (MAJOR-1) is added to
-   * `orderAndCapCandidates`'s rank-2 tie-break; GREEN after.
+   * #1316 core class proof (supersedes the old MAJOR-1 "across 4 cycles"
+   * shape for the ZERO-ROW case): N=4 starved UPCOMING rows, all with ZERO
+   * document_fetch_state rows, behind an OPEN+CLOSED backlog that exhausts
+   * the discovery budget every cycle (budgetMs: 0). Before #1316, the old
+   * 1-slot reservation needed N cycles to reach all N rows (RED on
+   * origin/main: exactly 1 of 4 in cycle 1). #1316's first-touch pass reaches
+   * ALL N in cycle 1 (GREEN), bounded by the count of zero-row rows, not a
+   * fixed slot.
    */
-  it('N=4 starved UPCOMING rows behind a full OPEN+CLOSED backlog -> across 4 cycles every one is reached, none twice', async () => {
+  it('N=4 zero-row UPCOMING rows behind a full OPEN+CLOSED backlog -> all 4 reached in ONE cycle (red on origin/main: 1 of 4)', async () => {
     const touched = new Map<string, Date>();
     vi.mocked(DocumentFetchStateRepository).mockImplementation(
       () =>
@@ -749,6 +799,47 @@ describe('#468 — one UPCOMING/PRE_OPEN slot is reserved when the budget trips,
     ];
     dbExecuteMock.mockResolvedValue({ rows });
 
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+    const upcomingReached = runIpoMock.mock.calls
+      .map((c) => (c[0] as { id: string }).id)
+      .filter((id) => id.startsWith('upcoming-'));
+    expect(new Set(upcomingReached)).toEqual(new Set(upcomingIds));
+    expect(summary.firstTouchProcessed).toBe(N);
+    expect(summary.upcomingReserved).toBe(0); // first-touch already covered every zero-row row
+  });
+
+  /**
+   * Historical shape kept as a regression guard for the OLD per-cycle
+   * rotation, now exercised only on rows that ARE already touched (so
+   * first-touch does not intercept them) — MAJOR-1's guarantee still holds
+   * for that case.
+   */
+  it('N=4 ALREADY-TOUCHED UPCOMING rows behind a full backlog -> across 4 cycles every one is reached, none twice (MAJOR-1, unchanged)', async () => {
+    // Every row starts with a real (if old) attempt, so none is a
+    // first-touch target — this isolates the old rotation behavior.
+    const touched = new Map<string, Date>(
+      Array.from({ length: 4 }, (_, i) => [`upcoming-${i}`, new Date(2026, 0, 1 + i)] as const)
+    );
+    vi.mocked(DocumentFetchStateRepository).mockImplementation(
+      () =>
+        ({
+          listForIpo: vi.fn((ipoId: string) => {
+            const at = touched.get(ipoId);
+            return at ? [{ id: `${ipoId}-r1`, docType: 'DRHP', state: 'WANTED', lastAttemptAt: at }] : [];
+          }),
+          update: vi.fn().mockResolvedValue(undefined),
+        }) as never
+    );
+
+    const N = 4;
+    const upcomingIds = Array.from({ length: N }, (_, i) => `upcoming-${i}`);
+    const rows = [
+      candidateRow('open-1', 'OPEN'),
+      candidateRow('closed-1', 'CLOSED'),
+      ...upcomingIds.map((id, i) => ({ ...candidateRow(id, 'UPCOMING'), open_date: daysAgo(-(i + 1)) })),
+    ];
+    dbExecuteMock.mockResolvedValue({ rows });
+
     const reachedPerCycle: string[] = [];
     for (let cycle = 0; cycle < N; cycle++) {
       runIpoMock.mockClear();
@@ -758,6 +849,7 @@ describe('#468 — one UPCOMING/PRE_OPEN slot is reserved when the budget trips,
         .filter((id) => id.startsWith('upcoming-'));
       expect(upcomingReached).toHaveLength(1); // exactly one rank-2 row per cycle (UPCOMING_RESERVE_SLOTS)
       expect(summary.upcomingReserved).toBe(1);
+      expect(summary.firstTouchProcessed).toBe(0);
       reachedPerCycle.push(upcomingReached[0]);
       touched.set(upcomingReached[0], new Date(2026, 8, 1 + cycle));
     }
@@ -801,10 +893,74 @@ describe('#468 — one UPCOMING/PRE_OPEN slot is reserved when the budget trips,
 
     const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
 
+    // #1316: upcoming-due has zero document_fetch_state rows and is NOT
+    // alreadyComplete, so the first-touch pass (not the old reservation)
+    // reaches it; upcoming-done is excluded from first-touch by the same
+    // `alreadyComplete !== true` guard the old reservation already had.
     const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
     expect(idsProcessed).not.toContain('upcoming-done');
     expect(idsProcessed).toContain('upcoming-due');
-    expect(summary.upcomingReserved).toBe(1);
+    expect(summary.firstTouchProcessed).toBe(1);
+    expect(summary.upcomingReserved).toBe(0);
+  });
+});
+
+/**
+ * #1316 (independent review, contract 3): the exact shape from the issue's
+ * discriminating proof. 30 OPEN/CLOSED rows exhaust the discovery budget
+ * after the first one; 4 UPCOMING rows have ZERO document_fetch_state rows
+ * (never visited at all); 4 more UPCOMING rows are ALREADY touched (a real
+ * `last_attempt_at`, not due for a re-visit this wake). Red on origin/main
+ * (the old 1-slot reservation gives 1 of 4 the zero-row rows); green with
+ * #1316's first-touch pass (all 4 zero-row rows visited in cycle 1, and the
+ * 4 already-touched rows get no EXTRA slot beyond what the ranked walk would
+ * give them).
+ */
+describe('#1316 — first-touch pass: every zero-row live IPO is visited before any already-touched row is re-walked', () => {
+  it('30 OPEN/CLOSED (budget exhausted after the first) + 4 zero-row UPCOMING + 4 already-touched UPCOMING -> all 4 zero-row rows run in cycle 1; the touched rows get no extra slot', async () => {
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+    FEATURE_FLAGS.ENABLE_UPCOMING_DISCOVERY_RESERVATION = false;
+
+    const zeroRowIds = Array.from({ length: 4 }, (_, i) => `zero-row-${i}`);
+    const touchedIds = Array.from({ length: 4 }, (_, i) => `touched-${i}`);
+    vi.mocked(DocumentFetchStateRepository).mockImplementation(
+      () =>
+        ({
+          listForIpo: vi.fn((ipoId: string) =>
+            touchedIds.includes(ipoId)
+              ? [{ id: `${ipoId}-r1`, docType: 'DRHP', state: 'WANTED', lastAttemptAt: new Date('2026-09-01') }]
+              : []
+          ),
+          update: vi.fn().mockResolvedValue(undefined),
+        }) as never
+    );
+
+    const bulkRows = Array.from({ length: 30 }, (_, i) => candidateRow(`bulk-${i}`, i % 2 === 0 ? 'OPEN' : 'CLOSED'));
+    const zeroRowRows = zeroRowIds.map((id, i) => ({ ...candidateRow(id, 'UPCOMING'), open_date: daysAgo(-(i + 1)) }));
+    const touchedRows = touchedIds.map((id, i) => ({
+      ...candidateRow(id, 'UPCOMING'),
+      open_date: daysAgo(-(i + 10)),
+    }));
+    dbExecuteMock.mockResolvedValue({ rows: [...bulkRows, ...zeroRowRows, ...touchedRows] });
+
+    // budgetMs small enough that the 30 OPEN/CLOSED rows alone exhaust it
+    // after the first (the discovery clock here is a fixed `now` stub via
+    // vi.useFakeTimers, so budgetMs: 0 reproduces "runs out after the first"
+    // exactly like the other reservation tests in this file).
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    for (const id of zeroRowIds) {
+      expect(idsProcessed).toContain(id);
+    }
+    // The already-touched rows are NOT due (no new document, same stage) and
+    // get no extra slot from either the first-touch pass or the (disabled)
+    // old reservation this cycle.
+    for (const id of touchedIds) {
+      expect(idsProcessed).not.toContain(id);
+    }
+    expect(summary.firstTouchProcessed).toBe(4);
+    expect(summary.upcomingReserved).toBe(0);
   });
 });
 
