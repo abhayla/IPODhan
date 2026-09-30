@@ -271,7 +271,8 @@ describe('DataConflictsRepository (T-286F direct tests)', () => {
       expect(sql).toContain('"data_conflicts"."table_name" = $2');
       expect(sql).toContain('"data_conflicts"."row_key" = $3');
       expect(sql).toContain('"data_conflicts"."field_name" = $4');
-      expect(params).toEqual(['ipo-1', 'ipos', '', 'openDate']);
+      // OD-142 (PR #1327 round 1): an open "source no longer first" item is never auto-resolved.
+      expect(params).toEqual(['ipo-1', 'ipos', '', 'openDate', 'SOURCE_NO_LONGER_FIRST']);
 
       // Cache invalidated only because a row genuinely converged.
       expect(mockRedis.keys).toHaveBeenCalledWith('conflicts:*');
