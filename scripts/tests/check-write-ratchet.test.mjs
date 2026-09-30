@@ -18,6 +18,7 @@ import {
   scanRepo,
   stripComments,
   diffAgainstBaseline,
+  resolveIposImportAliases,
 } from '../check-write-ratchet.mjs';
 
 test('exactly the four documented pattern classes exist', () => {
@@ -260,6 +261,137 @@ test('stripComments: a "//"-lookalike inside a string literal on the same line a
 test('stripComments: a real line comment quoting a write on the same line is NOT matched', () => {
   const fixture = `// db.update(ipos).set({});`;
   assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), []);
+});
+
+// --- resolveIposImportAliases(): issue #1323 alias resolution --------------
+
+test('alias: a named import alias of ipos makes db.update(alias) detected', () => {
+  const fixture = `
+    import { ipos as iposTable } from '@ipodhan/shared/db/schema';
+    export async function stamp(params) {
+      await params.db.update(iposTable).set({ priceLastAttemptAt: params.at }).where(eqOp(iposTable.id, params.ipoId));
+    }
+  `;
+  const resolved = resolveIposImportAliases(fixture, '.ts');
+  assert.deepEqual(detectPatterns(stripComments(resolved, '.ts')), ['drizzle']);
+});
+
+test('alias: .insert(alias) and .delete(alias) are both detected', () => {
+  const insertFixture = `
+    import { ipos as iposTable } from '@ipodhan/shared/db/schema';
+    await db.insert(iposTable).values({ companyName: 'Acme' });
+  `;
+  const deleteFixture = `
+    import { ipos as iposTable } from '@ipodhan/shared/db/schema';
+    await tx.delete(iposTable).where(eq(iposTable.id, dupId));
+  `;
+  assert.deepEqual(
+    detectPatterns(stripComments(resolveIposImportAliases(insertFixture, '.ts'), '.ts')),
+    ['drizzle']
+  );
+  assert.deepEqual(
+    detectPatterns(stripComments(resolveIposImportAliases(deleteFixture, '.ts'), '.ts')),
+    ['drizzle']
+  );
+});
+
+test('alias: a multi-line aliased named-import list is still resolved', () => {
+  const fixture = `
+    import {
+      ipoDemandGraph,
+      ipoDetails,
+      ipos as iposTable,
+      fieldSources as fieldSourcesTable,
+    } from '@ipodhan/shared/db/schema';
+    await db.update(iposTable).set({ leadManagers: [] }).where(eqOp(iposTable.id, ipoId));
+  `;
+  assert.deepEqual(
+    detectPatterns(stripComments(resolveIposImportAliases(fixture, '.ts'), '.ts')),
+    ['drizzle']
+  );
+});
+
+test('alias: unaliased shapes are still detected unchanged (no regression)', () => {
+  const fixture = `
+    import { ipos } from '@ipodhan/shared/db/schema';
+    await db.update(ipos).set({ status: 'LISTED' }).where(eq(ipos.id, id));
+  `;
+  assert.deepEqual(
+    detectPatterns(stripComments(resolveIposImportAliases(fixture, '.ts'), '.ts')),
+    ['drizzle']
+  );
+});
+
+test('alias: a non-ipos alias (foo as bar) is never flagged', () => {
+  const fixture = `
+    import { foo as bar } from './other';
+    await bar.doSomething();
+  `;
+  assert.deepEqual(
+    detectPatterns(stripComments(resolveIposImportAliases(fixture, '.ts'), '.ts')),
+    []
+  );
+});
+
+test('alias: a namespace import writing schema-qualified alias.ipos is detected', () => {
+  const fixture = `
+    import * as schema2 from '@ipodhan/shared/db/schema';
+    await db.update(schema2.ipos).set({ status: 'LISTED' }).where(eq(schema2.ipos.id, id));
+  `;
+  assert.deepEqual(
+    detectPatterns(stripComments(resolveIposImportAliases(fixture, '.ts'), '.ts')),
+    ['drizzle']
+  );
+});
+
+test('alias: a namespace import accessing an unrelated property is not flagged', () => {
+  const fixture = `
+    import * as schema2 from '@ipodhan/shared/db/schema';
+    await db.update(schema2.subscriptions).set({ count: 1 });
+  `;
+  assert.deepEqual(
+    detectPatterns(stripComments(resolveIposImportAliases(fixture, '.ts'), '.ts')),
+    []
+  );
+});
+
+test('alias: a type-only aliased import of ipos is never rewritten (cannot be a runtime write)', () => {
+  const fixture = `
+    import type { ipos as IposRow } from '@ipodhan/shared/db/schema';
+    function describe(row: IposRow) { return row; }
+  `;
+  assert.deepEqual(
+    detectPatterns(stripComments(resolveIposImportAliases(fixture, '.ts'), '.ts')),
+    []
+  );
+});
+
+test('alias: a type-only named element inside a value import is never rewritten', () => {
+  const fixture = `
+    import { type ipos as IposRow, fieldSources } from '@ipodhan/shared/db/schema';
+    function describe(row: IposRow) { return row; }
+  `;
+  assert.deepEqual(
+    detectPatterns(stripComments(resolveIposImportAliases(fixture, '.ts'), '.ts')),
+    []
+  );
+});
+
+test('alias: a .sql file is returned unchanged (not import-parseable)', () => {
+  const fixture = `UPDATE ipos SET lot_size = 100 WHERE id = $1;`;
+  assert.equal(resolveIposImportAliases(fixture, '.sql'), fixture);
+});
+
+test('alias: a file with no "ipos" substring at all is returned unchanged (short-circuit)', () => {
+  const fixture = `export const x = 1;`;
+  assert.equal(resolveIposImportAliases(fixture, '.ts'), fixture);
+});
+
+test('alias: unparseable content fails open (returned unchanged, no throw)', () => {
+  // Deliberately unbalanced/invalid syntax; the TS parser tolerates a lot, but
+  // this must never throw regardless.
+  const fixture = `import { ipos as iposTable from`;
+  assert.doesNotThrow(() => resolveIposImportAliases(fixture, '.ts'));
 });
 
 // --- diffAgainstBaseline(): per-file pattern-set comparison -----------------

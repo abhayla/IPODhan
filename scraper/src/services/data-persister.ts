@@ -1051,6 +1051,11 @@ export interface PriceAttemptWriter {
  * on every walked row, priced or not. A Date object is bound (never a `.toISOString()` string)
  * per ist-timezone.md: drizzle's own mapper calls `.toISOString()` on whatever it is handed.
  * A failure here is logged and swallowed by the caller — it must never crash the run.
+ *
+ * #1323: this is a direct `db.update(iposTable)` through the `ipos as iposTable` import alias
+ * (line ~27) — baselined in `config/write-ratchet-baseline.json` under the `drizzle` pattern.
+ * Written reason: job bookkeeping (`price_last_attempt_at`), never scraped or published data —
+ * see the paragraph above for why it deliberately bypasses the shared repository write path.
  */
 export async function writePostListingAttempt(params: {
   db: PriceAttemptWriter;
@@ -2890,6 +2895,15 @@ export interface TransactionalIposWriter {
  * Lives HERE, not in `document-cycle.ts`, for the same reason as
  * `recordBseDiscoveryMetadata`: `scraper-write-path.md` and the R0 write
  * ratchet require every `ipos` write to go through the shared write path.
+ *
+ * #1323: the `.update(iposTable)` call below (and the `.select(...).from(iposTable)` a few
+ * lines above it, under the hold branch) go through the `ipos as iposTable` import alias
+ * (line ~27) — baselined in `config/write-ratchet-baseline.json` under the `drizzle` pattern.
+ * Written reason: this is the shared write path itself (see the header comment above and
+ * `scraper-write-path.md`) — the write-once SQL WHERE guard, admin-hold check, and
+ * same-transaction provenance row it implements cannot be expressed through
+ * `ipoRepository.update()` (T-513/#419), so it writes `ipos` directly under the field-hold
+ * and lock discipline documented above, not as a bypass of them.
  *
  * Known gap (MINOR, #417 review): the NSE-sourced arm (BSE unreachable,
  * `document-discovery-runner.ts` falls back to `parseNseLeadManagers`) has no

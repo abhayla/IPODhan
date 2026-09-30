@@ -96,13 +96,6 @@ jobs:
           node --test scripts/ci/tests/check-node-test-no-globs.test.mjs
           node scripts/ci/check-node-test-no-globs.mjs
 
-      - name: Write-ratchet self-test (T-316)
-        # Mutation-proof: scripts/tests/check-write-ratchet.test.mjs imports
-        # the actual PATTERNS from the script under test, so a deleted
-        # pattern turns this red before the ratchet check below can silently
-        # stop catching that pattern class. No deps needed (Node builtins only).
-        run: node --test scripts/tests/check-write-ratchet.test.mjs
-
       - name: "Web integration baseline gate self-test (item 1 slice s3d, issue #461)"
         # Mutation-proof: scripts/tests/check-web-integration-baseline.test.mjs
         # imports the actual exported functions (extractFailingFiles,
@@ -359,14 +352,6 @@ jobs:
         # amount-columns probe's MEASURED current_unit, not just that the generator reproduces its
         # own prior output (the drift gate above only proves that).
         run: node --test scripts/tests/manifest-unit-matches-current-unit.test.mjs
-
-      - name: Write ratchet — no new direct `ipos` writers (T-316/R0)
-        # Grep-based gate, not ESLint (T-313C amendment): catches raw .sql/.mjs
-        # writers and the runtime-resolved dynamic-table admin route that a
-        # syntax-aware lint rule cannot see. Baseline is shrink-only —
-        # config/write-ratchet-baseline.json. See
-        # docs/architecture/write-path-hardening.md ("R0").
-        run: node scripts/check-write-ratchet.mjs
 
       - name: Fixture provenance predicate self-test (T-518)
         # Mutation-proof: scripts/ci/tests/require-fixture-provenance.test.mjs
@@ -662,6 +647,26 @@ jobs:
         # shrink-only, each entry carries a reason —
         # scripts/ci/db-connection-defaults-baseline.json.
         run: node scripts/ci/check-db-connection-defaults.mjs
+
+      - name: Write-ratchet self-test (T-316)
+        # Mutation-proof: scripts/tests/check-write-ratchet.test.mjs imports
+        # the actual PATTERNS from the script under test, so a deleted
+        # pattern turns this red before the ratchet check below can silently
+        # stop catching that pattern class. Runs after npm ci (#1332, T-570):
+        # the checker now resolves import aliases of `ipos` with the
+        # typescript compiler API (`import ts from 'typescript'`), same
+        # placement as the other typescript-parsing checks in this job.
+        run: node --test scripts/tests/check-write-ratchet.test.mjs
+
+      - name: Write ratchet — no new direct `ipos` writers (T-316/R0)
+        # Grep-based gate, not ESLint (T-313C amendment): catches raw .sql/.mjs
+        # writers and the runtime-resolved dynamic-table admin route that a
+        # syntax-aware lint rule cannot see. Baseline is shrink-only —
+        # config/write-ratchet-baseline.json. See
+        # docs/architecture/write-path-hardening.md ("R0"). Runs after npm ci
+        # (#1332, T-570): the checker resolves import aliases of `ipos` with
+        # the typescript compiler API, so it needs node_modules.
+        run: node scripts/check-write-ratchet.mjs
 
       - name: Repair-tool module lint self-test (T-490)
         # Mutation-proof: scripts/ci/tests/require-repair-tool-module.test.mjs

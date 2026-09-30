@@ -27,6 +27,7 @@ import { readFileSync, readdirSync, statSync, writeFileSync, existsSync } from '
 import { execFileSync } from 'node:child_process';
 import { join, relative, extname, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import ts from 'typescript';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(__dirname, '..');
@@ -88,6 +89,104 @@ function isExcludedPath(relPosixPath) {
   return EXCLUDED_PATH_SEGMENTS.some((seg) =>
     seg.endsWith('/') ? withSlashes.includes(seg) : relPosixPath.includes(seg)
   );
+}
+
+// Extensions the TS compiler API can parse for import statements. `.sql` files
+// have no import syntax and `.cjs` conventionally uses `require()`, which this
+// resolver does not (yet) handle — a `require()`-based alias is out of scope
+// here (T-527 issue #1323's fixtures are all ESM `import`).
+const IMPORT_PARSEABLE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
+
+function escapeRegExp(literal) {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Issue #1323: the write-ratchet's PATTERNS are keyed on the LITERAL
+ * identifier `ipos` (bare, or qualified as `schema.ipos`). An import alias —
+ * `import { ipos as iposTable } from '...'` then `db.update(iposTable)`, or
+ * `import * as schema2 from '...'` then `schema2.ipos` — renames the binding
+ * the regexes look for, so a direct write through an alias was invisible.
+ *
+ * This resolves aliases PER FILE via the actual TypeScript parser (never a
+ * hand-rolled import-line regex/lexer — `never-hand-roll-a-lexer.md`) and
+ * rewrites the source, before pattern matching, so every existing PATTERN
+ * keeps working unchanged:
+ *   - a named-import alias of `ipos` (`{ ipos as X }`, any module specifier,
+ *     including multi-line import lists) has every bare occurrence of `X`
+ *     rewritten to `ipos`.
+ *   - a namespace import (`import * as X from '...'`) has every `X.ipos`
+ *     property access rewritten to `schema.ipos`, which the existing
+ *     `drizzle` pattern already recognizes (it hardcodes the `schema.`
+ *     qualifier because that is this repo's actual namespace-import
+ *     convention for the schema module).
+ * A `type`-only import (`import type { ipos as X }`, or a type-only named
+ * element inside a value import) is skipped: a type-only binding cannot be
+ * used in a runtime write call, so rewriting it would only manufacture false
+ * positives. An alias of any OTHER export name (`{ foo as bar }`) is left
+ * untouched — only bindings that resolve to `ipos` are ever renamed.
+ *
+ * Fails open: a file the parser cannot handle (or that isn't an
+ * import-parseable extension) is returned unchanged, exactly as it would
+ * have been scanned before this function existed.
+ *
+ * @param {string} content
+ * @param {string} ext file extension including the leading dot
+ * @returns {string}
+ */
+export function resolveIposImportAliases(content, ext) {
+  if (!IMPORT_PARSEABLE_EXTENSIONS.has(ext)) return content;
+  if (!content.includes('ipos')) return content; // cheap short-circuit
+
+  let sourceFile;
+  try {
+    const scriptKind = ext === '.tsx' || ext === '.jsx' ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+    sourceFile = ts.createSourceFile('file' + ext, content, ts.ScriptTarget.Latest, true, scriptKind);
+  } catch {
+    return content;
+  }
+
+  const namedAliases = new Set(); // local identifiers that ARE `ipos` under another name
+  const namespaceAliases = new Set(); // local identifiers bound to `import * as X`
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    const clause = statement.importClause;
+    if (!clause || clause.isTypeOnly) continue;
+    const bindings = clause.namedBindings;
+    if (!bindings) continue;
+
+    if (ts.isNamespaceImport(bindings)) {
+      namespaceAliases.add(bindings.name.text);
+      continue;
+    }
+
+    if (ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        if (element.isTypeOnly) continue;
+        const originalName = (element.propertyName ?? element.name).text;
+        const localName = element.name.text;
+        if (originalName === 'ipos' && localName !== 'ipos') {
+          namedAliases.add(localName);
+        }
+      }
+    }
+  }
+
+  if (namedAliases.size === 0 && namespaceAliases.size === 0) return content;
+
+  let rewritten = content;
+  for (const alias of namedAliases) {
+    rewritten = rewritten.replace(new RegExp(`\\b${escapeRegExp(alias)}\\b`, 'g'), 'ipos');
+  }
+  for (const nsAlias of namespaceAliases) {
+    if (nsAlias === 'schema') continue; // already the pattern's literal qualifier
+    rewritten = rewritten.replace(
+      new RegExp(`\\b${escapeRegExp(nsAlias)}\\.ipos\\b`, 'g'),
+      'schema.ipos'
+    );
+  }
+  return rewritten;
 }
 
 /** @returns {string[]} sorted list of matched pattern-kind names, empty if none */
@@ -391,7 +490,9 @@ export function scanRepo(root = ROOT) {
     } catch {
       continue;
     }
-    const kinds = detectPatterns(stripComments(content, extname(relPath)));
+    const ext = extname(relPath);
+    const dealiased = resolveIposImportAliases(content, ext);
+    const kinds = detectPatterns(stripComments(dealiased, ext));
     if (kinds.length > 0) found.set(relPath, kinds);
   }
   return found;
