@@ -63,6 +63,12 @@ describe('admin gate: anonymous requests stop before any admin page or API route
     expect(isPassThrough(middleware(req(p)))).toBe(true);
   });
 
+  it.each(['/admin/login-x', '/admin/loginfoo'])('%s is NOT exempted (exact match only) -> redirect to /admin/login', (p) => {
+    const res = middleware(req(p));
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get('location')!).pathname).toBe('/admin/login');
+  });
+
   it.each(['/', '/ipo/some-ipo', '/api/ipos', '/administrator', '/api/administer'])('non-admin path %s is untouched', (p) => {
     expect(isPassThrough(middleware(req(p)))).toBe(true);
   });

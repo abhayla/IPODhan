@@ -121,8 +121,10 @@ export function middleware(request: NextRequest) {
   return response;
 }
 
-// Apply middleware to all routes except static files (this includes every /admin/* and
-// /api/admin/* path, which the admin gate above relies on; a test asserts both are matched).
+// Apply middleware to all routes except static files. /admin/* and /api/admin/* paths are matched,
+// EXCEPT those whose last segment ends in a static-file extension (.png, .svg, ...): the matcher's
+// static-asset exclusion skips the middleware for them. Those are still stopped by the per-page
+// checks, the (protected) layout and withAdminAuth.
 // Excludes: Next.js internals, static assets, and favicon
 export const config = {
   matcher: [
