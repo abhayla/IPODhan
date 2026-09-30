@@ -229,6 +229,9 @@ export async function GET(request: NextRequest) {
 
 ## Production & Deployment
 
+- **Release rule (owner, 2026-09-30, OD-146):** finish ALL implementation work, merge it, deploy it to staging and test
+  everything there; deploy production ONCE, with everything together, only after everything works on staging. No
+  partial releases and no alternative orders proposed. Rule: `.claude/rules/staging-is-the-release-gate.md` R0.
 - **Serving target (since the 2026-08 migration):** Linux VPS `72.61.240.224` — nginx + PM2
   (`ipodhan-web` cluster x2, `ipodhan-scraper` one-shot on cron), behind Cloudflare.
 - **Deploy:** GitHub Actions `deploy-linux.yml` (`workflow_dispatch` only, `slot=staging|prod`), on the
