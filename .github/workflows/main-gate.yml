@@ -75,6 +75,16 @@ jobs:
         # web/vitest.config.ts globally (round 2 review).
         run: npm run test:unit --workspace=web -- --retry=2
 
+      - name: "check-dod root-resolution self-test (#1182, own step, ~6 min)"
+        # Four cases; three drive a FULL check-dod walk over the real checkout (it spawns
+        # check-mutations.test.mjs, which mutates and restores real files). The walk reads
+        # docs/design/build-cards/ while check-build-cards-status.test.mjs plants and removes
+        # item-999999-* cards there; run in the same `node --test` process group as that file
+        # it hit ENOENT on a planted card (#1182: the fixture path in the error is that
+        # file's, not this test's). So it runs alone, here on push to main rather than on every
+        # PR, because of its length.
+        run: node --test scripts/tests/check-dod-root-resolution.test.mjs
+
       - name: Notify on failure
         if: failure()
         env:

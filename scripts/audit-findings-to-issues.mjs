@@ -684,12 +684,6 @@ async function main() {
   }
 
   try {
-    const available = await ghAvailable();
-    if (!available && !opts.dryRun) {
-      console.log('ISSUES-SKIP: gh not installed or not authenticated — see `gh auth status`');
-      return;
-    }
-
     const findingsPath = opts.findingsPath || join(STATE_DIR, 'findings-latest.json');
     const syncStatePath = join(STATE_DIR, 'issues-sync-state.json');
     const registryPath = join(REPO_ROOT, 'docs', 'reviews', 'detection-checks.json');
@@ -749,6 +743,15 @@ async function main() {
       } else {
         log('DRY-RUN: baseline state not written');
       }
+      return;
+    }
+
+    // gh is needed only from here on. The baseline-only pass above never runs
+    // gh, so it must not be gated on gh being installed/authenticated (#1178:
+    // a CI runner has no gh login, and the baseline was silently skipped).
+    const available = await ghAvailable();
+    if (!available && !opts.dryRun) {
+      console.log('ISSUES-SKIP: gh not installed or not authenticated — see `gh auth status`');
       return;
     }
 

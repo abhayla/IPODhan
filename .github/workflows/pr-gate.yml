@@ -610,6 +610,19 @@ jobs:
             scripts/tests/plan-rank2-never-bse-for-issue-size-invariant.test.mjs \
             scripts/tests/require-repair-tool-module.test.mjs
 
+      - name: "build-card Status gate self-test (#1181, own step: it plants card fixtures in the real tree)"
+        # Wired after #1174 found 3 cases red on the runner: they drive the real gate on the
+        # real tree, whose PARTIAL cards need `gh`, and CI=true forbids the offline skip. The
+        # cases now run the child offline-skip with CI removed from its env. Kept in its own
+        # step: it plants item-999999-* cards in docs/design/build-cards/, and any other
+        # process walking that directory at the same time can hit ENOENT (see #1182).
+        run: node --test scripts/tests/check-build-cards-status.test.mjs
+
+      - name: "audit-findings-to-issues self-test (#1178)"
+        # The --new-only baseline pass never runs gh, but used to sit behind the gh-auth
+        # probe, so it was skipped on a runner with no gh login. Now ordered after it.
+        run: node --test scripts/tests/audit-findings-to-issues.test.mjs
+
       - name: "pg-utc self-test (#616/#681, needs the pg package — after npm ci)"
         # scripts/lib/pg-utc.mjs and its test import the `pg` npm package
         # (type-parser registration only — no live connection), so this runs
