@@ -1345,6 +1345,13 @@ export class IpoFieldPlanRepository extends BaseRepository {
       // different key. `last_attempt_at` is still stamped.
       const isGap = state === 'CHECK_FAILED' && typeof params.gapKey === 'string' && params.gapKey.length > 0;
       const countsAsAttempt = !isGap;
+      // #884 (reopened, contract 4): `attempts` is read ONLY by the CHECK_FAILED claim
+      // filter, but PENDING / NOT_AVAILABLE_YET / SUPPLIED asks also add to it. A field
+      // asked before its source published (NOT_AVAILABLE_YET, uncapped) spent the whole
+      // budget and then flipped to CHECK_FAILED past the cap: 1,985 gap rows on staging at
+      // attempts 5-29, never re-askable when the gap key changed. The budget for CHECK_FAILED
+      // therefore starts when a row ENTERS that state; a row already in it keeps counting.
+      const entersCheckFailed = state === 'CHECK_FAILED';
       const recordedCause = isGap ? stampFieldPlanGapCause(params.gapKey as string, params.cause ?? null) : params.cause ?? null;
       const writeCause = hasCause || isGap;
       const hasAnswers = params.answers !== undefined;
@@ -1367,7 +1374,8 @@ export class IpoFieldPlanRepository extends BaseRepository {
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
         SET state = ${state}::field_plan_state,
-            attempts = attempts + ${countsAsAttempt ? 1 : 0},
+            attempts = CASE WHEN ${entersCheckFailed} AND state IS DISTINCT FROM 'CHECK_FAILED' THEN ${countsAsAttempt ? 1 : 0}
+                            ELSE attempts + ${countsAsAttempt ? 1 : 0} END,
             last_attempt_at = ${utc(now)}::timestamptz,
             next_due_at = ${nextDueAt === null ? null : utc(nextDueAt)}::timestamptz,
             policy_origin = CASE WHEN ${hasPolicyOrigin} THEN ${params.policyOrigin ?? null} ELSE policy_origin END,
