@@ -1287,6 +1287,8 @@ jobs:
           tests/integration/merge-unmerge-roundtrip.integration.test.ts
           tests/integration/document-field-receipts.integration.test.ts
           tests/integration/relaunch-clears-admin.integration.test.ts
+          tests/integration/postponed-relaunch-1298.integration.test.ts
+          tests/integration/postponed-relaunch-refill-1298.integration.test.ts
           tests/integration/document-extraction-attempts.integration.test.ts
           tests/integration/ocr-loses-disagreement.integration.test.ts
           tests/integration/settled-field-override-reopen.integration.test.ts

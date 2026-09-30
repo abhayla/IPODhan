@@ -122,6 +122,7 @@ export async function mergeLoser(
   try {
     await repo.mergeDuplicateInto(canonicalId, loserId, {
       apply: opts.apply,
+      isRelaunchDocumentField: (await import('../src/services/relaunch-clear.js')).isRelaunchDocumentField,
       mergedBy: MERGED_BY,
       allowProd: opts.allowProd,
     });

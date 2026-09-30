@@ -131,7 +131,51 @@ describe('terminal ipo_status consolidation guard (W-60)', () => {
     const field = result.fieldResults.find((f) => f.fieldName === 'status');
     expect(field?.finalValue).toBe('POSTPONED');
     expect(field?.chosenSource).toBe('BSE');
-    expect(field?.conflictReason).toBe('TERMINAL_STATUS_KEPT');
+    // #1298: POSTPONED is not terminal; it is kept because no relaunch filing is readable here (fail closed).
+    expect(field?.conflictReason).toBe('POSTPONED_KEPT_NO_RELAUNCH');
+  });
+
+  // #1298 round 1 (MINOR-5a): the relaunch evidence is read through the provenance repository's
+  // database; a failed read keeps POSTPONED (fail closed), and a readable relaunch releases it.
+  describe('POSTPONED leaves only on a readable relaunch (#1298)', () => {
+    const postponedRow = () => [fieldSourceRow('status', 'BSE', 'POSTPONED', new Date('2026-08-20T10:00:00Z'))];
+    const run = (execute: (q: unknown) => Promise<unknown>) => {
+      const repo = { ...mockFieldSourcesRepo, db: { execute } } as unknown as FieldSourcesRepository;
+      vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(postponedRow());
+      return new DataConsolidationService(repo, mockConflictsRepo).consolidateIPOData({
+        ipoId: 'terminal-status-ipo',
+        tableName: 'ipos',
+        incomingData: { status: 'UPCOMING' },
+        source: 'BSE',
+        existingData: { status: 'POSTPONED' } as any,
+        scrapedAt: new Date('2026-08-22T10:00:00Z'),
+      });
+    };
+    const status = (r: Awaited<ReturnType<typeof run>>) => r.fieldResults.find((f) => f.fieldName === 'status');
+
+    it('the relaunch-record read throwing keeps POSTPONED', async () => {
+      const r = await run(async () => {
+        throw new Error('connection reset');
+      });
+      expect(status(r)).toMatchObject({ finalValue: 'POSTPONED', conflictReason: 'POSTPONED_KEPT_NO_RELAUNCH' });
+    });
+
+    it('a relaunch record newer than the postponement releases it; one older than it does not', async () => {
+      const answers = (relaunchAt: string) => {
+        const seq = [
+          [{ status: 'POSTPONED' }],
+          [{ at: '2026-08-20 10:00:00' }],
+          [{ at: relaunchAt }],
+          [],
+        ];
+        return async () => ({ rows: seq.shift() ?? [] });
+      };
+      expect(status(await run(answers('2026-08-21 10:00:00')))?.finalValue).toBe('UPCOMING');
+      expect(status(await run(answers('2026-08-19 10:00:00')))).toMatchObject({
+        finalValue: 'POSTPONED',
+        conflictReason: 'POSTPONED_KEPT_NO_RELAUNCH',
+      });
+    });
   });
 
   it('lets ADMIN move a WITHDRAWN status back to UPCOMING', async () => {

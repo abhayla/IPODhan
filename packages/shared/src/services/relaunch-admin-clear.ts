@@ -20,6 +20,11 @@
  * An admin-owned child list (item 8) has its whole-list hold released (rows kept, so the new filing's
  * list replaces them) and one audit row with the list as it was.
  *
+ * #1298 (§2.9, the rest): every NON-admin document-sourced value set before this relaunch started is
+ * invalidated the same way (emptied, provenance removed, plan row re-asked), and one `Relaunch Filing`
+ * audit row records that the relaunch arrived — the evidence `readPostponedRelaunchState` gives the
+ * status guard, so an exchange may then move the IPO off POSTPONED.
+ *
  * Identity fields are never cleared: a relaunch is the SAME company (OD-83), and emptying CIN / ISIN /
  * symbol / name would break the OD-34 binding the relaunch record itself needs. E-1 exchange fields
  * follow OD-106, not this rule.
@@ -32,6 +37,12 @@ import { E1_EXCHANGE_STATED_FIELDS } from '../repositories/field-sources-reposit
 import { ADMIN_LISTS, ADMIN_LIST_SPECS, LIST_HOLD_FIELD, type AdminListName } from './admin-list-hold';
 
 export const RELAUNCH_CLEARED_AUDIT_ACTION = 'Relaunch Cleared';
+/**
+ * #1298 (§2.9): ONE row per confirmed relaunch filing of a POSTPONED IPO, written whether or not
+ * anything was cleared. It is the record that the relaunch arrived (the status reader below reads it)
+ * and the audit trail of the non-admin document values it invalidated.
+ */
+export const RELAUNCH_FILING_AUDIT_ACTION = 'Relaunch Filing';
 export const RELAUNCH_SYSTEM_ACTOR = 'system (relaunch, OD-120)';
 
 /** Never cleared on a relaunch: the identity the relaunch record binds by (OD-34, OD-83). */
@@ -64,6 +75,17 @@ function oneRowTable(tableName: string): PgTable | undefined {
   return tables[tableName];
 }
 
+/** The multi-row document lists §2.9 invalidates (the admin-list tables that are child rows). */
+function relaunchListTables(): Record<string, PgTable> {
+  return {
+    promoters: schema.promoters,
+    peer_companies: schema.peerCompanies,
+    ipo_intermediaries: schema.ipoIntermediaries,
+    ipo_risk_factors: schema.ipoRiskFactors,
+    financial_statements: schema.financialStatements,
+  };
+}
+
 export interface ExecuteLike {
   execute: (query: any) => Promise<any>;
 }
@@ -93,6 +115,17 @@ export interface RelaunchClearSummary {
   /** What the relaunch filing was, for the alert ("RHP", "OD-83 relaunch: superseded by 7900 ..."). */
   documentType: string;
   cleared: RelaunchClearedValue[];
+  /** #1298 (§2.9): non-admin document-sourced values invalidated by this relaunch (no alert, no re-apply). */
+  invalidated?: RelaunchInvalidatedValue[];
+}
+
+/** #1298: a document-sourced (source DRHP), non-admin value the relaunch emptied and re-asked. */
+export interface RelaunchInvalidatedValue {
+  tableName: string;
+  fieldName: string;
+  oldValue: string | null;
+  /** A NOT NULL column keeps its value (only its provenance and plan row are reset). */
+  valueKept: boolean;
 }
 
 function rowsOf(r: unknown): Record<string, unknown>[] {
@@ -172,7 +205,22 @@ async function relaunchPoint(
       SELECT open_date::text AS open_date, close_date::text AS close_date, price_range_min, price_range_max
         FROM ipos WHERE id = ${ipoId}::uuid`)
   )[0] ?? {};
-  if (windowOrBandChanges(stored, receipt).length === 0) return null;
+  // #1298 round 1: in production the filing persister writes this document's values BEFORE the clear
+  // runs, so the stored band already IS the new one. A window/band value written at or after this
+  // document was discovered is compared through its provenance's previous value (what was stored before).
+  const prov = rowsOf(
+    await tx.execute(sql`
+      SELECT field_name, previous_value, updated_at::text AS at, data_lineage->>'documentId' AS doc FROM field_sources
+       WHERE ipo_id = ${ipoId}::uuid AND table_name = 'ipos' AND row_key = ''
+         AND field_name IN ('openDate', 'closeDate', 'priceRangeMin', 'priceRangeMax')`)
+  ) as Array<{ field_name: string; previous_value: string | null; at: string | null; doc: string | null }>;
+  const before: Record<string, unknown> = { ...stored };
+  for (const f of WINDOW_BAND_FIELDS) {
+    const r = prov.find((x) => x.field_name === f.field);
+    const at = toInstant(r?.at);
+    if (r && (r.doc === trigger.documentId || (at && at.getTime() >= discoveredAt.getTime()))) before[f.column] = r.previous_value;
+  }
+  if (windowOrBandChanges(before, receipt).length === 0) return null;
   return { at: discoveredAt, handle: trigger.documentId, label: trigger.documentType };
 }
 
@@ -220,7 +268,8 @@ export async function clearAdminValuesOnRelaunch(
   const earlierClears = rowsOf(
     await tx.execute(sql`
       SELECT coalesce(details->>'relaunchAt', timestamp::text) AS at FROM audit_logs
-       WHERE ipo_id = ${ipoId}::uuid AND action_type = ${RELAUNCH_CLEARED_AUDIT_ACTION} AND success = true`)
+       WHERE ipo_id = ${ipoId}::uuid AND success = true
+         AND action_type IN (${RELAUNCH_CLEARED_AUDIT_ACTION}, ${RELAUNCH_FILING_AUDIT_ACTION})`)
   ).map((r) => toInstant(r.at));
   const earlierKeys = rowsOf(
     await tx.execute(sql`
@@ -261,11 +310,18 @@ export async function clearAdminValuesOnRelaunch(
        ORDER BY fpm.table_name, fpm.field_name`)
   ) as Array<{ table_name: string; field_name: string; edited_at: string | null; data_lineage: Record<string, unknown> | null; fs_id: string }>;
 
-  const insertAudit = async (a: { tableName: string; fieldName: string; oldValue: string | null; newValue: string | null; details: Record<string, unknown> }) =>
+  const insertAudit = async (a: {
+    tableName: string;
+    fieldName: string;
+    oldValue: string | null;
+    newValue: string | null;
+    details: Record<string, unknown>;
+    action?: string;
+  }) =>
     (rowsOf(
       await tx.execute(sql`
         INSERT INTO audit_logs (timestamp, admin_user, action_type, ipo_id, table_name, field_name, old_value, new_value, details, success, created_at)
-        VALUES (${now.toISOString()}, ${RELAUNCH_SYSTEM_ACTOR}, ${RELAUNCH_CLEARED_AUDIT_ACTION}, ${ipoId}::uuid, ${a.tableName},
+        VALUES (${now.toISOString()}, ${RELAUNCH_SYSTEM_ACTOR}, ${a.action ?? RELAUNCH_CLEARED_AUDIT_ACTION}, ${ipoId}::uuid, ${a.tableName},
                 ${a.fieldName}, ${a.oldValue}, ${a.newValue}, ${JSON.stringify(a.details)}::jsonb, true, ${now.toISOString()})
         RETURNING id`)
     )[0] as { id: string }).id;
@@ -349,5 +405,164 @@ export async function clearAdminValuesOnRelaunch(
     });
     summary.cleared.push({ auditId, tableName: lh.table_name, fieldName: LIST_HOLD_FIELD, oldValue, adminEmpty: false, newFilingValue: null, list });
   }
+  // #1298 (§2.9, the non-admin half): every document-sourced value (provenance source DRHP, the one
+  // document source in scraper_source) on a document field, set before this relaunch started and not
+  // held by an admin, is invalidated the same way: emptied, its provenance row removed, its plan row
+  // re-asked. Identity and E-1 fields are kept, exactly as for admin values above. A value the new
+  // filing itself wrote is newer than the relaunch start and stays.
+  const docRows = rowsOf(
+    await tx.execute(sql`
+      SELECT fs.id AS fs_id, fs.table_name, fs.field_name, fs.updated_at::text AS at
+        FROM field_sources fs
+       WHERE fs.ipo_id = ${ipoId}::uuid AND fs.row_key = '' AND fs.source = 'DRHP'
+         AND NOT EXISTS (
+           SELECT 1 FROM field_protection_metadata fpm
+            WHERE fpm.ipo_id = fs.ipo_id AND fpm.table_name = fs.table_name
+              AND fpm.field_name = fs.field_name AND fpm.is_protected = true)
+       ORDER BY fs.table_name, fs.field_name`)
+  ) as Array<{ fs_id: string; table_name: string; field_name: string; at: string | null }>;
+  summary.invalidated = [];
+  for (const d of docRows) {
+    const table = oneRowTable(d.table_name);
+    if (!table) continue;
+    if (RELAUNCH_KEEP_FIELDS.has(d.field_name) || E1_EXCHANGE_STATED_FIELDS.has(d.field_name)) continue;
+    if (!isDocumentField(d.table_name, d.field_name)) continue;
+    if (!clearable(d.at)) continue;
+    const column = (getTableColumns(table) as Record<string, { name: string; notNull: boolean }>)[d.field_name];
+    if (!column) continue;
+    const whereCol = d.table_name === 'ipos' ? sql.raw('id') : sql.raw('ipo_id');
+    const tbl = sql.raw(`"${d.table_name}"`);
+    const col = sql.raw(`"${column.name}"`);
+    const before = rowsOf(await tx.execute(sql`SELECT ${col}::text AS v FROM ${tbl} WHERE ${whereCol} = ${ipoId}::uuid`))[0] as
+      | { v: string | null }
+      | undefined;
+    if (!column.notNull) {
+      await tx.execute(sql`UPDATE ${tbl} SET ${col} = NULL WHERE ${whereCol} = ${ipoId}::uuid`);
+    }
+    await tx.execute(sql`DELETE FROM field_sources WHERE id = ${d.fs_id}::uuid`);
+    await tx.execute(sql`
+      UPDATE ipo_field_plan
+         SET state = 'PENDING', next_due_at = ${now.toISOString()}::timestamptz, reason_code = NULL,
+             cause = ${`relaunch (${point.label}) invalidated the document value (§2.9)`},
+             updated_at = ${now.toISOString()}::timestamptz
+       WHERE ipo_id = ${ipoId}::uuid AND table_name = ${d.table_name} AND row_key = ''
+         AND field_name IN (${d.field_name}, ${snake(d.field_name)})`);
+    summary.invalidated.push({ tableName: d.table_name, fieldName: d.field_name, oldValue: before?.v ?? null, valueKept: column.notNull });
+  }
+
+  // #1298 round 1 (MINOR-4): the old offer's multi-row document lists. A list table whose rows carry
+  // document provenance (source DRHP) and that no admin holds loses every row and provenance row written
+  // before this relaunch started; the new filing re-answers the list. Rows written after it stay.
+  for (const [tableName, table] of Object.entries(relaunchListTables())) {
+    const heldNow = rowsOf(
+      await tx.execute(sql`
+        SELECT 1 FROM field_protection_metadata
+         WHERE ipo_id = ${ipoId}::uuid AND table_name = ${tableName} AND field_name = ${LIST_HOLD_FIELD} AND is_protected = true LIMIT 1`)
+    );
+    if (heldNow.length > 0) continue;
+    const docProv = rowsOf(
+      await tx.execute(sql`
+        SELECT count(*)::int AS n FROM field_sources
+         WHERE ipo_id = ${ipoId}::uuid AND table_name = ${tableName} AND row_key <> '' AND source = 'DRHP'
+           AND updated_at < ${relaunchStart.toISOString()}::timestamptz`)
+    )[0] as { n: number } | undefined;
+    if (!docProv || docProv.n === 0) continue;
+    const cols = getTableColumns(table) as Record<string, { name: string }>;
+    const stamp = cols.updatedAt ? sql.raw(`coalesce("${cols.updatedAt.name}", "${cols.createdAt.name}")`) : sql.raw(`"${cols.createdAt.name}"`);
+    const tbl = sql.raw(`"${tableName}"`);
+    const removed = rowsOf(
+      await tx.execute(sql`
+        DELETE FROM ${tbl} WHERE ipo_id = ${ipoId}::uuid AND ${stamp} < ${relaunchStart.toISOString()}::timestamptz RETURNING 1`)
+    ).length;
+    await tx.execute(sql`
+      DELETE FROM field_sources
+       WHERE ipo_id = ${ipoId}::uuid AND table_name = ${tableName} AND row_key <> ''
+         AND updated_at < ${relaunchStart.toISOString()}::timestamptz`);
+    await tx.execute(sql`
+      UPDATE ipo_field_plan
+         SET state = 'PENDING', next_due_at = ${now.toISOString()}::timestamptz, reason_code = NULL,
+             cause = ${`relaunch (${point.label}) invalidated the document list (§2.9)`},
+             updated_at = ${now.toISOString()}::timestamptz
+       WHERE ipo_id = ${ipoId}::uuid AND table_name = ${tableName}`);
+    summary.invalidated.push({ tableName, fieldName: '*', oldValue: `${removed} row(s)`, valueKept: false });
+  }
+
+  // #1298 round 1 (MAJOR-1): the document plan asks again. Every NOT_APPLICABLE row reopens (a
+  // postponement once closed them all), and on a relaunch by exchange record or merge the offer
+  // documents' rows reopen too, so the relaunch RHP / prospectus / price band ad is hunted even when
+  // the old offer's rows were closed; the stage decides when each is due.
+  const offerTypes = trigger.kind === 'SOURCE_KEY_RELAUNCH' ? [...RELAUNCH_OFFER_DOCUMENT_TYPES] : [];
+  const reopened = rowsOf(
+    await tx.execute(sql`
+      UPDATE document_fetch_state
+         SET state = 'WANTED', attempts = 0, last_attempt_at = NULL, attempted_at_stage = NULL,
+             next_retry_at = NULL, blocked_since_at = NULL, updated_at = ${now.toISOString()}::timestamptz
+       WHERE ipo_id = ${ipoId}::uuid
+         AND (state = 'NOT_APPLICABLE'
+              OR (doc_type::text IN (${sql.join([...offerTypes, '-'].map((t) => sql`${t}`), sql`, `)})
+                  AND state IN ('EXTRACTED', 'SUPERSEDED', 'EXTRACT_FAILED', 'FOUND')))
+      RETURNING doc_type::text AS doc_type`)
+  ).map((r) => String(r.doc_type));
+
+  // The record that this relaunch filing arrived (read by `readPostponedRelaunchState`), with what it invalidated.
+  await insertAudit({
+    tableName: 'ipos',
+    fieldName: 'status',
+    oldValue: ipo.status,
+    newValue: null,
+    details: {
+      method: 'RELAUNCH_FILING',
+      decision: '§2.9',
+      trigger: trigger.kind,
+      ...trig,
+      adminCleared: summary.cleared.map((c) => `${c.tableName}.${c.fieldName}`),
+      invalidated: summary.invalidated,
+      documentPlanReopened: reopened.sort(),
+    },
+    action: RELAUNCH_FILING_AUDIT_ACTION,
+  });
   return summary;
+}
+
+/**
+ * #1298 (§2.9 "POSTPONED — not terminal, it comes back"): may an exchange's non-POSTPONED status now
+ * replace a stored POSTPONED? Only after a relaunch filing (OD-139) arrived since the postponement.
+ * Answer states:
+ *   - NOT_POSTPONED: the stored status is not POSTPONED (the question does not apply);
+ *   - RELAUNCHED: a relaunch record exists after the postponement — a `Relaunch Filing` / `Relaunch
+ *     Cleared` audit row (both kinds of relaunch filing pass through `clearAdminValuesOnRelaunch`), or
+ *     an `ipo_source_keys` row SUPERSEDED by the OD-83 relaunch or the OD-86 relaunch merge;
+ *   - NO_RELAUNCH: POSTPONED and no such record after the postponement.
+ * The postponement time is the status provenance row's; with no such row, any relaunch record counts.
+ * Errors propagate: the caller fails closed (keeps POSTPONED).
+ */
+export type PostponedRelaunchState = 'NOT_POSTPONED' | 'RELAUNCHED' | 'NO_RELAUNCH';
+
+export async function readPostponedRelaunchState(tx: ExecuteLike, ipoId: string): Promise<PostponedRelaunchState> {
+  const ipo = rowsOf(await tx.execute(sql`SELECT status::text AS status FROM ipos WHERE id = ${ipoId}::uuid`))[0] as
+    | { status: string }
+    | undefined;
+  if (!ipo || ipo.status !== 'POSTPONED') return 'NOT_POSTPONED';
+  const postponedAt = toInstant(
+    (rowsOf(
+      await tx.execute(sql`
+        SELECT updated_at::text AS at FROM field_sources
+         WHERE ipo_id = ${ipoId}::uuid AND table_name = 'ipos' AND row_key = '' AND field_name = 'status'`)
+    )[0] as { at?: string } | undefined)?.at
+  );
+  const marks = rowsOf(
+    await tx.execute(sql`
+      SELECT coalesce(details->>'relaunchAt', timestamp::text) AS at FROM audit_logs
+       WHERE ipo_id = ${ipoId}::uuid AND success = true
+         AND action_type IN (${RELAUNCH_FILING_AUDIT_ACTION}, ${RELAUNCH_CLEARED_AUDIT_ACTION})`)
+  ).map((r) => toInstant(r.at));
+  const keys = rowsOf(
+    await tx.execute(sql`
+      SELECT state_changed_at::text AS at, state_reason FROM ipo_source_keys
+       WHERE ipo_id = ${ipoId}::uuid AND state = 'SUPERSEDED'`)
+  )
+    .filter((r) => RELAUNCH_KEY_REASON_PREFIXES.some((p) => String(r.state_reason ?? '').startsWith(p)))
+    .map((r) => toInstant(r.at));
+  const after = [...marks, ...keys].some((d) => d != null && (postponedAt == null || d.getTime() > postponedAt.getTime()));
+  return after ? 'RELAUNCHED' : 'NO_RELAUNCH';
 }

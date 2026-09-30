@@ -2559,13 +2559,34 @@ two at any time:
 Neither status appears on production today, but `document-cycle.ts` reserves a slot every cycle for
 the withdrawal purge path, so both occur.
 
-**Not built as of 2026-09-29 (F-208, #1298):** POSTPONED is terminal in code and no relaunch
-invalidation exists. `TERMINAL_IPO_STATUSES` (`scraper/src/services/data-consolidation-service.ts:428`)
-treats POSTPONED the same as WITHDRAWN and DELISTED — a stored terminal status is never overwritten,
-and `data-persister.ts:750-757`'s legacy fallback honours the same set — but nothing clears a
-POSTPONED IPO's document-sourced fields when a relaunch filing arrives, so the "invalidated the
-moment the relaunch filing arrives" rule above has no code path yet. No live case today: 0 POSTPONED
-rows measured on `ipodhan_staging` 2026-09-29 (77 CLOSED, 289 LISTED, 21 OPEN, 10 UPCOMING).
+**Built 2026-09-30 (#1298, #1345; F-208 recorded the gap).**
+- *Status.* POSTPONED is not in `TERMINAL_IPO_STATUSES` (`scraper/src/services/data-consolidation-service.ts`;
+  WITHDRAWN and DELISTED stay terminal). A stored POSTPONED is kept against every non-ADMIN write (reason
+  `POSTPONED_KEPT_NO_RELAUNCH`) until a relaunch filing (OD-139) has arrived since the postponement; then
+  the IPO's listing exchange (NSE/BSE) reporting a non-POSTPONED status replaces it and the forward-only
+  ladder (#1256) takes over. The evidence (`readPostponedRelaunchState`,
+  `packages/shared/src/services/relaunch-admin-clear.ts`) is a `Relaunch Filing` / `Relaunch Cleared` audit
+  row or an OD-83 / OD-86 SUPERSEDED source key newer than the status provenance row; a failed read keeps
+  POSTPONED. A second postponement needs a new relaunch. The legacy fallback write door keeps POSTPONED.
+- *Invalidation, then refill.* At the relaunch filing, in one transaction with item 27's admin clear
+  (OD-120): every non-admin value with provenance source `DRHP` on a document field of a one-row table, set
+  before the relaunch started, is emptied (a NOT NULL column keeps its value), its provenance removed and
+  its plan row re-asked; identity (company name, symbol, CIN, ISIN) and E-1 fields are kept; the multi-row
+  document lists (promoters, peer companies, intermediaries, risk factors, financial statements) lose the
+  rows and provenance written before the relaunch unless an admin holds the list; NOT_APPLICABLE document
+  plan rows reopen, and on an exchange-record or merge relaunch the RHP / PROSPECTUS / PRICE_BAND_AD rows
+  reopen too. One `Relaunch Filing` audit row records it. Order per trigger: an offer document is judged
+  against the values stored BEFORE it writes (a dry run of the persister gives its receipt), the
+  invalidation commits, then the document's values are persisted (two transactions: the persister writes
+  through the process-wide pool, which would wait on the clear's row lock; a failed persist leaves the
+  fields empty and re-asked, and the retry is idempotent). The completion transaction's clear runs again
+  as a second layer and keeps every value written after the relaunch started. An OD-86 relaunch merge with
+  a POSTPONED side runs the invalidation inside the merge transaction before the carried values are
+  written, refills the emptied `ipos` fields from the newer record, and never carries the postponed row's
+  document values; such a merge is refused unless the caller passes the document-field test.
+- *Documents.* A POSTPONED IPO is no longer treated as withdrawn by the document cycle
+  (`deriveIssueShape`, the purge path): its plan stays open, and after a relaunch the RHP is hunted again.
+- *Not built:* the OD-86 unmerge does not restore values the merge's relaunch invalidation emptied.
 
 ### 2.10 What this needs that does not exist yet
 

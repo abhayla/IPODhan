@@ -448,7 +448,12 @@ function isDetectedAtStillFresh(detectedAt: unknown, now: number): boolean {
 /** #1256: a scraped `ipos.status` that would move down the ladder without an exchange relaunch. */
 export const BACKWARD_STATUS_KEPT = 'BACKWARD_STATUS_KEPT';
 
-export const TERMINAL_IPO_STATUSES: ReadonlySet<string> = new Set<string>(['WITHDRAWN', 'POSTPONED', 'DELISTED']);
+// #1298 (§2.9, owner 2026-09-08): POSTPONED is NOT terminal — "it comes back". It is held by its own
+// guard (`POSTPONED_KEPT_NO_RELAUNCH` below) until a relaunch filing arrives (OD-139).
+export const TERMINAL_IPO_STATUSES: ReadonlySet<string> = new Set<string>(['WITHDRAWN', 'DELISTED']);
+
+/** #1298: a stored POSTPONED kept because no relaunch filing has arrived since the postponement. */
+export const POSTPONED_KEPT_NO_RELAUNCH = 'POSTPONED_KEPT_NO_RELAUNCH';
 
 const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
 
@@ -2292,6 +2297,23 @@ export class DataConsolidationService {
   }
 
   /**
+   * #1298: `readPostponedRelaunchState` (packages/shared relaunch-admin-clear.ts) on the database the
+   * provenance repository writes to. 'UNKNOWN' when that database is not reachable from here or the
+   * read fails — the caller then keeps POSTPONED (fail closed).
+   */
+  private async readPostponedRelaunchState(ipoId: string): Promise<'NOT_POSTPONED' | 'RELAUNCHED' | 'NO_RELAUNCH' | 'UNKNOWN'> {
+    const exec = this.fieldSourcesRepository?.db;
+    if (!exec || typeof exec.execute !== 'function') return 'UNKNOWN';
+    try {
+      const { readPostponedRelaunchState } = await import('@ipodhan/shared/services/relaunch-admin-clear');
+      return await readPostponedRelaunchState(exec, ipoId);
+    } catch (error) {
+      logger.warn({ ipoId, error: error instanceof Error ? error.message : String(error) }, 'postponed relaunch evidence unreadable - POSTPONED kept');
+      return 'UNKNOWN';
+    }
+  }
+
+  /**
    * #1256: the scraper side of the forward-only status ladder — the same rule, the same code
    * (`decideBackwardMove`, packages/shared/src/utils/ipo-status-ladder.ts), the web ladder uses.
    * Returns the kept-existing result when a backward move is refused; null when the move is not
@@ -2832,7 +2854,7 @@ export class DataConsolidationService {
       }
     }
 
-    // W-60: an `ipo_status` already at a terminal value (WITHDRAWN/POSTPONED)
+    // W-60: an `ipo_status` already at a terminal value (WITHDRAWN/DELISTED; POSTPONED has its own guard below, #1298)
     // must never be overwritten by a non-ADMIN source — the web updater
     // already refuses to move OFF these terminals (`TERMINAL_STATUSES` in
     // status-updater-service.ts); the scraper side of the same guard was
@@ -2884,6 +2906,44 @@ export class DataConsolidationService {
           },
         ],
       };
+    }
+
+    // #1298 (§2.9 "POSTPONED — not terminal, it comes back"; OD-83, OD-139): a stored POSTPONED
+    // leaves only through the relaunch path — an exchange (NSE/BSE) reporting a non-POSTPONED status
+    // AFTER a relaunch filing arrived. Every other non-ADMIN write keeps POSTPONED, and so does any
+    // failure to read the relaunch evidence (fail closed). ADMIN still moves it anywhere.
+    if (
+      fieldName === 'status' &&
+      tableName === 'ipos' &&
+      String(existingValue) === 'POSTPONED' &&
+      incomingSource !== 'ADMIN'
+    ) {
+      const wantsOut =
+        incomingValue !== null && incomingValue !== undefined && String(incomingValue) !== 'POSTPONED' &&
+        LADDER_EXCHANGE_SOURCES.has(incomingSource);
+      const relaunch = wantsOut ? await this.readPostponedRelaunchState(ipoId) : 'NOT_ASKED';
+      if (relaunch === 'RELAUNCHED') {
+        logger.info(
+          { ipoId, from: 'POSTPONED', to: incomingValue, source: incomingSource },
+          'postponed_relaunch_released: a relaunch filing arrived, the exchange status replaces POSTPONED (§2.9)'
+        );
+      } else {
+        if (wantsOut) {
+          logger.warn(
+            { ipoId, to: incomingValue, source: incomingSource, relaunch },
+            'postponed_kept: no relaunch filing since the postponement (§2.9, OD-139)'
+          );
+        }
+        return {
+          fieldName,
+          finalValue: existingValue,
+          chosenSource: existingSource,
+          hadConflict: true,
+          conflictSeverity: 'WARNING',
+          conflictReason: POSTPONED_KEPT_NO_RELAUNCH,
+          rejectedSources: [{ source: incomingSource, value: incomingValue, reason: POSTPONED_KEPT_NO_RELAUNCH }],
+        };
+      }
     }
 
     // CRITICAL: Check source priority FIRST (before time-based)

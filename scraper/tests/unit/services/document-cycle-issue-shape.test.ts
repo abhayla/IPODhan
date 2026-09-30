@@ -108,8 +108,11 @@ describe('M3 — withdrawal CLOSES open rows once, then skips', () => {
     expect(plan.skipIpo).toBe(true);
   });
 
-  it('POSTPONED is treated the same as WITHDRAWN (F15 names both)', () => {
-    expect(deriveIssueShape({ status: 'POSTPONED' }).withdrawn).toBe(true);
+  // #1298 (§2.9, owner 2026-09-08): POSTPONED is NOT terminal - it comes back - so its document
+  // plan stays open for the relaunch RHP. Only WITHDRAWN stops the walk.
+  it('POSTPONED is NOT withdrawn: its document plan stays open (§2.9, #1298)', () => {
+    expect(deriveIssueShape({ status: 'POSTPONED' }).withdrawn).toBe(false);
+    expect(deriveIssueShape({ status: 'WITHDRAWN' }).withdrawn).toBe(true);
   });
 
   it('a withdrawn IPO makes NO network calls even while closing rows', () => {
