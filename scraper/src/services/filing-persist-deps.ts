@@ -52,7 +52,8 @@ export function makeIpoDetailsWriter(): IpoDetailsWriter {
       // §9.2 item 19: the conflict-update never replaces an admin-held ipo_details field; the hold
       // is re-read under the ipos row lock inside this transaction (field-hold.ts).
       await db.transaction(async (tx) => {
-        const { patch } = await filterPatchUnderHold(tx as never, ipoId, 'ipo_details', values as Record<string, unknown>);
+        const { patch, hold } = await filterPatchUnderHold(tx as never, ipoId, 'ipo_details', values as Record<string, unknown>);
+        if (hold?.hidden) return; // §9.2 item 23 (OD-151): a hidden IPO's ipo_details row is left as stored.
         await tx
           .insert(schema.ipoDetails)
           .values({ ipoId, ...values, updatedAt: new Date() } as never)

@@ -137,7 +137,7 @@
     },
     {
       "id": "d_hidden_ipo_child_writes",
-      "findingClass": "a HIDDEN IPO (§9.2 item 23, OD-116/OD-118/OD-150) received a scraper write to any table that references ipos.id, because some writer or reader of the scraper lock did not go through the one predicate scraperWriteBlocked (failure class hand-listed-coverage-drifts)",
+      "findingClass": "a HIDDEN IPO (§9.2 item 23, OD-116/OD-118/OD-150/OD-151) received a child-row write after it was hidden (OD-151: a stray write from a non-walk path is allowed to land and is flagged here for review; a write from a walk means the walk exclusion leaked) to any table that references ipos.id, because some writer or reader of the scraper lock did not go through the one predicate scraperWriteBlocked or the candidate selection skipped no hidden row (failure class hand-listed-coverage-drifts)",
       "round7Findings": [],
       "failThreshold": "any row in any table that references ipos.id (read at run time from pg_constraint, never typed) whose newest write-time column (every timestamp column named *_at, last_updated or timestamp, except next_*/due_*/expires_at) is later than its IPO's hidden_at; tables whose rows are not scraper writes (NON_SCRAPER_TABLES in scripts/lib/hidden-ipo-child-writes.mjs, each with a reason) are skipped, and an exemption naming a table that is no longer in the FK catalog also FAILs. Offenders are listed per table by IPO slug with the newest write time, never as a bare count.",
       "severity": "P1",

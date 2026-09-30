@@ -8,17 +8,20 @@
  * reads the lock now reads it through this module, and
  * `web/tests/unit/lib/scraper-write-block-sites.test.ts` fails when any other source file
  * reads `scraper_locked` / `scraperLocked`. Adding a third blocking reason here reaches every reader
- * at once. A hidden row is additionally refused inside field-hold.ts (IpoHiddenError, insert and
- * update alike) and skipped by the scraper's candidate selection (`notHiddenIpoSql`).
+ * at once. A hidden row is skipped by the scraper's candidate selection (`notHiddenIpoSql`), so it is
+ * not walked; a write that still reaches it is DROPPED inside field-hold.ts (never thrown, OD-151, so
+ * one hidden row cannot abort a job for other IPOs). OD-151: a stray child write from a non-walk path
+ * may land; the nightly check d_hidden_ipo_child_writes flags it.
  *
  * No schema import (field-hold.ts, a reader, must stay loadable without the schema module).
  */
 import { sql, type SQL } from 'drizzle-orm';
 
 /**
- * The record reached a row an admin HID. Thrown by the write paths (identity bind, field-hold) so a
- * hidden row gets no insert and no update, by construction. A decision, not a failure: its name is
- * in SOURCE_KEY_NO_WRITE_ERROR_NAMES (ipo-source-keys.ts), so it is never retried.
+ * The record reached a row an admin HID. Thrown only by the identity bind (resolveIpoRow), whose
+ * callers catch it per record: the row is bound (never recreated) and this record is skipped. A
+ * decision, not a failure: its name is in SOURCE_KEY_NO_WRITE_ERROR_NAMES (ipo-source-keys.ts), so it
+ * is never retried. field-hold.ts drops a hidden row's patch instead of throwing (OD-151).
  */
 export class IpoHiddenError extends Error {
   constructor(message: string, public readonly ipoId: string) {

@@ -90,18 +90,21 @@ describe('lockAndReadFieldHolds', () => {
   });
 });
 
-describe('hidden row (§9.2 item 23, OD-150): the single-row and row-keyed forms refuse the write', () => {
+describe('hidden row (§9.2 item 23, OD-151): the single-row and row-keyed forms DROP the write, never throw', () => {
   const hiddenAt = new Date('2026-09-30T08:00:00Z');
-  it('filterPatchUnderHold throws IpoHiddenError inside the lock (an upsert would otherwise insert values whole)', async () => {
+  it('filterPatchUnderHold resolves with every non-bookkeeping key dropped and hold.hidden set (caller skips its insert)', async () => {
     const tx = recordingTx([{ id: A, scraper_locked: false, hidden_at: hiddenAt }], []);
-    await expect(filterPatchUnderHold(tx, A, 'financial_data', { ipoId: A, revenue: 1 })).rejects.toMatchObject({ name: 'IpoHiddenError', ipoId: A });
+    const r = await filterPatchUnderHold(tx, A, 'financial_data', { ipoId: A, revenue: 1 });
+    expect(r.hold).toMatchObject({ hidden: true, writeBlocked: true });
+    expect(r.patch).toEqual({ ipoId: A });
+    expect(r.dropped).toEqual(['revenue']);
     expect(tx.queries[0].sql).toMatch(/SELECT id, scraper_locked, hidden_at FROM ipos/);
   });
-  it('lockAndReadRowHolds throws IpoHiddenError', async () => {
+  it('lockAndReadRowHolds resolves with hidden: true (caller writes nothing)', async () => {
     const tx = recordingTx([{ id: A, scraper_locked: false, hidden_at: hiddenAt }], []);
-    await expect(lockAndReadRowHolds(tx, A, 'peer_companies')).rejects.toMatchObject({ name: 'IpoHiddenError' });
+    await expect(lockAndReadRowHolds(tx, A, 'peer_companies')).resolves.toMatchObject({ exists: true, hidden: true, writeBlocked: true });
   });
-  it('discriminates: a visible (and a locked-only) row is not refused', async () => {
+  it('discriminates: a visible (and a locked-only) row is not dropped', async () => {
     const tx = recordingTx([{ id: A, scraper_locked: true, hidden_at: null }], []);
     const r = await filterPatchUnderHold(tx, A, 'financial_data', { ipoId: A, revenue: 1 });
     expect(r.hold).toMatchObject({ writeBlocked: true, hidden: false });

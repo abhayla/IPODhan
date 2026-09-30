@@ -153,6 +153,8 @@ export class PeerCompanyRepository {
     return this.db.transaction(async (tx) => {
       const t = tx as unknown as NodePgDatabase<typeof schema> & HoldExecutor;
       const holds = await lockAndReadRowHolds(t, ipoId, 'peer_companies');
+      // §9.2 item 23 (OD-151): a hidden IPO's peer rows are left as stored; nothing is replaced.
+      if (holds.hidden) return [];
       const stored = await tx
         .select()
         .from(schema.peerCompanies)

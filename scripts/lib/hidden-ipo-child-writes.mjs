@@ -1,5 +1,8 @@
 // §9.2 item 23 (OD-116, OD-118, OD-150), detection check `d_hidden_ipo_child_writes`:
 // no child row of a HIDDEN IPO was written after the row was hidden.
+// OD-151: the scraper stops WALKING a hidden row, but a stray child write from a non-walk path (e.g.
+// a GMP record matched by name/date) may still land. It is invisible to readers; this check flags it
+// for review. A FAIL here is a review item, not a broken promise of zero writes.
 //
 // The table list is NOT typed here. It is read at run time from the database's own FK catalog
 // (every column that references ipos.id), and each table's write-time columns are read from

@@ -1,7 +1,9 @@
 /**
- * §9.2 item 23 (OD-116, OD-118, OD-150), write side, on ipodhan_test with the REAL functions:
- * a HIDDEN IPO gets zero scraper writes through every door that reads the lock, and a VISIBLE IPO
- * still gets them (the proof discriminates). Doors: the lock gate the GMP orchestrator and
+ * §9.2 item 23 (OD-116, OD-118, OD-150, OD-151), write side, on ipodhan_test with the REAL functions:
+ * every door that reads the lock drops a HIDDEN IPO's write WITHOUT throwing (one hidden row must
+ * never abort a job for other IPOs), and a VISIBLE IPO still gets the write (the proof discriminates).
+ * OD-151: the bar is "never walked, never shown, never recreated"; a stray child write from a non-walk
+ * path may land and is flagged nightly by d_hidden_ipo_child_writes. Doors: the lock gate the GMP orchestrator and
  * BaseScraperOrchestrator ask (FieldProtectionService.isIPOLocked), the field-hold path every
  * repository upsert and IPORepository.update go through (insert AND update), the row-keyed hold
  * (peer_companies), the identity bind (resolveIpoRow), the anchor door, and the scraper's
@@ -17,6 +19,9 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql, inArray } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { IPORepository, FinancialDataRepository, resolveIpoRow } from '@ipodhan/shared';
+import { DocumentRepository } from '@ipodhan/shared/repositories';
+// @ts-expect-error - plain .mjs detection library, no type declarations
+import { IPO_FK_CATALOG_SQL, TIMESTAMP_COLUMNS_SQL, planHiddenChildWriteCheck, childWritesAfterHideSql } from '../../../scripts/lib/hidden-ipo-child-writes.mjs';
 import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
 import { FieldProtectionService } from '@ipodhan/shared/admin/field-protection-checker';
 import { lockAndReadRowHolds } from '@ipodhan/shared/services/field-hold';
@@ -39,13 +44,15 @@ const noRedis = {
   scan: async () => ['0', []],
 } as never;
 
-describe.skipIf(!DATABASE_URL)('§9.2 item 23: a hidden IPO gets zero scraper writes; a visible one still does', () => {
+describe.skipIf(!DATABASE_URL)('§9.2 item 23: a hidden IPO scraper writes are dropped (never thrown); a visible one still gets them', () => {
   let pool: Pool;
   let db: ReturnType<typeof drizzle<typeof schema>>;
   let repo: IPORepository;
 
   async function cleanup() {
     await db.delete(schema.financialData).where(inArray(schema.financialData.ipoId, IDS));
+    await db.delete(schema.documents).where(inArray(schema.documents.ipoId, IDS));
+    await db.delete(schema.gmpRecords).where(inArray(schema.gmpRecords.ipoId, IDS));
     await db.delete(schema.peerCompanies).where(inArray(schema.peerCompanies.ipoId, IDS));
     await db.delete(schema.fieldSources).where(inArray(schema.fieldSources.ipoId, IDS));
     await db.delete(schema.ipos).where(inArray(schema.ipos.id, IDS));
@@ -80,16 +87,16 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 23: a hidden IPO gets zero scraper wr
     expect(await protection.isIPOLocked(VISIBLE)).toBe(false);
   });
 
-  it('field-hold: a repository upsert INSERTS nothing for hidden (IpoHiddenError), inserts for visible', async () => {
+  it('field-hold: a repository upsert inserts nothing for hidden (dropped, resolves), inserts for visible', async () => {
     const fin = new FinancialDataRepository(db as never, noRedis);
-    await expect(fin.upsert({ ipoId: HIDDEN } as never)).rejects.toMatchObject({ cause: expect.objectContaining({ name: 'IpoHiddenError' }) });
+    await expect(fin.upsert({ ipoId: HIDDEN } as never)).resolves.toBeUndefined();
     await fin.upsert({ ipoId: VISIBLE } as never);
     const rows = await pool.query('SELECT ipo_id FROM financial_data WHERE ipo_id = ANY($1::uuid[])', [IDS]);
     expect(rows.rows.map((r) => r.ipo_id)).toEqual([VISIBLE]);
   });
 
   it('field-hold: IPORepository.update writes nothing to a hidden ipos row, writes to a visible one', async () => {
-    await expect(repo.update(HIDDEN, { symbol: 'CHANGED' } as never)).rejects.toMatchObject({ cause: expect.objectContaining({ name: 'IpoHiddenError' }) });
+    await expect(repo.update(HIDDEN, { symbol: 'CHANGED' } as never)).resolves.toMatchObject({ id: HIDDEN, symbol: 'I23WHID' });
     await repo.update(VISIBLE, { symbol: 'I23WVS2' } as never);
     const rows = await pool.query('SELECT id, symbol FROM ipos WHERE id = ANY($1::uuid[]) ORDER BY id', [IDS]);
     expect(rows.rows).toEqual([
@@ -98,8 +105,8 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 23: a hidden IPO gets zero scraper wr
     ]);
   });
 
-  it('row-keyed hold (peer_companies writer) refuses hidden, reads visible', async () => {
-    await expect(db.transaction((tx) => lockAndReadRowHolds(tx as never, HIDDEN, 'peer_companies'))).rejects.toMatchObject({ name: 'IpoHiddenError' });
+  it('row-keyed hold (peer_companies writer) reports hidden without throwing, reads visible', async () => {
+    await expect(db.transaction((tx) => lockAndReadRowHolds(tx as never, HIDDEN, 'peer_companies'))).resolves.toMatchObject({ exists: true, hidden: true });
     const v = await db.transaction((tx) => lockAndReadRowHolds(tx as never, VISIBLE, 'peer_companies'));
     expect(v).toMatchObject({ exists: true, writeBlocked: false, hidden: false });
   });
@@ -133,5 +140,25 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 23: a hidden IPO gets zero scraper wr
     const closed = await db.execute(closedIpoCandidatesQuery('item23-test-version', 10000));
     const closedIds = (closed.rows as Array<{ id: string }>).map((r) => r.id).filter((id) => IDS.includes(id));
     expect(closedIds).toEqual([VISIBLE]);
+  });
+  it('walk exclusion: the stored-zip expansion pass does not select a hidden row zip; a visible row zip is selected', async () => {
+    await db.execute(sql`
+      INSERT INTO documents (ipo_id, type, title, url, extraction_status)
+      VALUES (${HIDDEN}::uuid, 'RHP', 'Item23 hidden zip', 'https://example.test/item23-hidden.zip', 'PENDING'),
+             (${VISIBLE}::uuid, 'RHP', 'Item23 visible zip', 'https://example.test/item23-visible.zip', 'PENDING')`);
+    const docs = new DocumentRepository(db as never, noRedis);
+    const all = await docs.listZipsWithUncheckedMembers({});
+    expect(all.map((z) => z.ipoId).filter((id) => IDS.includes(id))).toEqual([VISIBLE]);
+    // Discriminates on the slug filter the repair CLI uses too.
+    expect(await docs.listZipsWithUncheckedMembers({ slug: 'item23-write-probe-hidden-ltd' })).toEqual([]);
+  });
+  it('OD-151: a stray GMP write (non-walk path) to a hidden IPO lands and d_hidden_ipo_child_writes flags it; the visible IPO is not flagged', async () => {
+    await pool.query(`INSERT INTO gmp_records (ipo_id, source, timestamp, gmp) VALUES ($1, 'INVESTORGAIN', now(), 10), ($2, 'INVESTORGAIN', now(), 12)`, [HIDDEN, VISIBLE]);
+    const fk = (await pool.query(IPO_FK_CATALOG_SQL)).rows;
+    const ts = (await pool.query(TIMESTAMP_COLUMNS_SQL)).rows;
+    const plan = planHiddenChildWriteCheck(fk, ts).plans.find((p: { table: string }) => p.table === 'gmp_records');
+    expect(plan).toBeDefined();
+    const flagged = (await pool.query(childWritesAfterHideSql(plan))).rows.map((r: { id: string }) => r.id).filter((id: string) => IDS.includes(id));
+    expect(flagged).toEqual([HIDDEN]);
   });
 });

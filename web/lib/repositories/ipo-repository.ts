@@ -1322,7 +1322,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           .select({ currentSlug: ipos.slug })
           .from(schema.ipoSlugRedirects)
           .innerJoin(ipos, eq(schema.ipoSlugRedirects.ipoId, ipos.id))
-          .where(eq(schema.ipoSlugRedirects.oldSlug, oldSlug))
+          // §9.2 item 23: an old slug never redirects a reader to a hidden row.
+          .where(and(eq(schema.ipoSlugRedirects.oldSlug, oldSlug), publicIpoVisible()))
           .limit(1);
 
         return row?.currentSlug ?? null;

@@ -65,7 +65,12 @@ export class FinancialDataRepository
       // §9.2 item 19: the conflict-update never replaces an admin-held financial_data field; the
       // hold is re-read under the ipos row lock inside this transaction (field-hold.ts).
       const result = await this.db.transaction(async (tx) => {
-        const { patch } = await filterPatchUnderHold(tx as never, data.ipoId, 'financial_data', data as Record<string, unknown>);
+        const { patch, hold } = await filterPatchUnderHold(tx as never, data.ipoId, 'financial_data', data as Record<string, unknown>);
+        // §9.2 item 23 (OD-151): a hidden IPO's row is left as stored (no insert, no update).
+        if (hold?.hidden) {
+          const [cur] = await tx.select().from(financialData).where(eq(financialData.ipoId, data.ipoId)).limit(1);
+          return cur as FinancialData;
+        }
         const [row] = await tx
           .insert(financialData)
           .values(data)

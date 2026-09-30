@@ -393,7 +393,7 @@ export const ipos = pgTable(
 
     // §9.2 item 23 (OD-116 as corrected by OD-118): an admin HIDES a row, never deletes it. A hidden
     // row answers 410 Gone, leaves every reader list, search and the sitemap, and the scraper binds
-    // it (its identifiers stay, so it is never recreated) but writes nothing to it. NULL = visible.
+    // it (its identifiers stay, so it is never recreated) but stops walking it (OD-151). NULL = visible.
     hiddenAt: timestamp('hidden_at'),
     hiddenReason: text('hidden_reason'),
     hiddenBy: varchar('hidden_by', { length: 100 }),

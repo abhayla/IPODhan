@@ -4,7 +4,8 @@
  * Hide stamps hidden_at + the written reason + the admin (name and account id) and writes the audit
  * row in the SAME transaction, so a hide without its reason and author cannot exist. The row's data
  * and its identifiers (ipo_source_keys) are untouched: the scraper keeps binding the row, so it is
- * never recreated, and writes nothing to it (IpoHiddenError). Unhide clears all four columns.
+ * never recreated, and stops walking it (OD-151; a stray child write from a non-walk path is flagged
+ * nightly by d_hidden_ipo_child_writes). Unhide clears all four columns.
  *
  * A true duplicate is NOT hidden: it is merged with the OD-38 merge tool and gets an
  * ipo_slug_redirects row. A genuinely WITHDRAWN IPO keeps OD-8's notice page; an OFS row keeps

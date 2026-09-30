@@ -19,10 +19,16 @@ import path from 'node:path';
 const WEB_ROOT = path.resolve(__dirname, '../../../..');
 const REPO_ROOT = path.resolve(WEB_ROOT, '..');
 // ipos by the query builder, raw SQL and the relational API (`db.query.ipos`), and the alias table a
-// reader could resolve an old identifier through (ipo_identifier_aliases, item 26).
+// reader could resolve an old identifier through (ipo_identifier_aliases, item 26). A JOIN onto ipos
+// (`.innerJoin(ipos, ...)`, `JOIN ipos`) reads ipos rows too and is scanned the same way.
 const QUERY_OF_IPOS =
-  /\.from\(\s*(schema\.)?(ipos|ipoIdentifierAliases)\s*\)|\bFROM\s+(ipos|ipo_identifier_aliases)\b|\.query\.(ipos|ipoIdentifierAliases)\.find/g;
-const APPLIES_PREDICATE = /publicIpoVisible|includeHidden|hidden_at|hiddenAt|visibility:/;
+  /\.from\(\s*(schema\.)?(ipos|ipoIdentifierAliases)\s*\)|\.(inner|left|right|full)Join\(\s*(schema\.)?(ipos|ipoIdentifierAliases)\b|\b(FROM|JOIN)\s+(ipos|ipo_identifier_aliases)\b|\.query\.(ipos|ipoIdentifierAliases)\.find/g;
+// A FILTER, not a mention: selecting `hiddenAt` as a column hides nothing, so the bare words
+// `hiddenAt` / `hidden_at` no longer count (review MINOR). Accepted: the shared predicate, the
+// includeHidden switch, notHiddenIpoSql, `isNull(<x>.hiddenAt)`, `hidden_at IS NULL` /
+// `${ipos.hiddenAt} IS NULL`, or a `visibility:` comment naming why the query is not a reader read.
+const APPLIES_PREDICATE =
+  /publicIpoVisible|includeHidden|notHiddenIpoSql|visibility:|isNull\(\s*[\w.]*hiddenAt\s*\)|hidden(?:_at|At)\}?\s+IS\s+NULL/i;
 const BUILDER_REF = /\b(whereClause|whereConditions|conditions)\b|\$dynamic\(/;
 const FUNCTION_START =
   /\n[ \t]*(?:export\s+)?(?:async\s+)?function\s+\w+|\n[ \t]+(?:private\s+|public\s+|protected\s+)?(?:static\s+)?async\s+\w+\s*\(|\nexport\s+const\s+\w+\s*=/g;
@@ -33,6 +39,8 @@ const NOT_A_READER_SURFACE: Record<string, string> = {
   'web/lib/ipo-visibility/hidden-ipo-slugs.ts': 'reads the HIDDEN set itself (410 decision)',
   'web/lib/services/ipo-visibility-service.ts': 'the admin hide/unhide writer',
   'web/lib/repositories/admin-queue-repository.ts': 'admin data-quality queue; hidden rows stay visible to admins',
+  'web/lib/repositories/admin-queue-page-repository.ts': 'admin queue page (OD-136); hidden rows stay visible to admins',
+  'packages/shared/src/services/scraper-write-block.ts': 'the hidden/lock predicate module itself (builds the filters, reads no reader rows)',
   'web/lib/repositories/ipo-score-realtime-repository.ts': 'reads one row by id after the caller resolved a visible slug',
   'web/lib/services/ipo-scoring-realtime.ts': 'reads one row by id after the caller resolved a visible slug',
   'web/lib/services/conflict-resolution.ts': 'admin conflict tooling',
@@ -141,6 +149,24 @@ describe('§9.2 item 23: every public ipos query applies the visibility predicat
       'const b = await db.select().from(ipos).where(eq(ipos.slug, y));',
     ].join('\n');
     expect(unguardedQueries(src)).toEqual([3]);
+  });
+
+  it('a query that only SELECTS hiddenAt (no filter on it) fails the scan; a filter on it passes', () => {
+    const selectsOnly = 'const r = await db.select({ id: ipos.id, hiddenAt: ipos.hiddenAt }).from(ipos).where(eq(ipos.slug, s));';
+    expect(unguardedQueries(selectsOnly)).toEqual([1]);
+    const rawSelectsOnly = 'const r = await db.execute(sql`SELECT id, hidden_at FROM ipos WHERE slug = ${s}`);';
+    expect(unguardedQueries(rawSelectsOnly)).toEqual([1]);
+    expect(unguardedQueries('const r = await db.select().from(ipos).where(and(eq(ipos.slug, s), isNull(ipos.hiddenAt)));')).toEqual([]);
+    expect(unguardedQueries('const r = await db.execute(sql`SELECT id FROM ipos WHERE slug = ${s} AND hidden_at IS NULL`);')).toEqual([]);
+  });
+
+  it('a JOIN onto ipos is scanned: .innerJoin(ipos) / JOIN ipos without the predicate fails', () => {
+    const joinBuilder = 'const r = await db.select().from(gmpRecords).innerJoin(ipos, eq(ipos.id, gmpRecords.ipoId)).where(eq(ipos.slug, s));';
+    expect(unguardedQueries(joinBuilder)).toEqual([1]);
+    const joinRaw = 'const r = await db.execute(sql`SELECT g.* FROM gmp_records g JOIN ipos i ON i.id = g.ipo_id WHERE i.slug = ${s}`);';
+    expect(unguardedQueries(joinRaw)).toEqual([1]);
+    const guardedJoin = 'const r = await db.select().from(gmpRecords).innerJoin(ipos, eq(ipos.id, gmpRecords.ipoId)).where(publicIpoVisible());';
+    expect(unguardedQueries(guardedJoin)).toEqual([]);
   });
 
   it('every allow-listed file still exists and still queries ipos (no stale exemptions)', () => {

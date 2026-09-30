@@ -12,7 +12,8 @@
  * One lock statement and one protection read per write, however many rows: ids are batched.
  */
 import { sql, type SQL } from 'drizzle-orm';
-import { IpoHiddenError, scraperWriteBlockSqlColumns, scraperWriteBlockedRaw } from './scraper-write-block';
+import { logger } from '../logger';
+import { scraperWriteBlockSqlColumns, scraperWriteBlockedRaw } from './scraper-write-block';
 
 export interface FieldHold {
   /** `scraperWriteBlocked` (scraper-write-block.ts): locked OR hidden. */
@@ -45,7 +46,7 @@ export interface HoldExecutor {
 /**
  * Pure: split a patch into what may be written and what an admin holds. `honourScraperLock` drops
  * every key when the IPO is write-blocked (the `ipos` table's own semantics, round 1). A HIDDEN row
- * drops every key on every table (§9.2 item 23, OD-150): the scraper writes nothing to it.
+ * drops every key on every table (§9.2 item 23, OD-151): this patch is not written.
  */
 export function dropHeldFields<T extends Record<string, unknown>>(
   patch: T,
@@ -104,10 +105,12 @@ export async function filterPatchUnderHold<T extends Record<string, unknown>>(
   opts: { honourScraperLock?: boolean } = {}
 ): Promise<{ patch: Partial<T>; dropped: string[]; hold: FieldHold | null }> {
   const hold = (await lockAndReadFieldHolds(tx, [ipoId], tableName)).get(ipoId) ?? null;
-  // §9.2 item 23 (OD-150): a hidden row takes no insert and no update, whatever the caller does
-  // with the filtered patch (an upsert inserts `values` whole). Refused here, inside the lock.
-  if (hold?.hidden) throw new IpoHiddenError(`${tableName} write refused: IPO ${ipoId} is hidden (§9.2 item 23)`, ipoId);
   const { patch: kept, dropped } = dropHeldFields(patch, hold ?? NO_HOLD, opts);
+  // §9.2 item 23 (OD-116, OD-151): a hidden row's patch is DROPPED, never thrown. A throw here aborted
+  // whole job loops (registrar re-resolve, status updater) for every other IPO in the batch. The
+  // caller sees `hold.hidden` and skips any insert of its own; admin writes to a hidden row are
+  // refused earlier with IPO_HIDDEN (OD-150), not here.
+  if (hold?.hidden) logger.info({ ipoId, table: tableName, dropped }, '[item 23] hidden IPO: scraper patch dropped');
   return { patch: kept, dropped, hold };
 }
 
@@ -135,7 +138,11 @@ export async function lockAndReadRowHolds(
   const lockRow = locked.rows[0] as Parameters<typeof scraperWriteBlockedRaw>[0] | undefined;
   if (!lockRow) return { exists: false, writeBlocked: false, hidden: false, rows };
   const block = scraperWriteBlockedRaw(lockRow);
-  if (block.hidden) throw new IpoHiddenError(`${tableName} write refused: IPO ${ipoId} is hidden (§9.2 item 23)`, ipoId);
+  // §9.2 item 23 (OD-151): a hidden row returns `hidden: true` and the caller writes nothing; never thrown.
+  if (block.hidden) {
+    logger.info({ ipoId, table: tableName }, '[item 23] hidden IPO: scraper row write dropped');
+    return { exists: true, writeBlocked: true, hidden: true, rows };
+  }
   const prefix = `${tableName}:`;
   const prot = await tx.execute(sql`
     SELECT table_name, field_name FROM field_protection_metadata

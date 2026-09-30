@@ -26,6 +26,8 @@ const updateSetMock = vi.fn().mockReturnThis();
 const updateWhereMock = vi.fn().mockResolvedValue(undefined);
 // §9.2 item 19: ipo ids whose registrarId an admin holds (field_protection_metadata rows).
 const HELD = new Set<string>();
+// §9.2 item 23 (OD-151): ipo ids an admin hid (ipos.hidden_at set).
+const HIDDEN = new Set<string>();
 const holdDialect = new PgDialect();
 
 vi.mock('@ipodhan/shared/db', () => ({
@@ -56,7 +58,7 @@ vi.mock('@ipodhan/shared/db', () => ({
         execute: async (q: SQL) => {
           const { sql: text, params } = holdDialect.sqlToQuery(q);
           const id = params[0] as string;
-          if (/FOR NO KEY UPDATE/.test(text)) return { rows: [{ id, scraper_locked: false }] };
+          if (/FOR NO KEY UPDATE/.test(text)) return { rows: [{ id, scraper_locked: false, hidden_at: HIDDEN.has(id) ? new Date('2026-09-30T00:00:00Z') : null }] };
           return { rows: HELD.has(id) ? [{ ipo_id: id, field_name: 'registrarId' }] : [] };
         },
       };
@@ -101,6 +103,19 @@ describe('reresolveRegistrarIds', () => {
       expect(updateSetMock).toHaveBeenCalledWith({ registrarId: 'r-maashitla' });
     } finally {
       HELD.clear();
+    }
+  });
+
+  it('item 23 (OD-151): a hidden row in the batch is dropped, never thrown; the visible rows are still written', async () => {
+    HIDDEN.add('ipo-1');
+    try {
+      const result = await reresolveRegistrarIds({ dryRun: false });
+      expect(result.matched).toBe(2);
+      expect(result.written).toBe(1);
+      expect(updateSetMock).toHaveBeenCalledTimes(1);
+      expect(updateSetMock).toHaveBeenCalledWith({ registrarId: 'r-maashitla' });
+    } finally {
+      HIDDEN.clear();
     }
   });
 
