@@ -4,7 +4,7 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 
-export const ADMIN_SESSION_COOKIE = 'ipodhan_admin_session';
+export { ADMIN_SESSION_COOKIE } from './session-cookie-name';
 export const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 // Sliding expiry: extend at most once an hour so a busy admin does not write on every request.
 export const SESSION_TOUCH_INTERVAL_MS = 60 * 60 * 1000;
