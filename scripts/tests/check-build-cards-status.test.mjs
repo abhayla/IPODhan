@@ -80,9 +80,19 @@ none
 none
 `;
 
+// The real tree carries PARTIAL cards whose parked issues the gate resolves through `gh`. These
+// cases test Status-line logic, not the network, so they run offline-skip. The gate refuses that
+// flag when CI is set (the CI-guard case below sets it on purpose), so the child must not inherit
+// the runner's CI=true. Without both, a CI runner fails all three real-tree cases (#1181).
+function hermeticEnv() {
+  const env = { ...process.env };
+  delete env.CI;
+  return env;
+}
+
 function runGate() {
   try {
-    const out = execFileSync('node', [GATE, '--gate'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    const out = execFileSync('node', [GATE, '--gate', '--offline-parked-check=skip'], { cwd: REPO_ROOT, encoding: 'utf8', env: hermeticEnv() });
     return { code: 0, out };
   } catch (e) {
     return { code: e.status ?? 1, out: (e.stdout || '') + (e.stderr || '') };
@@ -277,7 +287,7 @@ test('a real PARTIAL fixture passes the real gate end to end with --offline-park
     'Status: PARTIAL 2026-09-25 PRs #1010 proof staging cycle 2026-09-25 22:00 parked #999999999',
   ));
   try {
-    const out = execFileSync('node', [GATE, '--gate', '--offline-parked-check=skip'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    const out = execFileSync('node', [GATE, '--gate', '--offline-parked-check=skip'], { cwd: REPO_ROOT, encoding: 'utf8', env: hermeticEnv() });
     assert.doesNotMatch(out, /partial-offline\.md/);
   } finally {
     cleanupFixtures();

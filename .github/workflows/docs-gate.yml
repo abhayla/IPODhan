@@ -122,11 +122,8 @@ jobs:
         # SCRIPT that must hold on every PR, not the state of a 2026-09-09 delta.
         run: |
           # check-dod-root-resolution.test.mjs is NOT run here: three of its four cases
-          # drive a FULL check-dod run, and one full run takes many minutes because it
-          # spawns check-mutations.test.mjs (which mutates and restores real files).
-          # Measured 2026-09-22: a single case had not finished after 15 minutes. It also
-          # runs two of those DoD walks concurrently in one checkout, so they mutate the
-          # same files at once. Run it by hand when touching root resolution.
+          # drive a FULL check-dod run (~6 min, spawns check-mutations.test.mjs which
+          # mutates and restores real files). It runs alone in main-gate.yml (#1182).
           node --test scripts/tests/check-dod-d14-mechanism.test.mjs
 
       - name: PR template spec-deviation block (item 31)
