@@ -18,9 +18,50 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { ADMIN_SESSION_COOKIE } from '@/lib/admin-accounts/session-cookie-name';
+
+/**
+ * Admin gate, the FIRST layer (runs before any admin page or admin API route renders).
+ *
+ * Why here: measured 2026-09-30 on a production build, a redirect in the admin layout does not
+ * stop a child page from running, and that page's output reached the response body. Middleware
+ * runs before the route renders at all.
+ *
+ * It checks cookie PRESENCE only: middleware runs in the Edge runtime with no database, so it
+ * cannot tell a valid session from a forged or expired one. Validity is decided by the later
+ * layers, which all stay: the server layout app/admin/(protected)/layout.tsx, each page's own
+ * check, and withAdminAuth / requireAdminAuth on every admin API route.
+ *
+ * Exceptions: the login page and the login API (a signed-out admin must reach them), and an
+ * /api/admin request carrying an Authorization header (machine callers use a Bearer token that
+ * the route's own guard verifies). An Authorization header does NOT open an admin page.
+ */
+const ADMIN_LOGIN_PAGE = '/admin/login';
+const ADMIN_PUBLIC_PATHS = new Set([ADMIN_LOGIN_PAGE, '/api/admin/auth/login']);
+
+function stripTrailingSlash(p: string): string {
+  return p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p;
+}
+
+export function adminGate(request: NextRequest): NextResponse | null {
+  const pathname = stripTrailingSlash(request.nextUrl.pathname);
+  const isAdminPage = pathname === '/admin' || pathname.startsWith('/admin/');
+  const isAdminApi = pathname === '/api/admin' || pathname.startsWith('/api/admin/');
+  if (!isAdminPage && !isAdminApi) return null;
+  if (ADMIN_PUBLIC_PATHS.has(pathname)) return null;
+  if (request.cookies.get(ADMIN_SESSION_COOKIE)?.value) return null;
+  if (isAdminApi) {
+    if (request.headers.get('authorization')) return null;
+    return NextResponse.json(
+      { error: 'Unauthorized', message: 'Admin authentication required.' },
+      { status: 401 }
+    );
+  }
+  return NextResponse.redirect(new URL(ADMIN_LOGIN_PAGE, request.url));
+}
 
 export function middleware(request: NextRequest) {
-  const response = NextResponse.next();
+  const response = adminGate(request) ?? NextResponse.next();
 
   // Prevent MIME type sniffing
   // Ensures browsers respect Content-Type header
@@ -80,7 +121,10 @@ export function middleware(request: NextRequest) {
   return response;
 }
 
-// Apply middleware to all routes except static files
+// Apply middleware to all routes except static files. /admin/* and /api/admin/* paths are matched,
+// EXCEPT those whose last segment ends in a static-file extension (.png, .svg, ...): the matcher's
+// static-asset exclusion skips the middleware for them. Those are still stopped by the per-page
+// checks, the (protected) layout and withAdminAuth.
 // Excludes: Next.js internals, static assets, and favicon
 export const config = {
   matcher: [

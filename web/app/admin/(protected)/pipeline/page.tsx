@@ -11,8 +11,9 @@
  * (CLAUDE.md — services and server components use repositories directly).
  *
  * The route's own SERVER-SIDE session check (getAdminSessionFromCookies) is what keeps an
- * anonymous request out — independent of app/admin/layout.tsx's client-only redirect, which is
- * the 2026-09-24 admin-route auth-hole class (any admin route whose server entry point does not
+ * anonymous request out. The server layout app/admin/(protected)/layout.tsx checks too, but a
+ * layout does not stop its child page from rendering in the App Router, so this check is still
+ * required — the 2026-09-24 admin-route auth-hole class (any admin route whose server entry point does not
  * itself verify the session). An unauthenticated request never reaches the repository read below;
  * it is redirected to /admin/login before it runs.
  */

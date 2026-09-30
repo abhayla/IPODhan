@@ -1,11 +1,10 @@
 /**
- * Unit tests for web/app/admin/pipeline/page.tsx (#1322).
+ * Unit tests for web/app/admin/(protected)/pipeline/page.tsx (#1322).
  *
  * Class: `2026-09-24 admin-route auth-hole` — an admin route whose server entry point does not
- * itself verify the session. app/admin/layout.tsx is a CLIENT component (a redirect that runs in
- * the browser after the server has already rendered/fetched), so it protects nothing on the
- * server; the only thing that can stop an anonymous request is the page itself checking the
- * session before it reads any data. These tests assert that check runs, and that the repository
+ * itself verify the session. app/admin/(protected)/layout.tsx checks the session on the server
+ * too, but in the App Router a layout does not stop its child page from rendering, so the page
+ * must still check the session itself before it reads any data. These tests assert that check runs, and that the repository
  * read (findGrid) is never reached when it fails.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -47,7 +46,7 @@ vi.mock('@/lib/cache/redis-client', () => ({ getRedisClient: vi.fn(() => ({})) }
 vi.mock('next/navigation', () => ({ redirect }));
 
 async function loadPage() {
-  const mod = await import('@/app/admin/pipeline/page');
+  const mod = await import('@/app/admin/(protected)/pipeline/page');
   return mod.default;
 }
 

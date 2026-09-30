@@ -16,7 +16,7 @@ vi.mock('@/lib/admin/admin-api-client', () => ({
   adminPost: (...args: unknown[]) => adminPostMock(...args),
 }));
 
-import AdminQueuePage from '@/app/admin/conflicts/page';
+import AdminQueuePage from '@/app/admin/(protected)/conflicts/page';
 
 const ipo = { id: 'i1', slug: 'abc-ltd', companyName: 'ABC Ltd', status: 'UPCOMING', openDate: '2026-10-05', closeDate: null, listingDate: null };
 const listed = { ...ipo, id: 'i2', slug: 'old-ltd', companyName: 'Old Ltd', status: 'LISTED', listingDate: '2025-01-01' };

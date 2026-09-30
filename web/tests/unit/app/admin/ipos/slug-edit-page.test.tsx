@@ -1,6 +1,6 @@
 /**
  * Unit tests for the admin-only non-IPO editor route (OD-140, §9.2 items 4, 14):
- * web/app/admin/ipos/[slug]/edit/page.tsx.
+ * web/app/admin/(protected)/ipos/[slug]/edit/page.tsx.
  *
  * Class: `2026-09-24 admin-route auth-hole` — an admin route whose server entry point does not
  * itself verify the session. These tests assert the SERVER-SIDE check runs before any data is
@@ -40,7 +40,7 @@ vi.mock('@/components/admin/ipo-editor/IpoPageEditor', () => ({
 }));
 
 async function loadPage() {
-  const mod = await import('@/app/admin/ipos/[slug]/edit/page');
+  const mod = await import('@/app/admin/(protected)/ipos/[slug]/edit/page');
   return mod.default;
 }
 

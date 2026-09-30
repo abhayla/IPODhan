@@ -8,7 +8,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 const push = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 
-import { NewIpoForm } from '@/app/admin/ipos/new/new-ipo-form';
+import { NewIpoForm } from '@/app/admin/(protected)/ipos/new/new-ipo-form';
 
 const TYPES = ['IPO', 'FPO', 'BUYBACK'];
 
