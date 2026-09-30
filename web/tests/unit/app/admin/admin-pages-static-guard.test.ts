@@ -293,6 +293,7 @@ describe('every non-client admin server file guards its entry points, or is revi
   describe('detector self-test: guarded shapes pass', () => {
     it('passes the real getAdminSessionFromCookies + redirect shape (page)', () => {
       const src = `
+        import { getAdminSessionFromCookies } from '@/lib/admin-accounts/admin-session';
         export default async function Page() {
           const admin = await getAdminSessionFromCookies();
           if (!admin) {
@@ -307,6 +308,7 @@ describe('every non-client admin server file guards its entry points, or is revi
 
     it('passes requireAdminAuth + if(err) return err (route handler shape)', () => {
       const src = `
+        import { requireAdminAuth } from '@/lib/auth/admin-auth';
         export async function GET(req) {
           const authError = await requireAdminAuth();
           if (authError) return authError;
@@ -317,12 +319,14 @@ describe('every non-client admin server file guards its entry points, or is revi
     });
 
     it('passes export const GET = withAdminAuth(...)', () => {
-      const src = `export const GET = withAdminAuth(async (r, a) => ok());`;
+      const src = `import { withAdminAuth } from '@/lib/middleware/admin-auth';
+export const GET = withAdminAuth(async (r, a) => ok());`;
       expect(evaluateAdminServerFile(src)).toEqual({ status: 'guarded' });
     });
 
     it('passes an indirect default export that IS guarded', () => {
       const src = `
+        import { getAdminSessionFromCookies } from '@/lib/admin-accounts/admin-session';
         const P = async () => {
           const admin = await getAdminSessionFromCookies();
           if (!admin) { redirect('/admin/login'); }
@@ -358,6 +362,80 @@ describe('every non-client admin server file guards its entry points, or is revi
         }
       `;
       expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+  });
+  describe('round-3 self-test: export-declaration and guard-provenance shapes', () => {
+    const SESSION_IMPORT = "import { getAdminSessionFromCookies } from '@/lib/admin-accounts/admin-session';";
+    const GUARD_BODY = `const a = await getAdminSessionFromCookies(); if (!a) { redirect('/admin/login'); }`;
+
+    it('export { handler as GET } of an unguarded local handler is unguarded', () => {
+      const src = `async function handler() { return ok(await load()); } export { handler as GET };`;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('export { handler as GET } of a guarded local handler is guarded', () => {
+      const src = `${SESSION_IMPORT}\nasync function handler() { ${GUARD_BODY} return ok(); } export { handler as GET };`;
+      expect(evaluateAdminServerFile(src)).toEqual({ status: 'guarded' });
+    });
+
+    it('export { Page as default } of an unguarded local page is unguarded', () => {
+      const src = `async function Page() { const rows = await load(); return null; } export { Page as default };`;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('export { Page as default } of a guarded local page is guarded', () => {
+      const src = `${SESSION_IMPORT}\nasync function Page() { ${GUARD_BODY} return null; } export { Page as default };`;
+      expect(evaluateAdminServerFile(src)).toEqual({ status: 'guarded' });
+    });
+
+    it('a re-export of a named handler from another module is unguarded (fail-closed)', () => {
+      expect(evaluateAdminServerFile(`export { GET } from './handlers';`).status).toBe('unguarded');
+    });
+
+    it('export * from another module is unguarded (fail-closed)', () => {
+      expect(evaluateAdminServerFile(`export * from './handlers';`).status).toBe('unguarded');
+    });
+
+    it('re-exporting an imported binding as a handler is unguarded', () => {
+      expect(evaluateAdminServerFile(`import { handler } from './h'; export { handler as POST };`).status).toBe('unguarded');
+    });
+
+    it('a same-named LOCAL guard function is not a guard', () => {
+      const src = `
+        async function getAdminSessionFromCookies() { return true; }
+        export default async function Page() { ${GUARD_BODY} return null; }
+      `;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('a same-named guard with no import at all is not a guard', () => {
+      const src = `export default async function Page() { ${GUARD_BODY} return null; }`;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('a guard imported from the wrong module is not a guard', () => {
+      const src = `import { getAdminSessionFromCookies } from './fake-session';\nexport default async function Page() { ${GUARD_BODY} return null; }`;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('withAdminAuth imported from the wrong module is not a guard', () => {
+      const src = `import { withAdminAuth } from 'some-other-lib';\nexport const GET = withAdminAuth(async () => ok());`;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('a locally declared withAdminAuth is not a guard', () => {
+      const src = `const withAdminAuth = (f) => f;\nexport const GET = withAdminAuth(async () => ok());`;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('a guard imported from a relative path to the real module is accepted', () => {
+      const src = `import { getAdminSessionFromCookies } from '../../lib/admin-accounts/admin-session';\nexport default async function Page() { ${GUARD_BODY} return null; }`;
+      expect(evaluateAdminServerFile(src)).toEqual({ status: 'guarded' });
+    });
+
+    it('an aliased import of the real guard is accepted', () => {
+      const src = `import { getAdminSessionFromCookies as g } from '@/lib/admin-accounts/admin-session';\nexport default async function Page() { const a = await g(); if (!a) { redirect('/x'); } return null; }`;
+      expect(evaluateAdminServerFile(src)).toEqual({ status: 'guarded' });
     });
   });
 });

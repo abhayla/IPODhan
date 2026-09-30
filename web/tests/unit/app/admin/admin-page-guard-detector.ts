@@ -55,6 +55,52 @@ const NAMED_ENTRY_NAMES = new Set(['generateMetadata', ...HTTP_METHODS]);
 /** Calls that never read application data — safe anywhere, including in an allowlisted file. */
 const PURE_CALL_NAMES = new Set(['redirect', 'notFound']);
 
+/**
+ * Round-3 finding 2: a guard is recognised by WHERE its callee was imported from, never by name
+ * alone. A local function or an import from another module that merely shares the name is not a
+ * guard. Each canonical guard maps to its real module (alias form, or a relative path that ends in
+ * the same tail).
+ */
+const TRUSTED_GUARD_MODULES: Record<string, { alias: string; tail: string }> = {
+  getAdminSessionFromCookies: { alias: '@/lib/admin-accounts/admin-session', tail: 'admin-accounts/admin-session' },
+  requireAdminAuth: { alias: '@/lib/auth/admin-auth', tail: 'auth/admin-auth' },
+  withAdminAuth: { alias: '@/lib/middleware/admin-auth', tail: 'middleware/admin-auth' },
+};
+
+function specifierIsTrusted(canonical: string, spec: string): boolean {
+  const t = TRUSTED_GUARD_MODULES[canonical];
+  if (!t) return false;
+  if (spec === t.alias) return true;
+  return /^\.{1,2}\//.test(spec) && (spec.endsWith('/' + t.tail) || spec === './' + t.tail);
+}
+
+/** local identifier -> canonical guard name, for imports that come from the real module only. */
+let trustedGuardLocals = new Map<string, string>();
+
+function computeTrustedGuardLocals(sourceFile: ts.SourceFile): Map<string, string> {
+  const out = new Map<string, string>();
+  const localDecls = new Set<string>();
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.name) localDecls.add(stmt.name.text);
+    if (ts.isVariableStatement(stmt)) {
+      for (const d of stmt.declarationList.declarations) if (ts.isIdentifier(d.name)) localDecls.add(d.name.text);
+    }
+  }
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteral(stmt.moduleSpecifier)) continue;
+    const clause = stmt.importClause;
+    if (!clause || clause.isTypeOnly || !clause.namedBindings || !ts.isNamedImports(clause.namedBindings)) continue;
+    for (const el of clause.namedBindings.elements) {
+      if (el.isTypeOnly) continue;
+      const canonical = (el.propertyName ?? el.name).text;
+      const local = el.name.text;
+      if (localDecls.has(local)) continue; // a same-named local declaration shadows/duplicates it: not a guard
+      if (specifierIsTrusted(canonical, stmt.moduleSpecifier.text)) out.set(local, canonical);
+    }
+  }
+  return out;
+}
+
 function hasDirective(stmts: readonly ts.Statement[], text: string): boolean {
   const [first] = stmts;
   return !!first && ts.isExpressionStatement(first) && ts.isStringLiteral(first.expression) && first.expression.text === text;
@@ -111,8 +157,9 @@ function isGuardedStatements(stmts: readonly ts.Statement[]): boolean {
   const pair = awaitedCallVar(unwrapped[0]);
   if (!pair) return false;
   const [varName, callee] = pair;
-  if (callee === 'getAdminSessionFromCookies') return isIfNotVarThenRedirect(unwrapped[1], varName);
-  if (callee === 'requireAdminAuth') return isIfVarThenReturnVar(unwrapped[1], varName);
+  const canonical = trustedGuardLocals.get(callee);
+  if (canonical === 'getAdminSessionFromCookies') return isIfNotVarThenRedirect(unwrapped[1], varName);
+  if (canonical === 'requireAdminAuth') return isIfVarThenReturnVar(unwrapped[1], varName);
   return false;
 }
 
@@ -122,7 +169,7 @@ function isGuardedBody(body: ts.Block | undefined): boolean {
 }
 
 function isWithAdminAuthCall(node: ts.Node | undefined): boolean {
-  return !!node && ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'withAdminAuth';
+  return !!node && ts.isCallExpression(node) && ts.isIdentifier(node.expression) && trustedGuardLocals.get(node.expression.text) === 'withAdminAuth';
 }
 
 type FunctionLike = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
@@ -211,6 +258,53 @@ function collectInlineServerActions(sourceFile: ts.SourceFile): Entry[] {
   return entries;
 }
 
+/** Top-level declarations by local name (functions and variable initializers), exported or not. */
+function topLevelDeclarations(sourceFile: ts.SourceFile): Map<string, ts.Node> {
+  const topLevel = new Map<string, ts.Node>();
+  for (const stmt of sourceFile.statements) {
+    if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.initializer) topLevel.set(decl.name.text, decl.initializer);
+      }
+    } else if (ts.isFunctionDeclaration(stmt) && stmt.name) {
+      topLevel.set(stmt.name.text, stmt);
+    }
+  }
+  return topLevel;
+}
+
+/**
+ * Round-3 finding 1: `export { local as GET }`, `export { Page as default }`, `export { x } from '...'`
+ * and `export * from '...'`. A name resolvable to a same-file declaration is judged like a direct
+ * export; anything not resolvable in this file is UNGUARDED (fail-closed) — only the reviewed
+ * allowlist in the test file can exempt such a file.
+ */
+function collectExportDeclarationEntries(sourceFile: ts.SourceFile, fileIsUseServer: boolean): Entry[] {
+  const entries: Entry[] = [];
+  const topLevel = topLevelDeclarations(sourceFile);
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isExportDeclaration(stmt) || stmt.isTypeOnly) continue;
+    const from = stmt.moduleSpecifier && ts.isStringLiteral(stmt.moduleSpecifier) ? stmt.moduleSpecifier.text : undefined;
+    if (!stmt.exportClause) {
+      entries.push({ label: `export * from '${from}'`, guarded: false });
+      continue;
+    }
+    if (ts.isNamespaceExport(stmt.exportClause)) {
+      entries.push({ label: `export * as ${stmt.exportClause.name.text} from '${from}'`, guarded: false });
+      continue;
+    }
+    for (const el of stmt.exportClause.elements) {
+      if (el.isTypeOnly) continue;
+      const exported = el.name.text;
+      if (!(exported === 'default' || NAMED_ENTRY_NAMES.has(exported) || fileIsUseServer)) continue;
+      const local = (el.propertyName ?? el.name).text;
+      const target = from === undefined ? topLevel.get(local) : undefined;
+      entries.push({ label: exported === 'default' ? 'default export' : exported, guarded: nodeIsGuarded(target) });
+    }
+  }
+  return entries;
+}
+
 function collectEntries(sourceFile: ts.SourceFile): Entry[] {
   const entries: Entry[] = [];
   const def = resolveDefaultExport(sourceFile);
@@ -241,6 +335,7 @@ function collectEntries(sourceFile: ts.SourceFile): Entry[] {
       }
     }
   }
+  entries.push(...collectExportDeclarationEntries(sourceFile, fileIsUseServer));
   entries.push(...collectInlineServerActions(sourceFile));
   return entries;
 }
@@ -315,6 +410,7 @@ export type GuardVerdict =
 export function evaluateAdminServerFile(src: string): GuardVerdict {
   const sourceFile = ts.createSourceFile('file.tsx', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   if (hasDirective(sourceFile.statements, 'use client')) return { status: 'client' };
+  trustedGuardLocals = computeTrustedGuardLocals(sourceFile);
 
   if (hasTopLevelSideEffect(sourceFile)) {
     return { status: 'unguarded', reason: 'module-scope statement performs a call before any request-scoped guard can run' };
