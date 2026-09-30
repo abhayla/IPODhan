@@ -1855,11 +1855,11 @@
     {
       "id": "F-189",
       "sev": "MAJOR",
-      "status": "OPEN",
+      "status": "FIXED",
       "area": "document discovery / SME sourcing",
       "phase1": true,
-      "title": "SME document discovery asks NSE only; BSE is never consulted, although the spec's stated SME order is NSE then BSE, so a BSE-only-listed SME IPO has no exchange document source at all (open for owner decision: whether this is a build gap or needs a scoped fix contract)",
-      "detail": "Measured 2026-09-26 (#1201), found while reading the #632 cause data (read-only on ipodhan_staging). Of the 44 SME IPOs with BLOCKED_ALL rows and an NSE-only chain, 29 return an empty `issueInfo: {}` when checked live against NSE (e.g. PESHWA, ROBOKIDZ) -- meaning those 29 are BSE-only listings for which NSE was the only exchange source ever asked, because the SME document-discovery code path does not call BSE at all. Spec basis: 'On SME. The order is NSE then BSE as instructed.' This is a build gap against a stated spec order (deferred per run-discipline B7 -- found outside the contract-1 done list). Distinct from #632/F-188: that finding is about misreading NSE's reply once asked; this finding is that BSE is never asked in the first place. No existing failure-class file covered this mechanism; added `sme-document-discovery-never-asks-bse` (status: unguarded)."
+      "title": "SME document discovery asked NSE only and never consulted BSE, although the spec's stated SME order is NSE then BSE, so a BSE-only-listed SME IPO had no exchange document source at all; fixed in #1201, the SME path now asks BSE second",
+      "detail": "Measured 2026-09-26 (#1201), found while reading the #632 cause data (read-only on ipodhan_staging). Of the 44 SME IPOs with BLOCKED_ALL rows and an NSE-only chain, 29 return an empty `issueInfo: {}` when checked live against NSE (e.g. PESHWA, ROBOKIDZ) -- meaning those 29 are BSE-only listings for which NSE was the only exchange source ever asked, because the SME document-discovery code path does not call BSE at all. Spec basis: 'On SME. The order is NSE then BSE as instructed.' This is a build gap against a stated spec order (deferred per run-discipline B7 -- found outside the contract-1 done list). Distinct from #632/F-188: that finding is about misreading NSE's reply once asked; this finding is that BSE is never asked in the first place. No existing failure-class file covered this mechanism; added `sme-document-discovery-never-asks-bse` (status: unguarded). Built 2026-09-30 (#1201): the SME path now asks BSE second, per the spec order; F-215 records that BSE's board and core payload do carry SME issues, which the runner's old comment denied."
     },
     {
       "id": "F-190",
@@ -2084,6 +2084,15 @@
       "area": "field manifest N/A list (§1.11, OD-77)",
       "title": "The field manifest has no not-applicable entry for ipos.issue_size on TENDER/BUYBACK although §1.11 and OD-77 say issue size does not apply to them",
       "detail": "Confirmed 2026-09-30: `scraper/config/field-manifest.json`'s `ipos.issue_size` entry (`fields[\"ipos.issue_size\"].na`) is `[]` — no TENDER or BUYBACK entry — although §1.11 and OD-77 classify issue size as not applicable to those two offering types. Found by the #1327 builder (PR #1327, open spec question 4) while wiring `isFieldApplicable`: the detail page already 404s non-IPO types, but before #1327 `/api/ipos/[slug]` still returned the field for those rows since the code path had no `na` entry to consult. #1327's fix covers the reader payload; the manifest's own `na` list (`docs/design/data-sourcing-pull-model.md` Appendix A / spec table, `scraper/config/field-manifest.json`) is unchanged and still lacks the entry.",
+      "phase1": false
+    },
+    {
+      "id": "F-215",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "area": "document discovery / BSE SME coverage",
+      "title": "BSE's IPO board and core payload DO carry SME issues, with the same document fields as mainboard; the runner's comment that the board never lists SME was never measured",
+      "detail": "Measured live 2026-09-30 against api.bseindia.com (read-only GETs, Referer only): IPO_HomePageDetail listed 16 book-built issues including PIND HOSPITALITY LIMITED (IPO_NO 8012) and Shivchem Agro Limited (8008), all small-cap issues opening 2026-09-28..30; GetMkt_ISSUE_BBS_IPO?IPO_NO=8012 returned Price_Band_Advertisement, Prospectus_GID (RHP&GID zip) and Corrigendum links on www.bseindia.com/downloads; IPO_NO=8008 returned Price_Band_Advertisement and Prospectus_GID on listing.bseindia.com/Download/E:\\inetpub\\LISTING\\RTA\\DocumentsSMEiPO\\... (a different host and a backslash path). The runner header said 'BSE's mainboard board does not carry SME' and skipped BSE for every SME issue (F-189). Real captures are saved as scraper/tests/fixtures/documents/bse-ipo-homepage-sme-live-2026-09-30.json and bse-sme-core-*-live-2026-09-30.json. NOT measured: whether a CLOSED SME issue is still on the board (it is not, for mainboard: Skyways dropped off the day after it closed), so a closed BSE-only SME issue is reachable only through a remembered ipos.bse_ipo_no, which is NULL on all 53 staging SME IPOs with a discovery attempt and no BSE attempt (staging read 2026-09-30).",
       "phase1": false
     }
   ],

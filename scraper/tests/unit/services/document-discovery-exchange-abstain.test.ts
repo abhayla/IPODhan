@@ -130,6 +130,8 @@ describe('#632 NSE 200 with an empty issueInfo does not carry the issue', () => 
     const { runner, documents, seen } = makeRunner(
       {
         'ipo-detail': json(fixture('nse-ipo-detail-empty-issueinfo-peshwa-sme.json')),
+        // #1201: an SME issue now consults BSE second; the board does not list it.
+        IPO_HomePageDetail: json(fixture('bse-ipo-homepage.json')),
         ...SEBI_SERVES_PROSPECTUS('Peshwa Wheat Limited', 'peshwa'),
       },
       'Peshwa Wheat Limited'
@@ -234,7 +236,8 @@ describe('#632 exchanges that only abstained are not a FAILED exchange verdict',
   }, 60_000);
 
   it('an SME with no NSE symbol is never settled by the exchanges (nobody said ok)', async () => {
-    const { runner } = makeRunner({}, 'Nosym Sme Limited');
+    // #1201: BSE is consulted for an SME issue too; its board does not list this one.
+    const { runner } = makeRunner({ IPO_HomePageDetail: json(fixture('bse-ipo-homepage.json')) }, 'Nosym Sme Limited');
     const ipo: DiscoveryIpo = {
       id: 'ipo-nosym',
       companyName: 'Nosym Sme Limited',
