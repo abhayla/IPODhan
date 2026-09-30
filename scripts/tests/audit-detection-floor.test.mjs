@@ -1989,6 +1989,21 @@ test('(i) findUndecidedIdentityHolds keeps the hold details.reason so the nightl
   assert.equal(out[0].reason, reason);
 });
 
+test('(i) findUndecidedIdentityHolds leaves out a hold the admin create form started (#1299) and still flags a scraper hold on the same slug', () => {
+  const now = new Date('2026-09-23T12:00:00Z');
+  const adminOnly = [{ slug: 'x-ltd', origin: 'admin-create', at: '2026-09-23T06:00:00Z' }];
+  assert.equal(findUndecidedIdentityHolds(adminOnly, [], now).length, 0, 'an admin-create hold is not an undecided scraper record');
+  const both = [...adminOnly, { slug: 'x-ltd', origin: null, at: '2026-09-23T07:00:00Z' }, { slug: 'y-ltd', at: '2026-09-23T07:00:00Z' }];
+  assert.deepEqual(findUndecidedIdentityHolds(both, [], now).map((h) => h.slug), ['x-ltd', 'y-ltd']);
+});
+
+test('(i) the nightly i_identity_held query selects details.origin, or the exclusion above never sees it (#1299)', () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'audit-detection-floor.mjs'), 'utf8');
+  const at = src.indexOf("action_type IN ('IDENTITY_HELD_FOR_REVIEW'");
+  assert.ok(at > 0, 'the i_identity_held query must exist');
+  assert.match(src.slice(Math.max(0, at - 500), at), /details->>'origin' AS origin/);
+});
+
 test('(i) findUndecidedIdentityHolds PASSES a hold a human overrode afterwards, and a hold older than 2 days', () => {
   const now = new Date('2026-09-23T10:00:00Z');
   const holds = [

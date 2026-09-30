@@ -6,6 +6,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import {
   IPORepository,
   resolveIpoRow,
+  withHoldOrigin,
   IdentityHeldForReviewError,
   type SourceKeyRef,
 } from '@ipodhan/shared';
@@ -364,6 +365,106 @@ describe.skipIf(!DATABASE_URL)('OD-111 admin-created row: the scraper binds by i
       });
       expect(r.kind).toBe('EXISTS');
       if (r.kind === 'EXISTS') expect(r.reason).toMatch(/CIN/);
+    });
+  });
+
+  describe('#1299 round 2: EVERY hold path an admin create can reach is tagged (MAJOR-1, MINOR-3, MINOR-4)', () => {
+    type HoldDetails = { origin?: string; rule?: string };
+    async function holdsFor(...ipoIds: string[]): Promise<HoldDetails[]> {
+      const rows = await db!.select({ details: schema.auditLogs.details }).from(schema.auditLogs)
+        .where(and(eq(schema.auditLogs.actionType, 'IDENTITY_HELD_FOR_REVIEW'), inArray(schema.auditLogs.ipoId, ipoIds)));
+      return rows.map((r) => r.details as HoldDetails);
+    }
+    async function insertRow(companyName: string, slug: string, extra: Record<string, unknown> = {}): Promise<string> {
+      const [r] = await db!.insert(schema.ipos).values({
+        companyName, slug, offeringType: 'IPO', segment: 'MAINBOARD', status: 'UPCOMING', ...extra,
+      } as never).returning({ id: schema.ipos.id });
+      return r.id;
+    }
+
+    it('MAJOR-1: the same-name (OD-130-MAJOR-2) hold reached by an admin create carries origin = admin-create', async () => {
+      const name = `${PREFIX} Ambiguous Ltd`;
+      const a = await insertRow(name, 'od111-probe-ambiguous-ltd');
+      const b = await insertRow(name, 'od111-probe-ambiguous-ltd-2026');
+      const r = await createIpoByAdmin(db as never, {
+        companyName: name, offeringType: 'IPO', segment: 'MAINBOARD', identifiers: [{ kind: 'NSE_SYMBOL', value: 'OD111AMB' }], actor: ACTOR,
+      });
+      expect(r.kind).toBe('HELD');
+      const holds = await holdsFor(a, b);
+      expect(holds.length).toBe(1);
+      expect(holds[0].rule).toBe('OD-130-MAJOR-2');
+      expect(holds[0].origin).toBe('admin-create');
+    });
+
+    it('MAJOR-1 control: the same same-name hold reached by a SCRAPER lookup is untagged', async () => {
+      const name = `${PREFIX} Ambiguous Scraper Ltd`;
+      const a = await insertRow(name, 'od111-probe-ambiguous-scraper-ltd');
+      const b = await insertRow(name, 'od111-probe-ambiguous-scraper-ltd-2026');
+      await expect(repo!.findByNormalizedName(normalizeCompanyNameForMatching(name))).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+      const holds = await holdsFor(a, b);
+      expect(holds.length).toBe(1);
+      expect(holds[0].origin).toBeUndefined();
+    });
+
+    it('MAJOR-1: the OD-68 fold hold and the slug-taken hold, recorded inside an admin-create scope, are tagged; outside it they are not', async () => {
+      const name = `${PREFIX} Scoped Ltd`;
+      const live = await insertRow(name, 'od111-probe-scoped-ltd', { openDate: '2026-10-01', priceRangeMin: 100 });
+      const fold = { companyName: name, slug: 'od111-probe-scoped-ltd-x', offeringType: 'IPO', segment: 'MAINBOARD', status: 'UPCOMING', openDate: '2026-11-20', priceRangeMin: 500 };
+      await expect(withHoldOrigin('admin-create', () => repo!.create(fold as never))).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+      const taken = { companyName: `${PREFIX} Other Co`, slug: 'od111-probe-scoped-ltd', offeringType: 'IPO', segment: 'MAINBOARD', status: 'UPCOMING' };
+      await expect(withHoldOrigin('admin-create', () => repo!.create(taken as never))).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+      const scoped = await holdsFor(live);
+      expect(scoped.length).toBe(2);
+      expect(scoped.every((h) => h.origin === 'admin-create')).toBe(true);
+      await db!.execute(sql`DELETE FROM audit_logs WHERE action_type = 'IDENTITY_HELD_FOR_REVIEW' AND ipo_id = ${live}`);
+      await expect(repo!.create(fold as never)).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+      await expect(repo!.create(taken as never)).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+      const unscoped = await holdsFor(live);
+      expect(unscoped.length).toBe(2);
+      expect(unscoped.every((h) => h.origin === undefined)).toBe(true);
+    });
+
+    it('MINOR-3: the alias-only hold passes identity.holdOrigin through to the recorded row', async () => {
+      const name = `${PREFIX} Alias Tag Ltd`;
+      const made = await createIpoByAdmin(db as never, {
+        companyName: name, offeringType: 'IPO', segment: 'MAINBOARD', identifiers: [{ kind: 'NSE_SYMBOL', value: 'OD111ATX' }], actor: ACTOR,
+      });
+      expect(made.kind).toBe('CREATED');
+      if (made.kind !== 'CREATED') return;
+      const v = await readAdminFieldVersion(db as never, made.ipoId, 'ipos', 'symbol');
+      const edit = await writeAdminFieldValue(db as never, {
+        ipoId: made.ipoId, tableName: 'ipos', fieldName: 'symbol', value: 'OD111ATY',
+        mode: { kind: 'typed', sourceNote: 'RHP cover page' }, expectedVersion: v!.version, actor: ACTOR, entryPoint: 'test',
+      });
+      expect(edit.kind).toBe('OK');
+      const other = `${PREFIX} Wholly Different Corp`;
+      const identity = {
+        companyName: other, normalizedName: normalizeCompanyNameForMatching(other), slug: generateIPOSlug(other),
+        symbol: 'OD111ATX', segment: 'MAINBOARD' as const, openDate: '2026-10-20', priceRangeMin: 94,
+      };
+      await expect(resolveIpoRow(repo!, { ...identity, holdOrigin: 'admin-create' })).rejects.toBeInstanceOf(IdentityHeldForReviewError);
+      const tagged = await holdsFor(made.ipoId);
+      expect(tagged.length).toBe(1);
+      expect(tagged[0].origin).toBe('admin-create');
+    });
+
+    it('MINOR-4: an admin hold on a slug and row never hides a scraper hold on the same slug and row (and each dedupes itself)', async () => {
+      const name = `${PREFIX} Dedupe Ltd`;
+      const admin = await createIpoByAdmin(db as never, {
+        companyName: name, offeringType: 'IPO', segment: 'MAINBOARD', identifiers: [{ kind: 'NSE_SYMBOL', value: 'OD111DDP' }], actor: ACTOR,
+      });
+      expect(admin.kind).toBe('CREATED');
+      if (admin.kind !== 'CREATED') return;
+      const again = () => createIpoByAdmin(db as never, {
+        companyName: name, offeringType: 'IPO', segment: 'MAINBOARD', identifiers: [{ kind: 'NSE_SYMBOL', value: 'OD111DDQ' }], actor: ACTOR,
+      });
+      expect((await again()).kind).toBe('HELD');
+      expect((await again()).kind).toBe('HELD');
+      expect((await ingest({ companyName: name, segment: 'MAINBOARD', openDate: '2026-10-20', priceRangeMin: 50 })).outcome).toBe('held');
+      expect((await ingest({ companyName: name, segment: 'MAINBOARD', openDate: '2026-10-20', priceRangeMin: 50 })).outcome).toBe('held');
+      const holds = await holdsFor(admin.ipoId);
+      expect(holds.filter((h) => h.origin === 'admin-create').length).toBe(1);
+      expect(holds.filter((h) => h.origin === undefined).length).toBe(1);
     });
   });
 

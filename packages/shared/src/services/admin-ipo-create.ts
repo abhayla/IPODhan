@@ -27,6 +27,7 @@ import * as schema from '../db/schema';
 import { auditLogs, ipos, offeringTypeEnum } from '../db/schema';
 import { IPORepository, IPO_CREATED_BY_ADMIN_ACTION } from '../repositories/ipo-repository';
 import { resolveIpoRow } from '../repositories/ipo-identity';
+import { withHoldOrigin } from '../repositories/hold-origin';
 import {
   chittorgarhPageId,
   findSourceKeysForIpo,
@@ -212,7 +213,8 @@ export async function createIpoByAdmin(db: Db, input: AdminIpoCreateInput, redis
 
   let outcome: { created?: Awaited<ReturnType<IPORepository['create']>>; refusal?: AdminIpoCreateResult };
   try {
-    outcome = await db.transaction(async (tx) => {
+    // Every hold recorded inside this scope is tagged admin-create (#1299), whichever path reaches it.
+    outcome = await withHoldOrigin('admin-create', () => db.transaction(async (tx) => {
       for (const k of lockKeys) {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('admin-ipo-create'), hashtext(${k}))`);
       }
@@ -247,7 +249,7 @@ export async function createIpoByAdmin(db: Db, input: AdminIpoCreateInput, redis
         success: true,
       });
       return { created: row };
-    });
+    }));
   } catch (e) {
     // Not reached by an admin create today: `create`'s own OD-68 fold hold needs a known open date or
     // price band, which an admin create never carries, and a taken slug is refused above. Kept so a

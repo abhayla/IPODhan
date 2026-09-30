@@ -98,6 +98,7 @@ export { resolveIpoRow, IdentityHeldForReviewError } from './ipo-identity';
 export type { IpoIdentity } from './ipo-identity';
 export * from './ipo-source-keys';
 export * from './source-key-lineage';
+export * from './hold-origin';
 
 // Types and Interfaces
 export type * from './types';

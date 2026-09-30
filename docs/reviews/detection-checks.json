@@ -383,7 +383,7 @@
       "id": "i_identity_held",
       "findingClass": "an incoming IPO record held for review by the OD-68 create-time hold (a same-name, same-segment live row with a differing KNOWN open date or price band) that no human has decided — invisible anywhere else, so the offering it describes never gets a row or a correction",
       "round7Findings": [],
-      "failThreshold": "any audit_logs IDENTITY_HELD_FOR_REVIEW row in the last 2 days whose incoming slug has no later IDENTITY_HOLD_OVERRIDDEN row",
+      "failThreshold": "any audit_logs IDENTITY_HELD_FOR_REVIEW row in the last 2 days whose incoming slug has no later IDENTITY_HOLD_OVERRIDDEN row, EXCLUDING a hold whose details.origin is admin-create (the admin create form refused that admin on the spot, #1299; tagged on every hold path via withHoldOrigin)",
       "severity": "P2",
       "unverifiableWhen": "never — always runs against the audit_logs table",
       "spec_ref": [

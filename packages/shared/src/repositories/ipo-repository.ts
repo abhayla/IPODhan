@@ -40,6 +40,7 @@ import {
 import { EntityNotFoundError, DatabaseError, ProdWriteRefusedError, IdentityHeldForReviewError } from '../errors/repository-errors';
 import { strictIdentityCompanyName } from '../utils/identity-decoration';
 import { normalizeCin } from '../utils/cin';
+import { currentHoldOrigin, type HoldOrigin } from './hold-origin';
 import { logger } from '../logger';
 import {
   normalizeSourceKeyRefs,
@@ -1497,13 +1498,16 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     incoming: { companyName: string; slug: string; openDate: string | null; priceRangeMin: unknown },
     fold: string,
     candidates: { id: string; slug: string; companyName: string; openDate: unknown; priceRangeMin: unknown; status: unknown }[],
-    why?: { rule: string; reason: string; origin?: 'admin-create' }
+    why?: { rule: string; reason: string; origin?: HoldOrigin }
   ): Promise<void> {
+    // An explicit origin wins; otherwise the ambient scope (#1299) tags every path an admin create reaches.
+    const origin = why?.origin ?? currentHoldOrigin();
     try {
+      // Dedupe per origin: an admin's hold must never hide a scraper's hold on the same slug and row (#1299 MINOR-4).
       const existing = await this.db
         .select({ id: auditLogs.id })
         .from(auditLogs)
-        .where(sql`${auditLogs.actionType} = ${IDENTITY_HELD_ACTION} AND ${auditLogs.newValue} = ${incoming.slug} AND ${auditLogs.ipoId} = ${candidates[0].id} AND ${auditLogs.timestamp} > now() - interval '1 day'`)
+        .where(sql`${auditLogs.actionType} = ${IDENTITY_HELD_ACTION} AND ${auditLogs.newValue} = ${incoming.slug} AND ${auditLogs.ipoId} = ${candidates[0].id} AND COALESCE(${auditLogs.details}->>'origin', '') = ${origin ?? ''} AND ${auditLogs.timestamp} > now() - interval '1 day'`)
         .limit(1);
       if (existing.length > 0) return;
       await this.db.insert(auditLogs).values({
@@ -1515,8 +1519,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         oldValue: candidates.map((c) => c.slug).join(','),
         newValue: incoming.slug,
         details: why
-          ? { rule: why.rule, reason: why.reason, ...(why.origin ? { origin: why.origin } : {}), identityFold: fold, incoming, candidates }
-          : { rule: 'OD-68', identityFold: fold, incoming, candidates },
+          ? { rule: why.rule, reason: why.reason, ...(origin ? { origin } : {}), identityFold: fold, incoming, candidates }
+          : { rule: 'OD-68', ...(origin ? { origin } : {}), identityFold: fold, incoming, candidates },
         success: false,
         errorMessage: why
           ? `held for review: "${incoming.companyName}" - ${why.reason}`
