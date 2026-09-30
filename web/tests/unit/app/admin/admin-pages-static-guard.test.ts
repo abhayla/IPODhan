@@ -18,7 +18,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { evaluateAdminServerFile } from './admin-page-guard-detector';
+import { evaluateAdminServerFile, fileHasUseServerDirective, fileHasNoDataAccess } from './admin-page-guard-detector';
 
 const ADMIN_ROOT = path.resolve(__dirname, '../../../../app/admin');
 
@@ -37,8 +37,10 @@ function listCandidateFiles(dir: string): string[] {
       continue;
     }
     // Any other file is a candidate ONLY if it itself carries a 'use server' directive — a plain
-    // component/helper imported by a page is not itself a Next.js server entry point.
-    if (/^\s*['"]use server['"]/.test(fs.readFileSync(full, 'utf8'))) out.push(full);
+    // component/helper imported by a page is not itself a Next.js server entry point. Decided by
+    // the PARSER (fileHasUseServerDirective), never a byte-anchored regex — a leading doc comment
+    // is trivia to the parser but hid the file from a `^`-anchored text match (round-2 finding 1).
+    if (fileHasUseServerDirective(fs.readFileSync(full, 'utf8'))) out.push(full);
   }
   return out;
 }
@@ -80,6 +82,14 @@ describe('every non-client admin server file guards its entry points, or is revi
   it('finds exactly the expected candidate files', () => {
     const actual = files.map((f) => path.relative(ADMIN_ROOT, f).split(path.sep).join('/')).sort();
     expect(actual).toEqual([...EXPECTED_CANDIDATE_FILES].sort());
+  });
+
+  it('every reviewed no-data allowlist entry is actually data-free BY CONTENT, not just by path (round-2 finding 4)', () => {
+    const notDataFree = Object.keys(ADMIN_SERVER_FILES_WITHOUT_DATA)
+      .map((rel) => ({ rel, src: fs.readFileSync(path.join(ADMIN_ROOT, rel), 'utf8') }))
+      .filter(({ src }) => !fileHasNoDataAccess(src))
+      .map(({ rel }) => rel);
+    expect(notDataFree).toEqual([]);
   });
 
   it('has no unguarded entry point outside the reviewed no-data allowlist', () => {
@@ -197,9 +207,93 @@ describe('every non-client admin server file guards its entry points, or is revi
     });
   });
 
+  describe('round-2 self-test: the four review findings plus the fifth listed shape all fail unguarded', () => {
+    it("1. a 'use server' file whose directive follows a leading doc comment is still found unguarded", () => {
+      const src = `
+        /**
+         * File header comment before the directive.
+         */
+        'use server';
+        export async function updateThing() {
+          const rows = await db.update(ipos).set({});
+          return rows;
+        }
+      `;
+      expect(fileHasUseServerDirective(src)).toBe(true);
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('2. an inline server action nested inside an otherwise-guarded page must itself be guarded', () => {
+      const src = `
+        export default async function Page() {
+          const admin = await getAdminSessionFromCookies();
+          if (!admin) { redirect('/admin/login'); }
+          async function saveIt(formData) {
+            'use server';
+            const rows = await db.update(ipos).set({});
+            return rows;
+          }
+          return null;
+        }
+      `;
+      const verdict = evaluateAdminServerFile(src);
+      expect(verdict.status).toBe('unguarded');
+      expect((verdict as { reason: string }).reason).toContain('inline server action');
+    });
+
+    it('3. the guard wrapped in try/catch (swallowing the redirect) is not accepted', () => {
+      const src = `
+        export default async function Page() {
+          try {
+            const admin = await getAdminSessionFromCookies();
+            if (!admin) { redirect('/admin/login'); }
+          } catch (e) {
+            // swallowed — execution continues below with no session
+          }
+          const repo = new IPORepository(db, redis);
+          return null;
+        }
+      `;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('4. an allowlisted-shape file that gains a data read is caught by fileHasNoDataAccess', () => {
+      const redirectOnly = `
+        import { redirect } from 'next/navigation';
+        export default async function Page({ params }) {
+          const { table } = await params;
+          redirect('/admin/dynamic/' + table + '/list');
+        }
+      `;
+      expect(fileHasNoDataAccess(redirectOnly)).toBe(true);
+
+      const withDataReadAdded = `
+        import { redirect } from 'next/navigation';
+        export default async function Page({ params }) {
+          const { table } = await params;
+          const rows = await db.select().from(ipos);
+          redirect('/admin/dynamic/' + table + '/list');
+        }
+      `;
+      expect(fileHasNoDataAccess(withDataReadAdded)).toBe(false);
+    });
+
+    it('5. a default parameter that reads data runs before the guard and is unguarded', () => {
+      const src = `
+        export default async function Page(_p, rows = loadAll()) {
+          const admin = await getAdminSessionFromCookies();
+          if (!admin) { redirect('/admin/login'); }
+          return rows;
+        }
+      `;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+  });
+
   describe('detector self-test: guarded shapes pass', () => {
     it('passes the real getAdminSessionFromCookies + redirect shape (page)', () => {
       const src = `
+        import { getAdminSessionFromCookies } from '@/lib/admin-accounts/admin-session';
         export default async function Page() {
           const admin = await getAdminSessionFromCookies();
           if (!admin) {
@@ -214,6 +308,7 @@ describe('every non-client admin server file guards its entry points, or is revi
 
     it('passes requireAdminAuth + if(err) return err (route handler shape)', () => {
       const src = `
+        import { requireAdminAuth } from '@/lib/auth/admin-auth';
         export async function GET(req) {
           const authError = await requireAdminAuth();
           if (authError) return authError;
@@ -224,12 +319,14 @@ describe('every non-client admin server file guards its entry points, or is revi
     });
 
     it('passes export const GET = withAdminAuth(...)', () => {
-      const src = `export const GET = withAdminAuth(async (r, a) => ok());`;
+      const src = `import { withAdminAuth } from '@/lib/middleware/admin-auth';
+export const GET = withAdminAuth(async (r, a) => ok());`;
       expect(evaluateAdminServerFile(src)).toEqual({ status: 'guarded' });
     });
 
     it('passes an indirect default export that IS guarded', () => {
       const src = `
+        import { getAdminSessionFromCookies } from '@/lib/admin-accounts/admin-session';
         const P = async () => {
           const admin = await getAdminSessionFromCookies();
           if (!admin) { redirect('/admin/login'); }
@@ -265,6 +362,80 @@ describe('every non-client admin server file guards its entry points, or is revi
         }
       `;
       expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+  });
+  describe('round-3 self-test: export-declaration and guard-provenance shapes', () => {
+    const SESSION_IMPORT = "import { getAdminSessionFromCookies } from '@/lib/admin-accounts/admin-session';";
+    const GUARD_BODY = `const a = await getAdminSessionFromCookies(); if (!a) { redirect('/admin/login'); }`;
+
+    it('export { handler as GET } of an unguarded local handler is unguarded', () => {
+      const src = `async function handler() { return ok(await load()); } export { handler as GET };`;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('export { handler as GET } of a guarded local handler is guarded', () => {
+      const src = `${SESSION_IMPORT}\nasync function handler() { ${GUARD_BODY} return ok(); } export { handler as GET };`;
+      expect(evaluateAdminServerFile(src)).toEqual({ status: 'guarded' });
+    });
+
+    it('export { Page as default } of an unguarded local page is unguarded', () => {
+      const src = `async function Page() { const rows = await load(); return null; } export { Page as default };`;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('export { Page as default } of a guarded local page is guarded', () => {
+      const src = `${SESSION_IMPORT}\nasync function Page() { ${GUARD_BODY} return null; } export { Page as default };`;
+      expect(evaluateAdminServerFile(src)).toEqual({ status: 'guarded' });
+    });
+
+    it('a re-export of a named handler from another module is unguarded (fail-closed)', () => {
+      expect(evaluateAdminServerFile(`export { GET } from './handlers';`).status).toBe('unguarded');
+    });
+
+    it('export * from another module is unguarded (fail-closed)', () => {
+      expect(evaluateAdminServerFile(`export * from './handlers';`).status).toBe('unguarded');
+    });
+
+    it('re-exporting an imported binding as a handler is unguarded', () => {
+      expect(evaluateAdminServerFile(`import { handler } from './h'; export { handler as POST };`).status).toBe('unguarded');
+    });
+
+    it('a same-named LOCAL guard function is not a guard', () => {
+      const src = `
+        async function getAdminSessionFromCookies() { return true; }
+        export default async function Page() { ${GUARD_BODY} return null; }
+      `;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('a same-named guard with no import at all is not a guard', () => {
+      const src = `export default async function Page() { ${GUARD_BODY} return null; }`;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('a guard imported from the wrong module is not a guard', () => {
+      const src = `import { getAdminSessionFromCookies } from './fake-session';\nexport default async function Page() { ${GUARD_BODY} return null; }`;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('withAdminAuth imported from the wrong module is not a guard', () => {
+      const src = `import { withAdminAuth } from 'some-other-lib';\nexport const GET = withAdminAuth(async () => ok());`;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('a locally declared withAdminAuth is not a guard', () => {
+      const src = `const withAdminAuth = (f) => f;\nexport const GET = withAdminAuth(async () => ok());`;
+      expect(evaluateAdminServerFile(src).status).toBe('unguarded');
+    });
+
+    it('a guard imported from a relative path to the real module is accepted', () => {
+      const src = `import { getAdminSessionFromCookies } from '../../lib/admin-accounts/admin-session';\nexport default async function Page() { ${GUARD_BODY} return null; }`;
+      expect(evaluateAdminServerFile(src)).toEqual({ status: 'guarded' });
+    });
+
+    it('an aliased import of the real guard is accepted', () => {
+      const src = `import { getAdminSessionFromCookies as g } from '@/lib/admin-accounts/admin-session';\nexport default async function Page() { const a = await g(); if (!a) { redirect('/x'); } return null; }`;
+      expect(evaluateAdminServerFile(src)).toEqual({ status: 'guarded' });
     });
   });
 });
