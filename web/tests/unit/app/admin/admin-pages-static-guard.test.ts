@@ -49,32 +49,33 @@ function listCandidateFiles(dir: string): string[] {
 // any add, remove or rename, so every change to the admin server-entry surface is reviewed here —
 // same reasoning as EXPECTED_ADMIN_ROUTES in admin-routes-static-guard.test.ts.
 const EXPECTED_CANDIDATE_FILES = [
-  'accounts/page.tsx',
-  'anchor-investors/page.tsx',
-  'audit/page.tsx',
-  'conflicts/page.tsx',
-  'dynamic/[table]/[id]/page.tsx',
-  'dynamic/[table]/list/page.tsx',
-  'dynamic/[table]/page.tsx',
-  'dynamic/ipos/[id]/objectives/page.tsx',
-  'edit/[slug]/page.tsx',
-  'ipos/[slug]/edit/page.tsx',
-  'ipos/new/page.tsx',
+  '(protected)/accounts/page.tsx',
+  '(protected)/anchor-investors/page.tsx',
+  '(protected)/audit/page.tsx',
+  '(protected)/conflicts/page.tsx',
+  '(protected)/dynamic/[table]/[id]/page.tsx',
+  '(protected)/dynamic/[table]/list/page.tsx',
+  '(protected)/dynamic/[table]/page.tsx',
+  '(protected)/dynamic/ipos/[id]/objectives/page.tsx',
+  '(protected)/edit/[slug]/page.tsx',
+  '(protected)/ipos/[slug]/edit/page.tsx',
+  '(protected)/ipos/new/page.tsx',
   'layout.tsx',
   'login/page.tsx',
-  'metrics/page.tsx',
-  'notifications/page.tsx',
-  'page.tsx',
-  'pipeline/page.tsx',
-  'settings/page.tsx',
+  '(protected)/metrics/page.tsx',
+  '(protected)/notifications/page.tsx',
+  '(protected)/page.tsx',
+  '(protected)/pipeline/page.tsx',
+  '(protected)/settings/page.tsx',
+  '(protected)/layout.tsx',
 ];
 
 // Files with NO guarded entry points that are reviewed as carrying no data to protect. Each entry
 // needs a one-line reason and is a security decision reviewed in THIS file, same discipline as
 // PUBLIC_ADMIN_ROUTES / MACHINE_ONLY_WRITES in admin-routes-static-guard.test.ts.
 const ADMIN_SERVER_FILES_WITHOUT_DATA: Record<string, string> = {
-  'dynamic/[table]/page.tsx': 'redirect-only — forwards to /admin/dynamic/[table]/list, no data read',
-  'ipos/new/page.tsx': 'static form driven by the offeringType schema enum only, no DB/repository call',
+  '(protected)/dynamic/[table]/page.tsx': 'redirect-only — forwards to /admin/dynamic/[table]/list, no data read',
+  '(protected)/ipos/new/page.tsx': 'static form driven by the offeringType schema enum only, no DB/repository call',
 };
 
 describe('every non-client admin server file guards its entry points, or is reviewed as data-free', () => {

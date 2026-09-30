@@ -8,8 +8,8 @@ import { join } from 'path';
  * notice pointing at the IPO-page editor instead.
  */
 const LEGACY_PAGES = [
-  join(__dirname, '../../../../app/admin/edit/[slug]/page.tsx'),
-  join(__dirname, '../../../../app/admin/dynamic/ipos/[id]/objectives/page.tsx'),
+  join(__dirname, '../../../../app/admin/(protected)/edit/[slug]/page.tsx'),
+  join(__dirname, '../../../../app/admin/(protected)/dynamic/ipos/[id]/objectives/page.tsx'),
 ];
 
 // adminPost/adminPatch/adminDelete are the write-capable admin API client calls; a legacy page
