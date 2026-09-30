@@ -18,7 +18,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO = join(__dirname, '..', '..');
@@ -162,9 +162,11 @@ ok('no unescaped bare & in content', bareAmp === 0, `${bareAmp} found`);
 ok('collapsible sections present', (html.match(/<details class="sec /g) || []).length >= 14);
 // The page must show real content at rest — a stack of 15 closed rows tells a
 // skimming reader nothing. Exactly one section (the slice table) opens.
-ok('exactly one section open by default',
-  (html.match(/<details class="sec [^"]+" id="[^"]+" open>/g) || []).length === 1,
-  String((html.match(/ open>/g) || []).length) + ' open');
+// The Road to Production streams (id="road-*") are the owner's status block and
+// open at rest when short; the rule applies to every OTHER section.
+ok('exactly one non-road section open by default',
+  (html.match(/<details class="sec [^"]+" id="(?!road-)[^"]+" open>/g) || []).length === 1,
+  String((html.match(/<details class="sec [^"]+" id="(?!road-)[^"]+" open>/g) || []).length) + ' open');
 
 // --- 5b. the renderer does not depend on input line endings -----------------
 // This is asserted on the RENDERED STRING, not by mutating files on disk and
@@ -316,6 +318,66 @@ ok('--check exits non-zero on a stale file', checkFailed);
     try { execFileSync('node', [RENDER, '--out', o, '--facts', f, '--check'], { stdio: 'pipe' }); } catch (e) { code = e.status ?? 1; }
     ok('--check passes on an unchanged render regardless of wall clock', code === 0, `exit ${code}`);
   }
+}
+
+// --- 6. Road to Production block (owner, 2026-09-30) -------------------------
+// The block exists, and every count on it equals a count of the rows in
+// road-to-production.json (R2/R3). Counts are re-derived here independently of
+// the renderer, from the data file, not from the page.
+{
+  const { statusFromPr, statusFromIssue, measureItem } = await import(pathToFileURL(join(REPO, 'scripts/ops/collect-road-status.mjs')).href);
+  const roadDoc = JSON.parse(readFileSync(join(BOARD, 'road-to-production.json'), 'utf8'));
+  const allRows = roadDoc.streams.flatMap((s) => s.items);
+  const effective = (i) => ((i.pr !== undefined || i.issue !== undefined) && !i.measured_at ? 'unmeasured' : i.status);
+  const roadHtml = (html.match(/<section class="status" id="road"[\s\S]*?<\/section>\s*<div class="vitals">/) || [''])[0];
+  ok('Road to Production block exists', /<h2>Road to Production<\/h2>/.test(html));
+  ok('road total equals the row count in the data file',
+    html.includes(`data-road-total="${allRows.length}"`), `expected ${allRows.length}`);
+  ok('road done count equals the done rows', html.includes(`data-road-done="${allRows.filter((i) => effective(i) === 'done').length}"`));
+  ok('road tile "Done" states derived done / total',
+    html.includes(`${allRows.filter((i) => effective(i) === 'done').length} / ${allRows.length}</span><span class="sub">merged PRs`));
+  ok('one rendered row per data row', (html.match(/<li class="rd /g) || []).length === allRows.length,
+    `${(html.match(/<li class="rd /g) || []).length} vs ${allRows.length}`);
+  for (const st of roadDoc.streams) {
+    const d = st.items.filter((i) => effective(i) === 'done').length;
+    ok(`stream ${st.id}: done/total derived`, html.includes(`data-road-stream="${st.id}" data-done="${d}" data-total="${st.items.length}"`));
+  }
+  for (const k of ['done', 'running', 'waiting', 'todo', 'parked', 'failed', 'unmeasured']) {
+    const n = allRows.filter((i) => effective(i) === k).length;
+    ok(`row status count "${k}" matches`, (html.match(new RegExp(`data-road-status="${k}"`, 'g')) || []).length === n);
+  }
+  ok('every class A issue is its own row (42 in stream 3)',
+    roadDoc.streams.find((s) => s.id === 'triage').items.filter((i) => /^Wave /.test(i.group || '')).length === 42);
+  ok('the OD-146 owner rule line is on the block', html.includes('Owner rule OD-146'));
+  ok('road block sits before the vitals (near the top)', html.indexOf('id="road"') > html.indexOf('id="decide"') && html.indexOf('id="road"') < html.indexOf('class="vitals"><div') + 1e9 && html.indexOf('id="road"') < html.indexOf('id="impact"'));
+
+  // a row naming a PR but never measured must render unmeasured, not its typed status
+  const rd = mkdtempSync(join(tmpdir(), 'board-road-'));
+  const roadFile = join(rd, 'road.json');
+  writeFileSync(roadFile, JSON.stringify({ title: 't', rule: 'r', streams: [{ id: 's', name: 'S', items: [
+    { label: 'never read', pr: 1, status: 'done' }, { label: 'typed', status: 'todo' }, { label: 'bad read', issue: 2, status: 'unmeasured', measured_at: '2026-09-30T00:00:00Z', measured_error: 'gh failed: boom' }] }] }));
+  const r1 = execFileSync('node', [RENDER, '--out', join(rd, 'o.html'), '--road', roadFile], { encoding: 'utf8' });
+  const h1 = readFileSync(join(rd, 'o.html'), 'utf8');
+  ok('unmeasured pr row shows unmeasured, not the typed "done"', (h1.match(/data-road-status="unmeasured"/g) || []).length === 2 && !h1.includes('data-road-status="done"'), r1.trim());
+  ok('unreadable status carries its cause', h1.includes('gh failed: boom'));
+  ok('tiny road counts derived (0 / 3 done)', h1.includes('data-road-total="3" data-road-done="0"'));
+  writeFileSync(roadFile, JSON.stringify({ title: 't', rule: 'r', streams: [{ id: 's', name: 'S', items: [{ label: 'x', status: 'finished' }] }] }));
+  let bad = 0; try { execFileSync('node', [RENDER, '--out', join(rd, 'o2.html'), '--road', roadFile], { stdio: 'pipe' }); } catch (e) { bad = e.status ?? 1; }
+  ok('an unknown status is refused, not rendered', bad === 1);
+
+  // collector mapping (pure)
+  ok('merged PR -> done', statusFromPr({ number: 1, state: 'MERGED' }).status === 'done');
+  ok('open PR, failing check -> failed', statusFromPr({ number: 1, state: 'OPEN', statusCheckRollup: [{ conclusion: 'FAILURE' }] }).status === 'failed');
+  ok('open PR, pending check (conclusion "") -> running', statusFromPr({ number: 1, state: 'OPEN', statusCheckRollup: [{ conclusion: '' }] }).status === 'running');
+  ok('open PR, CONFLICTING -> failed', statusFromPr({ number: 1, state: 'OPEN', mergeable: 'CONFLICTING', statusCheckRollup: [] }).status === 'failed');
+  ok('open draft PR keeps the declared status', statusFromPr({ number: 1, state: 'OPEN', isDraft: true }, 'todo').status === 'todo');
+  ok('closed issue -> done', statusFromIssue({ number: 2, state: 'CLOSED' }, 'todo').status === 'done');
+  ok('open issue keeps the declared status', statusFromIssue({ number: 2, state: 'OPEN' }, 'parked').status === 'parked');
+  ok('open issue with no declared status is unmeasured, not invented', statusFromIssue({ number: 2, state: 'OPEN' }).status === 'unmeasured');
+  const failing = measureItem({ label: 'l', issue: 9, status: 'todo' }, '2026-09-30T00:00:00Z', () => { throw Object.assign(new Error('x'), { stderr: 'HTTP 502' }); });
+  ok('a failed gh read becomes unmeasured with its cause', failing.status === 'unmeasured' && /HTTP 502/.test(failing.measured_error) && failing.declared_status === 'todo');
+  const noRef = measureItem({ label: 'l', status: 'parked' }, '2026-09-30T00:00:00Z', () => { throw new Error('must not be called'); });
+  ok('a row with no pr/issue keeps its typed status untouched', noRef.status === 'parked' && noRef.measured_at === undefined);
 }
 
 // --- report -----------------------------------------------------------------

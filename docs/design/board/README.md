@@ -36,6 +36,7 @@ items for exactly that reason.
 |---|---|---|
 | `measured-facts.json` | **Measured.** Served sha + serving-since per slot, migrations applied per DB, migrations on main, each with `measured_at` and the command. A failed probe is `{value: null, error}`. | Never by hand — `collect-board-facts.mjs`. |
 | `board-data.json` | The hand-owned judgements: decisions waiting on the owner, environment flags + notes, release + rollback, gates, reader impact, dependency chain, changed-since. Typed `sha`/`since`/`stamp` are refused; cite facts as `{{prod.sha}}`-style tokens. | **You.** This is the file you edit. |
+| `road-to-production.json` | The **Road to Production** block: streams to rows `{label, issue?, pr?, size?, group?, status: done/running/waiting/todo/parked/failed, note}` plus the OD-146 rule line. A row naming a `pr`/`issue` gets its `status`, `measured_at` and `measured_from` written by `collect-road-status.mjs` (`declared_status` = the typed baseline); a never-measured or unreadable one renders `unmeasured`. Rows with no pr/issue keep the typed status. Replaces the separate tracker artifact (owner, 2026-09-30). | You, for rows and typed statuses; the collector for measured ones. |
 | `status.json` | The 16 stage-3 slice rows. | You, when a slice lands. |
 | `board-prose.json` | The 10 explanatory sections (architecture, guardrails, the review, …). | Rarely — only when the plan itself changes. |
 | `plan-sections.generated.html` | **Generated.** 29 build items + 63 owner decisions + 190 sourced fields. | Never by hand — `build-plan-board.mjs`. |
@@ -65,6 +66,7 @@ so an edit that removes one knows whose question it just broke.
 | Role | The question they open the page with | The block that answers it |
 |---|---|---|
 | Owner | What needs a decision from me? | **Waiting on you** — first thing on the page, each with a recommendation |
+| Owner | What is left before the one production deploy? | **Road to Production** — right under Waiting on you; counts and per-stream done/total derived per row, live PR/issue state from `collect-road-status.mjs` |
 | Product manager | What does a person using the site actually see? | **What a reader sees** — impact in plain language and rupees |
 | Senior architect | What depends on what? | **The order the remaining work runs in** |
 | Implementation | What do I pick up next? | **Next up** tile + the chain's first row |
@@ -74,7 +76,7 @@ so an edit that removes one knows whose question it just broke.
 | QA | Which gates ran, and which never ran? | **Gates and proofs** — names what has NEVER run, not just what is red |
 | Data / domain | Are the published numbers right? | Reader impact, top row, stated as a wrong rupee figure |
 
-`scripts/tests/render-board.test.mjs` asserts every one of those blocks is present (36 tests). A
+`scripts/tests/render-board.test.mjs` asserts every one of those blocks is present (101 tests). A
 refactor that drops the environments table fails the suite rather than silently failing a role.
 
 ## When to update — not on every merge

@@ -20,6 +20,10 @@
 //      {{prod.migrations_behind}} ... so a typed copy of it cannot go stale.
 //   2. docs/design/board/board-prose.json       -> the 10 explanatory sections
 //   3. docs/design/board/status.json            -> the 16 stage-3 slice rows
+//   6. docs/design/board/road-to-production.json -> the "Road to Production"
+//      block (streams -> rows). Rows naming a pr/issue get their status from
+//      collect-road-status.mjs (gh, with measured_at); a row that names one and
+//      has no measured_at renders `unmeasured`. All counts are derived per row.
 //   4. docs/design/board/plan-sections.generated.html
 //      -> 29 build items + every OD owner decision + every sourced field in
 //         the manifest, produced by build-plan-board.mjs from the spec.
@@ -39,6 +43,7 @@
 // must rate it >9/10). Each block below names the role whose question it
 // answers, so a future edit knows what it would break:
 //   Owner              -> "Waiting on you" (decisions, with a recommendation)
+//                         and "Road to Production" (every step to the one prod deploy)
 //   Product manager    -> "What a reader sees" (impact in plain language)
 //   Senior architect   -> the dependency chain strip
 //   Implementation     -> "Next up" inside the vitals
@@ -55,6 +60,7 @@
 //   --data <path> / --facts <path> / --now <iso>        # test seams
 //   Before rendering after a deploy or a day's gap:
 //   node scripts/ops/collect-board-facts.mjs
+//   node scripts/ops/collect-road-status.mjs      # PR/issue state of the Road rows
 //
 // OUTPUT
 //   docs/design/board/index.html — publish this file with the board URL.
@@ -71,6 +77,7 @@ const DATA = join(BOARD, 'board-data.json');
 const PROSE = join(BOARD, 'board-prose.json');
 const STATUS = join(BOARD, 'status.json');
 const PLAN = join(BOARD, 'plan-sections.generated.html');
+const ROAD_DEFAULT = join(BOARD, 'road-to-production.json');
 const OUT_DEFAULT = join(BOARD, 'index.html');
 
 const argv = process.argv.slice(2);
@@ -79,6 +86,7 @@ const opt = (name, dflt) => { const i = argv.indexOf(name); return i >= 0 ? argv
 const OUT = opt('--out', OUT_DEFAULT);
 const DATA_PATH = opt('--data', DATA);
 const FACTS_PATH = opt('--facts', join(BOARD, 'measured-facts.json'));
+const ROAD_PATH = opt('--road', ROAD_DEFAULT);
 
 const CR_LF = String.fromCharCode(13, 10);
 const NL = String.fromCharCode(10);
@@ -93,6 +101,7 @@ const readJson = (p) => JSON.parse(readText(p));
 const data = readJson(DATA_PATH);
 const prose = readJson(PROSE);
 const status = readJson(STATUS);
+const road = readJson(ROAD_PATH);
 
 const esc = (s) => String(s).replace(/&(?![a-zA-Z#][a-zA-Z0-9]*;)/g, '&amp;');
 
@@ -418,6 +427,68 @@ const nowSection = sec('now', 'info', 'Where the work stands, in three lines',
   'What landed, what is next, and what is blocked.', 'building', 'in progress',
   Object.entries(data.now).map(([k, v]) => `<h3>${esc(k)}</h3>\n<p>${v}</p>`).join('\n'));
 
+// ---- Road to Production ------------------------------------------------------
+// One status page (owner, 2026-09-30): the former separate tracker is this block.
+// Every count is derived per row from road-to-production.json; a row that names
+// a pr/issue but was never measured is `unmeasured`, never its typed status.
+const ROAD_STATUSES = ['done', 'running', 'waiting', 'todo', 'parked', 'failed', 'unmeasured'];
+const roadPill = { done: 'landed', running: 'building', waiting: 'merged', todo: 'queued', parked: 'queued', failed: 'red', unmeasured: 'queued' };
+const roadLabel = { done: 'done', running: 'running', waiting: 'waiting on you', todo: 'to do', parked: 'parked', failed: 'failed', unmeasured: 'unmeasured' };
+need(Array.isArray(road.streams) && road.streams.length >= 1, 'road-to-production.json has no streams');
+const roadRows = [];
+for (const st of road.streams) {
+  need(Array.isArray(st.items) && st.items.length >= 1, `road stream "${st.id}" has no items`);
+  for (const it of st.items) {
+    need(it.label, `road stream "${st.id}" has a row with no label`);
+    const named = it.pr !== undefined || it.issue !== undefined;
+    let statusNow = it.status;
+    let why = '';
+    if (named && !it.measured_at) { statusNow = 'unmeasured'; why = 'never read &mdash; run collect-road-status.mjs'; }
+    else if (statusNow === 'unmeasured') why = esc(it.measured_error || 'no cause recorded');
+    need(ROAD_STATUSES.includes(statusNow), `road row "${it.label}" has status "${statusNow}"; allowed: ${ROAD_STATUSES.join(', ')}`);
+    roadRows.push({ stream: st.id, statusNow });
+    it.__status = statusNow; it.__why = why;
+  }
+}
+const roadTotal = roadRows.length;
+const roadByStatus = Object.fromEntries(ROAD_STATUSES.map((k) => [k, roadRows.filter((r) => r.statusNow === k).length]));
+need(Object.values(roadByStatus).reduce((a, b) => a + b, 0) === roadTotal, 'road status counts do not sum to the row count');
+const roadMeasured = road.streams.flatMap((st) => st.items).map((i) => i.measured_at).filter(Boolean).sort();
+const roadOldest = roadMeasured[0] || null;
+const roadStale = roadOldest && renderAt.getTime() - Date.parse(roadOldest) > STALE_MS;
+const roadItem = (it) => {
+  const refs = [it.pr !== undefined ? `PR #${it.pr}` : '', it.issue !== undefined ? `#${it.issue}` : ''].filter(Boolean).join(' ');
+  const src = it.__why ? `<small class="unmeasured">${it.__why}</small>` : (it.measured_from ? `<small>${esc(it.measured_from)}</small>` : '');
+  return `<li class="rd ${it.__status}" data-road-status="${it.__status}"><span class="pill ${roadPill[it.__status]}">${roadLabel[it.__status]}</span><span class="rdw"><b>${esc(it.label)}</b>${refs ? ` <span class="mono">${esc(refs)}</span>` : ''}${it.size ? ` <span class="pill queued">${esc(it.size)}</span>` : ''}${it.note ? ` <span class="mute">${esc(it.note)}</span>` : ''}${src ? ` ${src}` : ''}</span></li>`;
+};
+const roadStream = (st) => {
+  const done = st.items.filter((i) => i.__status === 'done').length;
+  let last = null;
+  const lis = st.items.map((i) => {
+    const head = i.group && i.group !== last ? `<li class="rdg">${esc(i.group)}</li>` : '';
+    last = i.group || last;
+    return head + roadItem(i);
+  }).join('');
+  return sec(`road-${st.id}`, done === st.items.length ? 'ok' : 'info', esc(st.name), esc(st.why || ''),
+    done === st.items.length ? 'landed' : 'queued', `<span data-road-stream="${esc(st.id)}" data-done="${done}" data-total="${st.items.length}">${done} / ${st.items.length} done</span>`,
+    `<ul class="road">${lis}</ul>`, st.items.length <= 15);
+};
+const roadTile = (cls, k, v, sub) => ` <div class="${cls}"><span class="k">${k}</span><span class="v">${v}</span><span class="sub">${sub}</span></div>`;
+const roadSection = `
+<section class="status" id="road" data-road-total="${roadTotal}" data-road-done="${roadByStatus.done}">
+ <div class="hd"><h2>Road to Production</h2><span class="stamp">${roadTotal} steps &middot; statuses read ${roadOldest ? istStamp(roadOldest) : '<span class="unmeasured">never &mdash; run collect-road-status.mjs</span>'}${roadStale ? ' <small class="stale">stale</small>' : ''}</span></div>
+ <p class="rule">${esc(road.rule)}</p>
+ <div class="vitals">
+${roadTile('ok', 'Done', `${roadByStatus.done} / ${roadTotal}`, 'merged PRs, closed issues, proofs read')}
+${roadTile('acc', 'Running', String(roadByStatus.running), 'open PRs with no failing check')}
+${roadTile('warn', 'Waiting on you', String(roadByStatus.waiting), 'decisions and owner-run steps')}
+${roadTile('acc', 'To do', String(roadByStatus.todo), 'not started')}
+${roadTile(roadByStatus.failed ? 'bad' : 'ok', 'Failed', String(roadByStatus.failed), 'closed unmerged, conflicting or a failing check')}
+${roadTile('acc', 'Parked / unmeasured', `${roadByStatus.parked} / ${roadByStatus.unmeasured}`, 'parked by rule / status not readable')}
+ </div>
+ ${road.streams.map(roadStream).join('')}
+</section>`;
+
 const proseSections = prose.map((p) => sec(p.id, p.tone, p.title, p.gloss, p.chip_class, p.chip, p.body)).join('');
 
 // The three generated tracking sections arrive as bare <section class="status">
@@ -452,6 +523,7 @@ ${css}</style>
 <p class="lede">${esc(data.headline)}</p>
 <p class="stamp" data-rendered-at="${renderAtIso}">${esc(data.stage)} &middot; rendered ${istStamp(renderAtIso)} &middot; environment facts measured ${oldestMeasured ? istStamp(oldestMeasured) : '<span class="unmeasured">never &mdash; run collect-board-facts.mjs</span>'}${oldestMeasured && renderAt.getTime() - Date.parse(oldestMeasured) > STALE_MS ? ' <small class="stale">stale</small>' : ''} &middot; generated by <code>scripts/ops/render-board.mjs</code></p>
 ${waiting}
+${roadSection}
 ${vitals}
 <div class="legend"><span><i style="background:var(--ok)"></i>built / landed</span><span><i style="background:var(--warn)"></i>partial, or proof owed</span><span><i style="background:var(--bad)"></i>not built</span><span><i style="background:var(--accent)"></i>context, no status</span></div>
 ${readerImpact}
@@ -468,7 +540,7 @@ ${slicesSection}
 ${nowSection}
 ${generated}
 ${proseSections}
-<p class="foot">This page is generated from five files in <code>docs/design/board/</code> &mdash; nothing on it is typed into the published HTML, so it cannot drift from the spec it reports. Written 2026-09-17 by the stage 3 supervisor session; restructured 2026-09-20 into per-section status for the nine roles that read it. Sources: docs/design/data-sourcing-pull-model.md, docs/design/pull-model-completion-state.md, scraper/config/field-manifest.json.</p>
+<p class="foot">This page is generated from six files in <code>docs/design/board/</code> &mdash; nothing on it is typed into the published HTML, so it cannot drift from the spec it reports. Written 2026-09-17 by the stage 3 supervisor session; restructured 2026-09-20 into per-section status for the nine roles that read it. Sources: docs/design/data-sourcing-pull-model.md, docs/design/pull-model-completion-state.md, scraper/config/field-manifest.json.</p>
 </main>
 <script>
 document.querySelectorAll(".controls button").forEach(function (b) {

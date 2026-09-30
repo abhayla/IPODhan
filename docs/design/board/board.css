@@ -144,3 +144,9 @@ ul.changed li{margin-bottom:7px}
 }
 .stale{color:var(--warn);font-weight:600}
 .unmeasured{color:var(--bad);font-weight:600}
+.road{list-style:none;margin:0;padding:0}
+.road .rd{display:flex;gap:10px;align-items:baseline;padding:7px 2px;border-bottom:1px solid var(--line);font-size:14px}
+.road .rd>.pill{flex:0 0 auto;min-width:7.5em;text-align:center}
+.road .rdw{min-width:0;overflow-wrap:anywhere}
+.road .rdg{padding:12px 2px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);border-bottom:1px solid var(--line)}
+@media (max-width:560px){.road .rd{flex-direction:column;gap:3px}.road .rd>.pill{min-width:0}}
