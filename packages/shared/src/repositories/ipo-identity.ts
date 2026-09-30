@@ -529,7 +529,13 @@ async function holdAliasOnlyMatch(ipoRepository: IPORepository, identity: IpoIde
     id: c.id, slug: c.slug ?? '', companyName: c.companyName ?? '', openDate: c.openDate ?? null,
     priceRangeMin: (c as { priceRangeMin?: unknown }).priceRangeMin ?? null, status: c.status ?? null,
   }];
-  logger.warn({ incoming, candidateId: c.id, candidateSlug: c.slug, reason: hold.reason },
+  // The corroboration test compares both price bounds, so the hold log carries both sides' bounds (#1290 m4).
+  const bounds = {
+    incomingPriceRangeMax: identity.priceRangeMax ?? null,
+    candidatePriceRangeMin: (c as { priceRangeMin?: unknown }).priceRangeMin ?? null,
+    candidatePriceRangeMax: (c as { priceRangeMax?: unknown }).priceRangeMax ?? null,
+  };
+  logger.warn({ incoming: { ...incoming, priceRangeMax: bounds.incomingPriceRangeMax }, candidateId: c.id, candidateSlug: c.slug, ...bounds, reason: hold.reason },
     'identity_held_for_review: [§9.2 item 26] alias-only match not corroborated - NOT bound, NOT created (OD-68)');
   const recorder = (ipoRepository as { recordAliasIdentityHold?: (...a: unknown[]) => Promise<void> }).recordAliasIdentityHold;
   if (typeof recorder === 'function') await recorder.call(ipoRepository, incoming, candidates, hold.reason);
