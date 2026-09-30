@@ -21,6 +21,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  */
 const bulkTrackFieldUpdatesMock = vi.fn().mockResolvedValue(1);
 const findByFieldMock = vi.fn().mockResolvedValue(null);
+const findByIPOIdMock = vi.fn().mockResolvedValue([]);
 const commitDeferredProvenanceMock = vi.fn().mockResolvedValue({ written: 1, refused: [] });
 const consolidateIPODataMock = vi.fn().mockRejectedValue(new Error('consolidation throws (simulated) - forces the fallback door'));
 
@@ -45,7 +46,7 @@ vi.mock('@ipodhan/shared/repositories', async (importOriginal) => {
     FieldSourcesRepository: vi.fn().mockImplementation(() => ({
       bulkTrackFieldUpdates: (...args: unknown[]) => bulkTrackFieldUpdatesMock(...args),
       findByField: (...args: unknown[]) => findByFieldMock(...args),
-      findByIPOId: vi.fn().mockResolvedValue([]),
+      findByIPOId: (...args: unknown[]) => findByIPOIdMock(...args),
     })),
     DataConflictsRepository: vi.fn().mockImplementation(() => ({})),
     RegistrarRepository: vi.fn().mockImplementation(() => ({
@@ -117,7 +118,7 @@ function makeIpoRepository() {
   } as any;
 }
 
-const { mergeListingExchangesForSource, dropFallbackNonClaims, fallbackNonClaimTest, guardSmeOfferingTypeWithLookup } = await import(
+const { mergeListingExchangesForSource, dropFallbackNonClaims, fallbackNonClaimTest, guardSmeOfferingTypeWithLookup, IPO_WRITE_GUARDS } = await import(
   '../../../src/services/data-persister.js'
 );
 
@@ -128,6 +129,7 @@ function reset() {
   (FEATURE_FLAGS as any).ENABLE_SOURCE_TRACKING = true;
   bulkTrackFieldUpdatesMock.mockResolvedValue(1);
   findByFieldMock.mockResolvedValue(null);
+  findByIPOIdMock.mockResolvedValue([]);
   commitDeferredProvenanceMock.mockResolvedValue({ written: 1, refused: [] });
   consolidateIPODataMock.mockRejectedValue(new Error('consolidation throws (simulated) - forces the fallback door'));
 }
@@ -410,5 +412,256 @@ describe('#1236 class: the consolidation-result door and the pre-consolidation d
     const repo = makeIpoRepository();
     await upsertIPO(repo, scrape({ offeringType: 'FPO', issueSize: 100 }), 'CHITTORGARH', smeFpo());
     expect(consolidateIPODataMock.mock.calls[0][0].incomingData.offeringType).toBe('IPO');
+  });
+});
+
+/**
+ * #1236 round 3 (re-approach after independent review). RCA: the persister has two write doors and
+ * the fallback door ran a SUBSET of the primary door's guards, so any exception on the primary path
+ * (including a guard's own provenance lookup THROWING, e.g. the #180 F2 reads) downgraded protection.
+ * Structural fix: one ordered guard list (IPO_WRITE_GUARDS) that both doors run; every guard whose own
+ * lookup fails keeps the stored value and names the field in provenanceLookupFailed.
+ * Spec basis: #180 F2 (a non-authoritative source is never the first to assert a hard date), OD-66,
+ * E-1 section 1.2.1, OD-129, OD-131, T-276, section 2.9 (POSTPONED / terminal status), section 9.2 item 19.
+ */
+describe('#1236 round 3: one guard list, run by both doors', () => {
+  beforeEach(reset);
+  const facts = () => recordDiscoveryStepsMock.mock.calls.at(-1)?.[1] as {
+    provenanceLookupFailed: string[]; consolidated: boolean; fields: string[];
+  };
+  const undated = (overrides: Record<string, unknown> = {}) =>
+    existingRow({ segment: 'MAINBOARD', openDate: null, closeDate: null, listingDate: null, issueSize: 100, ...overrides });
+  const cgDate = () => scrape({ openDate: '2026-10-05', issueSize: 100, listingExchange: undefined });
+  const okConsolidation = (consolidatedData: Record<string, unknown>) =>
+    consolidateIPODataMock.mockResolvedValue({
+      consolidatedData, fieldResults: [], fieldsUpdated: 0, conflictsDetected: 0, conflictsBySeverity: {},
+    });
+  const trackedRow = () => findByIPOIdMock.mockResolvedValue([{ fieldName: 'issueSize', source: 'NSE' }]);
+
+  it('the guard list is the full primary guard set, in order', () => {
+    expect(IPO_WRITE_GUARDS.map((g: { name: string }) => g.name)).toEqual([
+      'source-precedence',
+      'offering-type-keeps-classification',
+      'sme-offering-type-fpo',
+      'hard-date-first-touch-f2',
+      'merged-record-validation-w14',
+      'degenerate-price-band-t276',
+      'non-claims-context-e1',
+      'terminal-status-kept',
+    ]);
+  });
+
+  describe('#180 F2 on the fallback door (consolidation threw)', () => {
+    it('uncorroborated CHITTORGARH openDate over a stored null on a tracked row -> not written', async () => {
+      trackedRow();
+      const repo = makeIpoRepository();
+      await upsertIPO(repo, cgDate(), 'CHITTORGARH', undated());
+      expect(facts().consolidated).toBe(false);
+      expect(written(repo)).not.toHaveProperty('openDate');
+    });
+
+    it('the row lookup (findByIPOId) THREW -> not written, openDate named in provenanceLookupFailed', async () => {
+      findByIPOIdMock.mockRejectedValue(new Error('field_sources read failed (simulated)'));
+      const repo = makeIpoRepository();
+      await upsertIPO(repo, cgDate(), 'CHITTORGARH', undated());
+      expect(written(repo)).not.toHaveProperty('openDate');
+      expect(facts().provenanceLookupFailed).toContain('openDate');
+    });
+
+    it('the field lookup (findByField) THREW -> not written, flagged', async () => {
+      trackedRow();
+      findByFieldMock.mockRejectedValue(new Error('field_sources read failed (simulated)'));
+      const repo = makeIpoRepository();
+      await upsertIPO(repo, cgDate(), 'CHITTORGARH', undated());
+      expect(written(repo)).not.toHaveProperty('openDate');
+      expect(facts().provenanceLookupFailed).toContain('openDate');
+    });
+
+    it('control: a corroborating prior openDate row exists -> written', async () => {
+      trackedRow();
+      findByFieldMock.mockImplementation(async (_id: string, _t: string, field: string) =>
+        field === 'openDate' ? { source: 'NSE' } : null);
+      const repo = makeIpoRepository();
+      await upsertIPO(repo, cgDate(), 'CHITTORGARH', undated());
+      expect(written(repo)).toHaveProperty('openDate');
+    });
+
+    it('control: an untracked row (no field_sources rows at all) -> written (unknown provenance, as on the primary door)', async () => {
+      const repo = makeIpoRepository();
+      await upsertIPO(repo, cgDate(), 'CHITTORGARH', undated());
+      expect(written(repo)).toHaveProperty('openDate');
+    });
+
+    it('control: an authoritative source (NSE) -> written, no row lookup made', async () => {
+      trackedRow();
+      const repo = makeIpoRepository();
+      await upsertIPO(repo, scrape({ openDate: '2026-10-05', issueSize: 100 }), 'NSE', undated());
+      expect(written(repo)).toHaveProperty('openDate');
+      expect(findByIPOIdMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('#180 F2 on the primary door: a lookup that THROWS no longer routes the write to a weaker door', () => {
+    it('findByIPOId THREW -> the primary door keeps the stored null, flags openDate, and does not fall back', async () => {
+      findByIPOIdMock.mockRejectedValue(new Error('field_sources read failed (simulated)'));
+      okConsolidation({ openDate: '2026-10-05', issueSize: 200 });
+      const repo = makeIpoRepository();
+      await upsertIPO(repo, cgDate(), 'CHITTORGARH', undated());
+      expect(repo.update).toHaveBeenCalledTimes(1);
+      expect(written(repo)).not.toHaveProperty('openDate');
+      expect(facts().consolidated).toBe(true);
+      expect(facts().provenanceLookupFailed).toContain('openDate');
+    });
+
+    it('findByField THREW -> same', async () => {
+      trackedRow();
+      findByFieldMock.mockRejectedValue(new Error('field_sources read failed (simulated)'));
+      okConsolidation({ openDate: '2026-10-05', issueSize: 200 });
+      const repo = makeIpoRepository();
+      await upsertIPO(repo, cgDate(), 'CHITTORGARH', undated());
+      expect(written(repo)).not.toHaveProperty('openDate');
+      expect(facts().consolidated).toBe(true);
+      expect(facts().provenanceLookupFailed).toContain('openDate');
+    });
+
+    it('control: lookups ok, prior row exists -> the primary door writes the date', async () => {
+      trackedRow();
+      findByFieldMock.mockImplementation(async (_id: string, _t: string, field: string) =>
+        field === 'openDate' ? { source: 'BSE' } : null);
+      okConsolidation({ openDate: '2026-10-05', issueSize: 200 });
+      const repo = makeIpoRepository();
+      await upsertIPO(repo, cgDate(), 'CHITTORGARH', undated());
+      expect(written(repo)).toHaveProperty('openDate');
+    });
+  });
+
+  describe('the other guards on the fallback door (consolidation threw)', () => {
+    it('offering-type-keeps-classification: a stored RIGHTS is not downgraded to IPO by a scrape', async () => {
+      const repo = makeIpoRepository();
+      await upsertIPO(repo, scrape({ offeringType: 'IPO', issueSize: 100 }), 'NSE',
+        existingRow({ segment: 'MAINBOARD', offeringType: 'RIGHTS', issueSize: 100 }));
+      expect(written(repo).offeringType).toBe('RIGHTS');
+    });
+
+    it('terminal-status-kept: a stored WITHDRAWN is not overwritten by UPCOMING', async () => {
+      const repo = makeIpoRepository();
+      await upsertIPO(repo, scrape({ status: 'UPCOMING', issueSize: 100 }), 'NSE',
+        existingRow({ segment: 'MAINBOARD', status: 'WITHDRAWN', issueSize: 100 }));
+      expect(written(repo).status ?? 'WITHDRAWN').toBe('WITHDRAWN');
+    });
+
+    it('admin hold (section 9.2 item 19): a held field dropped by the write is neither reported nor claimed', async () => {
+      const repo = makeIpoRepository();
+      repo.updateReportingHolds = vi.fn().mockResolvedValue({ dropped: ['issueSize'] });
+      await upsertIPO(repo, scrape({ issueSize: 150000000 }), 'BSE', existingRow({ issueSize: 50000000 }));
+      expect(repo.updateReportingHolds).toHaveBeenCalledTimes(1);
+      expect(facts().fields).not.toContain('issueSize');
+      const tracked = (bulkTrackFieldUpdatesMock.mock.calls[0]?.[2] ?? []) as { fieldName: string }[];
+      expect(tracked.map((t) => t.fieldName)).not.toContain('issueSize');
+    });
+  });
+
+  it('MINOR: SME-FPO guard with a failed lookup and NO stored value returns the guarded value, not the incoming FPO', () => {
+    expect(guardSmeOfferingTypeWithLookup('SME', 'FPO', 'CHITTORGARH', { source: null, lookupFailed: true }, null)).toBe('IPO');
+    expect(guardSmeOfferingTypeWithLookup('SME', 'FPO', 'CHITTORGARH', { source: null, lookupFailed: true }, undefined)).toBe('IPO');
+    expect(guardSmeOfferingTypeWithLookup('SME', 'FPO', 'CHITTORGARH', { source: null, lookupFailed: true }, 'FPO')).toBe('FPO');
+  });
+});
+
+/**
+ * #1236 round 3, scope added from the #1363 Tier A re-review: the fallback door wrote a feed's value
+ * over a stored one with no field-priority decision, so when consolidation threw on an NSE write,
+ * NSE's board could replace a board an offer document set. The door now runs the consolidator's own
+ * rank functions (`fallbackDoorMayReplaceStoredValue`) and never accepts what that door would refuse.
+ */
+describe('#1236 round 3: source precedence on the fallback door (consolidation threw)', () => {
+  beforeEach(reset);
+  const facts = () => recordDiscoveryStepsMock.mock.calls.at(-1)?.[1] as { provenanceLookupFailed: string[]; consolidated: boolean };
+  const holder = (fieldName: string, source: string) => ({ fieldName, source, tableName: 'ipos', rowKey: '' });
+  const smeRow = () => existingRow({ segment: 'SME', listingExchanges: ['NSE'], issueSize: 100, status: 'CLOSED' });
+  const nseMainboard = () => scrape({ segment: 'MAINBOARD', listingExchange: 'NSE', issueSize: 100, status: 'CLOSED' });
+
+  it('a document-set segment stays when an NSE write falls to the fallback door', async () => {
+    findByIPOIdMock.mockResolvedValue([holder('segment', 'DRHP')]);
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, nseMainboard(), 'NSE', smeRow());
+    expect(facts().consolidated).toBe(false);
+    expect(written(repo).segment ?? 'SME').toBe('SME');
+  });
+
+  it('an ADMIN-held value is never replaced by a scraper on the fallback door', async () => {
+    findByIPOIdMock.mockResolvedValue([holder('issueSize', 'ADMIN')]);
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, scrape({ issueSize: 150000000 }), 'BSE', existingRow({ issueSize: 50000000 }));
+    expect(String(written(repo).issueSize ?? '50000000')).toBe('50000000');
+  });
+
+  it('the field_sources read THREW -> the stored segment is kept and named in provenanceLookupFailed', async () => {
+    findByIPOIdMock.mockRejectedValue(new Error('field_sources read failed (simulated)'));
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, nseMainboard(), 'NSE', smeRow());
+    expect(written(repo).segment ?? 'SME').toBe('SME');
+    expect(facts().provenanceLookupFailed).toContain('segment');
+  });
+
+  it('control: a lower-ranked holder (CHITTORGARH) is replaced by NSE, as the consolidation door would', async () => {
+    findByIPOIdMock.mockResolvedValue([holder('segment', 'CHITTORGARH')]);
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, nseMainboard(), 'NSE', smeRow());
+    expect(written(repo).segment).toBe('MAINBOARD');
+  });
+
+  it('control: an untracked stored value is replaced by a source the matrix ranks (the untracked rule)', async () => {
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, nseMainboard(), 'NSE', smeRow());
+    expect(written(repo).segment).toBe('MAINBOARD');
+  });
+
+  it('a HIGH_VALUE field on a live IPO is held on the fallback door (the consolidator HOLDs one-sided changes)', async () => {
+    findByIPOIdMock.mockResolvedValue([holder('priceRangeMax', 'CHITTORGARH')]);
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, scrape({ priceRangeMin: 100, priceRangeMax: 130, issueSize: 100 }), 'NSE',
+      existingRow({ segment: 'MAINBOARD', status: 'OPEN', priceRangeMin: 100, priceRangeMax: 120, issueSize: 100 }));
+    expect(written(repo).priceRangeMax ?? 120).toBe(120);
+  });
+});
+
+describe('#1236 round 3: merged-record-validation-w14 through the shared list', () => {
+  beforeEach(reset);
+  const inverted = () => scrape({ priceRangeMin: 200, priceRangeMax: 100, issueSize: 200 });
+  const row = () => existingRow({ segment: 'MAINBOARD', status: 'CLOSED', priceRangeMin: 90, priceRangeMax: 100, issueSize: 100 });
+
+  it('consolidation door: a merged winner for a W-14-refused field is not written', async () => {
+    consolidateIPODataMock.mockResolvedValue({
+      consolidatedData: { priceRangeMin: 200, priceRangeMax: 100, issueSize: 200 },
+      fieldResults: [], fieldsUpdated: 0, conflictsDetected: 0, conflictsBySeverity: {},
+    });
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, inverted(), 'NSE', row());
+    expect(written(repo)).not.toHaveProperty('priceRangeMin');
+    expect(written(repo)).not.toHaveProperty('priceRangeMax');
+  });
+
+  it('fallback door: the refused band is not written either', async () => {
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, inverted(), 'NSE', row());
+    expect(written(repo).priceRangeMin ?? 90).toBe(90);
+    expect(written(repo).priceRangeMax ?? 100).toBe(100);
+  });
+});
+
+describe('#1236 round 3: status on the fallback door (consolidation threw)', () => {
+  beforeEach(reset);
+  it('a BACKWARD status move (LISTED -> OPEN) is kept at the stored value', async () => {
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, scrape({ status: 'OPEN', issueSize: 100, listingExchange: 'NSE' }), 'NSE',
+      existingRow({ segment: 'MAINBOARD', status: 'LISTED', issueSize: 100, listingExchanges: ['NSE'] }));
+    expect(written(repo).status ?? 'LISTED').toBe('LISTED');
+  });
+  it('control: a forward move (UPCOMING -> OPEN) from the exchange is written', async () => {
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, scrape({ status: 'OPEN', issueSize: 100, listingExchange: 'NSE' }), 'NSE',
+      existingRow({ segment: 'MAINBOARD', status: 'UPCOMING', issueSize: 100, listingExchanges: ['NSE'] }));
+    expect(written(repo).status).toBe('OPEN');
   });
 });
