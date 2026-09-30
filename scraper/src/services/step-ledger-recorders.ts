@@ -89,6 +89,12 @@ export interface DiscoveryStepInput {
    * them (the opening-day check does). Omitted: F6 reports `fields.length`, as before.
    */
   fieldSourcesCount?: number;
+  /**
+   * #1236: `ipos` fields whose stored-provenance lookup THREW during this write. The stored value
+   * was kept (holder unknown is not a no-document-claim); F6 records which fields, so the ledger
+   * does not read as a clean tracked write.
+   */
+  provenanceLookupFailed?: string[];
   companyName?: string;
 }
 
@@ -193,7 +199,11 @@ export function planDiscoverySteps(input: DiscoveryStepInput): StepWrite[] {
       stepId: 'F6',
       status: 'DONE',
       source,
-      evidence: { fields: input.fieldSourcesCount ?? input.fields.length, path: input.created ? 'create' : 'consolidation' },
+      evidence: {
+        fields: input.fieldSourcesCount ?? input.fields.length,
+        path: input.created ? 'create' : 'consolidation',
+        ...(input.provenanceLookupFailed?.length ? { lookupFailed: input.provenanceLookupFailed } : {}),
+      },
     });
   }
 

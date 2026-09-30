@@ -117,7 +117,7 @@ function makeIpoRepository() {
   } as any;
 }
 
-const { mergeListingExchangesForSource, dropFallbackNonClaims, fallbackNonClaimTest } = await import(
+const { mergeListingExchangesForSource, dropFallbackNonClaims, fallbackNonClaimTest, guardSmeOfferingTypeWithLookup } = await import(
   '../../../src/services/data-persister.js'
 );
 
@@ -293,5 +293,122 @@ describe('#1253 item 3: the fallback door refuses a degenerate band over a store
     await upsertIPO(repo, scrape(band(105, 105, { issueSize: 100 })), 'NSE',
       existingRow({ priceRangeMin: null, priceRangeMax: null, issueSize: 100 }));
     expect(written(repo)).toMatchObject({ priceRangeMin: 105, priceRangeMax: 105 });
+  });
+});
+
+describe('#1236 class: the offeringType provenance lookup has the same answer states', () => {
+  beforeEach(reset);
+  const smeFpo = () => existingRow({ segment: 'SME', offeringType: 'FPO', listingExchanges: ['BSE'], issueSize: 100 });
+  const chScrape = () => scrape({ listingExchange: 'BSE', issueSize: 100, offeringType: 'FPO' });
+
+  it('pure guard: lookup FAILED keeps the stored FPO; the four other states are unchanged', () => {
+    const g = guardSmeOfferingTypeWithLookup;
+    expect(g('SME', 'FPO', 'CHITTORGARH', { source: null, lookupFailed: true }, 'FPO')).toBe('FPO');
+    expect(g('SME', 'FPO', 'CHITTORGARH', { source: null, lookupFailed: false }, 'FPO')).toBe('IPO');
+    expect(g('SME', 'FPO', 'CHITTORGARH', { source: 'NSE', lookupFailed: false }, 'FPO')).toBe('FPO');
+    expect(g('SME', 'FPO', 'CHITTORGARH', { source: 'CHITTORGARH', lookupFailed: false }, 'FPO')).toBe('IPO');
+    expect(g('MAINBOARD', 'FPO', 'CHITTORGARH', { source: null, lookupFailed: true }, 'FPO')).toBe('FPO');
+    // failed lookup but the guard would not have rewritten anything: unchanged, incoming wins as before
+    expect(g('SME', 'IPO', 'CHITTORGARH', { source: null, lookupFailed: true }, 'FPO')).toBe('IPO');
+  });
+
+  it('fallback door, lookup THREW -> the exchange-vouched SME FPO is NOT rewritten to IPO, and the ledger names the failure', async () => {
+    findByFieldMock.mockRejectedValue(new Error('field_sources read failed'));
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, chScrape(), 'CHITTORGARH', smeFpo());
+    expect(written(repo).offeringType).toBe('FPO');
+    const facts = recordDiscoveryStepsMock.mock.calls.at(-1)?.[1] as { provenanceLookupFailed: string[] };
+    expect(facts.provenanceLookupFailed).toEqual(expect.arrayContaining(['offeringType']));
+  });
+
+  it('fallback door, exchange row -> FPO kept (unchanged)', async () => {
+    findByFieldMock.mockResolvedValue({ source: 'NSE' });
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, chScrape(), 'CHITTORGARH', smeFpo());
+    expect(written(repo).offeringType).toBe('FPO');
+  });
+
+  it('fallback door, no row (never tracked, lookup did not throw) -> the guard still rewrites to IPO (unchanged)', async () => {
+    findByFieldMock.mockResolvedValue(null);
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, chScrape(), 'CHITTORGARH', smeFpo());
+    expect(written(repo).offeringType).toBe('IPO');
+    const facts = recordDiscoveryStepsMock.mock.calls.at(-1)?.[1] as { provenanceLookupFailed: string[] };
+    expect(facts.provenanceLookupFailed).toEqual([]);
+  });
+
+  it('consolidation door, lookup THREW -> an incoming FPO on an SME row keeps the stored value (door 1)', async () => {
+    findByFieldMock.mockRejectedValue(new Error('field_sources read failed'));
+    consolidateIPODataMock.mockResolvedValue({
+      consolidatedData: {}, fieldResults: [], fieldsUpdated: 0, conflictsDetected: 0, conflictsBySeverity: {},
+    });
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, scrape({ offeringType: 'FPO', issueSize: 100 }), 'CHITTORGARH', smeFpo());
+    const facts = recordDiscoveryStepsMock.mock.calls.at(-1)?.[1] as { offeringType: string | null };
+    expect(facts.offeringType).not.toBe('IPO');
+  });
+});
+
+describe('#1253 item 1 (N7): the SINGULAR listingExchange context key through the fallback door', () => {
+  beforeEach(reset);
+  it.each([['listingExchange'], ['listingExchanges']])('context key %s -> the feed never widens the stored set and writes no listingExchanges provenance', async (key) => {
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, scrape({ listingExchange: 'NSE', issueSize: 100 }), 'NSE',
+      existingRow({ segment: 'MAINBOARD', listingExchanges: ['BSE'], issueSize: 100 }), [key]);
+    // context is never a claim: the field is dropped from the update (or left at the stored set)
+    expect(written(repo).listingExchanges ?? ['BSE']).toEqual(['BSE']);
+    const tracked = (bulkTrackFieldUpdatesMock.mock.calls[0]?.[2] ?? []).map((f: any) => f.fieldName);
+    expect(tracked).not.toContain('listingExchanges');
+  });
+  it('control: no context -> the feed widens', async () => {
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, scrape({ listingExchange: 'NSE', issueSize: 100 }), 'NSE',
+      existingRow({ segment: 'MAINBOARD', listingExchanges: ['BSE'], issueSize: 100 }));
+    expect(written(repo).listingExchanges).toEqual(['BSE', 'NSE']);
+  });
+});
+
+describe('#1236 class: the consolidation-result door and the pre-consolidation door each keep the stored value', () => {
+  beforeEach(reset);
+  const smeFpo = () => existingRow({ segment: 'SME', offeringType: 'FPO', listingExchanges: ['BSE'], issueSize: 100 });
+  const okConsolidation = (consolidatedData: Record<string, unknown>) =>
+    consolidateIPODataMock.mockResolvedValue({
+      consolidatedData, fieldResults: [], fieldsUpdated: 0, conflictsDetected: 0, conflictsBySeverity: {},
+    });
+  const facts = () => recordDiscoveryStepsMock.mock.calls.at(-1)?.[1] as { provenanceLookupFailed: string[]; offeringType: string | null };
+
+  it('door 2 (consolidated snapshot carries the stored FPO), lookup THREW -> not rewritten to IPO, ledger names it', async () => {
+    findByFieldMock.mockRejectedValue(new Error('field_sources read failed'));
+    okConsolidation({ offeringType: 'FPO', issueSize: 101 });
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, scrape({ issueSize: 101 }), 'CHITTORGARH', smeFpo());
+    expect(facts().offeringType).toBe('FPO');
+    expect(facts().provenanceLookupFailed).toContain('offeringType');
+  });
+
+  it('door 2 control: no provenance row (lookup ok) -> the stored FPO is rewritten to IPO, nothing flagged', async () => {
+    findByFieldMock.mockResolvedValue(null);
+    okConsolidation({ offeringType: 'FPO', issueSize: 101 });
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, scrape({ issueSize: 101 }), 'CHITTORGARH', smeFpo());
+    expect(facts().offeringType).toBe('IPO');
+    expect(facts().provenanceLookupFailed).toEqual([]);
+  });
+
+  it('door 1 (incoming FPO on an SME row), lookup THREW -> consolidation receives the stored FPO, not IPO', async () => {
+    findByFieldMock.mockRejectedValue(new Error('field_sources read failed'));
+    okConsolidation({});
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, scrape({ offeringType: 'FPO', issueSize: 100 }), 'CHITTORGARH', smeFpo());
+    expect(consolidateIPODataMock.mock.calls[0][0].incomingData.offeringType).toBe('FPO');
+    expect(facts().provenanceLookupFailed).toContain('offeringType');
+  });
+
+  it('door 1 control: lookup ok, no row -> consolidation receives IPO', async () => {
+    findByFieldMock.mockResolvedValue(null);
+    okConsolidation({});
+    const repo = makeIpoRepository();
+    await upsertIPO(repo, scrape({ offeringType: 'FPO', issueSize: 100 }), 'CHITTORGARH', smeFpo());
+    expect(consolidateIPODataMock.mock.calls[0][0].incomingData.offeringType).toBe('IPO');
   });
 });

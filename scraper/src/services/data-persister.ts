@@ -287,48 +287,67 @@ function getFieldSourcesRepository(): FieldSourcesRepository {
 }
 
 /**
- * #180 Tier-A round 6: the source that vouches for the CURRENT stored
- * `offeringType` value, if any — shared by every door that needs to pass
- * `storedSource` into `guardSmeOfferingTypeAgainstFpo` so the lookup and its
- * failure handling are written once, not re-copied per door.
+ * #1236 class fix: EVERY provenance lookup on the persister write paths answers one of three states,
+ * never conflated. `source` set = a row vouches for the stored value (use it); `source` null with
+ * `lookupFailed` false = no row was found, so there is no claim; `lookupFailed` true = the read
+ * THREW, so whether a document vouches for the stored value is UNKNOWN. "Unknown" is never "no
+ * document claim": the caller keeps the stored value and the failure is recorded in the ledger.
+ * Lookups on these paths: offeringType (3 doors), listingExchanges (fallback door). The other
+ * `findByField` reads (merged-validation owner, #180 F2 hard-date prior source) throw to their
+ * caller's own handler and never collapse a failure into "no claim".
  */
-async function getStoredOfferingTypeSource(ipoId: string | undefined): Promise<string | null> {
-  if (!ipoId) return null;
-  try {
-    const fieldSourcesRepo = getFieldSourcesRepository();
-    const provenance = typeof (fieldSourcesRepo as any).findByField === 'function'
-      ? await fieldSourcesRepo.findByField(ipoId, 'ipos', 'offeringType')
-      : null;
-    return (provenance as any)?.source ?? null;
-  } catch (e) {
-    logger.warn(
-      { ipoId, error: e instanceof Error ? e.message : String(e) },
-      '[DataPersister] #180 F1 stored-provenance lookup failed - guarding without corroboration signal'
-    );
-    return null;
-  }
+export interface StoredProvenanceLookup {
+  source: string | null;
+  lookupFailed: boolean;
 }
 
-/**
- * OD-129 (#938): the source vouching for the stored `listingExchanges`, for the fallback door.
- * Four answers, never conflated (#1236): a document or ADMIN row, a feed row, no row at all (never
- * tracked: `source` null, `lookupFailed` false), and a lookup that THREW (`lookupFailed` true: the
- * answer is unknown, and "unknown" is not "no document claim").
- */
-async function getStoredListingExchangesSource(
-  ipoId: string | undefined
-): Promise<{ source: string | null; lookupFailed: boolean }> {
+async function lookupStoredProvenanceSource(
+  ipoId: string | undefined,
+  fieldName: string
+): Promise<StoredProvenanceLookup> {
   if (!ipoId) return { source: null, lookupFailed: false };
   try {
-    const provenance = await getFieldSourcesRepository().findByField(ipoId, 'ipos', 'listingExchanges');
+    const fieldSourcesRepo = getFieldSourcesRepository();
+    if (typeof (fieldSourcesRepo as any).findByField !== 'function') return { source: null, lookupFailed: false };
+    const provenance = await fieldSourcesRepo.findByField(ipoId, 'ipos', fieldName);
     return { source: (provenance as any)?.source ?? null, lookupFailed: false };
   } catch (e) {
     logger.warn(
-      { ipoId, error: e instanceof Error ? e.message : String(e) },
-      '[DataPersister] OD-129 stored listingExchanges provenance lookup failed - holder unknown, the fallback door will not widen the stored set (#1236)'
+      { ipoId, fieldName, error: e instanceof Error ? e.message : String(e) },
+      `[DataPersister] #1236 stored ${fieldName} provenance lookup failed - holder unknown, the stored value is kept`
     );
     return { source: null, lookupFailed: true };
   }
+}
+
+/** #180 Tier-A round 6: who vouches for the CURRENT stored `offeringType`, for every door that guards it. */
+function getStoredOfferingTypeSource(ipoId: string | undefined): Promise<StoredProvenanceLookup> {
+  return lookupStoredProvenanceSource(ipoId, 'offeringType');
+}
+
+/**
+ * OD-129 (#938): the source vouching for the stored `listingExchanges`, for the fallback door
+ * (document or ADMIN row / feed row / no row / lookup threw; see StoredProvenanceLookup).
+ */
+function getStoredListingExchangesSource(ipoId: string | undefined): Promise<StoredProvenanceLookup> {
+  return lookupStoredProvenanceSource(ipoId, 'listingExchanges');
+}
+
+/**
+ * The SME-FPO guard, answer-state aware (#1236 class). When the lookup FAILED and the guard would
+ * rewrite FPO to IPO, the rewrite is exactly the claim "no exchange vouches for the stored FPO" -
+ * which is unknown - so the stored value is kept instead. Every other state behaves as before.
+ */
+export function guardSmeOfferingTypeWithLookup(
+  segment: string | null | undefined,
+  incoming: string,
+  incomingSource: string | null | undefined,
+  lookup: StoredProvenanceLookup,
+  storedValue: string | null | undefined
+): string {
+  const guarded = guardSmeOfferingTypeAgainstFpo(segment, incoming, incomingSource, lookup.source);
+  if (lookup.lookupFailed && guarded !== incoming) return storedValue ?? incoming;
+  return guarded;
 }
 
 async function getConsolidationService(): Promise<DataConsolidationService> {
@@ -1250,6 +1269,8 @@ async function upsertIPOInScope(
    * at all reaches this line.
    */
   let ledgerFacts: DiscoveryStepInput | null = null;
+  /** #1236: provenance lookups that threw during this write (the stored value was kept). */
+  const provenanceLookupFailed = new Set<string>();
 
   logger.debug({
     companyName: scrapedIPO.companyName,
@@ -1497,12 +1518,14 @@ async function upsertIPOInScope(
         // this door also needs the STORED provenance (an existing row whose
         // offeringType was already vouched for by NSE/BSE), same as every
         // other door, or it silently drops that signal.
-        const storedOfferingTypeSource = await getStoredOfferingTypeSource(existingIPO?.id);
-        (ipoData as any).offeringType = guardSmeOfferingTypeAgainstFpo(
+        const storedOfferingTypeLookup = await getStoredOfferingTypeSource(existingIPO?.id);
+        if (storedOfferingTypeLookup.lookupFailed) provenanceLookupFailed.add('offeringType');
+        (ipoData as any).offeringType = guardSmeOfferingTypeWithLookup(
           effectiveSegment,
           (ipoData as any).offeringType,
           source,
-          storedOfferingTypeSource
+          storedOfferingTypeLookup,
+          existingIPO?.offeringType
         );
       }
 
@@ -1693,12 +1716,14 @@ async function upsertIPOInScope(
               // for it previously). Checking only the stored side flipped a
               // first-ever NSE/BSE-asserted SME FPO with nothing to bootstrap
               // from.
-              const offeringTypeSource = await getStoredOfferingTypeSource(existingIPO.id);
-              (finalData as any).offeringType = guardSmeOfferingTypeAgainstFpo(
+              const offeringTypeLookup = await getStoredOfferingTypeSource(existingIPO.id);
+              if (offeringTypeLookup.lookupFailed) provenanceLookupFailed.add('offeringType');
+              (finalData as any).offeringType = guardSmeOfferingTypeWithLookup(
                 effectiveSegment,
                 (finalData as any).offeringType,
                 source,
-                offeringTypeSource
+                offeringTypeLookup,
+                (existingIPO as any).offeringType
               );
             }
 
@@ -1835,6 +1860,7 @@ async function upsertIPOInScope(
               conflictsDetected: consolidationResult.conflictsDetected ?? 0,
               conflictsBySeverity: consolidationResult.conflictsBySeverity ?? {},
               fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
+              provenanceLookupFailed: [...provenanceLookupFailed],
               companyName: scrapedIPO.companyName,
             };
 
@@ -1914,6 +1940,7 @@ async function upsertIPOInScope(
         const storedExchangesProvenance = listingExchangeIsContext
           ? { source: null, lookupFailed: false }
           : await getStoredListingExchangesSource((existingIPO as any).id);
+        if (storedExchangesProvenance.lookupFailed) provenanceLookupFailed.add('listingExchanges');
         const fallbackData: any = {
           ...buildNonDestructiveUpdate(existingIPO as any, ipoData),
           listingExchanges: mergeListingExchangesForSource(
@@ -1947,12 +1974,14 @@ async function upsertIPOInScope(
         // to write.
         if ('offeringType' in fallbackData) {
           const effectiveSegment = fallbackData.segment ?? (existingIPO as any).segment ?? null;
-          const offeringTypeSource = await getStoredOfferingTypeSource(existingIPO.id);
-          fallbackData.offeringType = guardSmeOfferingTypeAgainstFpo(
+          const offeringTypeLookup = await getStoredOfferingTypeSource(existingIPO.id);
+          if (offeringTypeLookup.lookupFailed) provenanceLookupFailed.add('offeringType');
+          fallbackData.offeringType = guardSmeOfferingTypeWithLookup(
             effectiveSegment,
             fallbackData.offeringType,
             source,
-            offeringTypeSource
+            offeringTypeLookup,
+            (existingIPO as any).offeringType
           );
         }
         // #1253: the consolidator refuses a degenerate incoming band (min === max, not FIXED_PRICE)
@@ -2104,6 +2133,7 @@ async function upsertIPOInScope(
           offeringType: fallbackData.offeringType ?? null,
           consolidated: false,
           fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && !fallbackProvenanceWriteFailed,
+          provenanceLookupFailed: [...provenanceLookupFailed],
           companyName: scrapedIPO.companyName,
         };
 
