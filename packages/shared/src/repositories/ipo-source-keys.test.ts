@@ -8,11 +8,13 @@ import {
   normalizeSourceKeyRefs,
   supersedeOlderKeysOnRelaunchMerge,
   recordSourceKeys,
+  resolveBySourceKeys,
   SourceKeyHeldError,
   SOURCE_KEY_NO_WRITE_ERROR_NAMES,
   type SourceKeyRef,
 } from './ipo-source-keys';
 import { resolveIpoRow } from './ipo-identity';
+import { logger } from '../logger';
 import type { IPORepository } from './ipo-repository';
 import { withSourceKeyLineage, noteSourceKeyBind, sourceKeyLineageFor } from './source-key-lineage';
 import { FieldSourcesRepository } from './field-sources-repository';
@@ -247,5 +249,67 @@ describe('LOW-7: a held key write fails loudly (throws inside the transaction) i
     await expect(recordSourceKeys(db as never, 'row', [{ source: 'BSE', keyType: 'BSE_IPO_NO', keyValue: '7001', attrs: { shares: 2000, priceMin: 10, priceMax: 11 } }],
       { boundVia: 'NAME', boundBy: 't' })).rejects.toThrow(/held \(OD-83\)/);
     expect(inserted).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// #1290 m3/m4 (§9.2 item 26): resolveBySourceKeys reports `admin_removed` when EVERY live hit is a
+// key an admin edit superseded; the caller then corroborates or holds. The fake answers the two
+// selects resolveBySourceKeys makes in order: the keys, then the rows they belong to.
+// ---------------------------------------------------------------------------------------------
+function twoSelectDb(keyRows: Record<string, unknown>[], ipoRows: Record<string, unknown>[]) {
+  let call = 0;
+  return {
+    select: () => ({ from: () => ({ where: async () => (call++ === 0 ? keyRows : ipoRows) }) }),
+    update: () => ({ set: () => ({ where: () => Object.assign(Promise.resolve([]), { returning: async () => [] }) }) }),
+    execute: async () => ({ rows: [] }),
+  };
+}
+const BSE_7794: SourceKeyRef = { source: 'BSE', keyType: 'BSE_IPO_NO', keyValue: '7794' };
+const ROW_A = { id: 'row-a', slug: 'alpha-ltd', companyName: 'Alpha Ltd', status: 'UPCOMING', offeringType: 'IPO', segment: 'MAINBOARD',
+  openDate: '2026-10-05', priceRangeMin: 100, priceRangeMax: 105, cin: null, isin: null };
+const adminRemovedKey = (over: Record<string, unknown> = {}) => ({ id: 'k-adm', ipoId: 'row-a', ...BSE_7794, bindingValue: '7794', state: 'SUPERSEDED',
+  stateReason: 'admin_edit: removed by admin (belongs to another offering)', attrs: null, recordOpenDate: null, ...over });
+
+describe('#1290 m3: resolveBySourceKeys names an admin-removed key hit', () => {
+  it('every live hit an admin edit superseded -> admin_removed (not superseded, not bound)', async () => {
+    const r = await resolveBySourceKeys(twoSelectDb([adminRemovedKey()], [ROW_A]) as never, { companyName: 'Beta Ltd', openDate: '2026-10-05' } as never, [BSE_7794]);
+    expect(r).toEqual({ kind: 'admin_removed', ipoId: 'row-a', keyIds: ['k-adm'] });
+  });
+  it('an OD-83 relaunch SUPERSEDED key is not admin-removed -> superseded', async () => {
+    const relaunch = adminRemovedKey({ stateReason: 'OD-83 relaunch: superseded by 7900 (same shares)' });
+    const r = await resolveBySourceKeys(twoSelectDb([relaunch], [ROW_A]) as never, { companyName: 'Alpha Ltd', openDate: '2026-10-05' } as never, [BSE_7794]);
+    expect(r.kind).toBe('superseded');
+  });
+  it('one admin-removed hit mixed with one ordinary SUPERSEDED hit is superseded (every() is not met)', async () => {
+    const relaunch = adminRemovedKey({ id: 'k-rel', keyType: 'CG_PAGE_ID', source: 'CHITTORGARH', bindingValue: '55', keyValue: '55', stateReason: 'OD-83 relaunch: x' });
+    const refs: SourceKeyRef[] = [BSE_7794, { source: 'CHITTORGARH', keyType: 'CG_PAGE_ID', keyValue: '55' }];
+    const r = await resolveBySourceKeys(twoSelectDb([adminRemovedKey(), relaunch], [ROW_A]) as never, { companyName: 'Alpha Ltd', openDate: '2026-10-05' } as never, refs);
+    expect(r.kind).toBe('superseded');
+  });
+  it('an admin-removed key on an ENDED offering is released and binds nothing -> miss', async () => {
+    const r = await resolveBySourceKeys(twoSelectDb([adminRemovedKey()], [{ ...ROW_A, status: 'WITHDRAWN' }]) as never, { companyName: 'Beta Ltd' } as never, [BSE_7794]);
+    expect(r.kind).toBe('miss');
+  });
+});
+
+describe('#1290 m3/m4: resolveIpoRow holds an uncorroborated admin-removed key hit and logs both price bounds', () => {
+  const record = (over: Record<string, unknown>) => ({
+    companyName: 'Beta Industries Ltd', normalizedName: 'beta industries', slug: 'beta-industries-ltd', openDate: '2026-11-20',
+    priceRangeMin: 200, priceRangeMax: 210, segment: 'MAINBOARD', sourceKeys: [BSE_7794], ...over,
+  });
+  it('record B hits the key A no longer carries, no corroboration -> held, and the hold log carries priceRangeMax', async () => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation((() => logger) as never);
+    const db = twoSelectDb([adminRemovedKey()], [ROW_A]);
+    await expect(resolveIpoRow(stubRepo(db, ROW_A), record({ openDate: '2026-10-08', priceRangeMin: null, priceRangeMax: 210 }) as never)).rejects.toThrow(/held for review/);
+    const held = warn.mock.calls.find((c) => String(c[1]).includes('identity_held_for_review'));
+    expect(held).toBeTruthy();
+    expect(JSON.stringify(held![0])).toContain('"priceRangeMax":210');
+    warn.mockRestore();
+  });
+  it('the same key hit corroborated (same name fold) binds A and writes nothing (SourceKeySupersededError)', async () => {
+    const db = twoSelectDb([adminRemovedKey()], [ROW_A]);
+    await expect(resolveIpoRow(stubRepo(db, ROW_A), record({ companyName: 'Alpha Ltd', normalizedName: 'alpha', slug: 'alpha-ltd', openDate: '2026-10-05', priceRangeMin: 100, priceRangeMax: 105 }) as never))
+      .rejects.toThrow(/SUPERSEDED/);
   });
 });
