@@ -14,6 +14,7 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { FinancialDataRepository } from '@/lib/repositories/financial-data-repository';
 import { logger } from '@/lib/logger';
+import { hideNotApplicableRows } from '@/lib/ipo-field-applicability';
 
 /**
  * Generate unique request ID for tracing
@@ -102,7 +103,8 @@ export async function GET(
     }
 
     // Fetch financial data
-    const financialData = await financialRepository.findByIPO(ipo.id);
+    // §9.2 item 18 / §1.11: a field the IPO's type makes not applicable never reaches a reader.
+    const financialData = hideNotApplicableRows(ipo, 'financial_data', await financialRepository.findByIPO(ipo.id));
 
     if (!financialData) {
       requestLogger.warn({ slug, ipoId: ipo.id }, 'Financial data not found');

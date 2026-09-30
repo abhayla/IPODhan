@@ -9,8 +9,10 @@
  * transaction and applied by the generator's own precedence. There is no second copy of the rules.
  *
  * No plan change = no rebuild: the plan depends only on the IPO's type key (segment + listing
- * exchanges). A save that leaves the type key as it was (an `offering_type` correction alone)
- * touches no plan row.
+ * exchanges) and its offering type (the manifest's §1.11 `na` lists). A save that leaves both as
+ * they were touches no plan row; an `offering_type` correction alone rebuilds only when it changes
+ * the not-applicable set (`planInputsChanged`), so a field the new type makes not applicable stops
+ * being planned and walked (PR #1327 round 1), while FPO -> IPO touches nothing.
  *
  * What the rebuild does, per (table, field):
  *   - planned, existing row with the SAME rank-1 source: kept (state, chosen value and evidence
@@ -22,6 +24,10 @@
  *   - planned with no existing row: planted PENDING (row_key '', as the cycle plants).
  * Stored field values are never touched here: the walk replaces a value when its new rank-1 source
  * answers, and an admin hold keeps its value (§2.7).
+ *
+ * OD-142: a re-planted row whose field still holds a (non-admin) value is listed in the admin queue
+ * as "source no longer first" until the new rank-1 source answers (`source-no-longer-first.ts`); a
+ * dropped row's open item leaves the queue (the field no longer applies, item 18).
  */
 import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -37,6 +43,7 @@ import {
   type PlannedFieldRow,
   type PlanOverridesReader,
 } from './field-plan-generator';
+import { clearSourceNoLongerFirstForDropped, queueSourceNoLongerFirstInTx, type RankOneChange } from './source-no-longer-first';
 
 export type { PlanManifest };
 
@@ -142,6 +149,8 @@ export interface PlanRebuildSummary {
   replanted: number;
   dropped: number;
   added: number;
+  /** OD-142: "source no longer first" queue items opened (re-planted fields that keep a value). */
+  queued: number;
   /** false when the type key did not change: no plan row was touched. */
   rebuilt: boolean;
 }
@@ -159,6 +168,34 @@ interface ExistingRow {
 }
 
 /**
+ * The manifest fields an offering type makes not applicable (§1.11 `na` lists), as a sorted key.
+ * `null` (type unknown) excludes nothing, the same as the generator.
+ */
+function notApplicableKey(manifest: PlanManifest, offeringType: string | null | undefined): string {
+  if (offeringType == null) return '';
+  return Object.entries(manifest.fields)
+    .filter(([, entry]) => (entry.na ?? []).includes(offeringType))
+    .map(([k]) => k)
+    .sort()
+    .join('|');
+}
+
+/**
+ * Would the generator plan this IPO differently after the write? The plan's inputs are the ranks
+ * (a function of the type key) and the not-applicable set (a function of the offering type through
+ * the manifest's `na` lists). An offering-type change that moves neither (FPO -> IPO) changes
+ * nothing in the plan, so it must not re-version or re-plant a single row.
+ */
+export function planInputsChanged(
+  manifest: PlanManifest,
+  before: Pick<PlanIpo, 'segment' | 'listingExchanges' | 'offeringType'>,
+  after: Pick<PlanIpo, 'segment' | 'listingExchanges' | 'offeringType'>
+): boolean {
+  if (resolveIpoTypeKey(before) !== resolveIpoTypeKey(after)) return true;
+  return notApplicableKey(manifest, before.offeringType) !== notApplicableKey(manifest, after.offeringType);
+}
+
+/**
  * Rebuild one IPO's plan inside the caller's transaction (the caller holds the `ipos` row lock).
  * `before` is the IPO's type slice before the write, for the audit summary only.
  */
@@ -166,17 +203,18 @@ export async function rebuildIpoPlanInTx(
   tx: Db,
   ipoId: string,
   manifest: PlanManifest,
-  before: Pick<PlanIpo, 'segment' | 'listingExchanges'>
+  before: Pick<PlanIpo, 'segment' | 'listingExchanges' | 'offeringType'>
 ): Promise<PlanRebuildSummary> {
-  const cur = await tx.execute(sql`SELECT segment, listing_exchanges FROM ipos WHERE id = ${ipoId}::uuid`);
-  const ipoRow = cur.rows[0] as { segment: string | null; listing_exchanges: string[] | null } | undefined;
+  const cur = await tx.execute(sql`SELECT segment, listing_exchanges, offering_type::text AS offering_type FROM ipos WHERE id = ${ipoId}::uuid`);
+  const ipoRow = cur.rows[0] as { segment: string | null; listing_exchanges: string[] | null; offering_type: string | null } | undefined;
   if (!ipoRow) throw new Error(`rebuildIpoPlanInTx: IPO ${ipoId} not found`);
-  const after: PlanIpo = { id: ipoId, segment: ipoRow.segment, listingExchanges: ipoRow.listing_exchanges };
+  const after: PlanIpo = { id: ipoId, segment: ipoRow.segment, listingExchanges: ipoRow.listing_exchanges, offeringType: ipoRow.offering_type };
   const typeKeyBefore = resolveIpoTypeKey(before);
   const typeKeyAfter = resolveIpoTypeKey(after);
-  if (typeKeyBefore === typeKeyAfter) {
-    // The plan is a function of the type key alone: nothing to rebuild, nothing re-versioned.
-    return { typeKeyBefore, typeKeyAfter, planned: 0, kept: 0, replanted: 0, dropped: 0, added: 0, rebuilt: false };
+  if (!planInputsChanged(manifest, before, after)) {
+    // Same ranks and same not-applicable set: the plan would come out identical, so nothing is
+    // rebuilt and nothing re-versioned (e.g. FPO -> IPO, which no manifest `na` list separates).
+    return { typeKeyBefore, typeKeyAfter, planned: 0, kept: 0, replanted: 0, dropped: 0, added: 0, queued: 0, rebuilt: false };
   }
 
   const planned = await generateFieldPlanAsync(after, { overrides: await txOverridesReader(tx, ipoId) }, manifest);
@@ -192,6 +230,8 @@ export async function rebuildIpoPlanInTx(
   const toPlant: Array<PlannedFieldRow & { rowKey: string; heldReadCause: string | null; heldReadAt: string | null }> = [];
   const toRerank: Array<{ id: string; plan: PlannedFieldRow }> = [];
   const coveredKeys = new Set<string>();
+  const rankOneChanges: RankOneChange[] = [];
+  const droppedKeys: Array<{ tableName: string; rowKey: string; fieldName: string }> = [];
   let kept = 0;
   let replanted = 0;
   let dropped = 0;
@@ -201,6 +241,7 @@ export async function rebuildIpoPlanInTx(
     const plan = plannedByKey.get(k);
     if (!plan) {
       toDelete.push(row.id);
+      droppedKeys.push({ tableName: row.table_name, rowKey: row.row_key, fieldName: row.field_name });
       dropped++;
       continue;
     }
@@ -211,6 +252,15 @@ export async function rebuildIpoPlanInTx(
       continue;
     }
     toDelete.push(row.id);
+    if (plan.rank1Source !== null) {
+      rankOneChanges.push({
+        tableName: row.table_name,
+        fieldName: row.field_name,
+        rowKey: row.row_key,
+        oldRank1: row.rank1_source,
+        newRank1: plan.rank1Source,
+      });
+    }
     // A held field's walk-read stamp (`[held-read:<key>]`, OD-65: no extra read of a held field)
     // moves to the re-planted row, so the new rank-1 source does not read it again until the key
     // (stage, completed documents) changes.
@@ -273,6 +323,9 @@ export async function rebuildIpoPlanInTx(
          AND left(coalesce(cause, ''), ${FIELD_PLAN_HELD_READ_PREFIX.length}) = ${FIELD_PLAN_HELD_READ_PREFIX}`);
   }
 
+  await clearSourceNoLongerFirstForDropped(tx, ipoId, droppedKeys);
+  const queue = await queueSourceNoLongerFirstInTx(tx, ipoId, rankOneChanges);
+
   return {
     typeKeyBefore,
     typeKeyAfter,
@@ -281,6 +334,7 @@ export async function rebuildIpoPlanInTx(
     replanted,
     dropped,
     added,
+    queued: queue.queued,
     rebuilt: true,
   };
 }

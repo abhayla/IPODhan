@@ -124,6 +124,44 @@ describe('checkCrossSourceDisagreements', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  // OD-142 (PR #1327 Tier A MAJOR-1): a "source no longer first" queue item is admin-list-only.
+  // Its source1 (the kept value's source) and source2 (the new rank 1) differ by construction, so
+  // the source1 <> source2 filter does not exclude it; only the admin-only predicate does.
+  // MUTATION: filter corrigendum rows only (the pre-fix line) -> RED.
+  it('OD-142: never pages for an open SOURCE_NO_LONGER_FIRST row on an OPEN IPO, and still pages a real disagreement next to it', async () => {
+    const db = makeDb(
+      [{ id: 'ipo-1', companyName: 'Mopshop Ltd' }],
+      [
+        {
+          ipoId: 'ipo-1',
+          fieldName: 'openDate',
+          source1: 'NSE',
+          value1: '2026-09-10',
+          source2: 'BSE',
+          value2: null,
+          resolutionReason: 'SOURCE_NO_LONGER_FIRST',
+          documentId: null,
+        },
+        {
+          ipoId: 'ipo-1',
+          fieldName: 'closeDate',
+          source1: 'NSE',
+          value1: '2026-09-12',
+          source2: 'BSE',
+          value2: '2026-09-13',
+          resolutionReason: null,
+          documentId: null,
+        },
+      ]
+    );
+
+    const report = await checkCrossSourceDisagreements(db, new Date('2026-08-18T12:00:00Z'));
+
+    expect(report.disagreements.map((d) => d.fieldName)).toEqual(['closeDate']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][1]?.body ?? '')).not.toContain('openDate');
+  });
+
   it('#687: dedupe key uses the IST day, not the UTC day (2026-09-15T20:30:00Z is 02:00 IST on the 16th)', async () => {
     const db = makeDb(
       [{ id: 'ipo-1', companyName: 'Acme Ltd' }],

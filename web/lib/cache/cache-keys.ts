@@ -6,6 +6,7 @@
  */
 
 import crypto from 'crypto';
+import { ADMIN_QUEUE_SETUP_KEY, ADMIN_QUEUE_COUNTS_KEY } from '@ipodhan/shared/utils/admin-queue-cache-keys';
 
 /**
  * Cache TTL constants (in seconds)
@@ -37,12 +38,12 @@ export const CacheTTL = {
 
 /** Admin queue (OD-136): the JS-side setup data (rule classes, holds, flagged values, IPO rows). */
 export function getAdminQueueSetupKey(): string {
-  return 'admin:queue:setup';
+  return ADMIN_QUEUE_SETUP_KEY;
 }
 
 /** Admin queue (OD-136): the whole-queue group and reason counts. */
 export function getAdminQueueCountsKey(): string {
-  return 'admin:queue:counts';
+  return ADMIN_QUEUE_COUNTS_KEY;
 }
 
 /** Every admin-queue key; an admin save drops all of them (admin-field-save.ts tableCacheKeys). */

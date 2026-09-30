@@ -125,7 +125,10 @@
           "reason": "OD-3 retires Moneycontrol as a scheduled source"
         }
       },
-      "na": [],
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
       "unit": "rupee",
       "comparisonFamily": "MONEY"
     },

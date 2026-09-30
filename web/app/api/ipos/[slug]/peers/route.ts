@@ -14,6 +14,7 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { PeerCompanyRepository } from '@/lib/repositories/peer-company-repository';
 import { logger } from '@/lib/logger';
+import { hideNotApplicableRows } from '@/lib/ipo-field-applicability';
 
 /**
  * Generate unique request ID for tracing
@@ -102,7 +103,8 @@ export async function GET(
     }
 
     // Fetch peer companies
-    const peers = await peerRepository.findByIPO(ipo.id);
+    // §9.2 item 18 / §1.11: a field the IPO's type makes not applicable never reaches a reader.
+    const peers = hideNotApplicableRows(ipo, 'peer_companies', await peerRepository.findByIPO(ipo.id));
 
     const duration = Date.now() - startTime;
     requestLogger.info(

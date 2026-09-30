@@ -5,7 +5,7 @@
  */
 
 import { eq, and, isNull, isNotNull, lt, desc, sql } from 'drizzle-orm';
-import { SOURCE_CHANGED_OWN_VALUE, isAdminOnlyConflict, isBehaviourConflict, isWriterBookkeepingField } from '../utils/conflict-reasons';
+import { SOURCE_CHANGED_OWN_VALUE, SOURCE_NO_LONGER_FIRST, isAdminOnlyConflict, isBehaviourConflict, isWriterBookkeepingField } from '../utils/conflict-reasons';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '../db/schema';
@@ -236,7 +236,12 @@ export class DataConflictsRepository extends BaseRepository {
           isNull(dataConflicts.resolvedAt),
           // OD-90: a corrigendum suggestion shares this table but is never a source-vs-source
           // conflict — refreshing it would overwrite the admin's proposed value and quote.
-          isNull(dataConflicts.documentId)
+          isNull(dataConflicts.documentId),
+          // OD-142 (PR #1327 round 1, found by the OD-144 real-walk proof): a "source no longer
+          // first" queue item is not a conflict either. Refreshing it turned the item into a
+          // HELD_DISPUTED_HIGH_VALUE_LIVE dispute (the item vanished from the queue and the owner
+          // would be paged); a real dispute on the same field gets its own row beside the item.
+          sql`${dataConflicts.resolutionReason} IS DISTINCT FROM ${SOURCE_NO_LONGER_FIRST}`
         )
       )
       .limit(1);
@@ -343,7 +348,10 @@ export class DataConflictsRepository extends BaseRepository {
               eq(dataConflicts.fieldName, fieldName),
               isNull(dataConflicts.resolvedAt),
               // OD-90: only the admin closes a corrigendum suggestion (accept or dismiss).
-              isNull(dataConflicts.documentId)
+              isNull(dataConflicts.documentId),
+              // OD-142: the queue item clears only by its own rules (rank 1 answered, superseded,
+              // admin save); two sources converging is not one of them and must not erase its marker.
+              sql`${dataConflicts.resolutionReason} IS DISTINCT FROM ${SOURCE_NO_LONGER_FIRST}`
             )
           )
           .returning({ id: dataConflicts.id });

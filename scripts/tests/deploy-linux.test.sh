@@ -3257,13 +3257,16 @@ FAKERC30K
   fi
 
   # 30k-parity: the shell namespace list is exactly the set of top-level
-  # namespaces in the two cache-keys.ts files (a new cache namespace added
-  # there without being added here would survive a rollback, stale).
+  # namespaces in every cache-key definition file: the two cache-keys.ts files
+  # plus the shared admin-queue key module (OD-136/OD-142; web re-exports it,
+  # the scraper imports it). A new cache namespace added there without being
+  # added here would survive a rollback, stale.
   NS_TS_30K="$(cat "$SCRIPT_DIR/../../web/lib/cache/cache-keys.ts" "$SCRIPT_DIR/../../packages/shared/src/cache/cache-keys.ts" \
+    "$SCRIPT_DIR/../../packages/shared/src/utils/admin-queue-cache-keys.ts" \
     | grep -oE "[\`'][a-z_-]+:" | tr -d "\`'" | tr -d ':' | sort -u | tr '\n' ' ')"
   NS_SH_30K="$(eval "$NS_LINE_30K"; printf '%s\n' $LEGACY_CACHE_KEY_NAMESPACES | sort -u | tr '\n' ' ')"
   if [ -n "$NS_TS_30K" ] && [ "$NS_TS_30K" = "$NS_SH_30K" ]; then
-    pass "case 30k parity: LEGACY_CACHE_KEY_NAMESPACES matches the namespaces in both cache-keys.ts files"
+    pass "case 30k parity: LEGACY_CACHE_KEY_NAMESPACES matches the namespaces in every cache-key definition file"
   else
     fail "case 30k parity: cache-keys.ts namespaces [$NS_TS_30K] != deploy-linux.sh LEGACY_CACHE_KEY_NAMESPACES [$NS_SH_30K]"
   fi

@@ -30,12 +30,18 @@ export interface PlanIpo {
   id: string;
   segment: 'MAINBOARD' | 'SME' | string | null;
   listingExchanges?: readonly string[] | null;
+  /**
+   * §1.11 / §2.8 (PR #1327 round 1): the IPO's offering type. A field whose manifest `na` list
+   * names it is not applicable, so it is not planned. `undefined` (a caller that never read it)
+   * plans every field the type key ranks, as before.
+   */
+  offeringType?: string | null;
 }
 
 /** The slice of `scraper/config/field-manifest.json` the plan needs (the scraper's zod type fits it). */
 export interface PlanManifest {
   version: number;
-  fields: Record<string, { rank: Partial<Record<string, readonly string[]>> }>;
+  fields: Record<string, { rank: Partial<Record<string, readonly string[]>>; na?: readonly string[] }>;
 }
 
 /** One planned (IPO, table, field) row, shaped like the `ipo_field_plan` columns it inserts into. */
@@ -94,6 +100,29 @@ export function registryRanksFor(entry: { rank: Partial<Record<string, readonly 
   return Array.isArray(ranks) ? [...ranks] : null;
 }
 
+/** The slice of a manifest entry that decides applicability: its per-type ranks and its §1.11 `na` list. */
+export interface ApplicabilityEntry {
+  rank: Partial<Record<string, readonly string[]>>;
+  na?: readonly string[];
+}
+
+/**
+ * Does this field apply to this IPO at all (§1.11 per-type exceptions, §2.8, §9.2 item 18)? The ONE
+ * rule, read from the manifest entry the plan already uses: not applicable when the manifest ranks
+ * nothing for the IPO's type key (the plan's own N/A, `registryRanksFor` null) or when the IPO's
+ * offering type is in the entry's `na` list (§1.11, e.g. lot size on a BUYBACK). An empty rank list
+ * is NOT "not applicable" (#858: no source can serve it, a gap, not a type rule). The page, the API
+ * payload and the admin editor all ask this function; there is no second table of rules.
+ */
+export function isFieldApplicable(
+  entry: ApplicabilityEntry,
+  ipo: Pick<PlanIpo, 'segment' | 'listingExchanges'> & { offeringType?: string | null }
+): boolean {
+  if (registryRanksFor(entry, resolveIpoTypeKey(ipo)) === null) return false;
+  const type = ipo.offeringType ?? null;
+  return !(type !== null && (entry.na ?? []).includes(type));
+}
+
 /**
  * One planned row per manifest field that declares a rank for THIS IPO's type. A field with no
  * entry for the type is not planned; a field whose list is empty (no source can serve it for this
@@ -116,6 +145,8 @@ export function generateFieldPlan(ipo: PlanIpo, manifest: PlanManifest): Planned
 
     const ranks = registryRanksFor(entry, typeKey);
     if (ranks === null || ranks.length === 0) continue;
+    // §1.11: not applicable to this offering type (the same `na` read as isFieldApplicable).
+    if (ipo.offeringType != null && (entry.na ?? []).includes(ipo.offeringType)) continue;
     if (ranks.length > PLAN_RANK_COLUMNS) {
       throw new Error(
         `generateFieldPlan: field "${fieldKey}" ranks ${ranks.length} sources for ${typeKey} ` +

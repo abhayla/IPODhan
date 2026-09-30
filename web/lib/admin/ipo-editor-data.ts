@@ -22,6 +22,7 @@ import {
   ipoTypeKey,
   type EditorFieldSpec,
   type EditorTable,
+  isEditorFieldApplicable,
 } from './ipo-editor-fields';
 
 type Db = NodePgDatabase<typeof schema>;
@@ -288,7 +289,11 @@ export async function loadIpoEditor(db: Db, ipoId: string): Promise<EditorPayloa
           : [],
       e1Rule: spec.e1 && spec.mode === 'panel' ? E1_RULE_TEXT : null,
       planRebuildNotice: spec.planRebuild ? PLAN_REBUILD_NOTICE : null,
-      notApplicable: !!ipo.offeringType && spec.na.includes(String(ipo.offeringType)),
+      notApplicable: !isEditorFieldApplicable(spec.key, {
+        segment: ipo.segment as string | null,
+        listingExchanges: ipo.listingExchanges as string[] | null,
+        offeringType: (ipo.offeringType as string | null) ?? null,
+      }),
     });
   }
 

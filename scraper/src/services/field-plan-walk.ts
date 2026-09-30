@@ -347,6 +347,14 @@ export interface FieldPlanWalkRepository {
   }): Promise<{ released: boolean; reason?: string }>;
   /** #968 (OD-95): end an override reopen -- back to SUPPLIED (evidence untouched) stamped with the
    *  order it was tried under, or handed to supersession when `supersededBy` is given. */
+  /** OD-142/OD-144: the new rank-1 plan code of this field's open "source no longer first" item,
+   *  or null when none is open. Optional so a mock without it walks exactly as before. */
+  openSourceNoLongerFirstNewRank1?(params: {
+    ipoId: string;
+    tableName: string;
+    rowKey: string;
+    fieldName: string;
+  }): Promise<string | null>;
   restoreSettledAfterReopen?(params: {
     planRowId: string;
     claimToken: string;
@@ -377,7 +385,8 @@ export interface FieldPlanWalkOrchestrator {
     source: any,
     confidence?: number,
     preResolvedIPO?: any,
-    onlyFields?: string[]
+    onlyFields?: string[],
+    options?: { planRankWinnerFields?: readonly string[] }
   ): Promise<any>;
   consolidatedUpsertChildRows(
     ipoId: string,
@@ -385,7 +394,8 @@ export interface FieldPlanWalkOrchestrator {
     rows: any[],
     source: any,
     docType?: string,
-    confidence?: number
+    confidence?: number,
+    options?: { planRankWinnerFields?: readonly string[] }
   ): Promise<any>;
 }
 
@@ -1367,7 +1377,20 @@ async function attemptOneField(
 
     const { rank, source, answer } = winner;
 
-    const verdict = await runWrite(ipoId, plan, source, answer, deps);
+    // OD-144 (§2.8): a value kept and queued under OD-142 is replaced by the answer of the plan's
+    // rank-1 source for the IPO's CURRENT type, whatever the global matrix ranks higher. Only
+    // that source, and only while the field's item is open and names it as the new rank 1.
+    const planRankWins =
+      source === plan.rank1Source && deps.fieldPlanRepository.openSourceNoLongerFirstNewRank1
+        ? (await deps.fieldPlanRepository.openSourceNoLongerFirstNewRank1({
+            ipoId,
+            tableName: plan.tableName,
+            rowKey: plan.rowKey ?? '',
+            fieldName: plan.fieldName,
+          })) === source
+        : false;
+
+    const verdict = await runWrite(ipoId, plan, source, answer, deps, planRankWins);
 
     if (verdict.happened === false && STRUCTURAL_WRITE_SKIP_REASONS.has(verdict.skipReason)) {
       // OD-99: the writer refused for a STRUCTURAL reason -- it will refuse
@@ -1875,10 +1898,12 @@ async function runWrite(
   plan: any,
   source: string,
   answer: Extract<FieldFetcherAnswer, { outcome: 'SUPPLIED' }>,
-  deps: FieldPlanWalkDeps
+  deps: FieldPlanWalkDeps,
+  planRankWins = false
 ): Promise<WriteVerdict> {
   try {
     const camelFieldName = columnToCamelCase(plan.fieldName);
+    const writeOptions = planRankWins ? { planRankWinnerFields: [camelFieldName] } : undefined;
     // The manifest's `source` vocabulary (DOC, RHP, PRICE_BAND_AD, ...) is wider than the
     // writer's `ScraperSource` enum — every filing document-type code collapses to DRHP
     // (field-source-codes.ts; `field_sources.source` is a Postgres enum with no 'DOC' member).
@@ -1907,7 +1932,8 @@ async function runWrite(
         // Review round 3 (MAJOR): the identity fields above are for the lock
         // slug / resolveIpoRow ONLY, never a claim this write is making —
         // consolidate exactly the one field this write actually supplied.
-        [camelFieldName]
+        [camelFieldName],
+        writeOptions
       );
       if (r?.skipped) return { happened: false, skipReason: r.skipReason ?? 'SKIPPED' };
       // #1229: the orchestrator's merged-record date rule refused this value
@@ -1931,7 +1957,9 @@ async function runWrite(
       plan.tableName as any,
       [{ rowKey: plan.rowKey, data: { [camelFieldName]: answer.value } }],
       writerSource as any,
-      answer.documentType
+      answer.documentType,
+      undefined,
+      writeOptions
     );
     // A child-row call returns per-row outcomes; the one row we sent is the
     // only one that can answer for this field.

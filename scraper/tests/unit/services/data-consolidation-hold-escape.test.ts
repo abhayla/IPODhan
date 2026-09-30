@@ -181,6 +181,50 @@ describe('W-160 round 2 — exchange consensus / date-invariant HOLD escapes (Ka
     expect(mockConflictsRepo.resolveConflict).not.toHaveBeenCalledWith('suggestion-close-1', expect.anything());
   });
 
+  // PR #1327 Tier A follow-up (OD-75 / OD-142): the date-invariant escape closes only a real HOLD
+  // row. An admin-only row on the same field (an OD-142 "source no longer first" queue item, listed
+  // FIRST so a filter-less find() would pick it) stays open, and the real HOLD row beside it is the
+  // one resolved. MUTATION: drop the admin-only filter on the invariant path -> RED.
+  it('OD-142: the date-invariant escape never closes a "source no longer first" queue item; it resolves the HOLD row', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(kanoharExisting() as any);
+    const openRow = (id: string, resolutionReason: string | null) => ({
+      id,
+      ipoId: 'kanohar-ipo',
+      tableName: 'ipos',
+      rowKey: '',
+      fieldName: 'closeDate',
+      source1: 'CHITTORGARH',
+      value1: '2026-12-12',
+      // NSE (the incoming source itself), so escape (a) exchange consensus cannot fire first.
+      source2: 'NSE',
+      value2: '2026-09-10',
+      resolutionReason,
+      documentId: null,
+      severity: 'WARNING',
+      resolvedAt: null,
+      detectedAt: new Date(),
+    });
+    vi.mocked(mockConflictsRepo.findUnresolvedForIPO).mockResolvedValue([
+      openRow('queue-item-close-1', 'SOURCE_NO_LONGER_FIRST'),
+      openRow('hold-close-1', null),
+    ] as any);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'kanohar-ipo',
+      tableName: 'ipos',
+      incomingData: { openDate: '2026-09-08', closeDate: '2026-09-10' },
+      source: 'NSE',
+      confidence: 95,
+      existingData: kanoharExistingData,
+      scrapedAt: new Date('2026-09-05T00:01:00Z'),
+    });
+
+    const closeField = result.fieldResults.find((f) => f.fieldName === 'closeDate');
+    expect(closeField!.conflictReason).toBe('DATE_INVARIANT_OVERRIDE_HELD_VALUE');
+    expect(mockConflictsRepo.resolveConflict).not.toHaveBeenCalledWith('queue-item-close-1', expect.anything());
+    expect(mockConflictsRepo.resolveConflict).toHaveBeenCalledWith('hold-close-1', expect.objectContaining({ resolutionReason: 'DATE_INVARIANT_OVERRIDE_HELD_VALUE' }));
+  });
+
   it('CRITICAL-1 negative control: reporting ONLY openDate (closeDate absent this cycle) does NOT flip — the stale held close still fails the invariant', async () => {
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(kanoharExisting() as any);
 

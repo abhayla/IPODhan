@@ -108,6 +108,13 @@ const KNOWN_UNIT_CORRECTIONS = {
 // fields that are now job-owned (the Live-figures job) and correctly carry NO manifest row at
 // all — a declared, dated exclusion, not the generator silently dropping a v1 field. Any OTHER
 // v1 row going missing still fails this test.
+// §1.11 / OD-77 (F-214, PR #1327 round 1 MAJOR-3): issue size does not apply to a TENDER or a
+// BUYBACK. v1 carried no na for it; this is a declared, dated correction, like the unit ones above.
+// Any OTHER na drift on a v1 row still fails this test.
+const KNOWN_NA_CORRECTIONS = {
+  'ipos.issue_size': ['TENDER', 'BUYBACK'],
+};
+
 const JOB_OWNED_V1_EXCLUSIONS = new Set([
   'subscriptions.total_subscription',
   'subscriptions.retail_subscription',
@@ -134,8 +141,9 @@ test('case 3: the generator reproduces all 10 v1 rows exactly (rank/capability/u
     if (JSON.stringify(gen.unit) !== JSON.stringify(expectedUnit)) {
       mismatches.push(`${key}: unit ${JSON.stringify(gen.unit)} != ${JSON.stringify(expectedUnit)}`);
     }
-    if (JSON.stringify(gen.na ?? []) !== JSON.stringify(original.na ?? [])) {
-      mismatches.push(`${key}: na ${JSON.stringify(gen.na)} != ${JSON.stringify(original.na)}`);
+    const expectedNa = KNOWN_NA_CORRECTIONS[key] ?? original.na ?? [];
+    if (JSON.stringify(gen.na ?? []) !== JSON.stringify(expectedNa)) {
+      mismatches.push(`${key}: na ${JSON.stringify(gen.na)} != ${JSON.stringify(expectedNa)}`);
     }
 
     const expectedCapability = { ...original.capability };

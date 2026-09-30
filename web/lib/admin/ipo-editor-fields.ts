@@ -12,7 +12,7 @@
 import manifestJson from '../../../scraper/config/field-manifest.json';
 import { IPO_FIELDS_AWAITING_PHASE_B } from '@ipodhan/shared/services/admin-field-write';
 import { PLAN_INVALIDATING_IPO_FIELDS } from '@ipodhan/shared/services/plan-invalidating-rebuild';
-import { resolveIpoTypeKey } from '@ipodhan/shared/services/field-plan-generator';
+import { isFieldApplicable, resolveIpoTypeKey } from '@ipodhan/shared/services/field-plan-generator';
 
 export type FieldClass = 'D' | 'T' | 'X' | 'W' | 'M' | 'C' | 'I';
 
@@ -115,6 +115,24 @@ export interface EditorFieldSpec {
 /** The Appendix A type column for an IPO: the plan generator's own rule (packages/shared). */
 export function ipoTypeKey(ipo: { segment?: string | null; listingExchanges?: string[] | null }): string {
   return resolveIpoTypeKey({ segment: ipo.segment ?? null, listingExchanges: ipo.listingExchanges ?? null });
+}
+
+/**
+ * §1.11 / §9.2 item 18: does this field apply to this IPO? THE rule (`isFieldApplicable`, shared with
+ * the plan and the public payload) over the field's manifest entry; a field with no manifest entry
+ * (class C, the settings) always applies.
+ */
+export function isEditorFieldApplicable(
+  key: string,
+  ipo: { segment?: string | null; listingExchanges?: string[] | null; offeringType?: string | null }
+): boolean {
+  const entry = MANIFEST[key];
+  if (!entry) return true;
+  return isFieldApplicable(entry, {
+    segment: ipo.segment ?? null,
+    listingExchanges: ipo.listingExchanges ?? null,
+    offeringType: ipo.offeringType ?? null,
+  });
 }
 
 /** §9.2 item 7 as a function of the class and the key. */

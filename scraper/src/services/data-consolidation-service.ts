@@ -61,7 +61,6 @@ import logger from '../utils/logger.js';
 import {
   SOURCE_CHANGED_OWN_VALUE,
   isBehaviourConflict,
-  isCorrigendumSuggestion,
   isWriterBookkeepingField,
 } from '@ipodhan/shared/utils/conflict-reasons';
 import {
@@ -167,6 +166,15 @@ export interface DeferredProvenanceWrite {
 export interface ConsolidateIPODataInput {
   ipoId: string;
   tableName: string;
+  /**
+   * OD-144 (owner, 2026-09-30; §2.8): camelCase fields of THIS write whose incoming source is the
+   * rank-1 source of the plan for the IPO's CURRENT type AND which hold a value kept and queued
+   * under OD-142 ("source no longer first"). For those fields the plan's rank decides: the
+   * incoming value replaces the kept one even where the write-priority matrix (or the live-IPO
+   * HOLD, which guards the same matrix disagreement) would keep it. Never set for an ADMIN value.
+   * Only the field-plan walk sets it, and only after reading the open queue item.
+   */
+  planRankWinnerFields?: readonly string[];
   /**
    * Natural key of the row within `tableName`. `''` (the default) for every table with
    * exactly one row per IPO — `ipos`, `ipo_details`, `anchor_investors`, `financial_data`.
@@ -278,6 +286,9 @@ interface ConflictInfo {
   // was the one actually stored.
   chosenSource: ScraperSource;
 }
+
+/** OD-144: the field-result reason when the current type's rank-1 answer replaced an OD-142 kept value. */
+export const PLAN_RANK_REPLACED_KEPT_VALUE = 'PLAN_RANK_REPLACED_KEPT_VALUE';
 
 const PRICE_BAND_FIELDS = ['priceRangeMin', 'priceRangeMax'] as const;
 
@@ -1291,6 +1302,7 @@ export class DataConsolidationService {
             // about `status` and the price band. Same fallback chain the
             // ipoType resolution above already uses.
             listingExchanges: storedExchanges ?? input.incomingData?.listingExchanges ?? null,
+            planRankWins: input.planRankWinnerFields?.includes(fieldName) ?? false,
           });
 
           result.fieldResults.push(fieldResult);
@@ -1397,6 +1409,8 @@ export class DataConsolidationService {
    * Core conflict detection and resolution logic
    */
   private async consolidateField(params: {
+    /** OD-144: see `ConsolidateIPODataInput.planRankWinnerFields`. */
+    planRankWins?: boolean;
     /** #993: the incoming caller's lineage (see `ConsolidateIPODataInput.incomingLineage`). */
     incoming?: IncomingLineage;
     /** OD-131: collect provenance writes here instead of writing them (`deferProvenance`). */
@@ -2249,6 +2263,7 @@ export class DataConsolidationService {
 
     // Case 3: Conflict detected - resolve based on priority
     const conflict = await this.resolveConflict({
+      planRankWins: params.planRankWins,
       incoming: params.incoming,
       provenanceSink: params.provenanceSink,
       ipoId,
@@ -2516,7 +2531,9 @@ export class DataConsolidationService {
               (row: any) =>
                 // OD-90: a corrigendum suggestion on this field is the admin's to accept or
                 // dismiss; closing it here would also bar it for good (unique suggestion_key).
-                !isCorrigendumSuggestion(row) &&
+                // OD-75 / OD-142: nor is an admin-only row (a source changing its own value, a
+                // "source no longer first" queue item) a HOLD row; only its own rules close it.
+                isBehaviourConflict(row) &&
                 row.tableName === tableName &&
                 (row.rowKey ?? '') === rowKey &&
                 row.fieldName === fieldName
@@ -2548,6 +2565,8 @@ export class DataConsolidationService {
    * Uses priority matrix and time-based rules
    */
   private async resolveConflict(params: {
+    /** OD-144: see `ConsolidateIPODataInput.planRankWinnerFields`. */
+    planRankWins?: boolean;
     /** #993: the incoming caller's lineage (see `ConsolidateIPODataInput.incomingLineage`). */
     incoming?: IncomingLineage;
     /** OD-131: collect provenance writes here instead of writing them (`deferProvenance`). */
@@ -2633,7 +2652,11 @@ export class DataConsolidationService {
         postponementDates.listingDate,
         postponementDates.segment
       );
+    // OD-144: the current type's rank-1 source answering a kept-and-queued field is not a dispute to
+    // hold; it is the answer OD-142 waits for.
+    const planRankWins = params.planRankWins === true && existingSource !== 'ADMIN' && incomingSource !== 'ADMIN';
     if (
+      !planRankWins &&
       HIGH_VALUE_LIVE_FIELDS.has(fieldName) &&
       !trustedPostponement &&
       ipoStatus !== undefined &&
@@ -2879,6 +2902,12 @@ export class DataConsolidationService {
 
     if (tiebreakResolved) {
       // tie-break already resolved this field — chosenValue/chosenSource/resolutionReason stand.
+    } else if (planRankWins) {
+      // OD-144 (§2.8): the plan's rank for the IPO's CURRENT type decides this write, not the
+      // global matrix; the kept value's source is recorded as previousSource below.
+      chosenSource = incomingSource;
+      chosenValue = incomingValue;
+      resolutionReason = PLAN_RANK_REPLACED_KEPT_VALUE;
     } else if (existingPriority !== incomingPriority) {
       // Lower index = higher priority
       if (
@@ -2993,6 +3022,9 @@ export class DataConsolidationService {
     if (
       FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION &&
       !this.currentShadowMode &&
+      // OD-144: the OD-142 queue item already records the kept value and its source; a planned
+      // replacement is not a new dispute (a row here would page the owner, OD-112).
+      !planRankWins &&
       (existingSource !== incomingSource || selfChange)
     ) {
       await this.logConflict({

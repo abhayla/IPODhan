@@ -67,11 +67,15 @@ export function createIpoTypeShareLock(db: TxCapableDb, writerFor: (tx: unknown)
   return (ipoId, fn) =>
     db.transaction(async (tx) => {
       const res = await tx.execute(
-        sql`SELECT id, segment, listing_exchanges FROM ipos WHERE id = ${ipoId}::uuid FOR SHARE`
+        sql`SELECT id, segment, listing_exchanges, offering_type::text AS offering_type FROM ipos WHERE id = ${ipoId}::uuid FOR SHARE`
       );
-      const row = res.rows[0] as { id: string; segment: string | null; listing_exchanges: string[] | null } | undefined;
+      const row = res.rows[0] as
+        | { id: string; segment: string | null; listing_exchanges: string[] | null; offering_type: string | null }
+        | undefined;
+      // offering_type too (§1.11, PR #1327 round 1): an admin offering-type correction drops the
+      // rows the new type makes not applicable, and a plant must not put them back.
       const current: PlanIpo | null = row
-        ? { id: row.id, segment: row.segment, listingExchanges: row.listing_exchanges }
+        ? { id: row.id, segment: row.segment, listingExchanges: row.listing_exchanges, offeringType: row.offering_type }
         : null;
       return fn(current, writerFor(tx));
     });

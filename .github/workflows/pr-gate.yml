@@ -1278,6 +1278,8 @@ jobs:
           tests/integration/ocr-loses-disagreement.integration.test.ts
           tests/integration/settled-field-override-reopen.integration.test.ts
           tests/integration/data-conflicts-repository-hold.integration.test.ts
+          tests/integration/od142-type-correction-values.integration.test.ts
+          tests/integration/od144-plan-rank-write.integration.test.ts
           tests/integration/od73-settled-field.integration.test.ts
           tests/integration/db-timezone.integration.test.ts
           tests/integration/field-sources-witnesses.integration.test.ts
