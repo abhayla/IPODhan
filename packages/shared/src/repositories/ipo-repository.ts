@@ -351,6 +351,17 @@ function identifierAliasMatch(kind: 'CIN' | 'ISIN' | 'SYMBOL', value: string) {
   return sql`${ipos.id} IN (SELECT a.ipo_id FROM ${ipoIdentifierAliases} a WHERE a.kind = ${kind} AND a.value = ${value})`;
 }
 
+/**
+ * #1233 round 2: work that must commit or roll back WITH an `ipos` write (the plan rebuild after a
+ * board or exchange change, section 2.8). Runs inside the write transaction, after the update, under
+ * the row lock `filterPatchUnderHold` takes; `before` is the type slice read under that lock.
+ * A throw rolls the write back.
+ */
+export type IposWriteTxHook = (
+  tx: unknown,
+  before: { segment: string | null; listingExchanges: string[] | null; offeringType: string | null }
+) => Promise<void>;
+
 export class IPORepository extends BaseRepository implements IIPORepository {
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis) {
     super(db, redis);
@@ -1657,9 +1668,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   async updateReportingHolds(
     id: string,
     data: Partial<IPOInsert>,
-    options?: { honourProtection?: { source: string } }
+    options?: { honourProtection?: { source: string }; inTx?: IposWriteTxHook }
   ): Promise<{ ipo: IPO; dropped: string[] }> {
-    return this.updateHonouringProtection(id, data, options?.honourProtection?.source ?? 'update()');
+    return this.updateHonouringProtection(id, data, options?.honourProtection?.source ?? 'update()', options?.inTx);
   }
 
   /**
@@ -1672,7 +1683,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * while this waited on the lock is seen by the protection read (READ COMMITTED takes a new
    * snapshot per statement) and survives.
    */
-  private async updateHonouringProtection(id: string, data: Partial<IPOInsert>, source: string): Promise<{ ipo: IPO; dropped: string[] }> {
+  private async updateHonouringProtection(
+    id: string,
+    data: Partial<IPOInsert>,
+    source: string,
+    inTx?: IposWriteTxHook
+  ): Promise<{ ipo: IPO; dropped: string[] }> {
     let dropped: string[] = [];
     let ipo: IPO;
     try {
@@ -1682,6 +1698,14 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         const filtered = await filterPatchUnderHold(tx, id, 'ipos', incoming, { honourScraperLock: true });
         if (!filtered.hold) throw new EntityNotFoundError('IPO', id);
         dropped = filtered.dropped;
+        // #1233 round 2: the type slice as it stood under this write's row lock, for `inTx`.
+        const [typeBefore] = inTx
+          ? await tx
+              .select({ segment: ipos.segment, listingExchanges: ipos.listingExchanges, offeringType: ipos.offeringType })
+              .from(ipos)
+              .where(eq(ipos.id, id))
+              .limit(1)
+          : [];
         // §9.2 items 8 and 9 (OD-107): lead managers the admin owns are never replaced; a writer's
         // different list becomes a suggestion (rows to add / remove) for the admin queue.
         if (Array.isArray(incoming.leadManagers) && filtered.hold.protectedFields.has('leadManagers')) {
@@ -1695,9 +1719,19 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           });
         }
         const patch = filtered.patch as Record<string, unknown>;
+        const runInTx = async (row: IPO): Promise<IPO> => {
+          if (inTx) {
+            await inTx(tx, {
+              segment: (typeBefore?.segment as string | null | undefined) ?? null,
+              listingExchanges: (typeBefore?.listingExchanges as string[] | null | undefined) ?? null,
+              offeringType: (typeBefore?.offeringType as string | null | undefined) ?? null,
+            });
+          }
+          return row;
+        };
         if (Object.keys(patch).length === 0) {
           const [current] = await tx.select().from(ipos).where(eq(ipos.id, id)).limit(1);
-          return current as IPO;
+          return runInTx(current as IPO);
         }
         // Same choke point for every write carrying a company name (#42): persist the sanitized form.
         if (typeof patch.companyName === 'string' && patch.companyName) patch.companyName = sanitizeDisplayCompanyName(patch.companyName);
@@ -1714,7 +1748,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           .set({ ...(patch as Partial<IPOInsert>), updatedAt: new Date() })
           .where(eq(ipos.id, id))
           .returning();
-        return written as IPO;
+        return runInTx(written as IPO);
       });
     } catch (error) {
       if (error instanceof EntityNotFoundError) throw error;

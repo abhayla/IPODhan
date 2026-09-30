@@ -12,6 +12,7 @@ import { loadFieldManifest } from './field-manifest-loader.js';
 import { mapManifestSourceToScraperSource } from './field-source-codes.js';
 import type { IpoTypeKey } from '../services/field-plan-generator.js';
 import { FEATURE_FLAGS } from './feature-flags.js';
+import { LISTING_SENTENCE_ORDER } from '../../config/listing-sentence-precedence.mjs';
 import { logger } from '../utils/logger.js';
 
 export type ScraperSource =
@@ -85,6 +86,16 @@ export interface FieldRules {
    * for any other field that opts into `sameSourceRefresh` in the future.
    */
   sameSourceRefreshSources?: ScraperSource[];
+
+  /**
+   * #1233 round 2: this field's OWN order between two offer documents (higher number decides),
+   * used instead of the generic price-field `DOCUMENT_TYPE_RANK` by
+   * `incomingDocumentOutranksStored`. `ipos.segment` and `ipos.listing_exchanges` carry the
+   * listing-sentence order (scraper/config/listing-sentence-precedence.mjs, OD-129). A type not in
+   * the order, or two documents of the same type, cannot be ordered here (no filing date at this
+   * layer) and return null.
+   */
+  documentOrder?: Readonly<Record<string, number>>;
 
   /**
    * Ignore DRHP for this field (for real-time data)
@@ -263,11 +274,24 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // value-vs-value conflict case (e.g. NSE says MAINBOARD, a stale
   // Moneycontrol scrape says SME) with NSE/BSE (authoritative exchange data)
   // outranking Chittorgarh/Moneycontrol.
+  // #1233 (OD-129, spec row 23 "DOC, NSE, BSE"): the offer document's listing sentence decides
+  // the board, so DRHP (the writer source of every document) ranks above the feeds. Before
+  // #1233 DRHP was absent here (rank -1), so no document could ever write the board. ADMIN still
+  // outranks every document (section 9).
+  // Which DOCUMENT decides is settled BEFORE this matrix, at the filing persister's
+  // listing-sentence gate (OD-129 order Prospectus > RHP > price band ad > DRHP; within a type the
+  // later FILING date, OD-30; scraper/config/listing-sentence-precedence.mjs). The upsert passes no
+  // document type to consolidation, so the same-source refresh below cannot rank two documents and
+  // the newest write wins, which is the one the gate let through. `documentOrder` makes any caller
+  // that does pass a type use the listing-sentence order, never the price-field DOCUMENT_TYPE_RANK.
   segment: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL', 'API_FALLBACK'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL', 'API_FALLBACK'],
     normalization: 'none',
     confidenceThreshold: 70,
-    description: 'MAINBOARD/SME exchange segment (null for InvIT/REIT business trusts). NSE/BSE are authoritative.',
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
+    documentOrder: LISTING_SENTENCE_ORDER,
+    description: 'MAINBOARD/SME board (null for InvIT/REIT business trusts). The offer document decides (OD-129); the exchange feeds, then Chittorgarh, only before a document is read.',
   },
 
   // ==================== DESCRIPTIVE FIELDS (#69) ====================
@@ -791,6 +815,9 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL', 'API_FALLBACK'],
     normalization: 'none',
     confidenceThreshold: 75,
+    // #1233 round 2: the document set comes from the listing sentence (OD-129); its order is the
+    // listing-sentence order, the same one the persister gate applies.
+    documentOrder: LISTING_SENTENCE_ORDER,
     description: 'Listing exchange set — union of exchange self-assertions (NSE/BSE speak only for themselves)',
   },
 
@@ -852,9 +879,19 @@ export const DOCUMENT_TYPE_RANK: Record<string, number> = {
  */
 export function incomingDocumentOutranksStored(
   storedDocType: string | null | undefined,
-  incomingDocType: string | null | undefined
+  incomingDocType: string | null | undefined,
+  fieldName?: string
 ): boolean | null {
   if (!storedDocType || !incomingDocType) return null;
+  // #1233 round 2: a field with its own document order (segment, listing exchanges) never uses the
+  // price-field rank below.
+  const own = fieldName ? getFieldRules(fieldName).documentOrder : undefined;
+  if (own) {
+    const s = own[storedDocType];
+    const i = own[incomingDocType];
+    if (s === undefined || i === undefined || s === i) return null;
+    return i > s;
+  }
   const stored = DOCUMENT_TYPE_RANK[storedDocType];
   const incoming = DOCUMENT_TYPE_RANK[incomingDocType];
   if (stored === undefined || incoming === undefined) return null;

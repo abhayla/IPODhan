@@ -76,7 +76,7 @@ import {
   classifyRouteResponse, classifyVerdictLeak, classifyConflictNoiseRatio, checkFreshnessPerType,
   checkPm2EnvHasTz, checkPm2LogSize, pm2ProcessInTzScope, findUnreferencedDefinitions,
   checkSectorPopulatedPct, checkCronScriptExecutable, checkDeadSourceHasRetireBy,
-  checkSegmentPopulatedForIpo, checkSegmentHasProvenance, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
+  checkSegmentPopulatedForIpo, checkSegmentHasProvenance, checkSegmentMatchesDocumentBoard, pickDecidingBoardReceipt, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
   findLiveCrossSourceDisagreements, ORACLE_COMPARABLE_FIELDS, normalizeCompanyKey,
   findLotDisagreements, findMinApplicationDisagreements,
   buildRunPayloads, evaluateCronExecutable,
@@ -3962,6 +3962,36 @@ async function checkZipMemberRows() {
 // guessed); on a throw, EVERY owned id not already recorded this run is
 // logged UNVERIFIABLE with the cause. The id-attribution logic itself lives
 // in ./lib/run-check.mjs so it can be unit-tested without a DB connection.
+// #1233 (OD-129, spec row 23): the offer document's listing sentence decides the board. The
+// deciding document is picked by the write gate's own order (listing-sentence-precedence.mjs) among the active ones whose receipt read ipos.segment (receipts exist
+// for documents extracted after #1233; older ones never re-read, OD-65/OD-91, so they are simply
+// not candidates). A stored segment that differs, with no ADMIN hold, FAILS.
+async function checkD_segmentDocumentBoard() {
+  const rows = await q(
+    `SELECT i.id, i.company_name AS "companyName", i.segment,
+            (SELECT fs.source::text FROM field_sources fs
+              WHERE fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.field_name = 'segment' AND fs.row_key = ''
+              LIMIT 1) AS "segmentSource",
+            json_agg(json_build_object('docType', d.type::text, 'value', r.value, 'filingDate', d.filing_date::text, 'extractedAt', d.extracted_at::text)) AS receipts
+       FROM document_field_receipts r
+       JOIN documents d ON d.id = r.document_id AND d.is_active IS NOT FALSE
+       JOIN ipos i ON i.id = d.ipo_id
+      WHERE r.table_name = 'ipos' AND r.field_name = 'segment' AND r.row_key = ''
+      GROUP BY i.id, i.company_name, i.segment`
+  );
+  const offenders = [];
+  const unordered = [];
+  for (const r of rows) {
+    if (pickDecidingBoardReceipt(r.receipts).unordered) unordered.push(r.companyName);
+    const v = checkSegmentMatchesDocumentBoard(r);
+    if (v) { offenders.push(v); notify('d_segment_document_board', 'P2', r.id, `ipos.segment disagrees with its offer document's board: ${r.companyName}`, v); }
+  }
+  record('d_segment_document_board', `ipos.segment equals the board its best-ranked offer document reads (${rows.length} IPO(s) with a document board receipt)`,
+    offenders.length === 0 ? 'PASS' : 'FAIL',
+    `${offenders.length} row(s) disagreeing` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : '')
+      + (unordered.length ? `; ${unordered.length} IPO(s) whose best documents cannot be ordered (same type, missing filing date), not judged: ${unordered.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
 async function runCheck(fn, ids = []) {
   return runCheckAgainstIds(fn, ids, { record, results });
 }
@@ -3984,6 +4014,7 @@ async function main() {
   await runCheck(checkD_delistedReads, ['d_delisted_reads']);
   await runCheck(checkD_hiddenIpoChildWrites, ['d_hidden_ipo_child_writes']);
   await runCheck(checkD_segmentProvenance, ['d_segment_provenance']);
+  await runCheck(checkD_segmentDocumentBoard, ['d_segment_document_board']);
   await runCheck(checkE, ['e_route_sweep', 'e_verdict_leak_sweep']);
   await runCheck(checkE_unknownSlug404, ['e_unknown_slug_404']);
   await runCheck(checkF, ['f_conflict_noise_ratio']);

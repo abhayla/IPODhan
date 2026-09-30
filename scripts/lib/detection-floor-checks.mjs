@@ -1,3 +1,4 @@
+import { pickListingSentenceDocument } from '../../scraper/config/listing-sentence-precedence.mjs';
 // Pure predicates for the T-335 "detection floor" — the round-7 fresh-review
 // coverage floor promoted into FAIL-level nightly-audit checks (see
 // docs/reviews/round-7-detection-rca.md and evidence/2026-08-26-T-322/DETECTION-RCA.md).
@@ -632,6 +633,30 @@ export function checkSegmentHasProvenance(row) {
   if (row.segment === null || row.segment === undefined) return null;
   if (row.hasSegmentProvenance) return null;
   return `"${row.companyName}" [${row.offeringType}] carries segment=${row.segment} with no field_sources row for segment — a value with no record of who said it`;
+}
+
+// ---- (d_segment_document_board, #1233 / OD-129 / spec row 23): the offer document's listing
+// sentence decides the board. The filing persister writes each document's board into
+// document_field_receipts (ipos.segment); the deciding document among those is picked by THE order
+// the persister's write gate uses (scraper/config/listing-sentence-precedence.mjs: Prospectus > RHP >
+// price band ad > DRHP, then the later FILING date, OD-30, then the later extraction). A stored
+// segment that differs, with no ADMIN hold on it (section 9), is the write path failing to apply the
+// document: a feed overwrote it, or the document never reached the row.
+
+/** Receipts of ONE IPO: [{docType, filingDate, value, extractedAt}] -> { receipt, unordered }. */
+export function pickDecidingBoardReceipt(receipts) {
+  const valid = (receipts ?? []).filter((r) => r && (r.value === 'MAINBOARD' || r.value === 'SME'));
+  const { doc, unordered } = pickListingSentenceDocument(valid);
+  return { receipt: doc ?? null, unordered: unordered === true };
+}
+
+/** row: {companyName, segment, segmentSource, receipts}. Violation string or null. */
+export function checkSegmentMatchesDocumentBoard(row) {
+  const { receipt: deciding } = pickDecidingBoardReceipt(row.receipts);
+  if (!deciding) return null;
+  if (row.segmentSource === 'ADMIN') return null;
+  if (row.segment === deciding.value) return null;
+  return `"${row.companyName}" stores segment=${row.segment ?? 'NULL'} (source ${row.segmentSource ?? 'none'}) but its ${deciding.docType} (filed ${deciding.filingDate ?? '?'}, extracted ${deciding.extractedAt ?? '?'}) reads the board ${deciding.value}`;
 }
 
 // ---- (j_live_row_without_provenance, #735 RCA): a live IPO row with ZERO

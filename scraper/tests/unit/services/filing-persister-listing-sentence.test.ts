@@ -19,7 +19,6 @@ import {
   type FilingExtraction,
   type FilingPersisterDeps,
 } from '../../../src/services/filing-persister';
-import { higherRankedOfferDocumentTypes } from '../../../src/services/listing-sentence.js';
 
 const IPO_ID = 'a2a0f3c6-0f2e-4b9a-9f0c-1d2e3f4a5b6c';
 const STORED_OPEN = new Date('2026-06-10T00:00:00Z');
@@ -93,10 +92,21 @@ function makeDeps(listingPrecedence?: FilingPersisterDeps['listingPrecedence']):
 
 
 const STORED_EXCHANGES = ['BSE', 'NSE'];
-/** A precedence reader over an in-memory list of COMPLETED document types, using the real rank rule. */
-const completedDocs = (types: string[]): FilingPersisterDeps['listingPrecedence'] => ({
-  higherRankedOfferDocumentCompleted: async (_ipo, docType) =>
-    types.some((t) => higherRankedOfferDocumentTypes(docType).includes(t)),
+/**
+ * #1233 round 2: a precedence reader over an in-memory list of COMPLETED documents, [type, filing date].
+ * The persister applies the real shared order (scraper/config/listing-sentence-precedence.mjs).
+ */
+const completedDocs = (
+  docs: Array<string | [string, string | null]>,
+  selfFilingDate: string | null = '2026-09-15'
+): FilingPersisterDeps['listingPrecedence'] => ({
+  listingDocuments: async () => ({
+    selfFilingDate,
+    others: docs.map((d, i) => {
+      const [docType, filingDate] = Array.isArray(d) ? d : [d, '2026-09-01'];
+      return { id: `doc-${i}`, docType, filingDate };
+    }),
+  }),
 });
 const fixture = JSON.parse(
   readFileSync(join(__dirname, '../../fixtures/listing-sentence/staging-listing-sentences.json'), 'utf8')
@@ -174,13 +184,17 @@ describe('OD-129: the listing sentence is the claim of this document on listingE
 
   it('no precedence reader, or a failing one -> fail closed, claims nothing', async () => {
     expect((await run(nse(), 'RHP', null as never)).contextFields).toContain('listingExchange');
-    const failing = { higherRankedOfferDocumentCompleted: async () => { throw new Error('db down'); } };
+    const failing = { listingDocuments: async () => { throw new Error('db down'); } };
     expect((await run(nse(), 'RHP', failing)).contextFields).toContain('listingExchange');
   });
 
-  it('rank rule: PROSPECTUS is outranked by nothing; RHP by PROSPECTUS; DRHP by the rest', () => {
-    expect(higherRankedOfferDocumentTypes('PROSPECTUS')).toEqual([]);
-    expect(higherRankedOfferDocumentTypes('RHP')).toEqual(['PROSPECTUS']);
-    expect(higherRankedOfferDocumentTypes('DRHP').sort()).toEqual(['PRICE_BAND_AD', 'PROSPECTUS', 'RHP']);
+  it('OD-30: an OLDER RHP filing extracted after a newer one claims nothing; a newer one replaces it', async () => {
+    expect((await run(nse(), 'RHP', completedDocs([['RHP', '2026-09-20']], '2026-09-01'))).contextFields).toContain('listingExchange');
+    expect((await run(nse(), 'RHP', completedDocs([['RHP', '2026-09-01']], '2026-09-20'))).contextFields).not.toContain('listingExchange');
+  });
+
+  it('a price band ad after the RHP claims nothing (the ad ranks below the RHP)', async () => {
+    const { contextFields } = await run([page('national-stock-exchange-of-india-ltd', 'RHP')], 'PRICE_BAND_AD', completedDocs(['RHP'], '2026-09-30'));
+    expect(contextFields).toContain('listingExchange');
   });
 });

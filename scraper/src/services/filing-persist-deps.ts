@@ -38,7 +38,9 @@ import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories'
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
-import { higherRankedOfferDocumentTypes } from './listing-sentence.js';
+import { LISTING_SENTENCE_ORDER } from '../../config/listing-sentence-precedence.mjs';
+import { rebuildIpoPlanInTx, type PlanManifest } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import type {
   DocumentFilingDateWriter,
   FilingPersisterDeps,
@@ -179,6 +181,8 @@ export function buildFilingPersistDeps(
     childRowConsolidator,
     ocrPrecedence: makeOcrPrecedenceReader(),
     listingPrecedence: makeListingPrecedenceReader(),
+    planRebuildInTx: makePlanRebuilder(),
+    fieldManifest: loadFieldManifest(),
     protectionFilter: (
       id: string,
       table: string,
@@ -189,25 +193,60 @@ export function buildFilingPersistDeps(
 }
 
 /**
- * OD-129 (#938, G1): has a higher-ranked offer document of this IPO (Prospectus > RHP > DRHP,
- * `higherRankedOfferDocumentTypes`) already completed extraction? Only then is a lower one's
- * listing sentence refused. Excludes the document being persisted itself.
+ * #1233 round 2 (section 2.8, section 9.2 item 18, OD-142): the plan rebuild for a document's board or
+ * exchange claim, run INSIDE the `ipos` write transaction (`upsertIPO` option `inIposWriteTx`) through
+ * THE rebuild the admin save uses. It takes the `ipos` row lock FOR NO KEY UPDATE first (the lock
+ * `writeAdminFieldValue` and the plant take; re-taking it in the same transaction is a no-op) so the
+ * rebuild never runs unlocked even if the write door changes. A throw rolls the board back.
  */
-export function makeListingPrecedenceReader(): NonNullable<import('./filing-persister.js').FilingPersisterDeps['listingPrecedence']> {
+export function makePlanRebuilder(
+  manifest: PlanManifest = loadFieldManifest() as unknown as PlanManifest,
+  rebuild: typeof rebuildIpoPlanInTx = rebuildIpoPlanInTx
+): NonNullable<import('./filing-persister.js').FilingPersisterDeps['planRebuildInTx']> {
+  return async (txRaw, ipoId, before) => {
+    const tx = txRaw as { execute: (q: unknown) => Promise<unknown> };
+    await tx.execute(sql`SELECT 1 FROM ipos WHERE id = ${ipoId}::uuid FOR NO KEY UPDATE`);
+    return rebuild(tx as never, ipoId, manifest, before as never);
+  };
+}
+
+/**
+ * #1233 round 2 (OD-129, OD-30): the documents the listing-sentence gate orders this one against.
+ * Others = this IPO's active, COMPLETED documents of a listing-sentence type (the order in
+ * scraper/config/listing-sentence-precedence.mjs), where a price band ad counts only when it named
+ * the exchanges (a receipt for `ipos.listingExchanges` or `ipos.segment`, OD-129). `is_active IS NOT
+ * FALSE` is the same filter the nightly check d_segment_document_board uses. Excludes this document.
+ */
+export function makeListingPrecedenceReader(
+  database: Pick<typeof db, 'execute'> = db
+): NonNullable<import('./filing-persister.js').FilingPersisterDeps['listingPrecedence']> {
+  const rowsOf = (res: unknown) => ((res as { rows?: unknown[] }).rows ?? (res as unknown[])) as Array<Record<string, unknown>>;
+  const types = Object.keys(LISTING_SENTENCE_ORDER);
   return {
-    async higherRankedOfferDocumentCompleted(ipoId: string, docType: string, documentId: string | null) {
-      const higher = higherRankedOfferDocumentTypes(docType);
-      if (higher.length === 0) return false;
-      const res = await db.execute(sql`
-        SELECT 1 FROM documents d
+    async listingDocuments(ipoId: string, documentId: string | null) {
+      const self = documentId
+        ? rowsOf(await database.execute(sql`SELECT filing_date::text AS filing_date FROM documents WHERE id = ${documentId}::uuid`))
+        : [];
+      const res = await database.execute(sql`
+        SELECT d.id::text AS id, d.type::text AS doc_type, d.filing_date::text AS filing_date
+          FROM documents d
          WHERE d.ipo_id = ${ipoId}::uuid
            AND d.is_active IS NOT FALSE
            AND d.extraction_status = 'COMPLETED'
-           AND d.type::text IN (${sql.join(higher.map((t) => sql`${t}`), sql`, `)})
+           AND d.type::text IN (${sql.join(types.map((t) => sql`${t}`), sql`, `)})
            AND (${documentId}::uuid IS NULL OR d.id <> ${documentId}::uuid)
-         LIMIT 1`);
-      const rows = ((res as unknown as { rows?: unknown[] }).rows ?? (res as unknown as unknown[])) as unknown[];
-      return rows.length > 0;
+           AND (d.type::text <> 'PRICE_BAND_AD' OR EXISTS (
+                 SELECT 1 FROM document_field_receipts r
+                  WHERE r.document_id = d.id AND r.table_name = 'ipos' AND r.row_key = ''
+                    AND r.field_name IN ('listingExchanges', 'segment') AND r.value IS NOT NULL))`);
+      return {
+        selfFilingDate: (self[0]?.filing_date as string | null | undefined) ?? null,
+        others: rowsOf(res).map((r) => ({
+          id: String(r.id),
+          docType: String(r.doc_type),
+          filingDate: (r.filing_date as string | null | undefined) ?? null,
+        })),
+      };
     },
   };
 }

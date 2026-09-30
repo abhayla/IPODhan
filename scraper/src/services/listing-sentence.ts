@@ -86,7 +86,27 @@ export function readListingClause(clause: string): Omit<ListingSentence, 'senten
 export function parseListingSentence(
   pages: ReadonlyArray<readonly [number, string | null | undefined]> | null | undefined
 ): ListingSentence | null {
-  if (!Array.isArray(pages)) return null;
+  const read = readListingSentence(pages);
+  return read.kind === 'STATED' ? read.sentence : null;
+}
+
+/**
+ * #1233 round 2, answer states of a document's listing sentence:
+ *   STATED      - a clause names an exchange (and so a board): the document claims.
+ *   NO_SENTENCE - no "proposed to be listed on" on the cover pages: no claim.
+ *   UNREADABLE  - the phrase is there but no clause names an exchange ("on the Stock Exchanges",
+ *                 the usual price band ad): no claim, and the caller logs the clause with the document.
+ */
+export type ListingSentenceRead =
+  | { kind: 'STATED'; sentence: ListingSentence }
+  | { kind: 'NO_SENTENCE' }
+  | { kind: 'UNREADABLE'; clause: string; page: number };
+
+export function readListingSentence(
+  pages: ReadonlyArray<readonly [number, string | null | undefined]> | null | undefined
+): ListingSentenceRead {
+  if (!Array.isArray(pages)) return { kind: 'NO_SENTENCE' };
+  let unreadable: { clause: string; page: number } | null = null;
   const ordered = [...pages]
     .filter(([n, t]) => Number.isInteger(n) && n >= 0 && n <= LISTING_SENTENCE_MAX_PAGE_INDEX && typeof t === 'string')
     .sort((a, b) => a[0] - b[0]);
@@ -97,10 +117,11 @@ export function parseListingSentence(
     while ((m = re.exec(body)) !== null) {
       const clause = clauseAfter(body, m.index + m[0].length);
       const read = readListingClause(clause);
-      if (read) return { ...read, sentence: clause, page };
+      if (read) return { kind: 'STATED', sentence: { ...read, sentence: clause, page } };
+      unreadable ??= { clause, page };
     }
   }
-  return null;
+  return unreadable ? { kind: 'UNREADABLE', ...unreadable } : { kind: 'NO_SENTENCE' };
 }
 
 /** The scraper payload's singular `listingExchange` for a parsed sentence. */
@@ -108,23 +129,5 @@ export function toScrapedListingExchange(exchanges: readonly DocumentListingExch
   return exchanges.length > 1 ? 'BOTH' : exchanges[0];
 }
 
-/**
- * OD-129 / OD-30: Prospectus > RHP > DRHP; the later filing wins. A price band
- * advertisement is published with the RHP and ranks with it (inferred, not
- * spec-stated: OD-129 says only that the ad counts when it names the exchanges).
- * Equal rank = the later extraction wins (an addendum RHP after the RHP).
- */
-export const OFFER_DOCUMENT_RANK: Readonly<Record<string, number>> = {
-  PROSPECTUS: 3,
-  RHP: 2,
-  PRICE_BAND_AD: 2,
-  DRHP: 1,
-};
-
-/** Document types that outrank `docType` for the listing sentence. Unknown type -> every ranked type. */
-export function higherRankedOfferDocumentTypes(docType: string): string[] {
-  const own = OFFER_DOCUMENT_RANK[docType] ?? 0;
-  return Object.entries(OFFER_DOCUMENT_RANK)
-    .filter(([, rank]) => rank > own)
-    .map(([type]) => type);
-}
+// #1233 round 2: the document ORDER for the listing sentence lives in ONE module shared with the
+// nightly check: scraper/config/listing-sentence-precedence.mjs (OD-129 order, OD-30 filing date).

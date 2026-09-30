@@ -25,7 +25,9 @@
 import { scraperWriteBlocked, type ScraperWriteBlockFacts } from '@ipodhan/shared/services/scraper-write-block';
 import type { IPORepository } from '@ipodhan/shared';
 import { E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories/field-sources-repository';
-import { parseListingSentence, toScrapedListingExchange, type DocumentListingExchange } from './listing-sentence.js';
+import { readListingSentence, toScrapedListingExchange, type DocumentListingExchange } from './listing-sentence.js';
+import { listingClaimOutranked, type ListingDocumentRef } from '../../config/listing-sentence-precedence.mjs';
+import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import type { PageTextCarrier } from './document-page-text.js';
 import { isFixedPriceIssue, normalizeReceiptValue, type RuleDocumentRef } from '../../config/plan-supersession-rule.mjs';
 import {
@@ -235,9 +237,33 @@ export interface FilingPersisterDeps {
    * (Prospectus > RHP > DRHP) has already completed extraction. Absent = the
    * persister cannot tell, so it claims nothing (fail closed).
    */
+  /**
+   * #1233 round 2 (OD-129, OD-30): the documents the listing-sentence gate orders this one
+   * against: this IPO's OTHER active, COMPLETED offer documents that stated a listing sentence
+   * (a price band ad counts only when it named the exchanges), plus this document's own filing
+   * date. The order itself is scraper/config/listing-sentence-precedence.mjs. Absent or failing
+   * = no claim (fail closed).
+   */
   listingPrecedence?: {
-    higherRankedOfferDocumentCompleted(ipoId: string, docType: FilingDocType, documentId: string | null): Promise<boolean>;
+    listingDocuments(
+      ipoId: string,
+      documentId: string | null
+    ): Promise<{ selfFilingDate: string | null; others: ListingDocumentRef[] }>;
   };
+  /**
+   * #1233 round 2 (section 2.8, section 9.2 item 18, OD-142): the plan rebuild for a claimed board or
+   * exchange set, run by the `ipos` write INSIDE its own transaction, after the update and under
+   * the row lock (`upsertIPO` option `inIposWriteTx`). A failure rolls the whole `ipos` write
+   * back, so a new board never stands with the old type's ranks. `before` is read in that
+   * transaction. Absent = no rebuild (tests, dry tooling).
+   */
+  planRebuildInTx?: (
+    tx: unknown,
+    ipoId: string,
+    before: { segment: string | null; listingExchanges: string[] | null; offeringType: string | null }
+  ) => Promise<{ rebuilt: boolean; typeKeyBefore?: string; typeKeyAfter?: string; queued?: number }>;
+  /** #1233 round 2 (section 1.11): the field manifest's per-type applicability (`na`). Default: the real manifest. */
+  fieldManifest?: { fields: Record<string, { na?: string[] }> };
   ocrPrecedence?: {
     /**
      * The text-layer receipts this IPO's active documents wrote for one field, each with its
@@ -299,6 +325,12 @@ export interface PersistFilingSummary {
    * summary literal keep compiling.
    */
   skipped_lower_priority_source?: string[];
+  /**
+   * #1233: the plan rebuild this document's board / exchange claim triggered: `rebuilt <before> -> <after>`,
+   * or `unchanged`. A failed rebuild is never recorded here: it rolls the `ipos` write back and throws.
+   * Absent when nothing plan-invalidating was claimed.
+   */
+  plan_rebuild?: string;
   /** Statement rows refused because a stored row is in a different unit. */
   skipped_unit_mismatch: string[];
   /**
@@ -863,6 +895,23 @@ const NO_COLUMN_FIELDS: Record<string, string> = {
 export { UNRESOLVED_ROW_KEY_PREFIX, unresolvedRowKey } from './child-row-unresolved-noter.js';
 
 // ------------------------------------------------------------------ the work
+
+/**
+ * #1233 round 2 (section 1.11): is `ipos.segment` not applicable for this offering type? Read
+ * from the field manifest's `na` list (INVITS/REITS today), never a hand-kept list. Returns the
+ * reason when the board must not be claimed, null when it may. An unknown offering type or a
+ * manifest with no `ipos.segment` row cannot be resolved and fails closed.
+ */
+export function segmentNotApplicable(
+  offeringType: string | null,
+  manifest: { fields: Record<string, { na?: string[] }> }
+): string | null {
+  const entry = manifest.fields['ipos.segment'];
+  if (!entry) return 'no ipos.segment row in the field manifest (fail closed)';
+  if (!offeringType) return 'offering type unknown, so the board applicability cannot be read (fail closed)';
+  if ((entry.na ?? []).includes(offeringType)) return `segment is not applicable for ${offeringType} (section 1.11, manifest na)`;
+  return null;
+}
 
 export async function persistFilingExtraction(
   ipoId: string,
@@ -1546,30 +1595,55 @@ export async function persistFilingExtraction(
   if (description) iposCandidate.companyDescription = description;
   if (cinForWrite !== null) iposCandidate.cin = cinForWrite;
   // OD-129 (#938): the listing sentence on the cover pages decides the exchanges.
+  // #1233 (OD-129, row 23): it decides the BOARD too — `ipos.segment` is this document's claim,
+  // under the same precedence gate, the same protection gate (an admin hold drops it, §9) and
+  // the matrix's DRHP rank above the feeds.
   // A price band ad that says only "the Stock Exchanges" names none -> nothing claimed.
   // G1: an older or lower-ranked filing extracted AFTER a better one must not
   // replace its set (6 of 59 staging IPOs had an older filing extracted later).
-  const listingSentence = parseListingSentence((extraction as FilingExtraction & PageTextCarrier).page_texts);
+  // #1233 round 2, answer states: STATED -> claim (subject to the gate below); NO_SENTENCE -> no
+  // claim; UNREADABLE (the phrase with no exchange named) -> no claim, logged with the document;
+  // segment not applicable for the offering type (section 1.11, manifest `na`) -> no board claim.
+  const listingRead = readListingSentence((extraction as FilingExtraction & PageTextCarrier).page_texts);
+  if (listingRead.kind === 'UNREADABLE') {
+    logger.info(
+      { ipoId, docType: options.docType, documentId: options.documentId ?? null, page: listingRead.page, clause: listingRead.clause },
+      '#1233 listing sentence names no exchange; board and exchanges not claimed'
+    );
+  }
+  const listingSentence = listingRead.kind === 'STATED' ? listingRead.sentence : null;
   if (listingSentence) {
     let outranked = true;
     let why = 'no listing-precedence reader (fail closed)';
     if (deps.listingPrecedence) {
       try {
-        outranked = await deps.listingPrecedence.higherRankedOfferDocumentCompleted(
-          ipoId,
-          options.docType,
-          options.documentId ?? null
+        const { selfFilingDate, others } = await deps.listingPrecedence.listingDocuments(ipoId, options.documentId ?? null);
+        const decision = listingClaimOutranked(
+          { id: options.documentId ?? null, docType: options.docType, filingDate: selfFilingDate },
+          others
         );
-        why = 'a higher-ranked offer document of this IPO has completed (OD-129: Prospectus > RHP > DRHP)';
+        outranked = decision.outranked;
+        why = decision.outranked ? decision.reason : '';
       } catch (e) {
         why = `listing-precedence read failed (fail closed): ${e instanceof Error ? e.message : String(e)}`;
       }
     }
     if (outranked) {
       skippedLowerPriority.push(`ipos.listingExchanges (${options.docType}: ${why})`);
+      skippedLowerPriority.push(`ipos.segment (${options.docType}: ${why})`);
       logger.info({ ipoId, docType: options.docType, documentId: options.documentId ?? null, why }, 'OD-129 listing sentence not claimed');
     } else {
       iposCandidate.listingExchanges = listingSentence.exchanges;
+      const segmentNa = segmentNotApplicable(
+        (existing as { offeringType?: string | null }).offeringType ?? null,
+        deps.fieldManifest ?? loadFieldManifest()
+      );
+      if (segmentNa === null) {
+        iposCandidate.segment = listingSentence.board;
+      } else {
+        skippedLowerPriority.push(`ipos.segment (${options.docType}: ${segmentNa})`);
+        logger.info({ ipoId, docType: options.docType, documentId: options.documentId ?? null, why: segmentNa }, '#1233 board not claimed');
+      }
     }
   }
 
@@ -1628,6 +1702,7 @@ export async function persistFilingExtraction(
     }
   }
 
+  let planRebuildNote: string | undefined;
   if (iposFields.length > 0) {
     if (apply) {
       // OD-66 (owner, 2026-09-21): "you should only care about the new set of
@@ -1651,14 +1726,33 @@ export async function persistFilingExtraction(
       // carries (documentId, sourceSha, docType, ...). Without it the `ipos`
       // field_sources rows this filing writes named no document, and the item 6
       // DOC fetcher credited whichever COMPLETED document it found first.
+      // #1233 round 2 (MAJOR-3): a claimed board or exchange set changes which sources rank first
+      // for this IPO's fields; the plan is rebuilt through the one path (section 2.8, OD-142) INSIDE
+      // the `ipos` write transaction, under its row lock. A failed rebuild throws and rolls the
+      // board back with it; nothing here catches it.
+      const rebuildInTx = deps.planRebuildInTx;
+      const invalidatesPlan = claimed.has('segment') || claimed.has('listingExchange');
       await upsertIPO(
         deps.ipoRepository,
         scraped as never,
         source,
         existing as never,
         contextFields,
-        lineage
+        lineage,
+        rebuildInTx && invalidatesPlan
+          ? {
+              inIposWriteTx: async (tx, before) => {
+                const r = await rebuildInTx(tx, ipoId, before);
+                planRebuildNote = r.rebuilt
+                  ? `rebuilt ${r.typeKeyBefore ?? '?'} -> ${r.typeKeyAfter ?? '?'} (queued ${r.queued ?? 0})`
+                  : 'unchanged';
+              },
+            }
+          : undefined
       );
+      if (planRebuildNote !== undefined) {
+        logger.info({ ipoId, docType: options.docType, planRebuild: planRebuildNote }, '#1233 plan rebuilt in the board/exchange write transaction');
+      }
     }
     bump(written, 'ipos', 1);
   }
@@ -3161,6 +3255,7 @@ export async function persistFilingExtraction(
     skipped_out_of_family: [...new Set(skippedOutOfFamily)].sort(),
     skipped_cross_document_disagreement: [...new Set(skippedCrossDoc)].sort(),
     ipos_fields: iposFields,
+    ...(planRebuildNote !== undefined ? { plan_rebuild: planRebuildNote } : {}),
     receipt_fields: receiptFields,
     fresh_ofs_reconciliation: {
       ok: reconciliation.ok,

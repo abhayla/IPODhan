@@ -3025,7 +3025,7 @@ export class DataConsolidationService {
       // either type is unknown) does the newest write win.
       const byDocument =
         incomingSource === 'DRHP' && existingSource === 'DRHP'
-          ? incomingDocumentOutranksStored(existingDocType, incomingDocType)
+          ? incomingDocumentOutranksStored(existingDocType, incomingDocType, fieldName)
           : null;
 
       if (byDocument === false) {
