@@ -1387,6 +1387,11 @@ jobs:
       # the same fixture as the TS derivation so the two cannot drift.
       - name: Run redis slot prefix parity suite (#151)
         run: bash scripts/tests/redis-slot-prefix.test.sh
+      # #1177: the deploy's migrations-applied gate (behind / at / ahead of the
+      # newest journaled migration). Its fake psql fixture is mode 100755 and
+      # the suite fails closed if PATH resolves any other psql.
+      - name: Run migrations-applied assert suite (T-267, #1177)
+        run: bash scripts/tests/assert-migrations-applied.test.sh
 
       # Slice s17: deploy-linux.yml no longer triggers on push; staging is
       # deployed by a 15-minute poll that fires only when main's head differs

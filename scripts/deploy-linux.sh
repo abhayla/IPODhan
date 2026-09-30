@@ -302,6 +302,34 @@ log() { echo "==> $*"; }
 warn() { echo "WARN: $*" >&2; }
 fatal() { echo "FATAL: $*" >&2; exit 1; }
 
+# #1308: the ONE place a slot env file (WEB_ENV_FILE / SCRAPER_ENV_FILE) is
+# sourced. `run_with_env_file FILE CMD...` runs CMD in a subshell with every
+# key of FILE exported, so the keys reach CMD (and its children) and die with
+# the subshell. Before this, build_release and apply_migrations ran
+# `set -a; . "$WEB_ENV_FILE"` in the MAIN deploy shell, so REDIS_URL (with its
+# password), DATABASE_URL and every token in that file were exported into
+# every later child of the deploy: npm ci, tsc, curl, redis-cli, and the
+# scraper's pm2 start (whose process then read the WEB env's values ahead of
+# its own .env, since dotenv never overrides a set variable). Callers pass the
+# env file only to the process that consumes it: the web build, the migration
+# tools, the web app's pm2 start. An unreadable FILE fails closed (returns 1,
+# CMD not run) rather than running CMD without its configuration.
+# scripts/tests/deploy-linux.test.sh case 42/42b pin this.
+run_with_env_file() {
+  local env_file="$1"; shift
+  if [ ! -r "$env_file" ]; then
+    echo "run_with_env_file: env file missing or unreadable: $env_file" >&2
+    return 1
+  fi
+  (
+    set -a
+    # shellcheck disable=SC1090  # per-slot generated env file, path known at runtime
+    . "$env_file" || exit 1
+    set +a
+    "$@"
+  )
+}
+
 # W-178 round 2 Opus MINOR-4: SCRAPER_CRON_OVERRIDE is operator-typed input (an
 # on-call engineer pastes it by hand during an incident) — validate its shape
 # HERE, before any pm2 delete/stop below, so a typo aborts loudly with a clear
@@ -540,22 +568,9 @@ run_runtime_preflight() {
     fatal "scraper env file missing/unreadable: $SCRAPER_ENV_FILE (cannot run runtime preflight)"
   fi
   log "Running VPS runtime preflight (T-406)"
-  # T-406 round-2 F2 fix: source scraper.env and run the preflight check in
-  # a SUBSHELL. This is defense-in-depth, not the only guard against the web
-  # env's values leaking downstream: the web env (WEB_ENV_FILE) is sourced
-  # fresh, in the main shell, later in build_release() and restart_pm2()
-  # (deploy-linux.sh:446,483) — those re-sources are what actually make
-  # `pm2 start ipodhan-web` see the correct web env regardless of what this
-  # preflight sourced. The subshell here additionally means scraper.env's
-  # DATABASE_URL/REDIS_*/NODE_ENV/ADMIN_API_TOKEN never touch the main
-  # shell's exported env at all, so this check can't perturb anything that
-  # runs between here and the later re-sources (e.g. the mutex/status calls).
-  ( set -a
-    # shellcheck disable=SC1090  # per-slot generated env file, path known at runtime
-    . "$SCRAPER_ENV_FILE" || exit 1
-    set +a
-    bash "$SCRIPT_DIR/preflight-runtime.sh"
-  )
+  # T-406 round-2 F2 / #1308: the scraper env reaches the preflight check
+  # only, through run_with_env_file (a subshell), never this shell.
+  run_with_env_file "$SCRAPER_ENV_FILE" bash "$SCRIPT_DIR/preflight-runtime.sh"
 }
 
 if ! run_runtime_preflight; then
@@ -821,10 +836,14 @@ release_scraper_cycle_locks() {
     warn "release_scraper_cycle_locks: scripts/lib/redis-slot-prefix.sh not loaded; cycle locks left to expire"
     return 0
   fi
-  if ! command -v redis_cli_run >/dev/null 2>&1; then
+  if ! command -v redis_cli_run_env >/dev/null 2>&1; then
     warn "release_scraper_cycle_locks: scripts/lib/redis-cli-auth.sh not loaded; cycle locks left to expire"
     return 0
   fi
+  # #1137: the scraper's REDIS_DB, applied as its ioredis client applies it
+  # (redis_cli_run_env: the URL's /N wins, REDIS_DB only when it has none).
+  local redis_db
+  redis_db="$(redis_slot_env_value "$SCRAPER_ENV_FILE" REDIS_DB)"
   local key_prefix db_url db_host db_password db_name
   db_url="$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_URL)"
   db_host="$(redis_slot_env_value "$SCRAPER_ENV_FILE" DATABASE_HOST)"
@@ -868,7 +887,7 @@ release_scraper_cycle_locks() {
   # redis_cli_run (scripts/lib/redis-cli-auth.sh) parses the URL itself and
   # never passes -u.
   for key in "${key_prefix}lock:resource:scraper:cycle" "${key_prefix}lock:resource:filing-auto-persist:cycle"; do
-    value="$(redis_cli_run 3 "$redis_url" GET "$key" 2>/dev/null || true)"
+    value="$(redis_cli_run_env 3 "$redis_url" "$redis_db" GET "$key" 2>/dev/null || true)"
     if [ -z "$value" ]; then
       log "release_scraper_cycle_locks: $key not held"
       continue
@@ -878,11 +897,11 @@ release_scraper_cycle_locks() {
       log "release_scraper_cycle_locks: $key is held by this deploy (token=$value); kept"
       continue
     fi
-    ttl="$(redis_cli_run 3 "$redis_url" TTL "$key" 2>/dev/null || true)"
+    ttl="$(redis_cli_run_env 3 "$redis_url" "$redis_db" TTL "$key" 2>/dev/null || true)"
     log "release_scraper_cycle_locks: $key stale: owner token=$value has no live scraper process in slot ${SLOT:-?} (pm2 app stopped, no cron-launched wake running)"
     log "release_scraper_cycle_locks: releasing $key (held: ${ttl}s remaining)"
     local eval_result
-    eval_result="$(redis_cli_run 3 "$redis_url" EVAL       "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"       1 "$key" "$value" 2>/dev/null || true)"
+    eval_result="$(redis_cli_run_env 3 "$redis_url" "$redis_db" EVAL       "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"       1 "$key" "$value" 2>/dev/null || true)"
     if [ "$eval_result" = "1" ]; then
       released=$((released + 1))
     else
@@ -918,6 +937,7 @@ DEPLOY_SCRAPER_LOCK_RESOURCES=("scraper:cycle" "scraper:live")
 DEPLOY_LOCK_TTL_SECONDS="${DEPLOY_SCRAPER_LOCK_TTL_SECONDS:-2700}"
 DEPLOY_LOCK_TOKEN=""
 DEPLOY_LOCK_REDIS_URL=""
+DEPLOY_LOCK_REDIS_DB=""
 DEPLOY_HELD_LOCK_KEYS=()
 
 acquire_deploy_scraper_locks() {
@@ -937,12 +957,14 @@ acquire_deploy_scraper_locks() {
     warn "acquire_deploy_scraper_locks: redis-cli not found; $no_lock"
     return 0
   fi
-  if ! command -v redis_slot_prefix >/dev/null 2>&1 || ! command -v redis_cli_run >/dev/null 2>&1; then
+  if ! command -v redis_slot_prefix >/dev/null 2>&1 || ! command -v redis_cli_run_env >/dev/null 2>&1; then
     warn "acquire_deploy_scraper_locks: redis helper libs not loaded; $no_lock"
     return 0
   fi
-  local redis_url key_prefix
+  local redis_url redis_db key_prefix
   redis_url="$(redis_slot_env_value "$SCRAPER_ENV_FILE" REDIS_URL)"
+  # #1137: same db selection as the scraper's client (redis_cli_run_env).
+  redis_db="$(redis_slot_env_value "$SCRAPER_ENV_FILE" REDIS_DB)"
   if [ -z "$redis_url" ]; then
     warn "acquire_deploy_scraper_locks: REDIS_URL not found in $SCRAPER_ENV_FILE; $no_lock"
     return 0
@@ -955,11 +977,12 @@ acquire_deploy_scraper_locks() {
     return 0
   fi
   DEPLOY_LOCK_REDIS_URL="$redis_url"
+  DEPLOY_LOCK_REDIS_DB="$redis_db"
   DEPLOY_LOCK_TOKEN="deploy:${SLOT:-?}:${RELEASE_NAME:-?}:$$"
   local res key out holder ttl
   for res in "${DEPLOY_SCRAPER_LOCK_RESOURCES[@]}"; do
     key="${key_prefix}lock:resource:$res"
-    if ! out="$(redis_cli_run 5 "$redis_url" SET "$key" "$DEPLOY_LOCK_TOKEN" NX EX "$DEPLOY_LOCK_TTL_SECONDS" 2>&1)"; then
+    if ! out="$(redis_cli_run_env 5 "$redis_url" "$redis_db" SET "$key" "$DEPLOY_LOCK_TOKEN" NX EX "$DEPLOY_LOCK_TTL_SECONDS" 2>&1)"; then
       refuse_or_override_live_run cycle-lock "cannot take $key, lock state unknowable: redis-cli failed: ${out:-no output}"
       continue
     fi
@@ -967,8 +990,8 @@ acquire_deploy_scraper_locks() {
       DEPLOY_HELD_LOCK_KEYS+=("$key")
       log "Took $key for this deploy (token=$DEPLOY_LOCK_TOKEN, TTL ${DEPLOY_LOCK_TTL_SECONDS}s): a wake of slot ${SLOT:-?} that starts now lock-skips until the deploy releases it."
     elif [ -z "$out" ]; then
-      holder="$(redis_cli_run 3 "$redis_url" GET "$key" 2>/dev/null || true)"
-      ttl="$(redis_cli_run 3 "$redis_url" TTL "$key" 2>/dev/null || true)"
+      holder="$(redis_cli_run_env 3 "$redis_url" "$redis_db" GET "$key" 2>/dev/null || true)"
+      ttl="$(redis_cli_run_env 3 "$redis_url" "$redis_db" TTL "$key" 2>/dev/null || true)"
       refuse_or_override_live_run cycle-lock "lock $key held by token=${holder:-?} (${ttl:-?}s left): a scraper run of this slot holds it"
     else
       refuse_or_override_live_run cycle-lock "cannot take $key, lock state unknowable: redis-cli said: $out"
@@ -986,7 +1009,7 @@ release_deploy_scraper_locks() {
   fi
   local key result
   for key in "${DEPLOY_HELD_LOCK_KEYS[@]}"; do
-    result="$(redis_cli_run 3 "$DEPLOY_LOCK_REDIS_URL" EVAL "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end" 1 "$key" "$DEPLOY_LOCK_TOKEN" 2>/dev/null || true)"
+    result="$(redis_cli_run_env 3 "$DEPLOY_LOCK_REDIS_URL" "$DEPLOY_LOCK_REDIS_DB" EVAL "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end" 1 "$key" "$DEPLOY_LOCK_TOKEN" 2>/dev/null || true)"
     if [ "$result" = "1" ]; then
       log "Released $key (deploy token $DEPLOY_LOCK_TOKEN)"
     else
@@ -1044,8 +1067,12 @@ clear_legacy_unprefixed_cache_keys() {
   }
   local redis_url redis_db
   redis_url="$(_legacy_env_value "$WEB_ENV_FILE" REDIS_URL)"
-  [ -n "$redis_url" ] || redis_url="$(_legacy_env_value "$SCRAPER_ENV_FILE" REDIS_URL)"
   redis_db="$(_legacy_env_value "$WEB_ENV_FILE" REDIS_DB)"
+  if [ -z "$redis_url" ]; then
+    # #1137: URL and db come from the SAME file, as one process would see them.
+    redis_url="$(_legacy_env_value "$SCRAPER_ENV_FILE" REDIS_URL)"
+    redis_db="$(_legacy_env_value "$SCRAPER_ENV_FILE" REDIS_DB)"
+  fi
   if [ -z "$redis_url" ]; then
     warn "clear_legacy_unprefixed_cache_keys: REDIS_URL not found in $WEB_ENV_FILE or $SCRAPER_ENV_FILE; pre-flip cache entries left to expire"
     return 0
@@ -1055,11 +1082,14 @@ clear_legacy_unprefixed_cache_keys() {
   # the URL into REDIS_CLI_HOST/PORT/USER/DB/PASSWORD; an explicit REDIS_DB
   # env value (read above) still overrides the URL's own db index, same as
   # before this fix.
-  if ! redis_cli_prepare_auth "$redis_url"; then
-    warn "clear_legacy_unprefixed_cache_keys: could not parse REDIS_URL; pre-flip cache entries left to expire"
+  # #1137: REDIS_DB is applied the way the web app's ioredis client applies
+  # it - only when the URL names no db (the URL's /N wins). It used to
+  # OVERRIDE the URL's db here, the opposite of the app, so a URL /1 with
+  # REDIS_DB=3 cleaned db 3 while the web app read db 1.
+  if ! redis_cli_prepare_auth "$redis_url" "$redis_db"; then
+    warn "clear_legacy_unprefixed_cache_keys: could not parse REDIS_URL / REDIS_DB; pre-flip cache entries left to expire"
     return 0
   fi
-  [ -n "$redis_db" ] && REDIS_CLI_DB="$redis_db"
   local -a rc=(redis-cli -h "$REDIS_CLI_HOST" -p "$REDIS_CLI_PORT")
   [ -n "$REDIS_CLI_USER" ] && rc+=(--user "$REDIS_CLI_USER")
   [ -n "$REDIS_CLI_DB" ] && rc+=(-n "$REDIS_CLI_DB")
@@ -1847,22 +1877,19 @@ build_release() {
     return 0
   fi
 
-  set -a
-  # shellcheck disable=SC1090  # per-slot generated env file, path known at runtime
-  . "$WEB_ENV_FILE"
-  set +a
+  # #1308: the web env file goes to `npm run build` ONLY (via
+  # run_with_env_file below), never into this shell - npm ci and tsc need
+  # none of its keys, and anything exported here would reach every later
+  # child of the deploy.
   # NEXT_PUBLIC_BUILD_SHA / NEXT_PUBLIC_BUILT_AT: baked at build time so
   # /api/version reflects THIS release regardless of runtime env (T-242,
-  # supersedes T-229).
-  export NEXT_PUBLIC_BUILD_SHA="$SHORT_SHA"
+  # supersedes T-229). Passed to the build command only.
   local built_at
   built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  export NEXT_PUBLIC_BUILT_AT="$built_at"
 
-  # T-243: the slot env file above sets NODE_ENV=production, and `set -a` has
-  # already exported it — so a bare `npm ci` OMITS devDependencies and the build
-  # then dies on missing husky / vitest / typescript. Install with
-  # dev deps explicitly; the BUILD still runs under NODE_ENV=production.
+  # T-243: install WITH dev deps explicitly (husky / vitest / typescript are
+  # needed by the build); NODE_ENV=development is set for this one command.
+  # The BUILD still runs under the env file's NODE_ENV=production.
   # HUSKY=0: release dirs are `git archive` exports, not git repos.
   ( cd "$RELEASE_DIR" && NODE_ENV=development HUSKY=0 npm ci --include=dev --no-audit --no-fund )
   ( cd "$RELEASE_DIR/packages/shared" && npx tsc )
@@ -1875,7 +1902,8 @@ build_release() {
   # exit path (success or failure) via the trap below — a pidfile left
   # behind after this function returns would misread a FINISHED build as
   # still running.
-  ( cd "$RELEASE_DIR/web" && npm run build ) &
+  ( cd "$RELEASE_DIR/web" && run_with_env_file "$WEB_ENV_FILE" \
+      env NEXT_PUBLIC_BUILD_SHA="$SHORT_SHA" NEXT_PUBLIC_BUILT_AT="$built_at" npm run build ) &
   local build_pid=$!
   echo "$build_pid" > "$RELEASE_DIR/.build.pid"
   local build_rc=0
@@ -2159,15 +2187,20 @@ apply_migrations() {
     log "[dry-run] skipping real 'drizzle-kit migrate' + migrations-applied assert"
     return 0
   fi
-  set -a
-  # shellcheck disable=SC1090  # per-slot generated env file, path known at runtime
-  . "$WEB_ENV_FILE"
-  set +a
-  local database_url="$DATABASE_URL"
+  # #1308: the web env file reaches the migration tools only, never this
+  # shell. DATABASE_URL is read out of it in a subshell (the file is sourced
+  # there, so a value built from other keys resolves exactly as before).
+  local database_url
+  # shellcheck disable=SC2016  # expanded by the inner shell, after the env file is sourced
+  database_url="$(run_with_env_file "$WEB_ENV_FILE" sh -c 'printf "%s" "${DATABASE_URL:-}"')" || database_url=""
+  if [ -z "$database_url" ]; then
+    echo "FATAL: DATABASE_URL not readable from $WEB_ENV_FILE - cannot migrate or assert." >&2
+    return 1
+  fi
   local journal_path="$RELEASE_DIR/web/drizzle/migrations/meta/_journal.json"
 
   log "Applying database migrations (npx drizzle-kit migrate) for slot '$SLOT'"
-  if ! ( cd "$RELEASE_DIR/web" && npx drizzle-kit migrate ); then
+  if ! ( cd "$RELEASE_DIR/web" && run_with_env_file "$WEB_ENV_FILE" npx drizzle-kit migrate ); then
     echo "FATAL: 'drizzle-kit migrate' failed for $RELEASE_NAME." >&2
     return 1
   fi
@@ -2187,7 +2220,7 @@ apply_migrations() {
   # those three EXPECTED gaps as fatal drift on every run. This env prefix is
   # scoped to this one command only (never exported), so it does not weaken
   # any other check in this function or file.
-  if ! ( cd "$RELEASE_DIR" && SCHEMA_DRIFT_IGNORE_GATED=1 npx tsx scripts/assert-schema-drift.ts "$database_url" ); then
+  if ! ( cd "$RELEASE_DIR" && run_with_env_file "$WEB_ENV_FILE" env SCHEMA_DRIFT_IGNORE_GATED=1 npx tsx scripts/assert-schema-drift.ts "$database_url" ); then
     echo "FATAL: schema-drift assert failed for $RELEASE_NAME (T-330) — the journal says migrations applied," >&2
     echo "       but a live column/matview disagrees with schema.ts. See the named drift above." >&2
     return 1
@@ -2648,7 +2681,10 @@ restart_pm2() {
   # ecosystem.config.js's TZ:'UTC' is dead config here (deploy-linux.sh never
   # reads it) and is retired/documented as historical, not wired.
   pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
-  ( cd "$RELEASE_DIR/web" && TZ=UTC DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$RELEASE_DIR" next/dist/bin/next)" --name "$PM2_WEB_APP" \
+  # #1308: the web env file reaches the web app's pm2 start ONLY (its PORT
+  # among its keys: `next start` binds before it reads .env.local), never the
+  # scraper's start below, which reads its own .env.
+  ( cd "$RELEASE_DIR/web" && run_with_env_file "$WEB_ENV_FILE" env TZ=UTC DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$RELEASE_DIR" next/dist/bin/next)" --name "$PM2_WEB_APP" \
       -i "$instances" -- start )
   # Scraper is delete+start (not reload) on every deploy — it is a one-shot
   # fork process, not a long-lived server (pm2-scheduled-one-shot-scraper.md).
@@ -3093,7 +3129,7 @@ rollback_start_web() {
   # T-327 P2-7: TZ=UTC explicit here too, so a rollback never leaves the
   # web app running without an explicit process TZ.
   pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
-  ( cd "$PREVIOUS_RELEASE/web" && TZ=UTC DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$PREVIOUS_RELEASE" next/dist/bin/next)" --name "$PM2_WEB_APP" \
+  ( cd "$PREVIOUS_RELEASE/web" && run_with_env_file "$WEB_ENV_FILE" env TZ=UTC DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$PREVIOUS_RELEASE" next/dist/bin/next)" --name "$PM2_WEB_APP" \
       -i "${DEPLOY_WEB_INSTANCES:-2}" -- start ) \
     || warn "rollback: pm2 start failed for $PM2_WEB_APP against $PREVIOUS_RELEASE — investigate manually, do not assume it is running."
   pm2 save >/dev/null 2>&1 || warn "rollback: pm2 save failed — a reboot may not restore the rolled-back release."

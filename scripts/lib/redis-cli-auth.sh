@@ -30,7 +30,7 @@
 # secret in a live process's env is visible to anyone who can run
 # `pm2 env <id>`).
 #
-# redis_cli_prepare_auth REDIS_URL parses the URL and sets, in the CALLING
+# redis_cli_prepare_auth REDIS_URL [REDIS_DB] parses the URL and sets, in the CALLING
 # shell (a plain sourced function call, not a subshell — the values must
 # survive the call):
 #   REDIS_CLI_HOST, REDIS_CLI_PORT (defaults 6379), REDIS_CLI_DB (may be
@@ -45,6 +45,7 @@
 # their existing fail-open behaviour for that case.
 redis_cli_prepare_auth() {
   _rca_url="${1:-}"
+  _rca_env_db="${2:-}"
   REDIS_CLI_HOST=""
   REDIS_CLI_PORT="6379"
   REDIS_CLI_DB=""
@@ -142,6 +143,26 @@ redis_cli_prepare_auth() {
   _rca_db="${_rca_path#/}"
   _rca_db="${_rca_db%%\?*}"
   _rca_db="${_rca_db%%#*}"
+  # #1137: the db is chosen the way the app's own client chooses it.
+  # getRedisClient() (packages/shared/src/cache/redis-client.ts) builds
+  # `new Redis(REDIS_URL, { db: REDIS_DB })`, and ioredis applies the URL's
+  # fields first and fills only what the URL lacks (Redis.parseOptions,
+  # lodash `defaults`; parseURL sets db only for a path longer than "/").
+  # So: the URL's /N wins; the optional ENV_DB argument (the caller's
+  # REDIS_DB) is used only when the URL names no db. Before this, the shell
+  # ignored REDIS_DB, so on a URL without /N the wake and the deploy read
+  # and released locks in db 0 while the scraper held them in REDIS_DB.
+  if [ -z "$_rca_db" ] && [ -n "$_rca_env_db" ]; then
+    _rca_db="$_rca_env_db"
+  fi
+  # Fail closed on a db this helper cannot pass safely: only digits reach
+  # `-n` (a value with spaces or flags would otherwise become extra argv).
+  case "$_rca_db" in
+    *[!0-9]*)
+      echo "[redis-cli-auth] the Redis db index (REDIS_URL path or REDIS_DB) is not a non-negative integer; refusing rather than pass it to redis-cli" >&2
+      return 1
+      ;;
+  esac
   REDIS_CLI_DB="$_rca_db"
 
   return 0
@@ -161,7 +182,18 @@ redis_cli_prepare_auth() {
 # value".
 redis_cli_run() {
   _rcr_timeout="$1"; _rcr_url="$2"; shift 2
-  if ! redis_cli_prepare_auth "$_rcr_url"; then
+  redis_cli_run_env "$_rcr_timeout" "$_rcr_url" "" "$@"
+}
+
+# redis_cli_run_env TIMEOUT_SECONDS REDIS_URL REDIS_DB CMD... (#1137) — the
+# same as redis_cli_run, plus the caller's REDIS_DB (may be empty), applied
+# the way the app's ioredis client applies it (see redis_cli_prepare_auth).
+# Every wake and deploy call site uses this form, reading REDIS_DB from the
+# same place it reads REDIS_URL, so the shell and the scraper address the
+# same Redis db.
+redis_cli_run_env() {
+  _rcr_timeout="$1"; _rcr_url="$2"; _rcr_env_db="$3"; shift 3
+  if ! redis_cli_prepare_auth "$_rcr_url" "$_rcr_env_db"; then
     return 2
   fi
   if [ -n "$REDIS_CLI_USER" ]; then
