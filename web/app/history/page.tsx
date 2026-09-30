@@ -13,6 +13,7 @@ import { HistoricalIPOsContent } from './HistoricalIPOsContent';
 import { db } from '@/lib/db';
 import { ipos } from '@/lib/db';
 import { sql, eq, and } from 'drizzle-orm';
+import { publicIpoVisible } from '@/lib/repositories/public-ipo-visibility';
 import { getHistoricalIPOsData } from '@/lib/services/historical-ipos-service';
 
 // SEO Metadata
@@ -69,7 +70,8 @@ export default async function HistoricalIPOsPage({ searchParams }: HistoricalIPO
         eq(ipos.status, 'LISTED'),
         sql`${ipos.listingDate} IS NOT NULL`,
         sql`${ipos.listingDate} < CURRENT_DATE`,
-        sql`${ipos.sector} IS NOT NULL`
+        sql`${ipos.sector} IS NOT NULL`,
+        publicIpoVisible()
       )
     )
     .execute();
@@ -89,7 +91,8 @@ export default async function HistoricalIPOsPage({ searchParams }: HistoricalIPO
       and(
         eq(ipos.status, 'LISTED'),
         sql`${ipos.listingDate} IS NOT NULL`,
-        sql`${ipos.listingDate} < CURRENT_DATE`
+        sql`${ipos.listingDate} < CURRENT_DATE`,
+        publicIpoVisible()
       )
     )
     .groupBy(sql`EXTRACT(YEAR FROM ${ipos.listingDate})`)

@@ -27,7 +27,7 @@
  *   asked first, so an SME trading in ST costs 1 call after its first success, not 2-4. The wake
  *   paces the calls and the run line counts them.
  */
-import { and, asc, eq, gt, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, isNull, lte, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
 import { istDayIso } from '@ipodhan/shared/utils/ist-day';
@@ -118,7 +118,8 @@ export async function selectPriceCandidates(
       delistingStrikeReads: t.delistingStrikeReads,
     })
     .from(t)
-    .where(and(eq(t.status, 'LISTED'), gt(t.listingDate, from), lte(t.listingDate, today)))
+    // §9.2 item 23: a hidden row is not walked.
+    .where(and(eq(t.status, 'LISTED'), gt(t.listingDate, from), lte(t.listingDate, today), isNull(t.hiddenAt)))
     // #1310: ordered by the LAST ATTEMPT, not the last successful price. A row that never
     // prices (no symbol, delisted read, timeout) still gets a `priceLastAttemptAt` stamp every
     // run it is walked, so it moves to the BACK of the queue like any other attempted row —

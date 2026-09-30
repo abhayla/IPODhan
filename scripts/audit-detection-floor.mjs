@@ -66,6 +66,7 @@ import {
   checkExtractionStatusDeclared,
 } from './lib/document-state-checks.mjs';
 import { checkDelistedRow, describeDelistedRow } from './lib/delisting-checks.mjs';
+import { IPO_FK_CATALOG_SQL, TIMESTAMP_COLUMNS_SQL, planHiddenChildWriteCheck, childWritesAfterHideSql, summariseHiddenChildWrites } from './lib/hidden-ipo-child-writes.mjs';
 import {
   summariseIssueSizeConsistency,
   checkNoUnresolvedConflictOnLiveIpo, HIGH_VALUE_FIELDS, LIVE_STATUSES,
@@ -938,6 +939,30 @@ async function checkD_delistedReads() {
   record('d_delisted_reads', text, offenders.length === 0 ? 'PASS' : 'FAIL',
     `${rows.length} DELISTED row(s)` + (listed.length ? `: ${listed.slice(0, MAX_OFFENDERS).join('; ')}` : '') +
     (offenders.length ? ` | ${offenders.length} without their reads: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
+// §9.2 item 23 (OD-116/OD-118/OD-150): a hidden IPO receives no scraper write. The table list is
+// read from the FK catalog at run time (scripts/lib/hidden-ipo-child-writes.mjs), never typed.
+async function checkD_hiddenIpoChildWrites() {
+  const id = 'd_hidden_ipo_child_writes';
+  const text = 'no child row of a hidden IPO was written after its hidden_at (#1289, OD-150)';
+  const cols = await q(`SELECT 1 FROM information_schema.columns WHERE table_name = 'ipos' AND column_name = 'hidden_at'`);
+  if (cols.length === 0) {
+    record('d_hidden_ipo_child_writes', text, 'UNVERIFIABLE', 'ipos.hidden_at not present on this database (item 23 migration not applied)');
+    return;
+  }
+  const hidden = await q(`SELECT count(*)::int AS n FROM ipos WHERE hidden_at IS NOT NULL`);
+  const { plans, unmeasured, staleExemptions } = planHiddenChildWriteCheck(await q(IPO_FK_CATALOG_SQL), await q(TIMESTAMP_COLUMNS_SQL));
+  const offenders = [];
+  for (const plan of plans) {
+    for (const r of await q(childWritesAfterHideSql(plan))) {
+      offenders.push({ table: plan.table, ...r });
+      notify(id, 'P1', `${plan.table}:${r.id}`, `hidden IPO ${r.slug} got ${r.n} ${plan.table} write(s) after it was hidden`,
+        `${plan.table}: ${r.n} row(s), newest ${r.newestWrite}, hidden ${r.hiddenAt}`);
+    }
+  }
+  const v = summariseHiddenChildWrites({ hiddenCount: hidden[0].n, plans, unmeasured, staleExemptions, offenders });
+  record('d_hidden_ipo_child_writes', text, v.status, v.detail);
 }
 
 async function checkD_segmentProvenance() {
@@ -3957,6 +3982,7 @@ async function main() {
   await runCheck(checkD_strandedReadmit, ['d_stranded_readmit']);
   await runCheck(checkD_extractionStatusDeclared, ['d_extraction_status_declared']);
   await runCheck(checkD_delistedReads, ['d_delisted_reads']);
+  await runCheck(checkD_hiddenIpoChildWrites, ['d_hidden_ipo_child_writes']);
   await runCheck(checkD_segmentProvenance, ['d_segment_provenance']);
   await runCheck(checkE, ['e_route_sweep', 'e_verdict_leak_sweep']);
   await runCheck(checkE_unknownSlug404, ['e_unknown_slug_404']);

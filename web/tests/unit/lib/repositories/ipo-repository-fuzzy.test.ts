@@ -173,7 +173,7 @@ describe('IPORepository - Fuzzy Matching (ISS-027)', () => {
       mockRedis.set = vi.fn().mockResolvedValue('OK');
 
       const mockSelectBuilder = {
-        from: vi.fn().mockResolvedValue(mockIPOs),
+        from: vi.fn(() => ({ where: vi.fn().mockResolvedValue(mockIPOs) })),
       };
 
       mockDb.select = vi.fn().mockReturnValue(mockSelectBuilder);
@@ -208,7 +208,7 @@ describe('IPORepository - Fuzzy Matching (ISS-027)', () => {
       mockRedis.set = vi.fn().mockResolvedValue('OK');
 
       const mockSelectBuilder = {
-        from: vi.fn().mockResolvedValue(mockIPOs),
+        from: vi.fn(() => ({ where: vi.fn().mockResolvedValue(mockIPOs) })),
       };
 
       mockDb.select = vi.fn().mockReturnValue(mockSelectBuilder);
@@ -231,7 +231,7 @@ describe('IPORepository - Fuzzy Matching (ISS-027)', () => {
       mockRedis.set = vi.fn().mockResolvedValue('OK');
 
       const mockSelectBuilder = {
-        from: vi.fn().mockResolvedValue(mockIPOs),
+        from: vi.fn(() => ({ where: vi.fn().mockResolvedValue(mockIPOs) })),
       };
 
       mockDb.select = vi.fn().mockReturnValue(mockSelectBuilder);
@@ -248,9 +248,9 @@ describe('IPORepository - Fuzzy Matching (ISS-027)', () => {
       mockRedis.set = vi.fn().mockResolvedValue('OK');
 
       const mockSelectBuilder = {
-        from: vi.fn().mockResolvedValue([
+        from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([
           { id: 'ipo-1', slug: 'abc-ipo', companyName: 'ABC Corp', status: 'OPEN' },
-        ]),
+        ]) })),
       };
 
       mockDb.select = vi.fn().mockReturnValue(mockSelectBuilder);
@@ -274,7 +274,7 @@ describe('IPORepository - Fuzzy Matching (ISS-027)', () => {
       mockRedis.set = vi.fn().mockResolvedValue('OK');
 
       const mockSelectBuilder = {
-        from: vi.fn().mockResolvedValue(mockIPOs),
+        from: vi.fn(() => ({ where: vi.fn().mockResolvedValue(mockIPOs) })),
       };
 
       mockDb.select = vi.fn().mockReturnValue(mockSelectBuilder);
@@ -307,9 +307,9 @@ describe('IPORepository - Fuzzy Matching (ISS-027)', () => {
       mockRedis.get = vi.fn().mockRejectedValue(new Error('Redis unavailable'));
 
       const mockSelectBuilder = {
-        from: vi.fn().mockResolvedValue([
+        from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([
           { id: 'ipo-1', slug: 'tech-ipo', companyName: 'Tech Ltd', status: 'OPEN' },
-        ]),
+        ]) })),
       };
 
       mockDb.select = vi.fn().mockReturnValue(mockSelectBuilder);
@@ -343,7 +343,7 @@ describe('IPORepository - Fuzzy Matching (ISS-027)', () => {
       mockRedis.set = vi.fn().mockResolvedValue('OK');
 
       const mockSelectBuilder = {
-        from: vi.fn().mockResolvedValue(mockIPOs),
+        from: vi.fn(() => ({ where: vi.fn().mockResolvedValue(mockIPOs) })),
       };
 
       mockDb.select = vi.fn().mockReturnValue(mockSelectBuilder);

@@ -10,6 +10,7 @@
 import { db } from '@/lib/db';
 import { ipos, documents } from '@/lib/db';
 import { eq, and, ilike, sql } from 'drizzle-orm';
+import { publicIpoVisible } from '@/lib/repositories/public-ipo-visibility';
 
 // ==================== TYPES ====================
 
@@ -73,7 +74,7 @@ export async function getSMEProspectusDocuments(
     const exchange = filters?.exchange || 'All';
 
     // Build WHERE conditions - CRITICAL: Filter for SME segment only
-    const conditions = [eq(ipos.segment, 'SME')];
+    const conditions = [eq(ipos.segment, 'SME'), publicIpoVisible()]; // §9.2 item 23
 
     // Add company name filter (case-insensitive partial match)
     if (companyName) {

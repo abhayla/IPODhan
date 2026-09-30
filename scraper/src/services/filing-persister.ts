@@ -22,6 +22,7 @@
  * each field_sources.dataLineage records which document it actually was.
  */
 
+import { scraperWriteBlocked, type ScraperWriteBlockFacts } from '@ipodhan/shared/services/scraper-write-block';
 import type { IPORepository } from '@ipodhan/shared';
 import { E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories/field-sources-repository';
 import { parseListingSentence, toScrapedListingExchange, type DocumentListingExchange } from './listing-sentence.js';
@@ -1121,10 +1122,10 @@ export async function persistFilingExtraction(
   // honours it, but this module also writes ipo_details and eight child tables
   // through repositories and a raw upsert that never see it — so a locked IPO
   // was only half-protected. Refuse the WHOLE run, before the first write.
-  if ((existing as { scraperLocked?: boolean }).scraperLocked === true) {
+  if (scraperWriteBlocked(existing as ScraperWriteBlockFacts)) {
     throw new Error(
-      `persistFilingExtraction: IPO ${ipoId} (${existing.companyName}) is scraper_locked — ` +
-        `refusing the entire filing write. Clear the lock in admin to allow it.`
+      `persistFilingExtraction: IPO ${ipoId} (${existing.companyName}) is scraper-write-blocked (locked or hidden) — ` +
+        `refusing the entire filing write. Clear the lock / unhide in admin to allow it.`
     );
   }
 

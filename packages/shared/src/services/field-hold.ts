@@ -12,16 +12,21 @@
  * One lock statement and one protection read per write, however many rows: ids are batched.
  */
 import { sql, type SQL } from 'drizzle-orm';
+import { logger } from '../logger';
+import { scraperWriteBlockSqlColumns, scraperWriteBlockedRaw } from './scraper-write-block';
 
 export interface FieldHold {
-  scraperLocked: boolean;
+  /** `scraperWriteBlocked` (scraper-write-block.ts): locked OR hidden. */
+  writeBlocked: boolean;
+  /** An admin hid the row (§9.2 item 23): every table's write is dropped, whatever `honourScraperLock` says. */
+  hidden: boolean;
   protectedFields: ReadonlySet<string>;
 }
 
 /** Keys a hold never removes: row identity and bookkeeping timestamps (admin cannot edit them either). */
 export const NEVER_HELD_KEYS: ReadonlySet<string> = new Set(['id', 'ipoId', 'createdAt', 'updatedAt', 'lastUpdated']);
 
-export const NO_HOLD: FieldHold = { scraperLocked: false, protectedFields: new Set() };
+export const NO_HOLD: FieldHold = { writeBlocked: false, hidden: false, protectedFields: new Set() };
 
 /**
  * `field_protection_metadata` has no row_key column (its unique key is table, field, ipo), so a
@@ -40,7 +45,8 @@ export interface HoldExecutor {
 
 /**
  * Pure: split a patch into what may be written and what an admin holds. `honourScraperLock` drops
- * every key when the IPO carries `scraper_locked` (the `ipos` table's own semantics, round 1).
+ * every key when the IPO is write-blocked (the `ipos` table's own semantics, round 1). A HIDDEN row
+ * drops every key on every table (§9.2 item 23, OD-151): this patch is not written.
  */
 export function dropHeldFields<T extends Record<string, unknown>>(
   patch: T,
@@ -50,7 +56,9 @@ export function dropHeldFields<T extends Record<string, unknown>>(
   const kept: Record<string, unknown> = {};
   const dropped: string[] = [];
   for (const [k, v] of Object.entries(patch)) {
-    const held = !NEVER_HELD_KEYS.has(k) && ((opts.honourScraperLock === true && hold.scraperLocked) || hold.protectedFields.has(k));
+    const held =
+      !NEVER_HELD_KEYS.has(k) &&
+      (hold.hidden || (opts.honourScraperLock === true && hold.writeBlocked) || hold.protectedFields.has(k));
     if (held) dropped.push(k);
     else kept[k] = v;
   }
@@ -71,11 +79,14 @@ export async function lockAndReadFieldHolds(
   const holds = new Map<string, FieldHold>();
   if (ids.length === 0) return holds;
   const idList = sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `);
-  const locked = await tx.execute(sql`SELECT id, scraper_locked FROM ipos WHERE id IN (${idList}) ORDER BY id FOR NO KEY UPDATE`);
+  const locked = await tx.execute(
+    sql`SELECT id, ${scraperWriteBlockSqlColumns()} FROM ipos WHERE id IN (${idList}) ORDER BY id FOR NO KEY UPDATE`
+  );
   const fields = new Map<string, Set<string>>();
-  for (const r of locked.rows as Array<{ id: string; scraper_locked: boolean | null }>) {
+  for (const r of locked.rows as Array<{ id: string } & Parameters<typeof scraperWriteBlockedRaw>[0]>) {
     fields.set(r.id, new Set());
-    holds.set(r.id, { scraperLocked: r.scraper_locked === true, protectedFields: fields.get(r.id)! });
+    const b = scraperWriteBlockedRaw(r);
+    holds.set(r.id, { writeBlocked: b.blocked, hidden: b.hidden, protectedFields: fields.get(r.id)! });
   }
   if (holds.size === 0) return holds;
   const prot = await tx.execute(sql`
@@ -95,6 +106,11 @@ export async function filterPatchUnderHold<T extends Record<string, unknown>>(
 ): Promise<{ patch: Partial<T>; dropped: string[]; hold: FieldHold | null }> {
   const hold = (await lockAndReadFieldHolds(tx, [ipoId], tableName)).get(ipoId) ?? null;
   const { patch: kept, dropped } = dropHeldFields(patch, hold ?? NO_HOLD, opts);
+  // §9.2 item 23 (OD-116, OD-151): a hidden row's patch is DROPPED, never thrown. A throw here aborted
+  // whole job loops (registrar re-resolve, status updater) for every other IPO in the batch. The
+  // caller sees `hold.hidden` and skips any insert of its own; admin writes to a hidden row are
+  // refused earlier with IPO_HIDDEN (OD-150), not here.
+  if (hold?.hidden) logger.info({ ipoId, table: tableName, dropped }, '[item 23] hidden IPO: scraper patch dropped');
   return { patch: kept, dropped, hold };
 }
 
@@ -114,11 +130,19 @@ export async function lockAndReadRowHolds(
   tx: HoldExecutor,
   ipoId: string,
   tableName: string
-): Promise<{ exists: boolean; scraperLocked: boolean; rows: Map<string, Set<string>> }> {
+): Promise<{ exists: boolean; writeBlocked: boolean; hidden: boolean; rows: Map<string, Set<string>> }> {
   const rows = new Map<string, Set<string>>();
-  const locked = await tx.execute(sql`SELECT id, scraper_locked FROM ipos WHERE id = ${ipoId}::uuid FOR NO KEY UPDATE`);
-  const lockRow = locked.rows[0] as { scraper_locked?: boolean | null } | undefined;
-  if (!lockRow) return { exists: false, scraperLocked: false, rows };
+  const locked = await tx.execute(
+    sql`SELECT id, ${scraperWriteBlockSqlColumns()} FROM ipos WHERE id = ${ipoId}::uuid FOR NO KEY UPDATE`
+  );
+  const lockRow = locked.rows[0] as Parameters<typeof scraperWriteBlockedRaw>[0] | undefined;
+  if (!lockRow) return { exists: false, writeBlocked: false, hidden: false, rows };
+  const block = scraperWriteBlockedRaw(lockRow);
+  // §9.2 item 23 (OD-151): a hidden row returns `hidden: true` and the caller writes nothing; never thrown.
+  if (block.hidden) {
+    logger.info({ ipoId, table: tableName }, '[item 23] hidden IPO: scraper row write dropped');
+    return { exists: true, writeBlocked: true, hidden: true, rows };
+  }
   const prefix = `${tableName}:`;
   const prot = await tx.execute(sql`
     SELECT table_name, field_name FROM field_protection_metadata
@@ -128,7 +152,7 @@ export async function lockAndReadRowHolds(
     if (!rows.has(key)) rows.set(key, new Set());
     rows.get(key)!.add(r.field_name);
   }
-  return { exists: true, scraperLocked: lockRow.scraper_locked === true, rows };
+  return { exists: true, writeBlocked: block.blocked, hidden: block.hidden, rows };
 }
 
 /**

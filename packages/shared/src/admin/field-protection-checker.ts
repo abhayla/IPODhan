@@ -15,6 +15,7 @@ import { ipos, fieldProtectionMetadata } from '../db/schema';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '../db/schema';
 import type Redis from 'ioredis';
+import { scraperWriteBlockColumns, scraperWriteBlocked, isHiddenIpo } from '../services/scraper-write-block';
 
 // Cache TTL: 1 hour (protection flags don't change frequently)
 const PROTECTION_CACHE_TTL = 3600;
@@ -91,13 +92,17 @@ export class FieldProtectionService {
     }
 
     // Query database
+    // §9.2 item 23: locked OR hidden, through the one predicate (scraper-write-block.ts).
     const result = await this.db
-      .select({ scraperLocked: ipos.scraperLocked })
+      .select({ ...scraperWriteBlockColumns(ipos), slug: ipos.slug })
       .from(ipos)
       .where(eq(ipos.id, ipoId))
       .limit(1);
 
-    const isLocked = result[0]?.scraperLocked ?? false;
+    const isLocked = scraperWriteBlocked(result[0]);
+    if (isHiddenIpo(result[0])) {
+      console.info(`[FieldProtection] scraper write refused: IPO is hidden (id=${ipoId}, slug=${result[0]?.slug})`);
+    }
 
     // Cache result if Redis available
     if (this.redis) {

@@ -5,6 +5,7 @@
  * Implements caching for document listings.
  */
 
+import { notHiddenIpoSql } from '../services/scraper-write-block';
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
@@ -203,6 +204,7 @@ export class DocumentRepository
          WHERE lower(d.url) LIKE '%.zip'
            AND strpos(d.url, '#') = 0
            AND d.zip_members_checked_at IS NULL
+           AND ${notHiddenIpoSql('i')} -- §9.2 item 23 (OD-151): a hidden row's zips are not expanded
            AND (${slug}::text IS NULL OR i.slug = ${slug})
          ORDER BY d.zip_last_attempt_slot ASC NULLS FIRST, d.id
          LIMIT ${limit}

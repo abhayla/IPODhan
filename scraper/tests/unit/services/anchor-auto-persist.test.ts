@@ -80,7 +80,7 @@ describe('classifyAnchorAutoOutcome — the outcome map', () => {
   });
 
   it('a locked / protected / missing-row refusal is FAILED, not a silent success', () => {
-    for (const kind of ['scraper_locked', 'protected_field', 'ipo_missing', 'no_report'] as const) {
+    for (const kind of ['scraper_write_blocked', 'protected_field', 'ipo_missing', 'no_report'] as const) {
       const out = classifyAnchorAutoOutcome({ summary: summary({ refusedReason: 'x', refusedKind: kind }) });
       expect(out.kind).toBe('failed');
     }
@@ -98,7 +98,7 @@ describe('classifyAnchorAutoOutcome — the outcome map', () => {
   });
 
   it('W-168b: scraper_locked / ipo_missing / no_report are TRANSIENT — never deterministic, stay retryable forever', () => {
-    for (const kind of ['scraper_locked', 'ipo_missing', 'no_report'] as const) {
+    for (const kind of ['scraper_write_blocked', 'ipo_missing', 'no_report'] as const) {
       const out = classifyAnchorAutoOutcome({ summary: summary({ refusedReason: 'x', refusedKind: kind }) });
       expect(out.kind).toBe('failed');
       if (out.kind === 'failed') {

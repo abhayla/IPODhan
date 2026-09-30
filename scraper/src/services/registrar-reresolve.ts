@@ -63,14 +63,16 @@ export async function reresolveRegistrarIds(
     matched++;
     if (!dryRun) {
       // §9.2 item 19: an admin-held registrarId is re-read under the ipos row lock and never replaced.
+      // §9.2 item 23 (OD-151): a hidden row's patch is dropped by the same hold (never thrown), so one
+      // hidden row cannot abort the pass for every other IPO.
       const held = await db.transaction(async (tx) => {
-        const { dropped } = await filterPatchUnderHold(tx as never, row.id, 'ipos', { registrarId }, { honourScraperLock: true });
-        if (dropped.length > 0) return true;
+        const { dropped, hold } = await filterPatchUnderHold(tx as never, row.id, 'ipos', { registrarId }, { honourScraperLock: true });
+        if (dropped.length > 0) return hold?.hidden ? 'hidden' : 'held';
         await tx.update(schema.ipos).set({ registrarId }).where(eq(schema.ipos.id, row.id));
-        return false;
+        return null;
       });
       if (held) {
-        logger.info({ ipoId: row.id, registrarId }, '[item 19] registrar_id held by an admin; not backfilled');
+        logger.info({ ipoId: row.id, registrarId, reason: held }, '[item 19/23] registrar_id not backfilled (held by an admin or row hidden)');
         continue;
       }
       logger.info(

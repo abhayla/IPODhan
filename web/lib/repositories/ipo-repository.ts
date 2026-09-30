@@ -53,6 +53,7 @@ import {
 import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
 import { logger } from '../logger';
 import { withRetry, trackRetry } from '../db/connection-retry';
+import { publicIpoVisible, isIpoHidden } from './public-ipo-visibility';
 import type {
   IPO,
   IPOInsert,
@@ -219,6 +220,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       limit = 20,
       sortBy = 'createdAt',
       sortOrder = 'desc',
+      includeHidden = false,
     } = filters;
 
     const cacheKey = getIPOListKey(filters);
@@ -229,6 +231,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         try {
           // Build where conditions
           const conditions = [];
+          // §9.2 item 23: readers never see a hidden row; only an admin list opts in.
+          if (!includeHidden) conditions.push(publicIpoVisible());
 
           if (status) {
             if (Array.isArray(status)) {
@@ -389,7 +393,14 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   /**
    * Find IPO by slug with all relations
    */
-  async findBySlug(slug: string): Promise<IPOWithRelations | null> {
+  async findBySlug(slug: string, options: { includeHidden?: boolean } = {}): Promise<IPOWithRelations | null> {
+    // §9.2 item 23: the cached row is shared by readers and admins; hiding is applied on the way
+    // out, so a reader call never returns a hidden row and an admin call (includeHidden) does.
+    const row = await this.findBySlugIncludingHidden(slug);
+    return row && !options.includeHidden && isIpoHidden(row) ? null : row;
+  }
+
+  private async findBySlugIncludingHidden(slug: string): Promise<IPOWithRelations | null> {
     const cacheKey = getIPOBySlugKey(slug);
 
     return this.getFromCache(
@@ -398,6 +409,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         try {
           const [ipo] = await this.db
             .select()
+            // visibility: raw fetch for the cache, findBySlug drops a hidden row after the cache
             .from(ipos)
             .where(eq(ipos.slug, slug))
             .limit(1);
@@ -529,7 +541,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   /**
    * Find IPO by ID with cache-aside pattern
    */
-  async findById(id: string): Promise<IPO | null> {
+  async findById(id: string, options: { includeHidden?: boolean } = {}): Promise<IPO | null> {
+    // §9.2 item 23: same post-cache rule as findBySlug.
+    const row = await this.findByIdIncludingHidden(id);
+    return row && !options.includeHidden && isIpoHidden(row) ? null : row;
+  }
+
+  private async findByIdIncludingHidden(id: string): Promise<IPO | null> {
     const cacheKey = getIPOByIdKey(id);
 
     return this.getFromCache(
@@ -538,6 +556,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         try {
           const [ipo] = await this.db
             .select()
+            // visibility: raw fetch for the cache, findById drops a hidden row after the cache
             .from(ipos)
             .where(eq(ipos.id, id))
             .limit(1);
@@ -569,7 +588,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           const results = await this.db
             .select()
             .from(ipos)
-            .where(sql`${ipos.companyName} % ${query}`)
+            .where(and(sql`${ipos.companyName} % ${query}`, publicIpoVisible()))
             // #358: similarity() ties (e.g. two exact-companyName matches)
             // reshuffled the limited result set between requests; id breaks the tie.
             .orderBy(sql`similarity(${ipos.companyName}, ${query}) DESC`, asc(ipos.id))
@@ -587,7 +606,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             const results = await this.db
               .select()
               .from(ipos)
-              .where(like(ipos.companyName, `%${query}%`))
+              .where(and(like(ipos.companyName, `%${query}%`), publicIpoVisible()))
               .limit(limit);
 
             return results;
@@ -709,7 +728,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       const peerIpos = await this.db
         .select()
         .from(ipos)
-        .where(and(eq(ipos.sector, sector), sql`${ipos.id} != ${ipoId}`))
+        .where(and(eq(ipos.sector, sector), sql`${ipos.id} != ${ipoId}`, publicIpoVisible()))
         .limit(limit);
 
       // Fetch financial data for each peer IPO
@@ -806,6 +825,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // Calendar views are IPO-only (the route accepts MAINBOARD/SME segments,
       // both offering_type=IPO) — exclude any non-IPO offering that shares a segment.
       conditions.push(inArray(ipos.offeringType, REAL_IPO_TYPE_FILTER));
+      conditions.push(publicIpoVisible());
 
       if (filters.category && filters.category.length > 0) {
         // Map old category to segment
@@ -889,10 +909,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         closeDateTo,
         listingDateFrom,
         listingDateTo,
+        includeHidden = false,
       } = filters;
 
       // Build where conditions (same logic as findAll)
       const conditions = [];
+      if (!includeHidden) conditions.push(publicIpoVisible());
 
       if (status) {
         if (Array.isArray(status)) {
@@ -1008,7 +1030,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         const result = await this.db
           .selectDistinct({ sector: ipos.sector })
           .from(ipos)
-          .where(sql`${ipos.sector} IS NOT NULL AND ${ipos.sector} != ''`)
+          .where(and(sql`${ipos.sector} IS NOT NULL AND ${ipos.sector} != ''`, publicIpoVisible()))
           .orderBy(ipos.sector);
 
         return result
@@ -1071,6 +1093,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             sql`${ipos.listingDate} IS NOT NULL`,
             sql`${ipos.listingDate} < CURRENT_DATE`, // Only past listings, not future dates
             inArray(ipos.offeringType, REAL_IPO_TYPE_FILTER),
+            publicIpoVisible(),
           ];
 
           // Add year filter (extract year from listing_date)
@@ -1265,6 +1288,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       () =>
         this.db
           .select({ id: ipos.id })
+          // visibility: slug-redirect holder lookup, a hidden row still owns its slug
           .from(ipos)
           .where(eq(ipos.slug, oldSlug))
           .limit(1),
@@ -1298,7 +1322,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           .select({ currentSlug: ipos.slug })
           .from(schema.ipoSlugRedirects)
           .innerJoin(ipos, eq(schema.ipoSlugRedirects.ipoId, ipos.id))
-          .where(eq(schema.ipoSlugRedirects.oldSlug, oldSlug))
+          // §9.2 item 23: an old slug never redirects a reader to a hidden row.
+          .where(and(eq(schema.ipoSlugRedirects.oldSlug, oldSlug), publicIpoVisible()))
           .limit(1);
 
         return row?.currentSlug ?? null;
@@ -1368,10 +1393,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       similarityThreshold = SLUG_FALLBACK_MIN_SIMILARITY,
     } = options;
 
-    // Try exact match first (uses cache)
-    const exactMatch = await this.findBySlug(slug);
+    // Try exact match first (uses cache). §9.2 item 23: a HIDDEN exact match stops here — the
+    // address is gone (410 at the edge), and the fuzzy tiers below must never hand the reader a
+    // neighbouring IPO for it.
+    const exactMatch = await this.findBySlug(slug, { includeHidden: true });
     if (exactMatch) {
-      return exactMatch;
+      return isIpoHidden(exactMatch) ? null : exactMatch;
     }
 
     // If exact match fails and fuzzy is disabled, return null
@@ -1425,7 +1452,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           id: ipos.id,
           companyName: ipos.companyName,
           slug: ipos.slug,
-        }).from(ipos);
+        }).from(ipos).where(publicIpoVisible());
       }
     );
 
@@ -1531,7 +1558,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         const allIPOs = await this.executeQuery(
           'searchByName',
           async () => {
-            return await this.db.select().from(ipos);
+            return await this.db.select().from(ipos).where(publicIpoVisible());
           }
         );
 
@@ -1832,7 +1859,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       async () => {
         try {
           // Build where conditions
-          const whereConditions = [];
+          const whereConditions = [publicIpoVisible()];
 
           // Filter by category - map to segment OR offeringType based on category
           if (category && category !== 'ALL') {

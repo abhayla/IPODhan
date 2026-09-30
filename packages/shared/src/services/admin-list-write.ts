@@ -14,6 +14,7 @@
  * Lead managers also get the `field_sources` ADMIN provenance row, as any `ipos` field does (§2.7).
  * Cache keys are dropped AFTER commit by the web wrapper, as for a field save (F-171).
  */
+import { isHiddenIpo, IPO_HIDDEN_ADMIN_REASON } from './scraper-write-block';
 import { createHash } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -77,7 +78,9 @@ export type AdminListChangeResult =
   | { kind: 'OK'; ipoId: string; slug: string; list: AdminListName; before: string[]; after: string[]; version: string }
   | { kind: 'CONFLICT'; reason: string; current: string[]; currentVersion: string }
   | { kind: 'INVALID'; reason: string }
-  | { kind: 'NOT_FOUND'; reason: string };
+  | { kind: 'NOT_FOUND'; reason: string }
+  /** OD-150: the IPO is hidden; a hidden row is view-only until unhidden. */
+  | { kind: 'HIDDEN'; reason: string };
 
 /** Child tables whose rows ARE the list (one row per list entry). */
 const ROW_TABLES: Partial<Record<AdminListName, PgTable & { ipoId: unknown }>> = {
@@ -206,7 +209,8 @@ export async function writeAdminListChange(db: Db, input: AdminListChangeInput):
       const tx = txRaw as unknown as Db;
       const { exists } = await lockAndReadListOwnership(tx as never, ipoId, list);
       if (!exists) throw new Refusal({ kind: 'NOT_FOUND', reason: `IPO ${ipoId} does not exist` });
-      const [{ slug }] = await tx.select({ slug: ipos.slug }).from(ipos).where(eq(ipos.id, ipoId));
+      const [{ slug, hiddenAt }] = await tx.select({ slug: ipos.slug, hiddenAt: ipos.hiddenAt }).from(ipos).where(eq(ipos.id, ipoId));
+      if (isHiddenIpo({ hiddenAt })) throw new Refusal({ kind: 'HIDDEN', reason: IPO_HIDDEN_ADMIN_REASON });
       const before = await readList(tx, ipoId, list);
       const currentVersion = await listVersion(tx, ipoId, list, before);
       if (currentVersion !== input.expectedVersion) {

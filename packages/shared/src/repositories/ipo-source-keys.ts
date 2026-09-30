@@ -150,12 +150,20 @@ export class SourceKeyHeldError extends RepositoryError {
   }
 }
 
+/**
+ * §9.2 item 23 (OD-116/OD-118): the record bound a row an admin HID. The bind stands (the row's
+ * identifiers stay, so the record is never recreated as a new row) but nothing is written to it.
+ * Same shape as SUPERSEDED: a decision, not a failure, never retried.
+ */
+export { IpoHiddenError } from '../services/scraper-write-block';
+
 /** Every error name that means "this record writes nothing this cycle, by decision" — never retried. */
 export const SOURCE_KEY_NO_WRITE_ERROR_NAMES: ReadonlySet<string> = new Set([
   'IdentityHeldForReviewError',
   'SourceKeyDuplicateError',
   'SourceKeySupersededError',
   'SourceKeyHeldError',
+  'IpoHiddenError',
 ]);
 
 function toDay(value: unknown): string | null {

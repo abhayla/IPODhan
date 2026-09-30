@@ -20,6 +20,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { ADMIN_SESSION_COOKIE } from '@/lib/admin-accounts/session-cookie-name';
 import { applyPrivateResponseHeaders } from '@/lib/security/private-response-headers';
+import { isHiddenIpoSlug } from '@/lib/ipo-visibility/hidden-ipo-slugs';
 
 /**
  * Admin gate, the FIRST layer (runs before any admin page or admin API route renders).
@@ -28,7 +29,7 @@ import { applyPrivateResponseHeaders } from '@/lib/security/private-response-hea
  * stop a child page from running, and that page's output reached the response body. Middleware
  * runs before the route renders at all.
  *
- * It checks cookie PRESENCE only: middleware runs in the Edge runtime with no database, so it
+ * It checks cookie PRESENCE only (no session lookup here, even on the Node runtime), so it
  * cannot tell a valid session from a forged or expired one. Validity is decided by the later
  * layers, which all stay: the server layout app/admin/(protected)/layout.tsx, each page's own
  * check, and withAdminAuth / requireAdminAuth on every admin API route.
@@ -66,7 +67,41 @@ export function isAdminPath(pathname: string): boolean {
   return p === '/admin' || p.startsWith('/admin/') || p === '/api/admin' || p.startsWith('/api/admin/');
 }
 
-export function middleware(request: NextRequest) {
+/** An IPO detail address: /ipos/<slug> (no deeper segment). */
+// The page AND every slug-keyed API under it (/api/ipos/<slug>/gmp/latest, /documents, ...): the
+// API's findBySlugWithFallback would otherwise answer a hidden address with a neighbour's data.
+export const IPO_DETAIL_PATH = /^\/(?:api\/)?ipos\/([^/]+)(?:\/.*)?$/;
+
+/**
+ * §9.2 item 23 (OD-116/OD-118): a hidden IPO's address answers 410 Gone. Decided here because an
+ * App Router page cannot set a 410 status, and because the page's fuzzy slug fallback must never
+ * get the chance to send a hidden address to a neighbouring IPO.
+ */
+function goneResponse(): NextResponse {
+  const response = new NextResponse(
+    '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Page removed | IPODhan</title>' +
+      '<meta name="robots" content="noindex"></head><body><h1>This IPO page has been removed</h1>' +
+      '<p><a href="/">Go to the IPODhan home page</a></p></body></html>',
+    { status: 410, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  );
+  response.headers.set('Cache-Control', 'no-store');
+  response.headers.set('X-Robots-Tag', 'noindex');
+  return response;
+}
+
+export async function middleware(request: NextRequest) {
+  const match = IPO_DETAIL_PATH.exec(request.nextUrl.pathname);
+  if (match) {
+    let slug = match[1];
+    try {
+      slug = decodeURIComponent(slug);
+    } catch {
+      // a malformed escape is simply not a hidden slug
+    }
+    if (await isHiddenIpoSlug(slug)) {
+      return applySecurityHeaders(goneResponse());
+    }
+  }
   const response = adminGate(request) ?? NextResponse.next();
 
   // #1346: an admin page/API response, and ANY response to a request carrying an admin session
@@ -74,7 +109,10 @@ export function middleware(request: NextRequest) {
   if (isAdminPath(request.nextUrl.pathname) || request.cookies.get(ADMIN_SESSION_COOKIE)?.value) {
     applyPrivateResponseHeaders(response.headers);
   }
+  return applySecurityHeaders(response);
+}
 
+function applySecurityHeaders(response: NextResponse): NextResponse {
   // Prevent MIME type sniffing
   // Ensures browsers respect Content-Type header
   response.headers.set('X-Content-Type-Options', 'nosniff');
@@ -139,6 +177,8 @@ export function middleware(request: NextRequest) {
 // checks, the (protected) layout and withAdminAuth.
 // Excludes: Next.js internals, static assets, and favicon
 export const config = {
+  // §9.2 item 23: Node.js runtime (stable in Next 15.5) so the hidden-slug check can read the database.
+  runtime: 'nodejs',
   matcher: [
     /*
      * Match all request paths except for the ones starting with:

@@ -14,6 +14,7 @@ import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { SubscriptionRepository } from '@/lib/repositories/subscription-repository';
 import { logger } from '@/lib/logger';
+import { isPublicIpoId, IPO_ID_RE } from '@/lib/ipo-visibility/public-ipo-id';
 
 /**
  * Generate unique request ID for tracing
@@ -64,7 +65,7 @@ export async function GET(
     requestLogger.info({ ipoId, days: daysParam }, 'Processing subscription history request');
 
     // Validate ipoId
-    if (!ipoId || typeof ipoId !== 'string') {
+    if (!ipoId || typeof ipoId !== 'string' || !IPO_ID_RE.test(ipoId)) {
       return createErrorResponse(
         'VALIDATION_ERROR',
         'Invalid or missing ipoId parameter',
@@ -101,6 +102,15 @@ export async function GET(
         flushdb: async () => 'OK',
       } as any;
     }
+
+    // §9.2 item 23: a hidden IPO's history is not public by id either.
+
+    if (!(await isPublicIpoId(ipoId, redis))) {
+
+      return createErrorResponse('NOT_FOUND', 'IPO not found', requestId, 404);
+
+    }
+
 
     const subscriptionRepository = new SubscriptionRepository(db, redis);
 

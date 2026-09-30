@@ -86,8 +86,9 @@ export const POST = withAdminAuth(async (request: NextRequest, admin, context: C
       }
       return NextResponse.json({ success: true, data: result });
     }
-    const status = result.kind === 'CONFLICT' ? 409 : result.kind === 'NOT_FOUND' ? 404 : 400;
-    return NextResponse.json({ success: false, error: result.kind, ...result }, { status });
+    const status = result.kind === 'CONFLICT' || result.kind === 'HIDDEN' ? 409 : result.kind === 'NOT_FOUND' ? 404 : 400;
+    const error = result.kind === 'HIDDEN' ? 'IPO_HIDDEN' : result.kind;
+    return NextResponse.json({ success: false, ...result, error }, { status });
   } catch (error) {
     return apiErrorResponse(error, '/api/admin/ipos/[id]/lists/[list]');
   }

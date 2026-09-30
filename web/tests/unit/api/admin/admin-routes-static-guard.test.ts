@@ -58,6 +58,7 @@ const EXPECTED_ADMIN_ROUTES = [
   'ipos/[id]/editor/route.ts',
   'ipos/[id]/lists/[list]/route.ts',
   'ipos/[id]/route.ts',
+  'ipos/[id]/visibility/route.ts',
   'ipos/route.ts',
   'metrics/data-pipeline/route.ts',
   'notifications/test/route.ts',

@@ -91,6 +91,8 @@ export interface EditorField extends Omit<EditorFieldSpec, 'tableName'> {
 
 export interface EditorPayload {
   ipo: { id: string; slug: string; companyName: string; status: string | null; offeringType: string | null; typeKey: string };
+  /** OD-150: a hidden row is view-only; the editor shows its data and an "Unhide to edit" action. */
+  hidden: { at: string; reason: string | null } | null;
   fields: EditorField[];
 }
 
@@ -194,6 +196,8 @@ export async function loadIpoEditor(db: Db, ipoId: string): Promise<EditorPayloa
       offeringType: schema.ipos.offeringType,
       segment: schema.ipos.segment,
       listingExchanges: schema.ipos.listingExchanges,
+      hiddenAt: schema.ipos.hiddenAt,
+      hiddenReason: schema.ipos.hiddenReason,
     })
     .from(schema.ipos)
     .where(eq(schema.ipos.id, ipoId))
@@ -306,6 +310,7 @@ export async function loadIpoEditor(db: Db, ipoId: string): Promise<EditorPayloa
       offeringType: (ipo.offeringType as string | null) ?? null,
       typeKey,
     },
+    hidden: ipo.hiddenAt ? { at: new Date(ipo.hiddenAt).toISOString(), reason: ipo.hiddenReason ?? null } : null,
     fields,
   };
 }

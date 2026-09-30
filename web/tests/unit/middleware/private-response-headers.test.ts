@@ -3,11 +3,14 @@
  * `Cache-Control: private, no-store`. Middleware is the one place that marks them uncacheable for
  * the CDN; these tests pin the exact headers and prove every admin route/page file is matched.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { NextRequest } from 'next/server';
 import { middleware, config } from '@/middleware';
+
+// The item 23 hidden-row lookup reads the DB; these tests are about the CDN headers, so no row is hidden.
+vi.mock('@/lib/ipo-visibility/hidden-ipo-slugs', () => ({ isHiddenIpoSlug: async () => false }));
 import { ADMIN_SESSION_COOKIE } from '@/lib/admin-accounts/session-cookie-name';
 
 const APP = path.resolve(__dirname, '../../../app');
@@ -35,37 +38,37 @@ describe('admin responses are never stored by the CDN', () => {
     '/admin',
     '/admin/ipos/abc',
     '/admin/conflicts',
-  ])('authenticated %s carries the private headers', (url) => {
-    expectPrivate(middleware(req(url, 'sess')));
+  ])('authenticated %s carries the private headers', async (url) => {
+    expectPrivate(await middleware(req(url, 'sess')));
   });
 
-  it('the 401 for a signed-out API call and the login redirect carry them too', () => {
-    const unauth = middleware(req('/api/admin/ipos/abc/editor'));
+  it('the 401 for a signed-out API call and the login redirect carry them too', async () => {
+    const unauth = await middleware(req('/api/admin/ipos/abc/editor'));
     expect(unauth.status).toBe(401);
     expectPrivate(unauth);
-    const redirect = middleware(req('/admin/conflicts'));
+    const redirect = await middleware(req('/admin/conflicts'));
     expect(redirect.status).toBe(307);
     expectPrivate(redirect);
-    expectPrivate(middleware(req('/admin/login')));
+    expectPrivate(await middleware(req('/admin/login')));
   });
 
-  it('a Bearer-token API call carries them', () => {
-    expectPrivate(middleware(req('/api/admin/queue', undefined, { authorization: 'Bearer x' })));
+  it('a Bearer-token API call carries them', async () => {
+    expectPrivate(await middleware(req('/api/admin/queue', undefined, { authorization: 'Bearer x' })));
   });
 
-  it('a public page rendered for an admin cookie (editor controls) is uncacheable', () => {
-    expectPrivate(middleware(req('/ipos/some-ipo', 'sess')));
+  it('a public page rendered for an admin cookie (editor controls) is uncacheable', async () => {
+    expectPrivate(await middleware(req('/ipos/some-ipo', 'sess')));
   });
 
-  it('a public page with no admin cookie is left cacheable (no header forced)', () => {
-    const res = middleware(req('/ipos/some-ipo'));
+  it('a public page with no admin cookie is left cacheable (no header forced)', async () => {
+    const res = await middleware(req('/ipos/some-ipo'));
     expect(res.headers.get('cdn-cache-control')).toBeNull();
     expect(res.headers.get('cache-control')).toBeNull();
   });
 
-  it('keeps an existing Vary value', () => {
+  it('keeps an existing Vary value', async () => {
     // covered through the helper: Vary is merged, not replaced
-    const res = middleware(req('/api/admin/queue', 'sess'));
+    const res = await middleware(req('/api/admin/queue', 'sess'));
     expect(res.headers.get('vary')).toBe('Cookie');
   });
 });
@@ -100,9 +103,9 @@ describe('class guard: every admin route and page file is inside the middleware 
 
   it.each([...routeFiles, ...pageFiles].map((f) => [path.relative(APP, f), toUrl(f)]))(
     '%s (%s) is matched and marked private',
-    (_rel, url) => {
+    async (_rel, url) => {
       expect(matcher.test(url)).toBe(true);
-      expectPrivate(middleware(req(url, 'sess')));
+      expectPrivate(await middleware(req(url, 'sess')));
     }
   );
 });

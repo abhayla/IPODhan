@@ -196,6 +196,8 @@ export function adminWriteResponse(result: AdminFieldWriteResult, extra?: Record
       return NextResponse.json({ success: false, error: 'INVALID', reason: result.reason }, { status: 400 });
     case 'NOT_FOUND':
       return NextResponse.json({ success: false, error: 'NOT_FOUND', reason: result.reason }, { status: 404 });
+    case 'HIDDEN':
+      return NextResponse.json({ success: false, error: 'IPO_HIDDEN', reason: result.reason }, { status: 409 });
     case 'CONFLICT':
       return NextResponse.json(
         {

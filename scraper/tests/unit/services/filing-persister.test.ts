@@ -1138,6 +1138,18 @@ describe('filing-persister — basis casing (F3)', () => {
 describe('filing-persister — lock and field protection (F5)', () => {
   beforeEach(() => upsertIPOMock.mockClear());
 
+  it('refuses the whole run when the IPO is HIDDEN (§9.2 item 23)', async () => {
+    const s = makeDeps();
+    const findById = s.deps.ipoRepository.findById as unknown as ReturnType<typeof vi.fn>;
+    const base = await findById();
+    findById.mockResolvedValue({ ...base, scraperLocked: false, hiddenAt: new Date('2026-09-30T08:00:00Z') });
+    upsertIPOMock.mockClear();
+    await expect(
+      persistFilingExtraction(IPO_ID, extractionFromOracle('PRICE_BAND_AD'), { docType: 'PRICE_BAND_AD', apply: true }, s.deps)
+    ).rejects.toThrow(/scraper-write-blocked/);
+    expect(upsertIPOMock).not.toHaveBeenCalled();
+  });
+
   it('refuses the whole run and writes nothing when the IPO is scraper_locked', async () => {
     const s = makeDeps();
     const findById = s.deps.ipoRepository.findById as unknown as ReturnType<typeof vi.fn>;
@@ -1151,7 +1163,7 @@ describe('filing-persister — lock and field protection (F5)', () => {
         { docType: 'PRICE_BAND_AD', apply: true },
         s.deps
       )
-    ).rejects.toThrow(/scraper_locked/);
+    ).rejects.toThrow(/scraper-write-blocked/);
 
     expect(upsertIPOMock).not.toHaveBeenCalled();
     expect(s.detailsUpsert).not.toHaveBeenCalled();
@@ -2107,7 +2119,7 @@ describe('filing-persister — W-73 risk factors / acquisition ranges / filing d
 
     await expect(
       persistFilingExtraction(IPO_ID, w73Extraction(), { docType: 'RHP', apply: true }, s.deps)
-    ).rejects.toThrow(/scraper_locked/);
+    ).rejects.toThrow(/scraper-write-blocked/);
 
     expect(w.replaceRiskFactors).not.toHaveBeenCalled();
     expect(s.replaceRanges).not.toHaveBeenCalled();
@@ -2269,7 +2281,7 @@ describe('filing-persister — W-82 cin -> ipos.cin', () => {
         { docType: 'PRICE_BAND_AD', apply: true },
         s.deps
       )
-    ).rejects.toThrow(/scraper_locked/);
+    ).rejects.toThrow(/scraper-write-blocked/);
     expect(upsertIPOMock).not.toHaveBeenCalled();
   });
 });
