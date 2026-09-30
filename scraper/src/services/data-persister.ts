@@ -20,7 +20,7 @@ import type { ScrapedFinancialData } from '../scrapers/financial-data-scraper.js
 import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 // Phase 2: Shadow Mode - Data Consolidation Service
-import { DataConsolidationService, type DeferredProvenanceWrite, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
+import { DataConsolidationService, type DeferredProvenanceWrite, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, collectDegeneratePriceBandFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo, withSourceKeyLineage, sourceKeyLineageFor, E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
@@ -309,18 +309,25 @@ async function getStoredOfferingTypeSource(ipoId: string | undefined): Promise<s
   }
 }
 
-/** OD-129 (#938): the source vouching for the stored `listingExchanges`, for the fallback door. */
-async function getStoredListingExchangesSource(ipoId: string | undefined): Promise<string | null> {
-  if (!ipoId) return null;
+/**
+ * OD-129 (#938): the source vouching for the stored `listingExchanges`, for the fallback door.
+ * Four answers, never conflated (#1236): a document or ADMIN row, a feed row, no row at all (never
+ * tracked: `source` null, `lookupFailed` false), and a lookup that THREW (`lookupFailed` true: the
+ * answer is unknown, and "unknown" is not "no document claim").
+ */
+async function getStoredListingExchangesSource(
+  ipoId: string | undefined
+): Promise<{ source: string | null; lookupFailed: boolean }> {
+  if (!ipoId) return { source: null, lookupFailed: false };
   try {
     const provenance = await getFieldSourcesRepository().findByField(ipoId, 'ipos', 'listingExchanges');
-    return (provenance as any)?.source ?? null;
+    return { source: (provenance as any)?.source ?? null, lookupFailed: false };
   } catch (e) {
     logger.warn(
       { ipoId, error: e instanceof Error ? e.message : String(e) },
-      '[DataPersister] OD-129 stored listingExchanges provenance lookup failed - no document claim known, the feed union applies'
+      '[DataPersister] OD-129 stored listingExchanges provenance lookup failed - holder unknown, the fallback door will not widen the stored set (#1236)'
     );
-    return null;
+    return { source: null, lookupFailed: true };
   }
 }
 
@@ -715,7 +722,12 @@ export function mergeListingExchangesForSource(
   // (field_sources). Only an offer-document (or ADMIN) source holds the set;
   // null / unknown / a feed source means no document claim, so the feed union
   // still applies ("Only when no document has been read: the exchange feed").
-  storedSource?: string | null
+  storedSource?: string | null,
+  // #1236: the provenance lookup itself threw, so who holds the stored set is UNKNOWN. A feed must
+  // not widen a set that may be document-held, and the provenance write would then record the feed
+  // as its source, which no later cycle undoes. Fail closed: keep the stored set; the next cycle's
+  // consolidation (or this lookup succeeding) decides it. A never-tracked set (no row) is not this case.
+  provenanceLookupFailed?: boolean
 ): ('NSE' | 'BSE')[] {
   const existing = existingExchanges ?? [];
   // W-145: ONE rule for what a source proves — an aggregator's 'BOTH' is
@@ -733,6 +745,13 @@ export function mergeListingExchangesForSource(
   });
   if (od129.kind === 'DOCUMENT_WRITES') return od129.value as ('NSE' | 'BSE')[];
   if (od129.kind !== 'NO_DOCUMENT') return existing;
+  if (provenanceLookupFailed && existing.length > 0) {
+    logger.warn(
+      { source, stored: existing, incoming },
+      '[DataPersister] #1236 stored listingExchanges holder unknown (provenance lookup failed) - not widening the set from a feed'
+    );
+    return existing;
+  }
 
   let merged = existing;
   for (const exchange of incoming) {
@@ -764,6 +783,28 @@ export function keepTerminalIpoStatus<T extends Record<string, any>>(existingSta
 }
 
 /**
+ * #1253: the ONE definition of "this key is not a claim of this write on the fallback door": a
+ * context field (OD-66, both `listingExchange` spellings, #938) or, for a document source, an E-1
+ * exchange-stated field (§1.2.1). The publish filter (`dropFallbackNonClaims`), the provenance
+ * filter and the "is the listing exchange context" test all read this, so they cannot drift.
+ */
+function fallbackContextKeys(contextFields: readonly string[] | undefined): Set<string> {
+  const context = new Set(contextFields ?? []);
+  if (context.has('listingExchange')) context.add('listingExchanges');
+  if (context.has('listingExchanges')) context.add('listingExchange');
+  return context;
+}
+
+export function fallbackNonClaimTest(
+  source: string,
+  contextFields: readonly string[] | undefined,
+): (key: string) => boolean {
+  const context = fallbackContextKeys(contextFields);
+  const isDocumentSource = DOCUMENT_PATH_SOURCES.has(source);
+  return (key) => context.has(key) || (isDocumentSource && E1_EXCHANGE_STATED_FIELDS.has(key));
+}
+
+/**
  * #454 (remainder): the fallback door publishes only this write's CLAIMS, the same set the
  * consolidation door would resolve. Two kinds of key are not claims and are removed before the
  * `ipos` update, not merely left out of provenance:
@@ -780,14 +821,11 @@ export function dropFallbackNonClaims<T extends Record<string, any>>(
   source: string,
   contextFields: readonly string[] | undefined,
 ): { update: T; refused: string[] } {
-  const context = new Set(contextFields ?? []);
-  if (context.has('listingExchange')) context.add('listingExchanges');
-  if (context.has('listingExchanges')) context.add('listingExchange');
-  const isDocumentSource = DOCUMENT_PATH_SOURCES.has(source);
+  const isNonClaim = fallbackNonClaimTest(source, contextFields);
   const kept: Record<string, any> = {};
   const refused: string[] = [];
   for (const [key, value] of Object.entries(update)) {
-    if (context.has(key) || (isDocumentSource && E1_EXCHANGE_STATED_FIELDS.has(key))) {
+    if (isNonClaim(key)) {
       refused.push(key);
       continue;
     }
@@ -1274,9 +1312,7 @@ async function upsertIPOInScope(
       // #938 echo: a listing exchange the caller declared as CONTEXT (the
       // filing persister re-sends the STORED boards so the row resolves) is
       // not this write's claim, under either spelling of the key.
-      const listingExchangeIsContext =
-        contextFields?.includes('listingExchange') === true ||
-        contextFields?.includes('listingExchanges') === true;
+      const listingExchangeIsContext = fallbackContextKeys(contextFields).has('listingExchanges');
       const listingExchanges = toListingExchangesForSource(scrapedIPO.listingExchange, source);
 
       // Stage A.5 write-path date-plausibility guard (#41/#52): a current scrape must
@@ -1489,6 +1525,9 @@ async function upsertIPOInScope(
         // fallback below commits it for the values the fallback actually stores (before OD-131
         // these rows were written inline, so dropping them on the fallback would lose lineage).
         // Cleared the moment it is committed, so it is never written twice.
+        // #1253: set when ANY provenance commit on the fallback door fails (the deferred commit writes
+        // row by row, so a failure is partial), so the ledger never claims lineage that was not written.
+        let fallbackProvenanceWriteFailed = false;
         let uncommittedProvenance:
           | { service: { commitDeferredProvenance: DataConsolidationService['commitDeferredProvenance'] }; writes: DeferredProvenanceWrite[] }
           | undefined;
@@ -1872,6 +1911,9 @@ async function upsertIPOInScope(
         // nulled it, and `listingExchanges` was replaced rather than merged.
         // It stays reachable by design — it is what runs when consolidation
         // throws — so it is made SAFE rather than declared unreachable.
+        const storedExchangesProvenance = listingExchangeIsContext
+          ? { source: null, lookupFailed: false }
+          : await getStoredListingExchangesSource((existingIPO as any).id);
         const fallbackData: any = {
           ...buildNonDestructiveUpdate(existingIPO as any, ipoData),
           listingExchanges: mergeListingExchangesForSource(
@@ -1880,7 +1922,8 @@ async function upsertIPOInScope(
             // #938 echo: context is never a claim, on this door either.
             listingExchangeIsContext ? undefined : scrapedIPO.listingExchange,
             ((existingIPO as any).segment ?? scrapedIPO.segment) as string | null | undefined,
-            listingExchangeIsContext ? null : await getStoredListingExchangesSource((existingIPO as any).id)
+            storedExchangesProvenance.source,
+            storedExchangesProvenance.lookupFailed
           ),
           lastScrapedAt: new Date(),
           updatedAt: new Date(),
@@ -1910,6 +1953,18 @@ async function upsertIPOInScope(
             fallbackData.offeringType,
             source,
             offeringTypeSource
+          );
+        }
+        // #1253: the consolidator refuses a degenerate incoming band (min === max, not FIXED_PRICE)
+        // over a stored real range (T-276, collectDegeneratePriceBandFields); this door stored it.
+        // Same predicate, same inputs (the fallback door loads no field_sources map, so the stored
+        // row is the signal, exactly the consolidator's own untracked-row path, T-281).
+        const degenerateFallbackBand = collectDegeneratePriceBandFields(ipoData as any, new Map(), existingIPO as any);
+        if (degenerateFallbackBand.size > 0) {
+          for (const fieldName of degenerateFallbackBand) delete fallbackData[fieldName];
+          logger.warn(
+            { ipoId: existingIPO.id, source, fields: [...degenerateFallbackBand], reason: 'DEGENERATE_PRICE_BAND' },
+            '[LEGACY PATH] degenerate price band not written over a stored real range by the fallback door (T-276, #1253)'
           );
         }
         // #454 remainder: publish only this write's claims — context fields (OD-66) and, for a
@@ -1946,6 +2001,7 @@ async function upsertIPOInScope(
               isProvenanceValueStoredAsDecided(write, storedFallback)
             );
           } catch (e: any) {
+            fallbackProvenanceWriteFailed = true;
             logger.error(
               { ipoId: existingIPO.id, source, error: e?.message, cause: e?.cause instanceof Error ? e.cause.message : e?.cause },
               '[DataPersister] OD-131 fallback-door deferred provenance commit failed after the ipos update committed'
@@ -1986,19 +2042,13 @@ async function upsertIPOInScope(
         //     write failure propagate past this point — signal-ownership.md
         //     R6: the failure is logged with its cause, not swallowed silently.
         const FALLBACK_BOOKKEEPING_FIELDS = new Set(['lastScrapedAt', 'updatedAt']);
-        let fallbackProvenanceWriteFailed = false;
         if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
-          const fallbackContextFields = new Set([
-            ...(contextFields ?? []),
-            ...(listingExchangeIsContext ? ['listingExchanges'] : []),
-          ]);
-          const isDocumentSource = DOCUMENT_PATH_SOURCES.has(source);
+          const isFallbackNonClaim = fallbackNonClaimTest(source, contextFields);
           const fieldsToTrack = Object.entries(storedFallback)
             .filter(([fieldName, value]) => {
               if (FALLBACK_BOOKKEEPING_FIELDS.has(fieldName)) return false;
               if (value === undefined || value === null) return false;
-              if (fallbackContextFields.has(fieldName)) return false;
-              if (isDocumentSource && E1_EXCHANGE_STATED_FIELDS.has(fieldName)) return false;
+              if (isFallbackNonClaim(fieldName)) return false;
               const previousValue = (existingIPO as any)?.[fieldName];
               if (valuesEqualForWrite(previousValue, value, fieldName)) return false;
               return true;
