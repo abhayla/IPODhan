@@ -942,13 +942,14 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    */
   async holdNameOnlyBindToAdminRow(
     incoming: { companyName: string; slug: string; openDate: unknown; priceRangeMin: unknown },
-    row: { id: string; slug: string; companyName: string; openDate: unknown; priceRangeMin: unknown; status: unknown }
+    row: { id: string; slug: string; companyName: string; openDate: unknown; priceRangeMin: unknown; status: unknown },
+    origin?: 'admin-create'
   ): Promise<never> {
     const day = incoming.openDate == null ? null : String(incoming.openDate instanceof Date ? incoming.openDate.toISOString() : incoming.openDate).slice(0, 10);
     const view = { companyName: incoming.companyName, slug: incoming.slug, openDate: day, priceRangeMin: incoming.priceRangeMin };
     const reason = `name-only match to admin-created row ${row.slug}: the record carries none of that row's identifiers (OD-111)`;
     logger.warn({ incoming: view, ipoId: row.id, slug: row.slug }, '[OD-111] name-only match to an admin-created row - held for review, not bound');
-    await this.recordIdentityHold(view, incoming.companyName, [row], { rule: 'OD-111', reason });
+    await this.recordIdentityHold(view, incoming.companyName, [row], { rule: 'OD-111', reason, origin });
     throw new IdentityHeldForReviewError(
       `resolveIpoRow: "${incoming.companyName}" held for review (OD-111) - ${reason}; nothing written`,
       view,
@@ -1476,11 +1477,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   async recordAliasIdentityHold(
     incoming: { companyName: string; slug: string; openDate: string | null; priceRangeMin: unknown },
     candidates: { id: string; slug: string; companyName: string; openDate: unknown; priceRangeMin: unknown; status: unknown }[],
-    reason: string
+    reason: string,
+    origin?: 'admin-create'
   ): Promise<void> {
     await this.recordIdentityHold(incoming, strictIdentityCompanyName(incoming.companyName) ?? '', candidates, {
       rule: 'OD-68 / spec §9.2 item 26',
       reason,
+      origin,
     });
   }
 
@@ -1494,7 +1497,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     incoming: { companyName: string; slug: string; openDate: string | null; priceRangeMin: unknown },
     fold: string,
     candidates: { id: string; slug: string; companyName: string; openDate: unknown; priceRangeMin: unknown; status: unknown }[],
-    why?: { rule: string; reason: string }
+    why?: { rule: string; reason: string; origin?: 'admin-create' }
   ): Promise<void> {
     try {
       const existing = await this.db
@@ -1512,7 +1515,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         oldValue: candidates.map((c) => c.slug).join(','),
         newValue: incoming.slug,
         details: why
-          ? { rule: why.rule, reason: why.reason, identityFold: fold, incoming, candidates }
+          ? { rule: why.rule, reason: why.reason, ...(why.origin ? { origin: why.origin } : {}), identityFold: fold, incoming, candidates }
           : { rule: 'OD-68', identityFold: fold, incoming, candidates },
         success: false,
         errorMessage: why

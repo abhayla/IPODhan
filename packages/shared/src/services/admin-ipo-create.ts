@@ -29,6 +29,7 @@ import { IPORepository, IPO_CREATED_BY_ADMIN_ACTION } from '../repositories/ipo-
 import { resolveIpoRow } from '../repositories/ipo-identity';
 import {
   chittorgarhPageId,
+  findSourceKeysForIpo,
   normalizeSourceKeyValue,
   SourceKeyDuplicateError,
   SourceKeyHeldError,
@@ -301,6 +302,7 @@ async function refuseIfAlreadyThere(
       segment: id.segment,
       offeringType: id.offeringType,
       sourceKeys: id.keys,
+      holdOrigin: 'admin-create',
     });
   } catch (e) {
     if (e instanceof IdentityHeldForReviewError) {
@@ -311,7 +313,7 @@ async function refuseIfAlreadyThere(
     if (e instanceof SourceKeyHeldError) return { kind: 'HELD', reason: e.message, candidates: [] };
     throw e;
   }
-  if (existing) return existsResult(txRepo, existing.id, 'an identifier you gave already binds to it');
+  if (existing) return existsResult(txRepo, existing.id, await whyBound(tx, existing, id));
 
   if (id.symbol) {
     const holder = await txRepo.findBySymbol(id.symbol);
@@ -336,6 +338,28 @@ async function refuseIfAlreadyThere(
     };
   }
   return null;
+}
+
+/**
+ * Why the resolver bound `row` to this create (#1299 M2). It reports no tier, so the wording is decided from
+ * what the row itself carries: a CIN, symbol or record number the admin gave that is on the row is named;
+ * anything else (a name tier, or a kept alias) gets neutral wording rather than a claim about an identifier.
+ */
+async function whyBound(
+  tx: Db,
+  row: { id: string; cin?: unknown; symbol?: unknown },
+  id: { cin: string | null; symbol: string | null; keys: SourceKeyRef[] }
+): Promise<string> {
+  const rowCin = typeof row.cin === 'string' ? row.cin.trim().toUpperCase() : null;
+  if (id.cin && rowCin === id.cin) return `the CIN ${id.cin} you gave is on it`;
+  const rowSymbol = typeof row.symbol === 'string' ? row.symbol.trim().toUpperCase() : null;
+  if (id.symbol && rowSymbol === id.symbol.toUpperCase()) return `the symbol ${id.symbol} you gave is on it`;
+  if (id.keys.length > 0) {
+    const onRow = await findSourceKeysForIpo(tx as never, row.id);
+    const shared = id.keys.find((k) => onRow.some((r) => r.source === k.source && r.keyType === k.keyType && r.keyValue === k.keyValue));
+    if (shared) return `the ${shared.keyType} ${shared.keyValue} you gave is already bound to it`;
+  }
+  return 'its name or an identifier you gave matches it';
 }
 
 async function existsResult(repo: IPORepository, ipoId: string, why: string): Promise<AdminIpoCreateResult> {

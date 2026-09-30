@@ -2286,6 +2286,8 @@ async function checkIdentity() {
             old_value AS candidates, "timestamp"::text AS at
        FROM audit_logs
       WHERE action_type IN ('IDENTITY_HELD_FOR_REVIEW', 'IDENTITY_HOLD_OVERRIDDEN')
+        -- a hold the admin create form started (#1299 M1) was refused to that admin on the spot; it is not a scraper record waiting
+        AND COALESCE(details->>'origin', '') <> 'admin-create'
         AND "timestamp" > now() - interval '30 days'`
   );
   const toIso = (r) => ({ ...r, at: `${String(r.at).replace(' ', 'T').slice(0, 19)}Z` });

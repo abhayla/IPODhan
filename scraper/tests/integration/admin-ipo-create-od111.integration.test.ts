@@ -308,6 +308,65 @@ describe.skipIf(!DATABASE_URL)('OD-111 admin-created row: the scraper binds by i
     });
   });
 
+  describe('#1299 M1/M2: an admin-started hold is tagged, and EXISTS names why the row matched', () => {
+    it('M1: an admin create whose name matches another admin-created row is HELD with details.origin = admin-create', async () => {
+      const name = `${PREFIX} Twin Admin Ltd`;
+      const first = await createIpoByAdmin(db as never, {
+        companyName: name, offeringType: 'IPO', segment: 'MAINBOARD', identifiers: [{ kind: 'NSE_SYMBOL', value: 'OD111TW1' }], actor: ACTOR,
+      });
+      expect(first.kind).toBe('CREATED');
+      if (first.kind !== 'CREATED') return;
+      const second = await createIpoByAdmin(db as never, {
+        companyName: name, offeringType: 'IPO', segment: 'MAINBOARD', identifiers: [{ kind: 'NSE_SYMBOL', value: 'OD111TW2' }], actor: ACTOR,
+      });
+      expect(second.kind).toBe('HELD');
+      const holds = await db!.select({ details: schema.auditLogs.details }).from(schema.auditLogs)
+        .where(and(eq(schema.auditLogs.actionType, 'IDENTITY_HELD_FOR_REVIEW'), eq(schema.auditLogs.ipoId, first.ipoId)));
+      expect(holds.length).toBe(1);
+      expect((holds[0].details as { origin?: string }).origin).toBe('admin-create');
+    });
+
+    it('M1 control: a SCRAPER record name-matching an admin-created row is still held with NO origin tag', async () => {
+      const name = `${PREFIX} Twin Scraper Ltd`;
+      const made = await createIpoByAdmin(db as never, {
+        companyName: name, offeringType: 'IPO', segment: 'MAINBOARD', identifiers: [{ kind: 'NSE_SYMBOL', value: 'OD111TW3' }], actor: ACTOR,
+      });
+      expect(made.kind).toBe('CREATED');
+      if (made.kind !== 'CREATED') return;
+      expect((await ingest({ companyName: name, segment: 'MAINBOARD', openDate: '2026-10-20', priceRangeMin: 50 })).outcome).toBe('held');
+      const holds = await db!.select({ details: schema.auditLogs.details }).from(schema.auditLogs)
+        .where(and(eq(schema.auditLogs.actionType, 'IDENTITY_HELD_FOR_REVIEW'), eq(schema.auditLogs.ipoId, made.ipoId)));
+      expect(holds.length).toBe(1);
+      expect((holds[0].details as { origin?: string }).origin).toBeUndefined();
+    });
+
+    it('M2: a name-only match to a scraper-created row is EXISTS and does not claim an identifier bound it', async () => {
+      const name = `${PREFIX} Scraper Made Ltd`;
+      const scraped = await ingest({ companyName: name, segment: 'MAINBOARD', openDate: '2026-10-20', priceRangeMin: 94 });
+      expect(scraped.outcome).toBe('created');
+      const r = await createIpoByAdmin(db as never, {
+        companyName: name, offeringType: 'IPO', segment: 'MAINBOARD', identifiers: [{ kind: 'NSE_SYMBOL', value: 'OD111SM1' }], actor: ACTOR,
+      });
+      expect(r.kind).toBe('EXISTS');
+      if (r.kind === 'EXISTS') {
+        expect(r.ipoId).toBe(scraped.id);
+        expect(r.reason).not.toMatch(/an identifier you gave already binds/);
+        expect(r.reason).toMatch(/name/i);
+      }
+    });
+
+    it('M2: a match through a CIN the admin gave still says so', async () => {
+      const name = `${PREFIX} Scraper Cin Ltd`;
+      const scraped = await ingest({ companyName: name, segment: 'MAINBOARD', openDate: '2026-10-20', priceRangeMin: 94, cin: 'U31909DL2005PLC139433' });
+      expect(scraped.outcome).toBe('created');
+      const r = await createIpoByAdmin(db as never, {
+        companyName: `${PREFIX} Other Name Ltd`, offeringType: 'IPO', segment: 'MAINBOARD', identifiers: [{ kind: 'CIN', value: 'U31909DL2005PLC139433' }], actor: ACTOR,
+      });
+      expect(r.kind).toBe('EXISTS');
+      if (r.kind === 'EXISTS') expect(r.reason).toMatch(/CIN/);
+    });
+  });
+
   describe('refusals', () => {
     it('no identifier -> INVALID', async () => {
       const r = await createIpoByAdmin(db as never, { companyName: `${PREFIX} None Ltd`, offeringType: 'IPO', segment: 'SME', identifiers: [], actor: ACTOR });
