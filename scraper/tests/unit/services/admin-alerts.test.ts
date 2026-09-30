@@ -618,6 +618,39 @@ describe('round 3: every new or changed disagreement alerts once, however it arr
   });
 });
 
+describe('#1288: pair hash is order-independent and an unchanged pair keeps its hash alive', () => {
+  it('the same two (source, value) pairs hash equal in either order', () => {
+    const a = conflictRow(1);
+    const swapped = { ...a, source1: a.source2, value1: a.value2, source2: a.source1, value2: a.value1 };
+    expect(conflictPairHash(swapped)).toBe(conflictPairHash(a));
+  });
+
+  it('three sources taking turns as source2 over the same set record one event per distinct set, not per wake', async () => {
+    const a = conflictRow(1);
+    const s1 = { ...a, source1: 'NSE', value1: '100', source2: 'BSE', value2: '110' };
+    const s2 = { ...a, source1: 'BSE', value1: '110', source2: 'NSE', value2: '100' };
+    expect(conflictPairHash(s1)).toBe(conflictPairHash(s2));
+  });
+
+  it('an unchanged pair rewrites its stored hash so the 90-day TTL restarts', async () => {
+    const a = conflictRow(1);
+    const writes: Array<[string, string]> = [];
+    const stored = new Map<string, string>([[a.conflictId, conflictPairHash(a)]]);
+    const r = await scanNewDisagreements({
+      now: NOON_IST,
+      loadNewConflicts: async () => [a],
+      getMark: async () => NOON_IST,
+      setMark: async () => {},
+      getPairHash: async (id: string) => stored.get(id) ?? null,
+      setPairHash: async (id: string, h: string) => {
+        writes.push([id, h]);
+      },
+    });
+    expect(r.unchanged).toBe(1);
+    expect(writes).toEqual([[a.conflictId, conflictPairHash(a)]]);
+  });
+});
+
 describe('round 3 MINOR 3: the scan mark never expires; a missing mark falls back to the last digest', () => {
   it('redisTimestamp with ttl null writes no EX', async () => {
     const calls: unknown[][] = [];
