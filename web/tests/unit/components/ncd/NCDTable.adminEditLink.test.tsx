@@ -29,7 +29,8 @@ describe('NCDTable — admin edit link', () => {
   it('renders the Edit link for an admin session', () => {
     vi.mocked(useAdminSession).mockReturnValue({ isAdmin: true, loading: false });
     render(<NCDTable ncdIssues={ncdIssues} />);
-    expect(screen.getByTestId('admin-row-edit-link')).toHaveAttribute('href', '/ipos/acme-finance-ncd?edit=');
+    // OD-140: NCD has no public detail page, so the row's Edit link opens the admin-only route.
+    expect(screen.getByTestId('admin-row-edit-link')).toHaveAttribute('href', '/admin/ipos/acme-finance-ncd/edit');
   });
 
   it('renders no Edit link for a reader session', () => {

@@ -26,6 +26,32 @@ describe('AdminRowEditLink', () => {
 
     expect(screen.queryByTestId('admin-row-edit-link')).not.toBeInTheDocument();
   });
+
+  // OD-140, §9.2 item 14: a non-IPO row (OFS, NCD, RIGHTS, BUYBACK, TENDER, REIT) has no public
+  // detail page, so its Edit link opens the admin-only route instead of /ipos/<slug>.
+  it.each(['OFS', 'NCD', 'RIGHTS', 'BUYBACK', 'TENDER', 'REIT'])(
+    'routes a %s row to the admin-only edit route',
+    (offeringType) => {
+      render(<AdminRowEditLink slug="acme-ofs" isAdmin={true} offeringType={offeringType} />);
+
+      expect(screen.getByTestId('admin-row-edit-link')).toHaveAttribute(
+        'href',
+        '/admin/ipos/acme-ofs/edit'
+      );
+    }
+  );
+
+  it('keeps the IPO detail page as the link target when offeringType is IPO', () => {
+    render(<AdminRowEditLink slug="acme-ipo" isAdmin={true} offeringType="IPO" />);
+
+    expect(screen.getByTestId('admin-row-edit-link')).toHaveAttribute('href', '/ipos/acme-ipo?edit=');
+  });
+
+  it('defaults to the IPO detail page when offeringType is omitted (existing IPO-only callers)', () => {
+    render(<AdminRowEditLink slug="acme-ipo" isAdmin={true} />);
+
+    expect(screen.getByTestId('admin-row-edit-link')).toHaveAttribute('href', '/ipos/acme-ipo?edit=');
+  });
 });
 
 describe('useAdminSession', () => {

@@ -47,7 +47,7 @@ function buildNcdColumns(isAdmin: boolean): ColumnDef<NCDData>[] {
         >
           {value}
         </Link>
-        <AdminRowEditLink slug={row.slug} isAdmin={isAdmin} className="ml-2 inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100" />
+        <AdminRowEditLink slug={row.slug} isAdmin={isAdmin} offeringType="NCD" className="ml-2 inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100" />
       </>
     ),
   },
