@@ -150,6 +150,7 @@
     {
       "file": "scraper/src/services/data-persister.ts",
       "patterns": [
+        "drizzle",
         "repository"
       ]
     },
