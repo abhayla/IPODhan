@@ -10,8 +10,9 @@
  *
  * No plan change = no rebuild: the plan depends only on the IPO's type key (segment + listing
  * exchanges) and its offering type (the manifest's §1.11 `na` lists). A save that leaves both as
- * they were touches no plan row; an `offering_type` correction alone rebuilds, so a field the new
- * type makes not applicable stops being planned and walked (PR #1327 round 1).
+ * they were touches no plan row; an `offering_type` correction alone rebuilds only when it changes
+ * the not-applicable set (`planInputsChanged`), so a field the new type makes not applicable stops
+ * being planned and walked (PR #1327 round 1), while FPO -> IPO touches nothing.
  *
  * What the rebuild does, per (table, field):
  *   - planned, existing row with the SAME rank-1 source: kept (state, chosen value and evidence
@@ -167,6 +168,34 @@ interface ExistingRow {
 }
 
 /**
+ * The manifest fields an offering type makes not applicable (§1.11 `na` lists), as a sorted key.
+ * `null` (type unknown) excludes nothing, the same as the generator.
+ */
+function notApplicableKey(manifest: PlanManifest, offeringType: string | null | undefined): string {
+  if (offeringType == null) return '';
+  return Object.entries(manifest.fields)
+    .filter(([, entry]) => (entry.na ?? []).includes(offeringType))
+    .map(([k]) => k)
+    .sort()
+    .join('|');
+}
+
+/**
+ * Would the generator plan this IPO differently after the write? The plan's inputs are the ranks
+ * (a function of the type key) and the not-applicable set (a function of the offering type through
+ * the manifest's `na` lists). An offering-type change that moves neither (FPO -> IPO) changes
+ * nothing in the plan, so it must not re-version or re-plant a single row.
+ */
+export function planInputsChanged(
+  manifest: PlanManifest,
+  before: Pick<PlanIpo, 'segment' | 'listingExchanges' | 'offeringType'>,
+  after: Pick<PlanIpo, 'segment' | 'listingExchanges' | 'offeringType'>
+): boolean {
+  if (resolveIpoTypeKey(before) !== resolveIpoTypeKey(after)) return true;
+  return notApplicableKey(manifest, before.offeringType) !== notApplicableKey(manifest, after.offeringType);
+}
+
+/**
  * Rebuild one IPO's plan inside the caller's transaction (the caller holds the `ipos` row lock).
  * `before` is the IPO's type slice before the write, for the audit summary only.
  */
@@ -182,8 +211,9 @@ export async function rebuildIpoPlanInTx(
   const after: PlanIpo = { id: ipoId, segment: ipoRow.segment, listingExchanges: ipoRow.listing_exchanges, offeringType: ipoRow.offering_type };
   const typeKeyBefore = resolveIpoTypeKey(before);
   const typeKeyAfter = resolveIpoTypeKey(after);
-  if (typeKeyBefore === typeKeyAfter && (before.offeringType ?? null) === (after.offeringType ?? null)) {
-    // The plan is a function of the type key alone: nothing to rebuild, nothing re-versioned.
+  if (!planInputsChanged(manifest, before, after)) {
+    // Same ranks and same not-applicable set: the plan would come out identical, so nothing is
+    // rebuilt and nothing re-versioned (e.g. FPO -> IPO, which no manifest `na` list separates).
     return { typeKeyBefore, typeKeyAfter, planned: 0, kept: 0, replanted: 0, dropped: 0, added: 0, queued: 0, rebuilt: false };
   }
 

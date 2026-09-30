@@ -61,7 +61,6 @@ import logger from '../utils/logger.js';
 import {
   SOURCE_CHANGED_OWN_VALUE,
   isBehaviourConflict,
-  isCorrigendumSuggestion,
   isWriterBookkeepingField,
 } from '@ipodhan/shared/utils/conflict-reasons';
 import {
@@ -2532,7 +2531,9 @@ export class DataConsolidationService {
               (row: any) =>
                 // OD-90: a corrigendum suggestion on this field is the admin's to accept or
                 // dismiss; closing it here would also bar it for good (unique suggestion_key).
-                !isCorrigendumSuggestion(row) &&
+                // OD-75 / OD-142: nor is an admin-only row (a source changing its own value, a
+                // "source no longer first" queue item) a HOLD row; only its own rules close it.
+                isBehaviourConflict(row) &&
                 row.tableName === tableName &&
                 (row.rowKey ?? '') === rowKey &&
                 row.fieldName === fieldName

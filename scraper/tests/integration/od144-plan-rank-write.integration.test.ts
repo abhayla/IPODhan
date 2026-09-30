@@ -222,6 +222,24 @@ describe.skipIf(!DATABASE_URL)('OD-144: the current type\'s rank 1 replaces a va
     expect(fs.rows).toEqual([{ source: 'NSE' }]);
   }, 120000);
 
+  // Tier A surviving mutant (PR #1327): the walk grants the plan-rank win only when the open item
+  // NAMES the answering source as its new rank 1. Here the plan row's rank 1 is re-pointed to
+  // CHITTORGARH (an override, say) while the item still names BSE; CHITTORGARH answers as rank 1.
+  // The kept NSE value must stay (the matrix ranks NSE above CHITTORGARH and the IPO is OPEN).
+  // MUTATION: drop the "item names this source" comparison (or the item read) -> CHITTORGARH
+  // replaces the kept value -> RED.
+  it('PLAN-RANK WIN NEEDS THE ITEM: rank 1 answering while the open item names another source keeps the kept value', async () => {
+    await db.execute(sql`UPDATE ipo_field_plan SET rank1_source = 'CHITTORGARH', rank2_source = 'BSE' WHERE ipo_id = ${IPO}::uuid AND field_name = 'open_date'`);
+    const d = deps({ BSE: answer(BSE_ANSWER), CHITTORGARH: answer(CG_ANSWER) });
+    d.resolvePolicy = (async () => ({ ranks: ['CHITTORGARH', 'BSE'], documentType: undefined, origin: { kind: 'registry' as const, version: manifest.version }, na: false })) as never;
+    await walk(IPO, d, budget());
+    expect(await readOpenDate()).toContain(KEPT);
+    expect(await readOpenDate()).not.toContain(CG_ANSWER);
+    const fs = await db.execute(sql`SELECT source::text AS source FROM field_sources WHERE ipo_id = ${IPO}::uuid AND field_name = 'openDate'`);
+    expect(fs.rows).toEqual([{ source: 'NSE' }]);
+    expect(await openItems()).toContain('openDate');
+  }, 120000);
+
   it('each clear guard discriminates alone: a rank-1 plan answer from a source that is not the item\'s new rank 1, and the item\'s source answering while not the plan\'s rank 1, both leave it open', async () => {
     const repo = new IpoFieldPlanRepository(db as never, noRedis);
     const [row] = (await db.execute(sql`SELECT id FROM ipo_field_plan WHERE ipo_id = ${IPO}::uuid`)).rows as Array<{ id: string }>;

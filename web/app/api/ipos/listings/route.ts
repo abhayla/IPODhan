@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db/index';
 import { ipos, listingPerformance, subscriptions, gmpRecords } from '@/lib/db';
 import { eq, and, gte, lte, desc, asc, sql, inArray } from 'drizzle-orm';
+import { notApplicableColumns } from '@/lib/ipo-field-applicability';
 
 // Validation schemas
 // Note: Category accepts both segments (MAINBOARD, SME) and offering types (FPO, RIGHTS, NCD)
@@ -156,6 +157,7 @@ export async function GET(request: NextRequest) {
         slug: ipos.slug,
         segment: ipos.segment,
         offeringType: ipos.offeringType,
+        listingExchanges: ipos.listingExchanges,
         openDate: ipos.openDate,
         closeDate: ipos.closeDate,
         listingDate: ipos.listingDate,
@@ -233,9 +235,27 @@ export async function GET(request: NextRequest) {
     });
 
     // Combine data
-    const data = ipoListings.map((ipo) => {
-      const subscription = subscriptionMap.get(ipo.id);
-      const gmpRecord = gmpMap.get(ipo.id);
+    // §9.2 item 18 / §1.11: a field the row's (possibly corrected) type makes not applicable is
+    // null in the list, as on the detail page. `issuePrice` displays the price band's cap as its
+    // fallback, so it is hidden with `ipos.price_range_max`.
+    const data = ipoListings.map((raw) => {
+      const subscription = subscriptionMap.get(raw.id);
+      const gmpRecord = gmpMap.get(raw.id);
+      const naIpos = new Set(notApplicableColumns(raw, 'ipos'));
+      const naListing = new Set(notApplicableColumns(raw, 'listing_performance'));
+      const ipo = {
+        ...raw,
+        openDate: naIpos.has('openDate') ? null : raw.openDate,
+        closeDate: naIpos.has('closeDate') ? null : raw.closeDate,
+        listingDate: naIpos.has('listingDate') ? null : raw.listingDate,
+        issuePrice: naIpos.has('priceRangeMax') ? null : raw.issuePrice,
+        issueSize: naIpos.has('issueSize') ? null : raw.issueSize,
+        lotSize: naIpos.has('lotSize') ? null : raw.lotSize,
+        allotmentDate: naIpos.has('allotmentDate') ? null : raw.allotmentDate,
+        listingPrice: naListing.has('listingPrice') ? null : raw.listingPrice,
+        currentPriceBSE: naListing.has('currentPriceBse') ? null : raw.currentPriceBSE,
+        currentPriceNSE: naListing.has('currentPriceNse') ? null : raw.currentPriceNSE,
+      };
 
       return {
         id: ipo.id,

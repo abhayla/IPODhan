@@ -183,9 +183,16 @@ describe.skipIf(!DATABASE_URL)('item 18: plan-invalidating admin saves rebuild t
     const lotAudit = await db.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.ipoId, IPO), eq(schema.auditLogs.fieldName, 'lotSize')));
     expect(lotAudit).toHaveLength(1);
     expect(lotAudit[0]).toMatchObject({ newValue: '1500', success: true });
-    // The plan still equals the generator's (offering type does not change ranks today).
-    const expected = generateFieldPlan({ id: IPO, segment: 'MAINBOARD', listingExchanges: ['BSE'] }, manifest);
-    expect((await planRows()).length).toBe(expected.length);
+    // The plan equals the generator's for the corrected offering type: the ranks are unchanged, and
+    // every field the manifest's `na` list makes not applicable to a BUYBACK is no longer planned.
+    const expected = generateFieldPlan({ id: IPO, segment: 'MAINBOARD', listingExchanges: ['BSE'], offeringType: 'BUYBACK' }, manifest);
+    const typeOnly = generateFieldPlan({ id: IPO, segment: 'MAINBOARD', listingExchanges: ['BSE'] }, manifest);
+    const naForBuyback = typeOnly.filter((r) => (manifest.fields[key(r)] as { na?: string[] }).na?.includes('BUYBACK')).length;
+    expect(naForBuyback).toBeGreaterThan(0);
+    expect(expected.length).toBe(typeOnly.length - naForBuyback);
+    const after = await planRows();
+    expect(after.map(key).sort()).toEqual(expected.map(key).sort());
+    expect(after.map(key)).not.toContain('ipos.lot_size');
   });
 
   it('fail-closed: a plan-invalidating save without the plan manifest is refused and writes nothing', async () => {

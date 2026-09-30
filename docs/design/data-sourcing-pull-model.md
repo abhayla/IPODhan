@@ -4674,8 +4674,8 @@ shortfall: a buyback has no price band, no anchor book and no peer comparison.
 | NCD | 7 | 86 | 154 |
 | INVITS | 3 | 91 | 149 |
 | REITS | 2 | 91 | 149 |
-| TENDER | 16 | 112 | 128 |
-| BUYBACK | 1 | 112 | 128 |
+| TENDER | 16 | 113 | 127 |
+| BUYBACK | 1 | 113 | 127 |
 
 
 **FPO shows 240 applicable and 0 N/A because it follows mainboard exactly, minus the draft-prospectus
