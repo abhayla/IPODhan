@@ -304,7 +304,8 @@ describe('AnchorInvestorRepository Integration Tests', () => {
       const result = await repository.upsert(updatedData);
 
       expect(result.totalSharesOffered).toBe(1500000);
-      expect(result.anchorInvestorsCount).toBe(30);
+      // #1294 item 1 (spec row 134): the count is the list's length (2), not the 30 typed in the body.
+      expect(result.anchorInvestorsCount).toBe(2);
       expect(result.investorList).toBeDefined();
 
       // Verify only one record exists

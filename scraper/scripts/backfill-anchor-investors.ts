@@ -182,7 +182,7 @@ export async function main() {
         }
 
         // Persist to database
-        await createAnchorInvestors(anchorInvestorRepository, ipo.ipoId, anchorData);
+        await createAnchorInvestors(anchorInvestorRepository, ipo.ipoId, anchorData, 'NSE');
 
         if (existing) {
           result.updated++;

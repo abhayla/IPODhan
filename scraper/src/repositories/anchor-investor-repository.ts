@@ -31,6 +31,16 @@ export interface NewAnchorInvestor {
 /**
  * Repository for anchor_investors table operations
  */
+/**
+ * The source label a suggestion raised by an anchor write carries (#1294 item 3). A caller that does
+ * not name its source gets the document label every filing writes under, never a guessed exchange.
+ */
+export const DEFAULT_ANCHOR_WRITER = 'DRHP';
+export interface AnchorWriteOptions {
+  /** The scraper_source label of the writer: 'NSE' for the exchange anchor job, 'DRHP' for a document. */
+  writer?: string;
+}
+
 export class AnchorInvestorRepository {
   constructor(private db: NodePgDatabase<typeof schema>) {}
 
@@ -60,7 +70,7 @@ export class AnchorInvestorRepository {
    * investor list, drop `investorList` and `anchorInvestorsCount` from the patch and record the
    * writer's list as a suggestion. The bid date and totals still follow the exchange (OD-106/OD-117).
    */
-  private async dropOwnedList(tx: NodePgDatabase<typeof schema>, ipoId: string, data: Partial<NewAnchorInvestor>): Promise<Partial<NewAnchorInvestor>> {
+  private async dropOwnedList(tx: NodePgDatabase<typeof schema>, ipoId: string, data: Partial<NewAnchorInvestor>, writer: string): Promise<Partial<NewAnchorInvestor>> {
     if (data.investorList === undefined && data.anchorInvestorsCount === undefined) return data;
     if (!(await lockAndReadListOwnership(tx as never, ipoId, 'anchor_investors')).owned) return data;
     const { investorList, anchorInvestorsCount: _count, ...rest } = data;
@@ -70,7 +80,7 @@ export class AnchorInvestorRepository {
       await recordListSuggestion(tx as never, {
         ipoId,
         list: 'anchor_investors',
-        source: 'NSE',
+        source: writer,
         stored: ((row?.l ?? []) as unknown as Record<string, unknown>[]),
         incoming: Array.isArray(incoming) ? incoming : [],
       });
@@ -79,7 +89,7 @@ export class AnchorInvestorRepository {
     return rest;
   }
 
-  async create(data: NewAnchorInvestor) {
+  async create(data: NewAnchorInvestor, opts: AnchorWriteOptions = {}) {
     try {
       // The domain `NewAnchorInvestor` shape (Date objects, a JSON-stringified
       // `investorList`) has always matched what callers pass and what
@@ -89,7 +99,7 @@ export class AnchorInvestorRepository {
       // type-checked at all (#434). No behaviour change — same object, same
       // runtime call.
       const [anchorInvestor] = await this.db.transaction(async (tx) => {
-        const kept = await this.dropOwnedList(tx as never, data.ipoId, data);
+        const kept = await this.dropOwnedList(tx as never, data.ipoId, data, opts.writer ?? DEFAULT_ANCHOR_WRITER);
         if (kept !== data) {
           const [existing] = await tx.select().from(schema.anchorInvestors).where(eq(schema.anchorInvestors.ipoId, data.ipoId)).limit(1);
           if (existing) return [existing];
@@ -108,12 +118,12 @@ export class AnchorInvestorRepository {
   /**
    * Update existing anchor investor record
    */
-  async update(id: string, data: Partial<NewAnchorInvestor>) {
+  async update(id: string, data: Partial<NewAnchorInvestor>, opts: AnchorWriteOptions = {}) {
     try {
       // Same domain-vs-drizzle-inferred shape gap as .create() above.
       const [updated] = await this.db.transaction(async (tx) => {
         const [cur] = await tx.select({ ipoId: schema.anchorInvestors.ipoId }).from(schema.anchorInvestors).where(eq(schema.anchorInvestors.id, id)).limit(1);
-        const kept = cur ? await this.dropOwnedList(tx as never, cur.ipoId, data) : data;
+        const kept = cur ? await this.dropOwnedList(tx as never, cur.ipoId, data, opts.writer ?? DEFAULT_ANCHOR_WRITER) : data;
         return tx
           .update(schema.anchorInvestors)
           .set({

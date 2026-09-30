@@ -2676,7 +2676,9 @@ export async function createAnchorInvestors(
     lockIn50PercentDate: Date | null;
     lockInRemainingDate: Date | null;
     investorList: any[];
-  }
+  },
+  /** The writer's scraper_source label; an admin-owned list records its suggestion under it (#1294 item 3). */
+  writer: string = 'DRHP'
 ): Promise<string> {
   const startTime = Date.now();
 
@@ -2701,7 +2703,7 @@ export async function createAnchorInvestors(
           lockIn50PercentDate: anchorData.lockIn50PercentDate,
           lockInRemainingDate: anchorData.lockInRemainingDate,
           investorList: anchorData.investorList
-        });
+        }, { writer });
 
         logger.info({ ipoId, anchorInvestorId: existing.id }, 'Updated anchor investor record');
         return existing.id;
@@ -2716,7 +2718,7 @@ export async function createAnchorInvestors(
           lockIn50PercentDate: anchorData.lockIn50PercentDate,
           lockInRemainingDate: anchorData.lockInRemainingDate,
           investorList: anchorData.investorList
-        });
+        }, { writer });
 
         logger.info({ ipoId, anchorInvestorId: anchorInvestor.id }, 'Created anchor investor record');
         return anchorInvestor.id;

@@ -84,7 +84,7 @@ export class FinancialStatementsRepository extends BaseRepository {
    * (e.g. Prospectus superseding a Price Band Ad) overwrites the earlier row
    * for the same year+basis rather than accumulating duplicates.
    */
-  async upsert(row: FinancialStatementUpsert, source = 'DRHP'): Promise<FinancialStatementRow> {
+  async upsert(row: FinancialStatementUpsert, source = 'DRHP'): Promise<FinancialStatementRow | null> {
     try {
       const [result] = await this.db.transaction(async (tx) => {
         // §9.2 item 8 (OD-107): the admin owns the whole list of years. A row the admin's list lacks
@@ -99,7 +99,9 @@ export class FinancialStatementsRepository extends BaseRepository {
             ? stored.map((s) => (s === same ? { ...s, ...(row as Record<string, unknown>) } : s))
             : [...stored, row];
           await recordListSuggestion(tx as never, { ipoId: row.ipoId, list: 'financial_statements', source, stored, incoming: incoming as never });
-          return [(same ?? row) as never];
+          // What is STORED, never the incoming row (which has no id): the admin's row for this year, or
+          // nothing when the admin's list lacks the year (#1294 item 6).
+          return [(same ?? null) as never];
         }
         return tx
         .insert(financialStatements)
@@ -116,7 +118,7 @@ export class FinancialStatementsRepository extends BaseRepository {
       });
 
       await this.deleteCache(getFinancialStatementsKey(row.ipoId));
-      return result as unknown as FinancialStatementRow;
+      return (result ?? null) as unknown as FinancialStatementRow | null;
     } catch (error) {
       throw new DatabaseError('Failed to upsert financial statement', undefined, error);
     }

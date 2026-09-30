@@ -106,34 +106,41 @@ export class AnchorInvestorRepository
    */
   async upsert(data: AnchorInvestorInsert): Promise<AnchorInvestor> {
     try {
-      // Check if record exists
-      const [existing] = await this.db
-        .select()
-        .from(anchorInvestors)
-        .where(eq(anchorInvestors.ipoId, data.ipoId))
-        .limit(1);
-
-      let result: AnchorInvestor;
-
-      if (existing) {
-        // Update existing record
-        const [updated] = await this.db
-          .update(anchorInvestors)
-          .set({
-            ...data,
-            updatedAt: new Date(),
-          })
+      // #1294 item 1: one transaction under the IPO row lock the list editor takes, so a totals save
+      // and a list save never interleave; and the count is derived, never typed (spec row 134:
+      // anchor_investors_count = len(investor_list)). While the list is admin-owned, or has entries,
+      // the stored count is the list's length whatever the body says. With no list there is nothing
+      // to derive from and the typed count is kept.
+      const result = await this.db.transaction(async (tx) => {
+        const { owned } = await lockAndReadListOwnership(tx as never, data.ipoId, 'anchor_investors');
+        const [existing] = await tx
+          .select()
+          .from(anchorInvestors)
           .where(eq(anchorInvestors.ipoId, data.ipoId))
-          .returning();
-        result = updated;
-      } else {
-        // Insert new record
-        const [inserted] = await this.db
+          .limit(1);
+
+        const list = owned ? existing?.investorList : (data.investorList ?? existing?.investorList);
+        const values = Array.isArray(list) && (owned || list.length > 0)
+          ? { ...data, anchorInvestorsCount: list.length }
+          : data;
+
+        if (existing) {
+          const [updated] = await tx
+            .update(anchorInvestors)
+            .set({
+              ...values,
+              updatedAt: new Date(),
+            })
+            .where(eq(anchorInvestors.ipoId, data.ipoId))
+            .returning();
+          return updated;
+        }
+        const [inserted] = await tx
           .insert(anchorInvestors)
-          .values(data)
+          .values(values)
           .returning();
-        result = inserted;
-      }
+        return inserted;
+      });
 
       // Invalidate cache
       await this.deleteCache(
