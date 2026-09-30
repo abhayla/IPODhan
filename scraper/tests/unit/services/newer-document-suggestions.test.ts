@@ -76,7 +76,7 @@ describe('recordNewerDocumentSuggestions — unreadable admin value', () => {
       fieldName: 'pe_ratio',
     });
 
-    expect(result).toEqual({ newerDocuments: 1, equal: 0, inserted: 0, duplicates: 0, ids: [] });
+    expect(result).toEqual({ newerDocuments: 1, equal: 0, inserted: 0, refreshed: 0, duplicates: 0, ids: [] });
     expect(insert).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).toMatchObject({
@@ -93,8 +93,8 @@ describe('recordNewerDocumentSuggestions — unreadable admin value', () => {
     const { db, insert } = fakeDbWithDocs(ONE_NEWER_DOC);
     insert.mockReturnValue({
       values: () => ({
-        onConflictDoNothing: () => ({
-          returning: async () => [{ id: 'conflict-1' }],
+        onConflictDoUpdate: () => ({
+          returning: async () => [{ id: 'conflict-1', inserted: true }],
         }),
       }),
     });
