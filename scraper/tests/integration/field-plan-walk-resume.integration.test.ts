@@ -329,7 +329,7 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
       expect(row.claimToken).toBeNull();
       expect(row.chosenSource).toBe('NSE');
       expect(row.chosenRank).toBe(1);
-      expect(row.attempts).toBe(1);
+      expect(row.attempts).toBe(0);  // #884: attempts counts CHECK_FAILED outcomes only
     }
   });
 
@@ -423,7 +423,7 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     expect(second.fieldsSupplied).toBe(1);
     const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
     expect(row.state).toBe('SUPPLIED');
-    expect(row.attempts).toBe(1);
+    expect(row.attempts).toBe(0);  // #884: attempts counts CHECK_FAILED outcomes only
   });
 
   it('RESUME: a walk killed after claiming field 2 loses only that field, and a later walk reclaims it', async () => {
@@ -548,7 +548,7 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     expect(result.fieldsExhausted).toBe(1);
     const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
     expect(row.state).toBe('EXHAUSTED');
-    expect(row.attempts).toBe(1);
+    expect(row.attempts).toBe(0);  // #884: attempts counts CHECK_FAILED outcomes only
     expect(row.claimedAt).toBeNull();
     // EXHAUSTED is terminal: no further attempt is scheduled, and the field's
     // stored value in `ipos` was never touched (the walk called no writer).
@@ -590,7 +590,7 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     const rows = await readAll();
     for (const row of rows) {
       expect(row.state).toBe('SUPPLIED');
-      expect(row.attempts).toBe(1);
+      expect(row.attempts).toBe(0);  // #884: attempts counts CHECK_FAILED outcomes only
       expect(row.claimedAt).toBeNull();
     }
   });

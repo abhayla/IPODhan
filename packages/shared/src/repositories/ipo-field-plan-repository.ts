@@ -1344,14 +1344,12 @@ export class IpoFieldPlanRepository extends BaseRepository {
       // was asked under; claimNextDueField offers it again only under a
       // different key. `last_attempt_at` is still stamped.
       const isGap = state === 'CHECK_FAILED' && typeof params.gapKey === 'string' && params.gapKey.length > 0;
-      const countsAsAttempt = !isGap;
-      // #884 (reopened, contract 4): `attempts` is read ONLY by the CHECK_FAILED claim
-      // filter, but PENDING / NOT_AVAILABLE_YET / SUPPLIED asks also add to it. A field
-      // asked before its source published (NOT_AVAILABLE_YET, uncapped) spent the whole
-      // budget and then flipped to CHECK_FAILED past the cap: 1,985 gap rows on staging at
-      // attempts 5-29, never re-askable when the gap key changed. The budget for CHECK_FAILED
-      // therefore starts when a row ENTERS that state; a row already in it keeps counting.
-      const entersCheckFailed = state === 'CHECK_FAILED';
+      // #884 (reopened): `attempts` is read ONLY by the CHECK_FAILED claim filter, so it
+      // counts CHECK_FAILED outcomes and nothing else. PENDING / NOT_AVAILABLE_YET /
+      // SUPPLIED asks used to add to it, which spent the budget before the first real
+      // failure (staging: gap rows at attempts 5-29). No reset on entry: a row flapping
+      // CHECK_FAILED <-> NOT_AVAILABLE_YET must still reach the cap.
+      const countsAsAttempt = state === 'CHECK_FAILED' && !isGap;
       const recordedCause = isGap ? stampFieldPlanGapCause(params.gapKey as string, params.cause ?? null) : params.cause ?? null;
       const writeCause = hasCause || isGap;
       const hasAnswers = params.answers !== undefined;
@@ -1374,8 +1372,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
         SET state = ${state}::field_plan_state,
-            attempts = CASE WHEN ${entersCheckFailed} AND state IS DISTINCT FROM 'CHECK_FAILED' THEN ${countsAsAttempt ? 1 : 0}
-                            ELSE attempts + ${countsAsAttempt ? 1 : 0} END,
+            attempts = attempts + ${countsAsAttempt ? 1 : 0},
             last_attempt_at = ${utc(now)}::timestamptz,
             next_due_at = ${nextDueAt === null ? null : utc(nextDueAt)}::timestamptz,
             policy_origin = CASE WHEN ${hasPolicyOrigin} THEN ${params.policyOrigin ?? null} ELSE policy_origin END,

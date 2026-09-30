@@ -689,7 +689,7 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
 
     const persisted = await readRow(id);
     expect(persisted.state).toBe('SUPPLIED');
-    expect(persisted.attempts).toBe(1);
+    expect(persisted.attempts).toBe(0);  // #884: attempts counts CHECK_FAILED outcomes only
     expect(persisted.lastAttemptAt).not.toBeNull();
     expect(persisted.chosenSource).toBe('DOC');
     expect(persisted.chosenRank).toBe(1);
@@ -736,12 +736,12 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
 
     const persisted = await readRow(id);
     expect(persisted.state).toBe('PENDING');
-    expect(persisted.attempts).toBe(1);
+    expect(persisted.attempts).toBe(0);  // #884: attempts counts CHECK_FAILED outcomes only
     expect(persisted.nextDueAt!.toISOString()).toBe(nextDataJobSlotBoundary(now).toISOString());
   });
 
   it('F-152: a transient CHECK_FAILED is next due at the start of the next data slot, whatever its attempt count', async () => {
-    const id = await seedRow({ state: 'CHECK_FAILED', attempts: 3 });
+    const id = await seedRow({ attempts: 3 });
     const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
     const now = new Date();
     await repo.recordOutcome({
@@ -761,7 +761,7 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
   });
 
   it('F-152: a structural gap (gapKey) is written definitive — exact columns, no next-due time, no attempt charged', async () => {
-    const id = await seedRow({ state: 'CHECK_FAILED', attempts: 2 });
+    const id = await seedRow({ attempts: 2 });
     const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
     const now = new Date();
     const cause = 'rank1:NSE:CHECK_FAILED:no mapping [gap:NO_MAPPING]';
@@ -891,7 +891,7 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     const persisted = await readRow(id);
     expect(persisted.state).toBe('NOT_PRINTED');
     expect(persisted.rowKey).toBe('FY2023');
-    expect(persisted.attempts).toBe(1);
+    expect(persisted.attempts).toBe(0);  // #884: attempts counts CHECK_FAILED outcomes only
   });
 
   it('records a terminal EXHAUSTED state without scheduling another attempt', async () => {
@@ -923,7 +923,7 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
 
     const persisted = await readRow(id);
     expect(persisted.state).toBe('NOT_AVAILABLE_YET');
-    expect(persisted.attempts).toBe(1);
+    expect(persisted.attempts).toBe(0);  // #884: attempts counts CHECK_FAILED outcomes only
     // non-terminal: the ask is retried, so a next attempt IS scheduled
     expect(persisted.nextDueAt).not.toBeNull();
     expect(persisted.nextDueAt!.getTime()).toBeGreaterThan(before);
@@ -2019,24 +2019,45 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     });
 
     // #884 reopened (contract 4, 2026-09-30): staging held 1,985 gap-stamped CHECK_FAILED rows at
-    // attempts 5-29 although a gap is never charged. The attempts came from the row's EARLIER
-    // states: every NOT_AVAILABLE_YET / PENDING ask spent `attempts + 1` (uncapped state), and the
-    // row then flipped to CHECK_FAILED already past the cap the claim filter reads.
-    it('CORE (reopened): a row asked NOT_AVAILABLE_YET many times arrives at a gap CHECK_FAILED with 0 attempts and is re-asked when the key changes', async () => {
-      const id = await seedRow({ state: 'NOT_AVAILABLE_YET', attempts: 30, lastAttemptAt: earlierSlot });
-      const after = await claimAndRecord(id, { reasonCode: 'COVERAGE_GAP', cause: GAP_CAUSE, gapKey: KEY });
-      expect(after.state).toBe('CHECK_FAILED');
-      expect(after.attempts).toBe(0);
-      const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay, gapKeys: allKeys(KEY_MANIFEST) } as never);
+    // attempts 5-29 although a gap is never charged. `attempts` is read only by the CHECK_FAILED
+    // claim filter, but NOT_AVAILABLE_YET / PENDING / SUPPLIED asks added to it, so a row flipped to
+    // CHECK_FAILED already past the cap. `attempts` now counts CHECK_FAILED outcomes only.
+    const day = (n: number) => new Date(now.getTime() + n * 24 * 3_600_000);
+    async function askNotAvailableYet(id: string, at: Date) {
+      const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now: at });
       expect(claimed?.id).toBe(id);
-    });
+      const r = await repo.recordOutcome({
+        planRowId: id, claimToken: claimed!.claimToken!, writeHappened: true, state: 'NOT_AVAILABLE_YET', now: at,
+      } as never);
+      expect(r.written).toBe(true);
+    }
 
-    it('the FIRST real failure after many NOT_AVAILABLE_YET asks is attempt 1, not attempt N+1', async () => {
-      const id = await seedRow({ state: 'NOT_AVAILABLE_YET', attempts: 30, lastAttemptAt: earlierSlot });
-      const after = await claimAndRecord(id, { reasonCode: 'FAILED_VALIDATION', cause: 'no field result returned' });
+    it('(a) a row asked NOT_AVAILABLE_YET 30 times then failing for real is attempt 1', async () => {
+      const id = await seedRow({ state: 'NOT_AVAILABLE_YET', attempts: 0, lastAttemptAt: earlierSlot });
+      for (let n = 1; n <= 30; n++) await askNotAvailableYet(id, day(n));
+      expect((await readRow(id)).attempts).toBe(0);
+      const after = await claimAndRecord(id, { reasonCode: 'FAILED_VALIDATION', cause: 'no field result returned', at: day(31) });
       expect(after.state).toBe('CHECK_FAILED');
       expect(after.attempts).toBe(1);
-      expect((await repo.claimNextDueField({ ipoId: IPO_ID, now: nextDay }))?.id).toBe(id);
+    });
+
+    it('(b) a row flapping CHECK_FAILED <-> NOT_AVAILABLE_YET still reaches the cap and stops', async () => {
+      const id = await seedRow({ state: 'NOT_AVAILABLE_YET', attempts: 0, lastAttemptAt: earlierSlot });
+      for (let n = 0; n < FIELD_PLAN_RECLAIM_MAX_ATTEMPTS; n++) {
+        await askNotAvailableYet(id, day(2 * n + 1));
+        const after = await claimAndRecord(id, { reasonCode: 'FAILED_VALIDATION', cause: 'no field result returned', at: day(2 * n + 2) });
+        expect(after.attempts).toBe(n + 1);
+      }
+      expect(await repo.claimNextDueField({ ipoId: IPO_ID, now: day(100) })).toBeNull();
+    });
+
+    it('(c) a gap row that spent NOT_AVAILABLE_YET asks stays re-openable when the key changes', async () => {
+      const id = await seedRow({ state: 'NOT_AVAILABLE_YET', attempts: 0, lastAttemptAt: earlierSlot });
+      for (let n = 1; n <= 8; n++) await askNotAvailableYet(id, day(n));
+      const after = await claimAndRecord(id, { reasonCode: 'COVERAGE_GAP', cause: GAP_CAUSE, gapKey: KEY, at: day(9) });
+      expect(after.attempts).toBe(0);
+      const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now: day(10), gapKeys: allKeys(KEY_MANIFEST) } as never);
+      expect(claimed?.id).toBe(id);
     });
 
     it('manifest reconciliation (S2 version bump) does not rewrite attempts: a genuine count survives', async () => {
