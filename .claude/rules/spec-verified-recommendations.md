@@ -2,7 +2,8 @@
 
 # Every question and recommendation to the owner is verified against the spec first
 
-version: "1.4.0"
+version: "1.5.0"
+(1.5.0, owner 2026-09-30: "Go with your recommendation", after OD-141 took five review rounds because the spec never said what a failed, empty or ambiguous exchange answer means for a held value)
 (1.4.0, owner 2026-09-25: "before deciding how an action behaves, ask why the admin would take it ... This will add a lot of value when you do some research or uh, provide a recommendation")
 (1.3.0, owner 2026-09-25: "whenever you are recommending something, do not recommend just anything randomly. Always verify it against the specs which are already there... If it is not there, then you can say that nothing is mentioned and this is what my recommendation is"; and "whatever is finalized should be in the spec document ... any findings any web search ... should also be added to findings document as well as the spec document")
 (1.2.0, owner 2026-09-23: "these findings will be helpful in creating the logic of
@@ -78,6 +79,15 @@ The common cause: "the owning section" was read as ONE section. A subject usuall
    A finding marked open for owner decision never changes a decision by itself. Chat, an issue, a PR
    body or memory is not the record. Portable copy: `~/.claude/rules/spec-first.md` R6.
 
+10. **An answer-state table comes before any feature that decides on another system's answer.** When a
+   feature holds, releases, overwrites or queues a value based on what a source says (an admin hold released by
+   an exchange, a kept value replaced by a new rank-1 source), the spec states, before the build, a row per
+   answer state: stated a value, explicitly not printed, not found, failed or timed out, empty board, ambiguous
+   match, and what each does to the stored value, the baseline and the queue. A state the table does not name is
+   a question for the owner, not a builder's guess. Why: OD-141 (#1287) failed four Tier A rounds, each finding
+   a new path where "NSE failed" was read as "NSE states nothing"; the fifth round passed only after OD-145
+   defined the states.
+
 ## CRITICAL RULES
 
 - MUST grep the spec by every key term of the subject (plus §0.0.1, §1.11 and the label definitions)
@@ -88,5 +98,6 @@ The common cause: "the owning section" was read as ONE section. A subject usuall
 - MUST record every owner decision AND clarification as an OD row in the spec before or with the code.
 - MUST cite the implemented spec section in every builder brief.
 - MUST design a recommended action behaviour from why the actor takes the action (rule 5b).
+- MUST put an answer-state table in the spec before building a feature that acts on another system's answer (rule 10).
 - MUST record every proven research finding as an F-id in `docs/design/findings.json`, cited in the
   spec, and (if a defect class) in `docs/reviews/failure-classes/`, same turn it is proven.
