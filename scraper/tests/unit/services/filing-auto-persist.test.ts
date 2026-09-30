@@ -2895,3 +2895,46 @@ describe('#771 r3 — re-read scope and never-read-first order', () => {
     expect(r.skippedBudget).toBe(1);
   });
 });
+
+// #1298 (reviewer N1): the relaunch clear must run BEFORE the persist, per document.
+describe('processPendingFilings — relaunchClearBeforePersist runs before persistFiling (#1298)', () => {
+  it('calls the clear with (ipoId, {id,type}, extraction) strictly before persistFiling', async () => {
+    const order: string[] = [];
+    const clear = vi.fn(async () => {
+      order.push('clear');
+      return null;
+    });
+    const persist = vi.fn(async () => {
+      order.push('persist');
+      return summary();
+    });
+    const d = deps({ relaunchClearBeforePersist: clear as never, persistFiling: persist as never });
+    const r = await processPendingFilings(IPO, d);
+
+    expect(order).toEqual(['clear', 'persist']);
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(clear.mock.calls[0]).toMatchObject(['ipo-1', { id: 'doc-1', type: 'RHP' }, { doc_type: 'RHP' }]);
+    expect(r.persisted).toBe(1);
+  });
+
+  it('an ordinary document (clear returns null) is still persisted; an absent hook changes nothing', async () => {
+    const clear = vi.fn(async () => null);
+    const withHook = deps({ relaunchClearBeforePersist: clear as never });
+    expect((await processPendingFilings(IPO, withHook)).persisted).toBe(1);
+    expect(withHook.persistFiling).toHaveBeenCalledTimes(1);
+
+    const without = deps();
+    expect((await processPendingFilings(IPO, without)).persisted).toBe(1);
+  });
+
+  it('a failing clear stops that document: persistFiling is not called and it is counted failed', async () => {
+    const d = deps({
+      relaunchClearBeforePersist: vi.fn(async () => {
+        throw new Error('clear boom');
+      }) as never,
+    });
+    const r = await processPendingFilings(IPO, d);
+    expect(d.persistFiling).not.toHaveBeenCalled();
+    expect(r.failed).toBe(1);
+  });
+});

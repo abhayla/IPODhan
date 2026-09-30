@@ -633,7 +633,9 @@ export function deriveIssueShape(row: Record<string, unknown>): IssueShape {
     min !== null && max !== null && Number.isFinite(min) && Number.isFinite(max) && min > 0 && min === max;
   return {
     isFixedPrice,
-    withdrawn: status === 'WITHDRAWN' || status === 'POSTPONED',
+    // #1298 (§2.9 "POSTPONED — not terminal, it comes back"): only WITHDRAWN stops the document
+    // walk; a POSTPONED issue keeps its document plan so a relaunch RHP is still found.
+    withdrawn: status === 'WITHDRAWN',
     // Item 24 (#795): the explicit offering-type guard's input. `isFixedPrice`
     // above is FALSE whenever the band is NULL, so it cannot be relied on to
     // exclude a non-IPO type from hunting a price band ad.
@@ -1102,7 +1104,7 @@ export const CANDIDATE_IPOS_SQL = `
        AND i.status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED')
      ORDER BY
        CASE
-         WHEN upper(i.status::text) IN ('WITHDRAWN', 'POSTPONED') THEN 4
+         WHEN upper(i.status::text) = 'WITHDRAWN' THEN 4
          WHEN upper(i.status::text) = 'OPEN' THEN 0
          WHEN upper(i.status::text) = 'CLOSED' THEN 1
          WHEN upper(i.status::text) = 'LISTED' THEN 3
@@ -1142,8 +1144,9 @@ export async function loadCandidateIpos(deps: {
 
   const candidates: DiscoveryIpo[] = rows
     .filter((r) => {
-      // A WITHDRAWN/POSTPONED issue is outside the live window but must still be
-      // visited once, to close its open rows as NOT_APPLICABLE (F15/M3).
+      // A WITHDRAWN issue is outside the live window but must still be visited once, to close its
+      // open rows as NOT_APPLICABLE (F15/M3). A POSTPONED one stays in scope (§2.9, #1298): its
+      // relaunch filing is still to come.
       const status = String(r.status ?? '').toUpperCase();
       if (status === 'WITHDRAWN' || status === 'POSTPONED') return true;
       return isInLiveWindow({
@@ -2823,7 +2826,7 @@ export const PURGE_CANDIDATES_SQL = `
      WHERE i.offering_type = 'IPO'
        AND (
          (i.close_date IS NOT NULL AND i.close_date < now() - make_interval(days => {{RETENTION_DAYS}}))
-         OR upper(i.status::text) IN ('WITHDRAWN', 'POSTPONED')
+         OR upper(i.status::text) = 'WITHDRAWN'
          -- #933 (OD-32): a document's OWN extraction clock is a candidate
          -- trigger independent of close_date. Before this, an IPO whose
          -- close_date was NULL or not yet due was never even considered here,
@@ -2881,7 +2884,8 @@ export async function runDocumentPurge(): Promise<PurgeSummary> {
     const status = String(row.status ?? '').toUpperCase();
     const decision = decidePurge({
       closeDate: row.close_date as Date | null,
-      withdrawn: status === 'WITHDRAWN' || status === 'POSTPONED',
+      // #1298: a POSTPONED issue comes back (§2.9); its files are not purged as a withdrawn one's are.
+      withdrawn: status === 'WITHDRAWN',
       allDocumentsRead: Number(row.unread_count ?? 0) === 0,
       // Item 18 slice 2: supplied, so the veto is live rather than a parameter
       // nothing passes. An unwired guard is the class item 20's gate exists for.

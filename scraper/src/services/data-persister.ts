@@ -747,14 +747,17 @@ export function mergeListingExchangesForSource(
 /**
  * Round 3 of PR #972 (review MINOR 3): the legacy fallback door (it runs when consolidation
  * throws) must honour the same terminal-status rule as the consolidation path
- * (`TERMINAL_IPO_STATUSES`): a stored WITHDRAWN or POSTPONED is never overwritten by an
+ * (`TERMINAL_IPO_STATUSES`, plus POSTPONED, #1298): a stored WITHDRAWN, DELISTED or POSTPONED is never overwritten by an
  * ordinary scrape's status. Returns the update without `status` when the stored one is
  * terminal and the incoming one differs; otherwise the update unchanged.
  */
 export function keepTerminalIpoStatus<T extends Record<string, any>>(existingStatus: unknown, update: T): T {
   if (!('status' in update)) return update;
   const stored = existingStatus == null ? null : String(existingStatus);
-  if (stored === null || !TERMINAL_IPO_STATUSES.has(stored) || String(update.status) === stored) return update;
+  // #1298: POSTPONED is not terminal, but this fallback door cannot read the relaunch evidence, so it
+  // keeps POSTPONED (fail closed); the consolidation path releases it on a relaunch (§2.9).
+  const held = TERMINAL_IPO_STATUSES.has(stored ?? '') || stored === 'POSTPONED';
+  if (stored === null || !held || String(update.status) === stored) return update;
   const { status: _dropped, ...rest } = update;
   logger.warn({ storedStatus: stored, incomingStatus: update.status }, '[LEGACY PATH] terminal ipo status kept; incoming status dropped');
   return rest as T;

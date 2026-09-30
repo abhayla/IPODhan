@@ -407,6 +407,7 @@ async function main(): Promise<number> {
   try {
     plan = await repo.mergeDuplicateInto(KEEP, DROP, {
       apply: false,
+      isRelaunchDocumentField: (await import('../src/services/relaunch-clear.js')).isRelaunchDocumentField,
       forceDifferentName: FORCE_NAME,
       setIssueSize: SET_ISSUE_SIZE ?? undefined,
       issueSizeNote: ISSUE_SIZE_NOTE ?? undefined,
@@ -471,6 +472,8 @@ async function main(): Promise<number> {
   try {
     applied = await repo.mergeDuplicateInto(KEEP, DROP, {
       apply: true,
+      // #1298 (§2.9, OD-139): an OD-86 relaunch merge of a POSTPONED IPO is its relaunch filing.
+      isRelaunchDocumentField: (await import('../src/services/relaunch-clear.js')).isRelaunchDocumentField,
       allowProd: ALLOW_PROD,
       forceDifferentName: FORCE_NAME,
       setIssueSize: SET_ISSUE_SIZE ?? undefined,
@@ -485,6 +488,11 @@ async function main(): Promise<number> {
       return 1;
     }
     throw err;
+  }
+  // OD-120: the ONE relaunch alert goes out after the merge committed.
+  if (applied.relaunchCleared && applied.relaunchCleared.cleared.length > 0) {
+    const { sendRelaunchClearedAlert } = await import('../src/services/admin-alerts.js');
+    await sendRelaunchClearedAlert(applied.relaunchCleared);
   }
 
   // --- post-apply readback (MAJOR-2, PR #433 review) ------------------------------------------

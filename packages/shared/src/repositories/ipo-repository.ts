@@ -295,6 +295,8 @@ export interface MergeDuplicateResult extends MergeDuplicatePlan {
   provenanceWritten: { fieldName: string; source: string; previousSource: string | null }[];
   /** What the apply transaction actually did per child table, from RETURNING (empty on a dry run). */
   childOutcome: MergeChildOutcome[];
+  /** #1298: the §2.9 relaunch invalidation this merge ran (an OD-86 relaunch merge of a POSTPONED IPO); the caller sends the OD-120 alert. */
+  relaunchCleared?: import('../services/relaunch-admin-clear').RelaunchClearSummary | null;
 }
 
 /** One child table's outcome inside a merge, taken from the rows the statements RETURNED. */
@@ -1940,6 +1942,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
        * that guesses its own author is worse than one that says "unknown".
        */
       mergedBy?: string;
+      /**
+       * #1298 (§2.9, OD-139): which fields are DOCUMENT fields (the scraper passes
+       * `isRelaunchDocumentField`). Required for an OD-86 relaunch merge that involves a POSTPONED
+       * row: the merge is then the relaunch filing, so the old offer's document values are
+       * invalidated in this transaction. Missing on such a merge -> the merge is refused.
+       */
+      isRelaunchDocumentField?: (tableName: string, fieldName: string) => boolean;
     }
   ): Promise<MergeDuplicateResult> {
     if (keepId === dropId) {
@@ -2051,7 +2060,28 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       .where(and(eq(fieldSources.ipoId, dropId), eq(fieldSources.tableName, 'ipos')));
     const dropProv = buildProvenanceMap(provRows, dropId);
 
-    const patch = planCarryFields(buildCarryFieldInputs(keep, drop, dropProv), dropId);
+    let relaunchCleared: import('../services/relaunch-admin-clear').RelaunchClearSummary | null = null;
+    let patch = planCarryFields(buildCarryFieldInputs(keep, drop, dropProv), dropId);
+    // #1298 (§2.9): an OD-86 relaunch merge with a POSTPONED side is the relaunch filing.
+    const relaunchOfPostponed =
+      relaunchException(relaunch) && (String(keep.status) === 'POSTPONED' || String(drop.status) === 'POSTPONED');
+    if (relaunchOfPostponed) {
+      if (!opts.isRelaunchDocumentField) {
+        throw new DatabaseError(
+          'mergeDuplicateInto: an OD-86 relaunch merge of a POSTPONED IPO needs isRelaunchDocumentField (§2.9 invalidation, #1298)',
+          undefined
+        );
+      }
+      // The old offer's document values must not survive the relaunch: when the postponed row is the
+      // one dropped, its document columns are not carried (identity columns still are, OD-83).
+      if (String(drop.status) === 'POSTPONED') {
+        const isDoc = opts.isRelaunchDocumentField;
+        patch = patch.filter((p) => {
+          const f = columnToCamelCase(p.column);
+          return ['cin', 'symbol', 'isin', 'companyName'].includes(f) || !isDoc('ipos', f);
+        });
+      }
+    }
     if (opts.setIssueSize) {
       patch.push({
         column: 'issue_size',
@@ -2164,6 +2194,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         `)) as unknown as { rows: { row: string }[] }
       ).rows.map((r) => r.row);
       let supersededKeyIds: string[] = [];
+      let olderIdForRelaunch: string | null = null;
 
       // --- child tables FIRST: repoint person-created data, delete scraper-derived data --------
       // Must run before the `ipos` row for dropId is deleted below: most FKs into `ipos` are
@@ -2304,6 +2335,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         const keepDay = String(keep.openDate ?? '').slice(0, 10);
         const dropDay = String(drop.openDate ?? '').slice(0, 10);
         const olderId = keepDay && dropDay ? (keepDay < dropDay ? keepId : dropDay < keepDay ? dropId : null) : null;
+        olderIdForRelaunch = olderId;
         if (olderId) {
           const newerId = olderId === keepId ? dropId : keepId;
           supersededKeyIds = await supersedeOlderKeysOnRelaunchMerge(
@@ -2312,6 +2344,38 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             pairKeys.filter((k) => k.ipoId === newerId),
             `merge of ${drop.slug} into ${keep.slug}`
           );
+        }
+      }
+
+      // #1298 (§2.9, OD-139): the OD-86 relaunch merge is a relaunch filing. On a POSTPONED survivor
+      // the same invalidation as the OD-83 supersede runs here, in the merge transaction and BEFORE the carried values are written (clear, then refill) (admin values
+      // per OD-120, non-admin document values and lists, the document plan reopened).
+      if (relaunchOfPostponed && supersededKeyIds.length > 0) {
+        const { clearAdminValuesOnRelaunch } = await import('../services/relaunch-admin-clear');
+        relaunchCleared = await clearAdminValuesOnRelaunch(
+          tx as never,
+          keepId,
+          { kind: 'SOURCE_KEY_RELAUNCH', supersededKeyIds },
+          [],
+          opts.isRelaunchDocumentField!
+        );
+        // Refill: every `ipos` value the relaunch emptied takes the NEWER record's value when the
+        // survivor is the older, postponed row (the newer row is the relaunch's own terms).
+        if (relaunchCleared && olderIdForRelaunch === keepId) {
+          const dropRow = drop as unknown as Record<string, unknown>;
+          for (const inv of relaunchCleared.invalidated ?? []) {
+            if (inv.tableName !== 'ipos' || inv.fieldName === '*') continue;
+            const v = dropRow[inv.fieldName];
+            if (v === null || v === undefined || patch.some((p) => columnToCamelCase(p.column) === inv.fieldName)) continue;
+            const prov = dropProv.get(inv.fieldName);
+            patch.push({
+              column: inv.fieldName.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`),
+              value: v,
+              source: prov ? prov.source : 'DRHP',
+              confidence: prov ? prov.confidence : 90,
+              note: `relaunch refill from the merged newer record ${dropId} (§2.9, #1298)`,
+            } as (typeof patch)[number]);
+          }
         }
       }
 
@@ -2397,6 +2461,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // Child-table repoint/delete and the dropped `ipos` row delete both already ran above
       // (DEFECT 2 fix) — before this patch loop, so a unique-constrained carried value never has
       // to coexist on both rows.
+
     });
 
     await this.invalidateCache(
@@ -2404,7 +2469,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       ['ipo:list:*', 'ipo:search:*']
     );
 
-    return { ...plan, applied: true, keepSlug: keep.slug, droppedSlug: drop.slug, provenanceWritten, childOutcome };
+    return { ...plan, applied: true, keepSlug: keep.slug, droppedSlug: drop.slug, provenanceWritten, childOutcome, relaunchCleared };
   }
 
   /**

@@ -98,7 +98,7 @@ import { pageRowsFromExtraction, type DocumentPageRow } from './document-page-te
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db, getRedisClient, DocumentRepository } from '@ipodhan/shared';
 import {
   documents as documentsTable,
@@ -1549,6 +1549,17 @@ export interface AutoPersistDeps {
   persistFiling: typeof persistFilingExtraction;
   persisterDeps: FilingPersisterDeps;
   /**
+   * #1298 (§2.9, supervisor order 2026-09-30): runs BEFORE `persistFiling`. When this document is a
+   * relaunch filing of a POSTPONED IPO (judged against the values stored before it writes anything),
+   * the §2.9 invalidation commits first; the persist then answers the emptied fields. Optional: absent,
+   * only the post-persist clear in `writeReceiptAndReopen` runs.
+   */
+  relaunchClearBeforePersist?: (
+    ipoId: string,
+    doc: { id: string; type: string },
+    extraction: FilingExtraction
+  ) => Promise<RelaunchClearSummary | null>;
+  /**
    * W-129 review: fallback source for `ipos.issue_size` (rupees) when the
    * `AutoPersistIpo` passed in does not already carry it. Optional — existing
    * callers/tests that omit it simply get no `--issue-size` flag (the
@@ -1749,6 +1760,7 @@ export function buildAutoPersistDeps(
     runAnchorPersist: (args) => runAnchorAutoPersist(args, persisterDeps, redis),
     runCorrigendumSuggestions: buildCorrigendumSuggestionRunner(),
     persistFiling: persistFilingExtraction,
+    relaunchClearBeforePersist: (ipoId, doc, extraction) => relaunchClearBeforePersist(db as never, ipoId, doc, extraction, persisterDeps),
     persisterDeps,
     async setDocumentExtractionState({ documentId, status, error, retryCount, updatedAt, pageRows, receiptFields }) {
       // Round 4: the REAL writer. It does not compute the patch itself — it
@@ -2839,6 +2851,8 @@ export async function processPendingFilings(
     const docType = doc.type as FilingDocType;
     let summary: PersistFilingSummary;
     try {
+      // #1298: invalidate first (a relaunch filing), then persist the new terms.
+      if (deps.relaunchClearBeforePersist) await deps.relaunchClearBeforePersist(ipo.id, { id: doc.id, type: doc.type }, extraction);
       summary = await deps.persistFiling(
         ipo.id,
         extraction,
@@ -3050,4 +3064,46 @@ export function autoPersistEnabled(): boolean {
  */
 export function smeAutoPersistEnabled(): boolean {
   return FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST === true;
+}
+
+/**
+ * #1298 (§2.9 order, supervisor decision 2026-09-30): is this document a relaunch filing of a POSTPONED
+ * IPO, judged against the values stored BEFORE it writes anything? If so the invalidation (item 27's
+ * admin half and the non-admin half) commits here, then the caller persists the new terms, which
+ * answer the emptied fields; nothing of the new filing exists yet to be wiped. The document's receipt
+ * comes from a dry run of the persister (it writes nothing). Not one transaction with the persist: the
+ * persister's `upsertIPO` writes through the process-wide pool, which would wait on this transaction's
+ * `ipos` row lock. A persist that then fails leaves the fields empty and re-asked, and the document's
+ * retry re-runs this idempotently (the relaunch start is the first relaunch record, so nothing newer
+ * is cleared).
+ */
+export async function relaunchClearBeforePersist(
+  dbh: { transaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>; execute: (q: any) => Promise<any> },
+  ipoId: string,
+  doc: { id: string; type: string },
+  extraction: FilingExtraction,
+  persisterDeps: FilingPersisterDeps
+): Promise<RelaunchClearSummary | null> {
+  const status = await dbh.execute(sql`SELECT status::text AS s FROM ipos WHERE id = ${ipoId}::uuid`);
+  const st = ((status as { rows?: Array<{ s: string }> }).rows ?? (status as Array<{ s: string }>))[0]?.s;
+  if (st !== 'POSTPONED') return null;
+  const dry = await persistFilingExtraction(
+    ipoId,
+    extraction,
+    { docType: doc.type as FilingDocType, documentId: doc.id, apply: false },
+    persisterDeps
+  );
+  const receipt = (dry.receipt_fields ?? []).map((f) => ({
+    tableName: f.tableName,
+    rowKey: f.rowKey ?? '',
+    fieldName: f.fieldName,
+    value: f.value == null ? null : String(f.value),
+  }));
+  const { clearAdminValuesForRelaunchFiling } = await import('./relaunch-clear.js');
+  const cleared = await dbh.transaction((tx) => clearAdminValuesForRelaunchFiling(tx as never, { id: doc.id, ipoId, type: doc.type }, receipt));
+  if (cleared && cleared.cleared.length > 0) {
+    const { sendRelaunchClearedAlert } = await import('./admin-alerts.js');
+    await sendRelaunchClearedAlert(cleared);
+  }
+  return cleared;
 }

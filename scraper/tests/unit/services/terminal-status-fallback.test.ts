@@ -24,7 +24,8 @@ describe('keepTerminalIpoStatus (the fallback door)', () => {
   });
 
   it('the terminal set is the consolidation path\'s own set (one definition)', () => {
-    expect([...TERMINAL_IPO_STATUSES].sort()).toEqual(['DELISTED', 'POSTPONED', 'WITHDRAWN']);
+    // #1298 (§2.9): POSTPONED is not terminal; this door still keeps it (it cannot read the relaunch evidence).
+    expect([...TERMINAL_IPO_STATUSES].sort()).toEqual(['DELISTED', 'WITHDRAWN']);
   });
 
   it('a non-terminal stored status moves normally', () => {

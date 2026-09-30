@@ -259,7 +259,13 @@ export interface MergeDuplicateIntoRepo {
     // in isolation (TS2353 at the call site). An interface that omits a property the
     // caller passes is a contract that lies: a fake typed against it proves nothing
     // about the author field.
-    opts: { apply: boolean; forceDifferentName?: boolean; allowProd?: boolean; mergedBy?: string }
+    opts: {
+      apply: boolean;
+      forceDifferentName?: boolean;
+      allowProd?: boolean;
+      mergedBy?: string;
+      isRelaunchDocumentField?: (tableName: string, fieldName: string) => boolean;
+    }
   ): Promise<unknown>;
 }
 
@@ -279,6 +285,8 @@ export async function applyMerges(
   for (const { keep, dup } of merges) {
     await repo.mergeDuplicateInto(keep, dup, {
       apply: true,
+      // #1298: an OD-86 relaunch merge of a POSTPONED IPO invalidates the old document values (§2.9).
+      isRelaunchDocumentField: (await import('../src/services/relaunch-clear.js')).isRelaunchDocumentField,
       forceDifferentName: true,
       allowProd: opts.allowProd,
       // Item 19 / #807: named here, never inferred inside the repository — the log has to
