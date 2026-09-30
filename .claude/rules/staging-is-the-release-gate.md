@@ -2,10 +2,25 @@
 
 # Staging is the release gate: nothing targets production until staging is feature-complete
 
-version: "1.0.0" (owner directive 2026-09-20 ~10:5x IST: "I want to implement everything before I decide
+version: "1.1.0" (1.1.0 owner 2026-09-30, OD-146: R0 everything-first; OD-133 narrowing withdrawn)
+(1.0.0 owner directive 2026-09-20 ~10:5x IST: "I want to implement everything before I decide
 to do the production deployment. If everything works perfectly in the staging environment, then it will
 work in production as well. So I will not target for production until staging is final."
 And, on sequencing: "lets focus on completing all work before perfecting one issue.")
+
+## R0 — Everything first: finish all the work, prove all of it on staging, deploy production once
+
+Owner, verbatim (2026-09-30): "See, my idea is to complete all the work, all the implementation and coding related work, release everything in staging, test everything there, and then deploy everything all together in production ... do not give me any other ideas ... focus first on completing everything and making everything work on staging. Only then, after everything properly works, we will deploy to production. This rule and clarity should always be there."
+
+- All implementation and coding work is completed before production is considered. Nothing is split into
+  "release 1" and "next release"; nothing reviewed and green is held off `main` or off staging to protect a
+  smaller release.
+- Every change is merged, deployed to staging and tested there (its staging proof read and recorded).
+- Production is deployed ONCE, with everything together, only after everything works on staging, and only on
+  the owner's word on the pre-deploy brief.
+- Do not offer alternatives to this order (partial releases, shipping a core early, deploying a subset for
+  urgency). If something seems to argue for it, state the fact in the brief; the order does not change.
+- Supersedes OD-133's narrowing (spec OD-146).
 
 ## R1 — Production is not a target until staging is final
 
@@ -26,7 +41,7 @@ The live inventory of those items — built / partial / not built, with the evid
 `docs/design/pull-model-completion-state.md`. That document is the work list; this rule is the policy.
 When an item lands, the document changes; this rule does not.
 
-**Narrowed by OD-133 (owner, 2026-09-28):** the first release after 2026-09-07 needs every fix on `main`,
+**WITHDRAWN by OD-146 (owner, 2026-09-30), kept as history:** ~~Narrowed by OD-133 (owner, 2026-09-28):~~ the first release after 2026-09-07 needs every fix on `main`,
 the admin-route auth fix, and the admin fix-a-value core plus queue (OD-135, OD-136), built and proven on
 staging. The remainders of items 6, 7 and 19 and every proof that waits on a real-world event do NOT block
 it; their fields reach the admin through the queue. Plan: `docs/contracts/plans/2026-09-28-finish-line-plan.md`.
@@ -79,7 +94,7 @@ a build item.
 ## CRITICAL RULES
 
 - MUST NOT plan, schedule or recommend a production deploy while `docs/design/pull-model-completion-state.md`
-  lists any item as partial or not built, except the remainders OD-133 releases from the gate.
+  lists any item as partial or not built, or while any finished change is not yet proven on staging (R0, OD-146).
 - MUST treat "staging is final" as feature-complete per R2, never as "CI is green".
 - MUST build the verification before the correctness fix when both are outstanding, except for an
   actively-losing defect per R3.
