@@ -9,7 +9,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { Pool } from 'pg';
+import { pool } from '@/lib/db';
 import { requireAdminAuth } from '@/lib/auth/admin-auth';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
@@ -17,16 +17,17 @@ export async function GET() {
   // Require admin authentication
   const authError = await requireAdminAuth();
   if (authError) return authError;
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-  });
-
+  // #1142: the app's own pool (web/lib/db), never a second ad-hoc pool, so
+  // this endpoint tests the connection the site actually serves from.
   try {
     const client = await pool.connect();
-    const result = await client.query('SELECT version()');
-    const version = result.rows[0].version;
-    client.release();
-    await pool.end();
+    let version: string;
+    try {
+      const result = await client.query('SELECT version()');
+      version = result.rows[0].version;
+    } finally {
+      client.release();
+    }
 
     return NextResponse.json({
       success: true,

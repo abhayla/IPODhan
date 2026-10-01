@@ -655,6 +655,11 @@ jobs:
         run: node --test scripts/ci/tests/check-db-connection-defaults.test.mjs
 
       - name: DB connection defaults never silently default to production (#640)
+        # #1142 round 2: layer 1 is structural - a pg / postgres.js client
+        # built outside the sanctioned modules (scripts/ci/pg-construction-sites.mjs
+        # SANCTIONED_MODULES), in any tracked file including tests/, fails;
+        # the value checks below stay as a second layer. A baseline entry
+        # whose site is gone also fails (shrink-only).
         # `process.env.DATABASE_NAME || 'ipodhan'` / `DATABASE_USER || 'postgres'`
         # meant a script run through the tunnel that forgot the env var
         # silently connected to production, as the superuser. Baseline is
