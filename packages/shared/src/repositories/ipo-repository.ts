@@ -53,8 +53,11 @@ import {
 import { noteSourceKeyBind } from './source-key-lineage';
 import { ofsIdentityConflict, segmentsConflict } from './ipo-identity-conflicts';
 import {
+  beginChildRowCapture,
   captureMergeDeletions,
+  childRowDeltaJson,
   missingForUnmerge,
+  type ChildRowDelta,
   uncheckableUniqueIndexRefusal,
   type MergeCapture,
   type NulledRef,
@@ -2305,6 +2308,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       ).rows.map((r) => r.row);
       let supersededKeyIds: string[] = [];
       let olderIdForRelaunch: string | null = null;
+      let relaunchDelta: ChildRowDelta[] = [];
 
       // --- child tables FIRST: repoint person-created data, delete scraper-derived data --------
       // Must run before the `ipos` row for dropId is deleted below: most FKs into `ipos` are
@@ -2394,7 +2398,6 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // Row snapshots are spliced in as JSON TEXT and parsed by Postgres, so a numeric's scale
       // and a timestamp's text survive exactly.
       const rawArray = (texts: string[]) => `[${texts.join(',')}]`;
-      const loggedPatch = JSON.stringify(patch);
       const survivorPatchJson =
         `{"format":2,"patch":${JSON.stringify(patch)},"keepRowBefore":${keepRowText},` +
         `"fieldSourcesBefore":{"keep":${rawArray(keepFieldSources)},"drop":${rawArray(dropFieldSources)}}}`;
@@ -2463,6 +2466,14 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // per OD-120, non-admin document values and lists, the document plan reopened).
       if (relaunchOfPostponed && supersededKeyIds.length > 0) {
         const { clearAdminValuesOnRelaunch } = await import('../services/relaunch-admin-clear');
+        // OD-92 (#1298 round 2): everything the clear changes on the survivor's child rows (holds,
+        // provenance, list rows, one-row child values, audit marks, plan and document-fetch rows) is
+        // captured whole around it and logged, so the unmerge can put every one back.
+        const childCapture = await beginChildRowCapture(
+          tx,
+          keepId,
+          direct.filter((t) => t !== 'ipos' && t !== 'ipo_merge_log').map((t) => ({ table: t, col: reach.get(t)!.col }))
+        );
         relaunchCleared = await clearAdminValuesOnRelaunch(
           tx as never,
           keepId,
@@ -2470,6 +2481,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           [],
           opts.isRelaunchDocumentField!
         );
+        relaunchDelta = await childCapture.finish();
         // Refill: every `ipos` value the relaunch emptied takes the NEWER record's value when the
         // survivor is the older, postponed row (the newer row is the relaunch's own terms).
         if (relaunchCleared && olderIdForRelaunch === keepId) {
@@ -2558,38 +2570,61 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           rows: { row: string }[];
         }
       ).rows[0]?.row;
+      // #1298 follow-up (OD-92 "every automatic merge is reversible"): the survivor_patch was written
+      // BEFORE the relaunch clear + refill ran. The logged patch becomes the patch actually applied (the
+      // refill's entries carry the source and confidence they were written with), plus one entry per
+      // survivor column the clear changed and nothing refilled (no source wrote it: RELAUNCH_CLEAR, 0).
+      // updated_at is restored on its own rule. Compared inside the database, so a numeric's scale and
+      // a timestamp's text are compared exactly.
+      const appliedPatch = JSON.stringify(patch);
+      const clearedOnly = keepAfterText
+        ? (
+            (await tx.execute(sql`
+              select coalesce(jsonb_agg(jsonb_build_object(
+                       'column', k, 'value', a.after -> k, 'source', 'RELAUNCH_CLEAR', 'confidence', 0,
+                       'note', ${`emptied by this merge's relaunch clear (§2.9, #1298); restored by unmerge`}::text)), '[]'::jsonb)::text as extra
+              from (select ${keepAfterText}::jsonb as after, ${keepRowText}::jsonb as before) a,
+                   lateral jsonb_object_keys(a.after) k
+              where k <> 'updated_at'
+                and (a.before -> k) is distinct from (a.after -> k)
+                and k <> all (array(select jsonb_array_elements(${appliedPatch}::jsonb) ->> 'column'))
+            `)) as unknown as { rows: { extra: string }[] }
+          ).rows[0]?.extra ?? '[]'
+        : '[]';
+      // The survivor's own provenance for every logged column is restored by the unmerge's step 6 from
+      // fieldSourcesBefore, so the child-row delta leaves those rows to it (one owner per row).
+      const loggedFields = new Set(
+        [...patch.map((p) => p.column), ...(JSON.parse(clearedOnly) as { column: string }[]).map((e) => e.column)].map(columnToCamelCase)
+      );
+      const ownedByStep6 = (text: string) => {
+        const r = JSON.parse(text) as { table_name?: string; row_key?: string | null; field_name?: string };
+        return r.table_name === 'ipos' && (r.row_key ?? '') === '' && loggedFields.has(String(r.field_name));
+      };
+      const loggedDelta = relaunchDelta
+        .map((d) =>
+          d.table !== 'field_sources'
+            ? d
+            : {
+                ...d,
+                deleted: d.deleted.filter((t) => !ownedByStep6(t)),
+                inserted: d.inserted.filter((t) => !ownedByStep6(t)),
+                updated: d.updated.filter((u) => !ownedByStep6(u.before)),
+              }
+        )
+        .filter((d) => d.deleted.length || d.inserted.length || d.updated.length);
       const restoreJson =
         `{"format":3,"deletedRows":[${capture.deletedRows
           .map((t) => `{"table":${JSON.stringify(t.table)},"rows":${rawArray(t.rows)}}`)
           .join(',')}],` +
         `"nulledRefs":${JSON.stringify(capture.nulledRefs)},` +
         `"sourceKeysBefore":${rawArray(keysBefore)},"supersededKeyIds":${JSON.stringify(supersededKeyIds)},` +
+        `"relaunchDelta":${childRowDeltaJson(loggedDelta)},` +
         `"keepRowAfter":${keepAfterText ?? 'null'},"redirectId":${JSON.stringify(redirectRows[0]?.id ?? null)}}`;
-      // #1298 follow-up (OD-92 "every automatic merge is reversible"): the survivor_patch above was
-      // written BEFORE the relaunch clear + refill ran, so it does not name the columns they changed
-      // and an unmerge would leave them as the relaunch left them. Name every survivor column whose
-      // value differs between the logged before-row and the final after-row (updated_at is restored on
-      // its own rule), so the unmerge restores the exact pre-merge row. Compared inside the database,
-      // so a numeric's scale and a timestamp's text are compared exactly.
-      const changedAfterLog = keepAfterText
-        ? (
-            (await tx.execute(sql`
-              select coalesce(jsonb_agg(jsonb_build_object(
-                       'column', k, 'value', a.after -> k, 'source', 'ADMIN', 'confidence', 100,
-                       'note', ${`restored by unmerge: changed by this merge's relaunch clear/refill (§2.9, #1298)`}::text)), '[]'::jsonb)::text as extra
-              from (select ${keepAfterText}::jsonb as after, ${keepRowText}::jsonb as before) a,
-                   lateral jsonb_object_keys(a.after) k
-              where k <> 'updated_at'
-                and (a.before -> k) is distinct from (a.after -> k)
-                and k <> all (array(select jsonb_array_elements(${loggedPatch}::jsonb) ->> 'column'))
-            `)) as unknown as { rows: { extra: string }[] }
-          ).rows[0]?.extra ?? '[]'
-        : '[]';
       await tx
         .update(ipoMergeLog)
         .set({
           restoreData: sql`${restoreJson}::jsonb` as unknown as Record<string, unknown>,
-          survivorPatch: sql`jsonb_set(survivor_patch, '{patch}', coalesce(survivor_patch->'patch', '[]'::jsonb) || ${changedAfterLog}::jsonb)` as unknown as Record<string, unknown>,
+          survivorPatch: sql`jsonb_set(survivor_patch, '{patch}', ${appliedPatch}::jsonb || ${clearedOnly}::jsonb)` as unknown as Record<string, unknown>,
         })
         .where(eq(ipoMergeLog.id, logRow!.id));
       // Child-table repoint/delete and the dropped `ipos` row delete both already ran above
@@ -2703,6 +2738,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         supersededKeyIds: string[];
         keepRowAfter: Record<string, unknown> | null;
         redirectId: string | null;
+        relaunchDelta?: { table: string; deleted: Record<string, unknown>[]; inserted: Record<string, unknown>[]; updated: { before: Record<string, unknown>; after: Record<string, unknown> }[] }[];
       };
       const patchFields = (sp.patch ?? []).map((p) => p.column);
       const fieldNames = patchFields.map(columnToCamelCase);
@@ -2719,13 +2755,23 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       const logExpr = (path: ReturnType<typeof sql>) => sql`(select ${path} from ipo_merge_log where id = ${mergeId})`;
       const keepBeforeExpr = logExpr(sql`survivor_patch->'keepRowBefore'`);
       const keepAfterExpr = logExpr(sql`restore_data->'keepRowAfter'`);
+      // #1298 round 2: the survivor's child rows the merge's relaunch clear changed (ipo-merge-restore.ts
+      // beginChildRowCapture). Each part is read out of the log inside the database.
+      const deltaParts = (rd?.relaunchDelta ?? []).map((d, i) => ({
+        table: d.table,
+        del: logExpr(sql`restore_data->'relaunchDelta'->${i}::int->'deleted'`),
+        ins: logExpr(sql`restore_data->'relaunchDelta'->${i}::int->'inserted'`),
+        upd: logExpr(sql`restore_data->'relaunchDelta'->${i}::int->'updated'`),
+        forceable: [...d.inserted.map((r) => r.id), ...d.updated.map((u) => u.after.id)].map((id) => `relaunch:${d.table}:${String(id)}`),
+      }));
 
       // --- drift, over the CARRIED columns only (OD-92) -----------------------------------------
       // The merge changed the survivor only in the carried columns (and updated_at). Every other
       // column keeps whatever a scraper wrote since; only a carried column that changed after the
       // merge is a conflict, and only a carried column can be forced.
+      const forceableDelta = deltaParts.flatMap((d) => d.forceable);
       const badForce = (opts.forceFields ?? []).filter(
-        (f) => !patchFields.includes(f) && !fieldNames.map((n) => `field_sources.${n}`).includes(f)
+        (f) => !patchFields.includes(f) && !fieldNames.map((n) => `field_sources.${n}`).includes(f) && !forceableDelta.includes(f)
       );
       if (badForce.length) {
         throw new DatabaseError(
@@ -2761,7 +2807,23 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             `)
           ).map((r) => `field_sources.${r.field_name}`)
         : [];
-      const allDrift = [...drift, ...fsDrift];
+      // A row the relaunch clear created or changed must still be as the merge left it; a row it
+      // deleted must still be absent (a live row under that id is a collision, never forceable).
+      const deltaDrift: string[] = [];
+      for (const d of deltaParts) {
+        const t = sql.identifier(d.table);
+        const changed = rows<{ id: string }>(
+          await tx.execute(sql`
+            select e->>'id' as id from jsonb_array_elements(${d.ins}) e
+            where (select to_jsonb(t.*) from ${t} t where (to_jsonb(t.*) ->> 'id') = e->>'id') is distinct from e
+            union all
+            select e->'after'->>'id' from jsonb_array_elements(${d.upd}) e
+            where (select to_jsonb(t.*) from ${t} t where (to_jsonb(t.*) ->> 'id') = e->'after'->>'id') is distinct from e->'after'
+          `)
+        );
+        deltaDrift.push(...changed.map((r) => `relaunch:${d.table}:${r.id}`));
+      }
+      const allDrift = [...drift, ...fsDrift, ...deltaDrift];
       const unforced = allDrift.filter((d) => !(opts.forceFields ?? []).includes(d));
       if (unforced.length) {
         throw new DatabaseError(
@@ -2792,7 +2854,17 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           )}) e where e->>'id' = any(array(select jsonb_array_elements_text(${JSON.stringify(rd?.supersededKeyIds ?? [])}::jsonb))))`,
         },
       ];
+      for (const d of deltaParts) restoreSets.push({ table: d.table, rowsExpr: d.del });
       const collisions: string[] = [];
+      for (const d of deltaParts) {
+        const back = rows<{ id: string }>(
+          await tx.execute(sql`
+            select e->>'id' as id from jsonb_array_elements(${d.del}) e
+            where exists (select 1 from ${sql.identifier(d.table)} t where (to_jsonb(t.*) ->> 'id') = e->>'id')
+          `)
+        );
+        for (const b of back) collisions.push(`refused: ${d.table} row ${b.id}, deleted by the merge's relaunch clear, exists again`);
+      }
       for (const set of restoreSets) {
         const uniques = rows<{ name: string; cols: string[] | string; complex: boolean; nulls_not_distinct: boolean }>(
           await tx.execute(sql`
@@ -2941,6 +3013,49 @@ export class IPORepository extends BaseRepository implements IIPORepository {
                  (select e from jsonb_array_elements(${logExpr(sql`restore_data->'sourceKeysBefore'`)}) e where e->>'id' = ${id})) r)
             where id = ${id}
           `);
+        }
+      }
+      // 5b. the survivor's child rows as they stood before the merge's relaunch clear (§2.9, #1298):
+      //     rows it created removed, rows it changed put back, rows it deleted re-inserted whole (holds,
+      //     provenance, list rows, audit marks, plan and document-fetch state), then read back exactly.
+      for (const d of deltaParts) {
+        const t = sql.identifier(d.table);
+        await tx.execute(sql`
+          delete from ${t} t where (to_jsonb(t.*) ->> 'id') = any(array(select e->>'id' from jsonb_array_elements(${d.ins}) e))
+        `);
+        const cols = rows<{ c: string }>(
+          await tx.execute(sql`
+            select column_name::text as c from information_schema.columns
+            where table_schema = 'public' and table_name = ${d.table} and column_name <> 'id'
+            order by ordinal_position
+          `)
+        ).map((r) => r.c);
+        if (cols.length) {
+          await tx.execute(sql`
+            update ${t} t set (${sql.join(cols.map((c) => sql.identifier(c)), sql`, `)}) =
+              (select ${sql.join(cols.map((c) => sql`r.${sql.identifier(c)}`), sql`, `)}
+               from jsonb_populate_record(null::${t}, e->'before') r)
+            from jsonb_array_elements(${d.upd}) e
+            where (to_jsonb(t.*) ->> 'id') = e->'before'->>'id'
+          `);
+        }
+        await tx.execute(sql`insert into ${t} select * from jsonb_populate_recordset(null::${t}, ${d.del})`);
+        const off = rows<{ id: string }>(
+          await tx.execute(sql`
+            select s.x->>'id' as id
+            from (select e as x from jsonb_array_elements(${d.del}) e
+                  union all select e->'before' from jsonb_array_elements(${d.upd}) e) s
+            where (select to_jsonb(t.*) from ${t} t where (to_jsonb(t.*) ->> 'id') = s.x->>'id') is distinct from s.x
+            union all
+            select e->>'id' from jsonb_array_elements(${d.ins}) e
+            where exists (select 1 from ${t} t where (to_jsonb(t.*) ->> 'id') = e->>'id')
+          `)
+        ).map((r) => r.id);
+        if (off.length) {
+          throw new DatabaseError(
+            `unmergeDuplicate: ${d.table} rows changed by the relaunch clear did not restore exactly (${off.join(', ')}) — rolled back`,
+            undefined
+          );
         }
       }
       // 6. the carried fields' provenance on the survivor, as it stood before the merge; provenance

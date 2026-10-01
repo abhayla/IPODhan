@@ -10,10 +10,8 @@
  *   npx vitest run --config vitest.integration.config.ts tests/integration/relaunch-merge-unmerge-restores-refill-1298.integration.test.ts
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
-import * as schema from '../../../packages/shared/src/db/schema';
+import { getTestDb, cleanupTestDb } from '../test-utils/db';
 import { IPORepository } from '../../../packages/shared/src/repositories';
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -23,8 +21,7 @@ const noRedis = {
   get: async () => null, set: async () => 'OK', setex: async () => 'OK', del: async () => 0,
   keys: async () => [], scan: async () => ['0', []],
 } as never;
-let pool: Pool;
-let db: ReturnType<typeof drizzle<typeof schema>>;
+let db: any;
 const rows = (r: any) => (r.rows ?? r) as any[];
 const tick = () => new Promise((r) => setTimeout(r, 25));
 
@@ -47,16 +44,15 @@ async function cleanup() {
 
 describe.skipIf(!DATABASE_URL)('#1298: unmerge of an OD-86 relaunch merge restores what the relaunch refill wrote (ipodhan_test)', () => {
   beforeAll(async () => {
-    pool = new Pool({ connectionString: DATABASE_URL, max: 3, options: '-c timezone=UTC' });
-    db = drizzle(pool, { schema });
+    db = await getTestDb();
     const name = rows(await db.execute(sql`SELECT current_database() AS d`))[0].d;
     if (name !== 'ipodhan_test') throw new Error(`refusing to run against ${name}`);
     await cleanup();
   }, 60_000);
   afterAll(async () => {
-    if (!pool) return;
+    if (!db) return;
     await cleanup();
-    await pool.end();
+    await cleanupTestDb();
   }, 60_000);
 
   it('relaunch-merge a POSTPONED survivor with a refill, unmerge: every column equals its pre-merge value', async () => {

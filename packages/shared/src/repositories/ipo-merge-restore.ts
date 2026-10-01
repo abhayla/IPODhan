@@ -214,3 +214,104 @@ export function uncheckableUniqueIndexRefusal(idx: {
     ? `refused: ${idx.table} has unique index ${idx.name} the pre-check cannot evaluate`
     : null;
 }
+
+/**
+ * #1298 round 2 (OD-92 "every automatic merge is reversible"): what a write step INSIDE the merge
+ * transaction changed on the survivor's own child rows, captured as rows, not as a diff of fields.
+ *
+ * An OD-86 relaunch merge of a POSTPONED survivor runs the §2.9 relaunch clear in the merge
+ * transaction. The clear deletes admin holds, provenance and list rows, inserts audit rows, empties
+ * one-row child values and re-asks plan / document-fetch rows. One capture covers all of it: every row
+ * of every direct child table of `ipos` belonging to the survivor is read before the step and again
+ * after it, and the rows that disappeared, appeared or changed are kept whole (to_jsonb text, so a
+ * numeric's scale and a timestamp's text survive). The unmerge replays it in reverse.
+ */
+export interface ChildRowDelta {
+  table: string;
+  /** Rows the step removed, whole, as they stood before it. */
+  deleted: string[];
+  /** Rows the step created, whole, as it left them. */
+  inserted: string[];
+  /** Rows the step changed: before and after, whole. */
+  updated: { before: string; after: string }[];
+}
+
+export interface ChildRowCapture {
+  /** Read the same rows again and return what changed. Refuses a change it could not reverse. */
+  finish: () => Promise<ChildRowDelta[]>;
+}
+
+async function readChildRows(tx: Exec, ipoId: string, tables: { table: string; col: string }[]) {
+  const out = new Map<string, Map<string, string>>();
+  for (const { table, col } of tables) {
+    const r = rowsOf<{ id: string | null; row: string }>(
+      await tx.execute(sql`
+        select to_jsonb(t.*) ->> 'id' as id, to_jsonb(t.*)::text as row from ${sql.identifier(table)} t
+        where t.${sql.identifier(col)} = ${ipoId}
+      `)
+    );
+    const m = new Map<string, string>();
+    for (const x of r) {
+      if (x.id === null || x.id === undefined) {
+        throw new Error(`merge capture: ${table} has no id column, so a change to its rows cannot be logged — refusing`);
+      }
+      m.set(x.id, x.row);
+    }
+    out.set(table, m);
+  }
+  return out;
+}
+
+/**
+ * Starts a capture of `ipoId`'s rows in `tables` (direct children of `ipos`, with their FK column).
+ * Call `finish()` after the step. A deleted row whose table other rows reference by a cascading or
+ * nulling FK is refused: its dependants would vanish uncaptured.
+ */
+export async function beginChildRowCapture(
+  tx: Exec,
+  ipoId: string,
+  tables: { table: string; col: string }[]
+): Promise<ChildRowCapture> {
+  const before = await readChildRows(tx, ipoId, tables);
+  return {
+    finish: async () => {
+      const after = await readChildRows(tx, ipoId, tables);
+      const delta: ChildRowDelta[] = [];
+      for (const { table } of tables) {
+        const b = before.get(table)!;
+        const a = after.get(table)!;
+        const d: ChildRowDelta = { table, deleted: [], inserted: [], updated: [] };
+        for (const [id, row] of b) {
+          const now = a.get(id);
+          if (now === undefined) d.deleted.push(row);
+          else if (now !== row) d.updated.push({ before: row, after: now });
+        }
+        for (const [id, row] of a) if (!b.has(id)) d.inserted.push(row);
+        if (d.deleted.length || d.inserted.length || d.updated.length) delta.push(d);
+      }
+      const withDeletes = new Set(delta.filter((d) => d.deleted.length).map((d) => d.table));
+      if (withDeletes.size) {
+        const dependants = (await readFkRuleEdges(tx)).filter((e) => withDeletes.has(e.parent) && e.del !== 'a' && e.del !== 'r');
+        if (dependants.length) {
+          throw new Error(
+            `merge capture: rows deleted from ${[...new Set(dependants.map((e) => e.parent))].join(', ')} take dependants ` +
+              `(${dependants.map((e) => `${e.child}.${e.col}`).join(', ')}) the capture does not follow — refusing`
+          );
+        }
+      }
+      return delta;
+    },
+  };
+}
+
+/** The delta as JSON text for the merge log (rows spliced in as text, parsed by Postgres). */
+export function childRowDeltaJson(delta: ChildRowDelta[]): string {
+  const arr = (texts: string[]) => `[${texts.join(',')}]`;
+  return arr(
+    delta.map(
+      (d) =>
+        `{"table":${JSON.stringify(d.table)},"deleted":${arr(d.deleted)},"inserted":${arr(d.inserted)},` +
+        `"updated":${arr(d.updated.map((u) => `{"before":${u.before},"after":${u.after}}`))}}`
+    )
+  );
+}
