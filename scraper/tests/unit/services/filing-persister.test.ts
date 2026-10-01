@@ -18,6 +18,12 @@ const { upsertIPOMock } = vi.hoisted(() => ({ upsertIPOMock: vi.fn(async () => '
 vi.mock('../../../src/services/data-persister.js', () => ({
   upsertIPO: upsertIPOMock,
 }));
+// #1420: the persister's call into the re-read answer clear is asserted, not executed (the clear's own
+// behaviour is proven on ipodhan_test by reread-answer-clear-1420.integration.test.ts).
+const { clearRereadAnswersMock } = vi.hoisted(() => ({
+  clearRereadAnswersMock: vi.fn(async () => ({ cleared: [], held: [], notOlderRead: [], keptHoldBack: [], reopenedPlanRowIds: [] })),
+}));
+vi.mock('../../../src/services/reread-answer-clear.js', () => ({ clearRereadAnswers: clearRereadAnswersMock }));
 vi.mock('../../../src/utils/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -2601,5 +2607,40 @@ describe('filing-persister — an empty extracted section records its reason (#5
       unlistable.deps
     );
     expect(failuresFor(unlistable.recordFailure, 'promoters')).toHaveLength(0);
+  });
+});
+
+describe('filing-persister — #1420 re-read answer clear wiring (OD-153/158/160)', () => {
+  beforeEach(() => {
+    upsertIPOMock.mockClear();
+    clearRereadAnswersMock.mockClear();
+  });
+
+  it('hands every field with its answer state, the document identity and the hold-backs to the clear', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD', { cin: { value: 'U1234', passed: true } });
+    (extraction.fields.price_band_cap as Record<string, unknown>).state = 'REFUSED';
+    const fakeDb = {} as never;
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true, documentId: 'doc-1', sourceSha: 'sha-1', extractorVersion: 'extract_filing.py@new' },
+      { ...s.deps, rereadAnswerDb: fakeDb }
+    );
+    expect(clearRereadAnswersMock).toHaveBeenCalledTimes(1);
+    const [db, input] = clearRereadAnswersMock.mock.calls[0] as unknown as [unknown, Record<string, any>];
+    expect(db).toBe(fakeDb);
+    expect([input.ipoId, input.documentId, input.sourceSha, input.extractorVersion]).toEqual([IPO_ID, 'doc-1', 'sha-1', 'extract_filing.py@new']);
+    expect(input.fields.price_band_cap.state).toBe('REFUSED');
+    // OD-160: a malformed CIN is a persister hold-back, handed over as such (kept, never a refusal).
+    expect([...input.heldBack.keys()]).toContain('cin');
+    expect(summary.reread_answers).toBeDefined();
+  });
+
+  it('a dry run (apply false) or an unwired caller never clears', async () => {
+    const s = makeDeps();
+    await persistFilingExtraction(IPO_ID, extractionFromOracle('PRICE_BAND_AD'), { docType: 'PRICE_BAND_AD', apply: false }, { ...s.deps, rereadAnswerDb: {} as never });
+    await persistFilingExtraction(IPO_ID, extractionFromOracle('PRICE_BAND_AD'), { docType: 'PRICE_BAND_AD', apply: true }, s.deps);
+    expect(clearRereadAnswersMock).not.toHaveBeenCalled();
   });
 });

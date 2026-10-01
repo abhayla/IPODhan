@@ -64,6 +64,7 @@ import {
   CROSS_DOC_TOLERANCE,
 } from './cross-document-agreement.js';
 import logger from '../utils/logger.js';
+import { clearRereadAnswers, type RereadClearResult, type RereadExecutor } from './reread-answer-clear.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { financialStatementsRowKey, ipoDetailsRowKey, ipoValuationRowKey } from './child-row-keys.js';
@@ -178,6 +179,11 @@ export interface DocumentFilingDateWriter {
 }
 
 export interface FilingPersisterDeps {
+  /**
+   * #1420 (OD-153, OD-158, OD-160): the database the re-read answer clear runs its ONE transaction on
+   * (reread-answer-clear.ts). Absent = nothing is cleared (non-null writes only, the pre-#1420 rule).
+   */
+  rereadAnswerDb?: RereadExecutor;
   ipoRepository: IPORepository;
   financialStatements: FinancialStatementsRepository;
   ipoValuation: IpoValuationRepository;
@@ -349,6 +355,8 @@ export interface PersistFilingSummary {
   };
   /** What actually went to `ipos` via upsertIPO (issueSize et al). */
   ipos_fields: string[];
+  /** #1420: stored values a newer reader's REFUSED / STATED_NOT_PRINTED answer cleared (absent when not wired). */
+  reread_answers?: RereadClearResult;
   /** Item 6 (OD-91): every field this extraction produced (before any write filter), camelCase. */
   receipt_fields?: ReceiptField[];
   applied: boolean;
@@ -1513,8 +1521,11 @@ export async function persistFilingExtraction(
   // any other shape is not a CIN; writing it would either overflow the column
   // or publish a mis-parsed string as source DRHP.
   const cinForWrite = cin !== null && /^[A-Z0-9]{21}$/.test(cin) ? cin : null;
+  // OD-160: a persister hold-back of a cleanly read value keeps the stored value (never a refusal).
+  const heldBack = new Map<string, string>();
   if (cin !== null && cinForWrite === null) {
     skippedFailedCheck.push(`ipos.cin: '${cin}' is not a 21-character CIN`);
+    heldBack.set('cin', `persister hold-back: '${cin}' is not a 21-character CIN (OD-160)`);
   }
 
   // ------------------------------------------------- F-51 fresh/OFS gate
@@ -1557,6 +1568,7 @@ export async function persistFilingExtraction(
     reason: reconciliation.reason,
   };
   if (!reconciliation.ok) {
+    heldBack.set('fresh_issue_amount', `persister hold-back: fresh/OFS reconciliation failed (F-51, OD-160) - ${reconciliation.reason}`);
     skippedFailedCheck.push(
       `ipo_details.freshIssue + ipo_details.ofsIssue: withheld TOGETHER (F-51) - ${reconciliation.reason}`
     );
@@ -3294,6 +3306,18 @@ export async function persistFilingExtraction(
       '[FilingPersister] child rows written WITHOUT per-row provenance'
     );
   }
+  let rereadAnswers: RereadClearResult | undefined;
+  if (apply && deps.rereadAnswerDb) {
+    rereadAnswers = await clearRereadAnswers(deps.rereadAnswerDb, {
+      ipoId,
+      docType: options.docType,
+      documentId: options.documentId ?? null,
+      sourceSha: options.sourceSha ?? null,
+      extractorVersion: options.extractorVersion ?? null,
+      fields: (extraction.fields ?? {}) as never,
+      heldBack,
+    });
+  }
   logger.info(
     { ipoId, docType: options.docType, apply, written },
     '[FilingPersister] filing extraction persisted'
@@ -3314,6 +3338,7 @@ export async function persistFilingExtraction(
     ipos_fields: iposFields,
     ...(planRebuildNote !== undefined ? { plan_rebuild: planRebuildNote } : {}),
     receipt_fields: receiptFields,
+    ...(rereadAnswers !== undefined ? { reread_answers: rereadAnswers } : {}),
     fresh_ofs_reconciliation: {
       ok: reconciliation.ok,
       kind: reconciliation.kind,

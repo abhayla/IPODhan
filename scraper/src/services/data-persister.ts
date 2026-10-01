@@ -1331,6 +1331,38 @@ export function buildNonDestructiveUpdate(
   return patch;
 }
 
+/**
+ * #1420 (OD-153, OD-158): the ONLY door that nulls a present `ipos` value. W-16a's null guard above
+ * stays as it is for every other write; this clears exactly the columns a newer reader refused or
+ * stated absent for the SAME document (reread-answer-clear.ts decides that, under the ipos row lock
+ * and the admin-hold re-check, inside the caller's transaction). A column not on this list throws.
+ */
+export const REREAD_CLEARABLE_IPOS_COLUMNS: Readonly<Record<string, string>> = {
+  priceRangeMin: 'price_range_min',
+  priceRangeMax: 'price_range_max',
+  lotSize: 'lot_size',
+  faceValue: 'face_value',
+  cin: 'cin',
+};
+
+export async function clearIpoColumnsForRereadAnswer(
+  tx: { execute(q: ReturnType<typeof sqlOp>): Promise<{ rows: unknown[] }> },
+  ipoId: string,
+  columns: readonly string[]
+): Promise<string[]> {
+  const cleared: string[] = [];
+  for (const column of columns) {
+    const sqlColumn = REREAD_CLEARABLE_IPOS_COLUMNS[column];
+    if (!sqlColumn) throw new Error(`clearIpoColumnsForRereadAnswer: '${column}' is not a re-read-clearable ipos column`);
+    const res = await tx.execute(sqlOp`
+      UPDATE ipos SET ${sqlOp.identifier(sqlColumn)} = NULL, updated_at = now()
+       WHERE id = ${ipoId}::uuid AND ${sqlOp.identifier(sqlColumn)} IS NOT NULL
+      RETURNING id`);
+    if (res.rows.length > 0) cleared.push(column);
+  }
+  return cleared;
+}
+
 // The canonical company-name normalizer now lives in the shared package so the
 // JS path (here) and the SQL path (ipo-repository) share ONE definition and stay
 // in lock-step (A3 / #6 #8 #16). Imported for local use in upsertIPO AND

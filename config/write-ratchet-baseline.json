@@ -109,6 +109,7 @@
       "file": "scraper/src/services/data-persister.ts",
       "patterns": [
         "drizzle",
+        "raw_sql",
         "repository"
       ]
     },

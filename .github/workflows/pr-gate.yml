@@ -1375,6 +1375,7 @@ jobs:
           tests/integration/relaunch-merge-unmerge-restores-clear-1298.integration.test.ts
           tests/integration/relaunch-merge-unmerge-pk-readback-1298.integration.test.ts
           tests/integration/postponed-relaunch-refill-1298.integration.test.ts
+          tests/integration/reread-answer-clear-1420.integration.test.ts
           tests/integration/document-decides-board-1233.integration.test.ts
           tests/integration/scraper-write-rebuilds-plan-1296.integration.test.ts
           tests/integration/document-extraction-attempts.integration.test.ts
