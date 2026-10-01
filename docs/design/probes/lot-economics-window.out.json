@@ -1,0 +1,106 @@
+{
+  "probe": "lot-economics-window",
+  "generated_at": "2026-10-01T06:39:00.193Z",
+  "database": "ipodhan_staging",
+  "rowsWithLotAndCap": 320,
+  "noSegment": [
+    "dhanwel-hybird-seeds-ltd",
+    "prachay-capital-ltd",
+    "morganite-crucible-india-ltd",
+    "iifl-finance-ltd",
+    "citius-trannet-investment-trust",
+    "twinkle-papers-ltd"
+  ],
+  "outsideWindow": [
+    {
+      "slug": "windlas-biotech-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "lot": 30,
+      "cap": 1000,
+      "minInvestment": 30000
+    },
+    {
+      "slug": "suryo-foods-industries-ltd",
+      "status": "CLOSED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "lot": 3000,
+      "cap": 15,
+      "minInvestment": 45000
+    },
+    {
+      "slug": "icici-prudential-asset-management-company-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "lot": 100,
+      "cap": 2165,
+      "minInvestment": 216500
+    },
+    {
+      "slug": "stanbik-agro-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "lot": 100,
+      "cap": 30,
+      "minInvestment": 3000
+    },
+    {
+      "slug": "travels-rentals-ltd",
+      "status": "CLOSED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "lot": 3000,
+      "cap": 15,
+      "minInvestment": 45000
+    },
+    {
+      "slug": "stallion-india-fluorochemicals-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "lot": 4000,
+      "cap": 90,
+      "minInvestment": 360000
+    },
+    {
+      "slug": "kwality-walls-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "lot": 100,
+      "cap": 21,
+      "minInvestment": 2100
+    },
+    {
+      "slug": "cms-info-systems-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "lot": 69,
+      "cap": 340,
+      "minInvestment": 23460
+    },
+    {
+      "slug": "om-power-transmission-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "lot": 100,
+      "cap": 175,
+      "minInvestment": 17500
+    },
+    {
+      "slug": "glass-wall-systems-india-ltd",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "lot": 82,
+      "cap": 82,
+      "minInvestment": 6724
+    }
+  ]
+}
