@@ -9,10 +9,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import {
   WORKFLOW, STEP_TABLE, JOB_TABLE, LINUX_ONLY, loadSteps, classify, buildPlan as rawBuildPlan, ciWouldRun, childEnv, main as gateMain,
-  safeWorkdir, CHANGED_REASON, gateFileChanges, GATE_FILES, PACKAGE_JSONS,
+  safeWorkdir, readMainPath, readBranchPath, TRUSTED_REF, CHANGED_REASON, gateFileChanges, GATE_FILES, PACKAGE_JSONS,
 } from '../ci/local-pr-gate.mjs';
 import { unclassifiedCommands, NPM_SCRIPTS } from '../ci/local-gate-shell-allowlist.mjs';
 
@@ -531,4 +532,29 @@ test('gate files: a path missing on main but present on the branch is a change; 
   } finally { console.error = error; }
   assert.equal(code, 2);
   assert.ok(errs.join(NL).includes('REFUSED - cannot read the gate files'));
+});
+
+// #1434: the REAL readers (no fakes) on this checkout. origin/main content must come back
+// untrimmed, or every file ending in a newline always "differs".
+const hasMainRef = () => spawnSync('git', ['rev-parse', '--verify', '--quiet', TRUSTED_REF]).status === 0;
+const gateFilesMatchMain = () =>
+  spawnSync('git', ['diff', '--quiet', '--ignore-cr-at-eol', TRUSTED_REF, '--', ...GATE_FILES, ...PACKAGE_JSONS]).status === 0;
+
+test('gate files (#1434): real readers report no change when the checkout matches origin/main', (t) => {
+  if (!hasMainRef()) return t.skip(`${TRUSTED_REF} not present`);
+  if (!gateFilesMatchMain()) return t.skip('this branch edits a gate file (a real difference)');
+  assert.deepEqual(gateFileChanges({ readMain: readMainPath, readBranch: readBranchPath }), []);
+});
+
+test('gate files (#1434): real main reader returns the exact text, final newline kept', (t) => {
+  if (!hasMainRef()) return t.skip(`${TRUSTED_REF} not present`);
+  const m = readMainPath('.husky/pre-push');
+  assert.ok(m.endsWith(NL), 'final newline was trimmed');
+});
+
+test('gate files (#1434): a one-byte change to a branch gate file is still reported', (t) => {
+  if (!hasMainRef()) return t.skip(`${TRUSTED_REF} not present`);
+  const path = GATE_FILES[1];
+  const ch = gateFileChanges({ readMain: readMainPath, readBranch: (p) => (p === path ? `${readMainPath(p)}x` : readBranchPath(p)) });
+  assert.ok(ch.some((c) => c.path === path), JSON.stringify(ch));
 });
