@@ -61,6 +61,8 @@ export interface ConsolidatedUpsertResult {
   skipReason?: string;
   /** #1229: date fields this write carried that the merged-record date rule refused (never written). */
   refusedDateFields?: string[];
+  /** #721: lot fields this write carried that the spec §1.2 row 4 lot rule refused (never written, no provenance). */
+  refusedLotFields?: string[];
 }
 
 /**
@@ -330,6 +332,25 @@ export class DataConsolidationOrchestrator {
         }
       }
 
+      // #721 (OD-131, review r2): spec §1.2 row 4 lot economics (Rule 9) on the MERGED view of the
+      // stored row and this write, BEFORE consolidation, the same as the #1229 date refusal above: a
+      // refused lot never reaches consolidation, so it is never written AND gets no provenance row.
+      // The stored segment / offering type / exchanges govern; with no segment anywhere, the §2.8
+      // inference decides. This door does not run the persister's merged-record pass.
+      const lotRefusals: { field: string; rule: string }[] = [];
+      {
+        const lotGuard = guardLotEconomics(incomingData as Record<string, any>, (existingIPO as Record<string, any>) ?? null, {
+          source,
+          door: isNew ? 'orchestrator-create' : 'orchestrator-update',
+          ipoId: existingIPO?.id ?? null,
+          companyName: scrapedIPO.companyName,
+        });
+        if (lotGuard.violation && 'lotSize' in incomingData && !('lotSize' in lotGuard.payload)) {
+          delete (incomingData as Record<string, any>).lotSize;
+          lotRefusals.push({ field: 'lotSize', rule: lotGuard.violation.rule });
+        }
+      }
+
       // Consolidate IPO main table data
       const consolidationResult =
         await this.consolidationService.consolidateIPOData({
@@ -431,18 +452,6 @@ export class DataConsolidationOrchestrator {
       // or a companyName correction from any non-ADMIN source will silently
       // re-slug an existing row (see the parallel guard + incident note in
       // `data-persister.ts` `upsertIPO`).
-      // #721: spec §1.2 row 4 lot economics (Rule 9) on this door's merged view, the stored segment /
-      // offering type / exchanges governing and the §2.8 inference when no segment exists. This door
-      // does not run the persister's merged-record pass, so without this an impossible lot reached
-      // `ipos` here unchecked.
-      const lotGuard = guardLotEconomics(consolidatedIPOData as Record<string, any>, (existingIPO as Record<string, any>) ?? null, {
-        source,
-        door: isNew ? 'orchestrator-create' : 'orchestrator-update',
-        ipoId: existingIPO?.id ?? null,
-        companyName: scrapedIPO.companyName,
-      });
-      if (!('lotSize' in lotGuard.payload)) delete (consolidatedIPOData as Record<string, any>).lotSize;
-
       if (isNew) {
         // Create new IPO
         const newIPO = await this.ipoRepository.create({
@@ -521,6 +530,7 @@ export class DataConsolidationOrchestrator {
           conflictsBySeverity: consolidationResult.conflictsBySeverity ?? {},
           fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
           companyName: scrapedIPO.companyName,
+          ...(lotRefusals.length > 0 ? { refused: lotRefusals } : {}),
         });
       } catch (ledgerError) {
         logger.warn(
@@ -540,6 +550,7 @@ export class DataConsolidationOrchestrator {
         locked: true,
         skipped: false,
         ...(refusedDateFields.length > 0 ? { refusedDateFields } : {}),
+        ...(lotRefusals.length > 0 ? { refusedLotFields: lotRefusals.map((r) => r.field) } : {}),
       };
 
       // Item 21 slice 1 (OD-40). This is the single write choke point CLAUDE.md

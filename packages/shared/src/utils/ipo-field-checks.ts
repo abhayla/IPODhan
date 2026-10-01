@@ -102,12 +102,14 @@ export function inferSegmentFromLotValue(
 }
 
 /**
- * Offering types the lot-economics check does NOT judge (§1.11): rights, OFS, InvITs/REITs, NCDs and
- * corporate actions have no retail lot in the IPO sense (their §1.11 rows mark lot size / price band
- * NOT_APPLICABLE or "does not apply in the same sense"). Everything else — IPO, FPO, and an unknown
- * or missing offering type — is judged (fail closed).
+ * Offering types the lot-economics check does NOT judge: exactly the `na` set of `ipos.lot_size` in
+ * scraper/config/field-manifest.json (§1.11: NCDs, InvITs/REITs, tenders, buybacks, OFS and rights
+ * have no retail lot in the IPO sense). Everything else (IPO, FPO, and an unknown or missing offering
+ * type) is judged, fail closed. The DB-read twin is LOT_ECONOMICS_NOT_JUDGED in
+ * scripts/lib/substance-checks.mjs; scraper/tests/unit/utils/lot-economics-rule-parity-721.test.ts
+ * fails when this set, the twin and the manifest's na set differ (#721 review r2).
  */
-const LOT_ECONOMICS_NOT_JUDGED = new Set(['RIGHTS', 'OFS', 'INVITS', 'REITS', 'NCD', 'BUYBACK', 'TENDER', 'TAKEOVER', 'DELISTING', 'OPEN_OFFER']);
+export const LOT_ECONOMICS_NOT_JUDGED: ReadonlySet<string> = new Set(['NCD', 'INVITS', 'REITS', 'TENDER', 'BUYBACK', 'OFS', 'RIGHTS']);
 
 /** The segment the lot-economics check applies: the sourced one, else the §2.8 inference. */
 export function lotEconomicsSegment(

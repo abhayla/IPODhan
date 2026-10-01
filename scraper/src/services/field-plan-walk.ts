@@ -1989,6 +1989,7 @@ export { mapManifestSourceToScraperSource } from '../config/field-source-codes.j
 const NO_FIELD_RESULT_REASON = 'no field result returned';
 /** #1229: the write door's merged-record date rule refused the value (stored row + this write incoherent). */
 export const DATE_REFUSED_REASON = 'date refused on the merged record (#1229)';
+export const LOT_REFUSED_REASON = 'lot refused by the spec §1.2 row 4 lot-economics rule (#721)';
 
 /**
  * #1379 round 3 (§9.2 item 23, OD-151): the write was not attempted because an admin HID the IPO. A
@@ -2108,6 +2109,11 @@ async function runWrite(
       // the generic "no field result returned" the missing field result implies.
       if (Array.isArray(r?.refusedDateFields) && r.refusedDateFields.includes(camelFieldName)) {
         return { happened: true, accepted: false, reason: `${DATE_REFUSED_REASON}: ${camelFieldName}`, refused: true };
+      }
+      // #721: the orchestrator's spec §1.2 row 4 lot rule refused this value (never written, no
+      // provenance). A refusal, recorded as such, the same as the #1229 date refusal above.
+      if (Array.isArray(r?.refusedLotFields) && r.refusedLotFields.includes(camelFieldName)) {
+        return { happened: true, accepted: false, reason: `${LOT_REFUSED_REASON}: ${camelFieldName}`, refused: true };
       }
       const verdict = checkConsolidatorAgreed(
         r?.consolidation?.fieldResults as ConsolidatorFieldResult[] | undefined,

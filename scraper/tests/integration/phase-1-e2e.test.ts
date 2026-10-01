@@ -208,7 +208,7 @@ describe.skipIf(!DATABASE_URL)('Phase 1: E2E consolidation pipeline (ipodhan_tes
     expect(first.isNew).toBe(true);
 
     const second = await orchestrator!.consolidatedUpsertIPO(
-      { ...nseIPOData, lotSize: 150 },
+      { ...nseIPOData, lotSize: 130 },
       'NSE',
       95
     );
@@ -216,7 +216,7 @@ describe.skipIf(!DATABASE_URL)('Phase 1: E2E consolidation pipeline (ipodhan_tes
     expect(second.ipoId).toBe(first.ipoId);
 
     const savedIPO = await ipoRepository!.findById(first.ipoId);
-    expect(savedIPO?.lotSize).toBe(150);
+    expect(savedIPO?.lotSize).toBe(130);
   }, 10000);
 
   it('5: consolidates multiple IPOs efficiently (< 500ms per IPO)', async () => {

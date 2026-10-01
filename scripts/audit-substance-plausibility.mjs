@@ -86,7 +86,7 @@ async function main() {
     `SELECT i.id, i.company_name, i.isin, i.segment,
             i.open_date, i.close_date, i.allotment_date, i.listing_date,
             i.lot_size, i.price_range_min, i.price_range_max, i.issue_size, i.registrar, i.listing_exchanges,
-            i.company_website, i.face_value,
+            i.company_website, i.face_value, i.offering_type,
             lp.listing_price, lp.listing_gain_percent,
             COALESCE(lp.issue_price, i.price_range_max) AS issue_price,
             -- The RAW oracle, deliberately separate from the COALESCE above:

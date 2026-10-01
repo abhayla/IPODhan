@@ -49,7 +49,7 @@ describe('consolidatedUpsertIPO lot economics (#721)', () => {
     await o.consolidatedUpsertIPO(scraped({ lotSize: 100, priceRangeMin: 290, priceRangeMax: 300 }), 'BSE', 100, null);
     expect(r.create).toHaveBeenCalledTimes(1);
     const [values] = r.create.mock.calls[0] as any[];
-    expect(values).not.toHaveProperty('lotSize');
+    expect(values.lotSize ?? null).toBeNull();
     expect(Number(values.priceRangeMax)).toBe(300);
   });
 

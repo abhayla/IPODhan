@@ -368,7 +368,9 @@ export const SME_LOT_ECONOMICS_MAX = Number.POSITIVE_INFINITY; // #721: spec §1
 // spec §1.2 row 4 bounds, FIXED_PRICE judged too, non-equity offering types (§1.11) not judged, and a
 // row with no segment judged against the spec §2.8 inference (SME when lot x cap >= 50,000 and the IPO
 // is not on two exchanges).
-const LOT_ECONOMICS_NOT_JUDGED = new Set(['RIGHTS', 'OFS', 'INVITS', 'REITS', 'NCD', 'BUYBACK', 'TENDER', 'TAKEOVER', 'DELISTING', 'OPEN_OFFER']);
+// The ONE scripts-side definition: scripts/lib/detection-floor-checks.mjs imports the inference from
+// here. The set equals the manifest's `ipos.lot_size` na set; a parity test pins both to the write rule.
+export const LOT_ECONOMICS_NOT_JUDGED = new Set(['NCD', 'INVITS', 'REITS', 'TENDER', 'BUYBACK', 'OFS', 'RIGHTS']);
 export const SME_INFERENCE_MIN_LOT_VALUE = 50000;
 export function inferSegmentFromLotValue(lot, cap, listingExchanges) {
   if (lot === null || cap === null || lot <= 0 || cap <= 0) return null;

@@ -2458,7 +2458,7 @@ async function upsertIPOInScope(
         logger.debug({ slug, source }, `Creating new ${source} IPO`);
         // #721: the create door has no stored row, so the merged-record pass never runs here; the
         // same Rule 9 gate drops an impossible lot before the row exists.
-        const { payload: lotGuardedIpoData } = guardLotEconomics(ipoData as Record<string, any>, null, {
+        const { payload: lotGuardedIpoData, violation: createLotViolation } = guardLotEconomics(ipoData as Record<string, any>, null, {
           source,
           door: 'persister-create',
           companyName: scrapedIPO.companyName,
@@ -2497,6 +2497,10 @@ async function upsertIPOInScope(
           offeringType: (createData as { offeringType?: string }).offeringType ?? null,
           consolidated: false,
           fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
+          // #721: a refused lot is a ledgered outcome (B5 `refused`), not only a log line.
+          ...(createLotViolation && 'lotSize' in ipoData && !('lotSize' in createData)
+            ? { refused: [{ field: 'lotSize', rule: createLotViolation.rule }] }
+            : {}),
           companyName: scrapedIPO.companyName,
         };
 

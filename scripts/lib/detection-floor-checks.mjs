@@ -1,4 +1,5 @@
 import { pickListingSentenceDocument } from '../../scraper/config/listing-sentence-precedence.mjs';
+import { inferSegmentFromLotValue, SME_INFERENCE_MIN_LOT_VALUE } from './substance-checks.mjs';
 // Pure predicates for the T-335 "detection floor" — the round-7 fresh-review
 // coverage floor promoted into FAIL-level nightly-audit checks (see
 // docs/reviews/round-7-detection-rca.md and evidence/2026-08-26-T-322/DETECTION-RCA.md).
@@ -69,8 +70,9 @@ export const LOT_VALUE_WINDOW_RUPEES = {
   MAINBOARD: [8_000, 20_000],
   SME: [90_000, Number.POSITIVE_INFINITY],
 };
-// #721: spec §2.8 segment inference, so a row with no segment is judged, never skipped.
-export const SME_INFERENCE_MIN_LOT_VALUE = 50_000;
+// #721: spec §2.8 segment inference, so a row with no segment is judged, never skipped. One definition,
+// in substance-checks.mjs (re-exported here for this module's existing callers).
+export { SME_INFERENCE_MIN_LOT_VALUE };
 
 // Corporate-action shape: fixed price (min===max), the near-universal lot_size=100
 // corporate-action default, and a 10-14 day "bidding window" — the exact shape of
@@ -249,10 +251,9 @@ export function checkLotBandSebiWindow(row) {
   const priceMax = toNumber(row.priceRangeMax);
   if (lot === null || lot <= 0 || priceMax === null || priceMax <= 0) return null;
   const lotValue = lot * priceMax;
-  const onTwoExchanges = Array.isArray(row.listingExchanges) && new Set(row.listingExchanges).size >= 2;
   const segment = row.segment === 'MAINBOARD' || row.segment === 'SME'
     ? row.segment
-    : (lotValue >= SME_INFERENCE_MIN_LOT_VALUE && !onTwoExchanges ? 'SME' : 'MAINBOARD');
+    : inferSegmentFromLotValue(lot, priceMax, row.listingExchanges ?? null);
   const window = LOT_VALUE_WINDOW_RUPEES[segment];
   const [min, max] = window;
   if (lotValue < min || lotValue > max) {

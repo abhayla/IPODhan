@@ -4,7 +4,7 @@
  * persister deps, the real receipt writer and the real OCR-precedence reader:
  *   - a real OCR'd document's receipts carry source_text 'OCR' + ocr_confidence;
  *   - its ipo_details provenance carries dataLineage.ocr (lotMultiple, page 0);
- *   - its OCR-only band cap (Rs 81) does NOT overwrite the stored Rs 83 that a
+ *   - its OCR-only band cap (Rs 81) does NOT overwrite the stored Rs 80 that a
  *     text-layer read of a SAME-RANK document (a price band ad of the same filing
  *     day) supports; its agreeing values still write;
  *   - its OCR-only lot (185) DOES overwrite a stored 190 that only a DRHP text read
@@ -53,15 +53,15 @@ describe.skipIf(!DATABASE_URL)('OD-97 OCR-only value loses to a text read (ipodh
     await db.execute(sql`DELETE FROM ipos WHERE id = ${IPO}::uuid`);
     await db.execute(sql`
       INSERT INTO ipos (id, company_name, slug, status, segment, price_range_min, price_range_max, lot_size)
-      VALUES (${IPO}::uuid, 'Od Ninety Six Ocr Ltd', 'od-ninety-six-ocr-ltd', 'UPCOMING', 'MAINBOARD', 77, 83, 190)`);
-    // A TEXT-layer read of a same-rank document (a price band ad filed the same day) that printed Rs 83.
+      VALUES (${IPO}::uuid, 'Od Ninety Six Ocr Ltd', 'od-ninety-six-ocr-ltd', 'UPCOMING', 'MAINBOARD', 77, 80, 190)`);
+    // A TEXT-layer read of a same-rank document (a price band ad filed the same day) that printed Rs 80. (#721: Rs 80, not 83 - the real OCR lot 185 x 83 = Rs 15,355 breaks the spec §1.2 row 4 MAINBOARD ceiling; 185 x 80 = Rs 14,800 is legal.)
     const sameRank = rows(await db.execute(sql`
       INSERT INTO documents (ipo_id, type, title, url, extraction_status, sequence_number, filing_date)
       VALUES (${IPO}::uuid, 'PRICE_BAND_AD', 'od97 text ad', ${'https://example.test/od97-text-ad-' + Date.now() + '.pdf'}, 'COMPLETED', 1, '2026-09-05')
       RETURNING id`))[0].id;
     await db.execute(sql`
       INSERT INTO document_field_receipts (document_id, table_name, row_key, field_name, value, source_text)
-      VALUES (${sameRank}::uuid, 'ipos', '', 'priceRangeMax', '83', 'TEXT')`);
+      VALUES (${sameRank}::uuid, 'ipos', '', 'priceRangeMax', '80', 'TEXT')`);
     // A TEXT-layer read of a LOWER-ranked document (the DRHP) that printed a lot of 190.
     const drhp = rows(await db.execute(sql`
       INSERT INTO documents (ipo_id, type, title, url, extraction_status, sequence_number, filing_date)
@@ -133,7 +133,7 @@ describe.skipIf(!DATABASE_URL)('OD-97 OCR-only value loses to a text read (ipodh
 
     const ipo = rows(await db.execute(sql`
       SELECT price_range_min::text AS min, price_range_max::text AS max, lot_size FROM ipos WHERE id = ${IPO}::uuid`))[0];
-    expect(Number(ipo.max)).toBe(83);
+    expect(Number(ipo.max)).toBe(80);
     expect(Number(ipo.min)).toBe(77);
     // The DRHP's text read of 190 is outranked by the ad: the OCR-only 185 is written.
     expect(ipo.lot_size).toBe(185);
