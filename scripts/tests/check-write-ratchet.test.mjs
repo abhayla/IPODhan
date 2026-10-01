@@ -455,3 +455,186 @@ test('scanRepo() ignores a gitignored/untracked file that matches a write patter
     'a gitignored/untracked file must not be reported by scanRepo()'
   );
 });
+
+// ---------------------------------------------------------------------------
+// #1335: re-export chains of `ipos`. The ratchet used to resolve only the
+// WRITING file's own import declarations, so a write through a binding that
+// reached `ipos` over one or more re-export hops was invisible. Each test below
+// builds a throwaway tree and runs the real scanRepo() over it (not a copy of
+// the logic). The chain guard is keyed on the import SOURCE (a schema module
+// specifier or a resolved local file that exports `ipos`), never on the local
+// identifier text.
+// ---------------------------------------------------------------------------
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname } from 'node:path';
+
+function chainTree(files) {
+  const root = mkdtempSync(join(tmpdir(), 'ratchet-chain-'));
+  for (const [rel, body] of Object.entries(files)) {
+    const abs = join(root, ...rel.split('/'));
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, body);
+  }
+  return root;
+}
+
+function scanTree(files) {
+  const root = chainTree(files);
+  try {
+    return scanRepo(root, Object.keys(files));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+const SCHEMA = '@ipodhan/shared/db/schema';
+const WRITER = `import { iposTable } from './hop';\nexport async function f(db) { await db.update(iposTable).set({}); }\n`;
+
+test('chain: export { ipos as iposTable } from schema, then import + write in another file', () => {
+  const found = scanTree({
+    'src/hop.ts': `export { ipos as iposTable } from '${SCHEMA}';\n`,
+    'src/writer.ts': WRITER,
+  });
+  assert.deepEqual(found.get('src/writer.ts'), ['drizzle']);
+});
+
+test('chain: export { ipos } from schema (no rename) is followed', () => {
+  const found = scanTree({
+    'src/hop.ts': `export { ipos } from '${SCHEMA}';\n`,
+    'src/writer.ts': `import { ipos } from './hop';\nexport const f = (db) => db.delete(ipos);\n`,
+  });
+  assert.deepEqual(found.get('src/writer.ts'), ['drizzle']);
+});
+
+test('chain: export * from schema in a barrel, consumer imports ipos from the barrel', () => {
+  const found = scanTree({
+    'src/barrel.ts': `export * from '${SCHEMA}';\n`,
+    'src/writer.ts': `import { ipos as t } from './barrel';\nexport const f = (db) => db.insert(t).values({});\n`,
+  });
+  assert.deepEqual(found.get('src/writer.ts'), ['drizzle']);
+});
+
+test('chain: multi-hop (a -> b -> c -> schema) with a rename at the middle hop', () => {
+  const found = scanTree({
+    'src/c.ts': `export { ipos } from '${SCHEMA}';\n`,
+    'src/b.ts': `export { ipos as middle } from './c';\n`,
+    'src/a.ts': `export * from './b';\n`,
+    'src/writer.ts': `import { middle as z } from './a';\nexport const f = (db) => db.update(z);\n`,
+  });
+  assert.deepEqual(found.get('src/writer.ts'), ['drizzle']);
+});
+
+test('chain: barrel index file resolved through a directory import', () => {
+  const found = scanTree({
+    'src/db/index.ts': `export * from './tables';\n`,
+    'src/db/tables.ts': `export { ipos as iposTable } from '${SCHEMA}';\n`,
+    'src/writer.ts': `import { iposTable } from './db';\nexport const f = (db) => db.update(iposTable);\n`,
+  });
+  assert.deepEqual(found.get('src/writer.ts'), ['drizzle']);
+});
+
+test('chain: import then export { x as y } (no from) and export const y = x', () => {
+  const found = scanTree({
+    'src/hop1.ts': `import { ipos as a } from '${SCHEMA}';\nexport { a as viaList };\n`,
+    'src/hop2.ts': `import { ipos } from '${SCHEMA}';\nexport const viaConst = ipos;\n`,
+    'src/w1.ts': `import { viaList } from './hop1';\nexport const f = (db) => db.update(viaList);\n`,
+    'src/w2.ts': `import { viaConst } from './hop2';\nexport const f = (db) => db.update(viaConst);\n`,
+  });
+  assert.deepEqual(found.get('src/w1.ts'), ['drizzle']);
+  assert.deepEqual(found.get('src/w2.ts'), ['drizzle']);
+});
+
+test('chain: default export of ipos, default import elsewhere', () => {
+  const found = scanTree({
+    'src/hop.ts': `import { ipos } from '${SCHEMA}';\nexport default ipos;\n`,
+    'src/writer.ts': `import tbl from './hop';\nexport const f = (db) => db.update(tbl);\n`,
+  });
+  assert.deepEqual(found.get('src/writer.ts'), ['drizzle']);
+});
+
+test('chain: namespace import of a barrel, member access ns.renamed', () => {
+  const found = scanTree({
+    'src/hop.ts': `export { ipos as iposTable } from '${SCHEMA}';\n`,
+    'src/writer.ts': `import * as t from './hop';\nexport const f = (db) => db.update(t.iposTable);\n`,
+  });
+  assert.deepEqual(found.get('src/writer.ts'), ['drizzle']);
+});
+
+test('chain: export * as ns from a module, consumer writes ns.member', () => {
+  const found = scanTree({
+    'src/hop.ts': `export { ipos as iposTable } from '${SCHEMA}';\n`,
+    'src/barrel.ts': `export * as tables from './hop';\n`,
+    'src/writer.ts': `import { tables } from './barrel';\nexport const f = (db) => db.update(tables.iposTable);\n`,
+  });
+  assert.deepEqual(found.get('src/writer.ts'), ['drizzle']);
+});
+
+test('chain: the @/ alias resolves to web/', () => {
+  const found = scanTree({
+    'web/lib/tables.ts': `export { ipos as iposTable } from '${SCHEMA}';\n`,
+    'web/app/writer.ts': `import { iposTable } from '@/lib/tables';\nexport const f = (db) => db.update(iposTable);\n`,
+  });
+  assert.deepEqual(found.get('web/app/writer.ts'), ['drizzle']);
+});
+
+test('chain: a re-export of some OTHER table is never flagged (no false positive)', () => {
+  const found = scanTree({
+    'src/hop.ts': `export { users as usersTable } from '${SCHEMA}';\nexport * from 'drizzle-orm';\n`,
+    'src/writer.ts': `import { usersTable } from './hop';\nexport const f = (db) => db.update(usersTable);\n`,
+  });
+  assert.equal(found.has('src/writer.ts'), false);
+});
+
+test('chain: guard is by import SOURCE, not identifier text (a local named like the table but from elsewhere)', () => {
+  const found = scanTree({
+    'src/hop.ts': `export const iposTable = { not: 'the table' };\n`,
+    'src/writer.ts': `import { iposTable } from './hop';\nexport const f = (db) => db.update(iposTable);\n`,
+  });
+  assert.equal(found.has('src/writer.ts'), false);
+});
+
+test('chain: a type-only re-export is not a runtime write path', () => {
+  const found = scanTree({
+    'src/hop.ts': `export type { ipos as iposTable } from '${SCHEMA}';\n`,
+    'src/writer.ts': `import { iposTable } from './hop';\nexport const f = (db) => db.update(iposTable);\n`,
+  });
+  assert.equal(found.has('src/writer.ts'), false);
+});
+
+test('fail closed: a write through an import from an UNRESOLVABLE relative module is flagged', () => {
+  const found = scanTree({
+    'src/writer.ts': `import { iposTable } from './does-not-exist';\nexport const f = (db) => db.update(iposTable);\n`,
+  });
+  assert.deepEqual(found.get('src/writer.ts'), ['unresolved_reexport']);
+});
+
+test('fail closed: a re-export cycle that never reaches the schema is flagged when written through', () => {
+  const found = scanTree({
+    'src/a.ts': `export * from './b';\n`,
+    'src/b.ts': `export * from './a';\n`,
+    'src/writer.ts': `import { iposTable } from './a';\nexport const f = (db) => db.update(iposTable);\n`,
+  });
+  assert.deepEqual(found.get('src/writer.ts'), ['unresolved_reexport']);
+});
+
+test('fail closed: export * from an unresolvable relative module makes any imported name unresolved', () => {
+  const found = scanTree({
+    'src/barrel.ts': `export * from './missing';\n`,
+    'src/writer.ts': `import { iposTable } from './barrel';\nexport const f = (db) => db.update(iposTable);\n`,
+  });
+  assert.deepEqual(found.get('src/writer.ts'), ['unresolved_reexport']);
+});
+
+test('fail closed does not fire on a resolvable module that simply does not export ipos', () => {
+  const found = scanTree({
+    'src/hop.ts': `export const other = 1;\n`,
+    'src/writer.ts': `import { other } from './hop';\nexport const f = (db) => db.update(other);\n`,
+  });
+  assert.equal(found.has('src/writer.ts'), false);
+});
+
+test('chain: resolveIposImportAliases without a resolver context keeps the legacy per-file behaviour', () => {
+  const src = `import { ipos as t } from './x';\ndb.update(t);\n`;
+  assert.match(resolveIposImportAliases(src, '.ts'), /db\.update\(ipos\)/);
+});
