@@ -7,10 +7,8 @@
  * per missing column and a re-plan finds the row complete.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
 import { Redis } from 'ioredis';
-import * as schema from '../../../packages/shared/src/db/schema';
+import { db as sharedDb, pool as sharedPool, closePool } from '../../../packages/shared/src/db/index';
 import { IPORepository } from '../../../packages/shared/src/repositories/ipo-repository';
 import { FieldSourcesRepository } from '../../../packages/shared/src/repositories/field-sources-repository';
 import { DataConflictsRepository } from '../../../packages/shared/src/repositories/data-conflicts-repository';
@@ -39,9 +37,9 @@ const base: ScrapedIPO = {
   priceRangeMax: 110,
 };
 
-let pool: Pool | null = null;
+let pool: typeof sharedPool | null = null;
 let redis: Redis | null = null;
-let db: ReturnType<typeof drizzle> | null = null;
+let db: typeof sharedDb | null = null;
 let orchestrator: DataConsolidationOrchestrator | null = null;
 const savedFlags: Record<string, unknown> = {};
 
@@ -58,11 +56,11 @@ async function deleteFixtures() {
 
 beforeAll(async () => {
   if (!DATABASE_URL) return;
-  pool = new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' });
+  pool = sharedPool;
   const currentDb = (await pool.query('select current_database()')).rows[0].current_database as string;
   if (currentDb !== 'ipodhan_test') throw new Error(`Refusing to run: connected to '${currentDb}', not 'ipodhan_test'.`);
   redis = new Redis(REDIS_URL, { db: 1, maxRetriesPerRequest: 2 });
-  db = drizzle(pool, { schema });
+  db = sharedDb;
   orchestrator = new DataConsolidationOrchestrator(
     new IPORepository(db as never, redis as never) as never,
     new FieldSourcesRepository(db as never, redis as never) as never,
@@ -76,7 +74,7 @@ afterAll(async () => {
   if (!pool) return;
   await deleteFixtures();
   if (redis) await redis.quit();
-  await pool.end();
+  await closePool();
 }, 30000);
 
 beforeEach(async () => {
@@ -90,6 +88,7 @@ beforeEach(async () => {
   f.CONSOLIDATION_PERCENTAGE = 100;
   if (!DATABASE_URL) return;
   await deleteFixtures();
+  if (redis) await redis.del(...SLUGS.map((slug) => `ipo:slug:${slug}`));
 });
 
 describe.skipIf(!DATABASE_URL)('#1196: repair-create-provenance (ipodhan_test)', () => {

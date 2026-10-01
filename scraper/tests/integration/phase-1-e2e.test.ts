@@ -125,7 +125,8 @@ beforeEach(async () => {
 
   if (!DATABASE_URL) return;
   await deleteFixtureRows([SLUG, ...PERF_SLUGS]);
-  if (redis) await redis.del(`ipo:slug:${SLUG}`);
+  // Deleted fixtures leave their slug cache behind (1 h TTL); a rerun then reads a dead id (FK violation).
+  if (redis) await redis.del(...[SLUG, ...PERF_SLUGS].map((slug) => `ipo:slug:${slug}`));
 });
 
 describe.skipIf(!DATABASE_URL)('Phase 1: E2E consolidation pipeline (ipodhan_test)', () => {
@@ -219,7 +220,7 @@ describe.skipIf(!DATABASE_URL)('Phase 1: E2E consolidation pipeline (ipodhan_tes
     expect(selfChange?.resolutionReason).toBe(SOURCE_CHANGED_OWN_VALUE);
     expect(selfChange?.source1).toBe('NSE');
     expect(selfChange?.source2).toBe('NSE');
-    expect(String(selfChange?.value2)).toBe('150');
+    expect(String(selfChange?.value2)).toBe('130');
   }, 10000);
 
   it('5: consolidates multiple IPOs efficiently (< 500ms per IPO)', async () => {

@@ -6,10 +6,8 @@
  * source. Runs the REAL DataConsolidationOrchestrator against ipodhan_test.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
 import { Redis } from 'ioredis';
-import * as schema from '../../../packages/shared/src/db/schema';
+import { db as sharedDb, pool as sharedPool, closePool } from '../../../packages/shared/src/db/index';
 import { IPORepository } from '../../../packages/shared/src/repositories/ipo-repository';
 import { FieldSourcesRepository } from '../../../packages/shared/src/repositories/field-sources-repository';
 import { DataConflictsRepository } from '../../../packages/shared/src/repositories/data-conflicts-repository';
@@ -36,7 +34,7 @@ const data: ScrapedIPO = {
 };
 const SET_COLUMNS = ['companyName', 'segment', 'offeringType', 'status', 'issueSize', 'lotSize', 'priceRangeMin', 'priceRangeMax'];
 
-let pool: Pool | null = null;
+let pool: typeof sharedPool | null = null;
 let redis: Redis | null = null;
 let orchestrator: DataConsolidationOrchestrator | null = null;
 const savedFlags: Record<string, unknown> = {};
@@ -55,11 +53,11 @@ async function deleteFixture() {
 
 beforeAll(async () => {
   if (!DATABASE_URL) return;
-  pool = new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' });
+  pool = sharedPool;
   const currentDb = (await pool.query('select current_database()')).rows[0].current_database as string;
   if (currentDb !== 'ipodhan_test') throw new Error(`Refusing to run: connected to '${currentDb}', not 'ipodhan_test'.`);
   redis = new Redis(REDIS_URL, { db: 1, maxRetriesPerRequest: 2 });
-  const db = drizzle(pool, { schema });
+  const db = sharedDb;
   orchestrator = new DataConsolidationOrchestrator(
     new IPORepository(db as never, redis as never) as never,
     new FieldSourcesRepository(db as never, redis as never) as never,
@@ -73,7 +71,7 @@ afterAll(async () => {
   if (!pool) return;
   await deleteFixture();
   if (redis) await redis.quit();
-  await pool.end();
+  await closePool();
 }, 30000);
 
 beforeEach(async () => {
