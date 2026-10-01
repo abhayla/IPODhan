@@ -300,18 +300,6 @@ jobs:
           node --test scripts/tests/check-drizzle-iso-string.test.mjs
           node scripts/ci/check-drizzle-iso-string.mjs
 
-      - name: Unpinned date formatting gate (host-timezone-date-format, #1347)
-        # date-fns format(), toLocale*String and Intl.DateTimeFormat without timeZone print in the
-        # zone of the running process: the VPS is UTC, the reader is IST, so server and browser
-        # render different text (React #418). Use formatIPODate / formatIstDateTime / formatInIst
-        # from web/lib/utils/date-formatter.ts. Existing offenders are in
-        # scripts/ci/unpinned-date-format-baseline.json with a reason (backlog #1390). Self-test is
-        # mutation-proof: red on planted format()/Intl.DateTimeFormat/toLocaleDateString fixtures
-        # and on unresolvable shapes (fail closed), green on pinned and number formatting.
-        run: |
-          node --test scripts/tests/check-unpinned-date-format.test.mjs
-          node scripts/ci/check-unpinned-date-format.mjs
-
       - name: App-clock timestamp ratchet (mixed-clock-ordering, F-210)
         # A time ordered against a database-stamped time (documents.created_at, data_conflicts.detected_at)
         # must come from the database clock. Fails on a NEW `fooAt: new Date()` / `timestamp: new Date()`
@@ -673,6 +661,19 @@ jobs:
         # shrink-only, each entry carries a reason —
         # scripts/ci/db-connection-defaults-baseline.json.
         run: node scripts/ci/check-db-connection-defaults.mjs
+
+      - name: Unpinned date formatting gate (host-timezone-date-format, #1347)
+        # date-fns format(), toLocale*String and Intl.DateTimeFormat without timeZone print in the
+        # zone of the running process: the VPS is UTC, the reader is IST, so server and browser
+        # render different text (React #418). Use formatIPODate / formatIstDateTime / formatInIst
+        # from web/lib/utils/date-formatter.ts. Existing offenders are in
+        # scripts/ci/unpinned-date-format-baseline.json with a reason (backlog #1390). Self-test is
+        # mutation-proof: red on planted format()/Intl.DateTimeFormat/toLocaleDateString fixtures
+        # and on unresolvable shapes (fail closed), green on pinned and number formatting.
+        # Runs after npm ci (T-570): the checker parses with the typescript compiler API.
+        run: |
+          node --test scripts/tests/check-unpinned-date-format.test.mjs
+          node scripts/ci/check-unpinned-date-format.mjs
 
       - name: No type-erasing cast on a constructor argument (#1187, class of #635)
         # `new Repo(db as never, redis as never)` turns off the only check that the
