@@ -10,6 +10,14 @@
 // integration tests missing from pr-gate.yml's list. Both are steps pr-gate.yml
 // already runs; nothing ran them before the push.
 //
+// TRUST (round 3): the steps are read from pr-gate.yml AS MERGED ON origin/main
+// (`git show refs/remotes/origin/main:...`, after a bounded fetch), never from
+// the branch's working copy. A step the branch adds, changes or removes (run,
+// env, working-directory, if, or the job/workflow settings that reach it) is
+// listed "changed in this branch: CI-only" and not run, so a branch can never get
+// a new command run on this machine; origin/main unreadable = refuse. The
+// allow-list below is the second layer, against honest mistakes in main's steps.
+//
 // HOW (structural, not a hand-copied list): the steps are READ FROM pr-gate.yml
 // at run time. A step with a `run:` runs locally, verbatim, in its
 // working-directory with its env, ONLY IF every command line in it starts with
@@ -35,7 +43,7 @@
 //   node scripts/ci/local-pr-gate.mjs --only <regex>  # run only matching planned steps (re-run one failure)
 // Skip from the optional pre-push hook: LOCAL_PR_GATE_SKIP=1 git push
 import { spawnSync, execFileSync } from 'node:child_process';
-import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
@@ -156,25 +164,38 @@ export function substitute(text, ctx) {
 
 // ---- workflow --------------------------------------------------------------
 export function loadSteps(workflowPath = WORKFLOW) {
+  return parseWorkflow(readFileSync(workflowPath, 'utf8'));
+}
+
+// Everything that decides what a step does, for comparing the branch's copy of a
+// step with main's. Workflow env/defaults/if and the job's own settings are part
+// of every step's fingerprint, because they reach every step.
+function fingerprint(wf, job, st) {
+  const jobRest = { ...(job || {}) };
+  delete jobRest.steps;
+  return JSON.stringify({ wf: { env: wf.env, defaults: wf.defaults, if: wf.if }, job: jobRest, step: st });
+}
+
+export function parseWorkflow(text) {
   const YAML = require('yaml');
-  const wf = YAML.parse(readFileSync(workflowPath, 'utf8'));
+  const wf = YAML.parse(String(text).replace(/\r\n/g, '\n')) || {};
   const steps = [];
   // Workflow-level conditions and defaults apply to every job.
   const wfProblems = [];
   if (wf.defaults) wfProblems.push('workflow-level defaults');
   if (wf.if) wfProblems.push(`workflow-level if: ${wf.if}`);
-  if (wfProblems.length) steps.push({ jobId: '(workflow)', name: '(workflow)', problem: `${wfProblems.join(', ')}: the local gate does not model them` });
+  if (wfProblems.length) steps.push({ jobId: '(workflow)', name: '(workflow)', fp: fingerprint(wf, null, null), problem: `${wfProblems.join(', ')}: the local gate does not model them` });
   for (const [jobId, job] of Object.entries(wf.jobs || {})) {
     const unmodelled = [];
     if (job.defaults || job.container || job.strategy) unmodelled.push('defaults/container/strategy');
     if (job.if !== undefined && !KNOWN_JOB_IFS[job.if]) unmodelled.push(`job-level if: ${job.if}`);
     if (job['continue-on-error'] !== undefined) unmodelled.push('continue-on-error');
-    if (unmodelled.length) steps.push({ jobId, name: '(job)', problem: `job ${jobId} uses ${unmodelled.join(', ')}, which the local gate does not model` });
+    if (unmodelled.length) steps.push({ jobId, name: '(job)', fp: fingerprint(wf, job, null), problem: `job ${jobId} uses ${unmodelled.join(', ')}, which the local gate does not model` });
     // Workflow and job env reach every step; a step's own env wins.
     const inherited = { ...(wf.env || {}), ...(job.env || {}) };
     (job.steps || []).forEach((st, index) => {
       steps.push({
-        jobId, index, hasServices: Boolean(job.services),
+        jobId, index, hasServices: Boolean(job.services), fp: fingerprint(wf, job, st),
         name: st.name || st.uses || `step ${index + 1}`,
         uses: st.uses, run: st.run, if: st.if, shell: st.shell,
         continueOnError: st['continue-on-error'],
@@ -183,6 +204,12 @@ export function loadSteps(workflowPath = WORKFLOW) {
     });
   }
   return { wf, steps };
+}
+
+export function safeWorkdir(wd) {
+  const s = String(wd ?? '');
+  if (!s || /^([/\\~]|[A-Za-z]:)/.test(s) || /[$`{}*?]/.test(s)) return false;
+  return !s.split(/[/\\]/).some((seg) => seg === '..' || seg.toLowerCase() === '.git');
 }
 
 // One decision per step. `problem` set = the gate cannot handle the step: the
@@ -212,6 +239,9 @@ export function classify(step, ctx = { base: 'BASE', head: 'HEAD' }) {
     if (!entry?.tree) tree = t;
   }
   if (step.shell) return { key, mode: 'error', problem: `custom shell: ${step.shell}` };
+  if (!safeWorkdir(step.workdir)) {
+    return { key, mode: 'error', problem: `working-directory ${step.workdir} is not a repo-relative path without .. or a .git segment` };
+  }
   const raw = entry?.cmd || step.run;
   const { out: cmd, unknown } = substitute(raw, ctx);
   const env = {};
@@ -263,12 +293,45 @@ export function ciWouldRun(files, wf) {
   });
 }
 
-export function buildPlan({ files, ctx, workflowPath = WORKFLOW, full = false }) {
-  const { wf, steps } = loadSteps(workflowPath);
+// Round 3 trust model: the steps that RUN come from the reviewed workflow on
+// origin/main (`trustedText`), never from the branch's working copy. A step the
+// branch adds, changes or removes (any part of it, or the job/workflow settings
+// that reach it) is LISTED as changed and not run: a branch can never get a new
+// command run on this machine. The branch's own scripts still run through main's
+// unchanged steps, which is what the gate is for.
+const stepKey = (s) => `${s.jobId} :: ${s.name}`;
+function keyed(steps) {
+  const seen = new Map();
+  const out = new Map();
+  for (const s of steps) {
+    const k = stepKey(s);
+    const n = seen.get(k) || 0;
+    seen.set(k, n + 1);
+    out.set(n ? `${k} #${n + 1}` : k, s);
+  }
+  return out;
+}
+export const CHANGED_REASON = 'changed in this branch: CI-only (not run locally)';
+
+export function buildPlan({ files, ctx, trustedText, workflowPath = WORKFLOW, full = false }) {
+  if (typeof trustedText !== 'string' || !trustedText.trim()) {
+    throw new Error('local-pr-gate: no trusted (origin/main) pr-gate.yml text; refusing to plan from the branch copy');
+  }
+  const { wf, steps: mainSteps } = parseWorkflow(trustedText);
+  const branch = keyed(loadSteps(workflowPath).steps);
+  const main = keyed(mainSteps);
   const runs = ciWouldRun(files, wf);
   const plan = [];
   const seen = new Set();
-  for (const step of steps) {
+  for (const k of branch.keys()) {
+    if (!main.has(k)) plan.push({ key: k, mode: 'changed', action: 'ci-only', reason: `${CHANGED_REASON} (new step)` });
+  }
+  for (const [k, step] of main) {
+    const b = branch.get(k);
+    if (!b || b.fp !== step.fp) {
+      plan.push({ key: k, mode: 'changed', action: 'ci-only', reason: b ? CHANGED_REASON : `${CHANGED_REASON} (removed in this branch)` });
+      continue;
+    }
     const c = classify(step, ctx);
     if (c.mode === 'local' || c.mode === 'heavy') {
       const touched = files.some((f) => TREES[c.tree].test(f));
@@ -328,9 +391,22 @@ function parseArgs(argv) {
   return a;
 }
 
+// The reviewed workflow: pr-gate.yml as merged on origin/main. Fetched first
+// (bounded, never prompting); a failed fetch falls back to the local
+// refs/remotes/origin/main, which is still merged content. Unreadable = throw,
+// and main() refuses (fail closed).
+export const TRUSTED_REF = 'refs/remotes/origin/main';
+export function readTrustedWorkflow() {
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+  for (const k of GIT_LOCAL_ENV) delete env[k];
+  const f = spawnSync('git', ['fetch', '--quiet', '--no-tags', 'origin', 'main'], { cwd: REPO_ROOT, env, encoding: 'utf8', timeout: 30000 });
+  if (f.status !== 0) console.log(`local-pr-gate: WARNING - git fetch origin main failed (${f.error ? f.error.code || f.error.message : `exit ${f.status}`}); using the local ${TRUSTED_REF}.`);
+  return git(['show', `${TRUSTED_REF}:.github/workflows/pr-gate.yml`]);
+}
+
 function fmtSecs(ms) { return `${(ms / 1000).toFixed(1)}s`; }
 
-export function main(argv = process.argv.slice(2)) {
+export function main(argv = process.argv.slice(2), { readTrusted = readTrustedWorkflow } = {}) {
   const args = parseArgs(argv);
   if (args.help) {
     console.log('usage: node scripts/ci/local-pr-gate.mjs [--plan] [--full] [--keep-going] [--base <ref>] [--files a,b] [--only <regex>]');
@@ -353,19 +429,29 @@ export function main(argv = process.argv.slice(2)) {
     if (r.status === 0) prNumber = r.stdout.trim();
   }
   const ctx = { base, head, prNumber };
-  const { plan, ciRuns } = buildPlan({ files, ctx, full: args.full });
+  let trustedText;
+  try {
+    trustedText = readTrusted();
+    if (typeof trustedText !== 'string' || !trustedText.trim()) throw new Error('empty');
+  } catch (e) {
+    console.error(`local-pr-gate: REFUSED - cannot read pr-gate.yml from ${TRUSTED_REF} (${String(e.message || e).split(/\r?\n/)[0]}). The gate runs only reviewed, merged steps; run 'git fetch origin main'.`);
+    return 2;
+  }
+  const { plan, ciRuns } = buildPlan({ files, ctx, trustedText, full: args.full });
 
-  console.log(`local-pr-gate: ${files.length} changed file(s) in ${base.slice(0, 8)}..${head.slice(0, 8)} (mirrors .github/workflows/pr-gate.yml)`);
+  console.log(`local-pr-gate: ${files.length} changed file(s) in ${base.slice(0, 8)}..${head.slice(0, 8)} (runs the steps of pr-gate.yml as merged on origin/main)`);
   if (!ciRuns) console.log('local-pr-gate: every changed path is excluded by pr-gate.yml `paths:` (docs-only); CI will not run it either.');
   const errors = plan.filter((p) => p.action === 'error');
   const toRun = plan.filter((p) => p.action === 'run' && (!args.only || args.only.test(p.key)));
   if (args.only) console.log(`local-pr-gate: --only ${args.only} keeps ${toRun.length} of ${plan.filter((p) => p.action === 'run').length} planned step(s); this is NOT a full gate run.`);
-  const ciOnly = plan.filter((p) => p.action === 'ci-only');
+  const changed = plan.filter((p) => p.mode === 'changed');
+  const ciOnly = plan.filter((p) => p.action === 'ci-only' && p.mode !== 'changed');
   const heavy = plan.filter((p) => p.action === 'skip' && p.mode === 'heavy' && ciRuns && files.some((f) => TREES[p.tree].test(f)));
   const treeSkips = plan.filter((p) => p.action === 'skip' && p.mode !== 'heavy');
 
-  console.log(`  run here: ${toRun.length}   CI-only: ${ciOnly.length}   heavy (--full): ${heavy.length}   tree not touched: ${treeSkips.length}   setup: ${plan.filter((p) => p.action === 'setup').length}`);
+  console.log(`  run here: ${toRun.length}   CI-only: ${ciOnly.length}   changed in branch (CI-only): ${changed.length}   heavy (--full): ${heavy.length}   tree not touched: ${treeSkips.length}   setup: ${plan.filter((p) => p.action === 'setup').length}`);
   for (const p of ciOnly) console.log(`  CI-only  ${p.key} — ${p.reason}`);
+  for (const p of changed) console.log(`  CHANGED  ${p.key} — ${p.reason}`);
   for (const p of heavy) console.log(`  NOT RUN  ${p.key} — ${p.why}`);
   if (errors.length) {
     console.error('\nlocal-pr-gate: REFUSED — pr-gate.yml has step(s) this gate can neither run nor classify:');

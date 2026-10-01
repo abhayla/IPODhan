@@ -3,7 +3,7 @@
 # take minutes, so it changes every push and is not mandatory without the
 # owner's say-so. Turn it on for this clone:   git config ipodhan.localGate true
 # Run it by hand any time:                      npm run gate:local
-# Exit codes: 0 green, 1 a step failed, 2 no merge-base, 3 REFUSED (pr-gate.yml
+# Exit codes: 0 green, 1 a step failed, 2 no merge-base or origin/main's pr-gate.yml unreadable, 3 REFUSED (pr-gate.yml
 # has a command or condition the gate cannot classify). A crash of the gate
 # itself also exits non-zero and BLOCKS the push, loudly, with the Node error:
 # deliberate, because a gate that failed open would pass unchecked pushes

@@ -11,11 +11,16 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  WORKFLOW, STEP_TABLE, JOB_TABLE, LINUX_ONLY, loadSteps, classify, buildPlan, ciWouldRun, childEnv,
+  WORKFLOW, STEP_TABLE, JOB_TABLE, LINUX_ONLY, loadSteps, classify, buildPlan as rawBuildPlan, ciWouldRun, childEnv, main as gateMain,
+  safeWorkdir, CHANGED_REASON,
 } from '../ci/local-pr-gate.mjs';
 import { unclassifiedCommands } from '../ci/local-gate-shell-allowlist.mjs';
 
 const CTX = { base: 'b'.repeat(40), head: 'h'.repeat(40), prNumber: '' };
+// Mapping tests treat the given workflow as already merged (main == branch).
+// The round-3 trust-model tests pass a different trustedText on purpose.
+const lf = (p) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+const buildPlan = (o) => rawBuildPlan({ trustedText: lf(o.workflowPath || WORKFLOW), ...o });
 
 test('every pr-gate.yml step is run or classified (no unclassifiable step)', () => {
   const { steps } = loadSteps();
@@ -84,7 +89,7 @@ test('drift: a new job with a service container turns this test red', () => {
   });
 });
 
-test('drift: a new plain step is RUN locally with no table edit (structural default)', () => {
+test('drift: a new plain step, once merged on main, is RUN locally with no table edit (structural default)', () => {
   const stepYaml = `      - name: Drift probe plain\n        run: node --test scripts/tests/some-new.test.mjs`;
   withMutatedWorkflow((y) => addStep(y, stepYaml), (p) => {
     const { plan } = buildPlan({ files: ['scripts/ops/x.mjs'], ctx: CTX, workflowPath: p });
@@ -280,7 +285,7 @@ const ALLOWED = [
   'npm run lint:ci', 'npm run --silent build', 'bash scripts/tests/a.test.sh 2>&1 | tee /tmp/a.log', 'sh scripts/x.sh',
   'python .claude/hooks/tests/a.test.py', 'python -m pytest scraper/scripts -q -p no:cacheprovider', 'python -m unittest discover -s scripts',
   'cd packages/shared && npx tsc', 'echo ok >> /dev/null', 'test -f dist/a.d.ts || (echo "FATAL" && exit 1)', 'set -o pipefail',
-  'export FOO=bar', 'FOO=1 node scripts/x.mjs', 'rm -rf packages/shared/dist packages/shared/tsconfig.tsbuildinfo',
+  'export CI=true', 'PYTHONDONTWRITEBYTECODE=1 node scripts/x.mjs', 'rm -rf packages/shared/dist packages/shared/tsconfig.tsbuildinfo',
   'if git diff --name-only "$A" "$B" | grep -qE "^web/"; then\n  echo run=true\nelse\n  echo run=false\nfi',
   'node scripts/x.mjs "$(git rev-parse HEAD)"', 'node scripts/x.mjs \\\n  a \\\n  b', 'tail -n 40 /tmp/a.log',
 ];
@@ -293,7 +298,7 @@ for (const run of ALLOWED) {
 const REFUSED = [
   ['cd /', /cd must take/], ['cd ../x', /cd must take/], ['node -p 1', /inline or injected/], ['node --require ./x.js scripts/a.mjs', /inline or injected/],
   ['node /abs/x.mjs', /repo-relative/], ['node ../x.mjs', /repo-relative/], ['npx drizzle-kit migrate', /not an allowed tool/],
-  ['npx tsx -e "1"', /inline code/], ['npm ci', /npm run/], ['npm install x', /npm run/], ['npm run build:evil', /allow-list/],
+  ['npx tsx -e "1"', /inline/], ['npm ci', /npm run/], ['npm install x', /npm run/], ['npm run build:evil', /allow-list/],
   ['bash scripts/../../x.sh', /repo script/], ['python -c "1"', /repo .py/], ['python -m pip install x', /unittest or pytest/],
   ['rm -rf /', /exact repo-relative/], ['rm -rf ..', /exact repo-relative/], ['rm -rf web/*', /exact repo-relative/], ['git push', /read-only/],
   ['git diff --output=x.patch', /writes a file/], ['gh pr merge 1', /not an allowed program/], ['wget x', /not an allowed program/],
@@ -307,3 +312,136 @@ for (const [run, why] of REFUSED) {
     assert.match(off.map((o) => o.reason).join(' | '), why);
   });
 }
+
+// --- round 3: trust only reviewed (origin/main) workflow content -------------
+// The branch's working copy never decides what runs: a step it adds or changes
+// is listed CI-only. Fed: trustedText = the real workflow (stands in for main),
+// workflowPath = a mutated copy (stands in for the branch).
+const branchPlan = (mutate, files = ['scripts/ops/x.mjs']) => withMutatedWorkflow(mutate, (p) =>
+  rawBuildPlan({ files, ctx: CTX, trustedText: lf(WORKFLOW), workflowPath: p }).plan);
+const entry = (plan, re) => plan.filter((x) => re.test(x.key));
+
+test('trust: a step only the branch adds is listed CI-only (changed in this branch), never run', () => {
+  const plan = branchPlan((y) => addStep(y, '      - name: Drift probe branch-new\n        run: node --test scripts/tests/some-new.test.mjs'));
+  const e = entry(plan, /Drift probe branch-new/);
+  assert.equal(e.length, 1);
+  assert.equal(e[0].action, 'ci-only');
+  assert.ok(e[0].reason.startsWith(CHANGED_REASON), e[0].reason);
+  assert.ok(!plan.some((x) => x.action === 'run' && /some-new/.test(x.cmd || '')));
+});
+
+test("trust: a run: line the branch modifies is not run (main's step is listed changed)", () => {
+  const plan = branchPlan((y) => y.replace('run: node scripts/ci/require-detection-change.mjs', 'run: node scripts/ci/require-detection-change.mjs --x'));
+  const e = entry(plan, /Run detection-change gate/);
+  assert.equal(e.length, 1);
+  assert.equal(e[0].action, 'ci-only');
+  assert.equal(e[0].mode, 'changed');
+});
+
+test('trust: a branch change to a step env or working-directory is not run', () => {
+  const mutations = [
+    (y) => y.replace("NODE_OPTIONS: '--max-old-space-size=6144'", "NODE_OPTIONS: '--max-old-space-size=6145'"),
+    (y) => y.replace(/(- name: Run lint\n(?:.*\n)*?\s+working-directory: )\.\/web/, '$1./scraper'),
+  ];
+  for (const mutate of mutations) {
+    const plan = branchPlan(mutate, ['web/app/page.tsx']);
+    const changed = plan.filter((q) => q.mode === 'changed');
+    assert.ok(changed.length >= 1, 'no step listed changed');
+    for (const x of changed) assert.equal(x.action, 'ci-only');
+  }
+});
+
+test('trust: a branch job-level env change marks every step of that job changed', () => {
+  const plan = branchPlan((y) => y.replace('\n  python-tests:\n', '\n  python-tests:\n    env:\n      CI: "1"\n'), ['.claude/hooks/x.py']);
+  const py = plan.filter((x) => /^python-tests :: /.test(x.key));
+  assert.ok(py.length > 2);
+  for (const x of py) assert.equal(x.mode, 'changed', x.key);
+  assert.ok(!plan.some((x) => x.action === 'run' && /^python-tests/.test(x.key)));
+});
+
+test('trust: a step the branch removes is not run', () => {
+  const plan = branchPlan((y) => y.replace(/\n {6}- name: Run detection-change gate\n(?: {8}.*\n)+/, '\n'));
+  const e = entry(plan, /Run detection-change gate/);
+  assert.equal(e[0].action, 'ci-only');
+  assert.match(e[0].reason, /removed in this branch/);
+});
+
+test('trust: the plan refuses to build without trusted (origin/main) text', () => {
+  assert.throws(() => rawBuildPlan({ files: ['web/x.ts'], ctx: CTX }), /no trusted/);
+  assert.throws(() => rawBuildPlan({ files: ['web/x.ts'], ctx: CTX, trustedText: '' }), /no trusted/);
+});
+
+test('trust: origin/main unreadable means the gate refuses (exit 2) and plans nothing', () => {
+  const errs = [];
+  const logs = [];
+  const { error, log } = console;
+  console.error = (m) => errs.push(String(m));
+  console.log = (m) => logs.push(String(m));
+  let code;
+  try {
+    code = gateMain(['--plan', '--files', 'web/app/page.tsx'], { readTrusted: () => { throw new Error('fatal: invalid object name'); } });
+  } finally {
+    console.error = error;
+    console.log = log;
+  }
+  assert.equal(code, 2);
+  assert.match(errs.join('\n'), /REFUSED - cannot read pr-gate\.yml from refs\/remotes\/origin\/main/);
+  assert.ok(!logs.some((l) => /run here:/.test(l)), 'a plan was printed');
+});
+
+// Every bypass the round-2 reviewer found is refused even when the step is ON
+// MAIN (fixture fed as both the trusted and the branch workflow): layer 2 catches
+// honest mistakes in reviewed content too.
+const ON_MAIN = {
+  'brace expansion into --eval': { run: 'node {--eval,process.exit} scripts/x.mjs' },
+  'node --import=': { run: 'node --import=./x.mjs scripts/x.mjs' },
+  'node --require=': { run: 'node --require=./x.js scripts/x.mjs' },
+  'node --test --import=': { run: 'node --test --import=./x.mjs scripts/tests/a.test.mjs' },
+  'npx tsx --import': { run: 'npx tsx --import ./x.mjs src/a.ts' },
+  'GIT_EXTERNAL_DIFF in step env': { env: { GIT_EXTERNAL_DIFF: 'scripts/x.sh' }, run: 'git diff' },
+  'GIT_CONFIG_KEY_0 in step env': { env: { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.pager', GIT_CONFIG_VALUE_0: 'sh scripts/x.sh' }, run: 'git log -1' },
+  'npm_config_node_options in step env': { env: { npm_config_node_options: '--require=./x.js' }, run: 'npm run lint:ci' },
+  'an unlisted env key': { env: { SOME_NEW_KEY: '1' }, run: 'node scripts/x.mjs' },
+  'printf -v PATH': { run: 'printf -v PATH %s /tmp/evil\nnode scripts/x.mjs' },
+  'export GIT_DIR': { run: 'export GIT_DIR=/tmp/x\ngit status' },
+  'inline NODE_OPTIONS=--require': { run: 'NODE_OPTIONS=--require=./x.js node scripts/x.mjs' },
+  'working-directory ../IPODhan with rm -rf': { wd: '../IPODhan', run: 'rm -rf web' },
+  'absolute working-directory': { wd: '/home/runner', run: 'node scripts/x.mjs' },
+  'a write into .git/config': { run: 'echo "[core]" >> .git/config' },
+  'a path argument into .git/hooks': { run: 'node scripts/x.mjs .git/hooks/pre-push' },
+  'rm of .git': { run: 'rm -rf .git' },
+  'a ~ argument': { run: 'node scripts/x.mjs ~/.ssh/id_ed25519' },
+  'a glob argument': { run: 'node --test scripts/tests/*.test.mjs' },
+  'the deploy script': { run: 'bash scripts/deploy-linux.sh' },
+  'the DB tunnel script': { run: 'bash scripts/ops/db-tunnel.sh start' },
+  'the deploy-and-watch script': { run: 'bash scripts/ops/deploy-and-watch.sh staging' },
+  'the staging window deploy script': { run: 'sh scripts/ops/staging-window-deploy.sh' },
+  'a vps-*.sh script': { run: 'bash scripts/vps-disk-hygiene.sh' },
+};
+const stepYamlOf = ({ run, env, wd }) => [
+  '      - name: Drift probe main',
+  ...(wd ? [`        working-directory: ${wd}`] : []),
+  ...(env ? ['        env:', ...Object.entries(env).map(([k, v]) => `          ${k}: '${v}'`)] : []),
+  '        run: |',
+  ...run.split('\n').map((l) => `          ${l}`),
+].join('\n');
+for (const [label, spec] of Object.entries(ON_MAIN)) {
+  test(`on main: ${label} is refused, never run`, () => {
+    withMutatedWorkflow((y) => addStep(y, stepYamlOf(spec)), (p) => {
+      const { plan } = rawBuildPlan({ files: ['scripts/ops/x.mjs', 'web/x.ts'], ctx: CTX, trustedText: lf(p), workflowPath: p });
+      const e = entry(plan, /Drift probe main/);
+      assert.equal(e.length, 1);
+      assert.equal(e[0].action, 'error', `${label}: ${JSON.stringify(e[0])}`);
+    });
+  });
+}
+
+test('safeWorkdir: repo-relative only', () => {
+  for (const ok of ['.', './web', 'packages/shared', './scraper']) assert.ok(safeWorkdir(ok), ok);
+  for (const bad of ['', '..', '../IPODhan', './web/../..', '/abs', 'C:/x', '~/x', '.git', 'web/.git/hooks', '$HOME']) assert.ok(!safeWorkdir(bad), bad);
+});
+
+test("real workflow: main's own steps all pass the round-3 checks (none newly refused)", () => {
+  const { plan } = buildPlan({ files: ['package.json'], ctx: CTX });
+  assert.deepEqual(plan.filter((x) => x.action === 'error').map((x) => `${x.key}: ${x.problem}`), []);
+});

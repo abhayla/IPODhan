@@ -177,22 +177,49 @@ const hasDotDot = (p) => /(^|\/)\.\.(\/|$)/.test(p);
 const repoRel = (p) => typeof p === 'string' && p !== '' && !/^([/~\-]|[A-Za-z]:)/.test(p) && !/[$`]/.test(p) && !hasDotDot(p);
 const tmpPath = (p) => /^\/tmp\//.test(p) && !/[$`]/.test(p) && !hasDotDot(p);
 const repoOrTmp = (p) => repoRel(p) || tmpPath(p);
-const ENV_DENY = /^(PATH|LD_[A-Z_]*|DYLD_[A-Z_]*|BASH_ENV|ENV|SHELL|IFS|PYTHONPATH|PYTHONSTARTUP|NODE_PATH|HOME|[A-Z0-9_]*(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY))$/;
+// Environment keys a step (or `export` / `X=1 cmd`) may set on a developer
+// machine: an ALLOW-list of keys, each with the values it may take (round 3).
+// Every other key is refused, so an honest new `env:` in pr-gate.yml turns the
+// drift test red until someone lists it here. Named for the reader: GIT_* (an
+// external diff or config injection runs a program), npm_config_* (npm reads
+// node-options and scripts from it), NODE_OPTIONS beyond a heap size, PATH,
+// LD_*, and anything shaped like a credential are never allowed.
+export const ENV_ALLOW = {
+  CI: /^(true|1)$/,
+  NODE_OPTIONS: /^--max-old-space-size=\d+$/,
+  PYTHONDONTWRITEBYTECODE: /^1$/,
+  EXTRACTOR_MEMORY_CEILING: /^(off|\d+)$/,
+  BOARD_OWED_NO_REGEN: /^1$/,
+  SCHEMA_DRIFT_IGNORE_GATED: /^1$/,
+  GH_PR_NUMBER: /^\d*$/,
+  // ${{ github.token }} substitutes to '' here: the key is REMOVED from the child env.
+  GH_TOKEN: /^$/,
+};
+const ENV_NAMED_DENY = /^(GIT_.*|npm_config_.*|NODE_OPTIONS|PATH|LD_.*|DYLD_.*|BASH_ENV|ENV|IFS|.*_(TOKEN|KEY|SECRET|PASSWORD))$/i;
 
 // An env/assignment pair that is safe to apply on a developer machine.
-// An empty value only REMOVES the variable (e.g. GH_TOKEN), which is safe.
 export function envProblem(key, value) {
-  if (value === '') return null;
-  if (key === 'NODE_OPTIONS') return /^--max-old-space-size=\d+$/.test(value) ? null : `NODE_OPTIONS=${value} can load code`;
-  if (ENV_DENY.test(key)) return `${key} is a secret-looking or process-hijacking variable`;
-  return null;
+  const ok = Object.prototype.hasOwnProperty.call(ENV_ALLOW, key) ? ENV_ALLOW[key] : null;
+  if (ok && ok.test(String(value))) return null;
+  if (ok) return `${key}=${value} is not an allowed value for ${key}`;
+  if (ENV_NAMED_DENY.test(key)) return `${key} is a secret-looking or process-hijacking variable`;
+  return `${key} is not in the env allow-list (ENV_ALLOW in scripts/ci/local-gate-shell-allowlist.mjs)`;
 }
+
+// Path segments and scripts no local run may touch (round 3, honest-mistake checks).
+const GIT_SEGMENT = /(^|[/\\])\.git([/\\]|$)/i;
+// Repo scripts that act on remote hosts (deploy, VPS cron, DB tunnel). Refused
+// wherever they appear in a run block, even in a step merged on main.
+export const REMOTE_WRITERS = /(^|[/\\])(deploy-and-watch|deploy-linux|db-tunnel|staging-window-deploy|vps-[A-Za-z0-9_-]+)\.sh$/;
+const GLOB_CHARS = /[{}*?~]/;
 
 // ---- allowed program forms ----------------------------------------------------
 const NPM_SCRIPTS = new Set(['lint:ci', 'test:unit', 'type-check:scripts', 'test:tzcase', 'build']);
 const NPX_TOOLS = new Set(['tsc', 'vitest', 'eslint', 'tsx']);
 const GIT_READONLY = new Set(['diff', 'rev-parse', 'log', 'show', 'status', 'ls-files', 'merge-base', 'cat-file', 'rev-list', 'ls-tree', 'describe']);
-const NODE_CODE_FLAGS = /^(-e|-p|-pe|--eval|--print|-r|--require|--import|--loader|--experimental-loader|--input-type(=.*)?|-i|--interactive)$/;
+// node flags allowed BEFORE the script (an explicit list: --import=, --require=,
+// --eval and every flag nobody listed are refused).
+const NODE_FLAGS = /^(--test|--max-old-space-size=\d+|--test-reporter=(spec|tap|dot))$/;
 const SCRIPT_DIRS = /^(scripts|scraper\/scripts|\.claude\/hooks)\//;
 const PY_DIRS = /^(\.claude\/hooks\/tests|scraper\/scripts|scripts)\//;
 
@@ -200,11 +227,15 @@ const nodeForm = (a) => {
   let i = 0;
   let test = false;
   for (; i < a.length && a[i].startsWith('-'); i++) {
-    if (NODE_CODE_FLAGS.test(a[i])) return `node ${a[i]} runs inline or injected code`;
+    if (!NODE_FLAGS.test(a[i])) return `node ${a[i]} is not an allowed node flag (inline or injected code)`;
     if (a[i] === '--test') test = true;
   }
   const rest = a.slice(i);
   if (!test && !rest.length) return 'node without a script file';
+  if (test) {
+    const flag = rest.find((x) => x.startsWith('-') && !NODE_FLAGS.test(x));
+    if (flag) return `node --test ${flag} is not an allowed node flag`;
+  }
   const paths = test ? rest.filter((x) => !x.startsWith('-')) : rest.slice(0, 1);
   const bad = paths.find((p) => !repoRel(p));
   return bad ? `node path is not repo-relative: ${bad}` : null;
@@ -214,7 +245,12 @@ const npxForm = (a) => {
   while (a[i] === '--no-install') i++;
   const tool = a[i];
   if (!NPX_TOOLS.has(tool)) return `npx ${tool ?? ''} is not an allowed tool (${[...NPX_TOOLS].join(', ')})`;
-  if (tool === 'tsx' && a.slice(i + 1).some((x) => /^(-e|--eval|-p|--print)$/.test(x))) return 'npx tsx --eval runs inline code';
+  if (tool === 'tsx') {
+    // tsx passes its flags to node; none is allowed before the script.
+    const script = a[i + 1];
+    if (script === undefined || script.startsWith('-')) return `npx tsx ${script ?? ''} - tsx takes no flags here (inline or injected code)`;
+    if (!repoRel(script)) return `npx tsx path is not repo-relative: ${script}`;
+  }
   return null;
 };
 const npmForm = (a) => {
@@ -256,7 +292,7 @@ export const PROGRAMS = {
   python3: pythonForm,
   cd: (a) => (a.length === 1 && repoRel(a[0]) ? null : `cd must take one repo-relative directory (got ${a.join(' ') || 'nothing'})`),
   echo: () => null,
-  printf: () => null,
+  printf: (a) => (a.some((x) => /^-/.test(x)) ? 'printf with an option (printf -v assigns a variable)' : null),
   true: () => null,
   false: () => null,
   test: () => null,
@@ -268,6 +304,7 @@ export const PROGRAMS = {
     for (const x of a) {
       const m = ASSIGN.exec(x);
       if (!m && !IDENT.test(x)) return `export ${x}`;
+      if (!m && !Object.prototype.hasOwnProperty.call(ENV_ALLOW, x)) return `export ${x}: not in the env allow-list`;
       if (m) { const p = envProblem(m[1], x.slice(m[0].length)); if (p) return p; }
     }
     return null;
@@ -301,6 +338,18 @@ function checkCommands(cmds, out) {
     for (const r of cmd.redirs) {
       const t = r.target.text;
       if (r.target.subs.length || !(t === '/dev/null' || repoOrTmp(t))) offend(`redirect to ${t.slice(0, 60)} (only /dev/null, /tmp or a repo-relative file)`);
+    }
+    for (const w of [...cmd.words, ...cmd.redirs.map((r) => r.target)]) {
+      if (GIT_SEGMENT.test(w.text)) offend(`path ${w.text.slice(0, 60)} has a .git segment (git internals are never touched locally)`);
+      if (REMOTE_WRITERS.test(w.text)) offend(`${w.text} acts on a remote host (deploy / VPS / DB tunnel); never run locally`);
+    }
+    {
+      // Brace expansion, globs and ~ turn one written argument into others
+      // (node {--eval,x}); a program or its arguments never carry them.
+      let k = 0;
+      while (k < cmd.words.length && (KEYWORD_PREFIX.has(cmd.words[k].text) || (ASSIGN.test(cmd.words[k].text) && !cmd.words[k].subs.length))) k++;
+      const g = cmd.words.slice(k).find((w) => !KEYWORD_ALONE.has(w.text) && GLOB_CHARS.test(w.text));
+      if (g) offend(`argument ${g.text.slice(0, 40)} contains one of { } * ? ~ (expansion)`);
     }
     let words = cmd.words;
     while (words.length && KEYWORD_PREFIX.has(words[0].text)) words = words.slice(1);
