@@ -31,6 +31,7 @@ import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-n
 import { resolveOfferingTypeKeepingClassification, guardSmeOfferingTypeAgainstFpo } from '../utils/detect-offering-type.js';
 import { isAuthoritativeForHardDatesOnCreate } from '../utils/hard-date-source-trust.js';
 import type { ScraperSource } from '../config/field-priority-matrix';
+import { createProvenanceFields } from './create-provenance.js';
 import { DataConsolidationService } from './data-consolidation-service.js';
 import type { ConsolidationResult, FieldConsolidationResult } from './data-consolidation-service.js';
 import {
@@ -462,6 +463,31 @@ export class DataConsolidationOrchestrator {
         } as IPOInsert, { sourceKeys: (scrapedIPO as any).sourceKeys ?? null, boundBy: `scraper:${source}` });
 
         ipoId = newIPO.id;
+
+        // #1196 (OD-88): consolidation ran with ipoId 'new', where provenance is skipped, so the
+        // create writes a field_sources row for every column it set. Before this, a column no later
+        // writer touched (companyName on 47 of 396 staging IPOs) never had one. Logged with its
+        // cause on failure; the row itself is already committed.
+        if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
+          const fields = createProvenanceFields(consolidatedIPOData as Record<string, unknown>, source);
+          if (fields.length > 0) {
+            try {
+              await this.fieldSourcesRepository.bulkTrackFieldUpdates(ipoId, 'ipos', fields);
+            } catch (provenanceError) {
+              const cause = provenanceError instanceof Error ? provenanceError.cause : undefined;
+              logger.error(
+                {
+                  ipoId,
+                  source,
+                  fields: fields.map((f) => f.fieldName),
+                  error: provenanceError instanceof Error ? provenanceError.message : String(provenanceError),
+                  ...(cause !== undefined ? { cause: cause instanceof Error ? cause.message : String(cause) } : {}),
+                },
+                '[DataConsolidation] create provenance write failed (#1196)'
+              );
+            }
+          }
+        }
 
         logger.info(
           { slug, source, ipoId },
