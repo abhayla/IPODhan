@@ -120,6 +120,23 @@ describe('#1051 source guards — no raw ipos delete remains in either tool', ()
     expect(inspectIposWrites(imp + `await wc.query(text, [a]);`).unresolved).toHaveLength(1);
   });
 
+  it('fails closed: a same-named local function, a re-export or an import from another module is not the door', () => {
+    const local = `async function writeIposRebuildingPlanInTx(tx, id, set, m) {}
+await writeIposRebuildingPlanInTx(tx, id, { offeringType: t }, m);`;
+    const lv = inspectIposWrites(local);
+    expect(lv.doorCalls).toEqual([]);
+    expect(lv.unresolved).toHaveLength(1);
+    const reexport = `export { writeIposRebuildingPlanInTx } from '@ipodhan/shared/services/plan-invalidating-rebuild';`;
+    expect(inspectIposWrites(reexport).unresolved).toHaveLength(1);
+    const wrongModule = `import { writeIposRebuildingPlanInTx as w } from './my-wrapper';
+await w(tx, id, { offeringType: t }, m);`;
+    expect(inspectIposWrites(wrongModule).unresolved).toHaveLength(1);
+    const member = `await helpers.writeIposRebuildingPlanInTx(tx, id, { offeringType: t }, m);`;
+    const mv = inspectIposWrites(member);
+    expect(mv.doorCalls).toEqual([]);
+    expect(mv.unresolved).toHaveLength(1);
+  });
+
   it('classify-suspect-ipos.ts refuses --apply for --depollute delete, and guards reclass --apply behind --allow-prod on prod', () => {
     const src = readFileSync(resolve(scraperRoot, 'scripts/audit/classify-suspect-ipos.ts'), 'utf8');
     expect(src).toMatch(/APPLY\s*&&\s*mode\s*===\s*'delete'/);
@@ -163,10 +180,16 @@ function inspectIposWrites(src: string) {
       if (b && ts.isNamedImports(b)) {
         for (const el of b.elements) {
           const imported = (el.propertyName ?? el.name).text;
-          if (DOOR_MODULE.test(from) && imported === 'writeIposRebuildingPlanInTx') doorNames.add(el.name.text);
+          if (imported === 'writeIposRebuildingPlanInTx') {
+            if (DOOR_MODULE.test(from)) doorNames.add(el.name.text);
+            else out.unresolved.push(at(el));
+          }
           if (imported === 'ipos') iposAliases.add(el.name.text);
         }
       }
+    }
+    if (ts.isExportDeclaration(n) && n.exportClause && ts.isNamedExports(n.exportClause)) {
+      for (const el of n.exportClause.elements) if ((el.propertyName ?? el.name).text === 'writeIposRebuildingPlanInTx') out.unresolved.push(at(el));
     }
     if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer && isIposRef(n.initializer)) iposAliases.add(n.name.text);
     ts.forEachChild(n, collect);
@@ -183,8 +206,8 @@ function inspectIposWrites(src: string) {
       const isDoor =
         (ts.isIdentifier(callee) && doorNames.has(callee.text)) ||
         (ts.isPropertyAccessExpression(callee) && callee.name.text === 'writeIposRebuildingPlanInTx' &&
-          ts.isIdentifier(callee.expression) && doorNamespaces.has(callee.expression.text)) ||
-        name === 'writeIposRebuildingPlanInTx';
+          ts.isIdentifier(callee.expression) && doorNamespaces.has(callee.expression.text));
+      if (!isDoor && name === 'writeIposRebuildingPlanInTx') out.unresolved.push(at(n));
       if (isDoor) {
         const set = n.arguments[2];
         const keys: string[] = [];
