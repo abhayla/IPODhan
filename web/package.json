@@ -57,8 +57,7 @@
     "identify-missing-data": "tsx scripts/identify-missing-historical-data.ts",
     "filter-priority-ipos": "tsx scripts/filter-priority-ipos.ts",
     "update-priority-lot-sizes": "tsx scripts/update-priority-lot-sizes.ts",
-    "manual-entry": "tsx scripts/manual-data-entry-helper.ts",
-    "reclassify-corporate-actions": "tsx scripts/reclassify-corporate-actions.ts"
+    "manual-entry": "tsx scripts/manual-data-entry-helper.ts"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

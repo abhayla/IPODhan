@@ -2,10 +2,6 @@
   "_comment": "#1150: DB-writing scripts that do not yet open the DB through openRepairDb(). Shrink-only: scripts/ci/require-db-writer-guard.mjs fails when a listed file is guarded, exempted or deleted, so remove the entry in the same change. Never add an entry to make a NEW script pass.",
   "entries": [
     {
-      "file": "scraper/scripts/audit/classify-suspect-ipos.ts",
-      "reason": "Audit tool whose --apply branch runs 'update ipos set offering_type'; it prints current_database() itself but has no prod refusal or --expect-db. Migration to openRepairDb tracked in #1384."
-    },
-    {
       "file": "scraper/scripts/audit/oracle-date-matrix.ts",
       "reason": "Oracle cross-check whose apply branch runs a built 'update ipos set ...' over a pg client; no prod refusal. Migration to openRepairDb tracked in #1384."
     },
@@ -20,10 +16,6 @@
     {
       "file": "scraper/scripts/persist-filing.ts",
       "reason": "Walk step G4 harness that persists one filing through filing-persister.js (indirect writer); has --apply but no prod refusal. Migration to openRepairDb tracked in #1384."
-    },
-    {
-      "file": "scraper/scripts/reclassify-trust-shape-ipos-t277.ts",
-      "reason": "T-277 one-shot db.update(ipos) reclassification with no dry-run flag at all; guarding it means adding a dry-run model first (or deleting it as done). Migration to openRepairDb tracked in #1384."
     },
     {
       "file": "scraper/scripts/reresolve-registrar-id-t300.ts",
@@ -76,10 +68,6 @@
     {
       "file": "scraper/src/scripts/ingest-historical-ipo.ts",
       "reason": "Legacy ingest writing through data-persister.js (indirect); no dry-run or prod refusal. Migration to openRepairDb tracked in #1384."
-    },
-    {
-      "file": "scraper/src/scripts/reclassify-corporate-actions.ts",
-      "reason": "Legacy reclassification running raw UPDATE ipos SET over pg; no dry-run or prod refusal. Migration to openRepairDb tracked in #1384."
     },
     {
       "file": "scraper/src/scripts/retype-misclassified-documents.ts",

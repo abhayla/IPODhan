@@ -1,3 +1,4 @@
+import type { PlanManifest } from '@ipodhan/shared/services/plan-invalidating-rebuild';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { loadValidatedConfig } from './validated-config-loader.js';
@@ -58,4 +59,13 @@ export function loadFieldManifest(path: string = DEFAULT_MANIFEST_PATH): FieldMa
 
   manifestCache.set(path, manifest);
   return manifest;
+}
+
+/**
+ * #1402: the field manifest typed as the shared plan generator's `PlanManifest`, for the
+ * write-and-rebuild door (`writeIposRebuildingPlanInTx`). The zod-validated manifest is the same
+ * object; only the static type differs (the same cast filing-persist-deps.ts makes).
+ */
+export function loadPlanManifest(path: string = DEFAULT_MANIFEST_PATH): PlanManifest {
+  return loadFieldManifest(path) as unknown as PlanManifest;
 }

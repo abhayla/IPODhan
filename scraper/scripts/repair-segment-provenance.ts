@@ -79,6 +79,8 @@ import { fetchNseEquityMasters } from '../src/scrapers/nse-equity-master.js';
 import { resolveSegmentFromMasters, type SegmentResolution } from '../src/scrapers/exchange-segment-oracle.js';
 import { fetchBseScripMaster, toOracleScrips } from '../src/scrapers/bse-scrip-master.js';
 import { HeldByAdminError, assertNotHeld, filterPatchUnderHold } from '@ipodhan/shared/services/field-hold';
+import { writeIposRebuildingPlanInTx, type PlanManifest } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import { loadPlanManifest } from '../src/config/field-manifest-loader.js';
 
 const APPLY = process.argv.includes('--apply');
 const ALLOW_PROD = process.argv.includes('--allow-prod');
@@ -262,7 +264,7 @@ export function decideBlankUnsourced(
 export type SegmentWriteOutcome = 'written' | 'held';
 export async function writeSegmentRepairRow(
   database: { transaction: <T>(fn: (tx: any) => Promise<T>) => Promise<T> },
-  args: { ipoId: string; newSegment: SegmentValue; provenance: Parameters<typeof upsertFieldSource>[1] | null }
+  args: { ipoId: string; newSegment: SegmentValue; provenance: Parameters<typeof upsertFieldSource>[1] | null; manifest: PlanManifest }
 ): Promise<SegmentWriteOutcome> {
   try {
     await database.transaction(async (tx) => {
@@ -273,16 +275,48 @@ export async function writeSegmentRepairRow(
         args.ipoId
       );
       if (args.provenance) await upsertFieldSource(tx as any, args.provenance);
-      await tx
-        .update(schema.ipos)
-        .set({ segment: args.newSegment as any })
-        .where(eq(schema.ipos.id, args.ipoId));
+      // #1402 (spec §2.8): a segment write drops and rebuilds this IPO's plan rows in the SAME
+      // transaction, so the value and its plan commit or roll back together.
+      await writeIposRebuildingPlanInTx(tx, args.ipoId, { segment: args.newSegment as any }, args.manifest);
     });
     return 'written';
   } catch (e) {
     if (e instanceof HeldByAdminError) return 'held';
     throw e;
   }
+}
+
+/** One planned segment write, with the value it replaces (for the rollback ledger). */
+export interface SegmentRepairItem {
+  ipoId: string;
+  before: string | null;
+  newSegment: SegmentValue;
+  provenance: Parameters<typeof upsertFieldSource>[1] | null;
+}
+
+/**
+ * #1402: apply the planned writes one row per transaction and hand the rollback ledger (rows
+ * actually written, rows held by an admin) to `writeLedger` in a `finally`, so a mid-run error still
+ * leaves the artifact for every row already committed. The error is rethrown after the ledger.
+ */
+export async function applySegmentRepairs(
+  database: { transaction: <T>(fn: (tx: any) => Promise<T>) => Promise<T> },
+  items: SegmentRepairItem[],
+  manifest: PlanManifest,
+  writeLedger: (written: SegmentRepairItem[], held: string[]) => void
+): Promise<{ written: SegmentRepairItem[]; held: string[] }> {
+  const written: SegmentRepairItem[] = [];
+  const held: string[] = [];
+  try {
+    for (const item of items) {
+      const outcome = await writeSegmentRepairRow(database, { ipoId: item.ipoId, newSegment: item.newSegment, provenance: item.provenance, manifest });
+      if (outcome === 'held') held.push(item.ipoId);
+      else written.push(item);
+    }
+  } finally {
+    writeLedger(written, held);
+  }
+  return { written, held };
 }
 
 async function main() {
@@ -296,6 +330,8 @@ async function main() {
     toolName: 'repair-segment-provenance',
   });
   await assertNoSchemaDrift(db, { apply: APPLY, toolName: 'repair-segment-provenance' });
+  // #1402: the plan rebuild needs the manifest; loaded before any write so a bad manifest writes nothing.
+  const manifest = loadPlanManifest();
 
   const candidates = await db
     .select({
@@ -462,11 +498,27 @@ async function main() {
     // No provenance row: the ABSENCE of a field_sources row for this field is
     // exactly what d_segment_provenance detects, and lane C's board ruling
     // (O-16 / #658) is "delete-only" — never write a reason/placeholder row.
-    const blankHeld: string[] = [];
-    for (const { row } of toBlank) {
-      const outcome = await writeSegmentRepairRow(db, { ipoId: row.id, newSegment: null, provenance: null });
-      if (outcome === 'held') blankHeld.push(row.id);
-    }
+    const blankLedgerPath = `evidence/${new Date().toISOString().slice(0, 10)}-decision4-blank-unsourced/applied.json`;
+    const { held: blankHeld } = await applySegmentRepairs(
+      db,
+      toBlank.map(({ row }) => ({ ipoId: row.id, before: row.segment, newSegment: null, provenance: null })),
+      manifest,
+      (written, heldIds) => {
+        writeLedgerFile(blankLedgerPath, {
+          tool: 'repair-segment-provenance',
+          mode: 'apply',
+          generatedAt: new Date().toISOString(),
+          changes: written.map((w) => ({ table: 'ipos', rowKey: w.ipoId, field: 'segment', before: w.before, after: null })),
+          appliedAt: new Date().toISOString(),
+          updatedBy: BLANK_UPDATED_BY,
+          written: written.length,
+          heldByAdminSkipped: heldIds,
+          complete: written.length + heldIds.length === toBlank.length,
+          decisions: written.map((w) => ({ id: w.ipoId, companyName: toBlank.find((d) => d.row.id === w.ipoId)?.row.companyName ?? null })),
+        });
+        console.log(`ledger written: ${blankLedgerPath}`);
+      }
+    );
     const blanked = toBlank.filter((d) => !blankHeld.includes(d.row.id));
     console.log(`held by admin, skipped: ${blankHeld.length}${blankHeld.length ? ` (${blankHeld.join(', ')})` : ''}`);
 
@@ -482,19 +534,6 @@ async function main() {
     console.log('\nread-back after blank:');
     console.log(JSON.stringify(blankReadBack, null, 1));
 
-    const blankLedgerPath = `evidence/${new Date().toISOString().slice(0, 10)}-decision4-blank-unsourced/applied.json`;
-    writeLedgerFile(blankLedgerPath, {
-      tool: 'repair-segment-provenance',
-      mode: 'apply',
-      generatedAt: new Date().toISOString(),
-      changes: blanked.map((d) => ({ table: 'ipos', rowKey: d.row.id, field: 'segment', before: d.row.segment, after: null })),
-      appliedAt: new Date().toISOString(),
-      updatedBy: BLANK_UPDATED_BY,
-      written: blanked.length,
-      heldByAdminSkipped: blankHeld,
-      decisions: blanked.map((d) => ({ id: d.row.id, companyName: d.row.companyName })),
-    });
-    console.log(`ledger written: ${blankLedgerPath}`);
 
     console.log('\nAPPLY complete.');
     console.log('='.repeat(80));
@@ -524,15 +563,16 @@ async function main() {
   });
   console.log(`backup written: ${backupPath}`);
 
-  const touchHeld: string[] = [];
-  for (const { row, decision, resolution } of toTouch) {
+  const ledgerPath = `evidence/${new Date().toISOString().slice(0, 10)}-lane-c-item-02-s3b/applied.json`;
+  const items: SegmentRepairItem[] = toTouch.map(({ row, decision, resolution }) => {
     // The provenance row must name where the value ACTUALLY came from. A row the
     // oracle resolved is sourced by the exchange master, not by an admin; recording
     // 'ADMIN' for it would make a machine-sourced value indistinguishable from a
     // hand-entered one, and the whole point of this field is that distinction.
     const sourcedByOracle = decision.action === 'apply-sourced' && resolution?.outcome === 'resolved';
-    const outcome = await writeSegmentRepairRow(db, {
+    return {
       ipoId: row.id,
+      before: row.segment,
       newSegment: decision.newSegment,
       provenance: {
         ipoId: row.id,
@@ -551,9 +591,25 @@ async function main() {
         },
         updatedBy: UPDATED_BY,
       },
+    };
+  });
+  const { held: touchHeld } = await applySegmentRepairs(db, items, manifest, (written, heldIds) => {
+    writeLedgerFile(ledgerPath, {
+      tool: 'repair-segment-provenance',
+      mode: 'apply',
+      generatedAt: new Date().toISOString(),
+      changes: written.map((w) => ({ table: 'ipos', rowKey: w.ipoId, field: 'segment', before: w.before, after: w.newSegment })),
+      appliedAt: new Date().toISOString(),
+      written: written.length,
+      heldByAdminSkipped: heldIds,
+      complete: written.length + heldIds.length === items.length,
+      decisions: written.map((w) => {
+        const d = toTouch.find((t) => t.row.id === w.ipoId)!;
+        return { id: w.ipoId, companyName: d.row.companyName, action: d.decision.action, newSegment: w.newSegment };
+      }),
     });
-    if (outcome === 'held') touchHeld.push(row.id);
-  }
+    console.log(`ledger written: ${ledgerPath}`);
+  });
   const touched = toTouch.filter((d) => !touchHeld.includes(d.row.id));
   console.log(`held by admin, skipped: ${touchHeld.length}${touchHeld.length ? ` (${touchHeld.join(', ')})` : ''}`);
 
@@ -569,19 +625,6 @@ async function main() {
   }
   console.log('\nread-back after write:');
   console.log(JSON.stringify(readBack, null, 1));
-
-  const ledgerPath = `evidence/${new Date().toISOString().slice(0, 10)}-lane-c-item-02-s3b/applied.json`;
-  writeLedgerFile(ledgerPath, {
-    tool: 'repair-segment-provenance',
-    mode: 'apply',
-    generatedAt: new Date().toISOString(),
-    changes: touched.map((d) => ({ table: 'ipos', rowKey: d.row.id, field: 'segment', before: d.row.segment, after: d.decision.newSegment })),
-    appliedAt: new Date().toISOString(),
-    written: touched.length,
-    heldByAdminSkipped: touchHeld,
-    decisions: touched.map((d) => ({ id: d.row.id, companyName: d.row.companyName, action: d.decision.action, newSegment: d.decision.newSegment })),
-  });
-  console.log(`ledger written: ${ledgerPath}`);
 
   console.log('\nAPPLY complete.');
   console.log('='.repeat(80));

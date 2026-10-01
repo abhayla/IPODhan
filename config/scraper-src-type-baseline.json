@@ -121,11 +121,6 @@
   },
   {
     "file": "scraper/src/scripts/scrape-coolcaps.ts",
-    "code": "TS2345",
-    "message": "Argument of type '{ lastScrapedAt: Date; updatedAt: Date; companyName: string; offeringType: \"IPO\" | \"FPO\" | \"RIGHTS\" | \"OFS\" | \"IPP\" | \"QIP\" | \"PREFERENTIAL\" | \"NCD\" | \"BONDS\" | \"INVITS\" | \"REITS\" | \"BUYBACK\" | \"DELISTING\" | \"TENDER\"; ... 20 more ...; sourceKeys?: { ...; }[]; }' is not assignable to parameter of type '{ companyName?: string | SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>; slug?: string | SQL<unknown> | PgColumn<...>; ... 63 more ...; updatedAt?: Date | ... 1 more ... | PgColumn<...>; }'."
-  },
-  {
-    "file": "scraper/src/scripts/scrape-coolcaps.ts",
     "code": "TS2769",
     "message": "No overload matches this call."
   },

@@ -26,8 +26,8 @@
  * `IPORepository.mergeDuplicateInto` (section 2.3.3.3, OD-38, OD-92). The raw
  * `delete` this script used to run bypassed that.
  *
- * `--depollute reclass --apply` DOES write: it is a plain `update ipos set
- * offering_type = <derived>` for rows where a type is derivable (CORP_ACTION_BSE_*
+ * `--depollute reclass --apply` DOES write: it is a write through the plan-rebuild door (`offering_type =
+ * <derived>`) for rows where a type is derivable (CORP_ACTION_BSE_*
  * -> its mapped type, DEBT_ISSUER_BSE -> NCD). This is OUTSIDE the #1051 class (it
  * never merges or removes an `ipos` row — it corrects one mis-typed column on a row
  * that stays exactly where it is), and was refused by an earlier, over-broad round
@@ -42,6 +42,10 @@
  *   npx tsx scripts/audit/classify-suspect-ipos.ts --depollute reclass --apply [--allow-prod]  # writes offering_type
  */
 import { Client } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import * as schema from '@ipodhan/shared/db/schema';
+import { writeIposRebuildingPlanInTx } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import { loadPlanManifest } from '../../src/config/field-manifest-loader.js';
 import { writeFileSync } from 'fs';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { detectOfferingTypeFromBSEIRFlag } from '../../src/utils/detect-offering-type.js';
@@ -264,7 +268,7 @@ async function main() {
 
   if (!willApply) return;
 
-  // Reclass write: a plain `update ipos set offering_type = <derived>` on the exact rows just
+  // Reclass write: a plan-rebuilding offering_type write on the exact rows just
   // reported above. Outside the #1051 class (no merge, no row removed) — see file header. Own
   // prod guard, same convention as every repair tool: refuse --apply against "ipodhan" unless
   // --allow-prod was also passed.
@@ -282,9 +286,12 @@ async function main() {
         `--apply refused: connected to production database "${currentDb}" — pass --allow-prod to override.`
       );
     }
+    const wdb = drizzle(wc, { schema });
+    const manifest = loadPlanManifest();
     console.log(`\napplying ${targets.length} reclass updates against "${currentDb}"...`);
     for (const t of targets) {
-      await wc.query('update ipos set offering_type = $1 where id = $2', [t.reclassTo, t.id]);
+      // #1402 (spec §2.8): offering_type is a plan input; the write rebuilds the IPO's plan in the same transaction.
+      await wdb.transaction((tx) => writeIposRebuildingPlanInTx(tx as never, t.id, { offeringType: t.reclassTo as never }, manifest));
       console.log(`  APPLIED  ${t.name} (${t.id}) -> offering_type=${t.reclassTo}`);
     }
   } finally {

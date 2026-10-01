@@ -19,6 +19,8 @@
 import { db } from '@ipodhan/shared/db';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { inArray, eq } from 'drizzle-orm';
+import { writeIposRebuildingPlanInTx } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import { loadPlanManifest } from '../src/config/field-manifest-loader.js';
 
 const RECLASSIFY: Array<{ slug: string; to: 'INVITS' | 'REITS' }> = [
   { slug: 'cube-highways-trust', to: 'INVITS' },
@@ -46,7 +48,8 @@ async function main() {
       console.log(`SKIP ${slug} — already ${row.offeringType}, not IPO.`);
       continue;
     }
-    await db.update(ipos).set({ offeringType: to }).where(eq(ipos.id, row.id));
+    // #1402 (spec §2.8): an offering_type write rebuilds the IPO's plan in the same transaction.
+    await db.transaction((tx) => writeIposRebuildingPlanInTx(tx as never, row.id, { offeringType: to }, loadPlanManifest()));
     console.log(`RECLASSIFIED ${slug}: IPO -> ${to}`);
   }
 

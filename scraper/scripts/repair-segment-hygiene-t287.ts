@@ -65,7 +65,9 @@
 import { db, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { createFieldProtectionService } from '@ipodhan/shared/admin/field-protection-checker';
-import { and, eq, isNull, inArray } from 'drizzle-orm';
+import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
+import { writeIposRebuildingPlanInTx } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import { loadPlanManifest } from '../src/config/field-manifest-loader.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -167,16 +169,19 @@ async function main() {
 
   let written = 0;
   const failures: string[] = [];
+  // #1402 (spec §2.8): each segment write rebuilds the IPO's plan in the same transaction. The
+  // compare-and-set the old UPDATE ... WHERE expressed is kept: the row is locked and its segment
+  // re-read, and a row that no longer matches is reported as not applied (rowCount 0).
+  const manifest = loadPlanManifest();
   for (const t of allTargets) {
-    const result = await db
-      .update(schema.ipos)
-      .set({ segment: t.target as any })
-      .where(and(
-        eq(schema.ipos.id, t.id),
-        t.target === null
-          ? eq(schema.ipos.segment, 'MAINBOARD')
-          : isNull(schema.ipos.segment),
-      ));
+    const result = await db.transaction(async (tx) => {
+      const cur = await tx.execute(sql`SELECT segment FROM ipos WHERE id = ${t.id}::uuid FOR UPDATE`);
+      const row = cur.rows[0] as { segment: string | null } | undefined;
+      const matches = row !== undefined && (t.target === null ? row.segment === 'MAINBOARD' : row.segment === null);
+      if (!matches) return { rowCount: 0 };
+      await writeIposRebuildingPlanInTx(tx as never, t.id, { segment: t.target as any }, manifest);
+      return { rowCount: 1 };
+    });
 
     const error = checkUpdateApplied(result, { id: t.id, companyName: t.companyName, field: 'segment' });
     if (error) {

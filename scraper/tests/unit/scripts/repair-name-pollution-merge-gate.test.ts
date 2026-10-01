@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import ts from 'typescript';
 import { mergeLoser, MERGED_BY } from '../../../scripts/repair-name-pollution-and-redirects.js';
 
 /**
@@ -94,16 +95,46 @@ describe('#1051 source guards — no raw ipos delete remains in either tool', ()
     expect(src).toMatch(/mergeDuplicateInto\(/);
   });
 
-  it('classify-suspect-ipos.ts never deletes an ipos row; its only write is the reclass offering_type update', () => {
+  it('classify-suspect-ipos.ts never deletes an ipos row; its only write is the reclass offering_type write through the plan-rebuild door', () => {
     const src = readFileSync(resolve(scraperRoot, 'scripts/audit/classify-suspect-ipos.ts'), 'utf8');
-    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    expect(code).not.toMatch(RAW_IPOS_DELETE);
-    expect(code).not.toMatch(/\bdelete\s+from\s+ipos\b/i);
-    // #1051 finding 3: reclass mode is outside the class (no merge, no row removed) and is
-    // allowed to write — but ONLY offering_type, and only through this one update statement.
-    const updateMatches = code.match(/update\s+ipos\s+set\s+[a-z_]+\s*=/gi) ?? [];
-    expect(updateMatches.length).toBe(1);
-    expect(updateMatches[0].toLowerCase()).toContain('offering_type');
+    const v = inspectIposWrites(src);
+    // Fail closed: a query/execute whose SQL is not a literal cannot be read, so it is refused.
+    expect(v.unresolved).toEqual([]);
+    expect(v.rawSqlWrites).toEqual([]);
+    expect(v.builderWrites).toEqual([]);
+    // #1051 finding 3 + #1402 (spec §2.8): reclass mode is outside the #1051 class (no merge, no row
+    // removed) and is allowed to write ONLY offering_type, ONLY through the one write-and-rebuild door.
+    expect(v.doorCalls).toEqual([['offeringType']]);
+  });
+
+  it('the source guard itself fails on a raw write, a second door call, another column or an unreadable query', () => {
+    const imp = `import { writeIposRebuildingPlanInTx as w } from '@ipodhan/shared/services/plan-invalidating-rebuild';\n`;
+    const door = `await w(tx, id, { offeringType: t }, m);\n`;
+    expect(inspectIposWrites(imp + door).doorCalls).toEqual([['offeringType']]);
+    expect(inspectIposWrites(imp + door + `await wc.query('update ipos set offering_type = $1 where id = $2', [a, b]);`).rawSqlWrites).toHaveLength(1);
+    expect(inspectIposWrites(imp + door + 'await db.execute(sql`DELETE FROM ipos WHERE id = ${x}`);').rawSqlWrites).toHaveLength(1);
+    expect(inspectIposWrites(imp + door + `await db.update(schema.ipos).set({ segment: 'SME' });`).builderWrites).toHaveLength(1);
+    expect(inspectIposWrites(imp + door + door).doorCalls).toHaveLength(2);
+    expect(inspectIposWrites(imp + `await w(tx, id, { offeringType: t, segment: s }, m);`).doorCalls).toEqual([['offeringType', 'segment']]);
+    expect(inspectIposWrites(imp + `await w(tx, id, { ...set }, m);`).doorCalls).toEqual([['<unresolved>']]);
+    expect(inspectIposWrites(imp + `await wc.query(text, [a]);`).unresolved).toHaveLength(1);
+  });
+
+  it('fails closed: a same-named local function, a re-export or an import from another module is not the door', () => {
+    const local = `async function writeIposRebuildingPlanInTx(tx, id, set, m) {}
+await writeIposRebuildingPlanInTx(tx, id, { offeringType: t }, m);`;
+    const lv = inspectIposWrites(local);
+    expect(lv.doorCalls).toEqual([]);
+    expect(lv.unresolved).toHaveLength(1);
+    const reexport = `export { writeIposRebuildingPlanInTx } from '@ipodhan/shared/services/plan-invalidating-rebuild';`;
+    expect(inspectIposWrites(reexport).unresolved).toHaveLength(1);
+    const wrongModule = `import { writeIposRebuildingPlanInTx as w } from './my-wrapper';
+await w(tx, id, { offeringType: t }, m);`;
+    expect(inspectIposWrites(wrongModule).unresolved).toHaveLength(1);
+    const member = `await helpers.writeIposRebuildingPlanInTx(tx, id, { offeringType: t }, m);`;
+    const mv = inspectIposWrites(member);
+    expect(mv.doorCalls).toEqual([]);
+    expect(mv.unresolved).toHaveLength(1);
   });
 
   it('classify-suspect-ipos.ts refuses --apply for --depollute delete, and guards reclass --apply behind --allow-prod on prod', () => {
@@ -113,3 +144,89 @@ describe('#1051 source guards — no raw ipos delete remains in either tool', ()
     expect(src).toMatch(/allow-prod/);
   });
 });
+
+/**
+ * #1402: the `ipos` writes in a script, read with the TypeScript parser (comments are not code).
+ *  - rawSqlWrites: any string / template literal holding `update ipos`, `delete from ipos` or `insert into ipos`;
+ *  - builderWrites: `.update / .insert / .delete` on `ipos` (named or aliased, from the schema or a local const);
+ *  - doorCalls: per call of writeIposRebuildingPlanInTx (named by its import source, any alias), the
+ *    column keys of its `set` argument, or `<unresolved>` for a spread, a computed key or a non-literal set;
+ *  - unresolved: a `.query / .execute` whose SQL argument is not a literal (cannot be read: fails closed).
+ */
+function inspectIposWrites(src: string) {
+  const sf = ts.createSourceFile('x.ts', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const RAW = /\b(update|delete\s+from|insert\s+into)\s+ipos\b/i;
+  const DOOR_MODULE = /(^|\/)plan-invalidating-rebuild(\.js|\.ts)?$/;
+  const doorNames = new Set<string>();
+  const doorNamespaces = new Set<string>();
+  const iposAliases = new Set<string>(['ipos']);
+  const out = { rawSqlWrites: [] as string[], builderWrites: [] as string[], doorCalls: [] as string[][], unresolved: [] as string[] };
+  const at = (n: ts.Node) => `line ${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1}`;
+  const literalText = (n: ts.Node): string | null => {
+    if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text;
+    if (ts.isTemplateExpression(n)) return [n.head.text, ...n.templateSpans.map((x) => x.literal.text)].join(' ');
+    if (ts.isTaggedTemplateExpression(n)) return literalText(n.template);
+    return null;
+  };
+  const isIposRef = (n: ts.Node | undefined) =>
+    !!n && ((ts.isIdentifier(n) && iposAliases.has(n.text)) || (ts.isPropertyAccessExpression(n) && n.name.text === 'ipos'));
+
+  // Pass 1: imports and aliases.
+  const collect = (n: ts.Node) => {
+    if (ts.isImportDeclaration(n) && ts.isStringLiteral(n.moduleSpecifier)) {
+      const from = n.moduleSpecifier.text;
+      const b = n.importClause?.namedBindings;
+      if (b && ts.isNamespaceImport(b) && DOOR_MODULE.test(from)) doorNamespaces.add(b.name.text);
+      if (b && ts.isNamedImports(b)) {
+        for (const el of b.elements) {
+          const imported = (el.propertyName ?? el.name).text;
+          if (imported === 'writeIposRebuildingPlanInTx') {
+            if (DOOR_MODULE.test(from)) doorNames.add(el.name.text);
+            else out.unresolved.push(at(el));
+          }
+          if (imported === 'ipos') iposAliases.add(el.name.text);
+        }
+      }
+    }
+    if (ts.isExportDeclaration(n) && n.exportClause && ts.isNamedExports(n.exportClause)) {
+      for (const el of n.exportClause.elements) if ((el.propertyName ?? el.name).text === 'writeIposRebuildingPlanInTx') out.unresolved.push(at(el));
+    }
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer && isIposRef(n.initializer)) iposAliases.add(n.name.text);
+    ts.forEachChild(n, collect);
+  };
+  collect(sf);
+
+  // Pass 2: writes.
+  const visit = (n: ts.Node) => {
+    const text = literalText(n);
+    if (text !== null && !ts.isTaggedTemplateExpression(n.parent) && RAW.test(text)) out.rawSqlWrites.push(at(n));
+    if (ts.isCallExpression(n)) {
+      const callee = n.expression;
+      const name = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : null;
+      const isDoor =
+        (ts.isIdentifier(callee) && doorNames.has(callee.text)) ||
+        (ts.isPropertyAccessExpression(callee) && callee.name.text === 'writeIposRebuildingPlanInTx' &&
+          ts.isIdentifier(callee.expression) && doorNamespaces.has(callee.expression.text));
+      if (!isDoor && name === 'writeIposRebuildingPlanInTx') out.unresolved.push(at(n));
+      if (isDoor) {
+        const set = n.arguments[2];
+        const keys: string[] = [];
+        if (set && ts.isObjectLiteralExpression(set)) {
+          for (const p of set.properties) {
+            if ((ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))) keys.push(p.name.text);
+            else keys.push('<unresolved>');
+          }
+        } else keys.push('<unresolved>');
+        out.doorCalls.push(keys.sort());
+      } else if (ts.isPropertyAccessExpression(callee) && (name === 'query' || name === 'execute')) {
+        const a = n.arguments[0];
+        if (!a || literalText(a) === null) out.unresolved.push(at(n));
+      } else if (ts.isPropertyAccessExpression(callee) && (name === 'update' || name === 'insert' || name === 'delete') && isIposRef(n.arguments[0])) {
+        out.builderWrites.push(at(n));
+      }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}

@@ -2112,6 +2112,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
        * invalidated in this transaction. Missing on such a merge -> the merge is refused.
        */
       isRelaunchDocumentField?: (tableName: string, fieldName: string) => boolean;
+      /**
+       * #1402 (spec §2.8): the field manifest the survivor's plan is rebuilt from when the merge
+       * fills segment, offering_type or listing_exchanges. Missing on such a merge -> the merge is
+       * refused (it would leave the plan on the old type's ranks).
+       */
+      planManifest?: import('../services/plan-invalidating-rebuild').PlanManifest;
     }
   ): Promise<MergeDuplicateResult> {
     if (keepId === dropId) {
@@ -2538,12 +2544,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // #1298 (§2.9, OD-139): the OD-86 relaunch merge is a relaunch filing. On a POSTPONED survivor
       // the same invalidation as the OD-83 supersede runs here, in the merge transaction and BEFORE the carried values are written (clear, then refill) (admin values
       // per OD-120, non-admin document values and lists, the document plan reopened).
+      let childCapture: Awaited<ReturnType<typeof beginChildRowCapture>> | null = null;
       if (relaunchOfPostponed && supersededKeyIds.length > 0) {
         const { clearAdminValuesOnRelaunch } = await import('../services/relaunch-admin-clear');
         // OD-92 (#1298 round 2): everything the clear changes on the survivor's child rows (holds,
         // provenance, list rows, one-row child values, audit marks, plan and document-fetch rows) is
         // captured whole around it and logged, so the unmerge can put every one back.
-        const childCapture = await beginChildRowCapture(
+        childCapture = await beginChildRowCapture(
           tx,
           keepId,
           direct.filter((t) => t !== 'ipos' && t !== 'ipo_merge_log').map((t) => ({ table: t, col: reach.get(t)!.col }))
@@ -2555,7 +2562,6 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           [],
           opts.isRelaunchDocumentField!
         );
-        relaunchDelta = await childCapture.finish();
         // Refill: every `ipos` value the relaunch emptied takes the NEWER record's value when the
         // survivor is the older, postponed row (the newer row is the relaunch's own terms).
         if (relaunchCleared && olderIdForRelaunch === keepId) {
@@ -2576,12 +2582,50 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         }
       }
 
+      // #1402 (spec §2.8): a filled plan input (segment / offering_type / listing_exchanges) is written
+      // through the one write-and-rebuild door, so the survivor's plan is rebuilt in this transaction.
+      const { isPlanInvalidatingField, writeIposRebuildingPlanInTx } = await import('../services/plan-invalidating-rebuild');
+      const planInputSet: Record<string, unknown> = {};
       for (const p of patch) {
         const jsKey = columnToCamelCase(p.column);
-        await tx
-          .update(ipos)
-          .set({ [jsKey]: p.value, updatedAt: new Date() } as Partial<typeof ipos.$inferInsert>)
-          .where(eq(ipos.id, keepId));
+        if (isPlanInvalidatingField('ipos', jsKey)) planInputSet[jsKey] = p.value;
+      }
+      // A relaunch merge cleared plan inputs above without a rebuild; one the newer record does not
+      // refill stays empty, and the plan must still follow it (round 2, #1408).
+      for (const inv of relaunchCleared?.invalidated ?? []) {
+        if (inv.tableName === 'ipos' && inv.fieldName !== '*' && isPlanInvalidatingField('ipos', inv.fieldName) && !(inv.fieldName in planInputSet)) {
+          planInputSet[inv.fieldName] = null;
+        }
+      }
+      if (Object.keys(planInputSet).length > 0) {
+        // The plan was built from the survivor as it stood before this merge, not from the
+        // mid-transaction cleared row (a NULL segment ranks like MAINBOARD and hid an SME -> MAINBOARD
+        // change from the rebuild; round 2, #1408).
+        const keepBefore = keep as unknown as { segment: string | null; listingExchanges: string[] | null; offeringType: string | null };
+        await writeIposRebuildingPlanInTx(
+          tx as never,
+          keepId,
+          { ...planInputSet, updatedAt: sql`now()` },
+          opts.planManifest,
+          { segment: keepBefore.segment, listingExchanges: keepBefore.listingExchanges, offeringType: keepBefore.offeringType }
+        );
+      }
+      // OD-159: the relaunch capture closes AFTER the merge's own plan rebuild. The rebuild is part of
+      // this merge (same transaction), so its plan / queue rows are the "as the merge left it" state the
+      // unmerge drift check compares against, and the unmerge puts back the pre-clear rows. Closing it
+      // before the rebuild read the merge's own rebuild as a later change and refused every unmerge
+      // of a relaunch merge that refilled a plan input (#1408). It still closes before the carried
+      // provenance writes below, which OD-92 rules 1-2 restore on their own.
+      if (childCapture) relaunchDelta = await childCapture.finish();
+
+      for (const p of patch) {
+        const jsKey = columnToCamelCase(p.column);
+        if (!(jsKey in planInputSet)) {
+          await tx
+            .update(ipos)
+            .set({ [jsKey]: p.value, updatedAt: new Date() } as Partial<typeof ipos.$inferInsert>)
+            .where(eq(ipos.id, keepId));
+        }
 
         const previousSource = keepProv.get(jsKey) ?? null;
         const keepValueBefore = (keep as unknown as Record<string, unknown>)[jsKey];
@@ -2735,7 +2779,18 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    */
   async unmergeDuplicate(
     mergeId: string,
-    opts: { apply: boolean; allowProd?: boolean; partial?: boolean; forceFields?: string[]; unmergedBy?: string }
+    opts: {
+      apply: boolean;
+      allowProd?: boolean;
+      partial?: boolean;
+      forceFields?: string[];
+      unmergedBy?: string;
+      /**
+       * #1402 (spec §2.8): the manifest the survivor's plan is rebuilt from when the unmerge restores
+       * segment, offering_type or listing_exchanges. Missing on such an unmerge -> it is refused.
+       */
+      planManifest?: import('../services/plan-invalidating-rebuild').PlanManifest;
+    }
   ): Promise<UnmergeResult> {
     if (opts.apply) {
       const r = await this.db.execute(sql`select current_database()`);
@@ -2978,12 +3033,21 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             sql` and `
           );
           const setPk = pkByTable.get(set.table) ?? ['id'];
+          // A row the merge inserted is deleted by step 5 before anything is re-inserted, so it cannot
+          // block a restore (the merge's plan rebuild re-plants rows under the same unique key, #1408).
+          const removedFirst = deltaParts
+            .filter((d) => d.table === set.table)
+            .map(
+              (d) => sql` and not exists (select 1 from jsonb_array_elements(${d.ins}) x
+                          where ${pkIdentitySql(sql`x`, d.pk)} = ${pkIdentitySql(sql`to_jsonb(t.*)`, d.pk)})`
+            );
           const clash = rows<{ id: string }>(
             await tx.execute(sql`
               select distinct ${pkIdentitySql(sql`to_jsonb(t.*)`, setPk)} as id
               from jsonb_populate_recordset(null::${sql.identifier(set.table)}, ${set.rowsExpr}) r
               join ${sql.identifier(set.table)} t on ${match}
               where ${pkIdentitySql(sql`to_jsonb(t.*)`, setPk)} is distinct from ${pkIdentitySql(sql`to_jsonb(r.*)`, setPk)}
+              ${sql.join(removedFirst, sql``)}
             `)
           );
           for (const c of clash) collisions.push(`refused: ${set.table} ${u.name} collides with survivor row ${c.id}`);
@@ -3168,10 +3232,15 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         : false;
       const restoreCols = [...patchFields, ...(untouchedSinceMerge ? ['updated_at'] : [])];
       if (restoreCols.length) {
-        await tx
-          .update(ipos)
-          .set(fromLogged(keepBeforeExpr, (n) => restoreCols.includes(n)) as never)
-          .where(eq(ipos.id, keepId));
+        // #1402 (spec §2.8): restoring segment / offering_type / listing_exchanges goes through the
+        // one write-and-rebuild door, so the survivor's plan follows the restored type (round 2).
+        const { writeIposRebuildingPlanInTx } = await import('../services/plan-invalidating-rebuild');
+        await writeIposRebuildingPlanInTx(
+          tx as never,
+          keepId,
+          fromLogged(keepBeforeExpr, (n) => restoreCols.includes(n)),
+          opts.planManifest
+        );
         await exactOrThrow(keepId, keepBeforeExpr, restoreCols, 'the survivor');
       }
       // 8. the merge's redirect goes, so the dropped slug serves its own row again

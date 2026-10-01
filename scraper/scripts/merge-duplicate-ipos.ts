@@ -49,6 +49,7 @@ import { sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import { normalizeCompanyNameForMatching } from '../src/services/data-persister.js';
 import { levenshteinSimilarity } from '@ipodhan/shared/utils/company-name-similarity';
+import { loadPlanManifest } from '../src/config/field-manifest-loader.js';
 
 const APPLY = process.argv.includes('--apply');
 const FUZZY_THRESHOLD = 0.85;
@@ -265,6 +266,7 @@ export interface MergeDuplicateIntoRepo {
       allowProd?: boolean;
       mergedBy?: string;
       isRelaunchDocumentField?: (tableName: string, fieldName: string) => boolean;
+      planManifest?: import('@ipodhan/shared/services/plan-invalidating-rebuild').PlanManifest;
     }
   ): Promise<unknown>;
 }
@@ -284,6 +286,8 @@ export async function applyMerges(
 ): Promise<void> {
   for (const { keep, dup } of merges) {
     await repo.mergeDuplicateInto(keep, dup, {
+      // #1402: a merge that fills a plan input rebuilds the survivor's plan (spec §2.8).
+      planManifest: loadPlanManifest(),
       apply: true,
       // #1298: an OD-86 relaunch merge of a POSTPONED IPO invalidates the old document values (§2.9).
       isRelaunchDocumentField: (await import('../src/services/relaunch-clear.js')).isRelaunchDocumentField,
