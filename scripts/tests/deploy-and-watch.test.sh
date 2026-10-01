@@ -4,6 +4,8 @@
 # depend on session idleness). Uses a fake `gh` shim on PATH so no real
 # GitHub Actions run is touched. Run: bash scripts/tests/deploy-and-watch.test.sh
 set -uo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hermetic-git.sh"
+hermetic_git_env
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -17,7 +19,9 @@ fresh_dir() { mktemp -d; }
 
 # --- fake git repo with a release/prod-<date> branch at a known sha --------
 GIT_REPO="$(fresh_dir)"
+assert_hermetic_repo "$GIT_REPO"
 git -C "$GIT_REPO" init -q -b main
+assert_hermetic_repo "$GIT_REPO"
 git -C "$GIT_REPO" config user.email test@example.com
 git -C "$GIT_REPO" config user.name test
 echo one > "$GIT_REPO/a.txt"

@@ -611,6 +611,19 @@ jobs:
             scripts/tests/plan-rank2-never-bse-for-issue-size-invariant.test.mjs \
             scripts/tests/require-repair-tool-module.test.mjs
 
+      - name: "Local PR gate drift guard (#1037, run-discipline B3)"
+        # scripts/ci/local-pr-gate.mjs reads THIS file and runs its steps on a
+        # developer machine before a push. The test fails when this workflow
+        # gains a step the local gate can neither run verbatim nor finds
+        # classified (setup / CI-only / heavy). Needs the yaml package (npm ci).
+        run: node --test scripts/tests/local-pr-gate.test.mjs
+
+      - name: "Hermetic fixture-git guard self-test (#1063)"
+        # Removing or weakening scripts/tests/lib/hermetic-git.{mjs,sh} turns
+        # this red: empty, '.', relative, host-root and in-repo dirs must be
+        # refused, and an exported GIT_DIR must be refused.
+        run: node --test scripts/tests/hermetic-git.test.mjs
+
       - name: "build-card Status gate self-test (#1181, own step: it plants card fixtures in the real tree)"
         # Wired after #1174 found 3 cases red on the runner: they drive the real gate on the
         # real tree, whose PARTIAL cards need `gh`, and CI=true forbids the offline skip. The

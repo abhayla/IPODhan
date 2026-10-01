@@ -7,6 +7,8 @@
 # The "secret" values below are invented for this test and were never real.
 
 set -uo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hermetic-git.sh"
+hermetic_git_env
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCANNER="$SCRIPT_DIR/../check-staged-secrets.js"
@@ -14,7 +16,9 @@ FAILED=0
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+assert_hermetic_repo "$TMP"
 git -C "$TMP" init --quiet
+assert_hermetic_repo "$TMP"
 git -C "$TMP" config user.email t216@test.local
 git -C "$TMP" config user.name t216-test
 git -C "$TMP" config core.autocrlf false

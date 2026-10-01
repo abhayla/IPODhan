@@ -8,6 +8,9 @@
 # Run: bash scripts/deploy/tests/require-release-branch.test.sh
 
 set -uo pipefail
+# A pre-push hook exports GIT_DIR; drop it so fixture git never hits the real repo (#1037).
+. "$(dirname "${BASH_SOURCE[0]}")/../../tests/lib/hermetic-git.sh"
+hermetic_git_env
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GATE_SCRIPT="$SCRIPT_DIR/../require-release-branch.sh"
@@ -18,8 +21,10 @@ fail() { echo "FAIL: $1"; FAILED=1; }
 
 REPO="$(mktemp -d)"
 (
+  assert_hermetic_repo "$REPO"
   cd "$REPO" || exit 1
   git init -q -b main .
+  assert_hermetic_repo "$REPO"
   git config user.email "test@example.com"
   git config user.name "Test"
   echo "one" > file.txt

@@ -11,6 +11,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { collectMergedNotDeployed, latestProdTag, formatBrief } from '../ops/merged-not-deployed.mjs';
+import { scrubGitEnv, assertHermeticRepo } from './lib/hermetic-git.mjs';
+
+// A pre-push hook exports GIT_DIR; drop it so fixture git never hits the real repo (#1037).
+scrubGitEnv();
 
 function git(repo, args) {
   return execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim();
@@ -29,7 +33,9 @@ function commit(repo, message, isoDate) {
 
 function withFixtureRepo(fn) {
   const repo = mkdtempSync(join(tmpdir(), 'merged-not-deployed-fixture-'));
+  assertHermeticRepo(repo);
   git(repo, ['init', '-q']);
+  assertHermeticRepo(repo);
   git(repo, ['config', 'user.email', 'test@example.com']);
   git(repo, ['config', 'user.name', 'Test']);
   try {

@@ -6,6 +6,9 @@
 # Run: bash scripts/tests/deploy-config.test.sh
 
 set -uo pipefail
+# A pre-push hook exports GIT_DIR; drop it so fixture git never hits the real repo (#1037).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hermetic-git.sh"
+hermetic_git_env
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_CONFIG="$SCRIPT_DIR/../ops/deploy-config.sh"
@@ -49,8 +52,10 @@ build_fixture_repo() {
   local repo
   repo="$(fresh_dir)"
   (
-    cd "$repo"
+    assert_hermetic_repo "$repo"
+    cd "$repo" || exit 1
     git init -q
+    assert_hermetic_repo "$repo"
     git config user.email "test@example.com"
     git config user.name "Test"
     # F6 (#752): deploy-config.sh now asserts the resolved repo's origin
@@ -76,7 +81,7 @@ build_fixture_repo() {
 commit_v2_on_main() {
   local repo="$1" sha
   (
-    cd "$repo"
+    cd "$repo" || exit 1
     echo '{"version":2,"fields":{}}' > scraper/config/field-manifest.json
     git add -A
     git commit -q -m "v2 manifest"
@@ -92,7 +97,7 @@ commit_unmerged() {
   local repo="$1" sha base
   base="$(cd "$repo" && git rev-parse HEAD)"
   (
-    cd "$repo"
+    cd "$repo" || exit 1
     git checkout -q -b unmerged-branch
     echo '{"version":99,"fields":{}}' > scraper/config/field-manifest.json
     git add -A
@@ -245,8 +250,10 @@ run_deploy() {
   # by committing a manifestless initial state on a fresh repo.
   REPO2="$(fresh_dir)"
   (
-    cd "$REPO2"
+    assert_hermetic_repo "$REPO2"
+    cd "$REPO2" || exit 1
     git init -q
+    assert_hermetic_repo "$REPO2"
     git config user.email "test@example.com"
     git config user.name "Test"
     git remote add origin "https://github.com/abhayla/IPODhan.git"

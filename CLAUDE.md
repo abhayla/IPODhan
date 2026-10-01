@@ -260,6 +260,10 @@ export async function GET(request: NextRequest) {
   `.claude/skills/windows-deployment-expert/` describe that retired path — read them as history.
 - **Commit gate (husky pre-commit):** staged-secret scan → workflow-file ASCII check → lint-staged
   (`tsc --noEmit` on `web/**` only). Nothing type-checks `scraper/` or `packages/shared/` at commit time.
+- **Local PR gate (`npm run gate:local`, run-discipline B3):** runs `pr-gate.yml`'s own steps, read from the
+  workflow, for the trees the branch touched (merge-base with `origin/main`..HEAD); DB/service steps are printed as
+  CI-only, `next build` only with `--full`. Re-run one failure: `--only <regex>`. Optional pre-push hook, off by
+  default: `git config ipodhan.localGate true` (skip once: `LOCAL_PR_GATE_SKIP=1 git push`).
 - **Shared package must be compiled before web/scraper builds:** `cd packages/shared && npx tsc` — CI verifies `dist/db/schema.d.ts` exists. If types from `@ipodhan/shared` seem stale locally, rebuild it.
 
 ---

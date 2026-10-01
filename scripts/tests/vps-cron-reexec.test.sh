@@ -29,6 +29,8 @@
 # Usage: bash scripts/tests/vps-cron-reexec.test.sh
 
 set -uo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hermetic-git.sh"
+hermetic_git_env
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SOURCE_SCRIPT="$REPO_ROOT/scripts/vps-data-audit-cron.sh"
@@ -48,9 +50,11 @@ git config --global user.name  >/dev/null 2>&1 || git config --global user.name 
 # --- build a bare origin + a clone, both seeded with the OLD script version ---
 ORIGIN="$TMP/origin.git"
 CLONE="$TMP/clone"
+assert_hermetic_repo "$TMP"
 git init -q --bare -b main "$ORIGIN"
 git -C "$ORIGIN" config core.autocrlf false
 git clone -q "$ORIGIN" "$CLONE"
+assert_hermetic_repo "$CLONE"
 git -C "$CLONE" config core.autocrlf false
 ( cd "$CLONE" && git checkout -q -b main 2>/dev/null || git checkout -q main )
 

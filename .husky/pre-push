@@ -1,0 +1,41 @@
+# OPTIONAL local PR gate (run-discipline B3, #1037). OFF by default: it runs
+# .github/workflows/pr-gate.yml's own steps for the touched trees, which can
+# take minutes, so it changes every push and is not mandatory without the
+# owner's say-so. Turn it on for this clone:   git config ipodhan.localGate true
+# Run it by hand any time:                      npm run gate:local
+# Exit codes: 0 green, 1 a step failed, 2 no merge-base or origin/main's pr-gate.yml unreadable, 3 REFUSED (pr-gate.yml
+# has a command or condition the gate cannot classify). A crash of the gate
+# itself also exits non-zero and BLOCKS the push, loudly, with the Node error:
+# deliberate, because a gate that failed open would pass unchecked pushes
+# silently. Bypass once: LOCAL_PR_GATE_SKIP=1 git push.
+[ "$(git config --get ipodhan.localGate 2>/dev/null)" = "true" ] || exit 0
+# A checkout without the script (an old branch, a partial worktree) must not
+# block the push: a hook exits 0 on a missing file (run-discipline D1).
+[ -f scripts/ci/local-pr-gate.mjs ] || exit 0
+
+if [ "${LOCAL_PR_GATE_SKIP:-0}" = "1" ]; then
+  echo "local-pr-gate: SKIPPED (LOCAL_PR_GATE_SKIP=1). This push was NOT checked locally." >&2
+  exit 0
+fi
+echo "local-pr-gate: running (skip once: LOCAL_PR_GATE_SKIP=1 git push; turn off: git config --unset ipodhan.localGate)"
+
+# git exports GIT_DIR into hooks; from a linked worktree it points at
+# .git/worktrees/<name> and wins over cd / git -C in any fixture test (#1037).
+for v in $(git rev-parse --local-env-vars); do unset "$v"; done
+
+# The steps run on THIS working tree, so it must be what the push sends.
+head="$(git rev-parse HEAD)"
+while read -r lref lsha rref rsha; do
+  [ -z "${lref:-}" ] && continue
+  case "$lsha" in *[!0]*) ;; *) continue ;; esac          # delete
+  case "$lref$rref" in *refs/tags/*) continue ;; esac     # tag
+  if [ "$lsha" != "$head" ]; then
+    echo "local-pr-gate: REFUSED - $lref (${lsha%"${lsha#????????}"}) is not the checked-out commit; check it out to push it, or LOCAL_PR_GATE_SKIP=1 git push." >&2
+    exit 1
+  fi
+done
+if ! git diff --quiet HEAD --; then
+  echo "local-pr-gate: REFUSED - tracked files have uncommitted changes, so this tree is not what you push. Commit first, or LOCAL_PR_GATE_SKIP=1 git push." >&2
+  exit 1
+fi
+node scripts/ci/local-pr-gate.mjs
