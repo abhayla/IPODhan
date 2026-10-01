@@ -1113,6 +1113,32 @@ export function anchorMaxSpawnsPerCycle(): number {
 export const W45_REFUSAL_MARKER = 'w45_disagreement';
 const W45_PAIR_TYPES = ['PRICE_BAND_AD', 'RHP'] as const;
 
+type W45PairDoc = { id: string; type?: string | null; sha256?: string | null; extractionStatus?: string | null; extractionError?: string | null };
+
+/**
+ * OD-155 round 2: the members of a W-45-refused pair that has an arrival event. `changed` = refused
+ * documents whose bytes differ from the sha they were refused at; `counterparts` = the other refused
+ * documents of the pair (readmitted only so the pair can be read together). Both empty with no event.
+ */
+export function w45PairGroup(docs: W45PairDoc[]): { changed: Set<string>; counterparts: Set<string> } {
+  const refused = docs.filter(
+    (d) => d.extractionStatus === 'FAILED' && !!d.extractionError && d.extractionError.startsWith(W45_REFUSAL_MARKER) && (W45_PAIR_TYPES as readonly string[]).includes(String(d.type ?? '').toUpperCase())
+  );
+  const changed = new Set<string>();
+  const changedTypes = new Set<string>();
+  for (const d of refused) {
+    const failedSha = parseFailedSha(d.extractionError);
+    if (failedSha && d.sha256 && d.sha256.slice(0, 16) !== failedSha) {
+      changed.add(d.id);
+      changedTypes.add(String(d.type).toUpperCase());
+    }
+  }
+  const counterparts = new Set<string>();
+  if (changedTypes.size === 0) return { changed, counterparts };
+  for (const d of refused) if (!changedTypes.has(String(d.type).toUpperCase())) counterparts.add(d.id);
+  return { changed, counterparts };
+}
+
 /**
  * OD-155: a W-45-refused pair (price band ad + RHP that disagree about one restated figure, neither
  * series written) is re-read as a PAIR when EITHER file changes. A refused document whose bytes
@@ -1123,23 +1149,9 @@ const W45_PAIR_TYPES = ['PRICE_BAND_AD', 'RHP'] as const;
  * a second pass with no change returns nothing.
  */
 export function w45PairReadmissions(
-  docs: Array<{ id: string; type?: string | null; sha256?: string | null; extractionStatus?: string | null; extractionError?: string | null }>
+  docs: W45PairDoc[]
 ): Set<string> {
-  const refused = docs.filter(
-    (d) => d.extractionStatus === 'FAILED' && !!d.extractionError && d.extractionError.startsWith(W45_REFUSAL_MARKER) && (W45_PAIR_TYPES as readonly string[]).includes(String(d.type ?? '').toUpperCase())
-  );
-  const changedTypes = new Set<string>();
-  for (const d of refused) {
-    const failedSha = parseFailedSha(d.extractionError);
-    if (failedSha && d.sha256 && d.sha256.slice(0, 16) !== failedSha) changedTypes.add(String(d.type).toUpperCase());
-  }
-  const ids = new Set<string>();
-  if (changedTypes.size === 0) return ids;
-  for (const d of refused) {
-    const t = String(d.type).toUpperCase();
-    if (!changedTypes.has(t)) ids.add(d.id);
-  }
-  return ids;
+  return w45PairGroup(docs).counterparts;
 }
 
 /**
@@ -2418,6 +2430,28 @@ export async function processPendingFilings(
   // not just budgeted to zero later — so `anchorsConsidered` also reads 0 on
   // a repeat call, instead of re-reporting the same pending anchor as
   // "considered" on every one of this IPO's calls this cycle.
+  // OD-155 round 2: a W-45 pair is read BOTH or NEITHER. A counterpart readmitted on the changed side's
+  // bytes is only safe if the changed side is extracted in the same run (else the lone old file is
+  // persisted unchecked and the pair can never be re-checked). Keep the pair together here, and
+  // again after the spawn-budget slice and after extraction.
+  const pairGroupIds = (() => {
+    const g = w45PairGroup(docs);
+    return new Set([...g.changed, ...g.counterparts]);
+  })();
+  const pairChangedIds = w45PairGroup(docs).changed;
+  const pairMembersIn = (list: CandidateDocument[]) => list.filter((d) => pairGroupIds.has(d.id));
+  const pairComplete = (list: CandidateDocument[]) => {
+    const m = pairMembersIn(list);
+    return m.some((d) => d.type === 'PRICE_BAND_AD') && m.some((d) => d.type === 'RHP');
+  };
+  if (pairMembersIn(filingPending).length > 0 && !pairComplete(filingPending)) {
+    for (let i = filingPending.length - 1; i >= 0; i--) {
+      if (pairGroupIds.has(filingPending[i].id)) {
+        result.skipped = [...result.skipped, `${filingPending[i].type}: W-45 pair partner not readable this run — pair held together (OD-155)`];
+        filingPending.splice(i, 1);
+      }
+    }
+  }
   const anchorPending = deps.skipAnchorPass
     ? []
     : pending.filter((d) => d.type === ANCHOR_DOC_TYPE && notAlreadyAttempted(d));
@@ -2456,6 +2490,11 @@ export async function processPendingFilings(
     }
   }
 
+  if (pairMembersIn(filingBudgeted).length > 0 && !pairComplete(filingBudgeted)) {
+    filingBudgeted = filingBudgeted.filter((d) => !pairGroupIds.has(d.id));
+    result.skipped = [...result.skipped, 'W-45 pair not fully inside the spawn budget — both left PENDING (OD-155)'];
+  }
+
   // W-168: the anchor report's OWN budget, never the filing one above.
   let anchorBudgeted = anchorPending;
   if (deps.anchorSpawnBudget) {
@@ -2476,6 +2515,7 @@ export async function processPendingFilings(
   const stateIdByDocType = new Map(states.map((s) => [s.docType, s.id]));
   const sme = String(ipo.segment ?? '').toUpperCase() === 'SME';
   const extractions: Array<{ doc: CandidateDocument; extraction: FilingExtraction }> = [];
+  const pairPrior = new Map<string, { status: ExtractionStatus; error: string | null; retryCount: number; updatedAt: Date | null }>();
 
   // W-129 review: the same issue size backs every document extracted for this
   // IPO this call, so it is resolved ONCE here rather than per document. The
@@ -2652,6 +2692,9 @@ export async function processPendingFilings(
     // value when the busy-revert branch below reads it. A row revived from
     // MANUAL_REVIEW must go back to MANUAL_REVIEW on a busy box, not PENDING.
     const previousStatus = (doc.extractionStatus as ExtractionStatus | null) ?? 'PENDING';
+    if (pairGroupIds.has(doc.id)) {
+      pairPrior.set(doc.id, { status: previousStatus, error: doc.extractionError ?? null, retryCount: doc.retryCount ?? 0, updatedAt: doc.updatedAt ?? null });
+    }
     // Round 3 (MAJOR-1): the document's own `updatedAt` BEFORE this attempt's
     // IN_PROGRESS stamp — restored verbatim on a busy revert (below) so the
     // backoff gate (`documentExtractionBlocked`, anchored on `updatedAt`)
@@ -2767,7 +2810,7 @@ export async function processPendingFilings(
       // retry COULD fix; a retry never supplies the password). #959 (the
       // extraction-failure timer, now removed) is not needed here —
       // this document simply never re-enters that timer.
-      const classified = run.passwordProtected
+      let classified = run.passwordProtected
         ? { status: 'MANUAL_REVIEW' as const, error: withBlockedVersion(`extractor: ${run.error}`, version) }
         : classifyFailure(
             newRetryCount,
@@ -2786,6 +2829,12 @@ export async function processPendingFilings(
               logContext: { ipoId: ipo.id, documentId: doc.id, docType },
             }
           );
+      // OD-155 round 2: the changed side of a readmitted W-45 pair failed to extract, so its partner is
+      // not persisted unchecked (below). Re-tag it as a W-45 hold at its current bytes so the next
+      // byte change on either side re-pairs them.
+      if (pairChangedIds.has(doc.id) && classified.status === 'FAILED' && !classified.error.startsWith(W45_REFUSAL_MARKER)) {
+        classified = { ...classified, error: `${W45_REFUSAL_MARKER}: pair partner unread — ${classified.error}` } as typeof classified;
+      }
       const blocked = classified.status === 'MANUAL_REVIEW';
       logger.error(
         {
@@ -2860,6 +2909,36 @@ export async function processPendingFilings(
         version,
       })
     );
+  }
+
+  // OD-155 round 2: a pair member whose partner was not extracted this run (deadline, box busy,
+  // extractor failure) is NEVER persisted alone. It goes back to its pre-attempt state, so a later
+  // byte change on either side re-pairs them.
+  {
+    const inRun = pendingForThisCall.filter((d) => pairGroupIds.has(d.id));
+    const survivors = extractions.filter((e) => pairGroupIds.has(e.doc.id));
+    if (survivors.length > 0 && survivors.length < inRun.length) {
+      for (const { doc } of survivors) {
+        const prior = pairPrior.get(doc.id);
+        if (prior) {
+          await deps
+            .setDocumentExtractionState({
+              documentId: doc.id,
+              status: prior.status,
+              retryCount: prior.retryCount,
+              ...(prior.updatedAt ? { updatedAt: prior.updatedAt } : {}),
+              error: prior.error as string,
+            })
+            .catch(logStatusWriteFailure(doc.id, prior.status));
+          doc.extractionError = prior.error;
+          doc.retryCount = prior.retryCount;
+        }
+        const at = extractions.findIndex((e) => e.doc.id === doc.id);
+        if (at >= 0) extractions.splice(at, 1);
+        result.extracted--;
+        result.skipped = [...result.skipped, `${doc.type}: W-45 pair partner not extracted this run — not persisted alone (OD-155)`];
+      }
+    }
   }
 
   if (extractions.length === 0) {

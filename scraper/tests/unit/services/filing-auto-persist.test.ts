@@ -83,6 +83,8 @@ import {
   EXTRACTOR_MEMORY_CEILING_EXIT,
   HARD_FAILURE_MARKER,
   withFailedVersion,
+  classifyFailure,
+  w45PairGroup,
   parseHardFailureCount,
   markHardFailure,
   isMemoryAbortStderr,
@@ -2936,5 +2938,84 @@ describe('processPendingFilings — relaunchClearBeforePersist runs before persi
     const r = await processPendingFilings(IPO, d);
     expect(d.persistFiling).not.toHaveBeenCalled();
     expect(r.failed).toBe(1);
+  });
+});
+
+// ------------------------------------------------ OD-155 round 2: a W-45 pair is read both or neither
+
+describe('OD-155 round 2 — a readmitted W-45 pair is never persisted with one side missing', () => {
+  const sha = (c: string) => c.repeat(64);
+  const tag = (at: string) => classifyFailure(0, EXTRACTOR_VERSION, 'w45_disagreement: price band 100 vs 120', { sha256: sha(at) }).error;
+  // AD has NEW bytes ('c'), refused at 'a'; the RHP is the unchanged counterpart refused at 'b'.
+  const refusedPair = () => [
+    doc({ id: 'doc-ad', type: 'PRICE_BAND_AD', sha256: sha('c'), extractionStatus: 'FAILED', retryCount: 1, extractionError: tag('a') }),
+    doc({ id: 'doc-rhp', type: 'RHP', sha256: sha('b'), extractionStatus: 'FAILED', retryCount: 1, extractionError: tag('b') }),
+  ];
+  const pairDeps = (over: Partial<AutoPersistDeps> = {}) =>
+    deps({
+      loadDocuments: vi.fn(async () => refusedPair()),
+      loadStates: vi.fn(async () => []),
+      ...over,
+    });
+  const writesFor = (d: AutoPersistDeps, id: string) =>
+    (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as { documentId: string; status: string; error?: string }).filter((w) => w.documentId === id);
+
+  it('happy path: both sides are extracted in the same run and persisted together', async () => {
+    const d = pairDeps();
+    const result = await processPendingFilings(IPO, d);
+    expect(d.runExtractor).toHaveBeenCalledTimes(2);
+    expect(result.persisted).toBe(2);
+    expect(d.persistFiling).toHaveBeenCalledTimes(2);
+  });
+
+  it('one side cut by the spawn budget: NEITHER is extracted or persisted', async () => {
+    const d = pairDeps({ spawnBudget: { remaining: 1 } });
+    const result = await processPendingFilings(IPO, d);
+    expect(d.runExtractor).not.toHaveBeenCalled();
+    expect(d.persistFiling).not.toHaveBeenCalled();
+    expect(d.setDocumentExtractionState).not.toHaveBeenCalled();
+    expect(result.persisted).toBe(0);
+  });
+
+  it('the changed side fails extraction: the counterpart is restored to its W-45 hold, not persisted unchecked', async () => {
+    const d = pairDeps({
+      runExtractor: vi.fn(({ docType }) => (docType === 'PRICE_BAND_AD' ? { ok: false as const, error: 'extractor exited 1: boom' } : { ok: true as const, extraction: extraction() })),
+    });
+    const result = await processPendingFilings(IPO, d);
+    expect(d.persistFiling).not.toHaveBeenCalled();
+    expect(result.persisted).toBe(0);
+    const rhp = writesFor(d, 'doc-rhp');
+    expect(rhp[rhp.length - 1]).toMatchObject({ status: 'FAILED', error: tag('b') });
+    // the failed changed side is re-tagged as a W-45 hold at its current bytes so a later byte change re-pairs
+    const ad = writesFor(d, 'doc-ad');
+    expect(ad[ad.length - 1].status).toBe('FAILED');
+    expect(ad[ad.length - 1].error).toMatch(/^w45_disagreement:/);
+  });
+
+  it('the counterpart fails extraction: the changed side is restored (still re-admittable), not persisted unchecked', async () => {
+    const d = pairDeps({
+      runExtractor: vi.fn(({ docType }) => (docType === 'RHP' ? { ok: false as const, error: 'extractor exited 1: boom' } : { ok: true as const, extraction: extraction() })),
+    });
+    await processPendingFilings(IPO, d);
+    expect(d.persistFiling).not.toHaveBeenCalled();
+    const ad = writesFor(d, 'doc-ad');
+    expect(ad[ad.length - 1]).toMatchObject({ status: 'FAILED', error: tag('a') });
+  });
+
+  it('the changed side is readable but its partner has no stored file: the lone file is held, not persisted', async () => {
+    const d = pairDeps({ fileExists: (p: string) => !p.includes('bbbbbbbb') });
+    await processPendingFilings(IPO, d);
+    expect(d.runExtractor).not.toHaveBeenCalled();
+    expect(d.persistFiling).not.toHaveBeenCalled();
+  });
+
+  it('a refusal with no failed-at sha (null failedSha) readmits nothing', () => {
+    const untagged = [
+      doc({ id: 'doc-ad', type: 'PRICE_BAND_AD', sha256: sha('c'), extractionStatus: 'FAILED', extractionError: 'w45_disagreement: price band 100 vs 120' }),
+      doc({ id: 'doc-rhp', type: 'RHP', sha256: sha('b'), extractionStatus: 'FAILED', extractionError: 'w45_disagreement: price band 100 vs 120' }),
+    ];
+    const g = w45PairGroup(untagged);
+    expect(g.changed.size).toBe(0);
+    expect(g.counterparts.size).toBe(0);
   });
 });
