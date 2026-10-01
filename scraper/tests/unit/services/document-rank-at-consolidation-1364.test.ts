@@ -115,10 +115,22 @@ describe('#1364: the upsertIPO path ranks documents by type, not write time', ()
     expect(r.consolidatedData.registrar).toBe('KFin Technologies');
   });
 
-  it('non-price field where the two spec orders disagree (PROSPECTUS vs RHP): the stored value is kept (fail closed)', async () => {
+  it('OD-154: a non-price field stored from an RHP IS replaced by a disagreeing PROSPECTUS value (post-issue order)', async () => {
+    vi.mocked(fieldSources.findByIPOId).mockResolvedValue([storedDoc('registrar', 'KFin Technologies', 'RHP', 'rhp-1')] as never);
+    const r = await service.consolidateIPOData(fromUpsert('registrar', 'Bigshare Services', 'PROSPECTUS', 'pro-1') as never);
+    expect(r.consolidatedData.registrar).toBe('Bigshare Services');
+  });
+
+  it('OD-154: a non-price field stored from a PROSPECTUS is kept against a later RHP value', async () => {
     vi.mocked(fieldSources.findByIPOId).mockResolvedValue([storedDoc('registrar', 'KFin Technologies', 'PROSPECTUS', 'pro-1')] as never);
     const r = await service.consolidateIPOData(fromUpsert('registrar', 'Bigshare Services', 'RHP', 'rhp-1') as never);
     expect(r.consolidatedData.registrar).toBe('KFin Technologies');
+  });
+
+  it('OD-154: a price field keeps PRICE_BAND_AD first even against a PROSPECTUS value', async () => {
+    vi.mocked(fieldSources.findByIPOId).mockResolvedValue([storedDoc('priceRangeMax', '112', 'PRICE_BAND_AD', 'ad-1')] as never);
+    const r = await service.consolidateIPOData(fromUpsert('priceRangeMax', 105, 'PROSPECTUS', 'pro-1') as never);
+    expect(Number(r.consolidatedData.priceRangeMax)).toBe(112);
   });
 });
 
@@ -134,9 +146,9 @@ describe('#1364: compareDocumentsForField, the one comparator', () => {
     // [order, stored, incoming, expected]
     ['PRICE', { docType: 'PRICE_BAND_AD' }, { docType: 'PROSPECTUS' }, false],
     ['PRICE', { docType: 'RHP' }, { docType: 'PRICE_BAND_AD' }, true],
-    ['UNDECIDED', { docType: 'RHP' }, { docType: 'PROSPECTUS' }, false],
-    ['UNDECIDED', { docType: 'DRHP' }, { docType: 'RHP' }, true],
-    ['UNDECIDED', { docType: 'RHP', filingDate: '2026-09-01' }, { docType: 'RHP', filingDate: '2026-09-02' }, true],
+    ['POST_ISSUE', { docType: 'RHP' }, { docType: 'PROSPECTUS' }, true],
+    ['POST_ISSUE', { docType: 'DRHP' }, { docType: 'RHP' }, true],
+    ['POST_ISSUE', { docType: 'RHP', filingDate: '2026-09-01' }, { docType: 'RHP', filingDate: '2026-09-02' }, true],
     ['PRICE', { docType: 'RHP', filingDate: '2026-09-02' }, { docType: 'RHP', filingDate: '2026-09-01' }, false],
     ['PRICE', { docType: 'RHP', filingDate: null }, { docType: 'RHP', filingDate: '2026-09-01' }, null],
     ['PRICE', { docType: 'RHP', documentId: 'd' }, { docType: 'RHP', documentId: 'd' }, null],

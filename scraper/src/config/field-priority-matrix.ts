@@ -688,10 +688,11 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
  * (spec §1 "Document type order inside rank 1"). Which order a field follows:
  *  - its own `documentOrder` (segment, listing exchanges: the OD-129 listing-sentence order);
  *  - 'PRICE' when the field manifest names PRICE_BAND_AD as its document (the price-dependent fields);
- *  - otherwise 'UNDECIDED': the spec does not say which fields are "final post-issue facts", so a
- *    pair is ranked only where the price and post-issue orders agree, and the stored value is kept
- *    where they disagree (fail closed; owner-questions-2026-10-01 Q3).
- * A call with no field name (legacy) uses the price order.
+ *  - otherwise 'POST_ISSUE' (OD-154, owner 2026-10-01, PR #1418): EVERY other document field follows
+ *    PROSPECTUS > CORRIGENDUM > PRICE_BAND_AD > RHP > DRHP. No document field is left without an order.
+ * A call with no field name (legacy) uses the price order. A manifest that cannot be loaded is logged
+ * and rethrown, like every other manifest consumer (hasManifestRow, resolveFieldSourcePolicy): guessing
+ * an order for a field we cannot classify would write a wrong value.
  */
 export function documentOrderForField(fieldName: string | undefined, tableName = 'ipos'): DocumentFieldOrder {
   if (!fieldName) return 'PRICE';
@@ -699,9 +700,14 @@ export function documentOrderForField(fieldName: string | undefined, tableName =
   if (own) return own;
   try {
     const entry = loadFieldManifest().fields[`${tableName}.${fieldNameToColumn(fieldName)}`];
-    return entry?.documentType === 'PRICE_BAND_AD' ? 'PRICE' : 'UNDECIDED';
-  } catch {
-    return 'UNDECIDED';
+    return entry?.documentType === 'PRICE_BAND_AD' ? 'PRICE' : 'POST_ISSUE';
+  } catch (err) {
+    logger.error(
+      `documentOrderForField: the field manifest could not be loaded for ${tableName}.${fieldName}; refusing to guess a document order: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+    throw err;
   }
 }
 

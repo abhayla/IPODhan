@@ -23,6 +23,61 @@
 /** Known production/staging hosts for this project (T-239/T-241/T-242/T-275). */
 export const KNOWN_PROD_HOST_MARKERS = ['72.61.240.224', '103.118.16.189', 'ipodhan.com'];
 
+/** The one database the scraper test helper may ever connect to (#1364 round 2). */
+export const REQUIRED_TEST_DATABASE = 'ipodhan_test';
+
+export interface TestPoolTarget {
+  /** 'url' when DATABASE_URL is set (the helper then ignores every TEST_DB_* / DATABASE_* field). */
+  mode: 'url' | 'fields';
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password: string;
+}
+
+/**
+ * The target `getTestDb()` will actually connect to, resolved in ONE place so the pool and the global
+ * guard cannot disagree (T-279F invariant). DATABASE_URL wins when set; otherwise the TEST_DB_* fields,
+ * then the DATABASE_* fields. A URL that does not parse throws WITHOUT echoing it.
+ */
+export function resolveTestPoolTarget(env: NodeJS.ProcessEnv = process.env): TestPoolTarget {
+  if (env.DATABASE_URL) {
+    let u: URL;
+    try {
+      u = new URL(env.DATABASE_URL);
+    } catch {
+      throw new Error('DATABASE_URL does not parse as a connection URL (value not shown); refusing to connect.');
+    }
+    return {
+      mode: 'url',
+      host: u.hostname,
+      port: u.port ? parseInt(u.port, 10) : 5432,
+      database: decodeURIComponent(u.pathname.replace(/^\//, '')),
+      user: decodeURIComponent(u.username),
+      password: decodeURIComponent(u.password),
+    };
+  }
+  return {
+    mode: 'fields',
+    host: env.TEST_DB_HOST || env.DATABASE_HOST || 'localhost',
+    port: parseInt(env.TEST_DB_PORT || env.DATABASE_PORT || '5432', 10),
+    database: env.TEST_DB_NAME || (env.DATABASE_NAME ? `${env.DATABASE_NAME}_test` : REQUIRED_TEST_DATABASE),
+    user: env.TEST_DB_USER || env.DATABASE_USER || 'postgres',
+    password: env.TEST_DB_PASSWORD || env.DATABASE_PASSWORD || '',
+  };
+}
+
+/** The helper's own guard: the pool's database must be exactly `ipodhan_test`, whatever the global guard allows. */
+export function assertHelperTargetIsTestDatabase(database: string, callerLabel = 'getTestDb'): void {
+  if (database !== REQUIRED_TEST_DATABASE) {
+    throw new Error(
+      `${callerLabel}: the connection would target database "${database}", not "${REQUIRED_TEST_DATABASE}". ` +
+        'The scraper test helper connects to ipodhan_test only. Refusing to connect.'
+    );
+  }
+}
+
 /**
  * Refuses to run when the resolved Postgres target is unset, matches a known
  * prod/staging host, or does not look like a "*_test" database.
@@ -66,9 +121,9 @@ export function assertNotProductionDatabase(callerLabel: string): void {
     );
   }
 
-  const testName = process.env.TEST_DB_NAME || '';
-  const dbNameMatch = url.match(/\/([^/?]+)(\?|$)/);
-  const dbName = testName || dbNameMatch?.[1] || process.env.DATABASE_NAME || '';
+  // #1364 round 2: the name is the one the pool will use. DATABASE_URL wins in the helper, so a
+  // TEST_DB_NAME set beside a URL must not stand in for the URL's own database name.
+  const dbName = resolveTestPoolTarget().database;
 
   if (!dbName) {
     throw new Error(

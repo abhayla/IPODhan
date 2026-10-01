@@ -7,9 +7,9 @@
 //          final post-issue facts  PROSPECTUS > CORRIGENDUM > PRICE_BAND_AD > RHP > DRHP;
 //          "an older draft can never overwrite a final advertisement".
 // OD-30:   within one document type the later FILING date wins.
-// The spec does not say which fields are "final post-issue facts". Until the owner says
-// (owner-questions-2026-10-01 Q3), a field that is neither price-dependent nor listing-sentence is
-// ranked only where BOTH orders agree; where they disagree the stored value is kept (fail closed).
+// OD-154 (owner, 2026-10-01, PR #1418): a document field is price-dependent when the field manifest ranks
+// PRICE_BAND_AD for it; EVERY other document field follows the final post-issue order. There is no third,
+// undecided order.
 import { PRECEDENCE } from './plan-supersession-rule.mjs';
 import { LISTING_SENTENCE_ORDER } from './listing-sentence-precedence.mjs';
 
@@ -52,24 +52,14 @@ function inTable(table, stored, incoming) {
 }
 
 /**
- * stored / incoming: { docType, documentId?, filingDate? }. order: 'PRICE' | 'POST_ISSUE' | 'LISTING' |
- * 'UNDECIDED'. Returns { outranks: true | false | null, reason }: true writes the incoming value, false
+ * stored / incoming: { docType, documentId?, filingDate? }. order: 'PRICE' | 'POST_ISSUE' | 'LISTING'. Returns { outranks: true | false | null, reason }: true writes the incoming value, false
  * keeps the stored one, null means the documents cannot be told apart (an unknown type, the same
  * document re-read, equal rank without both filing dates) and the caller keeps its newest-write rule.
  */
 export function compareDocumentsForField(stored, incoming, order) {
   if (!stored?.docType || !incoming?.docType) return { outranks: null, reason: 'document type unknown on one side' };
   if (stored.documentId && stored.documentId === incoming.documentId) return { outranks: null, reason: 'the same document read again' };
-  if (order !== 'UNDECIDED') {
-    const table = TABLES[order];
-    if (!table) return { outranks: null, reason: `unknown order ${order}` };
-    return inTable(table, stored, incoming);
-  }
-  const price = inTable(PRICE_DEPENDENT_ORDER, stored, incoming);
-  const post = inTable(FINAL_POST_ISSUE_ORDER, stored, incoming);
-  if (price.outranks === post.outranks) return price;
-  return {
-    outranks: false,
-    reason: `the spec's price and post-issue orders disagree on ${incoming.docType} vs ${stored.docType} and this field's order is not stated: stored kept (fail closed)`,
-  };
+  const table = TABLES[order];
+  if (!table) return { outranks: null, reason: `unknown order ${order}` };
+  return inTable(table, stored, incoming);
 }

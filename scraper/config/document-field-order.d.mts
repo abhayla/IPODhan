@@ -1,4 +1,4 @@
-export type DocumentFieldOrder = 'PRICE' | 'POST_ISSUE' | 'LISTING' | 'UNDECIDED';
+export type DocumentFieldOrder = 'PRICE' | 'POST_ISSUE' | 'LISTING';
 export interface FieldDocumentRef {
   docType: string | null | undefined;
   documentId?: string | null;

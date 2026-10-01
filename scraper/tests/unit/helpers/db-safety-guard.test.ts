@@ -3,6 +3,8 @@ import {
   assertNotProductionDatabase,
   assertNotProductionRedis,
   assertSafeIntegrationTargets,
+  assertHelperTargetIsTestDatabase,
+  resolveTestPoolTarget,
 } from '../../helpers/db-safety-guard';
 
 // T-279: this guard is what stops `npm run test:integration` in the scraper
@@ -201,5 +203,69 @@ describe('assertSafeIntegrationTargets', () => {
     process.env.DATABASE_URL = 'postgresql://postgres:pw@localhost:5432/ipodhan_test';
     process.env.REDIS_URL = 'redis://localhost:6379';
     expect(() => assertSafeIntegrationTargets('caller')).not.toThrow();
+  });
+});
+
+// #1364 round 2 (CRITICAL): getTestDb() prefers DATABASE_URL. The global guard used to read TEST_DB_NAME
+// before the URL's database, so TEST_DB_NAME=ipodhan_test beside a URL naming the real database (through
+// the localhost tunnel, a host the denylist does not list) passed the guard and the pool reached prod.
+describe('the guard and the helper resolve the SAME target (#1364 round 2)', () => {
+  const keys = ['DATABASE_URL', 'DATABASE_HOST', 'DATABASE_NAME', 'TEST_DB_HOST', 'TEST_DB_NAME', 'TEST_DB_PORT'] as const;
+  const saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const k of keys) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  it('TEST_DB_NAME=ipodhan_test + DATABASE_URL naming the real database through the tunnel: the global guard refuses', () => {
+    process.env.TEST_DB_NAME = 'ipodhan_test';
+    process.env.DATABASE_URL = 'postgresql://app:pw@localhost:15432/ipodhan'; // secret-scan:allow
+    expect(() => assertNotProductionDatabase('caller')).toThrow(/does not look like a test database/);
+  });
+
+  it('the same variables: the helper resolves the URL database and its own guard refuses it', () => {
+    process.env.TEST_DB_NAME = 'ipodhan_test';
+    process.env.DATABASE_URL = 'postgresql://app:pw@localhost:15432/ipodhan'; // secret-scan:allow
+    const target = resolveTestPoolTarget();
+    expect(target.database).toBe('ipodhan');
+    expect(() => assertHelperTargetIsTestDatabase(target.database)).toThrow(/not "ipodhan_test"/);
+  });
+
+  it('the helper guard is stricter than the global one: another "*_test" name is refused', () => {
+    process.env.DATABASE_URL = 'postgresql://app:pw@localhost:15432/ipodhan_staging_test'; // secret-scan:allow
+    expect(() => assertNotProductionDatabase('caller')).not.toThrow();
+    expect(() => assertHelperTargetIsTestDatabase(resolveTestPoolTarget().database)).toThrow();
+  });
+
+  it('ipodhan_test through the URL is accepted, with the percent-encoded name decoded', () => {
+    process.env.DATABASE_URL = 'postgresql://app:p%40w@localhost:15432/ipodhan_test?sslmode=disable'; // secret-scan:allow
+    const t = resolveTestPoolTarget();
+    expect(t).toMatchObject({ mode: 'url', host: 'localhost', port: 15432, database: 'ipodhan_test', password: 'p@w' });
+    expect(() => assertHelperTargetIsTestDatabase(t.database)).not.toThrow();
+  });
+
+  it('without a URL the TEST_DB_* then DATABASE_* fields decide, and the pool name is DATABASE_NAME + _test', () => {
+    process.env.DATABASE_NAME = 'ipodhan';
+    expect(resolveTestPoolTarget()).toMatchObject({ mode: 'fields', database: 'ipodhan_test', host: 'localhost' });
+    process.env.TEST_DB_NAME = 'ipodhan';
+    expect(() => assertHelperTargetIsTestDatabase(resolveTestPoolTarget().database)).toThrow();
+  });
+
+  it('an unparseable URL throws without echoing it', () => {
+    process.env.DATABASE_URL = 'not a url secret-token';
+    expect(() => resolveTestPoolTarget()).toThrow(/does not parse/);
+    try {
+      resolveTestPoolTarget();
+    } catch (e) {
+      expect(String((e as Error).message)).not.toContain('secret-token');
+    }
   });
 });
