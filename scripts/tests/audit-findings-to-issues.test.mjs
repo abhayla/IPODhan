@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { istDayIso } from '../lib/ist-day.mjs';
 import {
   planIssueSync,
   renderIssueBody,
@@ -627,7 +628,7 @@ function writeFindingsFixture(dir, runDate) {
 test('main() --new-only baseline: LIVE run writes issues-sync-state.json and files 0 (no create/comment/reopen)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'audit-findings-baseline-live-'));
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = istDayIso(); // the script's own clock: a UTC day here was red 00:00-05:30 IST
     const findingsPath = writeFindingsFixture(dir, today);
     const stateFile = join(dir, 'issues-sync-state.json');
     assert.equal(existsSync(stateFile), false, 'precondition: no previous state file');
@@ -652,7 +653,7 @@ test('main() --new-only baseline: LIVE run writes issues-sync-state.json and fil
 test('main() --new-only baseline: --dry-run honors the flag (records nothing, no state file written)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'audit-findings-baseline-dry-'));
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = istDayIso(); // the script's own clock: a UTC day here was red 00:00-05:30 IST
     const findingsPath = writeFindingsFixture(dir, today);
     const stateFile = join(dir, 'issues-sync-state.json');
 
