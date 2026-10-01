@@ -13,6 +13,7 @@ import { ListEditor, LIST_COLUMNS, type ListName } from './ListEditor';
 import { useRouter } from 'next/navigation';
 import type { EditorField, EditorPayload, SourceWitness } from '@/lib/admin/ipo-editor-data';
 import { previewTyped, showStoredValue } from '@/lib/admin/editor-value-units';
+import { adminFailureReason, NETWORK_FAILURE_REASON, notSavedText, readJsonBody } from '@/lib/admin/admin-save-failure';
 
 export const OPEN_EVENT = 'ipo-editor:open';
 
@@ -63,28 +64,55 @@ type SaveOutcome =
   | { kind: 'error'; reason: string };
 
 async function saveField(ipoId: string, field: EditorField, version: string, body: SaveBody): Promise<SaveOutcome> {
-  const res = await fetch('/api/admin/update-field', {
-    method: 'PATCH',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ipoId, tableName: field.tableName, fieldName: field.fieldName, expectedVersion: version, ...body }),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (res.ok && json.success) return { kind: 'ok', value: json.data?.value ?? null, version: json.data?.version };
+  let res: Response;
+  try {
+    res = await fetch('/api/admin/update-field', {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ipoId, tableName: field.tableName, fieldName: field.fieldName, expectedVersion: version, ...body }),
+    });
+  } catch {
+    return { kind: 'error', reason: NETWORK_FAILURE_REASON };
+  }
+  const json = await readJsonBody(res);
+  const data = (json.data ?? {}) as { value?: unknown; version?: string };
+  if (res.ok && json.success === true) return { kind: 'ok', value: data.value ?? null, version: String(data.version ?? '') };
   // OD-150: a hidden row is view-only; the server refuses the save with IPO_HIDDEN.
-  if (json.error === 'IPO_HIDDEN') return { kind: 'error', reason: String(json.reason ?? 'This IPO is hidden. Unhide it to edit.') };
-  if (res.status === 409) {
-    return { kind: 'conflict', currentValue: json.currentValue, setBy: json.setBy ?? null, setAt: json.setAt ?? null, currentVersion: json.currentVersion };
+  if (json.error === 'IPO_HIDDEN') return { kind: 'error', reason: adminFailureReason(res.status, json) };
+  if (res.status === 409 && json.error === 'CONFLICT') {
+    return {
+      kind: 'conflict',
+      currentValue: json.currentValue,
+      setBy: (json.setBy as string | null) ?? null,
+      setAt: (json.setAt as string | null) ?? null,
+      currentVersion: String(json.currentVersion ?? ''),
+    };
   }
-  if (res.status === 400) {
-    const reason = String(json.reason ?? json.error ?? 'refused');
-    return { kind: 'invalid', reason, checkFailed: /fails its check/.test(reason) };
-  }
-  return { kind: 'error', reason: String(json.reason ?? json.error ?? `HTTP ${res.status}`) };
+  const reason = adminFailureReason(res.status, json);
+  if (res.status === 400) return { kind: 'invalid', reason, checkFailed: /fails its check/.test(reason) };
+  return { kind: 'error', reason };
+}
+
+/**
+ * A refused save, shown at the top of the field's editor, next to the field (#1348). It used to be
+ * grey text under the delete form, off screen on a phone, so a refused save looked like a saved one.
+ */
+function SaveFailure({ reason }: { reason: string | null }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (reason) ref.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [reason]);
+  if (!reason) return null;
+  return (
+    <p ref={ref} role="alert" data-testid="save-failure" className="rounded-md border border-red-300 bg-red-50 p-2 text-sm text-red-800">
+      {notSavedText(reason)}
+    </p>
+  );
 }
 
 /** OD-150: a hidden row is view-only. One action: unhide (POST /api/admin/ipos/[id]/visibility). */
-function HiddenBanner({ ipoId, hidden, onUnhidden }: { ipoId: string; hidden: { at: string; reason: string | null }; onUnhidden: () => void }) {
+export function HiddenBanner({ ipoId, hidden, onUnhidden }: { ipoId: string; hidden: { at: string; reason: string | null }; onUnhidden: () => void }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const unhide = async () => {
@@ -97,9 +125,11 @@ function HiddenBanner({ ipoId, hidden, onUnhidden }: { ipoId: string; hidden: { 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'unhide' }),
       });
-      const json = await res.json().catch(() => ({}));
+      const json = await readJsonBody(res);
       if (res.ok && json.success) onUnhidden();
-      else setFailed(String(json.message ?? json.error ?? `HTTP ${res.status}`));
+      else setFailed(adminFailureReason(res.status, json));
+    } catch {
+      setFailed(NETWORK_FAILURE_REASON);
     } finally {
       setBusy(false);
     }
@@ -112,7 +142,7 @@ function HiddenBanner({ ipoId, hidden, onUnhidden }: { ipoId: string; hidden: { 
       <button type="button" onClick={unhide} disabled={busy} className="mt-2 min-h-[44px] rounded-md border border-amber-400 bg-white px-3 font-medium">
         {busy ? 'Unhiding...' : 'Unhide to edit'}
       </button>
-      {failed ? <p className="mt-1 text-red-700">{failed}</p> : null}
+      {failed ? <p role="alert" className="mt-1 text-red-700">Not unhidden: {failed}</p> : null}
     </div>
   );
 }
@@ -126,14 +156,20 @@ export function FieldEditor({ ipoId, field, onSaved }: { ipoId: string; field: E
   const [deleteReason, setDeleteReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
   const [conflict, setConflict] = useState<Extract<SaveOutcome, { kind: 'conflict' }> | null>(null);
   const preview = previewTyped(typed, field.croreInput);
 
   const run = async (body: SaveBody) => {
     setBusy(true);
     setMessage(null);
-    const out = await saveField(ipoId, field, version, body);
-    setBusy(false);
+    setFailure(null);
+    let out: SaveOutcome;
+    try {
+      out = await saveField(ipoId, field, version, body);
+    } finally {
+      setBusy(false);
+    }
     if (out.kind === 'ok') {
       setVersion(out.version);
       setConflict(null);
@@ -148,9 +184,9 @@ export function FieldEditor({ ipoId, field, onSaved }: { ipoId: string; field: E
       setConflict(out);
     } else if (out.kind === 'invalid') {
       setNeedsOverride(out.checkFailed);
-      setMessage(out.reason);
+      setFailure(out.reason);
     } else {
-      setMessage(out.reason);
+      setFailure(out.reason);
     }
   };
 
@@ -167,6 +203,7 @@ export function FieldEditor({ ipoId, field, onSaved }: { ipoId: string; field: E
     const on = field.currentValue === true;
     return (
       <div className="space-y-2">
+        <SaveFailure reason={failure} />
         <p className="text-sm text-gray-700">Rating override is {on ? 'on' : 'off'}.</p>
         <label className="block text-sm font-medium">
           Source note (why)
@@ -186,7 +223,7 @@ export function FieldEditor({ ipoId, field, onSaved }: { ipoId: string; field: E
         >
           Turn the override {on ? 'off' : 'on'}
         </button>
-        {message && <p className="text-sm text-red-700">{message}</p>}
+        {message && <p className="text-sm text-gray-800" role="status">{message}</p>}
       </div>
     );
   }
@@ -195,6 +232,7 @@ export function FieldEditor({ ipoId, field, onSaved }: { ipoId: string; field: E
     const locked = field.currentValue === true;
     return (
       <div className="space-y-2">
+        <SaveFailure reason={failure} />
         <p className="text-sm text-gray-700">Scraper lock is {locked ? 'on' : 'off'}.</p>
         <button
           type="button"
@@ -202,26 +240,34 @@ export function FieldEditor({ ipoId, field, onSaved }: { ipoId: string; field: E
           className="min-h-[44px] rounded-md border border-gray-300 px-4 py-2 text-sm font-medium"
           onClick={async () => {
             setBusy(true);
-            const res = await fetch(`/api/admin/protection/ipo/${ipoId}`, {
-              method: 'PATCH',
-              credentials: 'same-origin',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ scraperLocked: !locked }),
-            });
-            setBusy(false);
-            if (res.ok) onSaved({ ...field, currentValue: !locked });
-            else setMessage(`Could not change the lock (HTTP ${res.status})`);
+            setFailure(null);
+            try {
+              const res = await fetch(`/api/admin/protection/ipo/${ipoId}`, {
+                method: 'PATCH',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scraperLocked: !locked }),
+              });
+              const json = await readJsonBody(res);
+              if (res.ok && json.success !== false) onSaved({ ...field, currentValue: !locked });
+              else setFailure(adminFailureReason(res.status, json));
+            } catch {
+              setFailure(NETWORK_FAILURE_REASON);
+            } finally {
+              setBusy(false);
+            }
           }}
         >
           Turn the lock {locked ? 'off' : 'on'}
         </button>
-        {message && <p className="text-sm text-red-700">{message}</p>}
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      <SaveFailure reason={failure} />
+      {message && <p className="text-sm text-gray-800" role="status">{message}</p>}
       {field.planRebuildNotice && (
         <p role="note" data-testid="plan-rebuild-notice" className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">
           {field.planRebuildNotice}
@@ -353,7 +399,6 @@ export function FieldEditor({ ipoId, field, onSaved }: { ipoId: string; field: E
           </button>
         </div>
       )}
-      {message && <p className="text-sm text-gray-800" role="status">{message}</p>}
     </div>
   );
 }
