@@ -1,0 +1,13 @@
+{
+  "class_id": "reference calendar typed from festival dates instead of the exchange holiday list",
+  "feature": "market_holidays rows for a year, read by OD-21 working-day rules (listing_t3) and the scheduler calendar gates",
+  "symptom": "a year's holiday rows that disagree with the exchange's own holiday list (missing holidays, wrong days, festival days the exchange trades on) make a working-day count wrong: a missing holiday refuses a correct T+3 listing, a false one passes a late listing",
+  "first_seen": "2026-10-02 ipodhan_staging (F-221): 2026 has 20 rows; NSE list has 15 weekday holidays; 3 missing (09-14, 10-20, 11-10), 2 misdated, 3 false",
+  "fix_prs": "open (#1380 follow-up)",
+  "detection_check": "none yet (proposed: per-year reconcile of market_holidays against the exchange holiday source, FAIL on any difference, by date)",
+  "status": "unguarded",
+  "spec_ref": [
+    "§4.6",
+    "§5.3"
+  ]
+}
