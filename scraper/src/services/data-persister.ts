@@ -20,6 +20,10 @@ import type { ScrapedFinancialData } from '../scrapers/financial-data-scraper.js
 import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 // Phase 2: Shadow Mode - Data Consolidation Service
+import { isWriterBookkeepingField } from '@ipodhan/shared/utils/conflict-reasons';
+import { resolveIpoTypeKey } from './field-plan-generator.js';
+import { runPreRankChecks, type PreRankCheckDeps } from './data-consolidation-service.js';
+import { loadValidationRules } from '../config/validation-rules-loader.js';
 import { DataConsolidationService, type DeferredProvenanceWrite, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, collectDegeneratePriceBandFields, fallbackDoorMayReplaceStoredValue, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo, withSourceKeyLineage, sourceKeyLineageFor, E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
@@ -351,13 +355,32 @@ export function guardSmeOfferingTypeWithLookup(
   return guarded;
 }
 
+/**
+ * #1368: the ONE place the persister's consolidation dependencies are chosen. The consolidation door's
+ * service is built from it, and the fallback door's pre-rank checks (`runPreRankChecks`) run with the
+ * same set, so the two doors cannot drift: today no OD-21 failures repository and no holiday calendar are
+ * wired here, so the OD-21 gate is inert on BOTH doors (it runs only where a failures repository is given).
+ */
+function persisterConsolidationDeps(): PreRankCheckDeps {
+  return {
+    dataConflictsRepository: getDataConflictsRepository(),
+    fieldExtractionFailuresRepository: undefined,
+    tradingHolidays: undefined,
+    validationRules: loadValidationRules,
+  };
+}
+
 async function getConsolidationService(): Promise<DataConsolidationService> {
   if (!consolidationServiceInstance) {
     const redis = getRedisClient();
     const fieldSourcesRepo = new FieldSourcesRepository(db, redis);
+    const deps = persisterConsolidationDeps();
     consolidationServiceInstance = new DataConsolidationService(
       fieldSourcesRepo,
-      getDataConflictsRepository()
+      deps.dataConflictsRepository,
+      undefined,
+      deps.fieldExtractionFailuresRepository,
+      deps.tradingHolidays
     );
   }
   return consolidationServiceInstance;
@@ -1036,7 +1059,131 @@ async function guardFirstTouchHardDates(
   return out;
 }
 
+/**
+ * #1368: the consolidator's per-field pre-rank checks on the fallback door, through the SAME function the
+ * consolidation door runs (`runPreRankChecks`, data-consolidation-service.ts): the OD-21 validation gate, value
+ * normalization, the field matrix validation bounds and the incapable-source refusal (spec section 2.3.5:
+ * "No configuration may make an incapable source rank 1"). Before this, the fallback door wrote BSE's
+ * issue size into an empty issue_size and a face value of 50000 (matrix max 10000) that the
+ * consolidation door refuses.
+ *
+ * Every payload field is judged, stored value or not, except the keys nothing ranks (bookkeeping, the
+ * OD-129 merged exchange set, the derived registrarId), an empty incoming value (the non-destructive
+ * merge already decided it) and a value equal to the stored one (no write).
+ *
+ * Answer states per field: PASS -> written; REFUSED or NO_INCOMING_VALUE -> dropped from the payload,
+ * so the stored value (or the empty column) stays, and the reason code is logged; the check's own input
+ * cannot be read (the dependencies, the ipoType resolution, a flag, policy or validation-rules lookup throws) -> dropped (fail
+ * closed) and the field is named in `provenanceLookupFailed`, which the step ledger records.
+ */
+async function guardPreRankFieldChecks(
+  payload: Record<string, any>,
+  ctx: IpoWriteGuardContext
+): Promise<Record<string, any>> {
+  const candidates = Object.keys(payload).filter(
+    (f) =>
+      !PRECEDENCE_EXEMPT_KEYS.has(f) &&
+      !isWriterBookkeepingField(f) &&
+      payload[f] !== undefined &&
+      payload[f] !== null &&
+      !(isStoredValuePresent(ctx.existing[f]) && valuesEqualForWrite(ctx.existing[f], payload[f], f))
+  );
+  if (candidates.length === 0) return payload;
+  const out = { ...payload };
+  const ipoId = ctx.existing.id as string;
+  const drop = (f: string) => {
+    delete out[f];
+    if (f === 'registrar') delete out.registrarId;
+  };
+  const failClosed = (fields: readonly string[], e: unknown) => {
+    for (const f of fields) {
+      drop(f);
+      ctx.provenanceLookupFailed.add(f);
+    }
+    logger.warn(
+      { ipoId, source: ctx.source, door: ctx.door, fields, reason: 'PRE_RANK_CHECK_UNREADABLE', error: e instanceof Error ? e.message : String(e) },
+      '[DataPersister] pre-rank check could not run - field(s) not written (fail closed, #1368)'
+    );
+  };
+
+  let deps: PreRankCheckDeps;
+  let ipoType: string;
+  try {
+    deps = persisterConsolidationDeps();
+    ipoType = resolveIpoTypeKey({
+      id: ipoId,
+      segment: (ctx.existing.segment ?? ctx.incoming.segment ?? null) as 'MAINBOARD' | 'SME' | null,
+      listingExchanges: ctx.existing.listingExchanges ?? ctx.incoming.listingExchanges ?? null,
+    });
+  } catch (e) {
+    failClosed(candidates, e);
+    return out;
+  }
+
+  // The same row context the consolidation door builds once per call (heldDates / incomingDates,
+  // the OD-21 offering type with 'UNKNOWN' rather than a guessed 'IPO').
+  const heldDates = {
+    openDate: ctx.existing.openDate,
+    closeDate: ctx.existing.closeDate,
+    listingDate: ctx.existing.listingDate,
+    segment: ctx.existing.segment,
+  };
+  const incomingDates = {
+    openDate: 'openDate' in ctx.incoming ? ctx.incoming.openDate : heldDates.openDate,
+    closeDate: 'closeDate' in ctx.incoming ? ctx.incoming.closeDate : heldDates.closeDate,
+    listingDate: 'listingDate' in ctx.incoming ? ctx.incoming.listingDate : heldDates.listingDate,
+    segment: heldDates.segment,
+  };
+  const segment = (ctx.existing.segment ?? ctx.incoming.segment ?? null) as string | null;
+  const offeringType = String(ctx.incoming.offeringType ?? ctx.existing.offeringType ?? 'UNKNOWN');
+  const scrapedAt = new Date();
+
+  const refused: { field: string; reason: string }[] = [];
+  for (const f of candidates) {
+    try {
+      const outcome = await runPreRankChecks({
+        ipoId,
+        tableName: 'ipos',
+        rowKey: '',
+        fieldName: f,
+        incomingValue: payload[f],
+        incomingSource: ctx.source,
+        storedValue: ctx.existing[f],
+        segment,
+        heldDates,
+        incomingDates,
+        scrapedAt,
+        ipoType,
+        offeringType,
+        documentId: null,
+        documentSha256: null,
+        shadowMode: false,
+      }, deps);
+      if (outcome.status === 'REFUSED') {
+        drop(f);
+        refused.push({ field: f, reason: outcome.reason });
+      } else if (outcome.status === 'NO_INCOMING_VALUE') {
+        drop(f);
+        refused.push({ field: f, reason: 'NO_INCOMING_VALUE' });
+      }
+    } catch (e) {
+      failClosed([f], e);
+    }
+  }
+  if (refused.length > 0) {
+    logger.warn(
+      { ipoId, source: ctx.source, door: ctx.door, refused },
+      '[DataPersister] pre-rank check refused field value(s) on the fallback door - stored value kept (#1368)'
+    );
+  }
+  return out;
+}
+
 export const IPO_WRITE_GUARDS: readonly IpoWriteGuard[] = [
+  // #1368: the consolidator's per-field pre-rank checks (OD-21 gate, normalization, matrix validation
+  // bounds, incapable-source refusal), the SAME method the consolidation door runs. First, so every later
+  // guard sees a refused value as not sent.
+  { name: 'pre-rank-field-checks', consolidatorEnforced: true, run: guardPreRankFieldChecks },
   // The consolidator's per-field source-priority decision (field-priority matrix, OD-64 venue).
   { name: 'source-precedence', consolidatorEnforced: true, run: guardSourcePrecedence },
   {
