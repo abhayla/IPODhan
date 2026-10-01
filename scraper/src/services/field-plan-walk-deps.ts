@@ -60,10 +60,7 @@ import { invalidateIPOCaches } from './cache-invalidator.js';
 import { sendOwnerAlert } from './owner-notify.js';
 import { redisClaims } from './live-slot-miss-monitor.js';
 import * as schema from '@ipodhan/shared/db/schema';
-// Deep import, matching `filing-persist-deps.ts`: the barrel exports only the
-// INTERFACE (`IListingPerformanceRepository`), not the class.
-import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
-import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator.js';
+import { createConsolidationOrchestrator, buildConsolidationDeps } from './consolidation-factory.js';
 import type { FieldFetcher, FieldPlanWalkDeps, FieldPlanWalkOrchestrator } from './field-plan-walk.js';
 import { fieldPlanWriterCapability } from './field-plan-walk.js';
 import { findSupersessorForReopenedRow } from './plan-supersession.js';
@@ -116,12 +113,11 @@ export function buildFieldPlanWalkOrchestrator(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
 ): FieldPlanWalkOrchestrator {
   const ipoRepository = new IPORepository(db, redis);
-  return new DataConsolidationOrchestrator(
+  // #1370 (OD-21, spec §5.3): the factory supplies the failures repository the validation gate needs.
+  return createConsolidationOrchestrator(
     ipoRepository,
-    new FieldSourcesRepository(db, redis),
-    new DataConflictsRepository(db, redis),
-    redis,
-    new ListingPerformanceRepository(db, redis)
+    buildConsolidationDeps(db, redis),
+    redis
   ) as unknown as FieldPlanWalkOrchestrator;
 }
 

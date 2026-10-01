@@ -85,7 +85,8 @@ import {
 } from '@ipodhan/shared';
 import { withSourceKeyLineage } from '@ipodhan/shared/repositories';
 import { ListingPerformanceRepository as OpeningDayListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
-import { DataConsolidationService } from './services/data-consolidation-service.js';
+import { createConsolidationService } from './services/consolidation-factory.js';
+import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { initStepLedger } from './services/step-ledger.js';
 import { recordDiscoverySteps } from './services/step-ledger-recorders.js';
 import { normalizeCompanyNameForMatching, computeIpoIdentitySlug } from './services/data-persister.js';
@@ -849,11 +850,13 @@ async function runOpeningDayCheckWake(): Promise<number> {
     // neither duplicates them nor leaves a written column without one.
     const openingFieldSources = new FieldSourcesRepository(db, redis);
     const openingProvenance = createProvenanceRecorder(openingFieldSources);
-    const fieldPriority = new DataConsolidationService(
-      openingProvenance.repo,
-      new DataConflictsRepository(db, redis),
-      new OpeningDayListingPerformanceRepository(db, redis)
-    );
+    // #1370 (OD-21, spec §5.3): built through the factory, so the per-field validation gate can run here too.
+    const fieldPriority = createConsolidationService({
+      fieldSourcesRepository: openingProvenance.repo,
+      dataConflictsRepository: new DataConflictsRepository(db, redis),
+      listingPerformanceRepository: new OpeningDayListingPerformanceRepository(db, redis),
+      fieldExtractionFailuresRepository: new FieldExtractionFailuresRepository(db, redis),
+    });
     const fieldProtection = createFieldProtectionService(db, redis);
     const summary = await runOpeningDayDiscovery(
       {

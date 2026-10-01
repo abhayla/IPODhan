@@ -36,7 +36,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
 import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
-import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator.js';
+import { createConsolidationOrchestrator } from './consolidation-factory.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { LISTING_SENTENCE_ORDER } from '../../config/listing-sentence-precedence.mjs';
 import { rebuildIpoPlanInTx, type PlanManifest } from '@ipodhan/shared/services/plan-invalidating-rebuild';
@@ -137,12 +137,17 @@ export function buildFilingPersistDeps(
   // interface's `?` made that type-check. Constructed HERE, from the `redis`
   // this builder already holds, so there is still exactly one write path and
   // no second Redis client.
-  const childRowConsolidator = new DataConsolidationOrchestrator(
+  // #1370 (OD-21, spec §5.3): built through the factory, sharing this builder's failures repository.
+  const fieldExtractionFailures = new FieldExtractionFailuresRepository(db, redis);
+  const childRowConsolidator = createConsolidationOrchestrator(
     ipoRepository,
-    fieldSources,
-    new DataConflictsRepository(db, redis),
-    redis,
-    new ListingPerformanceRepository(db, redis)
+    {
+      fieldSourcesRepository: fieldSources,
+      dataConflictsRepository: new DataConflictsRepository(db, redis),
+      listingPerformanceRepository: new ListingPerformanceRepository(db, redis),
+      fieldExtractionFailuresRepository: fieldExtractionFailures,
+    },
+    redis
   );
 
   // Defence in depth, NOT the primary guard (that is the required type above).
@@ -172,7 +177,7 @@ export function buildFilingPersistDeps(
     brlmTrackRecord: new BrlmTrackRecordRepository(db, redis),
     peerCompanies: new PeerCompanyRepository(db),
     // #545 (C): an attempted-but-empty promoters/peers section records its reason here (OD-62).
-    fieldExtractionFailures: new FieldExtractionFailuresRepository(db, redis),
+    fieldExtractionFailures,
     financialData: new FinancialDataRepository(db, redis),
     fieldSources,
     ipoDetailsWriter: makeIpoDetailsWriter(),

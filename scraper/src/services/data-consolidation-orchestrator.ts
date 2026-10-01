@@ -145,12 +145,21 @@ export class DataConsolidationOrchestrator {
     // W-145 round 2: OPTIONAL. Supplies the strongest evidence tier for the SME
     // single-exchange collapse (`listing_performance.exchange`). Omitted =>
     // that tier is simply unavailable, the weaker tiers still apply.
-    listingPerformanceRepository?: { findByIPO(ipoId: string): Promise<any> }
+    listingPerformanceRepository?: { findByIPO(ipoId: string): Promise<any> },
+    // #1370 (OD-21, spec §5.3): passed straight to the inner service. Production builds this class
+    // only through consolidation-factory.ts, which always supplies it; omitted (tests) = gate inert.
+    fieldExtractionFailuresRepository?: {
+      recordFailure(input: Record<string, any>): Promise<any>;
+      markResolved(ipoId: string, tableName: string, fieldName: string, rowKey?: string): Promise<number>;
+    },
+    tradingHolidays?: ReadonlySet<string>
   ) {
     this.consolidationService = new DataConsolidationService(
       fieldSourcesRepository,
       dataConflictsRepository,
-      listingPerformanceRepository
+      listingPerformanceRepository,
+      fieldExtractionFailuresRepository,
+      tradingHolidays
     );
     this.distributedLock = new DistributedLock(redis);
   }

@@ -24,9 +24,11 @@ import { isWriterBookkeepingField } from '@ipodhan/shared/utils/conflict-reasons
 import { resolveIpoTypeKey } from './field-plan-generator.js';
 import { runPreRankChecks, type PreRankCheckDeps } from './data-consolidation-service.js';
 import { loadValidationRules } from '../config/validation-rules-loader.js';
-import { DataConsolidationService, type DeferredProvenanceWrite, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, collectDegeneratePriceBandFields, fallbackDoorMayReplaceStoredValue, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
+import { type DataConsolidationService, type DeferredProvenanceWrite, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, collectDegeneratePriceBandFields, fallbackDoorMayReplaceStoredValue, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo, withSourceKeyLineage, sourceKeyLineageFor, E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
+import { createConsolidationService, type FieldExtractionFailuresRecorder } from './consolidation-factory.js';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { ipoDemandGraph, ipoDetails, ipos as iposTable, fieldSources as fieldSourcesTable } from '@ipodhan/shared/db/schema';
 import { eq as eqOp, and as andOp, or as orOp, isNull as isNullOp } from 'drizzle-orm';
@@ -358,13 +360,20 @@ export function guardSmeOfferingTypeWithLookup(
 /**
  * #1368: the ONE place the persister's consolidation dependencies are chosen. The consolidation door's
  * service is built from it, and the fallback door's pre-rank checks (`runPreRankChecks`) run with the
- * same set, so the two doors cannot drift: today no OD-21 failures repository and no holiday calendar are
- * wired here, so the OD-21 gate is inert on BOTH doors (it runs only where a failures repository is given).
+ * same set, so the two doors cannot drift. #1370 (OD-21, spec §5.3): both doors hold the SAME
+ * field-extraction-failures repository, so the OD-21 gate runs on both whenever its flag is on (before
+ * #1370 none was wired here and the gate was inert on both). No holiday calendar is wired: a working-day
+ * rule returns NO_RULE_APPLIES and the value is kept.
  */
-function persisterConsolidationDeps(): PreRankCheckDeps {
+let persisterFailuresRepository: FieldExtractionFailuresRecorder | null = null;
+
+function persisterConsolidationDeps(): PreRankCheckDeps & { fieldExtractionFailuresRepository: FieldExtractionFailuresRecorder } {
+  if (!persisterFailuresRepository) {
+    persisterFailuresRepository = new FieldExtractionFailuresRepository(db, getRedisClient());
+  }
   return {
     dataConflictsRepository: getDataConflictsRepository(),
-    fieldExtractionFailuresRepository: undefined,
+    fieldExtractionFailuresRepository: persisterFailuresRepository,
     tradingHolidays: undefined,
     validationRules: loadValidationRules,
   };
@@ -375,13 +384,13 @@ async function getConsolidationService(): Promise<DataConsolidationService> {
     const redis = getRedisClient();
     const fieldSourcesRepo = new FieldSourcesRepository(db, redis);
     const deps = persisterConsolidationDeps();
-    consolidationServiceInstance = new DataConsolidationService(
-      fieldSourcesRepo,
-      deps.dataConflictsRepository,
-      undefined,
-      deps.fieldExtractionFailuresRepository,
-      deps.tradingHolidays
-    );
+    consolidationServiceInstance = createConsolidationService({
+      fieldSourcesRepository: fieldSourcesRepo,
+      dataConflictsRepository: deps.dataConflictsRepository,
+      listingPerformanceRepository: undefined,
+      fieldExtractionFailuresRepository: deps.fieldExtractionFailuresRepository,
+      tradingHolidays: deps.tradingHolidays,
+    });
   }
   return consolidationServiceInstance;
 }
