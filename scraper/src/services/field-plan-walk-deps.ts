@@ -66,6 +66,7 @@ import { fieldPlanWriterCapability } from './field-plan-walk.js';
 import { findSupersessorForReopenedRow } from './plan-supersession.js';
 import type { Witness } from './witness-verdict.js';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
+import { loadValidationRules } from '../config/validation-rules-loader.js';
 import { createHash } from 'node:crypto';
 import {
   buildFieldPlanIpoGapKeys,
@@ -301,9 +302,24 @@ export function buildFieldPlanGapKeySource(params: {
   const documentRepository = new DocumentRepository(db, redis);
   const fieldSourcesRepository = new FieldSourcesRepository(db, redis);
   const overridesRepository = new FieldSourceOverridesRepository({ db: db });
+  // #1379: the loaded validation rules' fingerprint, part of a FAILED_VALIDATION row's key, so a
+  // corrected rule reopens it. Read once per cycle (the consolidator reads the rules once per process).
+  // Unreadable: a stable `unknown` part, never a throw that would disable every gap key for the walk.
+  let validationRulesFingerprint: string;
+  try {
+    validationRulesFingerprint = createHash('sha256').update(JSON.stringify(loadValidationRules())).digest('hex').slice(0, 12);
+  } catch {
+    validationRulesFingerprint = 'unknown';
+  }
   return {
     async forIpo(ipoId: string) {
       const documents = (await documentRepository.findByIPO(ipoId)) as unknown as GapKeyDocument[];
+      // #1379: the IPO's stage (OD-56 "once per STAGE CHANGE") -- part of a FAILED_VALIDATION row's key.
+      const [stageRow] = await db
+        .select({ status: schema.ipos.status })
+        .from(schema.ipos)
+        .where(eq(schema.ipos.id, ipoId))
+        .limit(1);
 
       const provenanceByField: Record<string, GapKeyProvenance | null> = {};
       const overrideByField: Record<string, GapKeyOverride | null> = {};
@@ -339,6 +355,8 @@ export function buildFieldPlanGapKeySource(params: {
         provenanceByField,
         overrideByField,
         writerCapability: fieldPlanWriterCapability,
+        stage: stageRow?.status ?? null,
+        validationRulesFingerprint,
       });
     },
   };

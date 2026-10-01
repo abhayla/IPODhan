@@ -62,9 +62,9 @@ describe('buildFieldPlanIpoGapKeys (#884 review round 2)', () => {
     expect(fieldPlanGapKeyFor(k, 'ipos', 'not_in_manifest', ['NO_MAPPING'])).toBeNull();
   });
 
-  it('claim map offers all three current variants per field; keys never contain the stamp terminator', () => {
+  it('claim map offers all four current variants per field (#1379 adds withValidation); keys never contain the stamp terminator', () => {
     const m = fieldPlanClaimGapKeys(keys());
-    expect(m['ipos.face_value']).toHaveLength(3);
+    expect(m['ipos.face_value']).toHaveLength(4);
     for (const list of Object.values(m)) for (const key of list) expect(key).not.toContain(']');
   });
 

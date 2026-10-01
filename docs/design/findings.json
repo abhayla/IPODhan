@@ -2103,6 +2103,15 @@
       "title": "OD-21 per-field validation never runs in production: the consolidator's validation step needs a field-validation-failures repository that no production service passes; unit tests inject it",
       "detail": "Measured 2026-10-01 by the #1368 build (PR #1369): the consolidator's validation step (scraper data-consolidation-service.ts, about lines 1555-1620) runs only when a field-validation-failures repository is supplied; no production service constructs the consolidator with one, and only the unit tests inject it, so OD-21's rule (validate each field before the write, drop and record a failing field, write the rest) is not exercised on any production write. Not wired yet; tracked as #1370. Cited in spec §5.3 (OD-21).",
       "phase1": false
+    },
+    {
+      "id": "F-217",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "validation / OD-21 rule 4 (rank 2 after a refusal)",
+      "title": "A value the OD-21 gate refuses is recorded by the pull walk as LOST_TO_HIGHER_PRIORITY, rank 2 is never asked, and rank 1's same bytes are re-written every data slot",
+      "detail": "Measured 2026-10-01 on ipodhan_test (scraper/tests/integration/field-plan-walk-rank2-after-refusal-1379.integration.test.ts, run against origin/main c4d7ca02 field-plan-walk.ts with ENABLE_FIELD_EXTRACTION_VALIDATION on in the test and the failures repository injected as #1370 wires it): face_value NSE 3 (rule face_value_equity_enum) with BSE 10 available: 0 fields supplied, face_value stays null, BSE never written; the plan row recorded CHECK_FAILED with reason_code LOST_TO_HIGHER_PRIORITY, not FAILED_VALIDATION as #1379 assumed, because the refusal's field result (stored value, incoming source) reads as a priority loss in the walk's agreement check (field-plan-walk.ts checkConsolidatorAgreed, 'matrix priority'); with only NSE ranked, a later slot claimed the row again and asked NSE again (a second failure row each slot, up to the 5-attempt cap). Class: every field with a validation rule and a lower rank (today ipos.face_value DOC/BSE/NSE or DOC/BSE|NSE/CHITTORGARH, ipos.listing_date NSE/BSE/CHITTORGARH), plus the #1229 merged-record date refusal on any ipos date. Fixed on branch fix/1379-rank2-after-refusal (#1379). Cited in spec §5.3 rule 4.",
+      "phase1": false
     }
   ],
   "false_assertions": [

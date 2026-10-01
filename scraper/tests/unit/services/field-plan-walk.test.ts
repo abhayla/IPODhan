@@ -2455,9 +2455,12 @@ describe('walk records a gap under its FIELD gap key (#884 review rounds 1-2)', 
   const PLAIN = 'eaaaaaaaaaaaa|f0123456789ab|xextract_filing.py@2026-09-03';
   const WITH_DOCS = `${PLAIN}|dbbbbbbbbbbbb`;
   const WITH_WRITER = `${PLAIN}|wcccccccccccc`;
+  const WITH_VALIDATION = `${WITH_DOCS}|sdddddddddddd|veeeeeeeeeeee`;
   const source = () => {
     const forIpo = vi.fn(async () => ({
-      byField: { 'ipos.issue_size': { plain: PLAIN, withDocuments: WITH_DOCS, withWriter: WITH_WRITER } },
+      byField: {
+        'ipos.issue_size': { plain: PLAIN, withDocuments: WITH_DOCS, withWriter: WITH_WRITER, withValidation: WITH_VALIDATION },
+      },
     }));
     return { forIpo };
   };
@@ -2476,7 +2479,7 @@ describe('walk records a gap under its FIELD gap key (#884 review rounds 1-2)', 
     } as any);
     await walkFieldPlanForIPO(IPO_ID, d, openBudget());
     expect(gapKeys.forIpo).toHaveBeenCalledTimes(1);
-    expect(repo.claimNextDueField.mock.calls[0][0]).toMatchObject({ gapKeys: { 'ipos.issue_size': [PLAIN, WITH_DOCS, WITH_WRITER] } });
+    expect(repo.claimNextDueField.mock.calls[0][0]).toMatchObject({ gapKeys: { 'ipos.issue_size': [PLAIN, WITH_DOCS, WITH_WRITER, WITH_VALIDATION] } });
     expect(repo.recorded[0].state).toBe('CHECK_FAILED');
     expect(repo.recorded[0].gapKey).toBe(PLAIN);
     expect(repo.recorded[0].cause).toContain('[gap:NO_FETCHER]');
