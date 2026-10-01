@@ -20,7 +20,7 @@ import type { ScrapedFinancialData } from '../scrapers/financial-data-scraper.js
 import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 // Phase 2: Shadow Mode - Data Consolidation Service
-import { DataConsolidationService, type DeferredProvenanceWrite, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
+import { DataConsolidationService, type DeferredProvenanceWrite, TERMINAL_IPO_STATUSES, collectImplausibleIssueSizeFields, collectDegeneratePriceBandFields, fallbackDoorMayReplaceStoredValue, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo, withSourceKeyLineage, sourceKeyLineageFor, E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
@@ -287,41 +287,68 @@ function getFieldSourcesRepository(): FieldSourcesRepository {
 }
 
 /**
- * #180 Tier-A round 6: the source that vouches for the CURRENT stored
- * `offeringType` value, if any — shared by every door that needs to pass
- * `storedSource` into `guardSmeOfferingTypeAgainstFpo` so the lookup and its
- * failure handling are written once, not re-copied per door.
+ * #1236 class fix: EVERY provenance lookup on the persister write paths answers one of three states,
+ * never conflated. `source` set = a row vouches for the stored value (use it); `source` null with
+ * `lookupFailed` false = no row was found, so there is no claim; `lookupFailed` true = the read
+ * THREW, so whether a document vouches for the stored value is UNKNOWN. "Unknown" is never "no
+ * document claim": the caller keeps the stored value and the failure is recorded in the ledger.
+ * Lookups on these paths: offeringType (3 doors), listingExchanges (fallback door). The other
+ * `findByField` reads (merged-validation owner, #180 F2 hard-date prior source) throw to their
+ * caller's own handler and never collapse a failure into "no claim".
  */
-async function getStoredOfferingTypeSource(ipoId: string | undefined): Promise<string | null> {
-  if (!ipoId) return null;
+export interface StoredProvenanceLookup {
+  source: string | null;
+  lookupFailed: boolean;
+}
+
+async function lookupStoredProvenanceSource(
+  ipoId: string | undefined,
+  fieldName: string
+): Promise<StoredProvenanceLookup> {
+  if (!ipoId) return { source: null, lookupFailed: false };
   try {
     const fieldSourcesRepo = getFieldSourcesRepository();
-    const provenance = typeof (fieldSourcesRepo as any).findByField === 'function'
-      ? await fieldSourcesRepo.findByField(ipoId, 'ipos', 'offeringType')
-      : null;
-    return (provenance as any)?.source ?? null;
+    if (typeof (fieldSourcesRepo as any).findByField !== 'function') return { source: null, lookupFailed: false };
+    const provenance = await fieldSourcesRepo.findByField(ipoId, 'ipos', fieldName);
+    return { source: (provenance as any)?.source ?? null, lookupFailed: false };
   } catch (e) {
     logger.warn(
-      { ipoId, error: e instanceof Error ? e.message : String(e) },
-      '[DataPersister] #180 F1 stored-provenance lookup failed - guarding without corroboration signal'
+      { ipoId, fieldName, error: e instanceof Error ? e.message : String(e) },
+      `[DataPersister] #1236 stored ${fieldName} provenance lookup failed - holder unknown, the stored value is kept`
     );
-    return null;
+    return { source: null, lookupFailed: true };
   }
 }
 
-/** OD-129 (#938): the source vouching for the stored `listingExchanges`, for the fallback door. */
-async function getStoredListingExchangesSource(ipoId: string | undefined): Promise<string | null> {
-  if (!ipoId) return null;
-  try {
-    const provenance = await getFieldSourcesRepository().findByField(ipoId, 'ipos', 'listingExchanges');
-    return (provenance as any)?.source ?? null;
-  } catch (e) {
-    logger.warn(
-      { ipoId, error: e instanceof Error ? e.message : String(e) },
-      '[DataPersister] OD-129 stored listingExchanges provenance lookup failed - no document claim known, the feed union applies'
-    );
-    return null;
-  }
+/** #180 Tier-A round 6: who vouches for the CURRENT stored `offeringType`, for every door that guards it. */
+function getStoredOfferingTypeSource(ipoId: string | undefined): Promise<StoredProvenanceLookup> {
+  return lookupStoredProvenanceSource(ipoId, 'offeringType');
+}
+
+/**
+ * OD-129 (#938): the source vouching for the stored `listingExchanges`, for the fallback door
+ * (document or ADMIN row / feed row / no row / lookup threw; see StoredProvenanceLookup).
+ */
+function getStoredListingExchangesSource(ipoId: string | undefined): Promise<StoredProvenanceLookup> {
+  return lookupStoredProvenanceSource(ipoId, 'listingExchanges');
+}
+
+/**
+ * The SME-FPO guard, answer-state aware (#1236 class). When the lookup FAILED and the guard would
+ * rewrite FPO to IPO, the rewrite is exactly the claim "no exchange vouches for the stored FPO" -
+ * which is unknown - so the stored value is kept instead. Every other state behaves as before.
+ */
+export function guardSmeOfferingTypeWithLookup(
+  segment: string | null | undefined,
+  incoming: string,
+  incomingSource: string | null | undefined,
+  lookup: StoredProvenanceLookup,
+  storedValue: string | null | undefined
+): string {
+  const guarded = guardSmeOfferingTypeAgainstFpo(segment, incoming, incomingSource, lookup.source);
+  // Round 3 (MINOR): with nothing stored there is no holder to be unsure about, so the guard decides.
+  if (lookup.lookupFailed && guarded !== incoming && storedValue != null) return storedValue;
+  return guarded;
 }
 
 async function getConsolidationService(): Promise<DataConsolidationService> {
@@ -715,7 +742,12 @@ export function mergeListingExchangesForSource(
   // (field_sources). Only an offer-document (or ADMIN) source holds the set;
   // null / unknown / a feed source means no document claim, so the feed union
   // still applies ("Only when no document has been read: the exchange feed").
-  storedSource?: string | null
+  storedSource?: string | null,
+  // #1236: the provenance lookup itself threw, so who holds the stored set is UNKNOWN. A feed must
+  // not widen a set that may be document-held, and the provenance write would then record the feed
+  // as its source, which no later cycle undoes. Fail closed: keep the stored set; the next cycle's
+  // consolidation (or this lookup succeeding) decides it. A never-tracked set (no row) is not this case.
+  provenanceLookupFailed?: boolean
 ): ('NSE' | 'BSE')[] {
   const existing = existingExchanges ?? [];
   // W-145: ONE rule for what a source proves — an aggregator's 'BOTH' is
@@ -733,6 +765,13 @@ export function mergeListingExchangesForSource(
   });
   if (od129.kind === 'DOCUMENT_WRITES') return od129.value as ('NSE' | 'BSE')[];
   if (od129.kind !== 'NO_DOCUMENT') return existing;
+  if (provenanceLookupFailed && existing.length > 0) {
+    logger.warn(
+      { source, stored: existing, incoming },
+      '[DataPersister] #1236 stored listingExchanges holder unknown (provenance lookup failed) - not widening the set from a feed'
+    );
+    return existing;
+  }
 
   let merged = existing;
   for (const exchange of incoming) {
@@ -764,6 +803,28 @@ export function keepTerminalIpoStatus<T extends Record<string, any>>(existingSta
 }
 
 /**
+ * #1253: the ONE definition of "this key is not a claim of this write on the fallback door": a
+ * context field (OD-66, both `listingExchange` spellings, #938) or, for a document source, an E-1
+ * exchange-stated field (§1.2.1). The publish filter (`dropFallbackNonClaims`), the provenance
+ * filter and the "is the listing exchange context" test all read this, so they cannot drift.
+ */
+function fallbackContextKeys(contextFields: readonly string[] | undefined): Set<string> {
+  const context = new Set(contextFields ?? []);
+  if (context.has('listingExchange')) context.add('listingExchanges');
+  if (context.has('listingExchanges')) context.add('listingExchange');
+  return context;
+}
+
+export function fallbackNonClaimTest(
+  source: string,
+  contextFields: readonly string[] | undefined,
+): (key: string) => boolean {
+  const context = fallbackContextKeys(contextFields);
+  const isDocumentSource = DOCUMENT_PATH_SOURCES.has(source);
+  return (key) => context.has(key) || (isDocumentSource && E1_EXCHANGE_STATED_FIELDS.has(key));
+}
+
+/**
  * #454 (remainder): the fallback door publishes only this write's CLAIMS, the same set the
  * consolidation door would resolve. Two kinds of key are not claims and are removed before the
  * `ipos` update, not merely left out of provenance:
@@ -780,20 +841,296 @@ export function dropFallbackNonClaims<T extends Record<string, any>>(
   source: string,
   contextFields: readonly string[] | undefined,
 ): { update: T; refused: string[] } {
-  const context = new Set(contextFields ?? []);
-  if (context.has('listingExchange')) context.add('listingExchanges');
-  if (context.has('listingExchanges')) context.add('listingExchange');
-  const isDocumentSource = DOCUMENT_PATH_SOURCES.has(source);
+  const isNonClaim = fallbackNonClaimTest(source, contextFields);
   const kept: Record<string, any> = {};
   const refused: string[] = [];
   for (const [key, value] of Object.entries(update)) {
-    if (context.has(key) || (isDocumentSource && E1_EXCHANGE_STATED_FIELDS.has(key))) {
+    if (isNonClaim(key)) {
       refused.push(key);
       continue;
     }
     kept[key] = value;
   }
   return { update: kept as T, refused };
+}
+
+/**
+ * #1236 round 3 (re-approach after independent review): the ONE list of guards every `ipos` UPDATE
+ * runs on its merged payload, whichever door writes it. Before this, the fallback door (the one that
+ * runs when anything on the consolidation path throws, including a guard's own provenance read) ran a
+ * hand-kept SUBSET of the consolidation door's guards, so an exception downgraded protection: an
+ * uncorroborated CHITTORGARH openDate reached a stored null because the #180 F2 read threw and the
+ * fallback door had no F2. Now both doors call `applyIpoWriteGuards`, so the fallback door cannot be
+ * weaker by construction; the unit suite pins the list and tests each guard on the fallback door.
+ *
+ * Answer states for a guard that reads provenance: found -> the guard applies; none -> the guard
+ * decides as before; the read THREW -> the stored value is kept (fail closed) and the field is named
+ * in `provenanceLookupFailed` for the ledger. A read that throws never escapes a guard.
+ *
+ * `consolidatorEnforced`: the consolidation door already applies this rule inside
+ * `consolidateIPOData` with the richer field_sources view (T-276 degenerate band with the tracked
+ * map; OD-66 / E-1 context skip; POSTPONED released only on relaunch evidence, section 2.9), so on that
+ * door the guard is not re-run (re-running the fallback form would, e.g., block a legitimate relaunch).
+ * Guards outside this list run for BOTH doors at one shared point: the pre-door payload guards
+ * (W-104 slug, W-177 issue size, merged-view date plausibility, segment drop, the incoming SME-FPO
+ * guard, W-14 removal from the payload), `listingExchanges` (each door merges with the same OD-129 /
+ * W-145 / context rules and fails closed on a failed lookup), and the admin hold (section 9.2 item 19:
+ * both doors write through `updateReportingHolds`).
+ */
+export interface IpoWriteGuardContext {
+  door: 'consolidation' | 'fallback';
+  existing: Record<string, any>;
+  /** The door-independent incoming payload (ipoData); the degenerate-band guard judges it. */
+  incoming: Record<string, any>;
+  source: ScraperSource;
+  contextFields: readonly string[] | undefined;
+  mergedValidationDroppedFields: readonly string[];
+  provenanceLookupFailed: Set<string>;
+}
+
+interface IpoWriteGuard {
+  name: string;
+  consolidatorEnforced: boolean;
+  run(payload: Record<string, any>, ctx: IpoWriteGuardContext): Promise<Record<string, any>> | Record<string, any>;
+}
+
+const HARD_DATE_FIELDS = ['openDate', 'closeDate', 'listingDate'] as const;
+
+/** Keys the precedence guard never ranks: bookkeeping, the OD-129 merged set, and a derived FK. */
+const PRECEDENCE_EXEMPT_KEYS = new Set(['lastScrapedAt', 'updatedAt', 'listingExchanges', 'registrarId']);
+
+function isStoredValuePresent(value: unknown): boolean {
+  return value !== undefined && value !== null && !(Array.isArray(value) && value.length === 0);
+}
+
+/**
+ * #1236 round 3 / #1363 review: the field-priority matrix on the fallback door. A payload value that
+ * would REPLACE a present stored value is kept at the stored value unless
+ * `fallbackDoorMayReplaceStoredValue` (the consolidator's own rank functions) allows it. The stored
+ * value's holder comes from ONE field_sources read; if that read throws, every present stored value is
+ * kept and named in provenanceLookupFailed. Filling an empty column is left to the other guards (F2).
+ * Kept values are written back as the STORED value (not dropped), so the classification and SME-FPO
+ * guards after this one still see and correct the stored value, as they do on the consolidation door.
+ */
+async function guardSourcePrecedence(
+  payload: Record<string, any>,
+  ctx: IpoWriteGuardContext
+): Promise<Record<string, any>> {
+  const replacing = Object.keys(payload).filter(
+    (f) =>
+      !PRECEDENCE_EXEMPT_KEYS.has(f) &&
+      payload[f] !== undefined &&
+      isStoredValuePresent(ctx.existing[f]) &&
+      !valuesEqualForWrite(ctx.existing[f], payload[f], f)
+  );
+  if (replacing.length === 0) return payload;
+  const out = { ...payload };
+  const keepStored = (f: string) => {
+    out[f] = ctx.existing[f];
+    if (f === 'registrar' && 'registrarId' in out) out.registrarId = ctx.existing.registrarId;
+  };
+  const ipoId = ctx.existing.id as string;
+  let holders: Map<string, ScraperSource>;
+  try {
+    const fieldSourcesRepo = getFieldSourcesRepository();
+    const rows = typeof (fieldSourcesRepo as any).findByIPOId === 'function'
+      ? await fieldSourcesRepo.findByIPOId(ipoId)
+      : [];
+    holders = new Map();
+    for (const row of rows as any[]) {
+      if ((row.tableName ?? 'ipos') !== 'ipos' || (row.rowKey ?? '') !== '') continue;
+      if (!holders.has(row.fieldName)) holders.set(row.fieldName, row.source);
+    }
+  } catch (e) {
+    for (const f of replacing) {
+      keepStored(f);
+      ctx.provenanceLookupFailed.add(f);
+    }
+    logger.warn(
+      { ipoId, source: ctx.source, door: ctx.door, fields: replacing, error: e instanceof Error ? e.message : String(e) },
+      '[DataPersister] field_sources read failed - stored values kept on the fallback door (#1236 round 3)'
+    );
+    return out;
+  }
+  const kept: { field: string; reason: string }[] = [];
+  for (const f of replacing) {
+    const decision = fallbackDoorMayReplaceStoredValue({
+      fieldName: f,
+      holderSource: holders.get(f) ?? null,
+      incomingSource: ctx.source,
+      ipoId,
+      segment: ctx.existing.segment ?? null,
+      listingExchanges: ctx.existing.listingExchanges ?? null,
+      ipoStatus: ctx.existing.status ?? null,
+      storedValue: ctx.existing[f],
+      incomingValue: payload[f],
+    });
+    if (!decision.allowed) {
+      keepStored(f);
+      kept.push({ field: f, reason: decision.reason });
+    }
+  }
+  if (kept.length > 0) {
+    logger.info(
+      { ipoId, source: ctx.source, door: ctx.door, kept },
+      '[DataPersister] source precedence kept the stored value(s) on the fallback door (#1236 round 3)'
+    );
+  }
+  return out;
+}
+
+/**
+ * #180 F2: a non-authoritative source may not be the FIRST to assert a hard date over a stored null
+ * on a row whose provenance is tracked, unless a prior field_sources row for that field exists. A row
+ * with no field_sources rows at all is untracked (unknown provenance) and is not protected. Either
+ * read throwing keeps the stored null (fail closed) and flags the field.
+ */
+async function guardFirstTouchHardDates(
+  payload: Record<string, any>,
+  ctx: IpoWriteGuardContext
+): Promise<Record<string, any>> {
+  if (isAuthoritativeForHardDatesOnCreate(ctx.source)) return payload;
+  const candidates = HARD_DATE_FIELDS.filter(
+    (f) => f in payload && payload[f] != null && ctx.existing[f] == null
+  );
+  if (candidates.length === 0) return payload;
+  const out = { ...payload };
+  const ipoId = ctx.existing.id as string;
+  const failClosed = (fields: readonly string[], e: unknown) => {
+    for (const f of fields) {
+      delete out[f];
+      ctx.provenanceLookupFailed.add(f);
+    }
+    logger.warn(
+      { ipoId, source: ctx.source, door: ctx.door, fields, error: e instanceof Error ? e.message : String(e) },
+      '[DataPersister] #180 F2 provenance lookup failed - the stored empty hard date is kept (#1236 round 3)'
+    );
+  };
+  const fieldSourcesRepo = getFieldSourcesRepository();
+  let rowHasAnyTrackedProvenance: boolean;
+  try {
+    rowHasAnyTrackedProvenance = typeof (fieldSourcesRepo as any).findByIPOId === 'function'
+      ? (await fieldSourcesRepo.findByIPOId(ipoId)).length > 0
+      : true; // no way to tell -> assume tracked (the guard stays active)
+  } catch (e) {
+    failClosed(candidates, e);
+    return out;
+  }
+  if (!rowHasAnyTrackedProvenance) return out;
+  for (const dateField of candidates) {
+    let priorSource: unknown;
+    try {
+      priorSource = await fieldSourcesRepo.findByField(ipoId, 'ipos', dateField);
+    } catch (e) {
+      failClosed([dateField], e);
+      continue;
+    }
+    if (!priorSource) {
+      logger.info(
+        { ipoId, source: ctx.source, dateField, door: ctx.door },
+        '[DataPersister] #180 F2 - dropping uncorroborated hard-date assertion on update (first touch, non-authoritative source)'
+      );
+      delete out[dateField];
+    }
+  }
+  return out;
+}
+
+export const IPO_WRITE_GUARDS: readonly IpoWriteGuard[] = [
+  // The consolidator's per-field source-priority decision (field-priority matrix, OD-64 venue).
+  { name: 'source-precedence', consolidatorEnforced: true, run: guardSourcePrecedence },
+  {
+    // Never let a scraper's generic 'IPO' downgrade a stored specific classification
+    // (takeover/buyback/rights/debt; see reclassify-corporate-actions.ts).
+    name: 'offering-type-keeps-classification',
+    consolidatorEnforced: false,
+    run: (payload, ctx) => {
+      if (!payload.offeringType) return payload;
+      return {
+        ...payload,
+        offeringType: resolveOfferingTypeKeepingClassification(ctx.existing.offeringType, payload.offeringType),
+      };
+    },
+  },
+  {
+    // #180 F1 / P1-1: an SME row has no genuine FPO unless an exchange vouches for it (this scrape's
+    // source or the stored value's provenance). A failed provenance read keeps the stored value.
+    name: 'sme-offering-type-fpo',
+    consolidatorEnforced: false,
+    run: async (payload, ctx) => {
+      if (!('offeringType' in payload)) return payload;
+      const segment = 'segment' in payload ? payload.segment : (ctx.existing.segment ?? null);
+      const lookup = await getStoredOfferingTypeSource(ctx.existing.id);
+      if (lookup.lookupFailed) ctx.provenanceLookupFailed.add('offeringType');
+      return {
+        ...payload,
+        offeringType: guardSmeOfferingTypeWithLookup(segment, payload.offeringType, ctx.source, lookup, ctx.existing.offeringType),
+      };
+    },
+  },
+  { name: 'hard-date-first-touch-f2', consolidatorEnforced: false, run: guardFirstTouchHardDates },
+  {
+    // W-14: a field the merged-record rule set refused stays at its stored value on every door.
+    name: 'merged-record-validation-w14',
+    consolidatorEnforced: false,
+    run: (payload, ctx) => {
+      if (ctx.mergedValidationDroppedFields.length === 0) return payload;
+      const out = { ...payload };
+      for (const field of ctx.mergedValidationDroppedFields) delete out[field];
+      return out;
+    },
+  },
+  {
+    // T-276: never collapse a stored real band to min === max (FIXED_PRICE exempt). The fallback door
+    // has no field_sources map, so the stored row is the signal (the consolidator's untracked path, T-281).
+    name: 'degenerate-price-band-t276',
+    consolidatorEnforced: true,
+    run: (payload, ctx) => {
+      const degenerate = collectDegeneratePriceBandFields(ctx.incoming as any, new Map(), ctx.existing as any);
+      if (degenerate.size === 0) return payload;
+      const out = { ...payload };
+      for (const fieldName of degenerate) delete out[fieldName];
+      logger.warn(
+        { ipoId: ctx.existing.id, source: ctx.source, door: ctx.door, fields: [...degenerate], reason: 'DEGENERATE_PRICE_BAND' },
+        '[DataPersister] degenerate price band not written over a stored real range (T-276, #1253)'
+      );
+      return out;
+    },
+  },
+  {
+    // OD-66 context fields and, for a document source, E-1 fields (section 1.2.1) are not claims.
+    name: 'non-claims-context-e1',
+    consolidatorEnforced: true,
+    run: (payload, ctx) => {
+      const { update, refused } = dropFallbackNonClaims(payload, ctx.source, ctx.contextFields);
+      if (refused.length > 0) {
+        logger.warn(
+          { ipoId: ctx.existing.id, source: ctx.source, door: ctx.door, fields: refused, reason: 'fallback-non-claim-refused' },
+          '[DataPersister] context / document-path E-1 field(s) not published (OD-66, section 1.2.1, #454)'
+        );
+      }
+      return update;
+    },
+  },
+  {
+    // WITHDRAWN / DELISTED (terminal) and POSTPONED (section 2.9) are never overwritten by an ordinary scrape.
+    name: 'terminal-status-kept',
+    consolidatorEnforced: true,
+    run: (payload, ctx) => keepTerminalIpoStatus(ctx.existing.status, payload),
+  },
+];
+
+/** Runs IPO_WRITE_GUARDS in order on a door's merged payload; returns the guarded copy. */
+export async function applyIpoWriteGuards(
+  payload: Record<string, any>,
+  ctx: IpoWriteGuardContext
+): Promise<Record<string, any>> {
+  let out = payload;
+  for (const guard of IPO_WRITE_GUARDS) {
+    if (ctx.door === 'consolidation' && guard.consolidatorEnforced) continue;
+    out = await guard.run(out, ctx);
+  }
+  return out;
 }
 
 /**
@@ -1212,6 +1549,8 @@ async function upsertIPOInScope(
    * at all reaches this line.
    */
   let ledgerFacts: DiscoveryStepInput | null = null;
+  /** #1236: provenance lookups that threw during this write (the stored value was kept). */
+  const provenanceLookupFailed = new Set<string>();
 
   logger.debug({
     companyName: scrapedIPO.companyName,
@@ -1274,9 +1613,7 @@ async function upsertIPOInScope(
       // #938 echo: a listing exchange the caller declared as CONTEXT (the
       // filing persister re-sends the STORED boards so the row resolves) is
       // not this write's claim, under either spelling of the key.
-      const listingExchangeIsContext =
-        contextFields?.includes('listingExchange') === true ||
-        contextFields?.includes('listingExchanges') === true;
+      const listingExchangeIsContext = fallbackContextKeys(contextFields).has('listingExchanges');
       const listingExchanges = toListingExchangesForSource(scrapedIPO.listingExchange, source);
 
       // Stage A.5 write-path date-plausibility guard (#41/#52): a current scrape must
@@ -1461,12 +1798,14 @@ async function upsertIPOInScope(
         // this door also needs the STORED provenance (an existing row whose
         // offeringType was already vouched for by NSE/BSE), same as every
         // other door, or it silently drops that signal.
-        const storedOfferingTypeSource = await getStoredOfferingTypeSource(existingIPO?.id);
-        (ipoData as any).offeringType = guardSmeOfferingTypeAgainstFpo(
+        const storedOfferingTypeLookup = await getStoredOfferingTypeSource(existingIPO?.id);
+        if (storedOfferingTypeLookup.lookupFailed) provenanceLookupFailed.add('offeringType');
+        (ipoData as any).offeringType = guardSmeOfferingTypeWithLookup(
           effectiveSegment,
           (ipoData as any).offeringType,
           source,
-          storedOfferingTypeSource
+          storedOfferingTypeLookup,
+          existingIPO?.offeringType
         );
       }
 
@@ -1489,6 +1828,9 @@ async function upsertIPOInScope(
         // fallback below commits it for the values the fallback actually stores (before OD-131
         // these rows were written inline, so dropping them on the fallback would lose lineage).
         // Cleared the moment it is committed, so it is never written twice.
+        // #1253: set when ANY provenance commit on the fallback door fails (the deferred commit writes
+        // row by row, so a failure is partial), so the ledger never claims lineage that was not written.
+        let fallbackProvenanceWriteFailed = false;
         let uncommittedProvenance:
           | { service: { commitDeferredProvenance: DataConsolidationService['commitDeferredProvenance'] }; writes: DeferredProvenanceWrite[] }
           | undefined;
@@ -1608,7 +1950,7 @@ async function upsertIPOInScope(
             // resolving that needs field_sources provenance (the owner-gated #52 fix) — the
             // guard never ships an absurd value (nulled → "Data Not Available"), it just may
             // drop a recoverable field for that unobserved pre-listing edge.
-            const finalData: Record<string, any> = {
+            let finalData: Record<string, any> = {
               ...sanitizeIpoWriteFields(rawConsolidated, existingIPO as any),
               listingExchanges: mergedExchanges,
               lastScrapedAt: new Date(),
@@ -1623,98 +1965,18 @@ async function upsertIPOInScope(
               finalData.registrarId = (await resolveRegistrarIdSafe(finalData.registrar)) ?? undefined;
             }
 
-            // Never let a scraper's generic 'IPO' downgrade an existing specific
-            // classification (takeover/buyback/rights/debt) — otherwise the */30 cron
-            // re-pollutes the IPO listings every run. (See reclassify-corporate-actions.ts.)
-            if ((finalData as any).offeringType) {
-              (finalData as any).offeringType = resolveOfferingTypeKeepingClassification(
-                (existingIPO as any).offeringType,
-                (finalData as any).offeringType
-              );
-            }
-
-            // #180 F1: guardSmeOfferingTypeAgainstFpo (P1-1) only ever rewrote an
-            // INCOMING offeringType — a scrape that omits offeringType entirely
-            // (western-overseas-study-abroad-ltd, shipwaves-online-ltd,
-            // stanbik-agro-ltd: last_scraped_at Dec 2025, zero field_sources rows for
-            // offeringType) never re-enters that branch, so an existing SME row
-            // stuck at offering_type='FPO' self-heals never. Consolidation's merged
-            // snapshot carries the STORED value through into `finalData.offeringType`
-            // even with no incoming source, so re-apply the same SME guard to
-            // whatever `finalData` is about to write — this is what actually
-            // corrects the stale value once a scrape (any source) touches the row.
-            if ('offeringType' in finalData) {
-              const effectiveSegment = 'segment' in finalData
-                ? (finalData as any).segment
-                : ((existingIPO as any).segment ?? null);
-              // #180 Tier-A round 5: trust EITHER signal — this scrape's own
-              // `source` (a bootstrap-shape write: no stored provenance yet,
-              // but the exchange itself is asserting FPO right now) OR the
-              // CURRENT stored value's provenance (an exchange source vouched
-              // for it previously). Checking only the stored side flipped a
-              // first-ever NSE/BSE-asserted SME FPO with nothing to bootstrap
-              // from.
-              const offeringTypeSource = await getStoredOfferingTypeSource(existingIPO.id);
-              (finalData as any).offeringType = guardSmeOfferingTypeAgainstFpo(
-                effectiveSegment,
-                (finalData as any).offeringType,
-                source,
-                offeringTypeSource
-              );
-            }
-
-            // #180 F2: isAuthoritativeForHardDatesOnCreate only gated the CREATE
-            // door (`!existingIPO`). A checker proved a single MONEYCONTROL payload
-            // writes open_date/close_date straight through consolidation onto an
-            // existing row whose dates are still NULL — corroboration only matters
-            // on the very first assertion, whichever door it comes through. Mirror
-            // the create-path guard here: a non-authoritative source may not be the
-            // FIRST to assert a null hard-date field on update either, unless a
-            // prior field_sources row already exists for that field (i.e. this is
-            // itself the corroborating second source, not the aggregator instead of it).
-            if (!isAuthoritativeForHardDatesOnCreate(source)) {
-              const fieldSourcesRepo = getFieldSourcesRepository();
-              // #180 Tier-A round: a row with ZERO field_sources rows at all has
-              // untracked/unknown provenance (e.g. seeded before source-tracking
-              // existed, or created outside the normal consolidation door) — that
-              // is a DIFFERENT situation from a row where tracking IS active but
-              // this specific field has never been corroborated. Only the latter
-              // is the F2 shape (a single weak source sneaking a value past a
-              // history that could have disagreed). Blocking the former would
-              // make it impossible to ever seed a date onto a legitimately
-              // untracked row, so it is treated as "unknown provenance", not
-              // "protected", and the guard is skipped for it.
-              const rowHasAnyTrackedProvenance = typeof (fieldSourcesRepo as any).findByIPOId === 'function'
-                ? (await fieldSourcesRepo.findByIPOId(existingIPO.id)).length > 0
-                : true; // no way to tell -> assume tracked (safer default: guard stays active)
-              for (const dateField of ['openDate', 'closeDate', 'listingDate'] as const) {
-                if (
-                  rowHasAnyTrackedProvenance &&
-                  dateField in finalData &&
-                  (finalData as any)[dateField] != null &&
-                  (existingIPO as any)[dateField] == null
-                ) {
-                  const priorSource = await fieldSourcesRepo.findByField(existingIPO.id, 'ipos', dateField);
-                  if (!priorSource) {
-                    logger.info(
-                      { ipoId: existingIPO.id, source, dateField },
-                      '[DataPersister] #180 F2 - dropping uncorroborated hard-date assertion on update (first touch, non-authoritative source)'
-                    );
-                    delete (finalData as any)[dateField];
-                  }
-                }
-              }
-            }
-
-            // W-14: the merged-record pass already ran ONCE, before this door, and
-            // removed these fields from the incoming payload (so consolidation never
-            // saw them and wrote no `field_sources` provenance for them). Re-apply the
-            // SAME decision to consolidation's merged output: its per-field winner for
-            // a dropped field can still be a previously-persisted bad value, and this
-            // update must leave the stored value alone.
-            for (const field of mergedValidationDroppedFields) {
-              delete finalData[field];
-            }
+            // #1236 round 3: the shared guard list (classification keep, SME-FPO, #180 F2 hard dates,
+            // W-14), the SAME list the fallback door runs. A guard whose own provenance read throws keeps
+            // the stored value and flags it; it no longer throws the whole write onto the fallback door.
+            finalData = await applyIpoWriteGuards(finalData, {
+              door: 'consolidation',
+              existing: existingIPO as any,
+              incoming: ipoData as any,
+              source,
+              contextFields,
+              mergedValidationDroppedFields,
+              provenanceLookupFailed,
+            });
 
             // S-02 §5 no-op write suppression, corrected in round 3 (C1/C2/M3).
             // The skip is decided by an actual field-by-field diff of the FINAL
@@ -1796,6 +2058,7 @@ async function upsertIPOInScope(
               conflictsDetected: consolidationResult.conflictsDetected ?? 0,
               conflictsBySeverity: consolidationResult.conflictsBySeverity ?? {},
               fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
+              provenanceLookupFailed: [...provenanceLookupFailed],
               companyName: scrapedIPO.companyName,
             };
 
@@ -1872,6 +2135,10 @@ async function upsertIPOInScope(
         // nulled it, and `listingExchanges` was replaced rather than merged.
         // It stays reachable by design — it is what runs when consolidation
         // throws — so it is made SAFE rather than declared unreachable.
+        const storedExchangesProvenance = listingExchangeIsContext
+          ? { source: null, lookupFailed: false }
+          : await getStoredListingExchangesSource((existingIPO as any).id);
+        if (storedExchangesProvenance.lookupFailed) provenanceLookupFailed.add('listingExchanges');
         const fallbackData: any = {
           ...buildNonDestructiveUpdate(existingIPO as any, ipoData),
           listingExchanges: mergeListingExchangesForSource(
@@ -1880,54 +2147,24 @@ async function upsertIPOInScope(
             // #938 echo: context is never a claim, on this door either.
             listingExchangeIsContext ? undefined : scrapedIPO.listingExchange,
             ((existingIPO as any).segment ?? scrapedIPO.segment) as string | null | undefined,
-            listingExchangeIsContext ? null : await getStoredListingExchangesSource((existingIPO as any).id)
+            storedExchangesProvenance.source,
+            storedExchangesProvenance.lookupFailed
           ),
           lastScrapedAt: new Date(),
           updatedAt: new Date(),
         };
-        // Same classification guard as the consolidation path (above) — only
-        // applied when an offering_type is present, so the safety-net update
-        // never writes undefined to the NOT NULL offering_type column.
-        if (fallbackData.offeringType) {
-          fallbackData.offeringType = resolveOfferingTypeKeepingClassification(
-            (existingIPO as any).offeringType,
-            fallbackData.offeringType
-          );
-        }
-        // #180 Tier-A round: the fallback door is `buildNonDestructiveUpdate`'s
-        // merge of ipoData over existingIPO, so — same shape as the
-        // consolidation door before this fix — a scrape that omits
-        // offeringType lets `existingIPO.offeringType` (a stale stored FPO on
-        // an SME row) flow through here completely unguarded; the pre-door
-        // guard at ~line 953 only ever saw the INCOMING payload. Re-apply the
-        // same corroboration-gated SME guard on whatever this door is about
-        // to write.
-        if ('offeringType' in fallbackData) {
-          const effectiveSegment = fallbackData.segment ?? (existingIPO as any).segment ?? null;
-          const offeringTypeSource = await getStoredOfferingTypeSource(existingIPO.id);
-          fallbackData.offeringType = guardSmeOfferingTypeAgainstFpo(
-            effectiveSegment,
-            fallbackData.offeringType,
-            source,
-            offeringTypeSource
-          );
-        }
-        // #454 remainder: publish only this write's claims — context fields (OD-66) and, for a
-        // document source, E-1 fields (§1.2.1) are removed from the ipos update itself, the same
-        // set the consolidation door never publishes. Previously only their provenance was
-        // skipped, so the value still reached the page with no lineage.
-        const { update: claimsOnlyFallback, refused: fallbackRefused } = dropFallbackNonClaims(
-          fallbackData,
+        // #1236 round 3: EVERY guard the consolidation door applies, from the one shared list
+        // (IPO_WRITE_GUARDS): source precedence, classification keep, SME-FPO, #180 F2 hard dates,
+        // W-14, degenerate band (T-276), context / E-1 non-claims (OD-66, section 1.2.1), terminal status.
+        const guardedFallback = await applyIpoWriteGuards(fallbackData, {
+          door: 'fallback',
+          existing: existingIPO as any,
+          incoming: ipoData as any,
           source,
           contextFields,
-        );
-        if (fallbackRefused.length > 0) {
-          logger.warn(
-            { ipoId: existingIPO.id, source, fields: fallbackRefused, reason: 'fallback-non-claim-refused' },
-            '[LEGACY PATH] context / document-path E-1 field(s) not published by the fallback door (OD-66, §1.2.1, #454)'
-          );
-        }
-        const guardedFallback = keepTerminalIpoStatus((existingIPO as any).status, claimsOnlyFallback);
+          mergedValidationDroppedFields,
+          provenanceLookupFailed,
+        });
         const fallbackHeld = await updateReportingHolds(ipoRepository as never, existingIPO.id, guardedFallback, options?.inIposWriteTx);
         // OD-131 + §9.2 item 19: what the admin hold dropped was not stored; nothing below claims it.
         const storedFallback = withoutHeld(guardedFallback, fallbackHeld);
@@ -1946,6 +2183,7 @@ async function upsertIPOInScope(
               isProvenanceValueStoredAsDecided(write, storedFallback)
             );
           } catch (e: any) {
+            fallbackProvenanceWriteFailed = true;
             logger.error(
               { ipoId: existingIPO.id, source, error: e?.message, cause: e?.cause instanceof Error ? e.cause.message : e?.cause },
               '[DataPersister] OD-131 fallback-door deferred provenance commit failed after the ipos update committed'
@@ -1986,19 +2224,13 @@ async function upsertIPOInScope(
         //     write failure propagate past this point — signal-ownership.md
         //     R6: the failure is logged with its cause, not swallowed silently.
         const FALLBACK_BOOKKEEPING_FIELDS = new Set(['lastScrapedAt', 'updatedAt']);
-        let fallbackProvenanceWriteFailed = false;
         if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
-          const fallbackContextFields = new Set([
-            ...(contextFields ?? []),
-            ...(listingExchangeIsContext ? ['listingExchanges'] : []),
-          ]);
-          const isDocumentSource = DOCUMENT_PATH_SOURCES.has(source);
+          const isFallbackNonClaim = fallbackNonClaimTest(source, contextFields);
           const fieldsToTrack = Object.entries(storedFallback)
             .filter(([fieldName, value]) => {
               if (FALLBACK_BOOKKEEPING_FIELDS.has(fieldName)) return false;
               if (value === undefined || value === null) return false;
-              if (fallbackContextFields.has(fieldName)) return false;
-              if (isDocumentSource && E1_EXCHANGE_STATED_FIELDS.has(fieldName)) return false;
+              if (isFallbackNonClaim(fieldName)) return false;
               const previousValue = (existingIPO as any)?.[fieldName];
               if (valuesEqualForWrite(previousValue, value, fieldName)) return false;
               return true;
@@ -2051,9 +2283,10 @@ async function upsertIPOInScope(
           source,
           created: false,
           fields: Object.keys(storedFallback),
-          offeringType: fallbackData.offeringType ?? null,
+          offeringType: guardedFallback.offeringType ?? null,
           consolidated: false,
           fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && !fallbackProvenanceWriteFailed,
+          provenanceLookupFailed: [...provenanceLookupFailed],
           companyName: scrapedIPO.companyName,
         };
 

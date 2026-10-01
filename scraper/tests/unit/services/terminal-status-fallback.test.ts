@@ -39,6 +39,8 @@ describe('keepTerminalIpoStatus (the fallback door)', () => {
 
   it('the fallback door writes through the guard (wiring)', () => {
     const src = readFileSync(join(__dirname, '..', '..', '..', 'src', 'services', 'data-persister.ts'), 'utf8');
-    expect(src).toMatch(/const guardedFallback = keepTerminalIpoStatus\(\(existingIPO as any\)\.status, claimsOnlyFallback\);\s*const fallbackHeld = await updateReportingHolds\(ipoRepository as never, existingIPO\.id, guardedFallback, options\?\.inIposWriteTx\);/);
+    // #1236 round 3: the door writes the output of the shared guard list, which holds this guard.
+    expect(src).toMatch(/name: 'terminal-status-kept',[\s\S]{0,120}run: \(payload, ctx\) => keepTerminalIpoStatus\(ctx\.existing\.status, payload\)/);
+    expect(src).toMatch(/const guardedFallback = await applyIpoWriteGuards\(fallbackData, \{\s*door: 'fallback',[\s\S]{0,400}?\}\);\s*const fallbackHeld = await updateReportingHolds\(ipoRepository as never, existingIPO\.id, guardedFallback, options\?\.inIposWriteTx\);/);
   });
 });

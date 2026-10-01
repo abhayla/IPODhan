@@ -589,6 +589,66 @@ function outranksUntrackedValue(
 }
 
 /**
+ * #1236 round 3 / #1363 review: the fallback write door's source-precedence decision, built from the
+ * SAME rank functions `resolveConflict` uses (`getSourcePriority`, `outranksUntrackedValue`), so the
+ * door cannot rank differently. The door has none of the consolidator's cross-source evidence
+ * (relaunch state, W-160 hold escapes, TZ tie-break, OD-144 plan rank), so wherever that evidence
+ * could decide, it keeps the stored value: it only ever accepts a subset of what the consolidation
+ * door accepts, never a value that door would refuse. The next consolidated write decides the rest.
+ *
+ *  - `status`: a BACKWARD move is kept (the consolidator allows one only on date-ladder evidence the door
+ *    lacks); terminal and POSTPONED statuses are kept by the persister's terminal-status guard.
+ *  - no provenance row (untracked stored value): the consolidator's untracked rule.
+ *  - a tracked HIGH_VALUE_LIVE field on a live IPO: kept (the consolidator HOLDs a one-sided change there).
+ *  - a provenance row: replaced only when BOTH sides are ranked for the field and the incoming source
+ *    strictly outranks the holder. An unranked holder (e.g. an offer document holding `segment`, which
+ *    the matrix does not list) or an equal rank (including the same source) keeps the stored value.
+ */
+export function fallbackDoorMayReplaceStoredValue(params: {
+  fieldName: string;
+  /** The stored value's provenance source; null when the row has no provenance row for the field. */
+  holderSource: ScraperSource | null;
+  incomingSource: ScraperSource;
+  ipoId: string;
+  segment: string | null | undefined;
+  listingExchanges: readonly string[] | null | undefined;
+  ipoStatus: string | null | undefined;
+  storedValue: unknown;
+  incomingValue: unknown;
+}): { allowed: boolean; reason: string } {
+  const { fieldName, holderSource, incomingSource } = params;
+  if (fieldName === 'status' && incomingSource !== 'ADMIN' && isBackwardMove(params.storedValue, params.incomingValue)) {
+    return { allowed: false, reason: 'BACKWARD_STATUS_NEEDS_EVIDENCE' };
+  }
+  const ipoType = resolveIpoTypeKey({
+    id: params.ipoId,
+    segment: (params.segment as 'MAINBOARD' | 'SME' | null) ?? null,
+    listingExchanges: (params.listingExchanges as ('NSE' | 'BSE')[] | null | undefined) ?? null,
+  });
+  if (holderSource === null) {
+    return outranksUntrackedValue(fieldName, incomingSource, 'ipos', ipoType)
+      ? { allowed: true, reason: 'OUTRANKS_UNTRACKED' }
+      : { allowed: false, reason: 'DOES_NOT_OUTRANK_UNTRACKED' };
+  }
+  // Same trigger as resolveConflict's HOLD (a tracked value only; the untracked branch above has none).
+  if (
+    HIGH_VALUE_LIVE_FIELDS.has(fieldName) &&
+    params.ipoStatus != null &&
+    LIVE_STATUSES.has(String(params.ipoStatus)) &&
+    holderSource !== 'ADMIN' &&
+    incomingSource !== 'ADMIN'
+  ) {
+    return { allowed: false, reason: 'HIGH_VALUE_LIVE_HOLD' };
+  }
+  const venue = params.listingExchanges ?? null;
+  const holderRank = getSourcePriority(fieldName, holderSource, 'ipos', ipoType, venue);
+  const incomingRank = getSourcePriority(fieldName, incomingSource, 'ipos', ipoType, venue);
+  if (holderRank === -1) return { allowed: false, reason: 'HOLDER_UNRANKED' };
+  if (incomingRank === -1 || incomingRank >= holderRank) return { allowed: false, reason: 'SOURCE_PRIORITY' };
+  return { allowed: true, reason: 'SOURCE_PRIORITY' };
+}
+
+/**
  * W-24 helper: normalize a resolved value for the "did anything change?" test.
  * Exported (review round 6, item 2) so field-plan-walk.ts's PULL-WRITE
  * agreement check compares like-for-like instead of a raw `!==` between a JS
