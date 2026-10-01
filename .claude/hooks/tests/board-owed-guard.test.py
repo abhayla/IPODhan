@@ -604,6 +604,147 @@ class BoardOwedGuardTest(unittest.TestCase):
         self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
         self.assertFalse(os.path.exists(self.marker), "another session's pending merge was promoted by this session")
 
+    # ---- #1365 round 2 ----
+    def _pending_path(self):
+        return self.marker + ".pending"
+
+    def _stub_logging(self, merged_json, view_json=None, sleep=0):
+        """gh stub that logs each call's argv. `pr list` WITHOUT --search returns
+        30 unrelated old PRs (the real creation-date ordering); with --search it
+        returns merged_json. `pr view` returns view_json."""
+        log = os.path.join(self.tmp, "gh-calls-%s.log" % self._testMethodName)
+        body = (
+            "import sys, json, time\n"
+            "open(%r, 'a').write(json.dumps(sys.argv[1:]) + chr(10))\n"
+            "time.sleep(%d)\n"
+            "a = sys.argv[1:]\n"
+            "if 'view' in a:\n"
+            "    print(json.dumps(%s))\n"
+            "elif '--search' in a:\n"
+            "    print(json.dumps(%s))\n"
+            "else:\n"
+            "    print(json.dumps([{'number': 5000 + i, 'mergedAt': '2020-01-01T00:00:00Z'} for i in range(30)]))\n"
+        ) % (log, sleep, repr(view_json), repr(merged_json))
+        return self._gh_stub(body), log
+
+    def _now_plus(self, secs):
+        import datetime
+        t = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=secs)
+        return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def _calls(self, log):
+        try:
+            return [json.loads(l) for l in open(log, encoding="utf-8") if l.strip()]
+        except Exception:
+            return []
+
+    def test_r1_background_still_running_at_stop_is_kept_then_recorded(self):
+        cmd = "gh pr " + "merge 1400 --squash"
+        self.run_hook("PostToolUseBash", self._bg_payload(cmd))
+        env, _ = self._stub_logging([], view_json={"state": "OPEN", "mergedAt": None})
+        p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue(os.path.exists(self._pending_path()), "pending record dropped while the merge was still running")
+        env, _ = self._stub_logging([{"number": 1400, "mergedAt": self._now_plus(5)}],
+                                    view_json={"state": "MERGED", "mergedAt": self._now_plus(5)})
+        p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
+        self.assertEqual(p.returncode, 2, "later-merged background PR never recorded: %s" % p.stderr)
+        self.assertIn("1400", p.stderr)
+        self.assertFalse(os.path.exists(self._pending_path()), "promoted record left in pending")
+
+    def test_r1b_pending_ages_out_after_two_hours(self):
+        import datetime
+        old = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=3)).isoformat(timespec="seconds")
+        with open(self._pending_path(), "w", encoding="utf-8") as f:
+            f.write(json.dumps({"pr": "1401", "session_id": "me", "ts": old, "command": "x"}) + "\n")
+        env, _ = self._stub_logging([], view_json={"state": "OPEN", "mergedAt": None})
+        p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertFalse(os.path.exists(self._pending_path()), "a 3h-old unmerged pending record was kept forever")
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_r2_long_lived_pr_merged_now_is_found(self):
+        cmd = "gh pr " + "merge 1300 --squash"
+        self.run_hook("PostToolUseBash", self._bg_payload(cmd))
+        # a second record without a number forces the search path, not pr view
+        cmd2 = "gh pr " + "merge $N --squash"
+        self.run_hook("PostToolUseBash", self._bg_payload(cmd2))
+        env, _ = self._stub_logging([{"number": 1300, "mergedAt": self._now_plus(5)}],
+                                    view_json={"state": "MERGED", "mergedAt": self._now_plus(5)})
+        p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
+        self.assertEqual(p.returncode, 2, "long-lived PR merged now was missed (creation-order limit): %s" % p.stderr)
+        self.assertIn("1300", p.stderr)
+
+    def test_r2b_single_known_pr_uses_pr_view(self):
+        cmd = "gh pr " + "merge 1301 --squash"
+        self.run_hook("PostToolUseBash", self._bg_payload(cmd))
+        env, log = self._stub_logging([], view_json={"state": "MERGED", "mergedAt": self._now_plus(5)})
+        p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
+        self.assertEqual(p.returncode, 2, p.stderr)
+        calls = self._calls(log)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("view", calls[0])
+
+    def test_r3_success_output_with_incidental_words_still_arms(self):
+        cmd = "node scripts/ops/" + "merge-if-current.mjs 1302 > /dev/null 2>&1 && gh pr " + "merge 1302 --squash"
+        out = (
+            "STEP 1  mergeability (checked FIRST: a conflicting PR gets NO pull_request run at all,\n"
+            "        PASS  {\"mergeable\":\"MERGEABLE\"}\n"
+            "STEP 2  checks\n        PASS     lint\n"
+            "OK  not a draft, no GraphQL: trouble, Required status checks are green\n"
+            "\u2713 Squashed and merged pull request #1302 (fix: CONFLICTING is not mergeable GraphQL: x)\n"
+        )
+        payload = self.bash_payload(cmd, self.ipodhan)
+        payload["tool_response"] = {"stdout": out, "exit_code": 0}
+        self.run_hook("PostToolUseBash", payload)
+        self.assertTrue(os.path.exists(self.marker), "a successful merge with incidental words recorded nothing")
+
+    def test_r3b_real_refusal_lines_do_not_arm(self):
+        refusals = [
+            "REFUSED (exit 2): the PR is not in a mergeable state",
+            "X Pull request #1303 is not mergeable: the base branch policy prohibits the merge.",
+            "GraphQL: Pull request is not mergeable (mergePullRequest)",
+            "GraphQL: Could not resolve to a PullRequest with the number of 1303. (repository.pullRequest)",
+            "no pull requests found for branch x",
+            "Could not read the PR: boom",
+            "Cannot run the gate: the `typescript` package is not resolvable",
+        ]
+        for text in refusals:
+            if os.path.exists(self.marker):
+                os.remove(self.marker)
+            cmd = "gh pr " + "merge 1303 --squash"
+            payload = self.bash_payload(cmd, self.ipodhan)
+            payload["tool_response"] = {"stdout": "STEP 1 ...\n" + text + "\n"}
+            self.run_hook("PostToolUseBash", payload)
+            self.assertFalse(os.path.exists(self.marker), "refusal line armed the marker: %r" % text)
+
+    def test_r4_other_prs_merge_does_not_promote_known_pr(self):
+        cmd = "gh pr " + "merge 1304 --squash"
+        self.run_hook("PostToolUseBash", self._bg_payload(cmd))
+        cmd2 = "gh pr " + "merge $N --squash"
+        self.run_hook("PostToolUseBash", self._bg_payload(cmd2))
+        env, _ = self._stub_logging([{"number": 1999, "mergedAt": self._now_plus(5)}])
+        p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
+        marker_text = open(self.marker, encoding="utf-8").read() if os.path.exists(self.marker) else ""
+        self.assertNotIn("1304", marker_text, "another PR's merge was attributed to PR 1304")
+        pend = open(self._pending_path(), encoding="utf-8").read() if os.path.exists(self._pending_path()) else ""
+        self.assertIn("1304", pend, "PR 1304 should stay pending")
+
+    def test_r5_one_gh_call_per_stop(self):
+        for n in (1305, 1306, 1307):
+            self.run_hook("PostToolUseBash", self._bg_payload("gh pr " + "merge %d --squash" % n))
+        env, log = self._stub_logging([], view_json=None)
+        self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
+        self.assertEqual(len(self._calls(log)), 1, "more than one gh call in a single Stop")
+
+    def test_r5b_gh_timeout_records_anyway(self):
+        for n in (1308, 1309):
+            self.run_hook("PostToolUseBash", self._bg_payload("gh pr " + "merge %d --squash" % n))
+        env, _ = self._stub_logging([], sleep=6)
+        env["BOARD_OWED_GH_TIMEOUT"] = "1"
+        p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan}, env_extra=env)
+        self.assertEqual(p.returncode, 2, "gh timeout must fail safe and record: %s" % p.stderr)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

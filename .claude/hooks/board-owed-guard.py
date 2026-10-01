@@ -330,13 +330,32 @@ def _tool_input(data):
 # `gh pr merge` prints "Pull request ... is not mergeable" / "GraphQL: ...".
 # On genuine AMBIGUITY (can't tell success from failure) we still mark — a
 # false "owed" costs one republish; a false "clear" costs the whole mechanism.
+# Round 2 (#1365 MAJOR): the old pattern matched these words ANYWHERE, but the
+# standard command `merge-if-current.mjs N > /dev/null 2>&1 && gh pr merge N`
+# prints "a conflicting PR gets NO pull_request run" on EVERY run (its STEP 1
+# help text, merge-if-current.mjs:174), so every successful merge looked failed.
+# Now each pattern is anchored to the START OF A LINE and to the real refusal
+# shape. Sources read: merge-if-current.mjs (`REFUSED (exit N): <heading>`,
+# `Could not read the PR:`, `Cannot run the gate:`, `git fetch failed:`,
+# `Could not compute merge-base`, `usage:`) and `gh pr merge`
+# (`X Pull request #N is not mergeable: ...`, `... was not merged ...`,
+# `GraphQL: ...`, `Could not resolve to a PullRequest`, `no pull requests found`).
+# A success line with the same words mid-line ("Squashed and merged pull
+# request #N (fix: CONFLICTING ...)") does not match and still records.
 _FAILURE_TEXT_RE = re.compile(
-    r"REFUSED\s*\(exit|conflicts with its base|is not OPEN|Mergeability is UNKNOWN|"
-    r"checks are not green|not mergeable|CONFLICTING|is a draft|GraphQL:\s*|"
-    r"pull request is not mergeable|was not merged|policy prohibits|"
-    r"Could not resolve to a PullRequest|No pull requests? found|"
-    r"Required status checks?|Merge conflict",
-    re.IGNORECASE,
+    r"^[ \t]*(?:[X!\u2717\u2718][ \t]+)?(?:"
+    r"REFUSED[ \t]*\(exit[ \t]+\d+\)"
+    r"|GraphQL:"
+    r"|Pull request\b[^\n]*?\b(?:is not mergeable|was not merged|is a draft|is closed)\b"
+    r"|Could not resolve to a PullRequest"
+    r"|no pull requests? found"
+    r"|Could not read the PR:"
+    r"|Cannot run the gate:"
+    r"|git fetch failed:"
+    r"|Could not compute merge-base"
+    r"|usage:[ \t]+node[ \t]+scripts/ops/merge-if-current"
+    r")",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 
@@ -424,65 +443,137 @@ def _parse_ts(text):
         return None
 
 
-def _merged_prs_since(cwd, since):
-    """PR numbers GitHub reports merged at/after `since`; None when gh cannot
-    be asked or answers something unreadable (caller must then fail safe)."""
-    argv = None
+PENDING_MAX_AGE_HOURS = 2
+
+
+def _gh_argv():
     raw_argv = os.environ.get("BOARD_OWED_GH_ARGV")
     if raw_argv:
         try:
             argv = json.loads(raw_argv)
+            if argv:
+                return argv
         except Exception:
-            argv = None
-    if not argv:
-        argv = ["gh"]
+            pass
+    return ["gh"]
+
+
+def _gh_json(args, cwd, timeout):
+    """One gh call; parsed JSON, or None on ANY failure/timeout/garbage."""
     try:
         proc = subprocess.run(
-            argv + ["pr", "list", "--state", "merged", "--limit", "30", "--json", "number,mergedAt"],
-            cwd=cwd or None, capture_output=True, text=True, timeout=20,
+            _gh_argv() + args, cwd=cwd or None, capture_output=True, text=True, timeout=timeout,
         )
         if proc.returncode != 0:
             return None
-        rows = json.loads(proc.stdout)
-        if not isinstance(rows, list):
-            return None
+        return json.loads(proc.stdout)
     except Exception:
         return None
-    out = []
+
+
+def _gh_timeout():
+    try:
+        return max(1, int(os.environ.get("BOARD_OWED_GH_TIMEOUT") or 25))
+    except Exception:
+        return 25
+
+
+def _merged_lookup(own, cwd):
+    """ONE gh call for all of this session's pending records (round 2, MINOR-2;
+    the Stop budget is 120s, so one capped call, never one per record).
+    Returns {"numbers": set(str), "merged_at": {number: datetime}} for the PRs
+    GitHub reports merged since the earliest queue time, or None when gh cannot
+    answer (caller records anyway: fail safe)."""
+    deadline = time.monotonic() + _gh_timeout()
+
+    def remaining():
+        return max(1.0, deadline - time.monotonic())
+
+    known = sorted({r.get("pr") for r in own if r.get("pr")})
+    unknown = [r for r in own if not r.get("pr")]
+    if len(known) == 1 and not unknown:
+        # CRITICAL-2: a long-lived PR falls outside any `pr list --limit N`
+        # (sorted by creation). Ask about the exact PR.
+        row = _gh_json(["pr", "view", known[0], "--json", "number,state,mergedAt"], cwd, remaining())
+        if isinstance(row, dict):
+            out = {"numbers": set(), "merged_at": {}}
+            merged_at = _parse_ts(row.get("mergedAt"))
+            if merged_at is not None:
+                out["numbers"].add(known[0])
+                out["merged_at"][known[0]] = merged_at
+            return out
+        # view unreadable: fall through to the search listing, inside the SAME cap.
+        if time.monotonic() >= deadline:
+            return None
+    stamps = [t for t in (_parse_ts(r.get("ts")) for r in own) if t is not None]
+    if len(stamps) != len(own):
+        return None
+    earliest = min(stamps).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rows = _gh_json(
+        ["pr", "list", "--state", "merged", "--search", "merged:>=" + earliest,
+         "--limit", "100", "--json", "number,mergedAt"], cwd, remaining())
+    if not isinstance(rows, list):
+        return None
+    out = {"numbers": set(), "merged_at": {}}
     for row in rows:
         if not isinstance(row, dict):
             return None
         merged_at = _parse_ts(row.get("mergedAt"))
         if merged_at is None:
             continue
-        if merged_at >= since:
-            out.append(str(row.get("number")))
+        num = str(row.get("number"))
+        out["numbers"].add(num)
+        out["merged_at"][num] = merged_at
     return out
 
 
 def _resolve_pending(session_id, cwd):
     """#1365: turn this session's queued background merges into owed records
-    only when GitHub shows a PR merged since the command was queued. When that
-    cannot be established (gh down, unreadable ts) the merge is recorded: a
-    missed board publish costs more than one extra prompt."""
+    only when GitHub shows the merge happened. A record GitHub does not (yet)
+    show as merged STAYS pending and is re-checked at each later Stop, until it
+    ages out after PENDING_MAX_AGE_HOURS (CRITICAL-1: a background merge still
+    running at Stop must not be forgotten). When gh cannot answer, the merge is
+    recorded: a missed board publish costs more than one extra prompt."""
     pending = _read_pending()
     if not pending:
         return
-    keep = []
+    keep, own = [], []
     for rec in pending:
         owner = rec.get("session_id") or ""
         if owner and owner != (session_id or ""):
             keep.append(rec)
+        else:
+            own.append(rec)
+    if not own:
+        return
+    now = datetime.now(timezone.utc)
+    fresh = []
+    for rec in own:
+        ts = _parse_ts(rec.get("ts"))
+        if ts is not None and ts.tzinfo is not None and (now - ts).total_seconds() > PENDING_MAX_AGE_HOURS * 3600:
+            continue  # aged out: dropped
+        fresh.append(rec)
+    lookup = _merged_lookup(fresh, cwd) if fresh else None
+    for rec in fresh:
+        if lookup is None:
+            _append_marker(rec)
+            continue
+        queued_pr = rec.get("pr") or ""
+        if queued_pr:
+            # MINOR-1: a known PR is promoted only by ITS OWN merge.
+            if queued_pr in lookup["numbers"]:
+                _append_marker(rec)
+            else:
+                keep.append(rec)
             continue
         since = _parse_ts(rec.get("ts"))
-        merged = _merged_prs_since(cwd, since) if since else None
-        if merged is None:
-            _append_marker(rec)
-        elif merged:
-            queued_pr = rec.get("pr") or ""
+        hit = sorted(n for n, t in lookup["merged_at"].items() if since is not None and t >= since)
+        if hit:
             rec = dict(rec)
-            rec["pr"] = queued_pr if queued_pr in merged else ",".join(merged)
+            rec["pr"] = ",".join(hit)
             _append_marker(rec)
+        else:
+            keep.append(rec)
     _write_pending(keep)
 
 
