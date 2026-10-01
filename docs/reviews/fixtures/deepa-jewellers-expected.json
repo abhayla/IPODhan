@@ -114,6 +114,7 @@
     "waca_secondary_transactions": 70.2,
     "floor_multiple_of_waca_secondary": 2.39,
     "cap_multiple_of_waca_secondary": 2.52,
+    "waca_last_3y": 0.0,
     "pre_ipo_placement": false,
     "brlm_sebi_regs": [
       "INM000011229",
@@ -356,7 +357,6 @@
       "rent_by_fy": "row_not_in_document",
       "objects_of_offer": "objects_section_not_in_document",
       "litigation_notices": "section_not_found",
-      "waca_last_3y": "not_applicable_no_qualifying_transaction",
       "cap_multiple_last_3y": "not_applicable_no_qualifying_transaction"
     }
   },
