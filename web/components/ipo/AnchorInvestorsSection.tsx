@@ -40,6 +40,7 @@ function formatDate(dateString: string | null): string {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
+      timeZone: 'Asia/Kolkata',
     });
   } catch {
     return 'N/A';

@@ -1,6 +1,6 @@
 'use client';
 
-import { format } from 'date-fns';
+import { formatInIst } from '@/lib/utils/date-formatter';
 import { cn } from '@/lib/utils';
 
 /**
@@ -146,7 +146,7 @@ export function TimelineBase({
     if (!date) return null;
     try {
       const dateObj = typeof date === 'string' ? new Date(date) : date;
-      return format(dateObj, dateFormat);
+      return formatInIst(dateObj, dateFormat);
     } catch {
       return null;
     }

@@ -205,7 +205,8 @@ export function PeerComparisonSection({ peerCompanies, companyName }: PeerCompar
           Last updated: {new Date(peerCompanies[0].lastUpdated).toLocaleDateString('en-IN', {
             year: 'numeric',
             month: 'short',
-            day: 'numeric'
+            day: 'numeric',
+            timeZone: 'Asia/Kolkata',
           })}
         </div>
       )}

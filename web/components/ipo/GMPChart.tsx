@@ -11,7 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { format } from 'date-fns';
+import { formatInIst } from '@/lib/utils/date-formatter';
 import { AdvancedGMPMetrics } from './AdvancedGMPMetrics';
 
 interface GMPChartProps {
@@ -50,7 +50,7 @@ export function GMPChart({ gmpRecords }: GMPChartProps) {
 
   // Format data for Recharts
   const chartData = sortedRecords.map((record) => ({
-    date: format(new Date(record.timestamp), 'dd MMM'),
+    date: formatInIst(record.timestamp, 'dd MMM'),
     gmp: record.gmp,
     expectedListingPrice: record.expectedListingPrice,
   }));

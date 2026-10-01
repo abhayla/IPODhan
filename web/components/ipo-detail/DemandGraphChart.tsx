@@ -206,7 +206,7 @@ export function DemandGraphChart({
             </Select>
             {data.snapshot && (
               <Badge variant="outline" className="text-xs">
-                Updated: {new Date(data.snapshot.timestamp).toLocaleTimeString()}
+                Updated: {new Date(data.snapshot.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}
               </Badge>
             )}
           </div>

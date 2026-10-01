@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { format } from 'date-fns';
+import { formatIPODate } from '@/lib/utils/date-formatter';
 import { cn } from '@/lib/utils';
 
 interface ListingPerformanceProps {
@@ -99,7 +99,7 @@ export function ListingPerformance({
   const dayReturnFormatted = formatPercentage(listingGainPercent);
 
   // Format listing date
-  const formattedDate = format(new Date(listingDate), 'dd MMM yyyy');
+  const formattedDate = formatIPODate(listingDate);
 
   return (
     <Card className="shadow-md">

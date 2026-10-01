@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatIPODate, getAccessibleDate, getISODate } from '@/lib/utils/date-formatter';
 import { ISINDisplay } from './ISINDisplay';
 import { RegistrarLogo } from '@/components/registrars/RegistrarLogo';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistance } from 'date-fns';
+import { useEffect, useState } from 'react';
 
 interface InfoSectionProps {
   ipo: IPO & {
@@ -29,6 +30,10 @@ interface InfoSectionProps {
  * Story 4.12: Added extended timeline dates with countdown/elapsed time
  */
 export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
+  // "Today" / "in 3 days" depends on the clock and the zone, which differ between the server render
+  // and the browser (React #418, issue #1347). Both sides render without it; it appears after mount.
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => setNow(new Date()), []);
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return 'N/A';
     return new Intl.NumberFormat('en-IN', {
@@ -43,18 +48,17 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
    * Returns "In 3 days", "2 days ago", "Today", or null
    */
   const getTimeDistance = (dateString: string | null): string | null => {
-    if (!dateString) return null;
+    if (!dateString || !now) return null;
 
     try {
       const date = new Date(dateString);
-      const now = new Date();
 
-      // Check if date is today
-      const isToday = date.toDateString() === now.toDateString();
+      // Check if date is today (as an IST calendar day)
+      const isToday = formatIPODate(date) === formatIPODate(now);
       if (isToday) return 'Today';
 
       // Calculate distance
-      const distance = formatDistanceToNow(date, { addSuffix: true });
+      const distance = formatDistance(date, now, { addSuffix: true });
       return distance;
     } catch {
       return null;

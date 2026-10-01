@@ -42,7 +42,8 @@ function formatDate(dateString: string): string {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
-    year: 'numeric'
+    year: 'numeric',
+    timeZone: 'Asia/Kolkata',
   });
 }
 
