@@ -4759,11 +4759,11 @@ shortfall: a buyback has no price band, no anchor book and no peer comparison.
 | Offering type | IPOs on prod | Fields N/A | Fields with a live resolution |
 |---|---:|---:|---:|
 | FPO | 0 | 0 | 240 |
-| RIGHTS | 8 | 35 | 205 |
-| OFS | 19 | 42 | 198 |
+| RIGHTS | 8 | 38 | 202 |
+| OFS | 19 | 45 | 195 |
 | NCD | 7 | 86 | 154 |
-| INVITS | 3 | 91 | 149 |
-| REITS | 2 | 91 | 149 |
+| INVITS | 3 | 92 | 148 |
+| REITS | 2 | 92 | 148 |
 | TENDER | 16 | 113 | 127 |
 | BUYBACK | 1 | 113 | 127 |
 
