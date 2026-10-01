@@ -248,11 +248,12 @@ describe.skipIf(!DATABASE_URL)('§9.2 item 26: an edited identifier keeps the ol
     const kept = (audit.details as { identifierAlias?: { aliasId: string; supersededKeyIds: string[] } }).identifierAlias;
     expect(kept?.aliasId).toBeTruthy();
     expect(kept?.supersededKeyIds).toEqual([old?.id]);
-    // a SUPERSEDED NSE key still counts as held for the duplicate check
+    // a SUPERSEDED NSE key still counts as held for the duplicate check when a relaunch path
+    // (OD-83) superseded it; an ADMIN-removed copy moves instead (#1290, admin-identifier-move-1290)
     await db.execute(sql`
       INSERT INTO ipos (id, company_name, slug, category, status, offering_type, segment, open_date)
       VALUES (${B}::uuid, 'Item26 Other Holder Limited', 'item26-other-holder-limited', 'MAINBOARD', 'UPCOMING', 'IPO', 'MAINBOARD', '2026-09-11')`);
-    await db.update(schema.ipoSourceKeys).set({ ipoId: B }).where(eq(schema.ipoSourceKeys.id, old!.id));
+    await db.update(schema.ipoSourceKeys).set({ ipoId: B, stateReason: 'OD-83 relaunch: superseded by I26NEW|EQ (test)' }).where(eq(schema.ipoSourceKeys.id, old!.id));
     const refused = await adminSet('symbol', 'I26OLD');
     expect(refused.kind).toBe('INVALID');
     expect((refused as { reason: string }).reason).toContain('item26-other-holder-limited');

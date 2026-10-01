@@ -11,8 +11,12 @@
  *    key stays in `ipo_source_keys` as SUPERSEDED (binds, never writes) with reason `admin_edit`,
  *    and the new value becomes the ACTIVE key.
  *
- * A new value another live IPO already carries (as a live column or an ACTIVE/SUPERSEDED source key)
- * is refused and the other IPO is named: saving it would bind two rows to one identifier. CIN, ISIN
+ * A new value another live IPO already carries (as a live column, an ACTIVE source key, or a key
+ * SUPERSEDED by the OD-83/OD-86 relaunch paths) is refused and the other IPO is named: saving it
+ * would bind two rows to one identifier. A value another row keeps ONLY as an admin-removed copy
+ * (a key an admin edit SUPERSEDED, or an alias row) MOVES to this row instead (#1290, §9.2 item 26
+ * clarified 2026-10-01): the copy is closed and an `ADMIN_IDENTIFIER_MOVED` audit row on that row
+ * records it, so the real owner's records stop being held. CIN, ISIN
  * and symbol name the COMPANY or its SHARE, so only another row that could be the SAME offering
  * refuses (not ended, not a different offering type, open dates within OD-35's 180 days): a
  * company's later OFS or rights row legitimately shares them (`resolveByCin`, `ofsIdentityConflict`).
@@ -23,11 +27,11 @@
  * Runs INSIDE `writeAdminFieldValue`'s transaction, after the `ipos` row lock, so the alias and the
  * value commit or roll back together.
  */
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, not, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '../db/schema';
 import { readDatabaseNow } from '../db/database-clock';
-import { ipoIdentifierAliases, ipoSourceKeys, ipos } from '../db/schema';
+import { auditLogs, ipoIdentifierAliases, ipoSourceKeys, ipos } from '../db/schema';
 import { normalizeCin } from '../utils/cin';
 import { ADMIN_EDIT_REASON_PREFIX, ENDED_STATUSES } from '../repositories/ipo-source-keys';
 
@@ -67,7 +71,7 @@ export interface IdentifierEditInput {
 }
 
 export type IdentifierEditOutcome =
-  | { ok: true; aliasId: string | null; supersededKeyIds: string[]; activeKeyId: string | null }
+  | { ok: true; aliasId: string | null; supersededKeyIds: string[]; activeKeyId: string | null; moved: IdentifierMove[] }
   | { ok: false; reason: string };
 
 function daysApart(a: string, b: string): number {
@@ -96,6 +100,93 @@ function sameOfferingAs(
   });
 }
 
+/** The `state_reason` filter for a key an admin edit removed (`isAdminRemovedSourceKey`, in SQL). */
+const adminRemovedReason = () => sql`${ipoSourceKeys.stateReason} LIKE ${ADMIN_EDIT_REASON_PREFIX + '%'}`;
+
+/**
+ * A key that still binds its row on its own account: ACTIVE, or SUPERSEDED by anything but an admin
+ * edit (the OD-83 / OD-86 relaunch paths). Such a key is never moved to another row (#1290).
+ */
+function bindsForItsRow() {
+  return or(
+    eq(ipoSourceKeys.state, 'ACTIVE'),
+    and(eq(ipoSourceKeys.state, 'SUPERSEDED'), or(sql`${ipoSourceKeys.stateReason} IS NULL`, not(adminRemovedReason())))
+  )!;
+}
+
+export interface IdentifierMove {
+  fromIpoId: string;
+  releasedKeyIds: string[];
+  closedAliasIds: string[];
+}
+
+/**
+ * #1290, §9.2 item 26 (clarified 2026-10-01): the admin types `value` into THIS row's editor while
+ * another row keeps it only as an admin-removed copy (a source key an admin edit SUPERSEDED, or an
+ * `ipo_identifier_aliases` row). The value moves here: each such key is RELEASED (its binding value
+ * is freed, so this row's key can take it under the unique index), each such alias row is closed
+ * (deleted), and one audit row per losing IPO records what was closed and where the value went.
+ * Called only after `holderElsewhere` found no row that binds the value on its own account, so an
+ * ACTIVE key, a live column or an OD-83 supersede is never touched here.
+ */
+async function moveAdminRemovedCopies(
+  tx: Db,
+  input: IdentifierEditInput,
+  value: string,
+  selfSlug: string,
+): Promise<IdentifierMove[]> {
+  const { ipoId, fieldName, adminName } = input;
+  const byIpo = new Map<string, IdentifierMove>();
+  const entry = (id: string) => {
+    let e = byIpo.get(id);
+    if (!e) byIpo.set(id, (e = { fromIpoId: id, releasedKeyIds: [], closedAliasIds: [] }));
+    return e;
+  };
+  const now = await readDatabaseNow(tx);
+  const reason = `${ADMIN_EDIT_REASON_PREFIX} ${fieldName} ${value} moved to ${selfSlug} by ${adminName} (#1290)`;
+
+  if (fieldName === 'bseIpoNo' || fieldName === 'symbol') {
+    const keyMatch = fieldName === 'bseIpoNo'
+      ? and(eq(ipoSourceKeys.keyType, 'BSE_IPO_NO'), eq(ipoSourceKeys.bindingValue, value))
+      : and(eq(ipoSourceKeys.keyType, 'NSE_ISSUE'), sql`split_part(${ipoSourceKeys.bindingValue}, '|', 1) = ${value}`);
+    const released = await tx
+      .update(ipoSourceKeys)
+      .set({ state: 'RELEASED', bindingValue: null, stateChangedAt: now, stateReason: reason })
+      .where(and(keyMatch, eq(ipoSourceKeys.state, 'SUPERSEDED'), adminRemovedReason(), ne(ipoSourceKeys.ipoId, ipoId)))
+      .returning({ id: ipoSourceKeys.id, ipoId: ipoSourceKeys.ipoId });
+    for (const k of released) entry(k.ipoId).releasedKeyIds.push(k.id);
+  }
+  if (fieldName !== 'bseIpoNo') {
+    const kind = IDENTIFIER_ALIAS_FIELDS[fieldName];
+    const closed = await tx
+      .delete(ipoIdentifierAliases)
+      .where(and(eq(ipoIdentifierAliases.kind, kind), eq(ipoIdentifierAliases.value, value), ne(ipoIdentifierAliases.ipoId, ipoId)))
+      .returning({ id: ipoIdentifierAliases.id, ipoId: ipoIdentifierAliases.ipoId });
+    for (const a of closed) entry(a.ipoId).closedAliasIds.push(a.id);
+  }
+
+  const moves = [...byIpo.values()];
+  for (const m of moves) {
+    await tx.insert(auditLogs).values({
+      timestamp: now,
+      adminUser: adminName,
+      actionType: IDENTIFIER_MOVED_AUDIT_ACTION,
+      ipoId: m.fromIpoId,
+      tableName: 'ipos',
+      fieldName,
+      oldValue: value,
+      newValue: null,
+      details: { movedToIpoId: ipoId, movedToSlug: selfSlug, releasedKeyIds: m.releasedKeyIds, closedAliasIds: m.closedAliasIds, reason },
+      success: true,
+      createdAt: now,
+    });
+  }
+  return moves;
+}
+
+/** The audit action of an identifier moved off a row by an admin edit of another row (#1290). */
+export const IDENTIFIER_MOVED_AUDIT_ACTION = 'ADMIN_IDENTIFIER_MOVED';
+
 /** Another live IPO that already carries `value` for this identifier, or null. */
 async function holderElsewhere(
   tx: Db,
@@ -115,7 +206,7 @@ async function holderElsewhere(
         and(
           eq(ipoSourceKeys.keyType, 'BSE_IPO_NO'),
           eq(ipoSourceKeys.bindingValue, value),
-          inArray(ipoSourceKeys.state, ['ACTIVE', 'SUPERSEDED']),
+          bindsForItsRow(),
           ne(ipoSourceKeys.ipoId, ipoId)
         )
       )
@@ -153,7 +244,7 @@ async function holderElsewhere(
       .where(
         and(
           eq(ipoSourceKeys.keyType, 'NSE_ISSUE'),
-          inArray(ipoSourceKeys.state, ['ACTIVE', 'SUPERSEDED']),
+          bindsForItsRow(),
           sql`split_part(${ipoSourceKeys.bindingValue}, '|', 1) = ${value}`,
           ne(ipoSourceKeys.ipoId, ipoId)
         )
@@ -227,12 +318,14 @@ export async function keepReplacedIdentifier(tx: Db, input: IdentifierEditInput)
   const { ipoId, fieldName, adminId, adminName } = input;
   const oldNorm = normalizeIdentifier(fieldName, input.oldValue);
   const newNorm = normalizeIdentifier(fieldName, input.newValue);
-  const out = { ok: true as const, aliasId: null as string | null, supersededKeyIds: [] as string[], activeKeyId: null as string | null };
+  const out = {
+    ok: true as const, aliasId: null as string | null, supersededKeyIds: [] as string[], activeKeyId: null as string | null, moved: [] as IdentifierMove[],
+  };
   if (oldNorm === newNorm) return out;
 
   if (newNorm !== null) {
     const [self] = await tx
-      .select({ offeringType: ipos.offeringType, openDate: ipos.openDate })
+      .select({ offeringType: ipos.offeringType, openDate: ipos.openDate, slug: ipos.slug })
       .from(ipos)
       .where(eq(ipos.id, ipoId))
       .limit(1);
@@ -246,6 +339,8 @@ export async function keepReplacedIdentifier(tx: Db, input: IdentifierEditInput)
         : 'merge the two rows (OD-38) instead of giving both the same identifier';
       return { ok: false, reason: `ipos.${fieldName} ${newNorm} is already carried by another IPO: ${holder.label}; ${advice}` };
     }
+    // #1290: no row binds the value on its own account; any admin-removed copy elsewhere moves here.
+    out.moved = await moveAdminRemovedCopies(tx, input, newNorm, self?.slug ?? ipoId);
   }
   const reason = `${ADMIN_EDIT_REASON_PREFIX} ${fieldName} ${oldNorm ?? '(empty)'} -> ${newNorm ?? '(empty)'} by ${adminName}`;
 

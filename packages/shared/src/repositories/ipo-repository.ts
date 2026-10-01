@@ -189,7 +189,7 @@ import {
 } from '../utils/company-name-normalizer';
 import { findMostSimilarName } from '../utils/company-name-similarity';
 import { filterPatchUnderHold } from '../services/field-hold';
-import { recordListSuggestion } from '../services/admin-list-hold';
+import { recordListSuggestion, adminListMergeRefusal } from '../services/admin-list-hold';
 import {
   checkMergeEligibility,
   assessRelaunch,
@@ -2172,6 +2172,16 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         note: opts.issueSizeNote || 'corrected during duplicate merge',
       });
     }
+
+    // #1294 item 4 (§9.2 items 8 and 28(b), clarified 2026-10-01): the merge deletes the dropped row's
+    // child lists and may carry lead managers onto the survivor. An admin-owned list is never deleted
+    // or replaced silently: the merge (dry run included) is refused, naming the IPO and the list.
+    const listRefusal = await adminListMergeRefusal(this.db as never, {
+      keep: { id: keepId, slug: String(keep.slug) },
+      drop: { id: dropId, slug: String(drop.slug) },
+      carriedColumns: patch.map((p) => p.column),
+    });
+    if (listRefusal) throw new DatabaseError(`mergeDuplicateInto: refused — ${listRefusal}`, undefined);
 
     const toDelete = counts.filter((x) => x.drop > 0 && !REPOINT_TABLES.has(x.table));
     const toRepoint = counts.filter((x) => x.drop > 0 && REPOINT_TABLES.has(x.table));

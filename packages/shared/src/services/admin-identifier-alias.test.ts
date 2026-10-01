@@ -29,3 +29,27 @@ describe('§9.2 item 26 identifier alias helpers', () => {
     expect(REPOINT_TABLES.has('ipo_identifier_aliases')).toBe(true);
   });
 });
+
+describe('#1290 answer state: the holder lookup failed', () => {
+  it('refuses (the error propagates, so writeAdminFieldValue rolls back) and moves nothing', async () => {
+    const { keepReplacedIdentifier } = await import('./admin-identifier-alias');
+    const writes: string[] = [];
+    const failing = () => {
+      const chain: Record<string, unknown> = {};
+      for (const m of ['from', 'where', 'innerJoin', 'limit']) chain[m] = () => chain;
+      chain.then = (_ok: unknown, bad: (e: Error) => unknown) => bad(new Error('lookup failed: connection reset'));
+      return chain;
+    };
+    const tx = {
+      select: failing,
+      update: () => { writes.push('update'); return failing(); },
+      insert: () => { writes.push('insert'); return failing(); },
+      delete: () => { writes.push('delete'); return failing(); },
+      execute: () => Promise.reject(new Error('lookup failed: connection reset')),
+    };
+    await expect(
+      keepReplacedIdentifier(tx as never, { ipoId: 'b', fieldName: 'bseIpoNo', oldValue: null, newValue: 91290, adminId: 'a', adminName: 'n' })
+    ).rejects.toThrow('lookup failed');
+    expect(writes).toEqual([]);
+  });
+});

@@ -2094,6 +2094,15 @@
       "title": "BSE's IPO board and core payload DO carry SME issues, with the same document fields as mainboard; the runner's comment that the board never lists SME was never measured",
       "detail": "Measured live 2026-09-30 against api.bseindia.com (read-only GETs, Referer only): IPO_HomePageDetail listed 16 book-built issues including PIND HOSPITALITY LIMITED (IPO_NO 8012) and Shivchem Agro Limited (8008), all small-cap issues opening 2026-09-28..30; GetMkt_ISSUE_BBS_IPO?IPO_NO=8012 returned Price_Band_Advertisement, Prospectus_GID (RHP&GID zip) and Corrigendum links on www.bseindia.com/downloads; IPO_NO=8008 returned Price_Band_Advertisement and Prospectus_GID on listing.bseindia.com/Download/E:\\inetpub\\LISTING\\RTA\\DocumentsSMEiPO\\... (a different host and a backslash path). The runner header said 'BSE's mainboard board does not carry SME' and skipped BSE for every SME issue (F-189). Real captures are saved as scraper/tests/fixtures/documents/bse-ipo-homepage-sme-live-2026-09-30.json and bse-sme-core-*-live-2026-09-30.json. NOT measured: whether a CLOSED SME issue is still on the board (it is not, for mainboard: Skyways dropped off the day after it closed), so a closed BSE-only SME issue is reachable only through a remembered ipos.bse_ipo_no, which is NULL on all 53 staging SME IPOs with a discovery attempt and no BSE attempt (staging read 2026-09-30).",
       "phase1": false
+    },
+    {
+      "id": "F-216",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "validation / OD-21 per-field validation",
+      "title": "OD-21 per-field validation never runs in production: the consolidator's validation step needs a field-validation-failures repository that no production service passes; unit tests inject it",
+      "detail": "Measured 2026-10-01 by the #1368 build (PR #1369): the consolidator's validation step (scraper data-consolidation-service.ts, about lines 1555-1620) runs only when a field-validation-failures repository is supplied; no production service constructs the consolidator with one, and only the unit tests inject it, so OD-21's rule (validate each field before the write, drop and record a failing field, write the rest) is not exercised on any production write. Not wired yet; tracked as #1370. Cited in spec §5.3 (OD-21).",
+      "phase1": false
     }
   ],
   "false_assertions": [

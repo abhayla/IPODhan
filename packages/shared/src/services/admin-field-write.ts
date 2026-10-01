@@ -44,9 +44,11 @@ import { IPORepository } from '../repositories/ipo-repository';
 import { validateIPOData } from '../utils/ipo-field-checks';
 import { rowKeyForName } from '../utils/company-name-normalizer';
 import { protectionTableName } from './field-hold';
-import { isIdentifierAliasField, keepReplacedIdentifier } from './admin-identifier-alias';
+import { isIdentifierAliasField, keepReplacedIdentifier, type IdentifierMove } from './admin-identifier-alias';
 import { upsertListHold } from './admin-list-hold';
 import { clearSourceNoLongerFirstOnAdminSave } from './source-no-longer-first';
+import { closeSuggestionsAcceptedByAdminSave } from './suggestion-admin-save-close';
+import { recomputeListSuggestionsAfterRowEdit } from './admin-list-write';
 import { isPlanInvalidatingField, normalizeListingExchanges, rebuildIpoPlanInTx, type PlanManifest, type PlanRebuildSummary } from './plan-invalidating-rebuild';
 import {
   EXCHANGE_OVERRIDE_SOURCES,
@@ -761,7 +763,7 @@ export async function writeAdminFieldValue(
 
       const now = await readDatabaseNow(tx);
       let rowKey = target.rowKey;
-      let identifierAlias: { aliasId: string | null; supersededKeyIds: string[]; activeKeyId: string | null } | null = null;
+      let identifierAlias: { aliasId: string | null; supersededKeyIds: string[]; activeKeyId: string | null; moved: IdentifierMove[] } | null = null;
       let planRebuild: PlanRebuildSummary | undefined;
       if (tableName === 'ipos') {
         if (isIdentifierAliasField(fieldName)) {
@@ -770,7 +772,7 @@ export async function writeAdminFieldValue(
             ipoId, fieldName, oldValue, newValue: input.empty ? null : newValue, adminId: actor.adminId, adminName: actor.name,
           });
           if (kept.ok === false) throw new Refusal({ kind: 'INVALID', reason: kept.reason });
-          identifierAlias = { aliasId: kept.aliasId, supersededKeyIds: kept.supersededKeyIds, activeKeyId: kept.activeKeyId };
+          identifierAlias = { aliasId: kept.aliasId, supersededKeyIds: kept.supersededKeyIds, activeKeyId: kept.activeKeyId, moved: kept.moved };
         }
         const [typeBefore] = rebuildsPlan
           ? await tx.select({ segment: schema.ipos.segment, listingExchanges: schema.ipos.listingExchanges, offeringType: schema.ipos.offeringType }).from(schema.ipos).where(eq(schema.ipos.id, ipoId)).limit(1)
@@ -949,10 +951,18 @@ export async function writeAdminFieldValue(
 
       // OD-142: the field is the admin's now (§2.7), so a "source no longer first" item on it is moot.
       await clearSourceNoLongerFirstOnAdminSave(tx as never, { ipoId, tableName, rowKey, fieldName });
+      // #1300 (§9.2 items 9, 25): an open document suggestion proposing exactly this value is accepted
+      // by this save; any other save leaves it open. An admin EMPTY value accepts nothing.
+      if (!input.empty) {
+        await closeSuggestionsAcceptedByAdminSave(tx as never, { ipoId, tableName, rowKey, fieldName, savedValue: newValue, adminName: actor.name });
+      }
 
       // §9.2 item 8 (OD-107): a field edit on a peer row changes the peer LIST, so the whole list is
       // admin-owned from here on, exactly as after a list edit (the same hold row the list write sets).
-      if (tableName === 'peer_companies') await upsertListHold(tx as never, { ipoId, list: 'peer_companies', by: actor.name, editNote: `Row field edited: ${rowKey}.${fieldName}`, at: now });
+      if (tableName === 'peer_companies') {
+        await upsertListHold(tx as never, { ipoId, list: 'peer_companies', by: actor.name, editNote: `Row field edited: ${rowKey}.${fieldName}`, at: now });
+        await recomputeListSuggestionsAfterRowEdit(tx, ipoId, 'peer_companies', actor.name);
+      }
 
       await tx.insert(auditLogs).values({
         timestamp: now,
