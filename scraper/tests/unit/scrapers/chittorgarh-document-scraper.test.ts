@@ -146,7 +146,8 @@ describe('chittorgarh-document-scraper', () => {
       expect(classifyOfferDocumentCover(fixture('dove-soft-rhp.cover.txt'))).toBe('RHP');
     });
     it('a final prospectus whose cover says "to be read with the Red Herring Prospectus dated" stays PROSPECTUS (own title decides)', () => {
-      const real = fixture('adisoft-997.cover.txt');
+      // LF-normalised: a Windows checkout stores the fixture with CRLF, and the inserted line must still land.
+      const real = fixture('adisoft-997.cover.txt').replace(/\r\n/g, '\n');
       const withRef = real.replace(
         'Dated: April 28, 2026\n',
         'Dated: April 28, 2026\nThis Prospectus is to be read with the Red Herring Prospectus dated April 10, 2026\n'
