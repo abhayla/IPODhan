@@ -426,7 +426,7 @@ real owner fork O-13 (the grey-market premium and the market-hours gate).
 
 | Design section | Rule ids |
 |---|---|
-| §5.3 | R-114, R-263 |
+| §5.3 | R-114, R-263, R-265 |
 | §5.3.1 | R-115 |
 
 <!-- end generated -->

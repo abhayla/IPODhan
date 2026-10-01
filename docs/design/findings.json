@@ -2121,6 +2121,15 @@
       "title": "No exchange fetcher states anchor_investors.bid_date, so OD-117's release of an admin bid date inside an admin-owned anchor list can never fire",
       "detail": "Measured 2026-10-01 on origin/main f97bf796: NSE_SERVEABLE_FIELDS (scraper/src/services/field-plan-walk-nse-fetcher.ts:48) serves symbol, companyName, openDate, closeDate, priceRangeMin, priceRangeMax, lotSize, isin; BSE_SERVEABLE_FIELDS (scraper/src/services/field-plan-walk-bse-fetcher.ts:46) serves ipos.issueSize only. anchor_investors.bid_date is written only by the anchor persister from the anchor allocation report (scraper/src/services/anchor-persister.ts, source label DRHP). Appendix A row 131 ranks bid_date NSE, BSE, CG, so a rank-1 read would answer NO_FETCHER_REGISTERED, which OD-145 does not name. Same class as F-212 (four other E-1 dates). Open for owner decision (docs/contracts/.run/owner-questions-2026-10-01.md Q-1281): keep #1281 parked until a source is named, build it inert, or narrow OD-117.",
       "phase1": false
+    },
+    {
+      "id": "F-219",
+      "sev": "MAJOR",
+      "status": "OPEN",
+      "area": "Document ratio reader (financial_ratios.read_ratio); OD-153/OD-158 answer states",
+      "title": "The ratio reader misses a printed ratio row whose label wraps across lines, and none of its null reasons states that the document does not print the ratio",
+      "detail": "Measured 2026-10-01 on the committed fixture scraper/tests/fixtures/financial-ratios/german-green-steel-ratio-analysis.txt (German Green RHP page 440): read_ratio(...,'inventory_turnover',(2026,3,31)) returns {value: null, reason: 'ratio_row_not_in_note'} although the page prints '5 Total Revenue from Customers Traded Inventories 5.63 6.02 8.85' with the label 'Inventory Turnover ... Ratio' split over lines; current_ratio on the same page reads 0.97. So German Green's case under OD-158 is a reader MISS (table row: keep), not a stated absence. Its reasons ratio_note_not_in_document / ratio_row_not_in_note are pattern misses and ratio_value_out_of_range / ratio_basis_differs_from_statement are refusals, yet all four go out as PASSING nulls via emit.null (extract_filing.py ~2846); about 30 check functions return (False, '...missing...') for an absent input. The extractor cannot yet emit REFUSED or STATED_NOT_PRINTED distinctly, so OD-153/OD-158 cannot be built until its output contract separates the states (#1420). The 23.14 itself came from the German Green DRHP, which is not committed: what the current reader says on the DRHP is unmeasured.",
+      "phase1": false
     }
   ],
   "false_assertions": [

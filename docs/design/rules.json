@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-10-01T11:09:59.966Z",
+  "generated_at": "2026-10-01T11:39:08.814Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 209,
-    "retired": 54
+    "live": 210,
+    "retired": 55
   },
-  "next_id": 264,
+  "next_id": 266,
   "rules": [
     {
       "id": "R-151",
@@ -1575,6 +1575,15 @@
       "retired": false
     },
     {
+      "id": "R-265",
+      "hash": "5f95eccb8541",
+      "section": "5.3 O-3 — one bad field must not discard the row, and must not loop",
+      "kind": "prose",
+      "text": "A build of this table MUST first make the reader's output distinguish these states: on 2026-10-01 the extractor emitted value: None, passed: False for both a missed label and a refusal (Tier A review of #1412), so no code may clear a value on passed: false alone. F-219 (2026-10-01) adds that the ratio reader sends refusals and pattern misses out as PASSING nulls; the output contract must separate the states before any build (#1420). A row whose lineage records no extractor version is treated as unknown and is never cleared.",
+      "first_seen": "2026-10-01",
+      "retired": false
+    },
+    {
       "id": "R-115",
       "hash": "ec10f88fa2a6",
       "section": "5.3.1 One rule this design owes immediately: `lot_multiple` is a count of LOTS",
@@ -1888,6 +1897,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-264",
+      "hash": "ee6983c94f4f",
+      "section": "5.3 O-3 — one bad field must not discard the row, and must not loop",
+      "kind": "prose",
+      "text": "A build of this table MUST first make the reader's output distinguish these states: on 2026-10-01 the extractor emitted value: None, passed: False for both a missed label and a refusal (Tier A review of #1412), so no code may clear a value on passed: false alone. A row whose lineage records no extractor version is treated as unknown and is never cleared.",
+      "first_seen": "2026-10-01",
+      "retired": true
     },
     {
       "id": "R-012",
