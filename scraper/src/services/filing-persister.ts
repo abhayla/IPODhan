@@ -72,6 +72,7 @@ import { documentMayWriteField, fieldDocumentFamily } from './document-family-ga
 import type { ConsolidatedChildRowsResult, ChildRowInput, ChildConsolidationTable } from './data-consolidation-orchestrator.js';
 import { scaleToRupees } from '../utils/rupee-amount.js';
 import { parsePrintedNumber } from './printed-number.js';
+import { isStatedAbsenceReason } from '../config/stated-absence-reasons.js';
 
 // ---------------------------------------------------------------- extraction
 
@@ -501,24 +502,16 @@ export const EMPTY_SECTION_RULE_ID = 'NOT_PRINTED';
 export const EMPTY_SECTION_READ_FAILED_RULE_ID = 'EXTRACTION_FAILED';
 
 /**
- * The extractor reasons that POSITIVELY state the document does not carry the section
- * (scraper/scripts/peer_companies.py NOT_IN_DOCUMENT / ONLY_KPI_TABLE / NO_LISTED_PEERS,
- * extract_filing.py's promoter cover miss). Only these, on a PASSING check, are
- * `NOT_PRINTED`. A failed check, a section found but unread, or any reason not listed
- * here fails closed to EXTRACTION_FAILED: a reader miss must never read as an absence.
+ * #1420 design point 3 (OD-158, F-219): an empty section is NOT_PRINTED only when the extractor's
+ * reason is on the ONE shared stated-absence list (scraper/src/config/stated-absence-reasons.json),
+ * the same list scraper/scripts/answer_states.py uses to emit `state: "STATED_NOT_PRINTED"`. A pattern
+ * miss (`peer_comparison_table_not_in_document`, emitted on `if not peers`; the promoter cover miss)
+ * is not on it, so it is EXTRACTION_FAILED: a reader miss must never read as an absence. A failed
+ * check, or any reason not listed, fails closed to EXTRACTION_FAILED.
  */
-export const EMPTY_SECTION_ABSENCE_REASONS: ReadonlySet<string> = new Set([
-  'peer_comparison_table_not_in_document',
-  'peer_comparison_table_absent_only_kpi_table_present',
-  'peer_comparison_issuer_states_no_listed_peers',
-  'our_promoters_statement_not_on_cover',
-]);
-
 export function emptySectionRuleId(check: { passed?: unknown; detail?: unknown } | null | undefined): string {
   if (!check || check.passed !== true) return EMPTY_SECTION_READ_FAILED_RULE_ID;
-  return typeof check.detail === 'string' && EMPTY_SECTION_ABSENCE_REASONS.has(check.detail)
-    ? EMPTY_SECTION_RULE_ID
-    : EMPTY_SECTION_READ_FAILED_RULE_ID;
+  return isStatedAbsenceReason(check.detail) ? EMPTY_SECTION_RULE_ID : EMPTY_SECTION_READ_FAILED_RULE_ID;
 }
 
 export type ReconciliationKind =

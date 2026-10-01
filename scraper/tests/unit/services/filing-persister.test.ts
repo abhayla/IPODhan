@@ -11,6 +11,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'fs';
 import path from 'path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const { upsertIPOMock } = vi.hoisted(() => ({ upsertIPOMock: vi.fn(async () => 'ipo-id') }));
 vi.mock('../../../src/services/data-persister.js', () => ({
@@ -2420,6 +2422,8 @@ describe('filing-persister — an empty extracted section records its reason (#5
   const failuresFor = (recordFailure: ReturnType<typeof vi.fn>, table: string) =>
     recordFailure.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.tableName === table);
 
+  // #1420 design point 3: the promoter cover miss is a pattern miss (extract_filing.py emits it when
+  // read_cover_promoters finds nothing), not a printed statement, so it is EXTRACTION_FAILED (OD-158).
   it('records one field_extraction_failures row when the promoters statement was not found', async () => {
     const s = depsWith();
     await persistFilingExtraction(
@@ -2435,7 +2439,7 @@ describe('filing-persister — an empty extracted section records its reason (#5
       ipoId: IPO_ID,
       fieldName: 'name',
       rowKey: '',
-      ruleId: 'NOT_PRINTED',
+      ruleId: 'EXTRACTION_FAILED',
       rankAttempted: 'DRHP',
       documentId: '11111111-1111-4111-8111-111111111111',
       documentSha256: 'a'.repeat(64),
@@ -2457,7 +2461,8 @@ describe('filing-persister — an empty extracted section records its reason (#5
     expect(s.peerReplace).not.toHaveBeenCalled();
     const rows = failuresFor(s.recordFailure, 'peer_companies');
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ fieldName: 'companyName', ruleId: 'NOT_PRINTED' });
+    // #1420: emitted on `if not peers` - the reader found no rows, a miss, never "not printed".
+    expect(rows[0]).toMatchObject({ fieldName: 'companyName', ruleId: 'EXTRACTION_FAILED' });
     expect(rows[0].cause).toContain('peer_comparison_table_not_in_document');
   });
 
@@ -2492,18 +2497,56 @@ describe('filing-persister — an empty extracted section records its reason (#5
   it('#1246: emptySectionRuleId never calls a FAILED check an absence, even with an absence reason', () => {
     expect(emptySectionRuleId({ passed: false, detail: 'peer_comparison_table_not_in_document' })).toBe('EXTRACTION_FAILED');
     expect(emptySectionRuleId(null)).toBe('EXTRACTION_FAILED');
-    expect(emptySectionRuleId({ passed: true, detail: 'peer_comparison_table_not_in_document' })).toBe('NOT_PRINTED');
+    expect(emptySectionRuleId({ passed: true, detail: 'peer_comparison_table_not_in_document' })).toBe('EXTRACTION_FAILED');
+    expect(emptySectionRuleId({ passed: true, detail: 'peer_comparison_issuer_states_no_listed_peers' })).toBe('NOT_PRINTED');
+  });
+
+  it('#1420 design point 3: NOT_PRINTED exactly for the reasons in the shared stated-absence-reasons.json', () => {
+    const raw = JSON.parse(
+      readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'src', 'config', 'stated-absence-reasons.json'), 'utf8')
+    ) as { reasons: { reason: string }[] };
+    expect(raw.reasons.length).toBeGreaterThan(0);
+    for (const { reason } of raw.reasons) expect(emptySectionRuleId({ passed: true, detail: reason })).toBe('NOT_PRINTED');
+    for (const miss of ['peer_comparison_table_not_in_document', 'peer_comparison_table_absent_only_kpi_table_present', 'our_promoters_statement_not_on_cover', '']) {
+      expect(emptySectionRuleId({ passed: true, detail: miss })).toBe('EXTRACTION_FAILED');
+    }
+  });
+
+  it('#1420 design point 3: emptySectionRuleId and python answer_states.null_state agree on every empty-section reason', (ctx) => {
+    const reasons = [
+      'peer_comparison_table_not_in_document',
+      'peer_comparison_table_absent_only_kpi_table_present',
+      'peer_comparison_issuer_states_no_listed_peers',
+      'our_promoters_statement_not_on_cover',
+      'not_applicable_no_qualifying_transaction',
+    ];
+    const code = `import json, answer_states; print(json.dumps([answer_states.null_state(r) for r in ${JSON.stringify(reasons)}]))`;
+    const scriptsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'scripts');
+    const run = (bin: string) =>
+      spawnSync(bin, ['-c', code], { cwd: scriptsDir, encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
+    let py = run('python3');
+    if (py.error) py = run('python');
+    // No interpreter on this runner: the python suite asserts null_state against the same JSON file.
+    if (py.error) ctx.skip();
+    expect(py.status, py.stderr).toBe(0);
+    const pyStates = JSON.parse(py.stdout.trim()) as string[];
+    reasons.forEach((r, i) => {
+      const ts = emptySectionRuleId({ passed: true, detail: r }) === 'NOT_PRINTED' ? 'STATED_NOT_PRINTED' : 'MISSED';
+      expect([r, ts]).toEqual([r, pyStates[i]]);
+    });
   });
 
   it('#1246: an UNKNOWN reason fails closed to EXTRACTION_FAILED; a stated absence stays NOT_PRINTED', async () => {
     const unknown = depsWith();
     await persistFilingExtraction(IPO_ID, withEmpty(['peer_companies'], 'some_reason_not_listed'), { docType: 'RHP', apply: true }, unknown.deps);
     expect(failuresFor(unknown.recordFailure, 'peer_companies')[0]).toMatchObject({ ruleId: 'EXTRACTION_FAILED' });
-    for (const absent of ['peer_comparison_table_absent_only_kpi_table_present', 'peer_comparison_issuer_states_no_listed_peers']) {
-      const s = depsWith();
-      await persistFilingExtraction(IPO_ID, withEmpty(['peer_companies'], absent), { docType: 'RHP', apply: true }, s.deps);
-      expect(failuresFor(s.recordFailure, 'peer_companies')[0]).toMatchObject({ ruleId: 'NOT_PRINTED' });
-    }
+    const stated = depsWith();
+    await persistFilingExtraction(IPO_ID, withEmpty(['peer_companies'], 'peer_comparison_issuer_states_no_listed_peers'), { docType: 'RHP', apply: true }, stated.deps);
+    expect(failuresFor(stated.recordFailure, 'peer_companies')[0]).toMatchObject({ ruleId: 'NOT_PRINTED' });
+    // #1420: only-a-KPI-table is the reader's inference, not on the shared stated-absence list.
+    const kpiOnly = depsWith();
+    await persistFilingExtraction(IPO_ID, withEmpty(['peer_companies'], 'peer_comparison_table_absent_only_kpi_table_present'), { docType: 'RHP', apply: true }, kpiOnly.deps);
+    expect(failuresFor(kpiOnly.recordFailure, 'peer_companies')[0]).toMatchObject({ ruleId: 'EXTRACTION_FAILED' });
   });
 
   it('records nothing when the table already holds rows for the IPO (an ad re-read beside RHP promoters)', async () => {

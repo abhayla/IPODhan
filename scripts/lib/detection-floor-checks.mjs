@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { pickListingSentenceDocument } from '../../scraper/config/listing-sentence-precedence.mjs';
 import { inferSegmentFromLotValue, SME_INFERENCE_MIN_LOT_VALUE } from './substance-checks.mjs';
 // Pure predicates for the T-335 "detection floor" — the round-7 fresh-review
@@ -1618,4 +1619,80 @@ export async function evaluateChildProvenanceOrphans(q) {
   const rows = await q(CHILD_PROVENANCE_ORPHAN_SQL);
   const lines = rows.map((r) => `${r.companyName} (${r.slug}): '${r.rowKey}' ${r.records} record(s)`);
   return { status: rows.length === 0 ? 'PASS' : 'FAIL', rows, lines };
+}
+
+// #1246 item 3 / #1420 (OD-158, F-219): a plan row answered NOT_PRINTED ("the document does not
+// print this field") while the document read of that SAME key recorded EXTRACTION_FAILED ("we held
+// the document but could not read the field", OD-62). The DOC fetcher answers NOT_PRINTED when a
+// COMPLETED document left no provenance row (field-plan-walk-doc-fetcher.ts rule 2), so a reader miss
+// can settle a field as absent. Keyed by (ipo_id, table_name, row_key, field_name); field names are
+// compared with case and underscores ignored, because the plan stores the manifest's snake_case key
+// and the failure row the persister's camelCase column (field-sources-field-name-is-camelcase).
+export const PLAN_NOT_PRINTED_OVER_FAILED_READ_SQL = `SELECT i.id AS "ipoId", i.company_name AS "companyName", i.slug,
+            fp.table_name AS "tableName", fp.row_key AS "rowKey", fp.field_name AS "fieldName",
+            count(fef.id)::int AS failures,
+            min(fef.document_id::text) AS "documentId",
+            min(left(fef.cause, 160)) AS cause
+       FROM ipo_field_plan fp
+       JOIN ipos i ON i.id = fp.ipo_id
+       JOIN field_extraction_failures fef
+         ON fef.ipo_id = fp.ipo_id AND fef.table_name = fp.table_name AND fef.row_key = fp.row_key
+        AND lower(replace(fef.field_name, '_', '')) = lower(replace(fp.field_name, '_', ''))
+      WHERE fp.state = 'NOT_PRINTED'
+        AND fef.rule_id = 'EXTRACTION_FAILED'
+        AND fef.resolved_at IS NULL
+      GROUP BY i.id, i.company_name, i.slug, fp.table_name, fp.row_key, fp.field_name
+      ORDER BY i.company_name, fp.table_name, fp.field_name, fp.row_key`;
+
+/**
+ * Runs the query through `q(sql)` (returns rows) and decides the verdict. FAIL names every plan row
+ * by IPO, slug, table.field[row key] and the failed document read (signal-ownership.md R1).
+ */
+/**
+ * Leg 2 (class reader-miss-recorded-as-not-printed): an unresolved NOT_PRINTED reason row whose
+ * extractor reason is NOT on the shared stated-absence list (scraper/src/config/stated-absence-reasons.json,
+ * the list the persister's emptySectionRuleId and answer_states.py read). The persister writes
+ * cause = `<docType> <extractor field>: <reason>`, so the reason is everything after the first ': '.
+ * Rows written before #1420 (the #1412 list called pattern misses absences) are members too.
+ */
+export function readStatedAbsenceReasons(path = new URL('../../scraper/src/config/stated-absence-reasons.json', import.meta.url)) {
+  const reasons = JSON.parse(readFileSync(path, 'utf8')).reasons.map((r) => r.reason);
+  // Inlined as SQL literals below: fail closed on anything but a plain identifier, or an empty list.
+  if (reasons.length === 0 || !reasons.every((r) => typeof r === 'string' && /^[a-z0-9_]+$/.test(r))) {
+    throw new Error(`stated-absence-reasons.json is empty or holds a non-identifier reason: ${JSON.stringify(reasons)}`);
+  }
+  return reasons;
+}
+
+export function notPrintedReasonNotStatedSql(reasons) {
+  return `SELECT i.id AS "ipoId", i.company_name AS "companyName", i.slug,
+            fef.table_name AS "tableName", fef.row_key AS "rowKey", fef.field_name AS "fieldName",
+            fef.document_id::text AS "documentId", left(fef.cause, 160) AS cause
+       FROM field_extraction_failures fef
+       JOIN ipos i ON i.id = fef.ipo_id
+      WHERE fef.rule_id = 'NOT_PRINTED'
+        AND fef.resolved_at IS NULL
+        AND (strpos(fef.cause, ': ') = 0
+             OR substr(fef.cause, strpos(fef.cause, ': ') + 2) NOT IN (${reasons.map((r) => `'${r}'`).join(', ')}))
+      ORDER BY i.company_name, fef.table_name, fef.field_name, fef.row_key`;
+}
+
+export async function evaluatePlanNotPrintedOverFailedRead(q, reasons = readStatedAbsenceReasons()) {
+  const planRows = await q(PLAN_NOT_PRINTED_OVER_FAILED_READ_SQL);
+  const reasonRows = await q(notPrintedReasonNotStatedSql(reasons));
+  const key = (r) => `${r.tableName}.${r.fieldName}${r.rowKey ? `[${r.rowKey}]` : ''}`;
+  const lines = [
+    ...planRows.map(
+      (r) =>
+        `${r.companyName} (${r.slug}): plan ${key(r)} NOT_PRINTED over ${r.failures} EXTRACTION_FAILED read(s)` +
+        `${r.documentId ? ` of document ${r.documentId}` : ''} (${r.cause ?? 'no cause'})`
+    ),
+    ...reasonRows.map(
+      (r) =>
+        `${r.companyName} (${r.slug}): reason ${key(r)} NOT_PRINTED for a reader miss` +
+        `${r.documentId ? ` in document ${r.documentId}` : ''} (${r.cause ?? 'no cause'})`
+    ),
+  ];
+  const rows = [...planRows.map((r) => ({ ...r, leg: 'plan' })), ...reasonRows.map((r) => ({ ...r, leg: 'reason' }))];
+  return { status: rows.length === 0 ? 'PASS' : 'FAIL', rows, planRows, reasonRows, lines };
 }

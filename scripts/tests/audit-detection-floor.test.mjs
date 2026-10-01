@@ -8,6 +8,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { parseIpowatchDetail, parseIpowatchDate, parsePriceBand, parseRupeeAmount, computeOracleCoverageWarning } from '../lib/ipowatch-oracle-parser.mjs';
@@ -67,6 +70,10 @@ import {
   computeSummaryCounts,
   evaluateSourceKeyConflicts,
   evaluateChildProvenanceOrphans,
+  evaluatePlanNotPrintedOverFailedRead,
+  PLAN_NOT_PRINTED_OVER_FAILED_READ_SQL,
+  notPrintedReasonNotStatedSql,
+  readStatedAbsenceReasons,
   CHILD_PROVENANCE_ORPHAN_SQL,
 } from '../lib/detection-floor-checks.mjs';
 import { resolveColumn, isBlankCurrentValue, hadPreviousValue, isSafeTableName, toSnake, evaluatePullNoblank } from '../lib/pull-noblank-checks.mjs';
@@ -2627,4 +2634,60 @@ test('(r_child_provenance_orphan) the SQL reads live field_sources only, peer ro
   assert.doesNotMatch(CHILD_PROVENANCE_ORPHAN_SQL, /field_sources_retired/);
   assert.match(CHILD_PROVENANCE_ORPHAN_SQL, /fs\.table_name = 'peer_companies' AND fs\.row_key <> ''/);
   assert.match(CHILD_PROVENANCE_ORPHAN_SQL, /NOT EXISTS \(SELECT 1 FROM peer_companies p WHERE p\.ipo_id = fs\.ipo_id AND p\.normalized_name = fs\.row_key\)/);
+});
+
+// ---- p_plan_not_printed_over_failed_read (#1246 item 3, #1420, OD-158): positive control --------
+const PNP_REASONS = ['not_priced_yet', 'peer_comparison_issuer_states_no_listed_peers'];
+const pnpQ = (planRows, reasonRows) => async (sql) => (sql === PLAN_NOT_PRINTED_OVER_FAILED_READ_SQL ? planRows : reasonRows);
+
+test('(p_plan_not_printed_over_failed_read) a plan row NOT_PRINTED over an EXTRACTION_FAILED read FAILS, named', async () => {
+  const out = await evaluatePlanNotPrintedOverFailedRead(
+    pnpQ([{ companyName: 'SS Retail Ltd', slug: 'ss-retail-ltd', tableName: 'promoters', rowKey: '', fieldName: 'name', failures: 1, documentId: 'd1', cause: 'PRICE_BAND_AD promoter_names: check_failed: []' }], []),
+    PNP_REASONS
+  );
+  assert.equal(out.status, 'FAIL');
+  assert.equal(out.planRows.length, 1);
+  assert.match(out.lines[0], /SS Retail Ltd \(ss-retail-ltd\): plan promoters\.name NOT_PRINTED over 1 EXTRACTION_FAILED/);
+});
+
+test('(p_plan_not_printed_over_failed_read) a NOT_PRINTED reason row for a reader miss FAILS (leg 2), named', async () => {
+  const out = await evaluatePlanNotPrintedOverFailedRead(
+    pnpQ([], [{ companyName: 'Moneyview Ltd', slug: 'moneyview-ltd', tableName: 'peer_companies', rowKey: '', fieldName: 'companyName', documentId: 'd2', cause: 'RHP peer_companies: peer_comparison_table_not_in_document' }]),
+    PNP_REASONS
+  );
+  assert.equal(out.status, 'FAIL');
+  assert.equal(out.reasonRows.length, 1);
+  assert.match(out.lines[0], /Moneyview Ltd \(moneyview-ltd\): reason peer_companies\.companyName NOT_PRINTED for a reader miss/);
+});
+
+test('(p_plan_not_printed_over_failed_read) a clean database PASSES', async () => {
+  const out = await evaluatePlanNotPrintedOverFailedRead(pnpQ([], []), PNP_REASONS);
+  assert.equal(out.status, 'PASS');
+});
+
+test('(p_plan_not_printed_over_failed_read) the SQL keys on NOT_PRINTED plan rows over unresolved EXTRACTION_FAILED reads', () => {
+  const sql = PLAN_NOT_PRINTED_OVER_FAILED_READ_SQL;
+  assert.match(sql, /fp\.state = 'NOT_PRINTED'/);
+  assert.match(sql, /fef\.rule_id = 'EXTRACTION_FAILED'/);
+  assert.match(sql, /fef\.resolved_at IS NULL/);
+  assert.match(sql, /fef\.row_key = fp\.row_key/);
+});
+
+test('(p_plan_not_printed_over_failed_read) leg 2 excludes exactly the stated-absence reasons, read from the shared JSON', () => {
+  const shared = readStatedAbsenceReasons();
+  assert.ok(shared.includes('peer_comparison_issuer_states_no_listed_peers'));
+  assert.ok(!shared.includes('peer_comparison_table_not_in_document'));
+  const sql = notPrintedReasonNotStatedSql(shared);
+  for (const r of shared) assert.ok(sql.includes(`'${r}'`), r);
+  assert.match(sql, /fef\.rule_id = 'NOT_PRINTED'/);
+});
+
+test('(p_plan_not_printed_over_failed_read) the stated-absence list fails closed: empty or non-identifier throws', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pnp-'));
+  const empty = path.join(dir, 'empty.json');
+  fs.writeFileSync(empty, JSON.stringify({ reasons: [] }));
+  assert.throws(() => readStatedAbsenceReasons(empty), /empty or holds a non-identifier/);
+  const bad = path.join(dir, 'bad.json');
+  fs.writeFileSync(bad, JSON.stringify({ reasons: [{ reason: "x') OR ('1'='1" }] }));
+  assert.throws(() => readStatedAbsenceReasons(bad), /non-identifier/);
 });

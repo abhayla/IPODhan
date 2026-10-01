@@ -790,6 +790,16 @@
       "unverifiableWhen": "field_sources is unreadable, or fewer than 20 provenance rows were written on the printed offer-term fields in the 14-day window"
     },
     {
+      "id": "p_plan_not_printed_over_failed_read",
+      "findingClass": "A reader miss settles a field as 'the document does not print it'. Two legs of one mechanism: (1) an ipo_field_plan row is NOT_PRINTED while the document read of the same (ipo, table, row key, field) recorded EXTRACTION_FAILED (the DOC fetcher answers NOT_PRINTED whenever a COMPLETED document left no provenance row, field-plan-walk-doc-fetcher.ts rule 2); (2) an unresolved field_extraction_failures NOT_PRINTED reason row whose extractor reason is not on the shared stated-absence list (scraper/src/config/stated-absence-reasons.json), including rows written under the #1412 list that called pattern misses absences (#1246 item 3, #1420, OD-158, F-219).",
+      "round7Findings": [],
+      "failThreshold": "FAIL when leg 1 finds any ipo_field_plan row with state NOT_PRINTED joined to an unresolved field_extraction_failures row with rule_id EXTRACTION_FAILED on the same ipo_id, table_name, row_key and field name (case and underscores ignored: the plan stores snake_case, the failure row camelCase), OR leg 2 finds any unresolved field_extraction_failures row with rule_id NOT_PRINTED whose reason (the cause text after the first ': ') is not on the stated-absence list. Reported per IPO by name and slug with table.field[row key], document id and cause, never as a bare count (signal-ownership.md R1).",
+      "severity": "P2",
+      "unverifiableWhen": "Never: ipo_field_plan, field_extraction_failures and ipos are read directly; a missing, empty or non-identifier stated-absence list throws (the check errors, it never passes).",
+      "note": "p_plan_not_printed_over_failed_read: implemented in scripts/audit-detection-floor.mjs (checkP_planNotPrintedOverFailedRead via evaluatePlanNotPrintedOverFailedRead + PLAN_NOT_PRINTED_OVER_FAILED_READ_SQL + notPrintedReasonNotStatedSql in scripts/lib/detection-floor-checks.mjs). Positive control: scripts/tests/audit-detection-floor.test.mjs (verdict, both legs, fail-closed list). Leg 2 reads the reason from the persister's cause format '<docType> <field>: <reason>' (filing-persister.ts recordEmptySection); a cause written in another format is flagged, never passed. Not covered: a NOT_PRINTED plan row whose document read failed WITHOUT recording any field_extraction_failures row (only promoters and peer_companies record empty-section reasons today), unmeasured.",
+      "owner": "#1246 item 3, #1420"
+    },
+    {
       "id": "prospectus_promoters_peers_yield",
       "findingClass": "a completed RHP/DRHP extraction leaves its IPO with no promoters or no listed peers, and nothing names why - every prospectus prints both, so an empty child table after a completed read is a reader that failed in silence",
       "round7Findings": [],
