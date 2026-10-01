@@ -494,6 +494,33 @@ export const FRESH_OFS_TOLERANCE = 0.005;
  */
 export const EMPTY_SECTION_RULE_ID = 'NOT_PRINTED';
 
+/**
+ * #1246 (B'): the rule id when the extractor could NOT read a section it attempted
+ * (OD-62 `EXTRACTION_FAILED`: "we held the document but could not read the field").
+ */
+export const EMPTY_SECTION_READ_FAILED_RULE_ID = 'EXTRACTION_FAILED';
+
+/**
+ * The extractor reasons that POSITIVELY state the document does not carry the section
+ * (scraper/scripts/peer_companies.py NOT_IN_DOCUMENT / ONLY_KPI_TABLE / NO_LISTED_PEERS,
+ * extract_filing.py's promoter cover miss). Only these, on a PASSING check, are
+ * `NOT_PRINTED`. A failed check, a section found but unread, or any reason not listed
+ * here fails closed to EXTRACTION_FAILED: a reader miss must never read as an absence.
+ */
+export const EMPTY_SECTION_ABSENCE_REASONS: ReadonlySet<string> = new Set([
+  'peer_comparison_table_not_in_document',
+  'peer_comparison_table_absent_only_kpi_table_present',
+  'peer_comparison_issuer_states_no_listed_peers',
+  'our_promoters_statement_not_on_cover',
+]);
+
+export function emptySectionRuleId(check: { passed?: unknown; detail?: unknown } | null | undefined): string {
+  if (!check || check.passed !== true) return EMPTY_SECTION_READ_FAILED_RULE_ID;
+  return typeof check.detail === 'string' && EMPTY_SECTION_ABSENCE_REASONS.has(check.detail)
+    ? EMPTY_SECTION_RULE_ID
+    : EMPTY_SECTION_READ_FAILED_RULE_ID;
+}
+
 export type ReconciliationKind =
   /** Checked and agreed, or nothing to check against. */
   | 'ok'
@@ -1392,7 +1419,7 @@ export async function persistFilingExtraction(
         rowKey: '',
         documentId: options.documentId ?? null,
         documentSha256: sha,
-        ruleId: EMPTY_SECTION_RULE_ID,
+        ruleId: emptySectionRuleId(attempted.check),
         rankAttempted: source,
         extractedValue: null,
         cause: `${options.docType} ${extractorFields[0]}: ${detail}`,

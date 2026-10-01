@@ -15,6 +15,7 @@
  */
 
 import { createUtcPool } from './lib/pg-utc.mjs';
+import { splitExtractionFailureRows } from './lib/field-extraction-failures-split.mjs';
 
 const args = process.argv.slice(2);
 const hours = Number((args.find((a) => a.startsWith('--hours=')) ?? '--hours=24').split('=')[1]);
@@ -47,22 +48,30 @@ try {
     [String(hours)]
   );
 
-  if (rows.length === 0) {
+  // #1246 (D'): absences (NOT_PRINTED) are reported apart and never count as rejections.
+  const { absences, rejections } = splitExtractionFailureRows(rows);
+  for (const r of absences) {
+    console.log(
+      `  absence ${r.rule_id}: ${r.failures} section(s) the document does not print, across ${r.ipos} IPO(s) — e.g. ${r.sample_cause}`
+    );
+  }
+
+  if (rejections.length === 0) {
     console.log(`audit-field-extraction-failures: PASS — no rule rejected any value in the last ${hours}h`);
     process.exit(0);
   }
 
   // signal-ownership.md R1: a count is not a reading. Every line names the rule
   // and carries a real cause string, so the failure is classifiable without a re-run.
-  console.log(`audit-field-extraction-failures: ${rows.length} rule(s) rejected values in the last ${hours}h`);
-  for (const r of rows) {
+  console.log(`audit-field-extraction-failures: ${rejections.length} rule(s) rejected values in the last ${hours}h`);
+  for (const r of rejections) {
     console.log(
       `  ${r.rule_id}: ${r.failures} failure(s) across ${r.ipos} IPO(s), ${r.unresolved} still unresolved — e.g. ${r.sample_cause}`
     );
   }
 
   if (failOver !== null) {
-    const over = rows.filter((r) => r.failures > failOver);
+    const over = rejections.filter((r) => r.failures > failOver);
     if (over.length > 0) {
       console.error(
         `audit-field-extraction-failures: FAIL — ${over.length} rule(s) over the --fail-over=${failOver} threshold: ` +

@@ -32,6 +32,7 @@ import {
   isNumericGuardCandidate,
   type FilingExtraction,
   type FilingPersisterDeps,
+  emptySectionRuleId,
 } from '../../../src/services/filing-persister';
 
 const IPO_ID = '0b7e81cd-3426-4376-9bc8-1b3b07fa9a93';
@@ -2458,6 +2459,51 @@ describe('filing-persister — an empty extracted section records its reason (#5
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ fieldName: 'companyName', ruleId: 'NOT_PRINTED' });
     expect(rows[0].cause).toContain('peer_comparison_table_not_in_document');
+  });
+
+  // #1246 (B'): real causes recorded as NOT_PRINTED on ipodhan_staging (read 2026-10-01). A reader miss
+  // is EXTRACTION_FAILED (OD-62: "we held the document but could not read the field"), never "not printed".
+  it('#1246: a FAILED check (ss-retail-ltd PRICE_BAND_AD promoter_names "check_failed: []") is EXTRACTION_FAILED', async () => {
+    const s = depsWith();
+    const extraction = extractionFromOracle('PRICE_BAND_AD');
+    for (const k of PROMOTERS_EMPTY) {
+      extraction.fields[k] = { value: null, page: null, check: { name: 'promoter_names_present', passed: false, detail: 'check_failed: []' } };
+    }
+    await persistFilingExtraction(IPO_ID, extraction, { docType: 'PRICE_BAND_AD', apply: true }, s.deps);
+    const rows = failuresFor(s.recordFailure, 'promoters');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ ruleId: 'EXTRACTION_FAILED' });
+    expect(rows[0].cause).toContain('check_failed: []');
+  });
+
+  it('#1246: a section FOUND but unread (moneyview-ltd RHP peer table, no rows parsed) is EXTRACTION_FAILED', async () => {
+    const s = depsWith();
+    await persistFilingExtraction(
+      IPO_ID,
+      withEmpty(['peer_companies'], 'peer_comparison_table_found_but_no_peer_rows_parsed'),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    const rows = failuresFor(s.recordFailure, 'peer_companies');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ ruleId: 'EXTRACTION_FAILED' });
+  });
+
+  it('#1246: emptySectionRuleId never calls a FAILED check an absence, even with an absence reason', () => {
+    expect(emptySectionRuleId({ passed: false, detail: 'peer_comparison_table_not_in_document' })).toBe('EXTRACTION_FAILED');
+    expect(emptySectionRuleId(null)).toBe('EXTRACTION_FAILED');
+    expect(emptySectionRuleId({ passed: true, detail: 'peer_comparison_table_not_in_document' })).toBe('NOT_PRINTED');
+  });
+
+  it('#1246: an UNKNOWN reason fails closed to EXTRACTION_FAILED; a stated absence stays NOT_PRINTED', async () => {
+    const unknown = depsWith();
+    await persistFilingExtraction(IPO_ID, withEmpty(['peer_companies'], 'some_reason_not_listed'), { docType: 'RHP', apply: true }, unknown.deps);
+    expect(failuresFor(unknown.recordFailure, 'peer_companies')[0]).toMatchObject({ ruleId: 'EXTRACTION_FAILED' });
+    for (const absent of ['peer_comparison_table_absent_only_kpi_table_present', 'peer_comparison_issuer_states_no_listed_peers']) {
+      const s = depsWith();
+      await persistFilingExtraction(IPO_ID, withEmpty(['peer_companies'], absent), { docType: 'RHP', apply: true }, s.deps);
+      expect(failuresFor(s.recordFailure, 'peer_companies')[0]).toMatchObject({ ruleId: 'NOT_PRINTED' });
+    }
   });
 
   it('records nothing when the table already holds rows for the IPO (an ad re-read beside RHP promoters)', async () => {
