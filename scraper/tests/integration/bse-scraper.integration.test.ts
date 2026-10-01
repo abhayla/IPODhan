@@ -207,6 +207,12 @@ describe('BSE Scraper Integration Tests', () => {
     // except `findByNormalizedName`, which is how this suite's fixture
     // (matching by company name, no ISIN/symbol on the scraped payload) is
     // actually found.
+    // A real uuid with no field_sources rows: "no provenance recorded", so the field_sources reads
+    // SUCCEED and find nothing. The earlier 'existing-ipo-id' was not a uuid, so every provenance
+    // read threw, and since #1236 round 3 a failed read keeps the stored value (fail closed), which
+    // is a different scenario from the one these tests describe.
+    const EXISTING_IPO_ID = '00000000-0000-4000-8000-000000136801';
+
     function makeMockIPORepository(existingIPO: Record<string, unknown>) {
       return {
         findBySlug: vi.fn().mockResolvedValue(existingIPO),
@@ -220,7 +226,7 @@ describe('BSE Scraper Integration Tests', () => {
     it('should prioritize NSE data when BSE data differs', async () => {
       // Mock IPO Repository
       const mockIPORepository = makeMockIPORepository({
-        id: 'existing-ipo-id',
+        id: EXISTING_IPO_ID,
         companyName: 'Dual Listed Company Ltd',
         slug: 'dual-listed-company-ltd',
         issueSize: '500', // NSE data
@@ -279,7 +285,7 @@ describe('BSE Scraper Integration Tests', () => {
       // Verify update was called with merged exchanges (the fallback merges
       // exchanges the same way the consolidation path does — W-16a)
       expect(mockIPORepository.update).toHaveBeenCalledWith(
-        'existing-ipo-id',
+        EXISTING_IPO_ID,
         expect.objectContaining({
           listingExchanges: ['NSE', 'BSE']
         })
@@ -294,7 +300,7 @@ describe('BSE Scraper Integration Tests', () => {
     it('should update listingExchanges to include both NSE and BSE', async () => {
       // Mock IPO Repository with existing NSE IPO
       const mockIPORepository = makeMockIPORepository({
-        id: 'existing-ipo-id',
+        id: EXISTING_IPO_ID,
         companyName: 'Dual Listed Company Ltd',
         slug: 'dual-listed-company-ltd',
         issueSize: '500',
@@ -322,20 +328,20 @@ describe('BSE Scraper Integration Tests', () => {
 
       // Verify update was called with merged exchanges
       expect(mockIPORepository.update).toHaveBeenCalledWith(
-        'existing-ipo-id',
+        EXISTING_IPO_ID,
         expect.objectContaining({
           listingExchanges: ['NSE', 'BSE']
         })
       );
 
       // Verify result is the existing IPO ID
-      expect(result).toBe('existing-ipo-id');
+      expect(result).toBe(EXISTING_IPO_ID);
     });
 
     it('should not duplicate exchange if already present', async () => {
       // Mock IPO Repository with both exchanges already present
       const mockIPORepository = makeMockIPORepository({
-        id: 'existing-ipo-id',
+        id: EXISTING_IPO_ID,
         companyName: 'Dual Listed Company Ltd',
         slug: 'dual-listed-company-ltd',
         issueSize: '500',
@@ -363,7 +369,7 @@ describe('BSE Scraper Integration Tests', () => {
 
       // Verify update was called with same exchanges (no duplication)
       expect(mockIPORepository.update).toHaveBeenCalledWith(
-        'existing-ipo-id',
+        EXISTING_IPO_ID,
         expect.objectContaining({
           listingExchanges: ['NSE', 'BSE']
         })
