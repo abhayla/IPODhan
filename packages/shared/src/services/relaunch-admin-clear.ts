@@ -160,6 +160,15 @@ export async function readPostponedAt(tx: ExecuteLike, ipoId: string): Promise<D
   );
 }
 
+/**
+ * The one rule both readers of the postponement time use (the clear and `readPostponedRelaunchState`):
+ * an instant counts as "after the postponement" only when BOTH are known. An unknown postponement time
+ * (NULL) means no relaunch is known, so POSTPONED is kept and no clear fires.
+ */
+export function isAfterPostponement(at: Date | null, postponedAt: Date | null): boolean {
+  return at != null && postponedAt != null && at.getTime() > postponedAt.getTime();
+}
+
 function sameWindowBandValue(kind: 'date' | 'number', a: unknown, b: unknown): boolean {
   if (kind === 'date') return String(a).slice(0, 10) === String(b).slice(0, 10);
   return Number(a) === Number(b);
@@ -258,6 +267,7 @@ export async function clearAdminValuesOnRelaunch(
   if (!ipo || ipo.status !== 'POSTPONED') return null;
 
   const postponedAt = await readPostponedAt(tx, ipoId);
+  if (!postponedAt) return null;
   const point = await relaunchPoint(tx, ipoId, trigger, receipt, postponedAt);
   if (!point) return null;
   // F-210 (mixed-clock-ordering): the clear's audit and plan stamps are ordered against database-stamped
@@ -272,7 +282,7 @@ export async function clearAdminValuesOnRelaunch(
    * stays, so a later filing of the same relaunch does not clear it again. A value set before it is the
    * old terms, including one re-applied after an earlier relaunch and then postponed again.
    */
-  const afterPostponement = (d: Date | null) => d != null && (postponedAt == null || d.getTime() > postponedAt.getTime());
+  const afterPostponement = (d: Date | null) => isAfterPostponement(d, postponedAt);
   const earlierClears = rowsOf(
     await tx.execute(sql`
       SELECT coalesce(details->>'relaunchAt', timestamp::text) AS at FROM audit_logs
@@ -541,7 +551,8 @@ export async function clearAdminValuesOnRelaunch(
  *     Cleared` audit row (both kinds of relaunch filing pass through `clearAdminValuesOnRelaunch`), or
  *     an `ipo_source_keys` row SUPERSEDED by the OD-83 relaunch or the OD-86 relaunch merge;
  *   - NO_RELAUNCH: POSTPONED and no such record after the postponement.
- * The postponement time is the status provenance row's; with no such row, any relaunch record counts.
+ * The postponement time is ipos.postponed_at (#1304 M1); when it is unknown (NULL) no relaunch is known
+ * and POSTPONED is kept (same rule as the clear, `isAfterPostponement`).
  * Errors propagate: the caller fails closed (keeps POSTPONED).
  */
 export type PostponedRelaunchState = 'NOT_POSTPONED' | 'RELAUNCHED' | 'NO_RELAUNCH';
@@ -565,6 +576,6 @@ export async function readPostponedRelaunchState(tx: ExecuteLike, ipoId: string)
   )
     .filter((r) => RELAUNCH_KEY_REASON_PREFIXES.some((p) => String(r.state_reason ?? '').startsWith(p)))
     .map((r) => toInstant(r.at));
-  const after = [...marks, ...keys].some((d) => d != null && (postponedAt == null || d.getTime() > postponedAt.getTime()));
+  const after = [...marks, ...keys].some((d) => isAfterPostponement(d, postponedAt));
   return after ? 'RELAUNCHED' : 'NO_RELAUNCH';
 }

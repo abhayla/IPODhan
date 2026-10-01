@@ -46,6 +46,7 @@ const WDN = '00000000-0000-4000-8000-00000000a984'; // WITHDRAWN
 const DEL = '00000000-0000-4000-8000-00000000a985'; // DELISTED
 const OLD = '00000000-0000-4000-8000-00000000a986'; // OD-86 merge: the older, postponed record
 const NEW = '00000000-0000-4000-8000-00000000a987'; // OD-86 merge: the newer relaunch record
+const NUL = '00000000-0000-4000-8000-00000000a988'; // #1304 M1: postponed_at NULL (unknown) with an old relaunch mark
 const ALL = [KEY, DOC, STAY, WDN, DEL];
 const actor = { name: 'Issue1298 Admin', adminId: 'issue1298-admin' };
 const noRedis = {
@@ -162,7 +163,7 @@ function alertDeps() {
 const INVALIDATED = ['ipos.faceValue', 'ipos.issueSize', 'ipos.lotSize'];
 
 async function cleanup() {
-  for (const id of [...ALL, OLD, NEW]) {
+  for (const id of [...ALL, OLD, NEW, NUL]) {
     await db.execute(sql`DELETE FROM ipo_merge_log WHERE kept_ipo_id = ${id}::uuid OR dropped_ipo_id = ${id}::uuid`).catch(() => undefined);
     await db.execute(sql`DELETE FROM ipo_slug_redirects WHERE ipo_id = ${id}::uuid`).catch(() => undefined);
     await db.execute(sql`DELETE FROM audit_logs WHERE ipo_id = ${id}::uuid`);
@@ -343,6 +344,25 @@ describe.skipIf(!DATABASE_URL)('#1298 POSTPONED is not terminal; a relaunch fili
     expect(rows(await db.execute(sql`SELECT issue_size::text AS s, lot_size AS l FROM ipos WHERE id = ${OLD}::uuid`))[0]).toEqual({ s: null, l: 1000 });
     expect(await audits(OLD, RELAUNCH_FILING_AUDIT_ACTION)).toHaveLength(1);
     expect(await readPostponedRelaunchState(db as never, OLD)).toBe('RELAUNCHED');
+  }, 120_000);
+
+  it('(#1304 M1) an unknown postponement time (postponed_at NULL) keeps POSTPONED even with an older relaunch mark on the row', async () => {
+    await seed(NUL, 8);
+    try {
+      await postpone(NUL);
+      await db.execute(sql`
+        INSERT INTO audit_logs (timestamp, admin_user, action_type, ipo_id, table_name, field_name, details, success, created_at)
+        VALUES (now() - interval '5 days', 'issue1304.test', ${RELAUNCH_FILING_AUDIT_ACTION}, ${NUL}::uuid, 'ipos', 'status', '{}'::jsonb, true, now() - interval '5 days')`);
+      await db.execute(sql`UPDATE ipos SET postponed_at = NULL WHERE id = ${NUL}::uuid`);
+      expect(await readPostponedRelaunchState(db as never, NUL)).toBe('NO_RELAUNCH');
+      expect(await scrapeStatus(NUL, 'BSE', 'UPCOMING')).toMatchObject({ finalValue: 'POSTPONED', conflictReason: POSTPONED_KEPT_NO_RELAUNCH });
+      expect(await storedStatus(NUL)).toBe('POSTPONED');
+      // A known postponement time before the mark: the mark is a relaunch.
+      await db.execute(sql`UPDATE ipos SET postponed_at = (now() AT TIME ZONE 'UTC') - interval '10 days' WHERE id = ${NUL}::uuid`);
+      expect(await readPostponedRelaunchState(db as never, NUL)).toBe('RELAUNCHED');
+    } finally {
+      await db.execute(sql`UPDATE ipos SET status = 'UPCOMING', postponed_at = NULL WHERE id = ${NUL}::uuid`);
+    }
   }, 120_000);
 
 });

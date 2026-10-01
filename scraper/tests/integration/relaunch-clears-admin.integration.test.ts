@@ -375,15 +375,33 @@ describe.skipIf(!DATABASE_URL)('a relaunch filing, and only a relaunch filing, c
   }, 60_000);
 
   it('#1304 M1: the stamp is the database clock at the transition; a write that keeps POSTPONED does not move it', async () => {
-    await db.execute(sql`UPDATE ipos SET status = 'UPCOMING', postponed_at = NULL WHERE id = ${LIVE}::uuid`);
-    const t0 = rows(await db.execute(sql`SELECT (now() AT TIME ZONE 'UTC')::text AS t`))[0].t;
-    await db.execute(sql`UPDATE ipos SET status = 'POSTPONED' WHERE id = ${LIVE}::uuid`);
-    const first = rows(await db.execute(sql`SELECT postponed_at::text AS at FROM ipos WHERE id = ${LIVE}::uuid`))[0].at;
-    expect(first >= t0).toBe(true);
-    await tick();
-    await db.execute(sql`UPDATE ipos SET status = 'POSTPONED', issue_size = issue_size WHERE id = ${LIVE}::uuid`);
-    expect(rows(await db.execute(sql`SELECT postponed_at::text AS at FROM ipos WHERE id = ${LIVE}::uuid`))[0].at).toBe(first);
-    await db.execute(sql`UPDATE ipos SET status = 'UPCOMING' WHERE id = ${LIVE}::uuid`);
+    try {
+      await db.execute(sql`UPDATE ipos SET status = 'UPCOMING', postponed_at = NULL WHERE id = ${LIVE}::uuid`);
+      const t0 = rows(await db.execute(sql`SELECT (now() AT TIME ZONE 'UTC')::text AS t`))[0].t;
+      await db.execute(sql`UPDATE ipos SET status = 'POSTPONED' WHERE id = ${LIVE}::uuid`);
+      const first = rows(await db.execute(sql`SELECT postponed_at::text AS at FROM ipos WHERE id = ${LIVE}::uuid`))[0].at;
+      expect(first >= t0).toBe(true);
+      await tick();
+      await db.execute(sql`UPDATE ipos SET status = 'POSTPONED', issue_size = issue_size WHERE id = ${LIVE}::uuid`);
+      expect(rows(await db.execute(sql`SELECT postponed_at::text AS at FROM ipos WHERE id = ${LIVE}::uuid`))[0].at).toBe(first);
+    } finally {
+      await db.execute(sql`UPDATE ipos SET status = 'UPCOMING', postponed_at = NULL WHERE id = ${LIVE}::uuid`);
+    }
+  });
+
+  it('#1304 M1: an IPO INSERTed already POSTPONED is stamped at the insert', async () => {
+    const X = '00000000-0000-4000-8000-0000000a271a';
+    try {
+      const t0 = rows(await db.execute(sql`SELECT (now() AT TIME ZONE 'UTC')::text AS t`))[0].t;
+      await db.execute(sql`
+        INSERT INTO ipos (id, company_name, slug, status, segment, listing_exchanges)
+        VALUES (${X}::uuid, 'Item Twenty Seven Insert Seeds Ltd', 'item-twenty-seven-insert-seeds-ltd', 'POSTPONED', 'SME', '["BSE"]')`);
+      const at = rows(await db.execute(sql`SELECT postponed_at::text AS at FROM ipos WHERE id = ${X}::uuid`))[0].at;
+      expect(at, 'insert as POSTPONED stamps postponed_at').not.toBeNull();
+      expect(at >= t0).toBe(true);
+    } finally {
+      await db.execute(sql`DELETE FROM ipos WHERE id = ${X}::uuid`);
+    }
   });
 
   it('a filing on an IPO that is not POSTPONED clears nothing', async () => {
