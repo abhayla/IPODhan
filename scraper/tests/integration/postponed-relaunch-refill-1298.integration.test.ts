@@ -240,7 +240,8 @@ describe.skipIf(!DATABASE_URL)('#1298 a relaunch refills what it emptied, and ne
 
   it('MAJOR-2: production order - relaunch detected against the values stored BEFORE the document writes, invalidation first, then the persist refills; the post-persist clear keeps the new terms', async () => {
     await seedPostponed(KEEPNEW, 1);
-    await db.execute(sql`UPDATE field_sources SET updated_at = now() - interval '1 minute' WHERE ipo_id = ${KEEPNEW}::uuid AND field_name = 'status'`);
+    // Postponed a minute ago: ipos.postponed_at is the postponement time the clear reads (#1304 M1).
+    await db.execute(sql`UPDATE ipos SET postponed_at = (now() AT TIME ZONE 'UTC') - interval '1 minute' WHERE id = ${KEEPNEW}::uuid`);
     // Discovered 30 s ago on the DB clock (after the postponement, before extraction).
     const docId = rows(await db.execute(sql`
       INSERT INTO documents (ipo_id, type, title, url, extraction_status, sequence_number, created_at)

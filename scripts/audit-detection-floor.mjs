@@ -965,6 +965,30 @@ async function checkD_hiddenIpoChildWrites() {
   record('d_hidden_ipo_child_writes', text, v.status, v.detail);
 }
 
+// #1304 M1 (§2.9, clarified 2026-10-01): a POSTPONED IPO whose postponement time is unknown
+// (ipos.postponed_at NULL) never gets the automatic relaunch clear, so it is listed here for the admin
+// by slug. The trigger ipos_stamp_postponed_at must exist, or every new postponement stays unknown.
+async function checkD_postponedAtUnknown() {
+  const id = 'd_postponed_at_unknown';
+  const text = 'every POSTPONED IPO has a known postponement time (ipos.postponed_at), else it is listed for the admin (#1304)';
+  const cols = await q(`SELECT 1 FROM information_schema.columns WHERE table_name = 'ipos' AND column_name = 'postponed_at'`);
+  if (cols.length === 0) {
+    record('d_postponed_at_unknown', text, 'UNVERIFIABLE', 'ipos.postponed_at not present on this database (#1304 migration not applied)');
+    return;
+  }
+  const trig = await q(`SELECT 1 FROM pg_trigger WHERE tgname = 'ipos_stamp_postponed_at' AND NOT tgisinternal`);
+  if (trig.length === 0) {
+    record('d_postponed_at_unknown', text, 'FAIL', 'trigger ipos_stamp_postponed_at is missing: new postponements are not stamped');
+    return;
+  }
+  const rows = await q(`SELECT slug FROM ipos WHERE status = 'POSTPONED' AND postponed_at IS NULL AND hidden_at IS NULL ORDER BY slug`);
+  for (const r of rows) {
+    notify(id, 'P3', r.slug, `POSTPONED IPO ${r.slug} has no known postponement time`, 'the automatic relaunch clear will not fire; review its admin values on a relaunch');
+  }
+  record('d_postponed_at_unknown', text, rows.length === 0 ? 'PASS' : 'WARN',
+    `${rows.length} POSTPONED IPO(s) with postponed_at unknown` + (rows.length ? `: ${rows.slice(0, MAX_OFFENDERS).map((r) => r.slug).join('; ')}` : ''));
+}
+
 async function checkD_segmentProvenance() {
   const rows = await q(
     `SELECT i.id, i.company_name AS "companyName", i.offering_type AS "offeringType", i.segment,
@@ -4015,6 +4039,7 @@ async function main() {
   await runCheck(checkD_extractionStatusDeclared, ['d_extraction_status_declared']);
   await runCheck(checkD_delistedReads, ['d_delisted_reads']);
   await runCheck(checkD_hiddenIpoChildWrites, ['d_hidden_ipo_child_writes']);
+  await runCheck(checkD_postponedAtUnknown, ['d_postponed_at_unknown']);
   await runCheck(checkD_segmentProvenance, ['d_segment_provenance']);
   await runCheck(checkD_segmentDocumentBoard, ['d_segment_document_board']);
   await runCheck(checkE, ['e_route_sweep', 'e_verdict_leak_sweep']);
