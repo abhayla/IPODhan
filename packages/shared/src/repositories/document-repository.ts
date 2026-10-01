@@ -57,7 +57,17 @@ export class DocumentRepository
           const results = await this.db
             .select()
             .from(documents)
-            .where(eq(documents.ipoId, ipoId));
+            .where(eq(documents.ipoId, ipoId))
+            // #1395: no ORDER BY returned Postgres heap order, which flips after an
+            // UPDATE. Callers pick by position (`find` of the first DRHP/RHP, addendums
+            // by sequence), so order by what they mean, id as the final tiebreak.
+            .orderBy(
+              documents.type,
+              documents.sequenceNumber,
+              documents.partNumber,
+              documents.createdAt,
+              documents.id
+            );
 
           return results;
         } catch (error) {

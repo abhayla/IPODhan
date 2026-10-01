@@ -64,7 +64,8 @@ describe('DocumentRepository', () => {
 
       const mockSelect = {
         from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue(mockDocuments),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockResolvedValue(mockDocuments),
       };
       mockDb.select = vi.fn().mockReturnValue(mockSelect);
 
@@ -81,7 +82,8 @@ describe('DocumentRepository', () => {
 
       const mockSelect = {
         from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue([]),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockResolvedValue([]),
       };
       mockDb.select = vi.fn().mockReturnValue(mockSelect);
 
@@ -96,7 +98,8 @@ describe('DocumentRepository', () => {
 
       const mockSelect = {
         from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue(mockDocuments),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockResolvedValue(mockDocuments),
       };
       mockDb.select = vi.fn().mockReturnValue(mockSelect);
 

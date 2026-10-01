@@ -15,7 +15,7 @@ import { scrapeBSEDocuments } from '../../src/scrapers/bse-document-scraper.js';
 import { detectDocumentType } from '../../src/utils/document-type-mapper.js';
 import { db, getRedisClient, DocumentRepository } from '@ipodhan/shared';
 import type { DocumentInsert } from '@ipodhan/shared';
-import { ipos } from '@ipodhan/shared/db/schema';
+import { ipos, documents } from '@ipodhan/shared/db/schema';
 import { randomUUID } from 'crypto';
 
 describe('BSE Document Scraper Integration', () => {
@@ -173,14 +173,41 @@ describe('BSE Document Scraper Integration', () => {
       expect(savedDocs.length).toBe(3);
 
       // Verify sequence numbers
-      // #1395: findByIPO has no ORDER BY, so row order is Postgres heap order
-      // and can differ from insert order. Sort before indexing.
-      const addendums = savedDocs
-        .filter(d => d.type === 'ADDENDUM')
-        .sort((a, b) => (a.sequenceNumber ?? 0) - (b.sequenceNumber ?? 0));
+      // #1395: findByIPO orders by (type, sequenceNumber, ...), so no test-side sort.
+      const addendums = savedDocs.filter(d => d.type === 'ADDENDUM');
       expect(addendums.length).toBe(2);
       expect(addendums[0].sequenceNumber).toBe(1);
       expect(addendums[1].sequenceNumber).toBe(2);
+    });
+
+    it('findByIPO order is deterministic after an UPDATE moves a row in storage (#1395)', async () => {
+      const mk = (type: 'DRHP' | 'ADDENDUM', sequenceNumber: number, name: string): DocumentInsert => ({
+        ipoId: mockIPOId,
+        type,
+        mediaType: 'PDF',
+        sequenceNumber,
+        title: name,
+        url: `https://www.bseindia.com/${mockIPOId}/order-${name}.pdf`,
+        exchange: 'BSE',
+        isActive: true,
+      });
+      // Heap order is insert order (add1, add2, drhp); the UPDATE below moves add1
+      // behind the others (add2, drhp, add1), which is neither the insert order nor
+      // the order callers expect. Updating BOTH addendums would land on sorted order by luck.
+      const add1 = await documentRepository.create(mk('ADDENDUM', 1, 'add1'));
+      await documentRepository.create(mk('ADDENDUM', 2, 'add2'));
+      await documentRepository.create(mk('DRHP', 1, 'drhp'));
+
+      // An UPDATE writes a new tuple version, so the row moves to the end of the heap.
+      await db.update(documents).set({ title: 'add1 touched' }).where(eq(documents.id, add1.id));
+      await documentRepository.invalidateForIpo(mockIPOId);
+
+      const rows = await documentRepository.findByIPO(mockIPOId);
+      expect(rows.map(r => `${r.type}:${r.sequenceNumber}`)).toEqual([
+        'DRHP:1',
+        'ADDENDUM:1',
+        'ADDENDUM:2',
+      ]);
     });
 
     it('should handle duplicate URL updates', async () => {
