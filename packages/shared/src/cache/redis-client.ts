@@ -25,8 +25,9 @@ function openRedisConnection(keyPrefix: string): Redis {
   // (whose path segment selects the db, e.g. "redis://...:6379/1") and an
   // explicit REDIS_DB override. That collapsed staging and prod onto the
   // SAME Redis db0, so a staging page view could overwrite the key prod
-  // serves. Honor REDIS_URL first (it carries the slot's db suffix);
-  // REDIS_DB, when set, always wins as an explicit override.
+  // serves. REDIS_URL carries the slot's db suffix; REDIS_DB only fills in
+  // when the URL names no db (ioredis: defaults(options, parseURL(url)), so
+  // the URL's /N wins over options.db).
   const sharedOptions = {
     retryStrategy: (times: number) => {
       // Stop retrying after 3 attempts in development to prevent hanging

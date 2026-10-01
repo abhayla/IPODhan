@@ -155,6 +155,12 @@ redis_cli_prepare_auth() {
   if [ -z "$_rca_db" ] && [ -n "$_rca_env_db" ]; then
     _rca_db="$_rca_env_db"
   fi
+  # Not byte-for-byte ioredis: ioredis reads a db of "3abc" as 3 and "abc" as
+  # 0, while this helper refuses both. That is the safe side - the deploy
+  # refuses, the wake WARNs - never a different db silently.
+  # Not byte-for-byte ioredis: ioredis reads a db of "3abc" as 3 and "abc" as
+  # 0, while this helper refuses both. That is the safe side - the deploy
+  # refuses, the wake WARNs - never a different db silently.
   # Fail closed on a db this helper cannot pass safely: only digits reach
   # `-n` (a value with spaces or flags would otherwise become extra argv).
   case "$_rca_db" in

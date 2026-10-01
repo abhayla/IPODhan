@@ -152,6 +152,24 @@ run_case_grep "slot staging DECLARES (and matches) Redis db0 -> fail (T-287, sec
   "the PRODUCTION cache db" \
   "$FIXTURES/slot/staging/web.env.local.declares-prod-redis-on-staging" "$FIXTURES/slot/staging/scraper.env"
 
+# Round 2 (#1137): the effective Redis db follows ioredis -- the URL's /N wins,
+# REDIS_DB only fills in when the URL has no db. The guard used to let REDIS_DB
+# win, so a staging file with URL /0 + REDIS_DB=1 read as db 1 and passed while
+# the app wrote prod's db 0.
+run_case_grep "slot staging URL /0 + REDIS_DB=1 declaring 1 -> fail (URL wins, app writes db 0)" 1 \
+  "resolves to Redis db '0'" \
+  "$FIXTURES/slot/staging/web.env.local.url-db0-env-db1-declares-1" "$FIXTURES/slot/staging/scraper.env"
+
+run_case_grep "slot staging URL /0 + REDIS_DB=1 declaring 0 -> fail (staging on prod's db)" 1 \
+  "the PRODUCTION cache db" \
+  "$FIXTURES/slot/staging/web.env.local.url-db0-env-db1-declares-0" "$FIXTURES/slot/staging/scraper.env"
+
+run_case "slot staging URL /1 + REDIS_DB=0 declaring 1 -> pass (URL wins, db 1)" 0 \
+  "$FIXTURES/slot/staging/web.env.local.url-db1-env-db0-declares-1" "$FIXTURES/slot/staging/scraper.env"
+
+run_case "slot staging URL without db + REDIS_DB=1 declaring 1 -> pass (REDIS_DB fills in)" 0 \
+  "$FIXTURES/slot/staging/web.env.local.url-nodb-env-db1-declares-1" "$FIXTURES/slot/staging/scraper.env"
+
 run_case "slot prod + Redis db0 -> pass" 0 \
   "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env"
 

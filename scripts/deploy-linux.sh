@@ -1079,9 +1079,7 @@ clear_legacy_unprefixed_cache_keys() {
   fi
   # #719: never `-u "$redis_url"` — see release_scraper_cycle_locks above for
   # the empty-username defect this replaces. redis_cli_prepare_auth parses
-  # the URL into REDIS_CLI_HOST/PORT/USER/DB/PASSWORD; an explicit REDIS_DB
-  # env value (read above) still overrides the URL's own db index, same as
-  # before this fix.
+  # the URL into REDIS_CLI_HOST/PORT/USER/DB/PASSWORD.
   # #1137: REDIS_DB is applied the way the web app's ioredis client applies
   # it - only when the URL names no db (the URL's /N wins). It used to
   # OVERRIDE the URL's db here, the opposite of the app, so a URL /1 with

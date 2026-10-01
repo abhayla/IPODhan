@@ -1653,7 +1653,7 @@ fi
 OUT20L="$(PATH="$STUBDIR20K:$PATH" RC_ARGV_LOG="$RC_ARGV_LOG" REDIS_URL="redis://127.0.0.1:6379/1" REDIS_DB=3 \
   SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" sh "$WAKE" data 2>&1)"
 if grep -qx -- "-h 127.0.0.1 -p 6379 -n 1 TTL prod:lock:resource:scraper:cycle" "$RC_ARGV_LOG"; then
-  pass "case 20l (#1137): REDIS_URL /1 + REDIS_DB=3 -> db 1, the URL's db wins exactly as in ioredis"
+  pass "case 20l (#1137): REDIS_URL /1 + REDIS_DB=3 -> db 1, the URL's db wins, as in ioredis"
 else
   fail "case 20l (#1137): expected -n 1 (URL wins over REDIS_DB, ioredis parity), argv: $(cat "$RC_ARGV_LOG"); out: $OUT20L"
 fi
