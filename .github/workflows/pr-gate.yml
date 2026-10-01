@@ -605,6 +605,7 @@ jobs:
             scripts/tests/admin-queue-size.test.mjs \
             scripts/tests/audit-ipo-coverage-distinct-on.test.mjs \
             scripts/tests/audit-ipo-coverage-served-stored.test.mjs \
+            scripts/tests/audit-ipo-coverage.test.mjs \
             scripts/tests/plan-rank2-never-bse-for-issue-size-invariant.test.mjs \
             scripts/tests/require-repair-tool-module.test.mjs
 

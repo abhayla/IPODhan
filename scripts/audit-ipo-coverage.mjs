@@ -418,8 +418,10 @@ async function main() {
   const subRows = await q(
     `SELECT i.id, i.slug, i.company_name, i.isin, i.segment, i.offering_type, i.open_date, i.close_date, i.allotment_date, i.listing_date,
             i.lot_size, i.price_range_min, i.price_range_max, i.issue_size, i.registrar,
+            i.face_value, i.listing_exchanges, i.company_website,
             lp.listing_price, lp.listing_gain_percent,
             COALESCE(lp.issue_price, i.price_range_max) AS issue_price,
+            lp.issue_price AS authoritative_issue_price,
             d.issue_type
        FROM ipos i
        LEFT JOIN listing_performance lp ON lp.ipo_id = i.id
