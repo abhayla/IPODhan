@@ -102,91 +102,312 @@ function escapeRegExp(literal) {
 }
 
 /**
- * Issue #1323: the write-ratchet's PATTERNS are keyed on the LITERAL
- * identifier `ipos` (bare, or qualified as `schema.ipos`). An import alias —
- * `import { ipos as iposTable } from '...'` then `db.update(iposTable)`, or
- * `import * as schema2 from '...'` then `schema2.ipos` — renames the binding
- * the regexes look for, so a direct write through an alias was invisible.
- *
- * This resolves aliases PER FILE via the actual TypeScript parser (never a
- * hand-rolled import-line regex/lexer — `never-hand-roll-a-lexer.md`) and
- * rewrites the source, before pattern matching, so every existing PATTERN
- * keeps working unchanged:
- *   - a named-import alias of `ipos` (`{ ipos as X }`, any module specifier,
- *     including multi-line import lists) has every bare occurrence of `X`
- *     rewritten to `ipos`.
- *   - a namespace import (`import * as X from '...'`) has every `X.ipos`
- *     property access rewritten to `schema.ipos`, which the existing
- *     `drizzle` pattern already recognizes (it hardcodes the `schema.`
- *     qualifier because that is this repo's actual namespace-import
- *     convention for the schema module).
- * A `type`-only import (`import type { ipos as X }`, or a type-only named
- * element inside a value import) is skipped: a type-only binding cannot be
- * used in a runtime write call, so rewriting it would only manufacture false
- * positives. An alias of any OTHER export name (`{ foo as bar }`) is left
- * untouched — only bindings that resolve to `ipos` are ever renamed.
- *
- * Fails open: a file the parser cannot handle (or that isn't an
- * import-parseable extension) is returned unchanged, exactly as it would
- * have been scanned before this function existed.
- *
- * @param {string} content
- * @param {string} ext file extension including the leading dot
- * @returns {string}
+ * Marker kind for the FAIL-CLOSED case (#1335): a write target whose binding
+ * arrives through an import/re-export hop the resolver could not follow
+ * (missing file, unresolvable `export *`, cycle). It is not one of the four
+ * PATTERNS: it is appended by scanRepo() so the file is reported, named, and
+ * must be baselined or fixed like any other writer.
  */
-export function resolveIposImportAliases(content, ext) {
-  if (!IMPORT_PARSEABLE_EXTENSIONS.has(ext)) return content;
-  if (!content.includes('ipos')) return content; // cheap short-circuit
+export const UNRESOLVED_REEXPORT_KIND = 'unresolved_reexport';
 
-  let sourceFile;
-  try {
-    const scriptKind = ext === '.tsx' || ext === '.jsx' ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-    sourceFile = ts.createSourceFile('file' + ext, content, ts.ScriptTarget.Latest, true, scriptKind);
-  } catch {
-    return content;
-  }
+// Non-relative specifiers that ARE the schema module (the source of `ipos`).
+// Chain resolution is keyed on these import sources, never on identifier text.
+const IPOS_SOURCE_SPECIFIERS = [
+  /^@ipodhan\/shared(\/db(\/schema)?)?$/,
+  /^@\/lib\/db(\/index)?$/,
+  /(^|\/)db\/schema(\.[cm]?[jt]sx?)?$/,
+];
+const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+const MAX_CHAIN_DEPTH = 25;
 
-  const namedAliases = new Set(); // local identifiers that ARE `ipos` under another name
-  const namespaceAliases = new Set(); // local identifiers bound to `import * as X`
+const IPOS_ENTRY = Object.freeze({ kind: 'ipos' });
+const UNRESOLVED_ENTRY = Object.freeze({ kind: 'unresolved' });
 
-  for (const statement of sourceFile.statements) {
-    if (!ts.isImportDeclaration(statement)) continue;
-    const clause = statement.importClause;
-    if (!clause || clause.isTypeOnly) continue;
-    const bindings = clause.namedBindings;
-    if (!bindings) continue;
+function posixDirname(rel) {
+  const i = rel.lastIndexOf('/');
+  return i < 0 ? '' : rel.slice(0, i);
+}
 
-    if (ts.isNamespaceImport(bindings)) {
-      namespaceAliases.add(bindings.name.text);
+function normalizePosix(rel) {
+  const out = [];
+  for (const part of rel.split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') {
+      out.pop();
       continue;
     }
+    out.push(part);
+  }
+  return out.join('/');
+}
 
-    if (ts.isNamedImports(bindings)) {
-      for (const element of bindings.elements) {
-        if (element.isTypeOnly) continue;
-        const originalName = (element.propertyName ?? element.name).text;
-        const localName = element.name.text;
-        if (originalName === 'ipos' && localName !== 'ipos') {
-          namedAliases.add(localName);
+function parseSource(content, ext) {
+  const scriptKind = ext === '.tsx' || ext === '.jsx' ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  return ts.createSourceFile('file' + ext, content, ts.ScriptTarget.Latest, true, scriptKind);
+}
+
+function hasExportModifier(node) {
+  return (ts.getModifiers?.(node) ?? node.modifiers ?? []).some(
+    (m) => m.kind === ts.SyntaxKind.ExportKeyword
+  );
+}
+
+/**
+ * Cross-file resolver for `ipos` bindings (#1335). `candidates` is the set of
+ * repo-relative POSIX paths that can be import targets; `read(rel)` returns
+ * their source (or null). Built once per scan and memoised per module.
+ */
+export function createChainResolver({ candidates, read, legacy = false }) {
+  const candidateSet = candidates instanceof Set ? candidates : new Set(candidates);
+  const moduleCache = new Map(); // rel -> { names: Map, opaque: boolean }
+
+  function resolveSpecifier(fromRel, spec) {
+    if (legacy) return IPOS_SOURCE_SPECIFIERS.some((re) => re.test(spec)) ? { schema: true } : { external: true };
+    let base = null;
+    if (spec.startsWith('.')) base = normalizePosix(posixDirname(fromRel) + '/' + spec);
+    else if (spec.startsWith('@/')) base = 'web/' + normalizePosix(spec.slice(2));
+    if (base !== null) {
+      const tries = [base];
+      for (const ext of RESOLVE_EXTENSIONS) tries.push(base + ext);
+      const jsLike = base.match(/^(.*)\.[cm]?jsx?$/);
+      if (jsLike) for (const ext of ['.ts', '.tsx']) tries.push(jsLike[1] + ext);
+      for (const ext of RESOLVE_EXTENSIONS) tries.push(base + '/index' + ext);
+      for (const t of tries) if (candidateSet.has(t)) return { rel: t };
+    }
+    if (IPOS_SOURCE_SPECIFIERS.some((re) => re.test(spec))) return { schema: true };
+    if (base !== null) return { unresolved: true };
+    return { external: true };
+  }
+
+  // The export table of a local module: { names: Map<name, entry>, opaque }.
+  // `opaque` = the module star-re-exports something we could not resolve, so a
+  // name absent from `names` may still come through it.
+  function moduleExports(rel, stack) {
+    if (moduleCache.has(rel)) return moduleCache.get(rel);
+    if (stack.includes(rel) || stack.length > MAX_CHAIN_DEPTH) {
+      return { names: new Map(), opaque: true };
+    }
+    const result = { names: new Map(), opaque: false };
+    const content = read(rel);
+    if (content === null || content === undefined) {
+      result.opaque = true;
+      moduleCache.set(rel, result);
+      return result;
+    }
+    let sourceFile;
+    try {
+      sourceFile = parseSource(content, '.' + rel.split('.').pop());
+    } catch {
+      result.opaque = true;
+      moduleCache.set(rel, result);
+      return result;
+    }
+    const nextStack = [...stack, rel];
+    const locals = collectLocalBindings(sourceFile, rel, nextStack);
+    let cyclic = false;
+    for (const statement of sourceFile.statements) {
+      if (ts.isExportDeclaration(statement)) {
+        if (statement.isTypeOnly) continue;
+        const spec = statement.moduleSpecifier?.text;
+        const clause = statement.exportClause;
+        if (spec !== undefined && !clause) {
+          // export * from S
+          const target = exportsOfSpecifier(rel, spec, nextStack);
+          for (const [name, entry] of target.names) {
+            if (name !== 'default') result.names.set(name, entry);
+          }
+          if (target.opaque) result.opaque = true;
+          if (target.cyclic) cyclic = true;
+        } else if (spec !== undefined && clause && ts.isNamespaceExport(clause)) {
+          // export * as ns from S
+          const target = exportsOfSpecifier(rel, spec, nextStack);
+          result.names.set(clause.name.text, namespaceEntry(target));
+        } else if (clause && ts.isNamedExports(clause)) {
+          for (const element of clause.elements) {
+            if (element.isTypeOnly) continue;
+            const original = (element.propertyName ?? element.name).text;
+            const exported = element.name.text;
+            const entry =
+              spec !== undefined
+                ? lookupInSpecifier(rel, spec, original, nextStack)
+                : (locals.get(original) ?? null);
+            if (entry) result.names.set(exported, entry);
+          }
+        }
+      } else if (ts.isExportAssignment(statement)) {
+        if (ts.isIdentifier(statement.expression)) {
+          const entry = locals.get(statement.expression.text);
+          if (entry) result.names.set('default', entry);
+        }
+      } else if (ts.isVariableStatement(statement) && hasExportModifier(statement)) {
+        for (const decl of statement.declarationList.declarations) {
+          if (!ts.isIdentifier(decl.name)) continue;
+          const entry = locals.get(decl.name.text);
+          if (entry) result.names.set(decl.name.text, entry);
         }
       }
     }
+    if (cyclic) result.opaque = true;
+    moduleCache.set(rel, result);
+    return result;
   }
 
-  if (namedAliases.size === 0 && namespaceAliases.size === 0) return content;
+  function exportsOfSpecifier(fromRel, spec, stack) {
+    const r = resolveSpecifier(fromRel, spec);
+    if (r.schema) return { names: new Map([['ipos', IPOS_ENTRY]]), opaque: false };
+    if (r.external) return { names: new Map(), opaque: false };
+    if (r.unresolved) return { names: new Map(), opaque: true };
+    if (stack.includes(r.rel) || stack.length > MAX_CHAIN_DEPTH) {
+      return { names: new Map(), opaque: true, cyclic: true };
+    }
+    return moduleExports(r.rel, stack);
+  }
+
+  function lookupInSpecifier(fromRel, spec, name, stack) {
+    const r = resolveSpecifier(fromRel, spec);
+    if (r.schema || r.external) return name === 'ipos' ? IPOS_ENTRY : null;
+    if (r.unresolved) return name === 'ipos' ? IPOS_ENTRY : UNRESOLVED_ENTRY;
+    const target = exportsOfSpecifier(fromRel, spec, stack);
+    const entry = target.names.get(name);
+    if (entry) return entry;
+    // Legacy name-based fallback (#1323): the literal export name `ipos` is
+    // still treated as the table when the hop is opaque.
+    if (target.opaque) return name === 'ipos' ? IPOS_ENTRY : UNRESOLVED_ENTRY;
+    return null;
+  }
+
+  function namespaceEntry(target) {
+    if (target.opaque) return UNRESOLVED_ENTRY;
+    const members = new Set();
+    for (const [name, entry] of target.names) if (entry.kind === 'ipos') members.add(name);
+    return { kind: 'ns', members };
+  }
+
+  // local binding name -> entry, from this file's imports plus simple
+  // top-level `const y = x` / local `ipos` declarations.
+  function collectLocalBindings(sourceFile, rel, stack) {
+    const locals = new Map();
+    for (const statement of sourceFile.statements) {
+      if (ts.isImportDeclaration(statement)) {
+        const clause = statement.importClause;
+        if (!clause || clause.isTypeOnly) continue;
+        const spec = statement.moduleSpecifier.text;
+        if (clause.name) {
+          const entry = lookupInSpecifier(rel, spec, 'default', stack);
+          if (entry) locals.set(clause.name.text, entry);
+        }
+        const bindings = clause.namedBindings;
+        if (bindings && ts.isNamespaceImport(bindings)) {
+          const r = resolveSpecifier(rel, spec);
+          let entry;
+          if (r.schema || r.external) entry = { kind: 'ns', members: new Set(['ipos']) };
+          else entry = namespaceEntry(exportsOfSpecifier(rel, spec, stack));
+          locals.set(bindings.name.text, entry);
+        } else if (bindings && ts.isNamedImports(bindings)) {
+          for (const element of bindings.elements) {
+            if (element.isTypeOnly) continue;
+            const original = (element.propertyName ?? element.name).text;
+            const entry = lookupInSpecifier(rel, spec, original, stack);
+            if (entry) locals.set(element.name.text, entry);
+          }
+        }
+      } else if (ts.isVariableStatement(statement)) {
+        for (const decl of statement.declarationList.declarations) {
+          if (!ts.isIdentifier(decl.name)) continue;
+          if (decl.initializer && ts.isIdentifier(decl.initializer)) {
+            const entry = locals.get(decl.initializer.text);
+            if (entry) locals.set(decl.name.text, entry);
+          } else if (decl.name.text === 'ipos') {
+            locals.set('ipos', IPOS_ENTRY); // the schema definition itself
+          }
+        }
+      }
+    }
+    return locals;
+  }
+
+  /** Bindings of one consumer file: local name -> entry. */
+  function bindingsOf(rel, sourceFile) {
+    return collectLocalBindings(sourceFile, rel, [rel]);
+  }
+
+  return { bindingsOf };
+}
+
+/**
+ * Issue #1323 + #1335: resolve every local binding that IS the `ipos` table
+ * (or a namespace carrying it) and rewrite it back to the literal shapes the
+ * PATTERNS key on. Returns the rewritten source plus the local names whose
+ * origin could not be resolved (the fail-closed set, see scanRepo).
+ *
+ * Without `chain` (a resolver from createChainResolver) only a file's OWN
+ * import declarations are consulted (the #1323 behaviour). With it, relative
+ * and `@/` specifiers are followed through `export {..} from`, `export *`,
+ * `export * as`, `export default`, `import` + re-`export`, and `const y = x`
+ * hops, to any depth, with cycles reported as unresolved.
+ *
+ * @returns {{ content: string, unresolved: string[] }}
+ */
+export function analyzeIposBindings(content, ext, chain, relPath) {
+  const unchanged = { content, unresolved: [] };
+  if (!IMPORT_PARSEABLE_EXTENSIONS.has(ext)) return unchanged;
+  if (chain) {
+    if (!/\.(insert|update|delete)\(/.test(content)) return unchanged; // only write sites matter
+  } else if (!content.includes('ipos')) {
+    return unchanged; // cheap short-circuit
+  }
+
+  let sourceFile;
+  try {
+    sourceFile = parseSource(content, ext);
+  } catch {
+    return unchanged;
+  }
+
+  let bindings;
+  if (chain) {
+    bindings = chain.bindingsOf(relPath, sourceFile);
+  } else {
+    bindings = createChainResolver({ candidates: [], read: () => null, legacy: true }).bindingsOf('file' + ext, sourceFile);
+  }
+
+  const namedAliases = new Set();
+  const namespaceAliases = new Map(); // local -> Set of member names bearing ipos
+  const unresolved = [];
+  for (const [local, entry] of bindings) {
+    if (entry.kind === 'ipos' && local !== 'ipos') namedAliases.add(local);
+    else if (entry.kind === 'ns') namespaceAliases.set(local, entry.members);
+    else if (entry.kind === 'unresolved') unresolved.push(local);
+  }
+
+  if (namedAliases.size === 0 && namespaceAliases.size === 0 && unresolved.length === 0) {
+    return unchanged;
+  }
 
   let rewritten = content;
   for (const alias of namedAliases) {
     rewritten = rewritten.replace(new RegExp(`\\b${escapeRegExp(alias)}\\b`, 'g'), 'ipos');
   }
-  for (const nsAlias of namespaceAliases) {
-    if (nsAlias === 'schema') continue; // already the pattern's literal qualifier
-    rewritten = rewritten.replace(
-      new RegExp(`\\b${escapeRegExp(nsAlias)}\\.ipos\\b`, 'g'),
-      'schema.ipos'
-    );
+  for (const [nsAlias, members] of namespaceAliases) {
+    for (const member of members) {
+      if (nsAlias === 'schema' && member === 'ipos') continue; // already the pattern's literal qualifier
+      rewritten = rewritten.replace(
+        new RegExp(`\\b${escapeRegExp(nsAlias)}\\.${escapeRegExp(member)}\\b`, 'g'),
+        'schema.ipos'
+      );
+    }
   }
-  return rewritten;
+  return { content: rewritten, unresolved };
+}
+
+/**
+ * Backwards-compatible string form of analyzeIposBindings (no chain).
+ * @param {string} content
+ * @param {string} ext file extension including the leading dot
+ * @returns {string}
+ */
+export function resolveIposImportAliases(content, ext) {
+  return analyzeIposBindings(content, ext).content;
 }
 
 /** @returns {string[]} sorted list of matched pattern-kind names, empty if none */
@@ -479,20 +700,37 @@ function listCandidateRelPaths(root) {
  * Scans the repo tree for files matching any write-ratchet pattern.
  * @returns {Map<string, string[]>} relative POSIX path -> matched pattern kinds
  */
-export function scanRepo(root = ROOT) {
-  const candidates = listCandidateRelPaths(root);
+export function scanRepo(root = ROOT, candidatesOverride = null) {
+  const candidates = candidatesOverride ?? listCandidateRelPaths(root);
+  const contentCache = new Map();
+  const readRel = (relPath) => {
+    if (contentCache.has(relPath)) return contentCache.get(relPath);
+    let text = null;
+    try {
+      text = readFileSync(join(root, ...relPath.split('/')), 'utf8');
+    } catch {
+      text = null;
+    }
+    contentCache.set(relPath, text);
+    return text;
+  };
+  const chain = createChainResolver({ candidates: new Set(candidates), read: readRel });
   const found = new Map();
   for (const relPath of candidates) {
     if (isExcludedPath(relPath)) continue;
-    let content;
-    try {
-      content = readFileSync(join(root, ...relPath.split('/')), 'utf8');
-    } catch {
-      continue;
-    }
+    const content = readRel(relPath);
+    if (content === null) continue;
     const ext = extname(relPath);
-    const dealiased = resolveIposImportAliases(content, ext);
-    const kinds = detectPatterns(stripComments(dealiased, ext));
+    const analysis = analyzeIposBindings(content, ext, chain, relPath);
+    const stripped = stripComments(analysis.content, ext);
+    const kinds = detectPatterns(stripped);
+    // Fail closed (#1335): a write target whose binding came through a hop we
+    // could not resolve is reported rather than silently passed.
+    const writtenUnresolved = analysis.unresolved.some((local) =>
+      new RegExp(`\\.(insert|update|delete)\\(\\s*${escapeRegExp(local)}\\b`).test(stripped)
+    );
+    if (writtenUnresolved) kinds.push(UNRESOLVED_REEXPORT_KIND);
+    kinds.sort();
     if (kinds.length > 0) found.set(relPath, kinds);
   }
   return found;
