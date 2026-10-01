@@ -40,6 +40,7 @@ import {
 } from '../utils/distributed-lock.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { SINGLETON_ROW_CHILD_TABLES } from './consolidated-writer-capability.js';
+import type { ChildRowProbe, ChildRowRefusal, ChildRowWrite, ChildRowTable } from '@ipodhan/shared/repositories/child-row-field-writer';
 import {
   toListingExchangesForSource,
   violatesSmeSingleExchange,
@@ -84,6 +85,15 @@ export type ChildConsolidationTable =
   | 'ipo_intermediaries'
   | 'peer_companies';
 
+// #1419: the row writer must serve every member of this set, and nothing outside it.
+type _SameChildTables = [ChildConsolidationTable] extends [ChildRowTable]
+  ? [ChildRowTable] extends [ChildConsolidationTable]
+    ? true
+    : never
+  : never;
+const _childTablesMatch: _SameChildTables = true;
+void _childTablesMatch;
+
 /** One incoming child row, already keyed by the caller. */
 export interface ChildRowInput {
   /**
@@ -119,7 +129,12 @@ export interface ChildRowConsolidationResult {
   fieldsUpdated: number;
   conflictsDetected: number;
   skipped: boolean;
-  skipReason?: 'MISSING_ROW_KEY' | 'CHILD_TABLE_CONSOLIDATION_DISABLED';
+  skipReason?: 'MISSING_ROW_KEY' | 'CHILD_TABLE_CONSOLIDATION_DISABLED' | ChildRowRefusal;
+  /**
+   * #1419: present only when the caller asked this writer to land the row (`writeRow`). Says whether
+   * the decided values reached the child table, so provenance is never reported without its row.
+   */
+  rowWrite?: ChildRowWrite;
 }
 
 /**
@@ -877,7 +892,10 @@ export class DataConsolidationOrchestrator {
     docType?: string,
     confidence: number = 100,
     // OD-144: see ConsolidateIPODataInput.planRankWinnerFields. Only the field-plan walk passes it.
-    options?: { planRankWinnerFields?: readonly string[] }
+    // #1419 `writeRow`: also land the decided values on the child row itself. A caller with no
+    // repository of its own for the table (the field-plan walk) MUST pass it; the persisters write
+    // their rows themselves and leave it off.
+    options?: { planRankWinnerFields?: readonly string[]; writeRow?: boolean }
   ): Promise<ConsolidatedChildRowsResult> {
     const result: ConsolidatedChildRowsResult = {
       rowsProcessed: 0,
@@ -936,6 +954,33 @@ export class DataConsolidationOrchestrator {
         continue;
       }
 
+      // #1419: refuse, BEFORE any provenance is filed, a row this writer could not land (unknown
+      // column, a key that names no row and no way to create one, an admin-held field).
+      const incomingFields = Object.keys(row.data ?? {});
+      if (options?.writeRow) {
+        const probe = await this.ipoRepository.probeChildRow(tableName, ipoId, rowKey, incomingFields, source);
+        if (!probe.writable) {
+          // scraper/ compiles without strictNullChecks, so the union does not narrow on `writable`.
+          const refused = probe as Extract<ChildRowProbe, { writable: false }>;
+          result.rowsSkipped += 1;
+          result.rows.push({
+            rowKey,
+            existingRowId: row.existingRowId,
+            consolidatedData: {},
+            fieldsProcessed: 0,
+            fieldsUpdated: 0,
+            conflictsDetected: 0,
+            skipped: true,
+            skipReason: refused.reason,
+          });
+          logger.warn(
+            { ipoId, tableName, rowKey, source, reason: refused.reason, detail: refused.detail },
+            '[DataConsolidation] #1419 child row cannot be landed — refused before provenance'
+          );
+          continue;
+        }
+      }
+
       const consolidation = await this.consolidationService.consolidateIPOData({
         ipoId,
         tableName,
@@ -947,6 +992,28 @@ export class DataConsolidationOrchestrator {
         docType,
         planRankWinnerFields: options?.planRankWinnerFields,
       });
+
+      // #1419: the decided value of every field this row carried lands on the row, in the same call
+      // that filed its provenance — the column then holds what field_sources says it holds.
+      let rowWrite: ChildRowWrite | undefined;
+      if (options?.writeRow) {
+        const decided = consolidation.consolidatedData ?? {};
+        const values: Record<string, unknown> = {};
+        for (const field of incomingFields) {
+          if (decided[field] !== undefined) values[field] = decided[field];
+        }
+        rowWrite =
+          Object.keys(values).length === 0
+            ? { written: false, reason: 'NO_DECIDED_VALUE', dropped: incomingFields }
+            : await this.ipoRepository.writeChildRowFields(tableName, ipoId, rowKey, values, source);
+        if (!rowWrite.written) {
+          const notWritten = rowWrite as Extract<ChildRowWrite, { written: false }>;
+          logger.error(
+            { ipoId, tableName, rowKey, source, reason: notWritten.reason, dropped: notWritten.dropped },
+            '[DataConsolidation] #1419 provenance filed but the child row was NOT written'
+          );
+        }
+      }
 
       result.rowsProcessed += 1;
       result.conflictsDetected += consolidation.conflictsDetected;
@@ -960,6 +1027,7 @@ export class DataConsolidationOrchestrator {
         fieldsUpdated: consolidation.fieldsUpdated,
         conflictsDetected: consolidation.conflictsDetected,
         skipped: false,
+        ...(rowWrite ? { rowWrite } : {}),
       });
     }
 

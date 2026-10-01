@@ -33,9 +33,14 @@ const REDIS_URL = process.env.REDIS_URL;
 const IPO_ID = '00000000-0000-4000-8000-000000001419';
 const SLUG = 'walk-child-row-column-1419';
 
-const nseFetcher: FieldFetcher = async () => ({
+const VALUES: Record<string, unknown> = {
+  'ipo_details.issue_type': 'BOOK_BUILDING',
+  'ipo_valuation.pe_at_cap': '42.50',
+  'anchor_investors.anchor_investors_count': 17,
+};
+const nseFetcher: FieldFetcher = async (_ipoId, tableName, _rowKey, fieldName) => ({
   outcome: 'SUPPLIED',
-  value: 'BOOK_BUILDING',
+  value: VALUES[`${tableName}.${fieldName}`],
   documentType: undefined,
   page: undefined,
 });
@@ -55,6 +60,8 @@ describe.skipIf(!DATABASE_URL)('#1419: walk child-row write lands the ipo_detail
     await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
     await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
     await db.delete(schema.ipoDetails).where(eq(schema.ipoDetails.ipoId, IPO_ID));
+    await db.delete(schema.ipoValuation).where(eq(schema.ipoValuation.ipoId, IPO_ID));
+    await db.delete(schema.anchorInvestors).where(eq(schema.anchorInvestors.ipoId, IPO_ID));
     await db.delete(schema.ipos).where(eq(schema.ipos.id, IPO_ID));
   }
 
@@ -89,17 +96,21 @@ describe.skipIf(!DATABASE_URL)('#1419: walk child-row write lands the ipo_detail
       INSERT INTO ipos (id, company_name, slug, category, status, open_date, close_date)
       VALUES (${IPO_ID}::uuid, 'Walk Child Row 1419 Ltd.', ${SLUG}, 'MAINBOARD', 'OPEN', '2026-09-14', '2026-09-16')
     `);
+    await plant('ipo_details', '', 'issue_type');
+  });
+
+  async function plant(tableName: string, rowKey: string, fieldName: string) {
     await db.insert(schema.ipoFieldPlan).values({
       ipoId: IPO_ID,
-      tableName: 'ipo_details',
-      rowKey: '',
-      fieldName: 'issue_type',
+      tableName,
+      rowKey,
+      fieldName,
       rank1Source: 'NSE',
       state: 'PENDING',
       manifestVersion: 1,
       nextDueAt: null,
     } as never);
-  });
+  }
 
   function deps() {
     return {
@@ -154,5 +165,57 @@ describe.skipIf(!DATABASE_URL)('#1419: walk child-row write lands the ipo_detail
     const rows = await readColumn();
     expect(rows).toHaveLength(1);
     expect(rows[0].issueType).toBe('BOOK_BUILDING');
+  });
+
+  it('a second child table (ipo_valuation, keyed by pricing event): the value lands in ITS column on the keyed row', async () => {
+    await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
+    await plant('ipo_valuation', 'PRICE_BAND_AD', 'pe_at_cap');
+
+    const result = await walkFieldPlanForIPO(IPO_ID, deps(), openBudget());
+    expect(result.fieldsSupplied).toBe(1);
+
+    const rows = await db
+      .select({ pricingEvent: schema.ipoValuation.pricingEvent, peAtCap: schema.ipoValuation.peAtCap })
+      .from(schema.ipoValuation)
+      .where(eq(schema.ipoValuation.ipoId, IPO_ID));
+    expect(rows).toEqual([{ pricingEvent: 'PRICE_BAND_AD', peAtCap: '42.50' }]);
+    const provenance = await db.select().from(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
+    expect(provenance.filter((r) => r.tableName === 'ipo_valuation').map((r) => [r.rowKey, r.fieldName, r.source])).toEqual([
+      ['PRICE_BAND_AD', 'peAtCap', 'NSE'],
+    ]);
+  });
+
+  it('existing anchor_investors row: the walk value lands in the COLUMN', async () => {
+    await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
+    await plant('anchor_investors', '', 'anchor_investors_count');
+    await db.insert(schema.anchorInvestors).values({
+      ipoId: IPO_ID,
+      bidDate: '2026-09-13',
+      totalSharesOffered: 1000,
+      totalAmountRaised: '100.00',
+      anchorInvestorsCount: 3,
+      lockIn50PercentDate: '2026-10-13',
+      lockInRemainingDate: '2026-12-13',
+    } as never);
+
+    const result = await walkFieldPlanForIPO(IPO_ID, deps(), openBudget());
+    expect(result.fieldsSupplied).toBe(1);
+    const rows = await db
+      .select({ n: schema.anchorInvestors.anchorInvestorsCount })
+      .from(schema.anchorInvestors)
+      .where(eq(schema.anchorInvestors.ipoId, IPO_ID));
+    expect(rows).toEqual([{ n: 17 }]);
+  });
+
+  it('no anchor_investors row and no way to create one: refused BEFORE provenance (no field_sources row, no SUPPLIED)', async () => {
+    await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
+    await plant('anchor_investors', '', 'anchor_investors_count');
+
+    const result = await walkFieldPlanForIPO(IPO_ID, deps(), openBudget());
+    expect(result.fieldsSupplied).toBe(0);
+    const provenance = await db.select().from(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
+    expect(provenance.filter((r) => r.tableName === 'anchor_investors')).toEqual([]);
+    const rows = await db.select().from(schema.anchorInvestors).where(eq(schema.anchorInvestors.ipoId, IPO_ID));
+    expect(rows).toEqual([]);
   });
 });

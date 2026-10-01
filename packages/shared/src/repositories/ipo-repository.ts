@@ -207,6 +207,7 @@ const WRITER_IDENTIFIER_COLUMNS = ['cin', 'isin', 'symbol'] as const;
  */
 export type IdentifierRefusal = { fieldName: string; value: string; holder: string };
 export type OnIdentifierRefused = (refused: IdentifierRefusal[]) => void;
+import { probeChildRow, writeChildRowFields, type ChildRowProbe, type ChildRowWrite } from './child-row-field-writer';
 import { recordListSuggestion, adminListMergeRefusal } from '../services/admin-list-hold';
 import {
   checkMergeEligibility,
@@ -384,6 +385,16 @@ export type IposWriteTxHook = (
 export class IPORepository extends BaseRepository implements IIPORepository {
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis) {
     super(db, redis);
+  }
+
+  /** #1419: pre-check a consolidated child-row write (child-row-field-writer.ts). */
+  async probeChildRow(tableName: string, ipoId: string, rowKey: string, fields: readonly string[], source: string): Promise<ChildRowProbe> {
+    return probeChildRow(this.db, tableName, ipoId, rowKey, fields, source);
+  }
+
+  /** #1419: land consolidated child-row values on the keyed row (child-row-field-writer.ts). */
+  async writeChildRowFields(tableName: string, ipoId: string, rowKey: string, values: Record<string, unknown>, source: string): Promise<ChildRowWrite> {
+    return writeChildRowFields(this.db, tableName, ipoId, rowKey, values, source);
   }
 
   /**
