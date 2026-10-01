@@ -51,6 +51,22 @@ function isValueLikeLabel(text) {
   return VALUE_LIKE_LABEL_RES.some((re) => re.test(text));
 }
 
+// A heading that exists only while the IPO is in a certain STATE is the page's
+// call-to-action, not its layout: no extractor keys on it, and it appears or
+// vanishes the day the IPO opens or closes. Measured 2026-10-01 against the live
+// Chittorgarh pages: "Apply for IPO Now!" is on the OPEN IPOs (dove-soft,
+// paramount-syntex) and gone from the closed one (runwal-enterprises), whose
+// fixture was captured while it was open - so the fixture "lost" a label and the
+// floor raised a corpus_shape FAIL (#1336) with nothing wrong in the markup.
+// Without this, every fixture captured in the open window FAILs once its IPO closes.
+const STATE_DEPENDENT_LABEL_RES = [
+  /^apply for ipo now!?$/,
+];
+
+function isStateDependentLabel(text) {
+  return STATE_DEPENDENT_LABEL_RES.some((re) => re.test(text));
+}
+
 // Above this, the page is a listing table whose every row-header is a company
 // name — those are values, and including them would make every new listing
 // read as a shape change. Named, not a magic number.
@@ -69,7 +85,7 @@ export function extractShape(html) {
   while ((m = LABEL_TAG_RE.exec(html)) !== null) {
     const tag = m[1].toLowerCase();
     const text = normalizeLabel(m[2].replace(/<[^>]*>/g, ' '));
-    if (!text || !HAS_LETTERS_RE.test(text) || isValueLikeLabel(text)) continue;
+    if (!text || !HAS_LETTERS_RE.test(text) || isValueLikeLabel(text) || isStateDependentLabel(text)) continue;
     tagCounts[tag] = (tagCounts[tag] || 0) + 1;
     if (labels.size < MAX_LABELS_PER_PAGE) labels.add(text);
   }
