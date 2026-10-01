@@ -24,6 +24,7 @@
 
 import { Client } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { sql } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { writeIposRebuildingPlanInTx } from '@ipodhan/shared/services/plan-invalidating-rebuild';
 import { loadPlanManifest } from '../config/field-manifest-loader.js';
@@ -98,7 +99,7 @@ async function main() {
           // transaction, on this script's own connection.
           const manifest = loadPlanManifest();
           await drizzle(client, { schema }).transaction((tx) =>
-            writeIposRebuildingPlanInTx(tx as never, ipo.id, { offeringType: correct, lastManualEditAt: new Date(), updatedAt: new Date() }, manifest)
+            writeIposRebuildingPlanInTx(tx as never, ipo.id, { offeringType: correct, lastManualEditAt: sql`now()`, updatedAt: sql`now()` }, manifest)
           );
           logger.info({ ipoId: ipo.id, name: ipo.company_name, to: correct }, 'Reclassified corporate action out of IPO listings');
         }

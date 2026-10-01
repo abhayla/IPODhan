@@ -137,6 +137,7 @@ export async function runUnmerge(mergeId: string): Promise<number> {
       partial: PARTIAL,
       forceFields: FORCE_FIELDS,
       unmergedBy: 'repair-merge-duplicate-ipo.ts --unmerge',
+      planManifest: loadPlanManifest(),
     });
   } catch (err) {
     if (err instanceof DatabaseError || err instanceof ProdWriteRefusedError) {

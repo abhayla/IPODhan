@@ -2590,8 +2590,25 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         const jsKey = columnToCamelCase(p.column);
         if (isPlanInvalidatingField('ipos', jsKey)) planInputSet[jsKey] = p.value;
       }
+      // A relaunch merge cleared plan inputs above without a rebuild; one the newer record does not
+      // refill stays empty, and the plan must still follow it (round 2, #1408).
+      for (const inv of relaunchCleared?.invalidated ?? []) {
+        if (inv.tableName === 'ipos' && inv.fieldName !== '*' && isPlanInvalidatingField('ipos', inv.fieldName) && !(inv.fieldName in planInputSet)) {
+          planInputSet[inv.fieldName] = null;
+        }
+      }
       if (Object.keys(planInputSet).length > 0) {
-        await writeIposRebuildingPlanInTx(tx as never, keepId, { ...planInputSet, updatedAt: new Date() }, opts.planManifest);
+        // The plan was built from the survivor as it stood before this merge, not from the
+        // mid-transaction cleared row (a NULL segment ranks like MAINBOARD and hid an SME -> MAINBOARD
+        // change from the rebuild; round 2, #1408).
+        const keepBefore = keep as unknown as { segment: string | null; listingExchanges: string[] | null; offeringType: string | null };
+        await writeIposRebuildingPlanInTx(
+          tx as never,
+          keepId,
+          { ...planInputSet, updatedAt: sql`now()` },
+          opts.planManifest,
+          { segment: keepBefore.segment, listingExchanges: keepBefore.listingExchanges, offeringType: keepBefore.offeringType }
+        );
       }
 
       for (const p of patch) {
@@ -2755,7 +2772,18 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    */
   async unmergeDuplicate(
     mergeId: string,
-    opts: { apply: boolean; allowProd?: boolean; partial?: boolean; forceFields?: string[]; unmergedBy?: string }
+    opts: {
+      apply: boolean;
+      allowProd?: boolean;
+      partial?: boolean;
+      forceFields?: string[];
+      unmergedBy?: string;
+      /**
+       * #1402 (spec §2.8): the manifest the survivor's plan is rebuilt from when the unmerge restores
+       * segment, offering_type or listing_exchanges. Missing on such an unmerge -> it is refused.
+       */
+      planManifest?: import('../services/plan-invalidating-rebuild').PlanManifest;
+    }
   ): Promise<UnmergeResult> {
     if (opts.apply) {
       const r = await this.db.execute(sql`select current_database()`);
@@ -3188,10 +3216,15 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         : false;
       const restoreCols = [...patchFields, ...(untouchedSinceMerge ? ['updated_at'] : [])];
       if (restoreCols.length) {
-        await tx
-          .update(ipos)
-          .set(fromLogged(keepBeforeExpr, (n) => restoreCols.includes(n)) as never)
-          .where(eq(ipos.id, keepId));
+        // #1402 (spec §2.8): restoring segment / offering_type / listing_exchanges goes through the
+        // one write-and-rebuild door, so the survivor's plan follows the restored type (round 2).
+        const { writeIposRebuildingPlanInTx } = await import('../services/plan-invalidating-rebuild');
+        await writeIposRebuildingPlanInTx(
+          tx as never,
+          keepId,
+          fromLogged(keepBeforeExpr, (n) => restoreCols.includes(n)),
+          opts.planManifest
+        );
         await exactOrThrow(keepId, keepBeforeExpr, restoreCols, 'the survivor');
       }
       // 8. the merge's redirect goes, so the dropped slug serves its own row again

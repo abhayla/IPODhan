@@ -355,7 +355,13 @@ export async function writeIposRebuildingPlanInTx(
   tx: Db,
   ipoId: string,
   set: Record<string, unknown>,
-  manifest: PlanManifest | null | undefined
+  manifest: PlanManifest | null | undefined,
+  /**
+   * The type slice the plan was last built from, when the caller already changed a plan input
+   * earlier in this transaction (a relaunch merge clears segment before refilling it). Omitted: read
+   * from the locked row before the write.
+   */
+  beforeOverride?: Pick<PlanIpo, 'segment' | 'listingExchanges' | 'offeringType'>
 ): Promise<PlanRebuildSummary | null> {
   const touchesPlan = Object.keys(set).some((f) => isPlanInvalidatingField('ipos', f));
   if (touchesPlan && !manifest) {
@@ -370,7 +376,7 @@ export async function writeIposRebuildingPlanInTx(
     );
     const r = cur.rows[0] as { segment: string | null; listing_exchanges: string[] | null; offering_type: string | null } | undefined;
     if (!r) throw new Error(`writeIposRebuildingPlanInTx: IPO ${ipoId} not found`);
-    before = { segment: r.segment, listingExchanges: r.listing_exchanges, offeringType: r.offering_type };
+    before = beforeOverride ?? { segment: r.segment, listingExchanges: r.listing_exchanges, offeringType: r.offering_type };
   }
   await tx.update(iposTable).set(set as never).where(eq(iposTable.id, ipoId));
   return touchesPlan ? rebuildIpoPlanInTx(tx, ipoId, manifest!, before!) : null;
