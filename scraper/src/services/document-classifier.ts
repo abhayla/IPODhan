@@ -128,6 +128,43 @@ export function classifyByTitle(rawTitle: string | null | undefined): DocumentTy
 }
 
 /**
+ * How much of a cover page's text may hold the title (#1417). Measured on 17 real
+ * Chittorgarh-linked prospectus covers (2026-10-02): the title sits within the first
+ * ~150 characters once the leading "(Please scan this QR code to view the ...)" note is
+ * removed; 400 leaves room for the issuer name and CIN lines that sometimes precede it.
+ */
+const COVER_TITLE_WINDOW_CHARS = 400;
+
+/**
+ * Type an OFFER document (DRHP / RHP / PROSPECTUS) from its COVER PAGE text (#1417), for a
+ * file whose URL name names no type ("997.pdf", "FP_INE0P8B01020_25FEB2026.pdf").
+ * Returns null when the cover names no offer-document type: a caller must never default
+ * to PROSPECTUS (OD-30 makes the final prospectus terminal, OD-154 ranks it first, so a
+ * wrongly typed annual report would outrank the real RHP).
+ *
+ * The parenthesised QR note is dropped first: a DRHP's cover also says "view the Draft Red
+ * Herring Prospectus", and a non-offer document may quote the word. An addendum,
+ * corrigendum, abridged prospectus or advertisement is not an offer document here.
+ * Pure: no IO.
+ */
+export function classifyOfferDocumentCover(coverText: string | null | undefined): DocumentType | null {
+  if (typeof coverText !== 'string') return null;
+  const head = coverText
+    .replace(/\([^)]*\)/g, ' ')
+    .toLowerCase()
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, COVER_TITLE_WINDOW_CHARS);
+  if (head === '') return null;
+  if (/addendum|corrigendum|abridged|advertisement/.test(head)) return null;
+  if (/draft red herring prospectus/.test(head)) return 'DRHP';
+  if (/red herring prospectus/.test(head)) return 'RHP';
+  if (/prospectus/.test(head)) return 'PROSPECTUS';
+  return null;
+}
+
+/**
  * The BSE core-API (`GetMkt_ISSUE_BBS_IPO`) fields that carry document links,
  * with the type each field means BY DEFAULT. Verified live 2026-08-28 against
  * IPO_NO=7903 (Skyways): all four are populated, `Anchor_Details` is empty.
