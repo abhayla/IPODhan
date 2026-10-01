@@ -52,11 +52,11 @@ export function extractAnchorHref(html: string | null | undefined): string | nul
 }
 
 /**
- * Classify a prospectus PDF by its URL. The FILE NAME decides first, through the
- * shared classifier (#1116: Gabion's final Prospectus sat at
- * '/RHP/Final%20Prospectus.pdf' and the whole-URL test typed it RHP from the
- * folder name). Only when the file name names none of the three types does the
- * whole URL decide. Order matters there: 'drhp' contains 'rhp', so DRHP first.
+ * Classify a prospectus PDF by its FILE NAME only, through the shared classifier
+ * (#1116: Gabion's final Prospectus sat at '/RHP/Final%20Prospectus.pdf' and the
+ * whole-URL test typed it RHP from the folder name). The folder and host never
+ * decide: a file name that names none of the three types gets the default for
+ * this source (report 20 is the prospectus list), PROSPECTUS.
  */
 export function detectProspectusDocType(
   url: string,
@@ -65,9 +65,6 @@ export function detectProspectusDocType(
 ): ProspectusDocType {
   const fromName = classifyByTitle(fileNameFromUrl(url));
   if (fromName === 'DRHP' || fromName === 'RHP' || fromName === 'PROSPECTUS') return fromName;
-  const u = (url || '').toLowerCase();
-  if (u.includes('drhp')) return 'DRHP';
-  if (/\brhp\b/.test(u) || u.includes('rhp')) return 'RHP';
   return 'PROSPECTUS';
 }
 

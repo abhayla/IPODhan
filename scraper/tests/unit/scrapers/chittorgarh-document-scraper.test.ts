@@ -63,6 +63,10 @@ describe('chittorgarh-document-scraper', () => {
     it('#1116: a draft file name still wins over a folder name', () => {
       expect(detectProspectusDocType('https://x.com/RHP/Company_DRHP.pdf', 'BSE')).toBe('DRHP');
     });
+    it('#1116: a file name that names no type is NOT typed from the folder (RHP/Annual_Report -> default PROSPECTUS)', () => {
+      expect(detectProspectusDocType('https://x.com/RHP/Annual_Report_2026.pdf', 'BSE')).toBe('PROSPECTUS');
+      expect(detectProspectusDocType('https://x.com/DRHP/Annual_Report_2026.pdf', 'BSE')).toBe('PROSPECTUS');
+    });
     it('defaults to PROSPECTUS for a generic prospectus pdf', () => {
       expect(detectProspectusDocType('https://beelinemb.com/PROSPECTUS_MODERN.pdf', 'BSE')).toBe(
         'PROSPECTUS'

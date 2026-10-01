@@ -6,6 +6,8 @@
 // MUST pass). Run: node --test scripts/tests/document-state-checks.test.mjs
 
 import { test } from 'node:test';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
 import assert from 'node:assert/strict';
 import {
   checkBlockedAllAge,
@@ -1058,10 +1060,10 @@ test('#676 checkExtractionStatusDeclared flags undeclared and NULL, passes every
 
 // --- #1116: the floor's own mirror, on the two real rows the 2026-09-25 floor flagged ---
 
-test('#1116 Varmora (real prod row): a Prospectus_GID RHP whose zip name is silent is NOT flagged', () => {
-  // Zip members: 'VARMORA GRANITO LIMITED GID.pdf', 'Varmora Granito Limited RHP.pdf' -- an RHP.
+test('#1116 Varmora (real file names, synthetic url): a Prospectus_GID RHP whose zip name is silent is NOT flagged', () => {
+  // SYNTHETIC url (the id segment is made up); the real file names. Zip members: 'VARMORA GRANITO LIMITED GID.pdf', 'Varmora Granito Limited RHP.pdf' -- an RHP.
   const row = {
-    url: 'https://listing.bseindia.com/Download/8888888/PreAnchor/VARMORAGRANITOLIMITED_20260918181531.zip',
+    url: 'https://listing.bseindia.com/Download/SYNTHETIC-ID/PreAnchor/VARMORAGRANITOLIMITED_20260918181531.zip',
     title: 'Prospectus GID',
     type: 'RHP',
   };
@@ -1088,4 +1090,59 @@ test('#1116 the mirror folds underscores like the classifier (shape documented i
   );
   // A fixed-meaning field label is still evidence.
   assert.equal(classifyDocumentUrlOrTitle('https://x/a.pdf', 'Price Band Advertisement'), 'PRICE_BAND_AD');
+});
+
+// --- #1116 parity: the floor's mirror vs the scraper's classifier (SSOT) ---
+//
+// classifyDocumentUrlOrTitle hand-mirrors scraper/src/services/document-classifier.ts
+// (file name first, then the title unless it is the variable-meaning BSE label).
+// The mirror only answers the six types the nightly refinement table knows, so the
+// reference below keeps the first of the two texts whose SSOT answer is one of them.
+// Same skip convention as zip-member-rows.test.mjs when this Node cannot import .ts.
+const MIRROR_TYPES = new Set(['PRICE_BAND_AD', 'CORRIGENDUM', 'BASIS_OF_ALLOTMENT_AD', 'DRHP', 'RHP', 'PROSPECTUS']);
+const PARITY_CASES = [
+  ['https://gabionindia.com//wp-content/themes/gabion/RHP/Final%20Prospectus.pdf', 'RHP — Gabion (Chittorgarh)'],
+  ['https://x.com/RHP/Company_DRHP.pdf', ''],
+  ['https://x.com/RHP/Annual_Report_2026.pdf', ''],
+  ['https://x.com/a.pdf', 'Price Band Advertisement'],
+  ['https://x.com/a.pdf', 'Red Herring Prospectus'],
+  ['https://x.com/a.pdf', 'Draft Red Herring Prospectus'],
+  ['https://x.com/a.pdf', 'Prospectus'],
+  ['https://x/DEEPA_Red_Herring_Prospectus_and_GID_20260902.zip', 'Prospectus GID'],
+  ['https://x/VARMORAGRANITOLIMITED_20260918181531.zip', 'Prospectus GID'],
+  ['https://x/RHPSkyways_20260818181315.pdf', 'Prospectus GID'],
+  ['https://x/CorrigendumofRHPSkyways.pdf', 'Corrigendum'],
+  ['https://x/PriceBandAdvertisementSkyways_1.pdf', ''],
+  ['https://x/Basis%20of%20Allotment%20Advertisement.pdf', ''],
+  ['https://x/Abridged%20Prospectus.pdf', ''],
+  ['https://x/a.pdf', ''],
+  ['', ''],
+];
+
+let docClassifierSsot = null;
+let docClassifierErr = null;
+try {
+  docClassifierSsot = await import(
+    pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scraper', 'src', 'services', 'document-classifier.ts')).href
+  );
+} catch (e) {
+  docClassifierErr = e;
+}
+
+test('#1116 parity: classifyDocumentUrlOrTitle equals the scraper classifier (document-classifier.ts, imported directly)', {
+  skip: docClassifierErr?.code === 'ERR_UNKNOWN_FILE_EXTENSION'
+    ? `this Node cannot import .ts (${process.version}); run locally on Node >= 22.18`
+    : false,
+}, () => {
+  assert.equal(docClassifierErr, null, `could not import document-classifier.ts: ${docClassifierErr?.message}`);
+  for (const [url, title] of PARITY_CASES) {
+    const texts = [docClassifierSsot.fileNameFromUrl(url)];
+    if (!docClassifierSsot.isVariableMeaningBseFieldTitle(title)) texts.push(title);
+    let expected = null;
+    for (const t of texts) {
+      const c = docClassifierSsot.classifyByTitle(t);
+      if (c && MIRROR_TYPES.has(c)) { expected = c; break; }
+    }
+    assert.equal(classifyDocumentUrlOrTitle(url, title), expected, `url '${url}' title '${title}'`);
+  }
 });
