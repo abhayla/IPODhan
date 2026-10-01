@@ -11,14 +11,19 @@
 // already runs; nothing ran them before the push.
 //
 // HOW (structural, not a hand-copied list): the steps are READ FROM pr-gate.yml
-// at run time. Every step with a `run:` runs locally, verbatim, in its
-// working-directory with its env, UNLESS the table below classifies it as
-// setup (installs, toolchain), CI-only (needs a service container, a secret,
-// or the runner) or heavy (opt-in with --full). A step the gate cannot run
-// verbatim (an unknown ${{ }} expression, a service job, a global install) and
-// that the table does not classify makes the gate FAIL CLOSED, and
-// scripts/tests/local-pr-gate.test.mjs fails in CI, so pr-gate.yml cannot gain
-// a step this gate silently ignores.
+// at run time. A step with a `run:` runs locally, verbatim, in its
+// working-directory with its env, ONLY IF every command line in it starts with
+// an allowed program form (scripts/ci/local-gate-shell-allowlist.mjs: node,
+// npx of a listed tool, npm run of a listed script, repo scripts, python tests,
+// cd, shell builtins). The table below can instead classify a step as setup
+// (installs, toolchain), CI-only (needs a service container, a secret, or the
+// runner) or heavy (opt-in with --full). Everything else is UNCLASSIFIED: any
+// other command, any unknown ${{ }} expression, and any `if:` or `env:` at
+// workflow, job or step level that the gate does not model. The gate then
+// REFUSES to run, and scripts/tests/local-pr-gate.test.mjs fails in CI, so
+// pr-gate.yml cannot gain a step or condition this gate silently runs or
+// ignores. (Round 1 used a deny-list; an allow-list fails closed on dangers
+// nobody listed: git config, gh, curl, ssh.)
 //
 // Usage:
 //   npm run gate:local                 # gate merge-base(origin/main)..HEAD
@@ -34,6 +39,7 @@ import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
+import { unclassifiedCommands, envProblem } from './local-gate-shell-allowlist.mjs';
 
 const require = createRequire(import.meta.url);
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -62,8 +68,9 @@ export const TREES = {
 //   setup   — toolchain / install; the developer's checkout already has it
 //   ci-only — cannot run here (service container, secret, runner-only state)
 //   heavy   — runs only with --full (printed, never silently skipped)
-//   local   — runs (the default for every unlisted step); `tree` narrows it,
-//             `cmd` replaces a run block that must not run verbatim here
+//   local   — runs when its run block passes the shell allow-list; `tree`
+//             narrows it, `cmd` replaces a run block that must not run verbatim
+//             here (the replacement is allow-listed too)
 const NPM_CI_SETUP = { mode: 'setup', reason: 'npm ci: the checkout already has node_modules (never reinstall a junctioned worktree)' };
 export const STEP_TABLE = {
   'gate :: Install dependencies': NPM_CI_SETUP,
@@ -117,8 +124,9 @@ export const JOB_TABLE = {
 // it replaces with the web tree.
 export const KNOWN_IFS = { "steps.filter.outputs.run == 'true'": 'web' };
 
-// A run block that must never run verbatim on a developer machine.
-export const FORBIDDEN_LOCAL = /\bnpm (ci|install)\b|\bpip3? install\b|-m pip install|git config --global|\bsudo\b|apt-get|\$GITHUB_[A-Z_]+|\bdocker\b/;
+// Workflow- and job-level `if:` conditions the gate understands. None: a job
+// that only runs on push/schedule/label would otherwise run every step here.
+export const KNOWN_JOB_IFS = {};
 
 // ---- ${{ }} expressions ------------------------------------------------------
 export function expressionValues(ctx) {
@@ -131,15 +139,18 @@ export function expressionValues(ctx) {
     'github.event.pull_request.number': ctx.prNumber || '',
   };
 }
-const EXPR_RE = /\$\{\{\s*([^}]*?)\s*\}\}/g;
+// Non-greedy up to the closing `}}`, so a nested `format('{0}', x)` is one expression.
+const EXPR_RE = /\$\{\{([\s\S]*?)\}\}/g;
 export function substitute(text, ctx) {
   const vals = expressionValues(ctx);
   const unknown = [];
-  const out = String(text).replace(EXPR_RE, (m, e) => {
+  const out = String(text).replace(EXPR_RE, (m, raw) => {
+    const e = raw.trim();
     if (Object.prototype.hasOwnProperty.call(vals, e)) return vals[e];
     unknown.push(e);
     return m;
   });
+  if (!unknown.length && /\$\{\{/.test(out)) unknown.push('unparsed ${{');
   return { out, unknown };
 }
 
@@ -148,16 +159,26 @@ export function loadSteps(workflowPath = WORKFLOW) {
   const YAML = require('yaml');
   const wf = YAML.parse(readFileSync(workflowPath, 'utf8'));
   const steps = [];
+  // Workflow-level conditions and defaults apply to every job.
+  const wfProblems = [];
+  if (wf.defaults) wfProblems.push('workflow-level defaults');
+  if (wf.if) wfProblems.push(`workflow-level if: ${wf.if}`);
+  if (wfProblems.length) steps.push({ jobId: '(workflow)', name: '(workflow)', problem: `${wfProblems.join(', ')}: the local gate does not model them` });
   for (const [jobId, job] of Object.entries(wf.jobs || {})) {
-    if (job.defaults || job.container || job.strategy) {
-      steps.push({ jobId, name: '(job)', problem: `job ${jobId} uses defaults/container/strategy, which the local gate does not model` });
-    }
+    const unmodelled = [];
+    if (job.defaults || job.container || job.strategy) unmodelled.push('defaults/container/strategy');
+    if (job.if !== undefined && !KNOWN_JOB_IFS[job.if]) unmodelled.push(`job-level if: ${job.if}`);
+    if (job['continue-on-error'] !== undefined) unmodelled.push('continue-on-error');
+    if (unmodelled.length) steps.push({ jobId, name: '(job)', problem: `job ${jobId} uses ${unmodelled.join(', ')}, which the local gate does not model` });
+    // Workflow and job env reach every step; a step's own env wins.
+    const inherited = { ...(wf.env || {}), ...(job.env || {}) };
     (job.steps || []).forEach((st, index) => {
       steps.push({
         jobId, index, hasServices: Boolean(job.services),
         name: st.name || st.uses || `step ${index + 1}`,
         uses: st.uses, run: st.run, if: st.if, shell: st.shell,
-        env: st.env || {}, workdir: st['working-directory'] || '.',
+        continueOnError: st['continue-on-error'],
+        env: { ...inherited, ...(st.env || {}) }, workdir: st['working-directory'] || '.',
       });
     });
   }
@@ -168,9 +189,16 @@ export function loadSteps(workflowPath = WORKFLOW) {
 // gate fails closed on it and the drift test fails in CI.
 export function classify(step, ctx = { base: 'BASE', head: 'HEAD' }) {
   const key = `${step.jobId} :: ${step.name}`;
-  if (step.problem) return { key, mode: 'error', problem: step.problem };
   const job = JOB_TABLE[step.jobId] || {};
   const entry = STEP_TABLE[key];
+  if (step.problem) {
+    // A job that never runs here (ci-only) cannot misbehave here, whatever its conditions.
+    if (job.mode === 'ci-only') return { key, mode: 'ci-only', reason: job.reason };
+    return { key, mode: 'error', problem: step.problem };
+  }
+  if (step.continueOnError !== undefined && step.run && job.mode !== 'ci-only') {
+    return { key, mode: 'error', problem: 'continue-on-error: the step passes in CI when it fails, which the local gate does not model' };
+  }
   if (!step.run) return { key, mode: 'setup', reason: `uses: ${step.uses}` };
   if (job.mode === 'ci-only') return { key, mode: 'ci-only', reason: job.reason };
   if (step.hasServices) {
@@ -185,15 +213,15 @@ export function classify(step, ctx = { base: 'BASE', head: 'HEAD' }) {
   }
   if (step.shell) return { key, mode: 'error', problem: `custom shell: ${step.shell}` };
   const raw = entry?.cmd || step.run;
-  if (!entry?.cmd && FORBIDDEN_LOCAL.test(step.run)) {
-    return { key, mode: 'error', problem: `run block must not run verbatim locally (${step.run.match(FORBIDDEN_LOCAL)[0]}); classify it` };
-  }
   const { out: cmd, unknown } = substitute(raw, ctx);
   const env = {};
+  const envProblems = [];
   for (const [k, v] of Object.entries(step.env)) {
-    const s = substitute(v, ctx);
+    const s = substitute(String(v), ctx);
     unknown.push(...s.unknown);
     env[k] = s.out;
+    const bad = s.unknown.length ? null : envProblem(k, s.out);
+    if (bad) envProblems.push(bad);
   }
   if (unknown.length) {
     const secret = unknown.find((u) => /^secrets\./.test(u));
@@ -201,6 +229,12 @@ export function classify(step, ctx = { base: 'BASE', head: 'HEAD' }) {
   }
   if (LINUX_ONLY[key] && (ctx.platform || process.platform) !== 'linux') {
     return { key, mode: 'ci-only', reason: `Linux-only here: ${LINUX_ONLY[key]}` };
+  }
+  if (envProblems.length) return { key, mode: 'error', problem: `env not safe to apply locally: ${envProblems.join('; ')}` };
+  const offenders = unclassifiedCommands(cmd);
+  if (offenders.length) {
+    const o = offenders[0];
+    return { key, mode: 'error', problem: `unclassified command in run block, line ${o.line}: \`${o.text}\` - ${o.reason}${offenders.length > 1 ? ` (+${offenders.length - 1} more)` : ''}` };
   }
   return { key, mode: entry?.mode === 'heavy' ? 'heavy' : 'local', tree, cmd, env, workdir: step.workdir, reason: entry?.reason };
 }

