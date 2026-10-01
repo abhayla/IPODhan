@@ -3438,6 +3438,8 @@ export class DataConsolidationService {
           ? serializeFieldValue(params.previousValue)
           : undefined,
         previousSource: params.previousSource,
+        // #1311: lets the repository recognise an identical restamp (value = previous value).
+        incomingValue: params.previousValue !== undefined ? serializeFieldValue(params.value) : undefined,
         // Item 3 slice S1d: name the configuration that decided this write. Only set when the
         // field has a manifest row at all (`hasManifestRow`) — a row-less field's write is
         // decided purely by the legacy matrix (the shim), so it carries no policy origin.

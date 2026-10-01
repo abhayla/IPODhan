@@ -429,6 +429,29 @@ describe.each(VARIANTS)('field_sources row_key provenance — $label', ({ RepoCl
       expect(byNewKey?.rowKey).toBe('CACHE_B');
       expect(byNewKey?.source).toBe('NSE');
     });
+
+    it('#1311: a write with previousValue but no previousSource carries the stored row source as previous_source', async () => {
+      const tdb = drizzle(pool!, { schema });
+      await tdb.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
+      await repo!.trackFieldUpdate({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'closeDate', source: 'NSE', previousValue: null });
+      // The fallback persister's shape: previousValue set, previousSource omitted.
+      await repo!.trackFieldUpdate({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'closeDate', source: 'NSE', previousValue: '2026-09-10' });
+      const [r] = await tdb.select({ pv: schema.fieldSources.previousValue, ps: schema.fieldSources.previousSource }).from(schema.fieldSources)
+        .where(sql`${schema.fieldSources.ipoId} = ${IPO_ID} AND ${schema.fieldSources.fieldName} = 'closeDate'`);
+      expect(r).toEqual({ pv: '2026-09-10', ps: 'NSE' });
+    });
+
+    it('#1311: an identical restamp (new value = previous value) keeps the stored previous_value/previous_source evidence', async () => {
+      const tdb = drizzle(pool!, { schema });
+      await tdb.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
+      // An exchange extension: NSE moved the close date 2026-09-10 -> 2026-09-12.
+      await repo!.trackFieldUpdate({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'closeDate', source: 'NSE', previousValue: '2026-09-10', previousSource: 'NSE', incomingValue: '2026-09-12' } as never);
+      // A later write of the SAME value (the restamp): previous = stored = new.
+      await repo!.trackFieldUpdate({ ipoId: IPO_ID, tableName: 'ipos', fieldName: 'closeDate', source: 'BSE', previousValue: '2026-09-12', previousSource: 'NSE', incomingValue: '2026-09-12' } as never);
+      const [r] = await tdb.select({ s: schema.fieldSources.source, pv: schema.fieldSources.previousValue, ps: schema.fieldSources.previousSource }).from(schema.fieldSources)
+        .where(sql`${schema.fieldSources.ipoId} = ${IPO_ID} AND ${schema.fieldSources.fieldName} = 'closeDate'`);
+      expect(r).toEqual({ s: 'BSE', pv: '2026-09-10', ps: 'NSE' });
+    });
   });
 });
 

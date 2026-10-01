@@ -40,6 +40,11 @@ export interface TrackFieldUpdateInput {
   confidence?: number;
   previousValue?: string | null;
   previousSource?: ScraperSource | null;
+  /** #1311: the serialized value this write stores, in the same form as `previousValue`. When it
+   *  equals `previousValue` the write is an identical restamp and keeps the stored
+   *  previous_value/previous_source (the evidence of the last real change, e.g. an exchange
+   *  moving a date later, §2.9). Omitted: no restamp detection. */
+  incomingValue?: string | null;
   dataLineage?: Record<string, unknown>;
   updatedBy?: string;
   /** S3b-2 (docs/design/s3b2-verdict-writer-plan.md): every OTHER witness answer collected this
@@ -221,6 +226,8 @@ export class FieldSourcesRepository extends BaseRepository {
    * Records which source provided the field value
    */
   async trackFieldUpdate(input: TrackFieldUpdateInput): Promise<FieldSourceRecord> {
+    const restamp =
+      input.incomingValue !== undefined && input.previousValue != null && input.incomingValue === input.previousValue;
     // A write from any non-ADMIN source keeps a stored ADMIN row's attribution columns.
     const keepAdmin = (column: unknown, incoming: SQL) =>
       input.source === 'ADMIN'
@@ -290,8 +297,23 @@ export class FieldSourcesRepository extends BaseRepository {
               // suggestion queue read (§9.3, §9.2 item 9).
               source: keepAdmin(fieldSources.source, sql`${input.source}`),
               confidence: keepAdmin(fieldSources.confidence, sql`${input.confidence ?? 100}`),
-              previousValue: keepAdmin(fieldSources.previousValue, sql`${input.previousValue || null}`),
-              previousSource: keepAdmin(fieldSources.previousSource, sql`${input.previousSource || null}`),
+              // #1311: an identical restamp keeps the last real change's evidence; a write that names a
+              // previous value but not its source carries the stored row's source (the source that set
+              // that previous value), so a later reader never sees a change with no origin.
+              previousValue: keepAdmin(
+                fieldSources.previousValue,
+                restamp ? sql`${fieldSources.previousValue}` : sql`${input.previousValue || null}`
+              ),
+              previousSource: keepAdmin(
+                fieldSources.previousSource,
+                restamp
+                  ? sql`${fieldSources.previousSource}`
+                  : input.previousSource
+                    ? sql`${input.previousSource}`
+                    : input.previousValue
+                      ? sql`${fieldSources.source}`
+                      : sql`${null}`
+              ),
               // MAJOR-4 (Tier A review, PR #753): MERGE, never replace. A plain object here
               // (the old code: `input.dataLineage ?? null`) REPLACES the whole jsonb column on
               // conflict, so a provenance-only write (`{policyOrigin}`) silently destroyed
