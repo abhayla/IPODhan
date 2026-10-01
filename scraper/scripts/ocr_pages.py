@@ -655,6 +655,10 @@ def annotate_fields(fields, page_confidence, floor=CONFIDENCE_FLOOR):
     """
     for name, field in (fields or {}).items():
         page = field.get("page")
+        if page is None:
+            # #1420 round 3: a refusal carries no `page` (no value was kept) but
+            # was still READ off a page; its trust is that page's confidence.
+            page = field.get("refused_page")
         if page is None or page not in page_confidence:
             field.setdefault("source_text", "TEXT")
             continue

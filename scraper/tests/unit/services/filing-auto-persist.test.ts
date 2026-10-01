@@ -536,6 +536,27 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
     expect(failedCall[0]).not.toHaveProperty('retryCount');
   });
 
+  it('#1420: a failed re-read clear leaves the document re-readable (FAILED, REREAD_CLEAR_FAILED count 1), never stamped done at the new version', async () => {
+    const d = deps({ persistFiling: vi.fn(async () => summary({ reread_answers_error: 'REREAD_CLEAR_FAILED: deadlock detected' })) as never });
+    await processPendingFilings(IPO, d);
+    expect(d.setFetchStateExtracted).not.toHaveBeenCalled();
+    const calls = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(calls.find((c) => c.status === 'COMPLETED')).toBeUndefined();
+    const failed = calls.find((c) => c.status === 'FAILED');
+    expect(failed.error).toMatch(/^REREAD_CLEAR_FAILED:1(@\d+)?:REREAD_CLEAR_FAILED: deadlock detected/);
+  });
+
+  it('#1420: a clear that keeps failing is parked at the unfinished-read cap, not retried forever', async () => {
+    const prior = `REREAD_CLEAR_FAILED:2@1:REREAD_CLEAR_FAILED: deadlock detected @failed-at:${EXTRACTOR_VERSION}#aaaaaaaaaaaaaaaa`;
+    const d = deps({
+      loadDocuments: vi.fn(async () => [doc({ extractionStatus: 'FAILED', extractionError: prior })]),
+      persistFiling: vi.fn(async () => summary({ reread_answers_error: 'REREAD_CLEAR_FAILED: deadlock detected' })) as never,
+    });
+    await processPendingFilings(IPO, d);
+    const failed = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]).find((c) => c.status === 'FAILED');
+    expect(failed?.error).toContain('UNFINISHED_EXHAUSTED: 3/3 REREAD_CLEAR_FAILED');
+  });
+
   it('T-500 (#402): a persist throw carries a wrapped drizzle error — the log line names cause.message and cause.code', async () => {
     const dbError = new Error('Failed query: insert into "ipo_details" ...') as Error & {
       cause?: { message: string; code: string };

@@ -95,6 +95,7 @@ import {
   checkPublishedWithoutProvenance, classifyRowKeyProbeError, checkLiveRowWithoutProvenance,
   checkStatusClosedBeforeCloseDate,
   evaluateChildProvenanceOrphans,
+  evaluatePlanNotPrintedOverFailedRead,
 } from './lib/detection-floor-checks.mjs';
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
@@ -4072,6 +4073,19 @@ async function checkH_marketHolidayShiftedCopy() {
     `${rows.length} shifted row(s)` + (rows.length ? `: ${lines.slice(0, MAX_OFFENDERS).join('; ')}; repair: scraper/scripts/repair-shifted-market-holidays.ts` : ''));
 }
 
+// #1246 item 3 / #1420 (OD-158): no plan row is settled NOT_PRINTED while the document read of the
+// same key recorded EXTRACTION_FAILED. A reader miss is never "the document does not print it".
+async function checkP_planNotPrintedOverFailedRead() {
+  const id = 'p_plan_not_printed_over_failed_read';
+  const name = 'no ipo_field_plan row is NOT_PRINTED while its document read recorded EXTRACTION_FAILED (OD-158, #1246)';
+  const { status, rows, lines } = await evaluatePlanNotPrintedOverFailedRead((sql) => q(sql));
+  for (const r of rows) {
+    notify(id, 'P2', `${r.slug}|${r.tableName}.${r.fieldName}|${r.rowKey}`, `NOT_PRINTED over a failed document read: ${r.companyName} ${r.tableName}.${r.fieldName}`, `'${r.rowKey}'`);
+  }
+  record('p_plan_not_printed_over_failed_read', name, status,
+    `${rows.length} plan row(s)` + (rows.length ? `: ${lines.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
 async function runCheck(fn, ids = []) {
   return runCheckAgainstIds(fn, ids, { record, results });
 }
@@ -4153,6 +4167,7 @@ async function main() {
   await runCheck(checkZipMemberRows, ['zip_member_rows']);
   await runCheck(checkR_childProvenanceOrphan, ['r_child_provenance_orphan']);
   await runCheck(checkH_marketHolidayShiftedCopy, ['h_market_holiday_shifted_copy']);
+  await runCheck(checkP_planNotPrintedOverFailedRead, ['p_plan_not_printed_over_failed_read']);
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this

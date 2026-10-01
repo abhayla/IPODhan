@@ -197,6 +197,8 @@ export function buildFilingPersistDeps(
       data: Record<string, unknown>,
       scraperName: string
     ) => filterProtectedFields(id, table, data, scraperName, db, redis),
+    // #1420: the re-read answer clear (OD-153/158/160) runs its one transaction on the app database.
+    rereadAnswerDb: db as never,
   };
 }
 

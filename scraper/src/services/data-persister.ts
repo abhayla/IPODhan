@@ -1,4 +1,5 @@
 import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDataRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert, FinancialDataInsert, IPO } from '@ipodhan/shared';
+import { clearableIposSqlColumn } from './filing-clearable-columns.js';
 import { filterPatchUnderHold, type HoldExecutor } from '@ipodhan/shared/services/field-hold';
 import { recordListSuggestion } from '@ipodhan/shared/services/admin-list-hold';
 import { normalizeCompanyUrl, isVerifierUrl } from './company-host-source.js';
@@ -1329,6 +1330,31 @@ export function buildNonDestructiveUpdate(
     patch[key] = value;
   }
   return patch;
+}
+
+/**
+ * #1420 (OD-153, OD-158): the ONLY door that nulls a present `ipos` value. W-16a's null guard above
+ * stays as it is for every other write; this clears exactly the columns a newer reader refused or
+ * stated absent for the SAME document (reread-answer-clear.ts decides that, under the ipos row lock
+ * and the admin-hold re-check, inside the caller's transaction). The list is the ipos part of the filing
+ * persister's one map (filing-clearable-columns.ts, #1420 round 3); a column not on it throws.
+ */
+export async function clearIpoColumnsForRereadAnswer(
+  tx: { execute(q: ReturnType<typeof sqlOp>): Promise<{ rows: unknown[] }> },
+  ipoId: string,
+  columns: readonly string[]
+): Promise<string[]> {
+  const cleared: string[] = [];
+  for (const column of columns) {
+    const sqlColumn = clearableIposSqlColumn(column);
+    if (!sqlColumn) throw new Error(`clearIpoColumnsForRereadAnswer: '${column}' is not a re-read-clearable ipos column`);
+    const res = await tx.execute(sqlOp`
+      UPDATE ipos SET ${sqlOp.identifier(sqlColumn)} = NULL, updated_at = now()
+       WHERE id = ${ipoId}::uuid AND ${sqlOp.identifier(sqlColumn)} IS NOT NULL
+      RETURNING id`);
+    if (res.rows.length > 0) cleared.push(column);
+  }
+  return cleared;
 }
 
 // The canonical company-name normalizer now lives in the shared package so the

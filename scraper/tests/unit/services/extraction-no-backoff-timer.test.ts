@@ -185,7 +185,7 @@ describe('#959 gate — the version and bytes are the triggers, elapsed time is 
   });
 
   it('caps per cause: killed/memory 2, pages unread 2, IN_PROGRESS unknown cause 3, save failure 3', () => {
-    expect(UNFINISHED_READ_CAPS).toEqual({ HARD_FAILURE: 2, INCOMPLETE_PAGES: 2, INTERRUPTED: 3, PERSIST_FAILURE: 3 });
+    expect(UNFINISHED_READ_CAPS).toEqual({ HARD_FAILURE: 2, INCOMPLETE_PAGES: 2, INTERRUPTED: 3, PERSIST_FAILURE: 3, REREAD_CLEAR_FAILED: 3 });
   });
 
   it('the count is carried across causes at the same version+bytes and RESETS at a new version or new bytes', () => {

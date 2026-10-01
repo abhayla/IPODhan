@@ -162,8 +162,15 @@ import { buildExtractionStatePatch, buildExtractionAttemptRow } from './extracti
  * whose period heading equals the statement period and records that period
  * (E9 ratioRead); '@2026-09-26b' documents were read by position and are
  * pending re-read.
+ *
+ * #1420 bumped it to '@2026-10-02': #1429 changed what the reader emits (an answer state per field,
+ * wrapped ratio labels) and #1420 adds the clear of a value an older read stored; spec §5.3 rule 5
+ * makes a version change the ONLY re-read trigger, so without a bump the clear cannot run on a
+ * stored document. The re-read volume is bounded by the document cycle, not by this constant: at
+ * most DEFAULT_MAX_SPAWNS_PER_CYCLE (3) extractor spawns per cycle across every IPO, one slot
+ * reserved for a re-read first, never-read documents next, the rest topped up (document-cycle.ts).
  */
-export const EXTRACTOR_VERSION = 'extract_filing.py@2026-09-27';
+export const EXTRACTOR_VERSION = 'extract_filing.py@2026-10-02';
 
 /**
  * #771 round 3 review (MAJOR): a version bump re-opens a COMPLETED document
@@ -194,6 +201,10 @@ export const EXTRACTOR_VERSION_CHANGES: Readonly<Record<string, readonly string[
   'extract_filing.py@2026-09-26b': ['RHP', 'DRHP', 'PROSPECTUS'],
   // #771 round 3: ratio column chosen by its period heading (prospectus family only).
   'extract_filing.py@2026-09-27': ['RHP', 'DRHP', 'PROSPECTUS'],
+  // #1420 + #1429: answer states per field, wrapped ratio labels, the older-value clear. Prospectus
+  // family only, as for the two bumps above (the #1429 reader change is the ratio reader); a price-band
+  // ad is NOT re-opened here, so no clear runs for its values until a bump names PRICE_BAND_AD.
+  'extract_filing.py@2026-10-02': ['RHP', 'DRHP', 'PROSPECTUS'],
 };
 
 function deriveRereadFloors(changes: Readonly<Record<string, readonly string[]>>): Record<string, string> {
@@ -445,10 +456,12 @@ export const HARD_FAILURE_MARKER = 'HARD_FAILURE';
 export const INTERRUPTED_MARKER = 'INTERRUPTED';
 export const PERSIST_FAILURE_MARKER = 'PERSIST_FAILURE';
 export const INCOMPLETE_PAGES_MARKER = 'INCOMPLETE_PAGES';
+/** #1420: the persisted read's clear of older stored values threw; the document is re-read (count-capped). */
+export const REREAD_CLEAR_FAILED_MARKER = 'REREAD_CLEAR_FAILED';
 /** Written when a document's unfinished reads reach their count cap; NOT an unfinished marker. */
 export const UNFINISHED_EXHAUSTED_MARKER = 'UNFINISHED_EXHAUSTED';
 const UNFINISHED_RE = new RegExp(
-  `^(${HARD_FAILURE_MARKER}|${INTERRUPTED_MARKER}|${PERSIST_FAILURE_MARKER}|${INCOMPLETE_PAGES_MARKER}):(\\d+)(?:@(\\d+))?:`
+  `^(${HARD_FAILURE_MARKER}|${INTERRUPTED_MARKER}|${PERSIST_FAILURE_MARKER}|${INCOMPLETE_PAGES_MARKER}|${REREAD_CLEAR_FAILED_MARKER}):(\\d+)(?:@(\\d+))?:`
 );
 
 /**
@@ -462,6 +475,8 @@ export const UNFINISHED_READ_CAPS: Readonly<Record<string, number>> = {
   [INCOMPLETE_PAGES_MARKER]: 2,
   [INTERRUPTED_MARKER]: 3,
   [PERSIST_FAILURE_MARKER]: 3,
+  // #1420: like a save failure - the rows were read and written, one step after them failed.
+  [REREAD_CLEAR_FAILED_MARKER]: 3,
 };
 
 /** Reads the consecutive-hard-failure count off a `HARD_FAILURE:<n>[@<ms>]:...`
@@ -3083,6 +3098,33 @@ export async function processPendingFilings(
       ipo.id,
       planPersistSteps(summary, { docType, documentId: doc.id, sourceSha: doc.sha256, version })
     );
+
+    // #1420 (signal-ownership R6): the clear of older stored values threw (the persister classified it
+    // `REREAD_CLEAR_FAILED` and kept every value). The document is NOT recorded done at this extractor
+    // version: it goes through the same count-capped unfinished path a save failure uses (#959), so the
+    // next pass re-reads it and retries the clear, and at the cap (3, UNFINISHED_READ_CAPS) it is parked
+    // until a new version or new bytes - never an endless loop.
+    if (summary.reread_answers_error) {
+      const classifiedClear = classifyFailure(
+        doc.retryCount ?? 0,
+        version,
+        markUnfinished(REREAD_CLEAR_FAILED_MARKER, doc.extractionError, summary.reread_answers_error, version, doc.sha256),
+        { kind: 'reread_clear_failed', sha256: doc.sha256, logContext: { ipoId: ipo.id, documentId: doc.id, docType } }
+      );
+      logger.error(
+        { ipoId: ipo.id, docType, documentId: doc.id, errorClass: 'REREAD_CLEAR_FAILED', error: summary.reread_answers_error, status: classifiedClear.status, parked: classifiedClear.parked === true },
+        'Re-read answer clear failed; document left re-readable so the clear is retried (#1420)'
+      );
+      await deps
+        .setDocumentExtractionState({
+          documentId: doc.id,
+          status: classifiedClear.status,
+          error: classifiedClear.error.slice(0, 1000),
+          ...(classifiedClear.status === 'MANUAL_REVIEW' ? { retryCount: doc.retryCount } : {}),
+        })
+        .catch(logStatusWriteFailure(doc.id, classifiedClear.status));
+      continue;
+    }
 
     const now = new Date();
     // OD-55 (Tier B review of #652): a read that was STOPPED before every page

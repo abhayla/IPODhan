@@ -11,11 +11,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'fs';
 import path from 'path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const { upsertIPOMock } = vi.hoisted(() => ({ upsertIPOMock: vi.fn(async () => 'ipo-id') }));
 vi.mock('../../../src/services/data-persister.js', () => ({
   upsertIPO: upsertIPOMock,
 }));
+// #1420: the persister's call into the re-read answer clear is asserted, not executed (the clear's own
+// behaviour is proven on ipodhan_test by reread-answer-clear-1420.integration.test.ts).
+const { clearRereadAnswersMock } = vi.hoisted(() => ({
+  clearRereadAnswersMock: vi.fn(async () => ({ cleared: [], held: [], notOlderRead: [], keptHoldBack: [], reopenedPlanRowIds: [] })),
+}));
+vi.mock('../../../src/services/reread-answer-clear.js', () => ({ clearRereadAnswers: clearRereadAnswersMock }));
 vi.mock('../../../src/utils/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -2420,6 +2428,8 @@ describe('filing-persister — an empty extracted section records its reason (#5
   const failuresFor = (recordFailure: ReturnType<typeof vi.fn>, table: string) =>
     recordFailure.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.tableName === table);
 
+  // #1420 design point 3: the promoter cover miss is a pattern miss (extract_filing.py emits it when
+  // read_cover_promoters finds nothing), not a printed statement, so it is EXTRACTION_FAILED (OD-158).
   it('records one field_extraction_failures row when the promoters statement was not found', async () => {
     const s = depsWith();
     await persistFilingExtraction(
@@ -2435,7 +2445,7 @@ describe('filing-persister — an empty extracted section records its reason (#5
       ipoId: IPO_ID,
       fieldName: 'name',
       rowKey: '',
-      ruleId: 'NOT_PRINTED',
+      ruleId: 'EXTRACTION_FAILED',
       rankAttempted: 'DRHP',
       documentId: '11111111-1111-4111-8111-111111111111',
       documentSha256: 'a'.repeat(64),
@@ -2457,7 +2467,8 @@ describe('filing-persister — an empty extracted section records its reason (#5
     expect(s.peerReplace).not.toHaveBeenCalled();
     const rows = failuresFor(s.recordFailure, 'peer_companies');
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ fieldName: 'companyName', ruleId: 'NOT_PRINTED' });
+    // #1420: emitted on `if not peers` - the reader found no rows, a miss, never "not printed".
+    expect(rows[0]).toMatchObject({ fieldName: 'companyName', ruleId: 'EXTRACTION_FAILED' });
     expect(rows[0].cause).toContain('peer_comparison_table_not_in_document');
   });
 
@@ -2492,18 +2503,56 @@ describe('filing-persister — an empty extracted section records its reason (#5
   it('#1246: emptySectionRuleId never calls a FAILED check an absence, even with an absence reason', () => {
     expect(emptySectionRuleId({ passed: false, detail: 'peer_comparison_table_not_in_document' })).toBe('EXTRACTION_FAILED');
     expect(emptySectionRuleId(null)).toBe('EXTRACTION_FAILED');
-    expect(emptySectionRuleId({ passed: true, detail: 'peer_comparison_table_not_in_document' })).toBe('NOT_PRINTED');
+    expect(emptySectionRuleId({ passed: true, detail: 'peer_comparison_table_not_in_document' })).toBe('EXTRACTION_FAILED');
+    expect(emptySectionRuleId({ passed: true, detail: 'peer_comparison_issuer_states_no_listed_peers' })).toBe('NOT_PRINTED');
+  });
+
+  it('#1420 design point 3: NOT_PRINTED exactly for the reasons in the shared stated-absence-reasons.json', () => {
+    const raw = JSON.parse(
+      readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'src', 'config', 'stated-absence-reasons.json'), 'utf8')
+    ) as { reasons: { reason: string }[] };
+    expect(raw.reasons.length).toBeGreaterThan(0);
+    for (const { reason } of raw.reasons) expect(emptySectionRuleId({ passed: true, detail: reason })).toBe('NOT_PRINTED');
+    for (const miss of ['peer_comparison_table_not_in_document', 'peer_comparison_table_absent_only_kpi_table_present', 'our_promoters_statement_not_on_cover', '']) {
+      expect(emptySectionRuleId({ passed: true, detail: miss })).toBe('EXTRACTION_FAILED');
+    }
+  });
+
+  it('#1420 design point 3: emptySectionRuleId and python answer_states.null_state agree on every empty-section reason', (ctx) => {
+    const reasons = [
+      'peer_comparison_table_not_in_document',
+      'peer_comparison_table_absent_only_kpi_table_present',
+      'peer_comparison_issuer_states_no_listed_peers',
+      'our_promoters_statement_not_on_cover',
+      'not_applicable_no_qualifying_transaction',
+    ];
+    const code = `import json, answer_states; print(json.dumps([answer_states.null_state(r) for r in ${JSON.stringify(reasons)}]))`;
+    const scriptsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'scripts');
+    const run = (bin: string) =>
+      spawnSync(bin, ['-c', code], { cwd: scriptsDir, encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
+    let py = run('python3');
+    if (py.error) py = run('python');
+    // No interpreter on this runner: the python suite asserts null_state against the same JSON file.
+    if (py.error) ctx.skip();
+    expect(py.status, py.stderr).toBe(0);
+    const pyStates = JSON.parse(py.stdout.trim()) as string[];
+    reasons.forEach((r, i) => {
+      const ts = emptySectionRuleId({ passed: true, detail: r }) === 'NOT_PRINTED' ? 'STATED_NOT_PRINTED' : 'MISSED';
+      expect([r, ts]).toEqual([r, pyStates[i]]);
+    });
   });
 
   it('#1246: an UNKNOWN reason fails closed to EXTRACTION_FAILED; a stated absence stays NOT_PRINTED', async () => {
     const unknown = depsWith();
     await persistFilingExtraction(IPO_ID, withEmpty(['peer_companies'], 'some_reason_not_listed'), { docType: 'RHP', apply: true }, unknown.deps);
     expect(failuresFor(unknown.recordFailure, 'peer_companies')[0]).toMatchObject({ ruleId: 'EXTRACTION_FAILED' });
-    for (const absent of ['peer_comparison_table_absent_only_kpi_table_present', 'peer_comparison_issuer_states_no_listed_peers']) {
-      const s = depsWith();
-      await persistFilingExtraction(IPO_ID, withEmpty(['peer_companies'], absent), { docType: 'RHP', apply: true }, s.deps);
-      expect(failuresFor(s.recordFailure, 'peer_companies')[0]).toMatchObject({ ruleId: 'NOT_PRINTED' });
-    }
+    const stated = depsWith();
+    await persistFilingExtraction(IPO_ID, withEmpty(['peer_companies'], 'peer_comparison_issuer_states_no_listed_peers'), { docType: 'RHP', apply: true }, stated.deps);
+    expect(failuresFor(stated.recordFailure, 'peer_companies')[0]).toMatchObject({ ruleId: 'NOT_PRINTED' });
+    // #1420: only-a-KPI-table is the reader's inference, not on the shared stated-absence list.
+    const kpiOnly = depsWith();
+    await persistFilingExtraction(IPO_ID, withEmpty(['peer_companies'], 'peer_comparison_table_absent_only_kpi_table_present'), { docType: 'RHP', apply: true }, kpiOnly.deps);
+    expect(failuresFor(kpiOnly.recordFailure, 'peer_companies')[0]).toMatchObject({ ruleId: 'EXTRACTION_FAILED' });
   });
 
   it('records nothing when the table already holds rows for the IPO (an ad re-read beside RHP promoters)', async () => {
@@ -2558,5 +2607,54 @@ describe('filing-persister — an empty extracted section records its reason (#5
       unlistable.deps
     );
     expect(failuresFor(unlistable.recordFailure, 'promoters')).toHaveLength(0);
+  });
+});
+
+describe('filing-persister — #1420 re-read answer clear wiring (OD-153/158/160)', () => {
+  beforeEach(() => {
+    upsertIPOMock.mockClear();
+    clearRereadAnswersMock.mockClear();
+  });
+
+  it('hands every field with its answer state, the document identity and the hold-backs to the clear', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD', { cin: { value: 'U1234', passed: true } });
+    (extraction.fields.price_band_cap as Record<string, unknown>).state = 'REFUSED';
+    const fakeDb = {} as never;
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true, documentId: 'doc-1', sourceSha: 'sha-1', extractorVersion: 'extract_filing.py@new' },
+      { ...s.deps, rereadAnswerDb: fakeDb }
+    );
+    expect(clearRereadAnswersMock).toHaveBeenCalledTimes(1);
+    const [db, input] = clearRereadAnswersMock.mock.calls[0] as unknown as [unknown, Record<string, any>];
+    expect(db).toBe(fakeDb);
+    expect([input.ipoId, input.documentId, input.sourceSha, input.extractorVersion]).toEqual([IPO_ID, 'doc-1', 'sha-1', 'extract_filing.py@new']);
+    expect(input.fields.price_band_cap.state).toBe('REFUSED');
+    // OD-160: a malformed CIN is a persister hold-back, handed over as such (kept, never a refusal).
+    expect([...input.heldBack.keys()]).toContain('cin');
+    expect(summary.reread_answers).toBeDefined();
+  });
+
+  it('round 3: a clear that throws after the ordinary writes committed is classified, never a persist failure', async () => {
+    const s = makeDeps();
+    clearRereadAnswersMock.mockRejectedValueOnce(Object.assign(new Error('clear tx aborted'), { cause: { message: 'deadlock detected', code: '40P01' } }));
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true, documentId: 'doc-1', sourceSha: 'sha-1', extractorVersion: 'extract_filing.py@2026-10-01' },
+      { ...s.deps, rereadAnswerDb: {} as never }
+    );
+    expect(summary.applied).toBe(true);
+    expect(summary.reread_answers).toBeUndefined();
+    expect(summary.reread_answers_error).toBe('REREAD_CLEAR_FAILED: clear tx aborted (cause: deadlock detected)');
+  });
+
+  it('a dry run (apply false) or an unwired caller never clears', async () => {
+    const s = makeDeps();
+    await persistFilingExtraction(IPO_ID, extractionFromOracle('PRICE_BAND_AD'), { docType: 'PRICE_BAND_AD', apply: false }, { ...s.deps, rereadAnswerDb: {} as never });
+    await persistFilingExtraction(IPO_ID, extractionFromOracle('PRICE_BAND_AD'), { docType: 'PRICE_BAND_AD', apply: true }, s.deps);
+    expect(clearRereadAnswersMock).not.toHaveBeenCalled();
   });
 });

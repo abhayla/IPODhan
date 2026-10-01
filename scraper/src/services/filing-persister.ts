@@ -64,6 +64,8 @@ import {
   CROSS_DOC_TOLERANCE,
 } from './cross-document-agreement.js';
 import logger from '../utils/logger.js';
+import { clearRereadAnswers, type RereadClearResult, type RereadExecutor } from './reread-answer-clear.js';
+import { mappedField } from './filing-clearable-columns.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { financialStatementsRowKey, ipoDetailsRowKey, ipoValuationRowKey } from './child-row-keys.js';
@@ -72,6 +74,7 @@ import { documentMayWriteField, fieldDocumentFamily } from './document-family-ga
 import type { ConsolidatedChildRowsResult, ChildRowInput, ChildConsolidationTable } from './data-consolidation-orchestrator.js';
 import { scaleToRupees } from '../utils/rupee-amount.js';
 import { parsePrintedNumber } from './printed-number.js';
+import { isStatedAbsenceReason } from '../config/stated-absence-reasons.js';
 
 // ---------------------------------------------------------------- extraction
 
@@ -177,6 +180,11 @@ export interface DocumentFilingDateWriter {
 }
 
 export interface FilingPersisterDeps {
+  /**
+   * #1420 (OD-153, OD-158, OD-160): the database the re-read answer clear runs its ONE transaction on
+   * (reread-answer-clear.ts). Absent = nothing is cleared (non-null writes only, the pre-#1420 rule).
+   */
+  rereadAnswerDb?: RereadExecutor;
   ipoRepository: IPORepository;
   financialStatements: FinancialStatementsRepository;
   ipoValuation: IpoValuationRepository;
@@ -348,6 +356,10 @@ export interface PersistFilingSummary {
   };
   /** What actually went to `ipos` via upsertIPO (issueSize et al). */
   ipos_fields: string[];
+  /** #1420: stored values a newer reader's REFUSED / STATED_NOT_PRINTED answer cleared (absent when not wired). */
+  reread_answers?: RereadClearResult;
+  /** #1420 round 3: the clear threw (classified `REREAD_CLEAR_FAILED: ...`); every stored value was kept. */
+  reread_answers_error?: string;
   /** Item 6 (OD-91): every field this extraction produced (before any write filter), camelCase. */
   receipt_fields?: ReceiptField[];
   applied: boolean;
@@ -501,24 +513,16 @@ export const EMPTY_SECTION_RULE_ID = 'NOT_PRINTED';
 export const EMPTY_SECTION_READ_FAILED_RULE_ID = 'EXTRACTION_FAILED';
 
 /**
- * The extractor reasons that POSITIVELY state the document does not carry the section
- * (scraper/scripts/peer_companies.py NOT_IN_DOCUMENT / ONLY_KPI_TABLE / NO_LISTED_PEERS,
- * extract_filing.py's promoter cover miss). Only these, on a PASSING check, are
- * `NOT_PRINTED`. A failed check, a section found but unread, or any reason not listed
- * here fails closed to EXTRACTION_FAILED: a reader miss must never read as an absence.
+ * #1420 design point 3 (OD-158, F-219): an empty section is NOT_PRINTED only when the extractor's
+ * reason is on the ONE shared stated-absence list (scraper/src/config/stated-absence-reasons.json),
+ * the same list scraper/scripts/answer_states.py uses to emit `state: "STATED_NOT_PRINTED"`. A pattern
+ * miss (`peer_comparison_table_not_in_document`, emitted on `if not peers`; the promoter cover miss)
+ * is not on it, so it is EXTRACTION_FAILED: a reader miss must never read as an absence. A failed
+ * check, or any reason not listed, fails closed to EXTRACTION_FAILED.
  */
-export const EMPTY_SECTION_ABSENCE_REASONS: ReadonlySet<string> = new Set([
-  'peer_comparison_table_not_in_document',
-  'peer_comparison_table_absent_only_kpi_table_present',
-  'peer_comparison_issuer_states_no_listed_peers',
-  'our_promoters_statement_not_on_cover',
-]);
-
 export function emptySectionRuleId(check: { passed?: unknown; detail?: unknown } | null | undefined): string {
   if (!check || check.passed !== true) return EMPTY_SECTION_READ_FAILED_RULE_ID;
-  return typeof check.detail === 'string' && EMPTY_SECTION_ABSENCE_REASONS.has(check.detail)
-    ? EMPTY_SECTION_RULE_ID
-    : EMPTY_SECTION_READ_FAILED_RULE_ID;
+  return isStatedAbsenceReason(check.detail) ? EMPTY_SECTION_RULE_ID : EMPTY_SECTION_READ_FAILED_RULE_ID;
 }
 
 export type ReconciliationKind =
@@ -1458,7 +1462,7 @@ export async function persistFilingExtraction(
   // fresh issue + OFS AT THE CAP - the number the ad itself prints as the
   // offer size - not the share-count-derived figure the exchanges publish
   // (walk ledger W-11).
-  const freshMn = num(extraction, 'fresh_issue_amount');
+  const freshMn = num(extraction, mappedField('ipo_details', 'freshIssue'));
   const ofsAtCapMn = num(extraction, 'ofs_amount_at_cap') ?? num(extraction, 'ofs_amount');
   const statedTotalMn = num(extraction, 'total_offer_amount_at_cap');
   // BOTH legs, or a total the document itself prints. Round 7 required only the
@@ -1491,8 +1495,8 @@ export async function persistFilingExtraction(
   // a stale/hand-edited extraction JSON still carries a band. Defence in
   // depth: never trust the doc type at only one layer.
   const isDrhp = options.docType === 'DRHP';
-  const rawFloor = num(extraction, 'price_band_floor');
-  const rawCap = num(extraction, 'price_band_cap');
+  const rawFloor = num(extraction, mappedField('ipos', 'priceRangeMin'));
+  const rawCap = num(extraction, mappedField('ipos', 'priceRangeMax'));
   if (isDrhp && (rawFloor !== null || rawCap !== null)) {
     logger.warn(
       { ipoId, docType: options.docType, sourceDoc: extraction.source_doc ?? null,
@@ -1502,26 +1506,29 @@ export async function persistFilingExtraction(
   }
   const floor = isDrhp ? null : rawFloor;
   const cap = isDrhp ? null : rawCap;
-  const lotSize = num(extraction, 'lot_size');
-  const faceValue = num(extraction, 'face_value');
-  const openDate = str(extraction, 'open_date');
-  const closeDate = str(extraction, 'close_date');
-  const allotmentDate = str(extraction, 'basis_of_allotment_date');
-  const listingDate = str(extraction, 'listing_date');
-  const description = str(extraction, 'business_description');
+  const lotSize = num(extraction, mappedField('ipos', 'lotSize'));
+  const faceValue = num(extraction, mappedField('ipos', 'faceValue'));
+  const openDate = str(extraction, mappedField('ipos', 'openDate'));
+  const closeDate = str(extraction, mappedField('ipos', 'closeDate'));
+  const allotmentDate = str(extraction, mappedField('ipos', 'allotmentDate'));
+  const listingDate = str(extraction, mappedField('ipos', 'listingDate'));
+  const description = str(extraction, mappedField('ipos', 'companyDescription'));
   // W-82: `ipos.cin` exists (varchar(21), added by migration 0042/T-428 WP C-1)
   // and the extractor emits `cin` off the cover page. It rides in `iposCandidate`
   // so it goes through the SAME gates as every other ipos scalar: the
   // scraper_locked refusal above, `filterFields('ipos', ...)`, `upsertIPO`
   // (field-priority matrix + field_sources), and the `apply` dry-run switch.
-  const cinRaw = str(extraction, 'cin');
+  const cinRaw = str(extraction, mappedField('ipos', 'cin'));
   const cin = cinRaw === null ? null : cinRaw.replace(/\s+/g, '').toUpperCase();
   // The column is varchar(21) and a CIN is exactly 21 alphanumerics. A value of
   // any other shape is not a CIN; writing it would either overflow the column
   // or publish a mis-parsed string as source DRHP.
   const cinForWrite = cin !== null && /^[A-Z0-9]{21}$/.test(cin) ? cin : null;
+  // OD-160: a persister hold-back of a cleanly read value keeps the stored value (never a refusal).
+  const heldBack = new Map<string, string>();
   if (cin !== null && cinForWrite === null) {
     skippedFailedCheck.push(`ipos.cin: '${cin}' is not a 21-character CIN`);
+    heldBack.set(mappedField('ipos', 'cin'), `persister hold-back: '${cin}' is not a 21-character CIN (OD-160)`);
   }
 
   // ------------------------------------------------- F-51 fresh/OFS gate
@@ -1564,6 +1571,7 @@ export async function persistFilingExtraction(
     reason: reconciliation.reason,
   };
   if (!reconciliation.ok) {
+    heldBack.set(mappedField('ipo_details', 'freshIssue'), `persister hold-back: fresh/OFS reconciliation failed (F-51, OD-160) - ${reconciliation.reason}`);
     skippedFailedCheck.push(
       `ipo_details.freshIssue + ipo_details.ofsIssue: withheld TOGETHER (F-51) - ${reconciliation.reason}`
     );
@@ -1818,18 +1826,18 @@ export async function persistFilingExtraction(
   };
 
   mark('basisOfAllotmentDate', allotmentDate);
-  mark('initiationOfRefundsDate', str(extraction, 'refund_date'));
-  mark('creditOfSharesDate', str(extraction, 'credit_date'));
-  mark('upiCutoffTime', str(extraction, 'upi_cutoff_time'));
-  mark('designatedExchange', str(extraction, 'designated_stock_exchange'));
-  mark('complianceOfficer', str(extraction, 'compliance_officer'));
-  mark('complianceOfficerPhone', str(extraction, 'compliance_officer_phone'));
-  mark('complianceOfficerEmail', str(extraction, 'compliance_officer_email'));
+  mark('initiationOfRefundsDate', str(extraction, mappedField('ipo_details', 'initiationOfRefundsDate')));
+  mark('creditOfSharesDate', str(extraction, mappedField('ipo_details', 'creditOfSharesDate')));
+  mark('upiCutoffTime', str(extraction, mappedField('ipo_details', 'upiCutoffTime')));
+  mark('designatedExchange', str(extraction, mappedField('ipo_details', 'designatedExchange')));
+  mark('complianceOfficer', str(extraction, mappedField('ipo_details', 'complianceOfficer')));
+  mark('complianceOfficerPhone', str(extraction, mappedField('ipo_details', 'complianceOfficerPhone')));
+  mark('complianceOfficerEmail', str(extraction, mappedField('ipo_details', 'complianceOfficerEmail')));
   mark('companyDescription', description);
   if (faceValue !== null) mark('faceValue', faceValue.toString());
-  const lotMultiple = num(extraction, 'lot_multiple');
+  const lotMultiple = num(extraction, mappedField('ipo_details', 'lotMultiple'));
   if (lotMultiple !== null) mark('lotMultiple', Math.round(lotMultiple));
-  const preIpo = bool(extraction, 'pre_ipo_placement');
+  const preIpo = bool(extraction, mappedField('ipo_details', 'preIpoPlacement'));
   if (preIpo !== null) mark('preIpoPlacement', preIpo);
 
   const qib = num(extraction, 'qib_pct');
@@ -1861,7 +1869,7 @@ export async function persistFilingExtraction(
   }
 
   // The ad cites SEBI ICDR Reg 6(1)/6(2) only for a book-built offer.
-  const regulation = str(extraction, 'book_building_regulation');
+  const regulation = str(extraction, mappedField('ipo_details', 'sebiRegulationCited'));
   // W-171: same defence-in-depth as priceRangeMin/Max above - a DRHP's cover
   // wording is never trusted for the issue's price-process type either.
   const coverPriceType = isDrhp ? null : str(extraction, 'issue_price_type');
@@ -1913,7 +1921,7 @@ export async function persistFilingExtraction(
 
   // W-88 (D2): the AGGREGATE promoter holding. promoters.shares_held stays null
   // (it is per-promoter and the ad never prints a per-person split).
-  const promoterShares = num(extraction, 'promoter_shares_held');
+  const promoterShares = num(extraction, mappedField('ipo_details', 'promoterSharesHeld'));
   if (promoterShares !== null && Number.isFinite(promoterShares) && promoterShares >= 0) {
     mark('promoterSharesHeld', Math.round(promoterShares));
   }
@@ -1921,7 +1929,7 @@ export async function persistFilingExtraction(
   // W-88 (D7): promoter-group transactions since the DRHP. An EMPTY array is a
   // real answer ("there were none") and IS written; the extractor emits null,
   // not [], when the ad does not carry the statement at all.
-  const pgTxns = extraction.fields?.promoter_group_transactions_since_drhp;
+  const pgTxns = extraction.fields?.[mappedField('ipo_details', 'promoterGroupTransactionsSinceDrhp')];
   if (pgTxns && pgTxns.check?.passed && Array.isArray(pgTxns.value)) {
     mark('promoterGroupTransactionsSinceDrhp', pgTxns.value);
   }
@@ -2441,7 +2449,7 @@ export async function persistFilingExtraction(
 
   // ------------------------------------------------------- 4. ipo_valuation
   const mcapFloorMn = num(extraction, 'market_cap_at_floor');
-  const mcapCapMn = num(extraction, 'market_cap_at_cap');
+  const mcapCapMn = num(extraction, mappedField('financial_data', 'marketCap'));
   const valuation: Record<string, unknown> = {};
   const vset = (k: string, v: number | null): void => {
     if (v !== null) valuation[k] = v;
@@ -3217,10 +3225,12 @@ export async function persistFilingExtraction(
   // plain unitless ratios, so unlike netWorth/marketCap they need no
   // `withUnit`/`toCrore` scaling; they take the same round2().toString() shape
   // as ronw and peRatio so the numeric(5,2) columns receive what they expect.
+  // #1420 round 3: the two READ ratios take their field from the one map; quick ratio is derived
+  // (OD-160) and is not on it.
   for (const [field, column] of [
-    ['current_ratio', 'currentRatio'],
+    [mappedField('financial_data', 'currentRatio'), 'currentRatio'],
     ['quick_ratio', 'quickRatio'],
-    ['inventory_turnover', 'inventoryTurnover'],
+    [mappedField('financial_data', 'inventoryTurnover'), 'inventoryTurnover'],
   ] as const) {
     const value = num(extraction, field);
     if (value !== null) {
@@ -3242,7 +3252,7 @@ export async function persistFilingExtraction(
     }
   }
 
-  const peCap = num(extraction, 'pe_at_cap');
+  const peCap = num(extraction, mappedField('financial_data', 'peRatio'));
   if (peCap !== null) {
     fd.peRatio = peCap.toString();
     fdFields += 1;
@@ -3255,12 +3265,12 @@ export async function persistFilingExtraction(
       fdFields += 1;
     }
   }
-  const preHold = num(extraction, 'promoter_holding_pre_pct');
+  const preHold = num(extraction, mappedField('financial_data', 'promoterHoldingPreIssue'));
   if (preHold !== null) {
     fd.promoterHoldingPreIssue = preHold.toString();
     fdFields += 1;
   }
-  const postHold = num(extraction, 'promoter_holding_post_pct_at_cap');
+  const postHold = num(extraction, mappedField('financial_data', 'promoterHoldingPostIssue'));
   if (postHold !== null) {
     fd.promoterHoldingPostIssue = postHold.toString();
     fdFields += 1;
@@ -3301,6 +3311,33 @@ export async function persistFilingExtraction(
       '[FilingPersister] child rows written WITHOUT per-row provenance'
     );
   }
+  let rereadAnswers: RereadClearResult | undefined;
+  let rereadAnswersError: string | undefined;
+  if (apply && deps.rereadAnswerDb) {
+    // #1420 round 3: the ordinary writes above are already committed. A failed clear rolls back only
+    // its own transaction (every stored value is KEPT, the safe direction); it must not turn a
+    // persisted document into a persist failure, which would skip the cache invalidation of the
+    // writes that did land. It is classified here and returned, never swallowed.
+    try {
+      rereadAnswers = await clearRereadAnswers(deps.rereadAnswerDb, {
+        ipoId,
+        docType: options.docType,
+        documentId: options.documentId ?? null,
+        sourceSha: options.sourceSha ?? null,
+        extractorVersion: options.extractorVersion ?? null,
+        fields: (extraction.fields ?? {}) as never,
+        heldBack,
+      });
+    } catch (error) {
+      const cause = error instanceof Error ? (error.cause as { message?: string; code?: string } | undefined) : undefined;
+      const message = error instanceof Error ? error.message : String(error);
+      rereadAnswersError = `REREAD_CLEAR_FAILED: ${message}${cause?.message ? ` (cause: ${cause.message})` : ''}`;
+      logger.error(
+        { ipoId, docType: options.docType, documentId: options.documentId ?? null, errorClass: 'REREAD_CLEAR_FAILED', error: message, cause: cause?.message, code: cause?.code ?? (error as { code?: string }).code },
+        '[FilingPersister] #1420 re-read answer clear failed; stored values kept, the document stays persisted'
+      );
+    }
+  }
   logger.info(
     { ipoId, docType: options.docType, apply, written },
     '[FilingPersister] filing extraction persisted'
@@ -3321,6 +3358,8 @@ export async function persistFilingExtraction(
     ipos_fields: iposFields,
     ...(planRebuildNote !== undefined ? { plan_rebuild: planRebuildNote } : {}),
     receipt_fields: receiptFields,
+    ...(rereadAnswers !== undefined ? { reread_answers: rereadAnswers } : {}),
+    ...(rereadAnswersError !== undefined ? { reread_answers_error: rereadAnswersError } : {}),
     fresh_ofs_reconciliation: {
       ok: reconciliation.ok,
       kind: reconciliation.kind,
