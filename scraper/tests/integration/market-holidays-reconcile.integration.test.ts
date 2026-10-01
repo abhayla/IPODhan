@@ -1,10 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { sql } from 'drizzle-orm';
-import * as schema from '../../../packages/shared/src/db/schema';
+import type { Pool } from 'pg';
+import { getTestDb, cleanupTestDb } from '../test-utils/db';
 import { reconcileMarketHolidayYear, type NseFetchResult } from '../../src/services/market-holidays-reconcile';
 
 /**
@@ -56,7 +54,7 @@ type Row = { id: string; date: string; description: string; exchange: string; ty
 
 describe.runIf(!!DATABASE_URL)('market_holidays reconcile to NSE (F-220/F-221, live ipodhan_test)', () => {
   let pool: Pool;
-  let db: ReturnType<typeof drizzle>;
+  let db: Awaited<ReturnType<typeof getTestDb>>;
   let saved: Row[] = [];
 
   const readYear = async (): Promise<Row[]> => {
@@ -80,10 +78,10 @@ describe.runIf(!!DATABASE_URL)('market_holidays reconcile to NSE (F-220/F-221, l
     reconcileMarketHolidayYear({ db: db as never, year: YEAR, apply, answer, log: () => {}, afterWrites: afterWrites as never });
 
   beforeAll(async () => {
-    pool = new Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' });
+    db = await getTestDb();
+    pool = (db as unknown as { $client: Pool }).$client;
     const current = (await pool.query('select current_database() as d')).rows[0].d as string;
     if (current !== 'ipodhan_test') throw new Error(`Refusing to run: connected to '${current}', not 'ipodhan_test'.`);
-    db = drizzle(pool, { schema });
     saved = await readYear();
   });
 
@@ -96,7 +94,7 @@ describe.runIf(!!DATABASE_URL)('market_holidays reconcile to NSE (F-220/F-221, l
         [r.id, r.date, r.description, r.exchange, r.type, r.year]
       );
     }
-    await pool.end();
+    await cleanupTestDb();
   });
 
   beforeEach(async () => {
