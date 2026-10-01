@@ -145,6 +145,21 @@ function toInstant(v: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/**
+ * #1304 M1 (§2.9, clarified 2026-10-01): when the IPO last MOVED to POSTPONED - ipos.postponed_at,
+ * stamped on the database clock by the status write itself (trigger ipos_stamp_postponed_at). Not the
+ * status provenance row: its updated_at is the last provenance write, which can come after the
+ * relaunch filing, and 41 of 397 staging IPOs had none. NULL = unknown: the offer-document clear does
+ * not fire (a clear missed, never added) and the IPO is listed for the admin.
+ */
+export async function readPostponedAt(tx: ExecuteLike, ipoId: string): Promise<Date | null> {
+  return toInstant(
+    (rowsOf(await tx.execute(sql`SELECT postponed_at::text AS at FROM ipos WHERE id = ${ipoId}::uuid`))[0] as
+      | { at?: string | null }
+      | undefined)?.at
+  );
+}
+
 function sameWindowBandValue(kind: 'date' | 'number', a: unknown, b: unknown): boolean {
   if (kind === 'date') return String(a).slice(0, 10) === String(b).slice(0, 10);
   return Number(a) === Number(b);
@@ -242,14 +257,7 @@ export async function clearAdminValuesOnRelaunch(
   )[0] as { slug: string; company_name: string; status: string } | undefined;
   if (!ipo || ipo.status !== 'POSTPONED') return null;
 
-  // When the IPO became POSTPONED: the status field's provenance row (POSTPONED is never re-written, W-60).
-  const postponedAt = toInstant(
-    (rowsOf(
-      await tx.execute(sql`
-        SELECT updated_at::text AS at FROM field_sources
-         WHERE ipo_id = ${ipoId}::uuid AND table_name = 'ipos' AND row_key = '' AND field_name = 'status'`)
-    )[0] as { at?: string } | undefined)?.at
-  );
+  const postponedAt = await readPostponedAt(tx, ipoId);
   const point = await relaunchPoint(tx, ipoId, trigger, receipt, postponedAt);
   if (!point) return null;
   // F-210 (mixed-clock-ordering): the clear's audit and plan stamps are ordered against database-stamped
@@ -543,13 +551,7 @@ export async function readPostponedRelaunchState(tx: ExecuteLike, ipoId: string)
     | { status: string }
     | undefined;
   if (!ipo || ipo.status !== 'POSTPONED') return 'NOT_POSTPONED';
-  const postponedAt = toInstant(
-    (rowsOf(
-      await tx.execute(sql`
-        SELECT updated_at::text AS at FROM field_sources
-         WHERE ipo_id = ${ipoId}::uuid AND table_name = 'ipos' AND row_key = '' AND field_name = 'status'`)
-    )[0] as { at?: string } | undefined)?.at
-  );
+  const postponedAt = await readPostponedAt(tx, ipoId);
   const marks = rowsOf(
     await tx.execute(sql`
       SELECT coalesce(details->>'relaunchAt', timestamp::text) AS at FROM audit_logs

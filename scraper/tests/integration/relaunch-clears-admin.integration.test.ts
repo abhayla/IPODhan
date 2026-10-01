@@ -27,6 +27,7 @@ import type { RelaunchClearSummary } from '../../../packages/shared/src/services
 import { writeReceiptAndReopen } from '../../src/services/filing-auto-persist';
 import { sendRelaunchClearedAlert } from '../../src/services/admin-alerts';
 import { clearAdminValuesOnSourceKeyRelaunch } from '../../src/services/relaunch-clear';
+import { planPostponedAtBackfill, applyPostponedAtBackfill } from '../../src/services/postponed-at-backfill';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const A = '00000000-0000-4000-8000-0000000a2711'; // (a) addendum
@@ -34,7 +35,11 @@ const B = '00000000-0000-4000-8000-0000000a2712'; // (b) re-extraction / same te
 const C = '00000000-0000-4000-8000-0000000a2713'; // (c) OD-83 supersede
 const D = '00000000-0000-4000-8000-0000000a2714'; // (d) new RHP, then a second postpone-and-relaunch
 const LIVE = '00000000-0000-4000-8000-0000000a2715';
-const ALL = [A, B, C, D, LIVE];
+const E = '00000000-0000-4000-8000-0000000a2716'; // #1304 M1: status provenance re-touched after the relaunch
+const F = '00000000-0000-4000-8000-0000000a2717'; // #1304 M1: no status provenance row at all
+const G = '00000000-0000-4000-8000-0000000a2718'; // #1304 M1: postponed before postponed_at existed (unknown)
+const H = '00000000-0000-4000-8000-0000000a2719'; // #1304 M1 backfill: legacy POSTPONED with a status provenance row
+const ALL = [A, B, C, D, LIVE, E, F, G, H];
 const actor = { name: 'Item27 Admin', adminId: 'item27-admin' };
 const noRedis = {
   get: async () => null, set: async () => 'OK', setex: async () => 'OK', del: async () => 0,
@@ -68,8 +73,13 @@ async function adminAddPromoter(ipoId: string, name: string) {
   });
   expect(res.kind).toBe('OK');
 }
-/** Marks the IPO POSTPONED now: the status provenance row the clear reads the postponement time from. */
+/**
+ * Moves the IPO to POSTPONED now (a fresh postponement: an IPO already POSTPONED is relaunched to UPCOMING
+ * first, as a real second postponement is). The status write stamps ipos.postponed_at (#1304 M1); the
+ * provenance row is written as the scraper writes it.
+ */
 async function postpone(ipoId: string) {
+  await db.execute(sql`UPDATE ipos SET status = 'UPCOMING' WHERE id = ${ipoId}::uuid AND status = 'POSTPONED'`);
   await db.execute(sql`UPDATE ipos SET status = 'POSTPONED' WHERE id = ${ipoId}::uuid`);
   await db.execute(sql`
     INSERT INTO field_sources (ipo_id, table_name, row_key, field_name, source, updated_at)
@@ -305,6 +315,76 @@ describe.skipIf(!DATABASE_URL)('a relaunch filing, and only a relaunch filing, c
     expect(second.relaunchCleared?.cleared.map((c) => `${c.tableName}.${c.fieldName}`)).toContain('ipos.issueSize');
     expect(await issueSize(D)).toBeNull();
   }, 180_000);
+
+  it('#1304 M1: a status provenance row re-written AFTER the relaunch filing does not hide the postponement time', async () => {
+    await seedAdminValues(E);
+    await postpone(E);
+    const rhp = await newDoc(E, 'RHP');
+    // A later provenance write of the same POSTPONED value moves field_sources.updated_at past the filing.
+    await db.execute(sql`UPDATE field_sources SET updated_at = now() WHERE ipo_id = ${E}::uuid AND table_name = 'ipos' AND field_name = 'status'`);
+    await tick();
+    const out = await complete(E, rhp, 'RHP', band('100', '105'));
+    expect(out.relaunchCleared?.cleared.map((c) => `${c.tableName}.${c.fieldName}`)).toContain('ipos.issueSize');
+    expect(await issueSize(E)).toBeNull();
+  }, 120_000);
+
+  it('#1304 M1: a POSTPONED IPO with no status provenance row still clears on its relaunch filing', async () => {
+    await seedAdminValues(F);
+    await db.execute(sql`UPDATE ipos SET status = 'POSTPONED' WHERE id = ${F}::uuid`);
+    await db.execute(sql`DELETE FROM field_sources WHERE ipo_id = ${F}::uuid AND table_name = 'ipos' AND field_name = 'status'`);
+    const at = rows(await db.execute(sql`SELECT postponed_at::text AS at FROM ipos WHERE id = ${F}::uuid`))[0].at;
+    expect(at, 'the status write stamps postponed_at on the database clock').not.toBeNull();
+    await tick();
+    const rhp = await newDoc(F, 'RHP');
+    const out = await complete(F, rhp, 'RHP', band('100', '105'));
+    expect(out.relaunchCleared?.cleared.map((c) => `${c.tableName}.${c.fieldName}`)).toContain('ipos.issueSize');
+  }, 120_000);
+
+  it('#1304 M1: an unknown postponement time (postponed_at NULL) clears nothing: a clear missed, never added', async () => {
+    await seedAdminValues(G);
+    await postpone(G);
+    await db.execute(sql`UPDATE ipos SET postponed_at = NULL WHERE id = ${G}::uuid`);
+    const rhp = await newDoc(G, 'RHP');
+    const out = await complete(G, rhp, 'RHP', band('100', '105'));
+    expect(out.relaunchCleared ?? null).toBeNull();
+    expect(await issueSize(G)).toBe(300000000);
+  }, 120_000);
+
+  it('#1304 M1 backfill: fills postponed_at from the status provenance row, lists the IPO with none, and is idempotent', async () => {
+    // H: postponed long ago (provenance row 10 days old), before postponed_at existed. G: NULL and (below) no row.
+    await postpone(H);
+    await db.execute(sql`UPDATE field_sources SET updated_at = (now() AT TIME ZONE 'UTC') - interval '10 days' WHERE ipo_id = ${H}::uuid AND field_name = 'status'`);
+    await db.execute(sql`UPDATE ipos SET postponed_at = NULL WHERE id = ANY(${`{${H},${G}}`}::uuid[])`);
+    await db.execute(sql`DELETE FROM field_sources WHERE ipo_id = ${G}::uuid AND table_name = 'ipos' AND field_name = 'status'`);
+    const evidence = rows(await db.execute(sql`SELECT updated_at::text AS at FROM field_sources WHERE ipo_id = ${H}::uuid AND field_name = 'status'`))[0].at;
+
+    const plan = await planPostponedAtBackfill(db as never, [H, G, LIVE]);
+    expect(plan.fill).toEqual([{ ipoId: H, slug: 'item-twenty-seven-8-seeds-ltd', evidenceAt: evidence }]);
+    expect(plan.unknown).toEqual([{ ipoId: G, slug: 'item-twenty-seven-7-seeds-ltd' }]);
+    const before = rows(await db.execute(sql`SELECT status::text AS s FROM ipos WHERE id = ${H}::uuid`))[0].s;
+
+    expect(await applyPostponedAtBackfill(db as never, plan)).toEqual([H]);
+    const after = rows(await db.execute(sql`SELECT postponed_at::text AS at, status::text AS s FROM ipos WHERE id = ${H}::uuid`))[0];
+    expect(after.at).toBe(evidence);
+    expect(after.s).toBe(before);
+    // Re-run: nothing left to fill; G stays unknown (NULL), never guessed.
+    const again = await planPostponedAtBackfill(db as never, [H, G, LIVE]);
+    expect(again.fill).toEqual([]);
+    expect(await applyPostponedAtBackfill(db as never, plan)).toEqual([]);
+    expect(rows(await db.execute(sql`SELECT postponed_at FROM ipos WHERE id = ${G}::uuid`))[0].postponed_at).toBeNull();
+  }, 60_000);
+
+  it('#1304 M1: the stamp is the database clock at the transition; a write that keeps POSTPONED does not move it', async () => {
+    await db.execute(sql`UPDATE ipos SET status = 'UPCOMING', postponed_at = NULL WHERE id = ${LIVE}::uuid`);
+    const t0 = rows(await db.execute(sql`SELECT (now() AT TIME ZONE 'UTC')::text AS t`))[0].t;
+    await db.execute(sql`UPDATE ipos SET status = 'POSTPONED' WHERE id = ${LIVE}::uuid`);
+    const first = rows(await db.execute(sql`SELECT postponed_at::text AS at FROM ipos WHERE id = ${LIVE}::uuid`))[0].at;
+    expect(first >= t0).toBe(true);
+    await tick();
+    await db.execute(sql`UPDATE ipos SET status = 'POSTPONED', issue_size = issue_size WHERE id = ${LIVE}::uuid`);
+    expect(rows(await db.execute(sql`SELECT postponed_at::text AS at FROM ipos WHERE id = ${LIVE}::uuid`))[0].at).toBe(first);
+    await db.execute(sql`UPDATE ipos SET status = 'UPCOMING' WHERE id = ${LIVE}::uuid`);
+  });
 
   it('a filing on an IPO that is not POSTPONED clears nothing', async () => {
     await adminWrite(LIVE, 'ipos', 'issueSize', { value: '120000000' });

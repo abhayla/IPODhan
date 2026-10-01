@@ -165,6 +165,16 @@
       "unverifiableWhen": "never — always runs against the ipos table"
     },
     {
+      "id": "d_postponed_at_unknown",
+      "findingClass": "a POSTPONED IPO whose postponement time is unknown (ipos.postponed_at NULL: postponed before #1304 and no status provenance row to backfill from) never receives the §2.9 / OD-120 automatic relaunch clear, so its old admin values survive a relaunch unless an admin reviews them; or the trigger ipos_stamp_postponed_at is missing and every new postponement stays unknown",
+      "round7Findings": [],
+      "failThreshold": "FAIL when the trigger ipos_stamp_postponed_at is absent from pg_trigger; WARN with every such IPO listed by slug (never a bare count) when any visible POSTPONED IPO has postponed_at NULL; PASS when none.",
+      "severity": "P3",
+      "unverifiableWhen": "ipos.postponed_at is not present on the audited database (#1304 migration not applied).",
+      "note": "Implemented in scripts/audit-detection-floor.mjs (checkD_postponedAtUnknown). The write side is structural: the migration's trigger stamps ipos.postponed_at on the database clock on every write that moves status to POSTPONED; scraper/scripts/backfill-postponed-at.ts fills existing rows from the status provenance row and lists the rest. This check is the admin's list of the unknown ones (spec §2.9, clarified 2026-10-01).",
+      "owner": "#1304 M1"
+    },
+    {
       "id": "d_segment_document_board",
       "findingClass": "ipos.segment disagrees with the board the IPO's deciding offer document reads (the write gate's own order, scraper/config/listing-sentence-precedence.mjs: Prospectus > RHP > price band ad > DRHP, then the later filing date (OD-30), then the later extraction) and the segment is not ADMIN-held (spec §9) - the document-first rule of OD-129 / spec row 23 not reaching the row (a feed overwrote it, or the document's claim never landed)",
       "issue": 1233,

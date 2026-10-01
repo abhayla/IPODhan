@@ -2556,6 +2556,11 @@ two at any time:
   document-sourced fields are invalidated the moment the relaunch filing arrives** (§2.5 trigger 3)
   — the old terms must not survive the relaunch. **This includes admin values (OD-120)**: they are
   cleared with the rest, kept in the audit trail, and listed in one alert with a re-apply option.
+  *Clarified 2026-10-01 (supervisor, spec-conformant): the POSTPONED transition time is
+  ipos.postponed_at, stamped at the status write; unknown means no automatic clear and the IPO is
+  listed for the admin.* (#1304 M1: a database trigger stamps it on the database clock on every write
+  that moves status to POSTPONED; `scraper/scripts/backfill-postponed-at.ts` fills older rows from the
+  status provenance row; the nightly check `d_postponed_at_unknown` is the admin's list.)
 - **WITHDRAWN — terminal.** The walk stops. **Existing values are kept as a record**, because
   someone who applied wants to see what they applied to. The page **stays at its URL** with a clear
   withdrawal notice rather than redirecting — people who applied will search for it. **GMP and
@@ -2573,7 +2578,7 @@ the withdrawal purge path, so both occur.
   the IPO's listing exchange (NSE/BSE) reporting a non-POSTPONED status replaces it and the forward-only
   ladder (#1256) takes over. The evidence (`readPostponedRelaunchState`,
   `packages/shared/src/services/relaunch-admin-clear.ts`) is a `Relaunch Filing` / `Relaunch Cleared` audit
-  row or an OD-83 / OD-86 SUPERSEDED source key newer than the status provenance row; a failed read keeps
+  row or an OD-83 / OD-86 SUPERSEDED source key newer than the postponement time (ipos.postponed_at, #1304); a failed read keeps
   POSTPONED. A second postponement needs a new relaunch. The legacy fallback write door keeps POSTPONED.
 - *Invalidation, then refill.* At the relaunch filing, in one transaction with item 27's admin clear
   (OD-120): every non-admin value with provenance source `DRHP` on a document field of a one-row table, set

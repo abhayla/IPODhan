@@ -399,6 +399,12 @@ export const ipos = pgTable(
     hiddenBy: varchar('hidden_by', { length: 100 }),
     hiddenByAdminId: uuid('hidden_by_admin_id'),
 
+    // #1304 M1 (§2.9, OD-120, OD-139): when the IPO last MOVED to POSTPONED, on the database clock.
+    // Stamped by the trigger ipos_stamp_postponed_at (migration 20261001*_ipos_postponed_at) on every
+    // write that moves status to POSTPONED, whichever writer it is. NULL = unknown: the relaunch clear
+    // does not fire and the IPO is listed for the admin (a clear missed, never added).
+    postponedAt: timestamp('postponed_at'),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
