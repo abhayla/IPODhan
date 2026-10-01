@@ -261,42 +261,41 @@ export class MarketHolidaysScraper extends BaseScraper<MarketHoliday[]> {
   }
 
   /**
-   * Store holidays in database with upsert logic
+   * Store holidays in database with upsert logic.
+   *
+   * Writes the SAME shape the reconcile tool writes (F-221, repair-market-holidays-from-nse.ts):
+   * one BOTH/TRADING row per date. NSE and BSE trading holidays are one set (F-220), so the row is
+   * matched on (date, type) whatever exchange label it carries, and written with exchange BOTH. A
+   * hand run is therefore idempotent with the reconcile: it never adds an 'NSE' row beside the
+   * reconciled BOTH row.
    */
-  private async storeHolidays(holidays: MarketHoliday[]): Promise<void> {
+  async storeHolidays(holidays: MarketHoliday[]): Promise<void> {
     for (const holiday of holidays) {
       try {
-        // Check if holiday already exists
-        const existing = await db.select()
+        const existing = await db.select({ id: marketHolidays.id })
           .from(marketHolidays)
           .where(
             and(
               eq(marketHolidays.date, holiday.dateIso),
-              eq(marketHolidays.exchange, holiday.exchange)
+              eq(marketHolidays.type, holiday.type)
             )
           )
           .limit(1);
 
         if (existing.length > 0) {
-          // Update existing
           await db.update(marketHolidays)
             .set({
               description: holiday.description,
-              type: holiday.type,
+              exchange: 'BOTH',
+              year: holiday.year,
               updatedAt: new Date(),
             })
-            .where(
-              and(
-                eq(marketHolidays.date, holiday.dateIso),
-                eq(marketHolidays.exchange, holiday.exchange)
-              )
-            );
+            .where(eq(marketHolidays.id, existing[0].id));
         } else {
-          // Insert new
           await db.insert(marketHolidays).values({
             date: holiday.dateIso,
             description: holiday.description,
-            exchange: holiday.exchange,
+            exchange: 'BOTH',
             type: holiday.type,
             year: holiday.year,
           });

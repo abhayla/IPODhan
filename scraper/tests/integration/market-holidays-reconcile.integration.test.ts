@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Pool } from 'pg';
+import { sql } from 'drizzle-orm';
 import { getTestDb, cleanupTestDb } from '../test-utils/db';
 import { reconcileMarketHolidayYear, type NseFetchResult } from '../../src/services/market-holidays-reconcile';
 
@@ -74,8 +75,18 @@ describe.runIf(!!DATABASE_URL)('market_holidays reconcile to NSE (F-220/F-221, l
       await pool.query(`INSERT INTO market_holidays (date, description, exchange, type, year) VALUES ($1::date, $2, $3, 'TRADING', 2026)`, [date, description, exchange]);
     }
   };
-  const run = (answer: NseFetchResult, apply: boolean, afterWrites?: () => Promise<void>) =>
-    reconcileMarketHolidayYear({ db: db as never, year: YEAR, apply, answer, log: () => {}, afterWrites: afterWrites as never });
+  const run = (answer: NseFetchResult, apply: boolean, afterWrites?: (tx: never) => Promise<void>, acceptPlan?: string) =>
+    reconcileMarketHolidayYear({ db: db as never, year: YEAR, apply, answer, log: () => {}, afterWrites: afterWrites as never, acceptPlan });
+  /** The operator's two steps: read the dry run's sha, then apply with it. */
+  const applyAccepted = async (answer: NseFetchResult, afterWrites?: (tx: never) => Promise<void>) => {
+    const dry = await run(answer, false);
+    return run(answer, true, afterWrites, dry.planSha);
+  };
+  const truncated = (keep: number) => {
+    const j = JSON.parse(NSE_BODY) as { CM: Array<{ weekDay: string }> };
+    j.CM = j.CM.filter((r) => !/^(Saturday|Sunday)/.test(r.weekDay)).slice(0, keep);
+    return JSON.stringify(j);
+  };
 
   beforeAll(async () => {
     db = await getTestDb();
@@ -134,7 +145,7 @@ describe.runIf(!!DATABASE_URL)('market_holidays reconcile to NSE (F-220/F-221, l
       ['2026-07-08', 'Not a holiday (BSE writer)', 'BSE'],
       ['2026-12-25', 'Christmas', 'NSE'],
     ]);
-    const out = await run({ ok: true, body: NSE_BODY }, true);
+    const out = await applyAccepted({ ok: true, body: NSE_BODY });
     expect(out.exitCode).toBe(0);
     expect(out.applied).toBe(true);
     const after = await readYear();
@@ -188,10 +199,57 @@ describe.runIf(!!DATABASE_URL)('market_holidays reconcile to NSE (F-220/F-221, l
   it('apply is ONE transaction: a failure after the writes leaves the year exactly as it was', async () => {
     const before = await readYear();
     await expect(
-      run({ ok: true, body: NSE_BODY }, true, async () => {
+      applyAccepted({ ok: true, body: NSE_BODY }, async () => {
         throw new Error('injected failure after writes');
       })
     ).rejects.toThrow('injected failure after writes');
+    expect(await readYear()).toEqual(before);
+  });
+
+  it('the post-apply equality check is real: an extra row appearing after the writes rolls the whole transaction back', async () => {
+    const before = await readYear();
+    await expect(
+      applyAccepted({ ok: true, body: NSE_BODY }, async (tx: { execute: (q: unknown) => Promise<unknown> }) => {
+        await tx.execute(sql`INSERT INTO market_holidays (date, description, exchange, type, year) VALUES ('2026-07-07'::date, 'Extra after writes', 'BOTH', 'TRADING', 2026)`);
+      })
+    ).rejects.toThrow(/does not equal NSE's 2026 list.*rolled back/);
+    expect(await readYear()).toEqual(before);
+  });
+
+  it('state implausibly_short: a valid answer with 3 of 20 CM rows changes nothing, exit 6, even with a matching accept sha (no 17-row delete plan is ever built)', async () => {
+    const before = await readYear();
+    const answer = { ok: true as const, body: truncated(3) };
+    const out = await run(answer, true, undefined, 'a'.repeat(64));
+    expect(out.exitCode).toBe(6);
+    expect(out.state).toBe('implausibly_short');
+    expect(out.actions).toEqual([]);
+    expect(await readYear()).toEqual(before);
+  });
+
+  it('plan-acceptance guard: the real F-221 plan (9 retire+move of 20) is refused without a sha and with a wrong sha, and applies with the dry run sha', async () => {
+    const before = await readYear();
+    const answer = { ok: true as const, body: NSE_BODY };
+    const none = await run(answer, true);
+    expect(none.exitCode).toBe(7);
+    expect(none.applied).toBe(false);
+    expect(await readYear()).toEqual(before);
+    const wrong = await run(answer, true, undefined, '0'.repeat(64));
+    expect(wrong.exitCode).toBe(7);
+    expect(await readYear()).toEqual(before);
+    const dry = await run(answer, false);
+    expect(dry.planSha).toMatch(/^[0-9a-f]{64}$/);
+    const ok = await run(answer, true, undefined, dry.planSha);
+    expect(ok.exitCode).toBe(0);
+    expect(ok.applied).toBe(true);
+    expect((await readYear()).map((r) => r.date)).toEqual(NSE_ALL_2026);
+  });
+
+  it('a sha computed for a different plan is refused (the sha binds the plan, not the year)', async () => {
+    const dry = await run({ ok: true, body: NSE_BODY }, false);
+    await seedStaging([['2026-07-07', 'Not a holiday (NSE writer)', 'NSE']]);
+    const before = await readYear();
+    const out = await run({ ok: true, body: NSE_BODY }, true, undefined, dry.planSha);
+    expect(out.exitCode).toBe(7);
     expect(await readYear()).toEqual(before);
   });
 });

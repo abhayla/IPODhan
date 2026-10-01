@@ -10,6 +10,9 @@ import {
   compareYearToNse,
   fetchNseHolidayMaster,
   interpretNseHolidayAnswer,
+  judgeMarketHolidaysAgainstNse,
+  planNeedsAcceptance,
+  planSha,
   parseNseTradingDate,
   planHolidayReconcile,
 } from '../lib/nse-holiday-calendar.mjs';
@@ -116,4 +119,55 @@ test('compareYearToNse names missing and extra dates', () => {
   const stored = holidays.map((h) => h.date).filter((d) => d !== '2026-09-14').concat('2026-09-05');
   assert.deepEqual(compareYearToNse(stored, holidays), { missing: ['2026-09-14'], extra: ['2026-09-05'] });
   assert.deepEqual(compareYearToNse(holidays.map((h) => h.date), holidays), { missing: [], extra: [] });
+});
+
+const truncatedBody = (keep) => {
+  const j = JSON.parse(BODY);
+  const weekday = j.CM.filter((r) => !/^(Sat|Sun)/.test(r.weekDay ?? ''));
+  j.CM = weekday.slice(0, keep);
+  return JSON.stringify(j);
+};
+
+test('state implausibly_short: a valid answer with 3 weekday CM rows (a truncated list) is not a list (F-222: a real year has 16)', () => {
+  const a = interpretNseHolidayAnswer(truncatedBody(3), 2026);
+  assert.equal(a.state, 'implausibly_short');
+  assert.equal(a.weekdayCount, 3);
+  assert.equal(interpretNseHolidayAnswer(truncatedBody(10), 2026).state, 'list');
+  assert.equal(interpretNseHolidayAnswer(truncatedBody(9), 2026).state, 'implausibly_short');
+});
+
+test('judge: every answer state gives its verdict; only a plausible list can PASS (UNVERIFIABLE is blind, never PASS)', () => {
+  const nse = interpretNseHolidayAnswer(BODY, 2026).holidays.map((h) => h.date);
+  assert.equal(judgeMarketHolidaysAgainstNse({ ok: true, body: BODY }, 2026, nse).status, 'PASS');
+  const fail = judgeMarketHolidaysAgainstNse({ ok: true, body: BODY }, 2026, nse.slice(1).concat('2026-07-07'));
+  assert.equal(fail.status, 'FAIL');
+  assert.deepEqual(fail.missing, [nse[0]]);
+  assert.deepEqual(fail.extra, ['2026-07-07']);
+  // every non-list answer, even when the stored dates would "match" it, is UNVERIFIABLE
+  for (const [label, fetched, stored] of [
+    ['fetch-failed', { ok: false, cause: 'NSE holiday-master answered HTTP 403' }, nse],
+    ['fetch-failed with empty stored', { ok: false, cause: 'timeout' }, []],
+    ['malformed', { ok: true, body: '<html>Access Denied</html>' }, nse],
+    ['no-rows-for-year', { ok: true, body: BODY }, [], 2025],
+    ['unparseable-rows', { ok: true, body: BODY.replaceAll('"tradingDate":"14-Sep-2026"', '"tradingDate":"31-Sep-2026"') }, nse],
+    ['implausibly_short', { ok: true, body: truncatedBody(3) }, []],
+  ]) {
+    const year = label === 'no-rows-for-year' ? 2025 : 2026;
+    const v = judgeMarketHolidaysAgainstNse(fetched, year, stored);
+    assert.equal(v.status, 'UNVERIFIABLE', label);
+    assert.ok(v.detail.length > 0, label);
+  }
+  assert.match(judgeMarketHolidaysAgainstNse({ ok: true, body: truncatedBody(3) }, 2026, []).detail, /implausibly_short/);
+});
+
+test('plan acceptance: small plans pass, big ones (retire+move > 2 or > 20% of stored) need the sha, and the sha is order-independent', () => {
+  const act = (kind, i) => ({ kind, id: `r${i}`, date: `2026-0${(i % 9) + 1}-10`, description: `d${i}` });
+  assert.equal(planNeedsAcceptance([act('retire', 1), act('move', 2)], 20).needed, false);
+  assert.equal(planNeedsAcceptance([act('retire', 1), act('move', 2), act('retire', 3)], 20).needed, true);
+  assert.equal(planNeedsAcceptance([act('insert', 1), act('update', 2), act('insert', 3), act('insert', 4)], 20).needed, false);
+  assert.equal(planNeedsAcceptance([act('retire', 1), act('retire', 2)], 5).needed, true); // 40% of 5
+  const a = [act('retire', 1), act('move', 2)];
+  assert.equal(planSha(a), planSha([...a].reverse()));
+  assert.notEqual(planSha(a), planSha([act('retire', 1), act('move', 3)]));
+  assert.match(planSha(a), /^[0-9a-f]{64}$/);
 });

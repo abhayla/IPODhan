@@ -17,11 +17,25 @@
  *   no-rows-for-year   valid answer, no row dated in Y  -> change NOTHING for Y (a year NSE has
  *                                                          not published is not "no holidays")
  *   unparseable-rows   a row of Y whose date fails       -> change NOTHING for Y, report the rows
+ *   implausibly_short  a list with fewer than MIN_PLAUSIBLE_WEEKDAY_HOLIDAYS weekday dates
+ *                                                        -> change NOTHING for Y, exit non-zero (a
+ *                                                           real NSE year has 14-16 weekday trading
+ *                                                           holidays, F-222's 16; a 200 carrying 3
+ *                                                           rows is a truncated answer, and a plan
+ *                                                           built on it would delete real holidays)
  *
  * Measured 2026-10-02 (fixture scraper/tests/fixtures/nse/holiday-master-trading-2026-10-02.json):
  * the API publishes the CURRENT year only, so 2025 is "no-rows-for-year" there; the 2025 shifted
  * copies are repaired by #1380's repair-shifted-market-holidays.ts, not by this list.
  */
+
+import { createHash } from 'node:crypto';
+
+/** Fewer CM weekday holiday dates than this in a year's answer = a truncated answer (F-222: a real year has 14-16). */
+export const MIN_PLAUSIBLE_WEEKDAY_HOLIDAYS = 10;
+/** --apply refuses a plan that retires + moves more than this many rows, or more than this share of the stored rows. */
+export const MAX_UNACCEPTED_DESTRUCTIVE_ACTIONS = 2;
+export const MAX_UNACCEPTED_DESTRUCTIVE_SHARE = 0.2;
 
 export const NSE_HOME_URL = 'https://www.nseindia.com/';
 export const NSE_HOLIDAY_MASTER_URL = 'https://www.nseindia.com/api/holiday-master?type=trading';
@@ -111,7 +125,61 @@ export function interpretNseHolidayAnswer(body, year, segment = NSE_EQUITY_SEGME
   const holidays = [...holidaysByDate.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([date, description]) => ({ date, description, weekday: weekdayOf(date) }));
+  const weekdayCount = holidays.filter((h) => h.weekday !== 'Sat' && h.weekday !== 'Sun').length;
+  if (weekdayCount < MIN_PLAUSIBLE_WEEKDAY_HOLIDAYS) {
+    return {
+      state: 'implausibly_short',
+      year,
+      cause: `NSE's CM list for ${year} has ${weekdayCount} weekday trading holiday(s); fewer than ${MIN_PLAUSIBLE_WEEKDAY_HOLIDAYS} is a truncated answer (a real year has 14-16)`,
+      weekdayCount,
+    };
+  }
   return { state: 'list', year, holidays };
+}
+
+/**
+ * The nightly check's verdict (market_holidays_match_nse), pure so every answer state is tested.
+ * Anything but a plausible list is UNVERIFIABLE (blind), never PASS.
+ * @param {{ ok: true, body: string } | { ok: false, cause: string }} fetched
+ * @param {number} year
+ * @param {string[]} storedDates distinct TRADING dates stored for the year (any exchange); only read for a list
+ */
+export function judgeMarketHolidaysAgainstNse(fetched, year, storedDates) {
+  const blind = (detail) => ({ status: 'UNVERIFIABLE', detail, missing: [], extra: [], nseCount: 0 });
+  if (!fetched || fetched.ok !== true) return blind(fetched?.cause ?? 'NSE answer missing');
+  const answer = interpretNseHolidayAnswer(fetched.body, year);
+  if (answer.state !== 'list') {
+    return blind(
+      `NSE answer for ${year}: ${answer.state}${answer.cause ? ` — ${answer.cause}` : ''}${answer.rows ? ` — ${JSON.stringify(answer.rows).slice(0, 200)}` : ''}`
+    );
+  }
+  const { missing, extra } = compareYearToNse(storedDates, answer.holidays);
+  const tail = `${year}: ${new Set(storedDates).size} stored date(s) vs ${answer.holidays.length} NSE date(s)`;
+  return {
+    status: missing.length || extra.length ? 'FAIL' : 'PASS',
+    detail: tail,
+    missing,
+    extra,
+    nseCount: answer.holidays.length,
+    holidays: answer.holidays,
+  };
+}
+
+/** sha256 of the canonical action list (sorted lines of kind|id|from|date|description): the value --accept-plan must equal. */
+export function planSha(actions) {
+  const lines = actions.map((a) => [a.kind, a.id ?? '', a.from ?? '', a.date, a.description ?? ''].join('|')).sort();
+  return createHash('sha256').update(lines.join('\n')).digest('hex');
+}
+
+/** Does this plan need an explicit --accept-plan? (retire + move > 2, or > 20% of the stored rows). */
+export function planNeedsAcceptance(actions, storedRowCount) {
+  const destructive = actions.filter((a) => a.kind === 'retire' || a.kind === 'move').length;
+  const share = storedRowCount > 0 ? destructive / storedRowCount : destructive > 0 ? 1 : 0;
+  return {
+    needed: destructive > MAX_UNACCEPTED_DESTRUCTIVE_ACTIONS || share > MAX_UNACCEPTED_DESTRUCTIVE_SHARE,
+    destructive,
+    share,
+  };
 }
 
 /**

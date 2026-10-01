@@ -2,7 +2,36 @@ import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-vi.mock('@/lib/db', () => ({ db: {}, marketHolidays: {} }));
+const dbCalls = vi.hoisted(() => ({ existing: [] as Array<{ id: string }>, selects: [] as unknown[], updates: [] as unknown[], inserts: [] as unknown[] }));
+vi.mock('drizzle-orm', () => ({
+  eq: (col: string, val: unknown) => ({ op: 'eq', col, val }),
+  and: (...parts: unknown[]) => ({ op: 'and', parts }),
+}));
+vi.mock('@/lib/db', () => ({
+  marketHolidays: { id: 'id', date: 'date', type: 'type', exchange: 'exchange' },
+  db: {
+    select: () => ({
+      from: () => ({
+        where: (w: unknown) => {
+          dbCalls.selects.push(w);
+          return { limit: async () => dbCalls.existing };
+        },
+      }),
+    }),
+    update: () => ({
+      set: (v: unknown) => ({
+        where: async (w: unknown) => {
+          dbCalls.updates.push({ set: v, where: w });
+        },
+      }),
+    }),
+    insert: () => ({
+      values: async (v: unknown) => {
+        dbCalls.inserts.push(v);
+      },
+    }),
+  },
+}));
 
 import {
   MarketHolidaysScraper,
@@ -47,5 +76,29 @@ describe('market holidays writer stores the IST calendar date (F-220)', () => {
     for (const segment of Object.values(NSE) as Array<Array<{ tradingDate: string }>>) {
       for (const row of segment) expect(nseTradingDateToIso(row.tradingDate)).toBe(parseNseTradingDate(row.tradingDate));
     }
+  });
+});
+
+describe('market holidays writer writes the reconcile shape: BOTH/TRADING, matched on date (hand run idempotent with the reconcile)', () => {
+  const holiday = { date: new Date('2026-01-14T18:30:00.000Z'), dateIso: '2026-01-15', description: 'Municipal Corporation Election - Maharashtra', exchange: 'NSE' as const, type: 'TRADING' as const, year: 2026 };
+
+  it('a date with no row inserts ONE BOTH/TRADING row, even though the scraped holiday is labelled NSE', async () => {
+    dbCalls.existing = [];
+    dbCalls.selects.length = dbCalls.updates.length = dbCalls.inserts.length = 0;
+    await new MarketHolidaysScraper().storeHolidays([holiday]);
+    expect(dbCalls.inserts).toEqual([{ date: '2026-01-15', description: holiday.description, exchange: 'BOTH', type: 'TRADING', year: 2026 }]);
+    expect(dbCalls.updates).toEqual([]);
+  });
+
+  it('the lookup is by date + type only (never by exchange), so the reconciled BOTH row is found and updated, not duplicated', async () => {
+    dbCalls.existing = [{ id: 'row-1' }];
+    dbCalls.selects.length = dbCalls.updates.length = dbCalls.inserts.length = 0;
+    await new MarketHolidaysScraper().storeHolidays([holiday]);
+    expect(dbCalls.inserts).toEqual([]);
+    expect(dbCalls.selects[0]).toEqual({ op: 'and', parts: [{ op: 'eq', col: 'date', val: '2026-01-15' }, { op: 'eq', col: 'type', val: 'TRADING' }] });
+    expect(dbCalls.updates).toHaveLength(1);
+    const u = dbCalls.updates[0] as { set: { exchange: string }; where: unknown };
+    expect(u.set.exchange).toBe('BOTH');
+    expect(u.where).toEqual({ op: 'eq', col: 'id', val: 'row-1' });
   });
 });

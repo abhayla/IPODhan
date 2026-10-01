@@ -10,10 +10,14 @@
  *   cd scraper && npx tsx scripts/repair-market-holidays-from-nse.ts --year 2026 --expect-db ipodhan_staging --apply
  *   ... --answer-file tests/fixtures/nse/holiday-master-trading-2026-10-02.json   (a saved NSE answer, no fetch)
  *
+ * `--apply` of a plan that retires+moves more than 2 rows or more than 20% of the stored rows needs
+ * `--accept-plan <sha256>`, the value the dry run printed for that same plan. `--answer-file` older than
+ * 7 days is refused unless `--allow-old-answer`.
+ *
  * Guards: `--expect-db <name>` is mandatory (dry run too); a production `--apply` is refused
  * without `--allow-prod` (openRepairDb). NSE answer states -> exit codes: 3 unreadable (HTTP error,
  * timeout, block, non-JSON), 4 no rows for the year, 5 unparseable rows; nothing is written in
- * any of them. After an apply, web's market_holidays:* Redis keys are dropped (SCAN + DEL), or
+ * any of them (6 implausibly short answer, 7 big plan not accepted). After an apply, web's market_holidays:* Redis keys are dropped (SCAN + DEL), or
  * the exact on-box command is printed when this box's Redis is not that slot's Redis.
  */
 import '../../scripts/lib/alias-preflight-auto.mjs';
@@ -33,7 +37,12 @@ import {
   type RepairLedgerFieldChange,
 } from './lib/repair-tool';
 import { fetchNseHolidayMaster } from '../../scripts/lib/nse-holiday-calendar.mjs';
-import { reconcileMarketHolidayYear, type NseFetchResult } from '../src/services/market-holidays-reconcile';
+import {
+  checkAnswerFileAge,
+  holidayCacheDropCommand,
+  reconcileMarketHolidayYear,
+  type NseFetchResult,
+} from '../src/services/market-holidays-reconcile';
 
 const TOOL = 'repair-market-holidays-from-nse';
 const SCRAPER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -45,11 +54,10 @@ async function dropHolidayCache(dbName: string): Promise<void> {
   const { blocked } = guardCacheInvalidation({ dbName, toolName: TOOL, keys: [CACHE_PATTERN], log: () => {} });
   if (blocked) {
     const redisHost = resolveRedisTargetHost({ redisUrl: process.env.REDIS_URL, redisHost: process.env.REDIS_HOST });
-    const { dbIndex } = repairToolRedisSlot(dbName);
-    const n = dbIndex === null ? '<slot db index>' : String(dbIndex);
+    const { slot, dbIndex } = repairToolRedisSlot(dbName);
     console.log(
       `${TOOL}: cache NOT dropped — this box's Redis (${redisHost ?? 'unset, localhost:6379'}) is not "${dbName}"'s slot Redis. Run on the VPS (docs/ops/prod-ops-recipes.md §5):\n` +
-        `  redis-cli -n ${n} --scan --pattern '${CACHE_PATTERN}' | xargs -r redis-cli -n ${n} DEL`
+        `  ${holidayCacheDropCommand(slot, dbIndex)}`
     );
     return;
   }
@@ -72,6 +80,8 @@ async function main(): Promise<number> {
   const expectDb = readExpectDbFlag(argv);
   const yearText = collectFlagValues(argv, '--year')[0];
   const answerFile = collectFlagValues(argv, '--answer-file')[0];
+  const acceptPlan = collectFlagValues(argv, '--accept-plan')[0];
+  const allowOldAnswer = argv.includes('--allow-old-answer');
   const year = Number(yearText);
   if (!yearText || !Number.isInteger(year) || year < 2000 || year > 2100) {
     console.error(`${TOOL}: --year <YYYY> is required (got ${yearText ?? 'nothing'}).`);
@@ -81,6 +91,11 @@ async function main(): Promise<number> {
     console.error(`${TOOL}: --expect-db <name> is required; refusing to guess the target database.`);
     return 2;
   }
+  if (answerFile) {
+    const age = checkAnswerFileAge(fs.statSync(path.resolve(answerFile)).mtimeMs, Date.now(), allowOldAnswer);
+    console.log(`${TOOL}: ${age.message}.`);
+    if (!age.ok) return 2;
+  }
   const { dbName } = await openRepairDb(db as unknown as ExecuteLike, { apply, allowProd, toolName: TOOL, expectDb });
 
   const answer: NseFetchResult = answerFile
@@ -88,7 +103,7 @@ async function main(): Promise<number> {
     : await fetchNseHolidayMaster();
   console.log(`${TOOL}: ${apply ? 'APPLY' : 'DRY RUN'} year ${year} on "${dbName}", NSE answer from ${answerFile ?? 'live holiday-master'}.`);
 
-  const outcome = await reconcileMarketHolidayYear({ db: db as never, year, apply, answer });
+  const outcome = await reconcileMarketHolidayYear({ db: db as never, year, apply, answer, acceptPlan });
   if (outcome.exitCode !== 0) {
     console.error(`${TOOL}: ${outcome.state} — ${outcome.cause}. Nothing was written.`);
     return outcome.exitCode;

@@ -37,7 +37,7 @@ import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { resolveDiscreteDbParams } from './lib/pg-connection-params.mjs';
 import { istDayIso } from './lib/ist-day.mjs';
-import { fetchNseHolidayMaster, interpretNseHolidayAnswer, compareYearToNse } from './lib/nse-holiday-calendar.mjs';
+import { fetchNseHolidayMaster, judgeMarketHolidaysAgainstNse } from './lib/nse-holiday-calendar.mjs';
 import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, isStrandedPendingRow, LIVE_IPO_STATUSES, isConfigGapAtCapRow, isStalledGapRow, FIELD_PLAN_GAP_STALLED_DAYS } from './lib/field-plan-slot.mjs';
 import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
 import { CREATE_PROVENANCE_COLUMNS, buildUnprovenancedColumnsSql, evaluateUnprovenancedColumns } from './lib/create-provenance-checks.mjs';
@@ -4103,28 +4103,21 @@ async function checkMarketHolidaysMatchNse() {
   const name = "market_holidays for the current year equals NSE's own CM trading-holiday list (by date, every exchange label)";
   const year = Number(istDayIso().slice(0, 4));
   const fetched = await fetchNseHolidayMaster();
-  if (!fetched.ok) {
-    record('market_holidays_match_nse', name, 'UNVERIFIABLE', fetched.cause);
-    return;
-  }
-  const answer = interpretNseHolidayAnswer(fetched.body, year);
-  if (answer.state !== 'list') {
-    record('market_holidays_match_nse', name, 'UNVERIFIABLE', `NSE answer for ${year}: ${answer.state}${answer.cause ? ` — ${answer.cause}` : ''}${answer.rows ? ` — ${JSON.stringify(answer.rows).slice(0, 200)}` : ''}`);
-    return;
-  }
-  const rows = await q(
-    `SELECT DISTINCT to_char(date, 'YYYY-MM-DD') AS d FROM market_holidays
-      WHERE type = 'TRADING' AND date >= $1::date AND date <= $2::date`,
-    [`${year}-01-01`, `${year}-12-31`]
-  );
-  const { missing, extra } = compareYearToNse(rows.map((r) => r.d), answer.holidays);
-  for (const d of missing) notify(id, 'P1', `${year}|missing|${d}`, `NSE trading holiday missing from market_holidays: ${d}`, `${d} ${answer.holidays.find((h) => h.date === d)?.description ?? ''}`);
-  for (const d of extra) notify(id, 'P1', `${year}|extra|${d}`, `market_holidays holds a date NSE trades on: ${d}`, d);
-  const tail = `${year}: ${rows.length} stored date(s) vs ${answer.holidays.length} NSE date(s)`;
-  if (missing.length || extra.length) {
-    record('market_holidays_match_nse', name, 'FAIL', `missing ${missing.length} [${missing.slice(0, MAX_OFFENDERS).join(', ')}]; extra ${extra.length} [${extra.slice(0, MAX_OFFENDERS).join(', ')}] | ${tail} | repair: scraper/scripts/repair-market-holidays-from-nse.ts --year ${year}`);
+  // Stored dates are read only when NSE answered; the verdict itself is the tested pure function.
+  const rows = fetched.ok
+    ? await q(
+        `SELECT DISTINCT to_char(date, 'YYYY-MM-DD') AS d FROM market_holidays
+          WHERE type = 'TRADING' AND date >= $1::date AND date <= $2::date`,
+        [`${year}-01-01`, `${year}-12-31`]
+      )
+    : [];
+  const v = judgeMarketHolidaysAgainstNse(fetched, year, rows.map((r) => r.d));
+  for (const d of v.missing) notify(id, 'P1', `${year}|missing|${d}`, `NSE trading holiday missing from market_holidays: ${d}`, `${d} ${v.holidays?.find((h) => h.date === d)?.description ?? ''}`);
+  for (const d of v.extra) notify(id, 'P1', `${year}|extra|${d}`, `market_holidays holds a date NSE trades on: ${d}`, d);
+  if (v.status === 'FAIL') {
+    record('market_holidays_match_nse', name, 'FAIL', `missing ${v.missing.length} [${v.missing.slice(0, MAX_OFFENDERS).join(', ')}]; extra ${v.extra.length} [${v.extra.slice(0, MAX_OFFENDERS).join(', ')}] | ${v.detail} | repair: scraper/scripts/repair-market-holidays-from-nse.ts --year ${year}`);
   } else {
-    record('market_holidays_match_nse', name, 'PASS', tail);
+    record('market_holidays_match_nse', name, v.status, v.detail);
   }
 }
 
