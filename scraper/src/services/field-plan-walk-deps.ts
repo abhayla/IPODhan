@@ -70,6 +70,7 @@ import { loadValidationRules } from '../config/validation-rules-loader.js';
 import { createHash } from 'node:crypto';
 import {
   buildFieldPlanIpoGapKeys,
+  DATE_RULE_INPUT_KEYS,
   type FieldPlanGapKeySource,
   type GapKeyDocument,
   type GapKeyProvenance,
@@ -316,7 +317,13 @@ export function buildFieldPlanGapKeySource(params: {
       const documents = (await documentRepository.findByIPO(ipoId)) as unknown as GapKeyDocument[];
       // #1379: the IPO's stage (OD-56 "once per STAGE CHANGE") -- part of a FAILED_VALIDATION row's key.
       const [stageRow] = await db
-        .select({ status: schema.ipos.status })
+        .select({
+          status: schema.ipos.status,
+          openDate: schema.ipos.openDate,
+          closeDate: schema.ipos.closeDate,
+          allotmentDate: schema.ipos.allotmentDate,
+          listingDate: schema.ipos.listingDate,
+        })
         .from(schema.ipos)
         .where(eq(schema.ipos.id, ipoId))
         .limit(1);
@@ -357,6 +364,15 @@ export function buildFieldPlanGapKeySource(params: {
         writerCapability: fieldPlanWriterCapability,
         stage: stageRow?.status ?? null,
         validationRulesFingerprint,
+        // #1379 round 2: the stored inputs of the date rules (a date-refused row is judged against them).
+        storedDateInputs: stageRow
+          ? Object.fromEntries(
+              DATE_RULE_INPUT_KEYS.map((k) => {
+                const v = (stageRow as Record<string, unknown>)[k];
+                return [k, v == null ? null : v instanceof Date ? v.toISOString() : String(v)];
+              })
+            )
+          : null,
       });
     },
   };

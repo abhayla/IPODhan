@@ -50,7 +50,7 @@
 
 import { createHash } from 'node:crypto';
 import { logger } from '../utils/logger.js';
-import { normalizeChosen } from './data-consolidation-service.js';
+import { normalizeChosen, isPriorityLossReason } from './data-consolidation-service.js';
 import { areEquivalent } from './normalization-engine.js';
 import { getFieldRules } from '../config/field-priority-matrix.js';
 import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
@@ -1989,8 +1989,6 @@ const NO_FIELD_RESULT_REASON = 'no field result returned';
 /** #1229: the write door's merged-record date rule refused the value (stored row + this write incoherent). */
 export const DATE_REFUSED_REASON = 'date refused on the merged record (#1229)';
 
-/** #1379: the consolidator's OD-21 refusal tag (`runPreRankChecks`, data-consolidation-service.ts). */
-export const VALIDATION_REFUSAL_PREFIX = 'VALIDATION_RULE_FAILED:';
 
 type ConsolidatorFieldResult = {
   fieldName: string;
@@ -2010,17 +2008,6 @@ function checkConsolidatorAgreed(
     return { accepted: false, reason: NO_FIELD_RESULT_REASON };
   }
   const wantedSource = mapManifestSourceToScraperSource(source);
-  // #1379: a per-field validation rule refused THIS write's value. Read from the consolidator's own
-  // rejection list, matched on THIS write's source -- a refusal recorded for another source is not
-  // this write's refusal (fail closed: it falls through to the priority comparison below). Before
-  // this, the refusal's result (stored value, incoming source) read as a priority loss
-  // ("matrix priority"), so the walk recorded LOST_TO_HIGHER_PRIORITY and never asked rank 2.
-  const refusal = result.rejectedSources?.find(
-    (r) => r.source === wantedSource && typeof r.reason === 'string' && r.reason.startsWith(VALIDATION_REFUSAL_PREFIX)
-  );
-  if (refusal) {
-    return { accepted: false, reason: refusal.reason, refused: true };
-  }
   // Review round 6, item 2 (MAJOR): a raw `!==` compares a JS value
   // (`suppliedValue`) against a pg round-trip (`result.finalValue` — NUMERIC
   // reads back as a STRING "6800000000.00", a date column as a `Date`), so a
@@ -2032,6 +2019,17 @@ function checkConsolidatorAgreed(
   const normalizedFinal = normalizeChosen(camelFieldName, result.finalValue, rules);
   const normalizedSupplied = normalizeChosen(camelFieldName, suppliedValue, rules);
   if (result.chosenSource !== wantedSource || !areEquivalent(normalizedFinal, normalizedSupplied)) {
+    // #1379 (round 2): the write did not land. WHY? The consolidator's own rejection entry for THIS write's
+    // source says: a genuine priority loss (isPriorityLossReason) keeps LOST_TO_HIGHER_PRIORITY; ANY other
+    // reason -- an OD-21 rule, matrix bounds (VALIDATION_FAILED, incl. NaN #1368), an incapable source, a
+    // degenerate band, an implausible issue size, or a code nobody listed -- is a REFUSAL (fail closed), so
+    // the walk moves to rank 2 instead of re-asking the same refused value. Checked only AFTER the
+    // agreement test, so a same-source win (whose rejection entry names the OLD value) is never a refusal.
+    // A rejection recorded for another source is not this write's (falls through to the priority message).
+    const rejection = result.rejectedSources?.find((r) => r.source === wantedSource);
+    if (rejection && !isPriorityLossReason(rejection.reason)) {
+      return { accepted: false, reason: String(rejection.reason), refused: true };
+    }
     return {
       accepted: false,
       reason: `consolidator kept ${result.chosenSource} value ${JSON.stringify(result.finalValue)} over ${wantedSource} ${JSON.stringify(suppliedValue)} (matrix priority; PULL-WRITE)`,

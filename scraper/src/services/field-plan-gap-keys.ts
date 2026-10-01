@@ -116,6 +116,20 @@ function overridePart(override: GapKeyOverride | null | undefined): string {
   return override ? `o${short(override.id)}` : 'o:none';
 }
 
+/** The date columns the merged-record date rules judge (validators.ts IPO_DATE_KEYS), as manifest field keys. */
+const DATE_RULE_FIELD_KEYS: ReadonlySet<string> = new Set([
+  'ipos.open_date',
+  'ipos.close_date',
+  'ipos.allotment_date',
+  'ipos.listing_date',
+]);
+export const DATE_RULE_INPUT_KEYS = ['openDate', 'closeDate', 'allotmentDate', 'listingDate'] as const;
+
+function storedDatesPart(inputs: Readonly<Record<string, string | null | undefined>> | null | undefined): string {
+  if (!inputs) return 't:unknown';
+  return `t${short(DATE_RULE_INPUT_KEYS.map((k) => `${k}=${inputs[k] ?? ''}`).join(','))}`;
+}
+
 export function buildFieldPlanIpoGapKeys(params: {
   manifestFields: Record<string, FingerprintableManifestEntry>;
   coverageFingerprint: string;
@@ -131,6 +145,13 @@ export function buildFieldPlanIpoGapKeys(params: {
   stage?: string | null;
   /** #1379: a fingerprint of the loaded validation rules. Omitted: `v:unknown`. */
   validationRulesFingerprint?: string | null;
+  /**
+   * #1379 round 2: the STORED dates the cross-field date rules read (`incomingDatesRefusedOnMergedRecord`:
+   * openDate, closeDate, allotmentDate, listingDate). Part of the validation key of the four date fields
+   * only, so an admin correcting open_date unparks a date-refused listing_date (§5.3 rule 4: the refusal
+   * was judged against those inputs). Omitted: `t:unknown`.
+   */
+  storedDateInputs?: Readonly<Record<string, string | null | undefined>> | null;
 }): FieldPlanIpoGapKeys {
   const byField: Record<string, FieldPlanFieldGapKeys> = {};
   for (const [fieldKey, entry] of Object.entries(params.manifestFields)) {
@@ -142,11 +163,12 @@ export function buildFieldPlanIpoGapKeys(params: {
     const withDocuments = `${plain}|${documentsPart(params.documents, entry?.documentType)}`;
     const stagePart = params.stage ? `s${short(params.stage)}` : 's:unknown';
     const rulesPart = params.validationRulesFingerprint ? `v${short(params.validationRulesFingerprint)}` : 'v:unknown';
+    const datesPart = DATE_RULE_FIELD_KEYS.has(fieldKey) ? `|${storedDatesPart(params.storedDateInputs)}` : '';
     byField[fieldKey] = {
       plain,
       withDocuments,
       withWriter: `${plain}|${writer}`,
-      withValidation: `${withDocuments}|${stagePart}|${rulesPart}`,
+      withValidation: `${withDocuments}|${stagePart}|${rulesPart}${datesPart}`,
     };
   }
   return { byField };

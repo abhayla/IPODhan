@@ -490,6 +490,67 @@ export const TERMINAL_IPO_STATUSES: ReadonlySet<string> = new Set<string>(['WITH
 /** #1298: a stored POSTPONED kept because no relaunch filing has arrived since the postponement. */
 export const POSTPONED_KEPT_NO_RELAUNCH = 'POSTPONED_KEPT_NO_RELAUNCH';
 
+// #1379 (round 2): the write-time REFUSAL reasons vs the PRIORITY-LOSS reasons, one list each, used by
+// the field-plan walk to tell "this value was refused, ask rank 2" from "a higher source holds the field".
+// The refusal codes are the constants the emit sites below use (never retyped there).
+export const VALIDATION_RULE_REFUSAL_PREFIX = 'VALIDATION_RULE_FAILED:';
+export const VALIDATION_FAILED_REASON = 'VALIDATION_FAILED';
+export const REJECTED_INCAPABLE_SOURCE_REASON = 'REJECTED_INCAPABLE_SOURCE';
+export const DEGENERATE_PRICE_BAND_REASON = 'DEGENERATE_PRICE_BAND';
+export const ISSUE_SIZE_SEGMENT_FLOOR_REASON = 'ISSUE_SIZE_IMPLAUSIBLE_SEGMENT_FLOOR';
+export const ISSUE_SIZE_SHARES_BAND_REASON = 'ISSUE_SIZE_INCOHERENT_WITH_SHARES_BAND';
+export const NO_INCOMING_VALUE_REASON = 'NO_INCOMING_VALUE';
+export const NOTHING_TO_RECORD_REASON = 'NOTHING_TO_RECORD';
+
+/** Exact refusal codes (the OD-21 rule refusal carries a `VALIDATION_RULE_FAILED:<rule>` prefix instead). */
+export const WRITE_REFUSAL_REASONS: ReadonlySet<string> = new Set<string>([
+  VALIDATION_FAILED_REASON,
+  REJECTED_INCAPABLE_SOURCE_REASON,
+  DEGENERATE_PRICE_BAND_REASON,
+  ISSUE_SIZE_SEGMENT_FLOOR_REASON,
+  ISSUE_SIZE_SHARES_BAND_REASON,
+  NO_INCOMING_VALUE_REASON,
+  NOTHING_TO_RECORD_REASON,
+]);
+
+/**
+ * The reasons that mean "the stored value / a higher-ranked source legitimately holds the field": every
+ * kept-value resolution the consolidator makes. A rejection of the caller's source with any OTHER reason
+ * (a known refusal above, or a code nobody listed) is read as a refusal -- fail closed (#1379 round 2).
+ */
+export const PRIORITY_LOSS_REASONS: ReadonlySet<string> = new Set<string>([
+  'SOURCE_PRIORITY',
+  'DEFAULT_KEEP_EXISTING',
+  'TIME_BASED_PRIORITY',
+  'TIME_BASED_PRIORITY_EXISTING_NEWER',
+  'SAME_SOURCE_REFRESH',
+  'SAME_SOURCE_REFRESH_STORED_DOCUMENT_OUTRANKS',
+  'SAME_SOURCE_REFRESH_INCOMING_DOCUMENT_OUTRANKS',
+  'SAME_SOURCE_REFRESH_EXISTING_NEWER',
+  SOURCE_CHANGED_OWN_VALUE,
+  'HELD_DISPUTED_HIGH_VALUE_LIVE',
+  'TERMINAL_STATUS_KEPT',
+  BACKWARD_STATUS_KEPT,
+  POSTPONED_KEPT_NO_RELAUNCH,
+  'UNTRACKED_EXISTING_VALUE_KEPT',
+  OD129_DOCUMENT_DISAGREES_REASON,
+  SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+  'SET_MERGE_NO_NEW_MEMBERS',
+  'SET_MERGED',
+  'TZ_SIGNATURE_TIEBREAK_PREFER_NON_NSE',
+  'EXCHANGE_CONSENSUS_OVERRIDE_HELD_VALUE',
+  'DATE_INVARIANT_OVERRIDE_HELD_VALUE',
+  PLAN_RANK_REPLACED_KEPT_VALUE,
+]);
+
+/** `SME_SINGLE_EXCHANGE_COLLAPSE_<tier>`: the SME single-exchange collapse keeps the stored listing exchange. */
+const SME_COLLAPSE_PREFIX = 'SME_SINGLE_EXCHANGE_COLLAPSE_';
+
+/** True for a genuine priority loss; false for every refusal AND every unknown code (fail closed). */
+export function isPriorityLossReason(reason: unknown): boolean {
+  return typeof reason === 'string' && (PRIORITY_LOSS_REASONS.has(reason) || reason.startsWith(SME_COLLAPSE_PREFIX));
+}
+
 const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
 
 /**
@@ -911,7 +972,7 @@ export function collectImplausibleIssueSizeFields(
     segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
 
   if (floor !== null && issueSize < floor) {
-    return { fields: new Set(['issueSize']), reason: 'ISSUE_SIZE_IMPLAUSIBLE_SEGMENT_FLOOR' };
+    return { fields: new Set(['issueSize']), reason: ISSUE_SIZE_SEGMENT_FLOOR_REASON };
   }
 
   if (source && ISSUE_SIZE_FILING_TOTAL_SOURCES.has(source)) return empty;
@@ -925,7 +986,7 @@ export function collectImplausibleIssueSizeFields(
     const lowerBound = netOfferAtFloor * (1 - ISSUE_SIZE_COHERENCE_TOLERANCE);
     const upperBound = fullOfferAtCap * ISSUE_SIZE_COHERENCE_CEILING_MULTIPLIER;
     if (issueSize < lowerBound || issueSize > upperBound) {
-      return { fields: new Set(['issueSize']), reason: 'ISSUE_SIZE_INCOHERENT_WITH_SHARES_BAND' };
+      return { fields: new Set(['issueSize']), reason: ISSUE_SIZE_SHARES_BAND_REASON };
     }
   }
 
@@ -1045,7 +1106,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
 
       return {
         status: 'REFUSED',
-        reason: `VALIDATION_RULE_FAILED:${outcome.ruleId}`,
+        reason: `${VALIDATION_RULE_REFUSAL_PREFIX}${outcome.ruleId}`,
         result: {
           fieldName,
           finalValue: storedValue ?? null,
@@ -1055,7 +1116,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
             {
               source: incomingSource,
               value: incomingValue,
-              reason: `VALIDATION_RULE_FAILED:${outcome.ruleId}`,
+              reason: `${VALIDATION_RULE_REFUSAL_PREFIX}${outcome.ruleId}`,
             },
           ],
         },
@@ -1111,7 +1172,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
 
     return {
       status: 'REFUSED',
-      reason: 'VALIDATION_FAILED',
+      reason: VALIDATION_FAILED_REASON,
       result: {
         fieldName,
         finalValue: storedValue, // Keep existing
@@ -1121,7 +1182,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
           {
             source: incomingSource,
             value: incomingValue,
-            reason: 'VALIDATION_FAILED',
+            reason: VALIDATION_FAILED_REASON,
           },
         ],
       },
@@ -1196,7 +1257,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
       // source never earns provenance on this field.
       return {
         status: 'REFUSED',
-        reason: 'REJECTED_INCAPABLE_SOURCE',
+        reason: REJECTED_INCAPABLE_SOURCE_REASON,
         result: {
           fieldName,
           finalValue: storedValue ?? null,
@@ -1208,7 +1269,7 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
             {
               source: incomingSource,
               value: incomingValue,
-              reason: 'REJECTED_INCAPABLE_SOURCE',
+              reason: REJECTED_INCAPABLE_SOURCE_REASON,
             },
           ],
         },
@@ -1414,7 +1475,7 @@ export class DataConsolidationService {
             {
               source: input.source,
               value: input.incomingData[fieldName],
-              reason: 'DEGENERATE_PRICE_BAND',
+              reason: DEGENERATE_PRICE_BAND_REASON,
             },
           ],
         });
@@ -1969,7 +2030,7 @@ export class DataConsolidationService {
           {
             source: incomingSource,
             value: incomingValue,
-            reason: 'NOTHING_TO_RECORD',
+            reason: NOTHING_TO_RECORD_REASON,
           },
         ],
       };
@@ -1989,7 +2050,7 @@ export class DataConsolidationService {
           {
             source: incomingSource,
             value: incomingValue,
-            reason: 'NO_INCOMING_VALUE',
+            reason: NO_INCOMING_VALUE_REASON,
           },
         ],
       };

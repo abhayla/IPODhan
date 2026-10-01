@@ -14,6 +14,12 @@ import {
   fieldPlanValidationKeyFor,
 } from '../../../src/services/field-plan-gap-keys.js';
 import { consolidatedUpsertResultFixture, fieldResult } from '../../helpers/consolidation-result-fixture.js';
+import {
+  WRITE_REFUSAL_REASONS,
+  PRIORITY_LOSS_REASONS,
+  VALIDATION_RULE_REFUSAL_PREFIX,
+  isPriorityLossReason,
+} from '../../../src/services/data-consolidation-service.js';
 
 const IPO_ID = '00000000-0000-4000-8000-000000001379';
 const RULE = 'face_value_equity_enum';
@@ -286,4 +292,96 @@ describe('#1379 the validation key: changes on exactly the events that justify a
   it('nothing new -> the same key (no re-ask)', () => expect(validationKey(gapKeys('UPCOMING', [], 'r1'))).toBe(base));
   it('the claim query offers a row stamped with the current key as NOT due (key listed)', () =>
     expect(fieldPlanClaimGapKeys(gapKeys('UPCOMING', [], 'r1'))['ipos.face_value']).toContain(base));
+});
+
+// Round 2 (Tier A MAJOR): EVERY write-time refusal the consolidator can return for this write's source is a
+// refusal, not a priority loss. Codes come from the consolidator's own exported constants (never retyped).
+describe('#1379 round 2: every write-time refusal code moves to rank 2; only a priority loss is LOST_TO_HIGHER_PRIORITY', () => {
+  /** Rank 1 (NSE=3) comes back as the stored value 5 (source DRHP) with `reason` rejecting NSE; rank 2 (BSE=10) lands. */
+  function withRank1Rejection(reason: string) {
+    const ctx = setup({ answers: { NSE: supplied(3), BSE: supplied(10) } });
+    (ctx.d.orchestrator as any).consolidatedUpsertIPO = vi.fn(async (scraped: any, source: any) =>
+      consolidatedUpsertResultFixture({
+        ipoId: IPO_ID,
+        fieldResults: [
+          scraped.faceValue === 10
+            ? fieldResult('faceValue', 10, source)
+            : fieldResult('faceValue', 5, 'DRHP', { rejectedSources: [{ source, value: scraped.faceValue, reason }] }),
+        ],
+      })
+    );
+    return ctx;
+  }
+  const written = (d: any) => d.orchestrator.consolidatedUpsertIPO.mock.calls.map((c: any[]) => `${c[1]}=${c[0].faceValue}`);
+
+  const refusalCodes = [...WRITE_REFUSAL_REASONS, `${VALIDATION_RULE_REFUSAL_PREFIX}${RULE}`, 'SOME_FUTURE_REFUSAL_CODE'];
+
+  it('the list is non-empty and includes VALIDATION_FAILED (matrix bounds, incl. the #1368 NaN case)', () => {
+    expect(WRITE_REFUSAL_REASONS.has('VALIDATION_FAILED')).toBe(true);
+    expect(WRITE_REFUSAL_REASONS.size).toBeGreaterThanOrEqual(7);
+  });
+
+  it.each(refusalCodes)('refusal %s: rank 2 is written in the same pass (SUPPLIED from BSE)', async (reason) => {
+    const { d, recorded } = withRank1Rejection(reason);
+    await walkFieldPlanForIPO(IPO_ID, d, budget());
+    expect(written(d)).toEqual(['NSE=3', 'BSE=10']);
+    expect(recorded[0]).toMatchObject({ state: 'SUPPLIED', chosen: { source: 'BSE', rank: 2 } });
+  });
+
+  it('an UNKNOWN code is a refusal (fail closed), never a priority loss', () => {
+    expect(isPriorityLossReason('SOME_FUTURE_REFUSAL_CODE')).toBe(false);
+    expect(isPriorityLossReason(undefined)).toBe(false);
+  });
+
+  it.each([...PRIORITY_LOSS_REASONS])('priority loss %s stays LOST_TO_HIGHER_PRIORITY, rank 2 never written', async (reason) => {
+    const { d, recorded } = withRank1Rejection(reason);
+    await walkFieldPlanForIPO(IPO_ID, d, budget());
+    expect(written(d)).toEqual(['NSE=3']);
+    expect(recorded[0]).toMatchObject({ state: 'CHECK_FAILED', reasonCode: 'LOST_TO_HIGHER_PRIORITY' });
+  });
+
+  it('a same-source WIN whose rejection entry names the old value is not a refusal', async () => {
+    const { d, recorded } = setup({ answers: { NSE: supplied(3) } });
+    (d.orchestrator as any).consolidatedUpsertIPO = vi.fn(async (_s: any, source: any) =>
+      consolidatedUpsertResultFixture({
+        ipoId: IPO_ID,
+        fieldResults: [fieldResult('faceValue', 3, source, { rejectedSources: [{ source, value: 2, reason: 'SAME_SOURCE_REFRESH' }] })],
+      })
+    );
+    await walkFieldPlanForIPO(IPO_ID, d, budget());
+    expect(recorded[0]).toMatchObject({ state: 'SUPPLIED', chosen: { source: 'NSE', rank: 1 } });
+  });
+});
+
+// Round 2 (MINOR 2): a date-refused row is judged against the STORED dates the rules read, so the key it is parked
+// under includes them: a corrected open_date unparks a refused listing_date; a non-date field is unaffected.
+describe('#1379 round 2: the validation key of a date field includes the stored date inputs', () => {
+  const DATES_MANIFEST = {
+    'ipos.listing_date': { rank: { MAINBOARD: ['NSE', 'BSE'] }, documentType: 'PRICE_BAND_AD' },
+    'ipos.face_value': { rank: { MAINBOARD: ['NSE', 'BSE'] }, documentType: 'PRICE_BAND_AD' },
+  } as never;
+  const keysWith = (dates: Record<string, string | null> | null) =>
+    buildFieldPlanIpoGapKeys({
+      manifestFields: DATES_MANIFEST,
+      coverageFingerprint: 'cov',
+      extractorVersion: 'x1',
+      documents: [],
+      stage: 'UPCOMING',
+      validationRulesFingerprint: 'r1',
+      storedDateInputs: dates,
+    });
+  const stored = { openDate: '2026-10-10', closeDate: '2026-10-14', allotmentDate: null, listingDate: null };
+
+  it('a corrected open_date changes the listing_date key (the refused row is re-asked)', () =>
+    expect(fieldPlanValidationKeyFor(keysWith({ ...stored, openDate: '2026-10-01' }), 'ipos', 'listing_date')).not.toBe(
+      fieldPlanValidationKeyFor(keysWith(stored), 'ipos', 'listing_date')
+    ));
+  it('the same stored dates -> the same key (no re-ask)', () =>
+    expect(fieldPlanValidationKeyFor(keysWith({ ...stored }), 'ipos', 'listing_date')).toBe(
+      fieldPlanValidationKeyFor(keysWith(stored), 'ipos', 'listing_date')
+    ));
+  it('a non-date field (face_value) key does not move when a date is corrected', () =>
+    expect(fieldPlanValidationKeyFor(keysWith({ ...stored, openDate: '2026-10-01' }), 'ipos', 'face_value')).toBe(
+      fieldPlanValidationKeyFor(keysWith(stored), 'ipos', 'face_value')
+    ));
 });
