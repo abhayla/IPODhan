@@ -2176,11 +2176,14 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     // #1294 item 4 (§9.2 items 8 and 28(b), clarified 2026-10-01): the merge deletes the dropped row's
     // child lists and may carry lead managers onto the survivor. An admin-owned list is never deleted
     // or replaced silently: the merge (dry run included) is refused, naming the IPO and the list.
-    const listRefusal = await adminListMergeRefusal(this.db as never, {
+    // This early read is a fast path (it also refuses the dry run); the apply re-reads it under the
+    // row locks below, because an admin list edit can commit between here and that lock (PR #1371).
+    const listRefusalArgs = {
       keep: { id: keepId, slug: String(keep.slug) },
       drop: { id: dropId, slug: String(drop.slug) },
       carriedColumns: patch.map((p) => p.column),
-    });
+    };
+    const listRefusal = await adminListMergeRefusal(this.db as never, listRefusalArgs);
     if (listRefusal) throw new DatabaseError(`mergeDuplicateInto: refused — ${listRefusal}`, undefined);
 
     const toDelete = counts.filter((x) => x.drop > 0 && !REPOINT_TABLES.has(x.table));
@@ -2241,6 +2244,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           undefined
         );
       }
+
+      // PR #1371 round 2 (§9.2 items 8, 28(b)): every admin list write locks its `ipos` row (FOR NO
+      // KEY UPDATE, `lockAndReadListOwnership` / `writeAdminFieldValue`), which conflicts with the
+      // FOR UPDATE just taken, so the ownership read here is final until commit: re-check it.
+      const lockedListRefusal = await adminListMergeRefusal(tx as never, listRefusalArgs);
+      if (lockedListRefusal) throw new DatabaseError(`mergeDuplicateInto: refused — ${lockedListRefusal}`, undefined);
 
       // The patch was planned from an UNLOCKED read of the survivor. A carry-if-absent value is
       // only correct while the survivor's column is still absent; if a concurrent writer filled it

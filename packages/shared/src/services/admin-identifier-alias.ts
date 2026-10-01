@@ -129,7 +129,7 @@ export interface IdentifierMove {
  * Called only after `holderElsewhere` found no row that binds the value on its own account, so an
  * ACTIVE key, a live column or an OD-83 supersede is never touched here.
  */
-async function moveAdminRemovedCopies(
+export async function moveAdminRemovedCopies(
   tx: Db,
   input: IdentifierEditInput,
   value: string,
@@ -182,6 +182,26 @@ async function moveAdminRemovedCopies(
     });
   }
   return moves;
+}
+
+/**
+ * PR #1371 round 2 (OD-68): the advisory-lock key of one identifier value. The admin create
+ * (`admin-ipo-create.ts`) and the admin identifier save take the SAME key for the same value, so two
+ * admin writes of one CIN / ISIN / symbol / BSE IPO number on different rows are serialised: the
+ * second waits for the first to commit, then its holder check reads the first's row and refuses.
+ */
+export function identifierLockKey(fieldName: IdentifierAliasField, value: string): string {
+  return fieldName === 'bseIpoNo' ? `key:BSE:BSE_IPO_NO:${value}` : `${fieldName}:${value}`;
+}
+
+/**
+ * Inside the caller's transaction: take a transaction-scoped advisory lock per identifier key, in
+ * sorted order so two writers never deadlock on each other's keys. Released at commit or rollback.
+ */
+export async function lockIdentifierValues(tx: { execute: Db['execute'] }, keys: readonly string[]): Promise<void> {
+  for (const k of [...new Set(keys)].sort()) {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('admin-identifier'), hashtext(${k}))`);
+  }
 }
 
 /** The audit action of an identifier moved off a row by an admin edit of another row (#1290). */
@@ -324,6 +344,9 @@ export async function keepReplacedIdentifier(tx: Db, input: IdentifierEditInput)
   if (oldNorm === newNorm) return out;
 
   if (newNorm !== null) {
+    // PR #1371 round 2: the holder check and the write run under one lock on the VALUE, so a
+    // concurrent admin save or create of the same value on another row cannot pass the check too.
+    await lockIdentifierValues(tx, [identifierLockKey(fieldName, newNorm)]);
     const [self] = await tx
       .select({ offeringType: ipos.offeringType, openDate: ipos.openDate, slug: ipos.slug })
       .from(ipos)

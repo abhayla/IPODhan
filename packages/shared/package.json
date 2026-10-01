@@ -31,6 +31,7 @@
     "./services/scraper-write-block": "./src/services/scraper-write-block.ts",
     "./services/admin-list-write": "./src/services/admin-list-write.ts",
     "./services/admin-list-hold": "./src/services/admin-list-hold.ts",
+    "./services/admin-identifier-alias": "./src/services/admin-identifier-alias.ts",
     "./services/relaunch-admin-clear": "./src/services/relaunch-admin-clear.ts",
     "./services/relaunch-reapply": "./src/services/relaunch-reapply.ts",
     "./utils/slug": "./src/utils/slug.ts",
