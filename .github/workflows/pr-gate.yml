@@ -1112,7 +1112,7 @@ jobs:
 
       - name: Board-owed-guard hook self-tests (project-level, 2026-09-25)
         # .claude/hooks/board-owed-guard.py moved from user level to project
-        # level; this stdlib-only unittest suite (52 cases, ~17s) is its only
+        # level; this stdlib-only unittest suite (73 cases, ~30s) is its only
         # gate. Configures git identity because setUpClass does `git init` +
         # `git remote add` in temp dirs on this fresh runner. No extra pip
         # install (stdlib only, same Python 3.12 already set up above).

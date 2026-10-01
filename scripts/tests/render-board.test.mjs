@@ -380,6 +380,29 @@ ok('--check exits non-zero on a stale file', checkFailed);
   ok('a row with no pr/issue keeps its typed status untouched', noRef.status === 'parked' && noRef.measured_at === undefined);
 }
 
+// --- rendered commit (#1381 round 3) ------------------------------------------
+// The board-owed hook counts a merge as on the page only when its merge commit
+// is an ancestor of the commit the page was rendered from. The page must carry
+// that commit, take it from the env the hook sets, and --check must reuse the
+// committed value (CI has no say in which commit the published page came from).
+{
+  const sd = mkdtempSync(join(tmpdir(), 'board-sha-'));
+  const SHA = 'a'.repeat(40);
+  const run = (args, env = {}) => execFileSync('node', [RENDER, ...args], { encoding: 'utf8', stdio: 'pipe', env: { ...process.env, ...env } });
+  const o1 = join(sd, 'flag.html');
+  run(['--out', o1, '--now', '2026-10-01T00:00:00Z', '--rendered-sha', SHA]);
+  ok('--rendered-sha lands on the stamp as data-rendered-sha', readFileSync(o1, 'utf8').includes(`data-rendered-sha="${SHA}"`));
+  const o2 = join(sd, 'env.html');
+  run(['--out', o2, '--now', '2026-10-01T00:00:00Z'], { BOARD_RENDERED_SHA: 'b'.repeat(40) });
+  ok('BOARD_RENDERED_SHA (set by the hook) is recorded', readFileSync(o2, 'utf8').includes(`data-rendered-sha="${'b'.repeat(40)}"`));
+  const o3 = join(sd, 'bad.html');
+  run(['--out', o3, '--now', '2026-10-01T00:00:00Z', '--rendered-sha', 'not-a-sha']);
+  ok('a non-40-hex sha is omitted, never written', !readFileSync(o3, 'utf8').includes('data-rendered-sha'));
+  let checkOk = true;
+  try { run(['--out', o1, '--check']); } catch { checkOk = false; }
+  ok('--check reuses the committed page\'s rendered sha (deterministic)', checkOk);
+}
+
 // --- report -----------------------------------------------------------------
 console.log(`render-board: ${pass} passed, ${fails.length} failed`);
 if (fails.length) {

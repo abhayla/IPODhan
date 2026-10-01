@@ -56,6 +56,20 @@ class BoardOwedGuardTest(unittest.TestCase):
             os.makedirs(path)
             git(["init", "-q"], path)
             git(["remote", "add", "origin", origin], path)
+        # #1381 round 3: a real commit chain for the ancestry checks. Its origin
+        # is a path that does not exist, so the hook's one fetch fails at once
+        # (never the network).
+        cls.anc = os.path.join(cls.tmp, "ancestry")
+        os.makedirs(cls.anc)
+        git(["init", "-q"], cls.anc)
+        git(["remote", "add", "origin", os.path.join(cls.tmp, "no-such-remote")], cls.anc)
+        cls.c = []
+        for i in range(3):
+            git(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty",
+                 "-m", "c%d" % i], cls.anc)
+            cls.c.append(git(["rev-parse", "HEAD"], cls.anc).stdout.strip())
+        cls.not_a_repo = os.path.join(cls.tmp, "not-a-repo")
+        os.makedirs(cls.not_a_repo)
 
     @classmethod
     def tearDownClass(cls):
@@ -85,6 +99,7 @@ class BoardOwedGuardTest(unittest.TestCase):
         env["BOARD_OWED_ERROR_LOG"] = self.errlog
         env["BOARD_PUBLISHED_STAMP"] = self.stamp
         env["BOARD_OWED_NO_REGEN"] = "1"
+        env["BOARD_OWED_REPO"] = self.anc
         env.update(self.gh_env)
         if env_extra:
             env.update(env_extra)
@@ -97,10 +112,17 @@ class BoardOwedGuardTest(unittest.TestCase):
             timeout=60,
         )
 
-    def stub(self, merged, sleep=0, fail=False, name="gh", side_append=None):
+    def stub(self, merged, sleep=0, fail=False, name="gh", side_append=None, side_write=None):
         """A fake gh that logs its argv and prints `merged` for `pr list`.
         `side_append=(path, record)` makes it append a JSON line to `path`
-        while "running", i.e. another session writing during the gh call."""
+        while "running", i.e. another session writing during the gh call;
+        `side_write=(path, records)` makes it REWRITE `path` with `records`."""
+        if side_write:
+            side = "open(%r, 'w').write(''.join(json.dumps(r) + chr(10) for r in %r))" % side_write
+        elif side_append:
+            side = "open(%r, 'a').write(json.dumps(%r) + chr(10))" % side_append
+        else:
+            side = ""
         path = os.path.join(self.tmp, "%s-stub-%s.py" % (name, self._testMethodName))
         log = path + ".log"
         if os.path.exists(log):
@@ -114,7 +136,7 @@ class BoardOwedGuardTest(unittest.TestCase):
                 "%s\n"
                 "print(json.dumps(%r))\n" % (
                     log,
-                    ("open(%r, 'a').write(json.dumps(%r) + chr(10))" % side_append) if side_append else "",
+                    side,
                     sleep, "sys.exit(1)" if fail else "", merged)
             )
         return {"BOARD_OWED_GH_ARGV": json.dumps([sys.executable, path])}, log
@@ -592,48 +614,57 @@ class BoardOwedGuardTest(unittest.TestCase):
         p = self.run_stop("me", stop_hook_active=True)
         self.assertEqual(p.returncode, 0, "rc=%s" % p.returncode)
 
-    # ---- (t) #1381: publish cutoff, lost update, fail-safe drop ----
-    def publish(self, rendered_offset=0, stamped=True):
-        """Publish a board file whose data-rendered-at is now+rendered_offset s."""
+    # ---- (t) #1381: coverage by commit ancestry, lost update, fail-safe drop ----
+    def publish(self, sha=None, rendered_offset=0, stamped=True):
+        """Publish a board file stamped now+rendered_offset s, carrying
+        data-rendered-sha=`sha` when given."""
         path = os.path.join(self.tmp, "board-%s.html" % self._testMethodName)
-        body = "<html><p class=\"stamp\" data-rendered-at=\"%s\">x</p></html>" % iso(rendered_offset) if stamped else "<html>no stamp</html>"
+        attr = ' data-rendered-sha="%s"' % sha if sha else ""
+        body = ("<html><p class=\"stamp\" data-rendered-at=\"%s\"%s>x</p></html>" % (iso(rendered_offset), attr)
+                if stamped else "<html>no stamp</html>")
         open(path, "w", encoding="utf-8").write(body)
         p = self.run_hook("PostToolUseArtifact",
                           {"tool_name": "Artifact", "tool_input": {"url": BOARD_URL, "file_path": path}})
         self.assertEqual(p.returncode, 0, p.stderr)
 
-    def test_t1_merge_then_publish_then_stop_does_not_re_owe(self):
+    @staticmethod
+    def row(number, offset, oid):
+        return {"number": number, "mergedAt": iso(offset), "mergeCommit": {"oid": oid}}
+
+    def test_t1_rendered_sha_after_the_merge_covers_it(self):
         self.bash(self.M + " 1381 --squash")
-        self.publish()
-        self.use_gh([{"number": 1381, "mergedAt": iso(-120)}])
+        self.publish(sha=self.c[2])
+        self.use_gh([self.row(1381, -120, self.c[1])])
         p = self.run_stop()
-        self.assertEqual(p.returncode, 0, "a merge the publish covered was re-owed: %s" % p.stderr)
+        self.assertEqual(p.returncode, 0, "a merge the page contains was re-owed: %s" % p.stderr)
         self.assertFalse(os.path.exists(self.marker))
 
     def test_t1b_computed_number_check_survives_publish_without_re_owing(self):
         self.bash(self.M + ' "$PR" --squash')
-        self.use_gh([{"number": 1382, "mergedAt": iso(-120)}])
+        self.use_gh([self.row(1382, -120, self.c[1])])
         self.assertEqual(self.run_stop().returncode, 2)
-        self.publish()
+        self.publish(sha=self.c[1])
         for _ in range(2):
             p = self.run_stop()
             self.assertEqual(p.returncode, 0, "re-owed after publish: %s" % p.stderr)
 
     def test_t2_merge_a_publish_merge_b_owes_only_b(self):
         self.bash(self.M + ' "$PR" --squash')
-        self.publish()
-        self.use_gh([{"number": 1390, "mergedAt": iso(-120)}, {"number": 1391, "mergedAt": iso(30)}])
+        self.publish(sha=self.c[1])
+        self.use_gh([self.row(1390, -120, self.c[1]), self.row(1391, -60, self.c[2])])
         p = self.run_stop()
         self.assertEqual(p.returncode, 2, p.stderr)
-        self.assertEqual(self.marker_prs(), ["1391"], "only the merge after the publish is owed")
+        self.assertEqual(self.marker_prs(), ["1391"], "only the merge the page lacks is owed")
 
-    def test_t3_gh_down_after_publish_does_not_owe_a_covered_foreground_merge(self):
+    def test_t3_gh_down_after_publish_owes_unknown(self):
+        # Round 3: no clock covers anything. Without GitHub there is no merge
+        # commit to test, so the merge stays owed (one extra prompt).
         self.write_pending([{"session_id": "me", "ts": iso(-300), "numbers": ["1383"], "background": False, "command": "x"}])
-        self.publish()  # rendered after the trigger by more than the 60 s margin
+        self.publish(sha=self.c[2])
         self.use_gh([], fail=True)
         p = self.run_stop()
-        self.assertEqual(p.returncode, 0, "unknown-merge record for a covered merge: %s" % p.stderr)
-        self.assertFalse(os.path.exists(self.pending))
+        self.assertEqual(p.returncode, 2, "gh down was treated as covered")
+        self.assertIn("unknown merge", p.stderr)
 
     def test_t4_check_appended_by_another_session_during_gh_survives(self):
         self.write_pending([{"session_id": "me", "ts": iso(-60), "numbers": ["1500"], "command": "x"}])
@@ -700,31 +731,67 @@ class BoardOwedGuardTest(unittest.TestCase):
         self.assertEqual(self.run_stop().returncode, 2)
         self.assertFalse(os.path.exists(self.pending))
 
-    def test_t9_merge_between_render_and_publish_is_still_owed(self):
+    def test_t9_rendered_sha_before_the_merge_is_owed(self):
         self.bash(self.M + " 1392 --squash")
-        self.use_gh([{"number": 1392, "mergedAt": iso(-180)}])  # render 10:00, merge 10:02, publish 10:05
-        self.publish(rendered_offset=-300)
+        self.use_gh([self.row(1392, -180, self.c[1])])
+        self.publish(sha=self.c[0])  # page built from the commit BEFORE the merge
         p = self.run_stop()
         self.assertEqual(p.returncode, 2, "a merge the page never showed was treated as covered: %s" % p.stderr)
         self.assertEqual(self.marker_prs(), ["1392"])
 
-    def test_t9b_page_without_a_stamp_stores_no_cutoff(self):
-        self.bash(self.M + " 1393 --squash")
-        self.publish(stamped=False)
-        self.assertTrue(os.path.exists(self.stamp), "the publish clock file must still be written")
-        self.assertEqual(open(self.stamp).read().strip(), "", "a cutoff was stored for an unstamped page")
-        self.use_gh([{"number": 1393, "mergedAt": iso(-120)}])
-        self.assertEqual(self.run_stop().returncode, 2, "unstamped page covered a merge")
-        os.remove(self.marker)
-        self.write_pending([{"session_id": "me", "ts": iso(-60), "numbers": None, "command": "x"}])
-        self.use_gh([], fail=True)  # gh down: nothing may count as covered
-        self.assertEqual(self.run_stop().returncode, 2)
+    def test_t9a_stale_fetch_old_sha_owes_a_merge_from_an_hour_ago(self):
+        # The page was rendered and published NOW, but from an origin/main last
+        # fetched hours ago (sha c0). A merge an hour ago (c1) predates both the
+        # render and the publish clock, and is still not on the page.
+        self.write_pending([{"session_id": "me", "ts": iso(-3700), "numbers": None, "command": "x"}])
+        self.publish(sha=self.c[0], rendered_offset=0)
+        self.use_gh([self.row(1395, -3600, self.c[1])])
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2, "an old render sha covered a later merge: %s" % p.stderr)
+        self.assertEqual(self.marker_prs(), ["1395"])
 
-    def test_t9c_cutoff_is_min_of_render_margin_and_publish(self):
-        self.publish(rendered_offset=0)
-        cut = datetime.datetime.fromisoformat(open(self.stamp).read().strip())
-        want = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=60)
-        self.assertLess(abs((cut - want).total_seconds()), 10, "cutoff is not render-60s")
+    def test_t9b_page_without_a_sha_covers_nothing(self):
+        self.bash(self.M + " 1393 --squash")
+        self.publish(sha=None)  # stamped page, no data-rendered-sha
+        self.assertTrue(os.path.exists(self.stamp), "the publish clock file must still be written")
+        self.assertIsNone(json.loads(open(self.stamp).read())["rendered_sha"])
+        self.use_gh([self.row(1393, -120, self.c[0])])
+        self.assertEqual(self.run_stop().returncode, 2, "a page with no sha covered a merge")
+        self.assertEqual(self.marker_prs(), ["1393"])
+
+    def test_t9c_publish_stores_the_pages_rendered_sha(self):
+        self.publish(sha=self.c[1])
+        self.assertEqual(json.loads(open(self.stamp).read())["rendered_sha"], self.c[1])
+
+    def test_t9d_git_failure_means_owed(self):
+        self.bash(self.M + " 1396 --squash")
+        self.publish(sha=self.c[2])
+        self.use_gh([self.row(1396, -120, self.c[1])])
+        p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan},
+                          env_extra={"BOARD_OWED_REPO": self.not_a_repo})
+        self.assertEqual(p.returncode, 2, "a git failure counted as covered: %s" % p.stderr)
+        self.assertEqual(self.marker_prs(), ["1396"])
+
+    def test_t9e_unfetchable_or_missing_oid_means_owed(self):
+        self.bash(self.M + ' "$PR" --squash')
+        self.publish(sha=self.c[2])
+        self.use_gh([self.row(1397, -120, "d" * 40),  # not local, fetch fails
+                     {"number": 1398, "mergedAt": iso(-120)}])  # gh gave no oid
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertEqual(self.marker_prs(), ["1397", "1398"])
+
+    def test_t11_a_check_removed_by_another_session_stays_removed(self):
+        # Reviewer mutation M7 survived: nothing pinned that a record another
+        # session removed during the gh call is not written back.
+        mine = {"session_id": "me", "ts": iso(-60), "numbers": ["1700"], "command": "x"}
+        theirs = {"session_id": "other", "ts": iso(-1), "numbers": ["1701"], "command": "y"}
+        self.write_pending([mine])
+        self.use_gh([], side_write=(self.pending, [theirs]))
+        self.assertEqual(self.run_stop("me").returncode, 0)
+        recs = self.read_jsonl(self.pending)
+        self.assertEqual([r["numbers"] for r in recs], [["1701"]],
+                         "a check another session removed came back: %r" % recs)
 
     def test_t10_concurrent_rewrite_is_not_duplicated_and_removal_sticks(self):
         mine = {"session_id": "me", "ts": iso(-60), "numbers": ["1600"], "command": "x"}
