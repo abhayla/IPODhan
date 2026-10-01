@@ -175,7 +175,9 @@
         "INVITS",
         "REITS",
         "TENDER",
-        "BUYBACK"
+        "BUYBACK",
+        "OFS",
+        "RIGHTS"
       ],
       "unit": "keep",
       "comparisonFamily": "MONEY"
@@ -434,7 +436,8 @@
       "na": [
         "NCD",
         "TENDER",
-        "BUYBACK"
+        "BUYBACK",
+        "OFS"
       ],
       "unit": "keep",
       "comparisonFamily": "MONEY"
@@ -480,7 +483,8 @@
       "na": [
         "NCD",
         "TENDER",
-        "BUYBACK"
+        "BUYBACK",
+        "OFS"
       ],
       "unit": "keep",
       "comparisonFamily": "MONEY"
@@ -603,7 +607,9 @@
           "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
         }
       },
-      "na": [],
+      "na": [
+        "OFS"
+      ],
       "unit": "keep",
       "comparisonFamily": "DATE"
     },
@@ -1133,7 +1139,9 @@
           "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
         }
       },
-      "na": [],
+      "na": [
+        "OFS"
+      ],
       "unit": "keep",
       "comparisonFamily": "DATE"
     },
@@ -1168,7 +1176,9 @@
           "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
         }
       },
-      "na": [],
+      "na": [
+        "OFS"
+      ],
       "unit": "keep",
       "comparisonFamily": "DATE"
     },
@@ -1203,7 +1213,9 @@
           "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
         }
       },
-      "na": [],
+      "na": [
+        "OFS"
+      ],
       "unit": "keep",
       "comparisonFamily": "DATE"
     },
@@ -1415,7 +1427,12 @@
           "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A3"
         }
       },
-      "na": [],
+      "na": [
+        "INVITS",
+        "REITS",
+        "OFS",
+        "RIGHTS"
+      ],
       "unit": "keep",
       "comparisonFamily": "RATIO"
     },
@@ -2006,7 +2023,9 @@
           "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A16"
         }
       },
-      "na": [],
+      "na": [
+        "OFS"
+      ],
       "unit": "keep",
       "comparisonFamily": "MONEY"
     },
@@ -2066,7 +2085,10 @@
           "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A16"
         }
       },
-      "na": [],
+      "na": [
+        "OFS",
+        "RIGHTS"
+      ],
       "unit": "keep",
       "comparisonFamily": "MONEY"
     },

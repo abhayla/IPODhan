@@ -1,0 +1,89 @@
+{
+  "probe": "ofs-rights-applicability",
+  "generated_at": "2026-10-01T06:28:17.611Z",
+  "database": "ipodhan_staging",
+  "types": {
+    "OFS": {
+      "rows": 19,
+      "withValue": {
+        "price_range_min": 0,
+        "lot_size": 0,
+        "allotment_date": 0,
+        "basis_of_allotment_date": 0,
+        "initiation_of_refunds_date": 0,
+        "credit_of_shares_date": 0,
+        "retail_max_allottees": 0
+      },
+      "rowsWithAnyValue": []
+    },
+    "RIGHTS": {
+      "rows": 6,
+      "withValue": {
+        "price_range_min": 5,
+        "lot_size": 0,
+        "allotment_date": 0,
+        "basis_of_allotment_date": 0,
+        "initiation_of_refunds_date": 0,
+        "credit_of_shares_date": 0,
+        "retail_max_allottees": 0
+      },
+      "rowsWithAnyValue": [
+        {
+          "slug": "genesys-international-corporation-ltd",
+          "status": "CLOSED",
+          "band": true,
+          "lot": false,
+          "allot": false,
+          "basis": false,
+          "refunds": false,
+          "credit": false,
+          "allottees": false
+        },
+        {
+          "slug": "minolta-finance-ltd",
+          "status": "CLOSED",
+          "band": true,
+          "lot": false,
+          "allot": false,
+          "basis": false,
+          "refunds": false,
+          "credit": false,
+          "allottees": false
+        },
+        {
+          "slug": "shah-metacorp-ltd",
+          "status": "CLOSED",
+          "band": true,
+          "lot": false,
+          "allot": false,
+          "basis": false,
+          "refunds": false,
+          "credit": false,
+          "allottees": false
+        },
+        {
+          "slug": "shanti-gold-international-ltd",
+          "status": "CLOSED",
+          "band": true,
+          "lot": false,
+          "allot": false,
+          "basis": false,
+          "refunds": false,
+          "credit": false,
+          "allottees": false
+        },
+        {
+          "slug": "si-capital-financial-services-ltd",
+          "status": "CLOSED",
+          "band": true,
+          "lot": false,
+          "allot": false,
+          "basis": false,
+          "refunds": false,
+          "credit": false,
+          "allottees": false
+        }
+      ]
+    }
+  }
+}

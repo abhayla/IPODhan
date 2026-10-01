@@ -32,7 +32,7 @@ export const JOB_OWNED_FIELDS = {};
 add('ipos','symbol','D',['DOC','NSE','BSE'],{doc:'E7 cover'});
 add('ipos','company_name','D',['DOC','NSE','BSE'],{doc:'cover'});
 add('ipos','issue_size','D',['DOC','CG'],{doc:'A5+A6',na:['TENDER','BUYBACK'],note:'BSE MOVED FROM RANK 2 TO capable:false (review round 5, item C). The 2026-09-09 ARCIL measurement (below, kept for history) proposed a fix -- add the anchor portion back, use the cap price -- that was NEVER implemented in computeBSEIssueSize (scraper/src/scrapers/bse-api-scraper.ts): it still does shares x floor with no anchor add-back. Measured LIVE 2026-09-16 on all 6 live mainboard IPOs (issue #<TBD-BSE-ISSUE-SIZE>, filed review round 5 item E): BSE-derived issue_size is 41-76 percent BELOW the printed total on 6/6 -- Hero Motors 7,000,000,084 vs printed 10,000,000,000; SS Retail 3,543,935,252 vs 5,007,500,000; NSE 150,692,948,700 vs 265,796,400,000; Jindal Supreme 827,164,800 vs 1,248,800,000; Manika Plastech 855,476,760 vs 1,255,000,000; Sonaselection 940,940,000 vs 1,415,700,000. UNVERIFIED HYPOTHESIS: BSE’s Issue_Size_No_of_shares is the PUBLIC portion excluding anchors/reservations, not the non-anchor-only gap the 2026-09-09 note described -- the magnitude is too large (41-76% vs the 30-33.5% ARCIL case) to be the same single cause; not yet confirmed against a per-IPO anchor-allocation breakdown. capable:false until the real quantity BSE prints is identified and either mapped correctly or the anchor add-back is actually implemented and re-measured. HISTORICAL NOTE (2026-09-09, ARCIL): Issue_Size_No_of_shares read as the NON-ANCHOR share count -- NSE said the offer was 52,731,946 shares including a 15,819,583 anchor portion; BSE reported exactly 36,912,363, the remainder. Multiplying BSE shares by the floor price understated the issue by 33.5 percent, by the cap price by 30 percent. The correct total (total shares x cap price = 7,329,740,494) is what production stores.',capability:{"DOC":{"capable":true,"reason":"the PBA prints the total offer size at the cap (fresh + OFS)"},"BSE":{"capable":false,"reason":"review round 5, item C: BSE measured live 2026-09-16 on all 6 live mainboard IPOs, 41-76% BELOW the printed total offer on 6/6 (Hero Motors 7,000,000,084 vs 10,000,000,000; SS Retail 3,543,935,252 vs 5,007,500,000; NSE 150,692,948,700 vs 265,796,400,000; Jindal Supreme 827,164,800 vs 1,248,800,000; Manika Plastech 855,476,760 vs 1,255,000,000; Sonaselection 940,940,000 vs 1,415,700,000). computeBSEIssueSize (bse-api-scraper.ts) never implemented the anchor-portion add-back the 2026-09-09 ARCIL note proposed. UNVERIFIED HYPOTHESIS: BSE's Issue_Size_No_of_shares may be the public portion excluding anchors/reservations -- not yet confirmed. See docs/design/field-source-resolution.spec.mjs's ipos.issue_size note for the full history."},"CHITTORGARH":{"capable":true,"reason":"CG list API field 'Total Issue Amount (Incl. Firm reservations) (Rs.cr.)' reads the printed total directly, not shares x price (field-priority-matrix.ts:415-421, T-453 comment)"},"NSE":{"capable":false,"reason":"NSE computes (sharesOffered/netOffer) x price, excluding the OFS portion — it cannot print the total (field-priority-matrix.ts:406-412, T-453). The CURRENT field-priority-matrix.ts issueSize entry still lists NSE (rank 4, below CHITTORGARH) — item 3 removes it to match this manifest."},"MONEYCONTROL":{"capable":false,"reason":"OD-3 retires Moneycontrol as a scheduled source"}}});
-add('ipos','lot_size','D',['DOC','BSE','NSE'],{doc:'A3',na:['NCD','INVITS','REITS','TENDER','BUYBACK']});
+add('ipos','lot_size','D',['DOC','BSE','NSE'],{doc:'A3',na:['NCD','INVITS','REITS','TENDER','BUYBACK','OFS','RIGHTS']});
 add('ipos','open_date','T',['NSE','BSE','CG'],{e1:1});
 add('ipos','close_date','T',['NSE','BSE','CG'],{e1:1});
 add('ipos','listing_date','T',['NSE','BSE','CG'],{e1:1});
@@ -42,12 +42,12 @@ add('ipos','registrar_id','C',['—','—','—'],{formula:'FK resolved from reg
 add('ipos','rating_override','I',['ADMIN','—','—'],{only:'admin-only by design; no external source exists'});
 add('ipos','slug','C',['—','—','—'],{formula:'generateIPOSlug(company_name)'});
 add('ipos','sector','D',['DOC','CG'],{doc:'F1',note:'Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no sector field, so CG is the only remaining website source'});
-add('ipos','price_range_min','D',['DOC','NSE','BSE'],{doc:'A1',na:['NCD','TENDER','BUYBACK']});
-add('ipos','price_range_max','D',['DOC','NSE','BSE'],{doc:'A1',na:['NCD','TENDER','BUYBACK']});
+add('ipos','price_range_min','D',['DOC','NSE','BSE'],{doc:'A1',na:['NCD','TENDER','BUYBACK','OFS']});
+add('ipos','price_range_max','D',['DOC','NSE','BSE'],{doc:'A1',na:['NCD','TENDER','BUYBACK','OFS']});
 add('ipos','last_scraped_at','I',['—','—','—'],{});
 add('ipos','listing_exchanges','D',['DOC','NSE','BSE','CG'],{doc:'A15',note:'OD-129 (#938, F-197): left E-1. The offer document listing sentence ("proposed to be listed on ...") decides the exchanges and the board, Prospectus > RHP > DRHP; a price band ad only when it names the exchanges (scraper/src/services/listing-sentence.ts, read from every processed document). Only when no document has been read: the exchange feed, then CG. After a document, a feed or CG naming another board is a data_conflicts row (OD129_DOCUMENT_LISTING_DISAGREES), never a union.'});
 add('ipos','face_value','D',['DOC','BSE','NSE'],{doc:'A2',na:['INVITS','REITS']});
-add('ipos','allotment_date','T',['NSE','BSE','CG'],{e1:1});
+add('ipos','allotment_date','T',['NSE','BSE','CG'],{e1:1,na:['OFS']});
 add('ipos','company_description','D',['DOC','CG'],{doc:'F1',note:'Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source'});
 add('ipos','lead_managers','D',['DOC','NSE','BSE'],{doc:'E1',note:'VERIFIED: NSE returns "Book Running Lead Managers"; BSE returns Book_Running_Lead_Manager'});
 add('ipos','isin','D',['DOC','NSE','BSE'],{doc:'E7'});
@@ -68,9 +68,9 @@ add('ipo_details','issue_type','D',['DOC','NSE','CG'],{doc:'A11',note:'CORRECTED
 add('ipo_details','fresh_issue','D',['DOC','BSE','CG'],{doc:'A5',na:['OFS','TENDER','BUYBACK'],capability:{"DOC":{"capable":true,"reason":"the PBA prints the fresh-issue rupee amount separately from the OFS amount"},"BSE":{"capable":true,"reason":"BSE detail payload carries a fresh-issue figure"},"CHITTORGARH":{"capable":true,"reason":"CG list API carries the fresh-issue line item"},"NSE":{"capable":false,"reason":"same T-453 reasoning as ipos.issue_size — no printed fresh/OFS split"},"MONEYCONTROL":{"capable":false,"reason":"OD-3 retires Moneycontrol as a scheduled source"}}});
 add('ipo_details','ofs_issue','D',['DOC','BSE','CG'],{doc:'A6',na:['RIGHTS','NCD'],capability:{"DOC":{"capable":true,"reason":"the PBA prints the offer-for-sale rupee amount separately from the fresh-issue amount"},"BSE":{"capable":true,"reason":"BSE detail payload carries an OFS figure alongside the fresh-issue figure"},"CHITTORGARH":{"capable":true,"reason":"CG list API carries the offer-for-sale line item"},"NSE":{"capable":false,"reason":"same T-453 reasoning as ipos.issue_size — NSE computes offer value from shares×price with no printed fresh/OFS split"},"MONEYCONTROL":{"capable":false,"reason":"OD-3 retires Moneycontrol as a scheduled source"}}});
 add('ipo_details','face_value','D',['DOC','BSE','—'],{doc:'A2',na:['INVITS','REITS']});
-add('ipo_details','basis_of_allotment_date','T',['NSE','BSE','CG'],{e1:1});
-add('ipo_details','initiation_of_refunds_date','T',['NSE','BSE','CG'],{e1:1});
-add('ipo_details','credit_of_shares_date','T',['NSE','BSE','CG'],{e1:1});
+add('ipo_details','basis_of_allotment_date','T',['NSE','BSE','CG'],{e1:1,na:['OFS']});
+add('ipo_details','initiation_of_refunds_date','T',['NSE','BSE','CG'],{e1:1,na:['OFS']});
+add('ipo_details','credit_of_shares_date','T',['NSE','BSE','CG'],{e1:1,na:['OFS']});
 add('ipo_details','exchanges','D',['DOC','NSE','BSE'],{doc:'A15'});
 add('ipo_details','data_source','I',['—','—','—'],{});
 add('ipo_details','last_verified_at','I',['—','—','—'],{});
@@ -79,7 +79,7 @@ add('ipo_details','compliance_officer_phone','D',['DOC','—','—'],{doc:'E4',o
 add('ipo_details','compliance_officer_email','D',['DOC','—','—'],{doc:'E4',only:'named only in the filing'});
 add('ipo_details','upi_cutoff_time','D',['DOC','NSE','—'],{doc:'B7',note:'clock time, not a date — deliberately NOT in E-1'});
 add('ipo_details','designated_exchange','D',['DOC','—','—'],{doc:'A14',only:'observed absent from both exchange payloads 2026-09-09 - neither NSE issueInfo nor BSE detail names a designated exchange'});
-add('ipo_details','lot_multiple','D',['DOC','BSE','—'],{doc:'A3'});
+add('ipo_details','lot_multiple','D',['DOC','BSE','—'],{doc:'A3',na:['INVITS','REITS','OFS','RIGHTS']});
 add('ipo_details','allocation_pct','D',['DOC','—','—'],{doc:'A13',only:'observed absent 2026-09-09 - an earlier draft matched "Anchor Allocation Report" and mistook a document link for the allocation percentages'});
 // F-23: a pre-IPO placement REDUCES the fresh issue; stored as a boolean today but should carry
 // an amount. Issue-size fields (field 3, 35, 36) are therefore provisional until sourced from a
@@ -107,9 +107,9 @@ add('ipo_details','company_pincode','D',['DOC','—','—'],{doc:'E6',only:'cont
 add('ipo_details','qib_shares_offered','D',['DOC','NSE','—'],{doc:'A13',only:'the exchange circular carries the allocation',neverPopulated:true});
 add('ipo_details','nii_shares_offered','D',['DOC','NSE','—'],{doc:'A13',only:'the exchange circular carries the allocation',neverPopulated:true});
 add('ipo_details','retail_shares_offered','D',['DOC','NSE','—'],{doc:'A13',only:'the exchange circular carries the allocation',neverPopulated:true});
-add('ipo_details','retail_max_allottees','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
+add('ipo_details','retail_max_allottees','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true,na:['OFS']});
 add('ipo_details','employee_shares_offered','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
-add('ipo_details','anchor_shares_offered','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
+add('ipo_details','anchor_shares_offered','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true,na:['OFS','RIGHTS']});
 add('ipo_details','max_retail_subscription','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
 add('ipo_details','max_employee_subscription','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
 add('ipo_details','employee_discount','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});

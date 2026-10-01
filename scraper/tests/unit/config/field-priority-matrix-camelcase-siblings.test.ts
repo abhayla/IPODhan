@@ -13,7 +13,9 @@ import { FIELD_PRIORITY_MATRIX, getFieldRules } from '../../../src/config/field-
  * generic default for unknown keys, so it can't prove an entry is registered.
  */
 describe('field priority matrix — openDate/closeDate camelCase siblings registered (W-49)', () => {
-  for (const f of ['open_date', 'openDate', 'close_date', 'closeDate']) {
+  // #1186: the snake_case twins `open_date`/`close_date` were never reached (getFieldRules() finds the
+  // camelCase entry first) and are deleted; the snake spelling still resolves through the normaliser.
+  for (const f of ['openDate', 'closeDate']) {
     it(`registers ${f} explicitly`, () => {
       expect(FIELD_PRIORITY_MATRIX[f], `${f} missing from FIELD_PRIORITY_MATRIX`).toBeDefined();
     });
@@ -59,8 +61,10 @@ describe('field priority matrix — snake_case/camelCase sibling pairs stay in s
     .map((k) => [k, toCamel(k)] as const)
     .filter(([, camel]) => allKeys.includes(camel));
 
-  it('found at least one snake/camel sibling pair to check (sanity — matrix has known pairs like lot_size/lotSize)', () => {
-    expect(snakeKeysWithCamelSibling.length).toBeGreaterThan(0);
+  // #1186: every snake_case twin is deleted, so this set is now EMPTY by design; the loop below stays
+  // as the regression guard if a diverging twin is ever re-added.
+  it('no snake/camel sibling pair remains (#1186 deleted every snake_case twin)', () => {
+    expect(snakeKeysWithCamelSibling).toEqual([]);
   });
 
   // openDate/closeDate are asserted equal above. The five pairs that used to
@@ -148,73 +152,41 @@ describe('field priority matrix — W-55 canonical camelCase entries + normalisi
 });
 
 /**
- * Item 3 slice S1d — BUILDER FINDING (2026-09-18): the brief's corrected list named 22 keys as
- * "genuinely unreachable... verify this yourself before deleting." Verification (grepping every
- * key as a literal `fieldName`/`tableName`/`column` argument across `scraper/tests/**` and
- * `scraper/src/**`, then RUNNING the hits) found only 8 of the 22 are actually dead:
- * `revenue_fy2/3`, `profit_fy1/2/3`, `roe_percentage`, `roce_percentage`, `pb_ratio` — zero
- * hits anywhere. The other 14 (`revenue_fy1`, `peer_companies`, `fresh_issue_size`,
- * `offer_for_sale_size`, `issue_price`, `min_investment`, `gmp_percentage`,
- * `total_subscription`, `retail_subscription`, `qib_subscription`, `nii_subscription`,
- * `expected_listing_price`, `listing_price`, `listing_gain_percentage`) are literal arguments
- * in pre-existing, currently-green tests (`data-consolidation-document-outranks-websites.
- * test.ts` T-520, `data-consolidation-noop-write-suppression.test.ts`,
- * `data-consolidation-service.test.ts`, `terminal-status-consolidation.test.ts`,
- * `field-priority-matrix-gmp.test.ts`, `field-plan-walk-doc-fetcher.test.ts` — all part of the
- * `npx vitest run` pr-gate unit sweep, none in this slice's reader list) that turn RED on
- * deletion — confirmed by actually running each file, not just grepping. Some of these (T-520's
- * `min_investment`/`issue_price`/`fresh_issue_size`/`offer_for_sale_size`) don't even match a
- * real DB column name (the schema's actual columns are `minInvestment`/`issuePrice`/
- * `freshIssue`/`ofsIssue`) — that test's OWN field-name literals are stale, a separate defect
- * outside this slice's scope, flagged for the reviewer rather than silently fixed or silently
- * broken here. The 5 keys that DO have a camelCase sibling (open_date, close_date, lot_size,
- * gmp_price, company_description) are the W-49 regression class above and MUST stay regardless.
- *
- * RED on origin/main (20df246e): all 8 keys below are present.
+ * Item 3 slice S1d deleted 8 dead snake_case keys and kept 14 because tests used them as literal
+ * field names; #1186 finished the job (spec §5.5 item 4, §7 build item 3): those 14, the 5
+ * camelCase-shadowed twins and `industry` are deleted, and the tests that used the snake literals now
+ * use the real camelCase field. The structural guard is
+ * field-priority-matrix-keys-are-real-fields.test.ts; this block pins the named keys.
  */
-describe('field priority matrix — item 3 S1d: 8 dead snake_case keys with no camelCase sibling and no test dependency are deleted', () => {
+describe('field priority matrix — #1186: no snake_case key remains', () => {
   const DELETED_KEYS = [
-    'revenue_fy2', 'revenue_fy3',
-    'profit_fy1', 'profit_fy2', 'profit_fy3',
-    'roe_percentage', 'roce_percentage', 'pb_ratio',
-  ];
-
-  const SURVIVING_KEYS_WITH_CAMEL_SIBLING = [
-    'open_date', 'close_date', 'lot_size', 'gmp_price', 'company_description',
-  ];
-
-  // Deliberately kept despite no camelCase sibling — each is a literal argument in a
-  // pre-existing, currently-green test outside this slice's scope (see the doc comment above and
-  // each entry's own comment in field-priority-matrix.ts).
-  const KEPT_DESPITE_NO_CAMEL_SIBLING = [
-    'revenue_fy1', 'peer_companies', 'fresh_issue_size', 'offer_for_sale_size', 'issue_price',
-    'min_investment', 'gmp_percentage', 'total_subscription', 'retail_subscription',
-    'qib_subscription', 'nii_subscription', 'expected_listing_price', 'listing_price',
-    'listing_gain_percentage',
+    'revenue_fy1', 'revenue_fy2', 'revenue_fy3', 'profit_fy1', 'profit_fy2', 'profit_fy3',
+    'roe_percentage', 'roce_percentage', 'pb_ratio', 'peer_companies', 'fresh_issue_size',
+    'offer_for_sale_size', 'issue_price', 'min_investment', 'gmp_percentage', 'total_subscription',
+    'retail_subscription', 'qib_subscription', 'nii_subscription', 'expected_listing_price',
+    'listing_price', 'listing_gain_percentage', 'open_date', 'close_date', 'lot_size', 'gmp_price',
+    'company_description', 'industry',
   ];
 
   for (const key of DELETED_KEYS) {
-    it(`${key} is deleted (no camelCase sibling, no test dependency)`, () => {
+    it(`${key} is not a matrix key`, () => {
       expect(FIELD_PRIORITY_MATRIX[key], `${key} should have been deleted`).toBeUndefined();
     });
   }
 
-  it('exactly the 8 named keys are gone — no more, no fewer', () => {
-    const allKeys = Object.keys(FIELD_PRIORITY_MATRIX);
-    for (const key of DELETED_KEYS) {
-      expect(allKeys).not.toContain(key);
-    }
+  it('no key in the matrix contains an underscore', () => {
+    expect(Object.keys(FIELD_PRIORITY_MATRIX).filter((k) => k.includes('_'))).toEqual([]);
   });
 
-  for (const key of SURVIVING_KEYS_WITH_CAMEL_SIBLING) {
-    it(`${key} (camelCase-sibling survivor) is still registered`, () => {
-      expect(FIELD_PRIORITY_MATRIX[key], `${key} must NOT be deleted — it has a camelCase sibling`).toBeDefined();
-    });
-  }
-
-  for (const key of KEPT_DESPITE_NO_CAMEL_SIBLING) {
-    it(`${key} (kept despite no camelCase sibling — a real pre-existing test depends on it) is still registered`, () => {
-      expect(FIELD_PRIORITY_MATRIX[key], `${key} must stay registered`).toBeDefined();
+  for (const [snake, camel] of [
+    ['open_date', 'openDate'],
+    ['close_date', 'closeDate'],
+    ['lot_size', 'lotSize'],
+    ['gmp_price', 'gmpPrice'],
+    ['company_description', 'companyDescription'],
+  ] as const) {
+    it(`getFieldRules('${snake}') still resolves to the ${camel} entry through the normaliser`, () => {
+      expect(getFieldRules(snake)).toBe(FIELD_PRIORITY_MATRIX[camel]);
     });
   }
 });

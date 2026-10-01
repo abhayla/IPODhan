@@ -3343,6 +3343,10 @@ deliberately keeping the exchanges first (W-117).
    2026-09-08 scope cut; phase 1 touches no closed IPO's already-written rows.
 4. **The duplicate-key problem** (§0.6): 13 matrix keys in snake_case match nothing. They should be
    deleted in the same change that builds the plan, or they will quietly look like coverage.
+   **Done 2026-10-01 (#1186):** all 13 deleted, with 7 more of the same class (the 5 snake_case twins,
+   `industry`, `peer_companies`); measured on staging first, no recorded source decision changed
+   (`probes/matrix-dead-keys-impact.mjs`). A unit test now refuses any matrix key that is not the
+   camelCase name of a column the consolidator writes, with no allow-list.
 
 ### 5.6 O-7 — where a language model is genuinely needed, and where it is not
 
@@ -4755,11 +4759,11 @@ shortfall: a buyback has no price band, no anchor book and no peer comparison.
 | Offering type | IPOs on prod | Fields N/A | Fields with a live resolution |
 |---|---:|---:|---:|
 | FPO | 0 | 0 | 240 |
-| RIGHTS | 8 | 35 | 205 |
-| OFS | 19 | 35 | 205 |
+| RIGHTS | 8 | 38 | 202 |
+| OFS | 19 | 45 | 195 |
 | NCD | 7 | 86 | 154 |
-| INVITS | 3 | 91 | 149 |
-| REITS | 2 | 91 | 149 |
+| INVITS | 3 | 92 | 148 |
+| REITS | 2 | 92 | 148 |
 | TENDER | 16 | 113 | 127 |
 | BUYBACK | 1 | 113 | 127 |
 

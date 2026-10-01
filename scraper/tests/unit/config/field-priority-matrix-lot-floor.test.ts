@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FIELD_PRIORITY_MATRIX } from '../../../src/config/field-priority-matrix.js';
+import { FIELD_PRIORITY_MATRIX, getFieldRules } from '../../../src/config/field-priority-matrix.js';
 import { validateValue } from '../../../src/services/normalization-engine.js';
 
 /**
@@ -16,7 +16,7 @@ import { validateValue } from '../../../src/services/normalization-engine.js';
  */
 describe('field priority matrix — lot_size/lotSize plausibility floor (stage 1 round 3)', () => {
   it('lot_size accepts a legal sub-10 lot (8)', () => {
-    expect(validateValue(8, FIELD_PRIORITY_MATRIX.lot_size)).toBe(true);
+    expect(validateValue(8, getFieldRules('lot_size'))).toBe(true);
   });
 
   it('lotSize accepts a legal sub-10 lot (8)', () => {
@@ -24,7 +24,7 @@ describe('field priority matrix — lot_size/lotSize plausibility floor (stage 1
   });
 
   it('lot_size rejects 0 (absurd, below the plausibility floor)', () => {
-    expect(validateValue(0, FIELD_PRIORITY_MATRIX.lot_size)).toBe(false);
+    expect(validateValue(0, getFieldRules('lot_size'))).toBe(false);
   });
 
   it('lotSize rejects 0 (absurd, below the plausibility floor)', () => {
@@ -32,7 +32,7 @@ describe('field priority matrix — lot_size/lotSize plausibility floor (stage 1
   });
 
   it('lot_size rejects 100001 (above the plausibility ceiling)', () => {
-    expect(validateValue(100001, FIELD_PRIORITY_MATRIX.lot_size)).toBe(false);
+    expect(validateValue(100001, getFieldRules('lot_size'))).toBe(false);
   });
 
   it('lotSize rejects 100001 (above the plausibility ceiling)', () => {
