@@ -179,11 +179,35 @@ export const EXTRACTOR_VERSION = 'extract_filing.py@2026-09-27';
  * raising that type's floor in the same change.
  */
 export const REREAD_SINCE_DEFAULT = 'extract_filing.py@2026-09-26';
-export const REREAD_SINCE_BY_TYPE: Readonly<Record<string, string>> = {
-  RHP: EXTRACTOR_VERSION,
-  DRHP: EXTRACTOR_VERSION,
-  PROSPECTUS: EXTRACTOR_VERSION,
+
+/**
+ * #1247 item 2: the ONE record of which document types each extractor version
+ * changed (spec §2.5, "One download, one read"). The per-type floors below are
+ * DERIVED from it, so a bump cannot leave a second, hand-kept floor table
+ * behind: bumping EXTRACTOR_VERSION without adding its entry here fails
+ * tests/unit/services/extractor-version-floors.test.ts, and an entry naming a
+ * type raises that type's floor automatically. Versions at or before
+ * REREAD_SINCE_DEFAULT are the baseline every type was read at.
+ */
+export const EXTRACTOR_VERSION_CHANGES: Readonly<Record<string, readonly string[]>> = {
+  // #771: issuer-ratio reader (prospectus family only).
+  'extract_filing.py@2026-09-26b': ['RHP', 'DRHP', 'PROSPECTUS'],
+  // #771 round 3: ratio column chosen by its period heading (prospectus family only).
+  'extract_filing.py@2026-09-27': ['RHP', 'DRHP', 'PROSPECTUS'],
 };
+
+function deriveRereadFloors(changes: Readonly<Record<string, readonly string[]>>): Record<string, string> {
+  const floors: Record<string, string> = {};
+  for (const [version, types] of Object.entries(changes)) {
+    for (const type of types) {
+      const key = type.toUpperCase();
+      if (floors[key] === undefined || version > floors[key]) floors[key] = version;
+    }
+  }
+  return floors;
+}
+
+export const REREAD_SINCE_BY_TYPE: Readonly<Record<string, string>> = deriveRereadFloors(EXTRACTOR_VERSION_CHANGES);
 
 const EXTRACTOR_VERSION_PREFIX = 'extract_filing.py@';
 
