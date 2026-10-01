@@ -300,16 +300,6 @@ jobs:
           node --test scripts/tests/check-drizzle-iso-string.test.mjs
           node scripts/ci/check-drizzle-iso-string.mjs
 
-      - name: App-clock timestamp ratchet (mixed-clock-ordering, F-210)
-        # A time ordered against a database-stamped time (documents.created_at, data_conflicts.detected_at)
-        # must come from the database clock. Fails on a NEW `fooAt: new Date()` / `timestamp: new Date()`
-        # in packages/shared/src/{services,repositories,admin} or web/app/api/admin that is neither in
-        # scripts/ci/app-clock-timestamps-baseline.json (with a reason) nor marked `// app-clock-ok: <reason>`.
-        # Self-test is mutation-proof: red on a planted detectedAt: new Date(), green on sql`now()`.
-        run: |
-          node --test scripts/ci/tests/check-app-clock-timestamps.test.mjs
-          node scripts/ci/check-app-clock-timestamps.mjs
-
       - name: Deleted-file-still-referenced gate (#1193, deleted-file-still-referenced-by-ci)
         # A PR that deletes a file but leaves a test, a fixture list or a baseline JSON still
         # naming it goes red one reference per round (#1189: a stale count in
@@ -656,6 +646,19 @@ jobs:
         # ci, same placement as the other pg-importing scripts/tests/*.test.mjs
         # steps below.
         run: node scripts/tests/assert-repair-held.test.mjs
+
+      - name: App-clock timestamp ratchet (mixed-clock-ordering, F-210)
+        # A time ordered against a database-stamped time (documents.created_at, data_conflicts.detected_at)
+        # must come from the database clock. Fails on a NEW `fooAt: new Date()` / `timestamp: new Date()`
+        # in packages/shared/src/{services,repositories,admin} or web/app/api/admin that is neither in
+        # scripts/ci/app-clock-timestamps-baseline.json (with a reason) nor marked `// app-clock-ok: <reason>`.
+        # Runs after npm ci (T-570): the check parses with the typescript compiler API (#1312 round 2).
+        # Scans packages/shared/src/{services,repositories,admin}, web/app/api/admin, web/lib and scraper/src; sinks are
+        # `*At` / `*_at` / `timestamp` / `*Time` properties whose value is the app clock or cannot be resolved (fails closed).
+        # Self-test is mutation-proof: red on a planted detectedAt: new Date(), green on sql`now()`.
+        run: |
+          node --test scripts/ci/tests/check-app-clock-timestamps.test.mjs
+          node scripts/ci/check-app-clock-timestamps.mjs
 
       - name: DB connection default self-test (#640)
         # Runs after npm ci: the checker parses with the typescript compiler API.
