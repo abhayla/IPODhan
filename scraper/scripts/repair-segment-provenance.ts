@@ -78,6 +78,7 @@ import { assertNoSchemaDrift, openRepairDb, upsertFieldSource, writeLedgerFile }
 import { fetchNseEquityMasters } from '../src/scrapers/nse-equity-master.js';
 import { resolveSegmentFromMasters, type SegmentResolution } from '../src/scrapers/exchange-segment-oracle.js';
 import { fetchBseScripMaster, toOracleScrips } from '../src/scrapers/bse-scrip-master.js';
+import { HeldByAdminError, assertNotHeld, filterPatchUnderHold } from '@ipodhan/shared/services/field-hold';
 
 const APPLY = process.argv.includes('--apply');
 const ALLOW_PROD = process.argv.includes('--allow-prod');
@@ -250,6 +251,38 @@ export function decideBlankUnsourced(
     action: 'blank',
     reason: 'no source in any register (neither exchange master, no verified override) — blanking to NULL, no provenance row written',
   };
+}
+
+/**
+ * One segment repair write, in its OWN transaction (§9.2 item 19, OD-131): provenance (when given)
+ * and the `ipos.segment` value commit together or not at all. Returns 'held' when an admin holds
+ * `segment` on this IPO (or the IPO is write-blocked/hidden): nothing is written, and the caller
+ * counts the row as "held by admin, skipped", never as repaired.
+ */
+export type SegmentWriteOutcome = 'written' | 'held';
+export async function writeSegmentRepairRow(
+  database: { transaction: <T>(fn: (tx: any) => Promise<T>) => Promise<T> },
+  args: { ipoId: string; newSegment: SegmentValue; provenance: Parameters<typeof upsertFieldSource>[1] | null }
+): Promise<SegmentWriteOutcome> {
+  try {
+    await database.transaction(async (tx) => {
+      // Lock the ipos row (the admin's lock) and re-read the hold INSIDE this transaction, so an admin
+      // save landing mid-run is never overwritten (§9.2 item 19). A held segment throws and rolls back.
+      assertNotHeld(
+        await filterPatchUnderHold(tx, args.ipoId, 'ipos', { segment: args.newSegment }, { honourScraperLock: true }),
+        args.ipoId
+      );
+      if (args.provenance) await upsertFieldSource(tx as any, args.provenance);
+      await tx
+        .update(schema.ipos)
+        .set({ segment: args.newSegment as any })
+        .where(eq(schema.ipos.id, args.ipoId));
+    });
+    return 'written';
+  } catch (e) {
+    if (e instanceof HeldByAdminError) return 'held';
+    throw e;
+  }
 }
 
 async function main() {
@@ -426,20 +459,19 @@ async function main() {
     });
     console.log(`backup written: ${blankBackupPath}`);
 
-    await db.transaction(async (tx) => {
-      for (const { row } of toBlank) {
-        // No provenance row: the ABSENCE of a field_sources row for this field is
-        // exactly what d_segment_provenance detects, and lane C's board ruling
-        // (O-16 / #658) is "delete-only" — never write a reason/placeholder row.
-        await tx
-          .update(schema.ipos)
-          .set({ segment: null })
-          .where(eq(schema.ipos.id, row.id));
-      }
-    });
+    // No provenance row: the ABSENCE of a field_sources row for this field is
+    // exactly what d_segment_provenance detects, and lane C's board ruling
+    // (O-16 / #658) is "delete-only" — never write a reason/placeholder row.
+    const blankHeld: string[] = [];
+    for (const { row } of toBlank) {
+      const outcome = await writeSegmentRepairRow(db, { ipoId: row.id, newSegment: null, provenance: null });
+      if (outcome === 'held') blankHeld.push(row.id);
+    }
+    const blanked = toBlank.filter((d) => !blankHeld.includes(d.row.id));
+    console.log(`held by admin, skipped: ${blankHeld.length}${blankHeld.length ? ` (${blankHeld.join(', ')})` : ''}`);
 
     const blankReadBack = [];
-    for (const { row } of toBlank) {
+    for (const { row } of blanked) {
       const [r] = await db
         .select({ id: schema.ipos.id, companyName: schema.ipos.companyName, segment: schema.ipos.segment })
         .from(schema.ipos)
@@ -455,11 +487,12 @@ async function main() {
       tool: 'repair-segment-provenance',
       mode: 'apply',
       generatedAt: new Date().toISOString(),
-      changes: toBlank.map((d) => ({ table: 'ipos', rowKey: d.row.id, field: 'segment', before: d.row.segment, after: null })),
+      changes: blanked.map((d) => ({ table: 'ipos', rowKey: d.row.id, field: 'segment', before: d.row.segment, after: null })),
       appliedAt: new Date().toISOString(),
       updatedBy: BLANK_UPDATED_BY,
-      written: toBlank.length,
-      decisions: toBlank.map((d) => ({ id: d.row.id, companyName: d.row.companyName })),
+      written: blanked.length,
+      heldByAdminSkipped: blankHeld,
+      decisions: blanked.map((d) => ({ id: d.row.id, companyName: d.row.companyName })),
     });
     console.log(`ledger written: ${blankLedgerPath}`);
 
@@ -491,14 +524,17 @@ async function main() {
   });
   console.log(`backup written: ${backupPath}`);
 
-  await db.transaction(async (tx) => {
-    for (const { row, decision, resolution } of toTouch) {
-      // The provenance row must name where the value ACTUALLY came from. A row the
-      // oracle resolved is sourced by the exchange master, not by an admin; recording
-      // 'ADMIN' for it would make a machine-sourced value indistinguishable from a
-      // hand-entered one, and the whole point of this field is that distinction.
-      const sourcedByOracle = decision.action === 'apply-sourced' && resolution?.outcome === 'resolved';
-      await upsertFieldSource(tx as any, {
+  const touchHeld: string[] = [];
+  for (const { row, decision, resolution } of toTouch) {
+    // The provenance row must name where the value ACTUALLY came from. A row the
+    // oracle resolved is sourced by the exchange master, not by an admin; recording
+    // 'ADMIN' for it would make a machine-sourced value indistinguishable from a
+    // hand-entered one, and the whole point of this field is that distinction.
+    const sourcedByOracle = decision.action === 'apply-sourced' && resolution?.outcome === 'resolved';
+    const outcome = await writeSegmentRepairRow(db, {
+      ipoId: row.id,
+      newSegment: decision.newSegment,
+      provenance: {
         ipoId: row.id,
         fieldName: 'segment',
         source: sourcedByOracle ? 'NSE' : 'ADMIN',
@@ -514,17 +550,16 @@ async function main() {
           repairedAt: new Date().toISOString(),
         },
         updatedBy: UPDATED_BY,
-      });
-      await tx
-        .update(schema.ipos)
-        .set({ segment: decision.newSegment as any })
-        .where(eq(schema.ipos.id, row.id));
-    }
-  });
+      },
+    });
+    if (outcome === 'held') touchHeld.push(row.id);
+  }
+  const touched = toTouch.filter((d) => !touchHeld.includes(d.row.id));
+  console.log(`held by admin, skipped: ${touchHeld.length}${touchHeld.length ? ` (${touchHeld.join(', ')})` : ''}`);
 
   // read back the full changed set individually (avoids building an OR chain for a variable-length id list)
   const readBack = [];
-  for (const { row } of toTouch) {
+  for (const { row } of touched) {
     const [r] = await db
       .select({ id: schema.ipos.id, companyName: schema.ipos.companyName, segment: schema.ipos.segment })
       .from(schema.ipos)
@@ -540,10 +575,11 @@ async function main() {
     tool: 'repair-segment-provenance',
     mode: 'apply',
     generatedAt: new Date().toISOString(),
-    changes: toTouch.map((d) => ({ table: 'ipos', rowKey: d.row.id, field: 'segment', before: d.row.segment, after: d.decision.newSegment })),
+    changes: touched.map((d) => ({ table: 'ipos', rowKey: d.row.id, field: 'segment', before: d.row.segment, after: d.decision.newSegment })),
     appliedAt: new Date().toISOString(),
-    written: toTouch.length,
-    decisions: toTouch.map((d) => ({ id: d.row.id, companyName: d.row.companyName, action: d.decision.action, newSegment: d.decision.newSegment })),
+    written: touched.length,
+    heldByAdminSkipped: touchHeld,
+    decisions: touched.map((d) => ({ id: d.row.id, companyName: d.row.companyName, action: d.decision.action, newSegment: d.decision.newSegment })),
   });
   console.log(`ledger written: ${ledgerPath}`);
 
