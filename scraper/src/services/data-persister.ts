@@ -1,4 +1,5 @@
 import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDataRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert, FinancialDataInsert, IPO } from '@ipodhan/shared';
+import { clearableIposSqlColumn } from './filing-clearable-columns.js';
 import { filterPatchUnderHold, type HoldExecutor } from '@ipodhan/shared/services/field-hold';
 import { recordListSuggestion } from '@ipodhan/shared/services/admin-list-hold';
 import { normalizeCompanyUrl, isVerifierUrl } from './company-host-source.js';
@@ -1335,16 +1336,9 @@ export function buildNonDestructiveUpdate(
  * #1420 (OD-153, OD-158): the ONLY door that nulls a present `ipos` value. W-16a's null guard above
  * stays as it is for every other write; this clears exactly the columns a newer reader refused or
  * stated absent for the SAME document (reread-answer-clear.ts decides that, under the ipos row lock
- * and the admin-hold re-check, inside the caller's transaction). A column not on this list throws.
+ * and the admin-hold re-check, inside the caller's transaction). The list is the ipos part of the filing
+ * persister's one map (filing-clearable-columns.ts, #1420 round 3); a column not on it throws.
  */
-export const REREAD_CLEARABLE_IPOS_COLUMNS: Readonly<Record<string, string>> = {
-  priceRangeMin: 'price_range_min',
-  priceRangeMax: 'price_range_max',
-  lotSize: 'lot_size',
-  faceValue: 'face_value',
-  cin: 'cin',
-};
-
 export async function clearIpoColumnsForRereadAnswer(
   tx: { execute(q: ReturnType<typeof sqlOp>): Promise<{ rows: unknown[] }> },
   ipoId: string,
@@ -1352,7 +1346,7 @@ export async function clearIpoColumnsForRereadAnswer(
 ): Promise<string[]> {
   const cleared: string[] = [];
   for (const column of columns) {
-    const sqlColumn = REREAD_CLEARABLE_IPOS_COLUMNS[column];
+    const sqlColumn = clearableIposSqlColumn(column);
     if (!sqlColumn) throw new Error(`clearIpoColumnsForRereadAnswer: '${column}' is not a re-read-clearable ipos column`);
     const res = await tx.execute(sqlOp`
       UPDATE ipos SET ${sqlOp.identifier(sqlColumn)} = NULL, updated_at = now()

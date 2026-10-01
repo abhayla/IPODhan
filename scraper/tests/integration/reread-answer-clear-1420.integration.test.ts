@@ -163,6 +163,78 @@ describe.skipIf(!RUN)('#1420 re-read answer clear (ipodhan_test)', () => {
     expect((await fd()).current_ratio).toBe('1.62');
   });
 
+  // ---- round 3
+  it('round 3 MAJOR: a refusal read off a 0.10-confidence OCR page (the extractor+OCR envelope, verbatim): KEPT', async () => {
+    await stored('financial_data', 'currentRatio', 'current_ratio');
+    // Emitter.refuse('current_ratio', 1.54, page 3, ...) then ocr_pages.annotate_fields({3: 0.10}, floor 0.80):
+    const envelope = { value: null, page: null, source_doc: 'RHP', check: { name: 'ocr_confidence_floor', passed: false, detail: 'ocr_low_confidence: 0.1000 < 0.80' }, state: 'LOW_CONFIDENCE_OCR', refused_page: 3, source_text: 'OCR', ocr_confidence: 0.1 };
+    const r = await clearRereadAnswers(db, input({ current_ratio: envelope as RereadEnvelopeField }));
+    expect(r.cleared).toEqual([]);
+    expect((await fd()).current_ratio).toBe('1.62');
+    expect(await failures()).toEqual([]);
+    expect((await plan('current_ratio')).state).toBe('SUPPLIED');
+  });
+
+  it('round 3: a stored value from a NEWER extractor version is never cleared by an older reader', async () => {
+    await stored('financial_data', 'currentRatio', 'current_ratio', { documentId: DOC, sourceSha: SHA, extractorVersion: 'extract_filing.py@2026-10-02' });
+    const r = await clearRereadAnswers(db, input({ current_ratio: { value: null, state: 'REFUSED', refused_value: 1.54, check: { passed: false } } }));
+    expect(r.notOlderRead).toEqual(['financial_data.currentRatio']);
+    expect((await fd()).current_ratio).toBe('1.62');
+  });
+
+  it('round 3 coverage: columns the round-2 list missed (ipos.openDate, ipo_details.complianceOfficer) are cleared from the map', async () => {
+    await db.execute(sql`UPDATE ipos SET open_date = '2026-10-10' WHERE id = ${IPO}::uuid`);
+    await db.execute(sql`UPDATE ipo_details SET compliance_officer = 'A Person' WHERE ipo_id = ${IPO}::uuid`);
+    await stored('ipos', 'openDate', 'open_date');
+    await stored('ipo_details', 'complianceOfficer', 'compliance_officer');
+    const r = await clearRereadAnswers(db, input({
+      open_date: { value: null, state: 'STATED_NOT_PRINTED' },
+      compliance_officer: { value: null, state: 'REFUSED', refused_value: 'x', check: { passed: false, detail: 'not a name' } },
+    }));
+    expect(r.cleared.map((c) => c.field).sort()).toEqual(['ipo_details.complianceOfficer', 'ipos.openDate']);
+    expect((await q(sql`SELECT open_date FROM ipos WHERE id = ${IPO}::uuid`))[0].open_date).toBeNull();
+    expect((await q(sql`SELECT compliance_officer FROM ipo_details WHERE ipo_id = ${IPO}::uuid`))[0].compliance_officer).toBeNull();
+  });
+
+  it('round 3 (OD-62): after a clear, field_sources no longer claims the older read supplied the value; the record is retired with the reason', async () => {
+    await stored('financial_data', 'currentRatio', 'current_ratio');
+    await clearRereadAnswers(db, input({ current_ratio: { value: null, state: 'REFUSED', refused_value: 1.54, check: { passed: false, detail: 'basis' } } }));
+    expect(await q(sql`SELECT 1 FROM field_sources WHERE ipo_id = ${IPO}::uuid AND field_name = 'currentRatio'`)).toEqual([]);
+    const [ret] = await q(sql`SELECT source, retired_reason, record->'data_lineage'->>'extractorVersion' AS v FROM field_sources_retired WHERE ipo_id = ${IPO}::uuid AND field_name = 'currentRatio'`);
+    expect(ret.source).toBe('DRHP');
+    expect(ret.v).toBe(OLD);
+    expect(ret.retired_reason).toContain('#1420 OD-153');
+  });
+
+  it('round 3: an admin save holding the ipos row lock serialises the clear; the clear then sees the hold and keeps', async () => {
+    await stored('financial_data', 'currentRatio', 'current_ratio');
+    let locked!: () => void;
+    const lockTaken = new Promise<void>((r) => (locked = r));
+    let release!: () => void;
+    const released = new Promise<void>((r) => (release = r));
+    // The admin save's shape (admin-field-write.ts): lock the ipos row FOR NO KEY UPDATE, write the value + hold, commit.
+    const admin = db.transaction(async (tx: any) => {
+      await tx.execute(sql`SELECT id FROM ipos WHERE id = ${IPO}::uuid FOR NO KEY UPDATE`);
+      locked();
+      await released;
+      await tx.execute(sql`UPDATE financial_data SET current_ratio = 1.70 WHERE ipo_id = ${IPO}::uuid`);
+      await tx.execute(sql`INSERT INTO field_protection_metadata (ipo_id, table_name, field_name, is_protected) VALUES (${IPO}::uuid, 'financial_data', 'currentRatio', true)`);
+    });
+    await lockTaken;
+    let clearDone = false;
+    const clear = clearRereadAnswers(db, input({ current_ratio: { value: null, state: 'REFUSED', refused_value: 1.54, check: { passed: false } } })).then((r) => {
+      clearDone = true;
+      return r;
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(clearDone).toBe(false); // waiting on the admin's row lock
+    release();
+    await admin;
+    const r = await clear;
+    expect(r.held).toEqual(['financial_data.currentRatio']);
+    expect((await fd()).current_ratio).toBe('1.70');
+  });
+
   it('clear, reason and plan reopen commit together or not at all', async () => {
     await stored('financial_data', 'currentRatio', 'current_ratio');
     // documentId that is not a document: the reason row's FK fails after the clear ran -> all rolled back.

@@ -2637,6 +2637,20 @@ describe('filing-persister — #1420 re-read answer clear wiring (OD-153/158/160
     expect(summary.reread_answers).toBeDefined();
   });
 
+  it('round 3: a clear that throws after the ordinary writes committed is classified, never a persist failure', async () => {
+    const s = makeDeps();
+    clearRereadAnswersMock.mockRejectedValueOnce(Object.assign(new Error('clear tx aborted'), { cause: { message: 'deadlock detected', code: '40P01' } }));
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true, documentId: 'doc-1', sourceSha: 'sha-1', extractorVersion: 'extract_filing.py@2026-10-01' },
+      { ...s.deps, rereadAnswerDb: {} as never }
+    );
+    expect(summary.applied).toBe(true);
+    expect(summary.reread_answers).toBeUndefined();
+    expect(summary.reread_answers_error).toBe('REREAD_CLEAR_FAILED: clear tx aborted (cause: deadlock detected)');
+  });
+
   it('a dry run (apply false) or an unwired caller never clears', async () => {
     const s = makeDeps();
     await persistFilingExtraction(IPO_ID, extractionFromOracle('PRICE_BAND_AD'), { docType: 'PRICE_BAND_AD', apply: false }, { ...s.deps, rereadAnswerDb: {} as never });

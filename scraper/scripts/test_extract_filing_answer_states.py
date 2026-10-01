@@ -245,6 +245,37 @@ def test_a_field_on_a_low_confidence_ocr_page_is_low_confidence_ocr():
     assert out["face_value"]["state"] == "VALUE", out["face_value"]
 
 
+def test_a_refusal_read_off_a_low_confidence_ocr_page_is_low_confidence_ocr():
+    """#1420 round 3 (OD-158): a refusal is only as good as the page it was read
+    from. Emitter.refuse keeps the page, so annotate_fields sees it and a refusal
+    off a page under the floor is LOW_CONFIDENCE_OCR (the stored value is kept),
+    never REFUSED (which would clear it)."""
+    from ocr_pages import annotate_fields
+    em = extract_filing.Emitter("RHP")
+    em.refuse("pe_at_cap", 99.0, 3, "pe_basis", "basis_mismatch")
+    out = annotate_fields(em.fields, {3: 0.10}, floor=0.80)
+    assert out["pe_at_cap"]["state"] == "LOW_CONFIDENCE_OCR", out["pe_at_cap"]
+    assert "refused_value" not in out["pe_at_cap"], out["pe_at_cap"]
+
+
+def test_a_failed_check_refusal_off_a_low_confidence_ocr_page_is_low_confidence_ocr():
+    from ocr_pages import annotate_fields
+    em = extract_filing.Emitter("RHP")
+    em.put("price_band_floor", 500.0, 3, "price_band", extract_filing.check_price_band(500.0, 900.0))
+    assert em.fields["price_band_floor"]["state"] == "REFUSED"
+    out = annotate_fields(em.fields, {3: 0.10}, floor=0.80)
+    assert out["price_band_floor"]["state"] == "LOW_CONFIDENCE_OCR", out["price_band_floor"]
+
+
+def test_a_refusal_off_a_trusted_page_stays_refused():
+    from ocr_pages import annotate_fields
+    em = extract_filing.Emitter("RHP")
+    em.refuse("pe_at_cap", 99.0, 3, "pe_basis", "basis_mismatch")
+    out = annotate_fields(em.fields, {3: 0.97}, floor=0.80)
+    assert out["pe_at_cap"]["state"] == "REFUSED", out["pe_at_cap"]
+    assert out["pe_at_cap"]["value"] is None
+
+
 # ----------------------------------------------------------- the shared list
 
 

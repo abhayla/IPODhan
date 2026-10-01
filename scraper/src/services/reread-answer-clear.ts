@@ -22,49 +22,24 @@
  *
  * Everything for one document runs in ONE transaction: the `ipos` row is locked FOR NO KEY UPDATE
  * first (the lock `writeAdminFieldValue` takes before an admin save, field-hold.ts), the admin hold
- * is re-read under it, then the clear, its reason row and the plan reopen are written together.
+ * is re-read under it, then the clear, its reason row, the retired provenance record and the plan
+ * reopen are written together.
  */
 import { sql } from 'drizzle-orm';
 import { lockAndReadFieldHolds, protectionTableName } from '@ipodhan/shared/services/field-hold';
-import { clearIpoColumnsForRereadAnswer, REREAD_CLEARABLE_IPOS_COLUMNS } from './data-persister.js';
+import { clearIpoColumnsForRereadAnswer } from './data-persister.js';
+import { FILING_CLEARABLE_COLUMNS, type ClearableTable, type FilingClearableColumn } from './filing-clearable-columns.js';
 import logger from '../utils/logger.js';
 
-export type RereadTable = 'ipos' | 'ipo_details' | 'financial_data';
-
-export interface RereadClearableField {
-  extractorField: string;
-  tableName: RereadTable;
-  /** camelCase, as field_sources.field_name and field_protection_metadata.field_name spell it. */
-  column: string;
-  /** The SQL column (snake_case), as ipo_field_plan.field_name spells it. */
-  sqlColumn: string;
-}
+export type RereadTable = ClearableTable;
+export type RereadClearableField = FilingClearableColumn;
 
 /**
- * Scalar columns the persister writes one-to-one from ONE extractor field. A column absent here is
- * never cleared (derived totals, child-row tables: see the PR body for what is not covered).
+ * #1420 round 3 (B8): every column the filing persister writes one-to-one from ONE extractor field,
+ * taken from the persister's own map (filing-clearable-columns.ts) - never a second, hand-kept list.
+ * Derived and multi-field columns are in NOT_ONE_TO_ONE_COLUMNS there and are never cleared here.
  */
-export const REREAD_CLEARABLE_FIELDS: readonly RereadClearableField[] = [
-  { extractorField: 'price_band_floor', tableName: 'ipos', column: 'priceRangeMin', sqlColumn: 'price_range_min' },
-  { extractorField: 'price_band_cap', tableName: 'ipos', column: 'priceRangeMax', sqlColumn: 'price_range_max' },
-  { extractorField: 'lot_size', tableName: 'ipos', column: 'lotSize', sqlColumn: 'lot_size' },
-  { extractorField: 'face_value', tableName: 'ipos', column: 'faceValue', sqlColumn: 'face_value' },
-  { extractorField: 'cin', tableName: 'ipos', column: 'cin', sqlColumn: 'cin' },
-  { extractorField: 'refund_date', tableName: 'ipo_details', column: 'initiationOfRefundsDate', sqlColumn: 'initiation_of_refunds_date' },
-  { extractorField: 'credit_date', tableName: 'ipo_details', column: 'creditOfSharesDate', sqlColumn: 'credit_of_shares_date' },
-  { extractorField: 'upi_cutoff_time', tableName: 'ipo_details', column: 'upiCutoffTime', sqlColumn: 'upi_cutoff_time' },
-  { extractorField: 'designated_stock_exchange', tableName: 'ipo_details', column: 'designatedExchange', sqlColumn: 'designated_exchange' },
-  { extractorField: 'compliance_officer', tableName: 'ipo_details', column: 'complianceOfficer', sqlColumn: 'compliance_officer' },
-  { extractorField: 'compliance_officer_phone', tableName: 'ipo_details', column: 'complianceOfficerPhone', sqlColumn: 'compliance_officer_phone' },
-  { extractorField: 'compliance_officer_email', tableName: 'ipo_details', column: 'complianceOfficerEmail', sqlColumn: 'compliance_officer_email' },
-  { extractorField: 'lot_multiple', tableName: 'ipo_details', column: 'lotMultiple', sqlColumn: 'lot_multiple' },
-  { extractorField: 'fresh_issue_amount', tableName: 'ipo_details', column: 'freshIssue', sqlColumn: 'fresh_issue' },
-  { extractorField: 'current_ratio', tableName: 'financial_data', column: 'currentRatio', sqlColumn: 'current_ratio' },
-  { extractorField: 'inventory_turnover', tableName: 'financial_data', column: 'inventoryTurnover', sqlColumn: 'inventory_turnover' },
-  { extractorField: 'pe_at_cap', tableName: 'financial_data', column: 'peRatio', sqlColumn: 'pe_ratio' },
-  { extractorField: 'promoter_holding_pre_pct', tableName: 'financial_data', column: 'promoterHoldingPreIssue', sqlColumn: 'promoter_holding_pre_issue' },
-  { extractorField: 'promoter_holding_post_pct_at_cap', tableName: 'financial_data', column: 'promoterHoldingPostIssue', sqlColumn: 'promoter_holding_post_issue' },
-];
+export const REREAD_CLEARABLE_FIELDS: readonly RereadClearableField[] = FILING_CLEARABLE_COLUMNS;
 
 /** OD-158's reason text, verbatim. */
 export const NOT_PRINTED_REASON = 'current reader: not printed';
@@ -76,7 +51,7 @@ export interface RereadEnvelopeField {
   state?: unknown;
   refused_value?: unknown;
   reason?: unknown;
-  check?: { passed?: unknown; detail?: unknown } | null;
+  check?: { name?: unknown; passed?: unknown; detail?: unknown } | null;
 }
 
 export type RereadDecision =
@@ -91,6 +66,9 @@ export function decideRereadAnswer(field: RereadEnvelopeField | undefined, heldB
   if (!field) return { action: 'KEEP', why: 'ABSENT', state: null };
   const state = typeof field.state === 'string' ? field.state : null;
   if (state === null) return { action: 'KEEP', why: 'NO_STATE', state: null };
+  // #1420 round 3: an answer read off a page under the OCR confidence floor is never acted on,
+  // whatever state it carries (the extractor sets LOW_CONFIDENCE_OCR; this is the second layer).
+  if (field.check?.name === 'ocr_confidence_floor') return { action: 'KEEP', why: 'LOW_CONFIDENCE_OCR', state };
   if (heldBack) return { action: 'KEEP', why: 'PERSISTER_HOLD_BACK', state };
   switch (state) {
     case 'REFUSED': {
@@ -118,8 +96,8 @@ interface Lineage {
 
 /**
  * The stored value came from an OLDER read of THIS document. Fail closed: provenance not DRHP (every
- * filing type writes DRHP), a different document, a missing extractor version on either side, or the
- * same version all answer false.
+ * filing type writes DRHP), a different document, a missing or unordered extractor version on either
+ * side, the same version, or a stored version NEWER than this reader all answer false.
  */
 export function isOlderReadOfSameDocument(
   provenance: { source: string | null; dataLineage: unknown } | null,
@@ -131,9 +109,24 @@ export function isOlderReadOfSameDocument(
     (doc.documentId !== null && lineage.documentId === doc.documentId) ||
     (doc.sourceSha !== null && lineage.sourceSha === doc.sourceSha);
   if (!sameDocument) return false;
-  const before = typeof lineage.extractorVersion === 'string' && lineage.extractorVersion !== '' ? lineage.extractorVersion : null;
-  if (before === null || doc.extractorVersion === null) return false;
-  return before !== doc.extractorVersion;
+  const before = typeof lineage.extractorVersion === 'string' ? lineage.extractorVersion : null;
+  return compareExtractorVersions(before, doc.extractorVersion) === -1;
+}
+
+/**
+ * The extractor's version is `extract_filing.py@YYYY-MM-DD` with an optional single lower-case letter
+ * for a same-day bump (`@2026-09-26b`), and it orders by that suffix (filing-auto-persist.ts
+ * versionAtLeast). Returns -1 / 0 / 1, or null when either side is not in that exact form: an
+ * order that cannot be read is never "older" (fail closed - nothing is cleared).
+ */
+const EXTRACTOR_VERSION_SHAPE = /^extract_filing\.py@(\d{4}-\d{2}-\d{2})([a-z]?)$/;
+export function compareExtractorVersions(a: string | null | undefined, b: string | null | undefined): -1 | 0 | 1 | null {
+  const ma = typeof a === 'string' ? EXTRACTOR_VERSION_SHAPE.exec(a) : null;
+  const mb = typeof b === 'string' ? EXTRACTOR_VERSION_SHAPE.exec(b) : null;
+  if (!ma || !mb) return null;
+  const ka = `${ma[1]}${ma[2]}`;
+  const kb = `${mb[1]}${mb[2]}`;
+  return ka === kb ? 0 : ka < kb ? -1 : 1;
 }
 
 export interface RereadClearInput {
@@ -226,6 +219,16 @@ export async function clearRereadAnswers(db: RereadExecutor, input: RereadClearI
           (ipo_id, table_name, field_name, row_key, document_id, document_sha256, rule_id, rank_attempted, extracted_value, cause)
         VALUES (${input.ipoId}::uuid, ${f.tableName}, ${f.column}, '', ${input.documentId}::uuid, ${input.sourceSha},
                 ${REREAD_RULE_ID[d.state]}, 'DRHP', ${serialiseRefused(d.refusedValue)}, ${cause})`);
+      // #1420 round 3 (OD-62): the empty column's provenance no longer names the older read as having
+      // supplied a value; its record is retired (kept in field_sources_retired with the reason, the
+      // pattern OD-156 uses), and the reason itself is the field_extraction_failures row above.
+      await tx.execute(sql`
+        WITH gone AS (
+          DELETE FROM field_sources
+           WHERE ipo_id = ${input.ipoId}::uuid AND table_name = ${f.tableName} AND row_key = '' AND field_name = ${f.column}
+          RETURNING *)
+        INSERT INTO field_sources_retired (ipo_id, table_name, row_key, field_name, source, record, retired_reason)
+        SELECT g.ipo_id, g.table_name, g.row_key, g.field_name, g.source, to_jsonb(g), ${cause} FROM gone g`);
       if (input.documentId !== null) {
         const reopened = await tx.execute(sql`
           UPDATE ipo_field_plan

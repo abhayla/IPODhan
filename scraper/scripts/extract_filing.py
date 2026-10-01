@@ -614,6 +614,10 @@ class Emitter:
         }
         if state == answer_states.REFUSED:
             self.fields[name]["refused_value"] = value
+            # #1420 round 3: keep the page the refusal was read from, so
+            # ocr_pages.annotate_fields can tell a refusal off an untrusted
+            # OCR page (LOW_CONFIDENCE_OCR, value kept) from a real one.
+            self.fields[name]["refused_page"] = page
 
     def refuse(self, name, refused_value, page, check_name, reason):
         """A value the reader READ and a validation rule rejected (OD-153).

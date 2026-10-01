@@ -1,10 +1,10 @@
 // implements: #1420 -- spec §6 rule 4 answer-state table (OD-153, OD-158, OD-160): the pure decision per row.
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('../../../src/services/data-persister.js', () => ({ clearIpoColumnsForRereadAnswer: vi.fn(), REREAD_CLEARABLE_IPOS_COLUMNS: {} }));
+vi.mock('../../../src/services/data-persister.js', () => ({ clearIpoColumnsForRereadAnswer: vi.fn() }));
 vi.mock('../../../src/utils/logger.js', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 
-import { decideRereadAnswer, isOlderReadOfSameDocument, REREAD_CLEARABLE_FIELDS, NOT_PRINTED_REASON } from '../../../src/services/reread-answer-clear.js';
+import { compareExtractorVersions, decideRereadAnswer, isOlderReadOfSameDocument, REREAD_CLEARABLE_FIELDS, NOT_PRINTED_REASON } from '../../../src/services/reread-answer-clear.js';
 
 describe('decideRereadAnswer: one row of the table per state', () => {
   it('REFUSED clears with the refusal as reason and carries refused_value (may be a list)', () => {
@@ -24,6 +24,11 @@ describe('decideRereadAnswer: one row of the table per state', () => {
   ] as const)('%s keeps', (_n, field, why) => {
     expect(decideRereadAnswer(field as never)).toMatchObject({ action: 'KEEP', why });
   });
+  it('round 3: a REFUSED answer off a page under the OCR floor keeps (second layer to the extractor)', () => {
+    const f = { value: null, page: null, state: 'REFUSED', refused_page: 3, source_text: 'OCR', ocr_confidence: 0.1,
+      check: { name: 'ocr_confidence_floor', passed: false, detail: 'ocr_low_confidence: 0.1000 < 0.80' } };
+    expect(decideRereadAnswer(f as never)).toMatchObject({ action: 'KEEP', why: 'LOW_CONFIDENCE_OCR' });
+  });
   it('an absent field keeps', () => {
     expect(decideRereadAnswer(undefined)).toMatchObject({ action: 'KEEP', why: 'ABSENT' });
   });
@@ -34,22 +39,44 @@ describe('decideRereadAnswer: one row of the table per state', () => {
 });
 
 describe('isOlderReadOfSameDocument (fail closed)', () => {
-  const doc = { documentId: 'd1', sourceSha: 's1', extractorVersion: 'v2' };
+  const V1 = 'extract_filing.py@2026-09-26';
+  const V2 = 'extract_filing.py@2026-09-26b';
+  const doc = { documentId: 'd1', sourceSha: 's1', extractorVersion: V2 };
   it('same document, older version: true', () => {
-    expect(isOlderReadOfSameDocument({ source: 'DRHP', dataLineage: { documentId: 'd1', extractorVersion: 'v1' } }, doc)).toBe(true);
+    expect(isOlderReadOfSameDocument({ source: 'DRHP', dataLineage: { documentId: 'd1', extractorVersion: V1 } }, doc)).toBe(true);
   });
   it.each([
     ['no extractor version in lineage', { source: 'DRHP', dataLineage: { documentId: 'd1' } }],
     ['empty extractor version', { source: 'DRHP', dataLineage: { documentId: 'd1', extractorVersion: '' } }],
-    ['same version', { source: 'DRHP', dataLineage: { documentId: 'd1', extractorVersion: 'v2' } }],
-    ['different document', { source: 'DRHP', dataLineage: { documentId: 'd9', sourceSha: 's9', extractorVersion: 'v1' } }],
-    ['not a document source', { source: 'NSE', dataLineage: { documentId: 'd1', extractorVersion: 'v1' } }],
+    ['same version', { source: 'DRHP', dataLineage: { documentId: 'd1', extractorVersion: V2 } }],
+    ['different document', { source: 'DRHP', dataLineage: { documentId: 'd9', sourceSha: 's9', extractorVersion: V1 } }],
+    ['not a document source', { source: 'NSE', dataLineage: { documentId: 'd1', extractorVersion: V1 } }],
   ])('%s: false', (_n, prov) => {
     expect(isOlderReadOfSameDocument(prov as never, doc)).toBe(false);
   });
+  it.each([
+    ['stored NEWER than this reader', { source: 'DRHP', dataLineage: { documentId: 'd1', extractorVersion: 'extract_filing.py@2026-09-27' } }],
+    ['stored version in an unknown form', { source: 'DRHP', dataLineage: { documentId: 'd1', extractorVersion: 'v1' } }],
+    ['stored version of another extractor', { source: 'DRHP', dataLineage: { documentId: 'd1', extractorVersion: 'anchor_report_text.py@2026-01-01' } }],
+  ])('round 3, version order: %s: false (never cleared)', (_n, prov) => {
+    expect(isOlderReadOfSameDocument(prov as never, doc)).toBe(false);
+  });
+  it('round 3: an OLDER reader never clears a value a NEWER reader stored', () => {
+    const newer = { source: 'DRHP', dataLineage: { documentId: 'd1', extractorVersion: 'extract_filing.py@2026-10-01' } };
+    expect(isOlderReadOfSameDocument(newer, { ...doc, extractorVersion: 'extract_filing.py@2026-09-27' })).toBe(false);
+    expect(isOlderReadOfSameDocument(newer, { ...doc, extractorVersion: 'extract_filing.py@2026-10-02' })).toBe(true);
+  });
+  it('compareExtractorVersions orders by date then same-day letter; unknown form is null', () => {
+    expect(compareExtractorVersions('extract_filing.py@2026-09-26', 'extract_filing.py@2026-09-26b')).toBe(-1);
+    expect(compareExtractorVersions('extract_filing.py@2026-09-26b', 'extract_filing.py@2026-09-27')).toBe(-1);
+    expect(compareExtractorVersions('extract_filing.py@2026-09-27', 'extract_filing.py@2026-09-27')).toBe(0);
+    expect(compareExtractorVersions('extract_filing.py@2026-10-01', 'extract_filing.py@2026-09-30')).toBe(1);
+    expect(compareExtractorVersions('extract_filing.py@2026-9-1', 'extract_filing.py@2026-09-27')).toBeNull();
+    expect(compareExtractorVersions(null, 'extract_filing.py@2026-09-27')).toBeNull();
+  });
   it('no provenance or no current version: false', () => {
     expect(isOlderReadOfSameDocument(null, doc)).toBe(false);
-    expect(isOlderReadOfSameDocument({ source: 'DRHP', dataLineage: { documentId: 'd1', extractorVersion: 'v1' } }, { ...doc, extractorVersion: null })).toBe(false);
+    expect(isOlderReadOfSameDocument({ source: 'DRHP', dataLineage: { documentId: 'd1', extractorVersion: V1 } }, { ...doc, extractorVersion: null })).toBe(false);
   });
 });
 
