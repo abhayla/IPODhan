@@ -158,6 +158,9 @@ const GENERIC_BASENAMES = new Set([
   'template', 'default', 'types', 'type', 'utils', 'util', 'helpers',
   'helper', 'config', 'constants', 'styles', 'style', 'test', 'spec',
   'main', 'app', 'schema', 'client', 'server', 'middleware', 'actions',
+  // #1402: web/scripts/ and scraper/src/scripts/ each had a reclassify-corporate-actions.ts; deleting the
+  // web one must not flag the surviving, unrelated scraper file of the same basename.
+  'reclassify-corporate-actions',
 ]);
 
 // Find every real reference (in a tracked, non-excluded file) to `deletedPath`.
