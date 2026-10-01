@@ -11,7 +11,7 @@
  * mocking needed) so the timestamp-resolution logic itself is covered
  * in isolation.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { resolveSubscriptionSnapshotTimestamp } from '../../../src/services/data-persister.js';
 import { mapBSESubscription, type BSESubscriptionRow } from '../../../src/scrapers/bse-api-scraper.js';
 import { parseIstMdyToUtcIso } from '../../../src/utils/date-string-parsing.js';
@@ -19,7 +19,14 @@ import { parseIstMdyToUtcIso } from '../../../src/utils/date-string-parsing.js';
 describe('resolveSubscriptionSnapshotTimestamp (W-38)', () => {
   const ctx = { ipoId: 'ipo-1', companyName: 'Deepa Jewellers' };
 
+  // Pinned so the fixed 2026-09-0x fixtures below never age past the 30-day
+  // staleness window as the real calendar moves on.
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-03T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
     vi.useRealTimers();
   });
 
