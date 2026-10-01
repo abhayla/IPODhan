@@ -31,7 +31,8 @@ import { type DataConsolidationService, type DeferredProvenanceWrite, TERMINAL_I
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow, SOURCE_KEY_NO_WRITE_ERROR_NAMES, findSourceKeysForIpo, withSourceKeyLineage, sourceKeyLineageFor, E1_EXCHANGE_STATED_FIELDS, DOCUMENT_PATH_SOURCES } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
-import { createConsolidationService, type FieldExtractionFailuresRecorder } from './consolidation-factory.js';
+import { createConsolidationService, createTradingCalendar, type FieldExtractionFailuresRecorder } from './consolidation-factory.js';
+import type { TradingCalendar } from './trading-calendar.js';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { readDocumentFilingDates } from './document-filing-dates.js';
 import { createProvenanceFields } from './create-provenance.js';
@@ -371,6 +372,12 @@ export function guardSmeOfferingTypeWithLookup(
  * rule returns NO_RULE_APPLIES and the value is kept.
  */
 let persisterFailuresRepository: FieldExtractionFailuresRecorder | null = null;
+let persisterCalendar: TradingCalendar | null = null;
+
+function persisterTradingCalendar(): TradingCalendar {
+  if (!persisterCalendar) persisterCalendar = createTradingCalendar(db, getRedisClient());
+  return persisterCalendar;
+}
 
 function persisterConsolidationDeps(): PreRankCheckDeps & { fieldExtractionFailuresRepository: FieldExtractionFailuresRecorder } {
   if (!persisterFailuresRepository) {
@@ -379,7 +386,8 @@ function persisterConsolidationDeps(): PreRankCheckDeps & { fieldExtractionFailu
   return {
     dataConflictsRepository: getDataConflictsRepository(),
     fieldExtractionFailuresRepository: persisterFailuresRepository,
-    tradingHolidays: undefined,
+    // #1380 / F-220: the working-day rules need the holiday calendar (one lazy, memoized read).
+    tradingHolidays: persisterTradingCalendar(),
     validationRules: loadValidationRules,
   };
 }

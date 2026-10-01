@@ -42,6 +42,7 @@ import { evaluatePullNoblank } from './lib/pull-noblank-checks.mjs';
 import { CREATE_PROVENANCE_COLUMNS, buildUnprovenancedColumnsSql, evaluateUnprovenancedColumns } from './lib/create-provenance-checks.mjs';
 import { collectPullFrozen } from './lib/pull-frozen-checks.mjs';
 import { runCheckAgainstIds } from './lib/run-check.mjs';
+import { evaluateShiftedHolidayCopies } from './lib/shifted-holiday-copies.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import { fetchOracleCalendar } from './lib/chittorgarh-oracle-parser.mjs';
 import { parseChittorgarhIssueSizeDetail, evaluateUpcomingSourceDrift, ROUNDING_TOLERANCE_RUPEES } from './lib/upcoming-source-drift-checks.mjs';
@@ -4058,6 +4059,19 @@ async function checkR_childProvenanceOrphan() {
       + (rows.length ? '; repair: scraper/scripts/repair-retire-orphan-peer-sources.ts' : ''));
 }
 
+// #1380 / F-220: an exchange-specific TRADING holiday row that is a one-day-early copy of the other
+// exchange's (or BOTH) row. NSE and BSE trading holidays are one set; a copy whose writer shifted an IST
+// midnight through UTC makes real trading weekdays read as holidays (13 on staging 2025). The rule is
+// shared with the repair tool (scripts/lib/shifted-holiday-copies.mjs); each offender is listed by id.
+async function checkH_marketHolidayShiftedCopy() {
+  const id = 'h_market_holiday_shifted_copy';
+  const { status, rows, lines, scanned } = await evaluateShiftedHolidayCopies((sql) => q(sql));
+  for (const s of rows) notify(id, 'P2', s.row.id, `market_holidays row is one day before another exchange's row: ${s.row.exchange} ${s.row.date}`, lines[rows.indexOf(s)]);
+  record('h_market_holiday_shifted_copy', `no exchange-specific TRADING holiday is a one-day-early copy of another exchange's row (${scanned} market_holidays row(s) read)`,
+    status,
+    `${rows.length} shifted row(s)` + (rows.length ? `: ${lines.slice(0, MAX_OFFENDERS).join('; ')}; repair: scraper/scripts/repair-shifted-market-holidays.ts` : ''));
+}
+
 async function runCheck(fn, ids = []) {
   return runCheckAgainstIds(fn, ids, { record, results });
 }
@@ -4138,6 +4152,7 @@ async function main() {
   await runCheck(checkR_provenanceWithoutValue, ['r_provenance_without_value']);
   await runCheck(checkZipMemberRows, ['zip_member_rows']);
   await runCheck(checkR_childProvenanceOrphan, ['r_child_provenance_orphan']);
+  await runCheck(checkH_marketHolidayShiftedCopy, ['h_market_holiday_shifted_copy']);
 
   // item 35: the admin queue's open size, resolved to IPOs (signal-ownership.md R1), printed
   // where floor-delta.mjs (the existing same-day diffing consumer) already reads this

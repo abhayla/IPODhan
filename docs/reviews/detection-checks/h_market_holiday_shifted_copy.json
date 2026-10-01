@@ -1,0 +1,11 @@
+{
+  "id": "h_market_holiday_shifted_copy",
+  "findingClass": "A date-only reference row whose writer converts an IST midnight through UTC lands on the previous calendar day. First case: market_holidays NSE-only TRADING rows each one day before the same holiday's BOTH row (Good Friday NSE 2025-04-17 Thu vs BOTH 2025-04-18), so real trading weekdays read as holidays to the OD-21 working-day rules and the scheduler calendar gates (#1380, F-220, class calendar-date-stored-one-day-early).",
+  "round7Findings": [],
+  "failThreshold": "FAIL when any market_holidays row with exchange NSE or BSE and type TRADING has date + 1 day equal to the date of a TRADING row of the other exchange or BOTH with the same description (case and whitespace normalised), and the other exchange (or BOTH) carries no TRADING row on the row's own date. Listed by id, exchange, date, weekday and description with the row it copies, never as a bare count (signal-ownership.md R1). A genuine exchange-only holiday (no later copy) and a real double holiday (different descriptions on one date, e.g. 2025-10-02) pass.",
+  "severity": "P2",
+  "unverifiableWhen": "Never: market_holidays is read directly.",
+  "note": "h_market_holiday_shifted_copy: implemented in scripts/audit-detection-floor.mjs (checkH_marketHolidayShiftedCopy via evaluateShiftedHolidayCopies in scripts/lib/shifted-holiday-copies.mjs, the same rule scraper/scripts/repair-shifted-market-holidays.ts selects by). Positive control: scripts/tests/shifted-holiday-copies.test.mjs (verdict) and scraper/tests/integration/repair-shifted-market-holidays-1380.integration.test.ts (the same rule on ipodhan_test). Covers market_holidays only; other date-only reference tables written through the same path are not covered (unmeasured). Does not detect a shift whose true twin is absent (a one-day-early row with no other-exchange row cannot be told from a real holiday).",
+  "owner": "#1380 (F-220)",
+  "section": "checks"
+}

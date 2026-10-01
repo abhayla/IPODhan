@@ -36,7 +36,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
 import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
-import { createConsolidationOrchestrator } from './consolidation-factory.js';
+import { createConsolidationOrchestrator, createTradingCalendar } from './consolidation-factory.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { LISTING_SENTENCE_ORDER } from '../../config/listing-sentence-precedence.mjs';
 import { rebuildIpoPlanInTx, type PlanManifest } from '@ipodhan/shared/services/plan-invalidating-rebuild';
@@ -146,6 +146,8 @@ export function buildFilingPersistDeps(
       dataConflictsRepository: new DataConflictsRepository(db, redis),
       listingPerformanceRepository: new ListingPerformanceRepository(db, redis),
       fieldExtractionFailuresRepository: fieldExtractionFailures,
+      // #1380 / F-220: the working-day rules need the holiday calendar.
+      tradingHolidays: createTradingCalendar(db, redis),
     },
     redis
   );

@@ -44,6 +44,13 @@ export interface ValidateFieldValueParams {
    * holidays in the window".
    */
   holidays?: ReadonlySet<string> | null;
+  /**
+   * #1380: calendar years that have at least one holiday row. When given, a working-day rule judges a
+   * span only if EVERY year from the earlier date to the later date is covered; a year with no rows is an
+   * empty calendar for that stretch (it would count every weekday as a working day), so the rule returns
+   * NO_RULE_APPLIES. Absent (a caller that supplies a plain set) = the set is taken as the whole calendar.
+   */
+  holidayYears?: ReadonlySet<number> | null;
 }
 
 /** Pure. No DB access, no config read, no clock read — unit-testable without a database. */
@@ -105,6 +112,16 @@ export function validateFieldValue(params: ValidateFieldValueParams): FieldValid
             `rule ${rule.id} needs both ${assertion.laterField} and ${assertion.earlierField}; ` +
             `${!later ? assertion.laterField : assertion.earlierField} is missing or unparseable`,
         };
+      }
+      if (params.holidayYears) {
+        for (let y = earlier.getUTCFullYear(); y <= later.getUTCFullYear(); y++) {
+          if (!params.holidayYears.has(y)) {
+            return {
+              status: 'NO_RULE_APPLIES',
+              reason: `rule ${rule.id} needs holiday rows for ${y} and the calendar has none; an empty calendar is never judged against`,
+            };
+          }
+        }
       }
       if (later < earlier) return fail(rule, params.value);
       const gap = workingDaysBetween(earlier, later, params.holidays);

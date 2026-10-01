@@ -86,7 +86,7 @@ import {
 } from '@ipodhan/shared';
 import { withSourceKeyLineage } from '@ipodhan/shared/repositories';
 import { ListingPerformanceRepository as OpeningDayListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
-import { createConsolidationService } from './services/consolidation-factory.js';
+import { createConsolidationService, createTradingCalendar } from './services/consolidation-factory.js';
 import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { initStepLedger } from './services/step-ledger.js';
 import { recordDiscoverySteps } from './services/step-ledger-recorders.js';
@@ -857,6 +857,8 @@ async function runOpeningDayCheckWake(): Promise<number> {
       dataConflictsRepository: new DataConflictsRepository(db, redis),
       listingPerformanceRepository: new OpeningDayListingPerformanceRepository(db, redis),
       fieldExtractionFailuresRepository: new FieldExtractionFailuresRepository(db, redis),
+      // #1380 / F-220: the working-day rules need the holiday calendar.
+      tradingHolidays: createTradingCalendar(db, redis),
     });
     const fieldProtection = createFieldProtectionService(db, redis);
     const summary = await runOpeningDayDiscovery(

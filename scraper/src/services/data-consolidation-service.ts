@@ -58,6 +58,7 @@ import {
   type SmeCollapseEvidence,
 } from './listing-exchange-resolution.js';
 import logger from '../utils/logger.js';
+import { resolveTradingHolidays, type TradingCalendar } from './trading-calendar.js';
 import type { FieldDocumentRef } from '../../config/document-field-order.mjs';
 import { OUTCOME_CODE, outcomeCategoryOf, outcomeCodeNameOf } from './consolidation-outcome-codes.js';
 import {
@@ -960,7 +961,7 @@ export interface PreRankCheckDeps {
     markResolved(ipoId: string, tableName: string, fieldName: string, rowKey?: string): Promise<number>;
   };
   validationRules: () => ValidationRule[];
-  tradingHolidays?: ReadonlySet<string>;
+  tradingHolidays?: ReadonlySet<string> | TradingCalendar;
   dataConflictsRepository: { upsertConflict(input: Record<string, any>): Promise<unknown> };
 }
 
@@ -1010,6 +1011,8 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
     deps.fieldExtractionFailuresRepository
   ) {
     const columnName = toColumnName(fieldName);
+    // #1380: the calendar is loaded once per service build (memoized), never per field.
+    const calendar = await resolveTradingHolidays(deps.tradingHolidays);
     const outcome = validateFieldValue({
       table: tableName,
       column: columnName,
@@ -1027,7 +1030,8 @@ export async function runPreRankChecks(input: PreRankCheckInput, deps: PreRankCh
         close_date: input.incomingDates?.closeDate ?? input.heldDates?.closeDate ?? null,
         listing_date: input.incomingDates?.listingDate ?? input.heldDates?.listingDate ?? null,
       },
-      holidays: deps.tradingHolidays ?? null,
+      holidays: calendar.holidays,
+      holidayYears: calendar.years,
     });
 
     if (outcome.status === 'FAIL') {
@@ -1265,7 +1269,7 @@ export class DataConsolidationService {
      * NO_RULE_APPLIES and the value is KEPT, never judged against a calendar
      * this process does not have.
      */
-    private tradingHolidays?: ReadonlySet<string>
+    private tradingHolidays?: ReadonlySet<string> | TradingCalendar
   ) {}
 
   /**

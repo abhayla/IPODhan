@@ -52,7 +52,7 @@ import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
 import { AlertingService } from '../services/alerting-service.js';
 import type { ScraperSource } from '../services/types.js';
 import type { DataConsolidationOrchestrator } from '../services/data-consolidation-orchestrator.js';
-import { createConsolidationOrchestrator } from '../services/consolidation-factory.js';
+import { createConsolidationOrchestrator, createTradingCalendar } from '../services/consolidation-factory.js';
 import { FieldExtractionFailuresRepository } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { computeBlankFieldStats, evaluateAndRecordDegradation } from '../services/selector-degradation-monitor.js';
@@ -936,6 +936,8 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
         // W-145 round 2: listing-record evidence for the SME single-exchange collapse.
         listingPerformanceRepository: new ListingPerformanceRepositoryClass(db, redis),
         fieldExtractionFailuresRepository: new FieldExtractionFailuresRepository(db, redis),
+        // #1380 / F-220: the working-day rules need the holiday calendar.
+        tradingHolidays: createTradingCalendar(db, redis),
       },
       redis
     );

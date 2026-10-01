@@ -245,6 +245,11 @@ jobs:
         # self-test so a weakened predicate turns red here.
         run: node --test scripts/tests/create-provenance-checks.test.mjs
 
+      - name: Shifted market-holiday rule self-tests (#1380)
+        # h_market_holiday_shifted_copy and the repair tool share scripts/lib/shifted-holiday-copies.mjs;
+        # this runs its self-test so a weakened selection rule turns red here.
+        run: node --test scripts/tests/shifted-holiday-copies.test.mjs
+
       - name: Delisted-row check self-tests (#983)
         # d_delisted_reads imports its predicate from scripts/lib/delisting-checks.mjs.
         run: node --test scripts/tests/delisting-checks.test.mjs
@@ -1365,6 +1370,7 @@ jobs:
           tests/integration/document-field-receipts.integration.test.ts
           tests/integration/relaunch-clears-admin.integration.test.ts
           tests/integration/postponed-relaunch-1298.integration.test.ts
+          tests/integration/repair-shifted-market-holidays-1380.integration.test.ts
           tests/integration/relaunch-merge-unmerge-restores-refill-1298.integration.test.ts
           tests/integration/relaunch-merge-unmerge-restores-clear-1298.integration.test.ts
           tests/integration/relaunch-merge-unmerge-pk-readback-1298.integration.test.ts

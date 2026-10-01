@@ -51,6 +51,7 @@ import { recordDiscoverySteps } from './step-ledger-recorders.js';
 import { IDENTIFIER_HELD_RULE } from './identifier-refusal.js';
 import { recordTouchedIfChanged } from './touched-ipos-tracker.js';
 import type { Redis } from 'ioredis';
+import type { TradingCalendar } from './trading-calendar.js';
 
 /**
  * Result of consolidated upsert operation
@@ -174,7 +175,7 @@ export class DataConsolidationOrchestrator {
       recordFailure(input: Record<string, any>): Promise<any>;
       markResolved(ipoId: string, tableName: string, fieldName: string, rowKey?: string): Promise<number>;
     },
-    tradingHolidays?: ReadonlySet<string>
+    tradingHolidays?: ReadonlySet<string> | TradingCalendar
   ) {
     this.consolidationService = new DataConsolidationService(
       fieldSourcesRepository,
