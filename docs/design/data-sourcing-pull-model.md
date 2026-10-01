@@ -3208,6 +3208,27 @@ service passes (only unit tests inject it), so no production write is validated 
    re-extractions of the same bytes becomes impossible by construction rather than by a retry limit
    somebody remembers to set.
 
+**How the walk applies rule 4 (#1379, F-217).** F-217 (2026-10-01) measured that before #1379 a refused
+value was recorded as `LOST_TO_HIGHER_PRIORITY`, rank 2 was not written, and rank 1's same bytes were
+re-written every data slot. The states below follow from rules 4-5, OD-56, OD-62, OD-66 and §2.4 (every
+rank is asked once per pass, OD-103, so "ask rank 2" means "write rank 2's answer of the same pass"); no
+new decision. A refusal is either an OD-21 rule (`VALIDATION_RULE_FAILED:<rule>`) or the #1229
+merged-record date rule.
+
+| Rank-1 value refused, and then | Plan row | Asked next, and when |
+|---|---|---|
+| rank 2 supplied a valid value | `SUPPLIED`, chosen = rank 2; rank 1's witness is `CHECK_FAILED` with the refusal | nothing more in this stage; only the §2.5.1 triggers re-ask it |
+| rank 2 (and every lower rank) refused too | `CHECK_FAILED` / `FAILED_VALIDATION`, every refusal in `cause`, not charged | parked under the field's validation key; re-asked once when the key changes: a stage change (OD-56), a new COMPLETED document in the field's family (OD-66, rule 5), an extractor version (rule 5), the manifest entry, provenance or override, or the validation rules (rules are configuration, above; inferred, not spec-stated) |
+| rank 2 not printed, not available yet, a definitive or structural failure | same as above | same as above (OD-62: `FAILED_VALIDATION` is fixed in the extractor, not by asking again) |
+| rank 2 failed transiently (throw, timeout, unflagged check failure) | `CHECK_FAILED` / `FAILED_VALIDATION`, charged | next OD-19 data slot (§2.4), bounded by the attempts cap; rank 1's byte-identical answer under the same key is not written again (its refusal token rides on `cause`) |
+| no rank 2 exists | as "refused too" | as "refused too" |
+| rank 1's next document arrives | the key changes | rank 1 is asked and validated once more |
+
+No validation key for the IPO (key source unreadable): charged `CHECK_FAILED`, next slot, bounded by the
+attempts cap, and the value is re-validated each time. A rank-1 `NOT_AVAILABLE_YET` whose provisional rank
+is refused tries the next lower rank in the same pass, and does not re-write the refused bytes at the next
+slot.
+
 **Related: F-193** (2026-09-26) measures a consequence of the retry ceiling this rule shares a
 boundary with: the 10-attempt block marker for a stuck extraction overwrote its own
 `extraction_error` cause, so 4 of 6 staging documents at the ceiling could not say whether they were

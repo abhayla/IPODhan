@@ -96,7 +96,8 @@ describe('#1240 the walk maps refusedDateFields to DATE_REFUSED_REASON', () => {
     const result = await walkFieldPlanForIPO(IPO_ID, d, budget());
     expect(recorded).toHaveLength(1);
     expect(recorded[0]).toMatchObject({ state: 'CHECK_FAILED', reasonCode: 'FAILED_VALIDATION' });
-    expect(recorded[0].cause).toBe(`${DATE_REFUSED_REASON}: listingDate`);
+    // #1379: a refusal now names its rank and source (the next rank is tried; DOC has no fetcher here).
+    expect(recorded[0].cause).toBe(`rank1:CHITTORGARH:VALIDATION_REFUSED:${DATE_REFUSED_REASON}: listingDate`);
     expect(recorded[0].cause).not.toMatch(/no field result returned/);
     expect(result.fieldsCheckFailed).toBe(1);
     expect(result.fieldsSupplied).toBe(0);

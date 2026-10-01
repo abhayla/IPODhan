@@ -52,6 +52,16 @@ export interface FieldPlanFieldGapKeys {
    * else about the writer reopens any other gap.
    */
   withWriter: string;
+  /**
+   * #1379 (spec §5.3 rules 4-5, OD-21, OD-56, OD-62): `withDocuments` + the IPO's stage + the
+   * validation rules' fingerprint. A row whose every rank answer was REFUSED at the write (or refused
+   * with no other rank able to supply) is parked under this key: FAILED_VALIDATION means the
+   * extractor needs fixing, so nothing is re-asked until one of the events that can change the answer
+   * happens -- a stage change (OD-56), a new COMPLETED document in the field's family (OD-66, §5.3
+   * rule 5), an extractor version change (rule 5), a corrected rule (rules are configuration, §5.3),
+   * or the manifest entry / provenance / override parts `plain` already carries.
+   */
+  withValidation: string;
 }
 
 /** Keyed `table.field`, the manifest's own key shape. */
@@ -106,6 +116,20 @@ function overridePart(override: GapKeyOverride | null | undefined): string {
   return override ? `o${short(override.id)}` : 'o:none';
 }
 
+/** The date columns the merged-record date rules judge (validators.ts IPO_DATE_KEYS), as manifest field keys. */
+const DATE_RULE_FIELD_KEYS: ReadonlySet<string> = new Set([
+  'ipos.open_date',
+  'ipos.close_date',
+  'ipos.allotment_date',
+  'ipos.listing_date',
+]);
+export const DATE_RULE_INPUT_KEYS = ['openDate', 'closeDate', 'allotmentDate', 'listingDate'] as const;
+
+function storedDatesPart(inputs: Readonly<Record<string, string | null | undefined>> | null | undefined): string {
+  if (!inputs) return 't:unknown';
+  return `t${short(DATE_RULE_INPUT_KEYS.map((k) => `${k}=${inputs[k] ?? ''}`).join(','))}`;
+}
+
 export function buildFieldPlanIpoGapKeys(params: {
   manifestFields: Record<string, FingerprintableManifestEntry>;
   coverageFingerprint: string;
@@ -117,6 +141,17 @@ export function buildFieldPlanIpoGapKeys(params: {
   overrideByField?: Readonly<Record<string, GapKeyOverride | null | undefined>>;
   /** OD-99: the writer's capability for a table (`fieldPlanWriterCapability`). Omitted: `w:unknown`. */
   writerCapability?: (tableName: string) => string;
+  /** #1379: the IPO's stage (`ipos.status`). Omitted: `s:unknown` (still a stable key). */
+  stage?: string | null;
+  /** #1379: a fingerprint of the loaded validation rules. Omitted: `v:unknown`. */
+  validationRulesFingerprint?: string | null;
+  /**
+   * #1379 round 2: the STORED dates the cross-field date rules read (`incomingDatesRefusedOnMergedRecord`:
+   * openDate, closeDate, allotmentDate, listingDate). Part of the validation key of the four date fields
+   * only, so an admin correcting open_date unparks a date-refused listing_date (§5.3 rule 4: the refusal
+   * was judged against those inputs). Omitted: `t:unknown`.
+   */
+  storedDateInputs?: Readonly<Record<string, string | null | undefined>> | null;
 }): FieldPlanIpoGapKeys {
   const byField: Record<string, FieldPlanFieldGapKeys> = {};
   for (const [fieldKey, entry] of Object.entries(params.manifestFields)) {
@@ -125,10 +160,15 @@ export function buildFieldPlanIpoGapKeys(params: {
     const plain = `e${fieldManifestEntryFingerprint(entry).slice(0, 12)}|f${params.coverageFingerprint}|x${params.extractorVersion}|${provenance}|${override}`;
     const tableName = fieldKey.slice(0, fieldKey.indexOf('.'));
     const writer = params.writerCapability ? `w${short(params.writerCapability(tableName))}` : 'w:unknown';
+    const withDocuments = `${plain}|${documentsPart(params.documents, entry?.documentType)}`;
+    const stagePart = params.stage ? `s${short(params.stage)}` : 's:unknown';
+    const rulesPart = params.validationRulesFingerprint ? `v${short(params.validationRulesFingerprint)}` : 'v:unknown';
+    const datesPart = DATE_RULE_FIELD_KEYS.has(fieldKey) ? `|${storedDatesPart(params.storedDateInputs)}` : '';
     byField[fieldKey] = {
       plain,
-      withDocuments: `${plain}|${documentsPart(params.documents, entry?.documentType)}`,
+      withDocuments,
       withWriter: `${plain}|${writer}`,
+      withValidation: `${withDocuments}|${stagePart}|${rulesPart}${datesPart}`,
     };
   }
   return { byField };
@@ -147,9 +187,16 @@ export function fieldPlanGapKeyFor(
   return gapCodes.includes('NO_DOCUMENT_PROVENANCE') ? k.withDocuments : k.plain;
 }
 
-/** The claim query's map: a stamped row whose key is NEITHER current variant is offered. */
+/** #1379: the key a FAILED_VALIDATION row is parked under, or null (field not in the manifest: charged, never unkeyed). */
+export function fieldPlanValidationKeyFor(keys: FieldPlanIpoGapKeys, tableName: string, fieldName: string): string | null {
+  return keys.byField[`${tableName}.${fieldName}`]?.withValidation ?? null;
+}
+
+/** The claim query's map: a stamped row whose key is NONE of the current variants is offered. */
 export function fieldPlanClaimGapKeys(keys: FieldPlanIpoGapKeys): Record<string, string[]> {
   const out: Record<string, string[]> = {};
-  for (const [fieldKey, k] of Object.entries(keys.byField)) out[fieldKey] = [k.plain, k.withDocuments, k.withWriter];
+  for (const [fieldKey, k] of Object.entries(keys.byField)) {
+    out[fieldKey] = [k.plain, k.withDocuments, k.withWriter, k.withValidation];
+  }
   return out;
 }

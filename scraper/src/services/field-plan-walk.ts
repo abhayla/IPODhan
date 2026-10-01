@@ -48,8 +48,10 @@
  * calls a writer when it HAS a value).
  */
 
+import { createHash } from 'node:crypto';
 import { logger } from '../utils/logger.js';
-import { normalizeChosen } from './data-consolidation-service.js';
+import { isHiddenIpo } from '@ipodhan/shared/services/scraper-write-block';
+import { normalizeChosen, isPriorityLossReason } from './data-consolidation-service.js';
 import { areEquivalent } from './normalization-engine.js';
 import { getFieldRules } from '../config/field-priority-matrix.js';
 import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
@@ -75,6 +77,7 @@ import {
 import {
   fieldPlanClaimGapKeys,
   fieldPlanGapKeyFor,
+  fieldPlanValidationKeyFor,
   type FieldPlanGapKeySource,
   type FieldPlanIpoGapKeys,
 } from './field-plan-gap-keys.js';
@@ -625,7 +628,9 @@ export interface FieldPlanWalkBudget {
  */
 type WriteVerdict =
   | { happened: true; accepted: true }
-  | { happened: true; accepted: false; reason: string }
+  /** `refused`: #1379 -- the write door REFUSED this value (an OD-21 validation rule, or the #1229
+   *  merged-record date rule), as opposed to keeping a better-ranked source's value. */
+  | { happened: true; accepted: false; reason: string; refused?: boolean }
   | { happened: false; skipReason: string };
 
 /**
@@ -1313,7 +1318,14 @@ async function attemptOneField(
       // second-best.
       result.fieldsNotAvailableYet += 1;
       answers.push(rankAnswer(rank, source, 'NOT_AVAILABLE_YET'));
-      const provisional = await tryProvisional(ipoId, plan, rank, deps, failures, policy, answers);
+      // #1379: a refused lower-rank value is remembered on the cause (token) so the next slot's
+      // reclaim does not write the same bytes again; the next lower rank is tried in this pass.
+      const provisionalRefusals: string[] = [];
+      const provisional = await tryProvisional(ipoId, plan, rank, deps, failures, policy, answers, {
+        validationKey: ipoGapKeys ? fieldPlanValidationKeyFor(ipoGapKeys, plan.tableName, plan.fieldName) : null,
+        prior: priorRefusalTokens(plan.cause),
+        refusals: provisionalRefusals,
+      });
       if (provisional) {
         result.fieldsProvisional += 1;
         // OD-103: the provisional write created/updated the field_sources row, so this pass's
@@ -1346,7 +1358,7 @@ async function attemptOneField(
         writeHappened: true,
         state: 'NOT_AVAILABLE_YET',
         reasonCode: 'NOT_PUBLISHED_YET',
-        cause: `rank${rank}:${source}:NOT_AVAILABLE_YET`,
+        cause: [`rank${rank}:${source}:NOT_AVAILABLE_YET`, ...provisionalRefusals].join('; '),
         // A provisional value was stored -> its witnesses hold the answers; none -> the plan row does.
         ...planRowAnswers(provisional ? null : answers),
       });
@@ -1386,22 +1398,66 @@ async function attemptOneField(
       );
     }
 
-    const { rank, source, answer } = winner;
+    // #1379 (spec §5.3 rule 4, OD-21): a value REFUSED at the write is dropped and the NEXT SUPPLIED
+    // answer of this same pass (every rank was already asked above, OD-103 -- no second ask, no
+    // separate path) is written instead, in rank order. Only a refusal moves on: a priority loss, a
+    // dropped write or an unverifiable result is handled below exactly as before (fail closed).
+    const validationKey = ipoGapKeys ? fieldPlanValidationKeyFor(ipoGapKeys, plan.tableName, plan.fieldName) : null;
+    const priorRefusals = priorRefusalTokens(plan.cause);
+    const refusals: string[] = [];
+    let chosenAnswer: (typeof suppliedAnswers)[number] | null = null;
+    let verdict: WriteVerdict | null = null;
+    for (const candidate of suppliedAnswers) {
+      const token = refusalToken(candidate.source, candidate.answer.value, validationKey);
+      if (token && priorRefusals.has(token)) {
+        const cause = refusalCause('', candidate.rank, candidate.source, 'same value refused before', token, true);
+        refusals.push(cause);
+        markAnswerRefused(answers, candidate.rank, candidate.source, cause);
+        continue;
+      }
+      // OD-144 (§2.8): a value kept and queued under OD-142 is replaced by the answer of the plan's
+      // rank-1 source for the IPO's CURRENT type, whatever the global matrix ranks higher. Only
+      // that source, and only while the field's item is open and names it as the new rank 1.
+      const candidateRankWins =
+        candidate.source === plan.rank1Source && deps.fieldPlanRepository.openSourceNoLongerFirstNewRank1
+          ? (await deps.fieldPlanRepository.openSourceNoLongerFirstNewRank1({
+              ipoId,
+              tableName: plan.tableName,
+              rowKey: plan.rowKey ?? '',
+              fieldName: plan.fieldName,
+            })) === candidate.source
+          : false;
+      const candidateVerdict = await runWrite(ipoId, plan, candidate.source, candidate.answer, deps, candidateRankWins);
+      if (candidateVerdict.happened === true && candidateVerdict.accepted === false && candidateVerdict.refused === true) {
+        const cause = refusalCause('', candidate.rank, candidate.source, candidateVerdict.reason, token, false);
+        refusals.push(cause);
+        markAnswerRefused(answers, candidate.rank, candidate.source, cause);
+        logger.warn(
+          { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, source: candidate.source, rank: candidate.rank, reason: candidateVerdict.reason },
+          'PASS 3: the write door REFUSED this value (OD-21) -- dropped, the next rank answer of this pass is tried'
+        );
+        continue;
+      }
+      chosenAnswer = candidate;
+      verdict = candidateVerdict;
+      break;
+    }
 
-    // OD-144 (§2.8): a value kept and queued under OD-142 is replaced by the answer of the plan's
-    // rank-1 source for the IPO's CURRENT type, whatever the global matrix ranks higher. Only
-    // that source, and only while the field's item is open and names it as the new rank 1.
-    const planRankWins =
-      source === plan.rank1Source && deps.fieldPlanRepository.openSourceNoLongerFirstNewRank1
-        ? (await deps.fieldPlanRepository.openSourceNoLongerFirstNewRank1({
-            ipoId,
-            tableName: plan.tableName,
-            rowKey: plan.rowKey ?? '',
-            fieldName: plan.fieldName,
-          })) === source
-        : false;
+    if (!chosenAnswer || !verdict) {
+      return recordAllRefused(ipoId, plan, deps, result, {
+        refusals,
+        failures,
+        answers,
+        policyOrigin,
+        sawTransientFailure,
+        validationKey,
+      });
+    }
 
-    const verdict = await runWrite(ipoId, plan, source, answer, deps, planRankWins);
+    const { rank, source, answer } = chosenAnswer;
+    // A refusal earlier in this pass rides on every outcome's cause, so its token is remembered.
+    const withRefusals = (cause: string | null | undefined): string | null =>
+      refusals.length === 0 ? cause ?? null : [...refusals, ...(cause ? [cause] : [])].join('; ');
 
     if (verdict.happened === false && STRUCTURAL_WRITE_SKIP_REASONS.has(verdict.skipReason)) {
       // OD-99: the writer refused for a STRUCTURAL reason -- it will refuse
@@ -1478,6 +1534,7 @@ async function attemptOneField(
       verdict.accepted === false &&
       reopenedUnder &&
       verdict.reason !== NO_FIELD_RESULT_REASON &&
+      verdict.refused !== true && // #1379: a validation refusal is not a priority loss
       !verdict.reason.startsWith(DATE_REFUSED_REASON) // #1229: a refusal, not a priority loss
     ) {
       // #968 fix round 1, finding 2: an override-reopened settled row whose higher
@@ -1543,7 +1600,7 @@ async function attemptOneField(
         writeHappened: true,
         state: 'CHECK_FAILED',
         reasonCode: rejection.reasonCode,
-        cause: rejection.cause,
+        cause: withRefusals(rejection.cause),
         ...planRowAnswers(answers),
       });
     }
@@ -1653,6 +1710,57 @@ async function attemptOneField(
 }
 
 /**
+ * #1379 (spec §5.3 rules 4-5, OD-21, OD-62): every SUPPLIED answer of this pass was REFUSED at the
+ * write, and no other rank supplied. The stored value is untouched (§2.6: never blanked) and the row
+ * records CHECK_FAILED / FAILED_VALIDATION with every refusal in its cause (each carrying its token).
+ *
+ *  - another rank failed GENUINELY (a throw, a timeout, an unflagged check failure): that rank may
+ *    answer next time, so the row is re-asked in the next OD-19 data slot (charged, bounded by
+ *    FIELD_PLAN_RECLAIM_MAX_ATTEMPTS, never a timer) -- and the refused bytes are not re-written then.
+ *  - otherwise (no other rank, NOT_PRINTED, NOT_AVAILABLE_YET, a definitive or structural failure):
+ *    FAILED_VALIDATION means the extractor needs fixing (OD-62), so the row is parked under the
+ *    field's validation key and offered again only when that key changes (a stage change, a new
+ *    document, an extractor/rules/manifest change). No key for this IPO: charged next-slot (bounded).
+ */
+async function recordAllRefused(
+  ipoId: string,
+  plan: any,
+  deps: FieldPlanWalkDeps,
+  result: FieldPlanWalkResult,
+  ctx: {
+    refusals: string[];
+    failures: string[];
+    answers: RankAnswer[];
+    policyOrigin: string;
+    sawTransientFailure: boolean;
+    validationKey: string | null;
+  }
+): Promise<'SETTLED' | 'SUPERSEDED'> {
+  result.fieldsCheckFailed += 1;
+  const classified = classifyWalkFailures(ctx.failures);
+  const genuineTransient = ctx.sawTransientFailure && (classified === null || !classified.allGaps);
+  const cause = [...ctx.refusals, ...(genuineTransient && classified ? [classified.cause] : [])].join('; ');
+  const gapKey = genuineTransient ? null : ctx.validationKey;
+  logger.warn(
+    { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, refusals: ctx.refusals, gapKey, answers: answerLog(ctx.answers) },
+    gapKey
+      ? 'PASS 3: every answer of this pass was REFUSED at the write and no other rank supplied -- CHECK_FAILED/FAILED_VALIDATION, parked under the validation key (re-asked on a stage change or a new document, never by slot)'
+      : 'PASS 3: every answer of this pass was REFUSED at the write -- CHECK_FAILED/FAILED_VALIDATION, re-asked next data slot (another rank failed transiently, or no key), the refused bytes are not re-written'
+  );
+  return recordAndClassify(deps, result, {
+    planRowId: plan.id,
+    claimToken: plan.claimToken,
+    policyOrigin: ctx.policyOrigin,
+    writeHappened: true,
+    state: 'CHECK_FAILED',
+    reasonCode: 'FAILED_VALIDATION',
+    cause,
+    ...(gapKey ? { gapKey } : {}),
+    ...planRowAnswers(ctx.answers),
+  });
+}
+
+/**
  * S3b-2 + OD-103: writes the computed verdict + EVERY ranked answer of this pass (in rank order) as
  * witnesses onto the SAME field_sources row the value write just created/updated -- a second CALL,
  * never a second writer (trackWitnessVerdict defaults to FieldSourcesRepository.trackFieldUpdate).
@@ -1722,7 +1830,12 @@ async function tryProvisional(
   deps: FieldPlanWalkDeps,
   failures: string[],
   policy: FieldSourcePolicy,
-  answers: RankAnswer[]
+  answers: RankAnswer[],
+  refusalCtx: { validationKey: string | null; prior: ReadonlySet<string>; refusals: string[] } = {
+    validationKey: null,
+    prior: new Set(),
+    refusals: [],
+  }
 ): Promise<{ source: string; rank: number } | null> {
   // Same resolver call `attemptOneField` already made for this field this walk — passed in
   // rather than re-resolved, so this stays ONE `resolvePolicy` call per field per walk.
@@ -1766,8 +1879,22 @@ async function tryProvisional(
     // SUPPLIED: always a witness; written only while no provisional value has landed yet.
     answers.push(rankAnswer(rank, source, 'SUPPLIED', { value: answer.value, docType: answer.documentType }));
     if (provisional) continue;
+    const token = refusalToken(source, answer.value, refusalCtx.validationKey);
+    if (token && refusalCtx.prior.has(token)) {
+      const cause = refusalCause('provisional-', rank, source, 'same value refused before', token, true);
+      refusalCtx.refusals.push(cause);
+      markAnswerRefused(answers, rank, source, cause);
+      continue;
+    }
     try {
       const verdict = await runWrite(ipoId, plan, source, answer, deps);
+      if (verdict.happened === true && verdict.accepted === false && verdict.refused === true) {
+        // #1379 (§5.3 rule 4): refused, so the next lower rank is tried -- never the priority-loss tag.
+        const cause = refusalCause('provisional-', rank, source, verdict.reason, token, false);
+        refusalCtx.refusals.push(cause);
+        markAnswerRefused(answers, rank, source, cause);
+        continue;
+      }
       if (verdict.happened === false) {
         // The provisional write was dropped. The field is re-asked anyway, so
         // this is noted and abandoned -- never escalated.
@@ -1863,12 +1990,27 @@ const NO_FIELD_RESULT_REASON = 'no field result returned';
 /** #1229: the write door's merged-record date rule refused the value (stored row + this write incoherent). */
 export const DATE_REFUSED_REASON = 'date refused on the merged record (#1229)';
 
+/**
+ * #1379 round 3 (§9.2 item 23, OD-151): the write was not attempted because an admin HID the IPO. A
+ * dropped write (PENDING, attempts untouched, claim released), never a refusal: the claim query no longer
+ * offers a hidden row, so it is asked again only after the admin unhides it, and no lower rank is tried.
+ */
+export const IPO_HIDDEN_SKIP_REASON = 'IPO_HIDDEN (§9.2 item 23): the scraper writes nothing to a hidden row';
+
+
+type ConsolidatorFieldResult = {
+  fieldName: string;
+  finalValue: unknown;
+  chosenSource: string;
+  rejectedSources?: Array<{ source: string; value?: unknown; reason: string }>;
+};
+
 function checkConsolidatorAgreed(
-  fieldResults: Array<{ fieldName: string; finalValue: unknown; chosenSource: string }> | undefined,
+  fieldResults: ConsolidatorFieldResult[] | undefined,
   camelFieldName: string,
   source: string,
   suppliedValue: unknown
-): { accepted: true } | { accepted: false; reason: string } {
+): { accepted: true } | { accepted: false; reason: string; refused?: boolean } {
   const result = fieldResults?.find((f) => f.fieldName === camelFieldName);
   if (!result) {
     return { accepted: false, reason: NO_FIELD_RESULT_REASON };
@@ -1885,6 +2027,17 @@ function checkConsolidatorAgreed(
   const normalizedFinal = normalizeChosen(camelFieldName, result.finalValue, rules);
   const normalizedSupplied = normalizeChosen(camelFieldName, suppliedValue, rules);
   if (result.chosenSource !== wantedSource || !areEquivalent(normalizedFinal, normalizedSupplied)) {
+    // #1379 (round 2): the write did not land. WHY? The consolidator's own rejection entry for THIS write's
+    // source says: a genuine priority loss (isPriorityLossReason) keeps LOST_TO_HIGHER_PRIORITY; ANY other
+    // reason -- an OD-21 rule, matrix bounds (VALIDATION_FAILED, incl. NaN #1368), an incapable source, a
+    // degenerate band, an implausible issue size, or a code nobody listed -- is a REFUSAL (fail closed), so
+    // the walk moves to rank 2 instead of re-asking the same refused value. Checked only AFTER the
+    // agreement test, so a same-source win (whose rejection entry names the OLD value) is never a refusal.
+    // A rejection recorded for another source is not this write's (falls through to the priority message).
+    const rejection = result.rejectedSources?.find((r) => r.source === wantedSource);
+    if (rejection && !isPriorityLossReason(rejection.reason)) {
+      return { accepted: false, reason: String(rejection.reason), refused: true };
+    }
     return {
       accepted: false,
       reason: `consolidator kept ${result.chosenSource} value ${JSON.stringify(result.finalValue)} over ${wantedSource} ${JSON.stringify(suppliedValue)} (matrix priority; PULL-WRITE)`,
@@ -1935,6 +2088,9 @@ async function runWrite(
       if (!existing) {
         return { happened: false, skipReason: 'ipo row missing' };
       }
+      // #1379 round 3 (§9.2 item 23, OD-151): a row an admin HID is neither a refusal nor a priority
+      // loss -- the scraper writes nothing to it, so no rank (1, 2, ...) is written and nothing moves on.
+      if (isHiddenIpo(existing)) return { happened: false, skipReason: IPO_HIDDEN_SKIP_REASON };
       const r = await deps.orchestrator.consolidatedUpsertIPO(
         { id: ipoId, ...identityFieldsFor(existing), [camelFieldName]: answer.value },
         writerSource as any,
@@ -1951,18 +2107,22 @@ async function runWrite(
       // (e.g. a listing date before the stored open date). Say so, rather than
       // the generic "no field result returned" the missing field result implies.
       if (Array.isArray(r?.refusedDateFields) && r.refusedDateFields.includes(camelFieldName)) {
-        return { happened: true, accepted: false, reason: `${DATE_REFUSED_REASON}: ${camelFieldName}` };
+        return { happened: true, accepted: false, reason: `${DATE_REFUSED_REASON}: ${camelFieldName}`, refused: true };
       }
       const verdict = checkConsolidatorAgreed(
-        r?.consolidation?.fieldResults,
+        r?.consolidation?.fieldResults as ConsolidatorFieldResult[] | undefined,
         camelFieldName,
         source,
         answer.value
       );
-      if (verdict.accepted === false) return { happened: true, accepted: false, reason: verdict.reason };
+      if (verdict.accepted === false) return { happened: true, ...verdict };
       return { happened: true, accepted: true };
     }
 
+    // #1379 round 3: the same hidden-row block for a child row (its IPO is the row an admin hid).
+    if (isHiddenIpo(await deps.ipoRepository.findById(ipoId))) {
+      return { happened: false, skipReason: IPO_HIDDEN_SKIP_REASON };
+    }
     const r = await deps.orchestrator.consolidatedUpsertChildRows(
       ipoId,
       plan.tableName as any,
@@ -1979,12 +2139,12 @@ async function runWrite(
       return { happened: false, skipReason: row?.skipReason ?? 'NO_ROW_RETURNED' };
     }
     const verdict = checkConsolidatorAgreed(
-      (row as { fieldResults?: Array<{ fieldName: string; finalValue: unknown; chosenSource: string }> }).fieldResults,
+      (row as { fieldResults?: ConsolidatorFieldResult[] }).fieldResults,
       camelFieldName,
       source,
       answer.value
     );
-    if (verdict.accepted === false) return { happened: true, accepted: false, reason: verdict.reason };
+    if (verdict.accepted === false) return { happened: true, ...verdict };
     return { happened: true, accepted: true };
   } catch (error) {
     // A THROWING write is a dropped write too — the same rule applies, and
@@ -2198,6 +2358,10 @@ export function classifyFailure(failures: readonly string[]): { reasonCode: Fiel
   if (cause.endsWith(' (definitive)')) {
     return { reasonCode: 'EXTRACTION_FAILED', cause };
   }
+  // #1379: a value refused at the write (OD-62's FAILED_VALIDATION), tagged at the push site.
+  if (cause.includes(':VALIDATION_REFUSED:')) {
+    return { reasonCode: 'FAILED_VALIDATION', cause };
+  }
   // A transient CHECK_FAILED is tagged `:CHECK_FAILED:` at the push site
   // (#785) — a document WAS held and the fetcher WAS reached; it just could
   // not resolve the field from what it found (a manifest/config gap, e.g.
@@ -2243,6 +2407,50 @@ export function classifyWalkFailures(
   if (!classified) return null;
   const gapCodes = [...new Set(failures.map(fieldPlanGapCodeOf).filter((c): c is FieldPlanGapCode => c !== null))];
   return { ...classified, allGaps: genuine.length === 0, gapCodes };
+}
+
+/**
+ * #1379 (spec §5.3 rule 4/5, OD-21): a value REFUSED at the write is remembered on the plan row's
+ * `cause` as `[refused:<token>]`, the token a hash of (source, value, validation key). The next pass
+ * that gets the SAME bytes from the SAME source under the SAME key treats that answer as refused
+ * without writing it again -- no second failure row, no write door call -- and moves on to the next
+ * rank. A changed key (stage, new document, extractor, rules, manifest, provenance, override) or
+ * changed bytes give a different token, so the value is validated again. No key (gap keys
+ * unresolvable for this IPO), no token: the value is re-validated, bounded by the attempts cap.
+ */
+const REFUSAL_TOKEN_RE = /\[refused:([0-9a-f]{12})\]/g;
+
+function refusalToken(source: string, value: unknown, validationKey: string | null): string | null {
+  if (!validationKey) return null;
+  let bytes: string;
+  try {
+    bytes = JSON.stringify(value ?? null);
+  } catch {
+    return null; // unserialisable: never skipped, always re-validated
+  }
+  return createHash('sha256').update(`${source}|${bytes}|${validationKey}`).digest('hex').slice(0, 12);
+}
+
+function priorRefusalTokens(cause: unknown): Set<string> {
+  const out = new Set<string>();
+  if (typeof cause !== 'string') return out;
+  for (const m of cause.matchAll(REFUSAL_TOKEN_RE)) out.add(m[1]);
+  return out;
+}
+
+function refusalCause(prefix: string, rank: number, source: string, reason: string, token: string | null, unchanged: boolean): string {
+  return `${prefix}rank${rank}:${source}:VALIDATION_REFUSED:${reason}${unchanged ? ' (unchanged since refused; not re-written)' : ''}${
+    token ? ` [refused:${token}]` : ''
+  }`;
+}
+
+/** A refused value is not a SUPPLIED answer (OD-60): its witness becomes CHECK_FAILED with the refusal as cause. */
+function markAnswerRefused(answers: RankAnswer[], rank: number, source: string, cause: string): void {
+  const a = answers.find((x) => x.rank === rank && x.source === source && x.outcome === 'SUPPLIED');
+  if (!a) return;
+  a.outcome = 'CHECK_FAILED';
+  a.value = null;
+  a.cause = cause;
 }
 
 /**
