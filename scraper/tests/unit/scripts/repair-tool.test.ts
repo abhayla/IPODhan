@@ -165,6 +165,18 @@ describe('openRepairDb — #671: --expect-db refuses a pool connected to a diffe
     expect(onRefuse).not.toHaveBeenCalled();
   });
 
+  it('#1150: a bare --expect-db (no value, or --expect-db=) is read as "" and openRepairDb refuses it', async () => {
+    expect(readExpectDbFlag(['--expect-db'])).toBe('');
+    expect(readExpectDbFlag(['--expect-db', '--apply'])).toBe('');
+    expect(readExpectDbFlag(['--expect-db='])).toBe('');
+    const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan_staging' }]);
+    const error = vi.fn();
+    const onRefuse = vi.fn();
+    await openRepairDb({ execute }, { apply: false, allowProd: false, toolName: 'tool-x', expectDb: '', log: vi.fn(), error, onRefuse, env: FAKE_USABLE_ENV });
+    expect(onRefuse).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('--expect-db was given without a database name'));
+  });
+
   it('readExpectDbFlag reads both --expect-db <name> and --expect-db=<name>', () => {
     expect(readExpectDbFlag(['--expect-db', 'ipodhan_test'])).toBe('ipodhan_test');
     expect(readExpectDbFlag(['--expect-db=ipodhan_staging', '--apply'])).toBe('ipodhan_staging');

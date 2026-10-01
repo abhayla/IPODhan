@@ -22,6 +22,7 @@
  *   ... --company="Skyways Air Services Ltd." --company="ESDS ..."   (filter)
  */
 
+// repair-tool-exempt: 2026-10-01 read-only readback: its pool.query() wrapper only ever runs SELECT text (no DML literal in the file)
 import { writeFileSync } from 'node:fs';
 import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
 

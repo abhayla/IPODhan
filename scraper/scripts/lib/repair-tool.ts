@@ -82,7 +82,12 @@ export function collectFlagValues(argv: readonly string[], flag: string): string
 
 /** #671: the `--expect-db <name>` / `--expect-db=<name>` value, or null when not given. */
 export function readExpectDbFlag(argv: readonly string[]): string | null {
-  return collectFlagValues(argv, '--expect-db')[0] ?? null;
+  const value = collectFlagValues(argv, '--expect-db')[0];
+  if (value !== undefined) return value;
+  // #1150: a bare `--expect-db` (no value) or `--expect-db=` is an assertion
+  // the operator meant to make and mistyped. Returning null would silently skip
+  // it; '' makes openRepairDb refuse instead.
+  return flagIsPresent(argv, '--expect-db') ? '' : null;
 }
 
 /**
@@ -549,6 +554,12 @@ export async function openRepairDb(
     return { dbName: '', isProd: false };
   }
   log(`current_database(): ${dbName}`);
+  if (options.expectDb === '') {
+    const reason = `${prefix}--expect-db was given without a database name — refusing before any read or write (#1150).`;
+    err(reason);
+    onRefuse(reason);
+    return { dbName, isProd: dbName.toLowerCase() === PRODUCTION_DATABASE_NAME };
+  }
   if (options.expectDb && options.expectDb.toLowerCase() !== dbName.toLowerCase()) {
     const reason =
       `${prefix}--expect-db said "${options.expectDb}" but this pool is connected to "${dbName}" — refusing before any read or write.`;
