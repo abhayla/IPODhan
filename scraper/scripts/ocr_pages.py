@@ -665,6 +665,10 @@ def annotate_fields(fields, page_confidence, floor=CONFIDENCE_FLOOR):
             field["value"] = None
             field["check"] = {"name": "ocr_confidence_floor", "passed": False,
                               "detail": "ocr_low_confidence: %.4f < %.2f" % (conf, floor)}
+            # #1420: an answer read off an untrustworthy page is neither a value
+            # nor a refusal nor a stated absence (OD-158: a stored value is kept).
+            field["state"] = "LOW_CONFIDENCE_OCR"
+            field.pop("refused_value", None)
     return fields
 
 

@@ -216,6 +216,58 @@ _ROW_LABEL = re.compile(
 )
 
 
+# F-219 (#1420): a row whose LABEL wraps around its value line. German Green's
+# note 47 prints, on three lines:
+#     Inventory Turnover account of stagnant revenue
+#     5 Total Revenue from Customers Traded Inventories 5.63 6.02 8.85 -6.41% (31.97)%
+#     Ratio and increase holding level of
+# The label's head sits on the line above the serial-and-values line and its
+# last word on the line below; `_ROW_LABEL` sees "Inventory Turnover" with no
+# "Ratio" and the row was reported as ratio_row_not_in_note although printed.
+#
+# The join is bounded: the head is at the START of a line, the tail at the START
+# of the line right after the values, the values on the head line itself or on
+# the ONE line between them. That middle line must not carry a label of its own
+# (it would then be another ratio's row), so a head and a tail of the same
+# ratio's name two rows apart are never stitched across a third row.
+_WRAP_NAMES = {"current_ratio": ["current", "ratio"],
+               "inventory_turnover": ["inventory", "turnover", "ratio"]}
+_SERIAL = r"^\s*(?:\d+\s*|\(?[a-z][.)]\s*)?"
+_ANY_LABEL_START = re.compile(
+    _SERIAL + r"(?:" + "|".join(_SCHEDULE_III_NAMES) + r")\b", re.I)
+
+
+def _words_rx(words):
+    return r"\s+".join(re.escape(w) for w in words)
+
+
+def wrapped_row(lines, at, key):
+    """(values_line_index, values) when `lines[at]` opens a wrapped label of
+    ratio `key` that `_ROW_LABEL` cannot see, else None."""
+    words = _WRAP_NAMES[key]
+    line = lines[at]
+    for split in range(1, len(words)):
+        head = re.match(_SERIAL + _words_rx(words[:split]) + r"\b(?!\s+" +
+                        re.escape(words[split]) + r"\b)", line, re.I)
+        if not head:
+            continue
+        tail_rx = re.compile(r"^\s*" + _words_rx(words[split:]) + r"\b" + _QUALIFIER, re.I)
+        # Values on the head line itself, tail on the next line.
+        own = row_values(line, head.end())
+        if own and at + 1 < len(lines) and tail_rx.match(lines[at + 1]):
+            return at, own
+        # Values on the one line between head and tail.
+        if own or at + 2 >= len(lines) or not tail_rx.match(lines[at + 2]):
+            continue
+        middle = lines[at + 1]
+        if _ROW_LABEL.match(middle) or _ANY_LABEL_START.match(middle):
+            continue
+        values = row_values(middle, 0)
+        if values:
+            return at + 1, values
+    return None
+
+
 # A statement period ends on a month's last day. '25 March 2025' read out of
 # "2024-25 March 2025" is a caption fragment, not a period heading.
 _MONTH_END = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
@@ -402,6 +454,16 @@ def current_ratio_line_pages(page_texts):
     return out
 
 
+# #1420 / F-219: the reasons for which a value WAS read for the latest period
+# and a rule then rejected it - REFUSED in the envelope, carrying the value.
+# Every other null reason is a reader MISS (no note, no row, no readable or
+# matching period heading): nothing was identified as the latest period's value.
+REFUSAL_REASONS = frozenset([
+    "ratio_value_out_of_range",
+    "ratio_basis_differs_from_statement",
+    "ratio_rows_disagree_for_latest_period",
+])
+
 _REFUSAL_ORDER = ["ratio_period_headings_unreadable", "ratio_heading_count_differs_from_value_count",
                   "ratio_latest_period_not_in_headings"]
 
@@ -428,9 +490,15 @@ def read_ratio(page_texts, key, latest_period, stored_basis=None):
         lines = [" ".join(raw.split()) for raw in text.split("\n")]
         for at, line in enumerate(lines):
             match = _ROW_LABEL.match(line)
-            if not match or _KEYS[" ".join(match.group("name").split()).lower()] != key:
-                continue
-            values = row_values(line, match.end("name"))
+            if match:
+                if _KEYS[" ".join(match.group("name").split()).lower()] != key:
+                    continue
+                values = row_values(line, match.end("name"))
+            else:
+                wrapped = wrapped_row(lines, at, key)
+                if wrapped is None:
+                    continue
+                at, values = wrapped
             if not values:
                 continue
             headings, header_at, reason = read_row_headings(lines, at, len(values), key)
@@ -450,7 +518,8 @@ def read_ratio(page_texts, key, latest_period, stored_basis=None):
         reason = next((r for r in _REFUSAL_ORDER if r in refusals), "ratio_row_not_in_note")
         return {"value": None, "reason": reason}
     if len({r["value"] for r in reads}) > 1:
-        return {"value": None, "reason": "ratio_rows_disagree_for_latest_period"}
+        return {"value": None, "reason": "ratio_rows_disagree_for_latest_period",
+                "refused_values": sorted({r["value"] for r in reads})}
     read = dict(reads[0])
     low, high = _RANGES.get(key, (0.0, 999.99))
     if not low <= read["value"] <= high:

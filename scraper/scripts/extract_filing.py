@@ -25,6 +25,8 @@ import memory_guard  # noqa: E402 — light (no heavy deps), safe to import firs
 import box_lock  # noqa: E402 — light, safe to import first (W-178c round 2)
 import peer_companies  # noqa: E402 — pure-python, no heavy deps (item 8a)
 import financial_ratios  # noqa: E402 — pure-python, no heavy deps (item 8b)
+import answer_states  # noqa: E402 — pure-python, stdlib only (#1420)
+from answer_states import missed  # noqa: E402
 
 # W-178c round 2: how long this process waits to acquire the box lock before
 # giving up as "busy" this cycle — kept independent of ANCHOR_LOCK_WAIT_S
@@ -219,7 +221,7 @@ CURRENCY_AMOUNT = re.compile(r"[`₹]\s*(\(?-?[\d,]+(?:\.\d+)?\)?)")
 def check_price_band(floor, cap, segment="MAINBOARD"):
     """floor < cap, and cap within the regulatory band width of floor."""
     if floor is None or cap is None:
-        return False, "floor or cap missing"
+        return missed("floor or cap missing")
     limit = 1.4 if segment == "SME" else 1.2
     if not floor < cap:
         return False, "floor %s not < cap %s" % (floor, cap)
@@ -231,7 +233,7 @@ def check_price_band(floor, cap, segment="MAINBOARD"):
 def check_lot_value(lot, floor, segment="MAINBOARD"):
     """lot x floor must clear the SEBI minimum application value (Rs 10,000)."""
     if lot is None or floor is None:
-        return False, "lot or floor missing"
+        return missed("lot or floor missing")
     value = lot * floor
     if value < 10000:
         return False, "lot value %s < 10000" % value
@@ -243,7 +245,7 @@ def check_lot_value(lot, floor, segment="MAINBOARD"):
 def check_face_multiple(price, face, printed):
     """The ad prints floor/cap as multiples of face value; recompute and compare."""
     if None in (price, face, printed) or face == 0:
-        return False, "price, face value or printed multiple missing"
+        return missed("price, face value or printed multiple missing")
     computed = price / face
     if abs(computed - printed) > 0.01 * max(1.0, abs(printed)):
         return False, "computed %s != printed %s" % (computed, printed)
@@ -253,7 +255,7 @@ def check_face_multiple(price, face, printed):
 def check_shares_amount(shares, price, amount_mn, tol=0.005):
     """shares x price ~= the issue amount, in Rs million, within +/-0.5%."""
     if None in (shares, price, amount_mn) or amount_mn == 0:
-        return False, "shares, price or amount missing"
+        return missed("shares, price or amount missing")
     computed = shares * price / 1_000_000.0
     drift = abs(computed - amount_mn) / abs(amount_mn)
     if drift > tol:
@@ -264,7 +266,7 @@ def check_shares_amount(shares, price, amount_mn, tol=0.005):
 
 def check_monotonic_shares(shares_floor, shares_cap):
     if shares_floor is None or shares_cap is None:
-        return False, "missing"
+        return missed("missing")
     if not shares_floor > shares_cap:
         return False, "shares at floor %s not > at cap %s" % (shares_floor, shares_cap)
     return True, "%s > %s" % (shares_floor, shares_cap)
@@ -272,7 +274,7 @@ def check_monotonic_shares(shares_floor, shares_cap):
 
 def check_monotonic_mcap(mcap_floor, mcap_cap):
     if mcap_floor is None or mcap_cap is None:
-        return False, "missing"
+        return missed("missing")
     if not mcap_floor < mcap_cap:
         return False, "mcap at floor %s not < at cap %s" % (mcap_floor, mcap_cap)
     return True, "%s < %s" % (mcap_floor, mcap_cap)
@@ -287,7 +289,7 @@ def check_mcap_consistency(mcap_floor, floor, shares_floor, mcap_cap, cap, share
     mismatch means at least one of mcap/shares/price was misread from the table.
     """
     if None in (mcap_floor, floor, shares_floor, mcap_cap, cap, shares_cap) or not floor or not cap:
-        return False, "missing inputs"
+        return missed("missing inputs")
     pre_floor = mcap_floor * 1_000_000.0 / floor - shares_floor
     pre_cap = mcap_cap * 1_000_000.0 / cap - shares_cap
     denom = max(abs(pre_floor), abs(pre_cap), 1.0)
@@ -301,9 +303,9 @@ def check_mcap_consistency(mcap_floor, floor, shares_floor, mcap_cap, cap, share
 def check_sum_equals(parts, total, label, tol=0.5):
     """Component rows must add up to the printed total (offer size, selling
     shareholders vs the offer for sale)."""
-    parts = [x for x in parts if x is not None]
+    parts = [x for x in (parts or []) if x is not None]
     if total is None or not parts:
-        return False, "%s: missing parts or total" % label
+        return missed("%s: missing parts or total" % label)
     s = sum(parts)
     if abs(s - total) > tol:
         return False, "%s: parts sum %s != printed total %s" % (label, s, total)
@@ -314,7 +316,7 @@ def check_ratio_equals(numerator, denominator, printed, label, tol=0.01):
     """numerator/denominator must reproduce a printed ratio (P/E from price and
     EPS, cap price over WACA) within +/-1%."""
     if None in (numerator, denominator, printed) or not denominator:
-        return False, "%s: missing input" % label
+        return missed("%s: missing input" % label)
     computed = numerator / denominator
     drift = abs(computed - printed) / max(abs(printed), 1e-9)
     if drift > tol:
@@ -327,7 +329,7 @@ def check_weighted_average(series, weights, printed, label, tol=0.01):
     """A printed weighted average must be reproducible from the year series and
     the printed weights — the check that catches a mis-read year column."""
     if printed is None or not series or not weights:
-        return False, "%s: missing series, weights or printed average" % label
+        return missed("%s: missing series, weights or printed average" % label)
     years = [y for y in series if y in weights]
     if not years:
         return False, "%s: no year has both a value and a weight" % label
@@ -342,7 +344,7 @@ def check_weighted_average(series, weights, printed, label, tol=0.01):
 
 def check_mean_equals(values, printed, label, tol=0.005):
     if printed is None or not values:
-        return False, "%s: missing values or printed average" % label
+        return missed("%s: missing values or printed average" % label)
     computed = sum(values) / len(values)
     if abs(computed - printed) > max(tol * abs(printed), 0.005):
         return False, "%s: mean %.4f != printed %s" % (label, computed, printed)
@@ -351,9 +353,11 @@ def check_mean_equals(values, printed, label, tol=0.005):
 
 def _combine(*results):
     """Chain multiple (passed, detail) check results — first failure wins."""
-    for passed, detail in results:
-        if not passed:
-            return False, detail
+    for result in results:
+        if not result[0]:
+            # The result itself, so an absent input (answer_states.Missed) stays
+            # a miss; it still compares equal to (False, detail).
+            return result if result[0] is False else (False, result[1])
     return True, "; ".join(detail for _passed, detail in results)
 
 
@@ -361,7 +365,7 @@ def check_allocation(qib, nii, retail):
     """QIB+NII+Retail <= 100 and, book-built, QIB >= 50."""
     parts = [p for p in (qib, nii, retail) if p is not None]
     if len(parts) != 3:
-        return False, "one or more allocation percentages missing"
+        return missed("one or more allocation percentages missing")
     total = sum(parts)
     if total > 100.0001:
         return False, "allocation sums to %s > 100" % total
@@ -394,9 +398,10 @@ def check_timeline(dates):
     from datetime import date
     order = ["anchor_bid_date", "open_date", "close_date", "basis_of_allotment_date",
              "refund_date", "credit_date", "listing_date"]
+    dates = dates or {}
     present = [(k, dates[k]) for k in order if dates.get(k)]
     if len(present) < 2:
-        return False, "fewer than two dates found"
+        return missed("fewer than two dates found")
     strict = {("anchor_bid_date", "open_date"), ("close_date", "basis_of_allotment_date"),
               ("credit_date", "listing_date")}
     for (ka, a), (kb, b) in zip(present, present[1:]):
@@ -418,7 +423,7 @@ def check_timeline(dates):
 def check_category_sum(parts, total, tol=0.0):
     """Category rows must reconcile with the printed total (BRLM track record)."""
     if total is None or not parts:
-        return False, "missing parts or total"
+        return missed("missing parts or total")
     s = sum(parts)
     if abs(s - total) > tol:
         return False, "parts sum %s != printed total %s" % (s, total)
@@ -427,7 +432,7 @@ def check_category_sum(parts, total, tol=0.0):
 
 def check_track_record(total_issues, closed_below):
     if total_issues is None or closed_below is None:
-        return False, "missing"
+        return missed("missing")
     if closed_below > total_issues:
         return False, "closed below issue price %s > total issues %s" % (closed_below, total_issues)
     return True, "%s of %s" % (closed_below, total_issues)
@@ -444,7 +449,7 @@ def check_holding_dilution(pre_pct, post_pct, shares_held=None, fresh_shares=Non
     require it to reproduce the printed post-issue %% within +/-1%%.
     """
     if pre_pct is None or post_pct is None:
-        return False, "missing"
+        return missed("missing")
     if not post_pct < pre_pct:
         return False, "post-issue %s%% not < pre-issue %s%%" % (post_pct, pre_pct)
     if shares_held and fresh_shares and pre_pct:
@@ -466,7 +471,7 @@ def check_holding_dilution(pre_pct, post_pct, shares_held=None, fresh_shares=Non
 def check_waca_multiple(cap_price, waca, printed_multiple, tol=0.01):
     """cap / WACA must reproduce the printed 'X times' multiple within +/-1%."""
     if None in (cap_price, waca, printed_multiple) or not waca:
-        return False, "cap price, WACA or printed multiple missing"
+        return missed("cap price, WACA or printed multiple missing")
     computed = cap_price / waca
     drift = abs(computed - printed_multiple) / abs(printed_multiple)
     if drift > tol:
@@ -478,9 +483,9 @@ def check_waca_multiple(cap_price, waca, printed_multiple, tol=0.01):
 def check_fy_series(series, fiscal_years):
     """A per-fiscal-year series must cover exactly the header's consecutive years."""
     if not series:
-        return False, "no values"
+        return missed("no values")
     if not fiscal_years:
-        return False, "fiscal years not read from a header row"
+        return missed("fiscal years not read from a header row")
     years = sorted(int(y) for y in fiscal_years)
     if any(years[i] + 1 != years[i + 1] for i in range(len(years) - 1)):
         return False, "fiscal years not consecutive: %s" % years
@@ -498,6 +503,8 @@ def check_fy_series(series, fiscal_years):
 
 def check_sign_consistency(eps_series, pat_series):
     """EPS sign must agree with PAT sign for every shared year."""
+    if not eps_series or not pat_series:
+        return missed("no shared years")
     shared = set(eps_series) & set(pat_series)
     if not shared:
         return False, "no shared years"
@@ -509,7 +516,7 @@ def check_sign_consistency(eps_series, pat_series):
 
 def check_percentage(pct):
     if pct is None:
-        return False, "missing"
+        return missed("missing")
     if not 0 < pct <= 100:
         return False, "%s outside (0, 100]" % pct
     return True, "%s" % pct
@@ -517,7 +524,7 @@ def check_percentage(pct):
 
 def check_cin(cin):
     if not cin:
-        return False, "missing"
+        return missed("missing")
     if not CIN_RX.fullmatch(cin):
         return False, "%s does not match the CIN pattern" % cin
     return True, cin
@@ -525,7 +532,7 @@ def check_cin(cin):
 
 def check_text_length(text, limit):
     if not text:
-        return False, "missing"
+        return missed("missing")
     if len(text) > limit:
         return False, "%s chars > %s" % (len(text), limit)
     return True, "%s chars" % len(text)
@@ -533,7 +540,7 @@ def check_text_length(text, limit):
 
 def check_min_count(n, minimum):
     if n is None:
-        return False, "missing"
+        return missed("missing")
     if n < minimum:
         return False, "%s < required %s" % (n, minimum)
     return True, "%s" % n
@@ -550,9 +557,9 @@ def check_objects_total(listed_sum, unpriced, fresh_issue, tol=0.01):
     issue. When every row carries an amount, the sum must equal the fresh issue
     within `tol`."""
     if listed_sum is None:
-        return False, "no object amount printed"
+        return missed("no object amount printed")
     if fresh_issue is None:
-        return False, "fresh issue amount not printed"
+        return missed("fresh issue amount not printed")
     if unpriced:
         if listed_sum > fresh_issue * (1 + tol):
             return False, "priced objects %.2f exceed fresh issue %.2f" % (listed_sum, fresh_issue)
@@ -566,7 +573,7 @@ def check_objects_total(listed_sum, unpriced, fresh_issue, tol=0.01):
 
 def check_date_before(a, b, label):
     if not a or not b:
-        return False, "missing"
+        return missed("missing")
     if not a < b:
         return False, "%s not before %s (%s)" % (a, b, label)
     return True, "%s < %s" % (a, b)
@@ -584,23 +591,49 @@ class Emitter:
         self.fields = {}
         self.failed = 0
 
+    # #1420 / F-219: every record carries `state` (answer_states.py), the answer
+    # the reader gave - VALUE, REFUSED, STATED_NOT_PRINTED, MISSED or (set later
+    # by ocr_pages.annotate_fields) LOW_CONFIDENCE_OCR. `value`, `page` and
+    # `check` keep their pre-#1420 shape so every existing consumer reads the
+    # same envelope; only `state` and, on a refusal, `refused_value` are new.
     def put(self, name, value, page, check_name, check_result):
         passed, detail = check_result
         if not passed:
             self.failed += 1
+        state = answer_states.check_state(value, check_result)
         self.fields[name] = {
             "value": value if passed else None,
             "page": page if passed else None,
             "source_doc": self.source_doc,
             "check": {"name": check_name, "passed": bool(passed),
                       "detail": detail if passed else "check_failed: %s" % detail},
+            "state": state,
+        }
+        if state == answer_states.REFUSED:
+            self.fields[name]["refused_value"] = value
+
+    def refuse(self, name, refused_value, page, check_name, reason):
+        """A value the reader READ and a validation rule rejected (OD-153).
+
+        A failed check carrying the refused value - never a passing null. The
+        detail is the bare reason, as the ratio reader always emitted it,
+        because scripts/lib/ratio-yield-verdict.mjs matches it exactly."""
+        self.failed += 1
+        self.fields[name] = {
+            "value": None, "page": None, "source_doc": self.source_doc,
+            "check": {"name": check_name, "passed": False, "detail": reason},
+            "state": answer_states.REFUSED,
+            "refused_value": refused_value,
+            "refused_page": page,
         }
 
     def null(self, name, reason, page=None):
-        """A field the document deliberately does not carry a value for yet."""
+        """A field the document does not carry a value for: a stated absence
+        when `reason` is on the shared allow-list, otherwise a miss."""
         self.fields[name] = {
             "value": None, "page": page, "source_doc": self.source_doc,
             "check": {"name": "not_extractable", "passed": True, "detail": reason},
+            "state": answer_states.null_state(reason),
         }
 
     def put_c_money(self, unit, name, value, page, check_name, check_result):
@@ -2395,7 +2428,7 @@ def check_cover_arithmetic(shares, price, amount, amount_unit, tol=0.05):
     are printed side by side in the same sentence, so if they do not multiply
     out at least one was misread and there is no way to tell which."""
     if None in (shares, price, amount) or amount_unit not in _UNIT_RUPEES or amount == 0:
-        return None, "not checkable (shares, price, amount or unit missing)"
+        return missed("not checkable (shares, price, amount or unit missing)", passed=None)
     computed = shares * price
     printed = amount * _UNIT_RUPEES[amount_unit]
     drift = abs(computed - printed) / abs(printed)
@@ -2410,7 +2443,7 @@ def check_cover_issue_size(amount, amount_unit, segment):
     level: an out-of-band size is still published, with the range in the detail —
     only the arithmetic identity rejects."""
     if amount is None or amount_unit not in _UNIT_RUPEES:
-        return False, "issue size or unit missing"
+        return missed("issue size or unit missing")
     crore = amount * _UNIT_RUPEES[amount_unit] / 1e7
     lo, hi = _SEGMENT_ISSUE_CRORE.get(segment, _SEGMENT_ISSUE_CRORE["MAINBOARD"])
     if not lo <= crore <= hi:
@@ -2421,7 +2454,7 @@ def check_cover_issue_size(amount, amount_unit, segment):
 
 def check_cover_price(price):
     if price is None:
-        return False, "price not printed on the cover"
+        return missed("price not printed on the cover")
     if not 1 <= price <= 100000:
         return False, "price %s outside 1-100000 rupees" % price
     return True, "%s" % price
@@ -2429,7 +2462,7 @@ def check_cover_price(price):
 
 def check_cover_lot(lot):
     if lot is None:
-        return False, "lot size not printed on the cover"
+        return missed("lot size not printed on the cover")
     if not 1 <= lot <= 100000:
         return False, "lot size %s outside 1-100000 shares" % lot
     return True, "%s" % lot
@@ -2437,7 +2470,7 @@ def check_cover_lot(lot):
 
 def check_cover_face_value(face):
     if face is None:
-        return False, "face value not printed on the cover"
+        return missed("face value not printed on the cover")
     if face <= 0:
         return False, "face value %s not positive" % face
     if face not in _TYPICAL_FACE_VALUES:
@@ -2447,7 +2480,7 @@ def check_cover_face_value(face):
 
 def check_cover_share_count(shares):
     if shares is None:
-        return False, "share count not printed on the cover"
+        return missed("share count not printed on the cover")
     if not 1000 <= shares <= 1e10:
         return False, "share count %s outside 1e3-1e10" % shares
     return True, "%s" % shares
@@ -2842,7 +2875,12 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
         next((t for i, t in page_texts if i == pnl_page), "")) if pnl_page is not None else None
     for name in ("current_ratio", "inventory_turnover"):
         read = financial_ratios.read_ratio(page_texts, name, latest_period, stored_basis)
-        if read.get("value") is None:
+        if read.get("value") is None and read.get("reason") in financial_ratios.REFUSAL_REASONS:
+            # #1420 / F-219: a value WAS read and a rule rejected it.
+            refused = read.get("read") or {}
+            emit.refuse(name, refused.get("value", read.get("refused_values")),
+                        refused.get("page"), "ratio_read_as_printed", read["reason"])
+        elif read.get("value") is None:
             emit.null(name, read["reason"])
         else:
             emit.put(name, read["value"], read["page"], "ratio_read_as_printed",
