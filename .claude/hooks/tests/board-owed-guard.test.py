@@ -23,6 +23,17 @@ HOOK_PATH = os.environ.get("BOARD_OWED_HOOK_UNDER_TEST") or os.path.normpath(
 BOARD_URL = "https://claude.ai/artifact/NohBg52m7AUjS8kTDMxxKM"
 
 
+HOLD_LOCK_SCRIPT = """
+import os, sys, time
+f = open(sys.argv[1], 'a+b'); f.seek(0)
+if os.name == 'nt':
+    import msvcrt; msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+else:
+    import fcntl; fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+print('held', flush=True); time.sleep(float(sys.argv[2]))
+"""
+
+
 def git(args, cwd):
     return subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True, check=True)
 
@@ -86,8 +97,10 @@ class BoardOwedGuardTest(unittest.TestCase):
             timeout=60,
         )
 
-    def stub(self, merged, sleep=0, fail=False, name="gh"):
-        """A fake gh that logs its argv and prints `merged` for `pr list`."""
+    def stub(self, merged, sleep=0, fail=False, name="gh", side_append=None):
+        """A fake gh that logs its argv and prints `merged` for `pr list`.
+        `side_append=(path, record)` makes it append a JSON line to `path`
+        while "running", i.e. another session writing during the gh call."""
         path = os.path.join(self.tmp, "%s-stub-%s.py" % (name, self._testMethodName))
         log = path + ".log"
         if os.path.exists(log):
@@ -96,9 +109,13 @@ class BoardOwedGuardTest(unittest.TestCase):
             f.write(
                 "import sys, json, time\n"
                 "open(%r, 'a').write(json.dumps(sys.argv[1:]) + chr(10))\n"
+                "%s\n"
                 "time.sleep(%d)\n"
                 "%s\n"
-                "print(json.dumps(%r))\n" % (log, sleep, "sys.exit(1)" if fail else "", merged)
+                "print(json.dumps(%r))\n" % (
+                    log,
+                    ("open(%r, 'a').write(json.dumps(%r) + chr(10))" % side_append) if side_append else "",
+                    sleep, "sys.exit(1)" if fail else "", merged)
             )
         return {"BOARD_OWED_GH_ARGV": json.dumps([sys.executable, path])}, log
 
@@ -256,7 +273,8 @@ class BoardOwedGuardTest(unittest.TestCase):
                           env_extra={"BOARD_OWED_GH_TIMEOUT": "1"})
         self.assertEqual(p.returncode, 2, "gh timeout must fail safe: %s" % p.stderr)
         self.assertIn("unknown merge", p.stderr)
-        self.assertFalse(os.path.exists(self.pending))
+        left = self.read_jsonl(self.pending)
+        self.assertEqual(len(left), 1, "a failed lookup dropped the check (#1381 item 3)")
 
     def test_s10b_gh_failure_and_truncated_page_record_unknown(self):
         for merged, fail in (([], True), ([{"number": n, "mergedAt": iso(-5)} for n in range(1, 101)], False)):
@@ -573,6 +591,120 @@ class BoardOwedGuardTest(unittest.TestCase):
         self.write_marker([{"pr": "1", "session_id": "me"}])
         p = self.run_stop("me", stop_hook_active=True)
         self.assertEqual(p.returncode, 0, "rc=%s" % p.returncode)
+
+    # ---- (t) #1381: publish cutoff, lost update, fail-safe drop ----
+    def publish(self):
+        p = self.run_hook("PostToolUseArtifact",
+                          {"tool_name": "Artifact", "tool_input": {"url": BOARD_URL, "file_path": "b.html"}})
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_t1_merge_then_publish_then_stop_does_not_re_owe(self):
+        self.bash(self.M + " 1381 --squash")
+        self.publish()
+        self.use_gh([{"number": 1381, "mergedAt": iso(-3)}])
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 0, "a merge the publish covered was re-owed: %s" % p.stderr)
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_t1b_computed_number_check_survives_publish_without_re_owing(self):
+        self.bash(self.M + ' "$PR" --squash')
+        self.use_gh([{"number": 1382, "mergedAt": iso(-3)}])
+        self.assertEqual(self.run_stop().returncode, 2)
+        self.publish()
+        for _ in range(2):
+            p = self.run_stop()
+            self.assertEqual(p.returncode, 0, "re-owed after publish: %s" % p.stderr)
+
+    def test_t2_merge_a_publish_merge_b_owes_only_b(self):
+        self.bash(self.M + ' "$PR" --squash')
+        self.publish()
+        self.use_gh([{"number": 1390, "mergedAt": iso(-3)}, {"number": 1391, "mergedAt": iso(30)}])
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertEqual(self.marker_prs(), ["1391"], "only the merge after the publish is owed")
+
+    def test_t3_gh_down_after_publish_does_not_owe_a_covered_foreground_merge(self):
+        self.bash(self.M + " 1383 --squash")
+        self.publish()
+        self.use_gh([], fail=True)
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 0, "unknown-merge record for a covered merge: %s" % p.stderr)
+        self.assertFalse(os.path.exists(self.pending))
+
+    def test_t4_check_appended_by_another_session_during_gh_survives(self):
+        self.write_pending([{"session_id": "me", "ts": iso(-60), "numbers": ["1500"], "command": "x"}])
+        other = {"session_id": "other", "ts": iso(-1), "numbers": ["1501"], "command": "y"}
+        self.use_gh([], side_append=(self.pending, other))
+        self.assertEqual(self.run_stop("me").returncode, 0)
+        ids = [r["session_id"] for r in self.read_jsonl(self.pending)]
+        self.assertIn("other", ids, "a check queued during the gh call was wiped (lost update)")
+
+    def test_t5_lock_held_elsewhere_fails_open(self):
+        holder = subprocess.Popen([sys.executable, "-c", HOLD_LOCK_SCRIPT, self.pending + ".lock", "8"],
+                                  stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(holder.stdout.readline().strip(), "held")
+            self.write_pending([{"session_id": "me", "ts": iso(-60), "numbers": ["1502"], "command": "x"}])
+            self.use_gh([{"number": 1502, "mergedAt": iso(-5)}])
+            t0 = time.time()
+            p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan},
+                              env_extra={"BOARD_OWED_LOCK_TIMEOUT": "1"})
+            self.assertEqual(p.returncode, 2, "a held lock broke the hook: %s" % p.stderr)
+            self.assertLess(time.time() - t0, 7, "waited on the lock past its timeout")
+            self.assertEqual(self.marker_prs(), ["1502"])
+            self.assertFalse(os.path.exists(self.pending), "pending not rewritten after the lock timeout")
+        finally:
+            holder.kill()
+            holder.wait()
+
+    def test_t5b_append_waits_for_a_held_lock_then_lands(self):
+        holder = subprocess.Popen([sys.executable, "-c", HOLD_LOCK_SCRIPT, self.pending + ".lock", "2"],
+                                  stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(holder.stdout.readline().strip(), "held")
+            t0 = time.time()
+            self.bash(self.M + " 1505 --squash")
+            self.assertGreater(time.time() - t0, 1.0, "the append did not take the lock")
+            self.assertEqual(len(self.read_jsonl(self.pending)), 1)
+        finally:
+            holder.kill()
+            holder.wait()
+
+    def test_t6_gh_failure_keeps_the_check_and_a_later_stop_records_the_real_merge(self):
+        self.bash(self.M + " 1503 --squash")
+        self.use_gh([], fail=True)
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("unknown merge", p.stderr)
+        self.assertEqual(len(self.read_jsonl(self.pending)), 1, "check dropped on gh failure")
+        os.remove(self.marker)
+        self.use_gh([{"number": 1503, "mergedAt": iso(5)}])
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertEqual(self.marker_prs(), ["1503"], "the real merge was lost after a gh failure")
+
+    def test_t6b_repeated_gh_failure_owes_unknown_once(self):
+        self.bash(self.M + " 1504 --squash")
+        self.use_gh([], fail=True)
+        self.assertEqual(self.run_stop().returncode, 2)
+        os.remove(self.marker)
+        self.assertEqual(self.run_stop().returncode, 0, "unknown re-owed on every Stop")
+
+    def test_t6c_check_older_than_24h_is_dropped_after_failed_lookups(self):
+        self.write_pending([{"session_id": "me", "ts": iso(-25 * 3600), "numbers": None, "command": "x"}])
+        self.use_gh([], fail=True)
+        self.assertEqual(self.run_stop().returncode, 2)
+        self.assertFalse(os.path.exists(self.pending))
+
+    def test_t7_stale_copy_is_gone(self):
+        stale = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..",
+                                              "docs", "design", "board", "hooks"))
+        self.assertFalse(os.path.exists(stale), "the stale copy of the hook is back: " + stale)
+
+    def test_t8_header_lists_the_auto_merge_limit(self):
+        head = open(HOOK_PATH, encoding="utf-8").read(6000)
+        self.assertIn("--auto", head)
+        self.assertIn("MORE THAN 2 h", head)
 
 
 if __name__ == "__main__":

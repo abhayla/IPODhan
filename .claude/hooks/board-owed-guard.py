@@ -33,7 +33,12 @@ This one script serves three events, selected by `--event`:
       background merge may still land), then is dropped only after one more
       lookup. Due = this session's entries, plus ANY session's entry older than
       that (a closed session can never resolve its own). gh failure, timeout or
-      a truncated answer records an "unknown merge" (fail safe).
+      a truncated answer records an "unknown merge" (fail safe) ONCE per check
+      and KEEPS the check (until PENDING_HARD_MAX_HOURS) so a later Stop with a
+      working gh still finds the real merge. A merge whose mergedAt is at or
+      before the last board publish (the stamp file) is covered by that publish
+      and never re-owed (#1381). The pending file is rewritten under a short
+      lock and entries another session appended meanwhile are kept.
       Then, if the marker exists, exit 2 with the checklist message on stderr
       (a Stop hook blocks the turn on exit 2). If the marker is older than
       BOARD_OWED_MAX_AGE_HOURS (default 12) hours, print a warning to stdout
@@ -41,6 +46,14 @@ This one script serves three events, selected by `--event`:
       `stop_hook_active` true -> exit 0 silently (no loop).
 
 Off-switch: BOARD_OWED_GUARD=0 -> no-op everywhere.
+
+Known limits (accepted, #1381):
+  - A `gh pr merge --auto` that lands MORE THAN 2 h after the command is not
+    seen: its check is resolved and dropped (after one last lookup) at 2 h, and
+    a later landing creates no new trigger. Publish the board by hand then.
+  - A merge that lands between the Stop-time render and the publish is treated
+    as covered by that publish (mergedAt <= publish time); the 12 h / 24 h
+    staleness checks are the backstop.
 
 Fail-open: every unexpected exception exits 0 and appends one line to
 ~/.claude/.board-owed-guard.errors.log. Never runs for a cwd whose git origin
@@ -89,6 +102,8 @@ _LITERAL_PR_RE = re.compile(r"^(?:#?(\d{1,7})|\S*/pull/(\d{1,7})\S*)$")
 # predate the trigger by up to the Bash tool's 10-minute cap; look back 15.
 LOOKBACK_MINUTES = 15
 PENDING_MAX_AGE_HOURS = 2
+# A check whose lookups keep failing is kept this long (hours), then dropped.
+PENDING_HARD_MAX_HOURS = 24
 GH_LIST_LIMIT = 100
 
 
@@ -223,6 +238,89 @@ def _write_pending(records):
     os.replace(tmp, PENDING_PATH)
 
 
+class _PendingLock:
+    """Short exclusive lock on <pending>.lock (msvcrt on Windows, fcntl
+    elsewhere; stdlib only). Held only around a read-modify-write or an append,
+    never across the gh call. Fail-open: after BOARD_OWED_LOCK_TIMEOUT seconds
+    (default 3) or on any error the caller proceeds without the lock."""
+
+    def __init__(self):
+        self.fh = None
+
+    def _try(self):
+        if os.name == "nt":
+            import msvcrt
+            self.fh.seek(0)
+            msvcrt.locking(self.fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def __enter__(self):
+        try:
+            timeout = float(os.environ.get("BOARD_OWED_LOCK_TIMEOUT") or 3)
+        except ValueError:
+            timeout = 3.0
+        try:
+            os.makedirs(os.path.dirname(PENDING_PATH), exist_ok=True)
+            self.fh = open(PENDING_PATH + ".lock", "a+b")
+            deadline = time.time() + timeout
+            while True:
+                try:
+                    self._try()
+                    return self
+                except OSError:
+                    if time.time() >= deadline:
+                        raise
+                    time.sleep(0.05)
+        except Exception as exc:
+            _log_error("pending lock not taken (proceeding without): %s" % exc)
+            self._close()
+            return self
+
+    def _close(self):
+        if self.fh is not None:
+            try:
+                self.fh.close()  # closing releases the OS lock
+            except Exception:
+                pass
+            self.fh = None
+
+    def __exit__(self, *exc):
+        self._close()
+        return False
+
+
+def _last_publish():
+    """UTC datetime of the last successful board publish, from the stamp
+    file's CONTENT (written by handle_artifact), or None when unreadable."""
+    try:
+        with open(PUBLISH_STAMP_PATH, "r", encoding="utf-8") as fh:
+            return _parse_ts(fh.read().strip())
+    except Exception:
+        return None
+
+
+def _canon(rec):
+    return json.dumps(rec, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def _added_since(snapshot, fresh):
+    """Records in `fresh` beyond the multiset `snapshot` (what another session
+    appended while this one was waiting on gh)."""
+    counts = {}
+    for rec in snapshot:
+        counts[_canon(rec)] = counts.get(_canon(rec), 0) + 1
+    added = []
+    for rec in fresh:
+        key = _canon(rec)
+        if counts.get(key, 0) > 0:
+            counts[key] -= 1
+        else:
+            added.append(rec)
+    return added
+
+
 def _parse_ts(text):
     try:
         ts = datetime.fromisoformat(str(text).replace("Z", "+00:00"))
@@ -284,14 +382,16 @@ def _merged_since(since, cwd):
 def _resolve_pending(session_id, cwd):
     """Turn due merge-checks into owed records, with GitHub as the only judge
     of whether a merge happened (see module docstring)."""
-    pending = _read_jsonl(PENDING_PATH)
-    if not pending:
+    snapshot = _read_jsonl(PENDING_PATH)
+    if not snapshot:
         return
     me = session_id or ""
     now = datetime.now(timezone.utc)
     max_age = timedelta(hours=PENDING_MAX_AGE_HOURS)
+    hard_age = timedelta(hours=PENDING_HARD_MAX_HOURS)
+    last_pub = _last_publish()
     due, keep = [], []
-    for rec in pending:
+    for rec in snapshot:
         ts = _parse_ts(rec.get("ts"))
         old = ts is None or now - ts > max_age
         owner = rec.get("session_id") or ""
@@ -307,10 +407,24 @@ def _resolve_pending(session_id, cwd):
     stamp = now.astimezone().isoformat(timespec="seconds")
     for rec, ts, old in due:
         if merged is None:
-            # Fail safe: a missed board publish costs more than one extra prompt.
-            _append_marker({"pr": "", "unknown": True, "session_id": me, "ts": stamp,
-                            "trigger_session": rec.get("session_id") or "",
-                            "command": rec.get("command") or ""})
+            # A foreground check's merge happened before its trigger; if the
+            # board was published after the trigger, that publish covered it.
+            covered = (ts is not None and last_pub is not None and ts <= last_pub
+                       and not rec.get("background"))
+            if covered:
+                continue
+            if not rec.get("unknown_noted"):
+                # Fail safe: a missed board publish costs more than one extra prompt.
+                _append_marker({"pr": "", "unknown": True, "session_id": me, "ts": stamp,
+                                "trigger_session": rec.get("session_id") or "",
+                                "command": rec.get("command") or ""})
+            if ts is None or now - ts > hard_age:
+                _log_error("pending check dropped after %dh of failed GitHub lookups: %s"
+                           % (PENDING_HARD_MAX_HOURS, rec.get("command") or ""))
+                continue
+            rec = dict(rec)
+            rec["unknown_noted"] = True  # owed once; keep the check for the next Stop
+            keep.append(rec)
             continue
         wanted = rec.get("numbers")
         recorded = list(rec.get("recorded") or [])
@@ -318,6 +432,9 @@ def _resolve_pending(session_id, cwd):
             if num in recorded or merged[num] < ts - lookback:
                 continue
             if wanted is not None and num not in wanted:
+                continue
+            if last_pub is not None and merged[num] <= last_pub:
+                recorded.append(num)  # covered by a publish; never owed again
                 continue
             _append_marker({"pr": num, "merged_at": merged[num].isoformat(), "session_id": me,
                             "ts": stamp, "trigger_session": rec.get("session_id") or "",
@@ -330,7 +447,10 @@ def _resolve_pending(session_id, cwd):
         rec = dict(rec)
         rec["recorded"] = recorded
         keep.append(rec)
-    _write_pending(keep)
+    with _PendingLock():
+        # gh took up to 25 s; keep whatever another session appended meanwhile.
+        keep.extend(_added_since(snapshot, _read_jsonl(PENDING_PATH)))
+        _write_pending(keep)
 
 
 def handle_bash(data):
@@ -339,13 +459,15 @@ def handle_bash(data):
         return
     if not _is_ipodhan_repo(data.get("cwd") or ""):
         return
-    _append_jsonl(PENDING_PATH, {
+    entry = {
         "session_id": data.get("session_id") or "",
         "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
         "numbers": _merge_numbers(command),
         "background": _tool_input(data).get("run_in_background") is True,
         "command": _redact(command)[:300],
-    })
+    }
+    with _PendingLock():
+        _append_jsonl(PENDING_PATH, entry)
 
 
 def handle_artifact(data):

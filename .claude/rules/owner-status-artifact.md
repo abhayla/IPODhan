@@ -70,7 +70,7 @@ that found nothing.
 The `board-owed-guard` hook is **project-level** (moved from user level 2026-09-25, owner decision):
 `.claude/hooks/board-owed-guard.py` in this repo, wired in this repo's `.claude/settings.json` across
 three events (PostToolUse/Bash, PostToolUse/Artifact, Stop). Its self-tests live at
-`.claude/hooks/tests/board-owed-guard.test.py` (52 cases, stdlib-only unittest) and run in CI
+`.claude/hooks/tests/board-owed-guard.test.py` (64 cases, stdlib-only unittest) and run in CI
 (`pr-gate.yml`, the `python-tests` job). Any Bash call mentioning `gh pr merge` only marks a merge
 check due (PostToolUse/Bash); at Stop one capped `gh pr list --state merged` call decides which PRs
 really merged (#1365 round 3: GitHub, not the command text, is the judge). It
