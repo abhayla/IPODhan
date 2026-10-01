@@ -1,0 +1,13 @@
+{
+  "class_id": "calendar date stored one day early (IST date shifted through UTC)",
+  "feature": "market_holidays reference rows (exchange holiday calendar) read by working-day rules (OD-21 listing_t3/listing_t6) and the scheduler calendar gates",
+  "symptom": "any date-only reference row whose writer converts an IST midnight through UTC lands on the previous calendar day; on staging all 23 NSE-only 2025 trading holidays are one day before the same holiday's BOTH row (Good Friday on a Thursday), so 13 real trading weekdays read as holidays",
+  "first_seen": "2026-10-02 ipodhan_staging (F-220): 2025 NSE/TRADING 23 rows vs BOTH 20; NSE-only weekday dates 13, BSE-only 0",
+  "fix_prs": "open (#1380 follow-up repair)",
+  "detection_check": "none yet (proposed: an exchange-specific trading holiday on a weekday that the other exchange does not share, by date)",
+  "status": "unguarded",
+  "spec_ref": [
+    "§4.6",
+    "§5.3"
+  ]
+}
