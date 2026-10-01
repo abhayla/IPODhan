@@ -10,18 +10,13 @@ a merge was followed by a board write — so the owner had to ask three times
 This one script serves three events, selected by `--event`:
 
   --event PostToolUseBash
-      stdin is a PostToolUse payload for Bash. The command is split into
-      statements (on newlines, `;`, `&&`, `||`, `|`, `(`); if any statement is
-      a REAL invocation of `merge-if-current.mjs` or `gh pr merge` (not a
-      comment/echo/grep/cat/sed/awk/python mentioning the phrase) AND the
-      cwd's git origin URL contains "IPODhan" AND the tool_response does not
-      show the merge failed, append a JSON record {pr, command, session_id,
-      ts} to the marker file (default ~/.claude/.board-owed.ipodhan, one JSON
-      object per line). #1365: a run_in_background call has only QUEUED the
-      merge, so it is written to <marker>.pending instead; at Stop the session's
-      pending records are promoted to the marker only if `gh pr list --state
-      merged` shows a PR merged since the command was queued (or gh cannot
-      answer: fail-safe, record).
+      #1365 round 3 (structural): the command text only TRIGGERS a check, it
+      never decides whether a merge happened. Any Bash call (foreground or
+      background) in an IPODhan checkout whose text contains `gh pr merge`
+      appends a "merge-check due" entry {session_id, ts, numbers, command} to
+      <marker>.pending. `numbers` is the set of literal PR numbers given to
+      every `gh pr merge` in the text, or null when any of them is computed at
+      run time (`$`, backticks, xargs, no literal number): null means "any PR".
 
   --event PostToolUseArtifact
       stdin is a PostToolUse payload for Artifact. If tool_input has a `url`
@@ -30,11 +25,20 @@ This one script serves three events, selected by `--event`:
       the board was republished, nothing is owed.
 
   --event Stop
-      stdin is a Stop payload. If the marker exists, exit 2 with the checklist
-      message on stderr (a Stop hook blocks the turn on exit 2). If the marker
-      is older than BOARD_OWED_MAX_AGE_HOURS (default 12) hours, print a
-      warning to stdout and exit 0 instead — a dead marker must never lock a
-      session forever. `stop_hook_active` true -> exit 0 silently (no loop).
+      First the due merge-checks are resolved against GitHub with ONE capped
+      `gh pr list --state merged --search merged:>=<ts>` call (the only
+      authority on whether a merge happened): every merged PR inside an entry's
+      window (and in its `numbers`, when given) becomes an owed marker record.
+      An entry stays due for PENDING_MAX_AGE_HOURS after its trigger (a
+      background merge may still land), then is dropped only after one more
+      lookup. Due = this session's entries, plus ANY session's entry older than
+      that (a closed session can never resolve its own). gh failure, timeout or
+      a truncated answer records an "unknown merge" (fail safe).
+      Then, if the marker exists, exit 2 with the checklist message on stderr
+      (a Stop hook blocks the turn on exit 2). If the marker is older than
+      BOARD_OWED_MAX_AGE_HOURS (default 12) hours, print a warning to stdout
+      and exit 0 instead — a dead marker must never lock a session forever.
+      `stop_hook_active` true -> exit 0 silently (no loop).
 
 Off-switch: BOARD_OWED_GUARD=0 -> no-op everywhere.
 
@@ -55,7 +59,7 @@ import tarfile
 import sys
 import time
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 BOARD_ID = "NohBg52m7AUjS8kTDMxxKM"
@@ -67,173 +71,50 @@ MARKER_PATH = os.environ.get("BOARD_OWED_MARKER") or os.path.join(
 ERROR_LOG = os.environ.get("BOARD_OWED_ERROR_LOG") or os.path.join(
     os.path.expanduser("~"), ".claude", ".board-owed-guard.errors.log"
 )
+PENDING_PATH = MARKER_PATH + ".pending"
 
-_BARE_NUMBER_RE = re.compile(r"^\d{1,6}$")
+# #1365 round 3: two rounds tried to DECIDE from command text and tool output
+# whether a merge happened (statement splitting, refusal-wording regexes) and
+# each missed shapes: multi-PR commands with one refusal, for-loops, background
+# calls, incidental words in success output, PR numbers computed at run time.
+# Now the text only triggers; GitHub decides at Stop (run-discipline B8).
+_TRIGGER_RE = re.compile(r"gh\s+pr\s+merge\b", re.IGNORECASE)
+# The arguments of one `gh pr merge` run up to the next shell separator. A
+# separator inside a quoted flag value only shortens the segment, which can
+# only turn a literal number into "unknown" (null = any PR): the safe side.
+_SEGMENT_END_RE = re.compile(r"[;&|\n)]")
+_LITERAL_PR_RE = re.compile(r"^(?:#?(\d{1,7})|\S*/pull/(\d{1,7})\S*)$")
 
-
-def _extract_pr_number(merge_stmt):
-    """PR number for a real merge statement: `gh pr merge [flags] <n> [flags]`
-    or `... merge-if-current.mjs <n> [flags]` — a bare all-digit token,
-    wherever it falls among the flags (MINOR-3: flags may precede it)."""
-    for tok in merge_stmt.replace("--pr=", "--pr ").split():
-        tok = tok.lstrip("#").strip()
-        if _BARE_NUMBER_RE.match(tok):
-            return tok
-    return None
-
-# MAJOR-1 (Tier A review, 2026-09-19): matching a merge regex against the raw
-# command string armed on a comment, an `echo`, or a `grep` mentioning the
-# phrase. The guard must parse STATEMENTS, not text. A command is split on
-# statement separators; each statement is checked for a non-merge leading
-# verb (comment / print / search) before the merge pattern is tested against
-# ONLY that statement, with common prefixes (cd X &&, env assignment, node,
-# npx) stripped first.
-#
-# #1036 (2026-09-25): that split happened on the RAW command, before quoted
-# strings, heredoc bodies and comments were removed. A `;` or `|` INSIDE a
-# quoted string (e.g. a test harness's `'{"tool_input":{"command":"gate; gh
-# pr merge 5"}}'`, or a heredoc body line, or a comment line that itself
-# contains a `;`) split the quote/comment open, so the trailing fragment
-# ("gh pr merge 5"...) no longer started with `#` or an echo/grep/python
-# leading verb and matched the merge pattern for real. Fix: strip quoted
-# text, heredoc bodies and `#` comments FIRST (preserving every separator
-# outside them), then split. Ported from the linear scanner in
-# `~/.claude/hooks/merge-chain-guard.py` `scan()` (round-2 Tier A review) —
-# that guard already solved this exact class for the sibling `gh pr merge`
-# chain-guard. This is an independent copy: board-owed-guard stays
-# stdlib-only and fail-open, and hook files here never import each other.
-_STATEMENT_SPLIT_RE = re.compile(r"&&|\|\||[;|]|\(")
-_NON_MERGE_LEADING_VERB_RE = re.compile(
-    r"^(?:echo|printf|grep|rg|cat|sed|awk|python[0-9.]*|node\s+-e)\b", re.IGNORECASE
-)
-_LEADING_PREFIX_RE = re.compile(
-    r"^(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*"          # env var assignments
-    r"(?:cd\s+\S+\s*&&\s*)?"                          # cd X &&  (rare after split, but be safe)
-    r"(?:MSYS_NO_PATHCONV=1\s+)?"
-    r"(?:(?:node|npx)\s+)?",
-    re.IGNORECASE,
-)
-_MERGE_STATEMENT_RE = re.compile(
-    r"^(?:gh\s+pr\s+merge\b|\S*merge-if-current\.mjs\b)", re.IGNORECASE
-)
-_HEREDOC_AT_RE = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+# A foreground call's PostToolUse fires AFTER the command ran, so its merge can
+# predate the trigger by up to the Bash tool's 10-minute cap; look back 15.
+LOOKBACK_MINUTES = 15
+PENDING_MAX_AGE_HOURS = 2
+GH_LIST_LIMIT = 100
 
 
-def _strip_heredoc_bodies(command):
-    """Drop heredoc bodies line by line, wherever the `<<WORD` marker appears, including inside
-    a double-quoted `$( ... )` such as `git commit -m "$(cat <<'EOF' ... EOF\n)"`, where the
-    quote scanner alone would close the quote at an odd `"` in the body (Tier A r1 on #1039).
-    Ported from ~/.claude/hooks/merge-chain-guard.py. Linear: each line is visited once. The
-    marker is neutralised so the scanner below does not look for a delimiter that is gone."""
-    out = []
-    pending = []
-    for line in command.split("\n"):
-        if pending:
-            if line.strip() == pending[0]:
-                pending.pop(0)
-            continue
-        for m in _HEREDOC_AT_RE.finditer(line):
-            pending.append(m.group(3))
-        out.append(_HEREDOC_AT_RE.sub("HEREDOC", line))
-    return "\n".join(out)
-
-
-def _clean_command_text(command):
-    """Return `command` with quoted strings, heredoc bodies and `#` comments
-    blanked out, while every statement separator (newline, `;`, `&&`, `||`,
-    `|`, `(`) that lies OUTSIDE them is preserved verbatim in place — so the
-    existing line/regex statement splitter below still works, now blind to a
-    merge phrase that only appears inside a string, a comment, or a heredoc
-    body line. Ported from the scanning half of
-    `~/.claude/hooks/merge-chain-guard.py` `scan()` — see the note above
-    `_STATEMENT_SPLIT_RE`. Best-effort (no real shell parser); fails toward
-    leaving text alone (never toward removing a real separator)."""
-    command = _strip_heredoc_bodies(command)
-    out = []
-    i, n = 0, len(command)
-    pending_heredocs = []
-    while i < n:
-        c = command[i]
-        nxt = command[i + 1] if i + 1 < n else ""
-        if c == "\\" and nxt:
-            out.append(c)
-            out.append(nxt)
-            i += 2
-            continue
-        if c == "'":
-            j = command.find("'", i + 1)
-            i = n if j < 0 else j + 1
-            out.append("''")
-            continue
-        if c == '"':
-            j = i + 1
-            while j < n and command[j] != '"':
-                j += 2 if command[j] == "\\" else 1
-            i = j + 1 if j <= n else n
-            out.append('""')
-            continue
-        if c == "#" and (not out or out[-1][-1:].isspace()):
-            j = command.find("\n", i)
-            i = n if j < 0 else j
-            continue
-        if c == "<" and nxt == "<":
-            m = _HEREDOC_AT_RE.match(command, i)
-            if m:
-                pending_heredocs.append(m.group(3))
-                out.append("<<H")
-                i = m.end()
+def _merge_numbers(command):
+    """Literal PR numbers of every `gh pr merge` in `command`, or None when any
+    of them is not a literal — None means "any PR merged in the window counts".
+    The PR argument is the first token after `gh pr merge` that is not a flag;
+    when it is computed (`$PR`, `$(...)`, `{}` under xargs), missing (the
+    current branch's PR), or a flag's value, it is not a literal, so a number
+    later in the line (a subject, a limit) is never taken for it."""
+    numbers = set()
+    for m in _TRIGGER_RE.finditer(command):
+        rest = command[m.end():]
+        end = _SEGMENT_END_RE.search(rest)
+        found = None
+        for tok in (rest[: end.start()] if end else rest).split():
+            if tok.startswith("-"):
                 continue
-        if c == "\n" and pending_heredocs:
-            out.append("\n")
-            i += 1
-            for delim in pending_heredocs:
-                while i < n:
-                    j = command.find("\n", i)
-                    line = command[i:] if j < 0 else command[i:j]
-                    i = n if j < 0 else j + 1
-                    if line.strip() == delim:
-                        break
-            pending_heredocs = []
-            continue
-        out.append(c)
-        i += 1
-    return "".join(out)
+            lit = _LITERAL_PR_RE.match(tok.strip("\"'"))
+            found = (lit.group(1) or lit.group(2)) if lit else None
+            break
+        if found is None:
+            return None
+        numbers.add(str(int(found)))
+    return sorted(numbers, key=int) if numbers else None
 
-
-def _iter_statements(command):
-    """Split a shell command into individual statements on ; && || | ( and
-    newlines, after `_clean_command_text` has blanked quoted strings,
-    heredoc bodies and `#` comments. A best-effort lexical split (no real
-    shell parser) — good enough to tell a real merge invocation from a
-    comment/echo/grep/heredoc about one, which is the only thing this guard
-    needs."""
-    cleaned = _clean_command_text(command)
-    for raw_line in cleaned.splitlines():
-        for chunk in _STATEMENT_SPLIT_RE.split(raw_line):
-            stmt = chunk.strip()
-            if stmt:
-                yield stmt
-
-
-def _is_real_merge_statement(stmt):
-    if stmt.startswith("#"):
-        return False
-    if _NON_MERGE_LEADING_VERB_RE.match(stmt):
-        return False
-    stripped = _LEADING_PREFIX_RE.sub("", stmt)
-    return bool(_MERGE_STATEMENT_RE.match(stripped.strip()))
-
-
-def _find_merge_statement(command):
-    """Return the first statement in `command` that is a REAL merge
-    invocation (gh pr merge / a merge-if-current.mjs path), or None. Never
-    matches a comment, echo, printf, grep/rg, cat/sed/awk of a file, a
-    `python`/`node -e` one-liner, or text inside a heredoc body line that
-    merely mentions the phrase without being the leading statement verb."""
-    for stmt in _iter_statements(command):
-        if _is_real_merge_statement(stmt):
-            return stmt
-    return None
 
 _REDACT_RE = re.compile(r"(ghp_\S*|sk-\S*|password=\S*|token=\S*)", re.IGNORECASE)
 
@@ -280,10 +161,10 @@ def _is_ipodhan_repo(cwd):
     return "ipodhan" in (proc.stdout or "").lower()
 
 
-def _read_marker_records():
+def _read_jsonl(path):
+    records = []
     try:
-        with open(MARKER_PATH, "r", encoding="utf-8") as f:
-            records = []
+        with open(path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -296,15 +177,23 @@ def _read_marker_records():
                 # r.get() raise, and fail-open would then let every session through.
                 if isinstance(rec, dict):
                     records.append(rec)
-            return records
     except Exception:
-        return []
+        pass
+    return records
+
+
+def _read_marker_records():
+    return _read_jsonl(MARKER_PATH)
+
+
+def _append_jsonl(path, record):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
 
 
 def _append_marker(record):
-    os.makedirs(os.path.dirname(MARKER_PATH), exist_ok=True)
-    with open(MARKER_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+    _append_jsonl(MARKER_PATH, record)
 
 
 def _clear_marker():
@@ -322,128 +211,24 @@ def _tool_input(data):
     return ti if isinstance(ti, dict) else {}
 
 
-# MAJOR-2 (Tier A review, 2026-09-19): a FAILED merge attempt must not arm
-# the marker — a merge that never happened owes nothing. Text taken from the
-# real refusal wording: merge-if-current.mjs prints "REFUSED (exit N):" with
-# reasons like "conflicts with its base", "is not OPEN", "Mergeability is
-# UNKNOWN", "checks are not green" (see scripts/ops/lib/merge-freshness.mjs);
-# `gh pr merge` prints "Pull request ... is not mergeable" / "GraphQL: ...".
-# On genuine AMBIGUITY (can't tell success from failure) we still mark — a
-# false "owed" costs one republish; a false "clear" costs the whole mechanism.
-# Round 2 (#1365 MAJOR): the old pattern matched these words ANYWHERE, but the
-# standard command `merge-if-current.mjs N > /dev/null 2>&1 && gh pr merge N`
-# prints "a conflicting PR gets NO pull_request run" on EVERY run (its STEP 1
-# help text, merge-if-current.mjs:174), so every successful merge looked failed.
-# Now each pattern is anchored to the START OF A LINE and to the real refusal
-# shape. Sources read: merge-if-current.mjs (`REFUSED (exit N): <heading>`,
-# `Could not read the PR:`, `Cannot run the gate:`, `git fetch failed:`,
-# `Could not compute merge-base`, `usage:`) and `gh pr merge`
-# (`X Pull request #N is not mergeable: ...`, `... was not merged ...`,
-# `GraphQL: ...`, `Could not resolve to a PullRequest`, `no pull requests found`).
-# A success line with the same words mid-line ("Squashed and merged pull
-# request #N (fix: CONFLICTING ...)") does not match and still records.
-_FAILURE_TEXT_RE = re.compile(
-    r"^[ \t]*(?:[X!\u2717\u2718][ \t]+)?(?:"
-    r"REFUSED[ \t]*\(exit[ \t]+\d+\)"
-    r"|GraphQL:"
-    r"|Pull request\b[^\n]*?\b(?:is not mergeable|was not merged|is a draft|is closed)\b"
-    r"|Could not resolve to a PullRequest"
-    r"|no pull requests? found"
-    r"|Could not read the PR:"
-    r"|Cannot run the gate:"
-    r"|git fetch failed:"
-    r"|Could not compute merge-base"
-    r"|usage:[ \t]+node[ \t]+scripts/ops/merge-if-current"
-    r")",
-    re.IGNORECASE | re.MULTILINE,
-)
-
-
-def _merge_call_failed(data):
-    """True only when the tool_response gives clear evidence the merge did
-    NOT go through. Anything ambiguous (missing/unrecognized response shape)
-    returns False so the marker is still armed — see module note above."""
-    resp = data.get("tool_response")
-    if isinstance(resp, dict):
-        if resp.get("is_error") is True:
-            return True
-        for code_key in ("exit_code", "returncode", "exitCode"):
-            code = resp.get(code_key)
-            if isinstance(code, int) and code != 0:
-                return True
-        text = ""
-        for text_key in ("stdout", "stderr", "output", "text"):
-            val = resp.get(text_key)
-            if isinstance(val, str):
-                text += "\n" + val
-        if text and _FAILURE_TEXT_RE.search(text):
-            return True
-    elif isinstance(resp, str):
-        if resp and _FAILURE_TEXT_RE.search(resp):
-            return True
-    return False
-
-
-PENDING_PATH = MARKER_PATH + ".pending"
-
-
-def _is_background_call(data):
-    """#1365: a run_in_background Bash call has only been QUEUED when this hook
-    fires; whatever merge statement it holds has not run yet and may be refused
-    by the gate. Recognised by the tool_input flag or the response shape."""
-    if _tool_input(data).get("run_in_background") is True:
-        return True
-    resp = data.get("tool_response")
-    if isinstance(resp, dict):
-        for key in ("backgroundTaskId", "background_task_id", "bash_id", "shell_id"):
-            if resp.get(key):
-                return True
-    return False
-
-
-def _append_pending(record):
-    os.makedirs(os.path.dirname(PENDING_PATH), exist_ok=True)
-    with open(PENDING_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
-
-
-def _read_pending():
-    records = []
-    try:
-        with open(PENDING_PATH, "r", encoding="utf-8") as f:
-            for line in f:
-                try:
-                    rec = json.loads(line)
-                except (json.JSONDecodeError, ValueError):
-                    continue
-                if isinstance(rec, dict):
-                    records.append(rec)
-    except Exception:
-        pass
-    return records
-
-
 def _write_pending(records):
-    try:
-        if not records:
-            if os.path.exists(PENDING_PATH):
-                os.remove(PENDING_PATH)
-            return
-        with open(PENDING_PATH, "w", encoding="utf-8") as f:
-            for rec in records:
-                f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
-    except Exception:
-        pass
+    if not records:
+        if os.path.exists(PENDING_PATH):
+            os.remove(PENDING_PATH)
+        return
+    tmp = PENDING_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        for rec in records:
+            f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+    os.replace(tmp, PENDING_PATH)
 
 
 def _parse_ts(text):
     try:
-        return datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+        ts = datetime.fromisoformat(str(text).replace("Z", "+00:00"))
     except Exception:
         return None
-
-
-PENDING_MAX_AGE_HOURS = 2
+    return ts if ts.tzinfo is not None else None
 
 
 def _gh_argv():
@@ -458,19 +243,6 @@ def _gh_argv():
     return ["gh"]
 
 
-def _gh_json(args, cwd, timeout):
-    """One gh call; parsed JSON, or None on ANY failure/timeout/garbage."""
-    try:
-        proc = subprocess.run(
-            _gh_argv() + args, cwd=cwd or None, capture_output=True, text=True, timeout=timeout,
-        )
-        if proc.returncode != 0:
-            return None
-        return json.loads(proc.stdout)
-    except Exception:
-        return None
-
-
 def _gh_timeout():
     try:
         return max(1, int(os.environ.get("BOARD_OWED_GH_TIMEOUT") or 25))
@@ -478,128 +250,102 @@ def _gh_timeout():
         return 25
 
 
-def _merged_lookup(own, cwd):
-    """ONE gh call for all of this session's pending records (round 2, MINOR-2;
-    the Stop budget is 120s, so one capped call, never one per record).
-    Returns {"numbers": set(str), "merged_at": {number: datetime}} for the PRs
-    GitHub reports merged since the earliest queue time, or None when gh cannot
-    answer (caller records anyway: fail safe)."""
-    deadline = time.monotonic() + _gh_timeout()
-
-    def remaining():
-        return max(1.0, deadline - time.monotonic())
-
-    known = sorted({r.get("pr") for r in own if r.get("pr")})
-    unknown = [r for r in own if not r.get("pr")]
-    if len(known) == 1 and not unknown:
-        # CRITICAL-2: a long-lived PR falls outside any `pr list --limit N`
-        # (sorted by creation). Ask about the exact PR.
-        row = _gh_json(["pr", "view", known[0], "--json", "number,state,mergedAt"], cwd, remaining())
-        if isinstance(row, dict):
-            out = {"numbers": set(), "merged_at": {}}
-            merged_at = _parse_ts(row.get("mergedAt"))
-            if merged_at is not None:
-                out["numbers"].add(known[0])
-                out["merged_at"][known[0]] = merged_at
-            return out
-        # view unreadable: fall through to the search listing, inside the SAME cap.
-        if time.monotonic() >= deadline:
+def _merged_since(since, cwd):
+    """ONE capped gh call: {number: mergedAt} for every PR merged at or after
+    `since`, or None when gh cannot answer completely (failure, timeout,
+    garbage, or a full page that may be truncated)."""
+    try:
+        proc = subprocess.run(
+            _gh_argv() + [
+                "pr", "list", "--state", "merged",
+                "--search", "merged:>=" + since.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "--limit", str(GH_LIST_LIMIT), "--json", "number,mergedAt",
+            ],
+            cwd=cwd or None, capture_output=True, text=True, timeout=_gh_timeout(),
+        )
+        if proc.returncode != 0:
             return None
-    stamps = [t for t in (_parse_ts(r.get("ts")) for r in own) if t is not None]
-    if len(stamps) != len(own):
+        rows = json.loads(proc.stdout)
+    except Exception:
         return None
-    earliest = min(stamps).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    rows = _gh_json(
-        ["pr", "list", "--state", "merged", "--search", "merged:>=" + earliest,
-         "--limit", "100", "--json", "number,mergedAt"], cwd, remaining())
-    if not isinstance(rows, list):
+    if not isinstance(rows, list) or len(rows) >= GH_LIST_LIMIT:
         return None
-    out = {"numbers": set(), "merged_at": {}}
+    out = {}
     for row in rows:
         if not isinstance(row, dict):
             return None
         merged_at = _parse_ts(row.get("mergedAt"))
-        if merged_at is None:
-            continue
-        num = str(row.get("number"))
-        out["numbers"].add(num)
-        out["merged_at"][num] = merged_at
+        if merged_at is None or row.get("number") is None:
+            return None
+        out[str(row.get("number"))] = merged_at
     return out
 
 
 def _resolve_pending(session_id, cwd):
-    """#1365: turn this session's queued background merges into owed records
-    only when GitHub shows the merge happened. A record GitHub does not (yet)
-    show as merged STAYS pending and is re-checked at each later Stop, until it
-    ages out after PENDING_MAX_AGE_HOURS (CRITICAL-1: a background merge still
-    running at Stop must not be forgotten). When gh cannot answer, the merge is
-    recorded: a missed board publish costs more than one extra prompt."""
-    pending = _read_pending()
+    """Turn due merge-checks into owed records, with GitHub as the only judge
+    of whether a merge happened (see module docstring)."""
+    pending = _read_jsonl(PENDING_PATH)
     if not pending:
         return
-    keep, own = [], []
-    for rec in pending:
-        owner = rec.get("session_id") or ""
-        if owner and owner != (session_id or ""):
-            keep.append(rec)
-        else:
-            own.append(rec)
-    if not own:
-        return
+    me = session_id or ""
     now = datetime.now(timezone.utc)
-    fresh = []
-    for rec in own:
+    max_age = timedelta(hours=PENDING_MAX_AGE_HOURS)
+    due, keep = [], []
+    for rec in pending:
         ts = _parse_ts(rec.get("ts"))
-        if ts is not None and ts.tzinfo is not None and (now - ts).total_seconds() > PENDING_MAX_AGE_HOURS * 3600:
-            continue  # aged out: dropped
-        fresh.append(rec)
-    lookup = _merged_lookup(fresh, cwd) if fresh else None
-    for rec in fresh:
-        if lookup is None:
-            _append_marker(rec)
-            continue
-        queued_pr = rec.get("pr") or ""
-        if queued_pr:
-            # MINOR-1: a known PR is promoted only by ITS OWN merge.
-            if queued_pr in lookup["numbers"]:
-                _append_marker(rec)
-            else:
-                keep.append(rec)
-            continue
-        since = _parse_ts(rec.get("ts"))
-        hit = sorted(n for n, t in lookup["merged_at"].items() if since is not None and t >= since)
-        if hit:
-            rec = dict(rec)
-            rec["pr"] = ",".join(hit)
-            _append_marker(rec)
+        old = ts is None or now - ts > max_age
+        owner = rec.get("session_id") or ""
+        if owner == me or not owner or old:
+            due.append((rec, ts, old))
         else:
             keep.append(rec)
+    if not due:
+        return
+    stamps = [ts for _, ts, _ in due if ts is not None]
+    lookback = timedelta(minutes=LOOKBACK_MINUTES)
+    merged = _merged_since(min(stamps) - lookback, cwd) if len(stamps) == len(due) else None
+    stamp = now.astimezone().isoformat(timespec="seconds")
+    for rec, ts, old in due:
+        if merged is None:
+            # Fail safe: a missed board publish costs more than one extra prompt.
+            _append_marker({"pr": "", "unknown": True, "session_id": me, "ts": stamp,
+                            "trigger_session": rec.get("session_id") or "",
+                            "command": rec.get("command") or ""})
+            continue
+        wanted = rec.get("numbers")
+        recorded = list(rec.get("recorded") or [])
+        for num in sorted(merged, key=lambda n: int(n) if n.isdigit() else 0):
+            if num in recorded or merged[num] < ts - lookback:
+                continue
+            if wanted is not None and num not in wanted:
+                continue
+            _append_marker({"pr": num, "merged_at": merged[num].isoformat(), "session_id": me,
+                            "ts": stamp, "trigger_session": rec.get("session_id") or "",
+                            "command": rec.get("command") or ""})
+            recorded.append(num)
+        if old:
+            continue  # looked first; now drop
+        if wanted is not None and set(wanted) <= set(recorded):
+            continue  # every PR it named has merged; nothing more can land
+        rec = dict(rec)
+        rec["recorded"] = recorded
+        keep.append(rec)
     _write_pending(keep)
 
 
 def handle_bash(data):
     command = _tool_input(data).get("command")
-    if not isinstance(command, str) or not command.strip():
+    if not isinstance(command, str) or not _TRIGGER_RE.search(command):
         return
-    merge_stmt = _find_merge_statement(command)
-    if not merge_stmt:
+    if not _is_ipodhan_repo(data.get("cwd") or ""):
         return
-    cwd = data.get("cwd") or ""
-    if not _is_ipodhan_repo(cwd):
-        return
-    if _merge_call_failed(data):
-        return
-    pr_number = _extract_pr_number(merge_stmt)
-    record = {
-        "pr": pr_number or "",
-        "command": _redact(command)[:300],
+    _append_jsonl(PENDING_PATH, {
         "session_id": data.get("session_id") or "",
         "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
-    }
-    if _is_background_call(data):
-        _append_pending(record)
-        return
-    _append_marker(record)
+        "numbers": _merge_numbers(command),
+        "background": _tool_input(data).get("run_in_background") is True,
+        "command": _redact(command)[:300],
+    })
 
 
 def handle_artifact(data):
@@ -839,7 +585,11 @@ def handle_stop(data):
     if not _is_ipodhan_repo(data.get("cwd") or os.getcwd()):
         return 0
 
-    _resolve_pending(data.get("session_id"), data.get("cwd") or os.getcwd())
+    try:
+        _resolve_pending(data.get("session_id"), data.get("cwd") or os.getcwd())
+    except Exception:
+        # Resolution trouble must not also skip the marker check below.
+        _log_error("resolve-pending: " + traceback.format_exc().replace("\n", " | "))
 
     if not os.path.exists(MARKER_PATH):
         # No merge owed. Still owed when the last publish is older than
@@ -897,7 +647,10 @@ def handle_stop(data):
         p = r.get("pr")
         if p and p not in prs:
             prs.append(p)
-    prs_text = ", ".join("#" + p for p in prs) if prs else "unnumbered"
+    parts = ["#" + p for p in prs]
+    if any(r.get("unknown") for r in records):
+        parts.append("unknown merge (GitHub could not be asked)")
+    prs_text = ", ".join(parts) if parts else "unnumbered"
     session_ids = [r.get("session_id") for r in records if r.get("session_id")]
     session_text = session_ids[-1][:8] if session_ids else "unknown"
 
