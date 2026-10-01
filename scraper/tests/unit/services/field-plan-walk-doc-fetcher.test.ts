@@ -151,9 +151,9 @@ describe('DOC fetcher — document COMPLETED, no provenance (review round 2, RCA
 });
 
 // #1246 round 2, finding 2: DRHP provenance over an EMPTY column is a reader gap (the persister
-// writes non-null only; the value was removed, e.g. OD-153), never NOT_PRINTED (which retires the
+// writes non-null only; the value was removed afterwards), never NOT_PRINTED (which retires the
 // field when every rank says so). Rank 2 still answers in the same pass (§5.3 rule 4).
-describe('DOC fetcher — document provenance over an empty column (#1246, OD-153)', () => {
+describe('DOC fetcher — document provenance over an empty column (#1246)', () => {
   it.each(['ipos', 'ipo_details'] as const)('answers CHECK_FAILED transient NO_DOCUMENT_PROVENANCE, never NOT_PRINTED (%s)', async (table) => {
     const deps = makeDeps({
       documentRepository: {

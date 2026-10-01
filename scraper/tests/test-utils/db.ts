@@ -47,12 +47,38 @@ export async function getTestDb() {
   return testDb;
 }
 
+const SANCTIONED_TEST_DATABASE = 'ipodhan_test';
+
+/** Database name of a postgres URL, or null when it cannot be parsed. Never echoes the URL. */
+export function databaseNameOfUrl(connectionString: string): string | null {
+  try {
+    const name = decodeURIComponent(new URL(connectionString).pathname.replace(/^\//, ''));
+    return name || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Pool for a test that is handed a DATABASE_URL (ipodhan_test); UTC session like the shared pool.
- * The caller owns it and must end() it.
+ * Pool for a test that is handed a DATABASE_URL; UTC session like the shared pool.
+ * Refuses, before connecting, any database other than exactly `ipodhan_test`. The error never
+ * carries the URL. The caller owns the pool, must end() it, and should call
+ * assertConnectedToTestDatabase(pool) before its first write.
  */
 export function createTestPoolFromUrl(connectionString: string, max = 4): Pool {
+  const name = databaseNameOfUrl(connectionString);
+  if (name !== SANCTIONED_TEST_DATABASE) {
+    throw new Error(`Refusing to build a test pool: database must be exactly ${SANCTIONED_TEST_DATABASE}`);
+  }
   return new Pool({ connectionString, max, options: '-c timezone=UTC' });
+}
+
+/** Post-connect check: the server itself reports `ipodhan_test`. */
+export async function assertConnectedToTestDatabase(pool: Pick<Pool, 'query'>): Promise<void> {
+  const cur = (await pool.query('SELECT current_database() AS d')).rows[0]?.d as string | undefined;
+  if (cur !== SANCTIONED_TEST_DATABASE) {
+    throw new Error(`Refusing to run: connected database is ${cur}, expected ${SANCTIONED_TEST_DATABASE}`);
+  }
 }
 
 /**

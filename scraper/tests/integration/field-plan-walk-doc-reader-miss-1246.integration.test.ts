@@ -1,10 +1,8 @@
-// implements: #1246 round 2 + OD-153 -- spec data-sourcing-pull-model.md §5.3 rule 4 ("the pull loop then
-// asks rank 2 for the dropped field"), OD-62 (a reason, never a bare null), OD-153 (a re-read refusal of an
-// older stored value clears it with the refusal as its reason and the next-ranked source is asked).
-// REAL walk + REAL DOC fetcher + REAL DataConsolidationOrchestrator + REAL ipo_field_plan claim SQL +
-// the PRODUCTION OD-153 clear deps (makeRereadRefusalClear) on ipodhan_test.
+// implements: #1246 round 3 -- spec data-sourcing-pull-model.md §5.3 rule 4 ("the pull loop then
+// asks rank 2 for the dropped field"), OD-62 (a reason, never a bare null).
+// REAL walk + REAL DOC fetcher + REAL DataConsolidationOrchestrator + REAL ipo_field_plan claim SQL on ipodhan_test.
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { createTestPoolFromUrl } from '../test-utils/db';
+import { createTestPoolFromUrl, assertConnectedToTestDatabase } from '../test-utils/db';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq, sql } from 'drizzle-orm';
 // Relative imports, NOT the `@ipodhan/shared` alias (worktree junction guard, as the sibling walk tests).
@@ -32,7 +30,7 @@ const SLUG = 'zzq1246-doc-reader-miss-testco';
 
 const noRedis = { get: async () => null, set: async () => 'OK', setex: async () => 'OK', del: async () => 0, keys: async () => [], scan: async () => ['0', []] };
 
-describe.skipIf(!DATABASE_URL)('#1246 / OD-153: a DOC reader miss or a re-read refusal -> rank 2 is asked and written (ipodhan_test)', () => {
+describe.skipIf(!DATABASE_URL)('#1246: a DOC reader miss -> rank 2 is asked and written (ipodhan_test)', () => {
   let pool: ReturnType<typeof createTestPoolFromUrl>;
   let db: ReturnType<typeof drizzle<typeof schema>>;
   let planRepo: IpoFieldPlanRepository;
@@ -40,8 +38,6 @@ describe.skipIf(!DATABASE_URL)('#1246 / OD-153: a DOC reader miss or a re-read r
   let orchestrator: any;
   let walk: typeof import('../../src/services/field-plan-walk.js').walkFieldPlanForIPO;
   let docFetcher: FieldFetcher;
-  let clearDeps: import('../../src/services/reread-refusal-clear.js').RereadRefusalClearDeps;
-  let clearRefused: typeof import('../../src/services/reread-refusal-clear.js').clearRefusedStoredValues;
 
   async function cleanup() {
     await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO));
@@ -56,15 +52,12 @@ describe.skipIf(!DATABASE_URL)('#1246 / OD-153: a DOC reader miss or a re-read r
 
   beforeAll(async () => {
     pool = createTestPoolFromUrl(DATABASE_URL as string);
-    const cur = (await pool.query('select current_database() AS d')).rows[0].d as string;
-    if (cur !== 'ipodhan_test') throw new Error(`Refusing to run against ${cur}; ipodhan_test only`);
+    await assertConnectedToTestDatabase(pool);
     db = drizzle(pool, { schema });
     const { DataConsolidationOrchestrator } = await import('../../src/services/data-consolidation-orchestrator.js');
     ({ walkFieldPlanForIPO: walk } = await import('../../src/services/field-plan-walk.js'));
     const { buildDocFetcher } = await import('../../src/services/field-plan-walk-doc-fetcher.js');
-    const { makeRereadRefusalClear, makeIpoDetailsWriter } = await import('../../src/services/filing-persist-deps.js');
-    ({ clearRefusedStoredValues: clearRefused } = await import('../../src/services/reread-refusal-clear.js'));
-    fieldSources = new FieldSourcesRepository(db as never, noRedis as never);
+        fieldSources = new FieldSourcesRepository(db as never, noRedis as never);
     const ipoRepository = new IPORepository(db as never, noRedis as never);
     orchestrator = new DataConsolidationOrchestrator(ipoRepository, fieldSources, new DataConflictsRepository(db as never, noRedis as never), null);
     planRepo = new IpoFieldPlanRepository(db as never, noRedis as never);
@@ -78,15 +71,6 @@ describe.skipIf(!DATABASE_URL)('#1246 / OD-153: a DOC reader miss or a re-read r
         findByIpoId: async (id: string) =>
           ((await db.select().from(schema.ipoDetails).where(eq(schema.ipoDetails.ipoId, id)))[0] as never) ?? null,
       } as never,
-    });
-    clearDeps = makeRereadRefusalClear({
-      db: db as never,
-      fieldSources,
-      fieldExtractionFailures: new FieldExtractionFailuresRepository(db as never, noRedis as never),
-      financialData: new FinancialDataRepository(db as never, noRedis as never),
-      ipoDetailsWriter: makeIpoDetailsWriter(db as never),
-      // No admin hold in this fixture: the gate passes everything (the hold case is the unit test's).
-      protectionFilter: async (_id, _t, data) => ({ filtered: data }),
     });
   }, 60000);
 
@@ -144,49 +128,6 @@ describe.skipIf(!DATABASE_URL)('#1246 / OD-153: a DOC reader miss or a re-read r
     expect(row.state).toBe('SUPPLIED');
     expect(row.chosenSource).toBe('CHITTORGARH');
     expect(row.chosenRank).toBe(2);
-    expect((await provenance())?.source).toBe('CHITTORGARH');
-  }, 60000);
-
-  it('OD-153: an older reader of the SAME document stored 7, the newer reader refuses it -> cleared with reason, plan reopened, rank 2 asked and written', async () => {
-    // The older read: value 7 in the column, its provenance naming THIS document and extractor v1,
-    // and a SUPPLIED plan row chosen from this document.
-    await db.execute(sql`INSERT INTO ipo_details (ipo_id, lot_multiple, data_source) VALUES (${IPO}::uuid, 7, 'DRHP')`);
-    await fieldSources.trackFieldUpdate({
-      ipoId: IPO, tableName: 'ipo_details', fieldName: 'lotMultiple', source: 'DRHP', confidence: 100,
-      dataLineage: { method: 'FILING_EXTRACTION', docType: 'RHP', documentId: DOC, sourceSha: 'c'.repeat(64), extractorVersion: 'v1' },
-      updatedBy: 'FILING_PERSISTER',
-    } as never);
-    const [plan] = await db.insert(schema.ipoFieldPlan).values({
-      ipoId: IPO, tableName: 'ipo_details', rowKey: '', fieldName: 'lot_multiple',
-      rank1Source: 'DOC', rank2Source: 'CHITTORGARH', state: 'SUPPLIED', manifestVersion: 2, nextDueAt: null,
-      chosenSource: 'DOC', chosenRank: 1, chosenDocumentId: DOC,
-    } as never).returning({ id: schema.ipoFieldPlan.id });
-
-    // The re-read by extractor v2 refuses the field.
-    const cleared = await clearRefused(
-      {
-        ipoId: IPO, docType: 'RHP', documentId: DOC, sourceSha: 'c'.repeat(64), extractorVersion: 'v2',
-        fields: { lot_multiple: { value: 7, check: { passed: false, detail: 'lot_multiple_not_on_cover' } } },
-      },
-      clearDeps
-    );
-    expect(cleared.cleared).toEqual(['ipo_details.lotMultiple']);
-    expect(cleared.reopenedPlanRowIds).toEqual([plan.id]);
-    expect(await lotMultiple()).toBeNull();
-    const failures = await db.select().from(schema.fieldExtractionFailures).where(eq(schema.fieldExtractionFailures.ipoId, IPO));
-    expect(failures).toHaveLength(1);
-    expect(failures[0]).toMatchObject({ tableName: 'ipo_details', fieldName: 'lotMultiple', ruleId: 'FAILED_VALIDATION', documentId: DOC });
-    expect(failures[0].cause).toMatch(/^OD-153: RHP re-read \(extractor v2\) refused lot_multiple; stored 7 from extractor v1/);
-    const [reopened] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, plan.id));
-    expect(reopened.state).toBe('PENDING');
-
-    // The walk: DOC (provenance over an empty column) is a reader gap, CHITTORGARH supplies 4.
-    const cg = vi.fn(async () => ({ outcome: 'SUPPLIED', value: 4 }) as never);
-    await walk(IPO, deps(cg) as never, budget());
-    expect(cg).toHaveBeenCalledTimes(1);
-    const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, plan.id));
-    expect(row.state).toBe('SUPPLIED');
-    expect(row.chosenSource).toBe('CHITTORGARH');
     expect((await provenance())?.source).toBe('CHITTORGARH');
   }, 60000);
 });

@@ -387,15 +387,14 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
       // #1246 round 2 (finding 2): and never NOT_PRINTED either. The filing
       // persister writes non-null values only, so a document provenance row
       // over an empty column says the document DID supply a value that was
-      // removed afterwards (OD-153: a newer reader refused it; an admin clear;
-      // a repair) -- a fact about our read, not "the document does not print
+      // removed afterwards (an admin clear; a repair) -- a fact about our read, not "the document does not print
       // it". NOT_PRINTED from every rank retires the field (EXHAUSTED); this is
       // a reader gap, parked under the document key (a new document, extractor
       // version or provenance reopens it) while lower ranks answer in the same
       // pass (§5.3 rule 4).
       return {
         outcome: 'CHECK_FAILED',
-        reason: `document provenance for ${camelFieldName} on ${manifestDocType} but the column is empty (value cleared, e.g. OD-153 re-read refusal) — a reader gap, not NOT_PRINTED`,
+        reason: `document provenance for ${camelFieldName} on ${manifestDocType} but the column is empty (value cleared) — a reader gap, not NOT_PRINTED`,
         transient: true,
         gap: 'NO_DOCUMENT_PROVENANCE',
       };
