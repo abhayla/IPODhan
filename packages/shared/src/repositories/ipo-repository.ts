@@ -195,6 +195,10 @@ import {
 } from '../utils/company-name-normalizer';
 import { findMostSimilarName } from '../utils/company-name-similarity';
 import { filterPatchUnderHold } from '../services/field-hold';
+import { guardWriterIdentifiers } from '../services/admin-identifier-alias';
+
+/** #1376: the identifier columns whose writes take the per-value lock (guardWriterIdentifiers). */
+const WRITER_IDENTIFIER_COLUMNS = ['cin', 'isin', 'symbol'] as const;
 import { recordListSuggestion, adminListMergeRefusal } from '../services/admin-list-hold';
 import {
   checkMergeEligibility,
@@ -1631,17 +1635,28 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // insert rolls back with it — so two concurrent creates leave one row.
       const keys = normalizeSourceKeyRefs(options?.sourceKeys ?? []);
       const inTx = options?.inTx;
-      const ipo = keys.length === 0 && !inTx
+      // #1376: a create carrying a CIN / ISIN / symbol runs the identifier guard in its transaction.
+      const writesIdentifier = WRITER_IDENTIFIER_COLUMNS.some((c) => (data as Record<string, unknown>)[c] != null);
+      const ipo = keys.length === 0 && !writesIdentifier && !inTx
         ? (await this.db.insert(ipos).values(data).returning())[0]
         : await this.db.transaction(async (tx) => {
-            const [created] = await tx.insert(ipos).values(data).returning();
-            if (keys.length > 0) {
-              const rec = await recordSourceKeys(tx, created.id, keys, { boundVia: 'CREATE', boundBy: options?.boundBy ?? 'unknown' });
-              noteSourceKeyBind(created.id, rec.insertedIds);
-            }
-            if (inTx) await inTx(tx, created);
-            return created;
-          });
+        const row = { ...data } as Record<string, unknown>;
+        const refusedIds = await guardWriterIdentifiers(
+          tx as never,
+          { ipoId: null, offeringType: (row.offeringType as string | undefined) ?? null, openDate: row.openDate ?? null },
+          row
+        );
+        if (refusedIds.length > 0) {
+          logger.warn({ slug: data.slug, refused: refusedIds }, '[#1376 OD-68] identifier held by another row of the same offering: created without it');
+        }
+        const [created] = await tx.insert(ipos).values(row as IPOInsert).returning();
+        if (keys.length > 0) {
+          const rec = await recordSourceKeys(tx, created.id, keys, { boundVia: 'CREATE', boundBy: options?.boundBy ?? 'unknown' });
+          noteSourceKeyBind(created.id, rec.insertedIds);
+        }
+        if (inTx) await inTx(tx, created);
+        return created;
+      });
 
       // Invalidate list cache
       await this.deleteCachePattern('ipo:list:*');
@@ -1764,6 +1779,34 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           if (keySymbol && keySymbol !== patch.symbol) {
             logger.info({ ipoId: id, incoming: patch.symbol, active: keySymbol }, '[OD-85] ipos.symbol follows the ACTIVE NSE_ISSUE key');
             patch.symbol = keySymbol;
+          }
+        }
+        // #1376: a CIN / ISIN / symbol this write changes takes the admin's per-value lock, and one
+        // another row of the same offering already carries is removed (OD-68), inside this transaction.
+        const writesIdentifier = WRITER_IDENTIFIER_COLUMNS.some((c) => patch[c] != null);
+        const [self] = writesIdentifier
+          ? await tx
+              .select({ offeringType: ipos.offeringType, openDate: ipos.openDate, cin: ipos.cin, isin: ipos.isin, symbol: ipos.symbol })
+              .from(ipos)
+              .where(eq(ipos.id, id))
+              .limit(1)
+          : [];
+        const refusedIds = !writesIdentifier ? [] : await guardWriterIdentifiers(
+          tx as never,
+          {
+            ipoId: id,
+            offeringType: (patch.offeringType as string | undefined) ?? self?.offeringType ?? null,
+            openDate: patch.openDate ?? self?.openDate ?? null,
+            current: { cin: self?.cin, isin: self?.isin, symbol: self?.symbol },
+          },
+          patch
+        );
+        if (refusedIds.length > 0) {
+          dropped = [...dropped, ...refusedIds.map((r) => r.fieldName)];
+          logger.warn({ ipoId: id, source, refused: refusedIds }, '[#1376 OD-68] identifier held by another row of the same offering: not written');
+          if (Object.keys(patch).length === 0) {
+            const [current] = await tx.select().from(ipos).where(eq(ipos.id, id)).limit(1);
+            return runInTx(current as IPO);
           }
         }
         const [written] = await tx
