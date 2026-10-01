@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-10-01T08:53:17.647Z",
+  "generated_at": "2026-10-01T09:20:31.287Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
     "live": 208,
-    "retired": 53
+    "retired": 54
   },
-  "next_id": 262,
+  "next_id": 263,
   "rules": [
     {
       "id": "R-151",
@@ -189,12 +189,12 @@
       "retired": false
     },
     {
-      "id": "R-012",
-      "hash": "e5a8af1c70ec",
+      "id": "R-262",
+      "hash": "dc5cc62b5902",
       "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
       "kind": "table",
-      "text": "The one allowed re-extraction is an extractor-version change, and only for the fields that failed — a bumped extractorVersion re-runs only rows whose field set is incomplete — extractorVersion exists (document-state-machine.ts:295); the field-level condition is build item 8",
-      "first_seen": "2026-09-09",
+      "text": "The one allowed re-extraction is an extractor-version change, and only for the fields that failed — a bumped extractorVersion re-runs only rows whose field set is incomplete — extractorVersion exists (document-state-machine.ts:295); the field-level condition is build item 8. Until item 8, the limit is per document TYPE: EXTRACTOR_VERSION_CHANGES (filing-auto-persist.ts) records which types each version changed, and each type's re-read floor is derived from it, so a bump that does not name a type does not re-read it (#1247; guard test extractor-version-floors.test.ts)",
+      "first_seen": "2026-10-01",
       "retired": false
     },
     {
@@ -1879,6 +1879,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-012",
+      "hash": "e5a8af1c70ec",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table",
+      "text": "The one allowed re-extraction is an extractor-version change, and only for the fields that failed — a bumped extractorVersion re-runs only rows whose field set is incomplete — extractorVersion exists (document-state-machine.ts:295); the field-level condition is build item 8",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-242",
