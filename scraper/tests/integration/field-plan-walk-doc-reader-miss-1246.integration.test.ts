@@ -2,8 +2,7 @@
 // asks rank 2 for the dropped field"), OD-62 (a reason, never a bare null).
 // REAL walk + REAL DOC fetcher + REAL DataConsolidationOrchestrator + REAL ipo_field_plan claim SQL on ipodhan_test.
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { createTestPoolFromUrl, assertConnectedToTestDatabase } from '../test-utils/db';
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { getTestDb, cleanupTestDb } from '../test-utils/db';
 import { eq, sql } from 'drizzle-orm';
 // Relative imports, NOT the `@ipodhan/shared` alias (worktree junction guard, as the sibling walk tests).
 import * as schema from '../../../packages/shared/src/db/schema';
@@ -23,16 +22,14 @@ process.env.CONSOLIDATION_PERCENTAGE = '100';
 process.env.ENABLE_SOURCE_TRACKING = 'true';
 process.env.ENABLE_CHILD_TABLE_CONSOLIDATION = 'true';
 
-const DATABASE_URL = process.env.DATABASE_URL;
 const IPO = '00000000-0000-4000-8000-000000124601';
 const DOC = '00000000-0000-4000-8000-0000001246d0';
 const SLUG = 'zzq1246-doc-reader-miss-testco';
 
 const noRedis = { get: async () => null, set: async () => 'OK', setex: async () => 'OK', del: async () => 0, keys: async () => [], scan: async () => ['0', []] };
 
-describe.skipIf(!DATABASE_URL)('#1246: a DOC reader miss -> rank 2 is asked and written (ipodhan_test)', () => {
-  let pool: ReturnType<typeof createTestPoolFromUrl>;
-  let db: ReturnType<typeof drizzle<typeof schema>>;
+describe('#1246: a DOC reader miss -> rank 2 is asked and written (ipodhan_test)', () => {
+  let db: Awaited<ReturnType<typeof getTestDb>>;
   let planRepo: IpoFieldPlanRepository;
   let fieldSources: FieldSourcesRepository;
   let orchestrator: any;
@@ -51,9 +48,7 @@ describe.skipIf(!DATABASE_URL)('#1246: a DOC reader miss -> rank 2 is asked and 
   }
 
   beforeAll(async () => {
-    pool = createTestPoolFromUrl(DATABASE_URL as string);
-    await assertConnectedToTestDatabase(pool);
-    db = drizzle(pool, { schema });
+    db = await getTestDb();
     const { DataConsolidationOrchestrator } = await import('../../src/services/data-consolidation-orchestrator.js');
     ({ walkFieldPlanForIPO: walk } = await import('../../src/services/field-plan-walk.js'));
     const { buildDocFetcher } = await import('../../src/services/field-plan-walk-doc-fetcher.js');
@@ -76,7 +71,7 @@ describe.skipIf(!DATABASE_URL)('#1246: a DOC reader miss -> rank 2 is asked and 
 
   afterAll(async () => {
     if (db) await cleanup();
-    await pool?.end();
+    await cleanupTestDb();
   }, 60000);
 
   beforeEach(async () => {
