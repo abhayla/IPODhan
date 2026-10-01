@@ -210,6 +210,7 @@ it by assuming.
 | OD-155 | *"Re-read both (Rec.)"* -- 2026-10-01, chosen over re-reading only the changed document (#1245 item 2; Spec basis: §2 "One download, one read" (OD-33) and §5.3 rule 5 name only a new extractor version or new bytes of THAT document as triggers; OD-66; the spec said nothing about a pair refused together; real cases unmeasured). **When the W-45 cross-document check refuses a price band advertisement and an RHP together because they disagree about the same restated figure, new bytes on EITHER document re-admit BOTH documents of that refused pair for one read. It is an event trigger, not a timer, so OD-33 stands.** | 2026-10-01 | §2, §5.3 | a corrected file on one side of a W-45-refused pair re-reads both sides once |
 | OD-156 | *"Newer doc may remove (Rec.)"* -- 2026-10-01, chosen over never removing (#1166 item 1; Spec basis: §1.7 fields 121-128 DOC 1 / CG 2; §1 `DOC` = best available type; §1.3 "a newer document can heal an older one"; OD-154; OD-107 admin lists never trimmed; the spec said nothing about list membership; real cases: A-One Steels DRHP and RHP list the same 3 peers, no removal case measured). **A document peer list removes a stored document peer it no longer names, but only when the stored row came from the SAME or an OLDER document type (order per OD-154: DRHP < RHP < PROSPECTUS). Each document-written peer row therefore records its real document type (today every such row is stamped DRHP). A peer that came only from Chittorgarh, or that an admin added, is never removed by a document list.** | 2026-10-01 | §1.7 | a newer document's shorter peer list removes the dropped document peers and nothing else |
 | OD-157 | *"Keep, mark retired (Rec.)"* -- 2026-10-01, chosen over deleting the records with the row (#1166 item 3; Spec basis: §2.10 child-table provenance and OD-128 cover writing a child row's source records but not a deleted row's; OD-32 keeps the record and drops the bytes; real cases unmeasured). **When a replacing source set deletes a child row (first case: a document peer table with figures deletes Chittorgarh-only peers), the deleted row's source records are kept and marked retired, with the date and the reason (which set replaced it). Every reader (admin editor provenance view, nightly audits, the walk) skips retired records, so nothing reads a deleted row as live.** | 2026-10-01 | §1.7, §2.10 | no live source record points at a deleted child row; a retired record names when and why its row was removed |
+| OD-158 | *"Clear + ask rank 2 (Rec.)"* -- 2026-10-01, the stated-absence state of OD-153, asked after the first OD-153 build was withdrawn (Tier A review of #1412: the extractor reports a missed label and a refusal the same way, so the build cleared merely-missed values; Spec basis: OD-153, §6 rule 4, OD-62, OD-121, spec rule 10; real case: German Green `inventoryTurnover` 23.14 from its DRHP, where the current ratio reader reports the ratio as not printed). **When a newer extractor version re-reads the SAME document and STATES that the document does not print a field an older read stored, the stored value is cleared with the reason "current reader: not printed" and the next rank is asked in the same pass, exactly as for a refusal (OD-153). The full answer-state table is in §6 under rule 4; a missed label, a low-confidence OCR page and an extractor failure never clear a stored value.** | 2026-10-01 | §6 | a stored value from an older reader survives only while the current reader also reads it, or misses / fails to read it |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -3270,6 +3271,25 @@ slot.
 rank-1 value being refused was stored by an OLDER extractor version reading the SAME document, the refusal also
 clears that stored value to empty, with the refusal as its reason, and rank 2 is asked in the same pass as
 above. The refused reader's number is never left on the page. An admin-held value is never cleared.
+
+**Answer states for a re-read of the same document (OD-153, OD-158, 2026-10-01).** An older extractor version
+stored value V from document D; a newer version re-reads D. What the newer reader answers decides V:
+
+| Newer reader's answer for the field | V | Asked next |
+|---|---|---|
+| reads the same value | kept, restamped with the new version | nothing |
+| reads a different value that passes its checks | replaced by the new value | nothing |
+| reads a value and a validation rule REFUSES it (OD-153) | cleared, reason = the refusal | rank 2, same pass |
+| STATES the document does not print the field (OD-158) | cleared, reason "current reader: not printed" | rank 2, same pass |
+| misses the label (pattern found nothing) | kept | nothing |
+| page read by OCR below the confidence floor | kept | nothing |
+| extractor throws, times out or returns no result | kept | nothing (the read itself is retried as today) |
+| V is admin-held (any answer) | kept | nothing |
+
+A build of this table MUST first make the reader's output distinguish these states: on 2026-10-01 the
+extractor emitted `value: None, passed: False` for both a missed label and a refusal (Tier A review of #1412),
+so no code may clear a value on `passed: false` alone. A row whose lineage records no extractor version is
+treated as unknown and is never cleared.
 
 **Related: F-193** (2026-09-26) measures a consequence of the retry ceiling this rule shares a
 boundary with: the 10-attempt block marker for a stuck extraction overwrote its own
