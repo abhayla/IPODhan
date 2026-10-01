@@ -14,7 +14,7 @@
  *   2. `writeChildRowFields` AFTER consolidation: update the keyed row (or insert it when creatable),
  *                          re-reading admin holds under the `ipos` row lock in the same transaction.
  */
-import { and, eq, getTableColumns, type SQL } from 'drizzle-orm';
+import { and, eq, getTableColumns, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { PgTable } from 'drizzle-orm/pg-core';
 // Namespace import, read lazily in `specs()`: this module loads with every IPORepository, and a test
@@ -224,7 +224,7 @@ export async function writeChildRowFields(
 
     const updated = await tx
       .update(spec.table as any)
-      .set({ ...patch, ...(('updatedAt' in cols) ? { updatedAt: new Date() } : {}) })
+      .set({ ...patch, ...('updatedAt' in cols ? { updatedAt: sql`now()` } : {}) })
       .where(whereKey(spec, ipoId, key))
       .returning();
     if (updated.length > 0) return { written: true as const, mode: 'UPDATE' as const, dropped };
