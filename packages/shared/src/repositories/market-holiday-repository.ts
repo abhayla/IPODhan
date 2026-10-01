@@ -218,6 +218,19 @@ export class MarketHolidayRepository extends BaseRepository {
   }
 
   /**
+   * Every holiday row, read straight from the database (NO cache): the scraper's working-day calendar
+   * (#1380) must not read a 30-day-old cached copy of a table a repair may have just changed.
+   * `date` is returned as the stored YYYY-MM-DD text.
+   */
+  async findAllUncached(): Promise<MarketHoliday[]> {
+    return this.executeQuery(
+      'findAllMarketHolidaysUncached',
+      async () => this.db.select().from(marketHolidays).orderBy(asc(marketHolidays.date)),
+      {}
+    );
+  }
+
+  /**
    * Invalidate all market holiday caches
    * Called when holiday data is updated (admin operations)
    */

@@ -1,0 +1,13 @@
+{
+  "class_id": "calendar date stored one day early (IST date shifted through UTC)",
+  "feature": "market_holidays reference rows (exchange holiday calendar) read by working-day rules (OD-21 listing_t3/listing_t6) and the scheduler calendar gates",
+  "symptom": "any date-only reference row whose writer converts an IST midnight through UTC lands on the previous calendar day; on staging all 23 NSE-only 2025 trading holidays are one day before the same holiday's BOTH row (Good Friday on a Thursday), so 13 real trading weekdays read as holidays",
+  "first_seen": "2026-10-02 ipodhan_staging (F-220): 2025 NSE/TRADING 23 rows vs BOTH 20; NSE-only weekday dates 13, BSE-only 0",
+  "fix_prs": "#1380 (working-day calendar wired + scraper/scripts/repair-shifted-market-holidays.ts); the staging/prod repair run is owed to the supervisor",
+  "detection_check": "h_market_holiday_shifted_copy (scripts/audit-detection-floor.mjs; rule shared with the repair in scripts/lib/shifted-holiday-copies.mjs): FAILs on any NSE or BSE TRADING row whose date + 1 day is another exchange's (or BOTH) TRADING row with the same description and whose own date the other exchange does not carry, listing ids",
+  "status": "guarded",
+  "spec_ref": [
+    "§4.6",
+    "§5.3"
+  ]
+}
