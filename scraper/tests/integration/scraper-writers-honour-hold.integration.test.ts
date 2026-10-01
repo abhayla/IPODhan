@@ -19,6 +19,7 @@ import {
   type TransactionalIposWriter,
 } from '../../src/services/data-persister';
 import { PeerCompanyRepository } from '../../src/repositories/peer-company-repository';
+import { writeSegmentRepairRow } from '../../scripts/repair-segment-provenance';
 
 /**
  * Contract 2 item A2 part E — spec §9.2 item 19 (§2.7) for EVERY scraper writer shape, not only
@@ -310,5 +311,26 @@ describe.skipIf(!DATABASE_URL)('A2e: every scraper writer honours the admin hold
     expect(r.dropped).toEqual(['issueSize']);
     const row = await one(db.select({ s: schema.ipos.issueSize }).from(schema.ipos).where(eq(schema.ipos.id, IPO)));
     expect(Number(row.s)).toBe(5000000000);
+  });
+
+  it('#1272 repair-segment-provenance: a segment the admin holds is never overwritten or blanked, and no provenance is written; an unheld segment is', async () => {
+    // segment is plan-invalidating (§2.8); a repair tool is not one of §2.7's two system releases.
+    await db.execute(sql`UPDATE ipos SET segment = 'SME' WHERE id = ${IPO}::uuid`);
+    await db.insert(schema.fieldProtectionMetadata).values({ ipoId: IPO, tableName: 'ipos', fieldName: 'segment', isProtected: true, manuallyEditedBy: 'a2e-test-admin' });
+    const provenance = { ipoId: IPO, fieldName: 'segment', source: 'NSE' as const, confidence: 100, previousValue: 'SME', dataLineage: { tool: 'test' }, updatedBy: 'SYSTEM_TEST_1272' };
+    expect(await writeSegmentRepairRow(db2 as never, { ipoId: IPO, newSegment: 'MAINBOARD', provenance })).toBe('held');
+    expect(await writeSegmentRepairRow(db2 as never, { ipoId: IPO, newSegment: null, provenance: null })).toBe('held');
+    const held = await one(db.select({ s: schema.ipos.segment }).from(schema.ipos).where(eq(schema.ipos.id, IPO)));
+    expect(held.s).toBe('SME');
+    const fs = await db.select({ id: schema.fieldSources.id }).from(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO));
+    expect(fs).toEqual([]);
+
+    // Control: the same write on an unheld segment lands, value and provenance together.
+    await db.delete(schema.fieldProtectionMetadata).where(eq(schema.fieldProtectionMetadata.ipoId, IPO));
+    expect(await writeSegmentRepairRow(db2 as never, { ipoId: IPO, newSegment: 'MAINBOARD', provenance })).toBe('written');
+    const written = await one(db.select({ s: schema.ipos.segment }).from(schema.ipos).where(eq(schema.ipos.id, IPO)));
+    expect(written.s).toBe('MAINBOARD');
+    const src = await one(db.select({ s: schema.fieldSources.source }).from(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO)));
+    expect(src.s).toBe('NSE');
   });
 });
