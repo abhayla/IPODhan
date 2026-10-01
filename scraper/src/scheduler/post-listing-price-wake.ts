@@ -89,8 +89,8 @@ export async function runPostListingPriceWake(now: Date = new Date()): Promise<n
   try {
     const closeRead = isCloseReadIST(now);
     const candidates = await selectPriceCandidates(db as any, now);
-    const ipoRepository = new IPORepository(db as any, redis as any);
-    const fieldSources = new FieldSourcesRepository(db as any, redis as any);
+    const ipoRepository = new IPORepository(db, redis);
+    const fieldSources = new FieldSourcesRepository(db, redis);
     const pace = createPacer(EXCHANGE_CALL_GAP_MS);
     const summary = await runPostListingPriceJob({
       now,

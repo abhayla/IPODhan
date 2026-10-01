@@ -206,7 +206,7 @@ export async function runStageReconcilerJob(opts: { dryRun?: boolean } = {}): Pr
   const staleClosedIpos: { id: string; companyName: string; closeDate: string | null }[] = [];
 
   // S-02: the ledger repository, built once for the whole cycle.
-  const stepsRepository = new IpoPipelineStepsRepository(db as never, getRedisClient() as never);
+  const stepsRepository = new IpoPipelineStepsRepository(db, getRedisClient());
 
   for (const p of plans) {
     byStage[p.stage] = (byStage[p.stage] || 0) + 1;

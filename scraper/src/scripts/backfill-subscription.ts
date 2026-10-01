@@ -21,7 +21,7 @@ export async function runSubscriptionBackfill(opts: { execute?: boolean } = {}):
   logger.info({ execute }, `[sub-backfill] start (${execute ? 'EXECUTE' : 'DRY RUN'})`);
 
   const redis = getRedisClient();
-  const subscriptionRepository = new SubscriptionRepository(db as any, redis as any);
+  const subscriptionRepository = new SubscriptionRepository(db, redis);
 
   const candidates = await db.execute(sql`
     SELECT i.id, i.symbol, i.company_name, i.segment

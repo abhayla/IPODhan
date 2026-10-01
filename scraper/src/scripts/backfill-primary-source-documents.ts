@@ -59,7 +59,7 @@ export async function runPrimaryDocBackfill(opts: { execute?: boolean; statuses?
   logger.info({ execute, statuses, budgetMs, perFetchTimeoutMs }, `[primary-doc-backfill] start (${execute ? 'EXECUTE' : 'DRY RUN'})`);
 
   const redis = getRedisClient();
-  const documentRepository = new DocumentRepository(db as any, redis as any);
+  const documentRepository = new DocumentRepository(db, redis);
 
   const statusList = statuses.map((s) => `'${s}'`).join(',');
   const candidates = await db.execute(sql`

@@ -846,7 +846,7 @@ export async function writeStatusWithAttempt(
   const ipoId = updated[0]?.ipoId;
   if (ipoId) {
     try {
-      const repo = new DocumentRepository(dbx as never, getRedisClient() as never);
+      const repo = new DocumentRepository(dbx, getRedisClient());
       await repo.invalidateForIpo(ipoId);
     } catch (cacheError) {
       logger.warn(
@@ -1717,8 +1717,8 @@ export async function writeReceiptAndReopen(
 export function buildAutoPersistDeps(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
 ): AutoPersistDeps {
-  const documentRepository = new DocumentRepository(db as never, redis as never);
-  const invalidator = new CacheInvalidator(redis as never);
+  const documentRepository = new DocumentRepository(db, redis);
+  const invalidator = new CacheInvalidator(redis);
   // ONE filing write door (s02-step-ledger-wiring.test.ts): this service must
   // never instantiate its own `IPORepository` — it reuses the one the shared
   // `buildFilingPersistDeps` builder already constructs.
@@ -1750,7 +1750,7 @@ export function buildAutoPersistDeps(
     },
     async loadStates(ipoId) {
       const { DocumentFetchStateRepository } = await import('@ipodhan/shared');
-      const store = new DocumentFetchStateRepository(db as never, redis as never);
+      const store = new DocumentFetchStateRepository(db, redis);
       return store.listForIpo(ipoId);
     },
     runExtractor: defaultExtractorRunner,
@@ -1843,7 +1843,7 @@ export function buildAutoPersistDeps(
     },
     async setFetchStateExtracted({ stateId, extractedAt, extractorVersion }) {
       const { DocumentFetchStateRepository } = await import('@ipodhan/shared');
-      const store = new DocumentFetchStateRepository(db as never, redis as never);
+      const store = new DocumentFetchStateRepository(db, redis);
       await store.update(stateId, { extractedAt, extractorVersion });
     },
     async invalidateCaches(slug) {

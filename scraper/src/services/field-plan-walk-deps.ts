@@ -140,7 +140,7 @@ export function buildFieldPlanWalkWitnessVerdictWriter(
   witnesses: Witness[];
   verdict: string;
 }) => Promise<unknown> {
-  const fieldSources = new FieldSourcesRepository(db as never, redis as never);
+  const fieldSources = new FieldSourcesRepository(db, redis);
   return (input) =>
     fieldSources.trackFieldUpdate({
       ipoId: input.ipoId,
@@ -184,9 +184,9 @@ function manifestFieldEntry(tableName: string, fieldName: string) {
 export function buildFieldPlanWalkFetchers(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
 ): Record<string, FieldFetcher> {
-  const ipoRepository = new IPORepository(db as never, redis as never);
-  const fieldSources = new FieldSourcesRepository(db as never, redis as never);
-  const documentRepository = new DocumentRepository(db as never, redis as never);
+  const ipoRepository = new IPORepository(db, redis);
+  const fieldSources = new FieldSourcesRepository(db, redis);
+  const documentRepository = new DocumentRepository(db, redis);
 
   const isCapable = (sourceKey: 'DOC' | 'NSE' | 'BSE' | 'CHITTORGARH') => (tableName: string, fieldName: string) => {
     const entry = manifestFieldEntry(tableName, fieldName);
@@ -297,10 +297,10 @@ export function buildFieldPlanGapKeySource(params: {
   const coverageFingerprint = fieldPlanCoverageFingerprint(params.fetchers);
   const manifestFields = loadFieldManifest().fields;
   const fieldKeys = Object.keys(manifestFields);
-  const redis = (params.redis ?? getRedisClient()) as never;
-  const documentRepository = new DocumentRepository(db as never, redis);
-  const fieldSourcesRepository = new FieldSourcesRepository(db as never, redis);
-  const overridesRepository = new FieldSourceOverridesRepository({ db: db as never });
+  const redis = params.redis ?? getRedisClient();
+  const documentRepository = new DocumentRepository(db, redis);
+  const fieldSourcesRepository = new FieldSourcesRepository(db, redis);
+  const overridesRepository = new FieldSourceOverridesRepository({ db: db });
   return {
     async forIpo(ipoId: string) {
       const documents = (await documentRepository.findByIPO(ipoId)) as unknown as GapKeyDocument[];
@@ -367,7 +367,7 @@ export function buildFieldPlanGapKeySource(params: {
 export function buildFieldPlanWalkHoldDeps(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
 ): Pick<FieldPlanWalkDeps, 'protectionFilter' | 'trackHeldFieldWitnesses' | 'onHeldFieldAnswers'> {
-  const fieldSources = new FieldSourcesRepository(db as never, redis as never);
+  const fieldSources = new FieldSourcesRepository(db, redis);
   // OD-106/OD-117: a newer, different NSE/BSE answer on an E-1 field replaces the admin value,
   // releases the hold and alerts (exchange-override-hook.ts).
   const onHeldFieldAnswersOd106 = buildExchangeOverrideHook({
@@ -420,7 +420,7 @@ export function buildFieldPlanWalkHoldDeps(
 export function buildFieldPlanWalkReopenDeps(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
 ): Pick<FieldPlanWalkDeps, 'supersessionForReopened' | 'logAdminConflict'> {
-  const conflicts = new DataConflictsRepository(db as never, redis as never);
+  const conflicts = new DataConflictsRepository(db, redis);
   return {
     supersessionForReopened: (ipoId, planRowId) => findSupersessorForReopenedRow(db as never, ipoId, planRowId),
     logAdminConflict: (input) => conflicts.upsertConflict(input as never),

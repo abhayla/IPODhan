@@ -662,6 +662,17 @@ jobs:
         # scripts/ci/db-connection-defaults-baseline.json.
         run: node scripts/ci/check-db-connection-defaults.mjs
 
+      - name: No type-erasing cast on a constructor argument (#1187, class of #635)
+        # `new Repo(db as never, redis as never)` turns off the only check that the
+        # handle has the shape the repository expects (#635 shipped a wrong-shaped
+        # Redis handle this way). Parses with the typescript compiler API, so it runs
+        # after npm ci. Fails closed: double casts, intermediate variables, ?? / ||
+        # branches and spread arguments all count. Self-test is mutation-proof.
+        # Remaining casts carry a reason in scripts/ci/ctor-arg-casts-baseline.json.
+        run: |
+          node --test scripts/ci/tests/check-ctor-arg-casts.test.mjs
+          node scripts/ci/check-ctor-arg-casts.mjs
+
       - name: Write-ratchet self-test (T-316)
         # Mutation-proof: scripts/tests/check-write-ratchet.test.mjs imports
         # the actual PATTERNS from the script under test, so a deleted

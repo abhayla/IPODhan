@@ -153,7 +153,7 @@ export async function releaseHeldLocks(): Promise<void> {
   if (heldLocks.length === 0) return;
   const toRelease = heldLocks.splice(0, heldLocks.length);
   const redis = getRedisClient();
-  const lock = new DistributedLock(redis as never);
+  const lock = new DistributedLock(redis);
   for (const { key, token } of toRelease) {
     try {
       const released = await lock.release(key, token);
@@ -1519,19 +1519,19 @@ export async function runDocumentCycle(
   const startedAt = now();
   const calendarGate = await computeCalendarGate(options.gateNow ?? new Date(startedAt), options.holidayLookup);
   const redis = getRedisClient();
-  const store = new DocumentFetchStateRepository(db as never, redis as never);
-  const documents = new DocumentRepository(db as never, redis as never);
-  const ipoRepository = new IPORepository(db as never, redis as never);
-  const stepsRepository = new IpoPipelineStepsRepository(db as never, redis as never);
-  const fieldPlanRepository = new IpoFieldPlanRepository(db as never, redis as never);
+  const store = new DocumentFetchStateRepository(db, redis);
+  const documents = new DocumentRepository(db, redis);
+  const ipoRepository = new IPORepository(db, redis);
+  const stepsRepository = new IpoPipelineStepsRepository(db, redis);
+  const fieldPlanRepository = new IpoFieldPlanRepository(db, redis);
   // Tier A MAJOR-1 (§2.8): PASS 2.5 plants from the type read under the ipos lock, never from the
   // start-of-wake `candidates` snapshot, so an admin type save mid-wake can never be undone.
-  const plantLock = createIpoTypeShareLock(db as never, (tx) => new IpoFieldPlanRepository(tx as never, redis as never));
+  const plantLock = createIpoTypeShareLock(db as never, (tx) => new IpoFieldPlanRepository(tx as never, redis));
   // CRITICAL-1 fix (S4 review round 2): built once per cycle, same reason every other repository
   // above is (ruling 33 / F-101) -- resolved ONCE per walk run inside the walk itself
   // (`resolvePolicyForPlan`'s per-field call), never a DB read per field.
   const fieldSourceOverridesReader = createFieldSourceOverridesReader(
-    new FieldSourceOverridesRepository({ db: db as never })
+    new FieldSourceOverridesRepository({ db: db })
   );
   const counter = new NetworkCounter();
 
@@ -1545,7 +1545,7 @@ export async function runDocumentCycle(
   // start extracting the same IN_PROGRESS rows while this one is still
   // running. `lockToken` is undefined when the flag is off (no lock needed)
   // or when the lock could not be acquired (extraction skipped this cycle).
-  const distributedLock = new DistributedLock(redis as never);
+  const distributedLock = new DistributedLock(redis);
   let lockToken: string | undefined;
   const spawnBudget: SpawnBudget = { remaining: DEFAULT_MAX_SPAWNS_PER_CYCLE };
   // W-168: the anchor allocation report's OWN cycle-wide budget, separate from
@@ -2489,7 +2489,7 @@ export async function runDocumentCycle(
       } else {
         const fieldPlanStartedAt = now();
         const fieldPlanDeadlineMs = fieldPlanStartedAt + fieldPlanBudgetMs;
-        const walkRepository = new IpoFieldPlanRepository(db as never, redis as never);
+        const walkRepository = new IpoFieldPlanRepository(db, redis);
         // Every counter the walk returns is aggregated here, because a
         // counter with no consumer is not detection, it is a variable
         // (signal-ownership R1/R3). Two of these decide whether this pass was
