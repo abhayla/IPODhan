@@ -33,7 +33,15 @@ This one script serves three events, selected by `--event`:
       background merge may still land), then is dropped only after one more
       lookup. Due = this session's entries, plus ANY session's entry older than
       that (a closed session can never resolve its own). gh failure, timeout or
-      a truncated answer records an "unknown merge" (fail safe).
+      a truncated answer records an "unknown merge" (fail safe) ONCE per check
+      and KEEPS the check (until PENDING_HARD_MAX_HOURS) so a later Stop with a
+      working gh still finds the real merge. A merge is covered by the last
+      publish ONLY when its merge commit is an ancestor of the commit the
+      published page was rendered from (data-rendered-sha, stored at publish):
+      `git merge-base --is-ancestor` (#1381 round 3; no clock decides it). Any
+      unknown (no sha, no oid, git failure, oid not fetchable) = NOT covered.
+      The pending file is rewritten under a short
+      lock and entries another session appended meanwhile are kept.
       Then, if the marker exists, exit 2 with the checklist message on stderr
       (a Stop hook blocks the turn on exit 2). If the marker is older than
       BOARD_OWED_MAX_AGE_HOURS (default 12) hours, print a warning to stdout
@@ -41,6 +49,16 @@ This one script serves three events, selected by `--event`:
       `stop_hook_active` true -> exit 0 silently (no loop).
 
 Off-switch: BOARD_OWED_GUARD=0 -> no-op everywhere.
+
+Known limits (accepted, #1381):
+  - A `gh pr merge --auto` that lands MORE THAN 2 h after the command is not
+    seen: its check is resolved and dropped (after one last lookup) at 2 h, and
+    a later landing creates no new trigger. Publish the board by hand then.
+  - Coverage is commit ancestry against the page's data-rendered-sha. A page
+    with no sha (an old render, a hand render where git failed) covers NOTHING:
+    every merge after it stays owed (an extra prompt, never a missed publish).
+    While GitHub cannot be asked, no merge can be shown covered, so an
+    "unknown merge" is owed once per check even right after a publish.
 
 Fail-open: every unexpected exception exits 0 and appends one line to
 ~/.claude/.board-owed-guard.errors.log. Never runs for a cwd whose git origin
@@ -89,6 +107,9 @@ _LITERAL_PR_RE = re.compile(r"^(?:#?(\d{1,7})|\S*/pull/(\d{1,7})\S*)$")
 # predate the trigger by up to the Bash tool's 10-minute cap; look back 15.
 LOOKBACK_MINUTES = 15
 PENDING_MAX_AGE_HOURS = 2
+# A check whose lookups keep failing is kept this long (hours), then dropped.
+PENDING_HARD_MAX_HOURS = 24
+GIT_TIMEOUT_SECONDS = 10
 GH_LIST_LIMIT = 100
 
 
@@ -223,6 +244,140 @@ def _write_pending(records):
     os.replace(tmp, PENDING_PATH)
 
 
+class _PendingLock:
+    """Short exclusive lock on <pending>.lock (msvcrt on Windows, fcntl
+    elsewhere; stdlib only). Held only around a read-modify-write or an append,
+    never across the gh call. Fail-open: after BOARD_OWED_LOCK_TIMEOUT seconds
+    (default 3) or on any error the caller proceeds without the lock."""
+
+    def __init__(self):
+        self.fh = None
+
+    def _try(self):
+        if os.name == "nt":
+            import msvcrt
+            self.fh.seek(0)
+            msvcrt.locking(self.fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def __enter__(self):
+        try:
+            timeout = float(os.environ.get("BOARD_OWED_LOCK_TIMEOUT") or 3)
+        except ValueError:
+            timeout = 3.0
+        try:
+            os.makedirs(os.path.dirname(PENDING_PATH), exist_ok=True)
+            self.fh = open(PENDING_PATH + ".lock", "a+b")
+            deadline = time.time() + timeout
+            while True:
+                try:
+                    self._try()
+                    return self
+                except OSError:
+                    if time.time() >= deadline:
+                        raise
+                    time.sleep(0.05)
+        except Exception as exc:
+            _log_error("pending lock not taken (proceeding without): %s" % exc)
+            self._close()
+            return self
+
+    def _close(self):
+        if self.fh is not None:
+            try:
+                self.fh.close()  # closing releases the OS lock
+            except Exception:
+                pass
+            self.fh = None
+
+    def __exit__(self, *exc):
+        self._close()
+        return False
+
+
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _published_sha():
+    """The commit the last published page was rendered from, from the stamp
+    file's CONTENT (JSON written by handle_artifact), or None when unknown."""
+    try:
+        with open(PUBLISH_STAMP_PATH, "r", encoding="utf-8") as fh:
+            sha = json.loads(fh.read()).get("rendered_sha")
+    except Exception:
+        return None
+    return sha if isinstance(sha, str) and _SHA_RE.match(sha) else None
+
+
+class _Ancestry:
+    """Answers "is merge commit `oid` contained in rendered commit `sha`?" with
+    `git merge-base --is-ancestor`, in BOARD_REPO. Anything unknown is False
+    (not covered): fails toward an extra prompt, never a missed publish. At most
+    ONE `git fetch origin` per Stop, only when an object is missing locally."""
+
+    def __init__(self, sha):
+        self.sha = sha
+        self.fetched = False
+
+    def _git(self, args):
+        return subprocess.run(["git"] + args, cwd=BOARD_REPO, capture_output=True,
+                              text=True, timeout=GIT_TIMEOUT_SECONDS)
+
+    def _have(self, obj):
+        return self._git(["cat-file", "-e", obj + "^{commit}"]).returncode == 0
+
+    def covers(self, oid):
+        if not self.sha or not isinstance(oid, str) or not _SHA_RE.match(oid.lower()):
+            return False
+        oid = oid.lower()
+        try:
+            if not (self._have(oid) and self._have(self.sha)):
+                if self.fetched:
+                    return False
+                self.fetched = True
+                self._git(["fetch", "-q", "origin"])
+                if not (self._have(oid) and self._have(self.sha)):
+                    return False
+            return self._git(["merge-base", "--is-ancestor", oid, self.sha]).returncode == 0
+        except Exception as exc:
+            _log_error("ancestry check failed (merge stays owed): %s" % exc)
+            return False
+
+
+def _rec_id(rec):
+    """Stable identity of a pending check: session + trigger timestamp + PR
+    list. Survives another session rewriting the record (recorded/unknown_noted
+    change, the identity does not)."""
+    nums = rec.get("numbers")
+    return json.dumps([rec.get("session_id") or "", rec.get("ts") or "",
+                       sorted(str(n) for n in nums) if isinstance(nums, list) else None])
+
+
+def _merge_pending(snapshot, mine, fresh):
+    """What to write back: `mine` (this session's resolved view of `snapshot`)
+    merged by _rec_id with `fresh` (the file as it is now). A record another
+    session appended is added; one another session removed stays removed; one it
+    rewrote is not duplicated."""
+    fresh_ids = {_rec_id(r) for r in fresh}
+    snap_ids = {_rec_id(r) for r in snapshot}
+    out, seen = [], set()
+    for rec in mine:
+        rid = _rec_id(rec)
+        if rid in seen or rid not in fresh_ids:
+            continue
+        seen.add(rid)
+        out.append(rec)
+    for rec in fresh:
+        rid = _rec_id(rec)
+        if rid in seen or rid in snap_ids:
+            continue
+        seen.add(rid)
+        out.append(rec)
+    return out
+
+
 def _parse_ts(text):
     try:
         ts = datetime.fromisoformat(str(text).replace("Z", "+00:00"))
@@ -251,15 +406,17 @@ def _gh_timeout():
 
 
 def _merged_since(since, cwd):
-    """ONE capped gh call: {number: mergedAt} for every PR merged at or after
-    `since`, or None when gh cannot answer completely (failure, timeout,
-    garbage, or a full page that may be truncated)."""
+    """ONE capped gh call: {number: (mergedAt, mergeCommit oid or None)} for
+    every PR merged at or after `since`, or None when gh cannot answer
+    completely (failure, timeout, garbage, or a full page that may be
+    truncated). A missing oid is kept as None: that merge can never be shown
+    covered."""
     try:
         proc = subprocess.run(
             _gh_argv() + [
                 "pr", "list", "--state", "merged",
                 "--search", "merged:>=" + since.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "--limit", str(GH_LIST_LIMIT), "--json", "number,mergedAt",
+                "--limit", str(GH_LIST_LIMIT), "--json", "number,mergedAt,mergeCommit",
             ],
             cwd=cwd or None, capture_output=True, text=True, timeout=_gh_timeout(),
         )
@@ -277,21 +434,25 @@ def _merged_since(since, cwd):
         merged_at = _parse_ts(row.get("mergedAt"))
         if merged_at is None or row.get("number") is None:
             return None
-        out[str(row.get("number"))] = merged_at
+        commit = row.get("mergeCommit")
+        oid = commit.get("oid") if isinstance(commit, dict) else None
+        out[str(row.get("number"))] = (merged_at, oid if isinstance(oid, str) else None)
     return out
 
 
 def _resolve_pending(session_id, cwd):
     """Turn due merge-checks into owed records, with GitHub as the only judge
     of whether a merge happened (see module docstring)."""
-    pending = _read_jsonl(PENDING_PATH)
-    if not pending:
+    snapshot = _read_jsonl(PENDING_PATH)
+    if not snapshot:
         return
     me = session_id or ""
     now = datetime.now(timezone.utc)
     max_age = timedelta(hours=PENDING_MAX_AGE_HOURS)
+    hard_age = timedelta(hours=PENDING_HARD_MAX_HOURS)
+    ancestry = _Ancestry(_published_sha())
     due, keep = [], []
-    for rec in pending:
+    for rec in snapshot:
         ts = _parse_ts(rec.get("ts"))
         old = ts is None or now - ts > max_age
         owner = rec.get("session_id") or ""
@@ -307,19 +468,33 @@ def _resolve_pending(session_id, cwd):
     stamp = now.astimezone().isoformat(timespec="seconds")
     for rec, ts, old in due:
         if merged is None:
-            # Fail safe: a missed board publish costs more than one extra prompt.
-            _append_marker({"pr": "", "unknown": True, "session_id": me, "ts": stamp,
-                            "trigger_session": rec.get("session_id") or "",
-                            "command": rec.get("command") or ""})
+            # No merge commit to test, so nothing can be shown covered (#1381
+            # round 3 removed the clock-based "published after the trigger").
+            if not rec.get("unknown_noted"):
+                # Fail safe: a missed board publish costs more than one extra prompt.
+                _append_marker({"pr": "", "unknown": True, "session_id": me, "ts": stamp,
+                                "trigger_session": rec.get("session_id") or "",
+                                "command": rec.get("command") or ""})
+            if ts is None or now - ts > hard_age:
+                _log_error("pending check dropped after %dh of failed GitHub lookups: %s"
+                           % (PENDING_HARD_MAX_HOURS, rec.get("command") or ""))
+                continue
+            rec = dict(rec)
+            rec["unknown_noted"] = True  # owed once; keep the check for the next Stop
+            keep.append(rec)
             continue
         wanted = rec.get("numbers")
         recorded = list(rec.get("recorded") or [])
         for num in sorted(merged, key=lambda n: int(n) if n.isdigit() else 0):
-            if num in recorded or merged[num] < ts - lookback:
+            merged_at, oid = merged[num]
+            if num in recorded or merged_at < ts - lookback:
                 continue
             if wanted is not None and num not in wanted:
                 continue
-            _append_marker({"pr": num, "merged_at": merged[num].isoformat(), "session_id": me,
+            if ancestry.covers(oid):
+                recorded.append(num)  # on the published page; never owed again
+                continue
+            _append_marker({"pr": num, "merged_at": merged_at.isoformat(), "oid": oid or "", "session_id": me,
                             "ts": stamp, "trigger_session": rec.get("session_id") or "",
                             "command": rec.get("command") or ""})
             recorded.append(num)
@@ -330,7 +505,9 @@ def _resolve_pending(session_id, cwd):
         rec = dict(rec)
         rec["recorded"] = recorded
         keep.append(rec)
-    _write_pending(keep)
+    with _PendingLock():
+        # gh took up to 25 s; keep whatever another session appended meanwhile.
+        _write_pending(_merge_pending(snapshot, keep, _read_jsonl(PENDING_PATH)))
 
 
 def handle_bash(data):
@@ -339,13 +516,31 @@ def handle_bash(data):
         return
     if not _is_ipodhan_repo(data.get("cwd") or ""):
         return
-    _append_jsonl(PENDING_PATH, {
+    entry = {
         "session_id": data.get("session_id") or "",
         "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
         "numbers": _merge_numbers(command),
         "background": _tool_input(data).get("run_in_background") is True,
         "command": _redact(command)[:300],
-    })
+    }
+    with _PendingLock():
+        _append_jsonl(PENDING_PATH, entry)
+
+
+_RENDERED_SHA_RE = re.compile(r'data-rendered-sha="([0-9a-f]{40})"')
+
+
+def _rendered_sha(file_path):
+    """The data-rendered-sha the published file carries, or None when the file
+    or the attribute is missing or unreadable."""
+    if not isinstance(file_path, str) or not file_path:
+        return None
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
+            m = _RENDERED_SHA_RE.search(fh.read(4 * 1024 * 1024))
+    except Exception:
+        return None
+    return m.group(1) if m else None
 
 
 def handle_artifact(data):
@@ -368,9 +563,16 @@ def handle_artifact(data):
             _log_error("board publish looked failed; debt kept. response head: %s" % text[:200])
             return
     _clear_marker()
+    # The page shows the commit it was RENDERED from, which may be hours older
+    # than the publish (a timed-out fetch, a hand render). Store that commit;
+    # Stop counts a merge as covered only by ancestry against it. No sha in the
+    # page stores null = covers nothing (the file is still written: its mtime is
+    # the publish clock the staleness checks read).
+    record = {"rendered_sha": _rendered_sha(tool_input.get("file_path")),
+              "published_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     try:
         with open(PUBLISH_STAMP_PATH, "w", encoding="utf-8") as fh:
-            fh.write(datetime.now(timezone.utc).isoformat() + chr(10))
+            fh.write(json.dumps(record) + chr(10))
     except Exception as exc:
         _log_error("publish stamp: %s" % exc)
 
@@ -482,11 +684,19 @@ def _regenerate_board(session_id=None):
             subprocess.run(["git", "fetch", "-q", "origin"], cwd=repo, capture_output=True, text=True, timeout=10)
         except subprocess.TimeoutExpired:
             pass  # render from the refs already fetched; still newer than the main checkout's tree
+        # Resolve the ref to ONE commit and export exactly that commit, so the
+        # sha the page records is the tree it was rendered from (#1381 round 3).
+        ref = os.environ.get("BOARD_RENDER_REF") or "refs/remotes/origin/main"
+        rev = subprocess.run(["git", "rev-parse", "--verify", ref + "^{commit}"],
+                             cwd=repo, capture_output=True, text=True, timeout=10)
+        render_sha = (rev.stdout or "").strip().lower() if rev.returncode == 0 else ""
+        if not _SHA_RE.match(render_sha):
+            return " Auto-render FAILED: cannot resolve %s." % ref, None
         if os.path.isdir(out_dir):
             shutil.rmtree(out_dir)
         os.makedirs(out_dir)
         arch = subprocess.run(
-            ["git", "archive", "--format=tar", os.environ.get("BOARD_RENDER_REF") or "refs/remotes/origin/main", "scripts", "docs/design", "scraper/config"],
+            ["git", "archive", "--format=tar", render_sha, "scripts", "docs/design", "scraper/config"],
             cwd=repo, capture_output=True, timeout=20,
         )
         if arch.returncode != 0:
@@ -501,6 +711,9 @@ def _regenerate_board(session_id=None):
         return " Auto-render could not prepare the origin/main export (%s) - render by hand from origin/main." % exc, None
     env = os.environ.copy()
     env["GIT_DIR"] = os.path.join(repo, ".git")
+    # GIT_DIR makes `git rev-parse HEAD` name the MAIN checkout's HEAD, not the
+    # exported commit; hand the renderer the exported commit explicitly.
+    env["BOARD_RENDERED_SHA"] = render_sha
     last = ""
     facts_note = ""
     collector = "scripts/ops/collect-board-facts.mjs"

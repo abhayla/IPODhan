@@ -23,6 +23,17 @@ HOOK_PATH = os.environ.get("BOARD_OWED_HOOK_UNDER_TEST") or os.path.normpath(
 BOARD_URL = "https://claude.ai/artifact/NohBg52m7AUjS8kTDMxxKM"
 
 
+HOLD_LOCK_SCRIPT = """
+import os, sys, time
+f = open(sys.argv[1], 'a+b'); f.seek(0)
+if os.name == 'nt':
+    import msvcrt; msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+else:
+    import fcntl; fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+print('held', flush=True); time.sleep(float(sys.argv[2]))
+"""
+
+
 def git(args, cwd):
     return subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True, check=True)
 
@@ -45,6 +56,20 @@ class BoardOwedGuardTest(unittest.TestCase):
             os.makedirs(path)
             git(["init", "-q"], path)
             git(["remote", "add", "origin", origin], path)
+        # #1381 round 3: a real commit chain for the ancestry checks. Its origin
+        # is a path that does not exist, so the hook's one fetch fails at once
+        # (never the network).
+        cls.anc = os.path.join(cls.tmp, "ancestry")
+        os.makedirs(cls.anc)
+        git(["init", "-q"], cls.anc)
+        git(["remote", "add", "origin", os.path.join(cls.tmp, "no-such-remote")], cls.anc)
+        cls.c = []
+        for i in range(3):
+            git(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty",
+                 "-m", "c%d" % i], cls.anc)
+            cls.c.append(git(["rev-parse", "HEAD"], cls.anc).stdout.strip())
+        cls.not_a_repo = os.path.join(cls.tmp, "not-a-repo")
+        os.makedirs(cls.not_a_repo)
 
     @classmethod
     def tearDownClass(cls):
@@ -74,6 +99,7 @@ class BoardOwedGuardTest(unittest.TestCase):
         env["BOARD_OWED_ERROR_LOG"] = self.errlog
         env["BOARD_PUBLISHED_STAMP"] = self.stamp
         env["BOARD_OWED_NO_REGEN"] = "1"
+        env["BOARD_OWED_REPO"] = self.anc
         env.update(self.gh_env)
         if env_extra:
             env.update(env_extra)
@@ -86,8 +112,17 @@ class BoardOwedGuardTest(unittest.TestCase):
             timeout=60,
         )
 
-    def stub(self, merged, sleep=0, fail=False, name="gh"):
-        """A fake gh that logs its argv and prints `merged` for `pr list`."""
+    def stub(self, merged, sleep=0, fail=False, name="gh", side_append=None, side_write=None):
+        """A fake gh that logs its argv and prints `merged` for `pr list`.
+        `side_append=(path, record)` makes it append a JSON line to `path`
+        while "running", i.e. another session writing during the gh call;
+        `side_write=(path, records)` makes it REWRITE `path` with `records`."""
+        if side_write:
+            side = "open(%r, 'w').write(''.join(json.dumps(r) + chr(10) for r in %r))" % side_write
+        elif side_append:
+            side = "open(%r, 'a').write(json.dumps(%r) + chr(10))" % side_append
+        else:
+            side = ""
         path = os.path.join(self.tmp, "%s-stub-%s.py" % (name, self._testMethodName))
         log = path + ".log"
         if os.path.exists(log):
@@ -96,9 +131,13 @@ class BoardOwedGuardTest(unittest.TestCase):
             f.write(
                 "import sys, json, time\n"
                 "open(%r, 'a').write(json.dumps(sys.argv[1:]) + chr(10))\n"
+                "%s\n"
                 "time.sleep(%d)\n"
                 "%s\n"
-                "print(json.dumps(%r))\n" % (log, sleep, "sys.exit(1)" if fail else "", merged)
+                "print(json.dumps(%r))\n" % (
+                    log,
+                    side,
+                    sleep, "sys.exit(1)" if fail else "", merged)
             )
         return {"BOARD_OWED_GH_ARGV": json.dumps([sys.executable, path])}, log
 
@@ -256,7 +295,8 @@ class BoardOwedGuardTest(unittest.TestCase):
                           env_extra={"BOARD_OWED_GH_TIMEOUT": "1"})
         self.assertEqual(p.returncode, 2, "gh timeout must fail safe: %s" % p.stderr)
         self.assertIn("unknown merge", p.stderr)
-        self.assertFalse(os.path.exists(self.pending))
+        left = self.read_jsonl(self.pending)
+        self.assertEqual(len(left), 1, "a failed lookup dropped the check (#1381 item 3)")
 
     def test_s10b_gh_failure_and_truncated_page_record_unknown(self):
         for merged, fail in (([], True), ([{"number": n, "mergedAt": iso(-5)} for n in range(1, 101)], False)):
@@ -573,6 +613,217 @@ class BoardOwedGuardTest(unittest.TestCase):
         self.write_marker([{"pr": "1", "session_id": "me"}])
         p = self.run_stop("me", stop_hook_active=True)
         self.assertEqual(p.returncode, 0, "rc=%s" % p.returncode)
+
+    # ---- (t) #1381: coverage by commit ancestry, lost update, fail-safe drop ----
+    def publish(self, sha=None, rendered_offset=0, stamped=True):
+        """Publish a board file stamped now+rendered_offset s, carrying
+        data-rendered-sha=`sha` when given."""
+        path = os.path.join(self.tmp, "board-%s.html" % self._testMethodName)
+        attr = ' data-rendered-sha="%s"' % sha if sha else ""
+        body = ("<html><p class=\"stamp\" data-rendered-at=\"%s\"%s>x</p></html>" % (iso(rendered_offset), attr)
+                if stamped else "<html>no stamp</html>")
+        open(path, "w", encoding="utf-8").write(body)
+        p = self.run_hook("PostToolUseArtifact",
+                          {"tool_name": "Artifact", "tool_input": {"url": BOARD_URL, "file_path": path}})
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+    @staticmethod
+    def row(number, offset, oid):
+        return {"number": number, "mergedAt": iso(offset), "mergeCommit": {"oid": oid}}
+
+    def test_t1_rendered_sha_after_the_merge_covers_it(self):
+        self.bash(self.M + " 1381 --squash")
+        self.publish(sha=self.c[2])
+        self.use_gh([self.row(1381, -120, self.c[1])])
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 0, "a merge the page contains was re-owed: %s" % p.stderr)
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_t1b_computed_number_check_survives_publish_without_re_owing(self):
+        self.bash(self.M + ' "$PR" --squash')
+        self.use_gh([self.row(1382, -120, self.c[1])])
+        self.assertEqual(self.run_stop().returncode, 2)
+        self.publish(sha=self.c[1])
+        for _ in range(2):
+            p = self.run_stop()
+            self.assertEqual(p.returncode, 0, "re-owed after publish: %s" % p.stderr)
+
+    def test_t2_merge_a_publish_merge_b_owes_only_b(self):
+        self.bash(self.M + ' "$PR" --squash')
+        self.publish(sha=self.c[1])
+        self.use_gh([self.row(1390, -120, self.c[1]), self.row(1391, -60, self.c[2])])
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertEqual(self.marker_prs(), ["1391"], "only the merge the page lacks is owed")
+
+    def test_t3_gh_down_after_publish_owes_unknown(self):
+        # Round 3: no clock covers anything. Without GitHub there is no merge
+        # commit to test, so the merge stays owed (one extra prompt).
+        self.write_pending([{"session_id": "me", "ts": iso(-300), "numbers": ["1383"], "background": False, "command": "x"}])
+        self.publish(sha=self.c[2])
+        self.use_gh([], fail=True)
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2, "gh down was treated as covered")
+        self.assertIn("unknown merge", p.stderr)
+
+    def test_t4_check_appended_by_another_session_during_gh_survives(self):
+        self.write_pending([{"session_id": "me", "ts": iso(-60), "numbers": ["1500"], "command": "x"}])
+        other = {"session_id": "other", "ts": iso(-1), "numbers": ["1501"], "command": "y"}
+        self.use_gh([], side_append=(self.pending, other))
+        self.assertEqual(self.run_stop("me").returncode, 0)
+        ids = [r["session_id"] for r in self.read_jsonl(self.pending)]
+        self.assertIn("other", ids, "a check queued during the gh call was wiped (lost update)")
+
+    def test_t5_lock_held_elsewhere_fails_open(self):
+        holder = subprocess.Popen([sys.executable, "-c", HOLD_LOCK_SCRIPT, self.pending + ".lock", "8"],
+                                  stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(holder.stdout.readline().strip(), "held")
+            self.write_pending([{"session_id": "me", "ts": iso(-60), "numbers": ["1502"], "command": "x"}])
+            self.use_gh([{"number": 1502, "mergedAt": iso(-5)}])
+            t0 = time.time()
+            p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan},
+                              env_extra={"BOARD_OWED_LOCK_TIMEOUT": "1"})
+            self.assertEqual(p.returncode, 2, "a held lock broke the hook: %s" % p.stderr)
+            self.assertLess(time.time() - t0, 7, "waited on the lock past its timeout")
+            self.assertEqual(self.marker_prs(), ["1502"])
+            self.assertFalse(os.path.exists(self.pending), "pending not rewritten after the lock timeout")
+        finally:
+            holder.kill()
+            holder.wait()
+
+    def test_t5b_append_waits_for_a_held_lock_then_lands(self):
+        holder = subprocess.Popen([sys.executable, "-c", HOLD_LOCK_SCRIPT, self.pending + ".lock", "2"],
+                                  stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(holder.stdout.readline().strip(), "held")
+            t0 = time.time()
+            self.bash(self.M + " 1505 --squash")
+            self.assertGreater(time.time() - t0, 1.0, "the append did not take the lock")
+            self.assertEqual(len(self.read_jsonl(self.pending)), 1)
+        finally:
+            holder.kill()
+            holder.wait()
+
+    def test_t6_gh_failure_keeps_the_check_and_a_later_stop_records_the_real_merge(self):
+        self.bash(self.M + " 1503 --squash")
+        self.use_gh([], fail=True)
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("unknown merge", p.stderr)
+        self.assertEqual(len(self.read_jsonl(self.pending)), 1, "check dropped on gh failure")
+        os.remove(self.marker)
+        self.use_gh([{"number": 1503, "mergedAt": iso(5)}])
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertEqual(self.marker_prs(), ["1503"], "the real merge was lost after a gh failure")
+
+    def test_t6b_repeated_gh_failure_owes_unknown_once(self):
+        self.bash(self.M + " 1504 --squash")
+        self.use_gh([], fail=True)
+        self.assertEqual(self.run_stop().returncode, 2)
+        os.remove(self.marker)
+        self.assertEqual(self.run_stop().returncode, 0, "unknown re-owed on every Stop")
+
+    def test_t6c_check_older_than_24h_is_dropped_after_failed_lookups(self):
+        self.write_pending([{"session_id": "me", "ts": iso(-25 * 3600), "numbers": None, "command": "x"}])
+        self.use_gh([], fail=True)
+        self.assertEqual(self.run_stop().returncode, 2)
+        self.assertFalse(os.path.exists(self.pending))
+
+    def test_t9_rendered_sha_before_the_merge_is_owed(self):
+        self.bash(self.M + " 1392 --squash")
+        self.use_gh([self.row(1392, -180, self.c[1])])
+        self.publish(sha=self.c[0])  # page built from the commit BEFORE the merge
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2, "a merge the page never showed was treated as covered: %s" % p.stderr)
+        self.assertEqual(self.marker_prs(), ["1392"])
+
+    def test_t9a_stale_fetch_old_sha_owes_a_merge_from_an_hour_ago(self):
+        # The page was rendered and published NOW, but from an origin/main last
+        # fetched hours ago (sha c0). A merge an hour ago (c1) predates both the
+        # render and the publish clock, and is still not on the page.
+        self.write_pending([{"session_id": "me", "ts": iso(-3700), "numbers": None, "command": "x"}])
+        self.publish(sha=self.c[0], rendered_offset=0)
+        self.use_gh([self.row(1395, -3600, self.c[1])])
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2, "an old render sha covered a later merge: %s" % p.stderr)
+        self.assertEqual(self.marker_prs(), ["1395"])
+
+    def test_t9b_page_without_a_sha_covers_nothing(self):
+        self.bash(self.M + " 1393 --squash")
+        self.publish(sha=None)  # stamped page, no data-rendered-sha
+        self.assertTrue(os.path.exists(self.stamp), "the publish clock file must still be written")
+        self.assertIsNone(json.loads(open(self.stamp).read())["rendered_sha"])
+        self.use_gh([self.row(1393, -120, self.c[0])])
+        self.assertEqual(self.run_stop().returncode, 2, "a page with no sha covered a merge")
+        self.assertEqual(self.marker_prs(), ["1393"])
+
+    def test_t9c_publish_stores_the_pages_rendered_sha(self):
+        self.publish(sha=self.c[1])
+        self.assertEqual(json.loads(open(self.stamp).read())["rendered_sha"], self.c[1])
+
+    def test_t9d_git_failure_means_owed(self):
+        self.bash(self.M + " 1396 --squash")
+        self.publish(sha=self.c[2])
+        self.use_gh([self.row(1396, -120, self.c[1])])
+        p = self.run_hook("Stop", {"session_id": "me", "cwd": self.ipodhan},
+                          env_extra={"BOARD_OWED_REPO": self.not_a_repo})
+        self.assertEqual(p.returncode, 2, "a git failure counted as covered: %s" % p.stderr)
+        self.assertEqual(self.marker_prs(), ["1396"])
+
+    def test_t9e_unfetchable_or_missing_oid_means_owed(self):
+        self.bash(self.M + ' "$PR" --squash')
+        self.publish(sha=self.c[2])
+        self.use_gh([self.row(1397, -120, "d" * 40),  # not local, fetch fails
+                     {"number": 1398, "mergedAt": iso(-120)}])  # gh gave no oid
+        p = self.run_stop()
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertEqual(self.marker_prs(), ["1397", "1398"])
+
+    def test_t11_a_check_removed_by_another_session_stays_removed(self):
+        # Reviewer mutation M7 survived: nothing pinned that a record another
+        # session removed during the gh call is not written back.
+        mine = {"session_id": "me", "ts": iso(-60), "numbers": ["1700"], "command": "x"}
+        theirs = {"session_id": "other", "ts": iso(-1), "numbers": ["1701"], "command": "y"}
+        self.write_pending([mine])
+        self.use_gh([], side_write=(self.pending, [theirs]))
+        self.assertEqual(self.run_stop("me").returncode, 0)
+        recs = self.read_jsonl(self.pending)
+        self.assertEqual([r["numbers"] for r in recs], [["1701"]],
+                         "a check another session removed came back: %r" % recs)
+
+    def test_t10_concurrent_rewrite_is_not_duplicated_and_removal_sticks(self):
+        mine = {"session_id": "me", "ts": iso(-60), "numbers": ["1600"], "command": "x"}
+        gone = {"session_id": "other", "ts": iso(-30), "numbers": ["1601"], "command": "g", "background": True}
+        self.write_pending([mine, gone])
+        rewritten = dict(mine, recorded=["1600"], unknown_noted=True)
+        self.use_gh([], fail=True, side_append=(self.pending, rewritten))
+        self.assertEqual(self.run_stop("me").returncode, 2)
+        recs = self.read_jsonl(self.pending)
+        mine_recs = [r for r in recs if r.get("numbers") == ["1600"]]
+        self.assertEqual(len(mine_recs), 1, "a rewritten record was duplicated: %r" % recs)
+
+    def test_t6d_24h_limit_keeps_23h_drops_25h_and_logs(self):
+        self.write_pending([{"session_id": "me", "ts": iso(-23 * 3600), "numbers": None, "command": "young23"},
+                            {"session_id": "me", "ts": iso(-25 * 3600), "numbers": None, "command": "old25"}])
+        self.use_gh([], fail=True)
+        self.assertEqual(self.run_stop().returncode, 2)
+        cmds = [r["command"] for r in self.read_jsonl(self.pending)]
+        self.assertEqual(cmds, ["young23"])
+        log = open(self.errlog, encoding="utf-8").read()
+        self.assertIn("pending check dropped after 24h of failed GitHub lookups: old25", log)
+        self.assertNotIn("young23", log)
+
+    def test_t7_stale_copy_is_gone(self):
+        stale = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..",
+                                              "docs", "design", "board", "hooks"))
+        self.assertFalse(os.path.exists(stale), "the stale copy of the hook is back: " + stale)
+
+    def test_t8_header_lists_the_auto_merge_limit(self):
+        head = open(HOOK_PATH, encoding="utf-8").read(6000)
+        self.assertIn("--auto", head)
+        self.assertIn("MORE THAN 2 h", head)
 
 
 if __name__ == "__main__":
