@@ -112,6 +112,7 @@ export const RECONCILER_PRESENCE_SQL = `
       (i.listing_price_historical IS NOT NULL OR EXISTS(SELECT 1 FROM listing_performance lp WHERE lp.ipo_id=i.id)) AS "listing",
       (i.allotment_date IS NOT NULL)                                   AS "allotment"
     FROM ipos i WHERE i.offering_type = 'IPO'
+      AND i.hidden_at IS NULL -- §9.2 item 23 / OD-151: the stage walk (and its ipo_pipeline_steps writes) skips a hidden row
 `;
 
 /**
