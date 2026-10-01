@@ -2112,6 +2112,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
        * invalidated in this transaction. Missing on such a merge -> the merge is refused.
        */
       isRelaunchDocumentField?: (tableName: string, fieldName: string) => boolean;
+      /**
+       * #1402 (spec §2.8): the field manifest the survivor's plan is rebuilt from when the merge
+       * fills segment, offering_type or listing_exchanges. Missing on such a merge -> the merge is
+       * refused (it would leave the plan on the old type's ranks).
+       */
+      planManifest?: import('../services/plan-invalidating-rebuild').PlanManifest;
     }
   ): Promise<MergeDuplicateResult> {
     if (keepId === dropId) {
@@ -2576,12 +2582,26 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         }
       }
 
+      // #1402 (spec §2.8): a filled plan input (segment / offering_type / listing_exchanges) is written
+      // through the one write-and-rebuild door, so the survivor's plan is rebuilt in this transaction.
+      const { isPlanInvalidatingField, writeIposRebuildingPlanInTx } = await import('../services/plan-invalidating-rebuild');
+      const planInputSet: Record<string, unknown> = {};
       for (const p of patch) {
         const jsKey = columnToCamelCase(p.column);
-        await tx
-          .update(ipos)
-          .set({ [jsKey]: p.value, updatedAt: new Date() } as Partial<typeof ipos.$inferInsert>)
-          .where(eq(ipos.id, keepId));
+        if (isPlanInvalidatingField('ipos', jsKey)) planInputSet[jsKey] = p.value;
+      }
+      if (Object.keys(planInputSet).length > 0) {
+        await writeIposRebuildingPlanInTx(tx as never, keepId, { ...planInputSet, updatedAt: new Date() }, opts.planManifest);
+      }
+
+      for (const p of patch) {
+        const jsKey = columnToCamelCase(p.column);
+        if (!(jsKey in planInputSet)) {
+          await tx
+            .update(ipos)
+            .set({ [jsKey]: p.value, updatedAt: new Date() } as Partial<typeof ipos.$inferInsert>)
+            .where(eq(ipos.id, keepId));
+        }
 
         const previousSource = keepProv.get(jsKey) ?? null;
         const keepValueBefore = (keep as unknown as Record<string, unknown>)[jsKey];

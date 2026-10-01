@@ -29,7 +29,8 @@
  * as "source no longer first" until the new rank-1 source answers (`source-no-longer-first.ts`); a
  * dropped row's open item leaves the queue (the field no longer applies, item 18).
  */
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
+import { ipos as iposTable } from '../db/schema';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '../db/schema';
 import { parseNaiveTimestampAsUtc } from '../db/timezone-config';
@@ -337,4 +338,40 @@ export async function rebuildIpoPlanInTx(
     queued: queue.queued,
     rebuilt: true,
   };
+}
+
+/**
+ * #1402: the ONE door for a non-walk write to `ipos` that may touch a plan input (segment,
+ * offering_type, listing_exchanges; §2.8 "drops and rebuilds that IPO's plan rows"). Inside the
+ * caller's transaction it locks the row, reads the type slice before the write, writes `set`, and
+ * rebuilds the plan when a plan input is in `set` — so the value and its plan commit or roll back
+ * together. Repair tools, reclassifiers and the merge tool route through it; the admin save and the
+ * filing persister already rebuild through `rebuildIpoPlanInTx` directly.
+ *
+ * Fails closed: a write that touches a plan input without a manifest throws before writing, because
+ * a segment written without its rebuild leaves the plan on the old segment's ranks.
+ */
+export async function writeIposRebuildingPlanInTx(
+  tx: Db,
+  ipoId: string,
+  set: Record<string, unknown>,
+  manifest: PlanManifest | null | undefined
+): Promise<PlanRebuildSummary | null> {
+  const touchesPlan = Object.keys(set).some((f) => isPlanInvalidatingField('ipos', f));
+  if (touchesPlan && !manifest) {
+    throw new Error(
+      `writeIposRebuildingPlanInTx: a write to ${Object.keys(set).filter((f) => isPlanInvalidatingField('ipos', f)).join(', ')} on IPO ${ipoId} needs the field manifest to rebuild the plan (spec §2.8, #1402) — refusing to write`
+    );
+  }
+  let before: Pick<PlanIpo, 'segment' | 'listingExchanges' | 'offeringType'> | null = null;
+  if (touchesPlan) {
+    const cur = await tx.execute(
+      sql`SELECT segment, listing_exchanges, offering_type::text AS offering_type FROM ipos WHERE id = ${ipoId}::uuid FOR UPDATE`
+    );
+    const r = cur.rows[0] as { segment: string | null; listing_exchanges: string[] | null; offering_type: string | null } | undefined;
+    if (!r) throw new Error(`writeIposRebuildingPlanInTx: IPO ${ipoId} not found`);
+    before = { segment: r.segment, listingExchanges: r.listing_exchanges, offeringType: r.offering_type };
+  }
+  await tx.update(iposTable).set(set as never).where(eq(iposTable.id, ipoId));
+  return touchesPlan ? rebuildIpoPlanInTx(tx, ipoId, manifest!, before!) : null;
 }

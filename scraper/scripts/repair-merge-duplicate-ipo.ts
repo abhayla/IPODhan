@@ -59,6 +59,7 @@ import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 import { createNoopRedisClient, guardCacheInvalidation, openRepairDb, writeLedgerFile } from './lib/repair-tool.js';
 import { notifyOwner, flushOwnerNotify } from '../src/services/owner-notify.js';
+import { loadPlanManifest } from '../src/config/field-manifest-loader.js';
 
 const args = process.argv.slice(2);
 const arg = (n: string): string | null => {
@@ -406,6 +407,8 @@ async function main(): Promise<number> {
   let plan: MergeDuplicateResult;
   try {
     plan = await repo.mergeDuplicateInto(KEEP, DROP, {
+      // #1402: a merge that fills a plan input rebuilds the survivor's plan (spec §2.8).
+      planManifest: loadPlanManifest(),
       apply: false,
       isRelaunchDocumentField: (await import('../src/services/relaunch-clear.js')).isRelaunchDocumentField,
       forceDifferentName: FORCE_NAME,
@@ -471,6 +474,8 @@ async function main(): Promise<number> {
   let applied: MergeDuplicateResult;
   try {
     applied = await repo.mergeDuplicateInto(KEEP, DROP, {
+      // #1402: a merge that fills a plan input rebuilds the survivor's plan (spec §2.8).
+      planManifest: loadPlanManifest(),
       apply: true,
       // #1298 (§2.9, OD-139): an OD-86 relaunch merge of a POSTPONED IPO is its relaunch filing.
       isRelaunchDocumentField: (await import('../src/services/relaunch-clear.js')).isRelaunchDocumentField,

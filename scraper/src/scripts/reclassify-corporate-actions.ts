@@ -23,6 +23,10 @@
  */
 
 import { Client } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import * as schema from '@ipodhan/shared/db/schema';
+import { writeIposRebuildingPlanInTx } from '@ipodhan/shared/services/plan-invalidating-rebuild';
+import { loadPlanManifest } from '../config/field-manifest-loader.js';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { detectOfferingTypeFromBSEIRFlag, NON_IPO_UNMAPPED_SENTINEL } from '../utils/detect-offering-type.js';
 import logger from '../utils/logger.js';
@@ -90,9 +94,11 @@ async function main() {
       if (correct !== 'IPO') {
         planned.push({ name: ipo.company_name, to: correct, flag: `${match.IR_flag}/${match.IR_FLAG_FULL}` });
         if (execute) {
-          await client.query(
-            `UPDATE ipos SET offering_type = $1, last_manual_edit_at = now(), updated_at = now() WHERE id = $2`,
-            [correct, ipo.id]
+          // #1402 (spec §2.8): an offering_type write rebuilds the IPO's plan in the same
+          // transaction, on this script's own connection.
+          const manifest = loadPlanManifest();
+          await drizzle(client, { schema }).transaction((tx) =>
+            writeIposRebuildingPlanInTx(tx as never, ipo.id, { offeringType: correct, lastManualEditAt: new Date(), updatedAt: new Date() }, manifest)
           );
           logger.info({ ipoId: ipo.id, name: ipo.company_name, to: correct }, 'Reclassified corporate action out of IPO listings');
         }

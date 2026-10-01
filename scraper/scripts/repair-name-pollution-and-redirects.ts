@@ -65,6 +65,7 @@ import { eq, sql } from 'drizzle-orm';
 import logger from '../src/utils/logger.js';
 import { pathToFileURL } from 'node:url';
 import { createNoopRedisClient, guardCacheInvalidation, openRepairDb } from './lib/repair-tool.js';
+import { loadPlanManifest } from '../src/config/field-manifest-loader.js';
 
 /** Recorded verbatim in `ipo_merge_log.merged_by` for every merge this tool makes. */
 export const MERGED_BY = 'repair-name-pollution-and-redirects.ts';
@@ -121,6 +122,8 @@ export async function mergeLoser(
 ): Promise<LoserOutcome> {
   try {
     await repo.mergeDuplicateInto(canonicalId, loserId, {
+      // #1402: a merge that fills a plan input rebuilds the survivor's plan (spec §2.8).
+      planManifest: loadPlanManifest(),
       apply: opts.apply,
       isRelaunchDocumentField: (await import('../src/services/relaunch-clear.js')).isRelaunchDocumentField,
       mergedBy: MERGED_BY,
