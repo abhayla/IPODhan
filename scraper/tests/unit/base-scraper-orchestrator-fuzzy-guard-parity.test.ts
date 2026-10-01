@@ -383,7 +383,7 @@ describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuz
     expect(mockFindByFuzzyName).toHaveBeenCalledTimes(1);
     // The write UPDATES the guard-cleared row...
     // item 19 (A2 round 1): the consolidation door names its source for the in-transaction hold re-check.
-    expect(mockUpdate).toHaveBeenCalledWith('hybrid-canonical-id', expect.anything(), { honourProtection: { source: expect.any(String) } });
+    expect(mockUpdate).toHaveBeenCalledWith('hybrid-canonical-id', expect.anything(), { honourProtection: { source: expect.any(String) }, onIdentifierRefused: expect.any(Function) });
     // ...and never CREATEs a duplicate.
     expect(mockCreate).not.toHaveBeenCalled();
   }, 45000); // #261: widened from 20s -- this file drives the REAL (unmocked) upsertIPO/consolidatedUpsertIPO write path (dynamic import + real retry/backoff code, only its repository calls are mocked), and measured runs on a contended dev/CI box (many concurrent node processes) intermittently exceeded 20s on cold module transform, timing the FIRST test out mid-flight; the timed-out promise then kept running in the background and its late mock calls corrupted the NEXT test's call-count assertions. Same class + same fix precedent as vitest.config.ts's file-level testTimeout comment (measured contention, not a hang).

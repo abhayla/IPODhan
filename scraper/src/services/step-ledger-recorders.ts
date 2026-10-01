@@ -96,7 +96,7 @@ export interface DiscoveryStepInput {
    */
   provenanceLookupFailed?: string[];
   /**
-   * #721: fields a write-door rule refused this write (never written, no provenance), with the rule.
+   * #721, #1376 (OD-62/OD-99): fields a write-door rule refused this write (never written, no provenance), with the rule.
    * B5 records them, so a refused value is a ledgered outcome, not a silent drop.
    */
   refused?: { field: string; rule: string }[];

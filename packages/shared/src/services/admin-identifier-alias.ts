@@ -204,6 +204,57 @@ export async function lockIdentifierValues(tx: { execute: Db['execute'] }, keys:
   }
 }
 
+/** #1376: the identifier columns a non-admin writer (scraper, document persister, repair tool) writes. */
+const WRITER_IDENTIFIER_FIELDS = ['cin', 'isin', 'symbol'] as const;
+type WriterIdentifierField = (typeof WRITER_IDENTIFIER_FIELDS)[number];
+const NO_ROW_YET = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * #1376 (OD-68: two rows of one offering sharing an identifier "should never happen"): inside the
+ * writer's transaction, every CIN / ISIN / symbol the patch CHANGES takes the same per-value advisory
+ * lock an admin save takes (`identifierLockKey`, #1371), and under it a value another live row of the
+ * SAME offering already carries is removed from the patch (fail closed), using the admin's own holder
+ * check (`holderElsewhere`: OD-35 offering type + 180-day window, so an OFS or rights row of the same
+ * company keeps sharing it, spec §2.3.3 rule 3). A value the row already holds is not a new claim.
+ * BSE IPO numbers are not here: `uq_ipo_source_keys_binding` already serialises them.
+ * Mutates `patch`; returns what it removed.
+ */
+export async function guardWriterIdentifiers(
+  tx: Db,
+  target: {
+    ipoId: string | null;
+    offeringType: string | null;
+    openDate: unknown;
+    current?: Partial<Record<WriterIdentifierField, unknown>>;
+  },
+  patch: Record<string, unknown>
+): Promise<Array<{ fieldName: WriterIdentifierField; value: string; holder: string }>> {
+  const claims: Array<{ fieldName: WriterIdentifierField; value: string }> = [];
+  for (const fieldName of WRITER_IDENTIFIER_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(patch, fieldName)) continue;
+    const value = normalizeIdentifier(fieldName, patch[fieldName]);
+    if (value === null) continue;
+    if (normalizeIdentifier(fieldName, target.current?.[fieldName]) === value) continue;
+    claims.push({ fieldName, value });
+  }
+  if (claims.length === 0) return [];
+  await lockIdentifierValues(tx, claims.map((c) => identifierLockKey(c.fieldName, c.value)));
+  const refused: Array<{ fieldName: WriterIdentifierField; value: string; holder: string }> = [];
+  for (const c of claims) {
+    const holder = await holderElsewhere(
+      tx,
+      { ipoId: target.ipoId ?? NO_ROW_YET, fieldName: c.fieldName } as IdentifierEditInput,
+      c.value,
+      { offeringType: target.offeringType, openDate: target.openDate }
+    );
+    if (holder) {
+      delete patch[c.fieldName];
+      refused.push({ fieldName: c.fieldName, value: c.value, holder: holder.label });
+    }
+  }
+  return refused;
+}
+
 /** The audit action of an identifier moved off a row by an admin edit of another row (#1290). */
 export const IDENTIFIER_MOVED_AUDIT_ACTION = 'ADMIN_IDENTIFIER_MOVED';
 

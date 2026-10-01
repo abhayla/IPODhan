@@ -71,7 +71,11 @@ function stubDb(iposRows: Row[]) {
       };
     },
   }));
-  return { db: { select, insert } as unknown as ConstructorParameters<typeof IPORepository>[0], auditInserts, iposInserts, iposQueries };
+  // #1376: a create carrying a CIN runs in a transaction and takes the identifier advisory lock.
+  const execute = vi.fn().mockResolvedValue(undefined);
+  const fake: Record<string, unknown> = { select, insert, execute };
+  fake.transaction = async (fn: (tx: unknown) => Promise<unknown>) => fn(fake);
+  return { db: fake as unknown as ConstructorParameters<typeof IPORepository>[0], auditInserts, iposInserts, iposQueries };
 }
 
 function makeRepo(iposRows: Row[]) {

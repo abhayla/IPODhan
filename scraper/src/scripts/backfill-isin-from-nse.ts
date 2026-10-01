@@ -10,6 +10,7 @@
 
 import pkg from 'pg';
 const { Client } = pkg;
+import { db, getRedisClient, IPORepository } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { scrapeMultipleISINs, type NSEISINResult } from '../scrapers/nse-isin-scraper.js';
 
@@ -24,6 +25,8 @@ async function backfillISINFromNSE() {
   const client = new Client({
     connectionString: process.env.DATABASE_URL
   });
+
+  const ipoRepository = new IPORepository(db, getRedisClient());
 
   try {
     await client.connect();
@@ -95,10 +98,20 @@ async function backfillISINFromNSE() {
       if (scrapeResult.success && scrapeResult.isin) {
         // Update database
         try {
-          await client.query(
-            `UPDATE ipos SET isin = $1, updated_at = NOW() WHERE id = $2`,
-            [scrapeResult.isin, ipo.id]
+          // #1376 round 2: the guarded repository write (per-value lock + same-offering holder check +
+          // admin hold), not a raw UPDATE that bypassed all three.
+          const { dropped } = await ipoRepository.updateReportingHolds(
+            ipo.id,
+            { isin: scrapeResult.isin },
+            { honourProtection: { source: 'backfill-isin-from-nse' } }
           );
+          if (dropped.includes('isin')) {
+            console.log(`⚠️  ${i + 1}/${iposToUpdate.length} ${ipo.companyName}`);
+            console.log(`   ISIN ${scrapeResult.isin} not written: held by another row of the same offering or by an admin`);
+            failureCount++;
+            updateResults.push({ companyName: ipo.companyName, symbol: ipo.symbol, isin: null, status: 'not_found' });
+            continue;
+          }
 
           console.log(`✅ ${i + 1}/${iposToUpdate.length} ${ipo.companyName}`);
           console.log(`   ISIN: ${scrapeResult.isin} (source: ${scrapeResult.source})`);

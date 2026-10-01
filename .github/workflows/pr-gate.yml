@@ -1339,6 +1339,8 @@ jobs:
           tests/integration/admin-suggestion-followups-1294-1300.integration.test.ts
           tests/integration/admin-identifier-move-1290.integration.test.ts
           tests/integration/admin-write-races-1371.integration.test.ts
+          tests/integration/scraper-identifier-lock-1376.integration.test.ts
+          tests/integration/identifier-refusal-recorded-1376.integration.test.ts
           tests/integration/field-sources-row-key-provenance.integration.test.ts
           tests/integration/field-sources-row-key-unique.integration.test.ts
           tests/integration/ipo-field-plan-row-key-unique.integration.test.ts

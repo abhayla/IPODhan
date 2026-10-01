@@ -47,6 +47,7 @@ import {
 import { initStepLedger } from './step-ledger.js';
 import { guardLotEconomics } from './lot-economics-guard.js';
 import { recordDiscoverySteps } from './step-ledger-recorders.js';
+import { IDENTIFIER_HELD_RULE } from './identifier-refusal.js';
 import { recordTouchedIfChanged } from './touched-ipos-tracker.js';
 import type { Redis } from 'ioredis';
 
@@ -64,6 +65,8 @@ export interface ConsolidatedUpsertResult {
   refusedDateFields?: string[];
   /** #721: lot fields this write carried that the spec §1.2 row 4 lot rule refused (never written, no provenance). */
   refusedLotFields?: string[];
+  /** #1376 (OD-62/OD-99): CIN / ISIN / symbol this write carried that another row of the same offering holds (never written). */
+  refusedIdentifierFields?: string[];
 }
 
 /**
@@ -443,6 +446,12 @@ export class DataConsolidationOrchestrator {
       }
 
       let ipoId: string;
+      // #1376 round 2: identifiers the repository dropped because another row of the same offering
+      // holds them, recorded here (B5 `refused`, `refusedIdentifierFields`), not only logged.
+      const identifierRefusals: { field: string; rule: string }[] = [];
+      const onIdentifierRefused = (refused: { fieldName: string }[]) => {
+        for (const r of refused) identifierRefusals.push({ field: r.fieldName, rule: IDENTIFIER_HELD_RULE });
+      };
 
       // W-104: `slug` MUST be written only on the create branch below.
       // `consolidatedIPOData` (from `extractConsolidatedData`) never carries a
@@ -470,6 +479,7 @@ export class DataConsolidationOrchestrator {
         } as IPOInsert, {
           sourceKeys: (scrapedIPO as any).sourceKeys ?? null,
           boundBy: `scraper:${source}`,
+          onIdentifierRefused,
           ...(provenanceFields.length > 0
             ? {
                 inTx: async (tx: unknown, created: { id: string }) => {
@@ -495,7 +505,7 @@ export class DataConsolidationOrchestrator {
             ...consolidatedIPOData,
             updatedAt: new Date(),
           },
-          { honourProtection: { source } }
+          { honourProtection: { source }, onIdentifierRefused }
         );
 
         ipoId = existingIPO.id;
@@ -548,7 +558,7 @@ export class DataConsolidationOrchestrator {
           conflictsBySeverity: consolidationResult.conflictsBySeverity ?? {},
           fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
           companyName: scrapedIPO.companyName,
-          ...(lotRefusals.length > 0 ? { refused: lotRefusals } : {}),
+          ...(lotRefusals.length + identifierRefusals.length > 0 ? { refused: [...lotRefusals, ...identifierRefusals] } : {}),
         });
       } catch (ledgerError) {
         logger.warn(
@@ -569,6 +579,7 @@ export class DataConsolidationOrchestrator {
         skipped: false,
         ...(refusedDateFields.length > 0 ? { refusedDateFields } : {}),
         ...(lotRefusals.length > 0 ? { refusedLotFields: lotRefusals.map((r) => r.field) } : {}),
+        ...(identifierRefusals.length > 0 ? { refusedIdentifierFields: identifierRefusals.map((r) => r.field) } : {}),
       };
 
       // Item 21 slice 1 (OD-40). This is the single write choke point CLAUDE.md

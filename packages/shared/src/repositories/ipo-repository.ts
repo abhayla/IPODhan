@@ -195,6 +195,18 @@ import {
 } from '../utils/company-name-normalizer';
 import { findMostSimilarName } from '../utils/company-name-similarity';
 import { filterPatchUnderHold } from '../services/field-hold';
+import { guardWriterIdentifiers } from '../services/admin-identifier-alias';
+
+/** #1376: the identifier columns whose writes take the per-value lock (guardWriterIdentifiers). */
+const WRITER_IDENTIFIER_COLUMNS = ['cin', 'isin', 'symbol'] as const;
+
+/**
+ * #1376 round 2 (OD-62 / OD-99): an identifier this write dropped because another row of the same
+ * offering holds it. A caller that records outcomes (the scraper's B5 step ledger and field walk) passes
+ * `onIdentifierRefused`; a log line alone is not a recorded reason.
+ */
+export type IdentifierRefusal = { fieldName: string; value: string; holder: string };
+export type OnIdentifierRefused = (refused: IdentifierRefusal[]) => void;
 import { recordListSuggestion, adminListMergeRefusal } from '../services/admin-list-hold';
 import {
   checkMergeEligibility,
@@ -1556,6 +1568,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       boundBy?: string;
       /** #1196: work that commits or rolls back WITH the row (its provenance). A throw rolls the create back. */
       inTx?: (tx: unknown, created: IPO) => Promise<void>;
+      onIdentifierRefused?: OnIdentifierRefused;
     }
   ): Promise<IPO> {
     // #860: an IPO's segment decides which manifest ranks its fields get
@@ -1631,17 +1644,36 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // insert rolls back with it — so two concurrent creates leave one row.
       const keys = normalizeSourceKeyRefs(options?.sourceKeys ?? []);
       const inTx = options?.inTx;
-      const ipo = keys.length === 0 && !inTx
+      // #1376: a create carrying a CIN / ISIN / symbol runs the identifier guard in its transaction.
+      const writesIdentifier = WRITER_IDENTIFIER_COLUMNS.some((c) => (data as Record<string, unknown>)[c] != null);
+      let createRefusals: IdentifierRefusal[] = [];
+      const ipo = keys.length === 0 && !writesIdentifier && !inTx
         ? (await this.db.insert(ipos).values(data).returning())[0]
         : await this.db.transaction(async (tx) => {
-            const [created] = await tx.insert(ipos).values(data).returning();
-            if (keys.length > 0) {
-              const rec = await recordSourceKeys(tx, created.id, keys, { boundVia: 'CREATE', boundBy: options?.boundBy ?? 'unknown' });
-              noteSourceKeyBind(created.id, rec.insertedIds);
-            }
-            if (inTx) await inTx(tx, created);
-            return created;
-          });
+        const row = { ...data } as Record<string, unknown>;
+        const refusedIds = await guardWriterIdentifiers(
+          tx as never,
+          // A create with no offering type passes `null`: sameOfferingAs() then cannot rule any holder out
+          // by type, so a holder inside the 180-day window refuses (fail closed). That is recorded through
+          // onIdentifierRefused like any other refusal, never silent; the row keeps the identifier
+          // untouched until a typed write supplies it (test: identifier-refusal-recorded-1376, null type).
+          { ipoId: null, offeringType: (row.offeringType as string | undefined) ?? null, openDate: row.openDate ?? null },
+          row
+        );
+        createRefusals = refusedIds;
+        if (refusedIds.length > 0) {
+          logger.warn({ slug: data.slug, refused: refusedIds }, '[#1376 OD-68] identifier held by another row of the same offering: created without it');
+        }
+        const [created] = await tx.insert(ipos).values(row as IPOInsert).returning();
+        if (keys.length > 0) {
+          const rec = await recordSourceKeys(tx, created.id, keys, { boundVia: 'CREATE', boundBy: options?.boundBy ?? 'unknown' });
+          noteSourceKeyBind(created.id, rec.insertedIds);
+        }
+        if (inTx) await inTx(tx, created);
+        return created;
+      });
+
+      if (createRefusals.length > 0) options?.onIdentifierRefused?.(createRefusals);
 
       // Invalidate list cache
       await this.deleteCachePattern('ipo:list:*');
@@ -1673,12 +1705,14 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   async update(
     id: string,
     data: Partial<IPOInsert>,
-    options?: { honourProtection?: { source: string } }
+    options?: { honourProtection?: { source: string }; onIdentifierRefused?: OnIdentifierRefused }
   ): Promise<IPO> {
     // §9.2 item 19: EVERY update() honours the admin hold inside its own transaction — scraper,
     // repair tool or job alike (ADMIN outranks every source, §2.7). The admin path itself writes
     // through `applyAdminCorrigendumValue`, never here. `source` only names the writer in the log.
-    return (await this.updateHonouringProtection(id, data, options?.honourProtection?.source ?? 'update()')).ipo;
+    return (
+      await this.updateHonouringProtection(id, data, options?.honourProtection?.source ?? 'update()', undefined, options?.onIdentifierRefused)
+    ).ipo;
   }
 
   /**
@@ -1691,9 +1725,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   async updateReportingHolds(
     id: string,
     data: Partial<IPOInsert>,
-    options?: { honourProtection?: { source: string }; inTx?: IposWriteTxHook }
+    options?: { honourProtection?: { source: string }; inTx?: IposWriteTxHook; onIdentifierRefused?: OnIdentifierRefused }
   ): Promise<{ ipo: IPO; dropped: string[] }> {
-    return this.updateHonouringProtection(id, data, options?.honourProtection?.source ?? 'update()', options?.inTx);
+    return this.updateHonouringProtection(id, data, options?.honourProtection?.source ?? 'update()', options?.inTx, options?.onIdentifierRefused);
   }
 
   /**
@@ -1710,9 +1744,11 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     id: string,
     data: Partial<IPOInsert>,
     source: string,
-    inTx?: IposWriteTxHook
+    inTx?: IposWriteTxHook,
+    onIdentifierRefused?: OnIdentifierRefused
   ): Promise<{ ipo: IPO; dropped: string[] }> {
     let dropped: string[] = [];
+    let identifierRefusals: IdentifierRefusal[] = [];
     let ipo: IPO;
     try {
       ipo = await this.db.transaction(async (txRaw) => {
@@ -1766,6 +1802,35 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             patch.symbol = keySymbol;
           }
         }
+        // #1376: a CIN / ISIN / symbol this write changes takes the admin's per-value lock, and one
+        // another row of the same offering already carries is removed (OD-68), inside this transaction.
+        const writesIdentifier = WRITER_IDENTIFIER_COLUMNS.some((c) => patch[c] != null);
+        const [self] = writesIdentifier
+          ? await tx
+              .select({ offeringType: ipos.offeringType, openDate: ipos.openDate, cin: ipos.cin, isin: ipos.isin, symbol: ipos.symbol })
+              .from(ipos)
+              .where(eq(ipos.id, id))
+              .limit(1)
+          : [];
+        const refusedIds = !writesIdentifier ? [] : await guardWriterIdentifiers(
+          tx as never,
+          {
+            ipoId: id,
+            offeringType: (patch.offeringType as string | undefined) ?? self?.offeringType ?? null,
+            openDate: patch.openDate ?? self?.openDate ?? null,
+            current: { cin: self?.cin, isin: self?.isin, symbol: self?.symbol },
+          },
+          patch
+        );
+        if (refusedIds.length > 0) {
+          dropped = [...dropped, ...refusedIds.map((r) => r.fieldName)];
+          identifierRefusals = refusedIds;
+          logger.warn({ ipoId: id, source, refused: refusedIds }, '[#1376 OD-68] identifier held by another row of the same offering: not written');
+          if (Object.keys(patch).length === 0) {
+            const [current] = await tx.select().from(ipos).where(eq(ipos.id, id)).limit(1);
+            return runInTx(current as IPO);
+          }
+        }
         const [written] = await tx
           .update(ipos)
           .set({ ...(patch as Partial<IPOInsert>), updatedAt: new Date() })
@@ -1780,6 +1845,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     if (dropped.length > 0) {
       logger.info({ ipoId: id, source, dropped }, '[item 19] protected fields dropped inside the write transaction');
     }
+    if (identifierRefusals.length > 0) onIdentifierRefused?.(identifierRefusals);
     await this.invalidateCache([getIPOByIdKey(id), getIPOBySlugKey(ipo.slug)], ['ipo:list:*', 'ipo:search:*']);
     return { ipo, dropped };
   }
@@ -2443,6 +2509,11 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // unique-constrained would hit this) cannot survive, crashing the whole transaction
       // (icelectricals, 2026-09-16: symbol='ICELCO' observed on both rows mid-transaction).
       // Deleting the dropped row first means the carried value only ever exists on the survivor.
+      // #1376: the carried cin / isin / symbol below therefore skip guardWriterIdentifiers ON PURPOSE. The only
+      // other holder of a value the survivor lacks is this dropped row (same offering, OD-68), and it is deleted
+      // here, in the same transaction, before the carry UPDATE. The order is pinned by
+      // ipo-repository.merge-order.test.ts ("symbol: DELETE on the dropped ipos row is issued before the survivor
+      // is UPDATEd ...").
       await tx.delete(ipos).where(eq(ipos.id, dropId));
 
       // OD-86 + OD-83: a relaunch merge leaves the survivor with both records' keys; the older
