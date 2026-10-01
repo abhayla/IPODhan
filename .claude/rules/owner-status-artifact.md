@@ -70,8 +70,10 @@ that found nothing.
 The `board-owed-guard` hook is **project-level** (moved from user level 2026-09-25, owner decision):
 `.claude/hooks/board-owed-guard.py` in this repo, wired in this repo's `.claude/settings.json` across
 three events (PostToolUse/Bash, PostToolUse/Artifact, Stop). Its self-tests live at
-`.claude/hooks/tests/board-owed-guard.test.py` (46 cases, stdlib-only unittest) and run in CI
-(`pr-gate.yml`, the `python-tests` job). It watches for a real merge command (PostToolUse/Bash),
+`.claude/hooks/tests/board-owed-guard.test.py` (52 cases, stdlib-only unittest) and run in CI
+(`pr-gate.yml`, the `python-tests` job). Any Bash call mentioning `gh pr merge` only marks a merge
+check due (PostToolUse/Bash); at Stop one capped `gh pr list --state merged` call decides which PRs
+really merged (#1365 round 3: GitHub, not the command text, is the judge). It
 clears itself when the board is republished (PostToolUse/Artifact), and BLOCKS the turn on Stop
 (exit 2) while a merge is owed — regenerating the board for you so the only step left is the
 publish. When no stage actually crossed, the marker is cleared deliberately with a stated reason,
