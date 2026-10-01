@@ -51,7 +51,7 @@ async function main(): Promise<void> {
   for (const r of plan.fill) console.log(`  fill    ${r.slug} | postponed_at := ${r.evidenceAt} (field_sources ipos.status)`);
   for (const r of plan.unknown) console.log(`  unknown ${r.slug} | no status provenance row: no automatic relaunch clear; admin review`);
 
-  const written = apply ? await applyPostponedAtBackfill(db as ExecuteLike, plan) : [];
+  const written = apply ? await applyPostponedAtBackfill(db as never, plan) : [];
   if (apply && written.length !== plan.fill.length) {
     console.log(`${TOOL}: ${plan.fill.length - written.length} planned row(s) changed since the plan and were skipped.`);
   }

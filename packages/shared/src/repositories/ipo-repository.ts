@@ -3374,3 +3374,40 @@ export async function writeIpoHiddenState(
     .returning({ id: ipos.id });
   return updated.length === 1;
 }
+
+/**
+ * #1304 M1: the one writer of `ipos.postponed_at` outside the status-write trigger, used by the
+ * backfill for IPOs POSTPONED before the column existed. Kept on the shared write path
+ * (config/write-ratchet-baseline.json). It writes the PLANNED value (so the ledger records exactly
+ * what was written) and re-checks every condition in each UPDATE, all in one transaction: still POSTPONED, still NULL, and
+ * the status provenance row (field_sources, ipos.status) still holds the planned updated_at. A row
+ * that changed since the plan is skipped, not forced. Never writes `status`, so the stamping trigger
+ * does not fire. Returns the ids actually written.
+ */
+export async function writeIpoPostponedAtBackfill(
+  db: Pick<NodePgDatabase<typeof schema>, 'transaction'>,
+  fill: ReadonlyArray<{ ipoId: string; evidenceAt: string }>
+): Promise<string[]> {
+  if (fill.length === 0) return [];
+  return db.transaction(async (tx) => {
+    const written: string[] = [];
+    for (const r of fill) {
+      const at = sql`${r.evidenceAt}::timestamp`;
+      const updated = await tx
+        .update(ipos)
+        .set({ postponedAt: at as never })
+        .where(
+          and(
+            eq(ipos.id, r.ipoId),
+            eq(ipos.status, 'POSTPONED'),
+            sql`${ipos.postponedAt} IS NULL`,
+            sql`EXISTS (SELECT 1 FROM field_sources fs WHERE fs.ipo_id = ${ipos.id} AND fs.table_name = 'ipos'
+                  AND fs.row_key = '' AND fs.field_name = 'status' AND fs.updated_at = ${at})`
+          )
+        )
+        .returning({ id: ipos.id });
+      if (updated.length === 1) written.push(String(updated[0].id));
+    }
+    return written;
+  });
+}

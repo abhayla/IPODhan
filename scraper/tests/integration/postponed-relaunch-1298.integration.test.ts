@@ -190,7 +190,7 @@ describe.skipIf(!DATABASE_URL)('#1298 POSTPONED is not terminal; a relaunch fili
     if (!pool) return;
     await cleanup();
     await pool.end();
-  });
+  }, 60_000);
   beforeEach(() => {
     const f = FEATURE_FLAGS as never as Record<string, unknown>;
     for (const k of ['ENABLE_DATA_CONSOLIDATION', 'ENABLE_SOURCE_TRACKING', 'ENABLE_CONFLICT_DETECTION', 'CONSOLIDATION_PERCENTAGE']) {

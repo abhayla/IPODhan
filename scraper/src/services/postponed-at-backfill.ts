@@ -10,6 +10,7 @@
  * writes `status`, so the stamping trigger does not fire for it.
  */
 import { sql } from 'drizzle-orm';
+import { writeIpoPostponedAtBackfill } from '@ipodhan/shared';
 
 export interface ExecuteLike {
   execute(query: ReturnType<typeof sql>): Promise<unknown>;
@@ -56,25 +57,10 @@ export async function planPostponedAtBackfill(db: ExecuteLike, ipoIds: readonly 
 }
 
 /**
- * Writes the planned evidence. Re-checks every condition in the UPDATE itself (still POSTPONED, still
- * NULL, the evidence row still holds the planned value), so a row that changed since the plan is skipped, not forced.
- * Returns the ids actually written.
+ * Writes the planned evidence through the shared write path (writeIpoPostponedAtBackfill), which
+ * re-checks every condition in the UPDATE itself, so a row that changed since the plan is skipped,
+ * not forced. Returns the ids actually written.
  */
-export async function applyPostponedAtBackfill(db: ExecuteLike, plan: PostponedAtPlan): Promise<string[]> {
-  if (plan.fill.length === 0) return [];
-  const ids = `{${plan.fill.map((r) => r.ipoId).join(',')}}`;
-  const ats = `{${plan.fill.map((r) => `"${r.evidenceAt}"`).join(',')}}`;
-  // Writes the PLANNED value (so the ledger records exactly what was written) and only while the
-  // evidence row still holds that value; a row whose evidence moved since the plan is skipped.
-  const rows = rowsOf(
-    await db.execute(sql`
-      UPDATE ipos i SET postponed_at = p.at
-        FROM unnest(${ids}::uuid[], ${ats}::timestamp[]) AS p(ipo_id, at), field_sources fs
-       WHERE i.id = p.ipo_id
-         AND i.status = 'POSTPONED' AND i.postponed_at IS NULL
-         AND fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.row_key = '' AND fs.field_name = 'status'
-         AND fs.updated_at = p.at
-      RETURNING i.id::text AS ipo_id`)
-  );
-  return rows.map((r) => String(r.ipo_id));
+export async function applyPostponedAtBackfill(db: Parameters<typeof writeIpoPostponedAtBackfill>[0], plan: PostponedAtPlan): Promise<string[]> {
+  return writeIpoPostponedAtBackfill(db, plan.fill);
 }
