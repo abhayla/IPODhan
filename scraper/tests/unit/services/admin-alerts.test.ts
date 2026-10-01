@@ -20,6 +20,8 @@ import {
   conflictPairHash,
   redisTimestamp,
   NEW_CONFLICT_OVERLAP_MS,
+  DIGEST_AUDIT_OVERLAP_MS,
+  redisSentAuditIds,
   publicBaseUrl,
   editorLink,
   type NewConflictRow,
@@ -676,5 +678,101 @@ describe('round 3 MINOR 3: the scan mark never expires; a missing mark falls bac
     const s2 = scanDeps([], memoryDeps(NOON_IST));
     await scanNewDisagreements({ ...s2.deps, getLastDigestAt: async () => null });
     expect(s2.sinceSeen[0].toISOString()).toBe(new Date(NOON_IST.getTime() - 3_600_000).toISOString());
+  });
+});
+
+describe('#1312 item 1: the digest boundary between the app clock and the DB clock', () => {
+  // Two consecutive digests: day 1 sent at 09:00:00.000 IST by the app clock, day 2 at 09:00 IST next day.
+  const DAY1 = new Date('2026-09-29T03:30:00.000Z');
+  const DAY2 = new Date('2026-09-30T03:30:00.000Z');
+  function ev(at: string, extra: Partial<RecordedAdminEvent> = {}): RecordedAdminEvent {
+    return { at, type: 'exchange-override', ipoId: 'ipo-1', slug: 'a-ltd', status: 'OPEN', field: 'ipos.closeDate', detail: 'x -> y', companyName: 'A Ltd', ...extra };
+  }
+  function world() {
+    const audit: RecordedAdminEvent[] = [];
+    const store: RecordedAdminEvent[] = [];
+    let lastSent: Date | null = null;
+    let sentIds = new Set<string>();
+    const auditSince: Date[] = [];
+    const storeSince: Date[] = [];
+    const deps = (now: Date) => ({
+      now,
+      env: 'staging',
+      isClaimed: async () => false,
+      claim: async () => {},
+      send: sendOwnerAlert,
+      loadQueueCounts: async () => [] as QueueCountRow[],
+      loadEvents: async (since: Date) => {
+        storeSince.push(since);
+        return store.filter((e) => Date.parse(e.at) >= since.getTime());
+      },
+      loadAuditEvents: async (since: Date) => {
+        auditSince.push(since);
+        return audit.filter((e) => Date.parse(e.at) >= since.getTime());
+      },
+      lastSentAt: async () => lastSent,
+      markSent: async (at: Date) => {
+        lastSent = at;
+      },
+      sentAuditIds: async () => new Set(sentIds),
+      markSentAuditIds: async (ids: string[]) => {
+        sentIds = new Set(ids);
+      },
+    });
+    return { audit, store, deps, auditSince, storeSince, setLast: (d: Date) => (lastSent = d) };
+  }
+
+  it('a save stamped 0.3 s before the day-1 send by the DB clock, committed after it, is in the day-2 digest', async () => {
+    const w = world();
+    await runAdminDigest(w.deps(DAY1)); // day 1 read nothing: the row was not committed yet
+    w.audit.push(ev('2026-09-29T03:29:59.700Z', { auditId: 'audit-late', field: 'ipos.lateField' }));
+    received = [];
+    await runAdminDigest(w.deps(DAY2));
+    expect(String(received[0].body.body)).toContain('lateField');
+    expect(w.auditSince[1].toISOString()).toBe(new Date(DAY1.getTime() - DIGEST_AUDIT_OVERLAP_MS).toISOString());
+  });
+
+  it('an audit row the day-1 digest already listed is not repeated on day 2 (dedupe by audit id)', async () => {
+    const w = world();
+    w.audit.push(ev('2026-09-29T03:28:00.000Z', { auditId: 'audit-seen', field: 'ipos.seenField' }));
+    w.setLast(new Date('2026-09-28T03:30:00.000Z'));
+    await runAdminDigest(w.deps(DAY1));
+    expect(String(received[0].body.body)).toContain('seenField');
+    received = [];
+    await runAdminDigest(w.deps(DAY2));
+    expect(String(received[0].body.body)).not.toContain('seenField');
+  });
+
+  it('a digest-store event inside the overlap is read from the exact since and never repeats', async () => {
+    const w = world();
+    w.store.push(ev('2026-09-29T03:28:00.000Z', { field: 'ipos.storeField' }));
+    w.setLast(new Date('2026-09-28T03:30:00.000Z'));
+    await runAdminDigest(w.deps(DAY1));
+    expect(String(received[0].body.body)).toContain('storeField');
+    received = [];
+    await runAdminDigest(w.deps(DAY2));
+    expect(w.storeSince[1].toISOString()).toBe(DAY1.toISOString());
+    expect(String(received[0].body.body)).not.toContain('storeField');
+  });
+
+  it('a failed sent-id read repeats an overlap line rather than dropping one (fail toward visibility)', async () => {
+    const w = world();
+    w.audit.push(ev('2026-09-29T03:28:00.000Z', { auditId: 'audit-seen', field: 'ipos.seenField' }));
+    w.setLast(new Date('2026-09-28T03:30:00.000Z'));
+    await runAdminDigest(w.deps(DAY1));
+    received = [];
+    await runAdminDigest({ ...w.deps(DAY2), sentAuditIds: async () => { throw new Error('redis down'); } });
+    expect(String(received[0].body.body)).toContain('seenField');
+  });
+
+  it('redisSentAuditIds round-trips and refuses a non-array value', async () => {
+    const kv = new Map<string, string>();
+    const redis = { get: async (k: string) => kv.get(k) ?? null, set: async (k: unknown, v: unknown) => void kv.set(String(k), String(v)) };
+    const s = redisSentAuditIds(redis, 'staging');
+    expect([...(await s.get())]).toEqual([]);
+    await s.set(['a', 'b']);
+    expect([...(await s.get())].sort()).toEqual(['a', 'b']);
+    kv.set('admin-digest-sent-audit-ids:staging', '{"a":1}');
+    await expect(s.get()).rejects.toThrow(/not a JSON array/);
   });
 });

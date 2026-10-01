@@ -82,6 +82,8 @@ describe.skipIf(!DATABASE_URL)('admin-alert loaders on a real database', () => {
     expect(mine).toHaveLength(1);
     expect(mine[0]).toMatchObject({ type: 'od106-exchange-replaced', field: 'ipos.closeDate', detail: '2026-09-30 -> 2026-10-01', status: 'OPEN' });
     expect(mine[0].at.startsWith('2026-09-29 07:00:00')).toBe(true);
+    // #1312 item 1: every audit event carries its audit_logs.id, the key the digest dedupes the overlap by.
+    expect(mine[0].auditId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it('dbNewConflictsLoader returns only rows detected since the mark that are real disagreements', async () => {
